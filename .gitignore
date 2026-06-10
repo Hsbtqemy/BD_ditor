@@ -1,0 +1,23 @@
+# Données du corpus (volumineuses, hors versionnement)
+corpus/
+derivatives/
+lib/kumiko/
+
+# Base de données
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

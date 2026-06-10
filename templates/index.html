@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BD Annotator</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ───────────────── Header ───────────────── -->
+  <header id="header">
+    <div class="brand">BD&nbsp;Annotator</div>
+    <div id="planche-info" class="planche-info">—</div>
+    <div class="modes" role="group" aria-label="Modes">
+      <button class="mode-btn" data-mode="navigation" title="Navigation (N)">
+        <span class="dot"></span> Navigation <kbd>N</kbd>
+      </button>
+      <button class="mode-btn" data-mode="edition" title="Édition (E)">
+        <span class="dot"></span> Édition <kbd>E</kbd>
+      </button>
+      <button class="mode-btn" data-mode="annotation" title="Annotation (A)">
+        <span class="dot"></span> Annotation <kbd>A</kbd>
+      </button>
+    </div>
+    <div class="header-actions">
+      <button id="btn-segmenter" class="ghost" title="Lancer Kumiko">Segmenter</button>
+      <div class="dropdown">
+        <button class="ghost" id="btn-export">Export ▾</button>
+        <div class="dropdown-menu" id="export-menu">
+          <a data-fmt="json">JSON-LD</a>
+          <a data-fmt="csv">CSV</a>
+          <a data-fmt="tei">TEI P5</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ───────────────── Corps ───────────────── -->
+  <main id="body">
+
+    <!-- Sidebar : navigation planches -->
+    <aside id="sidebar">
+      <div class="sidebar-head">
+        <label for="album-select">Album</label>
+        <button id="btn-new-album" class="icon-btn" title="Nouvel album">＋</button>
+      </div>
+      <select id="album-select"></select>
+      <div class="sidebar-head">
+        <span>Planches</span>
+        <button id="btn-import" class="icon-btn" title="Importer une planche">⤓</button>
+        <input type="file" id="file-input" accept="image/*,.tif,.tiff" hidden>
+      </div>
+      <ul id="planche-list" class="planche-list"></ul>
+    </aside>
+
+    <!-- Visionneuse -->
+    <section id="viewer">
+      <div id="toolbar">
+        <button id="zoom-out" class="icon-btn" title="Zoom -">−</button>
+        <span id="zoom-level">100 %</span>
+        <button id="zoom-in" class="icon-btn" title="Zoom +">＋</button>
+        <button id="zoom-fit" class="ghost small" title="Ajuster">Ajuster</button>
+        <button id="zoom-reset" class="ghost small" title="100 %">1:1</button>
+        <div class="breadcrumb" id="breadcrumb"></div>
+      </div>
+      <div id="stage">
+        <div id="canvas">
+          <img id="planche-img" alt="Planche" draggable="false">
+          <svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <div id="stage-empty" class="empty-hint">
+          Sélectionnez ou importez une planche pour commencer.
+        </div>
+      </div>
+    </section>
+
+    <!-- Panneau droit : détail région -->
+    <aside id="panel">
+      <div id="panel-empty" class="empty-hint">Aucune région sélectionnée.</div>
+
+      <!-- Détail commun -->
+      <div id="panel-content" hidden>
+        <div class="panel-section">
+          <div class="panel-row">
+            <span class="muted">Région</span>
+            <span id="region-id" class="mono"></span>
+          </div>
+          <div class="panel-row">
+            <span class="muted">Type</span>
+            <select id="region-type">
+              <option value="case">case</option>
+              <option value="bulle">bulle</option>
+              <option value="personnage">personnage</option>
+              <option value="texte">texte</option>
+              <option value="cartouche">cartouche</option>
+            </select>
+          </div>
+          <div class="panel-row">
+            <span class="muted">Source</span>
+            <span id="region-source" class="badge"></span>
+          </div>
+        </div>
+
+        <!-- Mode édition : coordonnées -->
+        <div id="panel-edition" class="panel-section" hidden>
+          <h3>Coordonnées <span class="muted">(px master)</span></h3>
+          <div class="coord-grid">
+            <label>X <input type="number" id="coord-x"></label>
+            <label>Y <input type="number" id="coord-y"></label>
+            <label>L <input type="number" id="coord-w"></label>
+            <label>H <input type="number" id="coord-h"></label>
+          </div>
+          <button id="btn-delete-region" class="danger small">Supprimer la région</button>
+        </div>
+
+        <!-- Mode annotation : tags + note -->
+        <div id="panel-annotation" class="panel-section" hidden>
+          <h3>Tags</h3>
+          <div id="tag-chips" class="tag-chips"></div>
+          <div class="tag-input-wrap">
+            <input type="text" id="tag-input" placeholder="Ajouter un tag…"
+                   autocomplete="off">
+            <div id="tag-suggest" class="tag-suggest" hidden></div>
+          </div>
+          <h3>Note</h3>
+          <textarea id="note-input" placeholder="Note libre…" rows="6"></textarea>
+          <div id="save-state" class="save-state muted">Enregistré</div>
+        </div>
+
+        <!-- Hiérarchie -->
+        <div class="panel-section">
+          <h3>Hiérarchie</h3>
+          <div id="children-list" class="children-list"></div>
+          <button id="btn-enter" class="ghost small" hidden>Entrer dans la région ↳</button>
+        </div>
+
+        <!-- OCR (lecture seule pour l'instant) -->
+        <div class="panel-section" id="panel-ocr" hidden>
+          <h3>Texte OCR</h3>
+          <div id="ocr-text" class="ocr-text muted"></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ───────────────── Status bar ───────────────── -->
+  <footer id="statusbar">
+    <span id="stat-cases">0 régions</span>
+    <span id="stat-annotees">0 annotées</span>
+    <span id="stat-mode" class="stat-mode">Mode : Navigation</span>
+    <span id="stat-zoom">Zoom 100 %</span>
+    <span id="stat-coords" class="mono">—</span>
+  </footer>
+</div>
+
+<script src="/static/viewer.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pillow>=10.0
+python-multipart>=0.0.9
+# Kumiko (cloned separately into lib/kumiko) pulls in opencv + numpy:
+#   git clone https://github.com/njean42/kumiko.git lib/kumiko
+#   pip install -r lib/kumiko/requirements.txt
