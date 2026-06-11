@@ -34,11 +34,15 @@ def _startup() -> None:
 
 
 def db() -> Iterator[sqlite3.Connection]:
-    """Une connexion par requête : commit si succès, rollback sinon."""
+    """Une connexion par requête. Le commit est fait EXPLICITEMENT dans chaque
+    route d'écriture (et non après le yield) : le code post-yield d'une
+    dépendance FastAPI s'exécute APRÈS l'envoi de la réponse, ce qui rendait
+    une écriture invisible à une lecture immédiate (course écriture→lecture).
+    Ici la dépendance ne gère que le rollback en cas d'erreur et la fermeture.
+    """
     conn = get_connection()
     try:
         yield conn
-        conn.commit()
     except Exception:
         conn.rollback()
         raise
@@ -177,6 +181,7 @@ def create_album(album: AlbumIn, conn: sqlite3.Connection = Depends(db)):
         "VALUES (?, ?, ?, ?, ?)",
         (album.titre, album.auteur, album.annee, album.editeur, album.serie),
     )
+    conn.commit()
     return _row(conn.execute("SELECT * FROM albums WHERE id = ?", (cur.lastrowid,)))
 
 
@@ -225,6 +230,7 @@ def import_planche(
         planche = ingest_image(conn, album_id, master, numero=numero)
     except Exception as exc:
         raise HTTPException(400, f"Échec de l'ingestion : {exc}")
+    conn.commit()
     planche["url_web"] = "/" + planche["chemin_web"]
     return planche
 
@@ -243,9 +249,11 @@ def segmenter(planche_id: int, use_master: bool = False,
             "(git clone https://github.com/njean42/kumiko.git lib/kumiko).",
         )
     try:
-        return segment_planche(conn, planche_id, use_master=use_master)
+        res = segment_planche(conn, planche_id, use_master=use_master)
     except KumikoError as exc:
         raise HTTPException(500, str(exc))
+    conn.commit()
+    return res
 
 
 @app.get("/api/planches/{planche_id}/regions")
@@ -288,6 +296,7 @@ def create_region(planche_id: int, region: RegionIn,
     new_id = cur.lastrowid
     if region.ocr_texte:
         reindex_region(conn, new_id)
+    conn.commit()
     return _row(conn.execute("SELECT * FROM regions WHERE id = ?", (new_id,)))
 
 
@@ -306,6 +315,7 @@ def update_region(region_id: int, patch: RegionUpdate,
                      (*fields.values(), region_id))
         if "ocr_texte" in fields:
             reindex_region(conn, region_id)
+        conn.commit()
     return _row(conn.execute("SELECT * FROM regions WHERE id = ?", (region_id,)))
 
 
@@ -326,6 +336,7 @@ def delete_region(region_id: int, conn: sqlite3.Connection = Depends(db)):
     for r in descendants:
         unindex_region(conn, r["id"])
     conn.execute("DELETE FROM regions WHERE id = ?", (region_id,))
+    conn.commit()
     return Response(status_code=204)
 
 
@@ -337,6 +348,7 @@ def update_statut(planche_id: int, payload: StatutIn,
         raise HTTPException(422, f"Statut invalide : {payload.statut}")
     conn.execute("UPDATE planches SET statut = ? WHERE id = ?",
                  (payload.statut, planche_id))
+    conn.commit()
     return _get_planche(conn, planche_id)
 
 
@@ -378,6 +390,7 @@ def put_annotation(region_id: int, payload: AnnotationIn,
         )
 
     reindex_region(conn, region_id)
+    conn.commit()
     return _annotation_for_region(conn, region_id)
 
 
@@ -404,6 +417,7 @@ def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db)):
                description = COALESCE(excluded.description, tags.description)""",
         (label, tag.couleur, tag.description),
     )
+    conn.commit()
     return _row(conn.execute("SELECT * FROM tags WHERE label = ?", (label,)))
 
 
