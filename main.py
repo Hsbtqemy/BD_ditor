@@ -23,6 +23,7 @@ from database import get_connection, init_db, reindex_region, unindex_region
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
 from pipeline.ingest import ingest_image, store_upload
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
+from pipeline.ordering import move_region, reorder_planche
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
 
 @asynccontextmanager
@@ -102,6 +103,10 @@ class RegionUpdate(BaseModel):
 
 class StatutIn(BaseModel):
     statut: str
+
+
+class MoveIn(BaseModel):
+    sens: str   # "haut" | "bas"
 
 
 class AnnotationIn(BaseModel):
@@ -388,6 +393,27 @@ def delete_region(region_id: int, conn: sqlite3.Connection = Depends(db)):
     conn.execute("DELETE FROM regions WHERE id = ?", (region_id,))
     conn.commit()
     return Response(status_code=204)
+
+
+@app.post("/api/planches/{planche_id}/reordonner")
+def reordonner(planche_id: int, conn: sqlite3.Connection = Depends(db)):
+    """Recalcule l'ordre de lecture (rang per-niveau) de toute la planche."""
+    _get_planche(conn, planche_id)
+    res = reorder_planche(conn, planche_id)
+    conn.commit()
+    return res
+
+
+@app.post("/api/regions/{region_id}/deplacer")
+def deplacer_region(region_id: int, payload: MoveIn,
+                    conn: sqlite3.Connection = Depends(db)):
+    """Déplace une région d'un cran parmi ses frères ('haut' ou 'bas')."""
+    try:
+        res = move_region(conn, region_id, payload.sens)
+    except ValueError as exc:
+        raise HTTPException(404 if "introuvable" in str(exc) else 422, str(exc))
+    conn.commit()
+    return res
 
 
 @app.patch("/api/planches/{planche_id}/statut")

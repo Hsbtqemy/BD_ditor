@@ -21,6 +21,7 @@ from pathlib import Path
 
 from config import DATA_DIR, KUMIKO_DIR
 from database import unindex_region
+from pipeline.ordering import reorder_planche
 
 KUMIKO_ENTRY = KUMIKO_DIR / "kumiko"
 
@@ -159,6 +160,10 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
             "x": mx, "y": my, "w": mw, "h": mh,
             "ordre": ordre, "source": "kumiko",
         })
+
+    # Ordre de lecture cohérent sur toute la planche (cases + éventuelles bulles
+    # et régions manuelles), `ordre` = rang per-niveau.
+    reorder_planche(conn, planche_id)
 
     conn.execute(
         "UPDATE planches SET statut = 'segmentee', "

@@ -15,6 +15,7 @@ import sqlite3
 
 from config import DATA_DIR
 from database import unindex_region
+from pipeline.ordering import reorder_planche
 
 HF_REPO = "ogkalu/comic-speech-bubble-detector-yolov8m"
 HF_FILE = "comic-speech-bubble-detector.pt"
@@ -113,11 +114,11 @@ def detect_bulles(conn: sqlite3.Connection, planche_id: int,
             "DELETE FROM regions WHERE planche_id = ? AND type = 'bulle' "
             "AND source = 'auto'", (planche_id,))
 
-    # Conversion master + tri en ordre de lecture (haut→bas, gauche→droite).
-    converted = sorted(
-        ((round(x * scale_x), round(y * scale_y), round(w * scale_x), round(h * scale_y))
-         for x, y, w, h in boxes),
-        key=lambda b: (b[1], b[0]))
+    # Conversion master. L'`ordre` définitif (rang per-niveau, regroupé par case)
+    # est recalculé par reorder_planche() ci-dessous ; ici un ordre provisoire.
+    converted = [
+        (round(x * scale_x), round(y * scale_y), round(w * scale_x), round(h * scale_y))
+        for x, y, w, h in boxes]
 
     regions, sans_case = [], 0
     for ordre, (mx, my, mw, mh) in enumerate(converted, start=1):
@@ -131,6 +132,9 @@ def detect_bulles(conn: sqlite3.Connection, planche_id: int,
             (planche_id, parent, mx, my, mw, mh, ordre))
         regions.append({"id": cur.lastrowid, "type": "bulle", "parent_id": parent,
                         "x": mx, "y": my, "w": mw, "h": mh, "ordre": ordre})
+
+    # Ordre de lecture : bulles regroupées par case (haut→bas, gauche→droite).
+    reorder_planche(conn, planche_id)
 
     return {"planche_id": planche_id, "nb_bulles": len(regions),
             "sans_case": sans_case, "regions": regions}
