@@ -1,8 +1,11 @@
 """Pipeline : ingestion (dérivé web, métadonnées, nommage) et segmentation."""
 import io
 
+import pytest
 from PIL import Image
 
+import database
+import pipeline.ingest as ingest
 from conftest import KUMIKO_SAMPLE, requires_kumiko
 
 
@@ -66,3 +69,52 @@ def test_segmentation_passe_statut_a_segmentee(client, album):
     client.post(f"/api/planches/{p['id']}/segmenter")
     planches = client.get(f"/api/albums/{album['id']}/planches").json()
     assert planches[0]["statut"] == "segmentee"
+
+
+@requires_kumiko
+def test_segmentation_sur_master(client, album):
+    """use_master=True : segmente le TIFF/PNG haute résolution."""
+    p = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("s.png", KUMIKO_SAMPLE.read_bytes(), "image/png")}).json()
+    res = client.post(f"/api/planches/{p['id']}/segmenter",
+                      params={"use_master": "true"}).json()
+    assert res["nb_cases"] >= 1
+
+
+# ---------------- Ingestion : appels directs (chemins d'erreur) ---------- #
+def _conn_with_album(title="A"):
+    conn = database.get_connection()
+    aid = conn.execute("INSERT INTO albums(titre) VALUES(?)", (title,)).lastrowid
+    return conn, aid
+
+
+def test_ingest_numero_none_auto_increment(data_dir, tmp_path):
+    img = tmp_path / "m.png"
+    Image.new("RGB", (100, 120), "white").save(img)
+    conn, aid = _conn_with_album()
+    try:
+        p1 = ingest.ingest_image(conn, aid, img, numero=None)
+        p2 = ingest.ingest_image(conn, aid, img, numero=None)
+        assert (p1["numero"], p2["numero"]) == (1, 2)
+    finally:
+        conn.close()
+
+
+def test_ingest_source_introuvable(data_dir, tmp_path):
+    conn, aid = _conn_with_album()
+    try:
+        with pytest.raises(FileNotFoundError):
+            ingest.ingest_image(conn, aid, tmp_path / "absent.png")
+    finally:
+        conn.close()
+
+
+def test_ingest_album_inexistant(data_dir, tmp_path):
+    img = tmp_path / "m.png"
+    Image.new("RGB", (10, 10), "white").save(img)
+    conn = database.get_connection()
+    try:
+        with pytest.raises(ValueError):
+            ingest.ingest_image(conn, 999, img)
+    finally:
+        conn.close()

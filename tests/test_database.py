@@ -53,6 +53,29 @@ def test_reindex_et_unindex_region(data_dir):
         conn.close()
 
 
+def test_connect_rollback_sur_exception(data_dir, db_path):
+    """Le context manager connect() doit rollback si le bloc lève."""
+    import pytest
+    aid = None
+    with pytest.raises(RuntimeError):
+        with database.connect() as conn:
+            aid = conn.execute("INSERT INTO albums(titre) VALUES('Annulé')").lastrowid
+            raise RuntimeError("boom")
+    # L'insertion a été annulée.
+    assert direct_query(db_path, "SELECT COUNT(*) AS n FROM albums")[0]["n"] == 0
+
+
+def test_reindex_region_inexistante_ne_fait_rien(data_dir):
+    """reindex_region sur une région absente ne crée pas de ligne FTS."""
+    conn = database.get_connection()
+    try:
+        database.reindex_region(conn, 999999)
+        conn.commit()
+        assert conn.execute("SELECT COUNT(*) FROM recherche").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
 def test_reindex_vide_ne_cree_pas_de_ligne(data_dir):
     """Une région sans OCR/note/tags ne doit pas polluer l'index FTS."""
     conn = database.get_connection()

@@ -1,4 +1,12 @@
 """Routes API : albums, planches, régions, annotations, tags, recherche, export."""
+import io
+import sqlite3
+
+from fastapi.testclient import TestClient
+from PIL import Image
+
+import main
+from pipeline.segmentation import KumikoError
 
 
 # --------------------------- Albums & planches --------------------------- #
@@ -242,3 +250,114 @@ def test_segmenter_sans_kumiko_renvoie_503(client, planche, monkeypatch):
     monkeypatch.setattr("main.kumiko_available", lambda: False)
     r = client.post(f"/api/planches/{planche['id']}/segmenter")
     assert r.status_code == 503 and "Kumiko" in r.json()["detail"]
+
+
+# ----------------------- Chemins d'erreur / bords ----------------------- #
+def test_lifespan_initialise_la_base(data_dir):
+    """Le handler lifespan (startup) initialise la base via le context manager."""
+    with TestClient(main.app) as c:
+        assert c.get("/api/sante").status_code == 200
+
+
+def test_planche_inexistante_404_sur_ses_routes(client):
+    assert client.get("/api/planches/999/regions").status_code == 404
+    assert client.post("/api/planches/999/regions",
+                       json={"type": "case"}).status_code == 404
+    assert client.patch("/api/planches/999/statut",
+                        json={"statut": "corrigee"}).status_code == 404
+    assert client.post("/api/planches/999/segmenter").status_code == 404
+
+
+def test_delete_region_inexistante_404(client):
+    assert client.delete("/api/regions/999").status_code == 404
+
+
+def test_annotation_region_inexistante_404(client):
+    assert client.get("/api/regions/999/annotation").status_code == 404
+    assert client.put("/api/regions/999/annotation",
+                      json={"note": "x", "tags": []}).status_code == 404
+
+
+def test_annotation_tags_tous_vides(client, region):
+    """Tags ne contenant que des espaces -> aucun tag (branche _ensure_tags vide)."""
+    r = client.put(f"/api/regions/{region['id']}/annotation",
+                   json={"note": "n", "tags": ["  ", ""]})
+    assert r.status_code == 200 and r.json()["tags"] == []
+
+
+def test_update_region_ocr_reindexe(client, region):
+    """Modifier l'OCR via PUT réindexe la région (recherche)."""
+    client.put(f"/api/regions/{region['id']}", json={"ocr_texte": "ZORGLUBESQUE"})
+    res = client.get("/api/recherche", params={"q": "ZORGLUBESQUE"}).json()["results"]
+    assert any(r["region_id"] == region["id"] for r in res)
+
+
+def test_recherche_filtre_album(client, planche):
+    rid = _region_avec_ocr_et_annotation(client, planche)
+    res = client.get("/api/recherche",
+                     params={"q": "Esther", "album": planche["album_id"]}).json()["results"]
+    assert any(r["region_id"] == rid for r in res)
+    other = client.post("/api/albums", json={"titre": "Autre"}).json()["id"]
+    res2 = client.get("/api/recherche",
+                      params={"q": "Esther", "album": other}).json()["results"]
+    assert not res2
+
+
+def test_recherche_erreur_sql_renvoie_400(client):
+    """Couvre le garde-fou OperationalError via une connexion qui échoue."""
+    class _Boom:
+        def execute(self, *a, **k):
+            raise sqlite3.OperationalError("boom")
+        def commit(self): ...
+        def rollback(self): ...
+        def close(self): ...
+
+    def boom_db():            # générateur : override correct d'une dépendance yield
+        yield _Boom()
+
+    main.app.dependency_overrides[main.db] = boom_db
+    try:
+        assert client.get("/api/recherche", params={"q": "x"}).status_code == 400
+    finally:
+        main.app.dependency_overrides.pop(main.db, None)
+
+
+def test_export_csv_album_inexistant_404(client):
+    assert client.get("/api/export/csv", params={"album_id": 999}).status_code == 404
+
+
+def test_export_tei_complet(client):
+    """Album avec auteur + région avec OCR + annotation note/tags : couvre les
+    branches author / <line> OCR / <note> de l'export TEI."""
+    aid = client.post("/api/albums",
+                      json={"titre": "T", "auteur": "Sattouf"}).json()["id"]
+    buf = io.BytesIO()
+    Image.new("RGB", (100, 120), "white").save(buf, "PNG")
+    pid = client.post(f"/api/albums/{aid}/import",
+                      files={"file": ("p.png", buf.getvalue(), "image/png")}).json()["id"]
+    rid = client.post(f"/api/planches/{pid}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5,
+                            "ocr_texte": "TEXTEOCR"}).json()["id"]
+    client.put(f"/api/regions/{rid}/annotation",
+               json={"note": "une note", "tags": ["nuit"]})
+    xml = client.get("/api/export/tei", params={"album_id": aid}).text
+    assert "Sattouf" in xml
+    assert "TEXTEOCR" in xml
+    assert "une note" in xml and 'ana="nuit"' in xml
+
+
+def test_import_fichier_non_image_400(client, album):
+    r = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("bad.png", b"pas une image", "image/png")})
+    assert r.status_code == 400
+
+
+def test_segmenter_kumikoerror_renvoie_500(client, planche, monkeypatch):
+    monkeypatch.setattr("main.kumiko_available", lambda: True)
+
+    def boom(*a, **k):
+        raise KumikoError("explosion")
+
+    monkeypatch.setattr("main.segment_planche", boom)
+    r = client.post(f"/api/planches/{planche['id']}/segmenter")
+    assert r.status_code == 500 and "explosion" in r.json()["detail"]

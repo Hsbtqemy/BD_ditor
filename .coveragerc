@@ -1,0 +1,14 @@
+# Configuration de couverture
+[run]
+branch = False
+omit =
+    tests/*
+    lib/*
+    conftest.py
+
+[report]
+# Lignes conventionnellement exclues (point d'entrée script, code défensif
+# explicitement marqué).
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
