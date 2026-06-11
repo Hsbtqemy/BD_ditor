@@ -4,6 +4,7 @@ branch = False
 omit =
     tests/*
     lib/*
+    spike/*
     conftest.py
 
 [report]

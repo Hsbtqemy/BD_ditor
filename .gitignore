@@ -23,3 +23,8 @@ htmlcov/
 Thumbs.db
 .vscode/
 .idea/
+
+# Spike OCR — artefacts générés (le code du spike est versionné, pas ses sorties)
+spike/samples/
+spike/report.html
+spike/report.csv

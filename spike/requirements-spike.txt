@@ -1,0 +1,16 @@
+# Dépendances du spike OCR (exploratoire, hors application).
+# Installer au moins UN moteur OCR. EasyOCR = le plus simple (français, CPU).
+
+easyocr                      # PyTorch, français natif, CPU/GPU (validé)
+webdav4                      # connecteur ShareDocs (sharedocs_ocr.py)
+
+# Moteurs OCR alternatifs (décommente selon le besoin) :
+# python-doctr[torch]        # Apache-2.0, PyTorch, latin
+# paddlepaddle               # requis par paddleocr
+# paddleocr                  # modèle 'french'
+# rapidocr-onnxruntime       # léger, sans torch (ONNX), CPU
+# pytesseract                # + binaire Tesseract système (lang fra)
+
+# Détection de bulles (passe 2, bulles.py) :
+# ultralytics                # YOLOv8
+# huggingface_hub            # téléchargement des poids ogkalu
