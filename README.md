@@ -68,7 +68,9 @@ explicitement par `database.reindex_region()` / `unindex_region()`.
 | `GET/POST` | `/api/albums` | liste / création d'albums |
 | `GET` | `/api/albums/{id}/planches` | planches d'un album |
 | `POST` | `/api/albums/{id}/import` | import d'une planche (multipart) |
-| `POST` | `/api/planches/{id}/segmenter` | lancer Kumiko |
+| `POST` | `/api/planches/{id}/segmenter` | passe 1 — cases (Kumiko) |
+| `POST` | `/api/planches/{id}/detecter-bulles` | passe 2 — bulles (ogkalu YOLOv8) |
+| `POST` | `/api/planches/{id}/ocr` | passe 3 — pré-remplit `ocr_texte` (EasyOCR) |
 | `GET/POST` | `/api/planches/{id}/regions` | régions / création manuelle |
 | `PUT/DELETE` | `/api/regions/{id}` | modifier / supprimer une région |
 | `PATCH` | `/api/planches/{id}/statut` | statut (`importee→segmentee→corrigee→annotee`) |
@@ -76,7 +78,7 @@ explicitement par `database.reindex_region()` / `unindex_region()`.
 | `GET/POST` | `/api/tags` | tags (avec fréquences) |
 | `GET` | `/api/recherche?q=&album=&type=&tags=` | recherche FTS5 |
 | `GET` | `/api/export/{json,csv,tei}?album_id=` | export |
-| `GET` | `/api/sante` | disponibilité de Kumiko |
+| `GET` | `/api/sante` | disponibilité des moteurs (kumiko / bulles / ocr) |
 
 Documentation interactive : `http://127.0.0.1:8000/docs`.
 
@@ -116,6 +118,21 @@ tests de segmentation sont automatiquement ignorés si Kumiko n'est pas install�
 
 Les données sont configurables par variables d'environnement :
 `BD_DATA_DIR` (racine corpus/derivatives/base) et `BD_DB_PATH` (base SQLite).
+
+## Pipeline en 3 passes (moteurs optionnels)
+
+```
+import → passe 1 : cases   (Kumiko)            → POST …/segmenter
+       → passe 2 : bulles  (ogkalu YOLOv8)     → POST …/detecter-bulles
+       → passe 3 : OCR fr  (EasyOCR, par bulle) → POST …/ocr  (pré-remplit ocr_texte)
+       → correction + annotation humaines (mode Annotation)
+```
+
+Les passes 2 et 3 sont des **moteurs ML optionnels** (`pip install -r
+requirements-ocr.txt`, CPU suffisant). Sans eux, l'app tourne et leurs routes
+renvoient 503 ; on dessine alors les bulles à la main. **L'OCR n'est qu'un
+pré-remplissage éditable** (`only_empty=True` n'écrase jamais une correction
+humaine) — la qualité finale vient de la relecture humaine.
 
 ## Notes
 

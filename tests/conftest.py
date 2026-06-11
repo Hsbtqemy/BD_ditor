@@ -27,10 +27,17 @@ import pipeline.segmentation as segmentation  # noqa: E402
 KUMIKO_SAMPLE = (REPO_ROOT
                  / "lib/kumiko/tests/images/000-common-page-templates/simple.png")
 
+import pipeline.bulles as bulles_mod  # noqa: E402
+import pipeline.ocr as ocr_mod  # noqa: E402
+
 requires_kumiko = pytest.mark.skipif(
     not segmentation.kumiko_available(),
     reason="Kumiko non installé dans lib/kumiko",
 )
+requires_bulles = pytest.mark.skipif(
+    not bulles_mod.bulles_available(), reason="ultralytics non installé")
+requires_ocr = pytest.mark.skipif(
+    not ocr_mod.ocr_available(), reason="easyocr non installé")
 
 
 @pytest.fixture
@@ -42,6 +49,8 @@ def data_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(ingest, "CORPUS_DIR", tmp_path / "corpus")
     monkeypatch.setattr(ingest, "DERIVATIVES_DIR", tmp_path / "derivatives")
     monkeypatch.setattr(segmentation, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(bulles_mod, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(ocr_mod, "DATA_DIR", tmp_path)
     database.init_db()
     return tmp_path
 

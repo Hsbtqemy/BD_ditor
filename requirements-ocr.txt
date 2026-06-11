@@ -1,0 +1,12 @@
+# Moteurs ML optionnels pour les passes 2 (bulles) et 3 (OCR).
+# Sans eux, l'app tourne (les routes /detecter-bulles et /ocr renvoient 503) ;
+# tout le reste (segmentation, annotation, recherche, export) fonctionne.
+#
+# CPU suffit. Premier appel : téléchargement des modèles (réseau requis).
+
+# Passe 2 — détection des bulles (ogkalu YOLOv8, Apache-2.0)
+ultralytics>=8.0
+huggingface_hub>=0.20
+
+# Passe 3 — OCR français par bulle
+easyocr>=1.7

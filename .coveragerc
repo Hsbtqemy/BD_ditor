@@ -6,6 +6,8 @@ omit =
     lib/*
     spike/*
     conftest.py
+    shibokensupport/*
+    signature_bootstrap.py
 
 [report]
 # Lignes conventionnellement exclues (point d'entrée script, code défensif

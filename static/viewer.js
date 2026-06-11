@@ -786,6 +786,28 @@ async function segmenter() {
   } catch (e) { toast("Segmentation : " + e.message, "error"); }
 }
 
+async function detecterBulles() {
+  if (!state.planche) return;
+  toast("Détection des bulles…");
+  try {
+    const res = await apiSend("POST", `/api/planches/${state.planche.id}/detecter-bulles`);
+    await loadRegions(state.planche.id);
+    toast(`${res.nb_bulles} bulles détectées` +
+          (res.sans_case ? ` (${res.sans_case} hors case)` : ""), "success");
+  } catch (e) { toast("Bulles : " + e.message, "error"); }
+}
+
+async function lancerOCR() {
+  if (!state.planche) return;
+  toast("OCR en cours… (premier appel : chargement du modèle)");
+  try {
+    const res = await apiSend("POST", `/api/planches/${state.planche.id}/ocr`);
+    await loadRegions(state.planche.id);
+    toast(`OCR : ${res.ocr} régions pré-remplies` +
+          (res.ignores ? `, ${res.ignores} déjà faites` : ""), "success");
+  } catch (e) { toast("OCR : " + e.message, "error"); }
+}
+
 function setupImport() {
   $("#btn-import").onclick = () => {
     if (!state.albumId) { toast("Créez d'abord un album", "error"); return; }
@@ -844,6 +866,8 @@ function setupControls() {
   $("#album-select").onchange = (e) => selectAlbum(Number(e.target.value));
   $("#btn-new-album").onclick = newAlbum;
   $("#btn-segmenter").onclick = segmenter;
+  $("#btn-bulles").onclick = detecterBulles;
+  $("#btn-ocr").onclick = lancerOCR;
   $("#zoom-in").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.2); };
   $("#zoom-out").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
   $("#zoom-fit").onclick = fitView;

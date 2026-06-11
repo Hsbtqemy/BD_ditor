@@ -20,7 +20,9 @@ from pydantic import BaseModel, Field
 from config import (DERIVATIVES_DIR, STATIC_DIR, STATUTS,
                     TEMPLATES_DIR, TYPES_REGION)
 from database import get_connection, init_db, reindex_region, unindex_region
+from pipeline.bulles import BullesError, bulles_available, detect_bulles
 from pipeline.ingest import ingest_image, store_upload
+from pipeline.ocr import OCRError, ocr_available, ocr_planche
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
 
 @asynccontextmanager
@@ -255,6 +257,41 @@ def segmenter(planche_id: int, use_master: bool = False,
     try:
         res = segment_planche(conn, planche_id, use_master=use_master)
     except KumikoError as exc:
+        raise HTTPException(500, str(exc))
+    conn.commit()
+    return res
+
+
+@app.post("/api/planches/{planche_id}/detecter-bulles")
+def detecter_bulles(planche_id: int, conf: float = 0.3,
+                    conn: sqlite3.Connection = Depends(db)):
+    _get_planche(conn, planche_id)
+    if not bulles_available():
+        raise HTTPException(
+            503,
+            "Détecteur de bulles indisponible. "
+            "pip install -r requirements-ocr.txt (ultralytics + huggingface_hub).",
+        )
+    try:
+        res = detect_bulles(conn, planche_id, conf=conf)
+    except BullesError as exc:
+        raise HTTPException(500, str(exc))
+    conn.commit()
+    return res
+
+
+@app.post("/api/planches/{planche_id}/ocr")
+def ocr_route(planche_id: int, only_empty: bool = True,
+              conn: sqlite3.Connection = Depends(db)):
+    _get_planche(conn, planche_id)
+    if not ocr_available():
+        raise HTTPException(
+            503,
+            "OCR indisponible. pip install -r requirements-ocr.txt (easyocr).",
+        )
+    try:
+        res = ocr_planche(conn, planche_id, only_empty=only_empty)
+    except OCRError as exc:
         raise HTTPException(500, str(exc))
     conn.commit()
     return res
@@ -677,7 +714,9 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db)):
 # =========================================================================== #
 @app.get("/api/sante")
 def sante():
-    return {"kumiko": kumiko_available()}
+    return {"kumiko": kumiko_available(),
+            "bulles": bulles_available(),
+            "ocr": ocr_available()}
 
 
 # Fichiers statiques + images dérivées + shell HTML.
