@@ -144,14 +144,16 @@ def test_ocr_erreur_500(client, planche, monkeypatch):
 
 # --------------------- intégration réelle (gated) ----------------------- #
 def _balloon_png() -> bytes:
-    img = Image.new("RGB", (1000, 700), (230, 230, 220))
+    # Grand : la détection tourne sur le dérivé web (25 %), il faut donc une
+    # taille raisonnable côté web (ici 500x350).
+    img = Image.new("RGB", (2000, 1400), (230, 230, 220))
     d = ImageDraw.Draw(img)
-    d.ellipse([100, 100, 700, 420], fill="white", outline="black", width=4)
+    d.ellipse([200, 200, 1400, 840], fill="white", outline="black", width=6)
     try:
-        font = ImageFont.truetype("arial.ttf", 48)
+        font = ImageFont.truetype("arial.ttf", 90)
     except OSError:
         font = ImageFont.load_default()
-    d.text((180, 230), "BONJOUR ESTHER", fill="black", font=font)
+    d.text((360, 460), "BONJOUR ESTHER", fill="black", font=font)
     buf = io.BytesIO(); img.save(buf, "PNG"); return buf.getvalue()
 
 
@@ -178,6 +180,37 @@ def test_bulles_planche_inexistante(data_dir):
             bulles.detect_bulles(conn, 999)
     finally:
         conn.close()
+
+
+def test_bulles_erreur_moteur_500(client, planche, monkeypatch):
+    """Une erreur d'inférence/lecture image -> BullesError -> 500 propre."""
+    def boom(path, conf):
+        raise RuntimeError("cv2 boom")
+    monkeypatch.setattr(bulles, "_run", boom)
+    r = client.post(f"/api/planches/{planche['id']}/detecter-bulles")
+    assert r.status_code == 500
+
+
+def test_bulles_reraise_bulleserror(client, planche, monkeypatch):
+    """Un BullesError de _run remonte tel quel (pas de double-emballage)."""
+    def boom(path, conf):
+        raise bulles.BullesError("déjà propre")
+    monkeypatch.setattr(bulles, "_run", boom)
+    r = client.post(f"/api/planches/{planche['id']}/detecter-bulles")
+    assert r.status_code == 500 and "déjà propre" in r.json()["detail"]
+
+
+def test_ocr_reader_init_erreur(monkeypatch):
+    """Échec de chargement du modèle EasyOCR -> OCRError."""
+    monkeypatch.setattr(ocr, "_reader", None)
+    monkeypatch.setattr(ocr, "_reader_langs", None)
+
+    def boom(*a, **k):
+        raise RuntimeError("dl boom")
+
+    monkeypatch.setattr("easyocr.Reader", boom)
+    with pytest.raises(ocr.OCRError):
+        ocr._get_reader(("fr",))
 
 
 def test_ocr_reader_indisponible(monkeypatch):
@@ -245,7 +278,7 @@ def test_ocr_reel(client, album):
     p = client.post(f"/api/albums/{album['id']}/import",
                     files={"file": ("b.png", _balloon_png(), "image/png")}).json()
     client.post(f"/api/planches/{p['id']}/regions",
-                json={"type": "bulle", "x": 120, "y": 120, "w": 560, "h": 280})
+                json={"type": "bulle", "x": 240, "y": 240, "w": 1120, "h": 560})
     res = client.post(f"/api/planches/{p['id']}/ocr").json()
     assert res["ocr"] == 1
     reg = next(x for x in client.get(f"/api/planches/{p['id']}/regions").json()

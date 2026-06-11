@@ -80,13 +80,17 @@ def detect_bulles(conn: sqlite3.Connection, planche_id: int,
         raise ValueError(f"Planche {planche_id} inexistante")
 
     master_w, master_h = planche["largeur_px"], planche["hauteur_px"]
-    # On préfère le master (meilleure détection) ; sinon le dérivé web.
-    if planche["chemin_tiff"] and (DATA_DIR / planche["chemin_tiff"]).is_file():
-        image_path = DATA_DIR / planche["chemin_tiff"]
-    else:
-        image_path = DATA_DIR / planche["chemin_web"]
+    # Détection sur le dérivé WEB (RGB/JPEG, léger) : YOLOv8 redimensionne de
+    # toute façon l'entrée à 640 px, donc le master n'apporte rien et exposerait
+    # à des TIFF exotiques (CMYK/16 bits). Cohérent avec la segmentation Kumiko.
+    image_path = DATA_DIR / planche["chemin_web"]
 
-    ow, oh, boxes = _run(image_path, conf)
+    try:
+        ow, oh, boxes = _run(image_path, conf)
+    except BullesError:
+        raise
+    except Exception as exc:  # lecture image / inférence -> message propre
+        raise BullesError(f"Échec de la détection : {exc}") from exc
     scale_x = master_w / ow if ow else 1.0
     scale_y = master_h / oh if oh else 1.0
 

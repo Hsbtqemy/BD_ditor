@@ -39,7 +39,10 @@ def _get_reader(langs):
                        "(voir requirements-ocr.txt).")
     if _reader is None or _reader_langs != tuple(langs):
         import easyocr
-        _reader = easyocr.Reader(list(langs), gpu=False, verbose=False)
+        try:
+            _reader = easyocr.Reader(list(langs), gpu=False, verbose=False)
+        except Exception as exc:  # téléchargement / chargement du modèle
+            raise OCRError(f"Chargement du modèle OCR échoué : {exc}") from exc
         _reader_langs = tuple(langs)
     return _reader
 
