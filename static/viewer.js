@@ -260,14 +260,14 @@ function renderOverlay() {
     if (parent) {
       overlay.appendChild(svg("rect", {
         x: parent.x, y: parent.y, width: parent.w, height: parent.h,
-        class: "region dimmed", "pointer-events": "none",
+        class: "region region-" + parent.type + " dimmed", "pointer-events": "none",
       }));
     }
   }
 
   const gRegions = svg("g", { id: "regions-group" });
   for (const r of regionsAtLevel()) {
-    const cls = ["region"];
+    const cls = ["region", "region-" + r.type];   // couleur de contour = type
     if (r.annotee) cls.push("annotee");
     if (r.id === state.selectedId) cls.push("selected");
     const rect = svg("rect", {

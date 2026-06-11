@@ -9,7 +9,9 @@
   --accent-blue: #a0c4ff;   /* sélection active */
   --accent-amber:#f59e0b;   /* mode édition, poignées */
   --accent-green:#4ade80;   /* régions annotées, mode annotation */
-  --accent-violet:#c084fc;  /* mode transcription */
+  --accent-violet:#c084fc;  /* mode transcription, type personnage */
+  --accent-cyan: #22d3ee;   /* type bulle */
+  --accent-pink: #f472b6;   /* type cartouche / texte */
   --border:      #0f3460;
   --text:        #e0e0e0;
   --text-muted:  #888;
@@ -193,22 +195,29 @@ button { font-family: inherit; }
 .empty-hint[hidden] { display: none; }
 
 /* ---------- Régions SVG ---------- */
+/* Couleur du contour = TYPE de région (case rouge par défaut), pour les
+   distinguer au coup d'œil même quand bulles et cases coexistent au même
+   niveau. L'ÉTAT (annoté/sélectionné) surcharge ensuite (règles plus bas). */
 .region {
   fill: rgba(233, 69, 96, .07);
-  stroke: var(--accent-red);
+  stroke: var(--accent-red);          /* case */
   stroke-width: 2px;
   vector-effect: non-scaling-stroke;
   cursor: pointer;
 }
+.region.region-bulle      { stroke: var(--accent-cyan);   fill: rgba(34,211,238,.07); }
+.region.region-cartouche,
+.region.region-texte      { stroke: var(--accent-pink);   fill: rgba(244,114,182,.07); }
+.region.region-personnage { stroke: var(--accent-violet); fill: rgba(192,132,252,.07); }
+/* État (surcharge le type) */
 .region.annotee { stroke: var(--accent-green); fill: rgba(74,222,128,.08); }
 .region.selected { stroke: var(--accent-blue); fill: rgba(160,196,255,.12); stroke-width: 3px; }
 .region.dimmed { opacity: .35; }
 .region-label {
-  fill: var(--accent-red); font: 600 12px monospace;
+  fill: #ececec; font: 600 12px monospace;
   paint-order: stroke; stroke: #000; stroke-width: 3px;
   vector-effect: non-scaling-stroke; pointer-events: none;
 }
-.region.annotee + .region-label { fill: var(--accent-green); }
 
 /* poignées de redimensionnement (mode édition) */
 .handle {
@@ -301,6 +310,17 @@ button { font-family: inherit; }
 }
 .stat-mode { margin-left: auto; }
 #stat-coords { min-width: 120px; text-align: right; }
+
+/* Légende couleur -> type de région */
+.legend { display: flex; gap: 12px; }
+.lg { display: inline-flex; align-items: center; gap: 5px; }
+.lg::before {
+  content: ""; width: 10px; height: 10px; border: 2px solid; border-radius: 2px;
+}
+.lg-case::before  { border-color: var(--accent-red); }
+.lg-bulle::before { border-color: var(--accent-cyan); }
+.lg-cart::before  { border-color: var(--accent-pink); }
+.lg-annot::before { border-color: var(--accent-green); }
 
 /* ---------- Toasts ---------- */
 #toasts {
