@@ -19,7 +19,7 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-from config import BASE_DIR, KUMIKO_DIR
+from config import DATA_DIR, KUMIKO_DIR
 from database import unindex_region
 
 KUMIKO_ENTRY = KUMIKO_DIR / "kumiko"
@@ -44,7 +44,7 @@ def _normalize_panel(panel) -> tuple[int, int, int, int]:
         else:
             x, y, w, h = panel[0], panel[1], panel[2], panel[3]
         return int(round(x)), int(round(y)), int(round(w)), int(round(h))
-    except (TypeError, ValueError, KeyError) as exc:
+    except (TypeError, ValueError, KeyError, IndexError) as exc:
         raise KumikoError(f"Panneau Kumiko illisible : {panel!r}") from exc
 
 
@@ -108,9 +108,9 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
     master_h = planche["hauteur_px"]
 
     if use_master and planche["chemin_tiff"]:
-        image_path = BASE_DIR / planche["chemin_tiff"]
+        image_path = DATA_DIR / planche["chemin_tiff"]
     else:
-        image_path = BASE_DIR / planche["chemin_web"]
+        image_path = DATA_DIR / planche["chemin_web"]
 
     page = run_kumiko(image_path)
     size = page.get("size") or [master_w, master_h]

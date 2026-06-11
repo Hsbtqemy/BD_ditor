@@ -18,7 +18,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from config import BASE_DIR, CORPUS_DIR, DERIVATIVES_DIR, WEB_JPEG_QUALITY, WEB_SCALE
+from config import CORPUS_DIR, DATA_DIR, DERIVATIVES_DIR, WEB_JPEG_QUALITY, WEB_SCALE
 
 # Pillow refuse par défaut les très grandes images (garde anti-DoS) ; les
 # planches 400 dpi dépassent largement. On relève la limite.
@@ -26,8 +26,8 @@ Image.MAX_IMAGE_PIXELS = None
 
 
 def _rel_posix(path: Path) -> str:
-    """Chemin relatif à BASE_DIR, en séparateurs POSIX (sûr pour les URL)."""
-    return path.resolve().relative_to(BASE_DIR).as_posix()
+    """Chemin relatif à DATA_DIR, en séparateurs POSIX (sûr pour les URL)."""
+    return path.resolve().relative_to(DATA_DIR).as_posix()
 
 
 def _next_numero(conn: sqlite3.Connection, album_id: int) -> int:

@@ -9,6 +9,7 @@ import csv
 import io
 import sqlite3
 import xml.etree.ElementTree as ET
+from contextlib import asynccontextmanager
 from typing import Iterator, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
@@ -22,15 +23,18 @@ from database import get_connection, init_db, reindex_region, unindex_region
 from pipeline.ingest import ingest_image, store_upload
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
 
-app = FastAPI(title="BD Annotator", version="1.0")
-
-
-# --------------------------------------------------------------------------- #
-# Cycle de vie + dépendance connexion
-# --------------------------------------------------------------------------- #
-@app.on_event("startup")
-def _startup() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     init_db()
+    yield
+
+
+app = FastAPI(title="BD Annotator", version="1.0", lifespan=lifespan)
+
+
+# --------------------------------------------------------------------------- #
+# Dépendance connexion
+# --------------------------------------------------------------------------- #
 
 
 def db() -> Iterator[sqlite3.Connection]:

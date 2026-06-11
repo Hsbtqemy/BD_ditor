@@ -98,6 +98,25 @@ bd_annotator/
 └── derivatives/         # (gitignore) dérivés web
 ```
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest                     # toute la suite (~50 tests, ~6 s)
+pytest -m "not live"       # sans le test d'intégration (pas de serveur lancé)
+pytest --cov=. --cov-report=term-missing   # couverture (~92 %)
+```
+
+La suite (`tests/`) couvre le schéma SQLite + FTS5, le pipeline (ingestion,
+segmentation Kumiko), toutes les routes API, et un test de non-régression par
+bug corrigé (`tests/test_regressions.py`). `tests/test_live_race.py` lance un
+vrai serveur uvicorn isolé (via `BD_DATA_DIR`/`BD_DB_PATH`) pour vérifier la
+cohérence écriture→lecture — chose que `TestClient` ne peut pas reproduire. Les
+tests de segmentation sont automatiquement ignorés si Kumiko n'est pas installé.
+
+Les données sont configurables par variables d'environnement :
+`BD_DATA_DIR` (racine corpus/derivatives/base) et `BD_DB_PATH` (base SQLite).
+
 ## Notes
 
 - **Sans Kumiko**, tout fonctionne sauf la segmentation automatique : on peut
