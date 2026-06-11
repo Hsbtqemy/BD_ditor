@@ -185,6 +185,9 @@ button { font-family: inherit; }
   align-items: center; justify-content: center;
   color: var(--text-muted); padding: 20px; text-align: center;
 }
+/* display:flex ci-dessus l'emporterait sur l'attribut [hidden] (règle UA) :
+   on rétablit explicitement le masquage quand l'élément est caché. */
+.empty-hint[hidden] { display: none; }
 
 /* ---------- Régions SVG ---------- */
 .region {
@@ -216,6 +219,7 @@ button { font-family: inherit; }
 
 /* ---------- Panneau droit ---------- */
 #panel {
+  position: relative;   /* contient #panel-empty (absolute inset:0) */
   background: var(--bg-panel); border-left: 1px solid var(--border);
   overflow-y: auto; padding: 12px;
 }
