@@ -563,9 +563,11 @@ function renderTranscription() {
     ? `Bulle ${state.trIndex + 1} / ${list.length}` : "Aucune région de texte";
   $("#tr-type").textContent = r ? r.type : "";
 
-  // crop NET de la bulle, recadré dans le master côté serveur
+  // crop NET de la bulle, recadré dans le master côté serveur.
+  // Cache-buster sur les coordonnées : si la bbox change (mode Édition), l'URL
+  // change → pas de crop périmé servi depuis le cache navigateur.
   const cropImg = $("#tr-crop");
-  if (r) cropImg.src = `/api/regions/${r.id}/crop`;
+  if (r) cropImg.src = `/api/regions/${r.id}/crop?b=${r.x}-${r.y}-${r.w}-${r.h}`;
   else cropImg.removeAttribute("src");
 
   // éditeur
@@ -604,6 +606,7 @@ function trSaveFlush() {
 }
 
 async function trSaveCurrent() {
+  clearTimeout(state.trSaveTimer);   // purge le debounce éventuel (évite refire)
   state.trSaveTimer = null;
   const r = trCurrent();
   if (!r) return;

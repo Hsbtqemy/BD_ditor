@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import sqlite3
+import threading
 
 from config import DATA_DIR
 from database import reindex_region
@@ -120,6 +121,7 @@ def ocr_planche(conn: sqlite3.Connection, planche_id: int,
 # Cache 1 image : on garde le master de la dernière planche ouvert, pour que la
 # navigation bulle-à-bulle ne ré-ouvre pas un TIFF de 50 Mo à chaque crop.
 _crop_cache: dict = {"planche_id": None, "img": None, "scale": 1.0}
+_crop_lock = threading.Lock()  # le cache est partagé entre threads du pool
 
 
 def region_crop_png(conn: sqlite3.Connection, region_id: int,
@@ -139,26 +141,27 @@ def region_crop_png(conn: sqlite3.Connection, region_id: int,
         return None
 
     pid = r["planche_id"]
-    if _crop_cache["planche_id"] != pid:
-        planche = conn.execute(
-            "SELECT * FROM planches WHERE id = ?", (pid,)).fetchone()
-        if planche is None:  # pragma: no cover - une région implique sa planche (FK)
-            return None
-        if _crop_cache["img"] is not None:
-            try:
-                _crop_cache["img"].close()
-            except Exception:
-                pass
-        img, scale = _open_image(planche)
-        _crop_cache.update(planche_id=pid, img=img, scale=scale)
+    with _crop_lock:
+        if _crop_cache["planche_id"] != pid:
+            planche = conn.execute(
+                "SELECT * FROM planches WHERE id = ?", (pid,)).fetchone()
+            if planche is None:  # pragma: no cover - une région implique sa planche (FK)
+                return None
+            if _crop_cache["img"] is not None:
+                try:
+                    _crop_cache["img"].close()
+                except Exception:
+                    pass
+            img, scale = _open_image(planche)
+            _crop_cache.update(planche_id=pid, img=img, scale=scale)
 
-    img, scale = _crop_cache["img"], _crop_cache["scale"]
-    x, y, w, h = (round((r[k] or 0) * scale) for k in ("x", "y", "w", "h"))
-    crop = img.crop((x, y, x + max(1, w), y + max(1, h)))
-    if crop.width > max_dim:
-        crop = crop.resize(
-            (max_dim, max(1, round(crop.height * max_dim / crop.width))),
-            Image.LANCZOS)
-    buf = io.BytesIO()
-    crop.convert("RGB").save(buf, "PNG")
-    return buf.getvalue()
+        img, scale = _crop_cache["img"], _crop_cache["scale"]
+        x, y, w, h = (round((r[k] or 0) * scale) for k in ("x", "y", "w", "h"))
+        crop = img.crop((x, y, x + max(1, w), y + max(1, h)))
+        if crop.width > max_dim:
+            crop = crop.resize(
+                (max_dim, max(1, round(crop.height * max_dim / crop.width))),
+                Image.LANCZOS)
+        buf = io.BytesIO()
+        crop.convert("RGB").save(buf, "PNG")
+        return buf.getvalue()
