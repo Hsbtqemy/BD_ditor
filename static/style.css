@@ -9,6 +9,7 @@
   --accent-blue: #a0c4ff;   /* sélection active */
   --accent-amber:#f59e0b;   /* mode édition, poignées */
   --accent-green:#4ade80;   /* régions annotées, mode annotation */
+  --accent-violet:#c084fc;  /* mode transcription */
   --border:      #0f3460;
   --text:        #e0e0e0;
   --text-muted:  #888;
@@ -75,10 +76,12 @@ kbd {
 .mode-btn[data-mode="navigation"] .dot { background: var(--accent-blue); }
 .mode-btn[data-mode="edition"]    .dot { background: var(--accent-amber); }
 .mode-btn[data-mode="annotation"] .dot { background: var(--accent-green); }
+.mode-btn[data-mode="transcription"] .dot { background: var(--accent-violet); }
 .mode-btn.active { border-color: currentColor; background: rgba(255,255,255,.05); }
 .mode-btn[data-mode="navigation"].active { color: var(--accent-blue); }
 .mode-btn[data-mode="edition"].active    { color: var(--accent-amber); }
 .mode-btn[data-mode="annotation"].active { color: var(--accent-green); }
+.mode-btn[data-mode="transcription"].active { color: var(--accent-violet); }
 
 /* ---------- Boutons génériques ---------- */
 button { font-family: inherit; }
@@ -311,3 +314,63 @@ button { font-family: inherit; }
 }
 .toast.error { border-left-color: var(--accent-red); }
 .toast.success { border-left-color: var(--accent-green); }
+
+/* ---------- Mode Transcription (plein écran, Disposition C) ---------- */
+#transcription {
+  position: absolute; top: var(--header-h); left: 0; right: 0; bottom: var(--status-h);
+  z-index: 50; display: flex; background: var(--bg-deep);
+}
+#transcription[hidden] { display: none; }
+
+#tr-left {
+  flex: 0 0 36%; min-width: 0; border-right: 1px solid var(--border);
+  background: var(--bg-panel); overflow: auto; padding: 16px;
+  display: flex; align-items: flex-start; justify-content: center;
+}
+#tr-mini { position: relative; max-width: 100%; }
+#tr-mini img {
+  display: block; max-width: 100%;
+  max-height: calc(100vh - var(--header-h) - var(--status-h) - 40px);
+  border: 1px solid var(--border); border-radius: 4px;
+}
+#tr-mini svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.tr-region {
+  fill: rgba(160,196,255,.04); stroke: var(--text-muted); stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke; cursor: pointer;
+}
+.tr-region:hover { stroke: var(--accent-blue); }
+.tr-region.current {
+  fill: rgba(192,132,252,.18); stroke: var(--accent-violet); stroke-width: 3px;
+}
+
+#tr-right {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  padding: 18px 24px; gap: 14px;
+}
+#tr-head { display: flex; align-items: center; gap: 14px; }
+#tr-progress { font-weight: 700; font-size: 16px; color: var(--accent-violet); }
+.tr-toggle {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: auto;
+  font-size: 13px; color: var(--text-muted); cursor: pointer;
+}
+#tr-exit { white-space: nowrap; }
+
+#tr-crop-wrap {
+  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+  background:
+    repeating-conic-gradient(#15152a 0% 25%, #181830 0% 50%) 50% / 22px 22px;
+  border: 1px solid var(--border); border-radius: 6px; overflow: auto; padding: 12px;
+}
+#tr-crop { max-width: 100%; max-height: 100%; image-rendering: auto;
+           background: #fff; border-radius: 2px; }
+
+#tr-text {
+  background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 12px; font: 16px/1.45 "Segoe UI", system-ui, sans-serif;
+  resize: vertical; min-height: 90px;
+}
+#tr-text:focus { outline: 1px solid var(--accent-violet); }
+#tr-controls { display: flex; align-items: center; gap: 12px; }
+#tr-controls #tr-next { margin-left: auto; color: var(--accent-violet); border-color: var(--accent-violet); }
+#tr-save { min-width: 90px; }
+.tr-hint { font-size: 11px; }

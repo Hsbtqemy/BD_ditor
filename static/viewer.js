@@ -36,6 +36,9 @@ const state = {
   tagVocab: [],            // [{label, couleur, frequence}]
   currentTags: [],         // labels (string) de l'annotation en cours
   saveTimer: null,
+  trRegions: [],           // régions de texte à transcrire (ordre de lecture)
+  trIndex: 0,
+  trSaveTimer: null,
 };
 
 /* ---------------- Raccourcis DOM ---------------- */
@@ -421,15 +424,19 @@ function drillTo(parentId) {
    =================================================================== */
 function setMode(mode) {
   flushSave();
+  if (state.mode === "transcription" && mode !== "transcription") trSaveFlush();
   state.mode = mode;
   document.querySelectorAll(".mode-btn").forEach((b) =>
     b.classList.toggle("active", b.dataset.mode === mode));
   stage.classList.toggle("mode-edition", mode === "edition");
-  const label = { navigation: "Navigation", edition: "Édition", annotation: "Annotation" }[mode];
+  const label = { navigation: "Navigation", edition: "Édition",
+                  annotation: "Annotation", transcription: "Transcription" }[mode];
   $("#stat-mode").textContent = "Mode : " + label;
+  $("#transcription").hidden = mode !== "transcription";
   renderOverlay();
   renderPanel();
   if (mode === "annotation" && state.selectedId != null) loadAnnotation(state.selectedId);
+  if (mode === "transcription") enterTranscription();
 }
 
 /* ===================================================================
@@ -507,6 +514,145 @@ async function saveAnnotation() {
 
 async function refreshTagVocab() {
   try { state.tagVocab = await apiGet("/api/tags"); } catch (_) {}
+}
+
+/* ===================================================================
+   Mode Transcription (correction rapide de l'OCR, bulle à bulle)
+   =================================================================== */
+const TEXT_TYPES = new Set(["bulle", "cartouche", "texte"]);
+
+function enterTranscription() {
+  if (!state.planche) {
+    toast("Sélectionnez une planche", "error");
+    setMode("navigation");
+    return;
+  }
+  state.trRegions = state.regions
+    .filter((r) => TEXT_TYPES.has(r.type))
+    .sort((a, b) => (a.ordre || 0) - (b.ordre || 0) || a.id - b.id);
+  state.trIndex = 0;
+  buildTrMini();
+  renderTranscription();
+}
+
+function buildTrMini() {
+  const mini = $("#tr-mini");
+  mini.innerHTML = "";
+  if (!state.planche) return;
+  const im = document.createElement("img");
+  im.src = state.planche.url_web;
+  mini.appendChild(im);
+  const svg = document.createElementNS(SVGNS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${state.planche.largeur_px} ${state.planche.hauteur_px}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  state.trRegions.forEach((r, i) => {
+    const rect = svg.appendChild(document.createElementNS(SVGNS, "rect"));
+    rect.setAttribute("x", r.x); rect.setAttribute("y", r.y);
+    rect.setAttribute("width", r.w); rect.setAttribute("height", r.h);
+    rect.setAttribute("class", "tr-region");
+    rect.dataset.i = i;
+    rect.onclick = () => { trSaveFlush(); state.trIndex = i; renderTranscription(); };
+  });
+  mini.appendChild(svg);
+}
+
+function renderTranscription() {
+  const list = state.trRegions;
+  const r = list[state.trIndex];
+  $("#tr-progress").textContent = list.length
+    ? `Bulle ${state.trIndex + 1} / ${list.length}` : "Aucune région de texte";
+  $("#tr-type").textContent = r ? r.type : "";
+
+  // crop de la bulle depuis l'image web déjà chargée
+  const cv = $("#tr-crop"), ctx = cv.getContext("2d");
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if (r && state.webScale && img.complete && img.naturalWidth) {
+    const sx = r.x * state.webScale, sy = r.y * state.webScale;
+    const sw = Math.max(1, r.w * state.webScale), sh = Math.max(1, r.h * state.webScale);
+    const k = Math.min(900 / sw, 460 / sh, 6);  // agrandit, dans des bornes
+    cv.width = Math.round(sw * k); cv.height = Math.round(sh * k);
+    try { ctx.drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height); } catch (_) {}
+  } else { cv.width = cv.height = 0; }
+
+  // éditeur
+  const ta = $("#tr-text");
+  ta.value = r ? (r.ocr_texte || "") : "";
+  ta.disabled = !r;
+  setTrSave("");
+
+  // surlignage + défilement dans la mini-planche
+  const svg = $("#tr-mini svg");
+  if (svg) svg.querySelectorAll(".tr-region").forEach((el, i) => {
+    const cur = i === state.trIndex;
+    el.classList.toggle("current", cur);
+    if (cur) el.scrollIntoView({ block: "center", inline: "center" });
+  });
+
+  if (r) ta.focus();
+}
+
+function trCurrent() { return state.trRegions[state.trIndex]; }
+
+function setTrSave(kind) {
+  const el = $("#tr-save");
+  el.className = "save-state " + kind;
+  el.textContent = { saving: "Enregistrement…", saved: "Enregistré", "": "" }[kind] || "";
+}
+
+function trScheduleSave() {
+  setTrSave("saving");
+  clearTimeout(state.trSaveTimer);
+  state.trSaveTimer = setTimeout(trSaveCurrent, SAVE_DEBOUNCE);
+}
+function trSaveFlush() {
+  if (state.trSaveTimer) { clearTimeout(state.trSaveTimer); state.trSaveTimer = null; }
+  trSaveCurrent();
+}
+
+async function trSaveCurrent() {
+  state.trSaveTimer = null;
+  const r = trCurrent();
+  if (!r) return;
+  const val = $("#tr-text").value;
+  if (val === (r.ocr_texte || "")) { setTrSave("saved"); return; }
+  try {
+    const updated = await apiSend("PUT", `/api/regions/${r.id}`, { ocr_texte: val });
+    Object.assign(state.regionsById.get(r.id) || {}, updated);
+    r.ocr_texte = val;
+    setTrSave("saved");
+  } catch (e) { toast("Sauvegarde : " + e.message, "error"); }
+}
+
+async function trNext() {
+  await trSaveCurrent();
+  if (state.trIndex < state.trRegions.length - 1) {
+    state.trIndex++; renderTranscription();
+  } else if ($("#tr-auto").checked) {
+    const idx = state.planches.findIndex((p) => p.id === state.planche.id);
+    const next = state.planches[idx + 1];
+    if (next) {
+      await selectPlanche(next.id);
+      enterTranscription();
+      toast(`Planche ${next.numero}`, "");
+    } else { toast("Dernière planche de l'album", ""); }
+  } else { toast("Dernière bulle de la planche", ""); }
+}
+
+async function trPrev() {
+  await trSaveCurrent();
+  if (state.trIndex > 0) { state.trIndex--; renderTranscription(); }
+}
+
+function setupTranscription() {
+  $("#tr-text").addEventListener("input", trScheduleSave);
+  $("#tr-text").addEventListener("keydown", (e) => {
+    if ((e.key === "Enter" && (e.ctrlKey || e.metaKey)) ||
+        (e.key === "Tab" && !e.shiftKey)) { e.preventDefault(); trNext(); }
+    else if (e.key === "Tab" && e.shiftKey) { e.preventDefault(); trPrev(); }
+  });
+  $("#tr-next").onclick = trNext;
+  $("#tr-prev").onclick = trPrev;
+  $("#tr-exit").onclick = () => setMode("navigation");
 }
 
 /* --- autocomplétion tags --- */
@@ -894,6 +1040,7 @@ function setupControls() {
   setupTagInput();
   setupImport();
   setupExport();
+  setupTranscription();
 }
 
 function setupKeyboard() {
@@ -906,6 +1053,7 @@ function setupKeyboard() {
     if (k === "n") setMode("navigation");
     else if (k === "e") setMode("edition");
     else if (k === "a") setMode("annotation");
+    else if (k === "t") setMode("transcription");
     else if (e.key === "ArrowRight") { navigateRegion(1); e.preventDefault(); }
     else if (e.key === "ArrowLeft") { navigateRegion(-1); e.preventDefault(); }
     else if (e.key === "Delete" &&

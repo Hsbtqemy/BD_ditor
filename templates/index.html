@@ -24,6 +24,9 @@
       <button class="mode-btn" data-mode="annotation" title="Annotation (A)">
         <span class="dot"></span> Annotation <kbd>A</kbd>
       </button>
+      <button class="mode-btn" data-mode="transcription" title="Transcription (T)">
+        <span class="dot"></span> Transcription <kbd>T</kbd>
+      </button>
     </div>
     <div class="header-actions">
       <button id="btn-segmenter" class="ghost" title="Détecter les cases (Kumiko)">Segmenter</button>
@@ -147,6 +150,36 @@
       </div>
     </aside>
   </main>
+
+  <!-- ───────── Mode Transcription (plein écran, par-dessus le corps) ───────── -->
+  <section id="transcription" hidden>
+    <div id="tr-left">
+      <div id="tr-mini"></div>
+    </div>
+    <div id="tr-right">
+      <div id="tr-head">
+        <span id="tr-progress">—</span>
+        <span id="tr-type" class="badge"></span>
+        <label class="tr-toggle" title="Passer automatiquement à la planche suivante">
+          <input type="checkbox" id="tr-auto"> Enchaîner sur l'album
+        </label>
+        <button id="tr-exit" class="ghost small">Quitter (N)</button>
+      </div>
+      <div id="tr-crop-wrap">
+        <canvas id="tr-crop"></canvas>
+      </div>
+      <textarea id="tr-text" placeholder="Texte de la bulle…  (Tab ou Ctrl+Entrée = suivante)"></textarea>
+      <div id="tr-controls">
+        <button id="tr-prev" class="ghost">‹ Précédent</button>
+        <span id="tr-save" class="save-state muted"></span>
+        <button id="tr-next" class="ghost">Valider + Suivant ›</button>
+      </div>
+      <div class="tr-hint muted">
+        <kbd>Tab</kbd>/<kbd>Ctrl+Entrée</kbd> suivante · <kbd>Maj+Tab</kbd> précédente ·
+        <kbd>Entrée</kbd> retour ligne · sauvegarde auto
+      </div>
+    </div>
+  </section>
 
   <!-- ───────────────── Status bar ───────────────── -->
   <footer id="statusbar">
