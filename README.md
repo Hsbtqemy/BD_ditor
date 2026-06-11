@@ -22,7 +22,7 @@ pip install -r requirements.txt
 
 # Segmentation automatique (optionnelle au démarrage) :
 git clone https://github.com/njean42/kumiko.git lib/kumiko
-pip install -r lib/kumiko/requirements.txt   # opencv + numpy
+pip install opencv-python-headless numpy requests   # deps de Kumiko (pas de requirements.txt)
 ```
 
 ## Démarrage
