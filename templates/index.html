@@ -84,9 +84,23 @@
 
     <!-- Panneau droit : détail région -->
     <aside id="panel">
-      <div id="panel-empty" class="empty-hint">Aucune région sélectionnée.</div>
+      <div id="panel-empty" class="empty-hint">Sélectionnez une planche.</div>
 
-      <!-- Détail commun -->
+      <!-- Arborescence de la planche : planche → cases → bulles (toujours
+           visible quand une planche est chargée ; clic = sélectionne + centre) -->
+      <div id="panel-tree" class="panel-section" hidden>
+        <h3 id="tree-header" class="collapsible">
+          <span class="caret">▾</span><span>Structure de la planche</span>
+          <span class="tree-actions">
+            <button id="tree-recalc" class="tree-act" title="Recalculer l'ordre de lecture">↻</button>
+            <button id="tree-expand" class="tree-act" title="Tout déplier">+</button>
+            <button id="tree-collapse" class="tree-act" title="Tout replier">−</button>
+          </span>
+        </h3>
+        <div id="tree" class="tree"></div>
+      </div>
+
+      <!-- Détail de la région sélectionnée -->
       <div id="panel-content" hidden>
         <div class="panel-section">
           <div class="panel-row">
@@ -133,13 +147,6 @@
           <h3>Note</h3>
           <textarea id="note-input" placeholder="Note libre…" rows="6"></textarea>
           <div id="save-state" class="save-state muted">Enregistré</div>
-        </div>
-
-        <!-- Hiérarchie -->
-        <div class="panel-section">
-          <h3>Hiérarchie</h3>
-          <div id="children-list" class="children-list"></div>
-          <button id="btn-enter" class="ghost small" hidden>Entrer dans la région ↳</button>
         </div>
 
         <!-- OCR (lecture seule pour l'instant) -->

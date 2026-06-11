@@ -213,6 +213,11 @@ button { font-family: inherit; }
 .region.annotee { stroke: var(--accent-green); fill: rgba(74,222,128,.08); }
 .region.selected { stroke: var(--accent-blue); fill: rgba(160,196,255,.12); stroke-width: 3px; }
 .region.dimmed { opacity: .35; }
+/* Survol depuis l'arbre : halo blanc pointillé (distinct du bleu de sélection). */
+.region.hover-hi {
+  stroke: #fff; stroke-width: 3px; stroke-dasharray: 7 4;
+  fill: rgba(255,255,255,.14);
+}
 .region-label {
   fill: #ececec; font: 600 12px monospace;
   paint-order: stroke; stroke: #000; stroke-width: 3px;
@@ -292,14 +297,97 @@ button { font-family: inherit; }
 .save-state.saving { color: var(--accent-amber); }
 .save-state.saved  { color: var(--accent-green); }
 
-.children-list { display: flex; flex-direction: column; gap: 4px; }
-.child-item {
-  display: flex; align-items: center; gap: 8px; padding: 5px 8px;
-  background: var(--bg-input); border-radius: 5px; cursor: pointer;
-  border: 1px solid transparent;
+/* ---------- Arbre de la planche (panneau droit) ---------- */
+h3.collapsible { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
+h3.collapsible:hover { color: var(--text); }
+.caret { font-size: 9px; transition: transform .12s; display: inline-block; }
+#panel-tree.collapsed #tree { display: none; }
+#panel-tree.collapsed .caret { transform: rotate(-90deg); }
+/* Hauteur plafonnée + scroll interne : l'arbre ne repousse jamais les champs
+   Tags / Note / OCR hors de vue, même sur une planche très peuplée. */
+.tree {
+  user-select: none; max-height: 34vh; overflow-y: auto;
+  padding: 2px 2px 2px 0; font-size: 12px; line-height: 1.3;
 }
-.child-item:hover { border-color: var(--accent-blue); }
-.child-item .type { font-size: 11px; color: var(--accent-blue); }
+/* Lignes de guidage de la hiérarchie : bordure gauche des sous-groupes. */
+.tgroup { margin-left: 8px; padding-left: 9px; border-left: 1px solid var(--border); }
+
+.tnode {
+  display: flex; align-items: center; gap: 7px;
+  padding: 3px 6px; margin: 1px 0;
+  border-radius: 5px; cursor: pointer; white-space: nowrap;
+  border-left: 2px solid transparent;
+}
+.tnode:hover { background: rgba(255,255,255,.05); }
+.tnode.current {
+  background: rgba(160,196,255,.14);
+  border-left-color: var(--accent-blue);
+}
+.tnode-root { font-weight: 600; margin-bottom: 3px; }
+
+/* Caret de pliage (cases) — réservé aussi en espaceur pour les feuilles. */
+.tn-caret {
+  width: 12px; flex: 0 0 12px; text-align: center; border-radius: 3px;
+  color: var(--text-muted); font-size: 9px;
+}
+.tn-caret[data-fold]:hover { background: var(--bg-input); color: var(--text); }
+.tn-spacer { visibility: hidden; }
+
+/* Icône planche (carré bleu) vs pastilles rondes des régions. */
+.tn-ico {
+  width: 9px; height: 9px; flex: 0 0 9px; border-radius: 2px;
+  background: var(--accent-blue);
+}
+.tn-dot {
+  width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%;
+  background: var(--text-muted); box-shadow: 0 0 0 2px rgba(0,0,0,.2);
+}
+.tnode-case .tn-dot       { background: var(--accent-red); }
+.tnode-bulle .tn-dot      { background: var(--accent-cyan); }
+.tnode-cartouche .tn-dot,
+.tnode-texte .tn-dot      { background: var(--accent-pink); }
+.tnode-personnage .tn-dot { background: var(--accent-violet); }
+
+.tn-label { text-transform: capitalize; color: var(--text); }
+.tnode-case .tn-label { font-weight: 600; }
+.tn-id { color: var(--text-muted); font-size: 10px; }
+.tn-txt {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  color: var(--text-muted); font-style: italic; font-size: 11px;
+}
+.tn-check { margin-left: 6px; flex: 0 0 auto; color: var(--accent-green); font-size: 11px; }
+.tn-count {
+  margin-left: auto; color: var(--text-muted); font-size: 10px;
+  background: var(--bg-input); padding: 1px 7px; border-radius: 9px;
+}
+/* Avancement OCR d'une case : bulles avec texte / total. */
+.tn-prog {
+  margin-left: auto; flex: 0 0 auto;
+  font-size: 10px; padding: 1px 6px; border-radius: 9px;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-input); color: var(--text-muted);
+}
+.tn-prog-done    { color: var(--accent-green); background: rgba(74,222,128,.16); }
+.tn-prog-partial { color: var(--accent-amber); background: rgba(245,158,11,.16); }
+.tn-prog-none    { color: var(--text-muted); }
+
+/* Boutons « tout déplier / tout replier » dans l'en-tête de l'arbre. */
+.tree-actions { margin-left: auto; display: flex; gap: 4px; }
+.tree-act {
+  width: 20px; height: 18px; padding: 0; line-height: 1; font-size: 13px;
+  background: transparent; color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+}
+.tree-act:hover { background: var(--bg-input); color: var(--text); }
+
+/* Contrôles de déplacement ↑/↓ (sur le nœud courant de l'arbre). */
+.tn-move { display: inline-flex; gap: 2px; margin-left: 6px; flex: 0 0 auto; }
+.tn-mv {
+  width: 16px; height: 15px; padding: 0; line-height: 1; font-size: 7px;
+  background: var(--bg-input); color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 3px; cursor: pointer;
+}
+.tn-mv:hover { background: var(--accent-blue); color: var(--bg-deep); }
 .ocr-text { white-space: pre-wrap; }
 
 /* ---------- Status bar ---------- */

@@ -134,6 +134,8 @@ function clearStage() {
   overlay.innerHTML = "";
   $("#stage-empty").style.display = "flex";
   $("#planche-info").textContent = "—";
+  state.selectedId = null;
+  renderPanel();   // masque l'arbre/le détail de l'ancienne planche
 }
 
 /* ===================================================================
@@ -146,6 +148,7 @@ async function selectPlanche(id) {
   state.planche = p;
   state.selectedId = null;
   state.hierParent = null;
+  state.collapsedNodes = new Set();   // l'état de pli de l'arbre est propre à la planche
 
   renderPlancheList();
   const album = state.albums.find((a) => a.id === state.albumId);
@@ -187,8 +190,11 @@ async function loadRegions(plancheId) {
     nb_enfants: r.nb_enfants || 0,
   }));
   state.regionsById = new Map(state.regions.map((r) => [r.id, r]));
+  if (state.selectedId != null && !state.regionsById.has(state.selectedId))
+    state.selectedId = null;                 // la sélection a été supprimée (re-détection)
   renderOverlay();
   updateStatus();
+  renderPanel();                             // rafraîchit l'arbre
 }
 
 /* ===================================================================
@@ -330,9 +336,24 @@ function updateOverlayScale() {
 function selectRegion(id) {
   flushSave();
   state.selectedId = id;
+  revealInTree(id);   // déplie les cases parentes pour que la sélection reste visible
   renderOverlay();
   renderPanel();
   if (state.mode === "annotation" && id != null) loadAnnotation(id);
+}
+
+/* Déplie les ancêtres d'une région dans l'arbre, pour qu'une sélection faite
+   depuis l'image ou au clavier reste visible même si sa case est repliée. */
+function revealInTree(id) {
+  const set = state.collapsedNodes;
+  if (!set || !set.size || id == null) return;
+  const seen = new Set();
+  let r = state.regionsById.get(id);
+  while (r && r.parent_id != null && !seen.has(r.id)) {
+    seen.add(r.id);
+    set.delete(r.parent_id);
+    r = state.regionsById.get(r.parent_id);
+  }
 }
 
 function selectedRegion() {
@@ -343,10 +364,14 @@ function selectedRegion() {
    Panneau droit
    =================================================================== */
 function renderPanel() {
+  const hasPlanche = !!state.planche;
   const r = selectedRegion();
-  $("#panel-empty").hidden = !!r;
+  $("#panel-empty").hidden = hasPlanche;     // l'invite ne sert que sans planche
+  $("#panel-tree").hidden = !hasPlanche;
   $("#panel-content").hidden = !r;
-  if (!r) { renderBreadcrumb(); return; }
+  if (hasPlanche) renderTree();
+  renderBreadcrumb();
+  if (!r) return;
 
   $("#region-id").textContent = "#" + r.id;
   $("#region-type").value = r.type;
@@ -362,30 +387,205 @@ function renderPanel() {
 
   $("#panel-ocr").hidden = !r.ocr_texte;
   if (r.ocr_texte) $("#ocr-text").textContent = r.ocr_texte;
-
-  renderChildren(r);
-  renderBreadcrumb();
 }
 
-function renderChildren(r) {
-  const box = $("#children-list");
-  box.innerHTML = "";
-  const kids = state.regions.filter((c) => c.parent_id === r.id);
-  if (!kids.length) {
-    box.innerHTML = '<span class="muted small">Aucune sous-région.</span>';
-  } else {
-    for (const c of kids) {
-      const div = document.createElement("div");
-      div.className = "child-item";
-      div.innerHTML = `<span class="type">${c.type}</span>` +
-        `<span class="muted">#${c.id}</span>` +
-        (c.annotee ? '<span style="margin-left:auto;color:var(--accent-green)">●</span>' : "");
-      div.onclick = () => { drillTo(r.id); selectRegion(c.id); };
-      box.appendChild(div);
-    }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* Séquence de lecture globale : parcours en profondeur de l'arbre, chaque niveau
+   trié par `ordre` (rang per-niveau). Reconstruit la lecture « case par case »
+   (case, puis ses bulles, puis case suivante…) à partir des rangs locaux. Sert
+   à la transcription et à la navigation au clavier. */
+function readingSequence() {
+  const byParent = new Map();
+  for (const r of state.regions) {
+    const k = r.parent_id ?? "root";
+    (byParent.get(k) || byParent.set(k, []).get(k)).push(r);
   }
-  $("#btn-enter").hidden = false;
-  $("#btn-enter").onclick = () => drillTo(r.id);
+  const sortSibs = (a) => a.sort((x, y) => (x.ordre || 0) - (y.ordre || 0) || x.id - y.id);
+  const out = [];
+  const walk = (key) => {
+    const kids = byParent.get(key);
+    if (!kids) return;
+    for (const r of sortSibs(kids)) { out.push(r); walk(r.id); }
+  };
+  walk("root");
+  return out;
+}
+
+/* Arbre complet de la planche : planche → cases → bulles (+ bulles orphelines).
+   Structure DOM imbriquée (groupes) → lignes de guidage par bordure gauche.
+   La région courante est mise en évidence ; clic sur un nœud = sélection +
+   recentrage ; clic sur le caret = plie/déplie la case. */
+function renderTree() {
+  const box = $("#tree");
+  const prevScroll = box.scrollTop;   // préserve la position de défilement (re-rendu fréquent)
+  box.innerHTML = "";
+  if (!state.planche) return;
+
+  // Regroupe les régions par parent ("root" = enfants directs de la planche).
+  const byParent = new Map();
+  for (const rg of state.regions) {
+    const key = rg.parent_id ?? "root";
+    (byParent.get(key) || byParent.set(key, []).get(key)).push(rg);
+  }
+  const sorted = (arr) =>
+    arr.sort((a, b) => (a.ordre || 0) - (b.ordre || 0) || a.id - b.id);
+  const collapsed = state.collapsedNodes || (state.collapsedNodes = new Set());
+
+  // Nœud racine : la planche (clic = vue d'ensemble / niveau planche).
+  const root = document.createElement("div");
+  root.className = "tnode tnode-root" + (state.selectedId == null ? " current" : "");
+  root.innerHTML =
+    `<span class="tn-caret tn-spacer"></span>` +
+    `<span class="tn-ico"></span>` +
+    `<span class="tn-label">Planche ${state.planche.numero}</span>` +
+    `<span class="tn-count">${state.regions.length}</span>`;
+  root.onclick = () => drillTo(null);
+  box.appendChild(root);
+
+  const buildGroup = (parentKey) => {
+    const kids = byParent.get(parentKey);
+    if (!kids) return null;
+    const group = document.createElement("div");
+    group.className = "tgroup";
+    for (const rg of sorted(kids)) {
+      const item = document.createElement("div");
+      item.className = "titem";
+      const hasKids = byParent.has(rg.id);
+      const isCollapsed = collapsed.has(rg.id);
+      const node = document.createElement("div");
+      node.className = "tnode tnode-" + rg.type +
+        (rg.id === state.selectedId ? " current" : "") +
+        (rg.annotee ? " is-annotee" : "");
+      const full = (rg.ocr_texte || "").replace(/\s+/g, " ").trim();
+      const txt = full.slice(0, 34);
+      // Secondaire : conteneur → avancement OCR (bulles transcrites / total) ;
+      // région de texte → extrait OCR ; sinon un espaceur vide (aligne le ✓).
+      let meta;
+      if (hasKids) {
+        const kids = byParent.get(rg.id);
+        const textKids = kids.filter((k) => TEXT_TYPES.has(k.type));
+        if (textKids.length) {
+          const done = textKids.filter((k) => (k.ocr_texte || "").trim()).length;
+          const cls = done === textKids.length ? "done" : done ? "partial" : "none";
+          meta = `<span class="tn-prog tn-prog-${cls}" ` +
+                 `title="${done}/${textKids.length} bulles avec texte OCR">${done}/${textKids.length}</span>`;
+        } else {
+          meta = `<span class="tn-prog tn-prog-none">${kids.length}</span>`;
+        }
+      } else {
+        meta = `<span class="tn-txt">${txt ? escapeHtml(txt) + (full.length > 34 ? "…" : "") : ""}</span>`;
+      }
+      // Contrôles de déplacement, seulement sur le nœud courant (évite le bruit).
+      const moveCtrls = rg.id === state.selectedId
+        ? `<span class="tn-move">` +
+            `<button class="tn-mv" data-mv="haut" title="Monter (Alt+↑)">▲</button>` +
+            `<button class="tn-mv" data-mv="bas" title="Descendre (Alt+↓)">▼</button>` +
+          `</span>`
+        : "";
+      node.innerHTML =
+        (hasKids
+          ? `<span class="tn-caret" data-fold="${rg.id}">${isCollapsed ? "▸" : "▾"}</span>`
+          : `<span class="tn-caret tn-spacer"></span>`) +
+        `<span class="tn-dot"></span>` +
+        `<span class="tn-label">${rg.type}</span>` +
+        `<span class="tn-id mono">#${rg.id}</span>` +
+        meta +
+        (rg.annotee ? `<span class="tn-check">✓</span>` : "") +
+        moveCtrls;
+      node.onclick = (e) => {
+        const mv = e.target.closest("[data-mv]");
+        if (mv) { e.stopPropagation(); moveRegion(rg.id, mv.dataset.mv); return; }
+        const fold = e.target.closest("[data-fold]");
+        if (fold) {
+          const id = Number(fold.dataset.fold);
+          collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id);
+          renderTree();
+          return;
+        }
+        selectAndCenter(rg.id);
+      };
+      node.onmouseenter = () => highlightRegion(rg.id);
+      node.onmouseleave = () => highlightRegion(null);
+      item.appendChild(node);
+      if (hasKids && !isCollapsed) {
+        const sub = buildGroup(rg.id);
+        if (sub) item.appendChild(sub);
+      }
+      group.appendChild(item);
+    }
+    return group;
+  };
+  const top = buildGroup("root");
+  if (top) box.appendChild(top);
+  box.scrollTop = prevScroll;
+}
+
+/* Sélectionne une région depuis l'arbre : remonte au niveau planche si besoin
+   (pour qu'elle soit visible), puis recentre la vue dessus. */
+function selectAndCenter(id) {
+  if (state.hierParent !== null) drillTo(null);
+  selectRegion(id);
+  centerOnRegion(id);
+}
+
+function centerOnRegion(id) {
+  const r = state.regionsById.get(id);
+  if (!r || !state.webW) return;
+  const rect = stage.getBoundingClientRect();
+  // Zoom pour que la région occupe ~55 % du stage, borné (pas de sur-zoom).
+  const fit = Math.min(rect.width / (r.w * state.webScale),
+                       rect.height / (r.h * state.webScale)) * 0.55;
+  state.zoom = Math.min(40, Math.max(0.02, Math.min(fit, 8)));
+  const cx = (r.x + r.w / 2) * state.webScale;
+  const cy = (r.y + r.h / 2) * state.webScale;
+  state.tx = rect.width / 2 - cx * state.zoom;
+  state.ty = rect.height / 2 - cy * state.zoom;
+  applyTransform();
+}
+
+/* Survol d'un nœud de l'arbre : halo sur la région dans l'image, sans la
+   sélectionner ni recentrer (id=null pour retirer la surbrillance). */
+function highlightRegion(id) {
+  overlay.querySelectorAll(".region.hover-hi").forEach((el) => el.classList.remove("hover-hi"));
+  if (id == null) return;
+  const rect = overlay.querySelector(`rect.region[data-id="${id}"]`);
+  if (rect) rect.classList.add("hover-hi");
+}
+
+/* Plier / déplier toutes les cases (tout nœud ayant des enfants). */
+function collapseAllTree() {
+  const set = state.collapsedNodes || (state.collapsedNodes = new Set());
+  set.clear();
+  for (const r of state.regions) if (r.parent_id != null) set.add(r.parent_id);
+  renderTree();
+}
+function expandAllTree() {
+  state.collapsedNodes = new Set();
+  renderTree();
+}
+
+/* Déplace la région d'un cran parmi ses frères ('haut' / 'bas'). */
+async function moveRegion(id, sens) {
+  if (id == null || !state.planche) return;
+  try {
+    const res = await apiSend("POST", `/api/regions/${id}/deplacer`, { sens });
+    if (res && res.moved === false) { toast("Déjà en bout de liste", ""); return; }
+    await loadRegions(state.planche.id);   // la fratrie a été re-rangée
+  } catch (e) { toast("Déplacement : " + e.message, "error"); }
+}
+
+/* Recalcule l'ordre de lecture automatique de toute la planche. */
+async function recalcOrder() {
+  if (!state.planche) return;
+  try {
+    await apiSend("POST", `/api/planches/${state.planche.id}/reordonner`);
+    await loadRegions(state.planche.id);
+    toast("Ordre de lecture recalculé", "success");
+  } catch (e) { toast("Réordonnancement : " + e.message, "error"); }
 }
 
 function renderBreadcrumb() {
@@ -510,6 +710,7 @@ async function saveAnnotation() {
     const r = state.regionsById.get(id);
     if (r) { r.annotee = !!(note || state.currentTags.length); }
     renderOverlay();
+    renderTree();                            // reflète l'état annoté dans l'arbre
     setSaveState("saved");
     await refreshTagVocab();
     updateStatus();
@@ -531,9 +732,9 @@ function enterTranscription() {
     setMode("navigation");
     return;
   }
-  state.trRegions = state.regions
-    .filter((r) => TEXT_TYPES.has(r.type))
-    .sort((a, b) => (a.ordre || 0) - (b.ordre || 0) || a.id - b.id);
+  // Ordre « case par case » via le parcours d'arbre (les rangs `ordre` sont
+  // relatifs aux frères, pas globaux).
+  state.trRegions = readingSequence().filter((r) => TEXT_TYPES.has(r.type));
   state.trIndex = 0;
   buildTrMini();
   renderTranscription();
@@ -899,7 +1100,8 @@ function liveUpdateSelected() {
    Navigation clavier entre régions
    =================================================================== */
 function navigateRegion(dir) {
-  const list = regionsAtLevel().sort((a, b) => (a.ordre || 0) - (b.ordre || 0) || a.id - b.id);
+  // Parcours en ordre de lecture (case → ses bulles → case suivante…).
+  const list = readingSequence();
   if (!list.length) return;
   let idx = list.findIndex((r) => r.id === state.selectedId);
   idx = idx === -1 ? 0 : (idx + dir + list.length) % list.length;
@@ -1035,6 +1237,14 @@ function setupControls() {
       deleteRegion(state.selectedId);
   };
 
+  // Arbre : repli/dépli (escamote l'arbre pour dégager les champs Tags/Note/OCR)
+  $("#tree-header").onclick = () =>
+    $("#panel-tree").classList.toggle("collapsed");
+  // Boutons tout déplier / tout replier (sans déclencher le repli de la section)
+  $("#tree-expand").onclick = (e) => { e.stopPropagation(); expandAllTree(); };
+  $("#tree-collapse").onclick = (e) => { e.stopPropagation(); collapseAllTree(); };
+  $("#tree-recalc").onclick = (e) => { e.stopPropagation(); recalcOrder(); };
+
   // Annotation : note
   $("#note-input").addEventListener("input", scheduleSave);
 
@@ -1055,6 +1265,10 @@ function setupKeyboard() {
     else if (k === "e") setMode("edition");
     else if (k === "a") setMode("annotation");
     else if (k === "t") setMode("transcription");
+    else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      if (state.selectedId != null) moveRegion(state.selectedId, e.key === "ArrowUp" ? "haut" : "bas");
+      e.preventDefault();
+    }
     else if (e.key === "ArrowRight") { navigateRegion(1); e.preventDefault(); }
     else if (e.key === "ArrowLeft") { navigateRegion(-1); e.preventDefault(); }
     else if (e.key === "Delete" &&
