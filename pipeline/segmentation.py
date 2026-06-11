@@ -74,6 +74,8 @@ def run_kumiko(image_path: Path) -> dict:
                 f"Kumiko a échoué (code {proc.returncode}).\n{proc.stderr.strip()}"
             )
         data = json.loads(out_path.read_text(encoding="utf-8"))
+    except subprocess.TimeoutExpired as exc:
+        raise KumikoError(f"Kumiko a dépassé le délai ({exc.timeout}s)") from exc
     except json.JSONDecodeError as exc:
         raise KumikoError(f"Sortie Kumiko illisible : {exc}") from exc
     finally:
@@ -119,11 +121,19 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
     scale_y = master_h / in_h if in_h else 1.0
 
     if replace:
-        old = conn.execute(
-            "SELECT id FROM regions WHERE planche_id = ? AND source = 'kumiko'",
+        # Inclut les descendants : le DELETE cascade sur les enfants des cases
+        # Kumiko, mais leurs lignes FTS doivent être retirées explicitement
+        # (sinon elles restent orphelines et polluent la recherche).
+        doomed = conn.execute(
+            """WITH RECURSIVE doomed(id) AS (
+                   SELECT id FROM regions
+                   WHERE planche_id = ? AND source = 'kumiko'
+                   UNION ALL
+                   SELECT r.id FROM regions r JOIN doomed d ON r.parent_id = d.id
+               ) SELECT id FROM doomed""",
             (planche_id,),
         ).fetchall()
-        for r in old:
+        for r in doomed:
             unindex_region(conn, r["id"])
         conn.execute(
             "DELETE FROM regions WHERE planche_id = ? AND source = 'kumiko'",

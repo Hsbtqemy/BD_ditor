@@ -199,8 +199,11 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db)):
     return planches
 
 
+# Route synchrone (def) : FastAPI l'exécute dans un threadpool, ce qui évite
+# de bloquer la boucle d'événements pendant le redimensionnement PIL (lourd
+# sur un TIFF 400 dpi). On lit donc l'upload via file.file (API synchrone).
 @app.post("/api/albums/{album_id}/import", status_code=201)
-async def import_planche(
+def import_planche(
     album_id: int,
     file: UploadFile = File(...),
     numero: Optional[int] = Form(None),
@@ -208,7 +211,7 @@ async def import_planche(
 ):
     if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
         raise HTTPException(404, f"Album {album_id} introuvable")
-    data = await file.read()
+    data = file.file.read()
     if not data:
         raise HTTPException(400, "Fichier vide")
     # Numéro fixé en amont pour aligner les noms master/dérivé web.
