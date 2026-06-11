@@ -241,6 +241,10 @@ function clientToMaster(evt) {
    Rendu de l'overlay SVG
    =================================================================== */
 function regionsAtLevel() {
+  // Au niveau planche : TOUTES les régions (cases + bulles + enfants), pour
+  // qu'une bulle rattachée à une case reste visible (distinguée par couleur).
+  // Dans un sous-niveau (drill = focus) : seulement les enfants directs.
+  if (state.hierParent === null) return state.regions;
   return state.regions.filter((r) => (r.parent_id ?? null) === state.hierParent);
 }
 
