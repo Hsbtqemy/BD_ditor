@@ -112,3 +112,53 @@ def ocr_planche(conn: sqlite3.Connection, planche_id: int,
 
     return {"planche_id": planche_id, "ocr": done,
             "ignores": skipped, "echecs": failed}
+
+
+# --------------------------------------------------------------------------- #
+# Crop net d'une région (pour l'affichage en mode Transcription)
+# --------------------------------------------------------------------------- #
+# Cache 1 image : on garde le master de la dernière planche ouvert, pour que la
+# navigation bulle-à-bulle ne ré-ouvre pas un TIFF de 50 Mo à chaque crop.
+_crop_cache: dict = {"planche_id": None, "img": None, "scale": 1.0}
+
+
+def region_crop_png(conn: sqlite3.Connection, region_id: int,
+                    max_dim: int = 1600) -> bytes | None:
+    """PNG net de la région recadrée dans le MASTER (sinon le dérivé web).
+
+    Renvoie None si la région est introuvable. Réduit à `max_dim` de large pour
+    borner la charge. Cache le master de la planche courante.
+    """
+    import io
+    from PIL import Image
+
+    r = conn.execute(
+        "SELECT x, y, w, h, planche_id FROM regions WHERE id = ?", (region_id,)
+    ).fetchone()
+    if r is None:
+        return None
+
+    pid = r["planche_id"]
+    if _crop_cache["planche_id"] != pid:
+        planche = conn.execute(
+            "SELECT * FROM planches WHERE id = ?", (pid,)).fetchone()
+        if planche is None:  # pragma: no cover - une région implique sa planche (FK)
+            return None
+        if _crop_cache["img"] is not None:
+            try:
+                _crop_cache["img"].close()
+            except Exception:
+                pass
+        img, scale = _open_image(planche)
+        _crop_cache.update(planche_id=pid, img=img, scale=scale)
+
+    img, scale = _crop_cache["img"], _crop_cache["scale"]
+    x, y, w, h = (round((r[k] or 0) * scale) for k in ("x", "y", "w", "h"))
+    crop = img.crop((x, y, x + max(1, w), y + max(1, h)))
+    if crop.width > max_dim:
+        crop = crop.resize(
+            (max_dim, max(1, round(crop.height * max_dim / crop.width))),
+            Image.LANCZOS)
+    buf = io.BytesIO()
+    crop.convert("RGB").save(buf, "PNG")
+    return buf.getvalue()

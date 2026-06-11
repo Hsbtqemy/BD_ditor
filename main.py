@@ -22,7 +22,7 @@ from config import (DERIVATIVES_DIR, STATIC_DIR, STATUTS,
 from database import get_connection, init_db, reindex_region, unindex_region
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
 from pipeline.ingest import ingest_image, store_upload
-from pipeline.ocr import OCRError, ocr_available, ocr_planche
+from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
 
 @asynccontextmanager
@@ -339,6 +339,15 @@ def create_region(planche_id: int, region: RegionIn,
         reindex_region(conn, new_id)
     conn.commit()
     return _row(conn.execute("SELECT * FROM regions WHERE id = ?", (new_id,)))
+
+
+@app.get("/api/regions/{region_id}/crop")
+def region_crop(region_id: int, conn: sqlite3.Connection = Depends(db)):
+    """PNG net de la région recadré dans le master (mode Transcription)."""
+    png = region_crop_png(conn, region_id)
+    if png is None:
+        raise HTTPException(404, f"Région {region_id} introuvable")
+    return Response(png, media_type="image/png")
 
 
 @app.put("/api/regions/{region_id}")

@@ -563,16 +563,10 @@ function renderTranscription() {
     ? `Bulle ${state.trIndex + 1} / ${list.length}` : "Aucune région de texte";
   $("#tr-type").textContent = r ? r.type : "";
 
-  // crop de la bulle depuis l'image web déjà chargée
-  const cv = $("#tr-crop"), ctx = cv.getContext("2d");
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  if (r && state.webScale && img.complete && img.naturalWidth) {
-    const sx = r.x * state.webScale, sy = r.y * state.webScale;
-    const sw = Math.max(1, r.w * state.webScale), sh = Math.max(1, r.h * state.webScale);
-    const k = Math.min(900 / sw, 460 / sh, 6);  // agrandit, dans des bornes
-    cv.width = Math.round(sw * k); cv.height = Math.round(sh * k);
-    try { ctx.drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height); } catch (_) {}
-  } else { cv.width = cv.height = 0; }
+  // crop NET de la bulle, recadré dans le master côté serveur
+  const cropImg = $("#tr-crop");
+  if (r) cropImg.src = `/api/regions/${r.id}/crop`;
+  else cropImg.removeAttribute("src");
 
   // éditeur
   const ta = $("#tr-text");

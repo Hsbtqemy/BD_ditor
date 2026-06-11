@@ -15,6 +15,17 @@ import pipeline.ocr as ocr
 from conftest import requires_bulles, requires_ocr
 
 
+@pytest.fixture(autouse=True)
+def _reset_crop_cache():
+    if ocr._crop_cache.get("img") is not None:
+        try:
+            ocr._crop_cache["img"].close()
+        except Exception:
+            pass
+    ocr._crop_cache.update(planche_id=None, img=None, scale=1.0)
+    yield
+
+
 # ------------------------------ unités ---------------------------------- #
 def test_parent_case_geometrie():
     cases = [{"id": 1, "x": 0, "y": 0, "w": 100, "h": 100},
@@ -163,6 +174,56 @@ def test_detecter_bulles_reel(client, album):
                     files={"file": ("b.png", _balloon_png(), "image/png")}).json()
     res = client.post(f"/api/planches/{p['id']}/detecter-bulles").json()
     assert res["nb_bulles"] >= 1
+
+
+# ------------------- crop net (mode Transcription) ---------------------- #
+def test_crop_route_png(client, region):
+    r = client.get(f"/api/regions/{region['id']}/crop")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    assert r.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_crop_route_404(client):
+    assert client.get("/api/regions/999/crop").status_code == 404
+
+
+def test_crop_cache_plusieurs_planches(client, album, png_bytes):
+    """Couvre cache: miss (ouvre) -> hit (même planche) -> miss (ferme+ouvre autre)."""
+    p1 = client.post(f"/api/albums/{album['id']}/import",
+                     files={"file": ("a.png", png_bytes, "image/png")}).json()
+    p2 = client.post(f"/api/albums/{album['id']}/import",
+                     files={"file": ("b.png", png_bytes, "image/png")}).json()
+    r1 = client.post(f"/api/planches/{p1['id']}/regions",
+                     json={"type": "bulle", "x": 5, "y": 5, "w": 50, "h": 40}).json()
+    r1b = client.post(f"/api/planches/{p1['id']}/regions",
+                      json={"type": "bulle", "x": 60, "y": 5, "w": 50, "h": 40}).json()
+    r2 = client.post(f"/api/planches/{p2['id']}/regions",
+                     json={"type": "bulle", "x": 5, "y": 5, "w": 50, "h": 40}).json()
+    assert client.get(f"/api/regions/{r1['id']}/crop").status_code == 200    # miss
+    assert client.get(f"/api/regions/{r1b['id']}/crop").status_code == 200   # hit
+    assert client.get(f"/api/regions/{r2['id']}/crop").status_code == 200    # miss + close
+
+
+def test_crop_close_robuste(client, region):
+    """Si le close() de l'image cachée lève, le crop suivant marche quand même."""
+    class _Bad:
+        def close(self):
+            raise RuntimeError("boom")
+    ocr._crop_cache.update(planche_id=-999, img=_Bad(), scale=1.0)
+    assert client.get(f"/api/regions/{region['id']}/crop").status_code == 200
+
+
+def test_crop_reduit_a_max_dim(client, album):
+    buf = io.BytesIO()
+    Image.new("RGB", (2000, 800), "white").save(buf, "PNG")
+    p = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("w.png", buf.getvalue(), "image/png")}).json()
+    r = client.post(f"/api/planches/{p['id']}/regions",
+                    json={"type": "bulle", "x": 10, "y": 10, "w": 1800, "h": 200}).json()
+    resp = client.get(f"/api/regions/{r['id']}/crop")
+    assert resp.status_code == 200
+    assert Image.open(io.BytesIO(resp.content)).width == 1600  # réduit
 
 
 # --------------------- couverture des bords ----------------------------- #
