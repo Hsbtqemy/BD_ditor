@@ -6,6 +6,7 @@
   <title>BD Annotator</title>
   <link rel="icon" href="data:,"><!-- évite la requête /favicon.ico (404) -->
   <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script><!-- thème appliqué avant rendu (no-FOUC) -->
 </head>
 <body>
 <div id="app">
@@ -29,6 +30,7 @@
       </button>
     </div>
     <div class="header-actions">
+      <button class="ghost btn-theme" title="Changer de thème">🌙</button>
       <a href="/corpus" class="ghost" title="Gérer le corpus (albums, planches, lots)">📚 Bibliothèque</a>
       <a href="/recherche" class="ghost" title="Rechercher dans le corpus">🔍 Recherche</a>
       <button id="btn-sharedocs" class="ghost" title="Explorer le corpus ShareDocs (Huma-Num)">ShareDocs</button>

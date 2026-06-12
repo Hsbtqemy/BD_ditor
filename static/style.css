@@ -2,11 +2,14 @@
    BD Annotator — thème sombre validé
    =================================================================== */
 :root {
+  /* Palette — thème sombre (défaut). La bascule pose [data-theme] sur <html> ;
+     les remplissages translucides sont dérivés de ces variables via color-mix(),
+     donc redéfinir un thème suffit à tout reteinter. */
   --bg-deep:     #1a1a2e;
   --bg-panel:    #16213e;
   --bg-input:    #0f3460;
-  --accent-red:  #e94560;   /* sélection, labels Kumiko */
-  --accent-blue: #a0c4ff;   /* sélection active */
+  --accent-red:  #e94560;   /* sélection, labels Kumiko, type case */
+  --accent-blue: #a0c4ff;   /* sélection active, liens */
   --accent-amber:#f59e0b;   /* mode édition, poignées */
   --accent-green:#4ade80;   /* régions annotées, mode annotation */
   --accent-violet:#c084fc;  /* mode transcription, type personnage */
@@ -14,7 +17,26 @@
   --accent-pink: #f472b6;   /* type cartouche / texte */
   --border:      #0f3460;
   --text:        #e0e0e0;
-  --text-muted:  #888;
+  --text-muted:  #9aa3b8;   /* relevé de #888 : passe le contraste AA sur panneaux */
+
+  /* Tokens sémantiques neutres (basculent avec le thème). */
+  --hover:        var(--hover);  /* survol discret sur surfaces sombres */
+  --scrim:        var(--scrim);        /* fond de modale */
+  --shadow:       rgba(0,0,0,.40);
+  --shadow-strong:rgba(0,0,0,.50);
+  --stage-a:      #15152a;                /* échiquier du fond de scène */
+  --stage-b:      #181830;
+  --media-bg:     #ffffff;                /* fond blanc derrière les images */
+  --label-fill:   #ececec;                /* labels SVG sur l'image (clairs + halo) */
+  --label-halo:   #000000;
+  --kbd-bg:       rgba(255,255,255,.08);
+  --kbd-border:   rgba(255,255,255,.15);
+  --focus:        var(--accent-blue);     /* anneau de focus clavier */
+
+  /* Aligne les contrôles NATIFS (scrollbars, listes des <select>, cases à
+     cocher, curseur) sur le thème — sinon ils restent clairs en mode sombre. */
+  color-scheme: dark;
+  accent-color: var(--accent-blue);
 
   --header-h: 48px;
   --status-h: 26px;
@@ -22,7 +44,56 @@
   --panel-w: 300px;
 }
 
+/* Thème clair — redéfinit les mêmes tokens ; accents assombris pour rester
+   lisibles sur fond clair (liens/boutons/marqueurs). Les fills color-mix() en
+   héritent automatiquement. L'invariant bg-deep ↔ accents (luminances opposées)
+   garde le texte des boutons lisible (color: var(--bg-deep)). */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg-deep:     #eef0f6;
+  --bg-panel:    #ffffff;
+  --bg-input:    #e7ebf4;
+  --accent-red:  #d11f45;
+  --accent-blue: #2563c9;
+  --accent-amber:#a86a00;
+  --accent-green:#1a8f4e;
+  --accent-violet:#7c39c7;
+  --accent-cyan: #0c84a0;
+  --accent-pink: #bd3580;
+  --border:      #cdd4e3;
+  --text:        #1b2030;
+  --text-muted:  #586079;
+  --hover:        rgba(20,30,60,.05);
+  --scrim:        rgba(18,22,36,.45);
+  --shadow:       rgba(20,30,60,.16);
+  --shadow-strong:rgba(20,30,60,.24);
+  --stage-a:      #e4e7f1;
+  --stage-b:      #edeff6;
+  --kbd-bg:       rgba(20,30,60,.06);
+  --kbd-border:   rgba(20,30,60,.18);
+}
+
 * { box-sizing: border-box; }
+
+/* ---------- Accessibilité ---------- */
+/* Anneau de focus clavier visible et cohérent (sans gêner le clic souris). */
+:where(a, button, input, select, textarea, summary, [tabindex], .tnode,
+       .mode-btn, .cloud-tag, .result):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+/* Respecte « animations réduites » (réglage système). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: .001ms !important;
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+/* Sélection de texte et placeholders — suivent le thème. */
+::selection { background: color-mix(in srgb, var(--accent-blue) 38%, transparent); }
+::placeholder { color: var(--text-muted); opacity: 1; }
 
 html, body {
   margin: 0; height: 100%;
@@ -33,8 +104,8 @@ html, body {
 }
 
 kbd {
-  font: 11px monospace; background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.15); border-radius: 3px;
+  font: 11px monospace; background: var(--kbd-bg);
+  border: 1px solid var(--kbd-border); border-radius: 3px;
   padding: 0 4px; margin-left: 4px;
 }
 .mono { font-family: "Cascadia Code", Consolas, monospace; }
@@ -79,7 +150,7 @@ kbd {
 .mode-btn[data-mode="edition"]    .dot { background: var(--accent-amber); }
 .mode-btn[data-mode="annotation"] .dot { background: var(--accent-green); }
 .mode-btn[data-mode="transcription"] .dot { background: var(--accent-violet); }
-.mode-btn.active { border-color: currentColor; background: rgba(255,255,255,.05); }
+.mode-btn.active { border-color: currentColor; background: var(--hover); }
 .mode-btn[data-mode="navigation"].active { color: var(--accent-blue); }
 .mode-btn[data-mode="edition"].active    { color: var(--accent-amber); }
 .mode-btn[data-mode="annotation"].active { color: var(--accent-green); }
@@ -110,7 +181,7 @@ button { font-family: inherit; }
   position: absolute; right: 0; top: 110%; z-index: 20;
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: 6px; min-width: 120px; display: none;
-  box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  box-shadow: 0 6px 20px var(--shadow);
 }
 .dropdown-menu.open { display: block; }
 .dropdown-menu a {
@@ -171,7 +242,7 @@ button { font-family: inherit; }
 #stage {
   position: relative; flex: 1; min-height: 0; overflow: hidden;
   background:
-    repeating-conic-gradient(#15152a 0% 25%, #181830 0% 50%) 50% / 22px 22px;
+    repeating-conic-gradient(var(--stage-a) 0% 25%, var(--stage-b) 0% 50%) 50% / 22px 22px;
   cursor: grab;
 }
 #stage.mode-edition { cursor: crosshair; }
@@ -199,19 +270,19 @@ button { font-family: inherit; }
    distinguer au coup d'œil même quand bulles et cases coexistent au même
    niveau. L'ÉTAT (annoté/sélectionné) surcharge ensuite (règles plus bas). */
 .region {
-  fill: rgba(233, 69, 96, .07);
+  fill: color-mix(in srgb, var(--accent-red) 8%, transparent);
   stroke: var(--accent-red);          /* case */
   stroke-width: 2px;
   vector-effect: non-scaling-stroke;
   cursor: pointer;
 }
-.region.region-bulle      { stroke: var(--accent-cyan);   fill: rgba(34,211,238,.07); }
+.region.region-bulle      { stroke: var(--accent-cyan);   fill: color-mix(in srgb, var(--accent-cyan) 8%, transparent); }
 .region.region-cartouche,
-.region.region-texte      { stroke: var(--accent-pink);   fill: rgba(244,114,182,.07); }
-.region.region-personnage { stroke: var(--accent-violet); fill: rgba(192,132,252,.07); }
+.region.region-texte      { stroke: var(--accent-pink);   fill: color-mix(in srgb, var(--accent-pink) 8%, transparent); }
+.region.region-personnage { stroke: var(--accent-violet); fill: color-mix(in srgb, var(--accent-violet) 8%, transparent); }
 /* État (surcharge le type) */
-.region.annotee { stroke: var(--accent-green); fill: rgba(74,222,128,.08); }
-.region.selected { stroke: var(--accent-blue); fill: rgba(160,196,255,.12); stroke-width: 3px; }
+.region.annotee { stroke: var(--accent-green); fill: color-mix(in srgb, var(--accent-green) 9%, transparent); }
+.region.selected { stroke: var(--accent-blue); fill: color-mix(in srgb, var(--accent-blue) 14%, transparent); stroke-width: 3px; }
 .region.dimmed { opacity: .35; }
 /* Survol depuis l'arbre : halo blanc pointillé (distinct du bleu de sélection). */
 .region.hover-hi {
@@ -219,18 +290,18 @@ button { font-family: inherit; }
   fill: rgba(255,255,255,.14);
 }
 .region-label {
-  fill: #ececec; font: 600 12px monospace;
-  paint-order: stroke; stroke: #000; stroke-width: 3px;
+  fill: var(--label-fill); font: 600 12px monospace;
+  paint-order: stroke; stroke: var(--label-halo); stroke-width: 3px;
   vector-effect: non-scaling-stroke; pointer-events: none;
 }
 
 /* poignées de redimensionnement (mode édition) */
 .handle {
-  fill: var(--accent-amber); stroke: #000; stroke-width: 1px;
+  fill: var(--accent-amber); stroke: var(--label-halo); stroke-width: 1px;
   vector-effect: non-scaling-stroke; cursor: pointer;
 }
 .draw-rect {
-  fill: rgba(245,158,11,.12); stroke: var(--accent-amber);
+  fill: color-mix(in srgb, var(--accent-amber) 14%, transparent); stroke: var(--accent-amber);
   stroke-dasharray: 4 3; stroke-width: 2px; vector-effect: non-scaling-stroke;
 }
 
@@ -288,7 +359,7 @@ button { font-family: inherit; }
   position: absolute; left: 0; right: 0; top: 100%; z-index: 30;
   background: var(--bg-deep); border: 1px solid var(--border);
   border-radius: 5px; max-height: 180px; overflow-y: auto;
-  box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  box-shadow: 0 6px 20px var(--shadow);
 }
 .tag-suggest div { padding: 6px 10px; cursor: pointer; }
 .tag-suggest div:hover, .tag-suggest div.active { background: var(--bg-input); }
@@ -320,15 +391,15 @@ h3.collapsible:hover { color: var(--text); }
   border-radius: 5px; cursor: pointer; white-space: nowrap;
   border-left: 2px solid transparent;
 }
-.tnode:hover { background: rgba(255,255,255,.05); }
+.tnode:hover { background: var(--hover); }
 .tnode.current {
-  background: rgba(160,196,255,.14);
+  background: color-mix(in srgb, var(--accent-blue) 14%, transparent);
   border-left-color: var(--accent-blue);
 }
 .tnode[draggable] { cursor: grab; }
 .tnode.dragging { opacity: .45; }
 .tnode.drop-target {           /* case/planche survolée pendant un glisser */
-  background: rgba(74,222,128,.18);
+  background: color-mix(in srgb, var(--accent-green) 18%, transparent);
   outline: 1px dashed var(--accent-green); outline-offset: -1px;
 }
 .tnode-root { font-weight: 600; margin-bottom: 3px; }
@@ -375,8 +446,8 @@ h3.collapsible:hover { color: var(--text); }
   font-variant-numeric: tabular-nums;
   background: var(--bg-input); color: var(--text-muted);
 }
-.tn-prog-done    { color: var(--accent-green); background: rgba(74,222,128,.16); }
-.tn-prog-partial { color: var(--accent-amber); background: rgba(245,158,11,.16); }
+.tn-prog-done    { color: var(--accent-green); background: color-mix(in srgb, var(--accent-green) 16%, transparent); }
+.tn-prog-partial { color: var(--accent-amber); background: color-mix(in srgb, var(--accent-amber) 16%, transparent); }
 .tn-prog-none    { color: var(--text-muted); }
 
 /* Boutons « tout déplier / tout replier » dans l'en-tête de l'arbre. */
@@ -426,7 +497,7 @@ h3.collapsible:hover { color: var(--text); }
 .toast {
   background: var(--bg-panel); border: 1px solid var(--border);
   border-left: 3px solid var(--accent-blue); border-radius: 5px;
-  padding: 10px 14px; max-width: 320px; box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  padding: 10px 14px; max-width: 320px; box-shadow: 0 6px 20px var(--shadow);
 }
 .toast.error { border-left-color: var(--accent-red); }
 .toast.success { border-left-color: var(--accent-green); }
@@ -451,12 +522,12 @@ h3.collapsible:hover { color: var(--text); }
 }
 #tr-mini svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .tr-region {
-  fill: rgba(160,196,255,.04); stroke: var(--text-muted); stroke-width: 1.5px;
+  fill: color-mix(in srgb, var(--accent-blue) 5%, transparent); stroke: var(--text-muted); stroke-width: 1.5px;
   vector-effect: non-scaling-stroke; cursor: pointer;
 }
 .tr-region:hover { stroke: var(--accent-blue); }
 .tr-region.current {
-  fill: rgba(192,132,252,.18); stroke: var(--accent-violet); stroke-width: 3px;
+  fill: color-mix(in srgb, var(--accent-violet) 18%, transparent); stroke: var(--accent-violet); stroke-width: 3px;
 }
 
 #tr-right {
@@ -474,11 +545,11 @@ h3.collapsible:hover { color: var(--text); }
 #tr-crop-wrap {
   flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
   background:
-    repeating-conic-gradient(#15152a 0% 25%, #181830 0% 50%) 50% / 22px 22px;
+    repeating-conic-gradient(var(--stage-a) 0% 25%, var(--stage-b) 0% 50%) 50% / 22px 22px;
   border: 1px solid var(--border); border-radius: 6px; overflow: auto; padding: 12px;
 }
 #tr-crop { width: 100%; height: 100%; object-fit: contain;
-           background: #fff; border-radius: 2px; }
+           background: var(--media-bg); border-radius: 2px; }
 
 #tr-text {
   background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
@@ -501,7 +572,7 @@ h3.collapsible:hover { color: var(--text); }
 
 /* ---------- Explorateur ShareDocs (modale) ---------- */
 #sharedocs {
-  position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.55);
+  position: fixed; inset: 0; z-index: 100; background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
 }
 #sharedocs[hidden] { display: none; }
@@ -511,7 +582,7 @@ h3.collapsible:hover { color: var(--text); }
   width: min(760px, 92vw); max-height: 86vh;
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: 10px; box-shadow: 0 12px 48px rgba(0,0,0,.5);
+  border-radius: 10px; box-shadow: 0 12px 48px var(--shadow-strong);
 }
 .sd-head {
   display: flex; align-items: center; gap: 12px;
@@ -549,7 +620,7 @@ h3.collapsible:hover { color: var(--text); }
 }
 .sd-item:hover { background: var(--bg-input); }
 .sd-item.dir .sd-name { color: var(--accent-blue); }
-.sd-item.selected { background: rgba(160,196,255,.14); }
+.sd-item.selected { background: color-mix(in srgb, var(--accent-blue) 14%, transparent); }
 .sd-item.disabled { opacity: .45; cursor: default; }
 .sd-ico { width: 18px; flex: 0 0 18px; text-align: center; }
 .sd-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
@@ -601,7 +672,7 @@ h3.collapsible:hover { color: var(--text); }
 .active-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .active-tag {
   display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
-  background: rgba(160,196,255,.16); border: 1px solid var(--accent-blue);
+  background: color-mix(in srgb, var(--accent-blue) 16%, transparent); border: 1px solid var(--accent-blue);
   border-radius: 12px; padding: 2px 8px;
 }
 .active-tag .x { cursor: pointer; opacity: .7; }
@@ -616,7 +687,7 @@ h3.collapsible:hover { color: var(--text); }
 .result:hover { border-color: var(--accent-blue); background: var(--bg-input); }
 .r-thumb {
   width: 130px; max-height: 96px; object-fit: contain; flex: 0 0 auto;
-  background: #fff; border-radius: 4px;
+  background: var(--media-bg); border-radius: 4px;
 }
 .r-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .r-text { font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
@@ -677,7 +748,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .corpus-table .c-titre { font-weight: 600; }
 .album-row { cursor: pointer; }
 .album-row:hover { background: var(--bg-input); }
-.album-row.open { background: rgba(160,196,255,.12); outline: 1px solid var(--accent-blue); }
+.album-row.open { background: color-mix(in srgb, var(--accent-blue) 12%, transparent); outline: 1px solid var(--accent-blue); }
 .empty-cell { padding: 28px; text-align: center; color: var(--text-muted); }
 .icon-btn.danger { background: transparent; border-color: transparent; }
 .icon-btn.danger:hover { background: var(--accent-red); color: #fff; }
@@ -698,14 +769,14 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 
 /* Modale album */
 #album-modal {
-  position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.55);
+  position: fixed; inset: 0; z-index: 100; background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
 }
 #album-modal[hidden] { display: none; }
 .modal-box {
   width: min(560px, 92vw); background: var(--bg-panel);
   border: 1px solid var(--border); border-radius: 10px; padding: 18px;
-  box-shadow: 0 12px 48px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 12px 48px var(--shadow-strong); display: flex; flex-direction: column; gap: 12px;
 }
 .modal-box h3 { margin: 0; }
 .modal-box label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
