@@ -255,11 +255,13 @@ button { font-family: inherit; }
   font-size: 11px; padding: 2px 8px; border-radius: 10px;
   background: var(--bg-input); border: 1px solid var(--border);
 }
-#region-type {
+#region-type, #region-parent {
   background: var(--bg-input); color: var(--text);
   border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px;
+  font-family: inherit;
 }
-
+#region-parent { max-width: 62%; }
+.edit-hint { font-size: 11px; margin: 10px 0 0; line-height: 1.4; }
 .coord-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .coord-grid label {
   display: flex; align-items: center; gap: 6px; color: var(--text-muted);
@@ -322,6 +324,12 @@ h3.collapsible:hover { color: var(--text); }
 .tnode.current {
   background: rgba(160,196,255,.14);
   border-left-color: var(--accent-blue);
+}
+.tnode[draggable] { cursor: grab; }
+.tnode.dragging { opacity: .45; }
+.tnode.drop-target {           /* case/planche survolée pendant un glisser */
+  background: rgba(74,222,128,.18);
+  outline: 1px dashed var(--accent-green); outline-offset: -1px;
 }
 .tnode-root { font-weight: 600; margin-bottom: 3px; }
 
@@ -482,3 +490,74 @@ h3.collapsible:hover { color: var(--text); }
 #tr-controls #tr-next { margin-left: auto; color: var(--accent-violet); border-color: var(--accent-violet); }
 #tr-save { min-width: 90px; }
 .tr-hint { font-size: 11px; }
+
+/* ---------- Bouton primaire ---------- */
+.primary {
+  background: var(--accent-blue); color: var(--bg-deep); border: none;
+  border-radius: 5px; padding: 6px 14px; cursor: pointer; font-weight: 600;
+}
+.primary:hover { filter: brightness(1.08); }
+.primary:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ---------- Explorateur ShareDocs (modale) ---------- */
+#sharedocs {
+  position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center;
+}
+#sharedocs[hidden] { display: none; }
+/* `hidden` doit l'emporter sur les `display:flex` des sections internes. */
+#sharedocs [hidden] { display: none; }
+.sd-dialog {
+  width: min(760px, 92vw); max-height: 86vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: 0 12px 48px rgba(0,0,0,.5);
+}
+.sd-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.sd-title { font-weight: 600; }
+#sd-conn-state { margin-left: auto; }
+
+.sd-login, .sd-import-form { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.sd-login label, .sd-import-form label {
+  display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted);
+}
+.sd-login input, .sd-import-form select, .sd-import-form input[type=text] {
+  padding: 7px 9px; background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px; font: 13px inherit;
+}
+.sd-row { display: flex; align-items: center; gap: 12px; }
+.sd-import-form h3 { margin: 0; font-size: 14px; }
+.sd-check { flex-direction: row !important; align-items: center; gap: 8px !important; color: var(--text) !important; }
+
+.sd-browser { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.sd-toolbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+}
+.sd-breadcrumb { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 13px; min-width: 0; flex: 1 1 auto; }
+.sd-breadcrumb a { color: var(--accent-blue); cursor: pointer; }
+.sd-breadcrumb .sep { color: var(--text-muted); }
+#sd-disconnect { margin-left: auto; }
+
+.sd-list { flex: 1; overflow-y: auto; padding: 6px 8px; min-height: 220px; }
+.sd-item {
+  display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+  border-radius: 5px; cursor: pointer; white-space: nowrap;
+}
+.sd-item:hover { background: var(--bg-input); }
+.sd-item.dir .sd-name { color: var(--accent-blue); }
+.sd-item.selected { background: rgba(160,196,255,.14); }
+.sd-item.disabled { opacity: .45; cursor: default; }
+.sd-ico { width: 18px; flex: 0 0 18px; text-align: center; }
+.sd-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.sd-size { color: var(--text-muted); font-size: 11px; flex: 0 0 auto; }
+
+.sd-footer {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border-top: 1px solid var(--border);
+}
+#sd-import { margin-left: auto; }
+.sd-empty { padding: 24px; text-align: center; color: var(--text-muted); }

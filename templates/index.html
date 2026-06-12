@@ -29,9 +29,11 @@
       </button>
     </div>
     <div class="header-actions">
+      <button id="btn-sharedocs" class="ghost" title="Explorer le corpus ShareDocs (Huma-Num)">ShareDocs</button>
       <button id="btn-segmenter" class="ghost" title="Détecter les cases (Kumiko)">Segmenter</button>
       <button id="btn-bulles" class="ghost" title="Détecter les bulles (passe 2)">Bulles</button>
       <button id="btn-ocr" class="ghost" title="OCR des bulles → pré-remplissage (passe 3)">OCR</button>
+      <button id="btn-backup" class="ghost" title="Télécharger une sauvegarde de la base (.sqlite zippé)">Sauvegarde</button>
       <div class="dropdown">
         <button class="ghost" id="btn-export">Export ▾</button>
         <div class="dropdown-menu" id="export-menu">
@@ -121,9 +123,13 @@
             <span class="muted">Source</span>
             <span id="region-source" class="badge"></span>
           </div>
+          <div class="panel-row" title="Case à laquelle rattacher cette région">
+            <span class="muted">Rattachée à</span>
+            <select id="region-parent"></select>
+          </div>
         </div>
 
-        <!-- Mode édition : coordonnées -->
+        <!-- Mode édition : coordonnées + rattachement hiérarchique -->
         <div id="panel-edition" class="panel-section" hidden>
           <h3>Coordonnées <span class="muted">(px master)</span></h3>
           <div class="coord-grid">
@@ -132,6 +138,8 @@
             <label>L <input type="number" id="coord-w"></label>
             <label>H <input type="number" id="coord-h"></label>
           </div>
+          <p class="edit-hint muted"><kbd>Maj</kbd>+glisser dans une case = créer
+            une sous-région (rattachée automatiquement).</p>
           <button id="btn-delete-region" class="danger small">Supprimer la région</button>
         </div>
 
@@ -184,6 +192,69 @@
       <div class="tr-hint muted">
         <kbd>Tab</kbd>/<kbd>Ctrl+Entrée</kbd> suivante · <kbd>Maj+Tab</kbd> précédente ·
         <kbd>Entrée</kbd> retour ligne · sauvegarde auto
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── Explorateur ShareDocs (modale) ───────── -->
+  <section id="sharedocs" hidden>
+    <div class="sd-dialog">
+      <div class="sd-head">
+        <span class="sd-title">ShareDocs <span class="muted small">— corpus Huma-Num (WebDAV)</span></span>
+        <span id="sd-conn-state" class="muted small"></span>
+        <button id="sd-close" class="ghost small">Fermer ✕</button>
+      </div>
+
+      <!-- Écran connexion -->
+      <div id="sd-login" class="sd-login">
+        <p class="muted small">🔒 Identifiants gardés en mémoire du serveur uniquement —
+          jamais écrits sur disque, à ressaisir après un redémarrage.</p>
+        <label>URL WebDAV
+          <input type="text" id="sd-url" autocomplete="off"
+                 placeholder="https://sharedocs.huma-num.fr/remote.php/dav/files/…">
+        </label>
+        <label>Utilisateur
+          <input type="text" id="sd-user" autocomplete="username"
+                 placeholder="identifiant@webdav"></label>
+        <label>Mot de passe
+          <input type="password" id="sd-pass" autocomplete="current-password"
+                 placeholder="(vide ⇒ variable d'env BD_SHAREDOCS_PASS)"></label>
+        <div class="sd-row">
+          <button id="sd-connect" class="primary">Se connecter</button>
+          <span id="sd-login-msg" class="muted small"></span>
+        </div>
+      </div>
+
+      <!-- Écran explorateur -->
+      <div id="sd-browser" class="sd-browser" hidden>
+        <div class="sd-toolbar">
+          <div id="sd-breadcrumb" class="sd-breadcrumb"></div>
+          <button id="sd-deposer" class="ghost small"
+                  title="Déposer une sauvegarde de la base dans ce dossier">💾 Sauvegarde ici</button>
+          <button id="sd-disconnect" class="ghost small">Déconnexion</button>
+        </div>
+        <div id="sd-list" class="sd-list"></div>
+        <div class="sd-footer">
+          <span id="sd-selcount" class="muted small">0 sélectionné</span>
+          <button id="sd-import" class="primary" disabled>Importer la sélection →</button>
+        </div>
+      </div>
+
+      <!-- Sous-dialogue d'import -->
+      <div id="sd-import-form" class="sd-import-form" hidden>
+        <h3 id="sd-import-title">Importer</h3>
+        <label>Destination
+          <select id="sd-album"></select>
+        </label>
+        <label id="sd-newalbum-wrap">Nom du nouvel album
+          <input type="text" id="sd-newalbum"></label>
+        <label class="sd-check">
+          <input type="checkbox" id="sd-segmenter"> Segmenter après l'import (Kumiko)</label>
+        <div class="sd-row">
+          <button id="sd-import-go" class="primary">Importer</button>
+          <button id="sd-import-cancel" class="ghost small">Annuler</button>
+          <span id="sd-import-msg" class="muted small"></span>
+        </div>
       </div>
     </div>
   </section>

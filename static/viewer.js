@@ -30,7 +30,6 @@ const state = {
   regions: [],
   regionsById: new Map(),
   selectedId: null,
-  hierParent: null,        // parent_id du niveau affiché (null = racine planche)
   mode: "navigation",
   zoom: 1, tx: 0, ty: 0,
   tagVocab: [],            // [{label, couleur, frequence}]
@@ -147,7 +146,6 @@ async function selectPlanche(id) {
   if (!p) return;
   state.planche = p;
   state.selectedId = null;
-  state.hierParent = null;
   state.collapsedNodes = new Set();   // l'état de pli de l'arbre est propre à la planche
 
   renderPlancheList();
@@ -246,14 +244,6 @@ function clientToMaster(evt) {
 /* ===================================================================
    Rendu de l'overlay SVG
    =================================================================== */
-function regionsAtLevel() {
-  // Au niveau planche : TOUTES les régions (cases + bulles + enfants), pour
-  // qu'une bulle rattachée à une case reste visible (distinguée par couleur).
-  // Dans un sous-niveau (drill = focus) : seulement les enfants directs.
-  if (state.hierParent === null) return state.regions;
-  return state.regions.filter((r) => (r.parent_id ?? null) === state.hierParent);
-}
-
 function svg(tag, attrs) {
   const el = document.createElementNS(SVGNS, tag);
   for (const k in attrs) el.setAttribute(k, attrs[k]);
@@ -264,19 +254,10 @@ function renderOverlay() {
   overlay.innerHTML = "";
   if (!state.planche) return;
 
-  // Contexte : si on est dans un sous-niveau, on dessine le parent en pointillé.
-  if (state.hierParent != null) {
-    const parent = state.regionsById.get(state.hierParent);
-    if (parent) {
-      overlay.appendChild(svg("rect", {
-        x: parent.x, y: parent.y, width: parent.w, height: parent.h,
-        class: "region region-" + parent.type + " dimmed", "pointer-events": "none",
-      }));
-    }
-  }
-
+  // Toutes les régions de la planche (cases + bulles + enfants), distinguées
+  // par la couleur de contour selon le type.
   const gRegions = svg("g", { id: "regions-group" });
-  for (const r of regionsAtLevel()) {
+  for (const r of state.regions) {
     const cls = ["region", "region-" + r.type];   // couleur de contour = type
     if (r.annotee) cls.push("annotee");
     if (r.id === state.selectedId) cls.push("selected");
@@ -302,7 +283,7 @@ function renderHandles() {
   let g = overlay.querySelector("#handles-group");
   if (g) g.remove();
   const r = state.regionsById.get(state.selectedId);
-  if (!r || (r.parent_id ?? null) !== state.hierParent) return;
+  if (!r) return;
 
   g = svg("g", { id: "handles-group" });
   const s = HANDLE_PX / screenScale();
@@ -360,6 +341,20 @@ function selectedRegion() {
   return state.selectedId != null ? state.regionsById.get(state.selectedId) : null;
 }
 
+/* Remplit le sélecteur de parent (cases de la planche, hors soi-même + descendants). */
+function renderParentOptions(r) {
+  const sel = $("#region-parent");
+  if (!sel) return;
+  const exclude = descendantIds(r.id);
+  exclude.add(r.id);
+  const cases = state.regions
+    .filter((c) => c.type === "case" && !exclude.has(c.id))
+    .sort((a, b) => (a.ordre || 0) - (b.ordre || 0) || a.id - b.id);
+  sel.innerHTML = '<option value="">— aucun (planche) —</option>' +
+    cases.map((c) => `<option value="${c.id}">case #${c.id}</option>`).join("");
+  sel.value = r.parent_id != null ? String(r.parent_id) : "";
+}
+
 /* ===================================================================
    Panneau droit
    =================================================================== */
@@ -376,6 +371,7 @@ function renderPanel() {
   $("#region-id").textContent = "#" + r.id;
   $("#region-type").value = r.type;
   $("#region-source").textContent = r.source;
+  renderParentOptions(r);   // « Rattachée à » : visible dès qu'une région est sélectionnée
 
   $("#panel-edition").hidden = state.mode !== "edition";
   $("#panel-annotation").hidden = state.mode !== "annotation";
@@ -415,10 +411,66 @@ function readingSequence() {
   return out;
 }
 
+/* ---- Glisser-déposer dans l'arbre : rattacher une région à une case ----
+   On peut faire glisser n'importe quel nœud de région et le déposer sur une
+   CASE (→ rattachement) ou sur la racine « Planche » (→ détachement). Garde
+   anti-cycle : on n'autorise pas le dépôt sur soi-même ou un de ses descendants. */
+function canReparent(draggedId, targetParentId) {
+  if (draggedId == null || targetParentId === draggedId) return false;
+  if (targetParentId != null && descendantIds(draggedId).has(targetParentId)) return false;
+  return true;
+}
+
+function treeDraggable(node, id) {
+  node.draggable = true;
+  node.addEventListener("dragstart", (e) => {
+    state.dragId = id;
+    node.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(id));
+  });
+  node.addEventListener("dragend", () => {
+    state.dragId = null;
+    node.classList.remove("dragging");
+    // Filet de sécurité : si le drag est annulé (Échap) au-dessus d'une cible,
+    // son dragleave/drop ne se déclenche pas → on purge tout surlignage résiduel.
+    document.querySelectorAll("#tree .drop-target")
+      .forEach((n) => n.classList.remove("drop-target"));
+  });
+}
+
+function treeDropTarget(node, targetParentId) {
+  node.addEventListener("dragover", (e) => {
+    if (!canReparent(state.dragId, targetParentId)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    node.classList.add("drop-target");
+  });
+  node.addEventListener("dragleave", (e) => {
+    // Ne retire le surlignage que si on quitte vraiment le nœud (pas en entrant
+    // dans un de ses sous-éléments → évite le scintillement).
+    if (!node.contains(e.relatedTarget)) node.classList.remove("drop-target");
+  });
+  node.addEventListener("drop", (e) => {
+    e.preventDefault();
+    node.classList.remove("drop-target");
+    const id = state.dragId;
+    state.dragId = null;
+    if (!canReparent(id, targetParentId)) return;
+    const r = state.regionsById.get(id);
+    if (r && (r.parent_id ?? null) !== targetParentId) {
+      patchRegion(id, { parent_id: targetParentId });
+      toast(targetParentId == null
+        ? `Détachée (niveau planche)`
+        : `Rattachée à case #${targetParentId}`);
+    }
+  });
+}
+
 /* Arbre complet de la planche : planche → cases → bulles (+ bulles orphelines).
    Structure DOM imbriquée (groupes) → lignes de guidage par bordure gauche.
    La région courante est mise en évidence ; clic sur un nœud = sélection +
-   recentrage ; clic sur le caret = plie/déplie la case. */
+   recentrage ; clic sur le caret = plie/déplie la case ; glisser = rattacher. */
 function renderTree() {
   const box = $("#tree");
   const prevScroll = box.scrollTop;   // préserve la position de défilement (re-rendu fréquent)
@@ -443,7 +495,8 @@ function renderTree() {
     `<span class="tn-ico"></span>` +
     `<span class="tn-label">Planche ${state.planche.numero}</span>` +
     `<span class="tn-count">${state.regions.length}</span>`;
-  root.onclick = () => drillTo(null);
+  root.onclick = deselect;
+  treeDropTarget(root, null);   // déposer sur la planche = détacher
   box.appendChild(root);
 
   const buildGroup = (parentKey) => {
@@ -510,6 +563,8 @@ function renderTree() {
       };
       node.onmouseenter = () => highlightRegion(rg.id);
       node.onmouseleave = () => highlightRegion(null);
+      treeDraggable(node, rg.id);                       // glisser pour rattacher
+      if (rg.type === "case") treeDropTarget(node, rg.id);   // déposer ici = enfant de la case
       item.appendChild(node);
       if (hasKids && !isCollapsed) {
         const sub = buildGroup(rg.id);
@@ -524,10 +579,8 @@ function renderTree() {
   box.scrollTop = prevScroll;
 }
 
-/* Sélectionne une région depuis l'arbre : remonte au niveau planche si besoin
-   (pour qu'elle soit visible), puis recentre la vue dessus. */
+/* Sélectionne une région depuis l'arbre puis recentre la vue dessus. */
 function selectAndCenter(id) {
-  if (state.hierParent !== null) drillTo(null);
   selectRegion(id);
   centerOnRegion(id);
 }
@@ -588,39 +641,22 @@ async function recalcOrder() {
   } catch (e) { toast("Réordonnancement : " + e.message, "error"); }
 }
 
+/* Désélectionne la région courante (retour au niveau planche). */
+function deselect() {
+  flushSave();
+  state.selectedId = null;
+  renderOverlay();
+  renderPanel();
+}
+
 function renderBreadcrumb() {
   const bc = $("#breadcrumb");
   bc.innerHTML = "";
   if (!state.planche) return;
-  const path = [];
-  let pid = state.hierParent;
-  while (pid != null) {
-    const reg = state.regionsById.get(pid);
-    if (!reg) break;
-    path.unshift(reg);
-    pid = reg.parent_id ?? null;
-  }
   const root = document.createElement("a");
   root.textContent = `Planche ${state.planche.numero}`;
-  root.onclick = () => { drillTo(null); };
+  root.onclick = deselect;
   bc.appendChild(root);
-  for (const reg of path) {
-    const sep = document.createElement("span");
-    sep.className = "sep"; sep.textContent = "›";
-    bc.appendChild(sep);
-    const a = document.createElement("a");
-    a.textContent = `${reg.type} #${reg.id}`;
-    a.onclick = () => drillTo(reg.id);
-    bc.appendChild(a);
-  }
-}
-
-function drillTo(parentId) {
-  flushSave();
-  state.hierParent = parentId;
-  state.selectedId = null;
-  renderOverlay();
-  renderPanel();
 }
 
 /* ===================================================================
@@ -939,13 +975,38 @@ async function deleteRegion(id) {
   } catch (e) { toast("Échec suppression : " + e.message, "error"); }
 }
 
+/* Plus petite case contenant le point (cx, cy) en px master, sinon null.
+   Sert au rattachement hiérarchique d'une région dessinée à la main. */
+function caseContaining(cx, cy, excludeId) {
+  const hits = state.regions.filter((r) =>
+    r.type === "case" && r.id !== excludeId &&
+    cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h);
+  if (!hits.length) return null;
+  return hits.reduce((a, b) => ((a.w * a.h) <= (b.w * b.h) ? a : b)).id;
+}
+
+/* Ids de tous les descendants d'une région (pour les exclure des parents). */
+function descendantIds(id) {
+  const out = new Set();
+  const stack = [id];
+  while (stack.length) {
+    const pid = stack.pop();
+    for (const r of state.regions)
+      if (r.parent_id === pid && !out.has(r.id)) { out.add(r.id); stack.push(r.id); }
+  }
+  return out;
+}
+
 async function createRegion(x, y, w, h) {
-  const type = state.hierParent == null ? "case" : "bulle";
+  // Rattachement par géométrie : dessinée DANS une case → bulle enfant de cette
+  // case ; sinon → case de premier niveau. Le type reste corrigeable en Édition.
+  const parent = caseContaining(x + w / 2, y + h / 2);
+  const type = parent == null ? "case" : "bulle";
   try {
     const created = await apiSend("POST", `/api/planches/${state.planche.id}/regions`, {
       type, x: Math.round(x), y: Math.round(y),
       w: Math.round(w), h: Math.round(h),
-      parent_id: state.hierParent, source: "manuel",
+      parent_id: parent, source: "manuel",
     });
     created.annotee = false; created.nb_enfants = 0;
     state.regions.push(created);
@@ -998,16 +1059,19 @@ stage.addEventListener("mousedown", (e) => {
     return;
   }
   if (state.mode === "edition") {
-    if (hit && Number(hit.dataset.id) === state.selectedId) {
+    if (e.shiftKey) {
+      // Maj+glisser : forcer un nouveau tracé même au-dessus d'une case
+      // (sinon le rect de la case intercepte le clic) → sous-région par géométrie.
+      drag = { kind: "draw", start: clientToMaster(e) };
+    } else if (hit && Number(hit.dataset.id) === state.selectedId) {
       // déplacer la région sélectionnée
       const r = selectedRegion();
       drag = { kind: "move", start: clientToMaster(e), orig: { x: r.x, y: r.y } };
     } else if (hit) {
       selectRegion(Number(hit.dataset.id));
     } else {
-      // dessiner une nouvelle région
-      const p = clientToMaster(e);
-      drag = { kind: "draw", start: p };
+      // dessiner une nouvelle région (sur le fond)
+      drag = { kind: "draw", start: clientToMaster(e) };
     }
   }
 });
@@ -1207,6 +1271,248 @@ function setupExport() {
 }
 
 /* ===================================================================
+   Explorateur ShareDocs (WebDAV Huma-Num) — modale
+   =================================================================== */
+const SD_IMG = /\.(tif|tiff|jpe?g|png|bmp|gif|webp)$/i;
+state.sd = { cwd: "", entries: [], selected: new Set() };
+
+function sdFmtSize(n) {
+  if (n == null) return "";
+  const u = ["o", "Ko", "Mo", "Go"];
+  let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return `${n.toFixed(i ? 1 : 0)} ${u[i]}`;
+}
+
+function sdShow(which) {            // "login" | "browser"
+  $("#sd-login").hidden = which !== "login";
+  $("#sd-browser").hidden = which !== "browser";
+  $("#sd-import-form").hidden = true;
+}
+
+async function sdOpen() {
+  $("#sharedocs").hidden = false;
+  $("#sd-login-msg").textContent = "";
+  try {
+    const etat = await apiGet("/api/sharedocs/etat");
+    $("#sd-conn-state").textContent = etat.connecte ? `connecté · ${etat.user}` : "non connecté";
+    if (etat.connecte) {
+      sdShow("browser");
+      sdNavigate(state.sd.cwd || "");
+    } else {
+      sdShow("login");
+      $("#sd-url").value = (etat.prefill && etat.prefill.url) || "";
+      $("#sd-user").value = (etat.prefill && etat.prefill.user) || "";
+      $("#sd-pass").value = "";
+      ($("#sd-url").value ? $("#sd-pass") : $("#sd-url")).focus();
+    }
+  } catch (e) { toast("ShareDocs : " + e.message, "error"); }
+}
+
+function sdClose() { $("#sharedocs").hidden = true; }
+
+async function sdConnect() {
+  const msg = $("#sd-login-msg");
+  msg.textContent = "Connexion…";
+  try {
+    const r = await apiSend("POST", "/api/sharedocs/connexion", {
+      url: $("#sd-url").value.trim(),
+      user: $("#sd-user").value.trim(),
+      password: $("#sd-pass").value,
+    });
+    $("#sd-pass").value = "";        // ne pas laisser traîner le mot de passe dans le DOM
+    $("#sd-conn-state").textContent = `connecté · ${r.user}`;
+    state.sd.selected.clear();
+    sdShow("browser");
+    sdNavigate("");
+  } catch (e) { msg.textContent = "✗ " + e.message; }
+}
+
+async function sdDisconnect() {
+  try { await apiSend("POST", "/api/sharedocs/deconnexion"); } catch (_) {}
+  state.sd = { cwd: "", entries: [], selected: new Set() };
+  $("#sd-conn-state").textContent = "non connecté";
+  $("#sd-pass").value = "";
+  sdShow("login");
+}
+
+async function sdNavigate(path) {
+  try {
+    const entries = await apiGet("/api/sharedocs/liste?chemin=" + encodeURIComponent(path));
+    state.sd.cwd = path;
+    state.sd.entries = entries;
+    sdRenderBreadcrumb();
+    sdRenderList();
+  } catch (e) { toast("ShareDocs : " + e.message, "error"); }
+}
+
+function sdRenderBreadcrumb() {
+  const bc = $("#sd-breadcrumb");
+  bc.innerHTML = "";
+  const mk = (label, path) => {
+    const a = document.createElement("a");
+    a.textContent = label;
+    a.onclick = () => sdNavigate(path);
+    return a;
+  };
+  bc.appendChild(mk("racine", ""));
+  let acc = "";
+  for (const seg of state.sd.cwd.split("/").filter(Boolean)) {
+    acc = acc ? acc + "/" + seg : seg;
+    const sep = document.createElement("span");
+    sep.className = "sep"; sep.textContent = "›";
+    bc.appendChild(sep);
+    bc.appendChild(mk(seg, acc));
+  }
+}
+
+function sdRenderList() {
+  const box = $("#sd-list");
+  box.innerHTML = "";
+  if (!state.sd.entries.length) {
+    box.innerHTML = '<div class="sd-empty">Dossier vide.</div>';
+    sdUpdateSel();
+    return;
+  }
+  for (const e of state.sd.entries) {
+    const row = document.createElement("div");
+    const importable = !e.is_dir && SD_IMG.test(e.name);
+    row.className = "sd-item" + (e.is_dir ? " dir" : "")
+      + (!e.is_dir && !importable ? " disabled" : "")
+      + (state.sd.selected.has(e.path) ? " selected" : "");
+    if (e.is_dir) {
+      row.innerHTML = `<span class="sd-ico">📁</span><span class="sd-name">${escapeHtml(e.name)}</span>`;
+      row.onclick = () => sdNavigate(e.path);
+    } else {
+      const checked = state.sd.selected.has(e.path) ? "checked" : "";
+      row.innerHTML =
+        (importable ? `<input type="checkbox" ${checked}>` : `<span class="sd-ico"></span>`) +
+        `<span class="sd-ico">${importable ? "🖼" : "📄"}</span>` +
+        `<span class="sd-name">${escapeHtml(e.name)}</span>` +
+        `<span class="sd-size">${sdFmtSize(e.size)}</span>`;
+      if (importable) row.onclick = (ev) => {
+        const cb = row.querySelector("input");
+        if (ev.target !== cb) cb.checked = !cb.checked;
+        sdToggleSel(e.path, cb.checked, row);
+      };
+    }
+    box.appendChild(row);
+  }
+  sdUpdateSel();
+}
+
+function sdToggleSel(path, on, row) {
+  if (on) state.sd.selected.add(path); else state.sd.selected.delete(path);
+  row.classList.toggle("selected", on);
+  sdUpdateSel();
+}
+
+function sdUpdateSel() {
+  const n = state.sd.selected.size;
+  $("#sd-selcount").textContent = `${n} sélectionné${n > 1 ? "s" : ""}`;
+  $("#sd-import").disabled = n === 0;
+}
+
+function sdOpenImport() {
+  const n = state.sd.selected.size;
+  if (!n) return;
+  $("#sd-import-title").textContent = `Importer ${n} fichier${n > 1 ? "s" : ""}`;
+  const sel = $("#sd-album");
+  sel.innerHTML = '<option value="__new__">➕ Nouvel album…</option>';
+  for (const a of state.albums) {
+    const o = document.createElement("option");
+    o.value = String(a.id);
+    o.textContent = `${a.serie ? a.serie + " · " : ""}${a.titre}`;
+    sel.appendChild(o);
+  }
+  sel.value = state.albumId ? String(state.albumId) : "__new__";
+  $("#sd-newalbum").value = state.sd.cwd.split("/").filter(Boolean).pop() || "ShareDocs";
+  sdImportToggleNew();
+  $("#sd-import-msg").textContent = "";
+  $("#sd-browser").hidden = true;
+  $("#sd-import-form").hidden = false;
+}
+
+function sdImportToggleNew() {
+  $("#sd-newalbum-wrap").hidden = $("#sd-album").value !== "__new__";
+}
+
+function sdCancelImport() {
+  $("#sd-import-form").hidden = true;
+  $("#sd-browser").hidden = false;
+}
+
+async function sdDoImport() {
+  const chemins = [...state.sd.selected];
+  if (!chemins.length) return;
+  const body = { chemins, segmenter: $("#sd-segmenter").checked };
+  if ($("#sd-album").value === "__new__") {
+    const titre = $("#sd-newalbum").value.trim();
+    if (!titre) { $("#sd-import-msg").textContent = "Nom d'album requis."; return; }
+    body.nouvel_album = titre;
+  } else {
+    body.album_id = Number($("#sd-album").value);
+  }
+  $("#sd-import-msg").textContent = "Import en cours…";
+  $("#sd-import-go").disabled = true;
+  try {
+    const res = await apiSend("POST", "/api/sharedocs/importer", body);
+    const ok = res.importes.length, ko = res.erreurs.length;
+    toast(`Import : ${ok} planche${ok > 1 ? "s" : ""}` +
+          (ko ? `, ${ko} échec${ko > 1 ? "s" : ""}` : ""), ok ? (ko ? "" : "success") : "error");
+    if (ok) {
+      state.sd.selected.clear();
+      state.albumId = res.album_id;
+      await loadAlbums();          // recharge albums → sélectionne la cible + ses planches
+      sdClose();
+    } else {
+      // rien d'importé : rester sur le formulaire (l'album vide a été nettoyé côté serveur)
+      $("#sd-import-msg").textContent = `Aucun import (${ko} échec${ko > 1 ? "s" : ""}).`;
+    }
+  } catch (e) {
+    $("#sd-import-msg").textContent = "✗ " + e.message;
+  } finally {
+    $("#sd-import-go").disabled = false;
+  }
+}
+
+/* Dépose une sauvegarde (.sqlite zippé) dans le dossier ShareDocs courant. */
+function sdDeposerSauvegarde() {
+  const btn = $("#sd-deposer");
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = "Dépôt…";
+  apiSend("POST", "/api/sharedocs/deposer-sauvegarde", { dossier: state.sd.cwd })
+    .then((res) => toast(`Sauvegarde déposée : ${res.depose}`, "success"))
+    .catch((e) => toast("Dépôt : " + e.message, "error"))
+    .finally(() => { btn.disabled = false; btn.textContent = old; });
+}
+
+function setupSharedocs() {
+  $("#btn-sharedocs").onclick = sdOpen;
+  $("#sd-close").onclick = sdClose;
+  $("#sd-connect").onclick = sdConnect;
+  $("#sd-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") sdConnect(); });
+  $("#sd-disconnect").onclick = sdDisconnect;
+  $("#sd-deposer").onclick = sdDeposerSauvegarde;
+  $("#sd-import").onclick = sdOpenImport;
+  $("#sd-album").onchange = sdImportToggleNew;
+  $("#sd-import-go").onclick = sdDoImport;
+  $("#sd-import-cancel").onclick = sdCancelImport;
+  $("#sharedocs").addEventListener("mousedown", (e) => {
+    if (e.target.id === "sharedocs") sdClose();   // clic sur le fond = fermer
+  });
+}
+
+/* Télécharge une sauvegarde de la base (zip horodaté). */
+function downloadBackup() {
+  const a = document.createElement("a");
+  a.href = API + "/api/sauvegarde";
+  a.download = "";
+  document.body.appendChild(a); a.click(); a.remove();
+  toast("Préparation de la sauvegarde…");
+}
+
+/* ===================================================================
    Câblage des contrôles & raccourcis
    =================================================================== */
 function setupControls() {
@@ -1217,6 +1523,7 @@ function setupControls() {
   $("#btn-segmenter").onclick = segmenter;
   $("#btn-bulles").onclick = detecterBulles;
   $("#btn-ocr").onclick = lancerOCR;
+  $("#btn-backup").onclick = downloadBackup;
   $("#zoom-in").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.2); };
   $("#zoom-out").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
   $("#zoom-fit").onclick = fitView;
@@ -1225,6 +1532,10 @@ function setupControls() {
   // Panneau : type & coordonnées
   $("#region-type").onchange = (e) => {
     if (state.selectedId != null) patchRegion(state.selectedId, { type: e.target.value });
+  };
+  $("#region-parent").onchange = (e) => {
+    if (state.selectedId == null) return;
+    patchRegion(state.selectedId, { parent_id: e.target.value === "" ? null : Number(e.target.value) });
   };
   ["x", "y", "w", "h"].forEach((k) => {
     $("#coord-" + k).onchange = (e) => {
@@ -1252,6 +1563,7 @@ function setupControls() {
   setupImport();
   setupExport();
   setupTranscription();
+  setupSharedocs();
 }
 
 function setupKeyboard() {
@@ -1278,7 +1590,7 @@ function setupKeyboard() {
       const dr = overlay.querySelector("#draw-rect");
       if (dr) dr.remove();
       drag = null;
-      state.selectedId = null; renderOverlay(); renderPanel();
+      deselect();   // flushSave inclus : ne perd pas une annotation en attente
     }
   });
 }
