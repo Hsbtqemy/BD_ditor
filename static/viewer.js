@@ -1598,6 +1598,22 @@ function setupKeyboard() {
 /* ===================================================================
    Démarrage
    =================================================================== */
+/* Ouvre la visionneuse pile sur une région (lien venant de la recherche) :
+   ?album=&planche=&region=. */
+async function applyDeepLink() {
+  const p = new URLSearchParams(location.search);
+  const album = p.get("album"), planche = p.get("planche"), region = p.get("region");
+  if (!planche && !region) return;
+  try {
+    if (album && Number(album) !== state.albumId) {
+      $("#album-select").value = album;
+      await selectAlbum(Number(album));
+    }
+    if (planche) await selectPlanche(Number(planche));
+    if (region) { setMode("navigation"); selectAndCenter(Number(region)); }
+  } catch (e) { toast("Lien : " + e.message, "error"); }
+}
+
 async function init() {
   setupControls();
   setupKeyboard();
@@ -1606,6 +1622,7 @@ async function init() {
   try {
     await refreshTagVocab();
     await loadAlbums();
+    await applyDeepLink();
   } catch (e) {
     toast("Erreur de chargement : " + e.message, "error");
   }

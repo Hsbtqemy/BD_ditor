@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BD Annotator — Bibliothèque</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="corpus-app">
+
+  <header id="header">
+    <div class="brand">BD&nbsp;Annotator <span class="muted">· Bibliothèque</span></div>
+    <div class="header-actions">
+      <a href="/" class="ghost" title="Visionneuse / annotation">← Visionneuse</a>
+      <a href="/recherche" class="ghost" title="Rechercher dans le corpus">🔍 Recherche</a>
+    </div>
+  </header>
+
+  <main id="corpus-body">
+
+    <!-- Barre d'actions + traitement par lot -->
+    <div class="corpus-toolbar">
+      <button id="btn-new" class="primary">+ Nouvel album</button>
+      <div class="batch">
+        <span class="muted small">Lot sur la sélection :</span>
+        <label class="pass"><input type="checkbox" id="pass-segmenter"> Segmenter</label>
+        <label class="pass"><input type="checkbox" id="pass-bulles"> Bulles</label>
+        <label class="pass"><input type="checkbox" id="pass-ocr"> OCR</label>
+        <button id="btn-run" class="primary" disabled>▶ Lancer</button>
+        <span id="sel-info" class="muted small"></span>
+      </div>
+    </div>
+
+    <!-- Jobs en cours / récents -->
+    <div id="jobs"></div>
+
+    <!-- Table des albums -->
+    <table class="corpus-table">
+      <thead><tr>
+        <th class="c-chk"></th><th>Titre</th><th>Série</th><th>Auteur</th>
+        <th class="c-num">Année</th><th class="c-num">Planches</th>
+        <th class="c-num">Régions</th><th class="c-num">Transcrites</th><th></th>
+      </tr></thead>
+      <tbody id="albums-body"></tbody>
+    </table>
+
+    <!-- Détail de l'album ouvert (planches + métadonnées) -->
+    <section id="album-detail" hidden></section>
+  </main>
+
+  <!-- Modale création / édition d'album -->
+  <div id="album-modal" hidden>
+    <div class="modal-box">
+      <h3 id="modal-title">Nouvel album</h3>
+      <label>Titre <input id="m-titre" autocomplete="off"></label>
+      <div class="modal-grid">
+        <label>Série <input id="m-serie" autocomplete="off"></label>
+        <label>Auteur <input id="m-auteur" autocomplete="off"></label>
+        <label>Année <input id="m-annee" type="number" autocomplete="off"></label>
+        <label>Éditeur <input id="m-editeur" autocomplete="off"></label>
+      </div>
+      <label>Description <textarea id="m-desc" rows="3"></textarea></label>
+      <div class="modal-actions">
+        <button id="m-save" class="primary">Enregistrer</button>
+        <button id="m-cancel" class="ghost small">Annuler</button>
+        <span id="m-msg" class="muted small"></span>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/static/corpus.js"></script>
+</body>
+</html>

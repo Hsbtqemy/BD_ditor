@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BD Annotator — Recherche</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="search-app">
+
+  <!-- ───────────────── Header ───────────────── -->
+  <header id="header">
+    <div class="brand">BD&nbsp;Annotator <span class="muted">· Recherche</span></div>
+    <div id="corpus-stats" class="corpus-stats"></div>
+    <div class="header-actions">
+      <a href="/corpus" class="ghost" title="Gérer le corpus">📚 Bibliothèque</a>
+      <a href="/" class="ghost" title="Retour à la visionneuse / annotation">← Visionneuse</a>
+    </div>
+  </header>
+
+  <!-- ───────────────── Corps ───────────────── -->
+  <main id="search-body">
+
+    <div class="search-bar">
+      <input type="search" id="q" autocomplete="off"
+             placeholder="Rechercher dans les dialogues, notes, tags…">
+      <select id="f-album"><option value="">Tous les albums</option></select>
+      <select id="f-type">
+        <option value="">Tous les types</option>
+        <option value="bulle">bulle</option>
+        <option value="cartouche">cartouche</option>
+        <option value="texte">texte</option>
+        <option value="case">case</option>
+        <option value="personnage">personnage</option>
+      </select>
+    </div>
+
+    <div id="active-tags" class="active-tags"></div>
+    <details id="tag-cloud-wrap" open>
+      <summary class="muted small">Nuage de tags (cliquer pour filtrer)</summary>
+      <div id="tag-cloud" class="tag-cloud"></div>
+    </details>
+
+    <div id="result-count" class="result-count muted"></div>
+    <div id="results" class="results"></div>
+  </main>
+</div>
+<script src="/static/recherche.js"></script>
+</body>
+</html>
