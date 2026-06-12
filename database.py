@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 # --------------------------------------------------------------------------- #
@@ -28,6 +28,7 @@ def get_connection() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")   # job de fond + requêtes : écritures concurrentes
     return conn
 
 
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS albums (
     annee        INTEGER,
     editeur      TEXT,
     serie        TEXT,
+    description  TEXT,
     date_import  TEXT DEFAULT (datetime('now'))
 );
 
@@ -127,11 +129,11 @@ def init_db() -> None:
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    """Point d'extension pour les futures migrations (PRAGMA user_version)."""
-    current = conn.execute("PRAGMA user_version").fetchone()[0]
-    # current < N : appliquer les étapes manquantes ici.
-    if current < SCHEMA_VERSION:
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    """Migrations idempotentes (sûres sur base neuve comme existante)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(albums)")}
+    if "description" not in cols:                       # v1 → v2
+        conn.execute("ALTER TABLE albums ADD COLUMN description TEXT")
+    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
 # --------------------------------------------------------------------------- #

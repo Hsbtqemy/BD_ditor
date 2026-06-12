@@ -122,6 +122,23 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source: Path,
     }
 
 
+def remove_album_files(album_id: int) -> None:
+    """Supprime les dossiers corpus/derivatives d'un album (best-effort)."""
+    import shutil
+    shutil.rmtree(CORPUS_DIR / f"album_{album_id}", ignore_errors=True)
+    shutil.rmtree(DERIVATIVES_DIR / f"album_{album_id}", ignore_errors=True)
+
+
+def remove_planche_files(chemin_tiff: str | None, chemin_web: str | None) -> None:
+    """Supprime le master et le dérivé web d'une planche (best-effort)."""
+    for rel in (chemin_tiff, chemin_web):
+        if rel:
+            try:
+                (DATA_DIR / rel).unlink(missing_ok=True)
+            except OSError:  # pragma: no cover - garde défensive (permissions…)
+                pass
+
+
 def store_upload(album_id: int, filename: str, data: bytes,
                  numero: int | None = None) -> Path:
     """Écrit un fichier importé dans corpus/album_<id>/ et retourne son chemin."""

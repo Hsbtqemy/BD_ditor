@@ -18,12 +18,13 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from config import (DERIVATIVES_DIR, STATIC_DIR, STATUTS,
-                    TEMPLATES_DIR, TYPES_REGION)
+from config import DERIVATIVES_DIR, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_REGION
 from database import get_connection, init_db, reindex_region, unindex_region
 from pipeline.backup import make_backup
+from pipeline import jobs
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
-from pipeline.ingest import ingest_image, store_upload
+from pipeline.ingest import (ingest_image, remove_album_files,
+                             remove_planche_files, store_upload)
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
 from pipeline.ordering import move_region, reorder_planche
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
@@ -82,6 +83,16 @@ class AlbumIn(BaseModel):
     annee: Optional[int] = None
     editeur: Optional[str] = None
     serie: Optional[str] = None
+    description: Optional[str] = None
+
+
+class AlbumUpdate(BaseModel):
+    titre: Optional[str] = None
+    auteur: Optional[str] = None
+    annee: Optional[int] = None
+    editeur: Optional[str] = None
+    serie: Optional[str] = None
+    description: Optional[str] = None
 
 
 class RegionIn(BaseModel):
@@ -131,6 +142,12 @@ class SharedocsImportIn(BaseModel):
 
 class DeposerIn(BaseModel):
     dossier: str = ""   # dossier ShareDocs cible (vide = racine)
+
+
+class JobIn(BaseModel):
+    passes: list[str] = Field(default_factory=list)        # segmenter / bulles / ocr
+    album_ids: list[int] = Field(default_factory=list)
+    planche_ids: list[int] = Field(default_factory=list)
 
 
 class AnnotationIn(BaseModel):
@@ -203,7 +220,12 @@ def list_albums(conn: sqlite3.Connection = Depends(db)):
     return _rows(conn.execute(
         """SELECT a.*,
                   (SELECT COUNT(*) FROM planches p WHERE p.album_id = a.id)
-                      AS nb_planches
+                      AS nb_planches,
+                  (SELECT COUNT(*) FROM regions r JOIN planches p ON p.id = r.planche_id
+                     WHERE p.album_id = a.id) AS nb_regions,
+                  (SELECT COUNT(*) FROM regions r JOIN planches p ON p.id = r.planche_id
+                     WHERE p.album_id = a.id
+                       AND TRIM(COALESCE(r.ocr_texte, '')) <> '') AS nb_transcrites
            FROM albums a
            ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre"""
     ))
@@ -212,12 +234,57 @@ def list_albums(conn: sqlite3.Connection = Depends(db)):
 @app.post("/api/albums", status_code=201)
 def create_album(album: AlbumIn, conn: sqlite3.Connection = Depends(db)):
     cur = conn.execute(
-        "INSERT INTO albums (titre, auteur, annee, editeur, serie) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (album.titre, album.auteur, album.annee, album.editeur, album.serie),
+        "INSERT INTO albums (titre, auteur, annee, editeur, serie, description) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (album.titre, album.auteur, album.annee, album.editeur, album.serie,
+         album.description),
     )
     conn.commit()
     return _row(conn.execute("SELECT * FROM albums WHERE id = ?", (cur.lastrowid,)))
+
+
+@app.put("/api/albums/{album_id}")
+def update_album(album_id: int, patch: AlbumUpdate,
+                 conn: sqlite3.Connection = Depends(db)):
+    if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
+        raise HTTPException(404, f"Album {album_id} introuvable")
+    fields = patch.model_dump(exclude_unset=True)
+    if fields:
+        cols = ", ".join(f"{k} = ?" for k in fields)
+        conn.execute(f"UPDATE albums SET {cols} WHERE id = ?",
+                     (*fields.values(), album_id))
+        conn.commit()
+    return _row(conn.execute("SELECT * FROM albums WHERE id = ?", (album_id,)))
+
+
+@app.delete("/api/albums/{album_id}", status_code=204)
+def delete_album(album_id: int, conn: sqlite3.Connection = Depends(db)):
+    if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
+        raise HTTPException(404, f"Album {album_id} introuvable")
+    # Désindexe les régions du FTS (le CASCADE SQL ne touche pas la table FTS).
+    for r in conn.execute(
+        "SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
+        "WHERE p.album_id = ?", (album_id,)).fetchall():
+        unindex_region(conn, r["id"])
+    conn.execute("DELETE FROM albums WHERE id = ?", (album_id,))   # CASCADE planches/regions
+    conn.commit()
+    remove_album_files(album_id)
+    return Response(status_code=204)
+
+
+@app.delete("/api/planches/{planche_id}", status_code=204)
+def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db)):
+    p = _row(conn.execute(
+        "SELECT id, chemin_tiff, chemin_web FROM planches WHERE id = ?", (planche_id,)))
+    if p is None:
+        raise HTTPException(404, f"Planche {planche_id} introuvable")
+    for r in conn.execute(
+        "SELECT id FROM regions WHERE planche_id = ?", (planche_id,)).fetchall():
+        unindex_region(conn, r["id"])
+    conn.execute("DELETE FROM planches WHERE id = ?", (planche_id,))   # CASCADE regions
+    conn.commit()
+    remove_planche_files(p["chemin_tiff"], p["chemin_web"])
+    return Response(status_code=204)
 
 
 @app.get("/api/albums/{album_id}/planches")
@@ -371,9 +438,14 @@ def create_region(planche_id: int, region: RegionIn,
 
 
 @app.get("/api/regions/{region_id}/crop")
-def region_crop(region_id: int, conn: sqlite3.Connection = Depends(db)):
-    """PNG net de la région recadré dans le master (mode Transcription)."""
-    png = region_crop_png(conn, region_id)
+def region_crop(region_id: int, taille: int = 1600,
+                conn: sqlite3.Connection = Depends(db)):
+    """PNG net de la région recadré dans le master.
+
+    `taille` borne la largeur (vignettes de recherche : ~240 ; transcription :
+    1600 par défaut). Bornée à [40, 2000].
+    """
+    png = region_crop_png(conn, region_id, max_dim=max(40, min(taille, 2000)))
     if png is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
     return Response(png, media_type="image/png")
@@ -705,6 +777,72 @@ def recherche(q: str = "", album: Optional[int] = None,
     return {"q": q, "count": len(results), "results": results}
 
 
+@app.get("/api/corpus")
+def corpus_stats(conn: sqlite3.Connection = Depends(db)):
+    """Compteurs globaux du corpus (pour l'aperçu de la page de recherche)."""
+    row = conn.execute(
+        """SELECT
+             (SELECT COUNT(*) FROM albums)   AS albums,
+             (SELECT COUNT(*) FROM planches) AS planches,
+             (SELECT COUNT(*) FROM regions)  AS regions,
+             (SELECT COUNT(*) FROM annotations) AS annotees,
+             (SELECT COUNT(*) FROM regions
+                WHERE TRIM(COALESCE(ocr_texte, '')) <> '') AS transcrites,
+             (SELECT COUNT(*) FROM tags) AS tags"""
+    ).fetchone()
+    return dict(row)
+
+
+# =========================================================================== #
+# Jobs : traitement par lot en arrière-plan (segmentation / bulles / OCR)
+# =========================================================================== #
+@app.post("/api/jobs", status_code=201)
+def creer_job(payload: JobIn, conn: sqlite3.Connection = Depends(db)):
+    """Lance un lot sur l'ensemble des planches d'albums et/ou planches données."""
+    passes = [p for p in jobs.PASSES if p in payload.passes]   # ordre canonique
+    if not passes:
+        raise HTTPException(422, "Aucune passe valide (segmenter / bulles / ocr).")
+    avail = {"segmenter": kumiko_available(), "bulles": bulles_available(),
+             "ocr": ocr_available()}
+    manquants = [p for p in passes if not avail[p]]
+    if manquants:
+        raise HTTPException(503, f"Moteur(s) indisponible(s) : {', '.join(manquants)}.")
+
+    pids = set(payload.planche_ids)
+    for aid in payload.album_ids:
+        pids.update(r["id"] for r in conn.execute(
+            "SELECT id FROM planches WHERE album_id = ?", (aid,)).fetchall())
+    valid = []
+    if pids:
+        ph = ",".join("?" * len(pids))
+        valid = [r["id"] for r in conn.execute(
+            f"SELECT id FROM planches WHERE id IN ({ph}) ORDER BY album_id, numero",
+            tuple(pids)).fetchall()]
+    if not valid:
+        raise HTTPException(422, "Aucune planche à traiter.")
+    return jobs.start_job(passes, valid)
+
+
+@app.get("/api/jobs")
+def lister_jobs():
+    return jobs.all_jobs()
+
+
+@app.get("/api/jobs/{job_id}")
+def etat_job(job_id: int):
+    snap = jobs.snapshot(job_id)
+    if snap is None:
+        raise HTTPException(404, f"Job {job_id} introuvable")
+    return snap
+
+
+@app.post("/api/jobs/{job_id}/annuler")
+def annuler_job(job_id: int):
+    if not jobs.cancel_job(job_id):
+        raise HTTPException(404, f"Job {job_id} introuvable")
+    return jobs.snapshot(job_id)
+
+
 # =========================================================================== #
 # Export
 # =========================================================================== #
@@ -903,3 +1041,13 @@ app.mount("/derivatives", StaticFiles(directory=str(DERIVATIVES_DIR)),
 @app.get("/", response_class=HTMLResponse)
 def index():
     return FileResponse(str(TEMPLATES_DIR / "index.html"))
+
+
+@app.get("/recherche", response_class=HTMLResponse)
+def recherche_page():
+    return FileResponse(str(TEMPLATES_DIR / "recherche.html"))
+
+
+@app.get("/corpus", response_class=HTMLResponse)
+def corpus_page():
+    return FileResponse(str(TEMPLATES_DIR / "corpus.html"))

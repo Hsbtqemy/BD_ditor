@@ -188,6 +188,17 @@ def test_crop_route_404(client):
     assert client.get("/api/regions/999/crop").status_code == 404
 
 
+def test_crop_route_taille(client, region):
+    """`taille` redimensionne la vignette ; borné en bas à 40."""
+    import io
+    from PIL import Image
+    r = client.get(f"/api/regions/{region['id']}/crop", params={"taille": 40})
+    assert r.status_code == 200
+    assert Image.open(io.BytesIO(r.content)).width == 40
+    r2 = client.get(f"/api/regions/{region['id']}/crop", params={"taille": 5})
+    assert Image.open(io.BytesIO(r2.content)).width == 40   # clamp bas
+
+
 def test_crop_cache_plusieurs_planches(client, album, png_bytes):
     """Couvre cache: miss (ouvre) -> hit (même planche) -> miss (ferme+ouvre autre)."""
     p1 = client.post(f"/api/albums/{album['id']}/import",

@@ -235,6 +235,24 @@ def test_sante_expose_kumiko(client):
     assert r.status_code == 200 and isinstance(r.json()["kumiko"], bool)
 
 
+def test_corpus_stats(client, region):
+    c = client.get("/api/corpus").json()
+    assert set(c) >= {"albums", "planches", "regions", "annotees", "transcrites", "tags"}
+    assert c["albums"] >= 1 and c["planches"] >= 1 and c["regions"] >= 1
+
+
+def test_corpus_transcrites_compte_le_texte(client, planche):
+    client.post(f"/api/planches/{planche['id']}/regions",
+                json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5,
+                      "ocr_texte": "Bonjour"})
+    assert client.get("/api/corpus").json()["transcrites"] >= 1
+
+
+def test_recherche_page_servie(client):
+    r = client.get("/recherche")
+    assert r.status_code == 200 and "Recherche" in r.text
+
+
 def test_create_tag_label_vide_422(client):
     assert client.post("/api/tags", json={"label": "   "}).status_code == 422
 
