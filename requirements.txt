@@ -2,6 +2,7 @@ fastapi>=0.110
 uvicorn[standard]>=0.27
 pillow>=10.0
 python-multipart>=0.0.9
+httpx>=0.27          # client WebDAV ShareDocs (pipeline/sharedocs.py)
 # Segmentation automatique — Kumiko, cloné séparément dans lib/kumiko.
 # Il n'expose pas de requirements.txt ; installer ses dépendances à la main :
 #   git clone https://github.com/njean42/kumiko.git lib/kumiko

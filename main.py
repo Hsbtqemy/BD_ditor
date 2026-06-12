@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 import sqlite3
 import xml.etree.ElementTree as ET
 from contextlib import asynccontextmanager
@@ -20,11 +21,17 @@ from pydantic import BaseModel, Field
 from config import (DERIVATIVES_DIR, STATIC_DIR, STATUTS,
                     TEMPLATES_DIR, TYPES_REGION)
 from database import get_connection, init_db, reindex_region, unindex_region
+from pipeline.backup import make_backup
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
 from pipeline.ingest import ingest_image, store_upload
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
 from pipeline.ordering import move_region, reorder_planche
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
+from pipeline import sharedocs
+from pipeline.sharedocs import ShareDocsError
+
+# Extensions image acceptées à l'import (Pillow ; PDF non géré pour l'instant).
+IMG_EXTS = (".tif", ".tiff", ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -107,6 +114,23 @@ class StatutIn(BaseModel):
 
 class MoveIn(BaseModel):
     sens: str   # "haut" | "bas"
+
+
+class SharedocsConnIn(BaseModel):
+    url: str
+    user: str
+    password: Optional[str] = None   # vide => repli sur BD_SHAREDOCS_PASS
+
+
+class SharedocsImportIn(BaseModel):
+    chemins: list[str] = Field(default_factory=list)
+    album_id: Optional[int] = None
+    nouvel_album: Optional[str] = None
+    segmenter: bool = False
+
+
+class DeposerIn(BaseModel):
+    dossier: str = ""   # dossier ShareDocs cible (vide = racine)
 
 
 class AnnotationIn(BaseModel):
@@ -414,6 +438,122 @@ def deplacer_region(region_id: int, payload: MoveIn,
         raise HTTPException(404 if "introuvable" in str(exc) else 422, str(exc))
     conn.commit()
     return res
+
+
+# =========================================================================== #
+# ShareDocs (WebDAV Huma-Num) — explorateur & import
+# =========================================================================== #
+@app.get("/api/sharedocs/etat")
+def sharedocs_etat():
+    """État de connexion (sans mot de passe) + pré-remplissage depuis l'env."""
+    return sharedocs.status()
+
+
+@app.post("/api/sharedocs/connexion")
+def sharedocs_connexion(payload: SharedocsConnIn):
+    pwd = payload.password or os.environ.get("BD_SHAREDOCS_PASS", "")
+    try:
+        return sharedocs.configure(payload.url, payload.user, pwd)
+    except ShareDocsError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/sharedocs/deconnexion")
+def sharedocs_deconnexion():
+    sharedocs.disconnect()
+    return {"connecte": False}
+
+
+@app.get("/api/sharedocs/liste")
+def sharedocs_liste(chemin: str = ""):
+    try:
+        return sharedocs.list_dir(chemin)
+    except ShareDocsError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/sharedocs/importer")
+def sharedocs_importer(payload: SharedocsImportIn,
+                       conn: sqlite3.Connection = Depends(db)):
+    """Télécharge des fichiers ShareDocs et les ingère comme planches.
+
+    Album cible : `album_id` (existant) OU `nouvel_album` (créé). Les fichiers
+    non-image sont ignorés (collectés dans `erreurs`) ; un échec sur un fichier
+    n'interrompt pas le lot.
+    """
+    if not payload.chemins:
+        raise HTTPException(422, "Aucun fichier sélectionné.")
+    created_album = False
+    if payload.album_id is not None:
+        if conn.execute("SELECT 1 FROM albums WHERE id = ?",
+                        (payload.album_id,)).fetchone() is None:
+            raise HTTPException(404, f"Album {payload.album_id} introuvable")
+        album_id = payload.album_id
+    elif payload.nouvel_album and payload.nouvel_album.strip():
+        cur = conn.execute("INSERT INTO albums (titre) VALUES (?)",
+                           (payload.nouvel_album.strip(),))
+        album_id = cur.lastrowid
+        created_album = True
+    else:
+        raise HTTPException(422, "Album cible manquant (album_id ou nouvel_album).")
+
+    importes, erreurs = [], []
+    for chemin in payload.chemins:
+        nom = chemin.rsplit("/", 1)[-1]
+        if os.path.splitext(nom)[1].lower() not in IMG_EXTS:
+            erreurs.append({"chemin": chemin, "erreur": "type non géré (image attendue)"})
+            continue
+        try:
+            data = sharedocs.download(chemin)
+            if not data:
+                raise ShareDocsError("fichier vide")
+            numero = conn.execute(
+                "SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM planches "
+                "WHERE album_id = ?", (album_id,)).fetchone()["n"]
+            master = store_upload(album_id, nom, data, numero)
+            planche = ingest_image(conn, album_id, master, numero=numero)
+            planche["url_web"] = "/" + planche["chemin_web"]
+            importes.append(planche)
+            # Segmentation best-effort : un échec ici ne doit JAMAIS invalider
+            # un import déjà réussi (la planche est déjà ingérée et comptée).
+            if payload.segmenter and kumiko_available():
+                try:
+                    segment_planche(conn, planche["id"])
+                    planche["statut"] = "segmentee"
+                except Exception:
+                    pass
+        except Exception as exc:   # un fichier en échec ne stoppe pas le lot
+            erreurs.append({"chemin": chemin, "erreur": str(exc)})
+    if created_album and not importes:
+        # rien d'importé : ne pas laisser un album vide orphelin
+        conn.execute("DELETE FROM albums WHERE id = ?", (album_id,))
+    conn.commit()
+    return {"album_id": album_id, "importes": importes, "erreurs": erreurs}
+
+
+# =========================================================================== #
+# Sauvegarde / archivage de la base
+# =========================================================================== #
+@app.get("/api/sauvegarde")
+def telecharger_sauvegarde():
+    """Télécharge un snapshot cohérent de la base (zip horodaté)."""
+    name, data = make_backup()
+    return Response(
+        data, media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.post("/api/sharedocs/deposer-sauvegarde")
+def deposer_sauvegarde(payload: DeposerIn):
+    """Dépose une sauvegarde de la base dans un dossier ShareDocs (PUT WebDAV)."""
+    name, data = make_backup()
+    folder = payload.dossier.strip("/")
+    chemin = f"{folder}/{name}" if folder else name
+    try:
+        sharedocs.upload(chemin, data)
+    except ShareDocsError as exc:
+        raise HTTPException(400, str(exc))
+    return {"depose": chemin, "taille": len(data)}
 
 
 @app.patch("/api/planches/{planche_id}/statut")
