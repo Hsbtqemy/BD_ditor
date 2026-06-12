@@ -101,18 +101,32 @@ def detect_bulles(conn: sqlite3.Connection, planche_id: int,
         "WHERE planche_id = ? AND type = 'case'", (planche_id,)).fetchall()]
 
     if replace:
+        # Re-détecter NE DOIT PAS détruire le travail humain : on ne supprime
+        # que les bulles 'auto' encore VIDES et NON annotées ; celles porteuses
+        # de texte OCR ou d'une annotation sont préservées.
         doomed = conn.execute(
             """WITH RECURSIVE doomed(id) AS (
                    SELECT id FROM regions
                    WHERE planche_id = ? AND type = 'bulle' AND source = 'auto'
+                     AND TRIM(COALESCE(ocr_texte, '')) = ''
+                     AND NOT EXISTS (SELECT 1 FROM annotations a
+                                     WHERE a.region_id = regions.id)
                    UNION ALL
                    SELECT r.id FROM regions r JOIN doomed d ON r.parent_id = d.id
                ) SELECT id FROM doomed""", (planche_id,)).fetchall()
-        for r in doomed:
-            unindex_region(conn, r["id"])
-        conn.execute(
-            "DELETE FROM regions WHERE planche_id = ? AND type = 'bulle' "
-            "AND source = 'auto'", (planche_id,))
+        doomed_ids = [r["id"] for r in doomed]
+        for rid in doomed_ids:
+            unindex_region(conn, rid)
+        if doomed_ids:
+            ph = ",".join("?" * len(doomed_ids))
+            conn.execute(f"DELETE FROM regions WHERE id IN ({ph})", tuple(doomed_ids))
+
+    # Bulles encore présentes (préservées) : on ignorera une nouvelle détection
+    # dont le centre tombe dans l'une d'elles (évite un doublon sur une bulle
+    # océrisée conservée).
+    existing = [dict(r) for r in conn.execute(
+        "SELECT x, y, w, h FROM regions WHERE planche_id = ? AND type = 'bulle'",
+        (planche_id,)).fetchall()]
 
     # Conversion master. L'`ordre` définitif (rang per-niveau, regroupé par case)
     # est recalculé par reorder_planche() ci-dessous ; ici un ordre provisoire.
@@ -120,9 +134,14 @@ def detect_bulles(conn: sqlite3.Connection, planche_id: int,
         (round(x * scale_x), round(y * scale_y), round(w * scale_x), round(h * scale_y))
         for x, y, w, h in boxes]
 
-    regions, sans_case = [], 0
+    regions, sans_case, ignores = [], 0, 0
     for ordre, (mx, my, mw, mh) in enumerate(converted, start=1):
-        parent = _parent_case(cases, mx + mw / 2, my + mh / 2)
+        cx, cy = mx + mw / 2, my + mh / 2
+        if any(b["x"] <= cx <= b["x"] + b["w"] and b["y"] <= cy <= b["y"] + b["h"]
+               for b in existing):
+            ignores += 1
+            continue                       # déjà couverte par une bulle préservée
+        parent = _parent_case(cases, cx, cy)
         if parent is None:
             sans_case += 1
         cur = conn.execute(
@@ -137,4 +156,5 @@ def detect_bulles(conn: sqlite3.Connection, planche_id: int,
     reorder_planche(conn, planche_id)
 
     return {"planche_id": planche_id, "nb_bulles": len(regions),
-            "sans_case": sans_case, "regions": regions}
+            "sans_case": sans_case, "preservees": len(existing),
+            "ignores": ignores, "regions": regions}

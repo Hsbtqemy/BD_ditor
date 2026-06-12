@@ -135,6 +135,21 @@ def test_annotation_upsert_remplace_tags(client, region):
     assert a["note"] == "n2" and {t["label"] for t in a["tags"]} == {"c"}
 
 
+def test_put_annotation_vide_supprime_la_ligne(client, region):
+    """Vider une annotation (note blanche + tags blancs) SUPPRIME la ligne : pas
+    de coquille vide (sinon fausse le compteur d'annotées, n'est pas cherchable,
+    et ferait conserver à tort la case à la re-segmentation)."""
+    rid = region["id"]
+    base = client.get("/api/corpus").json()["annotees"]
+    client.put(f"/api/regions/{rid}/annotation", json={"note": "temporaire", "tags": ["x"]})
+    assert client.get("/api/corpus").json()["annotees"] == base + 1
+    # note blanche + tags réduits à rien après normalisation -> suppression
+    r = client.put(f"/api/regions/{rid}/annotation", json={"note": "  ", "tags": ["  ", ""]})
+    assert r.status_code == 200 and not r.json()["note"] and r.json()["tags"] == []
+    assert client.get("/api/corpus").json()["annotees"] == base       # ligne supprimée
+    assert not client.get("/api/recherche", params={"q": "temporaire"}).json()["results"]
+
+
 def test_tags_frequence(client, region):
     client.put(f"/api/regions/{region['id']}/annotation",
                json={"note": "", "tags": ["nuit"]})

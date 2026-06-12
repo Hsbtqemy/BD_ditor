@@ -20,7 +20,7 @@ import tempfile
 from pathlib import Path
 
 from config import DATA_DIR, KUMIKO_DIR
-from database import unindex_region
+from database import reindex_region, unindex_region
 from pipeline.ordering import reorder_planche
 
 KUMIKO_ENTRY = KUMIKO_DIR / "kumiko"
@@ -89,13 +89,83 @@ def run_kumiko(image_path: Path) -> dict:
     return page
 
 
+def _reattach_orphans(conn: sqlite3.Connection, planche_id: int) -> int:
+    """Ré-rattache les régions orphelines (≠ case) à la plus petite case dont
+    elles ont le centre — préserve le rattachement OCR/annotations à travers une
+    re-segmentation. Renvoie le nombre de régions ré-rattachées."""
+    cases = [dict(r) for r in conn.execute(
+        "SELECT id, x, y, w, h FROM regions "
+        "WHERE planche_id = ? AND type = 'case'", (planche_id,)).fetchall()]
+    if not cases:
+        return 0
+    n = 0
+    orphans = conn.execute(
+        "SELECT id, x, y, w, h FROM regions "
+        "WHERE planche_id = ? AND parent_id IS NULL AND type != 'case'",
+        (planche_id,)).fetchall()
+    for o in orphans:
+        cx = (o["x"] or 0) + (o["w"] or 0) / 2
+        cy = (o["y"] or 0) + (o["h"] or 0) / 2
+        inside = [c for c in cases
+                  if c["x"] <= cx <= c["x"] + c["w"] and c["y"] <= cy <= c["y"] + c["h"]]
+        if inside:
+            parent = min(inside, key=lambda c: (c["w"] or 0) * (c["h"] or 0))["id"]
+            conn.execute("UPDATE regions SET parent_id = ? WHERE id = ?",
+                         (parent, o["id"]))
+            n += 1
+    return n
+
+
+def _best_overlap(old: dict, new_cases: list[dict]):
+    """Id de la nouvelle case dont l'intersection avec `old` est maximale, sinon None."""
+    best, best_area = None, 0
+    ox2, oy2 = old["x"] + old["w"], old["y"] + old["h"]
+    for c in new_cases:
+        ix = min(ox2, c["x"] + c["w"]) - max(old["x"], c["x"])
+        iy = min(oy2, c["y"] + c["h"]) - max(old["y"], c["y"])
+        area = max(0, ix) * max(0, iy)
+        if area > best_area:
+            best_area, best = area, c["id"]
+    return best
+
+
+def _transfer_case_annotations(conn: sqlite3.Connection, old_cases: list[dict],
+                               new_cases: list[dict]) -> list[int]:
+    """Transfère l'annotation d'une ancienne case vers la NOUVELLE case qui la
+    recouvre le mieux (préserve note + tags de panneau à travers une
+    re-segmentation). Re-pointe la ligne `annotations` et ré-indexe le FTS.
+    Renvoie la liste des id d'anciennes cases dont l'annotation a été transférée ;
+    celles qui restent annotées (non transférables) seront conservées par
+    l'appelant plutôt que supprimées (aucune perte de travail humain)."""
+    transferred = []
+    for old in old_cases:
+        if conn.execute("SELECT 1 FROM annotations WHERE region_id = ?",
+                        (old["id"],)).fetchone() is None:
+            continue
+        best = _best_overlap(old, new_cases)
+        if best is None:
+            continue
+        if conn.execute("SELECT 1 FROM annotations WHERE region_id = ?",
+                        (best,)).fetchone() is not None:
+            continue                       # nouvelle case déjà annotée (UNIQUE) → 1re gagne
+        conn.execute("UPDATE annotations SET region_id = ? WHERE region_id = ?",
+                     (best, old["id"]))
+        unindex_region(conn, old["id"])
+        reindex_region(conn, best)
+        transferred.append(old["id"])
+    return transferred
+
+
 def segment_planche(conn: sqlite3.Connection, planche_id: int,
                     use_master: bool = False, replace: bool = True) -> dict:
     """Segmente une planche avec Kumiko et insère les cases détectées.
 
-    Renvoie {'planche_id', 'nb_cases', 'regions'}. Les régions Kumiko
-    précédentes sont remplacées par défaut (`replace=True`) ; les régions
-    manuelles / corrigées sont préservées.
+    Renvoie {'planche_id', 'nb_cases', 'reattaches', 'annotations_transferees',
+    'annotations_preservees', 'regions'}. Les cases Kumiko précédentes sont
+    remplacées par défaut (`replace=True`) ; les régions manuelles / corrigées
+    sont préservées, les bulles océrisées ré-rattachées, et l'annotation d'une
+    ancienne case suit la nouvelle case qui la recouvre le mieux — ou, à défaut
+    de recouvrement, l'ancienne case annotée est conservée (aucune perte).
     """
     planche = conn.execute(
         "SELECT id, chemin_web, chemin_tiff, largeur_px, hauteur_px "
@@ -121,25 +191,21 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
     scale_x = master_w / in_w if in_w else 1.0
     scale_y = master_h / in_h if in_h else 1.0
 
+    # replace : re-segmenter NE DOIT PAS détruire le travail humain. On CAPTURE
+    # les anciennes cases Kumiko (géométrie) et on DÉTACHE leurs enfants (bulles
+    # océrisées, régions manuelles deviennent orphelins, préservés) — mais on ne
+    # supprime pas encore : on a besoin des nouvelles cases pour transférer les
+    # annotations de case et ré-rattacher les orphelins par géométrie.
+    old_cases, old_ids, ph = [], (), ""
     if replace:
-        # Inclut les descendants : le DELETE cascade sur les enfants des cases
-        # Kumiko, mais leurs lignes FTS doivent être retirées explicitement
-        # (sinon elles restent orphelines et polluent la recherche).
-        doomed = conn.execute(
-            """WITH RECURSIVE doomed(id) AS (
-                   SELECT id FROM regions
-                   WHERE planche_id = ? AND source = 'kumiko'
-                   UNION ALL
-                   SELECT r.id FROM regions r JOIN doomed d ON r.parent_id = d.id
-               ) SELECT id FROM doomed""",
-            (planche_id,),
-        ).fetchall()
-        for r in doomed:
-            unindex_region(conn, r["id"])
-        conn.execute(
-            "DELETE FROM regions WHERE planche_id = ? AND source = 'kumiko'",
-            (planche_id,),
-        )
+        old_cases = [dict(r) for r in conn.execute(
+            "SELECT id, x, y, w, h FROM regions "
+            "WHERE planche_id = ? AND source = 'kumiko'", (planche_id,)).fetchall()]
+        old_ids = tuple(c["id"] for c in old_cases)
+        if old_ids:
+            ph = ",".join("?" * len(old_ids))
+            conn.execute(f"UPDATE regions SET parent_id = NULL WHERE parent_id IN ({ph})",
+                         old_ids)
 
     regions = []
     for ordre, panel in enumerate(page["panels"], start=1):
@@ -161,8 +227,28 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
             "ordre": ordre, "source": "kumiko",
         })
 
-    # Ordre de lecture cohérent sur toute la planche (cases + éventuelles bulles
-    # et régions manuelles), `ordre` = rang per-niveau.
+    # replace : transfère les annotations de case (ancienne → nouvelle case qui la
+    # recouvre le mieux), CONSERVE les anciennes cases encore annotées (transfert
+    # impossible) plutôt que de les supprimer, et supprime le reste (FTS nettoyé).
+    transferred, preserved = [], []
+    if old_ids:
+        transferred = _transfer_case_annotations(conn, old_cases, regions)
+        # Après transfert, une ancienne case qui PORTE ENCORE une annotation n'a
+        # pas pu être transférée (aucune nouvelle case ne la recouvre, ou cible
+        # déjà annotée) : on la conserve — jamais de perte de travail humain.
+        preserved = [c["id"] for c in old_cases if conn.execute(
+            "SELECT 1 FROM annotations WHERE region_id = ?", (c["id"],)).fetchone()]
+        keep = set(preserved)
+        to_delete = [cid for cid in old_ids if cid not in keep]
+        for cid in to_delete:
+            unindex_region(conn, cid)
+        if to_delete:
+            dph = ",".join("?" * len(to_delete))
+            conn.execute(f"DELETE FROM regions WHERE id IN ({dph})", tuple(to_delete))
+
+    # Ré-rattache les régions préservées (bulles océrisées, manuelles) aux
+    # nouvelles cases par géométrie, puis recalcule l'ordre de lecture.
+    reattaches = _reattach_orphans(conn, planche_id)
     reorder_planche(conn, planche_id)
 
     conn.execute(
@@ -171,4 +257,6 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
         (planche_id,),
     )
 
-    return {"planche_id": planche_id, "nb_cases": len(regions), "regions": regions}
+    return {"planche_id": planche_id, "nb_cases": len(regions),
+            "reattaches": reattaches, "annotations_transferees": len(transferred),
+            "annotations_preservees": len(preserved), "regions": regions}

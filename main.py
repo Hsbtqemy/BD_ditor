@@ -656,6 +656,17 @@ def put_annotation(region_id: int, payload: AnnotationIn,
     if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
 
+    tag_rows = _ensure_tags(conn, payload.tags)
+    # Vider une annotation (note vide ET aucun tag) = SUPPRIMER la ligne, pas
+    # laisser une coquille vide : sinon elle fausserait le compteur d'annotées,
+    # ne serait pas cherchable, et ferait conserver à tort la case à la
+    # re-segmentation (préservation du travail humain).
+    if not (payload.note or "").strip() and not tag_rows:
+        conn.execute("DELETE FROM annotations WHERE region_id = ?", (region_id,))
+        reindex_region(conn, region_id)
+        conn.commit()
+        return _annotation_for_region(conn, region_id)
+
     # Upsert de l'annotation (region_id est UNIQUE).
     conn.execute(
         """INSERT INTO annotations (region_id, note) VALUES (?, ?)
@@ -669,7 +680,6 @@ def put_annotation(region_id: int, payload: AnnotationIn,
     ).fetchone()["id"]
 
     # Remplace l'ensemble des tags.
-    tag_rows = _ensure_tags(conn, payload.tags)
     conn.execute("DELETE FROM annotation_tags WHERE annotation_id = ?", (ann_id,))
     for t in tag_rows:
         conn.execute(

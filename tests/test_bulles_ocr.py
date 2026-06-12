@@ -81,6 +81,42 @@ def test_detecter_bulles_replace(client, planche, monkeypatch):
     assert len(bulles_n) == 1  # remplacées, pas accumulées
 
 
+def test_redetecter_bulles_preserve_ocr(client, planche, monkeypatch):
+    """Re-détecter préserve les bulles océrisées et ignore une détection qui les recouvre."""
+    _add_case(client, planche, 0, 0, 400, 500)
+    monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(50, 60, 80, 40)]))
+    client.post(f"/api/planches/{planche['id']}/detecter-bulles")
+    bulle = next(r for r in client.get(
+        f"/api/planches/{planche['id']}/regions").json() if r["type"] == "bulle")
+    client.put(f"/api/regions/{bulle['id']}", json={"ocr_texte": "SALUT"})
+    # re-détection : une box recouvrant la bulle océrisée + une nouvelle ailleurs
+    monkeypatch.setattr(bulles, "_run",
+                        lambda path, conf: (400, 500, [(52, 62, 80, 40), (200, 200, 60, 30)]))
+    body = client.post(f"/api/planches/{planche['id']}/detecter-bulles").json()
+    regions = client.get(f"/api/planches/{planche['id']}/regions").json()
+    surv = next((r for r in regions if r["id"] == bulle["id"]), None)
+    assert surv is not None and surv["ocr_texte"] == "SALUT"            # OCR préservé
+    assert len([r for r in regions if r["type"] == "bulle"]) == 2       # océrisée + nouvelle
+    assert body["preservees"] == 1 and body["ignores"] == 1 and body["nb_bulles"] == 1
+
+
+def test_redetecter_bulles_preserve_annotation(client, planche, monkeypatch):
+    """Une bulle annotée SANS OCR est préservée à la re-détection (branche
+    'NOT EXISTS annotations' du tri)."""
+    _add_case(client, planche, 0, 0, 400, 500)
+    monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(50, 60, 80, 40)]))
+    client.post(f"/api/planches/{planche['id']}/detecter-bulles")
+    b = next(r for r in client.get(
+        f"/api/planches/{planche['id']}/regions").json() if r["type"] == "bulle")
+    client.put(f"/api/regions/{b['id']}/annotation", json={"note": "", "tags": ["cri"]})
+    # re-détection à un autre endroit (ne recouvre pas) → la bulle annotée survit
+    monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(200, 200, 60, 30)]))
+    body = client.post(f"/api/planches/{planche['id']}/detecter-bulles").json()
+    regions = client.get(f"/api/planches/{planche['id']}/regions").json()
+    assert any(r["id"] == b["id"] for r in regions)   # bulle annotée préservée
+    assert body["preservees"] == 1
+
+
 def test_detecter_bulles_503(client, planche, monkeypatch):
     monkeypatch.setattr("main.bulles_available", lambda: False)
     r = client.post(f"/api/planches/{planche['id']}/detecter-bulles")
@@ -339,7 +375,8 @@ def test_ocr_et_bulles_sans_master_et_palette(data_dir, album, monkeypatch):
         assert ocr.ocr_planche(conn, p1["id"])["ocr"] == 1   # palette -> convert
         assert ocr.ocr_planche(conn, p2["id"])["ocr"] == 1   # web fallback
 
-        monkeypatch.setattr(bulles, "_run", lambda path, conf: (200, 200, [(5, 5, 10, 10)]))
+        # détection à un autre endroit que la bulle préexistante (sinon ignorée)
+        monkeypatch.setattr(bulles, "_run", lambda path, conf: (200, 200, [(100, 100, 10, 10)]))
         assert bulles.detect_bulles(conn, p2["id"])["nb_bulles"] == 1  # web fallback
     finally:
         conn.close()

@@ -1195,7 +1195,11 @@ async function segmenter() {
     const res = await apiSend("POST", `/api/planches/${state.planche.id}/segmenter`);
     state.planche.statut = "segmentee";
     await loadRegions(state.planche.id);
-    toast(`${res.nb_cases} cases détectées`, "success");
+    toast(`${res.nb_cases} cases détectées` +
+          (res.reattaches ? `, ${res.reattaches} ré-rattachée(s)` : "") +
+          (res.annotations_transferees ? `, ${res.annotations_transferees} annotation(s) transférée(s)` : "") +
+          (res.annotations_preservees ? `, ${res.annotations_preservees} préservée(s)` : ""),
+          "success");
   } catch (e) { toast("Segmentation : " + e.message, "error"); }
 }
 
@@ -1206,6 +1210,7 @@ async function detecterBulles() {
     const res = await apiSend("POST", `/api/planches/${state.planche.id}/detecter-bulles`);
     await loadRegions(state.planche.id);
     toast(`${res.nb_bulles} bulles détectées` +
+          (res.preservees ? `, ${res.preservees} préservée(s)` : "") +
           (res.sans_case ? ` (${res.sans_case} hors case)` : ""), "success");
   } catch (e) { toast("Bulles : " + e.message, "error"); }
 }

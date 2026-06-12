@@ -42,25 +42,36 @@ def test_suppression_region_nettoie_fts(client, planche, db_path):
 
 
 @requires_kumiko
-def test_resegmentation_sans_orphelin_fts(client, album, db_path):
-    """Re-segmenter remplace les cases Kumiko ET désindexe leurs descendants
-    manuels (sinon lignes FTS orphelines → contenu de recherche fantôme)."""
+def test_resegmentation_preserve_ocr_et_fts_propre(client, album, db_path):
+    """Re-segmenter PRÉSERVE le travail humain (bulle océrisée conservée, et
+    annotation de case TRANSFÉRÉE à la nouvelle case recouvrante) sans laisser
+    de ligne FTS orpheline."""
     p = client.post(f"/api/albums/{album['id']}/import",
                     files={"file": ("s.png", KUMIKO_SAMPLE.read_bytes(), "image/png")}).json()
     client.post(f"/api/planches/{p['id']}/segmenter")
     case_id = client.get(f"/api/planches/{p['id']}/regions").json()[0]["id"]
+    # une case annotée (FTS) + une bulle océrisée enfant (FTS)
+    client.put(f"/api/regions/{case_id}/annotation", json={"note": "ANNOTCASE", "tags": []})
     child = client.post(f"/api/planches/{p['id']}/regions",
                         json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5,
-                              "parent_id": case_id, "ocr_texte": "FANTOME"}).json()
-    assert client.get("/api/recherche", params={"q": "FANTOME"}).json()["results"]
+                              "parent_id": case_id, "ocr_texte": "GARDE"}).json()
+    assert client.get("/api/recherche", params={"q": "GARDE"}).json()["results"]
 
     client.post(f"/api/planches/{p['id']}/segmenter")  # re-segmentation
+
+    # aucune ligne FTS orpheline
     orphelins = direct_query(
         db_path,
         "SELECT COUNT(*) AS n FROM recherche "
         "WHERE region_id NOT IN (SELECT id FROM regions)")[0]["n"]
     assert orphelins == 0
-    assert not client.get("/api/recherche", params={"q": "FANTOME"}).json()["results"]
+    # la bulle océrisée SURVIT et reste cherchable
+    regions = client.get(f"/api/planches/{p['id']}/regions").json()
+    surv = next((r for r in regions if r["id"] == child["id"]), None)
+    assert surv is not None and surv["ocr_texte"] == "GARDE"
+    assert client.get("/api/recherche", params={"q": "GARDE"}).json()["results"]
+    # l'annotation de case est transférée à la nouvelle case recouvrante (cherchable)
+    assert client.get("/api/recherche", params={"q": "ANNOTCASE"}).json()["results"]
 
 
 def test_reimport_meme_album_numerote_correctement(client, album, png_bytes):
