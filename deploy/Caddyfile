@@ -1,0 +1,30 @@
+# Reverse proxy Caddy — HTTPS automatique (Let's Encrypt) + délégation à Authelia.
+#
+# REMPLACE les deux domaines ci-dessous par les tiens. Il en faut DEUX :
+#   - le portail d'authentification : auth.example.fr
+#   - l'application                 : bd.example.fr
+# Les deux doivent pointer (DNS, enregistrement A) vers l'IP du VPS, et les
+# ports 80 + 443 doivent être ouverts (Caddy obtient les certificats tout seul).
+
+# --- Portail Authelia ---
+auth.example.fr {
+    reverse_proxy authelia:9091
+}
+
+# --- Application BD Annotator (protégée) ---
+bd.example.fr {
+    # Plafonne la taille des uploads -> répond à la faille OOM (cf.
+    # docs/hebergement-securite.md). Ajuste selon tes plus gros TIFF.
+    request_body {
+        max_size 200MB
+    }
+
+    # Toute requête est d'abord vérifiée par Authelia. Non authentifié ->
+    # redirection vers le portail. Inclut /derivatives, /static, /api/sauvegarde.
+    forward_auth authelia:9091 {
+        uri /api/authz/forward-auth
+        copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+    }
+
+    reverse_proxy app:8000
+}

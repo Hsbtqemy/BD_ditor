@@ -1,0 +1,18 @@
+# Comptes utilisateurs Authelia (corpus partagé : tous accèdent au même corpus).
+#
+# Le champ `password` est un HASH argon2id, jamais le mot de passe en clair.
+# Générer un hash :
+#   docker run --rm authelia/authelia:4.38 \
+#       authelia crypto hash generate argon2 --password 'TonMotDePasse'
+# puis colle la valeur ($argon2id$...) ci-dessous.
+#
+# Ajoute autant de blocs d'utilisateurs que nécessaire sous `users:`.
+
+users:
+  chercheur:
+    disabled: false
+    displayname: 'Chercheur'
+    password: '$argon2id$v=19$m=65536,t=3,p=4$REMPLACER_PAR_UN_VRAI_HASH'
+    email: 'chercheur@example.fr'
+    groups:
+      - 'annotateurs'

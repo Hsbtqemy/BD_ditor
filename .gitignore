@@ -31,3 +31,9 @@ Thumbs.db
 spike/samples/
 spike/report.html
 spike/report.csv
+
+# Déploiement — secrets et état runtime (la config template est versionnée)
+deploy/.env
+deploy/authelia/db.sqlite3
+deploy/authelia/notification.txt
+deploy/authelia/*.log

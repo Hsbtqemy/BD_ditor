@@ -1,0 +1,67 @@
+# Pile d'hébergement BD Annotator :
+#   caddy     -> reverse proxy + HTTPS automatique + délègue l'auth à Authelia
+#   authelia  -> portail d'authentification (comptes, login/logout, 2FA)
+#   redis     -> stockage des sessions Authelia (déconnexion propre, expiration)
+#   app       -> l'application FastAPI (JAMAIS exposée directement)
+#
+# Seul Caddy publie des ports (80/443). app/authelia/redis ne sont joignables
+# que sur le réseau interne Docker -> rien n'est accessible sans passer par l'auth.
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: bd-app
+    restart: unless-stopped
+    environment:
+      - BD_DATA_DIR=/data
+      - HOME=/data
+    volumes:
+      - bd-data:/data            # corpus, dérivés, base SQLite, caches de modèles
+    expose:
+      - "8000"                   # visible seulement des autres conteneurs
+
+  redis:
+    image: redis:7-alpine
+    container_name: bd-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  authelia:
+    image: authelia/authelia:4.38
+    container_name: bd-authelia
+    restart: unless-stopped
+    depends_on:
+      - redis
+    environment:
+      # Secrets injectés depuis deploy/.env (voir .env.example pour les générer)
+      - AUTHELIA_SESSION_SECRET=${AUTHELIA_SESSION_SECRET}
+      - AUTHELIA_STORAGE_ENCRYPTION_KEY=${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+      - AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=${AUTHELIA_JWT_SECRET}
+    volumes:
+      - ./authelia:/config
+    expose:
+      - "9091"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: bd-caddy
+    restart: unless-stopped
+    depends_on:
+      - app
+      - authelia
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data         # certificats TLS (persistés -> pas de re-émission)
+      - caddy-config:/config
+
+volumes:
+  bd-data:
+  redis-data:
+  caddy-data:
+  caddy-config:

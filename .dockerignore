@@ -1,0 +1,28 @@
+# Contexte de build minimal (l'image clone Kumiko et installe les deps elle-même)
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Données volumineuses (montées via volume au runtime, pas dans l'image)
+corpus/
+derivatives/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Kumiko est cloné DANS l'image (un clone local serait écrasé sinon)
+lib/kumiko/
+
+# Divers
+.git/
+.idea/
+.vscode/
+spike/samples/
+deploy/.env
+deploy/authelia/db.sqlite3
+deploy/authelia/notification.txt

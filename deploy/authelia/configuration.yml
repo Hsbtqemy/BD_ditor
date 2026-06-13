@@ -1,0 +1,74 @@
+# Configuration Authelia 4.38 — portail d'authentification.
+# Les SECRETS ne sont PAS ici : ils sont injectés par variables d'environnement
+# (voir docker-compose.yml + deploy/.env). REMPLACE les domaines example.fr.
+
+theme: 'light'
+
+server:
+  address: 'tcp://:9091'
+
+log:
+  level: 'info'
+
+# --- TOTP (application d'authentification 2FA : Google Authenticator, Aegis…) ---
+totp:
+  issuer: 'bd.example.fr'
+
+identity_validation:
+  reset_password:
+    jwt_lifespan: '5 minutes'
+    # jwt_secret -> AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET
+
+# --- Comptes : fichier local (suffisant pour une petite équipe) ---
+authentication_backend:
+  password_reset:
+    disable: false
+  file:
+    path: '/config/users_database.yml'
+    password:
+      algorithm: 'argon2'
+      argon2:
+        variant: 'argon2id'
+        iterations: 3
+        memory: 65536
+        parallelism: 4
+
+# --- Politique d'accès : tout refusé par défaut, 2FA exigé sur l'app ---
+access_control:
+  default_policy: 'deny'
+  rules:
+    - domain: 'bd.example.fr'
+      policy: 'two_factor'      # mets 'one_factor' si tu ne veux PAS imposer la 2FA
+
+# --- Sessions (Redis) : permet une déconnexion propre + expiration ---
+session:
+  name: 'authelia_session'
+  expiration: '1 hour'
+  inactivity: '15 minutes'
+  remember_me: '1 month'
+  # secret -> AUTHELIA_SESSION_SECRET
+  cookies:
+    - domain: 'example.fr'                       # domaine PARENT commun aux deux sous-domaines
+      authelia_url: 'https://auth.example.fr'
+      default_redirection_url: 'https://bd.example.fr'
+  redis:
+    host: 'redis'
+    port: 6379
+
+# --- Anti-bruteforce : bannit après 3 échecs ---
+regulation:
+  max_retries: 3
+  find_time: '2 minutes'
+  ban_time: '5 minutes'
+
+storage:
+  # encryption_key -> AUTHELIA_STORAGE_ENCRYPTION_KEY
+  local:
+    path: '/config/db.sqlite3'
+
+# --- Notifications (liens d'enregistrement 2FA / reset) ---
+# 'filesystem' = écrit dans un fichier (simple pour démarrer, aucun compte mail
+# requis). Pour de l'envoi d'e-mails réels, remplace ce bloc par un notifier SMTP.
+notifier:
+  filesystem:
+    filename: '/config/notification.txt'
