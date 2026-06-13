@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 # --------------------------------------------------------------------------- #
@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS planches (
     largeur_px         INTEGER,
     hauteur_px         INTEGER,
     statut             TEXT DEFAULT 'importee',
-    date_segmentation  TEXT
+    date_segmentation  TEXT,
+    validee            TEXT           -- horodatage de validation humaine (NULL = non validée)
 );
 
 CREATE TABLE IF NOT EXISTS regions (
@@ -156,6 +157,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if has_regions:
             for r in conn.execute("SELECT id FROM regions").fetchall():
                 reindex_region(conn, r["id"])
+
+    # v3 → v4 : validation humaine d'une planche (drapeau orthogonal au statut).
+    pcols = {r["name"] for r in conn.execute("PRAGMA table_info(planches)")}
+    if pcols and "validee" not in pcols:
+        conn.execute("ALTER TABLE planches ADD COLUMN validee TEXT")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 

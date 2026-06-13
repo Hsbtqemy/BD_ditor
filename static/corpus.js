@@ -54,13 +54,46 @@ async function loadAlbums() {
   if (state.openId != null && ids.has(state.openId)) openAlbum(state.openId);
   else { state.openId = null; state.checkedPlanches.clear(); $("#album-detail").hidden = true; }
   updateSelInfo();
+  loadSynthese();
+}
+
+/* Badge « validées / total » avec mini-barre (vert si tout est validé). */
+function validBadge(n, total) {
+  const pct = total ? Math.round(100 * n / total) : 0;
+  const cls = total && n === total ? "all" : "";
+  return `<span class="val-album ${cls}" title="${n}/${total} planche(s) validée(s)">`
+       + `${n}/${total}<i class="val-mini"><i style="width:${pct}%"></i></i></span>`;
+}
+
+/* Synthèse d'avancement du corpus (barre par statut + validées). */
+async function loadSynthese() {
+  let c;
+  try { c = await apiGet("/api/corpus"); } catch (e) { return; }
+  const order = ["importee", "segmentee", "corrigee", "annotee"];
+  const lbl = { importee: "importées", segmentee: "segmentées",
+                corrigee: "corrigées", annotee: "annotées" };
+  const total = c.planches || 0, st = c.statuts || {};
+  const bar = total ? order.map((s) => {
+    const n = st[s] || 0;
+    return n ? `<span class="seg seg-${s}" style="width:${(100 * n / total).toFixed(1)}%" title="${lbl[s]} : ${n}"></span>` : "";
+  }).join("") : "";
+  const pct = total ? Math.round(100 * c.validees / total) : 0;
+  const el = $("#corpus-synthese");
+  el.hidden = false;
+  el.innerHTML =
+    `<div class="synth-line"><b>Corpus</b> · ${c.albums} album(s) · ${total} planche(s)`
+    + ` · <span class="synth-val">✔ ${c.validees} validée(s) (${pct} %)</span></div>`
+    + `<div class="synth-bar">${bar}</div>`
+    + `<div class="synth-legend muted small">`
+    + order.map((s) => `<span><i class="seg seg-${s}"></i> ${lbl[s]} (${st[s] || 0})</span>`).join("")
+    + `</div>`;
 }
 
 function renderAlbums() {
   const body = $("#albums-body");
   body.innerHTML = "";
   if (!state.albums.length) {
-    body.innerHTML = '<tr><td colspan="9" class="empty-cell">Aucun album. Créez-en un.</td></tr>';
+    body.innerHTML = '<tr><td colspan="10" class="empty-cell">Aucun album. Créez-en un.</td></tr>';
     return;
   }
   for (const a of state.albums) {
@@ -74,6 +107,7 @@ function renderAlbums() {
       `<td class="c-num">${a.nb_planches}</td>` +
       `<td class="c-num">${a.nb_regions}</td>` +
       `<td class="c-num">${a.nb_transcrites}</td>` +
+      `<td class="c-num c-val-album">${validBadge(a.nb_validees, a.nb_planches)}</td>` +
       `<td class="c-act">` +
         `<button class="icon-btn" data-act="edit" title="Éditer les métadonnées">✎</button> ` +
         `<button class="icon-btn danger" data-act="del" title="Supprimer l'album">🗑</button>` +
@@ -118,12 +152,13 @@ function renderDetail() {
           <td><span class="statut-pill statut-${esc(p.statut)}"></span> ${esc(p.statut)}</td>
           <td class="c-num">${p.nb_regions} rég.</td>
           <td class="c-num">${p.nb_annotees} ann.</td>
+          <td class="c-val">${validToggle(p)}</td>
           <td class="c-act">
             <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}" title="Ouvrir dans la visionneuse">↗</a>
             <button class="icon-btn danger" data-delp="${p.id}" title="Supprimer la planche">🗑</button>
           </td>
         </tr>`).join("")
-    : '<tr><td colspan="7" class="empty-cell">Aucune planche. Importez-en depuis la visionneuse ou ShareDocs.</td></tr>';
+    : '<tr><td colspan="8" class="empty-cell">Aucune planche. Importez-en depuis la visionneuse ou ShareDocs.</td></tr>';
 
   box.innerHTML = `
     <div class="detail-head">
@@ -134,14 +169,20 @@ function renderDetail() {
       </div>
       ${a.description ? `<p class="detail-desc">${esc(a.description)}</p>` : ""}
       <button class="ghost small" id="detail-edit">✎ Éditer l'album</button>
+      <button class="ghost small" id="detail-validate-all">✔ Tout valider</button>
     </div>
     <table class="corpus-table planches-table">
       <thead><tr><th class="c-chk"></th><th></th><th>N°</th><th>Statut</th>
-        <th class="c-num">Régions</th><th class="c-num">Annotées</th><th></th></tr></thead>
+        <th class="c-num">Régions</th><th class="c-num">Annotées</th>
+        <th>Validée</th><th></th></tr></thead>
       <tbody>${planchesRows}</tbody>
     </table>`;
 
   $("#detail-edit").onclick = () => openModal(a);
+  $("#detail-validate-all").onclick = validateAllAlbum;
+  box.querySelectorAll("button[data-val]").forEach((btn) => {
+    btn.onclick = () => validatePlanche(Number(btn.dataset.val), btn.dataset.on === "1");
+  });
   box.querySelectorAll("input[data-pid]").forEach((cb) => {
     cb.onchange = () => {
       const pid = Number(cb.dataset.pid);
@@ -204,6 +245,33 @@ async function deleteAlbum(a) {
     await loadAlbums();
     toast("Album supprimé");
   } catch (e) { toast("Suppression : " + e.message, "error"); }
+}
+
+/* Badge ✔ + bouton bascule de validation pour une planche. */
+function validToggle(p) {
+  return (p.validee ? `<span class="val-badge" title="Validée le ${esc(p.validee)}">✔</span> ` : "")
+    + `<button class="icon-btn" data-val="${p.id}" data-on="${p.validee ? 0 : 1}" `
+    + `title="${p.validee ? "Retirer la validation" : "Marquer comme validée"}">`
+    + `${p.validee ? "↺" : "✔"}</button>`;
+}
+
+async function validatePlanche(pid, on) {
+  try {
+    await apiSend("PATCH", `/api/planches/${pid}/validation`, { validee: on });
+    await loadAlbums();   // rafraîchit table + album ouvert + synthèse
+  } catch (e) { toast("Validation : " + e.message, "error"); }
+}
+
+async function validateAllAlbum() {
+  const todo = state.planches.filter((p) => !p.validee);
+  if (!todo.length) { toast("Toutes les planches sont déjà validées."); return; }
+  if (!confirm(`Valider ${todo.length} planche(s) de cet album ?`)) return;
+  try {
+    for (const p of todo)
+      await apiSend("PATCH", `/api/planches/${p.id}/validation`, { validee: true });
+    await loadAlbums();
+    toast(`${todo.length} planche(s) validée(s)`, "success");
+  } catch (e) { toast("Validation : " + e.message, "error"); }
 }
 
 async function deletePlanche(pid) {

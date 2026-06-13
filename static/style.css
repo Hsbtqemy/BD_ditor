@@ -224,6 +224,28 @@ button { font-family: inherit; }
 .statut-corrigee  { background: var(--accent-amber); }
 .statut-annotee   { background: var(--accent-green); }
 
+/* Synthèse d'avancement du corpus (Bibliothèque) */
+.corpus-synthese {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 10px 14px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.synth-val { color: var(--accent-green); font-weight: 600; }
+.synth-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--bg-input); }
+.synth-bar .seg { display: block; height: 100%; }
+.synth-legend { display: flex; gap: 16px; flex-wrap: wrap; }
+.synth-legend i.seg { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.seg-importee  { background: var(--text-muted); }
+.seg-segmentee { background: var(--accent-red); }
+.seg-corrigee  { background: var(--accent-amber); }
+.seg-annotee   { background: var(--accent-green); }
+
+/* Validation des planches (drapeau humain « terminé ») */
+.val-badge { color: var(--accent-green); font-weight: 700; }
+.val-album { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.val-album.all { color: var(--accent-green); font-weight: 600; }
+.val-mini { display: inline-block; width: 34px; height: 6px; border-radius: 3px; background: var(--bg-input); overflow: hidden; }
+.val-mini > i { display: block; height: 100%; background: var(--accent-green); }
+
 /* ---------- Visionneuse ---------- */
 #viewer { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 #toolbar {

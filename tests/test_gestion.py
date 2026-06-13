@@ -42,6 +42,28 @@ def test_migration_ajoute_description(tmp_path):
     conn.close()
 
 
+def test_planche_validation_et_agregats(client, planche):
+    """Validation humaine d'une planche (drapeau `validee`) + agrégats corpus/album."""
+    pls = client.get(f"/api/albums/{planche['album_id']}/planches").json()
+    assert pls and pls[0]["validee"] is None              # non validée par défaut
+
+    r = client.patch(f"/api/planches/{planche['id']}/validation",
+                     json={"validee": True}).json()
+    assert r["validee"]                                   # horodatage posé
+
+    corpus = client.get("/api/corpus").json()
+    assert corpus["validees"] >= 1 and "statuts" in corpus
+    albums = client.get("/api/albums").json()
+    assert any(a["nb_validees"] >= 1 for a in albums)
+
+    r2 = client.patch(f"/api/planches/{planche['id']}/validation",
+                      json={"validee": False}).json()
+    assert r2["validee"] is None                          # validation retirée
+
+    assert client.patch("/api/planches/9999/validation",
+                        json={"validee": True}).status_code == 404
+
+
 # --------------------------- CRUD albums -------------------------------- #
 def test_album_create_avec_description(client):
     a = client.post("/api/albums", json={"titre": "T", "description": "un récit"}).json()

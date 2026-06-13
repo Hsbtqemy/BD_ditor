@@ -126,6 +126,10 @@ class StatutIn(BaseModel):
     statut: str
 
 
+class ValidationIn(BaseModel):
+    validee: bool
+
+
 class MoveIn(BaseModel):
     sens: str   # "haut" | "bas"
 
@@ -257,7 +261,9 @@ def list_albums(conn: sqlite3.Connection = Depends(db)):
                      WHERE p.album_id = a.id) AS nb_regions,
                   (SELECT COUNT(*) FROM regions r JOIN planches p ON p.id = r.planche_id
                      WHERE p.album_id = a.id
-                       AND TRIM(COALESCE(r.ocr_texte, '')) <> '') AS nb_transcrites
+                       AND TRIM(COALESCE(r.ocr_texte, '')) <> '') AS nb_transcrites,
+                  (SELECT COUNT(*) FROM planches p
+                     WHERE p.album_id = a.id AND p.validee IS NOT NULL) AS nb_validees
            FROM albums a
            ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre"""
     ))
@@ -693,6 +699,21 @@ def update_statut(planche_id: int, payload: StatutIn,
     return _get_planche(conn, planche_id)
 
 
+@app.patch("/api/planches/{planche_id}/validation")
+def update_validation(planche_id: int, payload: ValidationIn,
+                      conn: sqlite3.Connection = Depends(db)):
+    """Marque une planche comme validée (relue/finalisée) ou retire la validation.
+    Drapeau humain orthogonal au `statut` du pipeline ; `validee` = horodatage."""
+    _get_planche(conn, planche_id)
+    if payload.validee:
+        conn.execute("UPDATE planches SET validee = datetime('now') WHERE id = ?",
+                     (planche_id,))
+    else:
+        conn.execute("UPDATE planches SET validee = NULL WHERE id = ?", (planche_id,))
+    conn.commit()
+    return _get_planche(conn, planche_id)
+
+
 # =========================================================================== #
 # Annotations & tags
 # =========================================================================== #
@@ -855,9 +876,16 @@ def corpus_stats(conn: sqlite3.Connection = Depends(db)):
              (SELECT COUNT(*) FROM annotations) AS annotees,
              (SELECT COUNT(*) FROM regions
                 WHERE TRIM(COALESCE(ocr_texte, '')) <> '') AS transcrites,
-             (SELECT COUNT(*) FROM tags) AS tags"""
+             (SELECT COUNT(*) FROM tags) AS tags,
+             (SELECT COUNT(*) FROM planches WHERE validee IS NOT NULL) AS validees"""
     ).fetchone()
-    return dict(row)
+    res = dict(row)
+    # Distribution des planches par statut (pour la barre d'avancement du corpus).
+    res["statuts"] = {s: 0 for s in STATUTS}
+    for r in conn.execute("SELECT statut, COUNT(*) AS n FROM planches GROUP BY statut"):
+        if r["statut"] in res["statuts"]:
+            res["statuts"][r["statut"]] = r["n"]
+    return res
 
 
 # =========================================================================== #
