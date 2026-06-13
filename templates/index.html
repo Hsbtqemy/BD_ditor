@@ -239,6 +239,7 @@
         </div>
         <div id="sd-list" class="sd-list"></div>
         <div class="sd-footer">
+          <button id="sd-selectall" class="ghost small" disabled>Tout sélectionner</button>
           <span id="sd-selcount" class="muted small">0 sélectionné</span>
           <button id="sd-import" class="primary" disabled>Importer la sélection →</button>
         </div>
@@ -258,6 +259,11 @@
           <button id="sd-import-go" class="primary">Importer</button>
           <button id="sd-import-cancel" class="ghost small">Annuler</button>
           <span id="sd-import-msg" class="muted small"></span>
+        </div>
+        <div id="sd-progress" class="sd-progress" hidden>
+          <div class="sd-progress-bar"><div id="sd-progress-fill"></div></div>
+          <div id="sd-progress-label" class="muted small"></div>
+          <ul id="sd-progress-errors" class="sd-errors"></ul>
         </div>
       </div>
     </div>

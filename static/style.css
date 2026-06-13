@@ -633,6 +633,16 @@ h3.collapsible:hover { color: var(--text); }
 #sd-import { margin-left: auto; }
 .sd-empty { padding: 24px; text-align: center; color: var(--text-muted); }
 
+/* Progression de l'import ShareDocs (fichier par fichier) */
+.sd-progress { display: flex; flex-direction: column; gap: 8px; }
+.sd-progress-bar { height: 8px; background: var(--bg-input); border-radius: 5px; overflow: hidden; }
+#sd-progress-fill {
+  height: 100%; width: 0; background: var(--accent-blue); transition: width .2s ease;
+}
+.sd-errors { margin: 0; padding-left: 18px; max-height: 130px; overflow-y: auto;
+  color: var(--accent-red); font-size: 11px; }
+.sd-errors:empty { display: none; }
+
 /* =================================================================== */
 /* Page de recherche / index                                          */
 /* =================================================================== */

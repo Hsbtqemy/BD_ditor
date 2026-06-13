@@ -9,6 +9,7 @@ import csv
 import io
 import os
 import sqlite3
+import time
 import xml.etree.ElementTree as ET
 from contextlib import asynccontextmanager
 from typing import Iterator, Optional
@@ -32,7 +33,9 @@ from pipeline import sharedocs
 from pipeline.sharedocs import ShareDocsError
 
 # Extensions image acceptées à l'import (Pillow ; PDF non géré pour l'instant).
-IMG_EXTS = (".tif", ".tiff", ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp")
+IMG_EXTS = (".tif", ".tiff", ".jpg", ".jpeg",
+            ".jp2", ".j2k", ".jpf", ".jpx", ".jpc", ".j2c",   # JPEG2000 (Pillow/OpenJPEG)
+            ".png", ".bmp", ".gif", ".webp")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -611,24 +614,36 @@ def sharedocs_importer(payload: SharedocsImportIn,
             continue
         master = None
         try:
+            t0 = time.perf_counter()
             data = sharedocs.download(chemin)
             if not data:
                 raise ShareDocsError("fichier vide")
+            t_dl = time.perf_counter() - t0
             numero = conn.execute(
                 "SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM planches "
                 "WHERE album_id = ?", (album_id,)).fetchone()["n"]
             master = store_upload(album_id, nom, data, numero)
+            t1 = time.perf_counter()
             planche = ingest_image(conn, album_id, master, numero=numero)
+            t_ing = time.perf_counter() - t1
             planche["url_web"] = "/" + planche["chemin_web"]
             importes.append(planche)
             # Segmentation best-effort : un échec ici ne doit JAMAIS invalider
             # un import déjà réussi (la planche est déjà ingérée et comptée).
+            t_seg = 0.0
             if payload.segmenter and kumiko_available():
+                t2 = time.perf_counter()
                 try:
                     segment_planche(conn, planche["id"])
                     planche["statut"] = "segmentee"
                 except Exception:
                     pass
+                t_seg = time.perf_counter() - t2
+            # Chronométrage par phase (diagnostic de la vitesse d'import).
+            print(f"[import-timing] {nom} : download={t_dl:.2f}s "
+                  f"derive={t_ing:.2f}s segment={t_seg:.2f}s "
+                  f"total={t_dl + t_ing + t_seg:.2f}s "
+                  f"taille={len(data) / 1e6:.1f}Mo", flush=True)
         except Exception as exc:   # un fichier en échec ne stoppe pas le lot
             # Pas de master orphelin sur disque si l'ingestion a échoué après écriture.
             if master is not None:

@@ -55,11 +55,12 @@ async function apiGet(path) {
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
   return r.json();
 }
-async function apiSend(method, path, body) {
+async function apiSend(method, path, body, opts = {}) {
   const r = await fetch(API + path, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
+    signal: opts.signal,           // optionnel : AbortController pour annulation
   });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
   return r.status === 204 ? null : r.json();
@@ -1293,8 +1294,8 @@ function setupExport() {
 /* ===================================================================
    Explorateur ShareDocs (WebDAV Huma-Num) — modale
    =================================================================== */
-const SD_IMG = /\.(tif|tiff|jpe?g|png|bmp|gif|webp)$/i;
-state.sd = { cwd: "", entries: [], selected: new Set() };
+const SD_IMG = /\.(tif|tiff|jpe?g|jp2|j2k|jpf|jpx|jpc|j2c|png|bmp|gif|webp)$/i;
+state.sd = { cwd: "", entries: [], selected: new Set(), importing: false, cancelImport: false, abort: null };
 
 function sdFmtSize(n) {
   if (n == null) return "";
@@ -1349,8 +1350,9 @@ async function sdConnect() {
 }
 
 async function sdDisconnect() {
+  if (state.sd.abort) state.sd.abort.abort();   // stoppe un import en cours avant de réinitialiser
   try { await apiSend("POST", "/api/sharedocs/deconnexion"); } catch (_) {}
-  state.sd = { cwd: "", entries: [], selected: new Set() };
+  state.sd = { cwd: "", entries: [], selected: new Set(), importing: false, cancelImport: false, abort: null };
   $("#sd-conn-state").textContent = "non connecté";
   $("#sd-pass").value = "";
   sdShow("login");
@@ -1427,16 +1429,37 @@ function sdToggleSel(path, on, row) {
   sdUpdateSel();
 }
 
+/* Fichiers importables (images) du dossier courant. */
+function sdImportablesIci() {
+  return state.sd.entries.filter((e) => !e.is_dir && SD_IMG.test(e.name));
+}
+
+/* Sélectionne / désélectionne d'un coup tous les importables du dossier courant. */
+function sdToggleSelectAll() {
+  const imgs = sdImportablesIci();
+  if (!imgs.length) return;
+  const tousSelectionnes = imgs.every((e) => state.sd.selected.has(e.path));
+  for (const e of imgs) {
+    if (tousSelectionnes) state.sd.selected.delete(e.path);
+    else state.sd.selected.add(e.path);
+  }
+  sdRenderList();   // rafraîchit cases + surbrillance + compteur
+}
+
 function sdUpdateSel() {
   const n = state.sd.selected.size;
   $("#sd-selcount").textContent = `${n} sélectionné${n > 1 ? "s" : ""}`;
   $("#sd-import").disabled = n === 0;
+  // Bouton « Tout sélectionner / désélectionner » selon l'état du dossier courant.
+  const imgs = sdImportablesIci();
+  const btn = $("#sd-selectall");
+  btn.disabled = imgs.length === 0;
+  const tous = imgs.length > 0 && imgs.every((e) => state.sd.selected.has(e.path));
+  btn.textContent = tous ? "Tout désélectionner" : "Tout sélectionner";
 }
 
-function sdOpenImport() {
-  const n = state.sd.selected.size;
-  if (!n) return;
-  $("#sd-import-title").textContent = `Importer ${n} fichier${n > 1 ? "s" : ""}`;
+/* Remplit le sélecteur d'album cible (option « nouvel album » + albums existants). */
+function sdFillAlbumSelect(selectedId) {
   const sel = $("#sd-album");
   sel.innerHTML = '<option value="__new__">➕ Nouvel album…</option>';
   for (const a of state.albums) {
@@ -1445,10 +1468,22 @@ function sdOpenImport() {
     o.textContent = `${a.serie ? a.serie + " · " : ""}${a.titre}`;
     sel.appendChild(o);
   }
-  sel.value = state.albumId ? String(state.albumId) : "__new__";
+  sel.value = selectedId ? String(selectedId) : "__new__";
+  sdImportToggleNew();
+}
+
+function sdOpenImport() {
+  if (state.sd.importing) { toast("Un import est déjà en cours.", ""); return; }
+  const n = state.sd.selected.size;
+  if (!n) return;
+  $("#sd-import-title").textContent = `Importer ${n} fichier${n > 1 ? "s" : ""}`;
+  sdFillAlbumSelect(state.albumId || null);
   $("#sd-newalbum").value = state.sd.cwd.split("/").filter(Boolean).pop() || "ShareDocs";
   sdImportToggleNew();
   $("#sd-import-msg").textContent = "";
+  sdProgressReset();
+  $("#sd-import-go").disabled = false;
+  $("#sd-import-cancel").textContent = "Annuler";
   $("#sd-browser").hidden = true;
   $("#sd-import-form").hidden = false;
 }
@@ -1458,42 +1493,116 @@ function sdImportToggleNew() {
 }
 
 function sdCancelImport() {
+  if (state.sd.importing) {            // import en cours → demande d'arrêt
+    state.sd.cancelImport = true;
+    if (state.sd.abort) state.sd.abort.abort();   // interrompt la requête en cours (arrêt immédiat)
+    $("#sd-import-cancel").disabled = true;
+    $("#sd-import-cancel").textContent = "Arrêt…";
+    return;
+  }
   $("#sd-import-form").hidden = true;
   $("#sd-browser").hidden = false;
 }
 
+/* --- Barre de progression de l'import --- */
+function sdProgressReset() {
+  $("#sd-progress").hidden = true;
+  $("#sd-progress-fill").style.width = "0%";
+  $("#sd-progress-label").textContent = "";
+  $("#sd-progress-errors").innerHTML = "";
+}
+function sdProgressUpdate(done, total, current, segmenter, ok, ko) {
+  $("#sd-progress").hidden = false;
+  $("#sd-progress-fill").style.width = Math.round((done / total) * 100) + "%";
+  const tally = `✓ ${ok}` + (ko ? ` · ✗ ${ko}` : "");
+  $("#sd-progress-label").textContent = current
+    ? `${done}/${total} (${tally}) — en cours : ${current}${segmenter ? " · segmentation…" : ""}`
+    : `${done}/${total} (${tally}) — terminé`;
+}
+function sdProgressError(chemin, msg) {
+  const li = document.createElement("li");
+  li.textContent = `${chemin.split("/").pop()} : ${msg}`;
+  $("#sd-progress-errors").appendChild(li);
+}
+
 async function sdDoImport() {
+  if (state.sd.importing) return;        // garde-fou anti double-import concurrent
   const chemins = [...state.sd.selected];
   if (!chemins.length) return;
-  const body = { chemins, segmenter: $("#sd-segmenter").checked };
+  const segmenter = $("#sd-segmenter").checked;
+
+  // Résout l'album cible. Pour un nouvel album, on le crée explicitement d'abord
+  // (album_id stable) plutôt que de laisser chaque appel tenter de le créer.
+  let albumId, albumNeuf = false;
   if ($("#sd-album").value === "__new__") {
     const titre = $("#sd-newalbum").value.trim();
     if (!titre) { $("#sd-import-msg").textContent = "Nom d'album requis."; return; }
-    body.nouvel_album = titre;
+    try {
+      const a = await apiSend("POST", "/api/albums", { titre });
+      albumId = a.id; albumNeuf = true;
+    } catch (e) { $("#sd-import-msg").textContent = "✗ " + e.message; return; }
   } else {
-    body.album_id = Number($("#sd-album").value);
+    albumId = Number($("#sd-album").value);
   }
-  $("#sd-import-msg").textContent = "Import en cours…";
+
+  // Passe en mode « import en cours » : progression + bouton Annuler → Arrêter.
+  state.sd.importing = true;
+  state.sd.cancelImport = false;
+  state.sd.abort = new AbortController();
+  $("#sd-import-msg").textContent = "";
   $("#sd-import-go").disabled = true;
-  try {
-    const res = await apiSend("POST", "/api/sharedocs/importer", body);
-    const ok = res.importes.length, ko = res.erreurs.length;
-    toast(`Import : ${ok} planche${ok > 1 ? "s" : ""}` +
-          (ko ? `, ${ko} échec${ko > 1 ? "s" : ""}` : ""), ok ? (ko ? "" : "success") : "error");
-    if (ok) {
-      state.sd.selected.clear();
-      state.albumId = res.album_id;
-      await loadAlbums();          // recharge albums → sélectionne la cible + ses planches
-      sdClose();
-    } else {
-      // rien d'importé : rester sur le formulaire (l'album vide a été nettoyé côté serveur)
-      $("#sd-import-msg").textContent = `Aucun import (${ko} échec${ko > 1 ? "s" : ""}).`;
+  $("#sd-import-cancel").disabled = false;
+  $("#sd-import-cancel").textContent = "Arrêter";
+  let ok = 0, ko = 0, i = 0;
+  sdProgressReset();
+  sdProgressUpdate(0, chemins.length, chemins[0].split("/").pop(), segmenter, ok, ko);
+
+  for (; i < chemins.length; i++) {
+    if (state.sd.cancelImport) break;
+    const chemin = chemins[i];
+    sdProgressUpdate(i, chemins.length, chemin.split("/").pop(), segmenter, ok, ko);
+    try {
+      const res = await apiSend("POST", "/api/sharedocs/importer",
+        { chemins: [chemin], album_id: albumId, segmenter },
+        { signal: state.sd.abort.signal });
+      if (res.importes.length) { ok++; state.sd.selected.delete(chemin); }
+      for (const er of res.erreurs) { ko++; sdProgressError(er.chemin, er.erreur); }
+    } catch (e) {
+      if (e.name === "AbortError") break;   // arrêt demandé : sortie immédiate, pas un échec
+      ko++; sdProgressError(chemin, e.message);
     }
-  } catch (e) {
-    $("#sd-import-msg").textContent = "✗ " + e.message;
-  } finally {
-    $("#sd-import-go").disabled = false;
   }
+  sdProgressUpdate(i, chemins.length, "", false, ok, ko);
+
+  // Album neuf resté vide (tout a échoué / annulé avant le moindre import) → on le retire.
+  if (albumNeuf && ok === 0) {
+    try { await apiSend("DELETE", "/api/albums/" + albumId); } catch (_) {}
+  }
+
+  const arrete = state.sd.cancelImport;
+  state.sd.importing = false;
+  state.sd.cancelImport = false;
+  state.sd.abort = null;
+  $("#sd-import-cancel").disabled = false;
+  $("#sd-import-cancel").textContent = "Fermer";
+  $("#sd-import-go").disabled = false;
+
+  toast(`Import : ${ok} planche${ok > 1 ? "s" : ""}` +
+        (ko ? `, ${ko} échec${ko > 1 ? "s" : ""}` : "") + (arrete ? " (arrêté)" : ""),
+        ok ? (ko ? "" : "success") : "error");
+
+  if (ok) {
+    state.albumId = albumId;
+    await loadAlbums();          // recharge albums → sélectionne la cible + ses planches
+    if (!ko && !arrete) { sdClose(); return; }   // tout bon → on ferme
+  }
+  // On reste sur le formulaire : repointe le sélecteur sur l'album réellement
+  // utilisé pour qu'un nouvel essai des échecs s'y ajoute (et ne crée pas un 2e
+  // album neuf). Si l'album neuf a été supprimé (0 import), on retombe sur « nouvel ».
+  const albumExiste = !(albumNeuf && ok === 0);
+  sdFillAlbumSelect(albumExiste ? albumId : null);
+  $("#sd-import-msg").textContent =
+    ko ? `${ko} échec(s) — voir le détail ci-dessous.` : (arrete ? "Import arrêté." : "");
 }
 
 /* Dépose une sauvegarde (.sqlite zippé) dans le dossier ShareDocs courant. */
@@ -1514,6 +1623,7 @@ function setupSharedocs() {
   $("#sd-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") sdConnect(); });
   $("#sd-disconnect").onclick = sdDisconnect;
   $("#sd-deposer").onclick = sdDeposerSauvegarde;
+  $("#sd-selectall").onclick = sdToggleSelectAll;
   $("#sd-import").onclick = sdOpenImport;
   $("#sd-album").onchange = sdImportToggleNew;
   $("#sd-import-go").onclick = sdDoImport;
