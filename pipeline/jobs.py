@@ -18,8 +18,14 @@ PASSES = ("segmenter", "bulles", "ocr")   # ordre canonique d'exécution
 
 _jobs: dict = {}
 _lock = threading.Lock()        # protège le registre + le compteur
-_run_lock = threading.Lock()    # un seul job s'exécute à la fois (modèles ML non thread-safe)
+_run_lock = threading.Lock()    # un seul job s'exécute à la fois
 _counter = 0
+
+# Sérialise TOUTE inférence ML — worker de lot ET routes directes (/segmenter,
+# /detecter-bulles, /ocr). Les modèles (torch) ne sont pas thread-safe et deux
+# inférences simultanées doubleraient la mémoire → risque d'OOM sur petit VPS.
+# Sérialise aussi le chargement paresseux des modèles (évite un double-load).
+ML_LOCK = threading.Lock()
 
 
 def _apply_pass(conn, passe: str, planche_id: int) -> None:
@@ -50,7 +56,8 @@ def _run(job_id: int) -> None:
                     if job["cancel"]:
                         break
                     try:
-                        _apply_pass(conn, passe, pid)
+                        with ML_LOCK:                    # pas d'inférence ML concurrente
+                            _apply_pass(conn, passe, pid)
                         conn.commit()
                     except Exception as exc:              # une passe ratée n'arrête pas le lot
                         conn.rollback()

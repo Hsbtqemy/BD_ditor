@@ -355,6 +355,25 @@ def test_recherche_erreur_sql_renvoie_400(client):
         main.app.dependency_overrides.pop(main.db, None)
 
 
+def test_db_locked_renvoie_409(client):
+    """Contention SQLite (« database is locked ») sur une route d'écriture → 409."""
+    class _Locked:
+        def execute(self, *a, **k):
+            raise sqlite3.OperationalError("database is locked")
+        def commit(self): ...
+        def rollback(self): ...
+        def close(self): ...
+
+    def locked_db():
+        yield _Locked()
+
+    main.app.dependency_overrides[main.db] = locked_db
+    try:
+        assert client.post("/api/albums", json={"titre": "x"}).status_code == 409
+    finally:
+        main.app.dependency_overrides.pop(main.db, None)
+
+
 def test_export_csv_album_inexistant_404(client):
     assert client.get("/api/export/csv", params={"album_id": 999}).status_code == 404
 

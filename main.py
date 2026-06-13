@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from typing import Iterator, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -44,6 +44,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="BD Annotator", version="1.0", lifespan=lifespan)
+
+
+@app.exception_handler(sqlite3.OperationalError)
+async def _sqlite_operational_handler(request, exc: sqlite3.OperationalError):
+    """Contention SQLite (« database is locked », p.ex. une écriture pendant un
+    lot ML) → 409 explicite plutôt qu'un 500 brut, pour inviter à réessayer.
+    Les autres OperationalError → 500 générique (message interne non divulgué)."""
+    msg = str(exc).lower()
+    if "lock" in msg or "busy" in msg:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "Base de données momentanément occupée, réessayez."})
+    return JSONResponse(status_code=500, content={"detail": "Erreur base de données."})
 
 
 # --------------------------------------------------------------------------- #
@@ -391,7 +404,8 @@ def segmenter(planche_id: int, use_master: bool = False,
             "(git clone https://github.com/njean42/kumiko.git lib/kumiko).",
         )
     try:
-        res = segment_planche(conn, planche_id, use_master=use_master)
+        with jobs.ML_LOCK:                       # pas d'inférence ML concurrente (mémoire)
+            res = segment_planche(conn, planche_id, use_master=use_master)
     except KumikoError as exc:
         raise HTTPException(500, str(exc))
     conn.commit()
@@ -409,7 +423,8 @@ def detecter_bulles(planche_id: int, conf: float = 0.3,
             "pip install -r requirements-ocr.txt (ultralytics + huggingface_hub).",
         )
     try:
-        res = detect_bulles(conn, planche_id, conf=conf)
+        with jobs.ML_LOCK:                       # pas d'inférence ML concurrente (mémoire)
+            res = detect_bulles(conn, planche_id, conf=conf)
     except BullesError as exc:
         raise HTTPException(500, str(exc))
     conn.commit()
@@ -426,7 +441,8 @@ def ocr_route(planche_id: int, only_empty: bool = True,
             "OCR indisponible. pip install -r requirements-ocr.txt (easyocr).",
         )
     try:
-        res = ocr_planche(conn, planche_id, only_empty=only_empty)
+        with jobs.ML_LOCK:                       # pas d'inférence ML concurrente (mémoire)
+            res = ocr_planche(conn, planche_id, only_empty=only_empty)
     except OCRError as exc:
         raise HTTPException(500, str(exc))
     conn.commit()
