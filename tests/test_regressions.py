@@ -41,6 +41,20 @@ def test_suppression_region_nettoie_fts(client, planche, db_path):
     assert not client.get("/api/recherche", params={"q": "ENFANTOCR"}).json()["results"]
 
 
+def test_recherche_prefixe_et_accents(client, planche):
+    """Bug : « otage » ne trouvait pas « Otages », « eloignez » pas « éloignez ».
+    Correctif : requêtes FTS en PRÉFIXE + tokenizer insensible aux accents."""
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "Les Otages ÉLOIGNEZ-vous"}).json()["id"]
+    # pluriel / casse (préfixe) : « otage » → « Otages »
+    res = client.get("/api/recherche", params={"q": "otage"}).json()["results"]
+    assert any(x["region_id"] == rid for x in res)
+    # accents : « eloignez » → « ÉLOIGNEZ »
+    res2 = client.get("/api/recherche", params={"q": "eloignez"}).json()["results"]
+    assert any(x["region_id"] == rid for x in res2)
+
+
 @requires_kumiko
 def test_resegmentation_preserve_ocr_et_fts_propre(client, album, db_path):
     """Re-segmenter PRÉSERVE le travail humain (bulle océrisée conservée, et

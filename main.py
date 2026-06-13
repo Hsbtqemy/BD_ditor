@@ -794,8 +794,10 @@ def recherche(q: str = "", album: Optional[int] = None,
     )
 
     if q.strip():
-        # Échappe chaque token et les combine en ET implicite (préfixe sûr).
-        match_expr = " ".join('"' + t.replace('"', '""') + '"'
+        # Chaque token devient une requête PRÉFIXE échappée, combinés en ET
+        # implicite : « otage » trouve « otages », « otagé »… La recherche est
+        # par ailleurs insensible aux accents (tokenizer FTS remove_diacritics).
+        match_expr = " ".join('"' + t.replace('"', '""') + '"*'
                               for t in q.split())
         base += "JOIN recherche rch ON rch.region_id = r.id "
         where.append("recherche MATCH ?")

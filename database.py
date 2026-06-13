@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 # --------------------------------------------------------------------------- #
@@ -111,12 +111,18 @@ CREATE INDEX IF NOT EXISTS idx_planches_album   ON planches(album_id);
 CREATE INDEX IF NOT EXISTS idx_regions_planche  ON regions(planche_id);
 CREATE INDEX IF NOT EXISTS idx_regions_parent   ON regions(parent_id);
 CREATE INDEX IF NOT EXISTS idx_anntags_tag      ON annotation_tags(tag_id);
+"""
 
+# Index plein texte FTS5 — séparé du schéma pour pouvoir le RECRÉER en migration
+# (le tokenizer est figé à la création de la table). `remove_diacritics 2` rend
+# la recherche insensible aux accents (« eloignez » trouve « éloignez »).
+_FTS_SQL = """
 CREATE VIRTUAL TABLE IF NOT EXISTS recherche USING fts5(
     region_id UNINDEXED,
     ocr_texte,
     note,
-    tags_concat
+    tags_concat,
+    tokenize = 'unicode61 remove_diacritics 2'
 );
 """
 
@@ -125,14 +131,32 @@ def init_db() -> None:
     """Crée le schéma s'il n'existe pas et applique les migrations."""
     with connect() as conn:
         conn.executescript(SCHEMA_SQL)
+        conn.executescript(_FTS_SQL)
         _migrate(conn)
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
     """Migrations idempotentes (sûres sur base neuve comme existante)."""
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(albums)")}
     if "description" not in cols:                       # v1 → v2
         conn.execute("ALTER TABLE albums ADD COLUMN description TEXT")
+
+    # v2 → v3 : index FTS recréé avec un tokenizer insensible aux accents
+    # (le tokenizer ne peut pas être modifié sur une table existante) ; on
+    # réindexe alors toutes les régions porteuses de contenu.
+    if version < 3:
+        conn.execute("DROP TABLE IF EXISTS recherche")
+        conn.executescript(_FTS_SQL)
+        # Réindexe les régions existantes (garde si appelé sur un schéma partiel).
+        has_regions = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='regions'"
+        ).fetchone()
+        if has_regions:
+            for r in conn.execute("SELECT id FROM regions").fetchall():
+                reindex_region(conn, r["id"])
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
