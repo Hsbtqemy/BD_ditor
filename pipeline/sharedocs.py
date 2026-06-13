@@ -79,6 +79,15 @@ def _check_url(url: str) -> None:
         pass                               # host = nom de domaine (pas une IP) → OK
 
 
+def _reject_redirect(r: httpx.Response) -> None:
+    """Anti-SSRF : les redirections ne sont pas suivies (`follow_redirects=False`),
+    donc une réponse 3xx ne doit jamais être prise pour un succès — on la traite
+    explicitement en erreur (sinon `download` renverrait le corps de la redirection)."""
+    if 300 <= r.status_code < 400:
+        raise ShareDocsError(
+            f"Redirection inattendue ({r.status_code}) — non suivie (sécurité).")
+
+
 def _join(base_url: str, path: str) -> str:
     """Concatène base + chemin relatif, chaque segment étant url-encodé."""
     base = base_url.rstrip("/")
@@ -133,6 +142,7 @@ def _propfind(url: str, user: str, password: str, path: str, depth: str) -> list
             )
     except httpx.HTTPError as exc:
         raise ShareDocsError(f"Connexion ShareDocs échouée : {exc}") from exc
+    _reject_redirect(r)
     if r.status_code in (401, 403):
         raise ShareDocsError("Identifiants refusés par ShareDocs (401/403).")
     if r.status_code >= 400:
@@ -196,6 +206,7 @@ def download(path: str) -> bytes:
             r = c.get(target)
     except httpx.HTTPError as exc:
         raise ShareDocsError(f"Téléchargement échoué : {exc}") from exc
+    _reject_redirect(r)
     if r.status_code >= 400:
         raise ShareDocsError(f"Téléchargement de {path!r} : {r.status_code}.")
     return r.content
@@ -214,6 +225,7 @@ def upload(path: str, data: bytes) -> dict:
             r = c.put(target, content=data)
     except httpx.HTTPError as exc:
         raise ShareDocsError(f"Dépôt échoué : {exc}") from exc
+    _reject_redirect(r)
     if r.status_code in (401, 403):
         raise ShareDocsError(
             "Écriture refusée par ShareDocs (403) — ce dossier est en lecture "

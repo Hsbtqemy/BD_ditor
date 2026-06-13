@@ -132,6 +132,14 @@ def test_configure_ip_interne_refusee(monkeypatch):
         sd.configure("http://169.254.169.254/", "u", "p")
 
 
+def test_redirection_non_suivie(monkeypatch):
+    """Anti-SSRF : une réponse 3xx n'est pas suivie ni prise pour un succès."""
+    _use(monkeypatch, lambda req: httpx.Response(
+        302, headers={"Location": "http://169.254.169.254/"}))
+    with pytest.raises(sd.ShareDocsError):
+        sd.configure(BASE, "u", "p")
+
+
 def test_connect_list_download(monkeypatch):
     _use(monkeypatch, _handler)
     assert sd.configure(BASE, "u", "p")["connecte"] is True
