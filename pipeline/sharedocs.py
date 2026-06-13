@@ -13,6 +13,7 @@ télécharger un fichier. Le dépôt sur ShareDocs passe par l'interface web
 """
 from __future__ import annotations
 
+import ipaddress
 import os
 import xml.etree.ElementTree as ET
 from urllib.parse import quote, unquote, urlsplit
@@ -41,8 +42,41 @@ class ShareDocsError(RuntimeError):
 # Bas niveau HTTP / WebDAV
 # --------------------------------------------------------------------------- #
 def _client(user: str, password: str) -> httpx.Client:
-    """Client httpx authentifié (Basic). Isolé pour pouvoir être mocké en test."""
-    return httpx.Client(auth=(user, password), timeout=30.0, follow_redirects=True)
+    """Client httpx authentifié (Basic). Isolé pour pouvoir être mocké en test.
+
+    `follow_redirects=False` : anti-SSRF — une redirection depuis l'hôte autorisé
+    vers une cible interne (ex. métadonnées cloud) ne doit jamais être suivie."""
+    return httpx.Client(auth=(user, password), timeout=30.0, follow_redirects=False)
+
+
+def _allowed_hosts() -> set[str]:
+    """Hôtes ShareDocs autorisés (anti-SSRF), configurables et évolutifs."""
+    raw = os.environ.get("BD_SHAREDOCS_ALLOWED_HOSTS", "sharedocs.huma-num.fr")
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
+def _check_url(url: str) -> None:
+    """Refuse toute URL hors allowlist d'hôte (et toute IP interne) — anti-SSRF.
+    L'URL ShareDocs est saisie par l'utilisateur ; sans ce garde-fou, le serveur
+    pourrait être détourné pour requêter des cibles internes."""
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https"):
+        raise ShareDocsError("URL ShareDocs invalide (schéma http/https requis).")
+    host = (parts.hostname or "").lower()
+    if not host:
+        raise ShareDocsError("URL ShareDocs invalide (hôte manquant).")
+    allowed = _allowed_hosts()
+    if host not in allowed:
+        raise ShareDocsError(
+            f"Hôte ShareDocs non autorisé : {host}. "
+            f"Autorisé(s) : {', '.join(sorted(allowed)) or '(aucun)'} "
+            "(configurable via BD_SHAREDOCS_ALLOWED_HOSTS).")
+    try:                                   # défense supplémentaire : pas d'IP interne
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise ShareDocsError("Adresse IP interne interdite.")
+    except ValueError:
+        pass                               # host = nom de domaine (pas une IP) → OK
 
 
 def _join(base_url: str, path: str) -> str:
@@ -126,6 +160,7 @@ def configure(url: str, user: str, password: str) -> dict:
     url = (url or "").strip().rstrip("/")
     if not url or not user or not password:
         raise ShareDocsError("URL, utilisateur et mot de passe requis.")
+    _check_url(url)                                  # anti-SSRF (allowlist d'hôte)
     _propfind(url, user, password, "", depth="0")   # lève si refusé/injoignable
     _session.update(url=url, user=user, password=password)
     return {"connecte": True, "url": url, "user": user}

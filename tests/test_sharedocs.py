@@ -14,7 +14,7 @@ from PIL import Image
 import main
 import pipeline.sharedocs as sd
 
-BASE = "https://sharedocs.example/remote.php/dav/files/u"
+BASE = "https://sharedocs.huma-num.fr/remote.php/dav/files/u"   # hôte autorisé (anti-SSRF)
 BP = "/remote.php/dav/files/u"
 
 # Petit arbre distant simulé : (nom, est_dossier, taille)
@@ -115,6 +115,21 @@ def test_configure_validation():
         sd.configure("", "u", "p")
     with pytest.raises(sd.ShareDocsError):
         sd.configure(BASE, "u", "")
+
+
+def test_configure_host_non_autorise():
+    """Anti-SSRF : un hôte hors allowlist est refusé avant toute requête réseau."""
+    with pytest.raises(sd.ShareDocsError):
+        sd.configure("https://evil.example/dav", "u", "p")
+    with pytest.raises(sd.ShareDocsError):
+        sd.configure("http://169.254.169.254/", "u", "p")
+
+
+def test_configure_ip_interne_refusee(monkeypatch):
+    """Même autorisée par allowlist, une IP interne (link-local) reste refusée."""
+    monkeypatch.setenv("BD_SHAREDOCS_ALLOWED_HOSTS", "169.254.169.254")
+    with pytest.raises(sd.ShareDocsError):
+        sd.configure("http://169.254.169.254/", "u", "p")
 
 
 def test_connect_list_download(monkeypatch):
