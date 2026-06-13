@@ -46,9 +46,9 @@ Toutes amplifiées par l'absence d'authentification.
 
 | Sévérité | Faille | Référence | Détail |
 |---|---|---|---|
-| 🔴 Élevé | **SSRF via ShareDocs** | `pipeline/sharedocs.py:43-45,124-130` | `configure(url,…)` prend une URL **contrôlée par le client** ; le serveur émet PROPFIND/GET/PUT dessus avec `follow_redirects=True`, timeout 30 s. Un inconnu peut viser `http://169.254.169.254/…` (**métadonnées cloud → vol d'identifiants IAM**), services internes, `localhost`. |
+| ✅ **Corrigé** | **SSRF via ShareDocs** | `pipeline/sharedocs.py` (`_check_url`, `_client`) | Était : URL contrôlée par le client + `follow_redirects=True` → cible interne possible. **Corrigé** : allowlist d'hôte (`BD_SHAREDOCS_ALLOWED_HOSTS`, défaut `sharedocs.huma-num.fr`), refus des IP internes, `follow_redirects=False`. |
 | 🔴 Élevé | **Exfiltration totale non authentifiée** | `main.py:647`, `main.py:1103` | `GET /api/sauvegarde` → snapshot **complet** de la base en un GET. `/derivatives/...` (StaticFiles) → toutes les images, énumérables. Tout le corpus (données + images) téléchargeable par n'importe qui. |
-| 🟠 Moyen | **OOM upload + bombe de décompression** | `pipeline/ingest.py:25,97-101,158` | `file.file.read()` charge tout en RAM ; image **ouverte deux fois** + `convert/resize` ; `Image.MAX_IMAGE_PIXELS = None` (`ingest.py:25`, `ocr.py:55`) **supprime la garde Pillow**. Aucune limite de taille → un seul upload suffit à OOM. |
+| ✅ **Corrigé** (partiel) | **OOM upload + bombe de décompression** | `config.py` (`MAX_IMAGE_PIXELS`), `ingest.py`, `ocr.py` | **Corrigé** : garde Pillow réactivée (`MAX_IMAGE_PIXELS` borné, défaut 200 Mpx, `BD_MAX_IMAGE_PIXELS`) → plus d'OOM sur image-bombe ; limite de taille d'upload posée côté **proxy Caddy** (`request_body 200MB`). Restant (mineur) : `file.file.read()` en RAM + image ouverte deux fois. |
 | 🟠 Moyen | **Pic RAM de la sauvegarde** | `pipeline/backup.py:28-34` | `raw = snap.read_bytes()` + zip en `io.BytesIO()` → base chargée 2× en RAM (pic 2–3× la taille de la base). |
 | 🟡 Faible | **Fuite d'info par messages d'erreur** | divers `HTTPException(…, str(exc))` | Chemins disque, erreurs SQL, URLs internes renvoyés au client. |
 
