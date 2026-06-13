@@ -20,25 +20,20 @@ SQLite (`check_same_thread=False`, `main.py:51-65`).
   → **Mono-process obligatoire.** Interdit de lancer `uvicorn --workers N` /
   gunicorn multi-workers : l'état divergerait (jobs, session, modèles).
 
-- **Faille de thread-safety sur les routes ML directes.** Le worker de lot se
-  protège avec `_run_lock` *parce que* « les modèles ML ne sont pas thread-safe »
-  (`pipeline/jobs.py:21`). Mais les routes par planche `/ocr`, `/detecter-bulles`,
-  `/segmenter` **n'ont aucun verrou** : deux appels concurrents partagent le même
-  `_reader`/`_model`. De plus `_get_reader`/`_load_model` font un *check-then-set*
-  non atomique (`pipeline/ocr.py:41`, `pipeline/bulles.py:35`) → deux premières
-  requêtes simultanées peuvent construire deux Readers (double téléchargement +
-  double pic mémoire). Le cache de crop, lui, **est** correctement verrouillé
-  (`_crop_lock`, `pipeline/ocr.py:124`).
+- **✅ Corrigé — thread-safety des routes ML directes.** Un verrou partagé
+  `jobs.ML_LOCK` sérialise désormais TOUTE inférence ML (worker de lot ET routes
+  `/ocr`, `/detecter-bulles`, `/segmenter`) → plus d'inférence concurrente (anti-OOM)
+  ni de *check-then-set* de modèle non atomique. (Le cache de crop était déjà
+  verrouillé via `_crop_lock`.)
 
 - **Les inférences ML bloquent des threads du pool** pendant toute leur durée
   (lentes, CPU) → quelques appels ML concurrents peuvent affamer les requêtes
   normales (annotation, recherche).
 
-- **Contention d'écriture SQLite pendant un job.** WAL = N lecteurs + 1 rédacteur.
-  Le worker écrit (commit par passe) pendant que l'utilisateur écrit → au-delà de
-  `busy_timeout=5000`, `database is locked` → `OperationalError`. La route
-  `recherche` l'attrape (`main.py:815`), **pas les routes d'écriture** → une
-  sauvegarde d'annotation peut **500 par intermittence** en collision avec un lot.
+- **✅ Atténué — contention d'écriture SQLite pendant un job.** Au-delà de
+  `busy_timeout=5000`, `database is locked` reste possible, mais un **handler
+  global** renvoie désormais **409** (« réessayez ») au lieu d'un 500 brut sur les
+  routes d'écriture (la sérialisation ML réduit aussi la fenêtre de contention).
 
 ## 2. Sécurité — failles à corriger AVANT exposition
 
@@ -49,7 +44,7 @@ Toutes amplifiées par l'absence d'authentification.
 | ✅ **Corrigé** | **SSRF via ShareDocs** | `pipeline/sharedocs.py` (`_check_url`, `_client`) | Était : URL contrôlée par le client + `follow_redirects=True` → cible interne possible. **Corrigé** : allowlist d'hôte (`BD_SHAREDOCS_ALLOWED_HOSTS`, défaut `sharedocs.huma-num.fr`), refus des IP internes, `follow_redirects=False`. |
 | 🔴 Élevé | **Exfiltration totale non authentifiée** | `main.py:647`, `main.py:1103` | `GET /api/sauvegarde` → snapshot **complet** de la base en un GET. `/derivatives/...` (StaticFiles) → toutes les images, énumérables. Tout le corpus (données + images) téléchargeable par n'importe qui. |
 | ✅ **Corrigé** (partiel) | **OOM upload + bombe de décompression** | `config.py` (`MAX_IMAGE_PIXELS`), `ingest.py`, `ocr.py` | **Corrigé** : garde Pillow réactivée (`MAX_IMAGE_PIXELS` borné, défaut 200 Mpx, `BD_MAX_IMAGE_PIXELS`) → plus d'OOM sur image-bombe ; limite de taille d'upload posée côté **proxy Caddy** (`request_body 200MB`). Restant (mineur) : `file.file.read()` en RAM + image ouverte deux fois. |
-| 🟠 Moyen | **Pic RAM de la sauvegarde** | `pipeline/backup.py:28-34` | `raw = snap.read_bytes()` + zip en `io.BytesIO()` → base chargée 2× en RAM (pic 2–3× la taille de la base). |
+| ✅ **Corrigé** | **Pic RAM de la sauvegarde** | `pipeline/backup.py` | **Corrigé** : `make_backup` zippe désormais directement depuis le fichier snapshot (plus de `read_bytes()` complet en RAM) → pic ÷ ~2. |
 | 🟡 Faible | **Fuite d'info par messages d'erreur** | divers `HTTPException(…, str(exc))` | Chemins disque, erreurs SQL, URLs internes renvoyés au client. |
 
 ### Points confirmés SAINS (ne pas sur-corriger)
