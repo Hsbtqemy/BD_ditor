@@ -18,11 +18,13 @@ from pathlib import Path
 
 from PIL import Image
 
-from config import CORPUS_DIR, DATA_DIR, DERIVATIVES_DIR, WEB_JPEG_QUALITY, WEB_SCALE
+from config import (CORPUS_DIR, DATA_DIR, DERIVATIVES_DIR, MAX_IMAGE_PIXELS,
+                    WEB_JPEG_QUALITY, WEB_SCALE)
 
-# Pillow refuse par défaut les très grandes images (garde anti-DoS) ; les
-# planches 400 dpi dépassent largement. On relève la limite.
-Image.MAX_IMAGE_PIXELS = None
+# Garde anti-bombe de décompression : on relève la limite Pillow à une valeur
+# large (couvre les scans 400-600 dpi) mais bornée — surtout pas None, qui
+# désactiverait la protection et exposerait à un OOM sur image-bombe.
+Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
 
 def _rel_posix(path: Path) -> str:

@@ -41,6 +41,17 @@ def test_suppression_region_nettoie_fts(client, planche, db_path):
     assert not client.get("/api/recherche", params={"q": "ENFANTOCR"}).json()["results"]
 
 
+def test_garde_anti_bombe_reactivee():
+    """Bug : `Image.MAX_IMAGE_PIXELS = None` désactivait la protection anti-bombe
+    de décompression (risque OOM). Elle doit rester bornée (jamais None)."""
+    import pipeline.ingest  # noqa: F401  (fixe la limite à l'import)
+    import pipeline.ocr as ocrm
+    from PIL import Image
+    assert Image.MAX_IMAGE_PIXELS is not None
+    # le module OCR la repositionne aussi à l'ouverture d'image (jamais None)
+    assert ocrm.MAX_IMAGE_PIXELS is not None and ocrm.MAX_IMAGE_PIXELS > 0
+
+
 def test_recherche_prefixe_et_accents(client, planche):
     """Bug : « otage » ne trouvait pas « Otages », « eloignez » pas « éloignez ».
     Correctif : requêtes FTS en PRÉFIXE + tokenizer insensible aux accents."""

@@ -39,6 +39,12 @@ KUMIKO_DIR = BASE_DIR / "lib" / "kumiko"
 WEB_SCALE = 0.25          # le dérivé fait 25 % de la taille du master
 WEB_JPEG_QUALITY = 82
 
+# Garde-fou anti-bombe de décompression : nombre max de pixels décodés par image.
+# Très au-dessus d'un scan de BD (≤ ~100 Mpx même en haute résolution) mais bloque
+# les images-bombes AVANT l'allocation mémoire (Pillow vérifie via l'en-tête).
+# Configurable via l'environnement.
+MAX_IMAGE_PIXELS = int(os.environ.get("BD_MAX_IMAGE_PIXELS", 200_000_000))
+
 # Statuts possibles d'une planche (progression linéaire)
 STATUTS = ("importee", "segmentee", "corrigee", "annotee")
 
