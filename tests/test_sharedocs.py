@@ -69,11 +69,6 @@ def _use(monkeypatch, handler):
             transport=httpx.MockTransport(handler), auth=(user, password)))
 
 
-@pytest.fixture(autouse=True)
-def _reset_session():
-    sd.disconnect()
-    yield
-    sd.disconnect()
 
 
 # --------------------------------------------------------------------------- #

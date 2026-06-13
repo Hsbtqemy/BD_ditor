@@ -13,8 +13,15 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# Racine des données (overridable). Par défaut : le dépôt lui-même.
-DATA_DIR = Path(os.environ.get("BD_DATA_DIR", BASE_DIR)).resolve()
+# Racine des données (overridable). Par défaut : le dépôt lui-même. Un chemin
+# RELATIF est résolu contre le dépôt (BASE_DIR), pas contre le CWD du process —
+# sinon l'app pointerait vers une base/un corpus différents selon le répertoire
+# de lancement.
+_data_env = os.environ.get("BD_DATA_DIR")
+DATA_DIR = Path(_data_env) if _data_env else BASE_DIR
+if not DATA_DIR.is_absolute():
+    DATA_DIR = BASE_DIR / DATA_DIR
+DATA_DIR = DATA_DIR.resolve()
 
 DB_PATH = (Path(os.environ["BD_DB_PATH"]).resolve()
            if os.environ.get("BD_DB_PATH")
@@ -38,6 +45,13 @@ STATUTS = ("importee", "segmentee", "corrigee", "annotee")
 # Types de régions autorisés
 TYPES_REGION = ("case", "bulle", "personnage", "texte", "cartouche")
 
-# S'assure que les répertoires de données existent
+# S'assure que les répertoires de données existent. Encadré : un DATA_DIR non
+# inscriptible (RO, permissions, disque plein) doit donner un message clair
+# nommant le chemin fautif, pas une stack-trace brute à l'import.
 for _d in (CORPUS_DIR, DERIVATIVES_DIR):
-    _d.mkdir(parents=True, exist_ok=True)
+    try:
+        _d.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise RuntimeError(
+            f"Impossible de créer le répertoire de données {_d} — "
+            f"vérifiez BD_DATA_DIR et les permissions ({exc})") from exc

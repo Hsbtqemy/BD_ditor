@@ -197,12 +197,12 @@ bd_annotator/
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                     # toute la suite (176 tests)
+pytest                     # toute la suite (194 tests)
 pytest -m "not live"       # sans le test d'intégration (pas de serveur lancé)
 pytest --cov=. --cov-report=term-missing   # couverture (100 %)
 ```
 
-La suite (`tests/`, **176 tests, couverture 100 %**) couvre le schéma SQLite +
+La suite (`tests/`, **194 tests, couverture 100 %**) couvre le schéma SQLite +
 FTS5 (et la migration), le pipeline (ingestion, segmentation Kumiko, détection
 de bulles, OCR, ordre de lecture), la sauvegarde, l'intégration **ShareDocs**
 (WebDAV simulé via httpx `MockTransport`, sans réseau réel), la **gestion de

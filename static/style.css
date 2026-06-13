@@ -20,8 +20,8 @@
   --text-muted:  #9aa3b8;   /* relevé de #888 : passe le contraste AA sur panneaux */
 
   /* Tokens sémantiques neutres (basculent avec le thème). */
-  --hover:        var(--hover);  /* survol discret sur surfaces sombres */
-  --scrim:        var(--scrim);        /* fond de modale */
+  --hover:        rgba(255,255,255,.06); /* survol discret sur surfaces sombres */
+  --scrim:        rgba(0,0,0,.55);        /* fond de modale */
   --shadow:       rgba(0,0,0,.40);
   --shadow-strong:rgba(0,0,0,.50);
   --stage-a:      #15152a;                /* échiquier du fond de scène */
@@ -597,7 +597,7 @@ h3.collapsible:hover { color: var(--text); }
 }
 .sd-login input, .sd-import-form select, .sd-import-form input[type=text] {
   padding: 7px 9px; background: var(--bg-input); color: var(--text);
-  border: 1px solid var(--border); border-radius: 5px; font: 13px inherit;
+  border: 1px solid var(--border); border-radius: 5px; font-size: 13px; font-family: inherit;
 }
 .sd-row { display: flex; align-items: center; gap: 12px; }
 .sd-import-form h3 { margin: 0; font-size: 14px; }
@@ -782,7 +782,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .modal-box label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
 .modal-box input, .modal-box textarea {
   background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
-  border-radius: 5px; padding: 7px 9px; font: 13px inherit; resize: vertical;
+  border-radius: 5px; padding: 7px 9px; font-size: 13px; font-family: inherit; resize: vertical;
 }
 .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .modal-actions { display: flex; align-items: center; gap: 12px; }

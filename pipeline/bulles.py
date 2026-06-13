@@ -60,8 +60,8 @@ def _run(image_path, conf: float):
 def _parent_case(cases, cx, cy):
     """Case (la plus petite) contenant le point (cx, cy), sinon None."""
     candidates = [c for c in cases
-                  if c["x"] <= cx <= c["x"] + c["w"]
-                  and c["y"] <= cy <= c["y"] + c["h"]]
+                  if (c["x"] or 0) <= cx <= (c["x"] or 0) + (c["w"] or 0)
+                  and (c["y"] or 0) <= cy <= (c["y"] or 0) + (c["h"] or 0)]
     if not candidates:
         return None
     return min(candidates, key=lambda c: (c["w"] or 0) * (c["h"] or 0))["id"]

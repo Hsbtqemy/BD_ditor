@@ -15,17 +15,6 @@ import pipeline.ocr as ocr
 from conftest import requires_bulles, requires_ocr
 
 
-@pytest.fixture(autouse=True)
-def _reset_crop_cache():
-    if ocr._crop_cache.get("img") is not None:
-        try:
-            ocr._crop_cache["img"].close()
-        except Exception:
-            pass
-    ocr._crop_cache.update(planche_id=None, img=None, scale=1.0)
-    yield
-
-
 # ------------------------------ unités ---------------------------------- #
 def test_parent_case_geometrie():
     cases = [{"id": 1, "x": 0, "y": 0, "w": 100, "h": 100},

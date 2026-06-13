@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 from contextlib import asynccontextmanager
 from typing import Iterator, Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -97,10 +97,10 @@ class AlbumUpdate(BaseModel):
 
 class RegionIn(BaseModel):
     type: str
-    x: int = 0
-    y: int = 0
-    w: int = 0
-    h: int = 0
+    x: int = Field(0, ge=0)
+    y: int = Field(0, ge=0)
+    w: int = Field(0, ge=0)
+    h: int = Field(0, ge=0)
     parent_id: Optional[int] = None
     ordre: Optional[int] = None
     ocr_texte: Optional[str] = None
@@ -109,10 +109,10 @@ class RegionIn(BaseModel):
 
 class RegionUpdate(BaseModel):
     type: Optional[str] = None
-    x: Optional[int] = None
-    y: Optional[int] = None
-    w: Optional[int] = None
-    h: Optional[int] = None
+    x: Optional[int] = Field(None, ge=0)
+    y: Optional[int] = Field(None, ge=0)
+    w: Optional[int] = Field(None, ge=0)
+    h: Optional[int] = Field(None, ge=0)
     parent_id: Optional[int] = None
     ordre: Optional[int] = None
     ocr_texte: Optional[str] = None
@@ -210,6 +210,35 @@ def _get_planche(conn, planche_id: int) -> dict:
     if p is None:
         raise HTTPException(404, f"Planche {planche_id} introuvable")
     return p
+
+
+def _validate_parent(conn: sqlite3.Connection, planche_id: int,
+                     parent_id: Optional[int], region_id: Optional[int] = None) -> None:
+    """Valide un parent_id : il doit exister, être sur LA MÊME planche, et ne pas
+    créer de cycle (ni s'auto-référencer). Lève HTTPException 422 sinon. Une FK
+    seule ne garantit pas ces invariants — sans quoi une région cross-planche ou
+    un cycle casse l'export (région omise) et fait boucler le DELETE récursif."""
+    if parent_id is None:
+        return
+    parent = _row(conn.execute(
+        "SELECT planche_id FROM regions WHERE id = ?", (parent_id,)))
+    if parent is None:
+        raise HTTPException(422, f"parent_id {parent_id} introuvable")
+    if parent["planche_id"] != planche_id:
+        raise HTTPException(422, "parent_id appartient à une autre planche")
+    if region_id is not None:
+        if parent_id == region_id:
+            raise HTTPException(422, "Une région ne peut pas être son propre parent")
+        # parent_id ne doit pas être un descendant de region_id (UNION → termine
+        # même si la base contient déjà un cycle).
+        descendants = {r["id"] for r in conn.execute(
+            """WITH RECURSIVE d(id) AS (
+                   SELECT id FROM regions WHERE id = ?
+                   UNION
+                   SELECT r.id FROM regions r JOIN d ON r.parent_id = d.id
+               ) SELECT id FROM d""", (region_id,))}
+        if parent_id in descendants:
+            raise HTTPException(422, "parent_id créerait un cycle")
 
 
 # =========================================================================== #
@@ -313,7 +342,7 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db)):
 def import_planche(
     album_id: int,
     file: UploadFile = File(...),
-    numero: Optional[int] = Form(None),
+    numero: Optional[int] = Form(None, ge=1),
     conn: sqlite3.Connection = Depends(db),
 ):
     if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
@@ -331,6 +360,8 @@ def import_planche(
     try:
         planche = ingest_image(conn, album_id, master, numero=numero)
     except Exception as exc:
+        # Pas de master orphelin sur disque si l'ingestion échoue après écriture.
+        master.unlink(missing_ok=True)
         raise HTTPException(400, f"Échec de l'ingestion : {exc}")
     conn.commit()
     planche["url_web"] = "/" + planche["chemin_web"]
@@ -415,6 +446,7 @@ def create_region(planche_id: int, region: RegionIn,
     _get_planche(conn, planche_id)
     if region.type not in TYPES_REGION:
         raise HTTPException(422, f"Type invalide : {region.type}")
+    _validate_parent(conn, planche_id, region.parent_id)
     ordre = region.ordre
     if ordre is None:
         row = conn.execute(
@@ -460,6 +492,8 @@ def update_region(region_id: int, patch: RegionUpdate,
     fields = patch.model_dump(exclude_unset=True)
     if "type" in fields and fields["type"] not in TYPES_REGION:
         raise HTTPException(422, f"Type invalide : {fields['type']}")
+    if "parent_id" in fields:
+        _validate_parent(conn, existing["planche_id"], fields["parent_id"], region_id)
     if fields:
         cols = ", ".join(f"{k} = ?" for k in fields)
         conn.execute(f"UPDATE regions SET {cols} WHERE id = ?",
@@ -479,7 +513,7 @@ def delete_region(region_id: int, conn: sqlite3.Connection = Depends(db)):
     descendants = conn.execute(
         """WITH RECURSIVE d(id) AS (
                SELECT id FROM regions WHERE id = ?
-               UNION ALL
+               UNION
                SELECT r.id FROM regions r JOIN d ON r.parent_id = d.id
            ) SELECT id FROM d""",
         (region_id,),
@@ -575,6 +609,7 @@ def sharedocs_importer(payload: SharedocsImportIn,
         if os.path.splitext(nom)[1].lower() not in IMG_EXTS:
             erreurs.append({"chemin": chemin, "erreur": "type non géré (image attendue)"})
             continue
+        master = None
         try:
             data = sharedocs.download(chemin)
             if not data:
@@ -595,6 +630,9 @@ def sharedocs_importer(payload: SharedocsImportIn,
                 except Exception:
                     pass
         except Exception as exc:   # un fichier en échec ne stoppe pas le lot
+            # Pas de master orphelin sur disque si l'ingestion a échoué après écriture.
+            if master is not None:
+                master.unlink(missing_ok=True)
             erreurs.append({"chemin": chemin, "erreur": str(exc)})
     if created_album and not importes:
         # rien d'importé : ne pas laisser un album vide orphelin
@@ -724,8 +762,9 @@ def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db)):
 # =========================================================================== #
 @app.get("/api/recherche")
 def recherche(q: str = "", album: Optional[int] = None,
-              type: Optional[str] = None, tags: Optional[str] = None,
+              type: Optional[str] = None, tags: Optional[list[str]] = Query(None),
               limit: int = 100, conn: sqlite3.Connection = Depends(db)):
+    limit = max(1, min(limit, 500))   # borne : évite LIMIT -1 (= tout le corpus) / DoS
     where, params = [], []
 
     base = (
@@ -754,7 +793,8 @@ def recherche(q: str = "", album: Optional[int] = None,
         where.append("r.type = ?")
         params.append(type)
     if tags:
-        wanted = [_norm_tag(t) for t in tags.split(",") if _norm_tag(t)]
+        # un paramètre `tags` par tag (robuste aux virgules dans les labels)
+        wanted = [_norm_tag(t) for t in tags if _norm_tag(t)]
         for label in wanted:
             where.append(
                 "EXISTS (SELECT 1 FROM annotation_tags at "
@@ -959,6 +999,22 @@ def _tei_el(parent, tag, **attrs):
     return el
 
 
+# Caractères interdits par XML 1.0 (hors \t \n \r) : ElementTree les émet bruts,
+# produisant un fichier non re-parsable. On les retire du texte libre (OCR / note
+# / métadonnées) avant insertion — sinon l'export TEI est silencieusement corrompu.
+def _xml_safe(text) -> str:
+    """Retire les caracteres interdits par XML 1.0 (garde tab/LF/CR) du
+    texte libre : sinon ElementTree produit un export TEI non re-parsable."""
+    if not text:
+        return ""
+    return "".join(
+        c for c in text
+        if ord(c) in (0x09, 0x0A, 0x0D)
+        or 0x20 <= ord(c) <= 0xD7FF
+        or 0xE000 <= ord(c) <= 0xFFFD
+        or ord(c) >= 0x10000)
+
+
 @app.get("/api/export/tei")
 def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db)):
     album = _row(conn.execute("SELECT * FROM albums WHERE id = ?", (album_id,)))
@@ -972,13 +1028,13 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db)):
     header = _tei_el(root, "teiHeader")
     file_desc = _tei_el(header, "fileDesc")
     title_stmt = _tei_el(file_desc, "titleStmt")
-    _tei_el(title_stmt, "title").text = album["titre"]
+    _tei_el(title_stmt, "title").text = _xml_safe(album["titre"])
     if album["auteur"]:
-        _tei_el(title_stmt, "author").text = album["auteur"]
+        _tei_el(title_stmt, "author").text = _xml_safe(album["auteur"])
     pub = _tei_el(file_desc, "publicationStmt")
-    _tei_el(pub, "publisher").text = album["editeur"] or "BD Annotator"
+    _tei_el(pub, "publisher").text = _xml_safe(album["editeur"] or "BD Annotator")
     src = _tei_el(file_desc, "sourceDesc")
-    _tei_el(src, "p").text = (
+    _tei_el(src, "p").text = _xml_safe(
         f"{album['titre']}"
         + (f", {album['serie']}" if album["serie"] else "")
         + (f" ({album['annee']})" if album["annee"] else "")
@@ -1012,14 +1068,14 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db)):
                 zone.set(f"{{{XML_NS}}}id", f"zone_{r['id']}")
                 zone.set("type", r["type"])
                 if r["ocr_texte"]:
-                    _tei_el(zone, "line").text = r["ocr_texte"]
+                    _tei_el(zone, "line").text = _xml_safe(r["ocr_texte"])
                 ann = _annotation_for_region(conn, r["id"])
                 if ann["note"] or ann["tags"]:
                     note = _tei_el(zone, "note")
                     if ann["tags"]:
                         note.set("type", "tags")
-                        note.set("ana", " ".join(t["label"] for t in ann["tags"]))
-                    note.text = ann["note"] or ""
+                        note.set("ana", _xml_safe(" ".join(t["label"] for t in ann["tags"])))
+                    note.text = _xml_safe(ann["note"])
                 add_zones(zone, r["id"])
 
         add_zones(surface, None)

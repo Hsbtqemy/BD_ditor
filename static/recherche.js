@@ -11,6 +11,7 @@ const state = {
   albums: [],
   activeTags: new Set(),
   timer: null,
+  searchGen: 0,   // jeton de fraîcheur : ignore les réponses de recherche périmées
 };
 
 async function apiGet(path) {
@@ -124,13 +125,14 @@ function search() {
   if (q) params.set("q", q);
   if (album) params.set("album", album);
   if (type) params.set("type", type);
-  if (tags.length) params.set("tags", tags.join(","));
+  tags.forEach((t) => params.append("tags", t));   // un param par tag : robuste aux virgules
   params.set("limit", "200");
 
+  const gen = ++state.searchGen;                    // anti-course : seule la dernière réponse rend
   $("#result-count").textContent = "Recherche…";
   apiGet("/api/recherche?" + params.toString())
-    .then((res) => renderResults(res, q))
-    .catch((e) => { $("#result-count").textContent = "Erreur : " + e.message; });
+    .then((res) => { if (gen === state.searchGen) renderResults(res, q); })
+    .catch((e) => { if (gen === state.searchGen) $("#result-count").textContent = "Erreur : " + e.message; });
 }
 
 function renderResults(res, q) {

@@ -28,7 +28,9 @@ KUMIKO_SAMPLE = (REPO_ROOT
                  / "lib/kumiko/tests/images/000-common-page-templates/simple.png")
 
 import pipeline.bulles as bulles_mod  # noqa: E402
+import pipeline.jobs as jobs_mod  # noqa: E402
 import pipeline.ocr as ocr_mod  # noqa: E402
+import pipeline.sharedocs as sharedocs_mod  # noqa: E402
 
 requires_kumiko = pytest.mark.skipif(
     not segmentation.kumiko_available(),
@@ -38,6 +40,23 @@ requires_bulles = pytest.mark.skipif(
     not bulles_mod.bulles_available(), reason="ultralytics non installé")
 requires_ocr = pytest.mark.skipif(
     not ocr_mod.ocr_available(), reason="easyocr non installé")
+
+
+@pytest.fixture(autouse=True)
+def _reset_global_state():
+    """Réinitialise les singletons de module (registre de jobs + compteur, cache
+    de crop, session ShareDocs) AVANT chaque test — sinon l'état fuit d'un test à
+    l'autre. Centralisé ici pour couvrir TOUTE la suite, pas un seul fichier."""
+    jobs_mod._jobs.clear()
+    jobs_mod._counter = 0
+    if ocr_mod._crop_cache.get("img") is not None:
+        try:
+            ocr_mod._crop_cache["img"].close()
+        except Exception:
+            pass
+    ocr_mod._crop_cache.update(planche_id=None, img=None, scale=1.0)
+    sharedocs_mod.disconnect()
+    yield
 
 
 @pytest.fixture

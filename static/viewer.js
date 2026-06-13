@@ -120,7 +120,7 @@ function renderPlancheList() {
     li.dataset.id = p.id;
     if (state.planche && p.id === state.planche.id) li.classList.add("active");
     li.innerHTML =
-      `<span class="statut-pill statut-${p.statut}" title="${p.statut}"></span>` +
+      `<span class="statut-pill statut-${escapeHtml(p.statut)}" title="${escapeHtml(p.statut)}"></span>` +
       `<span class="num">p.${String(p.numero).padStart(3, "0")}</span>` +
       `<span class="meta">${p.nb_regions} rég. · ${p.nb_annotees} ann.</span>`;
     li.onclick = () => selectPlanche(p.id);
@@ -397,7 +397,9 @@ function escapeHtml(s) {
 function readingSequence() {
   const byParent = new Map();
   for (const r of state.regions) {
-    const k = r.parent_id ?? "root";
+    // Repli défensif : un parent absent (orphelin) est rattaché à la racine,
+    // sinon la région disparaîtrait de la séquence/transcription/navigation.
+    const k = (r.parent_id != null && state.regionsById.has(r.parent_id)) ? r.parent_id : "root";
     (byParent.get(k) || byParent.set(k, []).get(k)).push(r);
   }
   const sortSibs = (a) => a.sort((x, y) => (x.ordre || 0) - (y.ordre || 0) || x.id - y.id);
@@ -480,7 +482,9 @@ function renderTree() {
   // Regroupe les régions par parent ("root" = enfants directs de la planche).
   const byParent = new Map();
   for (const rg of state.regions) {
-    const key = rg.parent_id ?? "root";
+    // Repli défensif : un parent absent (orphelin) est rattaché à la racine,
+    // sinon la région serait invisible dans l'arbre tout en restant dessinée.
+    const key = (rg.parent_id != null && state.regionsById.has(rg.parent_id)) ? rg.parent_id : "root";
     (byParent.get(key) || byParent.set(key, []).get(key)).push(rg);
   }
   const sorted = (arr) =>
@@ -700,7 +704,7 @@ function renderTagChips() {
     chip.className = "tag-chip";
     const v = state.tagVocab.find((t) => t.label === label);
     if (v && v.couleur) chip.style.borderColor = v.couleur;
-    chip.innerHTML = `<span>${label}</span><span class="x">×</span>`;
+    chip.innerHTML = `<span>${escapeHtml(label)}</span><span class="x">×</span>`;
     chip.querySelector(".x").onclick = () => { removeTag(label); };
     box.appendChild(chip);
   }
@@ -912,7 +916,7 @@ function setupTagInput() {
       const d = document.createElement("div");
       if (i === activeIdx) d.classList.add("active");
       d.dataset.label = t.label;
-      d.innerHTML = `${t.label}<span class="freq">${t.frequence}</span>`;
+      d.innerHTML = `${escapeHtml(t.label)}<span class="freq">${escapeHtml(t.frequence)}</span>`;
       d.onmousedown = (e) => { e.preventDefault(); addTag(t.label); input.value = ""; close(); };
       sug.appendChild(d);
     });
@@ -1044,6 +1048,7 @@ stage.addEventListener("mousedown", (e) => {
   // Poignée de redimensionnement (mode édition).
   if (target.classList.contains("handle")) {
     const r = selectedRegion();
+    if (!r) return;                       // poignée résiduelle sans sélection
     drag = { kind: "resize", dir: target.dataset.handle, start: clientToMaster(e),
              orig: { x: r.x, y: r.y, w: r.w, h: r.h } };
     return;
@@ -1130,17 +1135,27 @@ window.addEventListener("mouseup", (e) => {
   }
 });
 
+const MIN_REGION = 5;   // taille minimale d'une région (px master), cohérente avec le dessin
+
 function resizeFrom(d, p) {
   const r = selectedRegion();
+  if (!r) return;
   let { x, y, w, h } = d.orig;
   const dx = p.x - d.start.x, dy = p.y - d.start.y;
   if (d.dir.includes("e")) w = d.orig.w + dx;
   if (d.dir.includes("s")) h = d.orig.h + dy;
-  if (d.dir.includes("w")) { x = d.orig.x + dx; w = d.orig.w - dx; }
-  if (d.dir.includes("n")) { y = d.orig.y + dy; h = d.orig.h - dy; }
-  // Empêche les dimensions négatives.
-  if (w < 1) { w = 1; }
-  if (h < 1) { h = 1; }
+  if (d.dir.includes("w")) {            // bord DROIT ancré
+    const right = d.orig.x + d.orig.w;
+    x = d.orig.x + dx; w = right - x;
+    if (w < MIN_REGION) { w = MIN_REGION; x = right - MIN_REGION; }
+  }
+  if (d.dir.includes("n")) {            // bord BAS ancré
+    const bottom = d.orig.y + d.orig.h;
+    y = d.orig.y + dy; h = bottom - y;
+    if (h < MIN_REGION) { h = MIN_REGION; y = bottom - MIN_REGION; }
+  }
+  if (w < MIN_REGION) w = MIN_REGION;   // bords est / sud
+  if (h < MIN_REGION) h = MIN_REGION;
   Object.assign(r, { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
 }
 

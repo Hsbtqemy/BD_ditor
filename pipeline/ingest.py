@@ -42,11 +42,19 @@ def read_metadata(source: Path) -> dict:
     """Lit dimensions, mode couleur et DPI d'une image sans la convertir."""
     with Image.open(source) as img:
         dpi = img.info.get("dpi")
+        # dpi peut être scalaire (300) ou non numérique selon l'encodeur :
+        # normalise en paire d'entiers, ou None si illisible (image valide quand même).
+        if dpi is not None and not isinstance(dpi, (tuple, list)):
+            dpi = (dpi, dpi)
+        try:
+            dpi = tuple(round(d) for d in dpi) if dpi else None
+        except (TypeError, ValueError):
+            dpi = None
         return {
             "largeur": img.width,
             "hauteur": img.height,
             "mode": img.mode,
-            "dpi": tuple(round(d) for d in dpi) if dpi else None,
+            "dpi": dpi,
         }
 
 
@@ -145,7 +153,7 @@ def store_upload(album_id: int, filename: str, data: bytes,
     suffix = Path(filename).suffix or ".tif"
     folder = CORPUS_DIR / f"album_{album_id}"
     folder.mkdir(parents=True, exist_ok=True)
-    stem = f"planche_{numero:04d}" if numero else Path(filename).stem
+    stem = f"planche_{numero:04d}" if numero is not None else Path(filename).stem
     dest = folder / f"{stem}{suffix}"
     dest.write_bytes(data)
     return dest

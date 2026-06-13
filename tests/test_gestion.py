@@ -3,20 +3,11 @@ import sqlite3
 import threading
 import time
 
-import pytest
-
 import database
 import main
 import pipeline.bulles as bul
-import pipeline.jobs as jobs
 import pipeline.ocr as ocrm
 import pipeline.segmentation as seg
-
-
-@pytest.fixture(autouse=True)
-def _reset_jobs():
-    jobs._jobs.clear()
-    yield
 
 
 def _wait_done(client, jid, timeout=5.0):

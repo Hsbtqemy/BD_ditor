@@ -24,6 +24,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Logs (sorties uvicorn/serveur, non versionnées)
+*.log
+
 # Spike OCR — artefacts générés (le code du spike est versionné, pas ses sorties)
 spike/samples/
 spike/report.html

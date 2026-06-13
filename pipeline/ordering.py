@@ -26,23 +26,27 @@ def reading_order(boxes: list[dict]) -> list[dict]:
     """
     if not boxes:
         return []
-    items = sorted(boxes, key=lambda b: (b["y"], b["x"]))
-    heights = sorted(b["h"] for b in items)
+    # Coordonnées défensives : une région manuelle peut avoir x/y/w/h NULL
+    # (PATCH partiel) ; on les traite comme 0 plutôt que de lever un TypeError.
+    def _y(b): return b["y"] or 0
+    def _x(b): return b["x"] or 0
+    items = sorted(boxes, key=lambda b: (_y(b), _x(b)))
+    heights = sorted((b["h"] or 0) for b in items)
     med_h = heights[len(heights) // 2] or 1
     tol = med_h * 0.4
     rows: list[dict] = []
     for b in items:
         for row in rows:
-            if abs(b["y"] - row["top"]) <= tol:
+            if abs(_y(b) - row["top"]) <= tol:
                 row["items"].append(b)
-                row["top"] = min(row["top"], b["y"])
+                row["top"] = min(row["top"], _y(b))
                 break
         else:  # aucune rangée compatible : on en ouvre une nouvelle
-            rows.append({"top": b["y"], "items": [b]})
+            rows.append({"top": _y(b), "items": [b]})
     rows.sort(key=lambda r: r["top"])
     out: list[dict] = []
     for row in rows:
-        row["items"].sort(key=lambda b: b["x"])
+        row["items"].sort(key=_x)
         out.extend(row["items"])
     return out
 

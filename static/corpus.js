@@ -52,7 +52,7 @@ async function loadAlbums() {
   state.checkedAlbums.forEach((id) => { if (!ids.has(id)) state.checkedAlbums.delete(id); });
   renderAlbums();
   if (state.openId != null && ids.has(state.openId)) openAlbum(state.openId);
-  else { state.openId = null; $("#album-detail").hidden = true; }
+  else { state.openId = null; state.checkedPlanches.clear(); $("#album-detail").hidden = true; }
   updateSelInfo();
 }
 
@@ -96,8 +96,12 @@ async function openAlbum(id) {
   state.openId = id;
   try { state.planches = await apiGet(`/api/albums/${id}/planches`); }
   catch (e) { toast("Album : " + e.message, "error"); return; }
+  // Purge les planches cochées qui n'existent plus (suppression concurrente, lot…).
+  const pids = new Set(state.planches.map((p) => p.id));
+  state.checkedPlanches.forEach((pid) => { if (!pids.has(pid)) state.checkedPlanches.delete(pid); });
   renderAlbums();
   renderDetail();
+  updateSelInfo();
 }
 
 function renderDetail() {
@@ -109,9 +113,9 @@ function renderDetail() {
     ? state.planches.map((p) => `
         <tr>
           <td class="c-chk"><input type="checkbox" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
-          <td><img class="pl-thumb" loading="lazy" src="${p.url_web || ""}" alt=""></td>
+          <td><img class="pl-thumb" loading="lazy" src="${esc(p.url_web || "")}" alt=""></td>
           <td>p.${String(p.numero).padStart(3, "0")}</td>
-          <td><span class="statut-pill statut-${p.statut}"></span> ${p.statut}</td>
+          <td><span class="statut-pill statut-${esc(p.statut)}"></span> ${esc(p.statut)}</td>
           <td class="c-num">${p.nb_regions} rég.</td>
           <td class="c-num">${p.nb_annotees} ann.</td>
           <td class="c-act">
@@ -169,6 +173,9 @@ function closeModal() { $("#album-modal").hidden = true; }
 async function saveAlbum() {
   const titre = $("#m-titre").value.trim();
   if (!titre) { $("#m-msg").textContent = "Titre requis."; return; }
+  const btn = $("#m-save");
+  if (btn.disabled) return;               // anti-double-soumission (sinon album dupliqué)
+  btn.disabled = true;
   const annee = parseInt($("#m-annee").value, 10);
   const body = {
     titre,
@@ -185,6 +192,7 @@ async function saveAlbum() {
     await loadAlbums();
     toast("Album enregistré", "success");
   } catch (e) { $("#m-msg").textContent = "✗ " + e.message; }
+  finally { btn.disabled = false; }
 }
 
 async function deleteAlbum(a) {
@@ -236,11 +244,13 @@ async function runBatch() {
 }
 
 async function pollJobs() {
+  clearTimeout(state.jobTimer);                  // annule tout tick en attente d'emblée
+  const gen = (state.jobGen = (state.jobGen || 0) + 1);
   let list = [];
   try { list = await apiGet("/api/jobs"); } catch (e) { return; }
+  if (gen !== state.jobGen) return;              // un poll plus récent a pris le relais
   renderJobs(list);
   const actifs = list.some((j) => j.status === "en_cours");
-  clearTimeout(state.jobTimer);
   if (actifs) {
     state.jobTimer = setTimeout(pollJobs, 1000);
   } else if (list.length) {

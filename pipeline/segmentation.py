@@ -83,8 +83,13 @@ def run_kumiko(image_path: Path) -> dict:
         out_path.unlink(missing_ok=True)
 
     # Kumiko renvoie une liste de pages ; on traite une image à la fois.
-    page = data[0] if isinstance(data, list) else data
-    if "panels" not in page:
+    if isinstance(data, list):
+        if not data:
+            raise KumikoError("Sortie Kumiko inattendue : aucune page renvoyée")
+        page = data[0]
+    else:
+        page = data
+    if not isinstance(page, dict) or "panels" not in page:
         raise KumikoError("Sortie Kumiko inattendue : clé 'panels' absente")
     return page
 
@@ -107,7 +112,8 @@ def _reattach_orphans(conn: sqlite3.Connection, planche_id: int) -> int:
         cx = (o["x"] or 0) + (o["w"] or 0) / 2
         cy = (o["y"] or 0) + (o["h"] or 0) / 2
         inside = [c for c in cases
-                  if c["x"] <= cx <= c["x"] + c["w"] and c["y"] <= cy <= c["y"] + c["h"]]
+                  if (c["x"] or 0) <= cx <= (c["x"] or 0) + (c["w"] or 0)
+                  and (c["y"] or 0) <= cy <= (c["y"] or 0) + (c["h"] or 0)]
         if inside:
             parent = min(inside, key=lambda c: (c["w"] or 0) * (c["h"] or 0))["id"]
             conn.execute("UPDATE regions SET parent_id = ? WHERE id = ?",
@@ -119,10 +125,12 @@ def _reattach_orphans(conn: sqlite3.Connection, planche_id: int) -> int:
 def _best_overlap(old: dict, new_cases: list[dict]):
     """Id de la nouvelle case dont l'intersection avec `old` est maximale, sinon None."""
     best, best_area = None, 0
-    ox2, oy2 = old["x"] + old["w"], old["y"] + old["h"]
+    ox, oy = old["x"] or 0, old["y"] or 0
+    ox2, oy2 = ox + (old["w"] or 0), oy + (old["h"] or 0)
     for c in new_cases:
-        ix = min(ox2, c["x"] + c["w"]) - max(old["x"], c["x"])
-        iy = min(oy2, c["y"] + c["h"]) - max(old["y"], c["y"])
+        cx0, cy0 = c["x"] or 0, c["y"] or 0
+        ix = min(ox2, cx0 + (c["w"] or 0)) - max(ox, cx0)
+        iy = min(oy2, cy0 + (c["h"] or 0)) - max(oy, cy0)
         area = max(0, ix) * max(0, iy)
         if area > best_area:
             best_area, best = area, c["id"]
@@ -185,6 +193,8 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
 
     page = run_kumiko(image_path)
     size = page.get("size") or [master_w, master_h]
+    if not isinstance(size, (list, tuple)) or len(size) < 2:
+        size = [master_w, master_h]
     in_w, in_h = size[0] or master_w, size[1] or master_h
 
     # Facteurs de conversion espace-image → espace-master.
