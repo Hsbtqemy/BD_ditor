@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import os
 import sqlite3
 import time
@@ -56,6 +57,10 @@ async def _sqlite_operational_handler(request, exc: sqlite3.OperationalError):
         return JSONResponse(
             status_code=409,
             content={"detail": "Base de données momentanément occupée, réessayez."})
+    # Inattendue (ex. SQL malformé) : on masque le détail au client mais on la
+    # TRACE côté serveur (sinon ce handler la rendrait silencieuse → indébogable).
+    logging.getLogger("bd_annotator").error(
+        "OperationalError SQLite inattendue", exc_info=exc)
     return JSONResponse(status_code=500, content={"detail": "Erreur base de données."})
 
 
@@ -656,7 +661,8 @@ def sharedocs_importer(payload: SharedocsImportIn,
             if payload.segmenter and kumiko_available():
                 t2 = time.perf_counter()
                 try:
-                    segment_planche(conn, planche["id"])
+                    with jobs.ML_LOCK:               # cohérent : pas de ML concurrent
+                        segment_planche(conn, planche["id"])
                     planche["statut"] = "segmentee"
                 except Exception:
                     pass
