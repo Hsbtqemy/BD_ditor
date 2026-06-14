@@ -33,13 +33,13 @@ def nlp_available() -> bool:
 
 def _get_nlp():
     """Charge le modèle une seule fois (tagger + lemmatizer ; parser/NER désactivés
-    car inutiles pour la lemmatisation → plus léger et plus rapide)."""
+    car inutiles pour la lemmatisation → plus léger et plus rapide).
+    À appeler SOUS `_lock` (cf. `lemmatise`) : chargement ET inférence sérialisés."""
     global _nlp
-    with _lock:
-        if _nlp is None:
-            import spacy
-            _nlp = spacy.load(_MODEL, disable=["parser", "ner"])
-        return _nlp
+    if _nlp is None:
+        import spacy
+        _nlp = spacy.load(_MODEL, disable=["parser", "ner"])
+    return _nlp
 
 
 def lemmatise(text: str) -> str:
@@ -49,11 +49,16 @@ def lemmatise(text: str) -> str:
     if not text or not nlp_available():
         return ""
     try:
-        doc = _get_nlp()(text.lower())   # minuscule : crucial pour le lettrage BD en capitales
-        return " ".join(
-            tok.lemma_ for tok in doc
-            if tok.is_alpha and not tok.is_stop and len(tok.lemma_) > 1
-        )
+        # Verrou DÉDIÉ (pas jobs.ML_LOCK) : sérialise chargement + inférence spaCy,
+        # qui n'est pas thread-safe (Vocab/StringStore partagés). Dédié car la
+        # lemmatisation (~15 ms) est dans le chemin d'écriture FTS (chaque édition de
+        # texte) : la coupler au ML_LOCK la bloquerait derrière un long job OCR.
+        with _lock:
+            doc = _get_nlp()(text.lower())   # minuscule : crucial pour le lettrage BD
+            return " ".join(
+                tok.lemma_ for tok in doc
+                if tok.is_alpha and not tok.is_stop and len(tok.lemma_) > 1
+            )
     except Exception:
         # Moteur OPTIONNEL : une panne spaCy (modèle corrompu…) ne doit JAMAIS
         # casser l'indexation, la migration ou la recherche → repli silencieux.
