@@ -97,6 +97,35 @@ def test_analyse_grammaticale(client, planche):
 
 
 @pytest.mark.skipif(not nlp_available(), reason="spaCy / modèle français non installé")
+def test_lot2_concordance_et_distributions(client, planche):
+    """Lot 2 (socle) : concordance grammaticale (occurrences + contexte) et
+    distributions par champ, sur les valeurs EFFECTIVES."""
+    alb = planche["album_id"]
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "le gaulois buvait la potion"}).json()["id"]
+    # concordance : les VERBES en contexte (« buvait » → boire)
+    c = client.get("/api/analyse/concordance", params={"pos": "VERB", "album": alb}).json()
+    assert c["count"] >= 1 and all(o["pos"] == "VERB" for o in c["results"])
+    o0 = c["results"][0]
+    assert o0["region_id"] == rid and o0["lemme"] == "boire"      # valeur effective
+    assert o0["ocr_texte"] and o0["album_titre"]                  # contexte multimodal présent
+    # au moins un critère requis
+    assert client.get("/api/analyse/concordance").status_code == 422
+    # filtre par lemme (valeur effective)
+    assert client.get("/api/analyse/concordance",
+                      params={"lemme": "boire", "album": alb}).json()["count"] >= 1
+    # distribution par POS (valeurs effectives)
+    f = client.get("/api/analyse/frequences", params={"champ": "pos", "album": alb}).json()
+    assert f["champ"] == "pos" and any(r["pos"] == "VERB" for r in f["results"])
+    # distribution par morph (ne doit pas planter ; signature UD complète)
+    assert "results" in client.get("/api/analyse/frequences",
+                                   params={"champ": "morph", "album": alb}).json()
+    # champ invalide → 422
+    assert client.get("/api/analyse/frequences", params={"champ": "zzz"}).status_code == 422
+
+
+@pytest.mark.skipif(not nlp_available(), reason="spaCy / modèle français non installé")
 def test_reindex_all_repeuple(client, planche, db_path):
     """`reindex_all()` (re)peuple lemmes + tokens en lot et enregistre le modèle
     (repro) — l'outil de réindexation explicite (post-migration structurelle,

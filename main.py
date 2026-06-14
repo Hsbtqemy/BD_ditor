@@ -965,29 +965,76 @@ def corpus_stats(conn: sqlite3.Connection = Depends(db)):
 # =========================================================================== #
 # Analyse grammaticale (Palier B) — fréquences lexicales + tokens par région
 # =========================================================================== #
-@app.get("/api/analyse/lemmes")
-def analyse_lemmes(album: Optional[int] = None, type: Optional[str] = None,
-                   pos: Optional[str] = None, limit: int = 100,
-                   conn: sqlite3.Connection = Depends(db)):
-    """Fréquences lexicales : lemmes les plus fréquents (sur les `tokens` spaCy).
-    Filtres : `album`, `type` de région, catégorie grammaticale `pos`
-    (NOUN/VERB/ADJ/…). Base des champs lexicaux et études de fréquence."""
-    limit = max(1, min(limit, 1000))
+def _analyse_filtres(album, type, pos, lemme, morph, provenance):
+    """Clauses WHERE communes aux requêtes par token (sur la vue `tokens_effectifs` te,
+    jointe à regions r / planches p). Valeurs EFFECTIVES (correction humaine ⊕ auto)."""
     where, params = [], []
     if album is not None:
         where.append("p.album_id = ?"); params.append(album)
     if type:
         where.append("r.type = ?"); params.append(type)
     if pos:
-        where.append("t.pos = ?"); params.append(pos.upper())
-    sql = ("SELECT t.lemme, t.pos, COUNT(*) AS freq "
-           "FROM tokens t JOIN regions r ON r.id = t.region_id "
+        where.append("te.pos = ?"); params.append(pos.upper())          # UPOS
+    if lemme:
+        where.append("te.lemme = ?"); params.append(lemme.lower())       # lemmes minusculés
+    if morph:
+        where.append("te.morph LIKE ?"); params.append(f"%{morph}%")     # trait UD (sous-chaîne)
+    if provenance:
+        where.append("te.provenance = ?"); params.append(provenance)     # auto|corrige|valide
+    return where, params
+
+
+@app.get("/api/analyse/frequences")
+@app.get("/api/analyse/lemmes")          # alias rétro-compat (champ=lemme)
+def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
+                       type: Optional[str] = None, pos: Optional[str] = None,
+                       lemme: Optional[str] = None, morph: Optional[str] = None,
+                       provenance: Optional[str] = None, limit: int = 100,
+                       conn: sqlite3.Connection = Depends(db)):
+    """Distributions de fréquence sur les valeurs EFFECTIVES. `champ` : `lemme`
+    (défaut, groupé avec son POS) | `pos` | `morph`. Filtres : album, type de région,
+    pos, lemme, morph (sous-chaîne UD), provenance. Base des champs lexicaux et
+    distributions (Exploration)."""
+    if champ not in ("lemme", "pos", "morph"):
+        raise HTTPException(422, "champ invalide (lemme | pos | morph).")
+    limit = max(1, min(limit, 1000))
+    where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance)
+    cols = "te.lemme, te.pos" if champ == "lemme" else f"te.{champ}"
+    sql = (f"SELECT {cols}, COUNT(*) AS freq "
+           "FROM tokens_effectifs te JOIN regions r ON r.id = te.region_id "
            "JOIN planches p ON p.id = r.planche_id ")
     if where:
         sql += "WHERE " + " AND ".join(where) + " "
-    sql += "GROUP BY t.lemme, t.pos ORDER BY freq DESC, t.lemme LIMIT ?"
+    sql += f"GROUP BY {cols} ORDER BY freq DESC, {champ if champ != 'lemme' else 'te.lemme'} LIMIT ?"
     params.append(limit)
-    return {"results": _rows(conn.execute(sql, params))}
+    return {"champ": champ, "results": _rows(conn.execute(sql, params))}
+
+
+@app.get("/api/analyse/concordance")
+def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
+                        morph: Optional[str] = None, provenance: Optional[str] = None,
+                        album: Optional[int] = None, type: Optional[str] = None,
+                        limit: int = 200, conn: sqlite3.Connection = Depends(db)):
+    """Concordance grammaticale : occurrences de tokens (valeurs EFFECTIVES) répondant
+    aux critères, AVEC leur contexte (région, planche, album, texte OCR) — pour montrer
+    chaque emploi en contexte multimodal (socle de Recherche+++). Au moins un critère
+    grammatical (lemme / pos / morph) est requis."""
+    if not (lemme or pos or morph):
+        raise HTTPException(422, "Préciser au moins un critère grammatical (lemme, pos ou morph).")
+    limit = max(1, min(limit, 500))
+    where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance)
+    sql = ("SELECT te.region_id, te.ordre, te.texte, te.lemme, te.pos, te.morph, "
+           "       te.provenance, r.type, p.id AS planche_id, p.numero AS planche_numero, "
+           "       a.id AS album_id, a.titre AS album_titre, r.ocr_texte "
+           "FROM tokens_effectifs te "
+           "JOIN regions r ON r.id = te.region_id "
+           "JOIN planches p ON p.id = r.planche_id "
+           "JOIN albums a ON a.id = p.album_id "
+           "WHERE " + " AND ".join(where) + " "
+           "ORDER BY a.id, p.numero, r.ordre, te.ordre LIMIT ?")
+    params.append(limit)
+    results = _rows(conn.execute(sql, params))
+    return {"count": len(results), "results": results}
 
 
 @app.get("/api/regions/{region_id}/tokens")
