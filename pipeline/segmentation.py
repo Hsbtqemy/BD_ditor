@@ -243,11 +243,13 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
     transferred, preserved = [], []
     if old_ids:
         transferred = _transfer_case_annotations(conn, old_cases, regions)
-        # Après transfert, une ancienne case qui PORTE ENCORE une annotation n'a
-        # pas pu être transférée (aucune nouvelle case ne la recouvre, ou cible
-        # déjà annotée) : on la conserve — jamais de perte de travail humain.
+        # Après transfert, une ancienne case qui PORTE ENCORE du travail humain —
+        # annotation OU correction grammaticale (cf. docs/correction-grammaticale.md
+        # §7) — est conservée plutôt que supprimée : jamais de perte de travail humain.
         preserved = [c["id"] for c in old_cases if conn.execute(
-            "SELECT 1 FROM annotations WHERE region_id = ?", (c["id"],)).fetchone()]
+            "SELECT EXISTS(SELECT 1 FROM annotations WHERE region_id = ?) "
+            "    OR EXISTS(SELECT 1 FROM token_correction WHERE region_id = ?)",
+            (c["id"], c["id"])).fetchone()[0]]
         keep = set(preserved)
         to_delete = [cid for cid in old_ids if cid not in keep]
         for cid in to_delete:

@@ -20,7 +20,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from config import DERIVATIVES_DIR, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_REGION
+from config import (DERIVATIVES_DIR, STATIC_DIR, STATUTS, TEMPLATES_DIR,
+                    TYPES_REGION, UPOS_TAGS)
 from database import get_connection, init_db, reindex_region, unindex_region
 from pipeline.backup import make_backup
 from pipeline import jobs
@@ -155,6 +156,13 @@ class ValidationIn(BaseModel):
 
 class VerrouIn(BaseModel):
     verrouillee: bool
+
+
+class TokenCorrectionIn(BaseModel):
+    lemme: Optional[str] = None
+    pos: Optional[str] = None
+    morph: Optional[str] = None
+    etat: str = "corrige"          # 'corrige' | 'valide'
 
 
 class MoveIn(BaseModel):
@@ -987,10 +995,91 @@ def region_tokens(region_id: int, conn: sqlite3.Connection = Depends(db)):
     """Analyse grammaticale d'une région : ses mots avec lemme / POS / morphologie."""
     if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
-    # Valeurs EFFECTIVES (correction humaine ⊕ auto) + provenance — jamais `tokens` brut.
+    return _tokens_effectifs(conn, region_id)
+
+
+def _tokens_effectifs(conn, region_id: int) -> list:
+    """Tokens EFFECTIFS d'une région (correction humaine ⊕ auto) + provenance —
+    jamais `tokens` brut (invariant projet)."""
     return _rows(conn.execute(
         "SELECT ordre, texte, lemme, pos, morph, provenance FROM tokens_effectifs "
         "WHERE region_id = ? ORDER BY ordre", (region_id,)))
+
+
+def _norm_corr(v: Optional[str]) -> Optional[str]:
+    """'' / espaces → None : un champ non corrigé doit être NULL (sinon la vue
+    interpréterait '' comme un override « valeur vide »)."""
+    v = (v or "").strip()
+    return v or None
+
+
+@app.put("/api/regions/{region_id}/tokens/{ordre}")
+def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
+                   conn: sqlite3.Connection = Depends(db)):
+    """Corrige (ou valide) UN token : impose lemme/POS/morph et/ou marque l'état.
+    Champ absent/vide = NULL = auto accepté. POS contrôlé (UPOS). La correction est
+    ancrée sur la FORME actuelle du token (anti-dérive ; cf. docs/correction-grammaticale.md)."""
+    tok = conn.execute("SELECT texte FROM tokens WHERE region_id = ? AND ordre = ?",
+                       (region_id, ordre)).fetchone()
+    if tok is None:
+        raise HTTPException(404, f"Aucun token à la position {ordre} (région {region_id}).")
+    if payload.etat not in ("corrige", "valide"):
+        raise HTTPException(422, "État invalide (corrige | valide).")
+    pos = _norm_corr(payload.pos)
+    if pos and pos not in UPOS_TAGS:
+        raise HTTPException(422, f"POS invalide : {pos} (jeu UPOS).")
+    lemme, morph = _norm_corr(payload.lemme), _norm_corr(payload.morph)
+    # Une correction (etat='corrige') doit changer au moins un champ ; sinon c'est un
+    # faux signal. Confirmer l'auto sans rien changer se fait avec etat='valide'.
+    if payload.etat == "corrige" and not (lemme or pos or morph):
+        raise HTTPException(422, "Correction vide : fournir lemme, POS ou morph "
+                            "(ou etat='valide' pour confirmer l'auto).")
+    conn.execute(
+        "INSERT INTO token_correction "
+        "  (region_id, ordre, forme, lemme, pos, morph, etat, obsolete, date_modif) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now')) "
+        "ON CONFLICT(region_id, ordre) DO UPDATE SET "
+        "  forme=excluded.forme, lemme=excluded.lemme, pos=excluded.pos, "
+        "  morph=excluded.morph, etat=excluded.etat, obsolete=0, date_modif=datetime('now')",
+        (region_id, ordre, tok["texte"], lemme, pos, morph, payload.etat))
+    reindex_region(conn, region_id)      # FTS reflète la correction ; ancrage re-vérifié
+    conn.commit()
+    return _tokens_effectifs(conn, region_id)
+
+
+@app.post("/api/regions/{region_id}/grammaire/valider")
+def valider_grammaire(region_id: int, conn: sqlite3.Connection = Depends(db)):
+    """Valide tous les tokens de la région (etat='valide') — geste courant des
+    linguistes. Garde les corrections existantes (non obsolètes) et accepte l'auto
+    ailleurs ; ne touche pas aux corrections « à revérifier ». NON bloquant : c'est
+    une assertion de qualité, jamais un prérequis."""
+    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
+        raise HTTPException(404, f"Région {region_id} introuvable")
+    # 1) corrections cohérentes existantes → validées
+    conn.execute("UPDATE token_correction SET etat='valide', date_modif=datetime('now') "
+                 "WHERE region_id = ? AND obsolete = 0", (region_id,))
+    # 2) tokens sans correction → ligne 'valide' (accepte l'auto, valeurs NULL)
+    conn.execute(
+        "INSERT INTO token_correction (region_id, ordre, forme, etat, obsolete) "
+        "SELECT t.region_id, t.ordre, t.texte, 'valide', 0 FROM tokens t "
+        "WHERE t.region_id = ? AND NOT EXISTS "
+        "  (SELECT 1 FROM token_correction c WHERE c.region_id=t.region_id AND c.ordre=t.ordre)",
+        (region_id,))
+    conn.commit()
+    return _tokens_effectifs(conn, region_id)
+
+
+@app.delete("/api/regions/{region_id}/tokens/{ordre}")
+def annuler_correction(region_id: int, ordre: int,
+                       conn: sqlite3.Connection = Depends(db)):
+    """Annule la correction d'un token → retour à l'auto pur (retire aussi le lemme
+    corrigé du FTS)."""
+    cur = conn.execute("DELETE FROM token_correction WHERE region_id = ? AND ordre = ?",
+                       (region_id, ordre))
+    if cur.rowcount:
+        reindex_region(conn, region_id)
+    conn.commit()
+    return _tokens_effectifs(conn, region_id)
 
 
 @app.get("/api/analyse/info")

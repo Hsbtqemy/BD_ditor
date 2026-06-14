@@ -220,6 +220,49 @@ def test_reindex_preserve_et_reancre_corrections(client, planche, db_path):
         conn.close()
 
 
+def test_corriger_token_validation(client, planche, db_path):
+    """Garde-fous d'édition : POS hors UPOS → 422 ; position inexistante → 404."""
+    import sqlite3
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9}).json()["id"]
+    raw = sqlite3.connect(db_path)
+    raw.execute("INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
+                "VALUES (?, 0, 'chat', 'chat', 'NOUN', '')", (rid,))
+    raw.commit(); raw.close()
+    assert client.put(f"/api/regions/{rid}/tokens/0",
+                      json={"pos": "ZZZ"}).status_code == 422      # hors UPOS
+    assert client.put(f"/api/regions/{rid}/tokens/9",
+                      json={"pos": "VERB"}).status_code == 404      # aucune position 9
+    assert client.put(f"/api/regions/{rid}/tokens/0",
+                      json={}).status_code == 422                   # correction vide
+
+
+@pytest.mark.skipif(not nlp_available(), reason="spaCy / modèle français non installé")
+def test_corriger_valider_annuler_token(client, planche):
+    """Cycle complet : corriger un POS → valider la région → annuler → retour auto."""
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "LE CHAT"}).json()["id"]
+    chat = next(t for t in client.get(f"/api/regions/{rid}/tokens").json()
+                if t["texte"] == "chat")
+    o = chat["ordre"]
+    # corrige le POS en PROPN
+    res = client.put(f"/api/regions/{rid}/tokens/{o}", json={"pos": "PROPN"}).json()
+    tok = next(t for t in res if t["ordre"] == o)
+    assert tok["pos"] == "PROPN" and tok["provenance"] == "corrige"
+    # re-corriger le même token (chemin ON CONFLICT) : la valeur est remplacée
+    res = client.put(f"/api/regions/{rid}/tokens/{o}", json={"pos": "VERB"}).json()
+    assert next(t for t in res if t["ordre"] == o)["pos"] == "VERB"
+    # valider la région → tout 'valide', POS corrigé (VERB) conservé
+    res = client.post(f"/api/regions/{rid}/grammaire/valider").json()
+    assert res and all(t["provenance"] == "valide" for t in res)
+    assert next(t for t in res if t["ordre"] == o)["pos"] == "VERB"
+    # annuler → ce token repasse en auto
+    res = client.delete(f"/api/regions/{rid}/tokens/{o}").json()
+    tok = next(t for t in res if t["ordre"] == o)
+    assert tok["provenance"] == "auto" and tok["pos"] != "VERB"   # plus d'override
+
+
 def test_lemmatise_resiliente(monkeypatch):
     """Moteur optionnel : une panne spaCy (chargement modèle KO) ne doit jamais
     casser l'indexation/migration/recherche → lemmatise() renvoie "" au lieu de lever."""
@@ -264,6 +307,28 @@ def test_resegmentation_preserve_ocr_et_fts_propre(client, album, db_path):
     assert client.get("/api/recherche", params={"q": "GARDE"}).json()["results"]
     # l'annotation de case est transférée à la nouvelle case recouvrante (cherchable)
     assert client.get("/api/recherche", params={"q": "ANNOTCASE"}).json()["results"]
+
+
+@requires_kumiko
+def test_resegmentation_preserve_correction_grammaticale(client, album, db_path):
+    """Re-segmenter CONSERVE une case portant une correction grammaticale, même sans
+    annotation (cf. docs/correction-grammaticale.md §7 — le travail humain n'est pas
+    perdu, branche `token_correction` du tri de préservation)."""
+    import sqlite3
+    p = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("s.png", KUMIKO_SAMPLE.read_bytes(), "image/png")}).json()
+    client.post(f"/api/planches/{p['id']}/segmenter")
+    case_id = client.get(f"/api/planches/{p['id']}/regions").json()[0]["id"]
+    # correction grammaticale sur la case, SANS aucune annotation
+    raw = sqlite3.connect(db_path)
+    raw.execute("INSERT INTO token_correction (region_id, ordre, forme, pos, etat) "
+                "VALUES (?, 0, 'x', 'NOUN', 'corrige')", (case_id,))
+    raw.commit(); raw.close()
+
+    client.post(f"/api/planches/{p['id']}/segmenter")  # re-segmentation
+
+    regions = client.get(f"/api/planches/{p['id']}/regions").json()
+    assert any(r["id"] == case_id for r in regions)   # préservée par sa seule correction
 
 
 def test_reimport_meme_album_numerote_correctement(client, album, png_bytes):

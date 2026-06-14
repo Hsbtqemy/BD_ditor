@@ -51,6 +51,12 @@ STATUTS = ("importee", "segmentee", "corrigee", "annotee")
 # Types de régions autorisés
 TYPES_REGION = ("case", "bulle", "personnage", "texte", "cartouche")
 
+# Jeu d'étiquettes POS universel (UPOS) — vocabulaire CONTRÔLÉ pour la correction
+# grammaticale humaine (cf. docs/correction-grammaticale.md). C'est aussi le jeu que
+# spaCy produit, donc corrections et auto restent comparables/requêtables.
+UPOS_TAGS = ("ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
+             "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X")
+
 # S'assure que les répertoires de données existent. Encadré : un DATA_DIR non
 # inscriptible (RO, permissions, disque plein) doit donner un message clair
 # nommant le chemin fautif, pas une stack-trace brute à l'import.
