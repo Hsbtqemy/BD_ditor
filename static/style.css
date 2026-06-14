@@ -752,6 +752,16 @@ h3.collapsible:hover { color: var(--text); }
   border: 1px solid var(--border); border-radius: 6px; font-family: inherit;
 }
 
+/* Facettes grammaticales (Recherche+++) */
+#gram-facets { margin-bottom: 12px; }
+#gram-facets > summary { cursor: pointer; user-select: none; }
+.facet-row { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.facet-row select, .facet-row input {
+  padding: 8px 10px; background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; font-family: inherit;
+}
+.facet-row input { flex: 1 1 180px; }
+
 #tag-cloud-wrap { margin-bottom: 12px; }
 #tag-cloud-wrap > summary { cursor: pointer; user-select: none; }
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

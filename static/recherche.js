@@ -14,6 +14,10 @@ const state = {
   searchGen: 0,   // jeton de fraîcheur : ignore les réponses de recherche périmées
 };
 
+const INITIAL_QS = location.search;   // état de départ (avant que search() ne réécrive l'URL)
+const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
+              "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X"];
+
 async function apiGet(path) {
   const r = await fetch(path);
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
@@ -108,30 +112,38 @@ function renderActiveTags() {
 }
 
 /* ---------------- Recherche ---------------- */
-function search() {
-  const q = $("#q").value.trim();
-  const album = $("#f-album").value;
-  const type = $("#f-type").value;
-  const tags = [...state.activeTags];
+/* Critères courants (texte + facettes corpus + facettes grammaticales) → URLSearchParams.
+   `limit` exclu : l'URL reste propre/partageable, on l'ajoute juste pour la requête. */
+function searchParams() {
+  const p = new URLSearchParams();
+  const set = (k, v) => { if (v && v.trim()) p.set(k, v.trim()); };
+  set("q", $("#q").value);
+  set("album", $("#f-album").value);
+  set("type", $("#f-type").value);
+  set("pos", $("#f-pos").value);
+  set("lemme", $("#f-lemme").value);
+  set("morph", $("#f-morph").value);
+  set("provenance", $("#f-prov").value);
+  state.activeTags.forEach((t) => p.append("tags", t));   // un param par tag
+  return p;
+}
 
-  if (!q && !album && !type && !tags.length) {
+function search() {
+  const p = searchParams();
+  const vide = [...p].length === 0;
+  // état dans l'URL (replaceState) → recherche partageable + rechargement sans perte
+  history.replaceState(null, "", vide ? location.pathname : "?" + p.toString());
+  if (vide) {
     $("#results").innerHTML =
-      '<div class="search-hint">Tapez un mot-clé, ou choisissez un album / type / tag.</div>';
+      '<div class="search-hint">Tapez un mot-clé, ou choisissez un album / type / tag / facette grammaticale.</div>';
     $("#result-count").textContent = "";
     return;
   }
-
-  const params = new URLSearchParams();
-  if (q) params.set("q", q);
-  if (album) params.set("album", album);
-  if (type) params.set("type", type);
-  tags.forEach((t) => params.append("tags", t));   // un param par tag : robuste aux virgules
-  params.set("limit", "200");
-
+  const url = new URLSearchParams(p); url.set("limit", "200");
   const gen = ++state.searchGen;                    // anti-course : seule la dernière réponse rend
   $("#result-count").textContent = "Recherche…";
-  apiGet("/api/recherche?" + params.toString())
-    .then((res) => { if (gen === state.searchGen) renderResults(res, q); })
+  apiGet("/api/recherche?" + url.toString())
+    .then((res) => { if (gen === state.searchGen) renderResults(res, p.get("q") || ""); })
     .catch((e) => { if (gen === state.searchGen) $("#result-count").textContent = "Erreur : " + e.message; });
 }
 
@@ -173,17 +185,38 @@ function renderResults(res, q) {
 }
 
 /* ---------------- Démarrage ---------------- */
-function setup() {
-  $("#q").addEventListener("input", () => {
-    clearTimeout(state.timer);
-    state.timer = setTimeout(search, 300);
-  });
-  $("#f-album").onchange = search;
-  $("#f-type").onchange = search;
+/* Restaure les critères depuis l'URL initiale (lien partagé / rechargement). À appeler
+   APRÈS loadAlbums (pour que l'option d'album existe) et le peuplement des POS. */
+function restoreFromUrl() {
+  const p = new URLSearchParams(INITIAL_QS);
+  $("#q").value = p.get("q") || "";
+  $("#f-album").value = p.get("album") || "";
+  $("#f-type").value = p.get("type") || "";
+  $("#f-pos").value = p.get("pos") || "";
+  $("#f-lemme").value = p.get("lemme") || "";
+  $("#f-morph").value = p.get("morph") || "";
+  $("#f-prov").value = p.get("provenance") || "";
+  state.activeTags = new Set(p.getAll("tags"));
+  renderActiveTags();
+  if (p.get("pos") || p.get("lemme") || p.get("morph") || p.get("provenance"))
+    $("#gram-facets").open = true;     // déplie si une facette grammaticale est active
+}
+
+async function setup() {
+  for (const u of UPOS) {              // peuple le select POS (UPOS)
+    const o = document.createElement("option"); o.value = u; o.textContent = u;
+    $("#f-pos").appendChild(o);
+  }
+  const deb = () => { clearTimeout(state.timer); state.timer = setTimeout(search, 300); };
+  $("#q").addEventListener("input", deb);
+  $("#f-lemme").addEventListener("input", deb);
+  $("#f-morph").addEventListener("input", deb);
+  ["#f-album", "#f-type", "#f-pos", "#f-prov"].forEach((s) => { $(s).onchange = search; });
   loadCorpus();
-  loadAlbums();
   loadTags();
-  search();   // affiche l'invite initiale
+  await loadAlbums();        // options d'album AVANT de restaurer la sélection d'album
+  restoreFromUrl();
+  search();                  // rejoue la recherche restaurée (ou affiche l'invite)
 }
 
 setup();

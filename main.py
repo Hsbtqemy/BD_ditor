@@ -865,6 +865,8 @@ def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db)):
 @app.get("/api/recherche")
 def recherche(q: str = "", album: Optional[int] = None,
               type: Optional[str] = None, tags: Optional[list[str]] = Query(None),
+              pos: Optional[str] = None, lemme: Optional[str] = None,
+              morph: Optional[str] = None, provenance: Optional[str] = None,
               limit: int = 100, conn: sqlite3.Connection = Depends(db)):
     limit = max(1, min(limit, 500))   # borne : évite LIMIT -1 (= tout le corpus) / DoS
     where, params = [], []
@@ -915,6 +917,22 @@ def recherche(q: str = "", album: Optional[int] = None,
                 "        WHERE a2.region_id = r.id AND tg.label = ?)"
             )
             params.append(label)
+
+    # Facettes GRAMMATICALES (lot 3) : la région contient-elle un token (valeur
+    # EFFECTIVE) répondant aux critères ? EXISTS sur tokens_effectifs, scopé à la région.
+    if pos or lemme or morph or provenance:
+        tw, tp = [], []
+        if pos:
+            tw.append("te.pos = ?"); tp.append(pos.upper())
+        if lemme:
+            tw.append("te.lemme = ?"); tp.append(lemme.lower())
+        if morph:
+            tw.append("te.morph LIKE ?"); tp.append(f"%{morph}%")
+        if provenance:
+            tw.append("te.provenance = ?"); tp.append(provenance)
+        where.append("EXISTS (SELECT 1 FROM tokens_effectifs te "
+                     "WHERE te.region_id = r.id AND " + " AND ".join(tw) + ")")
+        params.extend(tp)
 
     sql = base
     if where:

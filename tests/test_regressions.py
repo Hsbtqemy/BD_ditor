@@ -126,6 +126,25 @@ def test_lot2_concordance_et_distributions(client, planche):
 
 
 @pytest.mark.skipif(not nlp_available(), reason="spaCy / modèle français non installé")
+def test_lot3_recherche_facette_grammaticale(client, planche):
+    """Lot 3 : /api/recherche filtre les régions par critère grammatical (token effectif),
+    combinable avec le texte."""
+    alb = planche["album_id"]
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "le gaulois buvait la potion"}).json()["id"]
+    # région contenant un VERBE
+    r = client.get("/api/recherche", params={"pos": "VERB", "album": alb}).json()
+    assert any(x["region_id"] == rid for x in r["results"])
+    # critère absent du corpus → la région n'apparaît pas
+    r2 = client.get("/api/recherche", params={"pos": "NUM", "album": alb}).json()
+    assert all(x["region_id"] != rid for x in r2["results"])
+    # combiné avec le texte (FTS + grammaire)
+    r3 = client.get("/api/recherche", params={"q": "potion", "pos": "VERB", "album": alb}).json()
+    assert any(x["region_id"] == rid for x in r3["results"])
+
+
+@pytest.mark.skipif(not nlp_available(), reason="spaCy / modèle français non installé")
 def test_reindex_all_repeuple(client, planche, db_path):
     """`reindex_all()` (re)peuple lemmes + tokens en lot et enregistre le modèle
     (repro) — l'outil de réindexation explicite (post-migration structurelle,
