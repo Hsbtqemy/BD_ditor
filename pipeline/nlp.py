@@ -48,8 +48,13 @@ def lemmatise(text: str) -> str:
     text = (text or "").strip()
     if not text or not nlp_available():
         return ""
-    doc = _get_nlp()(text.lower())   # minuscule : crucial pour le lettrage BD en capitales
-    return " ".join(
-        tok.lemma_ for tok in doc
-        if tok.is_alpha and not tok.is_stop and len(tok.lemma_) > 1
-    )
+    try:
+        doc = _get_nlp()(text.lower())   # minuscule : crucial pour le lettrage BD en capitales
+        return " ".join(
+            tok.lemma_ for tok in doc
+            if tok.is_alpha and not tok.is_stop and len(tok.lemma_) > 1
+        )
+    except Exception:
+        # Moteur OPTIONNEL : une panne spaCy (modèle corrompu…) ne doit JAMAIS
+        # casser l'indexation, la migration ou la recherche → repli silencieux.
+        return ""

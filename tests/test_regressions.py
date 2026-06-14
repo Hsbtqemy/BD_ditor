@@ -80,6 +80,19 @@ def test_recherche_par_lemme(client, planche):
         assert any(x["region_id"] == rid for x in res), f"« {q} » devrait matcher par lemme"
 
 
+def test_lemmatise_resiliente(monkeypatch):
+    """Moteur optionnel : une panne spaCy (chargement modèle KO) ne doit jamais
+    casser l'indexation/migration/recherche → lemmatise() renvoie "" au lieu de lever."""
+    import pipeline.nlp as nlpmod
+    if not nlpmod.nlp_available():
+        return                                     # rien à éprouver sans spaCy
+
+    def boom():
+        raise RuntimeError("chargement spaCy KO")
+    monkeypatch.setattr(nlpmod, "_get_nlp", boom)
+    assert nlpmod.lemmatise("les chevaux galopaient") == ""
+
+
 @requires_kumiko
 def test_resegmentation_preserve_ocr_et_fts_propre(client, album, db_path):
     """Re-segmenter PRÉSERVE le travail humain (bulle océrisée conservée, et
