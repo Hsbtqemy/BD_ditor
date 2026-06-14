@@ -154,6 +154,7 @@ function renderDetail() {
           <td class="c-num">${p.nb_annotees} ann.</td>
           <td class="c-val">${validToggle(p)}</td>
           <td class="c-act">
+            ${lockToggle(p)}
             <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}" title="Ouvrir dans la visionneuse">↗</a>
             <button class="icon-btn danger" data-delp="${p.id}" title="Supprimer la planche">🗑</button>
           </td>
@@ -182,6 +183,9 @@ function renderDetail() {
   $("#detail-validate-all").onclick = validateAllAlbum;
   box.querySelectorAll("button[data-val]").forEach((btn) => {
     btn.onclick = () => validatePlanche(Number(btn.dataset.val), btn.dataset.on === "1");
+  });
+  box.querySelectorAll("button[data-lock]").forEach((btn) => {
+    btn.onclick = () => lockPlanche(Number(btn.dataset.lock), btn.dataset.on === "1");
   });
   box.querySelectorAll("input[data-pid]").forEach((cb) => {
     cb.onchange = () => {
@@ -262,6 +266,25 @@ async function validatePlanche(pid, on) {
   } catch (e) { toast("Validation : " + e.message, "error"); }
 }
 
+/* Bascule de verrou : une planche verrouillée est sautée par les lots (et ses
+   passes directes refusées). 🔒 = verrouillée, 🔓 = libre. */
+function lockToggle(p) {
+  const on = !!p.verrouillee;
+  return `<button class="icon-btn${on ? " locked" : ""}" data-lock="${p.id}" `
+    + `data-on="${on ? 0 : 1}" `
+    + `title="${on ? "Verrouillée le " + esc(p.verrouillee) + " — cliquer pour déverrouiller"
+                   : "Verrouiller (protéger des traitements en lot)"}">`
+    + `${on ? "🔒" : "🔓"}</button>`;
+}
+
+async function lockPlanche(pid, on) {
+  try {
+    await apiSend("PATCH", `/api/planches/${pid}/verrou`, { verrouillee: on });
+    await openAlbum(state.openId);
+    toast(on ? "Planche verrouillée 🔒" : "Planche déverrouillée 🔓");
+  } catch (e) { toast("Verrou : " + e.message, "error"); }
+}
+
 async function validateAllAlbum() {
   const todo = state.planches.filter((p) => !p.validee);
   if (!todo.length) { toast("Toutes les planches sont déjà validées."); return; }
@@ -307,6 +330,8 @@ async function runBatch() {
       planche_ids: [...state.checkedPlanches],
     });
     toast(`Lot lancé : ${job.total} planche${job.total > 1 ? "s" : ""}`, "success");
+    if (job.verrouillees_ignorees)
+      toast(`${job.verrouillees_ignorees} planche(s) verrouillée(s) ignorée(s) 🔒`);
     pollJobs();
   } catch (e) { toast("Lot : " + e.message, "error"); }
 }

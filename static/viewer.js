@@ -366,6 +366,7 @@ function renderPanel() {
   $("#panel-tree").hidden = !hasPlanche;
   $("#panel-content").hidden = !r;
   if (hasPlanche) renderTree();
+  renderPlancheLock();
   renderBreadcrumb();
   if (!r) return;
 
@@ -1204,8 +1205,45 @@ function updateStatus() {
 /* ===================================================================
    Actions : segmenter, importer, nouvel album, export
    =================================================================== */
+/* Verrou de planche : protège des passes automatiques (le backend refuse aussi en
+   409, ceci évite juste le « en cours… » suivi d'une erreur). */
+function plancheVerrouillee() {
+  if (state.planche && state.planche.verrouillee) {
+    toast("Planche verrouillée 🔒 — déverrouillez-la pour relancer un traitement.", "error");
+    return true;
+  }
+  return false;
+}
+
+function renderPlancheLock() {
+  const box = $("#planche-lock");
+  if (!box) return;
+  const p = state.planche;
+  if (!p) { box.hidden = true; return; }
+  box.hidden = false;
+  const on = !!p.verrouillee;
+  box.innerHTML =
+    `<button id="lock-toggle" class="lock-btn${on ? " locked" : ""}" ` +
+    `title="${on ? "Verrouillée — protège des passes OCR/segmentation/bulles (en lot ou directes)"
+                 : "Verrouiller la planche : la protéger des traitements automatiques"}">` +
+    `${on ? "🔒 Planche verrouillée" : "🔓 Verrouiller la planche"}</button>`;
+  $("#lock-toggle").onclick = toggleLock;
+}
+
+async function toggleLock() {
+  const p = state.planche;
+  if (!p) return;
+  const on = !p.verrouillee;
+  try {
+    const upd = await apiSend("PATCH", `/api/planches/${p.id}/verrou`, { verrouillee: on });
+    p.verrouillee = upd.verrouillee;     // p est la réf. partagée avec state.planches
+    renderPlancheLock();
+    toast(on ? "Planche verrouillée 🔒" : "Planche déverrouillée 🔓");
+  } catch (e) { toast("Verrou : " + e.message, "error"); }
+}
+
 async function segmenter() {
-  if (!state.planche) return;
+  if (!state.planche || plancheVerrouillee()) return;
   toast("Segmentation en cours…");
   try {
     const res = await apiSend("POST", `/api/planches/${state.planche.id}/segmenter`);
@@ -1220,7 +1258,7 @@ async function segmenter() {
 }
 
 async function detecterBulles() {
-  if (!state.planche) return;
+  if (!state.planche || plancheVerrouillee()) return;
   toast("Détection des bulles…");
   try {
     const res = await apiSend("POST", `/api/planches/${state.planche.id}/detecter-bulles`);
@@ -1232,7 +1270,7 @@ async function detecterBulles() {
 }
 
 async function lancerOCR() {
-  if (!state.planche) return;
+  if (!state.planche || plancheVerrouillee()) return;
   toast("OCR en cours… (premier appel : chargement du modèle)");
   try {
     const res = await apiSend("POST", `/api/planches/${state.planche.id}/ocr`);

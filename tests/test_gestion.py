@@ -64,6 +64,62 @@ def test_planche_validation_et_agregats(client, planche):
                         json={"validee": True}).status_code == 404
 
 
+# ------------------------------- Verrou --------------------------------- #
+def test_verrou_endpoint(client, planche):
+    """Verrouiller/déverrouiller une planche (`verrouillee`, distinct de `validee`)."""
+    pls = client.get(f"/api/albums/{planche['album_id']}/planches").json()
+    assert pls[0]["verrouillee"] is None                   # déverrouillée par défaut
+
+    r = client.patch(f"/api/planches/{planche['id']}/verrou",
+                     json={"verrouillee": True}).json()
+    assert r["verrouillee"] and r["validee"] is None       # verrou ≠ validation
+
+    r2 = client.patch(f"/api/planches/{planche['id']}/verrou",
+                      json={"verrouillee": False}).json()
+    assert r2["verrouillee"] is None
+    assert client.patch("/api/planches/9999/verrou",
+                        json={"verrouillee": True}).status_code == 404
+
+
+def test_verrou_refuse_passe_directe(client, planche, monkeypatch):
+    """Planche verrouillée → passe ML directe refusée (409), moteur jamais appelé."""
+    monkeypatch.setattr(main, "kumiko_available", lambda: True)
+    called = []
+    monkeypatch.setattr(main, "segment_planche",
+                        lambda c, pid, use_master=False: called.append(pid))
+    client.patch(f"/api/planches/{planche['id']}/verrou", json={"verrouillee": True})
+    assert client.post(f"/api/planches/{planche['id']}/segmenter").status_code == 409
+    assert not called                                      # moteur jamais appelé
+    # déverrouillée → la passe repasse
+    client.patch(f"/api/planches/{planche['id']}/verrou", json={"verrouillee": False})
+    assert client.post(f"/api/planches/{planche['id']}/segmenter").status_code == 200
+    assert called == [planche["id"]]
+
+
+def test_verrou_saute_planche_en_lot(client, album, planche, png_bytes, monkeypatch):
+    """Un lot saute les planches verrouillées et le signale (`verrouillees_ignorees`)."""
+    p2 = _second_planche(client, album, png_bytes)
+    monkeypatch.setattr(main, "kumiko_available", lambda: True)
+    calls = []
+    monkeypatch.setattr(seg, "segment_planche", lambda c, pid: calls.append(pid))
+    client.patch(f"/api/planches/{planche['id']}/verrou", json={"verrouillee": True})
+
+    r = client.post("/api/jobs", json={"passes": ["segmenter"],
+                                       "planche_ids": [planche["id"], p2["id"]]})
+    body = r.json()
+    assert r.status_code == 201
+    assert body["total"] == 1 and body["verrouillees_ignorees"] == 1
+    _wait_done(client, body["id"])
+    assert calls == [p2["id"]]                             # seule la planche libre traitée
+
+
+def test_verrou_toutes_verrouillees_422(client, planche, monkeypatch):
+    monkeypatch.setattr(main, "kumiko_available", lambda: True)
+    client.patch(f"/api/planches/{planche['id']}/verrou", json={"verrouillee": True})
+    assert client.post("/api/jobs", json={"passes": ["segmenter"],
+                                          "planche_ids": [planche["id"]]}).status_code == 422
+
+
 # --------------------------- CRUD albums -------------------------------- #
 def test_album_create_avec_description(client):
     a = client.post("/api/albums", json={"titre": "T", "description": "un récit"}).json()

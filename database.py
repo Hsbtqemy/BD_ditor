@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 # --------------------------------------------------------------------------- #
@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS planches (
     hauteur_px         INTEGER,
     statut             TEXT DEFAULT 'importee',
     date_segmentation  TEXT,
-    validee            TEXT           -- horodatage de validation humaine (NULL = non validée)
+    validee            TEXT,          -- horodatage de validation humaine (NULL = non validée)
+    verrouillee        TEXT           -- horodatage de verrou (NULL = déverrouillée) : protège des passes ML auto
 );
 
 CREATE TABLE IF NOT EXISTS regions (
@@ -188,6 +189,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
     pcols = {r["name"] for r in conn.execute("PRAGMA table_info(planches)")}
     if pcols and "validee" not in pcols:
         conn.execute("ALTER TABLE planches ADD COLUMN validee TEXT")
+
+    # v7 → v8 : verrou de planche (protège des passes automatiques en lot ; cf.
+    # docs/correction-grammaticale.md §6). Distinct de `validee`.
+    if pcols and "verrouillee" not in pcols:
+        conn.execute("ALTER TABLE planches ADD COLUMN verrouillee TEXT")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 

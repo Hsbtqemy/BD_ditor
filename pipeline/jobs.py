@@ -28,6 +28,15 @@ _counter = 0
 ML_LOCK = threading.Lock()
 
 
+def _est_verrouillee(conn, planche_id: int) -> bool:
+    """Verrou de planche (protège des passes auto). Re-vérifié dans le worker au cas
+    où le verrou serait posé APRÈS le lancement du lot (le filtrage principal se fait
+    à la création du job)."""
+    row = conn.execute("SELECT verrouillee FROM planches WHERE id = ?",
+                       (planche_id,)).fetchone()
+    return bool(row and row["verrouillee"])
+
+
 def _apply_pass(conn, passe: str, planche_id: int) -> None:
     # Import paresseux + via le module → mockable en test, et n'impose pas les
     # moteurs ML au chargement.
@@ -52,6 +61,9 @@ def _run(job_id: int) -> None:
                 if job["cancel"]:
                     break
                 job["current"] = pid
+                if _est_verrouillee(conn, pid):     # verrou posé après le lancement
+                    job["done"] += 1
+                    continue
                 for passe in job["passes"]:
                     if job["cancel"]:
                         break

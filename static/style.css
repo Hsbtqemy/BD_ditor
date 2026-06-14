@@ -246,6 +246,21 @@ button { font-family: inherit; }
 .val-mini { display: inline-block; width: 34px; height: 6px; border-radius: 3px; background: var(--bg-input); overflow: hidden; }
 .val-mini > i { display: block; height: 100%; background: var(--accent-green); }
 
+/* Verrou de planche (protège des passes automatiques) */
+.icon-btn.locked { border-color: var(--accent-amber); color: var(--accent-amber); }
+.planche-lock { padding: 10px 12px; border-top: 1px solid var(--border); }
+.lock-btn {
+  width: 100%; text-align: center; cursor: pointer;
+  background: transparent; color: var(--text-muted);
+  border: 1px dashed var(--border); border-radius: 5px; padding: 7px 10px;
+}
+.lock-btn:hover { background: var(--bg-input); color: var(--text); }
+.lock-btn.locked {
+  color: var(--accent-amber); border-style: solid;
+  border-color: var(--accent-amber);
+  background: color-mix(in srgb, var(--accent-amber) 12%, transparent);
+}
+
 /* ---------- Visionneuse ---------- */
 #viewer { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 #toolbar {

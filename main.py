@@ -153,6 +153,10 @@ class ValidationIn(BaseModel):
     validee: bool
 
 
+class VerrouIn(BaseModel):
+    verrouillee: bool
+
+
 class MoveIn(BaseModel):
     sens: str   # "haut" | "bas"
 
@@ -240,6 +244,17 @@ def _get_planche(conn, planche_id: int) -> dict:
     if p is None:
         raise HTTPException(404, f"Planche {planche_id} introuvable")
     return p
+
+
+def _refuser_si_verrouillee(planche: dict) -> dict:
+    """Une planche verrouillée est protégée des passes AUTOMATIQUES (segmentation /
+    détection de bulles / OCR) : il faut la déverrouiller explicitement. L'édition
+    manuelle (texte, tags, régions) reste libre. Renvoie la planche pour chaînage."""
+    if planche.get("verrouillee"):
+        raise HTTPException(409, "Planche verrouillée 🔒 : déverrouillez-la pour "
+                            "relancer un traitement automatique "
+                            "(l'édition manuelle reste possible).")
+    return planche
 
 
 def _validate_parent(conn: sqlite3.Connection, planche_id: int,
@@ -406,7 +421,7 @@ def import_planche(
 @app.post("/api/planches/{planche_id}/segmenter")
 def segmenter(planche_id: int, use_master: bool = False,
               conn: sqlite3.Connection = Depends(db)):
-    _get_planche(conn, planche_id)
+    _refuser_si_verrouillee(_get_planche(conn, planche_id))
     if not kumiko_available():
         raise HTTPException(
             503,
@@ -425,7 +440,7 @@ def segmenter(planche_id: int, use_master: bool = False,
 @app.post("/api/planches/{planche_id}/detecter-bulles")
 def detecter_bulles(planche_id: int, conf: float = 0.3,
                     conn: sqlite3.Connection = Depends(db)):
-    _get_planche(conn, planche_id)
+    _refuser_si_verrouillee(_get_planche(conn, planche_id))
     if not bulles_available():
         raise HTTPException(
             503,
@@ -444,7 +459,7 @@ def detecter_bulles(planche_id: int, conf: float = 0.3,
 @app.post("/api/planches/{planche_id}/ocr")
 def ocr_route(planche_id: int, only_empty: bool = True,
               conn: sqlite3.Connection = Depends(db)):
-    _get_planche(conn, planche_id)
+    _refuser_si_verrouillee(_get_planche(conn, planche_id))
     if not ocr_available():
         raise HTTPException(
             503,
@@ -741,6 +756,22 @@ def update_validation(planche_id: int, payload: ValidationIn,
     return _get_planche(conn, planche_id)
 
 
+@app.patch("/api/planches/{planche_id}/verrou")
+def update_verrou(planche_id: int, payload: VerrouIn,
+                  conn: sqlite3.Connection = Depends(db)):
+    """Verrouille une planche (la protège des passes automatiques en lot) ou la
+    déverrouille. Distinct de `validee` (verrou = protection ≠ validation = qualité) ;
+    `verrouillee` = horodatage. Cf. docs/correction-grammaticale.md §6."""
+    _get_planche(conn, planche_id)
+    if payload.verrouillee:
+        conn.execute("UPDATE planches SET verrouillee = datetime('now') WHERE id = ?",
+                     (planche_id,))
+    else:
+        conn.execute("UPDATE planches SET verrouillee = NULL WHERE id = ?", (planche_id,))
+    conn.commit()
+    return _get_planche(conn, planche_id)
+
+
 # =========================================================================== #
 # Annotations & tags
 # =========================================================================== #
@@ -994,15 +1025,20 @@ def creer_job(payload: JobIn, conn: sqlite3.Connection = Depends(db)):
     for aid in payload.album_ids:
         pids.update(r["id"] for r in conn.execute(
             "SELECT id FROM planches WHERE album_id = ?", (aid,)).fetchall())
-    valid = []
+    valid, verrouillees = [], 0
     if pids:
         ph = ",".join("?" * len(pids))
-        valid = [r["id"] for r in conn.execute(
-            f"SELECT id FROM planches WHERE id IN ({ph}) ORDER BY album_id, numero",
-            tuple(pids)).fetchall()]
+        rows = conn.execute(
+            f"SELECT id, verrouillee FROM planches WHERE id IN ({ph}) "
+            f"ORDER BY album_id, numero", tuple(pids)).fetchall()
+        valid = [r["id"] for r in rows if not r["verrouillee"]]      # 🔒 ignorées
+        verrouillees = sum(1 for r in rows if r["verrouillee"])
     if not valid:
-        raise HTTPException(422, "Aucune planche à traiter.")
-    return jobs.start_job(passes, valid)
+        raise HTTPException(422, "Aucune planche à traiter"
+                            + (f" ({verrouillees} verrouillée(s))." if verrouillees else "."))
+    job = jobs.start_job(passes, valid)
+    job["verrouillees_ignorees"] = verrouillees   # signalé, jamais en silence
+    return job
 
 
 @app.get("/api/jobs")
