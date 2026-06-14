@@ -221,6 +221,33 @@ def test_reindex_preserve_et_reancre_corrections(client, planche, db_path):
         conn.close()
 
 
+@pytest.mark.skipif(not nlp_available(), reason="spaCy / modèle français non installé")
+def test_reancrage_par_alignement_pas_de_cascade(client, planche, db_path):
+    """Éditer le texte ne casse QUE les corrections des mots réellement changés : un mot
+    inchangé qui se DÉCALE garde sa correction (ré-ancrage par alignement, anti-cascade)."""
+    import database
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "le grand chat dort"}).json()["id"]
+    conn = database.get_connection()
+    try:
+        database.reindex_region(conn, rid); conn.commit()
+        conn.execute("INSERT INTO token_correction (region_id, ordre, forme, etat, obsolete) "
+                     "SELECT region_id, ordre, texte, 'valide', 0 FROM tokens WHERE region_id=?",
+                     (rid,))
+        conn.commit()
+        # insère un mot TÔT → décale tout ce qui suit
+        conn.execute("UPDATE regions SET ocr_texte='le tres grand chat dort' WHERE id=?", (rid,))
+        database.reindex_region(conn, rid); conn.commit()
+    finally:
+        conn.close()
+    prov = {t["texte"]: t["provenance"]
+            for t in client.get(f"/api/regions/{rid}/tokens").json()}
+    # mots inchangés (même décalés) → validés conservés ; nouveau mot → auto
+    assert prov.get("grand") == "valide" and prov.get("chat") == "valide"
+    assert prov.get("dort") == "valide" and prov.get("tres") == "auto"
+
+
 def test_corriger_token_validation(client, planche, db_path):
     """Garde-fous d'édition : POS hors UPOS → 422 ; position inexistante → 404."""
     import sqlite3

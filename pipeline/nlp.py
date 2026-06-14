@@ -114,6 +114,20 @@ def lemmatise(text: str) -> str:
     return analyse(text)[0]
 
 
+def ensure_loaded() -> None:
+    """Charge le modèle MAINTENANT (synchrone), s'il est disponible. À appeler HORS
+    d'une transaction d'écriture SQLite : sinon le chargement à froid (~10 s) se ferait
+    le verrou DB tenu, refusant toute écriture concurrente (409). No-op si déjà chargé
+    ou moteur indisponible."""
+    if not nlp_available():
+        return
+    try:
+        with _lock:
+            _get_nlp()
+    except Exception:
+        pass
+
+
 def prewarm() -> None:
     """Charge le modèle en ARRIÈRE-PLAN (thread démon), pour éviter que la PREMIÈRE
     écriture ou recherche ne paie le chargement à froid (~10 s) en pleine requête —

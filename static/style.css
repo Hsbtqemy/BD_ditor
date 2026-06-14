@@ -261,23 +261,45 @@ button { font-family: inherit; }
   background: color-mix(in srgb, var(--accent-amber) 12%, transparent);
 }
 
-/* Grammaire : analyse éditable par token */
-.gram-tokens { display: flex; flex-direction: column; gap: 4px; }
-.gram-row {
-  display: grid; align-items: center; gap: 4px;
-  grid-template-columns: minmax(48px, 1fr) 1.3fr 84px 1.3fr auto;
-  padding: 3px 4px; border-radius: 4px; border-left: 3px solid transparent;
+/* Grammaire : lecture compacte + édition au clic */
+#gram-validate { float: right; }
+.gram-filters { display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; flex-wrap: wrap; }
+.gram-filters label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.gram-legend { margin-left: auto; display: inline-flex; gap: 4px; }
+.gram-tokens { display: flex; flex-direction: column; gap: 2px; }
+
+/* ligne en lecture seule (cliquable) */
+.gram-line {
+  display: grid; align-items: center; gap: 8px; cursor: pointer;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr) auto;
+  padding: 3px 6px; border-radius: 4px; border-left: 3px solid transparent;
 }
-.gram-row.prov-corrige { border-left-color: var(--accent-amber); }
-.gram-row.prov-valide  { border-left-color: var(--accent-green); }
-.gram-row.a-revoir { background: color-mix(in srgb, var(--accent-red) 10%, transparent); }
+.gram-line:hover { background: var(--bg-input); }
+.gram-line.prov-corrige { border-left-color: var(--accent-amber); }
+.gram-line.prov-valide  { border-left-color: var(--accent-green); }
+.gram-line.a-revoir { background: color-mix(in srgb, var(--accent-red) 12%, transparent); }
 .gram-mot { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gram-row input, .gram-row select {
-  min-width: 0; padding: 2px 4px; font-size: .85rem;
-  background: var(--bg-input); color: var(--text);
+.gram-pos-chip {
+  font-size: .7rem; font-family: monospace; color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 4px; padding: 0 4px;
+}
+.gram-lemme-txt { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gram-meta { display: inline-flex; align-items: center; gap: 4px; }
+
+/* éditeur déplié (une ligne ouverte à la fois) */
+.gram-edit {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 8px; border-radius: 5px; border-left: 3px solid var(--accent-blue);
+  background: var(--bg-input);
+}
+.gram-edit-head { display: flex; align-items: center; gap: 6px; }
+.gram-in {
+  width: 100%; padding: 3px 6px; font-size: .85rem;
+  background: var(--bg-panel); color: var(--text);
   border: 1px solid var(--border); border-radius: 4px;
 }
-.gram-meta { display: inline-flex; align-items: center; gap: 4px; }
+.gram-edit-actions { display: flex; gap: 6px; }
+
 .prov-chip {
   font-size: .7rem; padding: 1px 5px; border-radius: 8px;
   background: var(--bg-input); color: var(--text-muted); border: 1px solid var(--border);
@@ -285,8 +307,6 @@ button { font-family: inherit; }
 .prov-chip.prov-corrige { color: var(--accent-amber); border-color: var(--accent-amber); }
 .prov-chip.prov-valide  { color: var(--accent-green); border-color: var(--accent-green); }
 .gram-warn { color: var(--accent-red); cursor: help; }
-.gram-reset { width: 22px; height: 22px; }
-#gram-validate { float: right; }
 
 /* ---------- Visionneuse ---------- */
 #viewer { display: flex; flex-direction: column; min-width: 0; min-height: 0; }

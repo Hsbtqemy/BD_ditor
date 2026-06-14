@@ -1035,6 +1035,7 @@ def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
     if payload.etat == "corrige" and not (lemme or pos or morph):
         raise HTTPException(422, "Correction vide : fournir lemme, POS ou morph "
                             "(ou etat='valide' pour confirmer l'auto).")
+    nlp.ensure_loaded()   # charge spaCy HORS transaction (sinon le cold-load tiendrait le verrou DB → 409)
     conn.execute(
         "INSERT INTO token_correction "
         "  (region_id, ordre, forme, lemme, pos, morph, etat, obsolete, date_modif) "
@@ -1056,6 +1057,8 @@ def valider_grammaire(region_id: int, conn: sqlite3.Connection = Depends(db)):
     une assertion de qualité, jamais un prérequis."""
     if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
+    nlp.ensure_loaded()          # spaCy hors transaction (cf. corriger_token)
+    reindex_region(conn, region_id)   # ré-ancre (aligne) d'abord → nettoie toute dérive du texte
     # 1) corrections cohérentes existantes → validées
     conn.execute("UPDATE token_correction SET etat='valide', date_modif=datetime('now') "
                  "WHERE region_id = ? AND obsolete = 0", (region_id,))
@@ -1075,6 +1078,7 @@ def annuler_correction(region_id: int, ordre: int,
                        conn: sqlite3.Connection = Depends(db)):
     """Annule la correction d'un token → retour à l'auto pur (retire aussi le lemme
     corrigé du FTS)."""
+    nlp.ensure_loaded()   # charge spaCy HORS transaction (le reindex qui suit ne tiendra pas le verrou pendant le cold-load)
     cur = conn.execute("DELETE FROM token_correction WHERE region_id = ? AND ordre = ?",
                        (region_id, ordre))
     if cur.rowcount:

@@ -19,6 +19,10 @@ const SAVE_DEBOUNCE = 500;
 
 const SVGNS = "http://www.w3.org/2000/svg";
 
+// URL de départ captée AVANT tout chargement (le chargement met l'URL à jour via
+// syncUrl → on ne pourrait plus relire le deep-link d'origine ensuite).
+const INITIAL_QS = location.search;
+
 /* ---------------- État global ---------------- */
 const state = {
   albums: [],
@@ -359,9 +363,21 @@ function renderParentOptions(r) {
 /* ===================================================================
    Panneau droit
    =================================================================== */
+/* Reflète album/planche/région dans l'URL (replaceState : sans polluer l'historique)
+   → recharger la page rouvre exactement au même endroit (cf. applyDeepLink). */
+function syncUrl() {
+  const p = new URLSearchParams();
+  if (state.albumId) p.set("album", state.albumId);
+  if (state.planche) p.set("planche", state.planche.id);
+  if (state.selectedId != null) p.set("region", state.selectedId);
+  const qs = p.toString();
+  history.replaceState(null, "", qs ? "?" + qs : location.pathname);
+}
+
 function renderPanel() {
   const hasPlanche = !!state.planche;
   const r = selectedRegion();
+  syncUrl();
   $("#panel-empty").hidden = hasPlanche;     // l'invite ne sert que sans planche
   $("#panel-tree").hidden = !hasPlanche;
   $("#panel-content").hidden = !r;
@@ -390,107 +406,148 @@ function renderPanel() {
 }
 
 /* ===================================================================
-   Grammaire : analyse spaCy éditable par token (lemme / POS / morph).
-   La case éditable = OVERRIDE humain ; vide = on accepte l'auto.
+   Grammaire : analyse spaCy par token — LECTURE d'abord, édition au CLIC.
+   Lignes compactes (mot · POS · lemme) colorées par provenance ; cliquer une
+   ligne l'ouvre en éditeur (un seul à la fois, sauvegarde auto à la fermeture).
+   Filtres : mots de contenu / à réviser. Valeur saisie = OVERRIDE ; vide = auto.
    =================================================================== */
 const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
               "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X"];
 const PROV_LABEL = { auto: "auto", corrige: "corrigé", valide: "validé" };
+const CONTENU_POS = new Set(["NOUN", "PROPN", "VERB", "ADJ", "ADV", "INTJ"]);
+let gramEditor = null;   // éditeur ouvert : {ordre, lem, pos, mor, orig}
+
+function gel(tag, cls, txt) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (txt != null) e.textContent = txt;
+  return e;
+}
 
 async function renderGrammaire(r) {
   const wrap = $("#panel-grammaire");
   if (!wrap) return;
-  if (!r || !r.ocr_texte) { wrap.hidden = true; return; }   // pertinent si texte
+  // changer de région applique d'abord l'éditeur ouvert (sur l'ancienne région)
+  if (state.gramRegion && (!r || r.id !== state.gramRegion)) await applyOpenEditor();
+  if (!r || !r.ocr_texte) { wrap.hidden = true; state.gramRegion = null; return; }
   const rid = r.id;
   let toks;
   try { toks = await apiGet(`/api/regions/${rid}/tokens`); }
   catch (e) { wrap.hidden = true; return; }
   if (state.selectedId !== rid) return;     // anti-course : sélection changée entre-temps
   wrap.hidden = false;
-  $("#gram-validate").onclick = () => validerGrammaire(rid);
+  state.gramRegion = rid;
+  state.gramTokens = toks;
+  state.gramOpen = null;
+  state.gramFilters = state.gramFilters || { contenu: false, arevoir: false };
+  $("#gram-validate").onclick = validerGrammaire;
+  const fc = $("#gram-f-contenu"), fa = $("#gram-f-arevoir");
+  fc.checked = state.gramFilters.contenu; fa.checked = state.gramFilters.arevoir;
+  fc.onchange = () => { state.gramFilters.contenu = fc.checked; renderGramList(); };
+  fa.onchange = () => { state.gramFilters.arevoir = fa.checked; renderGramList(); };
+  renderGramList();
+}
+
+function gramVisible(t) {
+  const f = state.gramFilters;
+  if (f.contenu && !CONTENU_POS.has(t.pos)) return false;   // mots de contenu (lexicaux)
+  // « À réviser » = pas encore traité : on garde l'auto (les ⚠/dérives s'affichent en
+  // auto), on masque corrigé + validé (déjà traités). La liste se vide à mesure du travail.
+  if (f.arevoir && t.provenance !== "auto") return false;
+  return true;
+}
+
+function renderGramList() {
   const box = $("#gram-tokens");
   box.innerHTML = "";
+  const toks = state.gramTokens || [];
   if (!toks.length) {
     box.innerHTML = '<div class="muted small">Aucune analyse — relancer l\'indexation NLP.</div>';
     $("#gram-validate").hidden = true;
     return;
   }
   $("#gram-validate").hidden = false;
-  for (const t of toks) box.appendChild(grammaireRow(rid, t));
+  const vis = toks.filter(gramVisible);
+  if (!vis.length) {
+    box.innerHTML = '<div class="muted small">Aucun token ne correspond au filtre.</div>';
+    return;
+  }
+  for (const t of vis)
+    box.appendChild(state.gramOpen === t.ordre ? gramEditorRow(t) : gramLine(t));
 }
 
-function grammaireRow(rid, t) {
-  const row = document.createElement("div");
-
-  const mot = document.createElement("span");
-  mot.className = "gram-mot"; mot.textContent = t.texte; mot.title = t.texte;
-
-  const lem = document.createElement("input");
-  lem.className = "gram-lemme"; lem.value = t.corr_lemme || "";
-  lem.placeholder = t.lemme || "lemme"; lem.title = "lemme — vide = auto (" + (t.lemme || "—") + ")";
-
-  const pos = document.createElement("select");
-  pos.className = "gram-pos";
-  const auto = document.createElement("option");
-  auto.value = ""; auto.textContent = t.pos ? "— " + t.pos : "—"; pos.appendChild(auto);
-  for (const u of UPOS) {
-    const o = document.createElement("option"); o.value = u; o.textContent = u;
-    pos.appendChild(o);
-  }
-  pos.value = t.corr_pos || "";
-
-  const mor = document.createElement("input");
-  mor.className = "gram-morph"; mor.value = t.corr_morph || "";
-  mor.placeholder = t.morph || "traits"; mor.title = "morphologie UD — vide = auto";
-
-  const meta = document.createElement("span");
-  meta.className = "gram-meta";
-  const chip = document.createElement("span");
-  meta.appendChild(chip);
-  const warn = document.createElement("span");
-  warn.className = "gram-warn"; warn.textContent = "⚠";
-  warn.title = "à revérifier : le texte a changé depuis la correction";
-  meta.appendChild(warn);
-  const reset = document.createElement("button");
-  reset.className = "icon-btn gram-reset"; reset.textContent = "↺";
-  reset.title = "Réinitialiser (revenir à l'auto)";
-  meta.appendChild(reset);
-
-  // Met à jour l'ASPECT de CETTE ligne seulement (chip/bordure/⚠) — ne reconstruit
-  // pas le tableau, donc le focus et la frappe dans les autres lignes sont préservés.
-  function applyState(tk) {
-    row.className = "gram-row prov-" + tk.provenance + (tk.a_revoir ? " a-revoir" : "");
-    chip.className = "prov-chip prov-" + tk.provenance;
-    chip.textContent = PROV_LABEL[tk.provenance] || tk.provenance;
-    warn.hidden = !tk.a_revoir;
-  }
-  applyState(t);
-
-  async function push(body) {            // body=null → annulation (DELETE)
-    try {
-      const toks = body === null
-        ? await apiSend("DELETE", `/api/regions/${rid}/tokens/${t.ordre}`)
-        : await apiSend("PUT", `/api/regions/${rid}/tokens/${t.ordre}`, body);
-      const tk = (toks || []).find((x) => x.ordre === t.ordre);
-      if (tk) applyState(tk);
-    } catch (e) { toast("Grammaire : " + e.message, "error"); }
-  }
-  const save = () => {
-    const body = { lemme: lem.value.trim() || null, pos: pos.value || null,
-                   morph: mor.value.trim() || null };
-    push((!body.lemme && !body.pos && !body.morph) ? null : body);   // tout vide → auto
-  };
-  lem.onchange = save; pos.onchange = save; mor.onchange = save;
-  reset.onclick = () => { lem.value = ""; pos.value = ""; mor.value = ""; push(null); };
-
-  row.append(mot, lem, pos, mor, meta);
+function gramLine(t) {
+  const row = gel("div", "gram-line prov-" + t.provenance + (t.a_revoir ? " a-revoir" : ""));
+  row.append(gel("span", "gram-mot", t.texte),
+             gel("span", "gram-pos-chip", t.pos || "—"),
+             gel("span", "gram-lemme-txt", t.lemme || ""));
+  const meta = gel("span", "gram-meta");
+  meta.appendChild(gel("span", "prov-chip prov-" + t.provenance, PROV_LABEL[t.provenance]));
+  if (t.a_revoir) { const w = gel("span", "gram-warn", "⚠"); w.title = "à revérifier"; meta.appendChild(w); }
+  row.appendChild(meta);
+  row.title = "Cliquer pour corriger";
+  row.onclick = async () => { await applyOpenEditor(); state.gramOpen = t.ordre; renderGramList(); };
   return row;
 }
 
-async function validerGrammaire(rid) {
+function gramEditorRow(t) {
+  const row = gel("div", "gram-edit prov-" + t.provenance + (t.a_revoir ? " a-revoir" : ""));
+  const head = gel("div", "gram-edit-head");
+  head.append(gel("span", "gram-mot", t.texte),
+              gel("span", "prov-chip prov-" + t.provenance, PROV_LABEL[t.provenance]));
+  if (t.a_revoir) head.appendChild(gel("span", "gram-warn", "⚠ à revérifier"));
+
+  const lem = document.createElement("input");
+  lem.className = "gram-in"; lem.value = t.corr_lemme || "";
+  lem.placeholder = "lemme — auto : " + (t.lemme || "—");
+
+  const pos = document.createElement("select");
+  pos.className = "gram-in";
+  const a = gel("option", null, "POS — auto : " + (t.pos || "—")); a.value = ""; pos.appendChild(a);
+  for (const u of UPOS) { const o = gel("option", null, u); o.value = u; pos.appendChild(o); }
+  pos.value = t.corr_pos || "";
+
+  const mor = document.createElement("input");
+  mor.className = "gram-in"; mor.value = t.corr_morph || "";
+  mor.placeholder = "morph (UD) — auto : " + (t.morph || "—");
+
+  const apply = gel("button", "ghost small", "✓ Appliquer");
+  apply.onclick = async () => { await applyOpenEditor(); state.gramOpen = null; renderGramList(); };
+  const reset = gel("button", "ghost small", "↺ Auto");
+  reset.title = "Revenir à l'analyse automatique";
+  reset.onclick = async () => { gramEditor = null; await gramSend("DELETE", t.ordre); state.gramOpen = null; renderGramList(); };
+  const acts = gel("div", "gram-edit-actions"); acts.append(apply, reset);
+
+  row.append(head, lem, pos, mor, acts);
+  gramEditor = { ordre: t.ordre, lem, pos, mor,
+                 orig: { lemme: t.corr_lemme || "", pos: t.corr_pos || "", morph: t.corr_morph || "" } };
+  return row;
+}
+
+async function gramSend(method, ordre, body) {
+  const rid = state.gramRegion;
   try {
-    await apiSend("POST", `/api/regions/${rid}/grammaire/valider`);
-    if (state.selectedId === rid) renderGrammaire(selectedRegion());
+    state.gramTokens = await apiSend(method, `/api/regions/${rid}/tokens/${ordre}`, body);
+  } catch (e) { toast("Grammaire : " + e.message, "error"); }
+}
+
+async function applyOpenEditor() {     // sauvegarde l'éditeur ouvert s'il a réellement changé
+  const ed = gramEditor; gramEditor = null;
+  if (!ed) return;
+  const now = { lemme: ed.lem.value.trim(), pos: ed.pos.value, morph: ed.mor.value.trim() };
+  if (now.lemme === ed.orig.lemme && now.pos === ed.orig.pos && now.morph === ed.orig.morph) return;
+  const vide = !now.lemme && !now.pos && !now.morph;       // plus d'override → retour auto
+  await gramSend(vide ? "DELETE" : "PUT", ed.ordre,
+                 vide ? undefined : { lemme: now.lemme || null, pos: now.pos || null, morph: now.morph || null });
+}
+
+async function validerGrammaire() {
+  const rid = state.gramRegion;
+  await applyOpenEditor();
+  try {
+    state.gramTokens = await apiSend("POST", `/api/regions/${rid}/grammaire/valider`);
+    state.gramOpen = null;
+    renderGramList();
     toast("Grammaire de la région validée", "success");
   } catch (e) { toast("Validation : " + e.message, "error"); }
 }
@@ -1877,7 +1934,7 @@ function setupKeyboard() {
 /* Ouvre la visionneuse pile sur une région (lien venant de la recherche) :
    ?album=&planche=&region=. */
 async function applyDeepLink() {
-  const p = new URLSearchParams(location.search);
+  const p = new URLSearchParams(INITIAL_QS);   // URL d'origine (avant que syncUrl ne l'ait modifiée)
   const album = p.get("album"), planche = p.get("planche"), region = p.get("region");
   if (!planche && !region) return;
   try {

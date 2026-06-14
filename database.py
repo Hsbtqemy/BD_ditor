@@ -304,31 +304,73 @@ def _index_region(conn: sqlite3.Connection, region_id: int, payload,
         )
 
 
+def _reancrer_corrections(conn: sqlite3.Connection, region_id: int, new_tokens: list) -> None:
+    """Ré-ancre les corrections humaines après régénération des tokens auto, par
+    ALIGNEMENT de séquences (difflib) entre l'ANCIENNE tokenisation (encore en base à
+    cet instant) et la NOUVELLE (`new_tokens`). Cf. docs/correction-grammaticale.md §4.
+
+    - un mot INCHANGÉ qui a seulement bougé de position → sa correction est re-mappée à
+      son nouvel `ordre` (préservée, obsolete=0) ;
+    - un mot réellement modifié/supprimé → sa correction devient orpheline (mise de
+      côté à un `ordre` négatif, obsolete=1 ; conservée mais inerte — jamais perdue).
+
+    → éditer le texte ne casse QUE les corrections des mots réellement touchés, pas
+    toute la suite (fini la cascade)."""
+    import difflib
+    old = conn.execute("SELECT ordre, texte FROM tokens WHERE region_id = ? ORDER BY ordre",
+                       (region_id,)).fetchall()
+    old_ord = [r["ordre"] for r in old]
+    new_ord = [t["ordre"] for t in new_tokens]
+    new_forme = {t["ordre"]: t["texte"] for t in new_tokens}
+    remap = {}                                  # ancien ordre -> nouvel ordre (mots alignés)
+    sm = difflib.SequenceMatcher(a=[r["texte"] for r in old],
+                                 b=[t["texte"] for t in new_tokens], autojunk=False)
+    for a0, b0, size in sm.get_matching_blocks():
+        for k in range(size):
+            remap[old_ord[a0 + k]] = new_ord[b0 + k]
+
+    corr = conn.execute("SELECT * FROM token_correction WHERE region_id = ?",
+                        (region_id,)).fetchall()
+    survivors, orphans, pris = [], [], set()
+    for c in corr:
+        no = remap.get(c["ordre"])
+        if no is not None and no not in pris and new_forme.get(no) == c["forme"]:
+            survivors.append((c, no)); pris.add(no)
+        else:
+            orphans.append(c)
+    # réécriture propre (DELETE + réinsertion) → aucune collision d'UNIQUE possible
+    conn.execute("DELETE FROM token_correction WHERE region_id = ?", (region_id,))
+    ins = ("INSERT INTO token_correction "
+           "(region_id, ordre, forme, lemme, pos, morph, etat, auteur, date_modif, obsolete) "
+           "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    for c, no in survivors:
+        conn.execute(ins, (region_id, no, new_forme[no], c["lemme"], c["pos"], c["morph"],
+                           c["etat"], c["auteur"], c["date_modif"], 0))
+    park = -1                                   # ordres négatifs : ne rejoignent aucun token
+    for c in orphans:
+        conn.execute(ins, (region_id, park, c["forme"], c["lemme"], c["pos"], c["morph"],
+                           c["etat"], c["auteur"], c["date_modif"], 1))
+        park -= 1
+
+
 def _appliquer_corrections(conn: sqlite3.Connection, region_id: int,
                            tokens: list, lemmes: str, reancrer: bool = True) -> str:
-    """Couche de correction HUMAINE (cf. docs/correction-grammaticale.md §4-5). Après
-    régénération des tokens auto, re-ancre les corrections de la région contre eux :
-    `obsolete=1` si le mot à cette position a changé/disparu (texte édité). NE supprime
-    ni ne modifie JAMAIS les valeurs humaines. Renvoie les lemmes FTS ENRICHIS des
-    lemmes corrigés VIVANTS (→ la recherche reflète les corrections).
+    """Couche de correction HUMAINE (cf. docs/correction-grammaticale.md §4-5). Si la
+    région a des corrections, les ré-ancre par alignement (`_reancrer_corrections`) puis
+    renvoie les lemmes FTS ENRICHIS des lemmes corrigés VIVANTS (→ la recherche reflète
+    les corrections).
 
-    `reancrer=False` quand la tokenisation auto n'est PAS fiable (moteur spaCy absent
-    ou analyse échouée sur un texte non vide) : on ne recalcule alors PAS `obsolete`,
-    pour ne jamais invalider une correction sur la seule absence du moteur. L'ajout
-    des lemmes corrigés au FTS, lui, est toujours effectué (corrections cherchables
-    même sans spaCy). Sans correction : `lemmes` inchangé (coût ≈ nul, cas courant)."""
-    corr = conn.execute(
-        "SELECT ordre, forme FROM token_correction WHERE region_id = ?",
-        (region_id,)).fetchall()
-    if not corr:
+    `reancrer=False` quand la tokenisation auto n'est PAS fiable (moteur spaCy absent ou
+    analyse échouée sur un texte non vide) : on ne ré-ancre alors PAS, pour ne jamais
+    déplacer/invalider une correction sur la seule absence du moteur. L'ajout des lemmes
+    corrigés au FTS reste fait (corrections cherchables même sans spaCy). Sans correction :
+    `lemmes` inchangé (coût ≈ nul, cas courant)."""
+    n = conn.execute("SELECT COUNT(*) AS n FROM token_correction WHERE region_id = ?",
+                     (region_id,)).fetchone()["n"]
+    if not n:
         return lemmes
     if reancrer:
-        formes = {t["ordre"]: t["texte"] for t in tokens}   # tokens auto à jour
-        for c in corr:
-            vivante = formes.get(c["ordre"]) == c["forme"]
-            conn.execute("UPDATE token_correction SET obsolete = ? "
-                         "WHERE region_id = ? AND ordre = ?",
-                         (0 if vivante else 1, region_id, c["ordre"]))
+        _reancrer_corrections(conn, region_id, tokens)
     # FTS : ajoute les lemmes corrigés VIVANTS (état `obsolete` courant) → cherchables
     extra = [r["lemme"] for r in conn.execute(
         "SELECT lemme FROM token_correction "

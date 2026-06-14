@@ -174,9 +174,16 @@
           <h3>Grammaire
             <button id="gram-validate" class="ghost small" title="Valider toute la région">✓ Valider la région</button>
           </h3>
-          <p class="muted small">Champ rempli = correction ; vide = valeur automatique.
-            <span class="prov-chip prov-corrige">corrigé</span>
-            <span class="prov-chip prov-valide">validé</span></p>
+          <div class="gram-filters muted small">
+            <label title="N'afficher que les mots lexicaux (noms, verbes, adjectifs…)">
+              <input type="checkbox" id="gram-f-contenu"> Mots de contenu</label>
+            <label title="N'afficher que les tokens pas encore traités (auto) — la liste se vide à mesure">
+              <input type="checkbox" id="gram-f-arevoir"> À réviser</label>
+            <span class="gram-legend">
+              <span class="prov-chip prov-corrige">corrigé</span>
+              <span class="prov-chip prov-valide">validé</span>
+            </span>
+          </div>
           <div id="gram-tokens" class="gram-tokens"></div>
         </div>
       </div>
