@@ -17,6 +17,9 @@ services:
     environment:
       - BD_DATA_DIR=/data
       - HOME=/data
+      # - BD_SPACY_MODEL=fr_core_news_sm   # modèle NLP (lg = index plus riche, + de RAM)
+      # - BD_NLP_PREWARM=1                  # charge spaCy au démarrage (évite le gel de
+      #                                     #  la 1re écriture) ; à éviter en consultation pure
     volumes:
       - bd-data:/data            # corpus, dérivés, base SQLite, caches de modèles
     expose:

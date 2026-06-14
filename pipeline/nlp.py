@@ -89,8 +89,15 @@ def analyse_batch(texts) -> list[tuple[str, list[dict]]]:
         return [("", []) for _ in texts]
 
 
+def configured_model() -> str:
+    """Nom du modèle configuré (BD_SPACY_MODEL) — SANS charger spaCy (info légère)."""
+    return _MODEL
+
+
 def model_info() -> dict:
-    """Identité du modèle (reproductibilité de l'index) : {model, spacy} ou {}."""
+    """Identité du modèle (reproductibilité de l'index) : {model, spacy} ou {}.
+    ⚠ CHARGE le modèle (à n'appeler que quand on l'utilise déjà, p.ex. reindex_all) —
+    pour une info légère sans chargement, voir `configured_model()`."""
     if not nlp_available():
         return {}
     try:
@@ -105,3 +112,22 @@ def model_info() -> dict:
 def lemmatise(text: str) -> str:
     """Lemmes des mots de contenu (pour l'index FTS) — raccourci sur `analyse()`."""
     return analyse(text)[0]
+
+
+def prewarm() -> None:
+    """Charge le modèle en ARRIÈRE-PLAN (thread démon), pour éviter que la PREMIÈRE
+    écriture ou recherche ne paie le chargement à froid (~10 s) en pleine requête —
+    utile en déploiement multi-utilisateurs. Ne bloque pas le démarrage ; sans effet
+    si le moteur est indisponible. Optionnel (cf. BD_NLP_PREWARM) afin de préserver le
+    démarrage instantané et la légèreté quand le NLP n'est pas utilisé."""
+    if not nlp_available():
+        return
+
+    def _load():
+        try:
+            with _lock:
+                _get_nlp()
+        except Exception:
+            pass
+
+    threading.Thread(target=_load, name="nlp-prewarm", daemon=True).start()

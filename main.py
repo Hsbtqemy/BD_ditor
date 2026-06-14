@@ -42,6 +42,10 @@ IMG_EXTS = (".tif", ".tiff", ".jpg", ".jpeg",
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Pré-chauffage NLP optionnel (déconseillé en consultation pure) : évite le
+    # gel de la 1re écriture/recherche sur le chargement à froid de spaCy.
+    if os.environ.get("BD_NLP_PREWARM", "").lower() in ("1", "true", "yes", "on"):
+        nlp.prewarm()
     yield
 
 
@@ -966,7 +970,8 @@ def analyse_info(conn: sqlite3.Connection = Depends(db)):
     nb_tokens = conn.execute("SELECT COUNT(*) AS n FROM tokens").fetchone()["n"]
     nb_lemmes = conn.execute(
         "SELECT COUNT(*) AS n FROM recherche WHERE lemmes <> ''").fetchone()["n"]
-    return {"moteur_disponible": nlp.nlp_available(), "modele_actuel": nlp.model_info(),
+    return {"moteur_disponible": nlp.nlp_available(),
+            "modele_configure": nlp.configured_model(),   # léger : pas de chargement du modèle
             "meta": meta, "tokens": nb_tokens, "regions_lemmatisees": nb_lemmes}
 
 

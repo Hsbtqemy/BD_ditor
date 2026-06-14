@@ -80,6 +80,11 @@ def test_ecriture_puis_lecture_immediate_coherentes(live_server):
     reg = c.post(f"/api/planches/{pid}/regions",
                  json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5}).json()["id"]
 
+    # Réchauffe le NLP HORS mesure : la 1re écriture déclenche le chargement à froid
+    # de spaCy (~10 s) — ici on teste la course écriture→lecture, pas cette latence.
+    c.put(f"/api/regions/{reg}/annotation",
+          json={"note": "WARMUP", "tags": []}, timeout=120)
+
     N = 30
     miss = 0
     for i in range(N):
