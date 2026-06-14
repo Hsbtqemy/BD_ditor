@@ -920,6 +920,44 @@ def corpus_stats(conn: sqlite3.Connection = Depends(db)):
 
 
 # =========================================================================== #
+# Analyse grammaticale (Palier B) — fréquences lexicales + tokens par région
+# =========================================================================== #
+@app.get("/api/analyse/lemmes")
+def analyse_lemmes(album: Optional[int] = None, type: Optional[str] = None,
+                   pos: Optional[str] = None, limit: int = 100,
+                   conn: sqlite3.Connection = Depends(db)):
+    """Fréquences lexicales : lemmes les plus fréquents (sur les `tokens` spaCy).
+    Filtres : `album`, `type` de région, catégorie grammaticale `pos`
+    (NOUN/VERB/ADJ/…). Base des champs lexicaux et études de fréquence."""
+    limit = max(1, min(limit, 1000))
+    where, params = [], []
+    if album is not None:
+        where.append("p.album_id = ?"); params.append(album)
+    if type:
+        where.append("r.type = ?"); params.append(type)
+    if pos:
+        where.append("t.pos = ?"); params.append(pos.upper())
+    sql = ("SELECT t.lemme, t.pos, COUNT(*) AS freq "
+           "FROM tokens t JOIN regions r ON r.id = t.region_id "
+           "JOIN planches p ON p.id = r.planche_id ")
+    if where:
+        sql += "WHERE " + " AND ".join(where) + " "
+    sql += "GROUP BY t.lemme, t.pos ORDER BY freq DESC, t.lemme LIMIT ?"
+    params.append(limit)
+    return {"results": _rows(conn.execute(sql, params))}
+
+
+@app.get("/api/regions/{region_id}/tokens")
+def region_tokens(region_id: int, conn: sqlite3.Connection = Depends(db)):
+    """Analyse grammaticale d'une région : ses mots avec lemme / POS / morphologie."""
+    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
+        raise HTTPException(404, f"Région {region_id} introuvable")
+    return _rows(conn.execute(
+        "SELECT ordre, texte, lemme, pos, morph FROM tokens "
+        "WHERE region_id = ? ORDER BY ordre", (region_id,)))
+
+
+# =========================================================================== #
 # Jobs : traitement par lot en arrière-plan (segmentation / bulles / OCR)
 # =========================================================================== #
 @app.post("/api/jobs", status_code=201)

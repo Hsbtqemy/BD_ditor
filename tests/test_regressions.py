@@ -80,6 +80,22 @@ def test_recherche_par_lemme(client, planche):
         assert any(x["region_id"] == rid for x in res), f"« {q} » devrait matcher par lemme"
 
 
+@pytest.mark.skipif(not nlp_available(), reason="spaCy / modèle français non installé")
+def test_analyse_grammaticale(client, planche):
+    """Palier B : tokens (lemme/POS/morph) par région + fréquences lexicales."""
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "LE GAULOIS BUVAIT LA POTION"}).json()["id"]
+    toks = client.get(f"/api/regions/{rid}/tokens").json()
+    assert toks, "des tokens doivent être produits"
+    assert "boire" in {t["lemme"] for t in toks}        # BUVAIT → boire (lemme)
+    assert any(t["pos"] == "VERB" for t in toks)        # catégorie grammaticale présente
+    # fréquences lexicales, filtrées sur les verbes
+    verbes = client.get("/api/analyse/lemmes", params={"pos": "VERB"}).json()["results"]
+    assert any(v["lemme"] == "boire" and v["pos"] == "VERB" for v in verbes)
+    assert client.get("/api/regions/999999/tokens").status_code == 404
+
+
 def test_lemmatise_resiliente(monkeypatch):
     """Moteur optionnel : une panne spaCy (chargement modèle KO) ne doit jamais
     casser l'indexation/migration/recherche → lemmatise() renvoie "" au lieu de lever."""

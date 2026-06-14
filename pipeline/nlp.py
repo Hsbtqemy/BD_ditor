@@ -42,24 +42,40 @@ def _get_nlp():
     return _nlp
 
 
-def lemmatise(text: str) -> str:
-    """Lemmes (minuscules) des mots de contenu, séparés par des espaces — prêts pour
-    l'index FTS. Renvoie "" si texte vide ou moteur indisponible (→ repli recherche)."""
+def analyse(text: str) -> tuple[str, list[dict]]:
+    """Analyse spaCy en UNE passe → (lemmes, tokens) :
+    - lemmes (str) : lemmes des mots de CONTENU (mots-vides exclus), pour l'index FTS
+      (recherche par lemme, Palier A) ;
+    - tokens (list[dict]) : TOUS les mots (hors espaces/ponctuation) avec
+      {ordre, texte, lemme, pos, morph}, pour l'analyse grammaticale (Palier B).
+    Renvoie ("", []) si texte vide ou moteur indisponible (repli propre).
+
+    Minuscule avant traitement : crucial pour le lettrage BD en capitales (sinon
+    spaCy prend les mots pour des noms propres). Verrou DÉDIÉ (pas jobs.ML_LOCK) :
+    sérialise chargement + inférence spaCy (non thread-safe) sans bloquer le chemin
+    d'écriture FTS derrière un long job OCR/bulles.
+    """
     text = (text or "").strip()
     if not text or not nlp_available():
-        return ""
+        return "", []
     try:
-        # Verrou DÉDIÉ (pas jobs.ML_LOCK) : sérialise chargement + inférence spaCy,
-        # qui n'est pas thread-safe (Vocab/StringStore partagés). Dédié car la
-        # lemmatisation (~15 ms) est dans le chemin d'écriture FTS (chaque édition de
-        # texte) : la coupler au ML_LOCK la bloquerait derrière un long job OCR.
         with _lock:
-            doc = _get_nlp()(text.lower())   # minuscule : crucial pour le lettrage BD
-            return " ".join(
-                tok.lemma_ for tok in doc
-                if tok.is_alpha and not tok.is_stop and len(tok.lemma_) > 1
-            )
+            doc = _get_nlp()(text.lower())
+            lemmes, tokens = [], []
+            for i, tok in enumerate(doc):
+                if tok.is_space or tok.is_punct:
+                    continue
+                tokens.append({"ordre": i, "texte": tok.text, "lemme": tok.lemma_,
+                               "pos": tok.pos_, "morph": str(tok.morph)})
+                if tok.is_alpha and not tok.is_stop and len(tok.lemma_) > 1:
+                    lemmes.append(tok.lemma_)
+            return " ".join(lemmes), tokens
     except Exception:
-        # Moteur OPTIONNEL : une panne spaCy (modèle corrompu…) ne doit JAMAIS
-        # casser l'indexation, la migration ou la recherche → repli silencieux.
-        return ""
+        # Moteur OPTIONNEL : une panne spaCy ne doit JAMAIS casser indexation /
+        # migration / recherche → repli silencieux.
+        return "", []
+
+
+def lemmatise(text: str) -> str:
+    """Lemmes des mots de contenu (pour l'index FTS) — raccourci sur `analyse()`."""
+    return analyse(text)[0]

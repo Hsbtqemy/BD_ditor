@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 # --------------------------------------------------------------------------- #
@@ -108,10 +108,26 @@ CREATE TABLE IF NOT EXISTS annotation_tags (
     PRIMARY KEY (annotation_id, tag_id)
 );
 
+-- Analyse grammaticale (Palier B) : un mot du texte OCR d'une région, avec son
+-- lemme, sa catégorie (POS) et ses traits morphologiques. Recalculé par spaCy à
+-- chaque (ré)indexation. CASCADE → supprimé avec la région.
+CREATE TABLE IF NOT EXISTS tokens (
+    id          INTEGER PRIMARY KEY,
+    region_id   INTEGER REFERENCES regions(id) ON DELETE CASCADE,
+    ordre       INTEGER,
+    texte       TEXT,
+    lemme       TEXT,
+    pos         TEXT,
+    morph       TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_planches_album   ON planches(album_id);
 CREATE INDEX IF NOT EXISTS idx_regions_planche  ON regions(planche_id);
 CREATE INDEX IF NOT EXISTS idx_regions_parent   ON regions(parent_id);
 CREATE INDEX IF NOT EXISTS idx_anntags_tag      ON annotation_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_tokens_region    ON tokens(region_id);
+CREATE INDEX IF NOT EXISTS idx_tokens_lemme     ON tokens(lemme);
+CREATE INDEX IF NOT EXISTS idx_tokens_pos       ON tokens(pos);
 """
 
 # Index plein texte FTS5 — séparé du schéma pour pouvoir le RECRÉER en migration
@@ -145,10 +161,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "description" not in cols:                       # v1 → v2
         conn.execute("ALTER TABLE albums ADD COLUMN description TEXT")
 
-    # FTS recréée si schéma < 5 : v3 a introduit le tokenizer sans accents, v5 la
-    # colonne `lemmes` (recherche par lemme). Les colonnes/tokenizer d'une table FTS5
-    # ne se modifient pas en place → on recrée et on réindexe les régions existantes.
-    if version < 5:
+    # Réindexation des régions si schéma < 6. v3 : tokenizer FTS sans accents ;
+    # v5 : colonne FTS `lemmes` ; v6 : table `tokens` (analyse grammaticale). La FTS
+    # ne se modifie pas en place → on la recrée, et `reindex_region` repeuple à la
+    # fois l'index FTS (dont les lemmes) ET la table `tokens`.
+    if version < 6:
         conn.execute("DROP TABLE IF EXISTS recherche")
         conn.executescript(_FTS_SQL)
         # Réindexe les régions existantes (garde si appelé sur un schéma partiel).
@@ -201,23 +218,34 @@ def _region_index_payload(conn: sqlite3.Connection, region_id: int):
 
 
 def reindex_region(conn: sqlite3.Connection, region_id: int) -> None:
-    """Recalcule la ligne FTS d'une région (texte OCR + note + tags + lemmes)."""
+    """Recalcule la ligne FTS d'une région (OCR + note + tags + lemmes) ET ses
+    `tokens` grammaticaux (analyse spaCy du texte OCR). Moteur NLP optionnel : sans
+    spaCy, lemmes vides + aucun token → repli propre (préfixe+accents)."""
     payload = _region_index_payload(conn, region_id)
     conn.execute("DELETE FROM recherche WHERE region_id = ?", (region_id,))
+    conn.execute("DELETE FROM tokens WHERE region_id = ?", (region_id,))
     if payload is None:
         return
     ocr_texte, note, tags_concat = payload
-    # Lemmes (moteur optionnel) : "" si spaCy absent → repli sur préfixe+accents.
-    lemmes = ""
+    lemmes, tokens = "", []
     if ocr_texte or note:
-        from pipeline.nlp import lemmatise        # import paresseux (évite tout cycle)
-        lemmes = lemmatise((ocr_texte + " " + note).strip())
+        from pipeline.nlp import analyse, lemmatise   # import paresseux (évite tout cycle)
+        # Tokens = analyse du DIALOGUE (texte OCR) ; lemmes = OCR + note (recherche).
+        lemmes_ocr, tokens = analyse(ocr_texte)
+        lemmes = (lemmes_ocr + " " + lemmatise(note)).strip()
     # N'indexe que s'il y a quelque chose de cherchable.
     if ocr_texte or note or tags_concat or lemmes:
         conn.execute(
             "INSERT INTO recherche (region_id, ocr_texte, note, tags_concat, lemmes) "
             "VALUES (?, ?, ?, ?, ?)",
             (region_id, ocr_texte, note, tags_concat, lemmes),
+        )
+    if tokens:
+        conn.executemany(
+            "INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [(region_id, t["ordre"], t["texte"], t["lemme"], t["pos"], t["morph"])
+             for t in tokens],
         )
 
 
