@@ -128,6 +128,98 @@ def test_reindex_all_repeuple(client, planche, db_path):
     assert info["meta"].get("nlp_model") and info["tokens"] >= 1
 
 
+def test_tokens_effectifs_vue(client, planche, db_path):
+    """Vue `tokens_effectifs` : correction humaine vivante prioritaire, sinon auto ;
+    une correction `obsolete` retombe sur l'auto. (Indépendant de spaCy.)"""
+    import sqlite3
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "LE CHAT"}).json()["id"]
+    raw = sqlite3.connect(db_path)
+    raw.row_factory = sqlite3.Row
+    # purge les tokens auto que la création de région a pu produire (spaCy dispo) :
+    # on veut un cas contrôlé, un seul token à l'ordre 0.
+    raw.execute("DELETE FROM tokens WHERE region_id=?", (rid,))
+    raw.execute("INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
+                "VALUES (?, 0, 'chat', 'chat', 'NOUN', '')", (rid,))
+    raw.execute("INSERT INTO token_correction (region_id, ordre, forme, pos, etat) "
+                "VALUES (?, 0, 'chat', 'PROPN', 'corrige')", (rid,))
+    raw.commit()
+    eff = raw.execute("SELECT pos, provenance FROM tokens_effectifs WHERE region_id=?",
+                      (rid,)).fetchone()
+    assert eff["pos"] == "PROPN" and eff["provenance"] == "corrige"   # correction vivante
+    raw.execute("UPDATE token_correction SET obsolete=1 WHERE region_id=?", (rid,))
+    raw.commit()
+    eff = raw.execute("SELECT pos, provenance FROM tokens_effectifs WHERE region_id=?",
+                      (rid,)).fetchone()
+    assert eff["pos"] == "NOUN" and eff["provenance"] == "auto"       # retombe sur l'auto
+    # l'endpoint d'affichage expose bien la valeur effective + la provenance
+    api = client.get(f"/api/regions/{rid}/tokens").json()
+    assert api and api[0]["provenance"] == "auto" and "pos" in api[0]
+    raw.close()
+
+
+def test_reindex_sans_spacy_preserve_corrections(client, planche, db_path, monkeypatch):
+    """Si l'auto ne peut pas être recalculé (spaCy absent → 0 token) sur un texte
+    NON vide, on NE re-ancre PAS : la correction humaine garde son état (jamais
+    invalidée par la seule absence du moteur)."""
+    import sqlite3
+    import database
+    import pipeline.nlp as nlpmod
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "LE CHAT"}).json()["id"]
+    raw = sqlite3.connect(db_path)
+    raw.execute("INSERT INTO token_correction (region_id, ordre, forme, pos, etat, obsolete) "
+                "VALUES (?, 0, 'chat', 'PROPN', 'valide', 0)", (rid,))
+    raw.commit(); raw.close()
+    # simule spaCy indisponible : analyse renvoie ("", []) malgré un texte non vide
+    monkeypatch.setattr(nlpmod, "analyse", lambda t: ("", []))
+    monkeypatch.setattr(nlpmod, "lemmatise", lambda t: "")
+    conn = database.get_connection()
+    try:
+        database.reindex_region(conn, rid); conn.commit()
+        o = conn.execute("SELECT obsolete FROM token_correction WHERE region_id=?",
+                         (rid,)).fetchone()["obsolete"]
+        assert o == 0   # correction préservée, pas de re-ancrage sur tokenisation absente
+    finally:
+        conn.close()
+
+
+@pytest.mark.skipif(not nlp_available(), reason="spaCy / modèle français non installé")
+def test_reindex_preserve_et_reancre_corrections(client, planche, db_path):
+    """Le reindex NE détruit PAS les corrections, re-ancre `obsolete` selon le texte,
+    et le lemme corrigé vivant devient cherchable (FTS enrichi)."""
+    import sqlite3
+    import database
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "LES CHATS DORMENT"}).json()["id"]
+    conn = database.get_connection()
+    try:
+        database.reindex_region(conn, rid); conn.commit()
+        tok = conn.execute("SELECT ordre, texte FROM tokens WHERE region_id=? "
+                           "ORDER BY ordre", (rid,)).fetchone()
+        conn.execute("INSERT INTO token_correction (region_id, ordre, forme, lemme, etat) "
+                     "VALUES (?, ?, ?, 'zzzunique', 'corrige')",
+                     (rid, tok["ordre"], tok["texte"]))
+        conn.commit()
+        # texte inchangé → correction vivante après reindex
+        database.reindex_region(conn, rid); conn.commit()
+        assert conn.execute("SELECT obsolete FROM token_correction WHERE region_id=?",
+                            (rid,)).fetchone()["obsolete"] == 0
+        # FTS enrichi : le lemme corrigé est cherchable
+        assert any(x["region_id"] == rid for x in
+                   client.get("/api/recherche", params={"q": "zzzunique"}).json()["results"])
+        # le texte change → re-ancrage : la correction passe « à revérifier »
+        conn.execute("UPDATE regions SET ocr_texte='AUTRE CHOSE ICI' WHERE id=?", (rid,))
+        database.reindex_region(conn, rid); conn.commit()
+        assert conn.execute("SELECT obsolete FROM token_correction WHERE region_id=?",
+                            (rid,)).fetchone()["obsolete"] == 1
+    finally:
+        conn.close()
+
+
 def test_lemmatise_resiliente(monkeypatch):
     """Moteur optionnel : une panne spaCy (chargement modèle KO) ne doit jamais
     casser l'indexation/migration/recherche → lemmatise() renvoie "" au lieu de lever."""

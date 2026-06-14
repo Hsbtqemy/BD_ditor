@@ -56,7 +56,13 @@ distinct du statut épistémique d'un token. Il est **dérivé** des statistique
 provenance de la planche ; pas de colonne dédiée en v1 (on ajoutera un override
 explicite seulement si le besoin se confirme).
 
-## 3. Schéma (migration `SCHEMA_VERSION → 8`)
+## 3. Schéma (migration `SCHEMA_VERSION → 9`)
+
+> Mise à jour : la v8 a été prise par le verrou de planche (§6, livré à part) ; la
+> couche de correction grammaticale est donc la **v9**. La table `token_correction`
+> et la vue `tokens_effectifs` sont créées par `SCHEMA_SQL` (`CREATE … IF NOT EXISTS`),
+> donc la migration ne fait qu'acter la version. **Tranche 1.1 implémentée** (schéma
+> + vue + reindex préservant) ; endpoints (1.2) et UI (1.3) à suivre.
 
 Migration **purement structurelle → instantanée, sans spaCy** (fidèle au principe de
 [database.py](../database.py) `_migrate`). Les corrections n'existant pas encore, rien

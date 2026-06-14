@@ -987,8 +987,9 @@ def region_tokens(region_id: int, conn: sqlite3.Connection = Depends(db)):
     """Analyse grammaticale d'une région : ses mots avec lemme / POS / morphologie."""
     if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
+    # Valeurs EFFECTIVES (correction humaine ⊕ auto) + provenance — jamais `tokens` brut.
     return _rows(conn.execute(
-        "SELECT ordre, texte, lemme, pos, morph FROM tokens "
+        "SELECT ordre, texte, lemme, pos, morph, provenance FROM tokens_effectifs "
         "WHERE region_id = ? ORDER BY ordre", (region_id,)))
 
 

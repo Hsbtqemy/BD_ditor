@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 # --------------------------------------------------------------------------- #
@@ -122,6 +122,38 @@ CREATE TABLE IF NOT EXISTS tokens (
     morph       TEXT
 );
 
+-- Correction HUMAINE de l'étiquetage grammatical (cf. docs/correction-grammaticale.md).
+-- Couche OVERLAY préservée : le reindex régénère `tokens` (auto) mais NE TOUCHE JAMAIS
+-- cette table. `forme` = forme de surface visée (ancrage anti-dérive) ; `obsolete=1` =
+-- le texte a changé → correction à revérifier (non appliquée). Champ NULL = auto accepté.
+CREATE TABLE IF NOT EXISTS token_correction (
+    id          INTEGER PRIMARY KEY,
+    region_id   INTEGER NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
+    ordre       INTEGER NOT NULL,
+    forme       TEXT NOT NULL,
+    lemme       TEXT,
+    pos         TEXT,
+    morph       TEXT,
+    etat        TEXT NOT NULL DEFAULT 'corrige',   -- 'corrige' | 'valide'
+    auteur      TEXT,
+    date_modif  TEXT DEFAULT (datetime('now')),
+    obsolete    INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(region_id, ordre)
+);
+
+-- Vue de LECTURE : valeur effective (correction vivante ⊕ auto) + provenance unifiée.
+-- Toutes les surfaces d'analyse lisent CECI, jamais `tokens` brut (invariant projet).
+CREATE VIEW IF NOT EXISTS tokens_effectifs AS
+SELECT t.region_id, t.ordre, t.texte,
+       COALESCE(CASE WHEN c.obsolete = 0 THEN c.lemme END, t.lemme) AS lemme,
+       COALESCE(CASE WHEN c.obsolete = 0 THEN c.pos   END, t.pos)   AS pos,
+       COALESCE(CASE WHEN c.obsolete = 0 THEN c.morph END, t.morph) AS morph,
+       CASE WHEN c.id IS NULL OR c.obsolete = 1 THEN 'auto'
+            ELSE c.etat END                                          AS provenance
+FROM tokens t
+LEFT JOIN token_correction c
+       ON c.region_id = t.region_id AND c.ordre = t.ordre;
+
 -- Métadonnées clé/valeur (documentation/reproductibilité) : p.ex. quel modèle NLP
 -- a produit l'index linguistique, et quand. Utile quand le corpus devient citable.
 CREATE TABLE IF NOT EXISTS meta (
@@ -136,6 +168,8 @@ CREATE INDEX IF NOT EXISTS idx_anntags_tag      ON annotation_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_tokens_region    ON tokens(region_id);
 CREATE INDEX IF NOT EXISTS idx_tokens_lemme     ON tokens(lemme);
 CREATE INDEX IF NOT EXISTS idx_tokens_pos       ON tokens(pos);
+CREATE INDEX IF NOT EXISTS idx_tcorr_region     ON token_correction(region_id);
+CREATE INDEX IF NOT EXISTS idx_tcorr_etat       ON token_correction(etat);
 """
 
 # Index plein texte FTS5 — séparé du schéma pour pouvoir le RECRÉER en migration
@@ -195,6 +229,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if pcols and "verrouillee" not in pcols:
         conn.execute("ALTER TABLE planches ADD COLUMN verrouillee TEXT")
 
+    # v8 → v9 : couche de correction grammaticale humaine (table token_correction +
+    # vue tokens_effectifs) — créées par SCHEMA_SQL (CREATE … IF NOT EXISTS), donc
+    # rien à faire ici sinon acter la version. Cf. docs/correction-grammaticale.md.
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -257,16 +294,60 @@ def _index_region(conn: sqlite3.Connection, region_id: int, payload,
         )
 
 
+def _appliquer_corrections(conn: sqlite3.Connection, region_id: int,
+                           tokens: list, lemmes: str, reancrer: bool = True) -> str:
+    """Couche de correction HUMAINE (cf. docs/correction-grammaticale.md §4-5). Après
+    régénération des tokens auto, re-ancre les corrections de la région contre eux :
+    `obsolete=1` si le mot à cette position a changé/disparu (texte édité). NE supprime
+    ni ne modifie JAMAIS les valeurs humaines. Renvoie les lemmes FTS ENRICHIS des
+    lemmes corrigés VIVANTS (→ la recherche reflète les corrections).
+
+    `reancrer=False` quand la tokenisation auto n'est PAS fiable (moteur spaCy absent
+    ou analyse échouée sur un texte non vide) : on ne recalcule alors PAS `obsolete`,
+    pour ne jamais invalider une correction sur la seule absence du moteur. L'ajout
+    des lemmes corrigés au FTS, lui, est toujours effectué (corrections cherchables
+    même sans spaCy). Sans correction : `lemmes` inchangé (coût ≈ nul, cas courant)."""
+    corr = conn.execute(
+        "SELECT ordre, forme FROM token_correction WHERE region_id = ?",
+        (region_id,)).fetchall()
+    if not corr:
+        return lemmes
+    if reancrer:
+        formes = {t["ordre"]: t["texte"] for t in tokens}   # tokens auto à jour
+        for c in corr:
+            vivante = formes.get(c["ordre"]) == c["forme"]
+            conn.execute("UPDATE token_correction SET obsolete = ? "
+                         "WHERE region_id = ? AND ordre = ?",
+                         (0 if vivante else 1, region_id, c["ordre"]))
+    # FTS : ajoute les lemmes corrigés VIVANTS (état `obsolete` courant) → cherchables
+    extra = [r["lemme"] for r in conn.execute(
+        "SELECT lemme FROM token_correction "
+        "WHERE region_id = ? AND obsolete = 0 AND lemme IS NOT NULL AND lemme <> ''",
+        (region_id,))]
+    vus = set(lemmes.split())
+    for l in extra:
+        if l not in vus:
+            vus.add(l)
+            lemmes = (lemmes + " " + l).strip()
+    return lemmes
+
+
 def reindex_region(conn: sqlite3.Connection, region_id: int) -> None:
     """Indexe une région AVEC enrichissement NLP (lemmes + tokens), à l'édition.
     Tokens = analyse du DIALOGUE (texte OCR) ; lemmes = OCR + note. Moteur optionnel :
-    sans spaCy, lemmes vides + aucun token → repli propre (préfixe+accents)."""
+    sans spaCy, lemmes vides + aucun token → repli propre (préfixe+accents).
+    Les corrections humaines sont préservées et re-ancrées (cf. `_appliquer_corrections`)."""
     payload = _region_index_payload(conn, region_id)
     lemmes, tokens = "", []
     if payload and (payload[0] or payload[1]):
         from pipeline.nlp import analyse, lemmatise   # import paresseux (évite tout cycle)
         lemmes_ocr, tokens = analyse(payload[0])
         lemmes = (lemmes_ocr + " " + lemmatise(payload[1])).strip()
+    # Re-ancrage fiable seulement si l'auto a été (re)calculé : des tokens, ou un texte
+    # vraiment vide. Texte non vide + 0 token = analyse indispo → on préserve l'humain.
+    ocr = payload[0] if payload else ""
+    fiable = bool(tokens) or not (ocr or "").strip()
+    lemmes = _appliquer_corrections(conn, region_id, tokens, lemmes, reancrer=fiable)
     _index_region(conn, region_id, payload, lemmes, tokens)
 
 
@@ -288,9 +369,12 @@ def reindex_all(conn: sqlite3.Connection, chunk: int = 500) -> int:
         ocr_res = analyse_batch([r["ocr_texte"] or "" for r in batch])
         note_res = analyse_batch([notes.get(r["id"], "") for r in batch])
         for j, r in enumerate(batch):
+            toks = ocr_res[j][1]
             lemmes = (ocr_res[j][0] + " " + note_res[j][0]).strip()
+            fiable = bool(toks) or not (r["ocr_texte"] or "").strip()
+            lemmes = _appliquer_corrections(conn, r["id"], toks, lemmes, reancrer=fiable)
             _index_region(conn, r["id"], _region_index_payload(conn, r["id"]),
-                          lemmes, ocr_res[j][1])
+                          lemmes, toks)
             n += 1
         conn.commit()
     info = model_info()
