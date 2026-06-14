@@ -137,6 +137,7 @@ function search() {
     $("#results").innerHTML =
       '<div class="search-hint">Tapez un mot-clé, ou choisissez un album / type / tag / facette grammaticale.</div>';
     $("#result-count").textContent = "";
+    $("#btn-export").disabled = true;
     return;
   }
   const url = new URLSearchParams(p); url.set("limit", "200");
@@ -147,9 +148,17 @@ function search() {
     .catch((e) => { if (gen === state.searchGen) $("#result-count").textContent = "Erreur : " + e.message; });
 }
 
+/* Export CSV du jeu de résultats courant (mêmes critères que la recherche affichée). */
+function exportCsv() {
+  const p = searchParams();
+  if ([...p].length === 0) return;
+  window.location = "/api/recherche/export.csv?" + p.toString();
+}
+
 function renderResults(res, q) {
   $("#result-count").textContent =
     `${res.count} résultat${res.count > 1 ? "s" : ""}` + (res.count >= 200 ? " (limité)" : "");
+  $("#btn-export").disabled = !res.count;
   const box = $("#results");
   box.innerHTML = "";
   if (!res.results.length) {
@@ -212,6 +221,7 @@ async function setup() {
   $("#f-lemme").addEventListener("input", deb);
   $("#f-morph").addEventListener("input", deb);
   ["#f-album", "#f-type", "#f-pos", "#f-prov"].forEach((s) => { $(s).onchange = search; });
+  $("#btn-export").onclick = exportCsv;   // export du jeu de résultats courant (CSV)
   loadCorpus();
   loadTags();
   await loadAlbums();        // options d'album AVANT de restaurer la sélection d'album

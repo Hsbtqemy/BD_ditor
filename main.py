@@ -862,13 +862,9 @@ def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db)):
 # =========================================================================== #
 # Recherche plein texte (FTS5)
 # =========================================================================== #
-@app.get("/api/recherche")
-def recherche(q: str = "", album: Optional[int] = None,
-              type: Optional[str] = None, tags: Optional[list[str]] = Query(None),
-              pos: Optional[str] = None, lemme: Optional[str] = None,
-              morph: Optional[str] = None, provenance: Optional[str] = None,
-              limit: int = 100, conn: sqlite3.Connection = Depends(db)):
-    limit = max(1, min(limit, 500))   # borne : évite LIMIT -1 (= tout le corpus) / DoS
+def _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, limit):
+    """Construit et exécute la requête de recherche (régions + contexte, tags joints).
+    Partagé par /api/recherche (JSON) et l'export CSV — une seule logique de requête."""
     where, params = [], []
 
     base = (
@@ -954,7 +950,49 @@ def recherche(q: str = "", album: Optional[int] = None,
                WHERE an.region_id = ? ORDER BY tg.label""",
             (row["region_id"],),
         ))]
+    return results
+
+
+@app.get("/api/recherche")
+def recherche(q: str = "", album: Optional[int] = None,
+              type: Optional[str] = None, tags: Optional[list[str]] = Query(None),
+              pos: Optional[str] = None, lemme: Optional[str] = None,
+              morph: Optional[str] = None, provenance: Optional[str] = None,
+              limit: int = 100, conn: sqlite3.Connection = Depends(db)):
+    limit = max(1, min(limit, 500))   # borne : évite LIMIT -1 (= tout le corpus) / DoS
+    results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, limit)
     return {"q": q, "count": len(results), "results": results}
+
+
+_BOM = chr(0xFEFF)   # BOM UTF-8 : permet à Excel (Windows) de lire les accents correctement
+
+
+def _csv_response(contenu: str, filename: str) -> Response:
+    """Réponse CSV téléchargeable, préfixée d'un BOM UTF-8 pour qu'Excel (Windows) lise
+    correctement les accents français. (R/pandas : lire en `utf-8-sig`.)"""
+    return Response(content=_BOM + contenu, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.get("/api/recherche/export.csv")
+def recherche_export(q: str = "", album: Optional[int] = None,
+                     type: Optional[str] = None, tags: Optional[list[str]] = Query(None),
+                     pos: Optional[str] = None, lemme: Optional[str] = None,
+                     morph: Optional[str] = None, provenance: Optional[str] = None,
+                     conn: sqlite3.Connection = Depends(db)):
+    """Export CSV du jeu de résultats courant (mêmes critères que /api/recherche).
+    Borne haute relevée (5000) : on exporte le jeu trouvé, pas seulement l'aperçu."""
+    results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, 5000)
+    buf = io.StringIO()
+    cols = ["album", "planche", "region_id", "type", "ocr_texte", "note", "tags"]
+    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    w.writeheader()
+    for r in results:
+        w.writerow({"album": r["album_titre"], "planche": r["planche_numero"],
+                    "region_id": r["region_id"], "type": r["type"],
+                    "ocr_texte": r["ocr_texte"] or "", "note": r["note"] or "",
+                    "tags": "|".join(r["tags"])})
+    return _csv_response(buf.getvalue(), "recherche.csv")
 
 
 @app.get("/api/corpus")
@@ -1308,11 +1346,7 @@ def export_csv(album_id: int, conn: sqlite3.Connection = Depends(db)):
     writer = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)
-    return Response(
-        buf.getvalue(), media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition":
-                 f'attachment; filename="album_{album_id}.csv"'},
-    )
+    return _csv_response(buf.getvalue(), f"album_{album_id}.csv")
 
 
 TEI_NS = "http://www.tei-c.org/ns/1.0"

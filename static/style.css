@@ -761,6 +761,7 @@ h3.collapsible:hover { color: var(--text); }
   border: 1px solid var(--border); border-radius: 6px; font-family: inherit;
 }
 .facet-row input { flex: 1 1 180px; }
+.results-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 
 #tag-cloud-wrap { margin-bottom: 12px; }
 #tag-cloud-wrap > summary { cursor: pointer; user-select: none; }

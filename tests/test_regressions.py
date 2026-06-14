@@ -142,6 +142,13 @@ def test_lot3_recherche_facette_grammaticale(client, planche):
     # combiné avec le texte (FTS + grammaire)
     r3 = client.get("/api/recherche", params={"q": "potion", "pos": "VERB", "album": alb}).json()
     assert any(x["region_id"] == rid for x in r3["results"])
+    # export CSV du jeu de résultats (mêmes critères)
+    exp = client.get("/api/recherche/export.csv", params={"pos": "VERB", "album": alb})
+    assert exp.status_code == 200 and "text/csv" in exp.headers["content-type"]
+    assert exp.text.startswith("﻿")                                     # BOM (Excel/Windows)
+    lignes = exp.text.lstrip("﻿").strip().splitlines()
+    assert lignes[0] == "album,planche,region_id,type,ocr_texte,note,tags"   # en-tête
+    assert any(str(rid) in l for l in lignes[1:])                            # la région exportée
 
 
 @pytest.mark.skipif(not nlp_available(), reason="spaCy / modèle français non installé")
