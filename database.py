@@ -141,18 +141,6 @@ CREATE TABLE IF NOT EXISTS token_correction (
     UNIQUE(region_id, ordre)
 );
 
--- Vue de LECTURE : valeur effective (correction vivante ⊕ auto) + provenance unifiée.
--- Toutes les surfaces d'analyse lisent CECI, jamais `tokens` brut (invariant projet).
-CREATE VIEW IF NOT EXISTS tokens_effectifs AS
-SELECT t.region_id, t.ordre, t.texte,
-       COALESCE(CASE WHEN c.obsolete = 0 THEN c.lemme END, t.lemme) AS lemme,
-       COALESCE(CASE WHEN c.obsolete = 0 THEN c.pos   END, t.pos)   AS pos,
-       COALESCE(CASE WHEN c.obsolete = 0 THEN c.morph END, t.morph) AS morph,
-       CASE WHEN c.id IS NULL OR c.obsolete = 1 THEN 'auto'
-            ELSE c.etat END                                          AS provenance
-FROM tokens t
-LEFT JOIN token_correction c
-       ON c.region_id = t.region_id AND c.ordre = t.ordre;
 
 -- Métadonnées clé/valeur (documentation/reproductibilité) : p.ex. quel modèle NLP
 -- a produit l'index linguistique, et quand. Utile quand le corpus devient citable.
@@ -186,12 +174,34 @@ CREATE VIRTUAL TABLE IF NOT EXISTS recherche USING fts5(
 );
 """
 
+# Vues — TOUJOURS recréées au démarrage (DROP+CREATE) : une vue ne porte pas de
+# données, donc faire évoluer sa définition est gratuit et sans migration.
+# `tokens_effectifs` = read model canonique : valeur effective (correction vivante
+# ⊕ auto) + provenance + `a_revoir` (une correction existe mais a dérivé → à
+# revérifier). Toutes les surfaces d'analyse lisent CECI, jamais `tokens` brut.
+_VIEWS_SQL = """
+DROP VIEW IF EXISTS tokens_effectifs;
+CREATE VIEW tokens_effectifs AS
+SELECT t.region_id, t.ordre, t.texte,
+       COALESCE(CASE WHEN c.obsolete = 0 THEN c.lemme END, t.lemme) AS lemme,
+       COALESCE(CASE WHEN c.obsolete = 0 THEN c.pos   END, t.pos)   AS pos,
+       COALESCE(CASE WHEN c.obsolete = 0 THEN c.morph END, t.morph) AS morph,
+       CASE WHEN c.id IS NULL OR c.obsolete = 1 THEN 'auto'
+            ELSE c.etat END                                          AS provenance,
+       CASE WHEN c.id IS NOT NULL AND c.obsolete = 1 THEN 1 ELSE 0 END AS a_revoir,
+       c.lemme AS corr_lemme, c.pos AS corr_pos, c.morph AS corr_morph
+FROM tokens t
+LEFT JOIN token_correction c
+       ON c.region_id = t.region_id AND c.ordre = t.ordre;
+"""
+
 
 def init_db() -> None:
     """Crée le schéma s'il n'existe pas et applique les migrations."""
     with connect() as conn:
         conn.executescript(SCHEMA_SQL)
         conn.executescript(_FTS_SQL)
+        conn.executescript(_VIEWS_SQL)
         _migrate(conn)
 
 

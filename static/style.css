@@ -261,6 +261,33 @@ button { font-family: inherit; }
   background: color-mix(in srgb, var(--accent-amber) 12%, transparent);
 }
 
+/* Grammaire : analyse éditable par token */
+.gram-tokens { display: flex; flex-direction: column; gap: 4px; }
+.gram-row {
+  display: grid; align-items: center; gap: 4px;
+  grid-template-columns: minmax(48px, 1fr) 1.3fr 84px 1.3fr auto;
+  padding: 3px 4px; border-radius: 4px; border-left: 3px solid transparent;
+}
+.gram-row.prov-corrige { border-left-color: var(--accent-amber); }
+.gram-row.prov-valide  { border-left-color: var(--accent-green); }
+.gram-row.a-revoir { background: color-mix(in srgb, var(--accent-red) 10%, transparent); }
+.gram-mot { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gram-row input, .gram-row select {
+  min-width: 0; padding: 2px 4px; font-size: .85rem;
+  background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px;
+}
+.gram-meta { display: inline-flex; align-items: center; gap: 4px; }
+.prov-chip {
+  font-size: .7rem; padding: 1px 5px; border-radius: 8px;
+  background: var(--bg-input); color: var(--text-muted); border: 1px solid var(--border);
+}
+.prov-chip.prov-corrige { color: var(--accent-amber); border-color: var(--accent-amber); }
+.prov-chip.prov-valide  { color: var(--accent-green); border-color: var(--accent-green); }
+.gram-warn { color: var(--accent-red); cursor: help; }
+.gram-reset { width: 22px; height: 22px; }
+#gram-validate { float: right; }
+
 /* ---------- Visionneuse ---------- */
 #viewer { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 #toolbar {

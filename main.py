@@ -1002,8 +1002,9 @@ def _tokens_effectifs(conn, region_id: int) -> list:
     """Tokens EFFECTIFS d'une région (correction humaine ⊕ auto) + provenance —
     jamais `tokens` brut (invariant projet)."""
     return _rows(conn.execute(
-        "SELECT ordre, texte, lemme, pos, morph, provenance FROM tokens_effectifs "
-        "WHERE region_id = ? ORDER BY ordre", (region_id,)))
+        "SELECT ordre, texte, lemme, pos, morph, provenance, a_revoir, "
+        "       corr_lemme, corr_pos, corr_morph "
+        "FROM tokens_effectifs WHERE region_id = ? ORDER BY ordre", (region_id,)))
 
 
 def _norm_corr(v: Optional[str]) -> Optional[str]:

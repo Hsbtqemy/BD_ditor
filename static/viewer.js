@@ -385,6 +385,114 @@ function renderPanel() {
 
   $("#panel-ocr").hidden = !r.ocr_texte;
   if (r.ocr_texte) $("#ocr-text").textContent = r.ocr_texte;
+
+  renderGrammaire(r);
+}
+
+/* ===================================================================
+   Grammaire : analyse spaCy éditable par token (lemme / POS / morph).
+   La case éditable = OVERRIDE humain ; vide = on accepte l'auto.
+   =================================================================== */
+const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
+              "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X"];
+const PROV_LABEL = { auto: "auto", corrige: "corrigé", valide: "validé" };
+
+async function renderGrammaire(r) {
+  const wrap = $("#panel-grammaire");
+  if (!wrap) return;
+  if (!r || !r.ocr_texte) { wrap.hidden = true; return; }   // pertinent si texte
+  const rid = r.id;
+  let toks;
+  try { toks = await apiGet(`/api/regions/${rid}/tokens`); }
+  catch (e) { wrap.hidden = true; return; }
+  if (state.selectedId !== rid) return;     // anti-course : sélection changée entre-temps
+  wrap.hidden = false;
+  $("#gram-validate").onclick = () => validerGrammaire(rid);
+  const box = $("#gram-tokens");
+  box.innerHTML = "";
+  if (!toks.length) {
+    box.innerHTML = '<div class="muted small">Aucune analyse — relancer l\'indexation NLP.</div>';
+    $("#gram-validate").hidden = true;
+    return;
+  }
+  $("#gram-validate").hidden = false;
+  for (const t of toks) box.appendChild(grammaireRow(rid, t));
+}
+
+function grammaireRow(rid, t) {
+  const row = document.createElement("div");
+
+  const mot = document.createElement("span");
+  mot.className = "gram-mot"; mot.textContent = t.texte; mot.title = t.texte;
+
+  const lem = document.createElement("input");
+  lem.className = "gram-lemme"; lem.value = t.corr_lemme || "";
+  lem.placeholder = t.lemme || "lemme"; lem.title = "lemme — vide = auto (" + (t.lemme || "—") + ")";
+
+  const pos = document.createElement("select");
+  pos.className = "gram-pos";
+  const auto = document.createElement("option");
+  auto.value = ""; auto.textContent = t.pos ? "— " + t.pos : "—"; pos.appendChild(auto);
+  for (const u of UPOS) {
+    const o = document.createElement("option"); o.value = u; o.textContent = u;
+    pos.appendChild(o);
+  }
+  pos.value = t.corr_pos || "";
+
+  const mor = document.createElement("input");
+  mor.className = "gram-morph"; mor.value = t.corr_morph || "";
+  mor.placeholder = t.morph || "traits"; mor.title = "morphologie UD — vide = auto";
+
+  const meta = document.createElement("span");
+  meta.className = "gram-meta";
+  const chip = document.createElement("span");
+  meta.appendChild(chip);
+  const warn = document.createElement("span");
+  warn.className = "gram-warn"; warn.textContent = "⚠";
+  warn.title = "à revérifier : le texte a changé depuis la correction";
+  meta.appendChild(warn);
+  const reset = document.createElement("button");
+  reset.className = "icon-btn gram-reset"; reset.textContent = "↺";
+  reset.title = "Réinitialiser (revenir à l'auto)";
+  meta.appendChild(reset);
+
+  // Met à jour l'ASPECT de CETTE ligne seulement (chip/bordure/⚠) — ne reconstruit
+  // pas le tableau, donc le focus et la frappe dans les autres lignes sont préservés.
+  function applyState(tk) {
+    row.className = "gram-row prov-" + tk.provenance + (tk.a_revoir ? " a-revoir" : "");
+    chip.className = "prov-chip prov-" + tk.provenance;
+    chip.textContent = PROV_LABEL[tk.provenance] || tk.provenance;
+    warn.hidden = !tk.a_revoir;
+  }
+  applyState(t);
+
+  async function push(body) {            // body=null → annulation (DELETE)
+    try {
+      const toks = body === null
+        ? await apiSend("DELETE", `/api/regions/${rid}/tokens/${t.ordre}`)
+        : await apiSend("PUT", `/api/regions/${rid}/tokens/${t.ordre}`, body);
+      const tk = (toks || []).find((x) => x.ordre === t.ordre);
+      if (tk) applyState(tk);
+    } catch (e) { toast("Grammaire : " + e.message, "error"); }
+  }
+  const save = () => {
+    const body = { lemme: lem.value.trim() || null, pos: pos.value || null,
+                   morph: mor.value.trim() || null };
+    push((!body.lemme && !body.pos && !body.morph) ? null : body);   // tout vide → auto
+  };
+  lem.onchange = save; pos.onchange = save; mor.onchange = save;
+  reset.onclick = () => { lem.value = ""; pos.value = ""; mor.value = ""; push(null); };
+
+  row.append(mot, lem, pos, mor, meta);
+  return row;
+}
+
+async function validerGrammaire(rid) {
+  try {
+    await apiSend("POST", `/api/regions/${rid}/grammaire/valider`);
+    if (state.selectedId === rid) renderGrammaire(selectedRegion());
+    toast("Grammaire de la région validée", "success");
+  } catch (e) { toast("Validation : " + e.message, "error"); }
 }
 
 function escapeHtml(s) {

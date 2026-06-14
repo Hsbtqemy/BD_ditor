@@ -167,6 +167,18 @@
           <h3>Texte OCR</h3>
           <div id="ocr-text" class="ocr-text muted"></div>
         </div>
+
+        <!-- Grammaire : analyse spaCy éditable (lemme / POS / morph) par token.
+             La case éditable est l'OVERRIDE humain ; vide = on accepte l'auto. -->
+        <div class="panel-section" id="panel-grammaire" hidden>
+          <h3>Grammaire
+            <button id="gram-validate" class="ghost small" title="Valider toute la région">✓ Valider la région</button>
+          </h3>
+          <p class="muted small">Champ rempli = correction ; vide = valeur automatique.
+            <span class="prov-chip prov-corrige">corrigé</span>
+            <span class="prov-chip prov-valide">validé</span></p>
+          <div id="gram-tokens" class="gram-tokens"></div>
+        </div>
       </div>
     </aside>
   </main>

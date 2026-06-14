@@ -153,9 +153,10 @@ def test_tokens_effectifs_vue(client, planche, db_path):
     eff = raw.execute("SELECT pos, provenance FROM tokens_effectifs WHERE region_id=?",
                       (rid,)).fetchone()
     assert eff["pos"] == "NOUN" and eff["provenance"] == "auto"       # retombe sur l'auto
-    # l'endpoint d'affichage expose bien la valeur effective + la provenance
+    # l'endpoint expose effectif + provenance + drapeau « à revérifier » + override brut
     api = client.get(f"/api/regions/{rid}/tokens").json()
-    assert api and api[0]["provenance"] == "auto" and "pos" in api[0]
+    assert api and api[0]["provenance"] == "auto" and api[0]["pos"] == "NOUN"
+    assert api[0]["a_revoir"] == 1 and api[0]["corr_pos"] == "PROPN"   # override (stale) visible
     raw.close()
 
 
