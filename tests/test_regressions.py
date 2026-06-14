@@ -3,7 +3,9 @@
 Chaque test nomme et reproduit le scénario du bug ; ils servent de filet
 permanent contre la réintroduction de ces défauts.
 """
+import pytest
 from conftest import KUMIKO_SAMPLE, direct_query, requires_kumiko
+from pipeline.nlp import nlp_available
 
 
 def test_ecriture_persistee_sur_disque(client, db_path):
@@ -64,6 +66,18 @@ def test_recherche_prefixe_et_accents(client, planche):
     # accents : « eloignez » → « ÉLOIGNEZ »
     res2 = client.get("/api/recherche", params={"q": "eloignez"}).json()["results"]
     assert any(x["region_id"] == rid for x in res2)
+
+
+@pytest.mark.skipif(not nlp_available(), reason="spaCy / modèle français non installé")
+def test_recherche_par_lemme(client, planche):
+    """Palier A : la recherche par LEMME attrape ce que le préfixe ne peut pas —
+    « cheval »→« chevaux », « galoper »→« galopaient » (aucune relation de préfixe)."""
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "LES CHEVAUX GALOPAIENT"}).json()["id"]
+    for q in ("cheval", "galoper"):
+        res = client.get("/api/recherche", params={"q": q}).json()["results"]
+        assert any(x["region_id"] == rid for x in res), f"« {q} » devrait matcher par lemme"
 
 
 @requires_kumiko

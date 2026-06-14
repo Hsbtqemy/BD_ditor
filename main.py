@@ -24,6 +24,7 @@ from config import DERIVATIVES_DIR, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_RE
 from database import get_connection, init_db, reindex_region, unindex_region
 from pipeline.backup import make_backup
 from pipeline import jobs
+from pipeline import nlp
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
 from pipeline.ingest import (ingest_image, remove_album_files,
                              remove_planche_files, store_upload)
@@ -837,11 +838,19 @@ def recherche(q: str = "", album: Optional[int] = None,
     )
 
     if q.strip():
-        # Chaque token devient une requête PRÉFIXE échappée, combinés en ET
-        # implicite : « otage » trouve « otages », « otagé »… La recherche est
-        # par ailleurs insensible aux accents (tokenizer FTS remove_diacritics).
-        match_expr = " ".join('"' + t.replace('"', '""') + '"*'
-                              for t in q.split())
+        # (1) PRÉFIXE échappé sur le texte brut (ET implicite) : « otage » → « otages ».
+        #     Insensible aux accents (tokenizer FTS remove_diacritics).
+        raw = " ".join('"' + t.replace('"', '""') + '"*' for t in q.split())
+        # (2) LEMMES : on lemmatise aussi la requête et on la matche sur la colonne
+        #     `lemmes` → attrape ce que le préfixe rate (cheval↔chevaux, conjugaisons,
+        #     élisions). Moteur optionnel : si spaCy absent, lemmatise() renvoie ""
+        #     → on garde seulement (1) (repli propre).
+        lemmes = nlp.lemmatise(q).split()
+        if lemmes:
+            lemma_expr = " ".join('"' + l.replace('"', '""') + '"' for l in lemmes)
+            match_expr = f"({raw}) OR (lemmes : ({lemma_expr}))"
+        else:
+            match_expr = raw
         base += "JOIN recherche rch ON rch.region_id = r.id "
         where.append("recherche MATCH ?")
         params.append(match_expr)
@@ -1162,7 +1171,8 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db)):
 def sante():
     return {"kumiko": kumiko_available(),
             "bulles": bulles_available(),
-            "ocr": ocr_available()}
+            "ocr": ocr_available(),
+            "lemmes": nlp.nlp_available()}
 
 
 # Fichiers statiques + images dérivées + shell HTML.

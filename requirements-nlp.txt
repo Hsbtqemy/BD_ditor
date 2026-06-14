@@ -1,0 +1,13 @@
+# Moteur NLP optionnel — recherche par lemme (Palier A) + base de l'analyse
+# grammaticale (Palier B). CPU, léger. Sans lui, la recherche retombe sur le
+# préfixe + accents (déjà en place) : l'app fonctionne, simplement sans lemmes.
+#
+# Installation :
+#   pip install -r requirements-nlp.txt
+#   python -m spacy download fr_core_news_sm
+#
+# Modèle configurable via BD_SPACY_MODEL (défaut fr_core_news_sm, ~190 Mo RAM).
+# Pour la similarité sémantique / champs lexicaux (Palier B) : fr_core_news_lg
+# (vecteurs fins, ~900 Mo RAM) — de préférence hors ligne sur petit VPS.
+
+spacy>=3.7,<4

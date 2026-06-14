@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 # --------------------------------------------------------------------------- #
@@ -123,6 +123,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS recherche USING fts5(
     ocr_texte,
     note,
     tags_concat,
+    lemmes,
     tokenize = 'unicode61 remove_diacritics 2'
 );
 """
@@ -144,10 +145,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "description" not in cols:                       # v1 → v2
         conn.execute("ALTER TABLE albums ADD COLUMN description TEXT")
 
-    # v2 → v3 : index FTS recréé avec un tokenizer insensible aux accents
-    # (le tokenizer ne peut pas être modifié sur une table existante) ; on
-    # réindexe alors toutes les régions porteuses de contenu.
-    if version < 3:
+    # FTS recréée si schéma < 5 : v3 a introduit le tokenizer sans accents, v5 la
+    # colonne `lemmes` (recherche par lemme). Les colonnes/tokenizer d'une table FTS5
+    # ne se modifient pas en place → on recrée et on réindexe les régions existantes.
+    if version < 5:
         conn.execute("DROP TABLE IF EXISTS recherche")
         conn.executescript(_FTS_SQL)
         # Réindexe les régions existantes (garde si appelé sur un schéma partiel).
@@ -200,18 +201,23 @@ def _region_index_payload(conn: sqlite3.Connection, region_id: int):
 
 
 def reindex_region(conn: sqlite3.Connection, region_id: int) -> None:
-    """Recalcule la ligne FTS d'une région (texte OCR + note + tags)."""
+    """Recalcule la ligne FTS d'une région (texte OCR + note + tags + lemmes)."""
     payload = _region_index_payload(conn, region_id)
     conn.execute("DELETE FROM recherche WHERE region_id = ?", (region_id,))
     if payload is None:
         return
     ocr_texte, note, tags_concat = payload
+    # Lemmes (moteur optionnel) : "" si spaCy absent → repli sur préfixe+accents.
+    lemmes = ""
+    if ocr_texte or note:
+        from pipeline.nlp import lemmatise        # import paresseux (évite tout cycle)
+        lemmes = lemmatise((ocr_texte + " " + note).strip())
     # N'indexe que s'il y a quelque chose de cherchable.
-    if ocr_texte or note or tags_concat:
+    if ocr_texte or note or tags_concat or lemmes:
         conn.execute(
-            "INSERT INTO recherche (region_id, ocr_texte, note, tags_concat) "
-            "VALUES (?, ?, ?, ?)",
-            (region_id, ocr_texte, note, tags_concat),
+            "INSERT INTO recherche (region_id, ocr_texte, note, tags_concat, lemmes) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (region_id, ocr_texte, note, tags_concat, lemmes),
         )
 
 
