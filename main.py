@@ -957,6 +957,19 @@ def region_tokens(region_id: int, conn: sqlite3.Connection = Depends(db)):
         "WHERE region_id = ? ORDER BY ordre", (region_id,)))
 
 
+@app.get("/api/analyse/info")
+def analyse_info(conn: sqlite3.Connection = Depends(db)):
+    """État de l'index linguistique : modèle NLP utilisé (reproductibilité),
+    date de réindexation, et volumétrie. La réindexation en lot se lance via
+    `tools/reindex_nlp.py` (modèle configurable BD_SPACY_MODEL)."""
+    meta = {r["cle"]: r["valeur"] for r in conn.execute("SELECT cle, valeur FROM meta")}
+    nb_tokens = conn.execute("SELECT COUNT(*) AS n FROM tokens").fetchone()["n"]
+    nb_lemmes = conn.execute(
+        "SELECT COUNT(*) AS n FROM recherche WHERE lemmes <> ''").fetchone()["n"]
+    return {"moteur_disponible": nlp.nlp_available(), "modele_actuel": nlp.model_info(),
+            "meta": meta, "tokens": nb_tokens, "regions_lemmatisees": nb_lemmes}
+
+
 # =========================================================================== #
 # Jobs : traitement par lot en arrière-plan (segmentation / bulles / OCR)
 # =========================================================================== #

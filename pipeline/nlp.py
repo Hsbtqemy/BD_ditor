@@ -42,38 +42,64 @@ def _get_nlp():
     return _nlp
 
 
-def analyse(text: str) -> tuple[str, list[dict]]:
-    """Analyse spaCy en UNE passe → (lemmes, tokens) :
-    - lemmes (str) : lemmes des mots de CONTENU (mots-vides exclus), pour l'index FTS
-      (recherche par lemme, Palier A) ;
-    - tokens (list[dict]) : TOUS les mots (hors espaces/ponctuation) avec
-      {ordre, texte, lemme, pos, morph}, pour l'analyse grammaticale (Palier B).
-    Renvoie ("", []) si texte vide ou moteur indisponible (repli propre).
+def _extract(doc) -> tuple[str, list[dict]]:
+    """D'un Doc spaCy → (lemmes, tokens). Factorisé pour `analyse` ET `analyse_batch`
+    (garantit un résultat unitaire == lot).
+    - lemmes (str) : lemmes des mots de CONTENU (mots-vides exclus) → index FTS (A) ;
+    - tokens (list) : TOUS les mots (hors espaces/ponctuation) {ordre,texte,lemme,
+      pos,morph} → analyse grammaticale (B)."""
+    lemmes, tokens = [], []
+    for i, tok in enumerate(doc):
+        if tok.is_space or tok.is_punct:
+            continue
+        tokens.append({"ordre": i, "texte": tok.text, "lemme": tok.lemma_,
+                       "pos": tok.pos_, "morph": str(tok.morph)})
+        if tok.is_alpha and not tok.is_stop and len(tok.lemma_) > 1:
+            lemmes.append(tok.lemma_)
+    return " ".join(lemmes), tokens
 
-    Minuscule avant traitement : crucial pour le lettrage BD en capitales (sinon
-    spaCy prend les mots pour des noms propres). Verrou DÉDIÉ (pas jobs.ML_LOCK) :
-    sérialise chargement + inférence spaCy (non thread-safe) sans bloquer le chemin
-    d'écriture FTS derrière un long job OCR/bulles.
-    """
+
+def analyse(text: str) -> tuple[str, list[dict]]:
+    """Analyse spaCy d'UN texte → (lemmes, tokens). Minuscule avant traitement
+    (lettrage BD en capitales). Verrou DÉDIÉ (pas jobs.ML_LOCK) : sérialise
+    chargement + inférence (non thread-safe) sans bloquer le chemin FTS derrière un
+    job OCR. ("", []) si vide ou moteur indisponible (repli propre)."""
     text = (text or "").strip()
     if not text or not nlp_available():
         return "", []
     try:
         with _lock:
-            doc = _get_nlp()(text.lower())
-            lemmes, tokens = [], []
-            for i, tok in enumerate(doc):
-                if tok.is_space or tok.is_punct:
-                    continue
-                tokens.append({"ordre": i, "texte": tok.text, "lemme": tok.lemma_,
-                               "pos": tok.pos_, "morph": str(tok.morph)})
-                if tok.is_alpha and not tok.is_stop and len(tok.lemma_) > 1:
-                    lemmes.append(tok.lemma_)
-            return " ".join(lemmes), tokens
+            return _extract(_get_nlp()(text.lower()))
     except Exception:
-        # Moteur OPTIONNEL : une panne spaCy ne doit JAMAIS casser indexation /
-        # migration / recherche → repli silencieux.
-        return "", []
+        return "", []   # moteur OPTIONNEL : ne JAMAIS casser indexation/recherche
+
+
+def analyse_batch(texts) -> list[tuple[str, list[dict]]]:
+    """Comme `analyse()` mais en LOT via `nlp.pipe` (réindexation massive) :
+    beaucoup plus rapide sur de nombreux textes courts, et une seule prise de verrou.
+    Renvoie une liste alignée sur `texts` ; [("", []), …] si moteur indisponible."""
+    texts = list(texts)
+    if not nlp_available():
+        return [("", []) for _ in texts]
+    try:
+        with _lock:
+            return [_extract(doc) for doc
+                    in _get_nlp().pipe([(t or "").lower() for t in texts], batch_size=64)]
+    except Exception:
+        return [("", []) for _ in texts]
+
+
+def model_info() -> dict:
+    """Identité du modèle (reproductibilité de l'index) : {model, spacy} ou {}."""
+    if not nlp_available():
+        return {}
+    try:
+        with _lock:
+            m = _get_nlp().meta
+        import spacy
+        return {"model": f"{m['lang']}_{m['name']}-{m['version']}", "spacy": spacy.__version__}
+    except Exception:
+        return {}
 
 
 def lemmatise(text: str) -> str:

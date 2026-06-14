@@ -96,6 +96,38 @@ def test_analyse_grammaticale(client, planche):
     assert client.get("/api/regions/999999/tokens").status_code == 404
 
 
+@pytest.mark.skipif(not nlp_available(), reason="spaCy / modèle français non installé")
+def test_reindex_all_repeuple(client, planche, db_path):
+    """`reindex_all()` (re)peuple lemmes + tokens en lot et enregistre le modèle
+    (repro) — l'outil de réindexation explicite (post-migration structurelle,
+    changement de modèle, ou index définitif)."""
+    import sqlite3
+    import database
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                            "ocr_texte": "LES CHEVAUX GALOPAIENT"}).json()["id"]
+    # Simule l'état post-migration STRUCTURELLE : enrichissement NLP vidé.
+    raw = sqlite3.connect(db_path)
+    raw.execute("UPDATE recherche SET lemmes = ''")
+    raw.execute("DELETE FROM tokens")
+    raw.commit(); raw.close()
+    assert not client.get(f"/api/regions/{rid}/tokens").json()        # tokens vidés
+
+    conn = database.get_connection()
+    try:
+        assert database.reindex_all(conn) >= 1
+    finally:
+        conn.close()
+
+    # lemmes + tokens repeuplés ; recherche par lemme de nouveau opérante
+    assert any(t["lemme"] == "cheval" for t in client.get(f"/api/regions/{rid}/tokens").json())
+    assert any(x["region_id"] == rid for x in
+               client.get("/api/recherche", params={"q": "cheval"}).json()["results"])
+    # métadonnée de reproductibilité enregistrée
+    info = client.get("/api/analyse/info").json()
+    assert info["meta"].get("nlp_model") and info["tokens"] >= 1
+
+
 def test_lemmatise_resiliente(monkeypatch):
     """Moteur optionnel : une panne spaCy (chargement modèle KO) ne doit jamais
     casser l'indexation/migration/recherche → lemmatise() renvoie "" au lieu de lever."""

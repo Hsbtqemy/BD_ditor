@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 # --------------------------------------------------------------------------- #
@@ -121,6 +121,13 @@ CREATE TABLE IF NOT EXISTS tokens (
     morph       TEXT
 );
 
+-- Métadonnées clé/valeur (documentation/reproductibilité) : p.ex. quel modèle NLP
+-- a produit l'index linguistique, et quand. Utile quand le corpus devient citable.
+CREATE TABLE IF NOT EXISTS meta (
+    cle      TEXT PRIMARY KEY,
+    valeur   TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_planches_album   ON planches(album_id);
 CREATE INDEX IF NOT EXISTS idx_regions_planche  ON regions(planche_id);
 CREATE INDEX IF NOT EXISTS idx_regions_parent   ON regions(parent_id);
@@ -161,20 +168,21 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "description" not in cols:                       # v1 → v2
         conn.execute("ALTER TABLE albums ADD COLUMN description TEXT")
 
-    # Réindexation des régions si schéma < 6. v3 : tokenizer FTS sans accents ;
-    # v5 : colonne FTS `lemmes` ; v6 : table `tokens` (analyse grammaticale). La FTS
-    # ne se modifie pas en place → on la recrée, et `reindex_region` repeuple à la
-    # fois l'index FTS (dont les lemmes) ET la table `tokens`.
-    if version < 6:
+    # FTS recréée si schéma < 5 (la structure FTS ne se modifie pas en place) :
+    # v3 a introduit le tokenizer sans accents, v5 la colonne `lemmes`. Le
+    # repeuplement est STRUCTUREL (ocr/note/tags, SANS spaCy) → démarrage instantané
+    # et recherche jamais cassée (repli préfixe+accents). L'enrichissement NLP
+    # (lemmes + tokens) est fait à part, à la demande, par `reindex_all()`.
+    if version < 5:
         conn.execute("DROP TABLE IF EXISTS recherche")
         conn.executescript(_FTS_SQL)
-        # Réindexe les régions existantes (garde si appelé sur un schéma partiel).
         has_regions = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='regions'"
         ).fetchone()
         if has_regions:
             for r in conn.execute("SELECT id FROM regions").fetchall():
-                reindex_region(conn, r["id"])
+                _index_region(conn, r["id"],
+                              _region_index_payload(conn, r["id"]), "", [])
 
     # v3 → v4 : validation humaine d'une planche (drapeau orthogonal au statut).
     pcols = {r["name"] for r in conn.execute("PRAGMA table_info(planches)")}
@@ -217,23 +225,17 @@ def _region_index_payload(conn: sqlite3.Connection, region_id: int):
     return region["ocr_texte"] or "", note or "", tags_concat
 
 
-def reindex_region(conn: sqlite3.Connection, region_id: int) -> None:
-    """Recalcule la ligne FTS d'une région (OCR + note + tags + lemmes) ET ses
-    `tokens` grammaticaux (analyse spaCy du texte OCR). Moteur NLP optionnel : sans
-    spaCy, lemmes vides + aucun token → repli propre (préfixe+accents)."""
-    payload = _region_index_payload(conn, region_id)
+def _index_region(conn: sqlite3.Connection, region_id: int, payload,
+                  lemmes: str, tokens: list) -> None:
+    """Persistance partagée : écrit la ligne FTS (ocr/note/tags + `lemmes` fournis)
+    et les `tokens` fournis. `lemmes=""` / `tokens=[]` ⇒ indexation STRUCTURELLE
+    (sans NLP). Utilisé par `reindex_region` (unitaire), `reindex_all` (lot) et la
+    migration (structurelle)."""
     conn.execute("DELETE FROM recherche WHERE region_id = ?", (region_id,))
     conn.execute("DELETE FROM tokens WHERE region_id = ?", (region_id,))
     if payload is None:
         return
     ocr_texte, note, tags_concat = payload
-    lemmes, tokens = "", []
-    if ocr_texte or note:
-        from pipeline.nlp import analyse, lemmatise   # import paresseux (évite tout cycle)
-        # Tokens = analyse du DIALOGUE (texte OCR) ; lemmes = OCR + note (recherche).
-        lemmes_ocr, tokens = analyse(ocr_texte)
-        lemmes = (lemmes_ocr + " " + lemmatise(note)).strip()
-    # N'indexe que s'il y a quelque chose de cherchable.
     if ocr_texte or note or tags_concat or lemmes:
         conn.execute(
             "INSERT INTO recherche (region_id, ocr_texte, note, tags_concat, lemmes) "
@@ -247,6 +249,56 @@ def reindex_region(conn: sqlite3.Connection, region_id: int) -> None:
             [(region_id, t["ordre"], t["texte"], t["lemme"], t["pos"], t["morph"])
              for t in tokens],
         )
+
+
+def reindex_region(conn: sqlite3.Connection, region_id: int) -> None:
+    """Indexe une région AVEC enrichissement NLP (lemmes + tokens), à l'édition.
+    Tokens = analyse du DIALOGUE (texte OCR) ; lemmes = OCR + note. Moteur optionnel :
+    sans spaCy, lemmes vides + aucun token → repli propre (préfixe+accents)."""
+    payload = _region_index_payload(conn, region_id)
+    lemmes, tokens = "", []
+    if payload and (payload[0] or payload[1]):
+        from pipeline.nlp import analyse, lemmatise   # import paresseux (évite tout cycle)
+        lemmes_ocr, tokens = analyse(payload[0])
+        lemmes = (lemmes_ocr + " " + lemmatise(payload[1])).strip()
+    _index_region(conn, region_id, payload, lemmes, tokens)
+
+
+def reindex_all(conn: sqlite3.Connection, chunk: int = 500) -> int:
+    """Réindexation NLP EN LOT (lemmes + tokens) de toutes les régions, via
+    `nlp.pipe` (rapide). À lancer explicitement (commande `tools/reindex_nlp.py`) :
+    après un changement de paramètre (Phase 1) ou pour figer l'index définitif avec
+    un modèle plus riche, p.ex. `lg` hors ligne (transition vers la consultation).
+    Commit par lots (transaction bornée, index mis à jour au fur et à mesure).
+    Enregistre le modèle utilisé dans `meta` (reproductibilité). Renvoie le nombre
+    de régions traitées. Sans spaCy : réindexation structurelle (repli propre)."""
+    from pipeline.nlp import analyse_batch, model_info
+    rows = conn.execute("SELECT id, ocr_texte FROM regions ORDER BY id").fetchall()
+    notes = {r["region_id"]: (r["note"] or "")
+             for r in conn.execute("SELECT region_id, note FROM annotations")}
+    n = 0
+    for start in range(0, len(rows), chunk):
+        batch = rows[start:start + chunk]
+        ocr_res = analyse_batch([r["ocr_texte"] or "" for r in batch])
+        note_res = analyse_batch([notes.get(r["id"], "") for r in batch])
+        for j, r in enumerate(batch):
+            lemmes = (ocr_res[j][0] + " " + note_res[j][0]).strip()
+            _index_region(conn, r["id"], _region_index_payload(conn, r["id"]),
+                          lemmes, ocr_res[j][1])
+            n += 1
+        conn.commit()
+    info = model_info()
+    meta = {"nlp_model": info.get("model", ""), "nlp_spacy": info.get("spacy", ""),
+            "nlp_reindexed_count": str(n), "nlp_reindexed_at": "datetime"}
+    for cle, val in meta.items():
+        if val == "datetime":
+            conn.execute("INSERT INTO meta (cle, valeur) VALUES (?, datetime('now')) "
+                         "ON CONFLICT(cle) DO UPDATE SET valeur = datetime('now')", (cle,))
+        else:
+            conn.execute("INSERT INTO meta (cle, valeur) VALUES (?, ?) "
+                         "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur", (cle, val))
+    conn.commit()
+    return n
 
 
 def unindex_region(conn: sqlite3.Connection, region_id: int) -> None:
