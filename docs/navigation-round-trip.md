@@ -86,9 +86,18 @@ Pour les cas simples, `openPreview()` montre la région (image + texte + note/ta
 il s'agit juste de regarder. Le lien ✏️ du panneau ouvre la Visionneuse pour
 *éditer* (avec `retour`).
 
-## 6. Vérification
+## 6. Vérification (tests front)
 
-Pas de tests front automatisés dans le dépôt → la vérification du round-trip est
-**manuelle** : `Exploration → (drill) → Recherche → (✏️) → Visionneuse → ← Retour
-→ Recherche (filtres intacts) → ← Retour → Exploration (A/B intacts)`, plus un
-reload sur chaque surface pour confirmer la reprise d'état.
+Deux niveaux, intégrés à `pytest` :
+
+- **Logique pure** — `static/lib/nav.js` (dont `safeRetour`) est testé par
+  `tests/js/nav.test.js` (`node --test`), lui-même lancé sous pytest via
+  `tests/test_js_unit.py` (skippé si Node absent).
+- **E2E navigateur** — `tests/test_e2e_navigation.py` (Playwright, marqueur `e2e`,
+  **hors run par défaut** : `pytest -m e2e`) pilote un vrai Chromium contre la
+  fixture `live_server` et couvre : deep-link, bouton « ← Retour », rejet d'un
+  `retour=javascript:`, reprise d'état au chargement, et le **round-trip complet à
+  deux niveaux** (Visionneuse → Recherche → Exploration, états restaurés).
+
+Le `safeRetour` est ainsi vérifié deux fois : en unité (Node) et dans le vrai
+navigateur (le bouton reste masqué sur `retour=javascript:`).

@@ -3,6 +3,13 @@
 pytest>=8.0
 pytest-cov>=4.0
 httpx>=0.27          # requis par fastapi.testclient + tests d'intégration
-# Pour exécuter les tests de segmentation, Kumiko doit être installé :
+pytest-playwright>=0.5   # tests E2E navigateur (marqueur `e2e`)
+
+# Trois niveaux de tests :
+#   python -m pytest              → suite par défaut (rapide ; E2E exclus)
+#   python -m pytest -m e2e       → E2E navigateur — nécessite : python -m playwright install chromium
+#   tests JS purs (static/lib) : lancés via tests/test_js_unit.py (node --test), skippés si Node absent
+#
+# Pour les tests de segmentation, Kumiko doit être installé :
 #   git clone https://github.com/njean42/kumiko.git lib/kumiko
 #   pip install opencv-python-headless numpy requests
