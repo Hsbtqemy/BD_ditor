@@ -1,6 +1,7 @@
 """Routes API : albums, planches, régions, annotations, tags, recherche, export."""
 import io
 import sqlite3
+import xml.etree.ElementTree as ET
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -349,12 +350,17 @@ def test_export_tei_numero_editorial_et_paratexte(client, album, png_bytes):
     p1 = client.post(f"/api/albums/{album['id']}/import",
                      files={"file": ("p.png", png_bytes, "image/png")}).json()
     client.patch(f"/api/planches/{couv['id']}/role", json={"role": "paratexte"})
+    case = client.post(f"/api/planches/{p1['id']}/regions",
+                       json={"type": "case", "x": 0, "y": 0, "w": 50, "h": 50}).json()
     client.post(f"/api/planches/{p1['id']}/regions",
-                json={"type": "case", "x": 0, "y": 0, "w": 50, "h": 50})
-    xml = client.get("/api/export/tei", params={"album_id": album["id"]}).text
+                json={"type": "bulle", "x": 5, "y": 5, "w": 20, "h": 20,
+                      "parent_id": case["id"]})
+    resp = client.get("/api/export/tei", params={"album_id": album["id"]})
+    ET.fromstring(resp.content)           # TEI bien formé (re-parsable) — sinon lève
+    xml = resp.text
     assert 'type="paratexte"' in xml      # la couverture
     assert 'n="1"' in xml                 # 1re planche récit
-    assert 'n="c1"' in xml                # zone citable (case 1)
+    assert 'n="c1·b1"' in xml             # zone bulle citable (cas piège : « · » dans @n)
 
 
 def test_export_album_inexistant_404(client):
