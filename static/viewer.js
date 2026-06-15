@@ -22,6 +22,9 @@ const SVGNS = "http://www.w3.org/2000/svg";
 // URL de départ captée AVANT tout chargement (le chargement met l'URL à jour via
 // syncUrl → on ne pourrait plus relire le deep-link d'origine ensuite).
 const INITIAL_QS = location.search;
+// D'où l'on vient (drill Recherche/Exploration) : conservé tout au long de la
+// session pour alimenter le bouton « ← Retour » (cf. setupBack, syncUrl).
+const RETOUR = new URLSearchParams(INITIAL_QS).get("retour");
 
 /* ---------------- État global ---------------- */
 const state = {
@@ -395,8 +398,34 @@ function syncUrl() {
   if (state.albumId) p.set("album", state.albumId);
   if (state.planche) p.set("planche", state.planche.id);
   if (state.selectedId != null) p.set("region", state.selectedId);
+  if (RETOUR) p.set("retour", RETOUR);   // préservé : le ← Retour survit au reload
   const qs = p.toString();
   history.replaceState(null, "", qs ? "?" + qs : location.pathname);
+}
+
+/* Bouton « ← Retour » : ramène à la surface d'analyse d'origine (Recherche /
+   Exploration) via le `retour` reçu dans l'URL ; à défaut, history.back() si l'on
+   vient d'une autre page de l'app. Masqué s'il n'y a nulle part où revenir.
+   Calqué sur recherche.js (même comportement sur toutes les surfaces). */
+function setupBack() {
+  const back = $("#back-link");
+  if (!back) return;
+  let target = RETOUR;
+  if (!target) {
+    try {
+      const ref = document.referrer ? new URL(document.referrer) : null;
+      if (ref && ref.origin === location.origin && ref.pathname !== location.pathname)
+        target = "__back__";
+    } catch (e) { /* referrer non parsable */ }
+  }
+  if (!target) return;
+  back.hidden = false;
+  if (target === "__back__") {
+    back.href = "#";
+    back.onclick = (e) => { e.preventDefault(); history.back(); };
+  } else {
+    back.href = target;
+  }
 }
 
 function renderPanel() {
@@ -1986,6 +2015,7 @@ async function applyDeepLink() {
 async function init() {
   setupControls();
   setupKeyboard();
+  setupBack();
   setMode("navigation");
   window.addEventListener("resize", () => { if (state.planche) applyTransform(); });
   try {

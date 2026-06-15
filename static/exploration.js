@@ -9,6 +9,7 @@
 
 const $ = (s) => document.querySelector(s);
 const INITIAL_QS = location.search;
+const RETOUR = new URLSearchParams(INITIAL_QS).get("retour");   // d'où l'on vient (si inbound)
 const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
               "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X"];
 const state = { timer: null, gen: 0 };
@@ -71,6 +72,7 @@ function stateParams() {
     const b = sideFilters("b");
     for (const [k, v] of Object.entries(b)) if (v) p.set("b_" + k, v);
   }
+  if (RETOUR) p.set("retour", RETOUR);   // préservé : le ← Retour survit aux changements de filtre
   return p;
 }
 
@@ -196,6 +198,29 @@ function restoreFromUrl() {
   setSide("b", (k) => "b_" + k);       // B = préfixés
 }
 
+/* Bouton « ← Retour » : revient d'où l'on vient via `retour` (ou history.back si
+   l'on vient d'une autre page de l'app). Symétrique de Recherche/Visionneuse. */
+function setupBack() {
+  const back = $("#back-link");
+  if (!back) return;
+  let target = RETOUR;
+  if (!target) {
+    try {
+      const ref = document.referrer ? new URL(document.referrer) : null;
+      if (ref && ref.origin === location.origin && ref.pathname !== location.pathname)
+        target = "__back__";
+    } catch (e) { /* referrer non parsable */ }
+  }
+  if (!target) return;
+  back.hidden = false;
+  if (target === "__back__") {
+    back.href = "#";
+    back.onclick = (e) => { e.preventDefault(); history.back(); };
+  } else {
+    back.href = target;
+  }
+}
+
 async function setup() {
   for (const id of ["#f-pos", "#b-pos"]) {
     for (const u of UPOS) {
@@ -213,6 +238,7 @@ async function setup() {
   loadCorpus();
   await loadAlbums();        // options d'album (A et B) avant restauration
   restoreFromUrl();
+  setupBack();
   syncControls();
   run();
 }

@@ -164,7 +164,10 @@ function exportCsv() {
 function openPreview(r) {
   $("#preview-title").textContent =
     `${r.album_titre} · ${r.citation ? r.citation.texte : "planche " + r.planche_numero} · ${r.type}`;
-  $("#preview-edit").href = `/?album=${r.album_id}&planche=${r.planche_id}&region=${r.region_id}`;
+  // `retour` = l'URL de recherche courante (filtres + son propre retour vers
+  // l'Exploration s'il existe) → la Visionneuse pourra ramener « à sa place ».
+  $("#preview-edit").href = `/?album=${r.album_id}&planche=${r.planche_id}&region=${r.region_id}`
+    + `&retour=${encodeURIComponent(location.pathname + location.search)}`;
   const img = $("#preview-img"), svg = $("#preview-overlay");
   img.src = r.url_web || "";
   svg.setAttribute("viewBox", `0 0 ${r.largeur_px || 0} ${r.hauteur_px || 0}`);

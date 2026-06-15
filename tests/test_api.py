@@ -368,6 +368,13 @@ def test_export_tei_numero_editorial_et_paratexte(client, album, png_bytes):
     assert 'n="c1·b1"' in xml             # zone bulle citable (cas piège : « · » dans @n)
 
 
+# ----------------------------- Navigation ------------------------------- #
+def test_surfaces_exposent_le_bouton_retour(client):
+    """Les trois surfaces servent le bouton « ← Retour » (round-trip, Lot 5)."""
+    for route in ("/", "/recherche", "/exploration"):
+        assert 'id="back-link"' in client.get(route).text, route
+
+
 def test_export_album_inexistant_404(client):
     assert client.get("/api/export/json",
                       params={"album_id": 999}).status_code == 404
