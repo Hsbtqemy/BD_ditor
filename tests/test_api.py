@@ -375,6 +375,20 @@ def test_surfaces_exposent_le_bouton_retour(client):
         assert 'id="back-link"' in client.get(route).text, route
 
 
+def test_nav_js_servi_et_charge_avant_le_script_de_page(client):
+    """Garde-fou rapide du refacto : le module partagé static/lib/nav.js est servi et
+    chargé AVANT le script de chaque page. Sinon `Nav.safeRetour` est indéfini et la
+    surface plante au chargement (sans ce test, le run rapide resterait vert)."""
+    js = client.get("/static/lib/nav.js")
+    assert js.status_code == 200 and "safeRetour" in js.text
+    for route, page_script in (("/", "/static/viewer.js"),
+                               ("/recherche", "/static/recherche.js"),
+                               ("/exploration", "/static/exploration.js")):
+        html = client.get(route).text
+        assert "/static/lib/nav.js" in html, route
+        assert html.index("/static/lib/nav.js") < html.index(page_script), route
+
+
 def test_export_album_inexistant_404(client):
     assert client.get("/api/export/json",
                       params={"album_id": 999}).status_code == 404
