@@ -177,3 +177,37 @@ def test_citations_regions_case_bulle_paratexte(data_dir):
         assert (cit[c_p2]["global"], cit[c_p2]["total"]) == (3, 3)
     finally:
         conn.close()
+
+
+def test_citations_regions_multi_albums(data_dir):
+    """Chemin batch multi-albums (recherche transverse) : numérotation, index global
+    et total sont PROPRES à chaque album, sans contamination de l'un à l'autre."""
+    conn = database.get_connection()
+    try:
+        def album(titre):
+            return conn.execute("INSERT INTO albums(titre) VALUES(?)", (titre,)).lastrowid
+
+        def case(aid, numero, ordre):
+            pid = conn.execute(
+                "INSERT INTO planches(album_id, numero, chemin_web, role) "
+                "VALUES(?,?,?, 'recit')", (aid, numero, f"{aid}-{numero}.jpg")).lastrowid
+            return conn.execute(
+                "INSERT INTO regions(planche_id, type, ordre) VALUES(?, 'case', ?)",
+                (pid, ordre)).lastrowid
+
+        a1, a2 = album("A1"), album("A2")
+        a1c1 = case(a1, 1, 1)
+        a1c2 = case(a1, 2, 1)          # 2e planche récit d'A1
+        a2c1 = case(a2, 1, 1)          # album distinct
+        conn.commit()
+
+        cit = database.citations_regions(conn, [a1c1, a1c2, a2c1])
+        # A1 : deux cases sur deux planches → total 2, index 1 puis 2.
+        assert cit[a1c1]["texte"] == "pl.1 · c1"
+        assert (cit[a1c1]["global"], cit[a1c1]["total"]) == (1, 2)
+        assert (cit[a1c2]["texte"], cit[a1c2]["global"]) == ("pl.2 · c1", 2)
+        # A2 : numérotation et total INDÉPENDANTS (repart à pl.1, total 1).
+        assert cit[a2c1]["texte"] == "pl.1 · c1"
+        assert (cit[a2c1]["global"], cit[a2c1]["total"]) == (1, 1)
+    finally:
+        conn.close()
