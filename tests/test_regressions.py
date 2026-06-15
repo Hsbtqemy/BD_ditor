@@ -161,7 +161,8 @@ def test_lot3_recherche_facette_grammaticale(client, planche):
     assert exp.status_code == 200 and "text/csv" in exp.headers["content-type"]
     assert exp.text.startswith("﻿")                                     # BOM (Excel/Windows)
     lignes = exp.text.lstrip("﻿").strip().splitlines()
-    assert lignes[0] == "album,planche,region_id,type,ocr_texte,note,tags"   # en-tête
+    # en-tête (la colonne `citation` a été ajoutée par la numérotation éditoriale)
+    assert lignes[0] == "album,planche,citation,region_id,type,ocr_texte,note,tags"
     assert any(str(rid) in l for l in lignes[1:])                            # la région exportée
 
 
