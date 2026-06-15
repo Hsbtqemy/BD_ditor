@@ -122,8 +122,11 @@ def test_corpus_marquer_paratexte_renumerote(page, seeded_corpus):
     page.locator("#albums-body tr td.c-titre").first.click()   # ouvrir l'album
     detail = page.locator("#album-detail")
     expect(detail).to_contain_text("planche 1", timeout=15000)
-    detail.locator("button[data-role]").first.click()          # → paratexte
+    expect(detail).to_contain_text("planche 2")                # 2 planches récit au départ
+    detail.locator("button[data-role]").first.click()          # 1re planche → paratexte
     expect(detail).to_contain_text("Paratexte", timeout=15000)
+    # renumérotation effective : il ne reste qu'UNE planche récit → plus de « planche 2 ».
+    expect(detail).not_to_contain_text("planche 2")
 
 
 @pytest.fixture
