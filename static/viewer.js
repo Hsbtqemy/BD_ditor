@@ -145,10 +145,13 @@ function clearStage() {
 /* ===================================================================
    Sélection / chargement d'une planche
    =================================================================== */
+let plancheGen = 0;   // anti-course : invalide les chargements de planche périmés
+
 async function selectPlanche(id) {
   flushSave();
   const p = state.planches.find((x) => x.id === id);
   if (!p) return;
+  const gen = ++plancheGen;   // seule la sélection la plus récente appliquera ses résultats
   state.planche = p;
   state.selectedId = null;
   state.collapsedNodes = new Set();   // l'état de pli de l'arbre est propre à la planche
@@ -170,6 +173,7 @@ async function selectPlanche(id) {
     else
       img.src = p.url_web;
   }).catch(() => toast("Image de la planche introuvable", "error"));
+  if (gen !== plancheGen) return;   // une sélection plus récente a pris le relais
 
   state.webW = img.naturalWidth;
   state.webH = img.naturalHeight;
@@ -181,12 +185,15 @@ async function selectPlanche(id) {
   overlay.setAttribute("viewBox", `0 0 ${p.largeur_px} ${p.hauteur_px}`);
 
   await loadRegions(id);
+  if (gen !== plancheGen) return;
   fitView();
   renderPanel();
 }
 
 async function loadRegions(plancheId) {
+  const gen = plancheGen;
   const rows = await apiGet(`/api/planches/${plancheId}/regions`);
+  if (gen !== plancheGen) return;   // planche changée pendant le fetch → ne pas écraser
   state.regions = rows.map((r) => ({
     ...r,
     annotee: !!r.annotee,
