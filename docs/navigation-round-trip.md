@@ -97,7 +97,10 @@ Deux niveaux, intégrés à `pytest` :
   **hors run par défaut** : `pytest -m e2e`) pilote un vrai Chromium contre la
   fixture `live_server` et couvre : deep-link, bouton « ← Retour », rejet d'un
   `retour=javascript:`, reprise d'état au chargement, et le **round-trip complet à
-  deux niveaux** (Visionneuse → Recherche → Exploration, états restaurés).
+  deux niveaux** (Visionneuse → Recherche → Exploration, états restaurés). Le même
+  fichier couvre aussi le **rendu des autres surfaces** : citation dans la
+  Visionneuse, bascule récit/paratexte dans la Bibliothèque, et recherche plein
+  texte → résultat cité → aperçu en place.
 
 Le `safeRetour` est ainsi vérifié deux fois : en unité (Node) et dans le vrai
 navigateur (le bouton reste masqué sur `retour=javascript:`).

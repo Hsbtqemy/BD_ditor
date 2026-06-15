@@ -1,8 +1,9 @@
-"""Tests E2E (navigateur réel via Playwright) du round-trip et de la reprise d'état.
+"""Tests E2E (navigateur réel via Playwright) des surfaces : round-trip & reprise
+d'état, citation (Visionneuse), rôle récit/paratexte (Corpus), recherche → aperçu.
 
 Couvre ce qu'aucun test serveur ne peut atteindre : le COMPORTEMENT front (deep-link,
-bouton « ← Retour », chaîne `retour`, durcissement anti-XSS) dans un vrai Chromium
-pilotant l'app lancée (fixture `live_server`). Cf. docs/navigation-round-trip.md.
+bouton « ← Retour », chaîne `retour`, durcissement anti-XSS, rendu des surfaces) dans
+un vrai Chromium pilotant l'app lancée (fixture `live_server`).
 
 Marqués `e2e` → hors du run rapide par défaut (`pytest -m e2e` pour les lancer).
 Skippés proprement si Playwright n'est pas installé.
@@ -88,3 +89,71 @@ def test_chaine_retour_deux_niveaux(page, seeded):
     page.locator("#back-link").click()                 # Recherche → Exploration
     expect(page).to_have_url(re.compile(r"/exploration"))
     expect(page.locator("#f-champ")).to_have_value("lemme", timeout=15000)
+
+
+# --------------------------------------------------------------------------- #
+# Autres surfaces : citation (Visionneuse), rôle (Corpus), recherche → aperçu
+# --------------------------------------------------------------------------- #
+def test_visionneuse_affiche_la_citation(page, seeded):
+    """Sélectionner une région (deep-link) affiche sa citation éditoriale dans le
+    panneau de détail (Lot 1 : pl·c)."""
+    page.goto(_viewer_url(seeded))
+    expect(page.locator("#region-citation")).to_contain_text("pl.1 · c1", timeout=15000)
+
+
+@pytest.fixture
+def seeded_corpus(live_server):
+    """Album + DEUX planches récit (pour observer la renumérotation au marquage)."""
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30)
+    try:
+        aid = c.post("/api/albums", json={"titre": "E2E corpus"}).json()["id"]
+        for _ in range(2):
+            c.post(f"/api/albums/{aid}/import",
+                   files={"file": ("p.png", make_png(), "image/png")})
+    finally:
+        c.close()
+    return {"base": live_server, "album": aid}
+
+
+def test_corpus_marquer_paratexte_renumerote(page, seeded_corpus):
+    """Sur la Bibliothèque : ouvrir un album, marquer la 1re planche « paratexte »
+    → elle sort de la numérotation (Lot 0, corpus.js)."""
+    page.goto(f"{seeded_corpus['base']}/corpus")
+    page.locator("#albums-body tr td.c-titre").first.click()   # ouvrir l'album
+    detail = page.locator("#album-detail")
+    expect(detail).to_contain_text("planche 1", timeout=15000)
+    detail.locator("button[data-role]").first.click()          # → paratexte
+    expect(detail).to_contain_text("Paratexte", timeout=15000)
+
+
+@pytest.fixture
+def seeded_ocr(live_server):
+    """Album + planche + une case contenant une bulle océrisée (texte indexé)."""
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30)
+    try:
+        aid = c.post("/api/albums", json={"titre": "E2E ocr"}).json()["id"]
+        pid = c.post(f"/api/albums/{aid}/import",
+                     files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
+        cid = c.post(f"/api/planches/{pid}/regions",
+                     json={"type": "case", "x": 10, "y": 10, "w": 80, "h": 60}).json()["id"]
+        bid = c.post(f"/api/planches/{pid}/regions",
+                     json={"type": "bulle", "x": 15, "y": 15, "w": 30, "h": 20,
+                           "parent_id": cid, "ocr_texte": "BONJOURXYZ"}).json()["id"]
+    finally:
+        c.close()
+    return {"base": live_server, "album": aid, "region": bid}
+
+
+def test_recherche_resultat_apercu_et_lien_edition(page, seeded_ocr):
+    """Recherche plein texte : la bulle océrisée remonte avec sa citation (pl·c·b),
+    le clic ouvre l'aperçu, et le lien ✏️ embarque la région + le retour (départ du
+    round-trip avec une vraie recherche)."""
+    s = seeded_ocr
+    page.goto(f"{s['base']}/recherche?q=BONJOURXYZ")
+    card = page.locator("#results .result").first
+    expect(card).to_be_visible(timeout=15000)
+    expect(card.locator(".r-cite")).to_have_text("pl.1 · c1 · b1")
+    card.click()                                          # ouvre l'aperçu en place
+    expect(page.locator("#preview")).to_be_visible()
+    href = page.locator("#preview-edit").get_attribute("href")
+    assert f"region={s['region']}" in href and "retour=" in href
