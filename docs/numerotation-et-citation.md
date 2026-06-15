@@ -175,6 +175,27 @@ Toute base existante bascule en `recit` automatiquement (défaut de colonne).
 
 ---
 
+## Lot 3 — Citation dans les exports savants
+
+> **Statut : spécifié, non implémenté** (relevé à la passe de revue du 2026-06-15).
+> Les exports sont l'artefact que le chercheur emporte pour citer ; ils doivent
+> porter le numéro ÉDITORIAL et la citation, pas l'ordre d'import. L'export CSV des
+> **résultats de recherche** est déjà traité (colonne `citation` + planche éditoriale,
+> avec le lot 1) ; restent les exports **par album** et la **concordance**.
+
+- **T3.1 — Export CSV d'album** ([main.py](../main.py) `/api/export/csv`, ~L1406)
+  - *But* : colonne `citation` (`pl·c(·b)`) + `planche` = numéro éditorial ;
+    paratexte explicite.
+- **T3.2 — Export concordance par token** ([main.py](../main.py), ~L1116)
+  - *But* : idem, pour les lignes KWIC (chacune cite sa région).
+- **T3.3 — Export JSON d'album** ([main.py](../main.py) `/api/export/json`)
+  - *But* : ajouter `numero_editorial` + `role` par planche (l'`id` technique reste).
+- **T3.4 — Export TEI** ([main.py](../main.py) `/api/export/tei`)
+  - *But* : `@n` éditorial sur `<surface>`, **marquer le paratexte** (ex. `type`/
+    `subtype`), `xml:id` technique conservé. ⚠️ demande un peu de design TEI.
+
+---
+
 ## Séquencement & dépendances
 
 ```text

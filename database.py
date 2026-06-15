@@ -309,6 +309,8 @@ def citations_regions(conn: sqlite3.Connection,
         return {}
 
     planche_ids = sorted({r["planche_id"] for r in regs.values() if r["planche_id"]})
+    if not planche_ids:                       # régions sans planche (cas dégénéré)
+        return {}
     pm = ",".join("?" * len(planche_ids))
     planches = {p["id"]: dict(p) for p in conn.execute(
         f"SELECT id, album_id FROM planches WHERE id IN ({pm})", planche_ids)}
@@ -330,7 +332,9 @@ def citations_regions(conn: sqlite3.Connection,
         if r["type"] == "case":
             seen_case[r["planche_id"]] = seen_case.get(r["planche_id"], 0) + 1
             case_rang[r["id"]] = seen_case[r["planche_id"]]
-        if r["parent_id"] is not None:
+        # Rang de bulle : compté sur les SEULES régions de texte (une région
+        # 'personnage' enfant d'une case ne décale pas la numérotation des bulles).
+        elif r["type"] in _TYPES_TEXTE and r["parent_id"] is not None:
             seen_child[r["parent_id"]] = seen_child.get(r["parent_id"], 0) + 1
             bulle_rang[r["id"]] = seen_child[r["parent_id"]]
 

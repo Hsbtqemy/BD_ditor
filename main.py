@@ -1017,11 +1017,19 @@ def recherche_export(q: str = "", album: Optional[int] = None,
     Borne haute relevée (5000) : on exporte le jeu trouvé, pas seulement l'aperçu."""
     results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, 5000)
     buf = io.StringIO()
-    cols = ["album", "planche", "region_id", "type", "ocr_texte", "note", "tags"]
+    # `planche` = numéro ÉDITORIAL (cité), `citation` = repère complet « pl·c(·b) » ;
+    # le CSV est l'artefact que le chercheur emporte pour citer. Cf.
+    # docs/numerotation-et-citation.md.
+    cols = ["album", "planche", "citation", "region_id", "type",
+            "ocr_texte", "note", "tags"]
     w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
     w.writeheader()
     for r in results:
-        w.writerow({"album": r["album_titre"], "planche": r["planche_numero"],
+        cit = r.get("citation") or {}
+        planche = cit.get("planche")
+        w.writerow({"album": r["album_titre"],
+                    "planche": planche if planche is not None else "",
+                    "citation": cit.get("texte", ""),
                     "region_id": r["region_id"], "type": r["type"],
                     "ocr_texte": r["ocr_texte"] or "", "note": r["note"] or "",
                     "tags": "|".join(r["tags"])})

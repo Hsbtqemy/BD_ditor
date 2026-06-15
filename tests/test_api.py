@@ -278,6 +278,16 @@ def test_recherche_requete_speciale_ne_casse_pas(client, planche):
     assert r.status_code in (200, 400)
 
 
+def test_recherche_export_csv_porte_la_citation(client, planche):
+    """L'export CSV des résultats porte la colonne `citation` et le numéro ÉDITORIAL
+    de planche (et non l'ordre d'import) — l'artefact que le chercheur emporte."""
+    _region_avec_ocr_et_annotation(client, planche)
+    txt = client.get("/api/recherche/export.csv", params={"q": "Esther"}).text
+    header = txt.lstrip("﻿").splitlines()[0]
+    assert header.startswith("album,planche,citation,region_id")
+    assert "pl.1" in txt          # citation éditoriale présente
+
+
 # ------------------------------- Export --------------------------------- #
 def test_export_json_arbre(client, planche, region):
     client.post(f"/api/planches/{planche['id']}/regions",
