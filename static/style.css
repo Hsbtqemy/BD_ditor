@@ -73,6 +73,27 @@
   --kbd-border:   rgba(20,30,60,.18);
 }
 
+/* Contraste élevé — posé par theme.js ([data-contrast="high"]), SUPERPOSÉ au thème
+   courant (sombre par défaut, ou clair). Texte plein, bordures fortes, survols opaques,
+   accents renforcés ; les fills color-mix() en héritent. Activé manuellement ou via
+   prefers-contrast (géré côté JS). */
+:root[data-contrast="high"] {
+  --bg-deep:#000; --bg-panel:#0b0b10; --bg-input:#16161e;
+  --text:#fff; --text-muted:#ededed; --border:#ffffff;
+  --hover: rgba(255,255,255,.22);
+  --accent-blue:#9cc6ff; --accent-red:#ff8198; --accent-amber:#ffc44d;
+  --accent-green:#6bf59c; --accent-violet:#dcb0ff; --accent-cyan:#63e7ff; --accent-pink:#ff95cb;
+  --focus:#fff;
+}
+:root[data-theme="light"][data-contrast="high"] {
+  --bg-deep:#fff; --bg-panel:#fff; --bg-input:#fff;
+  --text:#000; --text-muted:#1c1c1c; --border:#000;
+  --hover: rgba(0,0,0,.14);
+  --accent-blue:#0a39c0; --accent-red:#b3002a; --accent-amber:#6f4500;
+  --accent-green:#0a6b30; --accent-violet:#5a1aa0; --accent-cyan:#055f78; --accent-pink:#9c0f5e;
+  --focus:#000;
+}
+
 * { box-sizing: border-box; }
 
 /* ---------- Accessibilité ---------- */
@@ -94,6 +115,31 @@
 /* Sélection de texte et placeholders — suivent le thème. */
 ::selection { background: color-mix(in srgb, var(--accent-blue) 38%, transparent); }
 ::placeholder { color: var(--text-muted); opacity: 1; }
+
+/* Lien d'évitement « Aller au contenu » — caché jusqu'au focus clavier. */
+.skip-link {
+  position: absolute; left: 8px; top: -48px; z-index: 100;
+  background: var(--accent-blue); color: var(--bg-deep);
+  padding: 8px 12px; border-radius: 0 0 6px 6px; font-weight: 600;
+  transition: top .15s;
+}
+.skip-link:focus { top: 0; }
+
+/* Menu « Affichage » (thème / contraste / zoom) — injecté par theme.js dans .btn-theme */
+.display-menu { position: relative; display: inline-block; }
+.display-panel {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 60;
+  min-width: 210px; padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 20px var(--shadow);
+}
+.dm-row { display: flex; align-items: center; gap: 8px; }
+.dm-check { cursor: pointer; }
+.dm-label { min-width: 52px; color: var(--text-muted); font-size: .85rem; }
+.dm-zoom-val { min-width: 46px; text-align: center; font-variant-numeric: tabular-nums; }
+.display-panel button[aria-pressed="true"] {
+  border-color: var(--accent-blue); color: var(--accent-blue); font-weight: 600;
+}
 
 html, body {
   margin: 0; height: 100%;

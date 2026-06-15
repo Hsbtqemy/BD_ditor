@@ -38,7 +38,11 @@ function esc(s) {
 }
 function toast(msg, kind = "") {
   let box = $("#toasts");
-  if (!box) { box = document.createElement("div"); box.id = "toasts"; document.body.appendChild(box); }
+  if (!box) {
+    box = document.createElement("div"); box.id = "toasts";
+    box.setAttribute("role", "status"); box.setAttribute("aria-live", "polite");  // annoncé aux lecteurs d'écran
+    document.body.appendChild(box);
+  }
   const el = document.createElement("div");
   el.className = "toast " + kind; el.textContent = msg;
   box.appendChild(el); setTimeout(() => el.remove(), 4000);

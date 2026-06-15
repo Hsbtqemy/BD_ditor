@@ -224,6 +224,9 @@ function renderResults(res, q) {
     const card = document.createElement("div");
     card.className = "result";
     card.title = "Aperçu en place (clic) — ✏️ pour éditer dans la visionneuse";
+    // Cliquable mais pas un lien (ouvre l'aperçu) → le rendre accessible au clavier.
+    card.setAttribute("role", "button");
+    card.tabIndex = 0;
 
     const texte = (r.ocr_texte || "").trim();
     const noteHtml = r.note
@@ -244,11 +247,15 @@ function renderResults(res, q) {
       `</div>`;
     // une vignette illisible (crop indisponible) est simplement masquée
     card.querySelector(".r-thumb").onerror = (e) => { e.target.style.display = "none"; };
-    card.onclick = () => {
+    const activate = () => {
       box.querySelectorAll(".result.active").forEach((el) => el.classList.remove("active"));
       card.classList.add("active");
       openPreview(r);
     };
+    card.onclick = activate;
+    card.addEventListener("keydown", (e) => {   // Entrée/Espace = activer (clavier)
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); }
+    });
     box.appendChild(card);
   }
 }
@@ -283,6 +290,9 @@ async function setup() {
   ["#f-album", "#f-type", "#f-pos", "#f-prov"].forEach((s) => { $(s).onchange = search; });
   $("#btn-export").onclick = exportCsv;   // export du jeu de résultats courant (CSV)
   $("#preview-close").onclick = closePreview;
+  document.addEventListener("keydown", (e) => {   // Échap ferme l'aperçu
+    if (e.key === "Escape" && !$("#preview").hidden) closePreview();
+  });
   setupBack();   // bouton « ← Retour » (drill explicite, ou history.back si on vient de l'app)
   loadCorpus();
   loadTags();

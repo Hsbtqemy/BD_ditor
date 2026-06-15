@@ -81,6 +81,8 @@ function toast(msg, kind = "") {
   if (!toastBox) {
     toastBox = document.createElement("div");
     toastBox.id = "toasts";
+    toastBox.setAttribute("role", "status");          // annoncé aux lecteurs d'écran
+    toastBox.setAttribute("aria-live", "polite");
     document.body.appendChild(toastBox);
   }
   const el = document.createElement("div");
