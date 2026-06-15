@@ -117,6 +117,12 @@ async function selectAlbum(id) {
   else { state.planche = null; clearStage(); }
 }
 
+/* Libellé éditorial d'une planche : numéro CITÉ (récit) ou « Paratexte ». Le numéro
+   éditorial est dérivé côté serveur (cf. docs/numerotation-et-citation.md). */
+function plancheLabel(p) {
+  return p.role === "recit" ? `planche ${p.numero_editorial}` : "Paratexte";
+}
+
 function renderPlancheList() {
   const ul = $("#planche-list");
   ul.innerHTML = "";
@@ -126,7 +132,8 @@ function renderPlancheList() {
     if (state.planche && p.id === state.planche.id) li.classList.add("active");
     li.innerHTML =
       `<span class="statut-pill statut-${escapeHtml(p.statut)}" title="${escapeHtml(p.statut)}"></span>` +
-      `<span class="num">p.${String(p.numero).padStart(3, "0")}</span>` +
+      `<span class="num" title="${escapeHtml(plancheLabel(p))}">` +
+        `${p.role === "recit" ? "pl." + p.numero_editorial : "¶ para"}</span>` +
       `<span class="meta">${p.nb_regions} rég. · ${p.nb_annotees} ann.</span>`;
     li.onclick = () => selectPlanche(p.id);
     ul.appendChild(li);
@@ -159,7 +166,7 @@ async function selectPlanche(id) {
   renderPlancheList();
   const album = state.albums.find((a) => a.id === state.albumId);
   $("#planche-info").textContent =
-    `${album ? album.titre : ""} — planche ${p.numero} · ${p.statut}`;
+    `${album ? album.titre : ""} — ${plancheLabel(p)} · ${p.statut}`;
 
   // Charge l'image web puis les régions.
   $("#stage-empty").style.display = "none";

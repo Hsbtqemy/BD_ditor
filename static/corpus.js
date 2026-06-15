@@ -148,12 +148,13 @@ function renderDetail() {
         <tr>
           <td class="c-chk"><input type="checkbox" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
           <td><img class="pl-thumb" loading="lazy" src="${esc(p.url_web || "")}" alt=""></td>
-          <td>p.${String(p.numero).padStart(3, "0")}</td>
+          <td class="c-pl">${plancheNum(p)}</td>
           <td><span class="statut-pill statut-${esc(p.statut)}"></span> ${esc(p.statut)}</td>
           <td class="c-num">${p.nb_regions} rég.</td>
           <td class="c-num">${p.nb_annotees} ann.</td>
           <td class="c-val">${validToggle(p)}</td>
           <td class="c-act">
+            ${roleToggle(p)}
             ${lockToggle(p)}
             <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}" title="Ouvrir dans la visionneuse">↗</a>
             <button class="icon-btn danger" data-delp="${p.id}" title="Supprimer la planche">🗑</button>
@@ -173,7 +174,7 @@ function renderDetail() {
       <button class="ghost small" id="detail-validate-all">✔ Tout valider</button>
     </div>
     <table class="corpus-table planches-table">
-      <thead><tr><th class="c-chk"></th><th></th><th>N°</th><th>Statut</th>
+      <thead><tr><th class="c-chk"></th><th></th><th>Planche</th><th>Statut</th>
         <th class="c-num">Régions</th><th class="c-num">Annotées</th>
         <th>Validée</th><th></th></tr></thead>
       <tbody>${planchesRows}</tbody>
@@ -186,6 +187,9 @@ function renderDetail() {
   });
   box.querySelectorAll("button[data-lock]").forEach((btn) => {
     btn.onclick = () => lockPlanche(Number(btn.dataset.lock), btn.dataset.on === "1");
+  });
+  box.querySelectorAll("button[data-role]").forEach((btn) => {
+    btn.onclick = () => setRole(Number(btn.dataset.role), btn.dataset.to);
   });
   box.querySelectorAll("input[data-pid]").forEach((cb) => {
     cb.onchange = () => {
@@ -249,6 +253,34 @@ async function deleteAlbum(a) {
     await loadAlbums();
     toast("Album supprimé");
   } catch (e) { toast("Suppression : " + e.message, "error"); }
+}
+
+/* Cellule « Planche » : numéro ÉDITORIAL (dérivé, cité) pour le récit, ou pastille
+   Paratexte ; l'ordre d'import reste visible en discret (clé de tri stable, ≠ du
+   numéro cité). Cf. docs/numerotation-et-citation.md. */
+function plancheNum(p) {
+  const imp = `<span class="muted small" title="ordre d'import">i.${String(p.numero).padStart(3, "0")}</span>`;
+  if (p.role === "recit")
+    return `<b title="Numéro éditorial (cité)">planche ${p.numero_editorial}</b><br>${imp}`;
+  return `<span class="badge" title="Paratexte — hors numérotation du récit">Paratexte</span><br>${imp}`;
+}
+
+/* Bascule du rôle éditorial : récit ⇄ paratexte (couverture, liminaire, pub…).
+   Marquer/retirer renumérote tout l'album (numéro éditorial dérivé). */
+function roleToggle(p) {
+  const para = p.role !== "recit";
+  return `<button class="icon-btn" data-role="${p.id}" data-to="${para ? "recit" : "paratexte"}" `
+    + `title="${para ? "Paratexte — cliquer pour rétablir en planche de récit"
+                     : "Marquer comme paratexte (couverture, liminaire, pub… — hors numérotation)"}">`
+    + `${para ? "📖" : "🏷"}</button>`;
+}
+
+async function setRole(pid, role) {
+  try {
+    await apiSend("PATCH", `/api/planches/${pid}/role`, { role });
+    await openAlbum(state.openId);   // renumérotation dérivée → recharge l'album
+    toast(role === "paratexte" ? "Planche marquée Paratexte 🏷" : "Planche rétablie en récit 📖");
+  } catch (e) { toast("Rôle : " + e.message, "error"); }
 }
 
 /* Badge ✔ + bouton bascule de validation pour une planche. */

@@ -92,3 +92,45 @@ def test_reindex_vide_ne_cree_pas_de_ligne(data_dir):
         assert conn.execute("SELECT COUNT(*) FROM recherche").fetchone()[0] == 0
     finally:
         conn.close()
+
+
+# ----------- Numérotation éditoriale (récit / paratexte) ----------- #
+def test_role_planche_defaut_recit(data_dir):
+    """La colonne planches.role existe et vaut 'recit' par défaut (migration v10)."""
+    conn = database.get_connection()
+    try:
+        aid = conn.execute("INSERT INTO albums(titre) VALUES('A')").lastrowid
+        pid = conn.execute(
+            "INSERT INTO planches(album_id, numero, chemin_web) "
+            "VALUES(?,1,'x.jpg')", (aid,)).lastrowid
+        conn.commit()
+        assert conn.execute(
+            "SELECT role FROM planches WHERE id=?", (pid,)).fetchone()[0] == "recit"
+    finally:
+        conn.close()
+
+
+def test_numeros_editoriaux_derive_du_recit(data_dir):
+    """Numéro éditorial = rang parmi les planches 'recit', trié par numero. Paratexte
+    → None ; robuste à une page intercalée et aux trous de numero."""
+    conn = database.get_connection()
+    try:
+        aid = conn.execute("INSERT INTO albums(titre) VALUES('A')").lastrowid
+
+        def add(numero, role):
+            return conn.execute(
+                "INSERT INTO planches(album_id, numero, chemin_web, role) "
+                "VALUES(?,?,?,?)", (aid, numero, f"{numero}.jpg", role)).lastrowid
+
+        couv = add(1, "paratexte")    # couverture
+        p1 = add(2, "recit")
+        pub = add(3, "paratexte")     # pub intercalée AU MILIEU du récit
+        p2 = add(5, "recit")          # trou volontaire dans numero (ancienne pl.4 supprimée)
+        conn.commit()
+
+        nums = database.numeros_editoriaux(conn, aid)
+        assert nums[couv] is None and nums[pub] is None
+        assert nums[p1] == 1
+        assert nums[p2] == 2          # malgré la pub intercalée et le trou de numero
+    finally:
+        conn.close()

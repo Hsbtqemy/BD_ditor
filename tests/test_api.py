@@ -47,6 +47,43 @@ def test_import_fichier_vide_400(client, album):
     assert r.status_code == 400
 
 
+# --------------------------- Rôle éditorial ----------------------------- #
+def test_role_par_defaut_et_numero_editorial(client, album, png_bytes):
+    """Toute planche importée est 'recit' et reçoit un numéro éditorial 1..N."""
+    for _ in range(2):
+        client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("p.png", png_bytes, "image/png")})
+    planches = client.get(f"/api/albums/{album['id']}/planches").json()
+    assert [p["role"] for p in planches] == ["recit", "recit"]
+    assert [p["numero_editorial"] for p in planches] == [1, 2]
+
+
+def test_marquer_paratexte_renumerote(client, album, png_bytes):
+    """Marquer la 1re planche 'paratexte' la sort de la numérotation (→ None) et la
+    suivante devient « planche 1 »."""
+    ids = [client.post(f"/api/albums/{album['id']}/import",
+                       files={"file": ("p.png", png_bytes, "image/png")}).json()["id"]
+           for _ in range(2)]
+    r = client.patch(f"/api/planches/{ids[0]}/role", json={"role": "paratexte"})
+    assert r.status_code == 200
+    assert r.json()["role"] == "paratexte"
+    assert r.json()["numero_editorial"] is None
+    planches = {p["id"]: p
+                for p in client.get(f"/api/albums/{album['id']}/planches").json()}
+    assert planches[ids[0]]["numero_editorial"] is None
+    assert planches[ids[1]]["numero_editorial"] == 1
+
+
+def test_role_invalide_422(client, planche):
+    assert client.patch(f"/api/planches/{planche['id']}/role",
+                        json={"role": "n_importe_quoi"}).status_code == 422
+
+
+def test_role_planche_inexistante_404(client):
+    assert client.patch("/api/planches/999/role",
+                        json={"role": "paratexte"}).status_code == 404
+
+
 # ------------------------------- Régions -------------------------------- #
 def test_create_region_ordre_auto(client, planche):
     r1 = client.post(f"/api/planches/{planche['id']}/regions",

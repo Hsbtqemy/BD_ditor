@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 # --------------------------------------------------------------------------- #
@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS albums (
 CREATE TABLE IF NOT EXISTS planches (
     id                 INTEGER PRIMARY KEY,
     album_id           INTEGER REFERENCES albums(id) ON DELETE CASCADE,
-    numero             INTEGER NOT NULL,
+    numero             INTEGER NOT NULL,             -- ordre d'import (clé de tri, peut avoir des trous)
+    role               TEXT NOT NULL DEFAULT 'recit', -- 'recit' = narratif (numéroté) ; autre = paratexte (écarté)
     chemin_tiff        TEXT,
     chemin_web         TEXT NOT NULL,
     largeur_px         INTEGER,
@@ -242,7 +243,43 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # v8 → v9 : couche de correction grammaticale humaine (table token_correction +
     # vue tokens_effectifs) — créées par SCHEMA_SQL (CREATE … IF NOT EXISTS), donc
     # rien à faire ici sinon acter la version. Cf. docs/correction-grammaticale.md.
+
+    # v9 → v10 : rôle éditorial de la planche (récit / paratexte). Le numéro éditorial
+    # et le décompte de cases citables se dérivent des planches 'recit' (cf.
+    # docs/numerotation-et-citation.md). Défaut 'recit' → tout l'existant reste
+    # narratif, comportement inchangé jusqu'au marquage manuel d'un paratexte.
+    if pcols and "role" not in pcols:
+        conn.execute("ALTER TABLE planches ADD COLUMN role TEXT NOT NULL DEFAULT 'recit'")
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+
+# --------------------------------------------------------------------------- #
+# Numérotation éditoriale des planches (dérivée — cf. docs/numerotation-et-citation.md)
+# --------------------------------------------------------------------------- #
+def numeros_editoriaux(conn: sqlite3.Connection, album_id: int) -> dict[int, int | None]:
+    """Numéro éditorial de chaque planche d'un album, DÉRIVÉ (jamais stocké).
+
+    Rang 1..N parmi les seules planches `role='recit'`, triées par `numero` (ordre
+    d'import) — robuste aux trous de `numero` et aux suppressions. Une planche
+    paratexte (couverture, liminaire, pub…) renvoie None : elle est citée par son
+    libellé, hors de la numérotation du récit.
+
+    Renvoie {planche_id: numero_editorial | None}.
+    """
+    rows = conn.execute(
+        "SELECT id, role FROM planches WHERE album_id = ? ORDER BY numero, id",
+        (album_id,),
+    ).fetchall()
+    out: dict[int, int | None] = {}
+    n = 0
+    for r in rows:
+        if r["role"] == "recit":
+            n += 1
+            out[r["id"]] = n
+        else:
+            out[r["id"]] = None
+    return out
 
 
 # --------------------------------------------------------------------------- #

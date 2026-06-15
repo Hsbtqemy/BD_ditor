@@ -20,9 +20,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from config import (DERIVATIVES_DIR, STATIC_DIR, STATUTS, TEMPLATES_DIR,
-                    TYPES_REGION, UPOS_TAGS)
-from database import get_connection, init_db, reindex_region, unindex_region
+from config import (DERIVATIVES_DIR, ROLES_PLANCHE, STATIC_DIR, STATUTS,
+                    TEMPLATES_DIR, TYPES_REGION, UPOS_TAGS)
+from database import (get_connection, init_db, numeros_editoriaux,
+                      reindex_region, unindex_region)
 from pipeline.backup import make_backup
 from pipeline import jobs
 from pipeline import nlp
@@ -156,6 +157,10 @@ class ValidationIn(BaseModel):
 
 class VerrouIn(BaseModel):
     verrouillee: bool
+
+
+class RoleIn(BaseModel):
+    role: str
 
 
 class TokenCorrectionIn(BaseModel):
@@ -385,8 +390,10 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db)):
            FROM planches p WHERE p.album_id = ? ORDER BY p.numero""",
         (album_id,),
     ))
+    nums = numeros_editoriaux(conn, album_id)
     for p in planches:
         p["url_web"] = "/" + p["chemin_web"] if p["chemin_web"] else None
+        p["numero_editorial"] = nums.get(p["id"])   # None si paratexte (cf. role)
     return planches
 
 
@@ -778,6 +785,24 @@ def update_verrou(planche_id: int, payload: VerrouIn,
         conn.execute("UPDATE planches SET verrouillee = NULL WHERE id = ?", (planche_id,))
     conn.commit()
     return _get_planche(conn, planche_id)
+
+
+@app.patch("/api/planches/{planche_id}/role")
+def update_role(planche_id: int, payload: RoleIn,
+                conn: sqlite3.Connection = Depends(db)):
+    """Définit le rôle éditorial d'une planche : 'recit' (narrative, numérotée) ou
+    'paratexte' (couverture, liminaire, pub… — écartée de la numérotation et du
+    décompte de cases citables). Le numéro éditorial est DÉRIVÉ, jamais stocké ;
+    on le renvoie ici (recalculé sur tout l'album) car basculer une planche décale
+    les suivantes. Cf. docs/numerotation-et-citation.md."""
+    planche = _get_planche(conn, planche_id)
+    if payload.role not in ROLES_PLANCHE:
+        raise HTTPException(422, f"Rôle invalide : {payload.role}")
+    conn.execute("UPDATE planches SET role = ? WHERE id = ?", (payload.role, planche_id))
+    conn.commit()
+    out = _get_planche(conn, planche_id)
+    out["numero_editorial"] = numeros_editoriaux(conn, planche["album_id"]).get(planche_id)
+    return out
 
 
 # =========================================================================== #

@@ -48,6 +48,12 @@ MAX_IMAGE_PIXELS = int(os.environ.get("BD_MAX_IMAGE_PIXELS", 200_000_000))
 # Statuts possibles d'une planche (progression linéaire)
 STATUTS = ("importee", "segmentee", "corrigee", "annotee")
 
+# Rôle éditorial d'une planche (cf. docs/numerotation-et-citation.md). 'recit' =
+# planche narrative, numérotée ; les autres valeurs = paratexte (couverture,
+# liminaire, pub…), écartées de la numérotation et du décompte de cases citables.
+# Vocabulaire extensible ; seul 'recit' a un sens spécial côté dérivation.
+ROLES_PLANCHE = ("recit", "paratexte")
+
 # Types de régions autorisés
 TYPES_REGION = ("case", "bulle", "personnage", "texte", "cartouche")
 
