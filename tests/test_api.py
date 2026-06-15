@@ -84,6 +84,39 @@ def test_role_planche_inexistante_404(client):
                         json={"role": "paratexte"}).status_code == 404
 
 
+# --------------------------- Citation des régions ----------------------- #
+def test_citation_dans_regions_et_recherche(client, album, planche):
+    """Les régions et les résultats de recherche portent leur citation éditoriale :
+    pl·c pour une case, pl·c·b pour une bulle."""
+    c1 = client.post(f"/api/planches/{planche['id']}/regions",
+                     json={"type": "case", "x": 0, "y": 0, "w": 50, "h": 50}).json()
+    c2 = client.post(f"/api/planches/{planche['id']}/regions",
+                     json={"type": "case", "x": 0, "y": 100, "w": 50, "h": 50}).json()
+    b = client.post(f"/api/planches/{planche['id']}/regions",
+                    json={"type": "bulle", "x": 5, "y": 105, "w": 20, "h": 20,
+                          "parent_id": c2["id"], "ocr_texte": "BONJOUR"}).json()
+
+    regions = {r["id"]: r
+               for r in client.get(f"/api/planches/{planche['id']}/regions").json()}
+    assert regions[c1["id"]]["citation"]["texte"] == "pl.1 · c1"
+    assert regions[c2["id"]]["citation"]["texte"] == "pl.1 · c2"
+    assert regions[b["id"]]["citation"]["texte"] == "pl.1 · c2 · b1"
+    assert regions[c1["id"]]["citation"]["total"] == 2
+
+    res = client.get(f"/api/recherche?album={album['id']}&type=case").json()["results"]
+    assert {r["citation"]["texte"] for r in res} == {"pl.1 · c1", "pl.1 · c2"}
+
+
+def test_citation_paratexte(client, album, planche):
+    """Une région d'une planche paratexte est citée « Paratexte » (hors numérotation)."""
+    c = client.post(f"/api/planches/{planche['id']}/regions",
+                    json={"type": "case", "x": 0, "y": 0, "w": 50, "h": 50}).json()
+    client.patch(f"/api/planches/{planche['id']}/role", json={"role": "paratexte"})
+    regions = {r["id"]: r
+               for r in client.get(f"/api/planches/{planche['id']}/regions").json()}
+    assert regions[c["id"]]["citation"] == {"planche": None, "texte": "Paratexte"}
+
+
 # ------------------------------- Régions -------------------------------- #
 def test_create_region_ordre_auto(client, planche):
     r1 = client.post(f"/api/planches/{planche['id']}/regions",

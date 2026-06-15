@@ -123,6 +123,17 @@ function plancheLabel(p) {
   return p.role === "recit" ? `planche ${p.numero_editorial}` : "Paratexte";
 }
 
+/* Étiquette d'une région sur l'image : rang de CITATION (« c2 » pour une case,
+   « b1 » pour une bulle) ; repli sur l'ordre brut hors récit. Cf. citation serveur. */
+function regionLabel(r) {
+  const c = r.citation;
+  if (c) {
+    if (r.type === "case" && c.case != null) return "c" + c.case;
+    if (c.bulle != null) return "b" + c.bulle;
+  }
+  return `${r.ordre ?? "?"}·${r.type[0]}`;
+}
+
 function renderPlancheList() {
   const ul = $("#planche-list");
   ul.innerHTML = "";
@@ -289,7 +300,7 @@ function renderOverlay() {
       x: r.x + 4, y: r.y + LABEL_PX + 2,
       class: "region-label", "data-label-for": r.id,
     });
-    label.textContent = `${r.ordre ?? "?"}·${r.type[0]}`;
+    label.textContent = regionLabel(r);
     gRegions.appendChild(label);
   }
   overlay.appendChild(gRegions);
@@ -400,6 +411,12 @@ function renderPanel() {
   renderBreadcrumb();
   if (!r) return;
 
+  const cit = r.citation;
+  $("#region-citation").innerHTML = cit
+    ? escapeHtml(cit.texte) + (cit.global != null
+        ? ` <span class="muted small" title="rang de la case dans l'album (récit)">${cit.global}/${cit.total}</span>`
+        : "")
+    : "—";
   $("#region-id").textContent = "#" + r.id;
   $("#region-type").value = r.type;
   $("#region-source").textContent = r.source;
@@ -1374,7 +1391,12 @@ function navigateRegion(dir) {
 function updateStatus() {
   const total = state.regions.length;
   const annot = state.regions.filter((r) => r.annotee).length;
-  $("#stat-cases").textContent = `${total} régions`;
+  // Total de cases CITABLES de l'album (récit seul), porté par la citation serveur.
+  const casesAlbum = state.regions.map((r) => r.citation && r.citation.total)
+                                  .find((t) => t != null);
+  $("#stat-cases").textContent = casesAlbum != null
+    ? `${total} régions · ${casesAlbum} cases/album`
+    : `${total} régions`;
   $("#stat-annotees").textContent = `${annot} annotées`;
   // met à jour le compteur dans la liste latérale
   const p = state.planche;

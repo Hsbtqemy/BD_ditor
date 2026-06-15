@@ -162,7 +162,8 @@ function exportCsv() {
 /* Aperçu en place : la planche avec la région surlignée, SANS quitter la recherche.
    Le retour aux résultats se fait par le bouton Précédent (la recherche est dans l'URL). */
 function openPreview(r) {
-  $("#preview-title").textContent = `${r.album_titre} · planche ${r.planche_numero} · ${r.type}`;
+  $("#preview-title").textContent =
+    `${r.album_titre} · ${r.citation ? r.citation.texte : "planche " + r.planche_numero} · ${r.type}`;
   $("#preview-edit").href = `/?album=${r.album_id}&planche=${r.planche_id}&region=${r.region_id}`;
   const img = $("#preview-img"), svg = $("#preview-overlay");
   img.src = r.url_web || "";
@@ -232,8 +233,9 @@ function renderResults(res, q) {
       `<div class="r-body">` +
         `<div class="r-text">${texte ? highlight(texte, q) : '<span class="muted">(sans texte)</span>'}</div>` +
         noteHtml + tagsHtml +
-        `<div class="r-meta muted small">${escapeHtml(r.album_titre)} · planche ${r.planche_numero} · ` +
-        `<span class="r-type">${r.type}</span> · #${r.region_id}</div>` +
+        `<div class="r-meta muted small">${escapeHtml(r.album_titre)} · ` +
+        `<span class="r-cite">${escapeHtml(r.citation ? r.citation.texte : "planche " + r.planche_numero)}</span> · ` +
+        `<span class="r-type">${r.type}</span></div>` +
       `</div>`;
     // une vignette illisible (crop indisponible) est simplement masquée
     card.querySelector(".r-thumb").onerror = (e) => { e.target.style.display = "none"; };

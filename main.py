@@ -22,8 +22,8 @@ from pydantic import BaseModel, Field
 
 from config import (DERIVATIVES_DIR, ROLES_PLANCHE, STATIC_DIR, STATUTS,
                     TEMPLATES_DIR, TYPES_REGION, UPOS_TAGS)
-from database import (get_connection, init_db, numeros_editoriaux,
-                      reindex_region, unindex_region)
+from database import (citations_regions, get_connection, init_db,
+                      numeros_editoriaux, reindex_region, unindex_region)
 from pipeline.backup import make_backup
 from pipeline import jobs
 from pipeline import nlp
@@ -502,6 +502,9 @@ def planche_regions(planche_id: int, conn: sqlite3.Connection = Depends(db)):
            ORDER BY r.parent_id IS NOT NULL, r.ordre, r.id""",
         (planche_id,),
     ))
+    cits = citations_regions(conn, [r["id"] for r in regions])
+    for r in regions:
+        r["citation"] = cits.get(r["id"])   # {texte, planche, case[, bulle], global, total}
     return regions
 
 
@@ -977,6 +980,9 @@ def _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, l
             (row["region_id"],),
         ))]
         row["url_web"] = "/" + row["chemin_web"] if row["chemin_web"] else None
+    cits = citations_regions(conn, [row["region_id"] for row in results])
+    for row in results:
+        row["citation"] = cits.get(row["region_id"])
     return results
 
 

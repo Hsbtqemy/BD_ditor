@@ -1,11 +1,10 @@
 # Numérotation éditoriale & citation des cases — spécification (chantier Citation)
 
 > Conception menée le 2026-06-15, en discussion de fond.
-> **Statut : Lot 0 implémenté le 2026-06-15 (récit/paratexte + numéro éditorial) ;
-> lots 1–2 spécifiés, non codés.** Backlog exécutable d'un chantier « Citation » :
-> pouvoir **citer précisément une case (et à terme une bulle) à l'échelle d'une
-> bande dessinée entière**. Chaque ticket est destiné à un commit `Lot X.Y — …`
-> (convention du projet).
+> **Statut : Lots 0–2 implémentés le 2026-06-15.** Récit/paratexte + numéro éditorial
+> dérivé (lot 0), citation `pl·c` des cases et `pl·c·b` des bulles, repère global
+> `idx/total` (lots 1–2). Backlog exécutable d'un chantier « Citation » : **citer
+> précisément une case et une bulle à l'échelle d'une bande dessinée entière**.
 
 ## 1. Pourquoi
 
@@ -70,8 +69,7 @@ Toute base existante bascule en `recit` automatiquement (défaut de colonne).
 > numérotée, aucune citation n'est juste. Testable seul : importer [couv, p1, p2],
 > marquer la couv paratexte, vérifier que p1 devient « planche 1 ».
 >
-> **✅ Implémenté le 2026-06-15** (T0.1–T0.4) — suite à 217 tests verts. Décision
-> ouverte restante : périmètre du lot 1 (Ciblé / Complet / bulles).
+> **✅ Implémenté le 2026-06-15** (T0.1–T0.4).
 
 - **T0.1 — Schéma & migration**
   - *But* : colonne `role` sur `planches`, défaut `'recit'`.
@@ -111,8 +109,11 @@ Toute base existante bascule en `recit` automatiquement (défaut de colonne).
 
 ## Lot 1 — Citation des cases
 
-> Construit sur le numéro éditorial du lot 0. **Périmètre à confirmer après le
-> lot 0** : T1.1–T1.3 (Ciblé) au minimum ; T1.4–T1.5 = option « Complet ».
+> Construit sur le numéro éditorial du lot 0. **Périmètre retenu : complet** (T1.1–T1.5).
+>
+> **✅ Implémenté le 2026-06-15.** Helper `citations_regions()` (batch), citation portée
+> par `/planches/{id}/regions` et la recherche ; détail, étiquette image (`c2`),
+> barre d'état (`cases/album`) et carte de résultat l'affichent.
 
 - **T1.1 — Helper de citation (case)**
   - *But* : pour une case, renvoyer `{planche_editorial, case_rang, global_idx, total}`
@@ -152,10 +153,14 @@ Toute base existante bascule en `recit` automatiquement (défaut de colonne).
 
 ---
 
-## Lot 2 — Citation des bulles (optionnel, à confirmer)
+## Lot 2 — Citation des bulles
 
 > La finalité d'un corpus linguistique est de citer une **occurrence de mot**, donc
-> une **bulle**. Plus grande valeur, au prix d'un cas limite.
+> une **bulle**. Plus grande valeur, au prix d'un cas limite (bulle hors case).
+>
+> **✅ Implémenté le 2026-06-15** (fondu dans le helper `citations_regions()` : un seul
+> chemin de code pour cases et bulles). `pl·c·b` au détail et en recherche ; repli
+> `pl·P · hors-case` pour une bulle sans parent.
 
 - **T2.1 — Helper de citation (bulle)**
   - *But* : `pl.P · cN · bM` (rang de la bulle dans sa case) ; **repli** pour une

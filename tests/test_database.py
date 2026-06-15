@@ -134,3 +134,46 @@ def test_numeros_editoriaux_derive_du_recit(data_dir):
         assert nums[p2] == 2          # malgré la pub intercalée et le trou de numero
     finally:
         conn.close()
+
+
+def test_citations_regions_case_bulle_paratexte(data_dir):
+    """Citation dérivée : pl·c (case), pl·c·b (bulle), hors-case, Paratexte, et le
+    repère global idx/total calculé sur le récit seul."""
+    conn = database.get_connection()
+    try:
+        aid = conn.execute("INSERT INTO albums(titre) VALUES('A')").lastrowid
+
+        def planche(numero, role):
+            return conn.execute(
+                "INSERT INTO planches(album_id, numero, chemin_web, role) "
+                "VALUES(?,?,?,?)", (aid, numero, f"{numero}.jpg", role)).lastrowid
+
+        def region(pid, type, ordre, parent=None):
+            return conn.execute(
+                "INSERT INTO regions(planche_id, parent_id, type, ordre) "
+                "VALUES(?,?,?,?)", (pid, parent, type, ordre)).lastrowid
+
+        couv = planche(1, "paratexte")
+        p1 = planche(2, "recit")
+        p2 = planche(3, "recit")
+        c_couv = region(couv, "case", 1)         # case sur la couverture (paratexte)
+        c_a = region(p1, "case", 1)
+        c_b = region(p1, "case", 2)
+        b1 = region(p1, "bulle", 1, parent=c_b)  # bulle dans la 2e case
+        orph = region(p1, "bulle", 3)            # bulle hors case (parent NULL)
+        c_p2 = region(p2, "case", 1)
+        conn.commit()
+
+        cit = database.citations_regions(
+            conn, [c_couv, c_a, c_b, b1, orph, c_p2])
+
+        assert cit[c_couv] == {"planche": None, "texte": "Paratexte"}
+        assert cit[c_a]["texte"] == "pl.1 · c1"
+        assert (cit[c_a]["global"], cit[c_a]["total"]) == (1, 3)
+        assert cit[c_b]["texte"] == "pl.1 · c2" and cit[c_b]["global"] == 2
+        assert cit[b1]["texte"] == "pl.1 · c2 · b1"
+        assert cit[orph]["texte"] == "pl.1 · hors-case"
+        assert cit[c_p2]["texte"] == "pl.2 · c1"
+        assert (cit[c_p2]["global"], cit[c_p2]["total"]) == (3, 3)
+    finally:
+        conn.close()

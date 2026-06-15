@@ -282,6 +282,106 @@ def numeros_editoriaux(conn: sqlite3.Connection, album_id: int) -> dict[int, int
     return out
 
 
+# Régions de texte (citées au niveau bulle « pl·c·b ») — cf. ordre de lecture.
+_TYPES_TEXTE = ("bulle", "cartouche", "texte")
+
+
+def citations_regions(conn: sqlite3.Connection,
+                      region_ids: list[int]) -> dict[int, dict]:
+    """Citation éditoriale de régions, DÉRIVÉE (cf. docs/numerotation-et-citation.md).
+
+    Clé de citation STABLE ancrée sur la planche, plus un repère GLOBAL (confort) :
+      • case        → {'texte': 'pl.3 · c2', 'planche', 'case', 'global', 'total'} ;
+      • bulle/texte rattachée à une case → ajoute 'bulle' et 'texte' 'pl.3 · c2 · b1' ;
+      • bulle hors case (parent NULL)    → 'texte' 'pl.3 · hors-case' ;
+      • planche paratexte                → {'planche': None, 'texte': 'Paratexte'}.
+
+    Tout est calculé à la volée (jamais stocké). Batch : un nombre fixe de requêtes
+    par planches / albums concernés, pas une par région. Renvoie {region_id: dict}.
+    """
+    ids = list(dict.fromkeys(region_ids))
+    if not ids:
+        return {}
+    qm = ",".join("?" * len(ids))
+    regs = {r["id"]: dict(r) for r in conn.execute(
+        f"SELECT id, type, planche_id, parent_id FROM regions WHERE id IN ({qm})", ids)}
+    if not regs:
+        return {}
+
+    planche_ids = sorted({r["planche_id"] for r in regs.values() if r["planche_id"]})
+    pm = ",".join("?" * len(planche_ids))
+    planches = {p["id"]: dict(p) for p in conn.execute(
+        f"SELECT id, album_id FROM planches WHERE id IN ({pm})", planche_ids)}
+    album_ids = sorted({p["album_id"] for p in planches.values()})
+
+    # Numéro éditorial par planche (par album) + ordre éditorial pour l'offset global.
+    ed_by_album = {aid: numeros_editoriaux(conn, aid) for aid in album_ids}
+    editorial = {pid: ed for m in ed_by_album.values() for pid, ed in m.items()}
+
+    # Rang de case (cases seules, ordre de lecture) + rang de bulle (entre frères
+    # d'une même case) + nb de cases par planche, sur les planches concernées.
+    case_rang: dict[int, int] = {}
+    bulle_rang: dict[int, int] = {}
+    seen_case: dict[int, int] = {}
+    seen_child: dict[int, int] = {}
+    for r in conn.execute(
+            f"SELECT id, planche_id, parent_id, type FROM regions "
+            f"WHERE planche_id IN ({pm}) ORDER BY ordre, id", planche_ids):
+        if r["type"] == "case":
+            seen_case[r["planche_id"]] = seen_case.get(r["planche_id"], 0) + 1
+            case_rang[r["id"]] = seen_case[r["planche_id"]]
+        if r["parent_id"] is not None:
+            seen_child[r["parent_id"]] = seen_child.get(r["parent_id"], 0) + 1
+            bulle_rang[r["id"]] = seen_child[r["parent_id"]]
+
+    # Offsets globaux + totaux par album : cases cumulées sur les planches RÉCIT,
+    # en ordre éditorial (toutes les planches récit, pas seulement celles ciblées).
+    global_offset: dict[int, int] = {}
+    album_total: dict[int, int] = {}
+    for aid, ed_map in ed_by_album.items():
+        counts = {row["planche_id"]: row["n"] for row in conn.execute(
+            "SELECT p.id AS planche_id, "
+            "  (SELECT COUNT(*) FROM regions r WHERE r.planche_id = p.id "
+            "   AND r.type = 'case') AS n "
+            "FROM planches p WHERE p.album_id = ? AND p.role = 'recit'", (aid,))}
+        recit = sorted((pid for pid, ed in ed_map.items() if ed is not None),
+                       key=lambda pid: ed_map[pid])
+        running = 0
+        for pid in recit:
+            global_offset[pid] = running
+            running += counts.get(pid, 0)
+        album_total[aid] = running
+
+    out: dict[int, dict] = {}
+    for rid in ids:
+        r = regs.get(rid)
+        if r is None or r["planche_id"] not in planches:
+            continue
+        ed = editorial.get(r["planche_id"])
+        if ed is None:                                   # planche paratexte
+            out[rid] = {"planche": None, "texte": "Paratexte"}
+            continue
+        aid = planches[r["planche_id"]]["album_id"]
+        if r["type"] == "case":
+            cr = case_rang.get(rid)
+            out[rid] = {"planche": ed, "case": cr,
+                        "global": global_offset.get(r["planche_id"], 0) + (cr or 0),
+                        "total": album_total.get(aid),
+                        "texte": f"pl.{ed} · c{cr}"}
+        elif r["type"] in _TYPES_TEXTE and r["parent_id"] in case_rang:
+            cr = case_rang[r["parent_id"]]
+            br = bulle_rang.get(rid)
+            out[rid] = {"planche": ed, "case": cr, "bulle": br,
+                        "global": global_offset.get(r["planche_id"], 0) + cr,
+                        "total": album_total.get(aid),
+                        "texte": f"pl.{ed} · c{cr} · b{br}"}
+        elif r["type"] in _TYPES_TEXTE:                  # bulle hors case
+            out[rid] = {"planche": ed, "texte": f"pl.{ed} · hors-case"}
+        else:
+            out[rid] = {"planche": ed, "texte": f"pl.{ed}"}
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Maintenance de l'index FTS5
 # --------------------------------------------------------------------------- #
