@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BD Annotator — Exploration</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/theme.js"></script><!-- thème appliqué avant rendu (no-FOUC) -->
+</head>
+<body>
+<div id="explo-app">
+
+  <!-- ───────────────── Header ───────────────── -->
+  <header id="header">
+    <div class="brand">BD&nbsp;Annotator <span class="muted">· Exploration</span></div>
+    <div id="corpus-stats" class="corpus-stats"></div>
+    <div class="header-actions">
+      <button class="ghost btn-theme" title="Changer de thème">🌙</button>
+      <a href="/recherche" class="ghost" title="Recherche">🔍 Recherche</a>
+      <a href="/corpus" class="ghost" title="Gérer le corpus">📚 Bibliothèque</a>
+      <a href="/" class="ghost" title="Visionneuse / annotation">← Visionneuse</a>
+    </div>
+  </header>
+
+  <!-- ───────────────── Corps ───────────────── -->
+  <main id="explo-body">
+
+    <div class="explo-controls">
+      <label class="muted small">Distribuer par
+        <select id="f-champ">
+          <option value="lemme">lemme</option>
+          <option value="pos">catégorie (POS)</option>
+          <option value="morph">morphologie</option>
+        </select>
+      </label>
+      <select id="f-album"><option value="">Tous les albums</option></select>
+      <select id="f-type">
+        <option value="">Tous les types</option>
+        <option value="bulle">bulle</option>
+        <option value="cartouche">cartouche</option>
+        <option value="texte">texte</option>
+        <option value="case">case</option>
+        <option value="personnage">personnage</option>
+      </select>
+      <select id="f-pos" title="Filtrer sur une catégorie (utile avec « par lemme »)">
+        <option value="">POS (toutes)</option>
+      </select>
+      <input type="text" id="f-morph" autocomplete="off" placeholder="filtre morpho (ex. Tense=Past)">
+      <select id="f-prov" title="Provenance de l'étiquetage">
+        <option value="">Provenance : toutes</option>
+        <option value="auto">auto</option>
+        <option value="corrige">corrigé</option>
+        <option value="valide">validé</option>
+      </select>
+    </div>
+
+    <div id="dist-info" class="muted small"></div>
+    <div id="dist" class="dist"></div>
+  </main>
+</div>
+<script src="/static/exploration.js"></script>
+</body>
+</html>

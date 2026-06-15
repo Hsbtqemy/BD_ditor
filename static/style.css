@@ -782,6 +782,32 @@ h3.collapsible:hover { color: var(--text); }
 .pv-rect { fill: color-mix(in srgb, var(--accent-blue) 22%, transparent); stroke: var(--accent-blue); stroke-width: 4; }
 .preview-text { margin-top: 8px; font-size: .9rem; white-space: pre-wrap; }
 
+/* Exploration : contrôles + distributions */
+#explo-body { padding: 16px 20px; }
+.explo-controls { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+.explo-controls select, .explo-controls input {
+  padding: 8px 10px; background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; font-family: inherit;
+}
+.explo-controls label { display: inline-flex; align-items: center; gap: 6px; }
+#dist-info { margin-bottom: 8px; }
+.dist { display: flex; flex-direction: column; gap: 3px; }
+.dist-row {
+  display: grid; grid-template-columns: minmax(90px, 220px) 1fr auto; gap: 10px;
+  align-items: center; padding: 3px 6px; border-radius: 4px;
+  text-decoration: none; color: var(--text);
+}
+a.dist-row { cursor: pointer; }
+a.dist-row:hover { background: var(--bg-input); }
+.dist-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dist-pos {
+  font-weight: 400; font-size: .72rem; font-family: monospace; color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; margin-left: 4px;
+}
+.dist-bar { height: 14px; background: var(--bg-input); border-radius: 3px; overflow: hidden; }
+.dist-bar > i { display: block; height: 100%; background: var(--accent-blue); }
+.dist-freq { font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: .85rem; min-width: 3ch; text-align: right; }
+
 #tag-cloud-wrap { margin-bottom: 12px; }
 #tag-cloud-wrap > summary { cursor: pointer; user-select: none; }
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

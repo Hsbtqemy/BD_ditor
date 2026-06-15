@@ -1482,3 +1482,8 @@ def recherche_page():
 @app.get("/corpus", response_class=HTMLResponse)
 def corpus_page():
     return FileResponse(str(TEMPLATES_DIR / "corpus.html"))
+
+
+@app.get("/exploration", response_class=HTMLResponse)
+def exploration_page():
+    return FileResponse(str(TEMPLATES_DIR / "exploration.html"))

@@ -30,6 +30,11 @@ def test_corpus_page_servie(client):
     assert r.status_code == 200 and "Biblioth" in r.text
 
 
+def test_exploration_page_servie(client):
+    r = client.get("/exploration")
+    assert r.status_code == 200 and "Exploration" in r.text
+
+
 # ------------------------------ Migration ------------------------------- #
 def test_migration_ajoute_description(tmp_path):
     db = tmp_path / "old.sqlite"
