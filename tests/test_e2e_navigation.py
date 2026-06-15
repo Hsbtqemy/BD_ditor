@@ -160,3 +160,40 @@ def test_recherche_resultat_apercu_et_lien_edition(page, seeded_ocr):
     expect(page.locator("#preview")).to_be_visible()
     href = page.locator("#preview-edit").get_attribute("href")
     assert f"region={s['region']}" in href and "retour=" in href
+
+
+# --------------------------------------------------------------------------- #
+# Navigation transverse unifiée + menus de la Visionneuse (theme.js)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("path,label", [
+    ("/", "Atelier"),
+    ("/corpus", "Bibliothèque"),
+    ("/recherche", "Recherche"),
+    ("/exploration", "Exploration"),
+])
+def test_nav_unifiee_injectee_et_surbrillance(page, live_server, path, label):
+    """La barre de nav est injectée à l'identique sur les 4 surfaces (4 liens), et la
+    surface courante — et elle seule — porte aria-current=page (« vous êtes ici »)."""
+    page.goto(f"{live_server}{path}")
+    expect(page.locator(".surf-nav a.surf-link")).to_have_count(4, timeout=15000)
+    current = page.locator('.surf-nav a[aria-current="page"]')
+    expect(current).to_have_count(1)
+    expect(current).to_contain_text(label)
+
+
+def test_menus_visionneuse_un_seul_ouvert_et_echap(page, live_server):
+    """Visionneuse : Traitement/Données s'ouvrent au clic, un seul à la fois (ouvrir
+    l'un referme l'autre), et Échap referme — cf. setupMenus()."""
+    page.goto(f"{live_server}/")
+    trait, donnees = page.locator("#traitement-menu"), page.locator("#donnees-menu")
+    expect(trait).to_be_hidden(timeout=15000)
+
+    page.locator("#btn-traitement").click()
+    expect(trait).to_be_visible()
+
+    page.locator("#btn-donnees").click()          # un seul ouvert à la fois
+    expect(trait).to_be_hidden()
+    expect(donnees).to_be_visible()
+
+    page.keyboard.press("Escape")                 # Échap referme
+    expect(donnees).to_be_hidden()
