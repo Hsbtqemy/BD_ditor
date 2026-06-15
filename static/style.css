@@ -762,6 +762,7 @@ h3.collapsible:hover { color: var(--text); }
 }
 .facet-row input { flex: 1 1 180px; }
 .results-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.back-link { border-color: var(--accent-blue); color: var(--accent-blue); font-weight: 600; }
 
 /* Aperçu en place (volet lecture seule à côté des résultats) */
 #results-pane { display: flex; gap: 16px; align-items: flex-start; }
@@ -782,44 +783,82 @@ h3.collapsible:hover { color: var(--text); }
 .pv-rect { fill: color-mix(in srgb, var(--accent-blue) 22%, transparent); stroke: var(--accent-blue); stroke-width: 4; }
 .preview-text { margin-top: 8px; font-size: .9rem; white-space: pre-wrap; }
 
-/* Exploration : contrôles + distributions */
-#explo-body { padding: 16px 20px; }
-.explo-controls { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+/* ==================== Exploration ==================== */
+#explo-body { max-width: 1080px; margin: 0 auto; padding: 22px 24px; }
+
+/* Ligne du haut : « distribuer par » + bascule comparaison */
+.explo-top {
+  display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+}
+.explo-top label { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; }
+
+/* Filtres : cartes (une en simple, deux en comparaison) */
+.explo-grid { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.subcorpus {
+  flex: 1 1 360px; min-width: 0;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px;
+}
+#sub-a .sub-title { color: var(--accent-blue); }
+#sub-b .sub-title { color: var(--accent-amber); }
+.sub-title { margin: 0 0 10px; font-weight: 700; font-size: .82rem;
+  text-transform: uppercase; letter-spacing: .04em; }
+.explo-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0; }
 .explo-controls select, .explo-controls input {
-  padding: 8px 10px; background: var(--bg-input); color: var(--text);
+  padding: 7px 9px; font-size: .88rem; background: var(--bg-input); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px; font-family: inherit;
 }
-.explo-controls label { display: inline-flex; align-items: center; gap: 6px; }
-#dist-info { margin-bottom: 8px; }
-.dist { display: flex; flex-direction: column; gap: 3px; }
+.explo-controls input { flex: 1 1 150px; min-width: 110px; }
+.explo-controls select:disabled { opacity: .45; }
+
+#dist-info { margin-bottom: 14px; line-height: 1.5; }
+
+/* Barres de distribution (pilules) */
+.dist { display: flex; flex-direction: column; gap: 4px; }
 .dist-row {
-  display: grid; grid-template-columns: minmax(90px, 220px) 1fr auto; gap: 10px;
-  align-items: center; padding: 3px 6px; border-radius: 4px;
+  display: grid; grid-template-columns: minmax(96px, 240px) 1fr auto; gap: 14px;
+  align-items: center; padding: 5px 8px; border-radius: 7px;
   text-decoration: none; color: var(--text);
 }
-a.dist-row { cursor: pointer; }
-a.dist-row:hover { background: var(--bg-input); }
+a.dist-row { cursor: pointer; transition: background .12s; }
+a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transparent); }
 .dist-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dist-pos {
   font-weight: 400; font-size: .72rem; font-family: monospace; color: var(--text-muted);
-  border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; margin-left: 4px;
+  border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; margin-left: 6px;
 }
-.dist-bar { height: 14px; background: var(--bg-input); border-radius: 3px; overflow: hidden; }
-.dist-bar > i { display: block; height: 100%; background: var(--accent-blue); }
-.dist-freq { font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: .85rem; min-width: 3ch; text-align: right; }
+.dist-bar { height: 18px; background: var(--bg-input); border-radius: 9px; overflow: hidden; }
+.dist-bar > i {
+  display: block; height: 100%; border-radius: 9px; min-width: 2px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--accent-blue) 55%, transparent), var(--accent-blue));
+}
+.dist-freq { font-variant-numeric: tabular-nums; color: var(--text-muted);
+  font-size: .85rem; min-width: 4ch; text-align: right; }
 
-/* Exploration : mode comparaison A / B */
-.explo-top { display: flex; gap: 16px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-.explo-top label { display: inline-flex; align-items: center; gap: 6px; }
-.explo-grid { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
-.subcorpus { flex: 1 1 360px; min-width: 0; }
-.subcorpus .explo-controls { margin-bottom: 0; }
-.sub-title { margin-bottom: 4px; font-weight: 600; }
-.comparaison { display: flex; gap: 24px; align-items: flex-start; }
-.comp-col { flex: 1 1 0; min-width: 0; }
-.comp-h { font-size: .95rem; margin: 0 0 8px; }
-.dist-bar > i.bar-a { background: var(--accent-blue); }
-.dist-bar > i.bar-b { background: var(--accent-amber); }
+/* Comparaison A / B : deux cartes côte à côte, code couleur */
+.comparaison { display: flex; gap: 20px; align-items: flex-start; }
+.comp-col {
+  flex: 1 1 0; min-width: 0;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-top-width: 3px; border-radius: 10px; padding: 12px 16px;
+}
+.comp-col.col-a { border-top-color: var(--accent-blue); }
+.comp-col.col-b { border-top-color: var(--accent-amber); }
+.comp-h { font-size: .9rem; margin: 0 0 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .03em; }
+.col-a .comp-h { color: var(--accent-blue); }
+.col-b .comp-h { color: var(--accent-amber); }
+.dist-bar > i.bar-a {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--accent-blue) 55%, transparent), var(--accent-blue));
+}
+.dist-bar > i.bar-b {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--accent-amber) 55%, transparent), var(--accent-amber));
+}
+@media (max-width: 720px) { .comparaison { flex-direction: column; } }
 
 #tag-cloud-wrap { margin-bottom: 12px; }
 #tag-cloud-wrap > summary { cursor: pointer; user-select: none; }

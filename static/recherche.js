@@ -15,6 +15,7 @@ const state = {
 };
 
 const INITIAL_QS = location.search;   // état de départ (avant que search() ne réécrive l'URL)
+const RETOUR = new URLSearchParams(INITIAL_QS).get("retour");   // d'où l'on vient (drill Exploration)
 const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
               "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X"];
 
@@ -129,10 +130,13 @@ function searchParams() {
 }
 
 function search() {
-  const p = searchParams();
+  const p = searchParams();                    // critères réels (fetch + test de vacuité)
   const vide = [...p].length === 0;
-  // état dans l'URL (replaceState) → recherche partageable + rechargement sans perte
-  history.replaceState(null, "", vide ? location.pathname : "?" + p.toString());
+  // état dans l'URL (replaceState) → recherche partageable + rechargement sans perte ;
+  // on y conserve `retour` (contexte de drill) sans l'envoyer à la requête.
+  const display = new URLSearchParams(p);
+  if (RETOUR) display.set("retour", RETOUR);
+  history.replaceState(null, "", [...display].length ? "?" + display.toString() : location.pathname);
   if (vide) {
     $("#results").innerHTML =
       '<div class="search-hint">Tapez un mot-clé, ou choisissez un album / type / tag / facette grammaticale.</div>';
@@ -175,6 +179,29 @@ function openPreview(r) {
 function closePreview() {
   $("#preview").hidden = true;
   document.querySelectorAll(".result.active").forEach((el) => el.classList.remove("active"));
+}
+
+/* Bouton « ← Retour » : cible le `retour` explicite (drill, survit au rechargement) ;
+   à défaut, si on vient d'une AUTRE page de l'app, fait un history.back() — robuste
+   même si la page d'origine tournait avec un ancien JS. */
+function setupBack() {
+  const back = $("#back-link");
+  let target = RETOUR;
+  if (!target) {
+    try {
+      const ref = document.referrer ? new URL(document.referrer) : null;
+      if (ref && ref.origin === location.origin && ref.pathname !== location.pathname)
+        target = "__back__";
+    } catch (e) { /* referrer non parsable */ }
+  }
+  if (!target) return;
+  back.hidden = false;
+  if (target === "__back__") {
+    back.href = "#";
+    back.onclick = (e) => { e.preventDefault(); history.back(); };
+  } else {
+    back.href = target;
+  }
 }
 
 function renderResults(res, q) {
@@ -249,6 +276,7 @@ async function setup() {
   ["#f-album", "#f-type", "#f-pos", "#f-prov"].forEach((s) => { $(s).onchange = search; });
   $("#btn-export").onclick = exportCsv;   // export du jeu de résultats courant (CSV)
   $("#preview-close").onclick = closePreview;
+  setupBack();   // bouton « ← Retour » (drill explicite, ou history.back si on vient de l'app)
   loadCorpus();
   loadTags();
   await loadAlbums();        // options d'album AVANT de restaurer la sélection d'album

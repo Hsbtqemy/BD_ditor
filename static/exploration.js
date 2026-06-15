@@ -79,6 +79,7 @@ function drillUrl(valeur, filtres) {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(filtres)) if (v) p.set(k, v);
   p.set(champ(), valeur);
+  p.set("retour", location.pathname + location.search);   // pour revenir à l'Exploration
   return "/recherche?" + p.toString();
 }
 
@@ -164,9 +165,9 @@ function renderComparaison(res) {
     return;
   }
   box.innerHTML =
-    `<div class="comp-col"><h3 class="comp-h">Sur-représentés en A</h3>` +
+    `<div class="comp-col col-a"><h3 class="comp-h">▲ Sur-représentés en A</h3>` +
       `<div class="dist">${compColumn(res.sur_a, "a", sideFilters("f"))}</div></div>` +
-    `<div class="comp-col"><h3 class="comp-h">Sur-représentés en B</h3>` +
+    `<div class="comp-col col-b"><h3 class="comp-h">▲ Sur-représentés en B</h3>` +
       `<div class="dist">${compColumn(res.sur_b, "b", sideFilters("b"))}</div></div>`;
 }
 
