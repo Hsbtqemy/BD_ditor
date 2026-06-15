@@ -30,24 +30,27 @@
       </button>
     </div>
     <div class="header-actions">
-      <a id="back-link" class="ghost back-link" hidden title="Revenir à la recherche / exploration">← Retour</a>
-      <button class="ghost btn-theme" title="Changer de thème">🌙</button>
-      <a href="/corpus" class="ghost" title="Gérer le corpus (albums, planches, lots)">📚 Bibliothèque</a>
-      <a href="/recherche" class="ghost" title="Rechercher dans le corpus">🔍 Recherche</a>
-      <a href="/exploration" class="ghost" title="Explorer le corpus (distributions)">📊 Exploration</a>
-      <button id="btn-sharedocs" class="ghost" title="Explorer le corpus ShareDocs (Huma-Num)">ShareDocs</button>
-      <button id="btn-segmenter" class="ghost" title="Détecter les cases (Kumiko)">Segmenter</button>
-      <button id="btn-bulles" class="ghost" title="Détecter les bulles (passe 2)">Bulles</button>
-      <button id="btn-ocr" class="ghost" title="OCR des bulles → pré-remplissage (passe 3)">OCR</button>
-      <button id="btn-backup" class="ghost" title="Télécharger une sauvegarde de la base (.sqlite zippé)">Sauvegarde</button>
+      <nav class="surf-nav"></nav><!-- nav transverse unifiée, injectée par theme.js -->
+      <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
       <div class="dropdown">
-        <button class="ghost" id="btn-export">Export ▾</button>
-        <div class="dropdown-menu" id="export-menu">
-          <a data-fmt="json">JSON-LD</a>
-          <a data-fmt="csv">CSV</a>
-          <a data-fmt="tei">TEI P5</a>
+        <button class="ghost" id="btn-traitement" title="Traitements automatiques sur l'album">⚙ Traitement ▾</button>
+        <div class="dropdown-menu" id="traitement-menu">
+          <button id="btn-segmenter" title="Détecter les cases (Kumiko)">Segmenter les cases</button>
+          <button id="btn-bulles" title="Détecter les bulles (passe 2)">Détecter les bulles</button>
+          <button id="btn-ocr" title="OCR des bulles → pré-remplissage (passe 3)">OCR des bulles</button>
+          <button id="btn-sharedocs" title="Explorer le corpus ShareDocs (Huma-Num)">Explorer ShareDocs…</button>
         </div>
       </div>
+      <div class="dropdown">
+        <button class="ghost" id="btn-donnees" title="Sauvegarde &amp; export">⤓ Données ▾</button>
+        <div class="dropdown-menu" id="donnees-menu">
+          <button id="btn-backup" title="Télécharger une sauvegarde de la base (.sqlite zippé)">Sauvegarde (.sqlite)</button>
+          <button data-fmt="json">Export JSON-LD</button>
+          <button data-fmt="csv">Export CSV</button>
+          <button data-fmt="tei">Export TEI P5</button>
+        </div>
+      </div>
+      <button class="ghost btn-theme" title="Changer de thème">🌙</button>
     </div>
   </header>
 

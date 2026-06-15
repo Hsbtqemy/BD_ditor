@@ -412,8 +412,33 @@ function renderJobs(list) {
   });
 }
 
+/* Bouton « ← Retour » : ramène à la surface d'origine via le `retour` reçu (page
+   interne seulement, cf. lib/nav.js), à défaut history.back() si l'on vient de l'app.
+   Masqué s'il n'y a nulle part où revenir. Calqué sur les autres surfaces. */
+function setupBack() {
+  const back = $("#back-link");
+  if (!back) return;
+  let target = Nav.safeRetour(new URLSearchParams(location.search).get("retour"));
+  if (!target) {
+    try {
+      const ref = document.referrer ? new URL(document.referrer) : null;
+      if (ref && ref.origin === location.origin && ref.pathname !== location.pathname)
+        target = "__back__";
+    } catch (e) { /* referrer non parsable */ }
+  }
+  if (!target) return;
+  back.hidden = false;
+  if (target === "__back__") {
+    back.href = "#";
+    back.onclick = (e) => { e.preventDefault(); history.back(); };
+  } else {
+    back.href = target;
+  }
+}
+
 /* ---------------- Démarrage ---------------- */
 function setup() {
+  setupBack();
   $("#btn-new").onclick = () => openModal(null);
   $("#m-save").onclick = saveAlbum;
   $("#m-cancel").onclick = closeModal;

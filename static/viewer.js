@@ -1548,15 +1548,36 @@ async function newAlbum() {
   } catch (e) { toast("Création album : " + e.message, "error"); }
 }
 
-function setupExport() {
-  const btn = $("#btn-export"), menu = $("#export-menu");
-  btn.onclick = (e) => { e.stopPropagation(); menu.classList.toggle("open"); };
-  document.addEventListener("click", () => menu.classList.remove("open"));
-  menu.querySelectorAll("a").forEach((a) => {
+/* En-tête : menus déroulants « Traitement » / « Données ». Un seul ouvert à la fois ;
+   se ferment au clic extérieur, sur Échap, et après activation d'un item (qui bulle
+   jusqu'au document). Les actions (Segmenter/Bulles/OCR/ShareDocs, Sauvegarde) sont
+   câblées ailleurs par id ; ici on gère l'ouverture + les liens d'export (data-fmt). */
+function setupMenus() {
+  const dropdowns = [...document.querySelectorAll(".dropdown")];
+  const closeAll = () => dropdowns.forEach((dd) => {
+    dd.querySelector(".dropdown-menu")?.classList.remove("open");
+    dd.querySelector("button")?.setAttribute("aria-expanded", "false");
+  });
+  dropdowns.forEach((dd) => {
+    const btn = dd.querySelector("button"), menu = dd.querySelector(".dropdown-menu");
+    if (!btn || !menu) return;
+    btn.setAttribute("aria-haspopup", "true");
+    btn.setAttribute("aria-expanded", "false");
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const willOpen = !menu.classList.contains("open");
+      closeAll();
+      menu.classList.toggle("open", willOpen);
+      btn.setAttribute("aria-expanded", String(willOpen));
+    };
+  });
+  document.addEventListener("click", closeAll);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAll(); });
+
+  document.querySelectorAll("[data-fmt]").forEach((a) => {
     a.onclick = () => {
       if (!state.albumId) { toast("Aucun album", "error"); return; }
       window.open(`${API}/api/export/${a.dataset.fmt}?album_id=${state.albumId}`, "_blank");
-      menu.classList.remove("open");
     };
   });
 }
@@ -1961,7 +1982,7 @@ function setupControls() {
 
   setupTagInput();
   setupImport();
-  setupExport();
+  setupMenus();
   setupTranscription();
   setupSharedocs();
 }

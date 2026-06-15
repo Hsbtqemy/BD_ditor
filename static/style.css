@@ -230,10 +230,23 @@ button { font-family: inherit; }
   box-shadow: 0 6px 20px var(--shadow);
 }
 .dropdown-menu.open { display: block; }
-.dropdown-menu a {
-  display: block; padding: 8px 12px; cursor: pointer; color: var(--text);
+.dropdown-menu a,
+.dropdown-menu button {
+  display: block; width: 100%; box-sizing: border-box; text-align: left;
+  padding: 8px 12px; cursor: pointer; color: var(--text);
+  background: transparent; border: none; font: inherit; white-space: nowrap;
 }
-.dropdown-menu a:hover { background: var(--bg-input); }
+.dropdown-menu a:hover,
+.dropdown-menu button:hover { background: var(--bg-input); }
+
+/* Navigation transverse unifiée — deux registres (Atelier ‖ Analyse), injectée par
+   theme.js dans .surf-nav. La surface courante est mise en avant (+ aria-current). */
+.surf-nav { display: flex; align-items: center; gap: 8px; }
+.surf-sep { color: var(--text-muted); opacity: .45; user-select: none; }
+.surf-link.active {
+  border-color: var(--accent-blue); color: var(--accent-blue);
+  font-weight: 600; background: var(--hover);
+}
 
 /* ---------- Sidebar ---------- */
 #sidebar {

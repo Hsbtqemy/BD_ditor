@@ -122,6 +122,39 @@
     menus.push({ cb: cb, zoomVal: zV, bL: bL, bD: bD });
   }
 
+  /* ---- Navigation transverse unifiée (source unique) ----
+     Deux registres : l'ATELIER (Visionneuse, on modifie) ‖ l'ANALYSE (Bibliothèque /
+     Recherche / Exploration, on consulte). Injectée dans chaque .surf-nav → même ordre
+     partout, « vous êtes ici » automatique, plus de liens en dur divergents. */
+  var SURFACES = [
+    { href: "/",            label: "Atelier",      icon: "✏", group: "atelier" },
+    { href: "/corpus",      label: "Bibliothèque", icon: "📚", group: "analyse" },
+    { href: "/recherche",   label: "Recherche",    icon: "🔍", group: "analyse" },
+    { href: "/exploration", label: "Exploration",  icon: "📊", group: "analyse" }
+  ];
+
+  function buildHeaderNav() {
+    var navs = document.querySelectorAll(".surf-nav");
+    if (!navs.length) return;
+    var path = location.pathname.replace(/\/+$/, "") || "/";   // « / » = Atelier
+    navs.forEach(function (nav) {
+      if (!nav.getAttribute("aria-label")) nav.setAttribute("aria-label", "Surfaces");
+      var prevGroup = null;
+      SURFACES.forEach(function (s) {
+        if (prevGroup && s.group !== prevGroup) {
+          var sep = el("span", "surf-sep"); sep.textContent = "‖";
+          sep.setAttribute("aria-hidden", "true");
+          nav.appendChild(sep);
+        }
+        prevGroup = s.group;
+        var a = el("a", "ghost surf-link surf-" + s.group, s.icon + " " + s.label);
+        a.href = s.href; a.title = s.label;
+        if (path === s.href) { a.classList.add("active"); a.setAttribute("aria-current", "page"); }
+        nav.appendChild(a);
+      });
+    });
+  }
+
   /* ---- Accessibilité transverse (ARIA ciblé, invisible) ---- */
   // Boutons-icônes : recopie le `title` en `aria-label` (lecteurs d'écran), seulement
   // si l'élément n'a pas de texte LISIBLE (que des symboles/emoji) → n'altère pas les
@@ -144,12 +177,9 @@
       muts.forEach(function (m) { m.addedNodes.forEach(reflectIn); });
     }).observe(document.body, { childList: true, subtree: true });
 
-    // Repère de navigation : le groupe liens/réglages de l'en-tête.
-    var ha = document.querySelector(".header-actions");
-    if (ha && !ha.getAttribute("role")) {
-      ha.setAttribute("role", "navigation");
-      ha.setAttribute("aria-label", "Navigation et réglages");
-    }
+    // Le repère de navigation est porté par <nav class="surf-nav"> (cf. buildHeaderNav) ;
+    // .header-actions n'est plus qu'une barre mixte (nav + actions + réglages) → on évite
+    // d'y poser un second role=navigation, qui ferait un repère imbriqué redondant.
 
     // Lien d'évitement « Aller au contenu » + cible focusable (clavier / lecteur d'écran).
     var main = document.querySelector("main");
@@ -163,6 +193,7 @@
   }
 
   function wire() {
+    buildHeaderNav();
     document.querySelectorAll(".btn-theme").forEach(buildMenu);
     sync();
     a11y();
