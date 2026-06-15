@@ -1095,6 +1095,51 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
     return {"count": len(results), "results": results}
 
 
+def _distribution(conn, champ, album, type, pos, morph, provenance):
+    """Compte {valeur: fréquence} d'un champ (lemme|pos|morph) sur un sous-corpus, et
+    le total. Sur les valeurs EFFECTIVES. `champ` doit être validé par l'appelant."""
+    where, params = _analyse_filtres(album, type, pos, None, morph, provenance)
+    sql = (f"SELECT te.{champ} AS v, COUNT(*) AS f "
+           "FROM tokens_effectifs te JOIN regions r ON r.id = te.region_id "
+           "JOIN planches p ON p.id = r.planche_id ")
+    if where:
+        sql += "WHERE " + " AND ".join(where) + " "
+    sql += f"GROUP BY te.{champ}"
+    d = {row["v"]: row["f"] for row in conn.execute(sql, params)}
+    return d, sum(d.values())
+
+
+@app.get("/api/analyse/comparaison")
+def analyse_comparaison(champ: str = "lemme",
+                        a_album: Optional[int] = None, a_type: Optional[str] = None,
+                        a_pos: Optional[str] = None, a_morph: Optional[str] = None,
+                        a_provenance: Optional[str] = None,
+                        b_album: Optional[int] = None, b_type: Optional[str] = None,
+                        b_pos: Optional[str] = None, b_morph: Optional[str] = None,
+                        b_provenance: Optional[str] = None,
+                        limit: int = 50, conn: sqlite3.Connection = Depends(db)):
+    """Compare deux sous-corpus A et B : valeurs (lemme|pos|morph) les plus
+    SUR-représentées dans chacun, par différence de fréquence RELATIVE (rel = freq /
+    total du sous-corpus → comparable malgré des tailles différentes)."""
+    if champ not in ("lemme", "pos", "morph"):
+        raise HTTPException(422, "champ invalide (lemme | pos | morph).")
+    limit = max(1, min(limit, 200))
+    da, ta = _distribution(conn, champ, a_album, a_type, a_pos, a_morph, a_provenance)
+    db_, tb = _distribution(conn, champ, b_album, b_type, b_pos, b_morph, b_provenance)
+    out = []
+    for v in set(da) | set(db_):
+        fa, fb = da.get(v, 0), db_.get(v, 0)
+        ra = fa / ta if ta else 0.0
+        rb = fb / tb if tb else 0.0
+        out.append({"valeur": v, "freq_a": fa, "freq_b": fb,
+                    "rel_a": round(ra, 6), "rel_b": round(rb, 6),
+                    "diff": round(ra - rb, 6)})
+    out.sort(key=lambda x: x["diff"], reverse=True)
+    return {"champ": champ, "total_a": ta, "total_b": tb,
+            "sur_a": [x for x in out[:limit] if x["diff"] > 0],
+            "sur_b": [x for x in reversed(out[-limit:]) if x["diff"] < 0]}
+
+
 @app.get("/api/regions/{region_id}/tokens")
 def region_tokens(region_id: int, conn: sqlite3.Connection = Depends(db)):
     """Analyse grammaticale d'une région : ses mots avec lemme / POS / morphologie."""

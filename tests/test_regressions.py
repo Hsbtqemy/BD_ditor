@@ -142,6 +142,20 @@ def test_lot3_recherche_facette_grammaticale(client, planche):
     # combiné avec le texte (FTS + grammaire)
     r3 = client.get("/api/recherche", params={"q": "potion", "pos": "VERB", "album": alb}).json()
     assert any(x["region_id"] == rid for x in r3["results"])
+
+    # --- lot 4.2 : comparaison de deux sous-corpus (bulle vs cartouche) ---
+    client.post(f"/api/planches/{planche['id']}/regions",
+                json={"type": "cartouche", "x": 6, "y": 6, "w": 5, "h": 5,
+                      "ocr_texte": "le romain parlait"})
+    c = client.get("/api/analyse/comparaison",
+                   params={"champ": "lemme", "a_album": alb, "b_album": alb,
+                           "a_type": "bulle", "b_type": "cartouche"}).json()
+    sa = {x["valeur"] for x in c["sur_a"]}
+    sb = {x["valeur"] for x in c["sur_b"]}
+    assert "boire" in sa and "parler" in sb            # sur-représentés de chaque côté
+    assert c["total_a"] >= 1 and c["total_b"] >= 1
+    assert client.get("/api/analyse/comparaison", params={"champ": "zzz"}).status_code == 422
+
     # export CSV du jeu de résultats (mêmes critères)
     exp = client.get("/api/recherche/export.csv", params={"pos": "VERB", "album": alb})
     assert exp.status_code == 200 and "text/csv" in exp.headers["content-type"]

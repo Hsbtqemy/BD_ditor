@@ -1,8 +1,9 @@
 /* ===================================================================
    BD Annotator — page Exploration (vanilla JS)
-   Distributions de fréquence (lemme / POS / morph) sur les valeurs EFFECTIVES,
-   via /api/analyse/frequences (socle du lot 2). Filtres combinables ; cliquer une
-   valeur DESCEND aux preuves (Recherche pré-filtrée). État dans l'URL (partageable).
+   • Distribution simple (lemme / POS / morph) d'un sous-corpus, OU
+   • Comparaison de deux sous-corpus A / B (fréquences différentielles).
+   Sur les valeurs EFFECTIVES (socle lot 2). Cliquer une valeur DESCEND aux preuves
+   (Recherche pré-filtrée). État dans l'URL (partageable).
    =================================================================== */
 "use strict";
 
@@ -22,7 +23,6 @@ function esc(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-/* ---------------- En-tête : volumétrie ---------------- */
 async function loadCorpus() {
   try {
     const c = await apiGet("/api/corpus");
@@ -36,81 +36,99 @@ async function loadCorpus() {
 async function loadAlbums() {
   try {
     const albums = await apiGet("/api/albums");
-    const sel = $("#f-album");
-    for (const a of albums) {
-      const o = document.createElement("option");
-      o.value = String(a.id);
-      o.textContent = `${a.serie ? a.serie + " · " : ""}${a.titre}`;
-      sel.appendChild(o);
+    for (const id of ["#f-album", "#b-album"]) {
+      const sel = $(id);
+      for (const a of albums) {
+        const o = document.createElement("option");
+        o.value = String(a.id);
+        o.textContent = `${a.serie ? a.serie + " · " : ""}${a.titre}`;
+        sel.appendChild(o);
+      }
     }
   } catch (e) { /* ignore */ }
 }
 
-/* ---------------- Paramètres / URL ---------------- */
+/* ---------------- Paramètres ---------------- */
 function champ() { return $("#f-champ").value; }
+function compareOn() { return $("#f-compare").checked; }
 
-/* Paramètres de distribution (vers /api/analyse/frequences ET l'URL). */
-function distParams() {
+/* Filtres d'un côté (préfixe "f" = A, "b" = B) → {album,type,pos,morph,provenance}. */
+function sideFilters(pre) {
+  const g = (k) => ($(`#${pre}-${k}`).value || "").trim();
+  const f = { album: g("album"), type: g("type"), morph: g("morph"), provenance: g("prov") };
+  if (champ() !== "pos") f.pos = g("pos");   // filtre POS redondant si on distribue par POS
+  return f;
+}
+
+/* URL/état : champ + compare + filtres A (nus) + filtres B (préfixés b_). */
+function stateParams() {
   const p = new URLSearchParams();
-  const set = (k, v) => { if (v && v.trim()) p.set(k, v.trim()); };
-  set("champ", $("#f-champ").value);
-  set("album", $("#f-album").value);
-  set("type", $("#f-type").value);
-  if ($("#f-champ").value !== "pos") set("pos", $("#f-pos").value);  // filtre POS redondant si on distribue par POS
-  set("morph", $("#f-morph").value);
-  set("provenance", $("#f-prov").value);
+  p.set("champ", champ());
+  const a = sideFilters("f");
+  for (const [k, v] of Object.entries(a)) if (v) p.set(k, v);
+  if (compareOn()) {
+    p.set("compare", "1");
+    const b = sideFilters("b");
+    for (const [k, v] of Object.entries(b)) if (v) p.set("b_" + k, v);
+  }
   return p;
 }
 
-/* URL de descente aux preuves : Recherche pré-filtrée sur la valeur cliquée
-   (le champ courant devient une facette) + les mêmes filtres de sous-corpus. */
-function drillUrl(valeur) {
-  const p = distParams();
-  p.delete("champ");
-  p.set(champ(), valeur);     // lemme | pos | morph = valeur cliquée
+/* Descente aux preuves : Recherche pré-filtrée sur la valeur + les filtres du côté. */
+function drillUrl(valeur, filtres) {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(filtres)) if (v) p.set(k, v);
+  p.set(champ(), valeur);
   return "/recherche?" + p.toString();
 }
 
-/* ---------------- Distribution ---------------- */
+/* ---------------- Exécution ---------------- */
 function run() {
-  const p = distParams();
-  history.replaceState(null, "", "?" + p.toString());   // toujours au moins `champ`
-  const url = new URLSearchParams(p); url.set("limit", "200");
+  history.replaceState(null, "", "?" + stateParams().toString());
   const gen = ++state.gen;
+  $("#dist").hidden = compareOn();
+  $("#comparaison").hidden = !compareOn();
   $("#dist-info").textContent = "Calcul…";
-  apiGet("/api/analyse/frequences?" + url.toString())
-    .then((res) => { if (gen === state.gen) renderDist(res); })
-    .catch((e) => { if (gen === state.gen) $("#dist-info").textContent = "Erreur : " + e.message; });
-}
+  const done = (fn) => (res) => { if (gen === state.gen) fn(res); };
+  const fail = (e) => { if (gen === state.gen) $("#dist-info").textContent = "Erreur : " + e.message; };
 
-function valeurDe(r, ch) {
-  if (ch === "lemme") return r.lemme;
-  if (ch === "pos") return r.pos;
-  return r.morph;           // peut être "" (aucun trait)
-}
-
-function renderDist(res) {
-  const ch = res.champ;
-  const rows = res.results || [];
-  const box = $("#dist");
-  box.innerHTML = "";
-  if (!rows.length) {
-    $("#dist-info").textContent = "Aucune donnée (relancer l'indexation NLP ?).";
-    return;
+  if (compareOn()) {
+    const p = new URLSearchParams();
+    p.set("champ", champ());
+    const a = sideFilters("f"), b = sideFilters("b");
+    for (const [k, v] of Object.entries(a)) if (v) p.set("a_" + k, v);
+    for (const [k, v] of Object.entries(b)) if (v) p.set("b_" + k, v);
+    apiGet("/api/analyse/comparaison?" + p.toString()).then(done(renderComparaison)).catch(fail);
+  } else {
+    const p = new URLSearchParams();
+    p.set("champ", champ());
+    for (const [k, v] of Object.entries(sideFilters("f"))) if (v) p.set(k, v);
+    p.set("limit", "200");
+    apiGet("/api/analyse/frequences?" + p.toString()).then(done(renderDist)).catch(fail);
   }
+}
+
+function valeurDe(r, ch) { return ch === "lemme" ? r.lemme : ch === "pos" ? r.pos : r.morph; }
+
+/* ---------------- Rendu : distribution simple ---------------- */
+function renderDist(res) {
+  const ch = res.champ, rows = res.results || [], box = $("#dist");
+  box.innerHTML = "";
+  if (!rows.length) { $("#dist-info").textContent = "Aucune donnée (relancer l'indexation NLP ?)."; return; }
   const total = rows.reduce((s, r) => s + r.freq, 0);
   const max = Math.max(...rows.map((r) => r.freq));
   $("#dist-info").innerHTML =
     `${rows.length} valeur(s) de <b>${esc(ch)}</b> · ${total} occurrence(s)` +
     (rows.length >= 200 ? " (limité aux 200 plus fréquentes)" : "") +
-    ` — cliquer une valeur pour voir les emplois en contexte`;
+    " — cliquer une valeur pour voir les emplois en contexte";
+  const fa = sideFilters("f");
   for (const r of rows) {
     const v = valeurDe(r, ch);
     const label = v === "" ? "∅ (aucun trait)" : v;
-    const sub = (ch === "lemme" && r.pos) ? ` <span class="dist-pos">${esc(r.pos)}</span>` : "";
+    const sub = (ch === "lemme" && r.pos) ? `<span class="dist-pos">${esc(r.pos)}</span>` : "";
     const row = document.createElement(v === "" ? "div" : "a");
     row.className = "dist-row";
-    if (v !== "") { row.href = drillUrl(v); row.title = "Voir les emplois en contexte"; }
+    if (v !== "") { row.href = drillUrl(v, fa); row.title = "Voir les emplois en contexte"; }
     row.innerHTML =
       `<span class="dist-label">${esc(label)}${sub}</span>` +
       `<span class="dist-bar"><i style="width:${(100 * r.freq / max).toFixed(1)}%"></i></span>` +
@@ -119,36 +137,83 @@ function renderDist(res) {
   }
 }
 
-/* ---------------- Démarrage ---------------- */
+/* ---------------- Rendu : comparaison A / B ---------------- */
+function compColumn(items, side, filtres) {
+  if (!items.length) return '<div class="muted small">—</div>';
+  const max = Math.max(...items.map((x) => Math.abs(x.diff))) || 1;
+  return items.map((x) => {
+    const v = x.valeur, label = v === "" ? "∅ (aucun trait)" : v;
+    const w = (100 * Math.abs(x.diff) / max).toFixed(1);
+    const inner =
+      `<span class="dist-label">${esc(label)}</span>` +
+      `<span class="dist-bar"><i class="bar-${side}" style="width:${w}%"></i></span>` +
+      `<span class="dist-freq" title="A:${x.freq_a} · B:${x.freq_b}">${x.freq_a}/${x.freq_b}</span>`;
+    return v === ""
+      ? `<div class="dist-row">${inner}</div>`
+      : `<a class="dist-row" href="${esc(drillUrl(v, filtres))}" title="Voir les emplois en contexte">${inner}</a>`;
+  }).join("");
+}
+
+function renderComparaison(res) {
+  const box = $("#comparaison");
+  $("#dist-info").innerHTML =
+    `Comparaison par <b>${esc(res.champ)}</b> — A : ${res.total_a} occ. · B : ${res.total_b} occ. ` +
+    "(différence de fréquence relative ; cliquer pour voir en contexte)";
+  if (!res.total_a && !res.total_b) {
+    box.innerHTML = '<div class="muted small">Aucune donnée dans ces sous-corpus.</div>';
+    return;
+  }
+  box.innerHTML =
+    `<div class="comp-col"><h3 class="comp-h">Sur-représentés en A</h3>` +
+      `<div class="dist">${compColumn(res.sur_a, "a", sideFilters("f"))}</div></div>` +
+    `<div class="comp-col"><h3 class="comp-h">Sur-représentés en B</h3>` +
+      `<div class="dist">${compColumn(res.sur_b, "b", sideFilters("b"))}</div></div>`;
+}
+
+/* ---------------- Contrôles / démarrage ---------------- */
+function syncControls() {
+  const cmp = compareOn();
+  $("#sub-b").hidden = !cmp;
+  document.querySelectorAll(".sub-title").forEach((el) => { el.hidden = !cmp; });
+  const byPos = champ() === "pos";
+  $("#f-pos").disabled = byPos;     // filtre POS redondant si on distribue par POS
+  $("#b-pos").disabled = byPos;
+}
+
 function restoreFromUrl() {
   const p = new URLSearchParams(INITIAL_QS);
   $("#f-champ").value = p.get("champ") || "lemme";
-  $("#f-album").value = p.get("album") || "";
-  $("#f-type").value = p.get("type") || "";
-  $("#f-pos").value = p.get("pos") || "";
-  $("#f-morph").value = p.get("morph") || "";
-  $("#f-prov").value = p.get("provenance") || "";
+  $("#f-compare").checked = p.get("compare") === "1";
+  const setSide = (pre, keyfn) => {
+    $(`#${pre}-album`).value = p.get(keyfn("album")) || "";
+    $(`#${pre}-type`).value = p.get(keyfn("type")) || "";
+    $(`#${pre}-pos`).value = p.get(keyfn("pos")) || "";
+    $(`#${pre}-morph`).value = p.get(keyfn("morph")) || "";
+    $(`#${pre}-prov`).value = p.get(keyfn("provenance")) || "";
+  };
+  setSide("f", (k) => k);              // A = paramètres nus
+  setSide("b", (k) => "b_" + k);       // B = préfixés
 }
 
 async function setup() {
-  for (const u of UPOS) {
-    const o = document.createElement("option"); o.value = u; o.textContent = u;
-    $("#f-pos").appendChild(o);
+  for (const id of ["#f-pos", "#b-pos"]) {
+    for (const u of UPOS) {
+      const o = document.createElement("option"); o.value = u; o.textContent = u;
+      $(id).appendChild(o);
+    }
   }
   const deb = () => { clearTimeout(state.timer); state.timer = setTimeout(run, 300); };
   $("#f-morph").addEventListener("input", deb);
+  $("#b-morph").addEventListener("input", deb);
   $("#f-champ").onchange = () => { syncControls(); run(); };
-  ["#f-album", "#f-type", "#f-pos", "#f-prov"].forEach((s) => { $(s).onchange = run; });
+  $("#f-compare").onchange = () => { syncControls(); run(); };
+  ["#f-album", "#f-type", "#f-pos", "#f-prov",
+   "#b-album", "#b-type", "#b-pos", "#b-prov"].forEach((s) => { $(s).onchange = run; });
   loadCorpus();
-  await loadAlbums();        // options d'album avant restauration
+  await loadAlbums();        // options d'album (A et B) avant restauration
   restoreFromUrl();
   syncControls();
   run();
-}
-
-/* Désactive le filtre POS quand on distribue PAR POS (redondant). */
-function syncControls() {
-  $("#f-pos").disabled = ($("#f-champ").value === "pos");
 }
 
 setup();

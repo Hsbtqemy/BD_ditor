@@ -808,6 +808,19 @@ a.dist-row:hover { background: var(--bg-input); }
 .dist-bar > i { display: block; height: 100%; background: var(--accent-blue); }
 .dist-freq { font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: .85rem; min-width: 3ch; text-align: right; }
 
+/* Exploration : mode comparaison A / B */
+.explo-top { display: flex; gap: 16px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.explo-top label { display: inline-flex; align-items: center; gap: 6px; }
+.explo-grid { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.subcorpus { flex: 1 1 360px; min-width: 0; }
+.subcorpus .explo-controls { margin-bottom: 0; }
+.sub-title { margin-bottom: 4px; font-weight: 600; }
+.comparaison { display: flex; gap: 24px; align-items: flex-start; }
+.comp-col { flex: 1 1 0; min-width: 0; }
+.comp-h { font-size: .95rem; margin: 0 0 8px; }
+.dist-bar > i.bar-a { background: var(--accent-blue); }
+.dist-bar > i.bar-b { background: var(--accent-amber); }
+
 #tag-cloud-wrap { margin-bottom: 12px; }
 #tag-cloud-wrap > summary { cursor: pointer; user-select: none; }
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

@@ -26,7 +26,7 @@
   <!-- ───────────────── Corps ───────────────── -->
   <main id="explo-body">
 
-    <div class="explo-controls">
+    <div class="explo-top">
       <label class="muted small">Distribuer par
         <select id="f-champ">
           <option value="lemme">lemme</option>
@@ -34,29 +34,52 @@
           <option value="morph">morphologie</option>
         </select>
       </label>
-      <select id="f-album"><option value="">Tous les albums</option></select>
-      <select id="f-type">
-        <option value="">Tous les types</option>
-        <option value="bulle">bulle</option>
-        <option value="cartouche">cartouche</option>
-        <option value="texte">texte</option>
-        <option value="case">case</option>
-        <option value="personnage">personnage</option>
-      </select>
-      <select id="f-pos" title="Filtrer sur une catégorie (utile avec « par lemme »)">
-        <option value="">POS (toutes)</option>
-      </select>
-      <input type="text" id="f-morph" autocomplete="off" placeholder="filtre morpho (ex. Tense=Past)">
-      <select id="f-prov" title="Provenance de l'étiquetage">
-        <option value="">Provenance : toutes</option>
-        <option value="auto">auto</option>
-        <option value="corrige">corrigé</option>
-        <option value="valide">validé</option>
-      </select>
+      <label class="muted small"><input type="checkbox" id="f-compare"> ⇄ Comparer deux sous-corpus</label>
+    </div>
+
+    <div class="explo-grid">
+      <div class="subcorpus" id="sub-a">
+        <div class="sub-title muted small" hidden>Sous-corpus A</div>
+        <div class="explo-controls">
+          <select id="f-album"><option value="">Tous les albums</option></select>
+          <select id="f-type">
+            <option value="">Tous les types</option>
+            <option value="bulle">bulle</option><option value="cartouche">cartouche</option>
+            <option value="texte">texte</option><option value="case">case</option>
+            <option value="personnage">personnage</option>
+          </select>
+          <select id="f-pos"><option value="">POS (toutes)</option></select>
+          <input type="text" id="f-morph" autocomplete="off" placeholder="filtre morpho (ex. Tense=Past)">
+          <select id="f-prov">
+            <option value="">Provenance : toutes</option>
+            <option value="auto">auto</option><option value="corrige">corrigé</option><option value="valide">validé</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="subcorpus" id="sub-b" hidden>
+        <div class="sub-title muted small">Sous-corpus B</div>
+        <div class="explo-controls">
+          <select id="b-album"><option value="">Tous les albums</option></select>
+          <select id="b-type">
+            <option value="">Tous les types</option>
+            <option value="bulle">bulle</option><option value="cartouche">cartouche</option>
+            <option value="texte">texte</option><option value="case">case</option>
+            <option value="personnage">personnage</option>
+          </select>
+          <select id="b-pos"><option value="">POS (toutes)</option></select>
+          <input type="text" id="b-morph" autocomplete="off" placeholder="filtre morpho">
+          <select id="b-prov">
+            <option value="">Provenance : toutes</option>
+            <option value="auto">auto</option><option value="corrige">corrigé</option><option value="valide">validé</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <div id="dist-info" class="muted small"></div>
     <div id="dist" class="dist"></div>
+    <div id="comparaison" class="comparaison" hidden></div>
   </main>
 </div>
 <script src="/static/exploration.js"></script>
