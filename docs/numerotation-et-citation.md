@@ -1,10 +1,11 @@
 # Numérotation éditoriale & citation des cases — spécification (chantier Citation)
 
 > Conception menée le 2026-06-15, en discussion de fond.
-> **Statut : Lots 0–2 implémentés le 2026-06-15.** Récit/paratexte + numéro éditorial
-> dérivé (lot 0), citation `pl·c` des cases et `pl·c·b` des bulles, repère global
-> `idx/total` (lots 1–2). Backlog exécutable d'un chantier « Citation » : **citer
-> précisément une case et une bulle à l'échelle d'une bande dessinée entière**.
+> **Statut : Lots 0–3 implémentés le 2026-06-15.** Récit/paratexte + numéro éditorial
+> dérivé (lot 0), citation `pl·c` des cases et `pl·c·b` des bulles + repère global
+> `idx/total` (lots 1–2), citation portée par tous les exports savants (lot 3).
+> Backlog exécutable d'un chantier « Citation » : **citer précisément une case et une
+> bulle à l'échelle d'une bande dessinée entière**.
 
 ## 1. Pourquoi
 
@@ -177,11 +178,13 @@ Toute base existante bascule en `recit` automatiquement (défaut de colonne).
 
 ## Lot 3 — Citation dans les exports savants
 
-> **Statut : spécifié, non implémenté** (relevé à la passe de revue du 2026-06-15).
-> Les exports sont l'artefact que le chercheur emporte pour citer ; ils doivent
-> porter le numéro ÉDITORIAL et la citation, pas l'ordre d'import. L'export CSV des
-> **résultats de recherche** est déjà traité (colonne `citation` + planche éditoriale,
-> avec le lot 1) ; restent les exports **par album** et la **concordance**.
+> Les exports sont l'artefact que le chercheur emporte pour citer ; ils doivent porter
+> le numéro ÉDITORIAL et la citation, pas l'ordre d'import.
+>
+> **✅ Implémenté le 2026-06-15.** CSV de recherche **et** d'album (colonne `citation`,
+> `planche` éditoriale), concordance (citation par ligne), JSON (`numero_editorial` +
+> `role` par planche, citation par région), TEI (`@n` éditorial sur `<surface>`,
+> `type="paratexte"`, `@n` citable « c2·b1 » sur les `<zone>`).
 
 - **T3.1 — Export CSV d'album** ([main.py](../main.py) `/api/export/csv`, ~L1406)
   - *But* : colonne `citation` (`pl·c(·b)`) + `planche` = numéro éditorial ;

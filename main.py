@@ -1131,6 +1131,9 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
            "ORDER BY a.id, p.numero, r.ordre, te.ordre LIMIT ?")
     params.append(limit)
     results = _rows(conn.execute(sql, params))
+    cits = citations_regions(conn, [r["region_id"] for r in results])
+    for r in results:
+        r["citation"] = cits.get(r["region_id"])   # chaque ligne KWIC se cite
     return {"count": len(results), "results": results}
 
 
@@ -1354,6 +1357,8 @@ def _region_tree(regions: list[dict], conn: sqlite3.Connection) -> list[dict]:
     for r in regions:
         by_parent.setdefault(r["parent_id"], []).append(r)
 
+    cits = citations_regions(conn, [r["id"] for r in regions])
+
     def build(parent_id):
         nodes = []
         for r in sorted(by_parent.get(parent_id, []),
@@ -1361,6 +1366,7 @@ def _region_tree(regions: list[dict], conn: sqlite3.Connection) -> list[dict]:
             ann = _annotation_for_region(conn, r["id"])
             nodes.append({
                 "id": r["id"], "type": r["type"],
+                "citation": cits.get(r["id"]),
                 "x": r["x"], "y": r["y"], "w": r["w"], "h": r["h"],
                 "ordre": r["ordre"], "source": r["source"],
                 "ocr_texte": r["ocr_texte"],
@@ -1381,7 +1387,9 @@ def _album_payload(conn: sqlite3.Connection, album_id: int) -> dict:
         raise HTTPException(404, f"Album {album_id} introuvable")
     planches = _rows(conn.execute(
         "SELECT * FROM planches WHERE album_id = ? ORDER BY numero", (album_id,)))
+    nums = numeros_editoriaux(conn, album_id)
     for p in planches:
+        p["numero_editorial"] = nums.get(p["id"])   # None si paratexte ; `role` déjà présent
         regions = _rows(conn.execute(
             "SELECT * FROM regions WHERE planche_id = ?", (p["id"],)))
         p["regions"] = _region_tree(regions, conn)
@@ -1426,8 +1434,15 @@ def export_csv(album_id: int, conn: sqlite3.Connection = Depends(db)):
            ORDER BY p.numero, r.parent_id IS NOT NULL, r.ordre, r.id""",
         (album_id,),
     ))
+    # `planche` = numéro ÉDITORIAL (cité) ; `citation` = repère « pl·c(·b) ». L'ordre
+    # d'import n'est pas exporté (clé interne). Cf. docs/numerotation-et-citation.md.
+    cits = citations_regions(conn, [r["region_id"] for r in rows])
+    for r in rows:
+        c = cits.get(r["region_id"]) or {}
+        r["planche"] = c["planche"] if c.get("planche") is not None else ""
+        r["citation"] = c.get("texte", "")
     buf = io.StringIO()
-    cols = ["album", "planche", "region_id", "type", "parent_id",
+    cols = ["album", "planche", "citation", "region_id", "type", "parent_id",
             "x", "y", "w", "h", "ordre", "source", "ocr_texte", "note", "tags"]
     writer = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
     writer.writeheader()
@@ -1491,12 +1506,17 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db)):
     facsimile = _tei_el(root, "facsimile")
     planches = _rows(conn.execute(
         "SELECT * FROM planches WHERE album_id = ? ORDER BY numero", (album_id,)))
+    nums = numeros_editoriaux(conn, album_id)
 
     for p in planches:
         surface = _tei_el(facsimile, "surface", ulx="0", uly="0",
                           lrx=p["largeur_px"], lry=p["hauteur_px"])
-        surface.set(f"{{{XML_NS}}}id", f"planche_{p['id']}")
-        surface.set("n", str(p["numero"]))
+        surface.set(f"{{{XML_NS}}}id", f"planche_{p['id']}")   # ancre technique stable
+        ed = nums.get(p["id"])
+        if ed is not None:                 # planche de récit → @n = numéro éditorial cité
+            surface.set("n", str(ed))
+        else:                              # paratexte (couverture, liminaire…) : hors numérotation
+            surface.set("type", "paratexte")
         if p["chemin_web"]:
             _tei_el(surface, "graphic", url="/" + p["chemin_web"])
 
@@ -1505,6 +1525,7 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db)):
         by_parent: dict = {}
         for r in regions:
             by_parent.setdefault(r["parent_id"], []).append(r)
+        zone_cits = citations_regions(conn, [r["id"] for r in regions])
 
         def add_zones(container, parent_id):
             for r in sorted(by_parent.get(parent_id, []),
@@ -1515,6 +1536,11 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db)):
                                lry=(r["y"] or 0) + (r["h"] or 0))
                 zone.set(f"{{{XML_NS}}}id", f"zone_{r['id']}")
                 zone.set("type", r["type"])
+                _c = zone_cits.get(r["id"]) or {}
+                if _c.get("bulle") is not None:        # zone citable : c2·b1
+                    zone.set("n", f"c{_c['case']}·b{_c['bulle']}")
+                elif _c.get("case") is not None:
+                    zone.set("n", f"c{_c['case']}")
                 if r["ocr_texte"]:
                     _tei_el(zone, "line").text = _xml_safe(r["ocr_texte"])
                 ann = _annotation_for_region(conn, r["id"])

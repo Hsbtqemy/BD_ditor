@@ -312,6 +312,51 @@ def test_export_tei_facsimile(client, planche, region):
     assert f'ulx="{region["x"]}"' in xml
 
 
+def test_export_csv_album_porte_la_citation(client, album, planche):
+    """Le CSV d'album cite le numéro ÉDITORIAL + la citation complète (Lot 3)."""
+    client.post(f"/api/planches/{planche['id']}/regions",
+                json={"type": "case", "x": 0, "y": 0, "w": 50, "h": 50})
+    txt = client.get("/api/export/csv", params={"album_id": album["id"]}).text
+    assert "album,planche,citation,region_id" in txt
+    assert "pl.1 · c1" in txt
+
+
+def test_export_csv_album_paratexte(client, album, planche):
+    """Une planche paratexte : colonne planche vide, citation « Paratexte »."""
+    client.post(f"/api/planches/{planche['id']}/regions",
+                json={"type": "case", "x": 0, "y": 0, "w": 50, "h": 50})
+    client.patch(f"/api/planches/{planche['id']}/role", json={"role": "paratexte"})
+    txt = client.get("/api/export/csv", params={"album_id": album["id"]}).text
+    assert "Paratexte" in txt
+
+
+def test_export_json_numero_editorial_et_citation(client, album, planche):
+    """Le JSON d'album porte numero_editorial + role par planche et la citation
+    par région (Lot 3)."""
+    client.post(f"/api/planches/{planche['id']}/regions",
+                json={"type": "case", "x": 0, "y": 0, "w": 50, "h": 50})
+    j = client.get("/api/export/json", params={"album_id": album["id"]}).json()
+    p0 = j["planches"][0]
+    assert p0["numero_editorial"] == 1 and p0["role"] == "recit"
+    assert p0["regions"][0]["citation"]["texte"] == "pl.1 · c1"
+
+
+def test_export_tei_numero_editorial_et_paratexte(client, album, png_bytes):
+    """TEI : @n = numéro éditorial sur les planches récit, marquage paratexte sur la
+    couverture, et @n citable sur les zones (Lot 3)."""
+    couv = client.post(f"/api/albums/{album['id']}/import",
+                       files={"file": ("p.png", png_bytes, "image/png")}).json()
+    p1 = client.post(f"/api/albums/{album['id']}/import",
+                     files={"file": ("p.png", png_bytes, "image/png")}).json()
+    client.patch(f"/api/planches/{couv['id']}/role", json={"role": "paratexte"})
+    client.post(f"/api/planches/{p1['id']}/regions",
+                json={"type": "case", "x": 0, "y": 0, "w": 50, "h": 50})
+    xml = client.get("/api/export/tei", params={"album_id": album["id"]}).text
+    assert 'type="paratexte"' in xml      # la couverture
+    assert 'n="1"' in xml                 # 1re planche récit
+    assert 'n="c1"' in xml                # zone citable (case 1)
+
+
 def test_export_album_inexistant_404(client):
     assert client.get("/api/export/json",
                       params={"album_id": 999}).status_code == 404
