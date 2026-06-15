@@ -187,8 +187,9 @@ Toute base existante bascule en `recit` automatiquement (défaut de colonne).
 > `type="paratexte"`, `@n` citable « c2·b1 » sur les `<zone>`).
 
 - **T3.1 — Export CSV d'album** ([main.py](../main.py) `/api/export/csv`, ~L1406)
-  - *But* : colonne `citation` (`pl·c(·b)`) + `planche` = numéro éditorial ;
-    paratexte explicite.
+  - *But* : colonne `citation` (`pl·c(·b)`) + `planche` = numéro éditorial (vide pour
+    le paratexte) + `ordre_import` = page PHYSIQUE (garde le paratexte groupable —
+    deux rôles distincts, cf. D1).
 - **T3.2 — Export concordance par token** ([main.py](../main.py), ~L1116)
   - *But* : idem, pour les lignes KWIC (chacune cite sa région).
 - **T3.3 — Export JSON d'album** ([main.py](../main.py) `/api/export/json`)

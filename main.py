@@ -1419,7 +1419,7 @@ def export_csv(album_id: int, conn: sqlite3.Connection = Depends(db)):
     if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
         raise HTTPException(404, f"Album {album_id} introuvable")
     rows = _rows(conn.execute(
-        """SELECT a.titre AS album, p.numero AS planche, r.id AS region_id,
+        """SELECT a.titre AS album, p.numero AS ordre_import, r.id AS region_id,
                   r.type, r.parent_id, r.x, r.y, r.w, r.h, r.ordre, r.source,
                   r.ocr_texte,
                   an.note,
@@ -1434,16 +1434,18 @@ def export_csv(album_id: int, conn: sqlite3.Connection = Depends(db)):
            ORDER BY p.numero, r.parent_id IS NOT NULL, r.ordre, r.id""",
         (album_id,),
     ))
-    # `planche` = numéro ÉDITORIAL (cité) ; `citation` = repère « pl·c(·b) ». L'ordre
-    # d'import n'est pas exporté (clé interne). Cf. docs/numerotation-et-citation.md.
+    # Deux rôles distincts : `ordre_import` = page PHYSIQUE (position d'import, garde
+    # le paratexte groupable) ; `planche` = numéro ÉDITORIAL cité (vide pour le
+    # paratexte) ; `citation` = repère « pl·c(·b) ». Cf. docs/numerotation-et-citation.md.
     cits = citations_regions(conn, [r["region_id"] for r in rows])
     for r in rows:
         c = cits.get(r["region_id"]) or {}
         r["planche"] = c["planche"] if c.get("planche") is not None else ""
         r["citation"] = c.get("texte", "")
     buf = io.StringIO()
-    cols = ["album", "planche", "citation", "region_id", "type", "parent_id",
-            "x", "y", "w", "h", "ordre", "source", "ocr_texte", "note", "tags"]
+    cols = ["album", "ordre_import", "planche", "citation", "region_id", "type",
+            "parent_id", "x", "y", "w", "h", "ordre", "source", "ocr_texte",
+            "note", "tags"]
     writer = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)

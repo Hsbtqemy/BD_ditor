@@ -1,4 +1,5 @@
 """Routes API : albums, planches, régions, annotations, tags, recherche, export."""
+import csv
 import io
 import sqlite3
 import xml.etree.ElementTree as ET
@@ -318,17 +319,21 @@ def test_export_csv_album_porte_la_citation(client, album, planche):
     client.post(f"/api/planches/{planche['id']}/regions",
                 json={"type": "case", "x": 0, "y": 0, "w": 50, "h": 50})
     txt = client.get("/api/export/csv", params={"album_id": album["id"]}).text
-    assert "album,planche,citation,region_id" in txt
+    assert "album,ordre_import,planche,citation,region_id" in txt
     assert "pl.1 · c1" in txt
 
 
 def test_export_csv_album_paratexte(client, album, planche):
-    """Une planche paratexte : colonne planche vide, citation « Paratexte »."""
+    """Une planche paratexte garde sa PAGE PHYSIQUE (ordre_import) mais n'a pas de
+    numéro éditorial ; sa citation est « Paratexte »."""
     client.post(f"/api/planches/{planche['id']}/regions",
                 json={"type": "case", "x": 0, "y": 0, "w": 50, "h": 50})
     client.patch(f"/api/planches/{planche['id']}/role", json={"role": "paratexte"})
     txt = client.get("/api/export/csv", params={"album_id": album["id"]}).text
-    assert "Paratexte" in txt
+    row = list(csv.DictReader(io.StringIO(txt.lstrip("﻿"))))[0]
+    assert row["ordre_import"] == "1"     # page physique conservée (groupable)
+    assert row["planche"] == ""           # hors numérotation éditoriale
+    assert row["citation"] == "Paratexte"
 
 
 def test_export_json_numero_editorial_et_citation(client, album, planche):
