@@ -22,13 +22,9 @@ const SVGNS = "http://www.w3.org/2000/svg";
 // URL de départ captée AVANT tout chargement (le chargement met l'URL à jour via
 // syncUrl → on ne pourrait plus relire le deep-link d'origine ensuite).
 const INITIAL_QS = location.search;
-// D'où l'on vient (drill Recherche/Exploration) : conservé tout au long de la
-// session pour alimenter le bouton « ← Retour » (cf. setupBack, syncUrl).
-// `retour` ne doit viser qu'une page INTERNE (chemin relatif) : on rejette les URL
-// absolues, protocol-relative (//) et schémas dangereux (javascript:) → pas
-// d'open-redirect ni d'XSS via le href du bouton.
-const safeRetour = (v) => (typeof v === "string" && /^\/(?![/\\])/.test(v)) ? v : null;
-const RETOUR = safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));
+// D'où l'on vient (drill Recherche/Exploration), validé (page interne seulement,
+// cf. static/lib/nav.js) : conservé toute la session pour le bouton « ← Retour ».
+const RETOUR = Nav.safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));
 
 /* ---------------- État global ---------------- */
 const state = {
