@@ -870,6 +870,7 @@ def _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, l
     base = (
         "SELECT r.id AS region_id, r.type, r.x, r.y, r.w, r.h, r.ocr_texte, "
         "       p.id AS planche_id, p.numero AS planche_numero, "
+        "       p.chemin_web, p.largeur_px, p.hauteur_px, "       # pour l'aperçu en place
         "       a.id AS album_id, a.titre AS album_titre, "
         "       an.note AS note "
         "FROM regions r "
@@ -950,6 +951,7 @@ def _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, l
                WHERE an.region_id = ? ORDER BY tg.label""",
             (row["region_id"],),
         ))]
+        row["url_web"] = "/" + row["chemin_web"] if row["chemin_web"] else None
     return results
 
 

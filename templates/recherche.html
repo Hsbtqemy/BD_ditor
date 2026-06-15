@@ -65,7 +65,22 @@
       <button id="btn-export" class="ghost small" disabled
               title="Exporter le jeu de résultats trouvé (CSV)">⤓ Export CSV</button>
     </div>
-    <div id="results" class="results"></div>
+    <div id="results-pane">
+      <div id="results" class="results"></div>
+      <aside id="preview" class="preview" hidden>
+        <div class="preview-head">
+          <span id="preview-title" class="preview-title"></span>
+          <a id="preview-edit" class="ghost small" title="Ouvrir dans la visionneuse pour éditer">✏️ Visionneuse</a>
+          <button id="preview-close" class="ghost small" title="Fermer l'aperçu">✕</button>
+        </div>
+        <div id="preview-stage" class="preview-stage">
+          <img id="preview-img" alt="" draggable="false">
+          <svg id="preview-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <div id="preview-text" class="preview-text"></div>
+        <div id="preview-meta" class="muted small"></div>
+      </aside>
+    </div>
   </main>
 </div>
 <script src="/static/recherche.js"></script>

@@ -155,6 +155,28 @@ function exportCsv() {
   window.location = "/api/recherche/export.csv?" + p.toString();
 }
 
+/* Aperçu en place : la planche avec la région surlignée, SANS quitter la recherche.
+   Le retour aux résultats se fait par le bouton Précédent (la recherche est dans l'URL). */
+function openPreview(r) {
+  $("#preview-title").textContent = `${r.album_titre} · planche ${r.planche_numero} · ${r.type}`;
+  $("#preview-edit").href = `/?album=${r.album_id}&planche=${r.planche_id}&region=${r.region_id}`;
+  const img = $("#preview-img"), svg = $("#preview-overlay");
+  img.src = r.url_web || "";
+  svg.setAttribute("viewBox", `0 0 ${r.largeur_px || 0} ${r.hauteur_px || 0}`);
+  svg.innerHTML = (r.w && r.h)
+    ? `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" class="pv-rect"/>` : "";
+  $("#preview-text").innerHTML = (r.ocr_texte || "").trim()
+    ? escapeHtml(r.ocr_texte) : '<span class="muted">(sans texte)</span>';
+  const tags = (r.tags || []).map((t) => `<span class="r-tag">${escapeHtml(t)}</span>`).join("");
+  $("#preview-meta").innerHTML = (r.note ? "📝 " + escapeHtml(r.note) + "<br>" : "") + tags;
+  $("#preview").hidden = false;
+}
+
+function closePreview() {
+  $("#preview").hidden = true;
+  document.querySelectorAll(".result.active").forEach((el) => el.classList.remove("active"));
+}
+
 function renderResults(res, q) {
   $("#result-count").textContent =
     `${res.count} résultat${res.count > 1 ? "s" : ""}` + (res.count >= 200 ? " (limité)" : "");
@@ -166,10 +188,9 @@ function renderResults(res, q) {
     return;
   }
   for (const r of res.results) {
-    const card = document.createElement("a");
+    const card = document.createElement("div");
     card.className = "result";
-    card.href = `/?album=${r.album_id}&planche=${r.planche_id}&region=${r.region_id}`;
-    card.title = "Ouvrir dans la visionneuse";
+    card.title = "Aperçu en place (clic) — ✏️ pour éditer dans la visionneuse";
 
     const texte = (r.ocr_texte || "").trim();
     const noteHtml = r.note
@@ -189,6 +210,11 @@ function renderResults(res, q) {
       `</div>`;
     // une vignette illisible (crop indisponible) est simplement masquée
     card.querySelector(".r-thumb").onerror = (e) => { e.target.style.display = "none"; };
+    card.onclick = () => {
+      box.querySelectorAll(".result.active").forEach((el) => el.classList.remove("active"));
+      card.classList.add("active");
+      openPreview(r);
+    };
     box.appendChild(card);
   }
 }
@@ -222,6 +248,7 @@ async function setup() {
   $("#f-morph").addEventListener("input", deb);
   ["#f-album", "#f-type", "#f-pos", "#f-prov"].forEach((s) => { $(s).onchange = search; });
   $("#btn-export").onclick = exportCsv;   // export du jeu de résultats courant (CSV)
+  $("#preview-close").onclick = closePreview;
   loadCorpus();
   loadTags();
   await loadAlbums();        // options d'album AVANT de restaurer la sélection d'album
