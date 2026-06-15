@@ -56,6 +56,13 @@ fonction `setupBack()` : si `retour` (depuis `INITIAL_QS`) existe → bouton
 de l'app → `history.back()` ; sinon le bouton reste masqué. Garder les trois
 copies synchrones.
 
+**Invariant 3 bis — `retour` toujours validé (`safeRetour`).** Le paramètre vient
+de l'URL (attaquable) et finit dans un `href` ; il **doit** être un chemin INTERNE
+relatif. `safeRetour()` rejette tout ce qui ne commence pas par `/` suivi d'autre
+chose que `/` ou `\` → bloque les URL absolues, protocol-relative (`//evil`) et les
+schémas `javascript:`/`data:` (pas d'open-redirect ni d'XSS). Appliqué à la capture
+de `RETOUR` sur les trois surfaces.
+
 ## 4. Anti-course (chargements asynchrones concurrents)
 
 Chaque surface garde un **jeton de fraîcheur** incrémenté à chaque action ; une

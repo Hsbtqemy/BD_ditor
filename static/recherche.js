@@ -15,7 +15,11 @@ const state = {
 };
 
 const INITIAL_QS = location.search;   // état de départ (avant que search() ne réécrive l'URL)
-const RETOUR = new URLSearchParams(INITIAL_QS).get("retour");   // d'où l'on vient (drill Exploration)
+// `retour` ne doit viser qu'une page INTERNE (chemin relatif) : on rejette les URL
+// absolues, protocol-relative (//) et schémas dangereux (javascript:) → pas
+// d'open-redirect ni d'XSS via le href du bouton « ← Retour ».
+const safeRetour = (v) => (typeof v === "string" && /^\/(?![/\\])/.test(v)) ? v : null;
+const RETOUR = safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));   // d'où l'on vient (drill Exploration)
 const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
               "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X"];
 

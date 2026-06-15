@@ -24,7 +24,11 @@ const SVGNS = "http://www.w3.org/2000/svg";
 const INITIAL_QS = location.search;
 // D'où l'on vient (drill Recherche/Exploration) : conservé tout au long de la
 // session pour alimenter le bouton « ← Retour » (cf. setupBack, syncUrl).
-const RETOUR = new URLSearchParams(INITIAL_QS).get("retour");
+// `retour` ne doit viser qu'une page INTERNE (chemin relatif) : on rejette les URL
+// absolues, protocol-relative (//) et schémas dangereux (javascript:) → pas
+// d'open-redirect ni d'XSS via le href du bouton.
+const safeRetour = (v) => (typeof v === "string" && /^\/(?![/\\])/.test(v)) ? v : null;
+const RETOUR = safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));
 
 /* ---------------- État global ---------------- */
 const state = {

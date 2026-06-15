@@ -9,7 +9,10 @@
 
 const $ = (s) => document.querySelector(s);
 const INITIAL_QS = location.search;
-const RETOUR = new URLSearchParams(INITIAL_QS).get("retour");   // d'où l'on vient (si inbound)
+// `retour` ne doit viser qu'une page INTERNE (chemin relatif) : rejette absolu /
+// protocol-relative (//) / schémas dangereux (javascript:) → pas d'open-redirect ni XSS.
+const safeRetour = (v) => (typeof v === "string" && /^\/(?![/\\])/.test(v)) ? v : null;
+const RETOUR = safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));   // d'où l'on vient (si inbound)
 const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
               "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X"];
 const state = { timer: null, gen: 0 };
