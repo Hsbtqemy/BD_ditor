@@ -179,6 +179,10 @@ def test_visionneuse_menu_import_export(page, live_server):
     expect(menu.locator('[role="group"][aria-label="Exporter"]')).to_contain_text("TEI")
     # placeholder « à venir » : présent mais désactivé (non cliquable)
     expect(menu.locator('button:has-text("Importer un PDF")')).to_be_disabled()
+    # le bouton ShareDocs DÉPLACÉ reste fonctionnel : un clic ouvre bien la modale
+    # (la modale s'affiche avant tout fetch → robuste sans config ShareDocs).
+    menu.locator("#btn-sharedocs").click()
+    expect(page.locator("#sharedocs")).to_be_visible()
 
 
 # --------------------------------------------------------------------------- #
