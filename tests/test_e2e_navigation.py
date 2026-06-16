@@ -185,6 +185,19 @@ def test_visionneuse_menu_import_export(page, live_server):
     expect(page.locator("#sharedocs")).to_be_visible()
 
 
+def test_un_seul_menu_ouvert_a_la_fois(page, seeded):
+    """Coordination inter-systèmes (événement bd:menu-open) : ouvrir le menu
+    « Affichage » (theme.js, bande 1) ferme le dropdown ouvert du visualiseur
+    (bande 2) — un seul menu ouvert, toutes barres confondues. Le code est symétrique
+    (ouvrir un dropdown ferme aussi « Affichage »)."""
+    page.goto(_viewer_url(seeded))
+    page.locator("#btn-donnees").click()                        # Import/Export ouvert
+    expect(page.locator("#donnees-menu")).to_be_visible()
+    page.locator(".btn-theme").click()                          # ouvrir « Affichage »…
+    expect(page.locator(".display-panel")).to_be_visible()
+    expect(page.locator("#donnees-menu")).not_to_be_visible()   # …ferme Import/Export
+
+
 def _recouvert_par(page, selector, by_selector):
     """Vrai si le centre de l'élément est RECOUVERT par un élément correspondant à
     `by_selector` (≠ lui-même et ≠ un de ses descendants) — quel que soit le

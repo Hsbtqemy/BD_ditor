@@ -110,9 +110,17 @@
     wrap.appendChild(panel);
 
     function open(o) { panel.hidden = !o; btn.setAttribute("aria-expanded", String(o)); }
-    btn.addEventListener("click", function (e) { e.stopPropagation(); open(panel.hidden); });
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var willOpen = panel.hidden;
+      // Signale l'ouverture aux autres systèmes de menus (dropdowns du visualiseur)
+      // → un seul menu ouvert à la fois, toutes barres confondues.
+      if (willOpen) document.dispatchEvent(new CustomEvent("bd:menu-open", { detail: "display" }));
+      open(willOpen);
+    });
     panel.addEventListener("click", function (e) { e.stopPropagation(); });
     document.addEventListener("click", function () { open(false); });
+    document.addEventListener("bd:menu-open", function (e) { if (e.detail !== "display") open(false); });
     // Échap ferme ET rend le focus au déclencheur (sinon il se perd, le panneau passant
     // en display:none) — important pour la navigation clavier.
     document.addEventListener("keydown", function (e) {

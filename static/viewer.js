@@ -1576,12 +1576,17 @@ function setupMenus() {
       e.stopPropagation();
       const willOpen = !menu.classList.contains("open");
       closeAll();
+      if (willOpen) document.dispatchEvent(new CustomEvent("bd:menu-open", { detail: "dropdown" }));
       menu.classList.toggle("open", willOpen);
       btn.setAttribute("aria-expanded", String(willOpen));
     };
   });
   document.addEventListener("click", closeAll);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAll(); });
+  // Coordination inter-systèmes : un AUTRE menu s'ouvre (ex. « Affichage » de
+  // theme.js) → on ferme les dropdowns (un seul menu ouvert à la fois, toutes barres
+  // confondues). Chaque système ignore son propre signal (detail).
+  document.addEventListener("bd:menu-open", (e) => { if (e.detail !== "dropdown") closeAll(); });
 
   document.querySelectorAll("[data-fmt]").forEach((a) => {
     a.onclick = () => {
