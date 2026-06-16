@@ -30,7 +30,7 @@ async function loadCorpus() {
     const c = await apiGet("/api/corpus");
     $("#corpus-stats").innerHTML = [
       ["albums", "albums"], ["planches", "planches"], ["regions", "régions"],
-      ["transcrites", "transcrites"],
+      ["transcrites", "transcrites"], ["annotees", "annotées"], ["tags", "tags"],
     ].map(([k, lbl]) => `<span class="stat"><b>${c[k]}</b> ${lbl}</span>`).join("");
   } catch (e) { /* non bloquant */ }
 }

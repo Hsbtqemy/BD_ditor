@@ -210,3 +210,17 @@ def test_menu_affichage_ferme_par_defaut(page, live_server):
     expect(panel).to_be_visible()
     page.locator(".btn-theme").click()
     expect(panel).to_be_hidden()
+
+
+@pytest.mark.parametrize("path", ["/", "/corpus", "/recherche", "/exploration"])
+def test_deux_bandes_navigation_au_dessus_des_outils(page, live_server, path):
+    """Structure en deux bandes : la bande 1 (#site-nav, navigation) est tout en haut
+    et identique partout (4 surfaces) ; la bande 2 (#header, outils de page) est juste
+    en dessous, sans chevauchement. Garantit la séparation navigation / outils."""
+    page.goto(f"{live_server}{path}")
+    nav = page.locator("#site-nav")
+    expect(nav).to_be_visible(timeout=15000)
+    expect(page.locator("#site-nav .surf-nav a.surf-link")).to_have_count(4)
+    nb, hb = nav.bounding_box(), page.locator("#header").bounding_box()
+    assert nb["y"] == 0                                 # nav tout en haut
+    assert hb["y"] >= nb["y"] + nb["height"] - 1        # outils dessous, pas de chevauchement

@@ -48,6 +48,18 @@ function toast(msg, kind = "") {
   box.appendChild(el); setTimeout(() => el.remove(), 4000);
 }
 
+/* Stats de corpus en bande 2 (mêmes chips que Recherche / Exploration — source
+   /api/corpus). Aperçu non bloquant. */
+async function loadCorpus() {
+  try {
+    const c = await apiGet("/api/corpus");
+    $("#corpus-stats").innerHTML = [
+      ["albums", "albums"], ["planches", "planches"], ["regions", "régions"],
+      ["transcrites", "transcrites"], ["annotees", "annotées"], ["tags", "tags"],
+    ].map(([k, lbl]) => `<span class="stat"><b>${c[k]}</b> ${lbl}</span>`).join("");
+  } catch (e) { /* non bloquant */ }
+}
+
 /* ---------------- Albums ---------------- */
 async function loadAlbums() {
   state.albums = await apiGet("/api/albums");
@@ -447,6 +459,7 @@ function setup() {
   });
   PASSES.forEach((p) => { $("#pass-" + p).onchange = updateSelInfo; });
   $("#btn-run").onclick = runBatch;
+  loadCorpus();   // stats d'en-tête (bande 2)
   loadAlbums();
   pollJobs();     // reprend l'affichage d'un éventuel job déjà en cours
 }

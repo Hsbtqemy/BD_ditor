@@ -11,9 +11,17 @@
 <body>
 <div id="app">
 
-  <!-- ───────────────── Header ───────────────── -->
+  <!-- ───────────── Bande 1 — Navigation du site (identique partout) ───────────── -->
+  <div id="site-nav">
+    <span class="brand">BD&nbsp;Annotator</span>
+    <nav class="surf-nav"></nav><!-- liens injectés par theme.js (source unique) -->
+    <span class="nav-spacer"></span>
+    <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
+    <button class="ghost btn-theme" title="Changer de thème">🌙</button>
+  </div>
+
+  <!-- ───────────── Bande 2 — Outils de la page ───────────── -->
   <header id="header">
-    <div class="brand">BD&nbsp;Annotator</div>
     <div id="planche-info" class="planche-info">—</div>
     <div class="modes" role="group" aria-label="Modes">
       <button class="mode-btn" data-mode="navigation" title="Navigation (N)">
@@ -30,8 +38,6 @@
       </button>
     </div>
     <div class="header-actions">
-      <nav class="surf-nav"></nav><!-- nav transverse unifiée, injectée par theme.js -->
-      <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
       <div class="dropdown">
         <button class="ghost" id="btn-traitement" title="Traitements automatiques sur l'album">⚙ Traitement ▾</button>
         <div class="dropdown-menu" id="traitement-menu">
@@ -50,7 +56,6 @@
           <button data-fmt="tei">Export TEI P5</button>
         </div>
       </div>
-      <button class="ghost btn-theme" title="Changer de thème">🌙</button>
     </div>
   </header>
 

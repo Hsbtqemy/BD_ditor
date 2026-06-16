@@ -11,15 +11,18 @@
 <body>
 <div id="search-app">
 
-  <!-- ───────────────── Header ───────────────── -->
+  <!-- ───────────── Bande 1 — Navigation du site (identique partout) ───────────── -->
+  <div id="site-nav">
+    <span class="brand">BD&nbsp;Annotator</span>
+    <nav class="surf-nav"></nav><!-- liens injectés par theme.js (source unique) -->
+    <span class="nav-spacer"></span>
+    <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
+    <button class="ghost btn-theme" title="Changer de thème">🌙</button>
+  </div>
+
+  <!-- ───────────── Bande 2 — Outils de la page ───────────── -->
   <header id="header">
-    <div class="brand">BD&nbsp;Annotator <span class="muted">· Recherche</span></div>
     <div id="corpus-stats" class="corpus-stats"></div>
-    <div class="header-actions">
-      <nav class="surf-nav"></nav><!-- nav transverse unifiée, injectée par theme.js -->
-      <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
-      <button class="ghost btn-theme" title="Changer de thème">🌙</button>
-    </div>
   </header>
 
   <!-- ───────────────── Corps ───────────────── -->

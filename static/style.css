@@ -38,7 +38,8 @@
   color-scheme: dark;
   accent-color: var(--accent-blue);
 
-  --header-h: 48px;
+  --nav-h: 34px;      /* bande 1 : navigation du site (identique partout) */
+  --header-h: 48px;   /* bande 2 : barre d'outils propre à la page */
   --status-h: 26px;
   --sidebar-w: 240px;
   --panel-w: 300px;
@@ -164,7 +165,7 @@ kbd {
 /* ---------- Layout principal ---------- */
 #app {
   display: grid;
-  grid-template-rows: var(--header-h) 1fr var(--status-h);
+  grid-template-rows: var(--nav-h) var(--header-h) 1fr var(--status-h);
   height: 100vh;
 }
 #body {
@@ -173,9 +174,21 @@ kbd {
   min-height: 0;
 }
 
-/* ---------- Header ---------- */
+/* ---------- Bande 1 — Navigation du site (identique sur les 4 surfaces) ---------- */
+#site-nav {
+  flex: 0 0 auto;                       /* coquilles flex-colonne : ne pas écraser */
+  display: flex; align-items: center; gap: 16px;
+  height: var(--nav-h); padding: 0 14px;
+  background: var(--bg-input);          /* légèrement distincte de la bande 2 */
+  border-bottom: 1px solid var(--border);
+}
+#site-nav .brand { flex: 0 0 auto; }
+#site-nav .nav-spacer { flex: 1; }      /* pousse Retour + Aa à droite, quoi qu'il arrive */
+
+/* ---------- Bande 2 — Barre d'outils de la page ---------- */
 #header {
   display: flex; align-items: center; gap: 16px;
+  min-height: var(--header-h);   /* hauteur identique sur les 4 surfaces (Exploration n'avait pas d'override) */
   padding: 0 14px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
@@ -650,7 +663,7 @@ h3.collapsible:hover { color: var(--text); }
 
 /* ---------- Mode Transcription (plein écran, Disposition C) ---------- */
 #transcription {
-  position: absolute; top: var(--header-h); left: 0; right: 0; bottom: var(--status-h);
+  position: absolute; top: calc(var(--nav-h) + var(--header-h)); left: 0; right: 0; bottom: var(--status-h);
   z-index: 50; display: flex; background: var(--bg-deep);
 }
 #transcription[hidden] { display: none; }
@@ -663,7 +676,7 @@ h3.collapsible:hover { color: var(--text); }
 #tr-mini { position: relative; max-width: 100%; }
 #tr-mini img {
   display: block; max-width: 100%;
-  max-height: calc(100vh - var(--header-h) - var(--status-h) - 40px);
+  max-height: calc(100vh - var(--nav-h) - var(--header-h) - var(--status-h) - 40px);
   border: 1px solid var(--border); border-radius: 4px;
 }
 #tr-mini svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
@@ -794,7 +807,7 @@ h3.collapsible:hover { color: var(--text); }
 /* =================================================================== */
 #search-app { display: flex; flex-direction: column; height: 100%; }
 #search-app #header { min-height: var(--header-h); flex: 0 0 auto; }
-#header .corpus-stats { flex: 1; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+#header .corpus-stats { flex: 1; display: flex; gap: 14px; justify-content: flex-start; flex-wrap: wrap; }
 .corpus-stats .stat { color: var(--text-muted); font-size: 13px; white-space: nowrap; }
 .corpus-stats .stat b { color: var(--text); }
 
