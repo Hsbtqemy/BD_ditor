@@ -1513,10 +1513,15 @@ async function lancerOCR() {
 }
 
 function setupImport() {
-  $("#btn-import").onclick = () => {
+  // Deux déclencheurs (sidebar : accès rapide ; menu Import/Export : découvrable) →
+  // même action : ouvrir le sélecteur de fichier sur l'album courant.
+  const trigger = () => {
     if (!state.albumId) { toast("Créez d'abord un album", "error"); return; }
     $("#file-input").click();
   };
+  $("#btn-import").onclick = trigger;
+  const menuBtn = $("#btn-import-menu");
+  if (menuBtn) menuBtn.onclick = trigger;
   $("#file-input").onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;

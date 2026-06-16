@@ -254,6 +254,13 @@ button { font-family: inherit; }
 }
 .dropdown-menu a:hover,
 .dropdown-menu button:hover { background: var(--bg-input); }
+/* Intitulés de section (Importer / Exporter) + séparateur dans un menu déroulant. */
+.dropdown-head {
+  padding: 7px 12px 2px; font-size: .7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-muted); user-select: none;
+}
+.dropdown-sep { height: 1px; margin: 5px 8px; background: var(--border); }
 
 /* Navigation transverse unifiée — deux registres (Atelier ‖ Analyse), injectée par
    theme.js dans .surf-nav. La surface courante est mise en avant (+ aria-current). */

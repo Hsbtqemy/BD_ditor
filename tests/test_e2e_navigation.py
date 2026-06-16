@@ -162,6 +162,23 @@ def test_recherche_resultat_apercu_et_lien_edition(page, seeded_ocr):
     assert f"region={s['region']}" in href and "retour=" in href
 
 
+def test_visionneuse_menu_import_export(page, live_server):
+    """En-tête de la Visionneuse : ShareDocs n'est plus dans « Traitement » (réservé
+    aux 3 passes ML) ; il est sous « Import / Export », section Importer, à côté de
+    l'import d'images et des exports."""
+    page.goto(f"{live_server}/")
+    expect(page.locator("#traitement-menu")).not_to_contain_text("ShareDocs")
+    page.locator("#btn-donnees").click()                  # ouvrir « Import / Export »
+    menu = page.locator("#donnees-menu")
+    expect(menu).to_be_visible()
+    expect(menu).to_contain_text("Importer")
+    expect(menu).to_contain_text("ShareDocs")
+    expect(menu).to_contain_text("Importer des images")
+    expect(menu).to_contain_text("Exporter")
+    expect(menu).to_contain_text("Sauvegarde")
+    expect(menu).to_contain_text("TEI")
+
+
 # --------------------------------------------------------------------------- #
 # Navigation transverse unifiée + menus de la Visionneuse (theme.js)
 # --------------------------------------------------------------------------- #
