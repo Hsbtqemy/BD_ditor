@@ -144,7 +144,7 @@ def seeded_ocr(live_server):
                            "parent_id": cid, "ocr_texte": "BONJOURXYZ"}).json()["id"]
     finally:
         c.close()
-    return {"base": live_server, "album": aid, "region": bid}
+    return {"base": live_server, "album": aid, "planche": pid, "region": bid}
 
 
 def test_recherche_resultat_apercu_et_lien_edition(page, seeded_ocr):
@@ -183,6 +183,35 @@ def test_visionneuse_menu_import_export(page, live_server):
     # (la modale s'affiche avant tout fetch → robuste sans config ShareDocs).
     menu.locator("#btn-sharedocs").click()
     expect(page.locator("#sharedocs")).to_be_visible()
+
+
+def _couvert_par_transcription(page, selector):
+    """Vrai si le centre de l'élément est RECOUVERT par le panneau #transcription
+    (le bug : le menu peint sous l'overlay plein écran)."""
+    return page.evaluate(
+        """(sel) => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+            return !!(top && top.closest('#transcription'));
+        }""", selector)
+
+
+def test_menus_au_dessus_du_panneau_transcription(page, seeded_ocr):
+    """En mode transcription, le panneau plein écran (#transcription) ne doit PAS
+    masquer les menus de l'en-tête : leurs items restent peints AU-DESSUS de
+    l'overlay (sinon ils sont inaccessibles)."""
+    s = seeded_ocr
+    page.goto(f"{s['base']}/?album={s['album']}&planche={s['planche']}")
+    page.locator('[data-mode="transcription"]').click()
+    expect(page.locator("#transcription")).to_be_visible()
+    # Menu bande 2 « Import / Export » : son item n'est pas masqué par l'overlay.
+    page.locator("#btn-donnees").click()
+    assert _couvert_par_transcription(page, "#btn-backup") is False
+    # Menu « Affichage » (bande 1) : idem.
+    page.locator(".btn-theme").click()
+    assert _couvert_par_transcription(page, ".display-panel button") is False
 
 
 # --------------------------------------------------------------------------- #

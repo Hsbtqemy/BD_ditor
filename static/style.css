@@ -185,6 +185,11 @@ kbd {
 #site-nav .brand { flex: 0 0 auto; }
 #site-nav .nav-spacer { flex: 1; }      /* pousse Retour + Aa à droite, quoi qu'il arrive */
 
+/* Les deux bandes d'en-tête restent AU-DESSUS de l'overlay plein écran (#transcription,
+   z-index 50) : leurs menus déroulants s'ouvrent vers le bas DANS la zone du corps et
+   doivent rester cliquables. position:relative active le z-index sur ces items de grille. */
+#site-nav, #header { position: relative; z-index: 60; }
+
 /* ---------- Bande 2 — Barre d'outils de la page ---------- */
 #header {
   display: flex; align-items: center; gap: 16px;
