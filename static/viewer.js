@@ -1043,6 +1043,10 @@ function renderTranscription() {
   const cropImg = $("#tr-crop");
   if (r) cropImg.src = `/api/regions/${r.id}/crop?b=${r.x}-${r.y}-${r.w}-${r.h}`;
   else cropImg.removeAttribute("src");
+  // Sans région : MASQUER l'<img> (sinon Chrome affiche l'icône d'image cassée
+  // + son cadre pointillé → impression de cadre « dédoublé ») et montrer un message.
+  cropImg.hidden = !r;
+  $("#tr-empty").hidden = !!r;
 
   // éditeur
   const ta = $("#tr-text");

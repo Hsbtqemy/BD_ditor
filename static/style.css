@@ -724,6 +724,8 @@ h3.collapsible:hover { color: var(--text); }
 }
 #tr-crop { width: 100%; height: 100%; object-fit: contain;
            background: var(--media-bg); border-radius: 2px; }
+#tr-crop[hidden] { display: none; }
+.tr-empty { margin: 0; padding: 24px; text-align: center; }
 
 #tr-text {
   background: var(--bg-input); color: var(--text); border: 1px solid var(--border);

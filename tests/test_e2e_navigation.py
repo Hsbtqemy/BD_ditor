@@ -198,6 +198,18 @@ def _couvert_par_transcription(page, selector):
         }""", selector)
 
 
+def test_transcription_planche_sans_texte(page, seeded):
+    """Planche sans région de texte : pas d'image cassée (le cadre « dédoublé » venait
+    de l'icône d'image cassée), mais un message propre — #tr-crop masqué, #tr-empty
+    visible."""
+    page.goto(_viewer_url(seeded))
+    page.locator('[data-mode="transcription"]').click()
+    expect(page.locator("#transcription")).to_be_visible()
+    expect(page.locator("#tr-progress")).to_have_text("Aucune région de texte")
+    expect(page.locator("#tr-crop")).to_be_hidden()
+    expect(page.locator("#tr-empty")).to_be_visible()
+
+
 def test_menus_au_dessus_du_panneau_transcription(page, seeded_ocr):
     """En mode transcription, le panneau plein écran (#transcription) ne doit PAS
     masquer les menus de l'en-tête : leurs items restent peints AU-DESSUS de
