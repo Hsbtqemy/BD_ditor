@@ -177,6 +177,8 @@ def test_visionneuse_menu_import_export(page, live_server):
     # ShareDocs sous « Importer », TEI sous « Exporter ».
     expect(menu.locator('[role="group"][aria-label="Importer"]')).to_contain_text("ShareDocs")
     expect(menu.locator('[role="group"][aria-label="Exporter"]')).to_contain_text("TEI")
+    # placeholder « à venir » : présent mais désactivé (non cliquable)
+    expect(menu.locator('button:has-text("Importer un PDF")')).to_be_disabled()
 
 
 # --------------------------------------------------------------------------- #

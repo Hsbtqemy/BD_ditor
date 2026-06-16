@@ -261,6 +261,9 @@ button { font-family: inherit; }
   color: var(--text-muted); user-select: none;
 }
 .dropdown-sep { height: 1px; margin: 5px 8px; background: var(--border); }
+/* Entrée de menu à venir (désactivée) : grisée, non cliquable, pas de survol. */
+.dropdown-menu button:disabled { color: var(--text-muted); cursor: default; opacity: .55; }
+.dropdown-menu button:disabled:hover { background: transparent; }
 
 /* Navigation transverse unifiée — deux registres (Atelier ‖ Analyse), injectée par
    theme.js dans .surf-nav. La surface courante est mise en avant (+ aria-current). */
