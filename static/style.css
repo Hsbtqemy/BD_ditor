@@ -187,8 +187,11 @@ kbd {
 
 /* Les deux bandes d'en-tête restent AU-DESSUS de l'overlay plein écran (#transcription,
    z-index 50) : leurs menus déroulants s'ouvrent vers le bas DANS la zone du corps et
-   doivent rester cliquables. position:relative active le z-index sur ces items de grille. */
-#site-nav, #header { position: relative; z-index: 60; }
+   doivent rester cliquables. position:relative active le z-index sur ces items de grille.
+   La BANDE 1 passe au-dessus de la BANDE 2 (61 > 60) : le menu « Affichage » de la
+   bande 1 s'ouvre par-dessus la bande 2 et doit la recouvrir (sinon il passe dessous). */
+#site-nav { position: relative; z-index: 61; }
+#header { position: relative; z-index: 60; }
 
 /* ---------- Bande 2 — Barre d'outils de la page ---------- */
 #header {

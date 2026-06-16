@@ -185,17 +185,19 @@ def test_visionneuse_menu_import_export(page, live_server):
     expect(page.locator("#sharedocs")).to_be_visible()
 
 
-def _couvert_par_transcription(page, selector):
-    """Vrai si le centre de l'élément est RECOUVERT par le panneau #transcription
-    (le bug : le menu peint sous l'overlay plein écran)."""
+def _recouvert_par(page, selector, by_selector):
+    """Vrai si le centre de l'élément est RECOUVERT par un élément correspondant à
+    `by_selector` (≠ lui-même et ≠ un de ses descendants) — quel que soit le
+    recouvreur (#transcription, #header…)."""
     return page.evaluate(
-        """(sel) => {
+        """([sel, by]) => {
             const el = document.querySelector(sel);
             if (!el) return null;
             const r = el.getBoundingClientRect();
             const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-            return !!(top && top.closest('#transcription'));
-        }""", selector)
+            if (!top || top === el || el.contains(top)) return false;
+            return !!top.closest(by);
+        }""", [selector, by_selector])
 
 
 def test_transcription_planche_sans_texte(page, seeded):
@@ -220,10 +222,12 @@ def test_menus_au_dessus_du_panneau_transcription(page, seeded_ocr):
     expect(page.locator("#transcription")).to_be_visible()
     # Menu bande 2 « Import / Export » : son item n'est pas masqué par l'overlay.
     page.locator("#btn-donnees").click()
-    assert _couvert_par_transcription(page, "#btn-backup") is False
-    # Menu « Affichage » (bande 1) : idem.
+    assert _recouvert_par(page, "#btn-backup", "#transcription") is False
+    # Menu « Affichage » (bande 1) : ni sous l'overlay, NI sous la bande 2 (#header) —
+    # la bande 1 doit recouvrir la bande 2 (sinon le menu s'ouvre derrière elle).
     page.locator(".btn-theme").click()
-    assert _couvert_par_transcription(page, ".display-panel button") is False
+    assert _recouvert_par(page, ".display-panel button", "#transcription") is False
+    assert _recouvert_par(page, ".display-panel button", "#header") is False
 
 
 # --------------------------------------------------------------------------- #
