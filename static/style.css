@@ -133,6 +133,9 @@
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
   box-shadow: 0 6px 20px var(--shadow);
 }
+/* Sans ce garde, le display:flex ci-dessus l'emporterait sur l'attribut [hidden]
+   (règle UA, même origine perd) → le menu resterait ouvert en permanence (cf. .empty-hint). */
+.display-panel[hidden] { display: none; }
 .dm-row { display: flex; align-items: center; gap: 8px; }
 .dm-check { cursor: pointer; }
 .dm-label { min-width: 52px; color: var(--text-muted); font-size: .85rem; }
@@ -898,6 +901,7 @@ a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transp
 
 /* Comparaison A / B : deux cartes côte à côte, code couleur */
 .comparaison { display: flex; gap: 20px; align-items: flex-start; }
+.comparaison[hidden] { display: none; }   /* sinon le display:flex écrase [hidden] (cf. .display-panel) */
 .comp-col {
   flex: 1 1 0; min-width: 0;
   background: var(--bg-panel); border: 1px solid var(--border);

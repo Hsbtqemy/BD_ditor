@@ -197,3 +197,16 @@ def test_menus_visionneuse_un_seul_ouvert_et_echap(page, live_server):
 
     page.keyboard.press("Escape")                 # Échap referme
     expect(donnees).to_be_hidden()
+
+
+def test_menu_affichage_ferme_par_defaut(page, live_server):
+    """Régression : le panneau « Affichage » (Aa) est masqué au chargement, puis
+    s'ouvre / se referme au clic. Garde .display-panel[hidden] — sans lui, le
+    display:flex écrasait l'attribut hidden et le menu restait ouvert en permanence."""
+    page.goto(f"{live_server}/")
+    panel = page.locator(".display-panel")
+    expect(panel).to_be_hidden(timeout=15000)
+    page.locator(".btn-theme").click()
+    expect(panel).to_be_visible()
+    page.locator(".btn-theme").click()
+    expect(panel).to_be_hidden()
