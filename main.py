@@ -54,6 +54,20 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="BD Annotator", version="1.0", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def _no_cache_assets(request, call_next):
+    """Force la revalidation des assets (CSS/JS) et des pages HTML. Sans ça, le
+    navigateur intégré d'un IDE (Cursor/VS Code, basé Chromium) peut servir un
+    style.css / theme.js PÉRIMÉ tout en chargeant le HTML neuf → bandes non stylées,
+    layout cassé, alors que le disque est à jour. ETag/Last-Modified de StaticFiles
+    restent honorés (réponse 304 si rien n'a changé) : coût négligeable."""
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static") or path in ("/", "/recherche", "/corpus", "/exploration"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.exception_handler(sqlite3.OperationalError)
 async def _sqlite_operational_handler(request, exc: sqlite3.OperationalError):
     """Contention SQLite (« database is locked », p.ex. une écriture pendant un
