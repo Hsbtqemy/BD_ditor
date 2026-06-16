@@ -171,12 +171,12 @@ def test_visionneuse_menu_import_export(page, live_server):
     page.locator("#btn-donnees").click()                  # ouvrir « Import / Export »
     menu = page.locator("#donnees-menu")
     expect(menu).to_be_visible()
-    expect(menu).to_contain_text("Importer")
-    expect(menu).to_contain_text("ShareDocs")
     expect(menu).to_contain_text("Importer des images")
-    expect(menu).to_contain_text("Exporter")
     expect(menu).to_contain_text("Sauvegarde")
-    expect(menu).to_contain_text("TEI")
+    # Groupé SÉMANTIQUEMENT (role=group + aria-label) → lisible aux lecteurs d'écran :
+    # ShareDocs sous « Importer », TEI sous « Exporter ».
+    expect(menu.locator('[role="group"][aria-label="Importer"]')).to_contain_text("ShareDocs")
+    expect(menu.locator('[role="group"][aria-label="Exporter"]')).to_contain_text("TEI")
 
 
 # --------------------------------------------------------------------------- #
