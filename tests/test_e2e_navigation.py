@@ -458,6 +458,28 @@ def test_nettoyage_libelles_accessibles(page, live_server):
     expect(head.locator('th[aria-label="Actions"]')).to_have_count(1)
 
 
+def test_confort_de_lecture(page, live_server):
+    """Réglage « Confort de lecture » (menu Affichage) : la bascule pose data-lecture
+    sur <html>, aère le texte de lecture (espacement appliqué à #tr-text), et persiste
+    au rechargement — réappliqué AVANT rendu comme le thème (theme.js en <head>)."""
+    page.goto(f"{live_server}/")
+    page.locator(".btn-theme").click()                         # ouvre le menu Affichage
+    panel = page.locator(".display-panel")
+    expect(panel).to_be_visible(timeout=15000)
+    cb = panel.get_by_role("checkbox", name="Confort de lecture")
+    expect(cb).not_to_be_checked()
+
+    ls = "() => getComputedStyle(document.querySelector('#tr-text')).letterSpacing"
+    avant = page.evaluate(ls)
+    cb.check()
+    expect(page.locator("html")).to_have_attribute("data-lecture", "confort")
+    apres = page.evaluate(ls)
+    assert avant == "normal" and apres != "normal", (avant, apres)   # aération effective
+
+    page.reload()                                              # persiste, posé avant rendu
+    expect(page.locator("html")).to_have_attribute("data-lecture", "confort", timeout=15000)
+
+
 @pytest.mark.parametrize("path", ["/", "/corpus", "/recherche", "/exploration"])
 def test_deux_bandes_navigation_au_dessus_des_outils(page, live_server, path):
     """Structure en deux bandes : la bande 1 (#site-nav, navigation) est tout en haut

@@ -113,6 +113,20 @@
     scroll-behavior: auto !important;
   }
 }
+/* Confort de lecture — posé par theme.js ([data-lecture="confort"], menu Affichage).
+   Aère le TEXTE LU (transcription, OCR, notes, résultats de recherche, mot/lemme en
+   grammaire) : interligne large, lettres et mots espacés — recommandations dys. La
+   casse forcée (MAJUSCULES via text-transform) est neutralisée GLOBALEMENT (dure à
+   lire) ; l'aération est CIBLÉE sur le texte pour ne rien faire déborder dans les barres. */
+:root[data-lecture="confort"] * { text-transform: none !important; }
+:root[data-lecture="confort"] :is(
+  #tr-text, #note-input, #m-desc, .ocr-text, .r-text, .r-note, .gram-mot, .gram-lemme-txt
+) {
+  line-height: 1.7;
+  letter-spacing: .04em;
+  word-spacing: .12em;
+}
+
 /* Sélection de texte et placeholders — suivent le thème. */
 ::selection { background: color-mix(in srgb, var(--accent-blue) 38%, transparent); }
 ::placeholder { color: var(--text-muted); opacity: 1; }

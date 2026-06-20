@@ -7,7 +7,7 @@
 (function () {
   "use strict";
   var root = document.documentElement;
-  var KEY = { theme: "bd-theme", contrast: "bd-contrast", zoom: "bd-zoom" };
+  var KEY = { theme: "bd-theme", contrast: "bd-contrast", zoom: "bd-zoom", lecture: "bd-lecture" };
   var mqLight = window.matchMedia("(prefers-color-scheme: light)");
   var mqContrast = window.matchMedia("(prefers-contrast: more)");
 
@@ -27,17 +27,23 @@
     var z = parseFloat(get(KEY.zoom));
     return (z >= 0.8 && z <= 2.0) ? z : 1;
   }
+  // Pas de préférence système pour le confort de lecture → « normal » par défaut.
+  function curLecture() { return get(KEY.lecture) === "confort" ? "confort" : "normal"; }
 
   function applyTheme(t) { root.dataset.theme = t; }
   function applyContrast(c) {
     if (c === "high") root.dataset.contrast = "high"; else delete root.dataset.contrast;
   }
   function applyZoom(z) { root.style.zoom = z === 1 ? "" : String(z); }
+  function applyLecture(v) {
+    if (v === "confort") root.dataset.lecture = "confort"; else delete root.dataset.lecture;
+  }
 
   // 1) Application immédiate (pas de FOUC).
   applyTheme(curTheme());
   applyContrast(curContrast());
   applyZoom(curZoom());
+  applyLecture(curLecture());
 
   // 2) Suit l'OS tant qu'aucun choix explicite n'a été mémorisé.
   mqLight.addEventListener("change", function () { if (!get(KEY.theme)) { applyTheme(curTheme()); sync(); } });
@@ -48,9 +54,11 @@
   function sync() {
     var light = root.dataset.theme === "light";
     var high = root.dataset.contrast === "high";
+    var comfort = root.dataset.lecture === "confort";
     var z = curZoom();
     menus.forEach(function (m) {
       m.cb.checked = high;
+      m.lecCb.checked = comfort;
       m.zoomVal.textContent = Math.round(z * 100) + " %";
       m.bL.setAttribute("aria-pressed", String(light));
       m.bD.setAttribute("aria-pressed", String(!light));
@@ -59,6 +67,7 @@
 
   function setTheme(t) { put(KEY.theme, t); applyTheme(t); sync(); }
   function setContrast(h) { put(KEY.contrast, h ? "high" : "normal"); applyContrast(h ? "high" : "normal"); sync(); }
+  function setLecture(on) { put(KEY.lecture, on ? "confort" : "normal"); applyLecture(on ? "confort" : "normal"); sync(); }
   function setZoom(z) {
     z = Math.min(2.0, Math.max(0.8, Math.round(z * 10) / 10));
     put(KEY.zoom, String(z)); applyZoom(z); sync();
@@ -96,6 +105,12 @@
     cb.onchange = function () { setContrast(cb.checked); };
     rC.appendChild(cb); rC.appendChild(el("span", null, "Contraste élevé")); panel.appendChild(rC);
 
+    var rL = el("label", "dm-row dm-check");
+    rL.title = "Interligne et espacement augmentés, sans capitales forcées — confort de lecture (dys)";
+    var lecCb = el("input"); lecCb.type = "checkbox";
+    lecCb.onchange = function () { setLecture(lecCb.checked); };
+    rL.appendChild(lecCb); rL.appendChild(el("span", null, "Confort de lecture")); panel.appendChild(rL);
+
     var rZ = el("div", "dm-row"); rZ.appendChild(el("span", "dm-label", "Zoom"));
     var zM = el("button", "ghost small", "A−"); var zV = el("span", "dm-zoom-val");
     var zP = el("button", "ghost small", "A+"); var zR = el("button", "ghost small", "↺");
@@ -127,7 +142,7 @@
       if (e.key === "Escape" && !panel.hidden) { open(false); btn.focus(); }
     });
 
-    menus.push({ cb: cb, zoomVal: zV, bL: bL, bD: bD });
+    menus.push({ cb: cb, lecCb: lecCb, zoomVal: zV, bL: bL, bD: bD });
   }
 
   /* ---- Navigation transverse unifiée (source unique) ----
