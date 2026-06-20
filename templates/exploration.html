@@ -43,16 +43,17 @@
       <div class="subcorpus" id="sub-a">
         <div class="sub-title muted small" hidden>Sous-corpus A</div>
         <div class="explo-controls">
-          <select id="f-album"><option value="">Tous les albums</option></select>
-          <select id="f-type">
+          <select id="f-album" aria-label="Filtrer par album"><option value="">Tous les albums</option></select>
+          <select id="f-type" aria-label="Filtrer par type de région">
             <option value="">Tous les types</option>
             <option value="bulle">bulle</option><option value="cartouche">cartouche</option>
             <option value="texte">texte</option><option value="case">case</option>
             <option value="personnage">personnage</option>
           </select>
-          <select id="f-pos"><option value="">POS (toutes)</option></select>
-          <input type="text" id="f-morph" autocomplete="off" placeholder="filtre morpho (ex. Tense=Past)">
-          <select id="f-prov">
+          <select id="f-pos" aria-label="Filtrer par catégorie grammaticale (POS)"><option value="">POS (toutes)</option></select>
+          <input type="text" id="f-morph" autocomplete="off"
+                 aria-label="Filtrer par trait morphologique" placeholder="filtre morpho (ex. Tense=Past)">
+          <select id="f-prov" aria-label="Filtrer par provenance de l'étiquetage">
             <option value="">Provenance : toutes</option>
             <option value="auto">auto</option><option value="corrige">corrigé</option><option value="valide">validé</option>
           </select>
@@ -62,16 +63,17 @@
       <div class="subcorpus" id="sub-b" hidden>
         <div class="sub-title muted small">Sous-corpus B</div>
         <div class="explo-controls">
-          <select id="b-album"><option value="">Tous les albums</option></select>
-          <select id="b-type">
+          <select id="b-album" aria-label="Sous-corpus B — filtrer par album"><option value="">Tous les albums</option></select>
+          <select id="b-type" aria-label="Sous-corpus B — filtrer par type de région">
             <option value="">Tous les types</option>
             <option value="bulle">bulle</option><option value="cartouche">cartouche</option>
             <option value="texte">texte</option><option value="case">case</option>
             <option value="personnage">personnage</option>
           </select>
-          <select id="b-pos"><option value="">POS (toutes)</option></select>
-          <input type="text" id="b-morph" autocomplete="off" placeholder="filtre morpho">
-          <select id="b-prov">
+          <select id="b-pos" aria-label="Sous-corpus B — filtrer par catégorie grammaticale (POS)"><option value="">POS (toutes)</option></select>
+          <input type="text" id="b-morph" autocomplete="off"
+                 aria-label="Sous-corpus B — filtrer par trait morphologique" placeholder="filtre morpho">
+          <select id="b-prov" aria-label="Sous-corpus B — filtrer par provenance de l'étiquetage">
             <option value="">Provenance : toutes</option>
             <option value="auto">auto</option><option value="corrige">corrigé</option><option value="valide">validé</option>
           </select>

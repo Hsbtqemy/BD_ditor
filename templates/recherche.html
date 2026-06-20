@@ -30,9 +30,10 @@
 
     <div class="search-bar">
       <input type="search" id="q" autocomplete="off"
+             aria-label="Rechercher dans les dialogues, notes et tags"
              placeholder="Rechercher dans les dialogues, notes, tags…">
-      <select id="f-album"><option value="">Tous les albums</option></select>
-      <select id="f-type">
+      <select id="f-album" aria-label="Filtrer par album"><option value="">Tous les albums</option></select>
+      <select id="f-type" aria-label="Filtrer par type de région">
         <option value="">Tous les types</option>
         <option value="bulle">bulle</option>
         <option value="cartouche">cartouche</option>
@@ -45,10 +46,14 @@
     <details id="gram-facets" class="gram-facets">
       <summary class="muted small">Facettes grammaticales</summary>
       <div class="facet-row">
-        <select id="f-pos" title="Catégorie grammaticale (UPOS)"><option value="">POS (toutes)</option></select>
-        <input type="text" id="f-lemme" autocomplete="off" placeholder="lemme exact (ex. pouvoir)">
-        <input type="text" id="f-morph" autocomplete="off" placeholder="trait morpho (ex. Tense=Past)">
-        <select id="f-prov" title="Provenance de l'étiquetage">
+        <select id="f-pos" title="Catégorie grammaticale (UPOS)"
+                aria-label="Filtrer par catégorie grammaticale (POS)"><option value="">POS (toutes)</option></select>
+        <input type="text" id="f-lemme" autocomplete="off"
+               aria-label="Filtrer par lemme exact" placeholder="lemme exact (ex. pouvoir)">
+        <input type="text" id="f-morph" autocomplete="off"
+               aria-label="Filtrer par trait morphologique" placeholder="trait morpho (ex. Tense=Past)">
+        <select id="f-prov" title="Provenance de l'étiquetage"
+                aria-label="Filtrer par provenance de l'étiquetage">
           <option value="">Provenance : toutes</option>
           <option value="auto">auto</option>
           <option value="corrige">corrigé</option>

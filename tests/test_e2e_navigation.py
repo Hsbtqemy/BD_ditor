@@ -371,6 +371,31 @@ def test_boutons_mode_aria_pressed(page, live_server):
     expect(page.locator("#stat-mode")).to_have_attribute("aria-live", "polite")
 
 
+def test_filtres_recherche_ont_un_nom_accessible(page, live_server):
+    """Recherche : les contrôles de filtre, sans <label> visible, portent un
+    aria-label → un lecteur d'écran annonce leur fonction (avant, ils n'avaient que
+    le texte de l'option par défaut)."""
+    page.goto(f"{live_server}/recherche")
+    expect(page.locator("#q")).to_have_attribute(
+        "aria-label", "Rechercher dans les dialogues, notes et tags", timeout=15000)
+    expect(page.locator("#f-album")).to_have_attribute("aria-label", "Filtrer par album")
+    expect(page.locator("#f-type")).to_have_attribute("aria-label", "Filtrer par type de région")
+    # facettes grammaticales (dans un <details>) : nommées aussi
+    expect(page.locator("#f-pos")).to_have_attribute(
+        "aria-label", "Filtrer par catégorie grammaticale (POS)")
+
+
+def test_filtres_exploration_distinguent_les_sous_corpus(page, live_server):
+    """Exploration : les filtres du sous-corpus B sont nommés distinctement de ceux
+    de A (préfixe « Sous-corpus B ») → un lecteur d'écran ne confond pas les deux
+    colonnes en mode comparaison."""
+    page.goto(f"{live_server}/exploration")
+    expect(page.locator("#f-album")).to_have_attribute(
+        "aria-label", "Filtrer par album", timeout=15000)
+    expect(page.locator("#b-album")).to_have_attribute(
+        "aria-label", "Sous-corpus B — filtrer par album")
+
+
 @pytest.mark.parametrize("path", ["/", "/corpus", "/recherche", "/exploration"])
 def test_deux_bandes_navigation_au_dessus_des_outils(page, live_server, path):
     """Structure en deux bandes : la bande 1 (#site-nav, navigation) est tout en haut
