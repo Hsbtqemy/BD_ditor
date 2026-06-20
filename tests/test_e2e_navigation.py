@@ -280,6 +280,53 @@ def test_menus_visionneuse_un_seul_ouvert_et_echap(page, live_server):
     expect(donnees).to_be_hidden()
 
 
+def test_menu_navigation_au_clavier(page, live_server):
+    """Visionneuse : les menus d'en-tête sont de vrais menus ARIA (motif APG « menu
+    button ») navigables au clavier — ↓ ouvre et entre sur le 1er item, ↓ boucle, Fin
+    va au dernier, Échap referme EN RENDANT le focus au déclencheur (cf. setupMenus)."""
+    page.goto(f"{live_server}/")
+    btn, menu = page.locator("#btn-traitement"), page.locator("#traitement-menu")
+    expect(menu).to_have_attribute("role", "menu", timeout=15000)
+
+    btn.focus()
+    page.keyboard.press("ArrowDown")                       # ouvre + focus 1er item
+    expect(menu).to_be_visible()
+    expect(btn).to_have_attribute("aria-expanded", "true")
+    seg = page.locator("#btn-segmenter")
+    expect(seg).to_be_focused()
+    expect(seg).to_have_attribute("role", "menuitem")
+
+    page.keyboard.press("ArrowDown")                       # item suivant
+    expect(page.locator("#btn-bulles")).to_be_focused()
+    page.keyboard.press("End")                             # dernier
+    expect(page.locator("#btn-ocr")).to_be_focused()
+    page.keyboard.press("ArrowDown")                       # boucle → premier
+    expect(seg).to_be_focused()
+
+    page.keyboard.press("Escape")                          # ferme + rend le focus
+    expect(menu).to_be_hidden()
+    expect(btn).to_be_focused()
+
+
+def test_menu_clavier_espace_ouvre_et_tab_referme(page, live_server):
+    """Compléments clavier : Espace ouvre et entre sur le 1er item SANS rebascule
+    (le clic natif d'Espace arrive au keyup, après l'ouverture au keydown → garde
+    anti-flicker), et Tab referme en avançant vers le contrôle suivant (Import/Export).
+    Vérifie aussi l'isolation : ← en menu ouvert ne navigue pas entre les régions."""
+    page.goto(f"{live_server}/")
+    trait, menu = page.locator("#btn-traitement"), page.locator("#traitement-menu")
+    trait.focus()
+    page.keyboard.press("Space")                          # chemin le plus à risque
+    expect(menu).to_be_visible(timeout=15000)
+    expect(page.locator("#btn-segmenter")).to_be_focused()
+    page.keyboard.press("ArrowLeft")                      # isolé : reste dans le menu
+    expect(menu).to_be_visible()
+    expect(page.locator("#btn-segmenter")).to_be_focused()
+    page.keyboard.press("Tab")                            # referme + avance
+    expect(menu).to_be_hidden()
+    expect(page.locator("#btn-donnees")).to_be_focused()
+
+
 def test_menu_affichage_ferme_par_defaut(page, live_server):
     """Régression : le panneau « Affichage » (Aa) est masqué au chargement, puis
     s'ouvre / se referme au clic. Garde .display-panel[hidden] — sans lui, le

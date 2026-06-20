@@ -1566,25 +1566,80 @@ async function newAlbum() {
    câblées ailleurs par id ; ici on gère l'ouverture + les liens d'export (data-fmt). */
 function setupMenus() {
   const dropdowns = [...document.querySelectorAll(".dropdown")];
-  const closeAll = () => dropdowns.forEach((dd) => {
-    dd.querySelector(".dropdown-menu")?.classList.remove("open");
-    dd.querySelector("button")?.setAttribute("aria-expanded", "false");
+
+  // Items actionnables d'un menu, dans l'ordre du DOM, hors désactivés/masqués
+  // (le menu gère le focus en « roving » : on saute ce qui n'est pas atteignable).
+  const itemsOf = (menu) =>
+    [...menu.querySelectorAll('[role="menuitem"]')]
+      .filter((el) => !el.disabled && el.getClientRects().length > 0);
+
+  // Ferme tous les menus. Rend le focus au déclencheur si le focus était DANS le menu
+  // fermé (sinon il se perdrait sur <body> quand le menu passe en display:none) —
+  // sauf `refocus=false`, p.ex. quand on ouvre un autre menu juste après.
+  const closeAll = (refocus = true) => dropdowns.forEach((dd) => {
+    const menu = dd.querySelector(".dropdown-menu"), btn = dd.querySelector("button");
+    if (!menu || !btn || !menu.classList.contains("open")) return;
+    const hadFocus = menu.contains(document.activeElement);
+    menu.classList.remove("open");
+    btn.setAttribute("aria-expanded", "false");
+    if (refocus && hadFocus) btn.focus();
   });
+
+  const openMenu = (btn, menu, focus) => {
+    closeAll(false);                                    // un seul ouvert à la fois
+    document.dispatchEvent(new CustomEvent("bd:menu-open", { detail: "dropdown" }));
+    menu.classList.add("open");
+    btn.setAttribute("aria-expanded", "true");
+    const items = itemsOf(menu);
+    if (focus === "first") items[0]?.focus();
+    else if (focus === "last") items[items.length - 1]?.focus();
+  };
+
   dropdowns.forEach((dd) => {
     const btn = dd.querySelector("button"), menu = dd.querySelector(".dropdown-menu");
     if (!btn || !menu) return;
-    btn.setAttribute("aria-haspopup", "true");
+
+    // Sémantique « menu button » (WAI-ARIA) — invisible, ne touche pas le rendu.
+    btn.setAttribute("aria-haspopup", "menu");
     btn.setAttribute("aria-expanded", "false");
+    if (menu.id) btn.setAttribute("aria-controls", menu.id);
+    menu.setAttribute("role", "menu");
+    if (btn.id) menu.setAttribute("aria-labelledby", btn.id);
+    menu.querySelectorAll("button").forEach((b) => {
+      b.setAttribute("role", "menuitem");
+      b.tabIndex = -1;                                  // hors tabulation : le menu pilote le focus
+    });
+
     btn.onclick = (e) => {
       e.stopPropagation();
-      const willOpen = !menu.classList.contains("open");
-      closeAll();
-      if (willOpen) document.dispatchEvent(new CustomEvent("bd:menu-open", { detail: "dropdown" }));
-      menu.classList.toggle("open", willOpen);
-      btn.setAttribute("aria-expanded", String(willOpen));
+      if (menu.classList.contains("open")) closeAll();
+      else openMenu(btn, menu, null);                   // souris : on n'impose pas le focus dans le menu
     };
+    // Ouverture au clavier depuis le déclencheur : ↓/Entrée/Espace → 1er item ; ↑ → dernier.
+    btn.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+        e.preventDefault(); openMenu(btn, menu, "first");
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault(); openMenu(btn, menu, "last");
+      }
+    });
+    // Navigation au clavier DANS le menu (flèches bouclent, Origine/Fin, Échap, Tab).
+    menu.addEventListener("keydown", (e) => {
+      // Un menu focalisé capte le clavier : on isole des raccourcis globaux (←/→ =
+      // navigation entre régions, lettres = changement de mode) tant qu'il est ouvert.
+      e.stopPropagation();
+      const items = itemsOf(menu);
+      if (!items.length) return;
+      const i = items.indexOf(document.activeElement), n = items.length;
+      if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % n].focus(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + n) % n].focus(); }
+      else if (e.key === "Home") { e.preventDefault(); items[0].focus(); }
+      else if (e.key === "End") { e.preventDefault(); items[n - 1].focus(); }
+      else if (e.key === "Escape") { e.stopPropagation(); closeAll(); }   // ferme + focus au déclencheur
+      else if (e.key === "Tab") { closeAll(); }                          // ferme ; Tab reprend depuis le déclencheur
+    });
   });
-  document.addEventListener("click", closeAll);
+  document.addEventListener("click", () => closeAll());
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAll(); });
   // Coordination inter-systèmes : un AUTRE menu s'ouvre (ex. « Affichage » de
   // theme.js) → on ferme les dropdowns (un seul menu ouvert à la fois, toutes barres
