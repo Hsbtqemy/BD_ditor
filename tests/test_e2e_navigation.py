@@ -293,6 +293,60 @@ def test_menu_affichage_ferme_par_defaut(page, live_server):
     expect(panel).to_be_hidden()
 
 
+# --------------------------------------------------------------------------- #
+# Modales accessibles (static/lib/dialog.js) : role=dialog, focus piégé, Échap,
+# retour du focus au déclencheur
+# --------------------------------------------------------------------------- #
+def test_modale_album_accessible(page, live_server):
+    """Bibliothèque : la modale « Nouvel album » est un vrai dialogue —
+    role=dialog + aria-modal + nom accessible, focus posé sur le 1er champ à
+    l'ouverture, et Échap referme EN RENDANT le focus au déclencheur."""
+    page.goto(f"{live_server}/corpus")
+    page.locator("#btn-new").click()
+    modal = page.locator("#album-modal")
+    expect(modal).to_be_visible(timeout=15000)
+
+    box = page.locator("#album-modal .modal-box")
+    expect(box).to_have_attribute("role", "dialog")
+    expect(box).to_have_attribute("aria-modal", "true")
+    expect(box).to_have_attribute("aria-labelledby", "modal-title")
+    expect(page.locator("#m-titre")).to_be_focused()          # focus dans la boîte
+
+    page.keyboard.press("Escape")
+    expect(modal).to_be_hidden()
+    expect(page.locator("#btn-new")).to_be_focused()          # focus rendu au déclencheur
+
+
+def test_modale_album_piege_le_focus(page, live_server):
+    """Le focus clavier ne s'échappe pas de la modale : Maj+Tab depuis le 1er
+    champ boucle vers le dernier focusable (il reste DANS la boîte)."""
+    page.goto(f"{live_server}/corpus")
+    page.locator("#btn-new").click()
+    expect(page.locator("#m-titre")).to_be_focused(timeout=15000)
+    page.keyboard.press("Shift+Tab")
+    reste_dans_la_boite = page.evaluate(
+        "() => !!document.activeElement.closest('#album-modal .modal-box')")
+    assert reste_dans_la_boite
+
+
+def test_modale_sharedocs_accessible_et_echap(page, live_server):
+    """Visionneuse : la modale ShareDocs est un dialogue (role/aria-modal/nom) et
+    Échap la referme (même chemin que le clic sur le fond)."""
+    page.goto(f"{live_server}/")
+    page.locator("#btn-donnees").click()
+    page.locator("#btn-sharedocs").click()
+    sd = page.locator("#sharedocs")
+    expect(sd).to_be_visible(timeout=15000)
+
+    box = page.locator("#sharedocs .sd-dialog")
+    expect(box).to_have_attribute("role", "dialog")
+    expect(box).to_have_attribute("aria-modal", "true")
+    expect(box).to_have_attribute("aria-labelledby", "sd-title")
+
+    page.keyboard.press("Escape")
+    expect(sd).to_be_hidden()
+
+
 @pytest.mark.parametrize("path", ["/", "/corpus", "/recherche", "/exploration"])
 def test_deux_bandes_navigation_au_dessus_des_outils(page, live_server, path):
     """Structure en deux bandes : la bande 1 (#site-nav, navigation) est tout en haut

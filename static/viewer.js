@@ -1936,6 +1936,10 @@ function setupSharedocs() {
   $("#sharedocs").addEventListener("mousedown", (e) => {
     if (e.target.id === "sharedocs") sdClose();   // clic sur le fond = fermer
   });
+  // Modale accessible : role=dialog, piège à focus, Échap, retour du focus (source unique).
+  if (window.BDDialog)
+    BDDialog.register($("#sharedocs"),
+      { box: ".sd-dialog", labelledby: "sd-title", onClose: sdClose });
 }
 
 /* Télécharge une sauvegarde de la base (zip horodaté). */

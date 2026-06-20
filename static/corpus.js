@@ -457,6 +457,10 @@ function setup() {
   $("#album-modal").addEventListener("mousedown", (e) => {
     if (e.target.id === "album-modal") closeModal();
   });
+  // Modale accessible : role=dialog, piège à focus, Échap, retour du focus (source unique).
+  if (window.BDDialog)
+    BDDialog.register($("#album-modal"),
+      { box: ".modal-box", labelledby: "modal-title", onClose: closeModal });
   PASSES.forEach((p) => { $("#pass-" + p).onchange = updateSelInfo; });
   $("#btn-run").onclick = runBatch;
   loadCorpus();   // stats d'en-tête (bande 2)

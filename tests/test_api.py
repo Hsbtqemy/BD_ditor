@@ -389,6 +389,19 @@ def test_nav_js_servi_et_charge_avant_le_script_de_page(client):
         assert html.index("/static/lib/nav.js") < html.index(page_script), route
 
 
+def test_dialog_js_servi_et_charge_avant_le_script_de_page(client):
+    """Même garde-fou pour le helper de modale accessible (static/lib/dialog.js) :
+    servi, et chargé AVANT le script des pages qui l'utilisent (Visionneuse,
+    Bibliothèque). Sinon `BDDialog.register` est indéfini au câblage des modales."""
+    js = client.get("/static/lib/dialog.js")
+    assert js.status_code == 200 and "register" in js.text
+    for route, page_script in (("/", "/static/viewer.js"),
+                               ("/corpus", "/static/corpus.js")):
+        html = client.get(route).text
+        assert "/static/lib/dialog.js" in html, route
+        assert html.index("/static/lib/dialog.js") < html.index(page_script), route
+
+
 def test_export_album_inexistant_404(client):
     assert client.get("/api/export/json",
                       params={"album_id": 999}).status_code == 404
