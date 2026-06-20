@@ -443,6 +443,21 @@ def test_filtres_exploration_distinguent_les_sous_corpus(page, live_server):
         "aria-label", "Sous-corpus B — filtrer par album")
 
 
+def test_nettoyage_libelles_accessibles(page, live_server):
+    """Nettoyage a11y : le raccourci <kbd> des boutons de mode est masqué aux lecteurs
+    d'écran → nom accessible « Navigation » (et non « Navigation N ») ; les en-têtes de
+    colonnes sans texte (sélection / actions) de la Bibliothèque portent un aria-label."""
+    page.goto(f"{live_server}/")
+    expect(page.locator('.mode-btn[data-mode="navigation"] kbd')).to_have_attribute(
+        "aria-hidden", "true", timeout=15000)
+    expect(page.get_by_role("button", name="Navigation", exact=True)).to_be_visible()
+
+    page.goto(f"{live_server}/corpus")
+    head = page.locator(".corpus-table thead")
+    expect(head.locator("th.c-chk")).to_have_attribute("aria-label", "Sélection", timeout=15000)
+    expect(head.locator('th[aria-label="Actions"]')).to_have_count(1)
+
+
 @pytest.mark.parametrize("path", ["/", "/corpus", "/recherche", "/exploration"])
 def test_deux_bandes_navigation_au_dessus_des_outils(page, live_server, path):
     """Structure en deux bandes : la bande 1 (#site-nav, navigation) est tout en haut

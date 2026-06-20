@@ -190,9 +190,9 @@ function renderDetail() {
       <button class="ghost small" id="detail-validate-all">✔ Tout valider</button>
     </div>
     <table class="corpus-table planches-table">
-      <thead><tr><th class="c-chk"></th><th></th><th>Planche</th><th>Statut</th>
+      <thead><tr><th class="c-chk" aria-label="Sélection"></th><th aria-label="Aperçu"></th><th>Planche</th><th>Statut</th>
         <th class="c-num">Régions</th><th class="c-num">Annotées</th>
-        <th>Validée</th><th></th></tr></thead>
+        <th>Validée</th><th aria-label="Actions"></th></tr></thead>
       <tbody>${planchesRows}</tbody>
     </table>`;
 
