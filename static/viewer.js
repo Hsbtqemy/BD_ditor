@@ -899,8 +899,11 @@ function setMode(mode) {
   flushSave();
   if (state.mode === "transcription" && mode !== "transcription") trSaveFlush();
   state.mode = mode;
-  document.querySelectorAll(".mode-btn").forEach((b) =>
-    b.classList.toggle("active", b.dataset.mode === mode));
+  document.querySelectorAll(".mode-btn").forEach((b) => {
+    const on = b.dataset.mode === mode;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));   // état exposé aux lecteurs d'écran
+  });
   stage.classList.toggle("mode-edition", mode === "edition");
   const label = { navigation: "Navigation", edition: "Édition",
                   annotation: "Annotation", transcription: "Transcription" }[mode];

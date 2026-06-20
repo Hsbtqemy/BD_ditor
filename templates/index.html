@@ -23,17 +23,17 @@
   <!-- ───────────── Bande 2 — Outils de la page ───────────── -->
   <header id="header">
     <div id="planche-info" class="planche-info">—</div>
-    <div class="modes" role="group" aria-label="Modes">
-      <button class="mode-btn" data-mode="navigation" title="Navigation (N)">
+    <div class="modes" role="group" aria-label="Mode d'interaction">
+      <button class="mode-btn" data-mode="navigation" title="Navigation (N)" aria-pressed="true">
         <span class="dot"></span> Navigation <kbd>N</kbd>
       </button>
-      <button class="mode-btn" data-mode="edition" title="Édition (E)">
+      <button class="mode-btn" data-mode="edition" title="Édition (E)" aria-pressed="false">
         <span class="dot"></span> Édition <kbd>E</kbd>
       </button>
-      <button class="mode-btn" data-mode="annotation" title="Annotation (A)">
+      <button class="mode-btn" data-mode="annotation" title="Annotation (A)" aria-pressed="false">
         <span class="dot"></span> Annotation <kbd>A</kbd>
       </button>
-      <button class="mode-btn" data-mode="transcription" title="Transcription (T)">
+      <button class="mode-btn" data-mode="transcription" title="Transcription (T)" aria-pressed="false">
         <span class="dot"></span> Transcription <kbd>T</kbd>
       </button>
     </div>
@@ -323,7 +323,7 @@
       <span class="lg lg-cart">cartouche</span>
       <span class="lg lg-annot">annoté</span>
     </span>
-    <span id="stat-mode" class="stat-mode">Mode : Navigation</span>
+    <span id="stat-mode" class="stat-mode" aria-live="polite" aria-atomic="true">Mode : Navigation</span>
     <span id="stat-zoom">Zoom 100 %</span>
     <span id="stat-coords" class="mono">—</span>
   </footer>

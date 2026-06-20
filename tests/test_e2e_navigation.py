@@ -347,6 +347,30 @@ def test_modale_sharedocs_accessible_et_echap(page, live_server):
     expect(sd).to_be_hidden()
 
 
+def test_boutons_mode_aria_pressed(page, live_server):
+    """Les boutons de mode exposent leur état sélectionné aux lecteurs d'écran
+    (aria-pressed), mis à jour AU CLIC comme AU RACCOURCI clavier ; l'indicateur de
+    mode est une région live → la bascule au clavier (N/E/A/T) est annoncée même
+    quand le focus n'est pas sur les boutons."""
+    page.goto(f"{live_server}/")
+    nav = page.locator('.mode-btn[data-mode="navigation"]')
+    edi = page.locator('.mode-btn[data-mode="edition"]')
+    ann = page.locator('.mode-btn[data-mode="annotation"]')
+    expect(nav).to_have_attribute("aria-pressed", "true", timeout=15000)
+    expect(edi).to_have_attribute("aria-pressed", "false")
+
+    edi.click()                                   # clic → Édition actif, Navigation off
+    expect(edi).to_have_attribute("aria-pressed", "true")
+    expect(nav).to_have_attribute("aria-pressed", "false")
+
+    page.keyboard.press("a")                      # raccourci → Annotation
+    expect(ann).to_have_attribute("aria-pressed", "true")
+    expect(edi).to_have_attribute("aria-pressed", "false")
+    # l'indicateur de mode (région live) reflète la bascule
+    expect(page.locator("#stat-mode")).to_have_text("Mode : Annotation")
+    expect(page.locator("#stat-mode")).to_have_attribute("aria-live", "polite")
+
+
 @pytest.mark.parametrize("path", ["/", "/corpus", "/recherche", "/exploration"])
 def test_deux_bandes_navigation_au_dessus_des_outils(page, live_server, path):
     """Structure en deux bandes : la bande 1 (#site-nav, navigation) est tout en haut
