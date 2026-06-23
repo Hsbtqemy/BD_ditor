@@ -293,6 +293,11 @@ Trois couches de tests, toutes lançables via `python -m pytest` :
 - **E2E navigateur** (`tests/test_e2e_navigation.py`, marqueur `e2e`, **hors run
   par défaut**) : deep-link, round-trip entre surfaces, durcissement anti-XSS,
   rendu — dans un vrai Chromium piloté par Playwright.
+- **Accessibilité** (`tests/test_e2e_a11y.py`, marqueur `e2e`) : audit
+  **axe-core** (WCAG 2.1 A/AA) des 4 surfaces en thèmes sombre + clair et de
+  quelques états interactifs (modes, modale) ; échoue à la moindre violation
+  sérieuse/critique. axe est **vendu hors ligne** dans `tests/js/vendor/`
+  (cf. son README) ; le test se skippe si le fichier est absent.
 
 `tests/test_live_race.py` lance un vrai serveur uvicorn isolé (via
 `BD_DATA_DIR`/`BD_DB_PATH`) pour vérifier la cohérence écriture→lecture — chose

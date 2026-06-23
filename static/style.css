@@ -32,6 +32,8 @@
   --kbd-bg:       rgba(255,255,255,.08);
   --kbd-border:   rgba(255,255,255,.15);
   --focus:        var(--accent-blue);     /* anneau de focus clavier */
+  --ink-red:      #ff6b80;                /* rouge en PETIT TEXTE — AA sur fonds sombres (le plein reste --accent-red) */
+  --danger:       #c02c46;                /* fond des boutons destructeurs — texte blanc AA */
 
   /* Aligne les contrôles NATIFS (scrollbars, listes des <select>, cases à
      cocher, curseur) sur le thème — sinon ils restent clairs en mode sombre. */
@@ -55,12 +57,14 @@
   --bg-panel:    #ffffff;
   --bg-input:    #e7ebf4;
   --accent-red:  #d11f45;
-  --accent-blue: #2563c9;
-  --accent-amber:#a86a00;
-  --accent-green:#1a8f4e;
+  --accent-blue: #2059bd;   /* assombri : AA sur le lien de nav actif (fond légèrement teinté) */
+  --accent-amber:#855200;   /* assombri : AA en petit texte sur fond clair (cf. mark, prov-corrige) */
+  --accent-green:#12733d;   /* assombri : AA en petit texte (val-badge, prov-valide, save-state) */
   --accent-violet:#7c39c7;
-  --accent-cyan: #0c84a0;
+  --accent-cyan: #0a6880;   /* assombri : AA en petit texte (.r-type) */
   --accent-pink: #bd3580;
+  --ink-red:     var(--accent-red);   /* le rouge clair passe déjà en texte → pas de variante */
+  --danger:      var(--accent-red);   /* #fff sur #d11f45 = 5.3:1 (AA) */
   --border:      #cdd4e3;
   --text:        #1b2030;
   --text-muted:  #586079;
@@ -84,6 +88,7 @@
   --hover: rgba(255,255,255,.22);
   --accent-blue:#9cc6ff; --accent-red:#ff8198; --accent-amber:#ffc44d;
   --accent-green:#6bf59c; --accent-violet:#dcb0ff; --accent-cyan:#63e7ff; --accent-pink:#ff95cb;
+  --ink-red: var(--accent-red);   /* l'accent HC est déjà AAA en texte */
   --focus:#fff;
 }
 :root[data-theme="light"][data-contrast="high"] {
@@ -255,7 +260,7 @@ button { font-family: inherit; }
 }
 .icon-btn:hover { background: var(--accent-blue); color: var(--bg-deep); }
 .danger {
-  background: var(--accent-red); color: #fff; border: none;
+  background: var(--danger); color: #fff; border: none;
   border-radius: 5px; padding: 6px 10px; cursor: pointer;
 }
 .danger:hover { filter: brightness(1.1); }
@@ -413,7 +418,7 @@ button { font-family: inherit; }
 }
 .prov-chip.prov-corrige { color: var(--accent-amber); border-color: var(--accent-amber); }
 .prov-chip.prov-valide  { color: var(--accent-green); border-color: var(--accent-green); }
-.gram-warn { color: var(--accent-red); cursor: help; }
+.gram-warn { color: var(--ink-red); cursor: help; }
 
 /* ---------- Visionneuse ---------- */
 #viewer { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -544,7 +549,7 @@ button { font-family: inherit; }
   background: var(--bg-input); border: 1px solid var(--border);
 }
 .tag-chip .x { cursor: pointer; opacity: .7; }
-.tag-chip .x:hover { opacity: 1; color: var(--accent-red); }
+.tag-chip .x:hover { opacity: 1; color: var(--ink-red); }
 .tag-input-wrap { position: relative; }
 .tag-suggest {
   position: absolute; left: 0; right: 0; top: 100%; z-index: 30;
@@ -833,7 +838,7 @@ h3.collapsible:hover { color: var(--text); }
   height: 100%; width: 0; background: var(--accent-blue); transition: width .2s ease;
 }
 .sd-errors { margin: 0; padding-left: 18px; max-height: 130px; overflow-y: auto;
-  color: var(--accent-red); font-size: 11px; }
+  color: var(--ink-red); font-size: 11px; }
 .sd-errors:empty { display: none; }
 
 /* =================================================================== */
@@ -988,7 +993,7 @@ a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transp
   border-radius: 12px; padding: 2px 8px;
 }
 .active-tag .x { cursor: pointer; opacity: .7; }
-.active-tag .x:hover { opacity: 1; color: var(--accent-red); }
+.active-tag .x:hover { opacity: 1; color: var(--ink-red); }
 
 .result-count { margin: 6px 0 10px; }
 .results { display: flex; flex-direction: column; gap: 8px; }
@@ -1042,7 +1047,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .job-annule  { border-left-color: var(--accent-amber); opacity: .8; }
 .job-line { display: flex; align-items: center; gap: 10px; }
 .job-state { margin-left: auto; color: var(--text-muted); font-size: 12px; }
-.job-err { color: var(--accent-red); }
+.job-err { color: var(--ink-red); }
 .job-bar { height: 5px; background: var(--bg-input); border-radius: 3px; margin-top: 6px; overflow: hidden; }
 .job-fill { height: 100%; background: var(--accent-blue); transition: width .3s; }
 .job-termine .job-fill { background: var(--accent-green); }
@@ -1063,7 +1068,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .album-row.open { background: color-mix(in srgb, var(--accent-blue) 12%, transparent); outline: 1px solid var(--accent-blue); }
 .empty-cell { padding: 28px; text-align: center; color: var(--text-muted); }
 .icon-btn.danger { background: transparent; border-color: transparent; }
-.icon-btn.danger:hover { background: var(--accent-red); color: #fff; }
+.icon-btn.danger:hover { background: var(--danger); color: #fff; }
 
 /* Détail album */
 #album-detail {

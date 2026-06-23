@@ -116,7 +116,7 @@ function renderAlbums() {
     const tr = document.createElement("tr");
     tr.className = "album-row" + (a.id === state.openId ? " open" : "");
     tr.innerHTML =
-      `<td class="c-chk"><input type="checkbox" ${state.checkedAlbums.has(a.id) ? "checked" : ""}></td>` +
+      `<td class="c-chk"><input type="checkbox" aria-label="Sélectionner l'album ${esc(a.titre)}" ${state.checkedAlbums.has(a.id) ? "checked" : ""}></td>` +
       `<td class="c-titre">${esc(a.titre)}</td>` +
       `<td>${esc(a.serie || "")}</td><td>${esc(a.auteur || "")}</td>` +
       `<td class="c-num">${a.annee || ""}</td>` +
@@ -162,7 +162,7 @@ function renderDetail() {
   const planchesRows = state.planches.length
     ? state.planches.map((p) => `
         <tr>
-          <td class="c-chk"><input type="checkbox" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
+          <td class="c-chk"><input type="checkbox" aria-label="Sélectionner la planche ${p.numero}" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
           <td><img class="pl-thumb" loading="lazy" src="${esc(p.url_web || "")}" alt=""></td>
           <td class="c-pl">${plancheNum(p)}</td>
           <td><span class="statut-pill statut-${esc(p.statut)}"></span> ${esc(p.statut)}</td>
