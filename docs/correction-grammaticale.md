@@ -1,9 +1,13 @@
 # Correction humaine de l'étiquetage grammatical — spécification (lot 1)
 
 > Conception menée le 2026-06-14, en discussion de fond.
-> **Statut : spécifié, non implémenté.** Document de référence du **lot 1** d'un
-> chantier plus large (recherche avancée + exploration de corpus). Rien n'est codé ;
-> ce fichier fige les décisions pour que l'implémentation soit mécanique.
+> **Statut : implémenté (lot 1) — màj 2026-06-23.** La correction humaine des tokens
+> (lemme / POS / morph), la couche *overlay* `token_correction`, la vue
+> `tokens_effectifs` (valeur effective + provenance + « à revérifier ») et l'UI
+> (panneau **Grammaire** de la Visionneuse, routes `/api/regions/{id}/tokens…`) sont
+> en place. **Différés** : ré-ancrage par alignement (§4), normalisation morphologique
+> (§10), provenance modèle par correction (§8), colonne explicite de statut de
+> relecture (§2). Ce fichier reste la référence de conception du chantier.
 
 ## 1. Pourquoi
 

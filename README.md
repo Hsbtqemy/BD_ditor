@@ -347,3 +347,6 @@ humaine) — la qualité finale vient de la relecture humaine.
 - Déploiement multi-comptes (HTTPS, 2FA) via Docker Compose + Authelia :
   `deploy/` et `docs/deploiement-docker.md`. Par défaut, l'app n'a **aucune
   authentification** (usage local mono-utilisateur, cf. `docs/hebergement-securite.md`).
+- **Accessibilité** : thèmes clair / sombre + contraste élevé, navigation clavier
+  (skip-link, `focus-visible`, Échap), zoom UI, `prefers-reduced-motion`. Conformité
+  **WCAG 2.1 AA** vérifiée par axe-core (`tests/test_e2e_a11y.py`).

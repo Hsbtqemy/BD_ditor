@@ -2,6 +2,15 @@
 
 *Audit réalisé le 13 juin 2026 · périmètre : backend FastAPI, pipeline, frontend vanilla, tests.*
 
+> **Mise à jour 2026-06-23.** Corrigés depuis l'audit : verrou d'inférence ML global
+> (`jobs.ML_LOCK`, routes directes *et* worker), nettoyage du master en cas d'échec
+> d'ingestion, échappement des labels de tags, borne explicite `BD_MAX_IMAGE_PIXELS`,
+> courses recherche/jobs (C3/C4/A1/B1/E1), accessibilité clavier + **contrastes AA**
+> (audit axe-core câblé : `tests/test_e2e_a11y.py`). **Restent ouverts**, désormais
+> suivis dans `docs/backlog.md` §7 : SSRF/HTTPS ShareDocs, `UNIQUE(album_id, numero)`,
+> cache de crop + purge des jobs + annulation préemptive, préservation segmentation
+> (S2/S3/S7/S4), épinglage des versions, dédup front (`common.js`), tests de concurrence.
+
 ## Verdict global
 
 Projet **mûr, cohérent et soigné** pour un outil de recherche auto-hébergé mono-utilisateur. L'architecture est lisible, le découplage backend/pipeline/frontend est net, la documentation (README) est exemplaire et la philosophie « aucune IA dans la boucle d'annotation, l'OCR n'est qu'un pré-remplissage » est tenue de bout en bout dans le code (`only_empty=True`, préservation du travail humain à la re-segmentation).

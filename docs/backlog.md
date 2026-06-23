@@ -1,6 +1,8 @@
 # Backlog exécutable — BD Annotator
 
-> Établi le 2026-06-15. Recense les pistes ouvertes **après** les lots livrés
+> Établi le 2026-06-15. **Révisé le 2026-06-23** : A11y (§6) livré et vérifié ;
+> navigation/désencombrement (§5) largement faits ; **dette technique & sécurité de
+> l'audit intégrée en §7**. Recense les pistes ouvertes **après** les lots livrés
 > (analyse : correction grammaticale, requête, Recherche+++, Exploration ;
 > numérotation & citation éditoriale ; round-trip). Chaque ticket a un *pourquoi*,
 > un *périmètre* et des *critères d'acceptation* (conditions de « fini »).
@@ -133,6 +135,11 @@ ou décision de conception requise).
 
 ## 5. UI/UX & navigation (transverse)
 
+> **Largement fait — 2026-06-23.** UX-1 (nav transverse unifiée « Atelier ‖ Analyse »,
+> générée d'un seul endroit par `theme.js`, `aria-current`) et UX-2 (en-tête en deux
+> bandes, actions regroupées Traitement / Import-Export) sont livrés. UX-3 (hiérarchie
+> & découvrabilité) et UX-4 (cohérence visuelle inter-surfaces) restent ouverts.
+
 ### UX-1 · Navigation unifiée — P2 · M
 > 4 surfaces, en-têtes bricolés et légèrement différents. `nav.js` ne fait pour l'instant
 > que `safeRetour` (sécurité), pas de barre commune.
@@ -155,6 +162,14 @@ ou décision de conception requise).
 ---
 
 ## 6. Accessibilité (transverse)
+
+> **✅ Fait — 2026-06-23**, vérifié par **axe-core** (0 violation sérieuse/critique
+> sur 4 surfaces × 4 thèmes + états interactifs ; non-régression câblée dans
+> `tests/test_e2e_a11y.py`). A11Y-1 (contraste élevé, AA/AAA), A11Y-3 (clavier,
+> `focus-visible`, skip-link, Échap), A11Y-4 (ARIA, landmarks, live regions) et
+> A11Y-5 (`prefers-reduced-motion` + audit couleur) sont livrés. A11Y-2 (zoom UI)
+> est livré **via la propriété CSS `zoom`** (persisté) ; la conversion des `px`
+> résiduels en `rem` reste le seul reliquat. Tickets conservés pour mémoire.
 
 ### A11Y-1 · Thème « contraste élevé » — P2 · M
 > 3ᵉ variante de tokens (au-delà clair/sombre), viser WCAG AA/AAA.
@@ -186,9 +201,65 @@ ou décision de conception requise).
 
 ---
 
-## Ordre conseillé (modifiable)
+## 7. Dette technique & sécurité (report de `AUDIT.md`)
+
+> Restants de l'audit (`AUDIT.md`, 13 juin) au **2026-06-23**, recensés ici pour un
+> suivi unique. Les items déjà corrigés (verrou ML global, nettoyage du master,
+> échappement des tags, borne pixels, courses recherche/jobs) n'y figurent plus.
+
+### SEC-1 · Garde HTTPS + normalisation de chemin ShareDocs (SSRF) — P2 · S
+> `configure()` accepte toute URL (aucun contrôle `scheme == "https"`) et le `chemin`
+> distant n'est pas normalisé des `..` → identifiants Basic exposables sur `http://`,
+> SSRF/traversal théoriques. Cf. `docs/deploiement-docker.md` (« reste à corriger côté code »).
+- Done : `https` imposé (ou opt-out explicite documenté) ; chemins normalisés ; test (httpx `MockTransport`).
+
+### SEC-2 · CSP + CSRF — P3 · M
+> Pas de Content-Security-Policy dans les templates ; les `apiSend` POST/PUT/DELETE
+> n'envoient ni jeton ni en-tête custom. Risque faible en local, à traiter avant exposition réseau.
+- Done : en-tête CSP servi ; protection CSRF si des sessions sont un jour introduites (dépend d'INFRA-1).
+
+### DB-1 · `UNIQUE(album_id, numero)` + gestion de collision — P2 · S
+> `MAX(numero)+1` sans contrainte : deux imports concurrents sur le même album peuvent
+> produire le même numéro → collision de noms de fichiers + doublon logique.
+- Done : contrainte au schéma (+ migration) ; retry ou réservation transactionnelle ; test concurrent.
+
+### CONC-1 · Cache de crop, registre de jobs, annulation — P3 · M
+> `_crop_lock` englobe crop + resize + encodage (tout sérialisé, TIFF gardé ouvert sans TTL) ;
+> le registre `_jobs` grossit sans purge (fuite lente) ; l'annulation n'est pas préemptive
+> (un Kumiko/OCR long ne s'interrompt pas, le subprocess Kumiko n'est pas tué).
+- Done : verrou réduit au dict de cache + TTL/fermeture ; purge des vieux jobs ; annulation réactive.
+
+### SEG-1 · Préservation du travail humain à la re-segmentation — P2 · L
+> AUDIT passe 3 : **S2** (deux cases annotées → une seule : doublon géométrique annoté),
+> **S3** (transfert d'annotation vers case quasi-disjointe, aucun seuil de recouvrement),
+> **S7** (re-rattachement à une case périmée conservée), **S4** (dédup bulles sans IoU).
+> Logique la plus délicate — **à corriger avec tests de non-régression dédiés**, pas à la volée.
+- Done : seuil de recouvrement à l'`_best_overlap` ; aucun doublon annoté ; IoU sur les bulles ; tests.
+
+### QA-1 · Épinglage des versions + lockfile — P3 · S
+> Bornes `>=` ouvertes (fastapi, ultralytics, easyocr, pillow…) → builds non reproductibles ;
+> `numpy`/`opencv-python-headless`/`requests` (deps réelles de Kumiko) seulement en commentaires.
+- Done : `requirements.lock` (pip-tools) ; deps Kumiko déclarées de façon installable.
+
+### QA-2 · `common.js` — dédup du frontend — P3 · S
+> `$`, `apiGet`, `apiSend`, `escapeHtml`, `toast` recopiés à l'identique dans
+> `viewer.js`/`recherche.js`/`corpus.js` (~80 lignes).
+- Done : module commun partagé (sur le modèle de `static/lib/nav.js` et `dialog.js`).
+
+### QA-3 · Tests de concurrence & d'analyse — P2 · M
+> La sérialisation des jobs, la contention worker↔requêtes sous WAL/`busy_timeout` et la
+> cohérence du backup *pendant une écriture* ne sont pas testées ; les routes `/api/analyse/*`
+> et la correction de tokens n'ont **aucun test serveur dédié** (constat 2026-06-23).
+- Done : tests de contention (deux jobs, worker↔lecteur, backup sous écriture) ; couverture des endpoints d'analyse/grammaire.
+
+---
+
+## Ordre conseillé (modifiable, révisé 2026-06-23)
 1. **ANA-1** (filtre tags) — petit, débloque la finalité côté analyse.
-2. **UX-2 + A11Y (1→5)** — adoption par l'équipe, faisable sans corpus, transverse.
+2. **SEC-1 + DB-1** (SSRF ShareDocs, UNIQUE numéro) — sécurité/intégrité, petits, avant toute exposition.
 3. **ANN-1** (schéma émotions/minorités) — la finalité ; nécessite une décision de vocabulaire.
 4. **INFRA-1→3** (auth/déploiement) — avant la mise en ligne multi-linguiste.
-5. Le reste (ANN-2/3/4, ANA-2/3, NLP, raffinements) au fil du besoin réel.
+5. **SEG-1 + QA-3** (préservation segmentation + tests de concurrence/analyse) — fiabilise la logique délicate.
+6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, QA-1/2, UX-3/4) au fil du besoin réel.
+
+*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2).*

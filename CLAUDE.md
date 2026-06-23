@@ -36,18 +36,19 @@ pytest                       # suite par défaut (exclut e2e ; INCLUT le test `l
 pytest -m "not live"         # sans le test d'intégration sous-processus
 pytest -m e2e                # E2E navigateur Playwright (nécessite : python -m playwright install chromium)
 pytest tests/test_api.py::test_nom_du_test      # un seul test
-pytest --cov=. --cov-report=term-missing        # couverture (objectif 100 %)
+pytest --cov=. --cov-report=term-missing        # couverture (dépend des moteurs optionnels installés)
 ```
 
 - Le marqueur `e2e` est exclu par défaut via `pytest.ini` (`addopts = -m "not e2e"`).
 - **Tests JS purs** (`static/lib/*.js`) : lancés par `tests/test_js_unit.py`, qui appelle `node --test tests/js/*.test.js`. Skippés proprement si Node absent. Pas de runner JS séparé.
-- Les tests des moteurs ML (Kumiko, bulles, OCR) et du NLP se **skippent automatiquement** si le moteur n'est pas installé (`requires_kumiko` / `requires_bulles` / `requires_ocr` dans `tests/conftest.py`).
+- **Accessibilité** : `tests/test_e2e_a11y.py` (marqueur `e2e`) audite les 4 surfaces × thèmes (sombre/clair) via **axe-core** (WCAG 2.1 AA) et échoue à toute violation sérieuse/critique. axe est **vendu hors ligne** dans `tests/js/vendor/axe.min.js` (skip si absent — cf. son README).
+- Les tests des moteurs ML (Kumiko, bulles, OCR) et du NLP se **skippent automatiquement** si le moteur n'est pas installé (`requires_kumiko` / `requires_bulles` / `requires_ocr` dans `tests/conftest.py`). La couverture mesurée en dépend (les routes `/api/analyse/*` + correction de tokens ne sont pas encore couvertes — cf. `docs/backlog.md` QA-3).
 
 ## Architecture
 
 ### Les quatre surfaces (pages)
 
-Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, partageant `static/style.css` (thème sombre) :
+Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, partageant `static/style.css` et `static/theme.js` (thèmes clair/sombre + contraste élevé + zoom UI, et nav transverse + skip-link injectés sur les 4 pages) :
 
 | Route | Template | JS | Rôle |
 |---|---|---|---|
@@ -120,4 +121,5 @@ Une planche a un `role` (`recit` = narrative/numérotée ; sinon paratexte, éca
 - Pas de cache sur les assets : un middleware force `Cache-Control: no-cache` sur `/static` et les pages, car le navigateur intégré d'un IDE sert sinon des CSS/JS périmés.
 - Export disponible en **JSON-LD / CSV / TEI P5** (`main.py`, routes `/api/export/*`).
 - `tests/test_regressions.py` : un test de non-régression par bug corrigé.
-- `docs/` documente les décisions de conception non évidentes (grammaire, numérotation, round-trip, sécurité, Docker) ; `docs/backlog.md` recense les pistes ouvertes. `spike/` et `tools/` sont hors couverture (`.coveragerc`).
+- **Accessibilité (WCAG 2.1 AA)** : les accents pleins `--accent-*` servent les fills / bordures / marqueurs (seuil graphique 3:1) ; pour du **petit texte** coloré, utiliser les tokens d'encre AA-sûrs (`--ink-red`, `--danger`, ou un accent **assombri** en thème clair) — **jamais l'accent brut**, qui échoue le 4.5:1. L'audit axe (`pytest -m e2e`) verrouille la non-régression.
+- `docs/` documente les décisions de conception non évidentes (grammaire, numérotation, round-trip, sécurité, Docker) ; `docs/backlog.md` est le **suivi vivant** (features + dette technique/sécurité §7), `AUDIT.md` l'audit technique daté. `spike/` et `tools/` sont hors couverture (`.coveragerc`).
