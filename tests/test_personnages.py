@@ -68,3 +68,55 @@ def test_affectation_attribut(region):
     with database.connect() as conn:
         assert conn.execute("SELECT COUNT(*) n FROM personnage_attribut").fetchone()["n"] == 0
         assert conn.execute("SELECT COUNT(*) n FROM region_attribut").fetchone()["n"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# API (2a) : CRUD personnages, lien locuteur, fusion
+# --------------------------------------------------------------------------- #
+def test_personnage_crud(client):
+    r = client.post("/api/personnages", json={"nom": "Haddock", "serie": "Tintin"})
+    assert r.status_code == 201
+    pid = r.json()["id"]
+    assert r.json()["nom"] == "Haddock"
+    assert any(x["id"] == pid for x in client.get("/api/personnages").json())
+    assert client.get("/api/personnages", params={"q": "Hadd"}).json()[0]["id"] == pid   # autocomplétion
+    assert client.get("/api/personnages", params={"q": "zzz"}).json() == []
+    client.put(f"/api/personnages/{pid}", json={"nom": "Capitaine Haddock"})
+    assert client.get("/api/personnages").json()[0]["nom"] == "Capitaine Haddock"
+    assert client.delete(f"/api/personnages/{pid}").status_code == 204
+    assert client.get("/api/personnages").json() == []
+
+
+def test_nom_vide_rejete(client):
+    assert client.post("/api/personnages", json={"nom": "   "}).status_code == 422
+
+
+def test_locuteur(client, region):
+    rid = region["id"]
+    pid = client.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
+    assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"] is None
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": pid})
+    loc = client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]
+    assert loc["id"] == pid and loc["nom"] == "Tintin"
+    assert [x for x in client.get("/api/personnages").json() if x["id"] == pid][0]["nb_bulles"] == 1
+    pid2 = client.post("/api/personnages", json={"nom": "Milou"}).json()["id"]   # upsert : changer de locuteur
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": pid2})
+    assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]["id"] == pid2
+    assert client.delete(f"/api/regions/{rid}/locuteur").status_code == 204
+    assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"] is None
+
+
+def test_locuteur_personnage_inconnu(client, region):
+    assert client.put(f"/api/regions/{region['id']}/locuteur",
+                      json={"personnage_id": 9999}).status_code == 404
+
+
+def test_fusion(client, region):
+    rid = region["id"]
+    a = client.post("/api/personnages", json={"nom": "le capitaine"}).json()["id"]
+    b = client.post("/api/personnages", json={"nom": "Capitaine Haddock"}).json()["id"]
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": a})
+    client.post(f"/api/personnages/{a}/fusion", json={"cible_id": b})
+    assert all(x["id"] != a for x in client.get("/api/personnages").json())            # doublon parti
+    assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]["id"] == b    # bulle réaffectée
+    assert client.post(f"/api/personnages/{b}/fusion", json={"cible_id": b}).status_code == 422

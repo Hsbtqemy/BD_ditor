@@ -222,6 +222,26 @@ class TagIn(BaseModel):
     description: Optional[str] = None
 
 
+class PersonnageIn(BaseModel):
+    nom: str
+    serie: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class PersonnageUpdate(BaseModel):
+    nom: Optional[str] = None
+    serie: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class LocuteurIn(BaseModel):
+    personnage_id: int
+
+
+class FusionIn(BaseModel):
+    cible_id: int   # personnage canonique dans lequel fusionner le doublon
+
+
 # --------------------------------------------------------------------------- #
 # Helpers métier
 # --------------------------------------------------------------------------- #
@@ -899,6 +919,126 @@ def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db)):
     )
     conn.commit()
     return _row(conn.execute("SELECT * FROM tags WHERE label = ?", (label,)))
+
+
+# =========================================================================== #
+# Personnages & attribution (ANN-2) — entité canonique + lien locuteur
+# =========================================================================== #
+def _get_personnage(conn, personnage_id):
+    p = _row(conn.execute("SELECT * FROM personnages WHERE id = ?", (personnage_id,)))
+    if p is None:
+        raise HTTPException(404, f"Personnage {personnage_id} introuvable")
+    return p
+
+
+def _locuteur_for(conn, region_id):
+    """Locuteur attribué à une bulle (ou None) → {locuteur: {id, nom, serie} | None}."""
+    return {"locuteur": _row(conn.execute(
+        "SELECT p.id, p.nom, p.serie FROM bulle_locuteur bl "
+        "JOIN personnages p ON p.id = bl.personnage_id WHERE bl.region_id = ?", (region_id,)))}
+
+
+@app.get("/api/personnages")
+def list_personnages(q: Optional[str] = None, conn: sqlite3.Connection = Depends(db)):
+    """Registre des personnages (niveau corpus) + nombre de bulles attribuées.
+    `q` filtre par nom (autocomplétion à la saisie / canonicalisation à la volée)."""
+    sql = ("SELECT p.id, p.nom, p.serie, p.notes, "
+           "       (SELECT COUNT(*) FROM bulle_locuteur bl WHERE bl.personnage_id = p.id) AS nb_bulles "
+           "FROM personnages p ")
+    params = []
+    if q and q.strip():
+        sql += "WHERE p.nom LIKE ? "
+        params.append(f"%{q.strip()}%")
+    sql += "ORDER BY p.nom, p.serie"
+    return _rows(conn.execute(sql, params))
+
+
+@app.post("/api/personnages", status_code=201)
+def create_personnage(payload: PersonnageIn, conn: sqlite3.Connection = Depends(db)):
+    nom = (payload.nom or "").strip()
+    if not nom:
+        raise HTTPException(422, "Nom de personnage vide")
+    pid = conn.execute(
+        "INSERT INTO personnages (nom, serie, notes) VALUES (?, ?, ?)",
+        (nom, (payload.serie or "").strip() or None, payload.notes)).lastrowid
+    conn.commit()
+    return _get_personnage(conn, pid)
+
+
+@app.put("/api/personnages/{personnage_id}")
+def update_personnage(personnage_id: int, payload: PersonnageUpdate,
+                      conn: sqlite3.Connection = Depends(db)):
+    _get_personnage(conn, personnage_id)
+    sets, params = [], []
+    if payload.nom is not None:
+        nom = payload.nom.strip()
+        if not nom:
+            raise HTTPException(422, "Nom de personnage vide")
+        sets.append("nom = ?"); params.append(nom)
+    if payload.serie is not None:
+        sets.append("serie = ?"); params.append(payload.serie.strip() or None)
+    if payload.notes is not None:
+        sets.append("notes = ?"); params.append(payload.notes)
+    if sets:
+        params.append(personnage_id)
+        conn.execute(f"UPDATE personnages SET {', '.join(sets)} WHERE id = ?", params)
+        conn.commit()
+    return _get_personnage(conn, personnage_id)
+
+
+@app.delete("/api/personnages/{personnage_id}", status_code=204)
+def delete_personnage(personnage_id: int, conn: sqlite3.Connection = Depends(db)):
+    _get_personnage(conn, personnage_id)
+    conn.execute("DELETE FROM personnages WHERE id = ?", (personnage_id,))   # CASCADE : détache liens/attributs
+    conn.commit()
+
+
+@app.post("/api/personnages/{personnage_id}/fusion")
+def fusionner_personnage(personnage_id: int, payload: FusionIn,
+                         conn: sqlite3.Connection = Depends(db)):
+    """Fusionne `personnage_id` (doublon) DANS `cible_id` (canonique) : réaffecte les
+    liens locuteur et les attributs, puis supprime le doublon. Idempotent sur les
+    affectations (INSERT OR IGNORE). Soupape du modèle mentions→entités (curation)."""
+    if payload.cible_id == personnage_id:
+        raise HTTPException(422, "Un personnage ne peut être fusionné avec lui-même")
+    _get_personnage(conn, personnage_id)
+    _get_personnage(conn, payload.cible_id)
+    # locuteur : une bulle a au plus un locuteur (region_id PK) → réaffectation directe.
+    conn.execute("UPDATE bulle_locuteur SET personnage_id = ? WHERE personnage_id = ?",
+                 (payload.cible_id, personnage_id))
+    # attributs : éviter le doublon (personnage_id, valeur_id) → OR IGNORE ; le reste du
+    # doublon part au DELETE (CASCADE).
+    conn.execute("INSERT OR IGNORE INTO personnage_attribut (personnage_id, valeur_id) "
+                 "SELECT ?, valeur_id FROM personnage_attribut WHERE personnage_id = ?",
+                 (payload.cible_id, personnage_id))
+    conn.execute("DELETE FROM personnages WHERE id = ?", (personnage_id,))
+    conn.commit()
+    return _get_personnage(conn, payload.cible_id)
+
+
+@app.get("/api/regions/{region_id}/locuteur")
+def get_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db)):
+    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
+        raise HTTPException(404, f"Région {region_id} introuvable")
+    return _locuteur_for(conn, region_id)
+
+
+@app.put("/api/regions/{region_id}/locuteur")
+def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection = Depends(db)):
+    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
+        raise HTTPException(404, f"Région {region_id} introuvable")
+    _get_personnage(conn, payload.personnage_id)
+    conn.execute("INSERT INTO bulle_locuteur (region_id, personnage_id) VALUES (?, ?) "
+                 "ON CONFLICT(region_id) DO UPDATE SET personnage_id = excluded.personnage_id",
+                 (region_id, payload.personnage_id))
+    conn.commit()
+    return _locuteur_for(conn, region_id)
+
+
+@app.delete("/api/regions/{region_id}/locuteur", status_code=204)
+def clear_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db)):
+    conn.execute("DELETE FROM bulle_locuteur WHERE region_id = ?", (region_id,))
+    conn.commit()
 
 
 # =========================================================================== #
