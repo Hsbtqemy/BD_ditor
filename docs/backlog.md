@@ -222,10 +222,10 @@ ou décision de conception requise).
 > n'envoient ni jeton ni en-tête custom. Risque faible en local, à traiter avant exposition réseau.
 - Done : en-tête CSP servi ; protection CSRF si des sessions sont un jour introduites (dépend d'INFRA-1).
 
-### DB-1 · `UNIQUE(album_id, numero)` + gestion de collision — P2 · S
+### DB-1 · `UNIQUE(album_id, numero)` + gestion de collision — ✅ Fait 2026-06-24 · P2 · S
 > `MAX(numero)+1` sans contrainte : deux imports concurrents sur le même album peuvent
 > produire le même numéro → collision de noms de fichiers + doublon logique.
-- Done : contrainte au schéma (+ migration) ; retry ou réservation transactionnelle ; test concurrent.
+- ✅ Fait 2026-06-24 : index UNIQUE posé en migration (v13) après dédoublonnage ; numéro alloué AVANT écriture (numéro explicite déjà pris → 409 sans écraser) ; course résiduelle → 409 via l'index ; +5 tests. *Réservation atomique « pure » (fenêtre d'écrasement de fichier en course concurrente) différée — non justifiée en mono-utilisateur ; la contrainte empêche déjà le doublon logique.*
 
 ### CONC-1 · Cache de crop, registre de jobs, annulation — P3 · M
 > `_crop_lock` englobe crop + resize + encodage (tout sérialisé, TIFF gardé ouvert sans TTL) ;
@@ -266,4 +266,4 @@ ou décision de conception requise).
 5. **SEG-1 + QA-3** (préservation segmentation + tests de concurrence/analyse) — fiabilise la logique délicate.
 6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, QA-1/2, UX-3/4) au fil du besoin réel.
 
-*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1).*
+*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** (§7).*

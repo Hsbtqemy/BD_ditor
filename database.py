@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 
 # --------------------------------------------------------------------------- #
@@ -232,6 +232,9 @@ CREATE INDEX IF NOT EXISTS idx_presence_perso   ON personnage_presence(personnag
 CREATE INDEX IF NOT EXISTS idx_attrval_dim      ON attribut_valeur(dimension_id);
 CREATE INDEX IF NOT EXISTS idx_persoattr_val    ON personnage_attribut(valeur_id);
 CREATE INDEX IF NOT EXISTS idx_regattr_val      ON region_attribut(valeur_id);
+-- NB : l'unicité (album_id, numero) des planches (DB-1) est posée en MIGRATION
+-- (idx_planches_album_numero), pas ici : sa création doit suivre un dédoublonnage
+-- d'éventuelles données préexistantes, qui ne peut avoir lieu qu'après SCHEMA_SQL.
 """
 
 # Index plein texte FTS5 — séparé du schéma pour pouvoir le RECRÉER en migration
@@ -333,7 +336,38 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # du locuteur pour l'image. NOUVELLE table créée par SCHEMA_SQL (CREATE … IF NOT
     # EXISTS) → rien à migrer, juste acter la version. Cf. docs/personnages-et-attribution.md §14.
 
+    # v12 → v13 : DB-1 — unicité (album_id, numero) des planches. On dédoublonne D'ABORD
+    # d'éventuels numéros en double (sinon CREATE UNIQUE INDEX échouerait), PUIS on pose
+    # l'index. Idempotent (IF NOT EXISTS + version) ; sûr sur base neuve (aucune ligne).
+    if version < 13:
+        has_planches = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='planches'").fetchone()
+        if has_planches:            # _migrate peut tourner avant SCHEMA_SQL (tests isolés)
+            _dedup_numeros_planches(conn)
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_planches_album_numero "
+                         "ON planches(album_id, numero)")
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+
+def _dedup_numeros_planches(conn: sqlite3.Connection) -> None:
+    """Réattribue un numéro libre aux planches partageant un (album_id, numero) — rare
+    (seul un `numero` explicite a pu collisionner avant DB-1). Garde la plus ancienne
+    (id min) ; les suivantes prennent MAX(numero)+1 de leur album. Prépare l'unicité.
+    Note : ne renomme PAS les fichiers (un doublon préexistant les a déjà écrasés) ;
+    rend seulement la base cohérente pour poser la contrainte."""
+    dups = conn.execute(
+        "SELECT album_id, numero FROM planches "
+        "GROUP BY album_id, numero HAVING COUNT(*) > 1").fetchall()
+    for d in dups:
+        rows = conn.execute(
+            "SELECT id FROM planches WHERE album_id = ? AND numero = ? ORDER BY id",
+            (d["album_id"], d["numero"])).fetchall()
+        for extra in rows[1:]:                      # on conserve la première
+            n = conn.execute(
+                "SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM planches WHERE album_id = ?",
+                (d["album_id"],)).fetchone()["n"]
+            conn.execute("UPDATE planches SET numero = ? WHERE id = ?", (n, extra["id"]))
 
 
 # --------------------------------------------------------------------------- #

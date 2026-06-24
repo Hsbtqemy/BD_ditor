@@ -459,6 +459,22 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db)):
 # Route synchrone (def) : FastAPI l'exécute dans un threadpool, ce qui évite
 # de bloquer la boucle d'événements pendant le redimensionnement PIL (lourd
 # sur un TIFF 400 dpi). On lit donc l'upload via file.file (API synchrone).
+def _allouer_numero(conn, album_id: int, numero: Optional[int]) -> int:
+    """Alloue le numéro d'une nouvelle planche AVANT toute écriture de fichier (DB-1).
+    Les fichiers master/dérivé sont nommés d'après le numéro : on vérifie donc l'unicité
+    en amont, sinon l'écriture écraserait SILENCIEUSEMENT la planche existante de même
+    numéro. `numero` explicite déjà pris → 409 ; absent → MAX+1 de l'album. L'index unique
+    (album_id, numero) reste le filet en cas de course concurrente résiduelle."""
+    if numero is None:
+        return conn.execute(
+            "SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM planches WHERE album_id = ?",
+            (album_id,)).fetchone()["n"]
+    if conn.execute("SELECT 1 FROM planches WHERE album_id = ? AND numero = ?",
+                    (album_id, numero)).fetchone():
+        raise HTTPException(409, f"Le numéro {numero} est déjà pris dans cet album.")
+    return numero
+
+
 @app.post("/api/albums/{album_id}/import", status_code=201)
 def import_planche(
     album_id: int,
@@ -471,15 +487,15 @@ def import_planche(
     data = file.file.read()
     if not data:
         raise HTTPException(400, "Fichier vide")
-    # Numéro fixé en amont pour aligner les noms master/dérivé web.
-    if numero is None:
-        numero = conn.execute(
-            "SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM planches "
-            "WHERE album_id = ?", (album_id,),
-        ).fetchone()["n"]
+    # Numéro alloué AVANT écriture (DB-1) : un numéro explicite déjà pris → 409, sans
+    # écraser les fichiers (master/dérivé nommés d'après lui) de la planche existante.
+    numero = _allouer_numero(conn, album_id, numero)
     master = store_upload(album_id, file.filename or "planche.tif", data, numero)
     try:
         planche = ingest_image(conn, album_id, master, numero=numero)
+    except sqlite3.IntegrityError:
+        master.unlink(missing_ok=True)   # course rare : un concurrent a pris ce numéro
+        raise HTTPException(409, f"Numéro {numero} déjà pris (course d'import) — réessayez.")
     except Exception as exc:
         # Pas de master orphelin sur disque si l'ingestion échoue après écriture.
         master.unlink(missing_ok=True)
@@ -743,9 +759,7 @@ def sharedocs_importer(payload: SharedocsImportIn,
             if not data:
                 raise ShareDocsError("fichier vide")
             t_dl = time.perf_counter() - t0
-            numero = conn.execute(
-                "SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM planches "
-                "WHERE album_id = ?", (album_id,)).fetchone()["n"]
+            numero = _allouer_numero(conn, album_id, None)   # auto (MAX+1) ; index unique = filet
             master = store_upload(album_id, nom, data, numero)
             t1 = time.perf_counter()
             planche = ingest_image(conn, album_id, master, numero=numero)
