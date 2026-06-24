@@ -1382,7 +1382,8 @@ def corpus_stats(conn: sqlite3.Connection = Depends(db)):
 # =========================================================================== #
 # Analyse grammaticale (Palier B) — fréquences lexicales + tokens par région
 # =========================================================================== #
-def _analyse_filtres(album, type, pos, lemme, morph, provenance, tags=None, tag_scope="herite"):
+def _analyse_filtres(album, type, pos, lemme, morph, provenance, tags=None, tag_scope="herite",
+                     personnage=None, attributs=None):
     """Clauses WHERE communes aux requêtes par token (sur la vue `tokens_effectifs` te,
     jointe à regions r / planches p). Valeurs EFFECTIVES (correction humaine ⊕ auto)."""
     where, params = [], []
@@ -1414,6 +1415,23 @@ def _analyse_filtres(album, type, pos, lemme, morph, provenance, tags=None, tag_
                 "        JOIN annotations a2 ON a2.id = at2.annotation_id "
                 f"       WHERE {cible} AND tg.label = ?)")
             params.append(label)
+    # Filtre par LOCUTEUR (ANN-2) : la bulle est attribuée à ce personnage.
+    if personnage is not None:
+        where.append("EXISTS (SELECT 1 FROM bulle_locuteur bl "
+                     "WHERE bl.region_id = r.id AND bl.personnage_id = ?)")
+        params.append(personnage)
+    # Filtre par ATTRIBUT (valeur_id) : profil du LOCUTEUR (dimension 'personnage') OU
+    # situation de la CASE (dimension 'case' ; région ou case parente). Un (EXISTS OR
+    # EXISTS) par valeur ⇒ ET entre attributs. Une valeur n'existe que dans UNE des deux
+    # tables (garde de cohérence à l'affectation), donc tester les deux est neutre.
+    for vid in (attributs or []):
+        where.append(
+            "(EXISTS (SELECT 1 FROM bulle_locuteur bl JOIN personnage_attribut pa "
+            "         ON pa.personnage_id = bl.personnage_id "
+            "         WHERE bl.region_id = r.id AND pa.valeur_id = ?) "
+            " OR EXISTS (SELECT 1 FROM region_attribut ra "
+            "            WHERE ra.region_id IN (r.id, r.parent_id) AND ra.valeur_id = ?))")
+        params.extend([vid, vid])
     return where, params
 
 
@@ -1424,6 +1442,7 @@ def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
                        lemme: Optional[str] = None, morph: Optional[str] = None,
                        provenance: Optional[str] = None,
                        tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
+                       personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
                        limit: int = 100,
                        conn: sqlite3.Connection = Depends(db)):
     """Distributions de fréquence sur les valeurs EFFECTIVES. `champ` : `lemme`
@@ -1433,7 +1452,8 @@ def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
     if champ not in ("lemme", "pos", "morph"):
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
     limit = max(1, min(limit, 1000))
-    where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope)
+    where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope,
+                                     personnage, attributs)
     cols = "te.lemme, te.pos" if champ == "lemme" else f"te.{champ}"
     sql = (f"SELECT {cols}, COUNT(*) AS freq "
            "FROM tokens_effectifs te JOIN regions r ON r.id = te.region_id "
@@ -1450,6 +1470,7 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
                         morph: Optional[str] = None, provenance: Optional[str] = None,
                         album: Optional[int] = None, type: Optional[str] = None,
                         tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
+                        personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
                         limit: int = 200, conn: sqlite3.Connection = Depends(db)):
     """Concordance grammaticale : occurrences de tokens (valeurs EFFECTIVES) répondant
     aux critères, AVEC leur contexte (région, planche, album, texte OCR) — pour montrer
@@ -1458,7 +1479,8 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
     if not (lemme or pos or morph):
         raise HTTPException(422, "Préciser au moins un critère grammatical (lemme, pos ou morph).")
     limit = max(1, min(limit, 500))
-    where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope)
+    where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope,
+                                     personnage, attributs)
     sql = ("SELECT te.region_id, te.ordre, te.texte, te.lemme, te.pos, te.morph, "
            "       te.provenance, r.type, p.id AS planche_id, p.numero AS planche_numero, "
            "       a.id AS album_id, a.titre AS album_titre, r.ocr_texte "
@@ -1476,10 +1498,12 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
     return {"count": len(results), "results": results}
 
 
-def _distribution(conn, champ, album, type, pos, morph, provenance, tags=None, tag_scope="herite"):
+def _distribution(conn, champ, album, type, pos, morph, provenance, tags=None, tag_scope="herite",
+                  personnage=None, attributs=None):
     """Compte {valeur: fréquence} d'un champ (lemme|pos|morph) sur un sous-corpus, et
     le total. Sur les valeurs EFFECTIVES. `champ` doit être validé par l'appelant."""
-    where, params = _analyse_filtres(album, type, pos, None, morph, provenance, tags, tag_scope)
+    where, params = _analyse_filtres(album, type, pos, None, morph, provenance, tags, tag_scope,
+                                     personnage, attributs)
     sql = (f"SELECT te.{champ} AS v, COUNT(*) AS f "
            "FROM tokens_effectifs te JOIN regions r ON r.id = te.region_id "
            "JOIN planches p ON p.id = r.planche_id ")
@@ -1497,7 +1521,9 @@ def analyse_comparaison(champ: str = "lemme",
                         a_provenance: Optional[str] = None, a_tags: Optional[list[str]] = Query(None),
                         b_album: Optional[int] = None, b_type: Optional[str] = None,
                         b_pos: Optional[str] = None, b_morph: Optional[str] = None,
+                        a_personnage: Optional[int] = None, a_attributs: Optional[list[int]] = Query(None),
                         b_provenance: Optional[str] = None, b_tags: Optional[list[str]] = Query(None),
+                        b_personnage: Optional[int] = None, b_attributs: Optional[list[int]] = Query(None),
                         tag_scope: str = "herite",
                         limit: int = 50, conn: sqlite3.Connection = Depends(db)):
     """Compare deux sous-corpus A et B : valeurs (lemme|pos|morph) les plus
@@ -1506,8 +1532,10 @@ def analyse_comparaison(champ: str = "lemme",
     if champ not in ("lemme", "pos", "morph"):
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
     limit = max(1, min(limit, 200))
-    da, ta = _distribution(conn, champ, a_album, a_type, a_pos, a_morph, a_provenance, a_tags, tag_scope)
-    db_, tb = _distribution(conn, champ, b_album, b_type, b_pos, b_morph, b_provenance, b_tags, tag_scope)
+    da, ta = _distribution(conn, champ, a_album, a_type, a_pos, a_morph, a_provenance, a_tags, tag_scope,
+                           a_personnage, a_attributs)
+    db_, tb = _distribution(conn, champ, b_album, b_type, b_pos, b_morph, b_provenance, b_tags, tag_scope,
+                            b_personnage, b_attributs)
     out = []
     for v in set(da) | set(db_):
         fa, fb = da.get(v, 0), db_.get(v, 0)

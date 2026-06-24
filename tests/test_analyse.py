@@ -107,3 +107,60 @@ def test_recherche_tag_scope(client, album, planche, db_path):
     herite = client.get("/api/recherche",
                         params={"tags": "scene1", "tag_scope": "herite"}).json()
     assert {r["region_id"] for r in herite["results"]} == {case, bulle}   # + la bulle enfant
+
+
+# --------------------------------------------------------------------------- #
+# ANN-2 (2c) : facette d'analyse par locuteur / attribut (profil + situation)
+# --------------------------------------------------------------------------- #
+def _perso(client, nom):
+    return client.post("/api/personnages", json={"nom": nom}).json()["id"]
+
+
+def test_frequences_par_locuteur(client, album, planche, db_path):
+    a, b = _region(client, planche["id"]), _region(client, planche["id"])
+    pa, pb = _perso(client, "A"), _perso(client, "B")
+    client.put(f"/api/regions/{a}/locuteur", json={"personnage_id": pa})
+    client.put(f"/api/regions/{b}/locuteur", json={"personnage_id": pb})
+    _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
+    _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])
+    res = client.get("/api/analyse/frequences", params={"champ": "lemme", "personnage": pa}).json()
+    assert {r["lemme"] for r in res["results"]} == {"crier"}
+
+
+def test_frequences_par_attribut_du_locuteur(client, album, planche, db_path):
+    a, b = _region(client, planche["id"]), _region(client, planche["id"])
+    pa, pb = _perso(client, "A"), _perso(client, "B")
+    client.put(f"/api/regions/{a}/locuteur", json={"personnage_id": pa})
+    client.put(f"/api/regions/{b}/locuteur", json={"personnage_id": pb})
+    d = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "origine"}).json()["id"]
+    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "rural"}).json()["id"]
+    client.put(f"/api/personnages/{pa}/attributs", json={"valeur_id": v})   # A est « rural »
+    _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
+    _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])
+    res = client.get("/api/analyse/frequences", params={"champ": "lemme", "attributs": v}).json()
+    assert {r["lemme"] for r in res["results"]} == {"crier"}
+
+
+def test_frequences_par_situation_de_case(client, album, planche, db_path):
+    """L'attribut de SITUATION est posé sur la case ; la bulle enfant en hérite."""
+    case = _region(client, planche["id"], type="case")
+    bulle = _region(client, planche["id"])
+    d = client.post("/api/attributs/dimensions", json={"cible": "case", "nom": "formalite"}).json()["id"]
+    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "soutenu"}).json()["id"]
+    client.put(f"/api/regions/{case}/attributs", json={"valeur_id": v})
+    _seed(db_path, bulle, [(0, "PARLE", "parler", "VERB", "")], parent_id=case)
+    res = client.get("/api/analyse/frequences", params={"champ": "lemme", "attributs": v}).json()
+    assert {r["lemme"] for r in res["results"]} == {"parler"}
+
+
+def test_comparaison_par_locuteur(client, album, planche, db_path):
+    a, b = _region(client, planche["id"]), _region(client, planche["id"])
+    pa, pb = _perso(client, "A"), _perso(client, "B")
+    client.put(f"/api/regions/{a}/locuteur", json={"personnage_id": pa})
+    client.put(f"/api/regions/{b}/locuteur", json={"personnage_id": pb})
+    _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
+    _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])
+    res = client.get("/api/analyse/comparaison",
+                     params={"champ": "lemme", "a_personnage": pa, "b_personnage": pb}).json()
+    assert "crier" in {x["valeur"] for x in res["sur_a"]}
+    assert "rire" in {x["valeur"] for x in res["sur_b"]}
