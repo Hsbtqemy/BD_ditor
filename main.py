@@ -904,7 +904,7 @@ def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db)):
 # =========================================================================== #
 # Recherche plein texte (FTS5)
 # =========================================================================== #
-def _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, limit):
+def _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, limit, tag_scope="propre"):
     """Construit et exécute la requête de recherche (régions + contexte, tags joints).
     Partagé par /api/recherche (JSON) et l'export CSV — une seule logique de requête."""
     where, params = [], []
@@ -946,14 +946,19 @@ def _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, l
         where.append("r.type = ?")
         params.append(type)
     if tags:
-        # un paramètre `tags` par tag (robuste aux virgules dans les labels)
+        # un paramètre `tags` par tag (robuste aux virgules dans les labels).
+        # tag_scope : 'propre' = la région porte le tag ; 'herite' = la région OU sa
+        # case parente — aligné sur /api/analyse/* pour que la descente aux preuves
+        # (drill Exploration → Recherche) ne perde pas les tokens tagués au niveau case.
+        cible = ("a2.region_id = r.id" if tag_scope == "propre"
+                 else "a2.region_id IN (r.id, r.parent_id)")
         wanted = [_norm_tag(t) for t in tags if _norm_tag(t)]
         for label in wanted:
             where.append(
                 "EXISTS (SELECT 1 FROM annotation_tags at "
                 "        JOIN tags tg ON tg.id = at.tag_id "
                 "        JOIN annotations a2 ON a2.id = at.annotation_id "
-                "        WHERE a2.region_id = r.id AND tg.label = ?)"
+                f"       WHERE {cible} AND tg.label = ?)"
             )
             params.append(label)
 
@@ -1005,9 +1010,10 @@ def recherche(q: str = "", album: Optional[int] = None,
               type: Optional[str] = None, tags: Optional[list[str]] = Query(None),
               pos: Optional[str] = None, lemme: Optional[str] = None,
               morph: Optional[str] = None, provenance: Optional[str] = None,
+              tag_scope: str = "propre",
               limit: int = 100, conn: sqlite3.Connection = Depends(db)):
     limit = max(1, min(limit, 500))   # borne : évite LIMIT -1 (= tout le corpus) / DoS
-    results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, limit)
+    results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, limit, tag_scope)
     return {"q": q, "count": len(results), "results": results}
 
 
@@ -1026,10 +1032,11 @@ def recherche_export(q: str = "", album: Optional[int] = None,
                      type: Optional[str] = None, tags: Optional[list[str]] = Query(None),
                      pos: Optional[str] = None, lemme: Optional[str] = None,
                      morph: Optional[str] = None, provenance: Optional[str] = None,
+                     tag_scope: str = "propre",
                      conn: sqlite3.Connection = Depends(db)):
     """Export CSV du jeu de résultats courant (mêmes critères que /api/recherche).
     Borne haute relevée (5000) : on exporte le jeu trouvé, pas seulement l'aperçu."""
-    results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, 5000)
+    results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, 5000, tag_scope)
     buf = io.StringIO()
     # `planche` = numéro ÉDITORIAL (cité), `citation` = repère complet « pl·c(·b) » ;
     # le CSV est l'artefact que le chercheur emporte pour citer. Cf.

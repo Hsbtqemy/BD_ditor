@@ -10,6 +10,7 @@ const $ = (s) => document.querySelector(s);
 const state = {
   albums: [],
   activeTags: new Set(),
+  tagScope: "propre",   // 'propre' (défaut) ou 'herite' (case parente incluse) — hérité du drill Exploration
   timer: null,
   searchGen: 0,   // jeton de fraîcheur : ignore les réponses de recherche périmées
 };
@@ -128,6 +129,7 @@ function searchParams() {
   set("morph", $("#f-morph").value);
   set("provenance", $("#f-prov").value);
   state.activeTags.forEach((t) => p.append("tags", t));   // un param par tag
+  if (state.activeTags.size && state.tagScope === "herite") p.set("tag_scope", "herite");
   return p;
 }
 
@@ -273,6 +275,7 @@ function restoreFromUrl() {
   $("#f-morph").value = p.get("morph") || "";
   $("#f-prov").value = p.get("provenance") || "";
   state.activeTags = new Set(p.getAll("tags"));
+  state.tagScope = p.get("tag_scope") === "herite" ? "herite" : "propre";   // hérité du drill
   renderActiveTags();
   if (p.get("pos") || p.get("lemme") || p.get("morph") || p.get("provenance"))
     $("#gram-facets").open = true;     // déplie si une facette grammaticale est active

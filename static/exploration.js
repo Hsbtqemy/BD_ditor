@@ -101,6 +101,7 @@ function drillUrl(valeur, filtres) {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(filtres)) if (v) p.set(k, v);
   p.set(champ(), valeur);
+  if (filtres.tags) p.set("tag_scope", tagScope());   // Recherche filtre le tag avec le MÊME scope
   p.set("retour", location.pathname + location.search);   // pour revenir à l'Exploration
   return "/recherche?" + p.toString();
 }

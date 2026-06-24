@@ -89,3 +89,21 @@ def test_tag_scope_herite_vs_propre(client, album, planche, db_path):
     propre = client.get("/api/analyse/frequences",
                         params={"champ": "lemme", "tags": "scene1", "tag_scope": "propre"}).json()
     assert propre["results"] == []
+
+
+def test_recherche_tag_scope(client, album, planche, db_path):
+    """Cohérence Recherche ↔ Analyse : un tag posé sur la CASE atteint sa bulle
+    enfant en `herite` (drill depuis Exploration), pas en `propre` (défaut)."""
+    case = _region(client, planche["id"], type="case")
+    bulle = _region(client, planche["id"])
+    _tags(client, case, ["scene1"])
+    conn = sqlite3.connect(db_path)
+    conn.execute("UPDATE regions SET parent_id = ? WHERE id = ?", (case, bulle))
+    conn.commit(); conn.close()
+
+    propre = client.get("/api/recherche", params={"tags": "scene1"}).json()
+    assert {r["region_id"] for r in propre["results"]} == {case}   # la case seule
+
+    herite = client.get("/api/recherche",
+                        params={"tags": "scene1", "tag_scope": "herite"}).json()
+    assert {r["region_id"] for r in herite["results"]} == {case, bulle}   # + la bulle enfant
