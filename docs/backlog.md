@@ -53,6 +53,10 @@ ou décision de conception requise).
 ## 2. Analyse — extensions de surface
 
 ### ANA-1 · Filtre par tags dans les endpoints d'analyse — P1 · S
+> **✅ Fait — 2026-06-23** (commits `6e49f75` / `40b0ceb` / `26e0f70`) : filtre `tags`
+> + `tag_scope` (hérité/propre) sur fréquences/concordance/comparaison, facette tag
+> dans Exploration, cohérence avec Recherche (drill sans cul-de-sac), tests
+> (`tests/test_analyse.py`) — comble une partie de QA-3.
 > `frequences`/`concordance`/`comparaison` filtrent album/type/POS/lemme/morph/provenance
 > **mais pas les tags** → impossible de faire « distribution des lemmes parmi les régions
 > taguées *colère* ». Pierre angulaire pour la finalité.
@@ -255,11 +259,11 @@ ou décision de conception requise).
 ---
 
 ## Ordre conseillé (modifiable, révisé 2026-06-23)
-1. **ANA-1** (filtre tags) — petit, débloque la finalité côté analyse.
+1. **ANN-2 « mince »** (entité personnage + locuteur + attributs facettés & émergents) — **en cours** (conception arrêtée, cf. `docs/personnages-et-attribution.md` §13).
 2. **SEC-1 + DB-1** (SSRF ShareDocs, UNIQUE numéro) — sécurité/intégrité, petits, avant toute exposition.
-3. **ANN-1** (schéma émotions/minorités) — la finalité ; nécessite une décision de vocabulaire.
+3. ~~ANN-1~~ → **absorbé par ANN-2** : le vocabulaire devient une structure facettée *émergente*, plus une liste figée à trancher en amont.
 4. **INFRA-1→3** (auth/déploiement) — avant la mise en ligne multi-linguiste.
 5. **SEG-1 + QA-3** (préservation segmentation + tests de concurrence/analyse) — fiabilise la logique délicate.
 6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, QA-1/2, UX-3/4) au fil du besoin réel.
 
-*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2).*
+*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2).*
