@@ -1552,6 +1552,8 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
     _valider_facette(conn, personnage, attributs)
     where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope,
                                      personnage, attributs)
+    if not where:   # critères fournis mais aucun effectif (p.ex. tag vide) → évite un « WHERE » vide
+        raise HTTPException(422, "Aucun critère de recherche effectif.")
     sql = ("SELECT te.region_id, te.ordre, te.texte, te.lemme, te.pos, te.morph, "
            "       te.provenance, r.type, p.id AS planche_id, p.numero AS planche_numero, "
            "       a.id AS album_id, a.titre AS album_titre, r.ocr_texte, "

@@ -227,3 +227,10 @@ def test_facette_id_inconnu_404(client, album, planche):
                       params={"champ": "lemme", "personnage": 9999}).status_code == 404
     assert client.get("/api/analyse/frequences",
                       params={"champ": "lemme", "attributs": 9999}).status_code == 404
+
+
+def test_concordance_critere_vide_422(client, album, planche):
+    """Régression : un tag vide passe le garde brut mais ne produit aucune clause →
+    422 (et non un « WHERE » vide → 500)."""
+    assert client.get("/api/analyse/concordance", params={"tags": " "}).status_code == 422
+    assert client.get("/api/analyse/concordance", params={"tags": ""}).status_code == 422
