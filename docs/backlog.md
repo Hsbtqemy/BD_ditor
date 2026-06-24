@@ -258,12 +258,12 @@ ou décision de conception requise).
 
 ---
 
-## Ordre conseillé (modifiable, révisé 2026-06-23)
-1. ~~**ANN-2 « mince »**~~ (entité personnage + locuteur + attributs facettés & émergents) — **✅ Fait 2026-06-24** (schéma v11 + API + UI, vocabulaire émergent ; cf. `docs/personnages-et-attribution.md`). Différé : présence (2ᵉ graphe), attributs riches, entité « scène ».
-2. **SEC-1 + DB-1** (SSRF ShareDocs, UNIQUE numéro) — sécurité/intégrité, petits, avant toute exposition.
+## Ordre conseillé (modifiable, révisé 2026-06-24)
+1. ~~**ANN-2 « mince »**~~ (entité personnage + locuteur + attributs facettés & émergents) — **✅ Fait 2026-06-24** (schéma v11 + API + UI, vocabulaire émergent ; cf. `docs/personnages-et-attribution.md`). Suite **§14** (pivot : l'image croise la langue) : brique **(a)** « boîte → identité + profil » **livrée** (schéma v13) ; (b)/(c) + attributs riches + scène **dormants**.
+2. ~~**SEC-1 + DB-1**~~ (SSRF ShareDocs, UNIQUE numéro) — **✅ Fait 2026-06-24** (§7), avant toute exposition réseau.
 3. ~~ANN-1~~ → **absorbé par ANN-2** : le vocabulaire devient une structure facettée *émergente*, plus une liste figée à trancher en amont.
 4. **INFRA-1→3** (auth/déploiement) — avant la mise en ligne multi-linguiste.
 5. **SEG-1 + QA-3** (préservation segmentation + tests de concurrence/analyse) — fiabilise la logique délicate.
-6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, QA-1/2, UX-3/4) au fil du besoin réel.
+6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, QA-1, UX-3/4) au fil du besoin réel.
 
 *Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** + **QA-2** (§7).*
