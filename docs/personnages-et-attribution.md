@@ -13,7 +13,7 @@
 > primitives**). **Conception arrêtée et lots livrés (2026-06-24)** : ANN-2 « mince »
 > (schéma v11 + API + UI) + ANA-1 substrat. **§14 (2026-06-24)** recadre les différés :
 > l'image comme **pivot** (objet = la langue ; échelles personnage & œuvre), clé de voûte =
-> la **boîte personnage porteuse d'identité** — brique (a) à faire, (b)/(c) dormantes.
+> la **boîte personnage porteuse d'identité** — brique (a) **faite** (2026-06-24), (b)/(c) dormantes.
 
 ## 1. Le besoin
 
@@ -357,7 +357,7 @@ de jointure.
 
 | Brique | Rôle | Statut |
 | --- | --- | --- |
-| **(a)** boîte `personnage` → entité (identité + profil **depuis la boîte**) | clé de voûte : joint parole et image ; profile les muets | **à faire** — palier 1, borné, miroir du locuteur |
+| **(a)** boîte `personnage` → entité (identité + profil **depuis la boîte**) | clé de voûte : joint parole et image ; profile les muets | **✅ Fait 2026-06-24** — palier 1, miroir du locuteur (schéma v12) |
 | **(b)** attribut visuel sur la boîte (expression…) + lien **locuteur ↔ boîte** | langue × visuel à l'**occurrence** (« registre quand le locuteur est en colère ») | **différé**, conçu-pour |
 | **(c)** distribution des attributs visuels (profil personnage / œuvre) | l'axe **pivot** d'agrégat (non-token), borné à l'entité / l'œuvre | **différé**, conçu-pour |
 
@@ -365,7 +365,10 @@ Discipline anti-couches : on **ne code que (a)** maintenant ; (b) et (c) sont **
 dormants**, déclenchés par une **requête réelle sur un vrai album**, jamais par spéculation.
 (a) est pensée pour les accueillir **sans refonte**.
 
-### 14.5 Esquisse de (a) — strict miroir du locuteur
+### 14.5 Esquisse de (a) — strict miroir du locuteur · ✅ LIVRÉ 2026-06-24
+
+Livré conforme à l'esquisse (schéma v12 · API `…/personnage` · panneau Personnage +
+profil depuis la boîte · 5 tests + smoke navigateur, dont le cas **muet profilé**).
 
 - **Schéma** (v12) : `personnage_presence(region_id PK → personnage_id, ON DELETE CASCADE)`
   — même forme que `bulle_locuteur` ; sémantique par type (`region.type = 'personnage'`).

@@ -9,16 +9,16 @@ import database
 from conftest import direct_query
 
 
-def test_schema_version_11(data_dir, db_path):
-    assert database.SCHEMA_VERSION == 11
-    assert direct_query(db_path, "PRAGMA user_version")[0]["user_version"] == 11
+def test_schema_version_12(data_dir, db_path):
+    assert database.SCHEMA_VERSION == 12
+    assert direct_query(db_path, "PRAGMA user_version")[0]["user_version"] == 12
 
 
 def test_tables_ann2_existent(data_dir):
     with database.connect() as conn:
         noms = {r["name"] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
-    assert {"personnages", "bulle_locuteur", "attribut_dimension",
+    assert {"personnages", "bulle_locuteur", "personnage_presence", "attribut_dimension",
             "attribut_valeur", "personnage_attribut", "region_attribut"} <= noms
 
 
@@ -215,3 +215,85 @@ def test_fusionner_valeur(client):
     d2 = client.post("/api/attributs/dimensions", json={"cible": "case", "nom": "lieu"}).json()["id"]
     vc = client.post(f"/api/attributs/dimensions/{d2}/valeurs", json={"valeur": "rue"}).json()["id"]
     assert client.post(f"/api/attributs/valeurs/{vb}/fusion", json={"cible_id": vc}).status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# API (a) du §14 : PRÉSENCE — la boîte personnage porte l'identité (miroir du
+# locuteur, côté image). Cf. docs/personnages-et-attribution.md §14.
+# --------------------------------------------------------------------------- #
+def _boite_perso(client, planche):
+    """Crée une région de type 'personnage' (boîte) sur la planche, renvoie son id."""
+    return client.post(f"/api/planches/{planche['id']}/regions",
+                       json={"type": "personnage", "x": 5, "y": 5, "w": 30, "h": 60}).json()["id"]
+
+
+def test_presence(client, planche):
+    """Identité d'une boîte personnage : GET vide → PUT → upsert → DELETE (miroir locuteur)."""
+    rid = _boite_perso(client, planche)
+    pid = client.post("/api/personnages", json={"nom": "Bianca"}).json()["id"]
+    assert client.get(f"/api/regions/{rid}/personnage").json()["personnage"] is None
+    client.put(f"/api/regions/{rid}/personnage", json={"personnage_id": pid})
+    p = client.get(f"/api/regions/{rid}/personnage").json()["personnage"]
+    assert p["id"] == pid and p["nom"] == "Bianca"
+    pid2 = client.post("/api/personnages", json={"nom": "Castafiore"}).json()["id"]   # upsert
+    client.put(f"/api/regions/{rid}/personnage", json={"personnage_id": pid2})
+    assert client.get(f"/api/regions/{rid}/personnage").json()["personnage"]["id"] == pid2
+    assert client.delete(f"/api/regions/{rid}/personnage").status_code == 204
+    assert client.get(f"/api/regions/{rid}/personnage").json()["personnage"] is None
+
+
+def test_presence_personnage_inconnu(client, planche):
+    rid = _boite_perso(client, planche)
+    assert client.put(f"/api/regions/{rid}/personnage", json={"personnage_id": 9999}).status_code == 404
+
+
+def test_presence_region_inconnue(client):
+    assert client.get("/api/regions/9999/personnage").status_code == 404
+    assert client.put("/api/regions/9999/personnage", json={"personnage_id": 1}).status_code == 404
+
+
+def test_presence_cascade(client, planche):
+    """Supprimer le personnage détache la présence ; la région, elle, survit (CASCADE une voie)."""
+    rid = _boite_perso(client, planche)
+    pid = client.post("/api/personnages", json={"nom": "Nestor"}).json()["id"]
+    client.put(f"/api/regions/{rid}/personnage", json={"personnage_id": pid})
+    client.delete(f"/api/personnages/{pid}")
+    assert client.get(f"/api/regions/{rid}/personnage").json()["personnage"] is None
+    with database.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) n FROM regions WHERE id=?", (rid,)).fetchone()["n"] == 1
+
+
+def test_personnage_muet_profile_depuis_la_boite(client, planche):
+    """§14 (a) — clé de voûte : un personnage qui ne parle JAMAIS (aucune bulle) est
+    identifié sur une boîte et reçoit son profil, sans passer par une bulle."""
+    rid = _boite_perso(client, planche)
+    pid = client.post("/api/personnages", json={"nom": "Figurant muet"}).json()["id"]
+    client.put(f"/api/regions/{rid}/personnage", json={"personnage_id": pid})
+    did = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "origine"}).json()["id"]
+    vid = client.post(f"/api/attributs/dimensions/{did}/valeurs", json={"valeur": "rural"}).json()["id"]
+    client.put(f"/api/personnages/{pid}/attributs", json={"valeur_id": vid})
+    attrs = client.get(f"/api/personnages/{pid}/attributs").json()
+    assert [(a["dimension"], a["valeur"]) for a in attrs] == [("origine", "rural")]
+    # muet : aucune bulle attribuée — le profil n'est PAS passé par la parole
+    assert [x for x in client.get("/api/personnages").json() if x["id"] == pid][0]["nb_bulles"] == 0
+
+
+def test_presence_et_locuteur_meme_entite(client, planche):
+    """Le « moyeu » du §14 : une entité atteignable comme présence (boîte) ET comme
+    locuteur (bulle) est la MÊME — profil partagé, parole et image agrégées."""
+    boite = _boite_perso(client, planche)
+    bulle = client.post(f"/api/planches/{planche['id']}/regions",
+                        json={"type": "bulle", "x": 1, "y": 1, "w": 20, "h": 20}).json()["id"]
+    pid = client.post("/api/personnages", json={"nom": "Tournesol"}).json()["id"]
+    client.put(f"/api/regions/{boite}/personnage", json={"personnage_id": pid})
+    client.put(f"/api/regions/{bulle}/locuteur", json={"personnage_id": pid})
+    assert client.get(f"/api/regions/{boite}/personnage").json()["personnage"]["id"] == pid
+    assert client.get(f"/api/regions/{bulle}/locuteur").json()["locuteur"]["id"] == pid
+    # profil posé une fois, partagé ; nb_bulles ne compte QUE la parole (1 bulle, 1 boîte)
+    did = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "role"}).json()["id"]
+    vid = client.post(f"/api/attributs/dimensions/{did}/valeurs", json={"valeur": "savant"}).json()["id"]
+    client.put(f"/api/personnages/{pid}/attributs", json={"valeur_id": vid})
+    ent = [x for x in client.get("/api/personnages").json() if x["id"] == pid][0]
+    assert ent["nb_bulles"] == 1
+    assert [(a["dimension"], a["valeur"]) for a in
+            client.get(f"/api/personnages/{pid}/attributs").json()] == [("role", "savant")]

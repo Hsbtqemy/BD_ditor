@@ -193,6 +193,26 @@
               </div>
             </div>
           </div>
+          <!-- Personnage (qui est montré) — pour les boîtes personnage : identité + profil -->
+          <div id="perso-section" hidden>
+            <h3>Personnage</h3>
+            <div id="perso-current" class="loc-current"></div>
+            <div class="tag-input-wrap">
+              <input type="text" id="perso-input" placeholder="Identifier le personnage…"
+                     autocomplete="off" aria-label="Identifier le personnage de la boîte">
+              <div id="perso-suggest" class="tag-suggest" hidden></div>
+            </div>
+            <!-- Même profil corpus que par le locuteur — atteignable ici, muets compris -->
+            <div id="perso-profil-section" hidden>
+              <div class="attr-label muted small">Profil du personnage (tout le corpus)</div>
+              <div id="perso-profil-current" class="loc-current"></div>
+              <div class="tag-input-wrap">
+                <input type="text" id="perso-profil-input" placeholder="dimension : valeur…"
+                       autocomplete="off" aria-label="Ajouter un attribut de profil au personnage">
+                <div id="perso-profil-suggest" class="tag-suggest" hidden></div>
+              </div>
+            </div>
+          </div>
           <!-- Situation (scène) — pour les cases -->
           <div id="situation-section" hidden>
             <h3>Situation (scène)</h3>

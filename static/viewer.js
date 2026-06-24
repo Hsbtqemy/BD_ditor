@@ -927,6 +927,7 @@ async function loadAnnotation(regionId) {
     setSaveState("saved");
   } catch (e) { toast("Erreur chargement annotation : " + e.message, "error"); }
   loadLocuteur(regionId);   // panneau Locuteur (bulles) — indépendant de l'annotation
+  loadPerso(regionId);      // panneau Personnage (boîtes personnage) — identité + profil
   loadSituation(regionId);  // panneau Situation (cases)
 }
 
@@ -1229,8 +1230,64 @@ async function clearLocuteur() {
   if (state.locRegion === rid) renderLocuteur(null);
 }
 
-function setupLocInput() {
-  const input = $("#loc-input"), sug = $("#loc-suggest");
+/* --- Personnage MONTRÉ : identité d'une boîte personnage (§14, brique (a)). Miroir du
+   locuteur, mais pour l'image — même entité, et le profil corpus se règle ICI aussi, donc
+   atteignable pour un personnage muet (sans bulle). --- */
+async function loadPerso(regionId) {
+  const sec = $("#perso-section");
+  const r = state.regionsById.get(regionId);
+  if (!r || r.type !== "personnage") { sec.hidden = true; state.persoRegion = null; return; }
+  sec.hidden = false;
+  state.persoRegion = regionId;
+  $("#perso-input").value = "";
+  $("#perso-suggest").hidden = true;
+  renderPerso(null);
+  try {
+    const { personnage } = await apiGet(`/api/regions/${regionId}/personnage`);
+    if (state.persoRegion === regionId) renderPerso(personnage);   // anti-course
+  } catch (e) { /* non bloquant */ }
+}
+
+function renderPerso(perso) {
+  const box = $("#perso-current");
+  if (!box) return;
+  box.innerHTML = "";
+  if (perso) {
+    const chip = document.createElement("span");
+    chip.className = "tag-chip";
+    chip.innerHTML = `<span>${escapeHtml(perso.nom)}${perso.serie ? " · " + escapeHtml(perso.serie) : ""}</span>`
+      + `<span class="x" title="Retirer l'identité">×</span>`;
+    chip.querySelector(".x").onclick = clearPerso;
+    box.appendChild(chip);
+  } else {
+    box.innerHTML = '<span class="muted small">Non identifié</span>';
+  }
+  // même profil corpus que par le locuteur, atteignable depuis la boîte (muets compris)
+  if (persoBoxAttrWidget) persoBoxAttrWidget.load(perso ? `/api/personnages/${perso.id}` : null);
+}
+
+async function setPerso(pid) {
+  const rid = state.persoRegion;
+  if (rid == null) return;
+  try {
+    const { personnage } = await apiSend("PUT", `/api/regions/${rid}/personnage`, { personnage_id: pid });
+    if (state.persoRegion === rid) renderPerso(personnage);
+  } catch (e) { toast("Personnage : " + e.message, "error"); }
+}
+
+async function clearPerso() {
+  const rid = state.persoRegion;
+  if (rid == null) return;
+  try { await apiSend("DELETE", `/api/regions/${rid}/personnage`); } catch (e) { return; }
+  if (state.persoRegion === rid) renderPerso(null);
+}
+
+/* Autocomplétion « personnage » réutilisable : registre corpus + création à la volée
+   (modèle mentions→entités). `onPick(personnageId)` applique le choix — locuteur d'une
+   bulle OU identité d'une boîte personnage (§14, brique (a)). Une seule logique pour les
+   deux panneaux ; seule l'action finale (onPick) diffère. */
+function setupPersoInput(inputSel, sugSel, onPick) {
+  const input = $(inputSel), sug = $(sugSel);
   let timer = null, activeIdx = -1, items = [];
   function close() { sug.hidden = true; activeIdx = -1; }
   async function fetchList() {
@@ -1263,9 +1320,9 @@ function setupLocInput() {
     if (it.create) {
       try {
         const p = await apiSend("POST", "/api/personnages", { nom: it.nom });
-        await setLocuteur(p.id);
+        await onPick(p.id);
       } catch (e) { toast("Création : " + e.message, "error"); }
-    } else { await setLocuteur(it.id); }
+    } else { await onPick(it.id); }
   }
   input.addEventListener("input", () => { activeIdx = -1; clearTimeout(timer); timer = setTimeout(fetchList, 200); });
   input.addEventListener("focus", fetchList);
@@ -1387,13 +1444,17 @@ function makeAttributsWidget(ids, cible) {
   };
 }
 
-let sitWidget = null, persoAttrWidget = null;
+let sitWidget = null, persoAttrWidget = null, persoBoxAttrWidget = null;
 function setupAttributs() {
   sitWidget = makeAttributsWidget(
     { section: "#situation-section", current: "#sit-current", input: "#sit-input", suggest: "#sit-suggest" }, "case");
   persoAttrWidget = makeAttributsWidget(
     { section: "#perso-attr-section", current: "#perso-attr-current",
       input: "#perso-attr-input", suggest: "#perso-attr-suggest" }, "personnage");
+  // 2ᵉ instance : le MÊME profil corpus, mais piloté depuis la boîte personnage (§14 a).
+  persoBoxAttrWidget = makeAttributsWidget(
+    { section: "#perso-profil-section", current: "#perso-profil-current",
+      input: "#perso-profil-input", suggest: "#perso-profil-suggest" }, "personnage");
 }
 
 function loadSituation(regionId) {
@@ -2281,7 +2342,8 @@ function setupControls() {
   $("#note-input").addEventListener("input", scheduleSave);
 
   setupTagInput();
-  setupLocInput();
+  setupPersoInput("#loc-input", "#loc-suggest", setLocuteur);     // locuteur (bulle)
+  setupPersoInput("#perso-input", "#perso-suggest", setPerso);    // identité (boîte personnage)
   setupAttributs();
   setupImport();
   setupMenus();

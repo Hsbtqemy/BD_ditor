@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 # --------------------------------------------------------------------------- #
@@ -173,6 +173,16 @@ CREATE TABLE IF NOT EXISTS bulle_locuteur (
     date_creation  TEXT DEFAULT (datetime('now'))
 );
 
+-- Lien PRÉSENCE : quelle entité est MONTRÉE dans cette boîte personnage (au plus une
+-- → region_id PK ; region.type = 'personnage'). Miroir du locuteur, mais pour l'image :
+-- la boîte porte l'identité, l'entité reste le moyeu où parole et image convergent
+-- (cf. docs/personnages-et-attribution.md §14, brique (a)). Même CASCADE des deux côtés.
+CREATE TABLE IF NOT EXISTS personnage_presence (
+    region_id      INTEGER PRIMARY KEY REFERENCES regions(id) ON DELETE CASCADE,
+    personnage_id  INTEGER NOT NULL REFERENCES personnages(id) ON DELETE CASCADE,
+    date_creation  TEXT DEFAULT (datetime('now'))
+);
+
 -- Dimension d'attribut (un AXE émergent). `cible` = à quoi elle s'applique :
 -- 'personnage' (profil sociolinguistique du locuteur) ou 'case' (situation de scène).
 CREATE TABLE IF NOT EXISTS attribut_dimension (
@@ -218,6 +228,7 @@ CREATE INDEX IF NOT EXISTS idx_tokens_pos       ON tokens(pos);
 CREATE INDEX IF NOT EXISTS idx_tcorr_region     ON token_correction(region_id);
 CREATE INDEX IF NOT EXISTS idx_tcorr_etat       ON token_correction(etat);
 CREATE INDEX IF NOT EXISTS idx_locuteur_perso   ON bulle_locuteur(personnage_id);
+CREATE INDEX IF NOT EXISTS idx_presence_perso   ON personnage_presence(personnage_id);
 CREATE INDEX IF NOT EXISTS idx_attrval_dim      ON attribut_valeur(dimension_id);
 CREATE INDEX IF NOT EXISTS idx_persoattr_val    ON personnage_attribut(valeur_id);
 CREATE INDEX IF NOT EXISTS idx_regattr_val      ON region_attribut(valeur_id);
@@ -317,6 +328,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # facettés (personnages + tables `attribut_*`). NOUVELLES tables créées par
     # SCHEMA_SQL (CREATE … IF NOT EXISTS) → rien à migrer ici, juste acter la version.
     # Cf. docs/personnages-et-attribution.md §13.
+
+    # v11 → v12 : brique (a) du §14 — lien PRÉSENCE (boîte personnage → entité), miroir
+    # du locuteur pour l'image. NOUVELLE table créée par SCHEMA_SQL (CREATE … IF NOT
+    # EXISTS) → rien à migrer, juste acter la version. Cf. docs/personnages-et-attribution.md §14.
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 

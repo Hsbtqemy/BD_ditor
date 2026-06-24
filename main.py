@@ -239,6 +239,10 @@ class LocuteurIn(BaseModel):
     personnage_id: int
 
 
+class PresenceIn(BaseModel):
+    personnage_id: int   # entité montrée dans une boîte personnage (§14, brique (a))
+
+
 class FusionIn(BaseModel):
     cible_id: int   # personnage canonique dans lequel fusionner le doublon
 
@@ -959,6 +963,14 @@ def _locuteur_for(conn, region_id):
         "JOIN personnages p ON p.id = bl.personnage_id WHERE bl.region_id = ?", (region_id,)))}
 
 
+def _personnage_for(conn, region_id):
+    """Personnage MONTRÉ dans une boîte (ou None) → {personnage: {id, nom, serie} | None}.
+    Miroir de _locuteur_for, côté image (§14, brique (a))."""
+    return {"personnage": _row(conn.execute(
+        "SELECT p.id, p.nom, p.serie FROM personnage_presence pp "
+        "JOIN personnages p ON p.id = pp.personnage_id WHERE pp.region_id = ?", (region_id,)))}
+
+
 @app.get("/api/personnages")
 def list_personnages(q: Optional[str] = None, conn: sqlite3.Connection = Depends(db)):
     """Registre des personnages (niveau corpus) + nombre de bulles attribuées.
@@ -1058,6 +1070,35 @@ def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection =
 @app.delete("/api/regions/{region_id}/locuteur", status_code=204)
 def clear_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db)):
     conn.execute("DELETE FROM bulle_locuteur WHERE region_id = ?", (region_id,))
+    conn.commit()
+
+
+# --- Présence : quelle entité est MONTRÉE dans une boîte personnage (§14, brique (a)).
+#     Strict miroir du locuteur, mais pour l'image — la boîte porte l'identité, et le
+#     profil de l'entité devient atteignable depuis l'image (muets compris). La cohérence
+#     de type (region.type = 'personnage') est assurée côté UI, comme pour le locuteur.
+@app.get("/api/regions/{region_id}/personnage")
+def get_presence(region_id: int, conn: sqlite3.Connection = Depends(db)):
+    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
+        raise HTTPException(404, f"Région {region_id} introuvable")
+    return _personnage_for(conn, region_id)
+
+
+@app.put("/api/regions/{region_id}/personnage")
+def set_presence(region_id: int, payload: PresenceIn, conn: sqlite3.Connection = Depends(db)):
+    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
+        raise HTTPException(404, f"Région {region_id} introuvable")
+    _get_personnage(conn, payload.personnage_id)
+    conn.execute("INSERT INTO personnage_presence (region_id, personnage_id) VALUES (?, ?) "
+                 "ON CONFLICT(region_id) DO UPDATE SET personnage_id = excluded.personnage_id",
+                 (region_id, payload.personnage_id))
+    conn.commit()
+    return _personnage_for(conn, region_id)
+
+
+@app.delete("/api/regions/{region_id}/personnage", status_code=204)
+def clear_presence(region_id: int, conn: sqlite3.Connection = Depends(db)):
+    conn.execute("DELETE FROM personnage_presence WHERE region_id = ?", (region_id,))
     conn.commit()
 
 
