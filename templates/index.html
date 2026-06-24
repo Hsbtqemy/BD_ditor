@@ -182,6 +182,26 @@
                      autocomplete="off" aria-label="Attribuer un locuteur à la bulle">
               <div id="loc-suggest" class="tag-suggest" hidden></div>
             </div>
+            <!-- Profil (socio)linguistique du personnage — s'applique à TOUT le corpus -->
+            <div id="perso-attr-section" hidden>
+              <div class="attr-label muted small">Profil du personnage (tout le corpus)</div>
+              <div id="perso-attr-current" class="loc-current"></div>
+              <div class="tag-input-wrap">
+                <input type="text" id="perso-attr-input" placeholder="dimension : valeur…"
+                       autocomplete="off" aria-label="Ajouter un attribut de profil au personnage">
+                <div id="perso-attr-suggest" class="tag-suggest" hidden></div>
+              </div>
+            </div>
+          </div>
+          <!-- Situation (scène) — pour les cases -->
+          <div id="situation-section" hidden>
+            <h3>Situation (scène)</h3>
+            <div id="sit-current" class="loc-current"></div>
+            <div class="tag-input-wrap">
+              <input type="text" id="sit-input" placeholder="dimension : valeur…"
+                     autocomplete="off" aria-label="Ajouter un attribut de situation à la case">
+              <div id="sit-suggest" class="tag-suggest" hidden></div>
+            </div>
           </div>
           <h3>Tags</h3>
           <div id="tag-chips" class="tag-chips"></div>

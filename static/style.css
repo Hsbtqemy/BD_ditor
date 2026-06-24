@@ -552,6 +552,7 @@ button { font-family: inherit; }
 .tag-chip .x:hover { opacity: 1; color: var(--ink-red); }
 .tag-input-wrap { position: relative; }
 .loc-current { margin: 4px 0 8px; min-height: 22px; }
+.attr-label { margin: 8px 0 2px; }
 .tag-suggest {
   position: absolute; left: 0; right: 0; top: 100%; z-index: 30;
   background: var(--bg-deep); border: 1px solid var(--border);

@@ -927,6 +927,7 @@ async function loadAnnotation(regionId) {
     setSaveState("saved");
   } catch (e) { toast("Erreur chargement annotation : " + e.message, "error"); }
   loadLocuteur(regionId);   // panneau Locuteur (bulles) — indépendant de l'annotation
+  loadSituation(regionId);  // panneau Situation (cases)
 }
 
 function renderTagChips() {
@@ -1198,13 +1199,18 @@ function renderLocuteur(loc) {
   const box = $("#loc-current");
   if (!box) return;
   box.innerHTML = "";
-  if (!loc) { box.innerHTML = '<span class="muted small">Aucun locuteur</span>'; return; }
-  const chip = document.createElement("span");
-  chip.className = "tag-chip";
-  chip.innerHTML = `<span>${escapeHtml(loc.nom)}${loc.serie ? " · " + escapeHtml(loc.serie) : ""}</span>`
-    + `<span class="x" title="Retirer le locuteur">×</span>`;
-  chip.querySelector(".x").onclick = clearLocuteur;
-  box.appendChild(chip);
+  if (loc) {
+    const chip = document.createElement("span");
+    chip.className = "tag-chip";
+    chip.innerHTML = `<span>${escapeHtml(loc.nom)}${loc.serie ? " · " + escapeHtml(loc.serie) : ""}</span>`
+      + `<span class="x" title="Retirer le locuteur">×</span>`;
+    chip.querySelector(".x").onclick = clearLocuteur;
+    box.appendChild(chip);
+  } else {
+    box.innerHTML = '<span class="muted small">Aucun locuteur</span>';
+  }
+  // profil du personnage : éditable dès qu'un locuteur est attribué (vaut pour tout le corpus)
+  if (persoAttrWidget) persoAttrWidget.load(loc ? `/api/personnages/${loc.id}` : null);
 }
 
 async function setLocuteur(pid) {
@@ -1278,6 +1284,121 @@ function setupLocInput() {
       }
     } else if (e.key === "Escape") { close(); }
   });
+}
+
+/* --- Attributs FACETTÉS & ÉMERGENTS : widget réutilisable (cible 'personnage' ou
+   'case'). Saisie « dimension : valeur » → find-or-create la dimension ET la valeur,
+   puis affecte. Le vocabulaire n'est pas figé : il émerge de la saisie. --- */
+function makeAttributsWidget(ids, cible) {
+  const sec = $(ids.section), cur = $(ids.current), input = $(ids.input), sug = $(ids.suggest);
+  let target = null, timer = null, activeIdx = -1, items = [];
+
+  async function refresh() {
+    cur.innerHTML = "";
+    let attrs = [];
+    try { attrs = await apiGet(`${target}/attributs`); } catch (e) { return; }
+    if (!attrs.length) { cur.innerHTML = '<span class="muted small">Aucun</span>'; return; }
+    for (const a of attrs) {
+      const chip = document.createElement("span");
+      chip.className = "tag-chip";
+      chip.innerHTML = `<span><b>${escapeHtml(a.dimension)}</b> : ${escapeHtml(a.valeur)}</span>`
+        + `<span class="x" title="Retirer">×</span>`;
+      chip.querySelector(".x").onclick = () => remove(a.valeur_id);
+      cur.appendChild(chip);
+    }
+  }
+  async function remove(vid) {
+    try { await apiSend("DELETE", `${target}/attributs/${vid}`); } catch (e) { return; }
+    refresh();
+  }
+  async function assign(vid) {
+    try { await apiSend("PUT", `${target}/attributs`, { valeur_id: vid }); refresh(); }
+    catch (e) { toast("Attribut : " + e.message, "error"); }
+  }
+  async function createAndAssign(dim, val) {
+    try {
+      const d = await apiSend("POST", "/api/attributs/dimensions", { cible, nom: dim });
+      const v = await apiSend("POST", `/api/attributs/dimensions/${d.id}/valeurs`, { valeur: val });
+      await assign(v.id);
+    } catch (e) { toast("Attribut : " + e.message, "error"); }
+  }
+  function close() { sug.hidden = true; activeIdx = -1; }
+  async function fetchList() {
+    const q = input.value.trim();
+    let vals = [];
+    try { vals = await apiGet("/api/attributs/valeurs?cible=" + cible); } catch (e) { vals = []; }
+    items = vals
+      .map((v) => ({ create: false, id: v.id, dim: v.dimension, val: v.valeur,
+                     label: `${v.dimension} : ${v.valeur}` }))
+      .filter((it) => !q || it.label.toLowerCase().includes(q.toLowerCase())).slice(0, 10);
+    const i = q.indexOf(":");   // « dimension : valeur » → proposition de création
+    if (i > 0) {
+      const dim = q.slice(0, i).trim(), val = q.slice(i + 1).trim();
+      if (dim && val && !vals.some((v) => v.dimension.toLowerCase() === dim.toLowerCase()
+                                       && v.valeur.toLowerCase() === val.toLowerCase()))
+        items.push({ create: true, dim, val, label: `➕ ${dim} : ${val}` });
+    }
+    render();
+  }
+  function render() {
+    sug.innerHTML = "";
+    if (!items.length) { close(); return; }
+    items.forEach((it, k) => {
+      const d = document.createElement("div");
+      if (k === activeIdx) d.classList.add("active");
+      d.innerHTML = it.create ? escapeHtml(it.label)
+        : `${escapeHtml(it.dim)}<span class="freq">${escapeHtml(it.val)}</span>`;
+      d.onmousedown = (e) => { e.preventDefault(); choose(it); };
+      sug.appendChild(d);
+    });
+    sug.hidden = false;
+  }
+  async function choose(it) {
+    input.value = ""; close();
+    if (it.create) await createAndAssign(it.dim, it.val);
+    else await assign(it.id);
+  }
+  input.addEventListener("input", () => { activeIdx = -1; clearTimeout(timer); timer = setTimeout(fetchList, 200); });
+  input.addEventListener("focus", fetchList);
+  input.addEventListener("blur", () => setTimeout(close, 150));
+  input.addEventListener("keydown", (e) => {
+    const n = sug.querySelectorAll("div").length;
+    if (e.key === "ArrowDown") { activeIdx = Math.min(n - 1, activeIdx + 1); render(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { activeIdx = Math.max(0, activeIdx - 1); render(); e.preventDefault(); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      if (activeIdx >= 0 && items[activeIdx]) { choose(items[activeIdx]); return; }
+      const q = input.value.trim(), i = q.indexOf(":");   // sans sélection : « dim : val »
+      if (i > 0) {
+        const dim = q.slice(0, i).trim().toLowerCase(), val = q.slice(i + 1).trim().toLowerCase();
+        const exact = items.find((it) => !it.create && it.dim.toLowerCase() === dim && it.val.toLowerCase() === val);
+        const create = items.find((it) => it.create);
+        if (exact) choose(exact); else if (create) choose(create);
+      } else if (items.length === 1) choose(items[0]);
+    } else if (e.key === "Escape") { close(); }
+  });
+
+  return {
+    load(path) {
+      target = path;
+      if (!path) { sec.hidden = true; return; }
+      sec.hidden = false; input.value = ""; close(); refresh();
+    },
+  };
+}
+
+let sitWidget = null, persoAttrWidget = null;
+function setupAttributs() {
+  sitWidget = makeAttributsWidget(
+    { section: "#situation-section", current: "#sit-current", input: "#sit-input", suggest: "#sit-suggest" }, "case");
+  persoAttrWidget = makeAttributsWidget(
+    { section: "#perso-attr-section", current: "#perso-attr-current",
+      input: "#perso-attr-input", suggest: "#perso-attr-suggest" }, "personnage");
+}
+
+function loadSituation(regionId) {
+  const r = state.regionsById.get(regionId);
+  if (sitWidget) sitWidget.load(r && r.type === "case" ? `/api/regions/${regionId}` : null);
 }
 
 /* ===================================================================
@@ -2161,6 +2282,7 @@ function setupControls() {
 
   setupTagInput();
   setupLocInput();
+  setupAttributs();
   setupImport();
   setupMenus();
   setupTranscription();
