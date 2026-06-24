@@ -120,3 +120,55 @@ def test_fusion(client, region):
     assert all(x["id"] != a for x in client.get("/api/personnages").json())            # doublon parti
     assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]["id"] == b    # bulle réaffectée
     assert client.post(f"/api/personnages/{b}/fusion", json={"cible_id": b}).status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# API (2b) : dimensions / valeurs (émergentes, normalisées) / affectations
+# --------------------------------------------------------------------------- #
+def test_dimensions_et_valeurs(client):
+    d = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "Origine"})
+    assert d.status_code == 201 and d.json()["nom"] == "origine"   # normalisé (minuscules)
+    did = d.json()["id"]
+    # idempotent (find-or-create)
+    assert client.post("/api/attributs/dimensions",
+                       json={"cible": "personnage", "nom": "origine"}).json()["id"] == did
+    assert client.post("/api/attributs/dimensions", json={"cible": "x", "nom": "y"}).status_code == 422
+    # valeurs canoniques
+    v = client.post(f"/api/attributs/dimensions/{did}/valeurs", json={"valeur": "Rural"})
+    assert v.status_code == 201 and v.json()["valeur"] == "rural"
+    vid = v.json()["id"]
+    assert client.post(f"/api/attributs/dimensions/{did}/valeurs",
+                       json={"valeur": "rural"}).json()["id"] == vid   # pas de doublon
+    assert [x["id"] for x in client.get(f"/api/attributs/dimensions/{did}/valeurs").json()] == [vid]
+
+
+def test_affectation_personnage(client):
+    did = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "origine"}).json()["id"]
+    vid = client.post(f"/api/attributs/dimensions/{did}/valeurs", json={"valeur": "rural"}).json()["id"]
+    pid = client.post("/api/personnages", json={"nom": "X"}).json()["id"]
+    client.put(f"/api/personnages/{pid}/attributs", json={"valeur_id": vid})
+    attrs = client.get(f"/api/personnages/{pid}/attributs").json()
+    assert len(attrs) == 1 and attrs[0]["valeur"] == "rural" and attrs[0]["dimension"] == "origine"
+    client.put(f"/api/personnages/{pid}/attributs", json={"valeur_id": vid})   # idempotent
+    assert len(client.get(f"/api/personnages/{pid}/attributs").json()) == 1
+    assert client.delete(f"/api/personnages/{pid}/attributs/{vid}").status_code == 204
+    assert client.get(f"/api/personnages/{pid}/attributs").json() == []
+
+
+def test_cible_incoherente(client, region):
+    """Une valeur de dimension 'case' ne peut aller sur un personnage (et réciproquement)."""
+    dc = client.post("/api/attributs/dimensions", json={"cible": "case", "nom": "formalite"}).json()["id"]
+    vc = client.post(f"/api/attributs/dimensions/{dc}/valeurs", json={"valeur": "soutenu"}).json()["id"]
+    pid = client.post("/api/personnages", json={"nom": "X"}).json()["id"]
+    assert client.put(f"/api/personnages/{pid}/attributs", json={"valeur_id": vc}).status_code == 422
+    assert client.put(f"/api/regions/{region['id']}/attributs", json={"valeur_id": vc}).status_code == 200
+    assert len(client.get(f"/api/regions/{region['id']}/attributs").json()) == 1
+
+
+def test_suppr_dimension_cascade(client):
+    did = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "origine"}).json()["id"]
+    vid = client.post(f"/api/attributs/dimensions/{did}/valeurs", json={"valeur": "rural"}).json()["id"]
+    pid = client.post("/api/personnages", json={"nom": "X"}).json()["id"]
+    client.put(f"/api/personnages/{pid}/attributs", json={"valeur_id": vid})
+    assert client.delete(f"/api/attributs/dimensions/{did}").status_code == 204
+    assert client.get(f"/api/personnages/{pid}/attributs").json() == []   # affectation partie (CASCADE)

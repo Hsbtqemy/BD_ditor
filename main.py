@@ -20,8 +20,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from config import (DERIVATIVES_DIR, ROLES_PLANCHE, STATIC_DIR, STATUTS,
-                    TEMPLATES_DIR, TYPES_REGION, UPOS_TAGS)
+from config import (CIBLES_ATTRIBUT, DERIVATIVES_DIR, ROLES_PLANCHE, STATIC_DIR,
+                    STATUTS, TEMPLATES_DIR, TYPES_REGION, UPOS_TAGS)
 from database import (citations_regions, get_connection, init_db,
                       numeros_editoriaux, reindex_region, unindex_region)
 from pipeline.backup import make_backup
@@ -240,6 +240,19 @@ class LocuteurIn(BaseModel):
 
 class FusionIn(BaseModel):
     cible_id: int   # personnage canonique dans lequel fusionner le doublon
+
+
+class DimensionIn(BaseModel):
+    cible: str      # 'personnage' | 'case'
+    nom: str
+
+
+class ValeurIn(BaseModel):
+    valeur: str
+
+
+class AttributIn(BaseModel):
+    valeur_id: int
 
 
 # --------------------------------------------------------------------------- #
@@ -1038,6 +1051,152 @@ def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection =
 @app.delete("/api/regions/{region_id}/locuteur", status_code=204)
 def clear_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db)):
     conn.execute("DELETE FROM bulle_locuteur WHERE region_id = ?", (region_id,))
+    conn.commit()
+
+
+# --- Attributs FACETTÉS & ÉMERGENTS : dimensions (axes) / valeurs canoniques /
+#     affectations. Vocabulaire NON figé — créé au fil de l'eau. Valeurs et noms de
+#     dimension normalisés (comme les tags) → agrégeables. Cf. docs/personnages-et-attribution.md.
+def _get_dimension(conn, dim_id):
+    d = _row(conn.execute("SELECT * FROM attribut_dimension WHERE id = ?", (dim_id,)))
+    if d is None:
+        raise HTTPException(404, f"Dimension {dim_id} introuvable")
+    return d
+
+
+def _get_valeur(conn, val_id):
+    v = _row(conn.execute("SELECT * FROM attribut_valeur WHERE id = ?", (val_id,)))
+    if v is None:
+        raise HTTPException(404, f"Valeur d'attribut {val_id} introuvable")
+    return v
+
+
+def _attributs_de(conn, table, col, oid):
+    """Valeurs (avec leur dimension) affectées à une cible (personnage | région)."""
+    return _rows(conn.execute(
+        f"SELECT v.id AS valeur_id, v.valeur, d.id AS dimension_id, d.nom AS dimension, d.cible "
+        f"FROM {table} x JOIN attribut_valeur v ON v.id = x.valeur_id "
+        f"JOIN attribut_dimension d ON d.id = v.dimension_id "
+        f"WHERE x.{col} = ? ORDER BY d.nom, v.valeur", (oid,)))
+
+
+@app.get("/api/attributs/dimensions")
+def list_dimensions(cible: Optional[str] = None, conn: sqlite3.Connection = Depends(db)):
+    """Dimensions (axes émergents) + nombre de valeurs. `cible` filtre 'personnage' | 'case'."""
+    sql = ("SELECT d.id, d.cible, d.nom, "
+           "       (SELECT COUNT(*) FROM attribut_valeur v WHERE v.dimension_id = d.id) AS nb_valeurs "
+           "FROM attribut_dimension d ")
+    params = []
+    if cible:
+        sql += "WHERE d.cible = ? "
+        params.append(cible)
+    sql += "ORDER BY d.cible, d.nom"
+    return _rows(conn.execute(sql, params))
+
+
+@app.post("/api/attributs/dimensions", status_code=201)
+def create_dimension(payload: DimensionIn, conn: sqlite3.Connection = Depends(db)):
+    if payload.cible not in CIBLES_ATTRIBUT:
+        raise HTTPException(422, f"Cible invalide : {payload.cible} (personnage | case).")
+    nom = _norm_tag(payload.nom)
+    if not nom:
+        raise HTTPException(422, "Nom de dimension vide")
+    conn.execute("INSERT INTO attribut_dimension (cible, nom) VALUES (?, ?) "
+                 "ON CONFLICT(cible, nom) DO NOTHING", (payload.cible, nom))
+    conn.commit()
+    return _row(conn.execute("SELECT * FROM attribut_dimension WHERE cible = ? AND nom = ?",
+                             (payload.cible, nom)))
+
+
+@app.delete("/api/attributs/dimensions/{dim_id}", status_code=204)
+def delete_dimension(dim_id: int, conn: sqlite3.Connection = Depends(db)):
+    _get_dimension(conn, dim_id)
+    conn.execute("DELETE FROM attribut_dimension WHERE id = ?", (dim_id,))   # CASCADE : valeurs + affectations
+    conn.commit()
+
+
+@app.get("/api/attributs/dimensions/{dim_id}/valeurs")
+def list_valeurs(dim_id: int, conn: sqlite3.Connection = Depends(db)):
+    _get_dimension(conn, dim_id)
+    return _rows(conn.execute(
+        "SELECT v.id, v.dimension_id, v.valeur, "
+        "       (SELECT COUNT(*) FROM personnage_attribut pa WHERE pa.valeur_id = v.id) "
+        "       + (SELECT COUNT(*) FROM region_attribut ra WHERE ra.valeur_id = v.id) AS nb_usages "
+        "FROM attribut_valeur v WHERE v.dimension_id = ? ORDER BY v.valeur", (dim_id,)))
+
+
+@app.post("/api/attributs/dimensions/{dim_id}/valeurs", status_code=201)
+def create_valeur(dim_id: int, payload: ValeurIn, conn: sqlite3.Connection = Depends(db)):
+    _get_dimension(conn, dim_id)
+    valeur = _norm_tag(payload.valeur)
+    if not valeur:
+        raise HTTPException(422, "Valeur vide")
+    conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) VALUES (?, ?) "
+                 "ON CONFLICT(dimension_id, valeur) DO NOTHING", (dim_id, valeur))
+    conn.commit()
+    return _row(conn.execute("SELECT * FROM attribut_valeur WHERE dimension_id = ? AND valeur = ?",
+                             (dim_id, valeur)))
+
+
+@app.delete("/api/attributs/valeurs/{val_id}", status_code=204)
+def delete_valeur(val_id: int, conn: sqlite3.Connection = Depends(db)):
+    _get_valeur(conn, val_id)
+    conn.execute("DELETE FROM attribut_valeur WHERE id = ?", (val_id,))   # CASCADE : affectations
+    conn.commit()
+
+
+def _affecter(conn, table, col, oid, valeur_id, cible_attendue):
+    """Affecte une valeur à une cible, après contrôle de cohérence de la dimension."""
+    v = _get_valeur(conn, valeur_id)
+    if _get_dimension(conn, v["dimension_id"])["cible"] != cible_attendue:
+        raise HTTPException(422, f"Cette valeur n'appartient pas à une dimension de {cible_attendue}.")
+    conn.execute(f"INSERT OR IGNORE INTO {table} ({col}, valeur_id) VALUES (?, ?)", (oid, valeur_id))
+    conn.commit()
+
+
+@app.get("/api/personnages/{personnage_id}/attributs")
+def list_personnage_attributs(personnage_id: int, conn: sqlite3.Connection = Depends(db)):
+    _get_personnage(conn, personnage_id)
+    return _attributs_de(conn, "personnage_attribut", "personnage_id", personnage_id)
+
+
+@app.put("/api/personnages/{personnage_id}/attributs")
+def add_personnage_attribut(personnage_id: int, payload: AttributIn,
+                            conn: sqlite3.Connection = Depends(db)):
+    _get_personnage(conn, personnage_id)
+    _affecter(conn, "personnage_attribut", "personnage_id", personnage_id, payload.valeur_id, "personnage")
+    return _attributs_de(conn, "personnage_attribut", "personnage_id", personnage_id)
+
+
+@app.delete("/api/personnages/{personnage_id}/attributs/{valeur_id}", status_code=204)
+def remove_personnage_attribut(personnage_id: int, valeur_id: int,
+                               conn: sqlite3.Connection = Depends(db)):
+    conn.execute("DELETE FROM personnage_attribut WHERE personnage_id = ? AND valeur_id = ?",
+                 (personnage_id, valeur_id))
+    conn.commit()
+
+
+@app.get("/api/regions/{region_id}/attributs")
+def list_region_attributs(region_id: int, conn: sqlite3.Connection = Depends(db)):
+    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
+        raise HTTPException(404, f"Région {region_id} introuvable")
+    return _attributs_de(conn, "region_attribut", "region_id", region_id)
+
+
+@app.put("/api/regions/{region_id}/attributs")
+def add_region_attribut(region_id: int, payload: AttributIn,
+                        conn: sqlite3.Connection = Depends(db)):
+    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
+        raise HTTPException(404, f"Région {region_id} introuvable")
+    _affecter(conn, "region_attribut", "region_id", region_id, payload.valeur_id, "case")
+    return _attributs_de(conn, "region_attribut", "region_id", region_id)
+
+
+@app.delete("/api/regions/{region_id}/attributs/{valeur_id}", status_code=204)
+def remove_region_attribut(region_id: int, valeur_id: int,
+                           conn: sqlite3.Connection = Depends(db)):
+    conn.execute("DELETE FROM region_attribut WHERE region_id = ? AND valeur_id = ?",
+                 (region_id, valeur_id))
     conn.commit()
 
 
