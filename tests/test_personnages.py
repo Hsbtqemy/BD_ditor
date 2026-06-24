@@ -172,3 +172,46 @@ def test_suppr_dimension_cascade(client):
     client.put(f"/api/personnages/{pid}/attributs", json={"valeur_id": vid})
     assert client.delete(f"/api/attributs/dimensions/{did}").status_code == 204
     assert client.get(f"/api/personnages/{pid}/attributs").json() == []   # affectation partie (CASCADE)
+
+
+# --------------------------------------------------------------------------- #
+# Revue ANN-2 : autocomplétion sans accents (#5), valeurs à plat (#3),
+# renommage / fusion de valeurs (#2)
+# --------------------------------------------------------------------------- #
+def test_autocomplete_sans_accents(client):
+    client.post("/api/personnages", json={"nom": "Étienne"})
+    assert client.get("/api/personnages", params={"q": "etienne"}).json()[0]["nom"] == "Étienne"
+    assert client.get("/api/personnages", params={"q": "ÉTI"}).json()[0]["nom"] == "Étienne"
+
+
+def test_valeurs_a_plat(client):
+    dp = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "origine"}).json()["id"]
+    client.post(f"/api/attributs/dimensions/{dp}/valeurs", json={"valeur": "rural"})
+    dc = client.post("/api/attributs/dimensions", json={"cible": "case", "nom": "formalite"}).json()["id"]
+    client.post(f"/api/attributs/dimensions/{dc}/valeurs", json={"valeur": "soutenu"})
+    tout = client.get("/api/attributs/valeurs").json()
+    assert {(x["dimension"], x["valeur"]) for x in tout} == {("origine", "rural"), ("formalite", "soutenu")}
+    assert [x["valeur"] for x in client.get("/api/attributs/valeurs", params={"cible": "personnage"}).json()] == ["rural"]
+
+
+def test_renommer_valeur(client):
+    d = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "origine"}).json()["id"]
+    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "rural"}).json()["id"]
+    r = client.put(f"/api/attributs/valeurs/{v}", json={"valeur": "Campagne"})
+    assert r.status_code == 200 and r.json()["valeur"] == "campagne"
+    client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "ville"})
+    assert client.put(f"/api/attributs/valeurs/{v}", json={"valeur": "ville"}).status_code == 409   # conflit
+
+
+def test_fusionner_valeur(client):
+    d = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "origine"}).json()["id"]
+    va = client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "rural"}).json()["id"]
+    vb = client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "campagnard"}).json()["id"]
+    p = client.post("/api/personnages", json={"nom": "X"}).json()["id"]
+    client.put(f"/api/personnages/{p}/attributs", json={"valeur_id": va})
+    client.post(f"/api/attributs/valeurs/{va}/fusion", json={"cible_id": vb})
+    assert [a["valeur"] for a in client.get(f"/api/personnages/{p}/attributs").json()] == ["campagnard"]
+    assert all(x["id"] != va for x in client.get(f"/api/attributs/dimensions/{d}/valeurs").json())
+    d2 = client.post("/api/attributs/dimensions", json={"cible": "case", "nom": "lieu"}).json()["id"]
+    vc = client.post(f"/api/attributs/dimensions/{d2}/valeurs", json={"valeur": "rue"}).json()["id"]
+    assert client.post(f"/api/attributs/valeurs/{vb}/fusion", json={"cible_id": vc}).status_code == 422

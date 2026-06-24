@@ -195,3 +195,35 @@ def test_requete_these_rural_x_soutenu(client, album, planche, db_path):
     res = client.get("/api/analyse/frequences",
                      params={"champ": "lemme", "attributs": [rural, soutenu]}).json()
     assert {r["lemme"] for r in res["results"]} == {"espérer"}
+
+
+# --------------------------------------------------------------------------- #
+# Revue ANN-2 : locuteur en concordance (#1), concordance sans pivot (#4),
+# 404 sur id de facette inconnu (#6)
+# --------------------------------------------------------------------------- #
+def test_concordance_montre_le_locuteur(client, album, planche, db_path):
+    a = _region(client, planche["id"])
+    pid = _perso(client, "Tintin")
+    client.put(f"/api/regions/{a}/locuteur", json={"personnage_id": pid})
+    _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
+    res = client.get("/api/analyse/concordance", params={"lemme": "crier"}).json()
+    assert res["count"] == 1 and res["results"][0]["locuteur"] == "Tintin"
+
+
+def test_concordance_sans_pivot_grammatical(client, album, planche, db_path):
+    a, b = _region(client, planche["id"]), _region(client, planche["id"])
+    pa, pb = _perso(client, "A"), _perso(client, "B")
+    client.put(f"/api/regions/{a}/locuteur", json={"personnage_id": pa})
+    client.put(f"/api/regions/{b}/locuteur", json={"personnage_id": pb})
+    _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
+    _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])
+    res = client.get("/api/analyse/concordance", params={"personnage": pa}).json()
+    assert {r["lemme"] for r in res["results"]} == {"crier"}        # personnage seul, sans pivot
+    assert client.get("/api/analyse/concordance").status_code == 422   # mais aucun critère -> 422
+
+
+def test_facette_id_inconnu_404(client, album, planche):
+    assert client.get("/api/analyse/frequences",
+                      params={"champ": "lemme", "personnage": 9999}).status_code == 404
+    assert client.get("/api/analyse/frequences",
+                      params={"champ": "lemme", "attributs": 9999}).status_code == 404

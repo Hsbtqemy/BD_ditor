@@ -11,6 +11,7 @@ import logging
 import os
 import sqlite3
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
 from contextlib import asynccontextmanager
 from typing import Iterator, Optional
@@ -261,6 +262,13 @@ class AttributIn(BaseModel):
 def _norm_tag(label: str) -> str:
     """Tags insensibles à la casse, stockés en minuscules, espaces compactés."""
     return " ".join(label.strip().lower().split())
+
+
+def _sans_accents(s: str) -> str:
+    """Minuscule sans diacritiques — pour une autocomplétion insensible aux accents
+    (« etienne » trouve « Étienne »)."""
+    s = unicodedata.normalize("NFKD", s or "")
+    return "".join(c for c in s if not unicodedata.combining(c)).lower()
 
 
 def _ensure_tags(conn: sqlite3.Connection, labels: list[str]) -> list[dict]:
@@ -955,15 +963,14 @@ def _locuteur_for(conn, region_id):
 def list_personnages(q: Optional[str] = None, conn: sqlite3.Connection = Depends(db)):
     """Registre des personnages (niveau corpus) + nombre de bulles attribuées.
     `q` filtre par nom (autocomplétion à la saisie / canonicalisation à la volée)."""
-    sql = ("SELECT p.id, p.nom, p.serie, p.notes, "
-           "       (SELECT COUNT(*) FROM bulle_locuteur bl WHERE bl.personnage_id = p.id) AS nb_bulles "
-           "FROM personnages p ")
-    params = []
+    rows = _rows(conn.execute(
+        "SELECT p.id, p.nom, p.serie, p.notes, "
+        "       (SELECT COUNT(*) FROM bulle_locuteur bl WHERE bl.personnage_id = p.id) AS nb_bulles "
+        "FROM personnages p ORDER BY p.nom, p.serie"))
     if q and q.strip():
-        sql += "WHERE p.nom LIKE ? "
-        params.append(f"%{q.strip()}%")
-    sql += "ORDER BY p.nom, p.serie"
-    return _rows(conn.execute(sql, params))
+        cible = _sans_accents(q)   # autocomplétion insensible à la casse ET aux accents
+        rows = [r for r in rows if cible in _sans_accents(r["nom"])]
+    return rows
 
 
 @app.post("/api/personnages", status_code=201)
@@ -1143,6 +1150,57 @@ def delete_valeur(val_id: int, conn: sqlite3.Connection = Depends(db)):
     _get_valeur(conn, val_id)
     conn.execute("DELETE FROM attribut_valeur WHERE id = ?", (val_id,))   # CASCADE : affectations
     conn.commit()
+
+
+@app.get("/api/attributs/valeurs")
+def list_valeurs_plat(cible: Optional[str] = None, conn: sqlite3.Connection = Depends(db)):
+    """Toutes les valeurs (avec leur dimension), à plat — sert les facettes d'analyse
+    (évite un N+1 dimensions→valeurs). `cible` filtre 'personnage' | 'case'."""
+    sql = ("SELECT v.id, v.valeur, d.id AS dimension_id, d.nom AS dimension, d.cible, "
+           "       (SELECT COUNT(*) FROM personnage_attribut pa WHERE pa.valeur_id = v.id) "
+           "       + (SELECT COUNT(*) FROM region_attribut ra WHERE ra.valeur_id = v.id) AS nb_usages "
+           "FROM attribut_valeur v JOIN attribut_dimension d ON d.id = v.dimension_id ")
+    params = []
+    if cible:
+        sql += "WHERE d.cible = ? "
+        params.append(cible)
+    sql += "ORDER BY d.cible, d.nom, v.valeur"
+    return _rows(conn.execute(sql, params))
+
+
+@app.put("/api/attributs/valeurs/{val_id}")
+def rename_valeur(val_id: int, payload: ValeurIn, conn: sqlite3.Connection = Depends(db)):
+    """Renomme une valeur (curation). Conflit avec une valeur existante de la même
+    dimension → 409 (utiliser la fusion à la place)."""
+    v = _get_valeur(conn, val_id)
+    valeur = _norm_tag(payload.valeur)
+    if not valeur:
+        raise HTTPException(422, "Valeur vide")
+    if _row(conn.execute("SELECT id FROM attribut_valeur "
+                         "WHERE dimension_id = ? AND valeur = ? AND id <> ?",
+                         (v["dimension_id"], valeur, val_id))):
+        raise HTTPException(409, "Cette valeur existe déjà dans la dimension — fusionnez-les.")
+    conn.execute("UPDATE attribut_valeur SET valeur = ? WHERE id = ?", (valeur, val_id))
+    conn.commit()
+    return _get_valeur(conn, val_id)
+
+
+@app.post("/api/attributs/valeurs/{val_id}/fusion")
+def fusionner_valeur(val_id: int, payload: FusionIn, conn: sqlite3.Connection = Depends(db)):
+    """Fusionne la valeur `val_id` DANS `cible_id` (même dimension) : réaffecte les
+    affectations (personnages + cases) en INSERT OR IGNORE, puis supprime le doublon."""
+    if payload.cible_id == val_id:
+        raise HTTPException(422, "Une valeur ne peut être fusionnée avec elle-même")
+    v = _get_valeur(conn, val_id)
+    cible = _get_valeur(conn, payload.cible_id)
+    if v["dimension_id"] != cible["dimension_id"]:
+        raise HTTPException(422, "On ne fusionne que deux valeurs d'une même dimension.")
+    for table, col in (("personnage_attribut", "personnage_id"), ("region_attribut", "region_id")):
+        conn.execute(f"INSERT OR IGNORE INTO {table} ({col}, valeur_id) "
+                     f"SELECT {col}, ? FROM {table} WHERE valeur_id = ?", (payload.cible_id, val_id))
+    conn.execute("DELETE FROM attribut_valeur WHERE id = ?", (val_id,))   # CASCADE purge le reste
+    conn.commit()
+    return _get_valeur(conn, payload.cible_id)
 
 
 def _affecter(conn, table, col, oid, valeur_id, cible_attendue):
@@ -1435,6 +1493,17 @@ def _analyse_filtres(album, type, pos, lemme, morph, provenance, tags=None, tag_
     return where, params
 
 
+def _valider_facette(conn, personnage=None, attributs=None):
+    """404 si un id de facette (personnage / valeur d'attribut) n'existe pas — évite
+    un résultat vide silencieux sur un id erroné (revue ANN-2 #6)."""
+    if personnage is not None and conn.execute(
+            "SELECT 1 FROM personnages WHERE id = ?", (personnage,)).fetchone() is None:
+        raise HTTPException(404, f"Personnage {personnage} introuvable")
+    for vid in (attributs or []):
+        if conn.execute("SELECT 1 FROM attribut_valeur WHERE id = ?", (vid,)).fetchone() is None:
+            raise HTTPException(404, f"Valeur d'attribut {vid} introuvable")
+
+
 @app.get("/api/analyse/frequences")
 @app.get("/api/analyse/lemmes")          # alias rétro-compat (champ=lemme)
 def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
@@ -1452,6 +1521,7 @@ def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
     if champ not in ("lemme", "pos", "morph"):
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
     limit = max(1, min(limit, 1000))
+    _valider_facette(conn, personnage, attributs)
     where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope,
                                      personnage, attributs)
     cols = "te.lemme, te.pos" if champ == "lemme" else f"te.{champ}"
@@ -1476,18 +1546,22 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
     aux critères, AVEC leur contexte (région, planche, album, texte OCR) — pour montrer
     chaque emploi en contexte multimodal (socle de Recherche+++). Au moins un critère
     grammatical (lemme / pos / morph) est requis."""
-    if not (lemme or pos or morph):
-        raise HTTPException(422, "Préciser au moins un critère grammatical (lemme, pos ou morph).")
+    if not (lemme or pos or morph or tags or personnage or attributs):
+        raise HTTPException(422, "Préciser au moins un critère (grammatical, tag, personnage ou attribut).")
     limit = max(1, min(limit, 500))
+    _valider_facette(conn, personnage, attributs)
     where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope,
                                      personnage, attributs)
     sql = ("SELECT te.region_id, te.ordre, te.texte, te.lemme, te.pos, te.morph, "
            "       te.provenance, r.type, p.id AS planche_id, p.numero AS planche_numero, "
-           "       a.id AS album_id, a.titre AS album_titre, r.ocr_texte "
+           "       a.id AS album_id, a.titre AS album_titre, r.ocr_texte, "
+           "       loc.nom AS locuteur "
            "FROM tokens_effectifs te "
            "JOIN regions r ON r.id = te.region_id "
            "JOIN planches p ON p.id = r.planche_id "
            "JOIN albums a ON a.id = p.album_id "
+           "LEFT JOIN bulle_locuteur blc ON blc.region_id = r.id "
+           "LEFT JOIN personnages loc ON loc.id = blc.personnage_id "
            "WHERE " + " AND ".join(where) + " "
            "ORDER BY a.id, p.numero, r.ordre, te.ordre LIMIT ?")
     params.append(limit)
@@ -1532,6 +1606,8 @@ def analyse_comparaison(champ: str = "lemme",
     if champ not in ("lemme", "pos", "morph"):
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
     limit = max(1, min(limit, 200))
+    _valider_facette(conn, a_personnage, a_attributs)
+    _valider_facette(conn, b_personnage, b_attributs)
     da, ta = _distribution(conn, champ, a_album, a_type, a_pos, a_morph, a_provenance, a_tags, tag_scope,
                            a_personnage, a_attributs)
     db_, tb = _distribution(conn, champ, b_album, b_type, b_pos, b_morph, b_provenance, b_tags, tag_scope,
