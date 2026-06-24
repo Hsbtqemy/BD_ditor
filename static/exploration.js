@@ -50,6 +50,21 @@ async function loadAlbums() {
   } catch (e) { /* ignore */ }
 }
 
+async function loadTags() {
+  try {
+    const tags = await apiGet("/api/tags");
+    for (const id of ["#f-tags", "#b-tags"]) {
+      const sel = $(id);
+      for (const t of tags) {
+        const o = document.createElement("option");
+        o.value = t.label;
+        o.textContent = `${t.label} (${t.frequence})`;
+        sel.appendChild(o);
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
 /* ---------------- Paramètres ---------------- */
 function champ() { return $("#f-champ").value; }
 function compareOn() { return $("#f-compare").checked; }
@@ -57,10 +72,13 @@ function compareOn() { return $("#f-compare").checked; }
 /* Filtres d'un côté (préfixe "f" = A, "b" = B) → {album,type,pos,morph,provenance}. */
 function sideFilters(pre) {
   const g = (k) => ($(`#${pre}-${k}`).value || "").trim();
-  const f = { album: g("album"), type: g("type"), morph: g("morph"), provenance: g("prov") };
+  const f = { album: g("album"), type: g("type"), morph: g("morph"),
+              provenance: g("prov"), tags: g("tags") };
   if (champ() !== "pos") f.pos = g("pos");   // filtre POS redondant si on distribue par POS
   return f;
 }
+// Portée du filtre tag : 'herite' (case parente incluse, défaut) ou 'propre'. Global (A+B).
+function tagScope() { return $("#f-tagscope").checked ? "herite" : "propre"; }
 
 /* URL/état : champ + compare + filtres A (nus) + filtres B (préfixés b_). */
 function stateParams() {
@@ -73,6 +91,7 @@ function stateParams() {
     const b = sideFilters("b");
     for (const [k, v] of Object.entries(b)) if (v) p.set("b_" + k, v);
   }
+  if (tagScope() === "propre") p.set("tag_scope", "propre");   // hérité = défaut, omis de l'URL
   if (RETOUR) p.set("retour", RETOUR);   // préservé : le ← Retour survit aux changements de filtre
   return p;
 }
@@ -102,11 +121,13 @@ function run() {
     const a = sideFilters("f"), b = sideFilters("b");
     for (const [k, v] of Object.entries(a)) if (v) p.set("a_" + k, v);
     for (const [k, v] of Object.entries(b)) if (v) p.set("b_" + k, v);
+    if (tagScope() === "propre") p.set("tag_scope", "propre");
     apiGet("/api/analyse/comparaison?" + p.toString()).then(done(renderComparaison)).catch(fail);
   } else {
     const p = new URLSearchParams();
     p.set("champ", champ());
     for (const [k, v] of Object.entries(sideFilters("f"))) if (v) p.set(k, v);
+    if (tagScope() === "propre") p.set("tag_scope", "propre");
     p.set("limit", "200");
     apiGet("/api/analyse/frequences?" + p.toString()).then(done(renderDist)).catch(fail);
   }
@@ -194,9 +215,11 @@ function restoreFromUrl() {
     $(`#${pre}-pos`).value = p.get(keyfn("pos")) || "";
     $(`#${pre}-morph`).value = p.get(keyfn("morph")) || "";
     $(`#${pre}-prov`).value = p.get(keyfn("provenance")) || "";
+    $(`#${pre}-tags`).value = p.get(keyfn("tags")) || "";
   };
   setSide("f", (k) => k);              // A = paramètres nus
   setSide("b", (k) => "b_" + k);       // B = préfixés
+  $("#f-tagscope").checked = (p.get("tag_scope") || "herite") !== "propre";
 }
 
 /* Bouton « ← Retour » : revient d'où l'on vient via `retour` (ou history.back si
@@ -234,10 +257,11 @@ async function setup() {
   $("#b-morph").addEventListener("input", deb);
   $("#f-champ").onchange = () => { syncControls(); run(); };
   $("#f-compare").onchange = () => { syncControls(); run(); };
-  ["#f-album", "#f-type", "#f-pos", "#f-prov",
-   "#b-album", "#b-type", "#b-pos", "#b-prov"].forEach((s) => { $(s).onchange = run; });
+  ["#f-album", "#f-type", "#f-pos", "#f-prov", "#f-tags", "#f-tagscope",
+   "#b-album", "#b-type", "#b-pos", "#b-prov", "#b-tags"].forEach((s) => { $(s).onchange = run; });
   loadCorpus();
   await loadAlbums();        // options d'album (A et B) avant restauration
+  await loadTags();          // options de tag (A et B) avant restauration
   restoreFromUrl();
   setupBack();
   syncControls();

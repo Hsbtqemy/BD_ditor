@@ -37,6 +37,7 @@
         </select>
       </label>
       <label class="muted small"><input type="checkbox" id="f-compare"> ⇄ Comparer deux sous-corpus</label>
+      <label class="muted small" title="Inclure les tags posés sur la case parente (sinon, seul le tag propre à la région compte)"><input type="checkbox" id="f-tagscope" checked> tag hérité de la case</label>
     </div>
 
     <div class="explo-grid">
@@ -57,6 +58,7 @@
             <option value="">Provenance : toutes</option>
             <option value="auto">auto</option><option value="corrige">corrigé</option><option value="valide">validé</option>
           </select>
+          <select id="f-tags" aria-label="Filtrer par tag"><option value="">Tag : tous</option></select>
         </div>
       </div>
 
@@ -77,6 +79,7 @@
             <option value="">Provenance : toutes</option>
             <option value="auto">auto</option><option value="corrige">corrigé</option><option value="valide">validé</option>
           </select>
+          <select id="b-tags" aria-label="Sous-corpus B — filtrer par tag"><option value="">Tag : tous</option></select>
         </div>
       </div>
     </div>
