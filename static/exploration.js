@@ -73,12 +73,61 @@ function compareOn() { return $("#f-compare").checked; }
 function sideFilters(pre) {
   const g = (k) => ($(`#${pre}-${k}`).value || "").trim();
   const f = { album: g("album"), type: g("type"), morph: g("morph"),
-              provenance: g("prov"), tags: g("tags") };
+              provenance: g("prov"), tags: g("tags"), personnage: g("personnage") };
   if (champ() !== "pos") f.pos = g("pos");   // filtre POS redondant si on distribue par POS
   return f;
 }
 // Portée du filtre tag : 'herite' (case parente incluse, défaut) ou 'propre'. Global (A+B).
 function tagScope() { return $("#f-tagscope").checked ? "herite" : "propre"; }
+// Attributs sélectionnés (multi-select) d'un côté → liste de valeur_id (ET côté backend).
+function selectedAttributs(pre) {
+  return [...$(`#${pre}-attributs`).selectedOptions].map((o) => o.value).filter(Boolean);
+}
+
+async function loadPersonnages() {
+  try {
+    const persos = await apiGet("/api/personnages");
+    for (const id of ["#f-personnage", "#b-personnage"]) {
+      const sel = $(id);
+      for (const p of persos) {
+        const o = document.createElement("option");
+        o.value = String(p.id);
+        o.textContent = p.nom + (p.serie ? ` · ${p.serie}` : "");
+        sel.appendChild(o);
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function loadAttributs() {
+  try {
+    const vals = await apiGet("/api/attributs/valeurs");   // à plat, toutes cibles
+    const byDim = new Map();
+    for (const v of vals) {
+      if (!byDim.has(v.dimension)) byDim.set(v.dimension, []);
+      byDim.get(v.dimension).push(v);
+    }
+    for (const id of ["#f-attributs", "#b-attributs"]) {
+      const sel = $(id);
+      for (const [dim, items] of byDim) {
+        const og = document.createElement("optgroup");
+        og.label = dim;
+        for (const v of items) {
+          const o = document.createElement("option");
+          o.value = String(v.id);
+          o.textContent = v.valeur;
+          og.appendChild(o);
+        }
+        sel.appendChild(og);
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function setMulti(sel, values) {
+  const set = new Set(values);
+  for (const o of $(sel).options) o.selected = set.has(o.value);
+}
 
 /* URL/état : champ + compare + filtres A (nus) + filtres B (préfixés b_). */
 function stateParams() {
@@ -86,10 +135,12 @@ function stateParams() {
   p.set("champ", champ());
   const a = sideFilters("f");
   for (const [k, v] of Object.entries(a)) if (v) p.set(k, v);
+  selectedAttributs("f").forEach((v) => p.append("attributs", v));
   if (compareOn()) {
     p.set("compare", "1");
     const b = sideFilters("b");
     for (const [k, v] of Object.entries(b)) if (v) p.set("b_" + k, v);
+    selectedAttributs("b").forEach((v) => p.append("b_attributs", v));
   }
   if (tagScope() === "propre") p.set("tag_scope", "propre");   // hérité = défaut, omis de l'URL
   if (RETOUR) p.set("retour", RETOUR);   // préservé : le ← Retour survit aux changements de filtre
@@ -97,11 +148,12 @@ function stateParams() {
 }
 
 /* Descente aux preuves : Recherche pré-filtrée sur la valeur + les filtres du côté. */
-function drillUrl(valeur, filtres) {
+function drillUrl(valeur, filtres, attributs) {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(filtres)) if (v) p.set(k, v);
   p.set(champ(), valeur);
   if (filtres.tags) p.set("tag_scope", tagScope());   // Recherche filtre le tag avec le MÊME scope
+  (attributs || []).forEach((v) => p.append("attributs", v));   // locuteur via filtres.personnage
   p.set("retour", location.pathname + location.search);   // pour revenir à l'Exploration
   return "/recherche?" + p.toString();
 }
@@ -122,12 +174,15 @@ function run() {
     const a = sideFilters("f"), b = sideFilters("b");
     for (const [k, v] of Object.entries(a)) if (v) p.set("a_" + k, v);
     for (const [k, v] of Object.entries(b)) if (v) p.set("b_" + k, v);
+    selectedAttributs("f").forEach((v) => p.append("a_attributs", v));
+    selectedAttributs("b").forEach((v) => p.append("b_attributs", v));
     if (tagScope() === "propre") p.set("tag_scope", "propre");
     apiGet("/api/analyse/comparaison?" + p.toString()).then(done(renderComparaison)).catch(fail);
   } else {
     const p = new URLSearchParams();
     p.set("champ", champ());
     for (const [k, v] of Object.entries(sideFilters("f"))) if (v) p.set(k, v);
+    selectedAttributs("f").forEach((v) => p.append("attributs", v));
     if (tagScope() === "propre") p.set("tag_scope", "propre");
     p.set("limit", "200");
     apiGet("/api/analyse/frequences?" + p.toString()).then(done(renderDist)).catch(fail);
@@ -154,7 +209,7 @@ function renderDist(res) {
     const sub = (ch === "lemme" && r.pos) ? `<span class="dist-pos">${esc(r.pos)}</span>` : "";
     const row = document.createElement(v === "" ? "div" : "a");
     row.className = "dist-row";
-    if (v !== "") { row.href = drillUrl(v, fa); row.title = "Voir les emplois en contexte"; }
+    if (v !== "") { row.href = drillUrl(v, fa, selectedAttributs("f")); row.title = "Voir les emplois en contexte"; }
     row.innerHTML =
       `<span class="dist-label">${esc(label)}${sub}</span>` +
       `<span class="dist-bar"><i style="width:${(100 * r.freq / max).toFixed(1)}%"></i></span>` +
@@ -164,7 +219,7 @@ function renderDist(res) {
 }
 
 /* ---------------- Rendu : comparaison A / B ---------------- */
-function compColumn(items, side, filtres) {
+function compColumn(items, side, filtres, attributs) {
   if (!items.length) return '<div class="muted small">—</div>';
   const max = Math.max(...items.map((x) => Math.abs(x.diff))) || 1;
   return items.map((x) => {
@@ -176,7 +231,7 @@ function compColumn(items, side, filtres) {
       `<span class="dist-freq" title="A:${x.freq_a} · B:${x.freq_b}">${x.freq_a}/${x.freq_b}</span>`;
     return v === ""
       ? `<div class="dist-row">${inner}</div>`
-      : `<a class="dist-row" href="${esc(drillUrl(v, filtres))}" title="Voir les emplois en contexte">${inner}</a>`;
+      : `<a class="dist-row" href="${esc(drillUrl(v, filtres, attributs))}" title="Voir les emplois en contexte">${inner}</a>`;
   }).join("");
 }
 
@@ -191,9 +246,9 @@ function renderComparaison(res) {
   }
   box.innerHTML =
     `<div class="comp-col col-a"><h3 class="comp-h">▲ Sur-représentés en A</h3>` +
-      `<div class="dist">${compColumn(res.sur_a, "a", sideFilters("f"))}</div></div>` +
+      `<div class="dist">${compColumn(res.sur_a, "a", sideFilters("f"), selectedAttributs("f"))}</div></div>` +
     `<div class="comp-col col-b"><h3 class="comp-h">▲ Sur-représentés en B</h3>` +
-      `<div class="dist">${compColumn(res.sur_b, "b", sideFilters("b"))}</div></div>`;
+      `<div class="dist">${compColumn(res.sur_b, "b", sideFilters("b"), selectedAttributs("b"))}</div></div>`;
 }
 
 /* ---------------- Contrôles / démarrage ---------------- */
@@ -217,9 +272,12 @@ function restoreFromUrl() {
     $(`#${pre}-morph`).value = p.get(keyfn("morph")) || "";
     $(`#${pre}-prov`).value = p.get(keyfn("provenance")) || "";
     $(`#${pre}-tags`).value = p.get(keyfn("tags")) || "";
+    $(`#${pre}-personnage`).value = p.get(keyfn("personnage")) || "";
   };
   setSide("f", (k) => k);              // A = paramètres nus
   setSide("b", (k) => "b_" + k);       // B = préfixés
+  setMulti("#f-attributs", p.getAll("attributs"));
+  setMulti("#b-attributs", p.getAll("b_attributs"));
   $("#f-tagscope").checked = (p.get("tag_scope") || "herite") !== "propre";
 }
 
@@ -258,11 +316,14 @@ async function setup() {
   $("#b-morph").addEventListener("input", deb);
   $("#f-champ").onchange = () => { syncControls(); run(); };
   $("#f-compare").onchange = () => { syncControls(); run(); };
-  ["#f-album", "#f-type", "#f-pos", "#f-prov", "#f-tags", "#f-tagscope",
-   "#b-album", "#b-type", "#b-pos", "#b-prov", "#b-tags"].forEach((s) => { $(s).onchange = run; });
+  ["#f-album", "#f-type", "#f-pos", "#f-prov", "#f-tags", "#f-tagscope", "#f-personnage", "#f-attributs",
+   "#b-album", "#b-type", "#b-pos", "#b-prov", "#b-tags", "#b-personnage", "#b-attributs"]
+    .forEach((s) => { $(s).onchange = run; });
   loadCorpus();
   await loadAlbums();        // options d'album (A et B) avant restauration
   await loadTags();          // options de tag (A et B) avant restauration
+  await loadPersonnages();   // locuteurs (A et B)
+  await loadAttributs();     // valeurs d'attribut, groupées par dimension (A et B)
   restoreFromUrl();
   setupBack();
   syncControls();
