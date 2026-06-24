@@ -13,7 +13,11 @@ const INITIAL_QS = location.search;
 const RETOUR = Nav.safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));   // d'où l'on vient (si inbound)
 const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
               "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X"];
-const state = { timer: null, gen: 0 };
+// Libellé de la cible d'une dimension (lève l'ambiguïté entre dimensions homonymes :
+// une « origine » de personnage et une « origine » de case ne se confondent plus).
+const CIBLE_LBL = { personnage: "locuteur", case: "scène" };
+let ATTR_CATALOGUE = [];   // valeurs d'attribut à plat (cible→dim→valeur) — source des puces
+const state = { timer: null, gen: 0, attributs: { f: new Set(), b: new Set() } };
 
 async function apiGet(path) {
   const r = await fetch(path);
@@ -79,9 +83,9 @@ function sideFilters(pre) {
 }
 // Portée du filtre tag : 'herite' (case parente incluse, défaut) ou 'propre'. Global (A+B).
 function tagScope() { return $("#f-tagscope").checked ? "herite" : "propre"; }
-// Attributs sélectionnés (multi-select) d'un côté → liste de valeur_id (ET côté backend).
+// Attributs sélectionnés d'un côté → liste de valeur_id (ET côté backend).
 function selectedAttributs(pre) {
-  return [...$(`#${pre}-attributs`).selectedOptions].map((o) => o.value).filter(Boolean);
+  return [...state.attributs[pre]];
 }
 
 async function loadPersonnages() {
@@ -101,32 +105,53 @@ async function loadPersonnages() {
 
 async function loadAttributs() {
   try {
-    const vals = await apiGet("/api/attributs/valeurs");   // à plat, toutes cibles
-    const byDim = new Map();
-    for (const v of vals) {
-      if (!byDim.has(v.dimension)) byDim.set(v.dimension, []);
-      byDim.get(v.dimension).push(v);
-    }
-    for (const id of ["#f-attributs", "#b-attributs"]) {
-      const sel = $(id);
-      for (const [dim, items] of byDim) {
-        const og = document.createElement("optgroup");
-        og.label = dim;
-        for (const v of items) {
-          const o = document.createElement("option");
-          o.value = String(v.id);
-          o.textContent = v.valeur;
-          og.appendChild(o);
-        }
-        sel.appendChild(og);
-      }
-    }
-  } catch (e) { /* ignore */ }
+    ATTR_CATALOGUE = await apiGet("/api/attributs/valeurs");   // à plat, ordonné cible→dim→valeur
+  } catch (e) { ATTR_CATALOGUE = []; }
+  renderAttrChips("f");
+  renderAttrChips("b");
 }
 
-function setMulti(sel, values) {
-  const set = new Set(values);
-  for (const o of $(sel).options) o.selected = set.has(o.value);
+/* (Re)rend les puces d'attribut d'un côté, groupées par dimension. Chaque puce est un
+   bouton-bascule (toggle) : plus découvrable qu'un <select multiple> (qui imposait
+   Ctrl-clic). L'état vit dans state.attributs[pre] (Set de valeur_id). */
+function renderAttrChips(pre) {
+  const box = $(`#${pre}-attr-chips`);
+  if (!box) return;
+  box.innerHTML = "";
+  if (!ATTR_CATALOGUE.length) {
+    box.innerHTML = '<span class="muted small">Aucun attribut défini.</span>';
+    return;
+  }
+  const sel = state.attributs[pre];
+  let curDim = null, grp = null;
+  for (const v of ATTR_CATALOGUE) {
+    if (v.dimension_id !== curDim) {            // nouvelle dimension → nouveau groupe
+      curDim = v.dimension_id;
+      grp = document.createElement("div");
+      grp.className = "attr-group";
+      const lbl = document.createElement("span");
+      lbl.className = "attr-dim";
+      lbl.textContent = `${CIBLE_LBL[v.cible] || v.cible} · ${v.dimension}`;
+      grp.appendChild(lbl);
+      box.appendChild(grp);
+    }
+    const id = String(v.id), actif = sel.has(id);
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "cloud-tag attr-chip" + (actif ? " active" : "");
+    chip.dataset.vid = id;
+    chip.textContent = v.valeur;
+    chip.setAttribute("aria-pressed", actif ? "true" : "false");
+    if (v.nb_usages != null) chip.title = `${v.nb_usages} usage(s)`;
+    chip.onclick = () => {
+      const on = !sel.has(id);
+      if (on) sel.add(id); else sel.delete(id);
+      chip.classList.toggle("active", on);
+      chip.setAttribute("aria-pressed", on ? "true" : "false");
+      run();
+    };
+    grp.appendChild(chip);
+  }
 }
 
 /* URL/état : champ + compare + filtres A (nus) + filtres B (préfixés b_). */
@@ -276,8 +301,10 @@ function restoreFromUrl() {
   };
   setSide("f", (k) => k);              // A = paramètres nus
   setSide("b", (k) => "b_" + k);       // B = préfixés
-  setMulti("#f-attributs", p.getAll("attributs"));
-  setMulti("#b-attributs", p.getAll("b_attributs"));
+  state.attributs.f = new Set(p.getAll("attributs"));
+  state.attributs.b = new Set(p.getAll("b_attributs"));
+  renderAttrChips("f");                // reflète l'état restauré sur les puces
+  renderAttrChips("b");
   $("#f-tagscope").checked = (p.get("tag_scope") || "herite") !== "propre";
 }
 
@@ -316,8 +343,9 @@ async function setup() {
   $("#b-morph").addEventListener("input", deb);
   $("#f-champ").onchange = () => { syncControls(); run(); };
   $("#f-compare").onchange = () => { syncControls(); run(); };
-  ["#f-album", "#f-type", "#f-pos", "#f-prov", "#f-tags", "#f-tagscope", "#f-personnage", "#f-attributs",
-   "#b-album", "#b-type", "#b-pos", "#b-prov", "#b-tags", "#b-personnage", "#b-attributs"]
+  // Les puces d'attribut câblent leur propre clic (cf. renderAttrChips) — absentes d'ici.
+  ["#f-album", "#f-type", "#f-pos", "#f-prov", "#f-tags", "#f-tagscope", "#f-personnage",
+   "#b-album", "#b-type", "#b-pos", "#b-prov", "#b-tags", "#b-personnage"]
     .forEach((s) => { $(s).onchange = run; });
   loadCorpus();
   await loadAlbums();        // options d'album (A et B) avant restauration

@@ -928,6 +928,16 @@ h3.collapsible:hover { color: var(--text); }
 .explo-controls input { flex: 1 1 150px; min-width: 110px; }
 .explo-controls select:disabled { opacity: .45; }
 
+/* Puces d'attribut (facette émergente) — remplacent le <select multiple> : un clic =
+   un critère ET de plus. Réutilisent .cloud-tag (look + contraste actif déjà audités). */
+.attr-chips { flex: 1 1 100%; display: flex; flex-direction: column; gap: 7px; margin-top: 2px; }
+.attr-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.attr-dim {
+  flex: 0 0 auto; min-width: 96px; text-align: right;
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted);
+}
+.attr-chip { font-size: .85rem; }
+
 #dist-info { margin-bottom: 14px; line-height: 1.5; }
 
 /* Barres de distribution (pilules) */

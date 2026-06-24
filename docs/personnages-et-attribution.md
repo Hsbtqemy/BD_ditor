@@ -1,7 +1,7 @@
 # Personnages, attribution & échelle d'analyse — exploration amont
 
-> Exploration menée le 2026-06-23, en amont de toute implémentation.
-> **Statut : exploration — rien n'est codé.** Ce document compare les modèles
+> Exploration menée le 2026-06-23, en amont de l'implémentation.
+> **Statut : conception arrêtée — ANN-2 « mince » + ANA-1 livrés le 2026-06-24.** Ce document compare les modèles
 > possibles pour l'axe « personnage » et fige la contrainte d'échelle
 > (album **et** corpus entier) qui les départage. Il prépare les tickets
 > **ANN-2** (entité personnage + lien bulle→personnage) et **ANA-1** (filtre par
@@ -10,8 +10,8 @@
 > entités*, analyse par attribut ; §12 : cadrage « variation multimodale » +
 > structure d'attributs *facettée & émergente* ; **§13 : arbitrages clos —
 > situation/scène dans le périmètre, granularité case, canonicalisation par
-> primitives**). **Conception arrêtée** : prêt à dériver les lots d'implémentation
-> (ANN-2 « mince » + ANA-1 substrat).
+> primitives**). **Conception arrêtée et lots livrés (2026-06-24)** : ANN-2 « mince »
+> (schéma v11 + API + UI) + ANA-1 substrat. Différé : présence, attributs riches, entité « scène ».
 
 ## 1. Le besoin
 
@@ -288,8 +288,17 @@ Les deux points ouverts au §12 sont tranchés.
 
 ### 13.3 Suite
 
-Conception **arrêtée**. Prochaine étape (hors de ce document) : **dériver les lots
-d'implémentation** — **ANA-1** (filtre par tag, substrat sans regret, livrable
-indépendamment) puis **ANN-2 « mince »** (entité canonique + mention locale +
-lien locuteur + mécanisme d'attributs facetté sur personnage **et** case + facette
-d'analyse). Présence, attributs riches et entité *scène* restent différés.
+Conception **arrêtée**, puis **lots dérivés et livrés le 2026-06-24** :
+
+- **ANA-1** — filtre par tag (`tag_scope` hérité/propre) sur fréquences / concordance /
+  comparaison + facette tag dans Exploration, drill cohérent vers Recherche. Substrat
+  livrable indépendamment. ✅
+- **ANN-2 « mince »** — entité personnage canonique, lien **locuteur** (bulle→personnage),
+  attributs **facettés & émergents** (dimensions/valeurs comme *données*, sur personnage
+  **et** case), facette d'analyse, descente aux preuves cohérente. Schéma v11, API
+  (2a personnages/locuteur · 2b attributs · 2c facette), UI (3a locuteur · 3b profil/situation ·
+  3c facette Exploration, puces émergentes). ✅
+
+Restent **différés** (hors « mince ») : la **présence** (2ᵉ graphe — qui est *montré*, pas
+seulement qui *parle*), les **attributs riches** (curation poussée des valeurs/dimensions),
+et l'entité **scène** explicite (regroupement de cases).

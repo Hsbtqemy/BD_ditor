@@ -60,7 +60,8 @@
           </select>
           <select id="f-tags" aria-label="Filtrer par tag"><option value="">Tag : tous</option></select>
           <select id="f-personnage" aria-label="Filtrer par locuteur"><option value="">Locuteur : tous</option></select>
-          <select id="f-attributs" multiple size="4" aria-label="Filtrer par attribut (profil ou situation)"></select>
+          <div id="f-attr-chips" class="attr-chips" role="group"
+               aria-label="Filtrer par attribut — profil du locuteur ou situation de scène (un clic = un critère de plus)"></div>
         </div>
       </div>
 
@@ -83,7 +84,8 @@
           </select>
           <select id="b-tags" aria-label="Sous-corpus B — filtrer par tag"><option value="">Tag : tous</option></select>
           <select id="b-personnage" aria-label="Sous-corpus B — filtrer par locuteur"><option value="">Locuteur : tous</option></select>
-          <select id="b-attributs" multiple size="4" aria-label="Sous-corpus B — filtrer par attribut"></select>
+          <div id="b-attr-chips" class="attr-chips" role="group"
+               aria-label="Sous-corpus B — filtrer par attribut (profil du locuteur ou situation de scène)"></div>
         </div>
       </div>
     </div>

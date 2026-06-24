@@ -1,6 +1,6 @@
 # Backlog exécutable — BD Annotator
 
-> Établi le 2026-06-15. **Révisé le 2026-06-23** : A11y (§6) livré et vérifié ;
+> Établi le 2026-06-15. **Révisé le 2026-06-24** : ANN-2 « mince » livré (§1, entité personnage + locuteur + attributs facettés) ; A11y (§6) livré et vérifié ;
 > navigation/désencombrement (§5) largement faits ; **dette technique & sécurité de
 > l'audit intégrée en §7**. Recense les pistes ouvertes **après** les lots livrés
 > (analyse : correction grammaticale, requête, Recherche+++, Exploration ;
@@ -25,12 +25,12 @@ ou décision de conception requise).
   **filtrer et distribuer** par catégorie ; agrégation sans doublon orthographique ; test.
 - Note : décision de conception (vocabulaire) **en amont** — implique les linguistes.
 
-### ANN-2 · Entité « personnage » + lien bulle→personnage — P2 · L
+### ANN-2 · Entité « personnage » + lien bulle→personnage — ✅ Fait « mince » 2026-06-24 · P2 · L
 > « Représentation des minorités » = surtout *qui* est représenté ; idiolectes, registres
 > par personnage. Aujourd'hui `personnage` n'est qu'un type de région, sans identité.
 - Faire : table personnage (récurrent, attributs) ; lien `region(bulle) → personnage` ;
   UI d'attribution ; facette d'analyse « par personnage ».
-- Done : attribuer une bulle à un personnage ; recherche/exploration/comparaison
+- ✅ Fait 2026-06-24 (schéma v11 + API 2a/2b/2c + UI 3a/3b/3c ; vocabulaire **émergent**, pas figé ; cf. `docs/personnages-et-attribution.md`) : attribuer une bulle à un personnage ; recherche/exploration/comparaison
   filtrables par personnage ; test.
 
 ### ANN-3 · EntityRuler / gazetteer pour les noms de personnages — P3 · M
@@ -259,11 +259,11 @@ ou décision de conception requise).
 ---
 
 ## Ordre conseillé (modifiable, révisé 2026-06-23)
-1. **ANN-2 « mince »** (entité personnage + locuteur + attributs facettés & émergents) — **en cours** (conception arrêtée, cf. `docs/personnages-et-attribution.md` §13).
+1. ~~**ANN-2 « mince »**~~ (entité personnage + locuteur + attributs facettés & émergents) — **✅ Fait 2026-06-24** (schéma v11 + API + UI, vocabulaire émergent ; cf. `docs/personnages-et-attribution.md`). Différé : présence (2ᵉ graphe), attributs riches, entité « scène ».
 2. **SEC-1 + DB-1** (SSRF ShareDocs, UNIQUE numéro) — sécurité/intégrité, petits, avant toute exposition.
 3. ~~ANN-1~~ → **absorbé par ANN-2** : le vocabulaire devient une structure facettée *émergente*, plus une liste figée à trancher en amont.
 4. **INFRA-1→3** (auth/déploiement) — avant la mise en ligne multi-linguiste.
 5. **SEG-1 + QA-3** (préservation segmentation + tests de concurrence/analyse) — fiabilise la logique délicate.
 6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, QA-1/2, UX-3/4) au fil du besoin réel.
 
-*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2).*
+*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1).*
