@@ -1261,7 +1261,8 @@ def remove_region_attribut(region_id: int, valeur_id: int,
 # =========================================================================== #
 # Recherche plein texte (FTS5)
 # =========================================================================== #
-def _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, limit, tag_scope="propre"):
+def _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, limit, tag_scope="propre",
+                    personnage=None, attributs=None):
     """Construit et exécute la requête de recherche (régions + contexte, tags joints).
     Partagé par /api/recherche (JSON) et l'export CSV — une seule logique de requête."""
     where, params = [], []
@@ -1335,6 +1336,21 @@ def _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, l
                      "WHERE te.region_id = r.id AND " + " AND ".join(tw) + ")")
         params.extend(tp)
 
+    # Facettes ANN-2 : locuteur de la bulle, et attribut (profil du locuteur OU situation
+    # de la case) — alignées sur /api/analyse/* pour que le drill Exploration→Recherche colle.
+    if personnage is not None:
+        where.append("EXISTS (SELECT 1 FROM bulle_locuteur bl "
+                     "WHERE bl.region_id = r.id AND bl.personnage_id = ?)")
+        params.append(personnage)
+    for vid in (attributs or []):
+        where.append(
+            "(EXISTS (SELECT 1 FROM bulle_locuteur bl JOIN personnage_attribut pa "
+            "         ON pa.personnage_id = bl.personnage_id "
+            "         WHERE bl.region_id = r.id AND pa.valeur_id = ?) "
+            " OR EXISTS (SELECT 1 FROM region_attribut ra "
+            "            WHERE ra.region_id IN (r.id, r.parent_id) AND ra.valeur_id = ?))")
+        params.extend([vid, vid])
+
     sql = base
     if where:
         sql += "WHERE " + " AND ".join(where) + " "
@@ -1368,9 +1384,11 @@ def recherche(q: str = "", album: Optional[int] = None,
               pos: Optional[str] = None, lemme: Optional[str] = None,
               morph: Optional[str] = None, provenance: Optional[str] = None,
               tag_scope: str = "propre",
+              personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
               limit: int = 100, conn: sqlite3.Connection = Depends(db)):
     limit = max(1, min(limit, 500))   # borne : évite LIMIT -1 (= tout le corpus) / DoS
-    results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, limit, tag_scope)
+    results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, limit, tag_scope,
+                              personnage, attributs)
     return {"q": q, "count": len(results), "results": results}
 
 
@@ -1390,10 +1408,12 @@ def recherche_export(q: str = "", album: Optional[int] = None,
                      pos: Optional[str] = None, lemme: Optional[str] = None,
                      morph: Optional[str] = None, provenance: Optional[str] = None,
                      tag_scope: str = "propre",
+                     personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
                      conn: sqlite3.Connection = Depends(db)):
     """Export CSV du jeu de résultats courant (mêmes critères que /api/recherche).
     Borne haute relevée (5000) : on exporte le jeu trouvé, pas seulement l'aperçu."""
-    results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, 5000, tag_scope)
+    results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, 5000, tag_scope,
+                              personnage, attributs)
     buf = io.StringIO()
     # `planche` = numéro ÉDITORIAL (cité), `citation` = repère complet « pl·c(·b) » ;
     # le CSV est l'artefact que le chercheur emporte pour citer. Cf.

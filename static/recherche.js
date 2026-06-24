@@ -11,6 +11,8 @@ const state = {
   albums: [],
   activeTags: new Set(),
   tagScope: "propre",   // 'propre' (défaut) ou 'herite' (case parente incluse) — hérité du drill Exploration
+  personnage: "",       // facettes ANN-2 transportées par le drill Exploration (pas d'UI propre ici)
+  attributs: [],
   timer: null,
   searchGen: 0,   // jeton de fraîcheur : ignore les réponses de recherche périmées
 };
@@ -130,6 +132,8 @@ function searchParams() {
   set("provenance", $("#f-prov").value);
   state.activeTags.forEach((t) => p.append("tags", t));   // un param par tag
   if (state.activeTags.size && state.tagScope === "herite") p.set("tag_scope", "herite");
+  if (state.personnage) p.set("personnage", state.personnage);
+  state.attributs.forEach((v) => p.append("attributs", v));
   return p;
 }
 
@@ -276,6 +280,8 @@ function restoreFromUrl() {
   $("#f-prov").value = p.get("provenance") || "";
   state.activeTags = new Set(p.getAll("tags"));
   state.tagScope = p.get("tag_scope") === "herite" ? "herite" : "propre";   // hérité du drill
+  state.personnage = p.get("personnage") || "";
+  state.attributs = p.getAll("attributs");
   renderActiveTags();
   if (p.get("pos") || p.get("lemme") || p.get("morph") || p.get("provenance"))
     $("#gram-facets").open = true;     // déplie si une facette grammaticale est active

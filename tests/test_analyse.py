@@ -229,6 +229,21 @@ def test_facette_id_inconnu_404(client, album, planche):
                       params={"champ": "lemme", "attributs": 9999}).status_code == 404
 
 
+def test_recherche_par_personnage_et_attribut(client, album, planche, db_path):
+    """Cohérence du drill : Recherche filtre aussi par locuteur et par attribut."""
+    a, b = _region(client, planche["id"]), _region(client, planche["id"])
+    pa, pb = _perso(client, "A"), _perso(client, "B")
+    client.put(f"/api/regions/{a}/locuteur", json={"personnage_id": pa})
+    client.put(f"/api/regions/{b}/locuteur", json={"personnage_id": pb})
+    r = client.get("/api/recherche", params={"personnage": pa}).json()
+    assert {x["region_id"] for x in r["results"]} == {a}
+    d = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "origine"}).json()["id"]
+    v = client.post(f"/api/attributs/dimensions/{d}/valeurs", json={"valeur": "rural"}).json()["id"]
+    client.put(f"/api/personnages/{pa}/attributs", json={"valeur_id": v})
+    r = client.get("/api/recherche", params={"attributs": v}).json()
+    assert {x["region_id"] for x in r["results"]} == {a}
+
+
 def test_concordance_critere_vide_422(client, album, planche):
     """Régression : un tag vide passe le garde brut mais ne produit aucune clause →
     422 (et non un « WHERE » vide → 500)."""
