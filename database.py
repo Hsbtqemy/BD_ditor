@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 # --------------------------------------------------------------------------- #
@@ -150,6 +150,64 @@ CREATE TABLE IF NOT EXISTS meta (
     valeur   TEXT
 );
 
+-- ANN-2 (lot mince) : personnages + attribution du locuteur + attributs facettés &
+-- ÉMERGENTS. Cf. docs/personnages-et-attribution.md (§13). Le vocabulaire n'est PAS
+-- figé : dimensions et valeurs sont des DONNÉES créées au fil de l'eau.
+
+-- Entité personnage RÉCURRENTE au niveau corpus (≠ type de région 'personnage', qui
+-- n'est qu'une boîte dessinée). `serie` facultative → désambiguïse les homonymes.
+CREATE TABLE IF NOT EXISTS personnages (
+    id             INTEGER PRIMARY KEY,
+    nom            TEXT NOT NULL,
+    serie          TEXT,
+    notes          TEXT,
+    date_creation  TEXT DEFAULT (datetime('now'))
+);
+
+-- Lien LOCUTEUR : quelle entité parle dans cette bulle (au plus une → region_id PK).
+-- ON DELETE CASCADE des DEUX côtés = on détache la liaison quand la région OU le
+-- personnage disparaît ; aucun des deux n'est supprimé par l'autre.
+CREATE TABLE IF NOT EXISTS bulle_locuteur (
+    region_id      INTEGER PRIMARY KEY REFERENCES regions(id) ON DELETE CASCADE,
+    personnage_id  INTEGER NOT NULL REFERENCES personnages(id) ON DELETE CASCADE,
+    date_creation  TEXT DEFAULT (datetime('now'))
+);
+
+-- Dimension d'attribut (un AXE émergent). `cible` = à quoi elle s'applique :
+-- 'personnage' (profil sociolinguistique du locuteur) ou 'case' (situation de scène).
+CREATE TABLE IF NOT EXISTS attribut_dimension (
+    id             INTEGER PRIMARY KEY,
+    cible          TEXT NOT NULL,              -- 'personnage' | 'case'
+    nom            TEXT NOT NULL,
+    date_creation  TEXT DEFAULT (datetime('now')),
+    UNIQUE(cible, nom)
+);
+
+-- Valeur CANONIQUE d'une dimension (agrégabilité : « rural » = une entrée, pas trois
+-- orthographes). Émergente, mais contrôlée en forme.
+CREATE TABLE IF NOT EXISTS attribut_valeur (
+    id             INTEGER PRIMARY KEY,
+    dimension_id   INTEGER NOT NULL REFERENCES attribut_dimension(id) ON DELETE CASCADE,
+    valeur         TEXT NOT NULL,
+    date_creation  TEXT DEFAULT (datetime('now')),
+    UNIQUE(dimension_id, valeur)
+);
+
+-- Affectation d'une valeur à un personnage (profil) — N-N.
+CREATE TABLE IF NOT EXISTS personnage_attribut (
+    personnage_id  INTEGER NOT NULL REFERENCES personnages(id) ON DELETE CASCADE,
+    valeur_id      INTEGER NOT NULL REFERENCES attribut_valeur(id) ON DELETE CASCADE,
+    PRIMARY KEY (personnage_id, valeur_id)
+);
+
+-- Affectation d'une valeur à une région-case (situation de scène) — N-N. La dimension
+-- ('case') restreint l'usage côté UI ; au schéma, la cible est une région quelconque.
+CREATE TABLE IF NOT EXISTS region_attribut (
+    region_id      INTEGER NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
+    valeur_id      INTEGER NOT NULL REFERENCES attribut_valeur(id) ON DELETE CASCADE,
+    PRIMARY KEY (region_id, valeur_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_planches_album   ON planches(album_id);
 CREATE INDEX IF NOT EXISTS idx_regions_planche  ON regions(planche_id);
 CREATE INDEX IF NOT EXISTS idx_regions_parent   ON regions(parent_id);
@@ -159,6 +217,10 @@ CREATE INDEX IF NOT EXISTS idx_tokens_lemme     ON tokens(lemme);
 CREATE INDEX IF NOT EXISTS idx_tokens_pos       ON tokens(pos);
 CREATE INDEX IF NOT EXISTS idx_tcorr_region     ON token_correction(region_id);
 CREATE INDEX IF NOT EXISTS idx_tcorr_etat       ON token_correction(etat);
+CREATE INDEX IF NOT EXISTS idx_locuteur_perso   ON bulle_locuteur(personnage_id);
+CREATE INDEX IF NOT EXISTS idx_attrval_dim      ON attribut_valeur(dimension_id);
+CREATE INDEX IF NOT EXISTS idx_persoattr_val    ON personnage_attribut(valeur_id);
+CREATE INDEX IF NOT EXISTS idx_regattr_val      ON region_attribut(valeur_id);
 """
 
 # Index plein texte FTS5 — séparé du schéma pour pouvoir le RECRÉER en migration
@@ -250,6 +312,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # narratif, comportement inchangé jusqu'au marquage manuel d'un paratexte.
     if pcols and "role" not in pcols:
         conn.execute("ALTER TABLE planches ADD COLUMN role TEXT NOT NULL DEFAULT 'recit'")
+
+    # v10 → v11 : ANN-2 (lot mince) — personnages, attribution du locuteur, attributs
+    # facettés (personnages + tables `attribut_*`). NOUVELLES tables créées par
+    # SCHEMA_SQL (CREATE … IF NOT EXISTS) → rien à migrer ici, juste acter la version.
+    # Cf. docs/personnages-et-attribution.md §13.
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
