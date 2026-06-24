@@ -245,10 +245,10 @@ ou décision de conception requise).
 > `numpy`/`opencv-python-headless`/`requests` (deps réelles de Kumiko) seulement en commentaires.
 - Done : `requirements.lock` (pip-tools) ; deps Kumiko déclarées de façon installable.
 
-### QA-2 · `common.js` — dédup du frontend — P3 · S
+### QA-2 · `common.js` — dédup du frontend — ✅ Fait 2026-06-24 · P3 · S
 > `$`, `apiGet`, `apiSend`, `escapeHtml`, `toast` recopiés à l'identique dans
 > `viewer.js`/`recherche.js`/`corpus.js` (~80 lignes).
-- Done : module commun partagé (sur le modèle de `static/lib/nav.js` et `dialog.js`).
+- ✅ Fait 2026-06-24 : `static/lib/common.js` (UMD) expose `$` / `apiGet` / `apiSend` / `escapeHtml` (+ alias `esc`) / `toast` en globals ; −97 lignes dans les 4 surfaces ; test JS (`escapeHtml`) + smoke globals sur les 4 pages.
 
 ### QA-3 · Tests de concurrence & d'analyse — P2 · M
 > La sérialisation des jobs, la contention worker↔requêtes sous WAL/`busy_timeout` et la
@@ -266,4 +266,4 @@ ou décision de conception requise).
 5. **SEG-1 + QA-3** (préservation segmentation + tests de concurrence/analyse) — fiabilise la logique délicate.
 6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, QA-1/2, UX-3/4) au fil du besoin réel.
 
-*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** (§7).*
+*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** + **QA-2** (§7).*

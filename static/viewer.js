@@ -47,50 +47,14 @@ const state = {
   trSaveTimer: null,
 };
 
-/* ---------------- Raccourcis DOM ---------------- */
-const $ = (sel) => document.querySelector(sel);
+/* ---------------- Raccourcis DOM ($, apiGet, apiSend, toast, escapeHtml : lib/common.js) ---------------- */
 const stage = $("#stage");
 const canvas = $("#canvas");
 const img = $("#planche-img");
 const overlay = $("#overlay");
 
-/* ===================================================================
-   Utilitaires API
-   =================================================================== */
-async function apiGet(path) {
-  const r = await fetch(API + path);
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-  return r.json();
-}
-async function apiSend(method, path, body, opts = {}) {
-  const r = await fetch(API + path, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    signal: opts.signal,           // optionnel : AbortController pour annulation
-  });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-  return r.status === 204 ? null : r.json();
-}
-
-/* ===================================================================
-   Toasts
-   =================================================================== */
-let toastBox;
-function toast(msg, kind = "") {
-  if (!toastBox) {
-    toastBox = document.createElement("div");
-    toastBox.id = "toasts";
-    toastBox.setAttribute("role", "status");          // annoncé aux lecteurs d'écran
-    toastBox.setAttribute("aria-live", "polite");
-    document.body.appendChild(toastBox);
-  }
-  const el = document.createElement("div");
-  el.className = "toast " + kind;
-  el.textContent = msg;
-  toastBox.appendChild(el);
-  setTimeout(() => el.remove(), 4000);
-}
+/* apiGet / apiSend (avec opts.signal) et toast viennent de lib/common.js.
+   `API` (= "") reste local : il préfixe d'autres fetch directs (import, export, sauvegarde). */
 
 /* ===================================================================
    Chargement albums / planches
@@ -614,10 +578,6 @@ async function validerGrammaire() {
   } catch (e) { toast("Validation : " + e.message, "error"); }
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 
 /* Séquence de lecture globale : parcours en profondeur de l'arbre, chaque niveau
    trié par `ordre` (rang per-niveau). Reconstruit la lecture « case par case »

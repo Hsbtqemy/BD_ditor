@@ -5,7 +5,7 @@
    =================================================================== */
 "use strict";
 
-const $ = (s) => document.querySelector(s);
+// $, apiGet, escapeHtml : lib/common.js (chargé avant ce script).
 
 const state = {
   albums: [],
@@ -23,17 +23,6 @@ const INITIAL_QS = location.search;   // état de départ (avant que search() ne
 const RETOUR = Nav.safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));   // d'où l'on vient (drill Exploration)
 const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
               "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X"];
-
-async function apiGet(path) {
-  const r = await fetch(path);
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-  return r.json();
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 
 /* Surligne les termes de la requête dans un texte. On échappe le texte ET les
    termes de la même façon, pour que les apostrophes/caractères spéciaux (« D'… »

@@ -7,7 +7,7 @@
    =================================================================== */
 "use strict";
 
-const $ = (s) => document.querySelector(s);
+// $, apiGet, esc : lib/common.js (chargé avant ce script).
 const INITIAL_QS = location.search;
 // `retour` validé : page interne seulement (cf. static/lib/nav.js → anti open-redirect/XSS).
 const RETOUR = Nav.safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));   // d'où l'on vient (si inbound)
@@ -18,16 +18,6 @@ const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
 const CIBLE_LBL = { personnage: "locuteur", case: "scène" };
 let ATTR_CATALOGUE = [];   // valeurs d'attribut à plat (cible→dim→valeur) — source des puces
 const state = { timer: null, gen: 0, attributs: { f: new Set(), b: new Set() } };
-
-async function apiGet(path) {
-  const r = await fetch(path);
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-  return r.json();
-}
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 
 async function loadCorpus() {
   try {
