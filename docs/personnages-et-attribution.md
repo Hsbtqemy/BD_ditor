@@ -6,9 +6,12 @@
 > (album **et** corpus entier) qui les départage. Il prépare les tickets
 > **ANN-2** (entité personnage + lien bulle→personnage) et **ANA-1** (filtre par
 > tag dans l'analyse) du `backlog.md`, sans les figer.
-> **Approfondi le même jour** (cf. §8–§11 : deux graphes, modèle *mentions →
-> entités*, analyse par attribut) — **à reprendre en session suivante** sur les
-> trois arbitrages du §11.
+> **Approfondi puis arrêté le même jour** (§8–§11 : deux graphes, *mentions →
+> entités*, analyse par attribut ; §12 : cadrage « variation multimodale » +
+> structure d'attributs *facettée & émergente* ; **§13 : arbitrages clos —
+> situation/scène dans le périmètre, granularité case, canonicalisation par
+> primitives**). **Conception arrêtée** : prêt à dériver les lots d'implémentation
+> (ANN-2 « mince » + ANA-1 substrat).
 
 ## 1. Le besoin
 
@@ -191,3 +194,102 @@ regret, livrable indépendamment.
    rôle) seul, ou **aussi l'individu** comme objet d'étude ?
 3. **Qui canonicalise** : l'annotateur *à la volée* (autocomplétion), ou une **passe
    de curation** dédiée par un référent ? (impacte l'UI et la qualité corpus).
+
+---
+
+## 12. Résolution de session (2026-06-23) — variation multimodale & attributs émergents
+
+**Cadrage retenu.** Le projet porte sur la **variation du français dans la BD
+francophone** ; la contribution méthodologique est de **ne pas séparer texte et
+image** — le reproche fait aux linguistes qui exploitent la BD comme du texte brut.
+L'image entre donc comme **caractérisation de la parole**, pas comme comptage de
+présence :
+
+- **Parole = colonne vertébrale** (`bulle → locuteur`) : on étudie la variation *par
+  profil de locuteur*. ✅ (arbitrage §11.1 tranché)
+- **Présence** (qui est à l'image, muet compris) = **réservée au schéma, secondaire** ;
+  son annotation n'est pas planifiée.
+- La **consultation est déjà multimodale** (crops / vignettes : le texte n'est jamais
+  vu détaché du dessin) ; ce qui manque, c'est la partie **requêtable** — d'où l'entité
+  personnage et ses attributs.
+
+**Structure d'attributs : *facettée ET émergente* (décidé).** Pas de vocabulaire en
+dur. On fournit le **mécanisme** de fabrication du vocabulaire ; les catégories
+**émergent**, comme pour les tags (« aucune taxonomie n'est imposée — les catégories
+émergent du corpus »).
+
+- Le chercheur **déclare des dimensions** (axes : « origine », « registre »…), qui sont
+  des **données** créées au fil de l'eau — jamais du code.
+- Sous chaque dimension, des **valeurs canoniques** (choisies dans l'existant ou créées),
+  pour rester **agrégeables** : *ouvert à étendre, contrôlé en forme*.
+- Les **personnages** reçoivent des affectations (dimension → valeur).
+
+Esquisse du **mécanisme** (pas du contenu) :
+
+- `personnage` — entité canonique (cf. §9)
+- `attribut_dimension(nom)` — axes **émergents**
+- `attribut_valeur(dimension_id, valeur)` — valeurs canoniques **émergentes**
+- `personnage_attribut(personnage_id, valeur_id)` — affectation
+
+**Conséquence — déblocage.** Le **contenu** du vocabulaire n'est **pas** à décider
+maintenant : on construit le **contenant**, les linguistes le **remplissent** ensuite.
+Plus de réunion-vocabulaire bloquante en amont. L'**émotion** n'est donc plus un objectif
+figé : c'est *une facette émergente possible* parmi d'autres (le chercheur la crée s'il
+veut, au niveau qu'il choisit — dimension de personnage, ou tag de situation).
+
+**Encore ouvert (prochaine session) :**
+
+1. Variation **entre** locuteurs (profil stable) seulement, ou **aussi intra**-locuteur
+   par **situation / scène** (registre conditionné par la case) ? (cf. §8, axe B)
+2. **Qui canonicalise** — à la volée (autocomplétion) vs passe de curation — pour
+   l'**identité** des personnages *et* pour les **valeurs** d'attributs ? (cf. §9, §11.3)
+
+---
+
+## 13. Arbitrages clos (2026-06-23) — conception arrêtée
+
+Les deux points ouverts au §12 sont tranchés.
+
+### 13.1 Variation intra-locuteur (situation / scène) : **dans le périmètre**
+
+- **Distinction** : la **situation/scène** (contexte dépeint qui conditionne le
+  registre) est le **cœur de la variation**, à ne pas confondre avec la **présence**
+  (visibilité — secondaire). Ce sont deux choses différentes.
+- **Argument multimodal le plus fort** : l'image est **indispensable** à la situation
+  — « Bonjour » ne dit pas le registre, *seul le dessin* le dit. C'est la meilleure
+  démonstration de l'union texte-image.
+- **Mécanisme d'attributs généralisé** : mêmes `attribut_dimension` /
+  `attribut_valeur`, appliqués à **deux cibles** — le **personnage** (qui parle,
+  axe A) et la **case** (la situation, axe B). (Recoupe et facette les tags de case
+  existants.)
+- **Alignement du modèle** : `bulle → locuteur` (*qui*) + texte (*quoi*) ; `case
+  parente → situation` (*où / comment*). Contexte multimodal complet d'une bulle =
+  **attributs du locuteur × attributs de la case parente**. Requête-thèse :
+  **variation × profil × situation**.
+- **Granularité : la case** (une case = une scène) d'abord. Pas de découpage en
+  scènes spéculatif ; une vue « par scène » se reconstruit en regroupant les cases à
+  attributs identiques, ou via une entité *scène* ajoutée **plus tard** si la
+  répétition pèse (YAGNI).
+
+### 13.2 Canonicalisation : **primitives, mode « à la volée » primaire**
+
+- **Valeurs d'attributs** (dimensions + valeurs) : **à la volée** — autocomplétion sur
+  l'existant + création si absent ; fusion ponctuelle si doublon. (Comme les tags.)
+- **Identité des personnages** : le modèle *mentions → entités* permet, **au choix de
+  l'annotateur**, l'**alias à la volée** (autocomplétion sur le registre) **ou** la
+  **curation différée** (laisser en mention locale, relier plus tard). Dégradation
+  gracieuse : avant aliasing, les mentions locales font déjà tourner l'analyse **par
+  album** ; l'aliasing débloque le **corpus**.
+- **À construire = 3 primitives** : (1) autocomplétion sur l'existant, (2) création à
+  la volée, (3) **fusion de doublons**. Le mode « à la volée » suffit en
+  **mono-utilisateur** (état actuel) ; la **curation** n'est qu'un *usage* de ces
+  primitives, utile quand une **équipe** annote (post-INFRA-1). Pas de choix global
+  « à la volée OU curation » à figer.
+
+### 13.3 Suite
+
+Conception **arrêtée**. Prochaine étape (hors de ce document) : **dériver les lots
+d'implémentation** — **ANA-1** (filtre par tag, substrat sans regret, livrable
+indépendamment) puis **ANN-2 « mince »** (entité canonique + mention locale +
+lien locuteur + mécanisme d'attributs facetté sur personnage **et** case + facette
+d'analyse). Présence, attributs riches et entité *scène* restent différés.
