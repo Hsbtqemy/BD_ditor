@@ -164,3 +164,34 @@ def test_comparaison_par_locuteur(client, album, planche, db_path):
                      params={"champ": "lemme", "a_personnage": pa, "b_personnage": pb}).json()
     assert "crier" in {x["valeur"] for x in res["sur_a"]}
     assert "rire" in {x["valeur"] for x in res["sur_b"]}
+
+
+def test_requete_these_rural_x_soutenu(client, album, planche, db_path):
+    """LA requête-thèse : « lemmes des personnages RURAUX dans les scènes SOUTENUES ».
+    Combine un attribut de LOCUTEUR et un attribut de SITUATION (ET). Deux contrôles
+    (rural mais scène familière ; scène soutenue mais locuteur citadin) sont exclus."""
+    do = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "origine"}).json()["id"]
+    rural = client.post(f"/api/attributs/dimensions/{do}/valeurs", json={"valeur": "rural"}).json()["id"]
+    df = client.post("/api/attributs/dimensions", json={"cible": "case", "nom": "formalite"}).json()["id"]
+    soutenu = client.post(f"/api/attributs/dimensions/{df}/valeurs", json={"valeur": "soutenu"}).json()["id"]
+    ru, ci = _perso(client, "Paysan"), _perso(client, "Citadin")
+    client.put(f"/api/personnages/{ru}/attributs", json={"valeur_id": rural})
+
+    c_sout = _region(client, planche["id"], type="case")     # scène soutenue
+    client.put(f"/api/regions/{c_sout}/attributs", json={"valeur_id": soutenu})
+    c_fam = _region(client, planche["id"], type="case")      # scène familière (non taguée)
+
+    b_cible = _region(client, planche["id"])   # rural × soutenu  -> ATTENDU
+    client.put(f"/api/regions/{b_cible}/locuteur", json={"personnage_id": ru})
+    b_ctrl1 = _region(client, planche["id"])   # rural × familier -> exclu
+    client.put(f"/api/regions/{b_ctrl1}/locuteur", json={"personnage_id": ru})
+    b_ctrl2 = _region(client, planche["id"])   # citadin × soutenu -> exclu
+    client.put(f"/api/regions/{b_ctrl2}/locuteur", json={"personnage_id": ci})
+
+    _seed(db_path, b_cible, [(0, "ESPERE", "espérer", "VERB", "")], parent_id=c_sout)
+    _seed(db_path, b_ctrl1, [(0, "GUEULE", "gueuler", "VERB", "")], parent_id=c_fam)
+    _seed(db_path, b_ctrl2, [(0, "DEVISE", "deviser", "VERB", "")], parent_id=c_sout)
+
+    res = client.get("/api/analyse/frequences",
+                     params={"champ": "lemme", "attributs": [rural, soutenu]}).json()
+    assert {r["lemme"] for r in res["results"]} == {"espérer"}
