@@ -11,7 +11,9 @@
 > structure d'attributs *facettée & émergente* ; **§13 : arbitrages clos —
 > situation/scène dans le périmètre, granularité case, canonicalisation par
 > primitives**). **Conception arrêtée et lots livrés (2026-06-24)** : ANN-2 « mince »
-> (schéma v11 + API + UI) + ANA-1 substrat. Différé : présence, attributs riches, entité « scène ».
+> (schéma v11 + API + UI) + ANA-1 substrat. **§14 (2026-06-24)** recadre les différés :
+> l'image comme **pivot** (objet = la langue ; échelles personnage & œuvre), clé de voûte =
+> la **boîte personnage porteuse d'identité** — brique (a) à faire, (b)/(c) dormantes.
 
 ## 1. Le besoin
 
@@ -301,4 +303,86 @@ Conception **arrêtée**, puis **lots dérivés et livrés le 2026-06-24** :
 
 Restent **différés** (hors « mince ») : la **présence** (2ᵉ graphe — qui est *montré*, pas
 seulement qui *parle*), les **attributs riches** (curation poussée des valeurs/dimensions),
-et l'entité **scène** explicite (regroupement de cases).
+et l'entité **scène** explicite (regroupement de cases). → **recadrés au §14.**
+
+---
+
+## 14. L'image comme **pivot**, pas comme objet (2026-06-24) — cadrage des différés
+
+Reprise des différés du §13 sous l'angle **usage** : « n'ajoute-t-on pas de grandes couches
+qui dormiront ? est-ce simple ? ». Le questionnement a déplacé la conception : non pas
+*quelles entités ajouter*, mais *quel rôle analytique* chaque ajout doit gagner pour mériter
+sa place.
+
+### 14.1 La doctrine — l'objet reste la langue
+
+L'objet analysé reste **les tokens** (la parole). L'image n'entre **jamais comme objet
+rival** : elle entre comme **pivot** — un axe par lequel on *découpe et compare* la langue,
+à deux échelles : **le personnage** (entité canonique) et **l'œuvre** (album / série).
+
+**Test de discipline** (garde-fou anti-glissement) : un élément visuel — y compris une
+**case muette** — n'entre dans l'outil que s'il **alimente, à terme, une question sur le
+français**. Contexte / conditionnement / contraste de la parole voisine → *dans le
+périmètre*. Image pour l'image → *autre projet, autre instrument* (refusé par glissement ;
+accepté seulement par décision explicite). La colonne vertébrale **reste la langue** (§12) ;
+ce §14 fait de l'image une **dimension de croisement** à son service, il ne déplace pas
+l'objet.
+
+### 14.2 La case muette — tranchée
+
+Une case sans parole = **zéro token** : invisible aux distributions, mais annotable
+(situation, tags, expression) et trouvable en Recherche. Deux lectures :
+
+1. **Contexte de la parole voisine** — *nécessaire*. Plan de réaction, visage qui dément
+   les mots, décor qui pose le registre : sert une question sur le français, s'annote en
+   relationnel (attribut de case / boîte), **déjà supporté**.
+2. **Donnée visuelle autonome** — *non comme objet*, mais **réintégrée comme pivot
+   d'agrégat** (profil d'un personnage ou d'une œuvre). Pas de recherche d'images libre sur
+   le corpus : un **profil borné à l'entité / l'œuvre**.
+
+### 14.3 La clé de voûte — la boîte personnage porte l'identité
+
+Au 2026-06-24, le **type de région `personnage`** (boîte dessinée) est de la **géométrie
+muette** : aucun lien vers l'entité `personnages`, aucun profil ; l'identité+profil ne
+s'atteignent **que** par la parole (`bulle_locuteur`, cf. `viewer.js` → panneau Locuteur
+réservé à `type === "bulle"`). Un personnage **muet est inatteignable**.
+
+Décision : faire de la **boîte personnage le point d'ancrage de l'identité**, miroir du
+locuteur. L'**entité** devient le **moyeu** où parole *et* image convergent — la même
+« Paysan » *montrée* planche 1 et *locutrice* planche 3 = une entité, un profil, agrégés
+corpus. C'est la **clé de voûte** : sans elle, ni le pivot personnage ni le pivot œuvre n'ont
+de jointure.
+
+### 14.4 Les trois briques (par ordre de dépendance)
+
+| Brique | Rôle | Statut |
+| --- | --- | --- |
+| **(a)** boîte `personnage` → entité (identité + profil **depuis la boîte**) | clé de voûte : joint parole et image ; profile les muets | **à faire** — palier 1, borné, miroir du locuteur |
+| **(b)** attribut visuel sur la boîte (expression…) + lien **locuteur ↔ boîte** | langue × visuel à l'**occurrence** (« registre quand le locuteur est en colère ») | **différé**, conçu-pour |
+| **(c)** distribution des attributs visuels (profil personnage / œuvre) | l'axe **pivot** d'agrégat (non-token), borné à l'entité / l'œuvre | **différé**, conçu-pour |
+
+Discipline anti-couches : on **ne code que (a)** maintenant ; (b) et (c) sont **cadrés mais
+dormants**, déclenchés par une **requête réelle sur un vrai album**, jamais par spéculation.
+(a) est pensée pour les accueillir **sans refonte**.
+
+### 14.5 Esquisse de (a) — strict miroir du locuteur
+
+- **Schéma** (v12) : `personnage_presence(region_id PK → personnage_id, ON DELETE CASCADE)`
+  — même forme que `bulle_locuteur` ; sémantique par type (`region.type = 'personnage'`).
+  *Alternative écartée pour l'instant* : généraliser `bulle_locuteur` en
+  `region_personnage(role)` — refonte d'un existant livré, risque inutile au palier 1.
+- **API** (miroir des routes locuteur) : `GET / PUT / DELETE /api/regions/{id}/personnage` ;
+  autocomplétion via `/api/personnages?q=` (déjà là) ; réutilise `_get_personnage` ; PUT
+  idempotent (`ON CONFLICT(region_id) DO UPDATE`).
+- **UI** (visionneuse) : sur une région `type === "personnage"`, afficher un **panneau
+  Identité** (même autocomplétion + création à la volée que le locuteur) **et rebrancher le
+  widget profil existant** (`persoAttrWidget`) sur l'entité identifiée → on **profile depuis
+  la boîte**, muets compris.
+- **Analyse** : *aucun* changement au palier 1 (le profil nourrit déjà l'analyse via
+  l'entité, par la parole). (a) est un **chemin d'ergonomie** vers le profil, pas une
+  nouvelle requête : bénéfice immédiat **ergonomique** ; payoff analytique (b/c) différé.
+- **Tests** : miroir de `test_personnages.py` (lien CRUD + cascade) + un cas « personnage
+  **muet** profilé depuis la boîte ».
+
+Invariant conservé : vocabulaire **émergent** (dimensions / valeurs restent des données ;
+rien n'est figé).
