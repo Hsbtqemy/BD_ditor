@@ -926,6 +926,7 @@ async function loadAnnotation(regionId) {
     renderTagChips();
     setSaveState("saved");
   } catch (e) { toast("Erreur chargement annotation : " + e.message, "error"); }
+  loadLocuteur(regionId);   // panneau Locuteur (bulles) — indépendant de l'annotation
 }
 
 function renderTagChips() {
@@ -1173,6 +1174,108 @@ function setupTagInput() {
       input.value = ""; close();
     } else if (e.key === "Backspace" && !input.value && state.currentTags.length) {
       removeTag(state.currentTags[state.currentTags.length - 1]);
+    } else if (e.key === "Escape") { close(); }
+  });
+}
+
+/* --- Locuteur : qui parle dans la bulle (registre corpus + création à la volée) --- */
+async function loadLocuteur(regionId) {
+  const sec = $("#loc-section");
+  const r = state.regionsById.get(regionId);
+  if (!r || r.type !== "bulle") { sec.hidden = true; state.locRegion = null; return; }
+  sec.hidden = false;
+  state.locRegion = regionId;
+  $("#loc-input").value = "";
+  $("#loc-suggest").hidden = true;
+  renderLocuteur(null);
+  try {
+    const { locuteur } = await apiGet(`/api/regions/${regionId}/locuteur`);
+    if (state.locRegion === regionId) renderLocuteur(locuteur);   // anti-course
+  } catch (e) { /* non bloquant */ }
+}
+
+function renderLocuteur(loc) {
+  const box = $("#loc-current");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!loc) { box.innerHTML = '<span class="muted small">Aucun locuteur</span>'; return; }
+  const chip = document.createElement("span");
+  chip.className = "tag-chip";
+  chip.innerHTML = `<span>${escapeHtml(loc.nom)}${loc.serie ? " · " + escapeHtml(loc.serie) : ""}</span>`
+    + `<span class="x" title="Retirer le locuteur">×</span>`;
+  chip.querySelector(".x").onclick = clearLocuteur;
+  box.appendChild(chip);
+}
+
+async function setLocuteur(pid) {
+  const rid = state.locRegion;
+  if (rid == null) return;
+  try {
+    const { locuteur } = await apiSend("PUT", `/api/regions/${rid}/locuteur`, { personnage_id: pid });
+    if (state.locRegion === rid) renderLocuteur(locuteur);
+  } catch (e) { toast("Locuteur : " + e.message, "error"); }
+}
+
+async function clearLocuteur() {
+  const rid = state.locRegion;
+  if (rid == null) return;
+  try { await apiSend("DELETE", `/api/regions/${rid}/locuteur`); } catch (e) { return; }
+  if (state.locRegion === rid) renderLocuteur(null);
+}
+
+function setupLocInput() {
+  const input = $("#loc-input"), sug = $("#loc-suggest");
+  let timer = null, activeIdx = -1, items = [];
+  function close() { sug.hidden = true; activeIdx = -1; }
+  async function fetchList() {
+    const q = input.value.trim();
+    let persos = [];
+    try { persos = await apiGet("/api/personnages?q=" + encodeURIComponent(q)); }
+    catch (e) { persos = []; }
+    items = persos.slice(0, 10).map((p) => ({ create: false, id: p.id, nom: p.nom, serie: p.serie }));
+    // proposer la CRÉATION si la saisie n'a pas de correspondance exacte (modèle mentions→entités)
+    if (q && !persos.some((p) => p.nom.toLowerCase() === q.toLowerCase()))
+      items.push({ create: true, nom: q });
+    render();
+  }
+  function render() {
+    sug.innerHTML = "";
+    if (!items.length) { close(); return; }
+    items.forEach((it, i) => {
+      const d = document.createElement("div");
+      if (i === activeIdx) d.classList.add("active");
+      d.innerHTML = it.create
+        ? `➕ Créer « ${escapeHtml(it.nom)} »`
+        : `${escapeHtml(it.nom)}${it.serie ? `<span class="freq">${escapeHtml(it.serie)}</span>` : ""}`;
+      d.onmousedown = (e) => { e.preventDefault(); choose(it); };
+      sug.appendChild(d);
+    });
+    sug.hidden = false;
+  }
+  async function choose(it) {
+    input.value = ""; close();
+    if (it.create) {
+      try {
+        const p = await apiSend("POST", "/api/personnages", { nom: it.nom });
+        await setLocuteur(p.id);
+      } catch (e) { toast("Création : " + e.message, "error"); }
+    } else { await setLocuteur(it.id); }
+  }
+  input.addEventListener("input", () => { activeIdx = -1; clearTimeout(timer); timer = setTimeout(fetchList, 200); });
+  input.addEventListener("focus", fetchList);
+  input.addEventListener("blur", () => setTimeout(close, 150));
+  input.addEventListener("keydown", (e) => {
+    const n = sug.querySelectorAll("div").length;
+    if (e.key === "ArrowDown") { activeIdx = Math.min(n - 1, activeIdx + 1); render(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { activeIdx = Math.max(0, activeIdx - 1); render(); e.preventDefault(); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      const q = input.value.trim();
+      if (activeIdx >= 0 && items[activeIdx]) choose(items[activeIdx]);
+      else if (q) {
+        const exact = items.find((it) => !it.create && it.nom.toLowerCase() === q.toLowerCase());
+        choose(exact || { create: true, nom: q });   // pas de doublon si le nom existe déjà
+      }
     } else if (e.key === "Escape") { close(); }
   });
 }
@@ -2057,6 +2160,7 @@ function setupControls() {
   $("#note-input").addEventListener("input", scheduleSave);
 
   setupTagInput();
+  setupLocInput();
   setupImport();
   setupMenus();
   setupTranscription();

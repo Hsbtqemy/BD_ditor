@@ -173,6 +173,16 @@
 
         <!-- Mode annotation : tags + note -->
         <div id="panel-annotation" class="panel-section" hidden>
+          <!-- Locuteur (qui parle) — pour les bulles : attribution du personnage -->
+          <div id="loc-section" hidden>
+            <h3>Locuteur</h3>
+            <div id="loc-current" class="loc-current"></div>
+            <div class="tag-input-wrap">
+              <input type="text" id="loc-input" placeholder="Attribuer un personnage…"
+                     autocomplete="off" aria-label="Attribuer un locuteur à la bulle">
+              <div id="loc-suggest" class="tag-suggest" hidden></div>
+            </div>
+          </div>
           <h3>Tags</h3>
           <div id="tag-chips" class="tag-chips"></div>
           <div class="tag-input-wrap">
