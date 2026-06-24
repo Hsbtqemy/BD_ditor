@@ -55,6 +55,12 @@ def _allowed_hosts() -> set[str]:
     return {h.strip().lower() for h in raw.split(",") if h.strip()}
 
 
+def _http_autorise() -> bool:
+    """Autorise http:// (identifiants Basic en clair) — opt-out EXPLICITE, à réserver à
+    un réseau de confiance ou aux tests. Par défaut, https est imposé."""
+    return os.environ.get("BD_SHAREDOCS_ALLOW_HTTP", "").strip().lower() in ("1", "true", "oui")
+
+
 def _check_url(url: str) -> None:
     """Refuse toute URL hors allowlist d'hôte (et toute IP interne) — anti-SSRF.
     L'URL ShareDocs est saisie par l'utilisateur ; sans ce garde-fou, le serveur
@@ -77,6 +83,12 @@ def _check_url(url: str) -> None:
             raise ShareDocsError("Adresse IP interne interdite.")
     except ValueError:
         pass                               # host = nom de domaine (pas une IP) → OK
+    # HTTPS imposé EN DERNIER (après allowlist/IP, pour que ces refus priment) : sinon
+    # les identifiants Basic partiraient en clair. Opt-out explicite documenté.
+    if parts.scheme != "https" and not _http_autorise():
+        raise ShareDocsError(
+            "URL ShareDocs en http:// refusée : les identifiants partiraient en clair. "
+            "Utilisez https:// (ou BD_SHAREDOCS_ALLOW_HTTP=1 sur un réseau de confiance).")
 
 
 def _reject_redirect(r: httpx.Response) -> None:
@@ -89,12 +101,18 @@ def _reject_redirect(r: httpx.Response) -> None:
 
 
 def _join(base_url: str, path: str) -> str:
-    """Concatène base + chemin relatif, chaque segment étant url-encodé."""
+    """Concatène base + chemin relatif, chaque segment étant url-encodé.
+
+    Refuse tout segment `..` (anti-traversée : un chemin distant ne doit jamais
+    remonter au-dessus de la racine ShareDocs) ; les segments vides et `.` sont
+    ignorés (normalisation). Couvre list_dir / download / upload (tous via _join)."""
     base = base_url.rstrip("/")
-    path = (path or "").strip("/")
-    if not path:
+    segs = [s for s in (path or "").split("/") if s not in ("", ".")]
+    if any(s == ".." for s in segs):
+        raise ShareDocsError("Chemin ShareDocs invalide : '..' interdit (anti-traversée).")
+    if not segs:
         return base + "/"
-    return base + "/" + "/".join(quote(seg) for seg in path.split("/"))
+    return base + "/" + "/".join(quote(seg) for seg in segs)
 
 
 def _parse_multistatus(text: str, base_url: str) -> list[dict]:

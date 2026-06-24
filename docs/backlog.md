@@ -211,11 +211,11 @@ ou décision de conception requise).
 > suivi unique. Les items déjà corrigés (verrou ML global, nettoyage du master,
 > échappement des tags, borne pixels, courses recherche/jobs) n'y figurent plus.
 
-### SEC-1 · Garde HTTPS + normalisation de chemin ShareDocs (SSRF) — P2 · S
+### SEC-1 · Garde HTTPS + normalisation de chemin ShareDocs (SSRF) — ✅ Fait 2026-06-24 · P2 · S
 > `configure()` accepte toute URL (aucun contrôle `scheme == "https"`) et le `chemin`
 > distant n'est pas normalisé des `..` → identifiants Basic exposables sur `http://`,
 > SSRF/traversal théoriques. Cf. `docs/deploiement-docker.md` (« reste à corriger côté code »).
-- Done : `https` imposé (ou opt-out explicite documenté) ; chemins normalisés ; test (httpx `MockTransport`).
+- ✅ Fait 2026-06-24 : `https` imposé (opt-out `BD_SHAREDOCS_ALLOW_HTTP`) + segments `..` rejetés dans `_join` (anti-traversée) + 5 tests MockTransport. (Allowlist d'hôte, IP internes et redirections non suivies étaient déjà en place.)
 
 ### SEC-2 · CSP + CSRF — P3 · M
 > Pas de Content-Security-Policy dans les templates ; les `apiSend` POST/PUT/DELETE

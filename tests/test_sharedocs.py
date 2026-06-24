@@ -140,6 +140,38 @@ def test_redirection_non_suivie(monkeypatch):
         sd.configure(BASE, "u", "p")
 
 
+def test_configure_http_refuse():
+    """SEC-1 : https imposé — une URL http:// (identifiants en clair) est refusée d'office."""
+    with pytest.raises(sd.ShareDocsError):
+        sd.configure("http://sharedocs.huma-num.fr/dav", "u", "p")
+
+
+def test_configure_http_optout(monkeypatch):
+    """SEC-1 : opt-out explicite BD_SHAREDOCS_ALLOW_HTTP → http toléré (réseau de confiance)."""
+    monkeypatch.setenv("BD_SHAREDOCS_ALLOW_HTTP", "1")
+    _use(monkeypatch, _handler)
+    assert sd.configure("http://sharedocs.huma-num.fr/remote.php/dav/files/u",
+                        "u", "p")["connecte"] is True
+
+
+def test_join_refuse_traversee():
+    """SEC-1 : un segment '..' est rejeté (anti-traversée) ; '.' et vides sont normalisés."""
+    with pytest.raises(sd.ShareDocsError):
+        sd._join(BASE, "dossier/../../etc")
+    assert sd._join(BASE, "a/./b") == sd._join(BASE, "a/b")   # '.' ignoré
+    assert sd._join(BASE, "a//b") == sd._join(BASE, "a/b")    # segment vide ignoré
+
+
+def test_download_refuse_traversee(monkeypatch):
+    """SEC-1 : le refus du '..' tient jusque dans download/list (tous passent par _join)."""
+    _use(monkeypatch, _handler)
+    sd.configure(BASE, "u", "p")
+    with pytest.raises(sd.ShareDocsError):
+        sd.download("BD/../../secret")
+    with pytest.raises(sd.ShareDocsError):
+        sd.list_dir("../autre")
+
+
 def test_connect_list_download(monkeypatch):
     _use(monkeypatch, _handler)
     assert sd.configure(BASE, "u", "p")["connecte"] is True
