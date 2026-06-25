@@ -43,3 +43,23 @@ def test_route_sauvegarde(client, album, tmp_path):
     assert ".zip" in r.headers["content-disposition"]
     conn = _open_snapshot(r.content, tmp_path)
     conn.close()   # s'ouvre sans erreur → base valide
+
+
+def test_backup_pendant_ecriture_est_coherent(client, album, db_path, tmp_path):
+    """QA-3 (concurrence) : un backup pris PENDANT une écriture NON committée (connexion
+    séparée) reste cohérent — `VACUUM INTO` lit un snapshot WAL committé. La base copiée
+    est valide ET EXCLUT la ligne en cours (isolation), sans 'database is locked'."""
+    writer = sqlite3.connect(db_path, timeout=2)
+    writer.execute("BEGIN IMMEDIATE")                      # prend le verrou d'écriture
+    writer.execute("INSERT INTO albums (titre) VALUES ('EN_COURS_NON_COMMIT')")
+    try:
+        _, data = backup.make_backup(stamp="20260101_000000")   # snapshot pendant l'écriture
+    finally:
+        writer.rollback(); writer.close()
+    conn = _open_snapshot(data, tmp_path)
+    try:
+        titres = [r["titre"] for r in conn.execute("SELECT titre FROM albums")]
+    finally:
+        conn.close()
+    assert album["titre"] in titres                        # données committées : présentes
+    assert "EN_COURS_NON_COMMIT" not in titres             # écriture en cours : exclue

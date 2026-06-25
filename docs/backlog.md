@@ -250,11 +250,11 @@ ou décision de conception requise).
 > `viewer.js`/`recherche.js`/`corpus.js` (~80 lignes).
 - ✅ Fait 2026-06-24 : `static/lib/common.js` (UMD) expose `$` / `apiGet` / `apiSend` / `escapeHtml` (+ alias `esc`) / `toast` en globals ; −97 lignes dans les 4 surfaces ; test JS (`escapeHtml`) + smoke globals sur les 4 pages.
 
-### QA-3 · Tests de concurrence & d'analyse — P2 · M
+### QA-3 · Tests de concurrence & d'analyse — ✅ Fait 2026-06-24 · P2 · M
 > La sérialisation des jobs, la contention worker↔requêtes sous WAL/`busy_timeout` et la
 > cohérence du backup *pendant une écriture* ne sont pas testées ; les routes `/api/analyse/*`
 > et la correction de tokens n'ont **aucun test serveur dédié** (constat 2026-06-23).
-- Done : tests de contention (deux jobs, worker↔lecteur, backup sous écriture) ; couverture des endpoints d'analyse/grammaire.
+- ✅ Fait 2026-06-24 : sérialisation **deux jobs** (`_run_lock`) + **backup cohérent sous écriture** (VACUUM INTO / isolation WAL) ajoutés ; endpoints **analyse/grammaire + correction de tokens** déjà couverts (`test_analyse` + `test_regressions`, NLP actif). Contention worker↔lecteur testée via mock (→ 409) ; contention WAL *réelle* différée (lente, faible valeur — teste SQLite, pas notre code).
 
 ---
 
@@ -263,7 +263,7 @@ ou décision de conception requise).
 2. ~~**SEC-1 + DB-1**~~ (SSRF ShareDocs, UNIQUE numéro) — **✅ Fait 2026-06-24** (§7), avant toute exposition réseau.
 3. ~~ANN-1~~ → **absorbé par ANN-2** : le vocabulaire devient une structure facettée *émergente*, plus une liste figée à trancher en amont.
 4. **INFRA-1→3** (auth/déploiement) — avant la mise en ligne multi-linguiste.
-5. **SEG-1 + QA-3** (préservation segmentation + tests de concurrence/analyse) — fiabilise la logique délicate.
+5. **SEG-1** (préservation segmentation) — fiabilise la logique délicate. *(QA-3 — tests concurrence/analyse : ✅ fait.)*
 6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, QA-1, UX-3/4) au fil du besoin réel.
 
-*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** + **QA-2** (§7).*
+*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** + **QA-2** + **QA-3** (§7).*

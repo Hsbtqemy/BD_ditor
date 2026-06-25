@@ -243,6 +243,41 @@ def test_job_passe_invalide_422(client, planche):
                                           "planche_ids": [planche["id"]]}).status_code == 422
 
 
+def test_deux_jobs_serialises(client, album, planche, png_bytes, monkeypatch):
+    """QA-3 (concurrence) : deux jobs lancés coup sur coup sont SÉRIALISÉS (`_run_lock`).
+    On ne voit jamais deux segmentations simultanées, et le 2e n'avance pas (done=0)
+    tant que le 1er bloque."""
+    p2 = _second_planche(client, album, png_bytes)
+    monkeypatch.setattr(main, "kumiko_available", lambda: True)
+    gate = threading.Event()
+    en_cours, max_concurrent = [], [0]
+
+    def seg_bloquant(c, pid):
+        en_cours.append(pid)
+        max_concurrent[0] = max(max_concurrent[0], len(en_cours))
+        gate.wait(timeout=3)
+        en_cours.remove(pid)
+    monkeypatch.setattr(seg, "segment_planche", seg_bloquant)
+
+    a = client.post("/api/jobs", json={"passes": ["segmenter"],
+                                       "planche_ids": [planche["id"]]}).json()["id"]
+    t0 = time.monotonic()
+    while not en_cours and time.monotonic() - t0 < 2:   # le 1er job entre dans seg
+        time.sleep(0.01)
+    try:
+        assert en_cours, "le 1er job n'a pas démarré"
+        b = client.post("/api/jobs", json={"passes": ["segmenter"],
+                                           "planche_ids": [p2["id"]]}).json()["id"]
+        time.sleep(0.25)                                 # laisser B démarrer s'il le pouvait
+        snap_b = client.get(f"/api/jobs/{b}").json()
+        assert snap_b["status"] == "en_cours" and snap_b["done"] == 0   # B en file, pas traité
+        assert len(en_cours) == 1                        # seul A est dans seg
+    finally:
+        gate.set()                                       # libère le(s) worker(s), même si un assert casse
+    _wait_done(client, a); _wait_done(client, b)
+    assert max_concurrent[0] == 1                        # jamais deux inférences en parallèle
+
+
 def test_job_moteur_indisponible_503(client, planche, monkeypatch):
     monkeypatch.setattr(main, "kumiko_available", lambda: False)
     assert client.post("/api/jobs", json={"passes": ["segmenter"],
