@@ -1,0 +1,12 @@
+# Dépendances de Kumiko (segmentation automatique, passe 1).
+# Kumiko est cloné séparément et n'expose pas de requirements.txt propre — ses
+# dépendances réelles sont déclarées ICI (avant : seulement en commentaire). À installer
+# APRÈS le clone :
+#   git clone https://github.com/njean42/kumiko.git lib/kumiko
+#   pip install -r requirements-kumiko.txt
+#
+# Sans version (comme le commentaire d'origine) : on ne sur-contraint pas Kumiko.
+# Les versions EXACTES connues-bonnes sont figées dans requirements.lock (build reproductible).
+opencv-python-headless
+numpy
+requests

@@ -240,10 +240,10 @@ ou décision de conception requise).
 > Logique la plus délicate — **à corriger avec tests de non-régression dédiés**, pas à la volée.
 - Done : seuil de recouvrement à l'`_best_overlap` ; aucun doublon annoté ; IoU sur les bulles ; tests.
 
-### QA-1 · Épinglage des versions + lockfile — P3 · S
+### QA-1 · Épinglage des versions + lockfile — ✅ Fait 2026-06-24 · P3 · S
 > Bornes `>=` ouvertes (fastapi, ultralytics, easyocr, pillow…) → builds non reproductibles ;
 > `numpy`/`opencv-python-headless`/`requests` (deps réelles de Kumiko) seulement en commentaires.
-- Done : `requirements.lock` (pip-tools) ; deps Kumiko déclarées de façon installable.
+- ✅ Fait 2026-06-24 : `requirements.lock` (pins exacts des directes, connus-bons, dry-run vert) + `requirements-kumiko.txt` (deps Kumiko enfin **installables**, plus en commentaire) ; commentaires des specs mis à jour. Verrou des *directes* (pas un pip-compile transitif : wheels ML spécifiques à la plateforme — cf. en-tête du lock).
 
 ### QA-2 · `common.js` — dédup du frontend — ✅ Fait 2026-06-24 · P3 · S
 > `$`, `apiGet`, `apiSend`, `escapeHtml`, `toast` recopiés à l'identique dans
@@ -264,6 +264,6 @@ ou décision de conception requise).
 3. ~~ANN-1~~ → **absorbé par ANN-2** : le vocabulaire devient une structure facettée *émergente*, plus une liste figée à trancher en amont.
 4. **INFRA-1→3** (auth/déploiement) — avant la mise en ligne multi-linguiste.
 5. **SEG-1** (préservation segmentation) — fiabilise la logique délicate. *(QA-3 — tests concurrence/analyse : ✅ fait.)*
-6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, QA-1, UX-3/4) au fil du besoin réel.
+6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, UX-3/4) au fil du besoin réel.
 
-*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** + **QA-2** + **QA-3** (§7).*
+*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** + **QA-2** + **QA-3** + **QA-1** (§7).*

@@ -12,4 +12,4 @@ pytest-playwright>=0.5   # tests E2E navigateur (marqueur `e2e`)
 #
 # Pour les tests de segmentation, Kumiko doit être installé :
 #   git clone https://github.com/njean42/kumiko.git lib/kumiko
-#   pip install opencv-python-headless numpy requests
+#   pip install -r requirements-kumiko.txt

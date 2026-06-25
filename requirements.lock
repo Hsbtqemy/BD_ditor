@@ -1,0 +1,41 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Build REPRODUCTIBLE :  pip install -r requirements.lock
+#
+# Pins EXACTS des dépendances DIRECTES (noyau + dev + OCR + NLP + Kumiko), figés sur
+# le jeu connu-bon — suite verte au 2026-06-24 (288 tests). Les requirements*.txt
+# restent la spec lisible (planchers) ; CE fichier est le verrou (QA-1).
+#
+# NB — verrou des DIRECTES seulement, PAS un pip-compile transitif. Raison : les wheels
+# ML (torch via ultralytics/easyocr) sont spécifiques à la plateforme ; figer les
+# transitifs sur des wheels Windows casserait un déploiement Linux. On épingle au niveau
+# VERSION (cross-plateforme), pas au niveau wheel.
+#
+# À part (non pip) :
+#   python -m spacy download fr_core_news_sm           # modèle NLP français
+#   git clone https://github.com/njean42/kumiko.git lib/kumiko   # moteur passe 1
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Noyau — API + serveur + images + client WebDAV
+fastapi==0.133.0
+uvicorn[standard]==0.41.0
+pillow==12.1.0
+python-multipart==0.0.22
+httpx==0.28.1
+
+# Tests / développement
+pytest==9.0.2
+pytest-cov==7.0.0
+pytest-playwright==0.8.0
+
+# Passe 2 (bulles, ogkalu YOLOv8) + passe 3 (OCR EasyOCR)
+ultralytics==8.4.65
+huggingface_hub==1.18.0
+easyocr==1.7.2
+
+# NLP (Paliers A/B) — bibliothèque seule ; le modèle fr se télécharge à part
+spacy==3.8.14
+
+# Kumiko (passe 1) — dépendances du dépôt cloné dans lib/kumiko
+opencv-python-headless==4.13.0.92
+numpy==2.4.6
+requests==2.32.5
