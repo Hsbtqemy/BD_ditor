@@ -104,6 +104,24 @@ ou décision de conception requise).
 > Stocker `modele_auto` par correction pour une provenance fine (quel modèle a été corrigé).
 - Done : colonne ajoutée + renseignée à la création de correction.
 
+### NLP-3 · Normalisation de casse de l'OCR (capitales → minuscules) — P3 · M
+> Le lettrage BD est en CAPITALES → l'OCR (EasyOCR) renvoie du tout-majuscule
+> (« JE SUIS LÀ »). Fidèle au dessin, mais peu lisible en transcription ; et un
+> `.lower()` naïf perd les noms propres, la majuscule de début de phrase, les sigles.
+> Le NLP minuscule DÉJÀ avant l'analyse spaCy (interne) — ici il s'agit du texte
+> STOCKÉ / AFFICHÉ (la transcription).
+- À explorer (décision de conception) : (a) `lower()` simple — rapide, perd la casse
+  signifiante ; (b) **re-casing « intelligent »** (phrase-case par segmentation + majuscule
+  des entités via NER/EntityRuler — recoupe ANN-3 gazetteer) ; (c) **garder le tout-MAJ
+  fidèle** et n'afficher en minuscules qu'à la lecture (transform non destructif).
+  Trancher : modifier le texte STOCKÉ (perte de fidélité au lettrage) ou seulement
+  l'affichage ? réversibilité ? option par album ?
+- Done : l'OCR pré-remplit en casse normalisée (ou option), **sans écraser** une correction
+  humaine (`only_empty`) ; choix documenté ; test.
+- Note : tension avec la **fidélité au lettrage** (les capitales sont un trait du médium) →
+  option **non destructive** préférable. Recoupe le minusculage de `pipeline/nlp.py` et
+  ANN-3 (gazetteer pour restaurer les noms propres).
+
 ---
 
 ## 4. Infra / collaboratif
