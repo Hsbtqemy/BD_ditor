@@ -269,6 +269,20 @@ ou décision de conception requise).
 > (un Kumiko/OCR long ne s'interrompt pas, le subprocess Kumiko n'est pas tué).
 - Done : verrou réduit au dict de cache + TTL/fermeture ; purge des vieux jobs ; annulation réactive.
 
+### CONC-2 · Cycle de vie / empreinte mémoire des moteurs ML — P2 · M
+> Les moteurs (Kumiko/opencv, bulles YOLOv8/torch, OCR EasyOCR/torch, spaCy) se chargent
+> paresseusement mais restent **résidents** pour la vie du process : trois modèles torch +
+> spaCy ensemble ⇒ empreinte élevée. Sur poste/VPS contraint, enchaîner segmentation → bulles
+> → OCR → NLP peut **tuer le process (OOM)** — observé le 2026-06-24 en annotant une vraie
+> planche (process tué SANS traceback Python ; les données committées étaient saines). Le
+> `ML_LOCK` sérialise l'inférence mais ne **libère** rien.
+- À explorer : (a) **déchargement** des modèles inutilisés (TTL) ; (b) un seul gros modèle à la
+  fois (décharger bulles avant OCR) ; (c) **worker ML séparé** (process isolé, redémarrable —
+  un OOM n'emporte pas l'API) ; (d) a minima **documenter l'empreinte** + recommander les passes
+  une à une. Recoupe CONC-1 (cycle de vie des ressources) et le déploiement Docker (dimensionnement).
+- Done : empreinte bornée/documentée ; un OOM d'un moteur n'emporte pas l'API ; mesure/test.
+- Contournement immédiat : lancer les passes ML **séparément** (et redémarrer entre les grosses).
+
 ### SEG-1 · Préservation du travail humain à la re-segmentation — P2 · L
 > AUDIT passe 3 : **S2** (deux cases annotées → une seule : doublon géométrique annoté),
 > **S3** (transfert d'annotation vers case quasi-disjointe, aucun seuil de recouvrement),
