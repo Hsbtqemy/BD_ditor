@@ -1,4 +1,4 @@
-# Backlog exécutable — BD Annotator
+# Backlog exécutable — BéDéditeur
 
 > Établi le 2026-06-15. **Révisé le 2026-06-24** : ANN-2 « mince » livré (§1, entité personnage + locuteur + attributs facettés) ; A11y (§6) livré et vérifié ;
 > navigation/désencombrement (§5) largement faits ; **dette technique & sécurité de

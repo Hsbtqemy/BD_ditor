@@ -1,5 +1,5 @@
 /* ===================================================================
-   BD Annotator — page Bibliothèque / gestion de corpus (vanilla JS)
+   BéDéditeur — page Bibliothèque / gestion de corpus (vanilla JS)
    Gère les albums (CRUD + métadonnées), les planches (ouvrir/supprimer)
    et le traitement par lot (segmentation / bulles / OCR) en arrière-plan.
    =================================================================== */

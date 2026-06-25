@@ -1,5 +1,5 @@
 /* ===================================================================
-   BD Annotator — visionneuse & logique d'annotation (vanilla JS)
+   BéDéditeur — visionneuse & logique d'annotation (vanilla JS)
    -------------------------------------------------------------------
    Systèmes de coordonnées :
      • Les régions sont stockées en pixels MASTER.

@@ -13,7 +13,7 @@ comptes voient le même corpus).
 | **caddy** | Reverse proxy : HTTPS auto (Let's Encrypt) + redirige vers Authelia/app | **Oui** (ports 80/443) |
 | **authelia** | Portail de connexion : comptes, login/**logout**, **2FA**, anti-bruteforce | Non (interne) |
 | **redis** | Mémorise les sessions (permet expiration + déconnexion propre) | Non (interne) |
-| **app** | L'application FastAPI BD Annotator | **Non** (jamais en direct) |
+| **app** | L'application FastAPI BéDéditeur | **Non** (jamais en direct) |
 
 Principe clé : **seul Caddy est exposé**. Toute requête vers l'app passe d'abord
 par Authelia (`forward_auth`). Non connecté → redirection vers le portail.

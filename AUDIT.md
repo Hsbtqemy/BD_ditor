@@ -1,4 +1,4 @@
-# Audit technique — BD Annotator
+# Audit technique — BéDéditeur
 
 *Audit réalisé le 13 juin 2026 · périmètre : backend FastAPI, pipeline, frontend vanilla, tests.*
 

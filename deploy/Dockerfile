@@ -1,4 +1,4 @@
-# Image de l'application BD Annotator (FastAPI + moteurs ML + Kumiko).
+# Image de l'application BéDéditeur (FastAPI + moteurs ML + Kumiko).
 # Python 3.12 : wheels torch/easyocr matures, conforme au README.
 FROM python:3.12-slim
 

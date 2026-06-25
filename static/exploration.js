@@ -1,5 +1,5 @@
 /* ===================================================================
-   BD Annotator — page Exploration (vanilla JS)
+   BéDéditeur — page Exploration (vanilla JS)
    • Distribution simple (lemme / POS / morph) d'un sous-corpus, OU
    • Comparaison de deux sous-corpus A / B (fréquences différentielles).
    Sur les valeurs EFFECTIVES (socle lot 2). Cliquer une valeur DESCEND aux preuves

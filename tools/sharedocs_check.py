@@ -1,7 +1,7 @@
 r"""Diagnostic ShareDocs : vérifie LECTURE et ÉCRITURE sur un dossier WebDAV.
 
 Réutilise le client de l'app (`pipeline/sharedocs.py`) — le test est donc fidèle
-au comportement réel de BD Annotator, et valide accessoirement le client contre
+au comportement réel de BéDéditeur, et valide accessoirement le client contre
 le vrai ShareDocs (jusqu'ici testé seulement sur WebDAV simulé).
 
 Les identifiants viennent de l'ENVIRONNEMENT — jamais de la ligne de commande,
@@ -103,7 +103,7 @@ def main() -> int:
     # --- Test d'écriture ---
     test_name = "bd_annotator_write_test.txt"
     test_path = f"{folder}/{test_name}" if folder else test_name
-    payload = b"BD Annotator - test d'ecriture WebDAV (fichier temporaire a supprimer).\n"
+    payload = b"BéDéditeur - test d'ecriture WebDAV (fichier temporaire a supprimer).\n"
     print(f"\n→ Test d'écriture : dépôt de {test_name!r} …")
     try:
         sd.upload(test_path, payload)

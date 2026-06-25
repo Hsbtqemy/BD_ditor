@@ -1,4 +1,4 @@
-# BD Annotator
+# BéDéditeur
 
 Outil de recherche pour l'analyse de bandes dessinées numérisées (corpus
 franco-belge). Trois étapes : **segmentation automatique** des planches

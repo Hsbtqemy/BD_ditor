@@ -1,4 +1,4 @@
-"""BD Annotator — application FastAPI (routes albums, planches, régions,
+"""BéDéditeur — application FastAPI (routes albums, planches, régions,
 annotations, recherche, export).
 
 Lancer :  uvicorn main:app --reload
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BD Annotator", version="1.0", lifespan=lifespan)
+app = FastAPI(title="BéDéditeur", version="1.0", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -2018,7 +2018,7 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db)):
     if album["auteur"]:
         _tei_el(title_stmt, "author").text = _xml_safe(album["auteur"])
     pub = _tei_el(file_desc, "publicationStmt")
-    _tei_el(pub, "publisher").text = _xml_safe(album["editeur"] or "BD Annotator")
+    _tei_el(pub, "publisher").text = _xml_safe(album["editeur"] or "BéDéditeur")
     src = _tei_el(file_desc, "sourceDesc")
     _tei_el(src, "p").text = _xml_safe(
         f"{album['titre']}"

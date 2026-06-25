@@ -1,5 +1,5 @@
 /* ===================================================================
-   BD Annotator — page de recherche / index (vanilla JS)
+   BéDéditeur — page de recherche / index (vanilla JS)
    Interroge /api/recherche (FTS5) + /api/corpus + /api/tags + /api/albums.
    Un clic sur un résultat ouvre la visionneuse pile sur la région.
    =================================================================== */

@@ -1,4 +1,4 @@
-# Pile d'hébergement BD Annotator :
+# Pile d'hébergement BéDéditeur :
 #   caddy     -> reverse proxy + HTTPS automatique + délègue l'auth à Authelia
 #   authelia  -> portail d'authentification (comptes, login/logout, 2FA)
 #   redis     -> stockage des sessions Authelia (déconnexion propre, expiration)

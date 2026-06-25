@@ -1,1 +1,1 @@
-"""Pipeline d'ingestion et de segmentation pour BD Annotator."""
+"""Pipeline d'ingestion et de segmentation pour BéDéditeur."""

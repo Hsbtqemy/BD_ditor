@@ -11,7 +11,7 @@ auth.example.fr {
     reverse_proxy authelia:9091
 }
 
-# --- Application BD Annotator (protégée) ---
+# --- Application BéDéditeur (protégée) ---
 bd.example.fr {
     # Plafonne la taille des uploads -> répond à la faille OOM (cf.
     # docs/hebergement-securite.md). Ajuste selon tes plus gros TIFF.
