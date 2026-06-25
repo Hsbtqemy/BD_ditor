@@ -142,7 +142,7 @@ ou décision de conception requise).
 > **Largement fait — 2026-06-23.** UX-1 (nav transverse unifiée « Atelier ‖ Analyse »,
 > générée d'un seul endroit par `theme.js`, `aria-current`) et UX-2 (en-tête en deux
 > bandes, actions regroupées Traitement / Import-Export) sont livrés. UX-3 (hiérarchie
-> & découvrabilité) et UX-4 (cohérence visuelle inter-surfaces) restent ouverts.
+> & découvrabilité), UX-4 (cohérence visuelle inter-surfaces) et UX-5 (annulation / undo) restent ouverts.
 
 ### UX-1 · Navigation unifiée — P2 · M
 > 4 surfaces, en-têtes bricolés et légèrement différents. `nav.js` ne fait pour l'instant
@@ -162,6 +162,24 @@ ou décision de conception requise).
 
 ### UX-4 · Cohérence visuelle inter-surfaces — P3 · M
 > Aligner espacements/typo/composants sur l'Exploration (récemment soignée).
+
+### UX-5 · Annulation (undo) des actions d'annotation — P2 · L
+> Aujourd'hui une action destructive est IRRÉVERSIBLE sans restaurer une sauvegarde
+> complète : supprimer une région **cascade** (enfants + annotations + tags + tokens),
+> déplacer/redimensionner écrase l'ancienne géométrie, une correction de token remplace
+> la précédente. Seuls le **verrou de planche** et la **sauvegarde** (snapshot global)
+> protègent — rien de granulaire ni de réversible à l'échelle du geste.
+- À explorer (décision de conception) : (a) **pile d'undo client** (JS) qui rejoue l'inverse
+  via l'API — simple, mais perdue au rechargement et aveugle aux effets dérivés (cascade,
+  réindex FTS, réordonnancement) ; (b) **journal d'actions serveur** (command ⊕ inverse) +
+  `/api/undo` — robuste, survit au rechargement, couvre les cascades, mais plus lourd ;
+  (c) **soft-delete / versionnage** des régions. Trancher : périmètre (quelles actions),
+  granularité (geste vs lot), profondeur (1 niveau vs pile).
+- Done : annuler la dernière action (au moins create/move/delete région + tag + locuteur)
+  la rétablit fidèlement, cascades comprises ; raccourci Ctrl+Z ; test.
+- Note : forte valeur de SÛRETÉ (la suppression cascade est le geste le plus dangereux),
+  complément FIN de la sauvegarde (filet « gros grain »). Recoupe SEG-1 (re-segmentation =
+  autre source de perte de travail humain).
 
 ---
 
