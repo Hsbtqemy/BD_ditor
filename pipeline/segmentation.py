@@ -13,6 +13,7 @@ Kumiko doit être cloné dans lib/kumiko :
 from __future__ import annotations
 
 import json
+from collections import Counter
 import subprocess
 import sys
 import sqlite3
@@ -94,13 +95,18 @@ def run_kumiko(image_path: Path) -> dict:
     return page
 
 
-def _reattach_orphans(conn: sqlite3.Connection, planche_id: int) -> int:
-    """Ré-rattache les régions orphelines (≠ case) à la plus petite case dont
-    elles ont le centre — préserve le rattachement OCR/annotations à travers une
-    re-segmentation. Renvoie le nombre de régions ré-rattachées."""
-    cases = [dict(r) for r in conn.execute(
-        "SELECT id, x, y, w, h FROM regions "
-        "WHERE planche_id = ? AND type = 'case'", (planche_id,)).fetchall()]
+def _reattach_orphans(conn: sqlite3.Connection, planche_id: int, cases=None) -> int:
+    """Ré-rattache les régions orphelines (≠ case) à la plus petite case dont elles ont
+    le centre — préserve le rattachement OCR/annotations à travers une re-segmentation.
+
+    `cases` (optionnel) : restreint les cibles. La re-segmentation passe les SEULES
+    NOUVELLES cases → une orpheline ne se rattache jamais à une ancienne case
+    préservée/périmée (S7). Sans argument, toutes les cases de la planche sont cibles.
+    Renvoie le nombre de régions ré-rattachées."""
+    if cases is None:
+        cases = [dict(r) for r in conn.execute(
+            "SELECT id, x, y, w, h FROM regions "
+            "WHERE planche_id = ? AND type = 'case'", (planche_id,)).fetchall()]
     if not cases:
         return 0
     n = 0
@@ -122,11 +128,20 @@ def _reattach_orphans(conn: sqlite3.Connection, planche_id: int) -> int:
     return n
 
 
-def _best_overlap(old: dict, new_cases: list[dict]):
-    """Id de la nouvelle case dont l'intersection avec `old` est maximale, sinon None."""
+# Fraction de l'aire de l'ANCIENNE case que la nouvelle doit recouvrir pour hériter de
+# son annotation. En deçà (S3), on ne transfère pas : pas de migration d'annotation vers
+# une case voisine quasi-disjointe (l'ancienne case annotée est alors conservée).
+SEUIL_RECOUVREMENT_CASE = 0.5
+
+
+def _best_overlap(old: dict, new_cases: list[dict], seuil: float = SEUIL_RECOUVREMENT_CASE):
+    """Id de la nouvelle case dont l'intersection avec `old` est maximale ET couvre au
+    moins `seuil` de l'aire de `old`, sinon None (S3 — pas de transfert vers une case
+    quasi-disjointe)."""
     best, best_area = None, 0
     ox, oy = old["x"] or 0, old["y"] or 0
-    ox2, oy2 = ox + (old["w"] or 0), oy + (old["h"] or 0)
+    ow, oh = old["w"] or 0, old["h"] or 0
+    ox2, oy2 = ox + ow, oy + oh
     for c in new_cases:
         cx0, cy0 = c["x"] or 0, c["y"] or 0
         ix = min(ox2, cx0 + (c["w"] or 0)) - max(ox, cx0)
@@ -134,6 +149,9 @@ def _best_overlap(old: dict, new_cases: list[dict]):
         area = max(0, ix) * max(0, iy)
         if area > best_area:
             best_area, best = area, c["id"]
+    old_area = ow * oh
+    if best is None or not old_area or best_area / old_area < seuil:
+        return None
     return best
 
 
@@ -142,25 +160,36 @@ def _transfer_case_annotations(conn: sqlite3.Connection, old_cases: list[dict],
     """Transfère l'annotation d'une ancienne case vers la NOUVELLE case qui la
     recouvre le mieux (préserve note + tags de panneau à travers une
     re-segmentation). Re-pointe la ligne `annotations` et ré-indexe le FTS.
+    Ne transfère QUE si la fusion est SANS AMBIGUÏTÉ : une nouvelle case ciblée par
+    DEUX anciennes cases annotées (Kumiko a fusionné deux cases que l'humain avait
+    annotées séparément — S2) ne reçoit AUCUN transfert ; les deux anciennes sont alors
+    conservées telles quelles par l'appelant (zéro perte, déterministe).
     Renvoie la liste des id d'anciennes cases dont l'annotation a été transférée ;
     celles qui restent annotées (non transférables) seront conservées par
     l'appelant plutôt que supprimées (aucune perte de travail humain)."""
-    transferred = []
+    # Cible (nouvelle case qui la recouvre le mieux, seuil S3) de chaque ANCIENNE
+    # case annotée, puis comptage des anciennes par nouvelle (S2 — détection de fusion).
+    cible = {}
     for old in old_cases:
         if conn.execute("SELECT 1 FROM annotations WHERE region_id = ?",
                         (old["id"],)).fetchone() is None:
             continue
         best = _best_overlap(old, new_cases)
-        if best is None:
-            continue
+        if best is not None:
+            cible[old["id"]] = best
+    par_nouvelle = Counter(cible.values())
+    transferred = []
+    for old_id, new_id in cible.items():
+        if par_nouvelle[new_id] > 1:
+            continue                       # S2 : fusion ambiguë → on NE transfère pas
         if conn.execute("SELECT 1 FROM annotations WHERE region_id = ?",
-                        (best,)).fetchone() is not None:
-            continue                       # nouvelle case déjà annotée (UNIQUE) → 1re gagne
+                        (new_id,)).fetchone() is not None:
+            continue                       # nouvelle case déjà annotée (UNIQUE)
         conn.execute("UPDATE annotations SET region_id = ? WHERE region_id = ?",
-                     (best, old["id"]))
-        unindex_region(conn, old["id"])
-        reindex_region(conn, best)
-        transferred.append(old["id"])
+                     (new_id, old_id))
+        unindex_region(conn, old_id)
+        reindex_region(conn, new_id)
+        transferred.append(old_id)
     return transferred
 
 
@@ -258,9 +287,10 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
             dph = ",".join("?" * len(to_delete))
             conn.execute(f"DELETE FROM regions WHERE id IN ({dph})", tuple(to_delete))
 
-    # Ré-rattache les régions préservées (bulles océrisées, manuelles) aux
-    # nouvelles cases par géométrie, puis recalcule l'ordre de lecture.
-    reattaches = _reattach_orphans(conn, planche_id)
+    # Ré-rattache les régions préservées (bulles océrisées, manuelles) aux SEULES
+    # NOUVELLES cases par géométrie (S7 : jamais à une ancienne case préservée), puis
+    # recalcule l'ordre de lecture.
+    reattaches = _reattach_orphans(conn, planche_id, regions)
     reorder_planche(conn, planche_id)
 
     conn.execute(

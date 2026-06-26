@@ -81,6 +81,23 @@ def _parent_case(cases, cx, cy):
     return min(candidates, key=lambda c: (c["w"] or 0) * (c["h"] or 0))["id"]
 
 
+# Au-delà de ce recouvrement (IoU), une bulle nouvellement détectée est considérée
+# comme un DOUBLON d'une bulle déjà présente (préservée) → ignorée (S4). Un simple test
+# « centre du nouveau ∈ ancien » accumulait des doublons selon le décalage/la taille.
+SEUIL_IOU_BULLE = 0.5
+
+
+def _iou(a, b) -> float:
+    """Intersection-over-union de deux boîtes {x, y, w, h}."""
+    ax2, ay2 = a["x"] + a["w"], a["y"] + a["h"]
+    bx2, by2 = b["x"] + b["w"], b["y"] + b["h"]
+    ix = max(0, min(ax2, bx2) - max(a["x"], b["x"]))
+    iy = max(0, min(ay2, by2) - max(a["y"], b["y"]))
+    inter = ix * iy
+    union = a["w"] * a["h"] + b["w"] * b["h"] - inter
+    return inter / union if union > 0 else 0.0
+
+
 def detect_bulles(conn: sqlite3.Connection, planche_id: int,
                   conf: float = 0.3, replace: bool = True) -> dict:
     """Détecte les bulles d'une planche et les insère (rattachées aux cases).
@@ -151,10 +168,10 @@ def detect_bulles(conn: sqlite3.Connection, planche_id: int,
     regions, sans_case, ignores = [], 0, 0
     for ordre, (mx, my, mw, mh) in enumerate(converted, start=1):
         cx, cy = mx + mw / 2, my + mh / 2
-        if any(b["x"] <= cx <= b["x"] + b["w"] and b["y"] <= cy <= b["y"] + b["h"]
-               for b in existing):
+        box = {"x": mx, "y": my, "w": mw, "h": mh}
+        if any(_iou(box, b) >= SEUIL_IOU_BULLE for b in existing):
             ignores += 1
-            continue                       # déjà couverte par une bulle préservée
+            continue                       # doublon d'une bulle préservée (IoU — S4)
         parent = _parent_case(cases, cx, cy)
         if parent is None:
             sans_case += 1

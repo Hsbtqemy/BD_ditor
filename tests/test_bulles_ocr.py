@@ -106,6 +106,33 @@ def test_redetecter_bulles_preserve_annotation(client, planche, monkeypatch):
     assert body["preservees"] == 1
 
 
+def test_iou_unitaire():
+    """IoU : identiques = 1, disjointes = 0, petite incluse dans grande = faible."""
+    assert bulles._iou({"x": 0, "y": 0, "w": 10, "h": 10}, {"x": 0, "y": 0, "w": 10, "h": 10}) == 1.0
+    assert bulles._iou({"x": 0, "y": 0, "w": 10, "h": 10}, {"x": 99, "y": 99, "w": 10, "h": 10}) == 0.0
+    petit = bulles._iou({"x": 90, "y": 90, "w": 20, "h": 20}, {"x": 0, "y": 0, "w": 200, "h": 200})
+    assert petit < 0.05               # petite bulle DANS une grande → IoU faible (≠ doublon)
+
+
+def test_redetecter_bulles_dedup_iou(client, planche, monkeypatch):
+    """S4 : dédup par IoU. Une petite bulle DISTINCTE dont le centre tombe dans une
+    grosse bulle préservée n'est PAS un doublon (IoU faible) → ajoutée ; un quasi-doublon
+    (IoU élevé) reste ignoré. (Le test « centre ∈ ancien » l'aurait à tort écartée.)"""
+    _add_case(client, planche, 0, 0, 400, 500)
+    monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(0, 0, 200, 200)]))
+    client.post(f"/api/planches/{planche['id']}/detecter-bulles")
+    grosse = next(r for r in client.get(
+        f"/api/planches/{planche['id']}/regions").json() if r["type"] == "bulle")
+    client.put(f"/api/regions/{grosse['id']}", json={"ocr_texte": "GROSSE"})   # préservée
+    monkeypatch.setattr(bulles, "_run",
+                        lambda path, conf: (400, 500, [(90, 90, 20, 20), (3, 3, 200, 200)]))
+    body = client.post(f"/api/planches/{planche['id']}/detecter-bulles").json()
+    apres = [r for r in client.get(
+        f"/api/planches/{planche['id']}/regions").json() if r["type"] == "bulle"]
+    assert body["preservees"] == 1 and body["ignores"] == 1 and body["nb_bulles"] == 1
+    assert len(apres) == 2            # grosse préservée + petite distincte ajoutée
+
+
 def test_detecter_bulles_503(client, planche, monkeypatch):
     monkeypatch.setattr("main.bulles_available", lambda: False)
     r = client.post(f"/api/planches/{planche['id']}/detecter-bulles")

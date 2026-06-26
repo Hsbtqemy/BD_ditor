@@ -283,12 +283,12 @@ ou décision de conception requise).
 - ✅ v1 fait 2026-06-24 : déchargement par moteur (`liberer`/`est_charge`) + orchestrateur `pipeline/modeles.py` ; libère en **fin de lot**, **avant la passe interactive** (l'autre modèle torch) et **à la demande** (`POST /api/ml/liberer`) ; modèles résidents exposés dans `/api/sante` ; +5 tests. **Reste différé** : isolation subprocess (option (c) — seule à garantir le zéro-OOM ; tant qu'un modèle torch est chargé, le runtime occupe la RAM).
 - Contournement immédiat : lancer les passes ML **séparément** (et redémarrer entre les grosses).
 
-### SEG-1 · Préservation du travail humain à la re-segmentation — P2 · L
+### SEG-1 · Préservation du travail humain à la re-segmentation — ✅ Fait 2026-06-24 · P2 · L
 > AUDIT passe 3 : **S2** (deux cases annotées → une seule : doublon géométrique annoté),
 > **S3** (transfert d'annotation vers case quasi-disjointe, aucun seuil de recouvrement),
 > **S7** (re-rattachement à une case périmée conservée), **S4** (dédup bulles sans IoU).
 > Logique la plus délicate — **à corriger avec tests de non-régression dédiés**, pas à la volée.
-- Done : seuil de recouvrement à l'`_best_overlap` ; aucun doublon annoté ; IoU sur les bulles ; tests.
+- ✅ Fait 2026-06-24 : **S3** seuil de recouvrement (`_best_overlap`, 50 %) ; **S2** fusion ambiguë → les 2 cases annotées **conservées** (déterministe, zéro perte) ; **S7** ré-rattachement aux **nouvelles** cases seulement ; **S4** dédup bulles par **IoU**. +6 tests dédiés (dont S2 bout-en-bout).
 
 ### QA-1 · Épinglage des versions + lockfile — ✅ Fait 2026-06-24 · P3 · S
 > Bornes `>=` ouvertes (fastapi, ultralytics, easyocr, pillow…) → builds non reproductibles ;
@@ -313,7 +313,7 @@ ou décision de conception requise).
 2. ~~**SEC-1 + DB-1**~~ (SSRF ShareDocs, UNIQUE numéro) — **✅ Fait 2026-06-24** (§7), avant toute exposition réseau.
 3. ~~ANN-1~~ → **absorbé par ANN-2** : le vocabulaire devient une structure facettée *émergente*, plus une liste figée à trancher en amont.
 4. **INFRA-1→3** (auth/déploiement) — avant la mise en ligne multi-linguiste.
-5. **SEG-1** (préservation segmentation) — fiabilise la logique délicate. *(QA-3 — tests concurrence/analyse : ✅ fait.)*
+5. ~~**SEG-1**~~ (préservation segmentation) — **✅ Fait 2026-06-24** (S2/S3/S4/S7 + tests dédiés). *(QA-3 — tests concurrence/analyse : ✅ fait.)*
 6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, UX-3/4) au fil du besoin réel.
 
-*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** + **QA-2** + **QA-3** + **QA-1** + **CONC-2 (v1)** (§7).*
+*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** + **QA-2** + **QA-3** + **QA-1** + **CONC-2 (v1)** + **SEG-1** (§7).*

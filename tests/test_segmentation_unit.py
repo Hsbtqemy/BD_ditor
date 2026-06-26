@@ -218,3 +218,102 @@ def test_resegmentation_preserve_ocr(client, planche, monkeypatch):
     assert surv is not None and surv["ocr_texte"] == "DIALOGUE"         # OCR préservé
     new_case = next(x for x in regions if x["type"] == "case" and x["x"] == 0)
     assert surv["parent_id"] == new_case["id"] and res["reattaches"] >= 1
+
+
+# ---- SEG-1 : préservation à la re-segmentation (S3 / S2 / S7) ---- #
+def _planche_vide(conn):
+    """Crée un album + une planche 400×500, renvoie son id."""
+    conn.execute("INSERT INTO albums (titre) VALUES ('A')")
+    aid = conn.execute("SELECT id FROM albums ORDER BY id DESC LIMIT 1").fetchone()["id"]
+    conn.execute("INSERT INTO planches (album_id, numero, chemin_web, largeur_px, hauteur_px) "
+                 "VALUES (?, 1, 'x.jpg', 400, 500)", (aid,))
+    return conn.execute("SELECT id FROM planches ORDER BY id DESC LIMIT 1").fetchone()["id"]
+
+
+def test_seg_s3_seuil_recouvrement(data_dir):
+    """S3 : une annotation NE migre PAS vers une case qui ne recouvre presque pas
+    l'ancienne (recouvrement < seuil) — l'ancienne case annotée est conservée."""
+    conn = database.get_connection()
+    try:
+        pid = _planche_vide(conn)
+        old = conn.execute("INSERT INTO regions (planche_id, type, x, y, w, h, source) "
+                           "VALUES (?, 'case', 0, 0, 100, 100, 'kumiko')", (pid,)).lastrowid
+        conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, 'GARDE')", (old,))
+        new = conn.execute("INSERT INTO regions (planche_id, type, x, y, w, h, source) "
+                           "VALUES (?, 'case', 95, 95, 100, 100, 'kumiko')", (pid,)).lastrowid
+        olds = [{"id": old, "x": 0, "y": 0, "w": 100, "h": 100}]
+        news = [{"id": new, "x": 95, "y": 95, "w": 100, "h": 100}]   # ne recouvre que 5×5
+        assert seg._best_overlap(olds[0], news) is None              # sous le seuil
+        assert seg._transfer_case_annotations(conn, olds, news) == []
+        assert conn.execute("SELECT note FROM annotations WHERE region_id=?",
+                            (old,)).fetchone()["note"] == "GARDE"     # in situ, non perdue
+    finally:
+        conn.close()
+
+
+def test_seg_s2_fusion_ambigue_conserve_les_deux(data_dir):
+    """S2 : deux anciennes cases annotées FUSIONNÉES en une seule nouvelle → AUCUN
+    transfert (ambigu), les deux annotations sont conservées (déterministe, zéro perte)."""
+    conn = database.get_connection()
+    try:
+        pid = _planche_vide(conn)
+
+        def case(x, y, w, h):
+            return conn.execute("INSERT INTO regions (planche_id, type, x, y, w, h, source) "
+                                "VALUES (?, 'case', ?, ?, ?, ?, 'kumiko')",
+                                (pid, x, y, w, h)).lastrowid
+        a = case(0, 0, 100, 100); conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, 'A')", (a,))
+        b = case(0, 100, 100, 100); conn.execute("INSERT INTO annotations (region_id, note) VALUES (?, 'B')", (b,))
+        n = case(0, 0, 100, 200)                                     # fusionne a + b
+        olds = [{"id": a, "x": 0, "y": 0, "w": 100, "h": 100},
+                {"id": b, "x": 0, "y": 100, "w": 100, "h": 100}]
+        news = [{"id": n, "x": 0, "y": 0, "w": 100, "h": 200}]
+        assert seg._transfer_case_annotations(conn, olds, news) == []   # ambigu → rien transféré
+        assert conn.execute("SELECT note FROM annotations WHERE region_id=?", (a,)).fetchone()["note"] == "A"
+        assert conn.execute("SELECT note FROM annotations WHERE region_id=?", (b,)).fetchone()["note"] == "B"
+        assert conn.execute("SELECT 1 FROM annotations WHERE region_id=?", (n,)).fetchone() is None  # nouvelle NON annotée
+    finally:
+        conn.close()
+
+
+def test_seg_s7_reattach_nouvelles_cases_seulement(data_dir):
+    """S7 : une orpheline dont le centre tombe dans une ancienne case préservée ET une
+    nouvelle se rattache à la NOUVELLE (cibles restreintes aux nouvelles cases)."""
+    conn = database.get_connection()
+    try:
+        pid = _planche_vide(conn)
+        conn.execute("INSERT INTO regions (planche_id, type, x, y, w, h, source) "
+                     "VALUES (?, 'case', 0, 0, 100, 100, 'kumiko')", (pid,))   # ancienne préservée
+        new = conn.execute("INSERT INTO regions (planche_id, type, x, y, w, h, source) "
+                           "VALUES (?, 'case', 0, 0, 100, 100, 'kumiko')", (pid,)).lastrowid
+        orph = conn.execute("INSERT INTO regions (planche_id, type, x, y, w, h, parent_id) "
+                            "VALUES (?, 'bulle', 10, 10, 20, 20, NULL)", (pid,)).lastrowid
+        assert seg._reattach_orphans(conn, pid, [{"id": new, "x": 0, "y": 0, "w": 100, "h": 100}]) == 1
+        assert conn.execute("SELECT parent_id FROM regions WHERE id=?",
+                            (orph,)).fetchone()["parent_id"] == new   # la NOUVELLE, pas l'ancienne
+    finally:
+        conn.close()
+
+
+def test_resegmentation_s2_fusion_conserve_les_deux(client, planche, monkeypatch):
+    """S2 bout-en-bout (via segment_planche) : deux cases annotées séparément que la
+    re-segmentation FUSIONNE en une seule → les deux anciennes sont CONSERVÉES (zéro
+    perte, déterministe) et la nouvelle reste non annotée."""
+    monkeypatch.setattr("main.kumiko_available", lambda: True)
+    monkeypatch.setattr(seg, "run_kumiko", lambda path: {
+        "size": [400, 500], "panels": [[0, 0, 400, 250], [0, 250, 400, 250]]})   # 2 cases
+    client.post(f"/api/planches/{planche['id']}/segmenter")
+    cases = [x for x in client.get(
+        f"/api/planches/{planche['id']}/regions").json() if x["type"] == "case"]
+    assert len(cases) == 2
+    client.put(f"/api/regions/{cases[0]['id']}/annotation", json={"note": "CASEHAUT", "tags": []})
+    client.put(f"/api/regions/{cases[1]['id']}/annotation", json={"note": "CASEBAS", "tags": []})
+    # re-segmentation : UNE seule case couvrant les deux (fusion)
+    monkeypatch.setattr(seg, "run_kumiko", lambda path: {
+        "size": [400, 500], "panels": [[0, 0, 400, 500]]})
+    res = client.post(f"/api/planches/{planche['id']}/segmenter").json()
+    assert res["annotations_transferees"] == 0 and res["annotations_preservees"] == 2
+    ids = {x["id"] for x in client.get(f"/api/planches/{planche['id']}/regions").json()}
+    assert cases[0]["id"] in ids and cases[1]["id"] in ids          # les 2 anciennes survivent
+    for mot in ("CASEHAUT", "CASEBAS"):                              # annotations cherchables in situ
+        assert client.get("/api/recherche", params={"q": mot}).json()["results"]
