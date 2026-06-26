@@ -204,6 +204,15 @@ kbd {
 #site-nav .brand { flex: 0 0 auto; }
 #site-nav .nav-spacer { flex: 1; }      /* pousse Retour + Aa à droite, quoi qu'il arrive */
 
+/* Pastille « utilisateur connecté · déconnexion » (INFRA-1), injectée par theme.js
+   à droite de la bande 1 ; absente en local (pas d'auth). */
+.user-chip { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.user-chip .user-ico { opacity: .7; }
+.user-chip .user-who {
+  color: var(--text-muted); font-size: 13px; max-width: 14ch;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 /* Les deux bandes d'en-tête restent AU-DESSUS de l'overlay plein écran (#transcription,
    z-index 50) : leurs menus déroulants s'ouvrent vers le bas DANS la zone du corps et
    doivent rester cliquables. position:relative active le z-index sur ces items de grille.

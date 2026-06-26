@@ -130,6 +130,7 @@ ou décision de conception requise).
 > Préalable au multi-utilisateur en ligne (linguistes). Pile Authelia + Caddy + Redis déjà
 > spécifiée (deploy/, docs/deploiement-docker.md). Déconnexion propre attendue.
 - Done : accès protégé par auth, sessions, déconnexion ; déployé sur le VPS.
+- Avancement 2026-06-26 — intégration app-side faite : lien de déconnexion + utilisateur connecté (en-tête `Remote-User`, var `BD_AUTH_LOGOUT_URL`, route `/api/moi`, tests dédiés). **Reste : build de l'image + déploiement réel sur le VPS** (hors de cette machine).
 
 ### INFRA-2 · Champ `auteur` des corrections via l'auth — P2 · S
 > `token_correction.auteur` est NULL faute d'identité. **Dépend d'INFRA-1.**

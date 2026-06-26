@@ -16,13 +16,15 @@ import xml.etree.ElementTree as ET
 from contextlib import asynccontextmanager
 from typing import Iterator, Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import (Depends, FastAPI, File, Form, HTTPException, Query, Request,
+                     UploadFile)
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from config import (CIBLES_ATTRIBUT, DERIVATIVES_DIR, ROLES_PLANCHE, STATIC_DIR,
-                    STATUTS, TEMPLATES_DIR, TYPES_REGION, UPOS_TAGS)
+from config import (AUTH_LOGOUT_URL, CIBLES_ATTRIBUT, DERIVATIVES_DIR,
+                    ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR,
+                    TYPES_REGION, UPOS_TAGS)
 from database import (citations_regions, get_connection, init_db,
                       numeros_editoriaux, reindex_region, unindex_region)
 from pipeline.backup import make_backup
@@ -2111,6 +2113,24 @@ def sante():
             "ocr": ocr_available(),
             "lemmes": nlp.nlp_available(),
             "modeles_charges": etat_modeles()}   # CONC-2 : modèles résidents en RAM
+
+
+@app.get("/api/moi")
+def moi(request: Request):
+    """Identité de l'utilisateur connecté + URL de déconnexion (INFRA-1).
+
+    Derrière le proxy d'authentification (Authelia via Caddy), l'en-tête
+    `Remote-User` est posé par le proxy (jamais par le client : l'app n'est
+    jamais exposée en direct). En local, sans proxy, l'en-tête est absent →
+    `utilisateur` vaut None et l'UI n'affiche ni nom ni déconnexion.
+
+    Affichage uniquement : l'autorisation est entièrement assurée en amont par
+    Authelia. (L'attribution du travail à un auteur est INFRA-2.)
+    """
+    utilisateur = (request.headers.get("Remote-User") or "").strip() or None
+    nom = (request.headers.get("Remote-Name") or "").strip() or utilisateur
+    return {"utilisateur": utilisateur, "nom": nom,
+            "deconnexion_url": AUTH_LOGOUT_URL or None}
 
 
 # Fichiers statiques + images dérivées + shell HTML.

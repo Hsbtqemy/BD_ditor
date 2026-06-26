@@ -215,8 +215,43 @@
     }
   }
 
+  /* ---- Utilisateur connecté + déconnexion (INFRA-1, source unique) ----
+     Derrière le proxy d'auth (Authelia), /api/moi renvoie l'identité (en-tête
+     Remote-User) et l'URL de logout du portail. En local, sans proxy,
+     `utilisateur` est null → on n'injecte RIEN (dégradation propre). textContent
+     partout : le nom vient d'un en-tête, jamais interprété comme du HTML. */
+  function buildUserChip() {
+    var bar = document.getElementById("site-nav");
+    if (!bar) return;
+    fetch("/api/moi", { headers: { Accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.utilisateur) return;          // pas d'auth (local) → rien
+        var wrap = el("span", "user-chip");
+        var who = el("span", "user-who");
+        var nom = d.nom || d.utilisateur;
+        who.textContent = nom;
+        who.title = "Connecté : " + nom;
+        var ico = el("span", "user-ico", "👤"); ico.setAttribute("aria-hidden", "true");
+        wrap.appendChild(ico); wrap.appendChild(who);
+        if (d.deconnexion_url) {
+          var out = el("a", "ghost small user-logout", "Déconnexion");
+          out.href = d.deconnexion_url; out.title = "Se déconnecter";
+          wrap.appendChild(out);
+        }
+        // Ancre AVANT le menu « Aa ». buildMenu a déplacé .btn-theme DANS un
+        // wrapper .display-menu (enfant direct de #site-nav) ; viser .btn-theme
+        // lèverait NotFoundError (plus enfant direct). Garde + repli en fin de bande.
+        var anchor = bar.querySelector(".display-menu");
+        if (anchor && anchor.parentNode === bar) bar.insertBefore(wrap, anchor);
+        else bar.appendChild(wrap);
+      })
+      .catch(function () {});                       // hors-ligne / 4xx → silencieux
+  }
+
   function wire() {
     buildHeaderNav();
+    buildUserChip();
     document.querySelectorAll(".btn-theme").forEach(buildMenu);
     sync();
     a11y();

@@ -39,6 +39,12 @@ KUMIKO_DIR = BASE_DIR / "lib" / "kumiko"
 WEB_SCALE = 0.25          # le dérivé fait 25 % de la taille du master
 WEB_JPEG_QUALITY = 82
 
+# Déconnexion (INFRA-1). Derrière le proxy d'authentification (Authelia), l'URL de
+# logout vit sur le sous-domaine du PORTAIL (ex. https://auth.example.fr/logout) :
+# elle est propre au déploiement, donc configurable. Vide en local (pas de proxy
+# d'auth) → l'UI n'affiche ni utilisateur ni lien de déconnexion (dégradation propre).
+AUTH_LOGOUT_URL = os.environ.get("BD_AUTH_LOGOUT_URL", "").strip()
+
 # Garde-fou anti-bombe de décompression : nombre max de pixels décodés par image.
 # Très au-dessus d'un scan de BD (≤ ~100 Mpx même en haute résolution) mais bloque
 # les images-bombes AVANT l'allocation mémoire (Pillow vérifie via l'en-tête).

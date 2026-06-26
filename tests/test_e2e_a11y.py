@@ -107,6 +107,20 @@ def test_a11y_visionneuse_modes(page, seeded, theme):
         assert not viol, f"Visionneuse/{label} [{theme}] :\n{_fmt(viol)}"
 
 
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_pastille_utilisateur(page, seeded, theme):
+    """Pastille « utilisateur connecté · déconnexion » (INFRA-1). Elle n'apparaît
+    que derrière le proxy d'auth (en-tête `Remote-User`) → on le simule sur toutes
+    les requêtes de la page (la pastille est alors rendue par theme.js depuis
+    /api/moi), puis on vérifie qu'elle est bien là ET sans violation de contraste."""
+    _theme(page, theme)
+    page.set_extra_http_headers({"Remote-User": "Camille Roy"})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_selector(".user-chip .user-who", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Pastille utilisateur [{theme}] :\n{_fmt(viol)}"
+
+
 def test_a11y_corpus_modale(page, seeded):
     """Modale d'édition d'album (piège à focus + labels de formulaire)."""
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")

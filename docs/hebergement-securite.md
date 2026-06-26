@@ -95,5 +95,9 @@ Toutes amplifiées par l'absence d'authentification.
 - Données configurables : `BD_DATA_DIR` (racine corpus/derivatives/base),
   `BD_DB_PATH` (base). ShareDocs : `BD_SHAREDOCS_URL/USER/PASS` (le mot de passe
   n'est jamais persisté ni renvoyé).
+- Auth (derrière proxy) : `BD_AUTH_LOGOUT_URL` = URL de déconnexion du portail
+  (ex. `https://auth.example.fr/logout`), affichée dans l'UI avec l'utilisateur
+  connecté (`Remote-User`). Vide en local → ni nom ni lien affichés. L'app fait
+  de l'**affichage seul** : l'autorisation reste entièrement assurée par Authelia.
 - Les jobs sont **éphémères** (threads daemon, registre RAM) : un redémarrage les
   perd. Le travail DB déjà committé par passe survit ; le suivi de job non.

@@ -40,6 +40,7 @@ Récupère le dépôt sur le VPS, puis place-toi dans `deploy/`.
 1. **Domaines** — remplace `example.fr` partout dans :
    - `deploy/Caddyfile` (les 2 blocs `auth.…` et `bd.…`)
    - `deploy/authelia/configuration.yml` (`totp.issuer`, `access_control`, `session.cookies`)
+   - `deploy/docker-compose.yml` (`BD_AUTH_LOGOUT_URL` → lien de déconnexion dans l'UI)
 
 2. **Secrets** — crée `deploy/.env` à partir du modèle et génère 3 valeurs :
    ```bash
@@ -85,8 +86,11 @@ automatiquement dès que le DNS pointe bien sur le VPS.
 
 ## 6. Déconnexion
 
-`https://auth.example.fr/logout` — détruit la session (côté Redis). Tu peux
-ajouter un lien vers cette URL dans l'interface si tu le souhaites.
+`https://auth.example.fr/logout` — détruit la session (côté Redis). L'interface
+**affiche déjà ce lien** : la bande de navigation montre « 👤 *nom* · Déconnexion »
+dès que l'app est derrière le proxy (en-tête `Remote-User`). Le lien pointe vers
+`BD_AUTH_LOGOUT_URL` (réglé dans `docker-compose.yml`). En local, sans proxy, ni le
+nom ni le lien n'apparaissent.
 
 ## 7. Opérations courantes
 
