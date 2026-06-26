@@ -269,7 +269,7 @@ ou décision de conception requise).
 > (un Kumiko/OCR long ne s'interrompt pas, le subprocess Kumiko n'est pas tué).
 - Done : verrou réduit au dict de cache + TTL/fermeture ; purge des vieux jobs ; annulation réactive.
 
-### CONC-2 · Cycle de vie / empreinte mémoire des moteurs ML — P2 · M
+### CONC-2 · Cycle de vie / empreinte mémoire des moteurs ML — v1 fait 2026-06-24 · P2 · M
 > Les moteurs (Kumiko/opencv, bulles YOLOv8/torch, OCR EasyOCR/torch, spaCy) se chargent
 > paresseusement mais restent **résidents** pour la vie du process : trois modèles torch +
 > spaCy ensemble ⇒ empreinte élevée. Sur poste/VPS contraint, enchaîner segmentation → bulles
@@ -280,7 +280,7 @@ ou décision de conception requise).
   fois (décharger bulles avant OCR) ; (c) **worker ML séparé** (process isolé, redémarrable —
   un OOM n'emporte pas l'API) ; (d) a minima **documenter l'empreinte** + recommander les passes
   une à une. Recoupe CONC-1 (cycle de vie des ressources) et le déploiement Docker (dimensionnement).
-- Done : empreinte bornée/documentée ; un OOM d'un moteur n'emporte pas l'API ; mesure/test.
+- ✅ v1 fait 2026-06-24 : déchargement par moteur (`liberer`/`est_charge`) + orchestrateur `pipeline/modeles.py` ; libère en **fin de lot**, **avant la passe interactive** (l'autre modèle torch) et **à la demande** (`POST /api/ml/liberer`) ; modèles résidents exposés dans `/api/sante` ; +5 tests. **Reste différé** : isolation subprocess (option (c) — seule à garantir le zéro-OOM ; tant qu'un modèle torch est chargé, le runtime occupe la RAM).
 - Contournement immédiat : lancer les passes ML **séparément** (et redémarrer entre les grosses).
 
 ### SEG-1 · Préservation du travail humain à la re-segmentation — P2 · L
@@ -316,4 +316,4 @@ ou décision de conception requise).
 5. **SEG-1** (préservation segmentation) — fiabilise la logique délicate. *(QA-3 — tests concurrence/analyse : ✅ fait.)*
 6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, UX-3/4) au fil du besoin réel.
 
-*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** + **QA-2** + **QA-3** + **QA-1** (§7).*
+*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** + **QA-2** + **QA-3** + **QA-1** + **CONC-2 (v1)** (§7).*

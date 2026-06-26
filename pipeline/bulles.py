@@ -46,6 +46,20 @@ def _load_model():
     return _model
 
 
+def est_charge() -> bool:
+    """Le modèle YOLO est-il résident en mémoire ? (CONC-2 — visibilité/libération.)"""
+    return _model is not None
+
+
+def liberer() -> bool:
+    """Décharge le modèle YOLO résident (libère la RAM) ; True si qqch a été libéré.
+    Une inférence en cours garde sa propre référence locale (non cassée)."""
+    global _model
+    libere = _model is not None
+    _model = None
+    return libere
+
+
 def _run(image_path, conf: float):
     """Renvoie (orig_w, orig_h, [(x, y, w, h), ...]) en pixels de l'image."""
     res = _load_model().predict(str(image_path), conf=conf, verbose=False)[0]

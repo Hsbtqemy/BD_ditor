@@ -42,6 +42,21 @@ def _get_nlp():
     return _nlp
 
 
+def est_charge() -> bool:
+    """Le modèle spaCy est-il résident en mémoire ? (CONC-2.)"""
+    return _nlp is not None
+
+
+def liberer() -> bool:
+    """Décharge le modèle spaCy résident (libère la RAM) ; True si qqch a été libéré.
+    Sous `_lock` (cohérent avec le chargement/inférence, non thread-safe)."""
+    global _nlp
+    with _lock:
+        libere = _nlp is not None
+        _nlp = None
+    return libere
+
+
 def _extract(doc) -> tuple[str, list[dict]]:
     """D'un Doc spaCy → (lemmes, tokens). Factorisé pour `analyse` ET `analyse_batch`
     (garantit un résultat unitaire == lot).

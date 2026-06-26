@@ -539,6 +539,8 @@ def detecter_bulles(planche_id: int, conf: float = 0.3,
         )
     try:
         with jobs.ML_LOCK:                       # pas d'inférence ML concurrente (mémoire)
+            from pipeline.modeles import liberer_modeles_ml
+            liberer_modeles_ml(sauf=("bulles", "nlp"))   # CONC-2 : libère l'autre modèle torch (OCR)
             res = detect_bulles(conn, planche_id, conf=conf)
     except BullesError as exc:
         raise HTTPException(500, str(exc))
@@ -557,11 +559,24 @@ def ocr_route(planche_id: int, only_empty: bool = True,
         )
     try:
         with jobs.ML_LOCK:                       # pas d'inférence ML concurrente (mémoire)
+            from pipeline.modeles import liberer_modeles_ml
+            liberer_modeles_ml(sauf=("ocr", "nlp"))      # CONC-2 : libère l'autre modèle torch (bulles)
             res = ocr_planche(conn, planche_id, only_empty=only_empty)
     except OCRError as exc:
         raise HTTPException(500, str(exc))
     conn.commit()
     return res
+
+
+@app.post("/api/ml/liberer")
+def liberer_ml():
+    """Décharge les modèles ML résidents (rend la RAM) — CONC-2. Utile entre deux
+    grosses passes sur machine contrainte. Sérialisé par ML_LOCK (jamais pendant une
+    inférence). Renvoie la liste des moteurs libérés."""
+    from pipeline.modeles import etat_modeles, liberer_modeles_ml
+    with jobs.ML_LOCK:
+        liberes = liberer_modeles_ml()
+    return {"liberes": liberes, "modeles_charges": etat_modeles()}
 
 
 @app.get("/api/planches/{planche_id}/regions")
@@ -2090,10 +2105,12 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db)):
 # =========================================================================== #
 @app.get("/api/sante")
 def sante():
+    from pipeline.modeles import etat_modeles
     return {"kumiko": kumiko_available(),
             "bulles": bulles_available(),
             "ocr": ocr_available(),
-            "lemmes": nlp.nlp_available()}
+            "lemmes": nlp.nlp_available(),
+            "modeles_charges": etat_modeles()}   # CONC-2 : modèles résidents en RAM
 
 
 # Fichiers statiques + images dérivées + shell HTML.

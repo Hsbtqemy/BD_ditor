@@ -48,6 +48,20 @@ def _get_reader(langs):
     return _reader
 
 
+def est_charge() -> bool:
+    """Le lecteur EasyOCR est-il résident en mémoire ? (CONC-2.)"""
+    return _reader is not None
+
+
+def liberer() -> bool:
+    """Décharge le lecteur EasyOCR résident (libère la RAM) ; True si qqch a été libéré."""
+    global _reader, _reader_langs
+    libere = _reader is not None
+    _reader = None
+    _reader_langs = None
+    return libere
+
+
 def _open_image(planche):
     """Ouvre le master si possible (sinon le dérivé web) ; renvoie (img, scale)
     où scale convertit des pixels MASTER vers les pixels de l'image ouverte."""

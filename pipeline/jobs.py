@@ -79,6 +79,9 @@ def _run(job_id: int) -> None:
         finally:                          # statut TOUJOURS positionné (même si get_connection lève)
             if conn is not None:
                 conn.close()
+            from pipeline.modeles import liberer_modeles_ml
+            with ML_LOCK:                 # CONC-2 : libère HORS inférence (pas de course avec une route ML)
+                liberer_modeles_ml()      # rendre la RAM après le lot (modèles déchargés)
             job["current"] = None
             job["status"] = "annule" if job["cancel"] else "termine"
 
