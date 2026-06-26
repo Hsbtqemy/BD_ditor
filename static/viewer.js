@@ -510,6 +510,11 @@ function gramLine(t) {
   const meta = gel("span", "gram-meta");
   meta.appendChild(gel("span", "prov-chip prov-" + t.provenance, PROV_LABEL[t.provenance]));
   if (t.a_revoir) { const w = gel("span", "gram-warn", "⚠"); w.title = "à revérifier"; meta.appendChild(w); }
+  if (t.corr_auteur && t.provenance !== "auto") {      // INFRA-2 : qui a corrigé/validé
+    const by = gel("span", "gram-auteur", "· " + t.corr_auteur);
+    by.title = "Corrigé / validé par " + t.corr_auteur;
+    meta.appendChild(by);
+  }
   row.appendChild(meta);
   row.title = "Cliquer pour corriger";
   row.onclick = async () => { await applyOpenEditor(); state.gramOpen = t.ordre; renderGramList(); };
@@ -522,6 +527,11 @@ function gramEditorRow(t) {
   head.append(gel("span", "gram-mot", t.texte),
               gel("span", "prov-chip prov-" + t.provenance, PROV_LABEL[t.provenance]));
   if (t.a_revoir) head.appendChild(gel("span", "gram-warn", "⚠ à revérifier"));
+  if (t.corr_auteur && t.provenance !== "auto") {      // INFRA-2 : qui a corrigé/validé
+    const by = gel("span", "gram-auteur", "· " + t.corr_auteur);
+    by.title = "Corrigé / validé par " + t.corr_auteur;
+    head.appendChild(by);
+  }
 
   const lem = document.createElement("input");
   lem.className = "gram-in"; lem.value = t.corr_lemme || "";

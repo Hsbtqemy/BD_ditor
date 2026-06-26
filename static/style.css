@@ -406,6 +406,8 @@ button { font-family: inherit; }
 }
 .gram-lemme-txt { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gram-meta { display: inline-flex; align-items: center; gap: 4px; }
+/* INFRA-2 : auteur de la correction/validation (texte AA-sûr) */
+.gram-auteur { font-size: .7rem; color: var(--text-muted); white-space: nowrap; }
 
 /* éditeur déplié (une ligne ouverte à la fois) */
 .gram-edit {

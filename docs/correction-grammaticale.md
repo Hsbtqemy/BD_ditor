@@ -54,6 +54,13 @@ travaillent sur la valeur effective quel que soit l'état. `valide` n'est qu'une
 **surcouche qualité** (filtre optionnel : « seulement le validé », « l'auto à
 réviser »), jamais un prérequis. Un corpus à 0 % validé reste pleinement exploitable.
 
+**Auteur (INFRA-2).** Chaque correction/validation enregistre l'utilisateur connecté
+(en-tête `Remote-User` posé par le proxy d'auth) dans `token_correction.auteur` —
+exposé en `corr_auteur` dans `tokens_effectifs`, affiché au token et **filtrable**
+(paramètre `auteur` sur frequences / concordance / comparaison, symétrique de
+`provenance`). Valider ne réécrit pas le correcteur d'origine (`COALESCE`). NULL en
+local (pas de proxy) : l'action reste anonyme.
+
 Le **statut de relecture d'une planche** (« à faire / en cours / faite », l'idée
 d'« Attente ») est un axe *différent* — un statut de **travail**, au niveau planche,
 distinct du statut épistémique d'un token. Il est **dérivé** des statistiques de

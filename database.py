@@ -266,7 +266,8 @@ SELECT t.region_id, t.ordre, t.texte,
        CASE WHEN c.id IS NULL OR c.obsolete = 1 THEN 'auto'
             ELSE c.etat END                                          AS provenance,
        CASE WHEN c.id IS NOT NULL AND c.obsolete = 1 THEN 1 ELSE 0 END AS a_revoir,
-       c.lemme AS corr_lemme, c.pos AS corr_pos, c.morph AS corr_morph
+       c.lemme AS corr_lemme, c.pos AS corr_pos, c.morph AS corr_morph,
+       c.auteur AS corr_auteur          -- INFRA-2 : qui a corrigé/validé (NULL = auto / local)
 FROM tokens t
 LEFT JOIN token_correction c
        ON c.region_id = t.region_id AND c.ordre = t.ordre;

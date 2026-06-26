@@ -1533,7 +1533,7 @@ def corpus_stats(conn: sqlite3.Connection = Depends(db)):
 # Analyse grammaticale (Palier B) — fréquences lexicales + tokens par région
 # =========================================================================== #
 def _analyse_filtres(album, type, pos, lemme, morph, provenance, tags=None, tag_scope="herite",
-                     personnage=None, attributs=None):
+                     personnage=None, attributs=None, auteur=None):
     """Clauses WHERE communes aux requêtes par token (sur la vue `tokens_effectifs` te,
     jointe à regions r / planches p). Valeurs EFFECTIVES (correction humaine ⊕ auto)."""
     where, params = [], []
@@ -1549,6 +1549,9 @@ def _analyse_filtres(album, type, pos, lemme, morph, provenance, tags=None, tag_
         where.append("te.morph LIKE ?"); params.append(f"%{morph}%")     # trait UD (sous-chaîne)
     if provenance:
         where.append("te.provenance = ?"); params.append(provenance)     # auto|corrige|valide
+    if auteur:
+        # INFRA-2 : tokens portant une correction de cet auteur (qui a corrigé/validé là).
+        where.append("te.corr_auteur = ?"); params.append(auteur)
     # Filtre par TAGS (annotation humaine) — un EXISTS par tag ⇒ ET (toutes présentes),
     # comme /api/recherche. `tag_scope` : 'propre' = la région porte le tag ;
     # 'herite' (défaut) = la région OU sa case parente (profondeur ≤ 2 ; une émotion /
@@ -1601,21 +1604,21 @@ def _valider_facette(conn, personnage=None, attributs=None):
 def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
                        type: Optional[str] = None, pos: Optional[str] = None,
                        lemme: Optional[str] = None, morph: Optional[str] = None,
-                       provenance: Optional[str] = None,
+                       provenance: Optional[str] = None, auteur: Optional[str] = None,
                        tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
                        personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
                        limit: int = 100,
                        conn: sqlite3.Connection = Depends(db)):
     """Distributions de fréquence sur les valeurs EFFECTIVES. `champ` : `lemme`
     (défaut, groupé avec son POS) | `pos` | `morph`. Filtres : album, type de région,
-    pos, lemme, morph (sous-chaîne UD), provenance. Base des champs lexicaux et
-    distributions (Exploration)."""
+    pos, lemme, morph (sous-chaîne UD), provenance, auteur (de la correction). Base
+    des champs lexicaux et distributions (Exploration)."""
     if champ not in ("lemme", "pos", "morph"):
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
     limit = max(1, min(limit, 1000))
     _valider_facette(conn, personnage, attributs)
     where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope,
-                                     personnage, attributs)
+                                     personnage, attributs, auteur)
     cols = "te.lemme, te.pos" if champ == "lemme" else f"te.{champ}"
     sql = (f"SELECT {cols}, COUNT(*) AS freq "
            "FROM tokens_effectifs te JOIN regions r ON r.id = te.region_id "
@@ -1630,6 +1633,7 @@ def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
 @app.get("/api/analyse/concordance")
 def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
                         morph: Optional[str] = None, provenance: Optional[str] = None,
+                        auteur: Optional[str] = None,
                         album: Optional[int] = None, type: Optional[str] = None,
                         tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
                         personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
@@ -1638,12 +1642,12 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
     aux critères, AVEC leur contexte (région, planche, album, texte OCR) — pour montrer
     chaque emploi en contexte multimodal (socle de Recherche+++). Au moins un critère
     grammatical (lemme / pos / morph) est requis."""
-    if not (lemme or pos or morph or tags or personnage or attributs):
-        raise HTTPException(422, "Préciser au moins un critère (grammatical, tag, personnage ou attribut).")
+    if not (lemme or pos or morph or tags or personnage or attributs or auteur):
+        raise HTTPException(422, "Préciser au moins un critère (grammatical, tag, personnage, attribut ou auteur).")
     limit = max(1, min(limit, 500))
     _valider_facette(conn, personnage, attributs)
     where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope,
-                                     personnage, attributs)
+                                     personnage, attributs, auteur)
     if not where:   # critères fournis mais aucun effectif (p.ex. tag vide) → évite un « WHERE » vide
         raise HTTPException(422, "Aucun critère de recherche effectif.")
     sql = ("SELECT te.region_id, te.ordre, te.texte, te.lemme, te.pos, te.morph, "
@@ -1667,11 +1671,11 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
 
 
 def _distribution(conn, champ, album, type, pos, morph, provenance, tags=None, tag_scope="herite",
-                  personnage=None, attributs=None):
+                  personnage=None, attributs=None, auteur=None):
     """Compte {valeur: fréquence} d'un champ (lemme|pos|morph) sur un sous-corpus, et
     le total. Sur les valeurs EFFECTIVES. `champ` doit être validé par l'appelant."""
     where, params = _analyse_filtres(album, type, pos, None, morph, provenance, tags, tag_scope,
-                                     personnage, attributs)
+                                     personnage, attributs, auteur)
     sql = (f"SELECT te.{champ} AS v, COUNT(*) AS f "
            "FROM tokens_effectifs te JOIN regions r ON r.id = te.region_id "
            "JOIN planches p ON p.id = r.planche_id ")
@@ -1686,11 +1690,13 @@ def _distribution(conn, champ, album, type, pos, morph, provenance, tags=None, t
 def analyse_comparaison(champ: str = "lemme",
                         a_album: Optional[int] = None, a_type: Optional[str] = None,
                         a_pos: Optional[str] = None, a_morph: Optional[str] = None,
-                        a_provenance: Optional[str] = None, a_tags: Optional[list[str]] = Query(None),
+                        a_provenance: Optional[str] = None, a_auteur: Optional[str] = None,
+                        a_tags: Optional[list[str]] = Query(None),
                         b_album: Optional[int] = None, b_type: Optional[str] = None,
                         b_pos: Optional[str] = None, b_morph: Optional[str] = None,
                         a_personnage: Optional[int] = None, a_attributs: Optional[list[int]] = Query(None),
-                        b_provenance: Optional[str] = None, b_tags: Optional[list[str]] = Query(None),
+                        b_provenance: Optional[str] = None, b_auteur: Optional[str] = None,
+                        b_tags: Optional[list[str]] = Query(None),
                         b_personnage: Optional[int] = None, b_attributs: Optional[list[int]] = Query(None),
                         tag_scope: str = "herite",
                         limit: int = 50, conn: sqlite3.Connection = Depends(db)):
@@ -1703,9 +1709,9 @@ def analyse_comparaison(champ: str = "lemme",
     _valider_facette(conn, a_personnage, a_attributs)
     _valider_facette(conn, b_personnage, b_attributs)
     da, ta = _distribution(conn, champ, a_album, a_type, a_pos, a_morph, a_provenance, a_tags, tag_scope,
-                           a_personnage, a_attributs)
+                           a_personnage, a_attributs, a_auteur)
     db_, tb = _distribution(conn, champ, b_album, b_type, b_pos, b_morph, b_provenance, b_tags, tag_scope,
-                            b_personnage, b_attributs)
+                            b_personnage, b_attributs, b_auteur)
     out = []
     for v in set(da) | set(db_):
         fa, fb = da.get(v, 0), db_.get(v, 0)
@@ -1733,7 +1739,7 @@ def _tokens_effectifs(conn, region_id: int) -> list:
     jamais `tokens` brut (invariant projet)."""
     return _rows(conn.execute(
         "SELECT ordre, texte, lemme, pos, morph, provenance, a_revoir, "
-        "       corr_lemme, corr_pos, corr_morph "
+        "       corr_lemme, corr_pos, corr_morph, corr_auteur "
         "FROM tokens_effectifs WHERE region_id = ? ORDER BY ordre", (region_id,)))
 
 
@@ -1746,10 +1752,11 @@ def _norm_corr(v: Optional[str]) -> Optional[str]:
 
 @app.put("/api/regions/{region_id}/tokens/{ordre}")
 def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
-                   conn: sqlite3.Connection = Depends(db)):
+                   request: Request, conn: sqlite3.Connection = Depends(db)):
     """Corrige (ou valide) UN token : impose lemme/POS/morph et/ou marque l'état.
     Champ absent/vide = NULL = auto accepté. POS contrôlé (UPOS). La correction est
-    ancrée sur la FORME actuelle du token (anti-dérive ; cf. docs/correction-grammaticale.md)."""
+    ancrée sur la FORME actuelle du token (anti-dérive ; cf. docs/correction-grammaticale.md).
+    L'auteur connecté (en-tête Remote-User, INFRA-2) est enregistré sur la correction."""
     tok = conn.execute("SELECT texte FROM tokens WHERE region_id = ? AND ordre = ?",
                        (region_id, ordre)).fetchone()
     if tok is None:
@@ -1766,39 +1773,46 @@ def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
         raise HTTPException(422, "Correction vide : fournir lemme, POS ou morph "
                             "(ou etat='valide' pour confirmer l'auto).")
     nlp.ensure_loaded()   # charge spaCy HORS transaction (sinon le cold-load tiendrait le verrou DB → 409)
+    auteur = _auteur(request)
     conn.execute(
         "INSERT INTO token_correction "
-        "  (region_id, ordre, forme, lemme, pos, morph, etat, obsolete, date_modif) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now')) "
+        "  (region_id, ordre, forme, lemme, pos, morph, etat, auteur, obsolete, date_modif) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now')) "
         "ON CONFLICT(region_id, ordre) DO UPDATE SET "
         "  forme=excluded.forme, lemme=excluded.lemme, pos=excluded.pos, "
-        "  morph=excluded.morph, etat=excluded.etat, obsolete=0, date_modif=datetime('now')",
-        (region_id, ordre, tok["texte"], lemme, pos, morph, payload.etat))
+        "  morph=excluded.morph, etat=excluded.etat, auteur=excluded.auteur, "
+        "  obsolete=0, date_modif=datetime('now')",
+        (region_id, ordre, tok["texte"], lemme, pos, morph, payload.etat, auteur))
     reindex_region(conn, region_id)      # FTS reflète la correction ; ancrage re-vérifié
     conn.commit()
     return _tokens_effectifs(conn, region_id)
 
 
 @app.post("/api/regions/{region_id}/grammaire/valider")
-def valider_grammaire(region_id: int, conn: sqlite3.Connection = Depends(db)):
+def valider_grammaire(region_id: int, request: Request,
+                      conn: sqlite3.Connection = Depends(db)):
     """Valide tous les tokens de la région (etat='valide') — geste courant des
     linguistes. Garde les corrections existantes (non obsolètes) et accepte l'auto
     ailleurs ; ne touche pas aux corrections « à revérifier ». NON bloquant : c'est
-    une assertion de qualité, jamais un prérequis."""
+    une assertion de qualité, jamais un prérequis. L'auteur connecté (INFRA-2) est
+    posé sur les tokens auto-acceptés, et REMPLIT l'auteur d'une correction qui n'en
+    avait pas — sans jamais écraser le correcteur d'origine (COALESCE)."""
     if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
     nlp.ensure_loaded()          # spaCy hors transaction (cf. corriger_token)
+    auteur = _auteur(request)
     reindex_region(conn, region_id)   # ré-ancre (aligne) d'abord → nettoie toute dérive du texte
-    # 1) corrections cohérentes existantes → validées
-    conn.execute("UPDATE token_correction SET etat='valide', date_modif=datetime('now') "
-                 "WHERE region_id = ? AND obsolete = 0", (region_id,))
-    # 2) tokens sans correction → ligne 'valide' (accepte l'auto, valeurs NULL)
+    # 1) corrections cohérentes existantes → validées (auteur préservé : valider ≠ corriger)
+    conn.execute("UPDATE token_correction "
+                 "SET etat='valide', auteur=COALESCE(auteur, ?), date_modif=datetime('now') "
+                 "WHERE region_id = ? AND obsolete = 0", (auteur, region_id))
+    # 2) tokens sans correction → ligne 'valide' (accepte l'auto ; auteur = le validateur)
     conn.execute(
-        "INSERT INTO token_correction (region_id, ordre, forme, etat, obsolete) "
-        "SELECT t.region_id, t.ordre, t.texte, 'valide', 0 FROM tokens t "
+        "INSERT INTO token_correction (region_id, ordre, forme, etat, auteur, obsolete) "
+        "SELECT t.region_id, t.ordre, t.texte, 'valide', ?, 0 FROM tokens t "
         "WHERE t.region_id = ? AND NOT EXISTS "
         "  (SELECT 1 FROM token_correction c WHERE c.region_id=t.region_id AND c.ordre=t.ordre)",
-        (region_id,))
+        (auteur, region_id))
     conn.commit()
     return _tokens_effectifs(conn, region_id)
 
@@ -2115,19 +2129,23 @@ def sante():
             "modeles_charges": etat_modeles()}   # CONC-2 : modèles résidents en RAM
 
 
+def _auteur(request: Request) -> Optional[str]:
+    """Identifiant de l'utilisateur connecté, pour attribuer une action humaine
+    (INFRA-2). Lu dans l'en-tête `Remote-User` posé par le proxy d'auth (jamais
+    par le client : l'app n'est jamais exposée en direct). None en local (pas de
+    proxy) → l'action reste anonyme, comme avant."""
+    return (request.headers.get("Remote-User") or "").strip() or None
+
+
 @app.get("/api/moi")
 def moi(request: Request):
     """Identité de l'utilisateur connecté + URL de déconnexion (INFRA-1).
 
-    Derrière le proxy d'authentification (Authelia via Caddy), l'en-tête
-    `Remote-User` est posé par le proxy (jamais par le client : l'app n'est
-    jamais exposée en direct). En local, sans proxy, l'en-tête est absent →
-    `utilisateur` vaut None et l'UI n'affiche ni nom ni déconnexion.
-
-    Affichage uniquement : l'autorisation est entièrement assurée en amont par
-    Authelia. (L'attribution du travail à un auteur est INFRA-2.)
+    En local, sans proxy, l'en-tête est absent → `utilisateur` vaut None et l'UI
+    n'affiche ni nom ni déconnexion. Affichage uniquement : l'autorisation est
+    entièrement assurée en amont par Authelia.
     """
-    utilisateur = (request.headers.get("Remote-User") or "").strip() or None
+    utilisateur = _auteur(request)
     nom = (request.headers.get("Remote-Name") or "").strip() or utilisateur
     return {"utilisateur": utilisateur, "nom": nom,
             "deconnexion_url": AUTH_LOGOUT_URL or None}

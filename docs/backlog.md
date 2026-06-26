@@ -132,9 +132,14 @@ ou décision de conception requise).
 - Done : accès protégé par auth, sessions, déconnexion ; déployé sur le VPS.
 - Avancement 2026-06-26 — intégration app-side faite : lien de déconnexion + utilisateur connecté (en-tête `Remote-User`, var `BD_AUTH_LOGOUT_URL`, route `/api/moi`, tests dédiés). **Reste : build de l'image + déploiement réel sur le VPS** (hors de cette machine).
 
-### INFRA-2 · Champ `auteur` des corrections via l'auth — P2 · S
+### INFRA-2 · Champ `auteur` des corrections via l'auth — ✅ Fait 2026-06-26 · P2 · S
 > `token_correction.auteur` est NULL faute d'identité. **Dépend d'INFRA-1.**
 - Done : les corrections enregistrent l'utilisateur connecté ; affiché/filtrable.
+- Fait : `corriger_token` + `valider_grammaire` posent l'auteur (en-tête `Remote-User`) ;
+  validation préserve le correcteur d'origine (COALESCE). Exposé dans `tokens_effectifs`
+  (`corr_auteur`) + l'API tokens, affiché dans le panneau grammaire. Filtre `auteur`
+  (et `a_auteur`/`b_auteur`) sur frequences/concordance/comparaison, symétrique de
+  `provenance`. NULL en local (anonyme). 7 tests dédiés.
 
 ### INFRA-3 · Credentials WebDAV par utilisateur — P2 · M
 > Mémoriser les identifiants WebDAV (`<id>@webdav`), **jamais** le compte maître Huma-Num.
@@ -313,8 +318,8 @@ ou décision de conception requise).
 1. ~~**ANN-2 « mince »**~~ (entité personnage + locuteur + attributs facettés & émergents) — **✅ Fait 2026-06-24** (schéma v11 + API + UI, vocabulaire émergent ; cf. `docs/personnages-et-attribution.md`). Suite **§14** (pivot : l'image croise la langue) : brique **(a)** « boîte → identité + profil » **livrée** (schéma v13) ; (b)/(c) + attributs riches + scène **dormants**.
 2. ~~**SEC-1 + DB-1**~~ (SSRF ShareDocs, UNIQUE numéro) — **✅ Fait 2026-06-24** (§7), avant toute exposition réseau.
 3. ~~ANN-1~~ → **absorbé par ANN-2** : le vocabulaire devient une structure facettée *émergente*, plus une liste figée à trancher en amont.
-4. **INFRA-1→3** (auth/déploiement) — avant la mise en ligne multi-linguiste.
+4. **INFRA-1/2** (auth) — **✅ app-side fait 2026-06-26** : INFRA-1 (utilisateur connecté + déconnexion, route `/api/moi`) et INFRA-2 (auteur des corrections, filtrable). **Reste : déploiement Docker réel sur le VPS** (hors machine de dev) + INFRA-3 (credentials WebDAV par utilisateur).
 5. ~~**SEG-1**~~ (préservation segmentation) — **✅ Fait 2026-06-24** (S2/S3/S4/S7 + tests dédiés). *(QA-3 — tests concurrence/analyse : ✅ fait.)*
 6. Le reste (ANN-2/3/4, ANA-2/3, NLP, CONC-1, UX-3/4) au fil du besoin réel.
 
-*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** + **QA-2** + **QA-3** + **QA-1** + **CONC-2 (v1)** + **SEG-1** (§7).*
+*Faits : A11Y-1→5 (§6), nav unifiée + désencombrement (UX-1/UX-2), **ANA-1** (§2), **ANN-2 « mince »** (§1), **SEC-1** + **DB-1** + **QA-2** + **QA-3** + **QA-1** + **CONC-2 (v1)** + **SEG-1** (§7), **INFRA-1** (app-side) + **INFRA-2** (§4).*
