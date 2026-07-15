@@ -91,6 +91,8 @@ stable → citable), quitte à la **construire** depuis un filtre puis la geler 
 | `collection.nom` | nom du corpus / jeu | texte | descriptif | absent — à prévoir | DC:title | ouvert |
 | `collection.description` | objet, périmètre, critères de sélection | texte | descriptif | absent — à prévoir | DC:description | ouvert |
 | `collection.licence_defaut` | régime de diffusion du **jeu enrichi** | licence / mention | descriptif | absent — à prévoir | DC:rights / DataCite | ouvert |
+| `collection.base_legale` | base légale d'accès/usage des **données** (scans, verbatim) — **à établir** (piste : exception TDM recherche, à valider) | mention + source + date | descriptif / paradonnée | absent — à prévoir | DC:rights / PROV | ouvert |
+| `collection.statut_diffusion` | régime d'accès du jeu : `public` \| `embargo`(date) \| `restreint`(sur accord) \| `privé` | contrôlé | descriptif | absent — à prévoir | DataCite / Nakala | ouvert |
 | `collection.responsables` | qui constitue / gère le corpus | identités (→ auth) | descriptif | absent — à prévoir | DC:creator / PROV | ouvert |
 | `collection.dates` | période de constitution / couverture | dates | descriptif | absent — à prévoir | DC:date · DC:coverage | ouvert |
 | `collection_album` | appartenance album ↔ collection (statique) | liaison N-N | humain | absent — à prévoir | — | ouvert |
@@ -104,6 +106,15 @@ stable → citable), quitte à la **construire** depuis un filtre puis la geler 
 > **Casquette double.** Ce palier **porte** de la description (lignes ci-dessus) **et** sert
 > d'**ancrage fonctionnel** — unité de dépôt / DOI, régime de droits par défaut, et **portée
 > du lexique situé** (la « portée local » du Niveau 7 référencera `collection_id`).
+
+> **Droits — décrire, pas imposer (décision 2026-07-16, à valider juridiquement).** Ces
+> champs *déclarent* le régime ; ils ne l'**imposent pas** — l'enforcement de l'accès reste
+> au portail d'auth (`docs/deploiement-docker.md`) et à l'entrepôt (Nakala gère
+> public/embargo/privé, en séparant visibilité des métadonnées et accès aux fichiers).
+> **`base_legale` est un prérequis au dépôt, hors code** (institution + source des scans) :
+> tant qu'elle n'est pas établie, elle reste une **question ouverte, jamais une conclusion**.
+> `base_legale` et `statut_diffusion` ont un **défaut Collection, surchargeable par Album**
+> (une planche peut être domaine public, une autre sous droits).
 
 ---
 
@@ -144,6 +155,7 @@ libre** — principal chantier pour une qualité bibliographique.
 | *`identifiant éditeur`* | ISBN / dépôt légal (édition détenue) | code | descriptif | *absent — à prévoir* | DC:identifier | ouvert |
 | *`format physique`* | dimensions du support (cm), reliure | mesures | matériel | *absent — à prévoir* (recoupe N1) | DC:format | ouvert |
 | *`PID`* | identifiant pérenne (DOI/ARK) | URI résoluble | système | *absent — à prévoir* | DataCite | ouvert |
+| *`droits (surcharge)`* | `statut_diffusion` / `base_legale` propres à l'album (défaut = Collection) | idem Collection | descriptif | *absent — à prévoir* | DC:rights | ouvert |
 
 ## Niveau 1 — Planche
 
@@ -338,4 +350,7 @@ Chantiers de FAIRisation dérivés de ce dictionnaire, par couche :
   `provisoire→défini` · **portée d'appartenance** (`collection_id`, A) ; définition contextuelle
   (`valeur_definition`, B) et version = **dormants**. Indicateur « % défini » → qualité Collection.
 - **Entités (N6)** : alignement d'autorité (Wikidata / VIAF / IdRef).
-- **Droits (N8)** : métadonnée de licence explicite par jeu.
+- **Droits (Collection / N0, N8)** : `licence_defaut` (tier ouvert) · **`base_legale`** (à quel
+  titre on détient/exploite les données — *à établir, hors code*) · **`statut_diffusion`**
+  (`public`/`embargo`/`restreint`/`privé`, mappe Nakala), défaut Collection **surchargeable par
+  Album**. Principe : **décrire ≠ imposer** ; « à valider juridiquement ».
