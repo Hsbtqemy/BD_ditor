@@ -1,0 +1,341 @@
+# Dictionnaire de métadonnées
+
+> **But.** Donner accès, de façon granulaire, à **toutes les informations disponibles à
+> partir d'une planche scannée** — du jeu de données (collection) et de l'œuvre
+> bibliographique jusqu'au mot analysé — en distinguant ce qui est *produit par la machine*, *ajouté par l'humain*,
+> *dérivé*, ou *encore à prévoir*. Document de référence pour la réutilisation, la
+> qualification du travail (paradonnée) et le futur dépôt (Nakala / HAL).
+>
+> **Périmètre.** Documente le **réel** (schéma v13) **et** les **champs à prévoir** qu'un
+> dépôt de qualité bibliographique voudra. Ne fige aucun plan : c'est un inventaire, pas
+> un PGD. Voir aussi `personnages-et-attribution.md`, `numerotation-et-citation.md`,
+> `correction-grammaticale.md`.
+
+## Conventions de lecture
+
+Chaque niveau est une table dont les colonnes sont : **Élément · Qualifie · Forme &
+valeurs · Provenance · Statut · Standard cible · Ouvrable ?**
+
+**Provenance** — d'où vient la donnée :
+
+| | |
+|---|---|
+| `descriptif` | saisi à la main pour décrire l'œuvre (bibliographique) |
+| `machine`    | produit par un moteur (segmentation, détection, OCR, NLP), **éditable** |
+| `humain`     | travail interprétatif ou correctif de l'annotateur |
+| `dérivé`     | recalculé à la volée, **jamais stocké** |
+| `matériel`   | décrit le support (physique / numérique) |
+| `système`    | technique / administratif (identifiants, dates, versions) |
+
+**Statut** — comment c'est stocké :
+
+| | |
+|---|---|
+| `structuré`        | colonne typée, valeur atomique ou contrôlée |
+| `libre`            | colonne texte libre |
+| `dérivé`           | calculé à la demande, non persisté |
+| `absent — à prévoir` | pas encore dans le modèle ; utile pour un dépôt qualité |
+
+**Ouvrable ?** — régime de diffusion (cf. discussion droits ; à valider juridiquement) :
+
+| | |
+|---|---|
+| `ouvert`   | fait ou dérivation → diffusable (CC-BY / CC0) |
+| `restreint`| expression protégée (scan, **texte verbatim**) → non rediffusable |
+| `agrégat`  | ouvert **sous forme agrégée** (fréquences), restreint en verbatim aligné |
+
+**Standard cible** : `DC` Dublin Core · `TEI` TEI P5 · `UD` Universal Dependencies ·
+`SKOS` thésaurus · `PROV` W3C PROV-O · `IIIF` IIIF / W3C Web Annotation.
+
+## Trois axes transverses
+
+- **Provenance & paradonnée.** Le modèle sépare partout *machine* (pré-remplissage
+  éditable), *humain* (souverain, jamais écrasé) et *dérivé*. C'est ce qui **qualifie le
+  travail** : qui a produit quoi, dans quel état de validation. À généraliser (versions
+  des moteurs, provenance au niveau du *run*) pour un corpus pleinement réutilisable.
+- **Droits.** La ligne ouvert / restreint traverse la couche de contenu : coordonnées,
+  structure, abstractions linguistiques, annotations et entités sont **ouvrables** ; les
+  scans et le **texte OCR verbatim** (expression protégée) restent **restreints**.
+- **Standards.** La couche linguistique parle déjà **UD** ; deux exports sont déjà des
+  standards (**TEI P5**, **JSON-LD**). Les cibles non encore atteintes (`IIIF`, `SKOS`,
+  `PROV`) sont marquées champ par champ.
+
+## Trois paliers de description
+
+La description se lit à trois échelles emboîtées — la **collection** est le palier qui
+manquait, et le plus haut :
+
+| Palier | Décrit… | Niveaux | Cible |
+|---|---|---|---|
+| **Collection** | le *corpus / jeu de données* | *(nouveau)* | fiche de dépôt · description PGD |
+| **Item — album** | chaque *œuvre* | 0 | Dublin Core |
+| **Élément** | *planche · zone · token* (structure, contenu, langue) | 1–8 | TEI · IIIF · UD |
+
+---
+
+## Collection (corpus) — palier supérieur
+
+Source *(à créer)* : table `collection` + liaison `collection_album` (appartenance **N-N**,
+album ∈ 0..N collections). Palier qui décrit **le jeu de données lui-même** — une sélection
+constituée pour une étude. **Transversal** (un album peut vivre dans plusieurs collections)
+et **unité de dépôt** : une collection = un dépôt Nakala/HAL = un DOI = la « description des
+données » d'un PGD. **Tout ce palier est à prévoir** (rien en base à ce jour).
+
+Décisions de conception (2026-07-15) : entité nommée `collection` (« corpus » déjà pris par
+`CORPUS_DIR` et la page bibliothèque) ; appartenance **statique et figeable** (composition
+stable → citable), quitte à la **construire** depuis un filtre puis la geler ; outil
+**nourricier** d'un PGD externe (dérive ce qu'il sait, pointe vers OPIDoR / Argos).
+
+| Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
+|---|---|---|---|---|---|---|
+| `collection.nom` | nom du corpus / jeu | texte | descriptif | absent — à prévoir | DC:title | ouvert |
+| `collection.description` | objet, périmètre, critères de sélection | texte | descriptif | absent — à prévoir | DC:description | ouvert |
+| `collection.licence_defaut` | régime de diffusion du **jeu enrichi** | licence / mention | descriptif | absent — à prévoir | DC:rights / DataCite | ouvert |
+| `collection.responsables` | qui constitue / gère le corpus | identités (→ auth) | descriptif | absent — à prévoir | DC:creator / PROV | ouvert |
+| `collection.dates` | période de constitution / couverture | dates | descriptif | absent — à prévoir | DC:date · DC:coverage | ouvert |
+| `collection_album` | appartenance album ↔ collection (statique) | liaison N-N | humain | absent — à prévoir | — | ouvert |
+| `couverture / volume` | ampleur du jeu (nb albums/planches/régions/tokens) | agrégats | dérivé | absent — à prévoir | DC:extent | ouvert |
+| `provenance globale` | moteurs / modèles + versions ayant produit le jeu | agrégat paradonnée | dérivé | absent — à prévoir | PROV | ouvert |
+| `description PGD dérivée` | sections data-description / formats pour le dépôt | export dérivé | dérivé | absent — à prévoir | — | ouvert |
+| *`version / gel`* | instantané citable (corpus v1, v2) | texte + horodatage | système | absent — à prévoir *(dormant)* | DataCite version / PROV | ouvert |
+| *`PID`* | DOI du dépôt de la collection | URI résoluble | système | absent — à prévoir *(dormant)* | DataCite | ouvert |
+| *`appartenance fine`* | sélection au niveau planche / région | liaison | humain | absent — à prévoir *(dormant)* | — | ouvert |
+
+> **Casquette double.** Ce palier **porte** de la description (lignes ci-dessus) **et** sert
+> d'**ancrage fonctionnel** — unité de dépôt / DOI, régime de droits par défaut, et **portée
+> du lexique situé** (la « portée local » du Niveau 7 référencera `collection_id`).
+
+---
+
+## Niveau 0 — Œuvre / album
+
+Source : table `albums`. Couche **descriptive**, aujourd'hui **mince et surtout en texte
+libre** — principal chantier pour une qualité bibliographique.
+
+> **Décision (2026-07-15) — enrichissement descriptif.** Paternité en modèle **Zotero-like** :
+> `contribution(nom, rôle)` par album, le **rôle** en vocabulaire **contrôlé-mais-ouvert** (jeu
+> curé extensible — même forme que tags/attributs — de source **MARC Relators**, mappé aux
+> buckets **DCterms** `creator`/`contributor`). Le nom reste une chaîne, **aliasable** vers un
+> contributeur-entité alignable (VIAF/IdRef) plus tard — dormant (patron *mentions→entités*).
+> Œuvre vs édition : **un seul niveau** = l'édition détenue ; `date_edition` est **l'ancre**,
+> `date_originale` (1re parution) reste **optionnelle/secondaire** (on exploite le scanné).
+> Les champs `auteur`/`annee` restent en *legacy*.
+
+| Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
+|---|---|---|---|---|---|---|
+| `id` | identifiant interne de l'œuvre | entier (PK) | système | structuré | — | ouvert |
+| `titre` | titre de l'œuvre | texte | descriptif | structuré | DC:title | ouvert |
+| `auteur` | responsabilité(s) — *champ legacy* | texte **libre, non décomposé** (→ voir `contribution`) | descriptif | libre | DC:creator | ouvert |
+| `annee` | année — *legacy ambigu* | entier (→ précisé par `date_edition` / `date_originale`) | descriptif | structuré | DC:date | ouvert |
+| `editeur` | maison d'édition | texte | descriptif | libre | DC:publisher | ouvert |
+| `serie` | série d'appartenance | texte | descriptif | libre | DC:isPartOf | ouvert |
+| `description` | note libre sur l'œuvre | texte | descriptif | libre | DC:description | ouvert |
+| `date_import` | date d'entrée dans l'outil | horodatage | système | structuré | PROV | ouvert |
+| `nombre de pages` | volume de l'album | entier | dérivé (compte des planches) | dérivé | DC:extent | ouvert |
+| *`contribution`* | contributeur de l'album (**Zotero-like** : liste de (nom, rôle)) | liaison N-N | descriptif | *absent — à prévoir* (remplace `auteur` plat) | DCterms creator/contributor | ouvert |
+| *`contribution.role`* | rôle du contributeur | vocabulaire **contrôlé-mais-ouvert** (scénariste · dessinateur · coloriste · lettreur · encreur · traducteur…) | descriptif | *absent — à prévoir* | MARC Relators | ouvert |
+| *`contributeur` (entité)* | alias du nom vers une personne canonique alignable | réf. entité + URI | descriptif | *absent — à prévoir (dormant)* | VIAF / IdRef / ISNI | ouvert |
+| *`date_edition`* | publication de l'**édition détenue** (l'ancre) | date | descriptif | *absent — à prévoir* | DC:issued | ouvert |
+| *`date_originale`* | 1re parution de l'œuvre — *optionnel, secondaire* | date | descriptif | *absent — à prévoir* | DC:created | ouvert |
+| *`type d'œuvre`* | BD / roman graphique / strip… | contrôlé-ouvert | descriptif | *absent — à prévoir* | DC:type | ouvert |
+| *`langue`* | langue de l'expression (**traduction = autre texte**) | code (fr…) | descriptif | *absent — à prévoir* | DC:language | ouvert |
+| *`lieu d'édition`* | ville de publication (édition détenue) | texte / contrôlé | descriptif | *absent — à prévoir* | DC:coverage | ouvert |
+| *`édition / tirage`* | mention d'édition | texte | descriptif | *absent — à prévoir* | DC | ouvert |
+| *`identifiant éditeur`* | ISBN / dépôt légal (édition détenue) | code | descriptif | *absent — à prévoir* | DC:identifier | ouvert |
+| *`format physique`* | dimensions du support (cm), reliure | mesures | matériel | *absent — à prévoir* (recoupe N1) | DC:format | ouvert |
+| *`PID`* | identifiant pérenne (DOI/ARK) | URI résoluble | système | *absent — à prévoir* | DataCite | ouvert |
+
+## Niveau 1 — Planche
+
+Source : table `planches`. Couche **éditoriale + technique + matérielle + cycle de vie**.
+
+| Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
+|---|---|---|---|---|---|---|
+| `id` | identifiant interne de la planche | entier (PK) | système | structuré | — | ouvert |
+| `album_id` | rattachement à l'œuvre | entier (FK) | système | structuré | — | ouvert |
+| `numero` | ordre d'import (page **physique**) | entier (unique/album) | système | structuré | — | ouvert |
+| `role` | statut éditorial | contrôlé : `recit` \| paratexte | humain | structuré | — | ouvert |
+| `numero_editorial` | rang cité parmi les planches `recit` | entier \| ∅ (paratexte) | dérivé | dérivé | — | ouvert |
+| `chemin_tiff` | pointeur vers le master | chemin relatif POSIX | système | structuré | — | **restreint** |
+| `chemin_web` | pointeur vers le dérivé web | chemin relatif POSIX | système | structuré | IIIF (image) | **restreint** |
+| `largeur_px` / `hauteur_px` | dimensions **master** | entiers (px) | matériel | structuré | TEI `surface @lrx/@lry` | ouvert |
+| `statut` | avancement de traitement | `importee` \| `segmentee` | système | structuré | — | ouvert |
+| `date_segmentation` | date de la passe cases | horodatage | paradonnée | structuré | PROV | ouvert |
+| `validee` | validation humaine de la planche | horodatage \| ∅ | humain | structuré | PROV | ouvert |
+| `verrouillee` | protection contre les passes auto | horodatage \| ∅ | humain | structuré | — | ouvert |
+| *`dpi`* | résolution du scan | paire d'entiers | matériel | *absent — à prévoir* (lu à l'ingest, jeté) | — | ouvert |
+| *`mode`* | espace colorimétrique | `RGB`/`CMYK`/`L`… | matériel | *absent — à prévoir* (lu, jeté) | — | ouvert |
+| *`dimensions physiques`* | taille réelle (cm) | px ÷ dpi | matériel | *absent — à prévoir* (dérivable) | DC:format | ouvert |
+| *`source de numérisation`* | appareil / conditions de scan | texte | matériel | *absent — à prévoir* | PREMIS | ouvert |
+
+## Niveau 2 — Région / zone
+
+Source : table `regions` (arbre par `parent_id`). Couche **géométrique + structurelle**.
+Coordonnées **toujours en pixels master**.
+
+| Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
+|---|---|---|---|---|---|---|
+| `id` | identifiant interne de la zone | entier (PK) | système | structuré | — | ouvert |
+| `planche_id` | rattachement à la planche | entier (FK) | système | structuré | — | ouvert |
+| `parent_id` | contenance hiérarchique (bulle ∈ case) | entier (FK) \| ∅ | machine (géométrie) / humain | structuré | TEI (imbrication) | ouvert |
+| `type` | nature de la zone | contrôlé `TYPES_REGION` : case · bulle · cartouche · texte · personnage | machine / humain | structuré | TEI `zone @type` | ouvert |
+| `x` · `y` · `w` · `h` | boîte englobante | entiers, **px master** | machine → humain | structuré | TEI `zone @ulx…` · **IIIF `xywh`** | ouvert |
+| `ordre` | rang de lecture entre frères | entier (1..N per-niveau) | machine → humain | structuré | — | ouvert |
+| `source` | producteur de la géométrie | `kumiko` \| `auto` \| manuel | provenance | structuré | PROV | ouvert |
+| `date_creation` | date de création de la zone | horodatage | paradonnée | structuré | PROV | ouvert |
+| `citation` | repère éditorial cité | dérivé `pl·c·b` | dérivé | dérivé | — | ouvert |
+| *`activite_id`* | run qui a **généré** la zone (→ moteur+version+params) | réf. activité | paradonnée | *absent — à prévoir* | PROV `wasGeneratedBy` | ouvert |
+| *`touché` + `date_modification`* | zone retouchée par l'humain, et quand (surface au-dessus du journal) | drapeau + horodatage | paradonnée | *absent — à prévoir* | PROV / TEI `@resp` | ouvert |
+| *`certitude`* | confiance sur la zone | score \| niveau | machine / humain | *absent — à prévoir* | TEI `@cert` | ouvert |
+
+## Niveau 3 — Contenu textuel (OCR)
+
+Source : `regions.ocr_texte`. **Le seul champ de contenu franchement restreint** : le
+dialogue est de l'expression protégée.
+
+| Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
+|---|---|---|---|---|---|---|
+| `ocr_texte` | texte reconnu de la zone | texte libre | machine (pré-remplit, `only_empty`) → humain | libre | TEI `line` | **restreint** |
+
+## Niveau 4 — Analyse linguistique
+
+Sources : `tokens` (auto, régénéré), `token_correction` (overlay humaine préservée),
+vue `tokens_effectifs` (**read model canonique** — toutes les analyses lisent ceci).
+
+| Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
+|---|---|---|---|---|---|---|
+| `tokens.ordre` | position du mot | entier | machine | structuré (régénéré) | UD | ouvert |
+| `tokens.texte` | forme de surface (mot exact) | texte | machine | structuré (régénéré) | UD `FORM` | **agrégat** |
+| `tokens.lemme` | forme canonique | texte | machine | structuré (régénéré) | UD `LEMMA` | ouvert |
+| `tokens.pos` | catégorie grammaticale | contrôlé **UPOS** | machine | structuré (régénéré) | UD `UPOS` | ouvert |
+| `tokens.morph` | traits morphologiques | **UD FEATS** | machine | structuré (régénéré) | UD `FEATS` | ouvert |
+| `token_correction.lemme/pos/morph` | correction humaine | idem UD | humain | structuré (overlay préservée) | UD | ouvert |
+| `token_correction.forme` | forme visée (ancrage anti-dérive) | texte | humain | structuré | — | agrégat |
+| `token_correction.etat` | état de la correction | `corrige` \| `valide` | humain | structuré | PROV | ouvert |
+| `token_correction.auteur` | qui a corrigé / validé | texte (identité) | humain | structuré | PROV / TEI `@resp` | ouvert |
+| `token_correction.date_modif` | quand | horodatage | paradonnée | structuré | PROV | ouvert |
+| `token_correction.obsolete` | correction à revérifier (texte a changé) | 0/1 | système | structuré | — | ouvert |
+| `tokens_effectifs.provenance` | valeur effective : `auto` \| `corrige` \| `valide` | contrôlé | dérivé | dérivé (vue) | PROV | ouvert |
+| `tokens_effectifs.a_revoir` | une correction a dérivé | 0/1 | dérivé | dérivé (vue) | — | ouvert |
+
+## Niveau 5 — Annotation interprétative
+
+Sources : `annotations`, `tags`, `annotation_tags`. **Travail humain** — pleinement le
+tien, donc ouvrable.
+
+| Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
+|---|---|---|---|---|---|---|
+| `annotations.note` | commentaire libre sur la zone | texte | humain | libre | TEI `note` | ouvert |
+| `annotations.date_creation` / `date_modification` | vie de l'annotation | horodatages | paradonnée | structuré | PROV | ouvert |
+| `tags.label` | étiquette (catégorie **émergente**) | texte unique | humain | structuré (contrôlé émergent) | SKOS `prefLabel` | ouvert |
+| `tags.description` | glose du tag | texte | humain | libre | SKOS `definition` | ouvert |
+| `tags.couleur` | présentation | code couleur | humain | structuré | — | ouvert |
+| `annotation_tags` | pose d'un tag sur une annotation | liaison N-N | humain | structuré | — | ouvert |
+
+## Niveau 6 — Entités personnages
+
+Sources : `personnages` (entité canonique **corpus**), `bulle_locuteur` (qui parle),
+`personnage_presence` (qui est montré). Cf. `personnages-et-attribution.md`.
+
+| Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
+|---|---|---|---|---|---|---|
+| `personnages.nom` | identité récurrente | texte | humain | structuré | — | ouvert |
+| `personnages.serie` | désambiguïsation (homonymes) | texte | humain | structuré | — | ouvert |
+| `personnages.notes` | note libre sur l'entité | texte | humain | libre | — | ouvert |
+| `bulle_locuteur` | **qui parle** dans la bulle | lien région ↔ personnage | humain | structuré | — | ouvert |
+| `personnage_presence` | **qui est montré** dans la boîte | lien région ↔ personnage | humain | structuré | — | ouvert |
+| *`alignement d'autorité`* | lien vers un référentiel | URI Wikidata / VIAF / IdRef | humain | *absent — à prévoir* | SKOS `exactMatch` | ouvert |
+
+## Niveau 7 — Vocabulaire facetté
+
+Sources : `attribut_dimension` (axes), `attribut_valeur` (valeurs canoniques),
+`personnage_attribut` (profil du locuteur), `region_attribut` (situation de scène).
+Vocabulaire **émergent** (données, pas code). Le **définitionnel + la portée** sont le
+chantier « lexique agile mais défini ».
+
+> **Décision (2026-07-15) — lexique situé (SKOS).** Couche définitionnelle **en paresseux** :
+> `definition` + `note_portee` optionnelles sur dimensions/valeurs, avec un état `provisoire →
+> défini` (miroir `auto→validé`). **Portée d'appartenance (A)** : `collection_id` nullable sur
+> dimension **et** valeur (NULL = global, sinon local à une collection) ; promotion local→global
+> = passer à NULL (patron *mentions→entités*). **Définition contextuelle (B)** — glose d'un terme
+> *par collection* (`valeur_definition`) — **dormante**, déclenchée si un terme diverge vraiment
+> entre études. Version de concept **dormante** (le gel se fait au niveau Collection). Un
+> indicateur « **% défini** » remonte nourrir la qualité de la Collection.
+
+| Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
+|---|---|---|---|---|---|---|
+| `attribut_dimension.cible` | à quoi s'applique l'axe | `personnage` \| `case` | humain | structuré | — | ouvert |
+| `attribut_dimension.nom` | axe (origine, registre…) | texte émergent | humain | structuré | SKOS (schéma) | ouvert |
+| `attribut_valeur.valeur` | valeur canonique de l'axe | texte émergent | humain | structuré | SKOS `concept` | ouvert |
+| `personnage_attribut` | profil du personnage (inter-locuteur) | liaison N-N | humain | structuré | — | ouvert |
+| `region_attribut` | situation de la case (intra-locuteur) | liaison N-N | humain | structuré | — | ouvert |
+| *`collection_id` (dimension &amp; valeur)* | **portée d'appartenance** : NULL = global, sinon local à une collection ; promotion → NULL (*mentions→entités*) | réf. \| NULL | humain | *absent — à prévoir* | SKOS | ouvert |
+| *`definition`* | sens de la dimension / valeur | texte | humain | *absent — à prévoir* | SKOS `definition` | ouvert |
+| *`note_portee`* | cadre d'emploi | texte | humain | *absent — à prévoir* | SKOS `scopeNote` | ouvert |
+| *`etat` (définitionnel)* | maturité : `provisoire` → `défini` (miroir `auto→validé`) | contrôlé | humain | *absent — à prévoir* | — | ouvert |
+| *`% défini`* | part du vocabulaire documenté (nourrit la qualité Collection) | agrégat | dérivé | *absent — à prévoir* | — | ouvert |
+| *`valeur_definition` (B)* | **définition contextuelle** : glose d'un terme *par collection* | table (valeur_id, collection_id…) | humain | *absent — à prévoir (dormant)* | SKOS | ouvert |
+| *`version`* | version du concept | texte | système | *absent — à prévoir (dormant)* | SKOS / PROV | ouvert |
+
+## Niveau 8 — Paradonnée / système
+
+Source : table `meta` (clé/valeur) aujourd'hui ; **à venir, une couche d'audit** décidée le
+2026-07-15. Documente **le processus** — reproductibilité et **qualification du travail**.
+
+> **Décision (2026-07-15) — audit complet en journal *append-only* (lecture B).** Les tables
+> restent la source de vérité ; un **journal d'événements immuable** enregistre en plus chaque
+> acte de transformation/annotation, **sans inverser la base**. Portée : les *actes*
+> (segmentation, bulles, OCR, NLP, édition de zone, correction, validation, annotation, lien
+> d'entité) — **un événement par action**. Agent = identité humaine (auth) **ou** moteur +
+> version + paramètres. Les passes en lot = une **activité (run)** parente de ses événements.
+> La dérive machine↔humain est **récupérable depuis le journal** (avant/après) ; les entités
+> ne portent qu'un `touché`/`date_modification` dénormalisés. Exportable **PROV-O**
+> (`wasGeneratedBy` / `wasRevisionOf`) et **TEI `revisionDesc`/`change`**. Les agrégats
+> remontent nourrir la « provenance globale » de la **Collection**.
+
+| Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
+|---|---|---|---|---|---|---|
+| `meta.nlp_model` / `nlp_spacy` | modèle NLP ayant produit l'index | texte (nom+version) | paradonnée | structuré | PROV | ouvert |
+| `meta.nlp_reindexed_count` / `_at` | ampleur & date de la réindexation | entier / horodatage | paradonnée | structuré | PROV | ouvert |
+| `SCHEMA_VERSION` (`user_version`) | version du schéma | entier | système | structuré | — | ouvert |
+| *`activite` (run)* | exécution de passe : type, agent+version, params, date, portée, comptes | table | paradonnée | *absent — à prévoir* | PROV `Activity` | ouvert |
+| *`evenement` (journal)* | acte atomique immuable : type, agent, cible, avant/après, date, `activite_id` | table **append-only** | paradonnée | *absent — à prévoir* | PROV / TEI `change` | ouvert |
+| *`…​.activite_id`* | lien entité → run producteur | référence | paradonnée | *absent — à prévoir* | PROV `wasGeneratedBy` | ouvert |
+| *`touché` / `date_modification`* | surface dénormalisée (entité retouchée, quand) | drapeau + horodatage | paradonnée | *absent — à prévoir* | PROV | ouvert |
+| *`indicateurs de couverture`* | % validé · % touché · couverture OCR · densité · dérive | agrégats **dérivés du journal** | dérivé | *absent — à prévoir* | — | ouvert |
+| *`licence & droits`* | régime de diffusion par jeu | licence / mention | descriptif | *absent — à prévoir* | DC:rights / DataCite | ouvert |
+
+---
+
+## Synthèse — ce qui part au dépôt
+
+L'**unité de partage est la collection** (une collection = un dépôt = un DOI). Au sein de
+cette unité, trois régimes de diffusion :
+
+| Tier | Contenu | Régime |
+|---|---|---|
+| **Ouvert** (CC-BY / CC0) | descriptif · géométrie · structure · ordre · provenance/paradonnée · lemme/POS/morph · tags · notes · personnages · attributs · métriques matérielles | diffusable + DOI |
+| **Agrégat** | formes de surface (`texte`/`forme`) sous forme de fréquences/distributions | diffusable agrégé, restreint en verbatim aligné |
+| **Restreint** | scans (`chemin_*`) · **texte OCR verbatim** | détenu (exception TDM), non rediffusé — accès sur accord |
+
+## Récapitulatif des champs « à prévoir »
+
+Chantiers de FAIRisation dérivés de ce dictionnaire, par couche :
+
+- **Collection (palier supérieur)** : toute l'entité est à créer — `collection` +
+  `collection_album` (N-N statique), descripteurs de jeu, agrégats dérivés (couverture,
+  provenance globale), gel versionné et PID (dormants). C'est le prochain palier à écrire.
+- **Descriptif (N0)** : **contribution** Zotero-like (nom + rôle contrôlé-ouvert, DCterms /
+  MARC Relators ; contributeur-entité alignable VIAF/IdRef en dormant) · `date_edition` (ancre)
+  + `date_originale` (optionnel) — œuvre vs édition, un seul niveau · lieu · tirage · ISBN ·
+  langue · type · format · **PID**.
+- **Matériel (N1)** : `dpi` · `mode` · dimensions physiques · source de numérisation.
+- **Provenance / audit (N2, N8)** : couche d'audit décidée (2026-07-15) — **journal
+  d'événements append-only** + **activités (runs)** (agent, versions moteurs, params) +
+  liens entité→run + surface `touché`/`date_modification` + certitude + agrégats dérivés.
+  Export PROV-O / TEI.
+- **Vocabulaire (N7)** : lexique situé **SKOS** — `definition` · `note_portee` · état
+  `provisoire→défini` · **portée d'appartenance** (`collection_id`, A) ; définition contextuelle
+  (`valeur_definition`, B) et version = **dormants**. Indicateur « % défini » → qualité Collection.
+- **Entités (N6)** : alignement d'autorité (Wikidata / VIAF / IdRef).
+- **Droits (N8)** : métadonnée de licence explicite par jeu.
