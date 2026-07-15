@@ -76,7 +76,12 @@ Identifiants gardés **en mémoire serveur uniquement** (jamais sur disque).
 
 ### Export
 
-JSON-LD · CSV · TEI P5 (facsimile).
+**Contenu** (par album, routes `/api/export/*`) : JSON-LD · CSV · TEI P5 (facsimile).
+
+**Description des métadonnées** (corpus entier, additive, pour la réutilisation / le
+dépôt) : fiche descriptive, enregistrements (CSV par niveau · **XLSX** multi-feuilles ·
+JSON arbre) et manifests **IIIF Presentation 3.0** — scripts `tools/` hors-app, cf.
+`docs/export-metadonnees.md`.
 
 ### Tests & qualité
 
@@ -261,7 +266,9 @@ bd_annotator/
 │   ├── theme.js         # réglages d'affichage partagés (thème, contraste, zoom)
 │   ├── lib/             # modules UMD réutilisables et testés sous Node : nav.js, dialog.js
 │   └── style.css        # thème sombre/clair (partagé par les 4 pages)
-├── tools/               # scripts hors-app : reindex_nlp.py, pdf_check.py, sharedocs_check.py
+├── tools/               # scripts hors-app : reindex_nlp.py, pdf_check.py, sharedocs_check.py,
+│                        #   export métadonnées : description_collection · metadonnees_collection ·
+│                        #   iiif_manifest · valider_iiif (cf. docs/export-metadonnees.md)
 ├── deploy/              # Docker Compose + Caddy + Authelia (cf. docs/deploiement-docker.md)
 ├── docs/                # décisions de conception (grammaire, numérotation, sécurité…) + backlog
 ├── corpus/              # (gitignore) masters TIFF

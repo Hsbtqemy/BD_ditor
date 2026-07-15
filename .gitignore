@@ -23,6 +23,7 @@ htmlcov/
 Thumbs.db
 .vscode/
 .idea/
+~$*                 # verrous temporaires Office (Excel/Word) — ex. docs/exemples/~$*.xlsx
 
 # Logs (sorties uvicorn/serveur, non versionnées)
 *.log
@@ -31,6 +32,9 @@ Thumbs.db
 spike/samples/
 spike/report.html
 spike/report.csv
+
+# Exports de démonstration (les OUTILS sont versionnés, pas leurs sorties régénérables)
+docs/exemples/
 
 # Déploiement — secrets et état runtime (la config template est versionnée)
 deploy/.env
