@@ -36,6 +36,7 @@ def _add_case(client, planche, x, y, w, h):
                        json={"type": "case", "x": x, "y": y, "w": w, "h": h}).json()
 
 
+@requires_bulles
 def test_detecter_bulles_mock(client, planche, monkeypatch):
     """_run mocké : une bulle dans une case -> rattachée par géométrie."""
     case = _add_case(client, planche, 0, 0, 400, 500)  # couvre le master 400x500
@@ -51,6 +52,7 @@ def test_detecter_bulles_mock(client, planche, monkeypatch):
     assert bulle["parent_id"] == case["id"] and bulle["source"] == "auto"
 
 
+@requires_bulles
 def test_detecter_bulles_hors_case(client, planche, monkeypatch):
     monkeypatch.setattr(bulles, "_run",
                         lambda path, conf: (400, 500, [(5, 5, 10, 10)]))
@@ -61,6 +63,7 @@ def test_detecter_bulles_hors_case(client, planche, monkeypatch):
     assert bulle["parent_id"] is None
 
 
+@requires_bulles
 def test_detecter_bulles_replace(client, planche, monkeypatch):
     monkeypatch.setattr(bulles, "_run", lambda path, conf: (400, 500, [(5, 5, 10, 10)]))
     client.post(f"/api/planches/{planche['id']}/detecter-bulles")
@@ -70,6 +73,7 @@ def test_detecter_bulles_replace(client, planche, monkeypatch):
     assert len(bulles_n) == 1  # remplacées, pas accumulées
 
 
+@requires_bulles
 def test_redetecter_bulles_preserve_ocr(client, planche, monkeypatch):
     """Re-détecter préserve les bulles océrisées et ignore une détection qui les recouvre."""
     _add_case(client, planche, 0, 0, 400, 500)
@@ -89,6 +93,7 @@ def test_redetecter_bulles_preserve_ocr(client, planche, monkeypatch):
     assert body["preservees"] == 1 and body["ignores"] == 1 and body["nb_bulles"] == 1
 
 
+@requires_bulles
 def test_redetecter_bulles_preserve_annotation(client, planche, monkeypatch):
     """Une bulle annotée SANS OCR est préservée à la re-détection (branche
     'NOT EXISTS annotations' du tri)."""
@@ -114,6 +119,7 @@ def test_iou_unitaire():
     assert petit < 0.05               # petite bulle DANS une grande → IoU faible (≠ doublon)
 
 
+@requires_bulles
 def test_redetecter_bulles_dedup_iou(client, planche, monkeypatch):
     """S4 : dédup par IoU. Une petite bulle DISTINCTE dont le centre tombe dans une
     grosse bulle préservée n'est PAS un doublon (IoU faible) → ajoutée ; un quasi-doublon
@@ -143,6 +149,7 @@ def test_detecter_bulles_404(client):
     assert client.post("/api/planches/999/detecter-bulles").status_code == 404
 
 
+@requires_bulles
 def test_detecter_bulles_erreur_500(client, planche, monkeypatch):
     def boom(*a, **k):
         raise bulles.BullesError("explosion")
@@ -164,6 +171,7 @@ def _add_bulle(client, planche, x=10, y=10, w=80, h=40):
                        json={"type": "bulle", "x": x, "y": y, "w": w, "h": h}).json()
 
 
+@requires_ocr
 def test_ocr_mock_remplit_et_indexe(client, planche, monkeypatch):
     b = _add_bulle(client, planche)
     monkeypatch.setattr(ocr, "_get_reader", lambda langs: _FakeReader("BONJOUR ESTHER"))
@@ -177,6 +185,7 @@ def test_ocr_mock_remplit_et_indexe(client, planche, monkeypatch):
     assert any(x["region_id"] == b["id"] for x in res)
 
 
+@requires_ocr
 def test_ocr_only_empty_preserve_corrections(client, planche, monkeypatch):
     b = _add_bulle(client, planche)
     client.put(f"/api/regions/{b['id']}", json={"ocr_texte": "TEXTE HUMAIN"})
@@ -197,6 +206,7 @@ def test_ocr_404(client):
     assert client.post("/api/planches/999/ocr").status_code == 404
 
 
+@requires_ocr
 def test_ocr_erreur_500(client, planche, monkeypatch):
     def boom(*a, **k):
         raise ocr.OCRError("explosion")
@@ -306,6 +316,7 @@ def test_bulles_planche_inexistante(data_dir):
         conn.close()
 
 
+@requires_bulles
 def test_bulles_erreur_moteur_500(client, planche, monkeypatch):
     """Une erreur d'inférence/lecture image -> BullesError -> 500 propre."""
     def boom(path, conf):
@@ -315,6 +326,7 @@ def test_bulles_erreur_moteur_500(client, planche, monkeypatch):
     assert r.status_code == 500
 
 
+@requires_bulles
 def test_bulles_reraise_bulleserror(client, planche, monkeypatch):
     """Un BullesError de _run remonte tel quel (pas de double-emballage)."""
     def boom(path, conf):
@@ -324,6 +336,7 @@ def test_bulles_reraise_bulleserror(client, planche, monkeypatch):
     assert r.status_code == 500 and "déjà propre" in r.json()["detail"]
 
 
+@requires_ocr
 def test_ocr_reader_init_erreur(monkeypatch):
     """Échec de chargement du modèle EasyOCR -> OCRError."""
     monkeypatch.setattr(ocr, "_reader", None)
@@ -353,6 +366,7 @@ def test_ocr_planche_inexistante(data_dir):
         conn.close()
 
 
+@requires_ocr
 def test_ocr_min_size_et_crop_invalide(client, planche, monkeypatch):
     client.post(f"/api/planches/{planche['id']}/regions",
                 json={"type": "bulle", "x": 0, "y": 0, "w": 4, "h": 4})   # trop petite
