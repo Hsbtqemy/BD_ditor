@@ -103,7 +103,8 @@ def main() -> int:
     # --- Test d'écriture ---
     test_name = "bd_annotator_write_test.txt"
     test_path = f"{folder}/{test_name}" if folder else test_name
-    payload = b"BéDéditeur - test d'ecriture WebDAV (fichier temporaire a supprimer).\n"
+    payload = ("BéDéditeur - test d'écriture WebDAV (fichier temporaire à supprimer).\n"
+               ).encode("utf-8")
     print(f"\n→ Test d'écriture : dépôt de {test_name!r} …")
     try:
         sd.upload(test_path, payload)
