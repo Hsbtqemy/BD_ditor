@@ -357,3 +357,48 @@ humaine) — la qualité finale vient de la relecture humaine.
 - **Accessibilité** : thèmes clair / sombre + contraste élevé, navigation clavier
   (skip-link, `focus-visible`, Échap), zoom UI, `prefers-reduced-motion`. Conformité
   **WCAG 2.1 AA** vérifiée par axe-core (`tests/test_e2e_a11y.py`).
+
+## Lancer en local, pas à pas (avec environnement virtuel)
+
+Recette complète depuis un clone frais (macOS / Linux, **Python 3.12+**) :
+
+```bash
+# 1 — Environnement virtuel isolé (une seule fois)
+python3 -m venv .venv
+source .venv/bin/activate          # Windows : .venv\Scripts\activate
+#   → le prompt affiche « (.venv) » ; taper `deactivate` pour en sortir
+
+# 2 — Dépendances du noyau (FastAPI, Uvicorn, Pillow, httpx…)
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+# 3 — (optionnel) moteurs — détails dans « Installation » ci-dessus
+pip install -r requirements-ocr.txt          # bulles (YOLOv8) + OCR (EasyOCR)
+pip install -r requirements-nlp.txt && python -m spacy download fr_core_news_sm  # NLP
+pip install -r requirements-export.txt       # export métadonnées en XLSX
+git clone https://github.com/njean42/kumiko.git lib/kumiko && \
+  pip install opencv-python-headless numpy requests                              # segmentation
+
+# 4 — Lancer le serveur — DEUX variantes :
+uvicorn main:app                   # simple et stable (recommandé en dossier synchronisé)
+uvicorn main:app --reload          # dev : redémarre automatiquement à chaque modif du code
+#   ⚠️ Dossier Google Drive / Dropbox / OneDrive : ÉVITE `--reload`. La synchro touche
+#      les fichiers en continu → boucle de rechargement, le serveur cesse de répondre.
+
+# 5 — Ouvrir dans le navigateur
+#   http://127.0.0.1:8000            → Visionneuse
+#   http://127.0.0.1:8000/corpus     → Bibliothèque
+#   http://127.0.0.1:8000/recherche  → Recherche · /exploration → Exploration
+#   http://127.0.0.1:8000/docs       → doc interactive de l'API
+```
+
+La base `bd_annotator.sqlite` et les dossiers `corpus/` + `derivatives/` sont créés au
+**premier lancement**. Aux fois suivantes, il suffit de réactiver le venv et relancer :
+
+```bash
+source .venv/bin/activate && uvicorn main:app     # ajoute --reload hors dossier synchronisé
+```
+
+**Astuces** — port déjà pris : `uvicorn main:app --port 8001` · données ailleurs que dans
+le dépôt : `BD_DATA_DIR=/chemin/data uvicorn main:app` · lancer les tests :
+`pip install -r requirements-dev.txt && pytest` (cf. « Tests »).
