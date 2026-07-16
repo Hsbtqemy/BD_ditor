@@ -39,7 +39,7 @@ import pipeline.sharedocs as sharedocs_mod  # noqa: E402
 
 requires_kumiko = pytest.mark.skipif(
     not segmentation.kumiko_available(),
-    reason="Kumiko non installé dans lib/kumiko",
+    reason="Kumiko indisponible (clone lib/kumiko absent ou OpenCV/cv2 non installé)",
 )
 requires_bulles = pytest.mark.skipif(
     not bulles_mod.bulles_available(), reason="ultralytics non installé")

@@ -12,6 +12,7 @@ Kumiko doit être cloné dans lib/kumiko :
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 from collections import Counter
 import subprocess
@@ -32,7 +33,14 @@ class KumikoError(RuntimeError):
 
 
 def kumiko_available() -> bool:
-    return KUMIKO_ENTRY.is_file()
+    """Kumiko réellement UTILISABLE : script cloné **et** sa dépendance d'exécution
+    OpenCV (`cv2`) importable dans l'interpréteur courant (celui qui lance le
+    sous-processus, `sys.executable`). Sans `cv2`, Kumiko plante à l'import
+    (`ModuleNotFoundError`) : on le déclare alors INDISPONIBLE → la route renvoie un 503
+    « moteur absent » (invariant du pipeline) plutôt qu'un 500, et les tests
+    `@requires_kumiko` se skippent proprement. Cf. requirements-kumiko.txt
+    (opencv-python-headless)."""
+    return KUMIKO_ENTRY.is_file() and importlib.util.find_spec("cv2") is not None
 
 
 def _normalize_panel(panel) -> tuple[int, int, int, int]:
