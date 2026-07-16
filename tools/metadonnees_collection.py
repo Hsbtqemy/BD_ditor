@@ -43,7 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DB_PATH, BASE_DIR  # noqa: E402
 import database  # noqa: E402  (réutilise numeros_editoriaux / citations_regions)
-from _commun import version_outil  # noqa: E402  (provenance de l'outil, partagée)
+from _commun import version_outil, environnement  # noqa: E402  (provenance / env, partagés)
 
 
 def _grouper(conn, sql, cle=0):
@@ -199,6 +199,7 @@ def collecter(conn, verbatim: bool = False) -> dict:
         "paradonnee": {                       # niveau 8 — le PROGRAMME (cf. dictionnaire N8)
             "schema_version": c["schema_version"],
             "outil": version_outil(BASE_DIR),  # nom + version (déclarée) + révision git
+            "environnement": environnement(),  # python + versions installées (à l'export)
             "meta": c["meta"],                # modèle NLP + versions + dates de réindexation
             "a_prevoir": ["activité (run)", "journal d'événements (append-only)",
                           "activite_id par entité", "touché / date_modification",
@@ -298,13 +299,16 @@ def tables(conn, verbatim: bool = False) -> dict:
                               "WHERE dimension_id = ? ORDER BY valeur", (d["id"],))])
 
     ov = version_outil(BASE_DIR)              # provenance de l'outil (paradonnée)
-    out["paradonnee"] = (                     # niveau 8 — le PROGRAMME (meta + schéma + outil)
+    env = environnement()                     # python + versions installées (à l'export)
+    out["paradonnee"] = (                     # niveau 8 — le PROGRAMME (schéma + outil + env + meta)
         ["cle", "valeur"],
         [["schema_version", c["schema_version"]],
          ["outil", ov["nom"]], ["outil_version", ov["version"]],
          ["outil_revision", ov["revision"]],
+         ["python", env["python"]],
          ["ocr_verbatim_inclus", 1 if verbatim else 0]]
-        + [[k, v] for k, v in c["meta"].items()])
+        + [[k, v] for k, v in c["meta"].items()]
+        + [[f"pkg:{nom}", ver] for nom, ver in env["paquets"].items()])
     return out
 
 

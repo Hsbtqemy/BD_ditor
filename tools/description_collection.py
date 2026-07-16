@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DB_PATH, BASE_DIR  # noqa: E402
-from _commun import version_outil  # noqa: E402  (provenance de l'outil, partagée)
+from _commun import version_outil, environnement  # noqa: E402  (provenance / env, partagés)
 
 
 # --------------------------------------------------------------------------- #
@@ -171,7 +171,7 @@ def collecter(conn) -> tuple[dict, dict]:
                 "nlp": {"modele": meta.get("nlp_model"), "spacy": meta.get("nlp_spacy"),
                         "tokens_indexes": meta.get("nlp_reindexed_count"),
                         "reindexe_le": meta.get("nlp_reindexed_at")},
-                "versions_moteurs": None,  # kumiko/yolo/easyocr non tracées (run — à prévoir)
+                "environnement": environnement(),  # python + versions installées (à l'export)
             },
             "vocabulaire": {"dimensions": dimensions},
             "droits": {
