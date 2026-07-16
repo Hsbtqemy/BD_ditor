@@ -85,3 +85,17 @@ def test_iiif_valide(corpus, tmp_path):
     assert (out / "collection.json").exists()
     v = _run("valider_iiif.py", corpus["db"], corpus["data"], str(out))
     assert v.returncode == 0, v.stdout + v.stderr   # manifests conformes
+
+
+def test_iiif_conformance_stricte(corpus, tmp_path):
+    """Conformité STRICTE via iiif-prezi3 (lib IIIF officielle) : le manifest généré se
+    re-parse sans erreur dans ses modèles typés → validation INDÉPENDANTE de notre
+    validateur maison. Skip propre si la lib n'est pas installée."""
+    pytest.importorskip("iiif_prezi3")
+    out = tmp_path / "iiif"
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out))
+    assert r.returncode == 0, r.stderr
+    v = _run("valider_iiif.py", corpus["db"], corpus["data"], str(out))
+    assert v.returncode == 0, v.stdout + v.stderr
+    assert "Conformité stricte (iiif-prezi3) : exécutée" in v.stdout   # la passe a bien tourné

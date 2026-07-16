@@ -10,6 +10,11 @@ contrôles SÉMANTIQUES qu'un simple JSON-Schema ne fait pas :
   • Annotation → motivation / body / target ; cible `#xywh` = 4 entiers ;
   • la cible pointe un Canvas EXISTANT et la boîte tient DANS ses dimensions.
 
+En complément, si **iiif-prezi3** (bibliothèque IIIF officielle) est installé, une passe
+de conformité STRICTE re-parse chaque document dans ses modèles typés — validation
+INDÉPENDANTE de ce script, exécutée automatiquement quand la lib est présente (sinon
+ignorée : la validation structurelle reste la seule). `pip install -r requirements-export.txt`.
+
 Sortie : erreurs (violation) + avertissements (recommandation SHOULD non tenue).
 Code de sortie 1 s'il y a au moins une erreur.
 
@@ -212,8 +217,35 @@ def _charger(chemin):
         return json.load(f)
 
 
+def _strict(doc, rap) -> bool:
+    """Passe de conformité STRICTE via iiif-prezi3 (lib IIIF officielle) : re-parse le
+    document dans les modèles typés. Renvoie True si la passe a pu s'exécuter (lib
+    présente), False sinon (import protégé → dégradation propre). Tout écart de
+    conformité est ajouté au rapport, préfixé « strict: »."""
+    try:
+        from iiif_prezi3 import Collection, Manifest
+    except ImportError:
+        return False
+    cls = {"Manifest": Manifest, "Collection": Collection}.get(doc.get("type"))
+    if cls is None:                       # type racine déjà signalé par la passe structurelle
+        return True
+    try:
+        cls.model_validate(doc)
+    except Exception as exc:              # pydantic ValidationError (ou autre)
+        details = getattr(exc, "errors", None)
+        if callable(details):
+            for e in exc.errors()[:8]:
+                loc = ".".join(str(x) for x in e.get("loc", ())) or "(racine)"
+                rap.e(f"strict: {loc} — {e.get('msg', '')}")
+        else:
+            rap.e(f"strict: {str(exc).splitlines()[0]}")
+    return True
+
+
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Validateur structurel IIIF Presentation 3.0.")
+    ap = argparse.ArgumentParser(
+        description="Validateur IIIF Presentation 3.0 : structurel (toujours) + strict "
+                    "iiif-prezi3 (auto si installé).")
     ap.add_argument("chemins", nargs="+", help="fichiers .json ou un dossier")
     args = ap.parse_args(argv)
 
@@ -229,6 +261,7 @@ def main(argv=None) -> int:
     manifest_ids = {d.get("id") for d in docs.values() if d.get("type") == "Manifest"}
 
     rapports = []
+    strict_exec = None
     for ch, doc in docs.items():
         typ = doc.get("type")
         if typ == "Manifest":
@@ -239,6 +272,8 @@ def main(argv=None) -> int:
             rap = Rapport(ch)
             rap.e(f"type racine non géré : {typ!r} (Manifest ou Collection attendu)")
         rap.nom = os.path.basename(ch)
+        ran = _strict(doc, rap)           # passe stricte (auto si iiif-prezi3 présent)
+        strict_exec = ran if strict_exec is None else (strict_exec and ran)
         rapports.append(rap)
 
     total_err = total_warn = 0
@@ -253,7 +288,12 @@ def main(argv=None) -> int:
         total_err += len(rap.err)
         total_warn += len(rap.warn)
 
-    print(f"\nTotal : {total_err} erreur(s), {total_warn} avertissement(s) "
+    if strict_exec is None:               # aucun document traité
+        etat = "—"
+    else:
+        etat = "exécutée" if strict_exec else "non exécutée (iiif-prezi3 absent)"
+    print(f"\nConformité stricte (iiif-prezi3) : {etat}.")
+    print(f"Total : {total_err} erreur(s), {total_warn} avertissement(s) "
           f"sur {len(rapports)} document(s).")
     return 1 if total_err else 0
 

@@ -85,12 +85,28 @@ La base suit la config du projet (`BD_DB_PATH` / `BD_DATA_DIR`).
   jeu (JSON + XLSX + ZIP + tables CSV + fiche + IIIF). Aucun corpus réel n'est requis.
 - La couche **descriptive de la collection** (nom, responsables, licence…) reste vide
   tant que la table `collection` n'existe pas en base — champ « à prévoir » du dictionnaire.
-- La validation IIIF est **structurelle et hors ligne** (le validateur officiel
-  `validator.iiif.io` exige une URL publique). Elle ne récupère pas les images et ne
-  fait pas l'expansion JSON-LD ; à compléter le jour d'un déploiement servi.
+- **Validation IIIF à trois niveaux** : (1) **structurelle hors ligne**
+  (`tools/valider_iiif.py` : ids/URI uniques, Canvas → dimensions, cible `#xywh` dans les
+  bornes du Canvas…) ; (2) **stricte** via **`iiif-prezi3`** (bibliothèque IIIF *officielle* —
+  re-parse chaque document dans ses modèles typés ; validation **indépendante** de notre
+  script, exécutée automatiquement si la lib est installée, cf. `requirements-export.txt`) ;
+  (3) **validateur officiel** `validator.iiif.io`, au moment du dépôt (exige une **URL
+  publique** ; ne récupère pas les images ni ne fait l'expansion JSON-LD en local).
 - Une planche **sans dimensions master** ou une région **sans boîte** (coordonnées
   nulles) est **omise de l'IIIF** (un Canvas / un `xywh` exige des entiers positifs) —
   elle reste présente dans les CSV/JSON.
+
+## Dépôt IIIF (moment T)
+
+Le manifest est un livrable **ponctuel** (au dépôt), pas un service continu — BéDéditeur ne
+sert PAS de manifests en direct. Au dépôt, c'est l'**entrepôt** (Nakala / HAL / hôte IIIF)
+qui sert manifest + images (URL stable, CORS). En pratique :
+
+1. **Générer** avec `--base-url` = l'**hôte cible** (là où le manifest et les `/derivatives`
+   seront servis) : l'`id` du manifest doit pointer cet hôte, jamais `localhost`.
+2. **Vérifier** en local : `python tools/valider_iiif.py iiif/` (structurel + strict
+   `iiif-prezi3` si installé).
+3. **Au dépôt** : soumettre l'URL publique au **validateur officiel** `validator.iiif.io`.
 
 ## Récapitulatif des commandes
 
@@ -105,7 +121,7 @@ python tools/metadonnees_collection.py --zip metadonnees.zip       # bundle
 pip install -r requirements-export.txt
 python tools/metadonnees_collection.py --xlsx metadonnees.xlsx     # classeur
 
-# IIIF + validation
+# IIIF + validation (structurelle ; + stricte iiif-prezi3 si installé)
 python tools/iiif_manifest.py --base-url https://host/iiif --out-dir iiif/
 python tools/valider_iiif.py iiif/
 

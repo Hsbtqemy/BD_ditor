@@ -1,3 +1,7 @@
 # Export XLSX multi-feuilles (tools/metadonnees_collection.py --xlsx). Optionnel :
 # les sorties JSON et CSV n'en dépendent pas (import protégé).
 openpyxl==3.1.5
+
+# Validation STRICTE des manifests IIIF (tools/valider_iiif.py) via la bibliothèque
+# officielle. Optionnel : la validation structurelle n'en dépend pas (import protégé).
+iiif-prezi3==3.1.1
