@@ -86,10 +86,31 @@ def _descripteurs(args) -> dict:
 
 
 def _albums_ids(arg) -> list[int]:
-    """« 1,2,3 » → [1, 2, 3] (ignore les vides)."""
+    """« 1,2,3 » → [1, 2, 3] (ignore les vides). Erreur CLAIRE sur un jeton non entier."""
     if not arg:
         return []
-    return [int(x) for x in arg.replace(" ", "").split(",") if x]
+    out = []
+    for x in arg.replace(" ", "").split(","):
+        if not x:
+            continue
+        try:
+            out.append(int(x))
+        except ValueError:
+            raise SystemExit(f"--albums : « {x} » n'est pas un identifiant d'album "
+                             "(entiers séparés par des virgules attendus, ex. 1,2,3).")
+    return out
+
+
+def _lire_responsables(brut) -> list:
+    """JSON `responsables` (en base) → liste de dicts ; [] si absent/illisible (parité avec
+    les exports, qui protègent aussi ce décodage)."""
+    if not brut:
+        return []
+    try:
+        val = json.loads(brut)
+        return val if isinstance(val, list) else []
+    except (ValueError, TypeError):
+        return []
 
 
 def _albums_existants(conn, ids) -> list[int]:
@@ -142,7 +163,7 @@ def cmd_montrer(args) -> int:
             raise SystemExit(f"Collection {args.id} introuvable.")
         ids = database.collection_album_ids(conn, args.id)
         albums = {r["id"]: r["titre"] for r in conn.execute("SELECT id, titre FROM albums")}
-    resp = json.loads(row["responsables"]) if row["responsables"] else []
+    resp = _lire_responsables(row["responsables"])
     print(f"Collection {row['id']} — {row['nom']}")
     if row["description"]:
         print(f"  description      : {row['description']}")
