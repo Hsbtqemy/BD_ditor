@@ -19,6 +19,22 @@ def test_user_version_est_positionnee(data_dir, db_path):
     assert v == database.SCHEMA_VERSION
 
 
+def test_migration_refuse_downgrade(data_dir):
+    """AUDIT B5 : une base plus récente que le code n'est PAS rétrogradée en silence —
+    _migrate lève une erreur claire et laisse `user_version` intact."""
+    import pytest
+    conn = database.get_connection()
+    try:
+        conn.execute(f"PRAGMA user_version = {database.SCHEMA_VERSION + 1}")
+        conn.commit()
+        with pytest.raises(RuntimeError, match="plus récent"):
+            database._migrate(conn)
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == \
+            database.SCHEMA_VERSION + 1              # non rétrogradé
+    finally:
+        conn.close()
+
+
 def test_foreign_keys_actives(data_dir):
     conn = database.get_connection()
     try:

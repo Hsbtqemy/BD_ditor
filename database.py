@@ -315,8 +315,23 @@ def init_db() -> None:
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    """Migrations idempotentes (sûres sur base neuve comme existante)."""
+    """Migrations idempotentes, GATÉES PAR `user_version` (cf. AUDIT B5).
+
+    Deux garde-fous : (1) on REFUSE de rétrograder une base plus récente que le code
+    (sinon corruption silencieuse) ; (2) on COURT-CIRCUITE si la base est déjà au schéma
+    courant (aucune étape ne rejoue). Convention pour toute étape future : la garder par
+    `if version < N` — INDISPENSABLE dès qu'une migration n'est pas détectable par le
+    schéma lui-même (backfill, `UPDATE` de données), sinon elle rejouerait à chaque
+    démarrage. Les étapes historiques gardées par présence de colonne restent valables
+    (elles ne s'appliquent qu'aux bases pré-`user_version`)."""
     version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version > SCHEMA_VERSION:
+        raise RuntimeError(
+            f"Base au schéma v{version}, plus récent que ce code (v{SCHEMA_VERSION}). "
+            "Refus de rétrograder la base — mettez BéDéditeur à jour, ou restaurez une "
+            "sauvegarde compatible.")
+    if version == SCHEMA_VERSION:
+        return                          # déjà à jour : aucune étape à rejouer
 
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(albums)")}
     if "description" not in cols:                       # v1 → v2

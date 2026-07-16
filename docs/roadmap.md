@@ -98,7 +98,7 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 | # | Item | Prio·Effort | Note |
 |---|---|---|---|
 | **D1** | **UX-5 — undo des actions d'annotation** | P2·L | **forte valeur de sûreté** : la suppression cascade est le geste le plus dangereux, aujourd'hui irréversible sans restaurer une sauvegarde. Décision de conception (pile client vs **journal serveur**) — **recoupe A3** |
-| **D2** | **B5 — `_migrate` sans gating par `user_version`** | S | dette **devenue pressante** : le schéma évolue pour le FAIR (v14, bientôt v15) ; la 1ʳᵉ migration non détectable par colonne (backfill / `UPDATE`) cassera. À corriger avant A1 |
+| ~~**D2**~~ | ✅ **Fait 2026-07-16** — B5 : `_migrate` **gate par `user_version`** (refus de rétrograder + court-circuit si à jour + convention `if version < N`) ; test dédié. Assaini avant A1 | S | — |
 | — | B6 (transitions de statut + régression `annotee`→`segmentee`) · B7 (injection formule CSV — export **app**, distinct des tools) · B8 (`/api/sauvegarde` sans try/except → 500) · B9 (titre d'album vide accepté) · F5 (deep-link silencieux, aucun toast) · F6-F8 · T2/T4 (tests faibles) · S1/S5/S6/O1 (latents segmentation) · A11Y-2 (reliquat `px`→`rem`) · UX-3/UX-4 | mineurs | quick wins, à la demande |
 
 ---
@@ -107,7 +107,7 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 
 1. **[Cap] Piste A — dépôt utilisable** : **A1** (descriptif N0) → **A2** (crosswalk). À l'issue,
    une collection est réellement déposable sur Nakala/HAL.
-2. **D2** en passant (gating `_migrate`) : petit, et on touche justement au schéma en A1.
+2. ~~**D2** (gating `_migrate`)~~ — ✅ **fait 2026-07-16**, avant de toucher au schéma en A1.
 3. **Ouvrir la décision B1** en parallèle (vocabulaire émotions) — elle exige une discussion
    d'équipe *en amont*, autant l'amorcer tôt.
 4. Selon le cap suivant : **C1** (déploiement VPS) si le multi-utilisateur devient réel —
