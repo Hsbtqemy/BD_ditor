@@ -9,13 +9,15 @@ défaut : le corpus entier), les métadonnées décrites dans
 
 Les champs marqués « absent — à prévoir » dans le dictionnaire apparaissent dans le
 catalogue mais restent VIDES tant qu'ils ne sont pas en base : la sortie est ainsi
-honnête sur la couverture réelle. L'entité `collection` n'existant pas encore, le
-périmètre par défaut est le corpus entier (collection implicite).
+honnête sur la couverture réelle. Périmètre par défaut : le corpus entier ; `--collection
+<id>` restreint la couverture aux albums d'une collection et renseigne l'identité depuis
+la ligne `collection` (v14). Gérer les collections : `gerer_collections.py`.
 
 Usage :
     python tools/description_collection.py                     # JSON sur stdout
     python tools/description_collection.py --csv               # CSV sur stdout
     python tools/description_collection.py --json f.json --csv f.csv
+    python tools/description_collection.py --json f.json --collection 3
 La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
 """
 from __future__ import annotations
@@ -31,8 +33,9 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import database  # noqa: E402  (collection_row / collection_album_ids — palier collection)
 from config import DB_PATH, BASE_DIR  # noqa: E402
-from _commun import version_outil, environnement  # noqa: E402  (provenance / env, partagés)
+from _commun import version_outil, environnement, portee_albums  # noqa: E402  (provenance / env / portée)
 
 
 # --------------------------------------------------------------------------- #
@@ -58,68 +61,102 @@ def _fmt(d: dict) -> str:
     return "; ".join(f"{k}:{v}" for k, v in d.items() if v)
 
 
+def _responsables_desc(row) -> list:
+    """`collection.responsables` (JSON) → liste de dicts (vide si absent/illisible)."""
+    if not row or not row["responsables"]:
+        return []
+    try:
+        val = json.loads(row["responsables"])
+        return val if isinstance(val, list) else []
+    except (ValueError, TypeError):
+        return []
+
+
 # --------------------------------------------------------------------------- #
 # Collecte des agrégats (roll-up JSON + carte plate pour le CSV)
 # --------------------------------------------------------------------------- #
-def collecter(conn) -> tuple[dict, dict]:
+def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     """Calcule la fiche de description. Renvoie (rollup_json, agg_plat).
 
     `agg_plat` : {(niveau, element): "valeur ou agrégat"} — sert à remplir le CSV.
+    `collection_id` (scoping `--collection`) restreint la COUVERTURE aux albums de la
+    collection et renseigne l'IDENTITÉ depuis la ligne `collection` ; les catalogues de
+    référence (personnages, vocabulaire, tags) restent comptés GLOBALEMENT (canoniques au
+    corpus), seuls leurs LIENS vers des régions scopées sont restreints.
     """
+    # --- Périmètre : identité + prédicats de portée ------------------------- #
+    row = database.collection_row(conn, collection_id) if collection_id is not None else None
+    if collection_id is not None and row is None:
+        raise SystemExit(f"Collection {collection_id} introuvable.")
+    album_ids = (database.collection_album_ids(conn, collection_id)
+                 if collection_id is not None else None)
+    P = portee_albums(album_ids)
+    if P is None:                                   # corpus entier : aucun filtre
+        W_alb = W_pl = W_reg = W_tok = A_reg = A_tok = W_pose = ""
+    else:
+        W_alb = f" WHERE id IN {P['albums']}"
+        W_pl = f" WHERE album_id IN {P['albums']}"
+        W_reg = f" WHERE id IN {P['regions']}"           # regions.id
+        A_reg = f" AND id IN {P['regions']}"
+        W_tok = f" WHERE region_id IN {P['regions']}"    # tables portant region_id
+        A_tok = f" AND region_id IN {P['regions']}"
+        W_pose = (f" WHERE annotation_id IN (SELECT id FROM annotations "
+                  f"WHERE region_id IN {P['regions']})")
+
     # --- Volumes de base ---------------------------------------------------- #
-    albums = _un(conn, "SELECT COUNT(*) FROM albums")
+    albums = _un(conn, "SELECT COUNT(*) FROM albums" + W_alb)
     a = conn.execute(
         "SELECT COUNT(auteur) auteur, COUNT(annee) annee, COUNT(editeur) editeur, "
         "COUNT(serie) serie, COUNT(description) descr, MIN(annee) amin, MAX(annee) amax "
-        "FROM albums").fetchone()
+        "FROM albums" + W_alb).fetchone()
     p = conn.execute(
         "SELECT COUNT(*) t, SUM(CASE WHEN role='recit' THEN 1 ELSE 0 END) recit, "
         "COUNT(validee) validees, COUNT(chemin_tiff) tiff, COUNT(largeur_px) dims, "
-        "COUNT(date_segmentation) seg, COUNT(verrouillee) verr FROM planches").fetchone()
+        "COUNT(date_segmentation) seg, COUNT(verrouillee) verr FROM planches" + W_pl).fetchone()
     planches, recit = p["t"], (p["recit"] or 0)
     paratexte = planches - recit
-    statuts = _dist(conn, "SELECT statut, COUNT(*) FROM planches GROUP BY statut")
+    statuts = _dist(conn, "SELECT statut, COUNT(*) FROM planches" + W_pl + " GROUP BY statut")
 
-    regions = _un(conn, "SELECT COUNT(*) FROM regions")
-    par_type = _dist(conn, "SELECT type, COUNT(*) FROM regions GROUP BY type "
-                           "ORDER BY COUNT(*) DESC")
-    enfants = _un(conn, "SELECT COUNT(*) FROM regions WHERE parent_id IS NOT NULL")
-    avec_geom = _un(conn, "SELECT COUNT(*) FROM regions WHERE x IS NOT NULL")
-    avec_ordre = _un(conn, "SELECT COUNT(*) FROM regions WHERE ordre IS NOT NULL")
-    sources = _dist(conn, "SELECT source, COUNT(*) FROM regions WHERE source IS NOT NULL "
-                          "GROUP BY source ORDER BY COUNT(*) DESC")
+    regions = _un(conn, "SELECT COUNT(*) FROM regions" + W_reg)
+    par_type = _dist(conn, "SELECT type, COUNT(*) FROM regions" + W_reg
+                           + " GROUP BY type ORDER BY COUNT(*) DESC")
+    enfants = _un(conn, "SELECT COUNT(*) FROM regions WHERE parent_id IS NOT NULL" + A_reg)
+    avec_geom = _un(conn, "SELECT COUNT(*) FROM regions WHERE x IS NOT NULL" + A_reg)
+    avec_ordre = _un(conn, "SELECT COUNT(*) FROM regions WHERE ordre IS NOT NULL" + A_reg)
+    sources = _dist(conn, "SELECT source, COUNT(*) FROM regions WHERE source IS NOT NULL"
+                          + A_reg + " GROUP BY source ORDER BY COUNT(*) DESC")
 
     # --- OCR (contenu textuel) --------------------------------------------- #
     txt_tot = _un(conn, "SELECT COUNT(*) FROM regions WHERE type IN "
-                        "('bulle','cartouche','texte')")
+                        "('bulle','cartouche','texte')" + A_reg)
     txt_ocr = _un(conn, "SELECT COUNT(*) FROM regions WHERE type IN "
                         "('bulle','cartouche','texte') AND ocr_texte IS NOT NULL "
-                        "AND TRIM(ocr_texte) <> ''")
+                        "AND TRIM(ocr_texte) <> ''" + A_reg)
 
     # --- Tokens (analyse linguistique) ------------------------------------- #
-    tokens = _un(conn, "SELECT COUNT(*) FROM tokens")
-    prov = _dist(conn, "SELECT provenance, COUNT(*) FROM tokens_effectifs "
-                       "GROUP BY provenance")
-    par_pos = _dist(conn, "SELECT pos, COUNT(*) FROM tokens_effectifs WHERE pos IS NOT NULL "
-                          "GROUP BY pos ORDER BY COUNT(*) DESC LIMIT 8")
+    tokens = _un(conn, "SELECT COUNT(*) FROM tokens" + W_tok)
+    prov = _dist(conn, "SELECT provenance, COUNT(*) FROM tokens_effectifs" + W_tok
+                       + " GROUP BY provenance")
+    par_pos = _dist(conn, "SELECT pos, COUNT(*) FROM tokens_effectifs WHERE pos IS NOT NULL"
+                          + A_tok + " GROUP BY pos ORDER BY COUNT(*) DESC LIMIT 8")
     corr = conn.execute(
         "SELECT SUM(CASE WHEN etat='corrige' THEN 1 ELSE 0 END) c, "
         "SUM(CASE WHEN etat='valide' THEN 1 ELSE 0 END) v, "
-        "SUM(obsolete) obs FROM token_correction").fetchone()
+        "SUM(obsolete) obs FROM token_correction" + W_tok).fetchone()
 
     # --- Annotation interprétative ----------------------------------------- #
     notes = _un(conn, "SELECT COUNT(*) FROM annotations WHERE note IS NOT NULL "
-                      "AND TRIM(note) <> ''")
-    tags_n = _un(conn, "SELECT COUNT(*) FROM tags")
-    poses = _un(conn, "SELECT COUNT(*) FROM annotation_tags")
+                      "AND TRIM(note) <> ''" + A_tok)
+    tags_n = _un(conn, "SELECT COUNT(*) FROM tags")           # catalogue de référence (global)
+    poses = _un(conn, "SELECT COUNT(*) FROM annotation_tags" + W_pose)
 
-    # --- Entités personnages ----------------------------------------------- #
-    perso = _un(conn, "SELECT COUNT(*) FROM personnages")
-    loc_liens = _un(conn, "SELECT COUNT(*) FROM bulle_locuteur")
-    loc_distinct = _un(conn, "SELECT COUNT(DISTINCT personnage_id) FROM bulle_locuteur")
-    pres_liens = _un(conn, "SELECT COUNT(*) FROM personnage_presence")
+    # --- Entités personnages (entités globales ; LIENS scopés) ------------- #
+    perso = _un(conn, "SELECT COUNT(*) FROM personnages")     # entités canoniques (globales)
+    loc_liens = _un(conn, "SELECT COUNT(*) FROM bulle_locuteur" + W_tok)
+    loc_distinct = _un(conn, "SELECT COUNT(DISTINCT personnage_id) FROM bulle_locuteur" + W_tok)
+    pres_liens = _un(conn, "SELECT COUNT(*) FROM personnage_presence" + W_tok)
 
-    # --- Vocabulaire facetté ----------------------------------------------- #
+    # --- Vocabulaire facetté (catalogue global ; poses `ra` scopées) ------- #
     dimensions = []
     for d in conn.execute("SELECT id, cible, nom FROM attribut_dimension "
                           "ORDER BY cible, nom"):
@@ -129,12 +166,13 @@ def collecter(conn) -> tuple[dict, dict]:
         dimensions.append({"cible": d["cible"], "nom": d["nom"],
                            "valeurs": vals, "pct_defini": None})
     val_tot = _un(conn, "SELECT COUNT(*) FROM attribut_valeur")
-    pa = _un(conn, "SELECT COUNT(*) FROM personnage_attribut")
-    ra = _un(conn, "SELECT COUNT(*) FROM region_attribut")
+    pa = _un(conn, "SELECT COUNT(*) FROM personnage_attribut")   # profils (entité globale)
+    ra = _un(conn, "SELECT COUNT(*) FROM region_attribut" + W_tok)
 
     # --- Paradonnée / système ---------------------------------------------- #
     meta = {r[0]: r[1] for r in conn.execute("SELECT cle, valeur FROM meta")}
     schema_version = _un(conn, "PRAGMA user_version")
+    resp = _responsables_desc(row)
 
     # --- Roll-up JSON ------------------------------------------------------- #
     rollup = {
@@ -142,12 +180,21 @@ def collecter(conn) -> tuple[dict, dict]:
             "genere_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "outil": version_outil(BASE_DIR),
             "schema_version": schema_version,
-            "perimetre": {"type": "collection", "collection_id": None,
-                          "portee": "corpus entier"},
-            "identite": {  # entité `collection` absente (à prévoir) → non renseignée
-                "nom": None, "description": None, "responsables": [],
-                "date_constitution": None, "periode_couverte": None,
-                "licence_defaut": None, "pid": None,
+            "perimetre": {"type": "collection", "collection_id": collection_id,
+                          "portee": row["nom"] if row else "corpus entier",
+                          **({"albums_scope": len(album_ids)} if album_ids is not None else {})},
+            "identite": {  # renseignée depuis la ligne `collection` (v14) ; None = corpus entier
+                "nom": row["nom"] if row else None,
+                "description": row["description"] if row else None,
+                "responsables": resp,
+                "date_constitution": row["date_creation"] if row else None,
+                "periode_couverte": ({"debut": row["date_debut"], "fin": row["date_fin"]}
+                                     if row else None),
+                "licence_defaut": row["licence_defaut"] if row else None,
+                "base_legale": row["base_legale"] if row else None,
+                "statut_diffusion": row["statut_diffusion"] if row else None,
+                "date_embargo": row["date_embargo"] if row else None,
+                "pid": None,
             },
             "couverture": {
                 "albums": albums,
@@ -190,7 +237,19 @@ def collecter(conn) -> tuple[dict, dict]:
         return _pct(sum(1 for d in dimensions if d["valeurs"]), len(dimensions)) \
             if dimensions else None
 
+    debut, fin = (row["date_debut"], row["date_fin"]) if row else (None, None)
     agg = {
+        ("collection", "nom"): row["nom"] if row else "",
+        ("collection", "description"): (row["description"] if row else "") or "",
+        ("collection", "licence_defaut"): (row["licence_defaut"] if row else "") or "",
+        ("collection", "base_legale"): (row["base_legale"] if row else "") or "",
+        ("collection", "statut_diffusion"):
+            ((row["statut_diffusion"] or "")
+             + (f" (levée {row['date_embargo']})" if row and row["date_embargo"] else ""))
+            if row else "",
+        ("collection", "responsables"): "; ".join(r.get("nom", "") for r in resp),
+        ("collection", "dates"): (f"{debut or '?'} → {fin or '?'}") if (debut or fin) else "",
+        ("collection", "collection_album"): (len(album_ids) if album_ids is not None else ""),
         ("collection", "couverture_volume"):
             f"{albums} albums; {planches} planches; {regions} régions; {tokens} tokens",
         ("collection", "provenance_globale"):
@@ -258,11 +317,14 @@ def collecter(conn) -> tuple[dict, dict]:
 # Colonnes : niveau, element, qualifie, provenance, statut, standard, ouvrable.
 # --------------------------------------------------------------------------- #
 CATALOGUE = [
-    ("collection", "nom", "nom du corpus", "descriptif", "absent — à prévoir", "DC:title", "ouvert"),
-    ("collection", "description", "objet/périmètre", "descriptif", "absent — à prévoir", "DC:description", "ouvert"),
-    ("collection", "licence_defaut", "régime de diffusion", "descriptif", "absent — à prévoir", "DC:rights", "ouvert"),
-    ("collection", "responsables", "qui gère", "descriptif", "absent — à prévoir", "DC:creator", "ouvert"),
-    ("collection", "dates", "constitution/couverture", "descriptif", "absent — à prévoir", "DC:date", "ouvert"),
+    ("collection", "nom", "nom du corpus", "descriptif", "structuré", "DC:title", "ouvert"),
+    ("collection", "description", "objet/périmètre", "descriptif", "libre", "DC:description", "ouvert"),
+    ("collection", "licence_defaut", "régime de diffusion", "descriptif", "structuré", "DC:rights", "ouvert"),
+    ("collection", "base_legale", "base légale d'accès aux données", "descriptif", "libre", "DC:rights/PROV", "ouvert"),
+    ("collection", "statut_diffusion", "régime d'accès (public/embargo/restreint/privé)", "descriptif", "structuré", "DataCite/Nakala", "ouvert"),
+    ("collection", "responsables", "qui gère (JSON nom+rôle+orcid)", "descriptif", "structuré", "DC:creator", "ouvert"),
+    ("collection", "dates", "constitution/couverture", "descriptif", "structuré", "DC:date", "ouvert"),
+    ("collection", "collection_album", "appartenance album↔collection (N-N statique)", "humain", "structuré", "—", "ouvert"),
     ("collection", "couverture_volume", "ampleur du jeu", "dérivé", "dérivé", "DC:extent", "ouvert"),
     ("collection", "provenance_globale", "moteurs+versions", "dérivé", "dérivé", "PROV", "ouvert"),
     ("collection", "version_gel", "instantané citable", "système", "absent — à prévoir (dormant)", "DataCite", "ouvert"),
@@ -391,10 +453,12 @@ def main(argv=None) -> int:
                     help="écrit le roll-up JSON (défaut si aucun format demandé)")
     ap.add_argument("--csv", nargs="?", const="-", metavar="FICHIER",
                     help="écrit le catalogue CSV")
+    ap.add_argument("--collection", type=int, metavar="ID",
+                    help="restreint le périmètre à cette collection (défaut : corpus entier)")
     args = ap.parse_args(argv)
 
     with _connexion_ro() as conn:
-        rollup, agg = collecter(conn)
+        rollup, agg = collecter(conn, collection_id=args.collection)
 
     if args.json is None and args.csv is None:
         args.json = "-"                      # défaut : JSON sur stdout

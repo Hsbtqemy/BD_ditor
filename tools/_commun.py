@@ -162,6 +162,27 @@ def environnement() -> dict:
             "moteurs": {"kumiko": _kumiko()}}
 
 
+def portee_albums(album_ids) -> dict | None:
+    """PORTÉE d'export par ensemble d'albums (scoping `--collection`).
+
+    `album_ids=None` → renvoie None (corpus entier : aucun filtre). Sinon, renvoie des
+    ENSEMBLES de valeurs SQL prêts à l'emploi dans un `IN` — les entiers sont inlinés (ils
+    viennent de la base, JAMAIS d'une saisie utilisateur ; aucune injection possible) :
+
+      • `albums`   : `(1,2,3)`                       → `... WHERE id IN {p['albums']}`
+      • `planches` : `(SELECT id FROM planches …)`    → `... WHERE planche_id IN {p['planches']}`
+      • `regions`  : `(SELECT id FROM regions …)`     → `... WHERE region_id IN {p['regions']}`
+
+    Un ensemble vide (collection sans album) donne `(-1)` : aucun id ne matche → sortie vide,
+    honnête. Partagé par metadonnees_collection.py et description_collection.py."""
+    if album_ids is None:
+        return None
+    a = ",".join(str(int(i)) for i in album_ids) or "-1"
+    planches = f"(SELECT id FROM planches WHERE album_id IN ({a}))"
+    regions = f"(SELECT id FROM regions WHERE planche_id IN {planches})"
+    return {"albums": f"({a})", "planches": planches, "regions": regions}
+
+
 @lru_cache(maxsize=None)
 def version_outil(base_dir) -> dict:
     """Provenance de l'outil produisant l'export (paradonnée / PROV).

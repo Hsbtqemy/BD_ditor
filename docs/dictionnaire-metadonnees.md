@@ -67,7 +67,7 @@ manquait, et le plus haut :
 
 | Palier | Décrit… | Niveaux | Cible |
 |---|---|---|---|
-| **Collection** | le *corpus / jeu de données* | *(nouveau)* | fiche de dépôt · description PGD |
+| **Collection** | le *corpus / jeu de données* | *(v14)* | fiche de dépôt · description PGD |
 | **Item — album** | chaque *œuvre* | 0 | Dublin Core |
 | **Élément** | *planche · zone · token* (structure, contenu, langue) | 1–8 | TEI · IIIF · UD |
 
@@ -75,11 +75,14 @@ manquait, et le plus haut :
 
 ## Collection (corpus) — palier supérieur
 
-Source *(à créer)* : table `collection` + liaison `collection_album` (appartenance **N-N**,
-album ∈ 0..N collections). Palier qui décrit **le jeu de données lui-même** — une sélection
-constituée pour une étude. **Transversal** (un album peut vivre dans plusieurs collections)
-et **unité de dépôt** : une collection = un dépôt Nakala/HAL = un DOI = la « description des
-données » d'un PGD. **Tout ce palier est à prévoir** (rien en base à ce jour).
+Source : table `collection` + liaison `collection_album` (appartenance **N-N**,
+album ∈ 0..N collections) — **réalisé (schéma v14)**. Palier qui décrit **le jeu de données
+lui-même** — une sélection constituée pour une étude. **Transversal** (un album peut vivre
+dans plusieurs collections) et **unité de dépôt** : une collection = un dépôt Nakala/HAL =
+un DOI = la « description des données » d'un PGD. Gestion **hors-app** :
+`tools/gerer_collections.py` (créer / ranger des albums / éditer) ; les exports acceptent
+`--collection <id>` pour scoper leur périmètre. Restent *à prévoir* le gel versionné et le
+PID (dormants).
 
 Décisions de conception (2026-07-15) : entité nommée `collection` (« corpus » déjà pris par
 `CORPUS_DIR` et la page bibliothèque) ; appartenance **statique et figeable** (composition
@@ -88,16 +91,16 @@ stable → citable), quitte à la **construire** depuis un filtre puis la geler 
 
 | Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
 |---|---|---|---|---|---|---|
-| `collection.nom` | nom du corpus / jeu | texte | descriptif | absent — à prévoir | DC:title | ouvert |
-| `collection.description` | objet, périmètre, critères de sélection | texte | descriptif | absent — à prévoir | DC:description | ouvert |
-| `collection.licence_defaut` | régime de diffusion du **jeu enrichi** | licence / mention | descriptif | absent — à prévoir | DC:rights / DataCite | ouvert |
-| `collection.base_legale` | base légale d'accès/usage des **données** (scans, verbatim) — **à établir** (piste : exception TDM recherche, à valider) | mention + source + date | descriptif / paradonnée | absent — à prévoir | DC:rights / PROV | ouvert |
-| `collection.statut_diffusion` | régime d'accès du jeu : `public` \| `embargo`(date) \| `restreint`(sur accord) \| `privé` | contrôlé | descriptif | absent — à prévoir | DataCite / Nakala | ouvert |
-| `collection.responsables` | qui constitue / gère le corpus | identités (→ auth) | descriptif | absent — à prévoir | DC:creator / PROV | ouvert |
-| `collection.dates` | période de constitution / couverture | dates | descriptif | absent — à prévoir | DC:date · DC:coverage | ouvert |
-| `collection_album` | appartenance album ↔ collection (statique) | liaison N-N | humain | absent — à prévoir | — | ouvert |
-| `couverture / volume` | ampleur du jeu (nb albums/planches/régions/tokens) | agrégats | dérivé | absent — à prévoir | DC:extent | ouvert |
-| `provenance globale` | moteurs / modèles + versions ayant produit le jeu | agrégat paradonnée | dérivé | absent — à prévoir | PROV | ouvert |
+| `collection.nom` | nom du corpus / jeu | texte | descriptif | structuré (v14) | DC:title | ouvert |
+| `collection.description` | objet, périmètre, critères de sélection | texte | descriptif | libre (v14) | DC:description | ouvert |
+| `collection.licence_defaut` | régime de diffusion du **jeu enrichi** | licence / mention | descriptif | structuré (v14) | DC:rights / DataCite | ouvert |
+| `collection.base_legale` | base légale d'accès/usage des **données** (scans, verbatim) — **à établir** (piste : exception TDM recherche, à valider) | mention + source + date | descriptif / paradonnée | libre (v14) | DC:rights / PROV | ouvert |
+| `collection.statut_diffusion` | régime d'accès du jeu : `public` \| `embargo`(date) \| `restreint`(sur accord) \| `privé` | contrôlé | descriptif | structuré (v14) | DataCite / Nakala | ouvert |
+| `collection.responsables` | qui constitue / gère le corpus | JSON `[{nom, rôle, orcid?}]` (forme `contribution`) | descriptif | structuré (v14) | DC:creator / PROV | ouvert |
+| `collection.dates` | période de constitution / couverture (`date_debut`/`date_fin`) | dates | descriptif | structuré (v14) | DC:date · DC:coverage | ouvert |
+| `collection_album` | appartenance album ↔ collection (statique, avec `rang`) | liaison N-N | humain | structuré (v14) | — | ouvert |
+| `couverture / volume` | ampleur du jeu (nb albums/planches/régions/tokens) | agrégats | dérivé | dérivé (export) | DC:extent | ouvert |
+| `provenance globale` | moteurs / modèles + versions ayant produit le jeu | agrégat paradonnée | dérivé | dérivé (export) | PROV | ouvert |
 | `description PGD dérivée` | sections data-description / formats pour le dépôt | export dérivé | dérivé | absent — à prévoir | — | ouvert |
 | *`version / gel`* | instantané citable (corpus v1, v2) | texte + horodatage | système | absent — à prévoir *(dormant)* | DataCite version / PROV | ouvert |
 | *`PID`* | DOI du dépôt de la collection | URI résoluble | système | absent — à prévoir *(dormant)* | DataCite | ouvert |
@@ -334,9 +337,12 @@ cette unité, trois régimes de diffusion :
 
 Chantiers de FAIRisation dérivés de ce dictionnaire, par couche :
 
-- **Collection (palier supérieur)** : toute l'entité est à créer — `collection` +
-  `collection_album` (N-N statique), descripteurs de jeu, agrégats dérivés (couverture,
-  provenance globale), gel versionné et PID (dormants). C'est le prochain palier à écrire.
+- **Collection (palier supérieur)** : **réalisé (v14)** — `collection` + `collection_album`
+  (N-N statique avec `rang`), descripteurs de jeu (nom, description, licence, base légale,
+  statut de diffusion, responsables, dates), agrégats dérivés à l'export (couverture,
+  provenance globale). Gestion : `tools/gerer_collections.py` ; scope d'export : `--collection`.
+  Restent *à prévoir* : gel versionné et PID (dormants), appartenance fine planche/région
+  (dormant), description PGD dérivée.
 - **Descriptif (N0)** : **contribution** Zotero-like (nom + rôle contrôlé-ouvert, DCterms /
   MARC Relators ; contributeur-entité alignable VIAF/IdRef en dormant) · `date_edition` (ancre)
   + `date_originale` (optionnel) — œuvre vs édition, un seul niveau · lieu · tirage · ISBN ·

@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 # --------------------------------------------------------------------------- #
@@ -218,6 +218,36 @@ CREATE TABLE IF NOT EXISTS region_attribut (
     PRIMARY KEY (region_id, valeur_id)
 );
 
+-- COLLECTION (v14) — palier supérieur : décrit le JEU DE DONNÉES lui-même (une sélection
+-- constituée pour une étude), unité de dépôt (1 collection = 1 dépôt Nakala/HAL = 1 DOI).
+-- Cf. docs/dictionnaire-metadonnees.md (palier « Collection »). L'appartenance est N-N,
+-- STATIQUE (composition figée → citable). Les descripteurs DÉCRIVENT le régime de droits ;
+-- ils ne l'IMPOSENT pas (l'accès est géré par l'auth / l'entrepôt). `responsables` est un
+-- JSON [{nom, role, orcid?}] — même forme que la future `contribution` (N0), pour converger.
+CREATE TABLE IF NOT EXISTS collection (
+    id                INTEGER PRIMARY KEY,
+    nom               TEXT NOT NULL,
+    description       TEXT,
+    licence_defaut    TEXT,                         -- ex. « CC-BY-4.0 » (tier ouvert)
+    base_legale       TEXT,                         -- à quel titre on détient/exploite les données (à établir, hors code)
+    statut_diffusion  TEXT,                         -- 'public' | 'embargo' | 'restreint' | 'prive'
+    date_embargo      TEXT,                          -- levée d'embargo (si statut_diffusion='embargo')
+    responsables      TEXT,                          -- JSON : [{"nom":…, "role":…, "orcid":…}]
+    date_debut        TEXT,                          -- période de constitution / couverture
+    date_fin          TEXT,
+    date_creation     TEXT DEFAULT (datetime('now'))
+);
+
+-- Appartenance album ↔ collection (N-N, statique). `rang` = ordre citable stable dans la
+-- collection. CASCADE des deux côtés : on détache la liaison si l'album OU la collection
+-- disparaît. Un album peut vivre dans 0..N collections.
+CREATE TABLE IF NOT EXISTS collection_album (
+    collection_id  INTEGER NOT NULL REFERENCES collection(id) ON DELETE CASCADE,
+    album_id       INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    rang           INTEGER,
+    PRIMARY KEY (collection_id, album_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_planches_album   ON planches(album_id);
 CREATE INDEX IF NOT EXISTS idx_regions_planche  ON regions(planche_id);
 CREATE INDEX IF NOT EXISTS idx_regions_parent   ON regions(parent_id);
@@ -232,6 +262,7 @@ CREATE INDEX IF NOT EXISTS idx_presence_perso   ON personnage_presence(personnag
 CREATE INDEX IF NOT EXISTS idx_attrval_dim      ON attribut_valeur(dimension_id);
 CREATE INDEX IF NOT EXISTS idx_persoattr_val    ON personnage_attribut(valeur_id);
 CREATE INDEX IF NOT EXISTS idx_regattr_val      ON region_attribut(valeur_id);
+CREATE INDEX IF NOT EXISTS idx_colalbum_album   ON collection_album(album_id);
 -- NB : l'unicité (album_id, numero) des planches (DB-1) est posée en MIGRATION
 -- (idx_planches_album_numero), pas ici : sa création doit suivre un dédoublonnage
 -- d'éventuelles données préexistantes, qui ne peut avoir lieu qu'après SCHEMA_SQL.
@@ -347,6 +378,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
             _dedup_numeros_planches(conn)
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_planches_album_numero "
                          "ON planches(album_id, numero)")
+
+    # v13 → v14 : palier COLLECTION — tables `collection` + `collection_album` (N-N statique),
+    # unité de dépôt (1 collection = 1 DOI). NOUVELLES tables créées par SCHEMA_SQL
+    # (CREATE … IF NOT EXISTS) → rien à migrer (aucune donnée existante), juste acter la
+    # version. Cf. docs/dictionnaire-metadonnees.md (palier « Collection »).
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -501,6 +537,30 @@ def citations_regions(conn: sqlite3.Connection,
         else:
             out[rid] = {"planche": ed, "texte": f"pl.{ed}"}
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Collections (palier supérieur — v14 ; cf. docs/dictionnaire-metadonnees.md)
+# --------------------------------------------------------------------------- #
+def collections(conn: sqlite3.Connection) -> list[dict]:
+    """Toutes les collections, avec leur nombre d'albums. Ordre d'id (stable)."""
+    return [dict(r) for r in conn.execute(
+        "SELECT c.*, "
+        "(SELECT COUNT(*) FROM collection_album ca WHERE ca.collection_id = c.id) "
+        "AS nb_albums FROM collection c ORDER BY c.id")]
+
+
+def collection_row(conn: sqlite3.Connection, collection_id: int) -> dict | None:
+    """Ligne descriptive d'une collection (dict), ou None si absente."""
+    r = conn.execute("SELECT * FROM collection WHERE id = ?", (collection_id,)).fetchone()
+    return dict(r) if r else None
+
+
+def collection_album_ids(conn: sqlite3.Connection, collection_id: int) -> list[int]:
+    """Ids des albums d'une collection, dans l'ordre de `rang` (composition citable)."""
+    return [r[0] for r in conn.execute(
+        "SELECT album_id FROM collection_album WHERE collection_id = ? "
+        "ORDER BY rang, album_id", (collection_id,))]
 
 
 # --------------------------------------------------------------------------- #

@@ -19,12 +19,15 @@ fois et référencées depuis les régions. Lecture SEULE.
 Le texte OCR est du CONTENU (`restreint`), pas de la métadonnée : par défaut on
 n'expose que présence + longueur. `--verbatim` inclut le texte (export détenu).
 
-Périmètre par défaut : le corpus entier (l'entité `collection` n'existe pas encore).
+Périmètre par défaut : le corpus entier. `--collection <id>` restreint aux albums d'une
+collection (records scopés ; catalogues de référence — personnages, vocabulaire, tags —
+restent globaux car canoniques au corpus). Gérer les collections : `gerer_collections.py`.
 
 Usage :
     python tools/metadonnees_collection.py --json f.json
     python tools/metadonnees_collection.py --csv-dir tables/
     python tools/metadonnees_collection.py --zip metadonnees.zip
+    python tools/metadonnees_collection.py --json f.json --collection 3
 La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
 """
 from __future__ import annotations
@@ -43,7 +46,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DB_PATH, BASE_DIR  # noqa: E402
 import database  # noqa: E402  (réutilise numeros_editoriaux / citations_regions)
-from _commun import version_outil, environnement, composants  # noqa: E402  (provenance / env, partagés)
+from _commun import (version_outil, environnement, composants,  # noqa: E402  (provenance / env, partagés)
+                     portee_albums)
 
 
 def _grouper(conn, sql, cle=0):
@@ -55,8 +59,15 @@ def _grouper(conn, sql, cle=0):
     return out
 
 
-def _cartes(conn) -> dict:
-    """Cartes de niveau corpus, préchargées une fois (source unique pour JSON et CSV)."""
+def _cartes(conn, album_ids=None) -> dict:
+    """Cartes de niveau corpus, préchargées une fois (source unique pour JSON et CSV).
+
+    `album_ids` (scoping `--collection`) filtre les cartes PAR RÉGION iterées telles quelles
+    dans les tables CSV (tokens, annotations, tags posés, attributs de région). Les
+    CATALOGUES de référence (personnages, vocabulaire, tags) restent GLOBAUX : ce sont des
+    entités canoniques de corpus, référencées par nom (cf. docs/export-metadonnees.md)."""
+    p = portee_albums(album_ids)
+    w_reg = f" WHERE region_id IN {p['regions']}" if p else ""
     perso_nom = {r["id"]: r["nom"] for r in conn.execute("SELECT id, nom FROM personnages")}
     return {
         "perso_nom": perso_nom,
@@ -67,7 +78,9 @@ def _cartes(conn) -> dict:
         "region_attr": _grouper(conn,
             "SELECT ra.region_id, d.nom, v.valeur FROM region_attribut ra "
             "JOIN attribut_valeur v ON v.id = ra.valeur_id "
-            "JOIN attribut_dimension d ON d.id = v.dimension_id ORDER BY d.nom, v.valeur"),
+            "JOIN attribut_dimension d ON d.id = v.dimension_id "
+            + (f"WHERE ra.region_id IN {p['regions']} " if p else "")
+            + "ORDER BY d.nom, v.valeur"),
         "perso_attr": _grouper(conn,
             "SELECT pa.personnage_id, d.nom, v.valeur FROM personnage_attribut pa "
             "JOIN attribut_valeur v ON v.id = pa.valeur_id "
@@ -75,7 +88,7 @@ def _cartes(conn) -> dict:
         "annot": {r["region_id"]: {"note": r["note"], "date_creation": r["date_creation"],
                                    "date_modification": r["date_modification"]}
                   for r in conn.execute("SELECT region_id, note, date_creation, "
-                                        "date_modification FROM annotations")},
+                                        "date_modification FROM annotations" + w_reg)},
         "tags_cat": {r["label"]: {"couleur": r["couleur"], "description": r["description"]}
                      for r in conn.execute("SELECT label, couleur, description FROM tags")},
         "nb_planches": {r["album_id"]: r["n"] for r in conn.execute(
@@ -83,19 +96,23 @@ def _cartes(conn) -> dict:
         "ann_tags": _grouper(conn,
             "SELECT a.region_id, t.label FROM annotations a "
             "JOIN annotation_tags at ON at.annotation_id = a.id "
-            "JOIN tags t ON t.id = at.tag_id ORDER BY t.label"),
-        "tokens": _tokens_by_region(conn),
+            "JOIN tags t ON t.id = at.tag_id "
+            + (f"WHERE a.region_id IN {p['regions']} " if p else "")
+            + "ORDER BY t.label"),
+        "tokens": _tokens_by_region(conn, album_ids),
         "numero_editorial": _numeros_editoriaux_global(conn),
         "meta": {r["cle"]: r["valeur"] for r in conn.execute("SELECT cle, valeur FROM meta")},
         "schema_version": conn.execute("PRAGMA user_version").fetchone()[0],
     }
 
 
-def _tokens_by_region(conn) -> dict:
+def _tokens_by_region(conn, album_ids=None) -> dict:
+    p = portee_albums(album_ids)
+    w_reg = f" WHERE region_id IN {p['regions']}" if p else ""
     out: dict = {}
     for r in conn.execute("SELECT region_id, ordre, texte, lemme, pos, morph, provenance, "
-                          "a_revoir, corr_auteur FROM tokens_effectifs "
-                          "ORDER BY region_id, ordre"):
+                          "a_revoir, corr_auteur FROM tokens_effectifs" + w_reg
+                          + " ORDER BY region_id, ordre"):
         out.setdefault(r["region_id"], []).append({
             "ordre": r["ordre"], "texte": r["texte"], "lemme": r["lemme"],
             "pos": r["pos"], "morph": r["morph"] or None,
@@ -115,11 +132,67 @@ def _paires(liste):
     return [{"dimension": dim, "valeur": val} for dim, val in (liste or [])]
 
 
+def _responsables(row) -> list:
+    """`collection.responsables` (JSON en base) → liste de dicts (vide si absent/illisible)."""
+    brut = row.get("responsables") if row else None
+    if not brut:
+        return []
+    try:
+        val = json.loads(brut)
+        return val if isinstance(val, list) else []
+    except (ValueError, TypeError):
+        return []
+
+
+def _bloc_collection(row) -> dict | None:
+    """Descripteurs de la collection (palier supérieur) pour l'arbre JSON / la table CSV.
+    None si périmètre = corpus entier (collection implicite)."""
+    if row is None:
+        return None
+    return {"id": row["id"], "nom": row["nom"], "description": row["description"],
+            "licence_defaut": row["licence_defaut"], "base_legale": row["base_legale"],
+            "statut_diffusion": row["statut_diffusion"], "date_embargo": row["date_embargo"],
+            "responsables": _responsables(row),
+            "date_debut": row["date_debut"], "date_fin": row["date_fin"],
+            "date_creation": row["date_creation"]}
+
+
+def _perimetre(collection_id, row, album_ids) -> dict:
+    """Bloc `perimetre` commun (corpus entier vs collection scopée)."""
+    per = {"type": "collection", "collection_id": collection_id,
+           "portee": row["nom"] if row else "corpus entier"}
+    if album_ids is not None:
+        per["albums"] = len(album_ids)
+    return per
+
+
+def _resoudre(conn, collection_id):
+    """(row, album_ids) pour un périmètre. collection_id None → (None, None) = corpus entier.
+    Erreur si la collection est demandée mais absente."""
+    if collection_id is None:
+        return None, None
+    row = database.collection_row(conn, collection_id)
+    if row is None:
+        raise SystemExit(f"Collection {collection_id} introuvable.")
+    return row, database.collection_album_ids(conn, collection_id)
+
+
+def _albums_du_perimetre(conn, album_ids):
+    """Lignes d'albums du périmètre : ordre de `rang` si scopé (composition citable),
+    sinon tous les albums par id."""
+    if album_ids is None:
+        return conn.execute("SELECT * FROM albums ORDER BY id").fetchall()
+    rows = [conn.execute("SELECT * FROM albums WHERE id = ?", (aid,)).fetchone()
+            for aid in album_ids]
+    return [r for r in rows if r is not None]
+
+
 # --------------------------------------------------------------------------- #
 # Vue JSON — arbre imbriqué
 # --------------------------------------------------------------------------- #
-def collecter(conn, verbatim: bool = False) -> dict:
-    c = _cartes(conn)
+def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
+    row, album_ids = _resoudre(conn, collection_id)
+    c = _cartes(conn, album_ids)
 
     vocab = []
     for d in conn.execute("SELECT id, cible, nom FROM attribut_dimension ORDER BY cible, nom"):
@@ -166,7 +239,7 @@ def collecter(conn, verbatim: bool = False) -> dict:
         return node
 
     albums = []
-    for a in conn.execute("SELECT * FROM albums ORDER BY id"):
+    for a in _albums_du_perimetre(conn, album_ids):
         planches = []
         for p in conn.execute("SELECT * FROM planches WHERE album_id = ? ORDER BY numero, id",
                              (a["id"],)):
@@ -194,7 +267,8 @@ def collecter(conn, verbatim: bool = False) -> dict:
 
     return {"metadonnees_collection": {
         "genere_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "perimetre": {"type": "collection", "collection_id": None, "portee": "corpus entier"},
+        "perimetre": _perimetre(collection_id, row, album_ids),
+        "collection": _bloc_collection(row),   # descripteurs du jeu (None = corpus entier)
         "ocr_verbatim_inclus": verbatim,
         "paradonnee": {                       # niveau 8 — le PROGRAMME (cf. dictionnaire N8)
             "schema_version": c["schema_version"],
@@ -214,18 +288,31 @@ def collecter(conn, verbatim: bool = False) -> dict:
 # --------------------------------------------------------------------------- #
 # Vue CSV — tables relationnelles (un dict {nom: (colonnes, lignes)})
 # --------------------------------------------------------------------------- #
-def tables(conn, verbatim: bool = False) -> dict:
-    c = _cartes(conn)
-    cits = database.citations_regions(
-        conn, [r["id"] for r in conn.execute("SELECT id FROM regions")])
+def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
+    row, album_ids = _resoudre(conn, collection_id)
+    c = _cartes(conn, album_ids)
+    P = portee_albums(album_ids)
+    w_pl = f" WHERE album_id IN {P['albums']}" if P else ""          # planches.album_id
+    w_rp = f" WHERE p.album_id IN {P['albums']}" if P else ""        # regions ⋈ planches
+    cits = database.citations_regions(conn, [r["id"] for r in conn.execute(
+        "SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id" + w_rp)])
     out: dict = {}
+
+    # La collection elle-même (descripteurs) : 1 ligne si scopée, 0 en corpus entier.
+    out["collection"] = (
+        ["id", "nom", "description", "licence_defaut", "base_legale", "statut_diffusion",
+         "date_embargo", "responsables", "date_debut", "date_fin", "date_creation"],
+        [[row["id"], row["nom"], row["description"], row["licence_defaut"],
+          row["base_legale"], row["statut_diffusion"], row["date_embargo"],
+          json.dumps(_responsables(row), ensure_ascii=False),
+          row["date_debut"], row["date_fin"], row["date_creation"]]] if row else [])
 
     out["albums"] = (
         ["id", "titre", "auteur", "annee", "editeur", "serie", "description", "date_import",
          "nombre_pages"],
         [[a["id"], a["titre"], a["auteur"], a["annee"], a["editeur"], a["serie"],
           a["description"], a["date_import"], c["nb_planches"].get(a["id"], 0)]
-         for a in conn.execute("SELECT * FROM albums ORDER BY id")])
+         for a in _albums_du_perimetre(conn, album_ids)])
 
     out["planches"] = (
         ["id", "album_id", "numero", "role", "numero_editorial", "statut", "validee",
@@ -235,7 +322,8 @@ def tables(conn, verbatim: bool = False) -> dict:
           c["numero_editorial"].get(p["id"]), p["statut"], p["validee"], p["verrouillee"],
           p["date_segmentation"], p["largeur_px"], p["hauteur_px"],
           p["chemin_tiff"], p["chemin_web"]]
-         for p in conn.execute("SELECT * FROM planches ORDER BY album_id, numero, id")])
+         for p in conn.execute("SELECT * FROM planches" + w_pl
+                               + " ORDER BY album_id, numero, id")])
 
     reg_cols = ["id", "planche_id", "album_id", "parent_id", "type", "x", "y", "w", "h",
                 "ordre", "source", "date_creation", "citation", "ocr_present", "ocr_longueur"]
@@ -244,8 +332,8 @@ def tables(conn, verbatim: bool = False) -> dict:
     reg_cols += ["locuteur", "presence"]
     reg_rows = []
     for r in conn.execute("SELECT r.*, p.album_id AS album_id FROM regions r "
-                         "JOIN planches p ON p.id = r.planche_id "
-                         "ORDER BY r.planche_id, r.ordre, r.id"):
+                         "JOIN planches p ON p.id = r.planche_id" + w_rp
+                         + " ORDER BY r.planche_id, r.ordre, r.id"):
         ocr = r["ocr_texte"] or ""
         ligne = [r["id"], r["planche_id"], r["album_id"], r["parent_id"], r["type"],
                  r["x"], r["y"], r["w"], r["h"], r["ordre"], r["source"], r["date_creation"],
@@ -491,20 +579,23 @@ def main(argv=None) -> int:
                     help="écrit un classeur XLSX (un onglet par table ; requiert openpyxl)")
     ap.add_argument("--verbatim", action="store_true",
                     help="inclut le texte OCR (contenu restreint)")
+    ap.add_argument("--collection", type=int, metavar="ID",
+                    help="restreint le périmètre à cette collection (défaut : corpus entier)")
     args = ap.parse_args(argv)
 
     veut_tables = bool(args.csv_dir or args.zip or args.xlsx)
     if args.json is None and not veut_tables:
         args.json = "-"
 
+    cid = args.collection
     with _connexion_ro() as conn:
         besoin_arbre = args.json is not None or bool(args.xlsx)
-        arbre = collecter(conn, verbatim=args.verbatim) if besoin_arbre else None
-        tbls = tables(conn, verbatim=args.verbatim) if veut_tables else None
+        arbre = collecter(conn, verbatim=args.verbatim, collection_id=cid) if besoin_arbre else None
+        tbls = tables(conn, verbatim=args.verbatim, collection_id=cid) if veut_tables else None
         fiche = None
         if args.xlsx:
             import description_collection
-            fiche = description_collection.collecter(conn)[0]["description_collection"]
+            fiche = description_collection.collecter(conn, collection_id=cid)[0]["description_collection"]
 
     if args.json is not None:
         texte = json.dumps(arbre, ensure_ascii=False, indent=2)

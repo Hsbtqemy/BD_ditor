@@ -33,8 +33,8 @@ def test_contrainte_rejette_doublon(client, album):
 
 
 def test_migration_dedoublonne(client, album, db_path):
-    """Base « v12 » avec des numéros en double → dédoublonnée puis contrainte à v13
-    (ce que fait le lifespan au démarrage via init_db)."""
+    """Base « v12 » avec des numéros en double → dédoublonnée puis contrainte, et amenée
+    au schéma courant (ce que fait le lifespan au démarrage via init_db)."""
     aid = album["id"]
     raw = sqlite3.connect(db_path)
     raw.execute("DROP INDEX IF EXISTS idx_planches_album_numero")     # simule l'avant-DB-1
@@ -50,7 +50,7 @@ def test_migration_dedoublonne(client, album, db_path):
                   check.execute("SELECT numero FROM planches WHERE album_id = ?", (aid,)))
     version = check.execute("PRAGMA user_version").fetchone()[0]
     check.close()
-    assert version == 13
+    assert version == database.SCHEMA_VERSION       # migrée jusqu'au schéma courant
     assert len(nums) == 2 and len(set(nums)) == 2   # plus aucun doublon
     assert 5 in nums                                # la première garde son numéro
 

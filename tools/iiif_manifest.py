@@ -12,9 +12,13 @@ coordonnées. Il reste à servir les images (serveur IIIF Image ou statiques) so
 Le texte OCR (contenu `restreint`) n'est PAS inclus par défaut ; `--verbatim`
 l'ajoute en annotation `supplementing` (transcription).
 
+`--collection <id>` restreint aux albums d'une collection (la Collection IIIF prend alors
+son nom) ; sinon, corpus entier. Gérer les collections : `tools/gerer_collections.py`.
+
 Usage :
     python tools/iiif_manifest.py --base-url https://host/iiif           # manifest album 1 → stdout
     python tools/iiif_manifest.py --base-url https://host/iiif --out-dir iiif/
+    python tools/iiif_manifest.py --base-url https://host/iiif --out-dir iiif/ --collection 3
 La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
 """
 from __future__ import annotations
@@ -122,12 +126,12 @@ def manifeste_album(a, base, verbatim):
     }
 
 
-def collection(albums, base):
+def collection(albums, base, nom=None):
     return {
         "@context": CTX,
         "id": f"{base}/collection.json",
         "type": "Collection",
-        "label": _lang("Corpus entier"),
+        "label": _lang(nom or "Corpus entier"),
         "items": [{"id": f"{base}/album/{a['id']}/manifest.json", "type": "Manifest",
                    "label": _lang(a["titre"])} for a in albums],
     }
@@ -147,12 +151,16 @@ def main(argv=None) -> int:
                     help="écrit collection.json + un manifest par album ; sinon stdout (album 1)")
     ap.add_argument("--verbatim", action="store_true",
                     help="inclut l'OCR en annotation supplementing (contenu restreint)")
+    ap.add_argument("--collection", type=int, metavar="ID",
+                    help="restreint aux albums d'une collection (défaut : corpus entier)")
     args = ap.parse_args(argv)
     base = args.base_url.rstrip("/")
 
     with _connexion_ro() as conn:
-        arbre = mc.collecter(conn, verbatim=args.verbatim)
+        arbre = mc.collecter(conn, verbatim=args.verbatim, collection_id=args.collection)
     albums = arbre["metadonnees_collection"]["albums"]
+    bloc = arbre["metadonnees_collection"].get("collection")   # None = corpus entier
+    nom_collection = bloc["nom"] if bloc else None
 
     if not args.out_dir:
         if not albums:
@@ -164,7 +172,7 @@ def main(argv=None) -> int:
 
     os.makedirs(args.out_dir, exist_ok=True)
     with open(os.path.join(args.out_dir, "collection.json"), "w", encoding="utf-8") as f:
-        json.dump(collection(albums, base), f, ensure_ascii=False, indent=2)
+        json.dump(collection(albums, base, nom_collection), f, ensure_ascii=False, indent=2)
     for a in albums:
         man = manifeste_album(a, base, args.verbatim)
         with open(os.path.join(args.out_dir, f"manifest-a{a['id']}.json"),

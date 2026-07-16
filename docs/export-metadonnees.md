@@ -7,8 +7,10 @@
 > **lecture seule**. Cadre conceptuel : `docs/dictionnaire-metadonnees.md`.
 
 Tout passe par des **scripts hors-app** (`tools/`), pas par l'API. Périmètre par
-défaut : le **corpus entier** (l'entité `collection` du dictionnaire est « à prévoir »
-en base ; le corpus tient lieu de collection implicite).
+défaut : le **corpus entier**. Depuis le schéma **v14**, l'entité `collection` existe en
+base (palier supérieur du dictionnaire, unité de dépôt) : on la gère avec
+`tools/gerer_collections.py`, et chaque export accepte `--collection <id>` pour se
+restreindre à ses albums. Sans collection, le corpus entier tient lieu de collection implicite.
 
 ## Principe : un modèle, plusieurs sérialisations
 
@@ -28,12 +30,33 @@ Deux registres, à ne pas confondre :
 
 | Script | Sorties | Commande type |
 |---|---|---|
+| `tools/gerer_collections.py` | **écrit** : crée / édite une collection, y range des albums | `creer --nom "…" --albums 1,2` |
 | `tools/description_collection.py` | roll-up **JSON** + catalogue **CSV** (le dictionnaire instancié) | `--json f.json --csv f.csv` |
 | `tools/metadonnees_collection.py` | **JSON** arbre · **CSV** par niveau (`--csv-dir`/`--zip`) · **XLSX** multi-feuilles (`--xlsx`) | `--xlsx metadonnees.xlsx` |
 | `tools/iiif_manifest.py` | **IIIF Presentation 3.0** : Manifest/album, Canvas/planche, Collection | `--base-url https://host --out-dir iiif/` |
 | `tools/valider_iiif.py` | rapport de conformité IIIF (structurel, hors ligne) | `iiif/` |
 
+`gerer_collections.py` est le **seul outil d'écriture** de ce lot (les autres lisent en
+seule lecture) ; ses sous-commandes : `lister`, `montrer ID`, `creer`, `modifier ID`,
+`ajouter ID --albums …`, `retirer ID --albums …`, `supprimer ID`. Les trois exports
+prennent `--collection <id>` (défaut : corpus entier).
+
 La base suit la config du projet (`BD_DB_PATH` / `BD_DATA_DIR`).
+
+## Portée d'une collection (`--collection`)
+
+Une collection est un **ensemble d'albums** (appartenance N-N, statique → citable). Quand
+`--collection <id>` est passé :
+
+- les **records** (`metadonnees_collection.py`) et l'**IIIF** ne portent que sur les albums
+  de la collection ; l'arbre JSON gagne un bloc `collection` (descripteurs) et la Collection
+  IIIF prend son nom ;
+- la **fiche** (`description_collection.py`) renseigne son bloc `identite` depuis la ligne
+  `collection` et **restreint la couverture** à ces albums ;
+- les **catalogues de référence** — personnages, vocabulaire facetté, étiquettes (tags) —
+  restent **globaux** (entités canoniques du corpus) ; seuls leurs **liens** vers des régions
+  du périmètre sont comptés/scopés. Le rattachement d'un terme de vocabulaire à une collection
+  (« portée d'appartenance ») reste *à prévoir* (cf. dictionnaire, N7).
 
 ## Formats produits
 
@@ -83,8 +106,10 @@ La base suit la config du projet (`BD_DB_PATH` / `BD_DATA_DIR`).
   versionnés) sont **reproductibles** — `python tools/regenerer_exemples.py` sème un
   corpus de démonstration jetable (`tools/semer_demo.py`, versionné) puis réécrit tout le
   jeu (JSON + XLSX + ZIP + tables CSV + fiche + IIIF). Aucun corpus réel n'est requis.
-- La couche **descriptive de la collection** (nom, responsables, licence…) reste vide
-  tant que la table `collection` n'existe pas en base — champ « à prévoir » du dictionnaire.
+- La couche **descriptive de la collection** (nom, responsables, licence, base légale,
+  statut de diffusion, dates) est renseignée dès qu'une collection est créée
+  (`gerer_collections.py`) et scopée par `--collection` ; **sans** collection, le périmètre
+  reste le corpus entier et cette couche est vide (collection implicite).
 - **Validation IIIF à trois niveaux** : (1) **structurelle hors ligne**
   (`tools/valider_iiif.py` : ids/URI uniques, Canvas → dimensions, cible `#xywh` dans les
   bornes du Canvas…) ; (2) **stricte** via **`iiif-prezi3`** (bibliothèque IIIF *officielle* —
@@ -111,7 +136,13 @@ qui sert manifest + images (URL stable, CORS). En pratique :
 ## Récapitulatif des commandes
 
 ```bash
-# Fiche descriptive
+# Collections (unité de dépôt) — création + rattachement d'albums
+python tools/gerer_collections.py creer --nom "Corpus X" --licence CC-BY-4.0 \
+    --statut public --responsable "Nom;chercheur;0000-0000-…" --albums 1,2,3
+python tools/gerer_collections.py lister
+python tools/gerer_collections.py montrer 1
+
+# Fiche descriptive (--collection pour scoper ; sinon corpus entier)
 python tools/description_collection.py --json fiche.json --csv fiche.csv
 
 # Métadonnées réelles
@@ -120,6 +151,9 @@ python tools/metadonnees_collection.py --csv-dir tables/           # tables CSV
 python tools/metadonnees_collection.py --zip metadonnees.zip       # bundle
 pip install -r requirements-export.txt
 python tools/metadonnees_collection.py --xlsx metadonnees.xlsx     # classeur
+
+# Scoper un export à une collection (idem pour description_collection / iiif_manifest)
+python tools/metadonnees_collection.py --json arbre.json --collection 1
 
 # IIIF + validation (structurelle ; + stricte iiif-prezi3 si installé)
 python tools/iiif_manifest.py --base-url https://host/iiif --out-dir iiif/
