@@ -43,7 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DB_PATH, BASE_DIR  # noqa: E402
 import database  # noqa: E402  (réutilise numeros_editoriaux / citations_regions)
-from _commun import version_outil, environnement  # noqa: E402  (provenance / env, partagés)
+from _commun import version_outil, environnement, composants  # noqa: E402  (provenance / env, partagés)
 
 
 def _grouper(conn, sql, cle=0):
@@ -200,6 +200,7 @@ def collecter(conn, verbatim: bool = False) -> dict:
             "schema_version": c["schema_version"],
             "outil": version_outil(BASE_DIR),  # nom + version (déclarée) + révision git
             "environnement": environnement(),  # python + versions installées (à l'export)
+            "logiciels": composants(),        # inventaire documenté : version + rôle + site + description
             "meta": c["meta"],                # modèle NLP + versions + dates de réindexation
             "a_prevoir": ["activité (run)", "journal d'événements (append-only)",
                           "activite_id par entité", "touché / date_modification",
@@ -300,15 +301,24 @@ def tables(conn, verbatim: bool = False) -> dict:
 
     ov = version_outil(BASE_DIR)              # provenance de l'outil (paradonnée)
     env = environnement()                     # python + versions installées (à l'export)
-    out["paradonnee"] = (                     # niveau 8 — le PROGRAMME (schéma + outil + env + meta)
+    out["paradonnee"] = (                     # niveau 8 — le PROGRAMME (schéma + outil + python + meta)
         ["cle", "valeur"],
         [["schema_version", c["schema_version"]],
          ["outil", ov["nom"]], ["outil_version", ov["version"]],
          ["outil_revision", ov["revision"]],
          ["python", env["python"]],
          ["ocr_verbatim_inclus", 1 if verbatim else 0]]
-        + [[k, v] for k, v in c["meta"].items()]
-        + [[f"pkg:{nom}", ver] for nom, ver in env["paquets"].items()])
+        + [[k, v] for k, v in c["meta"].items()])
+
+    # Inventaire logiciel documenté (SBOM) : une ligne par composant (Python, Kumiko,
+    # paquets) avec version RÉELLE + rôle dans le projet + site officiel + description
+    # générique (résumé PyPI). Remplace/enrichit les anciennes lignes pkg: de paradonnée.
+    out["logiciels"] = (
+        ["composant", "categorie", "version", "role", "site_officiel", "description"],
+        [[co["composant"], co["categorie"],
+          co["version"] if co["installe"] else "(absent)",
+          co["role"], co["site"], co["resume"] or ""]
+         for co in composants()])
     return out
 
 

@@ -79,8 +79,10 @@ La base suit la config du projet (`BD_DB_PATH` / `BD_DATA_DIR`).
 
 ## Limites (état actuel)
 
-- Les exemples de `docs/exemples/` sont produits sur un **corpus de démonstration semé**
-  (aucun corpus réel n'est versionné).
+- Les exemples de `docs/exemples/` (dossier **gitignoré** : artefacts locaux, non
+  versionnés) sont **reproductibles** — `python tools/regenerer_exemples.py` sème un
+  corpus de démonstration jetable (`tools/semer_demo.py`, versionné) puis réécrit tout le
+  jeu (JSON + XLSX + ZIP + tables CSV + fiche + IIIF). Aucun corpus réel n'est requis.
 - La couche **descriptive de la collection** (nom, responsables, licence…) reste vide
   tant que la table `collection` n'existe pas en base — champ « à prévoir » du dictionnaire.
 - La validation IIIF est **structurelle et hors ligne** (le validateur officiel
@@ -106,4 +108,7 @@ python tools/metadonnees_collection.py --xlsx metadonnees.xlsx     # classeur
 # IIIF + validation
 python tools/iiif_manifest.py --base-url https://host/iiif --out-dir iiif/
 python tools/valider_iiif.py iiif/
+
+# (Re)générer TOUT le jeu d'exemples de docs/exemples/ (corpus de démo jetable)
+python tools/regenerer_exemples.py
 ```
