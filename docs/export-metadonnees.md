@@ -35,6 +35,7 @@ Deux registres, à ne pas confondre :
 | `tools/metadonnees_collection.py` | **JSON** arbre · **CSV** par niveau (`--csv-dir`/`--zip`) · **XLSX** multi-feuilles (`--xlsx`) | `--xlsx metadonnees.xlsx` |
 | `tools/iiif_manifest.py` | **IIIF Presentation 3.0** : Manifest/album, Canvas/planche, Collection | `--base-url https://host --out-dir iiif/` |
 | `tools/valider_iiif.py` | rapport de conformité IIIF (structurel, hors ligne) | `iiif/` |
+| `tools/crosswalk_depot.py` | **Dublin Core** (JSON-LD) + **DataCite 4.x** (JSON/XML) : notices album + collection (cf. `docs/crosswalk-depot.md`) | `--collection 1 --out-dir depot/` |
 
 `gerer_collections.py` est le **seul outil d'écriture** de ce lot (les autres lisent en
 seule lecture) ; ses sous-commandes : `lister`, `montrer ID`, `creer`, `modifier ID`,
@@ -161,6 +162,10 @@ python tools/metadonnees_collection.py --json arbre.json --collection 1
 # IIIF + validation (structurelle ; + stricte iiif-prezi3 si installé)
 python tools/iiif_manifest.py --base-url https://host/iiif --out-dir iiif/
 python tools/valider_iiif.py iiif/
+
+# Crosswalk de dépôt : Dublin Core + DataCite (cf. docs/crosswalk-depot.md)
+python tools/crosswalk_depot.py --collection 1 --out-dir depot/
+python tools/crosswalk_depot.py --publisher "Huma-Num (Nakala)" --annee-depot 2026
 
 # (Re)générer TOUT le jeu d'exemples de docs/exemples/ (corpus de démo jetable)
 python tools/regenerer_exemples.py
