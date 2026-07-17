@@ -6,7 +6,7 @@
 > *dérivé*, ou *encore à prévoir*. Document de référence pour la réutilisation, la
 > qualification du travail (paradonnée) et le futur dépôt (Nakala / HAL).
 >
-> **Périmètre.** Documente le **réel** (schéma v15) **et** les **champs à prévoir** qu'un
+> **Périmètre.** Documente le **réel** (schéma v16) **et** les **champs à prévoir** qu'un
 > dépôt de qualité bibliographique voudra. Ne fige aucun plan : c'est un inventaire, pas
 > un PGD. Voir aussi `personnages-et-attribution.md`, `numerotation-et-citation.md`,
 > `correction-grammaticale.md`.
@@ -205,8 +205,8 @@ Coordonnées **toujours en pixels master**.
 | `source` | producteur de la géométrie | `kumiko` \| `auto` \| manuel | provenance | structuré | PROV | ouvert |
 | `date_creation` | date de création de la zone | horodatage | paradonnée | structuré | PROV | ouvert |
 | `citation` | repère éditorial cité | dérivé `pl·c·b` | dérivé | dérivé | — | ouvert |
-| *`activite_id`* | run qui a **généré** la zone (→ moteur+version+params) | réf. activité | paradonnée | *absent — à prévoir* | PROV `wasGeneratedBy` | ouvert |
-| *`touché` + `date_modification`* | zone retouchée par l'humain, et quand (surface au-dessus du journal) | drapeau + horodatage | paradonnée | *absent — à prévoir* | PROV / TEI `@resp` | ouvert |
+| `activite_id` | run qui a **généré** la zone (→ moteur+version+params) | réf. activité | paradonnée | **structuré (v16)** | PROV `wasGeneratedBy` | ouvert |
+| `touche` + `date_modification` | zone retouchée par l'humain, et quand (surface au-dessus du journal) | drapeau + horodatage | paradonnée | **structuré (v16)** | PROV / TEI `@resp` | ouvert |
 | *`certitude`* | confiance sur la zone | score \| niveau | machine / humain | *absent — à prévoir* | TEI `@cert` | ouvert |
 
 ## Niveau 3 — Contenu textuel (OCR)
@@ -300,30 +300,34 @@ chantier « lexique agile mais défini ».
 
 ## Niveau 8 — Paradonnée / système
 
-Source : table `meta` (clé/valeur) aujourd'hui ; **à venir, une couche d'audit** décidée le
-2026-07-15. Documente **le processus** — reproductibilité et **qualification du travail**.
+Source : table `meta` (clé/valeur) **et**, depuis la **v16 (A3, livré 2026-07-17)**, une
+**couche d'audit** (`activite`/`evenement`). Documente **le processus** — reproductibilité et
+**qualification du travail**. Détail : `docs/provenance-audit.md`.
 
-> **Décision (2026-07-15) — audit complet en journal *append-only* (lecture B).** Les tables
-> restent la source de vérité ; un **journal d'événements immuable** enregistre en plus chaque
-> acte de transformation/annotation, **sans inverser la base**. Portée : les *actes*
-> (segmentation, bulles, OCR, NLP, édition de zone, correction, validation, annotation, lien
-> d'entité) — **un événement par action**. Agent = identité humaine (auth) **ou** moteur +
-> version + paramètres. Les passes en lot = une **activité (run)** parente de ses événements.
-> La dérive machine↔humain est **récupérable depuis le journal** (avant/après) ; les entités
-> ne portent qu'un `touché`/`date_modification` dénormalisés. Exportable **PROV-O**
-> (`wasGeneratedBy` / `wasRevisionOf`) et **TEI `revisionDesc`/`change`**. Les agrégats
-> remontent nourrir la « provenance globale » de la **Collection**.
+> **Décision (2026-07-15) — audit complet en journal *append-only* (lecture B). Livré v16.**
+> Les tables restent la source de vérité ; un **journal d'événements immuable** enregistre en
+> plus chaque acte de transformation/annotation, **sans inverser la base**. Portée : les
+> *actes* (segmentation, bulles, OCR, NLP, édition de zone, correction, validation,
+> annotation, lien d'entité) — **un événement par action**. Agent = identité humaine (auth,
+> capté par contextvar) **ou** moteur + version + paramètres. Les passes en lot = une
+> **activité (run)** parente de ses événements. La dérive machine↔humain est **récupérable
+> depuis le journal** (avant/après) ; les entités ne portent qu'un `touché`/`date_modification`
+> dénormalisés. Exporté **PROV-O** (`wasGeneratedBy` / `used` / `wasInvalidatedBy`) et **TEI
+> `revisionDesc`/`change`** (`tools/provenance_export.py`). Les agrégats
+> (`journal.indicateurs_provenance`) remontent nourrir la « provenance globale » de la
+> **Collection**. Le journal **survit à la suppression** de sa cible → substrat de l'**undo
+> (D1)**, désormais débloqué (l'endpoint/UI d'undo reste D1).
 
 | Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
 |---|---|---|---|---|---|---|
 | `meta.nlp_model` / `nlp_spacy` | modèle NLP ayant produit l'index | texte (nom+version) | paradonnée | structuré | PROV | ouvert |
 | `meta.nlp_reindexed_count` / `_at` | ampleur & date de la réindexation | entier / horodatage | paradonnée | structuré | PROV | ouvert |
 | `SCHEMA_VERSION` (`user_version`) | version du schéma | entier | système | structuré | — | ouvert |
-| *`activite` (run)* | exécution de passe : type, agent+version, params, date, portée, comptes | table | paradonnée | *absent — à prévoir* | PROV `Activity` | ouvert |
-| *`evenement` (journal)* | acte atomique immuable : type, agent, cible, avant/après, date, `activite_id` | table **append-only** | paradonnée | *absent — à prévoir* | PROV / TEI `change` | ouvert |
-| *`…​.activite_id`* | lien entité → run producteur | référence | paradonnée | *absent — à prévoir* | PROV `wasGeneratedBy` | ouvert |
-| *`touché` / `date_modification`* | surface dénormalisée (entité retouchée, quand) | drapeau + horodatage | paradonnée | *absent — à prévoir* | PROV | ouvert |
-| *`indicateurs de couverture`* | % validé · % touché · couverture OCR · densité · dérive | agrégats **dérivés du journal** | dérivé | *absent — à prévoir* | — | ouvert |
+| `activite` (run) | exécution de passe : type, agent+version, params, date, portée, comptes | table | paradonnée | **structuré (v16)** | PROV `Activity` | ouvert |
+| `evenement` (journal) | acte atomique immuable : type, agent, cible, avant/après, date, `activite_id` | table **append-only** | paradonnée | **structuré (v16)** | PROV / TEI `change` | ouvert |
+| `regions.activite_id` | lien entité → run producteur | référence | paradonnée | **structuré (v16)** | PROV `wasGeneratedBy` | ouvert |
+| `regions.touche` / `date_modification` | surface dénormalisée (entité retouchée, quand) | drapeau + horodatage | paradonnée | **structuré (v16)** | PROV / TEI `@resp` | ouvert |
+| `indicateurs de couverture` | % touché · dérive · runs · actes (machine/humain) | agrégats **dérivés du journal** | dérivé | **dérivé (v16)** | — | ouvert |
 | *`licence & droits`* | régime de diffusion par jeu | licence / mention | descriptif | *absent — à prévoir* | DC:rights / DataCite | ouvert |
 
 ---
@@ -354,10 +358,13 @@ Chantiers de FAIRisation dérivés de ce dictionnaire, par couche :
   langue · type · lieu · tirage · ISBN · format. Restent *à prévoir* : contributeur-**entité**
   alignable (VIAF/IdRef, dormant) et **PID**.
 - **Matériel (N1)** : `dpi` · `mode` · dimensions physiques · source de numérisation.
-- **Provenance / audit (N2, N8)** : couche d'audit décidée (2026-07-15) — **journal
-  d'événements append-only** + **activités (runs)** (agent, versions moteurs, params) +
-  liens entité→run + surface `touché`/`date_modification` + certitude + agrégats dérivés.
-  Export PROV-O / TEI.
+- **Provenance / audit (N2, N8)** : **✅ réalisé (v16, A3)** — **journal d'événements
+  append-only** (`evenement`) + **activités (runs)** (`activite` : agent, versions moteurs,
+  params, portée, bilan) + lien entité→run (`regions.activite_id`) + surface
+  `touche`/`date_modification` + agrégats dérivés (`journal.indicateurs_provenance`) + export
+  **PROV-O / TEI** (`tools/provenance_export.py`). Substrat de l'**undo (D1)**. Restent *à
+  prévoir* : versionnement d'entités (`wasRevisionOf`) et **certitude** de zone (dormants).
+  Cf. `docs/provenance-audit.md`.
 - **Vocabulaire (N7)** : lexique situé **SKOS** — `definition` · `note_portee` · état
   `provisoire→défini` · **portée d'appartenance** (`collection_id`, A) ; définition contextuelle
   (`valeur_definition`, B) et version = **dormants**. Indicateur « % défini » → qualité Collection.

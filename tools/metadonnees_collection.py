@@ -46,6 +46,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DB_PATH, BASE_DIR  # noqa: E402
 import database  # noqa: E402  (réutilise numeros_editoriaux / citations_regions)
+import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from _commun import (version_outil, environnement, composants,  # noqa: E402  (provenance / env, partagés)
                      portee_albums)
 
@@ -301,10 +302,11 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
             "environnement": environnement(),  # python + versions installées (à l'export)
             "logiciels": composants(),        # inventaire documenté : version + rôle + site + description
             "meta": c["meta"],                # modèle NLP + versions + dates de réindexation
-            "a_prevoir": ["activité (run)", "journal d'événements (append-only)",
-                          "activite_id par entité", "touché / date_modification",
-                          "indicateurs de couverture (dérivés du journal)",
-                          "licence & droits par jeu"],
+            # A3 : indicateurs dérivés du journal de provenance (part machine/humaine, dérive,
+            # comptes de runs & d'actes). Le détail est dans les tables `activite`/`evenement`.
+            "provenance": journal.indicateurs_provenance(conn, album_ids),
+            "a_prevoir": ["undo/restauration depuis le journal (D1)",
+                          "export PROV-O au fil de l'eau", "licence & droits par jeu"],
         },
         "vocabulaire": vocab, "tags": tags, "contribution_roles": roles,
         "personnages": personnages, "albums": albums,
@@ -446,6 +448,23 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
           co["version"] if co["installe"] else "(absent)",
           co["role"], co["site"], co["resume"] or ""]
          for co in composants()])
+
+    # Journal de provenance / audit (A3, N8) — grain CORPUS (un run/acte n'appartient pas
+    # à un album, et l'acte SURVIT à la suppression de sa cible → non re-scopable). Dump
+    # relationnel recollable : evenement.activite_id → activite.id ; evenement.cible_id →
+    # l'entité (regions/annotations/…) au moment de l'acte.
+    out["activite"] = (
+        ["id", "type", "agent", "agent_type", "version", "params", "portee", "comptes",
+         "date_debut", "date_fin"],
+        [[a["id"], a["type"], a["agent"], a["agent_type"], a["version"], a["params"],
+          a["portee"], a["comptes"], a["date_debut"], a["date_fin"]]
+         for a in conn.execute("SELECT * FROM activite ORDER BY id")])
+    out["evenement"] = (
+        ["id", "activite_id", "type", "agent", "agent_type", "cible_table", "cible_id",
+         "avant", "apres", "date"],
+        [[e["id"], e["activite_id"], e["type"], e["agent"], e["agent_type"],
+          e["cible_table"], e["cible_id"], e["avant"], e["apres"], e["date"]]
+         for e in conn.execute("SELECT * FROM evenement ORDER BY id")])
     return out
 
 

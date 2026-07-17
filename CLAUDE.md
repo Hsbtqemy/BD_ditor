@@ -73,7 +73,7 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 15). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 16). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
 
@@ -92,6 +92,10 @@ Invariants :
 - Chaque moteur est **optionnel** : si non installé, sa route renvoie **503** ; `GET /api/sante` indique la disponibilité de chacun.
 - **L'OCR ne fait que pré-remplir** (`only_empty=True`) : il **n'écrase jamais** une correction humaine.
 - `pipeline/jobs.py` : traitement **par lot en arrière-plan** (`threading`, worker sérialisé, multi-albums) avec progression et annulation. Sérialisé par un `ML_LOCK`.
+
+### Journal de provenance / audit (A3, v16)
+
+`journal.py` : couche **append-only** qui qualifie *qui a produit quoi* sans inverser la base. `activite` = un **run** (passe ML, ou session) ; `evenement` = un **acte** atomique immuable (avant/après JSON). Les passes ML sont enveloppées par `journal.passe_ml` (diff des régions → `regions.activite_id` = wasGeneratedBy + événements, **sans coupler** le code pipeline) ; les routes humaines journalisent leurs actes (l'**agent** vient de l'auth via le contextvar `agent_courant`, alimenté par une dépendance FastAPI globale — pas de `request` à threader). `evenement.cible_id` **n'est pas une FK** : le journal **survit à la suppression** de sa cible (substrat de l'undo **D1**). Indicateurs dérivés (`indicateurs_provenance`) dans les exports ; sérialisation **PROV-O / TEI** par `tools/provenance_export.py`. Cf. `docs/provenance-audit.md`.
 
 ### Concurrence SQLite
 

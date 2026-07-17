@@ -34,6 +34,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import database  # noqa: E402  (collection_row / collection_album_ids — palier collection)
+import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from config import DB_PATH, BASE_DIR  # noqa: E402
 from _commun import version_outil, environnement, portee_albums  # noqa: E402  (provenance / env / portée)
 
@@ -232,6 +233,9 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                 "nlp": {"modele": meta.get("nlp_model"), "spacy": meta.get("nlp_spacy"),
                         "tokens_indexes": meta.get("nlp_reindexed_count"),
                         "reindexe_le": meta.get("nlp_reindexed_at")},
+                # A3 : indicateurs dérivés du journal de provenance/audit (part machine vs
+                # humaine, dérive = pré-remplissage retouché, comptes de runs & d'actes).
+                "audit": journal.indicateurs_provenance(conn, album_ids),
                 "environnement": environnement(),  # python + versions installées (à l'export)
             },
             "vocabulaire": {"dimensions": dimensions},
@@ -399,8 +403,8 @@ CATALOGUE = [
     ("region", "source", "producteur de la géométrie", "provenance", "structuré", "PROV", "ouvert"),
     ("region", "date_creation", "création de la zone", "paradonnée", "structuré", "PROV", "ouvert"),
     ("region", "citation", "repère éditorial", "dérivé", "dérivé", "—", "ouvert"),
-    ("region", "activite_id", "run générateur", "paradonnée", "absent — à prévoir", "PROV wasGeneratedBy", "ouvert"),
-    ("region", "touche+date_modification", "retouche humaine", "paradonnée", "absent — à prévoir", "PROV/TEI @resp", "ouvert"),
+    ("region", "activite_id", "run générateur", "paradonnée", "structuré", "PROV wasGeneratedBy", "ouvert"),
+    ("region", "touche+date_modification", "retouche humaine", "paradonnée", "structuré", "PROV/TEI @resp", "ouvert"),
     ("region", "certitude", "confiance sur la zone", "machine/humain", "absent — à prévoir", "TEI @cert", "ouvert"),
     ("ocr", "ocr_texte", "texte reconnu de la zone", "machine→humain", "libre", "TEI line", "restreint"),
     ("tokens", "ordre", "position du mot", "machine", "structuré", "UD", "ouvert"),
@@ -441,9 +445,9 @@ CATALOGUE = [
     ("paradonnee", "nlp_model", "modèle NLP ayant indexé", "paradonnée", "structuré", "PROV", "ouvert"),
     ("paradonnee", "nlp_reindexed_count/_at", "ampleur+date de réindex", "paradonnée", "structuré", "PROV", "ouvert"),
     ("paradonnee", "schema_version", "version du schéma", "système", "structuré", "—", "ouvert"),
-    ("paradonnee", "activite_run", "exécution de passe", "paradonnée", "absent — à prévoir", "PROV Activity", "ouvert"),
-    ("paradonnee", "evenement_journal", "acte atomique append-only", "paradonnée", "absent — à prévoir", "PROV/TEI change", "ouvert"),
-    ("paradonnee", "indicateurs_couverture", "% validé/touché/dérive", "dérivé", "absent — à prévoir", "—", "ouvert"),
+    ("paradonnee", "activite_run", "exécution de passe", "paradonnée", "structuré", "PROV Activity", "ouvert"),
+    ("paradonnee", "evenement_journal", "acte atomique append-only", "paradonnée", "structuré", "PROV/TEI change", "ouvert"),
+    ("paradonnee", "indicateurs_couverture", "% touché/dérive/runs/actes", "dérivé", "dérivé", "—", "ouvert"),
     ("paradonnee", "licence_droits", "régime de diffusion par jeu", "descriptif", "absent — à prévoir", "DC:rights", "ouvert"),
 ]
 

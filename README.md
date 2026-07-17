@@ -83,7 +83,9 @@ réutilisation / le dépôt Nakala-HAL) : fiche descriptive, enregistrements (CS
 **XLSX** multi-feuilles · JSON arbre) et manifests **IIIF Presentation 3.0** — scripts
 `tools/` hors-app. La **collection** est l'unité de dépôt (`gerer_collections.py`) et les
 albums portent une **paternité** (contributions Zotero-like) + des champs d'édition.
-Cf. `docs/export-metadonnees.md`.
+Notices d'entrepôt **Dublin Core & DataCite** (`crosswalk_depot.py`) et provenance
+**PROV-O / TEI** du journal d'audit (`provenance_export.py`).
+Cf. `docs/export-metadonnees.md`, `docs/provenance-audit.md`.
 
 ### Tests & qualité
 
@@ -197,6 +199,12 @@ Le schéma est **versionné** (`database.SCHEMA_VERSION`, migrations dans
 `_migrate()`) : la table FTS est séparée pour être recréable, les vues sont
 toujours recréées au démarrage.
 
+**Provenance / audit** (`journal.py`) : un journal **append-only** — `activite`
+(runs ML / sessions) et `evenement` (actes atomiques, avant/après) — trace *qui a
+produit quoi* sans inverser la base. Il **survit à la suppression** de sa cible
+(substrat de l'undo), et se sérialise en **PROV-O / TEI**. Cf.
+`docs/provenance-audit.md`.
+
 ## API
 
 | Méthode | Route | Rôle |
@@ -249,6 +257,7 @@ toujours recréées au démarrage.
 bd_annotator/
 ├── main.py              # app FastAPI + routes
 ├── database.py          # init SQLite, schéma, FTS5, vues, migrations, helpers
+├── journal.py           # journal de provenance / audit append-only (activite/evenement)
 ├── config.py            # chemins & constantes partagés
 ├── pipeline/
 │   ├── ingest.py        # image → dérivé web + métadonnées + suppression fichiers
@@ -271,7 +280,8 @@ bd_annotator/
 │   └── style.css        # thème sombre/clair (partagé par les 4 pages)
 ├── tools/               # scripts hors-app : reindex_nlp.py, pdf_check.py, sharedocs_check.py,
 │                        #   export métadonnées : gerer_collections · description_collection ·
-│                        #   metadonnees_collection · iiif_manifest · valider_iiif · dictionnaire_xlsx
+│                        #   metadonnees_collection · iiif_manifest · valider_iiif · dictionnaire_xlsx ·
+│                        #   crosswalk_depot (DC/DataCite) · provenance_export (PROV-O/TEI)
 │                        #   (cf. docs/export-metadonnees.md)
 ├── deploy/              # Docker Compose + Caddy + Authelia (cf. docs/deploiement-docker.md)
 ├── docs/                # décisions de conception (grammaire, numérotation, sécurité…) + backlog

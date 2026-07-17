@@ -193,12 +193,14 @@ ou décision de conception requise).
 > déplacer/redimensionner écrase l'ancienne géométrie, une correction de token remplace
 > la précédente. Seuls le **verrou de planche** et la **sauvegarde** (snapshot global)
 > protègent — rien de granulaire ni de réversible à l'échelle du geste.
-- À explorer (décision de conception) : (a) **pile d'undo client** (JS) qui rejoue l'inverse
-  via l'API — simple, mais perdue au rechargement et aveugle aux effets dérivés (cascade,
-  réindex FTS, réordonnancement) ; (b) **journal d'actions serveur** (command ⊕ inverse) +
-  `/api/undo` — robuste, survit au rechargement, couvre les cascades, mais plus lourd ;
-  (c) **soft-delete / versionnage** des régions. Trancher : périmètre (quelles actions),
-  granularité (geste vs lot), profondeur (1 niveau vs pile).
+- **Décision tranchée par A3 (v16)** : option (b) **journal d'actions serveur**. Le journal
+  `evenement` (append-only, **avant/après**, snapshot **profond** à la suppression) est déjà
+  posé et **survit à la suppression** de sa cible → le substrat existe. Reste à construire :
+  l'**endpoint `/api/undo`** (rejoue l'inverse depuis `avant`/`apres` : recréer une région +
+  son sous-arbre + annotation, rétablir une géométrie, restaurer une correction) + l'UI
+  (Ctrl+Z). Cf. `docs/provenance-audit.md`. Écarté : (a) pile client (aveugle aux cascades),
+  (c) soft-delete/versionnage. Trancher encore : périmètre (quelles actions), profondeur
+  (1 niveau vs pile).
 - Done : annuler la dernière action (au moins create/move/delete région + tag + locuteur)
   la rétablit fidèlement, cascades comprises ; raccourci Ctrl+Z ; test.
 - Note : forte valeur de SÛRETÉ (la suppression cascade est le geste le plus dangereux),

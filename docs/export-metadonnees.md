@@ -36,6 +36,7 @@ Deux registres, à ne pas confondre :
 | `tools/iiif_manifest.py` | **IIIF Presentation 3.0** : Manifest/album, Canvas/planche, Collection | `--base-url https://host --out-dir iiif/` |
 | `tools/valider_iiif.py` | rapport de conformité IIIF (structurel, hors ligne) | `iiif/` |
 | `tools/crosswalk_depot.py` | **Dublin Core** (JSON-LD) + **DataCite 4.x** (JSON/XML) : notices album + collection (cf. `docs/crosswalk-depot.md`) | `--collection 1 --out-dir depot/` |
+| `tools/provenance_export.py` | **PROV-O** (PROV-JSON) + **TEI `<revisionDesc>`** du journal d'audit (cf. `docs/provenance-audit.md`) | `--out-dir prov/` |
 
 `gerer_collections.py` est le **seul outil d'écriture** de ce lot (les autres lisent en
 seule lecture) ; ses sous-commandes : `lister`, `montrer ID`, `creer`, `modifier ID`,
@@ -72,8 +73,9 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
 - **Enregistrements — CSV par niveau** : `collection`, `albums` (avec les champs d'édition
   N0), `contributions`, `contribution_roles`, `planches`, `regions`, `tokens`,
   `annotations`, `tags`, `personnages`, `personnage_attributs`, `region_attributs`,
-  `vocabulaire`, `paradonnee` — dump relationnel recollable par les clés (`album_id`,
-  `planche_id`, `region_id`, `parent_id`). Groupables en `.zip`. Écrits avec un **BOM
+  `vocabulaire`, `paradonnee`, **`activite`** + **`evenement`** (journal d'audit A3, grain
+  corpus) — dump relationnel recollable par les clés (`album_id`, `planche_id`, `region_id`,
+  `parent_id` ; `evenement.activite_id` → `activite.id`). Groupables en `.zip`. Écrits avec un **BOM
   UTF-8** (accents lisibles dans Excel, comme l'export de l'app). Les albums portent aussi
   leurs **contributions** (nom + rôle résolu : bucket DCterms + code MARC) et le catalogue
   **`contribution_roles`** (vocabulaire contrôlé-ouvert).
@@ -85,8 +87,12 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   (`requirements-export.txt`) ; JSON/CSV n'en dépendent pas (import protégé).
 - **Paradonnée (niveau 8)** dans les enregistrements : `schema_version`, table `meta`
   (modèle NLP + versions + dates de réindexation), **provenance de l'outil**
-  (`outil = {nom, version, revision git}`), et la liste `a_prevoir` (journal d'audit,
-  activités/runs… absents en base).
+  (`outil = {nom, version, revision git}`), et — depuis **A3 (v16)** — le bloc
+  **`provenance`** : indicateurs dérivés du journal d'audit
+  (`journal.indicateurs_provenance` : part machine vs humaine, **dérive**, comptes de runs &
+  d'actes), le détail vivant étant dans les tables `activite`/`evenement`. La fiche
+  (`description_collection.py`) porte les mêmes indicateurs sous
+  `provenance_globale.audit`. Export standardisé : `tools/provenance_export.py` (PROV-O + TEI).
 - **IIIF Presentation 3.0** : Canvas aux dimensions **master**, image (dérivé web)
   peinte dessus, **une Annotation par région** ciblant `canvas#xywh=x,y,w,h`.
 
@@ -166,6 +172,9 @@ python tools/valider_iiif.py iiif/
 # Crosswalk de dépôt : Dublin Core + DataCite (cf. docs/crosswalk-depot.md)
 python tools/crosswalk_depot.py --collection 1 --out-dir depot/
 python tools/crosswalk_depot.py --publisher "Huma-Num (Nakala)" --annee-depot 2026
+
+# Provenance / audit → PROV-O (PROV-JSON) + TEI revisionDesc (cf. docs/provenance-audit.md)
+python tools/provenance_export.py --out-dir prov/
 
 # (Re)générer TOUT le jeu d'exemples de docs/exemples/ (corpus de démo jetable)
 python tools/regenerer_exemples.py

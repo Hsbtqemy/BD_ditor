@@ -39,16 +39,24 @@ def _est_verrouillee(conn, planche_id: int) -> bool:
 
 def _apply_pass(conn, passe: str, planche_id: int) -> None:
     # Import paresseux + via le module → mockable en test, et n'impose pas les
-    # moteurs ML au chargement.
+    # moteurs ML au chargement. Chaque passe est enveloppée par `journal.passe_ml`
+    # (A3) : activité tracée (moteur + version + portée + bilan), régions générées
+    # rattachées à leur run (wasGeneratedBy) et événements de création/OCR journalisés.
+    import journal
     if passe == "segmenter":
         import pipeline.segmentation as m
-        m.segment_planche(conn, planche_id)
+        with journal.passe_ml(conn, "segmentation", planche_id, agent="kumiko"):
+            m.segment_planche(conn, planche_id)
     elif passe == "bulles":
         import pipeline.bulles as m
-        m.detect_bulles(conn, planche_id)
+        with journal.passe_ml(conn, "bulles", planche_id, agent="yolov8-bulles",
+                              version=journal.version_moteur("ultralytics")):
+            m.detect_bulles(conn, planche_id)
     elif passe == "ocr":
         import pipeline.ocr as m
-        m.ocr_planche(conn, planche_id)
+        with journal.passe_ml(conn, "ocr", planche_id, agent="easyocr",
+                              version=journal.version_moteur("easyocr")):
+            m.ocr_planche(conn, planche_id)
 
 
 def _run(job_id: int) -> None:

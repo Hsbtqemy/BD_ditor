@@ -26,10 +26,12 @@ Beaucoup est **livré** — l'ouvert ci-dessous est ce qui *reste*, pas l'ensemb
   géométriques, SSRF/HTTPS ShareDocs, `UNIQUE(album_id, numero)`, TEI XML-safe, lockfile…).
 - **FAIR / métadonnées** *(chantier récent, hors backlog)* : exports additifs
   description / records / IIIF (conforme, prouvé via `iiif-prezi3`), paradonnée (versions +
-  révision git + SBOM), droits **descriptifs**, et le **palier Collection (v14)** — entité
-  `collection` + `collection_album`, gestion headless `tools/gerer_collections.py`, scope
-  d'export `--collection`. Cf. [`docs/export-metadonnees.md`](export-metadonnees.md),
-  [`docs/dictionnaire-metadonnees.md`](dictionnaire-metadonnees.md).
+  révision git + SBOM), droits **descriptifs**, **palier Collection (v14)**, **descriptif N0
+  Zotero-like (v15)** + **crosswalk DC/DataCite (A2)**, et le **journal de provenance/audit
+  (v16, A3)** — `activite`/`evenement` append-only, indicateurs de dérive, export PROV-O/TEI.
+  Cf. [`docs/export-metadonnees.md`](export-metadonnees.md),
+  [`docs/dictionnaire-metadonnees.md`](dictionnaire-metadonnees.md),
+  [`docs/provenance-audit.md`](provenance-audit.md).
 
 ---
 
@@ -43,7 +45,7 @@ Beaucoup est **livré** — l'ouvert ci-dessous est ce qui *reste*, pas l'ensemb
 |---|---|---|---|
 | ~~**A1**~~ | ✅ **Fait 2026-07-17 (v15)** — **enrichissement descriptif N0** : `contribution` Zotero-like (nom + rôle contrôlé-ouvert `contribution_role`, DCterms / MARC), 8 champs d'édition (`date_edition`, `date_originale`, `langue`, `type_oeuvre`, `lieu_edition`, `edition_tirage`, `isbn`, `format_physique`). Boucle complète : schéma + API + export + UI Bibliothèque | M–L | qualité bibliographique = condition d'un dépôt crédible |
 | ~~**A2**~~ | ✅ **Fait 2026-07-17** — **Crosswalk Dublin Core & DataCite** : `tools/crosswalk_depot.py` (paternité Zotero, notices album + collection, DC JSON-LD + DataCite JSON/XML, garde-fou champs obligatoires ; spec `docs/crosswalk-depot.md`). Rend le dépôt *machine-ready* | M | complète l'export descriptif ; DOI frappé par l'entrepôt |
-| A3 | **Journal de provenance / audit (N8/N2)** — événements append-only + activités (runs : agent, versions moteurs, params), `activite_id` par entité, `touché`/`date_modification`, indicateurs de couverture dérivés ; export **PROV-O** / TEI `revisionDesc` | L | qualifie *qui a produit quoi* ; **recoupe D1 (undo)** — même journal |
+| ~~**A3**~~ | ✅ **Fait 2026-07-17 (v16)** — **Journal de provenance / audit (N8/N2)** : `activite` (runs) + `evenement` (append-only, avant/après) + `regions.activite_id`/`touche`/`date_modification`, câblés aux passes ML (`journal.passe_ml`) et aux routes humaines (agent capté par contextvar depuis l'auth) ; indicateurs dérivés (`indicateurs_provenance`) dans la paradonnée ; export **PROV-O** + TEI `revisionDesc` (`tools/provenance_export.py`). Le journal **survit à la suppression** → **débloque D1 (undo)**. Cf. `docs/provenance-audit.md` | L | qualifie *qui a produit quoi* ; substrat commun avec D1 |
 | A4 | **Lexique situé SKOS (N7)** — `definition`, `note_portee`, état `provisoire→défini`, portée d'appartenance `collection_id`, indicateur « % défini » | M | vocabulaire facetté réutilisable et documenté |
 | A5 | **Alignement d'autorité (N6)** — `personnages` → URI Wikidata / VIAF / IdRef (`skos:exactMatch`) | M | interopérabilité des entités |
 | A6 | **Matériel (N1)** — `dpi`, `mode` colorimétrique, dimensions physiques, source de numérisation | S–M | complétude (PREMIS / DC:format) |
@@ -97,7 +99,7 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 
 | # | Item | Prio·Effort | Note |
 |---|---|---|---|
-| **D1** | **UX-5 — undo des actions d'annotation** | P2·L | **forte valeur de sûreté** : la suppression cascade est le geste le plus dangereux, aujourd'hui irréversible sans restaurer une sauvegarde. Décision de conception (pile client vs **journal serveur**) — **recoupe A3** |
+| **D1** | **UX-5 — undo des actions d'annotation** | P2·L | **forte valeur de sûreté** : la suppression cascade est le geste le plus dangereux, aujourd'hui irréversible sans restaurer une sauvegarde. **Débloqué par A3 (v16)** : le journal `evenement` survit à la suppression et porte l'instantané **profond** (avant/après) → décision tranchée (**journal serveur**) ; reste l'endpoint de restauration + l'UI |
 | ~~**D2**~~ | ✅ **Fait 2026-07-16** — B5 : `_migrate` **gate par `user_version`** (refus de rétrograder + court-circuit si à jour + convention `if version < N`) ; test dédié. Assaini avant A1 | S | — |
 | — | B6 (transitions de statut + régression `annotee`→`segmentee`) · B7 (injection formule CSV — export **app**, distinct des tools) · B8 (`/api/sauvegarde` sans try/except → 500) · B9 (titre d'album vide accepté) · F5 (deep-link silencieux, aucun toast) · F6-F8 · T2/T4 (tests faibles) · S1/S5/S6/O1 (latents segmentation) · A11Y-2 (reliquat `px`→`rem`) · UX-3/UX-4 | mineurs | quick wins, à la demande |
 
@@ -106,9 +108,10 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 ## Séquence conseillée (2026-07-16, modifiable)
 
 1. **[Cap] Piste A — dépôt utilisable** : ~~**A1** (descriptif N0)~~ ✅ **fait (v15)** →
-   ~~**A2** (crosswalk DC/DataCite)~~ ✅ **fait (2026-07-17)** → **A3** (journal de provenance)
-   devient le prochain cran. Une collection est désormais réellement déposable sur Nakala/HAL
-   (le DOI est frappé par l'entrepôt).
+   ~~**A2** (crosswalk DC/DataCite)~~ ✅ **fait (2026-07-17)** → ~~**A3** (journal de
+   provenance)~~ ✅ **fait (v16, 2026-07-17)** → **A4** (lexique situé SKOS) devient le
+   prochain cran. Une collection est déposable (DOI frappé par l'entrepôt) et sa provenance
+   est tracée/exportable (PROV-O).
 2. ~~**D2** (gating `_migrate`)~~ — ✅ **fait 2026-07-16**, avant de toucher au schéma en A1.
 3. **Ouvrir la décision B1** en parallèle (vocabulaire émotions) — elle exige une discussion
    d'équipe *en amont*, autant l'amorcer tôt.
@@ -119,8 +122,9 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 ## Dépendances notables
 
 - **C1 (auth déployée)** débloque → C2 (WebDAV/utilisateur), C3 (CSRF), et sert B6.
-- **A3 (journal de provenance)** et **D1 (undo serveur)** partagent le **même journal
-  append-only** → à concevoir ensemble.
+- ~~**A3 (journal de provenance)** et **D1 (undo serveur)** partagent le **même journal
+  append-only**~~ → **A3 livré (v16)** : le journal `evenement` (avant/après, survit à la
+  suppression) EST le substrat de D1 ; ne reste que l'endpoint de restauration + l'UI.
 - **A4 (portée SKOS `collection_id`)** s'appuie sur le palier Collection (v14, fait).
 - **B1** est une **décision de conception** (vocabulaire) : à trancher avec les linguistes
   avant tout code.

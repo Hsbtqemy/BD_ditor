@@ -27,6 +27,7 @@ from config import (AUTH_LOGOUT_URL, CIBLES_ATTRIBUT, DERIVATIVES_DIR,
                     TYPES_REGION, UPOS_TAGS)
 from database import (citations_regions, contributions_album, get_connection, init_db,
                       numeros_editoriaux, reindex_region, unindex_region)
+import journal
 from pipeline.backup import make_backup
 from pipeline import jobs
 from pipeline import nlp
@@ -55,6 +56,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="BéDéditeur", version="1.0", lifespan=lifespan)
+
+
+async def _capter_agent(request: Request) -> None:
+    """Dépendance GLOBALE (une par requête) : capte l'utilisateur connecté dans le
+    contextvar du journal, pour attribuer les actes humains SANS threader `request` dans
+    chaque route. ASYNC → s'exécute dans la tâche de la requête, dont le contexte est copié
+    vers l'endpoint sync (threadpool) → la valeur y est visible. Cf. journal.agent_courant,
+    INFRA-2 (`_auteur`)."""
+    journal.agent_courant.set(_auteur(request))
+
+
+# Appliquée à toutes les routes du routeur principal (les montages StaticFiles sont hors
+# routeur → non concernés, ce qui est voulu). `_auteur` est résolu à l'appel (défini plus bas).
+app.router.dependencies.append(Depends(_capter_agent))
 
 
 @app.middleware("http")
@@ -550,7 +565,9 @@ def segmenter(planche_id: int, use_master: bool = False,
         )
     try:
         with jobs.ML_LOCK:                       # pas d'inférence ML concurrente (mémoire)
-            res = segment_planche(conn, planche_id, use_master=use_master)
+            with journal.passe_ml(conn, "segmentation", planche_id, agent="kumiko",
+                                  params={"use_master": use_master}):
+                res = segment_planche(conn, planche_id, use_master=use_master)
     except KumikoError as exc:
         raise HTTPException(500, str(exc))
     conn.commit()
@@ -571,7 +588,10 @@ def detecter_bulles(planche_id: int, conf: float = 0.3,
         with jobs.ML_LOCK:                       # pas d'inférence ML concurrente (mémoire)
             from pipeline.modeles import liberer_modeles_ml
             liberer_modeles_ml(sauf=("bulles", "nlp"))   # CONC-2 : libère l'autre modèle torch (OCR)
-            res = detect_bulles(conn, planche_id, conf=conf)
+            with journal.passe_ml(conn, "bulles", planche_id, agent="yolov8-bulles",
+                                  version=journal.version_moteur("ultralytics"),
+                                  params={"conf": conf}):
+                res = detect_bulles(conn, planche_id, conf=conf)
     except BullesError as exc:
         raise HTTPException(500, str(exc))
     conn.commit()
@@ -591,7 +611,10 @@ def ocr_route(planche_id: int, only_empty: bool = True,
         with jobs.ML_LOCK:                       # pas d'inférence ML concurrente (mémoire)
             from pipeline.modeles import liberer_modeles_ml
             liberer_modeles_ml(sauf=("ocr", "nlp"))      # CONC-2 : libère l'autre modèle torch (bulles)
-            res = ocr_planche(conn, planche_id, only_empty=only_empty)
+            with journal.passe_ml(conn, "ocr", planche_id, agent="easyocr",
+                                  version=journal.version_moteur("easyocr"),
+                                  params={"only_empty": only_empty}):
+                res = ocr_planche(conn, planche_id, only_empty=only_empty)
     except OCRError as exc:
         raise HTTPException(500, str(exc))
     conn.commit()
@@ -653,6 +676,8 @@ def create_region(planche_id: int, region: RegionIn,
     new_id = cur.lastrowid
     if region.ocr_texte:
         reindex_region(conn, new_id)
+    journal.journaliser(conn, "creation", "regions", new_id,
+                        apres=journal.snapshot_region(conn, new_id))
     conn.commit()
     return _row(conn.execute("SELECT * FROM regions WHERE id = ?", (new_id,)))
 
@@ -683,11 +708,18 @@ def update_region(region_id: int, patch: RegionUpdate,
     if "parent_id" in fields:
         _validate_parent(conn, existing["planche_id"], fields["parent_id"], region_id)
     if fields:
+        avant = journal.snapshot_region(conn, region_id)
         cols = ", ".join(f"{k} = ?" for k in fields)
         conn.execute(f"UPDATE regions SET {cols} WHERE id = ?",
                      (*fields.values(), region_id))
         if "ocr_texte" in fields:
             reindex_region(conn, region_id)
+        # Retouche humaine d'une zone (souvent un pré-remplissage machine) : événement +
+        # surface dénormalisée `touche` (lue par l'indicateur de dérive). marquer_touche
+        # après le snapshot `apres` (touche n'est pas une colonne métier → hors instantané).
+        journal.journaliser(conn, "modification", "regions", region_id,
+                            avant=avant, apres=journal.snapshot_region(conn, region_id))
+        journal.marquer_touche(conn, region_id)
         conn.commit()
     return _row(conn.execute("SELECT * FROM regions WHERE id = ?", (region_id,)))
 
@@ -706,9 +738,13 @@ def delete_region(region_id: int, conn: sqlite3.Connection = Depends(db)):
            ) SELECT id FROM d""",
         (region_id,),
     ).fetchall()
+    # Instantané PROFOND avant destruction (le CASCADE emporte annotation + sous-arbre) :
+    # c'est le substrat de l'undo (D1). Le journal survit à la suppression (cible non-FK).
+    avant = journal.snapshot_region_profond(conn, region_id)
     for r in descendants:
         unindex_region(conn, r["id"])
     conn.execute("DELETE FROM regions WHERE id = ?", (region_id,))
+    journal.journaliser(conn, "suppression", "regions", region_id, avant=avant)
     conn.commit()
     return Response(status_code=204)
 
@@ -726,10 +762,13 @@ def reordonner(planche_id: int, conn: sqlite3.Connection = Depends(db)):
 def deplacer_region(region_id: int, payload: MoveIn,
                     conn: sqlite3.Connection = Depends(db)):
     """Déplace une région d'un cran parmi ses frères ('haut' ou 'bas')."""
+    avant = journal.snapshot_region(conn, region_id)
     try:
         res = move_region(conn, region_id, payload.sens)
     except ValueError as exc:
         raise HTTPException(404 if "introuvable" in str(exc) else 422, str(exc))
+    journal.journaliser(conn, "modification", "regions", region_id,
+                        avant=avant, apres=journal.snapshot_region(conn, region_id))
     conn.commit()
     return res
 
@@ -888,6 +927,8 @@ def update_validation(planche_id: int, payload: ValidationIn,
                      (planche_id,))
     else:
         conn.execute("UPDATE planches SET validee = NULL WHERE id = ?", (planche_id,))
+    journal.journaliser(conn, "validation", "planches", planche_id,
+                        apres={"validee": bool(payload.validee)})
     conn.commit()
     return _get_planche(conn, planche_id)
 
@@ -942,6 +983,12 @@ def put_annotation(region_id: int, payload: AnnotationIn,
     if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
 
+    # État avant (note + tags) pour journaliser création / modification / suppression.
+    avant_annot = journal.snapshot_annotation(conn, region_id)
+    ancien = conn.execute("SELECT id FROM annotations WHERE region_id = ?",
+                          (region_id,)).fetchone()
+    ancien_id = ancien["id"] if ancien else None
+
     tag_rows = _ensure_tags(conn, payload.tags)
     # Vider une annotation (note vide ET aucun tag) = SUPPRIMER la ligne, pas
     # laisser une coquille vide : sinon elle fausserait le compteur d'annotées,
@@ -950,6 +997,9 @@ def put_annotation(region_id: int, payload: AnnotationIn,
     if not (payload.note or "").strip() and not tag_rows:
         conn.execute("DELETE FROM annotations WHERE region_id = ?", (region_id,))
         reindex_region(conn, region_id)
+        if avant_annot is not None:
+            journal.journaliser(conn, "suppression", "annotations", ancien_id,
+                                avant=avant_annot)
         conn.commit()
         return _annotation_for_region(conn, region_id)
 
@@ -973,6 +1023,9 @@ def put_annotation(region_id: int, payload: AnnotationIn,
             "VALUES (?, ?)", (ann_id, t["id"]),
         )
 
+    journal.journaliser(conn, "creation" if avant_annot is None else "modification",
+                        "annotations", ann_id, avant=avant_annot,
+                        apres=journal.snapshot_annotation(conn, region_id))
     reindex_region(conn, region_id)
     conn.commit()
     return _annotation_for_region(conn, region_id)
@@ -1206,16 +1259,26 @@ def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection =
     if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
     _get_personnage(conn, payload.personnage_id)
+    ancien = conn.execute("SELECT personnage_id FROM bulle_locuteur WHERE region_id = ?",
+                          (region_id,)).fetchone()
     conn.execute("INSERT INTO bulle_locuteur (region_id, personnage_id) VALUES (?, ?) "
                  "ON CONFLICT(region_id) DO UPDATE SET personnage_id = excluded.personnage_id",
                  (region_id, payload.personnage_id))
+    journal.journaliser(conn, "lien", "bulle_locuteur", region_id,
+                        avant=({"personnage_id": ancien["personnage_id"]} if ancien else None),
+                        apres={"personnage_id": payload.personnage_id})
     conn.commit()
     return _locuteur_for(conn, region_id)
 
 
 @app.delete("/api/regions/{region_id}/locuteur", status_code=204)
 def clear_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db)):
+    ancien = conn.execute("SELECT personnage_id FROM bulle_locuteur WHERE region_id = ?",
+                          (region_id,)).fetchone()
     conn.execute("DELETE FROM bulle_locuteur WHERE region_id = ?", (region_id,))
+    if ancien:
+        journal.journaliser(conn, "delien", "bulle_locuteur", region_id,
+                            avant={"personnage_id": ancien["personnage_id"]})
     conn.commit()
 
 
@@ -1235,16 +1298,26 @@ def set_presence(region_id: int, payload: PresenceIn, conn: sqlite3.Connection =
     if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
     _get_personnage(conn, payload.personnage_id)
+    ancien = conn.execute("SELECT personnage_id FROM personnage_presence WHERE region_id = ?",
+                          (region_id,)).fetchone()
     conn.execute("INSERT INTO personnage_presence (region_id, personnage_id) VALUES (?, ?) "
                  "ON CONFLICT(region_id) DO UPDATE SET personnage_id = excluded.personnage_id",
                  (region_id, payload.personnage_id))
+    journal.journaliser(conn, "lien", "personnage_presence", region_id,
+                        avant=({"personnage_id": ancien["personnage_id"]} if ancien else None),
+                        apres={"personnage_id": payload.personnage_id})
     conn.commit()
     return _personnage_for(conn, region_id)
 
 
 @app.delete("/api/regions/{region_id}/personnage", status_code=204)
 def clear_presence(region_id: int, conn: sqlite3.Connection = Depends(db)):
+    ancien = conn.execute("SELECT personnage_id FROM personnage_presence WHERE region_id = ?",
+                          (region_id,)).fetchone()
     conn.execute("DELETE FROM personnage_presence WHERE region_id = ?", (region_id,))
+    if ancien:
+        journal.journaliser(conn, "delien", "personnage_presence", region_id,
+                            avant={"personnage_id": ancien["personnage_id"]})
     conn.commit()
 
 
@@ -1889,6 +1962,10 @@ def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
                             "(ou etat='valide' pour confirmer l'auto).")
     nlp.ensure_loaded()   # charge spaCy HORS transaction (sinon le cold-load tiendrait le verrou DB → 409)
     auteur = _auteur(request)
+    _corr_cols = ("ordre", "forme", "lemme", "pos", "morph", "etat")
+    avant_corr = conn.execute(
+        f"SELECT {', '.join(_corr_cols)} FROM token_correction "
+        "WHERE region_id = ? AND ordre = ?", (region_id, ordre)).fetchone()
     conn.execute(
         "INSERT INTO token_correction "
         "  (region_id, ordre, forme, lemme, pos, morph, etat, auteur, obsolete, date_modif) "
@@ -1898,6 +1975,15 @@ def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
         "  morph=excluded.morph, etat=excluded.etat, auteur=excluded.auteur, "
         "  obsolete=0, date_modif=datetime('now')",
         (region_id, ordre, tok["texte"], lemme, pos, morph, payload.etat, auteur))
+    # Correction humaine de l'étiquetage machine (NLP) : événement avant/après + retouche.
+    corr = conn.execute(
+        f"SELECT id, {', '.join(_corr_cols)} FROM token_correction "
+        "WHERE region_id = ? AND ordre = ?", (region_id, ordre)).fetchone()
+    journal.journaliser(conn, "modification" if avant_corr else "creation",
+                        "token_correction", corr["id"],
+                        avant=(dict(avant_corr) if avant_corr else None),
+                        apres={k: corr[k] for k in _corr_cols})
+    journal.marquer_touche(conn, region_id)
     reindex_region(conn, region_id)      # FTS reflète la correction ; ancrage re-vérifié
     conn.commit()
     return _tokens_effectifs(conn, region_id)
@@ -1928,6 +2014,8 @@ def valider_grammaire(region_id: int, request: Request,
         "WHERE t.region_id = ? AND NOT EXISTS "
         "  (SELECT 1 FROM token_correction c WHERE c.region_id=t.region_id AND c.ordre=t.ordre)",
         (auteur, region_id))
+    journal.journaliser(conn, "validation", "regions", region_id,
+                        apres={"grammaire": "validee"})
     conn.commit()
     return _tokens_effectifs(conn, region_id)
 
@@ -1938,9 +2026,15 @@ def annuler_correction(region_id: int, ordre: int,
     """Annule la correction d'un token → retour à l'auto pur (retire aussi le lemme
     corrigé du FTS)."""
     nlp.ensure_loaded()   # charge spaCy HORS transaction (le reindex qui suit ne tiendra pas le verrou pendant le cold-load)
+    _corr_cols = ("ordre", "forme", "lemme", "pos", "morph", "etat")
+    avant_corr = conn.execute(
+        f"SELECT id, {', '.join(_corr_cols)} FROM token_correction "
+        "WHERE region_id = ? AND ordre = ?", (region_id, ordre)).fetchone()
     cur = conn.execute("DELETE FROM token_correction WHERE region_id = ? AND ordre = ?",
                        (region_id, ordre))
     if cur.rowcount:
+        journal.journaliser(conn, "suppression", "token_correction", avant_corr["id"],
+                            avant={k: avant_corr[k] for k in _corr_cols})
         reindex_region(conn, region_id)
     conn.commit()
     return _tokens_effectifs(conn, region_id)

@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 
 # --------------------------------------------------------------------------- #
@@ -94,7 +94,13 @@ CREATE TABLE IF NOT EXISTS regions (
     ordre          INTEGER,
     ocr_texte      TEXT,
     source         TEXT DEFAULT 'kumiko',
-    date_creation  TEXT DEFAULT (datetime('now'))
+    date_creation  TEXT DEFAULT (datetime('now')),
+    -- Provenance / audit (v16, A3) : run qui a GÉNÉRÉ la zone (PROV wasGeneratedBy) et
+    -- surface DÉNORMALISÉE de retouche humaine (drapeau + date), lue à moindre coût par
+    -- les indicateurs de dérive sans rejouer le journal. Cf. `activite`/`evenement`.
+    activite_id       INTEGER REFERENCES activite(id) ON DELETE SET NULL,
+    touche            INTEGER NOT NULL DEFAULT 0,     -- pré-remplissage machine retouché par un humain
+    date_modification TEXT                            -- horodatage de la dernière retouche humaine
 );
 
 CREATE TABLE IF NOT EXISTS tags (
@@ -281,6 +287,41 @@ CREATE TABLE IF NOT EXISTS contribution (
     date_creation  TEXT DEFAULT (datetime('now'))
 );
 
+-- JOURNAL DE PROVENANCE / AUDIT (v16, N8, A3) — couche APPEND-ONLY qui QUALIFIE le
+-- travail sans inverser la base : les tables métier restent la source de vérité ; ici on
+-- enregistre EN PLUS chaque acte, machine ou humain. Cf. docs/provenance-audit.md.
+--   • `activite` = un RUN (PROV Activity) : une passe ML en lot, ou une session d'édition.
+--     Porte l'agent (moteur+version, OU humain), les paramètres, la portée, le bilan.
+--   • `evenement` = un ACTE atomique IMMUABLE (PROV / TEI change) rattaché à son activité,
+--     portant l'état AVANT/APRÈS → substrat de l'undo (D1) et du signal de dérive.
+-- Le journal SURVIT à la suppression de sa cible : `cible_id` n'est PAS une clé étrangère
+-- (un CASCADE effacerait l'historique de ce qu'on veut justement pouvoir restaurer).
+CREATE TABLE IF NOT EXISTS activite (
+    id          INTEGER PRIMARY KEY,
+    type        TEXT NOT NULL,                       -- 'segmentation'|'bulles'|'ocr'|'reindex_nlp'|'edition'…
+    agent       TEXT,                                -- identité humaine (auth) OU nom du moteur
+    agent_type  TEXT NOT NULL DEFAULT 'humain',      -- 'humain' | 'moteur'
+    version     TEXT,                                -- version moteur/modèle (NULL si humain)
+    params      TEXT,                                -- JSON des paramètres du run
+    portee      TEXT,                                -- JSON : {planche_id, album_id…}
+    comptes     TEXT,                                -- JSON : bilan {crees, modifies…}
+    date_debut  TEXT DEFAULT (datetime('now')),
+    date_fin    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS evenement (
+    id           INTEGER PRIMARY KEY,
+    activite_id  INTEGER REFERENCES activite(id) ON DELETE SET NULL,
+    type         TEXT NOT NULL,                      -- 'creation'|'modification'|'suppression'|'validation'|'lien'|'delien'
+    agent        TEXT,
+    agent_type   TEXT NOT NULL DEFAULT 'humain',     -- 'humain' | 'moteur'
+    cible_table  TEXT NOT NULL,                      -- 'regions'|'annotations'|'token_correction'|'planches'…
+    cible_id     INTEGER,                            -- id de la cible (PAS une FK : le journal lui survit)
+    avant        TEXT,                               -- JSON état avant (NULL si création)
+    apres        TEXT,                               -- JSON état après (NULL si suppression)
+    date         TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_planches_album   ON planches(album_id);
 CREATE INDEX IF NOT EXISTS idx_regions_planche  ON regions(planche_id);
 CREATE INDEX IF NOT EXISTS idx_regions_parent   ON regions(parent_id);
@@ -298,6 +339,10 @@ CREATE INDEX IF NOT EXISTS idx_regattr_val      ON region_attribut(valeur_id);
 CREATE INDEX IF NOT EXISTS idx_colalbum_album   ON collection_album(album_id);
 CREATE INDEX IF NOT EXISTS idx_contribution_album ON contribution(album_id);
 CREATE INDEX IF NOT EXISTS idx_contribution_role  ON contribution(role_id);
+CREATE INDEX IF NOT EXISTS idx_evenement_cible    ON evenement(cible_table, cible_id);
+CREATE INDEX IF NOT EXISTS idx_evenement_activite ON evenement(activite_id);
+CREATE INDEX IF NOT EXISTS idx_evenement_date     ON evenement(date);
+CREATE INDEX IF NOT EXISTS idx_regions_activite   ON regions(activite_id);
 -- NB : l'unicité (album_id, numero) des planches (DB-1) est posée en MIGRATION
 -- (idx_planches_album_numero), pas ici : sa création doit suivre un dédoublonnage
 -- d'éventuelles données préexistantes, qui ne peut avoir lieu qu'après SCHEMA_SQL.
@@ -448,6 +493,23 @@ def _migrate(conn: sqlite3.Connection) -> None:
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='contribution_role'"
     ).fetchone():                                   # _migrate peut tourner avant SCHEMA_SQL
         _seed_roles(conn)
+
+    # v15 → v16 : journal de provenance / audit (A3, N8). Tables `activite`/`evenement`
+    # créées par SCHEMA_SQL (CREATE … IF NOT EXISTS). Sur `regions`, trois colonnes posées
+    # par PRÉSENCE : lien wasGeneratedBy (`activite_id`) + surface dénormalisée de retouche
+    # (`touche`/`date_modification`). L'ALTER de la FK exige que `activite` existe déjà
+    # (SCHEMA_SQL tourne avant `_migrate` en init_db ; gardé au cas des tests isolés).
+    rcols = {r["name"] for r in conn.execute("PRAGMA table_info(regions)")}
+    a_activite = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='activite'").fetchone()
+    if rcols:
+        if a_activite and "activite_id" not in rcols:
+            conn.execute("ALTER TABLE regions ADD COLUMN activite_id INTEGER "
+                         "REFERENCES activite(id) ON DELETE SET NULL")
+        if "touche" not in rcols:
+            conn.execute("ALTER TABLE regions ADD COLUMN touche INTEGER NOT NULL DEFAULT 0")
+        if "date_modification" not in rcols:
+            conn.execute("ALTER TABLE regions ADD COLUMN date_modification TEXT")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -825,6 +887,10 @@ def reindex_all(conn: sqlite3.Connection, chunk: int = 500) -> int:
     Enregistre le modèle utilisé dans `meta` (reproductibilité). Renvoie le nombre
     de régions traitées. Sans spaCy : réindexation structurelle (repli propre)."""
     from pipeline.nlp import analyse_batch, model_info
+    import journal
+    aid = journal.ouvrir_activite(conn, "reindex_nlp", agent="spacy", agent_type="moteur",
+                                  version=(model_info().get("model") or None),
+                                  params={"chunk": chunk})
     rows = conn.execute("SELECT id, ocr_texte FROM regions ORDER BY id").fetchall()
     notes = {r["region_id"]: (r["note"] or "")
              for r in conn.execute("SELECT region_id, note FROM annotations")}
@@ -852,6 +918,7 @@ def reindex_all(conn: sqlite3.Connection, chunk: int = 500) -> int:
         else:
             conn.execute("INSERT INTO meta (cle, valeur) VALUES (?, ?) "
                          "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur", (cle, val))
+    journal.cloturer_activite(conn, aid, comptes={"regions": n})
     conn.commit()
     return n
 
