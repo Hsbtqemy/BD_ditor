@@ -19,9 +19,14 @@ TOOLS = REPO_ROOT / "tools"
 
 
 def _run(script, db_path, data_dir, *args):
-    env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(data_dir)}
+    # PYTHONUTF8=1 force TOUT sous-processus à émettre de l'UTF-8, décodé en UTF-8 →
+    # aller-retour robuste sur Windows (console cp1252 sinon, qui casse sur un emoji
+    # ou un caractère non-cp1252 présent p. ex. dans un résumé PyPI sérialisé).
+    env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(data_dir),
+           "PYTHONUTF8": "1"}
     return subprocess.run([sys.executable, str(TOOLS / script), *args],
-                          cwd=str(REPO_ROOT), env=env, capture_output=True, text=True)
+                          cwd=str(REPO_ROOT), env=env, capture_output=True,
+                          text=True, encoding="utf-8")
 
 
 @pytest.fixture
