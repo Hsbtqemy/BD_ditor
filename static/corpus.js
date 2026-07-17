@@ -148,6 +148,14 @@ function renderDetail() {
         </tr>`).join("")
     : '<tr><td colspan="8" class="empty-cell">Aucune planche. Importez-en depuis la visionneuse ou ShareDocs.</td></tr>';
 
+  const edParts = [
+    a.date_edition && "Éd. " + esc(a.date_edition),
+    a.langue && esc(a.langue),
+    a.type_oeuvre && esc(a.type_oeuvre),
+    a.lieu_edition && esc(a.lieu_edition),
+    a.isbn && "ISBN " + esc(a.isbn),
+    a.format_physique && esc(a.format_physique),
+  ].filter(Boolean).join(" · ");
   box.innerHTML = `
     <div class="detail-head">
       <h3>${esc(a.titre)} ${a.annee ? `<span class="muted">(${a.annee})</span>` : ""}</h3>
@@ -155,6 +163,8 @@ function renderDetail() {
         ${a.serie ? "Série : " + esc(a.serie) + " · " : ""}${a.auteur ? "Auteur : " + esc(a.auteur) + " · " : ""}
         ${a.editeur ? "Éditeur : " + esc(a.editeur) : ""}
       </div>
+      ${edParts ? `<div class="detail-meta muted small">${edParts}</div>` : ""}
+      <div id="detail-contribs" class="detail-meta small"></div>
       ${a.description ? `<p class="detail-desc">${esc(a.description)}</p>` : ""}
       <button class="ghost small" id="detail-edit">✎ Éditer l'album</button>
       <button class="ghost small" id="detail-validate-all">✔ Tout valider</button>
@@ -168,6 +178,7 @@ function renderDetail() {
 
   $("#detail-edit").onclick = () => openModal(a);
   $("#detail-validate-all").onclick = validateAllAlbum;
+  loadDetailContribs(a.id);
   box.querySelectorAll("button[data-val]").forEach((btn) => {
     btn.onclick = () => validatePlanche(Number(btn.dataset.val), btn.dataset.on === "1");
   });
@@ -193,15 +204,90 @@ function renderDetail() {
 function openModal(album) {
   state.editingId = album ? album.id : null;
   $("#modal-title").textContent = album ? "Éditer l'album" : "Nouvel album";
+  const g = (k) => (album && album[k]) || "";
   $("#m-titre").value = album ? album.titre : "";
-  $("#m-serie").value = (album && album.serie) || "";
-  $("#m-auteur").value = (album && album.auteur) || "";
-  $("#m-annee").value = (album && album.annee) || "";
-  $("#m-editeur").value = (album && album.editeur) || "";
-  $("#m-desc").value = (album && album.description) || "";
+  $("#m-serie").value = g("serie");
+  $("#m-auteur").value = g("auteur");
+  $("#m-annee").value = g("annee");
+  $("#m-editeur").value = g("editeur");
+  $("#m-desc").value = g("description");
+  $("#m-date-edition").value = g("date_edition");
+  $("#m-date-originale").value = g("date_originale");
+  $("#m-langue").value = g("langue");
+  $("#m-type").value = g("type_oeuvre");
+  $("#m-lieu").value = g("lieu_edition");
+  $("#m-tirage").value = g("edition_tirage");
+  $("#m-isbn").value = g("isbn");
+  $("#m-format").value = g("format_physique");
   $("#m-msg").textContent = "";
+  // Contributions : éditables seulement sur un album EXISTANT (elles ont besoin de son id).
+  $("#m-contrib-nom").value = "";
+  $("#m-contrib-role").value = "";
+  const exist = !!state.editingId;
+  $("#m-contrib-hint").hidden = exist;
+  $(".contrib-add").style.display = exist ? "" : "none";
+  $("#m-contribs").innerHTML = "";
+  if (exist) { loadRoles(); loadContributions(state.editingId); }
   $("#album-modal").hidden = false;
   $("#m-titre").focus();
+}
+
+async function loadRoles() {
+  try {
+    const roles = await apiGet("/api/contribution-roles");
+    $("#dl-roles").innerHTML = roles.map((r) => `<option value="${esc(r.label)}">`).join("");
+  } catch (e) { /* datalist vide : non bloquant */ }
+}
+
+async function loadContributions(albumId) {
+  try { renderContribs(await apiGet(`/api/albums/${albumId}/contributions`)); }
+  catch (e) { $("#m-contribs").innerHTML = ""; }
+}
+
+function renderContribs(list) {
+  const box = $("#m-contribs");
+  if (!list.length) { box.innerHTML = '<p class="muted small">Aucune contribution.</p>'; return; }
+  box.innerHTML = list.map((c) => `
+    <div class="contrib-row">
+      <span class="contrib-nom">${esc(c.nom)}</span>
+      <span class="contrib-role muted small">${c.role ? esc(c.role) : "—"}</span>
+      <button class="icon-btn danger" type="button" data-delc="${c.id}" title="Retirer">✕</button>
+    </div>`).join("");
+  box.querySelectorAll("button[data-delc]").forEach((b) => {
+    b.onclick = () => removeContribution(Number(b.dataset.delc));
+  });
+}
+
+async function addContribution() {
+  if (!state.editingId) return;
+  const nom = $("#m-contrib-nom").value.trim();
+  if (!nom) { $("#m-contrib-nom").focus(); return; }
+  const role = $("#m-contrib-role").value.trim() || null;
+  try {
+    await apiSend("POST", `/api/albums/${state.editingId}/contributions`, { nom, role });
+    $("#m-contrib-nom").value = "";
+    $("#m-contrib-role").value = "";
+    await loadContributions(state.editingId);
+    await loadRoles();                 // un nouveau rôle rejoint la datalist
+    $("#m-contrib-nom").focus();
+  } catch (e) { $("#m-msg").textContent = "✗ " + e.message; }
+}
+
+async function removeContribution(id) {
+  try { await apiSend("DELETE", `/api/contributions/${id}`); await loadContributions(state.editingId); }
+  catch (e) { $("#m-msg").textContent = "✗ " + e.message; }
+}
+
+async function loadDetailContribs(albumId) {
+  const el = $("#detail-contribs");
+  if (!el) return;
+  try {
+    const list = await apiGet(`/api/albums/${albumId}/contributions`);
+    el.innerHTML = list.length
+      ? "Contributions : " + list.map((c) =>
+          `${esc(c.nom)}${c.role ? ` <span class="muted">(${esc(c.role)})</span>` : ""}`).join(", ")
+      : "";
+  } catch (e) { el.innerHTML = ""; }
 }
 function closeModal() { $("#album-modal").hidden = true; }
 
@@ -212,13 +298,22 @@ async function saveAlbum() {
   if (btn.disabled) return;               // anti-double-soumission (sinon album dupliqué)
   btn.disabled = true;
   const annee = parseInt($("#m-annee").value, 10);
+  const val = (id) => $(id).value.trim() || null;
   const body = {
     titre,
-    serie: $("#m-serie").value.trim() || null,
-    auteur: $("#m-auteur").value.trim() || null,
+    serie: val("#m-serie"),
+    auteur: val("#m-auteur"),
     annee: isNaN(annee) ? null : annee,
-    editeur: $("#m-editeur").value.trim() || null,
-    description: $("#m-desc").value.trim() || null,
+    editeur: val("#m-editeur"),
+    description: val("#m-desc"),
+    date_edition: val("#m-date-edition"),
+    date_originale: val("#m-date-originale"),
+    langue: val("#m-langue"),
+    type_oeuvre: val("#m-type"),
+    lieu_edition: val("#m-lieu"),
+    edition_tirage: val("#m-tirage"),
+    isbn: val("#m-isbn"),
+    format_physique: val("#m-format"),
   };
   try {
     if (state.editingId) await apiSend("PUT", `/api/albums/${state.editingId}`, body);
@@ -424,6 +519,11 @@ function setup() {
   $("#btn-new").onclick = () => openModal(null);
   $("#m-save").onclick = saveAlbum;
   $("#m-cancel").onclick = closeModal;
+  $("#m-contrib-add").onclick = addContribution;
+  ["#m-contrib-nom", "#m-contrib-role"].forEach((id) =>
+    $(id).addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); addContribution(); }
+    }));
   $("#album-modal").addEventListener("mousedown", (e) => {
     if (e.target.id === "album-modal") closeModal();
   });

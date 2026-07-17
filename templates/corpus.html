@@ -73,6 +73,37 @@
         <label>Éditeur <input id="m-editeur" autocomplete="off"></label>
       </div>
       <label>Description <textarea id="m-desc" rows="3"></textarea></label>
+
+      <fieldset class="modal-section">
+        <legend>Édition <span class="muted small">(détenue)</span></legend>
+        <div class="modal-grid">
+          <label>Date d'édition <input id="m-date-edition" autocomplete="off" placeholder="AAAA"></label>
+          <label>1re parution <input id="m-date-originale" autocomplete="off" placeholder="AAAA (optionnel)"></label>
+          <label>Langue <input id="m-langue" autocomplete="off" placeholder="fr"></label>
+          <label>Type <input id="m-type" list="dl-types" autocomplete="off" placeholder="BD…"></label>
+          <label>Lieu d'édition <input id="m-lieu" autocomplete="off"></label>
+          <label>Édition / tirage <input id="m-tirage" autocomplete="off"></label>
+          <label>ISBN / dépôt légal <input id="m-isbn" autocomplete="off"></label>
+          <label>Format <input id="m-format" autocomplete="off" placeholder="ex. 30 cm, relié"></label>
+        </div>
+        <datalist id="dl-types">
+          <option>BD</option><option>roman graphique</option><option>strip</option>
+          <option>comics</option><option>manga</option><option>recueil</option>
+        </datalist>
+      </fieldset>
+
+      <fieldset class="modal-section">
+        <legend>Contributions <span class="muted small">(nom + rôle)</span></legend>
+        <div id="m-contribs"></div>
+        <div class="contrib-add">
+          <input id="m-contrib-nom" placeholder="Nom" autocomplete="off">
+          <input id="m-contrib-role" list="dl-roles" placeholder="Rôle" autocomplete="off">
+          <datalist id="dl-roles"></datalist>
+          <button id="m-contrib-add" class="ghost small" type="button">+ Ajouter</button>
+        </div>
+        <p id="m-contrib-hint" class="muted small" hidden>Enregistrez d'abord l'album pour lui ajouter des contributions.</p>
+      </fieldset>
+
       <div class="modal-actions">
         <button id="m-save" class="primary">Enregistrer</button>
         <button id="m-cancel" class="ghost small">Annuler</button>

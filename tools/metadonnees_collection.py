@@ -100,6 +100,7 @@ def _cartes(conn, album_ids=None) -> dict:
             + (f"WHERE a.region_id IN {p['regions']} " if p else "")
             + "ORDER BY t.label"),
         "tokens": _tokens_by_region(conn, album_ids),
+        "contributions": _contributions_by_album(conn, album_ids),
         "numero_editorial": _numeros_editoriaux_global(conn),
         "meta": {r["cle"]: r["valeur"] for r in conn.execute("SELECT cle, valeur FROM meta")},
         "schema_version": conn.execute("PRAGMA user_version").fetchone()[0],
@@ -125,6 +126,21 @@ def _numeros_editoriaux_global(conn) -> dict:
     out: dict = {}
     for a in conn.execute("SELECT id FROM albums"):
         out.update(database.numeros_editoriaux(conn, a["id"]))
+    return out
+
+
+def _contributions_by_album(conn, album_ids=None) -> dict:
+    """Contributions (nom + rôle résolu) groupées par album, dans l'ordre de `rang` (N0).
+    Scopé par `album_ids` si fourni."""
+    p = portee_albums(album_ids)
+    where = f" WHERE c.album_id IN {p['albums']}" if p else ""
+    out: dict = {}
+    for r in conn.execute(
+            "SELECT c.album_id, c.nom, c.rang, r.label AS role, r.bucket, r.marc "
+            "FROM contribution c LEFT JOIN contribution_role r ON r.id = c.role_id"
+            + where + " ORDER BY c.album_id, c.rang, c.id"):
+        out.setdefault(r["album_id"], []).append(
+            {"nom": r["nom"], "role": r["role"], "bucket": r["bucket"], "marc": r["marc"]})
     return out
 
 
@@ -209,6 +225,10 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
     tags = [{"label": lbl, "couleur": pr["couleur"], "description": pr["description"]}
             for lbl, pr in sorted(c["tags_cat"].items())]
 
+    roles = [{"label": r["label"], "bucket": r["bucket"], "marc": r["marc"]}
+             for r in conn.execute("SELECT label, bucket, marc FROM contribution_role "
+                                   "ORDER BY label")]
+
     def region_node(r, par_parent, cits):
         ocr = r["ocr_texte"] or ""
         node = {
@@ -261,7 +281,12 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
         albums.append({
             "id": a["id"], "titre": a["titre"], "auteur": a["auteur"], "annee": a["annee"],
             "editeur": a["editeur"], "serie": a["serie"], "description": a["description"],
+            "date_edition": a["date_edition"], "date_originale": a["date_originale"],
+            "langue": a["langue"], "type_oeuvre": a["type_oeuvre"],
+            "lieu_edition": a["lieu_edition"], "edition_tirage": a["edition_tirage"],
+            "isbn": a["isbn"], "format_physique": a["format_physique"],
             "date_import": a["date_import"], "nombre_pages": len(planches),
+            "contributions": c["contributions"].get(a["id"], []),   # N0 : (nom, rôle) Zotero-like
             "planches": planches,
         })
 
@@ -281,7 +306,8 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
                           "indicateurs de couverture (dérivés du journal)",
                           "licence & droits par jeu"],
         },
-        "vocabulaire": vocab, "tags": tags, "personnages": personnages, "albums": albums,
+        "vocabulaire": vocab, "tags": tags, "contribution_roles": roles,
+        "personnages": personnages, "albums": albums,
     }}
 
 
@@ -308,11 +334,24 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
           row["date_debut"], row["date_fin"], row["date_creation"]]] if row else [])
 
     out["albums"] = (
-        ["id", "titre", "auteur", "annee", "editeur", "serie", "description", "date_import",
-         "nombre_pages"],
+        ["id", "titre", "auteur", "annee", "editeur", "serie", "description",
+         "date_edition", "date_originale", "langue", "type_oeuvre", "lieu_edition",
+         "edition_tirage", "isbn", "format_physique", "date_import", "nombre_pages"],
         [[a["id"], a["titre"], a["auteur"], a["annee"], a["editeur"], a["serie"],
-          a["description"], a["date_import"], c["nb_planches"].get(a["id"], 0)]
+          a["description"], a["date_edition"], a["date_originale"], a["langue"],
+          a["type_oeuvre"], a["lieu_edition"], a["edition_tirage"], a["isbn"],
+          a["format_physique"], a["date_import"], c["nb_planches"].get(a["id"], 0)]
          for a in _albums_du_perimetre(conn, album_ids)])
+
+    out["contributions"] = (
+        ["album_id", "nom", "role", "bucket", "marc"],
+        [[aid, ct["nom"], ct["role"], ct["bucket"], ct["marc"]]
+         for aid, cts in c["contributions"].items() for ct in cts])
+
+    out["contribution_roles"] = (
+        ["label", "bucket", "marc"],
+        [[r["label"], r["bucket"], r["marc"]] for r in conn.execute(
+            "SELECT label, bucket, marc FROM contribution_role ORDER BY label")])
 
     out["planches"] = (
         ["id", "album_id", "numero", "role", "numero_editorial", "statut", "validee",

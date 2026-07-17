@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 # --------------------------------------------------------------------------- #
@@ -53,11 +53,20 @@ SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS albums (
     id           INTEGER PRIMARY KEY,
     titre        TEXT NOT NULL,
-    auteur       TEXT,
-    annee        INTEGER,
+    auteur       TEXT,                       -- legacy (responsabilité à plat) → voir `contribution`
+    annee        INTEGER,                    -- legacy (ambigu) → précisé par date_edition/date_originale
     editeur      TEXT,
     serie        TEXT,
     description  TEXT,
+    -- Enrichissement descriptif N0 (v15) : édition détenue. Cf. docs/dictionnaire-metadonnees.md.
+    date_edition     TEXT,                   -- publication de l'édition détenue (l'ANCRE)
+    date_originale   TEXT,                   -- 1re parution de l'œuvre (optionnel, secondaire)
+    langue           TEXT,                   -- langue de l'expression (code, ex. 'fr')
+    type_oeuvre      TEXT,                   -- BD / roman graphique / strip… (contrôlé-ouvert)
+    lieu_edition     TEXT,                   -- ville de publication
+    edition_tirage   TEXT,                   -- mention d'édition / tirage
+    isbn             TEXT,                   -- ISBN / dépôt légal
+    format_physique  TEXT,                   -- dimensions (cm) / reliure
     date_import  TEXT DEFAULT (datetime('now'))
 );
 
@@ -248,6 +257,30 @@ CREATE TABLE IF NOT EXISTS collection_album (
     PRIMARY KEY (collection_id, album_id)
 );
 
+-- CONTRIBUTION (v15, N0) — paternité en modèle Zotero-like : (nom, rôle) par album.
+-- Le rôle est un vocabulaire CONTRÔLÉ-MAIS-OUVERT (même forme que tags/attributs), curé
+-- depuis MARC Relators et mappé aux buckets DCterms `creator`/`contributor`. Le `nom` reste
+-- une chaîne, aliasable vers une entité (VIAF/IdRef) plus tard — dormant. `auteur` (albums)
+-- reste en legacy. Cf. docs/dictionnaire-metadonnees.md (Niveau 0).
+CREATE TABLE IF NOT EXISTS contribution_role (
+    id             INTEGER PRIMARY KEY,
+    label          TEXT UNIQUE NOT NULL,          -- ex. « scénariste », « dessinateur »
+    bucket         TEXT NOT NULL DEFAULT 'contributor',  -- DCterms : 'creator' | 'contributor'
+    marc           TEXT,                          -- code MARC Relators (ex. 'aut', 'art'), optionnel
+    date_creation  TEXT DEFAULT (datetime('now'))
+);
+
+-- Contributeur d'un album (N-N via lignes ; `rang` = ordre citable). Rôle NULL toléré
+-- (ON DELETE SET NULL : supprimer un rôle du vocabulaire ne perd pas la contribution).
+CREATE TABLE IF NOT EXISTS contribution (
+    id             INTEGER PRIMARY KEY,
+    album_id       INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    nom            TEXT NOT NULL,
+    role_id        INTEGER REFERENCES contribution_role(id) ON DELETE SET NULL,
+    rang           INTEGER,
+    date_creation  TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_planches_album   ON planches(album_id);
 CREATE INDEX IF NOT EXISTS idx_regions_planche  ON regions(planche_id);
 CREATE INDEX IF NOT EXISTS idx_regions_parent   ON regions(parent_id);
@@ -263,6 +296,8 @@ CREATE INDEX IF NOT EXISTS idx_attrval_dim      ON attribut_valeur(dimension_id)
 CREATE INDEX IF NOT EXISTS idx_persoattr_val    ON personnage_attribut(valeur_id);
 CREATE INDEX IF NOT EXISTS idx_regattr_val      ON region_attribut(valeur_id);
 CREATE INDEX IF NOT EXISTS idx_colalbum_album   ON collection_album(album_id);
+CREATE INDEX IF NOT EXISTS idx_contribution_album ON contribution(album_id);
+CREATE INDEX IF NOT EXISTS idx_contribution_role  ON contribution(role_id);
 -- NB : l'unicité (album_id, numero) des planches (DB-1) est posée en MIGRATION
 -- (idx_planches_album_numero), pas ici : sa création doit suivre un dédoublonnage
 -- d'éventuelles données préexistantes, qui ne peut avoir lieu qu'après SCHEMA_SQL.
@@ -399,6 +434,21 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # (CREATE … IF NOT EXISTS) → rien à migrer (aucune donnée existante), juste acter la
     # version. Cf. docs/dictionnaire-metadonnees.md (palier « Collection »).
 
+    # v14 → v15 : enrichissement descriptif N0 — `contribution` (Zotero-like) +
+    # `contribution_role` (vocabulaire ; créés par SCHEMA_SQL) et 8 colonnes d'édition sur
+    # `albums`. Les colonnes se gardent par PRÉSENCE (no-op sur base neuve créée par
+    # SCHEMA_SQL ; ALTER sur base ancienne). Le SEED du vocabulaire de rôles est un backfill
+    # de DONNÉES → gaté par VERSION (idempotent en plus via INSERT OR IGNORE).
+    if cols:                                        # table albums présente (peut manquer en test isolé)
+        for col in ("date_edition", "date_originale", "langue", "type_oeuvre",
+                    "lieu_edition", "edition_tirage", "isbn", "format_physique"):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE albums ADD COLUMN {col} TEXT")
+    if version < 15 and conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='contribution_role'"
+    ).fetchone():                                   # _migrate peut tourner avant SCHEMA_SQL
+        _seed_roles(conn)
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -420,6 +470,27 @@ def _dedup_numeros_planches(conn: sqlite3.Connection) -> None:
                 "SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM planches WHERE album_id = ?",
                 (d["album_id"],)).fetchone()["n"]
             conn.execute("UPDATE planches SET numero = ? WHERE id = ?", (n, extra["id"]))
+
+
+# Vocabulaire de rôles de contribution — SEED curé (contrôlé-mais-ouvert), source MARC
+# Relators, mappé aux buckets DCterms. Étendu librement par l'utilisateur ensuite.
+_ROLES_SEED = (
+    ("scénariste", "creator", "aut"),
+    ("dessinateur", "creator", "art"),
+    ("coloriste", "contributor", "clr"),
+    ("encreur", "contributor", None),
+    ("lettreur", "contributor", None),
+    ("traducteur", "contributor", "trl"),
+    ("préfacier", "contributor", "aui"),
+)
+
+
+def _seed_roles(conn: sqlite3.Connection) -> None:
+    """Insère le vocabulaire de rôles curé (idempotent : INSERT OR IGNORE sur `label`
+    unique). N'écrase JAMAIS un rôle existant (bucket/marc édités à la main restent)."""
+    conn.executemany(
+        "INSERT OR IGNORE INTO contribution_role (label, bucket, marc) VALUES (?, ?, ?)",
+        _ROLES_SEED)
 
 
 # --------------------------------------------------------------------------- #
@@ -576,6 +647,15 @@ def collection_album_ids(conn: sqlite3.Connection, collection_id: int) -> list[i
     return [r[0] for r in conn.execute(
         "SELECT album_id FROM collection_album WHERE collection_id = ? "
         "ORDER BY rang, album_id", (collection_id,))]
+
+
+def contributions_album(conn: sqlite3.Connection, album_id: int) -> list[dict]:
+    """Contributions d'un album (nom + rôle résolu : label/bucket/marc), ordre de `rang`
+    (N0, v15). Le rôle peut être NULL (contribution sans rôle attribué)."""
+    return [dict(r) for r in conn.execute(
+        "SELECT c.id, c.nom, c.rang, c.role_id, r.label AS role, r.bucket, r.marc "
+        "FROM contribution c LEFT JOIN contribution_role r ON r.id = c.role_id "
+        "WHERE c.album_id = ? ORDER BY c.rang, c.id", (album_id,))]
 
 
 # --------------------------------------------------------------------------- #

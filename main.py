@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from config import (AUTH_LOGOUT_URL, CIBLES_ATTRIBUT, DERIVATIVES_DIR,
                     ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR,
                     TYPES_REGION, UPOS_TAGS)
-from database import (citations_regions, get_connection, init_db,
+from database import (citations_regions, contributions_album, get_connection, init_db,
                       numeros_editoriaux, reindex_region, unindex_region)
 from pipeline.backup import make_backup
 from pipeline import jobs
@@ -124,11 +124,20 @@ def _row(cur) -> Optional[dict]:
 # --------------------------------------------------------------------------- #
 class AlbumIn(BaseModel):
     titre: str
-    auteur: Optional[str] = None
-    annee: Optional[int] = None
+    auteur: Optional[str] = None                # legacy → voir contributions
+    annee: Optional[int] = None                 # legacy → précisé par date_edition
     editeur: Optional[str] = None
     serie: Optional[str] = None
     description: Optional[str] = None
+    # Enrichissement descriptif N0 (v15) — édition détenue.
+    date_edition: Optional[str] = None
+    date_originale: Optional[str] = None
+    langue: Optional[str] = None
+    type_oeuvre: Optional[str] = None
+    lieu_edition: Optional[str] = None
+    edition_tirage: Optional[str] = None
+    isbn: Optional[str] = None
+    format_physique: Optional[str] = None
 
 
 class AlbumUpdate(BaseModel):
@@ -138,6 +147,25 @@ class AlbumUpdate(BaseModel):
     editeur: Optional[str] = None
     serie: Optional[str] = None
     description: Optional[str] = None
+    date_edition: Optional[str] = None
+    date_originale: Optional[str] = None
+    langue: Optional[str] = None
+    type_oeuvre: Optional[str] = None
+    lieu_edition: Optional[str] = None
+    edition_tirage: Optional[str] = None
+    isbn: Optional[str] = None
+    format_physique: Optional[str] = None
+
+
+class ContributionIn(BaseModel):
+    nom: str
+    role: Optional[str] = None                  # label du rôle (contrôlé-ouvert : créé au besoin)
+
+
+class RoleIn(BaseModel):
+    label: str
+    bucket: Optional[str] = None                # 'creator' | 'contributor' (défaut : contributor)
+    marc: Optional[str] = None
 
 
 class RegionIn(BaseModel):
@@ -383,11 +411,11 @@ def list_albums(conn: sqlite3.Connection = Depends(db)):
 
 @app.post("/api/albums", status_code=201)
 def create_album(album: AlbumIn, conn: sqlite3.Connection = Depends(db)):
+    data = album.model_dump()                       # toutes les colonnes descriptives (dont N0)
+    cols = list(data)
     cur = conn.execute(
-        "INSERT INTO albums (titre, auteur, annee, editeur, serie, description) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (album.titre, album.auteur, album.annee, album.editeur, album.serie,
-         album.description),
+        f"INSERT INTO albums ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+        tuple(data.values()),
     )
     conn.commit()
     return _row(conn.execute("SELECT * FROM albums WHERE id = ?", (cur.lastrowid,)))
@@ -975,6 +1003,90 @@ def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db)):
     )
     conn.commit()
     return _row(conn.execute("SELECT * FROM tags WHERE label = ?", (label,)))
+
+
+# =========================================================================== #
+# Contributions & vocabulaire de rôles (N0, v15) — paternité Zotero-like
+# =========================================================================== #
+_CONTRIB_SQL = ("SELECT c.id, c.nom, c.rang, c.role_id, r.label AS role, "
+                "r.bucket, r.marc FROM contribution c "
+                "LEFT JOIN contribution_role r ON r.id = c.role_id WHERE c.id = ?")
+
+
+def _album_existe(conn, album_id):
+    if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
+        raise HTTPException(404, f"Album {album_id} introuvable")
+
+
+def _role_id(conn, label):
+    """Résout un label de rôle → id, en le CRÉANT au besoin (vocabulaire contrôlé-ouvert,
+    bucket défaut 'contributor'). None si label vide."""
+    label = (label or "").strip()
+    if not label:
+        return None
+    conn.execute("INSERT OR IGNORE INTO contribution_role (label) VALUES (?)", (label,))
+    return conn.execute(
+        "SELECT id FROM contribution_role WHERE label = ?", (label,)).fetchone()["id"]
+
+
+@app.get("/api/contribution-roles")
+def list_contribution_roles(conn: sqlite3.Connection = Depends(db)):
+    """Vocabulaire de rôles (avec fréquence d'emploi), pour la datalist de saisie."""
+    return _rows(conn.execute(
+        """SELECT r.id, r.label, r.bucket, r.marc,
+                  COUNT(c.id) AS frequence
+           FROM contribution_role r LEFT JOIN contribution c ON c.role_id = r.id
+           GROUP BY r.id
+           ORDER BY frequence DESC, r.label"""))
+
+
+@app.post("/api/contribution-roles", status_code=201)
+def create_contribution_role(role: RoleIn, conn: sqlite3.Connection = Depends(db)):
+    label = role.label.strip()
+    if not label:
+        raise HTTPException(422, "Label de rôle vide")
+    bucket = role.bucket if role.bucket in ("creator", "contributor") else "contributor"
+    conn.execute(
+        """INSERT INTO contribution_role (label, bucket, marc) VALUES (?, ?, ?)
+           ON CONFLICT(label) DO UPDATE SET
+               bucket = excluded.bucket,
+               marc = COALESCE(excluded.marc, contribution_role.marc)""",
+        (label, bucket, role.marc))
+    conn.commit()
+    return _row(conn.execute("SELECT * FROM contribution_role WHERE label = ?", (label,)))
+
+
+@app.get("/api/albums/{album_id}/contributions")
+def list_contributions(album_id: int, conn: sqlite3.Connection = Depends(db)):
+    _album_existe(conn, album_id)
+    return contributions_album(conn, album_id)
+
+
+@app.post("/api/albums/{album_id}/contributions", status_code=201)
+def add_contribution(album_id: int, contrib: ContributionIn,
+                     conn: sqlite3.Connection = Depends(db)):
+    _album_existe(conn, album_id)
+    nom = contrib.nom.strip()
+    if not nom:
+        raise HTTPException(422, "Nom de contributeur vide")
+    role_id = _role_id(conn, contrib.role)
+    rang = conn.execute("SELECT COALESCE(MAX(rang), 0) + 1 AS n FROM contribution "
+                        "WHERE album_id = ?", (album_id,)).fetchone()["n"]
+    cur = conn.execute(
+        "INSERT INTO contribution (album_id, nom, role_id, rang) VALUES (?, ?, ?, ?)",
+        (album_id, nom, role_id, rang))
+    conn.commit()
+    return _row(conn.execute(_CONTRIB_SQL, (cur.lastrowid,)))
+
+
+@app.delete("/api/contributions/{contribution_id}", status_code=204)
+def delete_contribution(contribution_id: int, conn: sqlite3.Connection = Depends(db)):
+    if conn.execute("SELECT 1 FROM contribution WHERE id = ?",
+                    (contribution_id,)).fetchone() is None:
+        raise HTTPException(404, f"Contribution {contribution_id} introuvable")
+    conn.execute("DELETE FROM contribution WHERE id = ?", (contribution_id,))
+    conn.commit()
+    return Response(status_code=204)
 
 
 # =========================================================================== #

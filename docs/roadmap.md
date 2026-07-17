@@ -41,8 +41,8 @@ Beaucoup est **livré** — l'ouvert ci-dessous est ce qui *reste*, pas l'ensemb
 
 | # | Item | Effort | Pourquoi |
 |---|---|---|---|
-| **A1** | **Enrichissement descriptif (N0)** — `contribution` Zotero-like (nom + rôle contrôlé-ouvert, mappé DCterms / MARC Relators), `date_edition` (ancre) + `date_originale`, `langue`, `type d'œuvre`, `lieu d'édition`, `édition/tirage`, `ISBN`, `format physique` | M–L | qualité bibliographique = condition d'un dépôt crédible ; aujourd'hui N0 est mince et surtout en texte libre |
-| **A2** | **Crosswalk JSON-LD / DataCite** — mapping du modèle interne vers les schémas d'entrepôt (Dublin Core / DataCite) | M | rend le dépôt *machine-ready* ; complète l'export descriptif |
+| ~~**A1**~~ | ✅ **Fait 2026-07-17 (v15)** — **enrichissement descriptif N0** : `contribution` Zotero-like (nom + rôle contrôlé-ouvert `contribution_role`, DCterms / MARC), 8 champs d'édition (`date_edition`, `date_originale`, `langue`, `type_oeuvre`, `lieu_edition`, `edition_tirage`, `isbn`, `format_physique`). Boucle complète : schéma + API + export + UI Bibliothèque | M–L | qualité bibliographique = condition d'un dépôt crédible |
+| **A2** | **Crosswalk JSON-LD / DataCite** — mapping du modèle interne vers les schémas d'entrepôt (Dublin Core / DataCite) | M | rend le dépôt *machine-ready* ; complète l'export descriptif. **Prochain cran** |
 | A3 | **Journal de provenance / audit (N8/N2)** — événements append-only + activités (runs : agent, versions moteurs, params), `activite_id` par entité, `touché`/`date_modification`, indicateurs de couverture dérivés ; export **PROV-O** / TEI `revisionDesc` | L | qualifie *qui a produit quoi* ; **recoupe D1 (undo)** — même journal |
 | A4 | **Lexique situé SKOS (N7)** — `definition`, `note_portee`, état `provisoire→défini`, portée d'appartenance `collection_id`, indicateur « % défini » | M | vocabulaire facetté réutilisable et documenté |
 | A5 | **Alignement d'autorité (N6)** — `personnages` → URI Wikidata / VIAF / IdRef (`skos:exactMatch`) | M | interopérabilité des entités |
@@ -105,8 +105,9 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 
 ## Séquence conseillée (2026-07-16, modifiable)
 
-1. **[Cap] Piste A — dépôt utilisable** : **A1** (descriptif N0) → **A2** (crosswalk). À l'issue,
-   une collection est réellement déposable sur Nakala/HAL.
+1. **[Cap] Piste A — dépôt utilisable** : ~~**A1** (descriptif N0)~~ ✅ **fait (v15, 2026-07-17)** →
+   **A2** (crosswalk JSON-LD/DataCite) reste le prochain cran. À l'issue, une collection est
+   réellement déposable sur Nakala/HAL.
 2. ~~**D2** (gating `_migrate`)~~ — ✅ **fait 2026-07-16**, avant de toucher au schéma en A1.
 3. **Ouvrir la décision B1** en parallèle (vocabulaire émotions) — elle exige une discussion
    d'équipe *en amont*, autant l'amorcer tôt.

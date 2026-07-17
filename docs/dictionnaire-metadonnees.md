@@ -134,6 +134,12 @@ libre** — principal chantier pour une qualité bibliographique.
 > Œuvre vs édition : **un seul niveau** = l'édition détenue ; `date_edition` est **l'ancre**,
 > `date_originale` (1re parution) reste **optionnelle/secondaire** (on exploite le scanné).
 > Les champs `auteur`/`annee` restent en *legacy*.
+>
+> **✅ Réalisé (schéma v15)** : tables `contribution` (N-N) + `contribution_role` (vocabulaire
+> semé, ouvert), 8 colonnes d'édition sur `albums`. API (`/api/albums/{id}/contributions`,
+> `/api/contribution-roles`, champs d'édition sur album), UI Bibliothèque (section Édition +
+> éditeur de contributions), et câblage export (metadonnees/description/IIIF). Restent *à
+> prévoir* : contributeur-**entité** alignable (VIAF/IdRef, dormant) et **PID**.
 
 | Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
 |---|---|---|---|---|---|---|
@@ -146,17 +152,17 @@ libre** — principal chantier pour une qualité bibliographique.
 | `description` | note libre sur l'œuvre | texte | descriptif | libre | DC:description | ouvert |
 | `date_import` | date d'entrée dans l'outil | horodatage | système | structuré | PROV | ouvert |
 | `nombre de pages` | volume de l'album | entier | dérivé (compte des planches) | dérivé | DC:extent | ouvert |
-| *`contribution`* | contributeur de l'album (**Zotero-like** : liste de (nom, rôle)) | liaison N-N | descriptif | *absent — à prévoir* (remplace `auteur` plat) | DCterms creator/contributor | ouvert |
-| *`contribution.role`* | rôle du contributeur | vocabulaire **contrôlé-mais-ouvert** (scénariste · dessinateur · coloriste · lettreur · encreur · traducteur…) | descriptif | *absent — à prévoir* | MARC Relators | ouvert |
+| `contribution` | contributeur de l'album (**Zotero-like** : (nom, rôle)) | liaison N-N | descriptif | structuré (v15) | DCterms creator/contributor | ouvert |
+| `contribution.role` | rôle du contributeur | vocabulaire **contrôlé-mais-ouvert** `contribution_role` (seed : scénariste · dessinateur · coloriste · encreur · lettreur · traducteur · préfacier) | descriptif | structuré (v15) | MARC Relators | ouvert |
 | *`contributeur` (entité)* | alias du nom vers une personne canonique alignable | réf. entité + URI | descriptif | *absent — à prévoir (dormant)* | VIAF / IdRef / ISNI | ouvert |
-| *`date_edition`* | publication de l'**édition détenue** (l'ancre) | date | descriptif | *absent — à prévoir* | DC:issued | ouvert |
-| *`date_originale`* | 1re parution de l'œuvre — *optionnel, secondaire* | date | descriptif | *absent — à prévoir* | DC:created | ouvert |
-| *`type d'œuvre`* | BD / roman graphique / strip… | contrôlé-ouvert | descriptif | *absent — à prévoir* | DC:type | ouvert |
-| *`langue`* | langue de l'expression (**traduction = autre texte**) | code (fr…) | descriptif | *absent — à prévoir* | DC:language | ouvert |
-| *`lieu d'édition`* | ville de publication (édition détenue) | texte / contrôlé | descriptif | *absent — à prévoir* | DC:coverage | ouvert |
-| *`édition / tirage`* | mention d'édition | texte | descriptif | *absent — à prévoir* | DC | ouvert |
-| *`identifiant éditeur`* | ISBN / dépôt légal (édition détenue) | code | descriptif | *absent — à prévoir* | DC:identifier | ouvert |
-| *`format physique`* | dimensions du support (cm), reliure | mesures | matériel | *absent — à prévoir* (recoupe N1) | DC:format | ouvert |
+| `date_edition` | publication de l'**édition détenue** (l'ancre) | date | descriptif | structuré (v15) | DC:issued | ouvert |
+| `date_originale` | 1re parution de l'œuvre — *optionnel, secondaire* | date | descriptif | structuré (v15) | DC:created | ouvert |
+| `type_oeuvre` | BD / roman graphique / strip… | contrôlé-ouvert | descriptif | structuré (v15) | DC:type | ouvert |
+| `langue` | langue de l'expression (**traduction = autre texte**) | code (fr…) | descriptif | structuré (v15) | DC:language | ouvert |
+| `lieu_edition` | ville de publication (édition détenue) | texte | descriptif | structuré (v15) | DC:coverage | ouvert |
+| `edition_tirage` | mention d'édition | texte | descriptif | structuré (v15) | DC | ouvert |
+| `isbn` | ISBN / dépôt légal (édition détenue) | code | descriptif | structuré (v15) | DC:identifier | ouvert |
+| `format_physique` | dimensions du support (cm), reliure | mesures | matériel | structuré (v15) | DC:format | ouvert |
 | *`PID`* | identifiant pérenne (DOI/ARK) | URI résoluble | système | *absent — à prévoir* | DataCite | ouvert |
 | *`droits (surcharge)`* | `statut_diffusion` / `base_legale` propres à l'album (défaut = Collection) | idem Collection | descriptif | *absent — à prévoir* | DC:rights | ouvert |
 
@@ -343,10 +349,10 @@ Chantiers de FAIRisation dérivés de ce dictionnaire, par couche :
   provenance globale). Gestion : `tools/gerer_collections.py` ; scope d'export : `--collection`.
   Restent *à prévoir* : gel versionné et PID (dormants), appartenance fine planche/région
   (dormant), description PGD dérivée.
-- **Descriptif (N0)** : **contribution** Zotero-like (nom + rôle contrôlé-ouvert, DCterms /
-  MARC Relators ; contributeur-entité alignable VIAF/IdRef en dormant) · `date_edition` (ancre)
-  + `date_originale` (optionnel) — œuvre vs édition, un seul niveau · lieu · tirage · ISBN ·
-  langue · type · format · **PID**.
+- **Descriptif (N0)** : **✅ réalisé (v15)** — **contribution** Zotero-like (nom + rôle
+  contrôlé-ouvert, DCterms / MARC Relators) · `date_edition` (ancre) + `date_originale` ·
+  langue · type · lieu · tirage · ISBN · format. Restent *à prévoir* : contributeur-**entité**
+  alignable (VIAF/IdRef, dormant) et **PID**.
 - **Matériel (N1)** : `dpi` · `mode` · dimensions physiques · source de numérisation.
 - **Provenance / audit (N2, N8)** : couche d'audit décidée (2026-07-15) — **journal
   d'événements append-only** + **activités (runs)** (agent, versions moteurs, params) +

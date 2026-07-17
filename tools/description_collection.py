@@ -109,6 +109,15 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
         "SELECT COUNT(auteur) auteur, COUNT(annee) annee, COUNT(editeur) editeur, "
         "COUNT(serie) serie, COUNT(description) descr, MIN(annee) amin, MAX(annee) amax "
         "FROM albums" + W_alb).fetchone()
+    # N0 enrichi (v15) : contributions (Zotero-like) + couverture des champs d'édition.
+    contrib = _un(conn, "SELECT COUNT(*) FROM contribution"
+                        + (f" WHERE album_id IN {P['albums']}" if P else ""))
+    roles_n = _un(conn, "SELECT COUNT(*) FROM contribution_role")   # catalogue global
+    ed = conn.execute(
+        "SELECT COUNT(date_edition) de, COUNT(date_originale) do, COUNT(langue) la, "
+        "COUNT(type_oeuvre) ty, COUNT(lieu_edition) li, COUNT(edition_tirage) et, "
+        "COUNT(isbn) isb, COUNT(format_physique) fo FROM albums" + W_alb).fetchone()
+
     p = conn.execute(
         "SELECT COUNT(*) t, SUM(CASE WHEN role='recit' THEN 1 ELSE 0 END) recit, "
         "COUNT(validee) validees, COUNT(chemin_tiff) tiff, COUNT(largeur_px) dims, "
@@ -198,6 +207,11 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
             },
             "couverture": {
                 "albums": albums,
+                "descriptif_n0": {                       # enrichissement bibliographique (v15)
+                    "contributions": contrib, "roles_vocabulaire": roles_n,
+                    "avec_date_edition": ed["de"], "avec_langue": ed["la"],
+                    "avec_type": ed["ty"], "avec_isbn": ed["isb"],
+                    "avec_lieu": ed["li"], "avec_format": ed["fo"]},
                 "planches": {"total": planches, "recit": recit,
                              "paratexte": paratexte, "validees": p["validees"],
                              "par_statut": statuts},
@@ -264,6 +278,16 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
         ("album", "description"): a["descr"],
         ("album", "date_import"): albums,
         ("album", "nombre_pages"): planches,
+        ("album", "contribution"): contrib,
+        ("album", "contribution.role"): f"{roles_n} rôles au vocabulaire",
+        ("album", "date_edition"): ed["de"],
+        ("album", "date_originale"): ed["do"],
+        ("album", "type_oeuvre"): ed["ty"],
+        ("album", "langue"): ed["la"],
+        ("album", "lieu_edition"): ed["li"],
+        ("album", "edition_tirage"): ed["et"],
+        ("album", "identifiant_editeur"): ed["isb"],
+        ("album", "format_physique"): ed["fo"],
         ("planche", "id"): planches,
         ("planche", "album_id"): planches,
         ("planche", "numero"): planches,
@@ -338,17 +362,17 @@ CATALOGUE = [
     ("album", "description", "note libre", "descriptif", "libre", "DC:description", "ouvert"),
     ("album", "date_import", "entrée dans l'outil", "système", "structuré", "PROV", "ouvert"),
     ("album", "nombre_pages", "volume", "dérivé", "dérivé", "DC:extent", "ouvert"),
-    ("album", "contribution", "contributeur (nom+rôle)", "descriptif", "absent — à prévoir", "DCterms", "ouvert"),
-    ("album", "contribution.role", "rôle du contributeur", "descriptif", "absent — à prévoir", "MARC Relators", "ouvert"),
+    ("album", "contribution", "contributeur (nom+rôle)", "descriptif", "structuré (v15)", "DCterms", "ouvert"),
+    ("album", "contribution.role", "rôle du contributeur (contrôlé-ouvert)", "descriptif", "structuré (v15)", "MARC Relators", "ouvert"),
     ("album", "contributeur_entite", "alias personne canonique", "descriptif", "absent — à prévoir (dormant)", "VIAF/IdRef", "ouvert"),
-    ("album", "date_edition", "édition détenue (ancre)", "descriptif", "absent — à prévoir", "DC:issued", "ouvert"),
-    ("album", "date_originale", "1re parution", "descriptif", "absent — à prévoir", "DC:created", "ouvert"),
-    ("album", "type_oeuvre", "BD/roman graphique", "descriptif", "absent — à prévoir", "DC:type", "ouvert"),
-    ("album", "langue", "langue de l'expression", "descriptif", "absent — à prévoir", "DC:language", "ouvert"),
-    ("album", "lieu_edition", "ville d'édition", "descriptif", "absent — à prévoir", "DC:coverage", "ouvert"),
-    ("album", "edition_tirage", "mention d'édition", "descriptif", "absent — à prévoir", "DC", "ouvert"),
-    ("album", "identifiant_editeur", "ISBN/dépôt légal", "descriptif", "absent — à prévoir", "DC:identifier", "ouvert"),
-    ("album", "format_physique", "dimensions/reliure", "matériel", "absent — à prévoir", "DC:format", "ouvert"),
+    ("album", "date_edition", "édition détenue (ancre)", "descriptif", "structuré (v15)", "DC:issued", "ouvert"),
+    ("album", "date_originale", "1re parution", "descriptif", "structuré (v15)", "DC:created", "ouvert"),
+    ("album", "type_oeuvre", "BD/roman graphique", "descriptif", "structuré (v15)", "DC:type", "ouvert"),
+    ("album", "langue", "langue de l'expression", "descriptif", "structuré (v15)", "DC:language", "ouvert"),
+    ("album", "lieu_edition", "ville d'édition", "descriptif", "structuré (v15)", "DC:coverage", "ouvert"),
+    ("album", "edition_tirage", "mention d'édition", "descriptif", "structuré (v15)", "DC", "ouvert"),
+    ("album", "identifiant_editeur", "ISBN/dépôt légal", "descriptif", "structuré (v15)", "DC:identifier", "ouvert"),
+    ("album", "format_physique", "dimensions/reliure", "matériel", "structuré (v15)", "DC:format", "ouvert"),
     ("album", "pid", "DOI/ARK", "système", "absent — à prévoir", "DataCite", "ouvert"),
     ("planche", "id", "identifiant", "système", "structuré", "—", "ouvert"),
     ("planche", "album_id", "rattachement", "système", "structuré", "—", "ouvert"),

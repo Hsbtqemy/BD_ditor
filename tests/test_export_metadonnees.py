@@ -134,6 +134,25 @@ def test_collection_crud_et_portee(corpus, album, client, db_path, tmp_path):
     assert len(coll["items"]) == 1
 
 
+def test_contributions_et_edition_dans_export(corpus, album, client, db_path):
+    """N0 (v15) : contributions (nom+rôle résolu) et champs d'édition apparaissent dans les
+    records exportés (arbre JSON)."""
+    client.put(f"/api/albums/{album['id']}", json={"date_edition": "1960", "langue": "fr"})
+    client.post(f"/api/albums/{album['id']}/contributions",
+                json={"nom": "Hergé", "role": "scénariste"})
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.close()
+    r = _run("metadonnees_collection.py", corpus["db"], corpus["data"], "--json", "-")
+    assert r.returncode == 0, r.stderr
+    doc = json.loads(r.stdout)["metadonnees_collection"]
+    alb = doc["albums"][0]
+    assert alb["date_edition"] == "1960" and alb["langue"] == "fr"
+    assert alb["contributions"] == [
+        {"nom": "Hergé", "role": "scénariste", "bucket": "creator", "marc": "aut"}]
+    assert any(role["label"] == "scénariste" for role in doc["contribution_roles"])
+
+
 def test_iiif_conformance_stricte(corpus, tmp_path):
     """Conformité STRICTE via iiif-prezi3 (lib IIIF officielle) : le manifest généré se
     re-parse sans erreur dans ses modèles typés → validation INDÉPENDANTE de notre

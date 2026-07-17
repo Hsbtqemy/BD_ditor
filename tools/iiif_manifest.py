@@ -46,9 +46,18 @@ def _meta(label, valeur):
 
 
 def _album_metadata(a):
-    champs = [("Auteur", a["auteur"]), ("Année", a["annee"]),
-              ("Éditeur", a["editeur"]), ("Série", a["serie"])]
-    return [_meta(lbl, v) for lbl, v in champs if v not in (None, "")]
+    # Contributions (N0) d'abord : une entrée « Rôle : Nom » par contributeur.
+    meta = [_meta((ct.get("role") or "contributeur").capitalize(), ct["nom"])
+            for ct in a.get("contributions", [])]
+    champs = [("Auteur", a.get("auteur")), ("Année", a.get("annee")),
+              ("Éditeur", a.get("editeur")), ("Série", a.get("serie")),
+              ("Date d'édition", a.get("date_edition")),
+              ("Première parution", a.get("date_originale")),
+              ("Langue", a.get("langue")), ("Type", a.get("type_oeuvre")),
+              ("Lieu d'édition", a.get("lieu_edition")),
+              ("Édition / tirage", a.get("edition_tirage")),
+              ("ISBN", a.get("isbn")), ("Format", a.get("format_physique"))]
+    return meta + [_meta(lbl, v) for lbl, v in champs if v not in (None, "")]
 
 
 def _region_anno(reg, cid, base, aid, verbatim):

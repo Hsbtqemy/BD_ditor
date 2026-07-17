@@ -68,11 +68,14 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   champs `absent — à prévoir` y figurent **vides** → la sortie est honnête sur la couverture.
 - **Enregistrements — JSON arbre** : `collection → albums → planches → régions
   (case ⊃ bulle) → tokens` ; personnages et vocabulaire sortis une fois, référencés par nom.
-- **Enregistrements — CSV par niveau** : `albums`, `planches`, `regions`, `tokens`,
+- **Enregistrements — CSV par niveau** : `collection`, `albums` (avec les champs d'édition
+  N0), `contributions`, `contribution_roles`, `planches`, `regions`, `tokens`,
   `annotations`, `tags`, `personnages`, `personnage_attributs`, `region_attributs`,
   `vocabulaire`, `paradonnee` — dump relationnel recollable par les clés (`album_id`,
   `planche_id`, `region_id`, `parent_id`). Groupables en `.zip`. Écrits avec un **BOM
-  UTF-8** (accents lisibles dans Excel, comme l'export de l'app).
+  UTF-8** (accents lisibles dans Excel, comme l'export de l'app). Les albums portent aussi
+  leurs **contributions** (nom + rôle résolu : bucket DCterms + code MARC) et le catalogue
+  **`contribution_roles`** (vocabulaire contrôlé-ouvert).
 - **Enregistrements — XLSX multi-feuilles** : un onglet par table (dont `tags` et
   `paradonnee`), plus deux onglets de confort — **`fiche`** (le roll-up aplati) et
   **`arbre`** (hiérarchie **repliable** avec les boîtes `x,y,w,h` et un lien « voir »

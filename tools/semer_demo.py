@@ -143,8 +143,14 @@ def semer(cli):
     # ---- Album 1 : L'Île aux Énigmes (4 planches) -----------------------
     a1 = api.post("/api/albums", titre="L'Île aux Énigmes", serie="Les Explorateurs",
                   auteur="A. Démo", editeur="Éditions Démo", annee=2019,
+                  date_edition="2019", date_originale="2018", langue="fr",
+                  type_oeuvre="BD", lieu_edition="Bruxelles",
+                  isbn="978-2-0000-0001-9", format_physique="30 cm, cartonné",
                   description="Aventure de démonstration : Léa et Sacha sur la piste "
                               "d'une vieille carte au trésor.")
+    for nom, role in [("A. Démo", "scénariste"), ("B. Croquis", "dessinateur"),
+                      ("C. Teintes", "coloriste")]:                    # N0 : contributions
+        api.post(f"/api/albums/{a1['id']}/contributions", nom=nom, role=role)
 
     p1 = api.importer(a1["id"], (247, 243, 233), 1)
     poser(p1, _grille(2, 3), [
@@ -181,7 +187,12 @@ def semer(cli):
     # ---- Album 2 : Le Secret du Vieux Phare (2 planches) ----------------
     a2 = api.post("/api/albums", titre="Le Secret du Vieux Phare", serie="Les Explorateurs",
                   auteur="A. Démo", editeur="Éditions Démo", annee=2021,
+                  date_edition="2021", langue="fr", type_oeuvre="BD",
+                  lieu_edition="Bruxelles", isbn="978-2-0000-0002-6",
                   description="Deuxième tome de démonstration.")
+    for nom, role in [("A. Démo", "scénariste"), ("B. Croquis", "dessinateur"),
+                      ("D. Trad", "traducteur")]:
+        api.post(f"/api/albums/{a2['id']}/contributions", nom=nom, role=role)
 
     q1 = api.importer(a2["id"], (236, 233, 224), 1)
     poser(q1, _grille(1, 3), [
