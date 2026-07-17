@@ -162,7 +162,7 @@ class ContributionIn(BaseModel):
     role: Optional[str] = None                  # label du rôle (contrôlé-ouvert : créé au besoin)
 
 
-class RoleIn(BaseModel):
+class ContributionRoleIn(BaseModel):            # ≠ `RoleIn` (rôle de planche, plus bas)
     label: str
     bucket: Optional[str] = None                # 'creator' | 'contributor' (défaut : contributor)
     marc: Optional[str] = None
@@ -1041,17 +1041,20 @@ def list_contribution_roles(conn: sqlite3.Connection = Depends(db)):
 
 
 @app.post("/api/contribution-roles", status_code=201)
-def create_contribution_role(role: RoleIn, conn: sqlite3.Connection = Depends(db)):
+def create_contribution_role(role: ContributionRoleIn, conn: sqlite3.Connection = Depends(db)):
     label = role.label.strip()
     if not label:
         raise HTTPException(422, "Label de rôle vide")
-    bucket = role.bucket if role.bucket in ("creator", "contributor") else "contributor"
+    # bucket None si non/ mal fourni → défaut 'contributor' à la CRÉATION seulement ;
+    # sur conflit, on ne clobbe PAS un bucket existant (COALESCE), symétrique de `marc`.
+    bucket = role.bucket if role.bucket in ("creator", "contributor") else None
     conn.execute(
-        """INSERT INTO contribution_role (label, bucket, marc) VALUES (?, ?, ?)
+        """INSERT INTO contribution_role (label, bucket, marc)
+           VALUES (?, COALESCE(?, 'contributor'), ?)
            ON CONFLICT(label) DO UPDATE SET
-               bucket = excluded.bucket,
+               bucket = COALESCE(?, contribution_role.bucket),
                marc = COALESCE(excluded.marc, contribution_role.marc)""",
-        (label, bucket, role.marc))
+        (label, bucket, role.marc, bucket))
     conn.commit()
     return _row(conn.execute("SELECT * FROM contribution_role WHERE label = ?", (label,)))
 

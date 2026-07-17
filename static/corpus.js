@@ -251,7 +251,7 @@ function renderContribs(list) {
     <div class="contrib-row">
       <span class="contrib-nom">${esc(c.nom)}</span>
       <span class="contrib-role muted small">${c.role ? esc(c.role) : "—"}</span>
-      <button class="icon-btn danger" type="button" data-delc="${c.id}" title="Retirer">✕</button>
+      <button class="icon-btn danger" type="button" data-delc="${c.id}" title="Retirer" aria-label="Retirer ${esc(c.nom)}">✕</button>
     </div>`).join("");
   box.querySelectorAll("button[data-delc]").forEach((b) => {
     b.onclick = () => removeContribution(Number(b.dataset.delc));

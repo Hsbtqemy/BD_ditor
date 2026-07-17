@@ -30,6 +30,18 @@ def test_vocabulaire_roles_seede(client):
     assert {"scénariste", "dessinateur", "coloriste", "traducteur"} <= labels
 
 
+def test_role_upsert_preserve_bucket(client):
+    """POST /api/contribution-roles sans bucket NE rétrograde PAS un bucket existant
+    (régression : 'scénariste' semé en `creator` ne doit pas repasser `contributor`)."""
+    r = client.post("/api/contribution-roles", json={"label": "scénariste"}).json()
+    assert r["bucket"] == "creator"                       # préservé (pas de clobber par défaut)
+    r = client.post("/api/contribution-roles",
+                    json={"label": "scénariste", "bucket": "contributor"}).json()
+    assert r["bucket"] == "contributor"                   # override EXPLICITE possible
+    r = client.post("/api/contribution-roles", json={"label": "rôle-neuf"}).json()
+    assert r["bucket"] == "contributor"                   # défaut à la création
+
+
 def test_contribution_crud_et_vocab_ouvert(client, album):
     """Ajout/liste/suppression + rôle résolu (bucket) + création d'un rôle INÉDIT (ouvert)."""
     aid = album["id"]

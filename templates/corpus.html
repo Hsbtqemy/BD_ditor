@@ -96,8 +96,10 @@
         <legend>Contributions <span class="muted small">(nom + rôle)</span></legend>
         <div id="m-contribs"></div>
         <div class="contrib-add">
-          <input id="m-contrib-nom" placeholder="Nom" autocomplete="off">
-          <input id="m-contrib-role" list="dl-roles" placeholder="Rôle" autocomplete="off">
+          <input id="m-contrib-nom" placeholder="Nom" autocomplete="off"
+                 aria-label="Nom du contributeur">
+          <input id="m-contrib-role" list="dl-roles" placeholder="Rôle" autocomplete="off"
+                 aria-label="Rôle du contributeur">
           <datalist id="dl-roles"></datalist>
           <button id="m-contrib-add" class="ghost small" type="button">+ Ajouter</button>
         </div>
