@@ -78,10 +78,12 @@ Identifiants gardés **en mémoire serveur uniquement** (jamais sur disque).
 
 **Contenu** (par album, routes `/api/export/*`) : JSON-LD · CSV · TEI P5 (facsimile).
 
-**Description des métadonnées** (corpus entier, additive, pour la réutilisation / le
-dépôt) : fiche descriptive, enregistrements (CSV par niveau · **XLSX** multi-feuilles ·
-JSON arbre) et manifests **IIIF Presentation 3.0** — scripts `tools/` hors-app, cf.
-`docs/export-metadonnees.md`.
+**Description des métadonnées** (corpus entier ou **par collection**, additive, pour la
+réutilisation / le dépôt Nakala-HAL) : fiche descriptive, enregistrements (CSV par niveau ·
+**XLSX** multi-feuilles · JSON arbre) et manifests **IIIF Presentation 3.0** — scripts
+`tools/` hors-app. La **collection** est l'unité de dépôt (`gerer_collections.py`) et les
+albums portent une **paternité** (contributions Zotero-like) + des champs d'édition.
+Cf. `docs/export-metadonnees.md`.
 
 ### Tests & qualité
 
@@ -200,7 +202,8 @@ toujours recréées au démarrage.
 | Méthode | Route | Rôle |
 |---|---|---|
 | `GET/POST` | `/api/albums` | liste (+ compteurs) / création d'albums |
-| `PUT/DELETE` | `/api/albums/{id}` | éditer les métadonnées / supprimer un album |
+| `PUT/DELETE` | `/api/albums/{id}` | éditer les métadonnées (dont édition N0) / supprimer un album |
+| `GET/POST/DELETE` | `/api/albums/{id}/contributions`, `/api/contribution-roles` | paternité N0 (contributions + vocabulaire de rôles) |
 | `GET` | `/api/albums/{id}/planches` | planches d'un album |
 | `POST` | `/api/albums/{id}/import` | import d'une planche (multipart) |
 | `DELETE` | `/api/planches/{id}` | supprimer une planche (+ fichiers, FTS) |
@@ -267,8 +270,9 @@ bd_annotator/
 │   ├── lib/             # modules UMD réutilisables et testés sous Node : nav.js, dialog.js
 │   └── style.css        # thème sombre/clair (partagé par les 4 pages)
 ├── tools/               # scripts hors-app : reindex_nlp.py, pdf_check.py, sharedocs_check.py,
-│                        #   export métadonnées : description_collection · metadonnees_collection ·
-│                        #   iiif_manifest · valider_iiif (cf. docs/export-metadonnees.md)
+│                        #   export métadonnées : gerer_collections · description_collection ·
+│                        #   metadonnees_collection · iiif_manifest · valider_iiif · dictionnaire_xlsx
+│                        #   (cf. docs/export-metadonnees.md)
 ├── deploy/              # Docker Compose + Caddy + Authelia (cf. docs/deploiement-docker.md)
 ├── docs/                # décisions de conception (grammaire, numérotation, sécurité…) + backlog
 ├── corpus/              # (gitignore) masters TIFF
@@ -279,7 +283,7 @@ bd_annotator/
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                     # run par défaut — ~238 tests (E2E exclus, test `live` inclus)
+pytest                     # run par défaut — ~330 tests (E2E exclus, test `live` inclus)
 pytest -m "not live"       # sans le test d'intégration (pas de serveur lancé)
 pytest -m e2e              # E2E navigateur Playwright (~32 tests) — python -m playwright install chromium
 pytest tests/test_api.py::test_nom            # un seul test

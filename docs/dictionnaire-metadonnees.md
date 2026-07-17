@@ -6,7 +6,7 @@
 > *dérivé*, ou *encore à prévoir*. Document de référence pour la réutilisation, la
 > qualification du travail (paradonnée) et le futur dépôt (Nakala / HAL).
 >
-> **Périmètre.** Documente le **réel** (schéma v13) **et** les **champs à prévoir** qu'un
+> **Périmètre.** Documente le **réel** (schéma v15) **et** les **champs à prévoir** qu'un
 > dépôt de qualité bibliographique voudra. Ne fige aucun plan : c'est un inventaire, pas
 > un PGD. Voir aussi `personnages-et-attribution.md`, `numerotation-et-citation.md`,
 > `correction-grammaticale.md`.
