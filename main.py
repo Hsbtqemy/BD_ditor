@@ -29,6 +29,7 @@ from database import (citations_regions, collections, contributions_album, dimen
                       get_connection, init_db, lexique_resume, numeros_editoriaux,
                       reindex_region, unindex_region)
 import journal
+import lexique_import
 import undo
 from pipeline.backup import make_backup
 from pipeline import jobs
@@ -1728,6 +1729,34 @@ def get_lexique(conn: sqlite3.Connection = Depends(db)):
         "GROUP BY t.id ORDER BY t.label"))
     return {"domaines": domaines, "dimensions": dims, "tags": tags,
             "resume": lexique_resume(conn)}
+
+
+@app.post("/api/lexique/importer")
+def importer_lexique(file: UploadFile = File(...),
+                     collection_id: Optional[int] = Form(None, ge=1),
+                     conn: sqlite3.Connection = Depends(db)):
+    """Amorçage EN LOT du vocabulaire depuis un tableur CSV (point-virgule) — bouton
+    « Importer » du panneau 📖 Lexique. Même cœur et même doctrine que l'outil headless
+    (pré-remplir sans écraser, idempotent ; cf. lexique_import + docs/import-vocabulaire.md).
+    `collection_id` = portée d'appartenance (absent = global)."""
+    if collection_id is not None and conn.execute(
+            "SELECT 1 FROM collection WHERE id = ?", (collection_id,)).fetchone() is None:
+        raise HTTPException(404, f"Collection {collection_id} introuvable")
+    data = file.file.read()
+    if not data:
+        raise HTTPException(400, "Fichier vide")
+    try:
+        texte = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "Le fichier doit être encodé en UTF-8.")
+    try:
+        lignes, anomalies = lexique_import.lire(io.StringIO(texte))
+    except lexique_import.FormatInvalide as e:
+        raise HTTPException(400, str(e))
+    res, avert = lexique_import.importer(conn, lignes, collection_id)
+    conn.commit()
+    return {"resume": res, "lignes": len(lignes),
+            "anomalies": anomalies, "avertissements": avert}
 
 
 @app.patch("/api/attributs/dimensions/{dim_id}/lexique")

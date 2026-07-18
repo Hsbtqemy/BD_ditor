@@ -433,6 +433,7 @@ function renderLexique(lex) {
   const body = $("#lex-body");
   body.textContent = "";
   $("#lex-resume").textContent = lexResume(lex.resume);
+  $("#lex-import-portee").innerHTML = porteeOptions("");   // menu « portée » de l'amorçage CSV
 
   // --- Domaines (piste B) + attributs facettés regroupés par domaine -------- #
   const grp = document.createElement("div");
@@ -496,6 +497,33 @@ async function refreshLexResume() {
   catch (e) { /* non bloquant */ }
 }
 
+/* Amorçage EN LOT du vocabulaire depuis un tableur CSV (bouton « Importer »). Envoi
+   multipart vers POST /api/lexique/importer (même cœur que l'outil headless) ; le bilan
+   passe en toasts et la modale se recharge. Cf. docs/import-vocabulaire.md. */
+async function importerTableur(e) {
+  const input = e.target;
+  const fichier = input.files && input.files[0];
+  if (!fichier) return;
+  const fd = new FormData();
+  fd.append("file", fichier);
+  const cid = $("#lex-import-portee").value;
+  if (cid) fd.append("collection_id", cid);
+  try {
+    const r = await fetch("/api/lexique/importer", { method: "POST", body: fd });
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(out.detail || r.statusText);
+    const s = out.resume;
+    toast(`Import : ${s.domaines.cree} domaine(s), ${s.dimensions.cree} dimension(s), `
+          + `${s.valeurs.cree} valeur(s) créé(s)`);
+    (out.anomalies || []).concat(out.avertissements || []).forEach((a) => toast(a, "err"));
+    await loadLexique();
+  } catch (err) {
+    toast("Import échoué : " + err.message, "err");
+  } finally {
+    input.value = "";                 // réautorise le réimport du même fichier
+  }
+}
+
 async function setup() {
   for (const id of ["#f-pos", "#b-pos"]) {
     for (const u of UPOS) {
@@ -515,6 +543,8 @@ async function setup() {
   // Lexique situé (A4) — modale accessible (piège à focus, Échap, retour du focus).
   $("#btn-lexique").onclick = openLexique;
   $("#lex-close").onclick = closeLexique;
+  $("#lex-import").onclick = () => $("#lex-import-file").click();   // amorçage CSV
+  $("#lex-import-file").addEventListener("change", importerTableur);
   $("#lexique-modal").addEventListener("mousedown", (e) => {
     if (e.target.id === "lexique-modal") closeLexique();
   });

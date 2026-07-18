@@ -1187,3 +1187,8 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .lex-add input { flex: 1; background: var(--bg-panel); color: var(--text);
   border: 1px solid var(--border); border-radius: 5px; padding: 6px 8px; font: inherit; }
 .lex-subhead { margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .04em; }
+/* Barre d'actions de la modale Lexique : amorçage CSV (portée + fichier) à gauche, Fermer à droite. */
+.lex-import-portee { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.lex-import-portee select { background: var(--bg-panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font: inherit; }
+.modal-actions #lex-close { margin-left: auto; }

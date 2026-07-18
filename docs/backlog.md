@@ -23,9 +23,13 @@ ou décision de conception requise).
 > extensible sans code ; cf. `docs/domaines.md`).
 - **Reste (P1)** : *peupler* les domaines/dimensions/valeurs **avec les linguistes** (catégories
   d'émotion, marqueurs de représentation). Plus de « liste fermée vs émergent » à trancher — c'est
-  émergent et documenté. Puis l'**analyse par domaine** (croisements ANA-2, KWIC ANA-3).
+  émergent et documenté. Deux voies désormais : à la main (annotation + panneau 📖 Lexique) **ou**
+  **amorçage en lot** depuis un tableur (`tools/importer_vocabulaire.py`). Puis l'**analyse par
+  domaine** (croisements ANA-2, KWIC ANA-3).
 - Done (structure) : domaines créables/documentables/regroupables (UI 📖 Lexique) ; dimensions
-  filtrables/distribuables en facette ; agrégation sans doublon ; tests.
+  filtrables/distribuables en facette ; agrégation sans doublon ; **import CSV** (amorçage
+  taxonomie, pré-remplir sans écraser, idempotent, portée `--collection` ; cf.
+  `docs/import-vocabulaire.md`) ; tests.
 
 ### ANN-2 · Entité « personnage » + lien bulle→personnage — ✅ Fait « mince » 2026-06-24 · P2 · L
 > « Représentation des minorités » = surtout *qui* est représenté ; idiolectes, registres

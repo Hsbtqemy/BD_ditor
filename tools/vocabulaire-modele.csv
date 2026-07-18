@@ -1,0 +1,22 @@
+domaine;domaine_definition;cible;dimension;dimension_definition;dimension_note_portee;valeur;valeur_definition
+émotions;Charge affective représentée dans la scène;case;type;Famille d'émotion dominante (base Ekman adaptée);;colère;Hostilité, courroux exprimé
+émotions;;case;type;;;joie;Plaisir, allégresse
+émotions;;case;type;;;peur;Crainte, effroi
+émotions;;case;type;;;tristesse;Peine, abattement
+émotions;;case;valence;Polarité affective de la scène;;positive;
+émotions;;case;valence;;;négative;
+émotions;;case;valence;;;ambivalente;Coexistence d'affects opposés (au moins deux émotions contradictoires dans la même case)
+émotions;;case;intensité;Degré d'expression émotionnelle;;faible;
+émotions;;case;intensité;;;forte;
+représentation;Représentation des groupes et des minorités;personnage;genre;Genre du personnage tel que représenté;genre PERÇU dans la représentation, non l'identité réelle de la personne;femme;
+représentation;;personnage;genre;;;homme;
+représentation;;personnage;genre;;;non-binaire;
+représentation;;personnage;origine perçue;Appartenance majoritaire / minorisée, telle que donnée à voir;codage de la REPRÉSENTATION (traits, contexte), pas de l'identité de la personne;minorité visible;
+représentation;;personnage;origine perçue;;;majoritaire;
+représentation;;personnage;rôle actanciel;Fonction du personnage dans le récit;;protagoniste;
+représentation;;personnage;rôle actanciel;;;faire-valoir;Personnage servant à mettre en valeur un autre
+représentation;;case;scène stéréotypée;La case met-elle en scène un stéréotype ?;;oui;
+représentation;;case;scène stéréotypée;;;non;
+style visuel;Choix graphiques de mise en scène;case;cadrage;Échelle de plan de la case;;gros plan;
+style visuel;;case;cadrage;;;plan moyen;
+style visuel;;case;cadrage;;;plan large;
