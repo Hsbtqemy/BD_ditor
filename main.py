@@ -29,6 +29,7 @@ from database import (citations_regions, collections, contributions_album, dimen
                       get_connection, init_db, lexique_resume, numeros_editoriaux,
                       relecture_planches, reindex_region, unindex_region)
 import accord
+import accord_inter
 import journal
 import lexique_import
 import undo
@@ -2379,6 +2380,14 @@ def analyse_accord(conn: sqlite3.Connection = Depends(db)):
     déjà la valeur finale (par champ lemme/POS/morpho) + confusion POS + modèle évalué. Étalon
     de qualité de l'index (transition Phase 1→2). Cf. accord.rapport / docs/rapport-accord.md."""
     return accord.rapport(conn)
+
+
+@app.get("/api/analyse/accord-inter")
+def analyse_accord_inter(conn: sqlite3.Connection = Depends(db)):
+    """Rapport d'accord INTER-ANNOTATEURS (ANN-5) : sur les tokens qu'un annotateur a RE-TOUCHÉS
+    après un autre (chaîne de révisions du journal A3), taux d'accord par champ + par paire
+    d'auteurs + points de divergence. Cf. accord_inter.rapport / docs/accord-inter.md."""
+    return accord_inter.rapport(conn)
 
 
 @app.get("/api/regions/{region_id}/tokens")

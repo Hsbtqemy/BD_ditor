@@ -797,6 +797,58 @@ function renderAccord(r) {
   body.innerHTML = html;
 }
 
+/* ---------------- Accord inter-annotateurs (ANN-5) : accord de révision entre auteurs ---------- */
+async function openAccordInter() { $("#accord-inter-modal").hidden = false; await loadAccordInter(); }
+function closeAccordInter() { $("#accord-inter-modal").hidden = true; }
+
+async function loadAccordInter() {
+  const body = $("#accord-inter-body");
+  body.textContent = "Chargement…";
+  try { renderAccordInter(await apiGet("/api/analyse/accord-inter")); }
+  catch (e) { body.textContent = "Impossible de charger le rapport."; }
+}
+
+function valInter(v) { return (v == null || v === "") ? "∅" : v; }
+
+function renderAccordInter(r) {
+  const body = $("#accord-inter-body");
+  if (!r.retouches) {
+    body.innerHTML = '<p class="muted small">Aucune re-touche entre auteurs distincts — rien à '
+      + 'comparer (nécessite plusieurs relecteurs authentifiés).</p>';
+    return;
+  }
+  let html = `<p class="muted small"><b>${r.retouches}</b> re-touche(s) inter-auteurs · `
+    + `${r.auteurs.length} auteur(s) : ${r.auteurs.map(esc).join(", ")}</p>`;
+  html += '<table class="accord-table"><thead><tr><th scope="col">Champ</th>'
+    + '<th scope="col">Accord</th><th scope="col">Taux</th></tr></thead><tbody>';
+  for (const [ch, lbl] of ACCORD_CHAMPS) {
+    const c = r.champs[ch], pct = c.taux == null ? 0 : Math.round(c.taux * 100);
+    html += `<tr><th scope="row">${esc(lbl)}</th><td>${c.accords}/${c.retouches}</td>`
+      + `<td><span class="accord-bar"><i style="width:${pct}%"></i></span> ${pctAccord(c.taux)}</td></tr>`;
+  }
+  html += '</tbody></table>';
+  if (r.paires.length) {
+    html += '<h4 class="accord-h">Par paire d\'auteurs</h4><ul class="accord-conf">';
+    for (const p of r.paires)
+      html += `<li>${esc(p.a)} ↔ ${esc(p.b)} <span class="muted">${p.accords}/${p.retouches}`
+        + ` — ${pctAccord(p.taux)}</span></li>`;
+    html += '</ul>';
+  }
+  if (r.divergences.length) {
+    html += `<h4 class="accord-h">Divergences${r.divergences_tronque ? " (tronqué)" : ""}</h4>`
+      + '<ul class="accord-conf">';
+    for (const d of r.divergences) {
+      const cit = (d.citation && d.citation.texte) ? esc(d.citation.texte) + " · " : "";
+      for (const x of d.diffs)
+        html += `<li>${cit}<code>${esc(valInter(d.forme))}</code> [${esc(x.champ)}] `
+          + `${esc(d.de)}=<code>${esc(valInter(x.avant))}</code> → `
+          + `${esc(d.a)}=<code>${esc(valInter(x.apres))}</code></li>`;
+    }
+    html += '</ul>';
+  }
+  body.innerHTML = html;
+}
+
 async function setup() {
   for (const id of ["#f-pos", "#b-pos"]) {
     for (const u of UPOS) {
@@ -837,6 +889,15 @@ async function setup() {
   if (window.BDDialog)
     BDDialog.register($("#accord-modal"),
       { box: ".modal-box", labelledby: "accord-title", onClose: closeAccord });
+  // Accord inter-annotateurs (ANN-5) — modale accessible.
+  $("#btn-accord-inter").onclick = openAccordInter;
+  $("#accord-inter-close").onclick = closeAccordInter;
+  $("#accord-inter-modal").addEventListener("mousedown", (e) => {
+    if (e.target.id === "accord-inter-modal") closeAccordInter();
+  });
+  if (window.BDDialog)
+    BDDialog.register($("#accord-inter-modal"),
+      { box: ".modal-box", labelledby: "accord-inter-title", onClose: closeAccordInter });
   loadCorpus();
   await loadAlbums();        // options d'album (A et B) avant restauration
   await loadTags();          // options de tag (A et B) avant restauration

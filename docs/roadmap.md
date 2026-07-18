@@ -85,7 +85,7 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 | ~~B3~~ | ✅ **Fait 2026-07-18 — ANA-2 tableaux croisés 2D** : endpoint `/api/analyse/croisement` (contingence token, axes pos/morph/type/provenance/auteur/locuteur/tag/**dim:<id>**) + 4ᵉ vue « Croisement » (heatmap, cellule→concordance) ; **exploite les domaines (B0)**. Grain token (limite : cases sans texte non comptées) | P2·M | on n'avait que distributions 1-D + comparaison A/B |
 | ~~B4~~ | ✅ **Fait 2026-07-18 — NLP-1 rapport d'accord modèle↔humain** : cœur `accord.py` (accord par champ + confusion POS) via route `/api/analyse/accord`, outil `tools/rapport_accord.py` et panneau **🎯 Accord**. Le passage à `fr_core_news_lg` reste de l'ops (env + `reindex_nlp.py`). Cf. `docs/rapport-accord.md` | P2·M | transition Phase 1→2 |
 | ~~B5~~ | ✅ **Fait 2026-07-18 — ANN-4 statut de relecture par planche** : dérivé des provenances de tokens (jamais stocké), forçable via override `planches.relecture` (3 états + auto) ; Bibliothèque : pastille + sélecteur + filtre. Migration v21. Cf. `docs/relecture.md` | P2·S | coordination équipe |
-| B6 | ANN-5 — accord inter-annotateurs | P3·M | **débloqué** (INFRA-2 `auteur` fait) |
+| ~~B6~~ | ✅ **Fait 2026-07-18 — ANN-5 accord inter-annotateurs** : cœur `accord_inter.py` (accord de RÉVISION depuis le journal A3 — un auteur re-touche le token d'un autre → garde/change ; par champ + par paire + divergences) via route + outil `tools/rapport_accord_inter.py` + panneau **👥 Inter**. Rare avant le multi-utilisateur (C1). Cf. `docs/accord-inter.md` | P3·M | **débloqué** (INFRA-2 `auteur` fait) |
 | — | ANN-3 gazetteer · ANA-4 keyness · ANA-5 traits morpho · ANA-6 · NLP-2/3 | P3 | au fil du besoin réel |
 
 ---

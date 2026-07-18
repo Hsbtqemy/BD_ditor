@@ -53,9 +53,16 @@ ou décision de conception requise).
   Migration v21. Tests : dérivation/override/route + e2e a11y (round-trip). Cf. `docs/relecture.md`.
 - Différé : roll-up corpus du reste-à-relire ; relecture par annotateur ; statut niveau album.
 
-### ANN-5 · Accord inter-annotateurs — P3 · M
+### ANN-5 · Accord inter-annotateurs — ✅ **Fait 2026-07-18 (B6)** · P3 · M
 > Quand plusieurs linguistes corrigent : mesurer l'accord (qualité, points de divergence).
-- Done : rapport d'accord par token/champ entre auteurs. **Dépend d'INFRA-2 (`auteur`).**
+- ✅ Fait : cœur `accord_inter.py` — le modèle ne garde qu'une correction/token, donc la donnée
+  multi-auteurs vient du **journal A3** (`cible_id` stable = chaîne de révisions). Mesure l'accord
+  de **révision** (un auteur re-touche le token d'un autre → garde/change) par champ + par paire
+  + divergences citées. Route `GET /api/analyse/accord-inter` + outil `tools/rapport_accord_inter.py`
+  + panneau **👥 Inter**. Tests : cœur/route + CLI + e2e a11y (divergence via Remote-User). **Dépend
+  d'INFRA-2 (`auteur`).** Cf. `docs/accord-inter.md`.
+- Différé : kappa d'annotation **parallèle** (nouveau modèle) ; accord sur tags/attributs.
+  **Rare tant qu'on n'est pas multi-utilisateur (piste C).**
 
 ---
 

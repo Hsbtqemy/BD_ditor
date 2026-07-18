@@ -1206,11 +1206,11 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .modal-actions { display: flex; align-items: center; gap: 12px; }
 
 /* Lexique situé (A4) — modale de documentation SKOS du vocabulaire (partage .modal-box) */
-#lexique-modal, #accord-modal {
+#lexique-modal, #accord-modal, #accord-inter-modal {
   position: fixed; inset: 0; z-index: 100; background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
 }
-#lexique-modal[hidden], #accord-modal[hidden] { display: none; }
+#lexique-modal[hidden], #accord-modal[hidden], #accord-inter-modal[hidden] { display: none; }
 .lexique-box { width: min(720px, 94vw); }
 #lex-body { display: flex; flex-direction: column; gap: 14px; }
 .lex-group { display: flex; flex-direction: column; gap: 8px; }

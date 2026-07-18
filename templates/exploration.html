@@ -65,6 +65,8 @@
               title="Documenter le vocabulaire : définitions, notes de portée, état (lexique situé SKOS)">📖 Lexique</button>
       <button id="btn-accord" class="ghost small" type="button"
               title="Rapport d'accord modèle↔humain : part des corrections que le modèle NLP retrouve seul">🎯 Accord</button>
+      <button id="btn-accord-inter" class="ghost small" type="button"
+              title="Accord inter-annotateurs : quand un relecteur re-touche le token d'un autre, garde-t-il ou change-t-il sa valeur ?">👥 Inter</button>
     </div>
 
     <div class="explo-grid">
@@ -154,6 +156,20 @@
       <div id="accord-body"></div>
       <div class="modal-actions">
         <button id="accord-close" class="ghost small" type="button">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Accord inter-annotateurs (ANN-5) — accord de révision entre auteurs (modale) ───────── -->
+  <div id="accord-inter-modal" hidden>
+    <div class="modal-box accord-box">
+      <h3 id="accord-inter-title">Accord inter-annotateurs</h3>
+      <p class="muted small">Quand un relecteur <b>re-touche</b> le token laissé par un autre :
+        garde-t-il (accord) ou change-t-il (divergence) sa valeur ? Mesuré sur la chaîne de
+        révisions du journal — rare tant qu'on n'est pas multi-utilisateur.</p>
+      <div id="accord-inter-body"></div>
+      <div class="modal-actions">
+        <button id="accord-inter-close" class="ghost small" type="button">Fermer</button>
       </div>
     </div>
   </div>

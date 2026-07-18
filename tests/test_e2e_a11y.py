@@ -358,3 +358,27 @@ def test_a11y_exploration_accord(page, seeded):
     page.wait_for_timeout(300)                       # laisse le fetch + rendu se faire
     viol = _audit(page)
     assert not viol, f"Exploration/accord :\n{_fmt(viol)}"
+
+
+def test_a11y_exploration_accord_inter(page, seeded):
+    """Accord inter-annotateurs (ANN-5 / B6) : créer une divergence (alice corrige, bob
+    re-corrige le même token via l'en-tête Remote-User) puis auditer la modale (table +
+    liste de divergences). Si le corpus n'a pas de tokens (spaCy absent), on audite l'état vide."""
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        toks = c.get(f"/api/regions/{seeded['region']}/tokens").json()
+        if toks:
+            o = toks[0]["ordre"]
+            c.put(f"/api/regions/{seeded['region']}/tokens/{o}",
+                  json={"etat": "corrige", "pos": "NOUN"}, headers={"Remote-User": "alice"})
+            c.put(f"/api/regions/{seeded['region']}/tokens/{o}",
+                  json={"etat": "corrige", "pos": "VERB"}, headers={"Remote-User": "bob"})
+    finally:
+        c.close()
+    page.goto(seeded["base"] + "/exploration", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.click("#btn-accord-inter")
+    page.wait_for_selector("#accord-inter-modal:not([hidden]) #accord-inter-body", timeout=3000)
+    page.wait_for_timeout(300)
+    viol = _audit(page)
+    assert not viol, f"Exploration/accord-inter :\n{_fmt(viol)}"

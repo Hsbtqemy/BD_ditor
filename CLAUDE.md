@@ -55,7 +55,7 @@ Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, 
 | `/` | `index.html` | `viewer.js` | **Visionneuse** : modes Édition / Annotation / Transcription / Navigation, arbre de structure, ShareDocs, deep-link |
 | `/recherche` | `recherche.html` | `recherche.js` | **Recherche** FTS5 + nuage de tags |
 | `/corpus` | `corpus.html` | `corpus.js` | **Bibliothèque** : CRUD albums/planches + lancement de lots |
-| `/exploration` | `exploration.html` | `exploration.js` | **Exploration** linguistique du corpus — 4 vues : distribution (fréquences), **concordance KWIC** (aligné/liste, deep-link Visionneuse), **croisement 2D** (tableau de contingence facette×facette, heatmap, cellule→concordance), comparaison A/B ; + panneaux **📖 Lexique** et **🎯 Accord** (qualité de l'index NLP) |
+| `/exploration` | `exploration.html` | `exploration.js` | **Exploration** linguistique du corpus — 4 vues : distribution (fréquences), **concordance KWIC** (aligné/liste, deep-link Visionneuse), **croisement 2D** (tableau de contingence facette×facette, heatmap, cellule→concordance), comparaison A/B ; + panneaux **📖 Lexique**, **🎯 Accord** (modèle↔humain) et **👥 Inter** (inter-annotateurs) |
 
 `static/lib/` contient des modules **UMD réutilisables et testés sous Node** (pas d'accès DOM au chargement) : `nav.js` (navigation/round-trip entre surfaces) et `dialog.js` (modale accessible : piège à focus, Échap, retour du focus). Leur logique pure est verrouillée par `tests/js/*.test.js`.
 
@@ -84,6 +84,7 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 - **Palier B (grammaire)** : table `tokens` (un mot du dialogue : lemme, POS/UPOS, morph), **régénérée à chaque reindex**. La correction humaine vit dans `token_correction`, une couche **overlay JAMAIS touchée par le reindex**. La vue `tokens_effectifs` est le **read model canonique** (correction vivante ⊕ auto + provenance + `a_revoir`) : toutes les surfaces d'analyse lisent CECI, jamais `tokens` brut.
 - Le modèle est configurable (`BD_SPACY_MODEL`, défaut `fr_core_news_sm`), chargé paresseusement sous verrou (non thread-safe). `tools/reindex_nlp.py` réindexe tout le corpus en lot après un changement de paramètre.
 - **Rapport d'accord modèle↔humain (NLP-1)** : cœur `accord.py` (part des tokens RELUS où le modèle avait déjà la valeur finale — correction NULL = auto accepté, ou correction = auto — par champ lemme/POS/morpho + confusion POS ; miroir de `tokens_effectifs`, ignore les corrections obsolètes). Exposé par la route `GET /api/analyse/accord`, l'outil `tools/rapport_accord.py` (`--json`/`--csv`) et le panneau **🎯 Accord** de l'Exploration. Étalon de la transition Phase 1→2 (comparer `sm` vs `lg` sur le même corpus relu). Cf. `docs/rapport-accord.md`.
+- **Accord INTER-annotateurs (ANN-5)** : cœur `accord_inter.py` — le modèle ne gardant qu'une correction/token, la donnée multi-auteurs vit dans le **journal A3** (`cible_id` stable = chaîne de révisions). Mesure l'**accord de révision** (un auteur re-touche le token d'un autre → garde/change), par champ + par paire + points de divergence cités. Route `GET /api/analyse/accord-inter`, outil `tools/rapport_accord_inter.py`, panneau **👥 Inter**. Rare avant le multi-utilisateur (piste C). Cf. `docs/accord-inter.md`.
 
 ### Pipeline de reconnaissance — 3 passes, moteurs OPTIONNELS
 
