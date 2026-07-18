@@ -219,6 +219,13 @@ couche **SKOS** — `definition`, `note_portee` (cadre d'emploi), `etat`
 des référentiels externes (Wikidata/VIAF/IdRef…, `skos:exactMatch`, source auto-détectée).
 Édité dans le panneau **Personnage** de la Visionneuse. Cf. `docs/alignement-autorite.md`.
 
+**Matériel de numérisation** (A6) : la résolution (`dpi_x`/`dpi_y`) et le `mode`
+colorimétrique sont **captés à l'ingest** (Pillow) et stockés sur `planches` ; les
+dimensions physiques (cm) en **dérivent** (px÷dpi, jamais stockées). La source de
+numérisation (appareil/conditions) est un champ **album** (`source_numerisation`), éditée
+dans la Bibliothèque. Backfill des planches antérieures : `tools/reindex_materiel.py`.
+Cf. `docs/materiel-numerisation.md`.
+
 ## API
 
 | Méthode | Route | Rôle |
@@ -296,7 +303,7 @@ bd_annotator/
 │   ├── theme.js         # réglages d'affichage partagés (thème, contraste, zoom)
 │   ├── lib/             # modules UMD réutilisables et testés sous Node : nav.js, dialog.js
 │   └── style.css        # thème sombre/clair (partagé par les 4 pages)
-├── tools/               # scripts hors-app : reindex_nlp.py, pdf_check.py, sharedocs_check.py,
+├── tools/               # scripts hors-app : reindex_nlp.py, reindex_materiel.py, pdf_check.py, sharedocs_check.py,
 │                        #   export métadonnées : gerer_collections · description_collection ·
 │                        #   metadonnees_collection · iiif_manifest · valider_iiif · dictionnaire_xlsx ·
 │                        #   crosswalk_depot (DC/DataCite) · provenance_export (PROV-O/TEI)

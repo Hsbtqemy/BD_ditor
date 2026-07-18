@@ -25,9 +25,9 @@ def _lire(db_path):
 # --------------------------------------------------------------------------- #
 # Schéma & migration
 # --------------------------------------------------------------------------- #
-def test_schema_v18(db_path):
+def test_schema_alignement(db_path):
     conn = _lire(db_path)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 18
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(personnage_alignement)")}
     assert {"id", "personnage_id", "source", "uri"} <= cols
 

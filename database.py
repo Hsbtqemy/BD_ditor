@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 
 # --------------------------------------------------------------------------- #
@@ -66,7 +66,10 @@ CREATE TABLE IF NOT EXISTS albums (
     lieu_edition     TEXT,                   -- ville de publication
     edition_tirage   TEXT,                   -- mention d'édition / tirage
     isbn             TEXT,                   -- ISBN / dépôt légal
-    format_physique  TEXT,                   -- dimensions (cm) / reliure
+    format_physique  TEXT,                   -- dimensions (cm) / reliure de l'ŒUVRE
+    -- Matériel de numérisation (v19, A6, N1) : appareil / conditions de scan (PREMIS,
+    -- humain). Album-level = une campagne de scan par album. Cf. docs/materiel-numerisation.md.
+    source_numerisation TEXT,
     date_import  TEXT DEFAULT (datetime('now'))
 );
 
@@ -79,6 +82,12 @@ CREATE TABLE IF NOT EXISTS planches (
     chemin_web         TEXT NOT NULL,
     largeur_px         INTEGER,
     hauteur_px         INTEGER,
+    -- Matériel de numérisation (v19, A6, N1) : résolution + mode colorimétrique CAPTÉS à
+    -- l'ingest depuis le fichier (Pillow), NULL si le fichier ne les porte pas. Les dimensions
+    -- physiques (cm) en DÉRIVENT (px÷dpi), jamais stockées. Cf. docs/materiel-numerisation.md.
+    dpi_x              INTEGER,       -- résolution horizontale (points/pouce)
+    dpi_y              INTEGER,       -- résolution verticale
+    mode               TEXT,          -- espace colorimétrique Pillow : 'RGB' | 'CMYK' | 'L' | …
     statut             TEXT DEFAULT 'importee',
     date_segmentation  TEXT,
     validee            TEXT,          -- horodatage de validation humaine (NULL = non validée)
@@ -578,6 +587,20 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # créée par SCHEMA_SQL CREATE … IF NOT EXISTS) → aucune donnée à migrer, juste acter la
     # version. Cf. docs/alignement-autorite.md.
 
+    # v18 → v19 : matériel de numérisation (A6, N1). Sur `planches`, la résolution (`dpi_x`,
+    # `dpi_y`) et le `mode` colorimétrique — CAPTÉS à l'ingest depuis le fichier (lus puis
+    # jetés jusqu'ici). Sur `albums`, `source_numerisation` (appareil/conditions, humain).
+    # Colonnes posées par PRÉSENCE (no-op sur base neuve créée par SCHEMA_SQL). Les dimensions
+    # physiques (cm) sont DÉRIVÉES (px÷dpi), jamais stockées. Cf. docs/materiel-numerisation.md.
+    pcols_mat = {r["name"] for r in conn.execute("PRAGMA table_info(planches)")}
+    if pcols_mat:
+        for col, typ in (("dpi_x", "INTEGER"), ("dpi_y", "INTEGER"), ("mode", "TEXT")):
+            if col not in pcols_mat:
+                conn.execute(f"ALTER TABLE planches ADD COLUMN {col} {typ}")
+    acols_mat = {r["name"] for r in conn.execute("PRAGMA table_info(albums)")}
+    if acols_mat and "source_numerisation" not in acols_mat:
+        conn.execute("ALTER TABLE albums ADD COLUMN source_numerisation TEXT")
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -648,6 +671,19 @@ def numeros_editoriaux(conn: sqlite3.Connection, album_id: int) -> dict[int, int
         else:
             out[r["id"]] = None
     return out
+
+
+def dimensions_cm(largeur_px, hauteur_px, dpi_x, dpi_y) -> dict | None:
+    """Dimensions physiques (cm) du scan, DÉRIVÉES des pixels master et de la résolution
+    (v19, A6) — jamais stockées, même doctrine que le numéro éditorial. None si la
+    résolution manque (indérivable) ; arrondi au dixième de cm (1 pouce = 2,54 cm).
+
+    Renvoie {"largeur": float, "hauteur": float} | None.
+    """
+    if not (dpi_x and dpi_y and largeur_px and hauteur_px):
+        return None
+    return {"largeur": round(largeur_px / dpi_x * 2.54, 1),
+            "hauteur": round(hauteur_px / dpi_y * 2.54, 1)}
 
 
 # Régions de texte (citées au niveau bulle « pl·c·b ») — cf. ordre de lecture.

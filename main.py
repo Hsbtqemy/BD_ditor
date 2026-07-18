@@ -25,9 +25,9 @@ from pydantic import BaseModel, Field
 from config import (AUTH_LOGOUT_URL, CIBLES_ATTRIBUT, DERIVATIVES_DIR,
                     ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR,
                     TYPES_REGION, UPOS_TAGS)
-from database import (citations_regions, collections, contributions_album, get_connection,
-                      init_db, lexique_resume, numeros_editoriaux, reindex_region,
-                      unindex_region)
+from database import (citations_regions, collections, contributions_album, dimensions_cm,
+                      get_connection, init_db, lexique_resume, numeros_editoriaux,
+                      reindex_region, unindex_region)
 import journal
 from pipeline.backup import make_backup
 from pipeline import jobs
@@ -154,6 +154,7 @@ class AlbumIn(BaseModel):
     edition_tirage: Optional[str] = None
     isbn: Optional[str] = None
     format_physique: Optional[str] = None
+    source_numerisation: Optional[str] = None   # matériel N1 (A6) : appareil / conditions de scan
 
 
 class AlbumUpdate(BaseModel):
@@ -171,6 +172,7 @@ class AlbumUpdate(BaseModel):
     edition_tirage: Optional[str] = None
     isbn: Optional[str] = None
     format_physique: Optional[str] = None
+    source_numerisation: Optional[str] = None   # matériel N1 (A6)
 
 
 class ContributionIn(BaseModel):
@@ -514,6 +516,9 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db)):
     for p in planches:
         p["url_web"] = "/" + p["chemin_web"] if p["chemin_web"] else None
         p["numero_editorial"] = nums.get(p["id"])   # None si paratexte (cf. role)
+        # Matériel (A6) : dimensions physiques dérivées (px÷dpi), None si résolution absente.
+        p["dimensions_cm"] = dimensions_cm(p["largeur_px"], p["hauteur_px"],
+                                           p["dpi_x"], p["dpi_y"])
     return planches
 
 
@@ -2325,6 +2330,8 @@ def _album_payload(conn: sqlite3.Connection, album_id: int) -> dict:
     nums = numeros_editoriaux(conn, album_id)
     for p in planches:
         p["numero_editorial"] = nums.get(p["id"])   # None si paratexte ; `role` déjà présent
+        p["dimensions_cm"] = dimensions_cm(p["largeur_px"], p["hauteur_px"],   # matériel (A6)
+                                           p["dpi_x"], p["dpi_y"])
         regions = _rows(conn.execute(
             "SELECT * FROM regions WHERE planche_id = ?", (p["id"],)))
         p["regions"] = _region_tree(regions, conn)

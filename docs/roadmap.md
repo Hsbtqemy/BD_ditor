@@ -5,7 +5,8 @@
 > (audit technique, 5 passes). Ce document ne recopie pas les tickets : il **regroupe
 > l'ouvert en pistes**, fixe le **cap** et l'**ordre conseillé**. Établi le **2026-07-16**.
 >
-> **Cap courant : piste A — FAIR / dépôt.**
+> **Piste A — FAIR / dépôt : ✅ complète (v19, 2026-07-18).** Cap suivant à décider
+> (B — vocabulaire/analyse · C — déploiement multi-utilisateur · D1 — undo, débloqué par A3).
 
 **Légende** — Priorité : **P1** (finalité / bloquant), **P2** (important), **P3** (raffinement).
 Effort : **S** (< ½ j), **M** (1-2 j), **L** (≥ 3 j ou décision de conception requise).
@@ -32,15 +33,18 @@ Beaucoup est **livré** — l'ouvert ci-dessous est ce qui *reste*, pas l'ensemb
   le **lexique situé SKOS (v17, A4)** — définitions/notes de portée/état/portée sur le
   vocabulaire (dimensions·valeurs·tags), UI 📖 Lexique, indicateur % défini —, et
   l'**alignement d'autorité (v18, A5)** — personnages → URI Wikidata/VIAF/IdRef
-  (`skos:exactMatch`), UI panneau Personnage, indicateur % aligné.
+  (`skos:exactMatch`), UI panneau Personnage, indicateur % aligné —, et le **matériel de
+  numérisation (v19, A6)** — `dpi`/`mode` captés à l'ingest, dimensions physiques dérivées,
+  `source_numerisation` (album). **Piste A complète.**
   Cf. [`docs/export-metadonnees.md`](export-metadonnees.md),
   [`docs/dictionnaire-metadonnees.md`](dictionnaire-metadonnees.md),
   [`docs/provenance-audit.md`](provenance-audit.md), [`docs/lexique-situe.md`](lexique-situe.md),
-  [`docs/alignement-autorite.md`](alignement-autorite.md).
+  [`docs/alignement-autorite.md`](alignement-autorite.md),
+  [`docs/materiel-numerisation.md`](materiel-numerisation.md).
 
 ---
 
-## Piste A — FAIR / dépôt  ⟵ **CAP COURANT**
+## Piste A — FAIR / dépôt  ✅ **COMPLÈTE (v19)**
 
 > Rendre une **collection réellement déposable** (Nakala / HAL) et pleinement réutilisable.
 > Source : dictionnaire (« à prévoir ») + travaux récents. Additif — n'altère pas les
@@ -53,7 +57,7 @@ Beaucoup est **livré** — l'ouvert ci-dessous est ce qui *reste*, pas l'ensemb
 | ~~**A3**~~ | ✅ **Fait 2026-07-17 (v16)** — **Journal de provenance / audit (N8/N2)** : `activite` (runs) + `evenement` (append-only, avant/après) + `regions.activite_id`/`touche`/`date_modification`, câblés aux passes ML (`journal.passe_ml`) et aux routes humaines (agent capté par contextvar depuis l'auth) ; indicateurs dérivés (`indicateurs_provenance`) dans la paradonnée ; export **PROV-O** + TEI `revisionDesc` (`tools/provenance_export.py`). Le journal **survit à la suppression** → **débloque D1 (undo)**. Cf. `docs/provenance-audit.md` | L | qualifie *qui a produit quoi* ; substrat commun avec D1 |
 | ~~**A4**~~ | ✅ **Fait 2026-07-17 (v17)** — **Lexique situé SKOS (N7)** : `definition`, `note_portee`, état `provisoire→défini`, portée `collection_id` sur dimensions · valeurs · **tags** ; API `PATCH …/lexique` + **UI** (📖 Lexique / Exploration, modale axe-clean) ; indicateur « % défini » (`lexique_resume`) dans les exports. Boucle complète schéma + API + export + UI. Cf. `docs/lexique-situe.md` | M | vocabulaire réutilisable et documenté |
 | ~~**A5**~~ | ✅ **Fait 2026-07-18 (v18)** — **Alignement d'autorité (N6)** : table `personnage_alignement` (personnage → 0..N URI Wikidata/VIAF/IdRef, `skos:exactMatch`, source auto-détectée) ; API + **UI** (panneau Personnage) ; export (`alignements[]`, table CSV, indicateur % aligné). Fusion recolle les alignements. Cf. `docs/alignement-autorite.md` | M | interopérabilité des entités |
-| A6 | **Matériel (N1)** — `dpi`, `mode` colorimétrique, dimensions physiques, source de numérisation | S–M | complétude (PREMIS / DC:format) |
+| ~~**A6**~~ | ✅ **Fait 2026-07-18 (v19)** — **Matériel de numérisation (N1)** : `dpi_x`/`dpi_y` + `mode` colorimétrique **captés à l'ingest** (Pillow lisait déjà, on jetait) ; dimensions physiques (cm) **dérivées** (px÷dpi, jamais stockées, `database.dimensions_cm`) ; `source_numerisation` au niveau **album** (campagne = album). Backfill `tools/reindex_materiel.py` ; API + **UI** (Bibliothèque : champ source + résolution/mode/cm par planche) ; export (records + CSV + roll-up `% avec résolution` / modes). Cf. `docs/materiel-numerisation.md` | S–M | complétude (PREMIS / DC:format) |
 
 *Dormants (déclenchables plus tard) : gel versionné + PID/DOI au niveau collection,
 surcharge des droits par album (`statut_diffusion`/`base_legale`), appartenance fine
@@ -115,10 +119,11 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 1. **[Cap] Piste A — dépôt utilisable** : ~~**A1** (descriptif N0)~~ ✅ **fait (v15)** →
    ~~**A2** (crosswalk DC/DataCite)~~ ✅ **fait (2026-07-17)** → ~~**A3** (journal de
    provenance)~~ ✅ **fait (v16)** → ~~**A4** (lexique situé SKOS)~~ ✅ **fait (v17,
-   2026-07-17)** → ~~**A5** (alignement d'autorité)~~ ✅ **fait (v18, 2026-07-18)** → **A6**
-   (matériel : dpi/mode/dimensions) devient le prochain — et dernier — cran de la piste.
+   2026-07-17)** → ~~**A5** (alignement d'autorité)~~ ✅ **fait (v18, 2026-07-18)** →
+   ~~**A6** (matériel de numérisation)~~ ✅ **fait (v19, 2026-07-18)**. **Piste A complète.**
    Une collection est déposable (DOI frappé par l'entrepôt), sa provenance tracée (PROV-O),
-   son vocabulaire documenté (SKOS) et ses entités réconciliables (skos:exactMatch).
+   son vocabulaire documenté (SKOS), ses entités réconciliables (skos:exactMatch) et son
+   matériel de numérisation renseigné (PREMIS / DC:format).
 2. ~~**D2** (gating `_migrate`)~~ — ✅ **fait 2026-07-16**, avant de toucher au schéma en A1.
 3. **Ouvrir la décision B1** en parallèle (vocabulaire émotions) — elle exige une discussion
    d'équipe *en amont*, autant l'amorcer tôt.

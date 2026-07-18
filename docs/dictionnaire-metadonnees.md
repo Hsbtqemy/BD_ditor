@@ -162,7 +162,8 @@ libre** — principal chantier pour une qualité bibliographique.
 | `lieu_edition` | ville de publication (édition détenue) | texte | descriptif | structuré (v15) | DC:coverage | ouvert |
 | `edition_tirage` | mention d'édition | texte | descriptif | structuré (v15) | DC | ouvert |
 | `isbn` | ISBN / dépôt légal (édition détenue) | code | descriptif | structuré (v15) | DC:identifier | ouvert |
-| `format_physique` | dimensions du support (cm), reliure | mesures | matériel | structuré (v15) | DC:format | ouvert |
+| `format_physique` | dimensions du support (cm), reliure de l'œuvre | mesures | matériel | structuré (v15) | DC:format | ouvert |
+| `source_numerisation` | appareil / conditions de scan (campagne = album) | texte | matériel | **structuré (v19)** | PREMIS | ouvert |
 | *`PID`* | identifiant pérenne (DOI/ARK) | URI résoluble | système | *absent — à prévoir* | DataCite | ouvert |
 | *`droits (surcharge)`* | `statut_diffusion` / `base_legale` propres à l'album (défaut = Collection) | idem Collection | descriptif | *absent — à prévoir* | DC:rights | ouvert |
 
@@ -184,10 +185,13 @@ Source : table `planches`. Couche **éditoriale + technique + matérielle + cycl
 | `date_segmentation` | date de la passe cases | horodatage | paradonnée | structuré | PROV | ouvert |
 | `validee` | validation humaine de la planche | horodatage \| ∅ | humain | structuré | PROV | ouvert |
 | `verrouillee` | protection contre les passes auto | horodatage \| ∅ | humain | structuré | — | ouvert |
-| *`dpi`* | résolution du scan | paire d'entiers | matériel | *absent — à prévoir* (lu à l'ingest, jeté) | — | ouvert |
-| *`mode`* | espace colorimétrique | `RGB`/`CMYK`/`L`… | matériel | *absent — à prévoir* (lu, jeté) | — | ouvert |
-| *`dimensions physiques`* | taille réelle (cm) | px ÷ dpi | matériel | *absent — à prévoir* (dérivable) | DC:format | ouvert |
-| *`source de numérisation`* | appareil / conditions de scan | texte | matériel | *absent — à prévoir* | PREMIS | ouvert |
+| `dpi_x` / `dpi_y` | résolution du scan | paire d'entiers | matériel | **structuré (v19)** — capté à l'ingest | — | ouvert |
+| `mode` | espace colorimétrique | `RGB`/`CMYK`/`L`… | matériel | **structuré (v19)** — capté à l'ingest | — | ouvert |
+| `dimensions_physiques` | taille réelle (cm) | px ÷ dpi | dérivé | **dérivé (v19)** — jamais stocké | DC:format | ouvert |
+
+> **`source de numérisation`** (appareil / conditions de scan) vit au niveau **album**
+> (`albums.source_numerisation`, v19) : une campagne de scan = un album. Cf. le niveau 0 et
+> `docs/materiel-numerisation.md`.
 
 ## Niveau 2 — Région / zone
 
@@ -362,7 +366,11 @@ Chantiers de FAIRisation dérivés de ce dictionnaire, par couche :
   contrôlé-ouvert, DCterms / MARC Relators) · `date_edition` (ancre) + `date_originale` ·
   langue · type · lieu · tirage · ISBN · format. Restent *à prévoir* : contributeur-**entité**
   alignable (VIAF/IdRef, dormant) et **PID**.
-- **Matériel (N1)** : `dpi` · `mode` · dimensions physiques · source de numérisation.
+- **Matériel (N1)** : **✅ réalisé (v19, A6)** — `dpi_x`/`dpi_y` · `mode` colorimétrique **captés
+  à l'ingest** (lus du fichier, jetés jusque-là) · dimensions physiques (cm) **dérivées** (px÷dpi,
+  jamais stockées) · `source_numerisation` (album, appareil/conditions — PREMIS). Backfill
+  `tools/reindex_materiel.py` ; roll-up `% avec résolution` + modes ; UI Bibliothèque. Cf.
+  `docs/materiel-numerisation.md`.
 - **Provenance / audit (N2, N8)** : **✅ réalisé (v16, A3)** — **journal d'événements
   append-only** (`evenement`) + **activités (runs)** (`activite` : agent, versions moteurs,
   params, portée, bilan) + lien entité→run (`regions.activite_id`) + surface

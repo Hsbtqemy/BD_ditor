@@ -52,6 +52,11 @@ def read_metadata(source: Path) -> dict:
             dpi = tuple(round(d) for d in dpi) if dpi else None
         except (TypeError, ValueError):
             dpi = None
+        # Une résolution EXPLOITABLE est une paire de valeurs > 0. Toute autre forme
+        # (longueur ≠ 2, zéro/négatif d'un scanner aux métadonnées cassées) est traitée
+        # comme absente : dépaquetage sûr en aval + indicateur « avec résolution » exact.
+        if dpi and (len(dpi) != 2 or not all(d > 0 for d in dpi)):
+            dpi = None
         return {
             "largeur": img.width,
             "hauteur": img.height,
@@ -106,15 +111,18 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source: Path,
     chemin_tiff = _rel_posix(source) if keep_master else None
     chemin_web = _rel_posix(web_path)
 
+    # Matériel de numérisation (A6) : on PERSISTE désormais résolution + mode (lus par
+    # read_metadata, jetés jusqu'ici). `dpi` est une paire (x, y) ou None → on éclate.
+    dpi_x, dpi_y = meta["dpi"] if meta["dpi"] else (None, None)
     cur = conn.execute(
         """
         INSERT INTO planches
             (album_id, numero, chemin_tiff, chemin_web,
-             largeur_px, hauteur_px, statut)
-        VALUES (?, ?, ?, ?, ?, ?, 'importee')
+             largeur_px, hauteur_px, dpi_x, dpi_y, mode, statut)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'importee')
         """,
         (album_id, numero, chemin_tiff, chemin_web,
-         meta["largeur"], meta["hauteur"]),
+         meta["largeur"], meta["hauteur"], dpi_x, dpi_y, meta["mode"]),
     )
     planche_id = cur.lastrowid
 

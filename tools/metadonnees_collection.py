@@ -294,6 +294,11 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
                 "statut": p["statut"], "validee": p["validee"],
                 "verrouillee": p["verrouillee"], "date_segmentation": p["date_segmentation"],
                 "largeur_px": p["largeur_px"], "hauteur_px": p["hauteur_px"],
+                # Matériel de numérisation (A6) : résolution + mode captés à l'ingest ;
+                # dimensions physiques (cm) DÉRIVÉES (px÷dpi).
+                "dpi_x": p["dpi_x"], "dpi_y": p["dpi_y"], "mode": p["mode"],
+                "dimensions_cm": database.dimensions_cm(
+                    p["largeur_px"], p["hauteur_px"], p["dpi_x"], p["dpi_y"]),
                 "chemin_tiff": p["chemin_tiff"], "chemin_web": p["chemin_web"],
                 "regions": [region_node(r, par_parent, cits) for r in par_parent.get(None, [])],
             })
@@ -304,6 +309,7 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
             "langue": a["langue"], "type_oeuvre": a["type_oeuvre"],
             "lieu_edition": a["lieu_edition"], "edition_tirage": a["edition_tirage"],
             "isbn": a["isbn"], "format_physique": a["format_physique"],
+            "source_numerisation": a["source_numerisation"],   # matériel N1 (A6)
             "date_import": a["date_import"], "nombre_pages": len(planches),
             "contributions": c["contributions"].get(a["id"], []),   # N0 : (nom, rôle) Zotero-like
             "planches": planches,
@@ -358,11 +364,13 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
     out["albums"] = (
         ["id", "titre", "auteur", "annee", "editeur", "serie", "description",
          "date_edition", "date_originale", "langue", "type_oeuvre", "lieu_edition",
-         "edition_tirage", "isbn", "format_physique", "date_import", "nombre_pages"],
+         "edition_tirage", "isbn", "format_physique", "source_numerisation",
+         "date_import", "nombre_pages"],
         [[a["id"], a["titre"], a["auteur"], a["annee"], a["editeur"], a["serie"],
           a["description"], a["date_edition"], a["date_originale"], a["langue"],
           a["type_oeuvre"], a["lieu_edition"], a["edition_tirage"], a["isbn"],
-          a["format_physique"], a["date_import"], c["nb_planches"].get(a["id"], 0)]
+          a["format_physique"], a["source_numerisation"],
+          a["date_import"], c["nb_planches"].get(a["id"], 0)]
          for a in _albums_du_perimetre(conn, album_ids)])
 
     out["contributions"] = (
@@ -375,13 +383,19 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
         [[r["label"], r["bucket"], r["marc"]] for r in conn.execute(
             "SELECT label, bucket, marc FROM contribution_role ORDER BY label")])
 
+    # Matériel (A6) : résolution + mode captés, dimensions physiques (cm) DÉRIVÉES à l'export.
+    def _pl_cm(p, axe):
+        d = database.dimensions_cm(p["largeur_px"], p["hauteur_px"], p["dpi_x"], p["dpi_y"])
+        return d[axe] if d else None
     out["planches"] = (
         ["id", "album_id", "numero", "role", "numero_editorial", "statut", "validee",
          "verrouillee", "date_segmentation", "largeur_px", "hauteur_px",
+         "dpi_x", "dpi_y", "mode", "largeur_cm", "hauteur_cm",
          "chemin_tiff", "chemin_web"],
         [[p["id"], p["album_id"], p["numero"], p["role"],
           c["numero_editorial"].get(p["id"]), p["statut"], p["validee"], p["verrouillee"],
           p["date_segmentation"], p["largeur_px"], p["hauteur_px"],
+          p["dpi_x"], p["dpi_y"], p["mode"], _pl_cm(p, "largeur"), _pl_cm(p, "hauteur"),
           p["chemin_tiff"], p["chemin_web"]]
          for p in conn.execute("SELECT * FROM planches" + w_pl
                                + " ORDER BY album_id, numero, id")])

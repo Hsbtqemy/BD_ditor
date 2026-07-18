@@ -131,6 +131,30 @@ def test_a11y_corpus_modale(page, seeded):
     assert not viol, f"Corpus/modale :\n{_fmt(viol)}"
 
 
+def test_a11y_corpus_materiel(page, seeded):
+    """Matériel de numérisation (A6) : détail d'album ouvert (table planches + ligne matériel
+    par planche) audité, puis round-trip de la source de numérisation (saisie modale →
+    persistée)."""
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_timeout(500)
+    page.click(".album-row .c-titre")                        # ouvre le détail de l'album
+    page.wait_for_selector("#album-detail:not([hidden]) .planches-table", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Corpus/détail matériel :\n{_fmt(viol)}"
+    # Round-trip : renseigner la source de numérisation via la modale → persistée.
+    page.click("#detail-edit")
+    page.wait_for_selector("#m-source-num", timeout=3000)
+    page.fill("#m-source-num", "Epson V850, 600 dpi")
+    page.click("#m-save")
+    page.wait_for_timeout(500)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        alb = c.get("/api/albums").json()
+    finally:
+        c.close()
+    assert any(a.get("source_numerisation") == "Epson V850, 600 dpi" for a in alb)
+
+
 def test_a11y_exploration_lexique(page, seeded):
     """Modale « Lexique situé » (A4) : audite l'a11y du panneau ouvert (piège à focus +
     labels de formulaire, badge d'état) ET vérifie le round-trip d'édition (une définition

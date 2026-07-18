@@ -73,7 +73,7 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 18). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 19). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
 
@@ -104,6 +104,10 @@ Couche définitionnelle **SKOS** sur le vocabulaire ÉMERGENT (dimensions, valeu
 ### Alignement d'autorité (A5, v18)
 
 Relie une **entité personnage** à des référentiels externes (`personnage_alignement` : personnage → 0..N URI Wikidata/VIAF/IdRef…, chacune un `skos:exactMatch`). `source` **auto-détectée** depuis l'hôte de l'URI (contrôlé-ouvert ; NULL si inconnu). `CASCADE` à la suppression ; la **fusion** de personnages recolle les alignements (dédup par URI). Édition : `GET/POST/DELETE /api/personnages/{id}/alignements` + UI dans le **panneau Personnage** de la Visionneuse (puces-liens + ajout d'URI, atteignable via locuteur ET boîte personnage). Export : `personnages.alignements[]` + table CSV + indicateur `% aligné`. Les **contributeurs** restent hors périmètre (chaînes non-entités → promotion requise d'abord, dormant). Cf. `docs/alignement-autorite.md`.
+
+### Matériel de numérisation (A6, v19)
+
+Consigne le matériel de scan des planches. `pipeline/ingest.read_metadata()` lisait déjà la résolution et le mode via Pillow mais les **jetait** ; désormais l'ingest **persiste** `planches.dpi_x`/`dpi_y`/`mode` (auto, lecture seule — un fait matériel du fichier). Les **dimensions physiques (cm)** sont **DÉRIVÉES** (`database.dimensions_cm` : px÷dpi, jamais stockées, même doctrine que le numéro éditorial). `albums.source_numerisation` (appareil/conditions, humain) vit au niveau **album** (campagne de scan = album, à côté de `format_physique`). Backfill des planches pré-v19 : `tools/reindex_materiel.py` (re-lit les masters ; `--force`/`--dry-run`). UI : champ source dans le formulaire album (Bibliothèque) + résolution/mode/cm affichés par planche. Export : records planche + album, tables CSV, roll-up `couverture.planches.materiel` (`% avec résolution`, modes). Cf. `docs/materiel-numerisation.md`.
 
 ### Concurrence SQLite
 

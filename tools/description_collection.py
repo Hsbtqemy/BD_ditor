@@ -117,15 +117,20 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     ed = conn.execute(
         "SELECT COUNT(date_edition) de, COUNT(date_originale) do, COUNT(langue) la, "
         "COUNT(type_oeuvre) ty, COUNT(lieu_edition) li, COUNT(edition_tirage) et, "
-        "COUNT(isbn) isb, COUNT(format_physique) fo FROM albums" + W_alb).fetchone()
+        "COUNT(isbn) isb, COUNT(format_physique) fo, "
+        "COUNT(source_numerisation) src FROM albums" + W_alb).fetchone()
 
     p = conn.execute(
         "SELECT COUNT(*) t, SUM(CASE WHEN role='recit' THEN 1 ELSE 0 END) recit, "
         "COUNT(validee) validees, COUNT(chemin_tiff) tiff, COUNT(largeur_px) dims, "
-        "COUNT(date_segmentation) seg, COUNT(verrouillee) verr FROM planches" + W_pl).fetchone()
+        "COUNT(date_segmentation) seg, COUNT(verrouillee) verr, "
+        # Matériel (A6) : planches à résolution connue (⇒ dimensions cm dérivables) + mode.
+        "COUNT(dpi_x) dpi FROM planches" + W_pl).fetchone()
     planches, recit = p["t"], (p["recit"] or 0)
     paratexte = planches - recit
     statuts = _dist(conn, "SELECT statut, COUNT(*) FROM planches" + W_pl + " GROUP BY statut")
+    modes = _dist(conn, "SELECT mode, COUNT(*) FROM planches" + W_pl
+                        + (" AND" if W_pl else " WHERE") + " mode IS NOT NULL GROUP BY mode")
 
     regions = _un(conn, "SELECT COUNT(*) FROM regions" + W_reg)
     par_type = _dist(conn, "SELECT type, COUNT(*) FROM regions" + W_reg
@@ -217,7 +222,12 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                     "avec_lieu": ed["li"], "avec_format": ed["fo"]},
                 "planches": {"total": planches, "recit": recit,
                              "paratexte": paratexte, "validees": p["validees"],
-                             "par_statut": statuts},
+                             "par_statut": statuts,
+                             # Matériel de numérisation (A6, N1) : résolution captée ⇒
+                             # dimensions physiques (cm) dérivables ; distribution des modes.
+                             "materiel": {"avec_resolution": p["dpi"],
+                                          "pct_avec_resolution": _pct(p["dpi"], planches),
+                                          "par_mode": modes}},
                 "regions": {"total": regions, "par_type": par_type,
                             "imbriquees": enfants},
                 "ocr": {"regions_textuelles": txt_tot, "renseignees": txt_ocr,
@@ -297,6 +307,7 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
         ("album", "edition_tirage"): ed["et"],
         ("album", "isbn"): ed["isb"],
         ("album", "format_physique"): ed["fo"],
+        ("album", "source_numerisation"): ed["src"],
         ("planche", "id"): planches,
         ("planche", "album_id"): planches,
         ("planche", "numero"): planches,
@@ -305,6 +316,9 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
         ("planche", "chemin_tiff"): p["tiff"],
         ("planche", "chemin_web"): planches,
         ("planche", "largeur_px/hauteur_px"): p["dims"],
+        ("planche", "dpi_x/dpi_y"): p["dpi"],
+        ("planche", "mode"): _fmt(modes),
+        ("planche", "dimensions_physiques"): p["dpi"],   # dérivable ssi résolution connue
         ("planche", "statut"): _fmt(statuts),
         ("planche", "date_segmentation"): p["seg"],
         ("planche", "validee"): p["validees"],
@@ -381,7 +395,8 @@ CATALOGUE = [
     ("album", "lieu_edition", "ville d'édition", "descriptif", "structuré (v15)", "DC:coverage", "ouvert"),
     ("album", "edition_tirage", "mention d'édition", "descriptif", "structuré (v15)", "DC", "ouvert"),
     ("album", "isbn", "ISBN / dépôt légal", "descriptif", "structuré (v15)", "DC:identifier", "ouvert"),
-    ("album", "format_physique", "dimensions/reliure", "matériel", "structuré (v15)", "DC:format", "ouvert"),
+    ("album", "format_physique", "dimensions/reliure de l'œuvre", "matériel", "structuré (v15)", "DC:format", "ouvert"),
+    ("album", "source_numerisation", "appareil/conditions de scan", "matériel", "structuré (v19)", "PREMIS", "ouvert"),
     ("album", "pid", "DOI/ARK", "système", "absent — à prévoir", "DataCite", "ouvert"),
     ("planche", "id", "identifiant", "système", "structuré", "—", "ouvert"),
     ("planche", "album_id", "rattachement", "système", "structuré", "—", "ouvert"),
@@ -395,10 +410,9 @@ CATALOGUE = [
     ("planche", "date_segmentation", "date passe cases", "paradonnée", "structuré", "PROV", "ouvert"),
     ("planche", "validee", "validation humaine", "humain", "structuré", "PROV", "ouvert"),
     ("planche", "verrouillee", "protection passes auto", "humain", "structuré", "—", "ouvert"),
-    ("planche", "dpi", "résolution du scan", "matériel", "absent — à prévoir", "—", "ouvert"),
-    ("planche", "mode", "espace colorimétrique", "matériel", "absent — à prévoir", "—", "ouvert"),
-    ("planche", "dimensions_physiques", "taille réelle (cm)", "matériel", "absent — à prévoir", "DC:format", "ouvert"),
-    ("planche", "source_numerisation", "appareil/conditions", "matériel", "absent — à prévoir", "PREMIS", "ouvert"),
+    ("planche", "dpi_x/dpi_y", "résolution du scan", "matériel", "structuré (v19)", "—", "ouvert"),
+    ("planche", "mode", "espace colorimétrique", "matériel", "structuré (v19)", "—", "ouvert"),
+    ("planche", "dimensions_physiques", "taille réelle (cm) — dérivée px÷dpi", "dérivé", "dérivé (v19)", "DC:format", "ouvert"),
     ("region", "id", "identifiant", "système", "structuré", "—", "ouvert"),
     ("region", "planche_id", "rattachement", "système", "structuré", "—", "ouvert"),
     ("region", "parent_id", "contenance hiérarchique", "machine/humain", "structuré", "TEI", "ouvert"),

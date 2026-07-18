@@ -134,7 +134,7 @@ function renderDetail() {
         <tr>
           <td class="c-chk"><input type="checkbox" aria-label="Sélectionner la planche ${p.numero}" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
           <td><img class="pl-thumb" loading="lazy" src="${esc(p.url_web || "")}" alt=""></td>
-          <td class="c-pl">${plancheNum(p)}</td>
+          <td class="c-pl">${plancheNum(p)}${materielInfo(p)}</td>
           <td><span class="statut-pill statut-${esc(p.statut)}"></span> ${esc(p.statut)}</td>
           <td class="c-num">${p.nb_regions} rég.</td>
           <td class="c-num">${p.nb_annotees} ann.</td>
@@ -164,6 +164,7 @@ function renderDetail() {
         ${a.editeur ? "Éditeur : " + esc(a.editeur) : ""}
       </div>
       ${edParts ? `<div class="detail-meta muted small">${edParts}</div>` : ""}
+      ${a.source_numerisation ? `<div class="detail-meta muted small">Numérisation : ${esc(a.source_numerisation)}</div>` : ""}
       <div id="detail-contribs" class="detail-meta small"></div>
       ${a.description ? `<p class="detail-desc">${esc(a.description)}</p>` : ""}
       <button class="ghost small" id="detail-edit">✎ Éditer l'album</button>
@@ -219,6 +220,7 @@ function openModal(album) {
   $("#m-tirage").value = g("edition_tirage");
   $("#m-isbn").value = g("isbn");
   $("#m-format").value = g("format_physique");
+  $("#m-source-num").value = g("source_numerisation");   // matériel (A6)
   $("#m-msg").textContent = "";
   // Contributions : éditables seulement sur un album EXISTANT (elles ont besoin de son id).
   $("#m-contrib-nom").value = "";
@@ -314,6 +316,7 @@ async function saveAlbum() {
     edition_tirage: val("#m-tirage"),
     isbn: val("#m-isbn"),
     format_physique: val("#m-format"),
+    source_numerisation: val("#m-source-num"),   // matériel (A6)
   };
   try {
     if (state.editingId) await apiSend("PUT", `/api/albums/${state.editingId}`, body);
@@ -344,6 +347,18 @@ function plancheNum(p) {
   if (p.role === "recit")
     return `<b title="Numéro éditorial (cité)">planche ${p.numero_editorial}</b><br>${imp}`;
   return `<span class="badge" title="Paratexte — hors numérotation du récit">Paratexte</span><br>${imp}`;
+}
+
+/* Matériel de numérisation (A6) — résolution / mode / dimensions physiques (cm, dérivées
+   px÷dpi côté serveur). Ligne discrète en lecture seule ; masquée si rien de connu. */
+function materielInfo(p) {
+  const parts = [];
+  if (p.dpi_x) parts.push(p.dpi_x === p.dpi_y ? `${p.dpi_x} dpi` : `${p.dpi_x}×${p.dpi_y} dpi`);
+  if (p.mode) parts.push(esc(p.mode));
+  if (p.dimensions_cm) parts.push(`${p.dimensions_cm.largeur}×${p.dimensions_cm.hauteur} cm`);
+  return parts.length
+    ? `<br><span class="muted small" title="Matériel de numérisation">${parts.join(" · ")}</span>`
+    : "";
 }
 
 /* Bascule du rôle éditorial : récit ⇄ paratexte (couverture, liminaire, pub…).

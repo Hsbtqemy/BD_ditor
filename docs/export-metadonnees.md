@@ -86,6 +86,10 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   au niveau dimension `dim_*` et valeur) ; depuis **A5 (v18)**, chaque personnage porte ses
   **alignements d'autorité** (`alignements: [{source, uri}]`, chaque `uri` = un
   `skos:exactMatch`) et le roll-up expose `personnages.avec_alignement_autorite` + `pct_aligne`.
+  Depuis **A6 (v19)**, les `planches` portent leur **matériel de numérisation** (`dpi_x`,
+  `dpi_y`, `mode` + dimensions physiques **dérivées** `largeur_cm`/`hauteur_cm`), les `albums`
+  leur `source_numerisation`, et le roll-up expose
+  `couverture.planches.materiel` (`avec_resolution`, `pct_avec_resolution`, `par_mode`).
 - **Enregistrements — XLSX multi-feuilles** : un onglet par table (dont `tags` et
   `paradonnee`), plus deux onglets de confort — **`fiche`** (le roll-up aplati) et
   **`arbre`** (hiérarchie **repliable** avec les boîtes `x,y,w,h` et un lien « voir »
