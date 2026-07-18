@@ -272,3 +272,77 @@ def test_concordance_expose_le_contexte_kwic(client, album, planche, db_path):
     assert row["ocr_texte"] == "TU DOIS TE TAIRE"     # contexte
     assert row["locuteur"] == "Haddock"               # méta
     assert row["citation"] and row["citation"]["texte"]   # citation dérivée
+
+
+# --------------------------------------------------------------------------- #
+# Croisements 2D (ANA-2 / B3)
+# --------------------------------------------------------------------------- #
+def test_croisement_tag_x_pos(client, album, planche, db_path):
+    """Matrice tag × POS : marges = fréquences réelles, cellules = comptes, total cohérent."""
+    a, b = _region(client, planche["id"]), _region(client, planche["id"])
+    _tags(client, a, ["colère"])
+    _tags(client, b, ["joie"])
+    _seed(db_path, a, [(0, "CRIE", "crier", "VERB", ""), (1, "FORT", "fort", "ADJ", "")])
+    _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])
+
+    r = client.get("/api/analyse/croisement", params={"axe_x": "tag", "axe_y": "pos"}).json()
+    assert r["filtre_x"] == "tags" and r["filtre_y"] == "pos"       # noms de drill
+    marges = {x["libelle"]: x["total"] for x in r["x"]}
+    assert marges["colère"] == 2 and marges["joie"] == 1
+    xi = next(i for i, x in enumerate(r["x"]) if x["libelle"] == "colère")
+    cellules = {r["y"][j]["libelle"]: r["grille"][xi][j] for j in range(len(r["y"]))}
+    assert cellules.get("VERB") == 1 and cellules.get("ADJ") == 1
+    assert r["total"] == 3
+
+
+def test_croisement_axe_dimension_porte_la_cle_de_drill(client, album, planche, db_path):
+    """Axe dimension (valeur via la CASE) : la clé de cellule est le valeur_id (pour drill
+    par `attributs`), le libellé la valeur, et l'axe est nommé par la dimension."""
+    a = _region(client, planche["id"], type="case")
+    dim = client.post("/api/attributs/dimensions",
+                      json={"cible": "case", "nom": "valence"}).json()["id"]
+    val = client.post(f"/api/attributs/dimensions/{dim}/valeurs",
+                      json={"valeur": "positive"}).json()["id"]
+    conn = sqlite3.connect(db_path)
+    conn.execute("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)", (a, val))
+    conn.commit()
+    conn.close()
+    _seed(db_path, a, [(0, "MOT", "mot", "NOUN", "")])
+
+    r = client.get("/api/analyse/croisement",
+                   params={"axe_x": f"dim:{dim}", "axe_y": "pos"}).json()
+    assert r["filtre_x"] == "attributs" and r["libelle_x"] == "valence"
+    x0 = next(x for x in r["x"] if x["libelle"] == "positive")
+    assert x0["cle"] == val and x0["total"] == 1
+
+
+def test_croisement_dimension_sans_faux_vide(client, album, planche, db_path):
+    """Régression : un locuteur portant des valeurs de DEUX dimensions ne doit pas produire
+    une fausse ligne « (vide) » quand on croise par UNE dimension — le filtre de dimension
+    porte sur l'affectation, pas seulement sur la valeur jointe."""
+    a = _region(client, planche["id"])
+    p = _perso(client, "Zorglub")
+    client.put(f"/api/regions/{a}/locuteur", json={"personnage_id": p})
+    d1 = client.post("/api/attributs/dimensions",
+                     json={"cible": "personnage", "nom": "genre"}).json()["id"]
+    v1 = client.post(f"/api/attributs/dimensions/{d1}/valeurs",
+                     json={"valeur": "homme"}).json()["id"]
+    d2 = client.post("/api/attributs/dimensions",
+                     json={"cible": "personnage", "nom": "origine"}).json()["id"]
+    v2 = client.post(f"/api/attributs/dimensions/{d2}/valeurs",
+                     json={"valeur": "minorité"}).json()["id"]
+    client.put(f"/api/personnages/{p}/attributs", json={"valeur_id": v1})
+    client.put(f"/api/personnages/{p}/attributs", json={"valeur_id": v2})
+    _seed(db_path, a, [(0, "MOT", "mot", "NOUN", "")])
+
+    r = client.get("/api/analyse/croisement",
+                   params={"axe_x": f"dim:{d1}", "axe_y": "pos"}).json()
+    assert {x["libelle"]: x["total"] for x in r["x"]} == {"homme": 1}   # aucune « (vide) »
+    assert r["total"] == 1
+
+
+def test_croisement_axe_inconnu_422(client, album, planche):
+    assert client.get("/api/analyse/croisement",
+                      params={"axe_x": "farfelu", "axe_y": "pos"}).status_code == 422
+    assert client.get("/api/analyse/croisement",
+                      params={"axe_x": "dim:99999", "axe_y": "pos"}).status_code == 404

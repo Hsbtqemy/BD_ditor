@@ -55,7 +55,7 @@ Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, 
 | `/` | `index.html` | `viewer.js` | **Visionneuse** : modes Édition / Annotation / Transcription / Navigation, arbre de structure, ShareDocs, deep-link |
 | `/recherche` | `recherche.html` | `recherche.js` | **Recherche** FTS5 + nuage de tags |
 | `/corpus` | `corpus.html` | `corpus.js` | **Bibliothèque** : CRUD albums/planches + lancement de lots |
-| `/exploration` | `exploration.html` | `exploration.js` | **Exploration** linguistique du corpus — 3 vues : distribution (fréquences), **concordance KWIC** (aligné/liste, deep-link Visionneuse), comparaison A/B |
+| `/exploration` | `exploration.html` | `exploration.js` | **Exploration** linguistique du corpus — 4 vues : distribution (fréquences), **concordance KWIC** (aligné/liste, deep-link Visionneuse), **croisement 2D** (tableau de contingence facette×facette, heatmap, cellule→concordance), comparaison A/B |
 
 `static/lib/` contient des modules **UMD réutilisables et testés sous Node** (pas d'accès DOM au chargement) : `nav.js` (navigation/round-trip entre surfaces) et `dialog.js` (modale accessible : piège à focus, Échap, retour du focus). Leur logique pure est verrouillée par `tests/js/*.test.js`.
 

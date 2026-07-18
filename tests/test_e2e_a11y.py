@@ -297,3 +297,22 @@ def test_a11y_exploration_concordance(page, seeded):
 
     href = page.locator("#kwic a").first.get_attribute("href")       # chaque ligne mène à la case
     assert "region=" in href and "planche=" in href
+
+
+def test_a11y_exploration_croisement(page, seeded):
+    """Croisement 2D (ANA-2 / B3) : passer en vue Croisement (POS × type par défaut), auditer
+    l'a11y du tableau (en-têtes, heatmap, cellules-boutons), puis vérifier qu'un clic de
+    cellule descend aux preuves (bascule en Concordance pré-filtrée). Skippé si aucun token."""
+    page.goto(seeded["base"] + "/exploration", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.select_option("#f-vue", "croisement")
+    try:
+        page.wait_for_selector("#croise .croise-hit", timeout=5000)      # ≥ 1 cellule cliquable
+    except Exception:
+        pytest.skip("Aucun token de croisement (NLP/spaCy absent) — tableau non exerçable")
+    viol = _audit(page)
+    assert not viol, f"Exploration/croisement :\n{_fmt(viol)}"
+
+    page.click("#croise .croise-hit")                                   # drill → preuves
+    page.wait_for_function("document.getElementById('f-vue').value === 'concordance'", timeout=3000)
+    page.wait_for_selector("#kwic .kwic-row, #kwic .kwic-item", timeout=5000)

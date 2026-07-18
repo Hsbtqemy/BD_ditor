@@ -2238,6 +2238,117 @@ def analyse_comparaison(champ: str = "lemme",
             "sur_b": [x for x in reversed(out[-limit:]) if x["diff"] < 0]}
 
 
+# --- Tableaux croisés 2D (ANA-2) : contingence TOKEN × TOKEN sur deux facettes. Réutilise
+#     `_analyse_filtres` pour le sous-corpus ; chaque axe est une colonne du token/région
+#     (POS, type, provenance, auteur) ou une facette « fan-out » (locuteur, tag, dimension
+#     d'attribut) jointe en LEFT JOIN (NULL = absence). Grain TOKEN : les cases sans texte ne
+#     sont pas comptées (limite assumée). Cf. docs/domaines.md / backlog ANA-2.
+_AXES_SIMPLES = {
+    "pos":        ("te.pos",         "pos",        "catégorie (POS)"),
+    "morph":      ("te.morph",       "morph",      "morphologie"),
+    "type":       ("r.type",         "type",       "type de région"),
+    "provenance": ("te.provenance",  "provenance", "provenance"),
+    "auteur":     ("te.corr_auteur", "auteur",     "auteur (correction)"),
+}
+
+
+def _axe_croisement(kind, sfx, tag_scope, conn):
+    """Un axe → (joins, expr_valeur, expr_cle, params, filtre_concordance, libellé). `sfx`
+    (x|y) désambiguïse les alias entre les deux axes. `expr_cle` = clé de drill (id pour
+    locuteur/dimension, sinon = la valeur)."""
+    if kind in _AXES_SIMPLES:
+        expr, filtre, lib = _AXES_SIMPLES[kind]
+        return "", expr, expr, [], filtre, lib
+    if kind == "locuteur":
+        bl, lo = f"blx_{sfx}", f"lox_{sfx}"
+        joins = (f"LEFT JOIN bulle_locuteur {bl} ON {bl}.region_id = r.id "
+                 f"LEFT JOIN personnages {lo} ON {lo}.id = {bl}.personnage_id")
+        return joins, f"{lo}.nom", f"{lo}.id", [], "personnage", "locuteur"
+    if kind == "tag":
+        an, at, tg = f"anx_{sfx}", f"atx_{sfx}", f"tgx_{sfx}"
+        cible = (f"{an}.region_id = r.id" if tag_scope == "propre"
+                 else f"{an}.region_id IN (r.id, r.parent_id)")
+        joins = (f"LEFT JOIN annotations {an} ON {cible} "
+                 f"LEFT JOIN annotation_tags {at} ON {at}.annotation_id = {an}.id "
+                 f"LEFT JOIN tags {tg} ON {tg}.id = {at}.tag_id")
+        return joins, f"{tg}.label", f"{tg}.label", [], "tags", "tag"
+    if kind.startswith("dim:"):
+        try:
+            dim_id = int(kind[4:])
+        except ValueError:
+            raise HTTPException(422, f"Axe dimension invalide : {kind}")
+        d = conn.execute("SELECT nom, cible FROM attribut_dimension WHERE id = ?",
+                         (dim_id,)).fetchone()
+        if d is None:
+            raise HTTPException(404, f"Dimension {dim_id} introuvable")
+        # Le filtre de dimension porte sur l'AFFECTATION (valeur_id d'un attribut de cette
+        # dimension), pas sur la valeur jointe : sinon un locuteur/case portant AUSSI d'autres
+        # dimensions produirait une fausse ligne « (vide) » (fan-out sur toutes les dimensions).
+        av = f"avx_{sfx}"
+        sous = f"{{}}.valeur_id IN (SELECT id FROM attribut_valeur WHERE dimension_id = ?)"
+        if d["cible"] == "personnage":                       # valeur via le LOCUTEUR
+            bl, pa = f"bld_{sfx}", f"pax_{sfx}"
+            joins = (f"LEFT JOIN bulle_locuteur {bl} ON {bl}.region_id = r.id "
+                     f"LEFT JOIN personnage_attribut {pa} ON {pa}.personnage_id = {bl}.personnage_id "
+                     f"  AND {sous.format(pa)} "
+                     f"LEFT JOIN attribut_valeur {av} ON {av}.id = {pa}.valeur_id")
+        else:                                                # valeur via la CASE (région/parent)
+            ra = f"rax_{sfx}"
+            joins = (f"LEFT JOIN region_attribut {ra} ON {ra}.region_id IN (r.id, r.parent_id) "
+                     f"  AND {sous.format(ra)} "
+                     f"LEFT JOIN attribut_valeur {av} ON {av}.id = {ra}.valeur_id")
+        return joins, f"{av}.valeur", f"{av}.id", [dim_id], "attributs", d["nom"]
+    raise HTTPException(422, f"Axe inconnu : {kind} (pos|morph|type|provenance|auteur|"
+                             "locuteur|tag|dim:<id>)")
+
+
+@app.get("/api/analyse/croisement")
+def analyse_croisement(axe_x: str, axe_y: str,
+                       album: Optional[int] = None, type: Optional[str] = None,
+                       pos: Optional[str] = None, lemme: Optional[str] = None,
+                       morph: Optional[str] = None, provenance: Optional[str] = None,
+                       auteur: Optional[str] = None,
+                       tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
+                       personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
+                       limit: int = 20, conn: sqlite3.Connection = Depends(db)):
+    """Tableau croisé 2D (contingence) : compte les TOKENS effectifs par (axe_x × axe_y) sur
+    un sous-corpus filtré. Axes : pos|morph|type|provenance|auteur|locuteur|tag|dim:<id>. Un
+    axe « fan-out » (tag/dimension) fait compter le token dans CHAQUE valeur présente (NULL =
+    absence → ligne « (vide) »). Marges = fréquences réelles (les cellules visibles peuvent
+    moins sommer à cause du top-N). Cellule → preuves (concordance)."""
+    limit = max(1, min(limit, 50))
+    _valider_facette(conn, personnage, attributs)
+    jx, ex, cx, px, fx, lx = _axe_croisement(axe_x, "x", tag_scope, conn)
+    jy, ey, cy, py, fy, ly = _axe_croisement(axe_y, "y", tag_scope, conn)
+    where, wparams = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope,
+                                      personnage, attributs, auteur)
+    sql = (f"SELECT {ex} AS vx, {cx} AS cx, {ey} AS vy, {cy} AS cy, COUNT(*) AS n "
+           "FROM tokens_effectifs te JOIN regions r ON r.id = te.region_id "
+           "JOIN planches p ON p.id = r.planche_id "
+           f"{jx} {jy} ")
+    params = px + py
+    if where:
+        sql += "WHERE " + " AND ".join(where) + " "
+        params += wparams
+    sql += "GROUP BY cx, cy, vx, vy"
+    rows = conn.execute(sql, params).fetchall()
+
+    xt, yt, cells = {}, {}, {}
+    for row in rows:
+        cx_, vx_, cy_, vy_, n = row["cx"], row["vx"], row["cy"], row["vy"], row["n"]
+        xt.setdefault(cx_, {"cle": cx_, "libelle": vx_, "total": 0})["total"] += n
+        yt.setdefault(cy_, {"cle": cy_, "libelle": vy_, "total": 0})["total"] += n
+        cells[(cx_, cy_)] = cells.get((cx_, cy_), 0) + n
+    xs = sorted(xt.values(), key=lambda d: d["total"], reverse=True)
+    ys = sorted(yt.values(), key=lambda d: d["total"], reverse=True)
+    x_tronque, y_tronque = len(xs) > limit, len(ys) > limit
+    xs, ys = xs[:limit], ys[:limit]
+    grille = [[cells.get((x["cle"], y["cle"]), 0) for y in ys] for x in xs]
+    return {"axe_x": axe_x, "axe_y": axe_y, "filtre_x": fx, "filtre_y": fy,
+            "libelle_x": lx, "libelle_y": ly, "x": xs, "y": ys, "grille": grille,
+            "total": sum(cells.values()), "x_tronque": x_tronque, "y_tronque": y_tronque}
+
+
 @app.get("/api/regions/{region_id}/tokens")
 def region_tokens(region_id: int, conn: sqlite3.Connection = Depends(db)):
     """Analyse grammaticale d'une région : ses mots avec lemme / POS / morphologie."""

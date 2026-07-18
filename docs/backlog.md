@@ -70,11 +70,19 @@ ou décision de conception requise).
   côté Exploration.
 - Done : distribution/concordance/comparaison filtrables par tag ; test.
 
-### ANA-2 · Croisements (tableaux croisés, 2 dimensions) — P2 · M
+### ANA-2 · Croisements (tableaux croisés, 2 dimensions) — ✅ **Fait 2026-07-18 (B3)** · P2 · M
 > Conçu (« croisements ») mais non fait : tag × POS, émotion × type de région, auteur ×
-> temps verbal… (on n'a que distributions 1-D + comparaison A/B).
-- Faire : endpoint croisé (champ × facette) ; UI tableau croisé dans Exploration ; drill.
-- Done : afficher une matrice de fréquences à deux axes ; cellule cliquable → preuves.
+> temps verbal… (on n'avait que distributions 1-D + comparaison A/B).
+- ✅ Fait : endpoint `GET /api/analyse/croisement?axe_x=&axe_y=` (contingence TOKEN, réutilise
+  `_analyse_filtres`) ; axes = **pos | morph | type | provenance | auteur | locuteur | tag |
+  dim:<id>** (les dimensions d'attribut → le payoff des domaines B0) ; fan-out tag/dimension en
+  LEFT JOIN (NULL = « (vide) ») ; marges réelles + top-N par axe. **4ᵉ vue « Croisement »** dans
+  Exploration (deux sélecteurs d'axe + filtres A) ; tableau (en-têtes collantes, heatmap sobre
+  AA) ; **cellule cliquable → concordance** pré-filtrée (puis deep-link Visionneuse). Tests :
+  3 backend (tag×pos, axe dimension→clé de drill, axe invalide) + e2e a11y (tableau + drill).
+- Limite assumée : grain TOKEN → les cases **sans texte** ne sont pas comptées ; drill impossible
+  sur les cellules « (vide) » et sur un croisement type×provenance seul (aucun critère de concordance).
+- Différé : grain RÉGION/personnage (compter des cases/personnages annotés), export du tableau.
 
 ### ANA-3 · Vue concordance KWIC dédiée — ✅ **Fait 2026-07-18 (B2)** · P2 · M
 > `/api/analyse/concordance` (lot 2) existait **sans UI**. La modalité KWIC (une ligne par

@@ -33,6 +33,7 @@
         <select id="f-vue">
           <option value="distribution">Distribution</option>
           <option value="concordance">Concordance (KWIC)</option>
+          <option value="croisement">Croisement (2D)</option>
           <option value="comparaison">Comparaison A / B</option>
         </select>
       </label>
@@ -53,6 +54,11 @@
           <option value="liste">liste</option>
         </select>
       </label>
+      <span class="muted small explo-axes" id="wrap-axes" hidden>Croiser
+        <select id="f-axe-x" aria-label="Axe des lignes (croisement)"></select>
+        <span aria-hidden="true">×</span>
+        <select id="f-axe-y" aria-label="Axe des colonnes (croisement)"></select>
+      </span>
       <label class="muted small" title="Inclure les tags posés sur la case parente (sinon, seul le tag propre à la région compte)"><input type="checkbox" id="f-tagscope" checked> tag hérité de la case</label>
       <span class="nav-spacer"></span>
       <button id="btn-lexique" class="ghost small" type="button"
@@ -113,6 +119,7 @@
     <div id="dist" class="dist"></div>
     <div id="comparaison" class="comparaison" hidden></div>
     <div id="kwic" class="kwic" hidden></div>
+    <div id="croise" class="croise" hidden></div>
   </main>
 
   <!-- ───────── Lexique situé (A4) — documentation SKOS du vocabulaire (modale) ───────── -->

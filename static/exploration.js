@@ -79,13 +79,11 @@ function selectedAttributs(pre) {
   return [...state.attributs[pre]];
 }
 
-/* Vue Concordance (KWIC) : critères du sous-corpus A + un lemme/mot dédié → params backend
-   (noms attendus par /api/analyse/concordance). Le POS est TOUJOURS inclus ici (pas
-   d'exclusion « distribuer par POS » comme dans sideFilters). */
-function concordanceParams() {
+/* Sous-corpus A → params backend (noms attendus par concordance / croisement). Le POS est
+   TOUJOURS inclus (pas d'exclusion « distribuer par POS » comme dans sideFilters). Partagé
+   par la concordance (KWIC) et le croisement 2D. */
+function filtresA() {
   const p = new URLSearchParams();
-  const lemme = ($("#f-lemme").value || "").trim();
-  if (lemme) p.set("lemme", lemme);
   const g = (k) => ($(`#f-${k}`).value || "").trim();
   for (const [ctl, key] of [["album", "album"], ["type", "type"], ["pos", "pos"],
        ["morph", "morph"], ["prov", "provenance"], ["tags", "tags"], ["personnage", "personnage"]]) {
@@ -94,6 +92,40 @@ function concordanceParams() {
   selectedAttributs("f").forEach((v) => p.append("attributs", v));
   if (tagScope() === "propre") p.set("tag_scope", "propre");
   return p;
+}
+// Concordance : filtres A + le lemme/mot dédié.
+function concordanceParams() {
+  const p = filtresA();
+  const lemme = ($("#f-lemme").value || "").trim();
+  if (lemme) p.set("lemme", lemme);
+  return p;
+}
+// Croisement 2D : filtres A + les deux axes.
+function croisementParams() {
+  const p = filtresA();
+  p.set("axe_x", $("#f-axe-x").value);
+  p.set("axe_y", $("#f-axe-y").value);
+  return p;
+}
+// Facettes croisables fixes ; les dimensions d'attribut (dim:<id>) s'ajoutent dynamiquement.
+const AXES_STATIQUES = [
+  ["pos", "catégorie (POS)"], ["morph", "morphologie"], ["type", "type de région"],
+  ["provenance", "provenance"], ["locuteur", "locuteur"], ["tag", "tag"],
+];
+function axeOptions(sel) {
+  const opts = AXES_STATIQUES.slice();
+  const vus = new Set();
+  for (const v of ATTR_CATALOGUE) {                 // une entrée par dimension (cible · nom)
+    if (vus.has(v.dimension_id)) continue;
+    vus.add(v.dimension_id);
+    opts.push([`dim:${v.dimension_id}`, `${CIBLE_LBL[v.cible] || v.cible} · ${v.dimension}`]);
+  }
+  return opts.map(([val, lbl]) =>
+    `<option value="${esc(val)}"${val === sel ? " selected" : ""}>${esc(lbl)}</option>`).join("");
+}
+function populateAxes() {
+  $("#f-axe-x").innerHTML = axeOptions($("#f-axe-x").value || "pos");
+  $("#f-axe-y").innerHTML = axeOptions($("#f-axe-y").value || "type");
 }
 // Le backend exige au moins un critère grammatical/sémantique : album/type/provenance seuls
 // ne suffisent pas. On le vérifie AVANT l'appel pour afficher une invite plutôt qu'une erreur.
@@ -178,6 +210,12 @@ function stateParams() {
     if (RETOUR) p.set("retour", RETOUR);
     return p;
   }
+  if (v === "croisement") {                       // filtres A + axe_x/axe_y
+    const p = croisementParams();
+    p.set("vue", v);
+    if (RETOUR) p.set("retour", RETOUR);
+    return p;
+  }
   const p = new URLSearchParams();
   p.set("vue", v);
   p.set("champ", champ());
@@ -212,6 +250,7 @@ function run() {
   $("#dist").hidden = v !== "distribution";
   $("#comparaison").hidden = v !== "comparaison";
   $("#kwic").hidden = v !== "concordance";
+  $("#croise").hidden = v !== "croisement";
   const gen = ++state.gen;
   $("#dist-info").textContent = "Calcul…";
   const done = (fn) => (res) => { if (gen === state.gen) fn(res); };
@@ -238,6 +277,10 @@ function run() {
     }
     p.set("limit", "200");
     apiGet("/api/analyse/concordance?" + p.toString()).then(done(renderKwic)).catch(fail);
+  } else if (v === "croisement") {
+    const p = croisementParams();
+    p.set("limit", String(CROISE_LIMIT));
+    apiGet("/api/analyse/croisement?" + p.toString()).then(done(renderCroise)).catch(fail);
   } else {
     const p = new URLSearchParams();
     p.set("champ", champ());
@@ -371,16 +414,85 @@ function renderKwic(res) {
   box.innerHTML = rows.map((r) => aligne ? kwicRowAligne(r) : kwicRowListe(r)).join("");
 }
 
+/* ---------------- Rendu : tableau croisé 2D (ANA-2) ---------------- */
+const CROISE_LIMIT = 20;                 // top-N par axe (borne la lisibilité du tableau)
+let CROISE = null;                       // dernier résultat, pour le drill des cellules
+
+function croiseLbl(v) { return v.libelle == null ? "(vide)" : v.libelle; }
+
+function renderCroise(res) {
+  CROISE = res;
+  const box = $("#croise"), xs = res.x, ys = res.y;
+  const tronque = res.x_tronque || res.y_tronque;
+  $("#dist-info").innerHTML =
+    `<b>${esc(res.libelle_x)}</b> × <b>${esc(res.libelle_y)}</b> — ${res.total} croisement(s)` +
+    (tronque ? ` (top ${CROISE_LIMIT} par axe)` : "") +
+    " — cliquer une cellule pour voir les tokens en contexte";
+  if (!xs.length || !ys.length) {
+    box.innerHTML = '<p class="muted small">Aucune donnée (relancer l\'indexation NLP ?).</p>';
+    return;
+  }
+  const maxCell = Math.max(1, ...res.grille.flat());
+  let html = '<table class="croise-table"><thead><tr>' +
+    `<th class="croise-corner">${esc(res.libelle_x)} \\ ${esc(res.libelle_y)}</th>`;
+  for (const y of ys) html += `<th scope="col">${esc(croiseLbl(y))}</th>`;
+  html += '<th scope="col" class="croise-tot" title="Total de la ligne">Σ</th></tr></thead><tbody>';
+  xs.forEach((x, i) => {
+    html += `<tr><th scope="row">${esc(croiseLbl(x))}</th>`;
+    ys.forEach((y, j) => {
+      const n = res.grille[i][j];
+      const a = (n / maxCell).toFixed(3);
+      if (n > 0 && x.cle != null && y.cle != null)     // cellule cliquable → preuves
+        html += `<td class="croise-cell" style="--a:${a}">`
+              + `<button type="button" class="croise-hit" data-i="${i}" data-j="${j}" `
+              + `title="Voir « ${esc(croiseLbl(x))} × ${esc(croiseLbl(y))} » en concordance">${n}</button></td>`;
+      else
+        html += `<td class="croise-cell${n ? "" : " zero"}" style="--a:${a}">${n || ""}</td>`;
+    });
+    html += `<td class="croise-tot">${x.total}</td></tr>`;
+  });
+  html += '<tr class="croise-totrow"><th scope="row">Σ</th>';
+  for (const y of ys) html += `<td class="croise-tot">${y.total}</td>`;
+  html += `<td class="croise-tot">${res.total}</td></tr></tbody></table>`;
+  box.innerHTML = html;
+  box.querySelectorAll(".croise-hit").forEach((btn) => {
+    btn.onclick = () => drillCroise(Number(btn.dataset.i), Number(btn.dataset.j));
+  });
+}
+
+/* Descente aux preuves : applique les deux valeurs de la cellule aux filtres A puis bascule
+   en Concordance (tokens en contexte — chaque ligne deep-linke ensuite la Visionneuse). */
+function drillCroise(i, j) {
+  if (!CROISE) return;
+  $("#f-vue").value = "concordance";
+  syncControls();                                   // active les contrôles (POS, etc.)
+  applyAxisFilter(CROISE.filtre_x, CROISE.x[i].cle);
+  applyAxisFilter(CROISE.filtre_y, CROISE.y[j].cle);
+  run();
+}
+function applyAxisFilter(param, cle) {
+  if (cle == null) return;                           // cellule « (vide) » : pas de filtre d'absence
+  const v = String(cle);
+  if (param === "tags") $("#f-tags").value = v;
+  else if (param === "type") $("#f-type").value = v;
+  else if (param === "pos") $("#f-pos").value = v;
+  else if (param === "provenance") $("#f-prov").value = v;
+  else if (param === "morph") $("#f-morph").value = v;
+  else if (param === "personnage") $("#f-personnage").value = v;
+  else if (param === "attributs") { state.attributs.f.add(v); renderAttrChips("f"); }
+}
+
 /* ---------------- Contrôles / démarrage ---------------- */
 function syncControls() {
   const v = vue();
   $("#sub-b").hidden = v !== "comparaison";
   document.querySelectorAll(".sub-title").forEach((el) => { el.hidden = v !== "comparaison"; });
-  $("#wrap-champ").hidden = v === "concordance";     // « distribuer par » hors concordance
+  $("#wrap-champ").hidden = v === "concordance" || v === "croisement";  // « distribuer par » : distrib./comp.
   $("#wrap-lemme").hidden = v !== "concordance";     // champ lemme/mot en concordance
   $("#wrap-kwic").hidden = v !== "concordance";      // bascule aligné/liste en concordance
-  const byPos = v !== "concordance" && champ() === "pos";
-  $("#f-pos").disabled = byPos;     // filtre POS redondant si on distribue par POS
+  $("#wrap-axes").hidden = v !== "croisement";       // sélecteurs d'axes en croisement
+  const byPos = (v === "distribution" || v === "comparaison") && champ() === "pos";
+  $("#f-pos").disabled = byPos;     // filtre POS redondant si on distribue PAR POS
   $("#b-pos").disabled = byPos;
 }
 
@@ -391,6 +503,8 @@ function restoreFromUrl() {
   $("#f-champ").value = p.get("champ") || "lemme";
   $("#f-lemme").value = p.get("lemme") || "";
   $("#f-kwic-style").value = p.get("kwic") || "aligne";
+  $("#f-axe-x").value = p.get("axe_x") || "pos";     // options déjà peuplées (populateAxes)
+  $("#f-axe-y").value = p.get("axe_y") || "type";
   const setSide = (pre, keyfn) => {
     $(`#${pre}-album`).value = p.get(keyfn("album")) || "";
     $(`#${pre}-type`).value = p.get(keyfn("type")) || "";
@@ -649,6 +763,8 @@ async function setup() {
   $("#f-champ").onchange = () => { syncControls(); run(); };
   $("#f-vue").onchange = () => { syncControls(); run(); };
   $("#f-kwic-style").onchange = run;               // bascule aligné/liste (re-rend)
+  $("#f-axe-x").onchange = run;                    // croisement : axes
+  $("#f-axe-y").onchange = run;
   // Les puces d'attribut câblent leur propre clic (cf. renderAttrChips) — absentes d'ici.
   ["#f-album", "#f-type", "#f-pos", "#f-prov", "#f-tags", "#f-tagscope", "#f-personnage",
    "#b-album", "#b-type", "#b-pos", "#b-prov", "#b-tags", "#b-personnage"]
@@ -669,6 +785,7 @@ async function setup() {
   await loadTags();          // options de tag (A et B) avant restauration
   await loadPersonnages();   // locuteurs (A et B)
   await loadAttributs();     // valeurs d'attribut, groupées par dimension (A et B)
+  populateAxes();            // options des axes de croisement (facettes + dimensions)
   restoreFromUrl();
   setupBack();
   syncControls();
