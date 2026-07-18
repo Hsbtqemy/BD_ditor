@@ -78,11 +78,14 @@ async function loadAlbums() {
   await selectAlbum(Number(first));
 }
 
-async function selectAlbum(id) {
+async function selectAlbum(id, autoSelect = true) {
   state.albumId = id;
   state.planches = await apiGet(`/api/albums/${id}/planches`);
   renderPlancheList();
-  if (state.planches.length) selectPlanche(state.planches[0].id);
+  // `autoSelect=false` : un deep-link va choisir une planche PRÉCISE → ne pas charger
+  // planche[0] pour rien (F5). On vide le stage en attendant : sinon, si le deep-link
+  // pointe une planche inexistante, on afficherait la planche PÉRIMÉE de l'album précédent.
+  if (autoSelect && state.planches.length) selectPlanche(state.planches[0].id);
   else { state.planche = null; clearStage(); }
 }
 
@@ -313,10 +316,12 @@ function updateOverlayScale() {
 /* ===================================================================
    Sélection de région
    =================================================================== */
-function selectRegion(id) {
+function selectRegion(id, reveal = true) {
   flushSave();
   state.selectedId = id;
-  revealInTree(id);   // déplie les cases parentes pour que la sélection reste visible
+  // F6 : la navigation clavier (flèches) passe reveal=false → ne pas re-déplier l'arbre à
+  // chaque cran (le repli manuel des cases est respecté). Un clic/deep-link, lui, révèle.
+  if (reveal) revealInTree(id);
   renderOverlay();
   renderPanel();
   if (state.mode === "annotation" && id != null) loadAnnotation(id);
@@ -784,8 +789,10 @@ function renderTree() {
 
 /* Sélectionne une région depuis l'arbre puis recentre la vue dessus. */
 function selectAndCenter(id) {
+  if (!state.regionsById.get(id)) return false;   // F5 : région inexistante → diagnostic possible
   selectRegion(id);
   centerOnRegion(id);
+  return true;
 }
 
 function centerOnRegion(id) {
@@ -895,7 +902,15 @@ async function loadAnnotation(regionId) {
     $("#note-input").value = ann.note || "";
     renderTagChips();
     setSaveState("saved");
-  } catch (e) { toast("Erreur chargement annotation : " + e.message, "error"); }
+  } catch (e) {
+    // F7 : sur échec, VIDER note + tags — sinon un scheduleSave ultérieur écrirait
+    // l'annotation de la région PRÉCÉDENTE (restée dans #note-input) sur celle-ci.
+    toast("Erreur chargement annotation : " + e.message, "error");
+    state.currentTags = [];
+    $("#note-input").value = "";
+    renderTagChips();
+    setSaveState("");
+  }
   loadLocuteur(regionId);   // panneau Locuteur (bulles) — indépendant de l'annotation
   loadPerso(regionId);      // panneau Personnage (boîtes personnage) — identité + profil
   loadSituation(regionId);  // panneau Situation (cases)
@@ -946,7 +961,9 @@ function flushSave() {
 async function saveAnnotation() {
   state.saveTimer = null;
   const id = state.selectedId;
-  if (id == null || state.mode !== "annotation") return;
+  // F8 : si le timer tombe hors mode annotation (ou sans sélection), NE PAS laisser
+  // l'indicateur bloqué sur « Enregistrement… ».
+  if (id == null || state.mode !== "annotation") { setSaveState(""); return; }
   const note = $("#note-input").value;
   try {
     await apiSend("PUT", `/api/regions/${id}/annotation`, {
@@ -1727,7 +1744,7 @@ function navigateRegion(dir) {
   if (!list.length) return;
   let idx = list.findIndex((r) => r.id === state.selectedId);
   idx = idx === -1 ? 0 : (idx + dir + list.length) % list.length;
-  selectRegion(list[idx].id);
+  selectRegion(list[idx].id, false);   // F6 : ne pas re-déplier l'arbre à chaque flèche
 }
 
 /* ===================================================================
@@ -2448,10 +2465,20 @@ async function applyDeepLink() {
   try {
     if (album && Number(album) !== state.albumId) {
       $("#album-select").value = album;
-      await selectAlbum(Number(album));
+      await selectAlbum(Number(album), false);   // la planche du lien sera choisie ci-dessous
     }
-    if (planche) await selectPlanche(Number(planche));
-    if (region) { setMode("navigation"); selectAndCenter(Number(region)); }
+    if (planche) {
+      await selectPlanche(Number(planche));
+      if (!state.planche || state.planche.id !== Number(planche)) {   // F5 : plus de silence
+        toast("Planche du lien introuvable dans cet album.", "error");
+        return;
+      }
+    }
+    if (region) {
+      setMode("navigation");
+      if (!selectAndCenter(Number(region)))
+        toast("Région du lien introuvable sur cette planche.", "error");
+    }
   } catch (e) { toast("Lien : " + e.message, "error"); }
 }
 

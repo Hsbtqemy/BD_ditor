@@ -192,10 +192,10 @@ Trouvailles **absentes de la première passe**. ✔ = vérifiée de visu dans ce
 - **✔ F2 — poignée de resize sans garde null** ([viewer.js:1045-1049](static/viewer.js#L1045-L1049)) : `const r = selectedRegion()` puis `r.x` sans `if (!r) return` ⇒ `TypeError` si la sélection a été vidée. **Majeur.**
 - **F3 — inversion de resize `w`/`n`** ([viewer.js:1133-1145](static/viewer.js#L1133-L1145)) : tirer la poignée gauche/haute au-delà du bord opposé clampe `w`/`h` à 1 **sans re-corriger `x`/`y`** → la région se **téléporte**. **Majeur (UX).**
 - **F4 — région 1×1 persistée** : le seuil `w>4 && h>4` ne s'applique qu'au **dessin**, pas au **resize** → on peut sauvegarder une région d'1 px. **Majeur.**
-- **F5 — deep-link silencieux** ([viewer.js:1608-1620](static/viewer.js#L1608-L1620)) : `?planche=`/`?region=` inexistants ⇒ `selectPlanche`/`centerOnRegion` `return` **sans toast** ; `selectAlbum` charge `planches[0]` inutilement avant d'être remplacé. **Majeur (diagnostic absent).**
-- **F6 — `navigateRegion` re-déplie l'arbre** à chaque flèche (`revealInTree`), annulant le repli manuel. **Mineur.**
-- **F7 — `#note-input` non réinitialisé si `loadAnnotation` échoue** (réseau) → un `scheduleSave` ultérieur écrit l'ancienne note sur la nouvelle région. **Mineur.**
-- **F8 — indicateur « Enregistrement… » bloqué** si le timer tombe en mode ≠ annotation ([viewer.js:728-740](static/viewer.js#L728-L740)). **Mineur.**
+- **F5 — deep-link silencieux** — ✅ **Fait 2026-07-19** : `applyDeepLink` **diagnostique** (toast) une planche/région introuvable (`selectAndCenter` renvoie un booléen, vérification `state.planche.id`) ; `selectAlbum(id, autoSelect=false)` ne pré-charge plus `planches[0]` sur un deep-link. Test e2e (`test_deep_link_introuvable_diagnostique`). **Majeur (diagnostic absent).**
+- **F6 — `navigateRegion` re-déplie l'arbre** — ✅ **Fait 2026-07-19** : la navigation clavier passe `selectRegion(id, reveal=false)` → le repli manuel des cases est respecté (un clic/deep-link révèle toujours). **Mineur.**
+- **F7 — `#note-input` non réinitialisé si `loadAnnotation` échoue** — ✅ **Fait 2026-07-19** : le `catch` VIDE note + tags (+ `setSaveState("")`) → plus de contamination de la région suivante par un `scheduleSave`. **Mineur.**
+- **F8 — indicateur « Enregistrement… » bloqué** — ✅ **Fait 2026-07-19** : `saveAnnotation` fait `setSaveState("")` quand il retourne tôt (mode ≠ annotation / pas de sélection). **Mineur.**
 - Autres mineurs : sélection ShareDocs conservée entre dossiers (import non vu), incohérence Suppr clavier (édition) vs bouton (tous modes), `caseContaining` départage les aires égales par ordre d'insertion.
 
 **Priorité passe 2** : **B1+F1** (validation `parent_id` côté serveur + repli défensif côté client — corrige perte de données et 500 à la source), **B2** (orphelin ShareDocs, fix trivial déjà écrit ailleurs), **F2/F3/F4** (resize en mode édition, faciles et très visibles), **B3/B4** (bornes `Field(ge=0)` + `limit`).
@@ -210,7 +210,7 @@ Trouvailles **absentes de la première passe**. ✔ = vérifiée de visu dans ce
 - **F3** — resize `w`/`n` : bord opposé ancré (plus de téléportation), clamp qui préserve le bord fixe.
 - **F4** — `MIN_REGION = 5` : le resize ne peut plus persister une région < 5 px (cohérent avec le seuil de dessin).
 
-**Restent ouverts (non traités ce tour)** : ~~B5~~ (✅ 2026-07-16), B6 (transitions de statut + régression `annotee`→`segmentee`), ~~B7~~ ~~B8~~ ~~B9/B10~~ (✅ 2026-07-18 : sûreté serveur — CSV formule, sauvegarde 409/503, titre album), F5 (deep-link silencieux), F6–F8 et mineurs. Plus les **P2/P3** de la passe 1 (verrou d'inférence ML, `_crop_lock`, jobs, `UNIQUE(album_id,numero)`, HTTPS ShareDocs).
+**Restent ouverts (non traités ce tour)** : ~~B5~~ (✅ 2026-07-16), B6 (transitions de statut + régression `annotee`→`segmentee`), ~~B7~~ ~~B8~~ ~~B9/B10~~ (✅ 2026-07-18 : sûreté serveur), ~~F5–F8~~ (✅ 2026-07-19 : robustesse Visionneuse — deep-link diagnostiqué, arbre non re-déplié, note non contaminée, indicateur non bloqué), et mineurs. Plus les **P2/P3** de la passe 1 (verrou d'inférence ML, `_crop_lock`, jobs, `UNIQUE(album_id,numero)`, HTTPS ShareDocs).
 
 ---
 

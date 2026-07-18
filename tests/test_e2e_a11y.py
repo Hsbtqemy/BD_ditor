@@ -176,6 +176,15 @@ def test_a11y_corpus_relecture(page, seeded):
     assert st["force"] is True and st["statut"] == "faite"
 
 
+def test_deep_link_introuvable_diagnostique(page, seeded):
+    """F5 : un deep-link vers une planche/région inexistante AFFICHE un diagnostic (toast) au
+    lieu d'échouer en silence."""
+    page.goto(seeded["base"] + f"/?album={seeded['album']}&planche=999999",
+              wait_until="networkidle")
+    page.wait_for_selector("#toasts .toast", timeout=4000)
+    assert "introuvable" in page.locator("#toasts .toast").first.inner_text().lower()
+
+
 def test_a11y_visionneuse_undo(page, seeded):
     """Undo (D1) : une action d'annotation (locuteur) posée via l'API est annulée par Ctrl+Z
     dans la Visionneuse (round-trip UI → serveur → rafraîchissement) ; le toast d'annulation
