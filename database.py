@@ -355,7 +355,7 @@ CREATE TABLE IF NOT EXISTS activite (
 CREATE TABLE IF NOT EXISTS evenement (
     id           INTEGER PRIMARY KEY,
     activite_id  INTEGER REFERENCES activite(id) ON DELETE SET NULL,
-    type         TEXT NOT NULL,                      -- 'creation'|'modification'|'suppression'|'validation'|'lien'|'delien'
+    type         TEXT NOT NULL,                      -- 'creation'|'modification'|'suppression'|'validation'|'lien'|'delien'|'annulation' (undo, D1)
     agent        TEXT,
     agent_type   TEXT NOT NULL DEFAULT 'humain',     -- 'humain' | 'moteur'
     cible_table  TEXT NOT NULL,                      -- 'regions'|'annotations'|'token_correction'|'planches'…

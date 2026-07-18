@@ -166,7 +166,8 @@ ou décision de conception requise).
 > **Largement fait — 2026-06-23.** UX-1 (nav transverse unifiée « Atelier ‖ Analyse »,
 > générée d'un seul endroit par `theme.js`, `aria-current`) et UX-2 (en-tête en deux
 > bandes, actions regroupées Traitement / Import-Export) sont livrés. UX-3 (hiérarchie
-> & découvrabilité), UX-4 (cohérence visuelle inter-surfaces) et UX-5 (annulation / undo) restent ouverts.
+> & découvrabilité) et UX-4 (cohérence visuelle inter-surfaces) restent ouverts ;
+> **UX-5 (annulation / undo) est ✅ fait (D1, 2026-07-18)**.
 
 ### UX-1 · Navigation unifiée — P2 · M
 > 4 surfaces, en-têtes bricolés et légèrement différents. `nav.js` ne fait pour l'instant
@@ -187,22 +188,22 @@ ou décision de conception requise).
 ### UX-4 · Cohérence visuelle inter-surfaces — P3 · M
 > Aligner espacements/typo/composants sur l'Exploration (récemment soignée).
 
-### UX-5 · Annulation (undo) des actions d'annotation — P2 · L
+### UX-5 · Annulation (undo) des actions d'annotation — ✅ **Fait 2026-07-18 (D1)**
 > Aujourd'hui une action destructive est IRRÉVERSIBLE sans restaurer une sauvegarde
 > complète : supprimer une région **cascade** (enfants + annotations + tags + tokens),
 > déplacer/redimensionner écrase l'ancienne géométrie, une correction de token remplace
 > la précédente. Seuls le **verrou de planche** et la **sauvegarde** (snapshot global)
 > protègent — rien de granulaire ni de réversible à l'échelle du geste.
-- **Décision tranchée par A3 (v16)** : option (b) **journal d'actions serveur**. Le journal
-  `evenement` (append-only, **avant/après**, snapshot **profond** à la suppression) est déjà
-  posé et **survit à la suppression** de sa cible → le substrat existe. Reste à construire :
-  l'**endpoint `/api/undo`** (rejoue l'inverse depuis `avant`/`apres` : recréer une région +
-  son sous-arbre + annotation, rétablir une géométrie, restaurer une correction) + l'UI
-  (Ctrl+Z). Cf. `docs/provenance-audit.md`. Écarté : (a) pile client (aveugle aux cascades),
-  (c) soft-delete/versionnage. Trancher encore : périmètre (quelles actions), profondeur
-  (1 niveau vs pile).
-- Done : annuler la dernière action (au moins create/move/delete région + tag + locuteur)
-  la rétablit fidèlement, cascades comprises ; raccourci Ctrl+Z ; test.
+- **Livré** (option (b) **journal d'actions serveur**, tranchée par A3) : module `undo.py` qui
+  **remonte le journal `evenement`** (append-only, `avant`/`apres`, snapshot **profond**) et
+  rejoue l'inverse ; **pile** via événements `annulation` (append-only préservé : un acte annulé
+  est référencé, jamais modifié). Endpoints `GET /api/undo/prochain` + `POST /api/undo` ; **UI
+  Ctrl+Z** dans la Visionneuse (toast + rafraîchissement). Ajustement : les événements
+  d'annotation ciblent `region_id` (stable). Écarté : (a) pile client (aveugle aux cascades),
+  (c) soft-delete. Cf. `docs/undo.md`.
+- **Périmètre livré** : région (créer/modifier/supprimer+cascade), annotation (note+tags),
+  locuteur, présence. Actes machine non annulables. **Dormant** : correction grammaticale,
+  validation, et **redo** (Ctrl+Y = annuler l'annulation).
 - Note : forte valeur de SÛRETÉ (la suppression cascade est le geste le plus dangereux),
   complément FIN de la sauvegarde (filet « gros grain »). Recoupe SEG-1 (re-segmentation =
   autre source de perte de travail humain).

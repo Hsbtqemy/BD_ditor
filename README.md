@@ -210,6 +210,12 @@ produit quoi* sans inverser la base. Il **survit à la suppression** de sa cible
 (substrat de l'undo), et se sérialise en **PROV-O / TEI**. Cf.
 `docs/provenance-audit.md`.
 
+**Annulation** (undo, D1) : `undo.py` **remonte ce journal** pour rejouer l'inverse de la
+dernière action d'annotation — région (créer / modifier / supprimer + **cascade** recréée à
+l'identique), annotation, locuteur, présence. Pile via événements `annulation` (append-only
+préservé) ; **Ctrl+Z** dans la Visionneuse. Les actes machine ne sont pas annulables.
+Cf. `docs/undo.md`.
+
 **Lexique situé** (A4) : le vocabulaire émergent (dimensions, valeurs, tags) porte une
 couche **SKOS** — `definition`, `note_portee` (cadre d'emploi), `etat`
 (`provisoire`→`defini`) et `collection_id` (portée : global ou local à une collection).
@@ -243,6 +249,8 @@ Cf. `docs/materiel-numerisation.md`.
 | `GET/POST` | `/api/planches/{id}/regions` | régions / création manuelle |
 | `PUT/DELETE` | `/api/regions/{id}` | modifier / supprimer une région |
 | `POST` | `/api/regions/{id}/deplacer` | réordonner une région (↑/↓) |
+| `GET` | `/api/undo/prochain` | aperçu : ce que la prochaine annulation défera (ou `null`) |
+| `POST` | `/api/undo` | annuler la dernière action d'annotation (Ctrl+Z) |
 | `GET` | `/api/regions/{id}/crop?taille=` | crop net (master) — vignette (recherche) ou transcription |
 | `PATCH` | `/api/planches/{id}/statut` | statut (`importee→segmentee→corrigee→annotee`) |
 | `PATCH` | `/api/planches/{id}/validation` | marquer / retirer la validation humaine (`validee`) |
@@ -283,6 +291,7 @@ bd_annotator/
 ├── main.py              # app FastAPI + routes
 ├── database.py          # init SQLite, schéma, FTS5, vues, migrations, helpers
 ├── journal.py           # journal de provenance / audit append-only (activite/evenement)
+├── undo.py              # annulation (D1) : remonte le journal et rejoue l'inverse
 ├── config.py            # chemins & constantes partagés
 ├── pipeline/
 │   ├── ingest.py        # image → dérivé web + métadonnées + suppression fichiers

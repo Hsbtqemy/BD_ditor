@@ -2373,10 +2373,44 @@ function setupControls() {
   setupSharedocs();
 }
 
+/* Annulation (undo, D1) — Ctrl+Z rejoue côté serveur l'INVERSE de la dernière action
+   d'annotation (depuis le journal A3), puis rafraîchit la vue touchée. Le serveur porte la
+   pile (Ctrl+Z répété remonte l'historique) ; ici on ne fait qu'appeler et rafraîchir. */
+async function undoLast() {
+  // Ne pas laisser une sauvegarde différée re-appliquer un buffer périmé APRÈS l'annulation.
+  clearTimeout(state.saveTimer);
+  state.saveTimer = null;
+  let res;
+  try {
+    res = await apiSend("POST", "/api/undo");
+  } catch (e) {
+    toast(e.message, /rien à annuler/i.test(e.message) ? "" : "error");
+    return;
+  }
+  toast("Annulé : " + res.description);
+  if (res.planche_id && state.planche && res.planche_id === state.planche.id) {
+    await loadRegions(state.planche.id);
+    if (res.region_id != null && state.regionsById.has(res.region_id)) {
+      state.selectedId = res.region_id;      // montre la région touchée + son état restauré
+      renderOverlay();
+      renderPanel();
+      if (state.mode === "annotation") loadAnnotation(res.region_id);
+    }
+  } else if (res.planche_id && state.planches.some((p) => p.id === res.planche_id)) {
+    selectPlanche(res.planche_id);           // l'action touchait une autre planche de l'album
+  }
+}
+
 function setupKeyboard() {
   window.addEventListener("keydown", (e) => {
     const tag = (e.target.tagName || "").toLowerCase();
     const typing = tag === "input" || tag === "textarea" || tag === "select";
+    // Ctrl/⌘+Z hors champ de saisie = annuler la dernière action (dans un champ : undo natif).
+    if (!typing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+      e.preventDefault();
+      undoLast();
+      return;
+    }
     if (typing) return;
 
     const k = e.key.toLowerCase();

@@ -85,8 +85,10 @@ python tools/provenance_export.py --out-dir prov/  # provenance.json + revisionD
 
 - **Livré (v16)** : schéma + `journal.py` + câblage ML & routes humaines + indicateurs +
   export PROV-O/TEI. Tests : `tests/test_provenance_audit.py`.
-- **Recoupe D1 (undo)** : A3 fournit le **substrat** (avant/après, snapshot profond). L'undo
-  lui-même — endpoint de restauration + UI — reste le ticket **D1**, désormais *débloqué*.
+- **D1 (undo) livré dessus** : `undo.py` **remonte** ce journal et rejoue l'inverse (pile via
+  événements `annulation` — un type d'événement en plus ; append-only préservé). Ajustement :
+  les actes d'annotation ciblent désormais le `region_id` (stable), pas l'id d'annotation
+  (détruit à la suppression) → une annotation supprimée reste restaurable. Cf. `docs/undo.md`.
 - **Extensions dormantes** : versionnement d'entités (`wasRevisionOf`), journalisation des
   changements de statut/verrou/rôle de planche, certitude de zone, export PROV-O *au fil de
   l'eau*.

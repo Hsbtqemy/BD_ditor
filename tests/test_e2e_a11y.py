@@ -155,6 +155,30 @@ def test_a11y_corpus_materiel(page, seeded):
     assert any(a.get("source_numerisation") == "Epson V850, 600 dpi" for a in alb)
 
 
+def test_a11y_visionneuse_undo(page, seeded):
+    """Undo (D1) : une action d'annotation (locuteur) posée via l'API est annulée par Ctrl+Z
+    dans la Visionneuse (round-trip UI → serveur → rafraîchissement) ; le toast d'annulation
+    reste accessible."""
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        p = c.post("/api/personnages", json={"nom": "Tournesol"}).json()
+        c.put(f"/api/regions/{seeded['region']}/locuteur", json={"personnage_id": p["id"]})
+        assert c.get(f"/api/regions/{seeded['region']}/locuteur").json()["locuteur"]  # bien posé
+    finally:
+        c.close()
+    page.goto(seeded["base"] + SURFACES["visionneuse"](seeded), wait_until="networkidle")
+    page.wait_for_timeout(700)
+    page.locator("body").press("Control+z")                  # hors champ de saisie
+    page.wait_for_timeout(500)
+    viol = _audit(page)
+    assert not viol, f"Visionneuse/undo :\n{_fmt(viol)}"
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        assert c.get(f"/api/regions/{seeded['region']}/locuteur").json()["locuteur"] is None
+    finally:
+        c.close()
+
+
 def test_a11y_exploration_lexique(page, seeded):
     """Modale « Lexique situé » (A4) : audite l'a11y du panneau ouvert (piège à focus +
     labels de formulaire, badge d'état) ET vérifie le round-trip d'édition (une définition

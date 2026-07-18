@@ -29,6 +29,7 @@ from database import (citations_regions, collections, contributions_album, dimen
                       get_connection, init_db, lexique_resume, numeros_editoriaux,
                       reindex_region, unindex_region)
 import journal
+import undo
 from pipeline.backup import make_backup
 from pipeline import jobs
 from pipeline import nlp
@@ -1006,9 +1007,6 @@ def put_annotation(region_id: int, payload: AnnotationIn,
 
     # État avant (note + tags) pour journaliser création / modification / suppression.
     avant_annot = journal.snapshot_annotation(conn, region_id)
-    ancien = conn.execute("SELECT id FROM annotations WHERE region_id = ?",
-                          (region_id,)).fetchone()
-    ancien_id = ancien["id"] if ancien else None
 
     tag_rows = _ensure_tags(conn, payload.tags)
     # Vider une annotation (note vide ET aucun tag) = SUPPRIMER la ligne, pas
@@ -1019,7 +1017,9 @@ def put_annotation(region_id: int, payload: AnnotationIn,
         conn.execute("DELETE FROM annotations WHERE region_id = ?", (region_id,))
         reindex_region(conn, region_id)
         if avant_annot is not None:
-            journal.journaliser(conn, "suppression", "annotations", ancien_id,
+            # Cible = region_id (STABLE), pas l'id d'annotation (détruit ici) : une annotation
+            # supprimée doit rester restaurable par l'undo (D1), comme locuteur/présence.
+            journal.journaliser(conn, "suppression", "annotations", region_id,
                                 avant=avant_annot)
         conn.commit()
         return _annotation_for_region(conn, region_id)
@@ -1044,8 +1044,9 @@ def put_annotation(region_id: int, payload: AnnotationIn,
             "VALUES (?, ?)", (ann_id, t["id"]),
         )
 
+    # Cible = region_id (stable), pas ann_id (éphémère) → undo (D1) uniforme avec locuteur/présence.
     journal.journaliser(conn, "creation" if avant_annot is None else "modification",
-                        "annotations", ann_id, avant=avant_annot,
+                        "annotations", region_id, avant=avant_annot,
                         apres=journal.snapshot_annotation(conn, region_id))
     reindex_region(conn, region_id)
     conn.commit()
@@ -1407,6 +1408,28 @@ def clear_presence(region_id: int, conn: sqlite3.Connection = Depends(db)):
         journal.journaliser(conn, "delien", "personnage_presence", region_id,
                             avant={"personnage_id": ancien["personnage_id"]})
     conn.commit()
+
+
+# --- Annulation (undo, D1) : rejoue l'INVERSE de la dernière action depuis le journal A3 ---
+@app.get("/api/undo/prochain")
+def undo_prochain(conn: sqlite3.Connection = Depends(db)):
+    """Aperçu : ce que ferait la prochaine annulation (ou `null` s'il n'y a rien à annuler)."""
+    return undo.apercu(conn)
+
+
+@app.post("/api/undo")
+def undo_dernier(conn: sqlite3.Connection = Depends(db)):
+    """Annule la dernière action d'annotation (Ctrl+Z). Renvoie un descripteur de l'acte
+    annulé (description + planche/région touchée) pour le rafraîchissement de l'UI, ou 404
+    s'il n'y a rien à annuler. Inversion + journal `annulation` atomiques (rollback si échec)."""
+    try:
+        res = undo.annuler(conn)
+    except undo.UndoImpossible as exc:
+        raise HTTPException(409, f"Annulation impossible : {exc}")
+    if res is None:
+        raise HTTPException(404, "Rien à annuler.")
+    conn.commit()
+    return res
 
 
 # --- Attributs FACETTÉS & ÉMERGENTS : dimensions (axes) / valeurs canoniques /

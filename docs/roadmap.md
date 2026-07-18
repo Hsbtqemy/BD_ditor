@@ -5,8 +5,9 @@
 > (audit technique, 5 passes). Ce document ne recopie pas les tickets : il **regroupe
 > l'ouvert en pistes**, fixe le **cap** et l'**ordre conseillé**. Établi le **2026-07-16**.
 >
-> **Piste A — FAIR / dépôt : ✅ complète (v19, 2026-07-18).** Cap suivant à décider
-> (B — vocabulaire/analyse · C — déploiement multi-utilisateur · D1 — undo, débloqué par A3).
+> **Piste A — FAIR / dépôt : ✅ complète (v19, 2026-07-18).** **D1 (undo) livré** dans la
+> foulée (2026-07-18). Cap suivant à décider (B — vocabulaire/analyse · C — déploiement
+> multi-utilisateur · reste de la piste D — dette/sûreté).
 
 **Légende** — Priorité : **P1** (finalité / bloquant), **P2** (important), **P3** (raffinement).
 Effort : **S** (< ½ j), **M** (1-2 j), **L** (≥ 3 j ou décision de conception requise).
@@ -108,7 +109,7 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 
 | # | Item | Prio·Effort | Note |
 |---|---|---|---|
-| **D1** | **UX-5 — undo des actions d'annotation** | P2·L | **forte valeur de sûreté** : la suppression cascade est le geste le plus dangereux, aujourd'hui irréversible sans restaurer une sauvegarde. **Débloqué par A3 (v16)** : le journal `evenement` survit à la suppression et porte l'instantané **profond** (avant/après) → décision tranchée (**journal serveur**) ; reste l'endpoint de restauration + l'UI |
+| ~~**D1**~~ | ✅ **Fait 2026-07-18 — UX-5, undo des actions d'annotation** : module `undo.py` qui **remonte le journal `evenement`** (A3) et rejoue l'inverse ; **pile** via événements `annulation` (append-only préservé) ; `GET /api/undo/prochain` + `POST /api/undo` ; **UI Ctrl+Z** (toast + rafraîchissement). Périmètre : région (créer/modifier/supprimer+cascade), annotation, locuteur, présence ; actes machine non annulables. Ajustement A3 : annotations ciblent `region_id`. Dormant : grammaire/validation, redo. Cf. `docs/undo.md` | P2·L | **forte valeur de sûreté** : la suppression cascade était irréversible sans restaurer une sauvegarde |
 | ~~**D2**~~ | ✅ **Fait 2026-07-16** — B5 : `_migrate` **gate par `user_version`** (refus de rétrograder + court-circuit si à jour + convention `if version < N`) ; test dédié. Assaini avant A1 | S | — |
 | — | B6 (transitions de statut + régression `annotee`→`segmentee`) · B7 (injection formule CSV — export **app**, distinct des tools) · B8 (`/api/sauvegarde` sans try/except → 500) · B9 (titre d'album vide accepté) · F5 (deep-link silencieux, aucun toast) · F6-F8 · T2/T4 (tests faibles) · S1/S5/S6/O1 (latents segmentation) · A11Y-2 (reliquat `px`→`rem`) · UX-3/UX-4 | mineurs | quick wins, à la demande |
 
@@ -129,14 +130,15 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
    d'équipe *en amont*, autant l'amorcer tôt.
 4. Selon le cap suivant : **C1** (déploiement VPS) si le multi-utilisateur devient réel —
    débloque C2, C3 (CSRF), B6 (accord inter-annotateurs).
-5. **A3 / D1** ensemble quand la provenance devient prioritaire (même journal append-only).
+5. ~~**A3 / D1** ensemble (même journal append-only)~~ ✅ **faits** — A3 (v16) puis D1 (undo,
+   2026-07-18) construit dessus.
 
 ## Dépendances notables
 
 - **C1 (auth déployée)** débloque → C2 (WebDAV/utilisateur), C3 (CSRF), et sert B6.
 - ~~**A3 (journal de provenance)** et **D1 (undo serveur)** partagent le **même journal
-  append-only**~~ → **A3 livré (v16)** : le journal `evenement` (avant/après, survit à la
-  suppression) EST le substrat de D1 ; ne reste que l'endpoint de restauration + l'UI.
+  append-only**~~ → **A3 (v16) puis D1 livrés** : le journal `evenement` (avant/après, survit à
+  la suppression) EST le substrat de l'undo (`undo.py` le remonte). Cf. `docs/undo.md`.
 - ~~**A4 (portée SKOS `collection_id`)** s'appuie sur le palier Collection (v14)~~ → **A4 livré
   (v17)** : `collection_id` sur dimensions/valeurs/tags, promotion → NULL (`ON DELETE SET NULL`).
 - **B1** est une **décision de conception** (vocabulaire) : à trancher avec les linguistes
