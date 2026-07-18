@@ -749,6 +749,54 @@ async function importerTableur(e) {
   }
 }
 
+/* ---------------- Accord modèle↔humain (NLP-1) : qualité de l'index ----------------
+   Modale de consultation : part des tokens relus où le modèle avait déjà la valeur finale
+   (par champ) + confusion POS. Read model : GET /api/analyse/accord. */
+async function openAccord() { $("#accord-modal").hidden = false; await loadAccord(); }
+function closeAccord() { $("#accord-modal").hidden = true; }
+
+async function loadAccord() {
+  const body = $("#accord-body");
+  body.textContent = "Chargement…";
+  try { renderAccord(await apiGet("/api/analyse/accord")); }
+  catch (e) { body.textContent = "Impossible de charger le rapport d'accord."; }
+}
+
+function pctAccord(x) { return x == null ? "—" : Math.round(x * 100) + " %"; }
+
+const ACCORD_CHAMPS = [["lemme", "lemme"], ["pos", "catégorie (POS)"], ["morph", "morphologie"]];
+
+function renderAccord(r) {
+  const body = $("#accord-body");
+  const modele = r.modele ? esc(r.modele) : "modèle inconnu";
+  const date = r.indexe_le ? ` · indexé le ${esc(r.indexe_le)}` : "";
+  if (!r.revus) {
+    body.innerHTML = `<p class="muted small">Modèle : <b>${modele}</b>${date}</p>`
+      + `<p class="muted small">Aucun token relu — corrigez ou validez des tokens (Visionneuse)`
+      + ` pour mesurer l'accord.</p>`;
+    return;
+  }
+  let html = `<p class="muted small">Modèle : <b>${modele}</b>${date} — <b>${r.revus}</b> `
+    + `token(s) relu(s) (${r.corriges} corrigé(s), ${r.valides} validé(s))</p>`;
+  html += '<table class="accord-table"><thead><tr><th scope="col">Champ</th>'
+    + '<th scope="col">Accord</th><th scope="col">Taux</th></tr></thead><tbody>';
+  for (const [ch, lbl] of ACCORD_CHAMPS) {
+    const c = r.champs[ch];
+    const pct = c.taux == null ? 0 : Math.round(c.taux * 100);
+    html += `<tr><th scope="row">${esc(lbl)}</th><td>${c.accord}/${c.revus}</td>`
+      + `<td><span class="accord-bar"><i style="width:${pct}%"></i></span> ${pctAccord(c.taux)}</td></tr>`;
+  }
+  html += '</tbody></table>';
+  if (r.confusion_pos.length) {
+    html += '<h4 class="accord-h">Confusion POS (auto → corrigé)</h4><ul class="accord-conf">';
+    for (const x of r.confusion_pos)
+      html += `<li><code>${esc(x.auto || "∅")}</code> → <code>${esc(x.humain)}</code>`
+        + ` <span class="muted">× ${x.n}</span></li>`;
+    html += '</ul>';
+  }
+  body.innerHTML = html;
+}
+
 async function setup() {
   for (const id of ["#f-pos", "#b-pos"]) {
     for (const u of UPOS) {
@@ -780,6 +828,15 @@ async function setup() {
   if (window.BDDialog)
     BDDialog.register($("#lexique-modal"),
       { box: ".modal-box", labelledby: "lexique-title", onClose: closeLexique });
+  // Accord modèle↔humain (NLP-1) — modale accessible.
+  $("#btn-accord").onclick = openAccord;
+  $("#accord-close").onclick = closeAccord;
+  $("#accord-modal").addEventListener("mousedown", (e) => {
+    if (e.target.id === "accord-modal") closeAccord();
+  });
+  if (window.BDDialog)
+    BDDialog.register($("#accord-modal"),
+      { box: ".modal-box", labelledby: "accord-title", onClose: closeAccord });
   loadCorpus();
   await loadAlbums();        // options d'album (A et B) avant restauration
   await loadTags();          // options de tag (A et B) avant restauration

@@ -112,12 +112,18 @@ ou décision de conception requise).
 
 ## 3. Modèle / NLP
 
-### NLP-1 · Index `lg` définitif + rapport d'accord modèle↔humain — P2 · M
+### NLP-1 · Index `lg` définitif + rapport d'accord modèle↔humain — ✅ **Fait 2026-07-18 (B4)** · P2 · M
 > Opération de transition Phase 1 → Phase 2 : figer l'index avec `fr_core_news_lg` hors
 > ligne, et mesurer combien de corrections humaines le modèle retrouve seul (étalon).
-- Faire : `BD_SPACY_MODEL=fr_core_news_lg` + `tools/reindex_nlp.py` ; requête d'accord
-  (`tokens.pos` auto vs `token_correction.pos` humain).
-- Done : index `lg` produit ; rapport d'accord consultable.
+- ✅ Fait (le **rapport**, code) : cœur `accord.py` (accord par champ lemme/POS/morpho — correction
+  NULL = auto accepté, ou correction = auto — + confusion POS ; miroir de `tokens_effectifs`,
+  ignore les obsolètes) exposé par la route `GET /api/analyse/accord`, l'outil
+  `tools/rapport_accord.py` (`--json`/`--csv`) **et** le panneau **🎯 Accord** de l'Exploration.
+  Tests : cœur/route + CLI + e2e a11y. Cf. `docs/rapport-accord.md`.
+- **Ops** (hors code) : passer à `lg` = `BD_SPACY_MODEL=fr_core_news_lg` + `python -m spacy download
+  fr_core_news_lg` + `tools/reindex_nlp.py`, puis lire le rapport (avant/après comparables).
+- Différé : provenance **par modèle** sur chaque correction (NLP-2) ; accord **par annotateur** ;
+  intégration au roll-up de qualité de la Collection.
 
 ### NLP-2 · Provenance modèle par correction — P3 · S
 > Stocker `modele_auto` par correction pour une provenance fine (quel modèle a été corrigé).

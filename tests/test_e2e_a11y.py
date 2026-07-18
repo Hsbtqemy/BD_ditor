@@ -316,3 +316,24 @@ def test_a11y_exploration_croisement(page, seeded):
     page.click("#croise .croise-hit")                                   # drill → preuves
     page.wait_for_function("document.getElementById('f-vue').value === 'concordance'", timeout=3000)
     page.wait_for_selector("#kwic .kwic-row, #kwic .kwic-item", timeout=5000)
+
+
+def test_a11y_exploration_accord(page, seeded):
+    """Accord modèle↔humain (NLP-1 / B4) : ouvrir la modale, auditer son a11y (piège à focus,
+    table, barres). Si le corpus a des tokens (spaCy), on valide un token d'abord pour exercer
+    aussi le rendu du tableau (sinon on audite l'état « aucun token relu »)."""
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        toks = c.get(f"/api/regions/{seeded['region']}/tokens").json()
+        if toks:                                     # valider le 1er token → 1 token relu
+            c.put(f"/api/regions/{seeded['region']}/tokens/{toks[0]['ordre']}",
+                  json={"etat": "valide"})
+    finally:
+        c.close()
+    page.goto(seeded["base"] + "/exploration", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.click("#btn-accord")
+    page.wait_for_selector("#accord-modal:not([hidden]) #accord-body", timeout=3000)
+    page.wait_for_timeout(300)                       # laisse le fetch + rendu se faire
+    viol = _audit(page)
+    assert not viol, f"Exploration/accord :\n{_fmt(viol)}"

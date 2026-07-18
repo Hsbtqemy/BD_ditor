@@ -321,6 +321,7 @@ bd_annotator/
 │   ├── lib/             # modules UMD réutilisables et testés sous Node : nav.js, dialog.js
 │   └── style.css        # thème sombre/clair (partagé par les 4 pages)
 ├── tools/               # scripts hors-app : reindex_nlp.py, reindex_materiel.py, pdf_check.py, sharedocs_check.py,
+│                        #   rapport_accord (accord modèle↔humain, cf. docs/rapport-accord.md) ·
 │                        #   importer_vocabulaire (amorçage taxonomie CSV, cf. docs/import-vocabulaire.md) ·
 │                        #   export métadonnées : gerer_collections · description_collection ·
 │                        #   metadonnees_collection · iiif_manifest · valider_iiif · dictionnaire_xlsx ·

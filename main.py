@@ -28,6 +28,7 @@ from config import (AUTH_LOGOUT_URL, CIBLES_ATTRIBUT, DERIVATIVES_DIR,
 from database import (citations_regions, collections, contributions_album, dimensions_cm,
                       get_connection, init_db, lexique_resume, numeros_editoriaux,
                       reindex_region, unindex_region)
+import accord
 import journal
 import lexique_import
 import undo
@@ -2347,6 +2348,14 @@ def analyse_croisement(axe_x: str, axe_y: str,
     return {"axe_x": axe_x, "axe_y": axe_y, "filtre_x": fx, "filtre_y": fy,
             "libelle_x": lx, "libelle_y": ly, "x": xs, "y": ys, "grille": grille,
             "total": sum(cells.values()), "x_tronque": x_tronque, "y_tronque": y_tronque}
+
+
+@app.get("/api/analyse/accord")
+def analyse_accord(conn: sqlite3.Connection = Depends(db)):
+    """Rapport d'accord modèle↔humain (NLP-1) : part des tokens RELUS où le modèle NLP avait
+    déjà la valeur finale (par champ lemme/POS/morpho) + confusion POS + modèle évalué. Étalon
+    de qualité de l'index (transition Phase 1→2). Cf. accord.rapport / docs/rapport-accord.md."""
+    return accord.rapport(conn)
 
 
 @app.get("/api/regions/{region_id}/tokens")
