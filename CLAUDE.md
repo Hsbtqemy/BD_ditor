@@ -73,7 +73,7 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 20). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 21). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
 
@@ -133,6 +133,10 @@ Ces variables servent à isoler les tests (`tests/conftest.py` les patche ou lan
 ### Numérotation éditoriale & citation
 
 Une planche a un `role` (`recit` = narrative/numérotée ; sinon paratexte, écarté de la numérotation). Le **numéro éditorial est DÉRIVÉ, jamais stocké** (`database.numeros_editoriaux()` : rang parmi les planches `recit`). Les citations `pl·c` / `pl·c·b` sont aussi dérivées (`citations_regions()`). Voir `docs/numerotation-et-citation.md`.
+
+### Statut de relecture par planche (ANN-4, v21)
+
+Statut de **relecture grammaticale** (`à faire` / `en cours` / `faite`), **orthogonal** à `statut` (pipeline) et `validee` (validation binaire). **DÉRIVÉ jamais stocké** (`database.relecture_planches()` : relus = tokens `corrigé`|`validé` via `tokens_effectifs` ; 0 relu → `à faire`, partiel → `en cours`, tous relus → `faite`) ; seul l'**override** est stocké (`planches.relecture`, NULL = suivre le dérivé). `GET /api/albums/{id}/planches` renvoie `relecture_statut` ; `PATCH /api/planches/{id}/relecture` force/libère. UI Bibliothèque : pastille (couleur renforçante, libellé porteur) + sélecteur d'override + filtre. Cf. `docs/relecture.md`.
 
 ### ShareDocs (WebDAV)
 

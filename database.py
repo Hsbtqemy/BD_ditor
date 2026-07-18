@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 
 
 # --------------------------------------------------------------------------- #
@@ -91,7 +91,11 @@ CREATE TABLE IF NOT EXISTS planches (
     statut             TEXT DEFAULT 'importee',
     date_segmentation  TEXT,
     validee            TEXT,          -- horodatage de validation humaine (NULL = non validée)
-    verrouillee        TEXT           -- horodatage de verrou (NULL = déverrouillée) : protège des passes ML auto
+    verrouillee        TEXT,          -- horodatage de verrou (NULL = déverrouillée) : protège des passes ML auto
+    -- Statut de RELECTURE grammaticale (ANN-4, v21) : DÉRIVÉ des provenances de tokens par défaut
+    -- (cf. database.relecture_planches, jamais stocké), cette colonne = OVERRIDE humain
+    -- ('a_faire'|'en_cours'|'faite') ; NULL = suivre le dérivé.
+    relecture          TEXT
 );
 
 CREATE TABLE IF NOT EXISTS regions (
@@ -644,6 +648,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "domaine_id" in {r["name"] for r in conn.execute("PRAGMA table_info(attribut_dimension)")}:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_dim_domaine ON attribut_dimension(domaine_id)")
 
+    # v20 → v21 : statut de RELECTURE grammaticale (ANN-4). Colonne OVERRIDE ; le statut effectif
+    # est DÉRIVÉ des provenances de tokens (jamais stocké). ALTER simple, pas d'index.
+    pcols = {r["name"] for r in conn.execute("PRAGMA table_info(planches)")}
+    if pcols and "relecture" not in pcols:
+        conn.execute("ALTER TABLE planches ADD COLUMN relecture TEXT")
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -727,6 +737,36 @@ def dimensions_cm(largeur_px, hauteur_px, dpi_x, dpi_y) -> dict | None:
         return None
     return {"largeur": round(largeur_px / dpi_x * 2.54, 1),
             "hauteur": round(hauteur_px / dpi_y * 2.54, 1)}
+
+
+def relecture_planches(conn: sqlite3.Connection, planche_ids) -> dict:
+    """Statut de RELECTURE grammaticale par planche (ANN-4, v21). DÉRIVÉ des provenances de
+    tokens (relus = corrigé|validé) — jamais stocké —, OVERRIDÉ par `planches.relecture` si
+    non NULL. Dérivé : 'faite' (tous relus, ≥1 token), 'en_cours' (partiel), sinon 'a_faire'
+    (dont 0 token). Renvoie {planche_id: {statut (effectif), derive, force (bool), tokens, relus}}.
+    """
+    ids = list(dict.fromkeys(planche_ids))
+    if not ids:
+        return {}
+    qm = ",".join("?" * len(ids))
+    comptes = {pid: (0, 0) for pid in ids}          # planche_id → (tokens, relus)
+    for r in conn.execute(
+            f"SELECT reg.planche_id AS pid, COUNT(*) AS tokens, "
+            f"       SUM(te.provenance IN ('corrige', 'valide')) AS relus "
+            f"FROM tokens_effectifs te JOIN regions reg ON reg.id = te.region_id "
+            f"WHERE reg.planche_id IN ({qm}) GROUP BY reg.planche_id", ids):
+        comptes[r["pid"]] = (r["tokens"], r["relus"] or 0)
+    overrides = {r["id"]: r["relecture"] for r in conn.execute(
+        f"SELECT id, relecture FROM planches WHERE id IN ({qm})", ids)}
+    out = {}
+    for pid in ids:
+        tokens, relus = comptes[pid]
+        derive = ("faite" if tokens and relus >= tokens
+                  else "en_cours" if relus else "a_faire")
+        force = overrides.get(pid)
+        out[pid] = {"statut": force or derive, "derive": derive,
+                    "force": force is not None, "tokens": tokens, "relus": relus}
+    return out
 
 
 # Régions de texte (citées au niveau bulle « pl·c·b ») — cf. ordre de lecture.

@@ -9,9 +9,9 @@ import database
 from conftest import direct_query
 
 
-def test_schema_version_20(data_dir, db_path):
-    assert database.SCHEMA_VERSION == 20
-    assert direct_query(db_path, "PRAGMA user_version")[0]["user_version"] == 20
+def test_schema_version(data_dir, db_path):
+    # La base migre jusqu'à la version du code (robuste aux bumps ultérieurs).
+    assert direct_query(db_path, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
 
 
 def test_tables_ann2_existent(data_dir):

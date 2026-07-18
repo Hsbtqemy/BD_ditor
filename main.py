@@ -23,11 +23,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from config import (AUTH_LOGOUT_URL, CIBLES_ATTRIBUT, DERIVATIVES_DIR,
-                    ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR,
+                    RELECTURE, ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR,
                     TYPES_REGION, UPOS_TAGS)
 from database import (citations_regions, collections, contributions_album, dimensions_cm,
                       get_connection, init_db, lexique_resume, numeros_editoriaux,
-                      reindex_region, unindex_region)
+                      relecture_planches, reindex_region, unindex_region)
 import accord
 import journal
 import lexique_import
@@ -227,6 +227,10 @@ class VerrouIn(BaseModel):
 
 class RoleIn(BaseModel):
     role: str
+
+
+class RelectureIn(BaseModel):
+    relecture: Optional[str] = None      # 'a_faire'|'en_cours'|'faite' ; null = auto (dérivé)
 
 
 class TokenCorrectionIn(BaseModel):
@@ -526,12 +530,14 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db)):
         (album_id,),
     ))
     nums = numeros_editoriaux(conn, album_id)
+    rel = relecture_planches(conn, [p["id"] for p in planches])   # ANN-4 : statut dérivé/forcé
     for p in planches:
         p["url_web"] = "/" + p["chemin_web"] if p["chemin_web"] else None
         p["numero_editorial"] = nums.get(p["id"])   # None si paratexte (cf. role)
         # Matériel (A6) : dimensions physiques dérivées (px÷dpi), None si résolution absente.
         p["dimensions_cm"] = dimensions_cm(p["largeur_px"], p["hauteur_px"],
                                            p["dpi_x"], p["dpi_y"])
+        p["relecture_statut"] = rel.get(p["id"])     # {statut, derive, force, tokens, relus}
     return planches
 
 
@@ -948,6 +954,23 @@ def update_statut(planche_id: int, payload: StatutIn,
                  (payload.statut, planche_id))
     conn.commit()
     return _get_planche(conn, planche_id)
+
+
+@app.patch("/api/planches/{planche_id}/relecture")
+def update_relecture(planche_id: int, payload: RelectureIn,
+                     conn: sqlite3.Connection = Depends(db)):
+    """Force (ou libère) le statut de RELECTURE grammaticale d'une planche (ANN-4).
+    `relecture=null` → revient au DÉRIVÉ (provenances de tokens) ; sinon override contrôlé.
+    Cf. database.relecture_planches / docs/relecture.md."""
+    _get_planche(conn, planche_id)
+    if payload.relecture is not None and payload.relecture not in RELECTURE:
+        raise HTTPException(422, f"Statut de relecture invalide : {payload.relecture} "
+                                 f"({' | '.join(RELECTURE)} | null).")
+    conn.execute("UPDATE planches SET relecture = ? WHERE id = ?",
+                 (payload.relecture, planche_id))
+    conn.commit()
+    return {"id": planche_id, "relecture": payload.relecture,
+            "relecture_statut": relecture_planches(conn, [planche_id])[planche_id]}
 
 
 @app.patch("/api/planches/{planche_id}/validation")

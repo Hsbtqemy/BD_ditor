@@ -54,6 +54,9 @@ MAX_IMAGE_PIXELS = int(os.environ.get("BD_MAX_IMAGE_PIXELS", 200_000_000))
 # Statuts possibles d'une planche (progression linéaire)
 STATUTS = ("importee", "segmentee", "corrigee", "annotee")
 
+# Statut de RELECTURE grammaticale (ANN-4) : DÉRIVÉ des provenances de tokens, OVERRIDABLE.
+RELECTURE = ("a_faire", "en_cours", "faite")
+
 # Rôle éditorial d'une planche (cf. docs/numerotation-et-citation.md). 'recit' =
 # planche narrative, numérotée ; les autres valeurs = paratexte (couverture,
 # liminaire, pub…), écartées de la numérotation et du décompte de cases citables.

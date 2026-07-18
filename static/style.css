@@ -1157,6 +1157,19 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
   width: 44px; height: 60px; object-fit: cover; border-radius: 3px;
   background: var(--bg-input); display: block;
 }
+/* Relecture grammaticale (ANN-4) : pastille du statut effectif + sélecteur d'override.
+   La COULEUR n'est que renforçante — le libellé porte déjà l'info (accessible daltoniens). */
+.c-rel { white-space: nowrap; }
+.rel-pill { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px;
+  font-weight: 600; color: var(--text); background: var(--bg-input); border: 1px solid var(--border); }
+.rel-pill.rel-a_faire  { border-color: var(--accent-amber); }
+.rel-pill.rel-en_cours { border-color: var(--accent-blue); }
+.rel-pill.rel-faite    { border-color: var(--accent-green); }
+.rel-pill.rel-force    { font-style: italic; }        /* forcé (≠ dérivé) */
+.rel-sel { margin-left: 5px; font-size: 11px; background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 3px; }
+.detail-relfilter select { margin-left: 4px; background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font: inherit; }
 
 /* Modale album */
 #album-modal {

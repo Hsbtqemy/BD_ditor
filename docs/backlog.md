@@ -44,11 +44,14 @@ ou décision de conception requise).
 - Faire : gazetteer par album → EntityRuler spaCy ; pré-attribution suggérée.
 - Done : les occurrences d'un nom connu sont repérées ; suggestion modifiable. Dépend d'ANN-2.
 
-### ANN-4 · Statut de relecture explicite par planche — P2 · S
+### ANN-4 · Statut de relecture explicite par planche — ✅ **Fait 2026-07-18 (B5, v21)** · P2 · S
 > L'idée « Attente » : suivre quelles planches restent à relire (coordination équipe).
-- Faire : statut **dérivé** par défaut (des provenances de tokens), **forçable** (override) ;
-  badge Bibliothèque + filtre.
-- Done : une planche affiche « à faire / en cours / faite » ; filtrable ; override possible.
+- ✅ Fait : statut **dérivé** des provenances de tokens (`database.relecture_planches` : relus =
+  corrigé|validé → à faire / en cours / faite ; 0 token → à faire) — jamais stocké —, **forçable**
+  via l'override `planches.relecture` (3 états | auto, `PATCH /api/planches/{id}/relecture`).
+  Bibliothèque : **pastille** (couleur renforçante + libellé) + **sélecteur** d'override + **filtre**.
+  Migration v21. Tests : dérivation/override/route + e2e a11y (round-trip). Cf. `docs/relecture.md`.
+- Différé : roll-up corpus du reste-à-relire ; relecture par annotateur ; statut niveau album.
 
 ### ANN-5 · Accord inter-annotateurs — P3 · M
 > Quand plusieurs linguistes corrigent : mesurer l'accord (qualité, points de divergence).

@@ -155,6 +155,27 @@ def test_a11y_corpus_materiel(page, seeded):
     assert any(a.get("source_numerisation") == "Epson V850, 600 dpi" for a in alb)
 
 
+def test_a11y_corpus_relecture(page, seeded):
+    """Relecture par planche (ANN-4 / B5) : ouvrir le détail d'album, auditer la colonne
+    (pastille de statut + sélecteur d'override), puis forcer « faite » → override persisté."""
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_timeout(500)
+    page.click(".album-row .c-titre")                        # ouvre le détail
+    page.wait_for_selector("#album-detail:not([hidden]) .rel-sel", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Corpus/relecture :\n{_fmt(viol)}"
+    # Round-trip : forcer le statut via le sélecteur → override persisté.
+    page.select_option(".rel-sel", "faite")
+    page.wait_for_timeout(500)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        planches = c.get(f"/api/albums/{seeded['album']}/planches").json()
+    finally:
+        c.close()
+    st = planches[0]["relecture_statut"]
+    assert st["force"] is True and st["statut"] == "faite"
+
+
 def test_a11y_visionneuse_undo(page, seeded):
     """Undo (D1) : une action d'annotation (locuteur) posée via l'API est annulée par Ctrl+Z
     dans la Visionneuse (round-trip UI → serveur → rafraîchissement) ; le toast d'annulation

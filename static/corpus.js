@@ -16,7 +16,11 @@ const state = {
   checkedPlanches: new Set(),
   editingId: null,
   jobTimer: null,
+  relFilter: "",            // ANN-4 : filtre de relecture du détail d'album ("" = toutes)
 };
+
+// Libellés du statut de relecture (ANN-4). Clés = valeurs backend.
+const RELECTURE_LBL = { a_faire: "à faire", en_cours: "en cours", faite: "faite" };
 
 /* Stats de corpus en bande 2 (mêmes chips que Recherche / Exploration — source
    /api/corpus). Aperçu non bloquant. */
@@ -129,8 +133,15 @@ function renderDetail() {
   const box = $("#album-detail");
   if (!a) { box.hidden = true; return; }
   box.hidden = false;
-  const planchesRows = state.planches.length
-    ? state.planches.map((p) => `
+  // Filtre de relecture (ANN-4) : n'affiche que les planches du statut effectif choisi.
+  const planches = state.relFilter
+    ? state.planches.filter((p) => (p.relecture_statut || {}).statut === state.relFilter)
+    : state.planches;
+  const videMsg = state.planches.length
+    ? "Aucune planche pour ce filtre de relecture."
+    : "Aucune planche. Importez-en depuis la visionneuse ou ShareDocs.";
+  const planchesRows = planches.length
+    ? planches.map((p) => `
         <tr>
           <td class="c-chk"><input type="checkbox" aria-label="Sélectionner la planche ${p.numero}" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
           <td><img class="pl-thumb" loading="lazy" src="${esc(p.url_web || "")}" alt=""></td>
@@ -138,6 +149,7 @@ function renderDetail() {
           <td><span class="statut-pill statut-${esc(p.statut)}"></span> ${esc(p.statut)}</td>
           <td class="c-num">${p.nb_regions} rég.</td>
           <td class="c-num">${p.nb_annotees} ann.</td>
+          <td class="c-rel">${relectureCell(p)}</td>
           <td class="c-val">${validToggle(p)}</td>
           <td class="c-act">
             ${roleToggle(p)}
@@ -146,7 +158,7 @@ function renderDetail() {
             <button class="icon-btn danger" data-delp="${p.id}" title="Supprimer la planche">🗑</button>
           </td>
         </tr>`).join("")
-    : '<tr><td colspan="8" class="empty-cell">Aucune planche. Importez-en depuis la visionneuse ou ShareDocs.</td></tr>';
+    : `<tr><td colspan="9" class="empty-cell">${videMsg}</td></tr>`;
 
   const edParts = [
     a.date_edition && "Éd. " + esc(a.date_edition),
@@ -169,16 +181,29 @@ function renderDetail() {
       ${a.description ? `<p class="detail-desc">${esc(a.description)}</p>` : ""}
       <button class="ghost small" id="detail-edit">✎ Éditer l'album</button>
       <button class="ghost small" id="detail-validate-all">✔ Tout valider</button>
+      <label class="muted small detail-relfilter">Relecture
+        <select id="rel-filter" aria-label="Filtrer les planches par statut de relecture">
+          <option value="">toutes</option>
+          <option value="a_faire">à faire</option>
+          <option value="en_cours">en cours</option>
+          <option value="faite">faite</option>
+        </select>
+      </label>
     </div>
     <table class="corpus-table planches-table">
       <thead><tr><th class="c-chk" aria-label="Sélection"></th><th aria-label="Aperçu"></th><th>Planche</th><th>Statut</th>
         <th class="c-num">Régions</th><th class="c-num">Annotées</th>
-        <th>Validée</th><th aria-label="Actions"></th></tr></thead>
+        <th>Relecture</th><th>Validée</th><th aria-label="Actions"></th></tr></thead>
       <tbody>${planchesRows}</tbody>
     </table>`;
 
   $("#detail-edit").onclick = () => openModal(a);
   $("#detail-validate-all").onclick = validateAllAlbum;
+  $("#rel-filter").value = state.relFilter;                       // reflète l'état courant
+  $("#rel-filter").onchange = (e) => { state.relFilter = e.target.value; renderDetail(); };
+  box.querySelectorAll("select[data-rel]").forEach((sel) => {
+    sel.onchange = () => setRelecture(Number(sel.dataset.rel), sel.value);
+  });
   loadDetailContribs(a.id);
   box.querySelectorAll("button[data-val]").forEach((btn) => {
     btn.onclick = () => validatePlanche(Number(btn.dataset.val), btn.dataset.on === "1");
@@ -377,6 +402,29 @@ async function setRole(pid, role) {
     await openAlbum(state.openId);   // renumérotation dérivée → recharge l'album
     toast(role === "paratexte" ? "Planche marquée Paratexte 🏷" : "Planche rétablie en récit 📖");
   } catch (e) { toast("Rôle : " + e.message, "error"); }
+}
+
+/* Relecture grammaticale (ANN-4) : pastille du statut EFFECTIF (dérivé ⊕ forcé) + sélecteur
+   d'override (3 états | auto). Le titre détaille le dérivé (relus/tokens) et l'éventuel forçage. */
+function relectureCell(p) {
+  const rs = p.relecture_statut
+    || { statut: "a_faire", derive: "a_faire", force: false, tokens: 0, relus: 0 };
+  const title = `Dérivé : ${RELECTURE_LBL[rs.derive]} (${rs.relus}/${rs.tokens} token(s) relu(s))`
+    + (rs.force ? ` · forcé « ${RELECTURE_LBL[rs.statut]} »` : "");
+  const opts = ["a_faire", "en_cours", "faite"].map((s) =>
+    `<option value="${s}"${rs.force && rs.statut === s ? " selected" : ""}>${RELECTURE_LBL[s]}</option>`).join("");
+  return `<span class="rel-pill rel-${rs.statut}${rs.force ? " rel-force" : ""}" title="${esc(title)}">`
+    + `${RELECTURE_LBL[rs.statut]}</span>`
+    + `<select class="rel-sel" data-rel="${p.id}" title="Forcer le statut de relecture (ou auto)" `
+    + `aria-label="Forcer la relecture de la planche ${p.numero}">`
+    + `<option value=""${rs.force ? "" : " selected"}>auto</option>${opts}</select>`;
+}
+
+async function setRelecture(pid, value) {
+  try {
+    await apiSend("PATCH", `/api/planches/${pid}/relecture`, { relecture: value || null });
+    await openAlbum(state.openId);   // recharge : pastille + filtre reflètent le nouveau statut
+  } catch (e) { toast("Relecture : " + e.message, "error"); }
 }
 
 /* Badge ✔ + bouton bascule de validation pour une planche. */

@@ -28,7 +28,7 @@ def _lire(db_path):
 # --------------------------------------------------------------------------- #
 def test_schema_v20(db_path):
     conn = _lire(db_path)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 20
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
     assert conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='domaine'").fetchone()
     dcols = {r["name"] for r in conn.execute("PRAGMA table_info(attribut_dimension)")}
     assert "domaine_id" in dcols
