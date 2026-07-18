@@ -29,14 +29,30 @@
   <main id="explo-body">
 
     <div class="explo-top">
-      <label class="muted small">Distribuer par
+      <label class="muted small">Vue
+        <select id="f-vue">
+          <option value="distribution">Distribution</option>
+          <option value="concordance">Concordance (KWIC)</option>
+          <option value="comparaison">Comparaison A / B</option>
+        </select>
+      </label>
+      <label class="muted small" id="wrap-champ">Distribuer par
         <select id="f-champ">
           <option value="lemme">lemme</option>
           <option value="pos">catégorie (POS)</option>
           <option value="morph">morphologie</option>
         </select>
       </label>
-      <label class="muted small"><input type="checkbox" id="f-compare"> ⇄ Comparer deux sous-corpus</label>
+      <label class="muted small" id="wrap-lemme" hidden>Lemme / mot
+        <input type="text" id="f-lemme" autocomplete="off"
+               placeholder="ex. taire (ou vide + un filtre POS / tag / locuteur)">
+      </label>
+      <label class="muted small" id="wrap-kwic" hidden>Affichage
+        <select id="f-kwic-style">
+          <option value="aligne">aligné</option>
+          <option value="liste">liste</option>
+        </select>
+      </label>
       <label class="muted small" title="Inclure les tags posés sur la case parente (sinon, seul le tag propre à la région compte)"><input type="checkbox" id="f-tagscope" checked> tag hérité de la case</label>
       <span class="nav-spacer"></span>
       <button id="btn-lexique" class="ghost small" type="button"
@@ -96,6 +112,7 @@
     <div id="dist-info" class="muted small" role="status" aria-live="polite"></div>
     <div id="dist" class="dist"></div>
     <div id="comparaison" class="comparaison" hidden></div>
+    <div id="kwic" class="kwic" hidden></div>
   </main>
 
   <!-- ───────── Lexique situé (A4) — documentation SKOS du vocabulaire (modale) ───────── -->

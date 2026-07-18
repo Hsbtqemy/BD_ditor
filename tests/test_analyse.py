@@ -249,3 +249,26 @@ def test_concordance_critere_vide_422(client, album, planche):
     422 (et non un « WHERE » vide → 500)."""
     assert client.get("/api/analyse/concordance", params={"tags": " "}).status_code == 422
     assert client.get("/api/analyse/concordance", params={"tags": ""}).status_code == 422
+
+
+def test_concordance_expose_le_contexte_kwic(client, album, planche, db_path):
+    """Contrat de la vue KWIC (B2) : la concordance porte de quoi rendre une ligne
+    « mot en contexte » — texte (pivot), ocr_texte (contexte de la bulle), locuteur et
+    citation. `ocr_texte` est posé EN DIRECT (pas de reindex → pas de token auto), le token
+    est semé APRÈS → occurrence unique déterministe (indépendant de la présence de spaCy)."""
+    r = _region(client, planche["id"])
+    p = _perso(client, "Haddock")
+    client.put(f"/api/regions/{r}/locuteur", json={"personnage_id": p})
+    conn = sqlite3.connect(db_path)
+    conn.execute("UPDATE regions SET ocr_texte = ? WHERE id = ?", ("TU DOIS TE TAIRE", r))
+    conn.commit()
+    conn.close()
+    _seed(db_path, r, [(3, "TAIRE", "taire", "VERB", "")])
+
+    res = client.get("/api/analyse/concordance", params={"lemme": "taire"}).json()
+    assert res["count"] == 1
+    row = res["results"][0]
+    assert row["texte"] == "TAIRE"                    # pivot
+    assert row["ocr_texte"] == "TU DOIS TE TAIRE"     # contexte
+    assert row["locuteur"] == "Haddock"               # méta
+    assert row["citation"] and row["citation"]["texte"]   # citation dérivée

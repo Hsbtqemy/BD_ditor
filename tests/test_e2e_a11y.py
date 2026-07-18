@@ -273,3 +273,27 @@ def test_a11y_visionneuse_alignement(page, seeded):
         c.close()
     assert any(a["uri"] == "https://www.wikidata.org/wiki/Q42" and a["source"] == "wikidata"
                for a in al)
+
+
+def test_a11y_exploration_concordance(page, seeded):
+    """Concordance (KWIC, B2) : passer en vue Concordance, chercher un lemme du corpus, puis
+    auditer l'a11y des DEUX rendus (aligné + liste) et vérifier le deep-link Visionneuse.
+    Skippé proprement si le corpus n'a pas de tokens (spaCy absent → concordance vide)."""
+    page.goto(seeded["base"] + "/exploration", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.select_option("#f-vue", "concordance")
+    page.fill("#f-lemme", "pouvoir")                 # « POUVOIR ABSOLU » du corpus semé
+    try:
+        page.wait_for_selector("#kwic .kwic-row", timeout=5000)      # rendu aligné (défaut)
+    except Exception:
+        pytest.skip("Aucun token de concordance (NLP/spaCy absent) — rendu KWIC non exerçable")
+    viol = _audit(page)
+    assert not viol, f"Exploration/concordance aligné :\n{_fmt(viol)}"
+
+    page.select_option("#f-kwic-style", "liste")
+    page.wait_for_selector("#kwic .kwic-item", timeout=5000)
+    viol = _audit(page)
+    assert not viol, f"Exploration/concordance liste :\n{_fmt(viol)}"
+
+    href = page.locator("#kwic a").first.get_attribute("href")       # chaque ligne mène à la case
+    assert "region=" in href and "planche=" in href

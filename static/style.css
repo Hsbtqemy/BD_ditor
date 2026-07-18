@@ -1002,6 +1002,35 @@ a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transp
 }
 @media (max-width: 720px) { .comparaison { flex-direction: column; } }
 
+/* ---------- Concordance (KWIC, B2) ---------- */
+.kwic { margin-top: 8px; }
+.kwic-list { display: flex; flex-direction: column; gap: 6px; }
+/* Aligné : UNE grille pour toutes les lignes → les pivots s'alignent en colonne. Chaque ligne
+   est un <a> en display:contents (ses cellules deviennent items de la grille partagée). */
+.kwic-aligned {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  gap: 3px 12px; align-items: baseline; overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px;
+}
+.kwic-aligned .kwic-row { display: contents; color: inherit; text-decoration: none; }
+/* Contexte : coupé (pas d'ellipsis) pour garder les mots JOUXTANT le pivot visibles. */
+.kw-left  { text-align: right; white-space: nowrap; overflow: hidden; color: var(--text-muted); }
+.kw-key   { text-align: center; white-space: nowrap; font-weight: 700; color: var(--text); }
+.kw-right { text-align: left;  white-space: nowrap; overflow: hidden; color: var(--text-muted); }
+.kw-meta  { text-align: left;  white-space: nowrap; color: var(--text-muted); font-size: 11px; }
+/* Un <a> display:contents ne dessine pas d'anneau de focus → on l'indique par le fond des
+   cellules (focus clavier visible, WCAG 2.4.7) + soulignement du pivot. */
+.kwic-aligned .kwic-row:hover > span,
+.kwic-aligned .kwic-row:focus-visible > span { background: var(--hover); }
+.kwic-aligned .kwic-row:focus-visible .kw-key { text-decoration: underline; }
+/* Liste : un bloc par occurrence, pivot surligné. */
+.kwic-item { display: block; padding: 6px 9px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--bg-input); color: inherit; text-decoration: none; }
+.kwic-item:hover, .kwic-item:focus-visible { border-color: var(--accent-blue); }
+.kwic-meta { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+.kw-hit { color: var(--text); font-weight: 700; }
+
 #tag-cloud-wrap { margin-bottom: 12px; }
 #tag-cloud-wrap > summary { cursor: pointer; user-select: none; }
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -1188,7 +1217,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
   border: 1px solid var(--border); border-radius: 5px; padding: 6px 8px; font: inherit; }
 .lex-subhead { margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .04em; }
 /* Barre d'actions de la modale Lexique : amorçage CSV (portée + fichier) à gauche, Fermer à droite. */
-.lex-import-portee { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.lex-import-portee { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); }
 .lex-import-portee select { background: var(--bg-panel); color: var(--text);
   border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font: inherit; }
 .modal-actions #lex-close { margin-left: auto; }

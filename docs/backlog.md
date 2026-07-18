@@ -76,12 +76,17 @@ ou décision de conception requise).
 - Faire : endpoint croisé (champ × facette) ; UI tableau croisé dans Exploration ; drill.
 - Done : afficher une matrice de fréquences à deux axes ; cellule cliquable → preuves.
 
-### ANA-3 · Vue concordance KWIC dédiée — P2 · M
-> `/api/analyse/concordance` (lot 2) existe **sans UI**. La modalité KWIC (une ligne par
-> occurrence, mot surligné en contexte) manque.
-- Faire : surface/onglet KWIC ; une ligne par occurrence avec contexte gauche/droit ;
-  drill vers l'aperçu multimodal.
-- Done : « tous les impératifs en contexte » s'affiche en concordance ; export.
+### ANA-3 · Vue concordance KWIC dédiée — ✅ **Fait 2026-07-18 (B2)** · P2 · M
+> `/api/analyse/concordance` (lot 2) existait **sans UI**. La modalité KWIC (une ligne par
+> occurrence, mot-pivot en contexte) manquait.
+- ✅ Fait (UI seule ; backend inchangé) : **vue « Concordance »** dans Exploration (sélecteur
+  de vue Distribution / Concordance / Comparaison), champ **lemme/mot** + réutilisation des
+  filtres A (POS, morpho, tag, locuteur, attributs) ; **deux rendus** au choix — **aligné**
+  (pivots en colonne) et **liste** (bloc + pivot surligné) ; chaque ligne **deep-linke la
+  Visionneuse** (case réelle). État dans l'URL (partageable). Invite si aucun critère. Tests :
+  contrat backend KWIC (`test_analyse`) + e2e a11y des 2 rendus (aligné + liste).
+- Différé : recherche de lemme par **préfixe** (aujourd'hui exact/lemme), tags/note dans la
+  ligne, export dédié de la concordance.
 
 ### ANA-4 · Keyness (log-vraisemblance) dans la comparaison — P3 · S
 > La comparaison A/B utilise la diff de fréquence relative (favorise les mots fréquents).

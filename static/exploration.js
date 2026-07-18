@@ -61,7 +61,8 @@ async function loadTags() {
 
 /* ---------------- Paramètres ---------------- */
 function champ() { return $("#f-champ").value; }
-function compareOn() { return $("#f-compare").checked; }
+function vue() { return $("#f-vue").value; }   // distribution | concordance | comparaison
+function kwicStyle() { return $("#f-kwic-style").value; }
 
 /* Filtres d'un côté (préfixe "f" = A, "b" = B) → {album,type,pos,morph,provenance}. */
 function sideFilters(pre) {
@@ -76,6 +77,29 @@ function tagScope() { return $("#f-tagscope").checked ? "herite" : "propre"; }
 // Attributs sélectionnés d'un côté → liste de valeur_id (ET côté backend).
 function selectedAttributs(pre) {
   return [...state.attributs[pre]];
+}
+
+/* Vue Concordance (KWIC) : critères du sous-corpus A + un lemme/mot dédié → params backend
+   (noms attendus par /api/analyse/concordance). Le POS est TOUJOURS inclus ici (pas
+   d'exclusion « distribuer par POS » comme dans sideFilters). */
+function concordanceParams() {
+  const p = new URLSearchParams();
+  const lemme = ($("#f-lemme").value || "").trim();
+  if (lemme) p.set("lemme", lemme);
+  const g = (k) => ($(`#f-${k}`).value || "").trim();
+  for (const [ctl, key] of [["album", "album"], ["type", "type"], ["pos", "pos"],
+       ["morph", "morph"], ["prov", "provenance"], ["tags", "tags"], ["personnage", "personnage"]]) {
+    const v = g(ctl); if (v) p.set(key, v);
+  }
+  selectedAttributs("f").forEach((v) => p.append("attributs", v));
+  if (tagScope() === "propre") p.set("tag_scope", "propre");
+  return p;
+}
+// Le backend exige au moins un critère grammatical/sémantique : album/type/provenance seuls
+// ne suffisent pas. On le vérifie AVANT l'appel pour afficher une invite plutôt qu'une erreur.
+function concordanceHasCriterion(p) {
+  return ["lemme", "pos", "morph", "tags", "personnage"].some((k) => p.get(k))
+    || p.getAll("attributs").length > 0;
 }
 
 async function loadPersonnages() {
@@ -144,18 +168,26 @@ function renderAttrChips(pre) {
   }
 }
 
-/* URL/état : champ + compare + filtres A (nus) + filtres B (préfixés b_). */
+/* URL/état : vue + (champ|lemme) + filtres A (nus) + filtres B (préfixés b_). Partageable. */
 function stateParams() {
+  const v = vue();
+  if (v === "concordance") {                     // params = noms backend (lemme, provenance…)
+    const p = concordanceParams();
+    p.set("vue", v);
+    p.set("kwic", kwicStyle());
+    if (RETOUR) p.set("retour", RETOUR);
+    return p;
+  }
   const p = new URLSearchParams();
+  p.set("vue", v);
   p.set("champ", champ());
   const a = sideFilters("f");
-  for (const [k, v] of Object.entries(a)) if (v) p.set(k, v);
-  selectedAttributs("f").forEach((v) => p.append("attributs", v));
-  if (compareOn()) {
-    p.set("compare", "1");
+  for (const [k, val] of Object.entries(a)) if (val) p.set(k, val);
+  selectedAttributs("f").forEach((val) => p.append("attributs", val));
+  if (v === "comparaison") {
     const b = sideFilters("b");
-    for (const [k, v] of Object.entries(b)) if (v) p.set("b_" + k, v);
-    selectedAttributs("b").forEach((v) => p.append("b_attributs", v));
+    for (const [k, val] of Object.entries(b)) if (val) p.set("b_" + k, val);
+    selectedAttributs("b").forEach((val) => p.append("b_attributs", val));
   }
   if (tagScope() === "propre") p.set("tag_scope", "propre");   // hérité = défaut, omis de l'URL
   if (RETOUR) p.set("retour", RETOUR);   // préservé : le ← Retour survit aux changements de filtre
@@ -176,28 +208,41 @@ function drillUrl(valeur, filtres, attributs) {
 /* ---------------- Exécution ---------------- */
 function run() {
   history.replaceState(null, "", "?" + stateParams().toString());
+  const v = vue();
+  $("#dist").hidden = v !== "distribution";
+  $("#comparaison").hidden = v !== "comparaison";
+  $("#kwic").hidden = v !== "concordance";
   const gen = ++state.gen;
-  $("#dist").hidden = compareOn();
-  $("#comparaison").hidden = !compareOn();
   $("#dist-info").textContent = "Calcul…";
   const done = (fn) => (res) => { if (gen === state.gen) fn(res); };
   const fail = (e) => { if (gen === state.gen) $("#dist-info").textContent = "Erreur : " + e.message; };
 
-  if (compareOn()) {
+  if (v === "comparaison") {
     const p = new URLSearchParams();
     p.set("champ", champ());
     const a = sideFilters("f"), b = sideFilters("b");
-    for (const [k, v] of Object.entries(a)) if (v) p.set("a_" + k, v);
-    for (const [k, v] of Object.entries(b)) if (v) p.set("b_" + k, v);
-    selectedAttributs("f").forEach((v) => p.append("a_attributs", v));
-    selectedAttributs("b").forEach((v) => p.append("b_attributs", v));
+    for (const [k, val] of Object.entries(a)) if (val) p.set("a_" + k, val);
+    for (const [k, val] of Object.entries(b)) if (val) p.set("b_" + k, val);
+    selectedAttributs("f").forEach((val) => p.append("a_attributs", val));
+    selectedAttributs("b").forEach((val) => p.append("b_attributs", val));
     if (tagScope() === "propre") p.set("tag_scope", "propre");
     apiGet("/api/analyse/comparaison?" + p.toString()).then(done(renderComparaison)).catch(fail);
+  } else if (v === "concordance") {
+    const p = concordanceParams();
+    if (!concordanceHasCriterion(p)) {           // sinon le backend renverrait 422 → invite claire
+      $("#dist-info").textContent = "";
+      $("#kwic").className = "kwic";              // retire une grille « aligné » résiduelle d'un rendu précédent
+      $("#kwic").innerHTML =
+        '<p class="muted small">Précisez un lemme / mot, ou un filtre POS, morpho, tag, locuteur ou attribut.</p>';
+      return;
+    }
+    p.set("limit", "200");
+    apiGet("/api/analyse/concordance?" + p.toString()).then(done(renderKwic)).catch(fail);
   } else {
     const p = new URLSearchParams();
     p.set("champ", champ());
-    for (const [k, v] of Object.entries(sideFilters("f"))) if (v) p.set(k, v);
-    selectedAttributs("f").forEach((v) => p.append("attributs", v));
+    for (const [k, val] of Object.entries(sideFilters("f"))) if (val) p.set(k, val);
+    selectedAttributs("f").forEach((val) => p.append("attributs", val));
     if (tagScope() === "propre") p.set("tag_scope", "propre");
     p.set("limit", "200");
     apiGet("/api/analyse/frequences?" + p.toString()).then(done(renderDist)).catch(fail);
@@ -266,20 +311,86 @@ function renderComparaison(res) {
       `<div class="dist">${compColumn(res.sur_b, "b", sideFilters("b"), selectedAttributs("b"))}</div></div>`;
 }
 
+/* ---------------- Rendu : concordance (KWIC) ---------------- */
+/* Localise le mot-pivot (forme du token) dans le texte de la bulle, insensible à la casse
+   (le lettrage est en capitales, la forme parfois minusculée). 1re occurrence ; null si
+   introuvable → la ligne retombe sur le texte entier. */
+function splitPivot(texte, pivot) {
+  if (!texte || !pivot) return null;
+  const i = texte.toLowerCase().indexOf(pivot.toLowerCase());
+  if (i < 0) return null;
+  return { left: texte.slice(0, i), key: texte.slice(i, i + pivot.length),
+           right: texte.slice(i + pivot.length) };
+}
+// Deep-link Visionneuse (voir la case réelle) + `retour` pour revenir à l'Exploration.
+function kwicViewerHref(r) {
+  const p = new URLSearchParams();
+  if (r.album_id) p.set("album", r.album_id);
+  if (r.planche_id) p.set("planche", r.planche_id);
+  if (r.region_id) p.set("region", r.region_id);
+  p.set("retour", location.pathname + location.search);
+  return "/?" + p.toString();
+}
+function kwicMeta(r) {
+  const cit = (r.citation && r.citation.texte) ? r.citation.texte
+            : (r.planche_numero != null ? "pl." + r.planche_numero : "—");
+  return esc(cit + (r.locuteur ? " · " + r.locuteur : "") + (r.pos ? " · " + r.pos : ""));
+}
+function kwicRowAligne(r) {
+  const parts = splitPivot(r.ocr_texte, r.texte);
+  const L = parts ? esc(parts.left) : esc(r.ocr_texte || "");
+  const K = parts ? esc(parts.key) : "";
+  const R = parts ? esc(parts.right) : "";
+  return `<a class="kwic-row" href="${esc(kwicViewerHref(r))}" title="Voir la case">` +
+    `<span class="kw-left">${L}</span><span class="kw-key">${K}</span>` +
+    `<span class="kw-right">${R}</span><span class="kw-meta">${kwicMeta(r)}</span></a>`;
+}
+function kwicRowListe(r) {
+  const parts = splitPivot(r.ocr_texte, r.texte);
+  const texte = parts
+    ? `${esc(parts.left)}<b class="kw-hit">${esc(parts.key)}</b>${esc(parts.right)}`
+    : esc(r.ocr_texte || "");
+  return `<a class="kwic-item" href="${esc(kwicViewerHref(r))}" title="Voir la case">` +
+    `<span class="kwic-meta">${kwicMeta(r)}</span>` +
+    `<span class="kwic-text">« ${texte} »</span></a>`;
+}
+function renderKwic(res) {
+  const box = $("#kwic"), rows = res.results || [];
+  const lemme = ($("#f-lemme").value || "").trim();
+  $("#dist-info").innerHTML =
+    `${res.count} occurrence(s)` + (lemme ? ` de <b>${esc(lemme)}</b>` : "") +
+    (res.count >= 200 ? " (limité à 200)" : "") +
+    " — cliquer une ligne pour voir la case";
+  if (!rows.length) {
+    box.className = "kwic";
+    box.innerHTML = '<p class="muted small">Aucune occurrence.</p>';
+    return;
+  }
+  const aligne = kwicStyle() === "aligne";
+  box.className = "kwic" + (aligne ? " kwic-aligned" : " kwic-list");
+  box.innerHTML = rows.map((r) => aligne ? kwicRowAligne(r) : kwicRowListe(r)).join("");
+}
+
 /* ---------------- Contrôles / démarrage ---------------- */
 function syncControls() {
-  const cmp = compareOn();
-  $("#sub-b").hidden = !cmp;
-  document.querySelectorAll(".sub-title").forEach((el) => { el.hidden = !cmp; });
-  const byPos = champ() === "pos";
+  const v = vue();
+  $("#sub-b").hidden = v !== "comparaison";
+  document.querySelectorAll(".sub-title").forEach((el) => { el.hidden = v !== "comparaison"; });
+  $("#wrap-champ").hidden = v === "concordance";     // « distribuer par » hors concordance
+  $("#wrap-lemme").hidden = v !== "concordance";     // champ lemme/mot en concordance
+  $("#wrap-kwic").hidden = v !== "concordance";      // bascule aligné/liste en concordance
+  const byPos = v !== "concordance" && champ() === "pos";
   $("#f-pos").disabled = byPos;     // filtre POS redondant si on distribue par POS
   $("#b-pos").disabled = byPos;
 }
 
 function restoreFromUrl() {
   const p = new URLSearchParams(INITIAL_QS);
+  // `vue` (nouveau) ; rétro-compat : ancien `compare=1` → comparaison.
+  $("#f-vue").value = p.get("vue") || (p.get("compare") === "1" ? "comparaison" : "distribution");
   $("#f-champ").value = p.get("champ") || "lemme";
-  $("#f-compare").checked = p.get("compare") === "1";
+  $("#f-lemme").value = p.get("lemme") || "";
+  $("#f-kwic-style").value = p.get("kwic") || "aligne";
   const setSide = (pre, keyfn) => {
     $(`#${pre}-album`).value = p.get(keyfn("album")) || "";
     $(`#${pre}-type`).value = p.get(keyfn("type")) || "";
@@ -534,8 +645,10 @@ async function setup() {
   const deb = () => { clearTimeout(state.timer); state.timer = setTimeout(run, 300); };
   $("#f-morph").addEventListener("input", deb);
   $("#b-morph").addEventListener("input", deb);
+  $("#f-lemme").addEventListener("input", deb);   // concordance : frappe du lemme/mot
   $("#f-champ").onchange = () => { syncControls(); run(); };
-  $("#f-compare").onchange = () => { syncControls(); run(); };
+  $("#f-vue").onchange = () => { syncControls(); run(); };
+  $("#f-kwic-style").onchange = run;               // bascule aligné/liste (re-rend)
   // Les puces d'attribut câblent leur propre clic (cf. renderAttrChips) — absentes d'ici.
   ["#f-album", "#f-type", "#f-pos", "#f-prov", "#f-tags", "#f-tagscope", "#f-personnage",
    "#b-album", "#b-type", "#b-pos", "#b-prov", "#b-tags", "#b-personnage"]

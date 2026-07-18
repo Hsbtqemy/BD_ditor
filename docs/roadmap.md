@@ -81,7 +81,7 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 |---|---|---|---|
 | ~~**B0**~~ | ✅ **Fait 2026-07-18 (v20) — domaines analytiques multi-domaine** : palier `domaine` qui **regroupe les dimensions** par champ d'étude (émotions n'est qu'un domaine), émergent + SKOS, **orthogonal à `cible`**, promotion à la suppression ; API + **UI** (📖 Lexique) + export + dictionnaire. Rend l'intégration de **nouveaux domaines** gratuite (aucun code). Cf. `docs/domaines.md` | M | l'annotation n'est plus figée autour des émotions |
 | **B1** | **ANN-1 — peupler le(s) domaine(s) d'étude** (émotions, représentation…) | P1·M | **la structure existe (B0)** : reste à peupler les dimensions/valeurs *avec les linguistes*. Plus de « liste fermée vs émergent » à trancher — c'est émergent, documenté (SKOS) |
-| **B2** | ANA-3 — **vue KWIC** (concordance : backend `/api/analyse/concordance` existe, **UI manque**) | P2·M | « tous les impératifs en contexte » |
+| ~~**B2**~~ | ✅ **Fait 2026-07-18 — ANA-3 vue KWIC** : vue « Concordance » dans Exploration (sélecteur de vue), champ lemme/mot + filtres A, **2 rendus** (aligné pivots-en-colonne / liste surlignée), chaque ligne **deep-linke la Visionneuse** ; UI seule (backend `/api/analyse/concordance` inchangé). Tests : contrat backend + e2e a11y | P2·M | « tous les impératifs en contexte » |
 | B3 | ANA-2 — tableaux croisés 2D (tag×POS, émotion×type de région…, **domaine×type**) | P2·M | on n'a que des distributions 1-D + comparaison A/B ; **exploite les domaines (B0)** |
 | B4 | NLP-1 — index `fr_core_news_lg` + rapport d'accord modèle↔humain | P2·M | transition Phase 1→2 |
 | B5 | ANN-4 — statut de relecture par planche (dérivé + forçable) | P2·S | coordination équipe |
