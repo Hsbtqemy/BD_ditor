@@ -90,6 +90,9 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   `dpi_y`, `mode` + dimensions physiques **dérivées** `largeur_cm`/`hauteur_cm`), les `albums`
   leur `source_numerisation`, et le roll-up expose
   `couverture.planches.materiel` (`avec_resolution`, `pct_avec_resolution`, `par_mode`).
+  Depuis **la v20 (piste B)**, une table `domaines` (champs analytiques regroupant les
+  dimensions) sort à part, chaque `dimension` du `vocabulaire` porte son `domaine`, et le
+  roll-up expose `vocabulaire.domaines` (les domaines comptent aussi dans le « % défini »).
 - **Enregistrements — XLSX multi-feuilles** : un onglet par table (dont `tags` et
   `paradonnee`), plus deux onglets de confort — **`fiche`** (le roll-up aplati) et
   **`arbre`** (hiérarchie **repliable** avec les boîtes `x,y,w,h` et un lien « voir »

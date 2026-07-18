@@ -326,6 +326,7 @@ function setupBack() {
    état provisoire→défini / portée d'appartenance) sur dimensions, valeurs et tags.
    Read model : GET /api/lexique ; écriture : PATCH .../lexique (partielle). */
 let LEX_COLLECTIONS = [];   // {id, nom, …} — menu « portée »
+let LEX_DOMAINES = [];      // {id, nom, …} — menu « domaine » des dimensions (piste B)
 
 async function openLexique() { $("#lexique-modal").hidden = false; await loadLexique(); }
 function closeLexique() { $("#lexique-modal").hidden = true; }
@@ -336,6 +337,7 @@ async function loadLexique() {
   try {
     const [lex, cols] = await Promise.all([apiGet("/api/lexique"), apiGet("/api/collections")]);
     LEX_COLLECTIONS = cols;
+    LEX_DOMAINES = lex.domaines || [];
     renderLexique(lex);
   } catch (e) { body.textContent = "Impossible de charger le lexique."; }
 }
@@ -352,18 +354,31 @@ function porteeOptions(sel) {
   ).join("");
 }
 
-/* Éditeur d'un terme (dimension | valeur | tag). `defi` = définition courante (la
-   `description` pour un tag). Câble un PATCH par champ modifié. */
+function domaineOptions(sel) {
+  return [`<option value="">Hors domaine</option>`].concat(
+    LEX_DOMAINES.map((d) =>
+      `<option value="${d.id}"${String(d.id) === String(sel) ? " selected" : ""}>${esc(d.nom)}</option>`)
+  ).join("");
+}
+
+/* Éditeur d'un terme (domaine | dimension | valeur | tag). `defi` = définition courante (la
+   `description` pour un tag). Câble un PATCH par champ modifié. Une dimension porte en plus un
+   sélecteur de DOMAINE (piste B) → PATCH .../domaine (réorganise, re-rend la modale). */
 function termEditor(kind, term, defi) {
   const url = kind === "tag" ? `/api/tags/${term.id}/lexique`
             : kind === "valeur" ? `/api/attributs/valeurs/${term.id}/lexique`
+            : kind === "domaine" ? `/api/domaines/${term.id}/lexique`
             : `/api/attributs/dimensions/${term.id}/lexique`;
   const nom = kind === "tag" ? term.label : (term.nom || term.valeur);
   const sub = kind === "dimension" ? (CIBLE_LBL[term.cible] || term.cible)
+            : kind === "domaine" ? `${term.nb_dimensions} dimension(s)`
             : kind === "valeur" ? `${term.nb_usages} usage(s)` : `${term.frequence} pose(s)`;
   const defini = term.etat === "defini";
+  const domaineField = kind === "dimension"
+    ? `<label>Domaine <select data-f="domaine_id">${domaineOptions(term.domaine_id)}</select></label>`
+    : "";
   const d = document.createElement("details");
-  d.className = "lex-term";
+  d.className = "lex-term" + (kind === "domaine" ? " lex-domaine" : "");
   d.innerHTML = `
     <summary>
       <span class="lex-name">${esc(nom)}</span>
@@ -380,9 +395,18 @@ function termEditor(kind, term, defi) {
       <div class="lex-row">
         <label class="lex-check"><input type="checkbox" data-f="etat"${defini ? " checked" : ""}> Défini</label>
         <label>Portée <select data-f="collection_id">${porteeOptions(term.collection_id)}</select></label>
+        ${domaineField}
       </div>
     </div>`;
   const badge = d.querySelector('[data-role="badge"]');
+  const domSel = d.querySelector('[data-f="domaine_id"]');   // dimensions seulement
+  if (domSel) domSel.addEventListener("change", async (e) => {
+    try {
+      await apiSend("PATCH", `/api/attributs/dimensions/${term.id}/domaine`,
+                    { domaine_id: e.target.value ? Number(e.target.value) : null });
+      toast("Domaine mis à jour"); loadLexique();          // regroupement changé → re-render
+    } catch (err) { toast("Échec : " + err.message, "err"); }
+  });
   // `save` renvoie true/false : les MAJ optimistes (badge, % défini) ne s'appliquent QUE
   // sur succès — sinon l'UI divergerait de la base (ex. 409 base occupée, 500).
   const save = async (patch) => {
@@ -409,20 +433,55 @@ function renderLexique(lex) {
   const body = $("#lex-body");
   body.textContent = "";
   $("#lex-resume").textContent = lexResume(lex.resume);
-  const dims = document.createElement("div");
-  dims.className = "lex-group";
-  dims.innerHTML = "<h4>Attributs facettés</h4>";
-  if (!lex.dimensions.length)
-    dims.insertAdjacentHTML("beforeend", `<p class="muted small">Aucune dimension.</p>`);
+
+  // --- Domaines (piste B) + attributs facettés regroupés par domaine -------- #
+  const grp = document.createElement("div");
+  grp.className = "lex-group";
+  grp.innerHTML = `<h4>Domaines &amp; attributs facettés</h4>
+    <div class="lex-add">
+      <input id="lex-dom-nom" placeholder="Nouveau domaine (ex. émotions, représentation)"
+             autocomplete="off" aria-label="Nom du nouveau domaine">
+      <button id="lex-dom-add" class="ghost small" type="button">+ Domaine</button>
+    </div>`;
+  body.appendChild(grp);
+
+  const parDomaine = new Map();               // domaine_id (ou null) → [dimensions]
   for (const dim of lex.dimensions) {
-    dims.appendChild(termEditor("dimension", dim, dim.definition));
-    for (const val of dim.valeurs) {
-      const ve = termEditor("valeur", val, val.definition);
-      ve.classList.add("lex-nested");
-      dims.appendChild(ve);
-    }
+    if (!parDomaine.has(dim.domaine_id)) parDomaine.set(dim.domaine_id, []);
+    parDomaine.get(dim.domaine_id).push(dim);
   }
-  body.appendChild(dims);
+  const renderDims = (dims) => {
+    for (const dim of dims || []) {
+      grp.appendChild(termEditor("dimension", dim, dim.definition));
+      for (const val of dim.valeurs) {
+        const ve = termEditor("valeur", val, val.definition);
+        ve.classList.add("lex-nested");
+        grp.appendChild(ve);
+      }
+    }
+  };
+  for (const dom of lex.domaines) {           // un domaine documentable + ses dimensions
+    grp.appendChild(termEditor("domaine", dom, dom.definition));
+    renderDims(parDomaine.get(dom.id));
+  }
+  const horsDomaine = parDomaine.get(null) || parDomaine.get(undefined);
+  if (horsDomaine && horsDomaine.length) {
+    grp.insertAdjacentHTML("beforeend", `<p class="lex-subhead muted small">Hors domaine</p>`);
+    renderDims(horsDomaine);
+  }
+  if (!lex.dimensions.length && !lex.domaines.length)
+    grp.insertAdjacentHTML("beforeend", `<p class="muted small">Aucun domaine ni dimension.</p>`);
+  $("#lex-dom-add").onclick = async () => {
+    const nom = $("#lex-dom-nom").value.trim();
+    if (!nom) return;
+    try { await apiSend("POST", "/api/domaines", { nom }); loadLexique(); }
+    catch (e) { toast("Domaine : " + e.message, "err"); }
+  };
+  $("#lex-dom-nom").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); $("#lex-dom-add").click(); }
+  });
+
+  // --- Étiquettes (tags) ---------------------------------------------------- #
   const tg = document.createElement("div");
   tg.className = "lex-group";
   tg.innerHTML = "<h4>Étiquettes (tags)</h4>";

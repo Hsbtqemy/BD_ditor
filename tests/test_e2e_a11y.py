@@ -179,6 +179,36 @@ def test_a11y_visionneuse_undo(page, seeded):
         c.close()
 
 
+def test_a11y_exploration_domaines(page, seeded):
+    """Domaines (piste B) : créer un domaine dans la modale Lexique (a11y audité), puis
+    rattacher une dimension via le sélecteur → persisté (round-trip UI → serveur)."""
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        c.post("/api/attributs/dimensions", json={"cible": "case", "nom": "valence"})
+    finally:
+        c.close()
+    page.goto(seeded["base"] + "/exploration", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.click("#btn-lexique")
+    page.wait_for_selector("#lex-dom-nom", timeout=3000)
+    page.fill("#lex-dom-nom", "émotions")
+    page.click("#lex-dom-add")
+    page.wait_for_selector("#lexique-modal .lex-domaine", timeout=3000)   # domaine rendu
+    viol = _audit(page)
+    assert not viol, f"Exploration/domaines :\n{_fmt(viol)}"
+    # Rattacher la dimension au domaine via le sélecteur → PATCH .../domaine (déplier d'abord :
+    # les champs vivent dans un <details>).
+    page.locator('.lex-term:not(.lex-domaine) > summary').first.click()
+    page.locator('.lex-term select[data-f="domaine_id"]').first.select_option(label="émotions")
+    page.wait_for_timeout(400)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        dims = c.get("/api/attributs/dimensions").json()
+    finally:
+        c.close()
+    assert any(d["nom"] == "valence" and d["domaine"] == "émotions" for d in dims)
+
+
 def test_a11y_exploration_lexique(page, seeded):
     """Modale « Lexique situé » (A4) : audite l'a11y du panneau ouvert (piège à focus +
     labels de formulaire, badge d'état) ET vérifie le round-trip d'édition (une définition

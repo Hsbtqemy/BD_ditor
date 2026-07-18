@@ -302,9 +302,19 @@ class AlignementIn(BaseModel):
     source: Optional[str] = None   # 'wikidata'|'viaf'|'idref'… ; auto-détecté si absent
 
 
+class DomaineIn(BaseModel):
+    """Domaine analytique (piste B) — champ émergent qui regroupe des dimensions."""
+    nom: str
+
+
+class DimensionDomaineIn(BaseModel):
+    domaine_id: Optional[int] = None   # null = retirer la dimension de son domaine
+
+
 class DimensionIn(BaseModel):
     cible: str      # 'personnage' | 'case'
     nom: str
+    domaine_id: Optional[int] = None   # champ analytique de rattachement (v20 ; optionnel)
 
 
 class ValeurIn(BaseModel):
@@ -1432,6 +1442,67 @@ def undo_dernier(conn: sqlite3.Connection = Depends(db)):
     return res
 
 
+# --- DOMAINES (piste B) : champ analytique émergent qui REGROUPE des dimensions (émotions,
+#     représentation…). Orthogonal à `cible`. Même patron contrôlé-ouvert + lexique SKOS que
+#     les dimensions. Cf. docs/domaines.md.
+def _get_domaine(conn, dom_id):
+    d = _row(conn.execute("SELECT * FROM domaine WHERE id = ?", (dom_id,)))
+    if d is None:
+        raise HTTPException(404, f"Domaine {dom_id} introuvable")
+    return d
+
+
+@app.get("/api/domaines")
+def list_domaines(conn: sqlite3.Connection = Depends(db)):
+    """Domaines + nombre de dimensions rattachées + couche lexique (pour l'organisation/l'analyse)."""
+    return _rows(conn.execute(
+        "SELECT d.id, d.nom, d.definition, d.note_portee, d.etat, d.collection_id, "
+        "       (SELECT COUNT(*) FROM attribut_dimension x WHERE x.domaine_id = d.id) AS nb_dimensions "
+        "FROM domaine d ORDER BY d.nom"))
+
+
+@app.post("/api/domaines", status_code=201)
+def create_domaine(payload: DomaineIn, conn: sqlite3.Connection = Depends(db)):
+    nom = _norm_tag(payload.nom)
+    if not nom:
+        raise HTTPException(422, "Nom de domaine vide")
+    conn.execute("INSERT INTO domaine (nom) VALUES (?) ON CONFLICT(nom) DO NOTHING", (nom,))
+    conn.commit()
+    return _row(conn.execute("SELECT * FROM domaine WHERE nom = ?", (nom,)))
+
+
+@app.patch("/api/domaines/{dom_id}")
+def rename_domaine(dom_id: int, payload: DomaineIn, conn: sqlite3.Connection = Depends(db)):
+    """Renomme un domaine (préserve son regroupement de dimensions, contrairement à un
+    supprimer/recréer). Le nom reste normalisé et UNIQUE."""
+    _get_domaine(conn, dom_id)
+    nom = _norm_tag(payload.nom)
+    if not nom:
+        raise HTTPException(422, "Nom de domaine vide")
+    if conn.execute("SELECT 1 FROM domaine WHERE nom = ? AND id <> ?", (nom, dom_id)).fetchone():
+        raise HTTPException(409, f"Domaine « {nom} » déjà existant.")
+    conn.execute("UPDATE domaine SET nom = ? WHERE id = ?", (nom, dom_id))
+    conn.commit()
+    return _row(conn.execute("SELECT * FROM domaine WHERE id = ?", (dom_id,)))
+
+
+@app.delete("/api/domaines/{dom_id}", status_code=204)
+def delete_domaine(dom_id: int, conn: sqlite3.Connection = Depends(db)):
+    """Supprime un domaine. Ses dimensions ne sont PAS détruites : `domaine_id` repasse à NULL
+    (ON DELETE SET NULL) — elles redeviennent « hors domaine » (soupape *promotion*)."""
+    _get_domaine(conn, dom_id)
+    conn.execute("DELETE FROM domaine WHERE id = ?", (dom_id,))
+    conn.commit()
+
+
+@app.patch("/api/domaines/{dom_id}/lexique")
+def patch_domaine_lexique(dom_id: int, payload: LexiqueIn, conn: sqlite3.Connection = Depends(db)):
+    """Documente un domaine (même couche SKOS que dimensions/valeurs/tags)."""
+    _get_domaine(conn, dom_id)
+    _patch_lexique(conn, "domaine", dom_id, payload)
+    return _row(conn.execute("SELECT * FROM domaine WHERE id = ?", (dom_id,)))
+
+
 # --- Attributs FACETTÉS & ÉMERGENTS : dimensions (axes) / valeurs canoniques /
 #     affectations. Vocabulaire NON figé — créé au fil de l'eau. Valeurs et noms de
 #     dimension normalisés (comme les tags) → agrégeables. Cf. docs/personnages-et-attribution.md.
@@ -1460,8 +1531,10 @@ def _attributs_de(conn, table, col, oid):
 
 @app.get("/api/attributs/dimensions")
 def list_dimensions(cible: Optional[str] = None, conn: sqlite3.Connection = Depends(db)):
-    """Dimensions (axes émergents) + nombre de valeurs. `cible` filtre 'personnage' | 'case'."""
-    sql = ("SELECT d.id, d.cible, d.nom, "
+    """Dimensions (axes émergents) + nombre de valeurs + domaine de rattachement (v20).
+    `cible` filtre 'personnage' | 'case'."""
+    sql = ("SELECT d.id, d.cible, d.nom, d.domaine_id, "
+           "       (SELECT nom FROM domaine dom WHERE dom.id = d.domaine_id) AS domaine, "
            "       (SELECT COUNT(*) FROM attribut_valeur v WHERE v.dimension_id = d.id) AS nb_valeurs "
            "FROM attribut_dimension d ")
     params = []
@@ -1479,11 +1552,26 @@ def create_dimension(payload: DimensionIn, conn: sqlite3.Connection = Depends(db
     nom = _norm_tag(payload.nom)
     if not nom:
         raise HTTPException(422, "Nom de dimension vide")
-    conn.execute("INSERT INTO attribut_dimension (cible, nom) VALUES (?, ?) "
-                 "ON CONFLICT(cible, nom) DO NOTHING", (payload.cible, nom))
+    if payload.domaine_id is not None:
+        _get_domaine(conn, payload.domaine_id)          # 404 si le domaine n'existe pas
+    conn.execute("INSERT INTO attribut_dimension (cible, nom, domaine_id) VALUES (?, ?, ?) "
+                 "ON CONFLICT(cible, nom) DO NOTHING", (payload.cible, nom, payload.domaine_id))
     conn.commit()
     return _row(conn.execute("SELECT * FROM attribut_dimension WHERE cible = ? AND nom = ?",
                              (payload.cible, nom)))
+
+
+@app.patch("/api/attributs/dimensions/{dim_id}/domaine")
+def patch_dimension_domaine(dim_id: int, payload: DimensionDomaineIn,
+                            conn: sqlite3.Connection = Depends(db)):
+    """Rattache une dimension à un domaine (ou l'en détache avec `domaine_id: null`)."""
+    _get_dimension(conn, dim_id)
+    if payload.domaine_id is not None:
+        _get_domaine(conn, payload.domaine_id)
+    conn.execute("UPDATE attribut_dimension SET domaine_id = ? WHERE id = ?",
+                 (payload.domaine_id, dim_id))
+    conn.commit()
+    return _row(conn.execute("SELECT * FROM attribut_dimension WHERE id = ?", (dim_id,)))
 
 
 @app.delete("/api/attributs/dimensions/{dim_id}", status_code=204)
@@ -1612,11 +1700,15 @@ def _patch_lexique(conn, table, oid, payload, *, col_definition="definition"):
 
 @app.get("/api/lexique")
 def get_lexique(conn: sqlite3.Connection = Depends(db)):
-    """Tout le lexique situé pour l'édition : dimensions (→ valeurs) + tags, avec leur couche
-    définitionnelle (definition/note_portee/etat/portée) et le nombre d'usages ; plus le
-    résumé « % défini ». Read model du panneau Lexique."""
+    """Tout le lexique situé pour l'édition : domaines + dimensions (→ valeurs) + tags, avec
+    leur couche définitionnelle (definition/note_portee/etat/portée) et le nombre d'usages ;
+    plus le résumé « % défini ». Read model du panneau Lexique."""
+    domaines = _rows(conn.execute(
+        "SELECT id, nom, definition, note_portee, etat, collection_id, "
+        "       (SELECT COUNT(*) FROM attribut_dimension x WHERE x.domaine_id = domaine.id) AS nb_dimensions "
+        "FROM domaine ORDER BY nom"))
     dims = _rows(conn.execute(
-        "SELECT id, cible, nom, definition, note_portee, etat, collection_id "
+        "SELECT id, cible, nom, domaine_id, definition, note_portee, etat, collection_id "
         "FROM attribut_dimension ORDER BY cible, nom"))
     vals = _rows(conn.execute(
         "SELECT v.id, v.dimension_id, v.valeur, v.definition, v.note_portee, v.etat, "
@@ -1634,7 +1726,8 @@ def get_lexique(conn: sqlite3.Connection = Depends(db)):
         "       COUNT(at.annotation_id) AS frequence "
         "FROM tags t LEFT JOIN annotation_tags at ON at.tag_id = t.id "
         "GROUP BY t.id ORDER BY t.label"))
-    return {"dimensions": dims, "tags": tags, "resume": lexique_resume(conn)}
+    return {"domaines": domaines, "dimensions": dims, "tags": tags,
+            "resume": lexique_resume(conn)}
 
 
 @app.patch("/api/attributs/dimensions/{dim_id}/lexique")

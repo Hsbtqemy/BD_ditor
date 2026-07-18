@@ -221,6 +221,12 @@ couche **SKOS** — `definition`, `note_portee` (cadre d'emploi), `etat`
 (`provisoire`→`defini`) et `collection_id` (portée : global ou local à une collection).
 Édité via l'API et le panneau **📖 Lexique** (Exploration). Cf. `docs/lexique-situe.md`.
 
+**Domaines analytiques** (piste B) : un palier `domaine` **regroupe les dimensions
+facettées** par champ d'étude (émotions, représentation…) — les émotions ne sont qu'un
+domaine, pas un module figé. Émergent + SKOS comme le reste du vocabulaire, **orthogonal à
+`cible`** (un domaine peut grouper des dimensions personnage ET région). Créé et regroupé
+dans le panneau **📖 Lexique**. Cf. `docs/domaines.md`.
+
 **Alignement d'autorité** (A5) : `personnage_alignement` relie une entité personnage à
 des référentiels externes (Wikidata/VIAF/IdRef…, `skos:exactMatch`, source auto-détectée).
 Édité dans le panneau **Personnage** de la Visionneuse. Cf. `docs/alignement-autorite.md`.
@@ -261,8 +267,10 @@ Cf. `docs/materiel-numerisation.md`.
 | `PUT/DELETE` | `/api/regions/{id}/tokens/{ordre}` | corriger / annuler la correction d'un token |
 | `POST` | `/api/regions/{id}/grammaire/valider` | valider toute la grammaire d'une région |
 | `GET/POST` | `/api/tags` | tags (avec fréquences) |
-| `GET` | `/api/lexique` | lexique situé (dimensions · valeurs · tags) + résumé « % défini » |
-| `PATCH` | `/api/{attributs/dimensions,attributs/valeurs,tags}/{id}/lexique` | documenter un terme : définition / note de portée / état / portée (SKOS) |
+| `GET` | `/api/lexique` | lexique situé (domaines · dimensions · valeurs · tags) + résumé « % défini » |
+| `PATCH` | `/api/{domaines,attributs/dimensions,attributs/valeurs,tags}/{id}/lexique` | documenter un terme : définition / note de portée / état / portée (SKOS) |
+| `GET/POST/PATCH/DELETE` | `/api/domaines[/{id}]` | domaines analytiques (piste B) — regroupent les dimensions |
+| `PATCH` | `/api/attributs/dimensions/{id}/domaine` | rattacher / détacher une dimension d'un domaine |
 | `GET` | `/api/collections` | collections (unité de dépôt) — sert le menu de portée |
 | `GET/POST/DELETE` | `/api/personnages/{id}/alignements[/{aid}]` | alignement d'autorité : personnage → URI Wikidata/VIAF/IdRef (`skos:exactMatch`) |
 | `GET` | `/api/recherche?q=&album=&type=&tags=` | recherche FTS5 |

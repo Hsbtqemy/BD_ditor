@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 
 # --------------------------------------------------------------------------- #
@@ -228,12 +228,30 @@ CREATE TABLE IF NOT EXISTS personnage_alignement (
     UNIQUE(personnage_id, uri)
 );
 
+-- DOMAINE (v20, piste B) — champ analytique ÉMERGENT qui REGROUPE des dimensions
+-- (« émotions », « représentation », « style visuel »…). ORTHOGONAL à `cible` : un domaine
+-- peut grouper des dimensions personnage ET case. Même patron contrôlé-ouvert + lexique SKOS
+-- que les dimensions. Les émotions ne sont qu'un domaine parmi d'autres. Cf. docs/domaines.md.
+CREATE TABLE IF NOT EXISTS domaine (
+    id             INTEGER PRIMARY KEY,
+    nom            TEXT NOT NULL UNIQUE,
+    -- Lexique situé (A4) — SKOS : même couche définitionnelle que dimensions/valeurs/tags.
+    definition     TEXT,
+    note_portee    TEXT,
+    etat           TEXT NOT NULL DEFAULT 'provisoire',   -- 'provisoire' | 'defini'
+    collection_id  INTEGER REFERENCES collection(id) ON DELETE SET NULL,
+    date_creation  TEXT DEFAULT (datetime('now'))
+);
+
 -- Dimension d'attribut (un AXE émergent). `cible` = à quoi elle s'applique :
 -- 'personnage' (profil sociolinguistique du locuteur) ou 'case' (situation de scène).
+-- `domaine_id` = champ analytique de rattachement (v20, NULL = hors domaine ; suppression du
+-- domaine → NULL, la dimension survit — soupape *promotion* comme collection_id).
 CREATE TABLE IF NOT EXISTS attribut_dimension (
     id             INTEGER PRIMARY KEY,
     cible          TEXT NOT NULL,              -- 'personnage' | 'case'
     nom            TEXT NOT NULL,
+    domaine_id     INTEGER REFERENCES domaine(id) ON DELETE SET NULL,
     -- Lexique situé (v17, A4) — SKOS : definition (sens de l'axe) · note_portee (scopeNote,
     -- cadre d'emploi = le « situé ») · etat (provisoire→défini) · collection_id (portée
     -- d'appartenance : NULL = global, sinon local à une collection ; promotion → NULL).
@@ -386,13 +404,15 @@ CREATE INDEX IF NOT EXISTS idx_evenement_cible    ON evenement(cible_table, cibl
 CREATE INDEX IF NOT EXISTS idx_evenement_activite ON evenement(activite_id);
 CREATE INDEX IF NOT EXISTS idx_evenement_date     ON evenement(date);
 CREATE INDEX IF NOT EXISTS idx_regions_activite   ON regions(activite_id);
-CREATE INDEX IF NOT EXISTS idx_dim_collection     ON attribut_dimension(collection_id);
-CREATE INDEX IF NOT EXISTS idx_val_collection     ON attribut_valeur(collection_id);
-CREATE INDEX IF NOT EXISTS idx_tags_collection    ON tags(collection_id);
 CREATE INDEX IF NOT EXISTS idx_alignement_perso   ON personnage_alignement(personnage_id);
+CREATE INDEX IF NOT EXISTS idx_domaine_collection ON domaine(collection_id);
 -- NB : l'unicité (album_id, numero) des planches (DB-1) est posée en MIGRATION
 -- (idx_planches_album_numero), pas ici : sa création doit suivre un dédoublonnage
 -- d'éventuelles données préexistantes, qui ne peut avoir lieu qu'après SCHEMA_SQL.
+-- NB (v20) : les index portant sur des colonnes AJOUTÉES PAR MIGRATION (collection_id des
+-- dimensions/valeurs/tags — v17 ; domaine_id — v20) sont créés DANS `_migrate` (après l'ALTER),
+-- PAS ici : un CREATE INDEX dans SCHEMA_SQL tournerait AVANT l'ALTER lors d'un upgrade → crash
+-- « no such column ». Cf. idx_dim_collection / idx_val_collection / idx_tags_collection / idx_dim_domaine.
 """
 
 # Index plein texte FTS5 — séparé du schéma pour pouvoir le RECRÉER en migration
@@ -566,6 +586,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # isolés). `etat` NOT NULL exige un défaut (fourni : 'provisoire').
     a_collection = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='collection'").fetchone()
+    _idx_collection = {"attribut_dimension": "idx_dim_collection",
+                       "attribut_valeur": "idx_val_collection", "tags": "idx_tags_collection"}
     for table, defs in (
             ("attribut_dimension", (("definition", "TEXT"), ("note_portee", "TEXT"),
                                     ("etat", "TEXT NOT NULL DEFAULT 'provisoire'"))),
@@ -582,6 +604,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if a_collection and "collection_id" not in cols:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN collection_id INTEGER "
                          "REFERENCES collection(id) ON DELETE SET NULL")
+        # Index sur collection_id créé ICI (pas dans SCHEMA_SQL) : la colonne vient peut-être
+        # d'être posée → un CREATE INDEX dans SCHEMA_SQL tournerait AVANT l'ALTER (crash upgrade).
+        if "collection_id" in {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.execute(f"CREATE INDEX IF NOT EXISTS {_idx_collection[table]} "
+                         f"ON {table}(collection_id)")
 
     # v17 → v18 : alignement d'autorité (A5, N6) — table `personnage_alignement` (NOUVELLE,
     # créée par SCHEMA_SQL CREATE … IF NOT EXISTS) → aucune donnée à migrer, juste acter la
@@ -600,6 +627,22 @@ def _migrate(conn: sqlite3.Connection) -> None:
     acols_mat = {r["name"] for r in conn.execute("PRAGMA table_info(albums)")}
     if acols_mat and "source_numerisation" not in acols_mat:
         conn.execute("ALTER TABLE albums ADD COLUMN source_numerisation TEXT")
+
+    # v19 → v20 : palier DOMAINE (piste B) — regroupe les dimensions facettées par champ
+    # analytique (émotions, représentation…). Table `domaine` NOUVELLE (SCHEMA_SQL) ;
+    # `attribut_dimension.domaine_id` posé par PRÉSENCE. L'ALTER de la FK exige que `domaine`
+    # existe (SCHEMA_SQL tourne avant `_migrate` ; gardé pour les tests isolés). Orthogonal à
+    # `cible`. Cf. docs/domaines.md.
+    dcols = {r["name"] for r in conn.execute("PRAGMA table_info(attribut_dimension)")}
+    a_domaine = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='domaine'").fetchone()
+    if dcols and a_domaine and "domaine_id" not in dcols:
+        conn.execute("ALTER TABLE attribut_dimension ADD COLUMN domaine_id INTEGER "
+                     "REFERENCES domaine(id) ON DELETE SET NULL")
+    # Index sur domaine_id créé ICI (pas dans SCHEMA_SQL, cf. NB ci-dessus) : la colonne vient
+    # peut-être d'être ajoutée. Gardé par présence de la colonne (base neuve : posée par SCHEMA_SQL).
+    if "domaine_id" in {r["name"] for r in conn.execute("PRAGMA table_info(attribut_dimension)")}:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_dim_domaine ON attribut_dimension(domaine_id)")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -809,12 +852,12 @@ def collection_row(conn: sqlite3.Connection, collection_id: int) -> dict | None:
 
 def lexique_resume(conn: sqlite3.Connection, collection_id: int | None = None) -> dict:
     """Indicateur « % défini » du lexique situé (A4, N7) : part des termes du vocabulaire
-    ÉMERGENT (dimensions + valeurs + tags) à l'état `defini`. Scopé par APPARTENANCE si
-    `collection_id` (global ⊕ local à la collection). Nourrit la qualité de la Collection."""
+    ÉMERGENT (domaines + dimensions + valeurs + tags) à l'état `defini`. Scopé par APPARTENANCE
+    si `collection_id` (global ⊕ local à la collection). Nourrit la qualité de la Collection."""
     scope = "" if collection_id is None else " AND (collection_id IS NULL OR collection_id = ?)"
     params = [] if collection_id is None else [collection_id]
     par_type, total, definis = {}, 0, 0
-    for table, cle in (("attribut_dimension", "dimensions"),
+    for table, cle in (("domaine", "domaines"), ("attribut_dimension", "dimensions"),
                        ("attribut_valeur", "valeurs"), ("tags", "tags")):
         n = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE 1=1{scope}", params).fetchone()[0]
         d = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE etat='defini'{scope}",

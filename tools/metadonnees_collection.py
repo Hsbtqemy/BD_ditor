@@ -217,10 +217,19 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
     row, album_ids = _resoudre(conn, collection_id)
     c = _cartes(conn, album_ids)
 
+    # Domaines (piste B, v20) : champs analytiques émergents qui regroupent les dimensions —
+    # même couche SKOS que le reste du vocabulaire. Les émotions ne sont qu'un domaine.
+    dom_noms = {d["id"]: d["nom"] for d in conn.execute("SELECT id, nom FROM domaine")}
+    domaines = [{"nom": d["nom"], "definition": d["definition"], "note_portee": d["note_portee"],
+                 "etat": d["etat"], "collection_id": d["collection_id"]}
+                for d in conn.execute("SELECT nom, definition, note_portee, etat, collection_id "
+                                      "FROM domaine ORDER BY nom")]
+
     # Lexique situé (A4) : chaque dimension/valeur porte sa couche définitionnelle SKOS
-    # (definition · note_portee = scopeNote · etat provisoire→défini · collection_id = portée).
+    # (definition · note_portee = scopeNote · etat provisoire→défini · collection_id = portée) ;
+    # `domaine` = champ analytique de rattachement (piste B).
     vocab = []
-    for d in conn.execute("SELECT id, cible, nom, definition, note_portee, etat, "
+    for d in conn.execute("SELECT id, cible, nom, domaine_id, definition, note_portee, etat, "
                           "collection_id FROM attribut_dimension ORDER BY cible, nom"):
         vals = [{"valeur": v["valeur"], "definition": v["definition"],
                  "note_portee": v["note_portee"], "etat": v["etat"],
@@ -228,7 +237,8 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
                 for v in conn.execute(
                     "SELECT valeur, definition, note_portee, etat, collection_id "
                     "FROM attribut_valeur WHERE dimension_id = ? ORDER BY valeur", (d["id"],))]
-        vocab.append({"cible": d["cible"], "nom": d["nom"], "definition": d["definition"],
+        vocab.append({"cible": d["cible"], "nom": d["nom"],
+                      "domaine": dom_noms.get(d["domaine_id"]), "definition": d["definition"],
                       "note_portee": d["note_portee"], "etat": d["etat"],
                       "collection_id": d["collection_id"], "valeurs": vals})
 
@@ -331,10 +341,9 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
             "provenance": journal.indicateurs_provenance(conn, album_ids),
             # A4 : maturité du lexique situé (% défini), scopée par appartenance à la collection.
             "lexique": database.lexique_resume(conn, collection_id),
-            "a_prevoir": ["undo/restauration depuis le journal (D1)",
-                          "export PROV-O au fil de l'eau", "licence & droits par jeu"],
+            "a_prevoir": ["export PROV-O au fil de l'eau", "licence & droits par jeu"],
         },
-        "vocabulaire": vocab, "tags": tags, "contribution_roles": roles,
+        "domaines": domaines, "vocabulaire": vocab, "tags": tags, "contribution_roles": roles,
         "personnages": personnages, "albums": albums,
     }}
 
@@ -464,12 +473,21 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
     # Lexique situé (A4) : dump plat (une ligne par valeur), colonnes SKOS aux DEUX niveaux
     # (dimension `dim_*` répétée par valeur). Une dimension SANS valeur n'a pas de ligne ici
     # (dump piloté par les valeurs) mais figure dans les records JSON.
+    # Domaines (piste B) : catalogue de référence, comme le vocabulaire (global).
+    out["domaines"] = (
+        ["nom", "definition", "note_portee", "etat", "collection_id"],
+        [[d["nom"], d["definition"], d["note_portee"], d["etat"], d["collection_id"]]
+         for d in conn.execute("SELECT nom, definition, note_portee, etat, collection_id "
+                               "FROM domaine ORDER BY nom")])
+
+    dom_noms = {d["id"]: d["nom"] for d in conn.execute("SELECT id, nom FROM domaine")}
     out["vocabulaire"] = (
-        ["cible", "dimension", "dim_definition", "dim_note_portee", "dim_etat",
+        ["cible", "domaine", "dimension", "dim_definition", "dim_note_portee", "dim_etat",
          "dim_collection_id", "valeur", "definition", "note_portee", "etat", "collection_id"],
-        [[d["cible"], d["nom"], d["definition"], d["note_portee"], d["etat"], d["collection_id"],
+        [[d["cible"], dom_noms.get(d["domaine_id"]), d["nom"], d["definition"], d["note_portee"],
+          d["etat"], d["collection_id"],
           v["valeur"], v["definition"], v["note_portee"], v["etat"], v["collection_id"]]
-         for d in conn.execute("SELECT id, cible, nom, definition, note_portee, etat, "
+         for d in conn.execute("SELECT id, cible, nom, domaine_id, definition, note_portee, etat, "
                               "collection_id FROM attribut_dimension ORDER BY cible, nom")
          for v in conn.execute("SELECT valeur, definition, note_portee, etat, collection_id "
                               "FROM attribut_valeur WHERE dimension_id = ? ORDER BY valeur",

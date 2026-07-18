@@ -15,15 +15,17 @@ ou décision de conception requise).
 
 ## 1. Annotation — émotions / minorités (finalité)
 
-### ANN-1 · Schéma d'annotation contrôlé (émotions, représentation) — P1 · L
-> L'étude des émotions/minorités repose sur du **codage humain** ; aujourd'hui les tags
-> sont **libres** → inagrégeables (« colère » ≠ « colere »). C'est le vrai socle manquant.
-- Faire : décider avec l'équipe un/des **vocabulaires contrôlés** (catégories d'émotion,
-  marqueurs de représentation) ; modèle de données (tags « typés »/namespacés, ou table
-  dédiée) ; UI de saisie en **liste fermée** (+ libre en complément) ; exposer comme facette.
-- Done : tagger une région depuis un vocabulaire fermé ; Exploration/Recherche peuvent
-  **filtrer et distribuer** par catégorie ; agrégation sans doublon orthographique ; test.
-- Note : décision de conception (vocabulaire) **en amont** — implique les linguistes.
+### ANN-1 · Vocabulaire contrôlé (émotions, représentation) — structure ✅, peuplement ouvert · P1
+> L'étude des émotions/minorités repose sur du **codage humain**. Le **socle structurel** est
+> désormais complet : vocabulaire facetté ÉMERGENT (ANN-2, v11) — agrégeable, insensible à la
+> casse — + couche définitionnelle **SKOS** (A4, v17) + palier **`domaine`** qui regroupe les
+> dimensions par champ d'étude (**B0, v20** : émotions n'est qu'un domaine, orthogonal à `cible`,
+> extensible sans code ; cf. `docs/domaines.md`).
+- **Reste (P1)** : *peupler* les domaines/dimensions/valeurs **avec les linguistes** (catégories
+  d'émotion, marqueurs de représentation). Plus de « liste fermée vs émergent » à trancher — c'est
+  émergent et documenté. Puis l'**analyse par domaine** (croisements ANA-2, KWIC ANA-3).
+- Done (structure) : domaines créables/documentables/regroupables (UI 📖 Lexique) ; dimensions
+  filtrables/distribuables en facette ; agrégation sans doublon ; tests.
 
 ### ANN-2 · Entité « personnage » + lien bulle→personnage — ✅ Fait « mince » 2026-06-24 · P2 · L
 > « Représentation des minorités » = surtout *qui* est représenté ; idiolectes, registres

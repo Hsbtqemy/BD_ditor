@@ -1179,3 +1179,11 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 }
 .lex-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .lex-fields .lex-row .lex-check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
+/* Domaine (piste B) : en-tête de regroupement — filet accent à gauche pour le distinguer
+   des dimensions qu'il chapeaute. Ses dimensions suivent, légèrement en retrait. */
+.lex-term.lex-domaine { border-left: 3px solid var(--accent-blue); background: var(--bg-panel); }
+.lex-term.lex-domaine > summary .lex-name { font-size: 14px; }
+.lex-add { display: flex; gap: 8px; margin: 2px 0 6px; }
+.lex-add input { flex: 1; background: var(--bg-panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px; padding: 6px 8px; font: inherit; }
+.lex-subhead { margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .04em; }

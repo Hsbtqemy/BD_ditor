@@ -73,7 +73,7 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 19). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 20). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
 
@@ -108,6 +108,10 @@ Couche définitionnelle **SKOS** sur le vocabulaire ÉMERGENT (dimensions, valeu
 ### Alignement d'autorité (A5, v18)
 
 Relie une **entité personnage** à des référentiels externes (`personnage_alignement` : personnage → 0..N URI Wikidata/VIAF/IdRef…, chacune un `skos:exactMatch`). `source` **auto-détectée** depuis l'hôte de l'URI (contrôlé-ouvert ; NULL si inconnu). `CASCADE` à la suppression ; la **fusion** de personnages recolle les alignements (dédup par URI). Édition : `GET/POST/DELETE /api/personnages/{id}/alignements` + UI dans le **panneau Personnage** de la Visionneuse (puces-liens + ajout d'URI, atteignable via locuteur ET boîte personnage). Export : `personnages.alignements[]` + table CSV + indicateur `% aligné`. Les **contributeurs** restent hors périmètre (chaînes non-entités → promotion requise d'abord, dormant). Cf. `docs/alignement-autorite.md`.
+
+### Domaines analytiques (piste B, v20)
+
+Palier `domaine` qui **regroupe les dimensions facettées** par champ analytique (émotions, représentation…) — les émotions ne sont **qu'un domaine**, pas un module figé. Table `domaine` (émergent, **même couche lexique SKOS** que dimensions/valeurs/tags) + `attribut_dimension.domaine_id` (**NULL = hors domaine**). **ORTHOGONAL à `cible`** : un domaine peut grouper des dimensions personnage ET case. Suppression d'un domaine → `domaine_id` NULL (`ON DELETE SET NULL`, promotion). API : `GET/POST/PATCH/DELETE /api/domaines` + `PATCH /api/domaines/{id}/lexique` + `PATCH /api/attributs/dimensions/{id}/domaine`. `GET /api/lexique` renvoie `domaines` + le `domaine_id` des dimensions. UI : dans le panneau **📖 Lexique**, dimensions regroupées sous leur domaine (+ sélecteur). Export : records + CSV + roll-up (% défini inclut les domaines). Différé (dormant) : nouveaux **types d'ancre** (planche/album/scène = nouvelle jointure). Cf. `docs/domaines.md`.
 
 ### Matériel de numérisation (A6, v19)
 

@@ -182,6 +182,10 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
             (d["id"],))]
         dimensions.append({"cible": d["cible"], "nom": d["nom"],
                            "valeurs": vals, "pct_defini": None})
+    # Domaines (piste B) : champs analytiques regroupant les dimensions (émotions n'est qu'un cas).
+    domaines = [{"nom": d["nom"], "nb_dimensions": _un(
+                    conn, "SELECT COUNT(*) FROM attribut_dimension WHERE domaine_id = ?", (d["id"],))}
+                for d in conn.execute("SELECT id, nom FROM domaine ORDER BY nom")]
     val_tot = _un(conn, "SELECT COUNT(*) FROM attribut_valeur")
     pa = _un(conn, "SELECT COUNT(*) FROM personnage_attribut")   # profils (entité globale)
     ra = _un(conn, "SELECT COUNT(*) FROM region_attribut" + W_tok)
@@ -252,7 +256,7 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                 "environnement": environnement(),  # python + versions installées (à l'export)
             },
             # A4 : maturité du lexique situé (% défini), scopée par appartenance à la collection.
-            "vocabulaire": {"dimensions": dimensions,
+            "vocabulaire": {"domaines": domaines, "dimensions": dimensions,
                             "lexique": database.lexique_resume(conn, collection_id)},
             "droits": {
                 "ouvert": ["géométrie", "structure", "ordre", "citation", "lemme",
@@ -347,6 +351,9 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
         ("personnage", "nom"): perso,
         ("personnage", "bulle_locuteur"): f"{loc_liens} liens; {loc_distinct} distincts",
         ("personnage", "personnage_presence"): pres_liens,
+        ("vocabulaire", "domaine"): len(domaines),
+        ("vocabulaire", "dimension.domaine"): _un(
+            conn, "SELECT COUNT(*) FROM attribut_dimension WHERE domaine_id IS NOT NULL"),
         ("vocabulaire", "dimension.nom"): len(dimensions),
         ("vocabulaire", "valeur"): val_tot,
         ("vocabulaire", "personnage_attribut"): pa,
@@ -451,7 +458,9 @@ CATALOGUE = [
     ("personnage", "bulle_locuteur", "qui parle", "humain", "structuré", "—", "ouvert"),
     ("personnage", "personnage_presence", "qui est montré", "humain", "structuré", "—", "ouvert"),
     ("personnage", "alignement_autorite", "lien vers référentiel (Wikidata/VIAF/IdRef)", "humain", "structuré (v18)", "SKOS exactMatch", "ouvert"),
+    ("vocabulaire", "domaine", "champ analytique regroupant des dimensions (émotions, représentation…)", "humain", "structuré (v20)", "SKOS", "ouvert"),
     ("vocabulaire", "dimension.cible", "à quoi s'applique l'axe", "humain", "structuré", "—", "ouvert"),
+    ("vocabulaire", "dimension.domaine", "domaine analytique de rattachement", "humain", "structuré (v20)", "SKOS", "ouvert"),
     ("vocabulaire", "dimension.nom", "axe (registre, origine…)", "humain", "structuré", "SKOS", "ouvert"),
     ("vocabulaire", "valeur", "valeur canonique de l'axe", "humain", "structuré", "SKOS concept", "ouvert"),
     ("vocabulaire", "personnage_attribut", "profil du personnage", "humain", "structuré", "—", "ouvert"),

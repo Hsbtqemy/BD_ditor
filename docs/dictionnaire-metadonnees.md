@@ -275,10 +275,18 @@ Cf. `personnages-et-attribution.md`, `alignement-autorite.md`.
 
 ## Niveau 7 — Vocabulaire facetté
 
-Sources : `attribut_dimension` (axes), `attribut_valeur` (valeurs canoniques),
-`personnage_attribut` (profil du locuteur), `region_attribut` (situation de scène).
-Vocabulaire **émergent** (données, pas code). Le **définitionnel + la portée** sont le
-chantier « lexique agile mais défini ».
+Sources : `domaine` (champs analytiques), `attribut_dimension` (axes), `attribut_valeur`
+(valeurs canoniques), `personnage_attribut` (profil du locuteur), `region_attribut`
+(situation de scène). Vocabulaire **émergent** (données, pas code). Le **définitionnel + la
+portée** sont le chantier « lexique agile mais défini ».
+
+> **Décision (2026-07-18) — domaines analytiques. Livré v20 (piste B).** Palier `domaine`
+> qui **regroupe les dimensions** par champ d'étude (émotions, représentation…) — les émotions
+> ne sont **qu'un domaine**. Émergent + lexique SKOS comme le reste ; **`domaine_id` nullable**
+> sur `attribut_dimension` (NULL = hors domaine ; suppression du domaine → NULL, promotion).
+> **ORTHOGONAL à `cible`** (un domaine groupe des dimensions personnage ET case). Édité dans le
+> panneau 📖 Lexique. **Dormant** : nouveaux types d'ancre (planche/album/scène). Cf.
+> `docs/domaines.md`.
 
 > **Décision (2026-07-15) — lexique situé (SKOS). Livré v17 (A4).** Couche définitionnelle **en
 > paresseux** : `definition` + `note_portee` optionnelles sur dimensions **et** valeurs **et
@@ -294,7 +302,9 @@ chantier « lexique agile mais défini ».
 
 | Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
 |---|---|---|---|---|---|---|
+| `domaine` | champ analytique regroupant des dimensions (émotions, représentation…) | texte émergent | humain | **structuré (v20)** | SKOS | ouvert |
 | `attribut_dimension.cible` | à quoi s'applique l'axe | `personnage` \| `case` | humain | structuré | — | ouvert |
+| `attribut_dimension.domaine_id` | domaine analytique de rattachement (NULL = hors domaine) | réf. \| NULL | humain | **structuré (v20)** | SKOS | ouvert |
 | `attribut_dimension.nom` | axe (origine, registre…) | texte émergent | humain | structuré | SKOS (schéma) | ouvert |
 | `attribut_valeur.valeur` | valeur canonique de l'axe | texte émergent | humain | structuré | SKOS `concept` | ouvert |
 | `personnage_attribut` | profil du personnage (inter-locuteur) | liaison N-N | humain | structuré | — | ouvert |
