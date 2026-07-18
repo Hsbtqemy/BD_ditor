@@ -6,7 +6,7 @@
 > *dérivé*, ou *encore à prévoir*. Document de référence pour la réutilisation, la
 > qualification du travail (paradonnée) et le futur dépôt (Nakala / HAL).
 >
-> **Périmètre.** Documente le **réel** (schéma v16) **et** les **champs à prévoir** qu'un
+> **Périmètre.** Documente le **réel** (schéma v17) **et** les **champs à prévoir** qu'un
 > dépôt de qualité bibliographique voudra. Ne fige aucun plan : c'est un inventaire, pas
 > un PGD. Voir aussi `personnages-et-attribution.md`, `numerotation-et-citation.md`,
 > `correction-grammaticale.md`.
@@ -274,14 +274,17 @@ Sources : `attribut_dimension` (axes), `attribut_valeur` (valeurs canoniques),
 Vocabulaire **émergent** (données, pas code). Le **définitionnel + la portée** sont le
 chantier « lexique agile mais défini ».
 
-> **Décision (2026-07-15) — lexique situé (SKOS).** Couche définitionnelle **en paresseux** :
-> `definition` + `note_portee` optionnelles sur dimensions/valeurs, avec un état `provisoire →
-> défini` (miroir `auto→validé`). **Portée d'appartenance (A)** : `collection_id` nullable sur
-> dimension **et** valeur (NULL = global, sinon local à une collection) ; promotion local→global
-> = passer à NULL (patron *mentions→entités*). **Définition contextuelle (B)** — glose d'un terme
-> *par collection* (`valeur_definition`) — **dormante**, déclenchée si un terme diverge vraiment
-> entre études. Version de concept **dormante** (le gel se fait au niveau Collection). Un
-> indicateur « **% défini** » remonte nourrir la qualité de la Collection.
+> **Décision (2026-07-15) — lexique situé (SKOS). Livré v17 (A4).** Couche définitionnelle **en
+> paresseux** : `definition` + `note_portee` optionnelles sur dimensions **et** valeurs **et
+> tags** (pour un tag, `description` EST la definition), avec un état `provisoire → défini`
+> (miroir `auto→validé`). **Portée d'appartenance (A)** : `collection_id` nullable partout (NULL
+> = global, sinon local à une collection) ; promotion local→global = passer à NULL (patron
+> *mentions→entités* ; supprimer une collection PROMEUT ses termes via `ON DELETE SET NULL`).
+> Édition par l'API (`PATCH …/lexique`) et l'UI (bouton **📖 Lexique** sur Exploration, modale
+> accessible). Indicateur « **% défini** » (`database.lexique_resume`) dans les exports.
+> **Définition contextuelle (B)** — glose d'un terme *par collection* (`valeur_definition`) —
+> **dormante** ; version de concept **dormante** (gel au niveau Collection). Cf.
+> `docs/lexique-situe.md`.
 
 | Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
 |---|---|---|---|---|---|---|
@@ -290,11 +293,11 @@ chantier « lexique agile mais défini ».
 | `attribut_valeur.valeur` | valeur canonique de l'axe | texte émergent | humain | structuré | SKOS `concept` | ouvert |
 | `personnage_attribut` | profil du personnage (inter-locuteur) | liaison N-N | humain | structuré | — | ouvert |
 | `region_attribut` | situation de la case (intra-locuteur) | liaison N-N | humain | structuré | — | ouvert |
-| *`collection_id` (dimension &amp; valeur)* | **portée d'appartenance** : NULL = global, sinon local à une collection ; promotion → NULL (*mentions→entités*) | réf. \| NULL | humain | *absent — à prévoir* | SKOS | ouvert |
-| *`definition`* | sens de la dimension / valeur | texte | humain | *absent — à prévoir* | SKOS `definition` | ouvert |
-| *`note_portee`* | cadre d'emploi | texte | humain | *absent — à prévoir* | SKOS `scopeNote` | ouvert |
-| *`etat` (définitionnel)* | maturité : `provisoire` → `défini` (miroir `auto→validé`) | contrôlé | humain | *absent — à prévoir* | — | ouvert |
-| *`% défini`* | part du vocabulaire documenté (nourrit la qualité Collection) | agrégat | dérivé | *absent — à prévoir* | — | ouvert |
+| `collection_id` (dimension · valeur · **tag**) | **portée d'appartenance** : NULL = global, sinon local à une collection ; promotion → NULL (*mentions→entités*) | réf. \| NULL | humain | **structuré (v17)** | SKOS | ouvert |
+| `definition` | sens de la dimension / valeur (**tag** : `description`) | texte | humain | **structuré (v17)** | SKOS `definition` | ouvert |
+| `note_portee` | cadre d'emploi (le « situé ») | texte | humain | **structuré (v17)** | SKOS `scopeNote` | ouvert |
+| `etat` (définitionnel) | maturité : `provisoire` → `defini` (miroir `auto→validé`) | contrôlé | humain | **structuré (v17)** | — | ouvert |
+| `% défini` | part du vocabulaire documenté (nourrit la qualité Collection) | agrégat | dérivé | **dérivé (v17)** | — | ouvert |
 | *`valeur_definition` (B)* | **définition contextuelle** : glose d'un terme *par collection* | table (valeur_id, collection_id…) | humain | *absent — à prévoir (dormant)* | SKOS | ouvert |
 | *`version`* | version du concept | texte | système | *absent — à prévoir (dormant)* | SKOS / PROV | ouvert |
 
@@ -365,9 +368,11 @@ Chantiers de FAIRisation dérivés de ce dictionnaire, par couche :
   **PROV-O / TEI** (`tools/provenance_export.py`). Substrat de l'**undo (D1)**. Restent *à
   prévoir* : versionnement d'entités (`wasRevisionOf`) et **certitude** de zone (dormants).
   Cf. `docs/provenance-audit.md`.
-- **Vocabulaire (N7)** : lexique situé **SKOS** — `definition` · `note_portee` · état
-  `provisoire→défini` · **portée d'appartenance** (`collection_id`, A) ; définition contextuelle
-  (`valeur_definition`, B) et version = **dormants**. Indicateur « % défini » → qualité Collection.
+- **Vocabulaire (N7)** : **✅ réalisé (v17, A4)** — lexique situé **SKOS** : `definition` ·
+  `note_portee` · état `provisoire→défini` · **portée d'appartenance** (`collection_id`) sur
+  dimensions · valeurs · **tags** ; édition API + **UI** (📖 Lexique / Exploration) ; indicateur
+  « % défini ». Restent *dormants* : définition contextuelle (`valeur_definition`, B) et version.
+  Cf. `docs/lexique-situe.md`.
 - **Entités (N6)** : alignement d'autorité (Wikidata / VIAF / IdRef).
 - **Droits (Collection / N0, N8)** : `licence_defaut` (tier ouvert) · **`base_legale`** (à quel
   titre on détient/exploite les données — *à établir, hors code*) · **`statut_diffusion`**

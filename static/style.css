@@ -919,6 +919,7 @@ h3.collapsible:hover { color: var(--text); }
   margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
 }
 .explo-top label { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; }
+.explo-top .nav-spacer { flex: 1; }      /* pousse le bouton Lexique à droite */
 
 /* Filtres : cartes (une en simple, deux en comparaison) */
 .explo-grid { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
@@ -1140,3 +1141,38 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 }
 .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .modal-actions { display: flex; align-items: center; gap: 12px; }
+
+/* Lexique situé (A4) — modale de documentation SKOS du vocabulaire (partage .modal-box) */
+#lexique-modal {
+  position: fixed; inset: 0; z-index: 100; background: var(--scrim);
+  display: flex; align-items: center; justify-content: center;
+}
+#lexique-modal[hidden] { display: none; }
+.lexique-box { width: min(720px, 94vw); }
+#lex-body { display: flex; flex-direction: column; gap: 14px; }
+.lex-group { display: flex; flex-direction: column; gap: 8px; }
+.lex-group h4 { margin: 4px 0; font-size: 13px; color: var(--text); }
+.lex-term { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); }
+.lex-term.lex-nested { margin-left: 18px; }
+.lex-term > summary {
+  cursor: pointer; padding: 8px 10px; display: flex; align-items: center; gap: 10px;
+  list-style: none;
+}
+.lex-term > summary::-webkit-details-marker { display: none; }
+.lex-term[open] > summary { border-bottom: 1px solid var(--border); }
+.lex-name { font-weight: 600; color: var(--text); }
+.lex-sub { color: var(--text-muted); font-size: 12px; }
+/* Badge d'état : texte AA (jamais l'accent brut en petit texte) ; « défini » = bordure accent (3:1). */
+.lex-badge {
+  margin-left: auto; font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  border: 1px solid var(--border); color: var(--text-muted); background: var(--bg-panel);
+}
+.lex-badge.defini { color: var(--text); border-color: var(--accent-green); }
+.lex-fields { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.lex-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
+.lex-fields textarea, .lex-fields select {
+  background: var(--bg-panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 5px; padding: 6px 8px; font-size: 13px; font-family: inherit; resize: vertical;
+}
+.lex-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.lex-fields .lex-row .lex-check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }

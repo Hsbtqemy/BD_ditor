@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 
 # --------------------------------------------------------------------------- #
@@ -107,7 +107,14 @@ CREATE TABLE IF NOT EXISTS tags (
     id             INTEGER PRIMARY KEY,
     label          TEXT UNIQUE NOT NULL,
     couleur        TEXT DEFAULT '#1a4a8a',
-    description    TEXT,
+    description    TEXT,                          -- glose du tag = SKOS definition (A4 : déjà là)
+    -- Lexique situé (v17, A4) — couche définitionnelle SKOS partagée avec le vocabulaire
+    -- facetté. `note_portee` = SKOS scopeNote (le « situé ») ; `etat` = maturité
+    -- provisoire→défini (miroir auto→validé) ; `collection_id` = portée d'appartenance
+    -- (NULL = global, sinon local à une collection ; promotion → NULL, patron mentions→entités).
+    note_portee    TEXT,
+    etat           TEXT NOT NULL DEFAULT 'provisoire',   -- 'provisoire' | 'defini'
+    collection_id  INTEGER REFERENCES collection(id) ON DELETE SET NULL,
     date_creation  TEXT DEFAULT (datetime('now'))
 );
 
@@ -204,6 +211,13 @@ CREATE TABLE IF NOT EXISTS attribut_dimension (
     id             INTEGER PRIMARY KEY,
     cible          TEXT NOT NULL,              -- 'personnage' | 'case'
     nom            TEXT NOT NULL,
+    -- Lexique situé (v17, A4) — SKOS : definition (sens de l'axe) · note_portee (scopeNote,
+    -- cadre d'emploi = le « situé ») · etat (provisoire→défini) · collection_id (portée
+    -- d'appartenance : NULL = global, sinon local à une collection ; promotion → NULL).
+    definition     TEXT,
+    note_portee    TEXT,
+    etat           TEXT NOT NULL DEFAULT 'provisoire',   -- 'provisoire' | 'defini'
+    collection_id  INTEGER REFERENCES collection(id) ON DELETE SET NULL,
     date_creation  TEXT DEFAULT (datetime('now')),
     UNIQUE(cible, nom)
 );
@@ -214,6 +228,12 @@ CREATE TABLE IF NOT EXISTS attribut_valeur (
     id             INTEGER PRIMARY KEY,
     dimension_id   INTEGER NOT NULL REFERENCES attribut_dimension(id) ON DELETE CASCADE,
     valeur         TEXT NOT NULL,
+    -- Lexique situé (v17, A4) — SKOS : definition (sens de la valeur) · note_portee
+    -- (scopeNote) · etat (provisoire→défini) · collection_id (portée d'appartenance).
+    definition     TEXT,
+    note_portee    TEXT,
+    etat           TEXT NOT NULL DEFAULT 'provisoire',   -- 'provisoire' | 'defini'
+    collection_id  INTEGER REFERENCES collection(id) ON DELETE SET NULL,
     date_creation  TEXT DEFAULT (datetime('now')),
     UNIQUE(dimension_id, valeur)
 );
@@ -343,6 +363,9 @@ CREATE INDEX IF NOT EXISTS idx_evenement_cible    ON evenement(cible_table, cibl
 CREATE INDEX IF NOT EXISTS idx_evenement_activite ON evenement(activite_id);
 CREATE INDEX IF NOT EXISTS idx_evenement_date     ON evenement(date);
 CREATE INDEX IF NOT EXISTS idx_regions_activite   ON regions(activite_id);
+CREATE INDEX IF NOT EXISTS idx_dim_collection     ON attribut_dimension(collection_id);
+CREATE INDEX IF NOT EXISTS idx_val_collection     ON attribut_valeur(collection_id);
+CREATE INDEX IF NOT EXISTS idx_tags_collection    ON tags(collection_id);
 -- NB : l'unicité (album_id, numero) des planches (DB-1) est posée en MIGRATION
 -- (idx_planches_album_numero), pas ici : sa création doit suivre un dédoublonnage
 -- d'éventuelles données préexistantes, qui ne peut avoir lieu qu'après SCHEMA_SQL.
@@ -510,6 +533,31 @@ def _migrate(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE regions ADD COLUMN touche INTEGER NOT NULL DEFAULT 0")
         if "date_modification" not in rcols:
             conn.execute("ALTER TABLE regions ADD COLUMN date_modification TEXT")
+
+    # v16 → v17 : lexique situé (A4, N7) — couche définitionnelle SKOS sur le vocabulaire
+    # émergent. `attribut_dimension`/`attribut_valeur` gagnent `definition` + `note_portee` +
+    # `etat` + `collection_id` ; `tags` gagne `note_portee` + `etat` + `collection_id` (sa
+    # `description` EST déjà la definition). Colonnes posées par PRÉSENCE ; la FK `collection_id`
+    # exige que `collection` existe (SCHEMA_SQL tourne avant `_migrate` ; gardé pour les tests
+    # isolés). `etat` NOT NULL exige un défaut (fourni : 'provisoire').
+    a_collection = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='collection'").fetchone()
+    for table, defs in (
+            ("attribut_dimension", (("definition", "TEXT"), ("note_portee", "TEXT"),
+                                    ("etat", "TEXT NOT NULL DEFAULT 'provisoire'"))),
+            ("attribut_valeur", (("definition", "TEXT"), ("note_portee", "TEXT"),
+                                 ("etat", "TEXT NOT NULL DEFAULT 'provisoire'"))),
+            ("tags", (("note_portee", "TEXT"),
+                      ("etat", "TEXT NOT NULL DEFAULT 'provisoire'")))):
+        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if not cols:                                    # table absente (test isolé) → rien à faire
+            continue
+        for nom, typ in defs:
+            if nom not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {nom} {typ}")
+        if a_collection and "collection_id" not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN collection_id INTEGER "
+                         "REFERENCES collection(id) ON DELETE SET NULL")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -702,6 +750,26 @@ def collection_row(conn: sqlite3.Connection, collection_id: int) -> dict | None:
     """Ligne descriptive d'une collection (dict), ou None si absente."""
     r = conn.execute("SELECT * FROM collection WHERE id = ?", (collection_id,)).fetchone()
     return dict(r) if r else None
+
+
+def lexique_resume(conn: sqlite3.Connection, collection_id: int | None = None) -> dict:
+    """Indicateur « % défini » du lexique situé (A4, N7) : part des termes du vocabulaire
+    ÉMERGENT (dimensions + valeurs + tags) à l'état `defini`. Scopé par APPARTENANCE si
+    `collection_id` (global ⊕ local à la collection). Nourrit la qualité de la Collection."""
+    scope = "" if collection_id is None else " AND (collection_id IS NULL OR collection_id = ?)"
+    params = [] if collection_id is None else [collection_id]
+    par_type, total, definis = {}, 0, 0
+    for table, cle in (("attribut_dimension", "dimensions"),
+                       ("attribut_valeur", "valeurs"), ("tags", "tags")):
+        n = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE 1=1{scope}", params).fetchone()[0]
+        d = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE etat='defini'{scope}",
+                         params).fetchone()[0]
+        par_type[cle] = {"total": n, "definis": d}
+        total += n
+        definis += d
+    return {"total": total, "definis": definis,
+            "pct_defini": round(definis / total, 4) if total else None,
+            "par_type": par_type}
 
 
 def collection_album_ids(conn: sqlite3.Connection, collection_id: int) -> list[int]:

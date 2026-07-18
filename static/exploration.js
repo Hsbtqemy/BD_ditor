@@ -321,6 +321,122 @@ function setupBack() {
   }
 }
 
+/* ---------------- Lexique situé (A4) : documenter le vocabulaire ----------------
+   Modale d'édition de la couche définitionnelle SKOS (definition / note de portée /
+   état provisoire→défini / portée d'appartenance) sur dimensions, valeurs et tags.
+   Read model : GET /api/lexique ; écriture : PATCH .../lexique (partielle). */
+let LEX_COLLECTIONS = [];   // {id, nom, …} — menu « portée »
+
+async function openLexique() { $("#lexique-modal").hidden = false; await loadLexique(); }
+function closeLexique() { $("#lexique-modal").hidden = true; }
+
+async function loadLexique() {
+  const body = $("#lex-body");
+  body.textContent = "Chargement…";
+  try {
+    const [lex, cols] = await Promise.all([apiGet("/api/lexique"), apiGet("/api/collections")]);
+    LEX_COLLECTIONS = cols;
+    renderLexique(lex);
+  } catch (e) { body.textContent = "Impossible de charger le lexique."; }
+}
+
+function lexResume(r) {
+  const pct = r.pct_defini == null ? "—" : Math.round(r.pct_defini * 100) + " %";
+  return `${r.definis}/${r.total} terme(s) défini(s) — ${pct}`;
+}
+
+function porteeOptions(sel) {
+  return [`<option value="">Global</option>`].concat(
+    LEX_COLLECTIONS.map((c) =>
+      `<option value="${c.id}"${String(c.id) === String(sel) ? " selected" : ""}>${esc(c.nom)}</option>`)
+  ).join("");
+}
+
+/* Éditeur d'un terme (dimension | valeur | tag). `defi` = définition courante (la
+   `description` pour un tag). Câble un PATCH par champ modifié. */
+function termEditor(kind, term, defi) {
+  const url = kind === "tag" ? `/api/tags/${term.id}/lexique`
+            : kind === "valeur" ? `/api/attributs/valeurs/${term.id}/lexique`
+            : `/api/attributs/dimensions/${term.id}/lexique`;
+  const nom = kind === "tag" ? term.label : (term.nom || term.valeur);
+  const sub = kind === "dimension" ? (CIBLE_LBL[term.cible] || term.cible)
+            : kind === "valeur" ? `${term.nb_usages} usage(s)` : `${term.frequence} pose(s)`;
+  const defini = term.etat === "defini";
+  const d = document.createElement("details");
+  d.className = "lex-term";
+  d.innerHTML = `
+    <summary>
+      <span class="lex-name">${esc(nom)}</span>
+      <span class="lex-sub">${esc(sub)}</span>
+      <span class="lex-badge${defini ? " defini" : ""}" data-role="badge">${defini ? "défini" : "provisoire"}</span>
+    </summary>
+    <div class="lex-fields">
+      <label>Définition
+        <textarea rows="2" data-f="definition" placeholder="sens du terme">${esc(defi || "")}</textarea>
+      </label>
+      <label>Note de portée <span class="muted small">(cadre d'emploi dans ce corpus)</span>
+        <textarea rows="2" data-f="note_portee" placeholder="ex. ici, « rural » = hors grande ville">${esc(term.note_portee || "")}</textarea>
+      </label>
+      <div class="lex-row">
+        <label class="lex-check"><input type="checkbox" data-f="etat"${defini ? " checked" : ""}> Défini</label>
+        <label>Portée <select data-f="collection_id">${porteeOptions(term.collection_id)}</select></label>
+      </div>
+    </div>`;
+  const badge = d.querySelector('[data-role="badge"]');
+  // `save` renvoie true/false : les MAJ optimistes (badge, % défini) ne s'appliquent QUE
+  // sur succès — sinon l'UI divergerait de la base (ex. 409 base occupée, 500).
+  const save = async (patch) => {
+    try { await apiSend("PATCH", url, patch); toast("Enregistré"); return true; }
+    catch (e) { toast("Échec : " + e.message, "err"); return false; }
+  };
+  d.querySelectorAll("textarea[data-f]").forEach((ta) =>
+    ta.addEventListener("change", () => save({ [ta.dataset.f]: ta.value })));
+  d.querySelector('[data-f="etat"]').addEventListener("change", async (e) => {
+    if (!await save({ etat: e.target.checked ? "defini" : "provisoire" })) {
+      e.target.checked = !e.target.checked;   // échec → reverter la case (pas de change re-déclenché)
+      return;
+    }
+    badge.textContent = e.target.checked ? "défini" : "provisoire";
+    badge.classList.toggle("defini", e.target.checked);
+    refreshLexResume();                       // le % défini change (succès uniquement)
+  });
+  d.querySelector('[data-f="collection_id"]').addEventListener("change", (e) =>
+    save({ collection_id: e.target.value ? Number(e.target.value) : null }));
+  return d;
+}
+
+function renderLexique(lex) {
+  const body = $("#lex-body");
+  body.textContent = "";
+  $("#lex-resume").textContent = lexResume(lex.resume);
+  const dims = document.createElement("div");
+  dims.className = "lex-group";
+  dims.innerHTML = "<h4>Attributs facettés</h4>";
+  if (!lex.dimensions.length)
+    dims.insertAdjacentHTML("beforeend", `<p class="muted small">Aucune dimension.</p>`);
+  for (const dim of lex.dimensions) {
+    dims.appendChild(termEditor("dimension", dim, dim.definition));
+    for (const val of dim.valeurs) {
+      const ve = termEditor("valeur", val, val.definition);
+      ve.classList.add("lex-nested");
+      dims.appendChild(ve);
+    }
+  }
+  body.appendChild(dims);
+  const tg = document.createElement("div");
+  tg.className = "lex-group";
+  tg.innerHTML = "<h4>Étiquettes (tags)</h4>";
+  if (!lex.tags.length)
+    tg.insertAdjacentHTML("beforeend", `<p class="muted small">Aucun tag.</p>`);
+  for (const tag of lex.tags) tg.appendChild(termEditor("tag", tag, tag.description));
+  body.appendChild(tg);
+}
+
+async function refreshLexResume() {
+  try { $("#lex-resume").textContent = lexResume((await apiGet("/api/lexique")).resume); }
+  catch (e) { /* non bloquant */ }
+}
+
 async function setup() {
   for (const id of ["#f-pos", "#b-pos"]) {
     for (const u of UPOS) {
@@ -337,6 +453,15 @@ async function setup() {
   ["#f-album", "#f-type", "#f-pos", "#f-prov", "#f-tags", "#f-tagscope", "#f-personnage",
    "#b-album", "#b-type", "#b-pos", "#b-prov", "#b-tags", "#b-personnage"]
     .forEach((s) => { $(s).onchange = run; });
+  // Lexique situé (A4) — modale accessible (piège à focus, Échap, retour du focus).
+  $("#btn-lexique").onclick = openLexique;
+  $("#lex-close").onclick = closeLexique;
+  $("#lexique-modal").addEventListener("mousedown", (e) => {
+    if (e.target.id === "lexique-modal") closeLexique();
+  });
+  if (window.BDDialog)
+    BDDialog.register($("#lexique-modal"),
+      { box: ".modal-box", labelledby: "lexique-title", onClose: closeLexique });
   loadCorpus();
   await loadAlbums();        // options d'album (A et B) avant restauration
   await loadTags();          // options de tag (A et B) avant restauration

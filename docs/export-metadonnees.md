@@ -57,8 +57,10 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   `collection` et **restreint la couverture** à ces albums ;
 - les **catalogues de référence** — personnages, vocabulaire facetté, étiquettes (tags) —
   restent **globaux** (entités canoniques du corpus) ; seuls leurs **liens** vers des régions
-  du périmètre sont comptés/scopés. Le rattachement d'un terme de vocabulaire à une collection
-  (« portée d'appartenance ») reste *à prévoir* (cf. dictionnaire, N7).
+  du périmètre sont comptés/scopés. Depuis **A4 (v17)**, chaque terme de vocabulaire porte sa
+  **portée d'appartenance** (`collection_id` : NULL = global, sinon local) ; l'indicateur
+  **% défini** (`paradonnee.lexique`) est **scopé par appartenance** (global ⊕ local à la
+  collection). Cf. `docs/lexique-situe.md`.
 
 ## Formats produits
 
@@ -78,7 +80,9 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   `parent_id` ; `evenement.activite_id` → `activite.id`). Groupables en `.zip`. Écrits avec un **BOM
   UTF-8** (accents lisibles dans Excel, comme l'export de l'app). Les albums portent aussi
   leurs **contributions** (nom + rôle résolu : bucket DCterms + code MARC) et le catalogue
-  **`contribution_roles`** (vocabulaire contrôlé-ouvert).
+  **`contribution_roles`** (vocabulaire contrôlé-ouvert). Depuis **A4 (v17)**, `vocabulaire` et
+  `tags` portent leur **couche SKOS** (`definition`, `note_portee`, `etat`, `collection_id` ;
+  au niveau dimension `dim_*` et valeur).
 - **Enregistrements — XLSX multi-feuilles** : un onglet par table (dont `tags` et
   `paradonnee`), plus deux onglets de confort — **`fiche`** (le roll-up aplati) et
   **`arbre`** (hiérarchie **repliable** avec les boîtes `x,y,w,h` et un lien « voir »
@@ -93,6 +97,9 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   d'actes), le détail vivant étant dans les tables `activite`/`evenement`. La fiche
   (`description_collection.py`) porte les mêmes indicateurs sous
   `provenance_globale.audit`. Export standardisé : `tools/provenance_export.py` (PROV-O + TEI).
+  Depuis **A4 (v17)**, le bloc **`lexique`** (`database.lexique_resume`) y ajoute la maturité
+  du lexique situé (**% défini**, scopé par appartenance) ; la fiche l'expose sous
+  `vocabulaire.lexique`.
 - **IIIF Presentation 3.0** : Canvas aux dimensions **master**, image (dérivé web)
   peinte dessus, **une Annotation par région** ciblant `canvas#xywh=x,y,w,h`.
 

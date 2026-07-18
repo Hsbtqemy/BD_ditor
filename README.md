@@ -84,8 +84,10 @@ réutilisation / le dépôt Nakala-HAL) : fiche descriptive, enregistrements (CS
 `tools/` hors-app. La **collection** est l'unité de dépôt (`gerer_collections.py`) et les
 albums portent une **paternité** (contributions Zotero-like) + des champs d'édition.
 Notices d'entrepôt **Dublin Core & DataCite** (`crosswalk_depot.py`) et provenance
-**PROV-O / TEI** du journal d'audit (`provenance_export.py`).
-Cf. `docs/export-metadonnees.md`, `docs/provenance-audit.md`.
+**PROV-O / TEI** du journal d'audit (`provenance_export.py`). Le vocabulaire (attributs +
+tags) est **documenté en SKOS** — définition, note de portée, état, portée d'appartenance
+(**lexique situé**, panneau 📖 Lexique sur Exploration).
+Cf. `docs/export-metadonnees.md`, `docs/provenance-audit.md`, `docs/lexique-situe.md`.
 
 ### Tests & qualité
 
@@ -205,6 +207,11 @@ produit quoi* sans inverser la base. Il **survit à la suppression** de sa cible
 (substrat de l'undo), et se sérialise en **PROV-O / TEI**. Cf.
 `docs/provenance-audit.md`.
 
+**Lexique situé** (A4) : le vocabulaire émergent (dimensions, valeurs, tags) porte une
+couche **SKOS** — `definition`, `note_portee` (cadre d'emploi), `etat`
+(`provisoire`→`defini`) et `collection_id` (portée : global ou local à une collection).
+Édité via l'API et le panneau **📖 Lexique** (Exploration). Cf. `docs/lexique-situe.md`.
+
 ## API
 
 | Méthode | Route | Rôle |
@@ -232,6 +239,9 @@ produit quoi* sans inverser la base. Il **survit à la suppression** de sa cible
 | `PUT/DELETE` | `/api/regions/{id}/tokens/{ordre}` | corriger / annuler la correction d'un token |
 | `POST` | `/api/regions/{id}/grammaire/valider` | valider toute la grammaire d'une région |
 | `GET/POST` | `/api/tags` | tags (avec fréquences) |
+| `GET` | `/api/lexique` | lexique situé (dimensions · valeurs · tags) + résumé « % défini » |
+| `PATCH` | `/api/{attributs/dimensions,attributs/valeurs,tags}/{id}/lexique` | documenter un terme : définition / note de portée / état / portée (SKOS) |
+| `GET` | `/api/collections` | collections (unité de dépôt) — sert le menu de portée |
 | `GET` | `/api/recherche?q=&album=&type=&tags=` | recherche FTS5 |
 | `GET` | `/api/recherche/export.csv` | export CSV des résultats de recherche |
 | `GET` | `/api/analyse/frequences?champ=&album=&type=&pos=…` | distribution lemme / POS / morph (alias `/api/analyse/lemmes`) |

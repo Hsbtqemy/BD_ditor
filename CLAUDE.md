@@ -73,7 +73,7 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 16). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 17). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
 
@@ -96,6 +96,10 @@ Invariants :
 ### Journal de provenance / audit (A3, v16)
 
 `journal.py` : couche **append-only** qui qualifie *qui a produit quoi* sans inverser la base. `activite` = un **run** (passe ML, ou session) ; `evenement` = un **acte** atomique immuable (avant/après JSON). Les passes ML sont enveloppées par `journal.passe_ml` (diff des régions → `regions.activite_id` = wasGeneratedBy + événements, **sans coupler** le code pipeline) ; les routes humaines journalisent leurs actes (l'**agent** vient de l'auth via le contextvar `agent_courant`, alimenté par une dépendance FastAPI globale — pas de `request` à threader). `evenement.cible_id` **n'est pas une FK** : le journal **survit à la suppression** de sa cible (substrat de l'undo **D1**). Indicateurs dérivés (`indicateurs_provenance`) dans les exports ; sérialisation **PROV-O / TEI** par `tools/provenance_export.py`. Cf. `docs/provenance-audit.md`.
+
+### Lexique situé (A4, v17)
+
+Couche définitionnelle **SKOS** sur le vocabulaire ÉMERGENT (dimensions, valeurs **et** tags — le même patron « contrôlé-mais-ouvert »). Chaque terme porte `definition` (pour un tag, sa `description` legacy EST la définition), `note_portee` (SKOS `scopeNote` = le « situé »), `etat` (`provisoire`→`defini`, miroir `auto→validé`) et `collection_id` (**portée d'appartenance** : NULL = global, sinon local ; promotion → NULL via `ON DELETE SET NULL`, patron *mentions→entités*). Édition : `PATCH /api/attributs/{dimensions,valeurs}/{id}/lexique` + `PATCH /api/tags/{id}/lexique` (partielle) ; `GET /api/lexique` (read model + **% défini** via `database.lexique_resume`). UI : bouton **📖 Lexique** sur Exploration → modale accessible (`dialog.js`). Exporté en SKOS (records + paradonnée). Cf. `docs/lexique-situe.md`.
 
 ### Concurrence SQLite
 

@@ -25,8 +25,9 @@ from pydantic import BaseModel, Field
 from config import (AUTH_LOGOUT_URL, CIBLES_ATTRIBUT, DERIVATIVES_DIR,
                     ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR,
                     TYPES_REGION, UPOS_TAGS)
-from database import (citations_regions, contributions_album, get_connection, init_db,
-                      numeros_editoriaux, reindex_region, unindex_region)
+from database import (citations_regions, collections, contributions_album, get_connection,
+                      init_db, lexique_resume, numeros_editoriaux, reindex_region,
+                      unindex_region)
 import journal
 from pipeline.backup import make_backup
 from pipeline import jobs
@@ -299,6 +300,15 @@ class DimensionIn(BaseModel):
 
 class ValeurIn(BaseModel):
     valeur: str
+
+
+class LexiqueIn(BaseModel):
+    """Couche définitionnelle SKOS (A4) — mise à jour PARTIELLE (patch). Champ omis = laissé
+    tel quel ; `collection_id: null` explicite = promotion en GLOBAL (patron mentions→entités)."""
+    definition: Optional[str] = None      # SKOS definition (→ tags.description)
+    note_portee: Optional[str] = None     # SKOS scopeNote — le « situé »
+    etat: Optional[str] = None            # 'provisoire' | 'defini'
+    collection_id: Optional[int] = None   # portée d'appartenance ; null = global
 
 
 class AttributIn(BaseModel):
@@ -1461,6 +1471,97 @@ def fusionner_valeur(val_id: int, payload: FusionIn, conn: sqlite3.Connection = 
     conn.execute("DELETE FROM attribut_valeur WHERE id = ?", (val_id,))   # CASCADE purge le reste
     conn.commit()
     return _get_valeur(conn, payload.cible_id)
+
+
+# =========================================================================== #
+# Lexique situé (A4, N7) — couche définitionnelle SKOS sur le vocabulaire émergent
+# =========================================================================== #
+_ETATS_LEXIQUE = ("provisoire", "defini")
+
+
+@app.get("/api/collections")
+def list_collections(conn: sqlite3.Connection = Depends(db)):
+    """Collections (unité de dépôt) + nombre d'albums. Sert le menu « portée » du lexique
+    (et une future UI Collections). La gestion d'écriture reste headless (gerer_collections.py)."""
+    return collections(conn)
+
+
+def _patch_lexique(conn, table, oid, payload, *, col_definition="definition"):
+    """Mise à jour PARTIELLE de la couche définitionnelle (definition/note_portee/etat/
+    collection_id) d'un terme. `col_definition='description'` pour les tags (leur glose EST
+    la définition). Valide l'état et l'existence de la collection de portée. Champ omis =
+    inchangé ; `collection_id: null` explicite = promotion en global."""
+    fields = payload.model_dump(exclude_unset=True)
+    updates = {}
+    if "definition" in fields:
+        updates[col_definition] = fields["definition"]
+    for k in ("note_portee", "etat", "collection_id"):
+        if k in fields:
+            updates[k] = fields[k]
+    if "etat" in updates and updates["etat"] not in _ETATS_LEXIQUE:
+        raise HTTPException(422, f"État invalide : {updates['etat']} (provisoire | defini).")
+    if updates.get("collection_id") is not None and conn.execute(
+            "SELECT 1 FROM collection WHERE id = ?", (updates["collection_id"],)).fetchone() is None:
+        raise HTTPException(404, f"Collection {updates['collection_id']} introuvable.")
+    if updates:
+        cols = ", ".join(f"{k} = ?" for k in updates)
+        conn.execute(f"UPDATE {table} SET {cols} WHERE id = ?", (*updates.values(), oid))
+        conn.commit()
+
+
+@app.get("/api/lexique")
+def get_lexique(conn: sqlite3.Connection = Depends(db)):
+    """Tout le lexique situé pour l'édition : dimensions (→ valeurs) + tags, avec leur couche
+    définitionnelle (definition/note_portee/etat/portée) et le nombre d'usages ; plus le
+    résumé « % défini ». Read model du panneau Lexique."""
+    dims = _rows(conn.execute(
+        "SELECT id, cible, nom, definition, note_portee, etat, collection_id "
+        "FROM attribut_dimension ORDER BY cible, nom"))
+    vals = _rows(conn.execute(
+        "SELECT v.id, v.dimension_id, v.valeur, v.definition, v.note_portee, v.etat, "
+        "       v.collection_id, "
+        "       (SELECT COUNT(*) FROM personnage_attribut pa WHERE pa.valeur_id = v.id) "
+        "       + (SELECT COUNT(*) FROM region_attribut ra WHERE ra.valeur_id = v.id) AS nb_usages "
+        "FROM attribut_valeur v ORDER BY v.valeur"))
+    par_dim = {}
+    for v in vals:
+        par_dim.setdefault(v["dimension_id"], []).append(v)
+    for d in dims:
+        d["valeurs"] = par_dim.get(d["id"], [])
+    tags = _rows(conn.execute(
+        "SELECT t.id, t.label, t.description, t.note_portee, t.etat, t.collection_id, "
+        "       COUNT(at.annotation_id) AS frequence "
+        "FROM tags t LEFT JOIN annotation_tags at ON at.tag_id = t.id "
+        "GROUP BY t.id ORDER BY t.label"))
+    return {"dimensions": dims, "tags": tags, "resume": lexique_resume(conn)}
+
+
+@app.patch("/api/attributs/dimensions/{dim_id}/lexique")
+def patch_dimension_lexique(dim_id: int, payload: LexiqueIn,
+                            conn: sqlite3.Connection = Depends(db)):
+    """Documente une dimension : définition + note de portée + état + portée d'appartenance."""
+    _get_dimension(conn, dim_id)
+    _patch_lexique(conn, "attribut_dimension", dim_id, payload)
+    return _row(conn.execute("SELECT * FROM attribut_dimension WHERE id = ?", (dim_id,)))
+
+
+@app.patch("/api/attributs/valeurs/{val_id}/lexique")
+def patch_valeur_lexique(val_id: int, payload: LexiqueIn,
+                         conn: sqlite3.Connection = Depends(db)):
+    """Documente une valeur canonique (même couche définitionnelle)."""
+    _get_valeur(conn, val_id)
+    _patch_lexique(conn, "attribut_valeur", val_id, payload)
+    return _row(conn.execute("SELECT * FROM attribut_valeur WHERE id = ?", (val_id,)))
+
+
+@app.patch("/api/tags/{tag_id}/lexique")
+def patch_tag_lexique(tag_id: int, payload: LexiqueIn, conn: sqlite3.Connection = Depends(db)):
+    """Documente un tag : sa `description` EST la définition SKOS ; + note de portée, état,
+    portée d'appartenance (même patron que le vocabulaire facetté)."""
+    if conn.execute("SELECT 1 FROM tags WHERE id = ?", (tag_id,)).fetchone() is None:
+        raise HTTPException(404, f"Tag {tag_id} introuvable")
+    _patch_lexique(conn, "tags", tag_id, payload, col_definition="description")
+    return _row(conn.execute("SELECT * FROM tags WHERE id = ?", (tag_id,)))
 
 
 def _affecter(conn, table, col, oid, valeur_id, cible_attendue):

@@ -38,6 +38,9 @@
       </label>
       <label class="muted small"><input type="checkbox" id="f-compare"> ⇄ Comparer deux sous-corpus</label>
       <label class="muted small" title="Inclure les tags posés sur la case parente (sinon, seul le tag propre à la région compte)"><input type="checkbox" id="f-tagscope" checked> tag hérité de la case</label>
+      <span class="nav-spacer"></span>
+      <button id="btn-lexique" class="ghost small" type="button"
+              title="Documenter le vocabulaire : définitions, notes de portée, état (lexique situé SKOS)">📖 Lexique</button>
     </div>
 
     <div class="explo-grid">
@@ -94,9 +97,25 @@
     <div id="dist" class="dist"></div>
     <div id="comparaison" class="comparaison" hidden></div>
   </main>
+
+  <!-- ───────── Lexique situé (A4) — documentation SKOS du vocabulaire (modale) ───────── -->
+  <div id="lexique-modal" hidden>
+    <div class="modal-box lexique-box">
+      <h3 id="lexique-title">Lexique situé</h3>
+      <p class="muted small">Documenter le vocabulaire du corpus : <b>définition</b> (sens),
+        <b>note de portée</b> (cadre d'emploi ici), <b>état</b> (provisoire → défini) et
+        <b>portée</b> (global ou propre à une collection). Réemployable en SKOS à l'export.</p>
+      <div id="lex-resume" class="muted small" role="status" aria-live="polite"></div>
+      <div id="lex-body"></div>
+      <div class="modal-actions">
+        <button id="lex-close" class="ghost small" type="button">Fermer</button>
+      </div>
+    </div>
+  </div>
 </div>
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
+<script src="/static/lib/dialog.js"></script>
 <script src="/static/exploration.js"></script>
 </body>
 </html>

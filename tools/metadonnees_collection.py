@@ -90,8 +90,11 @@ def _cartes(conn, album_ids=None) -> dict:
                                    "date_modification": r["date_modification"]}
                   for r in conn.execute("SELECT region_id, note, date_creation, "
                                         "date_modification FROM annotations" + w_reg)},
-        "tags_cat": {r["label"]: {"couleur": r["couleur"], "description": r["description"]}
-                     for r in conn.execute("SELECT label, couleur, description FROM tags")},
+        "tags_cat": {r["label"]: {"couleur": r["couleur"], "description": r["description"],
+                                  "note_portee": r["note_portee"], "etat": r["etat"],
+                                  "collection_id": r["collection_id"]}
+                     for r in conn.execute("SELECT label, couleur, description, note_portee, "
+                                           "etat, collection_id FROM tags")},
         "nb_planches": {r["album_id"]: r["n"] for r in conn.execute(
             "SELECT album_id, COUNT(*) AS n FROM planches GROUP BY album_id")},
         "ann_tags": _grouper(conn,
@@ -211,19 +214,29 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
     row, album_ids = _resoudre(conn, collection_id)
     c = _cartes(conn, album_ids)
 
+    # Lexique situé (A4) : chaque dimension/valeur porte sa couche définitionnelle SKOS
+    # (definition · note_portee = scopeNote · etat provisoire→défini · collection_id = portée).
     vocab = []
-    for d in conn.execute("SELECT id, cible, nom FROM attribut_dimension ORDER BY cible, nom"):
-        vals = [r["valeur"] for r in conn.execute(
-            "SELECT valeur FROM attribut_valeur WHERE dimension_id = ? ORDER BY valeur",
-            (d["id"],))]
-        vocab.append({"cible": d["cible"], "nom": d["nom"], "valeurs": vals})
+    for d in conn.execute("SELECT id, cible, nom, definition, note_portee, etat, "
+                          "collection_id FROM attribut_dimension ORDER BY cible, nom"):
+        vals = [{"valeur": v["valeur"], "definition": v["definition"],
+                 "note_portee": v["note_portee"], "etat": v["etat"],
+                 "collection_id": v["collection_id"]}
+                for v in conn.execute(
+                    "SELECT valeur, definition, note_portee, etat, collection_id "
+                    "FROM attribut_valeur WHERE dimension_id = ? ORDER BY valeur", (d["id"],))]
+        vocab.append({"cible": d["cible"], "nom": d["nom"], "definition": d["definition"],
+                      "note_portee": d["note_portee"], "etat": d["etat"],
+                      "collection_id": d["collection_id"], "valeurs": vals})
 
     personnages = [{
         "id": p["id"], "nom": p["nom"], "serie": p["serie"], "notes": p["notes"],
         "attributs": _paires(c["perso_attr"].get(p["id"])),
     } for p in conn.execute("SELECT id, nom, serie, notes FROM personnages ORDER BY nom")]
 
-    tags = [{"label": lbl, "couleur": pr["couleur"], "description": pr["description"]}
+    tags = [{"label": lbl, "couleur": pr["couleur"], "description": pr["description"],
+             "note_portee": pr["note_portee"], "etat": pr["etat"],
+             "collection_id": pr["collection_id"]}
             for lbl, pr in sorted(c["tags_cat"].items())]
 
     roles = [{"label": r["label"], "bucket": r["bucket"], "marc": r["marc"]}
@@ -305,6 +318,8 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
             # A3 : indicateurs dérivés du journal de provenance (part machine/humaine, dérive,
             # comptes de runs & d'actes). Le détail est dans les tables `activite`/`evenement`.
             "provenance": journal.indicateurs_provenance(conn, album_ids),
+            # A4 : maturité du lexique situé (% défini), scopée par appartenance à la collection.
+            "lexique": database.lexique_resume(conn, collection_id),
             "a_prevoir": ["undo/restauration depuis le journal (D1)",
                           "export PROV-O au fil de l'eau", "licence & droits par jeu"],
         },
@@ -402,8 +417,9 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
          for rid in sorted(set(c["annot"]) | set(c["ann_tags"]))])
 
     out["tags"] = (
-        ["label", "couleur", "description"],
-        [[lbl, pr["couleur"], pr["description"]] for lbl, pr in sorted(c["tags_cat"].items())])
+        ["label", "couleur", "description", "note_portee", "etat", "collection_id"],
+        [[lbl, pr["couleur"], pr["description"], pr["note_portee"], pr["etat"],
+          pr["collection_id"]] for lbl, pr in sorted(c["tags_cat"].items())])
 
     out["personnages"] = (
         ["id", "nom", "serie", "notes"],
@@ -420,13 +436,19 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
         [[rid, dim, val] for rid, paires in c["region_attr"].items()
          for dim, val in paires])
 
+    # Lexique situé (A4) : dump plat (une ligne par valeur), colonnes SKOS aux DEUX niveaux
+    # (dimension `dim_*` répétée par valeur). Une dimension SANS valeur n'a pas de ligne ici
+    # (dump piloté par les valeurs) mais figure dans les records JSON.
     out["vocabulaire"] = (
-        ["cible", "dimension", "valeur"],
-        [[d["cible"], d["nom"], v["valeur"]]
-         for d in conn.execute("SELECT id, cible, nom FROM attribut_dimension "
-                              "ORDER BY cible, nom")
-         for v in conn.execute("SELECT valeur FROM attribut_valeur "
-                              "WHERE dimension_id = ? ORDER BY valeur", (d["id"],))])
+        ["cible", "dimension", "dim_definition", "dim_note_portee", "dim_etat",
+         "dim_collection_id", "valeur", "definition", "note_portee", "etat", "collection_id"],
+        [[d["cible"], d["nom"], d["definition"], d["note_portee"], d["etat"], d["collection_id"],
+          v["valeur"], v["definition"], v["note_portee"], v["etat"], v["collection_id"]]
+         for d in conn.execute("SELECT id, cible, nom, definition, note_portee, etat, "
+                              "collection_id FROM attribut_dimension ORDER BY cible, nom")
+         for v in conn.execute("SELECT valeur, definition, note_portee, etat, collection_id "
+                              "FROM attribut_valeur WHERE dimension_id = ? ORDER BY valeur",
+                              (d["id"],))])
 
     ov = version_outil(BASE_DIR)              # provenance de l'outil (paradonnée)
     env = environnement()                     # python + versions installées (à l'export)

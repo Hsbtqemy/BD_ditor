@@ -129,3 +129,40 @@ def test_a11y_corpus_modale(page, seeded):
     page.wait_for_timeout(300)
     viol = _audit(page)
     assert not viol, f"Corpus/modale :\n{_fmt(viol)}"
+
+
+def test_a11y_exploration_lexique(page, seeded):
+    """Modale « Lexique situé » (A4) : audite l'a11y du panneau ouvert (piège à focus +
+    labels de formulaire, badge d'état) ET vérifie le round-trip d'édition (une définition
+    saisie dans l'UI est bien persistée via PATCH)."""
+    # Peuple le vocabulaire facetté (dimension + valeur) en plus du tag semé.
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        dim = c.post("/api/attributs/dimensions",
+                     json={"cible": "case", "nom": "registre"}).json()
+        c.post(f"/api/attributs/dimensions/{dim['id']}/valeurs", json={"valeur": "argot"})
+    finally:
+        c.close()
+
+    page.goto(seeded["base"] + "/exploration", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.click("#btn-lexique")
+    page.wait_for_selector("#lexique-modal .lex-term", timeout=3000)
+    page.click("#lexique-modal .lex-term > summary")          # déplie le 1er terme
+    page.wait_for_timeout(200)
+    viol = _audit(page)
+    assert not viol, f"Exploration/lexique :\n{_fmt(viol)}"
+
+    # Round-trip : documenter la 1re dimension via l'UI → persisté.
+    ta = page.locator('#lexique-modal .lex-term textarea[data-f="definition"]').first
+    ta.fill("niveau de langue")
+    ta.blur()
+    page.wait_for_timeout(400)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        lex = c.get("/api/lexique").json()
+    finally:
+        c.close()
+    defs = ([d["definition"] for d in lex["dimensions"]]
+            + [v["definition"] for d in lex["dimensions"] for v in d["valeurs"]])
+    assert "niveau de langue" in defs

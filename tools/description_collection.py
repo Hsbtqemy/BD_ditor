@@ -238,7 +238,9 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                 "audit": journal.indicateurs_provenance(conn, album_ids),
                 "environnement": environnement(),  # python + versions installées (à l'export)
             },
-            "vocabulaire": {"dimensions": dimensions},
+            # A4 : maturité du lexique situé (% défini), scopée par appartenance à la collection.
+            "vocabulaire": {"dimensions": dimensions,
+                            "lexique": database.lexique_resume(conn, collection_id)},
             "droits": {
                 "ouvert": ["géométrie", "structure", "ordre", "citation", "lemme",
                            "pos", "morph", "tags", "notes", "personnages", "attributs",
@@ -437,11 +439,11 @@ CATALOGUE = [
     ("vocabulaire", "valeur", "valeur canonique de l'axe", "humain", "structuré", "SKOS concept", "ouvert"),
     ("vocabulaire", "personnage_attribut", "profil du personnage", "humain", "structuré", "—", "ouvert"),
     ("vocabulaire", "region_attribut", "situation de la case", "humain", "structuré", "—", "ouvert"),
-    ("vocabulaire", "collection_id", "portée d'appartenance", "humain", "absent — à prévoir", "SKOS", "ouvert"),
-    ("vocabulaire", "definition", "sens dimension/valeur", "humain", "absent — à prévoir", "SKOS definition", "ouvert"),
-    ("vocabulaire", "note_portee", "cadre d'emploi", "humain", "absent — à prévoir", "SKOS scopeNote", "ouvert"),
-    ("vocabulaire", "etat_definitionnel", "provisoire→défini", "humain", "absent — à prévoir", "—", "ouvert"),
-    ("vocabulaire", "pct_defini", "part du vocabulaire documenté", "dérivé", "absent — à prévoir", "—", "ouvert"),
+    ("vocabulaire", "collection_id", "portée d'appartenance (NULL=global)", "humain", "structuré (v17)", "SKOS", "ouvert"),
+    ("vocabulaire", "definition", "sens dimension/valeur (tag = description)", "humain", "structuré (v17)", "SKOS definition", "ouvert"),
+    ("vocabulaire", "note_portee", "cadre d'emploi", "humain", "structuré (v17)", "SKOS scopeNote", "ouvert"),
+    ("vocabulaire", "etat_definitionnel", "provisoire→défini", "humain", "structuré (v17)", "—", "ouvert"),
+    ("vocabulaire", "pct_defini", "part du vocabulaire documenté", "dérivé", "dérivé (v17)", "—", "ouvert"),
     ("paradonnee", "nlp_model", "modèle NLP ayant indexé", "paradonnée", "structuré", "PROV", "ouvert"),
     ("paradonnee", "nlp_reindexed_count/_at", "ampleur+date de réindex", "paradonnée", "structuré", "PROV", "ouvert"),
     ("paradonnee", "schema_version", "version du schéma", "système", "structuré", "—", "ouvert"),

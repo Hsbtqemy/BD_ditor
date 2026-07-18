@@ -40,19 +40,19 @@ def _planche(conn, album_id):
 # --------------------------------------------------------------------------- #
 # Schéma & migration
 # --------------------------------------------------------------------------- #
-def test_schema_v16(db_path):
+def test_schema_journal(db_path):
     conn = _lire(db_path)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 16
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
     tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"activite", "evenement"} <= tables
     rcols = {r["name"] for r in conn.execute("PRAGMA table_info(regions)")}
     assert {"activite_id", "touche", "date_modification"} <= rcols
 
 
-def test_migration_v15_vers_v16(tmp_path):
+def test_migration_ajoute_le_journal(tmp_path):
     """Depuis un schéma pré-v16 (regions SANS les colonnes A3, `activite` présente),
     `_migrate` gaté par user_version ajoute `activite_id`/`touche`/`date_modification` et
-    passe en v16 — idempotent (relancer ne rejoue rien)."""
+    porte la base au schéma courant — idempotent (relancer ne rejoue rien)."""
     db = tmp_path / "v15.sqlite"
     conn = sqlite3.connect(db)
     conn.row_factory = sqlite3.Row                       # _migrate lit r["name"]
@@ -63,11 +63,11 @@ def test_migration_v15_vers_v16(tmp_path):
         "CREATE TABLE activite (id INTEGER PRIMARY KEY);"
         "PRAGMA user_version = 15;")
     database._migrate(conn)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 16
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
     rcols = {r["name"] for r in conn.execute("PRAGMA table_info(regions)")}
     assert {"activite_id", "touche", "date_modification"} <= rcols
-    database._migrate(conn)                              # idempotent : court-circuit (déjà v16)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 16
+    database._migrate(conn)                              # idempotent : court-circuit (déjà à jour)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
     conn.close()
 
 
