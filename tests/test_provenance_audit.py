@@ -236,8 +236,9 @@ def test_prov_export_construire(client, album, db_path):
 
 
 def _run_tool(script, db_path, data_dir, *args):
-    env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(data_dir),
-           "PYTHONUTF8": "1"}
+    # Décodage UTF-8 sans PYTHONUTF8 : les tools forcent leur stdout en UTF-8 eux-mêmes
+    # (_commun.forcer_utf8) → ce test exerce le garde de portabilité Windows.
+    env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(data_dir)}
     return subprocess.run([sys.executable, str(REPO_ROOT / "tools" / script), *args],
                           cwd=str(REPO_ROOT), env=env, capture_output=True,
                           text=True, encoding="utf-8")

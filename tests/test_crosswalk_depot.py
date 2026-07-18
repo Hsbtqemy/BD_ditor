@@ -17,11 +17,10 @@ TOOLS = REPO_ROOT / "tools"
 
 
 def _run(script, db_path, data_dir, *args):
-    # PYTHONUTF8=1 force TOUT sous-processus (y compris gerer_collections) à émettre de
-    # l'UTF-8, décodé en UTF-8 → aller-retour robuste sur Windows (console cp1252 sinon),
-    # tout caractère compris (emoji, CJK…).
-    env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(data_dir),
-           "PYTHONUTF8": "1"}
+    # Les tools forcent EUX-MÊMES leur stdout/stderr en UTF-8 (_commun.forcer_utf8) → on
+    # décode en UTF-8 sans PYTHONUTF8, ce qui EXERCE le garde de portabilité Windows (sans
+    # lui, un tool crasherait ici sur un caractère hors cp1252). Cf. tools/_commun.forcer_utf8.
+    env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(data_dir)}
     return subprocess.run([sys.executable, str(TOOLS / script), *args],
                           cwd=str(REPO_ROOT), env=env, capture_output=True,
                           text=True, encoding="utf-8")

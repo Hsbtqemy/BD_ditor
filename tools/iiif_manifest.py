@@ -153,6 +153,8 @@ def _connexion_ro():
 
 
 def main(argv=None) -> int:
+    from _commun import forcer_utf8
+    forcer_utf8()                             # Windows : stdout/stderr en UTF-8 (cp1252 sinon)
     ap = argparse.ArgumentParser(description="Génère des manifests IIIF Presentation 3.0.")
     ap.add_argument("--base-url", default="https://exemple.org/iiif",
                     help="préfixe d'URI des identifiants et des images (défaut : placeholder)")

@@ -215,6 +215,8 @@ def semer(cli):
 
 
 def main() -> int:
+    from _commun import forcer_utf8
+    forcer_utf8()                             # Windows : stdout/stderr en UTF-8 (cp1252 sinon)
     with TestClient(app) as cli:
         semer(cli)
     return 0

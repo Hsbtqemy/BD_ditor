@@ -67,6 +67,8 @@ def raw_probe(url: str, user: str, password: str) -> None:
 
 
 def main() -> int:
+    from _commun import forcer_utf8
+    forcer_utf8()                             # Windows : stdout/stderr en UTF-8 (cp1252 sinon)
     url = os.environ.get("BD_SHAREDOCS_URL", "").strip()
     user = os.environ.get("BD_SHAREDOCS_USER", "").strip()
     password = os.environ.get("BD_SHAREDOCS_PASS") or getpass("Mot de passe ShareDocs : ")

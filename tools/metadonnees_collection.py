@@ -48,7 +48,7 @@ from config import DB_PATH, BASE_DIR  # noqa: E402
 import database  # noqa: E402  (réutilise numeros_editoriaux / citations_regions)
 import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from _commun import (version_outil, environnement, composants,  # noqa: E402  (provenance / env, partagés)
-                     portee_albums)
+                     portee_albums, forcer_utf8)
 
 
 def _grouper(conn, sql, cle=0):
@@ -647,6 +647,7 @@ def _connexion_ro():
 
 
 def main(argv=None) -> int:
+    forcer_utf8()                             # Windows : stdout/stderr en UTF-8 (cp1252 sinon)
     ap = argparse.ArgumentParser(description="Export des métadonnées réelles d'une "
                                              "collection (corpus entier).")
     ap.add_argument("--json", nargs="?", const="-", metavar="FICHIER",

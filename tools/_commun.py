@@ -6,6 +6,19 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
+
+def forcer_utf8() -> None:
+    """Force stdout/stderr en UTF-8. À appeler en tête de `main()` de chaque tool.
+
+    Sur Windows, la console est en cp1252 : `print()` d'un caractère hors cp1252 (« → »,
+    emoji, CJK — p. ex. un résumé PyPI dans le SBOM) lève UnicodeEncodeError. No-op si le
+    flux n'est pas reconfigurable (déjà encapsulé, ou Python < 3.7)."""
+    for flux in (sys.stdout, sys.stderr):
+        try:
+            flux.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
 # Racine du dépôt (tools/_commun.py → dépôt) et clone Kumiko vendu dedans.
 _REPO = Path(__file__).resolve().parent.parent
 _KUMIKO_DIR = _REPO / "lib" / "kumiko"        # clone git (cf. requirements-kumiko.txt)

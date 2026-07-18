@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import database  # noqa: E402  (collection_row / collection_album_ids — palier collection)
 import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from config import DB_PATH, BASE_DIR  # noqa: E402
-from _commun import version_outil, environnement, portee_albums  # noqa: E402  (provenance / env / portée)
+from _commun import version_outil, environnement, portee_albums, forcer_utf8  # noqa: E402  (provenance / env / portée / stdout)
 
 
 # --------------------------------------------------------------------------- #
@@ -477,6 +477,7 @@ def _connexion_ro():
 
 
 def main(argv=None) -> int:
+    forcer_utf8()                             # Windows : stdout/stderr en UTF-8 (cp1252 sinon)
     ap = argparse.ArgumentParser(description="Fiche de description des métadonnées "
                                              "d'une collection (corpus entier).")
     ap.add_argument("--json", nargs="?", const="-", metavar="FICHIER",

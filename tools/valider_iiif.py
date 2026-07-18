@@ -243,6 +243,8 @@ def _strict(doc, rap) -> bool:
 
 
 def main(argv=None) -> int:
+    from _commun import forcer_utf8
+    forcer_utf8()                             # Windows : stdout/stderr en UTF-8 (cp1252 sinon)
     ap = argparse.ArgumentParser(
         description="Validateur IIIF Presentation 3.0 : structurel (toujours) + strict "
                     "iiif-prezi3 (auto si installé).")

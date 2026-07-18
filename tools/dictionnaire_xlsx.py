@@ -163,6 +163,8 @@ def ecrire(sections, chemin: str) -> None:
 
 
 def main(argv=None) -> int:
+    from _commun import forcer_utf8
+    forcer_utf8()                             # Windows : stdout/stderr en UTF-8 (cp1252 sinon)
     ap = argparse.ArgumentParser(description="Dictionnaire de métadonnées → classeur XLSX.")
     ap.add_argument("--out", default=str(REPO / "docs" / "exemples"
                                         / "dictionnaire-metadonnees.xlsx"),

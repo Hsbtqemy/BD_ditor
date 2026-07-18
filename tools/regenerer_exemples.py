@@ -39,6 +39,8 @@ def _run_capture(env, *args):
 
 
 def main() -> int:
+    from _commun import forcer_utf8
+    forcer_utf8()                             # Windows : stdout en UTF-8 (le « → » de _run sinon)
     EXEMPLES.mkdir(parents=True, exist_ok=True)
     # Repartir propre pour les dossiers ENTIÈREMENT générés (évite les fichiers périmés).
     for sous in ("tables-demo", "iiif", "iiif-collection"):
