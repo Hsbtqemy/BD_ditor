@@ -9,9 +9,9 @@ import database
 from conftest import direct_query
 
 
-def test_schema_version_17(data_dir, db_path):
-    assert database.SCHEMA_VERSION == 17
-    assert direct_query(db_path, "PRAGMA user_version")[0]["user_version"] == 17
+def test_schema_version_18(data_dir, db_path):
+    assert database.SCHEMA_VERSION == 18
+    assert direct_query(db_path, "PRAGMA user_version")[0]["user_version"] == 18
 
 
 def test_tables_ann2_existent(data_dir):

@@ -73,7 +73,7 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 17). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 18). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
 
@@ -100,6 +100,10 @@ Invariants :
 ### Lexique situé (A4, v17)
 
 Couche définitionnelle **SKOS** sur le vocabulaire ÉMERGENT (dimensions, valeurs **et** tags — le même patron « contrôlé-mais-ouvert »). Chaque terme porte `definition` (pour un tag, sa `description` legacy EST la définition), `note_portee` (SKOS `scopeNote` = le « situé »), `etat` (`provisoire`→`defini`, miroir `auto→validé`) et `collection_id` (**portée d'appartenance** : NULL = global, sinon local ; promotion → NULL via `ON DELETE SET NULL`, patron *mentions→entités*). Édition : `PATCH /api/attributs/{dimensions,valeurs}/{id}/lexique` + `PATCH /api/tags/{id}/lexique` (partielle) ; `GET /api/lexique` (read model + **% défini** via `database.lexique_resume`). UI : bouton **📖 Lexique** sur Exploration → modale accessible (`dialog.js`). Exporté en SKOS (records + paradonnée). Cf. `docs/lexique-situe.md`.
+
+### Alignement d'autorité (A5, v18)
+
+Relie une **entité personnage** à des référentiels externes (`personnage_alignement` : personnage → 0..N URI Wikidata/VIAF/IdRef…, chacune un `skos:exactMatch`). `source` **auto-détectée** depuis l'hôte de l'URI (contrôlé-ouvert ; NULL si inconnu). `CASCADE` à la suppression ; la **fusion** de personnages recolle les alignements (dédup par URI). Édition : `GET/POST/DELETE /api/personnages/{id}/alignements` + UI dans le **panneau Personnage** de la Visionneuse (puces-liens + ajout d'URI, atteignable via locuteur ET boîte personnage). Export : `personnages.alignements[]` + table CSV + indicateur `% aligné`. Les **contributeurs** restent hors périmètre (chaînes non-entités → promotion requise d'abord, dormant). Cf. `docs/alignement-autorite.md`.
 
 ### Concurrence SQLite
 

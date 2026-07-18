@@ -293,6 +293,12 @@ class FusionIn(BaseModel):
     cible_id: int   # personnage canonique dans lequel fusionner le doublon
 
 
+class AlignementIn(BaseModel):
+    """Alignement d'autorité (A5) : URI d'un référentiel externe (skos:exactMatch)."""
+    uri: str
+    source: Optional[str] = None   # 'wikidata'|'viaf'|'idref'… ; auto-détecté si absent
+
+
 class DimensionIn(BaseModel):
     cible: str      # 'personnage' | 'case'
     nom: str
@@ -1252,9 +1258,76 @@ def fusionner_personnage(personnage_id: int, payload: FusionIn,
     conn.execute("INSERT OR IGNORE INTO personnage_attribut (personnage_id, valeur_id) "
                  "SELECT ?, valeur_id FROM personnage_attribut WHERE personnage_id = ?",
                  (payload.cible_id, personnage_id))
+    # alignements d'autorité (A5) : mêmes règles — dédupliqués par (personnage_id, uri).
+    conn.execute("INSERT OR IGNORE INTO personnage_alignement (personnage_id, source, uri) "
+                 "SELECT ?, source, uri FROM personnage_alignement WHERE personnage_id = ?",
+                 (payload.cible_id, personnage_id))
     conn.execute("DELETE FROM personnages WHERE id = ?", (personnage_id,))
     conn.commit()
     return _get_personnage(conn, payload.cible_id)
+
+
+# --- Alignement d'autorité (A5, N6) : personnage → référentiel externe (skos:exactMatch) ---
+_AUTORITES = {                       # hôte → étiquette de source (auto-détection)
+    "wikidata.org": "wikidata", "viaf.org": "viaf", "idref.fr": "idref",
+    "isni.org": "isni", "data.bnf.fr": "bnf", "id.loc.gov": "loc", "d-nb.info": "gnd",
+}
+
+
+def _source_autorite(uri: str) -> Optional[str]:
+    """Devine l'autorité depuis l'hôte de l'URI (Wikidata/VIAF/IdRef…) ; None si inconnu
+    (l'alignement reste valide, `source` non renseignée)."""
+    from urllib.parse import urlparse
+    host = (urlparse(uri).hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    for cle, src in _AUTORITES.items():
+        if host == cle or host.endswith("." + cle):
+            return src
+    return None
+
+
+def _alignements_de(conn, personnage_id):
+    return _rows(conn.execute(
+        "SELECT id, source, uri, date_creation FROM personnage_alignement "
+        "WHERE personnage_id = ? ORDER BY id", (personnage_id,)))
+
+
+@app.get("/api/personnages/{personnage_id}/alignements")
+def list_alignements(personnage_id: int, conn: sqlite3.Connection = Depends(db)):
+    """Alignements d'autorité d'un personnage (skos:exactMatch vers Wikidata/VIAF/IdRef…)."""
+    _get_personnage(conn, personnage_id)
+    return _alignements_de(conn, personnage_id)
+
+
+@app.post("/api/personnages/{personnage_id}/alignements", status_code=201)
+def add_alignement(personnage_id: int, payload: AlignementIn,
+                   conn: sqlite3.Connection = Depends(db)):
+    """Aligne un personnage sur une URI d'autorité. `source` auto-détectée depuis l'URI si
+    absente. Idempotent : re-poster la même URI met à jour la source, sans doublon."""
+    _get_personnage(conn, personnage_id)
+    uri = (payload.uri or "").strip()
+    if not (uri.startswith("http://") or uri.startswith("https://")):
+        raise HTTPException(422, "L'alignement doit être une URI http(s).")
+    source = (payload.source or "").strip() or _source_autorite(uri)
+    conn.execute(
+        "INSERT INTO personnage_alignement (personnage_id, source, uri) VALUES (?, ?, ?) "
+        "ON CONFLICT(personnage_id, uri) DO UPDATE SET source = excluded.source",
+        (personnage_id, source, uri))
+    conn.commit()
+    return _row(conn.execute(
+        "SELECT id, source, uri, date_creation FROM personnage_alignement "
+        "WHERE personnage_id = ? AND uri = ?", (personnage_id, uri)))
+
+
+@app.delete("/api/personnages/{personnage_id}/alignements/{alignement_id}", status_code=204)
+def delete_alignement(personnage_id: int, alignement_id: int,
+                      conn: sqlite3.Connection = Depends(db)):
+    cur = conn.execute("DELETE FROM personnage_alignement WHERE id = ? AND personnage_id = ?",
+                       (alignement_id, personnage_id))
+    if not cur.rowcount:
+        raise HTTPException(404, f"Alignement {alignement_id} introuvable")
+    conn.commit()
 
 
 @app.get("/api/regions/{region_id}/locuteur")

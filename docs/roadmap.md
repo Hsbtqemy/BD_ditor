@@ -29,11 +29,14 @@ Beaucoup est **livré** — l'ouvert ci-dessous est ce qui *reste*, pas l'ensemb
   révision git + SBOM), droits **descriptifs**, **palier Collection (v14)**, **descriptif N0
   Zotero-like (v15)** + **crosswalk DC/DataCite (A2)**, le **journal de provenance/audit
   (v16, A3)** — `activite`/`evenement` append-only, indicateurs de dérive, export PROV-O/TEI —,
-  et le **lexique situé SKOS (v17, A4)** — définitions/notes de portée/état/portée sur le
-  vocabulaire (dimensions·valeurs·tags), UI 📖 Lexique, indicateur % défini.
+  le **lexique situé SKOS (v17, A4)** — définitions/notes de portée/état/portée sur le
+  vocabulaire (dimensions·valeurs·tags), UI 📖 Lexique, indicateur % défini —, et
+  l'**alignement d'autorité (v18, A5)** — personnages → URI Wikidata/VIAF/IdRef
+  (`skos:exactMatch`), UI panneau Personnage, indicateur % aligné.
   Cf. [`docs/export-metadonnees.md`](export-metadonnees.md),
   [`docs/dictionnaire-metadonnees.md`](dictionnaire-metadonnees.md),
-  [`docs/provenance-audit.md`](provenance-audit.md), [`docs/lexique-situe.md`](lexique-situe.md).
+  [`docs/provenance-audit.md`](provenance-audit.md), [`docs/lexique-situe.md`](lexique-situe.md),
+  [`docs/alignement-autorite.md`](alignement-autorite.md).
 
 ---
 
@@ -49,7 +52,7 @@ Beaucoup est **livré** — l'ouvert ci-dessous est ce qui *reste*, pas l'ensemb
 | ~~**A2**~~ | ✅ **Fait 2026-07-17** — **Crosswalk Dublin Core & DataCite** : `tools/crosswalk_depot.py` (paternité Zotero, notices album + collection, DC JSON-LD + DataCite JSON/XML, garde-fou champs obligatoires ; spec `docs/crosswalk-depot.md`). Rend le dépôt *machine-ready* | M | complète l'export descriptif ; DOI frappé par l'entrepôt |
 | ~~**A3**~~ | ✅ **Fait 2026-07-17 (v16)** — **Journal de provenance / audit (N8/N2)** : `activite` (runs) + `evenement` (append-only, avant/après) + `regions.activite_id`/`touche`/`date_modification`, câblés aux passes ML (`journal.passe_ml`) et aux routes humaines (agent capté par contextvar depuis l'auth) ; indicateurs dérivés (`indicateurs_provenance`) dans la paradonnée ; export **PROV-O** + TEI `revisionDesc` (`tools/provenance_export.py`). Le journal **survit à la suppression** → **débloque D1 (undo)**. Cf. `docs/provenance-audit.md` | L | qualifie *qui a produit quoi* ; substrat commun avec D1 |
 | ~~**A4**~~ | ✅ **Fait 2026-07-17 (v17)** — **Lexique situé SKOS (N7)** : `definition`, `note_portee`, état `provisoire→défini`, portée `collection_id` sur dimensions · valeurs · **tags** ; API `PATCH …/lexique` + **UI** (📖 Lexique / Exploration, modale axe-clean) ; indicateur « % défini » (`lexique_resume`) dans les exports. Boucle complète schéma + API + export + UI. Cf. `docs/lexique-situe.md` | M | vocabulaire réutilisable et documenté |
-| A5 | **Alignement d'autorité (N6)** — `personnages` → URI Wikidata / VIAF / IdRef (`skos:exactMatch`) | M | interopérabilité des entités |
+| ~~**A5**~~ | ✅ **Fait 2026-07-18 (v18)** — **Alignement d'autorité (N6)** : table `personnage_alignement` (personnage → 0..N URI Wikidata/VIAF/IdRef, `skos:exactMatch`, source auto-détectée) ; API + **UI** (panneau Personnage) ; export (`alignements[]`, table CSV, indicateur % aligné). Fusion recolle les alignements. Cf. `docs/alignement-autorite.md` | M | interopérabilité des entités |
 | A6 | **Matériel (N1)** — `dpi`, `mode` colorimétrique, dimensions physiques, source de numérisation | S–M | complétude (PREMIS / DC:format) |
 
 *Dormants (déclenchables plus tard) : gel versionné + PID/DOI au niveau collection,
@@ -112,9 +115,10 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 1. **[Cap] Piste A — dépôt utilisable** : ~~**A1** (descriptif N0)~~ ✅ **fait (v15)** →
    ~~**A2** (crosswalk DC/DataCite)~~ ✅ **fait (2026-07-17)** → ~~**A3** (journal de
    provenance)~~ ✅ **fait (v16)** → ~~**A4** (lexique situé SKOS)~~ ✅ **fait (v17,
-   2026-07-17)** → **A5** (alignement d'autorité `skos:exactMatch`) devient le prochain cran.
-   Une collection est déposable (DOI frappé par l'entrepôt), sa provenance est tracée/exportable
-   (PROV-O), et son vocabulaire est documenté (SKOS).
+   2026-07-17)** → ~~**A5** (alignement d'autorité)~~ ✅ **fait (v18, 2026-07-18)** → **A6**
+   (matériel : dpi/mode/dimensions) devient le prochain — et dernier — cran de la piste.
+   Une collection est déposable (DOI frappé par l'entrepôt), sa provenance tracée (PROV-O),
+   son vocabulaire documenté (SKOS) et ses entités réconciliables (skos:exactMatch).
 2. ~~**D2** (gating `_migrate`)~~ — ✅ **fait 2026-07-16**, avant de toucher au schéma en A1.
 3. **Ouvrir la décision B1** en parallèle (vocabulaire émotions) — elle exige une discussion
    d'équipe *en amont*, autant l'amorcer tôt.

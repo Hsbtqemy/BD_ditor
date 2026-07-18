@@ -25,9 +25,9 @@ def _lire(db_path):
 # --------------------------------------------------------------------------- #
 # Schéma & migration
 # --------------------------------------------------------------------------- #
-def test_schema_v17(db_path):
+def test_schema_lexique(db_path):
     conn = _lire(db_path)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 17
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
     for t in ("attribut_dimension", "attribut_valeur"):
         cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({t})")}
         assert {"definition", "note_portee", "etat", "collection_id"} <= cols

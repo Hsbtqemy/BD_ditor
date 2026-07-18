@@ -192,6 +192,15 @@
                 <div id="perso-attr-suggest" class="tag-suggest" hidden></div>
               </div>
             </div>
+            <!-- Alignement d'autorité (A5) — relie l'entité à un référentiel externe (skos:exactMatch) -->
+            <div id="loc-align-section" hidden>
+              <div class="attr-label muted small">Autorité (référentiels externes)</div>
+              <div id="loc-align-current" class="loc-current"></div>
+              <div class="tag-input-wrap">
+                <input type="text" id="loc-align-input" placeholder="URI Wikidata / VIAF / IdRef…"
+                       autocomplete="off" aria-label="Aligner le personnage sur une URI d'autorité">
+              </div>
+            </div>
           </div>
           <!-- Personnage (qui est montré) — pour les boîtes personnage : identité + profil -->
           <div id="perso-section" hidden>
@@ -210,6 +219,15 @@
                 <input type="text" id="perso-profil-input" placeholder="dimension : valeur…"
                        autocomplete="off" aria-label="Ajouter un attribut de profil au personnage">
                 <div id="perso-profil-suggest" class="tag-suggest" hidden></div>
+              </div>
+            </div>
+            <!-- Alignement d'autorité (A5) — même entité corpus, atteignable depuis la boîte -->
+            <div id="perso-align-section" hidden>
+              <div class="attr-label muted small">Autorité (référentiels externes)</div>
+              <div id="perso-align-current" class="loc-current"></div>
+              <div class="tag-input-wrap">
+                <input type="text" id="perso-align-input" placeholder="URI Wikidata / VIAF / IdRef…"
+                       autocomplete="off" aria-label="Aligner le personnage sur une URI d'autorité">
               </div>
             </div>
           </div>

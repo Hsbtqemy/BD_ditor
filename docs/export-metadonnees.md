@@ -74,7 +74,8 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   (case ⊃ bulle) → tokens` ; personnages et vocabulaire sortis une fois, référencés par nom.
 - **Enregistrements — CSV par niveau** : `collection`, `albums` (avec les champs d'édition
   N0), `contributions`, `contribution_roles`, `planches`, `regions`, `tokens`,
-  `annotations`, `tags`, `personnages`, `personnage_attributs`, `region_attributs`,
+  `annotations`, `tags`, `personnages`, `personnage_attributs`, **`personnage_alignements`**
+  (alignement d'autorité A5), `region_attributs`,
   `vocabulaire`, `paradonnee`, **`activite`** + **`evenement`** (journal d'audit A3, grain
   corpus) — dump relationnel recollable par les clés (`album_id`, `planche_id`, `region_id`,
   `parent_id` ; `evenement.activite_id` → `activite.id`). Groupables en `.zip`. Écrits avec un **BOM
@@ -82,7 +83,9 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   leurs **contributions** (nom + rôle résolu : bucket DCterms + code MARC) et le catalogue
   **`contribution_roles`** (vocabulaire contrôlé-ouvert). Depuis **A4 (v17)**, `vocabulaire` et
   `tags` portent leur **couche SKOS** (`definition`, `note_portee`, `etat`, `collection_id` ;
-  au niveau dimension `dim_*` et valeur).
+  au niveau dimension `dim_*` et valeur) ; depuis **A5 (v18)**, chaque personnage porte ses
+  **alignements d'autorité** (`alignements: [{source, uri}]`, chaque `uri` = un
+  `skos:exactMatch`) et le roll-up expose `personnages.avec_alignement_autorite` + `pct_aligne`.
 - **Enregistrements — XLSX multi-feuilles** : un onglet par table (dont `tags` et
   `paradonnee`), plus deux onglets de confort — **`fiche`** (le roll-up aplati) et
   **`arbre`** (hiérarchie **repliable** avec les boîtes `x,y,w,h` et un lien « voir »

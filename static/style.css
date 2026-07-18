@@ -561,6 +561,9 @@ button { font-family: inherit; }
 }
 .tag-chip .x { cursor: pointer; opacity: .7; }
 .tag-chip .x:hover { opacity: 1; color: var(--ink-red); }
+/* Lien d'alignement d'autorité (A5) dans une puce : accent AA dans les deux thèmes. */
+.tag-chip a { color: var(--accent-blue); text-decoration: none; font-weight: 600; }
+.tag-chip a:hover { text-decoration: underline; }
 .tag-input-wrap { position: relative; }
 .loc-current { margin: 4px 0 8px; min-height: 22px; }
 .attr-label { margin: 8px 0 2px; }

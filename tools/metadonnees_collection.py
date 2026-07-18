@@ -86,6 +86,9 @@ def _cartes(conn, album_ids=None) -> dict:
             "SELECT pa.personnage_id, d.nom, v.valeur FROM personnage_attribut pa "
             "JOIN attribut_valeur v ON v.id = pa.valeur_id "
             "JOIN attribut_dimension d ON d.id = v.dimension_id ORDER BY d.nom, v.valeur"),
+        # A5 : alignements d'autorité (skos:exactMatch) par personnage — {pid: [(source, uri)]}.
+        "perso_align": _grouper(conn,
+            "SELECT personnage_id, source, uri FROM personnage_alignement ORDER BY id"),
         "annot": {r["region_id"]: {"note": r["note"], "date_creation": r["date_creation"],
                                    "date_modification": r["date_modification"]}
                   for r in conn.execute("SELECT region_id, note, date_creation, "
@@ -232,6 +235,8 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
     personnages = [{
         "id": p["id"], "nom": p["nom"], "serie": p["serie"], "notes": p["notes"],
         "attributs": _paires(c["perso_attr"].get(p["id"])),
+        # A5 : alignements d'autorité (skos:exactMatch vers Wikidata/VIAF/IdRef…).
+        "alignements": [{"source": s, "uri": u} for s, u in c["perso_align"].get(p["id"], [])],
     } for p in conn.execute("SELECT id, nom, serie, notes FROM personnages ORDER BY nom")]
 
     tags = [{"label": lbl, "couleur": pr["couleur"], "description": pr["description"],
@@ -430,6 +435,12 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
         ["personnage_id", "dimension", "valeur"],
         [[pid, dim, val] for pid, paires in c["perso_attr"].items()
          for dim, val in paires])
+
+    # A5 : alignements d'autorité (skos:exactMatch) — un personnage → 0..N URI de référentiel.
+    out["personnage_alignements"] = (
+        ["personnage_id", "source", "uri"],
+        [[pid, src, uri] for pid, paires in c["perso_align"].items()
+         for src, uri in paires])
 
     out["region_attributs"] = (
         ["region_id", "dimension", "valeur"],

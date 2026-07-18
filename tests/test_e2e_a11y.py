@@ -166,3 +166,32 @@ def test_a11y_exploration_lexique(page, seeded):
     defs = ([d["definition"] for d in lex["dimensions"]]
             + [v["definition"] for d in lex["dimensions"] for v in d["valeurs"]])
     assert "niveau de langue" in defs
+
+
+def test_a11y_visionneuse_alignement(page, seeded):
+    """Panneau Personnage → alignement d'autorité (A5) : audite l'a11y de la section ouverte
+    (puce-lien + champ) ET vérifie le round-trip (URI saisie dans l'UI → persistée)."""
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        p = c.post("/api/personnages", json={"nom": "Tournesol"}).json()
+        c.put(f"/api/regions/{seeded['region']}/locuteur", json={"personnage_id": p["id"]})
+    finally:
+        c.close()
+    page.goto(seeded["base"] + SURFACES["visionneuse"](seeded), wait_until="networkidle")
+    page.wait_for_timeout(700)
+    page.click('.mode-btn[data-mode="annotation"]')
+    page.wait_for_selector("#loc-align-section:not([hidden])", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Visionneuse/alignement :\n{_fmt(viol)}"
+    # Round-trip : saisir une URI dans l'UI → alignement persisté (source auto-détectée).
+    inp = page.locator("#loc-align-input")
+    inp.fill("https://www.wikidata.org/wiki/Q42")
+    inp.press("Enter")
+    page.wait_for_timeout(400)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        al = c.get(f"/api/personnages/{p['id']}/alignements").json()
+    finally:
+        c.close()
+    assert any(a["uri"] == "https://www.wikidata.org/wiki/Q42" and a["source"] == "wikidata"
+               for a in al)

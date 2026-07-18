@@ -86,8 +86,11 @@ albums portent une **paternité** (contributions Zotero-like) + des champs d'éd
 Notices d'entrepôt **Dublin Core & DataCite** (`crosswalk_depot.py`) et provenance
 **PROV-O / TEI** du journal d'audit (`provenance_export.py`). Le vocabulaire (attributs +
 tags) est **documenté en SKOS** — définition, note de portée, état, portée d'appartenance
-(**lexique situé**, panneau 📖 Lexique sur Exploration).
-Cf. `docs/export-metadonnees.md`, `docs/provenance-audit.md`, `docs/lexique-situe.md`.
+(**lexique situé**, panneau 📖 Lexique sur Exploration) ; les **entités personnages** sont
+**alignées sur des référentiels** (Wikidata/VIAF/IdRef, `skos:exactMatch`) via le panneau
+Personnage.
+Cf. `docs/export-metadonnees.md`, `docs/provenance-audit.md`, `docs/lexique-situe.md`,
+`docs/alignement-autorite.md`.
 
 ### Tests & qualité
 
@@ -212,6 +215,10 @@ couche **SKOS** — `definition`, `note_portee` (cadre d'emploi), `etat`
 (`provisoire`→`defini`) et `collection_id` (portée : global ou local à une collection).
 Édité via l'API et le panneau **📖 Lexique** (Exploration). Cf. `docs/lexique-situe.md`.
 
+**Alignement d'autorité** (A5) : `personnage_alignement` relie une entité personnage à
+des référentiels externes (Wikidata/VIAF/IdRef…, `skos:exactMatch`, source auto-détectée).
+Édité dans le panneau **Personnage** de la Visionneuse. Cf. `docs/alignement-autorite.md`.
+
 ## API
 
 | Méthode | Route | Rôle |
@@ -242,6 +249,7 @@ couche **SKOS** — `definition`, `note_portee` (cadre d'emploi), `etat`
 | `GET` | `/api/lexique` | lexique situé (dimensions · valeurs · tags) + résumé « % défini » |
 | `PATCH` | `/api/{attributs/dimensions,attributs/valeurs,tags}/{id}/lexique` | documenter un terme : définition / note de portée / état / portée (SKOS) |
 | `GET` | `/api/collections` | collections (unité de dépôt) — sert le menu de portée |
+| `GET/POST/DELETE` | `/api/personnages/{id}/alignements[/{aid}]` | alignement d'autorité : personnage → URI Wikidata/VIAF/IdRef (`skos:exactMatch`) |
 | `GET` | `/api/recherche?q=&album=&type=&tags=` | recherche FTS5 |
 | `GET` | `/api/recherche/export.csv` | export CSV des résultats de recherche |
 | `GET` | `/api/analyse/frequences?champ=&album=&type=&pos=…` | distribution lemme / POS / morph (alias `/api/analyse/lemmes`) |

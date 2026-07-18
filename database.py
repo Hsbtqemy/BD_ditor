@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 
 # --------------------------------------------------------------------------- #
@@ -205,6 +205,20 @@ CREATE TABLE IF NOT EXISTS personnage_presence (
     date_creation  TEXT DEFAULT (datetime('now'))
 );
 
+-- ALIGNEMENT D'AUTORITÉ (v18, A5, N6) — relie une entité personnage à des référentiels
+-- externes (Wikidata / VIAF / IdRef…) : un personnage → 0..N URI, chacune un
+-- `skos:exactMatch`. `source` = l'autorité (auto-détectée depuis l'URI, contrôlé-ouvert).
+-- Rend les entités interopérables (réconciliation, réutilisation FAIR). Cf.
+-- docs/alignement-autorite.md.
+CREATE TABLE IF NOT EXISTS personnage_alignement (
+    id             INTEGER PRIMARY KEY,
+    personnage_id  INTEGER NOT NULL REFERENCES personnages(id) ON DELETE CASCADE,
+    source         TEXT,                          -- 'wikidata' | 'viaf' | 'idref' | … (auto)
+    uri            TEXT NOT NULL,
+    date_creation  TEXT DEFAULT (datetime('now')),
+    UNIQUE(personnage_id, uri)
+);
+
 -- Dimension d'attribut (un AXE émergent). `cible` = à quoi elle s'applique :
 -- 'personnage' (profil sociolinguistique du locuteur) ou 'case' (situation de scène).
 CREATE TABLE IF NOT EXISTS attribut_dimension (
@@ -366,6 +380,7 @@ CREATE INDEX IF NOT EXISTS idx_regions_activite   ON regions(activite_id);
 CREATE INDEX IF NOT EXISTS idx_dim_collection     ON attribut_dimension(collection_id);
 CREATE INDEX IF NOT EXISTS idx_val_collection     ON attribut_valeur(collection_id);
 CREATE INDEX IF NOT EXISTS idx_tags_collection    ON tags(collection_id);
+CREATE INDEX IF NOT EXISTS idx_alignement_perso   ON personnage_alignement(personnage_id);
 -- NB : l'unicité (album_id, numero) des planches (DB-1) est posée en MIGRATION
 -- (idx_planches_album_numero), pas ici : sa création doit suivre un dédoublonnage
 -- d'éventuelles données préexistantes, qui ne peut avoir lieu qu'après SCHEMA_SQL.
@@ -558,6 +573,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if a_collection and "collection_id" not in cols:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN collection_id INTEGER "
                          "REFERENCES collection(id) ON DELETE SET NULL")
+
+    # v17 → v18 : alignement d'autorité (A5, N6) — table `personnage_alignement` (NOUVELLE,
+    # créée par SCHEMA_SQL CREATE … IF NOT EXISTS) → aucune donnée à migrer, juste acter la
+    # version. Cf. docs/alignement-autorite.md.
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 

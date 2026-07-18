@@ -165,6 +165,8 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     loc_liens = _un(conn, "SELECT COUNT(*) FROM bulle_locuteur" + W_tok)
     loc_distinct = _un(conn, "SELECT COUNT(DISTINCT personnage_id) FROM bulle_locuteur" + W_tok)
     pres_liens = _un(conn, "SELECT COUNT(*) FROM personnage_presence" + W_tok)
+    # A5 : personnages alignés sur ≥1 autorité (skos:exactMatch) — catalogue global.
+    perso_alignes = _un(conn, "SELECT COUNT(DISTINCT personnage_id) FROM personnage_alignement")
 
     # --- Vocabulaire facetté (catalogue global ; poses `ra` scopées) ------- #
     dimensions = []
@@ -226,7 +228,8 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                                 "poses": poses},
                 "personnages": {"total": perso, "locuteurs_distincts": loc_distinct,
                                 "liens_locuteur": loc_liens, "liens_presence": pres_liens,
-                                "avec_alignement_autorite": None},
+                                "avec_alignement_autorite": perso_alignes,
+                                "pct_aligne": _pct(perso_alignes, perso)},
             },
             "provenance_globale": {
                 "geometrie": sources,
@@ -433,7 +436,7 @@ CATALOGUE = [
     ("personnage", "notes", "note libre", "humain", "libre", "—", "ouvert"),
     ("personnage", "bulle_locuteur", "qui parle", "humain", "structuré", "—", "ouvert"),
     ("personnage", "personnage_presence", "qui est montré", "humain", "structuré", "—", "ouvert"),
-    ("personnage", "alignement_autorite", "lien vers référentiel", "humain", "absent — à prévoir", "SKOS exactMatch", "ouvert"),
+    ("personnage", "alignement_autorite", "lien vers référentiel (Wikidata/VIAF/IdRef)", "humain", "structuré (v18)", "SKOS exactMatch", "ouvert"),
     ("vocabulaire", "dimension.cible", "à quoi s'applique l'axe", "humain", "structuré", "—", "ouvert"),
     ("vocabulaire", "dimension.nom", "axe (registre, origine…)", "humain", "structuré", "SKOS", "ouvert"),
     ("vocabulaire", "valeur", "valeur canonique de l'axe", "humain", "structuré", "SKOS concept", "ouvert"),

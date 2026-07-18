@@ -6,7 +6,7 @@
 > *dérivé*, ou *encore à prévoir*. Document de référence pour la réutilisation, la
 > qualification du travail (paradonnée) et le futur dépôt (Nakala / HAL).
 >
-> **Périmètre.** Documente le **réel** (schéma v17) **et** les **champs à prévoir** qu'un
+> **Périmètre.** Documente le **réel** (schéma v18) **et** les **champs à prévoir** qu'un
 > dépôt de qualité bibliographique voudra. Ne fige aucun plan : c'est un inventaire, pas
 > un PGD. Voir aussi `personnages-et-attribution.md`, `numerotation-et-citation.md`,
 > `correction-grammaticale.md`.
@@ -256,7 +256,8 @@ tien, donc ouvrable.
 ## Niveau 6 — Entités personnages
 
 Sources : `personnages` (entité canonique **corpus**), `bulle_locuteur` (qui parle),
-`personnage_presence` (qui est montré). Cf. `personnages-et-attribution.md`.
+`personnage_presence` (qui est montré), `personnage_alignement` (référentiels externes, v18).
+Cf. `personnages-et-attribution.md`, `alignement-autorite.md`.
 
 | Élément | Qualifie | Forme & valeurs | Provenance | Statut | Standard | Ouvrable ? |
 |---|---|---|---|---|---|---|
@@ -265,7 +266,8 @@ Sources : `personnages` (entité canonique **corpus**), `bulle_locuteur` (qui pa
 | `personnages.notes` | note libre sur l'entité | texte | humain | libre | — | ouvert |
 | `bulle_locuteur` | **qui parle** dans la bulle | lien région ↔ personnage | humain | structuré | — | ouvert |
 | `personnage_presence` | **qui est montré** dans la boîte | lien région ↔ personnage | humain | structuré | — | ouvert |
-| *`alignement d'autorité`* | lien vers un référentiel | URI Wikidata / VIAF / IdRef | humain | *absent — à prévoir* | SKOS `exactMatch` | ouvert |
+| `personnage_alignement` (source, uri) | **alignement d'autorité** : un personnage → 0..N URI de référentiel | table (source auto-détectée) | humain | **structuré (v18)** | SKOS `exactMatch` | ouvert |
+| `% aligné` | part des personnages alignés (qualité Collection) | agrégat | dérivé | **dérivé (v18)** | — | ouvert |
 
 ## Niveau 7 — Vocabulaire facetté
 
@@ -373,7 +375,11 @@ Chantiers de FAIRisation dérivés de ce dictionnaire, par couche :
   dimensions · valeurs · **tags** ; édition API + **UI** (📖 Lexique / Exploration) ; indicateur
   « % défini ». Restent *dormants* : définition contextuelle (`valeur_definition`, B) et version.
   Cf. `docs/lexique-situe.md`.
-- **Entités (N6)** : alignement d'autorité (Wikidata / VIAF / IdRef).
+- **Entités (N6)** : **✅ réalisé (v18, A5)** — alignement d'autorité `personnage_alignement`
+  (personnage → 0..N URI Wikidata/VIAF/IdRef, `skos:exactMatch`, source auto-détectée) ; API +
+  **UI** (panneau Personnage) + export (`alignements[]`, table CSV, indicateur % aligné).
+  Dormant : alignement des **contributeurs** (requiert la promotion en entités d'abord).
+  Cf. `docs/alignement-autorite.md`.
 - **Droits (Collection / N0, N8)** : `licence_defaut` (tier ouvert) · **`base_legale`** (à quel
   titre on détient/exploite les données — *à établir, hors code*) · **`statut_diffusion`**
   (`public`/`embargo`/`restreint`/`privé`, mappe Nakala), défaut Collection **surchargeable par
