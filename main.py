@@ -463,6 +463,9 @@ def list_albums(conn: sqlite3.Connection = Depends(db)):
 @app.post("/api/albums", status_code=201)
 def create_album(album: AlbumIn, conn: sqlite3.Connection = Depends(db)):
     data = album.model_dump()                       # toutes les colonnes descriptives (dont N0)
+    data["titre"] = (data.get("titre") or "").strip()   # B9 : titre requis (comme un tag)
+    if not data["titre"]:
+        raise HTTPException(422, "Le titre de l'album est requis.")
     cols = list(data)
     cur = conn.execute(
         f"INSERT INTO albums ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
@@ -478,6 +481,10 @@ def update_album(album_id: int, patch: AlbumUpdate,
     if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
         raise HTTPException(404, f"Album {album_id} introuvable")
     fields = patch.model_dump(exclude_unset=True)
+    if "titre" in fields:                               # B9 : ne pas vider un titre par édition
+        fields["titre"] = (fields["titre"] or "").strip()
+        if not fields["titre"]:
+            raise HTTPException(422, "Le titre de l'album est requis.")
     if fields:
         cols = ", ".join(f"{k} = ?" for k in fields)
         conn.execute(f"UPDATE albums SET {cols} WHERE id = ?",
@@ -923,10 +930,23 @@ def sharedocs_importer(payload: SharedocsImportIn,
 # =========================================================================== #
 # Sauvegarde / archivage de la base
 # =========================================================================== #
+def _faire_sauvegarde():
+    """`make_backup` avec garde (B8) : une OperationalError (base occupée) file au handler
+    global (→ 409 « réessayez ») ; toute autre erreur (disque plein, chemin…) → 503 propre
+    + trace serveur, au lieu d'un 500 brut."""
+    try:
+        return make_backup()
+    except sqlite3.OperationalError:
+        raise                                        # handler global : 409 si « locked/busy »
+    except Exception as exc:
+        logging.getLogger("bd_annotator").error("Échec de sauvegarde", exc_info=exc)
+        raise HTTPException(503, "Sauvegarde impossible pour le moment (réessayez).")
+
+
 @app.get("/api/sauvegarde")
 def telecharger_sauvegarde():
     """Télécharge un snapshot cohérent de la base (zip horodaté)."""
-    name, data = make_backup()
+    name, data = _faire_sauvegarde()
     return Response(
         data, media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{name}"'})
@@ -935,7 +955,7 @@ def telecharger_sauvegarde():
 @app.post("/api/sharedocs/deposer-sauvegarde")
 def deposer_sauvegarde(payload: DeposerIn):
     """Dépose une sauvegarde de la base dans un dossier ShareDocs (PUT WebDAV)."""
-    name, data = make_backup()
+    name, data = _faire_sauvegarde()
     folder = payload.dossier.strip("/")
     chemin = f"{folder}/{name}" if folder else name
     try:
@@ -2011,6 +2031,16 @@ def _csv_response(contenu: str, filename: str) -> Response:
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
+def _csv_safe(v):
+    """Neutralise l'injection de FORMULE (CSV → tableur) : une cellule TEXTE débutant par
+    `= + - @` (ou tab/CR) est préfixée d'une apostrophe → un tableur l'affiche littéralement
+    au lieu de l'exécuter. À n'appliquer qu'au texte libre (pas aux nombres : « -5 » reste un
+    nombre). Cf. OWASP « CSV Injection »."""
+    if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + v
+    return v
+
+
 @app.get("/api/recherche/export.csv")
 def recherche_export(q: str = "", album: Optional[int] = None,
                      type: Optional[str] = None, tags: Optional[list[str]] = Query(None),
@@ -2034,12 +2064,13 @@ def recherche_export(q: str = "", album: Optional[int] = None,
     for r in results:
         cit = r.get("citation") or {}
         planche = cit.get("planche")
-        w.writerow({"album": r["album_titre"],
+        w.writerow({"album": _csv_safe(r["album_titre"]),
                     "planche": planche if planche is not None else "",
                     "citation": cit.get("texte", ""),
                     "region_id": r["region_id"], "type": r["type"],
-                    "ocr_texte": r["ocr_texte"] or "", "note": r["note"] or "",
-                    "tags": "|".join(r["tags"])})
+                    "ocr_texte": _csv_safe(r["ocr_texte"] or ""),
+                    "note": _csv_safe(r["note"] or ""),
+                    "tags": _csv_safe("|".join(r["tags"]))})
     return _csv_response(buf.getvalue(), "recherche.csv")
 
 
@@ -2681,6 +2712,8 @@ def export_csv(album_id: int, conn: sqlite3.Connection = Depends(db)):
         c = cits.get(r["region_id"]) or {}
         r["planche"] = c["planche"] if c.get("planche") is not None else ""
         r["citation"] = c.get("texte", "")
+        for k in ("album", "ocr_texte", "note", "tags"):      # B7 : anti-injection de formule
+            r[k] = _csv_safe(r.get(k))
     buf = io.StringIO()
     cols = ["album", "ordre_import", "planche", "citation", "region_id", "type",
             "parent_id", "x", "y", "w", "h", "ordre", "source", "ocr_texte",

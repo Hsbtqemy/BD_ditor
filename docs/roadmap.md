@@ -112,7 +112,8 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 |---|---|---|---|
 | ~~**D1**~~ | ✅ **Fait 2026-07-18 — UX-5, undo des actions d'annotation** : module `undo.py` qui **remonte le journal `evenement`** (A3) et rejoue l'inverse ; **pile** via événements `annulation` (append-only préservé) ; `GET /api/undo/prochain` + `POST /api/undo` ; **UI Ctrl+Z** (toast + rafraîchissement). Périmètre : région (créer/modifier/supprimer+cascade), annotation, locuteur, présence ; actes machine non annulables. Ajustement A3 : annotations ciblent `region_id`. Dormant : grammaire/validation, redo. Cf. `docs/undo.md` | P2·L | **forte valeur de sûreté** : la suppression cascade était irréversible sans restaurer une sauvegarde |
 | ~~**D2**~~ | ✅ **Fait 2026-07-16** — B5 : `_migrate` **gate par `user_version`** (refus de rétrograder + court-circuit si à jour + convention `if version < N`) ; test dédié. Assaini avant A1 | S | — |
-| — | B6 (transitions de statut + régression `annotee`→`segmentee`) · B7 (injection formule CSV — export **app**, distinct des tools) · B8 (`/api/sauvegarde` sans try/except → 500) · B9 (titre d'album vide accepté) · F5 (deep-link silencieux, aucun toast) · F6-F8 · T2/T4 (tests faibles) · S1/S5/S6/O1 (latents segmentation) · A11Y-2 (reliquat `px`→`rem`) · UX-3/UX-4 | mineurs | quick wins, à la demande |
+| ~~sûreté serveur~~ | ✅ **Fait 2026-07-18** : ~~B7~~ (injection formule CSV — les 2 exports app, `_csv_safe`) · ~~B8~~ (`/api/sauvegarde` → 409/503 au lieu de 500) · ~~B9/B10~~ (titre d'album vide refusé ; numéro d'import déjà borné) | mineurs | — |
+| — | B6 (transitions de statut + régression `annotee`→`segmentee`) · F5 (deep-link silencieux, aucun toast) · F6-F8 · T2/T4 (tests faibles) · S1/S5/S6/O1 (latents segmentation) · A11Y-2 (reliquat `px`→`rem`) · UX-3/UX-4 | mineurs | quick wins, à la demande |
 
 ---
 

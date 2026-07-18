@@ -184,9 +184,9 @@ Trouvailles **absentes de la première passe**. ✔ = vérifiée de visu dans ce
 - **B4 — `recherche` `limit` non borné** ([main.py:728](main.py#L728), [772](main.py#L772)) : `limit=-1` ⇒ `LIMIT -1` SQLite ⇒ **tout le corpus** + sous-requête tags par résultat (N+1) — DoS trivial, alors que `region_crop` borne bien sa taille. **Majeur.**
 - **B5 — `_migrate` sans gating par `user_version`** — ✅ **Fait 2026-07-16** : idempotent *par chance* (garde par présence de colonne), aucun *gating* par version ni garde anti-downgrade ; le pattern « incrémenter `SCHEMA_VERSION` + ajouter une étape » aurait été **faux dès la 1re migration non détectable par colonne** (backfill, `UPDATE`). **Corrigé** : `_migrate` **refuse de rétrograder** une base plus récente que le code (`RuntimeError`), **court-circuite** si déjà au schéma courant, et la convention `if version < N` est documentée pour les étapes futures. Test de non-régression (`test_migration_refuse_downgrade`). **Majeur (dette).**
 - **B6 — transitions de statut libres** ([main.py:631-642](main.py#L631-L642)) : aucune validation d'ordre ; et `segment_planche` force `statut='segmentee'` → **re-segmenter une planche `annotee` la fait régresser**. **Mineur.**
-- **B7 — injection de formule CSV** ([main.py:939-944](main.py#L939-L944)) : note/OCR commençant par `= + - @` interprétés comme formule par un tableur. **Mineur.**
-- **B8 — `GET /api/sauvegarde`** sans `try/except` ([main.py:609-615](main.py#L609-L615)) : `VACUUM INTO` dépassant `busy_timeout` sous écriture ⇒ **500 brut**. **Mineur.**
-- **B9/B10 — validations manquantes** : `create_album` accepte `titre=""` (incohérent avec `create_tag`) ; `numero` d'import non borné (négatif/0). **Mineurs.**
+- **B7 — injection de formule CSV** — ✅ **Fait 2026-07-18** : les deux exports CSV de l'app (`/api/export/csv`, `/api/recherche/export.csv`) neutralisent une cellule TEXTE débutant par `= + - @` (ou tab/CR) via un préfixe apostrophe (`_csv_safe`, OWASP CSV Injection) ; les nombres (coordonnées) ne sont pas touchés. Test de non-régression. **Mineur.**
+- **B8 — `GET /api/sauvegarde`** — ✅ **Fait 2026-07-18** : `make_backup` enveloppé (`_faire_sauvegarde`) — une `OperationalError` (base occupée) file au handler global (**409**), toute autre erreur → **503** propre + trace, plus de **500 brut**. Les deux routes de sauvegarde. Tests 409/503. **Mineur.**
+- **B9/B10 — validations manquantes** — ✅ **Fait 2026-07-18 (B9)** : `create_album` **et** `update_album` refusent un `titre` vide/blanc (422, titre `strip`é), comme `create_tag`. **B10 déjà couvert** (`numero` d'import `Form(ge=1)`). Test de non-régression. **Mineurs.**
 
 ### Frontend (`viewer.js`) — autres
 - **✔ F2 — poignée de resize sans garde null** ([viewer.js:1045-1049](static/viewer.js#L1045-L1049)) : `const r = selectedRegion()` puis `r.x` sans `if (!r) return` ⇒ `TypeError` si la sélection a été vidée. **Majeur.**
@@ -210,7 +210,7 @@ Trouvailles **absentes de la première passe**. ✔ = vérifiée de visu dans ce
 - **F3** — resize `w`/`n` : bord opposé ancré (plus de téléportation), clamp qui préserve le bord fixe.
 - **F4** — `MIN_REGION = 5` : le resize ne peut plus persister une région < 5 px (cohérent avec le seuil de dessin).
 
-**Restent ouverts (non traités ce tour)** : ~~B5~~ (✅ 2026-07-16 : gating `user_version` + anti-downgrade), B6 (transitions de statut + régression `annotee`→`segmentee`), B7 (CSV formule), B8 (`/api/sauvegarde` 500), B9/B10 (titre vide, numéro non borné), F5 (deep-link silencieux), F6–F8 et mineurs. Plus les **P2/P3** de la passe 1 (verrou d'inférence ML, `_crop_lock`, jobs, `UNIQUE(album_id,numero)`, HTTPS ShareDocs).
+**Restent ouverts (non traités ce tour)** : ~~B5~~ (✅ 2026-07-16), B6 (transitions de statut + régression `annotee`→`segmentee`), ~~B7~~ ~~B8~~ ~~B9/B10~~ (✅ 2026-07-18 : sûreté serveur — CSV formule, sauvegarde 409/503, titre album), F5 (deep-link silencieux), F6–F8 et mineurs. Plus les **P2/P3** de la passe 1 (verrou d'inférence ML, `_crop_lock`, jobs, `UNIQUE(album_id,numero)`, HTTPS ShareDocs).
 
 ---
 

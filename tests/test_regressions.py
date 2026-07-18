@@ -558,3 +558,43 @@ def test_import_numero_inferieur_a_un_rejete(client, album, png_bytes):
                         files={"file": ("p.png", png_bytes, "image/png")},
                         data={"numero": bad})
         assert r.status_code == 422
+
+
+def test_export_csv_neutralise_injection_de_formule(client, album, planche):
+    """B7 : une note / OCR commençant par un caractère de formule (= + - @) est préfixée d'une
+    apostrophe à l'export CSV (anti-injection tableur), sur les deux exports de l'app."""
+    reg = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5,
+                            "ocr_texte": "=SUM(1+1)"}).json()
+    client.put(f"/api/regions/{reg['id']}/annotation", json={"note": "@evil", "tags": []})
+    for url, params in ((f"/api/export/csv", {"album_id": album["id"]}),
+                        ("/api/recherche/export.csv", {"q": "SUM"})):
+        txt = client.get(url, params=params).text
+        assert "'=SUM(1+1)" in txt and "'@evil" in txt          # cellule neutralisée
+        assert ",=SUM(1+1)" not in txt and ",@evil" not in txt  # jamais brute en tête de cellule
+
+
+def test_sauvegarde_echec_inattendu_503(client, monkeypatch):
+    """B8 : un échec de make_backup hors contention (disque plein…) → 503 propre, pas 500 brut."""
+    import main
+    monkeypatch.setattr(main, "make_backup",
+                        lambda: (_ for _ in ()).throw(RuntimeError("disque plein")))
+    assert client.get("/api/sauvegarde").status_code == 503
+
+
+def test_sauvegarde_base_occupee_409(client, monkeypatch):
+    """B8 : une OperationalError « locked » file au handler global → 409 (réessayez), pas 503."""
+    import sqlite3
+    import main
+    monkeypatch.setattr(main, "make_backup",
+                        lambda: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")))
+    assert client.get("/api/sauvegarde").status_code == 409
+
+
+def test_album_titre_vide_refuse_422(client):
+    """B9 : créer OU éditer un album avec un titre vide / blanc → 422 ; un titre est nettoyé."""
+    assert client.post("/api/albums", json={"titre": ""}).status_code == 422
+    assert client.post("/api/albums", json={"titre": "   "}).status_code == 422
+    a = client.post("/api/albums", json={"titre": "  Tintin  "}).json()
+    assert a["titre"] == "Tintin"                               # strip appliqué
+    assert client.put(f"/api/albums/{a['id']}", json={"titre": " "}).status_code == 422
