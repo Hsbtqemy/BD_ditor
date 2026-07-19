@@ -100,6 +100,7 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 | C2 | INFRA-3 — credentials WebDAV **par utilisateur** (chiffrés) | P2·M | dépend C1 |
 | C3 | SEC-2 — **CSP** (faisable maintenant) + CSRF | P3·M | CSRF dépend des sessions (C1) ; à traiter avant exposition réseau |
 | C4 | CONC-2 v2 — **isolation subprocess ML** (worker séparé, redémarrable) | P2·M | v1 fait (déchargement) ; seule option garantissant le **zéro-OOM** |
+| **C5** | **Exposer les exports de dépôt dans l'UI** (métadonnées fiche/records + IIIF, éventuellement crosswalk/provenance) : bouton → génération **côté serveur** → **téléchargement** navigateur **+ dépôt ShareDocs** | P2·M | **déclenché par C1** : la doctrine « scripts hors-app » (`tools/`) supposait le **mono-poste local** (chercheur *sur* la machine de la base) ; **déployé, l'accès shell disparaît**. Même patron que `/api/sauvegarde` (fichier produit côté serveur, téléchargeable **et** déposable ShareDocs), **cœurs déjà partagés** (`metadonnees_collection` / `description_collection`, comme l'import de vocabulaire a une CLI **et** un bouton). Cf. [`docs/export-metadonnees.md`](export-metadonnees.md) |
 | — | CONC-1 (cache crop TTL + purge jobs + annulation préemptive) · INFRA-4 (retirer `[import-timing]`) · INFRA-5 (reprise `sessionStorage`) · INFRA-6 (sauvegardes auto ShareDocs) | P2-P3 | hygiène / confort |
 
 ---
@@ -132,13 +133,17 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 3. **Ouvrir la décision B1** en parallèle (vocabulaire émotions) — elle exige une discussion
    d'équipe *en amont*, autant l'amorcer tôt.
 4. Selon le cap suivant : **C1** (déploiement VPS) si le multi-utilisateur devient réel —
-   débloque C2, C3 (CSRF), B6 (accord inter-annotateurs).
+   débloque C2, C3 (CSRF), B6 (accord inter-annotateurs) et **appelle C5** (exposer les
+   exports de dépôt dans l'UI : une fois en ligne, l'accès shell aux `tools/` disparaît).
 5. ~~**A3 / D1** ensemble (même journal append-only)~~ ✅ **faits** — A3 (v16) puis D1 (undo,
    2026-07-18) construit dessus.
 
 ## Dépendances notables
 
 - **C1 (auth déployée)** débloque → C2 (WebDAV/utilisateur), C3 (CSRF), et sert B6.
+- **C1 (mise en ligne)** rend **C5 nécessaire** : les exports de métadonnées/IIIF vivent dans
+  des **scripts `tools/`** exécutés *là où est la base* — déployé, plus d'accès shell pour le
+  chercheur → les exposer dans l'UI (téléchargement + ShareDocs, patron `/api/sauvegarde`).
 - ~~**A3 (journal de provenance)** et **D1 (undo serveur)** partagent le **même journal
   append-only**~~ → **A3 (v16) puis D1 livrés** : le journal `evenement` (avant/après, survit à
   la suppression) EST le substrat de l'undo (`undo.py` le remonte). Cf. `docs/undo.md`.
