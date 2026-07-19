@@ -18,15 +18,30 @@ _BASE = ("FROM token_correction c JOIN tokens t "
          "ON t.region_id = c.region_id AND t.ordre = c.ordre WHERE c.obsolete = 0")
 
 
-def rapport(conn, confusion_limit: int = 15) -> dict:
-    """Calcule le rapport d'accord (dict sérialisable). `confusion_limit` borne la matrice POS."""
+def rapport(conn, confusion_limit: int = 15, album_ids=None) -> dict:
+    """Calcule le rapport d'accord (dict sérialisable). `confusion_limit` borne la matrice POS.
+
+    `album_ids` (None = corpus entier) RESTREINT l'échantillon aux tokens dont la région
+    appartient à l'un de ces albums — utile pour scoper un export `--collection`. La route et
+    l'outil passent None (corpus). Une liste VIDE (collection sans album) → échantillon vide.
+    """
     meta = {r["cle"]: r["valeur"] for r in conn.execute(
         "SELECT cle, valeur FROM meta WHERE cle IN ('nlp_model', 'nlp_reindexed_at')")}
+
+    base, params = _BASE, []
+    if album_ids is not None:
+        if album_ids:
+            qm = ",".join("?" * len(album_ids))
+            base += (f" AND c.region_id IN (SELECT r.id FROM regions r "
+                     f"JOIN planches p ON p.id = r.planche_id WHERE p.album_id IN ({qm}))")
+            params = list(album_ids)
+        else:
+            base += " AND 0"                    # collection sans album → échantillon vide
 
     acc = ", ".join(f"SUM((c.{ch} IS NULL OR c.{ch} = t.{ch})) AS acc_{ch}" for ch in CHAMPS)
     ligne = conn.execute(
         f"SELECT COUNT(*) AS revus, SUM((c.etat = 'valide')) AS valides, "
-        f"       SUM((c.etat = 'corrige')) AS corriges, {acc} {_BASE}").fetchone()
+        f"       SUM((c.etat = 'corrige')) AS corriges, {acc} {base}", params).fetchone()
     revus = ligne["revus"] or 0
     champs = {}
     for ch in CHAMPS:
@@ -36,9 +51,9 @@ def rapport(conn, confusion_limit: int = 15) -> dict:
 
     # Confusion POS : désaccords où l'humain a posé un POS différent de l'auto (auto NULL = ∅).
     confusion = [dict(r) for r in conn.execute(
-        f"SELECT t.pos AS auto, c.pos AS humain, COUNT(*) AS n {_BASE} "
+        f"SELECT t.pos AS auto, c.pos AS humain, COUNT(*) AS n {base} "
         "AND c.pos IS NOT NULL AND (t.pos IS NULL OR c.pos <> t.pos) "
-        "GROUP BY t.pos, c.pos ORDER BY n DESC, humain LIMIT ?", (confusion_limit,))]
+        "GROUP BY t.pos, c.pos ORDER BY n DESC, humain LIMIT ?", (*params, confusion_limit))]
 
     return {"modele": meta.get("nlp_model") or None,
             "indexe_le": meta.get("nlp_reindexed_at") or None,

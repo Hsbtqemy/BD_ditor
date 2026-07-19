@@ -69,9 +69,14 @@ def _cartes(conn, album_ids=None) -> dict:
     entités canoniques de corpus, référencées par nom (cf. docs/export-metadonnees.md)."""
     p = portee_albums(album_ids)
     w_reg = f" WHERE region_id IN {p['regions']}" if p else ""
+    w_pl = f" WHERE album_id IN {p['albums']}" if p else ""
+    pl_ids = [r[0] for r in conn.execute("SELECT id FROM planches" + w_pl)]
     perso_nom = {r["id"]: r["nom"] for r in conn.execute("SELECT id, nom FROM personnages")}
     return {
         "perso_nom": perso_nom,
+        # Relecture grammaticale (ANN-4/B5) : statut effectif DÉRIVÉ par planche du périmètre.
+        "relecture": {pid: info["statut"]
+                      for pid, info in database.relecture_planches(conn, pl_ids).items()},
         "locuteur": {r["region_id"]: perso_nom.get(r["personnage_id"]) for r in
                      conn.execute("SELECT region_id, personnage_id FROM bulle_locuteur")},
         "presence": {r["region_id"]: perso_nom.get(r["personnage_id"]) for r in
@@ -301,6 +306,8 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
             planches.append({
                 "id": p["id"], "numero": p["numero"], "role": p["role"],
                 "numero_editorial": c["numero_editorial"].get(p["id"]),
+                # Relecture grammaticale (ANN-4/B5) : statut DÉRIVÉ (à_faire/en_cours/faite).
+                "relecture_statut": c["relecture"].get(p["id"]),
                 "statut": p["statut"], "validee": p["validee"],
                 "verrouillee": p["verrouillee"], "date_segmentation": p["date_segmentation"],
                 "largeur_px": p["largeur_px"], "hauteur_px": p["hauteur_px"],
@@ -397,12 +404,13 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
         d = database.dimensions_cm(p["largeur_px"], p["hauteur_px"], p["dpi_x"], p["dpi_y"])
         return d[axe] if d else None
     out["planches"] = (
-        ["id", "album_id", "numero", "role", "numero_editorial", "statut", "validee",
-         "verrouillee", "date_segmentation", "largeur_px", "hauteur_px",
+        ["id", "album_id", "numero", "role", "numero_editorial", "relecture_statut",
+         "statut", "validee", "verrouillee", "date_segmentation", "largeur_px", "hauteur_px",
          "dpi_x", "dpi_y", "mode", "largeur_cm", "hauteur_cm",
          "chemin_tiff", "chemin_web"],
         [[p["id"], p["album_id"], p["numero"], p["role"],
-          c["numero_editorial"].get(p["id"]), p["statut"], p["validee"], p["verrouillee"],
+          c["numero_editorial"].get(p["id"]), c["relecture"].get(p["id"]),
+          p["statut"], p["validee"], p["verrouillee"],
           p["date_segmentation"], p["largeur_px"], p["hauteur_px"],
           p["dpi_x"], p["dpi_y"], p["mode"], _pl_cm(p, "largeur"), _pl_cm(p, "hauteur"),
           p["chemin_tiff"], p["chemin_web"]]
@@ -598,6 +606,38 @@ def _ecrire_xlsx(tbls: dict, arbre: dict, fiche: dict, chemin: str) -> None:
     fs.column_dimensions["A"].width = 40
     fs.column_dimensions["B"].width = 64
 
+    # --- qualité : tableau de bord « confiance » (relecture + accords) -------- #
+    # Vue LISIBLE du bloc `qualite` du roll-up (déjà à plat dans `fiche`, ici en tableau).
+    qs = None
+    qualite = (fiche or {}).get("qualite")
+    if qualite:
+        qs = wb.create_sheet("qualite")
+        qs.append(["section", "métrique", "valeur"])
+        rel = qualite["relecture"]
+        lignes_q = [["relecture", "à faire", rel["a_faire"]],
+                    ["relecture", "en cours", rel["en_cours"]],
+                    ["relecture", "faite", rel["faite"]],
+                    ["relecture", "% faite", rel["pct_faite"]]]
+        am = qualite["accord_modele"]
+        lignes_q += [["accord modèle", "modèle NLP", am["modele"] or "∅"],
+                     ["accord modèle", "échantillon relu", am["revus"]]]
+        lignes_q += [["accord modèle", f"taux {ch}", am["champs"][ch]["taux"]]
+                     for ch in ("lemme", "pos", "morph")]
+        ai = qualite["accord_inter"]
+        lignes_q += [["accord inter", "portée", ai["portee"]],
+                     ["accord inter", "retouches inter-auteurs", ai["retouches"]],
+                     ["accord inter", "auteurs", "; ".join(ai["auteurs"])]]
+        lignes_q += [["accord inter", f"taux {ch}", ai["champs"][ch]["taux"]]
+                     for ch in ("lemme", "pos", "morph")]
+        for lg in lignes_q:
+            qs.append(lg)
+            _neutraliser_ligne(qs, qs.max_row)
+        for c in qs[1]:
+            c.font = gras
+        qs.freeze_panes = "A2"
+        for col, w in (("A", 16), ("B", 26), ("C", 40)):
+            qs.column_dimensions[col].width = w
+
     # --- index --------------------------------------------------------------- #
     idx = wb.create_sheet("_tables")
     idx.append(["table", "lignes", "colonnes"])
@@ -675,8 +715,8 @@ def _ecrire_xlsx(tbls: dict, arbre: dict, fiche: dict, chemin: str) -> None:
     for col, w in (("A", 42), ("G", 18), ("H", 22)):
         arb.column_dimensions[col].width = w
 
-    # --- ordre des onglets : fiche, arbre, index, puis les tables ------------ #
-    wb._sheets = [fs, arb, idx] + detail
+    # --- ordre des onglets : fiche, qualité, arbre, index, puis les tables --- #
+    wb._sheets = [fs] + ([qs] if qs is not None else []) + [arb, idx] + detail
     wb.save(chemin)
 
 

@@ -33,6 +33,8 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import accord  # noqa: E402  (accord modèle↔humain — NLP-1, scopable par albums)
+import accord_inter  # noqa: E402  (accord inter-annotateurs — ANN-5, lu au journal A3)
 import database  # noqa: E402  (collection_row / collection_album_ids — palier collection)
 import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from config import DB_PATH, BASE_DIR  # noqa: E402
@@ -195,6 +197,32 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     schema_version = _un(conn, "PRAGMA user_version")
     resp = _responsables_desc(row)
 
+    # --- Qualité (paradonnée dérivée) : relecture + accords ----------------- #
+    # Relecture grammaticale (ANN-4/B5) : statut DÉRIVÉ par planche → tally sur le périmètre.
+    planche_ids = [r[0] for r in conn.execute("SELECT id FROM planches" + W_pl)]
+    rel = database.relecture_planches(conn, planche_ids)
+    rel_tally = {"a_faire": 0, "en_cours": 0, "faite": 0}
+    for info in rel.values():
+        rel_tally[info["statut"]] += 1
+    # Accord modèle↔humain (NLP-1) : scopé aux albums de la collection (None = corpus).
+    accord_modele = accord.rapport(conn, album_ids=album_ids)
+    # Accord inter-annotateurs (ANN-5) : lu au journal, corpus-large (scoper la chaîne de
+    # révisions par album serait disproportionné pour un bloc creux avant le multi-utilisateur).
+    # La fiche n'embarque QUE les compteurs (le détail des divergences reste aux rapports).
+    ai = accord_inter.rapport(conn)
+    accord_inter_fiche = {"portee": "corpus", "retouches": ai["retouches"],
+                          "auteurs": ai["auteurs"], "champs": ai["champs"], "paires": ai["paires"]}
+    # Libellés compacts pour le catalogue CSV (registre « élément de métadonnée »).
+    relecture_txt = (f"faite:{rel_tally['faite']}; en_cours:{rel_tally['en_cours']}; "
+                     f"a_faire:{rel_tally['a_faire']} ({_pct(rel_tally['faite'], planches)}%)")
+    accord_modele_txt = (
+        (f"{accord_modele['revus']} relus; "
+         + "; ".join(f"{ch}:{accord_modele['champs'][ch]['taux']}" for ch in accord.CHAMPS)
+         + f"; modèle {accord_modele['modele'] or '∅'}")
+        if accord_modele["revus"] else "∅ (aucun token relu)")
+    accord_inter_txt = (f"{ai['retouches']} retouches inter; {len(ai['paires'])} paires"
+                        if ai["retouches"] else "∅ (mono-utilisateur)")
+
     # --- Roll-up JSON ------------------------------------------------------- #
     rollup = {
         "description_collection": {
@@ -255,13 +283,21 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                 "audit": journal.indicateurs_provenance(conn, album_ids),
                 "environnement": environnement(),  # python + versions installées (à l'export)
             },
+            # Paradonnée QUALITÉ (fiabilité du corpus, tout dérivé) : part relue, accord du
+            # pré-remplissage ML au jugement humain (NLP-1), accord de révision inter-auteurs
+            # (ANN-5). Rend l'IA-de-pré-remplissage auditable — valeur FAIR. Tout en `ouvert`.
+            "qualite": {
+                "relecture": {**rel_tally, "pct_faite": _pct(rel_tally["faite"], planches)},
+                "accord_modele": accord_modele,
+                "accord_inter": accord_inter_fiche,
+            },
             # A4 : maturité du lexique situé (% défini), scopée par appartenance à la collection.
             "vocabulaire": {"domaines": domaines, "dimensions": dimensions,
                             "lexique": database.lexique_resume(conn, collection_id)},
             "droits": {
                 "ouvert": ["géométrie", "structure", "ordre", "citation", "lemme",
                            "pos", "morph", "tags", "notes", "personnages", "attributs",
-                           "provenance"],
+                           "provenance", "qualité (relecture, accords)"],
                 "agregat": ["tokens.texte", "token_correction.forme"],
                 "restreint": ["regions.ocr_texte", "planches.chemin_tiff",
                               "planches.chemin_web"],
@@ -358,6 +394,9 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
         ("vocabulaire", "valeur"): val_tot,
         ("vocabulaire", "personnage_attribut"): pa,
         ("vocabulaire", "region_attribut"): ra,
+        ("qualite", "relecture"): relecture_txt,
+        ("qualite", "accord_modele"): accord_modele_txt,
+        ("qualite", "accord_inter"): accord_inter_txt,
         ("paradonnee", "nlp_model"): meta.get("nlp_model") or "",
         ("paradonnee", "nlp_reindexed_count/_at"):
             f"{meta.get('nlp_reindexed_count') or 0} le {meta.get('nlp_reindexed_at') or '∅'}",
@@ -458,6 +497,9 @@ CATALOGUE = [
     ("personnage", "bulle_locuteur", "qui parle", "humain", "structuré", "—", "ouvert"),
     ("personnage", "personnage_presence", "qui est montré", "humain", "structuré", "—", "ouvert"),
     ("personnage", "alignement_autorite", "lien vers référentiel (Wikidata/VIAF/IdRef)", "humain", "structuré (v18)", "SKOS exactMatch", "ouvert"),
+    ("qualite", "relecture", "part du corpus relu grammaticalement (dérivé des provenances)", "dérivé", "dérivé (v21)", "PROV", "ouvert"),
+    ("qualite", "accord_modele", "accord modèle↔humain sur l'échantillon relu (par champ)", "dérivé", "dérivé (NLP-1)", "PROV", "ouvert"),
+    ("qualite", "accord_inter", "accord inter-annotateurs de révision (journal A3, corpus)", "dérivé", "dérivé (ANN-5)", "PROV", "ouvert"),
     ("vocabulaire", "domaine", "champ analytique regroupant des dimensions (émotions, représentation…)", "humain", "structuré (v20)", "SKOS", "ouvert"),
     ("vocabulaire", "dimension.cible", "à quoi s'applique l'axe", "humain", "structuré", "—", "ouvert"),
     ("vocabulaire", "dimension.domaine", "domaine analytique de rattachement", "humain", "structuré (v20)", "SKOS", "ouvert"),

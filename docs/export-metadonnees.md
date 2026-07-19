@@ -66,7 +66,8 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
 
 - **Fiche — JSON roll-up** : identité (à prévoir) · **couverture** (nb albums/planches/
   régions/tokens, % validé, couverture OCR, distributions par type/POS) · **provenance**
-  (moteurs, modèle NLP) · **vocabulaire** facetté · **droits**.
+  (moteurs, modèle NLP) · **qualité** (paradonnée dérivée : relecture, accords ; cf. plus bas)
+  · **vocabulaire** facetté · **droits**.
 - **Fiche — CSV catalogue** : une ligne = un *élément* de métadonnée (colonnes du
   dictionnaire : provenance, statut, standard, ouvrable) + sa valeur/agrégat. Les
   champs `absent — à prévoir` y figurent **vides** → la sortie est honnête sur la couverture.
@@ -93,12 +94,15 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   Depuis **la v20 (piste B)**, une table `domaines` (champs analytiques regroupant les
   dimensions) sort à part, chaque `dimension` du `vocabulaire` porte son `domaine`, et le
   roll-up expose `vocabulaire.domaines` (les domaines comptent aussi dans le « % défini »).
+  Depuis **la v21 (ANN-4/B5)**, chaque `planche` porte son **statut de relecture** grammaticale
+  **dérivé** (`relecture_statut` : `a_faire`/`en_cours`/`faite`), à côté de `numero_editorial`.
 - **Enregistrements — XLSX multi-feuilles** : un onglet par table (dont `tags` et
-  `paradonnee`), plus deux onglets de confort — **`fiche`** (le roll-up aplati) et
-  **`arbre`** (hiérarchie **repliable** avec les boîtes `x,y,w,h` et un lien « voir »
-  vers la ligne de détail). En-têtes gelés + filtres ; les valeurs commençant par
-  `= + - @` sont forcées en texte (**anti-injection de formule**). Requiert `openpyxl`
-  (`requirements-export.txt`) ; JSON/CSV n'en dépendent pas (import protégé).
+  `paradonnee`), plus **trois** onglets de confort — **`fiche`** (le roll-up aplati),
+  **`qualite`** (tableau de bord relecture + accords, cf. plus bas) et **`arbre`** (hiérarchie
+  **repliable** avec les boîtes `x,y,w,h` et un lien « voir » vers la ligne de détail).
+  En-têtes gelés + filtres ; les valeurs commençant par `= + - @` sont forcées en texte
+  (**anti-injection de formule**). Requiert `openpyxl` (`requirements-export.txt`) ; JSON/CSV
+  n'en dépendent pas (import protégé).
 - **Paradonnée (niveau 8)** dans les enregistrements : `schema_version`, table `meta`
   (modèle NLP + versions + dates de réindexation), **provenance de l'outil**
   (`outil = {nom, version, revision git}`), et — depuis **A3 (v16)** — le bloc
@@ -110,6 +114,21 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   Depuis **A4 (v17)**, le bloc **`lexique`** (`database.lexique_resume`) y ajoute la maturité
   du lexique situé (**% défini**, scopé par appartenance) ; la fiche l'expose sous
   `vocabulaire.lexique`.
+- **Qualité (paradonnée dérivée)** — bloc `qualite` de la fiche + onglet XLSX `qualite`. Rend
+  la fiabilité du corpus lisible et l'IA-de-pré-remplissage **auditable** (valeur FAIR). Trois
+  indicateurs, **tout dérivé**, réutilisant les cœurs des surfaces d'analyse (« un modèle,
+  plusieurs sérialisations ») :
+  - **`relecture`** — part du corpus relu grammaticalement (`a_faire`/`en_cours`/`faite` +
+    `pct_faite`), agrégée depuis `database.relecture_planches` sur le périmètre (ANN-4/B5) ;
+  - **`accord_modele`** — accord modèle↔humain sur l'échantillon relu, par champ (lemme/POS/
+    morpho) + confusion POS, avec le modèle NLP et le nombre de tokens relus (`accord.rapport`,
+    NLP-1). **Scopé par `--collection`** (le cœur accepte un filtre d'albums) ;
+  - **`accord_inter`** — accord de révision inter-annotateurs (`accord_inter.rapport`, ANN-5),
+    lu au **journal A3**. **Portée corpus** (`portee: "corpus"`) : la chaîne de révisions n'est
+    pas re-scopée par album (disproportionné pour un bloc creux avant le multi-utilisateur,
+    piste C). La fiche n'embarque que les compteurs ; le détail des divergences reste aux
+    rapports (`/api/analyse/accord-inter`, `tools/rapport_accord_inter.py`).
+  Tier de droits : `ouvert` (aucun verbatim ; simples agrégats de fiabilité).
 - **IIIF Presentation 3.0** : Canvas aux dimensions **master**, image (dérivé web)
   peinte dessus, **une Annotation par région** ciblant `canvas#xywh=x,y,w,h`.
 

@@ -158,6 +158,87 @@ def test_contributions_et_edition_dans_export(corpus, album, client, db_path):
     assert any(role["label"] == "scénariste" for role in doc["contribution_roles"])
 
 
+def test_qualite_dans_fiche(corpus):
+    """Paradonnée QUALITÉ : la fiche porte un bloc `qualite` (relecture + accords),
+    `accord_inter` étant marqué de portée corpus (le journal n'est pas re-scopé)."""
+    r = _run("description_collection.py", corpus["db"], corpus["data"], "--json", "-")
+    assert r.returncode == 0, r.stderr
+    q = json.loads(r.stdout)["description_collection"]["qualite"]
+    assert set(q) == {"relecture", "accord_modele", "accord_inter"}
+    assert set(q["relecture"]) >= {"a_faire", "en_cours", "faite", "pct_faite"}
+    assert q["accord_inter"]["portee"] == "corpus"
+
+
+def test_relecture_statut_dans_records(corpus, tmp_path):
+    """B5 : le statut de relecture (dérivé) sort sur les planches — arbre JSON + table CSV.
+    Sans token relu, une planche est 'a_faire'."""
+    r = _run("metadonnees_collection.py", corpus["db"], corpus["data"], "--json", "-")
+    assert r.returncode == 0, r.stderr
+    pl = json.loads(r.stdout)["metadonnees_collection"]["albums"][0]["planches"][0]
+    assert pl["relecture_statut"] == "a_faire"
+    dossier = tmp_path / "t"
+    assert _run("metadonnees_collection.py", corpus["db"], corpus["data"],
+                "--csv-dir", str(dossier)).returncode == 0
+    entete = (dossier / "planches.csv").read_text(encoding="utf-8-sig").splitlines()[0]
+    assert "relecture_statut" in entete.split(",")
+
+
+def test_qualite_onglet_xlsx(corpus, tmp_path):
+    """XLSX : onglet `qualite` (tableau de bord) + colonne relecture_statut sur `planches`."""
+    pytest.importorskip("openpyxl")
+    from openpyxl import load_workbook
+    xlsx = tmp_path / "m.xlsx"
+    r = _run("metadonnees_collection.py", corpus["db"], corpus["data"], "--xlsx", str(xlsx))
+    assert r.returncode == 0, r.stderr
+    wb = load_workbook(xlsx)
+    assert "qualite" in wb.sheetnames
+    sections = {row[0].value for row in wb["qualite"].iter_rows(min_row=2)}
+    assert {"relecture", "accord modèle", "accord inter"} <= sections
+    assert "relecture_statut" in [c.value for c in wb["planches"][1]]
+
+
+def test_accord_modele_scope_par_collection(client, db_path, data_dir):
+    """L'accord modèle↔humain de la fiche est SCOPÉ à la collection (param `album_ids` du
+    cœur `accord.rapport`). On sème deux albums relus (un dans la collection, un hors) et on
+    vérifie que la fiche scopée ne compte que l'échantillon relu du périmètre."""
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys=ON")
+
+    def semer(titre, lemme_corr):
+        aid = conn.execute("INSERT INTO albums(titre) VALUES(?)", (titre,)).lastrowid
+        pid = conn.execute("INSERT INTO planches(album_id, numero, chemin_web) "
+                           "VALUES(?,1,'x.jpg')", (aid,)).lastrowid
+        rid = conn.execute("INSERT INTO regions(planche_id, type, ordre) "
+                           "VALUES(?, 'bulle', 1)", (pid,)).lastrowid
+        conn.execute("INSERT INTO tokens(region_id, ordre, texte, lemme, pos, morph) "
+                     "VALUES(?,0,'m','chat','NOUN','')", (rid,))
+        conn.execute("INSERT INTO token_correction(region_id, ordre, forme, lemme, pos, "
+                     "morph, etat, obsolete) VALUES(?,0,'m',?, 'NOUN','', 'corrige', 0)",
+                     (rid, lemme_corr))
+        return aid
+
+    a_in = semer("Dans", "chat")       # correction lemme == auto → accord sur le lemme
+    semer("Hors", "chien")             # correction lemme != auto → désaccord (hors périmètre)
+    conn.commit()
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.close()
+
+    creer = _run("gerer_collections.py", db_path, data_dir, "creer",
+                 "--nom", "Q", "--albums", str(a_in))
+    assert creer.returncode == 0, creer.stderr
+    cid = creer.stdout.strip()
+
+    def fiche(*extra):
+        r = _run("description_collection.py", db_path, data_dir, "--json", "-", *extra)
+        assert r.returncode == 0, r.stderr
+        return json.loads(r.stdout)["description_collection"]["qualite"]["accord_modele"]
+
+    assert fiche()["revus"] == 2                          # corpus entier : 2 relus
+    scoped = fiche("--collection", cid)
+    assert scoped["revus"] == 1                           # collection : 1 relu
+    assert scoped["champs"]["lemme"]["accord"] == 1       # ce relu accorde sur le lemme
+
+
 def test_iiif_conformance_stricte(corpus, tmp_path):
     """Conformité STRICTE via iiif-prezi3 (lib IIIF officielle) : le manifest généré se
     re-parse sans erreur dans ses modèles typés → validation INDÉPENDANTE de notre
