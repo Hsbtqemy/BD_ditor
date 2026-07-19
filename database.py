@@ -407,16 +407,16 @@ CREATE INDEX IF NOT EXISTS idx_contribution_role  ON contribution(role_id);
 CREATE INDEX IF NOT EXISTS idx_evenement_cible    ON evenement(cible_table, cible_id);
 CREATE INDEX IF NOT EXISTS idx_evenement_activite ON evenement(activite_id);
 CREATE INDEX IF NOT EXISTS idx_evenement_date     ON evenement(date);
-CREATE INDEX IF NOT EXISTS idx_regions_activite   ON regions(activite_id);
 CREATE INDEX IF NOT EXISTS idx_alignement_perso   ON personnage_alignement(personnage_id);
 CREATE INDEX IF NOT EXISTS idx_domaine_collection ON domaine(collection_id);
 -- NB : l'unicité (album_id, numero) des planches (DB-1) est posée en MIGRATION
 -- (idx_planches_album_numero), pas ici : sa création doit suivre un dédoublonnage
 -- d'éventuelles données préexistantes, qui ne peut avoir lieu qu'après SCHEMA_SQL.
--- NB (v20) : les index portant sur des colonnes AJOUTÉES PAR MIGRATION (collection_id des
--- dimensions/valeurs/tags — v17 ; domaine_id — v20) sont créés DANS `_migrate` (après l'ALTER),
--- PAS ici : un CREATE INDEX dans SCHEMA_SQL tournerait AVANT l'ALTER lors d'un upgrade → crash
--- « no such column ». Cf. idx_dim_collection / idx_val_collection / idx_tags_collection / idx_dim_domaine.
+-- NB (v20) : les index portant sur des colonnes AJOUTÉES PAR MIGRATION (activite_id des regions
+-- — v16 ; collection_id des dimensions/valeurs/tags — v17 ; domaine_id — v20) sont créés DANS
+-- `_migrate` (après l'ALTER), PAS ici : un CREATE INDEX dans SCHEMA_SQL tournerait AVANT l'ALTER
+-- lors d'un upgrade → crash « no such column ». Cf. idx_regions_activite / idx_dim_collection /
+-- idx_val_collection / idx_tags_collection / idx_dim_domaine.
 """
 
 # Index plein texte FTS5 — séparé du schéma pour pouvoir le RECRÉER en migration
@@ -577,6 +577,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if a_activite and "activite_id" not in rcols:
             conn.execute("ALTER TABLE regions ADD COLUMN activite_id INTEGER "
                          "REFERENCES activite(id) ON DELETE SET NULL")
+        # Index sur la colonne migrée : créé ICI (après l'ALTER), pas dans SCHEMA_SQL, qui
+        # tournerait AVANT sur un upgrade pré-v16 → « no such column: activite_id ».
+        if a_activite:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_regions_activite "
+                         "ON regions(activite_id)")
         if "touche" not in rcols:
             conn.execute("ALTER TABLE regions ADD COLUMN touche INTEGER NOT NULL DEFAULT 0")
         if "date_modification" not in rcols:

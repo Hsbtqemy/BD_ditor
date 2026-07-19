@@ -598,3 +598,38 @@ def test_album_titre_vide_refuse_422(client):
     a = client.post("/api/albums", json={"titre": "  Tintin  "}).json()
     assert a["titre"] == "Tintin"                               # strip appliqué
     assert client.put(f"/api/albums/{a['id']}", json={"titre": " "}).status_code == 422
+
+
+def test_upgrade_pre_v16_ne_casse_pas_sur_index_activite(tmp_path, monkeypatch):
+    """Bug : `init_db()` posait `idx_regions_activite ON regions(activite_id)` dans
+    SCHEMA_SQL, exécuté AVANT `_migrate`. Sur toute base pré-v16 (colonne pas encore
+    ajoutée), le démarrage plantait sur « no such column: activite_id ». Correctif :
+    l'index est créé DANS `_migrate`, après l'ALTER. On reconstitue une base v15 avec
+    une table `regions` d'ancienne forme et on vérifie que l'upgrade complet passe."""
+    import sqlite3
+    import database
+
+    vieille = tmp_path / "pre_v16.sqlite"
+    conn = sqlite3.connect(vieille)
+    conn.executescript(
+        "CREATE TABLE regions ("           # forme pré-v16 : PAS de colonne activite_id
+        "  id INTEGER PRIMARY KEY, planche_id INTEGER, parent_id INTEGER, type TEXT,"
+        "  x INTEGER, y INTEGER, w INTEGER, h INTEGER, ordre INTEGER,"
+        "  ocr_texte TEXT, source TEXT, date_creation TEXT);"
+        "PRAGMA user_version = 15;")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(database, "DB_PATH", vieille)
+    database.init_db()                                          # ne doit PAS lever
+
+    check = sqlite3.connect(vieille)
+    try:
+        cols = {r[1] for r in check.execute("PRAGMA table_info(regions)")}
+        assert "activite_id" in cols                            # colonne posée par migration
+        assert check.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' "
+            "AND name='idx_regions_activite'").fetchone()       # index créé APRÈS l'ALTER
+        assert check.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
+    finally:
+        check.close()
