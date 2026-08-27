@@ -5,19 +5,21 @@ statut: interrompu
 
 # INFRA-1 — déploiement Docker réel sur le VPS
 
-**Arrêté sur** — 2026-08-27, `3720f9f` : l'image est corrigée avant tout build (verrou
-QA-1 scindé runtime/dev et installé, modèle `fr_core_news_sm` ajouté). Reste ce qui exige
-une machine avec Docker, puis le VPS.
+**Arrêté sur** — 2026-08-27, `7171040` : l'image est construite, mesurée (3,56 Go) et
+validée en conteneur — les quatre moteurs répondent, la base survit à la destruction du
+conteneur. Reste ce qui exige le VPS, plus le cache des modèles ML, non testé.
 
 ## Reste
 
 ### Image — écrite, jamais construite
-- [ ] `deploy/Dockerfile` se construit réellement jusqu'au bout : le clone Kumiko, l'install de `requirements-ocr.txt` et les wheels torch passent, et le poids final de l'image est relevé et noté
+- [x] `deploy/Dockerfile` se construit jusqu'au bout et son poids est relevé : **3,56 Go** après bascule de torch/torchvision sur l'index CPU (10 Go avant — 2 196 Mo de wheels NVIDIA pour un conteneur sans GPU)
 - [x] Le Dockerfile installe spaCy ET télécharge `fr_core_news_sm` — il n'installait que `requirements.txt` + `requirements-ocr.txt` + `requests`, donc aucun des deux
 - [x] Le Dockerfile installe depuis `requirements.lock` (verrou QA-1) et non depuis des bornes `>=` ouvertes
 - [x] Les outils de test n'entrent PAS dans l'image : le lock a été scindé en `requirements.lock` (runtime, 12 pins) et `requirements-dev.lock` — un lock unique aurait embarqué Playwright
-- [ ] Le conteneur démarre et sert l'application, volume `bd-data` monté sur `/data` (`BD_DATA_DIR` et `HOME` y pointent déjà dans le Dockerfile, pour que les modèles ML ne soient téléchargés qu'une fois)
-- [ ] Un redémarrage de conteneur ne perd ni la base, ni `corpus/`, ni les modèles téléchargés
+- [x] Le conteneur démarre et sert l'application, volume monté sur `/data` : base créée en `/data/bd_annotator.sqlite`, `/api/sante` renvoie `kumiko`/`bulles`/`ocr`/`lemmes` tous à `true`
+- [x] La base survit à la **destruction** du conteneur : album créé, conteneur supprimé, nouveau conteneur sur le même volume — l'album est toujours là
+- [ ] Les **caches de modèles ML** survivent au redémarrage : `HOME=/data` est posé pour ça, mais aucune passe ML n'a encore été lancée, donc rien n'a été téléchargé ni vérifié. Si c'est faux, chaque redémarrage re-télécharge YOLO et EasyOCR
+- [ ] `/api/sante` cesse de mentir sur les moteurs : `bulles_available()` et `ocr_available()` n'appellent que `importlib.util.find_spec`, qui LOCALISE le module sans jamais l'importer — la route a annoncé `bulles: true` sur une pile où `import ultralytics` levait `RuntimeError: torchvision::nms does not exist`. Acceptable en mono-poste, faux vert une fois déployé
 
 ### Déploiement — jamais lancé
 - [ ] `deploy/docker-compose.yml` (app + redis + authelia + caddy) monte réellement sur le VPS
@@ -48,11 +50,15 @@ Attention au dimensionnement mémoire : CONC-2 documente un OOM observé en ench
 segmentation, bulles, OCR et NLP sur une vraie planche. Un VPS contraint reproduira ce
 problème plus tôt qu'un poste de dev.
 
-**Corrigé le 2026-08-27 (`3720f9f`), mais non vérifié : aucun Docker sur la machine de
-dev.** Le premier build reste à faire ailleurs, et c'est lui qui dira si les wheels torch,
-le clone Kumiko et le téléchargement du modèle passent. Les trois secrets attendus par
-compose, Caddy et Authelia sont en revanche tous documentés dans `deploy/.env.example`
-(vérifié) — ce n'est pas là que ça achoppera.
+**Le premier build a eu lieu le 2026-08-27, et il a tout appris.** Trois blocages en
+cascade, dont aucun n'était prévu : le proxy universitaire invisible au démon Docker
+(Windows n'en déclare aucun, seules les variables de shell l'ont) ; `docker-credential-desktop`
+absent du PATH, Docker Desktop 4.88 s'installant par utilisateur hors de `Program Files` ;
+et la pile CUDA embarquée par défaut. Aucun des trois ne se voyait sans construire.
+
+Les trois secrets attendus par compose, Caddy et Authelia sont tous documentés dans
+`deploy/.env.example` (vérifié) — ce n'est pas là que ça achoppera. Restent les domaines
+`example.fr` à remplacer et le hash Authelia, encore à `REMPLACER_PAR_UN_VRAI_HASH`.
 
 **Le trou du NLP était le plus coûteux, et il était silencieux.** Sans spaCy, `nlp_available()`
 vaut False et tout dégrade *proprement* — aucune erreur, aucun log alarmant. Mais la table
