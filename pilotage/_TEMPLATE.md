@@ -54,7 +54,7 @@ Collision connue : R5 partage 25 fichiers, dont sidecar.py.
 | `statut:` | `à venir` · `interrompu` · `différé` · `clos` · `livré` · `abandonné` | Traité comme `interrompu` |
 | `audit:` | Chemin du document qui porte le tableau des constats | Pas de remontée, pas de lien |
 | `# Titre` | Premier H1 | Le code sert de titre |
-| `**Arrêté sur**` | La ligne entière après le tiret ; l'outil la signale **décalée** dès qu'elle ne cite plus le dernier commit de code. `**Point de départ**` est accepté à sa place, et c'est le mot juste sur un `à venir` — qui n'est jamais signalé décalé, n'ayant aucun commit à citer | Ligne omise |
+| `**Arrêté sur**` | Le **paragraphe** entier après le tiret — les lignes repliées sont recollées, comme celles d'une case ; l'outil le signale **décalé** dès qu'il ne cite plus le dernier commit de code. `**Point de départ**` est accepté à sa place, et c'est le mot juste sur un `à venir` — qui n'est jamais signalé décalé, n'ayant aucun commit à citer. L'écran affiche le libellé que la fiche a écrit, pas celui que son statut suggère | Ligne omise |
 | `## Reste` | Les cases ; les `###` y regroupent par zone, comme dans une passe | Section absente de l'écran |
 | `## Contexte` | Prose, affichée telle quelle | Rien |
 
