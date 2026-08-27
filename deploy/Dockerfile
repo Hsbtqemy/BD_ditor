@@ -88,8 +88,8 @@ RUN git clone --depth 1 https://github.com/njean42/kumiko.git lib/kumiko
 #             de l'image.
 FROM base AS test
 
-# `openpyxl` n'entre PAS dans `runtime` (seuls les scripts `tools/` s'en servent) mais
-# ICI, parce que deux tests d'export s'y skippaient sans lui.
+# `openpyxl` est épinglé dans `requirements-dev.lock` (outil de test) et n'entre donc pas
+# dans `runtime` : deux tests d'export s'y skippaient sans lui.
 #
 # `iiif-prezi3` NE PEUT PAS y entrer, et c'est une découverte du 2026-08-27 :
 # `iiif-prezi3==3.1.1` exige `Pillow<=12.0.0` (dépendance OBLIGATOIRE, pas un extra) et
@@ -99,7 +99,7 @@ FROM base AS test
 # `docs/roadmap.md` donne l'IIIF pour « validé via iiif-prezi3 ». C'était vrai quand ça a
 # été écrit ; ça ne l'est plus, et un skip se lit comme un succès. Cf. QA-4.
 COPY requirements.lock requirements-dev.lock ./
-RUN pip install --no-cache-dir -r requirements-dev.lock openpyxl==3.1.5
+RUN pip install --no-cache-dir -r requirements-dev.lock
 
 COPY . .
 

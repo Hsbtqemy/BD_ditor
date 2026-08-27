@@ -81,6 +81,7 @@ pytest tests/test_api.py::test_nom_du_test      # un seul test
 pytest --cov=. --cov-report=term-missing        # couverture (dépend des moteurs optionnels installés)
 ```
 
+- **Suite DANS l'image** (QA-5) : `docker build -f deploy/Dockerfile --target test -t bdediteur:suite . && docker run --rm bdediteur:suite`. Le venv local n'est PAS l'artefact livré — mesuré le 2026-08-27 : 451 tests verts en local, trois moteurs morts dans l'image le même jour. L'étape `runtime` reste sans outil de test.
 - Le marqueur `e2e` est exclu par défaut via `pytest.ini` (`addopts = -m "not e2e"`).
 - **Tests JS purs** (`static/lib/*.js`) : lancés par `tests/test_js_unit.py`, qui appelle `node --test tests/js/*.test.js`. Skippés proprement si Node absent. Pas de runner JS séparé.
 - **Accessibilité** : `tests/test_e2e_a11y.py` (marqueur `e2e`) audite les 4 surfaces × thèmes (sombre/clair) via **axe-core** (WCAG 2.1 AA) et échoue à toute violation sérieuse/critique. axe est **vendu hors ligne** dans `tests/js/vendor/axe.min.js` (skip si absent — cf. son README).

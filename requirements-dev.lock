@@ -12,5 +12,10 @@
 
 # Tests / développement
 pytest==9.0.2
+# openpyxl : outil de TEST ici, pas d'exécution — l'application ne l'importe jamais, seuls
+# les scripts `tools/` s'en servent. Sans lui, deux tests d'export se skippent. Épinglé ICI
+# et pas dans le Dockerfile : une version ne doit vivre qu'à un seul endroit (cf. QA-4).
+# La même valeur que requirements-export.txt, qui reste la spec lisible.
+openpyxl==3.1.5
 pytest-cov==7.0.0
 pytest-playwright==0.8.0
