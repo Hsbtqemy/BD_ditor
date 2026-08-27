@@ -19,6 +19,7 @@ cités nulle part ailleurs que dans `AUDIT.md`.
 ### Tests faibles
 - [ ] T2 — `tests/test_live_race.py` teste une vraie concurrence, ou bien il est renommé pour ne plus promettre une course qu'il ne joue pas : aux lignes 36-44 il fait N=30 PUT puis GET sur un unique client `httpx` synchrone, ce que sa propre docstring reconnaît (« frappé par un client séquentiel »)
 - [ ] T4 — les trois assertions molles sont resserrées : `tests/test_api.py:280` (`status_code in (200, 400)`), `tests/test_api.py:415` (`"BD" in r.text`), `tests/test_backup.py:35` (`len(data) > 0`)
+- [ ] T8 — `test_a11y_exploration_accord_inter` (`tests/test_e2e_a11y.py:372`) vérifie le CONTENU qu'il prétend construire, pas seulement l'accessibilité : il pose une divergence alice/bob puis n'assère que l'absence de violations axe, si bien qu'une modale VIDE le fait passer aussi bien qu'une modale peuplée. Mesuré le 2026-08-27 : en retirant `BD_AUTH_PROXY` du sous-processus, les deux auteurs deviennent NULL, aucune divergence n'est créée — et le test passe quand même
 - [ ] T4 (suite) — `test_make_backup_horodatage_auto` (`tests/test_backup.py:32`) vérifie le FORMAT de l'horodatage, et pas seulement le préfixe `bd_annotator_` et le suffixe `.zip`
 
 ### Latents de segmentation

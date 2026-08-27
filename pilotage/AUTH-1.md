@@ -25,6 +25,10 @@ l'exposition dans l'UI.
 - [ ] L'UI **affiche** qui a verrouillé une planche, et le nom lisible plutôt que le login — le miroir `utilisateur` existe pour ça, rien ne s'en sert encore
 - [ ] L'UI affiche l'appartenance aux groupes là où c'est utile (aujourd'hui `/api/moi` les renvoie, aucune surface ne les lit)
 
+### Données personnelles — angle mort du projet
+- [ ] Le sort des données personnelles d'annotateurs (`utilisateur.nom`, `utilisateur.email`) est tranché et écrit : combien de temps on les garde, ce qu'on en fait, comment on efface quelqu'un qui quitte l'équipe
+- [ ] La conséquence sur les sauvegardes est traitée : `VACUUM INTO` (`pipeline/backup.py:28`) emporte la base ENTIÈRE, donc ces emails, et `pipeline/sharedocs.py` sait déposer ce zip sur ShareDocs — donc hors de la machine
+
 ## Contexte
 
 **C'est la fiche la moins chère du lot et elle débloque tout le reste** : sans notion
@@ -36,6 +40,19 @@ authentifie, l'application se contente de croire l'en-tête que le proxy pose �
 fait déjà depuis INFRA-2. On n'ajoute pas un système de comptes, on branche celui qui
 existe : `deploy/authelia/users_database.yml` porte déjà un compte `chercheur` dans un
 groupe `annotateurs`, et Authelia est en `default_policy: deny` avec 2FA.
+
+**Angle mort découvert le 2026-08-27 en relisant ce chantier.** Le dépôt documente
+minutieusement les droits du CORPUS — `base_legale`, `statut_diffusion`, tiering,
+exception TDM — et ne dit **rien**, nulle part, des données personnelles des personnes
+qui l'utilisent : aucune occurrence de « données personnelles », « RGPD » ou
+« anonymisation » dans `docs/` ni dans `AUDIT.md`. AUTH-1 est le premier chantier à en
+stocker (nom, email), et il le fait sans que rien n'encadre cette catégorie. Le volume est
+minime et l'équipe petite ; ce n'est pas un blocage. C'est une lacune de doctrine, à
+combler pendant qu'elle est petite plutôt qu'après. Recoupe DEPOT-1, qui porte l'autre
+moitié de la question juridique.
+
+Vérifié au passage : les exports (records, CSV, IIIF, crosswalk) n'énumèrent pas les
+tables et ne laissent fuir aucun email — la seule voie de sortie est la sauvegarde.
 
 Conséquence de sûreté, traitée : ces en-têtes ne sont dignes de confiance **que** derrière
 le proxy. C'était vrai depuis INFRA-2 sans être garanti — la docstring affirmait « l'app
