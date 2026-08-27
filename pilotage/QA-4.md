@@ -16,6 +16,11 @@ montré ce que cette limite laisse passer.
 - [ ] Le Dockerfile installe ce verrou complet, et deux constructions à un mois d'écart donnent le même jeu de versions
 - [ ] La procédure de régénération est écrite : quand et comment refaire le gel, et comment vérifier que la suite reste verte après
 
+### Un conflit déjà ouvert entre deux fichiers épinglés
+- [ ] `requirements-export.txt` et `requirements.lock` cessent d'être mutuellement exclusifs : `iiif-prezi3==3.1.1` exige `Pillow<=12.0.0` (dépendance OBLIGATOIRE, pas un extra) quand le verrou épingle `pillow==12.1.0` — pip répond `ResolutionImpossible`
+- [ ] Le test de conformance IIIF (`tests/test_export_metadonnees.py:246`) s'exécute quelque part : aujourd'hui il se skippe dans l'image ET sur la machine de dev, donc **nulle part**, alors que `docs/roadmap.md` donne l'IIIF pour « validé via iiif-prezi3 »
+- [ ] `docs/roadmap.md` dit ce qui est réellement vérifié aujourd'hui, ou la vérification est rétablie — les deux conviennent, la situation actuelle non
+
 ### Cohérence
 - [ ] `torch` et `torchvision` ne sont plus épinglés dans le Dockerfile pendant que `requirements.lock` prétend être « LE verrou » : soit ils y entrent, soit son en-tête dit où ils vivent
 - [ ] Le cas des paquets JUMEAUX est traité explicitement — deux distributions fournissant le même paquet d'import, dont une seule est épinglée
@@ -38,6 +43,14 @@ spaCy, lié à son ABI — le même genre de couple que torch/torchvision, qui a
 cassé ce jour-là. `pydantic 2.13.4` et `starlette 1.6.0` flottent sous une `fastapi`
 épinglée. Un jour, l'un d'eux bougera, et l'image se construira sans erreur en livrant une
 application cassée.
+
+**Le conflit Pillow est de la même famille et déjà actif.** Le verrou a été établi en
+juin 2026 avec « les versions connues-bonnes du moment » ; `pillow` y est passé à 12.1.0,
+ce qui a rendu `iiif-prezi3` ininstallable à côté. Personne ne l'a vu parce que le test
+concerné ne CASSE pas : il se SKIPPE, et un skip se lit comme un succès. Piste de
+résolution la moins risquée : redescendre `pillow` à 12.0.0 — rien n'indique que 12.1.0
+soit requis par quoi que ce soit — puis relancer la suite pour le vérifier plutôt que le
+supposer.
 
 **L'incident opencv est le symptôme, pas l'exception.** Un pin sur
 `opencv-python-headless` ne servait à rien tant que son jumeau `opencv-python`, tiré en

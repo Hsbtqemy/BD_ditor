@@ -1,22 +1,23 @@
 ---
 chantier: QA-5
-statut: à venir
+statut: interrompu
 ---
 
 # QA-5 — la suite ne s'exécute jamais dans l'artefact livré
 
-**Point de départ** — constaté le 2026-08-27, au premier build d'image de l'histoire du
-dépôt. Rien n'est commencé.
+**Arrêté sur** — 2026-08-27, `79d3c8d` : le Dockerfile est en trois étapes et la suite tourne
+dans l'image (2 skips, tous deux documentés). Reste les E2E et le conflit IIIF.
 
 ## Reste
 
 ### Faire tourner la suite là où le code s'exécutera
-- [ ] La suite s'exécute DANS une image construite depuis `deploy/Dockerfile`, pas seulement dans le venv de la machine de dev
-- [ ] L'image de production reste dépourvue de `pytest` et de `playwright` : une étape de build séparée (multi-stage) porte les outils de test, l'étape finale ne les embarque pas — sinon on rend la vérification au prix des 3,5 Go durement gagnés
+- [x] La suite s'exécute DANS une image construite depuis `deploy/Dockerfile` (étape `test`, `CMD = pytest`) — verte, 2 skips
+- [x] L'image de production reste dépourvue de `pytest`, `playwright` et `openpyxl` (vérifié par `find_spec` dans le conteneur) : **runtime 3,55 Go, inchangé** ; l'étape `test` pèse 3,76 Go et n'est jamais livrée
 - [ ] Le résultat est lisible sans reconstruire : un échec dit quel test, dans quelle image, sur quelle version des dépendances
 
 ### Ce que ça doit attraper
-- [ ] Les trois défauts du 2026-08-27 seraient détectés par cette suite : spaCy absent de l'image, `torchvision` incompatible, OpenCV 5 cassant Kumiko — aucun des trois n'était visible depuis la machine de dev
+- [ ] Les trois défauts du 2026-08-27 sont RÉELLEMENT rejoués et détectés : construire une image avec OpenCV 5 (ou sans spaCy) doit faire échouer la suite. Raisonné, jamais éprouvé — et c'est exactement le genre d'affirmation que ce chantier existe pour refuser sur parole
+- [ ] Les E2E tournent quelque part de reproductible : elles exigent un navigateur, restent sur la machine de dev, et sont donc le dernier morceau non couvert par l'artefact
 - [ ] Un écart de version entre le venv local et l'image est signalé, au lieu d'être découvert par un utilisateur
 
 ## Contexte
