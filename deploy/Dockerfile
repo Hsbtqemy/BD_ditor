@@ -18,6 +18,24 @@ WORKDIR /app
 #    (opencv/numpy/requests) ; les outils de test vivent dans requirements-dev.lock
 #    et n'ont rien à faire ici.
 COPY requirements.lock ./
+
+#    1a) torch en variante CPU, AVANT le reste. Mesuré le 2026-08-27 : la roue torch
+#    par défaut de PyPI est compilée pour CUDA 13 et traîne 2 196 Mo de wheels GPU
+#    (cublas 423, cudnn 366, cufft 214, nccl 206, cusolver 201, triton 198…) — pour
+#    une image de 10 Go dont le conteneur répond `torch.cuda.is_available() == False`.
+#    Les specs du projet disent « CPU suffit » (requirements-ocr.txt, requirements-nlp.txt)
+#    et le déploiement ne prévoit aucun GPU. On installe donc torch d'abord depuis
+#    l'index CPU ; `ultralytics` et `easyocr` le trouvent ensuite déjà satisfait.
+#    Pour repasser au GPU : supprimer cette étape, rien d'autre.
+#    torchvision DOIT venir du MÊME index : c'est une extension native compilée
+#    contre torch. Mesuré le 2026-08-27 : `torch==2.13.0+cpu` (index CPU) avec
+#    `torchvision==0.28.0` (PyPI, compilé pour le torch CUDA) donne un
+#    « RuntimeError: operator torchvision::nms does not exist » au premier import
+#    d'ultralytics — et `/api/sante` n'y voit RIEN, car il ne fait que localiser
+#    le module (`find_spec`), jamais l'importer.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu         torch==2.13.0 torchvision==0.28.0
+
+#    1b) le reste, depuis le verrou.
 RUN pip install --no-cache-dir -r requirements.lock
 
 # 2) Modèle NLP français — couche séparée, ~15 Mo, indépendante du reste.
