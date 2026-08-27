@@ -18,8 +18,8 @@ conteneur. Reste ce qui exige le VPS, plus le cache des modèles ML, non testé.
 - [x] Les outils de test n'entrent PAS dans l'image : le lock a été scindé en `requirements.lock` (runtime, 12 pins) et `requirements-dev.lock` — un lock unique aurait embarqué Playwright
 - [x] Le conteneur démarre et sert l'application, volume monté sur `/data` : base créée en `/data/bd_annotator.sqlite`, `/api/sante` renvoie `kumiko`/`bulles`/`ocr`/`lemmes` tous à `true`
 - [x] La base survit à la **destruction** du conteneur : album créé, conteneur supprimé, nouveau conteneur sur le même volume — l'album est toujours là
-- [ ] Les **caches de modèles ML** survivent au redémarrage : `HOME=/data` est posé pour ça, mais aucune passe ML n'a encore été lancée, donc rien n'a été téléchargé ni vérifié. Si c'est faux, chaque redémarrage re-télécharge YOLO et EasyOCR
-- [ ] `/api/sante` cesse de mentir sur les moteurs : `bulles_available()` et `ocr_available()` n'appellent que `importlib.util.find_spec`, qui LOCALISE le module sans jamais l'importer — la route a annoncé `bulles: true` sur une pile où `import ultralytics` levait `RuntimeError: torchvision::nms does not exist`. Acceptable en mono-poste, faux vert une fois déployé
+- [x] Les **caches de modèles ML** survivent : passes bulles et OCR lancées, modèles téléchargés dans `/data/.cache` (50 Mo) et `/data/.EasyOCR` (95 Mo) — donc sur le volume, réutilisés par les conteneurs suivants. `HOME=/data` fait son travail
+- [ ] Les trois passes ML tournent sur un **vrai master** de `corpus/`, pas seulement sur une planche synthétique : l'empreinte des modèles est fixe, celle des tampons d'image ne l'est pas
 
 ### Déploiement — jamais lancé
 - [ ] `deploy/docker-compose.yml` (app + redis + authelia + caddy) monte réellement sur le VPS
@@ -49,6 +49,13 @@ conception, c'est ce qu'un premier `docker compose up` révélera.
 Attention au dimensionnement mémoire : CONC-2 documente un OOM observé en enchaînant
 segmentation, bulles, OCR et NLP sur une vraie planche. Un VPS contraint reproduira ce
 problème plus tôt qu'un poste de dev.
+
+**Empreinte mémoire mesurée le 2026-08-27** (VM Docker à 8,17 Go, image CPU, planche
+synthétique 1600×2200) : application seule **49,7 Mio** ; + spaCy préchargé **143,4 Mio** ;
++ YOLOv8 **826,4 Mio** ; + EasyOCR, les trois moteurs, **833,6 Mio** — soit ~10 % de la
+mémoire disponible. `/api/sante` montrait alors `modeles_charges: {bulles: false, ocr:
+true, nlp: true}` : l'orchestrateur de **CONC-2 v1 déchargeait bien YOLO** avant la passe
+interactive. Ces chiffres remettent en cause la nécessité de CONC-2 v2 — cf. sa fiche.
 
 **Le premier build a eu lieu le 2026-08-27, et il a tout appris.** Trois blocages en
 cascade, dont aucun n'était prévu : le proxy universitaire invisible au démon Docker

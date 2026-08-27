@@ -19,7 +19,19 @@ seule à garantir le zéro-OOM, est restée dehors.
 
 ## Contexte
 
-**L'OOM n'est pas théorique** : observé le 2026-06-24 en annotant une vraie planche, le
+**PRÉMISSE À RÉEXAMINER (mesure du 2026-08-27).** Dans un conteneur à 8,17 Go, avec le
+torch CPU, les **trois moteurs chargés ensemble tiennent dans 833,6 Mio** — application
+seule 49,7 Mio, + spaCy 143,4, + YOLOv8 826,4, + EasyOCR 833,6. Soit ~10 % de la mémoire
+disponible, très loin d'un OOM.
+
+L'OOM du 2026-06-24 a probablement été causé par le **torch CUDA**, retiré depuis
+(`7171040`) : il charge les runtimes CUDA en mémoire même sans GPU. Réserve : la mesure
+porte sur une planche SYNTHÉTIQUE de 1600×2200. L'empreinte des modèles est fixe, celle
+des tampons d'image ne l'est pas — un master de scan réel en 8000 px chargerait bien
+davantage. **À refaire sur un vrai master avant de conclure.** Si ça tient, cette fiche
+passe de « prérequis du déploiement » à dormante, et son `Reste` est à réécrire.
+
+**L'OOM n'était pas théorique** : observé le 2026-06-24 en annotant une vraie planche, le
 process tué SANS traceback Python. Les données committées étaient saines — c'est le seul
 point rassurant.
 
