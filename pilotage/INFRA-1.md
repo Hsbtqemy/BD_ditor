@@ -5,22 +5,23 @@ statut: interrompu
 
 # INFRA-1 — déploiement Docker réel sur le VPS
 
-**Arrêté sur** — 2026-06-26, `b7b2cc0` : l'intégration app-side de l'auth est faite
-(utilisateur connecté, déconnexion, en-tête Remote-User, route `/api/moi`, tests
-dédiés). Reste tout ce qui sort de la machine de dev.
+**Arrêté sur** — 2026-08-27, `3720f9f` : l'image est corrigée avant tout build (verrou
+QA-1 scindé runtime/dev et installé, modèle `fr_core_news_sm` ajouté). Reste ce qui exige
+une machine avec Docker, puis le VPS.
 
 ## Reste
 
 ### Image — écrite, jamais construite
 - [ ] `deploy/Dockerfile` se construit réellement jusqu'au bout : le clone Kumiko, l'install de `requirements-ocr.txt` et les wheels torch passent, et le poids final de l'image est relevé et noté
-- [ ] **L'image installe spaCy ET le modèle** : `deploy/Dockerfile:16-17` n'installe aujourd'hui que `requirements.txt` + `requirements-ocr.txt` + `requests`, donc **ni `spacy` ni `fr_core_news_sm`**. `GET /api/sante` déployé annonce le NLP disponible
-- [ ] **L'image installe depuis `requirements.lock`, pas depuis `requirements.txt`** : les 15 pins exacts de QA-1 (dont `spacy==3.8.14`, `ultralytics==8.4.65`, `easyocr==1.7.2`) sont ceux du build, sinon chaque reconstruction tire des versions différentes
-- [ ] Les trois lignes de dev du lock (`pytest`, `pytest-cov`, `pytest-playwright`) n'entrent PAS dans l'image : le lock mêle runtime et dev, il faut le scinder ou le filtrer — un `pip install -r requirements.lock` nu embarquerait Playwright
+- [x] Le Dockerfile installe spaCy ET télécharge `fr_core_news_sm` — il n'installait que `requirements.txt` + `requirements-ocr.txt` + `requests`, donc aucun des deux
+- [x] Le Dockerfile installe depuis `requirements.lock` (verrou QA-1) et non depuis des bornes `>=` ouvertes
+- [x] Les outils de test n'entrent PAS dans l'image : le lock a été scindé en `requirements.lock` (runtime, 12 pins) et `requirements-dev.lock` — un lock unique aurait embarqué Playwright
 - [ ] Le conteneur démarre et sert l'application, volume `bd-data` monté sur `/data` (`BD_DATA_DIR` et `HOME` y pointent déjà dans le Dockerfile, pour que les modèles ML ne soient téléchargés qu'une fois)
 - [ ] Un redémarrage de conteneur ne perd ni la base, ni `corpus/`, ni les modèles téléchargés
 
 ### Déploiement — jamais lancé
 - [ ] `deploy/docker-compose.yml` (app + redis + authelia + caddy) monte réellement sur le VPS
+- [ ] `GET /api/sante` sur l'instance déployée annonce le NLP **disponible** — c'est le seul contrôle qui prouve que le modèle a bien suivi jusqu'en production
 - [ ] Une requête non authentifiée est refusée par Authelia avant d'atteindre l'application
 - [ ] La déconnexion fonctionne de bout en bout depuis l'UI, pas seulement via la route `/api/moi`
 - [ ] Une sauvegarde prise sur le VPS se restaure sur une machine de dev
@@ -47,7 +48,13 @@ Attention au dimensionnement mémoire : CONC-2 documente un OOM observé en ench
 segmentation, bulles, OCR et NLP sur une vraie planche. Un VPS contraint reproduira ce
 problème plus tôt qu'un poste de dev.
 
-**Le trou du NLP est le plus coûteux, et il est silencieux.** Sans spaCy, `nlp_available()`
+**Corrigé le 2026-08-27 (`3720f9f`), mais non vérifié : aucun Docker sur la machine de
+dev.** Le premier build reste à faire ailleurs, et c'est lui qui dira si les wheels torch,
+le clone Kumiko et le téléchargement du modèle passent. Les trois secrets attendus par
+compose, Caddy et Authelia sont en revanche tous documentés dans `deploy/.env.example`
+(vérifié) — ce n'est pas là que ça achoppera.
+
+**Le trou du NLP était le plus coûteux, et il était silencieux.** Sans spaCy, `nlp_available()`
 vaut False et tout dégrade *proprement* — aucune erreur, aucun log alarmant. Mais la table
 `tokens` n'est jamais peuplée, donc `tokens_effectifs` est vide, donc : l'Exploration
 (distribution, concordance, croisement, comparaison) ne montre rien, le statut de relecture
