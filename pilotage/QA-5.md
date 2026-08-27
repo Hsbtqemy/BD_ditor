@@ -16,7 +16,8 @@ dans l'image (2 skips, tous deux documentés). Reste les E2E et le conflit IIIF.
 - [ ] Le résultat est lisible sans reconstruire : un échec dit quel test, dans quelle image, sur quelle version des dépendances
 
 ### Ce que ça doit attraper
-- [ ] Les trois défauts du 2026-08-27 sont RÉELLEMENT rejoués et détectés : construire une image avec OpenCV 5 (ou sans spaCy) doit faire échouer la suite. Raisonné, jamais éprouvé — et c'est exactement le genre d'affirmation que ce chantier existe pour refuser sur parole
+- [x] Les trois défauts du 2026-08-27 ont été RÉELLEMENT rejoués dans des images cassées à dessein. Verdict : **deux sur trois détectés**, le troisième NON — mesuré, pas raisonné
+- [ ] Le moteur ML manquant est détecté à la construction, ce que la suite ne peut PAS faire : l'image déclare les moteurs qu'elle DOIT avoir et un contrôle le vérifie. Sans ça, une image sans spaCy passe la suite à 100 % vert tout en tuant quatre chantiers livrés (Exploration, ANN-4, NLP-1, ANN-5)
 - [ ] Les E2E tournent quelque part de reproductible : elles exigent un navigateur, restent sur la machine de dev, et sont donc le dernier morceau non couvert par l'artefact
 - [ ] Un écart de version entre le venv local et l'image est signalé, au lieu d'être découvert par un utilisateur
 
@@ -36,6 +37,26 @@ délibérée (`3720f9f`), pour ne pas embarquer Playwright et son navigateur dan
 livrable. La décision était bonne pour le poids et **mauvaise pour la vérification** ;
 les deux sont vrais, et la sortie n'est pas de remettre pytest en production mais de
 séparer les étapes.
+
+**Ce que la suite en image attrape, et ce qu'elle n'attrape pas — mesuré le 2026-08-27**
+en construisant trois images délibérément cassées :
+
+| Défaut rejoué | Suite dans l'image |
+|---|---|
+| OpenCV 5 écrasant OpenCV 4 (Kumiko) | **5 échecs**, exit 1 — détecté |
+| `torchvision` de PyPI sur torch CPU | **3 échecs**, exit 1 — détecté |
+| Modèle spaCy absent | **0 échec, exit 0** — **INVISIBLE** |
+
+Le troisième cas est le plus instructif, et il limite ce chantier : la couche NLP est
+conçue pour **dégrader proprement**, et les tests encodent la même hypothèse. La suite ne
+peut pas signaler un moteur optionnel absent, parce que « moteur absent » est un état
+qu'elle est écrite pour accepter — et c'est correct en développement local, où l'on
+travaille couramment sans spaCy.
+
+La conséquence est qu'une suite verte dans l'image **ne suffit pas**. Il faut un contrat
+d'IMAGE distinct du contrat de test : l'artefact déclare les moteurs qu'il doit porter, et
+un contrôle le vérifie à la construction. C'est le même geste que le contrôle profond de
+SANTE-1, appliqué au build plutôt qu'au runtime.
 
 Ce chantier est la racine commune de **SANTE-1** (la route de santé ne peut pas voir une
 pile cassée), de **QA-4** (76 paquets flottants sous 15 épinglés) et du constat **T8**
