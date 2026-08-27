@@ -1,4 +1,13 @@
-# Comptes utilisateurs Authelia (corpus partagé : tous accèdent au même corpus).
+# Comptes utilisateurs Authelia.
+#
+# AUTH-2 — les GROUPES comptent désormais. L'application n'ouvre que les collections
+# déclarées pour vous (ou pour l'un de vos groupes) dans `collection_acces`, et une
+# instance neuve n'en déclare aucune. Le groupe `bd-admins` (réglable par
+# `BD_AUTH_ADMIN_GROUPS`) est le seul qui voie tout d'emblée : sans au moins une personne
+# dedans, chacun se connectera correctement et trouvera une application VIDE.
+#
+# Les groupes ne sont jamais copiés en base : ils sont relus ici à chaque requête, si bien
+# qu'un retrait prend effet immédiatement, sans intervention sur la base.
 #
 # Le champ `password` est un HASH argon2id, jamais le mot de passe en clair.
 # Générer un hash :
@@ -15,4 +24,9 @@ users:
     password: '$argon2id$v=19$m=65536,t=3,p=4$REMPLACER_PAR_UN_VRAI_HASH'
     email: 'chercheur@example.fr'
     groups:
+      # Voit tout le corpus et administre les accès (cf. BD_AUTH_ADMIN_GROUPS).
+      # Le premier compte d'une instance doit l'avoir, sinon personne ne voit rien.
+      - 'bd-admins'
+      # Groupe « métier » : sert à ouvrir des collections précises dans `collection_acces`
+      # sans passer par un droit nominal, personne par personne.
       - 'annotateurs'

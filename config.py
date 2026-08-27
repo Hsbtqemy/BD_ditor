@@ -59,6 +59,17 @@ AUTH_LOGOUT_URL = os.environ.get("BD_AUTH_LOGOUT_URL", "").strip()
 # erreur de `ports:` dans un compose ne laisse aucune trace, ce drapeau si.
 AUTH_PROXY = os.environ.get("BD_AUTH_PROXY", "").strip().lower() in ("1", "true", "oui", "yes")
 
+# Groupes dont les membres voient TOUT le corpus et administrent les accès (AUTH-2).
+# Noms de groupes Authelia, séparés par des virgules. La composition de ces groupes n'est
+# jamais stockée ici : elle vit dans Authelia et se relit dans `Remote-Groups` à chaque
+# requête, comme le reste (invariant AUTH-1).
+#
+# Sans proxy d'auth, ce réglage ne sert à rien : le mono-poste voit tout de toute façon.
+AUTH_ADMIN_GROUPS = frozenset(
+    g for g in (x.strip() for x in
+                os.environ.get("BD_AUTH_ADMIN_GROUPS", "bd-admins").split(","))
+    if g)
+
 # Garde-fou anti-bombe de décompression : nombre max de pixels décodés par image.
 # Très au-dessus d'un scan de BD (≤ ~100 Mpx même en haute résolution) mais bloque
 # les images-bombes AVANT l'allocation mémoire (Pillow vérifie via l'en-tête).

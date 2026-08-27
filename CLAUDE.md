@@ -50,7 +50,7 @@ cette machine — un dépôt à la fois par port, c'est le modèle de l'outil.
 
 ## Vue d'ensemble
 
-Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut. **L'application n'authentifie personne** : elle fait confiance aux en-têtes d'identité posés par un proxy d'auth (Authelia), et seulement si `BD_AUTH_PROXY` déclare qu'il est bien devant — sans quoi tout acte reste anonyme (AUTH-1). Aucun secret en base : `utilisateur` (v22) n'est qu'un miroir d'affichage, et les groupes ne sont jamais stockés, relus dans `Remote-Groups` à chaque requête. Voir `docs/hebergement-securite.md`.
+Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut. **L'application n'authentifie personne** : elle fait confiance aux en-têtes d'identité posés par un proxy d'auth (Authelia), et seulement si `BD_AUTH_PROXY` déclare qu'il est bien devant — sans quoi tout acte reste anonyme (AUTH-1). Aucun secret en base : `utilisateur` (v22) n'est qu'un miroir d'affichage, et les groupes ne sont jamais stockés, relus dans `Remote-Groups` à chaque requête. **Elle AUTORISE en revanche** (AUTH-2, v23) : le cloisonnement par collection est à elle, Authelia ne dit que « qui ». Voir `docs/hebergement-securite.md`.
 
 Backend **Python 3.12 / FastAPI** ; frontend **JavaScript/HTML/CSS vanilla** — aucun framework, **aucune étape de build**. On édite `static/*.js` et `templates/*.html` directement.
 
@@ -109,6 +109,40 @@ Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, 
 Deux paliers de métadonnées descriptives (FAIR/dépôt, cf. `docs/dictionnaire-metadonnees.md`) : la **collection** (`collection` ↔ `collection_album` N-N, unité de dépôt, v14) regroupe des albums pour une étude ; la **paternité** N0 des albums vit dans `contribution` ↔ `contribution_role` (Zotero-like, rôle contrôlé-ouvert, v15), plus des colonnes d'édition (`date_edition`, `isbn`…). `albums.auteur`/`annee` restent *legacy*.
 
 Le master TIFF va dans `corpus/`, un dérivé web JPEG à 25 % (`WEB_SCALE` dans `config.py`) dans `derivatives/` ; les deux dossiers sont gitignore.
+
+### Autorisation par collection (AUTH-2, v23)
+
+**Un seul endroit du code tranche « qui voit quoi » : `autorisation.py`.** Il répond
+`Portee` — quelles collections en lecture, lesquelles en écriture — et tout le reste
+consomme la réponse sans la recalculer. `main.py` expose la dépendance `portee_courante`
+et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste entier.
+
+- **La collection est l'unité** (`collection_acces` : collection × principal × niveau).
+  `principal` = un login OU un nom de groupe lu dans `Remote-Groups` — on stocke une
+  RÉFÉRENCE au groupe, jamais une appartenance (invariant AUTH-1).
+- **Aucun album hors collection** (`database.collection_par_defaut`) : un orphelin ne
+  correspondrait à aucune règle, et il faudrait inventer une politique dans le code. La
+  création d'album accepte `collection_id` et retombe sinon sur la collection de repli.
+- **404, jamais 403** : « existe mais pas pour vous » révèle la composition du corpus.
+- **Sans `BD_AUTH_PROXY`, portée TOTALE** (mono-poste inchangé) ; **avec le drapeau mais
+  sans identité, portée VIDE** — fermeture par défaut, panne bruyante plutôt que fuite.
+- Trois accesseurs GARDÉS sont la seule façon d'atteindre un objet : `_get_album`,
+  `_get_planche`, `_get_region`. La `Portee` y est un paramètre **obligatoire** : une
+  valeur par défaut qui sauterait le contrôle rendrait l'oubli invisible.
+- Les requêtes de LISTE filtrent par `portee.clause_album(alias)`. Deux cœurs partagés
+  portent le filtre pour tout un pan de l'app : `_recherche_rows` (recherche + export CSV)
+  et `_analyse_filtres` (distribution, concordance, croisement, comparaison).
+
+**Le cliquet, et c'est la vraie protection** : `tests/test_autorisation.py` énumère les
+routes de l'app et exige que chacune ait été tranchée — soit elle consulte la portée, soit
+elle figure sur `HORS_PERIMETRE` (avec sa raison écrite) ou sur `A_CABLER` (la dette,
+nommée). Une route absente des deux fait échouer la suite. Il ferme la porte de l'OUBLI,
+pas celle de l'erreur : il vérifie qu'une route consulte la portée, jamais qu'elle en tire
+la bonne conclusion — d'où les tests de comportement, dont la couverture est une liste et
+non une garantie. Chantier livré par tranches : `A_CABLER` doit atteindre zéro.
+
+Cf. `docs/hebergement-securite.md` (§6), dont la décision assumée : `GET /api/sauvegarde`
+reste ouverte à tous et déverse la base entière.
 
 ### Recherche FTS5 — index maintenu explicitement
 

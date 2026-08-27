@@ -16,7 +16,8 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
-from conftest import make_png  # noqa: E402
+# AUTH-2 : `ADMIN` monte le décor avec les droits qu'il faut (sans effet hors proxy).
+from conftest import ADMIN, make_png  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -59,7 +60,8 @@ def _theme(page, name):
 def seeded(live_server):
     """Album + planche + une bulle (avec OCR + annotation) pour peupler les 4
     surfaces, via l'API sur le serveur live."""
-    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30)
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         aid = c.post("/api/albums", json={"titre": "A11y", "auteur": "X"}).json()["id"]
         pid = c.post(f"/api/albums/{aid}/import",
@@ -107,6 +109,7 @@ def test_a11y_visionneuse_modes(page, seeded, theme):
         assert not viol, f"Visionneuse/{label} [{theme}] :\n{_fmt(viol)}"
 
 
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # AUTH-1 : proxy déclaré
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_a11y_pastille_utilisateur(page, seeded, theme):
     """Pastille « utilisateur connecté · déconnexion » (INFRA-1). Elle n'apparaît
@@ -114,7 +117,10 @@ def test_a11y_pastille_utilisateur(page, seeded, theme):
     les requêtes de la page (la pastille est alors rendue par theme.js depuis
     /api/moi), puis on vérifie qu'elle est bien là ET sans violation de contraste."""
     _theme(page, theme)
-    page.set_extra_http_headers({"Remote-User": "Camille Roy"})
+    # `Remote-Groups` en plus : sans entrée dans `collection_acces`, Camille ne verrait
+    # aucun album (AUTH-2) et l'audit porterait sur une page vide.
+    page.set_extra_http_headers({"Remote-User": "Camille Roy",
+                                 "Remote-Groups": "bd-admins"})
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_selector(".user-chip .user-who", timeout=3000)
     viol = _audit(page)
@@ -147,7 +153,8 @@ def test_a11y_corpus_materiel(page, seeded):
     page.fill("#m-source-num", "Epson V850, 600 dpi")
     page.click("#m-save")
     page.wait_for_timeout(500)
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         alb = c.get("/api/albums").json()
     finally:
@@ -167,7 +174,8 @@ def test_a11y_corpus_relecture(page, seeded):
     # Round-trip : forcer le statut via le sélecteur → override persisté.
     page.select_option(".rel-sel", "faite")
     page.wait_for_timeout(500)
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         planches = c.get(f"/api/albums/{seeded['album']}/planches").json()
     finally:
@@ -189,7 +197,8 @@ def test_a11y_visionneuse_undo(page, seeded):
     """Undo (D1) : une action d'annotation (locuteur) posée via l'API est annulée par Ctrl+Z
     dans la Visionneuse (round-trip UI → serveur → rafraîchissement) ; le toast d'annulation
     reste accessible."""
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         p = c.post("/api/personnages", json={"nom": "Tournesol"}).json()
         c.put(f"/api/regions/{seeded['region']}/locuteur", json={"personnage_id": p["id"]})
@@ -202,7 +211,8 @@ def test_a11y_visionneuse_undo(page, seeded):
     page.wait_for_timeout(500)
     viol = _audit(page)
     assert not viol, f"Visionneuse/undo :\n{_fmt(viol)}"
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         assert c.get(f"/api/regions/{seeded['region']}/locuteur").json()["locuteur"] is None
     finally:
@@ -212,7 +222,8 @@ def test_a11y_visionneuse_undo(page, seeded):
 def test_a11y_exploration_domaines(page, seeded):
     """Domaines (piste B) : créer un domaine dans la modale Lexique (a11y audité), puis
     rattacher une dimension via le sélecteur → persisté (round-trip UI → serveur)."""
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         c.post("/api/attributs/dimensions", json={"cible": "case", "nom": "valence"})
     finally:
@@ -231,7 +242,8 @@ def test_a11y_exploration_domaines(page, seeded):
     page.locator('.lex-term:not(.lex-domaine) > summary').first.click()
     page.locator('.lex-term select[data-f="domaine_id"]').first.select_option(label="émotions")
     page.wait_for_timeout(400)
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         dims = c.get("/api/attributs/dimensions").json()
     finally:
@@ -244,7 +256,8 @@ def test_a11y_exploration_lexique(page, seeded):
     labels de formulaire, badge d'état) ET vérifie le round-trip d'édition (une définition
     saisie dans l'UI est bien persistée via PATCH)."""
     # Peuple le vocabulaire facetté (dimension + valeur) en plus du tag semé.
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         dim = c.post("/api/attributs/dimensions",
                      json={"cible": "case", "nom": "registre"}).json()
@@ -266,7 +279,8 @@ def test_a11y_exploration_lexique(page, seeded):
     ta.fill("niveau de langue")
     ta.blur()
     page.wait_for_timeout(400)
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         lex = c.get("/api/lexique").json()
     finally:
@@ -279,7 +293,8 @@ def test_a11y_exploration_lexique(page, seeded):
 def test_a11y_visionneuse_alignement(page, seeded):
     """Panneau Personnage → alignement d'autorité (A5) : audite l'a11y de la section ouverte
     (puce-lien + champ) ET vérifie le round-trip (URI saisie dans l'UI → persistée)."""
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         p = c.post("/api/personnages", json={"nom": "Tournesol"}).json()
         c.put(f"/api/regions/{seeded['region']}/locuteur", json={"personnage_id": p["id"]})
@@ -296,7 +311,8 @@ def test_a11y_visionneuse_alignement(page, seeded):
     inp.fill("https://www.wikidata.org/wiki/Q42")
     inp.press("Enter")
     page.wait_for_timeout(400)
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         al = c.get(f"/api/personnages/{p['id']}/alignements").json()
     finally:
@@ -352,7 +368,8 @@ def test_a11y_exploration_accord(page, seeded):
     """Accord modèle↔humain (NLP-1 / B4) : ouvrir la modale, auditer son a11y (piège à focus,
     table, barres). Si le corpus a des tokens (spaCy), on valide un token d'abord pour exercer
     aussi le rendu du tableau (sinon on audite l'état « aucun token relu »)."""
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         toks = c.get(f"/api/regions/{seeded['region']}/tokens").json()
         if toks:                                     # valider le 1er token → 1 token relu
@@ -369,19 +386,21 @@ def test_a11y_exploration_accord(page, seeded):
     assert not viol, f"Exploration/accord :\n{_fmt(viol)}"
 
 
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # attribution alice/bob
 def test_a11y_exploration_accord_inter(page, seeded):
     """Accord inter-annotateurs (ANN-5 / B6) : créer une divergence (alice corrige, bob
     re-corrige le même token via l'en-tête Remote-User) puis auditer la modale (table +
     liste de divergences). Si le corpus n'a pas de tokens (spaCy absent), on audite l'état vide."""
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         toks = c.get(f"/api/regions/{seeded['region']}/tokens").json()
         if toks:
             o = toks[0]["ordre"]
             c.put(f"/api/regions/{seeded['region']}/tokens/{o}",
-                  json={"etat": "corrige", "pos": "NOUN"}, headers={"Remote-User": "alice"})
+                  json={"etat": "corrige", "pos": "NOUN"}, headers={"Remote-User": "alice", "Remote-Groups": "bd-admins"})
             c.put(f"/api/regions/{seeded['region']}/tokens/{o}",
-                  json={"etat": "corrige", "pos": "VERB"}, headers={"Remote-User": "bob"})
+                  json={"etat": "corrige", "pos": "VERB"}, headers={"Remote-User": "bob", "Remote-Groups": "bd-admins"})
     finally:
         c.close()
     page.goto(seeded["base"] + "/exploration", wait_until="networkidle")

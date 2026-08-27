@@ -99,6 +99,21 @@ l'application les traiterait tous comme anonymes, sans le moindre message. Symé
 le poser sur une application joignable autrement que par Caddy revient à croire n'importe
 quel `Remote-User` envoyé par n'importe qui.
 
+**`BD_AUTH_ADMIN_GROUPS` (AUTH-2) — le premier réglage à faire après le déploiement.**
+Depuis AUTH-2, l'application autorise : on ne voit que les collections ouvertes pour soi
+dans `collection_acces`. Une instance neuve n'en ouvre AUCUNE. Concrètement, si personne
+n'appartient à un groupe d'administration, **tout le monde se connecte correctement et
+voit une application vide** — et rien n'indique pourquoi.
+
+Le défaut est `bd-admins` : déclarez ce groupe dans `deploy/authelia/users_database.yml`
+et mettez-y au moins une personne, ou changez le nom via cette variable. Ensuite seulement,
+les accès des autres se donnent collection par collection.
+
+C'est aussi le symptôme à connaître : **une instance qui paraît vide pour tout le monde**
+n'est presque jamais une base perdue, c'est un droit manquant — ou un `forward_auth` qui
+ne pose pas `Remote-User`, auquel cas la portée est vide par fermeture délibérée
+(cf. `docs/hebergement-securite.md` §6).
+
 ## 7. Opérations courantes
 
 ```bash

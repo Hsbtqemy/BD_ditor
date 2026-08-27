@@ -162,7 +162,7 @@ def test_aucun_secret_dans_la_table(client, derriere_proxy, db_path):
 # --------------------------------------------------------------------------- #
 def test_verrou_consigne_son_auteur(client, derriere_proxy, album, planche, db_path):
     client.patch(f"/api/planches/{planche['id']}/verrou", json={"verrouillee": True},
-                 headers={"Remote-User": "chercheur"})
+                 headers={"Remote-User": "chercheur", "Remote-Groups": "bd-admins"})
     conn = sqlite3.connect(db_path)
     try:
         row = conn.execute("SELECT verrou_par FROM planches WHERE id = ?",
@@ -174,9 +174,9 @@ def test_verrou_consigne_son_auteur(client, derriere_proxy, album, planche, db_p
 
 def test_deverrouiller_efface_l_auteur(client, derriere_proxy, album, planche, db_path):
     client.patch(f"/api/planches/{planche['id']}/verrou", json={"verrouillee": True},
-                 headers={"Remote-User": "chercheur"})
+                 headers={"Remote-User": "chercheur", "Remote-Groups": "bd-admins"})
     client.patch(f"/api/planches/{planche['id']}/verrou", json={"verrouillee": False},
-                 headers={"Remote-User": "chercheur"})
+                 headers={"Remote-User": "chercheur", "Remote-Groups": "bd-admins"})
     conn = sqlite3.connect(db_path)
     try:
         row = conn.execute("SELECT verrouillee, verrou_par FROM planches WHERE id = ?",

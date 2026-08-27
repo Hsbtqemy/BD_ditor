@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 
 
 # --------------------------------------------------------------------------- #
@@ -328,6 +328,30 @@ CREATE TABLE IF NOT EXISTS collection_album (
     rang           INTEGER,
     PRIMARY KEY (collection_id, album_id)
 );
+
+-- DROIT D'ACCÈS à une collection (v23, AUTH-2). La collection est l'unité de cloisonnement :
+-- on n'autorise jamais un album directement, toujours la collection qui le contient.
+--
+-- `principal` est un NOM — un login, ou un nom de groupe tel qu'il apparaît dans l'en-tête
+-- `Remote-Groups` posé par Authelia. Rien ici n'est un secret et rien n'est une
+-- APPARTENANCE : on ne stocke pas « Alice est dans bd-lettrage », on stocke « bd-lettrage
+-- ouvre la collection 3 ». La composition des groupes reste chez Authelia et se relit à
+-- chaque requête (invariant AUTH-1, cf. docs/hebergement-securite.md).
+--
+-- `genre` est EXPLICITE plutôt que déduit : un login et un groupe peuvent porter le même
+-- nom, et une ambiguïté silencieuse sur un contrôle d'accès n'est pas une hypothèse qu'on
+-- se permet.
+CREATE TABLE IF NOT EXISTS collection_acces (
+    collection_id  INTEGER NOT NULL REFERENCES collection(id) ON DELETE CASCADE,
+    genre          TEXT NOT NULL,       -- 'utilisateur' | 'groupe'
+    principal      TEXT NOT NULL,       -- login, ou nom de groupe Remote-Groups
+    niveau         TEXT NOT NULL,       -- 'lecture' | 'ecriture'
+    date_creation  TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (collection_id, genre, principal)
+);
+-- On interroge « quelles collections pour CE principal » à chaque requête : l'index porte
+-- donc sur le principal, la clé primaire couvrant déjà le sens inverse.
+CREATE INDEX IF NOT EXISTS idx_acces_principal ON collection_acces(genre, principal);
 
 -- CONTRIBUTION (v15, N0) — paternité en modèle Zotero-like : (nom, rôle) par album.
 -- Le rôle est un vocabulaire CONTRÔLÉ-MAIS-OUVERT (même forme que tags/attributs), curé
@@ -690,6 +714,26 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if pcols_auth and "verrou_par" not in pcols_auth:
         conn.execute("ALTER TABLE planches ADD COLUMN verrou_par TEXT")
 
+    # v22 → v23 : cloisonnement par collection (AUTH-2). Table `collection_acces` NOUVELLE
+    # (créée par SCHEMA_SQL en `IF NOT EXISTS`) → rien à migrer de ce côté. Ce qui suit est
+    # une migration de DONNÉES, donc GATÉE par la version : elle rejouerait sinon à chaque
+    # démarrage et recréerait la collection de repli après chaque rangement manuel.
+    #
+    # L'autorisation se décide par collection ; un album hors de toute collection ne
+    # correspondrait à aucune règle. Plutôt que d'inventer une politique pour ce cas, on
+    # supprime le cas : les orphelins existants entrent dans la collection de repli.
+    # Mesuré le 2026-08-27 sur la base de travail : 3 albums, 0 collection.
+    a_collections = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='collection_album'"
+    ).fetchone()
+    if version < 23 and a_collections:      # garde de table : les tests de migration
+        orphelins = albums_orphelins(conn)  # montent un schéma minimal, sans collections
+        if orphelins:
+            cid = collection_par_defaut(conn)
+            conn.executemany(
+                "INSERT OR IGNORE INTO collection_album (collection_id, album_id) "
+                "VALUES (?, ?)", [(cid, a) for a in orphelins])
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -918,6 +962,45 @@ def collections(conn: sqlite3.Connection) -> list[dict]:
         "SELECT c.*, "
         "(SELECT COUNT(*) FROM collection_album ca WHERE ca.collection_id = c.id) "
         "AS nb_albums FROM collection c ORDER BY c.id")]
+
+
+# Nom de la collection de repli (AUTH-2). L'identifier par son NOM plutôt que par une
+# colonne ou un id figé est un choix de MODE D'ÉCHEC : si quelqu'un la renomme, le repli
+# recrée une collection de repli — un seau visible et vide, sans conséquence. Une
+# désignation par « plus petit id » aurait, elle, déversé des albums dans la collection
+# d'étude de quelqu'un d'autre, silencieusement.
+NOM_COLLECTION_DEFAUT = "Collection par défaut"
+
+
+def collection_par_defaut(conn: sqlite3.Connection) -> int:
+    """Id de la collection de repli, CRÉÉE si elle n'existe pas.
+
+    Garantit l'invariant d'AUTH-2 : aucun album ne peut se retrouver hors de toute
+    collection. La collection étant l'unité de cloisonnement, un album orphelin ne
+    correspondrait à AUCUNE règle d'accès — il faudrait alors inventer une politique
+    dans le code, à un endroit qu'on oublierait de relire. Ici, la question ne se pose
+    jamais : il y a toujours une règle, quitte à ce qu'elle n'ouvre à personne.
+    """
+    r = conn.execute("SELECT id FROM collection WHERE nom = ?",
+                     (NOM_COLLECTION_DEFAUT,)).fetchone()
+    if r:
+        return r[0]
+    cur = conn.execute(
+        "INSERT INTO collection (nom, description) VALUES (?, ?)",
+        (NOM_COLLECTION_DEFAUT,
+         "Créée automatiquement : tout album doit appartenir à une collection, qui est "
+         "l'unité de cloisonnement des accès. Renommez-la et décrivez-la, ou déplacez "
+         "ses albums vers des collections d'étude."))
+    return cur.lastrowid
+
+
+def albums_orphelins(conn: sqlite3.Connection) -> list[int]:
+    """Albums n'appartenant à AUCUNE collection. Doit toujours être vide (AUTH-2) —
+    c'est la formulation exécutable de l'invariant, utilisée par la migration et par
+    le test qui le verrouille."""
+    return [r[0] for r in conn.execute(
+        "SELECT id FROM albums WHERE id NOT IN "
+        "(SELECT album_id FROM collection_album)")]
 
 
 def collection_row(conn: sqlite3.Connection, collection_id: int) -> dict | None:

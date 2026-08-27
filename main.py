@@ -22,14 +22,16 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from config import (AUTH_LOGOUT_URL, AUTH_PROXY, CIBLES_ATTRIBUT, DERIVATIVES_DIR,
+from config import (AUTH_LOGOUT_URL, AUTH_PROXY, CIBLES_ATTRIBUT, DATA_DIR,
                     RELECTURE, ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR,
                     TYPES_REGION, UPOS_TAGS)
-from database import (citations_regions, collections, contributions_album, dimensions_cm,
+from database import (citations_regions, collection_par_defaut, collections,
+                      contributions_album, dimensions_cm,
                       get_connection, init_db, lexique_resume, numeros_editoriaux,
                       relecture_planches, reindex_region, unindex_region)
 import accord
 import accord_inter
+import autorisation
 import journal
 import lexique_import
 import sante as sante_moteurs
@@ -131,6 +133,17 @@ def db() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def portee_courante(request: Request,
+                    conn: sqlite3.Connection = Depends(db)) -> autorisation.Portee:
+    """Dépendance FastAPI : la portée d'autorisation de la requête courante (AUTH-2).
+
+    Enveloppe minuscule autour de `autorisation.resoudre` — la logique vit dans le module,
+    pas ici. Toute route qui touche aux données du corpus déclare CETTE dépendance ; c'est
+    ce que vérifie `tests/test_autorisation.py`, qui échoue si une route l'oublie.
+    """
+    return autorisation.resoudre(conn, request)
+
+
 def _rows(cur) -> list[dict]:
     return [dict(r) for r in cur.fetchall()]
 
@@ -144,6 +157,10 @@ def _row(cur) -> Optional[dict]:
 # Modèles Pydantic
 # --------------------------------------------------------------------------- #
 class AlbumIn(BaseModel):
+    # AUTH-2 : collection d'accueil. N'est PAS une colonne d'`albums` —
+    # l'appartenance vit dans `collection_album` (N-N) et le champ est
+    # retiré avant l'INSERT. Omis => collection de repli.
+    collection_id: Optional[int] = None
     titre: str
     auteur: Optional[str] = None                # legacy → voir contributions
     annee: Optional[int] = None                 # legacy → précisé par date_edition
@@ -393,11 +410,49 @@ def _annotation_for_region(conn: sqlite3.Connection, region_id: int) -> dict:
             "date_modification": ann["date_modification"]}
 
 
-def _get_planche(conn, planche_id: int) -> dict:
-    p = _row(conn.execute("SELECT * FROM planches WHERE id = ?", (planche_id,)))
+# --------------------------------------------------------------------------- #
+# Accesseurs GARDÉS (AUTH-2) — la seule façon d'atteindre un objet du corpus
+# --------------------------------------------------------------------------- #
+# Chacun exige une `Portee` et renvoie 404 quand l'objet existe mais sort d'elle. Le 404
+# n'est pas une approximation du 403 : dire « cet album existe, mais pas pour vous »
+# révélerait la composition du corpus — combien d'albums, quelles études voisines. La
+# contrepartie est à connaître : qui perd un droit ne verra pas d'erreur, ses objets
+# auront simplement disparu.
+#
+# La `Portee` est un paramètre OBLIGATOIRE, sans valeur par défaut. Une valeur par défaut
+# qui sauterait le contrôle rendrait l'oubli invisible — c'est exactement le motif que
+# SANTE-1 vient de corriger ailleurs dans ce dépôt.
+
+def _get_album(conn, portee: autorisation.Portee, album_id: int, *,
+               ecriture: bool = False) -> dict:
+    ou, params = portee.clause_album("albums.id", ecriture=ecriture)
+    a = _row(conn.execute(f"SELECT * FROM albums WHERE id = ? AND {ou}",
+                          (album_id, *params)))
+    if a is None:
+        raise HTTPException(404, f"Album {album_id} introuvable")
+    return a
+
+
+def _get_planche(conn, portee: autorisation.Portee, planche_id: int, *,
+                 ecriture: bool = False) -> dict:
+    ou, params = portee.clause_album("planches.album_id", ecriture=ecriture)
+    p = _row(conn.execute(f"SELECT * FROM planches WHERE id = ? AND {ou}",
+                          (planche_id, *params)))
     if p is None:
         raise HTTPException(404, f"Planche {planche_id} introuvable")
     return p
+
+
+def _get_region(conn, portee: autorisation.Portee, region_id: int, *,
+                ecriture: bool = False) -> dict:
+    """Une région s'autorise par sa planche, qui s'autorise par son album."""
+    ou, params = portee.clause_album("pl.album_id", ecriture=ecriture)
+    r = _row(conn.execute(
+        f"SELECT r.* FROM regions r JOIN planches pl ON pl.id = r.planche_id "
+        f"WHERE r.id = ? AND {ou}", (region_id, *params)))
+    if r is None:
+        raise HTTPException(404, f"Région {region_id} introuvable")
+    return r
 
 
 def _refuser_si_verrouillee(planche: dict) -> dict:
@@ -444,9 +499,11 @@ def _validate_parent(conn: sqlite3.Connection, planche_id: int,
 # Albums & planches
 # =========================================================================== #
 @app.get("/api/albums")
-def list_albums(conn: sqlite3.Connection = Depends(db)):
+def list_albums(conn: sqlite3.Connection = Depends(db),
+                portee: autorisation.Portee = Depends(portee_courante)):
+    ou, params = portee.clause_album("a.id")
     return _rows(conn.execute(
-        """SELECT a.*,
+        f"""SELECT a.*,
                   (SELECT COUNT(*) FROM planches p WHERE p.album_id = a.id)
                       AS nb_planches,
                   (SELECT COUNT(*) FROM regions r JOIN planches p ON p.id = r.planche_id
@@ -457,30 +514,53 @@ def list_albums(conn: sqlite3.Connection = Depends(db)):
                   (SELECT COUNT(*) FROM planches p
                      WHERE p.album_id = a.id AND p.validee IS NOT NULL) AS nb_validees
            FROM albums a
-           ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre"""
+           WHERE {ou}
+           ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre""", params
     ))
 
 
 @app.post("/api/albums", status_code=201)
-def create_album(album: AlbumIn, conn: sqlite3.Connection = Depends(db)):
+def create_album(album: AlbumIn, conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
     data = album.model_dump()                       # toutes les colonnes descriptives (dont N0)
     data["titre"] = (data.get("titre") or "").strip()   # B9 : titre requis (comme un tag)
     if not data["titre"]:
         raise HTTPException(422, "Le titre de l'album est requis.")
+    # AUTH-2 — un album appartient TOUJOURS à une collection : c'est elle qui porte les
+    # droits. Un orphelin ne correspondrait à aucune règle, et il faudrait alors inventer
+    # une politique dans le code. Le champ est facultatif à l'API (32 appels existants
+    # l'ignorent, et une instance neuve n'a pas encore de collection) mais l'appartenance,
+    # elle, n'est jamais facultative : à défaut, la collection de repli.
+    cid = data.pop("collection_id", None)
+    if cid is not None:
+        # Introuvable ET interdite donnent la MÊME réponse : dire « elle existe mais pas
+        # pour vous » révélerait l'existence d'études voisines.
+        if not portee.peut_ecrire(cid) or conn.execute(
+                "SELECT 1 FROM collection WHERE id = ?", (cid,)).fetchone() is None:
+            raise HTTPException(404, f"Collection {cid} introuvable")
+    else:
+        cid = collection_par_defaut(conn)
+        # Ici un 403 ne fuit rien : il parle des droits de l'appelant, pas du corpus.
+        if not portee.peut_ecrire(cid):
+            raise HTTPException(
+                403, "Aucune collection ouverte en écriture : précisez `collection_id`, "
+                     "ou demandez un accès en écriture.")
     cols = list(data)
     cur = conn.execute(
         f"INSERT INTO albums ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
         tuple(data.values()),
     )
+    conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
+                 (cid, cur.lastrowid))
     conn.commit()
     return _row(conn.execute("SELECT * FROM albums WHERE id = ?", (cur.lastrowid,)))
 
 
 @app.put("/api/albums/{album_id}")
 def update_album(album_id: int, patch: AlbumUpdate,
-                 conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
-        raise HTTPException(404, f"Album {album_id} introuvable")
+                 conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
+    _get_album(conn, portee, album_id, ecriture=True)
     fields = patch.model_dump(exclude_unset=True)
     if "titre" in fields:                               # B9 : ne pas vider un titre par édition
         fields["titre"] = (fields["titre"] or "").strip()
@@ -495,9 +575,9 @@ def update_album(album_id: int, patch: AlbumUpdate,
 
 
 @app.delete("/api/albums/{album_id}", status_code=204)
-def delete_album(album_id: int, conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
-        raise HTTPException(404, f"Album {album_id} introuvable")
+def delete_album(album_id: int, conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
+    _get_album(conn, portee, album_id, ecriture=True)
     # Désindexe les régions du FTS (le CASCADE SQL ne touche pas la table FTS).
     for r in conn.execute(
         "SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
@@ -510,11 +590,9 @@ def delete_album(album_id: int, conn: sqlite3.Connection = Depends(db)):
 
 
 @app.delete("/api/planches/{planche_id}", status_code=204)
-def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db)):
-    p = _row(conn.execute(
-        "SELECT id, chemin_tiff, chemin_web FROM planches WHERE id = ?", (planche_id,)))
-    if p is None:
-        raise HTTPException(404, f"Planche {planche_id} introuvable")
+def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    p = _get_planche(conn, portee, planche_id, ecriture=True)
     for r in conn.execute(
         "SELECT id FROM regions WHERE planche_id = ?", (planche_id,)).fetchall():
         unindex_region(conn, r["id"])
@@ -525,9 +603,9 @@ def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db)):
 
 
 @app.get("/api/albums/{album_id}/planches")
-def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
-        raise HTTPException(404, f"Album {album_id} introuvable")
+def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    _get_album(conn, portee, album_id)
     planches = _rows(conn.execute(
         """SELECT p.*,
                   (SELECT COUNT(*) FROM regions r WHERE r.planche_id = p.id)
@@ -575,9 +653,9 @@ def import_planche(
     file: UploadFile = File(...),
     numero: Optional[int] = Form(None, ge=1),
     conn: sqlite3.Connection = Depends(db),
+    portee: autorisation.Portee = Depends(portee_courante),
 ):
-    if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
-        raise HTTPException(404, f"Album {album_id} introuvable")
+    _get_album(conn, portee, album_id, ecriture=True)
     data = file.file.read()
     if not data:
         raise HTTPException(400, "Fichier vide")
@@ -604,8 +682,9 @@ def import_planche(
 # =========================================================================== #
 @app.post("/api/planches/{planche_id}/segmenter")
 def segmenter(planche_id: int, use_master: bool = False,
-              conn: sqlite3.Connection = Depends(db)):
-    _refuser_si_verrouillee(_get_planche(conn, planche_id))
+              conn: sqlite3.Connection = Depends(db),
+              portee: autorisation.Portee = Depends(portee_courante)):
+    _refuser_si_verrouillee(_get_planche(conn, portee, planche_id, ecriture=True))
     if not kumiko_available():
         raise HTTPException(
             503,
@@ -625,8 +704,9 @@ def segmenter(planche_id: int, use_master: bool = False,
 
 @app.post("/api/planches/{planche_id}/detecter-bulles")
 def detecter_bulles(planche_id: int, conf: float = 0.3,
-                    conn: sqlite3.Connection = Depends(db)):
-    _refuser_si_verrouillee(_get_planche(conn, planche_id))
+                    conn: sqlite3.Connection = Depends(db),
+                    portee: autorisation.Portee = Depends(portee_courante)):
+    _refuser_si_verrouillee(_get_planche(conn, portee, planche_id, ecriture=True))
     if not bulles_available():
         raise HTTPException(
             503,
@@ -649,8 +729,9 @@ def detecter_bulles(planche_id: int, conf: float = 0.3,
 
 @app.post("/api/planches/{planche_id}/ocr")
 def ocr_route(planche_id: int, only_empty: bool = True,
-              conn: sqlite3.Connection = Depends(db)):
-    _refuser_si_verrouillee(_get_planche(conn, planche_id))
+              conn: sqlite3.Connection = Depends(db),
+              portee: autorisation.Portee = Depends(portee_courante)):
+    _refuser_si_verrouillee(_get_planche(conn, portee, planche_id, ecriture=True))
     if not ocr_available():
         raise HTTPException(
             503,
@@ -671,10 +752,19 @@ def ocr_route(planche_id: int, only_empty: bool = True,
 
 
 @app.post("/api/ml/liberer")
-def liberer_ml():
+def liberer_ml(portee: autorisation.Portee = Depends(portee_courante)):
     """Décharge les modèles ML résidents (rend la RAM) — CONC-2. Utile entre deux
     grosses passes sur machine contrainte. Sérialisé par ML_LOCK (jamais pendant une
-    inférence). Renvoie la liste des moteurs libérés."""
+    inférence). Renvoie la liste des moteurs libérés.
+
+    AUTH-2 — réservé aux ADMINISTRATEURS : le verrou et les modèles sont globaux, et
+    décharger pendant qu'une autre équipe travaille rallonge sa passe suivante de plusieurs
+    secondes. Ici un 403 ne fuit rien : il parle des droits de l'appelant, pas du corpus.
+    En mono-poste (`BD_AUTH_PROXY` absent), la portée est totale — rien ne change.
+    """
+    if not portee.admin:
+        raise HTTPException(403, "Décharger les modèles est un acte d'exploitation, "
+                                 "réservé aux administrateurs.")
     from pipeline.modeles import etat_modeles, liberer_modeles_ml
     with jobs.ML_LOCK:
         liberes = liberer_modeles_ml()
@@ -682,8 +772,9 @@ def liberer_ml():
 
 
 @app.get("/api/planches/{planche_id}/regions")
-def planche_regions(planche_id: int, conn: sqlite3.Connection = Depends(db)):
-    _get_planche(conn, planche_id)
+def planche_regions(planche_id: int, conn: sqlite3.Connection = Depends(db),
+                    portee: autorisation.Portee = Depends(portee_courante)):
+    _get_planche(conn, portee, planche_id)
     regions = _rows(conn.execute(
         """SELECT r.*,
                   EXISTS(SELECT 1 FROM annotations a WHERE a.region_id = r.id)
@@ -702,8 +793,9 @@ def planche_regions(planche_id: int, conn: sqlite3.Connection = Depends(db)):
 
 @app.post("/api/planches/{planche_id}/regions", status_code=201)
 def create_region(planche_id: int, region: RegionIn,
-                  conn: sqlite3.Connection = Depends(db)):
-    _get_planche(conn, planche_id)
+                  conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
+    _get_planche(conn, portee, planche_id, ecriture=True)
     if region.type not in TYPES_REGION:
         raise HTTPException(422, f"Type invalide : {region.type}")
     _validate_parent(conn, planche_id, region.parent_id)
@@ -733,12 +825,14 @@ def create_region(planche_id: int, region: RegionIn,
 
 @app.get("/api/regions/{region_id}/crop")
 def region_crop(region_id: int, taille: int = 1600,
-                conn: sqlite3.Connection = Depends(db)):
+                conn: sqlite3.Connection = Depends(db),
+                portee: autorisation.Portee = Depends(portee_courante)):
     """PNG net de la région recadré dans le master.
 
     `taille` borne la largeur (vignettes de recherche : ~240 ; transcription :
     1600 par défaut). Bornée à [40, 2000].
     """
+    _get_region(conn, portee, region_id)
     png = region_crop_png(conn, region_id, max_dim=max(40, min(taille, 2000)))
     if png is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
@@ -747,10 +841,9 @@ def region_crop(region_id: int, taille: int = 1600,
 
 @app.put("/api/regions/{region_id}")
 def update_region(region_id: int, patch: RegionUpdate,
-                  conn: sqlite3.Connection = Depends(db)):
-    existing = _row(conn.execute("SELECT * FROM regions WHERE id = ?", (region_id,)))
-    if existing is None:
-        raise HTTPException(404, f"Région {region_id} introuvable")
+                  conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
+    existing = _get_region(conn, portee, region_id, ecriture=True)
     fields = patch.model_dump(exclude_unset=True)
     if "type" in fields and fields["type"] not in TYPES_REGION:
         raise HTTPException(422, f"Type invalide : {fields['type']}")
@@ -774,9 +867,9 @@ def update_region(region_id: int, patch: RegionUpdate,
 
 
 @app.delete("/api/regions/{region_id}", status_code=204)
-def delete_region(region_id: int, conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
-        raise HTTPException(404, f"Région {region_id} introuvable")
+def delete_region(region_id: int, conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
+    _get_region(conn, portee, region_id, ecriture=True)
     # Désindexe la région ET tous ses descendants (le CASCADE SQL les supprime,
     # mais l'index FTS, lui, doit être nettoyé explicitement).
     descendants = conn.execute(
@@ -799,9 +892,10 @@ def delete_region(region_id: int, conn: sqlite3.Connection = Depends(db)):
 
 
 @app.post("/api/planches/{planche_id}/reordonner")
-def reordonner(planche_id: int, conn: sqlite3.Connection = Depends(db)):
+def reordonner(planche_id: int, conn: sqlite3.Connection = Depends(db),
+               portee: autorisation.Portee = Depends(portee_courante)):
     """Recalcule l'ordre de lecture (rang per-niveau) de toute la planche."""
-    _get_planche(conn, planche_id)
+    _get_planche(conn, portee, planche_id, ecriture=True)
     res = reorder_planche(conn, planche_id)
     conn.commit()
     return res
@@ -809,8 +903,10 @@ def reordonner(planche_id: int, conn: sqlite3.Connection = Depends(db)):
 
 @app.post("/api/regions/{region_id}/deplacer")
 def deplacer_region(region_id: int, payload: MoveIn,
-                    conn: sqlite3.Connection = Depends(db)):
+                    conn: sqlite3.Connection = Depends(db),
+                    portee: autorisation.Portee = Depends(portee_courante)):
     """Déplace une région d'un cran parmi ses frères ('haut' ou 'bas')."""
+    _get_region(conn, portee, region_id, ecriture=True)
     avant = journal.snapshot_region(conn, region_id)
     try:
         res = move_region(conn, region_id, payload.sens)
@@ -968,23 +1064,25 @@ def deposer_sauvegarde(payload: DeposerIn):
 
 @app.patch("/api/planches/{planche_id}/statut")
 def update_statut(planche_id: int, payload: StatutIn,
-                  conn: sqlite3.Connection = Depends(db)):
-    _get_planche(conn, planche_id)
+                  conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
+    _get_planche(conn, portee, planche_id, ecriture=True)
     if payload.statut not in STATUTS:
         raise HTTPException(422, f"Statut invalide : {payload.statut}")
     conn.execute("UPDATE planches SET statut = ? WHERE id = ?",
                  (payload.statut, planche_id))
     conn.commit()
-    return _get_planche(conn, planche_id)
+    return _get_planche(conn, portee, planche_id, ecriture=True)
 
 
 @app.patch("/api/planches/{planche_id}/relecture")
 def update_relecture(planche_id: int, payload: RelectureIn,
-                     conn: sqlite3.Connection = Depends(db)):
+                     conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
     """Force (ou libère) le statut de RELECTURE grammaticale d'une planche (ANN-4).
     `relecture=null` → revient au DÉRIVÉ (provenances de tokens) ; sinon override contrôlé.
     Cf. database.relecture_planches / docs/relecture.md."""
-    _get_planche(conn, planche_id)
+    _get_planche(conn, portee, planche_id, ecriture=True)
     if payload.relecture is not None and payload.relecture not in RELECTURE:
         raise HTTPException(422, f"Statut de relecture invalide : {payload.relecture} "
                                  f"({' | '.join(RELECTURE)} | null).")
@@ -997,10 +1095,11 @@ def update_relecture(planche_id: int, payload: RelectureIn,
 
 @app.patch("/api/planches/{planche_id}/validation")
 def update_validation(planche_id: int, payload: ValidationIn,
-                      conn: sqlite3.Connection = Depends(db)):
+                      conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
     """Marque une planche comme validée (relue/finalisée) ou retire la validation.
     Drapeau humain orthogonal au `statut` du pipeline ; `validee` = horodatage."""
-    _get_planche(conn, planche_id)
+    _get_planche(conn, portee, planche_id, ecriture=True)
     if payload.validee:
         conn.execute("UPDATE planches SET validee = datetime('now') WHERE id = ?",
                      (planche_id,))
@@ -1009,16 +1108,17 @@ def update_validation(planche_id: int, payload: ValidationIn,
     journal.journaliser(conn, "validation", "planches", planche_id,
                         apres={"validee": bool(payload.validee)})
     conn.commit()
-    return _get_planche(conn, planche_id)
+    return _get_planche(conn, portee, planche_id, ecriture=True)
 
 
 @app.patch("/api/planches/{planche_id}/verrou")
 def update_verrou(planche_id: int, payload: VerrouIn, request: Request,
-                  conn: sqlite3.Connection = Depends(db)):
+                  conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
     """Verrouille une planche (la protège des passes automatiques en lot) ou la
     déverrouille. Distinct de `validee` (verrou = protection ≠ validation = qualité) ;
     `verrouillee` = horodatage. Cf. docs/correction-grammaticale.md §6."""
-    _get_planche(conn, planche_id)
+    _get_planche(conn, portee, planche_id, ecriture=True)
     if payload.verrouillee:
         # AUTH-1 : on consigne QUI verrouille. À un seul utilisateur la question ne se
         # posait pas ; à plusieurs, un verrou anonyme n'est pas levable en connaissance
@@ -1029,23 +1129,24 @@ def update_verrou(planche_id: int, payload: VerrouIn, request: Request,
         conn.execute("UPDATE planches SET verrouillee = NULL, verrou_par = NULL "
                      "WHERE id = ?", (planche_id,))
     conn.commit()
-    return _get_planche(conn, planche_id)
+    return _get_planche(conn, portee, planche_id, ecriture=True)
 
 
 @app.patch("/api/planches/{planche_id}/role")
 def update_role(planche_id: int, payload: RoleIn,
-                conn: sqlite3.Connection = Depends(db)):
+                conn: sqlite3.Connection = Depends(db),
+                portee: autorisation.Portee = Depends(portee_courante)):
     """Définit le rôle éditorial d'une planche : 'recit' (narrative, numérotée) ou
     'paratexte' (couverture, liminaire, pub… — écartée de la numérotation et du
     décompte de cases citables). Le numéro éditorial est DÉRIVÉ, jamais stocké ;
     on le renvoie ici (recalculé sur tout l'album) car basculer une planche décale
     les suivantes. Cf. docs/numerotation-et-citation.md."""
-    planche = _get_planche(conn, planche_id)
+    planche = _get_planche(conn, portee, planche_id, ecriture=True)
     if payload.role not in ROLES_PLANCHE:
         raise HTTPException(422, f"Rôle invalide : {payload.role}")
     conn.execute("UPDATE planches SET role = ? WHERE id = ?", (payload.role, planche_id))
     conn.commit()
-    out = _get_planche(conn, planche_id)
+    out = _get_planche(conn, portee, planche_id, ecriture=True)
     out["numero_editorial"] = numeros_editoriaux(conn, planche["album_id"]).get(planche_id)
     return out
 
@@ -1054,17 +1155,17 @@ def update_role(planche_id: int, payload: RoleIn,
 # Annotations & tags
 # =========================================================================== #
 @app.get("/api/regions/{region_id}/annotation")
-def get_annotation(region_id: int, conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
-        raise HTTPException(404, f"Région {region_id} introuvable")
+def get_annotation(region_id: int, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    _get_region(conn, portee, region_id)
     return _annotation_for_region(conn, region_id)
 
 
 @app.put("/api/regions/{region_id}/annotation")
 def put_annotation(region_id: int, payload: AnnotationIn,
-                   conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
-        raise HTTPException(404, f"Région {region_id} introuvable")
+                   conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    _get_region(conn, portee, region_id, ecriture=True)
 
     # État avant (note + tags) pour journaliser création / modification / suppression.
     avant_annot = journal.snapshot_annotation(conn, region_id)
@@ -1398,16 +1499,16 @@ def delete_alignement(personnage_id: int, alignement_id: int,
 
 
 @app.get("/api/regions/{region_id}/locuteur")
-def get_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
-        raise HTTPException(404, f"Région {region_id} introuvable")
+def get_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
+    _get_region(conn, portee, region_id)
     return _locuteur_for(conn, region_id)
 
 
 @app.put("/api/regions/{region_id}/locuteur")
-def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
-        raise HTTPException(404, f"Région {region_id} introuvable")
+def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
+    _get_region(conn, portee, region_id, ecriture=True)
     _get_personnage(conn, payload.personnage_id)
     ancien = conn.execute("SELECT personnage_id FROM bulle_locuteur WHERE region_id = ?",
                           (region_id,)).fetchone()
@@ -1422,7 +1523,9 @@ def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection =
 
 
 @app.delete("/api/regions/{region_id}/locuteur", status_code=204)
-def clear_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db)):
+def clear_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    _get_region(conn, portee, region_id, ecriture=True)
     ancien = conn.execute("SELECT personnage_id FROM bulle_locuteur WHERE region_id = ?",
                           (region_id,)).fetchone()
     conn.execute("DELETE FROM bulle_locuteur WHERE region_id = ?", (region_id,))
@@ -1437,16 +1540,16 @@ def clear_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db)):
 #     profil de l'entité devient atteignable depuis l'image (muets compris). La cohérence
 #     de type (region.type = 'personnage') est assurée côté UI, comme pour le locuteur.
 @app.get("/api/regions/{region_id}/personnage")
-def get_presence(region_id: int, conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
-        raise HTTPException(404, f"Région {region_id} introuvable")
+def get_presence(region_id: int, conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
+    _get_region(conn, portee, region_id)
     return _personnage_for(conn, region_id)
 
 
 @app.put("/api/regions/{region_id}/personnage")
-def set_presence(region_id: int, payload: PresenceIn, conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
-        raise HTTPException(404, f"Région {region_id} introuvable")
+def set_presence(region_id: int, payload: PresenceIn, conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
+    _get_region(conn, portee, region_id, ecriture=True)
     _get_personnage(conn, payload.personnage_id)
     ancien = conn.execute("SELECT personnage_id FROM personnage_presence WHERE region_id = ?",
                           (region_id,)).fetchone()
@@ -1461,7 +1564,9 @@ def set_presence(region_id: int, payload: PresenceIn, conn: sqlite3.Connection =
 
 
 @app.delete("/api/regions/{region_id}/personnage", status_code=204)
-def clear_presence(region_id: int, conn: sqlite3.Connection = Depends(db)):
+def clear_presence(region_id: int, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    _get_region(conn, portee, region_id, ecriture=True)
     ancien = conn.execute("SELECT personnage_id FROM personnage_presence WHERE region_id = ?",
                           (region_id,)).fetchone()
     conn.execute("DELETE FROM personnage_presence WHERE region_id = ?", (region_id,))
@@ -1869,24 +1974,26 @@ def remove_personnage_attribut(personnage_id: int, valeur_id: int,
 
 
 @app.get("/api/regions/{region_id}/attributs")
-def list_region_attributs(region_id: int, conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
-        raise HTTPException(404, f"Région {region_id} introuvable")
+def list_region_attributs(region_id: int, conn: sqlite3.Connection = Depends(db),
+                          portee: autorisation.Portee = Depends(portee_courante)):
+    _get_region(conn, portee, region_id)
     return _attributs_de(conn, "region_attribut", "region_id", region_id)
 
 
 @app.put("/api/regions/{region_id}/attributs")
 def add_region_attribut(region_id: int, payload: AttributIn,
-                        conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
-        raise HTTPException(404, f"Région {region_id} introuvable")
+                        conn: sqlite3.Connection = Depends(db),
+                        portee: autorisation.Portee = Depends(portee_courante)):
+    _get_region(conn, portee, region_id, ecriture=True)
     _affecter(conn, "region_attribut", "region_id", region_id, payload.valeur_id, "case")
     return _attributs_de(conn, "region_attribut", "region_id", region_id)
 
 
 @app.delete("/api/regions/{region_id}/attributs/{valeur_id}", status_code=204)
 def remove_region_attribut(region_id: int, valeur_id: int,
-                           conn: sqlite3.Connection = Depends(db)):
+                           conn: sqlite3.Connection = Depends(db),
+                           portee: autorisation.Portee = Depends(portee_courante)):
+    _get_region(conn, portee, region_id, ecriture=True)
     conn.execute("DELETE FROM region_attribut WHERE region_id = ? AND valeur_id = ?",
                  (region_id, valeur_id))
     conn.commit()
@@ -1895,11 +2002,22 @@ def remove_region_attribut(region_id: int, valeur_id: int,
 # =========================================================================== #
 # Recherche plein texte (FTS5)
 # =========================================================================== #
-def _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, limit, tag_scope="propre",
-                    personnage=None, attributs=None):
+def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, provenance, limit,
+                    tag_scope="propre", personnage=None, attributs=None):
     """Construit et exécute la requête de recherche (régions + contexte, tags joints).
-    Partagé par /api/recherche (JSON) et l'export CSV — une seule logique de requête."""
+    Partagé par /api/recherche (JSON) et l'export CSV — une seule logique de requête.
+
+    AUTH-2 — la portée est un paramètre OBLIGATOIRE, et c'est ici que se referme le piège
+    le plus vicieux du dépôt : la table FTS `recherche` est DÉNORMALISÉE et globale (elle
+    agrège OCR + note + tags + lemmes) et ne porte aucune trace d'album ni de collection.
+    Une requête plein texte non filtrée renverrait donc le contenu de tout le corpus,
+    quelle que soit la rigueur des routes de lecture par identifiant. Le filtre passe par
+    la jointure `albums a` déjà présente, pas par la table FTS.
+    """
     where, params = [], []
+    ou, params_portee = portee.clause_album("a.id")
+    where.append(ou)
+    params.extend(params_portee)
 
     base = (
         "SELECT r.id AS region_id, r.type, r.x, r.y, r.w, r.h, r.ocr_texte, "
@@ -2019,10 +2137,11 @@ def recherche(q: str = "", album: Optional[int] = None,
               morph: Optional[str] = None, provenance: Optional[str] = None,
               tag_scope: str = "propre",
               personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
-              limit: int = 100, conn: sqlite3.Connection = Depends(db)):
+              limit: int = 100, conn: sqlite3.Connection = Depends(db),
+              portee: autorisation.Portee = Depends(portee_courante)):
     limit = max(1, min(limit, 500))   # borne : évite LIMIT -1 (= tout le corpus) / DoS
-    results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, limit, tag_scope,
-                              personnage, attributs)
+    results = _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph,
+                              provenance, limit, tag_scope, personnage, attributs)
     return {"q": q, "count": len(results), "results": results}
 
 
@@ -2053,10 +2172,12 @@ def recherche_export(q: str = "", album: Optional[int] = None,
                      morph: Optional[str] = None, provenance: Optional[str] = None,
                      tag_scope: str = "propre",
                      personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
-                     conn: sqlite3.Connection = Depends(db)):
+                     conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
     """Export CSV du jeu de résultats courant (mêmes critères que /api/recherche).
     Borne haute relevée (5000) : on exporte le jeu trouvé, pas seulement l'aperçu."""
-    results = _recherche_rows(conn, q, album, type, tags, pos, lemme, morph, provenance, 5000, tag_scope,
+    results = _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph,
+                              provenance, 5000, tag_scope,
                               personnage, attributs)
     buf = io.StringIO()
     # `planche` = numéro ÉDITORIAL (cité), `citation` = repère complet « pl·c(·b) » ;
@@ -2080,23 +2201,40 @@ def recherche_export(q: str = "", album: Optional[int] = None,
 
 
 @app.get("/api/corpus")
-def corpus_stats(conn: sqlite3.Connection = Depends(db)):
+def corpus_stats(conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
     """Compteurs globaux du corpus (pour l'aperçu de la page de recherche)."""
+    # AUTH-2 : des compteurs GLOBAUX diraient combien d'albums et de planches existent
+    # ailleurs — la composition du corpus fuit par les nombres aussi bien que par les
+    # titres. Chaque sous-requête est donc rattachée à son album, puis filtrée.
+    ou, pp = portee.clause_album("alb.id")
+    oup, _ = portee.clause_album("pl.album_id")
+    our, _ = portee.clause_album("plr.album_id")
     row = conn.execute(
-        """SELECT
-             (SELECT COUNT(*) FROM albums)   AS albums,
-             (SELECT COUNT(*) FROM planches) AS planches,
-             (SELECT COUNT(*) FROM regions)  AS regions,
-             (SELECT COUNT(*) FROM annotations) AS annotees,
-             (SELECT COUNT(*) FROM regions
-                WHERE TRIM(COALESCE(ocr_texte, '')) <> '') AS transcrites,
+        f"""SELECT
+             (SELECT COUNT(*) FROM albums alb WHERE {ou})   AS albums,
+             (SELECT COUNT(*) FROM planches pl WHERE {oup}) AS planches,
+             (SELECT COUNT(*) FROM regions r
+                JOIN planches plr ON plr.id = r.planche_id WHERE {our})  AS regions,
+             (SELECT COUNT(*) FROM annotations an JOIN regions r ON r.id = an.region_id
+                JOIN planches plr ON plr.id = r.planche_id WHERE {our}) AS annotees,
+             (SELECT COUNT(*) FROM regions r
+                JOIN planches plr ON plr.id = r.planche_id
+                WHERE {our} AND TRIM(COALESCE(r.ocr_texte, '')) <> '') AS transcrites,
+             -- `tags` reste GLOBAL : le vocabulaire est transversal au corpus et son
+             -- cloisonnement est une question distincte, encore ouverte (cf. la case
+             -- « nuage de tags » de pilotage/AUTH-2.md). Compté ici sans filtre, donc.
              (SELECT COUNT(*) FROM tags) AS tags,
-             (SELECT COUNT(*) FROM planches WHERE validee IS NOT NULL) AS validees"""
+             (SELECT COUNT(*) FROM planches pl
+                WHERE {oup} AND pl.validee IS NOT NULL) AS validees""",
+        pp * 6,
     ).fetchone()
     res = dict(row)
     # Distribution des planches par statut (pour la barre d'avancement du corpus).
     res["statuts"] = {s: 0 for s in STATUTS}
-    for r in conn.execute("SELECT statut, COUNT(*) AS n FROM planches GROUP BY statut"):
+    for r in conn.execute(
+            f"SELECT pl.statut, COUNT(*) AS n FROM planches pl WHERE {oup} "
+            "GROUP BY pl.statut", pp):
         if r["statut"] in res["statuts"]:
             res["statuts"][r["statut"]] = r["n"]
     return res
@@ -2105,11 +2243,22 @@ def corpus_stats(conn: sqlite3.Connection = Depends(db)):
 # =========================================================================== #
 # Analyse grammaticale (Palier B) — fréquences lexicales + tokens par région
 # =========================================================================== #
-def _analyse_filtres(album, type, pos, lemme, morph, provenance, tags=None, tag_scope="herite",
-                     personnage=None, attributs=None, auteur=None):
+def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags=None,
+                     tag_scope="herite", personnage=None, attributs=None, auteur=None):
     """Clauses WHERE communes aux requêtes par token (sur la vue `tokens_effectifs` te,
-    jointe à regions r / planches p). Valeurs EFFECTIVES (correction humaine ⊕ auto)."""
-    where, params = [], []
+    jointe à regions r / planches p). Valeurs EFFECTIVES (correction humaine ⊕ auto).
+
+    AUTH-2 — la portée est le PREMIER paramètre, et obligatoire : c'est ici que passent
+    les quatre surfaces d'analyse (distribution, concordance, croisement, comparaison).
+    Les filtrer une par une aurait été quatre occasions d'oublier ; la jointure
+    `planches p` est déjà là, le cloisonnement se pose donc au seul endroit qu'elles
+    partagent toutes.
+    """
+    # La clause de PORTÉE est posée d'office et à part : `n_criteres` (3e valeur de
+    # retour) compte les clauses qui viennent réellement de l'utilisateur, pour que
+    # « aucun critère effectif » reste distinguable de « la portée a filtré ».
+    ou, pp = portee.clause_album("p.album_id")
+    where, params = [ou], list(pp)
     if album is not None:
         where.append("p.album_id = ?"); params.append(album)
     if type:
@@ -2158,7 +2307,7 @@ def _analyse_filtres(album, type, pos, lemme, morph, provenance, tags=None, tag_
             " OR EXISTS (SELECT 1 FROM region_attribut ra "
             "            WHERE ra.region_id IN (r.id, r.parent_id) AND ra.valeur_id = ?))")
         params.extend([vid, vid])
-    return where, params
+    return where, params, len(where) - 1
 
 
 def _valider_facette(conn, personnage=None, attributs=None):
@@ -2181,7 +2330,8 @@ def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
                        tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
                        personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
                        limit: int = 100,
-                       conn: sqlite3.Connection = Depends(db)):
+                       conn: sqlite3.Connection = Depends(db),
+                       portee: autorisation.Portee = Depends(portee_courante)):
     """Distributions de fréquence sur les valeurs EFFECTIVES. `champ` : `lemme`
     (défaut, groupé avec son POS) | `pos` | `morph`. Filtres : album, type de région,
     pos, lemme, morph (sous-chaîne UD), provenance, auteur (de la correction). Base
@@ -2190,7 +2340,7 @@ def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
     limit = max(1, min(limit, 1000))
     _valider_facette(conn, personnage, attributs)
-    where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope,
+    where, params, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags, tag_scope,
                                      personnage, attributs, auteur)
     cols = "te.lemme, te.pos" if champ == "lemme" else f"te.{champ}"
     sql = (f"SELECT {cols}, COUNT(*) AS freq "
@@ -2210,7 +2360,8 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
                         album: Optional[int] = None, type: Optional[str] = None,
                         tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
                         personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
-                        limit: int = 200, conn: sqlite3.Connection = Depends(db)):
+                        limit: int = 200, conn: sqlite3.Connection = Depends(db),
+                        portee: autorisation.Portee = Depends(portee_courante)):
     """Concordance grammaticale : occurrences de tokens (valeurs EFFECTIVES) répondant
     aux critères, AVEC leur contexte (région, planche, album, texte OCR) — pour montrer
     chaque emploi en contexte multimodal (socle de Recherche+++). Au moins un critère
@@ -2219,9 +2370,10 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
         raise HTTPException(422, "Préciser au moins un critère (grammatical, tag, personnage, attribut ou auteur).")
     limit = max(1, min(limit, 500))
     _valider_facette(conn, personnage, attributs)
-    where, params = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope,
+    where, params, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags, tag_scope,
                                      personnage, attributs, auteur)
-    if not where:   # critères fournis mais aucun effectif (p.ex. tag vide) → évite un « WHERE » vide
+    if not _n:      # critères fournis mais aucun effectif (p.ex. tag vide) → évite un
+        # sous-corpus « tout ce qui est visible », qui n'est pas ce qu'on a demandé
         raise HTTPException(422, "Aucun critère de recherche effectif.")
     sql = ("SELECT te.region_id, te.ordre, te.texte, te.lemme, te.pos, te.morph, "
            "       te.provenance, r.type, p.id AS planche_id, p.numero AS planche_numero, "
@@ -2243,11 +2395,11 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
     return {"count": len(results), "results": results}
 
 
-def _distribution(conn, champ, album, type, pos, morph, provenance, tags=None, tag_scope="herite",
-                  personnage=None, attributs=None, auteur=None):
+def _distribution(conn, portee, champ, album, type, pos, morph, provenance, tags=None,
+                  tag_scope="herite", personnage=None, attributs=None, auteur=None):
     """Compte {valeur: fréquence} d'un champ (lemme|pos|morph) sur un sous-corpus, et
     le total. Sur les valeurs EFFECTIVES. `champ` doit être validé par l'appelant."""
-    where, params = _analyse_filtres(album, type, pos, None, morph, provenance, tags, tag_scope,
+    where, params, _n = _analyse_filtres(portee, album, type, pos, None, morph, provenance, tags, tag_scope,
                                      personnage, attributs, auteur)
     sql = (f"SELECT te.{champ} AS v, COUNT(*) AS f "
            "FROM tokens_effectifs te JOIN regions r ON r.id = te.region_id "
@@ -2272,7 +2424,8 @@ def analyse_comparaison(champ: str = "lemme",
                         b_tags: Optional[list[str]] = Query(None),
                         b_personnage: Optional[int] = None, b_attributs: Optional[list[int]] = Query(None),
                         tag_scope: str = "herite",
-                        limit: int = 50, conn: sqlite3.Connection = Depends(db)):
+                        limit: int = 50, conn: sqlite3.Connection = Depends(db),
+                        portee: autorisation.Portee = Depends(portee_courante)):
     """Compare deux sous-corpus A et B : valeurs (lemme|pos|morph) les plus
     SUR-représentées dans chacun, par différence de fréquence RELATIVE (rel = freq /
     total du sous-corpus → comparable malgré des tailles différentes)."""
@@ -2281,9 +2434,9 @@ def analyse_comparaison(champ: str = "lemme",
     limit = max(1, min(limit, 200))
     _valider_facette(conn, a_personnage, a_attributs)
     _valider_facette(conn, b_personnage, b_attributs)
-    da, ta = _distribution(conn, champ, a_album, a_type, a_pos, a_morph, a_provenance, a_tags, tag_scope,
+    da, ta = _distribution(conn, portee, champ, a_album, a_type, a_pos, a_morph, a_provenance, a_tags, tag_scope,
                            a_personnage, a_attributs, a_auteur)
-    db_, tb = _distribution(conn, champ, b_album, b_type, b_pos, b_morph, b_provenance, b_tags, tag_scope,
+    db_, tb = _distribution(conn, portee, champ, b_album, b_type, b_pos, b_morph, b_provenance, b_tags, tag_scope,
                             b_personnage, b_attributs, b_auteur)
     out = []
     for v in set(da) | set(db_):
@@ -2371,7 +2524,8 @@ def analyse_croisement(axe_x: str, axe_y: str,
                        auteur: Optional[str] = None,
                        tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
                        personnage: Optional[int] = None, attributs: Optional[list[int]] = Query(None),
-                       limit: int = 20, conn: sqlite3.Connection = Depends(db)):
+                       limit: int = 20, conn: sqlite3.Connection = Depends(db),
+                       portee: autorisation.Portee = Depends(portee_courante)):
     """Tableau croisé 2D (contingence) : compte les TOKENS effectifs par (axe_x × axe_y) sur
     un sous-corpus filtré. Axes : pos|morph|type|provenance|auteur|locuteur|tag|dim:<id>. Un
     axe « fan-out » (tag/dimension) fait compter le token dans CHAQUE valeur présente (NULL =
@@ -2381,7 +2535,7 @@ def analyse_croisement(axe_x: str, axe_y: str,
     _valider_facette(conn, personnage, attributs)
     jx, ex, cx, px, fx, lx = _axe_croisement(axe_x, "x", tag_scope, conn)
     jy, ey, cy, py, fy, ly = _axe_croisement(axe_y, "y", tag_scope, conn)
-    where, wparams = _analyse_filtres(album, type, pos, lemme, morph, provenance, tags, tag_scope,
+    where, wparams, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags, tag_scope,
                                       personnage, attributs, auteur)
     sql = (f"SELECT {ex} AS vx, {cx} AS cx, {ey} AS vy, {cy} AS cy, COUNT(*) AS n "
            "FROM tokens_effectifs te JOIN regions r ON r.id = te.region_id "
@@ -2427,10 +2581,10 @@ def analyse_accord_inter(conn: sqlite3.Connection = Depends(db)):
 
 
 @app.get("/api/regions/{region_id}/tokens")
-def region_tokens(region_id: int, conn: sqlite3.Connection = Depends(db)):
+def region_tokens(region_id: int, conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
     """Analyse grammaticale d'une région : ses mots avec lemme / POS / morphologie."""
-    if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
-        raise HTTPException(404, f"Région {region_id} introuvable")
+    _get_region(conn, portee, region_id)
     return _tokens_effectifs(conn, region_id)
 
 
@@ -2570,7 +2724,8 @@ def analyse_info(conn: sqlite3.Connection = Depends(db)):
 # Jobs : traitement par lot en arrière-plan (segmentation / bulles / OCR)
 # =========================================================================== #
 @app.post("/api/jobs", status_code=201)
-def creer_job(payload: JobIn, conn: sqlite3.Connection = Depends(db)):
+def creer_job(payload: JobIn, conn: sqlite3.Connection = Depends(db),
+              portee: autorisation.Portee = Depends(portee_courante)):
     """Lance un lot sur l'ensemble des planches d'albums et/ou planches données."""
     passes = [p for p in jobs.PASSES if p in payload.passes]   # ordre canonique
     if not passes:
@@ -2581,10 +2736,19 @@ def creer_job(payload: JobIn, conn: sqlite3.Connection = Depends(db)):
     if manquants:
         raise HTTPException(503, f"Moteur(s) indisponible(s) : {', '.join(manquants)}.")
 
-    pids = set(payload.planche_ids)
+    # AUTH-2 — un lot MODIFIE les régions : il faut le droit d'écrire sur chaque planche.
+    # On filtre plutôt que de refuser en bloc : demander « tout l'album 3 » quand on n'en
+    # voit qu'une partie doit traiter cette partie, pas échouer en révélant le reste.
+    ou, pparams = portee.clause_album("planches.album_id", ecriture=True)
+    pids = set()
+    if payload.planche_ids:
+        inscriptibles = {r[0] for r in conn.execute(
+            f"SELECT id FROM planches WHERE {ou}", pparams)}
+        pids = inscriptibles & set(payload.planche_ids)
     for aid in payload.album_ids:
         pids.update(r["id"] for r in conn.execute(
-            "SELECT id FROM planches WHERE album_id = ?", (aid,)).fetchall())
+            f"SELECT id FROM planches WHERE album_id = ? AND {ou}",
+            (aid, *pparams)).fetchall())
     valid, verrouillees = [], 0
     if pids:
         ph = ",".join("?" * len(pids))
@@ -2601,21 +2765,51 @@ def creer_job(payload: JobIn, conn: sqlite3.Connection = Depends(db)):
     return job
 
 
+def _planches_autorisees(conn, portee: autorisation.Portee) -> Optional[set]:
+    """Ids des planches visibles. None = toutes (portée totale), pour ne pas
+    matérialiser un corpus entier à chaque appel."""
+    if portee.tout:
+        return None
+    ou, params = portee.clause_album("p.album_id")
+    return {r[0] for r in conn.execute(f"SELECT p.id FROM planches p WHERE {ou}", params)}
+
+
+def _job_visible(conn, portee: autorisation.Portee, job_id: int) -> bool:
+    """Un job n'est visible que si TOUTES ses planches le sont.
+
+    Le sous-ensemble strict, et pas l'intersection : un lot à cheval sur une collection
+    autorisée et une autre révélerait, par son total et sa progression, qu'un travail
+    existe ailleurs. Conséquence assumée : un lot lancé par un administrateur sur tout
+    le corpus n'apparaît qu'à lui.
+    """
+    autorisees = _planches_autorisees(conn, portee)
+    if autorisees is None:
+        return True
+    return set(jobs.planches_du_job(job_id)) <= autorisees
+
+
 @app.get("/api/jobs")
-def lister_jobs():
-    return jobs.all_jobs()
+def lister_jobs(conn: sqlite3.Connection = Depends(db),
+                portee: autorisation.Portee = Depends(portee_courante)):
+    """Les lots en cours — filtrés : la progression d'un lot cite des planches, donc
+    des albums, donc l'existence d'études qu'on ne devrait pas connaître."""
+    return [s for s in jobs.all_jobs() if _job_visible(conn, portee, s["id"])]
 
 
 @app.get("/api/jobs/{job_id}")
-def etat_job(job_id: int):
+def etat_job(job_id: int, conn: sqlite3.Connection = Depends(db),
+             portee: autorisation.Portee = Depends(portee_courante)):
     snap = jobs.snapshot(job_id)
-    if snap is None:
+    if snap is None or not _job_visible(conn, portee, job_id):
         raise HTTPException(404, f"Job {job_id} introuvable")
     return snap
 
 
 @app.post("/api/jobs/{job_id}/annuler")
-def annuler_job(job_id: int):
+def annuler_job(job_id: int, conn: sqlite3.Connection = Depends(db),
+                portee: autorisation.Portee = Depends(portee_courante)):
+    if not _job_visible(conn, portee, job_id):
+        raise HTTPException(404, f"Job {job_id} introuvable")
     if not jobs.cancel_job(job_id):
         raise HTTPException(404, f"Job {job_id} introuvable")
     return jobs.snapshot(job_id)
@@ -2673,7 +2867,9 @@ def _album_payload(conn: sqlite3.Connection, album_id: int) -> dict:
 
 
 @app.get("/api/export/json")
-def export_json(album_id: int, conn: sqlite3.Connection = Depends(db)):
+def export_json(album_id: int, conn: sqlite3.Connection = Depends(db),
+                portee: autorisation.Portee = Depends(portee_courante)):
+    _get_album(conn, portee, album_id)
     album = _album_payload(conn, album_id)
     return {
         "@context": {
@@ -2690,9 +2886,9 @@ def export_json(album_id: int, conn: sqlite3.Connection = Depends(db)):
 
 
 @app.get("/api/export/csv")
-def export_csv(album_id: int, conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
-        raise HTTPException(404, f"Album {album_id} introuvable")
+def export_csv(album_id: int, conn: sqlite3.Connection = Depends(db),
+               portee: autorisation.Portee = Depends(portee_courante)):
+    _get_album(conn, portee, album_id)
     rows = _rows(conn.execute(
         """SELECT a.titre AS album, p.numero AS ordre_import, r.id AS region_id,
                   r.type, r.parent_id, r.x, r.y, r.w, r.h, r.ordre, r.source,
@@ -2758,10 +2954,9 @@ def _xml_safe(text) -> str:
 
 
 @app.get("/api/export/tei")
-def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db)):
-    album = _row(conn.execute("SELECT * FROM albums WHERE id = ?", (album_id,)))
-    if album is None:
-        raise HTTPException(404, f"Album {album_id} introuvable")
+def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db),
+               portee: autorisation.Portee = Depends(portee_courante)):
+    album = _get_album(conn, portee, album_id)
 
     ET.register_namespace("", TEI_NS)
     root = ET.Element(f"{{{TEI_NS}}}TEI")
@@ -2866,30 +3061,18 @@ def sante(profond: bool = False):
 
 
 def _auteur(request: Request) -> Optional[str]:
-    """Identifiant de l'utilisateur connecté, pour attribuer une action humaine
-    (INFRA-2). Lu dans l'en-tête `Remote-User` posé par le proxy d'auth.
+    """Login de la personne connectée — délégué à `autorisation.auteur` (AUTH-2).
 
-    AUTH-1 : l'en-tête n'est cru QUE si `BD_AUTH_PROXY` déclare qu'on est derrière ce
-    proxy. Sans le drapeau, on ignore ce que le client raconte et l'acte reste anonyme —
-    comportement mono-poste inchangé. La docstring d'INFRA-2 affirmait « jamais par le
-    client : l'app n'est jamais exposée en direct » ; c'était une hypothèse sur le
-    déploiement, pas une garantie du code. Elle en est une maintenant."""
-    if not AUTH_PROXY:
-        return None
-    return (request.headers.get("Remote-User") or "").strip() or None
+    La lecture des en-têtes d'identité a migré dans `autorisation.py` : la portée
+    d'autorisation en dépend, et deux implémentations de « qui est là » finiraient par
+    diverger. Le nom local reste, il a des appelants dans tout le fichier.
+    """
+    return autorisation.auteur(request)
 
 
 def _groupes(request: Request) -> list[str]:
-    """Groupes de l'utilisateur connecté (AUTH-1), depuis `Remote-Groups`.
-
-    Authelia les envoie séparés par des virgules. Ils ne sont JAMAIS stockés : ils vivent
-    dans `deploy/authelia/users_database.yml` et sont relus à chaque requête, pour qu'un
-    retrait de groupe prenne effet immédiatement, sans intervention en base. Même garde
-    de confiance que `_auteur`."""
-    if not AUTH_PROXY:
-        return []
-    brut = (request.headers.get("Remote-Groups") or "")
-    return [g for g in (x.strip() for x in brut.split(",")) if g]
+    """Groupes de la personne connectée — délégué à `autorisation.groupes` (AUTH-2)."""
+    return autorisation.groupes(request)
 
 
 # Miroir des identités déjà écrites : évite une écriture SQLite à CHAQUE requête, ce qui
@@ -2945,8 +3128,34 @@ def moi(request: Request, conn: sqlite3.Connection = Depends(db)):
 
 # Fichiers statiques + images dérivées + shell HTML.
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-app.mount("/derivatives", StaticFiles(directory=str(DERIVATIVES_DIR)),
-          name="derivatives")
+
+
+@app.get("/derivatives/{chemin:path}")
+def derivative(chemin: str, conn: sqlite3.Connection = Depends(db),
+               portee: autorisation.Portee = Depends(portee_courante)):
+    """Image web d'une planche, CLOISONNÉE (AUTH-2).
+
+    C'était un `app.mount("/derivatives", StaticFiles(...))` — et la plus large fuite du
+    dépôt, trouvée en relisant plutôt que par un test : un montage n'est pas une route,
+    le cliquet de `tests/test_autorisation.py` ne le voyait donc pas. Les chemins sont
+    parfaitement devinables (`/derivatives/album_2/planche_0001.jpg`), si bien que tout le
+    corpus restait lisible en image quelle que soit la rigueur des routes JSON. Le test
+    regarde désormais aussi les montages.
+
+    La base sert d'ALLOWLIST : on ne sert que des fichiers dont le chemin figure dans
+    `planches.chemin_web`. Cela autorise et, du même coup, rend toute traversée de
+    répertoire impossible — un `..` ne correspond à aucune ligne.
+    """
+    ou, params = portee.clause_album("planches.album_id")
+    row = _row(conn.execute(
+        f"SELECT chemin_web FROM planches WHERE chemin_web = ? AND {ou}",
+        (f"derivatives/{chemin}", *params)))
+    if row is None:
+        raise HTTPException(404, "Image introuvable")
+    fichier = DATA_DIR / row["chemin_web"]
+    if not fichier.is_file():
+        raise HTTPException(404, "Image introuvable")
+    return FileResponse(str(fichier))
 
 
 @app.get("/", response_class=HTMLResponse)

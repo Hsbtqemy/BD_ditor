@@ -104,7 +104,57 @@ Toutes amplifiées par l'absence d'authentification.
   veut — sans conséquence tant que rien n'est autorisé sur cette base, escalade de
   privilège dès qu'une autorisation en dépendra.
   (ex. `https://auth.example.fr/logout`), affichée dans l'UI avec l'utilisateur
-  connecté (`Remote-User`). Vide en local → ni nom ni lien affichés. L'app fait
-  de l'**affichage seul** : l'autorisation reste entièrement assurée par Authelia.
+  connecté (`Remote-User`). Vide en local → ni nom ni lien affichés.
+- Auth (derrière proxy) : **`BD_AUTH_ADMIN_GROUPS`** = groupes dont les membres voient
+  tout le corpus (défaut `bd-admins`). Comme les autres groupes, leur composition n'est
+  jamais stockée : elle vit dans Authelia et est relue à chaque requête.
 - Les jobs sont **éphémères** (threads daemon, registre RAM) : un redémarrage les
   perd. Le travail DB déjà committé par passe survit ; le suivi de job non.
+
+## 6. Cloisonnement par collection (AUTH-2)
+
+Jusqu'à AUTH-2, l'application faisait de l'**affichage seul** : Authelia disait qui entre,
+et quiconque entrait voyait tout. Ce n'est plus vrai — et la phrase « l'autorisation est
+entièrement assurée par Authelia », qui figurait ici, ne l'est plus non plus.
+
+**La collection est l'unité de cloisonnement.** On n'autorise jamais un album directement :
+on autorise une collection (`collection_acces` : collection × principal × niveau), et
+l'album suit celle qui le contient. `principal` est un login OU un nom de groupe lu dans
+`Remote-Groups` ; ce qui est stocké est une RÉFÉRENCE à un nom de groupe, jamais une
+appartenance — celle-ci reste chez Authelia et se relit à chaque requête.
+
+Corollaire : **aucun album ne peut être hors collection** (`database.collection_par_defaut`).
+Un orphelin ne correspondrait à aucune règle, et il faudrait inventer une politique dans le
+code, à un endroit qu'on oublierait de relire.
+
+Trois comportements à connaître avant d'exploiter une instance.
+
+**Le refus est un 404, jamais un 403.** Dire « cet album existe, mais pas pour vous »
+révèle la composition du corpus. La contrepartie : qui perd un droit ne verra pas d'erreur,
+ses objets auront simplement disparu.
+
+**Sans `BD_AUTH_PROXY`, tout passe.** C'est le mono-poste, et le comportement est
+exactement celui d'avant AUTH-2.
+
+**Avec `BD_AUTH_PROXY` mais sans en-tête d'identité, rien ne passe.** Une requête qui n'a
+pas traversé Authelia ne voit rien. Si le `forward_auth` est mal configuré, l'application
+paraîtra VIDE pour tout le monde : c'est une panne bruyante et immédiate, préférée à une
+fuite silencieuse. Si l'instance semble vide au premier démarrage, chercher là d'abord.
+
+### Ce qui reste ouvert à tous — décision du 2026-08-27
+
+`GET /api/sauvegarde` et `POST /api/sharedocs/deposer-sauvegarde` déversent la base
+**ENTIÈRE**, toutes collections confondues, et **restent accessibles à tout utilisateur
+authentifié**. Ce n'est pas un oubli, c'est un arbitrage : une sauvegarde partielle ne
+restaure pas une instance, et le nom deviendrait trompeur.
+
+Conséquence à assumer telle quelle : **toute personne ayant accès à l'instance peut
+aspirer l'intégralité du corpus.** Le cloisonnement protège de l'accident et de la
+confusion — deux équipes qui ne se marchent pas dessus, un chercheur qui ne voit que son
+étude — pas d'une exfiltration délibérée.
+
+**Condition de réouverture** : dès que l'instance accueille quelqu'un qui n'a pas le droit
+de tout voir — un partenaire extérieur, un tiering de droits effectif (DROIT-1), un corpus
+sous embargo — cette décision se rejoue. Elle est verrouillée par un test qui la cite
+nommément (`tests/test_autorisation.py`, `HORS_PERIMETRE`) : la changer suppose de
+toucher à cette liste, donc de la relire.

@@ -20,7 +20,10 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 import database  # noqa: E402
 import journal  # noqa: E402
 
-H = {"Remote-User": "hugo"}   # utilisateur « connecté » (en-tête d'auth, INFRA-2)
+# Utilisateur « connecté » (en-tête d'auth, INFRA-2). Le groupe vient d'AUTH-2 : hugo
+# annote, donc il lui faut le droit d'écrire — sans quoi ces tests ne mesureraient
+# plus la provenance mais le refus d'accès.
+H = {"Remote-User": "hugo", "Remote-Groups": "bd-admins"}
 
 
 def _lire(db_path):
@@ -127,8 +130,12 @@ def test_evenements_humains_avant_apres(client, derriere_proxy, album, db_path):
     ).fetchone()[0] == 1
 
 
-def test_agent_null_hors_auth(client, derriere_proxy, album, db_path):
-    """Sans en-tête d'auth (usage local mono-utilisateur), l'agent est NULL — honnête."""
+def test_agent_null_hors_auth(client, album, db_path):
+    """Sans en-tête d'auth (usage local mono-utilisateur), l'agent est NULL — honnête.
+
+    Ce test ne déclare volontairement PAS `derriere_proxy` : il décrit le mono-poste, et
+    l'y placer était une contradiction que le cloisonnement (AUTH-2) a révélée — derrière
+    le proxy, une requête sans identité ne crée plus rien du tout."""
     conn = _lire(db_path)
     pid = _planche(conn, album["id"])
     conn.close()

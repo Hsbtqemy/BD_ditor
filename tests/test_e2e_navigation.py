@@ -17,7 +17,8 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 from playwright.sync_api import expect  # noqa: E402
 
-from conftest import make_png  # noqa: E402
+# AUTH-2 : `ADMIN` monte le décor avec les droits qu'il faut (sans effet hors proxy).
+from conftest import ADMIN, make_png  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -26,7 +27,8 @@ pytestmark = pytest.mark.e2e
 def seeded(live_server):
     """Album + planche + une case, créés via l'API sur le serveur live. Renvoie les
     ids et l'URL de base pour construire des deep-links."""
-    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30)
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         aid = c.post("/api/albums", json={"titre": "E2E"}).json()["id"]
         pid = c.post(f"/api/albums/{aid}/import",
@@ -104,7 +106,8 @@ def test_visionneuse_affiche_la_citation(page, seeded):
 @pytest.fixture
 def seeded_corpus(live_server):
     """Album + DEUX planches récit (pour observer la renumérotation au marquage)."""
-    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30)
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         aid = c.post("/api/albums", json={"titre": "E2E corpus"}).json()["id"]
         for _ in range(2):
@@ -132,7 +135,8 @@ def test_corpus_marquer_paratexte_renumerote(page, seeded_corpus):
 @pytest.fixture
 def seeded_ocr(live_server):
     """Album + planche + une case contenant une bulle océrisée (texte indexé)."""
-    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30)
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30,
+                     headers=ADMIN)
     try:
         aid = c.post("/api/albums", json={"titre": "E2E ocr"}).json()["id"]
         pid = c.post(f"/api/albums/{aid}/import",

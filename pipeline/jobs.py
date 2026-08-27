@@ -106,6 +106,14 @@ def all_jobs() -> list:
     return [snapshot(jid) for jid in sorted(_jobs, reverse=True)]
 
 
+def planches_du_job(job_id: int) -> list:
+    """Planches couvertes par un job. Hors de `snapshot` À DESSEIN : c'est une donnée
+    d'AUTORISATION (AUTH-2 : à qui ce job appartient-il ?), pas de progression — la
+    renvoyer dans le snapshot reviendrait à publier ce qu'on cherche justement à filtrer."""
+    j = _jobs.get(job_id)
+    return list(j["planche_ids"]) if j else []
+
+
 def start_job(passes, planche_ids) -> dict:
     global _counter
     with _lock:

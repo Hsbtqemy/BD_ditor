@@ -7,10 +7,13 @@ couche overlay `token_correction`. Les tests sont donc robustes sans spaCy.
 """
 import sqlite3
 
+from conftest import ADMIN   # AUTH-2 : le décor est monté par un administrateur
+
 
 def _region(client, planche_id, type="bulle"):
     return client.post(f"/api/planches/{planche_id}/regions",
-                       json={"type": type, "x": 10, "y": 10, "w": 50, "h": 40}).json()["id"]
+                       json={"type": type, "x": 10, "y": 10, "w": 50, "h": 40},
+                       headers=ADMIN).json()["id"]
 
 
 def _seed(db_path, region_id, tokens):
@@ -89,7 +92,7 @@ def test_tokens_exposent_corr_auteur(client, derriere_proxy, album, planche, db_
     a = _region(client, planche["id"])
     _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
     _seed_corr(db_path, a, 0, "CRIE", "jeanne", etat="valide")
-    tok = client.get(f"/api/regions/{a}/tokens").json()[0]
+    tok = client.get(f"/api/regions/{a}/tokens", headers=ADMIN).json()[0]
     assert tok["corr_auteur"] == "jeanne"
     assert tok["provenance"] == "valide"
 
@@ -101,7 +104,7 @@ def test_frequences_filtre_par_auteur(client, derriere_proxy, album, planche, db
     _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])
     _seed_corr(db_path, a, 0, "CRIE", "jeanne")
     _seed_corr(db_path, b, 0, "RIT", "marc")
-    res = client.get("/api/analyse/frequences",
+    res = client.get("/api/analyse/frequences", headers=ADMIN,
                      params={"champ": "lemme", "auteur": "jeanne"}).json()
     assert {r["lemme"] for r in res["results"]} == {"crier"}
 
@@ -113,7 +116,8 @@ def test_concordance_filtre_par_auteur_seul(client, derriere_proxy, album, planc
     _seed(db_path, b, [(0, "CRIE", "crier", "VERB", "")])
     _seed_corr(db_path, a, 0, "CRIE", "jeanne")
     _seed_corr(db_path, b, 0, "CRIE", "marc")
-    r = client.get("/api/analyse/concordance", params={"auteur": "jeanne"}).json()
+    r = client.get("/api/analyse/concordance", params={"auteur": "jeanne"},
+                   headers=ADMIN).json()
     assert r["count"] == 1 and r["results"][0]["region_id"] == a
 
 
@@ -123,7 +127,7 @@ def test_comparaison_par_auteur(client, derriere_proxy, album, planche, db_path)
     _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])
     _seed_corr(db_path, a, 0, "CRIE", "jeanne")
     _seed_corr(db_path, b, 0, "RIT", "marc")
-    res = client.get("/api/analyse/comparaison",
+    res = client.get("/api/analyse/comparaison", headers=ADMIN,
                      params={"champ": "lemme", "a_auteur": "jeanne", "b_auteur": "marc"}).json()
     assert "crier" in {x["valeur"] for x in res["sur_a"]}
     assert "rire" in {x["valeur"] for x in res["sur_b"]}

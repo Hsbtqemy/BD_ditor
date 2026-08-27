@@ -24,6 +24,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import config  # noqa: E402
 import database  # noqa: E402
+import autorisation  # noqa: E402
 import main  # noqa: E402
 import pipeline.ingest as ingest  # noqa: E402
 import pipeline.segmentation as segmentation  # noqa: E402
@@ -78,6 +79,7 @@ def derriere_proxy(monkeypatch):
     plutôt qu'on n'active la confiance pour toute la suite : ce serait précisément
     perdre de vue ce que la garde protège."""
     monkeypatch.setattr(main, "AUTH_PROXY", True)
+    monkeypatch.setattr(autorisation, "AUTH_PROXY", True)
     yield
 
 
@@ -86,6 +88,10 @@ def data_dir(tmp_path, monkeypatch):
     """Redirige base + dossiers data vers un tmp jetable et init la base."""
     db_file = tmp_path / "test.sqlite"
     monkeypatch.setattr(database, "DB_PATH", db_file)
+    # AUTH-2 : `main.DATA_DIR` sert désormais les images dérivées (route cloisonnée qui a
+    # remplacé le montage StaticFiles). Sans ce patch, un test lisant une image la prendrait
+    # dans le corpus RÉEL du dépôt — il passerait, mais sur les fichiers d'à côté.
+    monkeypatch.setattr(main, "DATA_DIR", tmp_path)
     monkeypatch.setattr(ingest, "DATA_DIR", tmp_path)
     monkeypatch.setattr(ingest, "CORPUS_DIR", tmp_path / "corpus")
     monkeypatch.setattr(ingest, "DERIVATIVES_DIR", tmp_path / "derivatives")
@@ -119,10 +125,25 @@ def png_bytes():
     return make_png()
 
 
+# AUTH-2 : le DÉCOR d'un test est monté par un administrateur.
+#
+# Sans proxy d'auth ces en-têtes sont ignorés (garde AUTH-1) et rien ne change : c'est le
+# cas de l'immense majorité de la suite. Mais un test qui déclare `derriere_proxy` place
+# la requête sous cloisonnement, et son décor deviendrait alors impossible à monter — une
+# personne inconnue n'a droit à rien, par construction (fermeture par défaut).
+#
+# On aurait pu compter sur l'ordre des fixtures (monter le décor AVANT `derriere_proxy`),
+# mais faire dépendre la suite d'un ordre implicite est précisément le genre de garantie
+# qui se casse sans bruit. Les en-têtes, eux, sont explicites et sans effet quand ils ne
+# servent pas.
+ADMIN = {"Remote-User": "decor", "Remote-Groups": "bd-admins"}
+
+
 @pytest.fixture
 def album(client):
     return client.post("/api/albums",
-                       json={"titre": "Test", "serie": "S", "annee": 2016}).json()
+                       json={"titre": "Test", "serie": "S", "annee": 2016},
+                       headers=ADMIN).json()
 
 
 @pytest.fixture
@@ -130,6 +151,7 @@ def planche(client, album, png_bytes):
     return client.post(
         f"/api/albums/{album['id']}/import",
         files={"file": ("planche.png", png_bytes, "image/png")},
+        headers=ADMIN,
     ).json()
 
 
@@ -139,6 +161,7 @@ def region(client, planche):
     return client.post(
         f"/api/planches/{planche['id']}/regions",
         json={"type": "case", "x": 10, "y": 10, "w": 100, "h": 80},
+        headers=ADMIN,
     ).json()
 
 
@@ -161,19 +184,33 @@ def _free_port() -> int:
 
 
 @pytest.fixture
-def live_server(tmp_path):
+def live_server(request, tmp_path):
     """Lance un VRAI serveur uvicorn isolé (base + data dans un tmp via
     BD_DATA_DIR/BD_DB_PATH) et renvoie son URL de base. Utilisé par les tests
-    d'intégration `live` (course écriture→lecture) et les E2E navigateur."""
+    d'intégration `live` (course écriture→lecture) et les E2E navigateur.
+
+    Par DÉFAUT, le serveur n'est PAS déclaré derrière le proxy d'auth. Ce n'était pas le
+    cas avant AUTH-2, et le changement est délibéré : depuis le cloisonnement, un serveur
+    qui se croit derrière Authelia refuse tout à une requête sans en-tête d'identité
+    (fermeture par défaut). Or un navigateur de test n'en envoie pas, et le corpus
+    apparaîtrait vide aux quarante tests E2E — qui passeraient au vert en n'auditant plus
+    rien. Le mode mono-poste est ce qu'ils ont toujours exercé.
+
+    Les tests qui ont VRAIMENT besoin d'une identité l'exigent explicitement :
+
+        @pytest.mark.parametrize("live_server", [True], indirect=True)
+
+    et envoient alors `Remote-User` — plus `Remote-Groups: bd-admins` s'ils veulent aussi
+    voir le corpus, faute d'entrée dans `collection_acces`.
+    """
+    derriere_proxy = getattr(request, "param", False)
     port = _free_port()
     env = {**os.environ,
            "BD_DATA_DIR": str(tmp_path),
            "BD_DB_PATH": str(tmp_path / "live.sqlite"),
-           # AUTH-1 : ces tests simulent le déploiement DERRIÈRE le proxy d'auth et
-           # envoient des en-têtes `Remote-User`. Le drapeau doit entrer dans le
-           # SOUS-PROCESSUS : la fixture `derriere_proxy` patche `main.AUTH_PROXY` du
-           # processus de test, ce qui n'a aucun effet sur un serveur lancé à part.
-           "BD_AUTH_PROXY": "1"}
+           # Le drapeau doit entrer dans le SOUS-PROCESSUS : la fixture `derriere_proxy`
+           # patche le processus de test, ce qui n'a aucun effet sur un serveur lancé à part.
+           "BD_AUTH_PROXY": "1" if derriere_proxy else ""}
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app",
          "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],

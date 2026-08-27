@@ -30,6 +30,11 @@ services:
       - BD_AUTH_PROXY=1
       # Lien de déconnexion affiché dans l'UI (portail Authelia). REMPLACE example.fr.
       - BD_AUTH_LOGOUT_URL=https://auth.example.fr/logout
+      # AUTH-2 : groupes dont les membres voient TOUT le corpus et administrent les accès.
+      # Doit correspondre à un groupe déclaré dans Authelia. Les autres n'accèdent qu'aux
+      # collections ouvertes pour eux dans `collection_acces` — et une instance neuve n'en
+      # ouvre aucune, donc SANS au moins un administrateur, personne ne voit rien.
+      # - BD_AUTH_ADMIN_GROUPS=bd-admins   # défaut ; décommenter pour changer de nom
       # - BD_SPACY_MODEL=fr_core_news_sm   # modèle NLP (lg = index plus riche, + de RAM)
       # - BD_NLP_PREWARM=1                  # charge spaCy au démarrage (évite le gel de
       #                                     #  la 1re écriture) ; à éviter en consultation pure
