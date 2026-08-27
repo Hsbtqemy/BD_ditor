@@ -10,6 +10,13 @@ import sqlite3
 from conftest import ADMIN   # AUTH-2 : le décor est monté par un administrateur
 
 
+def _h(login):
+    """En-têtes d'un annotateur. Le groupe vient d'AUTH-2 : corriger la grammaire
+    est une écriture, donc il faut le droit d'écrire — sans quoi ces tests ne
+    mesureraient plus l'attribution mais le refus d'accès."""
+    return {"Remote-User": login, "Remote-Groups": "bd-admins"}
+
+
 def _region(client, planche_id, type="bulle"):
     return client.post(f"/api/planches/{planche_id}/regions",
                        json={"type": type, "x": 10, "y": 10, "w": 50, "h": 40},
@@ -62,13 +69,17 @@ def test_correction_enregistre_auteur_connecte(client, derriere_proxy, album, pl
     _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
     r = client.put(f"/api/regions/{a}/tokens/0",
                    json={"lemme": "crier", "pos": "VERB", "etat": "corrige"},
-                   headers={"Remote-User": "jeanne"})
+                   headers=_h("jeanne"))
     assert r.status_code == 200
     assert _auteurs(db_path, a) == {"jeanne"}
 
 
-def test_correction_sans_proxy_reste_anonyme(client, derriere_proxy, album, planche, db_path):
-    """En local (pas d'en-tête Remote-User), l'auteur reste NULL — comme avant."""
+def test_correction_sans_proxy_reste_anonyme(client, album, planche, db_path):
+    """En local (pas d'en-tête Remote-User), l'auteur reste NULL — comme avant.
+
+    Sans `derriere_proxy`, volontairement : le test décrit le mono-poste, et l'y placer
+    était une contradiction que le cloisonnement (AUTH-2) a révélée — derrière le proxy,
+    une requête sans identité n'écrit plus rien du tout."""
     a = _region(client, planche["id"])
     _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
     client.put(f"/api/regions/{a}/tokens/0", json={"lemme": "crier", "etat": "corrige"})
@@ -82,8 +93,8 @@ def test_validation_ne_clobbe_pas_le_correcteur(client, derriere_proxy, album, p
     a = _region(client, planche["id"])
     _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
     client.put(f"/api/regions/{a}/tokens/0", json={"lemme": "crier", "etat": "corrige"},
-               headers={"Remote-User": "jeanne"})
-    client.post(f"/api/regions/{a}/grammaire/valider", headers={"Remote-User": "marc"})
+               headers=_h("jeanne"))
+    client.post(f"/api/regions/{a}/grammaire/valider", headers=_h("marc"))
     assert _auteurs(db_path, a) == {"jeanne"}   # marc valide, mais jeanne reste le correcteur
 
 

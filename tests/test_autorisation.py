@@ -62,54 +62,6 @@ HORS_PERIMETRE = {
 # Elle a aussi un effet de cliquet : une route absente des DEUX listes fait échouer la
 # suite. On ne peut donc pas ajouter une route non cloisonnée sans s'en apercevoir.
 A_CABLER = {
-    ("POST", "/api/sharedocs/importer"),
-    ("GET", "/api/tags"),
-    ("POST", "/api/tags"),
-    ("GET", "/api/contribution-roles"),
-    ("POST", "/api/contribution-roles"),
-    ("GET", "/api/albums/{album_id}/contributions"),
-    ("POST", "/api/albums/{album_id}/contributions"),
-    ("DELETE", "/api/contributions/{contribution_id}"),
-    ("GET", "/api/personnages"),
-    ("POST", "/api/personnages"),
-    ("PUT", "/api/personnages/{personnage_id}"),
-    ("DELETE", "/api/personnages/{personnage_id}"),
-    ("POST", "/api/personnages/{personnage_id}/fusion"),
-    ("GET", "/api/personnages/{personnage_id}/alignements"),
-    ("POST", "/api/personnages/{personnage_id}/alignements"),
-    ("DELETE", "/api/personnages/{personnage_id}/alignements/{alignement_id}"),
-    ("GET", "/api/undo/prochain"),
-    ("POST", "/api/undo"),
-    ("GET", "/api/domaines"),
-    ("POST", "/api/domaines"),
-    ("PATCH", "/api/domaines/{dom_id}"),
-    ("DELETE", "/api/domaines/{dom_id}"),
-    ("PATCH", "/api/domaines/{dom_id}/lexique"),
-    ("GET", "/api/attributs/dimensions"),
-    ("POST", "/api/attributs/dimensions"),
-    ("PATCH", "/api/attributs/dimensions/{dim_id}/domaine"),
-    ("DELETE", "/api/attributs/dimensions/{dim_id}"),
-    ("GET", "/api/attributs/dimensions/{dim_id}/valeurs"),
-    ("POST", "/api/attributs/dimensions/{dim_id}/valeurs"),
-    ("DELETE", "/api/attributs/valeurs/{val_id}"),
-    ("GET", "/api/attributs/valeurs"),
-    ("PUT", "/api/attributs/valeurs/{val_id}"),
-    ("POST", "/api/attributs/valeurs/{val_id}/fusion"),
-    ("GET", "/api/collections"),
-    ("GET", "/api/lexique"),
-    ("POST", "/api/lexique/importer"),
-    ("PATCH", "/api/attributs/dimensions/{dim_id}/lexique"),
-    ("PATCH", "/api/attributs/valeurs/{val_id}/lexique"),
-    ("PATCH", "/api/tags/{tag_id}/lexique"),
-    ("GET", "/api/personnages/{personnage_id}/attributs"),
-    ("PUT", "/api/personnages/{personnage_id}/attributs"),
-    ("DELETE", "/api/personnages/{personnage_id}/attributs/{valeur_id}"),
-    ("GET", "/api/analyse/accord"),
-    ("GET", "/api/analyse/accord-inter"),
-    ("PUT", "/api/regions/{region_id}/tokens/{ordre}"),
-    ("POST", "/api/regions/{region_id}/grammaire/valider"),
-    ("DELETE", "/api/regions/{region_id}/tokens/{ordre}"),
-    ("GET", "/api/analyse/info"),
 }
 
 
@@ -454,9 +406,14 @@ def test_l_export_csv_de_recherche_suit_la_meme_regle(client, db_path, deux_albu
 def test_les_compteurs_du_corpus_sont_cloisonnes(client, db_path, deux_albums,
                                                  derriere_proxy):
     """La composition du corpus fuit par les NOMBRES aussi bien que par les titres."""
+    _poser_tag(db_path, "commun")
+    _poser_tag(db_path, "prive", deux_albums["c2"])
     _ouvrir(db_path, deux_albums["c1"], "bob")
     c = client.get("/api/corpus", headers={"Remote-User": "bob"}).json()
     assert c["albums"] == 1 and c["planches"] == 1
+    # `tags` suit la règle du VOCABULAIRE, pas celle des données : le global compte,
+    # le local à une collection fermée non.
+    assert c["tags"] == 1
 
 
 @pytest.mark.parametrize("route", ["/api/export/json", "/api/export/csv", "/api/export/tei"])
@@ -554,3 +511,308 @@ def test_le_chemin_d_image_ne_traverse_pas_les_repertoires(client, deux_albums):
     ne pas perdre en le remplaçant."""
     assert client.get("/derivatives/../bd_annotator.sqlite").status_code == 404
     assert client.get("/derivatives/album_1/inexistante.jpg").status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Le vocabulaire — une règle différente, et voulue
+# --------------------------------------------------------------------------- #
+def _poser_tag(db_path, label, collection_id=None):
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("INSERT INTO tags (label, collection_id) VALUES (?, ?)",
+                     (label, collection_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_un_terme_global_reste_visible_un_terme_local_non(client, db_path, deux_albums,
+                                                          derriere_proxy):
+    """Le vocabulaire ne suit PAS la règle des données : il porte sa propre portée depuis
+    le lexique situé (A4). `collection_id` NULL veut dire global, et c'est un état voulu."""
+    _poser_tag(db_path, "commun")                        # global
+    _poser_tag(db_path, "prive", deux_albums["c2"])      # local à la collection interdite
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    labels = {t["label"] for t in
+              client.get("/api/tags", headers={"Remote-User": "bob"}).json()}
+    assert "commun" in labels and "prive" not in labels
+
+
+def test_la_frequence_d_un_tag_ne_compte_que_le_lisible(client, db_path, deux_albums,
+                                                        derriere_proxy):
+    """Un nuage de tags dont les comptes portent sur tout le corpus dit le volume de
+    travail des autres — et fausse la lecture du sous-corpus qu'on regarde."""
+    from conftest import ADMIN
+    for r in ("r1", "r2"):
+        client.put(f"/api/regions/{deux_albums[r]['id']}/annotation",
+                   json={"note": "", "tags": ["partout"]}, headers=ADMIN)
+    # garde anti-vacuité : sans elle, un tag qui ne serait posé QU'UNE fois donnerait le
+    # même 1 et le test passerait sans rien mesurer.
+    vus = {t["label"]: t["frequence"] for t in
+           client.get("/api/tags", headers=ADMIN).json()}
+    assert vus["partout"] == 2
+
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    tags = client.get("/api/tags", headers={"Remote-User": "bob"}).json()
+    freq = {t["label"]: t["frequence"] for t in tags}
+    assert freq["partout"] == 1                  # posé sur deux régions, une seule lisible
+
+
+def test_creer_un_terme_en_lecture_seule_est_refuse(client, db_path, deux_albums,
+                                                    derriere_proxy):
+    """403 : enrichir un vocabulaire que tout le monde partage suppose de pouvoir écrire
+    quelque part. Le refus parle des droits de l'appelant, il ne fuit rien."""
+    _ouvrir(db_path, deux_albums["c1"], "bob", niveau="lecture")
+    h = {"Remote-User": "bob"}
+    assert client.post("/api/tags", json={"label": "x"}, headers=h).status_code == 403
+    assert client.post("/api/domaines", json={"nom": "y"}, headers=h).status_code == 403
+
+
+def test_les_collections_listees_sont_les_siennes(client, db_path, deux_albums,
+                                                  derriere_proxy):
+    """Les NOMS de collections disent quelles études existent — et le menu de portée du
+    lexique proposerait sinon de ranger un terme chez quelqu'un d'autre."""
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    ids = {c["id"] for c in
+           client.get("/api/collections", headers={"Remote-User": "bob"}).json()}
+    assert ids == {deux_albums["c1"]}
+
+
+# --------------------------------------------------------------------------- #
+# Les personnages — portée DÉRIVÉE de leurs apparitions
+# --------------------------------------------------------------------------- #
+def test_un_personnage_suit_ses_apparitions(client, db_path, deux_albums, derriere_proxy):
+    """Décision du 2026-08-27 : ce n'est pas une mesure de confidentialité (la sauvegarde
+    reste ouverte) mais d'USAGE — l'autocomplétion doit rester à la taille de l'étude."""
+    from conftest import ADMIN
+    ici = client.post("/api/personnages", json={"nom": "Ici"}, headers=ADMIN).json()
+    ailleurs = client.post("/api/personnages", json={"nom": "Ailleurs"}, headers=ADMIN).json()
+    client.put(f"/api/regions/{deux_albums['r1']['id']}/locuteur",
+               json={"personnage_id": ici["id"]}, headers=ADMIN)
+    client.put(f"/api/regions/{deux_albums['r2']['id']}/locuteur",
+               json={"personnage_id": ailleurs["id"]}, headers=ADMIN)
+
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    h = {"Remote-User": "bob"}
+    noms = {p["nom"] for p in client.get("/api/personnages", headers=h).json()}
+    assert noms == {"Ici"}
+    assert client.get(f"/api/personnages/{ailleurs['id']}/alignements",
+                      headers=h).status_code == 404
+
+
+def test_un_personnage_sans_apparition_reste_visible(client, db_path, deux_albums,
+                                                     derriere_proxy):
+    """L'exception qui rend le geste possible : sans elle, le personnage qu'on vient de
+    créer disparaîtrait avant qu'on ait pu lui attribuer une bulle."""
+    _ouvrir(db_path, deux_albums["c1"], "bob", niveau="ecriture")
+    h = {"Remote-User": "bob"}
+    neuf = client.post("/api/personnages", json={"nom": "Tout neuf"}, headers=h).json()
+    noms = {p["nom"] for p in client.get("/api/personnages", headers=h).json()}
+    assert "Tout neuf" in noms
+    assert client.get(f"/api/personnages/{neuf['id']}/alignements",
+                      headers=h).status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# L'annulation est PERSONNELLE
+# --------------------------------------------------------------------------- #
+def test_on_n_annule_que_ses_propres_actes(client, db_path, deux_albums, derriere_proxy):
+    """Ctrl+Z est un geste personnel. Le filtre est par AGENT et non par collection : la
+    cible d'une suppression n'existe plus, donc un filtre par album rendrait impossible
+    l'annulation d'une suppression — l'inverse du service rendu."""
+    _ouvrir(db_path, deux_albums["c1"], "bob", niveau="ecriture")
+    _ouvrir(db_path, deux_albums["c1"], "carol", niveau="ecriture")
+    bob = {"Remote-User": "bob"}
+    client.put(f"/api/regions/{deux_albums['r1']['id']}", json={"ocr_texte": "de bob"},
+               headers=bob)
+    # carol ne voit rien à annuler : l'acte est celui de bob
+    assert client.get("/api/undo/prochain", headers={"Remote-User": "carol"}).json() is None
+    assert client.post("/api/undo", headers={"Remote-User": "carol"}).status_code == 404
+    # bob, lui, retrouve le sien
+    assert client.get("/api/undo/prochain", headers=bob).json() is not None
+    assert client.post("/api/undo", headers=bob).status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# Portée à PLUSIEURS collections — l'agrégation, pas seulement le filtrage
+# --------------------------------------------------------------------------- #
+def test_plusieurs_collections_lues_s_additionnent(client, db_path, deux_albums,
+                                                   derriere_proxy, png_bytes):
+    """Tous les autres tests n'ouvrent qu'UNE collection, si bien qu'ils ne distinguent pas
+    « filtre correctement » de « ne renvoie que la première ». Ici bob en lit deux, non
+    contiguës (c1 et c3, pas c2) : les compteurs doivent AGRÉGER les deux et exclure la
+    troisième.
+
+    Ce que ce test ne prouve PAS, contrairement à ce que j'ai d'abord écrit ici : il
+    n'attrape pas une inversion entre les paramètres de `clause_album` et ceux de
+    `clause_terme`. Les deux lient la MÊME liste (les collections lues), donc les échanger
+    est sans effet observable. Éprouvé par mutation le 2026-08-27 — il attrape en revanche
+    un compteur qu'on aurait oublié de filtrer.
+    """
+    from conftest import ADMIN
+    import sqlite3
+
+    # Un troisième album dans une troisième collection, lisible lui aussi.
+    a3 = client.post("/api/albums", json={"titre": "Troisième"}, headers=ADMIN).json()
+    pl3 = client.post(f"/api/albums/{a3['id']}/import", headers=ADMIN,
+                      files={"file": ("p.png", png_bytes, "image/png")}).json()
+    r3 = client.post(f"/api/planches/{pl3['id']}/regions", headers=ADMIN,
+                     json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()
+    conn = sqlite3.connect(db_path)
+    try:
+        c3 = conn.execute("INSERT INTO collection (nom) VALUES ('Étude C')").lastrowid
+        conn.execute("DELETE FROM collection_album WHERE album_id = ?", (a3["id"],))
+        conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
+                     (c3, a3["id"]))
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Le même tag posé dans les TROIS albums ; bob lit c1 et c3, pas c2.
+    for rid in (deux_albums["r1"]["id"], deux_albums["r2"]["id"], r3["id"]):
+        client.put(f"/api/regions/{rid}/annotation",
+                   json={"note": "", "tags": ["partout"]}, headers=ADMIN)
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    _ouvrir(db_path, c3, "bob")
+    h = {"Remote-User": "bob"}
+
+    freq = {t["label"]: t["frequence"] for t in client.get("/api/tags", headers=h).json()}
+    assert freq["partout"] == 2          # c1 + c3, jamais c2
+
+    c = client.get("/api/corpus", headers=h).json()
+    assert c["albums"] == 2 and c["planches"] == 2
+
+    lex = client.get("/api/lexique", headers=h).json()
+    assert {t["label"]: t["frequence"] for t in lex["tags"]}["partout"] == 2
+
+
+# --------------------------------------------------------------------------- #
+# Voir n'est pas changer — la faille trouvée en relisant le 2026-08-27
+# --------------------------------------------------------------------------- #
+# Dix-neuf routes d'écriture ne portaient qu'une garde de LECTURE : les accesseurs
+# `_get_valeur` / `_get_dimension` / `_get_domaine` / `_get_personnage` répondent « peux-tu
+# le voir », pas « peux-tu le changer ». La suite était verte, le cliquet aussi — il prouve
+# qu'une route consulte la portée, jamais qu'elle en tire la bonne conclusion.
+@pytest.fixture
+def lecteur(client, db_path, deux_albums, derriere_proxy):
+    """Bob, en LECTURE SEULE sur la première collection. Il voit, il ne touche pas."""
+    _ouvrir(db_path, deux_albums["c1"], "bob", niveau="lecture")
+    return {"Remote-User": "bob"}
+
+
+def _un_terme(client, db_path):
+    """Un domaine, une dimension et une valeur GLOBAUX, montés par un administrateur."""
+    from conftest import ADMIN
+    dom = client.post("/api/domaines", json={"nom": "emotions"}, headers=ADMIN).json()
+    dim = client.post("/api/attributs/dimensions",
+                      json={"cible": "case", "nom": "ton"}, headers=ADMIN).json()
+    val = client.post(f"/api/attributs/dimensions/{dim['id']}/valeurs",
+                      json={"valeur": "grave"}, headers=ADMIN).json()
+    return dom, dim, val
+
+
+def test_lecture_seule_ne_modifie_pas_le_vocabulaire(client, db_path, deux_albums, lecteur):
+    """403 : le terme est bien VISIBLE (il vient d'être listé), donc un 404 mentirait.
+    Le refus parle des droits de l'appelant et ne fuit rien."""
+    dom, dim, val = _un_terme(client, db_path)
+    assert client.get("/api/domaines", headers=lecteur).status_code == 200   # il les voit
+    assert client.patch(f"/api/domaines/{dom['id']}",
+                        json={"nom": "autre"}, headers=lecteur).status_code == 403
+    assert client.delete(f"/api/domaines/{dom['id']}", headers=lecteur).status_code == 403
+    assert client.delete(f"/api/attributs/dimensions/{dim['id']}",
+                         headers=lecteur).status_code == 403
+    assert client.put(f"/api/attributs/valeurs/{val['id']}",
+                      json={"valeur": "x"}, headers=lecteur).status_code == 403
+    assert client.patch(f"/api/attributs/valeurs/{val['id']}/lexique",
+                        json={"definition": "d"}, headers=lecteur).status_code == 403
+
+
+def test_lecture_seule_ne_touche_pas_au_registre_des_personnages(client, lecteur):
+    from conftest import ADMIN
+    p = client.post("/api/personnages", json={"nom": "Tintin"}, headers=ADMIN).json()
+    assert client.post("/api/personnages", json={"nom": "Milou"},
+                       headers=lecteur).status_code == 403
+    assert client.put(f"/api/personnages/{p['id']}", json={"nom": "X"},
+                      headers=lecteur).status_code == 403
+    assert client.delete(f"/api/personnages/{p['id']}", headers=lecteur).status_code == 403
+
+
+def test_lecture_seule_n_ajoute_pas_de_paternite(client, deux_albums, lecteur):
+    """404 et non 403, ici : une contribution porte sur un ALBUM, et les données suivent
+    la doctrine « hors portée = introuvable »."""
+    r = client.post(f"/api/albums/{deux_albums['a1']['id']}/contributions",
+                    json={"nom": "Hergé", "role": "scenariste"}, headers=lecteur)
+    assert r.status_code == 404
+
+
+def test_on_ne_range_pas_son_vocabulaire_chez_les_autres(client, db_path, deux_albums,
+                                                         derriere_proxy):
+    """Changer la PORTÉE d'un terme, c'est le déplacer chez quelqu'un. Il faut donc écrire
+    dans la collection VISÉE, pas seulement dans la sienne."""
+    from conftest import ADMIN
+    dom, dim, val = _un_terme(client, db_path)
+    _ouvrir(db_path, deux_albums["c1"], "bob", niveau="ecriture")
+    h = {"Remote-User": "bob"}
+    # sa propre collection : accepté
+    assert client.patch(f"/api/attributs/valeurs/{val['id']}/lexique",
+                        json={"collection_id": deux_albums["c1"]},
+                        headers=h).status_code == 200
+    # celle d'à côté : introuvable
+    assert client.patch(f"/api/attributs/valeurs/{val['id']}/lexique",
+                        json={"collection_id": deux_albums["c2"]},
+                        headers=h).status_code == 404
+
+
+def test_lecture_seule_ne_saborde_pas_un_lot_ni_n_annule(client, db_path, deux_albums,
+                                                         lecteur):
+    """Annuler un lot INTERROMPT un traitement, et Ctrl+Z rejoue une écriture : ni l'un ni
+    l'autre n'est une lecture."""
+    import pipeline.jobs as jobs_mod
+    jobs_mod._jobs[7] = {"id": 7, "passes": ["ocr"],
+                         "planche_ids": [deux_albums["pl1"]["id"]],
+                         "total": 1, "done": 0, "current": None,
+                         "errors": [], "status": "en_cours", "cancel": False}
+    assert client.get("/api/jobs/7", headers=lecteur).status_code == 200   # il le voit
+    assert client.post("/api/jobs/7/annuler", headers=lecteur).status_code == 404
+    assert client.post("/api/undo", headers=lecteur).status_code == 403
+
+
+def test_un_objet_partage_n_expose_pas_le_vocabulaire_prive(client, db_path, deux_albums,
+                                                            derriere_proxy):
+    """Un personnage traverse les albums : si ses attributs n'étaient pas filtrés, il
+    exposerait la grille d'analyse d'une autre étude — pas seulement un mot.
+
+    Écart trouvé en relisant : `GET /api/attributs/valeurs` masquait déjà ces termes, mais
+    on les retrouvait par `GET /api/personnages/{id}/attributs`.
+    """
+    from conftest import ADMIN
+    import sqlite3
+    perso = client.post("/api/personnages", json={"nom": "Partagé"}, headers=ADMIN).json()
+    client.put(f"/api/regions/{deux_albums['r1']['id']}/locuteur",
+               json={"personnage_id": perso["id"]}, headers=ADMIN)
+    dim = client.post("/api/attributs/dimensions",
+                      json={"cible": "personnage", "nom": "grille"}, headers=ADMIN).json()
+    prive = client.post(f"/api/attributs/dimensions/{dim['id']}/valeurs",
+                        json={"valeur": "secret"}, headers=ADMIN).json()
+    public = client.post(f"/api/attributs/dimensions/{dim['id']}/valeurs",
+                         json={"valeur": "connu"}, headers=ADMIN).json()
+    for v in (prive["id"], public["id"]):
+        client.put(f"/api/personnages/{perso['id']}/attributs",
+                   json={"valeur_id": v}, headers=ADMIN)
+    conn = sqlite3.connect(db_path)          # « secret » devient local à la collection 2
+    try:
+        conn.execute("UPDATE attribut_valeur SET collection_id = ? WHERE id = ?",
+                     (deux_albums["c2"], prive["id"]))
+        conn.commit()
+    finally:
+        conn.close()
+
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    h = {"Remote-User": "bob"}
+    # bob VOIT le personnage (il parle dans sa collection)…
+    assert client.get(f"/api/personnages/{perso['id']}/attributs",
+                      headers=h).status_code == 200
+    vus = {a["valeur"] for a in
+           client.get(f"/api/personnages/{perso['id']}/attributs", headers=h).json()}
+    assert vus == {"connu"}                  # …mais pas la grille d'à côté

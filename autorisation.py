@@ -136,6 +136,47 @@ class Portee:
                 f"WHERE ca.album_id = {alias} AND ca.collection_id IN ({marques}))",
                 list(ids))
 
+    def clause_terme(self, alias: str) -> tuple[str, list]:
+        """Fragment SQL restreignant un TERME du vocabulaire (tag, domaine, dimension,
+        valeur) à ce qui est visible. `alias` désigne sa colonne `collection_id`.
+
+        Le vocabulaire ne suit pas la même règle que les données : il porte déjà sa propre
+        notion de portée depuis le lexique situé (A4) — `collection_id` NULL veut dire
+        GLOBAL, et c'est un état voulu, pas un oubli. Un terme est donc visible s'il est
+        global, ou s'il appartient à une collection qu'on lit.
+
+        Conséquence assumée : une personne sans aucune collection voit quand même le
+        vocabulaire global. Elle ne voit aucune donnée pour autant, et un lexique vide
+        serait un état plus déroutant qu'utile.
+        """
+        if self.tout:
+            return "1", []
+        ids = sorted(self.lecture)
+        if not ids:
+            return f"{alias} IS NULL", []
+        marques = ", ".join("?" * len(ids))
+        return f"({alias} IS NULL OR {alias} IN ({marques}))", list(ids)
+
+    def peut_ecrire_terme(self, collection_id) -> bool:
+        """A-t-on le droit de MODIFIER ce terme du vocabulaire ?
+
+        `clause_terme` dit ce qu'on VOIT ; ceci dit ce qu'on peut changer, et les deux ne
+        se confondent pas — un vocabulaire partagé se lit bien plus largement qu'il ne
+        s'édite. Un terme LOCAL s'édite si l'on écrit dans sa collection ; un terme GLOBAL
+        s'édite si l'on écrit quelque part, personne ne le « possédant » en propre.
+        """
+        if self.tout:
+            return True
+        if collection_id is None:
+            return bool(self.ecriture)
+        return collection_id in self.ecriture
+
+    def peut_ecrire_quelque_part(self) -> bool:
+        """A-t-on le droit d'écrire, où que ce soit ? Sert aux gestes qui ne visent aucune
+        collection en particulier — enrichir le vocabulaire, par exemple. Sans cela, une
+        personne en lecture seule pourrait polluer un vocabulaire partagé par tous."""
+        return self.tout or bool(self.ecriture)
+
     def __repr__(self) -> str:                  # diagnostic uniquement
         if self.tout:
             return f"<Portee TOUT admin={self.admin} user={self.utilisateur!r}>"

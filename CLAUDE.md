@@ -132,14 +132,30 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
 - Les requêtes de LISTE filtrent par `portee.clause_album(alias)`. Deux cœurs partagés
   portent le filtre pour tout un pan de l'app : `_recherche_rows` (recherche + export CSV)
   et `_analyse_filtres` (distribution, concordance, croisement, comparaison).
+- **Le VOCABULAIRE suit une autre règle**, et c'est voulu : `portee.clause_terme(alias)` —
+  un tag / domaine / dimension / valeur est visible s'il est GLOBAL (`collection_id` NULL)
+  ou local à une collection qu'on lit. C'est la portée d'appartenance du lexique situé
+  (A4), pas celle des données. En revanche leurs COMPTEURS (fréquence, usages) sont
+  filtrés comme des données : un nuage de tags doit refléter son sous-corpus.
+- **VOIR n'est pas CHANGER, et les deux fonctions sont distinctes** : `clause_terme` dit ce
+  qu'on voit, `peut_ecrire_terme(collection_id)` ce qu'on peut modifier (terme local →
+  écrire dans SA collection ; terme global → écrire quelque part). Les accesseurs
+  `_get_domaine` / `_get_dimension` / `_get_valeur` / `_get_personnage` prennent donc
+  `ecriture=True` sur les routes d'écriture — 19 ne l'avaient pas au premier jet, avec une
+  suite entièrement verte. Le refus d'écriture est un **403** sur un terme (il vient d'être
+  listé, un 404 mentirait) et un **404** sur une donnée (l'absence ne fuit rien).
+- **Deux portées dérivées** — un personnage se voit par ses APPARITIONS (`_clause_personnage` ;
+  celui qui n'apparaît nulle part reste visible, sans quoi on ne pourrait plus en créer) ;
+  l'annulation (Ctrl+Z) se filtre par AGENT et non par collection, parce que la cible d'une
+  suppression n'existe plus — un filtre par album la rendrait inannulable.
 
 **Le cliquet, et c'est la vraie protection** : `tests/test_autorisation.py` énumère les
-routes de l'app et exige que chacune ait été tranchée — soit elle consulte la portée, soit
-elle figure sur `HORS_PERIMETRE` (avec sa raison écrite) ou sur `A_CABLER` (la dette,
-nommée). Une route absente des deux fait échouer la suite. Il ferme la porte de l'OUBLI,
-pas celle de l'erreur : il vérifie qu'une route consulte la portée, jamais qu'elle en tire
-la bonne conclusion — d'où les tests de comportement, dont la couverture est une liste et
-non une garantie. Chantier livré par tranches : `A_CABLER` doit atteindre zéro.
+routes de l'app — ET les MONTAGES, qui n'ont aucune dépendance — et exige que chacun ait
+été tranché : soit il consulte la portée, soit il figure sur `HORS_PERIMETRE` /
+`MONTAGES_AUTORISES` avec sa raison écrite. Absent des deux, la suite échoue. Il ferme la
+porte de l'OUBLI, pas celle de l'erreur : il vérifie qu'une route consulte la portée,
+jamais qu'elle en tire la bonne conclusion — d'où les tests de comportement, dont la
+couverture est une liste et non une garantie.
 
 Cf. `docs/hebergement-securite.md` (§6), dont la décision assumée : `GET /api/sauvegarde`
 reste ouverte à tous et déverse la base entière.

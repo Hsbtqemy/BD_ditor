@@ -21,14 +21,37 @@ import database
 CHAMPS = ("lemme", "pos", "morph")
 
 
-def rapport(conn, divergence_limit: int = 50) -> dict:
+def rapport(conn, divergence_limit: int = 50, album_ids=None) -> dict:
     """Rapport d'accord inter-annotateurs (dict sérialisable). `divergence_limit` borne la
-    liste détaillée (les compteurs, eux, portent sur tout)."""
+    liste détaillée (les compteurs, eux, portent sur tout).
+
+    `album_ids` (None = corpus entier) RESTREINT aux corrections dont la région appartient
+    à l'un de ces albums — même contrat que `accord.rapport`, et c'est par là que passe le
+    cloisonnement d'AUTH-2. Une liste VIDE (aucun album lisible) → rapport vide.
+
+    Une limite à connaître quand on scope : le journal SURVIT à la suppression de sa cible
+    (`cible_id` n'est pas une FK, c'est le substrat de l'undo). Une correction effacée n'a
+    donc plus de région, donc plus d'album — elle sort de l'échantillon dès qu'on restreint,
+    alors qu'elle comptait dans le rapport global. C'est le prix du filtre, et il vaut mieux
+    que l'alternative : rattacher un événement orphelin à un album par défaut.
+    """
+    ou, params = "", []
+    if album_ids is not None:
+        if album_ids:
+            qm = ",".join("?" * len(album_ids))
+            ou = (f"  AND cible_id IN (SELECT tc.id FROM token_correction tc "
+                  f"     JOIN regions r ON r.id = tc.region_id "
+                  f"     JOIN planches p ON p.id = r.planche_id "
+                  f"    WHERE p.album_id IN ({qm})) ")
+            params = list(album_ids)
+        else:
+            ou = "  AND 0 "                     # aucun album lisible → rapport vide
     events = conn.execute(
         "SELECT cible_id, agent, avant, apres FROM evenement "
         "WHERE cible_table = 'token_correction' AND agent_type = 'humain' "
         "  AND type IN ('creation', 'modification') AND agent IS NOT NULL "
-        "ORDER BY cible_id, date, id").fetchall()
+        + ou +
+        "ORDER BY cible_id, date, id", params).fetchall()
 
     champs = {ch: {"retouches": 0, "accords": 0} for ch in CHAMPS}
     paires = {}                                  # (a, b) triés → {retouches, accords}

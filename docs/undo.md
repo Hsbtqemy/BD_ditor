@@ -56,6 +56,28 @@ par l'utilisateur (`agent_type='moteur'` filtré : une passe ML se rejoue, elle 
 au clavier). **Hors périmètre (dormant)** : correction grammaticale (tokens), validation
 planche/région, et le **redo**.
 
+## À qui appartient l'annulation (AUTH-2)
+
+**Ctrl+Z est un geste PERSONNEL : chacun n'annule que ses propres actes**, administrateur
+compris. Annuler l'acte d'un collègue à son insu serait une surprise, pas une
+fonctionnalité — et un administrateur qui veut défaire le travail d'un autre a le journal
+pour le lire, pas Ctrl+Z pour l'effacer.
+
+En mono-poste (`BD_AUTH_PROXY` absent), rien ne change : il n'y a qu'une personne, tous les
+actes portent le même agent `NULL`, et aucun filtre ne s'applique. La sentinelle `undo.TOUS`
+distingue « ne pas filtrer » de « filtrer sur l'agent anonyme », qui est une valeur légitime.
+
+**Et c'est le seul filtre possible**, ce qui mérite d'être compris plutôt que subi. Le reste
+de l'application se cloisonne par collection ; l'annulation ne le peut pas. Scoper par
+collection supposerait de remonter de l'événement à sa région, puis à son album — or l'acte
+qu'on a le plus besoin d'annuler est justement une **suppression**, dont la cible n'existe
+plus. Le journal survit à sa cible (`cible_id` n'est pas une FK, c'est tout le principe) ;
+un filtre par album rendrait donc l'annulation d'une suppression impossible, c'est-à-dire
+l'inverse du service rendu.
+
+Viser un événement par son `id` ne contourne pas la règle : `undo.annuler` revérifie
+l'agent.
+
 ## Boucle
 
 - **API** : `GET /api/undo/prochain` (aperçu : `{evenement_id, description}` ou `null`) ·

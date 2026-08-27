@@ -59,24 +59,44 @@ def _charge(champ) -> Optional[dict]:
 # --------------------------------------------------------------------------- #
 # Sélection : la dernière action annulable (non déjà annulée)
 # --------------------------------------------------------------------------- #
-def derniere_action_annulable(conn: sqlite3.Connection):
+# Sentinelle : « ne filtre pas par agent ». `agent=None` veut dire tout autre chose —
+# l'agent ANONYME, celui du mono-poste, qui est une valeur légitime en base.
+TOUS = object()
+
+
+def derniere_action_annulable(conn: sqlite3.Connection, agent=TOUS):
     """Événement HUMAIN le plus récent, d'un type/table annulable, non encore annulé
-    (aucun événement `annulation` ne le référence). None si rien à annuler."""
+    (aucun événement `annulation` ne le référence). None si rien à annuler.
+
+    `agent` restreint aux actes de CETTE personne (AUTH-2). Ctrl+Z est un geste personnel :
+    annuler l'acte d'un collègue à son insu serait une surprise, pas une fonctionnalité.
+
+    Et c'est le seul filtre possible ici. Scoper par collection reviendrait à remonter de
+    l'événement à sa région, puis à son album — or l'acte le plus important à pouvoir
+    annuler est justement une SUPPRESSION, dont la cible n'existe plus. Le journal survit à
+    sa cible (`cible_id` n'est pas une FK) ; un filtre par album rendrait donc l'annulation
+    d'une suppression impossible, c'est-à-dire l'inverse du service rendu.
+    """
+    ou, params = "", []
+    if agent is not TOUS:
+        ou = "  AND agent IS ? "                # `IS` et non `=` : gère l'agent NULL
+        params = [agent]
     return conn.execute(
         f"SELECT * FROM evenement "
         f"WHERE agent_type = 'humain' "
         f"  AND type IN ({','.join('?' * len(_TYPES))}) "
         f"  AND cible_table IN ({','.join('?' * len(_TABLES))}) "
+        f"{ou}"
         f"  AND id NOT IN (SELECT cible_id FROM evenement "
         f"                 WHERE type = 'annulation' AND cible_table = 'evenement' "
         f"                   AND cible_id IS NOT NULL) "
         f"ORDER BY id DESC LIMIT 1",
-        (*_TYPES, *_TABLES)).fetchone()
+        (*_TYPES, *_TABLES, *params)).fetchone()
 
 
-def apercu(conn: sqlite3.Connection) -> Optional[dict]:
+def apercu(conn: sqlite3.Connection, agent=TOUS) -> Optional[dict]:
     """Ce que ferait la prochaine annulation (sans l'exécuter) : {evenement_id, description}."""
-    e = derniere_action_annulable(conn)
+    e = derniere_action_annulable(conn, agent)
     return {"evenement_id": e["id"], "description": _description(e)} if e else None
 
 
@@ -209,15 +229,19 @@ def _planche_de(conn, region_id, e) -> Optional[int]:
     return snap.get("planche_id")
 
 
-def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None) -> Optional[dict]:
+def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
+            agent=TOUS) -> Optional[dict]:
     """Annule la dernière action (ou l'événement `evenement_id`) : exécute l'inverse puis
     journalise un événement `annulation`. Renvoie un descripteur {description, planche_id,
     region_id, …} pour le rafraîchissement UI, ou None s'il n'y a rien à annuler. NE COMMITE
     PAS (la route commite → inversion + journal atomiques ; rollback en cas d'échec)."""
     if evenement_id is None:
-        e = derniere_action_annulable(conn)
+        e = derniere_action_annulable(conn, agent)
     else:
         e = conn.execute("SELECT * FROM evenement WHERE id = ?", (evenement_id,)).fetchone()
+        # Viser un événement par son id ne contourne pas la règle : on n'annule que le sien.
+        if e is not None and agent is not TOUS and e["agent"] != agent:
+            e = None
     if e is None:
         return None
     region_id = _inverser(conn, e)

@@ -952,7 +952,8 @@ def sharedocs_liste(chemin: str = ""):
 
 @app.post("/api/sharedocs/importer")
 def sharedocs_importer(payload: SharedocsImportIn,
-                       conn: sqlite3.Connection = Depends(db)):
+                       conn: sqlite3.Connection = Depends(db),
+                       portee: autorisation.Portee = Depends(portee_courante)):
     """Télécharge des fichiers ShareDocs et les ingère comme planches.
 
     Album cible : `album_id` (existant) OU `nouvel_album` (créé). Les fichiers
@@ -963,14 +964,22 @@ def sharedocs_importer(payload: SharedocsImportIn,
         raise HTTPException(422, "Aucun fichier sélectionné.")
     created_album = False
     if payload.album_id is not None:
-        if conn.execute("SELECT 1 FROM albums WHERE id = ?",
-                        (payload.album_id,)).fetchone() is None:
-            raise HTTPException(404, f"Album {payload.album_id} introuvable")
+        # AUTH-2 : importer des planches, c'est écrire dans l'album.
+        _get_album(conn, portee, payload.album_id, ecriture=True)
         album_id = payload.album_id
     elif payload.nouvel_album and payload.nouvel_album.strip():
+        # Même invariant qu'à la création d'album : jamais d'orphelin, et il faut le droit
+        # d'écrire dans la collection qui l'accueille.
+        cid = collection_par_defaut(conn)
+        if not portee.peut_ecrire(cid):
+            raise HTTPException(
+                403, "Aucune collection ouverte en écriture : créez l'album depuis la "
+                     "Bibliothèque en précisant sa collection, puis importez dedans.")
         cur = conn.execute("INSERT INTO albums (titre) VALUES (?)",
                            (payload.nouvel_album.strip(),))
         album_id = cur.lastrowid
+        conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
+                     (cid, album_id))
         created_album = True
     else:
         raise HTTPException(422, "Album cible manquant (album_id ou nouvel_album).")
@@ -1216,18 +1225,44 @@ def put_annotation(region_id: int, payload: AnnotationIn,
 
 
 @app.get("/api/tags")
-def list_tags(conn: sqlite3.Connection = Depends(db)):
+def list_tags(conn: sqlite3.Connection = Depends(db),
+              portee: autorisation.Portee = Depends(portee_courante)):
+    """Le vocabulaire de tags, avec sa fréquence d'emploi.
+
+    AUTH-2 — deux filtres, pas un. Le premier borne les TERMES visibles (global, ou
+    appartenant à une collection qu'on lit : cf. `clause_terme`). Le second borne le
+    COMPTE : `frequence` était calculée sur tout le corpus, si bien que le nuage de tags
+    disait le volume de travail des autres. Le compter sur les seules régions lisibles est
+    du même coup plus JUSTE analytiquement — un nuage doit refléter le sous-corpus qu'on
+    regarde, pas la base entière.
+    """
+    ou_terme, p_terme = portee.clause_terme("t.collection_id")
+    ou_album, p_album = portee.clause_album("pl.album_id")
     return _rows(conn.execute(
-        """SELECT t.id, t.label, t.couleur, t.description,
-                  COUNT(at.annotation_id) AS frequence
-           FROM tags t LEFT JOIN annotation_tags at ON at.tag_id = t.id
-           GROUP BY t.id
-           ORDER BY frequence DESC, t.label"""
+        f"""SELECT t.id, t.label, t.couleur, t.description,
+                  (SELECT COUNT(*)
+                     FROM annotation_tags at
+                     JOIN annotations an ON an.id = at.annotation_id
+                     JOIN regions r      ON r.id = an.region_id
+                     JOIN planches pl    ON pl.id = r.planche_id
+                    WHERE at.tag_id = t.id AND {ou_album}) AS frequence
+           FROM tags t
+           WHERE {ou_terme}
+           ORDER BY frequence DESC, t.label""", [*p_album, *p_terme]
     ))
 
 
 @app.post("/api/tags", status_code=201)
-def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db)):
+def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db),
+               portee: autorisation.Portee = Depends(portee_courante)):
+    """AUTH-2 — enrichir le vocabulaire suppose de pouvoir écrire QUELQUE PART. Le tag
+    créé reste global (`collection_id` NULL, comme avant) : c'est le comportement
+    historique, et le rattacher d'office à une collection demanderait de choisir laquelle,
+    question sans réponse quand on écrit dans plusieurs. Sans cette garde, une personne en
+    lecture seule pourrait polluer un vocabulaire que tout le monde partage."""
+    if not portee.peut_ecrire_quelque_part():
+        raise HTTPException(403, "Créer un terme du vocabulaire demande un droit "
+                                 "d'écriture sur au moins une collection.")
     label = _norm_tag(tag.label)
     if not label:
         raise HTTPException(422, "Label de tag vide")
@@ -1250,9 +1285,10 @@ _CONTRIB_SQL = ("SELECT c.id, c.nom, c.rang, c.role_id, r.label AS role, "
                 "LEFT JOIN contribution_role r ON r.id = c.role_id WHERE c.id = ?")
 
 
-def _album_existe(conn, album_id):
-    if conn.execute("SELECT 1 FROM albums WHERE id = ?", (album_id,)).fetchone() is None:
-        raise HTTPException(404, f"Album {album_id} introuvable")
+def _album_existe(conn, portee: autorisation.Portee, album_id, *, ecriture=False):
+    """Existence + VISIBILITÉ. Le nom reste, mais depuis AUTH-2 « existe » veut dire
+    « existe pour cet appelant » — un album hors portée est introuvable, pas interdit."""
+    _get_album(conn, portee, album_id, ecriture=ecriture)
 
 
 def _role_id(conn, label):
@@ -1267,18 +1303,32 @@ def _role_id(conn, label):
 
 
 @app.get("/api/contribution-roles")
-def list_contribution_roles(conn: sqlite3.Connection = Depends(db)):
-    """Vocabulaire de rôles (avec fréquence d'emploi), pour la datalist de saisie."""
+def list_contribution_roles(conn: sqlite3.Connection = Depends(db),
+                            portee: autorisation.Portee = Depends(portee_courante)):
+    """Vocabulaire de rôles (avec fréquence d'emploi), pour la datalist de saisie.
+
+    AUTH-2 — les LABELS restent visibles de tous : ce vocabulaire est curé depuis les MARC
+    Relators (« scénariste », « coloriste »…), il ne dit rien du corpus. La `frequence`,
+    elle, compte des contributions d'albums : elle est donc filtrée, sinon elle trahirait
+    le volume de catalogage des autres."""
+    ou, params = portee.clause_album("c.album_id")
     return _rows(conn.execute(
-        """SELECT r.id, r.label, r.bucket, r.marc,
-                  COUNT(c.id) AS frequence
-           FROM contribution_role r LEFT JOIN contribution c ON c.role_id = r.id
-           GROUP BY r.id
-           ORDER BY frequence DESC, r.label"""))
+        f"""SELECT r.id, r.label, r.bucket, r.marc,
+                  (SELECT COUNT(*) FROM contribution c
+                    WHERE c.role_id = r.id AND {ou}) AS frequence
+           FROM contribution_role r
+           ORDER BY frequence DESC, r.label""", params))
 
 
 @app.post("/api/contribution-roles", status_code=201)
-def create_contribution_role(role: ContributionRoleIn, conn: sqlite3.Connection = Depends(db)):
+def create_contribution_role(role: ContributionRoleIn,
+                             conn: sqlite3.Connection = Depends(db),
+                             portee: autorisation.Portee = Depends(portee_courante)):
+    """AUTH-2 — même garde que les tags et les domaines : enrichir un vocabulaire que tout
+    le monde partage suppose de pouvoir écrire quelque part."""
+    if not portee.peut_ecrire_quelque_part():
+        raise HTTPException(403, "Créer un rôle demande un droit d'écriture sur au moins "
+                                 "une collection.")
     label = role.label.strip()
     if not label:
         raise HTTPException(422, "Label de rôle vide")
@@ -1297,15 +1347,17 @@ def create_contribution_role(role: ContributionRoleIn, conn: sqlite3.Connection 
 
 
 @app.get("/api/albums/{album_id}/contributions")
-def list_contributions(album_id: int, conn: sqlite3.Connection = Depends(db)):
-    _album_existe(conn, album_id)
+def list_contributions(album_id: int, conn: sqlite3.Connection = Depends(db),
+                       portee: autorisation.Portee = Depends(portee_courante)):
+    _album_existe(conn, portee, album_id)
     return contributions_album(conn, album_id)
 
 
 @app.post("/api/albums/{album_id}/contributions", status_code=201)
 def add_contribution(album_id: int, contrib: ContributionIn,
-                     conn: sqlite3.Connection = Depends(db)):
-    _album_existe(conn, album_id)
+                     conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
+    _album_existe(conn, portee, album_id, ecriture=True)
     nom = contrib.nom.strip()
     if not nom:
         raise HTTPException(422, "Nom de contributeur vide")
@@ -1320,9 +1372,13 @@ def add_contribution(album_id: int, contrib: ContributionIn,
 
 
 @app.delete("/api/contributions/{contribution_id}", status_code=204)
-def delete_contribution(contribution_id: int, conn: sqlite3.Connection = Depends(db)):
-    if conn.execute("SELECT 1 FROM contribution WHERE id = ?",
-                    (contribution_id,)).fetchone() is None:
+def delete_contribution(contribution_id: int, conn: sqlite3.Connection = Depends(db),
+                        portee: autorisation.Portee = Depends(portee_courante)):
+    """AUTH-2 — une contribution est la paternité d'un ALBUM : elle s'autorise par lui.
+    La route ne recevant que l'id de la contribution, on remonte à son album."""
+    ou, params = portee.clause_album("c.album_id", ecriture=True)
+    if conn.execute(f"SELECT 1 FROM contribution c WHERE c.id = ? AND {ou}",
+                    (contribution_id, *params)).fetchone() is None:
         raise HTTPException(404, f"Contribution {contribution_id} introuvable")
     conn.execute("DELETE FROM contribution WHERE id = ?", (contribution_id,))
     conn.commit()
@@ -1332,10 +1388,59 @@ def delete_contribution(contribution_id: int, conn: sqlite3.Connection = Depends
 # =========================================================================== #
 # Personnages & attribution (ANN-2) — entité canonique + lien locuteur
 # =========================================================================== #
-def _get_personnage(conn, personnage_id):
-    p = _row(conn.execute("SELECT * FROM personnages WHERE id = ?", (personnage_id,)))
+def _clause_personnage(portee: autorisation.Portee) -> tuple[str, list]:
+    """Visibilité d'un personnage (`p.id`), DÉRIVÉE de ses apparitions.  AUTH-2.
+
+    `personnages` est un registre posé à côté du corpus : la table ne porte aucune
+    collection, et lui en ajouter une reviendrait à demander, à la création, à quelle
+    collection appartient un personnage — question sans bonne réponse pour une série qui
+    traverse plusieurs albums. La portée se dérive donc de l'usage : on voit un personnage
+    qui apparaît quelque part où l'on peut lire.
+
+    Avec une exception nécessaire : le personnage qui n'apparaît NULLE PART reste visible.
+    Sans elle, le geste courant — créer le personnage, puis lui attribuer une bulle —
+    serait cassé, l'entité disparaissant à l'instant même de sa création, y compris pour
+    la personne qui vient de la créer.
+
+    Ce n'est pas une mesure de confidentialité : quiconque accède à l'instance peut déjà
+    télécharger la base entière (décision du 2026-08-27, cf. docs/hebergement-securite.md
+    §6). C'est une mesure d'USAGE — sans elle, l'autocomplétion de locuteur grossit avec
+    l'instance entière au lieu de rester à la taille de l'étude en cours.
+    """
+    ou, pp = portee.clause_album("pl.album_id")
+    if ou == "1":
+        return "1", []
+    apparait = (
+        "EXISTS (SELECT 1 FROM {table} x "
+        "          JOIN regions r   ON r.id = x.region_id "
+        "          JOIN planches pl ON pl.id = r.planche_id "
+        f"        WHERE x.personnage_id = p.id AND {ou})")
+    jamais = ("NOT EXISTS (SELECT 1 FROM bulle_locuteur b WHERE b.personnage_id = p.id) "
+              "AND NOT EXISTS (SELECT 1 FROM personnage_presence q "
+              "                WHERE q.personnage_id = p.id)")
+    return (f"(({jamais}) "
+            f" OR {apparait.format(table='bulle_locuteur')} "
+            f" OR {apparait.format(table='personnage_presence')})",
+            [*pp, *pp])
+
+
+def _get_personnage(conn, portee: autorisation.Portee, personnage_id, *,
+                    ecriture: bool = False):
+    """Personnage VISIBLE (404 sinon) et, si `ecriture`, modifiable.
+
+    Un personnage n'appartient à aucune collection (sa portée se DÉRIVE de ses
+    apparitions) : il n'y a donc pas de collection sur laquelle vérifier le droit
+    d'écrire. La règle est celle du vocabulaire global — écrire quelque part suffit,
+    personne ne possède le registre."""
+    ou, params = _clause_personnage(portee)
+    p = _row(conn.execute(
+        f"SELECT p.* FROM personnages p WHERE p.id = ? AND {ou}",
+        (personnage_id, *params)))
     if p is None:
         raise HTTPException(404, f"Personnage {personnage_id} introuvable")
+    if ecriture and not portee.peut_ecrire_quelque_part():
+        raise HTTPException(403, "Le registre des personnages est en lecture seule "
+                                 "pour vous.")
     return p
 
 
@@ -1355,13 +1460,24 @@ def _personnage_for(conn, region_id):
 
 
 @app.get("/api/personnages")
-def list_personnages(q: Optional[str] = None, conn: sqlite3.Connection = Depends(db)):
-    """Registre des personnages (niveau corpus) + nombre de bulles attribuées.
-    `q` filtre par nom (autocomplétion à la saisie / canonicalisation à la volée)."""
+def list_personnages(q: Optional[str] = None, conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
+    """Registre des personnages + nombre de bulles attribuées.
+    `q` filtre par nom (autocomplétion à la saisie / canonicalisation à la volée).
+
+    AUTH-2 — la portée d'un personnage se DÉRIVE de ses apparitions (cf.
+    `_clause_personnage`), et `nb_bulles` ne compte que les bulles lisibles : un compteur
+    global dirait le volume de travail des autres, et fausserait la lecture du registre."""
+    ou, params = _clause_personnage(portee)
+    ou_album, p_album = portee.clause_album("pl.album_id")
     rows = _rows(conn.execute(
-        "SELECT p.id, p.nom, p.serie, p.notes, "
-        "       (SELECT COUNT(*) FROM bulle_locuteur bl WHERE bl.personnage_id = p.id) AS nb_bulles "
-        "FROM personnages p ORDER BY p.nom, p.serie"))
+        f"SELECT p.id, p.nom, p.serie, p.notes, "
+        f"       (SELECT COUNT(*) FROM bulle_locuteur bl "
+        f"          JOIN regions r   ON r.id = bl.region_id "
+        f"          JOIN planches pl ON pl.id = r.planche_id "
+        f"        WHERE bl.personnage_id = p.id AND {ou_album}) AS nb_bulles "
+        f"FROM personnages p WHERE {ou} ORDER BY p.nom, p.serie",
+        [*p_album, *params]))
     if q and q.strip():
         cible = _sans_accents(q)   # autocomplétion insensible à la casse ET aux accents
         rows = [r for r in rows if cible in _sans_accents(r["nom"])]
@@ -1369,7 +1485,13 @@ def list_personnages(q: Optional[str] = None, conn: sqlite3.Connection = Depends
 
 
 @app.post("/api/personnages", status_code=201)
-def create_personnage(payload: PersonnageIn, conn: sqlite3.Connection = Depends(db)):
+def create_personnage(payload: PersonnageIn, conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
+    """AUTH-2 — le registre des personnages n'appartient à aucune collection : y écrire
+    demande le droit d'écrire quelque part, comme pour le vocabulaire global."""
+    if not portee.peut_ecrire_quelque_part():
+        raise HTTPException(403, "Le registre des personnages est en lecture seule "
+                                 "pour vous.")
     nom = (payload.nom or "").strip()
     if not nom:
         raise HTTPException(422, "Nom de personnage vide")
@@ -1377,13 +1499,14 @@ def create_personnage(payload: PersonnageIn, conn: sqlite3.Connection = Depends(
         "INSERT INTO personnages (nom, serie, notes) VALUES (?, ?, ?)",
         (nom, (payload.serie or "").strip() or None, payload.notes)).lastrowid
     conn.commit()
-    return _get_personnage(conn, pid)
+    return _get_personnage(conn, portee, pid)
 
 
 @app.put("/api/personnages/{personnage_id}")
 def update_personnage(personnage_id: int, payload: PersonnageUpdate,
-                      conn: sqlite3.Connection = Depends(db)):
-    _get_personnage(conn, personnage_id)
+                      conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
+    _get_personnage(conn, portee, personnage_id, ecriture=True)
     sets, params = [], []
     if payload.nom is not None:
         nom = payload.nom.strip()
@@ -1398,26 +1521,28 @@ def update_personnage(personnage_id: int, payload: PersonnageUpdate,
         params.append(personnage_id)
         conn.execute(f"UPDATE personnages SET {', '.join(sets)} WHERE id = ?", params)
         conn.commit()
-    return _get_personnage(conn, personnage_id)
+    return _get_personnage(conn, portee, personnage_id, ecriture=True)
 
 
 @app.delete("/api/personnages/{personnage_id}", status_code=204)
-def delete_personnage(personnage_id: int, conn: sqlite3.Connection = Depends(db)):
-    _get_personnage(conn, personnage_id)
+def delete_personnage(personnage_id: int, conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
+    _get_personnage(conn, portee, personnage_id, ecriture=True)
     conn.execute("DELETE FROM personnages WHERE id = ?", (personnage_id,))   # CASCADE : détache liens/attributs
     conn.commit()
 
 
 @app.post("/api/personnages/{personnage_id}/fusion")
 def fusionner_personnage(personnage_id: int, payload: FusionIn,
-                         conn: sqlite3.Connection = Depends(db)):
+                         conn: sqlite3.Connection = Depends(db),
+                         portee: autorisation.Portee = Depends(portee_courante)):
     """Fusionne `personnage_id` (doublon) DANS `cible_id` (canonique) : réaffecte les
     liens locuteur et les attributs, puis supprime le doublon. Idempotent sur les
     affectations (INSERT OR IGNORE). Soupape du modèle mentions→entités (curation)."""
     if payload.cible_id == personnage_id:
         raise HTTPException(422, "Un personnage ne peut être fusionné avec lui-même")
-    _get_personnage(conn, personnage_id)
-    _get_personnage(conn, payload.cible_id)
+    _get_personnage(conn, portee, personnage_id, ecriture=True)
+    _get_personnage(conn, portee, payload.cible_id, ecriture=True)
     # locuteur : une bulle a au plus un locuteur (region_id PK) → réaffectation directe.
     conn.execute("UPDATE bulle_locuteur SET personnage_id = ? WHERE personnage_id = ?",
                  (payload.cible_id, personnage_id))
@@ -1432,7 +1557,7 @@ def fusionner_personnage(personnage_id: int, payload: FusionIn,
                  (payload.cible_id, personnage_id))
     conn.execute("DELETE FROM personnages WHERE id = ?", (personnage_id,))
     conn.commit()
-    return _get_personnage(conn, payload.cible_id)
+    return _get_personnage(conn, portee, payload.cible_id, ecriture=True)
 
 
 # --- Alignement d'autorité (A5, N6) : personnage → référentiel externe (skos:exactMatch) ---
@@ -1462,18 +1587,20 @@ def _alignements_de(conn, personnage_id):
 
 
 @app.get("/api/personnages/{personnage_id}/alignements")
-def list_alignements(personnage_id: int, conn: sqlite3.Connection = Depends(db)):
+def list_alignements(personnage_id: int, conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
     """Alignements d'autorité d'un personnage (skos:exactMatch vers Wikidata/VIAF/IdRef…)."""
-    _get_personnage(conn, personnage_id)
+    _get_personnage(conn, portee, personnage_id)
     return _alignements_de(conn, personnage_id)
 
 
 @app.post("/api/personnages/{personnage_id}/alignements", status_code=201)
 def add_alignement(personnage_id: int, payload: AlignementIn,
-                   conn: sqlite3.Connection = Depends(db)):
+                   conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
     """Aligne un personnage sur une URI d'autorité. `source` auto-détectée depuis l'URI si
     absente. Idempotent : re-poster la même URI met à jour la source, sans doublon."""
-    _get_personnage(conn, personnage_id)
+    _get_personnage(conn, portee, personnage_id, ecriture=True)
     uri = (payload.uri or "").strip()
     if not (uri.startswith("http://") or uri.startswith("https://")):
         raise HTTPException(422, "L'alignement doit être une URI http(s).")
@@ -1490,7 +1617,9 @@ def add_alignement(personnage_id: int, payload: AlignementIn,
 
 @app.delete("/api/personnages/{personnage_id}/alignements/{alignement_id}", status_code=204)
 def delete_alignement(personnage_id: int, alignement_id: int,
-                      conn: sqlite3.Connection = Depends(db)):
+                      conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
+    _get_personnage(conn, portee, personnage_id, ecriture=True)
     cur = conn.execute("DELETE FROM personnage_alignement WHERE id = ? AND personnage_id = ?",
                        (alignement_id, personnage_id))
     if not cur.rowcount:
@@ -1509,7 +1638,7 @@ def get_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db),
 def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
     _get_region(conn, portee, region_id, ecriture=True)
-    _get_personnage(conn, payload.personnage_id)
+    _get_personnage(conn, portee, payload.personnage_id)
     ancien = conn.execute("SELECT personnage_id FROM bulle_locuteur WHERE region_id = ?",
                           (region_id,)).fetchone()
     conn.execute("INSERT INTO bulle_locuteur (region_id, personnage_id) VALUES (?, ?) "
@@ -1550,7 +1679,7 @@ def get_presence(region_id: int, conn: sqlite3.Connection = Depends(db),
 def set_presence(region_id: int, payload: PresenceIn, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
     _get_region(conn, portee, region_id, ecriture=True)
-    _get_personnage(conn, payload.personnage_id)
+    _get_personnage(conn, portee, payload.personnage_id)
     ancien = conn.execute("SELECT personnage_id FROM personnage_presence WHERE region_id = ?",
                           (region_id,)).fetchone()
     conn.execute("INSERT INTO personnage_presence (region_id, personnage_id) VALUES (?, ?) "
@@ -1577,19 +1706,41 @@ def clear_presence(region_id: int, conn: sqlite3.Connection = Depends(db),
 
 
 # --- Annulation (undo, D1) : rejoue l'INVERSE de la dernière action depuis le journal A3 ---
+def _agent_undo(portee: autorisation.Portee):
+    """Quels actes cette requête peut-elle annuler ?  AUTH-2.
+
+    En mono-poste (portée totale ET aucune identité), on ne filtre pas : c'est le
+    comportement d'avant AUTH-2, et il n'y a qu'une personne devant la machine. Dès qu'il
+    y a une identité, chacun n'annule que ses propres actes — administrateur compris :
+    Ctrl+Z est un geste personnel, pas un outil de modération.
+    """
+    if portee.tout and portee.utilisateur is None:
+        return undo.TOUS
+    return portee.utilisateur
+
+
 @app.get("/api/undo/prochain")
-def undo_prochain(conn: sqlite3.Connection = Depends(db)):
+def undo_prochain(conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
     """Aperçu : ce que ferait la prochaine annulation (ou `null` s'il n'y a rien à annuler)."""
-    return undo.apercu(conn)
+    return undo.apercu(conn, agent=_agent_undo(portee))
 
 
 @app.post("/api/undo")
-def undo_dernier(conn: sqlite3.Connection = Depends(db)):
+def undo_dernier(conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
     """Annule la dernière action d'annotation (Ctrl+Z). Renvoie un descripteur de l'acte
     annulé (description + planche/région touchée) pour le rafraîchissement de l'UI, ou 404
     s'il n'y a rien à annuler. Inversion + journal `annulation` atomiques (rollback si échec)."""
+    # Annuler REJOUE une écriture : il faut en avoir le droit quelque part. Le filtre par
+    # agent ne suffit pas — quelqu'un rétrogradé en lecture seule pourrait sinon défaire
+    # ses anciens actes. Résiduel assumé : ce plancher ne dit pas SUR QUELLE collection
+    # portait l'acte (la cible d'une suppression n'existe plus), donc un droit d'écriture
+    # ailleurs suffit encore. Cf. docs/undo.md.
+    if not portee.peut_ecrire_quelque_part():
+        raise HTTPException(403, "Annuler demande un droit d'écriture.")
     try:
-        res = undo.annuler(conn)
+        res = undo.annuler(conn, agent=_agent_undo(portee))
     except undo.UndoImpossible as exc:
         raise HTTPException(409, f"Annulation impossible : {exc}")
     if res is None:
@@ -1601,24 +1752,49 @@ def undo_dernier(conn: sqlite3.Connection = Depends(db)):
 # --- DOMAINES (piste B) : champ analytique émergent qui REGROUPE des dimensions (émotions,
 #     représentation…). Orthogonal à `cible`. Même patron contrôlé-ouvert + lexique SKOS que
 #     les dimensions. Cf. docs/domaines.md.
-def _get_domaine(conn, dom_id):
-    d = _row(conn.execute("SELECT * FROM domaine WHERE id = ?", (dom_id,)))
+def _get_domaine(conn, portee: autorisation.Portee, dom_id, *, ecriture: bool = False):
+    """Terme du vocabulaire, VISIBLE (404 sinon) et, si `ecriture`, MODIFIABLE.
+
+    Le refus d'écriture est un 403 et non un 404, contrairement aux données : le
+    terme vient d'être listé, prétendre qu'il n'existe pas serait incohérent — et
+    le refus ne parle que des droits de l'appelant, il ne fuit rien.
+    """
+    ou, params = portee.clause_terme("t.collection_id")
+    d = _row(conn.execute(
+        f"SELECT t.* FROM domaine t WHERE t.id = ? AND {ou}", (dom_id, *params)))
     if d is None:
         raise HTTPException(404, f"Domaine {dom_id} introuvable")
+    if ecriture and not portee.peut_ecrire_terme(d.get("collection_id")):
+        raise HTTPException(403, "Ce terme du vocabulaire est en lecture seule "
+                                 "pour vous.")
     return d
 
 
 @app.get("/api/domaines")
-def list_domaines(conn: sqlite3.Connection = Depends(db)):
-    """Domaines + nombre de dimensions rattachées + couche lexique (pour l'organisation/l'analyse)."""
+def list_domaines(conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
+    """Domaines + nombre de dimensions rattachées + couche lexique (pour l'organisation/l'analyse).
+
+    AUTH-2 — un domaine est un terme du vocabulaire : visible s'il est global
+    (`collection_id` NULL) ou s'il appartient à une collection qu'on lit. Le compte de
+    dimensions suit la même règle, sinon il dirait combien d'axes existent ailleurs."""
+    ou, params = portee.clause_terme("d.collection_id")
+    ou_dim, p_dim = portee.clause_terme("x.collection_id")
     return _rows(conn.execute(
-        "SELECT d.id, d.nom, d.definition, d.note_portee, d.etat, d.collection_id, "
-        "       (SELECT COUNT(*) FROM attribut_dimension x WHERE x.domaine_id = d.id) AS nb_dimensions "
-        "FROM domaine d ORDER BY d.nom"))
+        f"SELECT d.id, d.nom, d.definition, d.note_portee, d.etat, d.collection_id, "
+        f"       (SELECT COUNT(*) FROM attribut_dimension x "
+        f"         WHERE x.domaine_id = d.id AND {ou_dim}) AS nb_dimensions "
+        f"FROM domaine d WHERE {ou} ORDER BY d.nom", [*p_dim, *params]))
 
 
 @app.post("/api/domaines", status_code=201)
-def create_domaine(payload: DomaineIn, conn: sqlite3.Connection = Depends(db)):
+def create_domaine(payload: DomaineIn, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    """AUTH-2 — même garde que la création de tag : enrichir un vocabulaire partagé
+    suppose de pouvoir écrire quelque part."""
+    if not portee.peut_ecrire_quelque_part():
+        raise HTTPException(403, "Créer un domaine demande un droit d'écriture sur au "
+                                 "moins une collection.")
     nom = _norm_tag(payload.nom)
     if not nom:
         raise HTTPException(422, "Nom de domaine vide")
@@ -1628,10 +1804,11 @@ def create_domaine(payload: DomaineIn, conn: sqlite3.Connection = Depends(db)):
 
 
 @app.patch("/api/domaines/{dom_id}")
-def rename_domaine(dom_id: int, payload: DomaineIn, conn: sqlite3.Connection = Depends(db)):
+def rename_domaine(dom_id: int, payload: DomaineIn, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
     """Renomme un domaine (préserve son regroupement de dimensions, contrairement à un
     supprimer/recréer). Le nom reste normalisé et UNIQUE."""
-    _get_domaine(conn, dom_id)
+    _get_domaine(conn, portee, dom_id, ecriture=True)
     nom = _norm_tag(payload.nom)
     if not nom:
         raise HTTPException(422, "Nom de domaine vide")
@@ -1643,73 +1820,121 @@ def rename_domaine(dom_id: int, payload: DomaineIn, conn: sqlite3.Connection = D
 
 
 @app.delete("/api/domaines/{dom_id}", status_code=204)
-def delete_domaine(dom_id: int, conn: sqlite3.Connection = Depends(db)):
+def delete_domaine(dom_id: int, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
     """Supprime un domaine. Ses dimensions ne sont PAS détruites : `domaine_id` repasse à NULL
     (ON DELETE SET NULL) — elles redeviennent « hors domaine » (soupape *promotion*)."""
-    _get_domaine(conn, dom_id)
+    _get_domaine(conn, portee, dom_id, ecriture=True)
     conn.execute("DELETE FROM domaine WHERE id = ?", (dom_id,))
     conn.commit()
 
 
 @app.patch("/api/domaines/{dom_id}/lexique")
-def patch_domaine_lexique(dom_id: int, payload: LexiqueIn, conn: sqlite3.Connection = Depends(db)):
+def patch_domaine_lexique(dom_id: int, payload: LexiqueIn, conn: sqlite3.Connection = Depends(db),
+                          portee: autorisation.Portee = Depends(portee_courante)):
     """Documente un domaine (même couche SKOS que dimensions/valeurs/tags)."""
-    _get_domaine(conn, dom_id)
-    _patch_lexique(conn, "domaine", dom_id, payload)
+    _get_domaine(conn, portee, dom_id, ecriture=True)
+    _patch_lexique(conn, "domaine", dom_id, payload, portee)
     return _row(conn.execute("SELECT * FROM domaine WHERE id = ?", (dom_id,)))
 
 
 # --- Attributs FACETTÉS & ÉMERGENTS : dimensions (axes) / valeurs canoniques /
 #     affectations. Vocabulaire NON figé — créé au fil de l'eau. Valeurs et noms de
 #     dimension normalisés (comme les tags) → agrégeables. Cf. docs/personnages-et-attribution.md.
-def _get_dimension(conn, dim_id):
-    d = _row(conn.execute("SELECT * FROM attribut_dimension WHERE id = ?", (dim_id,)))
+def _get_dimension(conn, portee: autorisation.Portee, dim_id, *, ecriture: bool = False):
+    """Terme du vocabulaire, VISIBLE (404 sinon) et, si `ecriture`, MODIFIABLE.
+
+    Le refus d'écriture est un 403 et non un 404, contrairement aux données : le
+    terme vient d'être listé, prétendre qu'il n'existe pas serait incohérent — et
+    le refus ne parle que des droits de l'appelant, il ne fuit rien.
+    """
+    ou, params = portee.clause_terme("t.collection_id")
+    d = _row(conn.execute(
+        f"SELECT t.* FROM attribut_dimension t WHERE t.id = ? AND {ou}", (dim_id, *params)))
     if d is None:
         raise HTTPException(404, f"Dimension {dim_id} introuvable")
+    if ecriture and not portee.peut_ecrire_terme(d.get("collection_id")):
+        raise HTTPException(403, "Ce terme du vocabulaire est en lecture seule "
+                                 "pour vous.")
     return d
 
 
-def _get_valeur(conn, val_id):
-    v = _row(conn.execute("SELECT * FROM attribut_valeur WHERE id = ?", (val_id,)))
+def _get_valeur(conn, portee: autorisation.Portee, val_id, *, ecriture: bool = False):
+    """Terme du vocabulaire, VISIBLE (404 sinon) et, si `ecriture`, MODIFIABLE.
+
+    Le refus d'écriture est un 403 et non un 404, contrairement aux données : le
+    terme vient d'être listé, prétendre qu'il n'existe pas serait incohérent — et
+    le refus ne parle que des droits de l'appelant, il ne fuit rien.
+    """
+    ou, params = portee.clause_terme("t.collection_id")
+    v = _row(conn.execute(
+        f"SELECT t.* FROM attribut_valeur t WHERE t.id = ? AND {ou}", (val_id, *params)))
     if v is None:
         raise HTTPException(404, f"Valeur d'attribut {val_id} introuvable")
+    if ecriture and not portee.peut_ecrire_terme(v.get("collection_id")):
+        raise HTTPException(403, "Ce terme du vocabulaire est en lecture seule "
+                                 "pour vous.")
     return v
 
 
-def _attributs_de(conn, table, col, oid):
-    """Valeurs (avec leur dimension) affectées à une cible (personnage | région)."""
+def _attributs_de(conn, portee, table, col, oid):
+    """Valeurs (avec leur dimension) affectées à une cible (personnage | région).
+
+    AUTH-2 — les valeurs sont filtrées comme des TERMES : sans cela, un objet partagé
+    (typiquement un personnage, qui traverse les albums) exposerait le vocabulaire privé
+    d'une autre étude — sa grille d'analyse, pas seulement un mot. Écart trouvé en
+    relisant : `GET /api/attributs/valeurs` masquait déjà ces termes, mais on les
+    retrouvait ici par la bande.
+
+    Conséquence assumée : la liste d'attributs d'un objet peut être PARTIELLE. C'est le
+    bon compromis — un objet peut légitimement porter les annotations d'études auxquelles
+    on ne participe pas, et il vaut mieux ne pas les montrer que de montrer un vocabulaire
+    qu'on ne peut ni comprendre ni situer.
+    """
+    ou, params = portee.clause_terme("v.collection_id")
     return _rows(conn.execute(
         f"SELECT v.id AS valeur_id, v.valeur, d.id AS dimension_id, d.nom AS dimension, d.cible "
         f"FROM {table} x JOIN attribut_valeur v ON v.id = x.valeur_id "
         f"JOIN attribut_dimension d ON d.id = v.dimension_id "
-        f"WHERE x.{col} = ? ORDER BY d.nom, v.valeur", (oid,)))
+        f"WHERE x.{col} = ? AND {ou} ORDER BY d.nom, v.valeur", (oid, *params)))
 
 
 @app.get("/api/attributs/dimensions")
-def list_dimensions(cible: Optional[str] = None, conn: sqlite3.Connection = Depends(db)):
+def list_dimensions(cible: Optional[str] = None, conn: sqlite3.Connection = Depends(db),
+                    portee: autorisation.Portee = Depends(portee_courante)):
     """Dimensions (axes émergents) + nombre de valeurs + domaine de rattachement (v20).
-    `cible` filtre 'personnage' | 'case'."""
-    sql = ("SELECT d.id, d.cible, d.nom, d.domaine_id, "
-           "       (SELECT nom FROM domaine dom WHERE dom.id = d.domaine_id) AS domaine, "
-           "       (SELECT COUNT(*) FROM attribut_valeur v WHERE v.dimension_id = d.id) AS nb_valeurs "
-           "FROM attribut_dimension d ")
-    params = []
+    `cible` filtre 'personnage' | 'case'.
+
+    AUTH-2 — mêmes règles que les domaines : le terme est visible s'il est global ou
+    local à une collection qu'on lit, et le compte de valeurs est filtré pareillement."""
+    ou, p_dim = portee.clause_terme("d.collection_id")
+    ou_val, p_val = portee.clause_terme("v.collection_id")
+    sql = (f"SELECT d.id, d.cible, d.nom, d.domaine_id, "
+           f"       (SELECT nom FROM domaine dom WHERE dom.id = d.domaine_id) AS domaine, "
+           f"       (SELECT COUNT(*) FROM attribut_valeur v "
+           f"         WHERE v.dimension_id = d.id AND {ou_val}) AS nb_valeurs "
+           f"FROM attribut_dimension d WHERE {ou} ")
+    params = [*p_val, *p_dim]
     if cible:
-        sql += "WHERE d.cible = ? "
+        sql += "AND d.cible = ? "
         params.append(cible)
     sql += "ORDER BY d.cible, d.nom"
     return _rows(conn.execute(sql, params))
 
 
 @app.post("/api/attributs/dimensions", status_code=201)
-def create_dimension(payload: DimensionIn, conn: sqlite3.Connection = Depends(db)):
+def create_dimension(payload: DimensionIn, conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
+    if not portee.peut_ecrire_quelque_part():
+        raise HTTPException(403, "Créer une dimension demande un droit d'écriture sur au "
+                                 "moins une collection.")
     if payload.cible not in CIBLES_ATTRIBUT:
         raise HTTPException(422, f"Cible invalide : {payload.cible} (personnage | case).")
     nom = _norm_tag(payload.nom)
     if not nom:
         raise HTTPException(422, "Nom de dimension vide")
     if payload.domaine_id is not None:
-        _get_domaine(conn, payload.domaine_id)          # 404 si le domaine n'existe pas
+        _get_domaine(conn, portee, payload.domaine_id, ecriture=True)          # 404 si le domaine n'existe pas
     conn.execute("INSERT INTO attribut_dimension (cible, nom, domaine_id) VALUES (?, ?, ?) "
                  "ON CONFLICT(cible, nom) DO NOTHING", (payload.cible, nom, payload.domaine_id))
     conn.commit()
@@ -1719,11 +1944,12 @@ def create_dimension(payload: DimensionIn, conn: sqlite3.Connection = Depends(db
 
 @app.patch("/api/attributs/dimensions/{dim_id}/domaine")
 def patch_dimension_domaine(dim_id: int, payload: DimensionDomaineIn,
-                            conn: sqlite3.Connection = Depends(db)):
+                            conn: sqlite3.Connection = Depends(db),
+                            portee: autorisation.Portee = Depends(portee_courante)):
     """Rattache une dimension à un domaine (ou l'en détache avec `domaine_id: null`)."""
-    _get_dimension(conn, dim_id)
+    _get_dimension(conn, portee, dim_id, ecriture=True)
     if payload.domaine_id is not None:
-        _get_domaine(conn, payload.domaine_id)
+        _get_domaine(conn, portee, payload.domaine_id, ecriture=True)
     conn.execute("UPDATE attribut_dimension SET domaine_id = ? WHERE id = ?",
                  (payload.domaine_id, dim_id))
     conn.commit()
@@ -1731,25 +1957,40 @@ def patch_dimension_domaine(dim_id: int, payload: DimensionDomaineIn,
 
 
 @app.delete("/api/attributs/dimensions/{dim_id}", status_code=204)
-def delete_dimension(dim_id: int, conn: sqlite3.Connection = Depends(db)):
-    _get_dimension(conn, dim_id)
+def delete_dimension(dim_id: int, conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
+    _get_dimension(conn, portee, dim_id, ecriture=True)
     conn.execute("DELETE FROM attribut_dimension WHERE id = ?", (dim_id,))   # CASCADE : valeurs + affectations
     conn.commit()
 
 
 @app.get("/api/attributs/dimensions/{dim_id}/valeurs")
-def list_valeurs(dim_id: int, conn: sqlite3.Connection = Depends(db)):
-    _get_dimension(conn, dim_id)
+def list_valeurs(dim_id: int, conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
+    """AUTH-2 — `nb_usages` comptait TOUS les emplois du corpus. Il ne compte plus que
+    les régions lisibles (côté case) et les personnages visibles (côté locuteur) : sinon
+    la fréquence d'une valeur trahit le volume d'annotation des autres."""
+    _get_dimension(conn, portee, dim_id)
+    ou_terme, p_terme = portee.clause_terme("v.collection_id")
+    ou_album, p_album = portee.clause_album("pl.album_id")
+    ou_perso, p_perso = _clause_personnage(portee)
     return _rows(conn.execute(
-        "SELECT v.id, v.dimension_id, v.valeur, "
-        "       (SELECT COUNT(*) FROM personnage_attribut pa WHERE pa.valeur_id = v.id) "
-        "       + (SELECT COUNT(*) FROM region_attribut ra WHERE ra.valeur_id = v.id) AS nb_usages "
-        "FROM attribut_valeur v WHERE v.dimension_id = ? ORDER BY v.valeur", (dim_id,)))
+        f"SELECT v.id, v.dimension_id, v.valeur, "
+        f"       ((SELECT COUNT(*) FROM personnage_attribut pa JOIN personnages p "
+        f"           ON p.id = pa.personnage_id "
+        f"         WHERE pa.valeur_id = v.id AND {ou_perso}) "
+        f"      + (SELECT COUNT(*) FROM region_attribut ra "
+        f"           JOIN regions r   ON r.id = ra.region_id "
+        f"           JOIN planches pl ON pl.id = r.planche_id "
+        f"         WHERE ra.valeur_id = v.id AND {ou_album})) AS nb_usages "
+        f"FROM attribut_valeur v WHERE v.dimension_id = ? AND {ou_terme} ORDER BY v.valeur",
+        [*p_perso, *p_album, dim_id, *p_terme]))
 
 
 @app.post("/api/attributs/dimensions/{dim_id}/valeurs", status_code=201)
-def create_valeur(dim_id: int, payload: ValeurIn, conn: sqlite3.Connection = Depends(db)):
-    _get_dimension(conn, dim_id)
+def create_valeur(dim_id: int, payload: ValeurIn, conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
+    _get_dimension(conn, portee, dim_id, ecriture=True)
     valeur = _norm_tag(payload.valeur)
     if not valeur:
         raise HTTPException(422, "Valeur vide")
@@ -1761,33 +2002,48 @@ def create_valeur(dim_id: int, payload: ValeurIn, conn: sqlite3.Connection = Dep
 
 
 @app.delete("/api/attributs/valeurs/{val_id}", status_code=204)
-def delete_valeur(val_id: int, conn: sqlite3.Connection = Depends(db)):
-    _get_valeur(conn, val_id)
+def delete_valeur(val_id: int, conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
+    _get_valeur(conn, portee, val_id, ecriture=True)
     conn.execute("DELETE FROM attribut_valeur WHERE id = ?", (val_id,))   # CASCADE : affectations
     conn.commit()
 
 
 @app.get("/api/attributs/valeurs")
-def list_valeurs_plat(cible: Optional[str] = None, conn: sqlite3.Connection = Depends(db)):
+def list_valeurs_plat(cible: Optional[str] = None, conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
     """Toutes les valeurs (avec leur dimension), à plat — sert les facettes d'analyse
-    (évite un N+1 dimensions→valeurs). `cible` filtre 'personnage' | 'case'."""
-    sql = ("SELECT v.id, v.valeur, d.id AS dimension_id, d.nom AS dimension, d.cible, "
-           "       (SELECT COUNT(*) FROM personnage_attribut pa WHERE pa.valeur_id = v.id) "
-           "       + (SELECT COUNT(*) FROM region_attribut ra WHERE ra.valeur_id = v.id) AS nb_usages "
-           "FROM attribut_valeur v JOIN attribut_dimension d ON d.id = v.dimension_id ")
-    params = []
+    (évite un N+1 dimensions→valeurs). `cible` filtre 'personnage' | 'case'.
+
+    AUTH-2 — mêmes deux filtres qu'ailleurs : les TERMES visibles, et des `nb_usages`
+    comptés sur le seul sous-corpus lisible."""
+    ou_terme, p_terme = portee.clause_terme("v.collection_id")
+    ou_album, p_album = portee.clause_album("pl.album_id")
+    ou_perso, p_perso = _clause_personnage(portee)
+    sql = (f"SELECT v.id, v.valeur, d.id AS dimension_id, d.nom AS dimension, d.cible, "
+           f"       ((SELECT COUNT(*) FROM personnage_attribut pa JOIN personnages p "
+           f"           ON p.id = pa.personnage_id "
+           f"         WHERE pa.valeur_id = v.id AND {ou_perso}) "
+           f"      + (SELECT COUNT(*) FROM region_attribut ra "
+           f"           JOIN regions r   ON r.id = ra.region_id "
+           f"           JOIN planches pl ON pl.id = r.planche_id "
+           f"         WHERE ra.valeur_id = v.id AND {ou_album})) AS nb_usages "
+           f"FROM attribut_valeur v JOIN attribut_dimension d ON d.id = v.dimension_id "
+           f"WHERE {ou_terme} ")
+    params = [*p_perso, *p_album, *p_terme]
     if cible:
-        sql += "WHERE d.cible = ? "
+        sql += "AND d.cible = ? "
         params.append(cible)
     sql += "ORDER BY d.cible, d.nom, v.valeur"
     return _rows(conn.execute(sql, params))
 
 
 @app.put("/api/attributs/valeurs/{val_id}")
-def rename_valeur(val_id: int, payload: ValeurIn, conn: sqlite3.Connection = Depends(db)):
+def rename_valeur(val_id: int, payload: ValeurIn, conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
     """Renomme une valeur (curation). Conflit avec une valeur existante de la même
     dimension → 409 (utiliser la fusion à la place)."""
-    v = _get_valeur(conn, val_id)
+    v = _get_valeur(conn, portee, val_id, ecriture=True)
     valeur = _norm_tag(payload.valeur)
     if not valeur:
         raise HTTPException(422, "Valeur vide")
@@ -1797,17 +2053,18 @@ def rename_valeur(val_id: int, payload: ValeurIn, conn: sqlite3.Connection = Dep
         raise HTTPException(409, "Cette valeur existe déjà dans la dimension — fusionnez-les.")
     conn.execute("UPDATE attribut_valeur SET valeur = ? WHERE id = ?", (valeur, val_id))
     conn.commit()
-    return _get_valeur(conn, val_id)
+    return _get_valeur(conn, portee, val_id, ecriture=True)
 
 
 @app.post("/api/attributs/valeurs/{val_id}/fusion")
-def fusionner_valeur(val_id: int, payload: FusionIn, conn: sqlite3.Connection = Depends(db)):
+def fusionner_valeur(val_id: int, payload: FusionIn, conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
     """Fusionne la valeur `val_id` DANS `cible_id` (même dimension) : réaffecte les
     affectations (personnages + cases) en INSERT OR IGNORE, puis supprime le doublon."""
     if payload.cible_id == val_id:
         raise HTTPException(422, "Une valeur ne peut être fusionnée avec elle-même")
-    v = _get_valeur(conn, val_id)
-    cible = _get_valeur(conn, payload.cible_id)
+    v = _get_valeur(conn, portee, val_id, ecriture=True)
+    cible = _get_valeur(conn, portee, payload.cible_id, ecriture=True)
     if v["dimension_id"] != cible["dimension_id"]:
         raise HTTPException(422, "On ne fusionne que deux valeurs d'une même dimension.")
     for table, col in (("personnage_attribut", "personnage_id"), ("region_attribut", "region_id")):
@@ -1815,7 +2072,7 @@ def fusionner_valeur(val_id: int, payload: FusionIn, conn: sqlite3.Connection = 
                      f"SELECT {col}, ? FROM {table} WHERE valeur_id = ?", (payload.cible_id, val_id))
     conn.execute("DELETE FROM attribut_valeur WHERE id = ?", (val_id,))   # CASCADE purge le reste
     conn.commit()
-    return _get_valeur(conn, payload.cible_id)
+    return _get_valeur(conn, portee, payload.cible_id, ecriture=True)
 
 
 # =========================================================================== #
@@ -1825,13 +2082,20 @@ _ETATS_LEXIQUE = ("provisoire", "defini")
 
 
 @app.get("/api/collections")
-def list_collections(conn: sqlite3.Connection = Depends(db)):
+def list_collections(conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
     """Collections (unité de dépôt) + nombre d'albums. Sert le menu « portée » du lexique
-    (et une future UI Collections). La gestion d'écriture reste headless (gerer_collections.py)."""
-    return collections(conn)
+    (et une future UI Collections). La gestion d'écriture reste headless (gerer_collections.py).
+
+    AUTH-2 — on ne liste que les siennes. C'est la route la plus directement révélatrice
+    du dépôt : les noms de collections DISENT quelles études existent, et le menu de portée
+    du lexique proposerait sinon de ranger un terme chez quelqu'un d'autre."""
+    if portee.tout:
+        return collections(conn)
+    return [c for c in collections(conn) if c["id"] in portee.lecture]
 
 
-def _patch_lexique(conn, table, oid, payload, *, col_definition="definition"):
+def _patch_lexique(conn, table, oid, payload, portee, *, col_definition="definition"):
     """Mise à jour PARTIELLE de la couche définitionnelle (definition/note_portee/etat/
     collection_id) d'un terme. `col_definition='description'` pour les tags (leur glose EST
     la définition). Valide l'état et l'existence de la collection de portée. Champ omis =
@@ -1845,9 +2109,20 @@ def _patch_lexique(conn, table, oid, payload, *, col_definition="definition"):
             updates[k] = fields[k]
     if "etat" in updates and updates["etat"] not in _ETATS_LEXIQUE:
         raise HTTPException(422, f"État invalide : {updates['etat']} (provisoire | defini).")
-    if updates.get("collection_id") is not None and conn.execute(
-            "SELECT 1 FROM collection WHERE id = ?", (updates["collection_id"],)).fetchone() is None:
-        raise HTTPException(404, f"Collection {updates['collection_id']} introuvable.")
+    # AUTH-2 — changer la PORTÉE d'un terme, c'est le déplacer chez quelqu'un (ou l'en
+    # sortir). Il faut donc écrire dans la collection VISÉE, pas seulement dans celle
+    # d'origine : sans cela, on rangerait son vocabulaire dans l'étude d'un autre.
+    if "collection_id" in updates:
+        cible = updates["collection_id"]
+        if cible is None:
+            if not portee.peut_ecrire_quelque_part():
+                raise HTTPException(403, "Promouvoir un terme en global demande un droit "
+                                         "d'écriture.")
+        elif not portee.peut_ecrire(cible):
+            raise HTTPException(404, f"Collection {cible} introuvable.")
+        elif conn.execute("SELECT 1 FROM collection WHERE id = ?",
+                          (cible,)).fetchone() is None:
+            raise HTTPException(404, f"Collection {cible} introuvable.")
     if updates:
         cols = ", ".join(f"{k} = ?" for k in updates)
         conn.execute(f"UPDATE {table} SET {cols} WHERE id = ?", (*updates.values(), oid))
@@ -1855,33 +2130,56 @@ def _patch_lexique(conn, table, oid, payload, *, col_definition="definition"):
 
 
 @app.get("/api/lexique")
-def get_lexique(conn: sqlite3.Connection = Depends(db)):
+def get_lexique(conn: sqlite3.Connection = Depends(db),
+                portee: autorisation.Portee = Depends(portee_courante)):
     """Tout le lexique situé pour l'édition : domaines + dimensions (→ valeurs) + tags, avec
     leur couche définitionnelle (definition/note_portee/etat/portée) et le nombre d'usages ;
-    plus le résumé « % défini ». Read model du panneau Lexique."""
+    plus le résumé « % défini ». Read model du panneau Lexique.
+
+    AUTH-2 — c'est le read model qui agrège TOUT le vocabulaire : quatre requêtes, quatre
+    filtres, et l'oubli d'un seul rendrait vain le cloisonnement des routes unitaires
+    ci-dessus, puisque le panneau Lexique passe par ici et non par elles."""
+    ou_dom, p_dom = portee.clause_terme("domaine.collection_id")
+    ou_dimx, p_dimx = portee.clause_terme("x.collection_id")
+    ou_dim, p_dim = portee.clause_terme("d.collection_id")
+    ou_val, p_val = portee.clause_terme("v.collection_id")
+    ou_tag, p_tag = portee.clause_terme("t.collection_id")
+    ou_album, p_album = portee.clause_album("pl.album_id")
+    ou_perso, p_perso = _clause_personnage(portee)
     domaines = _rows(conn.execute(
-        "SELECT id, nom, definition, note_portee, etat, collection_id, "
-        "       (SELECT COUNT(*) FROM attribut_dimension x WHERE x.domaine_id = domaine.id) AS nb_dimensions "
-        "FROM domaine ORDER BY nom"))
+        f"SELECT id, nom, definition, note_portee, etat, collection_id, "
+        f"       (SELECT COUNT(*) FROM attribut_dimension x "
+        f"         WHERE x.domaine_id = domaine.id AND {ou_dimx}) AS nb_dimensions "
+        f"FROM domaine WHERE {ou_dom} ORDER BY nom", [*p_dimx, *p_dom]))
     dims = _rows(conn.execute(
-        "SELECT id, cible, nom, domaine_id, definition, note_portee, etat, collection_id "
-        "FROM attribut_dimension ORDER BY cible, nom"))
+        f"SELECT d.id, d.cible, d.nom, d.domaine_id, d.definition, d.note_portee, d.etat, "
+        f"       d.collection_id "
+        f"FROM attribut_dimension d WHERE {ou_dim} ORDER BY d.cible, d.nom", p_dim))
     vals = _rows(conn.execute(
-        "SELECT v.id, v.dimension_id, v.valeur, v.definition, v.note_portee, v.etat, "
-        "       v.collection_id, "
-        "       (SELECT COUNT(*) FROM personnage_attribut pa WHERE pa.valeur_id = v.id) "
-        "       + (SELECT COUNT(*) FROM region_attribut ra WHERE ra.valeur_id = v.id) AS nb_usages "
-        "FROM attribut_valeur v ORDER BY v.valeur"))
+        f"SELECT v.id, v.dimension_id, v.valeur, v.definition, v.note_portee, v.etat, "
+        f"       v.collection_id, "
+        f"       ((SELECT COUNT(*) FROM personnage_attribut pa JOIN personnages p "
+        f"           ON p.id = pa.personnage_id "
+        f"         WHERE pa.valeur_id = v.id AND {ou_perso}) "
+        f"      + (SELECT COUNT(*) FROM region_attribut ra "
+        f"           JOIN regions r   ON r.id = ra.region_id "
+        f"           JOIN planches pl ON pl.id = r.planche_id "
+        f"         WHERE ra.valeur_id = v.id AND {ou_album})) AS nb_usages "
+        f"FROM attribut_valeur v WHERE {ou_val} ORDER BY v.valeur",
+        [*p_perso, *p_album, *p_val]))
     par_dim = {}
     for v in vals:
         par_dim.setdefault(v["dimension_id"], []).append(v)
     for d in dims:
         d["valeurs"] = par_dim.get(d["id"], [])
     tags = _rows(conn.execute(
-        "SELECT t.id, t.label, t.description, t.note_portee, t.etat, t.collection_id, "
-        "       COUNT(at.annotation_id) AS frequence "
-        "FROM tags t LEFT JOIN annotation_tags at ON at.tag_id = t.id "
-        "GROUP BY t.id ORDER BY t.label"))
+        f"SELECT t.id, t.label, t.description, t.note_portee, t.etat, t.collection_id, "
+        f"       (SELECT COUNT(*) FROM annotation_tags at "
+        f"          JOIN annotations an ON an.id = at.annotation_id "
+        f"          JOIN regions r      ON r.id = an.region_id "
+        f"          JOIN planches pl    ON pl.id = r.planche_id "
+        f"        WHERE at.tag_id = t.id AND {ou_album}) AS frequence "
+        f"FROM tags t WHERE {ou_tag} ORDER BY t.label", [*p_album, *p_tag]))
     return {"domaines": domaines, "dimensions": dims, "tags": tags,
             "resume": lexique_resume(conn)}
 
@@ -1889,11 +2187,21 @@ def get_lexique(conn: sqlite3.Connection = Depends(db)):
 @app.post("/api/lexique/importer")
 def importer_lexique(file: UploadFile = File(...),
                      collection_id: Optional[int] = Form(None, ge=1),
-                     conn: sqlite3.Connection = Depends(db)):
+                     conn: sqlite3.Connection = Depends(db),
+                     portee: autorisation.Portee = Depends(portee_courante)):
     """Amorçage EN LOT du vocabulaire depuis un tableur CSV (point-virgule) — bouton
     « Importer » du panneau 📖 Lexique. Même cœur et même doctrine que l'outil headless
     (pré-remplir sans écraser, idempotent ; cf. lexique_import + docs/import-vocabulaire.md).
     `collection_id` = portée d'appartenance (absent = global)."""
+    # AUTH-2 — amorcer le vocabulaire est une écriture, et une écriture de PORTÉE :
+    # `collection_id` range les termes chez quelqu'un. On exige donc le droit d'écrire
+    # sur CETTE collection, et un simple droit d'écriture quelque part pour du global.
+    if collection_id is None:
+        if not portee.peut_ecrire_quelque_part():
+            raise HTTPException(403, "Importer du vocabulaire demande un droit d'écriture "
+                                     "sur au moins une collection.")
+    elif not portee.peut_ecrire(collection_id):
+        raise HTTPException(404, f"Collection {collection_id} introuvable")
     if collection_id is not None and conn.execute(
             "SELECT 1 FROM collection WHERE id = ?", (collection_id,)).fetchone() is None:
         raise HTTPException(404, f"Collection {collection_id} introuvable")
@@ -1916,58 +2224,71 @@ def importer_lexique(file: UploadFile = File(...),
 
 @app.patch("/api/attributs/dimensions/{dim_id}/lexique")
 def patch_dimension_lexique(dim_id: int, payload: LexiqueIn,
-                            conn: sqlite3.Connection = Depends(db)):
+                            conn: sqlite3.Connection = Depends(db),
+                            portee: autorisation.Portee = Depends(portee_courante)):
     """Documente une dimension : définition + note de portée + état + portée d'appartenance."""
-    _get_dimension(conn, dim_id)
-    _patch_lexique(conn, "attribut_dimension", dim_id, payload)
+    _get_dimension(conn, portee, dim_id, ecriture=True)
+    _patch_lexique(conn, "attribut_dimension", dim_id, payload, portee)
     return _row(conn.execute("SELECT * FROM attribut_dimension WHERE id = ?", (dim_id,)))
 
 
 @app.patch("/api/attributs/valeurs/{val_id}/lexique")
 def patch_valeur_lexique(val_id: int, payload: LexiqueIn,
-                         conn: sqlite3.Connection = Depends(db)):
+                         conn: sqlite3.Connection = Depends(db),
+                         portee: autorisation.Portee = Depends(portee_courante)):
     """Documente une valeur canonique (même couche définitionnelle)."""
-    _get_valeur(conn, val_id)
-    _patch_lexique(conn, "attribut_valeur", val_id, payload)
+    _get_valeur(conn, portee, val_id, ecriture=True)
+    _patch_lexique(conn, "attribut_valeur", val_id, payload, portee)
     return _row(conn.execute("SELECT * FROM attribut_valeur WHERE id = ?", (val_id,)))
 
 
 @app.patch("/api/tags/{tag_id}/lexique")
-def patch_tag_lexique(tag_id: int, payload: LexiqueIn, conn: sqlite3.Connection = Depends(db)):
+def patch_tag_lexique(tag_id: int, payload: LexiqueIn,
+                      conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
     """Documente un tag : sa `description` EST la définition SKOS ; + note de portée, état,
     portée d'appartenance (même patron que le vocabulaire facetté)."""
-    if conn.execute("SELECT 1 FROM tags WHERE id = ?", (tag_id,)).fetchone() is None:
+    ou, params = portee.clause_terme("t.collection_id")
+    tag = _row(conn.execute(f"SELECT * FROM tags t WHERE t.id = ? AND {ou}",
+                            (tag_id, *params)))
+    if tag is None:
         raise HTTPException(404, f"Tag {tag_id} introuvable")
-    _patch_lexique(conn, "tags", tag_id, payload, col_definition="description")
+    if not portee.peut_ecrire_terme(tag.get("collection_id")):
+        raise HTTPException(403, "Ce tag est en lecture seule pour vous.")
+    _patch_lexique(conn, "tags", tag_id, payload, portee, col_definition="description")
     return _row(conn.execute("SELECT * FROM tags WHERE id = ?", (tag_id,)))
 
 
-def _affecter(conn, table, col, oid, valeur_id, cible_attendue):
+def _affecter(conn, portee, table, col, oid, valeur_id, cible_attendue):
     """Affecte une valeur à une cible, après contrôle de cohérence de la dimension."""
-    v = _get_valeur(conn, valeur_id)
-    if _get_dimension(conn, v["dimension_id"])["cible"] != cible_attendue:
+    v = _get_valeur(conn, portee, valeur_id)
+    if _get_dimension(conn, portee, v["dimension_id"])["cible"] != cible_attendue:
         raise HTTPException(422, f"Cette valeur n'appartient pas à une dimension de {cible_attendue}.")
     conn.execute(f"INSERT OR IGNORE INTO {table} ({col}, valeur_id) VALUES (?, ?)", (oid, valeur_id))
     conn.commit()
 
 
 @app.get("/api/personnages/{personnage_id}/attributs")
-def list_personnage_attributs(personnage_id: int, conn: sqlite3.Connection = Depends(db)):
-    _get_personnage(conn, personnage_id)
-    return _attributs_de(conn, "personnage_attribut", "personnage_id", personnage_id)
+def list_personnage_attributs(personnage_id: int, conn: sqlite3.Connection = Depends(db),
+                              portee: autorisation.Portee = Depends(portee_courante)):
+    _get_personnage(conn, portee, personnage_id)
+    return _attributs_de(conn, portee, "personnage_attribut", "personnage_id", personnage_id)
 
 
 @app.put("/api/personnages/{personnage_id}/attributs")
 def add_personnage_attribut(personnage_id: int, payload: AttributIn,
-                            conn: sqlite3.Connection = Depends(db)):
-    _get_personnage(conn, personnage_id)
-    _affecter(conn, "personnage_attribut", "personnage_id", personnage_id, payload.valeur_id, "personnage")
-    return _attributs_de(conn, "personnage_attribut", "personnage_id", personnage_id)
+                            conn: sqlite3.Connection = Depends(db),
+                            portee: autorisation.Portee = Depends(portee_courante)):
+    _get_personnage(conn, portee, personnage_id, ecriture=True)
+    _affecter(conn, portee, "personnage_attribut", "personnage_id", personnage_id, payload.valeur_id, "personnage")
+    return _attributs_de(conn, portee, "personnage_attribut", "personnage_id", personnage_id)
 
 
 @app.delete("/api/personnages/{personnage_id}/attributs/{valeur_id}", status_code=204)
 def remove_personnage_attribut(personnage_id: int, valeur_id: int,
-                               conn: sqlite3.Connection = Depends(db)):
+                               conn: sqlite3.Connection = Depends(db),
+                               portee: autorisation.Portee = Depends(portee_courante)):
+    _get_personnage(conn, portee, personnage_id, ecriture=True)
     conn.execute("DELETE FROM personnage_attribut WHERE personnage_id = ? AND valeur_id = ?",
                  (personnage_id, valeur_id))
     conn.commit()
@@ -1977,7 +2298,7 @@ def remove_personnage_attribut(personnage_id: int, valeur_id: int,
 def list_region_attributs(region_id: int, conn: sqlite3.Connection = Depends(db),
                           portee: autorisation.Portee = Depends(portee_courante)):
     _get_region(conn, portee, region_id)
-    return _attributs_de(conn, "region_attribut", "region_id", region_id)
+    return _attributs_de(conn, portee, "region_attribut", "region_id", region_id)
 
 
 @app.put("/api/regions/{region_id}/attributs")
@@ -1985,8 +2306,8 @@ def add_region_attribut(region_id: int, payload: AttributIn,
                         conn: sqlite3.Connection = Depends(db),
                         portee: autorisation.Portee = Depends(portee_courante)):
     _get_region(conn, portee, region_id, ecriture=True)
-    _affecter(conn, "region_attribut", "region_id", region_id, payload.valeur_id, "case")
-    return _attributs_de(conn, "region_attribut", "region_id", region_id)
+    _affecter(conn, portee, "region_attribut", "region_id", region_id, payload.valeur_id, "case")
+    return _attributs_de(conn, portee, "region_attribut", "region_id", region_id)
 
 
 @app.delete("/api/regions/{region_id}/attributs/{valeur_id}", status_code=204)
@@ -2210,6 +2531,7 @@ def corpus_stats(conn: sqlite3.Connection = Depends(db),
     ou, pp = portee.clause_album("alb.id")
     oup, _ = portee.clause_album("pl.album_id")
     our, _ = portee.clause_album("plr.album_id")
+    ou_tag, p_tag = portee.clause_terme("t.collection_id")
     row = conn.execute(
         f"""SELECT
              (SELECT COUNT(*) FROM albums alb WHERE {ou})   AS albums,
@@ -2221,13 +2543,14 @@ def corpus_stats(conn: sqlite3.Connection = Depends(db),
              (SELECT COUNT(*) FROM regions r
                 JOIN planches plr ON plr.id = r.planche_id
                 WHERE {our} AND TRIM(COALESCE(r.ocr_texte, '')) <> '') AS transcrites,
-             -- `tags` reste GLOBAL : le vocabulaire est transversal au corpus et son
-             -- cloisonnement est une question distincte, encore ouverte (cf. la case
-             -- « nuage de tags » de pilotage/AUTH-2.md). Compté ici sans filtre, donc.
-             (SELECT COUNT(*) FROM tags) AS tags,
+             -- `tags` suit la règle du VOCABULAIRE et non celle des données : visible
+             -- s'il est global ou local à une collection qu'on lit (cf. clause_terme).
+             (SELECT COUNT(*) FROM tags t WHERE {ou_tag}) AS tags,
              (SELECT COUNT(*) FROM planches pl
                 WHERE {oup} AND pl.validee IS NOT NULL) AS validees""",
-        pp * 6,
+        # 5 clauses d'album, puis celle des tags, puis la 6e d'album — dans l'ORDRE
+        # d'apparition dans le SQL ci-dessus.
+        [*pp * 5, *p_tag, *pp],
     ).fetchone()
     res = dict(row)
     # Distribution des planches par statut (pour la barre d'avancement du corpus).
@@ -2564,20 +2887,38 @@ def analyse_croisement(axe_x: str, axe_y: str,
             "total": sum(cells.values()), "x_tronque": x_tronque, "y_tronque": y_tronque}
 
 
+def _albums_lisibles(conn, portee: autorisation.Portee):
+    """Ids des albums lisibles, ou None si la portée est totale.  AUTH-2.
+
+    `None` n'est pas « aucun » mais « pas de restriction » : les cœurs d'analyse
+    (`accord`, `accord_inter`) l'entendent ainsi, et matérialiser la liste complète
+    reviendrait à figer un corpus qui bouge."""
+    if portee.tout:
+        return None
+    ou, params = portee.clause_album("a.id")
+    return [r[0] for r in conn.execute(f"SELECT a.id FROM albums a WHERE {ou}", params)]
+
+
 @app.get("/api/analyse/accord")
-def analyse_accord(conn: sqlite3.Connection = Depends(db)):
+def analyse_accord(conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
     """Rapport d'accord modèle↔humain (NLP-1) : part des tokens RELUS où le modèle NLP avait
     déjà la valeur finale (par champ lemme/POS/morpho) + confusion POS + modèle évalué. Étalon
-    de qualité de l'index (transition Phase 1→2). Cf. accord.rapport / docs/rapport-accord.md."""
-    return accord.rapport(conn)
+    de qualité de l'index (transition Phase 1→2). Cf. accord.rapport / docs/rapport-accord.md.
+
+    AUTH-2 — le rapport porte sur le sous-corpus lisible. Un taux d'accord global ne
+    montrerait aucun contenu, mais dirait combien de tokens ont été relus ailleurs, donc
+    l'ampleur du travail des autres."""
+    return accord.rapport(conn, album_ids=_albums_lisibles(conn, portee))
 
 
 @app.get("/api/analyse/accord-inter")
-def analyse_accord_inter(conn: sqlite3.Connection = Depends(db)):
+def analyse_accord_inter(conn: sqlite3.Connection = Depends(db),
+                         portee: autorisation.Portee = Depends(portee_courante)):
     """Rapport d'accord INTER-ANNOTATEURS (ANN-5) : sur les tokens qu'un annotateur a RE-TOUCHÉS
     après un autre (chaîne de révisions du journal A3), taux d'accord par champ + par paire
     d'auteurs + points de divergence. Cf. accord_inter.rapport / docs/accord-inter.md."""
-    return accord_inter.rapport(conn)
+    return accord_inter.rapport(conn, album_ids=_albums_lisibles(conn, portee))
 
 
 @app.get("/api/regions/{region_id}/tokens")
@@ -2606,11 +2947,14 @@ def _norm_corr(v: Optional[str]) -> Optional[str]:
 
 @app.put("/api/regions/{region_id}/tokens/{ordre}")
 def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
-                   request: Request, conn: sqlite3.Connection = Depends(db)):
+                   request: Request, conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
     """Corrige (ou valide) UN token : impose lemme/POS/morph et/ou marque l'état.
     Champ absent/vide = NULL = auto accepté. POS contrôlé (UPOS). La correction est
     ancrée sur la FORME actuelle du token (anti-dérive ; cf. docs/correction-grammaticale.md).
     L'auteur connecté (en-tête Remote-User, INFRA-2) est enregistré sur la correction."""
+    # AUTH-2 — corriger la grammaire, c'est écrire sur la région.
+    _get_region(conn, portee, region_id, ecriture=True)
     tok = conn.execute("SELECT texte FROM tokens WHERE region_id = ? AND ordre = ?",
                        (region_id, ordre)).fetchone()
     if tok is None:
@@ -2657,13 +3001,16 @@ def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
 
 @app.post("/api/regions/{region_id}/grammaire/valider")
 def valider_grammaire(region_id: int, request: Request,
-                      conn: sqlite3.Connection = Depends(db)):
+                      conn: sqlite3.Connection = Depends(db),
+                      portee: autorisation.Portee = Depends(portee_courante)):
     """Valide tous les tokens de la région (etat='valide') — geste courant des
     linguistes. Garde les corrections existantes (non obsolètes) et accepte l'auto
     ailleurs ; ne touche pas aux corrections « à revérifier ». NON bloquant : c'est
     une assertion de qualité, jamais un prérequis. L'auteur connecté (INFRA-2) est
     posé sur les tokens auto-acceptés, et REMPLIT l'auteur d'une correction qui n'en
     avait pas — sans jamais écraser le correcteur d'origine (COALESCE)."""
+    # AUTH-2 — corriger la grammaire, c'est écrire sur la région.
+    _get_region(conn, portee, region_id, ecriture=True)
     if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
     nlp.ensure_loaded()          # spaCy hors transaction (cf. corriger_token)
@@ -2688,9 +3035,12 @@ def valider_grammaire(region_id: int, request: Request,
 
 @app.delete("/api/regions/{region_id}/tokens/{ordre}")
 def annuler_correction(region_id: int, ordre: int,
-                       conn: sqlite3.Connection = Depends(db)):
+                       conn: sqlite3.Connection = Depends(db),
+                       portee: autorisation.Portee = Depends(portee_courante)):
     """Annule la correction d'un token → retour à l'auto pur (retire aussi le lemme
     corrigé du FTS)."""
+    # AUTH-2 — corriger la grammaire, c'est écrire sur la région.
+    _get_region(conn, portee, region_id, ecriture=True)
     nlp.ensure_loaded()   # charge spaCy HORS transaction (le reindex qui suit ne tiendra pas le verrou pendant le cold-load)
     _corr_cols = ("ordre", "forme", "lemme", "pos", "morph", "etat")
     avant_corr = conn.execute(
@@ -2707,14 +3057,26 @@ def annuler_correction(region_id: int, ordre: int,
 
 
 @app.get("/api/analyse/info")
-def analyse_info(conn: sqlite3.Connection = Depends(db)):
+def analyse_info(conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
     """État de l'index linguistique : modèle NLP utilisé (reproductibilité),
     date de réindexation, et volumétrie. La réindexation en lot se lance via
-    `tools/reindex_nlp.py` (modèle configurable BD_SPACY_MODEL)."""
+    `tools/reindex_nlp.py` (modèle configurable BD_SPACY_MODEL).
+
+    AUTH-2 — `meta` (modèle, date de réindexation) est un fait d'exploitation, pas une
+    donnée de corpus : il reste entier. La VOLUMÉTRIE, elle, est filtrée — c'est une
+    mesure du corpus, et sa valeur globale dirait la taille de ce qu'on ne voit pas."""
     meta = {r["cle"]: r["valeur"] for r in conn.execute("SELECT cle, valeur FROM meta")}
-    nb_tokens = conn.execute("SELECT COUNT(*) AS n FROM tokens").fetchone()["n"]
+    ou, params = portee.clause_album("pl.album_id")
+    nb_tokens = conn.execute(
+        f"SELECT COUNT(*) AS n FROM tokens t "
+        f"  JOIN regions r   ON r.id = t.region_id "
+        f"  JOIN planches pl ON pl.id = r.planche_id WHERE {ou}", params).fetchone()["n"]
     nb_lemmes = conn.execute(
-        "SELECT COUNT(*) AS n FROM recherche WHERE lemmes <> ''").fetchone()["n"]
+        f"SELECT COUNT(*) AS n FROM recherche rch "
+        f"  JOIN regions r   ON r.id = rch.region_id "
+        f"  JOIN planches pl ON pl.id = r.planche_id "
+        f" WHERE rch.lemmes <> '' AND {ou}", params).fetchone()["n"]
     return {"moteur_disponible": nlp.nlp_available(),
             "modele_configure": nlp.configured_model(),   # léger : pas de chargement du modèle
             "meta": meta, "tokens": nb_tokens, "regions_lemmatisees": nb_lemmes}
@@ -2765,16 +3127,18 @@ def creer_job(payload: JobIn, conn: sqlite3.Connection = Depends(db),
     return job
 
 
-def _planches_autorisees(conn, portee: autorisation.Portee) -> Optional[set]:
-    """Ids des planches visibles. None = toutes (portée totale), pour ne pas
-    matérialiser un corpus entier à chaque appel."""
+def _planches_autorisees(conn, portee: autorisation.Portee,
+                         *, ecriture: bool = False) -> Optional[set]:
+    """Ids des planches visibles (ou modifiables si `ecriture`). None = toutes (portée
+    totale), pour ne pas matérialiser un corpus entier à chaque appel."""
     if portee.tout:
         return None
-    ou, params = portee.clause_album("p.album_id")
+    ou, params = portee.clause_album("p.album_id", ecriture=ecriture)
     return {r[0] for r in conn.execute(f"SELECT p.id FROM planches p WHERE {ou}", params)}
 
 
-def _job_visible(conn, portee: autorisation.Portee, job_id: int) -> bool:
+def _job_visible(conn, portee: autorisation.Portee, job_id: int,
+                 *, ecriture: bool = False) -> bool:
     """Un job n'est visible que si TOUTES ses planches le sont.
 
     Le sous-ensemble strict, et pas l'intersection : un lot à cheval sur une collection
@@ -2782,7 +3146,7 @@ def _job_visible(conn, portee: autorisation.Portee, job_id: int) -> bool:
     existe ailleurs. Conséquence assumée : un lot lancé par un administrateur sur tout
     le corpus n'apparaît qu'à lui.
     """
-    autorisees = _planches_autorisees(conn, portee)
+    autorisees = _planches_autorisees(conn, portee, ecriture=ecriture)
     if autorisees is None:
         return True
     return set(jobs.planches_du_job(job_id)) <= autorisees
@@ -2808,7 +3172,9 @@ def etat_job(job_id: int, conn: sqlite3.Connection = Depends(db),
 @app.post("/api/jobs/{job_id}/annuler")
 def annuler_job(job_id: int, conn: sqlite3.Connection = Depends(db),
                 portee: autorisation.Portee = Depends(portee_courante)):
-    if not _job_visible(conn, portee, job_id):
+    # Annuler un lot INTERROMPT un traitement : c'est une écriture, pas une lecture.
+    # Un droit de lecture seule permettrait sinon de saborder la passe d'un collègue.
+    if not _job_visible(conn, portee, job_id, ecriture=True):
         raise HTTPException(404, f"Job {job_id} introuvable")
     if not jobs.cancel_job(job_id):
         raise HTTPException(404, f"Job {job_id} introuvable")

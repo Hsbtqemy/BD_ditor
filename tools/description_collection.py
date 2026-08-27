@@ -206,11 +206,15 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
         rel_tally[info["statut"]] += 1
     # Accord modèle↔humain (NLP-1) : scopé aux albums de la collection (None = corpus).
     accord_modele = accord.rapport(conn, album_ids=album_ids)
-    # Accord inter-annotateurs (ANN-5) : lu au journal, corpus-large (scoper la chaîne de
-    # révisions par album serait disproportionné pour un bloc creux avant le multi-utilisateur).
+    # Accord inter-annotateurs (ANN-5) : scopé aux albums de la collection, comme l'accord
+    # modèle↔humain juste au-dessus. Ce l'était pas jusqu'au 2026-08-27 — le cœur n'acceptait
+    # pas de périmètre — et la fiche d'une collection annonçait donc un chiffre CORPUS sous
+    # une rubrique de collection. AUTH-2 a ajouté le paramètre ; les deux accords disent
+    # maintenant la même portée.
     # La fiche n'embarque QUE les compteurs (le détail des divergences reste aux rapports).
-    ai = accord_inter.rapport(conn)
-    accord_inter_fiche = {"portee": "corpus", "retouches": ai["retouches"],
+    ai = accord_inter.rapport(conn, album_ids=album_ids)
+    accord_inter_fiche = {"portee": "collection" if album_ids is not None else "corpus",
+                          "retouches": ai["retouches"],
                           "auteurs": ai["auteurs"], "champs": ai["champs"], "paires": ai["paires"]}
     # Libellés compacts pour le catalogue CSV (registre « élément de métadonnée »).
     relecture_txt = (f"faite:{rel_tally['faite']}; en_cours:{rel_tally['en_cours']}; "
