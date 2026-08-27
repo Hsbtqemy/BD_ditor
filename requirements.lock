@@ -40,5 +40,15 @@ spacy==3.8.14
 
 # Kumiko (passe 1) — dépendances du dépôt cloné dans lib/kumiko
 opencv-python-headless==4.13.0.92
+# EXCEPTION à la règle « directes seulement », et elle est nécessaire : `ultralytics`
+# tire `opencv-python` (non headless) en TRANSITIF, non épinglé. Les deux paquets
+# s'installent dans le MÊME `cv2/`, donc le non-épinglé écrase l'épinglé et gagne à
+# l'import. Mesuré le 2026-08-27 dans l'image : headless 4.13 posé par ce verrou,
+# `opencv-python` résolu en 5.0.0.93, `cv2.__version__ == 5.0.0` — et Kumiko casse,
+# `HoughLinesP` renvoyant (N, 4) en OpenCV 5 au lieu de (N, 1, 4) en 4.x, d'où un
+# `IndexError: invalid index to scalar variable` dans `lib/page.py:151`.
+# La passe 1 était donc MORTE dans l'image, pendant que `/api/sante` annonçait
+# `kumiko: true`. Épingler le jumeau est le seul moyen de rendre le pin effectif.
+opencv-python==4.13.0.92
 numpy==2.4.6
 requests==2.32.5
