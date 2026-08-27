@@ -18,6 +18,9 @@ derivatives/
 # Kumiko est cloné DANS l'image (un clone local serait écrasé sinon)
 lib/kumiko/
 
+# Outillage Node (journal de bord `pilote`) — hors image : l'app est Python
+node_modules/
+
 # Divers
 .git/
 .idea/

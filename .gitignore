@@ -41,3 +41,7 @@ deploy/.env
 deploy/authelia/db.sqlite3
 deploy/authelia/notification.txt
 deploy/authelia/*.log
+
+# Outillage Node (journal de bord `pilote`) — manifeste et lock versionnés (cf. QA-1),
+# pas l'arbre installé
+node_modules/

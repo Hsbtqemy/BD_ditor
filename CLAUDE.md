@@ -6,6 +6,48 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Tout le projet est en **français** : commentaires, docstrings, noms de fonctions/variables/routes/colonnes, UI, messages d'erreur, commits, docs. Écris dans le même registre — code, commentaires et messages de commit en français.
 
+## Pilotage
+
+Le suivi ticket-par-ticket vit dans `pilotage/`, lu par [`pilote`](https://github.com/Hsbtqemy/pilote)
+(`npm run journal` → `localhost:4124`). Un chantier interrompu, différé ou à venir a un
+fichier `pilotage/<CODE>.md` ; une QA visuelle est une passe rejouable dans
+`pilotage/qa/<nom>.md`. Voir `pilotage/_TEMPLATE.md`. `docs/backlog.md` n'est plus qu'un
+renvoi ; `docs/roadmap.md` reste la vue stratégique par pistes et n'est PAS remplacé.
+
+IMPORTANT — respecter exactement `## Reste` et les H3 de zone : l'outil ne lit que ces
+sections. Une case ailleurs est invisible (le contrôleur la signale en ERREUR).
+
+- **Vocabulaire de codes : `PREFIXE-N`**, celui du backlog (`ANN-3`, `SEC-2`, `INFRA-1`,
+  `A11Y-2`…). Décision arrêtée le 2026-08-27, et elle ne se rattrape pas : l'outil date un
+  chantier en cherchant son code dans les sujets de commit. Les codes de piste de la
+  roadmap (`A5`, `B3`, `C1`, `D1`) restent citables **en plus**, jamais à la place.
+- **Le commit de code d'abord, le commit de fiche ensuite, séparément** : une fiche ne peut
+  pas citer le commit qui la met à jour, et les commits qui ne touchent que `pilotage/` (ou
+  `docs/`) sont exclus du datage.
+- **Le commit de code doit CITER le code du chantier**, dans son sujet ou son corps. Sans
+  citation : `0 commit`, aucune date, aucune barre sur la fresque, quel que soit le travail
+  fait.
+- Fin de session : mettre à jour le `Reste` du chantier travaillé, et son `**Arrêté sur**`
+  (l'écran le signale décalé dès qu'il ne cite plus le dernier commit de code).
+- `statut:` se prend dans `à venir` · `interrompu` · `différé` · `clos` · `livré` ·
+  `abandonné`, et rien d'autre. `différé` = mis en attente exprès (autre chose doit aboutir
+  d'abord) ; `interrompu` = arrêté en plein travail ; `abandonné` = décidé de ne pas le
+  faire, la fiche gardant son `Reste` ouvert exprès plutôt que d'être supprimée avec son
+  raisonnement.
+- Une case = **une affirmation vérifiable, avec son attendu**. « Vérifier le rendu » se
+  contemple ; « sur 375 px, la barre ne masque pas le geste » se coche.
+- QA visuelle : écrire une passe dans `pilotage/qa/`, jamais dans le fil de conversation.
+  **Ne jamais cocher soi-même une case d'une passe de QA** — la rédiger, la rendre, et
+  laisser cocher.
+- Ne pas créer de fiche pour un finding traité en un seul commit.
+- Avant de clore une session : `npm run verifier` (code de retour non nul = l'outil lira
+  mal le dossier).
+
+Le journal se lance avec `--days 90` (dans le script npm) : l'historique du dépôt s'arrête
+au 2026-07-19, et la fenêtre de 60 jours par défaut en couperait le début. Et sur
+`--port 4124`, parce que le port par défaut (4123) sert le journal d'un autre dépôt sur
+cette machine — un dépôt à la fois par port, c'est le modèle de l'outil.
+
 ## Vue d'ensemble
 
 Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut (pas d'authentification dans le code — voir `docs/hebergement-securite.md`).
@@ -42,7 +84,7 @@ pytest --cov=. --cov-report=term-missing        # couverture (dépend des moteur
 - Le marqueur `e2e` est exclu par défaut via `pytest.ini` (`addopts = -m "not e2e"`).
 - **Tests JS purs** (`static/lib/*.js`) : lancés par `tests/test_js_unit.py`, qui appelle `node --test tests/js/*.test.js`. Skippés proprement si Node absent. Pas de runner JS séparé.
 - **Accessibilité** : `tests/test_e2e_a11y.py` (marqueur `e2e`) audite les 4 surfaces × thèmes (sombre/clair) via **axe-core** (WCAG 2.1 AA) et échoue à toute violation sérieuse/critique. axe est **vendu hors ligne** dans `tests/js/vendor/axe.min.js` (skip si absent — cf. son README).
-- Les tests des moteurs ML (Kumiko, bulles, OCR) et du NLP se **skippent automatiquement** si le moteur n'est pas installé (`requires_kumiko` / `requires_bulles` / `requires_ocr` dans `tests/conftest.py`). La couverture mesurée en dépend (les routes `/api/analyse/*` + correction de tokens ne sont pas encore couvertes — cf. `docs/backlog.md` QA-3).
+- Les tests des moteurs ML (Kumiko, bulles, OCR) et du NLP se **skippent automatiquement** si le moteur n'est pas installé (`requires_kumiko` / `requires_bulles` / `requires_ocr` dans `tests/conftest.py`). La couverture mesurée en dépend (les routes `/api/analyse/*` + correction de tokens ne sont pas encore couvertes — QA-3, livré ; cf. `docs/roadmap.md`).
 
 ## Architecture
 
@@ -154,4 +196,4 @@ Statut de **relecture grammaticale** (`à faire` / `en cours` / `faite`), **orth
 - Export disponible en **JSON-LD / CSV / TEI P5** (`main.py`, routes `/api/export/*`). Texte libre assaini avant sérialisation : `_xml_safe` (retire les caractères interdits XML 1.0 → TEI re-parsable) et `_csv_safe` (préfixe `'` une cellule débutant par `= + - @` → anti-injection de formule tableur).
 - `tests/test_regressions.py` : un test de non-régression par bug corrigé.
 - **Accessibilité (WCAG 2.1 AA)** : les accents pleins `--accent-*` servent les fills / bordures / marqueurs (seuil graphique 3:1) ; pour du **petit texte** coloré, utiliser les tokens d'encre AA-sûrs (`--ink-red`, `--danger`, ou un accent **assombri** en thème clair) — **jamais l'accent brut**, qui échoue le 4.5:1. L'audit axe (`pytest -m e2e`) verrouille la non-régression.
-- `docs/` documente les décisions de conception non évidentes (grammaire, numérotation, round-trip, sécurité, Docker) ; `docs/backlog.md` est le **suivi vivant** ticket-par-ticket (features + dette technique/sécurité §7), `docs/roadmap.md` la **vue stratégique par pistes** (cap + ordre conseillé), `AUDIT.md` l'audit technique daté. `spike/` et `tools/` sont hors couverture (`.coveragerc`). L'**export de métadonnées** (description du corpus + IIIF ; scripts hors-app `tools/gerer_collections.py` — gestion des collections, seul outil d'écriture —, `description_collection.py`, `metadonnees_collection.py`, `iiif_manifest.py`, `valider_iiif.py`) est documenté dans `docs/export-metadonnees.md`.
+- `docs/` documente les décisions de conception non évidentes (grammaire, numérotation, round-trip, sécurité, Docker) ; `pilotage/` est le **suivi vivant** ticket-par-ticket (une fiche par chantier, cf. § Pilotage ; `docs/backlog.md` n'en est plus que le renvoi), `docs/roadmap.md` la **vue stratégique par pistes** (cap + ordre conseillé), `AUDIT.md` l'audit technique daté. `spike/` et `tools/` sont hors couverture (`.coveragerc`). L'**export de métadonnées** (description du corpus + IIIF ; scripts hors-app `tools/gerer_collections.py` — gestion des collections, seul outil d'écriture —, `description_collection.py`, `metadonnees_collection.py`, `iiif_manifest.py`, `valider_iiif.py`) est documenté dans `docs/export-metadonnees.md`.

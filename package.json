@@ -1,0 +1,14 @@
+{
+  "name": "bdediteur",
+  "private": true,
+  "description": "Outillage Node du dépôt : journal de bord (pilote) et tests unitaires JS. Le projet lui-même est Python/FastAPI + JS vanilla, sans étape de build.",
+  "devDependencies": {
+    "pilote": "git+https://github.com/Hsbtqemy/pilote.git"
+  },
+  "scripts": {
+    "journal": "pilote --days 90 --port 4124",
+    "verifier": "pilote verifier",
+    "arreter": "pilote arreter --port 4124",
+    "test:js": "node --test \"tests/js/*.test.js\""
+  }
+}
