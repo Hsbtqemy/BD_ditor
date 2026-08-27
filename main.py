@@ -2881,8 +2881,13 @@ def _groupes(request: Request) -> list[str]:
 
 
 # Miroir des identités déjà écrites : évite une écriture SQLite à CHAQUE requête, ce qui
-# sérialiserait tout le trafic derrière l'unique verrou d'écriture du WAL. On n'écrit que
-# la première fois qu'on voit quelqu'un, puis seulement si son nom ou son email a changé.
+# sérialiserait tout le trafic derrière l'unique verrou d'écriture du WAL.
+#
+# On réécrit dans DEUX cas : le nom ou l'email a changé (Authelia fait foi), ou la
+# dernière écriture date de plus d'une heure. Ce second cas n'est pas du zèle : sans lui,
+# `derniere_vue` ne bougerait qu'au changement de nom, et la colonne mentirait sur ce
+# qu'elle prétend mesurer. Une écriture par personne et par heure reste négligeable.
+_VUS_TTL = 3600.0
 _vus: dict = {}
 
 
@@ -2898,7 +2903,8 @@ def _enregistrer_utilisateur(conn: sqlite3.Connection, request: Request) -> Opti
         return None
     nom = (request.headers.get("Remote-Name") or "").strip() or None
     email = (request.headers.get("Remote-Email") or "").strip() or None
-    if _vus.get(login) != (nom, email):
+    connu = _vus.get(login)
+    if connu is None or connu[:2] != (nom, email) or time.monotonic() - connu[2] > _VUS_TTL:
         conn.execute(
             "INSERT INTO utilisateur (login, nom, email, derniere_vue) "
             "VALUES (?, ?, ?, datetime('now')) "
@@ -2906,7 +2912,7 @@ def _enregistrer_utilisateur(conn: sqlite3.Connection, request: Request) -> Opti
             "derniere_vue = datetime('now')",
             (login, nom, email))
         conn.commit()
-        _vus[login] = (nom, email)
+        _vus[login] = (nom, email, time.monotonic())
     return login
 
 

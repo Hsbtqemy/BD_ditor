@@ -50,7 +50,7 @@ cette machine — un dépôt à la fois par port, c'est le modèle de l'outil.
 
 ## Vue d'ensemble
 
-Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut (pas d'authentification dans le code — voir `docs/hebergement-securite.md`).
+Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut. **L'application n'authentifie personne** : elle fait confiance aux en-têtes d'identité posés par un proxy d'auth (Authelia), et seulement si `BD_AUTH_PROXY` déclare qu'il est bien devant — sans quoi tout acte reste anonyme (AUTH-1). Aucun secret en base : `utilisateur` (v22) n'est qu'un miroir d'affichage, et les groupes ne sont jamais stockés, relus dans `Remote-Groups` à chaque requête. Voir `docs/hebergement-securite.md`.
 
 Backend **Python 3.12 / FastAPI** ; frontend **JavaScript/HTML/CSS vanilla** — aucun framework, **aucune étape de build**. On édite `static/*.js` et `templates/*.html` directement.
 

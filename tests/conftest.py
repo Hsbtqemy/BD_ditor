@@ -166,7 +166,12 @@ def live_server(tmp_path):
     port = _free_port()
     env = {**os.environ,
            "BD_DATA_DIR": str(tmp_path),
-           "BD_DB_PATH": str(tmp_path / "live.sqlite")}
+           "BD_DB_PATH": str(tmp_path / "live.sqlite"),
+           # AUTH-1 : ces tests simulent le déploiement DERRIÈRE le proxy d'auth et
+           # envoient des en-têtes `Remote-User`. Le drapeau doit entrer dans le
+           # SOUS-PROCESSUS : la fixture `derriere_proxy` patche `main.AUTH_PROXY` du
+           # processus de test, ce qui n'a aucun effet sur un serveur lancé à part.
+           "BD_AUTH_PROXY": "1"}
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app",
          "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],

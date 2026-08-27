@@ -92,6 +92,13 @@ dès que l'app est derrière le proxy (en-tête `Remote-User`). Le lien pointe v
 `BD_AUTH_LOGOUT_URL` (réglé dans `docker-compose.yml`). En local, sans proxy, ni le
 nom ni le lien n'apparaissent.
 
+**`BD_AUTH_PROXY` (AUTH-1) — à ne pas oublier.** L'application n'exploite les en-têtes
+d'identité que si ce drapeau est posé ; `docker-compose.yml` le pose à `1`. Sans lui, la
+pile Authelia + Caddy tournerait normalement, les utilisateurs se connecteraient — et
+l'application les traiterait tous comme anonymes, sans le moindre message. Symétriquement,
+le poser sur une application joignable autrement que par Caddy revient à croire n'importe
+quel `Remote-User` envoyé par n'importe qui.
+
 ## 7. Opérations courantes
 
 ```bash

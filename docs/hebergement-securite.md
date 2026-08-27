@@ -96,6 +96,13 @@ Toutes amplifiées par l'absence d'authentification.
   `BD_DB_PATH` (base). ShareDocs : `BD_SHAREDOCS_URL/USER/PASS` (le mot de passe
   n'est jamais persisté ni renvoyé).
 - Auth (derrière proxy) : `BD_AUTH_LOGOUT_URL` = URL de déconnexion du portail
+- Auth (derrière proxy) : **`BD_AUTH_PROXY`** = déclare qu'un proxy d'authentification
+  est bien devant l'application (AUTH-1). **Sans ce drapeau, les en-têtes d'identité
+  (`Remote-User`, `Remote-Groups`, `Remote-Name`, `Remote-Email`) sont IGNORÉS** et tout
+  acte reste anonyme. Ne le poser QUE si le `forward_auth` est réellement en place :
+  autrement, n'importe quel client atteignant l'app en direct pourrait se déclarer qui il
+  veut — sans conséquence tant que rien n'est autorisé sur cette base, escalade de
+  privilège dès qu'une autorisation en dépendra.
   (ex. `https://auth.example.fr/logout`), affichée dans l'UI avec l'utilisateur
   connecté (`Remote-User`). Vide en local → ni nom ni lien affichés. L'app fait
   de l'**affichage seul** : l'autorisation reste entièrement assurée par Authelia.
