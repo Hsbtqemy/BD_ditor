@@ -1,14 +1,22 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Build REPRODUCTIBLE :  pip install -r requirements.lock
+# Build REPRODUCTIBLE — RUNTIME :  pip install -r requirements.lock
 #
-# Pins EXACTS des dépendances DIRECTES (noyau + dev + OCR + NLP + Kumiko), figés sur
-# le jeu connu-bon — suite verte au 2026-06-24 (288 tests). Les requirements*.txt
-# restent la spec lisible (planchers) ; CE fichier est le verrou (QA-1).
+# Pins EXACTS des dépendances DIRECTES d'EXÉCUTION (noyau + OCR + NLP + Kumiko),
+# figés sur le jeu connu-bon — suite verte au 2026-06-24 (288 tests). Les
+# requirements*.txt restent la spec lisible (planchers) ; CE fichier est le verrou (QA-1).
+#
+# Les dépendances de TEST vivent à part, dans `requirements-dev.lock` (qui inclut
+# celui-ci), sur le même patron que requirements-dev.txt → requirements.txt. Raison :
+# l'image de déploiement installe CE fichier, et un lock unique y embarquerait
+# Playwright et son navigateur.
 #
 # NB — verrou des DIRECTES seulement, PAS un pip-compile transitif. Raison : les wheels
 # ML (torch via ultralytics/easyocr) sont spécifiques à la plateforme ; figer les
 # transitifs sur des wheels Windows casserait un déploiement Linux. On épingle au niveau
 # VERSION (cross-plateforme), pas au niveau wheel.
+#
+# NON couvert ici : requirements-export.txt (openpyxl, iiif-prezi3) — utilisé par les
+# scripts `tools/`, jamais importé par l'application.
 #
 # À part (non pip) :
 #   python -m spacy download fr_core_news_sm           # modèle NLP français
@@ -21,11 +29,6 @@ uvicorn[standard]==0.41.0
 pillow==12.1.0
 python-multipart==0.0.22
 httpx==0.28.1
-
-# Tests / développement
-pytest==9.0.2
-pytest-cov==7.0.0
-pytest-playwright==0.8.0
 
 # Passe 2 (bulles, ogkalu YOLOv8) + passe 3 (OCR EasyOCR)
 ultralytics==8.4.65

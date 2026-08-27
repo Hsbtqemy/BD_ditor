@@ -1,0 +1,16 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Build REPRODUCTIBLE — DÉVELOPPEMENT :  pip install -r requirements-dev.lock
+#
+# Runtime verrouillé + outils de test, sur le patron de requirements-dev.txt.
+# Scindé de requirements.lock le 2026-08-27 : l'image de déploiement installe le
+# runtime seul, et n'a aucune raison d'embarquer Playwright.
+#
+# E2E navigateur, en plus (non pip) :  python -m playwright install chromium
+# ─────────────────────────────────────────────────────────────────────────────
+
+-r requirements.lock
+
+# Tests / développement
+pytest==9.0.2
+pytest-cov==7.0.0
+pytest-playwright==0.8.0

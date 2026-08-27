@@ -11,16 +11,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# 1) Dépendances Python d'abord (couche de cache indépendante du code) :
-#    cœur + moteurs ML optionnels (bulles/OCR). `requests` est requis par Kumiko.
-COPY requirements.txt requirements-ocr.txt ./
-RUN pip install --no-cache-dir -r requirements.txt -r requirements-ocr.txt requests
+# 1) Dépendances Python d'abord (couche de cache indépendante du code).
+#    On installe le VERROU (requirements.lock, QA-1), pas les requirements*.txt à
+#    bornes ouvertes : sans lui, deux reconstructions ne donnent pas la même image.
+#    Le lock runtime couvre noyau + OCR/bulles + spaCy + les deps de Kumiko
+#    (opencv/numpy/requests) ; les outils de test vivent dans requirements-dev.lock
+#    et n'ont rien à faire ici.
+COPY requirements.lock ./
+RUN pip install --no-cache-dir -r requirements.lock
 
-# 2) Kumiko (passe 1) cloné dans lib/kumiko (ses dépendances opencv/numpy/requests
-#    sont déjà installées via ultralytics ci-dessus).
+# 2) Modèle NLP français — couche séparée, ~15 Mo, indépendante du reste.
+#    SANS lui, `nlp_available()` est False et tout dégrade EN SILENCE : la table
+#    `tokens` reste vide, donc l'Exploration ne montre rien, le statut de relecture
+#    (ANN-4) reste « à faire » partout, les rapports d'accord (NLP-1, ANN-5) sortent
+#    vides et la recherche perd les lemmes. Aucune erreur ne le signalerait.
+#    Modèle surchargeable au runtime par BD_SPACY_MODEL (défaut : celui-ci).
+RUN python -m spacy download fr_core_news_sm
+
+# 3) Kumiko (passe 1) cloné dans lib/kumiko (ses dépendances opencv/numpy/requests
+#    sont installées par le lock ci-dessus).
 RUN git clone --depth 1 https://github.com/njean42/kumiko.git lib/kumiko
 
-# 3) Code de l'application (lib/kumiko, .venv, corpus… sont exclus via .dockerignore).
+# 4) Code de l'application (lib/kumiko, .venv, corpus… sont exclus via .dockerignore).
 COPY . .
 
 # Données ET caches de modèles (HOME) sous /data -> persistés par un volume,

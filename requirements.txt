@@ -8,4 +8,5 @@ httpx>=0.27          # client WebDAV ShareDocs (pipeline/sharedocs.py)
 #   git clone https://github.com/njean42/kumiko.git lib/kumiko
 #   pip install -r requirements-kumiko.txt
 #
-# Build reproductible (versions exactes connues-bonnes) : requirements.lock
+# Build reproductible (versions exactes connues-bonnes) : requirements.lock (runtime)
+# et requirements-dev.lock (runtime + tests).
