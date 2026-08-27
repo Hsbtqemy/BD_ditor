@@ -61,6 +61,21 @@ def _reset_global_state():
             pass
     ocr_mod._crop_cache.update(planche_id=None, img=None, scale=1.0)
     sharedocs_mod.disconnect()
+    main._vus.clear()          # AUTH-1 : miroir des identités déjà écrites en base
+    yield
+
+
+@pytest.fixture
+def derriere_proxy(monkeypatch):
+    """Place le test DERRIÈRE le proxy d'authentification (AUTH-1).
+
+    Hors de ce contexte, `main.AUTH_PROXY` est faux et les en-têtes d'identité
+    (`Remote-User`, `Remote-Groups`…) sont IGNORÉS — c'est la garde anti-usurpation :
+    un client qui atteindrait l'app en direct pourrait sinon se déclarer qui il veut.
+    Tout test qui envoie ces en-têtes doit donc déclarer ce contexte explicitement,
+    plutôt qu'on n'active la confiance pour toute la suite : ce serait précisément
+    perdre de vue ce que la garde protège."""
+    monkeypatch.setattr(main, "AUTH_PROXY", True)
     yield
 
 

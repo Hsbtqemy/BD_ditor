@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 
 # --------------------------------------------------------------------------- #
@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS planches (
     date_segmentation  TEXT,
     validee            TEXT,          -- horodatage de validation humaine (NULL = non validée)
     verrouillee        TEXT,          -- horodatage de verrou (NULL = déverrouillée) : protège des passes ML auto
+    verrou_par         TEXT,          -- AUTH-1 (v22) : QUI a posé le verrou (login Authelia ; NULL = local/anonyme)
     -- Statut de RELECTURE grammaticale (ANN-4, v21) : DÉRIVÉ des provenances de tokens par défaut
     -- (cf. database.relecture_planches, jamais stocké), cette colonne = OVERRIDE humain
     -- ('a_faire'|'en_cours'|'faite') ; NULL = suivre le dérivé.
@@ -389,6 +390,27 @@ CREATE TABLE IF NOT EXISTS evenement (
 
 CREATE INDEX IF NOT EXISTS idx_planches_album   ON planches(album_id);
 CREATE INDEX IF NOT EXISTS idx_regions_planche  ON regions(planche_id);
+-- Utilisateur connu de l'application (AUTH-1, v22). MIROIR de ce qu'Authelia envoie :
+-- l'app n'authentifie personne et ne stocke AUCUN secret — pas de mot de passe, pas de
+-- hash, pas de jeton. La clé est le login du proxy (`Remote-User`) ; `nom` et `email`
+-- ne servent qu'à l'affichage, et sont rafraîchis à chaque fois qu'on revoit la personne.
+--
+-- Les GROUPES ne sont volontairement PAS stockés : ils vivent dans
+-- `deploy/authelia/users_database.yml` et sont relus dans `Remote-Groups` à chaque
+-- requête. Les figer en base créerait une seconde source de vérité, et retirer quelqu'un
+-- d'un groupe n'aurait aucun effet tant qu'on n'aurait pas aussi touché la base.
+--
+-- La ligne existe pour que d'autres chantiers aient une identité STABLE à référencer :
+-- les identifiants WebDAV chiffrés par personne (INFRA-3) et le propriétaire d'une
+-- collection (AUTH-3). Elle n'est PAS une table de droits.
+CREATE TABLE IF NOT EXISTS utilisateur (
+    login          TEXT PRIMARY KEY,               -- identifiant Authelia (en-tête Remote-User)
+    nom            TEXT,                           -- Remote-Name : nom affiché
+    email          TEXT,                           -- Remote-Email
+    premiere_vue   TEXT DEFAULT (datetime('now')), -- première requête vue de cette personne
+    derniere_vue   TEXT                            -- dernière requête vue
+);
+
 CREATE INDEX IF NOT EXISTS idx_regions_parent   ON regions(parent_id);
 CREATE INDEX IF NOT EXISTS idx_anntags_tag      ON annotation_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_tokens_region    ON tokens(region_id);
@@ -658,6 +680,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
     pcols = {r["name"] for r in conn.execute("PRAGMA table_info(planches)")}
     if pcols and "relecture" not in pcols:
         conn.execute("ALTER TABLE planches ADD COLUMN relecture TEXT")
+
+    # v21 → v22 : identité applicative (AUTH-1). Table `utilisateur` NOUVELLE (créée par
+    # SCHEMA_SQL en `IF NOT EXISTS`) → rien à migrer. Sur `planches`, `verrou_par` posé par
+    # PRÉSENCE : le verrou existait sans propriétaire, ce qui suffisait à un seul utilisateur
+    # et devient ambigu à plusieurs. Aucun index : la table se lit par clé primaire, et
+    # `verrou_par` ne sert qu'à l'affichage.
+    pcols_auth = {r["name"] for r in conn.execute("PRAGMA table_info(planches)")}
+    if pcols_auth and "verrou_par" not in pcols_auth:
+        conn.execute("ALTER TABLE planches ADD COLUMN verrou_par TEXT")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 

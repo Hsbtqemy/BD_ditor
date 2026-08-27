@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from config import (AUTH_LOGOUT_URL, CIBLES_ATTRIBUT, DERIVATIVES_DIR,
+from config import (AUTH_LOGOUT_URL, AUTH_PROXY, CIBLES_ATTRIBUT, DERIVATIVES_DIR,
                     RELECTURE, ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR,
                     TYPES_REGION, UPOS_TAGS)
 from database import (citations_regions, collections, contributions_album, dimensions_cm,
@@ -1012,17 +1012,21 @@ def update_validation(planche_id: int, payload: ValidationIn,
 
 
 @app.patch("/api/planches/{planche_id}/verrou")
-def update_verrou(planche_id: int, payload: VerrouIn,
+def update_verrou(planche_id: int, payload: VerrouIn, request: Request,
                   conn: sqlite3.Connection = Depends(db)):
     """Verrouille une planche (la protège des passes automatiques en lot) ou la
     déverrouille. Distinct de `validee` (verrou = protection ≠ validation = qualité) ;
     `verrouillee` = horodatage. Cf. docs/correction-grammaticale.md §6."""
     _get_planche(conn, planche_id)
     if payload.verrouillee:
-        conn.execute("UPDATE planches SET verrouillee = datetime('now') WHERE id = ?",
-                     (planche_id,))
+        # AUTH-1 : on consigne QUI verrouille. À un seul utilisateur la question ne se
+        # posait pas ; à plusieurs, un verrou anonyme n'est pas levable en connaissance
+        # de cause. Purement informatif — n'importe qui peut toujours déverrouiller.
+        conn.execute("UPDATE planches SET verrouillee = datetime('now'), verrou_par = ? "
+                     "WHERE id = ?", (_auteur(request), planche_id))
     else:
-        conn.execute("UPDATE planches SET verrouillee = NULL WHERE id = ?", (planche_id,))
+        conn.execute("UPDATE planches SET verrouillee = NULL, verrou_par = NULL "
+                     "WHERE id = ?", (planche_id,))
     conn.commit()
     return _get_planche(conn, planche_id)
 
@@ -2851,23 +2855,73 @@ def sante():
 
 def _auteur(request: Request) -> Optional[str]:
     """Identifiant de l'utilisateur connecté, pour attribuer une action humaine
-    (INFRA-2). Lu dans l'en-tête `Remote-User` posé par le proxy d'auth (jamais
-    par le client : l'app n'est jamais exposée en direct). None en local (pas de
-    proxy) → l'action reste anonyme, comme avant."""
+    (INFRA-2). Lu dans l'en-tête `Remote-User` posé par le proxy d'auth.
+
+    AUTH-1 : l'en-tête n'est cru QUE si `BD_AUTH_PROXY` déclare qu'on est derrière ce
+    proxy. Sans le drapeau, on ignore ce que le client raconte et l'acte reste anonyme —
+    comportement mono-poste inchangé. La docstring d'INFRA-2 affirmait « jamais par le
+    client : l'app n'est jamais exposée en direct » ; c'était une hypothèse sur le
+    déploiement, pas une garantie du code. Elle en est une maintenant."""
+    if not AUTH_PROXY:
+        return None
     return (request.headers.get("Remote-User") or "").strip() or None
 
 
+def _groupes(request: Request) -> list[str]:
+    """Groupes de l'utilisateur connecté (AUTH-1), depuis `Remote-Groups`.
+
+    Authelia les envoie séparés par des virgules. Ils ne sont JAMAIS stockés : ils vivent
+    dans `deploy/authelia/users_database.yml` et sont relus à chaque requête, pour qu'un
+    retrait de groupe prenne effet immédiatement, sans intervention en base. Même garde
+    de confiance que `_auteur`."""
+    if not AUTH_PROXY:
+        return []
+    brut = (request.headers.get("Remote-Groups") or "")
+    return [g for g in (x.strip() for x in brut.split(",")) if g]
+
+
+# Miroir des identités déjà écrites : évite une écriture SQLite à CHAQUE requête, ce qui
+# sérialiserait tout le trafic derrière l'unique verrou d'écriture du WAL. On n'écrit que
+# la première fois qu'on voit quelqu'un, puis seulement si son nom ou son email a changé.
+_vus: dict = {}
+
+
+def _enregistrer_utilisateur(conn: sqlite3.Connection, request: Request) -> Optional[str]:
+    """Crée ou rafraîchit la ligne `utilisateur` de la personne connectée (AUTH-1).
+
+    Renvoie son login, ou None hors proxy. Appelé depuis `/api/moi`, que l'UI sollicite à
+    chaque chargement de page : la ligne apparaît donc dès la première visite. Un client
+    purement API qui n'appellerait jamais `/api/moi` ne serait pas enregistré — assumé,
+    et sans conséquence tant que rien n'exige la ligne."""
+    login = _auteur(request)
+    if not login:
+        return None
+    nom = (request.headers.get("Remote-Name") or "").strip() or None
+    email = (request.headers.get("Remote-Email") or "").strip() or None
+    if _vus.get(login) != (nom, email):
+        conn.execute(
+            "INSERT INTO utilisateur (login, nom, email, derniere_vue) "
+            "VALUES (?, ?, ?, datetime('now')) "
+            "ON CONFLICT(login) DO UPDATE SET nom = excluded.nom, email = excluded.email, "
+            "derniere_vue = datetime('now')",
+            (login, nom, email))
+        conn.commit()
+        _vus[login] = (nom, email)
+    return login
+
+
 @app.get("/api/moi")
-def moi(request: Request):
+def moi(request: Request, conn: sqlite3.Connection = Depends(db)):
     """Identité de l'utilisateur connecté + URL de déconnexion (INFRA-1).
 
     En local, sans proxy, l'en-tête est absent → `utilisateur` vaut None et l'UI
     n'affiche ni nom ni déconnexion. Affichage uniquement : l'autorisation est
     entièrement assurée en amont par Authelia.
     """
-    utilisateur = _auteur(request)
+    utilisateur = _enregistrer_utilisateur(conn, request)
     nom = (request.headers.get("Remote-Name") or "").strip() or utilisateur
     return {"utilisateur": utilisateur, "nom": nom,
+            "groupes": _groupes(request),
             "deconnexion_url": AUTH_LOGOUT_URL or None}
 
 

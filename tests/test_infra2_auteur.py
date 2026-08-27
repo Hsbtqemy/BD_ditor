@@ -54,7 +54,7 @@ def _auteurs(db_path, region_id):
 
 
 # --------------------------- Enregistrement --------------------------- #
-def test_correction_enregistre_auteur_connecte(client, album, planche, db_path):
+def test_correction_enregistre_auteur_connecte(client, derriere_proxy, album, planche, db_path):
     a = _region(client, planche["id"])
     _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
     r = client.put(f"/api/regions/{a}/tokens/0",
@@ -64,7 +64,7 @@ def test_correction_enregistre_auteur_connecte(client, album, planche, db_path):
     assert _auteurs(db_path, a) == {"jeanne"}
 
 
-def test_correction_sans_proxy_reste_anonyme(client, album, planche, db_path):
+def test_correction_sans_proxy_reste_anonyme(client, derriere_proxy, album, planche, db_path):
     """En local (pas d'en-tête Remote-User), l'auteur reste NULL — comme avant."""
     a = _region(client, planche["id"])
     _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
@@ -72,7 +72,7 @@ def test_correction_sans_proxy_reste_anonyme(client, album, planche, db_path):
     assert _auteurs(db_path, a) == {None}
 
 
-def test_validation_ne_clobbe_pas_le_correcteur(client, album, planche, db_path):
+def test_validation_ne_clobbe_pas_le_correcteur(client, derriere_proxy, album, planche, db_path):
     """Valider (geste de marc) ne doit PAS écraser qui a corrigé (jeanne) : valider
     n'est pas corriger. Robuste sans spaCy (la correction obsolète est ignorée par le
     WHERE obsolete=0) comme avec (COALESCE préserve l'auteur existant)."""
@@ -85,7 +85,7 @@ def test_validation_ne_clobbe_pas_le_correcteur(client, album, planche, db_path)
 
 
 # --------------------------- Exposition --------------------------- #
-def test_tokens_exposent_corr_auteur(client, album, planche, db_path):
+def test_tokens_exposent_corr_auteur(client, derriere_proxy, album, planche, db_path):
     a = _region(client, planche["id"])
     _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
     _seed_corr(db_path, a, 0, "CRIE", "jeanne", etat="valide")
@@ -95,7 +95,7 @@ def test_tokens_exposent_corr_auteur(client, album, planche, db_path):
 
 
 # --------------------------- Filtrage (API) --------------------------- #
-def test_frequences_filtre_par_auteur(client, album, planche, db_path):
+def test_frequences_filtre_par_auteur(client, derriere_proxy, album, planche, db_path):
     a, b = _region(client, planche["id"]), _region(client, planche["id"])
     _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
     _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])
@@ -106,7 +106,7 @@ def test_frequences_filtre_par_auteur(client, album, planche, db_path):
     assert {r["lemme"] for r in res["results"]} == {"crier"}
 
 
-def test_concordance_filtre_par_auteur_seul(client, album, planche, db_path):
+def test_concordance_filtre_par_auteur_seul(client, derriere_proxy, album, planche, db_path):
     """L'auteur seul est un critère de concordance valide (« montre ce que X a corrigé »)."""
     a, b = _region(client, planche["id"]), _region(client, planche["id"])
     _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
@@ -117,7 +117,7 @@ def test_concordance_filtre_par_auteur_seul(client, album, planche, db_path):
     assert r["count"] == 1 and r["results"][0]["region_id"] == a
 
 
-def test_comparaison_par_auteur(client, album, planche, db_path):
+def test_comparaison_par_auteur(client, derriere_proxy, album, planche, db_path):
     a, b = _region(client, planche["id"]), _region(client, planche["id"])
     _seed(db_path, a, [(0, "CRIE", "crier", "VERB", "")])
     _seed(db_path, b, [(0, "RIT", "rire", "VERB", "")])

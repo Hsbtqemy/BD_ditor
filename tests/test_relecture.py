@@ -42,9 +42,16 @@ def _statut(client, album_id, planche_id):
 # --------------------------------------------------------------------------- #
 # Schéma
 # --------------------------------------------------------------------------- #
-def test_schema_v21(db_path):
+def test_schema_a_jour_et_colonne_relecture(db_path):
+    """Une base neuve est à la version COURANTE et porte `relecture` (ANN-4, posée en v21).
+
+    On compare à `database.SCHEMA_VERSION` plutôt qu'au littéral 21 : épingler le nombre
+    faisait échouer ce test à chaque migration ultérieure sans rien apprendre de plus —
+    constaté au passage en v22 (AUTH-1). Ce qui compte ici est que la base soit migrée
+    jusqu'au bout ET que la colonne d'ANN-4 y soit."""
+    import database
     conn = sqlite3.connect(db_path)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 21
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
     assert "relecture" in {r[1] for r in conn.execute("PRAGMA table_info(planches)")}
     conn.close()
 

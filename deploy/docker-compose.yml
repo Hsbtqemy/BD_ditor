@@ -17,6 +17,12 @@ services:
     environment:
       - BD_DATA_DIR=/data
       - HOME=/data
+      # AUTH-1 : déclare qu'on est DERRIÈRE le proxy d'auth. Sans ce drapeau, l'app
+      # IGNORE `Remote-User`/`Remote-Groups` et tout acte reste anonyme — la garde
+      # anti-usurpation. Ne le poser QUE si Caddy fait bien le `forward_auth` vers
+      # Authelia devant l'app : sinon n'importe quel client pourrait se déclarer
+      # qui il veut, et ce sera une escalade de privilège dès AUTH-2/AUTH-3.
+      - BD_AUTH_PROXY=1
       # Lien de déconnexion affiché dans l'UI (portail Authelia). REMPLACE example.fr.
       - BD_AUTH_LOGOUT_URL=https://auth.example.fr/logout
       # - BD_SPACY_MODEL=fr_core_news_sm   # modèle NLP (lg = index plus riche, + de RAM)

@@ -74,7 +74,7 @@ def test_migration_ajoute_le_journal(tmp_path):
 # --------------------------------------------------------------------------- #
 # Journal append-only + actes humains
 # --------------------------------------------------------------------------- #
-def test_journal_survit_a_la_suppression(client, album, db_path):
+def test_journal_survit_a_la_suppression(client, derriere_proxy, album, db_path):
     """Créer une région + son annotation, puis SUPPRIMER la région : le CASCADE efface tout,
     mais l'événement `suppression` PERSISTE avec un instantané PROFOND (substrat undo/D1)."""
     conn = _lire(db_path)
@@ -97,7 +97,7 @@ def test_journal_survit_a_la_suppression(client, album, db_path):
     assert avant["annotation"]["tags"] == ["colere"]           # snapshot profond complet
 
 
-def test_evenements_humains_avant_apres(client, album, db_path):
+def test_evenements_humains_avant_apres(client, derriere_proxy, album, db_path):
     """Création puis modification d'une région → deux événements, agent capté, avant/après
     reflétant le changement d'OCR ; l'annotation crée aussi son événement."""
     conn = _lire(db_path)
@@ -127,7 +127,7 @@ def test_evenements_humains_avant_apres(client, album, db_path):
     ).fetchone()[0] == 1
 
 
-def test_agent_null_hors_auth(client, album, db_path):
+def test_agent_null_hors_auth(client, derriere_proxy, album, db_path):
     """Sans en-tête d'auth (usage local mono-utilisateur), l'agent est NULL — honnête."""
     conn = _lire(db_path)
     pid = _planche(conn, album["id"])
@@ -142,7 +142,7 @@ def test_agent_null_hors_auth(client, album, db_path):
 # --------------------------------------------------------------------------- #
 # Runs ML (journal.passe_ml)
 # --------------------------------------------------------------------------- #
-def test_passe_ml_journalise_le_run(client, album, db_path):
+def test_passe_ml_journalise_le_run(client, derriere_proxy, album, db_path):
     """`journal.passe_ml` (utilisé par les 3 routes ML + le worker de lot) : ouvre une
     activité, rattache les régions CRÉÉES à leur run (wasGeneratedBy = activite_id), émet un
     événement `creation` (agent=moteur), et clôt avec le bilan. Testé SANS moteur ML (on
@@ -169,7 +169,7 @@ def test_passe_ml_journalise_le_run(client, album, db_path):
 # --------------------------------------------------------------------------- #
 # Indicateurs dérivés
 # --------------------------------------------------------------------------- #
-def test_indicateur_derive(client, album, db_path):
+def test_indicateur_derive(client, derriere_proxy, album, db_path):
     """Dérive = pré-remplissage MACHINE retouché par un humain. On génère une région par un
     run (activite_id), puis on la retouche via l'API (touche=1) → derive=1, taux=1.0."""
     conn = database.get_connection()
@@ -192,7 +192,7 @@ def test_indicateur_derive(client, album, db_path):
     assert ind["evenements"]["par_agent"]["moteur"] >= 1
 
 
-def test_indicateur_scope_collection(client, album, db_path):
+def test_indicateur_scope_collection(client, derriere_proxy, album, db_path):
     """Le bloc `regions` est SCOPÉ par album ; hors périmètre, il ne compte pas."""
     conn = database.get_connection()
     pid = _planche(conn, album["id"])
@@ -208,7 +208,7 @@ def test_indicateur_scope_collection(client, album, db_path):
 # --------------------------------------------------------------------------- #
 # Export PROV-O / TEI
 # --------------------------------------------------------------------------- #
-def test_prov_export_construire(client, album, db_path):
+def test_prov_export_construire(client, derriere_proxy, album, db_path):
     """`tools/provenance_export.construire` : PROV-JSON (agents typés, wasGeneratedBy pour la
     création, wasInvalidatedBy pour la suppression) + fragment TEI revisionDesc."""
     import provenance_export
@@ -244,7 +244,7 @@ def _run_tool(script, db_path, data_dir, *args):
                           text=True, encoding="utf-8")
 
 
-def test_prov_export_cli(client, album, db_path, data_dir):
+def test_prov_export_cli(client, derriere_proxy, album, db_path, data_dir):
     """CLI headless (sous-processus, UTF-8) : produit un PROV-JSON valide sur stdout."""
     conn = _lire(db_path)
     pid = _planche(conn, album["id"])

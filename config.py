@@ -45,6 +45,20 @@ WEB_JPEG_QUALITY = 82
 # d'auth) → l'UI n'affiche ni utilisateur ni lien de déconnexion (dégradation propre).
 AUTH_LOGOUT_URL = os.environ.get("BD_AUTH_LOGOUT_URL", "").strip()
 
+# Confiance accordée aux en-têtes d'identité (AUTH-1). `Remote-User`, `Remote-Groups`,
+# `Remote-Name` et `Remote-Email` sont posés par le proxy d'auth — et un client qui
+# atteindrait l'application EN DIRECT pourrait les forger de toutes pièces. Tant que rien
+# n'est autorisé sur cette base, c'est sans conséquence ; dès qu'une autorisation en
+# dépendra (AUTH-2, AUTH-3), ce serait une escalade de privilège en une ligne de curl.
+#
+# D'où un OPT-IN explicite : sans `BD_AUTH_PROXY`, les en-têtes sont IGNORÉS et tout acte
+# reste anonyme — le comportement mono-poste actuel, inchangé. Le déploiement pose le
+# drapeau (cf. deploy/docker-compose.yml), et lui seul.
+#
+# Ce n'est pas un doublon de la topologie réseau (l'app n'écoute qu'en interne) : une
+# erreur de `ports:` dans un compose ne laisse aucune trace, ce drapeau si.
+AUTH_PROXY = os.environ.get("BD_AUTH_PROXY", "").strip().lower() in ("1", "true", "oui", "yes")
+
 # Garde-fou anti-bombe de décompression : nombre max de pixels décodés par image.
 # Très au-dessus d'un scan de BD (≤ ~100 Mpx même en haute résolution) mais bloque
 # les images-bombes AVANT l'allocation mémoire (Pillow vérifie via l'en-tête).
