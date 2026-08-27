@@ -25,11 +25,20 @@ seule 49,7 Mio, + spaCy 143,4, + YOLOv8 826,4, + EasyOCR 833,6. Soit ~10 % de la
 disponible, très loin d'un OOM.
 
 L'OOM du 2026-06-24 a probablement été causé par le **torch CUDA**, retiré depuis
-(`7171040`) : il charge les runtimes CUDA en mémoire même sans GPU. Réserve : la mesure
-porte sur une planche SYNTHÉTIQUE de 1600×2200. L'empreinte des modèles est fixe, celle
-des tampons d'image ne l'est pas — un master de scan réel en 8000 px chargerait bien
-davantage. **À refaire sur un vrai master avant de conclure.** Si ça tient, cette fiche
-passe de « prérequis du déploiement » à dormante, et son `Reste` est à réécrire.
+(`7171040`) : il charge les runtimes CUDA en mémoire même sans GPU.
+
+**Confirmé sur un VRAI master** (`corpus/album_2/planche_0002.tif`, 3748×4710, 17,7 Mpx,
+400 dpi), les trois passes enchaînées dans un seul conteneur : app + spaCy 173 Mio →
+import 407,7 Mio → segmentation 410,5 Mio → bulles 779 Mio → OCR **1,036 Gio**, **pic
+observé 1,216 Gio**. Soit **15 % des 8,17 Go**. Résultats réels : 12 cases, 24 bulles,
+24 régions avec texte OCR.
+
+**La raison d'être de cette fiche a donc disparu.** Elle existait pour garantir le
+zéro-OOM ; l'OOM venait du torch CUDA, pas de l'architecture. Reste à trancher : la
+clore, ou l'abandonner en gardant son `Reste` comme trace du raisonnement. L'isolation
+subprocess garde un mérite propre — un crash du worker n'emporte pas l'API — mais ce
+n'est plus le même chantier, ni la même urgence, et il faudrait le réécrire sous cet
+angle.
 
 **L'OOM n'était pas théorique** : observé le 2026-06-24 en annotant une vraie planche, le
 process tué SANS traceback Python. Les données committées étaient saines — c'est le seul

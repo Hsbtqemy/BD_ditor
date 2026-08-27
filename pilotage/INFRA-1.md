@@ -19,7 +19,7 @@ conteneur. Reste ce qui exige le VPS, plus le cache des modèles ML, non testé.
 - [x] Le conteneur démarre et sert l'application, volume monté sur `/data` : base créée en `/data/bd_annotator.sqlite`, `/api/sante` renvoie `kumiko`/`bulles`/`ocr`/`lemmes` tous à `true`
 - [x] La base survit à la **destruction** du conteneur : album créé, conteneur supprimé, nouveau conteneur sur le même volume — l'album est toujours là
 - [x] Les **caches de modèles ML** survivent : passes bulles et OCR lancées, modèles téléchargés dans `/data/.cache` (50 Mo) et `/data/.EasyOCR` (95 Mo) — donc sur le volume, réutilisés par les conteneurs suivants. `HOME=/data` fait son travail
-- [ ] Les trois passes ML tournent sur un **vrai master** de `corpus/`, pas seulement sur une planche synthétique : l'empreinte des modèles est fixe, celle des tampons d'image ne l'est pas
+- [x] Les trois passes ML tournent sur un **vrai master** (`corpus/album_2/planche_0002.tif`, 3748×4710, 400 dpi) : 12 cases, 24 bulles, 24 régions avec texte OCR — pic mémoire 1,216 Gio
 
 ### Déploiement — jamais lancé
 - [ ] `deploy/docker-compose.yml` (app + redis + authelia + caddy) monte réellement sur le VPS
