@@ -1,24 +1,28 @@
 ---
 chantier: SANTE-1
-statut: à venir
+statut: interrompu
 ---
 
 # SANTE-1 — /api/sante annonce vivants des moteurs morts
 
-**Point de départ** — trois fois en une journée, le 2026-08-27, la route a répondu
-`true` pour un moteur inutilisable. Aucune ligne écrite pour y remédier.
+**Arrêté sur** — 2026-08-27, `ed17b32` : cœur `sante.py`, `/api/sante?profond=1`,
+contrat d'image dans le Dockerfile. Éprouvé sur trois images cassées à dessein, 3/3
+rejetées. Reste l'exposition à l'opérateur.
 
 ## Reste
 
 ### Le défaut
-- [ ] `bulles_available()` et `ocr_available()` cessent de conclure d'un `importlib.util.find_spec` : il LOCALISE un module, il ne l'importe pas, et ne peut donc voir aucune incompatibilité binaire
-- [ ] La disponibilité annoncée par `/api/sante` reflète le fait qu'un moteur **s'importe**, pas qu'un fichier existe sur le disque
-- [ ] Le coût reste tenable : importer torch prend plusieurs secondes, la route rapide ne doit pas devenir lente — soit un contrôle approfondi séparé (`?profond=1`), soit un résultat mis en cache au premier appel
+- [x] Un contrôle PROFOND existe à côté du rapide : `sante.profond()` importe réellement le moteur au lieu de le localiser
+- [x] `/api/sante?profond=1` reflète le fait qu'un moteur **s'importe** ; la route sans paramètre garde son contrat historique, et un test vérifie qu'elle ne déclenche AUCUN import
+- [x] Le coût reste tenable : voie profonde SÉPARÉE et mémoïsée par moteur — torch n'est chargé qu'une fois par process
 
 ### Ce qui doit être attrapé
-- [ ] Une pile où `import ultralytics` lève `RuntimeError: operator torchvision::nms does not exist` est rapportée EN PANNE, pas disponible
-- [ ] Un Kumiko présent mais cassé par une version d'OpenCV incompatible est rapporté en panne — aujourd'hui `kumiko_available()` vérifie le clone et `cv2`, sans jamais exécuter Kumiko
-- [ ] La cause de l'indisponibilité est lisible dans la réponse : un opérateur à distance doit pouvoir diagnostiquer sans accès shell
+- [x] Une pile où `import ultralytics` lève `torchvision::nms` est rapportée EN PANNE — build rejeté, `PANNE bulles, ocr`
+- [x] Un Kumiko cassé par OpenCV 5 est rapporté en panne : Kumiko étant un SCRIPT et non une bibliothèque, on vérifie son point d'entrée ET la majeure d'OpenCV — build rejeté, `PANNE kumiko`
+- [x] La cause est lisible : `{ok, erreur}` porte le type et le message de l'exception, borné à 300 caractères
+- [x] Le moteur ABSENT est attrapé, ce que la suite ne sait pas faire : contrat d'image `tools/verifier_moteurs.py --exiger`, lancé au build — image sans modèle spaCy rejetée, `PANNE nlp`
+- [ ] L'UI expose l'état profond : aujourd'hui il faut appeler `/api/sante?profond=1` à la main. Un opérateur sans shell ne le découvrira pas tout seul
+- [ ] `docs/deploiement-docker.md` explique quoi faire d'un `PANNE` — la route dit ce qui ne va pas, pas encore quoi en faire
 
 ## Contexte
 

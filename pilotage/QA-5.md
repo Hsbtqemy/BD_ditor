@@ -17,7 +17,7 @@ dans l'image (2 skips, tous deux documentés). Reste les E2E et le conflit IIIF.
 
 ### Ce que ça doit attraper
 - [x] Les trois défauts du 2026-08-27 ont été RÉELLEMENT rejoués dans des images cassées à dessein. Verdict : **deux sur trois détectés**, le troisième NON — mesuré, pas raisonné
-- [ ] Le moteur ML manquant est détecté à la construction, ce que la suite ne peut PAS faire : l'image déclare les moteurs qu'elle DOIT avoir et un contrôle le vérifie. Sans ça, une image sans spaCy passe la suite à 100 % vert tout en tuant quatre chantiers livrés (Exploration, ANN-4, NLP-1, ANN-5)
+- [x] Le moteur ML manquant est détecté à la CONSTRUCTION : `tools/verifier_moteurs.py --exiger` tourne dans l'étape `runtime` (SANTE-1, `ed17b32`). Les trois défauts du jour y sont rejetés, 3/3 — là où la suite n'en voyait que 2
 - [ ] Les E2E tournent quelque part de reproductible : elles exigent un navigateur, restent sur la machine de dev, et sont donc le dernier morceau non couvert par l'artefact
 - [ ] Un écart de version entre le venv local et l'image est signalé, au lieu d'être découvert par un utilisateur
 
