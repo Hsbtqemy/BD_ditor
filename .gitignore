@@ -45,3 +45,7 @@ deploy/authelia/*.log
 # Outillage Node (journal de bord `pilote`) — manifeste et lock versionnés (cf. QA-1),
 # pas l'arbre installé
 node_modules/
+
+# Réglages Claude Code propres à la machine (chemins de scratchpad par session).
+# `.claude/settings.json` (réglages PARTAGÉS du dépôt) reste versionnable s'il apparaît.
+.claude/settings.local.json
