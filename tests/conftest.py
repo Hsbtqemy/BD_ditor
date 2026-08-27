@@ -36,6 +36,7 @@ import pipeline.bulles as bulles_mod  # noqa: E402
 import pipeline.jobs as jobs_mod  # noqa: E402
 import pipeline.ocr as ocr_mod  # noqa: E402
 import pipeline.sharedocs as sharedocs_mod  # noqa: E402
+import sante as sante_mod  # noqa: E402
 
 requires_kumiko = pytest.mark.skipif(
     not segmentation.kumiko_available(),
@@ -62,6 +63,7 @@ def _reset_global_state():
     ocr_mod._crop_cache.update(planche_id=None, img=None, scale=1.0)
     sharedocs_mod.disconnect()
     main._vus.clear()          # AUTH-1 : miroir des identités déjà écrites en base
+    sante_mod._reset()         # SANTE-1 : mémoïsation des contrôles profonds
     yield
 
 

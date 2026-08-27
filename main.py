@@ -32,6 +32,7 @@ import accord
 import accord_inter
 import journal
 import lexique_import
+import sante as sante_moteurs
 import undo
 from pipeline.backup import make_backup
 from pipeline import jobs
@@ -2844,13 +2845,24 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db)):
 # Statut Kumiko + frontend
 # =========================================================================== #
 @app.get("/api/sante")
-def sante():
+def sante(profond: bool = False):
+    """État des moteurs. RAPIDE par défaut, PROFOND sur demande (SANTE-1).
+
+    Sans `?profond=1`, on répond comme avant : présence des modules, sans rien importer.
+    C'est ce que l'UI appelle à chaque chargement de page, et ça doit rester instantané.
+
+    Avec `?profond=1`, chaque moteur est RÉELLEMENT importé et le rapport dit pourquoi
+    quand ça échoue. Coûteux au premier appel (torch se charge, plusieurs secondes et
+    quelques centaines de Mo), puis mémorisé. À utiliser pour diagnostiquer une instance
+    déployée, où l'on n'a plus d'accès shell — c'est précisément là que le contrôle rapide
+    ment : le 2026-08-27 il a annoncé `bulles: true` sur une pile dont le premier
+    `import ultralytics` levait une exception. Cf. `sante.py`."""
     from pipeline.modeles import etat_modeles
-    return {"kumiko": kumiko_available(),
-            "bulles": bulles_available(),
-            "ocr": ocr_available(),
-            "lemmes": nlp.nlp_available(),
-            "modeles_charges": etat_modeles()}   # CONC-2 : modèles résidents en RAM
+    rep = dict(sante_moteurs.rapide())
+    rep["modeles_charges"] = etat_modeles()          # CONC-2 : modèles résidents en RAM
+    if profond:
+        rep["profond"] = sante_moteurs.rapport()
+    return rep
 
 
 def _auteur(request: Request) -> Optional[str]:

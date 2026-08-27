@@ -127,6 +127,17 @@ ENV BD_DATA_DIR=/data \
     HOME=/data \
     PYTHONUNBUFFERED=1
 
+# CONTRAT D'IMAGE (SANTE-1 / QA-5) : les quatre moteurs doivent être RÉELLEMENT
+# utilisables, pas seulement présents. Le build ÉCHOUE sinon.
+#
+# Ce contrôle ne fait pas double emploi avec la suite de l'étape `test`, il couvre ce
+# qu'elle ne peut pas couvrir. Mesuré le 2026-08-27 sur une image dont le modèle spaCy
+# avait été retiré : 451 tests, ZÉRO échec — la couche NLP dégrade proprement et les tests
+# encodent la même hypothèse, si bien qu'« absent » est un état qu'ils acceptent. Correct
+# en développement local ; inacceptable pour un artefact, où l'absence de spaCy tue
+# quatre chantiers livrés (Exploration, ANN-4, NLP-1, ANN-5) en silence.
+RUN python tools/verifier_moteurs.py --exiger kumiko,bulles,ocr,nlp
+
 EXPOSE 8000
 
 # 1 SEUL worker : l'app garde des états en mémoire (jobs, session, modèles).
