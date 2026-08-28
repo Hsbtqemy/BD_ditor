@@ -323,6 +323,13 @@ Statut de **relecture grammaticale** (`à faire` / `en cours` / `faite`), **orth
 
 `pipeline/sharedocs.py` : client WebDAV (RFC 4918) pour ShareDocs Huma-Num — `PROPFIND` / `GET` / `PUT`, Basic Auth. Les identifiants restent **en mémoire serveur uniquement, jamais sur disque**. Les tests le simulent via httpx `MockTransport` (aucun réseau réel).
 
+**Deux sortes de sessions (SHARE-1)**, et c'est la décision : les deux, pas l'une ou l'autre.
+
+- La session d'**INSTANCE** (`BD_SHAREDOCS_URL/USER/PASS`) est vivante **dès le démarrage**, sans que personne ne clique — sinon elle ne sert de repli à personne. Non validée au chargement (un PROPFIND ferait dépendre le boot d'Huma-Num). La **couper ou la remplacer est réservé aux administrateurs** : sans cette garde, la première personne qui clique « déconnexion » prive tout le monde du repli. Coupée, elle ne repart pas de l'env (sinon la couper n'aurait aucun effet).
+- Les sessions **PERSONNELLES**, une par principal. Résolution : **la mienne si j'en ai une, celle de l'instance sinon** ; forcer un compte absent est une **erreur nommée**, jamais un repli silencieux. `GET /api/sharedocs/etat` dit lequel répondrait (`actif`), et le compte se **choisit** à l'écran — le sélecteur gouverne tout le panneau, pas seulement le dépôt.
+- **Le module ne sait RIEN du proxy** : il range des identifiants sous la clé qu'on lui donne, et `principal` est un paramètre **obligatoire** (keyword-only sans défaut) — un défaut ferait retomber un appelant distrait sur le compte de l'instance, ce qui marcherait parfaitement et déposerait sous le mauvais compte. Qui est « je » se décide dans `main._principal_sharedocs` : emplacement unique **hors proxy** (mono-poste inchangé), le login derrière le proxy, et **aucune session personnelle sans identité** (fermeture par défaut, comme la portée vide d'AUTH-2).
+- **Le dépôt de sauvegarde est journalisé** (A3, `cible_table='sharedocs'`, invisible à l'undo dont la liste de tables est blanche) et l'événement distingue **la personne qui a cliqué** du **compte Huma-Num employé**.
+
 ### Sauvegarde
 
 `pipeline/backup.py` : snapshot SQLite cohérent par `VACUUM INTO` → zip horodaté. Téléchargeable (`/api/sauvegarde`) ou déposable sur ShareDocs.

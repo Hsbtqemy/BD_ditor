@@ -273,6 +273,9 @@ class SharedocsConnIn(BaseModel):
     url: str
     user: str
     password: Optional[str] = None   # vide => repli sur BD_SHAREDOCS_PASS
+    # SHARE-1 — 'instance' remplace le compte de l'instance (administrateurs seuls) ;
+    # sinon on ouvre SA propre session.
+    compte: Optional[str] = None
 
 
 class SharedocsImportIn(BaseModel):
@@ -280,10 +283,16 @@ class SharedocsImportIn(BaseModel):
     album_id: Optional[int] = None
     nouvel_album: Optional[str] = None
     segmenter: bool = False
+    compte: Optional[str] = None            # SHARE-1 : 'perso' | 'instance' | None (auto)
 
 
 class DeposerIn(BaseModel):
     dossier: str = ""   # dossier ShareDocs cible (vide = racine)
+    # SHARE-1 — le compte se CHOISIT à chaque dépôt (décision du 2026-08-28). Une
+    # sauvegarde déposée sous un compte personnel atterrit dans un espace qui s'en va
+    # avec la personne ; mais l'imposer priverait d'un dépôt de dépannage. None = la
+    # règle par défaut (la mienne si j'en ai une, celle de l'instance sinon).
+    compte: Optional[str] = None
 
 
 class JobIn(BaseModel):
@@ -974,31 +983,89 @@ def deplacer_region(region_id: int, payload: MoveIn,
 # =========================================================================== #
 # ShareDocs (WebDAV Huma-Num) — explorateur & import
 # =========================================================================== #
+# Emplacement unique du mono-poste (SHARE-1). Une chaîne VIDE ne peut jamais être un
+# login : `autorisation.auteur` strip et rend None sur vide.
+_MONO = ""
+
+
+def _principal_sharedocs(portee: autorisation.Portee) -> Optional[str]:
+    """Sous quelle clé ranger la session ShareDocs de cette requête (SHARE-1).
+
+    · **Mono-poste** (`BD_AUTH_PROXY` faux) : un emplacement unique. Il n'y a qu'une
+      personne devant la machine, et le comportement d'avant SHARE-1 est conservé à
+      l'identique — c'est une case du chantier, prouvée par un test.
+    · **Derrière le proxy** : le login.
+    · **Derrière le proxy SANS identité** : `None`, donc AUCUNE session personnelle
+      possible. Les ranger toutes sous une même clé y ferait partager un compte Huma-Num
+      entre inconnus — précisément le défaut que ce chantier corrige. Il reste le compte
+      de l'instance, ou rien : fermeture par défaut, comme la portée vide d'AUTH-2.
+
+    Ce module tranche la question ; `pipeline/sharedocs.py` ne sait rien du proxy et range
+    ce qu'on lui donne. Deux implémentations de « qui est là » finiraient par diverger.
+    """
+    return _MONO if not AUTH_PROXY else portee.utilisateur
+
+
+def _exiger_admin_instance(portee: autorisation.Portee, geste: str) -> None:
+    """Le compte de l'instance n'appartient à personne en particulier (SHARE-1).
+
+    Sans cette garde, la première personne qui clique « déconnexion » en prive tout le
+    monde — le même défaut qu'AUTH-2 avait trouvé ailleurs : une action personnelle aux
+    effets collectifs, qui marche parfaitement et casse pour les autres.
+    """
+    if not portee.admin:
+        raise HTTPException(
+            403, f"{geste} le compte ShareDocs de l'instance est réservé aux "
+                 "administrateurs : il sert de repli à tout le monde.")
+
+
 @app.get("/api/sharedocs/etat")
-def sharedocs_etat():
-    """État de connexion (sans mot de passe) + pré-remplissage depuis l'env."""
-    return sharedocs.status()
+def sharedocs_etat(portee: autorisation.Portee = Depends(portee_courante)):
+    """État des sessions (jamais de mot de passe) + pré-remplissage depuis l'env.
+
+    Dit LEQUEL des deux comptes répondrait (`actif`) : sans cela on dépose sans savoir où,
+    et la question n'a plus de réponse évidente dès que les deux existent.
+    """
+    return sharedocs.status(principal=_principal_sharedocs(portee))
 
 
 @app.post("/api/sharedocs/connexion")
-def sharedocs_connexion(payload: SharedocsConnIn):
+def sharedocs_connexion(payload: SharedocsConnIn,
+                        portee: autorisation.Portee = Depends(portee_courante)):
+    """Ouvre MA session ShareDocs — ou remplace celle de l'instance (administrateurs)."""
     pwd = payload.password or os.environ.get("BD_SHAREDOCS_PASS", "")
+    if payload.compte == sharedocs.INSTANCE:
+        _exiger_admin_instance(portee, "Remplacer")
+        try:
+            return {"connecte": True, "compte": sharedocs.INSTANCE,
+                    **sharedocs.configurer_instance(payload.url, payload.user, pwd)}
+        except ShareDocsError as exc:
+            raise HTTPException(400, str(exc))
     try:
-        return sharedocs.configure(payload.url, payload.user, pwd)
+        return sharedocs.configurer(payload.url, payload.user, pwd,
+                                    principal=_principal_sharedocs(portee))
     except ShareDocsError as exc:
         raise HTTPException(400, str(exc))
 
 
 @app.post("/api/sharedocs/deconnexion")
-def sharedocs_deconnexion():
-    sharedocs.disconnect()
-    return {"connecte": False}
+def sharedocs_deconnexion(compte: Optional[str] = None,
+                          portee: autorisation.Portee = Depends(portee_courante)):
+    """Ferme MA session. `compte=instance` coupe celle de l'instance (administrateurs)."""
+    if compte == sharedocs.INSTANCE:
+        _exiger_admin_instance(portee, "Couper")
+        sharedocs.couper_instance()
+        return {"connecte": False, "compte": sharedocs.INSTANCE}
+    sharedocs.deconnecter(principal=_principal_sharedocs(portee))
+    return {"connecte": False, "compte": sharedocs.PERSO}
 
 
 @app.get("/api/sharedocs/liste")
-def sharedocs_liste(chemin: str = ""):
+def sharedocs_liste(chemin: str = "", compte: Optional[str] = None,
+                    portee: autorisation.Portee = Depends(portee_courante)):
     try:
-        return sharedocs.list_dir(chemin)
+        return sharedocs.list_dir(chemin, principal=_principal_sharedocs(portee),
+                                  compte=compte)
     except ShareDocsError as exc:
         raise HTTPException(400, str(exc))
 
@@ -1046,7 +1113,8 @@ def sharedocs_importer(payload: SharedocsImportIn,
         master = None
         try:
             t0 = time.perf_counter()
-            data = sharedocs.download(chemin)
+            data = sharedocs.download(
+                chemin, principal=_principal_sharedocs(portee), compte=payload.compte)
             if not data:
                 raise ShareDocsError("fichier vide")
             t_dl = time.perf_counter() - t0
@@ -1137,6 +1205,7 @@ def telecharger_sauvegarde(portee: autorisation.Portee = Depends(portee_courante
 
 @app.post("/api/sharedocs/deposer-sauvegarde")
 def deposer_sauvegarde(payload: DeposerIn,
+                       conn: sqlite3.Connection = Depends(db),
                        portee: autorisation.Portee = Depends(portee_courante)):
     """Dépose une sauvegarde de la base dans un dossier ShareDocs (PUT WebDAV).
 
@@ -1154,10 +1223,25 @@ def deposer_sauvegarde(payload: DeposerIn,
     folder = payload.dossier.strip("/")
     chemin = f"{folder}/{name}" if folder else name
     try:
-        sharedocs.upload(chemin, data)
+        depot = sharedocs.upload(chemin, data,
+                                 principal=_principal_sharedocs(portee),
+                                 compte=payload.compte)
     except ShareDocsError as exc:
         raise HTTPException(400, str(exc))
-    return {"depose": chemin, "taille": len(data)}
+
+    # SHARE-1 — le dépôt est un ACTE, et il ne laissait aucune trace : rien ne disait qui
+    # avait déposé quoi, ni sous quel compte. L'événement distingue les DEUX faits — la
+    # personne qui a cliqué (l'agent, capté par la dépendance globale) et le compte
+    # Huma-Num employé — parce qu'ils cessent d'être le même dès qu'il y a deux comptes
+    # possibles. `cible_table='sharedocs'` n'est pas une table du schéma, et c'est déjà le
+    # contrat du journal (`cible_id` n'est pas une FK) ; l'undo ne le voit pas, sa liste
+    # blanche de tables ne le contient pas.
+    journal.journaliser(conn, "creation", "sharedocs", None,
+                        apres={"chemin": chemin, "taille": len(data),
+                               "compte": depot["compte"], "compte_user": depot["user"]})
+    conn.commit()
+    return {"depose": chemin, "taille": len(data),
+            "compte": depot["compte"], "compte_user": depot["user"]}
 
 
 @app.patch("/api/planches/{planche_id}/statut")

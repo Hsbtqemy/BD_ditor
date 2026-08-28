@@ -381,8 +381,18 @@
       <div id="sd-browser" class="sd-browser" hidden>
         <div class="sd-toolbar">
           <div id="sd-breadcrumb" class="sd-breadcrumb"></div>
+          <!-- SHARE-1 — le compte gouverne TOUT le panneau, pas seulement le dépôt : on
+               navigue dans l'arborescence de celui sous lequel on déposera. Choisir au
+               dernier moment ferait déposer ailleurs que là où l'on regarde. -->
+          <label id="sd-compte-box" class="sd-compte" hidden>
+            <span class="muted small">Compte</span>
+            <select id="sd-compte" class="small"
+                    title="Le compte ShareDocs employé pour naviguer, importer et déposer"></select>
+          </label>
           <button id="sd-deposer" class="ghost small"
                   title="Déposer une sauvegarde de la base dans ce dossier">💾 Sauvegarde ici</button>
+          <button id="sd-connect-perso" class="ghost small" hidden
+                  title="Ouvrir une session avec mon propre compte Huma-Num">Mon compte…</button>
           <button id="sd-disconnect" class="ghost small">Déconnexion</button>
         </div>
         <div id="sd-list" class="sd-list"></div>

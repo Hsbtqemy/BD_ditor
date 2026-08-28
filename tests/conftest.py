@@ -62,7 +62,7 @@ def _reset_global_state():
         except Exception:
             pass
     ocr_mod._crop_cache.update(planche_id=None, img=None, scale=1.0)
-    sharedocs_mod.disconnect()
+    sharedocs_mod.reinitialiser()      # SHARE-1 : DEUX magasins (instance + perso)
     main._vus.clear()          # AUTH-1 : miroir des identités déjà écrites en base
     sante_mod._reset()         # SANTE-1 : mémoïsation des contrôles profonds
     yield

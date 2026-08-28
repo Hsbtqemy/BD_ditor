@@ -94,7 +94,12 @@ Toutes amplifiées par l'absence d'authentification.
 - Lancement prod : `uvicorn main:app --workers 1` (jamais `--reload`).
 - Données configurables : `BD_DATA_DIR` (racine corpus/derivatives/base),
   `BD_DB_PATH` (base). ShareDocs : `BD_SHAREDOCS_URL/USER/PASS` (le mot de passe
-  n'est jamais persisté ni renvoyé).
+  n'est jamais persisté ni renvoyé). **Depuis SHARE-1, ces trois variables déclarent
+  le compte d'INSTANCE**, vivant dès le démarrage et servant de repli à qui n'a pas
+  connecté le sien — à assumer : toute personne admise sur l'instance peut s'en servir.
+  Le couper ou le remplacer est réservé aux administrateurs. Les sessions personnelles
+  s'ajoutent, une par principal, et restent comme avant **en mémoire serveur
+  uniquement** — deux magasins désormais, aucun sur disque.
 - Auth (derrière proxy) : `BD_AUTH_LOGOUT_URL` = URL de déconnexion du portail
 - Auth (derrière proxy) : **`BD_AUTH_PROXY`** = déclare qu'un proxy d'authentification
   est bien devant l'application (AUTH-1). **Sans ce drapeau, les en-têtes d'identité

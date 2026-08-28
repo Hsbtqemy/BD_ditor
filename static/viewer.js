@@ -1982,7 +1982,7 @@ function setupMenus() {
    Explorateur ShareDocs (WebDAV Huma-Num) — modale
    =================================================================== */
 const SD_IMG = /\.(tif|tiff|jpe?g|jp2|j2k|jpf|jpx|jpc|j2c|png|bmp|gif|webp)$/i;
-state.sd = { cwd: "", entries: [], selected: new Set(), importing: false, cancelImport: false, abort: null };
+state.sd = { cwd: "", entries: [], selected: new Set(), importing: false, cancelImport: false, abort: null, compte: null };
 
 function sdFmtSize(n) {
   if (n == null) return "";
@@ -1998,12 +1998,41 @@ function sdShow(which) {            // "login" | "browser"
   $("#sd-import-form").hidden = true;
 }
 
+/* SHARE-1 — il y a DEUX comptes possibles : le mien et celui de l'instance. L'écran doit
+   dire lequel répond, sinon on dépose sans savoir où. Le libellé porte l'origine ; la
+   liste déroulante ne paraît que s'il y a vraiment un choix à faire. */
+const SD_COMPTES = { perso: "mon compte", instance: "compte de l'instance" };
+
+function sdRendreComptes(etat) {
+  const sel = $("#sd-compte");
+  const dispo = [];
+  if (etat.perso) dispo.push(["perso", etat.perso.user]);
+  if (etat.instance) dispo.push(["instance", etat.instance.user]);
+  sel.innerHTML = dispo.map(
+    ([c, u]) => `<option value="${c}">${esc(SD_COMPTES[c])} — ${esc(u)}</option>`).join("");
+  // Un choix mémorisé qui n'est plus disponible doit être ABANDONNÉ : après avoir fermé
+  // ma session, `state.sd.compte === "perso"` désignerait un compte absent. Le `<select>`
+  // refuserait la valeur en silence et afficherait la première option, pendant que la
+  // navigation continuerait de réclamer l'autre — l'écran et l'état diraient deux choses.
+  const noms = dispo.map(([c]) => c);
+  if (state.sd.compte && !noms.includes(state.sd.compte)) state.sd.compte = null;
+  const actif = etat.actif ? etat.actif.compte : null;
+  if (actif) sel.value = state.sd.compte || actif;
+  // Un choix à une seule branche n'est pas un choix : on le cache plutôt que de le griser.
+  $("#sd-compte-box").hidden = dispo.length < 2;
+  // « Mon compte… » n'a de sens que si je n'en ai pas encore ouvert un.
+  $("#sd-connect-perso").hidden = !!etat.perso;
+  $("#sd-conn-state").textContent = etat.actif
+    ? `connecté · ${etat.actif.user} (${SD_COMPTES[etat.actif.compte]})`
+    : "non connecté";
+}
+
 async function sdOpen() {
   $("#sharedocs").hidden = false;
   $("#sd-login-msg").textContent = "";
   try {
     const etat = await apiGet("/api/sharedocs/etat");
-    $("#sd-conn-state").textContent = etat.connecte ? `connecté · ${etat.user}` : "non connecté";
+    sdRendreComptes(etat);
     if (etat.connecte) {
       sdShow("browser");
       sdNavigate(state.sd.cwd || "");
@@ -2015,6 +2044,15 @@ async function sdOpen() {
       ($("#sd-url").value ? $("#sd-pass") : $("#sd-url")).focus();
     }
   } catch (e) { toast("ShareDocs : " + e.message, "error"); }
+}
+
+/* Changer de compte relance la navigation À LA RACINE : un chemin valide chez l'un ne
+   l'est pas forcément chez l'autre, et rester sur place afficherait une erreur au lieu
+   d'un dossier. */
+function sdChangerCompte() {
+  state.sd.compte = $("#sd-compte").value || null;
+  state.sd.selected.clear();
+  sdNavigate("");
 }
 
 function sdClose() { $("#sharedocs").hidden = true; }
@@ -2039,15 +2077,25 @@ async function sdConnect() {
 async function sdDisconnect() {
   if (state.sd.abort) state.sd.abort.abort();   // stoppe un import en cours avant de réinitialiser
   try { await apiSend("POST", "/api/sharedocs/deconnexion"); } catch (_) {}
-  state.sd = { cwd: "", entries: [], selected: new Set(), importing: false, cancelImport: false, abort: null };
-  $("#sd-conn-state").textContent = "non connecté";
+  state.sd = { cwd: "", entries: [], selected: new Set(), importing: false, cancelImport: false, abort: null, compte: null };
   $("#sd-pass").value = "";
+  // Se déconnecter ferme MA session ; celle de l'instance peut prendre le relais, et
+  // l'écran doit le dire au lieu d'annoncer « non connecté » à tort. La suite se décide
+  // sur l'ÉTAT RENDU par le serveur, jamais en relisant le texte qu'on vient d'afficher :
+  // une décision prise sur du texte rendu se casse au premier changement de libellé.
+  let etat = null;
+  try { etat = await apiGet("/api/sharedocs/etat"); } catch (_) { /* hors ligne */ }
+  if (etat) sdRendreComptes(etat);
+  else $("#sd-conn-state").textContent = "non connecté";
+  if (etat && etat.connecte) { sdNavigate(""); return; }
   sdShow("login");
 }
 
 async function sdNavigate(path) {
   try {
-    const entries = await apiGet("/api/sharedocs/liste?chemin=" + encodeURIComponent(path));
+    const entries = await apiGet(
+      "/api/sharedocs/liste?chemin=" + encodeURIComponent(path)
+      + (state.sd.compte ? "&compte=" + encodeURIComponent(state.sd.compte) : ""));
     state.sd.cwd = path;
     state.sd.entries = entries;
     sdRenderBreadcrumb();
@@ -2250,7 +2298,7 @@ async function sdDoImport() {
     sdProgressUpdate(i, chemins.length, chemin.split("/").pop(), segmenter, ok, ko);
     try {
       const res = await apiSend("POST", "/api/sharedocs/importer",
-        { chemins: [chemin], album_id: albumId, segmenter },
+        { chemins: [chemin], album_id: albumId, segmenter, compte: state.sd.compte },
         { signal: state.sd.abort.signal });
       if (res.importes.length) { ok++; state.sd.selected.delete(chemin); }
       for (const er of res.erreurs) { ko++; sdProgressError(er.chemin, er.erreur); }
@@ -2297,8 +2345,14 @@ function sdDeposerSauvegarde() {
   const btn = $("#sd-deposer");
   const old = btn.textContent;
   btn.disabled = true; btn.textContent = "Dépôt…";
-  apiSend("POST", "/api/sharedocs/deposer-sauvegarde", { dossier: state.sd.cwd })
-    .then((res) => toast(`Sauvegarde déposée : ${res.depose}`, "success"))
+  apiSend("POST", "/api/sharedocs/deposer-sauvegarde",
+          { dossier: state.sd.cwd, compte: state.sd.compte })
+    // Le compte EMPLOYÉ est rendu par le serveur et affiché : une sauvegarde déposée sous
+    // un compte personnel atterrit dans un espace qui s'en va avec la personne, et c'est
+    // le genre de chose qu'on veut lire au moment où ça arrive.
+    .then((res) => toast(
+      `Sauvegarde déposée : ${res.depose} (${SD_COMPTES[res.compte] || res.compte}`
+      + ` — ${res.compte_user})`, "success"))
     .catch((e) => toast("Dépôt : " + e.message, "error"))
     .finally(() => { btn.disabled = false; btn.textContent = old; });
 }
@@ -2310,6 +2364,8 @@ function setupSharedocs() {
   $("#sd-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") sdConnect(); });
   $("#sd-disconnect").onclick = sdDisconnect;
   $("#sd-deposer").onclick = sdDeposerSauvegarde;
+  $("#sd-compte").onchange = sdChangerCompte;
+  $("#sd-connect-perso").onclick = () => { $("#sd-pass").value = ""; sdShow("login"); };
   $("#sd-selectall").onclick = sdToggleSelectAll;
   $("#sd-import").onclick = sdOpenImport;
   $("#sd-album").onchange = sdImportToggleNew;

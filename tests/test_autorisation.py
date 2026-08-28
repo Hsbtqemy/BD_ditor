@@ -31,6 +31,12 @@ import main
 # écrite portait sa propre condition de réouverture — « dès qu'un tiering de droits est
 # effectif, cette décision se rejoue » — et cette liste est ce qui l'a rendue impossible à
 # oublier : la changer supposait de la relire.
+#
+# QUATRE AUTRES le 2026-08-28 (SHARE-1) : les routes de session ShareDocs. Elles ne
+# touchent toujours pas au corpus — leur raison d'être ici restait vraie — mais elles
+# consultent désormais QUI appelle, pour ranger les identifiants sous le bon principal et
+# pour réserver le compte de l'instance aux administrateurs. Une de leurs lignes disait
+# d'ailleurs « session par personne : cf. SHARE-1 » : la liste portait sa propre échéance.
 HORS_PERIMETRE = {
     ("GET", "/"): "coquille HTML, aucune donnée — le contenu vient des routes /api",
     ("GET", "/recherche"): "idem",
@@ -43,10 +49,6 @@ HORS_PERIMETRE = {
     ("GET", "/api/figure/champs"): (
         "décrit le FORMAT d'une légende de figure (DROIT-1), pas un corpus : elle "
         "renverrait la même chose sur une instance vide"),
-    ("GET", "/api/sharedocs/etat"): "état de la session WebDAV distante, pas le corpus",
-    ("POST", "/api/sharedocs/connexion"): "idem (session par personne : cf. SHARE-1)",
-    ("POST", "/api/sharedocs/deconnexion"): "idem",
-    ("GET", "/api/sharedocs/liste"): "liste un dossier DISTANT, pas la base locale",
 }
 
 # --------------------------------------------------------------------------- #
