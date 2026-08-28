@@ -151,10 +151,15 @@ def legende(conn: sqlite3.Connection, region_id: int, champs=CHAMPS, *,
 
 # Étiquettes de la ligne rendue. Le titre, l'auteur et l'année se composent sans étiquette
 # (c'est la forme d'une référence bibliographique) ; le reste s'annonce.
+#
+# « Consulté le » et non « Version du » : le corpus n'est PAS versionné (le gel versionné
+# reste un dormant), et « version » promettrait qu'on peut redemander celle-là. C'est la
+# convention bibliographique pour une ressource mouvante — et le corpus l'est, puisque
+# l'enrichissement se poursuit après l'extraction ; le scan, lui, ne bouge pas.
 _ETIQUETTES = {
     "isbn": "ISBN", "citation": None, "collection": "Corpus",
     "licence": "Licence du jeu enrichi", "base_legale": "Base légale",
-    "mention_citation": None, "date_export": "Extrait le",
+    "mention_citation": None, "date_export": "Consulté le",
 }
 
 

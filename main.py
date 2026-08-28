@@ -2283,7 +2283,7 @@ def figure_champs():
         "collection": "Corpus d'étude", "licence": "Licence du jeu enrichi",
         "base_legale": "Base légale du corpus",
         "mention_citation": "Mention de courte citation",
-        "date_export": "Date d'extraction",
+        "date_export": "Date de consultation",
     }
     return [{"champ": c, "libelle": libelles[c]} for c in figure_citable.CHAMPS]
 

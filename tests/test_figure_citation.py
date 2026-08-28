@@ -288,3 +288,16 @@ def test_la_collection_creditee_est_une_qu_on_LIT(client, db_path, album_cite,
     notice = json.loads(zf.read(f"{base}.json"))
     assert notice["collection"] == "Étude coloniale"      # celle qu'il LIT
     assert "secrète" not in zf.read(f"{base}.txt").decode("utf-8")
+
+
+def test_la_date_se_dit_consultation_et_non_version():
+    """« Consulté le », jamais « Version du » — et le choix n'est pas cosmétique.
+
+    Le corpus n'est PAS versionné (le gel versionné reste un dormant du projet) : parler de
+    « version » promettrait au lecteur d'un article qu'il peut redemander celle-là, ce qui
+    est faux. « Consulté le » est la convention bibliographique pour une ressource mouvante,
+    et le corpus l'est — l'enrichissement se poursuit après l'extraction.
+    """
+    rendu = figure_citable.texte({"citation": "pl. 1 · c1", "date_export": "2026-08-28"})
+    assert "Consulté le : 2026-08-28" in rendu
+    assert "ersion" not in rendu, "le corpus n'est pas versionné : ne rien promettre de tel"

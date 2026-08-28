@@ -51,7 +51,7 @@ figures_20260828_143000.zip
 │                  Licence du jeu enrichi : CC-BY-4.0 —
 │                  Base légale : base légale non établie (cf. DEPOT-1) —
 │                  Reproduction au titre de la courte citation, à fin
-│                  d'illustration d'un propos scientifique. — Extrait le : 2026-08-28
+│                  d'illustration d'un propos scientifique. — Consulté le : 2026-08-28
 └─ pl-3-c2.json    les mêmes champs, structurés, + region_id
 ```
 
@@ -86,7 +86,7 @@ légendes de forme différente.
 | `licence` | licence du **jeu enrichi**, jamais celle de l'œuvre |
 | `base_legale` | à quel titre le corpus est détenu |
 | `mention_citation` | la formule de courte citation |
-| `date_export` | date d'extraction |
+| `date_export` | date de consultation du corpus (« consulté le », convention ISO 690 : le corpus est mouvant, il n'est pas versionné) |
 
 **Un champ demandé mais vide ne produit rien** — une légende ne doit pas annoncer
 « ISBN : » suivi du vide. Une seule exception, et elle est délibérée : `base_legale`
