@@ -141,6 +141,20 @@ pas traversé Authelia ne voit rien. Si le `forward_auth` est mal configuré, l'
 paraîtra VIDE pour tout le monde : c'est une panne bruyante et immédiate, préférée à une
 fuite silencieuse. Si l'instance semble vide au premier démarrage, chercher là d'abord.
 
+### Le vocabulaire suit sa propre règle, et sa hiérarchie avec
+
+Un terme (tag, domaine, dimension, valeur) n'est pas une donnée : il est visible s'il est
+**global** ou local à une collection qu'on lit. C'est la portée d'appartenance du lexique
+situé, pas celle du corpus — une personne sans aucune collection voit donc quand même le
+vocabulaire global, et aucune donnée. Leurs COMPTEURS, en revanche, se filtrent comme des
+données : un nuage de tags doit refléter le sous-corpus qu'on regarde.
+
+Le vocabulaire est hiérarchique, et sa portée descend avec lui : **un terme n'est jamais
+plus global que celui dont il dépend** (v24 ; cf. `docs/lexique-situe.md`). Ce que révélait
+l'inverse n'était pas le mot mais le NOM de son parent — une dimension, un domaine,
+c'est-à-dire une grille d'analyse. La relecture du 2026-08-28 l'a trouvé sur une suite
+entièrement verte : les routes filtraient bien le terme demandé, pas son parent.
+
 ### Ce qui reste ouvert à tous — décision du 2026-08-27
 
 `GET /api/sauvegarde` et `POST /api/sharedocs/deposer-sauvegarde` déversent la base

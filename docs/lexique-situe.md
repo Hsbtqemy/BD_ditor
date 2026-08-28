@@ -38,6 +38,28 @@ une collection **PROMEUT** ses termes locaux en global (`ON DELETE SET NULL`) pl
 perdre le vocabulaire. C'est le même mouvement que personnages / contributeurs (mention locale
 → entité canonique), cf. `docs/personnages-et-attribution.md`.
 
+### Un terme n'est jamais plus global que son parent (v24)
+
+Le vocabulaire est HIÉRARCHIQUE — domaine → dimension → valeur — et sa portée descend avec
+lui : une dimension **hérite** de la portée de son domaine, une valeur de celle de sa
+dimension. Une valeur globale sous un axe local serait un état sans signification, et
+AUTH-2 en fait un problème concret : les routes à plat (`GET /api/attributs/valeurs`,
+attributs d'un objet) renvoient le **nom de la dimension** avec chaque valeur. Ce qui
+échappe alors n'est pas le mot mais l'axe d'analyse — une grille, pas un terme.
+
+Trois couches, parce qu'une seule ne suffisait pas :
+
+1. **à la création**, le terme prend la portée de son parent (les routes n'avaient jamais
+   posé de `collection_id`, d'où le défaut) ;
+2. **à la lecture**, le terme PARENT est filtré en plus du terme — l'héritage ne vaut que
+   pour l'avenir, or toute base antérieure porte déjà des lignes incohérentes ;
+3. **en migration** (v24), la portée redescend une fois pour toutes. Sans cette étape, le
+   « % défini » ci-dessous continuerait de compter un terme que les listes masquent, la
+   portée étant comptée par appartenance.
+
+L'inverse — un terme **local sous un parent global** — reste parfaitement légitime : une
+étude peut ajouter sa valeur à un axe partagé.
+
 ## Édition — l'API et l'UI
 
 - **API** (partielle, un `PATCH` par champ) :
@@ -57,6 +79,13 @@ perdre le vocabulaire. C'est le même mouvement que personnages / contributeurs 
 à l'état `defini`, **scopée par appartenance** (global ⊕ local à la collection). Nourrit la
 qualité de la Collection ; exposé dans les exports sous `paradonnee.lexique`
 (`metadonnees_collection.py`) et `vocabulaire.lexique` (`description_collection.py`).
+
+Servi par `GET /api/lexique`, il se filtre **comme les quatre listes de la route** : sans
+cela le panneau annonçait « 3 définis sur 41 » à qui n'en voit que trois — le total disant
+le volume de vocabulaire des autres, et le pourcentage devenant faux pour qui le lit. La
+fonction reçoit alors un **fragment SQL de portée** (`clause=`) plutôt qu'une `Portee` :
+`database.py` n'a pas à dépendre de `autorisation.py`, et la règle reste écrite au seul
+endroit qui la porte.
 
 ## Export
 

@@ -690,8 +690,16 @@ function renderLexique(lex) {
     grp.appendChild(termEditor("domaine", dom, dom.definition));
     renderDims(parDomaine.get(dom.id));
   }
-  const horsDomaine = parDomaine.get(null) || parDomaine.get(undefined);
-  if (horsDomaine && horsDomaine.length) {
+  // AUTH-2 — une dimension peut pointer vers un domaine qu'on ne VOIT pas (elle est locale
+  // à une collection qu'on lit, son domaine à une autre). Sans ce repli elle ne serait
+  // rendue nulle part : ni sous son domaine, absent de la boucle ci-dessus, ni « hors
+  // domaine », puisque son `domaine_id` n'est pas nul. Elle disparaîtrait du panneau tout
+  // en restant éditable ailleurs — le pire des deux.
+  const domainesVus = new Set(lex.domaines.map(d => d.id));
+  const horsDomaine = [];
+  for (const [did, dims] of parDomaine)
+    if (did == null || !domainesVus.has(did)) horsDomaine.push(...dims);
+  if (horsDomaine.length) {
     grp.insertAdjacentHTML("beforeend", `<p class="lex-subhead muted small">Hors domaine</p>`);
     renderDims(horsDomaine);
   }

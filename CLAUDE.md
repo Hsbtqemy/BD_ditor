@@ -135,11 +135,21 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
 - Les requêtes de LISTE filtrent par `portee.clause_album(alias)`. Deux cœurs partagés
   portent le filtre pour tout un pan de l'app : `_recherche_rows` (recherche + export CSV)
   et `_analyse_filtres` (distribution, concordance, croisement, comparaison).
+- **Un terme n'est jamais plus GLOBAL que celui dont il dépend** (v24) : une dimension
+  hérite de la portée de son domaine, une valeur de celle de sa dimension. Les routes de
+  création ne posaient aucun `collection_id`, si bien qu'une valeur créée sous un axe privé
+  naissait globale — et ce qui fuyait n'était pas le mot mais le NOM de l'axe, c'est-à-dire
+  une grille d'analyse. Les lectures à plat filtrent le terme PARENT en plus du terme
+  (bases antérieures) et la migration v24 recolle l'existant, sans quoi le « % défini »
+  compterait un terme que les listes masquent.
 - **Le VOCABULAIRE suit une autre règle**, et c'est voulu : `portee.clause_terme(alias)` —
   un tag / domaine / dimension / valeur est visible s'il est GLOBAL (`collection_id` NULL)
   ou local à une collection qu'on lit. C'est la portée d'appartenance du lexique situé
   (A4), pas celle des données. En revanche leurs COMPTEURS (fréquence, usages) sont
-  filtrés comme des données : un nuage de tags doit refléter son sous-corpus.
+  filtrés comme des données : un nuage de tags doit refléter son sous-corpus. Le RÉSUMÉ
+  « % défini » de `GET /api/lexique` se filtre comme ses quatre listes (`lexique_resume`
+  reçoit un fragment de portée, pas une `Portee` : la règle reste écrite dans
+  `autorisation.py` seulement).
 - **VOIR n'est pas CHANGER, et les deux fonctions sont distinctes** : `clause_terme` dit ce
   qu'on voit, `peut_ecrire_terme(collection_id)` ce qu'on peut modifier (terme local →
   écrire dans SA collection ; terme global → écrire quelque part). Les accesseurs
@@ -169,7 +179,7 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 21). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 24). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
 

@@ -1890,13 +1890,21 @@ def _attributs_de(conn, portee, table, col, oid):
     bon compromis — un objet peut légitimement porter les annotations d'études auxquelles
     on ne participe pas, et il vaut mieux ne pas les montrer que de montrer un vocabulaire
     qu'on ne peut ni comprendre ni situer.
+
+    La DIMENSION est filtrée à son tour (relecture du 2026-08-28). Les routes de création
+    ne posaient aucun `collection_id` : toute base antérieure à v24 contient des valeurs
+    globales sous des axes privés, et c'est le NOM de l'axe qui fuit, pas le mot. Les
+    créations héritent désormais de leur parent, et la migration v24 recolle l'existant ;
+    ce filtre-ci reste la ceinture.
     """
     ou, params = portee.clause_terme("v.collection_id")
+    ou_dim, p_dim = portee.clause_terme("d.collection_id")
     return _rows(conn.execute(
         f"SELECT v.id AS valeur_id, v.valeur, d.id AS dimension_id, d.nom AS dimension, d.cible "
         f"FROM {table} x JOIN attribut_valeur v ON v.id = x.valeur_id "
         f"JOIN attribut_dimension d ON d.id = v.dimension_id "
-        f"WHERE x.{col} = ? AND {ou} ORDER BY d.nom, v.valeur", (oid, *params)))
+        f"WHERE x.{col} = ? AND {ou} AND {ou_dim} ORDER BY d.nom, v.valeur",
+        (oid, *params, *p_dim)))
 
 
 @app.get("/api/attributs/dimensions")
@@ -1906,15 +1914,20 @@ def list_dimensions(cible: Optional[str] = None, conn: sqlite3.Connection = Depe
     `cible` filtre 'personnage' | 'case'.
 
     AUTH-2 — mêmes règles que les domaines : le terme est visible s'il est global ou
-    local à une collection qu'on lit, et le compte de valeurs est filtré pareillement."""
+    local à une collection qu'on lit, et le compte de valeurs est filtré pareillement.
+    Le NOM du domaine de rattachement est un terme lui aussi : il se filtre, sinon une
+    dimension globale nommerait le domaine privé auquel on l'a rattachée. Il revient donc
+    à `null` quand le domaine n'est pas visible — la dimension, elle, reste."""
     ou, p_dim = portee.clause_terme("d.collection_id")
     ou_val, p_val = portee.clause_terme("v.collection_id")
+    ou_dom, p_dom = portee.clause_terme("dom.collection_id")
     sql = (f"SELECT d.id, d.cible, d.nom, d.domaine_id, "
-           f"       (SELECT nom FROM domaine dom WHERE dom.id = d.domaine_id) AS domaine, "
+           f"       (SELECT nom FROM domaine dom WHERE dom.id = d.domaine_id "
+           f"          AND {ou_dom}) AS domaine, "
            f"       (SELECT COUNT(*) FROM attribut_valeur v "
            f"         WHERE v.dimension_id = d.id AND {ou_val}) AS nb_valeurs "
            f"FROM attribut_dimension d WHERE {ou} ")
-    params = [*p_val, *p_dim]
+    params = [*p_dom, *p_val, *p_dim]
     if cible:
         sql += "AND d.cible = ? "
         params.append(cible)
@@ -1933,10 +1946,17 @@ def create_dimension(payload: DimensionIn, conn: sqlite3.Connection = Depends(db
     nom = _norm_tag(payload.nom)
     if not nom:
         raise HTTPException(422, "Nom de dimension vide")
+    # AUTH-2 — la dimension HÉRITE de la portée de son domaine. Un terme ne peut pas être
+    # plus global que celui dont il dépend : une dimension globale rattachée à un domaine
+    # privé se montrait à tout le monde, et nommait le domaine au passage. Sans domaine,
+    # la dimension reste globale, comme avant.
+    cid = None
     if payload.domaine_id is not None:
-        _get_domaine(conn, portee, payload.domaine_id, ecriture=True)          # 404 si le domaine n'existe pas
-    conn.execute("INSERT INTO attribut_dimension (cible, nom, domaine_id) VALUES (?, ?, ?) "
-                 "ON CONFLICT(cible, nom) DO NOTHING", (payload.cible, nom, payload.domaine_id))
+        dom = _get_domaine(conn, portee, payload.domaine_id, ecriture=True)    # 404 si le domaine n'existe pas
+        cid = dom["collection_id"]
+    conn.execute("INSERT INTO attribut_dimension (cible, nom, domaine_id, collection_id) "
+                 "VALUES (?, ?, ?, ?) ON CONFLICT(cible, nom) DO NOTHING",
+                 (payload.cible, nom, payload.domaine_id, cid))
     conn.commit()
     return _row(conn.execute("SELECT * FROM attribut_dimension WHERE cible = ? AND nom = ?",
                              (payload.cible, nom)))
@@ -1990,12 +2010,18 @@ def list_valeurs(dim_id: int, conn: sqlite3.Connection = Depends(db),
 @app.post("/api/attributs/dimensions/{dim_id}/valeurs", status_code=201)
 def create_valeur(dim_id: int, payload: ValeurIn, conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
-    _get_dimension(conn, portee, dim_id, ecriture=True)
+    dim = _get_dimension(conn, portee, dim_id, ecriture=True)
     valeur = _norm_tag(payload.valeur)
     if not valeur:
         raise HTTPException(422, "Valeur vide")
-    conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) VALUES (?, ?) "
-                 "ON CONFLICT(dimension_id, valeur) DO NOTHING", (dim_id, valeur))
+    # AUTH-2 — même héritage qu'un cran plus haut : la valeur prend la portée de sa
+    # dimension. La route ne posait aucun `collection_id`, si bien que toute valeur
+    # naissait GLOBALE — y compris sous un axe d'analyse local à une étude. Le dommage
+    # n'est pas le mot (« palpable » ne dit rien) mais ce qu'il traîne : les routes à plat
+    # renvoient le NOM de sa dimension.
+    conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
+                 "VALUES (?, ?, ?) ON CONFLICT(dimension_id, valeur) DO NOTHING",
+                 (dim_id, valeur, dim["collection_id"]))
     conn.commit()
     return _row(conn.execute("SELECT * FROM attribut_valeur WHERE dimension_id = ? AND valeur = ?",
                              (dim_id, valeur)))
@@ -2016,8 +2042,10 @@ def list_valeurs_plat(cible: Optional[str] = None, conn: sqlite3.Connection = De
     (évite un N+1 dimensions→valeurs). `cible` filtre 'personnage' | 'case'.
 
     AUTH-2 — mêmes deux filtres qu'ailleurs : les TERMES visibles, et des `nb_usages`
-    comptés sur le seul sous-corpus lisible."""
+    comptés sur le seul sous-corpus lisible. La dimension jointe est filtrée elle aussi :
+    c'est elle qui porte le nom, donc la fuite (cf. `_attributs_de`)."""
     ou_terme, p_terme = portee.clause_terme("v.collection_id")
+    ou_dim, p_dim = portee.clause_terme("d.collection_id")
     ou_album, p_album = portee.clause_album("pl.album_id")
     ou_perso, p_perso = _clause_personnage(portee)
     sql = (f"SELECT v.id, v.valeur, d.id AS dimension_id, d.nom AS dimension, d.cible, "
@@ -2029,8 +2057,8 @@ def list_valeurs_plat(cible: Optional[str] = None, conn: sqlite3.Connection = De
            f"           JOIN planches pl ON pl.id = r.planche_id "
            f"         WHERE ra.valeur_id = v.id AND {ou_album})) AS nb_usages "
            f"FROM attribut_valeur v JOIN attribut_dimension d ON d.id = v.dimension_id "
-           f"WHERE {ou_terme} ")
-    params = [*p_perso, *p_album, *p_terme]
+           f"WHERE {ou_terme} AND {ou_dim} ")
+    params = [*p_perso, *p_album, *p_terme, *p_dim]
     if cible:
         sql += "AND d.cible = ? "
         params.append(cible)
@@ -2180,8 +2208,11 @@ def get_lexique(conn: sqlite3.Connection = Depends(db),
         f"          JOIN planches pl    ON pl.id = r.planche_id "
         f"        WHERE at.tag_id = t.id AND {ou_album}) AS frequence "
         f"FROM tags t WHERE {ou_tag} ORDER BY t.label", [*p_album, *p_tag]))
+    # AUTH-2 — le résumé se filtre COMME les quatre listes ci-dessus. Il ne montrait aucun
+    # terme, mais les COMPTAIT tous : « 3 définis sur 41 » à qui n'en voit que trois dit le
+    # volume de vocabulaire des autres, et rend le pourcentage faux pour qui le lit.
     return {"domaines": domaines, "dimensions": dims, "tags": tags,
-            "resume": lexique_resume(conn)}
+            "resume": lexique_resume(conn, clause=portee.clause_terme("collection_id"))}
 
 
 @app.post("/api/lexique/importer")

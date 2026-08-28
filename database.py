@@ -16,7 +16,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 23
+SCHEMA_VERSION = 24
 
 
 # --------------------------------------------------------------------------- #
@@ -734,6 +734,42 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 "INSERT OR IGNORE INTO collection_album (collection_id, album_id) "
                 "VALUES (?, ?)", [(cid, a) for a in orphelins])
 
+    # --- v24 : un terme ne peut pas être plus GLOBAL que celui dont il dépend ---------
+    # Les routes de création n'ont jamais posé de `collection_id` : une dimension rattachée
+    # à un domaine privé, et toute valeur créée sous un axe privé, naissaient GLOBALES.
+    # Elles se montraient donc à tout le monde — en nommant au passage le domaine ou l'axe
+    # d'à côté, c'est-à-dire une grille d'analyse et non un mot. Les routes héritent
+    # désormais du parent ; cette étape recolle l'existant, sans quoi le cloisonnement ne
+    # vaudrait que pour les bases neuves et le « % défini » resterait faux (il compte par
+    # appartenance, et compterait donc un terme que les listes masquent).
+    #
+    # L'ordre compte : le domaine descend d'abord vers ses dimensions, qui descendent
+    # ensuite vers leurs valeurs. On ne touche QUE les termes sans portée — un terme déjà
+    # local à une autre collection est un fait délibéré, pas une omission.
+    # Garde par COLONNES et non par table : les tests de migration montent des schémas
+    # minimaux où `domaine` existe sans sa portée, et les ALTER qui la posent sont eux-mêmes
+    # gardés par présence. Une garde de table suffisante en apparence casse donc là.
+    def _cols(table):
+        return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+    portees_presentes = all(
+        "collection_id" in _cols(t)
+        for t in ("domaine", "attribut_dimension", "attribut_valeur")
+    ) and "domaine_id" in _cols("attribut_dimension")
+    if version < 24 and portees_presentes:
+        conn.execute(
+            """UPDATE attribut_dimension SET collection_id =
+                   (SELECT d.collection_id FROM domaine d WHERE d.id = domaine_id)
+               WHERE collection_id IS NULL AND domaine_id IS NOT NULL
+                 AND (SELECT d.collection_id FROM domaine d
+                       WHERE d.id = domaine_id) IS NOT NULL""")
+        conn.execute(
+            """UPDATE attribut_valeur SET collection_id =
+                   (SELECT x.collection_id FROM attribut_dimension x
+                     WHERE x.id = dimension_id)
+               WHERE collection_id IS NULL
+                 AND (SELECT x.collection_id FROM attribut_dimension x
+                       WHERE x.id = dimension_id) IS NOT NULL""")
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -1009,12 +1045,26 @@ def collection_row(conn: sqlite3.Connection, collection_id: int) -> dict | None:
     return dict(r) if r else None
 
 
-def lexique_resume(conn: sqlite3.Connection, collection_id: int | None = None) -> dict:
+def lexique_resume(conn: sqlite3.Connection, collection_id: int | None = None,
+                   *, clause: tuple[str, list] | None = None) -> dict:
     """Indicateur « % défini » du lexique situé (A4, N7) : part des termes du vocabulaire
     ÉMERGENT (domaines + dimensions + valeurs + tags) à l'état `defini`. Scopé par APPARTENANCE
-    si `collection_id` (global ⊕ local à la collection). Nourrit la qualité de la Collection."""
-    scope = "" if collection_id is None else " AND (collection_id IS NULL OR collection_id = ?)"
-    params = [] if collection_id is None else [collection_id]
+    si `collection_id` (global ⊕ local à la collection). Nourrit la qualité de la Collection.
+
+    `clause` — AUTH-2 : fragment SQL de portée `(sql, params)` sur la colonne nue
+    `collection_id`, fourni par l'appelant (`Portee.clause_terme`). Il généralise
+    `collection_id` à PLUSIEURS collections lisibles. Ce module reçoit un fragment plutôt
+    qu'une `Portee` pour ne pas dépendre de `autorisation` : la règle reste écrite à un
+    seul endroit, et c'est là-bas.
+    """
+    if clause is not None:
+        sql_scope, params = clause
+        scope = f" AND ({sql_scope})"
+        params = list(params)
+    elif collection_id is None:
+        scope, params = "", []
+    else:
+        scope, params = " AND (collection_id IS NULL OR collection_id = ?)", [collection_id]
     par_type, total, definis = {}, 0, 0
     for table, cle in (("domaine", "domaines"), ("attribut_dimension", "dimensions"),
                        ("attribut_valeur", "valeurs"), ("tags", "tags")):

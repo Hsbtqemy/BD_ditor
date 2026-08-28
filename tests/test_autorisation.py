@@ -834,3 +834,178 @@ def test_moi_compte_les_acces_accordes(client, db_path, deux_albums, derriere_pr
     admin = client.get("/api/moi", headers={"Remote-User": "root",
                                             "Remote-Groups": "bd-admins"}).json()["acces"]
     assert admin["total"] and admin["admin"] and admin["collections"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Relecture des filtres de LECTURE (AUTH-2, dernier bloc)
+#
+# Le cliquet ci-dessus prouve qu'une route CONSULTE la portée, jamais qu'elle en tire la
+# bonne conclusion. Ce bloc vient d'une relecture ligne à ligne des routes de liste, et non
+# d'une suite rouge : tout passait au vert. Un seul défaut, sous trois formes — un terme du
+# vocabulaire pouvait être plus GLOBAL que celui dont il dépend, et c'est le NOM du parent
+# qui fuyait (un axe d'analyse, pas un mot).
+# --------------------------------------------------------------------------- #
+def _portee_du_terme(db_path, table, oid):
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        return conn.execute(f"SELECT collection_id FROM {table} WHERE id = ?",
+                            (oid,)).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def _terme_local(client, db_path, collection_id):
+    """Décor commun : un domaine et une dimension LOCAUX à `collection_id`, plus une
+    valeur créée par l'API sous cette dimension — laquelle doit HÉRITER de la portée de
+    sa dimension. Avant v24 elle naissait globale : l'import de vocabulaire posait bien
+    `collection_id`, les routes de création jamais."""
+    from conftest import ADMIN
+    dom = client.post("/api/domaines", json={"nom": "affects prives"},
+                      headers=ADMIN).json()
+    client.patch(f"/api/domaines/{dom['id']}/lexique",
+                 json={"collection_id": collection_id}, headers=ADMIN)
+    dim = client.post("/api/attributs/dimensions",
+                      json={"cible": "case", "nom": "tension secrete",
+                            "domaine_id": dom["id"]}, headers=ADMIN).json()
+    client.patch(f"/api/attributs/dimensions/{dim['id']}/lexique",
+                 json={"collection_id": collection_id}, headers=ADMIN)
+    val = client.post(f"/api/attributs/dimensions/{dim['id']}/valeurs",
+                      json={"valeur": "palpable"}, headers=ADMIN).json()
+    return dom, dim, val
+
+
+def test_valeur_creee_herite_la_portee_de_sa_dimension(client, db_path, deux_albums,
+                                                       derriere_proxy):
+    """Un terme ne peut pas être plus GLOBAL que le terme dont il dépend.
+
+    `POST .../valeurs` n'a jamais posé de `collection_id` : la valeur naissait globale,
+    donc visible de tous, alors que sa dimension pouvait être locale à une étude. Le
+    dommage n'est pas la valeur (« palpable » ne dit rien) mais ce qu'elle TRAÎNE : les
+    routes à plat renvoient `dimension` — le nom de l'axe d'analyse d'à côté.
+    """
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    _, dim, val = _terme_local(client, db_path, deux_albums["c2"])
+    # L'héritage se lit dans la LIGNE STOCKÉE, et il faut le vérifier là. Se contenter de
+    # l'absence dans la liste ci-dessous laisserait passer une régression : le filtre
+    # parent masque déjà ce cas, si bien que retirer l'héritage garde la suite verte.
+    assert _portee_du_terme(db_path, "attribut_valeur", val["id"]) == deux_albums["c2"]
+    plat = client.get("/api/attributs/valeurs", headers={"Remote-User": "bob"}).json()
+    assert not [v for v in plat if v["id"] == val["id"]]
+    assert "tension secrete" not in {v["dimension"] for v in plat}
+
+
+def test_dimension_creee_herite_la_portee_de_son_domaine(client, db_path, deux_albums,
+                                                         derriere_proxy):
+    """Même règle un cran plus haut, et la fuite y est plus directe : `GET
+    /api/attributs/dimensions` renvoyait le NOM du domaine sans le filtrer, si bien
+    qu'une dimension globale rattachée à un domaine privé le nommait à tout le monde."""
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    from conftest import ADMIN
+    dom = client.post("/api/domaines", json={"nom": "domaine prive"},
+                      headers=ADMIN).json()
+    client.patch(f"/api/domaines/{dom['id']}/lexique",
+                 json={"collection_id": deux_albums["c2"]}, headers=ADMIN)
+    dim = client.post("/api/attributs/dimensions",
+                      json={"cible": "case", "nom": "axe herite",
+                            "domaine_id": dom["id"]}, headers=ADMIN).json()
+    assert _portee_du_terme(db_path, "attribut_dimension",
+                            dim["id"]) == deux_albums["c2"]
+    dims = client.get("/api/attributs/dimensions",
+                      headers={"Remote-User": "bob"}).json()
+    assert "domaine prive" not in {d["domaine"] for d in dims}
+    assert "axe herite" not in {d["nom"] for d in dims}
+
+
+def test_resume_du_lexique_ne_compte_que_le_vocabulaire_visible(client, db_path,
+                                                                deux_albums,
+                                                                derriere_proxy):
+    """Les quatre requêtes de `GET /api/lexique` étaient filtrées ; son `resume` ne
+    l'était pas. Le panneau affichait donc « 3 définis sur 41 termes » à qui n'en voit
+    que trois — le total DIT le volume de vocabulaire des autres, et le pourcentage
+    devient faux pour la personne qui le lit."""
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    _terme_local(client, db_path, deux_albums["c2"])
+    lex = client.get("/api/lexique", headers={"Remote-User": "bob"}).json()
+    vus = (len(lex["domaines"]) + len(lex["dimensions"]) + len(lex["tags"])
+           + sum(len(d["valeurs"]) for d in lex["dimensions"]))
+    assert lex["resume"]["total"] == vus
+
+
+def test_terme_incoherent_deja_en_base_reste_masque(client, db_path, deux_albums,
+                                                    derriere_proxy):
+    """L'héritage ci-dessus empêche d'en CRÉER ; il ne répare pas ce qui existe.
+
+    Une base antérieure à v24 contient exactement la situation en cause — les routes de
+    création n'y posaient aucun `collection_id`. Ce test la fabrique par SQL direct,
+    seule façon honnête de justifier le filtre parent côté lecture : sans lui, la
+    correction ne vaudrait que pour les bases neuves.
+    """
+    import sqlite3
+    from conftest import ADMIN
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    dim = client.post("/api/attributs/dimensions",
+                      json={"cible": "case", "nom": "axe legacy"}, headers=ADMIN).json()
+    val = client.post(f"/api/attributs/dimensions/{dim['id']}/valeurs",
+                      json={"valeur": "vestige"}, headers=ADMIN).json()
+    conn = sqlite3.connect(db_path)
+    try:                                    # dimension privée, valeur restée globale
+        conn.execute("UPDATE attribut_dimension SET collection_id = ? WHERE id = ?",
+                     (deux_albums["c2"], dim["id"]))
+        conn.execute("UPDATE attribut_valeur SET collection_id = NULL WHERE id = ?",
+                     (val["id"],))
+        conn.commit()
+    finally:
+        conn.close()
+    h = {"Remote-User": "bob"}
+    plat = client.get("/api/attributs/valeurs", headers=h).json()
+    assert "axe legacy" not in {v["dimension"] for v in plat}
+    # …et par la bande, via un objet partagé : la même valeur affectée à une région
+    # lisible nommerait l'axe d'à côté.
+    client.put(f"/api/regions/{deux_albums['r1']['id']}/attributs",
+               json={"valeur_id": val["id"]}, headers=ADMIN)
+    attrs = client.get(f"/api/regions/{deux_albums['r1']['id']}/attributs",
+                       headers=h).json()
+    assert "axe legacy" not in {a["dimension"] for a in attrs}
+
+
+# --------------------------------------------------------------------------- #
+# Migration v23 → v24
+# --------------------------------------------------------------------------- #
+def test_migration_v23_vers_v24_recolle_la_portee_des_termes(tmp_path):
+    """La ceinture côté lecture MASQUE le terme incohérent ; elle ne le répare pas, et le
+    « % défini » continue de le compter (il compte par appartenance). L'étape v24 fait
+    descendre la portée du domaine vers ses dimensions, puis vers leurs valeurs.
+
+    Deux témoins vérifient qu'elle ne déborde pas : un terme déjà local à une AUTRE
+    collection est un fait délibéré, et un terme sous un parent global reste global.
+    """
+    import sqlite3
+    import database
+    db = tmp_path / "pre24.sqlite"
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        "CREATE TABLE albums (id INTEGER PRIMARY KEY, titre TEXT);"
+        "CREATE TABLE planches (id INTEGER PRIMARY KEY, album_id INTEGER);"
+        "CREATE TABLE domaine (id INTEGER PRIMARY KEY, collection_id INTEGER);"
+        "CREATE TABLE attribut_dimension (id INTEGER PRIMARY KEY, domaine_id INTEGER,"
+        "                                 collection_id INTEGER);"
+        "CREATE TABLE attribut_valeur (id INTEGER PRIMARY KEY, dimension_id INTEGER,"
+        "                              collection_id INTEGER);"
+        # domaine 1 local à la collection 7 ; domaine 2 global
+        "INSERT INTO domaine (id, collection_id) VALUES (1, 7), (2, NULL);"
+        # dim 10 : à recoller · dim 11 : déjà ailleurs · dim 12 : parent global
+        "INSERT INTO attribut_dimension (id, domaine_id, collection_id) "
+        "     VALUES (10, 1, NULL), (11, 1, 9), (12, 2, NULL);"
+        "INSERT INTO attribut_valeur (id, dimension_id, collection_id) "
+        "     VALUES (100, 10, NULL), (101, 11, NULL), (102, 12, NULL);"
+        "PRAGMA user_version = 23;")
+    conn.commit()
+    database._migrate(conn)
+    dims = dict(conn.execute("SELECT id, collection_id FROM attribut_dimension"))
+    vals = dict(conn.execute("SELECT id, collection_id FROM attribut_valeur"))
+    assert dims == {10: 7, 11: 9, 12: None}
+    assert vals == {100: 7, 101: 9, 102: None}   # 100 recollé EN CASCADE, via sa dimension
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
+    conn.close()
