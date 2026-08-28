@@ -5,8 +5,12 @@ statut: livré
 
 # DROIT-1 — restreindre par nature de donnée, pas seulement par corpus
 
-**Arrêté sur** — la règle de l'embargo et la frontière du dépôt, commit `3e33fc8`,
-28 août. La dernière case du chantier se referme, et sa relecture a trouvé le trou qu'on
+**Arrêté sur** — le libellé de date d'une figure, commit `cf4a7e8`, 28 août : « Consulté
+le » et non « Version du », le corpus n'étant pas versionné. Retouche d'après-livraison, sur
+le geste le plus visible du chantier — c'est la ligne qui paraîtra sous les figures dans les
+articles.
+
+Avant elle, la règle de l'embargo et la frontière du dépôt, commit `3e33fc8`, 28 août. La dernière case du chantier se referme, et sa relecture a trouvé le trou qu'on
 cherchait ailleurs : `_regime` ne lisait que `statut_diffusion`, si bien qu'une collection
 déclarée `public` publiait ses scans alors que son embargo courait encore.
 
@@ -97,6 +101,7 @@ DEDANS / DEHORS.
 - [x] Ce qui est figé doit être DATÉ : le manifeste était le seul artefact de la chaîne sans date (les notices posent `genere_le`, la figure citable `date_export`). Deux dépôts du même album à un an d'intervalle étaient indistinguables — et l'entrepôt garde les deux
 - [x] La DÉCLARATION DE DROITS du `requiredStatement` est datée (« Constat du … »). Figée, « régime : restreint » l'affirmerait encore une fois la collection passée `public` : intemporelle, l'assertion devient fausse sans que personne mente
 - [x] Trois gardes de datation vérifiées par mutation, dont « la même date des deux côtés » — deux horodatages pour un seul export divergeraient
+- [x] La date d'une figure se dit « Consulté le » (convention ISO 690 pour une ressource mouvante) et non « Version du » : le corpus n'est PAS versionné — le gel versionné reste un dormant — et le mot promettrait qu'on peut redemander cette version-là. Même défaut que le manifeste non daté, un libellé qui affirme plus que ce qui existe, sauf qu'il serait faux tout de suite au lieu de se périmer. Verrouillé par un test, vérifié par mutation
 
 ### Ce qui reste hors périmètre, écrit
 - [x] ~~Borner le lot de `POST /api/figures`~~ — **ABANDONNÉ par écrit le 2026-08-28**, avec sa raison. `_figure_zip` construit le zip entier en mémoire puis `getvalue()` en fait une seconde copie : le nombre de régions n'est borné par rien (seule `taille` l'est, à 2000 px). Arbitrage du user : la fonction ne sera pas très sollicitée, et un gros export supposera une bonne raison — un plafond protégerait d'un usage qu'elle n'aura pas en gênant celui qu'elle aura. Le FLUX (`StreamingResponse`) a été examiné et écarté avant même le plafond : les en-têtes `200 OK` partant avant la première figure, un 404 d'AUTH-2 sur la quarantième région deviendrait un téléchargement TRONQUÉ au lieu d'un refus — on échangerait une garde contre de la mémoire. À rouvrir seulement si un incident le demande
