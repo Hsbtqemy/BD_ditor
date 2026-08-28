@@ -5,12 +5,12 @@ statut: interrompu
 
 # AUTH-2 — un point de passage unique pour l'autorisation
 
-**Arrêté sur** — le câblage complet et la passe « voir n'est pas changer », commit
-`8fde8d3`, 27 août. `A_CABLER` vaut zéro : 99 routes sur 111 consultent la portée, 12 sont
-hors périmètre écrit. Reprendre par l'INTERFACE — c'est le seul bloc qui reste entre le
-cloisonnement et son usage réel, `collection_acces` ne se remplissant aujourd'hui qu'en SQL
-à la main. Le manifeste IIIF et le résiduel d'`undo` sont deux arbitrages courts à trancher
-avant d'ouvrir AUTH-3.
+**Arrêté sur** — l'interface du cloisonnement et les deux arbitrages restants, commit
+`f687206`, 28 août. Il ne reste que la RELECTURE des filtres de lecture : le cliquet prouve
+qu'une route consulte la portée, jamais qu'elle en tire la bonne conclusion, et cette
+passe-là ne peut pas être mécanisée. Après elle, le chantier est livrable et AUTH-3 s'ouvre
+— c'est désormais lui qui porte tout ce qui manque à `collection_acces` pour se remplir
+autrement qu'en SQL à la main.
 
 ## Reste
 
@@ -44,7 +44,7 @@ avant d'ouvrir AUTH-3.
 - [x] Le remplacement du montage ne perd PAS la protection contre la traversée de répertoire : la base sert d'allowlist (`planches.chemin_web`), donc `..` ne correspond à aucune ligne
 - [x] Le nuage de tags et le lexique ne révèlent pas le vocabulaire de collections non autorisées, et leurs COMPTEURS (fréquence, usages) ne portent que sur le sous-corpus lisible
 - [x] `GET /api/corpus` compte les tags selon la règle du vocabulaire (global, ou local à une collection lue), et non plus sans filtre
-- [ ] Le manifeste IIIF (`tools/iiif_manifest.py`, hors application) a son sort écrit : il ne passe par aucune route, donc par aucun contrôle, et publie des URL d'images qui sont désormais cloisonnées côté serveur — un manifeste diffusé pointerait vers des 404
+- [x] Le manifeste IIIF a son sort écrit (2026-08-28) : `--base-url` doit désigner le serveur qui servira les images au destinataire, jamais l'application — qui sert `/derivatives` par une route cloisonnée depuis AUTH-2. L'outil REFUSE d'écrire avec le placeholder et AVERTIT sur un hôte local ; ce que les images doivent devenir relève de DROIT-1, pas d'ici
 
 ### Les familles câblées
 - [x] Vocabulaire (tags, domaines, dimensions, valeurs, lexique) : un terme est visible s'il est GLOBAL (`collection_id` NULL) ou local à une collection qu'on lit — la règle du lexique situé (A4), pas celle des données
@@ -70,7 +70,7 @@ avant d'ouvrir AUTH-3.
 - [x] `POST /api/undo` exige un droit d'écriture — le filtre par agent ne suffisait pas : quelqu'un rétrogradé en lecture seule pouvait défaire ses anciens actes
 - [x] Les gardes sont éprouvées par MUTATION, pas seulement écrites : retirer la garde fait échouer les tests (vérifié le 2026-08-27)
 - [x] `_attributs_de` filtre les valeurs comme des TERMES : un objet PARTAGÉ (un personnage traverse les albums) exposait sinon la grille d'analyse d'une autre étude, alors que `GET /api/attributs/valeurs` la masquait déjà — on la retrouvait par la bande
-- [ ] Le résiduel d'`undo` est refermé ou assumé par écrit : le plancher d'écriture ne dit pas SUR QUELLE collection portait l'acte (la cible d'une suppression n'existe plus), donc un droit d'écriture ailleurs suffit encore
+- [x] Le résiduel d'`undo` est ASSUMÉ par écrit (`docs/undo.md`, 2026-08-28) : le fermer supposerait de lire l'album de la cible dans l'instantané journalisé, et un contrôle d'accès qui dépend de la forme d'un JSON est plus fragile que le trou qu'il bouche
 
 ### Ce que le cliquet ne prouve PAS
 - [x] Les routes d'écriture ont été relues une à une pour vérifier la NATURE de leur garde (lecture ou écriture) — c'est cette passe qui a trouvé les 19
@@ -79,10 +79,21 @@ avant d'ouvrir AUTH-3.
 - [ ] Les routes de LISTE passent en premier dans cette relecture : une lecture par identifiant qui se trompe renvoie un objet, une liste qui se trompe en renvoie mille
 
 ### L'interface
-- [ ] La Bibliothèque demande explicitement une collection à la création d'un album — l'API accepte le défaut, mais laisser l'UI choisir à notre place ferait s'entasser tout le corpus dans la collection de repli, et le cloisonnement ne servirait jamais
-- [ ] Une route de création de collection existe : `GET /api/collections` est en lecture seule (l'écriture est headless, dans `tools/gerer_collections.py`), donc l'UI ne peut pas sortir d'un état à zéro collection
-- [ ] Les accès d'une collection se lisent et se modifient depuis l'UI, sinon `collection_acces` ne se remplit qu'en SQL à la main
-- [ ] Un message dit POURQUOI on ne voit rien quand la portée est vide : aujourd'hui l'application paraît simplement vide, ce qui est la bonne réponse de sécurité et une mauvaise réponse d'ergonomie
+
+> Deux cases ont quitté cette zone le 2026-08-28 : « créer une collection depuis l'UI » et
+> « accorder / retirer un accès ». Elles étaient DÉJÀ écrites dans AUTH-3, et sa version
+> est la bonne — elle vient avec la notion de PROPRIÉTAIRE, sans laquelle « qui a le droit
+> de partager » n'a pas de réponse. Deux fiches revendiquant le même travail est exactement
+> ce que le suivi est censé empêcher.
+>
+> Correction au passage, d'une affirmation d'hier faite avec trop d'aplomb : l'UI n'est PAS
+> bloquée à zéro collection. `collection_par_defaut` en crée une au premier album. Ce qui
+> manque, c'est d'en créer une SECONDE — et c'est AUTH-3.
+- [x] La Bibliothèque demande explicitement une collection à la création d'un album — trois cas : plusieurs collections → choix à faire ; une seule → présélectionnée (poser une question à réponse unique serait de la cérémonie) ; aucune → pas de sélecteur, une note annonce le repli, ce qui évite l'impasse
+- [x] Le champ n'apparaît PAS à l'édition : déplacer un album d'une collection à l'autre est un geste d'espace de travail, qui appartient à AUTH-3 — l'y montrer laisserait croire au déplacement
+- [x] Un message dit POURQUOI on ne voit rien quand la portée est vide, sur les 4 surfaces, et il distingue DEUX pannes : « aucune collection ne vous est ouverte » (droit manquant) et « aucune identité ne parvient à l'application » (forward_auth muet) — la seconde n'a pas de pastille utilisateur, donc rien d'autre ne la signalerait
+- [x] `GET /api/moi` renvoie un bloc `acces` (total / admin / nombre de collections lues et écrites). Il quitte `HORS_PERIMETRE` au passage : sa raison écrite disait « circulaire », ce qu'elle n'était pas — rapporter sa propre portée n'est pas s'y soumettre
+- [x] Le bandeau est audité par axe sur les 4 surfaces × 2 thèmes, plus le cas sans identité : c'est le seul écran que verra une personne mal configurée, et il aurait été le seul que l'audit n'aurait jamais regardé
 
 ## Contexte
 

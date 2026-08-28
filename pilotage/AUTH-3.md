@@ -14,6 +14,9 @@ invitation ne garantit rien. Le conteneur, lui, existe déjà depuis la v14.
 - [ ] Une collection a un propriétaire, distinct de son champ descriptif `responsables` (JSON bibliographique nom/rôle/orcid, qui reste ce qu'il est : de la métadonnée de dépôt, pas un droit d'accès)
 - [ ] Un utilisateur crée une collection depuis l'UI et en devient propriétaire — aujourd'hui `tools/gerer_collections.py` est le SEUL outil d'écriture, et il exige un accès shell
 - [ ] Un propriétaire accorde et retire un accès à un autre utilisateur ou à un groupe, avec un niveau (lecture, écriture)
+- [ ] La table qui porte ces accès EXISTE depuis AUTH-2 (`collection_acces` : collection × principal × niveau, `principal` = un login ou un nom de groupe). Ce chantier n'a donc plus à l'inventer : il lui faut une route d'écriture, une notion de propriétaire, et un écran
+
+- [ ] Un album se DÉPLACE d'une collection à l'autre depuis l'UI : AUTH-2 fait choisir la collection à la création, mais le champ disparaît à l'édition, faute de propriétaire pour dire qui a le droit de déplacer quoi
 
 ### Ce qui doit rester vrai
 - [ ] Retirer un accès ne détruit aucune donnée : les annotations faites par la personne restent, et le journal A3 continue de les lui attribuer
@@ -22,6 +25,14 @@ invitation ne garantit rien. Le conteneur, lui, existe déjà depuis la v14.
 - [ ] Le mono-poste local sans auth voit tout, comme aujourd'hui
 
 ## Contexte
+
+**Reçu d'AUTH-2 le 2026-08-28.** Le cloisonnement est fait : `autorisation.py` tranche
+« qui voit quoi », 99 routes sur 111 le consultent, et `collection_acces` est peuplée — mais
+uniquement en SQL à la main. AUTH-2 avait dupliqué deux cases qui vivaient déjà ici (créer
+une collection depuis l'UI, accorder un accès) ; elles lui ont été retirées, parce que la
+version d'ici vient avec le PROPRIÉTAIRE, sans lequel « qui a le droit de partager » n'a
+pas de réponse. Ce chantier est donc devenu le seul obstacle entre le cloisonnement et son
+usage réel.
 
 **C'est le modèle demandé le 2026-08-27 : « qu'un utilisateur puisse ouvrir une nouvelle
 base, être ajouté à une qui existe ».** Le mot « base » y désigne un espace de travail,
