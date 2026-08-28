@@ -1,6 +1,6 @@
 ---
 chantier: SHARE-1
-statut: clos
+statut: livré
 ---
 
 # SHARE-1 — session ShareDocs : une d'instance, et une par personne
@@ -13,8 +13,7 @@ Avant elle, le chantier entier, commit `a5426b2` : les deux sortes de sessions, 
 du compte d'instance, le dépôt journalisé et le sélecteur de compte de l'explorateur.
 `_session`, dictionnaire de module, cesse d'être la session de tout le monde.
 
-`clos` et non `livré` tant que rien n'est poussé — `livré` parle d'intégration, et le
-journal démentirait la fiche.
+Le chantier est **livré** : les quatre commits vivent sur `origin/dev`.
 
 ## Reste
 
