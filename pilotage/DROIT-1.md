@@ -99,6 +99,7 @@ DEDANS / DEHORS.
 - [x] Trois gardes de datation vérifiées par mutation, dont « la même date des deux côtés » — deux horodatages pour un seul export divergeraient
 
 ### Ce qui reste hors périmètre, écrit
+- [x] ~~Borner le lot de `POST /api/figures`~~ — **ABANDONNÉ par écrit le 2026-08-28**, avec sa raison. `_figure_zip` construit le zip entier en mémoire puis `getvalue()` en fait une seconde copie : le nombre de régions n'est borné par rien (seule `taille` l'est, à 2000 px). Arbitrage du user : la fonction ne sera pas très sollicitée, et un gros export supposera une bonne raison — un plafond protégerait d'un usage qu'elle n'aura pas en gênant celui qu'elle aura. Le FLUX (`StreamingResponse`) a été examiné et écarté avant même le plafond : les en-têtes `200 OK` partant avant la première figure, un 404 d'AUTH-2 sur la quarantième région deviendrait un téléchargement TRONQUÉ au lieu d'un refus — on échangerait une garde contre de la mémoire. À rouvrir seulement si un incident le demande
 - [ ] La base légale reste une question ouverte (DEPOT-1) : le MÉCANISME est là, la POLITIQUE non. Restreindre selon une règle qu'on ne connaît pas serait coder une politique inventée
 
 ## Contexte
