@@ -5,10 +5,13 @@ statut: clos
 
 # SHARE-1 — session ShareDocs : une d'instance, et une par personne
 
-**Arrêté sur** — le chantier entier, commit `a5426b2`, 28 août : les deux sortes de
-sessions, la garde du compte d'instance, le dépôt journalisé et le sélecteur de compte de
-l'explorateur. `_session`, dictionnaire de module, cesse d'être la session de tout le
-monde.
+**Arrêté sur** — la relecture d'après commit, `ecfbb2a`, 28 août : un compte inconnu se
+refuse au lieu de s'interpréter. Trois défauts de la même forme, sur un chantier déjà
+commité et une suite verte.
+
+Avant elle, le chantier entier, commit `a5426b2` : les deux sortes de sessions, la garde
+du compte d'instance, le dépôt journalisé et le sélecteur de compte de l'explorateur.
+`_session`, dictionnaire de module, cesse d'être la session de tout le monde.
 
 `clos` et non `livré` tant que rien n'est poussé — `livré` parle d'intégration, et le
 journal démentirait la fiche.
@@ -53,7 +56,16 @@ journal démentirait la fiche.
 
 ### Le cliquet
 - [x] Les quatre routes de session sortent de `HORS_PERIMETRE` : elles ne touchent toujours pas au corpus, mais elles consultent désormais QUI appelle. Une de leurs lignes disait « session par personne : cf. SHARE-1 » — la liste portait sa propre échéance
-- [x] Seize gardes vérifiées par mutation, dont la clé par principal (mutée en clé partagée : c'est le défaut d'origine, reproduit à la demande)
+- [x] Vingt-quatre gardes vérifiées par mutation, dont la clé par principal (mutée en clé partagée : c'est le défaut d'origine, reproduit à la demande)
+
+### Ce que la relecture d'après commit a trouvé
+> Trois défauts de LA MÊME FORME : une comparaison d'égalité qui décide, sans clause pour
+> ce qui n'est ni l'un ni l'autre. `== "instance"` puis « sinon, le compte personnel »
+> traite le cas inconnu comme un cas connu.
+- [x] Un compte inconnu est REFUSÉ (422 nommant les valeurs acceptées), il ne retombe plus en silence sur le compte personnel. Un administrateur écrivant « instace » ouvrait sa propre session et recevait `{"connecte": true}` : il croyait avoir remplacé le compte de l'instance, le repli de tout le monde restait inchangé, et rien ne le disait
+- [x] Le refus est le MÊME partout. La lecture refusait déjà via `resoudre`, mais en 400 : la même faute de frappe donnait un message clair sur `liste` et un effet silencieux sur `connexion`
+- [x] À l'import, le contrôle passe AVANT toute création : le mot mal orthographié échouait fichier par fichier — autant d'erreurs que de chemins — et créait un album vide au passage, la cause réelle ne paraissant nulle part
+- [x] L'écran n'a plus qu'UN rendu de l'état de connexion. Se connecter depuis l'explorateur ne mettait rien à jour : libellé sans l'origine, sélecteur périmé alors qu'un choix venait d'apparaître, « Mon compte… » encore affiché après avoir servi. Deux chemins rendaient la même chose et avaient divergé le jour même — le défaut que le dépôt combat partout ailleurs, appliqué à du code écrit dans l'heure
 
 ## Contexte
 
