@@ -1,16 +1,18 @@
 ---
 chantier: AUTH-2
-statut: interrompu
+statut: livré
 ---
 
 # AUTH-2 — un point de passage unique pour l'autorisation
 
-**Arrêté sur** — l'interface du cloisonnement et les deux arbitrages restants, commit
-`f687206`, 28 août. Il ne reste que la RELECTURE des filtres de lecture : le cliquet prouve
-qu'une route consulte la portée, jamais qu'elle en tire la bonne conclusion, et cette
-passe-là ne peut pas être mécanisée. Après elle, le chantier est livrable et AUTH-3 s'ouvre
-— c'est désormais lui qui porte tout ce qui manque à `collection_acces` pour se remplir
-autrement qu'en SQL à la main.
+**Arrêté sur** — la relecture des filtres de lecture, commit `1ba0e1d`, 28 août. Elle a trouvé un défaut
+sous trois formes, toutes vertes : un terme du vocabulaire pouvait être plus GLOBAL que
+celui dont il dépend, et c'est le nom du parent qui fuyait — un axe d'analyse, pas un mot.
+Corrigé par héritage à la création, filtre du parent à la lecture, et une migration v24 qui
+recolle l'existant. Cinq gardes vérifiées par mutation.
+
+Le chantier est LIVRÉ. AUTH-3 porte désormais tout ce qui manque à `collection_acces`
+pour se remplir autrement qu'en SQL à la main.
 
 ## Reste
 
@@ -75,8 +77,32 @@ autrement qu'en SQL à la main.
 ### Ce que le cliquet ne prouve PAS
 - [x] Les routes d'écriture ont été relues une à une pour vérifier la NATURE de leur garde (lecture ou écriture) — c'est cette passe qui a trouvé les 19
 - [x] Les routes de LECTURE ont été passées en revue une fois : toutes portent un filtre (parfois délégué à `_recherche_rows`, `_analyse_filtres` ou `_agent_undo`), et la revue a sorti l'écart de `_attributs_de`
-- [ ] Les routes de LECTURE sont relues à leur tour pour vérifier que le filtre appliqué est le BON : le test statique prouve qu'une route consulte la portée, jamais qu'elle en tire la bonne conclusion
-- [ ] Les routes de LISTE passent en premier dans cette relecture : une lecture par identifiant qui se trompe renvoie un objet, une liste qui se trompe en renvoie mille
+- [x] Les routes de LECTURE sont relues à leur tour pour vérifier que le filtre appliqué est le BON : le test statique prouve qu'une route consulte la portée, jamais qu'elle en tire la bonne conclusion
+- [x] Les routes de LISTE passent en premier dans cette relecture : une lecture par identifiant qui se trompe renvoie un objet, une liste qui se trompe en renvoie mille
+
+> **Ce que la relecture a trouvé (2026-08-28)** — un seul défaut, sous trois formes, et
+> aucune des trois n'était rouge. Les routes filtraient bien le terme demandé ; elles ne
+> filtraient pas celui dont il DÉPEND.
+>
+> `POST .../valeurs` et `POST /api/attributs/dimensions` n'ont jamais posé de
+> `collection_id`. Une valeur créée sous un axe local à une étude naissait donc GLOBALE,
+> une dimension rattachée à un domaine privé aussi. Ce qui fuit n'est pas le mot —
+> « palpable » ne dit rien — mais ce que les routes à plat traînent avec lui : le NOM de
+> l'axe, du domaine, c'est-à-dire une grille d'analyse. C'est exactement le dommage que
+> `_attributs_de` nommait déjà, réapparu par une autre porte.
+>
+> Le `resume` de `GET /api/lexique` était le troisième cas, et le plus visible à l'usage :
+> ses quatre listes étaient filtrées, son total ne l'était pas. Le panneau annonçait « 3
+> définis sur 41 » à qui n'en voit que trois — le total DIT le volume de vocabulaire des
+> autres, et le pourcentage devient faux pour la personne qui le lit.
+- [x] La création fait HÉRITER la portée du parent (domaine → dimension → valeur) : un terme ne peut pas être plus global que celui dont il dépend
+- [x] Les lectures à plat filtrent le terme PARENT en plus du terme — l'héritage ne vaut que pour les créations à venir, or toute base antérieure à v24 contient déjà la situation
+- [x] La migration v24 RECOLLE l'existant plutôt que de seulement le masquer : sans elle, le « % défini » continuerait de compter un terme que les listes cachent. Deux témoins vérifient qu'elle ne déborde pas — un terme déjà local ailleurs est délibéré, un terme sous un parent global reste global
+- [x] L'étape v24 est gardée par présence des COLONNES, pas de la table. Une garde de table passait les tests ciblés et cassait `test_migration_v19_vers_v20` : les schémas minimaux montent `domaine` sans sa portée, et les ALTER qui la posent sont eux-mêmes gardés. C'est la convention déjà écrite dans `_migrate`, retrouvée par la suite complète et non par la passe ciblée
+- [x] `lexique_resume` se filtre comme ses listes. Il reçoit un FRAGMENT de portée, pas une `Portee` : `database.py` n'a pas à dépendre de `autorisation.py`, et la règle reste écrite à un seul endroit
+- [x] Les cinq gardes sont vérifiées par MUTATION. La première passe a laissé l'une d'elles verte : le test prouvait la ceinture de lecture, pas l'héritage — les deux masquent le même symptôme. Corrigé en vérifiant la ligne STOCKÉE, seul endroit où l'héritage s'observe
+- [x] Le tag d'une région lisible reste montré ENTIER, et l'écart avec `_attributs_de` est voulu : ce dernier masque une grille d'analyse, un tag n'est qu'un mot — la distinction était déjà écrite, la relecture n'a fait que la vérifier
+- [x] Le panneau 📖 Lexique replie sur « Hors domaine » une dimension dont le domaine n'est PAS visible (locale à une collection qu'on lit, domaine à une autre). Sans ce repli elle n'était rendue nulle part — ni sous son domaine, absent de la liste, ni « hors domaine », son `domaine_id` n'étant pas nul : elle disparaissait de l'écran tout en restant éditable ailleurs. Le cloisonnement doit masquer ce qu'on n'a pas le droit de voir, jamais ce qu'on a le droit de modifier
 
 ### L'interface
 
