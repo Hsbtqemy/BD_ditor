@@ -78,6 +78,19 @@ l'inverse du service rendu.
 Viser un événement par son `id` ne contourne pas la règle : `undo.annuler` revérifie
 l'agent.
 
+**Un plancher d'écriture, et un résiduel assumé.** `POST /api/undo` exige en plus un droit
+d'écriture quelque part : annuler REJOUE une écriture, et le filtre par agent seul laissait
+quelqu'un rétrogradé en lecture seule défaire ses anciens actes.
+
+Ce plancher ne dit pas SUR QUELLE collection portait l'acte. Quelqu'un qui écrit dans la
+collection B peut donc encore annuler son propre acte passé sur A, où il n'écrit plus.
+Décision du 2026-08-28 : **on l'assume plutôt que de le fermer.** Le fermer supposerait de
+retrouver l'album de la cible — impossible pour une suppression, dont la cible n'existe
+plus. On pourrait le lire dans l'instantané profond que porte l'événement, mais un contrôle
+d'accès qui dépend de la FORME d'un JSON journalisé est plus fragile que le trou qu'il
+bouche. Le scénario reste étroit : il faut avoir eu le droit, l'avoir perdu, et n'annuler
+que ses propres actes.
+
 ## Boucle
 
 - **API** : `GET /api/undo/prochain` (aperçu : `{evenement_id, description}` ou `null`) ·

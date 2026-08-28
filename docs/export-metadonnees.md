@@ -179,6 +179,19 @@ qui sert manifest + images (URL stable, CORS). En pratique :
    `iiif-prezi3` si installé).
 3. **Au dépôt** : soumettre l'URL publique au **validateur officiel** `validator.iiif.io`.
 
+**Ce qu'AUTH-2 a changé, et qui rend le point 1 impératif.** L'application servait
+`/derivatives` par un montage statique : pointer `--base-url` vers elle « marchait », par
+accident. Elle le sert désormais par une route **cloisonnée** — un manifeste pointant vers
+l'application ne montrerait à son destinataire que des `404`, puisqu'il n'a pas de session
+Authelia. L'outil pose donc deux garde-fous : il **refuse** d'écrire des manifests
+(`--out-dir`) si `--base-url` est resté sur le placeholder, et **avertit** si l'hôte est
+local. Aucun des deux ne peut prouver que l'URL désigne un serveur d'images ; ils attrapent
+les deux méprises qui se voient.
+
+Ce que ces images doivent devenir — publiques ou non — n'est pas une question d'AUTH-2 mais
+de **tiering de droits** (DROIT-1), qui place scans et OCR verbatim dans le palier
+RESTREINT, l'enrichissement seul étant ouvert.
+
 ## Récapitulatif des commandes
 
 ```bash

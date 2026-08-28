@@ -496,3 +496,44 @@ def test_deux_bandes_navigation_au_dessus_des_outils(page, live_server, path):
     nb, hb = nav.bounding_box(), page.locator("#header").bounding_box()
     assert nb["y"] == 0                                 # nav tout en haut
     assert hb["y"] >= nb["y"] + nb["height"] - 1        # outils dessous, pas de chevauchement
+
+
+def test_creation_album_demande_sa_collection(page, seeded):
+    """AUTH-2 — la collection est l'unité de cloisonnement : l'UI la demande à la création.
+
+    `seeded` a déjà créé un album, donc la collection de repli existe : il y en a
+    exactement une, et elle doit être PRÉSÉLECTIONNÉE — poser une question dont la
+    réponse est unique serait de la cérémonie, pas de l'explicite.
+    """
+    page.goto(seeded["base"] + "/corpus")
+    page.locator("#btn-new").click()
+    expect(page.locator("#album-modal")).to_be_visible(timeout=15000)
+    sel = page.locator("#m-collection")
+    expect(page.locator("#m-collection-wrap")).to_be_visible()
+    expect(sel).not_to_have_value("")                       # présélectionnée
+    choisie = sel.input_value()
+
+    page.fill("#m-titre", "Album rangé")
+    page.locator("#m-save").click()
+    expect(page.locator("#album-modal")).to_be_hidden(timeout=15000)
+
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ADMIN)
+    try:
+        cols = {str(x["id"]): x for x in c.get("/api/collections").json()}
+        assert choisie in cols
+        # L'album est bien rangé : la collection choisie en compte un de plus qu'avant.
+        assert cols[choisie]["nb_albums"] >= 2
+    finally:
+        c.close()
+
+
+def test_le_champ_collection_disparait_a_l_edition(page, seeded):
+    """Déplacer un album d'une collection à l'autre est un geste d'ESPACE DE TRAVAIL,
+    qui appartient à AUTH-3. Le champ ne doit donc pas apparaître à l'édition, où il
+    laisserait croire à un déplacement possible."""
+    page.goto(seeded["base"] + "/corpus")
+    page.locator('.album-row [data-act="edit"]').first.click()
+    expect(page.locator("#album-modal")).to_be_visible(timeout=15000)
+    expect(page.locator("#m-collection-wrap")).to_be_hidden()
+    expect(page.locator("#m-collection-note")).to_be_hidden()

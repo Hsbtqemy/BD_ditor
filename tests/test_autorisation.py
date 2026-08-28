@@ -35,9 +35,6 @@ HORS_PERIMETRE = {
         "état des moteurs ML, aucune donnée de corpus. Doit rester joignable sans "
         "identité : c'est la sonde d'un conteneur, appelée avant qu'Authelia ne soit "
         "forcément debout"),
-    ("GET", "/api/moi"): (
-        "renvoie l'identité de l'APPELANT et rien d'autre. C'est la brique sur laquelle "
-        "la portée se calcule ; l'y soumettre serait circulaire"),
     ("GET", "/api/sauvegarde"): (
         "DÉCISION DU 2026-08-27, assumée : la sauvegarde reste ouverte à tous. Elle "
         "déverse la base ENTIÈRE, donc toute personne ayant accès à l'instance peut "
@@ -816,3 +813,24 @@ def test_un_objet_partage_n_expose_pas_le_vocabulaire_prive(client, db_path, deu
     vus = {a["valeur"] for a in
            client.get(f"/api/personnages/{perso['id']}/attributs", headers=h).json()}
     assert vus == {"connu"}                  # …mais pas la grille d'à côté
+
+
+def test_moi_dit_pourquoi_on_ne_voit_rien(client, deux_albums, derriere_proxy):
+    """Une portée vide rend l'application VISUELLEMENT indistinguable d'un corpus vide.
+    C'est la bonne réponse de sécurité — 404 partout, rien ne fuit — et la pire réponse
+    d'usage : on se croit devant un outil cassé alors qu'il manque un droit.
+
+    Le compte renvoyé est celui de l'APPELANT, pas celui du corpus : il ne révèle rien.
+    """
+    seul = client.get("/api/moi", headers={"Remote-User": "bob"}).json()
+    assert seul["acces"] == {"total": False, "admin": False,
+                             "collections": 0, "ecriture": 0}
+
+
+def test_moi_compte_les_acces_accordes(client, db_path, deux_albums, derriere_proxy):
+    _ouvrir(db_path, deux_albums["c1"], "bob", niveau="ecriture")
+    a = client.get("/api/moi", headers={"Remote-User": "bob"}).json()["acces"]
+    assert a["collections"] == 1 and a["ecriture"] == 1 and not a["total"]
+    admin = client.get("/api/moi", headers={"Remote-User": "root",
+                                            "Remote-Groups": "bd-admins"}).json()["acces"]
+    assert admin["total"] and admin["admin"] and admin["collections"] is None

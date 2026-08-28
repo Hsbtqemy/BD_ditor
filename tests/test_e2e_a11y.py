@@ -410,3 +410,41 @@ def test_a11y_exploration_accord_inter(page, seeded):
     page.wait_for_timeout(300)
     viol = _audit(page)
     assert not viol, f"Exploration/accord-inter :\n{_fmt(viol)}"
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+@pytest.mark.parametrize("surface", ["/corpus", "/", "/recherche", "/exploration"])
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_portee_vide(page, seeded, theme, surface):
+    """Bandeau « aucune collection ne vous est ouverte » (AUTH-2).
+
+    Il n'apparaît que dans un état qu'aucun autre test ne visite : derrière le proxy, avec
+    une identité à qui rien n'a été accordé. Sans ce test, le seul écran que verra une
+    personne mal configurée serait aussi le seul que l'audit n'aurait jamais regardé.
+
+    Les QUATRE surfaces : `theme.js` l'injecte en tête de `<main>` partout, et la
+    Visionneuse est celle dont la mise en page souffre le plus d'un bloc inattendu.
+    """
+    _theme(page, theme)
+    page.set_extra_http_headers({"Remote-User": "sans-droits"})   # aucun groupe
+    page.goto(seeded["base"] + surface, wait_until="networkidle")
+    page.wait_for_selector(".portee-vide", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Portée vide [{surface} · {theme}] :\n{_fmt(viol)}"
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_a11y_proxy_sans_identite(page, seeded):
+    """L'autre portée vide : l'application se croit derrière un proxy d'auth et ne reçoit
+    AUCUN en-tête. Elle ferme tout, délibérément — mais sans message, l'écran est celui
+    d'un corpus vide et l'opérateur cherche une panne de base de données.
+
+    Aucune pastille utilisateur ici (il n'y a pas d'identité), donc c'est bien le bandeau
+    seul qui porte l'explication.
+    """
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")   # sans en-têtes
+    page.wait_for_selector(".portee-vide", timeout=3000)
+    assert page.locator(".user-chip").count() == 0
+    assert "identité" in page.locator(".portee-vide strong").inner_text()
+    viol = _audit(page)
+    assert not viol, f"Proxy sans identité :\n{_fmt(viol)}"

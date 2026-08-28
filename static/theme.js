@@ -215,6 +215,41 @@
     }
   }
 
+  /* ---- Portée vide : dire POURQUOI l'application paraît vide (AUTH-2) ----
+     Le cloisonnement répond 404 partout à qui n'a aucune collection ouverte. C'est la
+     bonne réponse de sécurité — rien ne fuit — et la pire réponse d'usage : l'écran est
+     exactement celui d'un corpus vide, et la personne conclut que l'outil est cassé.
+     On ne révèle rien en l'expliquant : le compte vient de /api/moi et parle de SES
+     droits, pas du corpus. textContent partout (le nom vient d'un en-tête). */
+  function porteeVide(d) {
+    var a = d && d.acces;
+    if (!a || a.total || a.collections !== 0) return;
+    var titre, texte;
+    if (d.utilisateur) {
+      titre = "Aucune collection ne vous est ouverte.";
+      texte = "Vous êtes bien connecté" + (d.nom ? " (" + d.nom + ")" : "")
+        + " : ce n'est pas une panne, et le corpus n'est pas vide. L'accès se donne "
+        + "collection par collection — demandez-en un à un administrateur de l'instance.";
+    } else {
+      /* Portée vide SANS identité : l'application se croit derrière un proxy d'auth
+         (BD_AUTH_PROXY) mais aucun en-tête ne lui parvient. Elle ferme alors tout, par
+         choix — panne bruyante plutôt que fuite. Reste à ce que le bruit soit AUDIBLE :
+         sans ce message, l'écran est celui d'un corpus vide. Message d'exploitation,
+         donc, et il ne dit rien du corpus. */
+      titre = "Aucune identité ne parvient à l'application.";
+      texte = "Elle est configurée comme étant derrière un proxy d'authentification "
+        + "(BD_AUTH_PROXY) et n'a reçu aucun en-tête d'identité : elle ferme donc tout, "
+        + "délibérément. Si vous administrez cette instance, vérifiez le forward_auth "
+        + "du reverse-proxy — voir docs/deploiement-docker.md.";
+    }
+    var main = document.querySelector("main") || document.body;
+    var box = el("div", "portee-vide");
+    box.setAttribute("role", "status");
+    box.appendChild(el("strong", null, titre));
+    box.appendChild(el("p", null, texte));
+    main.insertBefore(box, main.firstChild);
+  }
+
   /* ---- Utilisateur connecté + déconnexion (INFRA-1, source unique) ----
      Derrière le proxy d'auth (Authelia), /api/moi renvoie l'identité (en-tête
      Remote-User) et l'URL de logout du portail. En local, sans proxy,
@@ -226,7 +261,12 @@
     fetch("/api/moi", { headers: { Accept: "application/json" } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
-        if (!d || !d.utilisateur) return;          // pas d'auth (local) → rien
+        if (!d) return;
+        porteeVide(d);                             // AVANT la pastille : le cas « proxy
+                                                   // déclaré, aucune identité » n'a pas
+                                                   // de pastille, et c'est justement lui
+                                                   // qu'il faut expliquer.
+        if (!d.utilisateur) return;                // pas d'auth (local) → pas de pastille
         var wrap = el("span", "user-chip");
         var who = el("span", "user-who");
         var nom = d.nom || d.utilisateur;

@@ -66,6 +66,13 @@
     <div class="modal-box">
       <h3 id="modal-title">Nouvel album</h3>
       <label>Titre <input id="m-titre" autocomplete="off"></label>
+      <!-- AUTH-2 : la collection est l'unité de cloisonnement. Le champ n'apparaît qu'à la
+           CRÉATION (déplacer un album entre collections est un geste d'AUTH-3), et se
+           remplace par une note quand il n'existe encore aucune collection. -->
+      <label id="m-collection-wrap" hidden>Collection
+        <select id="m-collection"></select>
+      </label>
+      <p id="m-collection-note" class="muted small" hidden></p>
       <div class="modal-grid">
         <label>Série <input id="m-serie" autocomplete="off"></label>
         <label>Auteur <input id="m-auteur" autocomplete="off"></label>

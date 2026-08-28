@@ -9,6 +9,17 @@ Ce n'est qu'une sérialisation des données existantes — aucune transformation
 coordonnées. Il reste à servir les images (serveur IIIF Image ou statiques) sous
 `--base-url`. Lecture SEULE.
 
+**`--base-url` ne doit PAS désigner l'application (AUTH-2).** Un manifeste est fait pour
+être remis à quelqu'un : sa visionneuse ira chercher les images aux URL qu'il contient,
+sans la session Authelia du producteur. Or depuis AUTH-2 l'application sert `/derivatives`
+par une route CLOISONNÉE — un manifeste pointant vers elle ne montrerait que des 404 chez
+son destinataire. Les images doivent donc venir d'un serveur qui leur est accessible :
+serveur IIIF Image de l'entrepôt, ou copie exposée des dérivés.
+
+Rien n'est publié par cet outil : il écrit du JSON, sur la sortie standard ou dans un
+dossier. Et ce que ces images doivent devenir — publiques ou non — relève du tiering de
+droits (DROIT-1), qui place scans et OCR verbatim dans le palier RESTREINT.
+
 Le texte OCR (contenu `restreint`) n'est PAS inclus par défaut ; `--verbatim`
 l'ajoute en annotation `supplementing` (transcription).
 
@@ -166,6 +177,21 @@ def main(argv=None) -> int:
                     help="restreint aux albums d'une collection (défaut : corpus entier)")
     args = ap.parse_args(argv)
     base = args.base_url.rstrip("/")
+
+    # Garde-fous sur `--base-url` (AUTH-2). Aucun des deux ne peut PROUVER que l'URL
+    # désigne un serveur d'images ; ils attrapent les deux méprises qui se voient.
+    hote = base.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    if args.out_dir and base == ap.get_default("base_url").rstrip("/"):
+        print("REFUS — `--base-url` est resté sur le placeholder. Écrire des manifests "
+              "destinés à être remis avec des URL d'images mortes ne rend service à "
+              "personne : précisez le serveur qui servira les images.", file=sys.stderr)
+        return 2
+    if hote in ("localhost", "127.0.0.1", "::1", "[::1]") or hote.endswith(".local"):
+        print(f"ATTENTION — `--base-url` désigne un hôte local ({hote}), qui est sans "
+              "doute l'application elle-même. Depuis AUTH-2, elle sert /derivatives par "
+              "une route cloisonnée : un destinataire de ce manifeste n'obtiendrait que "
+              "des 404. Les images doivent venir d'un serveur qui lui est accessible.",
+              file=sys.stderr)
 
     with _connexion_ro() as conn:
         arbre = mc.collecter(conn, verbatim=args.verbatim, collection_id=args.collection)

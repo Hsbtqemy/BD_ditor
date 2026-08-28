@@ -227,7 +227,36 @@ function renderDetail() {
 }
 
 /* ---------------- Création / édition ---------------- */
-function openModal(album) {
+/* AUTH-2 — la collection est l'unité de cloisonnement : un album y appartient TOUJOURS.
+   L'API accepte de retomber sur une collection de repli, mais lui laisser ce choix ferait
+   s'entasser tout le corpus dans un seul seau et le cloisonnement ne servirait jamais.
+   L'UI demande donc explicitement — sauf quand il n'y a rien à demander.
+
+   Trois cas, et le troisième est celui qui empêche l'impasse :
+     · plusieurs collections → aucune présélection, le choix est fait à la main ;
+     · une seule            → présélectionnée (la question n'a qu'une réponse) ;
+     · aucune               → pas de sélecteur, une note dit que l'API en créera une.
+   À l'ÉDITION, le champ disparaît : déplacer un album d'une collection à l'autre est un
+   geste d'espace de travail, qui appartient à AUTH-3. */
+async function remplirCollections(edition) {
+  const wrap = $("#m-collection-wrap"), sel = $("#m-collection"), note = $("#m-collection-note");
+  wrap.hidden = true; note.hidden = true; sel.innerHTML = "";
+  if (edition) return;
+  let cols = [];
+  try { cols = await apiGet("/api/collections"); } catch (e) { cols = []; }
+  if (!cols.length) {
+    note.textContent = "Aucune collection : l'album entrera dans une collection par "
+      + "défaut, créée à cette occasion.";
+    note.hidden = false;
+    return;
+  }
+  if (cols.length > 1) sel.appendChild(new Option("— choisir —", ""));
+  for (const c of cols) sel.appendChild(new Option(c.nom, String(c.id)));
+  sel.value = cols.length === 1 ? String(cols[0].id) : "";
+  wrap.hidden = false;
+}
+
+async function openModal(album) {
   state.editingId = album ? album.id : null;
   $("#modal-title").textContent = album ? "Éditer l'album" : "Nouvel album";
   const g = (k) => (album && album[k]) || "";
@@ -255,6 +284,10 @@ function openModal(album) {
   $(".contrib-add").style.display = exist ? "" : "none";
   $("#m-contribs").innerHTML = "";
   if (exist) { loadRoles(); loadContributions(state.editingId); }
+  // AWAIT avant d'ouvrir : sans cela, une sauvegarde plus rapide que la requête verrait
+  // le sélecteur encore caché et retomberait EN SILENCE sur la collection de repli —
+  // exactement ce que ce champ existe pour empêcher.
+  await remplirCollections(exist);
   $("#album-modal").hidden = false;
   $("#m-titre").focus();
 }
@@ -321,6 +354,13 @@ function closeModal() { $("#album-modal").hidden = true; }
 async function saveAlbum() {
   const titre = $("#m-titre").value.trim();
   if (!titre) { $("#m-msg").textContent = "Titre requis."; return; }
+  // Le sélecteur n'est visible qu'à la création, et seulement s'il y a un choix à faire.
+  const wrap = $("#m-collection-wrap");
+  const collectionId = wrap.hidden ? null : ($("#m-collection").value || null);
+  if (!wrap.hidden && !collectionId) {
+    $("#m-msg").textContent = "Choisissez la collection qui accueillera cet album.";
+    return;
+  }
   const btn = $("#m-save");
   if (btn.disabled) return;               // anti-double-soumission (sinon album dupliqué)
   btn.disabled = true;
@@ -343,6 +383,7 @@ async function saveAlbum() {
     format_physique: val("#m-format"),
     source_numerisation: val("#m-source-num"),   // matériel (A6)
   };
+  if (collectionId) body.collection_id = parseInt(collectionId, 10);   // AUTH-2
   try {
     if (state.editingId) await apiSend("PUT", `/api/albums/${state.editingId}`, body);
     else await apiSend("POST", "/api/albums", body);

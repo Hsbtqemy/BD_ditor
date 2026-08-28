@@ -49,6 +49,10 @@ def test_moi_sans_auth_local_renvoie_null(client, monkeypatch):
     monkeypatch.setattr(main, "AUTH_LOGOUT_URL", "")
     d = client.get("/api/moi").json()
     assert d == {"utilisateur": None, "nom": None, "groupes": [],
+                 # AUTH-2 : la portée est totale en mono-poste, et les compteurs sont None
+                 # — « pas de restriction », qui ne se confond pas avec « zéro collection ».
+                 "acces": {"total": True, "admin": True,
+                           "collections": None, "ecriture": None},
                  "deconnexion_url": None}
 
 

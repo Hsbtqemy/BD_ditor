@@ -124,6 +124,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   correspondrait à aucune règle, et il faudrait inventer une politique dans le code. La
   création d'album accepte `collection_id` et retombe sinon sur la collection de repli.
 - **404, jamais 403** : « existe mais pas pour vous » révèle la composition du corpus.
+  Corollaire d'ergonomie : une portée vide rend l'app indistinguable d'un corpus vide, d'où
+  le bloc `acces` de `GET /api/moi` et le bandeau `.portee-vide` injecté par `theme.js`,
+  qui distingue « aucun droit » de « aucune identité ne parvient » (forward_auth muet).
 - **Sans `BD_AUTH_PROXY`, portée TOTALE** (mono-poste inchangé) ; **avec le drapeau mais
   sans identité, portée VIDE** — fermeture par défaut, panne bruyante plutôt que fuite.
 - Trois accesseurs GARDÉS sont la seule façon d'atteindre un objet : `_get_album`,

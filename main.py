@@ -3478,17 +3478,30 @@ def _enregistrer_utilisateur(conn: sqlite3.Connection, request: Request) -> Opti
 
 
 @app.get("/api/moi")
-def moi(request: Request, conn: sqlite3.Connection = Depends(db)):
-    """Identité de l'utilisateur connecté + URL de déconnexion (INFRA-1).
+def moi(request: Request, conn: sqlite3.Connection = Depends(db),
+        portee: autorisation.Portee = Depends(portee_courante)):
+    """Identité de l'utilisateur connecté, sa PORTÉE, et l'URL de déconnexion.
 
     En local, sans proxy, l'en-tête est absent → `utilisateur` vaut None et l'UI
-    n'affiche ni nom ni déconnexion. Affichage uniquement : l'autorisation est
-    entièrement assurée en amont par Authelia.
+    n'affiche ni nom ni déconnexion.
+
+    AUTH-2 — le bloc `acces` existe pour une raison d'ergonomie, pas de sécurité : une
+    portée vide rend l'application VISUELLEMENT indistinguable d'un corpus vide, et c'est
+    la bonne réponse de sécurité (404 partout, rien ne fuit) mais la pire réponse d'usage.
+    La personne se croit devant un outil cassé alors qu'il lui manque un droit. On ne
+    révèle rien en le disant : le compte est le SIEN, pas celui du corpus.
+
+    Cette route ne consultait pas la portée jusqu'au 2026-08-28, et sa raison écrite était
+    qu'elle serait « circulaire » — elle ne l'est pas : `portee_courante` ne dépend que de
+    la requête et de la base. Rapporter sa propre portée n'est pas se soumettre à elle.
     """
     utilisateur = _enregistrer_utilisateur(conn, request)
     nom = (request.headers.get("Remote-Name") or "").strip() or utilisateur
     return {"utilisateur": utilisateur, "nom": nom,
             "groupes": _groupes(request),
+            "acces": {"total": portee.tout, "admin": portee.admin,
+                      "collections": None if portee.tout else len(portee.lecture),
+                      "ecriture": None if portee.tout else len(portee.ecriture)},
             "deconnexion_url": AUTH_LOGOUT_URL or None}
 
 
