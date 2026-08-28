@@ -1,28 +1,59 @@
 ---
 chantier: SHARE-1
-statut: à venir
+statut: clos
 ---
 
 # SHARE-1 — session ShareDocs : une d'instance, et une par personne
 
-**Point de départ** — fiche ouverte le 2026-08-27 en cadrant AUTH-2, qui a mis le défaut
-au jour sans être le bon endroit pour le corriger. Aucune ligne écrite.
+**Arrêté sur** — le chantier entier, commit `a5426b2`, 28 août : les deux sortes de
+sessions, la garde du compte d'instance, le dépôt journalisé et le sélecteur de compte de
+l'explorateur. `_session`, dictionnaire de module, cesse d'être la session de tout le
+monde.
+
+`clos` et non `livré` tant que rien n'est poussé — `livré` parle d'intégration, et le
+journal démentirait la fiche.
 
 ## Reste
 
 ### La session
-- [ ] `pipeline/sharedocs.py` garde ses identifiants par PRINCIPAL et non plus dans un dictionnaire de module : deux personnes connectées à deux comptes Huma-Num ne s'écrasent plus l'une l'autre
-- [ ] Une session d'INSTANCE, alimentée par `BD_SHAREDOCS_URL/USER/PASS`, sert de repli à qui n'a pas connecté le sien — c'est le comportement d'aujourd'hui, il ne doit pas changer
-- [ ] Sans proxy d'auth (`BD_AUTH_PROXY` faux), tout retombe dans un unique emplacement : le mono-poste se comporte EXACTEMENT comme avant, prouvé par un test
-- [ ] Les mots de passe restent en mémoire serveur, jamais sur disque, jamais en base — l'invariant de `docs/hebergement-securite.md` tient après le changement
-- [ ] `/api/sharedocs/etat` dit LEQUEL des deux comptes répondrait, sinon on dépose sans savoir où
+- [x] `pipeline/sharedocs.py` garde ses identifiants par PRINCIPAL et non plus dans un dictionnaire de module : deux personnes connectées à deux comptes Huma-Num ne s'écrasent plus l'une l'autre
+- [x] Une session d'INSTANCE, alimentée par `BD_SHAREDOCS_URL/USER/PASS`, sert de repli à qui n'a pas connecté le sien
+> **Cette case a changé en cours de route, et il faut le dire.** Elle ajoutait « c'est le
+> comportement d'aujourd'hui, il ne doit pas changer ». Il a changé, sur décision du
+> 2026-08-28 : la session d'instance est désormais vivante DÈS LE DÉMARRAGE, sans que
+> personne ne clique. La rédaction d'origine se contredisait — aujourd'hui, le mot de passe
+> d'env n'est qu'un repli de FORMULAIRE, si bien qu'il fallait que quelqu'un se connecte
+> pour qu'un repli existe ; « sert de repli à qui n'a pas connecté le sien » n'était donc
+> vrai qu'après amorçage. La contrepartie est assumée : toute personne admise sur
+> l'instance peut s'en servir — ce qui était déjà le cas une fois quelqu'un connecté.
+- [x] Sans proxy d'auth (`BD_AUTH_PROXY` faux), tout retombe dans un unique emplacement : le mono-poste se comporte EXACTEMENT comme avant, prouvé par un test
+- [x] Derrière le proxy SANS identité, AUCUNE session personnelle n'est possible — les ranger toutes sous une même clé y ferait partager un compte Huma-Num entre inconnus, c'est-à-dire le défaut même du chantier sous une autre forme. Fermeture par défaut, comme la portée vide d'AUTH-2
+- [x] Les mots de passe restent en mémoire serveur, jamais sur disque, jamais en base — l'invariant de `docs/hebergement-securite.md` tient après le changement
+- [x] `/api/sharedocs/etat` dit LEQUEL des deux comptes répondrait, sinon on dépose sans savoir où
+- [x] Forcer un compte absent est une ERREUR NOMMÉE, jamais un repli silencieux sur l'autre : déposer sous un compte qu'on n'a pas choisi est exactement ce que ce chantier corrige
+
+### Le compte de l'instance n'appartient à personne
+- [x] Le couper ou le remplacer est réservé aux administrateurs (décision du 2026-08-28). Sans cette garde, la première personne qui clique « déconnexion » prive tout le monde du repli — une action personnelle aux effets collectifs, qui marche parfaitement et casse pour les autres
+- [x] Se déconnecter ferme MA session seulement, et l'écran cesse d'annoncer « non connecté » à tort quand celle de l'instance prend le relais
+- [x] Coupée, elle ne repart PAS de l'environnement au premier accès suivant : sans la distinction « pas encore chargée » / « coupée exprès », la couper n'aurait aucun effet
+- [x] Elle n'est pas validée au chargement : un PROPFIND de vérification ferait dépendre le démarrage de la disponibilité d'Huma-Num, et un serveur qui refuse de servir le corpus local parce qu'un service distant est en panne serait un mauvais échange
 
 ### Le suivi
-- [ ] Le dépôt d'une sauvegarde est un acte JOURNALISÉ (A3) : aujourd'hui `POST /api/sharedocs/deposer-sauvegarde` n'appelle pas `journal` du tout, donc rien ne dit qui a déposé quoi, ni sous quel compte
-- [ ] L'événement distingue la personne qui a cliqué du compte Huma-Num utilisé — ce sont deux faits différents dès qu'existe une session d'instance
+- [x] Le dépôt d'une sauvegarde est un acte JOURNALISÉ (A3) : `POST /api/sharedocs/deposer-sauvegarde` n'appelait pas `journal` du tout, donc rien ne disait qui avait déposé quoi, ni sous quel compte
+- [x] L'événement distingue la personne qui a cliqué du compte Huma-Num utilisé — ce sont deux faits différents dès qu'existe une session d'instance. `cible_table='sharedocs'` n'est pas une table du schéma, et c'est déjà le contrat du journal (`cible_id` n'est pas une FK) ; l'undo ne le voit pas, sa liste blanche de tables ne le contient pas
+
+### L'écran
+- [x] Le compte se CHOISIT (décision du 2026-08-28), et le sélecteur gouverne TOUT le panneau — pas seulement le dépôt : on navigue dans l'arborescence de celui sous lequel on déposera. Choisir au dernier moment ferait déposer ailleurs que là où l'on regarde
+- [x] Le sélecteur ne paraît que s'il y a vraiment un choix : un choix à une seule branche n'en est pas un
+- [x] Changer de compte relance la navigation à la RACINE — un chemin valide chez l'un ne l'est pas forcément chez l'autre
+- [x] Le compte EMPLOYÉ est rendu par le serveur et affiché après le dépôt : une sauvegarde partie sous un compte personnel atterrit dans un espace qui s'en va avec la personne, et c'est le genre de chose qu'on veut lire au moment où ça arrive
 
 ### Ce qui ne bouge pas
-- [ ] La liste d'hôtes autorisés (`BD_SHAREDOCS_ALLOWED_HOSTS`) et le refus des IP internes valent pour toutes les sessions, y compris personnelles : le correctif SSRF ne doit pas se contourner en apportant sa propre URL
+- [x] La liste d'hôtes autorisés (`BD_SHAREDOCS_ALLOWED_HOSTS`) et le refus des IP internes valent pour toutes les sessions, y compris personnelles : le correctif SSRF ne doit pas se contourner en apportant sa propre URL. Une seule fonction `_valider` borde les deux sortes de sessions — deux validations distinctes finiraient par ne plus border la même chose
+
+### Le cliquet
+- [x] Les quatre routes de session sortent de `HORS_PERIMETRE` : elles ne touchent toujours pas au corpus, mais elles consultent désormais QUI appelle. Une de leurs lignes disait « session par personne : cf. SHARE-1 » — la liste portait sa propre échéance
+- [x] Seize gardes vérifiées par mutation, dont la clé par principal (mutée en clé partagée : c'est le défaut d'origine, reproduit à la demande)
 
 ## Contexte
 
