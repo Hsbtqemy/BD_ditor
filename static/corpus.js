@@ -288,6 +288,7 @@ async function openModal(album) {
   // le sélecteur encore caché et retomberait EN SILENCE sur la collection de repli —
   // exactement ce que ce champ existe pour empêcher.
   await remplirCollections(exist);
+  await loadAppartenance(state.editingId);   // AUTH-3 : N-N, édition seulement
   $("#album-modal").hidden = false;
   $("#m-titre").focus();
 }
@@ -618,6 +619,234 @@ function setupBack() {
 }
 
 /* ---------------- Démarrage ---------------- */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Collections (AUTH-3) — espaces de travail : créer, partager, ranger
+
+   AUTH-2 avait fait le cloisonnement, pas son administration : `collection_acces` ne se
+   remplissait qu'en SQL à la main. Cet écran est ce qui rend le reste utilisable — sans
+   lui, tout le travail de routes reste du curl.
+
+   Trois niveaux, et le troisième est la nouveauté : lecture · écriture · PROPRIÉTAIRE.
+   Écrire, c'est annoter ; posséder, c'est décider qui d'autre entrera.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const COL_NIVEAUX = [["lecture", "Lecture"], ["ecriture", "Écriture"],
+                     ["proprietaire", "Propriétaire"]];
+
+function colMsg(texte, erreur) {
+  const el = $("#col-msg");
+  el.textContent = texte || "";
+  el.classList.toggle("erreur", !!erreur);
+}
+
+/* Les refus du serveur sont RENDUS, jamais avalés. Les deux cas d'AUTH-3 (dernier
+   propriétaire, dernière collection) sont des 409 qui nomment un ÉTAT INTERDIT et non un
+   droit manquant : les remplacer par un « échec » générique ferait croire à un bug. */
+async function colTenter(fn) {
+  try { await fn(); colMsg(""); return true; }
+  catch (e) { colMsg(e.message || "Échec", true); return false; }
+}
+
+function niveauOptions(courant) {
+  return COL_NIVEAUX.map(([v, l]) =>
+    `<option value="${v}"${v === courant ? " selected" : ""}>${l}</option>`).join("");
+}
+
+/* Une collection = un <details>. Repliée, elle dit son nom, son volume et MON niveau ;
+   dépliée, elle montre qui a accès — mais seulement si je peux l'administrer, la liste
+   des membres d'une étude étant une donnée sur des personnes. */
+function colItem(c) {
+  const d = document.createElement("details");
+  d.className = "col-item";
+  d.dataset.id = String(c.id);
+  // « Propriétaire » ne s'affiche qu'à un vrai propriétaire : le dire à un administrateur
+  // lui ferait croire à un lien personnel avec une collection qui n'est pas la sienne.
+  const badge = c.mon_niveau
+    ? `<span class="col-niveau${c.mon_niveau === "proprietaire" ? " est-proprietaire" : ""}">`
+      + `${COL_NIVEAUX.find((n) => n[0] === c.mon_niveau)[1]}</span>`
+    : (c.administrable ? `<span class="col-niveau">Administrateur</span>` : "");
+  d.innerHTML = `
+    <summary>
+      <span class="col-nom">${esc(c.nom)}</span>
+      <span class="muted small">${c.nb_albums} album(s)</span>
+      ${badge}
+    </summary>
+    <div class="col-detail"></div>`;
+  d.addEventListener("toggle", () => { if (d.open) colDetail(d, c); });
+  return d;
+}
+
+async function colDetail(d, c) {
+  const box = d.querySelector(".col-detail");
+  if (!c.administrable) {
+    box.innerHTML = `<p class="col-note">Vous participez à cette collection sans la
+      posséder : seul un propriétaire voit et modifie la liste des accès.</p>`;
+    return;
+  }
+  box.innerHTML = `<p class="col-note">Chargement…</p>`;
+  let acces = [];
+  try { acces = await apiGet(`/api/collections/${c.id}/acces`); }
+  catch (e) { box.innerHTML = `<p class="col-note">${esc(e.message)}</p>`; return; }
+  box.innerHTML = `
+    <ul class="acces-liste">${acces.map((a) => `
+      <li>
+        <span class="acces-principal">${esc(a.principal)}</span>
+        <span class="acces-genre">${a.genre === "groupe" ? "groupe" : "utilisateur"}</span>
+        <select data-genre="${esc(a.genre)}" data-principal="${esc(a.principal)}"
+                aria-label="Niveau de ${esc(a.principal)}">${niveauOptions(a.niveau)}</select>
+        <button class="ghost small" data-retirer="1" data-genre="${esc(a.genre)}"
+                data-principal="${esc(a.principal)}" type="button"
+                title="Retirer l'accès de ${esc(a.principal)}">✕</button>
+      </li>`).join("")}</ul>
+    <div class="contrib-add">
+      <input class="col-principal" placeholder="Login ou nom de groupe" autocomplete="off"
+             aria-label="Login ou nom de groupe à qui accorder l'accès">
+      <select class="col-genre" aria-label="Genre du principal">
+        <option value="utilisateur">Utilisateur</option>
+        <option value="groupe">Groupe</option>
+      </select>
+      <select class="col-niveau-neuf" aria-label="Niveau accordé">${niveauOptions("lecture")}</select>
+      <button class="ghost small" data-accorder="1" type="button">+ Accorder</button>
+    </div>
+    <p class="col-note">Un accès se déclare par un NOM, pas par une personne vérifiée :
+      l'application n'a aucun annuaire, elle lit les groupes dans les en-têtes du proxy à
+      chaque requête. Un login mal orthographié n'ouvre rien — sans le dire.</p>
+    <div class="modal-actions">
+      <button class="ghost small" data-renommer="1" type="button">Renommer</button>
+      <button class="ghost small" data-supprimer="1" type="button">Supprimer la collection</button>
+    </div>`;
+
+  const recharger = async () => { await loadCollections(); };
+  box.querySelectorAll("[data-retirer]").forEach((b) => {
+    b.onclick = async () => {
+      const { genre, principal } = b.dataset;
+      if (await colTenter(() => apiSend("DELETE",
+          `/api/collections/${c.id}/acces/${genre}/${encodeURIComponent(principal)}`)))
+        recharger();
+    };
+  });
+  box.querySelectorAll("select[data-principal]").forEach((s) => {
+    s.onchange = async () => {
+      const { genre, principal } = s.dataset;
+      // On recharge dans les DEUX cas : en cas de refus, le <select> afficherait sinon
+      // un niveau que le serveur n'a pas accordé — l'écran mentirait sur l'état réel.
+      await colTenter(() => apiSend("PUT", `/api/collections/${c.id}/acces`,
+        { genre, principal, niveau: s.value }));
+      recharger();
+    };
+  });
+  box.querySelector("[data-accorder]").onclick = async () => {
+    const principal = box.querySelector(".col-principal").value.trim();
+    if (!principal) { colMsg("Indiquez un login ou un nom de groupe.", true); return; }
+    if (await colTenter(() => apiSend("PUT", `/api/collections/${c.id}/acces`, {
+        genre: box.querySelector(".col-genre").value,
+        principal,
+        niveau: box.querySelector(".col-niveau-neuf").value })))
+      recharger();
+  };
+  box.querySelector("[data-renommer]").onclick = async () => {
+    const nom = prompt("Nouveau nom de la collection :", c.nom);
+    if (nom === null || !nom.trim()) return;
+    if (await colTenter(() => apiSend("PATCH", `/api/collections/${c.id}`, { nom: nom.trim() })))
+      recharger();
+  };
+  box.querySelector("[data-supprimer]").onclick = async () => {
+    if (!confirm(`Supprimer « ${c.nom} » ? Ses albums ne sont pas supprimés : ils sortent `
+                 + `simplement de cette collection.`)) return;
+    if (await colTenter(() => apiSend("DELETE", `/api/collections/${c.id}`))) recharger();
+  };
+}
+
+async function loadCollections() {
+  const body = $("#col-body");
+  let cols = [];
+  try { cols = await apiGet("/api/collections"); }
+  catch (e) { body.innerHTML = `<p class="col-note">${esc(e.message)}</p>`; return; }
+  body.innerHTML = "";
+  if (!cols.length) {
+    body.innerHTML = `<p class="col-note">Aucune collection ouverte pour vous. Créez-en une
+      ci-dessus : vous en serez propriétaire.</p>`;
+    return;
+  }
+  cols.forEach((c) => body.appendChild(colItem(c)));
+}
+
+function openCollections() {
+  colMsg("");
+  $("#col-nom").value = "";
+  $("#collections-modal").hidden = false;
+  loadCollections();
+  $("#col-nom").focus();
+}
+
+function closeCollections() {
+  $("#collections-modal").hidden = true;
+  // Le sélecteur de la modale album lit la même liste : la rafraîchir évite qu'une
+  // collection tout juste créée manque au prochain « Nouvel album ».
+  loadAlbums();
+}
+
+async function creerCollection() {
+  const nom = $("#col-nom").value.trim();
+  if (!nom) { colMsg("Donnez un nom à la collection.", true); return; }
+  if (await colTenter(() => apiSend("POST", "/api/collections", { nom }))) {
+    $("#col-nom").value = "";
+    colMsg(`« ${nom} » créée — vous en êtes propriétaire.`);
+    loadCollections();
+  }
+}
+
+/* ── Appartenance d'un album (N-N) — dans la modale d'édition ─────────────────────────
+   AUTH-2 posait le choix de la collection à la CRÉATION et cachait le champ à l'édition,
+   faute de propriétaire pour dire qui a le droit de déplacer quoi. Le propriétaire existe
+   maintenant, et l'appartenance se révèle pour ce qu'elle est depuis la v14 : N-N. Un même
+   album peut nourrir deux études — le dupliquer casserait l'analyse inter-corpus. */
+function appMsg(texte, erreur) {
+  const el = $("#m-appartenance-msg");
+  el.textContent = texte || "";
+  el.classList.toggle("erreur", !!erreur);
+}
+
+async function loadAppartenance(albumId) {
+  const bloc = $("#m-appartenance"), liste = $("#m-appartenance-liste"),
+        cible = $("#m-appartenance-cible");
+  bloc.hidden = !albumId;
+  if (!albumId) return;
+  let siennes = [], toutes = [];
+  try {
+    siennes = await apiGet(`/api/albums/${albumId}/collections`);
+    toutes = await apiGet("/api/collections");
+  } catch (e) { appMsg(e.message, true); return; }
+  const dedans = new Set(siennes.map((c) => c.id));
+  liste.innerHTML = siennes.map((c) => `
+    <li><span class="col-nom">${esc(c.nom)}</span>
+        <button class="ghost small" data-sortir="${c.id}" type="button"
+                title="Sortir de cette collection">✕</button></li>`).join("");
+  liste.querySelectorAll("[data-sortir]").forEach((b) => {
+    b.onclick = async () => {
+      try {
+        await apiSend("DELETE", `/api/albums/${albumId}/collections/${b.dataset.sortir}`);
+        appMsg("");
+        loadAppartenance(albumId);
+      } catch (e) { appMsg(e.message, true); }
+    };
+  });
+  cible.innerHTML = "";
+  const restantes = toutes.filter((c) => !dedans.has(c.id));
+  for (const c of restantes) cible.appendChild(new Option(c.nom, String(c.id)));
+  cible.disabled = !restantes.length;
+  $("#m-appartenance-add").disabled = !restantes.length;
+}
+
+async function rangerAlbum() {
+  const id = state.editingId, cible = $("#m-appartenance-cible").value;
+  if (!id || !cible) return;
+  try {
+    await apiSend("PUT", `/api/albums/${id}/collections/${cible}`);
+    appMsg("");
+    loadAppartenance(id);
+  } catch (e) { appMsg(e.message, true); }
+}
+
 function setup() {
   setupBack();
   $("#btn-new").onclick = () => openModal(null);
@@ -637,6 +866,20 @@ function setup() {
       { box: ".modal-box", labelledby: "modal-title", onClose: closeModal });
   PASSES.forEach((p) => { $("#pass-" + p).onchange = updateSelInfo; });
   $("#btn-run").onclick = runBatch;
+  // Collections (AUTH-3) : l'écran qui remplace `tools/gerer_collections.py`.
+  $("#btn-collections").onclick = openCollections;
+  $("#col-close").onclick = closeCollections;
+  $("#col-add").onclick = creerCollection;
+  $("#col-nom").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); creerCollection(); }
+  });
+  $("#m-appartenance-add").onclick = rangerAlbum;
+  $("#collections-modal").addEventListener("mousedown", (e) => {
+    if (e.target.id === "collections-modal") closeCollections();
+  });
+  if (window.BDDialog)
+    BDDialog.register($("#collections-modal"),
+      { box: ".modal-box", labelledby: "collections-title", onClose: closeCollections });
   loadCorpus();   // stats d'en-tête (bande 2)
   loadAlbums();
   pollJobs();     // reprend l'affichage d'un éventuel job déjà en cours

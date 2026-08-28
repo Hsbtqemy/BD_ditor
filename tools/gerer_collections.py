@@ -20,6 +20,16 @@ Sous-commandes :
     retirer   ID --albums 1,2         retire des albums (n'efface pas les albums)
     supprimer ID                      supprime la collection (pas les albums)
 
+AUTH-3 — depuis l'écran Collections de la Bibliothèque, cet outil n'est plus le SEUL moyen
+d'écrire : c'était son défaut, il exigeait un accès shell pour ouvrir un espace de travail.
+Il reste utile pour l'amorçage et les descripteurs de dépôt (licence, embargo, responsables),
+que l'écran ne couvre pas.
+
+Une collection créée ici naît SANS PROPRIÉTAIRE — donc administrable par les seuls
+`bd-admins`. C'est cohérent (il n'y a pas d'identité dans un shell), mais rarement ce qu'on
+veut : `--proprietaire LOGIN` (ou `--proprietaire-groupe NOM`) l'inscrit d'emblée, et évite
+d'avoir à ouvrir la base pour rendre la collection utilisable par quelqu'un.
+
 La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
 """
 from __future__ import annotations
@@ -33,7 +43,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import database  # noqa: E402
 
-STATUTS = ("public", "embargo", "restreint", "prive")
+# Importé de config : la route d'édition (AUTH-3) valide la MÊME liste. Deux chemins
+# d'écriture sur un champ contrôlé ne peuvent pas avoir chacun la sienne.
+from config import STATUTS_DIFFUSION as STATUTS  # noqa: E402
 # Descripteurs éditables (colonne SQL ← attribut argparse). `responsables` est traité à
 # part (liste JSON). `nom` est requis à la création, éditable ensuite.
 _CHAMPS = {"nom": "nom", "description": "description", "licence": "licence_defaut",
@@ -179,7 +191,17 @@ def cmd_montrer(args) -> int:
     return 0
 
 
+def _refuser_nom_reserve(nom) -> None:
+    """Même garde que la route (AUTH-3) : `collection_par_defaut` désigne le repli par son
+    NOM, et se l'attribuer capture les albums créés sans collection explicite. Un outil
+    d'opérateur n'a pas plus de raison qu'une UI de casser cet invariant en silence."""
+    if nom and database.nom_reserve(nom):
+        raise SystemExit(f"« {nom} » est réservé à la collection de repli "
+                         "(albums créés sans collection explicite).")
+
+
 def cmd_creer(args) -> int:
+    _refuser_nom_reserve(args.nom)
     maj = _descripteurs(args)
     maj["nom"] = args.nom
     maj["responsables"] = json.dumps(_parse_responsables(args.responsable),
@@ -194,13 +216,25 @@ def cmd_creer(args) -> int:
         n = 0
         if args.albums:
             n = _ranger(conn, cid, _albums_existants(conn, _albums_ids(args.albums)))
+        # AUTH-3 — sans propriétaire, la collection n'est administrable que par un
+        # administrateur. C'est un état valable (un shell n'a pas d'identité) mais rarement
+        # voulu : le poser ici évite d'ouvrir la base pour rendre la collection utilisable.
+        proprio = args.proprietaire or args.proprietaire_groupe
+        if proprio:
+            conn.execute(
+                "INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
+                "VALUES (?, ?, ?, 'proprietaire')",
+                (cid, "groupe" if args.proprietaire_groupe else "utilisateur", proprio))
     _checkpoint()
-    _err(f"Collection créée : {cid} — « {args.nom} » ({n} album(s))")
+    _err(f"Collection créée : {cid} — « {args.nom} » ({n} album(s))"
+         + (f", propriétaire : {proprio}" if proprio else
+            " — SANS propriétaire (administrable par bd-admins seulement)"))
     print(cid)                      # stdout = l'id seul (scriptable)
     return 0
 
 
 def cmd_modifier(args) -> int:
+    _refuser_nom_reserve(getattr(args, "nom", None))
     maj = _descripteurs(args)
     if args.responsable is not None:      # --responsable fourni (même vide) → remplace
         maj["responsables"] = json.dumps(_parse_responsables(args.responsable),
@@ -289,6 +323,10 @@ def main(argv=None) -> int:
     p = sub.add_parser("creer", help="crée une collection")
     p.add_argument("--nom", required=True)
     p.add_argument("--albums", help="albums à ranger d'emblée (« 1,2,3 »)")
+    p.add_argument("--proprietaire", metavar="LOGIN",
+                   help="login qui POSSÈDE la collection (accorde/retire les accès)")
+    p.add_argument("--proprietaire-groupe", dest="proprietaire_groupe", metavar="NOM",
+                   help="idem, mais un groupe Remote-Groups (un labo, pas une personne)")
     _ajouter_descripteurs(p)
     p.set_defaults(func=cmd_creer)
 

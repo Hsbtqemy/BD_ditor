@@ -120,6 +120,20 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
 - **La collection est l'unité** (`collection_acces` : collection × principal × niveau).
   `principal` = un login OU un nom de groupe lu dans `Remote-Groups` — on stocke une
   RÉFÉRENCE au groupe, jamais une appartenance (invariant AUTH-1).
+- **Trois niveaux qui s'empilent** (AUTH-3) : `lecture` · `ecriture` · `proprietaire`. Le
+  cumul se fait dans `Portee.__init__`, une seule fois — un `in portee.ecriture` qui
+  oublierait les propriétaires serait un refus silencieux et parfaitement crédible. La
+  propriété est un NIVEAU et non une colonne : une seule source de vérité, et un GROUPE
+  peut posséder (un espace de travail survit rarement au départ d'une personne).
+  **`peut_administrer()` est distinct de `peut_ecrire()`** : écrire c'est annoter,
+  posséder c'est décider qui d'autre entrera — un membre en écriture n'hérite pas du droit
+  d'élargir le cercle. `bd-admins` passe outre, et c'est écrit : sans ce recours, le départ
+  d'un propriétaire fabriquerait une collection définitivement bloquée. Deux états sont
+  interdits en base et refusés par un **409 qui les nomme** : zéro propriétaire sur une
+  collection, zéro collection pour un album. **Créer une collection exige une IDENTITÉ, pas
+  un droit** (403 nommant la panne derrière le proxy) ; le nom `Collection par défaut` est
+  **réservé** (se l'attribuer capturerait les albums créés sans collection explicite) ; et
+  les changements d'accès sont **tracés au journal A3** (`lien`/`delien`, non annulables).
 - **Aucun album hors collection** (`database.collection_par_defaut`) : un orphelin ne
   correspondrait à aucune règle, et il faudrait inventer une politique dans le code. La
   création d'album accepte `collection_id` et retombe sinon sur la collection de repli.

@@ -1287,3 +1287,25 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 }
 .portee-vide strong { display: block; margin-bottom: 4px; }
 .portee-vide p { margin: 0; color: var(--text-muted); font-size: 13px; max-width: 70ch; }
+
+/* ── Collections (AUTH-3) — écran d'administration des espaces de travail ─────────── */
+.col-item { border-top: 1px solid var(--border); padding: .55rem 0; }
+.col-item > summary { cursor: pointer; display: flex; align-items: center; gap: .5rem;
+                      flex-wrap: wrap; }
+.col-item > summary::marker { color: var(--text-muted); }
+.col-nom { font-weight: 600; }
+/* La pastille de niveau porte son SENS dans le libellé, jamais dans la seule couleur
+   (WCAG 1.4.1) — et le fond reste un accent de fill, pas de texte. */
+.col-niveau { font-size: .78rem; padding: .05rem .4rem; border-radius: 3px;
+              border: 1px solid var(--border); color: var(--text-muted); }
+.col-niveau.est-proprietaire { border-color: var(--accent-green); color: var(--text); }
+.acces-liste { list-style: none; margin: .4rem 0 .3rem; padding: 0; }
+.acces-liste li { display: flex; align-items: center; gap: .5rem; padding: .18rem 0;
+                  font-size: .9rem; flex-wrap: wrap; }
+.acces-principal { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.acces-genre { color: var(--text-muted); font-size: .8rem; }
+.col-note { color: var(--text-muted); font-size: .82rem; margin: .3rem 0 .1rem; }
+/* Le refus du serveur se LIT : les 409 d'AUTH-3 nomment un état interdit (dernier
+   propriétaire, dernière collection), pas un droit manquant. Token d'encre AA-sûr, jamais
+   l'accent brut, qui échoue le 4.5:1 en petit texte. */
+#col-msg.erreur, #m-appartenance-msg.erreur { color: var(--ink-red); }

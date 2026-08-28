@@ -1,17 +1,23 @@
-"""Le point de passage UNIQUE de l'autorisation.  AUTH-2.
+"""Le point de passage UNIQUE de l'autorisation.  AUTH-2, puis AUTH-3.
 
 Ce module répond à une seule question, et il est le seul endroit du dépôt où elle se
-tranche : **quelles collections cette requête a-t-elle le droit de voir, et en écriture ou
-en lecture ?** Tout le reste — routes, recherche, analyses, exports — consomme sa réponse
-sans jamais la recalculer.
+tranche : **quelles collections cette requête a-t-elle le droit de voir, et à quel
+niveau ?** Tout le reste — routes, recherche, analyses, exports — consomme sa réponse sans
+jamais la recalculer.
 
 Pourquoi un module, et pas quelques `if` dans `main.py`.
 
-Le risque de ce chantier n'est pas la difficulté, c'est l'exhaustivité. Il y a 109 routes ;
-une règle d'accès qui en couvre 108 ne cloisonne rien, et le trou ne se voit pas puisque
-tout marche. Un point de passage unique rend l'oubli DÉTECTABLE : on peut demander
-mécaniquement « quelles routes touchent la base sans le consulter ? », ce qu'on ne peut pas
-demander d'une condition dispersée. C'est `tests/test_autorisation.py` qui pose la question.
+Le risque de ce chantier n'est pas la difficulté, c'est l'exhaustivité. Il y a plus de cent
+routes ; une règle d'accès qui les couvre toutes sauf une ne cloisonne rien, et le trou ne
+se voit pas puisque tout marche. Un point de passage unique rend l'oubli DÉTECTABLE : on
+peut demander mécaniquement « quelles routes touchent la base sans le consulter ? », ce
+qu'on ne peut pas demander d'une condition dispersée. C'est `tests/test_autorisation.py`
+qui pose la question.
+
+**Trois niveaux, et le troisième n'est pas une gradation du deuxième** (AUTH-3) : `lecture`,
+`ecriture` (annoter), `proprietaire` (décider qui d'autre entrera). `peut_administrer()` est
+donc une fonction à part et non un `peut_ecrire()` plus exigeant — un membre en écriture
+n'hérite pas du droit d'élargir le cercle.
 
 Trois principes.
 
@@ -44,10 +50,17 @@ from typing import Optional
 
 from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
 
-# Niveaux d'accès. L'écriture IMPLIQUE la lecture — on ne modifie pas ce qu'on ne voit pas.
+# Niveaux d'accès, du plus faible au plus fort. Chacun IMPLIQUE les précédents : on ne
+# modifie pas ce qu'on ne voit pas, et on n'administre pas ce qu'on ne peut pas modifier.
+#
+# `proprietaire` (AUTH-3) est un niveau et non une colonne à part : une seule table reste
+# la source de vérité, la résolution écrite pour AUTH-2 fonctionne telle quelle, et un
+# GROUPE peut posséder une collection — un espace de travail survit rarement au départ
+# d'une personne. Contrepartie assumée, gardée en base : jamais zéro propriétaire.
 LECTURE = "lecture"
 ECRITURE = "ecriture"
-NIVEAUX = (LECTURE, ECRITURE)
+PROPRIETAIRE = "proprietaire"
+NIVEAUX = (LECTURE, ECRITURE, PROPRIETAIRE)
 
 # Genres de principal. EXPLICITE plutôt que déduit : un login et un nom de groupe peuvent
 # être la même chaîne, et une ambiguïté silencieuse sur un contrôle d'accès n'est pas une
@@ -95,15 +108,21 @@ class Portee:
     dans ce cas — elle serait juste au moment du calcul et fausse dès la création suivante.
     """
 
-    __slots__ = ("tout", "admin", "lecture", "ecriture", "utilisateur", "groupes")
+    __slots__ = ("tout", "admin", "lecture", "ecriture", "propriete",
+                 "utilisateur", "groupes")
 
     def __init__(self, *, tout: bool = False, admin: bool = False,
                  lecture: frozenset = frozenset(), ecriture: frozenset = frozenset(),
+                 propriete: frozenset = frozenset(),
                  utilisateur: Optional[str] = None, groupes: tuple = ()):
         self.tout = tout
         self.admin = admin
-        self.lecture = frozenset(lecture) | frozenset(ecriture)   # écrire implique lire
-        self.ecriture = frozenset(ecriture)
+        self.propriete = frozenset(propriete)
+        # Les niveaux s'empilent : posséder implique écrire, écrire implique lire. On le
+        # fait ICI, une fois, plutôt que dans chaque appelant — un `in self.ecriture` qui
+        # oublierait les propriétaires serait un refus silencieux et parfaitement crédible.
+        self.ecriture = frozenset(ecriture) | self.propriete
+        self.lecture = frozenset(lecture) | self.ecriture
         self.utilisateur = utilisateur
         self.groupes = tuple(groupes)
 
@@ -113,6 +132,21 @@ class Portee:
 
     def peut_ecrire(self, collection_id: int) -> bool:
         return self.tout or collection_id in self.ecriture
+
+    def peut_administrer(self, collection_id: int) -> bool:
+        """A-t-on le droit de PARTAGER cette collection — accorder, retirer, supprimer ?
+
+        Administrer n'est pas écrire, et c'est le troisième palier d'AUTH-3 : écrire, c'est
+        annoter ; administrer, c'est décider qui d'autre entrera. Un membre en écriture
+        n'hérite donc PAS du droit d'élargir le cercle — sinon il s'élargirait sans que le
+        propriétaire le sache, et un accès accordé par erreur deviendrait intraçable.
+
+        L'administrateur (`bd-admins`) passe outre, et c'est écrit : c'est le recours quand
+        quelqu'un quitte le projet en laissant une collection derrière lui. Le refuser
+        fabriquerait des collections définitivement bloquées, dont la seule sortie serait
+        un UPDATE en SQL — c'est-à-dire exactement ce que ce chantier existe pour supprimer.
+        """
+        return self.admin or collection_id in self.propriete
 
     # -- filtrage des requêtes ---------------------------------------------- #
     def clause_album(self, alias: str = "a.id", *, ecriture: bool = False) -> tuple[str, list]:
@@ -181,7 +215,8 @@ class Portee:
         if self.tout:
             return f"<Portee TOUT admin={self.admin} user={self.utilisateur!r}>"
         return (f"<Portee lecture={sorted(self.lecture)} "
-                f"ecriture={sorted(self.ecriture)} user={self.utilisateur!r}>")
+                f"ecriture={sorted(self.ecriture)} "
+                f"propriete={sorted(self.propriete)} user={self.utilisateur!r}>")
 
 
 TOTALE = Portee(tout=True, admin=True)
@@ -191,23 +226,27 @@ TOTALE = Portee(tout=True, admin=True)
 # Résolution
 # --------------------------------------------------------------------------- #
 def collections_du_principal(conn: sqlite3.Connection, login: str,
-                             noms_groupes: list[str]) -> tuple[frozenset, frozenset]:
-    """(lecture, écriture) — les collections ouvertes à ce login ou à l'un de ses groupes.
+                             noms_groupes: list[str]) -> tuple[frozenset, frozenset, frozenset]:
+    """(lecture, écriture, propriété) — les collections ouvertes à ce login ou à l'un de
+    ses groupes, rangées par niveau.
 
     Une seule requête : le nombre de groupes est petit, et cette fonction est appelée à
     chaque requête HTTP.
+
+    Les niveaux ne sont PAS cumulés ici — `Portee.__init__` s'en charge, et un seul endroit
+    doit le faire. Un niveau inconnu (base éditée à la main, niveau retiré du code) est
+    rangé en LECTURE : dégrader est la seule erreur qui ne s'aggrave pas.
     """
     principaux = [(UTILISATEUR, login)] + [(GROUPE, g) for g in noms_groupes]
-    if not principaux:
-        return frozenset(), frozenset()
     conditions = " OR ".join("(genre = ? AND principal = ?)" for _ in principaux)
     params = [v for paire in principaux for v in paire]
-    lecture, ecriture = set(), set()
+    par_niveau = {LECTURE: set(), ECRITURE: set(), PROPRIETAIRE: set()}
     for cid, niveau in conn.execute(
             f"SELECT collection_id, niveau FROM collection_acces WHERE {conditions}",
             params):
-        (ecriture if niveau == ECRITURE else lecture).add(cid)
-    return frozenset(lecture), frozenset(ecriture)
+        par_niveau.get(niveau, par_niveau[LECTURE]).add(cid)
+    return (frozenset(par_niveau[LECTURE]), frozenset(par_niveau[ECRITURE]),
+            frozenset(par_niveau[PROPRIETAIRE]))
 
 
 def resoudre(conn: sqlite3.Connection, request) -> Portee:
@@ -220,6 +259,6 @@ def resoudre(conn: sqlite3.Connection, request) -> Portee:
         return Portee(groupes=tuple(noms_groupes))   # pas passé par Authelia : rien
     if AUTH_ADMIN_GROUPS & set(noms_groupes):
         return Portee(tout=True, admin=True, utilisateur=login, groupes=tuple(noms_groupes))
-    lecture, ecriture = collections_du_principal(conn, login, noms_groupes)
-    return Portee(lecture=lecture, ecriture=ecriture,
+    lecture, ecriture, propriete = collections_du_principal(conn, login, noms_groupes)
+    return Portee(lecture=lecture, ecriture=ecriture, propriete=propriete,
                   utilisateur=login, groupes=tuple(noms_groupes))

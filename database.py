@@ -1008,6 +1008,20 @@ def collections(conn: sqlite3.Connection) -> list[dict]:
 NOM_COLLECTION_DEFAUT = "Collection par défaut"
 
 
+def nom_reserve(nom: str) -> bool:
+    """Ce nom est-il celui de la collection de repli ?
+
+    Il est LOAD-BEARING : `collection_par_defaut` désigne le repli PAR SON NOM. Tant que
+    seul un accès shell permettait de renommer une collection, le seul mode d'échec était
+    « quelqu'un renomme le repli », dont la conséquence est bénigne (un nouveau seau vide
+    se recrée). AUTH-3 a ouvert le renommage à tout propriétaire, et rendu possible
+    l'inverse : renommer SA collection avec ce nom-là capture les albums créés sans
+    collection explicite — mesuré, un album d'administrateur y atterrit et devient visible
+    de qui a fait le renommage. C'est précisément ce que le choix du nom voulait éviter.
+    """
+    return nom.strip().casefold() == NOM_COLLECTION_DEFAUT.casefold()
+
+
 def collection_par_defaut(conn: sqlite3.Connection) -> int:
     """Id de la collection de repli, CRÉÉE si elle n'existe pas.
 

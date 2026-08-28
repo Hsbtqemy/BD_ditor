@@ -448,3 +448,88 @@ def test_a11y_proxy_sans_identite(page, seeded):
     assert "identité" in page.locator(".portee-vide strong").inner_text()
     viol = _audit(page)
     assert not viol, f"Proxy sans identité :\n{_fmt(viol)}"
+
+
+# --------------------------------------------------------------------------- #
+# Collections (AUTH-3) — l'écran qui remplace `tools/gerer_collections.py`
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_corpus_collections(page, seeded, theme):
+    """Écran Collections : créer, déplier, accorder un accès — audité à chaque étape.
+
+    C'est le seul écran du dépôt où l'on décide QUI entre. Une régression d'accessibilité
+    y coûterait plus cher qu'ailleurs : on n'administre pas des droits à l'aveugle.
+    """
+    _theme(page, theme)
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.click("#btn-collections")
+    page.wait_for_selector("#col-body .col-item", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Collections [{theme}] :\n{_fmt(viol)}"
+
+    page.fill("#col-nom", "Corpus colonial")
+    page.click("#col-add")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('#col-body .col-nom')]"
+        "        .some(e => e.textContent === 'Corpus colonial')", timeout=3000)
+
+    # Déplier la collection créée → la liste des accès et le formulaire apparaissent.
+    page.locator("#col-body .col-item", has_text="Corpus colonial").locator(
+        "summary").click()
+    page.wait_for_selector("#col-body .col-principal", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Collections/accès [{theme}] :\n{_fmt(viol)}"
+
+    page.locator(".col-principal").first.fill("bd-lettrage")
+    page.locator(".col-genre").first.select_option("groupe")
+    page.locator(".col-niveau-neuf").first.select_option("ecriture")
+    page.locator("[data-accorder]").first.click()
+    page.wait_for_timeout(500)
+
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ADMIN)
+    try:
+        cols = c.get("/api/collections").json()
+        cid = next(x["id"] for x in cols if x["nom"] == "Corpus colonial")
+        acces = c.get(f"/api/collections/{cid}/acces").json()
+    finally:
+        c.close()
+    assert ("bd-lettrage", "groupe", "ecriture") in {
+        (a["principal"], a["genre"], a["niveau"]) for a in acces}
+
+
+def test_corpus_appartenance_album(page, seeded):
+    """L'appartenance N-N depuis l'UI — la case qu'AUTH-2 avait laissée ouverte, faute de
+    propriétaire pour dire qui a le droit de déplacer quoi.
+
+    Le refus de sortir de la DERNIÈRE collection doit être RENDU : c'est un 409 qui nomme
+    un état interdit, pas un droit manquant, et l'avaler ferait croire à un bug.
+    """
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ADMIN)
+    try:
+        autre = c.post("/api/collections", json={"nom": "Représentations"}).json()["id"]
+    finally:
+        c.close()
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.locator('#albums-body tr [data-act="edit"]').first.click()
+    page.wait_for_selector("#m-appartenance:not([hidden])", timeout=3000)
+    # Une seule collection au départ : la sortir doit être refusé, et le dire.
+    page.locator("#m-appartenance-liste [data-sortir]").first.click()
+    page.wait_for_function(
+        "() => document.querySelector('#m-appartenance-msg')"
+        "        .textContent.includes('dernière collection')", timeout=3000)
+    assert "erreur" in page.locator("#m-appartenance-msg").get_attribute("class")
+
+    # Rangé ailleurs, l'album vit dans deux collections — et la sortie redevient possible.
+    page.select_option("#m-appartenance-cible", str(autre))
+    page.click("#m-appartenance-add")
+    page.wait_for_function(
+        "() => document.querySelectorAll('#m-appartenance-liste li').length === 2",
+        timeout=3000)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ADMIN)
+    try:
+        vues = c.get(f"/api/albums/{seeded['album']}/collections").json()
+    finally:
+        c.close()
+    assert autre in {x["id"] for x in vues} and len(vues) == 2

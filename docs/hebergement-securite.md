@@ -141,6 +141,64 @@ pas traversé Authelia ne voit rien. Si le `forward_auth` est mal configuré, l'
 paraîtra VIDE pour tout le monde : c'est une panne bruyante et immédiate, préférée à une
 fuite silencieuse. Si l'instance semble vide au premier démarrage, chercher là d'abord.
 
+### Administrer une collection — AUTH-3
+
+Le cloisonnement d'AUTH-2 ne s'administrait qu'en SQL : `tools/gerer_collections.py` était
+le seul outil d'écriture, et il exige un accès shell. Ce n'est plus le cas — la Bibliothèque
+a un écran **Collections** (créer, renommer, supprimer, accorder et retirer un accès), et
+l'appartenance d'un album se gère depuis sa fiche.
+
+**Trois niveaux, et le troisième n'est pas une gradation du deuxième.** `lecture` puis
+`ecriture` (annoter) puis `proprietaire` (décider qui d'autre entre). Un membre en écriture
+n'hérite PAS du droit de partager : sinon le cercle s'élargirait sans que le propriétaire le
+sache, et un accès accordé par erreur deviendrait intraçable.
+
+**Ce que « accorder un accès » veut dire exactement.** On ne désigne pas une personne
+vérifiée : on déclare qu'un NOM — un login, ou un nom de groupe tel qu'Authelia le pose dans
+`Remote-Groups` — ouvre une collection. L'application n'a aucun annuaire (invariant AUTH-1),
+et **un nom mal orthographié n'ouvre rien, silencieusement**. C'est le mode d'échec à
+connaître avant d'exploiter une instance : si quelqu'un ne voit toujours rien après un
+partage, vérifier l'orthographe du login avant de chercher ailleurs.
+
+**Deux états sont interdits, et refusés par un 409 qui les nomme** — pas par un 403 : ce
+n'est pas un droit qui manque, c'est un état que le modèle n'admet pas.
+
+- *Zéro propriétaire sur une collection.* Retirer ou rétrograder le dernier est refusé.
+  Sans cela, seule une intervention d'administrateur pourrait rouvrir la collection — le
+  SQL à la main que ce chantier existe pour supprimer.
+- *Zéro collection pour un album.* Sortir un album de sa dernière collection est refusé, et
+  supprimer une collection l'est aussi tant qu'un album n'a qu'elle. Un orphelin ne
+  correspondrait à aucune règle d'accès (invariant AUTH-2). Déplacer, c'est donc ranger
+  ailleurs PUIS sortir — l'ordre inverse se voit refuser plutôt que de déverser le travail
+  dans un seau commun.
+
+**Retirer un accès ne détruit AUCUNE donnée.** Les annotations faites par la personne
+restent, et le journal A3 continue de les lui attribuer : le corpus perdrait sa provenance
+à chaque départ. De même, supprimer une collection ne supprime pas ses albums — l'appartenance
+est N-N, le lien se défait et l'œuvre reste ; ses termes de vocabulaire sont promus en
+global plutôt que perdus.
+
+**L'administrateur passe outre la propriété**, et c'est le recours prévu quand quelqu'un
+quitte le projet en laissant une collection derrière lui. Il ne se déclare pas propriétaire
+des collections qu'il crée : il possède déjà tout, et lui inventer un lien personnel avec
+chacune fausserait la notion.
+
+**Créer une collection exige une IDENTITÉ, pas un droit.** Quelqu'un qui n'a encore accès à
+rien peut en ouvrir une — sinon l'application serait inutilisable au premier jour de
+chacun. Mais derrière le proxy, une requête sans en-tête d'identité est refusée par un
+**403 qui nomme la panne** : elle n'est pas passée par Authelia, et c'est une configuration
+à réparer, pas un objet à cacher.
+
+**Le nom « Collection par défaut » est RÉSERVÉ.** Le repli est désigné par son nom, et se
+l'attribuer capturerait les albums créés sans collection explicite — y compris ceux d'un
+administrateur, qui deviendraient visibles de qui a fait le renommage. La garde vaut à la
+création, au renommage, et dans l'outil headless ; elle est insensible à la casse.
+
+**Les changements d'accès sont TRACÉS** dans le journal de provenance (A3) : événements
+`lien` / `delien` sur `collection_acces`, avec l'agent qui les a posés. C'est la contrepartie
+de « seul le propriétaire partage » — un accès accordé par erreur doit pouvoir se retrouver.
+Ils ne sont pas annulables : défaire un partage par Ctrl+Z serait une surprise.
+
 ### Le vocabulaire suit sa propre règle, et sa hiérarchie avec
 
 Un terme (tag, domaine, dimension, valeur) n'est pas une donnée : il est visible s'il est

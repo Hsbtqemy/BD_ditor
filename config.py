@@ -82,6 +82,12 @@ STATUTS = ("importee", "segmentee", "corrigee", "annotee")
 # Statut de RELECTURE grammaticale (ANN-4) : DÉRIVÉ des provenances de tokens, OVERRIDABLE.
 RELECTURE = ("a_faire", "en_cours", "faite")
 
+# Régime de diffusion d'une COLLECTION (v14, palier dépôt). Il vivait dans
+# `tools/gerer_collections.py`, seul chemin d'écriture jusqu'à AUTH-3 ; la route d'édition
+# a fait de lui un vocabulaire à DEUX portes, dont une seule validait. Un champ contrôlé
+# n'est contrôlé que si tous ses chemins d'écriture partagent la même liste.
+STATUTS_DIFFUSION = ("public", "embargo", "restreint", "prive")
+
 # Rôle éditorial d'une planche (cf. docs/numerotation-et-citation.md). 'recit' =
 # planche narrative, numérotée ; les autres valeurs = paratexte (couverture,
 # liminaire, pub…), écartées de la numérotation et du décompte de cases citables.

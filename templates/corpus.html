@@ -30,6 +30,7 @@
     <!-- Barre d'actions + traitement par lot -->
     <div class="corpus-toolbar">
       <button id="btn-new" class="primary">+ Nouvel album</button>
+      <button id="btn-collections" class="ghost">👥 Collections</button>
       <div class="batch">
         <span class="muted small">Lot sur la sélection :</span>
         <label class="pass"><input type="checkbox" id="pass-segmenter"> Segmenter</label>
@@ -73,6 +74,18 @@
         <select id="m-collection"></select>
       </label>
       <p id="m-collection-note" class="muted small" hidden></p>
+      <!-- AUTH-3 : à l'ÉDITION, l'appartenance devient N-N et se gère. Le champ ci-dessus
+           reste réservé à la création (une collection à choisir), celui-ci montre TOUTES
+           celles qu'on voit et permet d'en ajouter ou d'en retirer. -->
+      <div id="m-appartenance" hidden>
+        <p class="muted small" style="margin:.2rem 0 .1rem">Collections</p>
+        <ul id="m-appartenance-liste" class="acces-liste"></ul>
+        <div class="contrib-add">
+          <select id="m-appartenance-cible" aria-label="Collection où ranger l'album"></select>
+          <button id="m-appartenance-add" class="ghost small" type="button">+ Ranger ici</button>
+        </div>
+        <p id="m-appartenance-msg" class="muted small" role="status" aria-live="polite"></p>
+      </div>
       <div class="modal-grid">
         <label>Série <input id="m-serie" autocomplete="off"></label>
         <label>Auteur <input id="m-auteur" autocomplete="off"></label>
@@ -121,6 +134,26 @@
         <button id="m-save" class="primary">Enregistrer</button>
         <button id="m-cancel" class="ghost small">Annuler</button>
         <span id="m-msg" class="muted small"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Collections (AUTH-3) — espaces de travail : posséder, partager ───────── -->
+  <div id="collections-modal" hidden>
+    <div class="modal-box lexique-box">
+      <h3 id="collections-title">Collections</h3>
+      <p class="muted small">Une <b>collection</b> est un espace de travail, et l'unité qui
+        porte les accès : un album suit celle qui le contient. Trois niveaux —
+        <b>lecture</b>, <b>écriture</b> (annoter), <b>propriétaire</b> (décider qui entre).</p>
+      <div class="contrib-add">
+        <input id="col-nom" placeholder="Nom d'une nouvelle collection" autocomplete="off"
+               aria-label="Nom de la nouvelle collection">
+        <button id="col-add" class="primary small" type="button">+ Créer</button>
+      </div>
+      <div id="col-body"></div>
+      <div class="modal-actions">
+        <button id="col-close" class="ghost small">Fermer</button>
+        <span id="col-msg" class="muted small" role="status" aria-live="polite"></span>
       </div>
     </div>
   </div>
