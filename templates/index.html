@@ -137,6 +137,14 @@
             <span class="muted">Région</span>
             <span id="region-id" class="mono"></span>
           </div>
+          <!-- DROIT-1 : citer se décide ICI, à côté de la référence qu'on vient de lire.
+               Le bouton REMPLIT un panier ; l'export se fait ensuite, pour qu'on puisse
+               réunir plusieurs figures d'une même communication sans fermer la sélection. -->
+          <div class="panel-row fig-row">
+            <button id="btn-fig-add" class="ghost small" type="button"
+                    title="Ajouter cette région aux figures à exporter">＋ Figure</button>
+            <button id="btn-fig-open" class="ghost small" type="button" hidden></button>
+          </div>
           <div class="panel-row">
             <span class="muted">Type</span>
             <select id="region-type" aria-label="Type de région">
@@ -311,6 +319,34 @@
       </div>
     </div>
   </section>
+
+  <!-- ───────── Figures citables (DROIT-1) ─────────
+       CITER n'est pas PUBLIER : l'extrait sort accompagné de sa référence et de son cadre
+       de droits, jamais nu — c'est l'accompagnement qui rend la citation défendable, et
+       c'est à la main qu'il se perd. -->
+  <div id="figure-modal" hidden>
+    <div class="modal-box">
+      <h3 id="figure-title">Exporter des figures</h3>
+      <p class="muted small">Chaque figure part avec sa légende et sa notice : référence
+        dans l'album, édition, licence du jeu enrichi et base légale du corpus. Choisissez
+        les mentions à faire apparaître.</p>
+      <div class="panel-row">
+        <span class="muted">Figures retenues</span>
+        <span id="fig-compte" class="mono"></span>
+      </div>
+      <ul id="fig-liste" class="acces-liste"></ul>
+      <fieldset class="modal-section">
+        <legend>Mentions de la légende</legend>
+        <div id="fig-champs" class="fig-champs"></div>
+      </fieldset>
+      <div class="modal-actions">
+        <button id="fig-export" class="primary">Télécharger</button>
+        <button id="fig-vider" class="ghost small">Vider</button>
+        <button id="fig-close" class="ghost small">Fermer</button>
+        <span id="fig-msg" class="muted small" role="status" aria-live="polite"></span>
+      </div>
+    </div>
+  </div>
 
   <!-- ───────── Explorateur ShareDocs (modale) ───────── -->
   <section id="sharedocs" hidden>

@@ -26,6 +26,11 @@ import main
 # Une route est ici parce qu'on a décidé qu'elle y soit, avec la raison écrite à côté.
 # Ajouter une ligne ici est un ACTE : c'est déclarer qu'une route peut toucher au serveur
 # sans demander qui appelle.
+#
+# DEUX EN SONT SORTIES le 2026-08-28 (DROIT-1) : les deux routes de sauvegarde. Leur raison
+# écrite portait sa propre condition de réouverture — « dès qu'un tiering de droits est
+# effectif, cette décision se rejoue » — et cette liste est ce qui l'a rendue impossible à
+# oublier : la changer supposait de la relire.
 HORS_PERIMETRE = {
     ("GET", "/"): "coquille HTML, aucune donnée — le contenu vient des routes /api",
     ("GET", "/recherche"): "idem",
@@ -35,14 +40,9 @@ HORS_PERIMETRE = {
         "état des moteurs ML, aucune donnée de corpus. Doit rester joignable sans "
         "identité : c'est la sonde d'un conteneur, appelée avant qu'Authelia ne soit "
         "forcément debout"),
-    ("GET", "/api/sauvegarde"): (
-        "DÉCISION DU 2026-08-27, assumée : la sauvegarde reste ouverte à tous. Elle "
-        "déverse la base ENTIÈRE, donc toute personne ayant accès à l'instance peut "
-        "aspirer l'intégralité du corpus. Le cloisonnement du reste protège de "
-        "l'accident et de la confusion, pas d'une exfiltration délibérée. "
-        "Cf. docs/hebergement-securite.md et pilotage/AUTH-2.md"),
-    ("POST", "/api/sharedocs/deposer-sauvegarde"): (
-        "même sauvegarde, poussée sur WebDAV — même décision"),
+    ("GET", "/api/figure/champs"): (
+        "décrit le FORMAT d'une légende de figure (DROIT-1), pas un corpus : elle "
+        "renverrait la même chose sur une instance vide"),
     ("GET", "/api/sharedocs/etat"): "état de la session WebDAV distante, pas le corpus",
     ("POST", "/api/sharedocs/connexion"): "idem (session par personne : cf. SHARE-1)",
     ("POST", "/api/sharedocs/deconnexion"): "idem",
@@ -1009,3 +1009,32 @@ def test_migration_v23_vers_v24_recolle_la_portee_des_termes(tmp_path):
     assert vals == {100: 7, 101: 9, 102: None}   # 100 recollé EN CASCADE, via sa dimension
     assert conn.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
     conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# Sauvegarde — la décision du 2026-08-27 rejouée par DROIT-1
+# --------------------------------------------------------------------------- #
+def test_la_sauvegarde_est_reservee_aux_administrateurs(client, deux_albums,
+                                                        derriere_proxy):
+    """Elle déverse la base ENTIÈRE, toutes collections confondues.
+
+    L'arbitrage du 2026-08-27 la laissait ouverte à tout compte et portait sa propre
+    CONDITION DE RÉOUVERTURE : « dès qu'un tiering de droits est effectif (DROIT-1), cette
+    décision se rejoue. » Elle s'est déclenchée le 2026-08-28.
+
+    L'argument d'origine tient : une sauvegarde partielle ne restaure pas une instance. On
+    ne la scope donc pas — elle reste ENTIÈRE et change de public. Sauvegarder est un geste
+    d'exploitation, pas de recherche.
+    """
+    from conftest import ADMIN
+    r = client.get("/api/sauvegarde", headers={"Remote-User": "bob"})
+    assert r.status_code == 403 and "administrateurs" in r.json()["detail"]
+    assert client.post("/api/sharedocs/deposer-sauvegarde", json={"dossier": "x"},
+                       headers={"Remote-User": "bob"}).status_code == 403
+    assert client.get("/api/sauvegarde", headers=ADMIN).status_code == 200
+
+
+def test_le_mono_poste_garde_sa_sauvegarde(client):
+    """Sans proxy, il n'y a personne à qui la refuser : le comportement d'avant est
+    strictement conservé."""
+    assert client.get("/api/sauvegarde").status_code == 200

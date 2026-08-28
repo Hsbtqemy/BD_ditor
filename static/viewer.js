@@ -2334,6 +2334,118 @@ function downloadBackup() {
 }
 
 /* ===================================================================
+   Figures citables (DROIT-1) — citer n'est pas publier
+
+   Le régime de diffusion d'une collection ne bloque PAS la citation : il l'accompagne. Ce
+   que produit l'export n'est donc pas une image, c'est une image LIÉE à sa référence — un
+   crop nu se recrédite à la main, et c'est à la main que le crédit se perd.
+
+   Un PANIER plutôt qu'un export immédiat : une communication a besoin de plusieurs
+   figures, et une modale ouverte empêcherait de sélectionner la région suivante.
+   =================================================================== */
+const FIG = { regions: [], champs: null, libelles: [] };
+
+function figMsg(texte, erreur) {
+  const el = $("#fig-msg");
+  if (!el) return;
+  el.textContent = texte || "";
+  el.classList.toggle("erreur", !!erreur);
+}
+
+/* Le bouton d'ouverture ne s'affiche QUE si le panier est garni : un bouton « Exporter »
+   permanent sur un panier vide promet une action qui n'aboutit pas. */
+function figRefreshBouton() {
+  const b = $("#btn-fig-open");
+  if (!b) return;
+  b.hidden = FIG.regions.length === 0;
+  b.textContent = `Exporter (${FIG.regions.length})`;
+  b.title = `Exporter ${FIG.regions.length} figure(s) avec leur légende`;
+}
+
+function figAdd() {
+  const r = selectedRegion();
+  if (!r) { toast("Sélectionnez d'abord une région."); return; }
+  if (FIG.regions.some((x) => x.id === r.id)) { toast("Déjà dans les figures."); return; }
+  // On mémorise la CITATION avec l'id : elle sert d'étiquette dans le panier, et la
+  // recalculer après un changement de planche demanderait de rappeler le serveur.
+  FIG.regions.push({ id: r.id, libelle: (r.citation && r.citation.texte) || `région ${r.id}` });
+  figRefreshBouton();
+  toast(`Figure ajoutée (${FIG.regions.length}).`);
+}
+
+async function figChamps() {
+  if (FIG.libelles.length) return FIG.libelles;
+  // La liste vient du SERVEUR et n'est pas recopiée ici : deux listes qui divergent
+  // produiraient une légende amputée sans rien signaler.
+  FIG.libelles = await apiGet("/api/figure/champs");
+  if (FIG.champs === null) FIG.champs = FIG.libelles.map((c) => c.champ);   // tout, au début
+  return FIG.libelles;
+}
+
+function figRendre() {
+  $("#fig-compte").textContent = String(FIG.regions.length);
+  $("#fig-liste").innerHTML = FIG.regions.map((r) => `
+    <li><span class="mono">${esc(r.libelle)}</span>
+        <button class="ghost small" data-fig-retirer="${r.id}" type="button"
+                title="Retirer cette figure">✕</button></li>`).join("");
+  $("#fig-liste").querySelectorAll("[data-fig-retirer]").forEach((b) => {
+    b.onclick = () => {
+      FIG.regions = FIG.regions.filter((x) => String(x.id) !== b.dataset.figRetirer);
+      figRefreshBouton();
+      figRendre();
+    };
+  });
+  $("#fig-champs").innerHTML = FIG.libelles.map((c) => `
+    <label><input type="checkbox" value="${c.champ}"
+      ${FIG.champs.includes(c.champ) ? "checked" : ""}> ${esc(c.libelle)}</label>`).join("");
+  $("#fig-champs").querySelectorAll("input").forEach((i) => {
+    i.onchange = () => {
+      FIG.champs = [...$("#fig-champs").querySelectorAll("input:checked")].map((x) => x.value);
+    };
+  });
+  $("#fig-export").disabled = FIG.regions.length === 0;
+}
+
+async function figOpen() {
+  figMsg("");
+  try { await figChamps(); }
+  catch (e) { figMsg(e.message, true); }
+  figRendre();
+  $("#figure-modal").hidden = false;
+  $("#fig-export").focus();
+}
+
+function figClose() { $("#figure-modal").hidden = true; }
+
+async function figExport() {
+  if (!FIG.regions.length) return;
+  figMsg("Préparation…");
+  try {
+    const r = await fetch(API + "/api/figures", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ regions: FIG.regions.map((x) => x.id), champs: FIG.champs }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    // Le nom du fichier vient du serveur (Content-Disposition) : le recomposer ici ferait
+    // diverger deux horodatages pour un seul export.
+    const nom = (r.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/);
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a");
+    a.href = url; a.download = nom ? nom[1] : "figures.zip";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    figMsg(`${FIG.regions.length} figure(s) exportée(s).`);
+  } catch (e) { figMsg(e.message || "Échec de l'export", true); }
+}
+
+function figVider() {
+  FIG.regions = [];
+  figRefreshBouton();
+  figRendre();
+  figMsg("Panier vidé.");
+}
+
+/* ===================================================================
    Câblage des contrôles & raccourcis
    =================================================================== */
 function setupControls() {
@@ -2345,6 +2457,18 @@ function setupControls() {
   $("#btn-bulles").onclick = detecterBulles;
   $("#btn-ocr").onclick = lancerOCR;
   $("#btn-backup").onclick = downloadBackup;
+  // Figures citables (DROIT-1) : citer se décide sur la région, l'export se fait ensuite.
+  $("#btn-fig-add").onclick = figAdd;
+  $("#btn-fig-open").onclick = figOpen;
+  $("#fig-close").onclick = figClose;
+  $("#fig-vider").onclick = figVider;
+  $("#fig-export").onclick = figExport;
+  $("#figure-modal").addEventListener("mousedown", (e) => {
+    if (e.target.id === "figure-modal") figClose();
+  });
+  if (window.BDDialog)
+    BDDialog.register($("#figure-modal"),
+      { box: ".modal-box", labelledby: "figure-title", onClose: figClose });
   $("#zoom-in").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.2); };
   $("#zoom-out").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
   $("#zoom-fit").onclick = fitView;

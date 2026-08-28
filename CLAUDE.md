@@ -187,6 +187,36 @@ couverture est une liste et non une garantie.
 Cf. `docs/hebergement-securite.md` (§6), dont la décision assumée : `GET /api/sauvegarde`
 reste ouverte à tous et déverse la base entière.
 
+### Droits de diffusion (DROIT-1) — citer n'est pas publier
+
+`collection.statut_diffusion` (`public` | `embargo` | `restreint` | `prive`, v14) ne bordait
+rien : il était déclaré, jamais respecté. Il devient opposable **à la sortie seulement**.
+
+- **À l'intérieur de l'instance, il ne borde RIEN** (arbitrage 2026-08-28) : qui est admis
+  sur une collection en reçoit tout, scans compris — l'annotation repose sur les images, et
+  le travail interne relève de l'usage savant. Le cloisonnement entre équipes est l'affaire
+  d'AUTH-2/AUTH-3.
+- **PUBLIER** (manifeste IIIF) n'emporte d'images que d'une collection déclarée `public`, et
+  **nommée** (`--collection`) : fail-closed, sans arbitrage à inventer pour un album vivant
+  dans plusieurs collections. Le manifeste amputé le DÉCLARE (`requiredStatement`,
+  `iiif_manifest.DECLARATION_SANS_IMAGES`) et `valider_iiif.py` n'exempte QUE sur cette
+  déclaration — sinon « retenir » et « oublier » ses images deviendraient indistinguables.
+  Les Canvas survivent sans image : la géométrie et l'enrichissement restent publiables,
+  c'est le scénario de la piste A.
+- **CITER** (`POST /api/figures`, cœur `figure.py`) n'est jamais bloqué par le régime : il
+  l'ACCOMPAGNE. Le zip lie le crop à sa légende (référence `pl·c·b` dérivée, responsabilité,
+  édition, licence, base légale — « non établie » quand c'est le cas) et à sa notice JSON.
+  Les mentions sont CHOISIES par l'appelant (`champs`), dans l'ordre bibliographique de
+  `figure.CHAMPS` et non celui de la demande. Le cloisonnement d'AUTH-2 s'applique
+  entièrement : on ne cite que ce qu'on voit.
+- **`GET /api/sauvegarde` est réservée aux administrateurs** : la condition de réouverture
+  écrite le 2026-08-27 (« dès qu'un tiering de droits est effectif ») s'est déclenchée. Elle
+  reste ENTIÈRE — une sauvegarde partielle ne restaure pas une instance — et change de
+  public.
+- La **surcharge par album** annoncée dans le dictionnaire est abandonnée par écrit : depuis
+  AUTH-3 un album vit dans plusieurs collections, il n'y a plus de défaut unique à
+  surcharger. Cf. `docs/dictionnaire-metadonnees.md`.
+
 ### Recherche FTS5 — index maintenu explicitement
 
 La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note + tags + lemmes). Elle est maintenue **à la main** via `database.reindex_region()` / `unindex_region()` appelés depuis l'API — **pas par des triggers** (la relation N-N tags les rendrait fragiles). Toute route qui modifie le texte/les tags/la note d'une région doit réindexer. Tokenizer `unicode61 remove_diacritics 2` → recherche insensible aux accents.

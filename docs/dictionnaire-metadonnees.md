@@ -110,14 +110,44 @@ stable → citable), quitte à la **construire** depuis un filtre puis la geler 
 > d'**ancrage fonctionnel** — unité de dépôt / DOI, régime de droits par défaut, et **portée
 > du lexique situé** (la « portée local » du Niveau 7 référencera `collection_id`).
 
-> **Droits — décrire, pas imposer (décision 2026-07-16, à valider juridiquement).** Ces
-> champs *déclarent* le régime ; ils ne l'**imposent pas** — l'enforcement de l'accès reste
-> au portail d'auth (`docs/deploiement-docker.md`) et à l'entrepôt (Nakala gère
-> public/embargo/privé, en séparant visibilité des métadonnées et accès aux fichiers).
+> **Droits — décrire, et imposer À LA SORTIE (2026-07-16, précisée le 2026-08-28).** Ces
+> champs *déclarent* le régime. Ils ne l'imposent pas **à l'intérieur de l'instance** :
+> quiconque est admis sur une collection en reçoit tout, scans compris — le travail
+> d'annotation REPOSE sur les images, et l'usage interne relève de la recherche. Le
+> cloisonnement entre équipes est l'affaire d'AUTH-2/AUTH-3, pas du régime de diffusion.
+>
+> Ils l'imposent en revanche **là où la donnée quitte l'outil**, et c'est la précision
+> qu'apporte DROIT-1 : une déclaration doit mordre au moment de la publication, sinon elle
+> ne mord nulle part. Deux gestes s'y distinguent, et rien ne les rapproche :
+>
+> - **PUBLIER** — mettre un corpus à disposition (manifeste IIIF, paquet de dépôt). Porte
+>   sur une collection entière et n'emporte d'images que si elle est déclarée `public`. La
+>   règle est fail-closed : *publier suppose de nommer la collection qu'on publie*, ce qui
+>   règle aussi le cas d'un album vivant dans plusieurs collections (AUTH-3) sans inventer
+>   d'arbitrage. Un manifeste privé de ses scans le DÉCLARE (`requiredStatement`) — sans
+>   quoi « retenir » et « oublier » se ressemblent.
+> - **CITER** — extraire une case identifiée pour l'accompagner d'un discours (article,
+>   communication). Jamais bloqué par le régime : c'est l'usage que la recherche revendique,
+>   et un fonds sous droits est justement celui qu'on cite plutôt que de le diffuser. Le
+>   régime ACCOMPAGNE l'extrait au lieu de l'interdire — la figure sort avec sa référence,
+>   sa licence et sa base légale. Cf. `figure.py` et `docs/figure-citable.md`.
+>
+> L'enforcement de l'ACCÈS reste au portail d'auth (`docs/deploiement-docker.md`) et à
+> l'entrepôt (Nakala gère public/embargo/privé, en séparant visibilité des métadonnées et
+> accès aux fichiers). Ce qui change n'est pas là : c'est ce que l'outil accepte de
+> FABRIQUER pour l'extérieur.
+>
 > **`base_legale` est un prérequis au dépôt, hors code** (institution + source des scans) :
-> tant qu'elle n'est pas établie, elle reste une **question ouverte, jamais une conclusion**.
-> `base_legale` et `statut_diffusion` ont un **défaut Collection, surchargeable par Album**
-> (une planche peut être domaine public, une autre sous droits).
+> tant qu'elle n'est pas établie, elle reste une **question ouverte, jamais une conclusion**
+> — et la figure citable l'écrit telle quelle, « base légale non établie », plutôt que de
+> laisser un blanc qui se lirait comme un problème réglé.
+>
+> **La surcharge par Album est ABANDONNÉE** (2026-08-28), après avoir été annoncée ici. La
+> raison n'est plus la même qu'à l'écriture : depuis AUTH-3 un album vit dans PLUSIEURS
+> collections, si bien qu'« un défaut Collection surchargeable par Album » n'a plus de
+> défaut unique à surcharger. Le besoin réel — un corpus mêlant domaine public et œuvres
+> sous droits — se traite en constituant deux collections, ce que l'appartenance N-N rend
+> possible sans dupliquer les albums.
 
 ---
 

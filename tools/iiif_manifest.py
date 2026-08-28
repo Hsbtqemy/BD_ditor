@@ -18,7 +18,9 @@ serveur IIIF Image de l'entrepôt, ou copie exposée des dérivés.
 
 Rien n'est publié par cet outil : il écrit du JSON, sur la sortie standard ou dans un
 dossier. Et ce que ces images doivent devenir — publiques ou non — relève du tiering de
-droits (DROIT-1), qui place scans et OCR verbatim dans le palier RESTREINT.
+droits (DROIT-1) : les images ne sortent que d'une collection déclarée `public`, et
+seulement si elle est NOMMÉE (`--collection`). Sans elle, aucun régime n'est déclaré et le
+manifeste est écrit sans images — la géométrie et l'enrichissement restent publiables.
 
 Le texte OCR (contenu `restreint`) n'est PAS inclus par défaut ; `--verbatim`
 l'ajoute en annotation `supplementing` (transcription).
@@ -100,7 +102,15 @@ def _region_anno(reg, cid, base, aid, verbatim):
     }
 
 
-def _canvas(p, aid, base, verbatim):
+def _canvas(p, aid, base, verbatim, images=True):
+    """Un Canvas. `images=False` (DROIT-1) le prive de son AnnotationPage `painting`.
+
+    Le Canvas SURVIT sans image : il garde ses dimensions master et ses annotations de
+    régions, donc la géométrie et l'enrichissement restent publiables. C'est le scénario
+    de la piste A — déposer ouvertement son travail sur un fonds qu'on ne peut pas
+    diffuser. Une visionneuse affichera une page vide annotée, ce qui est la description
+    exacte de ce qu'on a le droit de montrer.
+    """
     W, H = p["largeur_px"], p["hauteur_px"]
     if not (isinstance(W, int) and W > 0 and isinstance(H, int) and H > 0):
         return None            # sans dimensions master, pas de Canvas IIIF valide → planche omise
@@ -118,7 +128,7 @@ def _canvas(p, aid, base, verbatim):
         }],
     }
     canvas = {"id": cid, "type": "Canvas", "label": _lang(label),
-              "height": H, "width": W, "items": [painting]}
+              "height": H, "width": W, "items": [painting] if images else []}
 
     annos = []
     def walk(reg):
@@ -134,16 +144,59 @@ def _canvas(p, aid, base, verbatim):
     return canvas
 
 
-def manifeste_album(a, base, verbatim):
-    return {
+# --------------------------------------------------------------------------- #
+# DROIT-1 — publier n'est pas citer
+# --------------------------------------------------------------------------- #
+# Ce manifeste est le SEUL artefact du dépôt qui émette des URL d'images vers l'extérieur.
+# Il est donc le point où le régime de diffusion devient opposable : une collection qui
+# n'est pas `public` ne fait pas sortir ses scans.
+#
+# La règle est fail-closed et tient en une phrase : PUBLIER SUPPOSE DE NOMMER LA COLLECTION
+# QU'ON PUBLIE. Sans `--collection`, l'outil porte sur le corpus entier — donc sur aucun
+# régime déclaré — et n'emporte aucune image. C'est aussi ce qui règle le cas d'un album
+# vivant dans plusieurs collections (AUTH-3) sans inventer d'arbitrage : le régime qui
+# s'applique est celui de la collection AU NOM DE LAQUELLE on publie.
+#
+# Ce n'est pas le renversement de la doctrine « décrire, pas imposer » (2026-07-16) : une
+# déclaration doit mordre là où la donnée quitte l'outil, et nulle part ailleurs. À
+# l'intérieur de l'instance, `statut_diffusion` ne borde toujours rien.
+def _regime(bloc):
+    """(publiable, statut) pour le bloc `collection` de l'arbre — None = corpus entier."""
+    statut = (bloc or {}).get("statut_diffusion")
+    return statut == "public", statut
+
+
+# Libellé du `requiredStatement` qui DÉCLARE l'absence des scans. Un consommateur doit
+# pouvoir distinguer « ce manifeste retient ses images » de « ce manifeste a oublié ses
+# images » — sans quoi les deux se ressemblent, et le second cesse d'être détectable.
+# `requiredStatement` est le bon véhicule : IIIF impose aux visionneuses de l'AFFICHER.
+DECLARATION_SANS_IMAGES = "Scans non diffusés"
+
+
+def manifeste_album(a, base, verbatim, images=True, statut=None):
+    man = {
         "@context": CTX,
         "id": f"{base}/album/{a['id']}/manifest.json",
         "type": "Manifest",
         "label": _lang(a["titre"]),
         "metadata": _album_metadata(a),
-        "items": [c for c in (_canvas(p, a["id"], base, verbatim)
+        "items": [c for c in (_canvas(p, a["id"], base, verbatim, images)
                               for p in a["planches"]) if c is not None],
     }
+    if not images:
+        # DROIT-1 — le manifeste porte la géométrie et l'enrichissement, pas les scans.
+        # Le dire dans l'artefact plutôt que dans un message de console : la console se
+        # perd au premier pipeline, le manifeste voyage avec les données.
+        man["requiredStatement"] = {
+            "label": _lang(DECLARATION_SANS_IMAGES),
+            "value": _lang(
+                "Les images de ce corpus ne sont pas diffusées"
+                + (f" (régime : {statut})." if statut else
+                   " : aucun régime de diffusion n'est déclaré.")
+                + " La géométrie des planches et l'enrichissement le sont. Pour un usage "
+                  "savant ponctuel, citer un extrait plutôt que publier le corpus."),
+        }
+    return man
 
 
 def collection(albums, base, nom=None):
@@ -199,11 +252,31 @@ def main(argv=None) -> int:
     bloc = arbre["metadonnees_collection"].get("collection")   # None = corpus entier
     nom_collection = bloc["nom"] if bloc else None
 
+    # DROIT-1 — le régime de la collection NOMMÉE décide si les images sortent.
+    images, statut = _regime(bloc)
+    if not images:
+        if args.verbatim:
+            print("REFUS — `--verbatim` fait sortir le texte de l'œuvre, et "
+                  + (f"la collection est « {statut} »." if statut else
+                     "aucune collection n'est nommée (--collection).")
+                  + " Publier suppose une collection déclarée `public` ; pour un usage "
+                    "savant ponctuel, citez plutôt (export de figure).", file=sys.stderr)
+            return 2
+        print("ATTENTION — manifeste SANS IMAGES : "
+              + (f"la collection « {nom_collection} » est déclarée « {statut} »."
+                 if statut else
+                 f"la collection « {nom_collection} » ne déclare aucun régime de diffusion."
+                 if bloc else
+                 "aucune collection n'est nommée (--collection), donc aucun régime n'est "
+                 "déclaré.")
+              + " La géométrie et l'enrichissement sont publiables, les scans non. "
+                "Déclarez la collection `public` si vous en avez le droit.", file=sys.stderr)
+
     if not args.out_dir:
         if not albums:
             print("{}")
             return 0
-        print(json.dumps(manifeste_album(albums[0], base, args.verbatim),
+        print(json.dumps(manifeste_album(albums[0], base, args.verbatim, images, statut),
                          ensure_ascii=False, indent=2))
         return 0
 
@@ -211,7 +284,7 @@ def main(argv=None) -> int:
     with open(os.path.join(args.out_dir, "collection.json"), "w", encoding="utf-8") as f:
         json.dump(collection(albums, base, nom_collection), f, ensure_ascii=False, indent=2)
     for a in albums:
-        man = manifeste_album(a, base, args.verbatim)
+        man = manifeste_album(a, base, args.verbatim, images, statut)
         with open(os.path.join(args.out_dir, f"manifest-a{a['id']}.json"),
                   "w", encoding="utf-8") as f:
             json.dump(man, f, ensure_ascii=False, indent=2)

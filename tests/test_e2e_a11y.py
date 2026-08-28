@@ -533,3 +533,65 @@ def test_corpus_appartenance_album(page, seeded):
     finally:
         c.close()
     assert autre in {x["id"] for x in vues} and len(vues) == 2
+
+
+# --------------------------------------------------------------------------- #
+# Figures citables (DROIT-1) — citer se décide sur la région
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_figure_citable(page, seeded, theme):
+    """Le panier de figures et sa modale, audités.
+
+    Le bouton d'export ne s'affiche QUE quand le panier est garni : un bouton permanent
+    sur un panier vide promet une action qui n'aboutit pas.
+    """
+    _theme(page, theme)
+    page.goto(seeded["base"] + SURFACES["visionneuse"](seeded), wait_until="networkidle")
+    page.wait_for_timeout(600)
+    assert page.locator("#btn-fig-open").is_hidden()      # panier vide → pas de promesse
+    page.click("#btn-fig-add")
+    page.wait_for_selector("#btn-fig-open:not([hidden])", timeout=3000)
+    assert "1" in page.locator("#btn-fig-open").inner_text()
+    page.click("#btn-fig-open")
+    page.wait_for_selector("#fig-champs label", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Figures [{theme}] :\n{_fmt(viol)}"
+    # Vider REMASQUE le bouton. Sans ce second temps, le test ne lirait que
+    # l'attribut `hidden` du HTML statique — il passerait même si le code
+    # cessait de le piloter.
+    page.click("#fig-vider")
+    # `state="hidden"` : par défaut `wait_for_selector` attend un élément VISIBLE, donc
+    # attendre un `[hidden]` expire toujours — que le code marche ou non.
+    page.wait_for_selector("#btn-fig-open", state="hidden", timeout=3000)
+
+
+def test_les_mentions_viennent_du_serveur(page, seeded):
+    """La liste des mentions n'est pas recopiée dans le JS : deux listes qui divergent
+    produiraient une légende amputée sans rien signaler. L'écran doit donc afficher
+    exactement ce que `GET /api/figure/champs` annonce."""
+    attendus = httpx.get(seeded["base"] + "/api/figure/champs", trust_env=False,
+                         timeout=30).json()
+    page.goto(seeded["base"] + SURFACES["visionneuse"](seeded), wait_until="networkidle")
+    page.wait_for_timeout(600)
+    page.click("#btn-fig-add")
+    page.click("#btn-fig-open")
+    page.wait_for_selector("#fig-champs label", timeout=3000)
+    values = page.locator("#fig-champs input").evaluate_all(
+        "els => els.map(e => e.value)")
+    assert values == [c["champ"] for c in attendus]
+
+
+def test_export_de_figure_telecharge_un_zip(page, seeded):
+    """Le bout de la chaîne : le zip arrive vraiment dans le navigateur, et il porte le
+    nom composé par le SERVEUR — le recomposer côté client ferait diverger deux
+    horodatages pour un seul export."""
+    page.goto(seeded["base"] + SURFACES["visionneuse"](seeded), wait_until="networkidle")
+    page.wait_for_timeout(600)
+    page.click("#btn-fig-add")
+    page.click("#btn-fig-open")
+    page.wait_for_selector("#fig-champs label", timeout=3000)
+    with page.expect_download(timeout=10000) as dl:
+        page.click("#fig-export")
+    fichier = dl.value
+    assert fichier.suggested_filename.startswith("figures_")
+    assert fichier.suggested_filename.endswith(".zip")

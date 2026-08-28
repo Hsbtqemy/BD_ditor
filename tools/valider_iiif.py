@@ -61,6 +61,25 @@ def _langmap(v):
         and all(isinstance(x, str) for x in vv) for k, vv in v.items())
 
 
+# Déclaration produite par `iiif_manifest.py` quand le régime de diffusion retient les
+# scans (DROIT-1). Importée plutôt que recopiée : deux libellés qui divergent rendraient
+# l'exemption muette, et un manifeste légitime redeviendrait « non conforme ».
+try:                                         # pragma: no cover - dépend du sys.path
+    from iiif_manifest import DECLARATION_SANS_IMAGES
+except ImportError:                          # pragma: no cover
+    DECLARATION_SANS_IMAGES = "Scans non diffusés"
+
+
+def _declare_sans_images(doc) -> bool:
+    """Le manifeste annonce-t-il qu'il retient ses scans ?"""
+    label = (doc.get("requiredStatement") or {}).get("label")
+    if not isinstance(label, dict):
+        return False
+    return any(DECLARATION_SANS_IMAGES in x
+               for vals in label.values() if isinstance(vals, list)
+               for x in vals if isinstance(x, str))
+
+
 def _uniq(ident, ids, rap):
     if ident in ids:
         rap.e(f"id dupliqué : {ident}")
@@ -133,7 +152,7 @@ def _annotation(a, rap, ids, canvas_ids, dims, peinture=False):
                 rap.w(f"purpose inhabituel : {pur!r}")
 
 
-def _canvas(c, rap, ids, canvas_ids, dims):
+def _canvas(c, rap, ids, canvas_ids, dims, sans_images=False):
     if c.get("type") != "Canvas":
         rap.e(f"Canvas.type attendu 'Canvas', trouvé {c.get('type')!r}"); return
     cid = c.get("id")
@@ -151,7 +170,17 @@ def _canvas(c, rap, ids, canvas_ids, dims):
 
     items = c.get("items")
     if not isinstance(items, list) or not items:
-        rap.e(f"Canvas {cid}.items absent ou vide (AnnotationPage de peinture attendue)")
+        # DROIT-1 — un Canvas sans peinture est LÉGITIME quand le manifeste déclare retenir
+        # ses scans (`requiredStatement`), et la spec 3.0 ne rend pas `items` obligatoire.
+        # Sans cette nuance, le seul manifeste qu'on ait le droit de publier sur un fonds
+        # sous droits serait déclaré non conforme par notre propre outil.
+        #
+        # La condition tient à la DÉCLARATION, pas à la simple absence : un manifeste qui a
+        # oublié ses images doit rester détectable, sinon la règle ne mesure plus rien.
+        if sans_images:
+            rap.w(f"Canvas {cid} sans image : scans non diffusés (déclaré)")
+        else:
+            rap.e(f"Canvas {cid}.items absent ou vide (AnnotationPage de peinture attendue)")
     else:
         for page in items:
             if page.get("type") != "AnnotationPage":
@@ -187,8 +216,14 @@ def valider_manifest(doc) -> Rapport:
             if isinstance(W, int) and isinstance(H, int):
                 dims[c["id"]] = (W, H)
             canvas_ids.add(c["id"])
+    # DROIT-1 — le manifeste DÉCLARE-t-il retenir ses scans ? On le lit une fois, ici,
+    # plutôt que dans chaque Canvas : c'est une propriété du manifeste, pas de la page.
+    #
+    # L'exemption est adossée à NOTRE déclaration, pas à la simple présence d'un
+    # `requiredStatement` : n'importe quelle mention excuserait sinon des images manquantes.
+    sans_images = _declare_sans_images(doc)
     for c in items:                       # 2e passe : validation complète
-        _canvas(c, rap, ids, canvas_ids, dims)
+        _canvas(c, rap, ids, canvas_ids, dims, sans_images)
     return rap
 
 

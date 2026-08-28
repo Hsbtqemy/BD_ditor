@@ -251,3 +251,107 @@ def test_iiif_conformance_stricte(corpus, tmp_path):
     v = _run("valider_iiif.py", corpus["db"], corpus["data"], str(out))
     assert v.returncode == 0, v.stdout + v.stderr
     assert "Conformité stricte (iiif-prezi3) : exécutée" in v.stdout   # la passe a bien tourné
+
+
+# --------------------------------------------------------------------------- #
+# DROIT-1 — publier n'est pas citer
+#
+# Le manifeste IIIF est le SEUL artefact du dépôt qui émette des URL d'images vers
+# l'extérieur : c'est donc le point où le régime de diffusion devient opposable. La règle
+# est fail-closed et tient en une phrase — publier suppose de NOMMER la collection qu'on
+# publie. Elle règle du même coup le cas d'un album vivant dans plusieurs collections
+# (AUTH-3) sans inventer d'arbitrage.
+# --------------------------------------------------------------------------- #
+def _images_du_manifeste(chemin):
+    """Les URL d'images peintes sur les Canvas d'un manifeste."""
+    man = json.loads(chemin.read_text(encoding="utf-8"))
+    return [it["body"]["id"] for c in man["items"] for page in c["items"]
+            for it in page["items"] if it.get("motivation") == "painting"]
+
+
+def _collection(corpus, album_id, nom, statut=None):
+    args = ["creer", "--nom", nom, "--albums", str(album_id)]
+    if statut:
+        args += ["--statut", statut]
+    r = _run("gerer_collections.py", corpus["db"], corpus["data"], *args)
+    assert r.returncode == 0, r.stderr
+    return r.stdout.strip()
+
+
+def test_iiif_sans_collection_nommee_n_emporte_pas_d_images(corpus, album, tmp_path):
+    """Sans `--collection`, l'outil porte sur le corpus entier — donc sur AUCUN régime
+    déclaré. Il écrit alors un manifeste sans images, et le dit.
+
+    Fail-closed : l'absence de déclaration ne vaut pas autorisation. C'est aussi ce qui
+    évite d'avoir à arbitrer entre les régimes des collections d'un album partagé.
+    """
+    out = tmp_path / "iiif"
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out))
+    assert r.returncode == 0, r.stderr
+    assert "SANS IMAGES" in r.stderr
+    assert _images_du_manifeste(out / f"manifest-a{album['id']}.json") == []
+
+
+def test_iiif_d_une_collection_publique_emporte_les_images(corpus, album, tmp_path):
+    """Le pendant : une collection déclarée `public` publie ses scans. Sans quoi le
+    chantier n'aurait fait que casser la publication légitime."""
+    cid = _collection(corpus, album["id"], "Domaine public", "public")
+    out = tmp_path / "iiif"
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out),
+             "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    assert "SANS IMAGES" not in r.stderr
+    assert _images_du_manifeste(out / f"manifest-a{album['id']}.json")
+
+
+def test_iiif_d_une_collection_restreinte_publie_sans_les_scans(corpus, album, tmp_path):
+    """Le scénario de la piste A : déposer ouvertement son enrichissement sur un fonds
+    qu'on ne peut pas diffuser. Le Canvas SURVIT sans image — il garde ses dimensions et
+    ses annotations de régions, donc la géométrie et le travail restent publiables."""
+    cid = _collection(corpus, album["id"], "Sous droits", "restreint")
+    out = tmp_path / "iiif"
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out),
+             "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    assert "restreint" in r.stderr and "SANS IMAGES" in r.stderr
+    man = json.loads((out / f"manifest-a{album['id']}.json").read_text(encoding="utf-8"))
+    assert _images_du_manifeste(out / f"manifest-a{album['id']}.json") == []
+    assert man["items"], "les Canvas restent : la géométrie est publiable"
+    assert man["items"][0]["height"] and man["items"][0]["width"]
+
+
+def test_iiif_verbatim_refuse_hors_public(corpus, album, tmp_path):
+    """`--verbatim` fait sortir le TEXTE de l'œuvre. Publier le texte d'un fonds sous
+    droits est de la diffusion, pas de la citation : l'outil refuse, et renvoie vers le
+    geste qui convient (l'export de figure)."""
+    cid = _collection(corpus, album["id"], "Sous droits", "restreint")
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(tmp_path / "x"),
+             "--collection", cid, "--verbatim")
+    assert r.returncode == 2
+    assert "REFUS" in r.stderr and "citez plutôt" in r.stderr
+
+
+def test_l_exemption_tient_a_la_declaration_pas_a_l_absence(tmp_path):
+    """Le garde-fou du garde-fou.
+
+    Un Canvas sans peinture est légitime quand le manifeste DÉCLARE retenir ses scans
+    (`requiredStatement`). Sans cette condition, l'exemption excuserait aussi un manifeste
+    qui a simplement OUBLIÉ ses images — et la règle ne mesurerait plus rien.
+    """
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import valider_iiif as v
+    nu = {"@context": "http://iiif.io/api/presentation/3/context.json",
+          "id": "http://x/manifest.json", "type": "Manifest",
+          "label": {"fr": ["A"]},
+          "items": [{"id": "http://x/c1", "type": "Canvas", "label": {"fr": ["p1"]},
+                     "height": 100, "width": 80, "items": []}]}
+    assert v.valider_manifest(nu).err, "un oubli d'images doit rester une erreur"
+    declare = dict(nu, requiredStatement={
+        "label": {"fr": [v.DECLARATION_SANS_IMAGES]},
+        "value": {"fr": ["Les images de ce corpus ne sont pas diffusées."]}})
+    assert not v.valider_manifest(declare).err
+    assert v.valider_manifest(declare).warn      # dit quand même, en avertissement
