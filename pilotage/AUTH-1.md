@@ -9,6 +9,12 @@ statut: interrompu
 `utilisateur` (v22) et verrou attribué sont livrés et vérifiés dans l'image. Reste
 l'exposition dans l'UI.
 
+**Relue le 2026-08-28**, après DROIT-1 et SHARE-1, qui touchent tous deux à la case des
+sauvegardes sans la refermer — l'un a réduit l'audience, l'autre a tracé le geste et
+rendu explicite un chemin de sortie personnel. La relecture a surtout trouvé qu'une
+affirmation du contexte était INCOMPLÈTE : la sauvegarde n'est pas la seule voie de sortie.
+Aucun commit de code : le chantier reste `interrompu` là où il l'était.
+
 ## Reste
 
 ### Lire ce qui arrive déjà
@@ -28,6 +34,16 @@ l'exposition dans l'UI.
 ### Données personnelles — angle mort du projet
 - [ ] Le sort des données personnelles d'annotateurs (`utilisateur.nom`, `utilisateur.email`) est tranché et écrit : combien de temps on les garde, ce qu'on en fait, comment on efface quelqu'un qui quitte l'équipe
 - [ ] La conséquence sur les sauvegardes est traitée : `VACUUM INTO` (`pipeline/backup.py:28`) emporte la base ENTIÈRE, donc ces emails, et `pipeline/sharedocs.py` sait déposer ce zip sur ShareDocs — donc hors de la machine
+> **Ce que le 2026-08-28 a changé, sans refermer la case.** DROIT-1 a réservé les deux
+> routes de sauvegarde aux ADMINISTRATEURS : l'audience se réduit, la question reste
+> entière — combien de temps garde-t-on ces emails, comment efface-t-on quelqu'un. SHARE-1
+> a rendu le dépôt ShareDocs JOURNALISÉ (qui a déposé, sous quel compte), donc la sortie
+> est désormais tracée, ce qu'elle n'était pas ; mais il a aussi rendu EXPLICITE le choix
+> de déposer sous un compte Huma-Num PERSONNEL. La possibilité existait déjà — la session
+> unique pouvait être celle de n'importe qui — mais elle est maintenant offerte dans
+> l'écran, donc probable. Ces emails peuvent atterrir dans un espace individuel que
+> l'institution ne contrôle pas.
+- [ ] **La seconde voie de sortie est traitée**, découverte en relisant le 2026-08-28 : `tools/provenance_export.py` émet les LOGINS des annotateurs — `bd:agent/<login>` en PROV-JSON, `who="#<login>"` et « par <login> » en TEI. Ce n'est pas l'email ni le nom lisible (qui restent dans le miroir `utilisateur`, donc dans la seule sauvegarde), mais un login identifie une personne. Deux circonstances jouent en sens contraire : c'est un outil de LIGNE DE COMMANDE, sans route HTTP, donc il suppose un accès shell — mais il est fait pour être DÉPOSÉ, la sérialisation PROV-O étant tout l'objet de la piste A. Autrement dit, ces logins ont vocation à partir dans un dépôt public
 
 ## Contexte
 
@@ -51,8 +67,19 @@ minime et l'équipe petite ; ce n'est pas un blocage. C'est une lacune de doctri
 combler pendant qu'elle est petite plutôt qu'après. Recoupe DEPOT-1, qui porte l'autre
 moitié de la question juridique.
 
-Vérifié au passage : les exports (records, CSV, IIIF, crosswalk) n'énumèrent pas les
-tables et ne laissent fuir aucun email — la seule voie de sortie est la sauvegarde.
+Vérifié le 2026-08-27 : les exports (records, CSV, IIIF, crosswalk) n'énumèrent pas les
+tables et ne laissent fuir aucun email. La conclusion qui suivait — « la seule voie de
+sortie est la sauvegarde » — était INCOMPLÈTE, et la relecture du 2026-08-28 l'a corrigée
+plutôt que de la laisser en place : l'inventaire d'origine avait omis
+`tools/provenance_export.py`, qui sérialise le JOURNAL et porte donc les logins des
+agents. La correction ne renverse pas le constat sur les emails et les noms lisibles — ils
+ne sortent bien que par la sauvegarde — elle ajoute une catégorie qu'on n'avait pas
+regardée : l'identifiant, qui désigne une personne sans la nommer.
+
+La leçon vaut au-delà de cette fiche : un inventaire de voies de sortie se fait en
+énumérant ce qui SORT, pas ce dont on se souvient. Les exports d'analyse avaient été
+passés en revue ; l'export de provenance, ajouté par A3 pour d'excellentes raisons, ne
+figurait dans aucune liste de ce qui quitte l'instance.
 
 Conséquence de sûreté, traitée : ces en-têtes ne sont dignes de confiance **que** derrière
 le proxy. C'était vrai depuis INFRA-2 sans être garanti — la docstring affirmait « l'app
