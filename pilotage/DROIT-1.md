@@ -1,20 +1,19 @@
 ---
 chantier: DROIT-1
-statut: interrompu
+statut: clos
 ---
 
 # DROIT-1 — restreindre par nature de donnée, pas seulement par corpus
 
-**Arrêté sur** — le chantier, commit `4ad4058`, 28 août : le partage CITER / PUBLIER, la
-figure citable et son écran, la garde du manifeste IIIF, la sauvegarde réservée, et la
-doctrine réécrite.
+**Arrêté sur** — la règle de l'embargo et la frontière du dépôt, commit `3e33fc8`,
+28 août. La dernière case du chantier se referme, et sa relecture a trouvé le trou qu'on
+cherchait ailleurs : `_regime` ne lisait que `statut_diffusion`, si bien qu'une collection
+déclarée `public` publiait ses scans alors que son embargo courait encore.
 
-Le statut reste `interrompu` et non `livré`, pour une raison précise : le `Reste` d'origine
-exigeait que **`date_embargo` soit respecté**, et il ne l'est pas. La question « l'embargo
-se lève-t-il tout seul à sa date ? » a été posée le 2026-08-28 et remise à plus tard.
-Meilleure réponse en attendant : une collection `embargo` se comporte comme non publique —
-fail-closed, ce qui ne lèse personne. Le chantier se clôt dès que cette question est
-tranchée.
+Le chantier passe de `interrompu` à `clos`. La question laissée en suspens (« l'embargo se
+lève-t-il tout seul à sa date ? ») a été tranchée le 2026-08-28 : **la date RETIENT, elle
+ne PROMEUT jamais**. `clos` et non `livré` tant que rien n'est poussé — `livré` parle
+d'intégration, et le journal le démentirait.
 
 Le chantier a changé de forme en cours de cadrage, et c'est l'apport de la session : la
 fiche visait un TIERING INTERNE (« un utilisateur autorisé ne reçoit ni les dérivés ni
@@ -72,8 +71,35 @@ DEDANS / DEHORS.
 - [x] L'écran est audité par axe (WCAG 2.1 AA), thèmes sombre et clair, panier garni et modale ouverte
 - [x] Quatre comportements d'interface vérifiés par MUTATION. Le premier jet en laissait un VERT : le test lisait l'attribut `hidden` du HTML statique, donc passait même si le code cessait de le piloter. Corrigé en vérifiant que vider le panier REMASQUE le bouton — un état ne se prouve qu'en le faisant changer
 
+### L'embargo — la date retient, elle ne promeut jamais
+> Trouvé en codant la règle : `_regime` ne lisait que `statut_diffusion`. Une collection
+> déclarée `public` dont l'embargo courait encore **publiait ses scans**, et l'état était
+> atteignable — `gerer_collections.py` pose `--statut` et `--date-embargo` séparément. La
+> déclaration que le chantier venait de rendre opposable était contournée par le champ
+> censé la préciser.
+- [x] La question est tranchée par ce que l'outil IGNORE : il ne sait pas POURQUOI l'embargo existe. Un délai qu'on s'est donné (soutenance, accord d'éditeur) se lève de soi-même ; un délai imposé par un ayant droit ne se lève pas — son échéance dit que la contrainte a couru, pas que les droits sont à nous. Le champ qui trancherait, c'est `base_legale`, vide par construction (DEPOT-1) : publier sur la foi d'une date serait la politique inventée contre laquelle la fiche met en garde
+- [x] Une collection `public` dont l'embargo COURT ne fait pas sortir ses scans : la date est plus restrictive que le statut, donc la date gagne. Fail-closed, dans la seule direction qui ne peut pas nuire
+- [x] Une collection `embargo` dont la date est ÉCHUE ne devient pas publiable pour autant : la passer en `public` est un ACTE, avec quelqu'un derrière
+- [x] Le manifeste amputé ne se dit pas `public` : une déclaration qui annonce « régime : public » tout en retenant ses images se contredit elle-même, et le lecteur n'a aucun moyen de savoir quelle moitié croire — c'est le message qui ment, déjà attrapé une fois sur AUTH-3
+- [x] Le message ne promet la sortie automatique QUE si elle aura lieu. Trouvé en relisant du code écrit dans l'heure : « les images sortiront d'elles-mêmes une fois la date passée » était annoncé pour TOUT embargo en cours — vrai d'une collection `public`, faux d'une `embargo`, qui restera `embargo` à l'échéance
+- [x] Une date ILLISIBLE retient elle aussi, et le dit : le champ est du texte libre, rien ne l'impose à l'écriture, et une faute de frappe ne doit ni ouvrir la porte ni passer pour une décision
+- [x] Ne rien faire n'est pas se taire : une échéance dépassée est SIGNALÉE là où quelqu'un s'apprête justement à publier (générateur de manifestes), sur l'écran Collections et dans les deux vues de `gerer_collections.py`. Un embargo échu que personne ne remarque garde un corpus fermé par INERTIE — ce qui trahit l'orientation open-science aussi sûrement qu'une fuite trahit les droits
+- [x] L'état est dérivé à UN SEUL endroit (`database.etat_embargo`, jamais stocké, même doctrine que le numéro éditorial), lu par l'écran ET par l'export : deux lectures divergentes du même champ finiraient par se contredire à l'écran
+- [x] La bascule à l'échéance reste à l'entrepôt, à qui la date est transmise (`dates[Available]`) — et `docs/crosswalk-depot.md`, qui l'écrivait déjà, est RÉÉCRIT plutôt que contredit en silence
+- [x] Treize gardes d'embargo vérifiées par mutation, dont la borne du jour même (« jusqu'au 3 » est fini LE 3, pas le 4) : un `<` mis pour un `<=` serait passé inaperçu
+
+### La frontière du dépôt — deux services Huma-Num, deux côtés
+> Précision apportée par le cadrage, et le dépôt ne l'écrivait nulle part : ShareDocs et
+> Nakala ont le même opérateur, ce qui les fait confondre. L'axe est **vivant / figé**.
+- [x] **ShareDocs est le stockage VIVANT** — modifiable, appelable à tout moment, un espace de travail où les ressources vivent sans question de droits. Y déposer n'est pas PUBLIER, et le régime n'y borde rien
+- [x] La docstring de `POST /api/sharedocs/deposer-sauvegarde` disait que la route « fait SORTIR la base de l'instance », ce qui plaçait ShareDocs du côté DEHORS. Corrigée : la garde administrateur reste, mais pour ses deux vraies raisons — sauvegarder est un geste d'exploitation, et l'application ne contrôle pas le partage du dossier d'arrivée
+- [x] **Nakala est l'entrepôt du FIGÉ** — traité, nettoyé, déposé, il ne bouge plus. C'est là que la déclaration mord, et on y dépose d'abord le manifeste et ses Canvas, bien plus que les planches
+- [x] Le manifeste sans images cesse d'être présenté comme un manque à corriger : c'est la forme NORMALE du dépôt. Le message concluait « déclarez la collection `public` si vous en avez le droit », ce qui faisait de la forme attendue une déficience
+- [x] Ce qui est figé doit être DATÉ : le manifeste était le seul artefact de la chaîne sans date (les notices posent `genere_le`, la figure citable `date_export`). Deux dépôts du même album à un an d'intervalle étaient indistinguables — et l'entrepôt garde les deux
+- [x] La DÉCLARATION DE DROITS du `requiredStatement` est datée (« Constat du … »). Figée, « régime : restreint » l'affirmerait encore une fois la collection passée `public` : intemporelle, l'assertion devient fausse sans que personne mente
+- [x] Trois gardes de datation vérifiées par mutation, dont « la même date des deux côtés » — deux horodatages pour un seul export divergeraient
+
 ### Ce qui reste hors périmètre, écrit
-- [ ] `date_embargo` n'est PAS respecté : la question « l'embargo se lève-t-il tout seul ? » a été posée le 2026-08-28 et remise à plus tard. Tant qu'elle n'est pas tranchée, une collection `embargo` se comporte comme non publique — fail-closed, ce qui ne lèse personne
 - [ ] La base légale reste une question ouverte (DEPOT-1) : le MÉCANISME est là, la POLITIQUE non. Restreindre selon une règle qu'on ne connaît pas serait coder une politique inventée
 
 ## Contexte
