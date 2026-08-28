@@ -1,6 +1,6 @@
 ---
 chantier: DROIT-1
-statut: clos
+statut: livré
 ---
 
 # DROIT-1 — restreindre par nature de donnée, pas seulement par corpus
@@ -10,10 +10,9 @@ statut: clos
 cherchait ailleurs : `_regime` ne lisait que `statut_diffusion`, si bien qu'une collection
 déclarée `public` publiait ses scans alors que son embargo courait encore.
 
-Le chantier passe de `interrompu` à `clos`. La question laissée en suspens (« l'embargo se
-lève-t-il tout seul à sa date ? ») a été tranchée le 2026-08-28 : **la date RETIENT, elle
-ne PROMEUT jamais**. `clos` et non `livré` tant que rien n'est poussé — `livré` parle
-d'intégration, et le journal le démentirait.
+Le chantier est **livré** : les quatre commits vivent sur `origin/dev`. La question qui
+l'avait laissé ouvert (« l'embargo se lève-t-il tout seul à sa date ? ») a été tranchée le
+2026-08-28 : **la date RETIENT, elle ne PROMEUT jamais**.
 
 Le chantier a changé de forme en cours de cadrage, et c'est l'apport de la session : la
 fiche visait un TIERING INTERNE (« un utilisateur autorisé ne reçoit ni les dérivés ni
