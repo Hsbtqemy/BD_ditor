@@ -2067,8 +2067,14 @@ async function sdConnect() {
       password: $("#sd-pass").value,
     });
     $("#sd-pass").value = "";        // ne pas laisser traîner le mot de passe dans le DOM
-    $("#sd-conn-state").textContent = `connecté · ${r.user}`;
+    // Un SEUL rendu de l'état de connexion (SHARE-1). Recomposer le libellé ici en
+    // laissait tomber l'origine du compte, gardait la liste des comptes périmée alors
+    // qu'un choix venait d'apparaître, et laissait « Mon compte… » affiché après l'avoir
+    // ouvert : deux chemins qui rendent la même chose finissent par diverger, et celui-ci
+    // avait divergé le jour même.
+    state.sd.compte = null;          // on repart sur la règle par défaut : la mienne
     state.sd.selected.clear();
+    try { sdRendreComptes(await apiGet("/api/sharedocs/etat")); } catch (_) {}
     sdShow("browser");
     sdNavigate("");
   } catch (e) { msg.textContent = "✗ " + e.message; }

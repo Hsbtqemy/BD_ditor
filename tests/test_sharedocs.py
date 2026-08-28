@@ -704,3 +704,58 @@ def test_route_etat_porte_le_contrat_de_l_ecran(client, monkeypatch, derriere_pr
     # Les DEUX restent listés : c'est ce qui fait paraître le sélecteur de compte.
     assert etat["instance"]["user"] == "instance"
     assert "password" not in json.dumps(etat)
+
+
+def test_un_compte_inconnu_est_refuse_et_non_interprete(client, monkeypatch,
+                                                        derriere_proxy):
+    """Trouvé en relisant, sur une suite verte et un chantier déjà commité.
+
+    Les routes d'écriture testaient `== "instance"` et retombaient SILENCIEUSEMENT sur le
+    compte personnel pour tout le reste. Un administrateur écrivant « instace » ouvrait sa
+    propre session et recevait `{"connecte": true}` : il croyait avoir remplacé le compte
+    de l'instance, le repli de tout le monde restait inchangé, et rien ne le disait.
+    """
+    _use(monkeypatch, _handler)
+    _env_instance(monkeypatch, user="avant")
+    r = client.post("/api/sharedocs/connexion",
+                    json={"url": BASE, "user": "x", "password": "p",
+                          "compte": "instace"}, headers=ADMIN)
+    assert r.status_code == 422 and "inconnu" in r.json()["detail"]
+    assert sd.instance()["user"] == "avant", "l'instance ne doit pas avoir bougé"
+    assert sd.perso("decor") is None, "et aucune session personnelle ne doit s'être ouverte"
+
+    r = client.post("/api/sharedocs/deconnexion?compte=instac", headers=ADMIN)
+    assert r.status_code == 422
+    assert sd.instance() is not None
+
+
+def test_le_compte_valide_reste_accepte(client, monkeypatch, derriere_proxy):
+    """Le pendant : la garde ne doit pas fermer la porte qu'elle surveille."""
+    _use(monkeypatch, _handler)
+    _env_instance(monkeypatch)
+    assert client.post("/api/sharedocs/deconnexion?compte=instance",
+                       headers=ADMIN).status_code == 200
+    assert client.post("/api/sharedocs/connexion",
+                       json={"url": BASE, "user": "u", "password": "p",
+                             "compte": "perso"},
+                       headers={"Remote-User": "alice"}).status_code == 200
+
+
+def test_un_compte_inconnu_echoue_avant_de_creer_l_album(client, monkeypatch):
+    """Même faute, même refus, partout. Sans ce contrôle en tête de route, un compte mal
+    orthographié échouait FICHIER PAR FICHIER — autant d'erreurs de téléchargement qu'il y
+    a de chemins — et la vraie cause ne paraissait nulle part. Un album vide était même
+    créé au passage."""
+    avant = len(client.get("/api/albums").json())
+    r = client.post("/api/sharedocs/importer", json={
+        "chemins": ["a.png", "b.png"], "nouvel_album": "Fantome",
+        "compte": "instanc"})
+    assert r.status_code == 422 and "inconnu" in r.json()["detail"]
+    assert len(client.get("/api/albums").json()) == avant, "aucun album ne doit naître"
+
+
+def test_liste_refuse_le_compte_inconnu_du_meme_code(client, monkeypatch):
+    """`resoudre` le refusait déjà, mais en 400 : deux codes pour la même faute."""
+    _use(monkeypatch, _handler)
+    _env_instance(monkeypatch)
+    assert client.get("/api/sharedocs/liste?compte=xyz").status_code == 422

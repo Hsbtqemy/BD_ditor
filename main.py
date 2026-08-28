@@ -1019,6 +1019,25 @@ def _exiger_admin_instance(portee: autorisation.Portee, geste: str) -> None:
                  "administrateurs : il sert de repli à tout le monde.")
 
 
+def _compte_demande(compte: Optional[str]) -> Optional[str]:
+    """Valide le compte demandé, ou 422 qui le nomme (SHARE-1).
+
+    Trouvé en relisant : les routes d'écriture testaient `== INSTANCE` et retombaient
+    SILENCIEUSEMENT sur le compte personnel pour tout le reste. Un administrateur qui
+    écrivait « instace » n'obtenait pas un refus — il ouvrait sa propre session, et
+    recevait `{"connecte": true}`, ce qui se lit comme un succès. Il croyait avoir remplacé
+    le compte de l'instance, le repli de tout le monde restait inchangé, et rien ne le
+    disait. C'était en outre incohérent avec la LECTURE, où `resoudre` refuse déjà un
+    compte inconnu : la même faute de frappe donnait un message clair sur `liste` et un
+    effet silencieux sur `connexion`.
+    """
+    if compte is not None and compte not in sharedocs.COMPTES:
+        raise HTTPException(
+            422, f"Compte ShareDocs inconnu : {compte} "
+                 f"({' | '.join(sharedocs.COMPTES)}).")
+    return compte
+
+
 @app.get("/api/sharedocs/etat")
 def sharedocs_etat(portee: autorisation.Portee = Depends(portee_courante)):
     """État des sessions (jamais de mot de passe) + pré-remplissage depuis l'env.
@@ -1034,7 +1053,7 @@ def sharedocs_connexion(payload: SharedocsConnIn,
                         portee: autorisation.Portee = Depends(portee_courante)):
     """Ouvre MA session ShareDocs — ou remplace celle de l'instance (administrateurs)."""
     pwd = payload.password or os.environ.get("BD_SHAREDOCS_PASS", "")
-    if payload.compte == sharedocs.INSTANCE:
+    if _compte_demande(payload.compte) == sharedocs.INSTANCE:
         _exiger_admin_instance(portee, "Remplacer")
         try:
             return {"connecte": True, "compte": sharedocs.INSTANCE,
@@ -1052,7 +1071,7 @@ def sharedocs_connexion(payload: SharedocsConnIn,
 def sharedocs_deconnexion(compte: Optional[str] = None,
                           portee: autorisation.Portee = Depends(portee_courante)):
     """Ferme MA session. `compte=instance` coupe celle de l'instance (administrateurs)."""
-    if compte == sharedocs.INSTANCE:
+    if _compte_demande(compte) == sharedocs.INSTANCE:
         _exiger_admin_instance(portee, "Couper")
         sharedocs.couper_instance()
         return {"connecte": False, "compte": sharedocs.INSTANCE}
@@ -1063,6 +1082,7 @@ def sharedocs_deconnexion(compte: Optional[str] = None,
 @app.get("/api/sharedocs/liste")
 def sharedocs_liste(chemin: str = "", compte: Optional[str] = None,
                     portee: autorisation.Portee = Depends(portee_courante)):
+    _compte_demande(compte)          # 422 nommé, plutôt que le 400 générique de `resoudre`
     try:
         return sharedocs.list_dir(chemin, principal=_principal_sharedocs(portee),
                                   compte=compte)
@@ -1082,6 +1102,10 @@ def sharedocs_importer(payload: SharedocsImportIn,
     """
     if not payload.chemins:
         raise HTTPException(422, "Aucun fichier sélectionné.")
+    # Avant de créer quoi que ce soit : un compte inconnu échouerait sinon FICHIER PAR
+    # FICHIER, en autant d'erreurs de téléchargement qu'il y a de chemins — et la vraie
+    # cause, un mot mal orthographié, ne paraîtrait nulle part.
+    _compte_demande(payload.compte)
     created_album = False
     if payload.album_id is not None:
         # AUTH-2 : importer des planches, c'est écrire dans l'album.
