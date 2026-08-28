@@ -227,3 +227,37 @@ def test_citations_regions_multi_albums(data_dir):
         assert (cit[a2c1]["global"], cit[a2c1]["total"]) == (1, 1)
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# DROIT-1 — l'état d'une date d'embargo, DÉRIVÉ
+# --------------------------------------------------------------------------- #
+# Fonction pure, définie une seule fois et lue par DEUX consommateurs : l'écran Collections
+# (`GET /api/collections`) et le générateur de manifestes. Deux lectures divergentes du
+# même champ finiraient par se contredire à l'écran, d'où le point unique — et d'où ces
+# cas, qui verrouillent la BORNE (le jour même) et le mode d'échec (une date illisible).
+def test_etat_embargo_sans_date():
+    assert database.etat_embargo({"date_embargo": None}) is None
+    assert database.etat_embargo({"date_embargo": "   "}) is None
+    assert database.etat_embargo({}) is None
+    assert database.etat_embargo(None) is None
+
+
+def test_etat_embargo_pendant_et_echu():
+    assert database.etat_embargo({"date_embargo": "2099-01-01"}, "2026-08-28") == "pendant"
+    assert database.etat_embargo({"date_embargo": "2020-01-01"}, "2026-08-28") == "echu"
+
+
+def test_etat_embargo_le_jour_meme_est_echu():
+    """La borne, et elle se choisit : un embargo « jusqu'au 3 » est fini LE 3. La veille
+    ne l'est pas — sans ces deux assertions, un `<` mis pour un `<=` passerait inaperçu."""
+    assert database.etat_embargo({"date_embargo": "2026-08-28"}, "2026-08-28") == "echu"
+    assert database.etat_embargo({"date_embargo": "2026-08-28"}, "2026-08-27") == "pendant"
+
+
+def test_etat_embargo_date_illisible():
+    """Le champ est du TEXTE libre et rien ne l'impose à l'écriture. Ce qui n'est pas de la
+    forme ISO n'est pas silencieusement traité comme absent : une faute de frappe qui
+    passerait pour « aucun embargo » ouvrirait la porte que la date devait tenir."""
+    for brut in ("bientôt", "01/01/2030", "2030-1-1", "2030"):
+        assert database.etat_embargo({"date_embargo": brut}) == "illisible", brut

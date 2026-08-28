@@ -595,3 +595,39 @@ def test_export_de_figure_telecharge_un_zip(page, seeded):
     fichier = dl.value
     assert fichier.suggested_filename.startswith("figures_")
     assert fichier.suggested_filename.endswith(".zip")
+
+
+# --------------------------------------------------------------------------- #
+# DROIT-1 — l'embargo cesse d'être muet sur l'écran Collections
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_collections_embargo_echu(page, seeded, theme):
+    """L'application ne lève jamais un embargo toute seule, mais elle cesse de se taire :
+    un embargo échu que personne ne remarque garde un corpus fermé par INERTIE.
+
+    Audité dans les deux thèmes parce que la pastille est du PETIT TEXTE coloré — la
+    catégorie qui échoue le 4.5:1 quand on y met un accent brut au lieu d'un token d'encre.
+    """
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ADMIN)
+    try:
+        cid = c.post("/api/collections", json={"nom": "Fonds sous embargo"}).json()["id"]
+        r = c.patch(f"/api/collections/{cid}",
+                    json={"statut_diffusion": "embargo", "date_embargo": "2020-01-01"})
+        assert r.status_code == 200, r.text
+    finally:
+        c.close()
+
+    _theme(page, theme)
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.click("#btn-collections")
+    page.wait_for_selector("#col-body .col-item", timeout=3000)
+    # La pastille est RENDUE, et son libellé porte le sens — pas la seule couleur.
+    pastille = page.locator("#col-body .col-item", has_text="Fonds sous embargo").locator(
+        ".col-embargo")
+    pastille.wait_for(timeout=3000)
+    assert "échu" in pastille.inner_text().lower()
+    assert "2020-01-01" in (pastille.get_attribute("title") or "")
+
+    viol = _audit(page)
+    assert not viol, f"Collections/embargo [{theme}] :\n{_fmt(viol)}"

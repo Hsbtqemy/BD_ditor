@@ -213,6 +213,36 @@ rien : il était déclaré, jamais respecté. Il devient opposable **à la sorti
   écrite le 2026-08-27 (« dès qu'un tiering de droits est effectif ») s'est déclenchée. Elle
   reste ENTIÈRE — une sauvegarde partielle ne restaure pas une instance — et change de
   public.
+- **ShareDocs et Nakala ne sont pas du même côté**, malgré l'opérateur commun — l'axe est
+  VIVANT / FIGÉ. **ShareDocs est le stockage vivant** : modifiable, appelable à tout moment,
+  un espace de travail où les ressources vivent sans question de droits. Y déposer n'est pas
+  publier, et le régime n'y borde rien ; ce qui réserve
+  `POST /api/sharedocs/deposer-sauvegarde` aux administrateurs, c'est que sauvegarder est un
+  geste d'exploitation et que l'app ne contrôle pas le partage du dossier d'arrivée — pas
+  `statut_diffusion`. **Nakala est l'entrepôt du figé** : traité, nettoyé, déposé, il ne
+  bouge plus. C'est là que la déclaration mord ; on y dépose d'abord le **manifeste et ses
+  Canvas**, bien plus que les planches. Le manifeste sans images n'est donc pas un mode
+  dégradé : c'est la forme NORMALE du dépôt, et la raison pour laquelle le Canvas devait
+  survivre sans son image.
+- **Ce qui est figé doit être DATÉ.** Deux dépôts du même album à un an d'intervalle seraient
+  sinon indistinguables — et l'entrepôt garde les deux. Le manifeste était le seul artefact
+  de la chaîne sans date (les notices posent `genere_le`, la figure `date_export`) : il porte
+  désormais « Manifeste généré le ». Surtout, la **déclaration de droits** de son
+  `requiredStatement` est datée (« Constat du … ») : figée, « régime : restreint »
+  l'affirmerait encore une fois la collection passée `public`, et deviendrait fausse sans que
+  personne mente.
+- **`date_embargo` RETIENT, elle ne PROMEUT jamais** (`database.etat_embargo`, dérivé
+  jamais stocké). Une collection `public` dont l'embargo court ne publie pas ses scans — la
+  date est plus restrictive que le statut, donc elle gagne ; une échéance passée ne rend
+  rien publiable toute seule, parce que l'outil ignore POURQUOI l'embargo existe (un délai
+  qu'on s'est donné se lève seul, un délai imposé par un ayant droit non — et `base_legale`,
+  qui trancherait, est vide par construction). La bascule appartient à l'entrepôt, à qui la
+  date est transmise. Une date ILLISIBLE retient aussi : une faute de frappe ne doit ni
+  ouvrir la porte ni passer pour une décision. Ne rien faire n'est pas se taire — l'échéance
+  dépassée est signalée (écran Collections, manifeste, `gerer_collections.py` liste et
+  fiche), sans
+  quoi un corpus resterait fermé par inertie. **L'état est dérivé à UN seul endroit**, lu
+  par l'écran et par l'export : deux lectures du même champ finiraient par se contredire.
 - La **surcharge par album** annoncée dans le dictionnaire est abandonnée par écrit : depuis
   AUTH-3 un album vit dans plusieurs collections, il n'y a plus de défaut unique à
   surcharger. Cf. `docs/dictionnaire-metadonnees.md`.

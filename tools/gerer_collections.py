@@ -164,7 +164,11 @@ def cmd_lister(args) -> int:
         return 0
     for c in cols:
         statut = c["statut_diffusion"] or "—"
-        print(f"{c['id']:>4}  {c['nom']}  ({c['nb_albums']} album(s), {statut})")
+        # DROIT-1 — c'est ici qu'on parcourt ses collections, donc ici qu'un embargo échu
+        # a le plus de chances d'être remarqué. L'outil ne le lève pas ; il le dit.
+        marque = {"echu": " · EMBARGO ÉCHU", "illisible": " · date d'embargo illisible"}
+        print(f"{c['id']:>4}  {c['nom']}  ({c['nb_albums']} album(s), {statut}"
+              f"{marque.get(database.etat_embargo(c), '')})")
     return 0
 
 
@@ -180,8 +184,16 @@ def cmd_montrer(args) -> int:
     if row["description"]:
         print(f"  description      : {row['description']}")
     print(f"  licence défaut   : {row['licence_defaut'] or '—'}")
+    # DROIT-1 — la date se lit avec son ÉTAT. « levée 2024-01-01 » sans plus laisse croire
+    # que c'est fait ; ça ne l'est pas, et ça ne le sera pas tout seul.
+    _emb = database.etat_embargo(row)
     print(f"  statut diffusion : {row['statut_diffusion'] or '—'}"
-          + (f" (levée {row['date_embargo']})" if row["date_embargo"] else ""))
+          + (f" (levée {row['date_embargo']}"
+             + {"echu": " — ÉCHUE, la collection n'est pas publiée pour autant : "
+                        "déclarez-la `public` si les droits sont acquis",
+                "pendant": " — en cours",
+                "illisible": " — ILLISIBLE, attendu AAAA-MM-JJ"}.get(_emb, "")
+             + ")" if row["date_embargo"] else ""))
     print(f"  base légale      : {row['base_legale'] or '— (à établir)'}")
     print(f"  responsables     : "
           + ("; ".join(r.get("nom", "") for r in resp) if resp else "—"))

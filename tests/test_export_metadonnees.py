@@ -7,6 +7,7 @@ SOUS-PROCESSUS (comme le test `live`), avec `BD_DB_PATH` pointant la base de tes
 """
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -269,13 +270,22 @@ def _images_du_manifeste(chemin):
             for it in page["items"] if it.get("motivation") == "painting"]
 
 
-def _collection(corpus, album_id, nom, statut=None):
+def _collection(corpus, album_id, nom, statut=None, date_embargo=None):
     args = ["creer", "--nom", nom, "--albums", str(album_id)]
     if statut:
         args += ["--statut", statut]
+    if date_embargo:
+        args += ["--date-embargo", date_embargo]
     r = _run("gerer_collections.py", corpus["db"], corpus["data"], *args)
     assert r.returncode == 0, r.stderr
     return r.stdout.strip()
+
+
+def _declaration(chemin):
+    """Le texte du `requiredStatement` d'un manifeste, ou "" s'il n'y en a pas."""
+    man = json.loads(chemin.read_text(encoding="utf-8"))
+    val = man.get("requiredStatement", {}).get("value", {})
+    return " ".join(v for lst in val.values() for v in lst)
 
 
 def test_iiif_sans_collection_nommee_n_emporte_pas_d_images(corpus, album, tmp_path):
@@ -355,3 +365,178 @@ def test_l_exemption_tient_a_la_declaration_pas_a_l_absence(tmp_path):
         "value": {"fr": ["Les images de ce corpus ne sont pas diffusées."]}})
     assert not v.valider_manifest(declare).err
     assert v.valider_manifest(declare).warn      # dit quand même, en avertissement
+
+
+# --------------------------------------------------------------------------- #
+# DROIT-1 — la date d'embargo RETIENT, elle ne PROMEUT jamais
+# --------------------------------------------------------------------------- #
+# Décidé le 2026-08-28, après avoir constaté que `_regime` ne lisait que `statut_diffusion`
+# et publiait donc les scans d'une collection déclarée `public` dont l'embargo courait
+# encore. L'asymétrie tient à ce que l'outil IGNORE : il ne sait pas POURQUOI l'embargo
+# existe. Un délai qu'on s'est donné se lève de soi-même ; un délai imposé par un ayant
+# droit ne se lève pas — son échéance dit que la contrainte a couru, pas que les droits
+# sont à nous. Publier sur la foi d'une date serait une politique inventée (DEPOT-1).
+# --------------------------------------------------------------------------- #
+def test_embargo_pendant_retient_les_scans_d_une_collection_publique(corpus, album, tmp_path):
+    """Le trou trouvé en relecture : `public` + embargo qui court publiait quand même.
+
+    La date est plus restrictive que le statut, donc la date gagne — fail-closed, dans la
+    seule direction qui ne peut pas nuire.
+    """
+    cid = _collection(corpus, album["id"], "Publique plus tard", "public", "2099-01-01")
+    out = tmp_path / "iiif"
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out),
+             "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    assert "SANS IMAGES" in r.stderr and "2099-01-01" in r.stderr
+    assert _images_du_manifeste(out / f"manifest-a{album['id']}.json") == []
+
+
+def test_embargo_pendant_le_manifeste_ne_dit_pas_qu_il_est_public(corpus, album, tmp_path):
+    """Et il le DIT correctement. Un manifeste amputé qui annonce « régime : public » se
+    contredit lui-même, et le lecteur n'a aucun moyen de savoir quelle moitié croire —
+    c'est le message d'erreur qui ment, déjà attrapé une fois sur AUTH-3."""
+    cid = _collection(corpus, album["id"], "Publique plus tard", "public", "2099-01-01")
+    out = tmp_path / "iiif"
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out),
+             "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    decl = _declaration(out / f"manifest-a{album['id']}.json")
+    assert "embargo" in decl and "2099-01-01" in decl, decl
+
+
+def test_embargo_echu_ne_publie_pas_tout_seul(corpus, album, tmp_path):
+    """Le cœur de l'arbitrage : la date ne PROMEUT jamais. Une collection `embargo` dont
+    l'échéance est passée reste non publiée — la passer en `public` est un acte, avec
+    quelqu'un derrière."""
+    cid = _collection(corpus, album["id"], "Embargo fini", "embargo", "2020-01-01")
+    out = tmp_path / "iiif"
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out),
+             "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    assert _images_du_manifeste(out / f"manifest-a{album['id']}.json") == []
+
+
+def test_embargo_echu_cesse_d_etre_muet(corpus, album, tmp_path):
+    """Ne rien faire ne veut pas dire se taire. Un embargo échu que personne ne remarque
+    garde un corpus fermé par INERTIE, ce qui trahit l'orientation open-science aussi
+    sûrement qu'une fuite trahit les droits : l'outil le signale là où quelqu'un s'apprête
+    justement à publier."""
+    cid = _collection(corpus, album["id"], "Embargo fini", "embargo", "2020-01-01")
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(tmp_path / "iiif"),
+             "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    assert "ÉCHU" in r.stderr and "2020-01-01" in r.stderr
+
+
+def test_embargo_echu_et_declaree_publique_publie(corpus, album, tmp_path):
+    """L'état final cohérent : l'échéance est passée ET quelqu'un a déclaré la collection
+    `public`. Sans ce test, « retenir » et « ne jamais publier » seraient indistinguables."""
+    cid = _collection(corpus, album["id"], "Embargo levé", "public", "2020-01-01")
+    out = tmp_path / "iiif"
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out),
+             "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    assert "SANS IMAGES" not in r.stderr
+    assert _images_du_manifeste(out / f"manifest-a{album['id']}.json")
+
+
+def test_date_d_embargo_illisible_retient_et_le_dit(corpus, album, tmp_path):
+    """`date_embargo` est du texte libre, et rien ne l'impose à l'écriture. Une date qu'on
+    ne sait pas lire RETIENT — sinon une faute de frappe ouvrirait la porte — et elle se
+    dit, sinon la faute de frappe passerait pour une décision."""
+    cid = _collection(corpus, album["id"], "Date fautive", "public", "bientôt")
+    out = tmp_path / "iiif"
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out),
+             "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    assert "illisible" in r.stderr and "AAAA-MM-JJ" in r.stderr
+    assert _images_du_manifeste(out / f"manifest-a{album['id']}.json") == []
+
+
+def test_verbatim_refuse_sous_embargo_pendant(corpus, album, tmp_path):
+    """`--verbatim` fait sortir le TEXTE de l'œuvre. La garde suit la même règle que les
+    images : une collection `public` sous embargo qui court n'est pas publiable."""
+    cid = _collection(corpus, album["id"], "Publique plus tard", "public", "2099-01-01")
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(tmp_path / "x"),
+             "--collection", cid, "--verbatim")
+    assert r.returncode == 2, r.stderr
+    assert "REFUS" in r.stderr and "2099-01-01" in r.stderr
+
+
+def test_embargo_pendant_ne_promet_pas_ce_qui_n_arrivera_pas(corpus, album, tmp_path):
+    """Relecture du 2026-08-28, sur du code écrit le jour même : le message annonçait
+    « les images sortiront d'elles-mêmes une fois la date passée » pour TOUT embargo qui
+    court. C'est vrai d'une collection déclarée `public`, et faux d'une `embargo` — à
+    l'échéance elle reste `embargo`, donc non publiée. Le message qui ment, encore lui."""
+    cid = _collection(corpus, album["id"], "Sous embargo", "embargo", "2099-01-01")
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(tmp_path / "iiif"),
+             "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    assert "sortiront d'elles-mêmes" not in r.stderr, r.stderr
+    assert "déclarer `public`" in r.stderr
+
+
+def test_embargo_pendant_sur_publique_promet_bien_la_sortie(corpus, album, tmp_path):
+    """Le pendant : là, la promesse est vraie — la date passée suffira."""
+    cid = _collection(corpus, album["id"], "Publique plus tard", "public", "2099-01-01")
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(tmp_path / "iiif"),
+             "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    assert "sortiront d'elles-mêmes" in r.stderr
+
+
+# --------------------------------------------------------------------------- #
+# Nakala est l'entrepôt du FIGÉ — un artefact déposé doit dire de quand il date
+# --------------------------------------------------------------------------- #
+# Précision du 2026-08-28 : ShareDocs est le stockage VIVANT (modifiable, appelable à tout
+# moment), Nakala l'entrepôt de ce qui est traité et FIGÉ. Le manifeste était le seul
+# artefact de la chaîne de dépôt sans date — les notices posent `genere_le`, la figure
+# citable `date_export`. Or c'est lui qu'on fige, et il porte une DÉCLARATION DE DROITS.
+def _meta_manifeste(chemin, label):
+    """La valeur d'une entrée `metadata` du manifeste, par son libellé."""
+    man = json.loads(chemin.read_text(encoding="utf-8"))
+    for m in man.get("metadata", []):
+        if label in " ".join(v for lst in m["label"].values() for v in lst):
+            return " ".join(v for lst in m["value"].values() for v in lst)
+    return None
+
+
+def test_le_manifeste_dit_de_quand_il_date(corpus, album, tmp_path):
+    """Deux manifestes du même album déposés à un an d'intervalle seraient sinon
+    indistinguables — et l'entrepôt ne les remplace pas, il les garde."""
+    cid = _collection(corpus, album["id"], "Domaine public", "public")
+    out = tmp_path / "iiif"
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out),
+             "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    genere = _meta_manifeste(out / f"manifest-a{album['id']}.json", "généré le")
+    assert genere and re.fullmatch(r"\d{4}-\d{2}-\d{2}", genere), genere
+
+
+def test_la_declaration_de_droits_est_datee(corpus, album, tmp_path):
+    """Une déclaration figée sans date se lit comme une vérité de toujours. Déposé,
+    ce manifeste affirmera encore « régime : restreint » le jour où la collection sera
+    passée `public` : datée, l'assertion redevient un constat vérifiable à la source."""
+    cid = _collection(corpus, album["id"], "Sous droits", "restreint")
+    out = tmp_path / "iiif"
+    r = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out),
+             "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    chemin = out / f"manifest-a{album['id']}.json"
+    genere = _meta_manifeste(chemin, "généré le")
+    decl = _declaration(chemin)
+    # La MÊME date des deux côtés : deux horodatages pour un seul export divergeraient.
+    assert genere in decl, (genere, decl)
+    assert "Constat du" in decl

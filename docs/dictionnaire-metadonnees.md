@@ -137,6 +137,52 @@ stable → citable), quitte à la **construire** depuis un filtre puis la geler 
 > accès aux fichiers). Ce qui change n'est pas là : c'est ce que l'outil accepte de
 > FABRIQUER pour l'extérieur.
 >
+> **Deux services Huma-Num, deux côtés de la frontière** (2026-08-28). ShareDocs et Nakala
+> ont le même opérateur, ce qui les fait confondre — ils ne sont pas du même côté de l'axe
+> DEDANS / DEHORS, et c'est ce qui décide si le régime mord.
+>
+> - **ShareDocs est le stockage VIVANT** : modifiable, appelable à tout moment, un espace
+>   de travail. C'est là que vivent les ressources (masters, PDF, sauvegardes), sans
+>   question de droits : un disque distant de l'instance. Y déposer n'est donc pas PUBLIER,
+>   et `statut_diffusion` n'y borde rien — pas plus qu'il ne borde à l'intérieur de
+>   l'instance. Ce qui réserve `POST /api/sharedocs/deposer-sauvegarde` aux administrateurs
+>   n'est pas le régime de diffusion mais deux autres raisons : sauvegarder est un geste
+>   d'exploitation, et l'application ne contrôle pas le partage du dossier d'arrivée.
+> - **Nakala est l'entrepôt du FIGÉ** : ce qu'on y dépose est traité, nettoyé, travaillé —
+>   et ne bouge plus. Archivage, open science, DOI. C'est là que la déclaration mord. Et ce
+>   qu'on y dépose est d'abord le **manifeste et ses Canvas** — la géométrie et
+>   l'enrichissement — bien plus que les planches elles-mêmes. Le manifeste sans images
+>   n'est donc pas un mode dégradé qu'on subit : c'est la forme NORMALE du dépôt, et c'est
+>   la raison pour laquelle le Canvas devait survivre sans son image.
+>
+> **Ce que « figé » impose aux artefacts.** Un artefact qui ne bouge plus doit dire DE QUAND
+> IL DATE, sans quoi deux dépôts du même album à un an d'intervalle sont indistinguables —
+> et l'entrepôt ne remplace pas le premier, il garde les deux. Les notices posaient déjà
+> `genere_le`, la figure citable `date_export` ; le manifeste, lui, ne datait rien (corrigé
+> le 2026-08-28 : entrée `metadata` « Manifeste généré le »).
+>
+> Le cas est plus aigu pour la DÉCLARATION DE DROITS qu'il porte. « Les images de ce corpus
+> ne sont pas diffusées (régime : restreint) », figé dans un entrepôt, l'affirmera encore le
+> jour où la collection sera passée `public` : intemporelle, l'assertion devient fausse sans
+> que personne mente. Datée — « Constat du 2026-08-28 » — elle redevient ce qu'elle est, un
+> constat que son lecteur peut aller vérifier à la source.
+>
+> **`date_embargo` RETIENT, elle ne PROMEUT jamais** (2026-08-28). Une collection `public`
+> dont l'embargo court encore ne fait pas sortir ses scans : la date est plus restrictive
+> que le statut, donc la date gagne. Mais une échéance passée ne publie rien d'elle-même —
+> parce que l'outil ignore POURQUOI l'embargo existe. Un délai qu'on s'est donné
+> (soutenance, accord d'éditeur) se lève de soi-même ; un délai imposé par un ayant droit
+> ne se lève pas, et son échéance dit que la contrainte a couru, pas que les droits sont à
+> nous. Le champ qui trancherait, c'est `base_legale`, et il est vide par construction. La
+> bascule appartient donc à l'entrepôt, à qui la date est transmise.
+>
+> Ne rien faire ne veut pas dire **se taire** : une échéance dépassée est SIGNALÉE (écran
+> Collections, générateur de manifestes, `gerer_collections.py voir`). Un embargo échu que
+> personne ne remarque garde un corpus fermé par inertie — ce qui trahit l'orientation
+> open-science aussi sûrement qu'une fuite trahit les droits. Et une date qu'on ne sait pas
+> lire retient elle aussi, en le disant : une faute de frappe ne doit pas ouvrir la porte,
+> ni passer pour une décision.
+>
 > **`base_legale` est un prérequis au dépôt, hors code** (institution + source des scans) :
 > tant qu'elle n'est pas établie, elle reste une **question ouverte, jamais une conclusion**
 > — et la figure citable l'écrit telle quelle, « base légale non établie », plutôt que de

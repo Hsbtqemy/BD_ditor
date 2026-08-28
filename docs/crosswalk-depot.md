@@ -93,8 +93,15 @@ rôle fin.
 - `base_legale` → mention libre (`dc:rights` / `rightsList`) — reste un **prérequis
   hors-code** (décrire, pas imposer).
 - `statut_diffusion` (`public` | `embargo` | `restreint` | `prive`) → `dcterms:accessRights`
-  et, si `embargo`, `dates/date[dateType=Available]` = `date_embargo`. L'**enforcement**
-  reste à l'entrepôt (Nakala gère public/embargo/privé).
+  et, si `embargo`, `dates/date[dateType=Available]` = `date_embargo`. La **bascule à
+  l'échéance** reste à l'entrepôt (Nakala gère public/embargo/privé) — c'est son métier, et
+  c'est précisément pourquoi la date part avec la notice.
+- **Précision du 2026-08-28 (DROIT-1)** : côté outil, `date_embargo` n'est pas pour autant
+  décorative. Elle **RETIENT sans jamais PROMOUVOIR** — une collection `public` dont
+  l'embargo court ne fait pas sortir ses scans ; une échéance passée ne rend rien publiable
+  toute seule. L'outil ne sait pas POURQUOI l'embargo existe : un délai qu'on s'est donné
+  se lève de soi-même, un délai imposé par un ayant droit ne se lève pas. Il le **signale**
+  en revanche, là où quelqu'un s'apprête à publier.
 - Rappel tiers de droits : l'**OCR verbatim** n'entre **jamais** dans ces notices (contenu
   restreint) ; le crosswalk ne porte que des métadonnées `ouvert`.
 

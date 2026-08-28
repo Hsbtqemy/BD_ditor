@@ -30,9 +30,10 @@ from config import (AUTH_LOGOUT_URL, AUTH_PROXY, CIBLES_ATTRIBUT, DATA_DIR,
                     RELECTURE, ROLES_PLANCHE, STATIC_DIR, STATUTS,
                     STATUTS_DIFFUSION, TEMPLATES_DIR, TYPES_REGION, UPOS_TAGS)
 from database import (citations_regions, collection_par_defaut, collection_row,
-                      collections, contributions_album, dimensions_cm, nom_reserve,
-                      get_connection, init_db, lexique_resume, numeros_editoriaux,
-                      relecture_planches, reindex_region, unindex_region)
+                      collections, contributions_album, dimensions_cm, etat_embargo,
+                      nom_reserve, get_connection, init_db, lexique_resume,
+                      numeros_editoriaux, relecture_planches, reindex_region,
+                      unindex_region)
 import accord
 import accord_inter
 import autorisation
@@ -1139,9 +1140,15 @@ def deposer_sauvegarde(payload: DeposerIn,
                        portee: autorisation.Portee = Depends(portee_courante)):
     """Dépose une sauvegarde de la base dans un dossier ShareDocs (PUT WebDAV).
 
-    Même garde que le téléchargement, et pour une raison plus forte : celle-ci fait SORTIR
-    la base de l'instance, vers un dossier distant dont l'application ne contrôle pas le
-    partage."""
+    Même garde que le téléchargement, et pour une raison de plus : l'application ne
+    contrôle pas le partage du dossier d'arrivée.
+
+    Ce n'est PAS le régime de diffusion qui l'impose (précision du 2026-08-28) : ShareDocs
+    est du stockage, pas une audience — les ressources y vivent sans question de droits, et
+    y déposer n'est pas publier. La frontière de DROIT-1 passe entre l'instance et le
+    DÉPÔT (Nakala), pas entre l'instance et son disque distant. La garde reste, mais elle
+    tient à ce que sauvegarder est un geste d'exploitation, et à qui peut lire le dossier
+    d'arrivée."""
     _exiger_admin_sauvegarde(portee)
     name, data = _faire_sauvegarde()
     folder = payload.dossier.strip("/")
@@ -2398,6 +2405,13 @@ def list_collections(conn: sqlite3.Connection = Depends(db),
     for c in vues:
         c["mon_niveau"] = _niveau_dans(portee, c["id"])
         c["administrable"] = portee.peut_administrer(c["id"])
+        # DROIT-1 — l'état de la date d'embargo, DÉRIVÉ ici comme il l'est à la sortie :
+        # `tools/iiif_manifest.py` lit la MÊME fonction, sans quoi l'écran et l'export
+        # finiraient par ne plus dire la même chose du même champ. Un embargo échu que
+        # personne ne remarque garde un corpus fermé par inertie ; l'outil ne le lève pas
+        # tout seul (une date qui passe ne dit pas que les droits sont acquis), mais il
+        # cesse de se taire.
+        c["embargo"] = etat_embargo(c)
     return vues
 
 

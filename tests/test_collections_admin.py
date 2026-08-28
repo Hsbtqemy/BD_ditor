@@ -425,3 +425,36 @@ def test_sortir_d_une_collection_etrangere_dit_la_verite(client, collection_a_al
                       headers=h).json()
     r = client.delete(f"/api/albums/{alb['id']}/collections/{autre}", headers=h)
     assert r.status_code == 404 and "n'appartient pas" in r.json()["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# DROIT-1 — l'embargo cesse d'être muet
+# --------------------------------------------------------------------------- #
+# L'application ne lève JAMAIS un embargo toute seule (une date qui passe dit que le délai
+# a couru, pas que les droits sont acquis). Mais se taire a son propre coût : un embargo
+# échu que personne ne remarque garde un corpus fermé par INERTIE. La route porte donc
+# l'état dérivé, et l'écran Collections l'affiche.
+def test_la_liste_porte_l_etat_de_l_embargo(client, collection_a_alice):
+    cid = collection_a_alice["id"]
+    r = client.patch(f"/api/collections/{cid}",
+                     json={"statut_diffusion": "embargo", "date_embargo": "2020-01-01"},
+                     headers={"Remote-User": "alice"})
+    assert r.status_code == 200, r.text
+    vues = client.get("/api/collections", headers={"Remote-User": "alice"}).json()
+    ligne = next(c for c in vues if c["id"] == cid)
+    assert ligne["embargo"] == "echu"
+
+
+def test_l_etat_de_l_embargo_suit_la_date(client, collection_a_alice):
+    """Le pendant : sans quoi « echu » pourrait n'être qu'une constante bien placée."""
+    cid = collection_a_alice["id"]
+    client.patch(f"/api/collections/{cid}",
+                 json={"statut_diffusion": "embargo", "date_embargo": "2099-01-01"},
+                 headers={"Remote-User": "alice"})
+    vues = client.get("/api/collections", headers={"Remote-User": "alice"}).json()
+    assert next(c for c in vues if c["id"] == cid)["embargo"] == "pendant"
+
+
+def test_sans_date_l_embargo_ne_dit_rien(client, collection_a_alice):
+    vues = client.get("/api/collections", headers={"Remote-User": "alice"}).json()
+    assert next(c for c in vues if c["id"] == collection_a_alice["id"])["embargo"] is None

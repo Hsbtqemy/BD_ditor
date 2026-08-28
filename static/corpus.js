@@ -651,6 +651,35 @@ function niveauOptions(courant) {
     `<option value="${v}"${v === courant ? " selected" : ""}>${l}</option>`).join("");
 }
 
+/* DROIT-1 — ce que la date d'embargo raconte, en clair.
+
+   L'application ne lève JAMAIS un embargo toute seule : une date qui passe dit que le
+   délai a couru, pas que les droits sont acquis. Mais se taire aurait son propre coût —
+   un embargo échu que personne ne remarque garde un corpus fermé par inertie, ce qui
+   trahit l'orientation open-science aussi sûrement qu'une fuite trahit les droits.
+
+   Le libellé PORTE le sens ; la couleur ne fait que le renforcer (WCAG 1.4.1). */
+function colEmbargo(c) {
+  const date = c.date_embargo || "";
+  if (c.embargo === "echu")
+    return [`Embargo échu`, "est-echu",
+            `L'embargo est échu depuis le ${date}, et la collection reste déclarée `
+            + `« ${c.statut_diffusion || "sans régime"} ». L'application ne la publie pas `
+            + `pour autant : si les droits sont acquis, déclarez-la « public ».`];
+  if (c.embargo === "illisible")
+    return [`Embargo : date illisible`, "est-echu",
+            `« ${date} » n'est pas une date lisible (attendu AAAA-MM-JJ). Par précaution, `
+            + `les scans ne sortent pas tant qu'elle ne l'est pas.`];
+  if (c.embargo === "pendant")
+    return [`Embargo jusqu'au ${date}`, "",
+            c.statut_diffusion === "public"
+              ? `La collection est déclarée « public », mais l'embargo court jusqu'au `
+                + `${date} : les scans ne sortiront pas avant cette date.`
+              : `L'embargo court jusqu'au ${date}. Le travail interne n'en est pas `
+                + `affecté : seule la publication l'est.`];
+  return null;
+}
+
 /* Une collection = un <details>. Repliée, elle dit son nom, son volume et MON niveau ;
    dépliée, elle montre qui a accès — mais seulement si je peux l'administrer, la liste
    des membres d'une étude étant une donnée sur des personnes. */
@@ -664,11 +693,14 @@ function colItem(c) {
     ? `<span class="col-niveau${c.mon_niveau === "proprietaire" ? " est-proprietaire" : ""}">`
       + `${COL_NIVEAUX.find((n) => n[0] === c.mon_niveau)[1]}</span>`
     : (c.administrable ? `<span class="col-niveau">Administrateur</span>` : "");
+  const emb = colEmbargo(c);
   d.innerHTML = `
     <summary>
       <span class="col-nom">${esc(c.nom)}</span>
       <span class="muted small">${c.nb_albums} album(s)</span>
       ${badge}
+      ${emb ? `<span class="col-embargo ${emb[1]}" title="${esc(emb[2])}">${esc(emb[0])}</span>`
+            : ""}
     </summary>
     <div class="col-detail"></div>`;
   d.addEventListener("toggle", () => { if (d.open) colDetail(d, c); });

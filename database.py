@@ -8,6 +8,8 @@ plutôt que par des triggers (la relation N-N tags rend les triggers fragiles).
 """
 from __future__ import annotations
 
+import datetime as _dt
+import re
 import sqlite3
 from contextlib import contextmanager
 from typing import Iterator
@@ -998,6 +1000,37 @@ def collections(conn: sqlite3.Connection) -> list[dict]:
         "SELECT c.*, "
         "(SELECT COUNT(*) FROM collection_album ca WHERE ca.collection_id = c.id) "
         "AS nb_albums FROM collection c ORDER BY c.id")]
+
+
+# Une date d'embargo est censée être en ISO (AAAA-MM-JJ) ; le champ est du TEXTE libre, et
+# rien ne l'impose à l'écriture. Ce qui n'est pas de cette forme est ILLISIBLE et se DIT :
+# retenir sans le dire ferait passer une faute de frappe pour une décision.
+_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def etat_embargo(bloc, aujourdhui: str | None = None) -> str | None:
+    """Où en est la date d'embargo d'une collection — DÉRIVÉ, jamais stocké (DROIT-1).
+
+    `bloc` : une ligne/dict de `collection`. Renvoie `None` (aucune date déclarée),
+    `'pendant'` (la date n'est pas atteinte), `'echu'` (elle l'est, le jour même compris)
+    ou `'illisible'` (la date est là mais pas en ISO).
+
+    Cette fonction dit seulement OÙ L'ON EN EST ; elle ne dit pas quoi en faire. Ce qu'on
+    en fait est écrit à la SORTIE (`tools/iiif_manifest.py`), parce que le régime de
+    diffusion n'est opposable que là. Mais l'état, lui, est défini ICI et une seule fois :
+    l'écran Collections et le générateur de manifestes le lisent tous les deux, et deux
+    lectures divergentes du même champ finiraient par se contredire à l'écran.
+    """
+    # `bloc` peut être un `sqlite3.Row` (pas de `.get`) autant qu'un dict : les deux
+    # circulent dans le projet, et exiger l'un des deux ne ferait que déplacer la faute.
+    date = ("" if bloc is None else
+            (dict(bloc).get("date_embargo") or "")).strip()
+    if not date:
+        return None
+    if not _ISO.match(date):
+        return "illisible"
+    # Comparaison de chaînes : en ISO, l'ordre du texte EST l'ordre du temps.
+    return "echu" if date <= (aujourdhui or _dt.date.today().isoformat()) else "pendant"
 
 
 # Nom de la collection de repli (AUTH-2). L'identifier par son NOM plutôt que par une

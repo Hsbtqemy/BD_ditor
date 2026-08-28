@@ -1299,6 +1299,12 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .col-niveau { font-size: .78rem; padding: .05rem .4rem; border-radius: 3px;
               border: 1px solid var(--border); color: var(--text-muted); }
 .col-niveau.est-proprietaire { border-color: var(--accent-green); color: var(--text); }
+/* DROIT-1 — l'état de l'embargo. Même règle que la pastille de niveau : le libellé porte
+   le sens, la couleur le renforce. `--ink-red` et non l'accent brut, parce que c'est du
+   petit texte coloré (seuil AA 4.5:1, cf. CLAUDE.md). */
+.col-embargo { font-size: .78rem; padding: .05rem .4rem; border-radius: 3px;
+               border: 1px solid var(--border); color: var(--text-muted); }
+.col-embargo.est-echu { border-color: var(--ink-red); color: var(--ink-red); }
 .acces-liste { list-style: none; margin: .4rem 0 .3rem; padding: 0; }
 .acces-liste li { display: flex; align-items: center; gap: .5rem; padding: .18rem 0;
                   font-size: .9rem; flex-wrap: wrap; }
