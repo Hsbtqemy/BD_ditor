@@ -229,17 +229,32 @@ def test_prov_export_construire(client, derriere_proxy, album, db_path):
     doc = provenance_export.construire(_lire(db_path))["provenance_export"]
     prov = doc["prov"]
     assert doc["resume"]["evenements"] >= 2
-    # Agent humain typé Person.
-    assert prov["agent"]["bd:agent/hugo"]["prov:type"] == "prov:Person"
+    # Agent humain typé Person — sous son PSEUDONYME depuis le 2026-08-31 (AUTH-1) : cet
+    # outil est fait pour être DÉPOSÉ, et un entrepôt garde ses versions.
+    assert "bd:agent/hugo" not in prov["agent"], "le login ne doit plus sortir"
+    assert prov["agent"]["bd:agent/annotateur-1"]["prov:type"] == "prov:Person"
+    # Le graphe doit se TENIR : tout agent référencé par une relation est déclaré dans le
+    # bloc `agent`. Une pseudonymisation appliquée à la référence mais pas à la
+    # déclaration — ou l'inverse — rendrait un PROV cassé que rien d'autre ne signale,
+    # puisque les cliquets d'AUTH-5 cherchent des logins, pas des contradictions.
+    references = {rel["prov:agent"]
+                  for cle in ("wasAssociatedWith", "wasAttributedTo")
+                  for rel in prov[cle].values() if rel.get("prov:agent")}
+    assert references and references <= set(prov["agent"]), (
+        f"agents référencés mais non déclarés : {sorted(references - set(prov['agent']))}")
     # Création → wasGeneratedBy ; suppression → wasInvalidatedBy.
     assert any(g["prov:entity"] == f"bd:regions/{r['id']}"
                for g in prov["wasGeneratedBy"].values())
     assert any(i["prov:entity"] == f"bd:regions/{r['id']}"
                for i in prov["wasInvalidatedBy"].values())
-    # TEI : un <change> par acte, attribué.
+    # TEI : un <change> par acte, attribué — au MÊME pseudonyme que PROV-JSON. Deux
+    # sérialisations du même journal qui nommeraient différemment la même personne se
+    # contrediraient sans que rien ne le dise.
     tei = doc["tei_revision_desc"]
     assert tei.startswith("<?xml") and "<revisionDesc>" in tei
-    assert 'who="#hugo"' in tei and 'type="suppression"' in tei
+    assert "hugo" not in tei, "le login ne doit plus sortir non plus par le TEI"
+    assert 'who="#annotateur-1"' in tei and 'type="suppression"' in tei
+    assert "par annotateur-1" in tei
 
 
 def _run_tool(script, db_path, data_dir, *args):

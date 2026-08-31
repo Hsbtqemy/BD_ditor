@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DB_PATH, BASE_DIR  # noqa: E402
-from _commun import version_outil  # noqa: E402  (provenance de l'outil — paradonnée)
+from _commun import pseudonymes, version_outil  # noqa: E402  (provenance de l'outil — paradonnée)
 
 _PREFIXE = {
     "bd": "https://bedediteur.huma-num.fr/prov/",
@@ -51,6 +51,21 @@ def _agent_id(agent):
     return f"bd:agent/{agent}" if agent else None
 
 
+# AUTH-1 (2026-08-31) — l'identité humaine est PSEUDONYMISÉE dans les deux sérialisations.
+#
+# Cet outil est fait pour être DÉPOSÉ : la sérialisation PROV-O est tout l'objet de la
+# piste A, et un entrepôt garde ses versions. Le login n'y sert bien aucun des deux buts —
+# l'auditabilité du pré-remplissage se lit dans `agent_type`, et l'attribution scientifique
+# a son support propre (`contribution`, avec ORCID). Ce qu'un graphe PROV perdrait à
+# confondre tous les humains, ce sont les CHAÎNES DE RÉVISION ; le pseudonyme les garde.
+#
+# Les MOTEURS gardent leur nom : `kumiko`, `yolov8-bulles`, `easyocr` sont des logiciels,
+# et les nommer EST l'auditabilité qu'on revendique. Ils ne sont jamais collectés par
+# `pseudonymes()`, donc `.get(nom, nom)` les laisse passer sans cas particulier.
+def _pseudo(conn):
+    return pseudonymes(conn)
+
+
 def prov_json(conn) -> dict:
     """Construit un document PROV-JSON (W3C) depuis le journal. Chaque `activite` (run) et
     chaque `evenement` (acte) devient une prov:Activity ; les cibles sont des entités ; les
@@ -60,6 +75,10 @@ def prov_json(conn) -> dict:
                  "wasGeneratedBy": {}, "used": {}, "wasInvalidatedBy": {},
                  "wasAssociatedWith": {}, "wasAttributedTo": {}, "wasInformedBy": {}}
     agents: dict = {}   # nom -> agent_type (humain|moteur)
+    pseudo = _pseudo(conn)
+
+    def _nom(brut):
+        return pseudo.get(brut, brut)
 
     def _voir_agent(nom, atype):
         if nom and nom not in agents:
@@ -80,9 +99,9 @@ def prov_json(conn) -> dict:
                 act[f"bd:{col}"] = a[col]
         doc["activity"][aid] = act
         if a["agent"]:
-            _voir_agent(a["agent"], a["agent_type"])
+            _voir_agent(_nom(a["agent"]), a["agent_type"])
             doc["wasAssociatedWith"][f"_:waw_a{a['id']}"] = {
-                "prov:activity": aid, "prov:agent": _agent_id(a["agent"])}
+                "prov:activity": aid, "prov:agent": _agent_id(_nom(a["agent"]))}
 
     # 2) Événements (actes atomiques) → activités PROV + relations avec la cible.
     for e in conn.execute("SELECT * FROM evenement ORDER BY id"):
@@ -107,11 +126,11 @@ def prov_json(conn) -> dict:
                 "prov:entity": ent, "prov:activity": eid, "prov:time": e["date"]}
 
         if e["agent"]:
-            _voir_agent(e["agent"], e["agent_type"])
+            _voir_agent(_nom(e["agent"]), e["agent_type"])
             doc["wasAssociatedWith"][f"_:waw_e{e['id']}"] = {
-                "prov:activity": eid, "prov:agent": _agent_id(e["agent"])}
+                "prov:activity": eid, "prov:agent": _agent_id(_nom(e["agent"]))}
             doc["wasAttributedTo"][f"_:wat{e['id']}"] = {
-                "prov:entity": ent, "prov:agent": _agent_id(e["agent"])}
+                "prov:entity": ent, "prov:agent": _agent_id(_nom(e["agent"]))}
         if e["activite_id"]:                      # l'acte procède de son run parent
             doc["wasInformedBy"][f"_:winf{e['id']}"] = {
                 "prov:informed": eid, "prov:informant": f"bd:activite/{e['activite_id']}"}
@@ -137,16 +156,20 @@ def tei_revision_desc(conn) -> str:
     """Fragment TEI `<revisionDesc>` : un `<change>` par acte (who / when / type / cible).
     Insérable tel quel dans le `<teiHeader>` d'un export de contenu TEI."""
     root = ET.Element("revisionDesc")
+    # Le MÊME mapping que PROV-JSON : deux sérialisations du même journal qui nommeraient
+    # différemment la même personne se contrediraient, et rien ne le signalerait.
+    pseudo = _pseudo(conn)
     for e in conn.execute("SELECT * FROM evenement ORDER BY id DESC"):   # plus récent d'abord (usage TEI)
         ch = ET.SubElement(root, "change")
+        agent = pseudo.get(e["agent"], e["agent"])
         if e["date"]:
             ch.set("when", _safe(e["date"]))
-        if e["agent"]:
-            ch.set("who", _safe(f"#{e['agent']}"))
+        if agent:
+            ch.set("who", _safe(f"#{agent}"))
         ch.set("type", _safe(e["type"]))
         ch.set("target", _safe(f"{e['cible_table']}/{e['cible_id']}"))
         ch.text = _safe(f"{e['type']} de {e['cible_table']}/{e['cible_id']}"
-                        + (f" par {e['agent']}" if e["agent"] else "")
+                        + (f" par {agent}" if agent else "")
                         + (" (moteur)" if e["agent_type"] == "moteur" else ""))
     xml = ET.tostring(root, encoding="unicode")
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml

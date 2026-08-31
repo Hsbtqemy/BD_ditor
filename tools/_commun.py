@@ -207,3 +207,65 @@ def version_outil(base_dir) -> dict:
     """
     return {"nom": "BéDéditeur", "version": None,
             "revision": _revision_git(Path(base_dir) / ".git")}
+
+
+# --------------------------------------------------------------------------- #
+# Pseudonymisation des annotateurs à la SORTIE (AUTH-1, 2026-08-31)
+# --------------------------------------------------------------------------- #
+def pseudonymes(conn) -> dict:
+    """login humain → « annotateur-N ». Partagé par TOUS les exports d'un même corpus.
+
+    Le journal A3 sert deux buts à la sortie, et le login n'en sert bien aucun. Pour
+    l'AUDITABILITÉ du pré-remplissage — la valeur FAIR revendiquée — `agent_type` suffit :
+    ce qui compte est « machine, puis retouché par un humain ». Pour l'ATTRIBUTION
+    scientifique, le bon support existe déjà et c'est `contribution`, avec son ORCID ; un
+    login identifie sans créditer, ce qui est le pire des deux.
+
+    Mais un graphe PROV où tous les humains se confondent perd les CHAÎNES DE RÉVISION —
+    on ne distingue plus deux relecteurs, et c'est tout l'intérêt de la provenance. D'où le
+    pseudonyme, qui garde la structure et retire l'identité : même issue que les paires
+    d'accord inter-annotateurs.
+
+    **Les moteurs gardent leur nom**, et ce n'est pas un oubli : `kumiko`, `yolov8-bulles`
+    et `easyocr` sont des LOGICIELS. Les nommer EST l'auditabilité qu'on revendique, et
+    c'est pourquoi ils ne sont jamais collectés ici — un `pseudonymes(...).get(nom, nom)`
+    les laisse passer tout seuls.
+
+    ORDRE D'APPARITION et non ordre alphabétique : un annotateur qui rejoint l'équipe
+    renumérote tout ce qui le suit dans l'alphabet, si bien que deux dépôts successifs du
+    même corpus décriraient des équipes différentes. Par date de première trace, chacun
+    garde son numéro tant que personne n'est retiré.
+
+    Ce n'est PAS de l'anonymisation : dans une petite équipe, l'ordre d'arrivée et le
+    volume de travail réidentifient. C'est une mesure de proportion — retirer le nom d'un
+    artefact qui part définitivement — pas une garantie. Deux conséquences à connaître,
+    toutes deux assumées :
+
+    · Le mapping est CORPUS-ENTIER, jamais restreint à la collection exportée. C'est
+      voulu — le même pseudonyme désigne la même personne d'un artefact à l'autre, sans
+      quoi la chaîne de révisions cesserait de se lire entre deux exports du même travail.
+      Le prix est qu'un dépôt d'une petite collection peut porter « annotateur-7 », donc
+      révéler qu'il existe au moins sept annotateurs dans l'instance.
+    · `token_correction.date_modif` est la date du DERNIER passage (la table est en
+      upsert), pas de la première trace. L'ordre s'appuie donc surtout sur le journal, qui
+      est append-only et porte les vraies dates ; `token_correction` n'est là que pour les
+      corpus dont le journal ne couvre pas tout — sans elle, un correcteur sans acte
+      journalisé sortirait sous son login.
+    """
+    vus: dict = {}
+    for sql in (
+            # `date` du premier acte : les trois sources sont fondues dans un même ordre.
+            "SELECT agent, MIN(date) AS d FROM evenement "
+            "WHERE agent_type = 'humain' AND agent IS NOT NULL GROUP BY agent",
+            # `activite` n'a pas de colonne `date` mais un `date_debut` : un run a une
+            # durée, un acte a un instant.
+            "SELECT agent, MIN(date_debut) AS d FROM activite "
+            "WHERE agent_type = 'humain' AND agent IS NOT NULL GROUP BY agent",
+            "SELECT auteur AS agent, MIN(date_modif) AS d FROM token_correction "
+            "WHERE auteur IS NOT NULL GROUP BY auteur"):
+        for r in conn.execute(sql):
+            nom, d = r[0], r[1] or ""
+            if nom not in vus or d < vus[nom]:
+                vus[nom] = d
+    ordre = sorted(vus, key=lambda n: (vus[n], n))
+    return {nom: f"annotateur-{i}" for i, nom in enumerate(ordre, 1)}

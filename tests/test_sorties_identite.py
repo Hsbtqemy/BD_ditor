@@ -178,18 +178,17 @@ SORTIES_DECLAREES = {
     ("route", "/api/regions/{region_id}/tokens"): (
         {"login"},
         "`token_correction.auteur` — qui a corrigé ce mot. C'est le socle de la relecture "
-        "(ANN-4) et de l'accord modèle↔humain : une correction sans auteur ne se relit pas."),
+        "(ANN-4) et de l'accord modèle↔humain : une correction sans auteur ne se relit "
+        "pas. Le MÊME champ sort PSEUDONYMISÉ des exports depuis le 2026-08-31, et ce "
+        "n'est pas une incohérence : c'est la ligne DEDANS / DEHORS de DROIT-1 appliquée "
+        "aux personnes. À l'intérieur de l'instance, savoir qui a corrigé est le travail ; "
+        "dans un artefact qui part et ne bouge plus, c'est une donnée sur quelqu'un."),
     ("route", "/api/analyse/accord-inter"): (
         {"login"},
         "La mesure ne peut pas ne pas nommer — un accord inter-annotateurs sans "
         "annotateurs n'est pas un rapport affaibli, c'en est plus un du tout. TRANCHÉ le "
         "2026-08-31 : réservée à qui ÉCRIT, de sorte que ceux qui voient la mesure soient "
         "ceux qu'elle mesure. Cf. docs/accord-inter.md."),
-    ("route", "/api/export/json"): (
-        {"login"},
-        "Les indicateurs de provenance (A3) portent l'agent. L'export JSON est destiné au "
-        "DÉPÔT — À TRAITER, cf. AUTH-1 : c'est la même question que celle tranchée pour la "
-        "fiche de dépôt le 2026-08-31, et elle n'a pas encore été posée ici."),
     ("route", "/api/sauvegarde"): (
         {"login", "nom", "courriel"},
         "La base ENTIÈRE, par construction — c'est ce qu'on attend d'une sauvegarde, et "
@@ -198,30 +197,27 @@ SORTIES_DECLAREES = {
         "compression la ferait passer pour muette."),
 
     # ---- Outils ----------------------------------------------------------- #
-    ("outil", "provenance_export.py --out-dir"): (
-        {"login"},
-        "`bd:agent/<login>` en PROV-JSON, `who=\"#<login>\"` en TEI : c'est l'objet même de "
-        "l'outil. Il suppose un accès shell, mais il est FAIT pour être déposé — la "
-        "sérialisation PROV-O est tout l'objet de la piste A. À TRAITER, cf. AUTH-1."),
+
     ("outil", "rapport_accord_inter.py --json"): (
         {"login"},
         "L'instrument d'arbitrage de l'équipe : il nomme délibérément, et sans les noms on "
-        "ne peut pas réunir deux personnes pour trancher un désaccord. Il suppose un accès "
-        "shell et ne quitte pas la machine. TRANCHÉ le 2026-08-31."),
-    ("outil", "metadonnees_collection.py --json"): (
-        {"login"},
-        "L'outil déverse le journal A3 ENTIER, colonne `agent` comprise. À TRAITER — c'est "
-        "la plus large des voies de sortie restantes d'AUTH-1, et la seule qui n'ait "
-        "encore reçu aucun arbitrage."),
-    ("outil", "metadonnees_collection.py --csv-dir"): (
-        {"login"},
-        "Même déversement, en `evenement.csv` et `activite.csv` où `agent` est une COLONNE "
-        "NOMMÉE. À TRAITER, cf. AUTH-1."),
-    ("outil", "metadonnees_collection.py --xlsx"): (
-        {"login"},
-        "Le troisième chemin du même outil — celui qui a échappé à quatre inventaires "
-        "successifs, et dont la découverte a ouvert ce chantier. À TRAITER, cf. AUTH-1."),
+        "ne peut pas réunir deux personnes pour trancher un désaccord. TRANCHÉ le "
+        "2026-08-31. "
+        "Le SEUL outil qui nomme encore, et la question se pose puisque "
+        "`provenance_export.py` demande le même accès shell et a, lui, été pseudonymisé. "
+        "Ce n'est pas l'accès qui les sépare mais la DESTINATION : la sérialisation PROV-O "
+        "est faite pour être DÉPOSÉE — c'est tout l'objet de la piste A — tandis qu'un "
+        "rapport d'accord se lit pour arbitrer, puis se jette. Le jour où l'on voudrait "
+        "déposer celui-ci, il faudra reprendre cette ligne."),
 }
+
+# Ces quatre-là émettaient un login jusqu'au 2026-08-31, et ne l'émettent plus : l'identité
+# humaine est PSEUDONYMISÉE à la sortie (`_commun.pseudonymes`), les moteurs gardant leur
+# nom. Elles ne sont plus déclarées — c'est le cliquet qui l'a exigé, en refusant une
+# déclaration devenue périmée :
+#   provenance_export.py --out-dir · metadonnees_collection.py --json / --csv-dir / --xlsx
+# Le mapping est PARTAGÉ : deux tables ou deux sérialisations du même export qui
+# nommeraient différemment la même personne se contrediraient sans que rien ne le dise.
 
 # Surfaces qu'on ne sait pas encore atteindre, avec la raison — un trou ÉCRIT reste un
 # trou, mais il ne se prend plus pour une couverture.
@@ -491,3 +487,41 @@ def test_le_semis_est_visible(client, seme, tmp_path):
         "le semis ne les place nulle part, ou le balayage ne lit pas la surface qui les "
         "porte. Un cliquet qui ne voit rien est vert pour la mauvaise raison.")
     assert len(vus) >= 55, f"balayage anormalement court : {len(vus)} surfaces"
+
+
+def test_toute_colonne_exportable_est_classee(client, db_path):
+    """`GET /api/export/json` NOMME ce qu'il publie, et le reste est retenu AVEC sa raison.
+
+    Il faisait `SELECT *` sur `albums` et `planches` : 34 colonnes dont personne n'avait
+    décidé la publication, dont `verrou_par` — qui tient un verrou d'édition, un état de
+    travail transitoire, dans un artefact destiné à un entrepôt qui garde ses versions.
+
+    Le défaut n'était pas la fuite mais le MÉCANISME : une colonne ajoutée à `planches` se
+    publiait toute seule, par défaut et non par décision. Ce test le referme — une colonne
+    neuve fait échouer la suite tant que personne ne l'a classée, publiée ou retenue.
+    """
+    import sqlite3 as _sq
+    conn = _sq.connect(db_path)
+    try:
+        reel = {t: {r[1] for r in conn.execute(f"PRAGMA table_info({t})")}
+                for t in ("albums", "planches")}
+    finally:
+        conn.close()
+
+    classees = {
+        "albums": set(main._EXPORT_ALBUM_COLS),
+        "planches": set(main._EXPORT_PLANCHE_COLS) | set(main._EXPORT_PLANCHE_RETENUES),
+    }
+    for table, colonnes in reel.items():
+        neuves = colonnes - classees[table]
+        assert not neuves, (
+            f"{table} : {sorted(neuves)} n'est ni publiée ni retenue. Ajoute la colonne à "
+            f"_EXPORT_{table[:-1].upper()}_COLS si elle est descriptive, ou à "
+            f"_EXPORT_PLANCHE_RETENUES avec sa raison. Ne rien faire la publierait.")
+        fantomes = classees[table] - colonnes
+        assert not fantomes, (
+            f"{table} : {sorted(fantomes)} est classée mais n'existe plus — "
+            "une liste périmée rassure.")
+
+    for col, raison in main._EXPORT_PLANCHE_RETENUES.items():
+        assert raison and len(raison) > 20, f"{col} est retenue sans raison écrite"

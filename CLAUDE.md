@@ -206,6 +206,19 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   l'annulation (Ctrl+Z) se filtre par AGENT et non par collection, parce que la cible d'une
   suppression n'existe plus — un filtre par album la rendrait inannulable.
 
+**Le second cliquet, celui des SORTIES** (AUTH-5) : `tests/test_sorties_identite.py` sème
+trois sentinelles — un login, un nom lisible, un courriel — balaie 61 surfaces (49 routes
+GET sur 51, 12 invocations d'outils) et exige que chacune où l'une apparaît soit DÉCLARÉE
+avec la sorte émise et sa raison. Il existe parce que l'énumération à la main a échoué
+QUATRE fois de suite sur AUTH-1, la dernière malgré une recherche méthodique : ce qui a
+trouvé le chemin manquant — l'onglet XLSX de `metadonnees_collection.py` — n'est aucune des
+quatre relectures, c'est un `KeyError`. Une entrée par SORTIE et non par outil (le même en
+a trois). Ses propres limites sont écrites : il n'appelle que des GET, et sa sentinelle est
+administratrice, donc il mesure l'exposition MAXIMALE. **Son mode d'échec est le SEMIS** —
+une sentinelle absente d'une colonne rend muette toute surface qui ne lit que celle-là, et
+le vert devient un mensonge ; d'où `test_le_semis_est_visible`. Un troisième cliquet exige
+que toute colonne de `albums`/`planches` soit publiée ou RETENUE avec sa raison.
+
 **Le cliquet, et c'est la vraie protection** : `tests/test_autorisation.py` énumère les
 routes de l'app — ET les MONTAGES, qui n'ont aucune dépendance — et exige que chacun ait
 été tranché : soit il consulte la portée, soit il figure sur `HORS_PERIMETRE` /
@@ -294,6 +307,20 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 - **Palier B (grammaire)** : table `tokens` (un mot du dialogue : lemme, POS/UPOS, morph), **régénérée à chaque reindex**. La correction humaine vit dans `token_correction`, une couche **overlay JAMAIS touchée par le reindex**. La vue `tokens_effectifs` est le **read model canonique** (correction vivante ⊕ auto + provenance + `a_revoir`) : toutes les surfaces d'analyse lisent CECI, jamais `tokens` brut.
 - Le modèle est configurable (`BD_SPACY_MODEL`, défaut `fr_core_news_sm`), chargé paresseusement sous verrou (non thread-safe). `tools/reindex_nlp.py` réindexe tout le corpus en lot après un changement de paramètre.
 - **Rapport d'accord modèle↔humain (NLP-1)** : cœur `accord.py` (part des tokens RELUS où le modèle avait déjà la valeur finale — correction NULL = auto accepté, ou correction = auto — par champ lemme/POS/morpho + confusion POS ; miroir de `tokens_effectifs`, ignore les corrections obsolètes). Exposé par la route `GET /api/analyse/accord`, l'outil `tools/rapport_accord.py` (`--json`/`--csv`) et le panneau **🎯 Accord** de l'Exploration. Étalon de la transition Phase 1→2 (comparer `sm` vs `lg` sur le même corpus relu). Cf. `docs/rapport-accord.md`.
+- **L'identité est NOMMÉE en base, PSEUDONYMISÉE à la sortie** (AUTH-1, 2026-08-31) : tout
+  artefact qui quitte l'instance remplace l'agent humain par `annotateur-N`
+  (`tools/_commun.pseudonymes()`, partagé par `provenance_export.py` — PROV-JSON **et**
+  TEI — et par les trois chemins de `metadonnees_collection.py`). **Les moteurs gardent
+  leur nom** : ce sont des logiciels, et les nommer EST l'auditabilité du pré-remplissage.
+  Un login ne sert bien aucun des deux buts de la sortie — `agent_type` suffit à l'audit,
+  et l'attribution scientifique a `contribution` avec son ORCID — mais confondre tous les
+  humains perdrait les CHAÎNES DE RÉVISION. Le mapping est partagé et corpus-entier
+  (deux artefacts qui nommeraient autrement la même personne se contrediraient), et
+  ordonné par PREMIÈRE TRACE, sinon un arrivant renumérote tout le monde. Ce n'est pas de
+  l'anonymisation et c'est écrit. `GET /api/export/json` NOMME de son côté les colonnes
+  qu'il publie : il faisait `SELECT *`, donc `verrou_par` et les chemins serveur partaient
+  au dépôt — et une colonne neuve se publiait **par défaut et non par décision**. Cf.
+  `docs/provenance-audit.md`.
 - **Le seul rapport d'analyse RÉSERVÉ** (AUTH-1) : `GET /api/analyse/accord-inter` répond
   **403** à qui n'écrit nulle part, et son périmètre suit les albums où l'on ÉCRIT. Les
   autres surfaces d'analyse portent sur le corpus ; celle-ci porte sur des PERSONNES —

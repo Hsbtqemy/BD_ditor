@@ -3962,12 +3962,42 @@ def _region_tree(regions: list[dict], conn: sqlite3.Connection) -> list[dict]:
     return build(None)
 
 
+# Ce que l'export JSON publie, NOMMÉ colonne par colonne (AUTH-1, 2026-08-31).
+#
+# Il faisait `SELECT *` sur `albums` et `planches`, donc 34 colonnes dont personne n'avait
+# décidé la publication : `verrou_par` (qui tient un verrou d'édition, un état de travail
+# transitoire, dans un artefact destiné à un entrepôt qui garde ses versions),
+# `verrouillee`, et les chemins de fichiers du SERVEUR. Le défaut n'est pas la fuite mais
+# le MÉCANISME : une colonne ajoutée à `planches` se publiait toute seule — par défaut et
+# non par décision, comme la garde d'interface d'AUTH-4.
+#
+# `regions` n'y figure pas : `_region_tree` nomme déjà ses champs un à un.
+_EXPORT_ALBUM_COLS = (
+    "id", "titre", "auteur", "annee", "editeur", "serie", "description", "date_edition",
+    "date_originale", "langue", "type_oeuvre", "lieu_edition", "edition_tirage", "isbn",
+    "format_physique", "source_numerisation", "date_import")
+_EXPORT_PLANCHE_COLS = (
+    "id", "album_id", "numero", "role", "largeur_px", "hauteur_px", "dpi_x", "dpi_y",
+    "mode", "statut", "date_segmentation", "validee", "relecture")
+# Retenues, et pourquoi — le test `test_toute_colonne_exportable_est_classee` exige que
+# toute colonne de la table figure ici OU dans la liste publiée : une colonne neuve fait
+# échouer la suite au lieu de partir au dépôt.
+_EXPORT_PLANCHE_RETENUES = {
+    "chemin_tiff": "chemin de fichier sur le SERVEUR — interne, sans valeur descriptive",
+    "chemin_web": "idem ; le dérivé se publie par IIIF, pas par un chemin de disque",
+    "verrouillee": "état de travail TRANSITOIRE, faux dès la seconde suivante",
+    "verrou_par": "qui tient le verrou : une identité, et transitoire de surcroît",
+}
+
+
 def _album_payload(conn: sqlite3.Connection, album_id: int) -> dict:
-    album = _row(conn.execute("SELECT * FROM albums WHERE id = ?", (album_id,)))
+    album = _row(conn.execute(
+        f"SELECT {', '.join(_EXPORT_ALBUM_COLS)} FROM albums WHERE id = ?", (album_id,)))
     if album is None:
         raise HTTPException(404, f"Album {album_id} introuvable")
     planches = _rows(conn.execute(
-        "SELECT * FROM planches WHERE album_id = ? ORDER BY numero", (album_id,)))
+        f"SELECT {', '.join(_EXPORT_PLANCHE_COLS)} FROM planches "
+        "WHERE album_id = ? ORDER BY numero", (album_id,)))
     nums = numeros_editoriaux(conn, album_id)
     for p in planches:
         p["numero_editorial"] = nums.get(p["id"])   # None si paratexte ; `role` déjà présent

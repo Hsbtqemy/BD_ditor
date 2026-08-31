@@ -32,6 +32,44 @@ porte un **instantané profond** (région + annotation + sous-arbre).
 - **Moteur** : le nom du moteur (`kumiko`, `yolov8-bulles`, `easyocr`, `spacy`) + sa
   **version** (best-effort, `importlib.metadata`). Posé explicitement par les passes ML.
 
+### En base il est NOMMÉ, à la sortie il est PSEUDONYMISÉ (AUTH-1, 2026-08-31)
+
+Le journal garde le login : c'est ce qui rend l'audit possible, et le cloisonnement
+d'AUTH-2 borde déjà qui peut le lire. Mais **tout artefact qui QUITTE l'instance remplace
+l'agent humain par un pseudonyme stable** — `annotateur-1`, `annotateur-2`… — via
+`tools/_commun.pseudonymes()`, partagé par `provenance_export.py` (PROV-JSON **et** TEI) et
+par les trois chemins de `metadonnees_collection.py` (JSON, CSV, XLSX).
+
+**Les moteurs gardent leur nom**, et ce n'est pas un oubli : `kumiko`, `yolov8-bulles`,
+`easyocr` sont des LOGICIELS, et les nommer EST l'auditabilité du pré-remplissage qu'on
+revendique. Ils ne sont jamais collectés par `pseudonymes()`, si bien qu'un
+`.get(nom, nom)` les laisse passer sans cas particulier.
+
+**Pourquoi un pseudonyme plutôt que rien.** Le login ne sert bien aucun des deux buts de la
+sortie : pour l'auditabilité, `agent_type` suffit — « machine, puis retouché par un
+humain » ; pour l'attribution scientifique, le support propre est `contribution`, avec son
+ORCID, et un login identifie sans créditer. Mais un graphe PROV où tous les humains se
+confondraient perdrait les **chaînes de révision**, c'est-à-dire l'essentiel. Le pseudonyme
+garde la structure et retire l'identité.
+
+**Le mapping est partagé et corpus-entier.** Deux tables ou deux sérialisations du même
+export qui nommeraient différemment la même personne se contrediraient sans que rien ne le
+dise. L'ordre est celui de la **première trace** et non l'alphabet : un annotateur qui
+rejoint l'équipe renumérote sinon tous ceux qui le suivent, et deux dépôts successifs du
+même corpus décriraient des équipes différentes.
+
+**Ce n'est pas de l'anonymisation, et c'est écrit dans le code** : dans une petite équipe,
+l'ordre d'arrivée et le volume de travail réidentifient ; et un dépôt d'une petite
+collection peut porter « annotateur-7 », donc révéler qu'il existe au moins sept
+annotateurs. C'est une mesure de proportion — retirer le nom d'un artefact qui part et ne
+bouge plus — pas une garantie.
+
+**Deux surfaces nomment encore, délibérément** : `tools/rapport_accord_inter.py`, parce
+qu'on ne peut pas réunir deux personnes pour arbitrer un désaccord si l'on ignore
+lesquelles — et il se lit puis se jette, il ne se dépose pas ; et `GET /api/sauvegarde`,
+qui est la base entière par construction. Le cliquet d'AUTH-5
+(`tests/test_sorties_identite.py`) les tient déclarées, avec leur raison.
+
 ## Ce qui est journalisé
 
 **Passes ML** (`journal.passe_ml`, enveloppe les 3 routes + le worker de lot + le reindex

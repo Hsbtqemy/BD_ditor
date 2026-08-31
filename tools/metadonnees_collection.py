@@ -48,7 +48,7 @@ from config import DB_PATH, BASE_DIR  # noqa: E402
 import database  # noqa: E402  (réutilise numeros_editoriaux / citations_regions)
 import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from _commun import (version_outil, environnement, composants,  # noqa: E402  (provenance / env, partagés)
-                     portee_albums, forcer_utf8)
+                     portee_albums, forcer_utf8, pseudonymes)
 
 
 def _grouper(conn, sql, cle=0):
@@ -122,6 +122,10 @@ def _cartes(conn, album_ids=None) -> dict:
 def _tokens_by_region(conn, album_ids=None) -> dict:
     p = portee_albums(album_ids)
     w_reg = f" WHERE region_id IN {p['regions']}" if p else ""
+    # AUTH-1 (2026-08-31) — le correcteur est PSEUDONYMISÉ. C'est la fuite du chemin JSON,
+    # distincte de celle des CSV (le journal) : le même outil sort des logins par deux
+    # endroits sans rapport, et n'en traiter qu'un laisserait l'autre publier.
+    pseudo = pseudonymes(conn)
     out: dict = {}
     for r in conn.execute("SELECT region_id, ordre, texte, lemme, pos, morph, provenance, "
                           "a_revoir, corr_auteur FROM tokens_effectifs" + w_reg
@@ -130,7 +134,7 @@ def _tokens_by_region(conn, album_ids=None) -> dict:
             "ordre": r["ordre"], "texte": r["texte"], "lemme": r["lemme"],
             "pos": r["pos"], "morph": r["morph"] or None,
             "provenance": r["provenance"], "a_revoir": r["a_revoir"],
-            "auteur": r["corr_auteur"]})
+            "auteur": pseudo.get(r["corr_auteur"], r["corr_auteur"])})
     return out
 
 
@@ -526,16 +530,23 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
     # à un album, et l'acte SURVIT à la suppression de sa cible → non re-scopable). Dump
     # relationnel recollable : evenement.activite_id → activite.id ; evenement.cible_id →
     # l'entité (regions/annotations/…) au moment de l'acte.
+    # AUTH-1 (2026-08-31) — `agent` est PSEUDONYMISÉ pour les humains ; les moteurs gardent
+    # leur nom, qui EST l'auditabilité revendiquée. Le mapping est celui du chemin JSON :
+    # deux tables du même export qui nommeraient différemment la même personne se
+    # contrediraient, et la chaîne de révisions cesserait de se lire.
+    pseudo = pseudonymes(conn)
     out["activite"] = (
         ["id", "type", "agent", "agent_type", "version", "params", "portee", "comptes",
          "date_debut", "date_fin"],
-        [[a["id"], a["type"], a["agent"], a["agent_type"], a["version"], a["params"],
+        [[a["id"], a["type"], pseudo.get(a["agent"], a["agent"]), a["agent_type"],
+          a["version"], a["params"],
           a["portee"], a["comptes"], a["date_debut"], a["date_fin"]]
          for a in conn.execute("SELECT * FROM activite ORDER BY id")])
     out["evenement"] = (
         ["id", "activite_id", "type", "agent", "agent_type", "cible_table", "cible_id",
          "avant", "apres", "date"],
-        [[e["id"], e["activite_id"], e["type"], e["agent"], e["agent_type"],
+        [[e["id"], e["activite_id"], e["type"], pseudo.get(e["agent"], e["agent"]),
+          e["agent_type"],
           e["cible_table"], e["cible_id"], e["avant"], e["apres"], e["date"]]
          for e in conn.execute("SELECT * FROM evenement ORDER BY id")])
     return out
