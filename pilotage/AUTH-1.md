@@ -1,11 +1,20 @@
 ---
 chantier: AUTH-1
-statut: interrompu
+statut: différé
 ---
 
 # AUTH-1 — faire entrer l'identité dans l'application
 
-**Arrêté sur** — le commit `b11661d`, 31 août : l'identité est NOMMÉE en base et PSEUDONYMISÉE à la sortie. De onze surfaces émettrices à six, et plus aucune n'est un artefact de dépôt — l'identité circule dedans, elle ne sort plus dans ce qui est figé, l'axe de DROIT-1 appliqué aux personnes. `GET /api/export/json` nomme aussi ses colonnes : il faisait `SELECT *`, donc `verrou_par` et les chemins serveur partaient au dépôt, et une colonne neuve se publiait par défaut plutôt que par décision.
+**Arrêté sur** — le commit `f3fc5a7`, 31 août : les deux cases d'interface sont faites, et
+le dossier a sa quatrième nature. Le verrou dit enfin PAR QUI (`verrou_par_nom`, miroir
+`utilisateur`) — « par vous » se décidant sur le LOGIN et non sur le nom affiché, que deux
+personnes peuvent partager. Les groupes servent là où ils DISTINGUENT trois pannes que le
+même bandeau vide confondait, et nulle part ailleurs. Le cliquet d'AUTH-5 a refusé au
+passage la sorte `nom` nouvellement émise tant qu'elle n'était pas déclarée : il a servi
+huit heures après avoir été écrit. Ce qui reste ne dépend plus de moi — d'où le passage en
+`différé`, comme DEPOT-1.
+
+Avant lui, le commit `b11661d`, 31 août : l'identité est NOMMÉE en base et PSEUDONYMISÉE à la sortie. De onze surfaces émettrices à six, et plus aucune n'est un artefact de dépôt — l'identité circule dedans, elle ne sort plus dans ce qui est figé, l'axe de DROIT-1 appliqué aux personnes. `GET /api/export/json` nomme aussi ses colonnes : il faisait `SELECT *`, donc `verrou_par` et les chemins serveur partaient au dépôt, et une colonne neuve se publiait par défaut plutôt que par décision.
 
 Avant lui, le commit `e9c44ff`, 31 août : le sort de `GET /api/analyse/accord-inter`
 est tranché, en DEUX endroits — la route (réservée à qui écrit) et le dépôt (les taux,
@@ -35,10 +44,25 @@ Aucun commit de code : le chantier reste `interrompu` là où il l'était.
 
 ### Ce que l'identité débloque immédiatement
 - [x] Le verrou de planche consigne qui l'a posé (`planches.verrou_par`, v22)
-- [ ] L'UI **affiche** qui a verrouillé une planche, et le nom lisible plutôt que le login — le miroir `utilisateur` existe pour ça, rien ne s'en sert encore
-- [ ] L'UI affiche l'appartenance aux groupes là où c'est utile (aujourd'hui `/api/moi` les renvoie, aucune surface ne les lit)
+- [x] **L'UI affiche qui a verrouillé une planche**, avec le nom lisible plutôt que le login (`verrou_par_nom`, servi par `database.noms_lisibles` sur `GET /api/albums/{id}/planches` et sur le retour du PATCH, pour que l'écran qui vient de poser le verrou n'affiche pas un login jusqu'au rechargement). Le miroir `utilisateur` sert enfin à quelque chose. Deux points valaient d'être tranchés. **« Par vous » se décide sur le LOGIN**, jamais sur le nom d'affichage : deux personnes peuvent le partager, et se voir attribuer le verrou d'un homonyme serait pire que de ne rien dire — le login RESTE donc dans la charge utile, et le cliquet d'AUTH-5 l'y a fait déclarer avec sa raison. **Le repli est le login lui-même** quand le miroir ne sait rien (compte qui n'a jamais ouvert l'app, proxy sans `Remote-Name`) : un identifiant imparfait vaut mieux qu'un trou, et l'appelant n'a jamais à distinguer les deux cas. Rien ne change en mono-poste, où l'agent est NULL — un acte anonyme, honnêtement
+- [x] **L'UI affiche les groupes là où ils SERVENT**, et pas « là où c'est utile » : le bandeau de portée vide, parce qu'ils y DISTINGUENT trois pannes que le même écran confondait — aucune identité ne parvient (forward_auth muet) ; une identité mais aucun groupe (le proxy pose `Remote-User` sans `Remote-Groups`) ; une identité AVEC ses groupes, dont aucun n'a d'accès. Les deux premières se réparent, la troisième non : les confondre envoie quelqu'un chercher une panne qui n'existe pas, ou en ignorer une qui existe. La liste EST le diagnostic, et on ne la commente pas. Plus l'infobulle de la pastille, pour la faute de frappe dans un nom de groupe — qui n'ouvre rien SANS LE DIRE (invariant d'AUTH-2), et que personne ne pouvait vérifier. Au passage `/api/moi` n'est plus demandé qu'UNE fois par page (`window.BDMoi`, promesse partagée par `theme.js`) : trois surfaces l'appelaient chacune, et chaque appel réécrit dans le miroir
 
 ### Données personnelles — angle mort du projet
+> **Ce que le 2026-08-31 a changé, sans refermer les deux cases.** L'angle mort n'en est
+> plus un : `docs/dossier-base-legale.md` porte désormais une **quatrième nature de
+> donnée** — l'outil détient un fichier de personnes (login, nom, adresse dans
+> `utilisateur` ; traces nominatives dans le journal A3 ; `token_correction.auteur` et
+> `planches.verrou_par`) — et **quatre questions numérotées 9 à 12** : durée de
+> conservation, effacement d'un partant, sort des sauvegardes déjà déposées, responsable
+> de traitement et information de l'intéressé. Le dossier ne conclut rien, comme pour les
+> œuvres : il porte la question à qui sait y répondre. La question 10 est celle qui coince,
+> et il vaut mieux qu'elle soit posée franchement — le journal est append-only, et c'est
+> exactement ce qui lui donne sa valeur probatoire au § 1 du dossier. Effacer quelqu'un qui
+> le traverse, c'est défaire ce qu'on cherche à démontrer.
+>
+> Les deux cases ci-dessous restent donc ouvertes, et **c'est leur état normal** : elles
+> attendent une réponse institutionnelle, pas du code. Elles ont seulement cessé d'attendre
+> que quelqu'un pense à les poser. C'est ce qui fait passer AUTH-1 en `différé`.
 - [ ] Le sort des données personnelles d'annotateurs (`utilisateur.nom`, `utilisateur.email`) est tranché et écrit : combien de temps on les garde, ce qu'on en fait, comment on efface quelqu'un qui quitte l'équipe
 - [ ] La conséquence sur les sauvegardes est traitée : `VACUUM INTO` (`pipeline/backup.py:28`) emporte la base ENTIÈRE, donc ces emails, et `pipeline/sharedocs.py` sait déposer ce zip sur ShareDocs — donc hors de la machine
 > **Ce que le 2026-08-28 a changé, sans refermer la case.** DROIT-1 a réservé les deux
