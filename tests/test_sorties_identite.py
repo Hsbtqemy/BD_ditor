@@ -252,22 +252,30 @@ NON_BALAYE = {
         "chez Huma-Num, pas la base : aucune colonne d'identité ne la traverse."),
     ("outil", "_commun.py"): (
         "Bibliothèque partagée, sans `main()` — elle ne produit rien."),
+    # Ces huit-là IMPRIMENT un compte rendu — dire « aucune sortie » serait faux. Ce
+    # qu'on affirme est plus étroit et se vérifie : aucun ne mentionne `utilisateur`,
+    # `agent`, `auteur`, `verrou_par` ni un en-tête `Remote-` (relevé le 2026-08-31).
     ("outil", "importer_vocabulaire.py"): (
-        "IMPORTE un tableur de vocabulaire ; il écrit en base et n'en sort rien."),
+        "IMPORTE un tableur de vocabulaire : il écrit en base, et son compte rendu ne "
+        "nomme que des termes."),
     ("outil", "reindex_materiel.py"): (
-        "Maintenance : relit les masters et écrit `planches.dpi_*`/`mode`. Aucune sortie."),
+        "Maintenance : relit les masters et écrit `planches.dpi_*`/`mode`. Son compte "
+        "rendu est un décompte de planches."),
     ("outil", "reindex_nlp.py"): (
-        "Maintenance : régénère les tokens et l'index FTS. Aucune sortie."),
+        "Maintenance : régénère les tokens et l'index FTS. Son compte rendu est un "
+        "décompte de régions."),
     ("outil", "semer_demo.py"): (
-        "Sème un corpus de démonstration ; il écrit en base et n'en lit rien."),
+        "Sème un corpus de démonstration. Il écrit `albums.auteur` — l'AUTEUR DE LA BD, "
+        "pas un annotateur : dans ce projet le mot désigne les deux, et c'est le seul "
+        "endroit du balayage où la confusion pourrait rassurer à tort."),
     ("outil", "pdf_check.py"): (
-        "Contrôle un PDF fourni en argument ; ne touche pas la base."),
+        "Contrôle un PDF fourni en argument ; n'ouvre pas la base."),
     ("outil", "sharedocs_check.py"): (
-        "Vérifie une connexion WebDAV ; ne touche pas la base."),
+        "Vérifie une connexion WebDAV ; n'ouvre pas la base."),
     ("outil", "verifier_moteurs.py"): (
-        "Vérifie la présence des moteurs ML ; ne touche pas la base."),
+        "Vérifie la présence des moteurs ML ; n'ouvre pas la base."),
     ("outil", "valider_iiif.py"): (
-        "Valide des manifestes fournis en argument ; ne touche pas la base."),
+        "Valide des manifestes fournis en argument ; n'ouvre pas la base."),
     ("outil", "regenerer_exemples.py"): (
         "Écrit dans `docs/exemples/`, donc DANS le dépôt versionné — ce serait une voie de "
         "sortie majeure s'il lisait la base réelle. Il ne le fait jamais : il sème un "
@@ -434,14 +442,24 @@ def test_les_declarations_ne_mentent_pas(client, seme, tmp_path):
                           f"qu'elle n'émet plus — à retirer de la déclaration")
 
     # (2) Un trou déclaré qui n'existe plus.
+    #
+    # ATTENTION à la clé, et c'est un piège que ce test s'était tendu à lui-même : sous le
+    # même préfixe `("outil", …)`, `SORTIES_DECLAREES` range des SORTIES
+    # (« metadonnees_collection.py --xlsx ») tandis que `NON_BALAYE` range des OUTILS
+    # entiers (« pdf_check.py »). Un `cle in vus` naïf ne pouvait donc jamais être vrai
+    # pour un outil : le jour où l'un d'eux deviendrait exportateur, sa raison périmée
+    # (« ne touche pas la base ») aurait survécu en silence, et le contrôle (3) l'aurait
+    # laissée passer puisqu'il est désormais couvert. Le mensonge que ce test traque,
+    # exactement, dans le test qui le traque.
+    couverts = {o for _, o, _, _ in _invocations(tmp_path)}
     for cle, raison in sorted(NON_BALAYE.items()):
         assert raison, f"{cle} est hors balayage sans raison écrite"
-        if cle in vus:
+        atteinte = cle[1] in couverts if cle[0] == "outil" else cle in vus
+        if atteinte:
             fautes.append(f"{cle[0]} {cle[1]} est balayée maintenant : "
                           f"la retirer de NON_BALAYE")
 
     # (3) Une surface ni balayée ni déclarée hors balayage — le trou INVISIBLE.
-    couverts = {o for _, o, _, _ in _invocations(tmp_path)}
     attendus = ([("route", r.path) for r in _routes_get()]
                 + [("outil", o) for o in _outils()])
     for cle in attendus:
