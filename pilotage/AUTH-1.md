@@ -5,9 +5,14 @@ statut: interrompu
 
 # AUTH-1 — faire entrer l'identité dans l'application
 
-**Arrêté sur** — 2026-08-27, `247c145` : garde de confiance, groupes, miroir
-`utilisateur` (v22) et verrou attribué sont livrés et vérifiés dans l'image. Reste
-l'exposition dans l'UI.
+**Arrêté sur** — le commit `e9c44ff`, 31 août : le sort de `GET /api/analyse/accord-inter`
+est tranché, en DEUX endroits — la route (réservée à qui écrit) et le dépôt (les taux,
+jamais les noms). L'occasion a montré que l'énumération du 31 août, pourtant déjà la
+troisième, était elle-même courte d'un chemin : l'onglet XLSX de
+`metadonnees_collection.py` publiait les logins, et c'est la suite qui l'a dit en cassant.
+
+Avant lui, 2026-08-27, `247c145` : garde de confiance, groupes, miroir `utilisateur` (v22)
+et verrou attribué sont livrés et vérifiés dans l'image. Reste l'exposition dans l'UI.
 
 **Relue le 2026-08-28**, après DROIT-1 et SHARE-1, qui touchent tous deux à la case des
 sauvegardes sans la refermer — l'un a réduit l'audience, l'autre a tracé le geste et
@@ -44,8 +49,8 @@ Aucun commit de code : le chantier reste `interrompu` là où il l'était.
 > l'écran, donc probable. Ces emails peuvent atterrir dans un espace individuel que
 > l'institution ne contrôle pas.
 - [ ] **La deuxième voie de sortie est traitée**, découverte en relisant le 2026-08-28 : `tools/provenance_export.py` émet les LOGINS des annotateurs — `bd:agent/<login>` en PROV-JSON, `who="#<login>"` et « par <login> » en TEI. Ce n'est pas l'email ni le nom lisible (qui restent dans le miroir `utilisateur`, donc dans la seule sauvegarde), mais un login identifie une personne. Deux circonstances jouent en sens contraire : c'est un outil de LIGNE DE COMMANDE, sans route HTTP, donc il suppose un accès shell — mais il est fait pour être DÉPOSÉ, la sérialisation PROV-O étant tout l'objet de la piste A. Autrement dit, ces logins ont vocation à partir dans un dépôt public
-- [ ] **Les voies de sortie sont ÉNUMÉRÉES, et non listées de mémoire** — l'inventaire refait le 2026-08-31 en cherchant qui LIT `evenement`, `activite` et `utilisateur` en trouve six, dont trois que les deux relectures précédentes avaient manquées : `tools/metadonnees_collection.py` exporte `agent` comme COLONNE NOMMÉE dans `evenement.csv` et `activite.csv`, avec les blobs `avant`/`apres` ; `tools/description_collection.py` embarque le bloc accord-inter, soit `auteurs` (des logins) et `paires` (deux logins chacune) ; et surtout `GET /api/analyse/accord-inter` (`main.py:3635` → `accord_inter.py:50`) rend la même chose par une ROUTE HTTP. Cette dernière change la nature du problème : les cinq autres supposent un accès shell ou le droit d'administrer, celle-ci est atteignable par toute personne simplement admise sur une collection
-- [ ] **Le sort de `GET /api/analyse/accord-inter` est tranché** — la route est CONFORME à son objet : mesurer l'accord inter-annotateurs suppose de nommer les annotateurs, et la masquer viderait le rapport (cf. `docs/accord-inter.md`). Ce n'est donc pas un défaut à corriger mais une exposition à ASSUMER par écrit, au même titre que la sauvegarde. Reste à décider si elle se réserve comme la sauvegarde, ou si elle reste ouverte à qui lit la collection
+- [ ] **Les voies de sortie sont ÉNUMÉRÉES, et non listées de mémoire** — l'inventaire refait le 2026-08-31 en cherchant qui LIT `evenement`, `activite` et `utilisateur` en trouve six, dont trois que les deux relectures précédentes avaient manquées : `tools/metadonnees_collection.py` exporte `agent` comme COLONNE NOMMÉE dans `evenement.csv` et `activite.csv`, avec les blobs `avant`/`apres` ; `tools/description_collection.py` embarque le bloc accord-inter, soit `auteurs` (des logins) et `paires` (deux logins chacune) ; et surtout `GET /api/analyse/accord-inter` (`main.py:3635` → `accord_inter.py:50`) rend la même chose par une ROUTE HTTP. **Et l'énumération elle-même était courte d'un chemin** : `metadonnees_collection.py` a TROIS sorties et non deux — le JSON, les CSV et l'onglet XLSX `qualite`, qui publiait les logins joints par « ; ». C'est la suite qui l'a dit, en cassant, le 2026-08-31 ; aucune des trois relectures ne l'avait vu. Cette dernière change la nature du problème : les cinq autres supposent un accès shell ou le droit d'administrer, celle-ci est atteignable par toute personne simplement admise sur une collection
+- [x] **Le sort de `GET /api/analyse/accord-inter` est tranché** le 2026-08-31, et en DEUX endroits — la route n'était pas la sortie la plus grave. (a) La ROUTE est réservée à qui ÉCRIT (403 sinon), et son périmètre suit les albums où l'on écrit et non ceux qu'on lit : *ceux qui voient la mesure sont ceux qu'elle mesure*, les propriétaires cumulant l'écriture. Le bouton 👥 Inter reste VISIBLE et le panneau affiche le refus du serveur — il l'écrasait par « Impossible de charger le rapport », transformant une décision motivée en panne apparente. Réserver aux ADMINISTRATEURS a été écarté : `bd-admins` est un rôle d'exploitation, l'accord inter-annotateurs un instrument scientifique ; le donner à qui tient le serveur en le retirant à l'équipe qu'il mesure serait un contresens. (b) Le DÉPÔT ne porte plus de noms : `qualite.accord_inter` était classé `ouvert` et emportait `auteurs` (les logins) et `paires` (le taux d'accord de deux personnes NOMMÉES) vers l'entrepôt, DÉFINITIVEMENT. Il porte `nb_auteurs` et des paires anonymes triées par taux — triées par `(a, b)`, l'ordre alphabétique des logins transparaissait à travers des noms retirés. La valeur FAIR revendiquée est intacte : « relu à plusieurs, accord 0,87 » ne demande aucun nom. L'outil CLI, lui, nomme toujours : sans les noms on ne peut pas réunir deux personnes pour arbitrer
 
 ## Contexte
 
