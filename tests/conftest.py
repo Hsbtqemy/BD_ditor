@@ -210,7 +210,14 @@ def live_server(request, tmp_path):
            "BD_DB_PATH": str(tmp_path / "live.sqlite"),
            # Le drapeau doit entrer dans le SOUS-PROCESSUS : la fixture `derriere_proxy`
            # patche le processus de test, ce qui n'a aucun effet sur un serveur lancé à part.
-           "BD_AUTH_PROXY": "1" if derriere_proxy else ""}
+           "BD_AUTH_PROXY": "1" if derriere_proxy else "",
+           # AUTH-4 — un référent d'instance déclaré pour TOUS les serveurs live. Il ne se
+           # voit que dans le bandeau de portée vide, donc il n'ajoute rien aux autres
+           # écrans ; et sans lui, l'écran le plus utile du chantier serait le seul que
+           # l'audit ne regarderait jamais — le reproche exact que le test de portée vide
+           # se fait à lui-même.
+           "BD_REFERENT_NOM": "Ana Ruiz",
+           "BD_REFERENT_CONTACT": "ana@labo.fr"}
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app",
          "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],

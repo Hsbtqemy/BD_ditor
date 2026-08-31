@@ -25,9 +25,25 @@ def _run(script, db_path, data_dir, *args):
     # sans lui, un tool crasherait ici sur un caractère hors cp1252 (emoji d'un résumé PyPI,
     # « → »…). Cf. tools/_commun.forcer_utf8.
     env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(data_dir)}
-    return subprocess.run([sys.executable, str(TOOLS / script), *args],
-                          cwd=str(REPO_ROOT), env=env, capture_output=True,
-                          text=True, encoding="utf-8")
+    # On capture des OCTETS et on décode nous-mêmes. Avec `text=True`, une sortie mal
+    # encodée lève l'UnicodeDecodeError dans le thread lecteur de `subprocess`, où elle est
+    # avalée : le flux revient VIDE et le garde de portabilité ci-dessus ne garde rien —
+    # il rend même un `stderr` muet à l'assertion qui devait l'afficher. C'est ainsi que
+    # `crosswalk_depot.py`, seul outil d'export sans `forcer_utf8()`, a pu écrire du cp1252
+    # sans que rien n'échoue. Décodé ici, le défaut se NOMME.
+    r = subprocess.run([sys.executable, str(TOOLS / script), *args],
+                       cwd=str(REPO_ROOT), env=env, capture_output=True)
+
+    def _txt(brut, flux):
+        try:
+            return brut.decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise AssertionError(
+                f"{script} n'écrit pas en UTF-8 sur {flux} ({e}) — il lui manque "
+                f"`_commun.forcer_utf8()` en tête de main(). Cf. tools/_commun.py.") from None
+
+    return subprocess.CompletedProcess(r.args, r.returncode,
+                                       _txt(r.stdout, "stdout"), _txt(r.stderr, "stderr"))
 
 
 @pytest.fixture
@@ -540,3 +556,93 @@ def test_la_declaration_de_droits_est_datee(corpus, album, tmp_path):
     # La MÊME date des deux côtés : deux horodatages pour un seul export divergeraient.
     assert genere in decl, (genere, decl)
     assert "Constat du" in decl
+
+
+# --------------------------------------------------------------------------- #
+# AUTH-4 — le référent d'exploitation ne part PAS au dépôt
+# --------------------------------------------------------------------------- #
+# C'est toute la raison d'un champ distinct de `responsables`. Ce dernier est SCIENTIFIQUE
+# — il porte un ORCID et alimente les notices DataCite/Nakala. Un référent technique est
+# une adresse d'exploitation : la mélanger obligerait à filtrer un rôle à CHAQUE export, et
+# un filtre oublié quelque part serait une fuite silencieuse dans un dépôt public.
+
+
+def test_le_referent_ne_sort_dans_aucun_artefact_de_depot(corpus, album, tmp_path):
+    cid = _collection(corpus, album["id"], "Étude", "public")
+    # Le référent se pose ici par la base : `gerer_collections.py` est l'outil de DÉPÔT et
+    # ne l'expose pas, ce qui est cohérent — un référent d'exploitation ne se déclare pas
+    # dans la chaîne qui alimente l'entrepôt.
+    conn = sqlite3.connect(corpus["db"])
+    conn.execute("UPDATE collection SET referent_nom = ?, referent_contact = ? "
+                 "WHERE id = ?", ("Ana Ruiz", "ana@labo.fr", int(cid)))
+    conn.commit()
+    conn.close()
+
+    # Chaque sortie est étiquetée (groupe, nom) : le GROUPE est l'invocation d'outil, le
+    # nom le fichier ou le flux. Sans ce couple, une source muette se cache derrière ses
+    # voisines — et c'est exactement ce qui s'est produit deux fois ici.
+    sorties = []
+    out = tmp_path / "iiif"
+    a = _run("iiif_manifest.py", corpus["db"], corpus["data"],
+             "--base-url", "http://exemple/iiif", "--out-dir", str(out),
+             "--collection", cid)
+    assert a.returncode == 0, a.stderr
+    sorties += [("iiif_manifest.py", f"iiif/{f.name}", f.read_text(encoding="utf-8"))
+                for f in out.glob("*.json")]
+
+    cw, csv_dir = tmp_path / "cw", tmp_path / "csv"
+    # `--json -` : sans lui, ces outils écrivent dans un FICHIER et `stdout` reste vide —
+    # le test passait alors sans rien lire, ce que la mutation a révélé (ajouter le
+    # référent aux colonnes exportées ne le faisait pas échouer).
+    for outil, args, dossier in (
+            ("metadonnees_collection.py", ("--json", "-"), None),
+            ("description_collection.py", ("--json", "-"), None),
+            ("crosswalk_depot.py", ("--out-dir", str(cw)), cw),
+            # Le JSON et les CSV sont construits par DEUX chemins distincts dans le même
+            # outil : n'en lire qu'un laisserait l'autre libre de publier le référent. La
+            # mutation l'a montré — casser la liste de colonnes CSV ne faisait pas
+            # broncher le test.
+            ("metadonnees_collection.py", ("--csv-dir", str(csv_dir)), csv_dir)):
+        groupe = f"{outil} {args[0]}"
+        r = _run(outil, corpus["db"], corpus["data"], "--collection", cid, *args)
+        assert r.returncode == 0, (outil, r.stderr)
+        sorties.append((groupe, f"{groupe} (stdout)", r.stdout))
+        if dossier is None:
+            continue
+        # `errors="replace"` : on cherche une ABSENCE de chaîne, pas à valider un
+        # encodage — une exception de décodage ferait passer ce test pour une panne
+        # d'export. (Le crash utf-8 qu'il a révélé côté `crosswalk_depot.py` était sur son
+        # stdout, pas sur ses fichiers : il est corrigé à la source, par `forcer_utf8`.)
+        fichiers = [f for f in dossier.glob("*") if f.is_file()]
+        assert fichiers, f"{groupe} n'a écrit aucun fichier"
+        sorties += [(groupe, f"{dossier.name}/{f.name}",
+                     f.read_text(encoding="utf-8", errors="replace")) for f in fichiers]
+
+    joint = "\n".join(t for _, _, t in sorties)
+
+    # Deux gardes, parce qu'une seule ment dans un sens ou dans l'autre.
+    #
+    # (1) NON VACANT : aucune INVOCATION ne doit être restée muette — une absence prouvée
+    #     par du néant ne prouve rien. Le garde porte sur le groupe et non sur le fichier :
+    #     un CSV réduit à son en-tête (aucun personnage dans le corpus de test) est
+    #     légitime, un outil qui n'a rien produit ne l'est pas.
+    volumes = {}
+    for groupe, _, texte in sorties:
+        volumes[groupe] = volumes.get(groupe, 0) + len(texte.strip())
+    assert len(volumes) == 5, f"invocations manquantes : {sorted(volumes)}"
+    muets = [g for g, n in volumes.items() if n < 200]
+    assert not muets, f"invocations muettes — elles ne prouvent aucune absence : {muets}"
+
+    # (2) Les sources qui portent VRAIMENT le descripteur de collection sont NOMMÉES. Ce
+    #     sont les seules d'où `referent_nom` pourrait fuir, et exiger « Étude » partout
+    #     serait faux : les manifestes IIIF et les notices DataCite décrivent des ALBUMS,
+    #     où la collection ne figure pas par son nom. Les nommer, c'est écrire quelles
+    #     surfaces la mutation doit rougir — sans quoi on croirait couvrir cinq chemins
+    #     en n'en couvrant que trois.
+    PORTEURS = {"metadonnees_collection.py --json (stdout)",
+                "description_collection.py --json (stdout)", "csv/collection.csv"}
+    manquants = PORTEURS - {nom for _, nom, t in sorties if "Étude" in t}
+    assert not manquants, f"le descripteur de collection n'y est plus : {manquants}"
+
+    assert "Ana Ruiz" not in joint, "le référent ne doit sortir dans aucun dépôt"
+    assert "ana@labo.fr" not in joint

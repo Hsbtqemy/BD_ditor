@@ -445,7 +445,9 @@ def test_a11y_proxy_sans_identite(page, seeded):
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")   # sans en-têtes
     page.wait_for_selector(".portee-vide", timeout=3000)
     assert page.locator(".user-chip").count() == 0
-    assert "identité" in page.locator(".portee-vide strong").inner_text()
+    # `>` : le bandeau porte deux `strong` depuis AUTH-4 (le titre, et le nom du
+    # référent d'instance dans son paragraphe). Le titre est le seul enfant DIRECT.
+    assert "identité" in page.locator(".portee-vide > strong").inner_text()
     viol = _audit(page)
     assert not viol, f"Proxy sans identité :\n{_fmt(viol)}"
 
@@ -631,3 +633,114 @@ def test_a11y_collections_embargo_echu(page, seeded, theme):
 
     viol = _audit(page)
     assert not viol, f"Collections/embargo [{theme}] :\n{_fmt(viol)}"
+
+
+# --------------------------------------------------------------------------- #
+# AUTH-4 — nommer l'administrateur plutôt que le taire
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_portee_vide_nomme_un_destinataire(page, seeded, theme):
+    """Le bandeau envoyait une personne BLOQUÉE « demander un accès à un administrateur »
+    sans lui dire à qui. Or elle ne lit AUCUNE collection, donc aucun référent de
+    collection : seul un référent d'instance peut l'aider. C'est le seul endroit où ce
+    chantier sert quelqu'un que quelque chose empêche."""
+    _theme(page, theme)
+    page.set_extra_http_headers({"Remote-User": "sans-droits"})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    ligne = page.locator(".portee-vide-referent")
+    ligne.wait_for(timeout=3000)
+    assert "Ana Ruiz" in ligne.inner_text()
+    # Le contact est CLIQUABLE : une adresse qu'il faut recopier à la main n'en est pas
+    # tout à fait une.
+    assert ligne.locator('a[href="mailto:ana@labo.fr"]').count() == 1
+    # Et la réserve est dite, pas laissée à découvrir.
+    assert "vérifier" in ligne.inner_text()
+    viol = _audit(page)
+    assert not viol, f"Portée vide + référent [{theme}] :\n{_fmt(viol)}"
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_le_panneau_des_acces_declare_les_administrateurs(page, seeded):
+    """`_acces_de()` ne lit que `collection_acces`, où un administrateur ne figure sur
+    AUCUNE ligne — sa portée court-circuite la table en amont. La liste affichait donc
+    trois noms là où quatre personnes lisent, sur un écran qui protège soigneusement cette
+    liste au motif qu'elle parle de personnes. Défaut de DÉCLARATION, pas d'autorisation."""
+    page.set_extra_http_headers({"Remote-User": "alice", "Remote-Groups": "bd-admins"})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.click("#btn-collections")
+    page.wait_for_selector("#col-body .col-item", timeout=3000)
+    page.locator("#col-body .col-item").first.locator("summary").click()
+    note = page.locator(".col-note-admin")
+    note.wait_for(timeout=3000)
+    txt = note.inner_text()
+    assert "bd-admins" in txt and "toute" in txt
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_le_referent_d_une_collection_s_enregistre(page, seeded):
+    """Une ADRESSE, pas un droit : la nommer n'accorde rien. DÉSIGNER reste au
+    propriétaire — choisir l'interlocuteur d'un espace engage l'espace entier."""
+    page.set_extra_http_headers({"Remote-User": "alice", "Remote-Groups": "bd-admins"})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.click("#btn-collections")
+    page.wait_for_selector("#col-body .col-item", timeout=3000)
+    page.locator("#col-body .col-item").first.locator("summary").click()
+    page.wait_for_selector(".col-ref-nom", timeout=3000)
+    page.locator(".col-ref-nom").first.fill("Ana Ruiz")
+    page.locator(".col-ref-contact").first.fill("ana@labo.fr")
+    page.locator("[data-referent]").first.click()
+    page.wait_for_timeout(600)
+
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers={"Remote-User": "alice", "Remote-Groups": "bd-admins"})
+    try:
+        cols = c.get("/api/collections").json()
+    finally:
+        c.close()
+    assert any(x["referent_nom"] == "Ana Ruiz"
+               and x["referent_contact"] == "ana@labo.fr" for x in cols)
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_le_participant_non_proprietaire_voit_le_referent(page, seeded):
+    """Le premier jet mettait le référent ET la déclaration d'administration sous le
+    `return` du panneau réservé au propriétaire — donc visibles de la seule personne qui
+    les avait écrits. Or c'est le participant SANS pouvoir qui a besoin de savoir à qui
+    écrire, et qu'un administrateur d'instance lit ici sans y figurer. Désigner engage la
+    collection et reste au propriétaire ; lire est le geste de quelqu'un qui a une
+    question."""
+    admin = {"Remote-User": "alice", "Remote-Groups": "bd-admins"}
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=admin)
+    try:
+        cid = c.get("/api/collections").json()[0]["id"]
+        assert c.patch(f"/api/collections/{cid}",
+                       json={"referent_nom": "Ana Ruiz",
+                             "referent_contact": "ana@labo.fr"}).status_code == 200
+        assert c.put(f"/api/collections/{cid}/acces",
+                      json={"principal": "bob", "genre": "utilisateur",
+                            "niveau": "lecture"}).status_code in (200, 201)
+    finally:
+        c.close()
+
+    # bob lit la collection sans la posséder : `administrable` est faux pour lui.
+    page.set_extra_http_headers({"Remote-User": "bob", "Remote-Groups": "chercheurs"})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.click("#btn-collections")
+    page.wait_for_selector("#col-body .col-item", timeout=3000)
+    page.locator("#col-body .col-item").first.locator("summary").click()
+
+    # Il ne voit PAS la liste des accès (c'est une donnée sur des personnes)...
+    page.wait_for_selector(".col-note-referent", timeout=3000)
+    # `#col-body` : `.acces-liste` est aussi la classe d'un `<ul>` STATIQUE du gabarit
+    # (`corpus.html:82`, la liste d'appartenance). Non porté, ce sélecteur comptait 1 quoi
+    # qu'il arrive — une assertion qui échoue pour la mauvaise raison en vaut une qui
+    # passe pour la mauvaise raison.
+    assert page.locator("#col-body .acces-liste").count() == 0
+    assert page.locator(".col-ref-nom").count() == 0, "il ne doit pas pouvoir DÉSIGNER"
+    # ...mais il sait à qui écrire, et que quelqu'un d'autre lit ici.
+    assert "Ana Ruiz" in page.locator(".col-note-referent").inner_text()
+    assert "bd-admins" in page.locator(".col-note-admin").inner_text()

@@ -35,6 +35,12 @@ services:
       # collections ouvertes pour eux dans `collection_acces` — et une instance neuve n'en
       # ouvre aucune, donc SANS au moins un administrateur, personne ne voit rien.
       # - BD_AUTH_ADMIN_GROUPS=bd-admins   # défaut ; décommenter pour changer de nom
+      # AUTH-4 : à qui écrire quand on est bloqué. Le SEUL référent lisible par une portée
+      # VIDE — donc par la personne que le bandeau envoie « demander un accès » sans lui
+      # dire à qui. Il est déclaratif : l'app ne connaît les groupes que de la personne qui
+      # frappe, elle ne peut donc pas vérifier que ce nom appartient encore à l'équipe.
+      # - BD_REFERENT_NOM=Ana Ruiz
+      # - BD_REFERENT_CONTACT=ana@labo.fr        # courriel, ou URL d'une page d'instance
       # - BD_SPACY_MODEL=fr_core_news_sm   # modèle NLP (lg = index plus riche, + de RAM)
       # - BD_NLP_PREWARM=1                  # charge spaCy au démarrage (évite le gel de
       #                                     #  la 1re écriture) ; à éviter en consultation pure

@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import database  # noqa: E402  (collection_row / collection_album_ids / contributions_album)
 from config import DB_PATH, BASE_DIR  # noqa: E402
-from _commun import version_outil  # noqa: E402  (provenance de l'outil — paradonnée)
+from _commun import version_outil, forcer_utf8  # noqa: E402  (provenance de l'outil — paradonnée / stdout)
 
 
 # --------------------------------------------------------------------------- #
@@ -495,6 +495,12 @@ def _ecrire_fichiers(doc: dict, out_dir: str) -> None:
 
 
 def main(argv=None) -> int:
+    # Le SEUL outil d'export qui ne le faisait pas — il écrit pourtant « notices écrites »
+    # sur stderr et déverse du JSON `ensure_ascii=False` sur stdout. Sur une console
+    # Windows en cp1252, le premier sort mal encodé et le second CRASHE au premier
+    # caractère hors page (« → », un titre d'album accentué au-delà du latin-1). Personne
+    # ne l'avait vu parce que personne n'avait encore lu cet outil à travers un tuyau.
+    forcer_utf8()                             # Windows : stdout/stderr en UTF-8 (cp1252 sinon)
     ap = argparse.ArgumentParser(
         description="Crosswalk d'une collection vers Dublin Core & DataCite (dépôt).")
     ap.add_argument("--collection", type=int, metavar="ID",

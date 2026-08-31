@@ -70,6 +70,21 @@ AUTH_ADMIN_GROUPS = frozenset(
                 os.environ.get("BD_AUTH_ADMIN_GROUPS", "bd-admins").split(","))
     if g)
 
+# Référent d'INSTANCE (AUTH-4) — à qui écrire quand on est bloqué.
+#
+# Il vit dans l'environnement et non en base, pour une raison de PORTÉE : c'est le seul
+# référent qui puisse s'afficher à quelqu'un dont la portée est VIDE, donc qui ne peut lire
+# aucune collection, donc aucun référent de collection. Or c'est précisément la personne
+# que le bandeau de portée vide envoie « demander un accès à un administrateur » sans lui
+# dire à qui. Le mettre en base le rendrait invisible à qui en a le plus besoin.
+#
+# Il n'est ni vérifié ni vérifiable : l'application ne connaît les groupes que de la
+# personne qui frappe, à l'instant de sa requête (AUTH-1). Que ce nom appartienne encore à
+# `bd-admins` lui est structurellement inconnaissable — la déclaration est DÉCLARATIVE, et
+# c'est écrit plutôt que laissé à découvrir.
+REFERENT_NOM = os.environ.get("BD_REFERENT_NOM", "").strip()
+REFERENT_CONTACT = os.environ.get("BD_REFERENT_CONTACT", "").strip()
+
 # Garde-fou anti-bombe de décompression : nombre max de pixels décodés par image.
 # Très au-dessus d'un scan de BD (≤ ~100 Mpx même en haute résolution) mais bloque
 # les images-bombes AVANT l'allocation mémoire (Pillow vérifie via l'en-tête).

@@ -18,7 +18,7 @@ from config import DB_PATH
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 
 
 # --------------------------------------------------------------------------- #
@@ -316,6 +316,13 @@ CREATE TABLE IF NOT EXISTS collection (
     statut_diffusion  TEXT,                         -- 'public' | 'embargo' | 'restreint' | 'prive'
     date_embargo      TEXT,                          -- levée d'embargo (si statut_diffusion='embargo')
     responsables      TEXT,                          -- JSON : [{"nom":…, "role":…, "orcid":…}]
+    -- Référent d'EXPLOITATION (v25, AUTH-4) : à qui s'adresser pour cette collection.
+    -- DISTINCT de `responsables`, qui est SCIENTIFIQUE — il porte un ORCID et il part dans
+    -- les notices DataCite/Nakala, où une adresse d'exploitation n'a rien à faire. Les
+    -- mélanger obligerait à filtrer un rôle à CHAQUE export, et un filtre oublié quelque
+    -- part est une fuite silencieuse.
+    referent_nom      TEXT,                          -- nom lisible (pas un login : on écrit à une personne)
+    referent_contact  TEXT,                          -- email ou URL — le moyen de LUI ÉCRIRE
     date_debut        TEXT,                          -- période de constitution / couverture
     date_fin          TEXT,
     date_creation     TEXT DEFAULT (datetime('now'))
@@ -735,6 +742,23 @@ def _migrate(conn: sqlite3.Connection) -> None:
             conn.executemany(
                 "INSERT OR IGNORE INTO collection_album (collection_id, album_id) "
                 "VALUES (?, ?)", [(cid, a) for a in orphelins])
+
+    # --- v25 : le référent d'exploitation d'une collection (AUTH-4) -------------------
+    # Deux colonnes plutôt qu'un JSON : il y a UN référent par collection, et un nom
+    # lisible plus un moyen de contact se lisent et se modifient mieux à plat qu'en
+    # sérialisé. Rien à recoller — le champ naît vide, et vide il signifie « aucun référent
+    # déclaré », ce qui est la vérité de toute collection existante.
+    # La garde porte sur la TABLE **et** sur la colonne. La v24 met en garde contre la
+    # garde de table seule ; l'inverse est tout aussi faux — `PRAGMA table_info` sur une
+    # table absente rend une liste vide, donc « colonne manquante », donc un ALTER sur
+    # rien. Les tests de migration montent des schémas MINIMAUX où `collection` n'existe
+    # pas : c'est là que ça casse, et nulle part ailleurs.
+    _tables = {r["name"] for r in
+               conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if "collection" in _tables and "referent_nom" not in {
+            r["name"] for r in conn.execute("PRAGMA table_info(collection)")}:
+        conn.execute("ALTER TABLE collection ADD COLUMN referent_nom TEXT")
+        conn.execute("ALTER TABLE collection ADD COLUMN referent_contact TEXT")
 
     # --- v24 : un terme ne peut pas être plus GLOBAL que celui dont il dépend ---------
     # Les routes de création n'ont jamais posé de `collection_id` : une dimension rattachée

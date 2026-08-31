@@ -1285,7 +1285,12 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
   border: 1px solid var(--border); border-left: 4px solid var(--accent-blue);
   border-radius: 6px; background: var(--bg-panel);
 }
-.portee-vide strong { display: block; margin-bottom: 4px; }
+/* `>` : le titre seulement. Depuis AUTH-4 le bandeau porte un second `strong` — le
+   nom du référent, au milieu d'une phrase. Sans le chevron, `display:block` le
+   jetait à la ligne et coupait « Référent de cette instance : X — contact » en trois.
+   Aucun audit ne l'aurait dit : axe vérifie le contraste et les rôles, pas le sens
+   d'une phrase découpée. */
+.portee-vide > strong { display: block; margin-bottom: 4px; }
 .portee-vide p { margin: 0; color: var(--text-muted); font-size: 13px; max-width: 70ch; }
 
 /* ── Collections (AUTH-3) — écran d'administration des espaces de travail ─────────── */
@@ -1325,3 +1330,11 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 
 /* ── Compte ShareDocs (SHARE-1) ───────────────────────────────────────────────────── */
 .sd-compte { display: inline-flex; align-items: center; gap: .35rem; }
+
+/* ── Référent d'une collection (AUTH-4) ───────────────────────────────────────────── */
+.col-referent { border: 1px solid var(--border); border-radius: 4px; padding: .4rem .6rem;
+                margin: .5rem 0; }
+.col-referent legend { font-size: .82rem; color: var(--text-muted); padding: 0 .3rem; }
+.col-referent input { margin-right: .4rem; }
+.col-note-admin { border-left: 2px solid var(--accent-green); padding-left: .5rem; }
+.portee-vide-referent { margin-top: .4rem; }

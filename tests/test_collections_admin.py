@@ -458,3 +458,60 @@ def test_l_etat_de_l_embargo_suit_la_date(client, collection_a_alice):
 def test_sans_date_l_embargo_ne_dit_rien(client, collection_a_alice):
     vues = client.get("/api/collections", headers={"Remote-User": "alice"}).json()
     assert next(c for c in vues if c["id"] == collection_a_alice["id"])["embargo"] is None
+
+
+# --------------------------------------------------------------------------- #
+# AUTH-4 — le référent : une adresse, pas un droit
+# --------------------------------------------------------------------------- #
+# Un administrateur lit et écrit toute collection SANS y figurer : `clause_album()` rend
+# « 1 » quand la portée est totale, et `collection_acces` ne porte aucune ligne le
+# concernant. Ce n'est pas un défaut — c'est la vérité de tout système auto-hébergé — mais
+# entre « ce pouvoir est inévitable » et « ce pouvoir est invisible », seul le second se
+# corrige. Le chantier donne un visage à un pouvoir qui n'en a pas.
+def test_le_proprietaire_designe_le_referent(client, collection_a_alice):
+    cid = collection_a_alice["id"]
+    r = client.patch(f"/api/collections/{cid}",
+                     json={"referent_nom": "Ana Ruiz",
+                           "referent_contact": "ana@labo.fr"},
+                     headers={"Remote-User": "alice"})
+    assert r.status_code == 200, r.text
+    vue = next(c for c in client.get("/api/collections",
+                                     headers={"Remote-User": "alice"}).json()
+               if c["id"] == cid)
+    assert vue["referent_nom"] == "Ana Ruiz" and vue["referent_contact"] == "ana@labo.fr"
+
+
+def test_ecrire_ne_donne_pas_le_droit_de_designer_le_referent(client, db_path,
+                                                              collection_a_alice):
+    """Désigner un interlocuteur engage la collection entière, comme les autres
+    descripteurs de dépôt : c'est un geste de propriétaire, pas d'annotateur."""
+    cid = collection_a_alice["id"]
+    _acces(db_path, cid, "bob", "ecriture")
+    r = client.patch(f"/api/collections/{cid}", json={"referent_nom": "Bob"},
+                     headers={"Remote-User": "bob"})
+    assert r.status_code == 403
+
+
+def test_moi_nomme_les_groupes_d_administration(client, derriere_proxy):
+    """Ce ne sont pas des secrets — ils sont en clair dans `deploy/docker-compose.yml` —
+    mais aucune route ne les disait, si bien qu'une personne admise ne pouvait pas même
+    déduire que le groupe existe. Le savoir ne le donne pas : l'appartenance vient
+    d'Authelia."""
+    acces = client.get("/api/moi", headers={"Remote-User": "bob"}).json()["acces"]
+    assert acces["groupes_admin"] == ["bd-admins"]
+
+
+def test_moi_porte_le_referent_d_instance(client, monkeypatch, derriere_proxy):
+    """Le SEUL référent lisible par une portée vide — donc le seul qui serve la personne
+    que le bandeau envoie « demander un accès » sans lui dire à qui."""
+    import config, main as m
+    monkeypatch.setattr(m, "REFERENT_NOM", "Ana Ruiz")
+    monkeypatch.setattr(m, "REFERENT_CONTACT", "ana@labo.fr")
+    acces = client.get("/api/moi", headers={"Remote-User": "bob"}).json()["acces"]
+    assert acces["referent"] == {"nom": "Ana Ruiz", "contact": "ana@labo.fr"}
+
+
+def test_sans_declaration_il_n_y_a_pas_de_referent_d_instance(client, derriere_proxy):
+    """Pas de faux référent : un bloc vide vaut mieux qu'un nom inventé."""
+    acces = client.get("/api/moi", headers={"Remote-User": "bob"}).json()["acces"]
+    assert acces["referent"] is None

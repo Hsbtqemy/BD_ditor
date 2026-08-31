@@ -113,6 +113,17 @@ Toutes amplifiées par l'absence d'authentification.
 - Auth (derrière proxy) : **`BD_AUTH_ADMIN_GROUPS`** = groupes dont les membres voient
   tout le corpus (défaut `bd-admins`). Comme les autres groupes, leur composition n'est
   jamais stockée : elle vit dans Authelia et est relue à chaque requête.
+- Auth : **`BD_REFERENT_NOM`** / **`BD_REFERENT_CONTACT`** (AUTH-4) = à qui s'adresser
+  quand on est bloqué. Ils vivent dans l'environnement et non en base pour une raison de
+  PORTÉE : c'est le seul référent qu'une portée VIDE puisse lire, or c'est exactement la
+  personne à qui le bandeau dit « demander un accès à un administrateur » sans nommer
+  personne. La déclaration est DÉCLARATIVE et l'écran le dit : l'application ne connaît
+  les groupes que de la personne qui frappe (AUTH-1), l'appartenance d'un TIERS lui est
+  structurellement invérifiable — un référent parti reste affiché. Vides derrière le
+  proxy → le bandeau retombe sur sa formule anonyme ; en mono-poste, ils ne s'affichent
+  jamais, non plus que les noms de `BD_AUTH_ADMIN_GROUPS` : sans proxy aucun groupe n'est
+  lu, donc nommer `bd-admins` distinguerait deux rôles là où une seule personne a déjà
+  tout.
 - Les jobs sont **éphémères** (threads daemon, registre RAM) : un redémarrage les
   perd. Le travail DB déjà committé par passe survit ; le suivi de job non.
 

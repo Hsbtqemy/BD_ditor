@@ -825,8 +825,12 @@ def test_moi_dit_pourquoi_on_ne_voit_rien(client, deux_albums, derriere_proxy):
     Le compte renvoyé est celui de l'APPELANT, pas celui du corpus : il ne révèle rien.
     """
     seul = client.get("/api/moi", headers={"Remote-User": "bob"}).json()
-    assert seul["acces"] == {"total": False, "admin": False,
-                             "collections": 0, "ecriture": 0}
+    # Sous-ensemble, et non égalité : le bloc s'est enrichi depuis (AUTH-4 y ajoute le
+    # référent d'instance et les noms des groupes d'administration). Figer le dict entier
+    # ferait échouer ce test à chaque ajout, pour une raison qui n'est pas la sienne.
+    garde = ("total", "admin", "collections", "ecriture")
+    assert {k: seul["acces"][k] for k in garde} == {
+        "total": False, "admin": False, "collections": 0, "ecriture": 0}
 
 
 def test_moi_compte_les_acces_accordes(client, db_path, deux_albums, derriere_proxy):

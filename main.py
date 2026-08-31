@@ -26,9 +26,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from config import (AUTH_LOGOUT_URL, AUTH_PROXY, CIBLES_ATTRIBUT, DATA_DIR,
-                    RELECTURE, ROLES_PLANCHE, STATIC_DIR, STATUTS,
-                    STATUTS_DIFFUSION, TEMPLATES_DIR, TYPES_REGION, UPOS_TAGS)
+from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, CIBLES_ATTRIBUT,
+                    DATA_DIR, REFERENT_CONTACT, REFERENT_NOM, RELECTURE, ROLES_PLANCHE,
+                    STATIC_DIR, STATUTS, STATUTS_DIFFUSION, TEMPLATES_DIR, TYPES_REGION,
+                    UPOS_TAGS)
 from database import (citations_regions, collection_par_defaut, collection_row,
                       collections, contributions_album, dimensions_cm, etat_embargo,
                       nom_reserve, get_connection, init_db, lexique_resume,
@@ -382,6 +383,10 @@ class CollectionUpdate(BaseModel):
     date_embargo: Optional[str] = None
     date_debut: Optional[str] = None
     date_fin: Optional[str] = None
+    # AUTH-4 — le référent d'EXPLOITATION, désigné par le propriétaire. Distinct de
+    # `responsables`, qui est scientifique et part au dépôt.
+    referent_nom: Optional[str] = None
+    referent_contact: Optional[str] = None
 
 
 class AccesIn(BaseModel):
@@ -4186,6 +4191,19 @@ def _enregistrer_utilisateur(conn: sqlite3.Connection, request: Request) -> Opti
     return login
 
 
+def _referent_instance():
+    """Le référent d'instance (AUTH-4), ou None s'il n'est pas déclaré.
+
+    DÉCLARATIF, et c'est écrit plutôt que laissé à découvrir : l'application ne connaît les
+    groupes que de la personne qui frappe, à l'instant de sa requête (AUTH-1). Que ce nom
+    appartienne encore à `bd-admins` lui est structurellement invérifiable — un référent
+    qui a quitté l'équipe reste donc affiché. Le savoir vaut mieux que le constater.
+    """
+    if not (REFERENT_NOM or REFERENT_CONTACT):
+        return None
+    return {"nom": REFERENT_NOM or None, "contact": REFERENT_CONTACT or None}
+
+
 @app.get("/api/moi")
 def moi(request: Request, conn: sqlite3.Connection = Depends(db),
         portee: autorisation.Portee = Depends(portee_courante)):
@@ -4210,7 +4228,25 @@ def moi(request: Request, conn: sqlite3.Connection = Depends(db),
             "groupes": _groupes(request),
             "acces": {"total": portee.tout, "admin": portee.admin,
                       "collections": None if portee.tout else len(portee.lecture),
-                      "ecriture": None if portee.tout else len(portee.ecriture)},
+                      "ecriture": None if portee.tout else len(portee.ecriture),
+                      # AUTH-4 — les noms des groupes d'administration. Ce ne sont pas des
+                      # secrets : ils sont en clair dans `deploy/docker-compose.yml`. Mais
+                      # aucune route ne les disait, si bien qu'une personne admise ne
+                      # pouvait pas même déduire que le groupe existe — et le savoir ne le
+                      # donne pas, l'appartenance venant d'Authelia.
+                      #
+                      # VIDE en mono-poste, et ce n'est pas une pudeur : sans proxy, aucun
+                      # groupe n'est lu (AUTH-1) et personne ne peut appartenir à
+                      # `bd-admins`. Le nommer ferait dire à l'écran des accès que « les
+                      # administrateurs de l'instance lisent toute collection, sans y
+                      # figurer » — en distinguant deux rôles là où il n'y a qu'une
+                      # personne, qui a déjà tout. Un nom exact au service d'une phrase
+                      # fausse.
+                      "groupes_admin": sorted(AUTH_ADMIN_GROUPS) if AUTH_PROXY else [],
+                      # Le référent d'INSTANCE : le seul lisible par une portée VIDE, donc
+                      # le seul qui serve la personne que le bandeau envoie « demander un
+                      # accès » sans dire à qui.
+                      "referent": _referent_instance()},
             "deconnexion_url": AUTH_LOGOUT_URL or None}
 
 

@@ -247,7 +247,50 @@
     box.setAttribute("role", "status");
     box.appendChild(el("strong", null, titre));
     box.appendChild(el("p", null, texte));
+    var ref = referentLigne(a.referent);
+    if (ref) box.appendChild(ref);
     main.insertBefore(box, main.firstChild);
+  }
+
+  /* ---- Le référent d'instance (AUTH-4) ----
+     C'est ICI que le chantier sert vraiment. Le message ci-dessus envoie une personne
+     BLOQUÉE « demander un accès à un administrateur de l'instance » sans lui dire à qui —
+     et elle ne peut lire AUCUNE collection, donc aucun référent de collection. Seul un
+     référent d'instance peut l'aider ; sans lui, AUTH-4 ne servirait que des gens que
+     rien ne bloque.
+
+     La déclaration est DÉCLARATIVE et le dit : l'application ne connaît les groupes que
+     de la personne qui frappe (AUTH-1), donc elle ne peut pas vérifier que ce nom
+     appartient encore à l'équipe. Le dire vaut mieux que le laisser découvrir. */
+  function referentLigne(r) {
+    if (!r || (!r.nom && !r.contact)) return null;
+    var p = el("p", "portee-vide-referent");
+    p.appendChild(document.createTextNode("Référent de cette instance : "));
+    p.appendChild(el("strong", null, r.nom || r.contact));
+    if (r.contact) {
+      p.appendChild(document.createTextNode(" — "));
+      p.appendChild(contactNoeud(r.contact));
+    }
+    p.appendChild(document.createTextNode(
+      " (déclaré à la configuration : l'application ne peut pas vérifier qu'il fait "
+      + "toujours partie de l'équipe)."));
+    return p;
+  }
+
+  /* Un lien SEULEMENT si le schéma est reconnu. La valeur vient de l'environnement, donc
+     de qui déploie — mais « ça vient d'une source de confiance » est l'argument qui
+     précède toutes les injections, et `javascript:` dans un href est une porte trop bon
+     marché pour la laisser ouverte. Tout le reste s'affiche en texte. */
+  function contactNoeud(contact) {
+    var v = String(contact).trim();
+    var href = /^https?:\/\//i.test(v) ? v
+      : /^mailto:/i.test(v) ? v
+        : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? "mailto:" + v : null;
+    if (!href) return document.createTextNode(v);
+    var a = el("a", null, v);
+    a.href = href;
+    a.rel = "noopener noreferrer";
+    return a;
   }
 
   /* ---- Utilisateur connecté + déconnexion (INFRA-1, source unique) ----

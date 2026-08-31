@@ -141,6 +141,36 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   Corollaire d'ergonomie : une portée vide rend l'app indistinguable d'un corpus vide, d'où
   le bloc `acces` de `GET /api/moi` et le bandeau `.portee-vide` injecté par `theme.js`,
   qui distingue « aucun droit » de « aucune identité ne parvient » (forward_auth muet).
+- **Un pouvoir inévitable, mais pas invisible** (AUTH-4, v25) : un administrateur lit et
+  écrit toute collection **sans figurer** dans `collection_acces` — sa portée totale
+  court-circuite la table. Ce n'est pas un défaut, c'est la vérité de tout auto-hébergement ;
+  c'est son INVISIBILITÉ qu'on ferme. Le panneau des accès le DÉCLARE, en nommant les
+  groupes lus dans `GET /api/moi` plutôt qu'une constante recopiée, et le bandeau de portée
+  vide nomme enfin un destinataire — `BD_REFERENT_NOM` / `BD_REFERENT_CONTACT`, dans
+  l'environnement et non en base, parce que c'est le seul référent qu'une portée VIDE
+  puisse lire. **Un référent est une ADRESSE et non un droit** : le désigner est un geste
+  de PROPRIÉTAIRE (`peut_administrer`, pas `peut_ecrire`), n'accorde rien et ne retire
+  rien — `autorisation.py` n'entre pas dans le chantier, faute de quoi on aurait glissé
+  vers le cloisonnement entre administrateurs, écarté. `collection.referent_nom` est
+  DISTINCT de `responsables`, qui est scientifique, porte un ORCID et part au dépôt : un
+  test vérifie que le référent ne sort d'AUCUN artefact (IIIF, crosswalk,
+  `metadonnees_collection` JSON **et** CSV — deux chemins distincts du même outil).
+  **Rien de tout cela en mono-poste** : sans proxy aucun groupe n'est lu, donc `acces.
+  groupes_admin` est vide — nommer `bd-admins` là où l'on est seul distinguerait deux rôles
+  qui n'en font qu'un.
+- **Une garde d'interface se pose sur l'ACTE, jamais sur l'écran qui le contient.** Le
+  serveur distingue sept questions (`peut_lire` / `peut_ecrire` / `peut_administrer`,
+  `clause_album` / `clause_terme` / `peut_ecrire_terme` / `peut_ecrire_quelque_part`) ; le
+  client n'en reçoit qu'une, `administrable`, et `peut_ecrire` ne traverse même pas — l'UI
+  découvre un refus d'écriture en recevant son 403. Tant que cette asymétrie tient, tout ce
+  qu'on ajoute dans un panneau gardé hérite de sa garde **par défaut et non par décision** :
+  c'est ainsi que le référent d'AUTH-4, une simple ADRESSE, s'est retrouvé derrière la
+  garde du PARTAGE, donc lisible du seul propriétaire — celui qui venait de l'écrire.
+  L'erreur échoue en se FERMANT : elle ne casse aucun test, et une revue de sécurité
+  l'approuve. C'est la même forme que la portée vide d'AUTH-2, « la bonne réponse de
+  sécurité et la pire réponse d'usage ». Le cliquet de `test_autorisation.py` ne couvre pas
+  ce cas : il exige qu'une ROUTE ait été tranchée, rien n'exige qu'un bloc d'écran dise
+  quelle question il pose.
 - **Sans `BD_AUTH_PROXY`, portée TOTALE** (mono-poste inchangé) ; **avec le drapeau mais
   sans identité, portée VIDE** — fermeture par défaut, panne bruyante plutôt que fuite.
 - Trois accesseurs GARDÉS sont la seule façon d'atteindre un objet : `_get_album`,

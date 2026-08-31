@@ -707,11 +707,53 @@ function colItem(c) {
   return d;
 }
 
+/* AUTH-4 — le fait que la liste des accès taisait.
+
+   `_acces_de()` ne lit que `collection_acces`, où un administrateur d'instance ne figure
+   sur AUCUNE ligne : sa portée court-circuite la table en amont (`clause_album()` rend
+   « 1 » quand elle est totale). La liste affichait donc trois noms là où quatre personnes
+   lisent — sur un écran qui protège soigneusement cette liste au motif qu'elle parle de
+   personnes. Ce n'est pas un défaut d'autorisation, c'est un défaut de DÉCLARATION : le
+   pouvoir est inévitable dans un système auto-hébergé, son invisibilité ne l'est pas. */
+function colAdminNote() {
+  const g = (COL_ETAT.groupes_admin || []);
+  if (!g.length) return "";
+  // Formulée sans « ci-dessus » : les deux branches de `colDetail` l'affichent, et le
+  // participant non propriétaire n'a AUCUNE liste d'accès sous les yeux. Un renvoi à ce
+  // qui n'est pas là est une petite fausseté, mais c'est la même que celle qu'AUTH-4
+  // corrige — un écran qui parle d'autre chose que de ce qu'il montre.
+  return `<p class="col-note col-note-admin">Les administrateurs de l'instance
+    (${g.map(esc).join(", ")}) lisent et écrivent <strong>toute</strong> collection, sans
+    figurer dans aucune liste d'accès. Chacun de leurs actes est nommé au journal de
+    provenance.</p>`;
+}
+
+/* Le référent, en LECTURE. Le contact s'affiche en TEXTE et non en lien, contrairement au
+   référent d'instance du bandeau (`theme.js`) : celui-là vient de l'environnement, donc de
+   qui déploie, tandis que celui-ci est saisi par un propriétaire de collection. Plutôt que
+   de recopier ici l'autorisation de schémas — deux listes qui divergeraient un jour —, on
+   n'ouvre pas la porte du tout : un `href` est la seule chose qui rende `javascript:`
+   dangereux, et une adresse reste lisible sans être cliquable. */
+function colReferentLu(c) {
+  const nom = (c.referent_nom || "").trim();
+  const contact = (c.referent_contact || "").trim();
+  if (!nom && !contact) return "";
+  return `<p class="col-note col-note-referent">Référent de cette collection :
+    <strong>${esc(nom || contact)}</strong>${nom && contact ? ` — ${esc(contact)}` : ""}.</p>`;
+}
+
 async function colDetail(d, c) {
   const box = d.querySelector(".col-detail");
   if (!c.administrable) {
+    // Le participant NON propriétaire est celui à qui AUTH-4 sert le plus, et le premier
+    // jet le laissait sortir d'ici les mains vides : le référent et la déclaration
+    // vivaient tous deux sous ce `return`, donc visibles du seul propriétaire — celui qui
+    // les a écrits. DÉSIGNER un référent engage la collection et reste au propriétaire ;
+    // le LIRE est le geste de quelqu'un qui a une question. Deux droits distincts qu'une
+    // seule garde confondait.
     box.innerHTML = `<p class="col-note">Vous participez à cette collection sans la
-      posséder : seul un propriétaire voit et modifie la liste des accès.</p>`;
+      posséder : seul un propriétaire voit et modifie la liste des accès.</p>
+      ${colReferentLu(c)}${colAdminNote()}`;
     return;
   }
   box.innerHTML = `<p class="col-note">Chargement…</p>`;
@@ -742,12 +784,33 @@ async function colDetail(d, c) {
     <p class="col-note">Un accès se déclare par un NOM, pas par une personne vérifiée :
       l'application n'a aucun annuaire, elle lit les groupes dans les en-têtes du proxy à
       chaque requête. Un login mal orthographié n'ouvre rien — sans le dire.</p>
+    ${colAdminNote()}
+    <fieldset class="col-referent">
+      <legend>Référent de cette collection</legend>
+      <p class="col-note">À qui s'adresser pour cet espace. C'est une ADRESSE, pas un
+        droit : la nommer n'accorde rien et ne retire rien.</p>
+      <input class="col-ref-nom" placeholder="Nom lisible" autocomplete="off"
+             aria-label="Nom du référent" value="${esc(c.referent_nom || "")}">
+      <input class="col-ref-contact" placeholder="Courriel ou adresse de page"
+             autocomplete="off" aria-label="Contact du référent"
+             value="${esc(c.referent_contact || "")}">
+      <button class="ghost small" data-referent="1" type="button">Enregistrer</button>
+    </fieldset>
     <div class="modal-actions">
       <button class="ghost small" data-renommer="1" type="button">Renommer</button>
       <button class="ghost small" data-supprimer="1" type="button">Supprimer la collection</button>
     </div>`;
 
   const recharger = async () => { await loadCollections(); };
+  const btnRef = box.querySelector("[data-referent]");
+  if (btnRef) btnRef.onclick = async () => {
+    // Champs vides = référent retiré, et c'est un geste légitime : on n'invente pas une
+    // suppression séparée pour deux champs de texte.
+    if (await colTenter(() => apiSend("PATCH", `/api/collections/${c.id}`, {
+      referent_nom: box.querySelector(".col-ref-nom").value.trim(),
+      referent_contact: box.querySelector(".col-ref-contact").value.trim(),
+    }))) recharger();
+  };
   box.querySelectorAll("[data-retirer]").forEach((b) => {
     b.onclick = async () => {
       const { genre, principal } = b.dataset;
@@ -788,8 +851,24 @@ async function colDetail(d, c) {
   };
 }
 
+/* Les noms des groupes d'administration, lus UNE fois. Ils viennent de `/api/moi` et non
+   d'une constante recopiée ici : `BD_AUTH_ADMIN_GROUPS` est configurable, et deux listes
+   qui divergent afficheraient un groupe qui n'administre plus rien. */
+const COL_ETAT = { groupes_admin: null };
+
+async function colChargerEtat() {
+  if (COL_ETAT.groupes_admin !== null) return;
+  try {
+    const moi = await apiGet("/api/moi");
+    COL_ETAT.groupes_admin = (moi.acces && moi.acces.groupes_admin) || [];
+  } catch (_) { COL_ETAT.groupes_admin = []; }
+}
+
 async function loadCollections() {
   const body = $("#col-body");
+  // Avant le rendu : la note qui déclare les administrateurs en dépend, et une note qui
+  // ne paraît pas laisse la liste mentir par omission comme avant le chantier.
+  await colChargerEtat();
   let cols = [];
   try { cols = await apiGet("/api/collections"); }
   catch (e) { body.innerHTML = `<p class="col-note">${esc(e.message)}</p>`; return; }

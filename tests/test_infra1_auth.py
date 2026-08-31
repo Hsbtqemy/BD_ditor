@@ -48,11 +48,22 @@ def test_moi_sans_auth_local_renvoie_null(client, monkeypatch):
     """En local (pas de proxy, pas d'URL configurée) : tout est None."""
     monkeypatch.setattr(main, "AUTH_LOGOUT_URL", "")
     d = client.get("/api/moi").json()
+    # L'égalité EXACTE est le sujet du test, et on la garde en ajoutant les clés plutôt
+    # qu'en la relâchant : ce qu'elle vérifie, c'est qu'en mono-poste `/api/moi` ne rend
+    # RIEN de plus que ce qui est écrit ici. Un sous-ensemble laisserait entrer sans bruit
+    # le prochain champ d'identité — c'est exactement ce que ce test existe pour empêcher.
     assert d == {"utilisateur": None, "nom": None, "groupes": [],
                  # AUTH-2 : la portée est totale en mono-poste, et les compteurs sont None
                  # — « pas de restriction », qui ne se confond pas avec « zéro collection ».
                  "acces": {"total": True, "admin": True,
-                           "collections": None, "ecriture": None},
+                           "collections": None, "ecriture": None,
+                           # AUTH-4 : les deux champs de référent sont VIDES ici, et c'est
+                           # la bonne réponse. Sans proxy aucun groupe n'est lu, donc
+                           # `bd-admins` ne désigne personne ; et aucun référent n'est
+                           # déclaré à l'environnement. Nommer l'un ou l'autre ferait
+                           # parler l'écran d'un tiers à qui écrire, sur une machine où
+                           # l'on est seul.
+                           "groupes_admin": [], "referent": None},
                  "deconnexion_url": None}
 
 
