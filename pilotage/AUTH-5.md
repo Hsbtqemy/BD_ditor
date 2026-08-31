@@ -5,7 +5,17 @@ statut: livré
 
 # AUTH-5 — le cliquet des voies de sortie : ce qui laisse partir une identité doit l'avoir déclaré
 
-**Arrêté sur** — le chantier entier, commit `af03075`, 31 août :
+**Arrêté sur** — la relecture d'après commit, `0ff38c7`, 31 août : **le cliquet mentait à
+l'endroit précis qu'il surveille.** Son contrôle « un trou déclaré qui n'existe plus » ne
+pouvait jamais être vrai pour un outil — sous le même préfixe `("outil", …)`,
+`SORTIES_DECLAREES` range des SORTIES et `NON_BALAYE` des OUTILS entiers, si bien qu'on
+comparait un nom de fichier à des clés de sortie. Démontré dans les deux sens : avec
+l'ancien contrôle, rendre `verifier_moteurs.py` exportateur tout en le laissant déclaré
+hors balayage laisse les TROIS tests verts. Huit raisons ont aussi été resserrées — elles
+disaient « aucune sortie » d'outils qui impriment un compte rendu ; elles disent maintenant
+ce qui se vérifie.
+
+Avant elle, le chantier entier, commit `af03075`, 31 août :
 `tests/test_sorties_identite.py`, trois cliquets et deux tables déclarées. 61 surfaces
 balayées, 11 émettent une identité, six mutations rouges, 21 à 26 s sur une suite de 180 s.
 
