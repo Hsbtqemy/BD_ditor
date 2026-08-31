@@ -744,3 +744,69 @@ def test_le_participant_non_proprietaire_voit_le_referent(page, seeded):
     # ...mais il sait à qui écrire, et que quelqu'un d'autre lit ici.
     assert "Ana Ruiz" in page.locator(".col-note-referent").inner_text()
     assert "bd-admins" in page.locator(".col-note-admin").inner_text()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_le_verrou_dit_par_qui(page, seeded):
+    """`planches.verrou_par` est consigné depuis la v22 et aucun écran ne le montrait :
+    on lisait « verrouillée le … » sans savoir à qui demander la levée — la seule chose
+    qu'on ait besoin de savoir devant un verrou purement informatif.
+
+    « par vous » se décide sur le LOGIN et non sur le nom affiché : deux personnes peuvent
+    porter le même nom, et se voir attribuer le verrou d'un homonyme serait pire que de ne
+    rien dire."""
+    alice = {"Remote-User": "alice", "Remote-Name": "Alice Renard",
+             "Remote-Groups": "bd-admins"}
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=alice)
+    try:
+        c.get("/api/moi")                       # alimente le miroir `utilisateur`
+        pl = c.get(f"/api/albums/{seeded['album']}/planches").json()[0]
+        assert c.patch(f"/api/planches/{pl['id']}/verrou",
+                       json={"verrouillee": True}).status_code == 200
+    finally:
+        c.close()
+
+    # Bob voit le NOM d'alice, pas son login.
+    page.set_extra_http_headers({"Remote-User": "bob", "Remote-Groups": "bd-admins"})
+    page.goto(seeded["base"] + f"/?album={seeded['album']}&planche={seeded['planche']}",
+              wait_until="networkidle")
+    page.wait_for_timeout(600)
+    titre = page.locator("#lock-toggle").get_attribute("title")
+    assert "Alice Renard" in titre, titre
+    assert "alice" not in page.locator("#lock-toggle").inner_text()
+
+    # Alice, elle, lit « par vous » — la comparaison porte sur le login.
+    page.set_extra_http_headers(alice)
+    page.goto(seeded["base"] + f"/?album={seeded['album']}&planche={seeded['planche']}",
+              wait_until="networkidle")
+    page.wait_for_timeout(600)
+    assert "par vous" in page.locator("#lock-toggle").inner_text()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_le_bandeau_distingue_trois_pannes_par_les_groupes(page, seeded):
+    """`/api/moi` renvoie `groupes` depuis INFRA-2 sans qu'aucune surface les lise. Ils
+    DISTINGUENT trois situations que le même écran vide confondait : aucune identité ;
+    une identité sans groupe (le proxy pose Remote-User sans Remote-Groups) ; une identité
+    AVEC ses groupes, dont aucun n'a d'accès. Les deux premières se réparent, la troisième
+    non — les confondre envoie chercher une panne qui n'existe pas."""
+    # Identité + groupes, mais aucun accès accordé → rien n'est cassé.
+    page.set_extra_http_headers({"Remote-User": "carol", "Remote-Groups": "linguistes,stage"})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_selector(".portee-vide-groupes", timeout=3000)
+    txt = page.locator(".portee-vide-groupes").inner_text()
+    assert "linguistes" in txt and "stage" in txt
+    assert "rien de cassé" in txt
+
+    # Identité SANS groupe → c'est un réglage du proxy, et le message le dit.
+    page.set_extra_http_headers({"Remote-User": "dave"})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_selector(".portee-vide-groupes", timeout=3000)
+    txt = page.locator(".portee-vide-groupes").inner_text()
+    assert "Remote-Groups" in txt and "pas un droit manquant" in txt
+
+    # Aucune identité → les groupes ne disent rien, la ligne ne paraît pas.
+    page.set_extra_http_headers({})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_selector(".portee-vide", timeout=3000)
+    assert page.locator(".portee-vide-groupes").count() == 0

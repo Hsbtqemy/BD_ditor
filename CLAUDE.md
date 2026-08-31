@@ -139,8 +139,14 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   création d'album accepte `collection_id` et retombe sinon sur la collection de repli.
 - **404, jamais 403** : « existe mais pas pour vous » révèle la composition du corpus.
   Corollaire d'ergonomie : une portée vide rend l'app indistinguable d'un corpus vide, d'où
-  le bloc `acces` de `GET /api/moi` et le bandeau `.portee-vide` injecté par `theme.js`,
-  qui distingue « aucun droit » de « aucune identité ne parvient » (forward_auth muet).
+  le bloc `acces` de `GET /api/moi` et le bandeau `.portee-vide` injecté par `theme.js`.
+  Il distingue **trois** pannes et non deux (AUTH-1, 2026-08-31), par les GROUPES reçus :
+  aucune identité ne parvient (forward_auth muet) ; une identité mais aucun groupe (le
+  proxy pose `Remote-User` sans `Remote-Groups`) ; une identité AVEC ses groupes, dont
+  aucun n'a d'accès. Les deux premières se réparent, la troisième non — les confondre
+  envoie chercher une panne qui n'existe pas. La liste des groupes EST le diagnostic, et
+  c'est le seul endroit où elle sert : `GET /api/moi` les renvoyait depuis INFRA-2 sans
+  qu'aucune surface les lise.
 - **Un pouvoir inévitable, mais pas invisible** (AUTH-4, v25) : un administrateur lit et
   écrit toute collection **sans figurer** dans `collection_acces` — sa portée totale
   court-circuite la table. Ce n'est pas un défaut, c'est la vérité de tout auto-hébergement ;

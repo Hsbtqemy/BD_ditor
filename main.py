@@ -32,7 +32,7 @@ from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, CIBLES_ATTRI
                     UPOS_TAGS)
 from database import (citations_regions, collection_par_defaut, collection_row,
                       collections, contributions_album, dimensions_cm, etat_embargo,
-                      nom_reserve, get_connection, init_db, lexique_resume,
+                      nom_reserve, get_connection, init_db, lexique_resume, noms_lisibles,
                       numeros_editoriaux, relecture_planches, reindex_region,
                       unindex_region)
 import accord
@@ -685,7 +685,13 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db),
     ))
     nums = numeros_editoriaux(conn, album_id)
     rel = relecture_planches(conn, [p["id"] for p in planches])   # ANN-4 : statut dérivé/forcé
+    # AUTH-1 — le NOM de qui détient un verrou. `verrou_par` est consigné depuis la v22 et
+    # aucun écran ne le lisait : on voyait « verrouillée le … » sans savoir à qui demander
+    # la levée, ce qui est précisément l'information dont on a besoin. Le login reste dans
+    # la charge utile : il est stable, et lui seul permet à l'écran de dire « par vous ».
+    noms = noms_lisibles(conn, [p["verrou_par"] for p in planches])
     for p in planches:
+        p["verrou_par_nom"] = noms.get(p["verrou_par"])
         p["url_web"] = "/" + p["chemin_web"] if p["chemin_web"] else None
         p["numero_editorial"] = nums.get(p["id"])   # None si paratexte (cf. role)
         # Matériel (A6) : dimensions physiques dérivées (px÷dpi), None si résolution absente.
@@ -1340,7 +1346,12 @@ def update_verrou(planche_id: int, payload: VerrouIn, request: Request,
         conn.execute("UPDATE planches SET verrouillee = NULL, verrou_par = NULL "
                      "WHERE id = ?", (planche_id,))
     conn.commit()
-    return _get_planche(conn, portee, planche_id, ecriture=True)
+    p = _get_planche(conn, portee, planche_id, ecriture=True)
+    # Le nom accompagne le retour, sinon l'écran qui vient de poser le verrou afficherait
+    # un login jusqu'au prochain rechargement — une incohérence d'une seconde, mais qui
+    # ferait douter du reste.
+    p["verrou_par_nom"] = noms_lisibles(conn, [p["verrou_par"]]).get(p["verrou_par"])
+    return p
 
 
 @app.patch("/api/planches/{planche_id}/role")

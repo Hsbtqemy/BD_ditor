@@ -247,9 +247,42 @@
     box.setAttribute("role", "status");
     box.appendChild(el("strong", null, titre));
     box.appendChild(el("p", null, texte));
+    var grp = groupesLigne(d);
+    if (grp) box.appendChild(grp);
     var ref = referentLigne(a.referent);
     if (ref) box.appendChild(ref);
     main.insertBefore(box, main.firstChild);
+  }
+
+  /* ---- Les groupes reçus (AUTH-1) ----
+     `/api/moi` renvoie `groupes` depuis INFRA-2 et AUCUNE surface ne les lisait. C'est ici
+     qu'ils servent, et pas ailleurs : ils DISTINGUENT trois pannes que le même écran vide
+     confondait. Aucune identité (le forward_auth ne passe rien) ; une identité mais aucun
+     groupe (le proxy pose `Remote-User` sans `Remote-Groups`, faute de configuration) ;
+     une identité AVEC ses groupes, dont aucun n'a reçu d'accès — et là il n'y a rien à
+     réparer, seulement un accès à demander.
+
+     Les deux premières se réparent par l'administrateur, la troisième non. Les confondre,
+     c'est envoyer quelqu'un chercher une panne qui n'existe pas, ou en ignorer une qui
+     existe. On les nomme donc, sans commenter : la liste EST le diagnostic. */
+  function groupesLigne(d) {
+    if (!d.utilisateur) return null;          // sans identité, les groupes ne disent rien
+    var g = d.groupes || [];
+    var p = el("p", "portee-vide-groupes");
+    if (!g.length) {
+      p.appendChild(document.createTextNode(
+        "Aucun groupe ne parvient avec votre identité : le proxy pose bien « qui vous "
+        + "êtes » mais pas « à quoi vous appartenez ». Si des accès vous ont été accordés "
+        + "par groupe, ils ne peuvent pas s'appliquer — c'est un réglage du proxy "
+        + "(Remote-Groups), pas un droit manquant."));
+      return p;
+    }
+    p.appendChild(document.createTextNode("Groupes reçus : "));
+    p.appendChild(el("strong", null, g.join(", ")));
+    p.appendChild(document.createTextNode(
+      ". Aucun n'a reçu d'accès sur une collection — il n'y a donc rien de cassé, "
+      + "seulement un accès à demander."));
+    return p;
   }
 
   /* ---- Le référent d'instance (AUTH-4) ----
@@ -298,11 +331,19 @@
      Remote-User) et l'URL de logout du portail. En local, sans proxy,
      `utilisateur` est null → on n'injecte RIEN (dégradation propre). textContent
      partout : le nom vient d'un en-tête, jamais interprété comme du HTML. */
+  /* `/api/moi` est demandé UNE fois par page et partagé : `theme.js` s'exécute sur les
+     quatre surfaces, et chaque page qui refaisait l'appel écrivait une ligne de plus dans
+     le miroir `utilisateur`. Une PROMESSE plutôt qu'une valeur — les pages se dessinent
+     avant qu'elle aboutisse, et attendre est la seule façon honnête de le dire.
+     Elle rend `null` sur échec ; aucun appelant ne doit supposer qu'elle réussit. */
+  window.BDMoi = fetch("/api/moi", { headers: { Accept: "application/json" } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .catch(function () { return null; });
+
   function buildUserChip() {
     var bar = document.getElementById("site-nav");
     if (!bar) return;
-    fetch("/api/moi", { headers: { Accept: "application/json" } })
-      .then(function (r) { return r.ok ? r.json() : null; })
+    window.BDMoi
       .then(function (d) {
         if (!d) return;
         porteeVide(d);                             // AVANT la pastille : le cas « proxy
@@ -314,7 +355,13 @@
         var who = el("span", "user-who");
         var nom = d.nom || d.utilisateur;
         who.textContent = nom;
-        who.title = "Connecté : " + nom;
+        // Les groupes dans l'infobulle (AUTH-1) : ils gouvernent ce qu'on voit, et
+        // personne ne pouvait les consulter — pas même pour vérifier une faute de frappe
+        // dans un nom de groupe, qui n'ouvre rien SANS LE DIRE (invariant d'AUTH-2).
+        var g = d.groupes || [];
+        who.title = "Connecté : " + nom + " (" + d.utilisateur + ")"
+          + (g.length ? " — groupes : " + g.join(", ")
+                      : " — aucun groupe reçu du proxy");
         var ico = el("span", "user-ico", "👤"); ico.setAttribute("aria-hidden", "true");
         wrap.appendChild(ico); wrap.appendChild(who);
         if (d.deconnexion_url) {

@@ -1,9 +1,17 @@
-# Dossier — établir la base légale du corpus (DEPOT-1)
+# Dossier — établir la base légale du corpus (DEPOT-1, AUTH-1)
 
 > **À quoi sert ce document.** Il rassemble ce qu'il faut savoir de l'outil pour répondre à
 > une seule question : **à quel titre détenons-nous ces données, et que pouvons-nous en
 > faire sortir ?** Il est fait pour être porté à un interlocuteur compétent — service
 > juridique, référent science ouverte, direction de l'unité — qui ne connaît pas l'outil.
+>
+> **Deux corps de questions, et un seul dossier** (depuis le 2026-08-31). Les unes portent
+> sur les ŒUVRES — à quel titre les détenons-nous, que peut-on en publier (DEPOT-1). Les
+> autres portent sur les PERSONNES qui les annotent : l'outil tient un fichier de noms et
+> d'adresses, et un journal nominatif de leurs gestes (AUTH-1, § 1 et questions 9 à 12).
+> Elles s'adressent peut-être à un interlocuteur différent — un délégué à la protection des
+> données plutôt qu'un responsable des droits — mais elles se posent au même moment, sur le
+> même outil, et les séparer en deux dossiers ferait tenir deux fois la même réunion.
 >
 > **Ce qu'il n'est pas.** Il ne conclut rien. L'exception de fouille de textes et de données
 > (directive 2019/790, art. 3) y est nommée comme **piste à vérifier**, jamais comme
@@ -34,6 +42,38 @@ Le **journal de provenance** (append-only) enregistre qui a produit quoi : chaqu
 d'annotation porte son agent — une personne identifiée, ou un moteur avec sa version. Il
 est sérialisable en PROV-O et en TEI. C'est la pièce qui permet de démontrer, le cas
 échéant, la nature et l'ampleur du travail humain apporté.
+
+### Une quatrième nature : les données personnelles de l'ÉQUIPE
+
+Les trois natures ci-dessus portent sur le corpus. Il en existe une quatrième, ajoutée à ce
+dossier le 2026-08-31 parce qu'elle en était absente : **l'outil détient un fichier de
+personnes.** Ce n'est pas une question de droit d'auteur mais de RGPD, et l'interlocuteur
+n'est peut-être pas le même — un délégué à la protection des données plutôt qu'un
+responsable des droits.
+
+| Donnée | Contenu | Où | D'où elle vient |
+|---|---|---|---|
+| **Identité de l'annotateur** | login, nom affiché, **adresse électronique** | `utilisateur` (v22) | recopiée des en-têtes posés par le proxy d'auth (Authelia) à chaque passage |
+| **Traces d'activité nominatives** | qui a fait quel geste, quand, avec l'avant/après | `evenement`, `activite` (journal A3) | écrites à chaque acte |
+| **Traces nominatives dérivées** | qui a corrigé quel mot, qui détient un verrou | `token_correction.auteur`, `planches.verrou_par` | idem |
+
+Quatre points de fait, qui bordent la question sans la trancher :
+
+- **Aucun secret n'est stocké** : ni mot de passe, ni jeton, ni empreinte. L'application
+  n'authentifie personne — elle fait confiance au proxy. Un test refuse toute colonne de ce
+  genre.
+- **L'appartenance aux groupes n'est JAMAIS stockée** : elle est relue dans les en-têtes à
+  chaque requête, si bien qu'un retrait dans l'annuaire prend effet immédiatement. Il n'y a
+  donc rien à effacer de ce côté.
+- **Le journal est append-only par construction** : c'est ce qui fait sa valeur probatoire
+  (§ 1) et, en même temps, ce qui rend l'effacement d'une personne non trivial. Les deux
+  tiennent ensemble, et c'est la difficulté.
+- **Depuis le 2026-08-31, l'identité ne SORT plus** : tout artefact destiné au dépôt
+  remplace l'agent humain par un pseudonyme stable (`annotateur-1`…), les moteurs gardant
+  leur nom. Le nom et l'adresse ne quittent l'instance que par la **sauvegarde**, réservée
+  aux administrateurs. Ce n'est pas de l'anonymisation — dans une petite équipe, l'ordre
+  d'arrivée et le volume de travail réidentifient — mais la surface est réduite au minimum
+  connu, et un cliquet de test la maintient (`tests/test_sorties_identite.py`).
 
 ---
 
@@ -133,6 +173,28 @@ les autres.
    que laisser au jugement de chacun ?
 8. **Le texte OCR verbatim** est-il traité comme l'expression protégée de l'œuvre, ou son
    statut se discute-t-il séparément des images ? Le projet a supposé le premier.
+
+### Et quatre questions sur les données de l'équipe (RGPD)
+
+Elles se posent au même moment mais pas forcément à la même personne. Le code ne peut pas
+les trancher : il n'existe aucune réponse par défaut qui ne soit un choix déguisé.
+
+9. **Combien de temps garde-t-on le nom et l'adresse d'un annotateur ?** Le miroir
+   `utilisateur` est alimenté à chaque passage et n'a aujourd'hui aucune durée de vie. La
+   réponse peut être « tant que le projet vit », mais il faut qu'elle soit choisie.
+10. **Comment efface-t-on quelqu'un qui quitte l'équipe ?** Trois portées différentes, et
+    la troisième est celle qui coince : le miroir `utilisateur` (facile à vider) ; les
+    traces dérivées `token_correction.auteur` / `planches.verrou_par` (remplaçables par
+    NULL) ; le **journal A3**, append-only, dont l'immuabilité est précisément ce qui lui
+    donne sa valeur probatoire au § 1. Faut-il un effacement qui le traverse — et que
+    devient alors la démonstration du travail humain ?
+11. **Que fait-on des sauvegardes déjà déposées ?** `VACUUM INTO` emporte la base ENTIÈRE,
+    donc les adresses, et l'application sait déposer ce zip sur ShareDocs — donc hors de la
+    machine, éventuellement sous un compte Huma-Num **personnel**. Un effacement qui ne
+    couvrirait que la base vivante laisserait les copies intactes.
+12. **Qui est responsable de traitement, et l'annotateur en est-il informé ?** L'outil
+    n'affiche aujourd'hui aucune mention de ce genre. Si une information est due, sa place
+    naturelle est l'écran où l'identité apparaît déjà — la pastille utilisateur.
 
 ---
 

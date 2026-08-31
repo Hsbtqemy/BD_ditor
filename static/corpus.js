@@ -123,6 +123,12 @@ async function openAlbum(id) {
   // Purge les planches cochées qui n'existent plus (suppression concurrente, lot…).
   const pids = new Set(state.planches.map((p) => p.id));
   state.checkedPlanches.forEach((pid) => { if (!pids.has(pid)) state.checkedPlanches.delete(pid); });
+  // ATTENDU, pas espéré : `renderDetail()` est synchrone et `parQui()` y compare le login
+  // courant. L'appel de `setup()` part en parallèle et gagne presque toujours la course —
+  // « presque » n'est pas une garantie, et le perdre afficherait « par <votre nom> » à
+  // vous-même. L'attente ne coûte rien : la promesse de `theme.js` est déjà en vol, et le
+  // mémo rend l'appel gratuit ensuite.
+  await colChargerEtat();
   renderAlbums();
   renderDetail();
   updateSelInfo();
@@ -490,9 +496,24 @@ function lockToggle(p) {
   const on = !!p.verrouillee;
   return `<button class="icon-btn${on ? " locked" : ""}" data-lock="${p.id}" `
     + `data-on="${on ? 0 : 1}" `
-    + `title="${on ? "Verrouillée le " + esc(p.verrouillee) + " — cliquer pour déverrouiller"
+    + `title="${on ? "Verrouillée " + esc(parQui(p)) + "le " + esc(p.verrouillee)
+                     + " — cliquer pour déverrouiller"
                    : "Verrouiller (protéger des traitements en lot)"}">`
     + `${on ? "🔒" : "🔓"}</button>`;
+}
+
+/* AUTH-1 — « verrouillée le … » ne disait pas PAR QUI, alors que `verrou_par` est consigné
+   depuis la v22. C'est pourtant la seule information dont on ait besoin : le verrou est
+   purement informatif, n'importe qui peut le lever, et la question qu'on se pose devant est
+   « à qui demander avant de le faire ».
+
+   « par vous » se décide sur le LOGIN et non sur le nom affiché : deux personnes peuvent
+   porter le même nom, et se voir attribuer le verrou d'un homonyme serait pire que de ne
+   rien savoir. Rien en mono-poste, où l'agent est NULL — un acte anonyme, honnêtement. */
+function parQui(p) {
+  if (!p.verrou_par) return "";
+  if (COL_ETAT.moi && p.verrou_par === COL_ETAT.moi) return "par vous ";
+  return "par " + (p.verrou_par_nom || p.verrou_par) + " ";
 }
 
 async function lockPlanche(pid, on) {
@@ -854,14 +875,15 @@ async function colDetail(d, c) {
 /* Les noms des groupes d'administration, lus UNE fois. Ils viennent de `/api/moi` et non
    d'une constante recopiée ici : `BD_AUTH_ADMIN_GROUPS` est configurable, et deux listes
    qui divergent afficheraient un groupe qui n'administre plus rien. */
-const COL_ETAT = { groupes_admin: null };
+const COL_ETAT = { groupes_admin: null, moi: null };
 
 async function colChargerEtat() {
   if (COL_ETAT.groupes_admin !== null) return;
-  try {
-    const moi = await apiGet("/api/moi");
-    COL_ETAT.groupes_admin = (moi.acces && moi.acces.groupes_admin) || [];
-  } catch (_) { COL_ETAT.groupes_admin = []; }
+  // La promesse partagée de `theme.js` : `/api/moi` n'est demandé qu'UNE fois par page.
+  // Deux appels écrivaient deux fois dans le miroir `utilisateur` pour rien.
+  const moi = window.BDMoi ? await window.BDMoi : null;
+  COL_ETAT.groupes_admin = (moi && moi.acces && moi.acces.groupes_admin) || [];
+  COL_ETAT.moi = (moi && moi.utilisateur) || null;   // login, pour dire « par vous »
 }
 
 async function loadCollections() {
@@ -991,6 +1013,11 @@ function setup() {
   if (window.BDDialog)
     BDDialog.register($("#collections-modal"),
       { box: ".modal-box", labelledby: "collections-title", onClose: closeCollections });
+  // AUTH-1 — amorcé ici, et non à la seule ouverture des collections : `parQui()` a besoin
+  // du login courant pour dire « par vous », et la table des planches se dessine bien avant
+  // que quiconque ouvre ce panneau. Amorcer n'est pas attendre — c'est `openAlbum()` qui
+  // attend, juste avant de dessiner.
+  colChargerEtat();
   loadCorpus();   // stats d'en-tête (bande 2)
   loadAlbums();
   pollJobs();     // reprend l'affichage d'un éventuel job déjà en cours

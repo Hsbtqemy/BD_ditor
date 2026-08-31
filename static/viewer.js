@@ -27,6 +27,23 @@ const INITIAL_QS = location.search;
 const RETOUR = Nav.safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));
 
 /* ---------------- État global ---------------- */
+/* Le login courant, pour distinguer « verrouillée par vous » de « par X » (AUTH-1).
+   Il vient de la promesse partagée par `theme.js` : une seule requête par page, et la
+   comparaison porte sur le LOGIN — deux personnes peuvent partager un nom d'affichage, et
+   attribuer le verrou d'un homonyme serait pire que de ne rien dire. Reste `null` en
+   mono-poste (agent anonyme) et si l'appel échoue, auquel cas l'écran nomme sans
+   distinguer : dégradation lisible, jamais fausse. */
+let VIEWER_MOI = null;
+if (window.BDMoi) {
+  window.BDMoi.then((d) => {
+    VIEWER_MOI = (d && d.utilisateur) || null;
+    // La boîte du verrou a pu se dessiner avant la réponse. On la REJOUE plutôt que de
+    // parier sur l'ordre : elle est réentrante (elle ne lit que `state.planche`), et un
+    // « par <votre nom> » adressé à soi-même n'est pas faux, seulement absurde.
+    if (VIEWER_MOI) renderPlancheLock();
+  });
+}
+
 const state = {
   albums: [],
   albumId: null,
@@ -1785,11 +1802,19 @@ function renderPlancheLock() {
   if (!p) { box.hidden = true; return; }
   box.hidden = false;
   const on = !!p.verrouillee;
+  // AUTH-1 — le verrou est purement informatif (n'importe qui peut le lever) : ce qu'on
+  // veut savoir avant de le faire, c'est À QUI en parler. `verrou_par` était consigné
+  // depuis la v22 sans qu'aucun écran ne le montre.
+  const par = p.verrou_par
+    ? (VIEWER_MOI && p.verrou_par === VIEWER_MOI
+        ? " par vous" : " par " + (p.verrou_par_nom || p.verrou_par))
+    : "";
   box.innerHTML =
     `<button id="lock-toggle" class="lock-btn${on ? " locked" : ""}" ` +
-    `title="${on ? "Verrouillée — protège des passes OCR/segmentation/bulles (en lot ou directes)"
+    `title="${on ? "Verrouillée" + esc(par)
+                   + " — protège des passes OCR/segmentation/bulles (en lot ou directes)"
                  : "Verrouiller la planche : la protéger des traitements automatiques"}">` +
-    `${on ? "🔒 Planche verrouillée" : "🔓 Verrouiller la planche"}</button>`;
+    `${on ? "🔒 Verrouillée" + esc(par) : "🔓 Verrouiller la planche"}</button>`;
   $("#lock-toggle").onclick = toggleLock;
 }
 

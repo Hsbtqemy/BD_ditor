@@ -881,6 +881,30 @@ def dimensions_cm(largeur_px, hauteur_px, dpi_x, dpi_y) -> dict | None:
             "hauteur": round(hauteur_px / dpi_y * 2.54, 1)}
 
 
+def noms_lisibles(conn: sqlite3.Connection, logins) -> dict:
+    """login → nom affichable, depuis le miroir `utilisateur` (v22).
+
+    Le miroir existait depuis AUTH-1 sans qu'aucune surface ne le lise : les écrans
+    montraient des logins là où une personne attend un nom. Il est alimenté à chaque
+    passage par `Remote-Name`, donc il peut ne rien savoir — d'un compte qui n'a jamais
+    ouvert l'application, ou d'un proxy qui ne pose pas l'en-tête. Dans ce cas le login est
+    rendu TEL QUEL, et c'est la bonne réponse : un identifiant imparfait vaut mieux qu'un
+    trou, et c'est ainsi que l'appelant n'a jamais à distinguer les deux cas.
+
+    Aucun secret n'en sort : le miroir ne contient que ce qu'Authelia pose déjà dans ses
+    en-têtes (AUTH-1), et le courriel n'est jamais lu ici.
+    """
+    voulus = {x for x in logins if x}
+    if not voulus:
+        return {}
+    qm = ",".join("?" * len(voulus))
+    connus = {r["login"]: (r["nom"] or "").strip()
+              for r in conn.execute(
+                  f"SELECT login, nom FROM utilisateur WHERE login IN ({qm})",
+                  tuple(voulus))}
+    return {login: (connus.get(login) or login) for login in voulus}
+
+
 def relecture_planches(conn: sqlite3.Connection, planche_ids) -> dict:
     """Statut de RELECTURE grammaticale par planche (ANN-4, v21). DÉRIVÉ des provenances de
     tokens (relus = corrigé|validé) — jamais stocké —, OVERRIDÉ par `planches.relecture` si

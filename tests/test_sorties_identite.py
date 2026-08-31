@@ -171,10 +171,15 @@ SORTIES_DECLAREES = {
         "révèle rien du corpus (AUTH-2). Le courriel, lui, n'en sort PAS : il reste dans "
         "le miroir `utilisateur`, donc dans la seule sauvegarde."),
     ("route", "/api/albums/{album_id}/planches"): (
-        {"login"},
+        {"login", "nom"},
         "`planches.verrou_par` — qui détient le verrou d'une planche. Nécessaire au geste : "
-        "sans lui on ne sait pas à qui demander la libération. AUTH-1 demande même de "
-        "l'AFFICHER, et avec le nom lisible plutôt que le login (case ouverte)."),
+        "sans lui on ne sait pas à qui demander la libération. Le NOM LISIBLE l'accompagne "
+        "depuis le 2026-08-31 (`verrou_par_nom`, miroir `utilisateur`) : un écran qui "
+        "affiche un login demande à la personne de traduire elle-même, et deux logins "
+        "voisins se confondent. Le login RESTE dans la charge utile — il est stable, et lui "
+        "seul permet à l'écran de dire « par vous » plutôt que de comparer des noms "
+        "d'affichage, que deux personnes peuvent partager. Le courriel, lui, ne sort pas : "
+        "`noms_lisibles` ne lit jamais cette colonne."),
     ("route", "/api/regions/{region_id}/tokens"): (
         {"login"},
         "`token_correction.auteur` — qui a corrigé ce mot. C'est le socle de la relecture "

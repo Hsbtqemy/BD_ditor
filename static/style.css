@@ -1338,3 +1338,6 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .col-referent input { margin-right: .4rem; }
 .col-note-admin { border-left: 2px solid var(--accent-green); padding-left: .5rem; }
 .portee-vide-referent { margin-top: .4rem; }
+/* La ligne de diagnostic des groupes (AUTH-1) : elle DISTINGUE trois pannes que le
+   même écran vide confondait, donc elle se lit avant le référent. */
+.portee-vide-groupes { margin-top: .4rem; }
