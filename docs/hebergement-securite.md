@@ -45,7 +45,36 @@ Toutes amplifiées par l'absence d'authentification.
 | 🔴 Élevé | **Exfiltration totale non authentifiée** | `main.py:647`, `main.py:1103` | `GET /api/sauvegarde` → snapshot **complet** de la base en un GET. `/derivatives/...` (StaticFiles) → toutes les images, énumérables. Tout le corpus (données + images) téléchargeable par n'importe qui. |
 | ✅ **Corrigé** (partiel) | **OOM upload + bombe de décompression** | `config.py` (`MAX_IMAGE_PIXELS`), `ingest.py`, `ocr.py` | **Corrigé** : garde Pillow réactivée (`MAX_IMAGE_PIXELS` borné, défaut 200 Mpx, `BD_MAX_IMAGE_PIXELS`) → plus d'OOM sur image-bombe ; limite de taille d'upload posée côté **proxy Caddy** (`request_body 200MB`). Restant (mineur) : `file.file.read()` en RAM + image ouverte deux fois. |
 | ✅ **Corrigé** | **Pic RAM de la sauvegarde** | `pipeline/backup.py` | **Corrigé** : `make_backup` zippe désormais directement depuis le fichier snapshot (plus de `read_bytes()` complet en RAM) → pic ÷ ~2. |
+| ✅ **Corrigé** | **Aucune Content-Security-Policy** | `main.py` (`_csp`) | Était : aucun en-tête, donc rien pour amortir un XSS qui passerait l'échappement, ni contre le clickjacking. **Corrigé (SEC-2)** : `script-src 'self'` sans `'unsafe-inline'` — les quatre surfaces n'ont aucun script inline, la politique ne coûte donc rien —, plus `object-src`/`base-uri`/`frame-ancestors` fermés. `/docs` et `/redoc` reçoivent une politique DISTINCTE (CDN autorisé, principes gardés) plutôt qu'une exemption. |
 | 🟡 Faible | **Fuite d'info par messages d'erreur** | divers `HTTPException(…, str(exc))` | Chemins disque, erreurs SQL, URLs internes renvoyés au client. |
+
+### La CSP est de la défense en profondeur, pas un colmatage (SEC-2, 2026-08-31)
+
+L'audit passe 1 relevait deux `innerHTML` interpolant des labels de tags sans échapper, et
+recommandait DEUX correctifs : « échapper systématiquement, ajouter une CSP ». Le premier
+a été fait depuis — il ne reste aucune interpolation de donnée utilisateur hors `esc()`,
+`textContent` ou `confirm()`. La CSP est le second, et sa valeur est d'être utile le jour
+où l'échappement manquera quelque part : `script-src 'self'` bloque aussi bien un
+`<script>` injecté qu'un attribut `onerror=`, qui est la forme qu'aurait prise ce défaut.
+
+Trois faits qui expliquent pourquoi elle a coûté si peu :
+- **Rien à réécrire.** Zéro `<script>` inline, zéro `<style>`, zéro `onclick=`, zéro
+  `eval`, aucune ressource externe dans les quatre gabarits. La sévérité était déjà là,
+  personne ne l'avait déclarée.
+- **Une seule tolérance, et bornée.** Dix attributs `style="width:…%"` portent des valeurs
+  CALCULÉES (barres, heatmap, jauges d'accord) qui ne peuvent pas rejoindre la feuille de
+  style. `style-src-elem 'self'` reprend d'une main ce que `style-src 'unsafe-inline'`
+  donne de l'autre : aucun `<style>` n'existe, donc le canal élément est strict
+  gratuitement, et seul l'attribut reste ouvert.
+- **La politique est EXÉCUTÉE par un test**, pas seulement servie (`tests/test_csp.py`) :
+  un vrai Chromium charge les six surfaces et écoute `securitypolicyviolation`. C'est ce
+  test qui a trouvé les deux choses qu'aucune lecture de source ne pouvait voir — le
+  `<link rel="icon" href="data:,">` des gabarits, et le logo que ReDoc va chercher sur
+  `cdn.redoc.ly` depuis l'intérieur de son bundle. Ce dernier reste BLOQUÉ et déclaré :
+  on n'ouvre pas un hôte tiers pour une image décorative.
+
+Reste ouvert dans SEC-2 : le CSRF, qui n'a pas de sens tant qu'il n'y a pas de session à
+voler — il dépend d'INFRA-1.
 
 ### Points confirmés SAINS (ne pas sur-corriger)
 - **Pas d'injection SQL** : recherche FTS5 avec tokens échappés + `MATCH` paramétré

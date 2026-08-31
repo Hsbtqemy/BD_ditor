@@ -87,6 +87,91 @@ async def _capter_agent(request: Request) -> None:
 app.router.dependencies.append(Depends(_capter_agent))
 
 
+# --------------------------------------------------------------------------- #
+# Content-Security-Policy (SEC-2)
+# --------------------------------------------------------------------------- #
+# DEUX politiques, et c'est une décision : une garde se pose sur la SURFACE qu'elle
+# protège, pas sur le serveur entier. Les quatre pages de l'application n'ont aucun script
+# inline, aucun `<style>`, aucun `onclick=`, aucune ressource externe — elles peuvent donc
+# porter une politique stricte SANS qu'on touche une ligne d'application. `/docs` et
+# `/redoc` sont engendrés par FastAPI depuis un CDN : leur imposer la même politique ne les
+# sécuriserait pas, ça les casserait. Leur donner la leur, ÉCRITE, vaut mieux que les
+# exempter — un chemin sans politique est un chemin qu'il faut se rappeler d'avoir exempté.
+#
+# `style-src` garde `'unsafe-inline'` pour une raison unique et bornée : dix attributs
+# `style="width:…%"` portent des valeurs CALCULÉES (barres, heatmap, jauges d'accord) qui
+# ne peuvent pas rejoindre la feuille de style. `style-src-elem` reprend d'une main ce que
+# `style-src` donne de l'autre : aucun `<style>` n'existe, donc le canal ÉLÉMENT devient
+# strict gratuitement, et seul l'attribut reste ouvert. Un navigateur qui ignore `-elem`
+# retombe sur `style-src` : plus permissif, jamais cassé.
+#
+# `data:` est indispensable dans `img-src` — les gabarits posent `<link rel="icon"
+# href="data:,">` pour éviter un 404 sur /favicon.ico.
+_CSP_APP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "style-src-elem 'self'; "
+    "img-src 'self' data:; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'none'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+
+# Relevé sur les pages ENGENDRÉES, pas supposé (2026-08-31) : Swagger charge son bundle et
+# sa CSS depuis jsdelivr plus un `<script>` inline d'amorçage ; ReDoc charge son bundle,
+# un `<style>` inline et Google Fonts ; les deux prennent leur favicon sur
+# fastapi.tiangolo.com. Ce qui NE bouge pas d'une politique à l'autre est ce qui compte :
+# `object-src`, `base-uri` et `frame-ancestors` restent fermés — on relâche ce qu'il faut
+# pour que la page vive, pas le principe.
+_CSP_DOCS = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+    "img-src 'self' data: https://fastapi.tiangolo.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    # MESURÉ, pas supposé : sans lui, `worker-src bloque blob:` depuis
+    # redoc.standalone.js:8 — ReDoc rend son schéma dans un worker construit à partir d'un
+    # blob. Il a d'abord été posé par intuition ; le retirer pour voir est ce qui l'a
+    # justifié. Une directive qu'on ne sait pas justifier n'a rien à faire dans une
+    # politique de sécurité, fût-elle inoffensive.
+    "worker-src 'self' blob:; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'none'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+
+# DÉRIVÉ de l'application, jamais recopié : ces quatre chemins sont configurables au
+# constructeur de FastAPI. Une liste en dur ne casserait rien le jour où l'un change —
+# `/docs` recevrait simplement la politique stricte et cesserait de s'afficher, sans que
+# personne relie la panne à cette ligne. C'est le défaut qu'AUTH-4 avait corrigé ailleurs
+# en lisant les groupes d'administration depuis `/api/moi` plutôt qu'une constante jumelle.
+_CHEMINS_DOCS = frozenset(
+    c for c in (app.docs_url, app.redoc_url, app.openapi_url,
+                app.swagger_ui_oauth2_redirect_url) if c)
+
+
+@app.middleware("http")
+async def _csp(request, call_next):
+    """Pose la CSP sur TOUTE réponse, pas seulement sur les pages HTML.
+
+    Un en-tête posé partout ne coûte rien sur du JSON et ferme la question de savoir
+    quelles réponses sont « des documents » : une route qui renverrait un jour du HTML
+    hériterait de la politique par DÉFAUT, au lieu d'en être exemptée par oubli. C'est le
+    même raisonnement que l'export qui NOMME ses colonnes (AUTH-1) : ce qu'on ajoute doit
+    être couvert par décision, jamais par défaut.
+    """
+    response = await call_next(request)
+    docs = request.url.path in _CHEMINS_DOCS
+    response.headers["Content-Security-Policy"] = _CSP_DOCS if docs else _CSP_APP
+    return response
+
+
 @app.middleware("http")
 async def _no_cache_assets(request, call_next):
     """Force la revalidation des assets (CSS/JS) et des pages HTML. Sans ça, le

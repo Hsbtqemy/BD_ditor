@@ -38,8 +38,16 @@ _RUN = """async () => {
 
 
 def _audit(page):
-    """Injecte axe (idempotent) et renvoie les violations sérieuses/critiques."""
-    page.add_script_tag(content=_AXE_SRC)
+    """Injecte axe (idempotent) et renvoie les violations sérieuses/critiques.
+
+    `evaluate` et NON `add_script_tag` depuis SEC-2 : `add_script_tag` fabrique un
+    `<script>` inline dans la page, que la CSP (`script-src 'self'`) bloque net — l'audit
+    serait mort le jour où la politique est posée, et pour la bonne raison. `evaluate`
+    passe par le protocole de débogage, hors du modèle de sécurité de la page : c'est
+    exactement ce qu'on veut d'un instrument de mesure, qu'il n'ait pas besoin qu'on
+    desserre ce qu'il vient vérifier.
+    """
+    page.evaluate(_AXE_SRC)
     return page.evaluate(_RUN)
 
 
