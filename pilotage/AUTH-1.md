@@ -43,7 +43,9 @@ Aucun commit de code : le chantier reste `interrompu` là où il l'était.
 > unique pouvait être celle de n'importe qui — mais elle est maintenant offerte dans
 > l'écran, donc probable. Ces emails peuvent atterrir dans un espace individuel que
 > l'institution ne contrôle pas.
-- [ ] **La seconde voie de sortie est traitée**, découverte en relisant le 2026-08-28 : `tools/provenance_export.py` émet les LOGINS des annotateurs — `bd:agent/<login>` en PROV-JSON, `who="#<login>"` et « par <login> » en TEI. Ce n'est pas l'email ni le nom lisible (qui restent dans le miroir `utilisateur`, donc dans la seule sauvegarde), mais un login identifie une personne. Deux circonstances jouent en sens contraire : c'est un outil de LIGNE DE COMMANDE, sans route HTTP, donc il suppose un accès shell — mais il est fait pour être DÉPOSÉ, la sérialisation PROV-O étant tout l'objet de la piste A. Autrement dit, ces logins ont vocation à partir dans un dépôt public
+- [ ] **La deuxième voie de sortie est traitée**, découverte en relisant le 2026-08-28 : `tools/provenance_export.py` émet les LOGINS des annotateurs — `bd:agent/<login>` en PROV-JSON, `who="#<login>"` et « par <login> » en TEI. Ce n'est pas l'email ni le nom lisible (qui restent dans le miroir `utilisateur`, donc dans la seule sauvegarde), mais un login identifie une personne. Deux circonstances jouent en sens contraire : c'est un outil de LIGNE DE COMMANDE, sans route HTTP, donc il suppose un accès shell — mais il est fait pour être DÉPOSÉ, la sérialisation PROV-O étant tout l'objet de la piste A. Autrement dit, ces logins ont vocation à partir dans un dépôt public
+- [ ] **Les voies de sortie sont ÉNUMÉRÉES, et non listées de mémoire** — l'inventaire refait le 2026-08-31 en cherchant qui LIT `evenement`, `activite` et `utilisateur` en trouve six, dont trois que les deux relectures précédentes avaient manquées : `tools/metadonnees_collection.py` exporte `agent` comme COLONNE NOMMÉE dans `evenement.csv` et `activite.csv`, avec les blobs `avant`/`apres` ; `tools/description_collection.py` embarque le bloc accord-inter, soit `auteurs` (des logins) et `paires` (deux logins chacune) ; et surtout `GET /api/analyse/accord-inter` (`main.py:3635` → `accord_inter.py:50`) rend la même chose par une ROUTE HTTP. Cette dernière change la nature du problème : les cinq autres supposent un accès shell ou le droit d'administrer, celle-ci est atteignable par toute personne simplement admise sur une collection
+- [ ] **Le sort de `GET /api/analyse/accord-inter` est tranché** — la route est CONFORME à son objet : mesurer l'accord inter-annotateurs suppose de nommer les annotateurs, et la masquer viderait le rapport (cf. `docs/accord-inter.md`). Ce n'est donc pas un défaut à corriger mais une exposition à ASSUMER par écrit, au même titre que la sauvegarde. Reste à décider si elle se réserve comme la sauvegarde, ou si elle reste ouverte à qui lit la collection
 
 ## Contexte
 
@@ -67,19 +69,30 @@ minime et l'équipe petite ; ce n'est pas un blocage. C'est une lacune de doctri
 combler pendant qu'elle est petite plutôt qu'après. Recoupe DEPOT-1, qui porte l'autre
 moitié de la question juridique.
 
-Vérifié le 2026-08-27 : les exports (records, CSV, IIIF, crosswalk) n'énumèrent pas les
-tables et ne laissent fuir aucun email. La conclusion qui suivait — « la seule voie de
-sortie est la sauvegarde » — était INCOMPLÈTE, et la relecture du 2026-08-28 l'a corrigée
-plutôt que de la laisser en place : l'inventaire d'origine avait omis
-`tools/provenance_export.py`, qui sérialise le JOURNAL et porte donc les logins des
-agents. La correction ne renverse pas le constat sur les emails et les noms lisibles — ils
-ne sortent bien que par la sauvegarde — elle ajoute une catégorie qu'on n'avait pas
-regardée : l'identifiant, qui désigne une personne sans la nommer.
+Vérifié le 2026-08-27, puis corrigé DEUX fois — et il vaut la peine de garder les trois
+états, parce que c'est la même erreur qui se répète.
 
-La leçon vaut au-delà de cette fiche : un inventaire de voies de sortie se fait en
-énumérant ce qui SORT, pas ce dont on se souvient. Les exports d'analyse avaient été
-passés en revue ; l'export de provenance, ajouté par A3 pour d'excellentes raisons, ne
-figurait dans aucune liste de ce qui quitte l'instance.
+1. **2026-08-27** — « les exports (records, CSV, IIIF, crosswalk) n'énumèrent pas les
+   tables et ne laissent fuir aucun email ; la seule voie de sortie est la sauvegarde ».
+2. **2026-08-28** — incomplet : `tools/provenance_export.py` sérialise le JOURNAL et porte
+   les logins des agents. Le constat sur les emails et les noms lisibles tient (ils ne
+   sortent que par la sauvegarde) ; s'ajoute une catégorie qu'on n'avait pas regardée,
+   l'identifiant, qui désigne une personne sans la nommer.
+3. **2026-08-31** — incomplet encore, et la deuxième correction avait été faite de mémoire
+   comme la première. En énumérant cette fois ce qui LIT `evenement` / `activite` /
+   `utilisateur`, on trouve **six** voies : la sauvegarde (entière, réservée aux
+   administrateurs depuis DROIT-1), son dépôt ShareDocs (même réserve),
+   `provenance_export.py`, `metadonnees_collection.py` (`evenement.csv` et `activite.csv`,
+   colonne `agent` NOMMÉE, plus les blobs `avant`/`apres`), `description_collection.py`
+   (bloc accord-inter : `auteurs`, `paires`), et `GET /api/analyse/accord-inter`. La
+   dernière est une ROUTE HTTP : elle ne suppose ni shell ni droit d'administrer.
+
+La leçon vaut au-delà de cette fiche, et elle a fallu trois fois pour être écrite
+proprement : un inventaire de voies de sortie se fait en ÉNUMÉRANT ce qui lit les tables
+d'identité, pas ce dont on se souvient. Les deux premières passes ont fouillé les exports
+qu'on avait en tête — et à chaque fois, ce qui manquait avait été ajouté pour d'excellentes
+raisons (A3 pour la provenance, ANN-5 pour l'accord inter-annotateurs) par un chantier qui
+ne se pensait pas comme une voie de sortie.
 
 Conséquence de sûreté, traitée : ces en-têtes ne sont dignes de confiance **que** derrière
 le proxy. C'était vrai depuis INFRA-2 sans être garanti — la docstring affirmait « l'app
