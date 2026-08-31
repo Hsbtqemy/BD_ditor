@@ -1119,6 +1119,13 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 }
 .job-termine { border-left-color: var(--accent-green); }
 .job-annule  { border-left-color: var(--accent-amber); opacity: .8; }
+/* Un lot MORT ne se distingue pas d'un lot fini par son seul remplissage : la barre est
+   restée à 0 %, et 0 % ressemble à un début. La bordure ET le remplissage passent au
+   rouge, et le libellé dit « échec » — l'information ne repose donc pas sur la couleur
+   seule (WCAG 1.4.1). L'accent plein convient : ce sont des surfaces, pas du texte.
+   Pas d'`opacity` ici, à la différence d'`annule` : une panne ne s'estompe pas. */
+.job-echec   { border-left-color: var(--accent-red); }
+.job-echec .job-fill { background: var(--accent-red); }
 .job-line { display: flex; align-items: center; gap: 10px; }
 .job-state { margin-left: auto; color: var(--text-muted); font-size: 12px; }
 .job-err { color: var(--ink-red); }

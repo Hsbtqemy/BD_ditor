@@ -7,10 +7,16 @@ worker thread (application locale mono-utilisateur ; rien n'est persisté).
 Le worker ouvre SA propre connexion SQLite (WAL + busy_timeout gèrent les
 écritures concurrentes avec les requêtes du serveur) et committe planche par
 planche ; une erreur sur une passe est collectée et n'interrompt pas le lot.
+
+Deux échecs de natures différentes, donc : une PASSE qui rate est collectée et le lot
+continue (`termine`, avec des erreurs) ; le LOT qui meurt — les deux lectures SQLite hors
+du `try` par passe — s'arrête et le dit (`echec`). Sans cette seconde branche le lot mort
+s'annonçait « terminé », ce qu'aucun écran ne pouvait démentir.
 """
 from __future__ import annotations
 
 import threading
+import traceback
 
 from database import get_connection
 
@@ -62,6 +68,7 @@ def _apply_pass(conn, passe: str, planche_id: int) -> None:
 def _run(job_id: int) -> None:
     job = _jobs[job_id]
     conn = None
+    echec = None
     with _run_lock:                       # jobs traités en file (un à la fois)
         try:
             conn = get_connection()
@@ -84,6 +91,22 @@ def _run(job_id: int) -> None:
                         job["errors"].append(
                             {"planche_id": pid, "passe": passe, "erreur": str(exc)})
                 job["done"] += 1
+        except Exception as exc:
+            # Le lot MEURT ici, et c'est le seul endroit qui puisse le dire. Deux lignes
+            # échappent au `try` par passe : l'ouverture de la connexion et la relecture du
+            # verrou — deux lectures SQLite, donc deux « database is locked » possibles,
+            # exactement ce que le WAL et le 409 d'`OperationalError` existent pour gérer
+            # ailleurs. Sans cette branche, le `finally` posait « terminé » sur un lot mort
+            # à la première planche : 0/3, aucune erreur, une réussite AFFIRMÉE. Un statut
+            # bloqué se remarque ; un succès faux ne se remarque jamais.
+            echec = exc
+            job["errors"].append({"planche_id": job["current"], "passe": None,
+                                  "erreur": str(exc)})
+            # La trace part sur stderr ICI plutôt qu'en relevant l'exception : « database
+            # is locked » ne dit pas OÙ, et l'écran n'affiche que ce message. Relever
+            # laisserait mourir un thread daemon sur une exception non traitée — même
+            # sortie, plus du bruit dans la suite.
+            traceback.print_exc()
         finally:                          # statut TOUJOURS positionné (même si get_connection lève)
             if conn is not None:
                 conn.close()
@@ -91,7 +114,9 @@ def _run(job_id: int) -> None:
             with ML_LOCK:                 # CONC-2 : libère HORS inférence (pas de course avec une route ML)
                 liberer_modeles_ml()      # rendre la RAM après le lot (modèles déchargés)
             job["current"] = None
-            job["status"] = "annule" if job["cancel"] else "termine"
+            # L'ANNULATION prime : demandée avant la panne, c'est elle qui explique l'arrêt.
+            job["status"] = ("annule" if job["cancel"]
+                             else "echec" if echec is not None else "termine")
 
 
 def snapshot(job_id: int):

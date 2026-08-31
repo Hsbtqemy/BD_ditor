@@ -596,7 +596,8 @@ function renderJobs(list) {
   if (!recents.length) { box.innerHTML = ""; return; }
   box.innerHTML = recents.map((j) => {
     const pct = j.total ? Math.round(100 * j.done / j.total) : 0;
-    const label = { en_cours: "en cours", termine: "terminé", annule: "annulé" }[j.status] || j.status;
+    const label = { en_cours: "en cours", termine: "terminé", annule: "annulé",
+                    echec: "échec" }[j.status] || j.status;
     const err = j.errors.length ? ` · <span class="job-err">${j.errors.length} erreur(s)</span>` : "";
     return `<div class="job job-${j.status}">
       <div class="job-line">

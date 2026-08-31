@@ -633,3 +633,35 @@ def test_upgrade_pre_v16_ne_casse_pas_sur_index_activite(tmp_path, monkeypatch):
         assert check.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
     finally:
         check.close()
+
+
+def test_lot_mort_ne_se_declare_pas_termine(monkeypatch):
+    """Un lot tué hors du `try` par passe s'annonçait « terminé », 0/0, sans erreur.
+
+    Deux lectures SQLite échappent à ce `try` — l'ouverture de la connexion et la
+    relecture du verrou — donc deux « database is locked » possibles, exactement ce que
+    le WAL et le 409 d'`OperationalError` gèrent partout ailleurs. Le `finally` posait
+    alors un succès AFFIRMÉ sur un lot qui n'avait rien fait. Un statut bloqué se
+    remarque ; un succès faux ne se remarque jamais.
+
+    Mesuré le 2026-08-31 : `statut=termine done=0/3 erreurs=[]`.
+    """
+    import sqlite3
+    import time
+    from pipeline import jobs
+
+    def verrou_casse(conn, planche_id):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(jobs, "_est_verrouillee", verrou_casse)
+    jid = jobs.start_job(["segmenter"], [1, 2, 3])["id"]
+    for _ in range(100):
+        time.sleep(0.05)
+        snap = jobs.snapshot(jid)
+        if snap["status"] != "en_cours":
+            break
+
+    assert snap["status"] == "echec", snap          # et surtout PAS « termine »
+    assert snap["done"] == 0                        # rien n'a été traité, le compte le dit
+    assert len(snap["errors"]) == 1                 # la panne est NOMMÉE, pas seulement comptée
+    assert "locked" in snap["errors"][0]["erreur"]
