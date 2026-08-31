@@ -1,0 +1,475 @@
+"""AUTH-5 — le cliquet des voies de sortie : ce qui laisse partir une identité l'a déclaré.
+
+Le patron est celui de `test_autorisation.py` : énumérer les surfaces, exiger que chacune
+ait été TRANCHÉE, échouer sur celle qui ne figure nulle part. Il ferme la porte de l'OUBLI,
+pas celle de l'erreur — il dit qu'une sortie a été VUE, jamais qu'elle est légitime.
+
+Il existe parce que l'énumération à la main a échoué QUATRE fois de suite sur AUTH-1 (27,
+28 et 31 août, deux fois ce jour-là), la dernière malgré une recherche méthodique de ce qui
+lit `evenement` / `activite` / `utilisateur`. Ce qui a fini par trouver le chemin manquant
+— l'onglet XLSX de `metadonnees_collection.py` — n'est aucune des quatre relectures : c'est
+un `KeyError`. D'où un cliquet plutôt qu'une cinquième liste.
+
+TROIS sortes d'identité, et pas une seule : AUTH-1 les distingue déjà — « ce n'est pas
+l'email ni le nom lisible, mais un login identifie une personne ». La déclaration dit donc
+QUELLE sorte chaque surface peut émettre, ce qu'une sentinelle unique ne saurait exprimer.
+"""
+import io
+import json
+import os
+import re
+import sqlite3
+import subprocess
+import sys
+import zipfile
+from pathlib import Path
+
+import pytest
+from fastapi.routing import APIRoute
+
+import main
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+TOOLS = REPO_ROOT / "tools"
+
+# Introuvables par accident : aucune n'est sous-chaîne d'un mot français, d'un chemin, d'un
+# nom de colonne, ni l'une de l'autre. Un faux positif rend un cliquet insupportable, et un
+# cliquet insupportable finit désactivé.
+SENTINELLES = {
+    "login": "zzlogin7",
+    "nom": "Zznom7",
+    "courriel": "zzmel7@zzdom7.invalid",
+}
+
+# Un SECOND annotateur, non surveillé : certaines surfaces ne nomment que par CONTRASTE.
+# L'accord inter-annotateurs ne compte que les re-touches d'un auteur sur le travail d'un
+# AUTRE ; avec un seul agent, il ne nomme personne et paraît muet.
+AUTRE_AGENT = "zzautre7"
+
+
+# --------------------------------------------------------------------------- #
+# Lecture d'une sortie, quel que soit son emballage
+# --------------------------------------------------------------------------- #
+def _texte(blob: bytes) -> str:
+    """Rend le contenu FOUILLABLE d'une sortie, en dépliant les archives.
+
+    Un XLSX est un zip (les chaînes vivent dans `sharedStrings.xml`) et la sauvegarde est
+    un zip contenant un fichier SQLite (dont les pages portent le texte en clair). Les lire
+    en octets ne prouve RIEN : c'est la faute qu'une mutation a révélée le 2026-08-31 sur le
+    test du dépôt, où un classeur passait pour muet parce qu'il était compressé.
+    """
+    if blob[:2] == b"PK":
+        try:
+            with zipfile.ZipFile(io.BytesIO(blob)) as z:
+                return "\n".join(z.read(n).decode("latin-1") for n in z.namelist())
+        except zipfile.BadZipFile:                       # zip tronqué : on lit tel quel
+            pass
+    return blob.decode("latin-1")
+
+
+def _sortes(blob: bytes) -> frozenset:
+    """Les sortes d'identité présentes dans une sortie.
+
+    Recherche INSENSIBLE À LA CASSE : une surface qui minusculerait un nom lisible — ce
+    que fait couramment une normalisation, une clé de tri, un slug — y échapperait sinon,
+    et le cliquet la déclarerait muette sans que rien ne le dise.
+    """
+    t = _texte(blob).lower()
+    return frozenset(sorte for sorte, s in SENTINELLES.items() if s.lower() in t)
+
+
+# --------------------------------------------------------------------------- #
+# Le décor : chaque sentinelle dans CHAQUE colonne qui la porte
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
+    """Un corpus minimal où l'identité sentinelle est partout où le modèle la range.
+
+    Une colonne oubliée ici rend muette toute surface qui ne lit QUE cette colonne, et le
+    vert du cliquet devient un mensonge. C'est le mode d'échec du cliquet lui-même — d'où
+    `test_le_semis_est_visible`, qui exige que chaque sentinelle soit vue passer quelque
+    part.
+    """
+    ident = {"Remote-User": SENTINELLES["login"],
+             "Remote-Name": SENTINELLES["nom"],
+             "Remote-Email": SENTINELLES["courriel"],
+             "Remote-Groups": "bd-admins"}
+    # Par l'API tant que c'est possible : le journal A3 enregistre alors l'agent lui-même,
+    # ce qu'un INSERT direct ne prouverait pas.
+    client.get("/api/moi", headers=ident)                       # → miroir `utilisateur`
+    a = client.post("/api/albums", json={"titre": "Cliquet"}, headers=ident).json()
+    pl = client.post(f"/api/albums/{a['id']}/import", headers=ident,
+                     files={"file": ("p.png", png_bytes, "image/png")}).json()
+    r = client.post(f"/api/planches/{pl['id']}/regions", headers=ident,
+                    json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()
+    client.put(f"/api/regions/{r['id']}", json={"ocr_texte": "OTAGE"}, headers=ident)
+    client.put(f"/api/regions/{r['id']}/annotation",
+               json={"note": "n", "tags": ["t"]}, headers=ident)
+    perso = client.post("/api/personnages", json={"nom": "P"}, headers=ident).json()
+    dim = client.post("/api/attributs/dimensions",
+                      json={"cible": "case", "nom": "cadrage"}, headers=ident).json()
+    col = client.get("/api/collections", headers=ident).json()[0]
+
+    # Ce que l'API ne produit pas d'elle-même hors multi-utilisateur.
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("UPDATE planches SET verrou_par = ? WHERE id = ?",
+                     (SENTINELLES["login"], pl["id"]))
+        # Le LEMME est indispensable au semis, pas décoratif : `/api/analyse/concordance`
+        # exige un critère, et sans lemme elle ne trouve rien — elle passerait donc pour
+        # muette alors qu'elle sait filtrer PAR AUTEUR, donc parler d'annotateurs.
+        conn.execute("INSERT INTO token_correction "
+                     "(region_id, ordre, forme, lemme, pos, auteur) "
+                     "VALUES (?, 0, 'OTAGE', 'otage', 'NOUN', ?)",
+                     (r["id"], SENTINELLES["login"]))
+        act = conn.execute(
+            "INSERT INTO activite (type, agent, agent_type) VALUES ('session', ?, 'humain')",
+            (SENTINELLES["login"],)).lastrowid
+        # Une CHAÎNE de révisions à deux auteurs. Sans le second, `accord-inter` ne
+        # nomme personne — il ne compte que les re-touches INTER-auteurs — et le cliquet
+        # prendrait pour muette la route qu'AUTH-1 vient tout juste de réserver. Le mode
+        # d'échec d'un cliquet est son semis, jamais son balayage.
+        for agent, pos, avant in ((AUTRE_AGENT, "NOUN", None),
+                                  (SENTINELLES["login"], "VERB", "NOUN")):
+            conn.execute(
+                "INSERT INTO evenement (activite_id, type, agent, agent_type, cible_table, "
+                "cible_id, avant, apres) VALUES (?, 'modification', ?, 'humain', "
+                "'token_correction', 1, ?, ?)",
+                (act, agent,
+                 json.dumps({"lemme": "o", "pos": avant, "morph": ""}) if avant else None,
+                 json.dumps({"lemme": "o", "pos": pos, "morph": ""})))
+        conn.commit()
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")       # les tools lisent à part
+    finally:
+        conn.close()
+
+    return {"ident": ident, "db": db_path, "data": data_dir,
+            "album_id": a["id"], "planche_id": pl["id"], "region_id": r["id"],
+            "collection_id": col["id"], "personnage_id": perso["id"],
+            "dim_id": dim["id"],
+            # `chemin_web` vaut « derivatives/xxx.jpg » ; la route monte déjà sur
+            # /derivatives, on ne garde donc que la partie qui suit.
+            "chemin": (pl.get("chemin_web") or "").split("derivatives/")[-1]}
+
+
+# --------------------------------------------------------------------------- #
+# Ce que chaque surface a le DROIT de laisser sortir, et pourquoi
+# --------------------------------------------------------------------------- #
+# Une entrée = une surface → (sortes émises, raison écrite). Le cliquet échoue sur une
+# surface qui émet une sorte non déclarée, ET sur une déclaration qui annonce une sorte
+# que la surface n'émet plus : une liste périmée est pire qu'absente, elle rassure.
+#
+# La liste a été bâtie par BALAYAGE le 2026-08-31, pas de mémoire — c'est tout l'objet du
+# chantier. Elle décrit l'existant, y compris ce qu'on juge mauvais : le cliquet est un
+# instrument d'inventaire, pas un arbitrage de masse. Chaque « à traiter » ci-dessous
+# mérite sa décision, comme celle du 31 août sur l'accord inter-annotateurs.
+SORTIES_DECLAREES = {
+    # ---- Routes ----------------------------------------------------------- #
+    ("route", "/api/moi"): (
+        {"login", "nom"},
+        "L'identité de l'APPELANT, la sienne — c'est l'objet même de la route, et elle ne "
+        "révèle rien du corpus (AUTH-2). Le courriel, lui, n'en sort PAS : il reste dans "
+        "le miroir `utilisateur`, donc dans la seule sauvegarde."),
+    ("route", "/api/albums/{album_id}/planches"): (
+        {"login"},
+        "`planches.verrou_par` — qui détient le verrou d'une planche. Nécessaire au geste : "
+        "sans lui on ne sait pas à qui demander la libération. AUTH-1 demande même de "
+        "l'AFFICHER, et avec le nom lisible plutôt que le login (case ouverte)."),
+    ("route", "/api/regions/{region_id}/tokens"): (
+        {"login"},
+        "`token_correction.auteur` — qui a corrigé ce mot. C'est le socle de la relecture "
+        "(ANN-4) et de l'accord modèle↔humain : une correction sans auteur ne se relit pas."),
+    ("route", "/api/analyse/accord-inter"): (
+        {"login"},
+        "La mesure ne peut pas ne pas nommer — un accord inter-annotateurs sans "
+        "annotateurs n'est pas un rapport affaibli, c'en est plus un du tout. TRANCHÉ le "
+        "2026-08-31 : réservée à qui ÉCRIT, de sorte que ceux qui voient la mesure soient "
+        "ceux qu'elle mesure. Cf. docs/accord-inter.md."),
+    ("route", "/api/export/json"): (
+        {"login"},
+        "Les indicateurs de provenance (A3) portent l'agent. L'export JSON est destiné au "
+        "DÉPÔT — À TRAITER, cf. AUTH-1 : c'est la même question que celle tranchée pour la "
+        "fiche de dépôt le 2026-08-31, et elle n'a pas encore été posée ici."),
+    ("route", "/api/sauvegarde"): (
+        {"login", "nom", "courriel"},
+        "La base ENTIÈRE, par construction — c'est ce qu'on attend d'une sauvegarde, et "
+        "une sauvegarde partielle ne restaure pas une instance. Réservée aux "
+        "administrateurs depuis DROIT-1 ; le zip est déplié par le balayage, sans quoi la "
+        "compression la ferait passer pour muette."),
+
+    # ---- Outils ----------------------------------------------------------- #
+    ("outil", "provenance_export.py --out-dir"): (
+        {"login"},
+        "`bd:agent/<login>` en PROV-JSON, `who=\"#<login>\"` en TEI : c'est l'objet même de "
+        "l'outil. Il suppose un accès shell, mais il est FAIT pour être déposé — la "
+        "sérialisation PROV-O est tout l'objet de la piste A. À TRAITER, cf. AUTH-1."),
+    ("outil", "rapport_accord_inter.py --json"): (
+        {"login"},
+        "L'instrument d'arbitrage de l'équipe : il nomme délibérément, et sans les noms on "
+        "ne peut pas réunir deux personnes pour trancher un désaccord. Il suppose un accès "
+        "shell et ne quitte pas la machine. TRANCHÉ le 2026-08-31."),
+    ("outil", "metadonnees_collection.py --json"): (
+        {"login"},
+        "L'outil déverse le journal A3 ENTIER, colonne `agent` comprise. À TRAITER — c'est "
+        "la plus large des voies de sortie restantes d'AUTH-1, et la seule qui n'ait "
+        "encore reçu aucun arbitrage."),
+    ("outil", "metadonnees_collection.py --csv-dir"): (
+        {"login"},
+        "Même déversement, en `evenement.csv` et `activite.csv` où `agent` est une COLONNE "
+        "NOMMÉE. À TRAITER, cf. AUTH-1."),
+    ("outil", "metadonnees_collection.py --xlsx"): (
+        {"login"},
+        "Le troisième chemin du même outil — celui qui a échappé à quatre inventaires "
+        "successifs, et dont la découverte a ouvert ce chantier. À TRAITER, cf. AUTH-1."),
+}
+
+# Surfaces qu'on ne sait pas encore atteindre, avec la raison — un trou ÉCRIT reste un
+# trou, mais il ne se prend plus pour une couverture.
+NON_BALAYE = {
+    # ---- Limites du balayage lui-même, écrites plutôt que devinées ---------- #
+    ("famille", "routes non-GET"): (
+        "Le balayage n'appelle que des GET : une écriture demanderait une charge utile par "
+        "route, donc une table aussi grande que l'application. La sortie connue de cette "
+        "famille est `POST /api/figures`, qui rend un zip légendé (DROIT-1, « citer n'est "
+        "pas publier ») ; sa légende est bâtie sur la PATERNITÉ de l'œuvre — contributions, "
+        "édition, licence — et non sur les annotateurs. Mais « il n'y a pas de login "
+        "là-dedans » est exactement ce que quatre inventaires ont affirmé avant d'avoir "
+        "tort : ceci est un TROU, pas une garantie."),
+    ("famille", "portée du balayeur"): (
+        "La sentinelle est ADMINISTRATRICE (`Remote-Groups: bd-admins`), donc le balayage "
+        "voit l'exposition MAXIMALE. C'est le bon choix pour chercher une fuite — un "
+        "compte restreint en verrait moins et rassurerait à tort — mais cela signifie que "
+        "le cliquet ne dit rien de ce que voit un lecteur ordinaire. C'est AUTH-2 qui "
+        "répond de cela, et son propre cliquet."),
+
+    # ---- Surfaces qu'on ne sait pas encore atteindre ------------------------ #
+    ("route", "/api/jobs/{job_id}"): (
+        "Un job est ÉPHÉMÈRE (threads daemon, registre RAM) : le décor ne sait pas en "
+        "fabriquer un, et un id inventé rendrait 404. Il porte pourtant l'agent qui a "
+        "lancé le lot — trou connu, à combler le jour où le décor sait lancer une passe."),
+    ("route", "/api/sharedocs/liste"): (
+        "Demande une session ShareDocs VIVANTE (400 sans). Elle liste un dossier distant "
+        "chez Huma-Num, pas la base : aucune colonne d'identité ne la traverse."),
+    ("outil", "_commun.py"): (
+        "Bibliothèque partagée, sans `main()` — elle ne produit rien."),
+    ("outil", "importer_vocabulaire.py"): (
+        "IMPORTE un tableur de vocabulaire ; il écrit en base et n'en sort rien."),
+    ("outil", "reindex_materiel.py"): (
+        "Maintenance : relit les masters et écrit `planches.dpi_*`/`mode`. Aucune sortie."),
+    ("outil", "reindex_nlp.py"): (
+        "Maintenance : régénère les tokens et l'index FTS. Aucune sortie."),
+    ("outil", "semer_demo.py"): (
+        "Sème un corpus de démonstration ; il écrit en base et n'en lit rien."),
+    ("outil", "pdf_check.py"): (
+        "Contrôle un PDF fourni en argument ; ne touche pas la base."),
+    ("outil", "sharedocs_check.py"): (
+        "Vérifie une connexion WebDAV ; ne touche pas la base."),
+    ("outil", "verifier_moteurs.py"): (
+        "Vérifie la présence des moteurs ML ; ne touche pas la base."),
+    ("outil", "valider_iiif.py"): (
+        "Valide des manifestes fournis en argument ; ne touche pas la base."),
+    ("outil", "regenerer_exemples.py"): (
+        "Écrit dans `docs/exemples/`, donc DANS le dépôt versionné — ce serait une voie de "
+        "sortie majeure s'il lisait la base réelle. Il ne le fait jamais : il sème un "
+        "corpus jetable (`semer_demo.py`) dans un dossier temporaire, et n'exporte que "
+        "celui-là. Le balayer réécrirait `docs/exemples/` pendant la suite."),
+}
+
+
+# --------------------------------------------------------------------------- #
+# Le balayage
+# --------------------------------------------------------------------------- #
+def _routes_get():
+    return sorted((r for r in main.app.routes
+                   if isinstance(r, APIRoute) and "GET" in r.methods),
+                  key=lambda r: r.path)
+
+
+def _chemin_concret(gabarit: str, seme: dict):
+    """Remplit les paramètres depuis le décor, ou None si on ne sait pas."""
+    manque = []
+
+    def sub(m):
+        nom = m.group(1).split(":")[0]
+        if nom not in seme:
+            manque.append(nom)
+            return ""
+        return str(seme[nom])
+
+    concret = re.sub(r"{([^}]+)}", sub, gabarit)
+    return None if manque else concret
+
+
+# Les paramètres de REQUÊTE sans lesquels une route refuse de répondre. Sans cette table,
+# les trois routes d'export et deux routes d'analyse sortaient en 422 — c'est-à-dire que le
+# balayage les comptait « non atteintes » alors qu'elles sont parmi les plus bavardes du
+# lot. Un cliquet qui ne voit pas les exports ne vaut rien.
+QUETES = {
+    "/api/export/json": "album_id={album_id}",
+    "/api/export/csv": "album_id={album_id}",
+    "/api/export/tei": "album_id={album_id}",
+    # `auteur` est un FILTRE de ces deux routes : elles savent trier par annotateur, donc
+    # elles savent en parler. On les interroge sans le filtre — c'est le cas ordinaire.
+    "/api/analyse/concordance": "lemme=otage",
+    "/api/analyse/croisement": "axe_x=pos&axe_y=provenance",
+}
+
+
+def _balayer_routes(client, seme) -> dict:
+    vus = {}
+    for r in _routes_get():
+        cle = ("route", r.path)
+        chemin = _chemin_concret(r.path, seme)
+        if chemin is None:
+            continue                                    # → exigé dans NON_BALAYE
+        if r.path in QUETES:
+            chemin += "?" + QUETES[r.path].format(**seme)
+        rep = client.get(chemin, headers=seme["ident"])
+        if rep.status_code >= 400:
+            continue                                    # → exigé dans NON_BALAYE
+        vus[cle] = _sortes(rep.content)
+    return vus
+
+
+def _outils():
+    return sorted(p.name for p in TOOLS.glob("*.py"))
+
+
+# Comment invoquer ce qui PRODUIT quelque chose. Une entrée = une SORTIE et non un outil :
+# `metadonnees_collection.py` en a trois — le JSON, les CSV et l'onglet XLSX — et c'est
+# précisément la troisième qui a échappé à quatre inventaires. Regrouper par outil
+# reproduirait l'angle mort dans le cliquet censé le fermer.
+#
+# Un outil absent d'ici doit figurer dans NON_BALAYE avec sa raison : celui qui n'exporte
+# rien le DIT, il ne s'absente pas — sans quoi un exportateur neuf entrerait sans être
+# regardé, ce qui est exactement l'histoire d'AUTH-1.
+def _invocations(t):
+    """(surface, outil, arguments, chemins produits à relire)."""
+    return [
+        ("crosswalk_depot.py --out-dir", "crosswalk_depot.py",
+         ["--out-dir", str(t / "cw")], [t / "cw"]),
+        ("description_collection.py --json", "description_collection.py",
+         ["--json", "-"], []),
+        ("description_collection.py --csv", "description_collection.py",
+         ["--csv", str(t / "fiche.csv")], [t / "fiche.csv"]),
+        ("dictionnaire_xlsx.py --out", "dictionnaire_xlsx.py",
+         ["--out", str(t / "dico.xlsx")], [t / "dico.xlsx"]),
+        ("gerer_collections.py lister", "gerer_collections.py", ["lister"], []),
+        ("iiif_manifest.py --out-dir", "iiif_manifest.py",
+         ["--base-url", "http://exemple/iiif", "--out-dir", str(t / "iiif")], [t / "iiif"]),
+        ("metadonnees_collection.py --json", "metadonnees_collection.py",
+         ["--json", "-"], []),
+        ("metadonnees_collection.py --csv-dir", "metadonnees_collection.py",
+         ["--csv-dir", str(t / "csv")], [t / "csv"]),
+        ("metadonnees_collection.py --xlsx", "metadonnees_collection.py",
+         ["--xlsx", str(t / "m.xlsx")], [t / "m.xlsx"]),
+        ("provenance_export.py --out-dir", "provenance_export.py",
+         ["--out-dir", str(t / "prov")], [t / "prov"]),
+        ("rapport_accord.py --json", "rapport_accord.py",
+         ["--json", str(t / "acc.json")], [t / "acc.json"]),
+        ("rapport_accord_inter.py --json", "rapport_accord_inter.py",
+         ["--json", str(t / "inter.json")], [t / "inter.json"]),
+    ]
+
+
+def _balayer_outils(seme, tmp_path) -> dict:
+    vus = {}
+    env = {**os.environ, "BD_DB_PATH": str(seme["db"]),
+           "BD_DATA_DIR": str(seme["data"])}
+    for surface, outil, args, sorties in _invocations(tmp_path):
+        p = subprocess.run([sys.executable, str(TOOLS / outil), *args],
+                           cwd=str(REPO_ROOT), env=env, capture_output=True)
+        assert p.returncode == 0, (surface, p.stderr.decode("latin-1")[-900:])
+        blobs = [p.stdout, p.stderr]
+        for chemin in sorties:
+            c = Path(chemin)
+            blobs += ([c.read_bytes()] if c.is_file()
+                      else [f.read_bytes() for f in c.glob("**/*") if f.is_file()])
+        vus[("outil", surface)] = frozenset().union(*(_sortes(b) for b in blobs))
+    return vus
+
+
+# --------------------------------------------------------------------------- #
+# Les cliquets
+# --------------------------------------------------------------------------- #
+def test_aucune_sortie_d_identite_n_est_ignoree(client, seme, tmp_path):
+    """Toute surface qui laisse partir une identité l'a DÉCLARÉ, avec sa raison écrite.
+
+    Le cliquet ne dit pas qu'une sortie est légitime — il dit qu'elle a été VUE. C'est la
+    même limite que `test_autorisation.py`, qui vérifie qu'une route consulte la portée
+    sans jamais vérifier qu'elle en tire la bonne conclusion.
+    """
+    vus = {**_balayer_routes(client, seme), **_balayer_outils(seme, tmp_path)}
+    fautes = []
+    for cle, sortes in sorted(vus.items()):
+        declare = SORTIES_DECLAREES.get(cle, (frozenset(), None))[0]
+        surprise = sortes - set(declare)
+        if surprise:
+            fautes.append(f"{cle[0]} {cle[1]} laisse sortir {sorted(surprise)} "
+                          f"sans l'avoir déclaré")
+    assert not fautes, (
+        "Des identités sortent par des surfaces qui ne l'ont pas déclaré.\n  "
+        + "\n  ".join(fautes)
+        + "\n\nSoit la surface cesse de les émettre, soit elle entre dans "
+          "SORTIES_DECLAREES avec la SORTE émise et sa raison. Écrire la raison EST le "
+          "travail : c'est elle qui transforme un oubli en décision.")
+
+
+def test_les_declarations_ne_mentent_pas(client, seme, tmp_path):
+    """Une liste périmée est pire qu'absente : elle rassure.
+
+    Trois mensonges possibles, et le troisième est celui qui a coûté quatre inventaires à
+    AUTH-1 : une surface qui n'est ni balayée ni déclarée hors balayage passe inaperçue.
+    """
+    vus = {**_balayer_routes(client, seme), **_balayer_outils(seme, tmp_path)}
+    fautes = []
+
+    # (1) Une déclaration qui annonce une sorte que la surface n'émet plus.
+    for cle, (sortes, raison) in sorted(SORTIES_DECLAREES.items()):
+        assert raison, f"{cle} est déclarée sans raison écrite"
+        if cle not in vus:
+            fautes.append(f"{cle[0]} {cle[1]} est déclarée mais n'est plus balayée")
+        elif set(sortes) - vus[cle]:
+            fautes.append(f"{cle[0]} {cle[1]} déclare {sorted(set(sortes) - vus[cle])} "
+                          f"qu'elle n'émet plus — à retirer de la déclaration")
+
+    # (2) Un trou déclaré qui n'existe plus.
+    for cle, raison in sorted(NON_BALAYE.items()):
+        assert raison, f"{cle} est hors balayage sans raison écrite"
+        if cle in vus:
+            fautes.append(f"{cle[0]} {cle[1]} est balayée maintenant : "
+                          f"la retirer de NON_BALAYE")
+
+    # (3) Une surface ni balayée ni déclarée hors balayage — le trou INVISIBLE.
+    couverts = {o for _, o, _, _ in _invocations(tmp_path)}
+    attendus = ([("route", r.path) for r in _routes_get()]
+                + [("outil", o) for o in _outils()])
+    for cle in attendus:
+        if cle[0] == "outil":
+            if cle[1] in couverts or cle in NON_BALAYE:
+                continue
+        elif cle in vus or cle in NON_BALAYE:
+            continue
+        fautes.append(f"{cle[0]} {cle[1]} n'est ni balayée ni déclarée hors balayage")
+
+    assert not fautes, (
+        "Les listes du cliquet ne décrivent plus la réalité.\n  "
+        + "\n  ".join(fautes))
+
+
+def test_le_semis_est_visible(client, seme, tmp_path):
+    """Le mode d'échec d'un cliquet est son SEMIS, jamais son balayage.
+
+    Une sentinelle absente d'une colonne rend muette toute surface qui ne lit que cette
+    colonne, et le vert devient un mensonge. Même famille que les deux assertions vacantes
+    trouvées le 2026-08-31 : une non-vacuité prouvée sur l'ensemble, un `stdout` vide parce
+    que l'outil écrivait dans un fichier. Si personne ne voit passer une sentinelle, c'est
+    le décor qui est faux, pas le code qui est propre.
+    """
+    vus = {**_balayer_routes(client, seme), **_balayer_outils(seme, tmp_path)}
+    aperçues = frozenset().union(*vus.values()) if vus else frozenset()
+    assert aperçues == set(SENTINELLES), (
+        f"sentinelles jamais vues passer : {sorted(set(SENTINELLES) - aperçues)} — "
+        "le semis ne les place nulle part, ou le balayage ne lit pas la surface qui les "
+        "porte. Un cliquet qui ne voit rien est vert pour la mauvaise raison.")
+    assert len(vus) >= 55, f"balayage anormalement court : {len(vus)} surfaces"
