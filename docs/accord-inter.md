@@ -30,6 +30,44 @@ donne l'identité. Ce n'est **pas** un kappa d'annotation parallèle — c'est a
 > **Rare avant le multi-utilisateur.** Sans auth à plusieurs (piste C), tout est fait par un seul
 > agent (ou anonyme) → aucune re-touche inter-auteurs. La **capacité est prête** pour ce moment-là.
 
+## Qui peut le lire, et ce qui en sort (AUTH-1, 2026-08-31)
+
+C'est le **seul rapport d'analyse réservé**, et pour une raison qui lui est propre : les
+autres portent sur le CORPUS, celui-ci porte sur des **personnes**. Il nomme (`auteurs`),
+il apparie (le taux d'accord de deux gens précis) et il cite à la ligne près
+(« en pl·3·c2·b1, alice avait NOUN, bob a mis VERB »). Son voisin `GET /api/analyse/accord`
+(NLP-1) reste ouvert en lecture : `accord.py` n'a ni `agent` ni `auteur`, il ne nomme
+personne.
+
+**Dans l'application — réservé à qui ÉCRIT.** `GET /api/analyse/accord-inter` répond **403**
+à qui n'écrit nulle part, et son périmètre suit les albums où l'on écrit, non ceux qu'on
+lit. La règle tient en une phrase : *ceux qui voient la mesure sont ceux qu'elle mesure*.
+Les propriétaires cumulant l'écriture, ils gardent leur rôle d'arbitre ; un lecteur seul —
+un étudiant, un partenaire, un relecteur externe — n'obtient plus le relevé nominatif des
+erreurs de gens qui n'ont pas choisi d'être mesurés par lui. Le bouton **👥 Inter** reste
+VISIBLE et le panneau affiche le refus du serveur : cacher le bouton priverait la personne
+de la raison, ce qui rendrait le silence qu'AUTH-2 combat.
+
+**Au dépôt — les taux, jamais les noms.** Le bloc `qualite.accord_inter` de la fiche
+(`description_collection.py`) est déclaré `ouvert` et part à l'entrepôt. Il porte désormais
+`nb_auteurs` (un compte) et des `paires` **sans identités**, triées par taux — triées par
+`(a, b)`, l'ordre alphabétique des logins transparaissait encore à travers des noms
+retirés. La valeur FAIR revendiquée est intacte : « ce corpus a été relu à plusieurs,
+accord 0,87 » se dit entièrement sans nommer qui a corrigé qui. Le reste n'était pas de la
+paradonnée sur le corpus mais de la donnée sur des personnes, publiée **définitivement** —
+un entrepôt garde ses versions, et un désaccord d'un jour ne se retire plus. Trois chemins
+étaient concernés, pas deux : le JSON, les CSV, et **l'onglet XLSX**, que l'inventaire des
+voies de sortie n'avait pas cité.
+
+**L'outil en ligne de commande, lui, NOMME toujours** (`tools/rapport_accord_inter.py`) :
+c'est l'instrument d'arbitrage de l'équipe, il suppose un accès shell, et il ne quitte pas
+la machine. Sans les noms il ne servirait à rien — on ne peut pas réunir deux personnes
+pour trancher un désaccord si l'on ignore lesquelles.
+
+> **Ce que cela ne referme pas.** `metadonnees_collection.py` déverse le journal A3 entier
+> en `evenement.csv` / `activite.csv`, colonne `agent` comprise. C'est une voie de sortie
+> distincte, plus large, et une case ouverte d'AUTH-1.
+
 ## Usage
 
 ```bash

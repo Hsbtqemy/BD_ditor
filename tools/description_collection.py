@@ -211,11 +211,27 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     # pas de périmètre — et la fiche d'une collection annonçait donc un chiffre CORPUS sous
     # une rubrique de collection. AUTH-2 a ajouté le paramètre ; les deux accords disent
     # maintenant la même portée.
-    # La fiche n'embarque QUE les compteurs (le détail des divergences reste aux rapports).
+    # La fiche n'embarque QUE les compteurs (le détail des divergences reste aux rapports),
+    # et depuis le 2026-08-31 elle n'embarque plus AUCUN NOM.
+    #
+    # Ce bloc est déclaré « ouvert » et part à l'entrepôt. Il portait `auteurs` — les logins
+    # des annotateurs — et `paires`, c'est-à-dire le taux d'accord de deux personnes
+    # NOMMÉES. La valeur FAIR revendiquée est l'auditabilité du pré-remplissage ML, et elle
+    # est réelle : « ce corpus a été relu à plusieurs, accord 0,87 » se dit entièrement
+    # sans nommer qui a corrigé qui. Le reste n'était pas de la paradonnée sur le corpus,
+    # c'était de la donnée sur des personnes, publiée définitivement — un entrepôt garde
+    # ses versions, et un désaccord d'un jour ne se retire plus.
+    #
+    # `paires` est reclassé par TAUX : trié par (a, b), l'ordre alphabétique des logins
+    # transparaissait encore à travers des noms retirés.
     ai = accord_inter.rapport(conn, album_ids=album_ids)
     accord_inter_fiche = {"portee": "collection" if album_ids is not None else "corpus",
                           "retouches": ai["retouches"],
-                          "auteurs": ai["auteurs"], "champs": ai["champs"], "paires": ai["paires"]}
+                          "nb_auteurs": len(ai["auteurs"]), "champs": ai["champs"],
+                          "paires": sorted(
+                              ({"retouches": p["retouches"], "accords": p["accords"],
+                                "taux": p["taux"]} for p in ai["paires"]),
+                              key=lambda p: (p["taux"] is None, p["taux"], p["retouches"]))}
     # Libellés compacts pour le catalogue CSV (registre « élément de métadonnée »).
     relecture_txt = (f"faite:{rel_tally['faite']}; en_cours:{rel_tally['en_cours']}; "
                      f"a_faire:{rel_tally['a_faire']} ({_pct(rel_tally['faite'], planches)}%)")

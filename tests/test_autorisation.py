@@ -12,6 +12,8 @@ dépendance et filtrer de travers. C'est le rôle des tests de comportement plus
 la couverture est une LISTE, pas une garantie — et elle est bien plus courte que le
 nombre de routes. Dit autrement : le test statique ferme la porte de l'oubli, pas celle de l'erreur.
 """
+import json
+
 import pytest
 from fastapi.routing import APIRoute
 from starlette.routing import Mount
@@ -1044,3 +1046,67 @@ def test_le_mono_poste_garde_sa_sauvegarde(client):
     """Sans proxy, il n'y a personne à qui la refuser : le comportement d'avant est
     strictement conservé."""
     assert client.get("/api/sauvegarde").status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# AUTH-1 — l'accord inter-annotateurs parle de PERSONNES, pas du corpus
+# --------------------------------------------------------------------------- #
+def test_accord_inter_est_refuse_a_qui_ne_fait_que_lire(client, db_path, deux_albums,
+                                                        derriere_proxy):
+    """Le seul rapport d'analyse réservé, et pour une raison qui lui est propre : il NOMME
+    (`auteurs`), il APPARIE (le taux d'accord de deux gens précis) et il CITE à la ligne
+    près. Un lecteur seul — un étudiant, un partenaire, un relecteur externe — obtenait le
+    relevé nominatif des erreurs de gens qui n'ont pas choisi d'être mesurés par lui.
+
+    La règle retenue : ceux qui voient la mesure sont ceux qu'elle mesure.
+    """
+    _ouvrir(db_path, deux_albums["c1"], "bob", "lecture")
+    r = client.get("/api/analyse/accord-inter", headers={"Remote-User": "bob"})
+    assert r.status_code == 403
+    # 403 et non 404 : la route est publique, c'est son CONTENU qui ne l'est pas — et le
+    # refus doit se LIRE, sans quoi on rend le silence qu'AUTH-2 combat.
+    assert "écrit" in r.json()["detail"]
+
+    # Le voisin, lui, ne nomme personne : il reste ouvert en lecture.
+    assert client.get("/api/analyse/accord",
+                      headers={"Remote-User": "bob"}).status_code == 200
+
+
+def test_accord_inter_s_ouvre_a_qui_ecrit(client, db_path, deux_albums, derriere_proxy):
+    """Écrire suffit — inutile de posséder : les annotateurs doivent voir leur propre
+    accord, c'est l'usage premier du rapport (qualité, arbitrage entre linguistes)."""
+    _ouvrir(db_path, deux_albums["c1"], "bob", "ecriture")
+    assert client.get("/api/analyse/accord-inter",
+                      headers={"Remote-User": "bob"}).status_code == 200
+
+
+def test_accord_inter_ne_porte_que_sur_ce_qu_on_ecrit(client, db_path, deux_albums,
+                                                      derriere_proxy):
+    """La portée du rapport suit le droit d'ÉCRIRE, pas celui de lire : un album qu'on lit
+    sans y écrire ne livre pas les désaccords de ceux qui y travaillent."""
+    import sqlite3
+    _ouvrir(db_path, deux_albums["c1"], "bob", "ecriture")
+    _ouvrir(db_path, deux_albums["c2"], "bob", "lecture")
+    # Une re-touche inter-auteurs dans l'album qu'il LIT seulement (c2 / r2).
+    conn = sqlite3.connect(db_path)
+    try:
+        cid = conn.execute(
+            "INSERT INTO token_correction (region_id, ordre, forme, pos, auteur) "
+            "VALUES (?, 0, 'MOT', 'VERB', 'carol')",
+            (deux_albums["r2"]["id"],)).lastrowid
+        for agent, pos, avant in (("alice", "NOUN", None), ("carol", "VERB", "NOUN")):
+            conn.execute(
+                "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id, "
+                "avant, apres) VALUES ('modification', ?, 'humain', 'token_correction', "
+                "?, ?, ?)",
+                (agent, cid,
+                 json.dumps({"lemme": "m", "pos": avant, "morph": ""}) if avant else None,
+                 json.dumps({"lemme": "m", "pos": pos, "morph": ""})))
+        conn.commit()
+    finally:
+        conn.close()
+
+    r = client.get("/api/analyse/accord-inter",
+                   headers={"Remote-User": "bob"}).json()
+    assert r["auteurs"] == [], "un album qu'on LIT seulement ne doit rien livrer"
+    assert r["retouches"] == 0

@@ -3601,16 +3601,28 @@ def analyse_croisement(axe_x: str, axe_y: str,
             "total": sum(cells.values()), "x_tronque": x_tronque, "y_tronque": y_tronque}
 
 
-def _albums_lisibles(conn, portee: autorisation.Portee):
-    """Ids des albums lisibles, ou None si la portée est totale.  AUTH-2.
+def _albums_portee(conn, portee: autorisation.Portee, *, ecriture: bool):
+    """Ids des albums de la portée, ou None si elle est totale.  AUTH-2.
 
     `None` n'est pas « aucun » mais « pas de restriction » : les cœurs d'analyse
     (`accord`, `accord_inter`) l'entendent ainsi, et matérialiser la liste complète
     reviendrait à figer un corpus qui bouge."""
     if portee.tout:
         return None
-    ou, params = portee.clause_album("a.id")
+    ou, params = portee.clause_album("a.id", ecriture=ecriture)
     return [r[0] for r in conn.execute(f"SELECT a.id FROM albums a WHERE {ou}", params)]
+
+
+def _albums_lisibles(conn, portee: autorisation.Portee):
+    """Les albums qu'on LIT — la portée ordinaire d'une surface d'analyse."""
+    return _albums_portee(conn, portee, ecriture=False)
+
+
+def _albums_inscriptibles(conn, portee: autorisation.Portee):
+    """Les albums où l'on ÉCRIT. Deux fonctions plutôt qu'un drapeau à l'appel : un nom qui
+    dit « lisibles » et rend autre chose selon un booléen se relit mal sur la ligne d'appel,
+    et c'est précisément là qu'on vérifie une décision d'autorisation."""
+    return _albums_portee(conn, portee, ecriture=True)
 
 
 @app.get("/api/analyse/accord")
@@ -3631,8 +3643,30 @@ def analyse_accord_inter(conn: sqlite3.Connection = Depends(db),
                          portee: autorisation.Portee = Depends(portee_courante)):
     """Rapport d'accord INTER-ANNOTATEURS (ANN-5) : sur les tokens qu'un annotateur a RE-TOUCHÉS
     après un autre (chaîne de révisions du journal A3), taux d'accord par champ + par paire
-    d'auteurs + points de divergence. Cf. accord_inter.rapport / docs/accord-inter.md."""
-    return accord_inter.rapport(conn, album_ids=_albums_lisibles(conn, portee))
+    d'auteurs + points de divergence. Cf. accord_inter.rapport / docs/accord-inter.md.
+
+    AUTH-1 — réservée à qui ÉCRIT, et c'est le seul rapport d'analyse à l'être. Les autres
+    portent sur le CORPUS ; celui-ci porte sur des PERSONNES. Il nomme (`auteurs`), il
+    apparie (`paires` : le taux d'accord de deux gens précis) et il cite à la ligne près
+    (`divergences` : « en pl·3·c2·b1, alice avait NOUN, bob a mis VERB »).
+
+    La règle est donc que **ceux qui voient la mesure sont ceux qu'elle mesure** — les
+    propriétaires cumulant l'écriture, ils gardent leur rôle d'arbitre. Un lecteur seul (un
+    étudiant, un partenaire, un relecteur externe) n'obtient plus le relevé nominatif des
+    erreurs de gens qui n'ont pas choisi d'être mesurés par lui. Le voisin `/api/analyse/
+    accord` (NLP-1) reste ouvert en lecture : il ne nomme personne — `accord.py` n'a ni
+    `agent` ni `auteur`.
+
+    403 et non 404 : la route est publique (elle est dans `/docs`), c'est son CONTENU qui
+    ne l'est pas, et refuser sans le dire redonnerait le silence qu'AUTH-2 combat. Rien
+    n'est révélé du corpus — la réponse ne parle que du compte de l'appelant.
+    """
+    if not portee.peut_ecrire_quelque_part():
+        raise HTTPException(
+            403, "L'accord inter-annotateurs nomme les annotateurs et cite leurs "
+                 "désaccords : il est réservé à qui écrit sur le corpus, de sorte que "
+                 "ceux qui voient la mesure soient ceux qu'elle mesure.")
+    return accord_inter.rapport(conn, album_ids=_albums_inscriptibles(conn, portee))
 
 
 @app.get("/api/regions/{region_id}/tokens")

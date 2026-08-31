@@ -812,8 +812,13 @@ function closeAccordInter() { $("#accord-inter-modal").hidden = true; }
 async function loadAccordInter() {
   const body = $("#accord-inter-body");
   body.textContent = "Chargement…";
+  // Le message du SERVEUR, et non un libellé maison : depuis AUTH-1 la route peut refuser
+  // (403) en expliquant pourquoi — elle nomme des personnes, elle est réservée à qui écrit.
+  // `apiGet` porte déjà le `detail` ; l'écraser par « Impossible de charger le rapport »
+  // transformait une décision motivée en panne apparente, exactement le silence qu'AUTH-2
+  // combat. Le bouton RESTE visible : le cacher priverait la personne de la raison.
   try { renderAccordInter(await apiGet("/api/analyse/accord-inter")); }
-  catch (e) { body.textContent = "Impossible de charger le rapport."; }
+  catch (e) { body.textContent = e.message || "Impossible de charger le rapport."; }
 }
 
 function valInter(v) { return (v == null || v === "") ? "∅" : v; }

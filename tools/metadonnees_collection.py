@@ -626,7 +626,11 @@ def _ecrire_xlsx(tbls: dict, arbre: dict, fiche: dict, chemin: str) -> None:
         ai = qualite["accord_inter"]
         lignes_q += [["accord inter", "portée", ai["portee"]],
                      ["accord inter", "retouches inter-auteurs", ai["retouches"]],
-                     ["accord inter", "auteurs", "; ".join(ai["auteurs"])]]
+                     # Un NOMBRE, plus la liste des logins (2026-08-31, AUTH-1). Le
+                     # tableur est le troisième chemin de cet outil — après le JSON et les
+                     # CSV — et l'inventaire des voies de sortie n'en citait que deux : la
+                     # suite l'a dit en cassant ici, ce qu'aucune relecture n'avait vu.
+                     ["accord inter", "nombre d'annotateurs", ai["nb_auteurs"]]]
         lignes_q += [["accord inter", f"taux {ch}", ai["champs"][ch]["taux"]]
                      for ch in ("lemme", "pos", "morph")]
         for lg in lignes_q:

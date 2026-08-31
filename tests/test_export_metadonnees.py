@@ -646,3 +646,68 @@ def test_le_referent_ne_sort_dans_aucun_artefact_de_depot(corpus, album, tmp_pat
 
     assert "Ana Ruiz" not in joint, "le référent ne doit sortir dans aucun dépôt"
     assert "ana@labo.fr" not in joint
+
+
+def test_aucun_login_d_annotateur_ne_sort_au_depot(corpus, album, tmp_path):
+    """AUTH-1 (2026-08-31) — le bloc `qualite.accord_inter` de la fiche de dépôt est classé
+    « ouvert » et part à l'entrepôt. Il portait `auteurs` (les logins) et `paires` (le taux
+    d'accord de deux personnes NOMMÉES).
+
+    La valeur FAIR revendiquée est l'auditabilité du pré-remplissage ML, et elle est
+    réelle — « ce corpus a été relu à plusieurs, accord 0,87 » se dit entièrement sans
+    nommer qui a corrigé qui. Le reste était de la donnée sur des personnes, publiée
+    DÉFINITIVEMENT : un entrepôt garde ses versions, un désaccord d'un jour ne se retire
+    plus.
+
+    Trois chemins, pas deux : le JSON, les CSV, et l'onglet XLSX — que l'inventaire des
+    voies de sortie n'avait pas cité, et qui publiait les logins joints par « ; ».
+    """
+    conn = sqlite3.connect(corpus["db"])
+    try:
+        cid = conn.execute(
+            "INSERT INTO token_correction (region_id, ordre, forme, pos, auteur) "
+            "VALUES ((SELECT id FROM regions LIMIT 1), 0, 'MOT', 'VERB', 'bob')").lastrowid
+        for agent, pos, avant in (("alice", "NOUN", None), ("bob", "VERB", "NOUN")):
+            conn.execute(
+                "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id, "
+                "avant, apres) VALUES ('modification', ?, 'humain', 'token_correction', "
+                "?, ?, ?)",
+                (agent, cid,
+                 json.dumps({"lemme": "m", "pos": avant, "morph": ""}) if avant else None,
+                 json.dumps({"lemme": "m", "pos": pos, "morph": ""})))
+        conn.commit()
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        conn.close()
+
+    xlsx = tmp_path / "m.xlsx"
+    sorties = []
+    for outil, args in (("description_collection.py", ("--json", "-")),
+                        ("metadonnees_collection.py", ("--json", "-")),
+                        ("metadonnees_collection.py", ("--csv-dir", str(tmp_path / "csv"))),
+                        ("metadonnees_collection.py", ("--xlsx", str(xlsx)))):
+        r = _run(outil, corpus["db"], corpus["data"], *args)
+        assert r.returncode == 0, (outil, r.stderr)
+        sorties.append((f"{outil} {args[0]}", r.stdout))
+    sorties += [(f"csv/{f.name}", f.read_text(encoding="utf-8", errors="replace"))
+                for f in (tmp_path / "csv").glob("*") if f.is_file()]
+    # Le classeur se lit par ses CELLULES. Le lire en octets ne prouve rien : un XLSX est
+    # un ZIP, et la mutation qui y remettait les logins passait au travers sans broncher —
+    # une assertion vacante sur le seul chemin qu'aucune relecture n'avait cité.
+    from openpyxl import load_workbook              # `--xlsx` a réussi : il est installé
+    sorties.append(("m.xlsx/qualite", "\n".join(
+        str(c.value) for row in load_workbook(xlsx)["qualite"].iter_rows() for c in row)))
+
+    # NON VACANT, par source : la mesure DOIT être là, ce sont les noms qui n'y sont plus.
+    fiche = dict(sorties)["description_collection.py --json"]
+    bloc = json.loads(fiche)["description_collection"]["qualite"]["accord_inter"]
+    assert bloc["retouches"] == 1 and bloc["nb_auteurs"] == 2, bloc
+    assert bloc["paires"] and "a" not in bloc["paires"][0], bloc["paires"]
+    assert "auteurs" not in bloc, "le nom du champ trahissait encore son contenu"
+
+    # `evenement.csv` déverse le journal ENTIER, `agent` compris : c'est une voie de sortie
+    # distincte, ouverte, et une case d'AUTH-1 — pas ce que ce test mesure.
+    for nom, texte in sorties:
+        if nom in ("csv/evenement.csv", "csv/activite.csv"):
+            continue
+        assert "alice" not in texte, f"un login d'annotateur sort par {nom}"

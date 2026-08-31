@@ -294,6 +294,14 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 - **Palier B (grammaire)** : table `tokens` (un mot du dialogue : lemme, POS/UPOS, morph), **régénérée à chaque reindex**. La correction humaine vit dans `token_correction`, une couche **overlay JAMAIS touchée par le reindex**. La vue `tokens_effectifs` est le **read model canonique** (correction vivante ⊕ auto + provenance + `a_revoir`) : toutes les surfaces d'analyse lisent CECI, jamais `tokens` brut.
 - Le modèle est configurable (`BD_SPACY_MODEL`, défaut `fr_core_news_sm`), chargé paresseusement sous verrou (non thread-safe). `tools/reindex_nlp.py` réindexe tout le corpus en lot après un changement de paramètre.
 - **Rapport d'accord modèle↔humain (NLP-1)** : cœur `accord.py` (part des tokens RELUS où le modèle avait déjà la valeur finale — correction NULL = auto accepté, ou correction = auto — par champ lemme/POS/morpho + confusion POS ; miroir de `tokens_effectifs`, ignore les corrections obsolètes). Exposé par la route `GET /api/analyse/accord`, l'outil `tools/rapport_accord.py` (`--json`/`--csv`) et le panneau **🎯 Accord** de l'Exploration. Étalon de la transition Phase 1→2 (comparer `sm` vs `lg` sur le même corpus relu). Cf. `docs/rapport-accord.md`.
+- **Le seul rapport d'analyse RÉSERVÉ** (AUTH-1) : `GET /api/analyse/accord-inter` répond
+  **403** à qui n'écrit nulle part, et son périmètre suit les albums où l'on ÉCRIT. Les
+  autres surfaces d'analyse portent sur le corpus ; celle-ci porte sur des PERSONNES —
+  elle nomme, apparie et cite à la ligne près. Règle : *ceux qui voient la mesure sont ceux
+  qu'elle mesure* (les propriétaires cumulent l'écriture). Au DÉPÔT, la fiche ne porte plus
+  que `nb_auteurs` et des paires sans identités : la valeur FAIR (« relu à plusieurs,
+  accord 0,87 ») ne demande aucun nom, et un entrepôt garde ses versions. L'outil CLI, lui,
+  nomme toujours — sans les noms on ne peut pas réunir deux personnes pour arbitrer.
 - **Accord INTER-annotateurs (ANN-5)** : cœur `accord_inter.py` — le modèle ne gardant qu'une correction/token, la donnée multi-auteurs vit dans le **journal A3** (`cible_id` stable = chaîne de révisions). Mesure l'**accord de révision** (un auteur re-touche le token d'un autre → garde/change), par champ + par paire + points de divergence cités. Route `GET /api/analyse/accord-inter`, outil `tools/rapport_accord_inter.py`, panneau **👥 Inter**. Rare avant le multi-utilisateur (piste C). Cf. `docs/accord-inter.md`.
 
 ### Pipeline de reconnaissance — 3 passes, moteurs OPTIONNELS
