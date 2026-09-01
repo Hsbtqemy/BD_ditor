@@ -17,7 +17,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
 # AUTH-2 : `ADMIN` monte le décor avec les droits qu'il faut (sans effet hors proxy).
-from conftest import ADMIN, make_png  # noqa: E402
+from conftest import ADMIN, make_png, requires_kumiko  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -855,3 +855,69 @@ def test_le_bandeau_distingue_trois_pannes_par_les_groupes(page, seeded):
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_selector(".portee-vide", timeout=3000)
     assert page.locator(".portee-vide-groupes").count() == 0
+
+
+@requires_kumiko
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_segmenter_depuis_la_visionneuse_ne_fait_pas_regresser_l_ecran(page, seeded):
+    """B6 (AUDIT-1) — l'ÉCRAN ne doit pas montrer la régression que la base a refusée.
+
+    Le correctif serveur ne suffisait pas : `viewer.js` posait `state.planche.statut =
+    "segmentee"` en dur après le clic, et ce champ alimente le bandeau et la pastille. Une
+    planche `annotee` re-segmentée paraissait donc retomber — jusqu'au prochain
+    rechargement, où elle se corrigeait seule. Un défaut qui se répare en rafraîchissant
+    est un défaut que personne ne signale.
+
+    Écrit APRÈS coup, et il aura fallu DEUX corrections pour dire vrai de cette seule ligne.
+    Le commit qui la réparait affirmait le cas non testable, « faute de Kumiko dans le
+    serveur live » : faux, `lib/kumiko` est là. Puis ce test, écrit dans la foulée, s'est
+    révélé VACANT — il passait avec la constante en dur, parce que `segmenter()` ne
+    redessine pas le bandeau. Le défaut est réel mais DIFFÉRÉ : il attend le premier
+    réaffichage depuis la mémoire, d'où la re-sélection ci-dessous. Deux affirmations
+    confiantes et non mesurées sur trois lignes de code.
+
+    Le test tourne avec le vrai moteur et se skippe là où le clone est absent.
+    """
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=60, headers=ADMIN)
+    try:
+        assert c.patch(f"/api/planches/{seeded['planche']}/statut",
+                       json={"statut": "annotee"}).status_code == 200
+    finally:
+        c.close()
+
+    page.set_extra_http_headers(ADMIN)
+    page.goto(seeded["base"] + f"/?album={seeded['album']}&planche={seeded['planche']}",
+              wait_until="networkidle")
+    page.wait_for_timeout(500)
+    assert "annotee" in page.locator("#planche-info").inner_text()
+
+    page.click("#btn-traitement")            # « Segmenter » vit dans un menu déroulant
+    page.wait_for_selector("#btn-segmenter", state="visible", timeout=3000)
+    page.click("#btn-segmenter")
+    # Kumiko tourne en sous-processus : on attend la fin, pas une durée.
+    page.wait_for_selector(".toast", timeout=120000)
+    page.wait_for_timeout(1500)
+
+    # RE-SÉLECTION, et c'est tout le test. `segmenter()` ne redessine pas le bandeau —
+    # écrire une constante dans `state.planche.statut` n'a donc aucun effet IMMÉDIAT, et
+    # une assertion posée ici passerait quoi qu'il arrive. Mais `selectPlanche()` lit
+    # `state.planches` EN MÉMOIRE, sans refetch, et `state.planche` en est le même objet :
+    # la valeur faussée ressort au premier réaffichage. Sans ce clic, le test est vacant —
+    # vérifié par mutation le 2026-08-31, il passait avec la constante en dur.
+    page.click("#planche-list li")
+    page.wait_for_timeout(800)
+
+    info = page.locator("#planche-info").inner_text()
+    assert "annotee" in info, f"l'écran a fait régresser le statut : {info!r}"
+    assert "segmentee" not in info, f"l'écran affiche la régression refusée par la base : {info!r}"
+
+    # Et la base est d'accord — sans quoi le test ne dirait rien de l'écran, seulement
+    # que rien ne s'est passé.
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ADMIN)
+    try:
+        pl = [p for p in c.get(f"/api/albums/{seeded['album']}/planches").json()
+              if p["id"] == seeded["planche"]][0]
+    finally:
+        c.close()
+    assert pl["statut"] == "annotee"
+    assert pl["date_segmentation"], "la segmentation n'a pas eu lieu : le test ne prouve rien"
