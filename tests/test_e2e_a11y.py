@@ -18,7 +18,8 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
 # AUTH-2 : `ADMIN` monte le décor avec les droits qu'il faut (sans effet hors proxy).
-from conftest import ADMIN, make_png, requires_kumiko  # noqa: E402
+from conftest import (ADMIN, SANTE_PROFOND, SANTE_RAPIDE, make_png,  # noqa: E402
+                      requires_kumiko)
 
 pytestmark = pytest.mark.e2e
 
@@ -153,18 +154,11 @@ def test_a11y_corpus_modale(page, seeded):
     assert not viol, f"Corpus/modale :\n{_fmt(viol)}"
 
 
-# Les quatre états d'un moteur, forcés. Sans ce décor, une machine de test les rend
-# presque tous « non installé » (gris) : le vert et le rouge — les deux seules teintes
-# dont le contraste puisse échouer — ne seraient jamais À L'ÉCRAN pendant l'audit, qui
-# passerait au vert sans avoir rien mesuré. Même piège que le semis d'AUTH-5.
-_SANTE_RAPIDE = {"kumiko": True, "bulles": True, "ocr": False, "lemmes": False,
-                 "modeles_charges": {}}
-_SANTE_PROFOND = dict(_SANTE_RAPIDE, profond={
-    "kumiko": {"ok": True, "erreur": None},
-    "bulles": {"ok": False, "erreur": "RuntimeError: operator torchvision::nms"},
-    "ocr": {"ok": False, "erreur": "ModuleNotFoundError: easyocr"},
-    "nlp": {"ok": False, "erreur": "ModuleNotFoundError: spacy"},
-})
+# Les quatre états d'un moteur, forcés (décor partagé, cf. `conftest.SANTE_RAPIDE`).
+# Sans lui, une machine de test les rend presque tous « non installé » (gris) : le vert
+# et le rouge — les deux seules teintes dont le contraste puisse échouer — ne seraient
+# jamais À L'ÉCRAN pendant l'audit, qui passerait au vert sans avoir rien mesuré. Même
+# piège que le semis d'AUTH-5.
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
@@ -178,8 +172,8 @@ def test_a11y_corpus_sante(page, seeded, theme):
     une palette qu'il n'a pas regardée."""
     page.route("**/api/sante*", lambda r: r.fulfill(
         status=200, content_type="application/json",
-        body=json.dumps(_SANTE_PROFOND if "profond=1" in r.request.url
-                        else _SANTE_RAPIDE)))
+        body=json.dumps(SANTE_PROFOND if "profond=1" in r.request.url
+                        else SANTE_RAPIDE)))
     _theme(page, theme)
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.click("#btn-sante")

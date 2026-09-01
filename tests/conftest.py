@@ -175,6 +175,23 @@ def direct_query(db_file: Path, sql: str, params=()):
         conn.close()
 
 
+# SANTE-1 — le décor des moteurs, partagé par les deux fichiers E2E qui en ont besoin.
+# Ici et non dupliqué chez eux : `test_e2e_sante.test_le_serveur_repond_bien_ce_que_le
+# _decor_simule` confronte CES dicts à la vraie route, et un second décor recopié
+# échapperait à ce semis — il continuerait d'auditer un écran plausible et faux.
+# `bulles` présent dont l'import lève `torchvision::nms` est la panne du 2026-08-27,
+# qu'aucune machine de test ne produira spontanément.
+SANTE_RAPIDE = {"kumiko": True, "bulles": True, "ocr": False, "lemmes": False,
+                "modeles_charges": {}}
+SANTE_PROFOND = dict(SANTE_RAPIDE, profond={
+    "kumiko": {"ok": True, "erreur": None},
+    "bulles": {"ok": False,
+               "erreur": "RuntimeError: operator torchvision::nms does not exist"},
+    "ocr": {"ok": False, "erreur": "ModuleNotFoundError: No module named 'easyocr'"},
+    "nlp": {"ok": False, "erreur": "ModuleNotFoundError: No module named 'spacy'"},
+})
+
+
 def _free_port() -> int:
     s = socket.socket()
     s.bind(("127.0.0.1", 0))

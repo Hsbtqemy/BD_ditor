@@ -1021,13 +1021,29 @@ async function santeCharger() {
   santeRendu();
 }
 
+/* Occupé, mais TOUJOURS FOCUSABLE — `aria-disabled` et non `disabled`, et ce n'est pas
+   du purisme. Désarmer pour de bon un bouton qui porte le FOCUS le fait rendre au
+   <body> : la modale cesse alors de piéger Tab et Échap ne la ferme plus, pendant les
+   quinze secondes que dure l'import de torch. Une modale devient un cul-de-sac au
+   clavier sans qu'aucune exception ne soit levée, et l'audit axe n'y voit rien — il
+   photographie un écran, il n'appuie sur aucune touche. C'est un test de bout en bout
+   qui l'a trouvé, en cherchant autre chose. */
+function santeOccupe(occupe) {
+  const b = $("#sante-eprouver");
+  b.setAttribute("aria-busy", occupe ? "true" : "false");
+  if (occupe) b.setAttribute("aria-disabled", "true");
+  else b.removeAttribute("aria-disabled");
+}
+
+const santeEnCours = () => $("#sante-eprouver").getAttribute("aria-disabled") === "true";
+
 /* Le contrôle profond, sur clic et JAMAIS au chargement : c'est un acte coûteux (torch
    en mémoire), et une route de santé qui charge les moteurs pour répondre n'est plus une
-   route de santé. Le bouton se désarme pendant l'appel — le premier peut durer une
+   route de santé. Le bouton s'annonce occupé pendant l'appel — le premier peut durer une
    minute, et rien à l'écran ne le dirait autrement. */
 async function santeEprouver() {
-  const b = $("#sante-eprouver");
-  b.disabled = true;
+  if (santeEnCours()) return;        // `aria-disabled` n'empêche pas le clic : nous, si
+  santeOccupe(true);
   santeMsg("Chargement réel des moteurs… le premier appel peut durer une minute.");
   try {
     const d = await apiGet("/api/sante?profond=1");
@@ -1039,12 +1055,16 @@ async function santeEprouver() {
   } catch (e) {
     santeMsg(e.message, true);
   } finally {
-    b.disabled = false;
+    santeOccupe(false);
   }
 }
 
 function openSante() {
-  santeMsg("");
+  // Une épreuve en cours SURVIT à la fermeture du panneau — le fetch continue, et le
+  // bouton reste occupé. Rouvrir ne doit donc pas effacer son message : on retrouverait
+  // un bouton grisé sans un mot pour l'expliquer, pendant les quinze secondes que dure
+  // l'import de torch, et ça se lit comme une panne du panneau lui-même.
+  if (!santeEnCours()) santeMsg("");
   $("#sante-modal").hidden = false;
   santeCharger();
   $("#sante-eprouver").focus();

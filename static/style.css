@@ -1367,3 +1367,6 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 /* La cause d'une panne vient du serveur (type + message d'exception) : elle peut être
    longue et sans espace, et ne doit pas élargir la modale. */
 .sante-note { margin: .15rem 0 0; overflow-wrap: anywhere; }
+/* Occupé sans être `disabled` : le bouton garde le focus (cf. `santeOccupe`), donc il
+   lui faut sa propre apparence — `.primary:disabled` ne s'applique plus. */
+#sante-eprouver[aria-disabled="true"] { opacity: .45; cursor: progress; }
