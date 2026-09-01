@@ -357,8 +357,11 @@ def test_route_importer_avec_segmentation(client, monkeypatch):
     monkeypatch.setattr(sd, "download", lambda p, *, principal, compte=None: _png())
     monkeypatch.setattr(main, "kumiko_available", lambda: True)
     appels = []
+    # Le faux moteur rend ce que le vrai rend depuis B6 : le statut EFFECTIF. Il rendait
+    # `None`, et l'écart n'a coûté que parce que la route le lit — un faux qui ne respecte
+    # pas le contrat du vrai fabrique un test vert sur du code cassé.
     monkeypatch.setattr(main, "segment_planche",
-                        lambda conn, pid: appels.append(pid))
+                        lambda conn, pid: (appels.append(pid), {"statut": "segmentee"})[1])
     r = client.post("/api/sharedocs/importer", json={
         "chemins": ["a.png"], "nouvel_album": "Seg", "segmenter": True})
     assert r.status_code == 200

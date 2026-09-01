@@ -665,3 +665,95 @@ def test_lot_mort_ne_se_declare_pas_termine(monkeypatch):
     assert snap["done"] == 0                        # rien n'a été traité, le compte le dit
     assert len(snap["errors"]) == 1                 # la panne est NOMMÉE, pas seulement comptée
     assert "locked" in snap["errors"][0]["erreur"]
+
+
+# --------------------------------------------------------------------------- #
+# B6 (AUDIT-1) — une passe automatique n'a pas d'intention
+# --------------------------------------------------------------------------- #
+def test_avancer_statut_ne_recule_jamais(client, planche):
+    """`database.avancer_statut` avance ou ne fait rien ; il ne redescend pas.
+
+    La règle vit à UN endroit et tire son ordre de `STATUTS` : un `CASE WHEN` en SQL
+    recopierait cet ordre, et deux copies finissent par diverger.
+    """
+    import database
+    from config import STATUTS
+
+    pid = planche["id"]
+    with database.get_connection() as conn:
+        assert database.avancer_statut(conn, pid, "segmentee") == "segmentee"   # importee →
+        assert database.avancer_statut(conn, pid, "segmentee") == "segmentee"   # idempotent
+        conn.execute("UPDATE planches SET statut = 'annotee' WHERE id = ?", (pid,))
+        assert database.avancer_statut(conn, pid, "segmentee") == "annotee"     # PAS de recul
+        assert conn.execute("SELECT statut FROM planches WHERE id = ?",
+                            (pid,)).fetchone()["statut"] == "annotee"
+        # Une cible hors vocabulaire est une erreur de programmation, pas un no-op.
+        with pytest.raises(ValueError):
+            database.avancer_statut(conn, pid, "inconnu")
+        # Une planche absente aussi : sans cette garde l'UPDATE serait vide et la fonction
+        # renverrait `cible`, annonçant un avancement qui n'a pas eu lieu.
+        with pytest.raises(ValueError):
+            database.avancer_statut(conn, 10**9, "segmentee")
+        # Un statut COURANT inconnu (valeur héritée) est traité comme le plus bas : on
+        # avance, ce qui est le comportement d'avant le correctif — pas de surprise.
+        conn.execute("UPDATE planches SET statut = 'zzz' WHERE id = ?", (pid,))
+        assert database.avancer_statut(conn, pid, STATUTS[0]) == STATUTS[0]
+        conn.commit()
+
+
+def test_resegmenter_une_planche_annotee_ne_la_fait_pas_regresser(client, planche, monkeypatch):
+    """Re-segmenter une planche `annotee` la faisait retomber à `segmentee`.
+
+    Le travail humain restait en base — seule sa DÉCLARATION d'avancement était effacée, et
+    rien ne le signalait : `statut` ne commande rien dans l'application, il ne nourrit que
+    la barre d'avancement du corpus. Le seul symptôme était donc un tableau de bord qui
+    régressait tout seul, ce qu'on attribue à n'importe quoi sauf à la segmentation.
+
+    `run_kumiko` est simulé : le moteur n'a rien à voir avec le défaut, et le test doit
+    tourner partout — sans quoi la non-régression ne vaudrait que sur les machines qui ont
+    Kumiko, c'est-à-dire nulle part en intégration.
+    """
+    import database
+    import pipeline.segmentation as seg
+
+    monkeypatch.setattr(seg, "run_kumiko",
+                        lambda p: {"size": [100, 100],
+                                   "panels": [[10, 10, 40, 40], [60, 10, 30, 30]]})
+    pid = planche["id"]
+    with database.get_connection() as conn:
+        conn.execute("UPDATE planches SET statut = 'annotee' WHERE id = ?", (pid,))
+        conn.commit()
+
+    with database.get_connection() as conn:
+        res = seg.segment_planche(conn, pid)
+        conn.commit()
+        row = conn.execute("SELECT statut, date_segmentation FROM planches WHERE id = ?",
+                           (pid,)).fetchone()
+
+    assert res["nb_cases"] == 2                      # la segmentation a bien eu lieu...
+    assert row["statut"] == "annotee", row["statut"]  # ...sans effacer l'avancement déclaré
+    assert res["statut"] == "annotee"                 # et la réponse dit l'EFFECTIF
+    # La DATE, elle, est un fait : la planche vient d'être segmentée, donc elle est posée.
+    # Les écrire ensemble était tout le défaut.
+    assert row["date_segmentation"]
+
+
+def test_resegmenter_une_planche_importee_l_avance_bien(client, planche, monkeypatch):
+    """Le pendant du précédent, sans lequel il ne prouverait rien.
+
+    Un correctif qui n'écrirait plus JAMAIS le statut passerait le test de non-régression
+    ci-dessus avec brio. Il faut donc vérifier aussi que l'avancement normal a toujours lieu.
+    """
+    import database
+    import pipeline.segmentation as seg
+
+    monkeypatch.setattr(seg, "run_kumiko",
+                        lambda p: {"size": [100, 100], "panels": [[10, 10, 40, 40]]})
+    with database.get_connection() as conn:
+        assert conn.execute("SELECT statut FROM planches WHERE id = ?",
+                            (planche["id"],)).fetchone()["statut"] == "importee"
+        res = seg.segment_planche(conn, planche["id"])
+        conn.commit()
+        assert conn.execute("SELECT statut FROM planches WHERE id = ?",
+                            (planche["id"],)).fetchone()["statut"] == "segmentee"
+    assert res["statut"] == "segmentee"

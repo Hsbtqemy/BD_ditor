@@ -1252,10 +1252,21 @@ def sharedocs_importer(payload: SharedocsImportIn,
                 t2 = time.perf_counter()
                 try:
                     with jobs.ML_LOCK:               # cohérent : pas de ML concurrent
-                        segment_planche(conn, planche["id"])
-                    planche["statut"] = "segmentee"
-                except Exception:
-                    pass
+                        res_seg = segment_planche(conn, planche["id"])
+                    # L'EFFECTIF, pas « segmentee » en dur : depuis B6 la segmentation ne
+                    # fait plus reculer le statut, si bien qu'écrire la constante ferait
+                    # mentir la réponse d'import sur une planche déjà avancée. Le mensonge
+                    # serait invisible — la base, elle, aurait raison.
+                    planche["statut"] = res_seg["statut"]
+                except Exception as exc:
+                    # Best-effort, mais PAS muet. Ce `pass` a avalé, le 2026-08-31, un
+                    # `TypeError` introduit par ce commit même : la seule trace était un
+                    # statut resté `importee`, qu'on attribue naturellement à la
+                    # segmentation plutôt qu'à un bug. Un import qui perd sa segmentation
+                    # sans rien dire est la même faute que le lot qui s'annonçait terminé
+                    # (CONC-2) — se taire n'est pas être robuste.
+                    print(f"[import] segmentation ignorée pour {nom} : "
+                          f"{type(exc).__name__}: {exc}")
                 t_seg = time.perf_counter() - t2
             # Chronométrage par phase (diagnostic de la vitesse d'import).
             print(f"[import-timing] {nom} : download={t_dl:.2f}s "
@@ -1369,6 +1380,12 @@ def update_statut(planche_id: int, payload: StatutIn,
                   conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
     _get_planche(conn, portee, planche_id, ecriture=True)
+    # AUCUN ordre de transition n'est validé ici, et c'est une DÉCISION (B6, AUDIT-1) :
+    # la machine ne recule jamais (`database.avancer_statut`), l'humain le peut. Une passe
+    # automatique n'a pas d'intention ; quelqu'un qui appelle cette route en a une, y
+    # compris pour réparer une erreur — et `statut` ne commande RIEN dans l'application,
+    # il nourrit la barre d'avancement. Interdire le retour coincerait une planche mal
+    # marquée sans rien protéger. On ne valide donc que l'APPARTENANCE à `STATUTS`.
     if payload.statut not in STATUTS:
         raise HTTPException(422, f"Statut invalide : {payload.statut}")
     conn.execute("UPDATE planches SET statut = ? WHERE id = ?",

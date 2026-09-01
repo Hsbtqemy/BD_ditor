@@ -14,7 +14,7 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Iterator
 
-from config import DB_PATH
+from config import DB_PATH, STATUTS
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
@@ -903,6 +903,40 @@ def noms_lisibles(conn: sqlite3.Connection, logins) -> dict:
                   f"SELECT login, nom FROM utilisateur WHERE login IN ({qm})",
                   tuple(voulus))}
     return {login: (connus.get(login) or login) for login in voulus}
+
+
+def avancer_statut(conn: sqlite3.Connection, planche_id: int, cible: str) -> str:
+    """Fait AVANCER `planches.statut` vers `cible`, jamais reculer. Renvoie l'effectif.
+
+    Une passe automatique n'a pas d'intention (B6, AUDIT-1). Re-segmenter une planche déjà
+    `annotee` faisait retomber son statut à `segmentee` : le travail humain restait en base,
+    mais sa DÉCLARATION d'avancement était effacée, et rien ne le signalait — `statut` ne
+    commande rien, il ne nourrit que la barre d'avancement du corpus, de sorte que le seul
+    symptôme est un tableau de bord qui régresse tout seul.
+
+    L'ordre vient de `STATUTS` et de nulle part ailleurs : un `CASE WHEN` en SQL le
+    recopierait, et deux copies d'un ordre finissent par diverger. Un statut inconnu en base
+    (valeur héritée, migration future) est traité comme le PLUS BAS — on avance alors, ce
+    qui est le comportement d'avant ce correctif, donc sans surprise.
+
+    L'humain, lui, garde le droit de reculer : `PATCH /api/planches/{id}/statut` n'appelle
+    PAS cette fonction. Corriger un clic est une intention ; une passe ML n'en a aucune.
+    """
+    rang = {st: i for i, st in enumerate(STATUTS)}
+    if cible not in rang:
+        raise ValueError(f"statut cible inconnu : {cible}")
+    row = conn.execute("SELECT statut FROM planches WHERE id = ?", (planche_id,)).fetchone()
+    if row is None:
+        # Sans cette garde, l'UPDATE serait un no-op silencieux et la fonction renverrait
+        # `cible` : elle ANNONCERAIT un avancement qui n'a pas eu lieu, ce qui est
+        # exactement le mensonge que ce correctif supprime ailleurs. Une planche absente
+        # est une erreur de programmation, pas un cas de bord à absorber.
+        raise ValueError(f"planche inconnue : {planche_id}")
+    actuel = row["statut"]
+    if rang.get(actuel, -1) >= rang[cible]:
+        return actuel                       # déjà aussi loin, ou plus loin : on ne touche pas
+    conn.execute("UPDATE planches SET statut = ? WHERE id = ?", (cible, planche_id))
+    return cible
 
 
 def relecture_planches(conn: sqlite3.Connection, planche_ids) -> dict:

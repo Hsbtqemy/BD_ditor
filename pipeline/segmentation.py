@@ -22,7 +22,7 @@ import tempfile
 from pathlib import Path
 
 from config import DATA_DIR, KUMIKO_DIR
-from database import reindex_region, unindex_region
+from database import avancer_statut, reindex_region, unindex_region
 from pipeline.ordering import reorder_planche
 
 KUMIKO_ENTRY = KUMIKO_DIR / "kumiko"
@@ -301,12 +301,15 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
     reattaches = _reattach_orphans(conn, planche_id, regions)
     reorder_planche(conn, planche_id)
 
-    conn.execute(
-        "UPDATE planches SET statut = 'segmentee', "
-        "date_segmentation = datetime('now') WHERE id = ?",
-        (planche_id,),
-    )
+    # Un FAIT et une PRÉTENTION, séparés (B6, AUDIT-1). Les écrire ensemble était tout le
+    # défaut : `date_segmentation` est vrai à chaque passage — la planche VIENT d'être
+    # segmentée —, tandis que `statut` déclare où en est le travail HUMAIN. Le second ne
+    # peut donc qu'avancer, sans quoi re-segmenter une planche `annotee` efface la trace de
+    # son avancement, et le tableau de bord du corpus régresse tout seul.
+    conn.execute("UPDATE planches SET date_segmentation = datetime('now') WHERE id = ?",
+                 (planche_id,))
+    statut = avancer_statut(conn, planche_id, "segmentee")
 
-    return {"planche_id": planche_id, "nb_cases": len(regions),
+    return {"planche_id": planche_id, "nb_cases": len(regions), "statut": statut,
             "reattaches": reattaches, "annotations_transferees": len(transferred),
             "annotations_preservees": len(preserved), "regions": regions}
