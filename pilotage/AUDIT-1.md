@@ -6,15 +6,22 @@ audit: AUDIT.md
 
 # AUDIT-1 — les reliquats ouverts des cinq passes d'audit
 
-**Arrêté sur** — le commit `f1329f5`, 2026-08-31 : B6 avait un JUMEAU dans la visionneuse,
+**Arrêté sur** — le commit `1786a17`, 2026-08-31 : B6 avait un JUMEAU dans la visionneuse,
 trouvé par une seconde passe de revue sur un commit déjà fait. `viewer.js` posait
 `state.planche.statut = "segmentee"` après un clic sur « Segmenter », exactement comme la
-réponse d'import — et celui-ci est le plus visible des deux, puisqu'il alimente le bandeau
-et la pastille : l'écran montrait la régression que la base venait de refuser, jusqu'au
-prochain rechargement où elle se corrigeait seule. Un défaut qui se répare en
-rafraîchissant est un défaut qu'on ne signale jamais. La première passe avait relevé les
-quatre sites d'écriture EN BASE et s'était arrêtée à la frontière HTTP, alors que le client
-tient sa propre copie de l'état.
+réponse d'import. La première passe avait relevé les quatre sites d'écriture EN BASE et
+s'était arrêtée à la frontière HTTP, alors que le client tient sa propre copie de l'état.
+
+**Et il aura fallu deux corrections pour dire vrai de cette seule ligne**, ce qui vaut
+mieux d'être noté que le correctif lui-même. J'ai d'abord écrit le cas NON TESTABLE, « faute
+de Kumiko dans le serveur live » — faux, `lib/kumiko` est cloné et le serveur live segmente
+pour de bon ; je ne l'avais pas regardé. Puis j'ai écrit que l'écran affichait la
+régression — faux aussi, et c'est le test qui l'a dit en passant AVEC la constante en dur.
+Le défaut est réel mais DIFFÉRÉ : `segmenter()` ne redessine pas le bandeau, tandis que
+`selectPlanche()` lit `state.planches` EN MÉMOIRE sans refetch, `state.planche` en étant le
+même objet — la valeur faussée ressort au premier réaffichage, une re-sélection suffit.
+D'où le clic dans le test, sans lequel il est vacant. **« Non testable » est une
+CONCLUSION, et une conclusion se vérifie comme le reste.**
 
 Avant lui, le commit `cff09fc` : la zone **Transitions de statut** est close
 à son tour. Une seule zone reste, les latents de segmentation.
