@@ -100,7 +100,7 @@ Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, 
 | `/corpus` | `corpus.html` | `corpus.js` | **Bibliothèque** : CRUD albums/planches + lancement de lots |
 | `/exploration` | `exploration.html` | `exploration.js` | **Exploration** linguistique du corpus — 4 vues : distribution (fréquences), **concordance KWIC** (aligné/liste, deep-link Visionneuse), **croisement 2D** (tableau de contingence facette×facette, heatmap, cellule→concordance), comparaison A/B ; + panneaux **📖 Lexique**, **🎯 Accord** (modèle↔humain) et **👥 Inter** (inter-annotateurs) |
 
-`static/lib/` contient des modules **UMD réutilisables et testés sous Node** (pas d'accès DOM au chargement) : `nav.js` (navigation/round-trip entre surfaces) et `dialog.js` (modale accessible : piège à focus, Échap, retour du focus). Leur logique pure est verrouillée par `tests/js/*.test.js`.
+`static/lib/` contient des modules **UMD réutilisables et testés sous Node** (pas d'accès DOM au chargement) : `common.js` (helpers partagés par les QUATRE surfaces — `$`, `apiGet`, `apiSend`, `escapeHtml`/`esc`, `toast` — exposés en globals pour que les appels nus restent inchangés, et require()-ables par les tests), `nav.js` (navigation/round-trip entre surfaces) et `dialog.js` (modale accessible : piège à focus, Échap, retour du focus). Leur logique pure est verrouillée par `tests/js/*.test.js`. **Ne pas redupliquer ces helpers dans un fichier de surface** : c'était le constat « duplication frontend » de l'audit de juin, et `common.js` est ce qui l'a fermé.
 
 ### Données : tout en pixels MASTER
 
@@ -302,7 +302,7 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 24). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 25). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
 
