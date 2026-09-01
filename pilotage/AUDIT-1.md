@@ -85,8 +85,8 @@ Aucun n'était un bug ; tous décrivaient un dépôt de juin, ou une mécanique 
 Le travail utile n'a donc pas été de corriger mais de MESURER, puis de transformer chaque
 mesure en test — une mesure ponctuelle se perd, un test casse.
 
-**L'audit lui-même a vieilli, et il faudra en décider séparément** (relevé du 2026-09-01,
-sans action ici). Son unique **🔴 Élevé** — « exfiltration totale non authentifiée » — est
+**L'audit lui-même avait vieilli — TRAITÉ le 2026-09-01.** Le relevé ci-dessous a conduit
+à remettre l'état sur chaque constat d'`AUDIT.md`, là où on le lit. Son unique **🔴 Élevé** — « exfiltration totale non authentifiée » — est
 fermé sur ses DEUX mécanismes : le mount `/derivatives` n'existe plus, et
 `GET /api/sauvegarde` passe par `_exiger_admin_sauvegarde` (DROIT-1). Le document l'affiche
 toujours comme ouvert. Le décompte de tests qu'il reprochait au README (176 annoncés pour

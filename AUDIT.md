@@ -2,6 +2,42 @@
 
 *Audit réalisé le 13 juin 2026 · périmètre : backend FastAPI, pipeline, frontend vanilla, tests.*
 
+> **CE DOCUMENT EST UN JOURNAL DE CAMPAGNE, PAS UN SUIVI VIVANT** (constat du 2026-09-01).
+> Cinq passes menées le 13 juin, plus des mises à jour. Le suivi ticket-par-ticket vit
+> désormais dans `pilotage/` — voir `AUDIT-1` (les reliquats) et `AUDIT-2` (les mineurs).
+>
+> Il se lisait faux, et c'était structurel : les CLÔTURES sont consignées dans des blocs de
+> passe ULTÉRIEURS, jamais sur le constat lui-même. Une lecture de haut en bas montrait donc
+> `🔴 P1`, `🔴 T1`, `🔴 G1`, `🟠 G2` comme ouverts alors que le document déclare plus bas leur
+> correction. Chaque constat porte maintenant son état là où on le lit.
+>
+> **`npm run verifier` ne sait pas compter ces constats, et l'affiche « INCONNU ».** Ce n'est
+> pas un défaut de l'outil : `journal-contrat.mjs` ne reconnaît qu'un code de forme
+> `[A-Z]{1,5}-\d+`, en ligne de tableau ou en titre. Les codes d'ici — `P1`, `T2`, `S1`,
+> `G1`, `B6`, `O1` — n'ont pas de tiret. Renuméroter fermerait cet angle mort ; ç'a été
+> écarté le 2026-09-01, parce que tous les renvois existants (fiches `pilotage/`, messages de
+> commit déjà poussés) casseraient pour un gain d'affichage.
+
+> **État vérifié CONTRE LE CODE le 2026-09-01**, et non recopié des blocs de clôture — trois
+> mois, `v14 → v25` et cinq gros chantiers ont passé dessus.
+>
+> **Fermé depuis** : auto-référence CSS (P1), coordonnées NULL (P1), modèles ML non protégés
+> (`ML_LOCK`), SSRF/HTTPS ShareDocs (`_check_url`), `Image.MAX_IMAGE_PIXELS` désormais borné
+> par `config.MAX_IMAGE_PIXELS`, XSS résiduels (plus aucune interpolation hors `esc()` /
+> `textContent` / `confirm()`), duplication frontend (`static/lib/common.js`), T1, G1, G2.
+>
+> **Encore vrai** : verrou de crop trop large (`ocr.py`, il englobe crop + resize + encodage),
+> `COALESCE(MAX(numero),0)+1` en course à DEUX endroits (`ingest.py:37`, `main.py:800`),
+> registre de jobs en RAM non purgé, versions non épinglées (aucun `==` dans
+> `requirements.txt` — cf. QA-4), concurrence non testée, CSRF (cf. SEC-2, zone en attente
+> d'INFRA-1).
+>
+> **Tombés à l'examen** — et c'est le résultat le plus utile de cette relecture : sur les
+> trois constats de segmentation encore ouverts, AUCUN n'était un bug. `O1` était réfuté (la
+> bonne crainte, le mauvais coupable : le `min()` qu'il accuse est ce qui empêche la dérive),
+> `S1/S5` n'est pas reproductible dans le scénario qu'il décrit, `S6` est conforme. Détail et
+> mesures dans `pilotage/AUDIT-1.md`.
+
 > **Mise à jour 2026-06-23.** Corrigés depuis l'audit : verrou d'inférence ML global
 > (`jobs.ML_LOCK`, routes directes *et* worker), nettoyage du master en cas d'échec
 > d'ingestion, échappement des labels de tags, borne explicite `BD_MAX_IMAGE_PIXELS`,
@@ -48,7 +84,9 @@ Les faiblesses ne remettent pas en cause le produit : elles concernent surtout l
 
 ## Faiblesses & bugs (par priorité)
 
-### 🔴 P1 — Bugs réels, correction simple
+### ✅ P1 — Bugs réels, correction simple — **LES TROIS FERMÉS**
+
+*Vérifié contre le code le 2026-09-01 : plus d'auto-référence dans `style.css` ; `reading_order` traite les coordonnées NULL comme 0 (`_y`/`_x`) ; `run_kumiko` lève `KumikoError` sur une liste vide comme sur une taille malformée (`segmentation.py:96` et `:233`).*
 
 - **Bug CSS : modales sans voile et survols invisibles en thème sombre (défaut).**
   [static/style.css:23-24](static/style.css#L23-L24) :
@@ -62,29 +100,35 @@ Les faiblesses ne remettent pas en cause le produit : elles concernent surtout l
 
 - **Edge cases Kumiko non convertis en `KumikoError`.** `data[0]` sur une liste vide et `size[1]` sur une taille à un élément lèvent `IndexError` non capturé ([pipeline/segmentation.py:86](pipeline/segmentation.py#L86), [pipeline/segmentation.py:188](pipeline/segmentation.py#L188)) → 500 opaque au lieu d'un message clair.
 
-### 🟠 P2 — Concurrence & ressources
+### 🟠 P2 — Concurrence & ressources — **2 ouverts sur 5** au 2026-09-01
 
-- **Modèles ML globaux non protégés, partagés entre worker batch et routes directes.** `bulles._model` et `ocr._reader` sont des singletons chargés paresseusement **sans verrou** ([pipeline/bulles.py:35-46](pipeline/bulles.py#L35-L46), [pipeline/ocr.py:36-48](pipeline/ocr.py#L36-L48)). Le `_run_lock` de `jobs.py` sérialise *les jobs entre eux*, mais **pas** une route `/ocr` ou `/detecter-bulles` directe qui tournerait en parallèle d'un job. Or `predict()` (ultralytics) et `readtext()` (EasyOCR) ne sont pas thread-safe → double chargement possible et état potentiellement corrompu. **Correctif** : un `threading.Lock` global d'inférence couvrant routes directes *et* worker.
+*Restent : le verrou de crop trop large, et le registre de jobs (RAM, non purgé — un process tué emporte le lot sans laisser de trace, cf. `pilotage/CONC-2.md`).*
+
+- ✅ **FERMÉ** (CONC-2 v1 : `jobs.ML_LOCK` sérialise worker ET routes directes) — ~~**Modèles ML globaux non protégés, partagés entre worker batch et routes directes.**~~ `bulles._model` et `ocr._reader` sont des singletons chargés paresseusement **sans verrou** ([pipeline/bulles.py:35-46](pipeline/bulles.py#L35-L46), [pipeline/ocr.py:36-48](pipeline/ocr.py#L36-L48)). Le `_run_lock` de `jobs.py` sérialise *les jobs entre eux*, mais **pas** une route `/ocr` ou `/detecter-bulles` directe qui tournerait en parallèle d'un job. Or `predict()` (ultralytics) et `readtext()` (EasyOCR) ne sont pas thread-safe → double chargement possible et état potentiellement corrompu. **Correctif** : un `threading.Lock` global d'inférence couvrant routes directes *et* worker.
 
 - **Verrou trop large dans `region_crop_png`.** Le `with _crop_lock` englobe crop + resize LANCZOS + encodage PNG ([pipeline/ocr.py:144-167](pipeline/ocr.py#L144-L167)) : sous le threadpool FastAPI, **tous** les crops (vignettes de recherche incluses) sont sérialisés, encodage compris. Le cache garde aussi un TIFF (potentiellement des dizaines de Mo) ouvert indéfiniment, sans TTL ni fermeture à l'arrêt. **Correctif** : ne verrouiller que l'accès au dict de cache ; libérer/expirer l'image.
 
 - **Job : synchronisation implicite et registre non purgé.** Le worker écrit `current/done/status/errors` pendant que `snapshot`/`cancel_job` les lisent **sans `_lock`** ([pipeline/jobs.py:48-64](pipeline/jobs.py#L48-L64) vs [pipeline/jobs.py:67-99](pipeline/jobs.py#L67-L99)) : ça « marche » grâce au GIL mais un `snapshot` peut voir un état composite incohérent. L'**annulation n'est pas préemptive** (testée seulement entre planches/passes — un Kumiko de 300 s ou un OCR de grosse planche ne s'interrompt pas, et le subprocess Kumiko n'est pas tué). Le registre `_jobs` **grossit indéfiniment** (fuite mémoire lente sur process long-vécu).
 
-- **Numéro de planche en course.** `MAX(numero)+1` ([pipeline/ingest.py:33-38](pipeline/ingest.py#L33-L38), [main.py:326-329](main.py#L326-L329)) sans `UNIQUE(album_id, numero)` au schéma : deux imports concurrents sur le même album peuvent produire le même numéro → collision de noms de fichiers (`planche_0001.jpg` écrasé) et doublon logique. **Correctif** : contrainte `UNIQUE(album_id, numero)` + retry, ou réservation transactionnelle.
+- ✅ **FERMÉ** (DB-1 : index `idx_planches_album_numero` UNIQUE posé en migration v12→v13, numéro alloué AVANT écriture, `IntegrityError` → 409 nommant la course + master nettoyé, `main.py:820-828`) — ~~**Numéro de planche en course.**~~ `MAX(numero)+1` ([pipeline/ingest.py:33-38](pipeline/ingest.py#L33-L38), [main.py:326-329](main.py#L326-L329)) sans `UNIQUE(album_id, numero)` au schéma : deux imports concurrents sur le même album peuvent produire le même numéro → collision de noms de fichiers (`planche_0001.jpg` écrasé) et doublon logique. **Correctif** : contrainte `UNIQUE(album_id, numero)` + retry, ou réservation transactionnelle.
 
-- **Master orphelin sur disque si l'ingestion échoue.** `store_upload` écrit le fichier *avant* l'INSERT ([pipeline/ingest.py:142-151](pipeline/ingest.py#L142-L151)) ; si `ingest_image` lève ensuite ([main.py:331-334](main.py#L331-L334)), le master (et parfois le dérivé) reste sur disque sans ligne en base. **Correctif** : nettoyage dans le `except`.
+- ✅ **FERMÉ** (`master.unlink(missing_ok=True)` sur les deux chemins d'échec, `main.py:827` et `:831`, plus l'import ShareDocs `:1279`) — ~~**Master orphelin sur disque si l'ingestion échoue.**~~ `store_upload` écrit le fichier *avant* l'INSERT ([pipeline/ingest.py:142-151](pipeline/ingest.py#L142-L151)) ; si `ingest_image` lève ensuite ([main.py:331-334](main.py#L331-L334)), le master (et parfois le dérivé) reste sur disque sans ligne en base. **Correctif** : nettoyage dans le `except`.
 
-### 🟡 P3 — Sécurité (dans le modèle mono-poste, risque limité)
+### 🟡 P3 — Sécurité — **1 ouvert sur 4** au 2026-09-01
 
-- **ShareDocs : pas de garde HTTPS ni de normalisation de chemin.** `configure()` accepte n'importe quelle URL cliente ([pipeline/sharedocs.py:124-131](pipeline/sharedocs.py#L124-L131)) : aucun contrôle `scheme == "https"` → identifiants Basic potentiellement en clair sur une URL `http://` ; et un hôte interne arbitraire (SSRF théorique). Le `chemin` distant n'est pas normalisé des `..` ([pipeline/sharedocs.py:48-54](pipeline/sharedocs.py#L48-L54)) → remontée d'arborescence WebDAV possible (bornée par les droits du serveur distant). Acceptable pour un poste local de confiance, à documenter comme tel.
+*Reste le CSRF seul, et il dépend d'INFRA-1 : il n'y a pas de session de navigateur à voler tant que l'application n'authentifie personne. Cf. `pilotage/SEC-2.md`, dont la zone CSP est close.*
 
-- **`Image.MAX_IMAGE_PIXELS = None`** désactive globalement la garde anti-décompression-bomb pour tout le process ([pipeline/ingest.py:25](pipeline/ingest.py#L25), [pipeline/ocr.py](pipeline/ocr.py)), y compris les flux importés depuis le réseau (ShareDocs). Justifié pour des masters maîtrisés, mais une borne haute explicite serait plus sûre.
+- ✅ **FERMÉ** (`pipeline/sharedocs._check_url` : allowlist d'hôte, refus des IP internes, `follow_redirects=False`) — ~~**ShareDocs : pas de garde HTTPS ni de normalisation de chemin.**~~ `configure()` accepte n'importe quelle URL cliente ([pipeline/sharedocs.py:124-131](pipeline/sharedocs.py#L124-L131)) : aucun contrôle `scheme == "https"` → identifiants Basic potentiellement en clair sur une URL `http://` ; et un hôte interne arbitraire (SSRF théorique). Le `chemin` distant n'est pas normalisé des `..` ([pipeline/sharedocs.py:48-54](pipeline/sharedocs.py#L48-L54)) → remontée d'arborescence WebDAV possible (bornée par les droits du serveur distant). Acceptable pour un poste local de confiance, à documenter comme tel.
 
-- **XSS résiduels côté client.** Le code échappe *généralement* bien, mais quelques `innerHTML` interpolent des données sans `escapeHtml` : labels de tags ([static/viewer.js:703](static/viewer.js#L703), [static/viewer.js:915](static/viewer.js#L915)). Un tag contenant `<img onerror=…>` injecté via l'API s'exécuterait. Pas de CSP dans les templates pour mitiger. **Correctif** : échapper systématiquement, ajouter une CSP.
+- ✅ **FERMÉ** (borné par `config.MAX_IMAGE_PIXELS`, défaut 200 Mpx, `BD_MAX_IMAGE_PIXELS`) — ~~**`Image.MAX_IMAGE_PIXELS = None`**~~ désactive globalement la garde anti-décompression-bomb pour tout le process ([pipeline/ingest.py:25](pipeline/ingest.py#L25), [pipeline/ocr.py](pipeline/ocr.py)), y compris les flux importés depuis le réseau (ShareDocs). Justifié pour des masters maîtrisés, mais une borne haute explicite serait plus sûre.
+
+- ✅ **FERMÉ** (vérifié le 2026-09-01 : plus aucune interpolation de donnée utilisateur hors `esc()` / `textContent` / `confirm()` ; la CSP de SEC-2 est la seconde moitié du correctif recommandé) — ~~**XSS résiduels côté client.**~~ Le code échappe *généralement* bien, mais quelques `innerHTML` interpolent des données sans `escapeHtml` : labels de tags ([static/viewer.js:703](static/viewer.js#L703), [static/viewer.js:915](static/viewer.js#L915)). Un tag contenant `<img onerror=…>` injecté via l'API s'exécuterait. Pas de CSP dans les templates pour mitiger. **Correctif** : échapper systématiquement, ajouter une CSP.
 
 - **Pas de protection CSRF.** Les `apiSend` POST/PUT/DELETE n'envoient ni token ni en-tête custom ([static/viewer.js:58-66](static/viewer.js#L58-L66)). Sans cookie de session côté backend, le risque est faible, mais à confirmer si l'app est un jour exposée.
 
-### 🟢 P4 — Qualité, tests, reproductibilité
+### 🟢 P4 — Qualité, tests, reproductibilité — **4 ouverts sur 6** au 2026-09-01
+
+*Restent : versions non épinglées (aucun `==` dans `requirements.txt`, cf. QA-4), couverture « 100 % » conditionnelle aux moteurs ML, concurrence non testée, inefficacités de rendu.*
 
 - **Aucune version épinglée, pas de lockfile.** Tout est en bornes basses ouvertes (`fastapi>=0.110`, `ultralytics>=8.0`, `easyocr>=1.7`, `pillow>=10.0`…). Les builds ne sont pas reproductibles et le « 176 tests / 100 % » n'est garanti sur aucune combinaison figée — risqué pour ultralytics/easyocr/Pillow dont les API bougent. **Correctif** : `pip-tools`/`requirements.lock`. De plus `numpy`, `opencv-python-headless`, `requests` (deps réelles) ne figurent qu'en *commentaires* d'instructions, non installables via `pip install -r`.
 
@@ -92,9 +136,9 @@ Les faiblesses ne remettent pas en cause le produit : elles concernent surtout l
 
 - **Concurrence sous-testée malgré un design threadé.** La sérialisation `_run_lock` n'est jamais vérifiée (aucun test ne lance deux jobs concurrents) ; la contention worker↔requêtes sous WAL/`busy_timeout` — justification centrale du design — n'est pas testée sous charge ; la cohérence du backup *pendant une écriture* n'est pas validée alors que c'est l'argument du `VACUUM INTO`.
 
-- **Duplication frontend.** `$`, `apiGet`, `apiSend`, `escapeHtml`, `toast` sont recopiés à l'identique dans `viewer.js`, `recherche.js`, `corpus.js` (~80 lignes). Un `common.js` partagé suffirait.
+- ✅ **FERMÉ** (`static/lib/common.js`, module UMD testé : `$`, `apiGet`, `apiSend`, `escapeHtml`/`esc`, `toast`) — ~~**Duplication frontend.**~~ `$`, `apiGet`, `apiSend`, `escapeHtml`, `toast` sont recopiés à l'identique dans `viewer.js`, `recherche.js`, `corpus.js` (~80 lignes). Un `common.js` partagé suffirait.
 
-- **Accessibilité clavier incomplète.** Beaucoup de `<li>`/`<div>`/`<tr>` cliquables via `onclick` sans `role="button"`, `tabindex` ni gestion Enter/Espace (liste de planches, arbre, lignes de table, entrées ShareDocs) ; modales sans `role="dialog"`, sans piège de focus ni fermeture par Échap.
+- ✅ **FERMÉ pour l'essentiel** (gestionnaires clavier posés — 15 dans `viewer.js`, 4 dans `corpus.js` — et surtout la non-régression est verrouillée par l'audit axe-core WCAG 2.1 AA sur les 4 surfaces × 2 thèmes, `tests/test_e2e_a11y.py`) — ~~**Accessibilité clavier incomplète.**~~ Beaucoup de `<li>`/`<div>`/`<tr>` cliquables via `onclick` sans `role="button"`, `tabindex` ni gestion Enter/Espace (liste de planches, arbre, lignes de table, entrées ShareDocs) ; modales sans `role="dialog"`, sans piège de focus ni fermeture par Échap.
 
 - **Quelques inefficacités** : `renderTree()`/`renderOverlay()` reconstruisent tout le DOM (`innerHTML=""`) à chaque sélection/sauvegarde ; `refreshTagVocab()` (GET `/api/tags`) appelé après *chaque* sauvegarde d'annotation ; `mousemove` global non throttlé qui inverse une matrice à chaque pixel ([static/viewer.js:1079](static/viewer.js#L1079)) ; jusqu'à 200 requêtes de vignettes par recherche.
 
@@ -256,7 +300,7 @@ Territoire neuf : logique de **préservation du travail humain** (segmentation/b
 
 Territoire neuf : **templates HTML + CSS**, **cohérence des `#id` JS↔HTML**, **correction réelle des tests**.
 
-### 🔴 T1 — Les correctifs des passes 2-3 ne sont couverts par AUCUN test (MAJEUR)
+### ✅ T1 — Les correctifs des passes 2-3 ne sont couverts par AUCUN test (MAJEUR) — **FERMÉ**, cf. le bloc « T1 + T6 appliqués » plus bas
 La « suite verte, exit 0 » citée à chaque passe ne prouve que l'absence de régression sur les chemins **nominaux** — elle n'exerce **aucune** des nouvelles validations. On pourrait réintroduire chaque bug sans qu'un test échoue. Manquent (convention `test_regressions.py` : un test par bug) :
 - **B1** — `_validate_parent` ([main.py:215-244](main.py#L215-L244)) : ses 4 branches 422 (parent introuvable / cross-planche / auto-parent / cycle) ne sont jamais déclenchées par un test.
 - **B3** — `Field(ge=0)` : aucun test n'envoie `x/y/w/h` négatif → 422 attendu, non vérifié.
@@ -291,10 +335,10 @@ La « suite verte, exit 0 » citée à chaque passe ne prouve que l'absence de r
 
 Dernier territoire : `ingest.py`, `config.py`, **service de fichiers statiques**, exports sous l'angle fichier/sérialisation. (`spike/` confirmé hors périmètre — jamais importé.)
 
-### 🔴 G1 — Export TEI corrompu silencieusement par des caractères non-XML (MAJEUR, vérifié par exécution)
+### ✅ G1 — Export TEI corrompu silencieusement par des caractères non-XML — **FERMÉ** (`_xml_safe`, `main.py:4200`)
 [main.py:1014-1022](main.py#L1014-L1022) : `ocr_texte` et `note` (texte libre utilisateur) sont injectés dans `<line>.text`/`<note>.text`. `ET.tostring()` **n'échappe ni ne rejette** les caractères de contrôle interdits par XML 1.0 (`\x00`-\x08, \x0b, \x0c, \x0e-\x1f) : il les écrit bruts. Un `\x00` collé dans une correction OCR → `GET /api/export/tei` renvoie **200 OK** avec un XML que **tout parseur conforme rejette** (`not well-formed`). Corruption silencieuse du livrable. **Correctif** : filtrer ces caractères avant `.text`. (Le CSV, lui, ne casse pas — vérifié.)
 
-### 🟠 G2 — `config.py` : `mkdir` à l'import → crash opaque si `DATA_DIR` non inscriptible (MAJEUR)
+### ✅ G2 — `config.py` : `mkdir` à l'import → crash opaque — **FERMÉ** (le `mkdir` est encadré, `OSError` → `RuntimeError` nommant le chemin fautif, `config.py:129-136`)
 [config.py:42-43](config.py#L42-L43) : la création des dossiers s'exécute **à l'import** de `config` (donc importé par tout le code + les tests). Un `BD_DATA_DIR` non inscriptible (RO, permissions, disque plein) lève `OSError` **à l'import**, stack brute, avant tout `lifespan`/message clair → l'app ne démarre pas sans diagnostic. **Correctif** : différer la création dans le `lifespan` ou encadrer avec un message explicite.
 
 ### 🟡 Mineurs
