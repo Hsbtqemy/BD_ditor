@@ -1835,7 +1835,13 @@ async function segmenter() {
   toast("Segmentation en cours…");
   try {
     const res = await apiSend("POST", `/api/planches/${state.planche.id}/segmenter`);
-    state.planche.statut = "segmentee";
+    // L'EFFECTIF que renvoie le serveur, pas la constante (B6, AUDIT-1). Écrire
+    // « segmentee » en dur affichait à l'écran — bandeau et pastille — une régression que
+    // la base venait justement de refuser : segmenter une planche `annotee` la faisait
+    // paraître retomber jusqu'au prochain rechargement. Le jumeau exact de la ligne
+    // corrigée dans la réponse d'import ; il a fallu une seconde passe de revue pour le
+    // voir, la première n'ayant cherché le défaut que côté serveur.
+    state.planche.statut = res.statut;
     await loadRegions(state.planche.id);
     toast(`${res.nb_cases} cases détectées` +
           (res.reattaches ? `, ${res.reattaches} ré-rattachée(s)` : "") +
