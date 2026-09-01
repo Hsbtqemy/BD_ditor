@@ -757,3 +757,45 @@ def test_resegmenter_une_planche_importee_l_avance_bien(client, planche, monkeyp
         assert conn.execute("SELECT statut FROM planches WHERE id = ?",
                             (planche["id"],)).fetchone()["statut"] == "segmentee"
     assert res["statut"] == "segmentee"
+
+
+def test_ordre_de_lecture_pas_d_agglomeration_transitive():
+    """O1 (AUDIT-1) — les rangées ne dérivent PAS de proche en proche.
+
+    Le constat annonçait qu'un escalier de cases s'agglomérerait transitivement, la boucle
+    élargissant `row["top"]` par `min()` à chaque ajout. Mesuré le 2026-09-01 : c'est faux,
+    et structurellement. Les items sont triés par `y` CROISSANT, donc `_y(b) >= row["top"]`
+    toujours — le `min()` ne peut jamais abaisser `top`, il est sans effet. La fenêtre
+    d'acceptation reste figée sur le premier item de la rangée.
+
+    Ce test verrouille la sémantique plutôt que le constat : il échouerait si quelqu'un
+    remplaçait ce `min()` par une moyenne ou un `max()`, ou retirait le tri préalable —
+    trois façons d'introduire pour de bon la dérive que l'audit redoutait.
+
+    `x` DÉCROÎT quand `y` croît, à dessein : avec `x` croissant, « une seule rangée » et
+    « une rangée par case » donnent le MÊME ordre, et le test ne prouverait rien. C'est
+    l'erreur commise à la première mesure.
+    """
+    from pipeline.ordering import reading_order
+
+    def escalier(pas):
+        return [{"id": i, "x": (5 - i) * 200, "y": i * pas, "w": 100, "h": 100}
+                for i in range(6)]
+
+    # L'INVARIANT d'abord, indépendant de la valeur de la tolérance : un escalier dont
+    # chaque marche tient dans la tolérance, mais dont l'amplitude totale la dépasse
+    # largement, ne doit JAMAIS former une rangée unique. C'est lui qui casse le jour où
+    # `top` suivrait le dernier item au lieu de rester l'ancre — et il survit à un simple
+    # réglage du seuil, contrairement aux ordres exacts ci-dessous.
+    assert [b["id"] for b in reading_order(escalier(36))] != [5, 4, 3, 2, 1, 0], (
+        "l'escalier s'est agglomeré en une seule rangée : la fenêtre d'acceptation dérive")
+
+    # Puis les ordres EXACTS, qui documentent le comportement actuel avec tol = 0,4 ×
+    # hauteur médiane = 40. Pas de 36 : chaque case est dans la tolérance de la précédente,
+    # mais pas de celle qui OUVRE la rangée → des paires. Ces trois-là bougeront si l'on
+    # règle le seuil, et c'est voulu : un changement de seuil est un changement de rendu.
+    assert [b["id"] for b in reading_order(escalier(36))] == [1, 0, 3, 2, 5, 4]
+    # Au-delà de la tolérance : une rangée par case, ordre descendant.
+    assert [b["id"] for b in reading_order(escalier(41))] == [0, 1, 2, 3, 4, 5]
+    # Bien en deçà : une seule rangée, donc triée de gauche à droite.
+    assert [b["id"] for b in reading_order(escalier(3))] == [5, 4, 3, 2, 1, 0]
