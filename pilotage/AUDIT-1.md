@@ -6,7 +6,17 @@ audit: AUDIT.md
 
 # AUDIT-1 — les reliquats ouverts des cinq passes d'audit
 
-**Arrêté sur** — le commit `8195037`, 2026-08-31 : la zone **Tests faibles** est close, les
+**Arrêté sur** — le commit `cff09fc`, 2026-08-31 : la zone **Transitions de statut** est close
+à son tour. Une seule zone reste, les latents de segmentation.
+
+Le relevé a valu mieux que les deux pointeurs de la fiche : `statut` s'écrit à QUATRE
+endroits et **rien ne branche dessus** — aucune route ne le teste, aucun job ne le filtre.
+Son unique lecteur est la barre d'avancement du corpus. C'est un marqueur déclaratif, pas
+une machine à états, et cela change ce qu'il fallait corriger : un seul `UPDATE` mêlait un
+FAIT (`date_segmentation`, vrai à chaque passage) et une PRÉTENTION (`statut`, où en est le
+travail humain). Les écrire ensemble était tout le défaut.
+
+Avant lui, le commit `8195037`, 2026-08-31 : la zone **Tests faibles** est close, les
 deux autres sont intactes. Les quatre corrections ont une parenté qu'on ne voit qu'en les
 faisant ensemble — aucune ne réparait un bug, toutes réparaient une AFFIRMATION. Un test
 qui accepte deux contrats opposés, un qui reconnaît une page à trois lettres, un qui
@@ -27,8 +37,8 @@ cités nulle part ailleurs que dans `AUDIT.md`.
 ## Reste
 
 ### Transitions de statut
-- [ ] B6 (régression) — re-segmenter une planche `annotee` ne la fait plus régresser en `segmentee` : `pipeline/segmentation.py:305` pose `statut = 'segmentee'` sans condition, et la route `POST /api/planches/{id}/segmenter` (`main.py:604`) l'appelle sur n'importe quel statut
-- [ ] B6 (ordre) — la route `PATCH /api/planches/{id}/statut` (`main.py:968`) valide un ORDRE de transition et pas seulement l'appartenance à `STATUTS`, qu'elle vérifie déjà en `main.py:972`
+- [x] **B6 (régression) — la machine n'efface plus l'avancement déclaré** (`database.avancer_statut`, appelé par `segment_planche`). Le `UPDATE` unique est scindé : la date est posée à chaque passage — c'est un fait —, le statut ne peut qu'avancer. L'ordre vient de `STATUTS` et de nulle part ailleurs, un `CASE WHEN` en SQL le recopierait. Trois tests, dont le PENDANT sans lequel le premier ne prouverait rien : un correctif qui n'écrirait plus jamais le statut passerait la non-régression avec brio. `run_kumiko` y est simulé, pour que la garde tourne aussi là où Kumiko n'est pas installé — c'est-à-dire en intégration
+- [x] ~~B6 (ordre) — la route `PATCH /api/planches/{id}/statut` valide un ORDRE de transition~~ — **ÉCARTÉ le 2026-08-31**, et c'est la conséquence directe de la doctrine retenue : *la machine ne recule jamais, l'humain le peut*. Si le retour humain est légitime, il n'y a plus d'ordre à valider. Deux faits relevés dans le code appuient l'arbitrage, et aucun n'était connu avant de le chercher. **La route n'a AUCUN appelant dans l'interface** — `corpus.js` affiche la pastille et ne l'écrit jamais —, si bien que « l'humain peut reculer » reste aujourd'hui théorique. Et son seul appelant réel, `tools/semer_demo.py`, pose `annotee` sur une planche fraîchement importée : un saut de deux crans, que toute validation d'ordre strict casserait. La décision est écrite dans `update_statut`, à côté du contrôle d'appartenance qui subsiste
 
 ### Tests faibles
 - [x] **T2 — renommé, et ce qu'il ne teste pas est écrit dedans** (`tests/test_live_coherence.py`). Le test était JUSTE : un client séquentiel est la bonne forme pour le bug qu'il garde — un commit émis après la réponse se révèle en relisant tout de suite, pas en écrivant à plusieurs. C'est son NOM qui mentait. Plutôt que de seulement renommer, la docstring nomme désormais la concurrence qui reste non testée — ni deux jobs sur `_run_lock`, ni worker ↔ serveur, ni `make_backup` pendant une écriture — parce qu'un nom qui survend ne se remplace pas par un silence. Quatre documents mis à jour, et le lien mort du constat d'audit retiré (il pointait des lignes 83-92 d'un fichier qui n'en comptait que 45)
@@ -51,6 +61,16 @@ sept fiches, mais qui n'existaient plus pour qui planifie — ils ne vivaient qu
 d'arbre est aujourd'hui ≤ 2, ce qui le neutralise. Ce n'est pas une correction, c'est une
 coïncidence de données — le jour où une 3ᵉ profondeur est autorisée, il devient une perte
 de données silencieuse. À traiter AVANT toute évolution de la hiérarchie des régions.
+
+**Deux trouvailles hors constat, l'une et l'autre nées du relevé.** `main.py` recopiait
+`planche["statut"] = "segmentee"` dans la réponse d'import : la ligne aurait MENTI dès que la
+segmentation cesse de reculer le statut, en annonçant un recul qui n'a pas eu lieu — elle
+rend l'effectif. Et le `except Exception: pass` de cette même boucle a AVALÉ, le jour même,
+un `TypeError` introduit par ce commit : la seule trace était un statut resté `importee`,
+c'est-à-dire un symptôme qu'on attribue à la segmentation et jamais à un bug. Le
+best-effort est légitime — un import réussi ne doit pas être perdu pour une segmentation
+ratée — mais se taire ne l'est pas, et c'est la même faute que le lot qui s'annonçait
+terminé (CONC-2). Il dit désormais ce qu'il avale.
 
 **Les pointeurs ont re-pourri en cinq jours, et de ma propre main.** Au 2026-08-31, cinq
 des dix références de cette fiche étaient mortes : les quatre `main.py` (décalées par le
