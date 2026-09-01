@@ -1,13 +1,13 @@
 ---
 chantier: SANTE-1
-statut: interrompu
+statut: livré
 ---
 
 # SANTE-1 — /api/sante annonce vivants des moteurs morts
 
-**Arrêté sur** — 2026-08-27, `ed17b32` : cœur `sante.py`, `/api/sante?profond=1`,
-contrat d'image dans le Dockerfile. Éprouvé sur trois images cassées à dessein, 3/3
-rejetées. Reste l'exposition à l'opérateur.
+**Arrêté sur** — 2026-09-01, `4cbd905` : panneau **🩺 Moteurs** dans la
+Bibliothèque, règle d'affichage pure dans `static/lib/sante.js`, section « Un moteur en
+panne » dans `docs/deploiement-docker.md`. Le chantier est LIVRÉ.
 
 ## Reste
 
@@ -21,8 +21,16 @@ rejetées. Reste l'exposition à l'opérateur.
 - [x] Un Kumiko cassé par OpenCV 5 est rapporté en panne : Kumiko étant un SCRIPT et non une bibliothèque, on vérifie son point d'entrée ET la majeure d'OpenCV — build rejeté, `PANNE kumiko`
 - [x] La cause est lisible : `{ok, erreur}` porte le type et le message de l'exception, borné à 300 caractères
 - [x] Le moteur ABSENT est attrapé, ce que la suite ne sait pas faire : contrat d'image `tools/verifier_moteurs.py --exiger`, lancé au build — image sans modèle spaCy rejetée, `PANNE nlp`
-- [ ] L'UI expose l'état profond : aujourd'hui il faut appeler `/api/sante?profond=1` à la main. Un opérateur sans shell ne le découvrira pas tout seul
-- [ ] `docs/deploiement-docker.md` explique quoi faire d'un `PANNE` — la route dit ce qui ne va pas, pas encore quoi en faire
+
+### L'exposer à l'opérateur
+
+- [x] L'UI expose l'état profond : bouton **🩺 Moteurs** dans la Bibliothèque → modale (`dialog.js`), bouton **Éprouver** ; un navigateur vérifie qu'OUVRIR le panneau n'appelle PAS `?profond=1`
+- [x] Le panneau ne rejoue pas le mensonge : le contrôle rapide n'autorise que « présent, non éprouvé » — « opérationnel » exige un import réel. Table de vérité sous Node, deux mutations éprouvées
+- [x] « Absent » et « en panne » ne se confondent pas : un moteur non installé se dit non installé, même une fois éprouvé. Trois postes sur quatre n'ont aucun moteur ; y crier au rouge apprendrait à ignorer le panneau
+- [x] Le bilan d'une épreuve distingue « rien à rapporter » de « rien rapporté » : un rapport profond vide ou parlant d'autres moteurs ne se lit plus « aucun moteur installé »
+- [x] Le rouge du bilan se VOIT : `#sante-msg.erreur` n'était reçu par aucune règle CSS, le test compare les couleurs RENDUES
+- [x] Les quatre états passent l'audit axe en thèmes sombre ET clair, le décor les forçant tous à l'écran ; l'accent rouge brut y échoue (mesuré)
+- [x] `docs/deploiement-docker.md` § 8 « Un moteur en panne » : où le voir (panneau / route / CLI), les trois pannes rencontrées avec leur remède, et le redémarrage qu'exige la mémoïsation. Un test exige que chaque symptôme documenté ait son geste
 
 ## Contexte
 
@@ -47,3 +55,25 @@ inutilisable (plusieurs secondes, et le chargement de torch en mémoire). C'est 
 la troisième case — le contrôle profond doit être distinct du contrôle rapide.
 
 Lié à INFRA-1 : c'est le déploiement qui transforme ce raccourci en angle mort.
+
+## Ce qui a été décidé en fermant (2026-09-01)
+
+**Le contrôle profond reste ouvert à tous**, et la route ne sort pas de
+`HORS_PERIMETRE`. Le réserver aux administrateurs était défendable — le rapport cite des
+chemins serveur, charger torch est un acte d'exploitation — mais le coût est BORNÉ (la
+mémoïsation fait au plus quatre imports par processus), le rapport ne porte aucune donnée
+de corpus, et la personne qui voit ses lots échouer est celle qui a besoin d'en lire la
+cause. Fermer ici aurait été l'erreur d'AUTH-4 : gardé par défaut, pas par décision.
+
+**Pas de bouton « revérifier » qui vide la mémoïsation.** Il aurait résolu un cas réel —
+réparer à chaud dans le conteneur, puis re-cliquer et voir le vieux verdict — mais au prix
+exact de ce qui justifiait de laisser la route ouverte : le coût cesse d'être borné dès
+qu'on peut forcer les imports autant de fois qu'on insiste. Le chemin normal
+(`docker compose up -d --build`) redémarre le processus et repose la question tout seul ;
+le cas restant est DOCUMENTÉ, avec le `restart app` qu'il demande.
+
+**Écarté sciemment, et ce n'est pas ce chantier** : une passe dont le moteur est ABSENT
+reste cochable dans le lanceur de lots — on coche « Bulles », on lance, chaque planche
+échoue en 503. Le contrôle rapide suffirait à le prévenir (l'absence est la seule chose
+qu'il sache dire honnêtement). C'est un défaut voisin du lanceur, pas du diagnostic ; il
+n'a pas de fiche parce qu'il tient en une case le jour où l'on touche à cette barre.
