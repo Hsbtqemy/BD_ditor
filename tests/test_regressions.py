@@ -799,3 +799,97 @@ def test_ordre_de_lecture_pas_d_agglomeration_transitive():
     assert [b["id"] for b in reading_order(escalier(41))] == [0, 1, 2, 3, 4, 5]
     # Bien en deçà : une seule rangée, donc triée de gauche à droite.
     assert [b["id"] for b in reading_order(escalier(3))] == [5, 4, 3, 2, 1, 0]
+
+
+def test_resegmentation_est_un_point_fixe(client, planche, monkeypatch):
+    """S6 (AUDIT-1) — re-segmenter N fois ne dégrade rien après la première passe.
+
+    La propriété TIENT (mesurée le 2026-09-01 sur cinq passages) ; elle n'était simplement
+    jamais vérifiée, et c'est le genre d'invariant qui casse en silence — on ne relance pas
+    une segmentation pour regarder ce qui a disparu.
+
+    Quatre dimensions, et il faut les quatre : l'annotation humaine survit ; la région
+    enfant océrisée survit SANS se dupliquer (le transfert par géométrie pourrait aussi
+    bien en fabriquer une par passe) ; l'index FTS ne laisse aucune ligne orpheline ; et la
+    géométrie se stabilise dès la deuxième passe.
+
+    Ce que le test n'assère pas, à dessein : les IDENTIFIANTS changent à chaque passage —
+    la case annotée n'est pas conservée, son annotation est transférée à la nouvelle case
+    par recouvrement, puis l'ancienne est supprimée. C'est inhérent au « supprimer puis
+    recréer » et ça n'entame aucune des quatre dimensions ci-dessus. Conséquence réelle en
+    revanche, et non traitée : un deep-link `?region=N` partagé ne survit pas à une
+    re-segmentation de sa planche.
+    """
+    import database
+    import pipeline.segmentation as seg
+
+    monkeypatch.setattr(seg, "run_kumiko", lambda p: {
+        "size": [1000, 1000], "panels": [[10, 10, 400, 400], [500, 10, 400, 400]]})
+    pid = planche["id"]
+
+    def photo(conn):
+        """L'état qui doit se stabiliser — tout sauf les id, qui tournent par construction."""
+        return {
+            "cases": [(r["x"], r["y"], r["w"], r["h"], r["ordre"]) for r in conn.execute(
+                "SELECT x,y,w,h,ordre FROM regions WHERE planche_id=? AND type='case' "
+                "ORDER BY ordre", (pid,))],
+            "notes": sorted(r[0] for r in conn.execute(
+                "SELECT a.note FROM annotations a JOIN regions r ON r.id = a.region_id "
+                "WHERE r.planche_id=?", (pid,))),
+            "textes": sorted(r[0] for r in conn.execute(
+                "SELECT ocr_texte FROM regions WHERE planche_id=? AND ocr_texte IS NOT NULL",
+                (pid,))),
+            "fts_orphelines": conn.execute(
+                "SELECT COUNT(*) FROM recherche "
+                "WHERE region_id NOT IN (SELECT id FROM regions)").fetchone()[0],
+        }
+
+    with database.get_connection() as conn:
+        seg.segment_planche(conn, pid)
+        case = conn.execute("SELECT id FROM regions WHERE planche_id=? AND type='case' "
+                            "ORDER BY x", (pid,)).fetchone()["id"]
+        conn.execute("INSERT INTO annotations(region_id, note) VALUES(?, 'NOTE HUMAINE')",
+                     (case,))
+        cur = conn.execute("INSERT INTO regions(planche_id,parent_id,type,x,y,w,h,ordre,"
+                           "source,ocr_texte) VALUES(?,?,'bulle',30,30,50,50,1,'manuel',"
+                           "'TEXTE OCR')", (pid, case))
+        # INDEXER pour de bon, sinon l'assertion sur les lignes FTS orphelines ne mesure
+        # rien : une insertion SQL brute ne peuple pas `recherche`, et « 0 orpheline »
+        # serait alors vrai d'un index VIDE. Vérifié par mutation le 2026-09-01 — sans ces
+        # deux appels, retirer `unindex_region` de la segmentation ne fait pas rougir le
+        # test.
+        database.reindex_region(conn, cur.lastrowid)
+        database.reindex_region(conn, case)
+        # La SECONDE case porte du texte SANS annotation : indexée, donc, mais non
+        # préservée. C'est le seul chemin qui atteigne le `unindex_region` de la
+        # suppression — l'autre, dans le transfert d'annotations, désindexe déjà la case
+        # dont la note s'en va. Sans cette case-ci, « 0 ligne orpheline » est vrai d'un
+        # index que la segmentation n'a jamais eu à nettoyer, et retirer la désindexation
+        # ne fait rougir personne. Vérifié par mutation le 2026-09-01.
+        autre = conn.execute("SELECT id FROM regions WHERE planche_id=? AND type='case' "
+                             "AND id != ?", (pid, case)).fetchone()["id"]
+        conn.execute("UPDATE regions SET ocr_texte = 'TEXTE SUR LA CASE' WHERE id = ?",
+                     (autre,))
+        database.reindex_region(conn, autre)
+        conn.commit()
+
+        seg.segment_planche(conn, pid)          # 2e passage : le point de référence
+        conn.commit()
+        reference = photo(conn)
+        assert reference["notes"] == ["NOTE HUMAINE"], reference
+        assert reference["textes"] == ["TEXTE OCR"], reference
+        assert len(reference["cases"]) == 2, reference
+
+        # Quatre passages de plus. Cette boucle ÉNONCE la propriété demandée — le point
+        # fixe — mais il faut dire ce qu'elle vaut : aucune mutation d'une seule ligne
+        # essayée le 2026-09-01 ne l'a fait rougir SEULE, les défauts introduits étant
+        # tous rattrapés par les assertions ci-dessus dès la deuxième passe. Elle garde un
+        # sens propre — une dégradation PROGRESSIVE, qui n'apparaîtrait qu'au troisième
+        # ou quatrième passage — mais ce n'est pas elle qui tient le filet aujourd'hui,
+        # et prétendre le contraire serait le genre d'affirmation non mesurée que ce
+        # chantier passe son temps à corriger.
+        for passage in range(3, 7):
+            seg.segment_planche(conn, pid)
+            conn.commit()
+            assert photo(conn) == reference, f"dérive au passage {passage}"
+        assert reference["fts_orphelines"] == 0
