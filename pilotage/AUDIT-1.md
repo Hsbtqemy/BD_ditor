@@ -64,9 +64,9 @@ cités nulle part ailleurs que dans `AUDIT.md`.
 - [x] **T4 (suite) — l'horodatage est vérifié comme tel** : motif `bd_annotator_AAAAMMJJ_HHMMSS.zip`, et la date doit tomber DANS l'intervalle d'exécution du test. Le contrôle de format seul laisserait passer une constante figée — or c'est précisément l'horodatage qui empêche une sauvegarde d'écraser la précédente
 
 ### Latents de segmentation
-- [ ] S1/S5 — dans `segment_planche`, le détachement (`pipeline/segmentation.py:254`, un seul niveau) et la désindexation FTS (`:293`, les seules cases supprimées) deviennent récursifs, sur le modèle du `WITH RECURSIVE` de la route `delete_region` (`main.py:782`) et de `pipeline/bulles.py:139`
+- [ ] **S1/S5 — NON REPRODUIT le 2026-09-01, et la case reste ouverte pour cette raison seulement.** L'énoncé annonçait une perte de données silencieuse « le jour où une 3ᵉ profondeur est autorisée ». Cet arbre a été construit — case > bulle > sous-région portant du texte indexé — puis la planche re-segmentée avec suppression de l'ancienne case : la sous-région SURVIT, sa ligne FTS est intacte, et il n'y a **zéro ligne FTS orpheline**. La raison est structurelle et n'a rien à voir avec la profondeur : le détachement couvre TOUS les enfants directs des anciennes cases, si bien qu'une case supprimée n'a plus rien sous elle à cascader. Ce n'est donc pas « ≤ 2 » qui neutralise le défaut. La charge de la preuve a changé de camp — **ne pas implémenter la récursion sans avoir d'abord exhibé un scénario qui perd quelque chose**. Ce qui rouvrirait la question : un chemin où un descendant d'ancienne case échappe au détachement (une insertion concurrente entre le détachement et la suppression, ou un futur `replace` partiel)
 - [ ] S6 — re-segmenter deux fois de suite une planche à case annotée conservée donne le même résultat la seconde fois qu'à la première (point fixe)
-- [ ] O1 — le regroupement en rangées de `pipeline/ordering.py:37-46` ne peut plus agglomérer transitivement des cases en escalier sur `y` : la boucle élargit `row["top"]` par `min()` à chaque ajout, donc de proche en proche
+- [x] ~~O1 — le regroupement en rangées ne peut plus agglomérer transitivement des cases en escalier : la boucle élargit `row["top"]` par `min()` à chaque ajout~~ — **LE CONSTAT AVAIT LA BONNE CRAINTE ET LE MAUVAIS COUPABLE** (mesuré le 2026-09-01). Les items sont triés par `y` CROISSANT, donc `_y(b) >= row["top"]` toujours : le `min()` ne peut jamais abaisser `top`, il est sans effet, et la fenêtre d'acceptation reste figée sur le premier item de la rangée. Un escalier de pas 36 (tolérance 40) donne des PAIRES — `[1,0, 3,2, 5,4]` — jamais un bloc. Mieux : remplacer ce `min()` par un `max()` produit exactement la dérive redoutée, `[5,4,3,2,1,0]`, une rangée unique. **`min()` n'est pas la cause du danger, c'en est la GARDE.** D'où un test qui verrouille la sémantique plutôt que le constat (`test_ordre_de_lecture_pas_d_agglomeration_transitive`) : il échoue si l'on remplace ce `min()`, ou si l'on retire le tri préalable
 
 ## Contexte
 
@@ -78,6 +78,18 @@ sept fiches, mais qui n'existaient plus pour qui planifie — ils ne vivaient qu
 d'arbre est aujourd'hui ≤ 2, ce qui le neutralise. Ce n'est pas une correction, c'est une
 coïncidence de données — le jour où une 3ᵉ profondeur est autorisée, il devient une perte
 de données silencieuse. À traiter AVANT toute évolution de la hiérarchie des régions.
+
+**L'audit lui-même a vieilli, et il faudra en décider séparément** (relevé du 2026-09-01,
+sans action ici). Son unique **🔴 Élevé** — « exfiltration totale non authentifiée » — est
+fermé sur ses DEUX mécanismes : le mount `/derivatives` n'existe plus, et
+`GET /api/sauvegarde` passe par `_exiger_admin_sauvegarde` (DROIT-1). Le document l'affiche
+toujours comme ouvert. Le décompte de tests qu'il reprochait au README (176 annoncés pour
+184 réels) est devenu **~330 annoncés pour 638 collectés** au run par défaut — le
+README parle bien du run, pas d'un nombre de fonctions, et c'est la comparaison à
+faire. Et `npm run verifier` ne sait
+pas compter ses constats, ses codes étant `B6`/`T2`/`S1` là où l'outil attend `X-NN` : il
+le range en « INCONNU », ce qui n'est pas 0. Trois mois, `v14 → v25` et cinq gros chantiers
+ont passé dessus ; le document décrit un dépôt de juin.
 
 **Deux trouvailles hors constat, l'une et l'autre nées du relevé.** `main.py` recopiait
 `planche["statut"] = "segmentee"` dans la réponse d'import : la ligne aurait MENTI dès que la
