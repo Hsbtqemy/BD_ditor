@@ -3,8 +3,12 @@
 Guide pas à pas, pensé pour quelqu'un qui débute sur Docker. La pile fournit :
 **plusieurs comptes**, **déconnexion propre**, **2FA**, **HTTPS automatique**, et
 gate **tout** l'accès (y compris images et sauvegarde) sans modifier le code de
-l'app. Architecture retenue : *portail d'accès sur corpus partagé* (tous les
-comptes voient le même corpus).
+l'app. Architecture retenue : *portail d'accès*, Authelia disant **qui** est là.
+Ce que chacun voit, en revanche, appartient à l'application depuis AUTH-2 : les
+accès se donnent **par collection** (lecture / écriture / propriétaire), et un
+album suit celles qui le contiennent. Cette page décrivait un « corpus partagé où
+tous les comptes voient la même chose », ce qui n'est plus vrai — cf.
+`docs/hebergement-securite.md`.
 
 ## 1. Ce que fait chaque conteneur
 
@@ -129,20 +133,109 @@ docker compose up -d --build      # rebuild + relance après une mise à jour du
 - **Sauvegarde** : la base reste accessible via `/api/sauvegarde` (désormais
   derrière l'auth). Pense aussi à sauvegarder le volume `bd-data` (masters TIFF).
 
-## 8. Ce que cette pile corrige (cf. docs/hebergement-securite.md)
+## 8. Un moteur en panne
+
+**« En panne » n'est pas « absent ».** Les quatre moteurs (Kumiko, bulles, OCR, spaCy)
+sont OPTIONNELS : absent, un moteur ne casse rien — sa passe répond 503 et le reste de
+l'outil fonctionne. Le cas grave est l'autre : un moteur **installé mais cassé**, que le
+contrôle de présence annonce disponible. C'est arrivé trois fois le même jour en
+construisant la première image, et rien ne le disait.
+
+### Le voir
+
+| Où | Comment | Pour qui |
+|---|---|---|
+| **Bibliothèque → 🩺 Moteurs** | bouton **Éprouver les moteurs** | l'opérateur sans accès shell — c'est la seule fenêtre dont il dispose |
+| API | `GET /api/sante?profond=1` | script, supervision |
+| Conteneur | `docker exec bd-app python tools/verifier_moteurs.py` | qui a le shell ; `--json` pour une sortie machine |
+
+Le contrôle **rapide** — `/api/sante` sans paramètre, celui d'une sonde de conteneur et
+celui qu'affiche le panneau à son ouverture — ne fait que LOCALISER les modules. Il ne voit aucune incompatibilité binaire, et c'est
+délibéré : importer torch coûte plusieurs secondes et quelques centaines de mégaoctets,
+qu'une route de santé ne peut pas payer. Le contrôle **profond** importe réellement, et
+dit pourquoi quand ça rate.
+
+> **Après une réparation, redémarrez l'app** : `docker compose restart app`. Le verdict
+> profond est mémorisé **par processus** — un moteur réparé à chaud dans le conteneur
+> continuerait d'être annoncé en panne, et re-cliquer « Éprouver » n'y changerait rien.
+> Cette mémorisation est voulue (sans elle, un clic répété rechargerait torch autant de
+> fois qu'on insiste) ; et le chemin normal — `docker compose up -d --build` — redémarre
+> le processus, donc repose la question tout seul.
+
+### Les trois pannes déjà rencontrées, et leur remède
+
+**1. `RuntimeError: operator torchvision::nms does not exist`** — moteurs `bulles` et
+`ocr`.
+`torchvision` vient de PyPI, compilé contre le torch **CUDA**, et se retrouve posé sur
+un torch **CPU**. Les deux doivent venir du **même index** :
+
+```bash
+pip install --index-url https://download.pytorch.org/whl/cpu \
+    torch==2.13.0 torchvision==0.28.0
+```
+
+C'est ce que fait `deploy/Dockerfile` avant tout le reste. Une installation qui
+réinstallerait torch après coup (une dépendance transitive, par exemple) rejouerait la
+panne : `pip list | grep -i torch`, les deux doivent porter le même suffixe.
+
+**2. `OpenCV 5.x : Kumiko attend la 4.x`** — moteur `kumiko`.
+`HoughLinesP` a changé de forme de retour en OpenCV 5 (`(N, 4)` au lieu de `(N, 1, 4)`)
+et Kumiko indexe `dline[0][0]`. Le module s'importe parfaitement ; c'est la passe 1 qui
+renvoie 500. `requirements.lock` épingle **les deux** paquets OpenCV en 4.13 pour cette
+raison — `opencv-python-headless` ET `opencv-python`, que `ultralytics` tire en
+transitif. Si la panne revient, c'est qu'une installation en a désépinglé un :
+`pip list | grep -i opencv`.
+
+**3. `OSError: [E050] Can't find model 'fr_core_news_sm'`** — moteur `nlp`.
+Le modèle spaCy n'est pas un paquet ordinaire, il se télécharge :
+
+```bash
+docker exec bd-app python -m spacy download fr_core_news_sm
+docker compose restart app
+```
+
+C'est la plus discrète des trois, parce qu'elle est **silencieuse à l'usage** : la
+couche NLP est conçue pour dégrader proprement, donc rien ne casse. La table `tokens`
+reste simplement vide, la recherche perd les lemmes, et l'Exploration comme la relecture
+grammaticale n'ont plus rien à montrer — quatre chantiers livrés meurent sans un message
+d'erreur. Le nom du modèle se configure (`BD_SPACY_MODEL`) : si vous en avez changé,
+c'est CELUI-LÀ qu'il faut télécharger.
+
+### L'empêcher d'arriver jusqu'ici
+
+Le build refuse une image dont un moteur exigé ne s'importe pas :
+
+```dockerfile
+RUN python tools/verifier_moteurs.py --exiger kumiko,bulles,ocr,nlp
+```
+
+Ce contrôle ne fait pas double emploi avec la suite de tests, il couvre ce qu'elle ne
+peut pas couvrir : mesuré sur une image privée de son modèle spaCy, **451 tests, zéro
+échec**. « Moteur absent » est un état que les tests sont écrits pour accepter — correct
+en développement local, inacceptable pour un artefact livré. Un contrat d'IMAGE dit
+autre chose qu'un contrat de test : non pas « le code se comporte bien quand un moteur
+manque », mais « cet artefact-ci DOIT porter ces moteurs-là ».
+
+## 9. Ce que cette pile corrige (cf. docs/hebergement-securite.md)
 
 - 🔴 Exfiltration non authentifiée (`/api/sauvegarde`, `/derivatives`) → **gatée**.
 - 🟠 OOM upload → **plafond `request_body` 200 Mo** dans Caddy (penser à
   compléter par `MAX_IMAGE_PIXELS` côté code).
-- 🔴 SSRF ShareDocs → **non couvert par le proxy** : reste à corriger côté code
-  (allowlist d'hôte, refus des IP privées, `follow_redirects=False`).
+- 🔴 SSRF ShareDocs → **corrigée côté code**, et non par le proxy qui ne pouvait rien
+  y faire : allowlist d'hôte (`BD_SHAREDOCS_ALLOWED_HOSTS`, défaut
+  `sharedocs.huma-num.fr`), refus des IP privées, `follow_redirects=False`. La garde
+  vaut pour TOUTES les sessions, y compris personnelles (SHARE-1).
 
-## 9. Limites connues / à garder en tête
+## 10. Limites connues / à garder en tête
 
 - **1 seul worker uvicorn** (état en mémoire) → ne pas scaler horizontalement
   l'app ; la 2FA/proxy, eux, encaissent la charge.
-- Authelia connaît l'utilisateur (`Remote-User`), **mais l'app n'attribue pas
-  encore le travail à un auteur** (corpus partagé). Si un jour tu veux de la
-  propriété par utilisateur/des rôles, ce sera un chantier côté modèle de données.
+- L'app **attribue** le travail (journal de provenance A3) et **autorise** par
+  collection (AUTH-2/AUTH-3) : `Remote-User` et `Remote-Groups` sont lus à chaque
+  requête, jamais stockés. Ces lignes annonçaient l'inverse — elles dataient d'avant.
+  Conséquence à connaître : sans `BD_AUTH_PROXY` l'app ne CROIT pas les en-têtes et
+  tout reste anonyme ; avec le drapeau mais sans en-tête d'identité, la portée est
+  VIDE et l'app paraît vide pour tout le monde (fermeture par défaut). Le bandeau qui
+  l'explique distingue les trois pannes possibles.
 - Test local sans domaine : possible en faisant écouter Caddy en HTTP simple,
   mais la 2FA/cookies se valident mieux directement sur le VPS avec le vrai domaine.

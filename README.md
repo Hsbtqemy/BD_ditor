@@ -318,7 +318,7 @@ bd_annotator/
 │   ├── corpus.js        # gestion albums/planches + rôle/validation/verrou + lots
 │   ├── exploration.js   # distributions + comparaison de sous-corpus
 │   ├── theme.js         # réglages d'affichage partagés (thème, contraste, zoom)
-│   ├── lib/             # modules UMD réutilisables et testés sous Node : nav.js, dialog.js
+│   ├── lib/             # modules UMD testés sous Node : common.js, nav.js, dialog.js, sante.js
 │   └── style.css        # thème sombre/clair (partagé par les 4 pages)
 ├── tools/               # scripts hors-app : reindex_nlp.py, reindex_materiel.py, pdf_check.py, sharedocs_check.py,
 │                        #   rapport_accord (modèle↔humain) · rapport_accord_inter (inter-annotateurs) ·

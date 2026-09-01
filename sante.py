@@ -4,8 +4,9 @@ Pourquoi deux profondeurs, et pourquoi ce module existe.
 
 `/api/sante` répondait jusqu'ici en interrogeant `importlib.util.find_spec`, qui LOCALISE
 un module sans jamais l'importer. Le raccourci est délibéré et bon : importer torch coûte
-plusieurs secondes et des centaines de mégaoctets de RAM, ce qu'une route de santé appelée
-à chaque chargement de page ne peut pas se permettre.
+plusieurs secondes et des centaines de mégaoctets de RAM, ce qu'une route de SANTÉ ne peut
+pas se permettre — une sonde de conteneur l'appelle en boucle, et un écran de diagnostic
+doit s'ouvrir instantanément.
 
 Mais il ne voit RIEN d'une incompatibilité binaire. Mesuré le 2026-08-27, trois fois dans
 la même journée :

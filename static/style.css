@@ -1326,7 +1326,8 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 /* Le refus du serveur se LIT : les 409 d'AUTH-3 nomment un état interdit (dernier
    propriétaire, dernière collection), pas un droit manquant. Token d'encre AA-sûr, jamais
    l'accent brut, qui échoue le 4.5:1 en petit texte. */
-#col-msg.erreur, #m-appartenance-msg.erreur { color: var(--ink-red); }
+#col-msg.erreur, #m-appartenance-msg.erreur,
+#sante-msg.erreur { color: var(--ink-red); }
 
 /* ── Figures citables (DROIT-1) ───────────────────────────────────────────────────── */
 .fig-row { gap: .4rem; }
@@ -1348,3 +1349,21 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 /* La ligne de diagnostic des groupes (AUTH-1) : elle DISTINGUE trois pannes que le
    même écran vide confondait, donc elle se lit avant le référent. */
 .portee-vide-groupes { margin-top: .4rem; }
+
+/* ── État des moteurs (SANTE-1) ────────────────────────────────────────────────────
+   Le MOT porte l'état, la couleur ne fait que le renforcer : « opérationnel » / « en
+   panne » / « non installé » / « présent, non éprouvé » se distinguent sans voir la
+   teinte (WCAG 1.4.1). Les tons employés sont ceux qui passent en PETIT texte —
+   `--accent-green` est assombri en thème clair pour cela, `--ink-red` existe pour ça ;
+   l'accent rouge plein échouerait le 4.5:1. */
+.sante-ligne { padding: .4rem 0; border-bottom: 1px solid var(--border); }
+.sante-ligne:last-child { border-bottom: 0; }
+.sante-tete { display: flex; align-items: baseline; gap: .5rem;
+              justify-content: space-between; }
+.sante-etat { font-weight: 600; font-size: .84rem; }
+.sante-ok { color: var(--accent-green); }
+.sante-panne { color: var(--ink-red); }
+.sante-absent, .sante-present { color: var(--text-muted); }
+/* La cause d'une panne vient du serveur (type + message d'exception) : elle peut être
+   longue et sans espace, et ne doit pas élargir la modale. */
+.sante-note { margin: .15rem 0 0; overflow-wrap: anywhere; }

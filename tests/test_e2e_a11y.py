@@ -9,6 +9,7 @@ l'accessibilité régresse le plus souvent (focus, labels, rôles).
 Marqué `e2e` → hors run par défaut (`pytest -m e2e`). Skippé proprement si
 Playwright ou le fichier axe vendu sont absents.
 """
+import json
 from pathlib import Path
 
 import httpx
@@ -151,6 +152,48 @@ def test_a11y_corpus_modale(page, seeded):
     viol = _audit(page)
     assert not viol, f"Corpus/modale :\n{_fmt(viol)}"
 
+
+# Les quatre états d'un moteur, forcés. Sans ce décor, une machine de test les rend
+# presque tous « non installé » (gris) : le vert et le rouge — les deux seules teintes
+# dont le contraste puisse échouer — ne seraient jamais À L'ÉCRAN pendant l'audit, qui
+# passerait au vert sans avoir rien mesuré. Même piège que le semis d'AUTH-5.
+_SANTE_RAPIDE = {"kumiko": True, "bulles": True, "ocr": False, "lemmes": False,
+                 "modeles_charges": {}}
+_SANTE_PROFOND = dict(_SANTE_RAPIDE, profond={
+    "kumiko": {"ok": True, "erreur": None},
+    "bulles": {"ok": False, "erreur": "RuntimeError: operator torchvision::nms"},
+    "ocr": {"ok": False, "erreur": "ModuleNotFoundError: easyocr"},
+    "nlp": {"ok": False, "erreur": "ModuleNotFoundError: spacy"},
+})
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_corpus_sante(page, seeded, theme):
+    """Panneau des moteurs (SANTE-1) : la modale (piège à focus, titre lié) et les quatre
+    états d'un moteur, éprouvés dans les deux thèmes.
+
+    Le contraste est l'enjeu : « en panne » est du PETIT texte coloré, là où l'accent
+    rouge plein échoue le 4.5:1 — d'où `--ink-red` et un `--accent-green` assombri en
+    thème clair. Un audit qui n'aurait sous les yeux que des lignes grises approuverait
+    une palette qu'il n'a pas regardée."""
+    page.route("**/api/sante*", lambda r: r.fulfill(
+        status=200, content_type="application/json",
+        body=json.dumps(_SANTE_PROFOND if "profond=1" in r.request.url
+                        else _SANTE_RAPIDE)))
+    _theme(page, theme)
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.click("#btn-sante")
+    page.wait_for_selector("#sante-modal:not([hidden]) .sante-ligne", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Corpus/moteurs [{theme}] :\n{_fmt(viol)}"
+
+    page.click("#sante-eprouver")
+    page.wait_for_selector(".sante-panne", timeout=5000)
+    # Les quatre états sont bien à l'écran : sinon l'audit qui suit ne mesure rien.
+    for classe in (".sante-ok", ".sante-panne", ".sante-absent"):
+        assert page.locator(classe).count(), f"état {classe} absent du rendu"
+    viol = _audit(page)
+    assert not viol, f"Corpus/moteurs éprouvés [{theme}] :\n{_fmt(viol)}"
 
 def test_a11y_corpus_materiel(page, seeded):
     """Matériel de numérisation (A6) : détail d'album ouvert (table planches + ligne matériel

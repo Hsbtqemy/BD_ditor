@@ -981,6 +981,77 @@ async function rangerAlbum() {
   } catch (e) { appMsg(e.message, true); }
 }
 
+/* ── Moteurs (SANTE-1) — la présence n'est pas le fonctionnement ───────────────────
+   Le panneau qui rend le contrôle PROFOND atteignable : il existait depuis `ed17b32`,
+   mais il fallait connaître `?profond=1` et l'appeler à la main — ce qu'un opérateur sans
+   accès shell, seul public de la question, ne découvrira jamais tout seul.
+
+   La RÈGLE d'affichage (présent ≠ opérationnel, absent ≠ en panne) vit dans
+   `static/lib/sante.js`, pure et testée sous Node : elle croise deux réponses du serveur,
+   et c'est le genre de logique qu'un test lisant le source déclare couverte sans l'être.
+   Ici, il ne reste que du DOM. */
+const SANTE_ETAT = { rapide: null, profond: null };
+
+function santeMsg(texte, erreur) {
+  const el = $("#sante-msg");
+  el.textContent = texte || "";
+  el.classList.toggle("erreur", !!erreur);
+}
+
+function santeRendu() {
+  $("#sante-body").innerHTML = BDSante.MOTEURS.map((m) => {
+    const e = BDSante.etat(SANTE_ETAT.rapide, SANTE_ETAT.profond, m);
+    return `<div class="sante-ligne">
+      <div class="sante-tete">
+        <b>${esc(m.nom)}</b>
+        <span class="sante-etat sante-${esc(e.etat)}">${esc(e.mot)}</span>
+      </div>
+      <p class="muted small sante-note">${esc(m.role)} · ${esc(e.note)}</p>
+    </div>`;
+  }).join("");
+}
+
+async function santeCharger() {
+  try {
+    SANTE_ETAT.rapide = await apiGet("/api/sante");
+  } catch (e) {
+    $("#sante-body").innerHTML = `<p class="col-note">${esc(e.message)}</p>`;
+    return;
+  }
+  santeRendu();
+}
+
+/* Le contrôle profond, sur clic et JAMAIS au chargement : c'est un acte coûteux (torch
+   en mémoire), et une route de santé qui charge les moteurs pour répondre n'est plus une
+   route de santé. Le bouton se désarme pendant l'appel — le premier peut durer une
+   minute, et rien à l'écran ne le dirait autrement. */
+async function santeEprouver() {
+  const b = $("#sante-eprouver");
+  b.disabled = true;
+  santeMsg("Chargement réel des moteurs… le premier appel peut durer une minute.");
+  try {
+    const d = await apiGet("/api/sante?profond=1");
+    SANTE_ETAT.rapide = d;
+    SANTE_ETAT.profond = d.profond || {};
+    santeRendu();
+    const bilan = BDSante.bilan(SANTE_ETAT.rapide, SANTE_ETAT.profond);
+    santeMsg(bilan.texte, bilan.erreur);
+  } catch (e) {
+    santeMsg(e.message, true);
+  } finally {
+    b.disabled = false;
+  }
+}
+
+function openSante() {
+  santeMsg("");
+  $("#sante-modal").hidden = false;
+  santeCharger();
+  $("#sante-eprouver").focus();
+}
+
+function closeSante() { $("#sante-modal").hidden = true; }
+
 function setup() {
   setupBack();
   $("#btn-new").onclick = () => openModal(null);
@@ -1003,6 +1074,17 @@ function setup() {
   // Collections (AUTH-3) : l'écran qui remplace `tools/gerer_collections.py`.
   $("#btn-collections").onclick = openCollections;
   $("#col-close").onclick = closeCollections;
+  // SANTE-1 : le contrôle profond, atteignable au clic. Pas de préchargement — ouvrir le
+  // panneau ne coûte qu'un contrôle rapide, éprouver est un geste séparé et volontaire.
+  $("#btn-sante").onclick = openSante;
+  $("#sante-close").onclick = closeSante;
+  $("#sante-eprouver").onclick = santeEprouver;
+  $("#sante-modal").addEventListener("mousedown", (e) => {
+    if (e.target.id === "sante-modal") closeSante();
+  });
+  if (window.BDDialog)
+    BDDialog.register($("#sante-modal"),
+      { box: ".modal-box", labelledby: "sante-title", onClose: closeSante });
   $("#col-add").onclick = creerCollection;
   $("#col-nom").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); creerCollection(); }

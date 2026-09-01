@@ -4301,7 +4301,10 @@ def sante(profond: bool = False):
     """État des moteurs. RAPIDE par défaut, PROFOND sur demande (SANTE-1).
 
     Sans `?profond=1`, on répond comme avant : présence des modules, sans rien importer.
-    C'est ce que l'UI appelle à chaque chargement de page, et ça doit rester instantané.
+    C'est la voie des SONDES — celle d'un conteneur, celle d'une supervision — et celle
+    qu'appelle le panneau 🩺 Moteurs à son ouverture. Elle doit rester instantanée. (Ce
+    docstring a longtemps dit « ce que l'UI appelle à chaque chargement de page » : c'était
+    faux depuis longtemps, aucun fichier de `static/` ne l'appelait.)
 
     Avec `?profond=1`, chaque moteur est RÉELLEMENT importé et le rapport dit pourquoi
     quand ça échoue. Coûteux au premier appel (torch se charge, plusieurs secondes et

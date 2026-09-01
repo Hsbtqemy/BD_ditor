@@ -31,6 +31,7 @@
     <div class="corpus-toolbar">
       <button id="btn-new" class="primary">+ Nouvel album</button>
       <button id="btn-collections" class="ghost">👥 Collections</button>
+      <button id="btn-sante" class="ghost" title="Les moteurs de reconnaissance fonctionnent-ils vraiment ?">🩺 Moteurs</button>
       <div class="batch">
         <span class="muted small">Lot sur la sélection :</span>
         <label class="pass"><input type="checkbox" id="pass-segmenter"> Segmenter</label>
@@ -157,10 +158,35 @@
       </div>
     </div>
   </div>
+
+  <!-- ───────── Moteurs (SANTE-1) — la présence n'est pas le fonctionnement ───────── -->
+  <div id="sante-modal" hidden>
+    <div class="modal-box lexique-box">
+      <h3 id="sante-title">Moteurs de reconnaissance</h3>
+      <p class="muted small">Les moteurs sont <b>optionnels</b> : absent, un moteur ne casse
+        rien — sa passe répond 503 et le reste de l'outil vit sa vie. Le cas grave est
+        l'autre, et c'est celui qu'on vient chercher ici : un moteur <b>installé mais
+        cassé</b>, qu'un contrôle de présence annonce disponible.</p>
+      <div id="sante-body"></div>
+      <p class="muted small">Ce qui précède ne dit que la <b>présence</b> des modules,
+        et c'est précisément ce qui peut mentir : un moteur trouvé sur le disque peut
+        très bien refuser de s'importer. <b>Éprouver</b> les importe pour de bon :
+        quelques secondes et quelques centaines de mégaoctets au premier appel, puis le
+        résultat est retenu jusqu'au prochain redémarrage du serveur.</p>
+      <div class="contrib-add">
+        <button id="sante-eprouver" class="primary small" type="button">Éprouver les moteurs</button>
+      </div>
+      <div class="modal-actions">
+        <button id="sante-close" class="ghost small">Fermer</button>
+        <span id="sante-msg" class="muted small" role="status" aria-live="polite"></span>
+      </div>
+    </div>
+  </div>
 </div>
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
 <script src="/static/lib/dialog.js"></script>
+<script src="/static/lib/sante.js"></script>
 <script src="/static/corpus.js"></script>
 </body>
 </html>
