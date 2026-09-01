@@ -1,10 +1,24 @@
 ---
 chantier: AUDIT-1
-statut: à venir
+statut: interrompu
 audit: AUDIT.md
 ---
 
 # AUDIT-1 — les reliquats ouverts des cinq passes d'audit
+
+**Arrêté sur** — le commit `8195037`, 2026-08-31 : la zone **Tests faibles** est close, les
+deux autres sont intactes. Les quatre corrections ont une parenté qu'on ne voit qu'en les
+faisant ensemble — aucune ne réparait un bug, toutes réparaient une AFFIRMATION. Un test
+qui accepte deux contrats opposés, un qui reconnaît une page à trois lettres, un qui
+accepte un octet, un qui audite un écran sans vérifier l'avoir rempli : dans les quatre
+cas le code était juste et le filet troué.
+
+**Ce qui a coûté le plus n'était pas la correction mais la MESURE.** Pour T4a, la première
+mesure tournait sur une base non initialisée où TOUT répondait 400, requête valide
+comprise — la conclusion « les requêtes spéciales sont refusées » était fausse, et
+seul le détail du message (`no such table: regions`) l'a dit. Pour T8, le diagnostic écrit
+d'abord était faux lui aussi : le marqueur `live_server(True)` était bien là, contrairement
+à ce que j'avais conclu.
 
 **Point de départ** — les cinq passes d'audit de juin 2026 ont été largement traitées ;
 sept constats sont restés ouverts, dispersés dans les sections « restent ouverts » et
@@ -17,10 +31,10 @@ cités nulle part ailleurs que dans `AUDIT.md`.
 - [ ] B6 (ordre) — la route `PATCH /api/planches/{id}/statut` (`main.py:968`) valide un ORDRE de transition et pas seulement l'appartenance à `STATUTS`, qu'elle vérifie déjà en `main.py:972`
 
 ### Tests faibles
-- [ ] T2 — `tests/test_live_race.py` teste une vraie concurrence, ou bien il est renommé pour ne plus promettre une course qu'il ne joue pas : aux lignes 36-44 il fait N=30 PUT puis GET sur un unique client `httpx` synchrone, ce que sa propre docstring reconnaît (« frappé par un client séquentiel »)
-- [ ] T4 — les trois assertions molles sont resserrées : `tests/test_api.py:280` (`status_code in (200, 400)`), `tests/test_api.py:415` (`"BD" in r.text`), `tests/test_backup.py:35` (`len(data) > 0`)
-- [ ] T8 — `test_a11y_exploration_accord_inter` (`tests/test_e2e_a11y.py:372`) vérifie le CONTENU qu'il prétend construire, pas seulement l'accessibilité : il pose une divergence alice/bob puis n'assère que l'absence de violations axe, si bien qu'une modale VIDE le fait passer aussi bien qu'une modale peuplée. Mesuré le 2026-08-27 : en retirant `BD_AUTH_PROXY` du sous-processus, les deux auteurs deviennent NULL, aucune divergence n'est créée — et le test passe quand même
-- [ ] T4 (suite) — `test_make_backup_horodatage_auto` (`tests/test_backup.py:32`) vérifie le FORMAT de l'horodatage, et pas seulement le préfixe `bd_annotator_` et le suffixe `.zip`
+- [x] **T2 — renommé, et ce qu'il ne teste pas est écrit dedans** (`tests/test_live_coherence.py`). Le test était JUSTE : un client séquentiel est la bonne forme pour le bug qu'il garde — un commit émis après la réponse se révèle en relisant tout de suite, pas en écrivant à plusieurs. C'est son NOM qui mentait. Plutôt que de seulement renommer, la docstring nomme désormais la concurrence qui reste non testée — ni deux jobs sur `_run_lock`, ni worker ↔ serveur, ni `make_backup` pendant une écriture — parce qu'un nom qui survend ne se remplace pas par un silence. Quatre documents mis à jour, et le lien mort du constat d'audit retiré (il pointait des lignes 83-92 d'un fichier qui n'en comptait que 45)
+- [x] **T4 — les trois assertions molles sont resserrées, et la mesure a été le vrai travail.** (a) `status_code in (200, 400)` acceptait deux contrats OPPOSÉS sur une seule entrée, donc n'en vérifiait aucun : mesuré, la route répond 200 avec zéro résultat sur douze syntaxes FTS invalides — un choix défendable qui n'était écrit nulle part. Le test le fixe ET vérifie d'abord qu'une requête valide trouve sa cible, sans quoi « zéro partout » passerait sur une recherche morte. (b) `"BD" in r.text` reconnaissait n'importe quelle page parlant de bande dessinée : le shell se reconnaît maintenant à son titre, sa langue et ses scripts — `viewer.js` étant ce qui le distingue des trois autres surfaces. (c) `len(data) > 0` passait sur un octet : le zip doit s'ouvrir et porter la base, ce que `_open_snapshot` disait déjà à deux lignes de là
+- [x] **T8 — le décor était bon, mais rien ne le contrôlait**, et mon premier diagnostic était faux : j'avais conclu que le marqueur `live_server(True)` manquait ; il était là. Le vrai défaut est plus discret — le test n'affirmait RIEN de son propre montage, si bien que n'importe quelle régression d'authentification, de route ou de contrat de token aurait vidé la modale sans le faire échouer, axe trouvant une modale vide parfaitement accessible. Trois gardes : la divergence est confirmée côté serveur, les deux auteurs sont NOMMÉS, et l'écran doit montrer la `.accord-table` — que le rendu ne produit que si `retouches` est non nul. L'absence de tokens devient un skip EXPLICITE : ne rien pouvoir mesurer et mesurer zéro ne sont pas le même résultat
+- [x] **T4 (suite) — l'horodatage est vérifié comme tel** : motif `bd_annotator_AAAAMMJJ_HHMMSS.zip`, et la date doit tomber DANS l'intervalle d'exécution du test. Le contrôle de format seul laisserait passer une constante figée — or c'est précisément l'horodatage qui empêche une sauvegarde d'écraser la précédente
 
 ### Latents de segmentation
 - [ ] S1/S5 — dans `segment_planche`, le détachement (`pipeline/segmentation.py:254`, un seul niveau) et la désindexation FTS (`:293`, les seules cases supprimées) deviennent récursifs, sur le modèle du `WITH RECURSIVE` de la route `delete_region` (`main.py:782`) et de `pipeline/bulles.py:139`
@@ -37,6 +51,14 @@ sept fiches, mais qui n'existaient plus pour qui planifie — ils ne vivaient qu
 d'arbre est aujourd'hui ≤ 2, ce qui le neutralise. Ce n'est pas une correction, c'est une
 coïncidence de données — le jour où une 3ᵉ profondeur est autorisée, il devient une perte
 de données silencieuse. À traiter AVANT toute évolution de la hiérarchie des régions.
+
+**Les pointeurs ont re-pourri en cinq jours, et de ma propre main.** Au 2026-08-31, cinq
+des dix références de cette fiche étaient mortes : les quatre `main.py` (décalées par le
+bloc CSP de SEC-2 et les ajouts d'AUTH-1) et celle de T8 (`test_e2e_a11y.py:372`, devenue
+398 par les tests que j'y avais ajoutés le matin même). Les constats, eux, étaient tous
+encore exacts — comme le 27 août. C'est la démonstration la plus nette qu'on puisse
+souhaiter : ce qui pourrit dans une fiche n'est pas le raisonnement, c'est l'adresse.
+Cf. la note de mémoire sur les fiches périmées.
 
 Les références de ligne ci-dessus ont été **revérifiées contre le code le 2026-08-27** :
 celles de `AUDIT.md` avaient dérivé (B6 y pointe `main.py:631-642`, où il n'y a plus de
