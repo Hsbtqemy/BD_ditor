@@ -4,6 +4,7 @@ import io
 import sqlite3
 import xml.etree.ElementTree as ET
 
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -274,10 +275,31 @@ def test_recherche_filtre_type(client, planche):
     assert not any(r["region_id"] == rid for r in res2)
 
 
-def test_recherche_requete_speciale_ne_casse_pas(client, planche):
-    # caractères spéciaux FTS ne doivent pas provoquer 500
-    r = client.get("/api/recherche", params={"q": '"('})
-    assert r.status_code in (200, 400)
+@pytest.mark.parametrize("q", ['"(', "(", ")", '"', '""', "*", "^", ":",
+                               "a OR", "a AND", "NEAR/", "-"])
+def test_recherche_requete_speciale_ne_casse_pas(client, planche, q):
+    """Une syntaxe FTS5 invalide est ABSORBÉE : 200 et zéro résultat, jamais une erreur.
+
+    L'assertion disait `in (200, 400)` sur une seule entrée : elle acceptait deux contrats
+    opposés et n'en vérifiait donc aucun. MESURÉ le 2026-08-31 : la route répond 200 avec
+    une liste vide sur les douze entrées du paramétrage ci-dessus. C'est un choix défendable — une
+    parenthèse tapée par mégarde ne doit pas produire d'erreur — mais il n'était écrit
+    nulle part, et rien n'empêchait qu'il devienne un 400 sans que personne le remarque.
+
+    Le corpus porte du texte cherchable À DESSEIN, et le test le VÉRIFIE d'abord : sans
+    cette garde, « zéro résultat partout » passerait aussi bien sur une recherche qui
+    absorbe proprement que sur une recherche entièrement morte. C'est la même vacuité que
+    les assertions trouvées le 2026-08-31 ailleurs dans la suite.
+    """
+    rid = _region_avec_ocr_et_annotation(client, planche)
+    temoin = client.get("/api/recherche", params={"q": "Esther"}).json()["results"]
+    assert any(r["region_id"] == rid for r in temoin), (
+        "la recherche ne retrouve pas ce qu'on vient d'indexer : le reste du test ne "
+        "prouverait rien, zéro résultat étant alors la réponse à TOUT")
+
+    r = client.get("/api/recherche", params={"q": q})
+    assert r.status_code == 200, f"{q!r} → {r.status_code} : {r.text[:150]}"
+    assert r.json()["results"] == []
 
 
 def test_recherche_export_csv_porte_la_citation(client, planche):
@@ -411,8 +433,21 @@ def test_export_album_inexistant_404(client):
 
 # --------------------------- Divers / santé ----------------------------- #
 def test_index_sert_le_shell_html(client):
+    """`"BD" in r.text` passait sur n'importe quelle page mentionnant la bande dessinée —
+    y compris une page d'erreur, du JSON, ou le shell d'une AUTRE surface.
+
+    Un shell se reconnaît à ce qui le rend fonctionnel : son titre, sa langue, ses points
+    d'accroche, et surtout les scripts sans lesquels la page n'est qu'un décor mort. C'est
+    `viewer.js` qui distingue la Visionneuse des trois autres surfaces.
+    """
     r = client.get("/")
-    assert r.status_code == 200 and "BD" in r.text
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    for marqueur in ("<title>BéDéditeur</title>", 'lang="fr"',
+                     'src="/static/theme.js"',      # thème appliqué avant rendu
+                     'src="/static/viewer.js"',     # ...et c'est bien LA Visionneuse
+                     'id="app"', 'id="stage"'):
+        assert marqueur in r.text, f"shell HTML sans {marqueur}"
 
 
 def test_sante_expose_kumiko(client):

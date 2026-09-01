@@ -216,7 +216,7 @@ d'un passage à `lg`. Le travail humain devient l'**étalon** d'évaluation des 
 
 Concurrence : `UNIQUE(region_id, ordre)` → dernier écrit gagne par token ; suffisant
 pour une petite équipe (WAL gère déjà les courses écriture/lecture, cf.
-[tests/test_live_race.py](../tests/test_live_race.py)).
+[tests/test_live_coherence.py](../tests/test_live_coherence.py)).
 
 ## 10. Morphologie
 

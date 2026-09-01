@@ -76,7 +76,14 @@ def seeded(live_server):
                      files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
         rid = c.post(f"/api/planches/{pid}/regions",
                      json={"type": "bulle", "x": 10, "y": 10, "w": 120, "h": 80}).json()["id"]
-        c.put(f"/api/regions/{rid}", json={"ocr_texte": "POUVOIR ABSOLU"})
+        # `timeout` généreux ICI et nulle part ailleurs : écrire l'OCR déclenche la
+        # réindexation, donc le chargement À FROID de spaCy (~10 s, cf. CLAUDE.md), et le
+        # décor est le premier à le payer. Les 30 s du client ont suffi des mois puis
+        # lâché le 2026-08-31 sous une machine chargée — une `ReadTimeout` au MONTAGE,
+        # qui fait passer les huit paramétrages d'un test pour cassés alors que rien ne
+        # l'était. `test_live_coherence.py` avait déjà rencontré le même mur et le
+        # contourne pareillement.
+        c.put(f"/api/regions/{rid}", json={"ocr_texte": "POUVOIR ABSOLU"}, timeout=180)
         c.put(f"/api/regions/{rid}/annotation", json={"note": "colère", "tags": ["emotion"]})
     finally:
         c.close()
@@ -396,26 +403,56 @@ def test_a11y_exploration_accord(page, seeded):
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # attribution alice/bob
 def test_a11y_exploration_accord_inter(page, seeded):
-    """Accord inter-annotateurs (ANN-5 / B6) : créer une divergence (alice corrige, bob
-    re-corrige le même token via l'en-tête Remote-User) puis auditer la modale (table +
-    liste de divergences). Si le corpus n'a pas de tokens (spaCy absent), on audite l'état vide."""
+    """Accord inter-annotateurs (ANN-5) : créer une divergence, puis auditer la modale
+    PEUPLÉE — table d'accord et liste de divergences.
+
+    Il auditait une modale qu'il croyait avoir remplie, sans jamais vérifier qu'elle
+    l'était. Le décor était correct — le marqueur `live_server(True)` est là, donc alice et
+    bob existent vraiment — mais RIEN ne le contrôlait : sa fragilité se démontre en
+    retirant `BD_AUTH_PROXY` du sous-processus, auquel cas les deux auteurs deviennent NULL,
+    aucune divergence n'est créée, la modale affiche « Aucune re-touche entre auteurs
+    distincts »... et le test passe. Mesuré le 2026-08-27 (constat T8). Axe ne juge que
+    l'accessibilité, et une modale vide est parfaitement accessible.
+
+    Le défaut n'est donc pas dans le décor mais dans ce que le test AFFIRME : il ne dit rien
+    de son propre montage, si bien que n'importe quelle régression d'authentification, de
+    route ou de contrat de token le viderait sans le faire échouer. C'est la vacuité par
+    l'amont, plus discrète que l'assertion molle : elle ne s'attrape pas en lisant
+    l'assertion, seulement en se demandant ce qui la précède.
+
+    Trois gardes désormais, et elles sont l'essentiel : la divergence est CONFIRMÉE côté
+    serveur avant qu'on regarde l'écran, les deux auteurs sont NOMMÉS (ce que la seule
+    présence de re-touches ne garantit pas), et l'écran doit montrer la TABLE — que le rendu
+    ne produit que si `retouches` est non nul. Enfin, l'absence de tokens devient un skip
+    EXPLICITE : ne rien pouvoir mesurer et mesurer zéro ne sont pas le même résultat.
+    """
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
                      headers=ADMIN)
     try:
         toks = c.get(f"/api/regions/{seeded['region']}/tokens").json()
-        if toks:
-            o = toks[0]["ordre"]
+        if not toks:
+            pytest.skip("aucun token (spaCy absent) : sans divergence constructible, "
+                        "auditer la modale ne mesurerait que son état vide")
+        o = toks[0]["ordre"]
+        for qui, pos in (("alice", "NOUN"), ("bob", "VERB")):
             c.put(f"/api/regions/{seeded['region']}/tokens/{o}",
-                  json={"etat": "corrige", "pos": "NOUN"}, headers={"Remote-User": "alice", "Remote-Groups": "bd-admins"})
-            c.put(f"/api/regions/{seeded['region']}/tokens/{o}",
-                  json={"etat": "corrige", "pos": "VERB"}, headers={"Remote-User": "bob", "Remote-Groups": "bd-admins"})
+                  json={"etat": "corrige", "pos": pos},
+                  headers={"Remote-User": qui, "Remote-Groups": "bd-admins"})
+        rapport = c.get("/api/analyse/accord-inter").json()
     finally:
         c.close()
+    assert rapport.get("retouches"), (
+        f"aucune re-touche inter-auteurs construite : {rapport} — le décor a échoué, "
+        "et auditer la modale ne dirait rien de ce que ce test prétend couvrir")
+    assert set(rapport["auteurs"]) == {"alice", "bob"}, rapport["auteurs"]
+
+    page.set_extra_http_headers(ADMIN)          # le serveur exige une identité
     page.goto(seeded["base"] + "/exploration", wait_until="networkidle")
     page.wait_for_timeout(400)
     page.click("#btn-accord-inter")
-    page.wait_for_selector("#accord-inter-modal:not([hidden]) #accord-inter-body", timeout=3000)
-    page.wait_for_timeout(300)
+    # `.accord-table` et non `#accord-inter-body` : le corps existe TOUJOURS, la table
+    # seulement quand le rapport porte des re-touches. C'est là toute la différence.
+    page.wait_for_selector("#accord-inter-modal:not([hidden]) .accord-table", timeout=5000)
     viol = _audit(page)
     assert not viol, f"Exploration/accord-inter :\n{_fmt(viol)}"
 

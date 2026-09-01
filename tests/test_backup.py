@@ -1,7 +1,9 @@
 """Tests de la sauvegarde de travail (snapshot SQLite zippé)."""
 import io
+import re
 import sqlite3
 import zipfile
+from datetime import datetime
 
 import pipeline.backup as backup
 
@@ -29,10 +31,28 @@ def test_make_backup_contenu(client, album, tmp_path):
         conn.close()
 
 
-def test_make_backup_horodatage_auto(client):
+def test_make_backup_horodatage_auto(client, tmp_path):
+    """Le FORMAT de l'horodatage, et qu'il désigne bien MAINTENANT.
+
+    Le test vérifiait un préfixe et un suffixe : `bd_annotator_.zip` l'aurait satisfait,
+    et `bd_annotator_XX.zip` aussi. Or c'est précisément l'horodatage qui distingue deux
+    sauvegardes du même corpus — sans lui, la seconde écrase la première.
+
+    `len(data) > 0` était de la même farine : un seul octet passait. Ce qu'on veut savoir,
+    c'est que le zip s'ouvre et porte la base — `_open_snapshot` le dit, et il est déjà là.
+    """
+    avant = datetime.now().replace(microsecond=0)
     name, data = backup.make_backup()
-    assert name.startswith("bd_annotator_") and name.endswith(".zip")
-    assert len(data) > 0
+    apres = datetime.now()
+
+    m = re.fullmatch("bd_annotator_([0-9]{8}_[0-9]{6})[.]zip", name)
+    assert m, f"nom hors format bd_annotator_AAAAMMJJ_HHMMSS.zip : {name}"
+    quand = datetime.strptime(m.group(1), "%Y%m%d_%H%M%S")
+    assert avant <= quand <= apres, (
+        f"horodatage {quand} hors de l'intervalle d'exécution [{avant}, {apres}] — "
+        "une constante ou une date figée passerait le contrôle de format")
+
+    _open_snapshot(data, tmp_path).close()   # zip valide, portant une base ouvrable
 
 
 def test_route_sauvegarde(client, album, tmp_path):

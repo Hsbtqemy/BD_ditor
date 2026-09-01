@@ -364,7 +364,7 @@ Trois couches de tests, toutes lançables via `python -m pytest` :
   sérieuse/critique. axe est **vendu hors ligne** dans `tests/js/vendor/`
   (cf. son README) ; le test se skippe si le fichier est absent.
 
-`tests/test_live_race.py` lance un vrai serveur uvicorn isolé (via
+`tests/test_live_coherence.py` lance un vrai serveur uvicorn isolé (via
 `BD_DATA_DIR`/`BD_DB_PATH`) pour vérifier la cohérence écriture→lecture — chose
 que `TestClient` ne peut pas reproduire. Les tests des moteurs **optionnels**
 (Kumiko, bulles, OCR, NLP) sont automatiquement ignorés si le moteur ou son

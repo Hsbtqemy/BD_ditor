@@ -42,7 +42,7 @@ Les faiblesses ne remettent pas en cause le produit : elles concernent surtout l
 
 6. **Frontend accessible pour du vanilla** : `:focus-visible` cohérent, respect de `prefers-reduced-motion` et `prefers-color-scheme`, thème appliqué avant rendu (anti-FOUC), `aria-label` synchronisés. Sauvegarde auto débouncée avec *flush* avant chaque transition (planche/mode/sélection) — on ne perd pas une annotation en attente.
 
-7. **Tests à l'isolation exemplaire** : base jetable + dossiers sous `tmp_path`, frontières de mock bien placées (on mocke le moteur ML / le réseau / le subprocess, pas la logique métier), chemins d'erreur HTTP couverts systématiquement, et un vrai test d'intégration uvicorn (`test_live_race.py`) qui capture une classe de bug invisible au `TestClient`.
+7. **Tests à l'isolation exemplaire** : base jetable + dossiers sous `tmp_path`, frontières de mock bien placées (on mocke le moteur ML / le réseau / le subprocess, pas la logique métier), chemins d'erreur HTTP couverts systématiquement, et un vrai test d'intégration uvicorn (`test_live_coherence.py`) qui capture une classe de bug invisible au `TestClient`.
 
 ---
 
@@ -158,7 +158,7 @@ Chaque point a été recontrôlé ligne par ligne contre le code réel. Verdict 
 - **Versions non épinglées / pas de lockfile** : tout en `>=`, aucun `==`, aucun `*.lock`. **CONFIRMÉ.**
 - **`numpy`/`opencv`/`requests` non déclarés** (en commentaires seulement ; `numpy` pourtant utilisé [ocr.py:80](pipeline/ocr.py#L80)). **CONFIRMÉ.**
 - **« 100 % » conditionnel** : corps ML exercés uniquement par tests `skipif` (`@requires_kumiko/bulles/ocr`), aucun `pragma: no cover` dessus. **CONFIRMÉ.**
-- **Concurrence sous-testée** : aucun test de (a) deux jobs concurrents / `_run_lock`, (b) écriture worker ↔ lecture serveur au-delà de la course commit-après-réponse de `test_live_race.py`, (c) `make_backup` pendant une écriture. **CONFIRMÉ.**
+- **Concurrence sous-testée** : aucun test de (a) deux jobs concurrents / `_run_lock`, (b) écriture worker ↔ lecture serveur au-delà de la cohérence commit-après-réponse de `test_live_coherence.py`, (c) `make_backup` pendant une écriture. **CONFIRMÉ.**
 - **Décompte de tests** : le README annonce **176** ([README.md:200](README.md#L200), [205](README.md#L205)) mais il y a **184** fonctions `def test_` (dont 6 `skipif` + 1 `live`). **README inexact** — à mettre à jour.
 - **Duplication frontend** : `$`, `apiGet`, `escapeHtml` dupliqués dans les 3 JS ; **mais** `apiSend` et `toast` ne sont que dans `viewer.js`+`corpus.js` (absents de `recherche.js`), et `esc` (corpus) diffère légèrement (`String(s ?? "")`). **PARTIEL** (l'idée tient, le « à l'identique entre les trois » est imprécis).
 - **Accessibilité** (clavier des éléments cliquables, modales sans `role="dialog"`/focus trap/Échap) et **perf** (`renderTree` complet, `refreshTagVocab` après chaque save, `mousemove` non throttlé, ~200 vignettes/recherche). **CONFIRMÉS.**
@@ -265,9 +265,9 @@ La « suite verte, exit 0 » citée à chaque passe ne prouve que l'absence de r
 - **À faire** : ajouter ces tests de non-régression. C'est le filet manquant le plus important.
 
 ### Tests — autres (moyen/mineur)
-- **T2** — `test_live_race.py` est **séquentiel**, pas une vraie course : `PUT` puis `GET` 30× sur le même client synchrone ([test_live_race.py:83-92](tests/test_live_race.py#L83-L92)). Capte bien le bug « commit après réponse » mais le nom survend une concurrence inexistante. **Moyen** (faux sentiment de sécurité).
+- **T2** — `test_live_race.py` est **séquentiel**, pas une vraie course : `PUT` puis `GET` 30× sur le même client synchrone. Capte bien le bug « commit après réponse » mais le nom survend une concurrence inexistante. **Moyen** (faux sentiment de sécurité). → ✅ 2026-08-31 : renommé [tests/test_live_coherence.py](tests/test_live_coherence.py). Le pointeur d'origine (`test_live_race.py:83-92`) désignait des lignes d'un fichier qui n'en comptait que 45 — il est retiré plutôt que corrigé, un lien mort dans un constat daté étant la forme la plus discrète de la dérive que ce constat dénonce.
 - **T3** — `_counter` de [jobs.py:22](pipeline/jobs.py#L22) jamais réinitialisé par `_reset_jobs` (qui ne fait que `_jobs.clear()`) ; `_reset_jobs`/`_reset_crop_cache` sont **locaux à un fichier** au lieu d'être en `conftest.py`. Inoffensif aujourd'hui, fuite d'état latente. **Mineur.**
-- **T4** — Assertions faibles : `status in (200, 400)` ([test_api.py:208](tests/test_api.py#L208)), `"BD" in r.text` ([test_api.py:245](tests/test_api.py#L245)), `len(data) > 0` ([test_backup.py:33](tests/test_backup.py#L33)) ; `test_make_backup_horodatage_auto` ne vérifie pas le format de l'horodatage. **Mineur** (smoke tests).
+- **T4** — Assertions faibles : `status in (200, 400)`, `"BD" in r.text`, `len(data) > 0` ; `test_make_backup_horodatage_auto` ne vérifie pas le format de l'horodatage. **Mineur** (smoke tests). → ✅ 2026-08-31 (AUDIT-1) : la première acceptait DEUX contrats opposés sur une seule entrée — mesuré, la route répond 200 avec zéro résultat sur douze syntaxes FTS invalides, et le test le vérifie désormais APRÈS s'être assuré qu'une requête valide trouve sa cible ; la deuxième reconnaissait le shell à trois lettres, elle vérifie titre, langue et scripts ; la troisième acceptait un octet, le zip doit s'ouvrir et porter la base ; l'horodatage est contrôlé par motif ET doit tomber dans l'intervalle d'exécution. Les trois pointeurs de ce constat étaient morts — retirés, pas corrigés.
 - **T5** — S2/S3 (passe 3) non couverts : `test_transfer_case_annotations` ne teste jamais le cas **2 anciennes cases → 1 nouvelle**, ni un recouvrement minuscule. **Moyen** (à inclure dans le tour S2/S3).
 
 ### Templates / CSS / id (résultat largement SAIN)
@@ -283,7 +283,7 @@ La « suite verte, exit 0 » citée à chaque passe ne prouve que l'absence de r
 - **T6 — `font: 13px inherit`** remplacé par `font-size: 13px; font-family: inherit;` ([style.css:600](static/style.css#L600), [785](static/style.css#L785)).
 - Décompte de tests : ~184 → ~192 (README à mettre à jour, cf. passe 1 : il annonce encore 176).
 
-**Restent ouverts passe 4** : T2 (`test_live_race` séquentiel/nom trompeur), ~~T3~~ (✅ corrigé : `_reset_global_state` global en conftest + `_counter` reset), T4 (assertions faibles), T5 (tests S2/S3 à écrire avec le tour préservation), T7 (non-responsive). Décompte README corrigé : **176 → 192**.
+**Restent ouverts passe 4** : ~~T2~~ (✅ traité le 2026-08-31, AUDIT-1 : fichier renommé `test_live_coherence.py`, docstring et message ne promettent plus une concurrence — laquelle reste non testée, et c'est désormais ÉCRIT dans le fichier), ~~T3~~ (✅ corrigé : `_reset_global_state` global en conftest + `_counter` reset), ~~T4~~ (✅ traité le 2026-08-31, AUDIT-1), T5 (tests S2/S3 à écrire avec le tour préservation), T7 (non-responsive). Décompte README corrigé : **176 → 192**.
 
 ---
 
