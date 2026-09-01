@@ -5,9 +5,9 @@ statut: livré
 
 # SANTE-1 — /api/sante annonce vivants des moteurs morts
 
-**Arrêté sur** — 2026-09-01, `4cbd905` : panneau **🩺 Moteurs** dans la
-Bibliothèque, règle d'affichage pure dans `static/lib/sante.js`, section « Un moteur en
-panne » dans `docs/deploiement-docker.md`. Le chantier est LIVRÉ.
+**Arrêté sur** — 2026-09-01, `88ec031` : passe de revue APRÈS le push de `4cbd905`
+(panneau **🩺 Moteurs**, règle pure dans `static/lib/sante.js`, section « Un moteur en
+panne »). Elle a trouvé un cul-de-sac au clavier. Le chantier est LIVRÉ.
 
 ## Reste
 
@@ -30,6 +30,8 @@ panne » dans `docs/deploiement-docker.md`. Le chantier est LIVRÉ.
 - [x] Le bilan d'une épreuve distingue « rien à rapporter » de « rien rapporté » : un rapport profond vide ou parlant d'autres moteurs ne se lit plus « aucun moteur installé »
 - [x] Le rouge du bilan se VOIT : `#sante-msg.erreur` n'était reçu par aucune règle CSS, le test compare les couleurs RENDUES
 - [x] Les quatre états passent l'audit axe en thèmes sombre ET clair, le décor les forçant tous à l'écran ; l'accent rouge brut y échoue (mesuré)
+- [x] Le panneau reste utilisable AU CLAVIER pendant une épreuve : `aria-disabled` et non `disabled`, parce que désarmer le bouton qui porte le focus le rend au `<body>` — Tab s'échappe et Échap ne ferme plus, quinze secondes durant. L'audit axe n'y voyait rien : il photographie un écran, il n'appuie sur aucune touche
+- [x] Rouvrir le panneau pendant une épreuve n'efface pas le message qui explique le bouton grisé
 - [x] `docs/deploiement-docker.md` § 8 « Un moteur en panne » : où le voir (panneau / route / CLI), les trois pannes rencontrées avec leur remède, et le redémarrage qu'exige la mémoïsation. Un test exige que chaque symptôme documenté ait son geste
 
 ## Contexte
@@ -55,6 +57,18 @@ inutilisable (plusieurs secondes, et le chargement de torch en mémoire). C'est 
 la troisième case — le contrôle profond doit être distinct du contrôle rapide.
 
 Lié à INFRA-1 : c'est le déploiement qui transforme ce raccourci en angle mort.
+
+## Ce que la passe d'après-coup a appris
+
+Le défaut le plus sérieux du chantier a été trouvé APRÈS le push, en écrivant un test
+pour autre chose : un état TRANSITOIRE — les quinze secondes d'une épreuve — pendant
+lequel la modale cessait d'être une modale. Deux gardes le laissaient passer sans mentir,
+chacune dans son droit : l'audit axe photographie un écran et n'appuie sur aucune touche ;
+la suite ne traversait jamais cet état, faute d'un décor assez lent. Ce qui l'a rendu
+visible n'est pas une relecture, c'est d'avoir eu besoin d'y passer.
+
+Corollaire pour les prochains panneaux : un bouton qu'on désarme pendant son propre appel
+est le patron par défaut, et il est faux dès que ce bouton porte le focus dans une modale.
 
 ## Ce qui a été décidé en fermant (2026-09-01)
 
