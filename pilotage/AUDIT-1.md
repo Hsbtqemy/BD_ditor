@@ -6,7 +6,17 @@ audit: AUDIT.md
 
 # AUDIT-1 — les reliquats ouverts des cinq passes d'audit
 
-**Arrêté sur** — le commit `cff09fc`, 2026-08-31 : la zone **Transitions de statut** est close
+**Arrêté sur** — le commit `f1329f5`, 2026-08-31 : B6 avait un JUMEAU dans la visionneuse,
+trouvé par une seconde passe de revue sur un commit déjà fait. `viewer.js` posait
+`state.planche.statut = "segmentee"` après un clic sur « Segmenter », exactement comme la
+réponse d'import — et celui-ci est le plus visible des deux, puisqu'il alimente le bandeau
+et la pastille : l'écran montrait la régression que la base venait de refuser, jusqu'au
+prochain rechargement où elle se corrigeait seule. Un défaut qui se répare en
+rafraîchissant est un défaut qu'on ne signale jamais. La première passe avait relevé les
+quatre sites d'écriture EN BASE et s'était arrêtée à la frontière HTTP, alors que le client
+tient sa propre copie de l'état.
+
+Avant lui, le commit `cff09fc` : la zone **Transitions de statut** est close
 à son tour. Une seule zone reste, les latents de segmentation.
 
 Le relevé a valu mieux que les deux pointeurs de la fiche : `statut` s'écrit à QUATRE
