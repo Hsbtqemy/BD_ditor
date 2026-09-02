@@ -28,6 +28,8 @@ export default {
     ["front/autres",      "static/"],
     ["gabarits",          "templates/"],
     ["api",               "main.py"],
+    ["api",               "socle.py"],
+    ["api",               "routes/"],
     ["données",           "database.py"],
     ["noyau",             "journal.py"],
     ["noyau",             "undo.py"],
@@ -44,11 +46,15 @@ export default {
     ["dossier",           "pilotage/"]
   ],
 
-  // Le seul chiffre qui ait une limite réelle ici. `main.py` porte TOUTES les routes
-  // de l'application — 2 897 lignes au 2026-08-27 — et le dépôt n'a aucune étape de
-  // build pour amortir ça : on l'ouvre, on le lit. `chantier` nomme la fiche où la
-  // décision se prend quand le seuil approche ; sans elle le chiffre serait un
-  // cul-de-sac — on verrait qu'il monte, pas où agir.
+  // Le seul chiffre qui ait une limite réelle ici, et le dépôt n'a aucune étape de
+  // build pour amortir un gros fichier : on l'ouvre, on le lit. `chantier` nomme la
+  // fiche où la décision se prend quand le seuil approche ; sans elle le chiffre
+  // serait un cul-de-sac — on verrait qu'il monte, pas où agir.
+  //
+  // Le seuil A ÉTÉ FRANCHI, et la décision est prise (ARCH-1, 2026-09-02) : découpage
+  // par domaine, `routes/` + `socle.py`, par étapes. `main.py` était à 4 483 lignes ;
+  // la veille continue de le surveiller LUI, parce que c'est là que revient le code
+  // qu'on ne sait pas où mettre.
   veille: { fichier: "main.py", seuil: 3200, jours: 90, chantier: "ARCH-1" },
 
   // `dossier` sert à distinguer un commit de cadrage d'un commit de code : sans lui,

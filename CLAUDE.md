@@ -52,7 +52,7 @@ cette machine — un dépôt à la fois par port, c'est le modèle de l'outil.
 
 Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut. **L'application n'authentifie personne** : elle fait confiance aux en-têtes d'identité posés par un proxy d'auth (Authelia), et seulement si `BD_AUTH_PROXY` déclare qu'il est bien devant — sans quoi tout acte reste anonyme (AUTH-1). Aucun secret en base : `utilisateur` (v22) n'est qu'un miroir d'affichage, et les groupes ne sont jamais stockés, relus dans `Remote-Groups` à chaque requête. **Elle AUTORISE en revanche** (AUTH-2, v23) : le cloisonnement par collection est à elle, Authelia ne dit que « qui ». Voir `docs/hebergement-securite.md`.
 
-Backend **Python 3.12 / FastAPI** ; frontend **JavaScript/HTML/CSS vanilla** — aucun framework, **aucune étape de build**. On édite `static/*.js` et `templates/*.html` directement.
+Backend **Python 3.12 / FastAPI** — la couche API se découpe en `main.py` (montage, middlewares, blocs pas encore sortis), `socle.py` (le socle partagé) et `routes/` (un module par domaine, ARCH-1 ; cf. § Découpage) ; frontend **JavaScript/HTML/CSS vanilla** — aucun framework, **aucune étape de build**. On édite `static/*.js` et `templates/*.html` directement.
 
 ## Commandes
 
@@ -102,6 +102,43 @@ Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, 
 
 `static/lib/` contient des modules **UMD réutilisables et testés sous Node** (pas d'accès DOM au chargement) : `common.js` (helpers partagés par les QUATRE surfaces — `$`, `apiGet`, `apiSend`, `escapeHtml`/`esc`, `toast` — exposés en globals pour que les appels nus restent inchangés, et require()-ables par les tests), `nav.js` (navigation/round-trip entre surfaces), `dialog.js` (modale accessible : piège à focus, Échap, retour du focus) et `sante.js` (état affiché des moteurs, SANTE-1 : le croisement présent/éprouvé × absent/en panne, et le bilan d'une épreuve). Un module y entre pour une PROPRIÉTÉ — logique pure, donc vérifiable par table de vérité — et non parce qu'il serait partagé : `sante.js` ne sert qu'à la Bibliothèque, et il est là parce qu'un test lisant le source de `corpus.js` déclarait sa règle couverte sans l'être (mesuré). Leur logique pure est verrouillée par `tests/js/*.test.js`. **Ne pas redupliquer ces helpers dans un fichier de surface** : c'était le constat « duplication frontend » de l'audit de juin, et `common.js` est ce qui l'a fermé.
 
+### Découpage de la couche API (ARCH-1)
+
+`main.py` a franchi les 4 400 lignes pour 125 routes, contre un seuil de 3 200 déclaré
+dans `pilotage/journal.config.mjs`. Le découpage se fait **par domaine et par étapes**,
+chacune vérifiée par la suite entière avant la suivante.
+
+- **`socle.py`** porte ce dont tous les domaines dépendent : `db`, `portee_courante`,
+  `_row`/`_rows`, les helpers métier, la sortie CSV et les **accesseurs gardés**
+  (`_get_album`, `_get_planche`, `_get_region`). Ces derniers y gagnent plus qu'un
+  rangement : « la seule façon d'atteindre un objet » était une convention, un module
+  qu'il faut IMPORTER en fait une contrainte visible.
+- **`routes/<domaine>.py`** expose un `router = APIRouter()` que `main.py` inclut. Le
+  sens des dépendances est unique : `routes/*` → `socle` → le reste ; **`socle.py`
+  n'importe jamais `main`**, sans quoi le cycle marcherait en test et tomberait ailleurs.
+- **`main.py` RÉ-EXPORTE** tout ce qui a déménagé. Ce n'est pas de la compatibilité par
+  paresse : `test_autorisation.py` compare l'IDENTITÉ de `main.portee_courante` aux
+  dépendances de chaque route, et `test_sorties_identite.py` balaie les routes depuis
+  `main`. Le ré-export garde ces cliquets exacts sans réécrire une ligne de test — la
+  condition que pose ARCH-1.
+
+**Deux critères décident de l'ordre d'extraction, et le second ne se voit pas.** Le
+COUPLAGE, mesuré (5 à 20 noms de `main.py` par bloc, presque toujours les mêmes). Et les
+noms que les tests remplacent PAR `main` — `monkeypatch.setattr(main, "…")` : un bloc qui
+en contient ne peut pas déménager sans réécrire ces tests, car la route chercherait le nom
+dans SON module et le remplacement cesserait d'agir **en silence**. Segmentation,
+ShareDocs, Sauvegarde, Jobs et Santé sont épinglés par là ; Recherche, Personnages,
+Lexique et Analyse ne le sont pas.
+
+`tests/test_decoupage_api.py` garde les quatre invariants, et il existe parce que la
+première extraction a produit **49 tests rouges** d'un coup — trois noms utilisés et non
+importés. Un module aux noms libres s'importe sans broncher : le `NameError` n'arrive
+qu'à l'APPEL, et ressemble alors à un bug métier. Le test calcule ces noms des DEUX côtés
+de la coupe, interdit au socle de remonter vers `main`, vérifie qu'un routeur inclus reste
+visible dans `app.routes` (l'inventaire des trois cliquets), et surveille l'ORDRE : le
+découpage réordonne la table de routage, ce qui est sans effet tant qu'aucune route
+littérale n'est captable par une paramétrée — mesuré, 0 paire sur 127 routes.
+
 ### Données : tout en pixels MASTER
 
 `albums → planches → regions` (arbre hiérarchique via `regions.parent_id`) `→ annotations → tags` (N-N). Les coordonnées `x,y,w,h` des régions sont **toujours en pixels master** (le scan haute résolution), indépendantes du dérivé web. La conversion master↔web se fait **côté frontend** : `web_scale = web_width / master_width`. Ne jamais stocker de coordonnées web.
@@ -114,7 +151,7 @@ Le master TIFF va dans `corpus/`, un dérivé web JPEG à 25 % (`WEB_SCALE` dans
 
 **Un seul endroit du code tranche « qui voit quoi » : `autorisation.py`.** Il répond
 `Portee` — quelles collections en lecture, lesquelles en écriture — et tout le reste
-consomme la réponse sans la recalculer. `main.py` expose la dépendance `portee_courante`
+consomme la réponse sans la recalculer. `socle.py` expose la dépendance `portee_courante` (ré-exportée par `main.py`)
 et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste entier.
 
 - **La collection est l'unité** (`collection_acces` : collection × principal × niveau).
