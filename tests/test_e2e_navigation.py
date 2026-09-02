@@ -48,14 +48,15 @@ def _viewer_url(s, extra=""):
 def test_deep_link_ouvre_la_region(page, seeded):
     """Un lien profond /?album&planche&region ouvre la Visionneuse pile sur la
     région (applyDeepLink + anti-course plancheGen)."""
-    page.goto(_viewer_url(seeded))
+    page.goto(_viewer_url(seeded), wait_until="networkidle")
     expect(page.locator("#region-id")).to_have_text(f"#{seeded['region']}", timeout=15000)
 
 
 def test_back_link_depuis_retour_interne(page, seeded):
     """Avec un `retour` interne valide, le bouton « ← Retour » apparaît, pointe
     dessus, et y ramène au clic."""
-    page.goto(_viewer_url(seeded, "&retour=%2Frecherche%3Fq%3Dpouvoir"))
+    page.goto(_viewer_url(seeded, "&retour=%2Frecherche%3Fq%3Dpouvoir"),
+              wait_until="networkidle")
     back = page.locator("#back-link")
     expect(back).to_be_visible(timeout=15000)
     assert back.get_attribute("href").endswith("/recherche?q=pouvoir")
@@ -66,14 +67,14 @@ def test_back_link_depuis_retour_interne(page, seeded):
 def test_retour_javascript_est_rejete(page, seeded):
     """`retour=javascript:…` est rejeté par safeRetour → bouton masqué, aucune
     surface d'XSS via le href du ← Retour."""
-    page.goto(_viewer_url(seeded, "&retour=javascript:alert(1)"))
+    page.goto(_viewer_url(seeded, "&retour=javascript:alert(1)"), wait_until="networkidle")
     expect(page.locator("#region-id")).to_have_text(f"#{seeded['region']}", timeout=15000)
     expect(page.locator("#back-link")).to_be_hidden()
 
 
 def test_etat_recherche_restaure_au_chargement(page, seeded):
     """La Recherche restaure sa requête depuis l'URL (reprise d'état au reload)."""
-    page.goto(f"{seeded['base']}/recherche?q=bonjour")
+    page.goto(f"{seeded['base']}/recherche?q=bonjour", wait_until="networkidle")
     expect(page.locator("#q")).to_have_value("bonjour", timeout=15000)
 
 
@@ -82,7 +83,7 @@ def test_chaine_retour_deux_niveaux(page, seeded):
     Exploration, avec l'état de chaque surface restauré (chaîne `retour` à 2 niveaux)."""
     expl = "/exploration?champ=lemme"
     rech = "/recherche?q=x&retour=" + quote(expl, safe="")
-    page.goto(_viewer_url(seeded, "&retour=" + quote(rech, safe="")))
+    page.goto(_viewer_url(seeded, "&retour=" + quote(rech, safe="")), wait_until="networkidle")
 
     page.locator("#back-link").click()                 # Visionneuse → Recherche
     expect(page).to_have_url(re.compile(r"/recherche"))
@@ -99,7 +100,7 @@ def test_chaine_retour_deux_niveaux(page, seeded):
 def test_visionneuse_affiche_la_citation(page, seeded):
     """Sélectionner une région (deep-link) affiche sa citation éditoriale dans le
     panneau de détail (Lot 1 : pl·c)."""
-    page.goto(_viewer_url(seeded))
+    page.goto(_viewer_url(seeded), wait_until="networkidle")
     expect(page.locator("#region-citation")).to_contain_text("pl.1 · c1", timeout=15000)
 
 
@@ -121,7 +122,7 @@ def seeded_corpus(live_server):
 def test_corpus_marquer_paratexte_renumerote(page, seeded_corpus):
     """Sur la Bibliothèque : ouvrir un album, marquer la 1re planche « paratexte »
     → elle sort de la numérotation (Lot 0, corpus.js)."""
-    page.goto(f"{seeded_corpus['base']}/corpus")
+    page.goto(f"{seeded_corpus['base']}/corpus", wait_until="networkidle")
     page.locator("#albums-body tr td.c-titre").first.click()   # ouvrir l'album
     detail = page.locator("#album-detail")
     expect(detail).to_contain_text("planche 1", timeout=15000)
@@ -156,7 +157,7 @@ def test_recherche_resultat_apercu_et_lien_edition(page, seeded_ocr):
     le clic ouvre l'aperçu, et le lien ✏️ embarque la région + le retour (départ du
     round-trip avec une vraie recherche)."""
     s = seeded_ocr
-    page.goto(f"{s['base']}/recherche?q=BONJOURXYZ")
+    page.goto(f"{s['base']}/recherche?q=BONJOURXYZ", wait_until="networkidle")
     card = page.locator("#results .result").first
     expect(card).to_be_visible(timeout=15000)
     expect(card.locator(".r-cite")).to_have_text("pl.1 · c1 · b1")
@@ -170,7 +171,7 @@ def test_visionneuse_menu_import_export(page, live_server):
     """En-tête de la Visionneuse : ShareDocs n'est plus dans « Traitement » (réservé
     aux 3 passes ML) ; il est sous « Import / Export », section Importer, à côté de
     l'import d'images et des exports."""
-    page.goto(f"{live_server}/")
+    page.goto(f"{live_server}/", wait_until="networkidle")
     expect(page.locator("#traitement-menu")).not_to_contain_text("ShareDocs")
     page.locator("#btn-donnees").click()                  # ouvrir « Import / Export »
     menu = page.locator("#donnees-menu")
@@ -194,7 +195,7 @@ def test_un_seul_menu_ouvert_a_la_fois(page, seeded):
     « Affichage » (theme.js, bande 1) ferme le dropdown ouvert du visualiseur
     (bande 2) — un seul menu ouvert, toutes barres confondues. Le code est symétrique
     (ouvrir un dropdown ferme aussi « Affichage »)."""
-    page.goto(_viewer_url(seeded))
+    page.goto(_viewer_url(seeded), wait_until="networkidle")
     page.locator("#btn-donnees").click()                        # Import/Export ouvert
     expect(page.locator("#donnees-menu")).to_be_visible()
     page.locator(".btn-theme").click()                          # ouvrir « Affichage »…
@@ -221,7 +222,7 @@ def test_transcription_planche_sans_texte(page, seeded):
     """Planche sans région de texte : pas d'image cassée (le cadre « dédoublé » venait
     de l'icône d'image cassée), mais un message propre — #tr-crop masqué, #tr-empty
     visible."""
-    page.goto(_viewer_url(seeded))
+    page.goto(_viewer_url(seeded), wait_until="networkidle")
     page.locator('[data-mode="transcription"]').click()
     expect(page.locator("#transcription")).to_be_visible()
     expect(page.locator("#tr-progress")).to_have_text("Aucune région de texte")
@@ -234,7 +235,8 @@ def test_menus_au_dessus_du_panneau_transcription(page, seeded_ocr):
     masquer les menus de l'en-tête : leurs items restent peints AU-DESSUS de
     l'overlay (sinon ils sont inaccessibles)."""
     s = seeded_ocr
-    page.goto(f"{s['base']}/?album={s['album']}&planche={s['planche']}")
+    page.goto(f"{s['base']}/?album={s['album']}&planche={s['planche']}",
+              wait_until="networkidle")
     page.locator('[data-mode="transcription"]').click()
     expect(page.locator("#transcription")).to_be_visible()
     # Menu bande 2 « Import / Export » : son item n'est pas masqué par l'overlay.
@@ -259,7 +261,7 @@ def test_menus_au_dessus_du_panneau_transcription(page, seeded_ocr):
 def test_nav_unifiee_injectee_et_surbrillance(page, live_server, path, label):
     """La barre de nav est injectée à l'identique sur les 4 surfaces (4 liens), et la
     surface courante — et elle seule — porte aria-current=page (« vous êtes ici »)."""
-    page.goto(f"{live_server}{path}")
+    page.goto(f"{live_server}{path}", wait_until="networkidle")
     expect(page.locator(".surf-nav a.surf-link")).to_have_count(4, timeout=15000)
     current = page.locator('.surf-nav a[aria-current="page"]')
     expect(current).to_have_count(1)
@@ -269,7 +271,7 @@ def test_nav_unifiee_injectee_et_surbrillance(page, live_server, path, label):
 def test_menus_visionneuse_un_seul_ouvert_et_echap(page, live_server):
     """Visionneuse : Traitement/Données s'ouvrent au clic, un seul à la fois (ouvrir
     l'un referme l'autre), et Échap referme — cf. setupMenus()."""
-    page.goto(f"{live_server}/")
+    page.goto(f"{live_server}/", wait_until="networkidle")
     trait, donnees = page.locator("#traitement-menu"), page.locator("#donnees-menu")
     expect(trait).to_be_hidden(timeout=15000)
 
@@ -288,7 +290,7 @@ def test_menu_navigation_au_clavier(page, live_server):
     """Visionneuse : les menus d'en-tête sont de vrais menus ARIA (motif APG « menu
     button ») navigables au clavier — ↓ ouvre et entre sur le 1er item, ↓ boucle, Fin
     va au dernier, Échap referme EN RENDANT le focus au déclencheur (cf. setupMenus)."""
-    page.goto(f"{live_server}/")
+    page.goto(f"{live_server}/", wait_until="networkidle")
     btn, menu = page.locator("#btn-traitement"), page.locator("#traitement-menu")
     expect(menu).to_have_attribute("role", "menu", timeout=15000)
 
@@ -317,7 +319,7 @@ def test_menu_clavier_espace_ouvre_et_tab_referme(page, live_server):
     (le clic natif d'Espace arrive au keyup, après l'ouverture au keydown → garde
     anti-flicker), et Tab referme en avançant vers le contrôle suivant (Import/Export).
     Vérifie aussi l'isolation : ← en menu ouvert ne navigue pas entre les régions."""
-    page.goto(f"{live_server}/")
+    page.goto(f"{live_server}/", wait_until="networkidle")
     trait, menu = page.locator("#btn-traitement"), page.locator("#traitement-menu")
     trait.focus()
     page.keyboard.press("Space")                          # chemin le plus à risque
@@ -335,7 +337,7 @@ def test_menu_affichage_ferme_par_defaut(page, live_server):
     """Régression : le panneau « Affichage » (Aa) est masqué au chargement, puis
     s'ouvre / se referme au clic. Garde .display-panel[hidden] — sans lui, le
     display:flex écrasait l'attribut hidden et le menu restait ouvert en permanence."""
-    page.goto(f"{live_server}/")
+    page.goto(f"{live_server}/", wait_until="networkidle")
     panel = page.locator(".display-panel")
     expect(panel).to_be_hidden(timeout=15000)
     page.locator(".btn-theme").click()
@@ -352,7 +354,7 @@ def test_modale_album_accessible(page, live_server):
     """Bibliothèque : la modale « Nouvel album » est un vrai dialogue —
     role=dialog + aria-modal + nom accessible, focus posé sur le 1er champ à
     l'ouverture, et Échap referme EN RENDANT le focus au déclencheur."""
-    page.goto(f"{live_server}/corpus")
+    page.goto(f"{live_server}/corpus", wait_until="networkidle")
     page.locator("#btn-new").click()
     modal = page.locator("#album-modal")
     expect(modal).to_be_visible(timeout=15000)
@@ -371,7 +373,7 @@ def test_modale_album_accessible(page, live_server):
 def test_modale_album_piege_le_focus(page, live_server):
     """Le focus clavier ne s'échappe pas de la modale : Maj+Tab depuis le 1er
     champ boucle vers le dernier focusable (il reste DANS la boîte)."""
-    page.goto(f"{live_server}/corpus")
+    page.goto(f"{live_server}/corpus", wait_until="networkidle")
     page.locator("#btn-new").click()
     expect(page.locator("#m-titre")).to_be_focused(timeout=15000)
     page.keyboard.press("Shift+Tab")
@@ -383,7 +385,7 @@ def test_modale_album_piege_le_focus(page, live_server):
 def test_modale_sharedocs_accessible_et_echap(page, live_server):
     """Visionneuse : la modale ShareDocs est un dialogue (role/aria-modal/nom) et
     Échap la referme (même chemin que le clic sur le fond)."""
-    page.goto(f"{live_server}/")
+    page.goto(f"{live_server}/", wait_until="networkidle")
     page.locator("#btn-donnees").click()
     page.locator("#btn-sharedocs").click()
     sd = page.locator("#sharedocs")
@@ -403,7 +405,7 @@ def test_boutons_mode_aria_pressed(page, live_server):
     (aria-pressed), mis à jour AU CLIC comme AU RACCOURCI clavier ; l'indicateur de
     mode est une région live → la bascule au clavier (N/E/A/T) est annoncée même
     quand le focus n'est pas sur les boutons."""
-    page.goto(f"{live_server}/")
+    page.goto(f"{live_server}/", wait_until="networkidle")
     nav = page.locator('.mode-btn[data-mode="navigation"]')
     edi = page.locator('.mode-btn[data-mode="edition"]')
     ann = page.locator('.mode-btn[data-mode="annotation"]')
@@ -426,7 +428,7 @@ def test_filtres_recherche_ont_un_nom_accessible(page, live_server):
     """Recherche : les contrôles de filtre, sans <label> visible, portent un
     aria-label → un lecteur d'écran annonce leur fonction (avant, ils n'avaient que
     le texte de l'option par défaut)."""
-    page.goto(f"{live_server}/recherche")
+    page.goto(f"{live_server}/recherche", wait_until="networkidle")
     expect(page.locator("#q")).to_have_attribute(
         "aria-label", "Rechercher dans les dialogues, notes et tags", timeout=15000)
     expect(page.locator("#f-album")).to_have_attribute("aria-label", "Filtrer par album")
@@ -440,7 +442,7 @@ def test_filtres_exploration_distinguent_les_sous_corpus(page, live_server):
     """Exploration : les filtres du sous-corpus B sont nommés distinctement de ceux
     de A (préfixe « Sous-corpus B ») → un lecteur d'écran ne confond pas les deux
     colonnes en mode comparaison."""
-    page.goto(f"{live_server}/exploration")
+    page.goto(f"{live_server}/exploration", wait_until="networkidle")
     expect(page.locator("#f-album")).to_have_attribute(
         "aria-label", "Filtrer par album", timeout=15000)
     expect(page.locator("#b-album")).to_have_attribute(
@@ -451,12 +453,12 @@ def test_nettoyage_libelles_accessibles(page, live_server):
     """Nettoyage a11y : le raccourci <kbd> des boutons de mode est masqué aux lecteurs
     d'écran → nom accessible « Navigation » (et non « Navigation N ») ; les en-têtes de
     colonnes sans texte (sélection / actions) de la Bibliothèque portent un aria-label."""
-    page.goto(f"{live_server}/")
+    page.goto(f"{live_server}/", wait_until="networkidle")
     expect(page.locator('.mode-btn[data-mode="navigation"] kbd')).to_have_attribute(
         "aria-hidden", "true", timeout=15000)
     expect(page.get_by_role("button", name="Navigation", exact=True)).to_be_visible()
 
-    page.goto(f"{live_server}/corpus")
+    page.goto(f"{live_server}/corpus", wait_until="networkidle")
     head = page.locator(".corpus-table thead")
     expect(head.locator("th.c-chk")).to_have_attribute("aria-label", "Sélection", timeout=15000)
     expect(head.locator('th[aria-label="Actions"]')).to_have_count(1)
@@ -466,7 +468,7 @@ def test_confort_de_lecture(page, live_server):
     """Réglage « Confort de lecture » (menu Affichage) : la bascule pose data-lecture
     sur <html>, aère le texte de lecture (espacement appliqué à #tr-text), et persiste
     au rechargement — réappliqué AVANT rendu comme le thème (theme.js en <head>)."""
-    page.goto(f"{live_server}/")
+    page.goto(f"{live_server}/", wait_until="networkidle")
     page.locator(".btn-theme").click()                         # ouvre le menu Affichage
     panel = page.locator(".display-panel")
     expect(panel).to_be_visible(timeout=15000)
@@ -489,7 +491,7 @@ def test_deux_bandes_navigation_au_dessus_des_outils(page, live_server, path):
     """Structure en deux bandes : la bande 1 (#site-nav, navigation) est tout en haut
     et identique partout (4 surfaces) ; la bande 2 (#header, outils de page) est juste
     en dessous, sans chevauchement. Garantit la séparation navigation / outils."""
-    page.goto(f"{live_server}{path}")
+    page.goto(f"{live_server}{path}", wait_until="networkidle")
     nav = page.locator("#site-nav")
     expect(nav).to_be_visible(timeout=15000)
     expect(page.locator("#site-nav .surf-nav a.surf-link")).to_have_count(4)
@@ -505,7 +507,7 @@ def test_creation_album_demande_sa_collection(page, seeded):
     exactement une, et elle doit être PRÉSÉLECTIONNÉE — poser une question dont la
     réponse est unique serait de la cérémonie, pas de l'explicite.
     """
-    page.goto(seeded["base"] + "/corpus")
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.locator("#btn-new").click()
     expect(page.locator("#album-modal")).to_be_visible(timeout=15000)
     sel = page.locator("#m-collection")
@@ -532,7 +534,7 @@ def test_le_champ_collection_disparait_a_l_edition(page, seeded):
     """Déplacer un album d'une collection à l'autre est un geste d'ESPACE DE TRAVAIL,
     qui appartient à AUTH-3. Le champ ne doit donc pas apparaître à l'édition, où il
     laisserait croire à un déplacement possible."""
-    page.goto(seeded["base"] + "/corpus")
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.locator('.album-row [data-act="edit"]').first.click()
     expect(page.locator("#album-modal")).to_be_visible(timeout=15000)
     expect(page.locator("#m-collection-wrap")).to_be_hidden()
