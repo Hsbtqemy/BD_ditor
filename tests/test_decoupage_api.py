@@ -7,7 +7,7 @@ broncher : un nom libre ne lève un `NameError` qu'à l'APPEL, donc le mal ne se
 faisant tourner la route. J'avais dressé la liste des imports à l'œil plutôt que de la
 calculer, ce qui est exactement le geste que ce test remplace.
 
-QUATRE affirmations, et chacune couvre une manière différente de rater une extraction.
+CINQ affirmations, et chacune couvre une manière différente de rater une extraction.
 """
 import ast
 import builtins
@@ -36,20 +36,20 @@ def _noms_libres(chemin: Path) -> list[str]:
     arbre = ast.parse(io.open(chemin, encoding="utf-8").read())
     definis, utilises = set(), set()
     for n in ast.walk(arbre):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        # Tout ce qui LIE un nom : def, lambda, class, import, `except … as`, affectation.
+        # Trois oublis successifs ont été mesurés ici, tous produisant un FAUX positif —
+        # `ClassDef` (qui n'a pas d'`args` et faisait planter la garde), `*args`/`**kwargs`
+        # (`main._tei_el(**attrs)`), et les paramètres de `lambda` (`key=lambda x: …`).
+        # Un faux positif dans un cliquet coûte plus qu'une lacune : on apprend à passer
+        # outre, puis on passe outre le vrai.
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            if not isinstance(n, ast.Lambda):
+                definis.add(n.name)
+            definis |= {a.arg for a in n.args.args + n.args.kwonlyargs
+                        + n.args.posonlyargs}
+            definis |= {a.arg for a in (n.args.vararg, n.args.kwarg) if a}
+        elif isinstance(n, ast.ClassDef):
             definis.add(n.name)
-            # `ClassDef` n'a pas d'`args` : le distinguer n'est pas du zèle, c'est ce
-            # qui empêche la garde de planter sur `AttributeError` au lieu de dire ce
-            # qu'elle a trouvé. Aucun module de `routes/` n'a encore de classe ; les
-            # prochains blocs sortis en portent (les modèles Pydantic).
-            if not isinstance(n, ast.ClassDef):
-                definis |= {a.arg for a in n.args.args + n.args.kwonlyargs
-                            + n.args.posonlyargs}
-                # `*args` / `**kwargs` ne sont pas dans ces listes-là. Les oublier
-                # fabrique un FAUX positif — mesuré sur `main._tei_el(**attrs)` —,
-                # et un faux positif dans un cliquet est pire qu'une lacune : on
-                # apprend à passer outre, puis on passe outre le vrai.
-                definis |= {a.arg for a in (n.args.vararg, n.args.kwarg) if a}
         elif isinstance(n, ast.Import):
             definis |= {(a.asname or a.name).split(".")[0] for a in n.names}
         elif isinstance(n, ast.ImportFrom):
@@ -176,3 +176,40 @@ def test_aucune_route_ne_depend_de_son_rang_dans_la_table():
         "soit les rendre non ambiguës, soit garantir leur ordre relatif "
         "explicitement — pas s'en remettre au hasard du fichier dont elles "
         "sortent.")
+
+
+def test_toute_route_capte_l_agent_courant():
+    """La dépendance globale `_capter_agent` doit atteindre TOUTES les routes, y compris
+    celles qui arrivent par un `include_router`.
+
+    Ce test existe parce que le découpage l'a cassé. `include_router` FIGE les dépendances
+    de chaque route au moment de l'inclusion : les trois routeurs étaient inclus quelques
+    lignes AVANT `app.router.dependencies.append(Depends(_capter_agent))`, donc ils ne
+    l'ont jamais reçue. Conséquence — le journal de provenance (A3) attribuait `NULL` à
+    tout acte passant par ces domaines : les corrections de tokens, les figures citées, la
+    recherche. L'attribution disparaissait, pas les fonctionnalités.
+
+    Aucun test unitaire n'a bronché : 646 verts. C'est un audit E2E qui l'a vu, et
+    indirectement — alice et bob devenaient tous deux anonymes, donc zéro re-touche entre
+    auteurs distincts. Le prochain bloc extrait peut refaire exactement la même chose ;
+    celui-ci le dira tout de suite, et en nommant la cause.
+    """
+    orphelines = []
+    for r in main.app.routes:
+        if not hasattr(r, "dependant"):
+            continue          # montages StaticFiles : hors routeur, non concernés
+        vues, pile = set(), [r.dependant]
+        while pile:
+            d = pile.pop()
+            for sous in d.dependencies:
+                if sous.call is not None:
+                    vues.add(sous.call)
+                pile.append(sous)
+        if main._capter_agent not in vues:
+            orphelines.append(f"{sorted(r.methods)[0]} {r.path}")
+    assert not orphelines, (
+        "Ces routes ne captent pas l'agent courant, donc le journal de provenance leur "
+        "attribuera `NULL` :\n  " + "\n  ".join(sorted(orphelines))
+        + "\n\nCause probable : un `app.include_router(...)` placé AVANT "
+        "`app.router.dependencies.append(Depends(_capter_agent))`. L'ordre compte, "
+        "`include_router` fige les dépendances au moment de l'inclusion.")

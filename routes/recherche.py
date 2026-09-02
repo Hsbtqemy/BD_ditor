@@ -31,6 +31,7 @@ import autorisation
 from config import STATUTS
 from database import citations_regions
 from pipeline import nlp
+
 from socle import _csv_response, _csv_safe, _norm_tag, _rows, db, portee_courante
 
 router = APIRouter()

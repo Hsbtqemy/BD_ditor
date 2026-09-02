@@ -29,6 +29,7 @@ import unicodedata
 from typing import Iterator, Optional
 
 from fastapi import Depends, HTTPException, Request, Response
+from pydantic import BaseModel, Field
 
 import autorisation
 from database import get_connection
@@ -235,3 +236,301 @@ def _csv_safe(v):
     if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r"):
         return "'" + v
     return v
+
+# --------------------------------------------------------------------------- #
+# Qui appelle (AUTH-2) — lecture des en-têtes d'identité
+# --------------------------------------------------------------------------- #
+
+def _auteur(request: Request) -> Optional[str]:
+    """Login de la personne connectée — délégué à `autorisation.auteur` (AUTH-2).
+
+    La lecture des en-têtes d'identité a migré dans `autorisation.py` : la portée
+    d'autorisation en dépend, et deux implémentations de « qui est là » finiraient par
+    diverger. Le nom local reste, il a des appelants dans tout le fichier.
+    """
+    return autorisation.auteur(request)
+
+
+def _groupes(request: Request) -> list[str]:
+    """Groupes de la personne connectée — délégué à `autorisation.groupes` (AUTH-2)."""
+    return autorisation.groupes(request)
+
+
+# Miroir des identités déjà écrites : évite une écriture SQLite à CHAQUE requête, ce qui
+# sérialiserait tout le trafic derrière l'unique verrou d'écriture du WAL.
+#
+# On réécrit dans DEUX cas : le nom ou l'email a changé (Authelia fait foi), ou la
+# dernière écriture date de plus d'une heure. Ce second cas n'est pas du zèle : sans lui,
+# `derniere_vue` ne bougerait qu'au changement de nom, et la colonne mentirait sur ce
+# qu'elle prétend mesurer. Une écriture par personne et par heure reste négligeable.
+
+
+# --------------------------------------------------------------------------- #
+# Modèles Pydantic — le CONTRAT d'entrée de l'API (ARCH-1)
+# --------------------------------------------------------------------------- #
+# Ici plutôt que dans chaque domaine, et c'est une décision : `LexiqueIn` sert à deux
+# blocs, `AttributIn` à un bloc sorti et un bloc resté. Les répartir exactement
+# demanderait une carte d'usage pour 27 déclarations sans logique, et se tromperait
+# sans bruit. Ce sont des contrats, pas de la mécanique de domaine.
+
+class AlbumIn(BaseModel):
+    # AUTH-2 : collection d'accueil. N'est PAS une colonne d'`albums` —
+    # l'appartenance vit dans `collection_album` (N-N) et le champ est
+    # retiré avant l'INSERT. Omis => collection de repli.
+    collection_id: Optional[int] = None
+    titre: str
+    auteur: Optional[str] = None                # legacy → voir contributions
+    annee: Optional[int] = None                 # legacy → précisé par date_edition
+    editeur: Optional[str] = None
+    serie: Optional[str] = None
+    description: Optional[str] = None
+    # Enrichissement descriptif N0 (v15) — édition détenue.
+    date_edition: Optional[str] = None
+    date_originale: Optional[str] = None
+    langue: Optional[str] = None
+    type_oeuvre: Optional[str] = None
+    lieu_edition: Optional[str] = None
+    edition_tirage: Optional[str] = None
+    isbn: Optional[str] = None
+    format_physique: Optional[str] = None
+    source_numerisation: Optional[str] = None   # matériel N1 (A6) : appareil / conditions de scan
+
+
+class AlbumUpdate(BaseModel):
+    titre: Optional[str] = None
+    auteur: Optional[str] = None
+    annee: Optional[int] = None
+    editeur: Optional[str] = None
+    serie: Optional[str] = None
+    description: Optional[str] = None
+    date_edition: Optional[str] = None
+    date_originale: Optional[str] = None
+    langue: Optional[str] = None
+    type_oeuvre: Optional[str] = None
+    lieu_edition: Optional[str] = None
+    edition_tirage: Optional[str] = None
+    isbn: Optional[str] = None
+    format_physique: Optional[str] = None
+    source_numerisation: Optional[str] = None   # matériel N1 (A6)
+
+
+class ContributionIn(BaseModel):
+    nom: str
+    role: Optional[str] = None                  # label du rôle (contrôlé-ouvert : créé au besoin)
+
+
+class ContributionRoleIn(BaseModel):            # ≠ `RoleIn` (rôle de planche, plus bas)
+    label: str
+    bucket: Optional[str] = None                # 'creator' | 'contributor' (défaut : contributor)
+    marc: Optional[str] = None
+
+
+class RegionIn(BaseModel):
+    type: str
+    x: int = Field(0, ge=0)
+    y: int = Field(0, ge=0)
+    w: int = Field(0, ge=0)
+    h: int = Field(0, ge=0)
+    parent_id: Optional[int] = None
+    ordre: Optional[int] = None
+    ocr_texte: Optional[str] = None
+    source: str = "manuel"
+
+
+class RegionUpdate(BaseModel):
+    type: Optional[str] = None
+    x: Optional[int] = Field(None, ge=0)
+    y: Optional[int] = Field(None, ge=0)
+    w: Optional[int] = Field(None, ge=0)
+    h: Optional[int] = Field(None, ge=0)
+    parent_id: Optional[int] = None
+    ordre: Optional[int] = None
+    ocr_texte: Optional[str] = None
+    source: Optional[str] = None
+
+
+class StatutIn(BaseModel):
+    statut: str
+
+
+class ValidationIn(BaseModel):
+    validee: bool
+
+
+class VerrouIn(BaseModel):
+    verrouillee: bool
+
+
+class RoleIn(BaseModel):
+    role: str
+
+
+class RelectureIn(BaseModel):
+    relecture: Optional[str] = None      # 'a_faire'|'en_cours'|'faite' ; null = auto (dérivé)
+
+
+class TokenCorrectionIn(BaseModel):
+    lemme: Optional[str] = None
+    pos: Optional[str] = None
+    morph: Optional[str] = None
+    etat: str = "corrige"          # 'corrige' | 'valide'
+
+
+class MoveIn(BaseModel):
+    sens: str   # "haut" | "bas"
+
+
+class SharedocsConnIn(BaseModel):
+    url: str
+    user: str
+    password: Optional[str] = None   # vide => repli sur BD_SHAREDOCS_PASS
+    # SHARE-1 — 'instance' remplace le compte de l'instance (administrateurs seuls) ;
+    # sinon on ouvre SA propre session.
+    compte: Optional[str] = None
+
+
+class SharedocsImportIn(BaseModel):
+    chemins: list[str] = Field(default_factory=list)
+    album_id: Optional[int] = None
+    nouvel_album: Optional[str] = None
+    segmenter: bool = False
+    compte: Optional[str] = None            # SHARE-1 : 'perso' | 'instance' | None (auto)
+
+
+class DeposerIn(BaseModel):
+    dossier: str = ""   # dossier ShareDocs cible (vide = racine)
+    # SHARE-1 — le compte se CHOISIT à chaque dépôt (décision du 2026-08-28). Une
+    # sauvegarde déposée sous un compte personnel atterrit dans un espace qui s'en va
+    # avec la personne ; mais l'imposer priverait d'un dépôt de dépannage. None = la
+    # règle par défaut (la mienne si j'en ai une, celle de l'instance sinon).
+    compte: Optional[str] = None
+
+
+class JobIn(BaseModel):
+    passes: list[str] = Field(default_factory=list)        # segmenter / bulles / ocr
+    album_ids: list[int] = Field(default_factory=list)
+    planche_ids: list[int] = Field(default_factory=list)
+
+
+class AnnotationIn(BaseModel):
+    note: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class TagIn(BaseModel):
+    label: str
+    couleur: Optional[str] = None
+    description: Optional[str] = None
+
+
+class PersonnageIn(BaseModel):
+    nom: str
+    serie: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class PersonnageUpdate(BaseModel):
+    nom: Optional[str] = None
+    serie: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class LocuteurIn(BaseModel):
+    personnage_id: int
+
+
+class PresenceIn(BaseModel):
+    personnage_id: int   # entité montrée dans une boîte personnage (§14, brique (a))
+
+
+class FusionIn(BaseModel):
+    cible_id: int   # personnage canonique dans lequel fusionner le doublon
+
+
+class AlignementIn(BaseModel):
+    """Alignement d'autorité (A5) : URI d'un référentiel externe (skos:exactMatch)."""
+    uri: str
+    source: Optional[str] = None   # 'wikidata'|'viaf'|'idref'… ; auto-détecté si absent
+
+
+class DomaineIn(BaseModel):
+    """Domaine analytique (piste B) — champ émergent qui regroupe des dimensions."""
+    nom: str
+
+
+class FigureIn(BaseModel):
+    """Demande d'export de figure(s) citable(s) — DROIT-1.
+
+    `champs` choisit les MENTIONS qui composeront la légende : une légende d'article, une
+    légende de diapositive et une notice de catalogue n'ont pas les mêmes besoins, et
+    imposer un gabarit obligerait à le retailler à la main, donc hors de l'outil, donc en
+    perdant le lien entre l'image et sa référence. Défaut = tout, faute d'en savoir plus.
+
+    `collection_id` dit AU NOM DE QUELLE ÉTUDE on cite : un album vit dans plusieurs
+    collections depuis AUTH-3, et le corpus crédité n'est pas déductible.
+    """
+    regions: list[int]
+    champs: Optional[list[str]] = None
+    collection_id: Optional[int] = None
+    taille: int = 1600
+
+
+class CollectionIn(BaseModel):
+    """Création d'une collection (AUTH-3). Volontairement minimale : un espace de travail
+    s'ouvre avec un nom, et les descripteurs de DÉPÔT (licence, base légale, embargo…) se
+    remplissent ensuite, quand la collection sert vraiment à quelque chose."""
+    nom: str
+    description: Optional[str] = None
+
+
+class CollectionUpdate(BaseModel):
+    """Édition partielle des descripteurs. Champ omis = inchangé."""
+    nom: Optional[str] = None
+    description: Optional[str] = None
+    licence_defaut: Optional[str] = None
+    base_legale: Optional[str] = None
+    statut_diffusion: Optional[str] = None
+    date_embargo: Optional[str] = None
+    date_debut: Optional[str] = None
+    date_fin: Optional[str] = None
+    # AUTH-4 — le référent d'EXPLOITATION, désigné par le propriétaire. Distinct de
+    # `responsables`, qui est scientifique et part au dépôt.
+    referent_nom: Optional[str] = None
+    referent_contact: Optional[str] = None
+
+
+class AccesIn(BaseModel):
+    """Un accès accordé : QUI (genre + principal) et à quel NIVEAU.
+
+    `principal` est un nom, pas une référence vérifiée — l'application n'a aucun annuaire
+    (invariant AUTH-1) et lit les groupes dans `Remote-Groups` à chaque requête."""
+    genre: str = autorisation.UTILISATEUR      # 'utilisateur' | 'groupe'
+    principal: str
+    niveau: str = autorisation.LECTURE         # 'lecture' | 'ecriture' | 'proprietaire'
+
+
+class DimensionDomaineIn(BaseModel):
+    domaine_id: Optional[int] = None   # null = retirer la dimension de son domaine
+
+
+class DimensionIn(BaseModel):
+    cible: str      # 'personnage' | 'case'
+    nom: str
+    domaine_id: Optional[int] = None   # champ analytique de rattachement (v20 ; optionnel)
+
+
+class ValeurIn(BaseModel):
+    valeur: str
+
+
+class LexiqueIn(BaseModel):
+    """Couche définitionnelle SKOS (A4) — mise à jour PARTIELLE (patch). Champ omis = laissé
+    tel quel ; `collection_id: null` explicite = promotion en GLOBAL (patron mentions→entités)."""
+    definition: Optional[str] = None      # SKOS definition (→ tags.description)
+    note_portee: Optional[str] = None     # SKOS scopeNote — le « situé »
+    etat: Optional[str] = None            # 'provisoire' | 'defini'
+    collection_id: Optional[int] = None   # portée d'appartenance ; null = global
+
+
+class AttributIn(BaseModel):
+    valeur_id: int
