@@ -28,6 +28,15 @@ par Authelia (`forward_auth`). Non connecté → redirection vers le portail.
   ```bash
   curl -fsSL https://get.docker.com | sh
   ```
+- **4 Go de RAM** recommandés, et voici sur quoi repose ce chiffre plutôt que sur une
+  habitude. MESURÉ le 2026-08-27, les trois passes enchaînées dans un seul conteneur sur
+  un vrai master (3748 × 4710, 17,7 Mpx, 400 dpi) : application seule 49,7 Mio, + spaCy
+  173, + segmentation 410, + bulles 779, + OCR 1,036 Gio — **pic observé 1,216 Gio**.
+  DÉDUIT du reste : les quatre autres conteneurs (Caddy, Authelia, Redis, plus le système)
+  sont petits mais pas nuls, et SQLite en WAL travaille mieux avec du cache disque libre.
+  2 Go peuvent suffire à une instance qui n'enchaîne jamais les passes — ce cas-là n'a pas
+  été mesuré, et l'OOM se manifeste par un process tué SANS traceback Python, donc sans
+  rien à lire pour comprendre.
 - Un **nom de domaine** avec **deux sous-domaines** pointant (enregistrement DNS
   **A**) vers l'IP du VPS :
   - `bd.example.fr`   → l'application
