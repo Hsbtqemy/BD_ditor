@@ -212,6 +212,181 @@ def _validate_parent(conn: sqlite3.Connection, planche_id: int,
             raise HTTPException(422, "parent_id créerait un cycle")
 
 # --------------------------------------------------------------------------- #
+# Accesseurs GARDÉS du VOCABULAIRE (AUTH-2) — VOIR n'est pas CHANGER
+# --------------------------------------------------------------------------- #
+# Même garde que ci-dessus, autre règle : un terme se VOIT par `clause_terme` (global,
+# ou local à une collection qu'on lit) et se MODIFIE par `peut_ecrire_terme`. D'où le
+# refus en 403 et non en 404 — le terme vient d'être listé, prétendre qu'il n'existe
+# pas serait incohérent, et le refus ne parle que des droits de l'appelant.
+#
+# Ils descendent ici parce qu'ils sont à CHEVAL sur la coupe : définis dans le bloc
+# Personnages, ils servent au bloc Collections (lexique) — les laisser en place aurait
+# obligé `routes/collections.py` à remonter vers `main`, ce qu'un cliquet interdit.
+
+def _get_dimension(conn, portee: autorisation.Portee, dim_id, *, ecriture: bool = False):
+    """Terme du vocabulaire, VISIBLE (404 sinon) et, si `ecriture`, MODIFIABLE.
+
+    Le refus d'écriture est un 403 et non un 404, contrairement aux données : le
+    terme vient d'être listé, prétendre qu'il n'existe pas serait incohérent — et
+    le refus ne parle que des droits de l'appelant, il ne fuit rien.
+    """
+    ou, params = portee.clause_terme("t.collection_id")
+    d = _row(conn.execute(
+        f"SELECT t.* FROM attribut_dimension t WHERE t.id = ? AND {ou}", (dim_id, *params)))
+    if d is None:
+        raise HTTPException(404, f"Dimension {dim_id} introuvable")
+    if ecriture and not portee.peut_ecrire_terme(d.get("collection_id")):
+        raise HTTPException(403, "Ce terme du vocabulaire est en lecture seule "
+                                 "pour vous.")
+    return d
+
+
+def _get_valeur(conn, portee: autorisation.Portee, val_id, *, ecriture: bool = False):
+    """Terme du vocabulaire, VISIBLE (404 sinon) et, si `ecriture`, MODIFIABLE.
+
+    Le refus d'écriture est un 403 et non un 404, contrairement aux données : le
+    terme vient d'être listé, prétendre qu'il n'existe pas serait incohérent — et
+    le refus ne parle que des droits de l'appelant, il ne fuit rien.
+    """
+    ou, params = portee.clause_terme("t.collection_id")
+    v = _row(conn.execute(
+        f"SELECT t.* FROM attribut_valeur t WHERE t.id = ? AND {ou}", (val_id, *params)))
+    if v is None:
+        raise HTTPException(404, f"Valeur d'attribut {val_id} introuvable")
+    if ecriture and not portee.peut_ecrire_terme(v.get("collection_id")):
+        raise HTTPException(403, "Ce terme du vocabulaire est en lecture seule "
+                                 "pour vous.")
+    return v
+
+
+def _attributs_de(conn, portee, table, col, oid):
+    """Valeurs (avec leur dimension) affectées à une cible (personnage | région).
+
+    AUTH-2 — les valeurs sont filtrées comme des TERMES : sans cela, un objet partagé
+    (typiquement un personnage, qui traverse les albums) exposerait le vocabulaire privé
+    d'une autre étude — sa grille d'analyse, pas seulement un mot. Écart trouvé en
+    relisant : `GET /api/attributs/valeurs` masquait déjà ces termes, mais on les
+    retrouvait ici par la bande.
+
+    Conséquence assumée : la liste d'attributs d'un objet peut être PARTIELLE. C'est le
+    bon compromis — un objet peut légitimement porter les annotations d'études auxquelles
+    on ne participe pas, et il vaut mieux ne pas les montrer que de montrer un vocabulaire
+    qu'on ne peut ni comprendre ni situer.
+
+    La DIMENSION est filtrée à son tour (relecture du 2026-08-28). Les routes de création
+    ne posaient aucun `collection_id` : toute base antérieure à v24 contient des valeurs
+    globales sous des axes privés, et c'est le NOM de l'axe qui fuit, pas le mot. Les
+    créations héritent désormais de leur parent, et la migration v24 recolle l'existant ;
+    ce filtre-ci reste la ceinture.
+    """
+    ou, params = portee.clause_terme("v.collection_id")
+    ou_dim, p_dim = portee.clause_terme("d.collection_id")
+    return _rows(conn.execute(
+        f"SELECT v.id AS valeur_id, v.valeur, d.id AS dimension_id, d.nom AS dimension, d.cible "
+        f"FROM {table} x JOIN attribut_valeur v ON v.id = x.valeur_id "
+        f"JOIN attribut_dimension d ON d.id = v.dimension_id "
+        f"WHERE x.{col} = ? AND {ou} AND {ou_dim} ORDER BY d.nom, v.valeur",
+        (oid, *params, *p_dim)))
+
+
+_ETATS_LEXIQUE = ("provisoire", "defini")
+
+
+def _patch_lexique(conn, table, oid, payload, portee, *, col_definition="definition"):
+    """Mise à jour PARTIELLE de la couche définitionnelle (definition/note_portee/etat/
+    collection_id) d'un terme. `col_definition='description'` pour les tags (leur glose EST
+    la définition). Valide l'état et l'existence de la collection de portée. Champ omis =
+    inchangé ; `collection_id: null` explicite = promotion en global."""
+    fields = payload.model_dump(exclude_unset=True)
+    updates = {}
+    if "definition" in fields:
+        updates[col_definition] = fields["definition"]
+    for k in ("note_portee", "etat", "collection_id"):
+        if k in fields:
+            updates[k] = fields[k]
+    if "etat" in updates and updates["etat"] not in _ETATS_LEXIQUE:
+        raise HTTPException(422, f"État invalide : {updates['etat']} (provisoire | defini).")
+    # AUTH-2 — changer la PORTÉE d'un terme, c'est le déplacer chez quelqu'un (ou l'en
+    # sortir). Il faut donc écrire dans la collection VISÉE, pas seulement dans celle
+    # d'origine : sans cela, on rangerait son vocabulaire dans l'étude d'un autre.
+    if "collection_id" in updates:
+        cible = updates["collection_id"]
+        if cible is None:
+            if not portee.peut_ecrire_quelque_part():
+                raise HTTPException(403, "Promouvoir un terme en global demande un droit "
+                                         "d'écriture.")
+        elif not portee.peut_ecrire(cible):
+            raise HTTPException(404, f"Collection {cible} introuvable.")
+        elif conn.execute("SELECT 1 FROM collection WHERE id = ?",
+                          (cible,)).fetchone() is None:
+            raise HTTPException(404, f"Collection {cible} introuvable.")
+    if updates:
+        cols = ", ".join(f"{k} = ?" for k in updates)
+        conn.execute(f"UPDATE {table} SET {cols} WHERE id = ?", (*updates.values(), oid))
+        conn.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Portée DÉRIVÉE — le registre des personnages (AUTH-2)
+# --------------------------------------------------------------------------- #
+
+def _clause_personnage(portee: autorisation.Portee) -> tuple[str, list]:
+    """Visibilité d'un personnage (`p.id`), DÉRIVÉE de ses apparitions.  AUTH-2.
+
+    `personnages` est un registre posé à côté du corpus : la table ne porte aucune
+    collection, et lui en ajouter une reviendrait à demander, à la création, à quelle
+    collection appartient un personnage — question sans bonne réponse pour une série qui
+    traverse plusieurs albums. La portée se dérive donc de l'usage : on voit un personnage
+    qui apparaît quelque part où l'on peut lire.
+
+    Avec une exception nécessaire : le personnage qui n'apparaît NULLE PART reste visible.
+    Sans elle, le geste courant — créer le personnage, puis lui attribuer une bulle —
+    serait cassé, l'entité disparaissant à l'instant même de sa création, y compris pour
+    la personne qui vient de la créer.
+
+    Ce n'est pas une mesure de confidentialité : quiconque accède à l'instance peut déjà
+    télécharger la base entière (décision du 2026-08-27, cf. docs/hebergement-securite.md
+    §6). C'est une mesure d'USAGE — sans elle, l'autocomplétion de locuteur grossit avec
+    l'instance entière au lieu de rester à la taille de l'étude en cours.
+    """
+    ou, pp = portee.clause_album("pl.album_id")
+    if ou == "1":
+        return "1", []
+    apparait = (
+        "EXISTS (SELECT 1 FROM {table} x "
+        "          JOIN regions r   ON r.id = x.region_id "
+        "          JOIN planches pl ON pl.id = r.planche_id "
+        f"        WHERE x.personnage_id = p.id AND {ou})")
+    jamais = ("NOT EXISTS (SELECT 1 FROM bulle_locuteur b WHERE b.personnage_id = p.id) "
+              "AND NOT EXISTS (SELECT 1 FROM personnage_presence q "
+              "                WHERE q.personnage_id = p.id)")
+    return (f"(({jamais}) "
+            f" OR {apparait.format(table='bulle_locuteur')} "
+            f" OR {apparait.format(table='personnage_presence')})",
+            [*pp, *pp])
+
+
+def _get_personnage(conn, portee: autorisation.Portee, personnage_id, *,
+                    ecriture: bool = False):
+    """Personnage VISIBLE (404 sinon) et, si `ecriture`, modifiable.
+
+    Un personnage n'appartient à aucune collection (sa portée se DÉRIVE de ses
+    apparitions) : il n'y a donc pas de collection sur laquelle vérifier le droit
+    d'écrire. La règle est celle du vocabulaire global — écrire quelque part suffit,
+    personne ne possède le registre."""
+    ou, params = _clause_personnage(portee)
+    p = _row(conn.execute(
+        f"SELECT p.* FROM personnages p WHERE p.id = ? AND {ou}",
+        (personnage_id, *params)))
+    if p is None:
+        raise HTTPException(404, f"Personnage {personnage_id} introuvable")
+    if ecriture and not portee.peut_ecrire_quelque_part():
+        raise HTTPException(403, "Le registre des personnages est en lecture seule "
+                                 "pour vous.")
+    return p
+
+
+# --------------------------------------------------------------------------- #
 # Sortie CSV — partagée par la recherche et l'export (ARCH-1)
 # --------------------------------------------------------------------------- #
 # Ces trois-là vivaient dans le bloc Recherche, où l'Export allait les chercher. Le

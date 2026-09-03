@@ -7,7 +7,7 @@ broncher : un nom libre ne lève un `NameError` qu'à l'APPEL, donc le mal ne se
 faisant tourner la route. J'avais dressé la liste des imports à l'œil plutôt que de la
 calculer, ce qui est exactement le geste que ce test remplace.
 
-CINQ affirmations, et chacune couvre une manière différente de rater une extraction.
+SIX affirmations, et chacune couvre une manière différente de rater une extraction.
 """
 import ast
 import builtins
@@ -143,6 +143,46 @@ def test_tout_routeur_de_routes_est_reellement_inclus():
             f"{absentes}. Un `app.include_router` manque — rien ne le signalera "
             "ailleurs, le domaine répondra simplement 404.")
 
+
+def test_main_reexporte_tout_ce_que_le_socle_definit():
+    """`main.py` ré-exporte le socle pour que `main.X` reste un nom valide : deux cliquets
+    interrogent ces noms SUR `main`, et ARCH-1 pose comme condition de ne réécrire aucun
+    test.
+
+    La liste était dérivée de ce que `main.py` UTILISE, alors que la promesse porte sur ce
+    qui a DÉMÉNAGÉ. Deux ensembles différents, qui coïncidaient par chance : chaque bloc
+    extrait retire des usages, donc la liste rétrécit d'elle-même, et un nom cesse d'être
+    joignable le jour où sa dernière route d'ici s'en va. Trois manquaient déjà (`FigureIn`,
+    `TokenCorrectionIn`, `_BOM`) sans qu'aucun test ne bronche — parce qu'aucun ne le
+    demandait encore. C'est une panne à retardement : muette au moment où on la crée,
+    bruyante des mois plus tard, dans un test qu'on n'aura pas touché.
+
+    Le test lit `socle.py` en SOURCE et non par `dir(socle)` : ce dernier renvoie aussi ce
+    que le socle importe (`sqlite3`, `autorisation`…), qui n'a jamais déménagé et n'a pas à
+    être ré-exporté.
+    """
+    arbre = ast.parse(io.open(RACINE / "socle.py", encoding="utf-8").read())
+    definis = set()
+    for n in arbre.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            definis.add(n.name)
+        elif isinstance(n, ast.Assign):
+            definis |= {c.id for c in n.targets if isinstance(c, ast.Name)}
+    assert definis, "socle.py ne définit rien — la lecture du source a échoué"
+
+    absents = sorted(n for n in definis if not hasattr(main, n))
+    assert not absents, (
+        f"le socle définit {absents}, que `main` ne ré-exporte pas. Tant qu'aucun test ne "
+        "les demande sur `main`, la suite reste verte : c'est précisément ce qui rend "
+        "l'oubli durable.")
+
+    # Et dans l'autre sens : un nom ré-exporté doit être CELUI du socle, pas un homonyme
+    # redéfini plus bas dans `main.py`, qui écraserait l'import sans un mot.
+    import socle
+    for n in sorted(definis):
+        assert getattr(main, n) is getattr(socle, n), (
+            f"`main.{n}` n'est pas l'objet du socle : une définition de `main.py` le "
+            "masque, et les deux versions vivront côte à côte.")
 
 def test_aucune_route_ne_depend_de_son_rang_dans_la_table():
     """Le découpage RÉORDONNE la table de routage — 96 routes ont changé de rang en
