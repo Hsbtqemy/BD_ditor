@@ -22,7 +22,7 @@ dans le document d'audit.
 - [ ] F1 — basculer le thème dans un onglet met à jour les autres onglets déjà ouverts : `static/theme.js` n'écoute pas l'événement `storage` (vérifié, zéro écouteur)
 - [ ] A4 — la barre de progression d'un lot avance par passe et non d'un coup : `total` compte les planches (`pipeline/jobs.py:116`) alors que `done` est incrémenté en deux endroits (`:73`, `:86`) — les deux comptent la même unité, ou bien la barre ment
 - [ ] D1/D2 — le nuage de tags n'est plus figé après le démarrage : il reflète les tags créés depuis
-- [ ] E3 — le champ `annee` est borné : `main.py:148` et `:167` déclarent `Optional[int]` sans `Field(ge=…, le=…)`, donc l'année 999999 passe
+- [ ] E3 — le champ `annee` est borné : `socle.py:458` et `:477` déclarent `Optional[int]` sans `Field(ge=…, le=…)`, donc l'année 999999 passe
 
 ### Ingest
 - [ ] G5 — `_rel_posix` (`pipeline/ingest.py:30`) garde le `ValueError` que lève `relative_to` quand `source` est hors de `DATA_DIR` — latent aujourd'hui, non joignable par l'API, mais une garde d'une ligne

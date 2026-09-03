@@ -1,6 +1,6 @@
 ---
 chantier: AUDIT-1
-statut: interrompu
+statut: livré
 audit: AUDIT.md
 ---
 
@@ -51,6 +51,17 @@ d'abord était faux lui aussi : le marqueur `live_server(True)` était bien là,
 sept constats sont restés ouverts, dispersés dans les sections « restent ouverts » et
 cités nulle part ailleurs que dans `AUDIT.md`.
 
+**Pourquoi `livré` avec une case ouverte** (2026-09-03). Six des sept constats sont
+traités ; le septième, S1/S5, reste ouvert **exprès** et n'attend aucun travail : il n'a pas
+été reproduit, et la case porte la CHARGE DE LA PREUVE inversée — ne pas implémenter la
+récursion sans avoir d'abord exhibé un scénario qui perde quelque chose. C'est une veille,
+pas un reliquat, exactement comme la case ouverte de DROIT-1.
+
+`interrompu` disait le contraire — « arrêté en plein travail » — et ce mot a un coût
+mesuré : il a fait ranger ce chantier parmi les trois dettes les plus chères du dépôt le
+2026-09-03, alors qu'il n'y avait rien à reprendre. Un statut qui se trompe ne fausse pas
+la fiche, il fausse la PRIORISATION.
+
 ## Reste
 
 ### Transitions de statut
@@ -88,10 +99,16 @@ mesure en test — une mesure ponctuelle se perd, un test casse.
 **L'audit lui-même avait vieilli — TRAITÉ le 2026-09-01.** Le relevé ci-dessous a conduit
 à remettre l'état sur chaque constat d'`AUDIT.md`, là où on le lit. Son unique **🔴 Élevé** — « exfiltration totale non authentifiée » — est
 fermé sur ses DEUX mécanismes : le mount `/derivatives` n'existe plus, et
-`GET /api/sauvegarde` passe par `_exiger_admin_sauvegarde` (DROIT-1). Le document l'affiche
-toujours comme ouvert. Le décompte de tests qu'il reprochait au README (176 annoncés pour
-184 réels) est devenu **~330 annoncés pour 638 collectés** au run par défaut — le
-README parle bien du run, pas d'un nombre de fonctions, et c'est la comparaison à
+`GET /api/sauvegarde` passe par `_exiger_admin_sauvegarde` (DROIT-1). **Le document ne
+l'affiche plus comme ouvert** — vérifié le 2026-09-03 : il ne porte plus aucun constat 🔴
+ouvert, ses trois P1 sont fermés, `G1` aussi, et la zone Sécurité annonce « 1 ouvert sur
+4 », ce seul reste étant le CSRF (qui attend INFRA-1). La phrase datait de la veille du
+correctif et lui a survécu de deux jours.
+
+Le décompte de tests qu'il reprochait au README (176 annoncés pour 184 réels) était devenu
+**~330 annoncés pour 638 collectés** — corrigé le 2026-09-03, le README annonce désormais
+~650 et ~96 E2E, contre 651 et 96 mesurés. Le reproche est éteint, et il visait la bonne
+chose : le README parle du RUN, pas d'un nombre de fonctions, et c'est la comparaison à
 faire. Et `npm run verifier` ne sait
 pas compter ses constats, ses codes étant `B6`/`T2`/`S1` là où l'outil attend `X-NN` : il
 le range en « INCONNU », ce qui n'est pas 0. Trois mois, `v14 → v25` et cinq gros chantiers
@@ -114,6 +131,17 @@ bloc CSP de SEC-2 et les ajouts d'AUTH-1) et celle de T8 (`test_e2e_a11y.py:372`
 encore exacts — comme le 27 août. C'est la démonstration la plus nette qu'on puisse
 souhaiter : ce qui pourrit dans une fiche n'est pas le raisonnement, c'est l'adresse.
 Cf. la note de mémoire sur les fiches périmées.
+
+**Et ARCH-1 les a toutes retuées le 2026-09-03**, d'un seul geste : `main.py` est passé de
+4 483 à 1 811 lignes, le socle partagé dans `socle.py` et sept domaines dans `routes/`. Les
+cinq pointeurs `main.py` du suivi VIVANT ont été repointés le jour même — le sixième,
+cité trois lignes plus bas, est la CITATION d'un pointeur mort d'`AUDIT.md` et reste juste
+en tant que telle. Chaque cible a été retrouvée par ce que la phrase AFFIRME, jamais par un
+décalage — un recalcul aveugle
+referait exactement la panne. Ceux d'`AUDIT.md` ne l'ont pas été, et un encadré le dit en
+tête du document : c'est un journal de campagne, il consigne juin. Le renvoi le plus
+trompeur n'est pas celui qui sort du fichier mais celui qui y retombe, sur du code sans
+rapport, sans que rien l'annonce.
 
 Les références de ligne ci-dessus ont été **revérifiées contre le code le 2026-08-27** :
 celles de `AUDIT.md` avaient dérivé (B6 y pointe `main.py:631-642`, où il n'y a plus de

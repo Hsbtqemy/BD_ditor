@@ -84,7 +84,7 @@ un administrateur et un propriétaire, dans les deux sens : le badge de l'écran
 affiche « Administrateur » et jamais « Propriétaire », parce que « le dire à un
 administrateur lui ferait croire à un lien personnel avec une collection qui n'est pas la
 sienne » (`static/corpus.js:690`) ; un administrateur qui crée une collection n'en devient
-pas propriétaire (`main.py:2560`) ; et la garde du dernier propriétaire porte sur l'ÉTAT
+pas propriétaire (`routes/collections.py:179`) ; et la garde du dernier propriétaire porte sur l'ÉTAT
 et non sur l'acteur, si bien qu'un administrateur ne peut pas évincer un propriétaire d'un
 seul geste — il doit d'abord en désigner un autre, ce qui laisse deux événements
 `lien`/`delien` au journal. AUTH-4 continue cette ligne : il ne crée pas la distinction,
@@ -101,7 +101,7 @@ beaucoup avec.
 > **Correction du 2026-08-31.** La phrase d'origine disait « AUCUNE route HTTP ne lit
 > `evenement` : les seuls `SELECT` du dépôt sont dans `undo.py` ». C'est faux, et
 > l'énumération le montre : `accord_inter.py:50` lit `evenement`, et
-> `GET /api/analyse/accord-inter` (`main.py:3635`) le sert — il rend `auteurs`, une liste
+> `GET /api/analyse/accord-inter` (`routes/analyse.py:388`) le sert — il rend `auteurs`, une liste
 > de LOGINS d'annotateurs, plus les paires et les points de divergence, chacun nommant
 > deux personnes. Deux outils d'export le lisent aussi (`tools/metadonnees_collection.py`
 > déverse la table entière en `evenement.csv` ; `tools/description_collection.py` embarque

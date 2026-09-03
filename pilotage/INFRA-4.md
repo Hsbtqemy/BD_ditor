@@ -11,7 +11,7 @@ le VPS. La mesure n'a pas encore été faite, faute de VPS (INFRA-1).
 ## Reste
 
 - [ ] La mesure de vitesse d'import a effectivement été faite sur le VPS, et son résultat est écrit quelque part de durable
-- [ ] L'unique trace restante est retirée — `main.py:914`, un `print("[import-timing] …")` dans la boucle d'import — et une recherche de `import-timing` ne renvoie plus rien
+- [ ] L'unique trace restante est retirée — `main.py:866`, un `print("[import-timing] …")` dans la boucle d'import — et une recherche de `import-timing` ne renvoie plus rien
 - [ ] La suite de tests reste verte après retrait
 
 ## Contexte
