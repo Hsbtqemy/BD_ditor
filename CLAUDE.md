@@ -33,7 +33,15 @@ sections. Une case ailleurs est invisible (le contrôleur la signale en ERREUR).
   `abandonné`, et rien d'autre. `différé` = mis en attente exprès (autre chose doit aboutir
   d'abord) ; `interrompu` = arrêté en plein travail ; `abandonné` = décidé de ne pas le
   faire, la fiche gardant son `Reste` ouvert exprès plutôt que d'être supprimée avec son
-  raisonnement.
+  raisonnement. **`livré` est le seul qui parle d'INTÉGRATION, et l'outil la mesure** :
+  tant que le dernier commit du chantier ne vit sur aucune ref d'intégration, l'écran
+  DÉMENT la fiche et l'annonce « hors de <refs> ». Déclarer reste utile — le journal se
+  charge de contredire, et c'est le push qui lève le démenti.
+- `audit:` (facultatif) donne le chemin du document qui porte le tableau des constats.
+  **Il ne se met QUE sur une fiche qui vient réellement d'un audit** — trois aujourd'hui
+  (`AUDIT-1`, `AUDIT-2`, `CONC-1`). Le contrôleur signale son absence sur toute fiche à
+  items ouverts ; pour les autres, cet avertissement EST la bonne réponse : elles viennent
+  du backlog, de la roadmap ou d'un travail de conception, et rien ne les remonterait.
 - Une case = **une affirmation vérifiable, avec son attendu**. « Vérifier le rendu » se
   contemple ; « sur 375 px, la barre ne masque pas le geste » se coche.
 - QA visuelle : écrire une passe dans `pilotage/qa/`, jamais dans le fil de conversation.
@@ -41,12 +49,28 @@ sections. Une case ailleurs est invisible (le contrôleur la signale en ERREUR).
   laisser cocher.
 - Ne pas créer de fiche pour un finding traité en un seul commit.
 - Avant de clore une session : `npm run verifier` (code de retour non nul = l'outil lira
-  mal le dossier).
+  mal le dossier). `-- --strict` rend les AVERTISSEMENTS bloquants : ici il sort en 1, et
+  c'est attendu — deux familles d'avertissements sont des états assumés, décrits
+  ci-dessous. Ne pas l'utiliser comme porte de sortie de session tant qu'elles tiennent.
 
 Le journal se lance avec `--days 90` (dans le script npm) : l'historique du dépôt s'arrête
 au 2026-07-19, et la fenêtre de 60 jours par défaut en couperait le début. Et sur
 `--port 4124`, parce que le port par défaut (4123) sert le journal d'un autre dépôt sur
 cette machine — un dépôt à la fois par port, c'est le modèle de l'outil.
+
+**Deux familles d'avertissements sont ASSUMÉES, et il ne faut pas partir les corriger.**
+
+1. *« N items ouverts sans `audit:` »* sur une vingtaine de fiches — voir ci-dessus : leurs
+   constats ne viennent d'aucun audit, il n'y a rien vers quoi pointer, et inventer un lien
+   pour éteindre l'avertissement serait une fausse déclaration.
+2. *« AUDIT.md : aucun tableau de constats reconnu … le compte n'est pas 0, il est
+   INCONNU »*. `journal-contrat.mjs` ne lit qu'un code de forme `[A-Z]{1,5}-\d+` ; les
+   codes de cet audit — `P1`, `T2`, `S1`, `G1`, `B6`, `O1` — n'ont pas de tiret.
+   Renuméroter fermerait l'angle mort et casserait tous les renvois existants (fiches,
+   messages de commit déjà poussés) pour un gain d'affichage : **écarté le 2026-09-01**, et
+   la décision est écrite en tête d'`AUDIT.md`. `INCONNU` est d'ailleurs le bon mot — il
+   distingue « aucun constat ouvert » de « je ne sais pas lire ce document », ce qu'un
+   « 0 ouvert » silencieux ne ferait pas.
 
 ## Vue d'ensemble
 

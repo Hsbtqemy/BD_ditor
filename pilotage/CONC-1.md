@@ -1,6 +1,7 @@
 ---
 chantier: CONC-1
 statut: à venir
+audit: AUDIT.md
 ---
 
 # CONC-1 — cache de crop, purge des jobs, annulation préemptive
