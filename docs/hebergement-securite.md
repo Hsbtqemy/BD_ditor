@@ -172,6 +172,30 @@ Corollaire : **aucun album ne peut être hors collection** (`database.collection
 Un orphelin ne correspondrait à aucune règle, et il faudrait inventer une politique dans le
 code, à un endroit qu'on oublierait de relire.
 
+### Le regarder fonctionner sans monter Authelia (2026-09-03)
+
+Tout ce qui suit est **inobservable en mono-poste**, et c'est structurel : sans
+`BD_AUTH_PROXY`, l'application ignore les en-têtes d'identité et donne la portée totale.
+Un navigateur, lui, n'envoie pas ces en-têtes — si bien qu'on ne peut voir qu'UN état,
+celui où aucune identité ne parvient. Le cloisonnement, les trois niveaux d'AUTH-3, le
+pouvoir déclaré de l'administrateur (AUTH-4) et le 404-jamais-403 restent entièrement
+écrits, testés, et invisibles.
+
+`tools/faux_proxy_auth.py` ferme cet angle mort. Il tient le rôle d'Authelia et rien
+d'autre — il pose `Remote-User` / `Remote-Groups` / `Remote-Name` / `Remote-Email` et
+relaie —, ce qui est précisément le partage des rôles d'AUTH-1 : **le proxy dit QUI,
+l'application décide QUOI**. Cinq identités, choisies pour montrer chacune un état
+différent, dont les trois pannes que le bandeau de portée vide distingue. Le mode
+d'emploi est en tête du fichier.
+
+C'est un outil de DÉVELOPPEMENT : il n'authentifie personne et pose l'identité qu'on lui
+demande. Devant une instance réelle il donnerait à quiconque l'identité de son choix,
+`bd-admins` compris.
+
+Ce n'est pas un substitut à INFRA-1 : ce que le faux proxy montre, c'est le comportement
+de l'APPLICATION derrière un proxy. Que le vrai proxy refuse bien une requête non
+authentifiée avant de l'atteindre reste à vérifier sur le déploiement, et c'est une case
+d'INFRA-1.
 Trois comportements à connaître avant d'exploiter une instance.
 
 **Le refus est un 404, jamais un 403.** Dire « cet album existe, mais pas pour vous »

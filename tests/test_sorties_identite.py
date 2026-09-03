@@ -269,6 +269,14 @@ NON_BALAYE = {
         "Sème un corpus de démonstration. Il écrit `albums.auteur` — l'AUTEUR DE LA BD, "
         "pas un annotateur : dans ce projet le mot désigne les deux, et c'est le seul "
         "endroit du balayage où la confusion pourrait rassurer à tort."),
+    ("outil", "faux_proxy_auth.py"): (
+        "Outil de DÉVELOPPEMENT : un faux proxy d'authentification, pour voir AUTH-2/3/4 "
+        "fonctionner sans monter Authelia. Il n'ouvre jamais la base — il relaie du HTTP "
+        "et POSE des en-têtes d'identité au lieu d'en lire. Les logins qu'il affiche "
+        "(alice, bob, claire, admin) sont FICTIFS et codés en dur dans le fichier : "
+        "aucun ne vient du corpus, et c'est ce qui le rend inoffensif pour ce cliquet-ci. "
+        "Sa dangerosité est ailleurs, et elle est écrite en tête du fichier : devant une "
+        "instance réelle il donnerait à quiconque l'identité de son choix."),
     ("outil", "pdf_check.py"): (
         "Contrôle un PDF fourni en argument ; n'ouvre pas la base."),
     ("outil", "sharedocs_check.py"): (
