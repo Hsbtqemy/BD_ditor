@@ -18,6 +18,16 @@
 > écarté le 2026-09-01, parce que tous les renvois existants (fiches `pilotage/`, messages de
 > commit déjà poussés) casseraient pour un gain d'affichage.
 
+> **Tous les renvois `main.py:NNN` de ce document sont CADUCS depuis le 2026-09-03**
+> (ARCH-1). `main.py` est passé de 4 483 à 1 811 lignes : le socle partagé vit dans
+> `socle.py`, et sept domaines dans `routes/`. Un renvoi qui tombe encore dans le fichier
+> est le plus trompeur des deux — il désigne du code sans rapport, et rien ne l'annonce.
+>
+> Ils ne sont pas corrigés, et c'est délibéré : ce document est un JOURNAL DE CAMPAGNE
+> (cf. l'encadré ci-dessus), il consigne ce qui a été vu en juin. Le suivi vivant est dans
+> `pilotage/`, dont les cinq pointeurs `main.py` ont été repointés le même jour — ceux-là
+> servent à agir. Se fier ici au NOM du symbole cité, jamais au numéro.
+
 > **État vérifié CONTRE LE CODE le 2026-09-01**, et non recopié des blocs de clôture — trois
 > mois, `v14 → v25` et cinq gros chantiers ont passé dessus.
 >
