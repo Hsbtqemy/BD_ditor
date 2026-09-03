@@ -7,7 +7,7 @@ broncher : un nom libre ne lève un `NameError` qu'à l'APPEL, donc le mal ne se
 faisant tourner la route. J'avais dressé la liste des imports à l'œil plutôt que de la
 calculer, ce qui est exactement le geste que ce test remplace.
 
-SIX affirmations, et chacune couvre une manière différente de rater une extraction.
+SEPT affirmations, et chacune couvre une manière différente de rater une extraction.
 """
 import ast
 import builtins
@@ -86,6 +86,55 @@ def _imports_de(chemin: Path) -> set:
         elif isinstance(n, ast.ImportFrom) and n.module:
             out.add(n.module.split(".")[0])
     return out
+
+
+def test_aucun_import_mort_de_part_et_d_autre_de_la_coupe():
+    """Sortir un bloc laisse derrière lui les imports qui ne servaient qu'à lui.
+
+    Ce n'est pas cosmétique : ces lignes affirment qu'un fichier dépend de choses dont il
+    ne dépend plus. Le découpage en a tué TREIZE dans `main.py` — `accord`, `accord_inter`,
+    `figure`, `undo`, `zipfile`, `json`, `re`, `datetime`, `BaseModel`, `Field`, `Query`,
+    `UPOS_TAGS`, `CIBLES_ATTRIBUT` — dont onze le même jour, sans qu'aucun soit signalé.
+    Le dépôt n'installe pas de linter : rien d'autre ne le dira.
+
+    Le ré-export du socle est l'exception, et elle se DÉCLARE : sa ligne porte déjà
+    `# noqa: F401`, et ses noms sont inutilisés par construction — c'est leur raison
+    d'être. Le test lit cette marque au lieu de connaître le cas par cœur, pour qu'une
+    autre exception légitime s'écrive de la même façon.
+    """
+    coupables = []
+    for chemin in MODULES:
+        src = io.open(chemin, encoding="utf-8").read()
+        lignes = src.splitlines()
+        arbre = ast.parse(src)
+        utilises = set()
+        for n in ast.walk(arbre):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load):
+                utilises.add(n.id)
+            elif isinstance(n, ast.Attribute):
+                racine = n
+                while isinstance(racine, ast.Attribute):
+                    racine = racine.value
+                if isinstance(racine, ast.Name):
+                    utilises.add(racine.id)
+        for n in arbre.body:
+            if not isinstance(n, (ast.Import, ast.ImportFrom)):
+                continue
+            # `from __future__ import annotations` est une directive, pas un nom
+            if isinstance(n, ast.ImportFrom) and n.module == "__future__":
+                continue
+            bloc = " ".join(lignes[n.lineno - 1:n.end_lineno])
+            if "noqa: F401" in bloc:
+                continue
+            for a in n.names:
+                nom = a.asname or a.name.split(".")[0]
+                if nom not in utilises:
+                    coupables.append(f"{chemin.name}:{n.lineno} {nom}")
+    assert not coupables, (
+        "Ces imports ne servent plus a rien — vestiges d'un bloc parti ailleurs : "
+        + ", ".join(coupables)
+        + ". Un import mort ment sur les dependances du module. Si l'un est voulu, "
+        "marquer sa ligne `# noqa: F401` avec la raison.")
 
 
 def test_les_dependances_ne_remontent_jamais():
