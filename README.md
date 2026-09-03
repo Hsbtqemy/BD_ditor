@@ -296,11 +296,15 @@ Cf. `docs/materiel-numerisation.md`.
 
 ```
 bd_annotator/
-├── main.py              # app FastAPI : montage, middlewares, blocs pas encore sortis
+├── main.py              # app FastAPI : montage, middlewares, export, blocs épinglés
 ├── socle.py             # socle des routes : dépendances, helpers, accesseurs GARDÉS (ARCH-1)
 ├── routes/              # un module par domaine, `router = APIRouter()` inclus par main.py
 │   ├── recherche.py     # recherche FTS5 + export CSV + stats de corpus
 │   ├── analyse.py       # analyse grammaticale : fréquences, concordance, croisement, A/B
+│   ├── personnages.py   # entités, locuteur, présence, alignements (A5) + attributs facettés
+│   ├── collections.py   # espaces de travail : accès, partage, diffusion (AUTH-3, DROIT-1)
+│   ├── lexique.py       # couche définitionnelle SKOS du vocabulaire émergent (A4)
+│   ├── annulation.py    # annulation de la dernière action — Ctrl+Z (D1)
 │   └── figures.py       # figure citable (DROIT-1) : citer n'est pas publier
 ├── autorisation.py      # AUTH-2 : le SEUL endroit qui tranche « qui voit quoi » (Portee)
 ├── database.py          # init SQLite, schéma, FTS5, vues, migrations, helpers

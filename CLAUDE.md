@@ -52,7 +52,7 @@ cette machine — un dépôt à la fois par port, c'est le modèle de l'outil.
 
 Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut. **L'application n'authentifie personne** : elle fait confiance aux en-têtes d'identité posés par un proxy d'auth (Authelia), et seulement si `BD_AUTH_PROXY` déclare qu'il est bien devant — sans quoi tout acte reste anonyme (AUTH-1). Aucun secret en base : `utilisateur` (v22) n'est qu'un miroir d'affichage, et les groupes ne sont jamais stockés, relus dans `Remote-Groups` à chaque requête. **Elle AUTORISE en revanche** (AUTH-2, v23) : le cloisonnement par collection est à elle, Authelia ne dit que « qui ». Voir `docs/hebergement-securite.md`.
 
-Backend **Python 3.12 / FastAPI** — la couche API se découpe en `main.py` (montage, middlewares, blocs pas encore sortis), `socle.py` (le socle partagé) et `routes/` (un module par domaine, ARCH-1 ; cf. § Découpage) ; frontend **JavaScript/HTML/CSS vanilla** — aucun framework, **aucune étape de build**. On édite `static/*.js` et `templates/*.html` directement.
+Backend **Python 3.12 / FastAPI** — la couche API se découpe en `main.py` (montage, middlewares, export, et les blocs que les tests ÉPINGLENT), `socle.py` (le socle partagé) et `routes/` (un module par domaine, ARCH-1 ; cf. § Découpage) ; frontend **JavaScript/HTML/CSS vanilla** — aucun framework, **aucune étape de build**. On édite `static/*.js` et `templates/*.html` directement.
 
 ## Commandes
 
@@ -104,9 +104,14 @@ Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, 
 
 ### Découpage de la couche API (ARCH-1)
 
-`main.py` a franchi les 4 400 lignes pour 125 routes, contre un seuil de 3 200 déclaré
-dans `pilotage/journal.config.mjs`. Le découpage se fait **par domaine et par étapes**,
-chacune vérifiée par la suite entière avant la suivante.
+`main.py` avait franchi les 4 400 lignes pour 125 routes, contre un seuil de 3 200
+déclaré dans `pilotage/journal.config.mjs`. Le découpage s'est fait **par domaine et par
+étapes**, chacune vérifiée par la suite entière avant la suivante ; il est terminé, et
+`main.py` fait **1 811 lignes**. Sept modules : `recherche`, `analyse`, `figures`,
+`personnages`, `annulation`, `collections`, `lexique`.
+
+Ce qui RESTE dans `main.py` n'y reste pas par paresse : le montage, les middlewares,
+l'export, et les blocs ÉPINGLÉS par les tests (cf. le second critère ci-dessous).
 
 - **`socle.py`** porte ce dont tous les domaines dépendent : `db`, `portee_courante`,
   `_row`/`_rows`, les helpers métier, la sortie CSV et les **accesseurs gardés**
@@ -127,17 +132,42 @@ COUPLAGE, mesuré (5 à 20 noms de `main.py` par bloc, presque toujours les mêm
 noms que les tests remplacent PAR `main` — `monkeypatch.setattr(main, "…")` : un bloc qui
 en contient ne peut pas déménager sans réécrire ces tests, car la route chercherait le nom
 dans SON module et le remplacement cesserait d'agir **en silence**. Segmentation,
-ShareDocs, Sauvegarde, Jobs et Santé sont épinglés par là ; Recherche, Personnages,
-Lexique et Analyse ne le sont pas.
+ShareDocs, Sauvegarde, Jobs et Santé sont épinglés par là, et c'est pourquoi ils sont
+restés ; Recherche, Personnages, Lexique et Analyse ne l'étaient pas, et sont sortis.
 
-`tests/test_decoupage_api.py` garde les quatre invariants, et il existe parce que la
+**Un troisième critère est apparu en route, et il ne se mesure pas : le DOMAINE réel du
+bloc.** Le fichier unique tolérait l'accrétion — l'affectation d'attributs était posée
+après le lexique, la bannière du lexique loin de ses routes, et les deux routes de
+l'annulation (Ctrl+Z, D1) dormaient au milieu du bloc Personnages. Une fois la coupe
+faite, un module nommé d'après le registre des entités servait `/api/undo`. Aucun test ne
+demande dans QUEL module vit une route, et l'application répond juste : cela ne se voit
+qu'en relisant. Ces blocs ont donc été remis en face de leur domaine AVANT d'être extraits.
+
+`tests/test_decoupage_api.py` garde **sept** invariants, et il existe parce que la
 première extraction a produit **49 tests rouges** d'un coup — trois noms utilisés et non
 importés. Un module aux noms libres s'importe sans broncher : le `NameError` n'arrive
 qu'à l'APPEL, et ressemble alors à un bug métier. Le test calcule ces noms des DEUX côtés
-de la coupe, interdit au socle de remonter vers `main`, vérifie qu'un routeur inclus reste
-visible dans `app.routes` (l'inventaire des trois cliquets), et surveille l'ORDRE : le
-découpage réordonne la table de routage, ce qui est sans effet tant qu'aucune route
-littérale n'est captable par une paramétrée — mesuré, 0 paire sur 127 routes.
+de la coupe ; interdit au socle et aux routes de remonter vers `main` ; vérifie qu'un
+routeur inclus reste visible dans `app.routes` (l'inventaire des trois cliquets) ;
+surveille l'ORDRE, le découpage réordonnant la table de routage — sans effet tant qu'aucune
+route littérale n'est captable par une paramétrée, mesuré, 0 paire sur 127 ; et exige que
+**toute route capte l'agent courant**.
+
+Cette dernière n'est pas une précaution : c'est la panne du 2026-09-02. `include_router`
+**FIGE** les dépendances de chaque route au moment de l'inclusion, et trois routeurs
+étaient inclus quelques lignes AVANT
+`app.router.dependencies.append(Depends(_capter_agent))`. Le journal de provenance leur
+attribuait `NULL` : les fonctionnalités marchaient, seule l'ATTRIBUTION disparaissait.
+Invisible à 646 tests verts, à une table de routage intacte, à un diff ligne à ligne
+propre et à quatre gardes ; vue par un audit E2E, et de BIAIS.
+
+Les deux dernières gardent la COUTURE plutôt que la coupe. `main.py` ré-exporte **tout ce
+que `socle.py` définit** — et non ce qu'il utilise encore, ce qui faisait rétrécir la liste
+à chaque bloc extrait jusqu'à ce qu'un nom cesse d'être joignable sur `main` sans que rien
+ne le dise. Et **aucun import mort** des deux côtés : sortir un bloc laisse derrière lui
+les imports qui ne servaient qu'à lui — treize dans `main.py`, et cinq puis deux de plus
+aux extractions suivantes. Le dépôt n'installe pas de linter ; l'exception du ré-export se
+DÉCLARE par `# noqa: F401`, que le test lit au lieu de connaître le cas par cœur.
 
 ### Données : tout en pixels MASTER
 
