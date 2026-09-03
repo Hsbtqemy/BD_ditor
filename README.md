@@ -296,10 +296,21 @@ Cf. `docs/materiel-numerisation.md`.
 
 ```
 bd_annotator/
-├── main.py              # app FastAPI + routes
+├── main.py              # app FastAPI : montage, middlewares, blocs pas encore sortis
+├── socle.py             # socle des routes : dépendances, helpers, accesseurs GARDÉS (ARCH-1)
+├── routes/              # un module par domaine, `router = APIRouter()` inclus par main.py
+│   ├── recherche.py     # recherche FTS5 + export CSV + stats de corpus
+│   ├── analyse.py       # analyse grammaticale : fréquences, concordance, croisement, A/B
+│   └── figures.py       # figure citable (DROIT-1) : citer n'est pas publier
+├── autorisation.py      # AUTH-2 : le SEUL endroit qui tranche « qui voit quoi » (Portee)
 ├── database.py          # init SQLite, schéma, FTS5, vues, migrations, helpers
 ├── journal.py           # journal de provenance / audit append-only (activite/evenement)
 ├── undo.py              # annulation (D1) : remonte le journal et rejoue l'inverse
+├── sante.py             # contrôle des moteurs : présence (rapide) vs import réel (profond)
+├── figure.py            # cœur de la figure citable : crop + légende + notice
+├── accord.py            # accord modèle↔humain (NLP-1)
+├── accord_inter.py      # accord inter-annotateurs, depuis le journal A3 (ANN-5)
+├── lexique_import.py    # amorçage du vocabulaire depuis un tableur (pré-remplir sans écraser)
 ├── config.py            # chemins & constantes partagés
 ├── pipeline/
 │   ├── ingest.py        # image → dérivé web + métadonnées + suppression fichiers
@@ -337,9 +348,9 @@ bd_annotator/
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                     # run par défaut — ~330 tests (E2E exclus, test `live` inclus)
+pytest                     # run par défaut — ~650 tests (E2E exclus, test `live` inclus)
 pytest -m "not live"       # sans le test d'intégration (pas de serveur lancé)
-pytest -m e2e              # E2E navigateur Playwright (~32 tests) — python -m playwright install chromium
+pytest -m e2e              # E2E navigateur Playwright (~96 tests) — python -m playwright install chromium
 pytest tests/test_api.py::test_nom            # un seul test
 pytest --cov=. --cov-report=term-missing      # couverture
 ```
