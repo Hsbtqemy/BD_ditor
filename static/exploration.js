@@ -275,7 +275,7 @@ function run() {
         '<p class="muted small">Précisez un lemme / mot, ou un filtre POS, morpho, tag, locuteur ou attribut.</p>';
       return;
     }
-    p.set("limit", "200");
+    p.set("limit", String(Resultats.LIMITE + 1));
     apiGet("/api/analyse/concordance?" + p.toString()).then(done(renderKwic)).catch(fail);
   } else if (v === "croisement") {
     const p = croisementParams();
@@ -287,7 +287,7 @@ function run() {
     for (const [k, val] of Object.entries(sideFilters("f"))) if (val) p.set(k, val);
     selectedAttributs("f").forEach((val) => p.append("attributs", val));
     if (tagScope() === "propre") p.set("tag_scope", "propre");
-    p.set("limit", "200");
+    p.set("limit", String(Resultats.LIMITE + 1));
     apiGet("/api/analyse/frequences?" + p.toString()).then(done(renderDist)).catch(fail);
   }
 }
@@ -296,14 +296,20 @@ function valeurDe(r, ch) { return ch === "lemme" ? r.lemme : ch === "pos" ? r.po
 
 /* ---------------- Rendu : distribution simple ---------------- */
 function renderDist(res) {
-  const ch = res.champ, rows = res.results || [], box = $("#dist");
+  const ch = res.champ, box = $("#dist");
+  // Même règle qu'à la Recherche, et le même piège : on demande un de plus qu'on
+  // n'affiche, sinon « limité » se déclenche à EXACTEMENT la limite, là où il n'y a
+  // pourtant rien de caché (C1). Le témoin est retiré avant tout calcul — inclus
+  // dans `total`, il gonflerait un décompte d'occurrences affiché comme exact.
+  const compte = Resultats.etat((res.results || []).length);
+  const rows = (res.results || []).slice(0, compte.n);
   box.innerHTML = "";
   if (!rows.length) { $("#dist-info").textContent = "Aucune donnée (relancer l'indexation NLP ?)."; return; }
   const total = rows.reduce((s, r) => s + r.freq, 0);
   const max = Math.max(...rows.map((r) => r.freq));
   $("#dist-info").innerHTML =
     `${rows.length} valeur(s) de <b>${esc(ch)}</b> · ${total} occurrence(s)` +
-    (rows.length >= 200 ? " (limité aux 200 plus fréquentes)" : "") +
+    (compte.tronque ? ` (limité aux ${Resultats.LIMITE} plus fréquentes)` : "") +
     " — cliquer une valeur pour voir les emplois en contexte";
   const fa = sideFilters("f");
   for (const r of rows) {
@@ -398,11 +404,13 @@ function kwicRowListe(r) {
     `<span class="kwic-text">« ${texte} »</span></a>`;
 }
 function renderKwic(res) {
-  const box = $("#kwic"), rows = res.results || [];
+  const box = $("#kwic");
+  const compte = Resultats.etat(res.count);
+  const rows = (res.results || []).slice(0, compte.n);
   const lemme = ($("#f-lemme").value || "").trim();
   $("#dist-info").innerHTML =
-    `${res.count} occurrence(s)` + (lemme ? ` de <b>${esc(lemme)}</b>` : "") +
-    (res.count >= 200 ? " (limité à 200)" : "") +
+    `${compte.n} occurrence(s)` + (lemme ? ` de <b>${esc(lemme)}</b>` : "") +
+    (compte.tronque ? ` (limité à ${Resultats.LIMITE})` : "") +
     " — cliquer une ligne pour voir la case";
   if (!rows.length) {
     box.className = "kwic";
