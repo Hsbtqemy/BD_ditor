@@ -304,6 +304,28 @@ button { font-family: inherit; }
 /* Navigation transverse unifiée — deux registres (Atelier ‖ Analyse), injectée par
    theme.js dans .surf-nav. La surface courante est mise en avant (+ aria-current). */
 .surf-nav { display: flex; align-items: center; gap: 8px; }
+.brand-court { display: none; }          /* la marque abrégée n'apparaît que sous 400 px */
+
+/* ---------- Téléphone : la bande 1 tombe aux ICÔNES SEULES (UX-7) ----------
+   Mesuré le 2026-09-04 à 320 px : telle quelle, la bande 1 fait 535 px et déborde de
+   215 — et `html, body { overflow: hidden }` fait que ce débordement n'est pas défilable
+   mais COUPÉ. Trois formes tiennent dans 320 px ; celle-ci est la seule qui garde la
+   barre sur UNE ligne sans rien cacher derrière un geste. L'enroulement simple coûtait
+   165 px de hauteur (un quart d'un écran de téléphone) et une barre défilante n'aurait
+   montré que les deux premières surfaces. Arbitré le 2026-09-04.
+
+   Les libellés sont masqués à l'ŒIL SEULEMENT. `display: none` les retirerait de l'arbre
+   d'accessibilité : le nom du lien tomberait à « ✏️ », que les lecteurs d'écran énoncent
+   mal ou pas du tout — et le `title` ne rattraperait rien, `reflectAria` ne posant
+   d'`aria-label` que sur un contenu SANS lettre. */
+@media (max-width: 400px) {
+  .surf-label, .brand-long {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .brand-court { display: inline; }
+  .surf-nav { gap: 4px; }
+}
 .surf-sep { color: var(--text-muted); opacity: .45; user-select: none; }
 .surf-link.active {
   border-color: var(--accent-blue); color: var(--accent-blue);
@@ -1174,6 +1196,14 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .job-termine .job-fill { background: var(--accent-green); }
 
 /* Tables */
+/* Le tableau vit dans SON cadre, pas dans la page : à 320 px il fait 693 px, et le
+   1.4.10 admet ce défilement pour du contenu à deux dimensions — à condition qu'il soit
+   CONTENU. Sans le cadre, `html, body { overflow: hidden }` en coupait 393 px, ce qui
+   n'est pas un défilement pénible mais une perte. Le cadre est focusable et nommé : une
+   zone défilante qu'on ne peut pas atteindre au clavier est une violation à part
+   entière. Mesuré et posé le 2026-09-04 (UX-7). */
+.table-cadre { overflow-x: auto; }
+.table-cadre:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .corpus-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .corpus-table th {
   text-align: left; padding: 8px 10px; color: var(--text-muted);

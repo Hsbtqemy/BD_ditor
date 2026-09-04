@@ -17,6 +17,14 @@ On compare donc le RECTANGLE de chaque élément à la largeur de la fenêtre, e
 le coupable le plus PROCHE de la racine : un parent qui déborde fait déborder tous ses
 enfants, et lister les enfants noierait la cause dans ses conséquences.
 
+**Et on distingue DÉFILABLE de COUPÉ**, sans quoi la mesure ne peut pas dire si un
+correctif a marché. Le 1.4.10 TOLÈRE explicitement qu'un contenu à deux dimensions — un
+tableau — défile dans son propre cadre ; ce qu'il interdit, c'est que la PAGE défile en
+deux dimensions, ou que le contenu soit inatteignable. Un tableau de 693 px dans un cadre
+de 280 px qui défile est conforme ; le même tableau sans cadre, sous `overflow: hidden`,
+perd 413 px. Les deux se ressemblent exactement si l'on ne regarde que le rectangle, et
+c'est ce que faisait cet outil jusqu'au 2026-09-04.
+
   # sur une instance déjà lancée (base jetable de préférence)
   python tools/mesurer_reflow.py [URL]        # défaut : http://127.0.0.1:8000
 """
@@ -46,7 +54,24 @@ SONDE = """() => {
       if (pb.right > large + 1 || pb.left < -1) { parentDeborde = true; break; }
     }
     if (parentDeborde) continue;
+    // Un ancêtre qui DÉFILE horizontalement et tient dans l'écran rend le débordement
+    // atteignable : c'est un cadre, pas une perte. On le nomme au lieu de le taire —
+    // l'outil doit rester capable de dire « il y a un cadre là, est-ce le bon endroit ? ».
+    let cadre = null;
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const st = getComputedStyle(p);
+      if (!/(auto|scroll)/.test(st.overflowX)) continue;
+      if (p.scrollWidth <= p.clientWidth + 1) continue;      // déclaré, mais ne défile pas
+      const pb = p.getBoundingClientRect();
+      if (pb.right <= large + 1 && pb.left >= -1) {
+        cadre = (p.id ? '#' + p.id : '') ||
+                (typeof p.className === 'string' && p.className
+                   ? '.' + p.className.split(/\\s+/)[0] : p.tagName.toLowerCase());
+        break;
+      }
+    }
     coupables.push({
+      cadre,
       tag: el.tagName.toLowerCase(),
       id: el.id || null,
       cls: (el.className && typeof el.className === 'string')
@@ -71,13 +96,18 @@ with sync_playwright() as pw:
                 print(f"  {nom:14} — inatteignable ({type(e).__name__})")
                 continue
             r = page.evaluate(SONDE)
-            deborde = r["scrollWidth"] - r["clientWidth"]
-            etat = "OK" if deborde <= 1 else f"DÉBORDE de {deborde} px"
-            print(f"  {nom:14} {r['scrollWidth']:>5} / {r['clientWidth']:<5} → {etat}")
-            for c in r["coupables"]:
+            perdus = [c for c in r["coupables"] if not c["cadre"]]
+            encadres = [c for c in r["coupables"] if c["cadre"]]
+            etat = "OK" if not perdus else f"{len(perdus)} élément(s) COUPÉ(s)"
+            print(f"  {nom:14} → {etat}")
+            for c in perdus:
+                ident = c["id"] and f"#{c['id']}" or (c["cls"] and f".{c['cls']}") or ""
+                print(f"       ✗ <{c['tag']}>{ident}  largeur {c['largeur']} px,"
+                      f" dépasse de {c['depasse']} — INATTEIGNABLE")
+            for c in encadres:
                 ident = c["id"] and f"#{c['id']}" or (c["cls"] and f".{c['cls']}") or ""
                 print(f"       · <{c['tag']}>{ident}  largeur {c['largeur']} px,"
-                      f" dépasse de {c['depasse']}")
+                      f" défile dans {c['cadre']} — conforme 1.4.10")
         ctx.close()
     nav.close()
 print("\nfin de la mesure")

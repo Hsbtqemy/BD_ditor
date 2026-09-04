@@ -13,7 +13,7 @@
 
   <!-- ───────────── Bande 1 — Navigation du site (identique partout) ───────────── -->
   <div id="site-nav">
-    <span class="brand">BéDéditeur</span>
+    <span class="brand"><span class="brand-long">BéDéditeur</span><span class="brand-court" aria-hidden="true">BDé</span></span>
     <nav class="surf-nav"></nav><!-- liens injectés par theme.js (source unique) -->
     <span class="nav-spacer"></span>
     <a id="back-link" class="ghost back-link" hidden title="Revenir d'où l'on vient">← Retour</a>
@@ -49,15 +49,21 @@
     <section id="corpus-synthese" class="corpus-synthese" hidden></section>
 
     <!-- Table des albums -->
-    <table class="corpus-table">
-      <thead><tr>
-        <th class="c-chk" aria-label="Sélection"></th><th>Titre</th><th>Série</th><th>Auteur</th>
-        <th class="c-num">Année</th><th class="c-num">Planches</th>
-        <th class="c-num">Régions</th><th class="c-num">Transcrites</th>
-        <th class="c-num">Validées</th><th aria-label="Actions"></th>
-      </tr></thead>
-      <tbody id="albums-body"></tbody>
-    </table>
+    <!-- Cadre de défilement horizontal (UX-7) : la table fait 693 px et sortait de
+         l'écran d'un téléphone. `tabindex` + `role`/`aria-label` parce qu'une zone
+         défilante sans eux ne s'atteint pas au clavier (règle axe
+         `scrollable-region-focusable`). -->
+    <div class="table-cadre" tabindex="0" role="region" aria-label="Albums du corpus">
+      <table class="corpus-table">
+        <thead><tr>
+          <th class="c-chk" aria-label="Sélection"></th><th>Titre</th><th>Série</th><th>Auteur</th>
+          <th class="c-num">Année</th><th class="c-num">Planches</th>
+          <th class="c-num">Régions</th><th class="c-num">Transcrites</th>
+          <th class="c-num">Validées</th><th aria-label="Actions"></th>
+        </tr></thead>
+        <tbody id="albums-body"></tbody>
+      </table>
+    </div>
 
     <!-- Détail de l'album ouvert (planches + métadonnées) -->
     <section id="album-detail" hidden></section>

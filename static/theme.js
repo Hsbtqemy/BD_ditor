@@ -165,7 +165,10 @@
      Recherche / Exploration, on consulte). Injectée dans chaque .surf-nav → même ordre
      partout, « vous êtes ici » automatique, plus de liens en dur divergents. */
   var SURFACES = [
-    { href: "/",            label: "Atelier",      icon: "✏", group: "atelier" },
+    // ✏️ porte le SÉLECTEUR DE VARIANTE, comme les deux autres crayons du dépôt
+    // (`recherche.js`, `recherche.html`) : sans lui, le glyphe tombe en monochrome et
+    // devient illisible depuis que la barre le laisse porter seul le sens sous 400 px.
+    { href: "/",            label: "Atelier",      icon: "✏️", group: "atelier" },
     { href: "/corpus",      label: "Bibliothèque", icon: "📚", group: "analyse" },
     { href: "/recherche",   label: "Recherche",    icon: "🔍", group: "analyse" },
     { href: "/exploration", label: "Exploration",  icon: "📊", group: "analyse" }
@@ -185,7 +188,13 @@
           nav.appendChild(sep);
         }
         prevGroup = s.group;
-        var a = el("a", "ghost surf-link surf-" + s.group, s.icon + " " + s.label);
+        // Le libellé est un ÉLÉMENT à part pour que la barre puisse tomber aux icônes
+        // seules sous 400 px (UX-7). Il est alors masqué à l'œil mais PAS retiré : un
+        // `display: none` le sortirait de l'arbre d'accessibilité et le nom du lien
+        // tomberait à sa seule icône, que les lecteurs d'écran énoncent mal ou pas.
+        var a = el("a", "ghost surf-link surf-" + s.group);
+        a.appendChild(document.createTextNode(s.icon + " "));
+        a.appendChild(el("span", "surf-label", s.label));
         a.href = s.href; a.title = s.label;
         if (path === s.href) { a.classList.add("active"); a.setAttribute("aria-current", "page"); }
         nav.appendChild(a);

@@ -196,12 +196,14 @@ function renderDetail() {
         </select>
       </label>
     </div>
-    <table class="corpus-table planches-table">
-      <thead><tr><th class="c-chk" aria-label="Sélection"></th><th aria-label="Aperçu"></th><th>Planche</th><th>Statut</th>
-        <th class="c-num">Régions</th><th class="c-num">Annotées</th>
-        <th>Relecture</th><th>Validée</th><th aria-label="Actions"></th></tr></thead>
-      <tbody>${planchesRows}</tbody>
-    </table>`;
+    <div class="table-cadre" tabindex="0" role="region" aria-label="Planches de l'album">
+      <table class="corpus-table planches-table">
+        <thead><tr><th class="c-chk" aria-label="Sélection"></th><th aria-label="Aperçu"></th><th>Planche</th><th>Statut</th>
+          <th class="c-num">Régions</th><th class="c-num">Annotées</th>
+          <th>Relecture</th><th>Validée</th><th aria-label="Actions"></th></tr></thead>
+        <tbody>${planchesRows}</tbody>
+      </table>
+    </div>`;
 
   $("#detail-edit").onclick = () => openModal(a);
   $("#detail-validate-all").onclick = validateAllAlbum;
