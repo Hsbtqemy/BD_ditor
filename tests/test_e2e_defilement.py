@@ -111,3 +111,97 @@ def test_le_contenu_du_bas_est_vraiment_atteignable(page, corpus_dense):
     assert r["deborde"], "la fenêtre de 400 px devrait forcer un débordement"
     assert r["atteint"] >= r["attendu"] - 2, (
         f"le bas du contenu reste hors de portée : {r['atteint']} sur {r['attendu']} px")
+
+
+# ── Les bandes COLLANTES que ce cadre vient d'activer ────────────────────────────────
+#
+# `position: sticky` se cale sur l'ancêtre DÉFILANT le plus proche — et `.croise` porte
+# `overflow-x: auto`, ce qui en fait un conteneur de défilement pour les DEUX axes. C'est
+# donc lui l'ancêtre, pas le cadre de page. Conséquence mesurée le 2026-09-04, et elle
+# coupe le tableau croisé en deux : le collage HORIZONTAL marche (`.croise` défile bien de
+# ce côté), le collage VERTICAL est inerte et l'a toujours été (`.croise` a la hauteur de
+# son contenu, donc il ne défile jamais verticalement — un thead à `top: 0` n'a rien à
+# quoi se caler). Ce fichier ne garde que le premier ; le second est un constat ouvert de
+# UX-7, parce que le réparer demande d'arbitrer un cadre de défilement imbriqué.
+#
+# Ce que la QA du 2026-09-04 a trouvé, c'est que le COIN était RECOUVERT quand on défile
+# vers la droite : il déclarait `z-index: 3` et en recevait 2, `.croise-table thead th`
+# (spécificité 0-1-2) l'emportant sur `.croise-corner` (0-1-0). Il collait au bon pixel,
+# mais à égalité avec les en-têtes de colonnes, qui le SUIVENT dans le DOM et passaient
+# donc par-dessus.
+#
+# Le décor est FABRIQUÉ — le vrai tableau demande des tokens spaCy, moteur optionnel, et
+# une garde de CSS n'a pas à se taire quand un moteur manque. Il est donc épinglé sur la
+# réponse réelle (test suivant), et RENDU par `renderCroise` elle-même : le balisage vient
+# du code de production, pas de moi.
+
+FAUX_CROISEMENT = {
+    "axe_x": "pos", "axe_y": "morph", "filtre_x": "pos", "filtre_y": "morph",
+    "libelle_x": "catégorie (POS)", "libelle_y": "morphologie",
+    "x": [{"cle": f"POS{i}", "libelle": f"POS{i}", "total": 10 - i} for i in range(8)],
+    "y": [{"cle": f"M{j}", "libelle": f"Morphologie tres longue numero {j}",
+           "total": 20 - j} for j in range(20)],
+    "grille": [[(i + j) % 7 for j in range(20)] for i in range(8)],
+    "total": 400, "x_tronque": False, "y_tronque": True,
+}
+
+
+def test_le_decor_du_croisement_a_la_forme_de_la_vraie_reponse(live_server):
+    """Le semis est épinglé, sinon la garde suivante mesurerait une page imaginaire.
+
+    Égalité STRICTE des clés, dans les deux sens : une clé que la route ajouterait sans
+    que le décor la porte ferait diverger le rendu en silence, et une clé que le décor
+    invente ferait croire à une couverture qui n'existe pas. C'est le mode d'échec du
+    semis, celui que `test_sorties_identite` nomme déjà.
+    """
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=ADMIN)
+    try:
+        r = c.get("/api/analyse/croisement", params={"axe_x": "pos", "axe_y": "morph"})
+    finally:
+        c.close()
+    assert r.status_code == 200, r.text
+    assert set(r.json()) == set(FAUX_CROISEMENT), (
+        "la réponse de /api/analyse/croisement n'a plus la forme du décor : "
+        f"en trop {set(r.json()) - set(FAUX_CROISEMENT)}, "
+        f"manquantes {set(FAUX_CROISEMENT) - set(r.json())}")
+
+
+def test_le_coin_du_tableau_croise_passe_au_dessus_des_deux_bandes(page, live_server):
+    """Le coin rejoint DEUX bandes collantes : il doit passer au-dessus des deux.
+
+    On mesure ce qui se voit — `elementFromPoint` en son centre — et non la feuille : à
+    z-index égal c'est l'ordre du DOM qui tranche, et une lecture du CSS ne le dit pas.
+    """
+    page.set_viewport_size({"width": 700, "height": 500})
+    page.goto(live_server + "/exploration", wait_until="networkidle")
+    page.evaluate("(res) => { document.getElementById('croise').hidden = false; "
+                  "renderCroise(res); }", FAUX_CROISEMENT)
+    page.wait_for_selector(".croise-table")
+
+    r = page.evaluate("""() => {
+      const cadre = document.querySelector('.croise');
+      const page_ = document.getElementById('explo-body');
+      cadre.scrollLeft = 99999;          // les 20 colonnes du décor forcent le débordement
+      page_.scrollTop = 99999;
+      const coin = document.querySelector('.croise-corner');
+      const b = coin.getBoundingClientRect();
+      const dessus = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+      const z = (sel) => getComputedStyle(document.querySelector(sel)).zIndex;
+      return {
+        deborde: cadre.scrollLeft > 0,
+        recouvert: !(dessus === coin || coin.contains(dessus)),
+        intrus: dessus ? (dessus.className || dessus.tagName) + ' « '
+                       + dessus.textContent.slice(0, 40) + ' »' : 'rien',
+        z_coin: z('.croise-corner'),
+        z_colonne: getComputedStyle(
+          document.querySelectorAll('.croise-table thead th')[1]).zIndex,
+        z_ligne: z('.croise-table tbody th[scope="row"]'),
+      };
+    }""")
+    assert r["deborde"], (
+        "le décor ne déborde plus horizontalement : la garde ne mesure alors rien, "
+        "car le coin ne quitte jamais sa place")
+    assert not r["recouvert"], (
+        f"le coin du tableau croisé est RECOUVERT (z={r['z_coin']}, colonnes "
+        f"{r['z_colonne']}, lignes {r['z_ligne']}) — au point où il devrait être, c'est "
+        f"{r['intrus']} qu'on voit. Le libellé des deux axes disparaît dès qu'on défile.")

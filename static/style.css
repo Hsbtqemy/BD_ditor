@@ -1061,9 +1061,26 @@ a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transp
   text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .croise-table thead th, .croise-table th[scope="row"] {
   background: var(--bg-panel); color: var(--text); font-weight: 600; text-align: left; }
+/* `top: 0` est INERTE, et le rester est un choix qui se voit : `.croise` porte
+   `overflow-x: auto`, ce qui en fait le conteneur de défilement le plus proche pour les
+   DEUX axes — or il a la hauteur de son contenu et ne défile jamais verticalement. Un
+   tableau plus haut que la fenêtre perd donc ses en-têtes de colonnes. Mesuré le
+   2026-09-04 (60 lignes : l'en-tête sort par le haut à y=-1121). Réparer demande un cadre
+   de défilement IMBRIQUÉ dans celui de la page, ce qui s'arbitre — constat ouvert d'UX-7.
+   Le collage horizontal, lui, fonctionne, et c'est celui que les 20 colonnes réclament. */
 .croise-table thead th { position: sticky; top: 0; z-index: 2; }
 .croise-table th[scope="row"] { position: sticky; left: 0; z-index: 1; }
-.croise-corner { position: sticky; left: 0; top: 0; z-index: 3; color: var(--text-muted); }
+/* Le coin colle dans les DEUX sens, et il doit passer AU-DESSUS des deux bandes qu'il
+   rejoint. Le sélecteur reprend `.croise-table thead th` à dessein : sans lui, sa
+   spécificité (0-1-0) perdait contre celle de la règle ci-dessus (0-1-2) et le coin
+   recevait `z-index: 2` en déclarant 3. Il collait alors correctement — mesuré au bon
+   pixel — mais à égalité d'empilement avec les en-têtes de colonnes, qui le SUIVENT dans
+   le DOM et passaient donc par-dessus : « Catégorie (POS) \ morphologie » disparaissait
+   dès qu'on défilait le tableau vers la droite. Signalé par une passe de QA le
+   2026-09-04 ; c'est le seul cas de cette forme dans la feuille (balayage des quatre
+   surfaces : toute déclaration de z-index écrasée par un sélecteur plus spécifique). */
+.croise-table thead th.croise-corner {
+  position: sticky; left: 0; top: 0; z-index: 3; color: var(--text-muted); }
 /* Heatmap sobre (alpha plaf. 40 % de l'accent → le texte reste AA sur les deux thèmes). */
 .croise-cell { background: color-mix(in srgb, var(--accent-blue) calc(var(--a, 0) * 40%), transparent); }
 .croise-cell.zero { color: var(--text-muted); }
