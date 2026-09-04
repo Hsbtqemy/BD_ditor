@@ -1,14 +1,20 @@
 ---
 chantier: UX-7
-statut: à venir
+statut: interrompu
 audit: AUDIT.md
 ---
 
 # UX-7 — rendre les surfaces utilisables sous 1 000 px
 
-**Point de départ** — décision prise le 2026-09-04, en tranchant le constat T7 de
-l'audit. Rien n'est commencé, mais l'état des lieux est MESURÉ (voir ci-dessous), et il
-déplace le chantier : la tablette va déjà bien, c'est le téléphone qui perd du contenu.
+**Arrêté sur** — 2026-09-04, `8a49920` : la mesure est faite et elle a immédiatement
+déterré un BUG, sans rapport avec le responsive — l'Exploration perdait 1 285 px de
+contenu sur un écran de 1080, en usage ordinaire. Corrigé, gardé par deux tests, et une
+passe de QA écrite pour ce qu'ils n'expriment pas. Le chantier responsive lui-même n'a
+pas commencé.
+
+L'état des lieux déplace le chantier : **la tablette va déjà bien**, c'est le téléphone
+qui perd du contenu. La décision sur la Visionneuse est reportée APRÈS l'étape 1 (choix
+du 2026-09-04), avec le coût réel des tiroirs sous les yeux.
 
 Ce que le CSS dit aujourd'hui : `static/style.css` porte **une seule** media query de
 largeur (`max-width: 720px`), et elle fait exactement une chose — empiler la vue de
@@ -52,6 +58,12 @@ suite est donc verte sans rien dire à ce sujet, et c'est le pire des cas : pas 
 signalé, un silence pris pour un succès.
 
 ## Reste
+
+### Étape 1 — les trois surfaces « documents »
+- [x] **L'Exploration retrouve son contenu.** `#explo-app` n'avait ni hauteur ni cadre de défilement, là où les deux autres en ont un : sous `html, body { overflow: hidden }`, tout ce qui dépassait la fenêtre était CLIPPÉ. Ce n'était pas un défaut de responsive mais une perte de contenu en usage normal, et c'est la mesure d'UX-7 qui l'a trouvé
+- [ ] La barre de navigation du site passe à la ligne sous 400 px au lieu de sortir de l'écran (mesuré : `.surf-nav` fait 361 px, le menu « Aa » sort de 214 px)
+- [ ] Le tableau du corpus vit dans son propre cadre à défilement horizontal — ce que le 1.4.10 autorise pour du contenu à deux dimensions, et qui rend ses 393 px de droite atteignables au lieu de perdus
+- [ ] Après ces trois-là, la mesure est REJOUÉE (`python tools/mesurer_reflow.py`) et consignée ici : c'est elle qui doit dire si l'étape 1 suffit, pas l'impression qu'elle a suffi
 
 ### Décider avant de coder
 - [ ] Le sort d'`html, body { overflow: hidden }` est tranché : il sert la Visionneuse (coque pleine hauteur) et pénalise les trois autres surfaces, où il change un débordement en contenu perdu. Le lever surface par surface est probablement la moitié du chantier, à lui seul
