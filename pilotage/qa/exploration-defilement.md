@@ -67,9 +67,9 @@ un corpus assez gros pour le faire tout seul.
 
 ### Le collage horizontal du croisement — le seul qui agisse
 
-- [ ] La première colonne (`th[scope="row"]`, collante à gauche) reste lisible quand on défile le tableau vers la droite — les 20 colonnes du croisement POS × morphologie le forcent sans rétrécir quoi que ce soit
-- [ ] Le COIN du tableau (« catégorie (POS) \ morphologie ») reste LISIBLE pendant ce même défilement, et n'est pas recouvert par les en-têtes de colonnes qui passent dessous
-- [ ] La barre de défilement horizontale appartient au tableau et non à la page : c'est le cadre du croisement qui défile, la barre d'outils et la navigation ne bougent pas
+- [x] La première colonne (`th[scope="row"]`, collante à gauche) reste lisible quand on défile le tableau vers la droite — les 20 colonnes du croisement POS × morphologie le forcent sans rétrécir quoi que ce soit
+- [x] Le COIN du tableau (« catégorie (POS) \ morphologie ») reste LISIBLE pendant ce même défilement, et n'est pas recouvert par les en-têtes de colonnes qui passent dessous
+- [x] La barre de défilement horizontale appartient au tableau et non à la page : c'est le cadre du croisement qui défile, la barre d'outils et la navigation ne bougent pas
 
 ### Ce que cette passe NE vérifie pas, et pourquoi
 
