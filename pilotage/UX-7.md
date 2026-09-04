@@ -7,13 +7,36 @@ audit: AUDIT.md
 # UX-7 — rendre les surfaces utilisables sous 1 000 px
 
 **Point de départ** — décision prise le 2026-09-04, en tranchant le constat T7 de
-l'audit. Rien n'est commencé.
+l'audit. Rien n'est commencé, mais l'état des lieux est MESURÉ (voir ci-dessous), et il
+déplace le chantier : la tablette va déjà bien, c'est le téléphone qui perd du contenu.
 
-Ce que le CSS dit aujourd'hui, mesuré : `static/style.css` porte **une seule** media query
-de largeur (`max-width: 720px`), et elle fait exactement une chose — empiler la vue de
+Ce que le CSS dit aujourd'hui : `static/style.css` porte **une seule** media query de
+largeur (`max-width: 720px`), et elle fait exactement une chose — empiler la vue de
 comparaison de l'Exploration. Face à quoi les quatre gabarits promettent tous
 `<meta name="viewport" content="width=device-width, initial-scale=1">`, et la feuille
 compte **neuf** largeurs figées à 100 px ou plus.
+
+## Mesures du 2026-09-04
+
+Relevé dans un vrai Chromium sur le corpus de démonstration, en comparant le rectangle de
+chaque élément à la largeur de la fenêtre.
+
+| Surface | 320 px | 768 px |
+|---|---|---|
+| Visionneuse | `#site-nav`, `#header`, `#body`, `#statusbar` font **751 px** — 431 px hors champ | rien ne dépasse |
+| Bibliothèque | `.corpus-table` fait **693 px** — 393 px hors champ ; plus la barre de nav | rien ne dépasse |
+| Recherche | `.surf-nav` fait 361 px, le menu « Aa » sort de 214 px | rien ne dépasse |
+| Exploration | idem Recherche | rien ne dépasse |
+
+**La tablette n'a rien à réparer.** Aucune des quatre surfaces ne déborde à 768 px — ce qui
+retire du chantier la motivation d'usage la plus immédiate, et le réduit au téléphone.
+
+**Et ce qui dépasse n'est pas défilable : c'est COUPÉ.** `static/style.css:170` pose
+`html, body { overflow: hidden }` — nécessaire à la Visionneuse, qui est une coque pleine
+hauteur, mais qui transforme sur les trois autres surfaces un défaut d'ergonomie en perte
+de contenu. À 320 px, le tableau du corpus n'est pas pénible à lire : ses 393 px de droite
+n'existent pas. C'est le pire des deux mondes vis-à-vis du 1.4.10, qui TOLÈRE un
+défilement dans un cadre et interdit qu'on ne puisse pas atteindre le contenu.
 
 Deux raisons de le faire, et elles ne se recouvrent pas.
 
@@ -31,6 +54,7 @@ signalé, un silence pris pour un succès.
 ## Reste
 
 ### Décider avant de coder
+- [ ] Le sort d'`html, body { overflow: hidden }` est tranché : il sert la Visionneuse (coque pleine hauteur) et pénalise les trois autres surfaces, où il change un débordement en contenu perdu. Le lever surface par surface est probablement la moitié du chantier, à lui seul
 - [ ] Le sort de la **Visionneuse** est tranché par écrit : viser l'annotation tactile engage les cibles de 44 px (WCAG 2.5.5) et une gestuelle de zoom, c'est-à-dire un autre chantier ; se limiter à la CONSULTATION lisible sous 1 000 px est un travail sans commune mesure. Les deux sont défendables, mais pas au même prix
 - [ ] Le **tableau de croisement** a un comportement décidé pour les petites largeurs : il est intrinsèquement à deux dimensions, donc 1.4.10 admet le défilement — à condition qu'il soit CONTENU dans son conteneur et non subi par la page entière
 
@@ -41,7 +65,8 @@ signalé, un silence pris pour un succès.
 - [ ] La barre de navigation transverse et le lien d'évitement, injectés par `theme.js` sur les quatre pages, restent atteignables et ne masquent rien sous 400 px
 
 ### Ne pas répéter le silence d'axe
-- [ ] Un test E2E MESURE la largeur de défilement à 320 px et à 768 px sur les quatre surfaces, et échoue si la page déborde. Sans lui, ce chantier se dégraderait exactement comme l'actuel : sans bruit, puisque l'outil d'audit ne regarde pas de ce côté
+- [ ] Un test E2E compare, à 320 px et 768 px, le RECTANGLE DE CHAQUE ÉLÉMENT à la largeur de la fenêtre — et surtout **pas** `documentElement.scrollWidth`, qui est la garde que cette fiche spécifiait au départ et qui aurait été VACANTE : `overflow: hidden` sur `html, body` rend `scrollWidth` égal à `clientWidth` alors même que 431 px de contenu sont hors champ. Mesuré le 2026-09-04 : les quatre surfaces passaient ce test-là au vert dans l'état actuel
+- [ ] Le test distingue le contenu ATTEIGNABLE du contenu perdu : un cadre qui défile en interne est conforme au 1.4.10, un contenu clippé ne l'est pas — c'est exactement la différence que `scrollWidth` efface
 - [ ] L'audit axe reste sans violation sérieuse ou critique après la refonte, sur les quatre surfaces et les deux thèmes
 
 ## Contexte

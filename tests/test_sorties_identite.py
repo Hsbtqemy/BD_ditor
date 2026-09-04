@@ -277,6 +277,11 @@ NON_BALAYE = {
         "aucun ne vient du corpus, et c'est ce qui le rend inoffensif pour ce cliquet-ci. "
         "Sa dangerosité est ailleurs, et elle est écrite en tête du fichier : devant une "
         "instance réelle il donnerait à quiconque l'identité de son choix."),
+    ("outil", "mesurer_reflow.py"): (
+        "Outil de CONSTAT (UX-7) : pilote un Chromium sur une instance DÉJÀ lancée et "
+        "compare le rectangle de chaque élément à la largeur de la fenêtre. Il n'ouvre "
+        "jamais la base, n'écrit rien, et ne rend que des dimensions en pixels — aucune "
+        "colonne d'identité ne peut le traverser."),
     ("outil", "pdf_check.py"): (
         "Contrôle un PDF fourni en argument ; n'ouvre pas la base."),
     ("outil", "sharedocs_check.py"): (
