@@ -31,19 +31,32 @@ Bibliothèque. C'est l'attendu ; il se constate.
 devoir à la position de défilement. C'est vérifié par lecture du CSS, pas à l'écran — la
 case ci-dessous est là pour démentir la lecture, si elle a tort.
 
+**Comment jouer la passe.** Une instance de démonstration suffit et vaut mieux qu'un vrai
+corpus — elle est jetable :
+
+    BD_DATA_DIR=/tmp/demo BD_DB_PATH=/tmp/demo/demo.sqlite python tools/semer_demo.py
+    BD_DATA_DIR=/tmp/demo BD_DB_PATH=/tmp/demo/demo.sqlite python -m uvicorn main:app --port 8011
+
+Ce corpus donne un tableau de croisement de **10 lignes sur 20 colonnes**
+(`?vue=croisement`, axes *POS × morphologie*) — assez large pour déborder
+horizontalement, **pas assez haut** pour déborder verticalement dans une fenêtre normale.
+Les cases sur l'en-tête collant demandent donc de RÉTRÉCIR la fenêtre en hauteur (environ
+500 px) : c'est le geste qui met le tableau en situation, et il vaut mieux que d'attendre
+un corpus assez gros pour le faire tout seul.
+
 À rejouer si `#explo-app`, `#explo-body` ou la coque pleine hauteur changent.
 
 ### Le cadre défile
 
-- [ ] Sur `/exploration`, en vue *distribution* avec un corpus qui dépasse la fenêtre, la molette fait défiler le contenu — et une barre de défilement apparaît à droite du contenu, pas au bord de la fenêtre
+- [ ] Sur `/exploration`, en vue *distribution* (le corpus de démonstration y produit environ 2 300 px de contenu), la molette fait défiler le contenu — et une barre de défilement apparaît à droite du contenu, pas au bord de la fenêtre
 - [ ] La bande de navigation du site (BéDéditeur · Atelier ‖ Analyse) et la barre d'outils de la page restent IMMOBILES pendant ce défilement
 - [ ] Le tout dernier élément de la liste est lisible en entier une fois défilé jusqu'en bas — pas coupé par le bord de la fenêtre
 
 ### L'en-tête collant du croisement, qui vient de s'activer
 
-- [ ] En vue *croisement*, sur un tableau plus haut que la fenêtre : les en-têtes de colonnes restent visibles pendant qu'on défile
+- [ ] En vue *croisement* (axes POS × morphologie), fenêtre rétrécie à ~500 px de haut : les en-têtes de colonnes restent visibles pendant qu'on défile vers le bas
 - [ ] Ils se calent SOUS la barre d'outils de la page et non par-dessus : aucun texte n'est masqué par un autre
-- [ ] La première colonne (`th[scope="row"]`, elle aussi collante) reste lisible quand le tableau défile horizontalement, sans se superposer aux cellules
+- [ ] La première colonne (`th[scope="row"]`, elle aussi collante) reste lisible quand on défile le tableau horizontalement — les 20 colonnes du croisement POS × morphologie le forcent sans rétrécir quoi que ce soit
 
 ### Ce qui ne doit pas avoir bougé
 
