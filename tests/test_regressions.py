@@ -945,7 +945,7 @@ def test_chemin_hors_data_dir_est_nomme(tmp_path):
     assert "RELATIFS" in message, "il doit dire POURQUOI, pas seulement que c'est faux"
 
 
-# `sans_terme_cherchable` est une APPROXIMATION du tokenizer `unicode61` : elle lit les
+# `_sans_terme_cherchable` est une APPROXIMATION du tokenizer `unicode61` : elle lit les
 # catégories Unicode L*/N* via `isalnum()`, là où la vérité vit dans SQLite. La lire au
 # lieu de la mesurer serait exactement la faute que ce chantier corrige — dire à quelqu'un
 # « votre requête ne cherche rien » alors qu'elle cherchait quelque chose.
@@ -959,7 +959,7 @@ def test_ce_qui_est_declare_incherchable_ne_trouve_vraiment_rien(client, planche
     l'écran annoncerait « aucun terme cherchable » à quelqu'un qui vient d'en chercher un.
     Le semis est donc hostile — on cherche la ponctuation dans un texte qui la contient.
     """
-    from routes.recherche import sans_terme_cherchable
+    from routes.recherche import _sans_terme_cherchable
 
     texte = "Pourquoi ??? Mais... « oui » — non (peut-être) @#$ ++ !!!"
     rid = client.post(f"/api/planches/{planche['id']}/regions",
@@ -974,12 +974,25 @@ def test_ce_qui_est_declare_incherchable_ne_trouve_vraiment_rien(client, planche
     assert amorce["sans_terme"] is False
 
     for q in PONCTUATION_SEULE:
-        assert sans_terme_cherchable(q), f"{q!r} devrait être déclaré incherchable"
+        assert _sans_terme_cherchable(q), f"{q!r} devrait être déclaré incherchable"
         r = client.get("/api/recherche", params={"q": q}, headers=ADMIN).json()
         assert r["sans_terme"] is True, q
         assert r["count"] == 0, (
             f"{q!r} est annoncé incherchable mais le moteur trouve {r['count']} "
             "résultat(s) : l'explication affichée serait un mensonge")
+
+    # Et avec un FILTRE par-dessus, qui lui trouverait quelque chose. L'écran ne montre
+    # son explication que sur un résultat VIDE : si la clause plein texte n'était pas
+    # combinée en ET, la personne recevrait des résultats sans jamais apprendre que son
+    # texte a été ignoré. C'est le cas de bord que la relecture a soulevé, et il tient
+    # parce que `_recherche_rows` ajoute `recherche MATCH ?` aux autres conditions.
+    avec_filtre = client.get("/api/recherche",
+                             params={"q": "???", "album": planche["album_id"]},
+                             headers=ADMIN).json()
+    assert avec_filtre["sans_terme"] is True
+    assert avec_filtre["count"] == 0, (
+        "un filtre ne doit pas rattraper une requête sans terme cherchable : sinon "
+        "l'explication ne s'affiche jamais et le texte saisi est ignoré en silence")
 
 
 def test_une_requete_ordinaire_n_est_jamais_declaree_incherchable(client, planche):
@@ -991,7 +1004,7 @@ def test_une_requete_ordinaire_n_est_jamais_declaree_incherchable(client, planch
     le moteur l'attrape pour la BONNE raison, en montrant ce que la personne aurait
     trouvé pendant qu'on lui expliquait qu'il n'y avait rien à trouver.
     """
-    from routes.recherche import sans_terme_cherchable
+    from routes.recherche import _sans_terme_cherchable
 
     texte = "Pourquoi ??? Mais... « oui » — non (peut-être) l'homme 1984"
     client.post(f"/api/planches/{planche['id']}/regions",
@@ -1001,7 +1014,7 @@ def test_une_requete_ordinaire_n_est_jamais_declaree_incherchable(client, planch
     # Ces requêtes-là portent un terme, et le corpus le contient : le moteur DOIT
     # rendre quelque chose, sans quoi l'assertion « pas incherchable » ne pèse rien.
     for q in ["pourquoi", "oui", "non", "peut-être", "l'homme", "1984", "?pourquoi?"]:
-        assert not sans_terme_cherchable(q), f"{q!r} porte un terme cherchable"
+        assert not _sans_terme_cherchable(q), f"{q!r} porte un terme cherchable"
         r = client.get("/api/recherche", params={"q": q}, headers=ADMIN).json()
         assert r["sans_terme"] is False, q
         assert r["count"] >= 1, (
@@ -1010,9 +1023,9 @@ def test_une_requete_ordinaire_n_est_jamais_declaree_incherchable(client, planch
 
     # Accents et casse : c'est du français, et le tokenizer les traite comme des lettres.
     for q in ["ÉTÉ", "à", "c3po"]:
-        assert not sans_terme_cherchable(q), f"{q!r} porte un terme cherchable"
+        assert not _sans_terme_cherchable(q), f"{q!r} porte un terme cherchable"
 
     # Requête VIDE : ce n'est pas « incherchable », c'est « rien demandé ». L'écran a
     # déjà son invite pour ce cas, et la confondre avec un refus serait un contresens.
     for q in ["", "   "]:
-        assert not sans_terme_cherchable(q), f"{q!r} : requête vide, pas requête refusée"
+        assert not _sans_terme_cherchable(q), f"{q!r} : requête vide, pas requête refusée"

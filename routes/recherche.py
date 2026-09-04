@@ -165,7 +165,7 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
     return results
 
 
-def sans_terme_cherchable(q: str) -> bool:
+def _sans_terme_cherchable(q: str) -> bool:
     """La requête contient-elle quelque chose que l'index puisse chercher ?  (C2)
 
     `???`, `...`, `++` renvoyaient zéro résultat sans un mot d'explication, et l'écran
@@ -205,7 +205,7 @@ def recherche(q: str = "", album: Optional[int] = None,
     results = _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph,
                               provenance, limit, tag_scope, personnage, attributs)
     return {"q": q, "count": len(results), "results": results,
-            "sans_terme": sans_terme_cherchable(q)}
+            "sans_terme": _sans_terme_cherchable(q)}
 
 
 @router.get("/api/recherche/export.csv")
