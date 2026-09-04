@@ -17,11 +17,24 @@ Deux tests E2E gardent désormais la propriété : le cadre existe, et le bas s'
 qu'ils **ne** voient pas, c'est ce que le passage d'un contenu libre à un contenu encadré
 déplace à l'œil. Trois choses en particulier.
 
-**L'en-tête collant du tableau de croisement.** `.croise-table thead th` porte
-`position: sticky; top: 0` depuis toujours — mais un élément collant se cale sur son
-ancêtre DÉFILANT le plus proche, et il n'y en avait aucun. La règle était donc inerte.
-Elle vient de s'activer, sans que personne l'ait demandé : c'est le genre de changement
-qui n'apparaît dans aucun diff.
+**Les bandes collantes du tableau de croisement — et une correction de cette passe.**
+La version du 2026-09-04 affirmait ici que l'en-tête de colonnes « venait de s'activer »
+grâce au nouveau cadre. **C'était faux, et la case correspondante a été validée sur cette
+affirmation** : elle est donc décochée, non pas parce que la réponse était mauvaise, mais
+parce que la question l'était.
+
+Mesuré depuis : `.croise` porte `overflow-x: auto`, ce qui en fait le conteneur de
+défilement le plus proche pour les **deux** axes — c'est lui l'ancêtre du collage, pas le
+cadre de page. Il a la hauteur de son contenu et ne défile jamais verticalement, si bien
+que `thead th { top: 0 }` n'a rien à quoi se caler : le collage **vertical est inerte**,
+avant comme après. Sur 60 lignes, l'en-tête sort par le haut à y=-1121. Il reste visible
+avec le corpus de démonstration pour une tout autre raison : ses dix lignes tiennent dans
+la fenêtre.
+
+Le collage **horizontal**, lui, fonctionne — et c'est celui que les 20 colonnes réclament.
+C'est là que la passe a trouvé un vrai défaut : le COIN du tableau, qui porte le libellé
+des deux axes, était recouvert par les en-têtes de colonnes dès qu'on défilait vers la
+droite (`z-index` déclaré 3, reçu 2). Corrigé et gardé par un test E2E.
 
 **La barre d'outils de la page** (`#header`, bande 2) devient `flex: 0 0 auto` : elle
 devrait rester fixe pendant que le contenu défile, comme sur la Recherche et la
@@ -48,19 +61,26 @@ un corpus assez gros pour le faire tout seul.
 
 ### Le cadre défile
 
-- [ ] Sur `/exploration`, en vue *distribution* (le corpus de démonstration y produit environ 2 300 px de contenu), la molette fait défiler le contenu — et une barre de défilement apparaît à droite du contenu, pas au bord de la fenêtre
-- [ ] La bande de navigation du site (BéDéditeur · Atelier ‖ Analyse) et la barre d'outils de la page restent IMMOBILES pendant ce défilement
-- [ ] Le tout dernier élément de la liste est lisible en entier une fois défilé jusqu'en bas — pas coupé par le bord de la fenêtre
+- [x] Sur `/exploration`, en vue *distribution* (le corpus de démonstration y produit environ 2 300 px de contenu), la molette fait défiler le contenu — et une barre de défilement apparaît à droite du contenu, pas au bord de la fenêtre
+- [x] La bande de navigation du site (BéDéditeur · Atelier ‖ Analyse) et la barre d'outils de la page restent IMMOBILES pendant ce défilement
+- [x] Le tout dernier élément de la liste est lisible en entier une fois défilé jusqu'en bas — pas coupé par le bord de la fenêtre
 
-### L'en-tête collant du croisement, qui vient de s'activer
+### Le collage horizontal du croisement — le seul qui agisse
 
-- [ ] En vue *croisement* (axes POS × morphologie), fenêtre rétrécie à ~500 px de haut : les en-têtes de colonnes restent visibles pendant qu'on défile vers le bas
-- [ ] Ils se calent SOUS la barre d'outils de la page et non par-dessus : aucun texte n'est masqué par un autre
-- [ ] La première colonne (`th[scope="row"]`, elle aussi collante) reste lisible quand on défile le tableau horizontalement — les 20 colonnes du croisement POS × morphologie le forcent sans rétrécir quoi que ce soit
+- [ ] La première colonne (`th[scope="row"]`, collante à gauche) reste lisible quand on défile le tableau vers la droite — les 20 colonnes du croisement POS × morphologie le forcent sans rétrécir quoi que ce soit
+- [ ] Le COIN du tableau (« catégorie (POS) \ morphologie ») reste LISIBLE pendant ce même défilement, et n'est pas recouvert par les en-têtes de colonnes qui passent dessous
+- [ ] La barre de défilement horizontale appartient au tableau et non à la page : c'est le cadre du croisement qui défile, la barre d'outils et la navigation ne bougent pas
+
+### Ce que cette passe NE vérifie pas, et pourquoi
+
+Le collage **vertical** des en-têtes de colonnes : il ne fonctionne pas, c'est mesuré, et
+c'est un constat ouvert d'UX-7 — le réparer demande d'arbitrer un cadre de défilement
+imbriqué dans celui de la page. Inutile d'écrire une case pour une propriété qu'on sait
+absente ; elle reviendra ici le jour où l'arbitrage sera rendu.
 
 ### Ce qui ne doit pas avoir bougé
 
-- [ ] Les trois panneaux 📖 Lexique, 🎯 Accord et 👥 Inter s'ouvrent CENTRÉS dans la fenêtre, que la page soit défilée en haut ou en bas
-- [ ] Le contenu de l'Exploration reste centré horizontalement et garde sa largeur maximale : il ne s'étale pas sur toute la largeur d'un écran large
-- [ ] Les quatre vues (distribution, concordance, croisement, comparaison) s'affichent entièrement, sans zone vide en bas ni contenu tronqué
-- [ ] Les deux thèmes (sombre et clair) : la barre de défilement du cadre reste lisible sur le fond du panneau, et ne masque pas de texte
+- [x] Les trois panneaux 📖 Lexique, 🎯 Accord et 👥 Inter s'ouvrent CENTRÉS dans la fenêtre, que la page soit défilée en haut ou en bas
+- [x] Le contenu de l'Exploration reste centré horizontalement et garde sa largeur maximale : il ne s'étale pas sur toute la largeur d'un écran large
+- [x] Les quatre vues (distribution, concordance, croisement, comparaison) s'affichent entièrement, sans zone vide en bas ni contenu tronqué
+- [x] Les deux thèmes (sombre et clair) : la barre de défilement du cadre reste lisible sur le fond du panneau, et ne masque pas de texte

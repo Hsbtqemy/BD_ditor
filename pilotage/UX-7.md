@@ -6,11 +6,35 @@ audit: AUDIT.md
 
 # UX-7 — rendre les surfaces utilisables sous 1 000 px
 
-**Arrêté sur** — 2026-09-04, `8a49920` : la mesure est faite et elle a immédiatement
+**Arrêté sur** — 2026-09-04, `f74a911` : la mesure est faite et elle a immédiatement
 déterré un BUG, sans rapport avec le responsive — l'Exploration perdait 1 285 px de
 contenu sur un écran de 1080, en usage ordinaire. Corrigé, gardé par deux tests, et une
-passe de QA écrite pour ce qu'ils n'expriment pas. Le chantier responsive lui-même n'a
-pas commencé.
+passe de QA écrite pour ce qu'ils n'expriment pas. **La passe jouée a rapporté deux
+défauts de plus, et s'est démentie elle-même sur un troisième point** (ci-dessous).
+Le chantier responsive lui-même n'a pas commencé.
+
+## Ce que la passe de QA a rapporté, une fois jouée
+
+Trois choses, dont une qui met en cause la passe elle-même.
+
+**Quatre éléments déclarés cachés ne l'étaient pas** (`ae875a4`). `.dist` gardait
+1 927 px de hauteur sous `hidden` : la distribution restait affichée sous le tableau de
+croisement après une bascule de vue. Le balayage de la famille en a trouvé trois autres,
+tous des filtres de la barre d'outils. Le défaut dormait — `overflow: hidden` le clippait
+— et le cadre de défilement l'a rendu visible le jour même.
+
+**Le coin du tableau croisé était recouvert** (`f74a911`) : `z-index` déclaré 3, reçu 2,
+par spécificité. Il collait au bon pixel, sous les en-têtes de colonnes.
+
+**Le collage VERTICAL des en-têtes est inerte, et l'a toujours été.** C'est le constat
+qui compte, parce que la passe affirmait le contraire et que la case avait été validée
+sur cette affirmation. `.croise` porte `overflow-x: auto`, donc c'est LUI le conteneur de
+défilement le plus proche, pour les deux axes ; il a la hauteur de son contenu et ne
+défile jamais verticalement, si bien que `thead th { top: 0 }` n'a rien à quoi se caler.
+Sur 60 lignes, l'en-tête sort par le haut à y=-1121 ; avec le corpus de démonstration il
+reste visible parce que ses dix lignes tiennent dans la fenêtre — la case était cochable
+pour une raison qui n'était pas la sienne. Le fait est écrit dans `static/style.css`, à
+côté de la règle inerte, et la case ci-dessous porte l'arbitrage.
 
 L'état des lieux déplace le chantier : **la tablette va déjà bien**, c'est le téléphone
 qui perd du contenu. La décision sur la Visionneuse est reportée APRÈS l'étape 1 (choix
@@ -69,6 +93,7 @@ signalé, un silence pris pour un succès.
 - [ ] Le sort d'`html, body { overflow: hidden }` est tranché : il sert la Visionneuse (coque pleine hauteur) et pénalise les trois autres surfaces, où il change un débordement en contenu perdu. Le lever surface par surface est probablement la moitié du chantier, à lui seul
 - [ ] Le sort de la **Visionneuse** est tranché par écrit : viser l'annotation tactile engage les cibles de 44 px (WCAG 2.5.5) et une gestuelle de zoom, c'est-à-dire un autre chantier ; se limiter à la CONSULTATION lisible sous 1 000 px est un travail sans commune mesure. Les deux sont défendables, mais pas au même prix
 - [ ] Le **tableau de croisement** a un comportement décidé pour les petites largeurs : il est intrinsèquement à deux dimensions, donc 1.4.10 admet le défilement — à condition qu'il soit CONTENU dans son conteneur et non subi par la page entière
+- [ ] Le collage VERTICAL des en-têtes du croisement est tranché : le rendre effectif demande de donner à `.croise` une hauteur bornée et son propre `overflow-y`, donc un cadre de défilement IMBRIQUÉ dans celui de la page — deux barres verticales pour un même geste de molette, ce qui n'est pas gratuit. L'alternative est de l'assumer inerte et de retirer la règle, qui promet aujourd'hui ce qu'elle ne fait pas
 
 ### Vérifications
 - [ ] À **320 px**, chacune des quatre surfaces s'utilise sans défilement HORIZONTAL de la page (le défilement vertical est permis, et le contenu 2D peut défiler dans son propre cadre)
