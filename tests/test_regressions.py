@@ -4,7 +4,7 @@ Chaque test nomme et reproduit le scénario du bug ; ils servent de filet
 permanent contre la réintroduction de ces défauts.
 """
 import pytest
-from conftest import KUMIKO_SAMPLE, direct_query, requires_kumiko
+from conftest import ADMIN, KUMIKO_SAMPLE, direct_query, requires_kumiko
 from pipeline.nlp import nlp_available
 
 
@@ -943,3 +943,76 @@ def test_chemin_hors_data_dir_est_nomme(tmp_path):
     assert "DATA_DIR" in message
     assert str(DATA_DIR) in message, "le message doit nommer la racine attendue"
     assert "RELATIFS" in message, "il doit dire POURQUOI, pas seulement que c'est faux"
+
+
+# `sans_terme_cherchable` est une APPROXIMATION du tokenizer `unicode61` : elle lit les
+# catégories Unicode L*/N* via `isalnum()`, là où la vérité vit dans SQLite. La lire au
+# lieu de la mesurer serait exactement la faute que ce chantier corrige — dire à quelqu'un
+# « votre requête ne cherche rien » alors qu'elle cherchait quelque chose.
+PONCTUATION_SEULE = ["???", "...", "++", "!!!", "«»", "— —", "()", "@#$", "  ?  ", "…"]
+
+
+def test_ce_qui_est_declare_incherchable_ne_trouve_vraiment_rien(client, planche):
+    """C2 — le corpus contient les caractères À LA LETTRE, et pourtant rien ne sort.
+
+    C'est la moitié du test qui compte : si l'une de ces requêtes trouvait quelque chose,
+    l'écran annoncerait « aucun terme cherchable » à quelqu'un qui vient d'en chercher un.
+    Le semis est donc hostile — on cherche la ponctuation dans un texte qui la contient.
+    """
+    from routes.recherche import sans_terme_cherchable
+
+    texte = "Pourquoi ??? Mais... « oui » — non (peut-être) @#$ ++ !!!"
+    rid = client.post(f"/api/planches/{planche['id']}/regions",
+                      json={"type": "bulle", "x": 0, "y": 0, "w": 10, "h": 10,
+                            "ocr_texte": texte}, headers=ADMIN).json()["id"]
+    assert rid
+
+    # Le décor est cherchable : sans cette assertion, un index vide rendrait tout le
+    # reste vrai pour la mauvaise raison.
+    amorce = client.get("/api/recherche", params={"q": "pourquoi"}, headers=ADMIN).json()
+    assert amorce["count"] >= 1, "le semis n'est pas indexé — le test ne mesurerait rien"
+    assert amorce["sans_terme"] is False
+
+    for q in PONCTUATION_SEULE:
+        assert sans_terme_cherchable(q), f"{q!r} devrait être déclaré incherchable"
+        r = client.get("/api/recherche", params={"q": q}, headers=ADMIN).json()
+        assert r["sans_terme"] is True, q
+        assert r["count"] == 0, (
+            f"{q!r} est annoncé incherchable mais le moteur trouve {r['count']} "
+            "résultat(s) : l'explication affichée serait un mensonge")
+
+
+def test_une_requete_ordinaire_n_est_jamais_declaree_incherchable(client, planche):
+    """L'autre moitié, et elle est épinglée au moteur elle aussi.
+
+    Une règle trop LARGE — « contient de la ponctuation » au lieu de « n'en contient
+    que » — est parfaitement plausible et dirait « aucun terme cherchable » à qui vient
+    d'en chercher un. Comparer à une liste attendue l'attrape ; le faire confirmer par
+    le moteur l'attrape pour la BONNE raison, en montrant ce que la personne aurait
+    trouvé pendant qu'on lui expliquait qu'il n'y avait rien à trouver.
+    """
+    from routes.recherche import sans_terme_cherchable
+
+    texte = "Pourquoi ??? Mais... « oui » — non (peut-être) l'homme 1984"
+    client.post(f"/api/planches/{planche['id']}/regions",
+                json={"type": "bulle", "x": 0, "y": 0, "w": 10, "h": 10,
+                      "ocr_texte": texte}, headers=ADMIN)
+
+    # Ces requêtes-là portent un terme, et le corpus le contient : le moteur DOIT
+    # rendre quelque chose, sans quoi l'assertion « pas incherchable » ne pèse rien.
+    for q in ["pourquoi", "oui", "non", "peut-être", "l'homme", "1984", "?pourquoi?"]:
+        assert not sans_terme_cherchable(q), f"{q!r} porte un terme cherchable"
+        r = client.get("/api/recherche", params={"q": q}, headers=ADMIN).json()
+        assert r["sans_terme"] is False, q
+        assert r["count"] >= 1, (
+            f"{q!r} est cherchable et présent dans le corpus, mais le moteur ne trouve "
+            "rien : l'un des deux se trompe, et le test ne saurait pas lequel")
+
+    # Accents et casse : c'est du français, et le tokenizer les traite comme des lettres.
+    for q in ["ÉTÉ", "à", "c3po"]:
+        assert not sans_terme_cherchable(q), f"{q!r} porte un terme cherchable"
+
+    # Requête VIDE : ce n'est pas « incherchable », c'est « rien demandé ». L'écran a
+    # déjà son invite pour ce cas, et la confondre avec un refus serait un contresens.
+    for q in ["", "   "]:
+        assert not sans_terme_cherchable(q), f"{q!r} : requête vide, pas requête refusée"

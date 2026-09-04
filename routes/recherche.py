@@ -165,6 +165,33 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
     return results
 
 
+def sans_terme_cherchable(q: str) -> bool:
+    """La requête contient-elle quelque chose que l'index puisse chercher ?  (C2)
+
+    `???`, `...`, `++` renvoyaient zéro résultat sans un mot d'explication, et l'écran
+    affichait « Aucun résultat » — la même phrase que pour une recherche parfaitement
+    valide qui ne trouve rien. Les deux situations n'ont pourtant rien à voir : dans un
+    cas le corpus ne contient pas ce qu'on cherche, dans l'autre on n'a rien cherché.
+
+    Le mécanisme est en amont, dans `_recherche_rows` : la requête devient une PHRASE
+    FTS5 (`"???"*`), et le tokenizer `unicode61` jette la ponctuation. La phrase est
+    donc vide, et une phrase vide ne correspond à rien.
+
+    **C'est le serveur qui répond, et non le client, parce que la règle appartient au
+    TOKENIZER.** Le client pourrait la deviner avec une expression régulière — ce serait
+    reproduire ailleurs une règle qui vit ici, exactement l'écart que le croisement
+    (`x_tronque`) évite en renvoyant un drapeau plutôt qu'en laissant déduire.
+
+    L'approximation restante est écrite : `isalnum()` couvre les catégories Unicode L* et
+    N*, ce que `unicode61` retient par défaut. Un test l'épingle contre le VRAI moteur —
+    tout ce que cette fonction déclare incherchable doit réellement ne rien trouver, y
+    compris quand le corpus contient ces caractères à la lettre. L'inverse (une requête
+    non signalée que FTS réduit tout de même à rien) reste possible et n'aggrave rien :
+    on retombe alors sur l'ancien « Aucun résultat ».
+    """
+    return bool(q.strip()) and not any(c.isalnum() for c in q)
+
+
 @router.get("/api/recherche")
 def recherche(q: str = "", album: Optional[int] = None,
               type: Optional[str] = None, tags: Optional[list[str]] = Query(None),
@@ -177,7 +204,8 @@ def recherche(q: str = "", album: Optional[int] = None,
     limit = max(1, min(limit, 500))   # borne : évite LIMIT -1 (= tout le corpus) / DoS
     results = _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph,
                               provenance, limit, tag_scope, personnage, attributs)
-    return {"q": q, "count": len(results), "results": results}
+    return {"q": q, "count": len(results), "results": results,
+            "sans_terme": sans_terme_cherchable(q)}
 
 
 @router.get("/api/recherche/export.csv")

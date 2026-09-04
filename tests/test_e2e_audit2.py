@@ -147,7 +147,10 @@ def test_un_tag_deep_linke_reste_surligne_dans_le_nuage(page, corpus_tags):
 # `test_la_forme_du_decor_est_celle_du_vrai_serveur` en dessous est le semis qui empêche
 # ce test de verdir sur une structure que `/api/recherche` n'a jamais servie.
 def _faux_resultats(n):
-    return {"q": "x", "count": n,
+    # `sans_terme` est arrivé avec C2, et le semis strict ci-dessous l'a réclamé dès
+    # la première course : c'est la contrepartie de l'égalité exacte, et elle vaut
+    # mieux qu'une inclusion qui laisserait le décor vieillir en silence.
+    return {"q": "x", "count": n, "sans_terme": False,
             "results": [{"region_id": i, "type": "bulle", "x": 0, "y": 0, "w": 10, "h": 10,
                          "ocr_texte": f"texte {i}", "note": None, "tags": [],
                          "album_id": 1, "album_titre": "Décor", "planche_id": 1,
@@ -194,7 +197,11 @@ def test_la_forme_du_decor_est_celle_du_vrai_serveur(corpus_tags):
     d'un décor est de rester juste pendant que le vrai change."""
     with corpus_tags["client"]() as c:
         vrai = c.get("/api/recherche", params={"q": "pouvoir", "limit": 5}).json()
-    assert set(vrai) == {"q", "count", "results"}, set(vrai)
+    # Les clés attendues sont DÉRIVÉES du décor, jamais recopiées : une liste écrite en
+    # dur ici serait un troisième endroit à tenir à jour, et c'est elle qui a divergé la
+    # première fois — `sans_terme` était dans la réponse et dans le décor, mais pas dans
+    # la liste.
+    assert set(vrai) == set(_faux_resultats(1)), (set(vrai), set(_faux_resultats(1)))
     assert vrai["results"], "le décor de la fixture devrait rendre au moins un résultat"
     faux = _faux_resultats(1)["results"][0]
     manquants = set(faux) - set(vrai["results"][0])
@@ -278,3 +285,28 @@ def test_la_forme_des_decors_d_exploration_est_celle_du_vrai_serveur(corpus_tags
     if kwic.get("results"):
         manquants = set(_faux_concordance(1)["results"][0]) - set(kwic["results"][0])
         assert not manquants, f"décor de concordance : champs inventés {manquants}"
+
+
+# --------------------------------------------------------------------------- #
+# C2 — l'écran distingue « rien trouvé » de « rien cherché »
+# --------------------------------------------------------------------------- #
+def test_une_requete_de_ponctuation_seule_explique_son_zero(page, corpus_tags):
+    """Les deux messages doivent DIFFÉRER, et c'est tout le chantier.
+
+    « Aucun résultat » est vrai dans les deux cas et n'aide que dans l'un : sur une
+    requête de ponctuation seule, il laisse croire que le corpus est muet alors que
+    c'est la saisie qui n'a rien demandé. Le serveur tranche — la règle appartient au
+    tokenizer — et l'écran se contente de le dire.
+    """
+    base = corpus_tags["base"]
+
+    page.goto(f"{base}/recherche?q=%3F%3F%3F", wait_until="networkidle")
+    expect(page.locator(".search-hint")).to_contain_text("aucun terme cherchable")
+    expect(page.locator("#result-count")).to_have_text("0 résultat")
+
+    # Une requête valide qui ne trouve rien garde le message d'origine : si les deux
+    # phrases se confondaient à nouveau, ce test verdirait sans rien distinguer.
+    page.goto(f"{base}/recherche?q=zzzintrouvable", wait_until="networkidle")
+    hint = page.locator(".search-hint")
+    expect(hint).to_contain_text("Aucun résultat")
+    expect(hint).not_to_contain_text("aucun terme cherchable")

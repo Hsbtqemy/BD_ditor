@@ -85,6 +85,12 @@ def seeded(live_server):
         # qui fait passer les huit paramétrages d'un test pour cassés alors que rien ne
         # l'était. `test_live_coherence.py` avait déjà rencontré le même mur et le
         # contourne pareillement.
+        #
+        # Cette parade a lâché À SON TOUR le 2026-09-04, sur une course de 1 h 23 au lieu
+        # de 14 min — six fois la normale. Relancé seul, le test passe en 20 s. On ne
+        # remonte donc PAS le chiffre : ce n'est pas la marge qui manque, c'est la machine
+        # qui était mangée par autre chose, et poursuivre une cible mobile allongerait
+        # surtout le délai avant de voir un vrai échec.
         c.put(f"/api/regions/{rid}", json={"ocr_texte": "POUVOIR ABSOLU"}, timeout=180)
         c.put(f"/api/regions/{rid}/annotation", json={"note": "colère", "tags": ["emotion"]})
     finally:

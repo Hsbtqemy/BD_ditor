@@ -222,7 +222,15 @@ function renderResults(res, q) {
   const box = $("#results");
   box.innerHTML = "";
   if (!res.results.length) {
-    box.innerHTML = '<div class="search-hint">Aucun résultat.</div>';
+    // « Aucun résultat » est vrai et inutile quand la requête ne portait aucun terme
+    // cherchable : la personne croit que le corpus est muet, alors que c'est sa
+    // saisie qui n'a rien demandé. Le serveur tranche (la règle est celle du
+    // tokenizer) ; l'écran se contente de le dire.
+    box.innerHTML = res.sans_terme
+      ? '<div class="search-hint">Cette recherche ne contient aucun terme cherchable :'
+        + ' la ponctuation et les symboles ne sont pas indexés. Essayez un mot,'
+        + ' ou passez par les filtres et le nuage de tags.</div>'
+      : '<div class="search-hint">Aucun résultat.</div>';
     return;
   }
   for (const r of res.results.slice(0, compte.n)) {
