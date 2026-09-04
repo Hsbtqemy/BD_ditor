@@ -455,7 +455,10 @@ class AlbumIn(BaseModel):
     collection_id: Optional[int] = None
     titre: str
     auteur: Optional[str] = None                # legacy → voir contributions
-    annee: Optional[int] = None                 # legacy → précisé par date_edition
+    # Bornes larges à dessein : il ne s'agit pas de policer l'histoire de l'édition
+    # mais d'écarter l'absurde — 999999 passait, et une base ne se nettoie pas après
+    # coup aussi facilement qu'elle se salit (E3).
+    annee: Optional[int] = Field(None, ge=1400, le=2200)   # legacy → cf. date_edition
     editeur: Optional[str] = None
     serie: Optional[str] = None
     description: Optional[str] = None
@@ -474,7 +477,7 @@ class AlbumIn(BaseModel):
 class AlbumUpdate(BaseModel):
     titre: Optional[str] = None
     auteur: Optional[str] = None
-    annee: Optional[int] = None
+    annee: Optional[int] = Field(None, ge=1400, le=2200)   # mêmes bornes qu'à la création
     editeur: Optional[str] = None
     serie: Optional[str] = None
     description: Optional[str] = None

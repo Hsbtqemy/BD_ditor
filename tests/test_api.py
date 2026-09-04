@@ -411,6 +411,21 @@ def test_nav_js_servi_et_charge_avant_le_script_de_page(client):
         assert html.index("/static/lib/nav.js") < html.index(page_script), route
 
 
+def test_resultats_js_servi_et_charge_avant_recherche_js(client):
+    """Même garde-fou pour la règle du compteur (static/lib/resultats.js, C1).
+
+    Elle ne vit plus dans `recherche.js` justement pour être testable sous Node ; le
+    prix de cette extraction est qu'un `<script>` oublié rendrait `Resultats` indéfini
+    et ferait planter la recherche à la première frappe, sans qu'aucun test Node ne
+    bronche — ils importent le fichier directement."""
+    js = client.get("/static/lib/resultats.js")
+    assert js.status_code == 200 and "LIMITE" in js.text
+    html = client.get("/recherche").text
+    assert "/static/lib/resultats.js" in html
+    assert (html.index("/static/lib/resultats.js")
+            < html.index("/static/recherche.js"))
+
+
 def test_dialog_js_servi_et_charge_avant_le_script_de_page(client):
     """Même garde-fou pour le helper de modale accessible (static/lib/dialog.js) :
     servi, et chargé AVANT le script des pages qui l'utilisent (Visionneuse,

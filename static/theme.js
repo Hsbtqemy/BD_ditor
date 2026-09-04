@@ -49,6 +49,21 @@
   mqLight.addEventListener("change", function () { if (!get(KEY.theme)) { applyTheme(curTheme()); sync(); } });
   mqContrast.addEventListener("change", function () { if (!get(KEY.contrast)) { applyContrast(curContrast()); sync(); } });
 
+  // 3) Un AUTRE onglet a changé un réglage. `storage` ne se déclenche jamais dans
+  //    l'onglet qui écrit, seulement dans les autres : l'écoute ne peut donc pas
+  //    boucler, et rien d'autre ne préviendrait. Sans elle, deux onglets ouverts
+  //    côte à côte affichaient deux thèmes différents jusqu'au rechargement (F1).
+  //    `e.key === null` signale un `localStorage.clear()` : tout est à relire.
+  window.addEventListener("storage", function (e) {
+    var clefs = [KEY.theme, KEY.contrast, KEY.zoom, KEY.lecture];
+    if (e.key !== null && clefs.indexOf(e.key) === -1) return;
+    applyTheme(curTheme());
+    applyContrast(curContrast());
+    applyZoom(curZoom());
+    applyLecture(curLecture());
+    sync();
+  });
+
   var menus = [];
 
   function sync() {

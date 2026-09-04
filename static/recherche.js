@@ -82,6 +82,12 @@ async function loadTags() {
       el.onclick = () => toggleTag(t.label);
       box.appendChild(el);
     }
+    // Le nuage vient d'être RECONSTRUIT : les boutons neufs ne portent plus la
+    // marque de ce qui est sélectionné, alors que `state.activeTags` la porte
+    // toujours. Sans cette ligne, le filtre resterait actif et invisible — et
+    // c'était déjà vrai au démarrage, `loadTags()` n'y étant pas attendu : arrivé
+    // après `restoreFromUrl()`, il effaçait le surlignage d'un tag deep-linké.
+    renderActiveTags();
   } catch (e) { /* ignore */ }
 }
 
@@ -141,7 +147,11 @@ function search() {
     $("#btn-export").disabled = true;
     return;
   }
-  const url = new URLSearchParams(p); url.set("limit", "200");
+  // On demande UN de plus que ce qu'on affichera : ce résultat surnuméraire ne se
+  // voit jamais, il sert uniquement de témoin « il y en a d'autres ». Sans lui, un
+  // corpus de exactement 200 correspondances serait annoncé « (limité) » à tort (C1).
+  const url = new URLSearchParams(p);
+  url.set("limit", String(Resultats.LIMITE + 1));
   const gen = ++state.searchGen;                    // anti-course : seule la dernière réponse rend
   $("#result-count").textContent = "Recherche…";
   apiGet("/api/recherche?" + url.toString())
@@ -206,8 +216,8 @@ function setupBack() {
 }
 
 function renderResults(res, q) {
-  $("#result-count").textContent =
-    `${res.count} résultat${res.count > 1 ? "s" : ""}` + (res.count >= 200 ? " (limité)" : "");
+  const compte = Resultats.etat(res.count);
+  $("#result-count").textContent = compte.texte;
   $("#btn-export").disabled = !res.count;
   const box = $("#results");
   box.innerHTML = "";
@@ -215,7 +225,7 @@ function renderResults(res, q) {
     box.innerHTML = '<div class="search-hint">Aucun résultat.</div>';
     return;
   }
-  for (const r of res.results) {
+  for (const r of res.results.slice(0, compte.n)) {
     const card = document.createElement("div");
     card.className = "result";
     card.title = "Aperçu en place (clic) — ✏️ pour éditer dans la visionneuse";
@@ -294,6 +304,12 @@ async function setup() {
   setupBack();   // bouton « ← Retour » (drill explicite, ou history.back si on vient de l'app)
   loadCorpus();
   loadTags();
+  // Les tags naissent dans la VISIONNEUSE, souvent dans un autre onglet. Bâti une
+  // seule fois, le nuage restait figé sur l'état du démarrage (D1/D2) : on le relit
+  // en revenant sur l'onglet, qui est exactement le moment où il a pu changer.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) loadTags();
+  });
   await loadAlbums();        // options d'album AVANT de restaurer la sélection d'album
   restoreFromUrl();
   search();                  // rejoue la recherche restaurée (ou affiche l'invite)

@@ -28,8 +28,23 @@ Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
 
 def _rel_posix(path: Path) -> str:
-    """Chemin relatif à DATA_DIR, en séparateurs POSIX (sûr pour les URL)."""
-    return path.resolve().relative_to(DATA_DIR).as_posix()
+    """Chemin relatif à DATA_DIR, en séparateurs POSIX (sûr pour les URL).
+
+    Un chemin HORS de `DATA_DIR` n'a pas de forme relative : `relative_to` lève alors
+    un `ValueError` nu, dont le message ne nomme ni le rôle des deux chemins ni la
+    règle enfreinte. Le cas est latent — aucune route ne laisse choisir la source —
+    mais il cesserait de l'être le jour où l'on importerait depuis un dossier fourni,
+    et c'est précisément le jour où le message compte (G5).
+    """
+    resolu = path.resolve()
+    try:
+        return resolu.relative_to(DATA_DIR).as_posix()
+    except ValueError as exc:
+        raise ValueError(
+            f"Chemin hors de DATA_DIR : {resolu} n'est pas sous {DATA_DIR}. "
+            "Les chemins stockés en base sont RELATIFS à la racine de données, pour "
+            "qu'une instance reste déplaçable ; un chemin extérieur n'en a aucune."
+        ) from exc
 
 
 def _next_numero(conn: sqlite3.Connection, album_id: int) -> int:

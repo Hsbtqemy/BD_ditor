@@ -893,3 +893,53 @@ def test_resegmentation_est_un_point_fixe(client, planche, monkeypatch):
             conn.commit()
             assert photo(conn) == reference, f"dérive au passage {passage}"
         assert reference["fts_orphelines"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# AUDIT-2 — constats mineurs, corrigés le 2026-09-04
+# --------------------------------------------------------------------------- #
+def test_annee_aberrante_est_refusee(client):
+    """E3 — `annee` acceptait n'importe quel entier, donc 999999.
+
+    Le champ est *legacy* (la date précise vit dans `date_edition`), ce qui le rend
+    d'autant plus facile à saisir de travers : personne ne le relit. Les bornes sont
+    larges à dessein — il ne s'agit pas de policer l'histoire de l'édition, mais
+    d'écarter l'absurde avant qu'il n'entre en base, où il resterait.
+    """
+    for aberrante in (999999, 0, -1, 1399, 2201):
+        r = client.post("/api/albums", json={"titre": "Borne", "annee": aberrante})
+        assert r.status_code == 422, f"{aberrante} aurait dû être refusée"
+
+    ok = client.post("/api/albums", json={"titre": "Borne", "annee": 2019})
+    assert ok.status_code == 201 and ok.json()["annee"] == 2019
+    aid = ok.json()["id"]
+
+    # La modification est bornée comme la création : une seule des deux portes
+    # gardée laisserait l'autre grande ouverte.
+    assert client.put(f"/api/albums/{aid}", json={"annee": 999999}).status_code == 422
+    assert client.put(f"/api/albums/{aid}", json={"annee": 2020}).status_code == 200
+
+    # Et l'absence reste permise : le champ est facultatif, pas obligatoire.
+    assert client.post("/api/albums", json={"titre": "Sans année"}).status_code == 201
+
+
+def test_chemin_hors_data_dir_est_nomme(tmp_path):
+    """G5 — `_rel_posix` laissait remonter le `ValueError` nu de `relative_to`.
+
+    Latent : aucune route ne laisse choisir la source d'un import. Mais le message de
+    `relative_to` ne nomme ni le rôle des deux chemins ni la règle enfreinte, et c'est
+    le jour où l'import depuis un dossier fourni existera que ce message comptera.
+    """
+    from config import DATA_DIR
+    from pipeline.ingest import _rel_posix
+
+    dedans = DATA_DIR / "corpus" / "album_1" / "planche.tif"
+    assert _rel_posix(dedans) == "corpus/album_1/planche.tif"
+
+    dehors = tmp_path / "ailleurs" / "planche.tif"
+    with pytest.raises(ValueError) as exc:
+        _rel_posix(dehors)
+    message = str(exc.value)
+    assert "DATA_DIR" in message
+    assert str(DATA_DIR) in message, "le message doit nommer la racine attendue"
+    assert "RELATIFS" in message, "il doit dire POURQUOI, pas seulement que c'est faux"
