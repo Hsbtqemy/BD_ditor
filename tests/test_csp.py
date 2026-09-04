@@ -93,7 +93,18 @@ _ECOUTE = """
 @pytest.fixture
 def corpus_csp(live_server):
     """Un album, une planche, une région annotée : de quoi faire RENDRE les barres et la
-    heatmap, c'est-à-dire précisément les dix `style="width:…"` que la politique tolère."""
+    heatmap, c'est-à-dire précisément les dix `style="width:…"` que la politique tolère.
+
+    Le `timeout` de 30 s lâche par INTERMITTENCE : une `ReadTimeout` au MONTAGE du décor,
+    donc une ERREUR et non un échec — le test n'a alors jamais mesuré la politique. Relevé
+    le 2026-09-04 : une fois dans un run E2E complet de 26 min, puis une fois sur trois
+    relances du seul fichier, les deux autres passant en 60 et 75 s. La charge du run n'est
+    donc PAS l'explication, contrairement à ce qu'on a d'abord écrit ici, et la cause reste
+    non établie. Même symptôme que celui consigné dans `test_e2e_a11y.py`. On ne remonte pas
+    le chiffre pour autant : une marge plus large masquerait la question sans y répondre, et
+    l'ERREUR est un signal honnête — elle dit « je n'ai rien mesuré », là où un test lent
+    aurait dit « tout va bien ».
+    """
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ADMIN)
     try:
         aid = c.post("/api/albums", json={"titre": "CSP"}).json()["id"]

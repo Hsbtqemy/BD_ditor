@@ -37,7 +37,13 @@ from playwright.sync_api import sync_playwright
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 SURFACES = [("Visionneuse", "/"), ("Recherche", "/recherche"),
             ("Bibliothèque", "/corpus"), ("Exploration", "/exploration")]
-LARGEURS = [(320, "téléphone"), (768, "tablette")]
+# Deux largeurs ne suffisent pas : elles ne disent rien de la BANDE entre les deux, et
+# c'est là qu'un correctif à seuil laisse un trou. Mesuré le 2026-09-04 — la bande 1
+# réparée à 320 px laissait sortir le menu « Aa » de 55 px à 480 px, juste au-dessus du
+# seuil de sa media query, et les deux largeurs canoniques n'en disaient rien. C'est ce
+# constat qui a déplacé le seuil de 400 à 560 px.
+LARGEURS = [(320, "téléphone"), (400, "petit téléphone"), (480, "téléphone paysage"),
+            (560, "seuil de la bande 1"), (768, "tablette")]
 
 SONDE = """() => {
   const r = document.documentElement;

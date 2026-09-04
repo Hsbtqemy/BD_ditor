@@ -306,7 +306,7 @@ button { font-family: inherit; }
 .surf-nav { display: flex; align-items: center; gap: 8px; }
 .brand-court { display: none; }          /* la marque abrégée n'apparaît que sous 400 px */
 
-/* ---------- Téléphone : la bande 1 tombe aux ICÔNES SEULES (UX-7) ----------
+/* ---------- Petits écrans : la bande 1 tombe aux ICÔNES SEULES (UX-7) ----------
    Mesuré le 2026-09-04 à 320 px : telle quelle, la bande 1 fait 535 px et déborde de
    215 — et `html, body { overflow: hidden }` fait que ce débordement n'est pas défilable
    mais COUPÉ. Trois formes tiennent dans 320 px ; celle-ci est la seule qui garde la
@@ -314,11 +314,17 @@ button { font-family: inherit; }
    165 px de hauteur (un quart d'un écran de téléphone) et une barre défilante n'aurait
    montré que les deux premières surfaces. Arbitré le 2026-09-04.
 
+   **Le seuil est 560 px, et il l'est par MESURE.** Il valait 400 px au premier jet, ce
+   qui laissait un trou : à 480 px la barre revenait aux libellés et le menu « Aa » sortait
+   de 55 px sur les trois surfaces, coupé comme avant. Deux largeurs canoniques (320 et
+   768) ne disaient rien de cette bande ; `tools/mesurer_reflow.py` en balaie désormais
+   cinq. Un seuil se choisit sur la largeur où le contenu tient, pas sur un nombre rond.
+
    Les libellés sont masqués à l'ŒIL SEULEMENT. `display: none` les retirerait de l'arbre
    d'accessibilité : le nom du lien tomberait à « ✏️ », que les lecteurs d'écran énoncent
    mal ou pas du tout — et le `title` ne rattraperait rien, `reflectAria` ne posant
    d'`aria-label` que sur un contenu SANS lettre. */
-@media (max-width: 400px) {
+@media (max-width: 559px) {
   .surf-label, .brand-long {
     position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
     overflow: hidden; clip-path: inset(50%); white-space: nowrap;
@@ -372,6 +378,14 @@ button { font-family: inherit; }
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px;
   padding: 10px 14px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px;
 }
+/* Le gabarit pose `hidden` et `loadSynthese()` ne le lève qu'une fois les données là —
+   mais `display: flex` l'écrasait, si bien que la carte s'affichait VIDE. Visible au
+   chargement (un cadre bordé qui apparaît puis se remplit) et PERMANENT quand
+   `/api/corpus` échoue : la fonction fait alors `return` sans rien écrire, et le cadre
+   vide de 22 px reste. Trouvé le 2026-09-04 en corrigeant l'extraction du balayage —
+   la première version ne captait que `$("#id").hidden` et ratait ce cas, masqué par
+   une variable. */
+.corpus-synthese[hidden] { display: none; }
 .synth-val { color: var(--accent-green); font-weight: 600; }
 .synth-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--bg-input); }
 .synth-bar .seg { display: block; height: 100%; }
@@ -1202,6 +1216,11 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    n'est pas un défilement pénible mais une perte. Le cadre est focusable et nommé : une
    zone défilante qu'on ne peut pas atteindre au clavier est une violation à part
    entière. Mesuré et posé le 2026-09-04 (UX-7). */
+/* Le `tabindex` est posé en dur plutôt que selon le débordement : sur grand écran il
+   ajoute UN arrêt de tabulation qui ne sert à rien (mesuré : 1 sur 54 à la Bibliothèque).
+   Le calculer en JS à chaque redimensionnement coûterait plus cher que l'arrêt qu'il
+   économise, et un cadre qui gagne son focus au moment où il déborde est un piège de
+   plus pour qui navigue au clavier. */
 .table-cadre { overflow-x: auto; }
 .table-cadre:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .corpus-table { width: 100%; border-collapse: collapse; font-size: 13px; }
