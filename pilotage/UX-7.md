@@ -6,7 +6,7 @@ audit: AUDIT.md
 
 # UX-7 — rendre les surfaces utilisables sous 1 000 px
 
-**Arrêté sur** — 2026-09-04, `f74a911` : la mesure est faite et elle a immédiatement
+**Arrêté sur** — 2026-09-04, `8483782` : la mesure est faite et elle a immédiatement
 déterré un BUG, sans rapport avec le responsive — l'Exploration perdait 1 285 px de
 contenu sur un écran de 1080, en usage ordinaire. Corrigé, gardé par deux tests, et une
 passe de QA écrite pour ce qu'ils n'expriment pas. **La passe jouée a rapporté deux
@@ -61,6 +61,31 @@ chaque élément à la largeur de la fenêtre.
 **La tablette n'a rien à réparer.** Aucune des quatre surfaces ne déborde à 768 px — ce qui
 retire du chantier la motivation d'usage la plus immédiate, et le réduit au téléphone.
 
+## Mesure rejouée après l'étape 1 — 2026-09-04
+
+```
+320 px   Visionneuse    → 4 élément(s) COUPÉ(s)
+           ✗ #site-nav, #header, #body, #statusbar : 751 px, INATTEIGNABLES
+         Recherche      → OK
+         Bibliothèque   → OK
+           · .corpus-table 693 px, défile dans .table-cadre — conforme 1.4.10
+         Exploration    → OK
+768 px   les quatre     → OK
+```
+
+**Les trois surfaces « documents » sont conformes ; il ne reste que la Visionneuse**, dont
+le sort est précisément la case non tranchée ci-dessous. L'étape 1 a donc fait ce qu'elle
+annonçait.
+
+**Mais la mesure ne pouvait pas le dire avant qu'on corrige l'outil.** `mesurer_reflow.py`
+comparait le rectangle de chaque élément à la fenêtre, et rapportait donc le tableau du
+corpus comme débordant de 393 px — alors qu'il défile désormais dans un cadre de 280 px
+qui, lui, tient dans l'écran. Un tableau encadré et un tableau clippé se ressemblent
+exactement quand on ne regarde que le rectangle ; or le 1.4.10 TOLÈRE le premier et
+interdit le second. L'outil remonte maintenant le cadre par son nom et distingue les deux
+états. Sans ce correctif, l'étape 1 aurait été déclarée insuffisante par son propre
+instrument.
+
 **Et ce qui dépasse n'est pas défilable : c'est COUPÉ.** `static/style.css:170` pose
 `html, body { overflow: hidden }` — nécessaire à la Visionneuse, qui est une coque pleine
 hauteur, mais qui transforme sur les trois autres surfaces un défaut d'ergonomie en perte
@@ -85,9 +110,9 @@ signalé, un silence pris pour un succès.
 
 ### Étape 1 — les trois surfaces « documents »
 - [x] **L'Exploration retrouve son contenu.** `#explo-app` n'avait ni hauteur ni cadre de défilement, là où les deux autres en ont un : sous `html, body { overflow: hidden }`, tout ce qui dépassait la fenêtre était CLIPPÉ. Ce n'était pas un défaut de responsive mais une perte de contenu en usage normal, et c'est la mesure d'UX-7 qui l'a trouvé
-- [ ] La barre de navigation du site passe à la ligne sous 400 px au lieu de sortir de l'écran (mesuré : `.surf-nav` fait 361 px, le menu « Aa » sort de 214 px)
-- [ ] Le tableau du corpus vit dans son propre cadre à défilement horizontal — ce que le 1.4.10 autorise pour du contenu à deux dimensions, et qui rend ses 393 px de droite atteignables au lieu de perdus
-- [ ] Après ces trois-là, la mesure est REJOUÉE (`python tools/mesurer_reflow.py`) et consignée ici : c'est elle qui doit dire si l'étape 1 suffit, pas l'impression qu'elle a suffi
+- [x] **La barre de navigation tombe aux ICÔNES SEULES sous 400 px** (et non à la ligne, comme cette case le disait d'abord : mesuré, l'enroulement coûtait 165 px de hauteur, un quart d'un écran de téléphone). Les libellés sont masqués à l'œil sans quitter l'arbre d'accessibilité, la marque s'abrège en « BDé ». Arbitré le 2026-09-04 entre trois formes toutes mesurées
+- [x] **Les deux tableaux du corpus vivent dans leur propre cadre** — celui des albums et celui des planches, qui vit dans `corpus.js` et se serait fait oublier. Le cadre est focusable et nommé (`role="region"` + `aria-label`) : une zone défilante qu'on ne peut pas atteindre au clavier est une violation à part entière, pas un détail. Course mesurée : 413 px et 489 px, toutes deux atteintes
+- [x] **La mesure est rejouée et consignée** (ci-dessous). Elle a d'abord obligé à corriger l'INSTRUMENT
 
 ### Décider avant de coder
 - [ ] Le sort d'`html, body { overflow: hidden }` est tranché : il sert la Visionneuse (coque pleine hauteur) et pénalise les trois autres surfaces, où il change un débordement en contenu perdu. Le lever surface par surface est probablement la moitié du chantier, à lui seul
