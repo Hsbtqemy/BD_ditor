@@ -1,16 +1,16 @@
 ---
 chantier: AUDIT-2
-statut: interrompu
+statut: clos
 audit: AUDIT.md
 ---
 
 # AUDIT-2 — les constats mineurs que la roadmap ne cite pas
 
-**Arrêté sur** — 2026-09-04, `3cecb9a` : les CINQ constats vérifiés sont corrigés, et
-C1 s'est révélé présent DEUX fois de plus dans l'Exploration, ce que l'audit ne disait
-pas. Les trois arbitrages sont tranchés — A4 et C5 écartés par écrit, T7 en faveur du
-responsive, désormais suivi par `UX-7`. **Il ne reste qu'un item, C2**, et seulement sa
-moitié cliente.
+**Arrêté sur** — 2026-09-04, `33e8987` : **la fiche est close**. Les six constats
+corrigibles le sont (C1, C2, F1, D1/D2, E3, G5), chacun avec son test et ses mutations ;
+les trois arbitrages sont tranchés — A4 et C5 écartés par écrit, T7 en faveur du
+responsive, dont le travail part dans `UX-7`. C1 s'est révélé présent DEUX fois de plus
+dans l'Exploration, ce que l'audit ne disait pas.
 
 **Point de départ** — trouvés le 2026-08-27 en montant le journal : les listes « restent
 ouverts » des passes 3, 4 et 5 d'`AUDIT.md` portent une dizaine de constats qu'aucun
@@ -21,7 +21,7 @@ dans le document d'audit.
 
 ### Recherche et Exploration
 - [x] C1 — **Corrigé le 2026-09-04.** La règle vit dans `static/lib/resultats.js`, module de logique pure : elle était fausse ET intestable, ce qui n'est pas une coïncidence. On DEMANDE `LIMITE + 1` et on n'AFFICHE que `LIMITE` — le surnuméraire ne se voit jamais, il sert de témoin « il y en a d'autres », moins cher qu'un `COUNT(*)` qui compterait tout le corpus pour n'en montrer qu'une page. Cinq tests Node, dont celui qui compte : à EXACTEMENT 200, rien n'est tronqué. *Constat d'origine, vérifié ouvert le 2026-09-03 :* La mention « (limité) » cesse d'être fausse : le seuil `200` est codé en dur deux fois (`static/recherche.js:144` pour `limit`, `:210` pour le test `res.count >= 200`) et `res.count` compte les résultats RENVOYÉS, pas le total — confirmé côté serveur, `routes/recherche.py:180` renvoie `"count": len(results)` —, donc l'étiquette ment à exactement 200 correspondances
-- [ ] C2 — l'ÉCRAN explique le zéro : une requête de ponctuation seule (`???`, `...`, `++`) affiche pourquoi elle ne peut rien trouver, au lieu de « 0 résultat » sec. **Requalifié le 2026-09-03** : le constat visait l'API, qui a été tranchée entre-temps — absorber une syntaxe FTS invalide en 200 + zéro résultat est un choix ÉCRIT et verrouillé par un test (`tests/test_api.py:281`, AUDIT-1/T4). Il ne reste donc que la moitié cliente, et c'est la seule qui manquait vraiment : le serveur ne ment pas, l'écran ne dit rien
+- [x] C2 — **Corrigé le 2026-09-04.** C'est le SERVEUR qui répond (`sans_terme` dans `GET /api/recherche`), parce que la règle appartient au tokenizer : la deviner côté client aurait reproduit ailleurs une règle qui vit ici — l'écart exact que le croisement évite avec `x_tronque`. L'approximation (`isalnum()` ≈ catégories L*/N* d'`unicode61`) est épinglée au VRAI moteur dans les deux sens. *Attendu :* l'ÉCRAN explique le zéro : une requête de ponctuation seule (`???`, `...`, `++`) affiche pourquoi elle ne peut rien trouver, au lieu de « 0 résultat » sec. **Requalifié le 2026-09-03** : le constat visait l'API, qui a été tranchée entre-temps — absorber une syntaxe FTS invalide en 200 + zéro résultat est un choix ÉCRIT et verrouillé par un test (`tests/test_api.py:281`, AUDIT-1/T4). Il ne reste donc que la moitié cliente, et c'est la seule qui manquait vraiment : le serveur ne ment pas, l'écran ne dit rien
 - [x] C5 — **ÉCARTÉ le 2026-09-04** : un `change` de `<select>` ne se déclenche qu'une fois par geste, jamais à chaque frappe. Débouncer n'économiserait presque aucune requête et ajouterait 300 ms de latence perçue à chaque choix — on paierait un délai pour ne rien gagner. Le constat raisonnait par symétrie avec la saisie, pas sur l'usage. *Constat, vérifié ouvert :* **Vérifié ouvert le 2026-09-03** et la valeur est douteuse : les quatre filtres sont bien en `onchange = search` sans debounce (`static/recherche.js:288`) là où la saisie a le sien à 300 ms (`:284`) — mais un `change` de `<select>` ne se déclenche qu'une fois par geste, et non à chaque frappe. Débouncer n'économiserait presque aucune requête. Le constat d'audit a raisonné par symétrie avec la saisie, pas sur l'usage
 
 ### Visionneuse et Bibliothèque
@@ -55,6 +55,13 @@ fois), F1 (aucun écouteur `storage`), E3 (`annee` sans borne), plus G5 (aucune 
 T7 (une seule media query). Les autres reprennent le constat d'audit sans nouvelle
 vérification — leurs cases sont donc écrites comme des attendus observables, pas comme
 des diagnostics à croire sur parole.
+
+**CE QUE LA FICHE AURA COÛTÉ, et rapporté.** Dix constats mineurs au départ, dont trois
+ne tenaient pas à la relecture. Six corrigés, trois classés, et deux défauts trouvés en
+corrigeant que personne n'avait vus : la sélection du nuage qui ne survit pas à une
+reconstruction (course latente au démarrage), et le rendu illisible de toute erreur de
+validation. Aucun n'était dans l'audit. **Le rendement d'une fiche de constats mineurs
+ne se lit pas dans sa liste** — il se lit dans ce que le fait d'y toucher déterre.
 
 **LE BALAYAGE DE FAMILLE, et c'est lui qui a le plus rapporté** (2026-09-04). Le constat
 C1 ne citait que la Recherche. Après l'avoir corrigé, chercher la même FORME ailleurs —
