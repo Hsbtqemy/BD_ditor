@@ -6,7 +6,7 @@ audit: AUDIT.md
 
 # UX-7 — rendre les surfaces utilisables sous 1 000 px
 
-**Arrêté sur** — 2026-09-04, `8483782` : la mesure est faite et elle a immédiatement
+**Arrêté sur** — 2026-09-04, `0faad20` : la mesure est faite et elle a immédiatement
 déterré un BUG, sans rapport avec le responsive — l'Exploration perdait 1 285 px de
 contenu sur un écran de 1080, en usage ordinaire. Corrigé, gardé par deux tests, et une
 passe de QA écrite pour ce qu'ils n'expriment pas. **La passe jouée a rapporté deux
@@ -75,7 +75,15 @@ retire du chantier la motivation d'usage la plus immédiate, et le réduit au t�
 
 **Les trois surfaces « documents » sont conformes ; il ne reste que la Visionneuse**, dont
 le sort est précisément la case non tranchée ci-dessous. L'étape 1 a donc fait ce qu'elle
-annonçait.
+annonçait — mais elle ne le faisait PAS quand elle a été déclarée faite, et c'est la passe
+de revue qui l'a établi.
+
+**Le seuil de la bande 1 valait 400 px, et il en fallait 560.** Entre les deux, la barre
+revenait aux libellés sans avoir la place : à 480 px le menu « Aa » sortait de 55 px sur
+les trois surfaces, coupé exactement comme avant le correctif. Les deux largeurs
+canoniques de l'outil — 320 et 768 — ne disaient rien de cette bande, par construction. Il
+en balaie cinq depuis, et le seuil se lit maintenant sur la largeur où le contenu tient,
+non sur un nombre rond.
 
 **Mais la mesure ne pouvait pas le dire avant qu'on corrige l'outil.** `mesurer_reflow.py`
 comparait le rectangle de chaque élément à la fenêtre, et rapportait donc le tableau du
@@ -118,6 +126,7 @@ signalé, un silence pris pour un succès.
 - [ ] Le sort d'`html, body { overflow: hidden }` est tranché : il sert la Visionneuse (coque pleine hauteur) et pénalise les trois autres surfaces, où il change un débordement en contenu perdu. Le lever surface par surface est probablement la moitié du chantier, à lui seul
 - [ ] Le sort de la **Visionneuse** est tranché par écrit : viser l'annotation tactile engage les cibles de 44 px (WCAG 2.5.5) et une gestuelle de zoom, c'est-à-dire un autre chantier ; se limiter à la CONSULTATION lisible sous 1 000 px est un travail sans commune mesure. Les deux sont défendables, mais pas au même prix
 - [ ] Le **tableau de croisement** a un comportement décidé pour les petites largeurs : il est intrinsèquement à deux dimensions, donc 1.4.10 admet le défilement — à condition qu'il soit CONTENU dans son conteneur et non subi par la page entière
+- [ ] Les deux tableaux des panneaux 🎯 Accord et 👥 Inter (`.accord-table`) n'ont PAS de cadre de défilement, et leur largeur n'a pas pu être mesurée : le corpus de démonstration n'a aucun token relu, donc la table ne se rend jamais. À vérifier sur un corpus qui en a — c'est le dernier tableau du dépôt dont on ignore le comportement sous 560 px
 - [ ] Le collage VERTICAL des en-têtes du croisement est tranché : le rendre effectif demande de donner à `.croise` une hauteur bornée et son propre `overflow-y`, donc un cadre de défilement IMBRIQUÉ dans celui de la page — deux barres verticales pour un même geste de molette, ce qui n'est pas gratuit. L'alternative est de l'assumer inerte et de retirer la règle, qui promet aujourd'hui ce qu'elle ne fait pas
 
 ### Vérifications
