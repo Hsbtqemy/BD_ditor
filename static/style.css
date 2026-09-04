@@ -933,6 +933,13 @@ h3.collapsible:hover { color: var(--text); }
   margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
 }
 .explo-top label { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; }
+/* … et le garde qui va avec : `inline-flex` l'emporterait sur la règle UA
+   `[hidden] { display: none }`, si bien que « Distribuer par », « Lemme / mot » et
+   « Affichage » restaient à l'écran dans les vues qui ne les emploient pas. Le dépôt
+   connaît ce piège et le garde par DIX règles (cf. `.display-panel`, `.comparaison`) ;
+   ces trois-là avaient été oubliés. Trouvé le 2026-09-04 en balayant la famille, après
+   qu'une passe de QA en eut signalé un QUATRIÈME (`.dist`, plus bas). */
+.explo-top label[hidden] { display: none; }
 .explo-top .nav-spacer { flex: 1; }      /* pousse le bouton Lexique à droite */
 
 /* Filtres : cartes (une en simple, deux en comparaison) */
@@ -968,6 +975,11 @@ h3.collapsible:hover { color: var(--text); }
 
 /* Barres de distribution (pilules) */
 .dist { display: flex; flex-direction: column; gap: 4px; }
+/* Sans ce garde, `display: flex` écrase `[hidden]` : la distribution restait affichée
+   SOUS le tableau de croisement après une bascule de vue. Invisible jusqu'ici parce que
+   `overflow: hidden` clippait ce qui dépassait ; le cadre de défilement de l'Exploration
+   l'a rendu atteignable, et une QA l'a vu le jour même. */
+.dist[hidden] { display: none; }
 .dist-row {
   display: grid; grid-template-columns: minmax(96px, 240px) 1fr auto; gap: 14px;
   align-items: center; padding: 5px 8px; border-radius: 7px;
