@@ -6,12 +6,13 @@ audit: AUDIT.md
 
 # UX-7 — rendre les surfaces utilisables sous 1 000 px
 
-**Arrêté sur** — 2026-09-04, `0faad20` : la mesure est faite et elle a immédiatement
-déterré un BUG, sans rapport avec le responsive — l'Exploration perdait 1 285 px de
-contenu sur un écran de 1080, en usage ordinaire. Corrigé, gardé par deux tests, et une
-passe de QA écrite pour ce qu'ils n'expriment pas. **La passe jouée a rapporté deux
-défauts de plus, et s'est démentie elle-même sur un troisième point** (ci-dessous).
-Le chantier responsive lui-même n'a pas commencé.
+**Arrêté sur** — 2026-09-05, `12f4ef5` : le chantier responsive est FAIT, et il ne
+reste que le test qui l'empêchera de repartir. La Visionneuse escamote ses 540 px de
+chrome en tiroirs sous des seuils mesurés ; les quatre arbitrages qui restaient ouverts
+sont tranchés, et trois l'ont été PAR la mesure plutôt qu'avant elle. Les sept largeurs
+du balayage sont vertes sur les quatre surfaces. Ce qui manque est la case la plus
+importante de la fiche : un test E2E qui garde tout cela, faute de quoi on aura réparé
+ce qu'axe ne regarde toujours pas.
 
 ## Ce que la passe de QA a rapporté, une fois jouée
 
@@ -40,11 +41,14 @@ L'état des lieux déplace le chantier : **la tablette va déjà bien**, c'est l
 qui perd du contenu. La décision sur la Visionneuse est reportée APRÈS l'étape 1 (choix
 du 2026-09-04), avec le coût réel des tiroirs sous les yeux.
 
-Ce que le CSS dit aujourd'hui : `static/style.css` porte **une seule** media query de
-largeur (`max-width: 720px`), et elle fait exactement une chose — empiler la vue de
-comparaison de l'Exploration. Face à quoi les quatre gabarits promettent tous
+Ce que le CSS disait AVANT le chantier (état du 2026-09-04, conservé pour la mesure de
+l'écart) : `static/style.css` portait **une seule** media query de largeur
+(`max-width: 720px`), et elle faisait exactement une chose — empiler la vue de comparaison
+de l'Exploration. Face à quoi les quatre gabarits promettaient tous
 `<meta name="viewport" content="width=device-width, initial-scale=1">`, et la feuille
-compte **neuf** largeurs figées à 100 px ou plus.
+comptait neuf largeurs figées à 100 px ou plus — dix en réalité, le compte était court
+d'une (cf. l'étape 2). Elle porte aujourd'hui sept blocs de largeur, sur cinq seuils
+(1079 · 899 · 720 · 659 · 559).
 
 ## Mesures du 2026-09-04
 
@@ -121,6 +125,73 @@ l'audite avec axe — or **axe ne teste pas ce critère**, qui n'est pas automat
 suite est donc verte sans rien dire à ce sujet, et c'est le pire des cas : pas un échec
 signalé, un silence pris pour un succès.
 
+## Étape 2 — la Visionneuse, et quatre arbitrages tranchés PAR la mesure — 2026-09-05
+
+Les tiroirs sont posés (`9c8934f`), les arbitrages restants tranchés (`12f4ef5`). Ce qui
+mérite d'être retenu n'est pas le CSS mais la façon dont chaque décision a changé de
+réponse une fois mesurée.
+
+**Les seuils appartiennent au CSS SEUL.** Le JS ne connaît aucun nombre : il pose deux
+classes sur `#body`, déplace le focus dans le tiroir ouvert et le rend d'où il vient. Ce
+qui décide qu'un tiroir EXISTE est la media query. Un seuil recopié des deux côtés se
+serait désaccordé au premier ajustement, en silence. Même règle pour le voile : sa
+visibilité est une CONSÉQUENCE des classes, jamais une commande — écrit d'abord dans les
+deux langages, il aurait couvert l'application entière après un redimensionnement fait
+tiroir ouvert.
+
+Quatre seuils, chacun sur la largeur où son contenu cesse de tenir : **1079** pour l'arbre
+de structure, **899** pour le panneau latéral, **659** pour la barre d'état (mesuré :
+651 px de contenu — l'imitation du seuil voisin aurait dit 559) et **559** pour l'en-tête,
+qui passe alors à la ligne.
+
+**Le mode Transcription s'est cassé sur ce commit même**, et il a fallu OUVRIR le mode
+pour le voir : les sept mesures de reflow n'y entrent jamais. `#transcription` porte
+`grid-row: 3` ; l'auto-placement d'une grille SAUTE une cellule occupée par un élément
+placé explicitement, si bien que `#body` tombait en rangée 4, haut de 26 px, la barre
+d'état hors écran. Deux éléments qui partagent une cellule doivent l'un et l'autre la
+nommer.
+
+### Trois largeurs figées n'avaient jamais été mesurées, et pour la même raison
+
+Le balayage des quatre surfaces mesure l'état **AU REPOS** : pas de toast affiché, pas de
+résultat de recherche, aucun token relu. Ce que la page ne rend pas, l'instrument ne le
+voit pas — et c'est exactement là que vivaient les trois valeurs restantes.
+
+- **`.accord-table`** (🎯 Accord, 👥 Inter) ne déborde qu'à 320 px, de 38 px. Elle avait
+  un cadre de défilement **par ACCIDENT** : `overflow-y: auto` sur `.modal-box` force
+  `overflow-x` à `auto`, donc la modale entière défilait de travers, titre et bouton
+  Fermer compris. Elle a désormais le sien, atteignable au clavier.
+- **Le toast** tient tout seul : son `right: 16px` le borne à 304 px dans une fenêtre de
+  320, sans que sa `max-width: 320px` ait à intervenir. Rien à corriger.
+- **`.r-thumb`** laissait 116 px au texte à 320 px — une douzaine de caractères par ligne.
+  `clamp(72px, 22vw, 130px)` en rend 174, et ne change rien au-dessus de 591 px de fenêtre.
+
+Les autres sont soit des PLAFONDS qui ne forcent jamais rien (`max-width` de `.toast`,
+`#search-body`, `#explo-body`), soit des planchers tous sous 320 px et ancrés à droite
+(`.display-panel` 210, deux menus à 120, `.explo-controls input` 110) — mesurés, aucun ne
+déborde. Restent `--sidebar-w` (240) et `--panel-w` (300), désormais escamotés.
+
+### L'objection au collage vertical ne tenait pas
+
+`.croise-table thead th { top: 0 }` promettait des en-têtes collants sans en donner aucun.
+L'arbitrage écrit dans cette fiche opposait une barre de défilement IMBRIQUÉE dans celle
+de la page — deux cibles de molette pour un seul geste. **Mesurée, elle tombe** : sur
+60 lignes, borner le cadre à 70vh fait passer le défilement restant de la page de
+**1 018 px à 83 px**. La barre imbriquée ne s'AJOUTE pas à celle de la page, elle la
+REMPLACE ; et sous 70vh, le cas ordinaire, elle n'apparaît pas du tout. Peser deux
+inconvénients de tête donnait la mauvaise réponse.
+
+### Et l'instrument, deux fois
+
+Son exemption « hors champ » excusait tout élément entièrement sorti de la fenêtre — donc
+aussi un panneau qu'aucun geste ne ramène, c'est-à-dire la violation même qu'il cherche.
+Elle exige désormais qu'un contrôle le référence par `aria-controls`.
+
+Puis une sonde écrite pour la dernière case a rapporté un défaut qui n'existait pas : le
+lien d'évitement semblait prendre le focus HORS de l'écran, sur les quatre surfaces.
+`.skip-link` a `transition: top .15s`, et la mesure était prise pendant la transition.
+Vérifié après : il arrive à `[8, 0, 121, 34]`, dans la fenêtre et au premier plan.
+
 ## Reste
 
 ### Étape 1 — les trois surfaces « documents »
@@ -132,17 +203,17 @@ signalé, un silence pris pour un succès.
 ### Décider avant de coder
 - [x] **`html, body { overflow: hidden }` est GARDÉ**, et la case était mal posée : elle prétendait que la règle ne sert que la Visionneuse. Les QUATRE surfaces sont des coques pleine hauteur — `#corpus-app`, `#search-app` et `#explo-app` sont en `height: 100%` avec leur propre `overflow-y: auto`, exactement comme `#app`. Et l'étape 1 a rendu trois d'entre elles conformes à 320 px SANS toucher à cette règle : ce qui les a réparées, c'est d'avoir encadré le contenu large. La lever referait du code qui marche et changerait le modèle de mise en page de la Visionneuse par-dessus le marché
 - [x] **Le sort de la Visionneuse est tranché : ANNOTATION TACTILE**, décidé le 2026-09-05. Elle n'est donc pas une surface de consultation qu'on rendrait lisible faute de mieux — c'est l'écran de travail, et il doit rester un écran de travail au doigt. Le tactile proprement dit (cibles de 44 px, gestuelle de zoom) part dans **UX-8** ; ce qui reste ici est son premier étage, les tiroirs, parce qu'ils relèvent du 1.4.10 et qu'ils servent les deux largeurs
-- [ ] **Le panneau latéral et la boîte d'outils deviennent des tiroirs** sous un seuil mesuré : `#body` est une grille `240px | 1fr | 300px`, donc **540 px de chrome fixe** avant que le canevas reçoive un pixel. Escamotés, le canevas prend toute la largeur ; leur bascule est atteignable au clavier et rend le focus d'où il vient
-- [ ] Le seuil se lit sur la largeur où le CANEVAS devient inutilisable, pas sur un nombre rond — comme celui de la bande 1, qui valait 400 px et en demandait 560
-- [ ] Le **tableau de croisement** a un comportement décidé pour les petites largeurs : il est intrinsèquement à deux dimensions, donc 1.4.10 admet le défilement — à condition qu'il soit CONTENU dans son conteneur et non subi par la page entière
-- [ ] Les deux tableaux des panneaux 🎯 Accord et 👥 Inter (`.accord-table`) n'ont PAS de cadre de défilement, et leur largeur n'a pas pu être mesurée : le corpus de démonstration n'a aucun token relu, donc la table ne se rend jamais. À vérifier sur un corpus qui en a — c'est le dernier tableau du dépôt dont on ignore le comportement sous 560 px
-- [ ] Le collage VERTICAL des en-têtes du croisement est tranché : le rendre effectif demande de donner à `.croise` une hauteur bornée et son propre `overflow-y`, donc un cadre de défilement IMBRIQUÉ dans celui de la page — deux barres verticales pour un même geste de molette, ce qui n'est pas gratuit. L'alternative est de l'assumer inerte et de retirer la règle, qui promet aujourd'hui ce qu'elle ne fait pas
+- [x] **Le panneau latéral et la boîte d'outils deviennent des tiroirs** sous un seuil mesuré : `#body` est une grille `240px | 1fr | 300px`, donc **540 px de chrome fixe** avant que le canevas reçoive un pixel. Escamotés, le canevas prend toute la largeur ; leur bascule est atteignable au clavier et rend le focus d'où il vient. `9c8934f` — et la coque grossissait à `min-content` (665 px à 320) tant que la colonne implicite de `#app` valait `auto`
+- [x] Le seuil se lit sur la largeur où le CANEVAS devient inutilisable, pas sur un nombre rond — comme celui de la bande 1, qui valait 400 px et en demandait 560. Quatre seuils, chacun sur la largeur où son contenu cesse de tenir : 1079 · 899 · 659 (mesuré : 651 px de contenu) · 559
+- [x] Le **tableau de croisement** a un comportement décidé pour les petites largeurs : il est intrinsèquement à deux dimensions, donc 1.4.10 admet le défilement — à condition qu'il soit CONTENU dans son conteneur et non subi par la page entière. Il l'était déjà (`overflow-x: auto`), mais son cadre n'était **atteignable qu'à la souris** : il lui manquait `tabindex`, son rôle et son nom, que l'étape 1 avait posés sur `.table-cadre` sans balayer la famille
+- [x] Les deux tableaux des panneaux 🎯 Accord et 👥 Inter (`.accord-table`) sont mesurés : ils ne débordent **qu'à 320 px, de 38 px**. Le corpus de démonstration n'ayant aucun token relu, la mesure porte sur le balisage EXACT du rendeur injecté dans la vraie modale — la question était géométrique, pas documentaire. Ils avaient un cadre par ACCIDENT (`overflow-y: auto` force `overflow-x` à `auto`), qui faisait défiler la modale entière, titre et bouton Fermer compris ; ils ont le leur, atteignable au clavier
+- [x] Le collage VERTICAL des en-têtes du croisement est tranché — **en le rendant effectif**, et l'objection ne tenait pas : sur 60 lignes, borner `.croise` à 70vh fait passer le défilement restant de la page de **1 018 px à 83 px**. La barre imbriquée REMPLACE celle de la page au lieu de s'y ajouter, et sous 70vh elle n'apparaît pas. L'en-tête tient sa place (y=301 avant et après défilement) là où il sortait à y=-599
 
 ### Vérifications
-- [ ] À **320 px**, chacune des quatre surfaces s'utilise sans défilement HORIZONTAL de la page (le défilement vertical est permis, et le contenu 2D peut défiler dans son propre cadre)
-- [ ] À **768 px** (tablette), la Recherche et l'Exploration sont pleinement utilisables : filtres atteignables sans zoom, résultats lisibles, aucun tableau qui déborde de la page
-- [ ] Les neuf largeurs figées ≥ 100 px de `static/style.css` sont revues une à une : converties en unités relatives, ou justifiées en commentaire
-- [ ] La barre de navigation transverse et le lien d'évitement, injectés par `theme.js` sur les quatre pages, restent atteignables et ne masquent rien sous 400 px
+- [x] À **320 px**, chacune des quatre surfaces s'utilise sans défilement HORIZONTAL de la page (le défilement vertical est permis, et le contenu 2D peut défiler dans son propre cadre). Balayage du 2026-09-05 : 7 largeurs × 4 surfaces = 28 OK
+- [x] À **768 px** (tablette), la Recherche et l'Exploration sont pleinement utilisables : filtres atteignables sans zoom, résultats lisibles, aucun tableau qui déborde de la page. Et la Visionneuse y gagne le canevas entier, les deux tiroirs étant fermés sous 899 px
+- [x] Les largeurs figées ≥ 100 px de `static/style.css` sont revues une à une (dix, pas neuf — le compte de cette fiche était court d'une). Trois PLAFONDS qui ne forcent jamais rien ; quatre planchers tous sous 320 px et ancrés à droite, mesurés ; `--sidebar-w`/`--panel-w` désormais escamotés ; `.r-thumb` converti en `clamp(72px, 22vw, 130px)`, seul cas où la valeur coûtait quelque chose
+- [x] La barre de navigation transverse et le lien d'évitement, injectés par `theme.js` sur les quatre pages, restent atteignables et ne masquent rien sous 400 px. Mesuré par `elementFromPoint` — « tient dans la fenêtre » ne dit rien d'un RECOUVREMENT : le lien arrive à `[8, 0, 121, 34]` et la barre à `[56, 1, 40, 30]`, au premier plan, aux quatre surfaces, à 320 comme à 400
 
 ### Ne pas répéter le silence d'axe
 - [ ] Un test E2E compare, à 320 px et 768 px, le RECTANGLE DE CHAQUE ÉLÉMENT à la largeur de la fenêtre — et surtout **pas** `documentElement.scrollWidth`, qui est la garde que cette fiche spécifiait au départ et qui aurait été VACANTE : `overflow: hidden` sur `html, body` rend `scrollWidth` égal à `clientWidth` alors même que 431 px de contenu sont hors champ. Mesuré le 2026-09-04 : les quatre surfaces passaient ce test-là au vert dans l'état actuel
