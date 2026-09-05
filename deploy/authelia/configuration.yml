@@ -18,7 +18,10 @@ totp:
 
 identity_validation:
   reset_password:
-    jwt_lifespan: '5 minutes'
+    # 5 minutes suffisaient quand le lien s'allait lire dans un fichier sur le serveur.
+    # Par courriel, le délai de remise s'ajoute à celui de la personne qui relève sa
+    # boîte : un lien expiré ressemble alors à une panne, et l'on recommence en boucle.
+    jwt_lifespan: '15 minutes'
     # jwt_secret -> AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET
 
 # --- Comptes : fichier local (suffisant pour une petite équipe) ---
@@ -68,9 +71,34 @@ storage:
   local:
     path: '/config/db.sqlite3'
 
-# --- Notifications (liens d'enregistrement 2FA / reset) ---
-# 'filesystem' = écrit dans un fichier (simple pour démarrer, aucun compte mail
-# requis). Pour de l'envoi d'e-mails réels, remplace ce bloc par un notifier SMTP.
+# --- Notifications (liens d'enregistrement 2FA / réinitialisation de mot de passe) ---
+#
+# DEUX modes, et c'est `.env` qui tranche : `SMTP_ADRESSE` renseignée → courriel réel ;
+# vide → écriture dans un fichier. Le second est le mode de démarrage — aucun compte mail
+# requis — et il reste le REPLI : vider `SMTP_ADRESSE` puis redémarrer ramène l'instance à
+# un état qui a toujours fonctionné, sans éditer ce fichier ni annuler un commit.
+#
+# Ce repli n'est pas une précaution de principe. Authelia CONTRÔLE le serveur SMTP à son
+# démarrage : une adresse fausse, un port fermé, un mot de passe refusé, et le conteneur
+# ne démarre pas — donc plus personne n'entre, toute la pile passant par lui. La panne
+# arrive à un moment où l'on croit ne toucher qu'aux notifications.
+#
+# TOUJOURS valider avant de redémarrer, le filtre `template` étant appliqué :
+#   docker compose exec authelia authelia validate-config --config /config/configuration.yml
 notifier:
+{{- if env "SMTP_ADRESSE" }}
+  smtp:
+    # Forme URI : 'submissions://hote:465' (TLS implicite) ou 'submission://hote:587'
+    # (STARTTLS). Préférer 465 quand le fournisseur l'offre : le chiffrement n'y dépend
+    # pas d'une négociation qu'un intermédiaire peut faire échouer.
+    address: '{{ env "SMTP_ADRESSE" }}'
+    username: '{{ env "SMTP_UTILISATEUR" }}'
+    # password -> AUTHELIA_NOTIFIER_SMTP_PASSWORD (jamais ici, jamais dans git)
+    # Expéditeur au format RFC 5322. Garder le nom affiché en ASCII : certains relais
+    # rejettent un en-tête accentué non encodé, et l'échec ressemble à un problème
+    # d'authentification.
+    sender: '{{ env "SMTP_EXPEDITEUR" }}'
+{{- else }}
   filesystem:
     filename: '/config/notification.txt'
+{{- end }}

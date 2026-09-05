@@ -159,11 +159,58 @@ automatiquement dès que le DNS pointe bien sur le VPS.
    ```bash
    docker compose exec authelia cat /config/notification.txt
    ```
+   Le fichier contient DEUX liens : celui qui enregistre et celui qui révoque la
+   demande. Prendre celui qui porte `/one-time-password/register`, et le plus RÉCENT :
+   le fichier s'accumule, et le jeton expire en quelques minutes.
+   ```bash
+   docker compose exec -T authelia cat /config/notification.txt \
+     | grep -o 'https://[^[:space:]]*' | grep -v revoke | tail -3
+   ```
    Ouvre le lien, scanne le QR code avec une app TOTP (Aegis, Google
    Authenticator…). Ensuite la connexion demandera le code à 6 chiffres.
 
-> Pour de vrais e-mails (liens reçus par mail au lieu d'un fichier), remplace le
-> bloc `notifier:` de `configuration.yml` par un notifier **SMTP**.
+### Passer aux vrais courriels
+
+Le notifier « filesystem » ne tient que le temps d'un seul compte. Pour chaque personne
+qui arrive, il faut ouvrir une session SSH, extraire le bon lien, et le transmettre avant
+qu'il n'expire — en présence de l'intéressé. Ce n'est pas délégable. Un notifier SMTP rend
+l'enrôlement, la réinitialisation de mot de passe et le remplacement d'un appareil TOTP
+perdu **autonomes** : ils cessent de passer par l'administrateur.
+
+**La bascule se fait depuis `.env` seul** : `SMTP_ADRESSE` renseignée bascule Authelia sur
+le courriel, vide le laisse sur le fichier. Le fichier de configuration ne change pas, donc
+le retour en arrière non plus.
+
+```bash
+# dans deploy/, sur le serveur
+sed -i "s|^SMTP_ADRESSE=.*|SMTP_ADRESSE=submissions://smtp.exemple.fr:465|" .env
+sed -i "s|^SMTP_UTILISATEUR=.*|SMTP_UTILISATEUR=no-reply@exemple.fr|" .env
+sed -i "s|^SMTP_EXPEDITEUR=.*|SMTP_EXPEDITEUR=BeDediteur <no-reply@exemple.fr>|" .env
+sed -i "s|^SMTP_MOT_DE_PASSE=.*|SMTP_MOT_DE_PASSE=…|" .env   # jamais affiché à l'écran
+```
+
+**Valider AVANT de redémarrer** — cette étape n'est pas facultative :
+
+```bash
+docker compose exec authelia authelia validate-config --config /config/configuration.yml
+docker compose restart authelia && docker compose logs -f authelia
+```
+
+Authelia **contrôle le serveur SMTP à son démarrage**. Adresse fausse, port fermé ou mot
+de passe refusé : le conteneur ne démarre pas, et **plus personne n'entre**, toute la pile
+passant par lui. La panne survient au moment précis où l'on croit ne toucher qu'aux
+notifications. Le repli tient en deux commandes — vider `SMTP_ADRESSE`, redémarrer — et
+ramène une configuration qui a toujours fonctionné.
+
+Trois refus fréquents, tous silencieux côté expéditeur : un relais qui n'accepte pas
+d'expédier au nom d'un domaine qui n'est pas le sien (l'adresse de `SMTP_EXPEDITEUR` doit
+appartenir au compte utilisé) ; un nom affiché ACCENTUÉ, que certains relais rejettent
+sans le dire ; et le port 25 sortant, bloqué par la quasi-totalité des hébergeurs — d'où
+465 ou 587.
+
+Enfin, chaque compte de `users_database.yml` doit porter une **adresse réelle** : le
+gabarit en pose une d'exemple, et un notifier SMTP expédierait dans le vide sans que rien
+ne le signale.
 
 ## 6. Déconnexion
 

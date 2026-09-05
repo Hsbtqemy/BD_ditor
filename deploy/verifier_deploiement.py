@@ -281,6 +281,31 @@ def controle_config(chemin_env):
             print("       (.env.example pointe une IP de DOCUMENTATION, qui n'héberge rien)")
             pbs.append("valeurs d'exemple")
 
+    # Le SMTP est TOUT-OU-RIEN, et c'est ce qui le distingue du référent : là-bas, vide
+    # est un état légitime qu'il aurait été du bruit de signaler ; ici, une adresse posée
+    # sans expéditeur ni mot de passe empêche Authelia de DÉMARRER — il contrôle le
+    # serveur au boot — et plus personne n'entre, toute la pile passant par lui. Le
+    # contrôle ne lit que la PRÉSENCE du mot de passe, jamais sa valeur.
+    if vals.get("SMTP_ADRESSE"):
+        creux = [c for c in ("SMTP_UTILISATEUR", "SMTP_EXPEDITEUR", "SMTP_MOT_DE_PASSE")
+                 if not vals.get(c)]
+        if creux:
+            print(f"    !! SMTP_ADRESSE est posée mais {', '.join(creux)} manque :")
+            print("       Authelia REFUSERA de démarrer, donc plus aucune connexion.")
+            print("       Vider SMTP_ADRESSE ramène le notifier fichier, qui marche.")
+            pbs.append("SMTP incomplet")
+        elif not vals["SMTP_ADRESSE"].startswith(
+                ("smtp://", "submission://", "submissions://")):
+            print(f"    !! SMTP_ADRESSE={vals['SMTP_ADRESSE']} n'a pas de schéma :")
+            print("       « submissions://hote:465 » (TLS implicite, à préférer) ou")
+            print("       « submission://hote:587 » (STARTTLS). Un hôte nu est refusé.")
+            pbs.append("SMTP_ADRESSE sans schéma")
+        else:
+            print(f"    ok {'SMTP':14} {vals['SMTP_ADRESSE']} — les 4 valeurs sont là")
+    else:
+        print(f"    ·· {'SMTP':14} non configuré : les liens 2FA et les")
+        print("       réinitialisations s'écrivent dans /config/notification.txt")
+
     comptes = ici / "authelia" / "users_database.yml"
     if not comptes.exists():
         print("    !! authelia/users_database.yml absent — le copier depuis le gabarit")
