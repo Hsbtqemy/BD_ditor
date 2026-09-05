@@ -116,7 +116,8 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 | ~~**D2**~~ | ✅ **Fait 2026-07-16** — B5 : `_migrate` **gate par `user_version`** (refus de rétrograder + court-circuit si à jour + convention `if version < N`) ; test dédié. Assaini avant A1 | S | — |
 | ~~sûreté serveur~~ | ✅ **Fait 2026-07-18** : ~~B7~~ (injection formule CSV — les 2 exports app, `_csv_safe`) · ~~B8~~ (`/api/sauvegarde` → 409/503 au lieu de 500) · ~~B9/B10~~ (titre d'album vide refusé ; numéro d'import déjà borné) | mineurs | — |
 | ~~robustesse Visionneuse~~ | ✅ **Fait 2026-07-19** : ~~F5~~ (deep-link introuvable → toast) · ~~F6~~ (arbre non re-déplié à la navigation) · ~~F7~~ (note non contaminée sur échec de chargement) · ~~F8~~ (indicateur non bloqué) | mineurs (F5 Majeur) | — |
-| — | B6 (transitions de statut + régression `annotee`→`segmentee`) · T2/T4 (tests faibles) · S1/S5/S6/O1 (latents segmentation) · A11Y-2 (reliquat `px`→`rem`) · UX-3/UX-4 | mineurs | quick wins, à la demande |
+| ~~**A11Y-2**~~ | ✅ **Fait 2026-09-06** — le reliquat `px`→`rem` s'est révélé nécessaire mais pas suffisant : `html` portait `font: 13px/1.4`, donc `1rem` valait 13 px FIGÉS et les 46 rem déjà écrits ne suivaient rien. Racine en pourcentage, 381 déclarations converties, 242 laissées physiques, 7 seuils en `em`. Fidélité prouvée par 2865 rectangles comparés ; garde neuve `tests/test_e2e_police.py` (préférence de police via CCP), que rien ne mesurait. Cf. `pilotage/A11Y-2.md` | S | le zoom navigateur agrandit les `px` : ce que ça change, c'est le lecteur qui règle sa police par défaut |
+| — | B6 (transitions de statut + régression `annotee`→`segmentee`) · T2/T4 (tests faibles) · S1/S5/S6/O1 (latents segmentation) · UX-3/UX-4 | mineurs | quick wins, à la demande |
 
 ---
 
