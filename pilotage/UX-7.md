@@ -1,18 +1,20 @@
 ---
 chantier: UX-7
-statut: interrompu
+statut: clos
 audit: AUDIT.md
 ---
 
 # UX-7 — rendre les surfaces utilisables sous 1 000 px
 
-**Arrêté sur** — 2026-09-05, `12f4ef5` : le chantier responsive est FAIT, et il ne
-reste que le test qui l'empêchera de repartir. La Visionneuse escamote ses 540 px de
-chrome en tiroirs sous des seuils mesurés ; les quatre arbitrages qui restaient ouverts
-sont tranchés, et trois l'ont été PAR la mesure plutôt qu'avant elle. Les sept largeurs
-du balayage sont vertes sur les quatre surfaces. Ce qui manque est la case la plus
-importante de la fiche : un test E2E qui garde tout cela, faute de quoi on aura réparé
-ce qu'axe ne regarde toujours pas.
+**Arrêté sur** — 2026-09-05, `b01903b` : le chantier est FAIT, sa garde écrite, et son
+`Reste` entièrement coché. La Visionneuse escamote ses 540 px de chrome en tiroirs sous
+des seuils mesurés ; les cinq arbitrages qui restaient ouverts sont tranchés, et trois
+l'ont été PAR la mesure plutôt qu'avant elle. Sept largeurs vertes sur les quatre
+surfaces, 138 tests E2E dont 20 neufs, et le silence d'axe sur le 1.4.10 est comblé par
+un test qui DÉMONTRE pourquoi la garde naïve aurait été vacante.
+
+`clos` et non `livré` : rien n'est poussé. Le journal démentirait la fiche tant que le
+dernier commit ne vit sur aucune ref d'intégration, et c'est le push qui trancherait.
 
 ## Ce que la passe de QA a rapporté, une fois jouée
 
@@ -192,6 +194,52 @@ lien d'évitement semblait prendre le focus HORS de l'écran, sur les quatre sur
 `.skip-link` a `transition: top .15s`, et la mesure était prise pendant la transition.
 Vérifié après : il arrive à `[8, 0, 121, 34]`, dans la fenêtre et au premier plan.
 
+### Le test a trouvé un cinquième angle mort à sa première course
+
+`tools/mesurer_reflow.py` charge les quatre surfaces SANS paramètres : pas de planche
+ouverte, donc un canevas minuscule. `tests/test_e2e_reflow.py` monte un décor et vise des
+URL peuplées — et `#canvas` y fait **800 px pour 768 de fenêtre**, aux deux largeurs.
+
+Ce n'est pas une violation : le 1.4.10 exempte explicitement le contenu qui exige une
+disposition à deux dimensions, et un scan de planche est l'image même qu'on est venu
+regarder. Mais l'exemption devait être ÉCRITE, pas déduite par une règle générale : « une
+surface de pan » excuserait n'importe quel conteneur en `overflow: hidden`, c'est-à-dire
+les quatre coques de l'application. Elle est donc nommée, sur le modèle de
+`HORS_PERIMETRE` et de `BLOCAGES_ADMIS`, et un test la fait MÉRITER — `#stage` doit
+continuer de clipper, tenir dans la fenêtre, et les quatre commandes de zoom doivent
+exister — « Ajuster » en tête, la seule qui garantisse que la planche entière rentre, sans quoi l'atteignabilité reposerait sur un glisser de souris que le 2.1.1
+n'accepte pas.
+
+C'est le cinquième défaut trouvé par un instrument plutôt que par une relecture, sur ce
+seul chantier — et le quatrième que la mesure au repos ne pouvait pas voir.
+
+### Les tiroirs étaient modaux au doigt et pas au clavier
+
+Le voile bloque le clic sur le reste de l'application : l'écran se LIT donc comme modal.
+Mesuré le 2026-09-05 sur la Visionneuse à 320 px, tiroir de navigation ouvert, le focus en
+sort au **quatrième Tab**, et **19 arrêts sur 25** tombent hors du tiroir et hors de sa
+bascule — dont plusieurs SOUS LE VOILE, c'est-à-dire sur des commandes qu'aucun doigt ne
+peut atteindre. Deux publics recevaient deux applications différentes, et c'est la forme
+même que ce dépôt documente depuis des mois : deux vérités qui ne se parlent pas.
+
+Le piège à focus est UNE règle et non deux. `inert` sur le reste de l'écran serait plus
+complet — il couvrirait aussi le mode navigation d'un lecteur d'écran — mais il ne peut pas
+s'appliquer à `#toolbar`, qui porte les DEUX bascules servant à refermer, au milieu des
+commandes de zoom qu'il faudrait au contraire rendre inertes : il faudrait exempter au cas
+par cas à l'intérieur d'un même conteneur, soit deux mécanismes pour une seule intention. La limite est
+donc écrite plutôt que masquée : le parcours par tabulation est enfermé, le mode « browse »
+d'un lecteur d'écran ne l'est pas, et Échap reste la sortie universelle.
+
+Le correctif s'est trompé deux fois avant de tenir, et les deux erreurs sont la même :
+raisonner sur une structure au lieu de l'ouvrir. N'intercepter que les BORDS du cycle ne
+suffisait pas — la liste met la bascule en tête, par où l'on entre, alors que le gabarit
+la place APRÈS le tiroir, dans `#toolbar` ; le focus filait donc d'un cran vers `#zoom-out`
+à chaque passage, 11 arrêts sur 25 restant dehors. Et le test censé garder le bouclage a
+demandé TROIS formulations avant d'échouer quand il le devait : les deux premières
+passaient le piège désarmé, la seconde parce que `#btn-tiroir-nav` suit immédiatement
+`</aside>` — pour ce tiroir-là, les deux sens sont nativement corrects. C'est le tiroir de
+PANNEAU qui distingue, et le test est paramétré sur les deux depuis.
+
 ## Reste
 
 ### Étape 1 — les trois surfaces « documents »
@@ -203,6 +251,7 @@ Vérifié après : il arrive à `[8, 0, 121, 34]`, dans la fenêtre et au premie
 ### Décider avant de coder
 - [x] **`html, body { overflow: hidden }` est GARDÉ**, et la case était mal posée : elle prétendait que la règle ne sert que la Visionneuse. Les QUATRE surfaces sont des coques pleine hauteur — `#corpus-app`, `#search-app` et `#explo-app` sont en `height: 100%` avec leur propre `overflow-y: auto`, exactement comme `#app`. Et l'étape 1 a rendu trois d'entre elles conformes à 320 px SANS toucher à cette règle : ce qui les a réparées, c'est d'avoir encadré le contenu large. La lever referait du code qui marche et changerait le modèle de mise en page de la Visionneuse par-dessus le marché
 - [x] **Le sort de la Visionneuse est tranché : ANNOTATION TACTILE**, décidé le 2026-09-05. Elle n'est donc pas une surface de consultation qu'on rendrait lisible faute de mieux — c'est l'écran de travail, et il doit rester un écran de travail au doigt. Le tactile proprement dit (cibles de 44 px, gestuelle de zoom) part dans **UX-8** ; ce qui reste ici est son premier étage, les tiroirs, parce qu'ils relèvent du 1.4.10 et qu'ils servent les deux largeurs
+- [x] **Le focus ne s'échappe pas d'un tiroir ouvert** : la tabulation tourne entre la bascule et le contenu du tiroir, dans les deux sens, tant qu'il est ouvert — mesuré à 320 px sur la Visionneuse, où le focus sortait au 4ᵉ Tab et visitait 19 cibles sur 25 hors du tiroir. 0 sortie sur 25 depuis, dans les deux sens et sur les deux tiroirs ; gardé par `tests/test_e2e_tiroirs.py`, dont cinq tests tombent quand on désarme le piège
 - [x] **Le panneau latéral et la boîte d'outils deviennent des tiroirs** sous un seuil mesuré : `#body` est une grille `240px | 1fr | 300px`, donc **540 px de chrome fixe** avant que le canevas reçoive un pixel. Escamotés, le canevas prend toute la largeur ; leur bascule est atteignable au clavier et rend le focus d'où il vient. `9c8934f` — et la coque grossissait à `min-content` (665 px à 320) tant que la colonne implicite de `#app` valait `auto`
 - [x] Le seuil se lit sur la largeur où le CANEVAS devient inutilisable, pas sur un nombre rond — comme celui de la bande 1, qui valait 400 px et en demandait 560. Quatre seuils, chacun sur la largeur où son contenu cesse de tenir : 1079 · 899 · 659 (mesuré : 651 px de contenu) · 559
 - [x] Le **tableau de croisement** a un comportement décidé pour les petites largeurs : il est intrinsèquement à deux dimensions, donc 1.4.10 admet le défilement — à condition qu'il soit CONTENU dans son conteneur et non subi par la page entière. Il l'était déjà (`overflow-x: auto`), mais son cadre n'était **atteignable qu'à la souris** : il lui manquait `tabindex`, son rôle et son nom, que l'étape 1 avait posés sur `.table-cadre` sans balayer la famille
@@ -216,9 +265,9 @@ Vérifié après : il arrive à `[8, 0, 121, 34]`, dans la fenêtre et au premie
 - [x] La barre de navigation transverse et le lien d'évitement, injectés par `theme.js` sur les quatre pages, restent atteignables et ne masquent rien sous 400 px. Mesuré par `elementFromPoint` — « tient dans la fenêtre » ne dit rien d'un RECOUVREMENT : le lien arrive à `[8, 0, 121, 34]` et la barre à `[56, 1, 40, 30]`, au premier plan, aux quatre surfaces, à 320 comme à 400
 
 ### Ne pas répéter le silence d'axe
-- [ ] Un test E2E compare, à 320 px et 768 px, le RECTANGLE DE CHAQUE ÉLÉMENT à la largeur de la fenêtre — et surtout **pas** `documentElement.scrollWidth`, qui est la garde que cette fiche spécifiait au départ et qui aurait été VACANTE : `overflow: hidden` sur `html, body` rend `scrollWidth` égal à `clientWidth` alors même que 431 px de contenu sont hors champ. Mesuré le 2026-09-04 : les quatre surfaces passaient ce test-là au vert dans l'état actuel
-- [ ] Le test distingue le contenu ATTEIGNABLE du contenu perdu : un cadre qui défile en interne est conforme au 1.4.10, un contenu clippé ne l'est pas — c'est exactement la différence que `scrollWidth` efface
-- [ ] L'audit axe reste sans violation sérieuse ou critique après la refonte, sur les quatre surfaces et les deux thèmes
+- [x] Un test E2E compare, à 320 px et 768 px, le RECTANGLE DE CHAQUE ÉLÉMENT à la largeur de la fenêtre — et surtout **pas** `documentElement.scrollWidth`, qui est la garde que cette fiche spécifiait au départ et qui aurait été VACANTE : `overflow: hidden` sur `html, body` rend `scrollWidth` égal à `clientWidth` alors même que 431 px de contenu sont hors champ. Mesuré le 2026-09-04 : les quatre surfaces passaient ce test-là au vert dans l'état actuel. `tests/test_e2e_reflow.py`, 12 tests. La démonstration est DANS le fichier (`test_la_garde_sur_scrollwidth_serait_vacante`) : un bloc de 900 px planté dans une fenêtre de 320 laisse `scrollWidth == clientWidth` pendant que la sonde le signale — la docstring cesse d'être une croyance
+- [x] Le test distingue le contenu ATTEIGNABLE du contenu perdu : un cadre qui défile en interne est conforme au 1.4.10, un contenu clippé ne l'est pas — c'est exactement la différence que `scrollWidth` efface. Trois états, pas deux : encadré (un ancêtre défile et tient dans l'écran), escamoté (hors champ ET référencé par un `aria-controls`, donc un tiroir fermé), perdu. Les deux exemptions ont chacune leur contrôle, dont le NÉGATIF — le même panneau privé de sa bascule doit être signalé
+- [x] L'audit axe reste sans violation sérieuse ou critique après la refonte, sur les quatre surfaces et les deux thèmes. Suite E2E entière : **138 tests verts**, dont les 20 d'UX-7. **Une limite à ne pas gommer** : axe s'exécute à la largeur PAR DÉFAUT, pas à 320 px. Il prouve donc l'absence de RÉGRESSION, pas la conformité du repli lui-même — le faire tourner aux petites largeurs est un gain réel, versé à UX-8 plutôt que réputé acquis ici
 
 ## Contexte
 
