@@ -1,6 +1,6 @@
 ---
 chantier: UX-7
-statut: clos
+statut: livré
 audit: AUDIT.md
 ---
 
@@ -13,8 +13,9 @@ l'ont été PAR la mesure plutôt qu'avant elle. Sept largeurs vertes sur les qu
 surfaces, 138 tests E2E dont 20 neufs, et le silence d'axe sur le 1.4.10 est comblé par
 un test qui DÉMONTRE pourquoi la garde naïve aurait été vacante.
 
-`clos` et non `livré` : rien n'est poussé. Le journal démentirait la fiche tant que le
-dernier commit ne vit sur aucune ref d'intégration, et c'est le push qui trancherait.
+`livré` depuis le push du 2026-09-05 : `06bb07f` vit sur `origin/dev`, donc le journal ne
+dément plus. La branche `arch-2-cliquets-aveugles`, entièrement fusionnée, a été supprimée
+dans le même geste — les deux sessions parallèles du jour n'en laissent aucune trace.
 
 ## Ce que la passe de QA a rapporté, une fois jouée
 
