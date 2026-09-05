@@ -5,6 +5,21 @@ statut: à venir
 
 # QA-6 — un cliquet ÉCHOUE quand le modèle NLP manque, là où le dépôt promet un skip
 
+**Le décor de reproduction est TRIVIAL — 2026-09-05, mesuré.** La fiche laissait croire
+qu'il fallait un environnement à part, « spaCy installé et le modèle absent ». Ce n'est
+pas nécessaire : `nlp_available()` teste `find_spec(BD_SPACY_MODEL)`, et cette variable
+est lue à l'import. Un nom de modèle inexistant suffit, dans le venv ordinaire :
+
+```
+BD_SPACY_MODEL=modele_absent pytest tests/test_sorties_identite.py
+→ 1 échec (test_les_declarations_ne_mentent_pas), 7 verts
+```
+
+C'est exactement le symptôme décrit ci-dessous. La seule contrainte est que la variable
+soit posée AVANT le démarrage du processus — `_MODEL` est capturé à l'import du module,
+donc un `monkeypatch` en cours de course n'aurait aucun effet, et l'aurait fait passer
+pour irreproductible.
+
 **Point de départ** — 2026-09-05, trouvé en vérifiant ARCH-2 dans un venv jetable monté
 pour éprouver l'autre forme d'`app.routes`. Aucun code écrit. Le défaut n'a rien à voir
 avec ce que ce venv devait mesurer : il est apparu parce que ce venv n'avait pas le modèle
