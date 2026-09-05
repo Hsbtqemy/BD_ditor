@@ -82,6 +82,19 @@ SONDE_INTERNE = (
 CODES_DE_REFUS = {401, 403}
 CODES_DE_REDIRECTION = {301, 302, 303, 307, 308}
 
+# Des services de DNS-joker : n'importe qui obtient un sous-domaine de ceux-là, donc un
+# cookie posé DESSUS part à toutes leurs instances. On les nomme au lieu de prétendre les
+# deviner — la première version comptait les points, exigeant trois labels, ce qui
+# acceptait `sslip.io` (deux labels + rien) tout en refusant `edito-revue.fr`, c'est-à-dire
+# le bon parent d'un vrai domaine. L'heuristique était calibrée sur un cas particulier.
+#
+# Cette liste est forcément incomplète, et c'est assumé : distinguer un domaine partagé
+# d'un domaine à soi demande la Public Suffix List, que ces services ne rejoignent
+# justement pas. Ce qu'on sait, on le refuse ; le reste passe.
+SERVICES_PARTAGES = {
+    "sslip.io", "nip.io", "xip.io", "traefik.me", "localtest.me", "lvh.me",
+}
+
 
 def ouvrir(url, verifier_tls, sans_proxy):
     """Une requête anonyme qui NE SUIT PAS les redirections.
@@ -215,11 +228,16 @@ def controle_config(chemin_env):
     if app == portail:
         print("    !! l'app et le portail portent le même nom")
         pbs.append("noms identiques")
-    if parent.count(".") < 2:
-        print(f"    !! COOKIE_DOMAINE={parent} est un domaine de TROP HAUT NIVEAU :")
-        print("       le cookie de session partirait vers tout ce domaine, pas vers")
-        print("       cette seule instance.")
+    if parent.count(".") < 1:
+        print(f"    !! COOKIE_DOMAINE={parent} n'est pas un domaine enregistrable :")
+        print("       un TLD nu ne peut pas porter de cookie.")
         pbs.append("COOKIE_DOMAINE trop haut")
+    elif parent.lower() in SERVICES_PARTAGES:
+        print(f"    !! COOKIE_DOMAINE={parent} est un domaine PARTAGÉ : n'importe qui")
+        print("       peut y obtenir un sous-domaine, donc votre cookie de session")
+        print(f"       partirait à toutes les instances de {parent}. Descendez d'un cran")
+        print(f"       — par exemple <votre-ip-en-tirets>.{parent}.")
+        pbs.append("COOKIE_DOMAINE partagé")
     else:
         print(f"    ok {'COOKIE_DOMAINE':14} {parent} (parent immédiat des deux)")
 
