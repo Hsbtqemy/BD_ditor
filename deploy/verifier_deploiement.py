@@ -66,6 +66,21 @@ CHEMINS_PROTEGES = [
     ("/docs", "la documentation OpenAPI"),
 ]
 
+# Les moteurs, et le nom qu'ils portent DANS CHAQUE RAPPORT — ce ne sont pas les mêmes.
+# `sante.rapide()` annonce `lemmes` ; `sante._CONTROLES` contrôle `nlp`. La même chose,
+# deux noms, dans deux moitiés de la même réponse. Ce script l'a appris en déclarant à
+# tort le NLP cassé sur une instance où il fonctionnait parfaitement (2026-09-05) : il
+# cherchait `profond["lemmes"]`, absent, et lisait cette absence comme une panne.
+#
+# On mappe plutôt que de renommer côté application : `lemmes` est le contrat historique
+# de `/api/sante`, et le changer casserait tout ce qui l'appelle.
+#
+# `static/lib/sante.js` fait EXACTEMENT ce mapping depuis SANTE-1, `{cle: "nlp", rapide:
+# "lemmes"}`, avec le commentaire qui l'explique — et une garde de plus, sur « une réponse
+# sans verdict ». Le piège était donc connu et déjà fermé dans le dépôt ; ce script l'a
+# rouvert en ne lisant pas ce module avant d'interroger la même route.
+MOTEURS = [("kumiko", "kumiko"), ("bulles", "bulles"), ("ocr", "ocr"), ("lemmes", "nlp")]
+
 # Le contrôle interne, exécuté DANS le conteneur : il n'a pas de session à présenter, et
 # l'app n'est pas exposée hors du réseau Docker. On passe donc par `compose exec`.
 SONDE_INTERNE = (
@@ -168,14 +183,21 @@ def controle_interne(service):
 
     profond = rep.get("profond") or {}
     manques = []
-    for moteur in ("kumiko", "bulles", "ocr", "lemmes"):
+    for moteur, cle_profonde in MOTEURS:
         present = rep.get(moteur)
-        detail = profond.get(moteur) or {}
+        detail = profond.get(cle_profonde) or {}
         ok = detail.get("ok")
         if ok:
             print(f"    ok {moteur:8} présent et importé")
+        elif cle_profonde not in profond:
+            # Ni « absent » ni « cassé » : le rapport ne contient rien à ce nom. Le taire
+            # ferait passer une lacune de CE script pour une panne de l'instance — c'est
+            # ce qui est arrivé le 2026-09-05 avec `lemmes`.
+            print(f"    ?? {moteur:8} rapide={present}, mais le rapport profond n'a pas "
+                  f"de clé « {cle_profonde} » — les noms ont divergé, relire `sante.py`")
+            manques.append(f"{moteur} (clé introuvable)")
         else:
-            raison = detail.get("erreur") or "aucun rapport profond"
+            raison = detail.get("erreur") or "sans raison rapportée"
             print(f"    !! {moteur:8} rapide={present} mais profond={ok} — {raison}")
             manques.append(moteur)
     return manques
