@@ -39,8 +39,14 @@ services:
       # VIDE — donc par la personne que le bandeau envoie « demander un accès » sans lui
       # dire à qui. Il est déclaratif : l'app ne connaît les groupes que de la personne qui
       # frappe, elle ne peut donc pas vérifier que ce nom appartient encore à l'équipe.
-      # - BD_REFERENT_NOM=Ana Ruiz
-      # - BD_REFERENT_CONTACT=ana@labo.fr        # courriel, ou URL d'une page d'instance
+      # CONTACT accepte un courriel ou l'URL d'une page d'instance.
+      #
+      # Il passe par `.env` comme les domaines, et pour la même raison : décommenter une
+      # ligne ICI ferait diverger un fichier versionné, donc un conflit à chaque `git pull`
+      # sur le serveur. `:-` fournit la chaîne vide plutôt que de laisser Compose avertir
+      # à chaque commande, et `config.py` lit cette chaîne vide comme « pas de référent ».
+      - BD_REFERENT_NOM=${BD_REFERENT_NOM:-}
+      - BD_REFERENT_CONTACT=${BD_REFERENT_CONTACT:-}
       # - BD_SPACY_MODEL=fr_core_news_sm   # modèle NLP (lg = index plus riche, + de RAM)
       # - BD_NLP_PREWARM=1                  # charge spaCy au démarrage (évite le gel de
       #                                     #  la 1re écriture) ; à éviter en consultation pure

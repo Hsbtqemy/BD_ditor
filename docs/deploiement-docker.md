@@ -115,6 +115,12 @@ qu'un hash de mot de passe parte dans un dépôt public.
    ce filtre, Authelia prend l'expression pour un nom de domaine littéral : il démarre
    normalement, et la session ne se pose jamais.
 
+   Deux valeurs facultatives closent le même fichier : `BD_REFERENT_NOM` et
+   `BD_REFERENT_CONTACT` (AUTH-4). Elles ne servent qu'à une portée VIDE, et elles sont
+   le seul destinataire qu'elle puisse lire — quelqu'un qui n'accède à aucune collection
+   ne voit aucun nom en base. Les laisser vides est juste tant qu'on est seul ; dès le
+   deuxième compte, le bandeau envoie demander un accès sans dire à qui. Cf. §7.
+
 2. **Mot de passe du 1er compte** — le gabarit se COPIE avant d'être rempli :
    ```bash
    cp authelia/users_database.example.yml authelia/users_database.yml
