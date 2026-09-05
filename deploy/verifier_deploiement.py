@@ -291,8 +291,10 @@ def controle_config(chemin_env):
                  if not vals.get(c)]
         if creux:
             print(f"    !! SMTP_ADRESSE est posée mais {', '.join(creux)} manque :")
-            print("       Authelia REFUSERA de démarrer, donc plus aucune connexion.")
-            print("       Vider SMTP_ADRESSE ramène le notifier fichier, qui marche.")
+            print("       sans SMTP_EXPEDITEUR la configuration est INVALIDE et")
+            print("       Authelia refuse de démarrer ; sans identifiants il démarre")
+            print("       et n'envoie rien, EN SILENCE — le contrôle au démarrage est")
+            print("       désactivé. Vider SMTP_ADRESSE ramène le notifier fichier.")
             pbs.append("SMTP incomplet")
         elif not vals["SMTP_ADRESSE"].startswith(
                 ("smtp://", "submission://", "submissions://")):

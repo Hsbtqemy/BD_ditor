@@ -196,11 +196,17 @@ docker compose exec authelia authelia validate-config --config /config/configura
 docker compose restart authelia && docker compose logs -f authelia
 ```
 
-Authelia **contrôle le serveur SMTP à son démarrage**. Adresse fausse, port fermé ou mot
-de passe refusé : le conteneur ne démarre pas, et **plus personne n'entre**, toute la pile
-passant par lui. La panne survient au moment précis où l'on croit ne toucher qu'aux
-notifications. Le repli tient en deux commandes — vider `SMTP_ADRESSE`, redémarrer — et
-ramène une configuration qui a toujours fonctionné.
+Authelia se connecte au serveur SMTP à son démarrage et refuse de démarrer si l'échange
+échoue. **Ce contrôle est désactivé** (`disable_startup_check`), délibérément : il vérifie
+la connexion, jamais la remise — un envoi d'essai prouve strictement plus — et il ferait
+dépendre l'accès de TOUT LE MONDE d'un serveur de courriel. Une notification cassée ne doit
+pas fermer l'atelier.
+
+Ce qu'on accepte en échange : un SMTP cassé devient **silencieux**. Rien ne part, rien ne
+le dit, et le notifier fichier n'est plus là pour servir de recours. Le diagnostic est
+`docker compose logs authelia`, qui journalise chaque échec d'envoi. Le repli tient en deux
+commandes — vider `SMTP_ADRESSE`, redémarrer — et ramène une configuration qui a toujours
+fonctionné.
 
 Trois refus fréquents, tous silencieux côté expéditeur : un relais qui n'accepte pas
 d'expédier au nom d'un domaine qui n'est pas le sien (l'adresse de `SMTP_EXPEDITEUR` doit

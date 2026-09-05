@@ -78,14 +78,29 @@ storage:
 # requis — et il reste le REPLI : vider `SMTP_ADRESSE` puis redémarrer ramène l'instance à
 # un état qui a toujours fonctionné, sans éditer ce fichier ni annuler un commit.
 #
-# Ce repli n'est pas une précaution de principe. Authelia CONTRÔLE le serveur SMTP à son
-# démarrage : une adresse fausse, un port fermé, un mot de passe refusé, et le conteneur
-# ne démarre pas — donc plus personne n'entre, toute la pile passant par lui. La panne
-# arrive à un moment où l'on croit ne toucher qu'aux notifications.
-#
 # TOUJOURS valider avant de redémarrer, le filtre `template` étant appliqué :
 #   docker compose exec authelia authelia validate-config --config /config/configuration.yml
 notifier:
+  # Par défaut, Authelia se CONNECTE au serveur SMTP à son démarrage et refuse de démarrer
+  # si l'échange échoue. On le désactive, et c'est un arbitrage, pas une commodité.
+  #
+  # Ce contrôle vérifie la connexion et l'authentification — jamais la remise. Or un envoi
+  # d'essai, qui est de toute façon la seule preuve acceptable, prouve strictement plus. Il
+  # n'apporte donc aucune information qu'on n'ait pas autrement, et il fabrique en échange
+  # une dépendance ABSURDE : plus personne n'entre dans l'atelier parce qu'un serveur de
+  # courriel ne répond pas.
+  #
+  # Le cas n'est pas théorique ici. La boîte d'expédition est PARTAGÉE avec un autre site
+  # du même serveur (créer une adresse dédiée est payant chez l'hébergeur). Le jour où son
+  # mot de passe change pour une raison étrangère à ce projet, rien ne casse — puis un
+  # redémarrage quelconque, des mois plus tard, fermerait tout, pour une cause invisible et
+  # située ailleurs.
+  #
+  # Ce qu'on perd, et qui doit être connu : un SMTP cassé devient SILENCIEUX. Aucun
+  # courriel ne part, aucun message ne le dit, et le notifier fichier n'est plus là pour
+  # servir de recours. Le diagnostic est `docker compose logs authelia`, qui journalise
+  # chaque échec d'envoi — et le repli reste de vider `SMTP_ADRESSE`.
+  disable_startup_check: true
 {{- if env "SMTP_ADRESSE" }}
   smtp:
     # Forme URI : 'submissions://hote:465' (TLS implicite) ou 'submission://hote:587'
