@@ -1,14 +1,15 @@
 ---
 chantier: INFRA-1
-statut: interrompu
+statut: livré
 ---
 
 # INFRA-1 — déploiement Docker réel sur le VPS
 
-**Arrêté sur** — 2026-09-05, `0dcd4eb` : l'instance TOURNE, en HTTPS, sur
+**Arrêté sur** — 2026-09-05, `64b063f` : l'instance SERT, en HTTPS, sur
 `https://bd.edito-revue.fr` — derrière le nginx qui servait déjà un autre site. Dix
-chemins anonymes refusés, quatre moteurs importés pour de bon. Restent la déconnexion
-depuis l'UI et la restauration d'une sauvegarde, toutes deux hors de portée d'un script.
+chemins anonymes refusés, quatre moteurs importés pour de bon, un compte connecté en 2FA,
+une sauvegarde reprise sur une machine de dev. Le chantier se ferme sur ce qu'il a trouvé
+en se fermant : le référent d'AUTH-4 ne s'activait qu'en éditant un fichier versionné.
 
 ## Ce que la préparation du 2026-09-05 a trouvé
 
@@ -62,8 +63,10 @@ partagée avec tous ses utilisateurs.
 - [x] **La pile monte réellement sur le VPS** — mais pas dans l'architecture prévue : la machine hébergeait déjà `edito-revue.fr` derrière nginx, qui occupait 80 et 443. Caddy tournait, ses mappings déclarés mais jamais obtenus, et les requêtes tombaient sur nginx répondant 400 à un nom inconnu. Résolu par une VARIANTE versionnée (`docker-compose.derriere-proxy.yml` + `Caddyfile.derriere-proxy`) : Caddy passe sur `127.0.0.1:8080` sans TLS, nginx termine le TLS et proxifie. Le cas nominal du dépôt reste Caddy en frontal
 - [x] **Le NLP est disponible en production**, vérifié par la voie PROFONDE et non par la voie rapide : `profond.nlp = {ok: true}`, donc spaCy et `fr_core_news_sm` ont réellement suivi. Les quatre moteurs répondent (`kumiko`, `bulles`, `ocr`, `nlp`)
 - [x] **Une requête non authentifiée est refusée avant d'atteindre l'application** : dix chemins testés en anonyme, tous en 401 — `/api/sauvegarde` et `/static/style.css` compris, les deux que le `forward_auth` doit couvrir et qu'une garde posée au mauvais endroit laisserait passer sans rien signaler
-- [ ] La déconnexion fonctionne de bout en bout depuis l'UI, pas seulement via la route `/api/moi`
-- [ ] Une sauvegarde prise sur le VPS se restaure sur une machine de dev
+- [x] La déconnexion fonctionne de bout en bout depuis l'UI, pas seulement via la route `/api/moi` : clic sur la pastille 👤 → portail, retour sur l'application → **mot de passe ET code TOTP redemandés**. C'est ce troisième temps qui mesure, et lui seul : une page « vous êtes déconnecté » laissant la session vivante dans Redis donne exactement la même impression au premier coup d'œil, et laisse rentrer sans rien saisir
+- [x] Une sauvegarde prise sur le VPS se restaure sur une machine de dev : album témoin créé en ligne, `/api/sauvegarde` téléchargée — réservée aux administrateurs depuis DROIT-1 —, dézippée, servie par `BD_DB_PATH` sur le port 8001, l'album y est. Elle ne porte QUE la base : un corpus complet aux images absentes est le comportement attendu, pas un échec
+- [x] **L'identité a fait le trajet, pas seulement la donnée** : la base restaurée porte `chercheur / Chercheur / …@example.fr` dans `utilisateur` (v22) — écrit côté serveur depuis les en-têtes par le MÊME `_auteur(request)` qui alimente `_capter_agent`. C'est ce qui exclut la panne d'attribution du 2026-09-02, qui ne se voit nulle part ailleurs
+- [x] Le référent d'AUTH-4 s'active sans toucher un fichier versionné : `BD_REFERENT_NOM`/`_CONTACT` passent par `.env` comme les trois domaines, et `docker compose config` sur le VPS les rend en chaînes vides, sans avertissement de variable absente
 
 ## Le déploiement réel — 2026-09-05
 
@@ -85,6 +88,35 @@ mapping, commenté, depuis SANTE-1.
 **Trois faux positifs du contrôle, tous corrigés le jour même** : une instance ÉTEINTE
 déclarée « protégée » (les 502 lus comme des refus), un `.env` valide rejeté pour cause de
 guillemets, et le domaine de production refusé par une garde calibrée sur `<ip>.sslip.io`.
+
+## La fermeture — 2026-09-05
+
+Les deux dernières cases étaient hors de portée d'un script, et c'est en les fermant à la
+main que le chantier a trouvé son dernier défaut.
+
+**Le journal A3 était VIDE dans la base restaurée, et ce n'était PAS la panne** — c'était
+un test mal choisi. `create_album` ne journalise pas : le journal couvre les actes
+d'annotation, les passes ML, les accès de collection et ShareDocs. Le témoin utilisable
+était ailleurs, dans `utilisateur`, écrit à chaque `/api/moi` depuis les en-têtes par le
+même `_auteur(request)` que la dépendance de capture. Noté ici parce que le prochain qui
+voudra vérifier l'attribution après une restauration fera exactement le même détour.
+
+**Le référent d'AUTH-4 restait derrière un fichier versionné.** `GET /api/moi` répondait
+`referent: null` sur l'instance réelle. Les deux variables existaient bien dans `deploy/`,
+mais EN COMMENTAIRE dans `docker-compose.yml` : les activer aurait fait diverger un fichier
+suivi par git — le conflit de `git pull` que cette fiche venait de fermer le matin même
+pour les trois domaines. Le défaut n'était donc pas l'oubli d'une variable, c'était une
+décision appliquée à moitié.
+
+**Et le contrôle n'a délibérément PAS été élargi.** Faire signaler un référent vide par
+`verifier_deploiement.py --config` le ferait sonner à chaque premier déploiement, au moment
+précis où la valeur vide est la bonne réponse. Un avertissement qu'on a toujours raison
+d'ignorer n'apprend plus rien — et il use la confiance accordée à tous les autres.
+
+**Un reste sans conséquence aujourd'hui** : `users_database.yml` porte encore l'adresse du
+gabarit, `chercheur@example.fr`. Le notifier écrit dans un fichier, aucun courriel ne part.
+Elle devra être réelle le jour d'une bascule sur SMTP : réinitialisation de mot de passe et
+récupération de 2FA en dépendent, et c'est le seul recours quand l'appareil TOTP est perdu.
 
 ## Contexte
 
