@@ -43,8 +43,9 @@ l'éprouver pour de bon.
 
 ## La bascule réelle — 2026-09-05
 
-Cinq pannes en une soirée. Aucune n'était celle qu'on croyait, et **la première a rendu
-toutes les autres illisibles**.
+Six pannes en une soirée. Aucune n'était celle qu'on croyait, et **la première a rendu
+toutes les autres illisibles**. Le repli percé n'en est pas une septième : c'est une
+conséquence de la deuxième, et c'est précisément ce qui le rendait inutilisable.
 
 **Le code n'était jamais arrivé sur la machine.** `deploy/authelia/` appartenait à `root`,
 si bien que `git pull` ne pouvait pas remplacer `configuration.yml` : il mettait à jour
