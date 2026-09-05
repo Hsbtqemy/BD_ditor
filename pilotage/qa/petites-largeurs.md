@@ -75,14 +75,15 @@ mesurée ; reste à savoir si son absence se paie.
 
 - [ ] Le **fil d'Ariane** est masqué sous 659 px. Il servait aussi à DÉSÉLECTIONNER : vérifier qu'on sort d'une sélection sans lui, au doigt, sans clavier — la racine de l'arbre de structure est la voie prévue
 - [ ] La **légende de la barre d'état** est masquée sous 659 px : vérifier qu'on distingue toujours une case d'une bulle d'un personnage à leurs seules couleurs de contour
-- [ ] Les **libellés des modes** tombent sous 899 px, ne laissant que les lettres N/E/A/T : vérifier qu'on sait dans quel mode on est sans avoir à essayer, et qu'on retrouve celui qu'on veut
+- [ ] Les **libellés des modes** tombent sous 899 px : il reste une pastille de couleur et une lettre (N/E/A/T), le libellé restant dans l'arbre d'accessibilité. Vérifier qu'on sait dans quel mode on est sans avoir à essayer, et qu'on retrouve celui qu'on veut — la pastille et la lettre ne disent pas la même chose, et laquelle porte l'information est justement la question
 
 ### Les cadres de défilement se laissent trouver
 
-Quatre zones défilent maintenant dans leur propre cadre. Les tests prouvent qu'on PEUT y
-accéder ; ils ne disent rien de savoir qu'on le peut.
+Cinq zones défilent maintenant dans leur propre cadre — les deux tableaux de la
+Bibliothèque, le croisement, et les tableaux des panneaux Accord et Inter. Les tests
+prouvent qu'on PEUT y accéder ; ils ne disent rien de savoir qu'on le peut.
 
-- [ ] Le tableau du corpus (Bibliothèque) : on comprend qu'il se prolonge à droite sans avoir à le deviner en tâtonnant
+- [ ] Les deux tableaux de la Bibliothèque — celui des albums et celui des planches d'un album : on comprend qu'ils se prolongent à droite sans avoir à le deviner en tâtonnant, et les DEUX sont éprouvés (celui des planches vit dans `corpus.js` et se fait oublier)
 - [ ] Le **tableau de croisement** défile maintenant dans un cadre borné à 70vh : sur un croisement d'au moins 40 lignes, les en-têtes de colonnes restent visibles pendant le défilement, et la molette ne donne pas l'impression de se battre entre deux barres
 - [ ] Sur ce même croisement, atteindre la dernière colonne ET la dernière ligne se fait sans jamais perdre de vue à quelle ligne on est — le collage des deux axes tient ensemble
 - [ ] Le tableau des panneaux 🎯 Accord et 👥 Inter déborde de 38 px à 320 px : vérifier sur un corpus AYANT des tokens relus que ce débordement se voit et se franchit, et qu'il ne fait pas défiler le titre de la modale avec lui
@@ -91,7 +92,7 @@ accéder ; ils ne disent rien de savoir qu'on le peut.
 
 - [ ] La vignette d'un résultat de recherche tombe à 72 px sur un téléphone : vérifier qu'elle sert encore à reconnaître une planche, ou qu'elle est devenue une décoration qu'il vaudrait mieux masquer
 - [ ] À 320 px, un résultat de recherche laisse 174 px au texte : lire trois résultats de suite et dire si l'extrait reste exploitable ou s'il faut ouvrir la planche à chaque fois
-- [ ] La barre d'état passe à deux lignes sous 659 px : vérifier qu'elle ne mange pas une part inacceptable de la hauteur sur un téléphone en paysage
+- [ ] La barre d'état s'enroule sous 659 px (`flex-wrap: wrap`, hauteur `auto`) : compter les lignes qu'elle prend réellement à 320 px et en paysage, et dire si la hauteur qu'elle mange reste acceptable — le nombre de lignes n'a jamais été mesuré, seulement la largeur de son contenu (651 px)
 
 ### Ce qu'axe ne regarde pas
 
