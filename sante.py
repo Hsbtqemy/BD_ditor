@@ -36,9 +36,11 @@ Un contrat d'IMAGE est donc distinct d'un contrat de test.
 Cette phrase a cessé d'être vraie sans que personne ne le voie, et c'est QA-6 : sans le
 modèle spaCy, le cliquet des sorties d'identité ÉCHOUAIT — sa correction sentinelle
 n'avait plus de token auto à rejoindre — et deux tests d'ici même importaient `cv2` sans
-garde, donc tombaient sur une installation noyau. Trois configurations remesurées le
-2026-09-05 (avec modèle, spaCy sans modèle, noyau seul) : 0 échec dans chacune. La
-dégradation propre n'est pas une propriété acquise, c'est une propriété qui se REMESURE.
+garde, donc tombaient sur une installation noyau. Quatre configurations remesurées le
+2026-09-05 — avec modèle, spaCy sans modèle, noyau seul, noyau seul SANS `openpyxl` :
+0 échec dans chacune. La dégradation propre n'est pas une propriété acquise, c'est une
+propriété qui se REMESURE — et ce qui n'a pas été mesuré ici, c'est le marqueur `e2e`,
+exclu par défaut de la suite.
 """
 from __future__ import annotations
 

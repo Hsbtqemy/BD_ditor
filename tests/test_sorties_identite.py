@@ -118,7 +118,7 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
                      (SENTINELLES["login"], pl["id"]))
         # Le token AUTO sous la correction, POSÉ SI PERSONNE NE L'A POSÉ. `tokens_effectifs`
         # part `FROM tokens` (database.py) : une correction sans ligne de base à rejoindre
-        # n'existe pour AUCUNE surface d'analyse. spaCy la pose quand le modèle est là ;
+        # n'existe pour AUCUNE surface d'analyse. spaCy le pose quand le modèle est là ;
         # sans modèle `tokens` reste vide, et le cliquet concluait que la déclaration de
         # `/api/regions/{id}/tokens` mentait — un rouge qui fait chercher une régression
         # là où il n'y a qu'un moteur absent (QA-6, 2026-09-05).
@@ -127,6 +127,11 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
         # (region_id, ordre), un doublon ne lèverait donc RIEN et se paierait ailleurs —
         # l'accord modèle↔humain, la concordance et le « % relu » d'ANN-4 compteraient
         # deux tokens là où le corpus en a un. Cf. `test_le_semis_ne_double_pas_le_token`.
+        #
+        # Six autres fichiers de tests sèment `tokens` par SQL direct, et SANS condition :
+        # leurs régions n'ont pas de texte OCR posé par l'API, donc rien ne déclenche
+        # spaCy chez eux. Ce semis-ci passe par `PUT /api/regions/{id}`, et c'est la
+        # seule raison pour laquelle il a besoin de la garde.
         conn.execute(
             "INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
             "SELECT ?, 0, 'OTAGE', 'otage', 'NOUN', '' "
