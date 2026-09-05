@@ -119,7 +119,8 @@ qu'un hash de mot de passe parte dans un dépôt public.
    `BD_REFERENT_CONTACT` (AUTH-4). Elles ne servent qu'à une portée VIDE, et elles sont
    le seul destinataire qu'elle puisse lire — quelqu'un qui n'accède à aucune collection
    ne voit aucun nom en base. Les laisser vides est juste tant qu'on est seul ; dès le
-   deuxième compte, le bandeau envoie demander un accès sans dire à qui. Cf. §7.
+   deuxième compte, le bandeau envoie demander un accès sans dire à qui.
+   Cf. §6, `BD_AUTH_ADMIN_GROUPS`.
 
 2. **Mot de passe du 1er compte** — le gabarit se COPIE avant d'être rempli :
    ```bash
@@ -129,7 +130,8 @@ qu'un hash de mot de passe parte dans un dépôt public.
    ```
    Colle le hash dans la copie (champ `password`), et ajuste `displayname` / `email`.
    Pour d'autres comptes, duplique le bloc. Le groupe `bd-admins` est indispensable :
-   sans lui, chacun se connectera et trouvera une application VIDE (cf. §7).
+   sans lui, chacun se connectera et trouvera une application VIDE
+   (cf. §6, `BD_AUTH_ADMIN_GROUPS`).
 
 3. **Vérifie avant de démarrer** — les trois domaines se contredisent en silence :
    ```bash
