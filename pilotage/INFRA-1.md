@@ -5,9 +5,43 @@ statut: interrompu
 
 # INFRA-1 — déploiement Docker réel sur le VPS
 
-**Arrêté sur** — 2026-08-27, `7171040` : l'image est construite, mesurée (3,56 Go) et
-validée en conteneur — les quatre moteurs répondent, la base survit à la destruction du
-conteneur. Reste ce qui exige le VPS, plus le cache des modèles ML, non testé.
+**Arrêté sur** — 2026-09-05, `0f74f4a` : le VPS est prêt (Ubuntu 24.04, x86_64, Docker
+par le dépôt signé, 2 Go de swap ajoutés) et la configuration est devenue paramétrable.
+Le premier `docker compose up` n'a pas encore eu lieu.
+
+## Ce que la préparation du 2026-09-05 a trouvé
+
+Rien de tout cela n'était visible avant de vouloir déployer POUR DE BON.
+
+**Le fichier des comptes ne pouvait aller que dans un dépôt public.**
+`deploy/authelia/users_database.yml` était suivi par git, et son en-tête demandait d'y
+coller un hash argon2id : suivre la procédure publiait le hash du mot de passe. Rien n'a
+fuité — les deux commits du fichier portent encore le placeholder, vérifié un par un — mais
+le chemin était ouvert et rien ne l'aurait signalé. Le patron existait déjà dans le dépôt
+(`.env.example` versionné, `.env` ignoré) ; il n'avait pas été appliqué ici.
+
+**Les trois fichiers de config étaient des gabarits qu'il fallait éditer sur place**, donc
+un conflit garanti à chaque `git pull` du VPS, et douze substitutions à refaire au vrai
+domaine. Les valeurs vivent maintenant dans `deploy/.env` : Caddy lit `{$VAR}` depuis son
+propre environnement, Authelia `{{ env "…" }}` via `X_AUTHELIA_CONFIG_FILTERS=template`.
+
+**Une erreur silencieuse et grave était possible, et aucun outil ne la voyait** :
+`COOKIE_DOMAINE` écrit trop HAUT envoie le cookie de session à tout ce domaine — avec
+sslip.io, `sslip.io` au lieu de `<ip>.sslip.io` le livrerait à toutes les instances du
+service, et la connexion fonctionnerait parfaitement. `compose config` valide la syntaxe,
+Caddy son fichier, Authelia le sien ; aucun ne connaît les deux autres. D'où
+`verifier_deploiement.py --config`.
+
+**Et le contrôle lui-même a failli mentir dans le pire sens.** Sa première version lisait
+les 502 d'un proxy comme des refus et déclarait « aucun chemin ne répond à un anonyme » sur
+une instance ÉTEINTE. Il classe désormais en trois états, et « injoignable » est un ÉCHEC.
+Éprouvé dans les trois sens : cible morte → 1, cible vivante sans auth → 1, cible qui
+redirige vers un portail → 0.
+
+**Le DNS n'est pas prêt**, d'où `sslip.io` (résout tout nom contenant une IP vers cette IP)
+et `tls internal` : `sslip.io` n'étant pas un suffixe public — vérifié sur la Public Suffix
+List —, Let's Encrypt le compte comme UN domaine enregistré et sa limite hebdomadaire est
+partagée avec tous ses utilisateurs.
 
 ## Reste
 
@@ -22,6 +56,8 @@ conteneur. Reste ce qui exige le VPS, plus le cache des modèles ML, non testé.
 - [x] Les trois passes ML tournent sur un **vrai master** (`corpus/album_2/planche_0002.tif`, 3748×4710, 400 dpi) : 12 cases, 24 bulles, 24 régions avec texte OCR — pic mémoire 1,216 Gio
 
 ### Déploiement — jamais lancé
+- [x] Le VPS est en état de recevoir la pile : Ubuntu 24.04.4 LTS, **x86_64** (vérifié avant de lancer 3,56 Go de build), 51 Go libres, Docker 29.8.0 + Compose v5.5.1 installés par le dépôt APT signé, et **2 Go de swap ajoutés** — `swapon --show` était vide sur une machine de 3,9 Go, alors que le pic mesuré atteint 1,216 Gio et qu'un dépassement tue le process sans traceback
+- [x] La configuration est PARAMÉTRABLE : plus aucune valeur d'instance dans un fichier versionné, et le contrôle de cohérence des trois domaines refuse un cookie posé trop haut
 - [ ] `deploy/docker-compose.yml` (app + redis + authelia + caddy) monte réellement sur le VPS
 - [ ] `GET /api/sante` sur l'instance déployée annonce le NLP **disponible** — c'est le seul contrôle qui prouve que le modèle a bien suivi jusqu'en production
 - [ ] Une requête non authentifiée est refusée par Authelia avant d'atteindre l'application
