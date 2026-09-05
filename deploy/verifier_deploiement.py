@@ -158,9 +158,63 @@ def controle_interne(service):
     return manques
 
 
+def controle_config(chemin_env):
+    """AVANT de démarrer : les trois domaines de `.env` sont-ils cohérents ?
+
+    Le cas qu'on ferme ici est silencieux et grave. Authelia pose le cookie de session sur
+    `COOKIE_DOMAINE` ; s'il est trop HAUT, le cookie part à tout ce domaine. Avec
+    `sslip.io`, écrire `sslip.io` au lieu de `<ip>.sslip.io` enverrait la session de cette
+    instance à toutes les instances du service. Rien ne le signalerait : la connexion
+    fonctionne, et c'est bien le problème.
+
+    Aucun des outils du déploiement ne voit ce cas — `compose config` valide la syntaxe,
+    Caddy son fichier, Authelia le sien, mais aucun ne connaît les deux autres.
+    """
+    print(f"\n  AVANT — les domaines de {chemin_env}")
+    vals = {}
+    try:
+        for ligne in open(chemin_env, encoding="utf-8"):
+            ligne = ligne.strip()
+            if ligne and not ligne.startswith("#") and "=" in ligne:
+                cle, _, val = ligne.partition("=")
+                vals[cle.strip()] = val.strip()
+    except OSError as exc:
+        print(f"    !! illisible : {exc}")
+        return ["fichier .env illisible"]
+
+    manquants = [c for c in ("BD_DOMAINE", "AUTH_DOMAINE", "COOKIE_DOMAINE")
+                 if not vals.get(c)]
+    if manquants:
+        print(f"    !! absent(s) de .env : {', '.join(manquants)}")
+        return manquants
+
+    app, portail, parent = (vals["BD_DOMAINE"], vals["AUTH_DOMAINE"],
+                            vals["COOKIE_DOMAINE"])
+    pbs = []
+    for nom, hote in (("BD_DOMAINE", app), ("AUTH_DOMAINE", portail)):
+        if not hote.endswith("." + parent):
+            print(f"    !! {nom}={hote} n'est PAS sous {parent} — session perdue")
+            pbs.append(nom)
+        else:
+            print(f"    ok {nom:14} {hote}")
+    if app == portail:
+        print("    !! l'app et le portail portent le même nom")
+        pbs.append("noms identiques")
+    if parent.count(".") < 2:
+        print(f"    !! COOKIE_DOMAINE={parent} est un domaine de TROP HAUT NIVEAU :")
+        print("       le cookie de session partirait vers tout ce domaine, pas vers")
+        print("       cette seule instance.")
+        pbs.append("COOKIE_DOMAINE trop haut")
+    else:
+        print(f"    ok {'COOKIE_DOMAINE':14} {parent} (parent immédiat des deux)")
+    return pbs
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--url", required=True, help="URL publique de l'app (https://bd.…)")
+    ap.add_argument("--url", help="URL publique de l'app (https://bd.…)")
+    ap.add_argument("--config", metavar="ENV", nargs="?", const="deploy/.env",
+                    help="vérifier la COHÉRENCE des domaines de .env, avant de démarrer")
     ap.add_argument("--service", default="app", help="nom du service compose (défaut : app)")
     ap.add_argument("--tls-non-verifie", action="store_true",
                     help="certificat auto-signé (Caddy `tls internal`), avant le vrai DNS")
@@ -169,8 +223,17 @@ def main():
     ap.add_argument("--sans-proxy", action="store_true",
                     help="ignorer le proxy de l'environnement (il répond 502 à sa place)")
     a = ap.parse_args()
+    if not a.url and not a.config:
+        ap.error("rien à vérifier : donner --url (instance en marche) et/ou --config")
 
-    print(f"  Instance : {a.url}")
+    incoherences = controle_config(a.config) if a.config else []
+    if not a.url:
+        print("\n  ── Bilan ──")
+        print("  Configuration incohérente." if incoherences
+              else "  Les trois domaines sont cohérents.")
+        return 1 if incoherences else 0
+
+    print(f"\n  Instance : {a.url}")
     fuites, indetermines = controle_externe(a.url, verifier_tls=not a.tls_non_verifie,
                                             sans_proxy=a.sans_proxy)
     manques = [] if a.sans_interne else controle_interne(a.service)
@@ -199,7 +262,7 @@ def main():
     print("\n  Restent à vérifier à la main (hors de portée d'un script) :")
     print("    · la déconnexion depuis l'UI, pas seulement via /api/moi")
     print("    · une sauvegarde prise ici, restaurée sur une machine de dev")
-    return 1 if (fuites or indetermines or manques) else 0
+    return 1 if (fuites or indetermines or manques or incoherences) else 0
 
 
 if __name__ == "__main__":

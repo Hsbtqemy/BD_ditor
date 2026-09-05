@@ -1,6 +1,8 @@
 # Configuration Authelia 4.38 — portail d'authentification.
 # Les SECRETS ne sont PAS ici : ils sont injectés par variables d'environnement
-# (voir docker-compose.yml + deploy/.env). REMPLACE les domaines example.fr.
+# (voir docker-compose.yml + deploy/.env). Les domaines sont ceux de l'instance :
+# `sslip.io` résout n'importe quel nom contenant une IP vers cette IP, ce qui donne
+# de vrais sous-domaines sans en posséder aucun — le temps que le DNS définitif suive.
 
 theme: 'light'
 
@@ -12,7 +14,7 @@ log:
 
 # --- TOTP (application d'authentification 2FA : Google Authenticator, Aegis…) ---
 totp:
-  issuer: 'bd.example.fr'
+  issuer: '{{ env "BD_DOMAINE" }}'
 
 identity_validation:
   reset_password:
@@ -37,7 +39,7 @@ authentication_backend:
 access_control:
   default_policy: 'deny'
   rules:
-    - domain: 'bd.example.fr'
+    - domain: '{{ env "BD_DOMAINE" }}'
       policy: 'two_factor'      # mets 'one_factor' si tu ne veux PAS imposer la 2FA
 
 # --- Sessions (Redis) : permet une déconnexion propre + expiration ---
@@ -48,9 +50,9 @@ session:
   remember_me: '1 month'
   # secret -> AUTHELIA_SESSION_SECRET
   cookies:
-    - domain: 'example.fr'                       # domaine PARENT commun aux deux sous-domaines
-      authelia_url: 'https://auth.example.fr'
-      default_redirection_url: 'https://bd.example.fr'
+    - domain: '{{ env "COOKIE_DOMAINE" }}'                       # domaine PARENT commun aux deux sous-domaines
+      authelia_url: 'https://{{ env "AUTH_DOMAINE" }}'
+      default_redirection_url: 'https://{{ env "BD_DOMAINE" }}'
   redis:
     host: 'redis'
     port: 6379

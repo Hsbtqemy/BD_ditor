@@ -46,31 +46,59 @@ par Authelia (`forward_auth`). Non connecté → redirection vers le portail.
 > Les deux sous-domaines doivent partager un **domaine parent commun**
 > (`example.fr`) : c'est ce qui permet à la session de couvrir les deux.
 
-## 3. Configuration (5 remplacements)
+**Sans domaine à soi**, `sslip.io` en tient lieu : il résout n'importe quel nom contenant
+une IP vers cette IP, donc `bd.203-0-113-42.sslip.io` et `auth.203-0-113-42.sslip.io`
+existent immédiatement, avec `203-0-113-42.sslip.io` pour parent. Une réserve, et elle
+est pratique : `sslip.io` n'étant pas un suffixe public, Let's Encrypt le compte comme UN
+domaine enregistré et sa limite hebdomadaire est partagée avec tous les utilisateurs du
+service — on la heurte vite. Poser `tls internal` dans les deux blocs du Caddyfile fait
+alors signer Caddy par sa propre autorité : le navigateur avertit, mais cookies `Secure`,
+redirections HTTPS et `forward_auth` se comportent comme en production. Le jour du vrai
+domaine, on retire ces deux lignes et on change trois valeurs dans `.env`.
 
-Récupère le dépôt sur le VPS, puis place-toi dans `deploy/`.
+## 3. Configuration — deux fichiers, tous deux hors de git
 
-1. **Domaines** — remplace `example.fr` partout dans :
-   - `deploy/Caddyfile` (les 2 blocs `auth.…` et `bd.…`)
-   - `deploy/authelia/configuration.yml` (`totp.issuer`, `access_control`, `session.cookies`)
-   - `deploy/docker-compose.yml` (`BD_AUTH_LOGOUT_URL` → lien de déconnexion dans l'UI)
+Récupère le dépôt sur le VPS, puis place-toi dans `deploy/`. **Rien de ce qui suit ne se
+commite** : les fichiers du dépôt sont des GABARITS, et les valeurs de l'instance vivent
+dans `deploy/.env` et `deploy/authelia/users_database.yml`, tous deux dans `.gitignore`.
+C'est ce qui permet un `git pull` sur le VPS sans conflit ni écrasement — et ce qui évite
+qu'un hash de mot de passe parte dans un dépôt public.
 
-2. **Secrets** — crée `deploy/.env` à partir du modèle et génère 3 valeurs :
+1. **Domaines et secrets** — un seul fichier :
    ```bash
    cp .env.example .env
    for k in AUTHELIA_SESSION_SECRET AUTHELIA_STORAGE_ENCRYPTION_KEY AUTHELIA_JWT_SECRET; do
-     echo "$k=$(openssl rand -hex 32)" 
+     echo "$k=$(openssl rand -hex 32)"
    done
-   # colle les 3 lignes obtenues dans deploy/.env
+   # colle les 3 lignes obtenues dans deploy/.env, puis renseigne les 3 domaines
    ```
+   `BD_DOMAINE` et `AUTH_DOMAINE` sont les deux sous-domaines ; `COOKIE_DOMAINE` est leur
+   **parent commun**, et c'est là qu'Authelia pose la session. **Ne jamais y mettre un
+   domaine plus haut** : le cookie partirait vers tout ce domaine — avec sslip.io, écrire
+   `sslip.io` enverrait votre session à toutes les instances du service. L'erreur est
+   silencieuse, la connexion marchant très bien : d'où le contrôle de l'étape 3.
 
-3. **Mot de passe du 1er compte** — génère un hash et colle-le dans
-   `deploy/authelia/users_database.yml` (champ `password`) :
+   Caddy lit ces variables par `{$BD_DOMAINE}`, Authelia par `{{ env "BD_DOMAINE" }}` —
+   ce dernier exige `X_AUTHELIA_CONFIG_FILTERS=template`, déjà posé dans le compose. Sans
+   ce filtre, Authelia prend l'expression pour un nom de domaine littéral : il démarre
+   normalement, et la session ne se pose jamais.
+
+2. **Mot de passe du 1er compte** — le gabarit se COPIE avant d'être rempli :
    ```bash
+   cp authelia/users_database.example.yml authelia/users_database.yml
    docker run --rm authelia/authelia:4.38 \
      authelia crypto hash generate argon2 --password 'TonMotDePasse'
    ```
-   Ajuste aussi `displayname` / `email`. Pour d'autres comptes, duplique le bloc.
+   Colle le hash dans la copie (champ `password`), et ajuste `displayname` / `email`.
+   Pour d'autres comptes, duplique le bloc. Le groupe `bd-admins` est indispensable :
+   sans lui, chacun se connectera et trouvera une application VIDE (cf. §7).
+
+3. **Vérifie avant de démarrer** — les trois domaines se contredisent en silence :
+   ```bash
+   python ../deploy/verifier_deploiement.py --config .env
+   ```
+   Aucun outil du déploiement ne voit ce cas : `compose config` valide la syntaxe, Caddy
+   son fichier et Authelia le sien, mais aucun ne connaît les deux autres.
 
 ## 4. Démarrage
 

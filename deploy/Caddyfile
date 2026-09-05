@@ -1,18 +1,31 @@
 # Reverse proxy Caddy — HTTPS automatique (Let's Encrypt) + délégation à Authelia.
 #
 # REMPLACE les deux domaines ci-dessous par les tiens. Il en faut DEUX :
-#   - le portail d'authentification : auth.example.fr
-#   - l'application                 : bd.example.fr
+#   - le portail d'authentification : $AUTH_DOMAINE
+#   - l'application                 : $BD_DOMAINE
+# Les deux valeurs vivent dans `deploy/.env`, qui n'est PAS versionné : ce fichier
+# reste un gabarit, et changer de domaine ne demande pas de le réécrire.
 # Les deux doivent pointer (DNS, enregistrement A) vers l'IP du VPS, et les
 # ports 80 + 443 doivent être ouverts (Caddy obtient les certificats tout seul).
 
+# `tls internal` : Caddy signe avec SA propre autorité au lieu d'appeler Let's Encrypt.
+# Ce n'est pas une facilité, c'est une nécessité ici — `sslip.io` n'est pas un suffixe
+# public (vérifié sur la Public Suffix List), donc Let's Encrypt le traite comme UN
+# domaine enregistré et sa limite hebdomadaire est partagée avec tous les utilisateurs
+# du service dans le monde. Le navigateur avertira ; tout le reste — cookies Secure,
+# redirections HTTPS, forward_auth — se comporte exactement comme en production.
+# Le jour du vrai domaine : retirer les deux lignes `tls internal`, rien d'autre.
+
 # --- Portail Authelia ---
-auth.example.fr {
+{$AUTH_DOMAINE} {
+    tls internal
     reverse_proxy authelia:9091
 }
 
 # --- Application BéDéditeur (protégée) ---
-bd.example.fr {
+{$BD_DOMAINE} {
+    tls internal
+
     # Plafonne la taille des uploads -> répond à la faille OOM (cf.
     # docs/hebergement-securite.md). Ajuste selon tes plus gros TIFF.
     request_body {

@@ -28,8 +28,8 @@ services:
       # Authelia devant l'app : sinon n'importe quel client pourrait se déclarer
       # qui il veut, et ce sera une escalade de privilège dès AUTH-2/AUTH-3.
       - BD_AUTH_PROXY=1
-      # Lien de déconnexion affiché dans l'UI (portail Authelia). REMPLACE example.fr.
-      - BD_AUTH_LOGOUT_URL=https://auth.example.fr/logout
+      # Lien de déconnexion affiché dans l'UI (portail Authelia).
+      - BD_AUTH_LOGOUT_URL=https://${AUTH_DOMAINE}/logout
       # AUTH-2 : groupes dont les membres voient TOUT le corpus et administrent les accès.
       # Doit correspondre à un groupe déclaré dans Authelia. Les autres n'accèdent qu'aux
       # collections ouvertes pour eux dans `collection_acces` — et une instance neuve n'en
@@ -63,6 +63,14 @@ services:
     depends_on:
       - redis
     environment:
+      # `template` fait lire les `{{ env "…" }}` de configuration.yml. Sans ce filtre,
+      # Authelia prend l'expression pour un nom de domaine LITTÉRAL : il démarre, et la
+      # session ne se pose jamais. Le filtre est déclaré stable par sa documentation.
+      - X_AUTHELIA_CONFIG_FILTERS=template
+      # Les domaines, depuis deploy/.env — le fichier de config reste un gabarit.
+      - BD_DOMAINE=${BD_DOMAINE}
+      - AUTH_DOMAINE=${AUTH_DOMAINE}
+      - COOKIE_DOMAINE=${COOKIE_DOMAINE}
       # Secrets injectés depuis deploy/.env (voir .env.example pour les générer)
       - AUTHELIA_SESSION_SECRET=${AUTHELIA_SESSION_SECRET}
       - AUTHELIA_STORAGE_ENCRYPTION_KEY=${AUTHELIA_STORAGE_ENCRYPTION_KEY}
@@ -79,6 +87,11 @@ services:
     depends_on:
       - app
       - authelia
+    environment:
+      # Caddy résout `{$VAR}` lui-même, à partir de SON environnement : compose ne
+      # substitue rien dans un fichier qu'il ne fait que monter.
+      - BD_DOMAINE=${BD_DOMAINE}
+      - AUTH_DOMAINE=${AUTH_DOMAINE}
     ports:
       - "80:80"
       - "443:443"
