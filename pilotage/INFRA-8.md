@@ -6,6 +6,10 @@ statut: interrompu
 # INFRA-8 — l'enrôlement 2FA passe par un fichier sur le serveur
 
 **Arrêté sur** — 2026-09-05, `8ed2181` : le MÉCANISME est en place et ne bascule rien.
+Le relais est choisi — Infomaniak, dont le SPF du domaine autorise déjà le relais — et la
+boîte d'expédition sera PARTAGÉE avec l'autre site du serveur, une adresse dédiée étant
+payante chez l'hébergeur. C'est cette contrainte qui a fait désactiver le contrôle SMTP au
+démarrage.
 `SMTP_ADRESSE` tranche depuis `.env` — renseignée, le courriel ; vide, le fichier —, donc
 le repli ne se reconstruit pas. Reste l'instance : quel relais, quelles adresses, et
 l'éprouver pour de bon.
@@ -15,6 +19,7 @@ l'éprouver pour de bon.
 ### Le mécanisme
 - [x] La bascule se décide depuis `.env` SEUL, dans les deux sens : aucun fichier versionné à éditer pour l'activer, aucun à restaurer pour revenir en arrière
 - [x] `verifier_deploiement.py --config` refuse une configuration SMTP PARTIELLE — éprouvé dans ses quatre cas (absent, incomplet, sans schéma, complet) et non supposé bon. C'est le seul cas où l'avertissement se justifie : vide est légitime pour un référent, jamais pour un SMTP à moitié écrit
+- [x] Une panne de courriel ne peut plus fermer l'atelier : `disable_startup_check` est posé, et l'arbitrage est écrit — le contrôle au boot vérifie la connexion et jamais la remise, donc un envoi d'essai prouve strictement plus, tandis qu'il faisait dépendre l'accès de TOUT LE MONDE d'un serveur de courriel. Contrepartie assumée : un SMTP cassé devient SILENCIEUX, et le diagnostic passe par `docker compose logs authelia`
 - [x] `jwt_lifespan` passe de 5 à 15 minutes : le délai de remise d'un courriel s'ajoute à celui de la personne qui relève sa boîte, et un lien expiré ressemble à une panne plutôt qu'à un retard
 
 ### La bascule
@@ -28,7 +33,7 @@ l'éprouver pour de bon.
 - [ ] Des adresses RÉELLES ne changent rien à ce que les artefacts publient : rejouer `tests/test_sorties_identite.py` après la bascule. Le courriel devient une donnée personnelle là où le gabarit n'en était pas une, et il entre dans la base par `Remote-Email` → `utilisateur`, donc dans toute sauvegarde
 
 ### Ne pas fermer l'instance en croyant régler les notifications
-- [ ] `docker compose exec authelia authelia validate-config --config /config/configuration.yml` passe AVANT tout redémarrage — Authelia contrôle le serveur SMTP au boot, et un refus l'empêche de démarrer, donc ferme l'accès à tout le monde
+- [ ] `docker compose exec authelia authelia validate-config --config /config/configuration.yml` passe AVANT tout redémarrage : le contrôle de connexion est désactivé, mais une configuration structurellement invalide — `sender` manquant — empêche toujours Authelia de démarrer
 - [ ] Le repli est éprouvé pour de vrai, pas seulement écrit : vider `SMTP_ADRESSE`, redémarrer, et retrouver une instance qui laisse entrer
 
 ## Contexte
@@ -41,6 +46,13 @@ Pour chaque nouvelle personne, il faut ouvrir une session SSH, lire
 révocation, et se tromper est facile, c'est arrivé au premier essai — puis la transmettre
 par un canal quelconque. Le lien expire en quelques minutes, donc l'opération se fait en
 présence de la personne. Ce n'est pas délégable, et cela ne tient pas à cinq stagiaires.
+
+**La boîte d'expédition est partagée, et ce n'est pas un choix de confort** : créer une
+adresse dédiée est payant chez l'hébergeur. `edito.info@edito-revue.fr` sert donc aussi à
+l'autre site du serveur, ce qui crée un couplage qu'on ne peut pas supprimer — le jour où
+son mot de passe change pour une raison étrangère à ce projet, les courriels cessent de
+partir. On ne peut pas empêcher la panne ; on a supprimé sa forme GRAVE, qui était un
+redémarrage refusé des mois plus tard, pour une cause invisible et située ailleurs.
 
 **Ce qui rend la bascule moins anodine qu'elle n'en a l'air** : aujourd'hui, aucune adresse
 réelle n'existe nulle part dans la chaîne. Après, il y en a une par compte, elle transite
