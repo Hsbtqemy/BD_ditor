@@ -61,6 +61,12 @@ faire() {
   if [ "$simulation" = 1 ]; then printf '   (simulation) %s\n' "$*"; else eval "$@"; fi
 }
 
+# Un `ok` qui suit un `faire` affirme le RÉSULTAT d'une action. En simulation cette action
+# n'a pas eu lieu, et « suite verte dans l'image » devient un mensonge produit par l'outil
+# lui-même — constaté sur le VPS le 2026-09-05. `constat` se tait alors, plutôt que de
+# rassurer sur rien.
+constat() { [ "$simulation" = 1 ] || ok "$*"; }
+
 # ── 0. Préalables ────────────────────────────────────────────────────────────
 etape "Préalables"
 
@@ -186,7 +192,7 @@ ok "override 'derriere-proxy' actif (127.0.0.1:8080)"
 # Cohérence des domaines déclarés, AVANT de démarrer quoi que ce soit. Ne lit aucune
 # valeur secrète : le script de contrôle ne rapporte que des noms de clés.
 faire "python3 verifier_deploiement.py --config .env"
-ok "configuration cohérente"
+constat "configuration cohérente"
 
 # ── 3. La suite DANS l'image ─────────────────────────────────────────────────
 # QA-5, mesuré le 2026-08-27 : 451 tests verts dans le venv local et trois moteurs morts
@@ -198,7 +204,7 @@ else
   cd "$racine"
   faire "docker build -f deploy/Dockerfile --target test -t bdediteur:suite ."
   faire "docker run --rm bdediteur:suite"
-  ok "suite verte dans l'image"
+  constat "suite verte dans l'image"
   cd "$racine/deploy"
 fi
 
