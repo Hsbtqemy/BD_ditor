@@ -12,13 +12,16 @@ exactement là où le dépôt s'était protégé.
 ## Reste
 
 ### Rendre les cliquets capables de voir ce qu'ils prétendent inventorier
-- [ ] Les quatre balayages traversent `_IncludedRouter` — `test_autorisation`, `test_sorties_identite`, `test_csp`, `test_decoupage_api` voient **122 routes et non 53**, mesuré, pas déclaré
+- [ ] `test_autorisation` traverse `_IncludedRouter` et voit **122 routes au lieu de 53**, mesuré et non déclaré
+- [ ] `test_sorties_identite` en fait autant : il balaie **51 routes GET et non 23** — il filtre sur `isinstance(r, APIRoute)`, ce qui écarte les objets paresseux en silence
+- [ ] `test_decoupage_api` compare toujours source et inventaire, et reste vert pour la BONNE raison — c'est le seul à avoir bronché, il ne doit pas être réparé en devenant complaisant
 - [ ] L'aplatissement vit à UN endroit partagé, pas recopié dans quatre fichiers : c'est la même faute que celle qu'il répare, une vérité écrite en plusieurs exemplaires
 - [ ] Le balayage fonctionne sur les DEUX formes — `app.routes` aplati (≤ 0.133) et paresseux (≥ 0.137) —, sans quoi corriger pour l'un casse pour l'autre au prochain verrou
 
 ### Faire échouer un inventaire qui rétrécit
 - [ ] Un cliquet dont l'inventaire tombe sous un seuil ÉCHOUE au lieu de passer : aujourd'hui `test_autorisation` est vert en n'ayant examiné que 44 % des routes, et rien ne le dit. Attendu à écrire : le nombre de routes balayées est comparé à un plancher, et une chute le fait tomber
 - [ ] Ce plancher se dérive du code plutôt que d'être un chiffre recopié, sinon il vieillit et devient faux dans le sens permissif
+- [ ] L'inventaire de `test_csp` est examiné pour lui-même : il n'est PAS touché par cette panne, parce qu'il n'énumère rien — `SURFACES_HTML` et `SURFACES_BALAYEES` sont des listes écrites à la main. Immunisé ici, mais il ne grandit pas avec l'application : une surface neuve n'y entre que si quelqu'un l'y met
 
 ### Empêcher la dérive qui l'a causé
 - [ ] `requirements.txt` ne laisse plus `fastapi>=0.110` ouvert jusqu'à une version qui change la forme de `app.routes`
@@ -35,12 +38,22 @@ routes RÉPONDENT — `/api/analyse/info` rend 200 avec sa charge utile, une rou
 rend 404 — mais elles ne sont plus énumérables. `app.routes` contient 53 `APIRoute` et
 7 `_IncludedRouter` là où le dépôt en attend 122.
 
-**Pourquoi c'est grave, et pas seulement gênant.** Trois cliquets de ce dépôt tirent leur
-inventaire de `app.routes` : l'autorisation (« toute route consulte la portée, ou figure
-sur `HORS_PERIMETRE` avec sa raison »), les sorties d'identité (61 surfaces balayées) et
-la CSP. Ils ne se sont pas mis à échouer : ils ont continué de PASSER, en ne regardant plus
-que 44 % du contrat. Une garde qui tombe est un incident ; une garde qui approuve en
-n'ayant rien vu est un mensonge, et c'est celui-là qu'on a eu.
+**Pourquoi c'est grave, et pas seulement gênant.** DEUX cliquets tirent leur inventaire de
+`app.routes` : l'autorisation (« toute route consulte la portée, ou figure sur
+`HORS_PERIMETRE` avec sa raison ») en voit 53 sur 122 ; les sorties d'identité balaient
+23 routes GET au lieu de 51, parce qu'ils filtrent sur `isinstance(r, APIRoute)` et que
+l'objet paresseux n'en est pas un. Aucun des deux ne s'est mis à échouer : ils ont continué
+de PASSER en ne regardant plus que la moitié du contrat. Une garde qui tombe est un
+incident ; une garde qui approuve en n'ayant rien vu est un mensonge, et c'est celui-là
+qu'on a eu.
+
+**Le troisième, la CSP, n'est PAS concerné** — contrairement à ce que la première rédaction
+de cette fiche affirmait, et contrairement à la docstring de `test_decoupage_api` qui le
+range avec les deux autres. Son inventaire est une liste ÉCRITE À LA MAIN
+(`SURFACES_HTML`, `SURFACES_BALAYEES`), donc rien ne pouvait le rétrécir. C'est une
+immunité par accident, pas par conception : une liste manuelle ne grandit pas avec
+l'application, et le mode d'échec est simplement l'autre — elle oublie ce qu'on ajoute au
+lieu de perdre ce qu'elle voyait.
 
 **Ce qui a sauvé la mise.** `test_decoupage_api` est le seul à avoir bronché, parce qu'il
 compare une source à un inventaire au lieu de parcourir l'inventaire seul. Sa docstring
