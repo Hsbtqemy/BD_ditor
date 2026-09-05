@@ -125,8 +125,20 @@ cd "$racine/deploy"
 
 # Sans `COMPOSE_FILE`, Caddy réclame 80 et 443 — que nginx occupe déjà sur cet hôte.
 # On ne le devine pas : on demande à Compose ce qu'il a résolu.
-if ! docker compose config 2>/dev/null | grep -q "127.0.0.1:8080"; then
-  refus "la pile résolue n'expose pas 127.0.0.1:8080 — COMPOSE_FILE manque probablement dans deploy/.env.
+#
+# Et l'on distingue « Compose a répondu, sans le port attendu » de « Compose n'a pas
+# répondu ». Écrite en un seul `| grep`, cette garde annonçait COMPOSE_FILE manquant
+# chaque fois que la commande ÉCHOUAIT, quelle qu'en soit la raison — un diagnostic faux
+# envoie chercher une panne qui n'existe pas, ce qui est pire que pas de diagnostic.
+if ! sortie_config="$(docker compose config 2>&1)"; then
+  refus "\`docker compose config\` a échoué : la pile ne se résout pas. Ce n'est PAS un
+      COMPOSE_FILE manquant — la commande elle-même n'a pas abouti. Sa sortie :
+
+$(printf '%s' "$sortie_config" | sed 's/^/      /' | head -20)"
+fi
+if ! printf '%s' "$sortie_config" | grep -q "127.0.0.1:8080"; then
+  refus "la pile se résout, mais n'expose pas 127.0.0.1:8080 — COMPOSE_FILE manque
+      probablement dans deploy/.env.
       Attendu : COMPOSE_FILE=docker-compose.yml:docker-compose.derriere-proxy.yml
       Sans lui, Caddy réclamera les ports 80 et 443 que nginx occupe."
 fi
