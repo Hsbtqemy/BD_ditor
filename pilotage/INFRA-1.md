@@ -5,9 +5,10 @@ statut: interrompu
 
 # INFRA-1 — déploiement Docker réel sur le VPS
 
-**Arrêté sur** — 2026-09-05, `0f74f4a` : le VPS est prêt (Ubuntu 24.04, x86_64, Docker
-par le dépôt signé, 2 Go de swap ajoutés) et la configuration est devenue paramétrable.
-Le premier `docker compose up` n'a pas encore eu lieu.
+**Arrêté sur** — 2026-09-05, `0dcd4eb` : l'instance TOURNE, en HTTPS, sur
+`https://bd.edito-revue.fr` — derrière le nginx qui servait déjà un autre site. Dix
+chemins anonymes refusés, quatre moteurs importés pour de bon. Restent la déconnexion
+depuis l'UI et la restauration d'une sauvegarde, toutes deux hors de portée d'un script.
 
 ## Ce que la préparation du 2026-09-05 a trouvé
 
@@ -58,11 +59,32 @@ partagée avec tous ses utilisateurs.
 ### Déploiement — jamais lancé
 - [x] Le VPS est en état de recevoir la pile : Ubuntu 24.04.4 LTS, **x86_64** (vérifié avant de lancer 3,56 Go de build), 51 Go libres, Docker 29.8.0 + Compose v5.5.1 installés par le dépôt APT signé, et **2 Go de swap ajoutés** — `swapon --show` était vide sur une machine de 3,9 Go, alors que le pic mesuré atteint 1,216 Gio et qu'un dépassement tue le process sans traceback
 - [x] La configuration est PARAMÉTRABLE : plus aucune valeur d'instance dans un fichier versionné, et le contrôle de cohérence des trois domaines refuse un cookie posé trop haut
-- [ ] `deploy/docker-compose.yml` (app + redis + authelia + caddy) monte réellement sur le VPS
-- [ ] `GET /api/sante` sur l'instance déployée annonce le NLP **disponible** — c'est le seul contrôle qui prouve que le modèle a bien suivi jusqu'en production
-- [ ] Une requête non authentifiée est refusée par Authelia avant d'atteindre l'application
+- [x] **La pile monte réellement sur le VPS** — mais pas dans l'architecture prévue : la machine hébergeait déjà `edito-revue.fr` derrière nginx, qui occupait 80 et 443. Caddy tournait, ses mappings déclarés mais jamais obtenus, et les requêtes tombaient sur nginx répondant 400 à un nom inconnu. Résolu par une VARIANTE versionnée (`docker-compose.derriere-proxy.yml` + `Caddyfile.derriere-proxy`) : Caddy passe sur `127.0.0.1:8080` sans TLS, nginx termine le TLS et proxifie. Le cas nominal du dépôt reste Caddy en frontal
+- [x] **Le NLP est disponible en production**, vérifié par la voie PROFONDE et non par la voie rapide : `profond.nlp = {ok: true}`, donc spaCy et `fr_core_news_sm` ont réellement suivi. Les quatre moteurs répondent (`kumiko`, `bulles`, `ocr`, `nlp`)
+- [x] **Une requête non authentifiée est refusée avant d'atteindre l'application** : dix chemins testés en anonyme, tous en 401 — `/api/sauvegarde` et `/static/style.css` compris, les deux que le `forward_auth` doit couvrir et qu'une garde posée au mauvais endroit laisserait passer sans rien signaler
 - [ ] La déconnexion fonctionne de bout en bout depuis l'UI, pas seulement via la route `/api/moi`
 - [ ] Une sauvegarde prise sur le VPS se restaure sur une machine de dev
+
+## Le déploiement réel — 2026-09-05
+
+Fait, en HTTPS, sur `https://bd.edito-revue.fr`. Ce que le premier `up` a révélé, et que la
+fiche annonçait sans pouvoir le nommer.
+
+**La machine n'était pas vierge.** Elle sert un autre site en production. Rien ne le
+laissait prévoir, et la conséquence était silencieuse : Docker créait le conteneur avec ses
+mappings, Caddy démarrait sans erreur, et c'est nginx qui répondait. Le contrôle de l'étape
+0 — `ss -lntp | grep -E ':(80|443)'` — aurait donné la réponse en une seconde ; il avait été
+sauté.
+
+**Le nommage a coûté deux détours.** `main` était la branche par défaut du dépôt et datait
+du 12 juin : le VPS a cloné une version sans `deploy/`. Et `sante.rapide()` annonce le NLP
+sous `lemmes` quand `sante._CONTROLES` le contrôle sous `nlp`, ce qui a fait déclarer le
+moteur cassé sur une instance où il tournait — alors que `static/lib/sante.js` porte ce
+mapping, commenté, depuis SANTE-1.
+
+**Trois faux positifs du contrôle, tous corrigés le jour même** : une instance ÉTEINTE
+déclarée « protégée » (les 502 lus comme des refus), un `.env` valide rejeté pour cause de
+guillemets, et le domaine de production refusé par une garde calibrée sur `<ip>.sslip.io`.
 
 ## Contexte
 
