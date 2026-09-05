@@ -1,0 +1,6 @@
+# Les scripts shell sont livrés sur un hôte Linux : des fins de ligne CRLF y font
+# échouer le shebang avec un « bad interpreter: /usr/bin/env bash^M » que rien dans le
+# message n'explique. La machine de développement est sous Windows, donc le cas se
+# produit dès qu'un outil réécrit le fichier — on le fige ici plutôt que de dépendre du
+# `core.autocrlf` de chacun.
+*.sh text eol=lf
