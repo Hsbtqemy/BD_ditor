@@ -1,6 +1,6 @@
 ---
 chantier: QA-6
-statut: clos
+statut: livré
 ---
 
 # QA-6 — un cliquet ÉCHOUE quand le modèle NLP manque, là où le dépôt promet un skip
@@ -23,7 +23,8 @@ pour irreproductible.
 **Arrêté sur** — passe de revue : une quatrième configuration (noyau seul sans
 `openpyxl`), le bord non mesuré nommé (`e2e`), et le commentaire du semis dit enfin
 pourquoi lui seul a besoin d'une garde conditionnelle ; commit `4dde1af`, 5 septembre.
-Le correctif lui-même est au commit `e90f50f`.
+Le correctif lui-même est au commit `e90f50f`. Poussé sur `origin/dev` le 5 septembre —
+les deux commits de code vivent sur une ref d'intégration, le démenti tombe.
 
 **Point de départ** — 2026-09-05, trouvé en vérifiant ARCH-2 dans un venv jetable monté
 pour éprouver l'autre forme d'`app.routes`. Aucun code écrit. Le défaut n'a rien à voir
