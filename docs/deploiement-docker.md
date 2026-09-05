@@ -91,11 +91,19 @@ qu'un hash de mot de passe parte dans un dépôt public.
 1. **Domaines et secrets** — un seul fichier :
    ```bash
    cp .env.example .env
+   chmod 600 .env                      # il va porter trois secrets
    for k in AUTHELIA_SESSION_SECRET AUTHELIA_STORAGE_ENCRYPTION_KEY AUTHELIA_JWT_SECRET; do
-     echo "$k=$(openssl rand -hex 32)"
+     sed -i "s|^$k=.*|$k=$(openssl rand -hex 32)|" .env
    done
-   # colle les 3 lignes obtenues dans deploy/.env, puis renseigne les 3 domaines
+   grep -c '^AUTHELIA_.*=.\{64\}$' .env    # doit afficher 3, sans montrer les valeurs
+   # puis renseigne les 3 domaines dans .env
    ```
+   Les clés s'écrivent **directement** dans le fichier. Les afficher d'abord pour les
+   recopier ensuite les laisse dans le scrollback du terminal et dans l'historique du
+   shell — et ces trois-là contournent ensemble toute l'authentification :
+   `SESSION_SECRET` signe les cookies (donc permet d'en forger un et de se faire passer
+   pour n'importe quel compte), `STORAGE_ENCRYPTION_KEY` chiffre les secrets TOTP de la 2FA,
+   `JWT_SECRET` signe les liens de réinitialisation de mot de passe.
    `BD_DOMAINE` et `AUTH_DOMAINE` sont les deux sous-domaines ; `COOKIE_DOMAINE` est leur
    **parent commun**, et c'est là qu'Authelia pose la session. **Ne jamais y mettre un
    domaine plus haut** : le cookie partirait vers tout ce domaine — avec sslip.io, écrire
