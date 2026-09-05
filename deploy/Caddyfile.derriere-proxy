@@ -1,0 +1,59 @@
+# Variante : Caddy DERRIÈRE un proxy qui termine déjà le TLS (nginx, Apache, Traefik…).
+#
+# Le cas nominal du dépôt est `Caddyfile` : Caddy en frontal, ports 80 et 443, HTTPS
+# automatique. Cette variante existe pour une machine qui héberge DÉJÀ un site — le cas
+# rencontré le 2026-09-05, où nginx servait `edito-revue.fr` sur les deux ports. Caddy y
+# garde son rôle, qui n'est pas de faire du TLS mais de porter le `forward_auth` : c'est
+# lui qui interroge Authelia avant de laisser passer quoi que ce soit vers l'application.
+#
+# À activer explicitement, jamais par défaut :
+#   docker compose -f docker-compose.yml -f docker-compose.derriere-proxy.yml up -d
+
+{
+	# Sans ceci, Caddy IGNORE le `X-Forwarded-Proto: https` que pose le proxy : il croit la
+	# requête en clair, l'annonce ainsi à Authelia, et Authelia construit ses redirections
+	# en `http://`. Le navigateur boucle alors entre le portail et l'application sans
+	# qu'aucun des deux ne signale d'erreur — la panne la plus coûteuse de cette
+	# architecture, parce qu'elle ressemble à un problème de session.
+	#
+	# `private_ranges` couvre la passerelle Docker, par laquelle arrive le trafic du proxy
+	# tournant sur l'hôte. Ne PAS élargir : un `trusted_proxies` trop large laisserait
+	# n'importe quel client se déclarer en HTTPS et usurper son adresse d'origine.
+	servers {
+		trusted_proxies static private_ranges
+	}
+
+	# Le proxy s'occupe des certificats et de la redirection HTTP→HTTPS. Caddy ne doit
+	# demander aucun certificat : il n'est joignable que depuis l'hôte, et une tentative
+	# de validation ACME échouerait de toute façon.
+	auto_https off
+}
+
+# Les deux sites sont déclarés en `http://` EXPRÈS : c'est ce qui fait écouter Caddy sur
+# le port 80 du conteneur, publié uniquement sur 127.0.0.1 par le fichier compose de
+# cette variante. Rien n'est exposé à l'extérieur autrement que par le proxy.
+
+# --- Portail Authelia ---
+http://{$AUTH_DOMAINE} {
+	reverse_proxy authelia:9091
+}
+
+# --- Application BéDéditeur (protégée) ---
+http://{$BD_DOMAINE} {
+	# Plafonne la taille des uploads. À tenir cohérent avec le `client_max_body_size` du
+	# proxy en amont : c'est le PLUS PETIT des deux qui décide, et un refus côté proxy ne
+	# ressemble pas à un refus côté Caddy — l'un rend une page d'erreur du serveur web,
+	# l'autre une réponse de l'application.
+	request_body {
+		max_size 200MB
+	}
+
+	# Toute requête est d'abord vérifiée par Authelia. Non authentifié → redirection vers
+	# le portail. Inclut /derivatives, /static, /api/sauvegarde.
+	forward_auth authelia:9091 {
+		uri /api/authz/forward-auth
+		copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+	}
+
+	reverse_proxy app:8000
+}

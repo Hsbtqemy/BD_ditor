@@ -1,0 +1,22 @@
+# Variante : la pile derrière un proxy qui occupe déjà 80 et 443 sur l'hôte.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.derriere-proxy.yml up -d
+#
+# Elle ne change QUE le service caddy, et deux choses seulement : où il écoute, et quel
+# Caddyfile il lit. Le reste de la pile — app, authelia, redis — est identique, ce qui
+# permet de revenir au cas nominal en retirant simplement le `-f`.
+
+services:
+  caddy:
+    # `!override` REMPLACE la liste au lieu de s'y ajouter. Sans ce marqueur, Compose
+    # CONCATÈNE les listes : le service publierait 80, 443 ET 8080, donc entrerait en
+    # conflit avec le proxy — exactement ce que cette variante existe pour éviter.
+    ports: !override
+      # Sur 127.0.0.1 seulement : Caddy n'est joignable que par le proxy tournant sur la
+      # même machine, jamais depuis Internet. Publier sur 0.0.0.0 exposerait une porte
+      # d'entrée parallèle, sans TLS, contournant le proxy et sa configuration.
+      - "127.0.0.1:8080:80"
+    volumes: !override
+      - ./Caddyfile.derriere-proxy:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
