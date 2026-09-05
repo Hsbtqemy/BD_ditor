@@ -83,6 +83,20 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 ok "arbre de travail propre"
 
+# `git pull` sur un HEAD détaché ne suit rien et échoue d'une façon qui ne se lit pas.
+branche="$(git rev-parse --abbrev-ref HEAD)"
+[ "$branche" != "HEAD" ] || refus "HEAD est détaché : il n'y a aucune branche à suivre. Se replacer sur une branche (probablement 'main') avant de déployer."
+ok "branche : $branche"
+
+# La reconstruction installe torch, easyocr, ultralytics, spacy et opencv (roues CPU) :
+# elle demande plusieurs gigaoctets. On AFFICHE le chiffre au lieu d'inventer un seuil —
+# un refus fondé sur une valeur devinée bloquerait un déploiement légitime, et une panne
+# de disque en pleine construction laisse des couches orphelines derrière elle.
+racine_docker="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)"
+[ -n "$racine_docker" ] || racine_docker=/
+libre="$(df -Ph "$racine_docker" 2>/dev/null | awk 'NR==2 {print $4}')"
+ok "espace libre sur $racine_docker : ${libre:-inconnu} — si c'est juste : docker system prune"
+
 # ── 1. Récupérer, et VÉRIFIER que la ref a bougé ─────────────────────────────
 etape "Récupération"
 
