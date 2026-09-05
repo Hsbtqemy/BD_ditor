@@ -1,5 +1,9 @@
 # Déploiement sur VPS — Docker Compose + authentification (Authelia)
 
+> Ce document explique le POURQUOI et la première installation. Pour les gestes courants
+> d'une instance qui tourne déjà — quelle commande, depuis quel dossier —, voir
+> [`exploitation.md`](exploitation.md).
+
 Guide pas à pas, pensé pour quelqu'un qui débute sur Docker. La pile fournit :
 **plusieurs comptes**, **déconnexion propre**, **2FA**, **HTTPS automatique**, et
 gate **tout** l'accès (y compris images et sauvegarde) sans modifier le code de
