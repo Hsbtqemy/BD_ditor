@@ -1029,3 +1029,32 @@ def test_une_requete_ordinaire_n_est_jamais_declaree_incherchable(client, planch
     # déjà son invite pour ce cas, et la confondre avec un refus serait un contresens.
     for q in ["", "   "]:
         assert not _sans_terme_cherchable(q), f"{q!r} : requête vide, pas requête refusée"
+
+
+def test_un_env_hors_de_deploy_reste_ignore_par_git():
+    """`.gitignore` n'ignorait `.env` que sous `deploy/`, et ce dépôt est PUBLIC.
+
+    Le 2026-09-05, une commande destinée à `deploy/.env` a été lancée depuis la racine
+    du dépôt : les identifiants SMTP se sont écrits dans `./.env`. Rien ne l'a signalé.
+    Git le voyait comme un fichier neuf ordinaire — donc candidat à un `git add -A` — et
+    la pile a simplement démarré sans SMTP, si bien que l'erreur s'est manifestée comme
+    une panne de courriel et non comme une fuite de secret.
+
+    Le motif est maintenant `.env` SANS chemin, ce qui l'attrape à toute profondeur. Ce
+    test épingle la forme du motif plutôt que d'appeler `git check-ignore` : la suite
+    tourne aussi dans l'image Docker (QA-5), où git n'est pas installé — un test qui s'y
+    skipperait ne garderait rien là où la garde compte le plus.
+    """
+    from pathlib import Path
+
+    lignes = [l.strip() for l in
+              (Path(__file__).resolve().parent.parent / ".gitignore")
+              .read_text(encoding="utf-8").splitlines()]
+
+    assert ".env" in lignes, (
+        "`.gitignore` doit porter le motif nu `.env` : avec un chemin devant, un "
+        "fichier de secrets écrit ailleurs que là où on l'attendait devient "
+        "committable, et rien ne le dit")
+    assert "deploy/.env.example" not in lignes, (
+        "le gabarit doit rester VERSIONNÉ : c'est lui qui documente les clés à "
+        "remplir, et l'ignorer priverait le déploiement de sa seule référence")

@@ -181,6 +181,11 @@ perdu **autonomes** : ils cessent de passer par l'administrateur.
 le courriel, vide le laisse sur le fichier. Le fichier de configuration ne change pas, donc
 le retour en arrière non plus.
 
+Ces `sed` REMPLACENT une ligne existante : ils supposent un `.env` copié depuis le
+gabarit actuel. Sur une instance plus ancienne, dont le `.env` ne porte pas encore ces
+quatre clés, ils ne trouvent rien et ne le disent pas — il faut alors les AJOUTER
+(`cat >> .env`). Vérifiez d'abord : `grep -c '^SMTP_' .env` doit afficher 4.
+
 ```bash
 # dans deploy/, sur le serveur
 sed -i "s|^SMTP_ADRESSE=.*|SMTP_ADRESSE=submissions://smtp.exemple.fr:465|" .env
@@ -189,11 +194,20 @@ sed -i "s|^SMTP_EXPEDITEUR=.*|SMTP_EXPEDITEUR=BeDediteur <no-reply@exemple.fr>|"
 sed -i "s|^SMTP_MOT_DE_PASSE=.*|SMTP_MOT_DE_PASSE=…|" .env   # jamais affiché à l'écran
 ```
 
-**Valider AVANT de redémarrer** — cette étape n'est pas facultative :
+**`up -d`, jamais `restart`** — et ce n'est pas un détail de style. `docker compose
+restart` relance le conteneur EXISTANT, avec l'environnement qui lui a été donné à sa
+création : les variables ajoutées dans `.env` ne sont pas relues. La pile redémarre sans
+erreur, sans SMTP, et l'on cherche la panne du côté du fournisseur de courriel. `up -d`
+recrée le conteneur quand sa configuration a changé.
+
+Valider d'abord, et dans un conteneur JETABLE — c'est le même piège une seconde fois :
+`exec` s'exécute dans le conteneur en cours, dont l'environnement date d'avant votre
+modification, et son succès ne prouverait rien. `run --rm` en crée un neuf, qui lit le
+`.env` d'aujourd'hui, et le détruit ensuite sans toucher à l'instance qui sert.
 
 ```bash
-docker compose exec authelia authelia validate-config --config /config/configuration.yml
-docker compose restart authelia && docker compose logs -f authelia
+docker compose run --rm --entrypoint authelia authelia   validate-config --config /config/configuration.yml
+docker compose up -d authelia && docker compose logs -f authelia
 ```
 
 Authelia se connecte au serveur SMTP à son démarrage et refuse de démarrer si l'échange

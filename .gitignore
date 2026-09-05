@@ -37,7 +37,13 @@ spike/report.csv
 docs/exemples/
 
 # Déploiement — secrets et état runtime (la config template est versionnée)
-deploy/.env
+# Le motif est SANS chemin, donc il attrape un `.env` à n'importe quelle profondeur.
+# `deploy/.env` seul laissait passer un `.env` à la RACINE, et ce n'est pas une
+# hypothèse d'école : le 2026-09-05, une commande lancée depuis le mauvais dossier a
+# écrit les identifiants SMTP dans `./.env` au lieu de `deploy/.env`. Rien ne l'a
+# signalé — ni git, qui le voyait comme un fichier neuf ordinaire, ni la pile, qui a
+# simplement démarré sans SMTP.
+.env
 # Le fichier des comptes porte des HASHS de mots de passe, et ce dépôt est PUBLIC.
 # Seul le gabarit `users_database.example.yml` est versionné ; on le copie sur la
 # machine qui héberge, comme `.env.example` → `.env` juste au-dessus.

@@ -108,7 +108,12 @@ notifier:
     # pas d'une négociation qu'un intermédiaire peut faire échouer.
     address: '{{ env "SMTP_ADRESSE" }}'
     username: '{{ env "SMTP_UTILISATEUR" }}'
-    # password -> AUTHELIA_NOTIFIER_SMTP_PASSWORD (jamais ici, jamais dans git)
+    # Le mot de passe vit ICI, dans la branche conditionnelle, et non dans une variable
+    # `AUTHELIA_NOTIFIER_SMTP_PASSWORD`. L'exposition est la MÊME — les deux lisent
+    # l'environnement du processus, et `.env` reste hors de git — mais celle-ci
+    # disparaît avec la branche. L'autre survivait à la bascule et ajoutait un notifier
+    # SMTP que ce fichier n'avait pas demandé.
+    password: '{{ env "SMTP_MOT_DE_PASSE" }}'
     # Expéditeur au format RFC 5322. Garder le nom affiché en ASCII : certains relais
     # rejettent un en-tête accentué non encodé, et l'échec ressemble à un problème
     # d'authentification.

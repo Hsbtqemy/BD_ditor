@@ -81,15 +81,23 @@ services:
       - AUTHELIA_SESSION_SECRET=${AUTHELIA_SESSION_SECRET}
       - AUTHELIA_STORAGE_ENCRYPTION_KEY=${AUTHELIA_STORAGE_ENCRYPTION_KEY}
       - AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=${AUTHELIA_JWT_SECRET}
-      # Courriel (INFRA-8). Trois valeurs lisibles passent par le gabarit, comme les
-      # domaines ; seul le mot de passe passe par une variable `AUTHELIA_*`, comme les
-      # trois secrets ci-dessus. La règle est la même partout : ce qui se lit reste
-      # visible dans la configuration, ce qui s'exploite n'y apparaît jamais.
+      # Courriel (INFRA-8). Les QUATRE valeurs passent par le gabarit, mot de passe
+      # compris, et AUCUNE ne prend la forme `AUTHELIA_NOTIFIER_SMTP_*`.
+      #
+      # La première version faisait autrement — le mot de passe par une variable
+      # `AUTHELIA_*`, comme les trois secrets ci-dessus — et cette élégance a fermé
+      # l'instance. Cette variable INSTANCIE le notifier SMTP à elle seule : posée
+      # pendant que `SMTP_ADRESSE` était vide, elle ajoutait `smtp` par
+      # l'environnement pendant que le gabarit posait `filesystem`, et Authelia
+      # refuse d'avoir les deux. Le repli avait le même angle mort, puisqu'il ne
+      # retirait que l'adresse.
+      #
+      # La règle qui reste : une CHOSE se configure à UN endroit. Ici, le gabarit.
       # `SMTP_ADRESSE` vide = notifier fichier, l'état de démarrage et le repli.
       - SMTP_ADRESSE=${SMTP_ADRESSE:-}
       - SMTP_UTILISATEUR=${SMTP_UTILISATEUR:-}
       - SMTP_EXPEDITEUR=${SMTP_EXPEDITEUR:-}
-      - AUTHELIA_NOTIFIER_SMTP_PASSWORD=${SMTP_MOT_DE_PASSE:-}
+      - SMTP_MOT_DE_PASSE=${SMTP_MOT_DE_PASSE:-}
     volumes:
       - ./authelia:/config
     expose:
