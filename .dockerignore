@@ -26,6 +26,15 @@ node_modules/
 .idea/
 .vscode/
 spike/samples/
-deploy/.env
-deploy/authelia/db.sqlite3
-deploy/authelia/notification.txt
+# L'INFRASTRUCTURE n'entre pas dans l'image de l'application. Ce n'est pas du
+# rangement : `deploy/authelia/users_database.yml` porte le HASH du mot de passe, et
+# `COPY . .` l'aurait déposé dans une image qui n'a aucune raison de connaître les
+# comptes — visible ensuite par `docker history`, par un `docker cp`, et par tout
+# registre où l'image serait poussée. On exclut le dossier ENTIER plutôt que d'y
+# énumérer les secrets un par un : la liste se périmerait au premier fichier ajouté.
+#
+# Le Dockerfile fait exception, et par précaution seulement : `-f deploy/Dockerfile`
+# le fait lire hors contexte, mais l'exception ne coûte rien et évite de dépendre de
+# ce détail.
+deploy/
+!deploy/Dockerfile

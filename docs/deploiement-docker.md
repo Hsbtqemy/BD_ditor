@@ -119,7 +119,7 @@ qu'un hash de mot de passe parte dans un dépôt public.
 
 3. **Vérifie avant de démarrer** — les trois domaines se contredisent en silence :
    ```bash
-   python ../deploy/verifier_deploiement.py --config .env
+   python3 verifier_deploiement.py --config .env
    ```
    Aucun outil du déploiement ne voit ce cas : `compose config` valide la syntaxe, Caddy
    son fichier et Authelia le sien, mais aucun ne connaît les deux autres.

@@ -4,12 +4,21 @@ Trois des cinq cases d'INFRA-1 sont des affirmations vérifiables par machine ; 
 les vérifie au lieu de les constater à l'œil. Il ne remplace pas le déploiement, il dit
 si le déploiement a fait ce qu'on croit.
 
-**Il se lance depuis le VPS**, après `docker compose up -d` :
+**Il se lance depuis le VPS**, et deux fois plutôt qu'une :
 
-    python deploy/verifier_deploiement.py --url https://bd.exemple.fr
-    python deploy/verifier_deploiement.py --url https://bd.exemple.fr --tls-non-verifie
+    python3 verifier_deploiement.py --config .env               # AVANT le premier `up`
+    python3 verifier_deploiement.py --url https://bd.…  --tls-non-verifie
 
-Deux familles de contrôles, et elles ne regardent pas au même endroit.
+Trois familles de contrôles, qui ne regardent pas au même endroit.
+
+**AVANT, dans `.env`** : les trois domaines se contredisent en silence. `COOKIE_DOMAINE`
+est le parent sur lequel Authelia pose la session ; l'écrire trop HAUT envoie le cookie à
+tout ce domaine — avec sslip.io, `sslip.io` au lieu de `<ip>.sslip.io` le livrerait à
+toutes les instances du service, et la connexion fonctionnerait parfaitement. Aucun outil
+du déploiement ne voit ce cas : `compose config` valide la syntaxe, Caddy son fichier et
+Authelia le sien, mais aucun ne connaît les deux autres. S'y ajoutent les deux oublis les
+plus probables — des valeurs restées celles du gabarit, un hash jamais généré — qui sont
+parfaitement COHÉRENTS et pourtant fatals.
 
 **DEHORS, en anonyme** : rien ne doit répondre 200. C'est la case « une requête non
 authentifiée est refusée par Authelia AVANT d'atteindre l'application ». La liste des
@@ -37,6 +46,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -177,7 +187,12 @@ def controle_config(chemin_env):
             ligne = ligne.strip()
             if ligne and not ligne.startswith("#") and "=" in ligne:
                 cle, _, val = ligne.partition("=")
-                vals[cle.strip()] = val.strip()
+                val = val.strip()
+                # compose retire les guillemets entourants ; ne pas le faire ici
+                # transformerait une écriture parfaitement valide en faux positif.
+                if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                    val = val[1:-1]
+                vals[cle.strip()] = val
     except OSError as exc:
         print(f"    !! illisible : {exc}")
         return ["fichier .env illisible"]
@@ -207,6 +222,34 @@ def controle_config(chemin_env):
         pbs.append("COOKIE_DOMAINE trop haut")
     else:
         print(f"    ok {'COOKIE_DOMAINE':14} {parent} (parent immédiat des deux)")
+
+    # Les deux oublis les plus probables : on copie un gabarit, on remplit les secrets,
+    # et on laisse les valeurs d'exemple. Elles sont COHÉRENTES entre elles — le contrôle
+    # ci-dessus les approuve — et pourtant l'instance ne peut pas fonctionner.
+    ici = Path(__file__).resolve().parent
+    gabarit = ici / ".env.example"
+    if gabarit.exists():
+        exemple = {}
+        for ligne in gabarit.read_text(encoding="utf-8").splitlines():
+            if ligne.strip() and not ligne.startswith("#") and "=" in ligne:
+                c, _, v = ligne.partition("=")
+                exemple[c.strip()] = v.strip()
+        restes = [c for c in ("BD_DOMAINE", "AUTH_DOMAINE", "COOKIE_DOMAINE")
+                  if vals.get(c) and vals[c] == exemple.get(c)]
+        if restes:
+            print(f"    !! encore les valeurs du gabarit : {', '.join(restes)}")
+            print("       (.env.example pointe une IP de DOCUMENTATION, qui n'héberge rien)")
+            pbs.append("valeurs d'exemple")
+
+    comptes = ici / "authelia" / "users_database.yml"
+    if not comptes.exists():
+        print("    !! authelia/users_database.yml absent — le copier depuis le gabarit")
+        pbs.append("fichier des comptes absent")
+    elif "REMPLACER_PAR_UN_VRAI_HASH" in comptes.read_text(encoding="utf-8"):
+        print("    !! le mot de passe est encore le placeholder du gabarit")
+        pbs.append("hash non généré")
+    else:
+        print(f"    ok {'comptes':14} présent, hash renseigné")
     return pbs
 
 
