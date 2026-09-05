@@ -24,10 +24,34 @@ par Authelia (`forward_auth`). Non connecté → redirection vers le portail.
 
 ## 2. Prérequis
 
-- Un **VPS** (Debian/Ubuntu récent conseillé) avec Docker + plugin Compose :
+- Un **VPS** (Debian/Ubuntu récent conseillé) avec Docker + plugin Compose. Par le dépôt
+  APT officiel plutôt que par `curl … | sh` : on n'exécute pas du code distant sans
+  l'avoir lu sur la machine qui portera le corpus et la base, et les correctifs de
+  sécurité arrivent ensuite par `apt upgrade` comme le reste du système.
   ```bash
-  curl -fsSL https://get.docker.com | sh
+  sudo apt-get update && sudo apt-get install -y ca-certificates curl
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+    https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+    | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo apt-get update
+  sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
+    docker-buildx-plugin docker-compose-plugin
+  sudo usermod -aG docker "$USER"    # puis se reconnecter
   ```
+  > `usermod -aG docker` donne à ce compte l'équivalent de root : le socket Docker permet
+  > de monter n'importe quel chemin de l'hôte dans un conteneur privilégié. Sur un VPS où
+  > le compte a déjà `sudo`, cela n'ajoute pas de pouvoir — ailleurs, si. Le refuser et
+  > écrire `sudo docker …` partout reste parfaitement viable.
+- **Vérifier l'architecture** : `uname -m` doit dire `x86_64`. Les mesures de ce document
+  et le choix de l'index CPU de torch valent pour cette architecture ; sur `aarch64` les
+  roues diffèrent et le build n'a jamais été tenté.
+- **Du SWAP**, si la RAM est juste. `swapon --show` vide sur une machine à 4 Go est un
+  pari : le pic mesuré est de 1,216 Gio pour l'application seule, et un dépassement tue le
+  process SANS traceback. Deux gigaoctets de fichier d'échange coûtent deux minutes et
+  transforment un OOM en lenteur.
 - **4 Go de RAM** recommandés, et voici sur quoi repose ce chiffre plutôt que sur une
   habitude. MESURÉ le 2026-08-27, les trois passes enchaînées dans un seul conteneur sur
   un vrai master (3748 × 4710, 17,7 Mpx, 400 dpi) : application seule 49,7 Mio, + spaCy
