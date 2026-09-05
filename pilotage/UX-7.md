@@ -58,6 +58,13 @@ chaque élément à la largeur de la fenêtre.
 | Recherche | `.surf-nav` fait 361 px, le menu « Aa » sort de 214 px | rien ne dépasse |
 | Exploration | idem Recherche | rien ne dépasse |
 
+**« Rien ne dépasse » n'est pas « utilisable » — constat du 2026-09-05.** Le tableau
+ci-dessus mesure le CLIPPAGE, et il a raison sur ce qu'il mesure. Mais `#body` est une
+grille `240px | 1fr | 300px` : 540 px de chrome fixe, quelle que soit la fenêtre. Il reste
+donc **228 px de canevas sur une tablette en portrait** (768) et 484 px en paysage (1024).
+On ne dessine pas une case de bande dessinée dans 228 px. La conclusion ci-dessous vaut
+pour le 1.4.10, et pour lui seul.
+
 **La tablette n'a rien à réparer.** Aucune des quatre surfaces ne déborde à 768 px — ce qui
 retire du chantier la motivation d'usage la plus immédiate, et le réduit au téléphone.
 
@@ -123,8 +130,10 @@ signalé, un silence pris pour un succès.
 - [x] **La mesure est rejouée et consignée** (ci-dessous). Elle a d'abord obligé à corriger l'INSTRUMENT
 
 ### Décider avant de coder
-- [ ] Le sort d'`html, body { overflow: hidden }` est tranché : il sert la Visionneuse (coque pleine hauteur) et pénalise les trois autres surfaces, où il change un débordement en contenu perdu. Le lever surface par surface est probablement la moitié du chantier, à lui seul
-- [ ] Le sort de la **Visionneuse** est tranché par écrit : viser l'annotation tactile engage les cibles de 44 px (WCAG 2.5.5) et une gestuelle de zoom, c'est-à-dire un autre chantier ; se limiter à la CONSULTATION lisible sous 1 000 px est un travail sans commune mesure. Les deux sont défendables, mais pas au même prix
+- [x] **`html, body { overflow: hidden }` est GARDÉ**, et la case était mal posée : elle prétendait que la règle ne sert que la Visionneuse. Les QUATRE surfaces sont des coques pleine hauteur — `#corpus-app`, `#search-app` et `#explo-app` sont en `height: 100%` avec leur propre `overflow-y: auto`, exactement comme `#app`. Et l'étape 1 a rendu trois d'entre elles conformes à 320 px SANS toucher à cette règle : ce qui les a réparées, c'est d'avoir encadré le contenu large. La lever referait du code qui marche et changerait le modèle de mise en page de la Visionneuse par-dessus le marché
+- [x] **Le sort de la Visionneuse est tranché : ANNOTATION TACTILE**, décidé le 2026-09-05. Elle n'est donc pas une surface de consultation qu'on rendrait lisible faute de mieux — c'est l'écran de travail, et il doit rester un écran de travail au doigt. Le tactile proprement dit (cibles de 44 px, gestuelle de zoom) part dans **UX-8** ; ce qui reste ici est son premier étage, les tiroirs, parce qu'ils relèvent du 1.4.10 et qu'ils servent les deux largeurs
+- [ ] **Le panneau latéral et la boîte d'outils deviennent des tiroirs** sous un seuil mesuré : `#body` est une grille `240px | 1fr | 300px`, donc **540 px de chrome fixe** avant que le canevas reçoive un pixel. Escamotés, le canevas prend toute la largeur ; leur bascule est atteignable au clavier et rend le focus d'où il vient
+- [ ] Le seuil se lit sur la largeur où le CANEVAS devient inutilisable, pas sur un nombre rond — comme celui de la bande 1, qui valait 400 px et en demandait 560
 - [ ] Le **tableau de croisement** a un comportement décidé pour les petites largeurs : il est intrinsèquement à deux dimensions, donc 1.4.10 admet le défilement — à condition qu'il soit CONTENU dans son conteneur et non subi par la page entière
 - [ ] Les deux tableaux des panneaux 🎯 Accord et 👥 Inter (`.accord-table`) n'ont PAS de cadre de défilement, et leur largeur n'a pas pu être mesurée : le corpus de démonstration n'a aucun token relu, donc la table ne se rend jamais. À vérifier sur un corpus qui en a — c'est le dernier tableau du dépôt dont on ignore le comportement sous 560 px
 - [ ] Le collage VERTICAL des en-têtes du croisement est tranché : le rendre effectif demande de donner à `.croise` une hauteur bornée et son propre `overflow-y`, donc un cadre de défilement IMBRIQUÉ dans celui de la page — deux barres verticales pour un même geste de molette, ce qui n'est pas gratuit. L'alternative est de l'assumer inerte et de retirer la règle, qui promet aujourd'hui ce qu'elle ne fait pas
