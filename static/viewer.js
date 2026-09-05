@@ -2717,6 +2717,11 @@ function setupTiroirs() {
   // Le voile n'est jamais montré ni caché d'ici : sa visibilité se déduit
   // des classes ci-dessous ET du seuil, dans style.css. Il ne sert ici qu'à
   // recevoir le clic de fermeture.
+
+  // Une seule définition du « focusable » : l'ouverture y prend le premier élément, le
+  // piège ci-dessous y prend la liste entière. Deux copies divergeraient le jour où l'on
+  // ajoute une sorte de contrôle, et c'est le piège qui deviendrait faux, en silence.
+  const FOCUSABLES = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
   const tiroirs = [
     { classe: "nav-ouverte",    btn: $("#btn-tiroir-nav"),      panneau: $("#sidebar") },
     { classe: "panneau-ouvert", btn: $("#btn-tiroir-panneau"),  panneau: $("#panel") },
@@ -2742,10 +2747,35 @@ function setupTiroirs() {
     // Un menu ouvert passerait SOUS le tiroir : on prévient les autres systèmes de
     // barres, comme le fait le menu « Affichage » de theme.js.
     document.dispatchEvent(new CustomEvent("bd:menu-open", { detail: "tiroir" }));
-    const premier = t.panneau.querySelector(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    const premier = t.panneau.querySelector(FOCUSABLES);
     if (premier) premier.focus();
   }
+
+  // Le voile bloque le CLIC sur le reste de l'application : l'écran se LIT donc comme
+  // modal. Sans piège, la tabulation le traversait quand même — mesuré à 320 px, le focus
+  // sortait au 4e Tab et visitait 19 cibles sur 25 hors du tiroir, dont plusieurs SOUS le
+  // voile, c'est-à-dire des commandes qu'aucun doigt ne pouvait atteindre. Deux publics
+  // recevaient deux applications.
+  //
+  // UNE règle et non deux. `inert` sur le reste de l'écran couvrirait davantage — le mode
+  // navigation d'un lecteur d'écran, que ce piège ne borne pas —, mais il ne peut pas
+  // s'appliquer à `#toolbar`, qui porte les DEUX bascules servant à refermer, au milieu
+  // des commandes de zoom qu'il faut au contraire rendre inertes : il faudrait donc
+  // exempter au cas par cas dans un même conteneur, soit deux mécanismes pour une seule
+  // intention. La limite est donc écrite plutôt que masquée, et Échap reste la sortie
+  // universelle.
+  function cibles() {
+    // La bascule EN TÊTE, par où l'on entre — et non à sa place dans le document, où elle
+    // SUIT le tiroir : c'est le seul moyen de refermer à la souris, donc la porte.
+    return [ouvert.btn, ...ouvert.panneau.querySelectorAll(FOCUSABLES)]
+      .filter((el) => !el.disabled && el.offsetParent !== null);
+  }
+
+  // Le seuil reste au CSS, et on ne le relit pas : on DEMANDE au DOM si la bascule est
+  // affichée. Au-dessus du seuil elle est `display: none`, le panneau redevient une
+  // colonne ordinaire, et y enfermer le focus serait pire que de ne rien faire — cas
+  // réel et facile à produire : ouvrir un tiroir à 320 px, puis élargir la fenêtre.
+  function enTiroir() { return !!ouvert && ouvert.btn.offsetParent !== null; }
 
   tiroirs.forEach((t) => {
     if (!t.btn || !t.panneau) return;
@@ -2757,7 +2787,20 @@ function setupTiroirs() {
 
   voile.addEventListener("click", () => fermer(true));
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && ouvert) { e.stopPropagation(); fermer(true); }
+    if (e.key === "Escape" && ouvert) { e.stopPropagation(); fermer(true); return; }
+    if (e.key !== "Tab" || !enTiroir()) return;
+    const c = cibles();
+    if (!c.length) return;
+    // On reprend la tabulation ENTIÈRE, et non les seuls bords, parce que l'ordre de la
+    // liste ci-dessus n'est PAS celui du document : la bascule y vient en tête — c'est par
+    // elle qu'on entre — alors que le gabarit la place APRÈS le tiroir, dans `#toolbar`,
+    // suivie des commandes de zoom. N'intercepter que les bords laissait donc le focus
+    // filer d'un cran à chaque passage par la bascule, vers `#zoom-out` : mesuré, 11
+    // arrêts sur 25 restaient dehors.
+    e.preventDefault();
+    const i = c.indexOf(document.activeElement), n = c.length;
+    // Hors de la liste : on entre par le bout qui correspond au sens de la tabulation.
+    c[i < 0 ? (e.shiftKey ? n - 1 : 0) : (i + (e.shiftKey ? -1 : 1) + n) % n].focus();
   });
 }
 
