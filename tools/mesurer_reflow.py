@@ -25,16 +25,23 @@ de 280 px qui défile est conforme ; le même tableau sans cadre, sous `overflow
 perd 413 px. Les deux se ressemblent exactement si l'on ne regarde que le rectangle, et
 c'est ce que faisait cet outil jusqu'au 2026-09-04.
 
+**Cet outil mesure l'état AU REPOS, et c'est sa limite** : il charge les quatre surfaces
+sans paramètres, donc sans planche ouverte, sans résultat de recherche, sans toast et sans
+token relu. Ce que la page ne rend pas, il ne le voit pas — quatre défauts ont vécu là
+(la vignette de résultat, `.accord-table`, le toast, et `#canvas` qui fait 800 px dès
+qu'une planche est chargée). La GARDE est `tests/test_e2e_reflow.py`, qui monte un décor
+et vise des URL peuplées ; celui-ci reste l'instrument d'exploration, celui qu'on lance à
+la main pour balayer sept largeurs et LIRE ce qui sort. Les deux partagent `SONDE`.
+
   # sur une instance déjà lancée (base jetable de préférence)
   python tools/mesurer_reflow.py [URL]        # défaut : http://127.0.0.1:8000
 """
 import sys
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-from playwright.sync_api import sync_playwright
-
-BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
+# Rien au niveau MODULE : `tests/test_e2e_reflow.py` importe `SONDE` d'ici, et recopier la
+# sonde ferait exactement la faute qu'elle répare — deux versions d'une même règle, dont
+# une seule serait corrigée le jour où l'on apprend quelque chose. Lire `sys.argv` ou
+# reconfigurer `stdout` à l'import agirait donc sur une course de pytest.
 SURFACES = [("Visionneuse", "/"), ("Recherche", "/recherche"),
             ("Bibliothèque", "/corpus"), ("Exploration", "/exploration")]
 # Deux largeurs ne suffisent pas : elles ne disent rien de la BANDE entre les deux, et
@@ -103,31 +110,39 @@ SONDE = """() => {
   return { scrollWidth: r.scrollWidth, clientWidth: large, coupables: coupables.slice(0, 6) };
 }"""
 
-with sync_playwright() as pw:
-    nav = pw.chromium.launch()
-    for largeur, nom_l in LARGEURS:
-        print(f"\n{'=' * 62}\n  {largeur} px ({nom_l})\n{'=' * 62}")
-        ctx = nav.new_context(viewport={"width": largeur, "height": 900})
-        page = ctx.new_page()
-        for nom, chemin in SURFACES:
-            try:
-                page.goto(BASE + chemin, wait_until="networkidle", timeout=30000)
-            except Exception as e:
-                print(f"  {nom:14} — inatteignable ({type(e).__name__})")
-                continue
-            r = page.evaluate(SONDE)
-            perdus = [c for c in r["coupables"] if not c["cadre"]]
-            encadres = [c for c in r["coupables"] if c["cadre"]]
-            etat = "OK" if not perdus else f"{len(perdus)} élément(s) COUPÉ(s)"
-            print(f"  {nom:14} → {etat}")
-            for c in perdus:
-                ident = c["id"] and f"#{c['id']}" or (c["cls"] and f".{c['cls']}") or ""
-                print(f"       ✗ <{c['tag']}>{ident}  largeur {c['largeur']} px,"
-                      f" dépasse de {c['depasse']} — INATTEIGNABLE")
-            for c in encadres:
-                ident = c["id"] and f"#{c['id']}" or (c["cls"] and f".{c['cls']}") or ""
-                print(f"       · <{c['tag']}>{ident}  largeur {c['largeur']} px,"
-                      f" défile dans {c['cadre']} — conforme 1.4.10")
-        ctx.close()
-    nav.close()
-print("\nfin de la mesure")
+def main(base):
+    from playwright.sync_api import sync_playwright
+    BASE = base
+    with sync_playwright() as pw:
+        nav = pw.chromium.launch()
+        for largeur, nom_l in LARGEURS:
+            print(f"\n{'=' * 62}\n  {largeur} px ({nom_l})\n{'=' * 62}")
+            ctx = nav.new_context(viewport={"width": largeur, "height": 900})
+            page = ctx.new_page()
+            for nom, chemin in SURFACES:
+                try:
+                    page.goto(BASE + chemin, wait_until="networkidle", timeout=30000)
+                except Exception as e:
+                    print(f"  {nom:14} — inatteignable ({type(e).__name__})")
+                    continue
+                r = page.evaluate(SONDE)
+                perdus = [c for c in r["coupables"] if not c["cadre"]]
+                encadres = [c for c in r["coupables"] if c["cadre"]]
+                etat = "OK" if not perdus else f"{len(perdus)} élément(s) COUPÉ(s)"
+                print(f"  {nom:14} → {etat}")
+                for c in perdus:
+                    ident = c["id"] and f"#{c['id']}" or (c["cls"] and f".{c['cls']}") or ""
+                    print(f"       ✗ <{c['tag']}>{ident}  largeur {c['largeur']} px,"
+                          f" dépasse de {c['depasse']} — INATTEIGNABLE")
+                for c in encadres:
+                    ident = c["id"] and f"#{c['id']}" or (c["cls"] and f".{c['cls']}") or ""
+                    print(f"       · <{c['tag']}>{ident}  largeur {c['largeur']} px,"
+                          f" défile dans {c['cadre']} — conforme 1.4.10")
+            ctx.close()
+        nav.close()
+    print("\nfin de la mesure")
+
+
+if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    main(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000")
