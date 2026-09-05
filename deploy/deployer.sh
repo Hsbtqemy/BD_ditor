@@ -150,11 +150,36 @@ if ! sortie_config="$(docker compose config 2>&1)"; then
 
 $(printf '%s' "$sortie_config" | sed 's/^/      /' | head -20)"
 fi
-if ! printf '%s' "$sortie_config" | grep -q "127.0.0.1:8080"; then
-  refus "la pile se résout, mais n'expose pas 127.0.0.1:8080 — COMPOSE_FILE manque
-      probablement dans deploy/.env.
-      Attendu : COMPOSE_FILE=docker-compose.yml:docker-compose.derriere-proxy.yml
-      Sans lui, Caddy réclamera les ports 80 et 443 que nginx occupe."
+# Deux questions distinctes, et deux messages distincts. La première — l'override
+# est-il dans la pile résolue ? — se lit sur un chemin de volume, qui survit à toute
+# normalisation. La seconde ne se pose que si la première répond oui.
+if ! printf '%s' "$sortie_config" | grep -q "Caddyfile.derriere-proxy"; then
+  refus "l'override 'derriere-proxy' n'est PAS dans la pile résolue — COMPOSE_FILE manque
+      dans deploy/.env.
+      Réparer :  echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.derriere-proxy.yml' >> deploy/.env
+      Sans lui, Caddy publie 80 et 443 : un \`docker compose up -d\` sans nom de service
+      le recréerait ainsi, en collision avec le nginx qui sert l'autre site du serveur."
+fi
+
+# `docker compose config` NORMALISE la syntaxe courte des ports : `\"127.0.0.1:8080:80\"`
+# devient une forme longue où `host_ip` et `published` vivent sur des LIGNES SÉPARÉES, si
+# bien que la chaîne « 127.0.0.1:8080 » n'apparaît nulle part. Mesuré sur le VPS le
+# 2026-09-05 — cette garde a refusé une pile parfaitement correcte, en annonçant une
+# cause qu'elle n'avait pas vérifiée. On accepte donc les DEUX rendus : les versions de
+# Compose ne s'accordent pas là-dessus, et un environnement donné n'en montre qu'un.
+port_ok=0
+if printf '%s' "$sortie_config" | grep -qE 'host_ip: *127\.0\.0\.1' &&
+   printf '%s' "$sortie_config" | grep -qE 'published: *"?8080"?'; then
+  port_ok=1                       # forme longue (Compose v2 récent)
+fi
+if printf '%s' "$sortie_config" | grep -qE '127\.0\.0\.1:8080'; then
+  port_ok=1                       # forme courte (rendu non normalisé)
+fi
+if [ "$port_ok" = 0 ]; then
+  refus "l'override est bien dans la pile, mais elle ne publie pas sur 127.0.0.1:8080.
+      Quelqu'un a changé le port, ou Compose rend une TROISIÈME forme que ce script ne
+      connaît pas. Vérifier à la main :
+        docker compose config | grep -nE '8080|host_ip|derriere-proxy'"
 fi
 ok "override 'derriere-proxy' actif (127.0.0.1:8080)"
 
