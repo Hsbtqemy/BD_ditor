@@ -23,8 +23,10 @@ pour irreproductible.
 **Arrêté sur** — passe de revue : une quatrième configuration (noyau seul sans
 `openpyxl`), le bord non mesuré nommé (`e2e`), et le commentaire du semis dit enfin
 pourquoi lui seul a besoin d'une garde conditionnelle ; commit `4dde1af`, 5 septembre.
-Le correctif lui-même est au commit `e90f50f`. Poussé sur `origin/dev` le 5 septembre —
-les deux commits de code vivent sur une ref d'intégration, le démenti tombe.
+Le correctif lui-même est au commit `e90f50f`. Poussé sur `origin/dev` le 5 septembre, puis
+`main` avancée en fast-forward le même jour — les deux commits de code vivent sur la ref
+DÉPLOYÉE, pas seulement sur une ref d'intégration. Le déploiement lui-même reste un geste
+à part (`deploy/deployer.sh`) : le dépôt n'a aucun workflow qui le déclenche.
 
 **Point de départ** — 2026-09-05, trouvé en vérifiant ARCH-2 dans un venv jetable monté
 pour éprouver l'autre forme d'`app.routes`. Aucun code écrit. Le défaut n'a rien à voir
