@@ -13,9 +13,13 @@
 # Tests / développement
 pytest==9.0.2
 # openpyxl : outil de TEST ici, pas d'exécution — l'application ne l'importe jamais, seuls
-# les scripts `tools/` s'en servent. Sans lui, deux tests d'export se skippent. Épinglé ICI
-# et pas dans le Dockerfile : une version ne doit vivre qu'à un seul endroit (cf. QA-4).
-# La même valeur que requirements-export.txt, qui reste la spec lisible.
+# les scripts `tools/` s'en servent. Sans lui, TROIS tests d'export se skippent, et le
+# cliquet des sorties d'identité (AUTH-5) balaie deux invocations de moins en le DISANT.
+# Cette phrase annonçait « deux tests se skippent » alors que quatre ÉCHOUAIENT : les plus
+# récents n'avaient pas reçu la garde, et un rouge sur un extra absent fait chercher une
+# régression qui n'existe pas. Corrigé le 2026-09-05 (ARCH-2). Épinglé ICI et pas dans le
+# Dockerfile : une version ne doit vivre qu'à un seul endroit (cf. QA-4). La même valeur
+# que requirements-export.txt, qui reste la spec lisible.
 openpyxl==3.1.5
 pytest-cov==7.0.0
 pytest-playwright==0.8.0

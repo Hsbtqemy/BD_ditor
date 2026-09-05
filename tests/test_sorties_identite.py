@@ -14,6 +14,7 @@ TROIS sortes d'identité, et pas une seule : AUTH-1 les distingue déjà — « 
 l'email ni le nom lisible, mais un login identifie une personne ». La déclaration dit donc
 QUELLE sorte chaque surface peut émettre, ce qu'une sentinelle unique ne saurait exprimer.
 """
+import importlib.util
 import io
 import json
 import os
@@ -25,8 +26,8 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from fastapi.routing import APIRoute
 
+import inventaire_routes
 import main
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -302,8 +303,15 @@ NON_BALAYE = {
 # Le balayage
 # --------------------------------------------------------------------------- #
 def _routes_get():
-    return sorted((r for r in main.app.routes
-                   if isinstance(r, APIRoute) and "GET" in r.methods),
+    """Les routes GET de l'app, par l'inventaire partagé (`inventaire_routes`, ARCH-2).
+
+    C'était un `isinstance(r, APIRoute)` posé ici, et il a écarté 28 des 51 routes GET
+    sans un mot le 2026-09-05 : FastAPI 0.137 n'aplatit plus les routeurs inclus dans
+    `app.routes`, et l'objet paresseux qui les remplace n'est pas une `APIRoute`. Le
+    cliquet a continué de passer en ne balayant plus que 23 surfaces sur 51 — dont plus
+    aucune du domaine `analyse`, celui qui NOMME.
+    """
+    return sorted((r for r in inventaire_routes.routes_api() if "GET" in r.methods),
                   key=lambda r: r.path)
 
 
@@ -357,6 +365,39 @@ def _outils():
     return sorted(p.name for p in TOOLS.glob("*.py"))
 
 
+# --------------------------------------------------------------------------- #
+# Ce qu'un EXTRA absent empêche de balayer (ARCH-2)
+# --------------------------------------------------------------------------- #
+# Deux invocations exigent `openpyxl`, qui vit dans `requirements-export.txt` et n'est pas
+# du noyau. Sans lui, l'outil sort en erreur — et c'est son BON comportement, pas une
+# régression. La convention du dépôt est de skipper proprement une dépendance optionnelle
+# (`requires_kumiko` / `requires_bulles` / `requires_ocr`) ; ces trois tests ÉCHOUAIENT, ce
+# qui apprend la mauvaise chose : un rouge sur un extra absent fait chercher un bug qui
+# n'existe pas. `requirements-dev.lock` l'annonçait d'ailleurs déjà — « sans lui, des tests
+# d'export se skippent ».
+#
+# Le skip est CIBLÉ, et pas porté sur le test entier. Ce cliquet ne vaut que par son
+# exhaustivité : le mettre en pause parce qu'un tableur manque le rendrait muet sur les dix
+# AUTRES invocations — le journal, la provenance, les métadonnées, le crosswalk. Il balaie
+# donc ce qu'il peut, et le dernier test du fichier AFFICHE ce qu'il n'a pas vu : un
+# cliquet partiel qui se taît est un cliquet qui rassure à tort. La contrepartie est
+# écrite : sur une machine sans l'extra, une déclaration périmée
+# de ces deux surfaces survivrait au contrôle (1) ci-dessous. Elle ne survit pas dans
+# l'image, qui installe `requirements-dev.lock` — et l'image est l'artefact livré (QA-5).
+SANS_EXTRA = {
+    "dictionnaire_xlsx.py --out": "openpyxl",
+    "metadonnees_collection.py --xlsx": "openpyxl",
+}
+
+
+def _extra_absent(surface: str):
+    """Le nom de l'extra manquant qui empêche de balayer cette surface, ou None."""
+    extra = SANS_EXTRA.get(surface)
+    if extra and importlib.util.find_spec(extra) is None:
+        return extra
+    return None
+
+
 # Comment invoquer ce qui PRODUIT quelque chose. Une entrée = une SORTIE et non un outil :
 # `metadonnees_collection.py` en a trois — le JSON, les CSV et l'onglet XLSX — et c'est
 # précisément la troisième qui a échappé à quatre inventaires. Regrouper par outil
@@ -399,6 +440,8 @@ def _balayer_outils(seme, tmp_path) -> dict:
     env = {**os.environ, "BD_DB_PATH": str(seme["db"]),
            "BD_DATA_DIR": str(seme["data"])}
     for surface, outil, args, sorties in _invocations(tmp_path):
+        if _extra_absent(surface):
+            continue                       # cf. SANS_EXTRA — non balayée, et pas en panne
         p = subprocess.run([sys.executable, str(TOOLS / outil), *args],
                            cwd=str(REPO_ROOT), env=env, capture_output=True)
         assert p.returncode == 0, (surface, p.stderr.decode("latin-1")[-900:])
@@ -450,6 +493,8 @@ def test_les_declarations_ne_mentent_pas(client, seme, tmp_path):
     for cle, (sortes, raison) in sorted(SORTIES_DECLAREES.items()):
         assert raison, f"{cle} est déclarée sans raison écrite"
         if cle not in vus:
+            if cle[0] == "outil" and _extra_absent(cle[1]):
+                continue      # non balayée faute d'un extra, pas disparue — cf. SANS_EXTRA
             fautes.append(f"{cle[0]} {cle[1]} est déclarée mais n'est plus balayée")
         elif set(sortes) - vus[cle]:
             fautes.append(f"{cle[0]} {cle[1]} déclare {sorted(set(sortes) - vus[cle])} "
@@ -489,6 +534,81 @@ def test_les_declarations_ne_mentent_pas(client, seme, tmp_path):
         + "\n  ".join(fautes))
 
 
+def test_l_inventaire_des_routes_get_n_a_pas_retreci():
+    """Le balayage doit ÉCHOUER quand il cesse de voir les surfaces, pas raccourcir.
+
+    Les trois cliquets de ce fichier partent tous de `_routes_get()`. Aucun ne pose de
+    question à une route qui n'est pas dans cette liste — donc aucun ne peut se plaindre
+    d'une liste qui rétrécit. Le 2026-09-05, elle est passée de 51 à 23 sans un mot :
+    FastAPI 0.137 a cessé d'aplatir les routeurs inclus dans `app.routes`, et le filtre
+    `isinstance(r, APIRoute)` posé ici a écarté tout ce qui en venait — dont le domaine
+    `analyse` en entier, celui dont une route NOMME les annotateurs et cite à la ligne.
+
+    Le plancher se dérive du source par AST (`inventaire_routes.plancher_source`), et non
+    d'un chiffre écrit ici. Ce fichier avait justement un chiffre écrit (`len(vus) >= 55`) :
+    il visait la bonne chose et il aurait tiré, mais il vivait DERRIÈRE le balayage, qu'un
+    extra absent faisait mourir avant. Un plancher ne protège que ce qui le précède.
+    """
+    inventaire_routes.exiger_plancher(len(_routes_get()),
+                                      "le cliquet des sorties d'identité (AUTH-5)",
+                                      methode="get")
+
+
+def test_les_exemptions_d_extra_visent_des_surfaces_reelles(tmp_path):
+    """Une exemption qui vise une surface disparue dormirait en rassurant.
+
+    Même mensonge que celui du contrôle (2) plus haut, sur la liste d'à côté : le jour où
+    `--xlsx` change de nom ou d'outil, `SANS_EXTRA` cesserait d'exempter quoi que ce soit,
+    et le rouge reviendrait sans qu'on comprenne pourquoi l'exemption ne joue plus.
+    """
+    surfaces = {s for s, *_ in _invocations(tmp_path)}
+    inconnues = sorted(set(SANS_EXTRA) - surfaces)
+    assert not inconnues, (
+        f"{inconnues} figurent dans SANS_EXTRA mais ne sont plus des invocations : "
+        "l'exemption ne s'applique à rien. La retirer, ou corriger le libellé.")
+
+
+def test_le_skip_d_extra_retire_exactement_les_surfaces_visees(monkeypatch, tmp_path):
+    """Le skip doit jouer sur une machine sans l'extra, et NE PAS jouer sur une avec.
+
+    Il ne se vérifie pas en regardant la machine qui lance la suite : celle-ci a l'extra la
+    moitié du temps, et un skip qu'on ne peut éprouver que par accident d'environnement
+    n'est pas éprouvé. On simule donc les deux réponses de `find_spec` — c'est le seul
+    endroit où la décision se prend.
+
+    L'exigence est une ÉGALITÉ et non une inclusion : un skip qui retirerait une surface de
+    plus que `SANS_EXTRA` rendrait le balayage silencieusement plus court, ce qui est la
+    faute entière d'ARCH-2.
+    """
+    monkeypatch.setattr(importlib.util, "find_spec", lambda nom: None)
+    assert {s for s, *_ in _invocations(tmp_path) if _extra_absent(s)} == set(SANS_EXTRA)
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda nom: object())
+    assert not [s for s, *_ in _invocations(tmp_path) if _extra_absent(s)]
+
+
+def test_le_balayage_dit_ce_qu_il_n_a_pas_vu(capsys):
+    """N'échoue pas : AFFICHE les surfaces qu'un extra absent empêche de balayer.
+
+    Un cliquet partiel qui se taît est un cliquet qui rassure à tort — c'est la leçon
+    entière d'ARCH-2, où deux gardes ont approuvé la moitié d'un contrat sans le dire. Le
+    skip ciblé de `SANS_EXTRA` est justifié, mais il ne doit pas être silencieux : sur une
+    machine sans l'extra, ces surfaces ne sont regardées par personne jusqu'à ce que
+    l'image tourne.
+    """
+    manquants = {s: e for s in SANS_EXTRA if (e := _extra_absent(s))}
+    with capsys.disabled():
+        if manquants:
+            print("\n  AUTH-5 — balayage PARTIEL, "
+                  f"{len(manquants)} surface(s) non regardée(s) :")
+            for surface, extra in sorted(manquants.items()):
+                print(f"    {surface} — `{extra}` absent "
+                      "(pip install -r requirements-export.txt)")
+        else:
+            print(f"\n  AUTH-5 — balayage complet, {len(_invocations(Path('.')))} "
+                  "invocations d'outils")
+
+
 def test_le_semis_est_visible(client, seme, tmp_path):
     """Le mode d'échec d'un cliquet est son SEMIS, jamais son balayage.
 
@@ -504,7 +624,21 @@ def test_le_semis_est_visible(client, seme, tmp_path):
         f"sentinelles jamais vues passer : {sorted(set(SENTINELLES) - aperçues)} — "
         "le semis ne les place nulle part, ou le balayage ne lit pas la surface qui les "
         "porte. Un cliquet qui ne voit rien est vert pour la mauvaise raison.")
-    assert len(vus) >= 55, f"balayage anormalement court : {len(vus)} surfaces"
+    # Le plancher du balayage, DÉRIVÉ (ARCH-2). C'était `>= 55`, un chiffre recopié — et
+    # il avait raison : sous FastAPI 0.137, le balayage tombait à 33 surfaces, donc il
+    # aurait tiré. Il n'a pas tiré parce qu'`openpyxl` manquait : `_balayer_outils` mourait
+    # sur la quatrième invocation, bien avant cette ligne. Les deux constats d'ARCH-2 ne
+    # sont pas indépendants — le second a étouffé le seul plancher que le dépôt avait déjà.
+    #
+    # Dérivé, il ne peut plus vieillir dans le sens permissif : toute route GET qui n'est
+    # pas déclarée hors balayage DOIT être balayée, et toute invocation qui ne bute pas sur
+    # un extra absent aussi.
+    attendues = (sum(1 for r in _routes_get() if ("route", r.path) not in NON_BALAYE)
+                 + sum(1 for s, *_ in _invocations(tmp_path) if not _extra_absent(s)))
+    assert len(vus) >= attendues, (
+        f"balayage anormalement court : {len(vus)} surfaces vues pour {attendues} "
+        "attendues. Une surface qui répond 4xx ou dont les paramètres ne se remplissent "
+        "pas doit entrer dans NON_BALAYE avec sa raison, jamais disparaître du compte.")
 
 
 def test_toute_colonne_exportable_est_classee(client, db_path):

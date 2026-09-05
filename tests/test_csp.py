@@ -15,11 +15,54 @@ bundle — deux choses qu'aucune relecture de source ne pouvait voir.
 import httpx
 import pytest
 
+import inventaire_routes
 from conftest import make_png
 
 ADMIN = {"Remote-User": "csp", "Remote-Groups": "bd-admins"}
 
 SURFACES_HTML = ("/", "/corpus", "/recherche", "/exploration")
+
+
+def test_les_surfaces_html_suivent_l_application(client):
+    """`SURFACES_HTML` est une liste ÉCRITE À LA MAIN, et c'est ce qui l'a sauvée.
+
+    ARCH-2 (2026-09-05) a aveuglé deux cliquets du dépôt en changeant la forme de
+    `app.routes` : ils ont continué de passer en n'examinant plus que la moitié du contrat.
+    Ce fichier n'a rien vu — parce qu'il n'énumère rien. C'est une immunité par ACCIDENT et
+    non par conception, et la première rédaction de la fiche ARCH-2 le rangeait avec les
+    deux autres, à tort.
+
+    Le revers est l'autre mode d'échec, et il est bien réel : une liste manuelle ne GRANDIT
+    pas avec l'application. Une cinquième page servirait du HTML sans que sa politique soit
+    jamais exécutée dans un navigateur, et ce fichier resterait vert en parlant des « quatre
+    surfaces ». Les deux gardes échouent en sens contraire — l'énumération PERD ce qu'elle
+    voyait, la liste OUBLIE ce qu'on ajoute — et aucune des deux ne le dit toute seule.
+
+    Ce test confronte donc la liste à l'inventaire réel. Il ne la remplace pas :
+    `SURFACES_BALAYEES` porte des paramètres de requête et deux chemins de documentation
+    qu'aucune énumération ne devinerait, et cette intention-là s'écrit.
+    """
+    servies = set()
+    for r in inventaire_routes.routes_api():
+        # Les gabarits paramétrés sont écartés : `/derivatives/{chemin:path}` sert des
+        # IMAGES, pas du HTML, et aucune surface d'application n'est paramétrée.
+        if "GET" not in r.methods or r.path.startswith("/api/") or "{" in r.path:
+            continue
+        if "text/html" in client.get(r.path).headers.get("content-type", ""):
+            servies.add(r.path)
+
+    assert servies, (
+        "aucune surface HTML trouvée : l'inventaire est vide, donc ce contrôle ne prouve "
+        "plus rien. Voir `inventaire_routes` — la forme de `app.routes` a peut-être changé.")
+    absentes = sorted(servies - set(SURFACES_HTML))
+    assert not absentes, (
+        f"{absentes} servent du HTML sans figurer dans SURFACES_HTML : leur politique n'est "
+        "vérifiée par aucun test, et aucune n'est chargée dans un vrai navigateur. Les "
+        "ajouter ici ET dans SURFACES_BALAYEES, avec leurs paramètres de requête utiles.")
+    disparues = sorted(set(SURFACES_HTML) - servies)
+    assert not disparues, (
+        f"{disparues} sont listées mais ne servent plus de HTML — une liste périmée "
+        "rassure, et les tests paramétrés sur elle deviennent vacants.")
 
 
 def _csp(client, chemin):

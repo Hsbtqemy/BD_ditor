@@ -172,7 +172,9 @@ première extraction a produit **49 tests rouges** d'un coup — trois noms util
 importés. Un module aux noms libres s'importe sans broncher : le `NameError` n'arrive
 qu'à l'APPEL, et ressemble alors à un bug métier. Le test calcule ces noms des DEUX côtés
 de la coupe ; interdit au socle et aux routes de remonter vers `main` ; vérifie qu'un
-routeur inclus reste visible dans `app.routes` (l'inventaire des trois cliquets) ;
+routeur inclus reste visible dans `app.routes` (l'inventaire des DEUX cliquets qui
+énumèrent — l'autorisation et les sorties d'identité ; la CSP n'y était pour rien, cf.
+ARCH-2) ;
 surveille l'ORDRE, le découpage réordonnant la table de routage — sans effet tant qu'aucune
 route littérale n'est captable par une paramétrée, mesuré, 0 paire sur 127 ; et exige que
 **toute route capte l'agent courant**.
@@ -184,6 +186,44 @@ Cette dernière n'est pas une précaution : c'est la panne du 2026-09-02. `inclu
 attribuait `NULL` : les fonctionnalités marchaient, seule l'ATTRIBUTION disparaissait.
 Invisible à 646 tests verts, à une table de routage intacte, à un diff ligne à ligne
 propre et à quatre gardes ; vue par un audit E2E, et de BIAIS.
+
+**Et cette garde a passé trois jours aveugle à ce qu'elle garde (ARCH-2, 2026-09-05).**
+`app.routes` n'est promis par personne : FastAPI 0.137 a cessé d'y aplatir les routeurs
+inclus, et y dépose sept objets PARESSEUX qui délèguent à l'exécution. Les routes
+répondent ; elles ne sont plus énumérables. Les deux cliquets qui en tirent leur
+inventaire — l'autorisation et les sorties d'identité — n'ont pas échoué : ils ont
+**continué de PASSER** en ne regardant plus que 53 routes sur 122, et 23 GET sur 51. Une
+garde qui tombe est un incident ; une garde qui approuve en n'ayant rien vu est un
+mensonge. `test_decoupage_api` est le seul à avoir bronché, et pas par chance : il compare
+une SOURCE à un inventaire au lieu de parcourir l'inventaire seul.
+
+Trois réparations, et la deuxième est la seule qui protège d'une cause qu'on n'a pas prévue.
+
+1. **L'aplatissement vit dans `tests/inventaire_routes.py`**, à UN endroit — le recopier
+   serait la faute qu'il répare. Il reconnaît la forme paresseuse par son COMPORTEMENT
+   (`effective_candidates`) et non par le nom privé `_IncludedRouter`, et sait lire les
+   DEUX formes : `test_inventaire_routes.py` l'éprouve sur des doublures, parce qu'un
+   environnement donné n'installe jamais qu'une des deux.
+2. **`exiger_plancher()` fait ÉCHOUER un inventaire qui rétrécit**, quelle qu'en soit la
+   cause. Le plancher se DÉRIVE du source (décorateurs de route comptés par AST sur
+   `main.py` + `routes/*.py`), parce qu'un chiffre recopié vieillit dans le sens
+   PERMISSIF. Les **quatre** tests qui énumèrent l'appellent chacun : un plancher unique
+   ailleurs rendrait bien la suite rouge, mais le cliquet concerné resterait vert — et
+   c'est cette lecture-là qui a laissé passer la panne. `test_toute_route_capte_l_agent_courant`
+   en a le plus besoin : cherchant des routes NON conformes, il devient plus vert à
+   mesure qu'il voit moins.
+3. **`requirements.txt` plafonne `fastapi` sous 0.137** ; `requirements-dev.lock` posait
+   déjà `0.133.0`, et c'est ce verrou qui a protégé la production. L'écart entre
+   l'environnement qui MESURE et l'image qui SERT est ce que QA-5 dénonçait dans l'autre
+   sens — ici c'est le local qui voyait juste, et ce qu'il voyait, c'est que la garde ne
+   gardait plus rien. `tests/test_verrou_dependances.py` interdit désormais à une spec et
+   à son verrou de se contredire.
+
+`test_csp` n'a jamais été concerné, contrairement à ce qu'affirmaient cette page et la
+docstring de `test_decoupage_api` : ses surfaces sont des listes ÉCRITES À LA MAIN, donc
+rien ne pouvait les rétrécir. C'est une immunité par ACCIDENT, et son mode d'échec est
+l'autre — une liste manuelle **oublie ce qu'on ajoute** au lieu de perdre ce qu'elle
+voyait. Elle a désormais son propre contrôle : toute route servant du HTML doit y figurer.
 
 Les deux dernières gardent la COUTURE plutôt que la coupe. `main.py` ré-exporte **tout ce
 que `socle.py` définit** — et non ce qu'il utilise encore, ce qui faisait rétrécir la liste

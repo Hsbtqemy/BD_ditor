@@ -661,7 +661,15 @@ def test_aucun_login_d_annotateur_ne_sort_au_depot(corpus, album, tmp_path):
 
     Trois chemins, pas deux : le JSON, les CSV, et l'onglet XLSX — que l'inventaire des
     voies de sortie n'avait pas cité, et qui publiait les logins joints par « ; ».
+
+    Ce test skippe EN ENTIER sans `openpyxl` (ARCH-2), là où le cliquet d'AUTH-5 ne skippe
+    que ses deux invocations XLSX. La différence n'est pas d'humeur : ce que ce test mesure,
+    ce sont les TROIS chemins d'un même outil, et le troisième est précisément celui qui
+    avait échappé à quatre inventaires. Un balayage partiel y prouverait ce qu'on savait
+    déjà. Il ÉCHOUAIT jusqu'ici, ce qui faisait chercher une régression là où il n'y avait
+    qu'un extra non installé.
     """
+    pytest.importorskip("openpyxl")
     conn = sqlite3.connect(corpus["db"])
     try:
         cid = conn.execute(

@@ -15,10 +15,9 @@ nombre de routes. Dit autrement : le test statique ferme la porte de l'oubli, pa
 import json
 
 import pytest
-from fastapi.routing import APIRoute
-from starlette.routing import Mount
 
 import autorisation
+import inventaire_routes
 import main
 
 
@@ -78,24 +77,19 @@ MONTAGES_AUTORISES = {
 }
 
 
-def _dependances(dependant, vues=None) -> set:
-    """Toutes les fonctions de dépendance atteignables depuis une route (transitif)."""
-    vues = set() if vues is None else vues
-    for d in dependant.dependencies:
-        if d.call is not None:
-            vues.add(d.call)
-        _dependances(d, vues)
-    return vues
-
-
 def _routes() -> list[tuple[str, str, bool]]:
-    """(méthode, chemin, consulte-t-elle la portée ?) pour chaque route de l'app."""
+    """(méthode, chemin, consulte-t-elle la portée ?) pour chaque route de l'app.
+
+    L'énumération et la marche des dépendances vivent dans `inventaire_routes` (ARCH-2).
+    Elles étaient ici, et elles y filtraient sur `isinstance(r, APIRoute)` : à partir de
+    FastAPI 0.137, un routeur inclus n'aplatit plus ses routes dans `app.routes`, l'objet
+    paresseux qui le remplace n'est pas une `APIRoute`, et ce filtre a écarté 69 des
+    122 routes SANS RIEN DIRE. Le cliquet ci-dessous est resté vert en n'ayant examiné que
+    44 % du contrat qu'il prétend garder.
+    """
     out = []
-    for r in main.app.routes:
-        if not isinstance(r, APIRoute):
-            continue
-        deps = _dependances(r.dependant)
-        scopee = main.portee_courante in deps
+    for r in inventaire_routes.routes_api():
+        scopee = main.portee_courante in inventaire_routes.dependances(r)
         for m in sorted(r.methods - {"HEAD", "OPTIONS"}):
             out.append((m, r.path, scopee))
     return out
@@ -122,11 +116,29 @@ def test_toute_route_est_tranchee():
         + "\n  ".join(f"{m} {c}" for m, c in inconnues))
 
 
+def test_l_inventaire_des_routes_n_a_pas_retreci():
+    """Le cliquet ci-dessus doit ÉCHOUER quand il cesse de voir, pas passer plus vite.
+
+    Il ne prouve RIEN sur un inventaire vide : « aucune route non tranchée » est vrai de
+    zéro route. C'est exactement ce qui est arrivé le 2026-09-05 — FastAPI 0.137 a cessé
+    d'aplatir les routeurs inclus dans `app.routes`, le filtre `isinstance(r, APIRoute)` a
+    écarté 69 routes en silence, et ce fichier est resté vert en n'ayant examiné que 53
+    routes sur 122. Une garde qui tombe est un incident ; une garde qui approuve en n'ayant
+    rien vu est un mensonge, et personne ne l'entend.
+
+    Le plancher se DÉRIVE du source (`inventaire_routes.plancher_source`, compté par AST
+    sur `main.py` et `routes/*.py`) et non d'un chiffre écrit ici. Un chiffre recopié
+    vieillit, et il vieillit dans le sens permissif : l'application grossit, le nombre
+    reste, et la marge silencieuse remplace la garde.
+    """
+    inventaire_routes.exiger_plancher(len(_routes()), "le cliquet d'autorisation (AUTH-2)")
+
+
 def test_aucun_montage_ne_sert_le_corpus():
     """Un montage de fichiers statiques ne passe par AUCUNE dépendance : le cliquet des
     routes ne peut pas le voir. Il lui faut donc sa propre porte."""
-    inconnus = [r.path for r in main.app.routes
-                if isinstance(r, Mount) and r.path not in MONTAGES_AUTORISES]
+    inconnus = [m.path for m in inventaire_routes.montages()
+                if m.path not in MONTAGES_AUTORISES]
     assert not inconnus, (
         "Ces montages servent des fichiers sans contrôle d'accès. Un montage échappe à "
         "toute dépendance : s'il touche au corpus, il doit devenir une route.\n  "

@@ -15,6 +15,7 @@ import io
 import re
 from pathlib import Path
 
+import inventaire_routes
 import main
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -162,9 +163,20 @@ def test_les_dependances_ne_remontent_jamais():
 def test_tout_routeur_de_routes_est_reellement_inclus():
     """La condition écrite dans ARCH-1 : le découpage ne change ni les chemins ni le
     contrat d'API. Une route portée par un `APIRouter` doit se trouver dans `app.routes`
-    comme les autres — c'est de là que les trois cliquets du dépôt (autorisation, sorties
-    d'identité, CSP) tirent leur inventaire. Si elle n'y était pas, ils passeraient au
+    comme les autres — c'est de là que DEUX cliquets du dépôt tirent leur inventaire :
+    l'autorisation et les sorties d'identité. Si elle n'y était pas, ils passeraient au
     vert en ne regardant plus rien.
+
+    Cette phrase disait « les TROIS cliquets, CSP comprise » : c'était faux, et corrigé le
+    2026-09-05 (ARCH-2) en vérifiant. `test_csp` n'énumère rien — ses surfaces sont des
+    listes écrites à la main — donc rien ne pouvait le rétrécir. Son mode d'échec est
+    l'autre : il oublie ce qu'on ajoute au lieu de perdre ce qu'il voyait, et il a
+    désormais son propre contrôle contre celui-là.
+
+    Le 2026-09-05, ce test a été le SEUL des sept à broncher quand FastAPI 0.137 a cessé
+    d'aplatir les routeurs inclus. Pas par chance : parce qu'il compare une SOURCE à un
+    inventaire au lieu de parcourir l'inventaire seul. C'est l'argument entier du plancher
+    dérivé que portent maintenant les deux autres cliquets.
 
     Le test DÉCOUVRE les modules au lieu de les nommer. Sa première version citait
     `recherche` en dur : elle serait restée verte en ne couvrant aucun des modules
@@ -179,7 +191,7 @@ def test_tout_routeur_de_routes_est_reellement_inclus():
     modules = [f.stem for f in (RACINE / "routes").glob("*.py")
                if f.stem != "__init__"]
     assert modules, "aucun module dans routes/ — le découpage a disparu"
-    chemins_app = {r.path for r in main.app.routes if hasattr(r, "path")}
+    chemins_app = inventaire_routes.chemins()
     for nom in modules:
         mod = importlib.import_module(f"routes.{nom}")
         assert hasattr(mod, "router"), (
@@ -245,9 +257,17 @@ def test_aucune_route_ne_depend_de_son_rang_dans_la_table():
 
     Mesuré au moment d'écrire ceci : 127 routes, 71 paramétrées, ZÉRO paire sensible.
     Ce test dit quand cette phrase cesse d'être vraie.
+
+    Il a passé trois jours à mesurer 58 routes et 12 paramétrées sans que la phrase
+    change : son `hasattr(r, "path")` écartait les sept routeurs paresseux de FastAPI 0.137
+    (ARCH-2). Un test qui compte et qui n'annonce pas ce qu'il a compté ne peut pas dire
+    qu'il a cessé de compter — d'où l'inventaire partagé, et le plancher dérivé qui garde
+    les deux cliquets voisins.
     """
-    routes = [(sorted(getattr(r, "methods", ["MOUNT"]))[0], r.path)
-              for r in main.app.routes if hasattr(r, "path")]
+    inventaire_routes.exiger_plancher(len(inventaire_routes.routes_api()),
+                                      "le contrôle de l'ordre de la table")
+    routes = [(sorted(getattr(r, "methods", ["MOUNT"]))[0], inventaire_routes.chemin_de(r))
+              for r in inventaire_routes.objets()]
     parametrees = [(m, p) for m, p in routes if "{" in p]
     litterales = [(m, p) for m, p in routes if "{" not in p]
 
@@ -282,19 +302,19 @@ def test_toute_route_capte_l_agent_courant():
     indirectement — alice et bob devenaient tous deux anonymes, donc zéro re-touche entre
     auteurs distincts. Le prochain bloc extrait peut refaire exactement la même chose ;
     celui-ci le dira tout de suite, et en nommant la cause.
+
+    ARCH-2, et c'est le plus inquiétant du lot : ce test-CI était aveugle aux mêmes
+    69 routes. Il sautait tout objet sans `dependant` — commentaire à l'appui, « montages
+    StaticFiles, non concernés » — et le routeur paresseux de FastAPI 0.137 n'en a pas. Il
+    gardait donc exactement les sept routeurs inclus dont il est né, en ne regardant que
+    les routes restées dans `main.py`. La panne du 2026-09-02 pouvait revenir à
+    l'identique sous une suite verte.
     """
+    inventaire_routes.exiger_plancher(len(inventaire_routes.routes_api()),
+                                      "la garde de `_capter_agent`")
     orphelines = []
-    for r in main.app.routes:
-        if not hasattr(r, "dependant"):
-            continue          # montages StaticFiles : hors routeur, non concernés
-        vues, pile = set(), [r.dependant]
-        while pile:
-            d = pile.pop()
-            for sous in d.dependencies:
-                if sous.call is not None:
-                    vues.add(sous.call)
-                pile.append(sous)
-        if main._capter_agent not in vues:
+    for r in inventaire_routes.routes_api():
+        if main._capter_agent not in inventaire_routes.dependances(r):
             orphelines.append(f"{sorted(r.methods)[0]} {r.path}")
     assert not orphelines, (
         "Ces routes ne captent pas l'agent courant, donc le journal de provenance leur "

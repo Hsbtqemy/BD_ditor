@@ -1,4 +1,16 @@
-fastapi>=0.110
+# fastapi est PLAFONNÉ, et ce n'est pas de la prudence décorative (ARCH-2, 2026-09-05).
+# QUATRE tests ÉNUMÈRENT `app.routes` : c'est de là que l'autorisation (AUTH-2) et les
+# sorties d'identité (AUTH-5) tirent la liste dont elles exigent que chaque entrée ait été
+# tranchée. FastAPI ne promet rien sur la forme de cet attribut — 0.137 a cessé d'y aplatir
+# les routeurs inclus, et les deux cliquets ont continué de PASSER en ne voyant plus que
+# 53 routes sur 122.
+#
+# Deux réparations, et il faut les deux. Un plancher dérivé du source les fait désormais
+# ÉCHOUER au lieu d'approuver à vide, et l'aplatissement partagé sait lire les deux formes.
+# Le plafond, lui, tient l'environnement de développement sur la forme que l'image LIVRE :
+# `requirements.lock` pose 0.133.0, et c'est ce verrou-là qui a protégé la production
+# pendant que le venv local, ouvert jusqu'à 0.137, mesurait autre chose que ce qui sert.
+fastapi>=0.133,<0.137
 uvicorn[standard]>=0.27
 pillow>=10.0
 python-multipart>=0.0.9
