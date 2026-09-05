@@ -63,8 +63,8 @@ partagée avec tous ses utilisateurs.
 - [x] **La pile monte réellement sur le VPS** — mais pas dans l'architecture prévue : la machine hébergeait déjà `edito-revue.fr` derrière nginx, qui occupait 80 et 443. Caddy tournait, ses mappings déclarés mais jamais obtenus, et les requêtes tombaient sur nginx répondant 400 à un nom inconnu. Résolu par une VARIANTE versionnée (`docker-compose.derriere-proxy.yml` + `Caddyfile.derriere-proxy`) : Caddy passe sur `127.0.0.1:8080` sans TLS, nginx termine le TLS et proxifie. Le cas nominal du dépôt reste Caddy en frontal
 - [x] **Le NLP est disponible en production**, vérifié par la voie PROFONDE et non par la voie rapide : `profond.nlp = {ok: true}`, donc spaCy et `fr_core_news_sm` ont réellement suivi. Les quatre moteurs répondent (`kumiko`, `bulles`, `ocr`, `nlp`)
 - [x] **Une requête non authentifiée est refusée avant d'atteindre l'application** : dix chemins testés en anonyme, tous en 401 — `/api/sauvegarde` et `/static/style.css` compris, les deux que le `forward_auth` doit couvrir et qu'une garde posée au mauvais endroit laisserait passer sans rien signaler
-- [x] La déconnexion fonctionne de bout en bout depuis l'UI, pas seulement via la route `/api/moi` : clic sur la pastille 👤 → portail, retour sur l'application → **mot de passe ET code TOTP redemandés**. C'est ce troisième temps qui mesure, et lui seul : une page « vous êtes déconnecté » laissant la session vivante dans Redis donne exactement la même impression au premier coup d'œil, et laisse rentrer sans rien saisir
-- [x] Une sauvegarde prise sur le VPS se restaure sur une machine de dev : album témoin créé en ligne, `/api/sauvegarde` téléchargée — réservée aux administrateurs depuis DROIT-1 —, dézippée, servie par `BD_DB_PATH` sur le port 8001, l'album y est. Elle ne porte QUE la base : un corpus complet aux images absentes est le comportement attendu, pas un échec
+- [x] La déconnexion fonctionne de bout en bout depuis l'UI, pas seulement via la route `/api/moi` : clic sur la pastille 👤 → portail, retour sur l'application → **le portail redemande les identifiants**. C'est ce troisième temps qui mesure, et lui seul : une page « vous êtes déconnecté » laissant la session vivante dans Redis donne exactement la même impression au premier coup d'œil, et laisse rentrer sans rien saisir
+- [x] Une sauvegarde prise sur le VPS se restaure sur une machine de dev : album témoin créé en ligne, `/api/sauvegarde` téléchargée, dézippée, servie par `BD_DB_PATH` sur le port 8001, l'album y est. Elle ne porte QUE la base : un corpus complet aux images absentes est le comportement attendu, pas un échec
 - [x] **L'identité a fait le trajet, pas seulement la donnée** : la base restaurée porte `chercheur / Chercheur / …@example.fr` dans `utilisateur` (v22) — écrit côté serveur depuis les en-têtes par le MÊME `_auteur(request)` qui alimente `_capter_agent`. C'est ce qui exclut la panne d'attribution du 2026-09-02, qui ne se voit nulle part ailleurs
 - [x] Le référent d'AUTH-4 s'active sans toucher un fichier versionné : `BD_REFERENT_NOM`/`_CONTACT` passent par `.env` comme les trois domaines, et `docker compose config` sur le VPS les rend en chaînes vides, sans avertissement de variable absente
 
@@ -112,6 +112,22 @@ décision appliquée à moitié.
 `verifier_deploiement.py --config` le ferait sonner à chaque premier déploiement, au moment
 précis où la valeur vide est la bonne réponse. Un avertissement qu'on a toujours raison
 d'ignorer n'apprend plus rien — et il use la confiance accordée à tous les autres.
+
+**Deux choses n'ont PAS été mesurées, et la passe de revue les a rattrapées sur des cases
+déjà cochées.** Le refus de `/api/sauvegarde` à un NON-administrateur : elle a été prise
+par un compte qui y a droit, et le 401 relevé par le contrôle vient du `forward_auth`, pas
+de la règle DROIT-1 — celle-ci reste garantie par la suite de tests, pas par ce
+déploiement. Et la déconnexion n'a été observée que jusqu'au retour du portail : qu'il
+redemande AUSSI le code TOTP se déduit de la politique `two_factor`, cela n'a pas été vu.
+La substance des deux cases tient — un portail qui redemande des identifiants prouve que
+la session Redis est morte —, mais la première rédaction affirmait des observations qui
+n'avaient pas eu lieu.
+
+**Un renvoi mort, recopié plutôt que vérifié.** `docs/deploiement-docker.md` renvoyait à
+« §7 » pour l'application vide ; §7 est « Opérations courantes », et l'explication est en
+§6. Le renvoi existant était déjà faux, et la nouvelle mention l'a repris tel quel. Les
+deux pointent maintenant par le NOM (`§6, BD_AUTH_ADMIN_GROUPS`) : un numéro nu ne survit
+pas à un déplacement de section, et rien ne signale sa rupture.
 
 **Un reste sans conséquence aujourd'hui** : `users_database.yml` porte encore l'adresse du
 gabarit, `chercheur@example.fr`. Le notifier écrit dans un fichier, aucun courriel ne part.
