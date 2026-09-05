@@ -1,6 +1,6 @@
 ---
 chantier: EXP-1
-statut: différé
+statut: à venir
 ---
 
 # EXP-1 — exposer les exports de dépôt dans l'UI
@@ -8,6 +8,8 @@ statut: différé
 **Point de départ** — mis en attente exprès derrière INFRA-1 : tant que l'outil tourne en
 mono-poste, le chercheur est **sur** la machine de la base et lance les scripts `tools/`
 au shell. Déployé, cet accès disparaît.
+
+**Le blocage est LEVÉ — 2026-09-05.** INFRA-1 est livré : l'instance sert en HTTPS sur `bd.edito-revue.fr`, derrière Authelia, avec des comptes nommés et des sessions réelles. La raison de la mise en attente n'existe plus, et le statut change avec elle : laisser `différé` ferait annoncer par la fresque qu'on attend une instance qui tourne déjà. Ce chantier cesse même d'être un confort : sur le VPS, plus personne n'a de shell, donc les scripts `tools/` sont hors d'atteinte de qui n'administre pas la machine.
 
 ## Reste
 

@@ -1,12 +1,14 @@
 ---
 chantier: INFRA-3
-statut: différé
+statut: à venir
 ---
 
 # INFRA-3 — credentials WebDAV par utilisateur
 
 **Point de départ** — mis en attente exprès : sans sessions réelles (INFRA-1), il n'y a
 pas d'utilisateur à qui rattacher des identifiants.
+
+**Le blocage est LEVÉ — 2026-09-05.** INFRA-1 est livré : l'instance sert en HTTPS sur `bd.edito-revue.fr`, derrière Authelia, avec des comptes nommés et des sessions réelles. La raison de la mise en attente n'existe plus, et le statut change avec elle : laisser `différé` ferait annoncer par la fresque qu'on attend une instance qui tourne déjà. SHARE-1 avait déjà posé `_perso`, indexé par principal ; ce qui manquait était le principal lui-même, et il arrive maintenant dans `Remote-User`.
 
 **Relue le 2026-08-31 : la fiche décrivait une fuite refermée depuis trois jours.** Elle
 affirmait — vérifié le 2026-08-27 — que `pipeline/sharedocs.py:34` gardait `_session` en

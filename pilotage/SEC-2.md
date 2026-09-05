@@ -1,6 +1,6 @@
 ---
 chantier: SEC-2
-statut: différé
+statut: interrompu
 ---
 
 # SEC-2 — CSP maintenant, CSRF avec les sessions
@@ -9,6 +9,10 @@ statut: différé
 reste entière et dépend toujours d'INFRA-1. D'où `différé` et non `interrompu` : ce n'est
 pas un travail abandonné en route, c'est une moitié livrée et une moitié qui attend un
 déploiement pour avoir un sens.
+
+**Le blocage est LEVÉ — 2026-09-05.** INFRA-1 est livré : l'instance sert en HTTPS sur `bd.edito-revue.fr`, derrière Authelia, avec des comptes nommés et des sessions réelles. La raison de la mise en attente n'existe plus, et le statut change avec elle : laisser `différé` ferait annoncer par la fresque qu'on attend une instance qui tourne déjà.
+
+Le statut devient `interrompu` et non `à venir`, et c'est l'outil qui l'impose : la fiche porte UN commit de code, celui de la zone CSP. Un `à venir` démenti par son propre historique vaudrait moins que le mot approximatif.
 
 Trois faits expliquent que ç'ait été si peu cher, et le premier est le plus utile à
 retenir : **la sévérité était déjà atteignable, personne ne l'avait déclarée**. Zéro
