@@ -14,8 +14,15 @@ export default {
   // `origin/main` quand elle est publiée, `origin/dev` quand elle n'est que poussée,
   // et la branche courante quand elle n'est nulle part.
   //
-  // État au 2026-08-27 : `main` est 146 commits derrière `dev`. Presque tout le
-  // dépôt vit donc « hors de origin/main », et c'est exact — pas un défaut de réglage.
+  // État au 2026-09-05 : `main` a rattrapé `dev` — 278 commits en avance rapide, après
+  // être restée au 12 juin. La distinction ci-dessus cesse d'être théorique : elle
+  // séparait jusqu'ici « poussé » de « rien », puisque presque tout vivait hors de
+  // `main` ; elle sépare désormais ce qui est DÉPLOYÉ de ce qui ne l'est pas.
+  //
+  // Ce qui a forcé la décision : `main` est la branche par défaut du dépôt, donc ce
+  // qu'obtient un `git clone` — et un clone du 2026-09-05 rendait une version de juin,
+  // sans `deploy/`, sans `routes/`, sans `pilotage/`. Le VPS a cloné celle-là. `main`
+  // devient la branche DÉPLOYÉE : on travaille sur `dev`, on fusionne quand on publie.
   refs: ["origin/main", "origin/dev"],
 
   // Une aire = un préfixe de chemin ; le PREMIER qui matche l'emporte, d'où les
