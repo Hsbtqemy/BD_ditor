@@ -43,7 +43,8 @@ SURFACES = [("Visionneuse", "/"), ("Recherche", "/recherche"),
 # seuil de sa media query, et les deux largeurs canoniques n'en disaient rien. C'est ce
 # constat qui a déplacé le seuil de 400 à 560 px.
 LARGEURS = [(320, "téléphone"), (400, "petit téléphone"), (480, "téléphone paysage"),
-            (560, "seuil de la bande 1"), (768, "tablette")]
+            (560, "seuil de la bande 1"), (600, "entre les deux seuils"),
+            (660, "seuil de la bande 4"), (768, "tablette")]
 
 SONDE = """() => {
   const r = document.documentElement;
@@ -53,6 +54,19 @@ SONDE = """() => {
     const b = el.getBoundingClientRect();
     if (b.width === 0 || b.height === 0) continue;
     if (b.right <= large + 1 && b.left >= -1) continue;
+    // ENTIÈREMENT hors champ ET commandé par un contrôle : c'est un panneau
+    // ESCAMOTÉ — un tiroir fermé —, pas du contenu perdu. Un contenu clippé, lui,
+    // est à sa place naturelle et ne fait que dépasser le bord : son rectangle
+    // CHEVAUCHE la fenêtre.
+    //
+    // L'exemption exige les DEUX conditions, et la seconde est la vraie. Écrite sur
+    // la seule position, elle excusait n'importe quoi qui se trouve au-delà du bord,
+    // y compris un panneau qu'aucun geste ne ramène — c'est-à-dire exactement la
+    // violation qu'on cherche. `aria-controls` est la preuve du chemin de retour, et
+    // c'est ce que le 1.4.10 mesure : non pas où est le contenu, mais s'il est
+    // ATTEIGNABLE. Un tiroir sans bascule reste donc signalé, et il le mérite.
+    if ((b.right <= 0 || b.left >= large) && el.id &&
+        document.querySelector('[aria-controls~="' + el.id + '"]')) continue;
     // on ne garde que le plus proche de la racine
     let parentDeborde = false;
     for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {

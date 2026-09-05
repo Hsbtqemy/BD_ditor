@@ -794,7 +794,8 @@ function renderAccord(r) {
   }
   let html = `<p class="muted small">Modèle : <b>${modele}</b>${date} — <b>${r.revus}</b> `
     + `token(s) relu(s) (${r.corriges} corrigé(s), ${r.valides} validé(s))</p>`;
-  html += '<table class="accord-table"><thead><tr><th scope="col">Champ</th>'
+  html += '<div class="table-cadre" tabindex="0" role="region" aria-label="Accord par champ">'
+    + '<table class="accord-table"><thead><tr><th scope="col">Champ</th>'
     + '<th scope="col">Accord</th><th scope="col">Taux</th></tr></thead><tbody>';
   for (const [ch, lbl] of ACCORD_CHAMPS) {
     const c = r.champs[ch];
@@ -802,7 +803,7 @@ function renderAccord(r) {
     html += `<tr><th scope="row">${esc(lbl)}</th><td>${c.accord}/${c.revus}</td>`
       + `<td><span class="accord-bar"><i style="width:${pct}%"></i></span> ${pctAccord(c.taux)}</td></tr>`;
   }
-  html += '</tbody></table>';
+  html += '</tbody></table></div>';
   if (r.confusion_pos.length) {
     html += '<h4 class="accord-h">Confusion POS (auto → corrigé)</h4><ul class="accord-conf">';
     for (const x of r.confusion_pos)
@@ -840,14 +841,15 @@ function renderAccordInter(r) {
   }
   let html = `<p class="muted small"><b>${r.retouches}</b> re-touche(s) inter-auteurs · `
     + `${r.auteurs.length} auteur(s) : ${r.auteurs.map(esc).join(", ")}</p>`;
-  html += '<table class="accord-table"><thead><tr><th scope="col">Champ</th>'
+  html += '<div class="table-cadre" tabindex="0" role="region" aria-label="Accord de révision par champ">'
+    + '<table class="accord-table"><thead><tr><th scope="col">Champ</th>'
     + '<th scope="col">Accord</th><th scope="col">Taux</th></tr></thead><tbody>';
   for (const [ch, lbl] of ACCORD_CHAMPS) {
     const c = r.champs[ch], pct = c.taux == null ? 0 : Math.round(c.taux * 100);
     html += `<tr><th scope="row">${esc(lbl)}</th><td>${c.accords}/${c.retouches}</td>`
       + `<td><span class="accord-bar"><i style="width:${pct}%"></i></span> ${pctAccord(c.taux)}</td></tr>`;
   }
-  html += '</tbody></table>';
+  html += '</tbody></table></div>';
   if (r.paires.length) {
     html += '<h4 class="accord-h">Par paire d\'auteurs</h4><ul class="accord-conf">';
     for (const p of r.paires)

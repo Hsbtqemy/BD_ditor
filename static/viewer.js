@@ -2699,8 +2699,71 @@ async function applyDeepLink() {
   } catch (e) { toast("Lien : " + e.message, "error"); }
 }
 
+
+/* ---------------------------------------------------------------------------
+   Tiroirs de la Visionneuse (UX-7)
+
+   Aucun SEUIL ici, et c'est la décision : ils vivent dans `static/style.css` et
+   nulle part ailleurs. Au-dessus, les media queries remettent les deux panneaux en
+   colonnes et masquent les bascules — la classe posée ci-dessous devient alors sans
+   effet, sans qu'on ait à la retirer ni à écouter le redimensionnement. Recopier le
+   nombre ici aurait fait deux vérités à tenir d'accord, ce qui est exactement la
+   faute qui a fermé l'instance de production le même jour, dans un autre fichier.
+
+   Ce que le JavaScript fait, lui : ouvrir, fermer, et rendre le focus d'où il vient.
+   --------------------------------------------------------------------------- */
+function setupTiroirs() {
+  const body = $("#body"), voile = $("#tiroir-voile");
+  // Le voile n'est jamais montré ni caché d'ici : sa visibilité se déduit
+  // des classes ci-dessous ET du seuil, dans style.css. Il ne sert ici qu'à
+  // recevoir le clic de fermeture.
+  const tiroirs = [
+    { classe: "nav-ouverte",    btn: $("#btn-tiroir-nav"),      panneau: $("#sidebar") },
+    { classe: "panneau-ouvert", btn: $("#btn-tiroir-panneau"),  panneau: $("#panel") },
+  ];
+  let ouvert = null;                 // le tiroir ouvert, ou null — un seul à la fois
+
+  function fermer(rendreFocus) {
+    if (!ouvert) return;
+    body.classList.remove(ouvert.classe);
+    ouvert.btn.setAttribute("aria-expanded", "false");
+    const btn = ouvert.btn;
+    ouvert = null;
+    // Le focus vit peut-être DANS le tiroir qu'on referme : le laisser là le rendrait
+    // invisible et inatteignable, l'état le plus déroutant qu'un clavier puisse subir.
+    if (rendreFocus) btn.focus();
+  }
+
+  function ouvrir(t) {
+    fermer(false);
+    body.classList.add(t.classe);
+    t.btn.setAttribute("aria-expanded", "true");
+    ouvert = t;
+    // Un menu ouvert passerait SOUS le tiroir : on prévient les autres systèmes de
+    // barres, comme le fait le menu « Affichage » de theme.js.
+    document.dispatchEvent(new CustomEvent("bd:menu-open", { detail: "tiroir" }));
+    const premier = t.panneau.querySelector(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (premier) premier.focus();
+  }
+
+  tiroirs.forEach((t) => {
+    if (!t.btn || !t.panneau) return;
+    t.btn.addEventListener("click", (e) => {
+      e.stopPropagation();                       // le clic global ferme les dropdowns
+      if (ouvert === t) fermer(true); else ouvrir(t);
+    });
+  });
+
+  voile.addEventListener("click", () => fermer(true));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && ouvert) { e.stopPropagation(); fermer(true); }
+  });
+}
+
 async function init() {
   setupControls();
+  setupTiroirs();
   setupKeyboard();
   setupBack();
   setMode("navigation");

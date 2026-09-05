@@ -25,21 +25,21 @@
     <div id="planche-info" class="planche-info">—</div>
     <div class="modes" role="group" aria-label="Mode d'interaction">
       <button class="mode-btn" data-mode="navigation" title="Navigation (N)" aria-pressed="true">
-        <span class="dot"></span> Navigation <kbd aria-hidden="true">N</kbd>
+        <span class="dot"></span> <span class="mode-label">Navigation</span> <kbd aria-hidden="true">N</kbd>
       </button>
       <button class="mode-btn" data-mode="edition" title="Édition (E)" aria-pressed="false">
-        <span class="dot"></span> Édition <kbd aria-hidden="true">E</kbd>
+        <span class="dot"></span> <span class="mode-label">Édition</span> <kbd aria-hidden="true">E</kbd>
       </button>
       <button class="mode-btn" data-mode="annotation" title="Annotation (A)" aria-pressed="false">
-        <span class="dot"></span> Annotation <kbd aria-hidden="true">A</kbd>
+        <span class="dot"></span> <span class="mode-label">Annotation</span> <kbd aria-hidden="true">A</kbd>
       </button>
       <button class="mode-btn" data-mode="transcription" title="Transcription (T)" aria-pressed="false">
-        <span class="dot"></span> Transcription <kbd aria-hidden="true">T</kbd>
+        <span class="dot"></span> <span class="mode-label">Transcription</span> <kbd aria-hidden="true">T</kbd>
       </button>
     </div>
     <div class="header-actions">
       <div class="dropdown">
-        <button class="ghost" id="btn-traitement" title="Traitements automatiques sur l'album">⚙ Traitement ▾</button>
+        <button class="ghost" id="btn-traitement" title="Traitements automatiques sur l'album">⚙<span class="mode-label"> Traitement </span>▾</button>
         <div class="dropdown-menu" id="traitement-menu">
           <button id="btn-segmenter" title="Détecter les cases (Kumiko)">Segmenter les cases</button>
           <button id="btn-bulles" title="Détecter les bulles (passe 2)">Détecter les bulles</button>
@@ -47,7 +47,7 @@
         </div>
       </div>
       <div class="dropdown">
-        <button class="ghost" id="btn-donnees" title="Importer / exporter des données">⇅ Import / Export ▾</button>
+        <button class="ghost" id="btn-donnees" title="Importer / exporter des données">⇅<span class="mode-label"> Import / Export </span>▾</button>
         <div class="dropdown-menu" id="donnees-menu">
           <div role="group" aria-label="Importer">
             <div class="dropdown-head" aria-hidden="true">Importer</div>
@@ -89,12 +89,20 @@
     <!-- Visionneuse -->
     <section id="viewer">
       <div id="toolbar">
+        <!-- Bascules de tiroirs (UX-7). Invisibles au-dessus des seuils, où les deux
+             panneaux sont des colonnes ; c'est le CSS seul qui décide, cf. style.css. -->
+        <button id="btn-tiroir-nav" class="icon-btn tiroir-bascule" aria-expanded="false"
+                aria-controls="sidebar" aria-label="Afficher les planches"
+                title="Planches">☰</button>
         <button id="zoom-out" class="icon-btn" title="Zoom -">−</button>
         <span id="zoom-level">100 %</span>
         <button id="zoom-in" class="icon-btn" title="Zoom +">＋</button>
         <button id="zoom-fit" class="ghost small" title="Ajuster">Ajuster</button>
         <button id="zoom-reset" class="ghost small" title="100 %">1:1</button>
         <div class="breadcrumb" id="breadcrumb"></div>
+        <button id="btn-tiroir-panneau" class="icon-btn tiroir-bascule" aria-expanded="false"
+                aria-controls="panel" aria-label="Afficher le panneau d'annotation"
+                title="Panneau d'annotation">▤</button>
       </div>
       <div id="stage">
         <div id="canvas">
@@ -108,6 +116,10 @@
     </section>
 
     <!-- Panneau droit : détail région -->
+    <!-- Voile des tiroirs : ferme au clic hors du tiroir, et signale que ce qui est
+         derrière est hors service. Jamais visible au-dessus des seuils. -->
+    <div id="tiroir-voile"></div>
+
     <aside id="panel">
       <div id="panel-empty" class="empty-hint">Sélectionnez une planche.</div>
 

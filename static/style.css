@@ -23,6 +23,7 @@
   --hover:        rgba(255,255,255,.06); /* survol discret sur surfaces sombres */
   --scrim:        rgba(0,0,0,.55);        /* fond de modale */
   --shadow:       rgba(0,0,0,.40);
+  --voile:        rgba(0,0,0,.55);      /* voile des tiroirs (UX-7) */
   --shadow-strong:rgba(0,0,0,.50);
   --stage-a:      #15152a;                /* échiquier du fond de scène */
   --stage-b:      #181830;
@@ -71,6 +72,7 @@
   --hover:        rgba(20,30,60,.05);
   --scrim:        rgba(18,22,36,.45);
   --shadow:       rgba(20,30,60,.16);
+  --voile:        rgba(20,30,60,.38);   /* voile des tiroirs (UX-7) */
   --shadow-strong:rgba(20,30,60,.24);
   --stage-a:      #e4e7f1;
   --stage-b:      #edeff6;
@@ -185,12 +187,113 @@ kbd {
 #app {
   display: grid;
   grid-template-rows: var(--nav-h) var(--header-h) 1fr var(--status-h);
+  /* `minmax(0, 1fr)` et pas `auto` : la colonne implicite d'une grille se dimensionne
+     sur le contenu MINIMAL de ses items, qui ont `min-width: auto` par défaut. La
+     coque entière grossissait donc jusqu'à la plus large de ses bandes — 665 px
+     mesurés à 320 px le 2026-09-05 — au lieu d'être bornée par la fenêtre, et tout
+     ce qui dépassait était clippé par `html, body { overflow: hidden }`. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh;
 }
 #body {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr var(--panel-w);
   min-height: 0;
+  position: relative;          /* ancre des tiroirs ci-dessous */
+  /* EXPLICITE, comme `#transcription` qui partage cette cellule. L'auto-placement
+     d'une grille SAUTE une cellule déjà occupée par un item explicitement placé :
+     `#body` se retrouvait alors en rangée 4, haut de 26 px, et la barre d'état
+     passait sous la fenêtre. Mesuré le 2026-09-05, et invisible à toute mesure de
+     reflow — le défaut n'apparaît qu'en mode Transcription, où elles n'entrent
+     jamais. Deux items EXPLICITEMENT placés sur la même cellule s'y superposent. */
+  grid-row: 3; grid-column: 1;
+}
+
+/* ---------- Tiroirs de la Visionneuse (UX-7) ----------------------------------
+   `#body` est une grille `240px | 1fr | 300px` : 540 px de chrome FIXE quelle que
+   soit la fenêtre, dont le canevas ne reçoit que le reste. Les deux seuils se
+   lisent donc sur ce calcul, et non sur des nombres ronds — c'est la discipline
+   que le seuil de la bande 1 avait manquée, posé à 400 px quand il en fallait 560.
+
+   1 080 px — en dessous, les 540 px de chrome pèsent PLUS que le canevas. La
+   navigation part la première : elle sert à CHOISIR une planche, pas à travailler
+   dessus, et on s'en passe pendant qu'on annote.
+
+   900 px — en dessous, le panneau d'annotation à lui seul dépasse le tiers de
+   l'écran. Il part à son tour, ce qui donne à une tablette en portrait (768 px) un
+   canevas PLEINE LARGEUR : la condition posée par UX-8, où l'on annote au doigt.
+
+   Les seuils vivent ICI et nulle part ailleurs. Au-dessus, ces requêtes remettent
+   les colonnes en place et masquent les bascules, si bien que la classe d'ouverture
+   devient sans effet sans que personne ait à la retirer. Le même nombre recopié en
+   JavaScript aurait fait deux vérités à tenir d'accord — la faute qui a fermé
+   l'instance de production le 2026-09-05, dans un tout autre fichier.
+   ------------------------------------------------------------------------------ */
+
+.tiroir-bascule { display: none; }        /* rendues visibles par les seuils */
+
+/* Le voile n'a qu'UN propriétaire, et c'est ce bloc. Piloté par le JavaScript, il
+   survivait à un agrandissement de la fenêtre : les seuils rendaient les colonnes,
+   mais lui restait posé sur toute l'application. Deux propriétaires pour un même
+   état, c'est la faute qu'on vient de payer ailleurs le même jour. Ici il naît
+   masqué et n'apparaît que si un tiroir est ouvert ET qu'on est sous son seuil ;
+   remonter au-dessus le fait disparaître sans que personne ait à y penser. */
+#tiroir-voile {
+  display: none;
+  position: absolute; inset: 0; z-index: 30;
+  background: var(--voile);
+}
+
+#sidebar, #panel { transition: transform .18s ease; }
+@media (prefers-reduced-motion: reduce) {
+  #sidebar, #panel { transition: none; }
+}
+
+@media (max-width: 1079px) {
+  #body { grid-template-columns: 1fr var(--panel-w); }
+  #btn-tiroir-nav { display: inline-flex; }
+  #sidebar {
+    position: absolute; top: 0; bottom: 0; left: 0; z-index: 40;
+    width: min(var(--sidebar-w), 86vw);
+    transform: translateX(-101%);         /* 101 % : la bordure droite sort aussi */
+    box-shadow: 4px 0 16px var(--shadow);
+  }
+  #body.nav-ouverte #sidebar { transform: none; }
+  #body.nav-ouverte #tiroir-voile { display: block; }
+}
+
+/* La bande 2 ne tient plus : `.modes` fait à elle seule 488 px, `.header-actions`
+   154, et le nom de planche 78 — mesuré à 320 px le 2026-09-05. Les libellés se
+   masquent à l'ŒIL sans quitter l'arbre d'accessibilité, exactement comme ceux de
+   la bande 1 à l'étape 1. Ce qui reste visible sur un bouton de mode est sa PASTILLE
+   de couleur et son RACCOURCI clavier — le `<kbd>` cesse d'être une glose et devient
+   l'affordance, ce qui l'enseigne au passage. */
+@media (max-width: 899px) {
+  .mode-label {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .modes { gap: 4px; }
+  .mode-btn { padding: 5px 7px; }
+  /* Le nom de planche cède avant les commandes : on le lit, on n'agit pas dessus. */
+  #planche-info { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+@media (max-width: 899px) {
+  #body { grid-template-columns: 1fr; }
+  #btn-tiroir-panneau { display: inline-flex; }
+  /* `#body #panel` et non `#panel` : la règle de base pose `position: relative` 300
+     lignes plus bas, à spécificité ÉGALE — elle gagnait donc par l'ordre source, et
+     le panneau restait dans le flux. Mesuré le 2026-09-05 : `position: relative`,
+     translaté hors champ mais toujours en colonne. Deux ID valent mieux qu'un ordre. */
+  #body #panel {
+    position: absolute; top: 0; bottom: 0; right: 0; z-index: 40;
+    width: min(var(--panel-w), 92vw);
+    transform: translateX(101%);
+    box-shadow: -4px 0 16px var(--shadow);
+  }
+  #body.panneau-ouvert #panel { transform: none; }
+  #body.panneau-ouvert #tiroir-voile { display: block; }
 }
 
 /* ---------- Bande 1 — Navigation du site (identique sur les 4 surfaces) ---------- */
@@ -324,6 +427,45 @@ button { font-family: inherit; }
    d'accessibilité : le nom du lien tomberait à « ✏️ », que les lecteurs d'écran énoncent
    mal ou pas du tout — et le `title` ne rattraperait rien, `reflectAria` ne posant
    d'`aria-label` que sur un contenu SANS lettre. */
+/* La bande 4 a son PROPRE seuil, et il n'est pas celui de la bande 2. Mesuré le
+   2026-09-05 en balayant de 520 à 860 px : avec sa légende, elle demande 651 px et
+   ne tient qu'à partir de 660. La poser à 559 comme les autres laissait une bande
+   de cent pixels découverte, où `#stat-coords` sortait de 91 px — exactement la
+   faute du seuil de la bande 1, posé à 400 px quand il en fallait 560, et retrouvée
+   ici pour la même raison : un seuil recopié d'un voisin au lieu d'être mesuré.
+
+   La légende des couleurs part la première : elle ÉNONCE un code que les régions
+   montrent déjà à l'écran. On la retire de la vue et du flux, pas du document,
+   puisqu'elle redevient utile dès qu'il y a la place. */
+@media (max-width: 659px) {
+  #app { grid-template-rows: var(--nav-h) var(--header-h) 1fr auto; }
+  #statusbar { flex-wrap: wrap; row-gap: 2px; height: auto; min-height: var(--status-h); }
+  #statusbar .legend { display: none; }
+}
+
+/* Sous 560 px, la bande 2 ne tient plus même libellés masqués : quatre modes, deux
+   menus et un nom de planche font 328 px pour 320 disponibles. Elle s'enroule donc,
+   ce qui coûte une trentaine de pixels de hauteur — contre 345 px de contenu
+   INATTEIGNABLE si on la laisse déborder. La rangée passe en `auto` pour l'accueillir. */
+@media (max-width: 559px) {
+  /* Les DEUX rangées en `auto` : ce bloc est plus bas dans la source que celui
+     de la bande 4 et écraserait sinon son réglage, à spécificité égale. */
+  #app { grid-template-rows: var(--nav-h) auto 1fr auto; }
+  #header { flex-wrap: wrap; row-gap: 4px; padding-top: 4px; padding-bottom: 4px; }
+  .modes { margin-left: 0; }        /* ne pousse plus à droite une fois seule sur sa ligne */
+
+
+  /* La barre du canevas déborde à son tour : le fil d'Ariane pousse la bascule du
+     panneau hors de l'écran (mesuré à 331 px pour 320). Il cède le premier parce que
+     son TEXTE redit le nom de planche de la bande 2 — mais c'est aussi un CONTRÔLE,
+     et il faut le dire : il désélectionne. Le geste survit par Échap et par la racine
+     de l'arbre de structure. Échap n'existe pas au doigt, et l'arbre est dans un
+     tiroir : au toucher, désélectionner demande donc d'ouvrir le panneau. C'est une
+     dette d'UX-8, pas un oubli. */
+  #toolbar .breadcrumb { display: none; }
+  #stat-mode { min-width: 0; }
+}
+
 @media (max-width: 559px) {
   .surf-label, .brand-long {
     position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
@@ -752,7 +894,13 @@ h3.collapsible:hover { color: var(--text); }
 
 /* ---------- Mode Transcription (plein écran, Disposition C) ---------- */
 #transcription {
-  position: absolute; top: calc(var(--nav-h) + var(--header-h)); left: 0; right: 0; bottom: var(--status-h);
+  /* Il occupe la MÊME cellule que `#body` — troisième rangée de la grille de `#app`,
+     dont il est un frère — au lieu de recalculer sa position sur les hauteurs de
+     bandes. L'ancien `top: calc(var(--nav-h) + var(--header-h))` était une seconde
+     source de vérité pour ce que `grid-template-rows` dit déjà : il interdisait à la
+     bande 2 de s'enrouler, puisque toute hauteur supplémentaire le décalait sans
+     qu'il le sache. Deux items d'une même cellule s'empilent ; le `z-index` tranche. */
+  grid-row: 3; grid-column: 1;
   z-index: 50; display: flex; background: var(--bg-deep);
 }
 #transcription[hidden] { display: none; }
@@ -1092,6 +1240,11 @@ a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transp
 
 /* ---------- Tableau croisé 2D (ANA-2) ---------- */
 .croise { margin-top: 8px; overflow-x: auto; }
+/* Le cadre défile, donc il doit s'ATTEINDRE au clavier — même règle que
+   `.table-cadre` (UX-7, étape 1) : une zone défilante qu'on ne peut pas focaliser
+   est une violation du 1.4.10 à part entière, et le croisement est le seul contenu
+   du dépôt dont le défilement horizontal est LÉGITIME (il est à deux dimensions). */
+.croise:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .croise-table { border-collapse: collapse; font-size: 12.5px; }
 .croise-table th, .croise-table td { border: 1px solid var(--border); padding: 3px 9px;
   text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
