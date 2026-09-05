@@ -38,6 +38,10 @@ docs/exemples/
 
 # Déploiement — secrets et état runtime (la config template est versionnée)
 deploy/.env
+# Le fichier des comptes porte des HASHS de mots de passe, et ce dépôt est PUBLIC.
+# Seul le gabarit `users_database.example.yml` est versionné ; on le copie sur la
+# machine qui héberge, comme `.env.example` → `.env` juste au-dessus.
+deploy/authelia/users_database.yml
 deploy/authelia/db.sqlite3
 deploy/authelia/notification.txt
 deploy/authelia/*.log

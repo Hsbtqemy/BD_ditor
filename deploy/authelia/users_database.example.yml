@@ -1,4 +1,14 @@
-# Comptes utilisateurs Authelia.
+# Comptes utilisateurs Authelia — GABARIT.
+#
+# Ce fichier-ci est versionné ; celui qu'Authelia lit ne l'est PAS. Sur la machine qui
+# héberge :
+#
+#     cp deploy/authelia/users_database.example.yml deploy/authelia/users_database.yml
+#
+# puis remplis le hash dans la COPIE. `deploy/authelia/users_database.yml` est dans
+# `.gitignore` — même patron que `.env.example` → `.env`, et pour la même raison : un
+# hash de mot de passe n'a rien à faire dans un dépôt PUBLIC. Le hash placeholder
+# ci-dessous n'est pas un secret ; celui que tu vas générer en est un.
 #
 # AUTH-2 — les GROUPES comptent désormais. L'application n'ouvre que les collections
 # déclarées pour vous (ou pour l'un de vos groupes) dans `collection_acces`, et une

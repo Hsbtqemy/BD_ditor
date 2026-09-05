@@ -34,7 +34,8 @@ Le défaut dormait depuis longtemps sur l'Exploration : `overflow: hidden` clipp
 dépassait, donc la distribution en trop était présente mais INATTEIGNABLE. Poser un cadre
 de défilement l'a rendue visible, et une passe de QA l'a vue le jour même.
 
-Marqué `e2e` → hors du run par défaut (`pytest -m e2e`).
+Le marqueur `e2e` est posé PAR TEST : celui qui ouvre un navigateur en est, la garde
+du périmètre non — elle ne lit que des sources et tourne dans la suite par défaut.
 """
 import re
 from pathlib import Path
