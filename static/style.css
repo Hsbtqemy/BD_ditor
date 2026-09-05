@@ -1239,7 +1239,7 @@ a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transp
 .kw-hit { color: var(--text); font-weight: 700; }
 
 /* ---------- Tableau croisé 2D (ANA-2) ---------- */
-.croise { margin-top: 8px; overflow-x: auto; }
+.croise { margin-top: 8px; overflow: auto; max-height: 70vh; }
 /* Le cadre défile, donc il doit s'ATTEINDRE au clavier — même règle que
    `.table-cadre` (UX-7, étape 1) : une zone défilante qu'on ne peut pas focaliser
    est une violation du 1.4.10 à part entière, et le croisement est le seul contenu
@@ -1250,13 +1250,19 @@ a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transp
   text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .croise-table thead th, .croise-table th[scope="row"] {
   background: var(--bg-panel); color: var(--text); font-weight: 600; text-align: left; }
-/* `top: 0` est INERTE, et le rester est un choix qui se voit : `.croise` porte
-   `overflow-x: auto`, ce qui en fait le conteneur de défilement le plus proche pour les
-   DEUX axes — or il a la hauteur de son contenu et ne défile jamais verticalement. Un
-   tableau plus haut que la fenêtre perd donc ses en-têtes de colonnes. Mesuré le
-   2026-09-04 (60 lignes : l'en-tête sort par le haut à y=-1121). Réparer demande un cadre
-   de défilement IMBRIQUÉ dans celui de la page, ce qui s'arbitre — constat ouvert d'UX-7.
-   Le collage horizontal, lui, fonctionne, et c'est celui que les 20 colonnes réclament. */
+/* `top: 0` a été INERTE jusqu'ici, et `max-height` au-dessus est ce qui le réveille.
+   `.croise` porte `overflow`, ce qui en fait le conteneur de défilement le plus proche
+   pour les DEUX axes ; tant qu'il avait la hauteur de son contenu, il ne défilait jamais
+   verticalement et un tableau plus haut que la fenêtre perdait ses en-têtes de colonnes
+   (mesuré le 2026-09-04 sur 60 lignes : l'en-tête sortait par le haut à y=-1121).
+
+   L'objection à borner la hauteur était une barre de défilement IMBRIQUÉE dans celle de
+   la page — deux cibles de molette pour un seul geste. Mesurée le 2026-09-05, elle ne
+   tient pas : sur ces mêmes 60 lignes, borner le cadre fait tomber le défilement restant
+   de la page de 1 018 px à 83 px. La barre imbriquée ne S'AJOUTE pas à celle de la page,
+   elle la REMPLACE — et sous 70vh, le cas ordinaire, elle n'apparaît pas du tout.
+   Le collage horizontal, lui, a toujours fonctionné, et c'est celui que les 20 colonnes
+   réclament. */
 .croise-table thead th { position: sticky; top: 0; z-index: 2; }
 .croise-table th[scope="row"] { position: sticky; left: 0; z-index: 1; }
 /* Le coin colle dans les DEUX sens, et il doit passer AU-DESSUS des deux bandes qu'il
@@ -1306,7 +1312,11 @@ a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transp
 }
 .result:hover { border-color: var(--accent-blue); background: var(--bg-input); }
 .r-thumb {
-  width: 130px; max-height: 96px; object-fit: contain; flex: 0 0 auto;
+  /* 130 px fixes laissaient 116 px au texte sur un téléphone de 320 — une douzaine de
+     caractères par ligne (mesuré le 2026-09-05). `clamp` ne change RIEN au-dessus de
+     591 px de fenêtre, où 22vw dépasse déjà 130 : la vignette ne rétrécit que là où
+     elle prend la place de ce qu'on est venu lire. */
+  width: clamp(72px, 22vw, 130px); max-height: 96px; object-fit: contain; flex: 0 0 auto;
   background: var(--media-bg); border-radius: 4px;
 }
 .r-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
