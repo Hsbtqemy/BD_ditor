@@ -24,6 +24,29 @@ modification d'application.
 `apiSend` POST/PUT/DELETE n'envoient ni jeton ni en-tête personnalisé. Risque faible en
 mono-poste local, à traiter **avant** toute exposition réseau.
 
+**Mesuré le 2026-09-05, sur l'instance en service.** L'en-tête est :
+
+```
+Set-Cookie: authelia_session=…; domain=edito-revue.fr; path=/;
+            HttpOnly; secure; SameSite=Lax
+```
+
+`SameSite=Lax` **ferme la CSRF inter-sites classique** : un POST déclenché depuis un site
+tiers n'emporte pas ce cookie, et `fetch` cross-origin non plus. Le chantier cesse donc
+d'être urgent, et c'est une mesure qui le dit, pas une intuition.
+
+**Ce qui reste ouvert tient dans un mot de cette ligne : `domain=edito-revue.fr`.** Le
+cookie est posé sur le domaine PARENT, et c'est nécessaire — Authelia doit partager la
+session entre `auth.` et `bd.`. Or `SameSite` raisonne par domaine ENREGISTRABLE et non
+par origine : `edito-revue.fr` et n'importe quel autre sous-domaine sont *same-site* vis-à-vis
+de `bd.edito-revue.fr`, et `Lax` n'y oppose rien. Le cookie leur est envoyé.
+
+Le risque est donc CONDITIONNEL, et sa condition n'est pas chez nous : il faut qu'un
+attaquant puisse faire émettre une requête depuis un `*.edito-revue.fr`, c'est-à-dire une
+XSS ou une injection de contenu sur l'autre site que ce serveur héberge. Nous ne
+contrôlons pas ce site, et c'est précisément pourquoi une protection CSRF côté application
+garde du sens : elle ne dépend d'aucune hypothèse sur les voisins.
+
 ## Reste
 
 ### CSP — faisable tout de suite
@@ -32,7 +55,7 @@ mono-poste local, à traiter **avant** toute exposition réseau.
 - [x] **L'audit e2e reste vert, après avoir failli mourir de la CSP** : `test_e2e_a11y.py` injectait axe par `page.add_script_tag(content=…)`, c'est-à-dire un `<script>` inline, que `script-src 'self'` bloque net. C'est `page.evaluate` désormais — le protocole de débogage, hors du modèle de sécurité de la page. C'est ce qu'on veut d'un instrument de mesure : qu'il n'ait pas besoin qu'on desserre ce qu'il vient vérifier
 
 ### CSRF — dépend d'INFRA-1
-- [ ] Une protection CSRF est en place sur les routes mutantes, une fois que des sessions existent réellement. **Rien n'a changé de ce côté au 2026-08-31**, et c'est voulu : la CSP n'y touche pas (`form-action 'self'` borde les formulaires, pas les requêtes `fetch`), et il n'y a toujours aucune session de navigateur à voler — l'application n'authentifie personne, elle croit un en-tête posé par le proxy
+- [ ] Une protection CSRF est en place sur les routes mutantes. **La prémisse de cette case a changé le 2026-09-05** : elle disait « aucune session de navigateur à voler », ce qui était vrai en mono-poste et ne l'est plus — il y a un cookie Authelia. La mesure ci-dessus dit ce qui reste : `Lax` ferme l'inter-sites, le sous-domaine reste ouvert par construction. La CSP n'y touche toujours pas — `form-action 'self'` borde les formulaires, pas les requêtes `fetch`
 
 ## Contexte
 
