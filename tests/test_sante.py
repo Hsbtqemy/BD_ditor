@@ -9,7 +9,10 @@ RAPPORTE la panne au lieu de la taire.
 import re
 from pathlib import Path
 
+import pytest
+
 import sante
+from conftest import requires_kumiko
 
 
 # --------------------------------------------------------------------------- #
@@ -87,17 +90,28 @@ def test_profond_borne_le_message(monkeypatch):
 # --------------------------------------------------------------------------- #
 def test_kumiko_profond_refuse_opencv_5(monkeypatch):
     """OpenCV 5 s'importe parfaitement et casse Kumiko ensuite (`HoughLinesP` renvoie
-    (N, 4) au lieu de (N, 1, 4)). `find_spec` n'y voit rien ; le profond doit refuser."""
+    (N, 4) au lieu de (N, 1, 4)). `find_spec` n'y voit rien ; le profond doit refuser.
+
+    `importorskip` et non le marqueur Kumiko : ce test-ci n'a besoin QUE de cv2 — il
+    truque la version, il n'appelle jamais le script. Le marqueur exigerait en plus le
+    clone `lib/kumiko`, et le ferait taire là où il sait encore mesurer (QA-6).
+    """
+    cv2 = pytest.importorskip("cv2", reason="OpenCV non installé")
     sante._reset()
-    import cv2
     monkeypatch.setattr(cv2, "__version__", "5.0.0", raising=False)
     r = sante.profond("kumiko")
     assert r["ok"] is False and "5.0.0" in r["erreur"]
 
 
+@requires_kumiko
 def test_kumiko_profond_accepte_opencv_4(monkeypatch):
-    sante._reset()
+    """Le marqueur ici, parce que l'attendu est `ok is True` : il exige cv2 ET le point
+    d'entrée `lib/kumiko`, que `_verifier_kumiko` vérifie avant la version. Sans garde,
+    l'`import cv2` faisait ÉCHOUER la suite d'une installation noyau au lieu de la
+    skipper — un rouge qui envoie chercher une régression là où un moteur manque
+    légitimement (QA-6, mesuré le 2026-09-05)."""
     import cv2
+    sante._reset()
     monkeypatch.setattr(cv2, "__version__", "4.13.0", raising=False)
     assert sante.profond("kumiko")["ok"] is True
 

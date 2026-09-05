@@ -32,6 +32,13 @@ là que le troisième cas se rattrape. La suite de tests, elle, ne le peut pas :
 NLP est conçue pour dégrader proprement et les tests encodent la même hypothèse, si bien
 qu'une image sans spaCy passe la suite à 100 % vert (mesuré, cf. `pilotage/QA-5.md`).
 Un contrat d'IMAGE est donc distinct d'un contrat de test.
+
+Cette phrase a cessé d'être vraie sans que personne ne le voie, et c'est QA-6 : sans le
+modèle spaCy, le cliquet des sorties d'identité ÉCHOUAIT — sa correction sentinelle
+n'avait plus de token auto à rejoindre — et deux tests d'ici même importaient `cv2` sans
+garde, donc tombaient sur une installation noyau. Trois configurations remesurées le
+2026-09-05 (avec modèle, spaCy sans modèle, noyau seul) : 0 échec dans chacune. La
+dégradation propre n'est pas une propriété acquise, c'est une propriété qui se REMESURE.
 """
 from __future__ import annotations
 

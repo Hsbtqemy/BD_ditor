@@ -116,6 +116,22 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
     try:
         conn.execute("UPDATE planches SET verrou_par = ? WHERE id = ?",
                      (SENTINELLES["login"], pl["id"]))
+        # Le token AUTO sous la correction, POSÉ SI PERSONNE NE L'A POSÉ. `tokens_effectifs`
+        # part `FROM tokens` (database.py) : une correction sans ligne de base à rejoindre
+        # n'existe pour AUCUNE surface d'analyse. spaCy la pose quand le modèle est là ;
+        # sans modèle `tokens` reste vide, et le cliquet concluait que la déclaration de
+        # `/api/regions/{id}/tokens` mentait — un rouge qui fait chercher une régression
+        # là où il n'y a qu'un moteur absent (QA-6, 2026-09-05).
+        #
+        # CONDITIONNEL, et il doit l'être : `tokens` n'a pas d'unicité sur
+        # (region_id, ordre), un doublon ne lèverait donc RIEN et se paierait ailleurs —
+        # l'accord modèle↔humain, la concordance et le « % relu » d'ANN-4 compteraient
+        # deux tokens là où le corpus en a un. Cf. `test_le_semis_ne_double_pas_le_token`.
+        conn.execute(
+            "INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
+            "SELECT ?, 0, 'OTAGE', 'otage', 'NOUN', '' "
+            "WHERE NOT EXISTS (SELECT 1 FROM tokens WHERE region_id = ? AND ordre = 0)",
+            (r["id"], r["id"]))
         # Le LEMME est indispensable au semis, pas décoratif : `/api/analyse/concordance`
         # exige un critère, et sans lemme elle ne trouve rien — elle passerait donc pour
         # muette alors qu'elle sait filtrer PAR AUTEUR, donc parler d'annotateurs.
@@ -639,6 +655,42 @@ def test_le_semis_est_visible(client, seme, tmp_path):
         f"balayage anormalement court : {len(vus)} surfaces vues pour {attendues} "
         "attendues. Une surface qui répond 4xx ou dont les paramètres ne se remplissent "
         "pas doit entrer dans NON_BALAYE avec sa raison, jamais disparaître du compte.")
+
+
+def test_le_semis_ne_double_pas_le_token(seme):
+    """Le token auto du semis existe, et il n'existe QU'UNE FOIS (QA-6, 2026-09-05).
+
+    Deux configurations, un seul état attendu. Avec le modèle spaCy, c'est le pipeline qui
+    pose la ligne `tokens` et le semis ne doit rien ajouter ; sans modèle, `tokens` reste
+    vide et le semis est le seul à la poser — faute de quoi la correction sentinelle ne se
+    voit NULLE PART, `tokens_effectifs` partant `FROM tokens`.
+
+    Le doublon est le risque précis de cette réparation, et il est SILENCIEUX : `tokens`
+    n'a pas d'unicité sur (region_id, ordre), donc rien ne lèverait — l'accord
+    modèle↔humain, la concordance et le « % relu » d'ANN-4 compteraient simplement deux
+    tokens là où le corpus en a un. C'est pourquoi le compte est vérifié ici plutôt que
+    laissé à la lecture du SQL.
+    """
+    conn = sqlite3.connect(seme["db"])
+    conn.row_factory = sqlite3.Row
+    try:
+        auto = conn.execute(
+            "SELECT COUNT(*) AS n FROM tokens WHERE region_id = ? AND ordre = 0",
+            (seme["region_id"],)).fetchone()["n"]
+        effectifs = [r["corr_auteur"] for r in conn.execute(
+            "SELECT corr_auteur FROM tokens_effectifs WHERE region_id = ? AND ordre = 0",
+            (seme["region_id"],)).fetchall()]
+    finally:
+        conn.close()
+
+    assert auto == 1, (
+        f"{auto} token auto sur (region, ordre 0) — attendu exactement 1. À 0 la "
+        "correction sentinelle est invisible et le cliquet croit la déclaration périmée ; "
+        "au-delà, le semis double la ligne que spaCy pose déjà.")
+    assert effectifs == [SENTINELLES["login"]], (
+        f"tokens_effectifs rend {effectifs} — attendu la seule correction sentinelle. "
+        "C'est le read model que lisent toutes les surfaces d'analyse : ce qu'il compte "
+        "ici, elles le comptent partout.")
 
 
 def test_toute_colonne_exportable_est_classee(client, db_path):
