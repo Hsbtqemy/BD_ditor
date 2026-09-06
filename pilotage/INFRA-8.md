@@ -38,7 +38,7 @@ l'éprouver pour de bon.
 - [x] Un appareil TOTP perdu se remplace sans SSH : c'est le seul recours quand le second facteur disparaît, et le chemin n'a pas été parcouru. Éprouvé le 2026-09-06 par le geste réel — appareil supprimé depuis la page de réglages, parcours refait de bout en bout sans terminal. C'est le scénario du téléphone changé
 
 ### La conséquence qu'on n'attend pas
-- [ ] Des adresses RÉELLES ne changent rien à ce que les artefacts publient : rejouer `tests/test_sorties_identite.py` après la bascule. Le courriel devient une donnée personnelle là où le gabarit n'en était pas une, et il entre dans la base par `Remote-Email` → `utilisateur`, donc dans toute sauvegarde
+- [x] Des adresses RÉELLES ne changent rien à ce que les artefacts publient. Le cliquet rejoué le 2026-09-06 passe, balayage des 12 invocations d'outils compris. Et le constat est plus fort que le test : **`utilisateur.email` est écrit et jamais LU** — l'unique requête sur cette table sélectionne `login, nom`, et sa docstring le dit. La seule voie par laquelle une adresse réelle quitte l'instance est donc la sauvegarde INTÉGRALE, réservée aux administrateurs par `_exiger_admin_sauvegarde`. C'est un fait à connaître, pas un défaut : une sauvegarde contient la base, c'est sa définition
 
 ### Ce que la bascule a laissé ouvert
 - [ ] Le mot de passe d'application est nommé `bdediteur` chez l'hébergeur, donc révocable seul, sans toucher à l'autre site qui partage la boîte
