@@ -6,6 +6,12 @@ franco-belge). Trois étapes : **segmentation automatique** des planches
 hiérarchiques. Aucune IA dans la boucle d'annotation — tout le travail
 interprétatif est humain.
 
+**Pour s'en servir** : [`docs/guide-utilisateur.md`](docs/guide-utilisateur.md) (les gestes —
+le parcours en huit étapes, les quatre surfaces) et
+[`docs/modele-et-droits.md`](docs/modele-et-droits.md) (les objets et les règles —
+hiérarchie, collections, groupes, qui peut quoi, vocabulaire). Le reste de `docs/` explique
+les décisions de conception, pas l'usage.
+
 L'app s'organise en **quatre espaces** : la **Bibliothèque** (`/corpus`) pour
 gérer le corpus et lancer des traitements par lot, la **Visionneuse** (`/`) pour
 segmenter / corriger / annoter / transcrire (+ corriger l'analyse grammaticale),
