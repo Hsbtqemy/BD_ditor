@@ -22,6 +22,21 @@
     reverse_proxy authelia:9091
 }
 
+# --- Annuaire LLDAP (protégé, réservé aux administrateurs) ---
+# Le `forward_auth` est le même que celui de l'application : c'est Authelia qui décide,
+# et sa règle `access_control` pour ce domaine exige `group:bd-admins` en `two_factor`.
+# Caddy ne connaît donc aucune règle d'accès — il ne fait que demander.
+{$ANNUAIRE_DOMAINE} {
+    tls internal
+
+    forward_auth authelia:9091 {
+        uri /api/authz/forward-auth
+        copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+    }
+
+    reverse_proxy lldap:17170
+}
+
 # --- Application BéDéditeur (protégée) ---
 {$BD_DOMAINE} {
     tls internal

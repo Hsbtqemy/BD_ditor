@@ -35,19 +35,53 @@ identity_validation:
     jwt_lifespan: '15 minutes'
     # jwt_secret -> AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET
 
-# --- Comptes : fichier local (suffisant pour une petite équipe) ---
+# --- Comptes : annuaire LLDAP, administrable à l'écran (AUTH-7) ---
+# C'était un fichier local édité en SSH jusqu'au 2026-09-06. Ce n'était pas le temps
+# de saisie qui posait problème, c'était qu'un geste d'administration exigeait un
+# SHELL sur le VPS — donc n'était délégable à personne sans donner bien plus.
 authentication_backend:
   password_reset:
     disable: false
-  file:
-    path: '/config/users_database.yml'
-    password:
-      algorithm: 'argon2'
-      argon2:
-        variant: 'argon2id'
-        iterations: 3
-        memory: 65536
-        parallelism: 4
+
+  # --- Annuaire LLDAP (AUTH-7) ---
+  #
+  # `implementation: 'lldap'` pose lui-même les filtres et les attributs : ne PAS les
+  # récrire à la main, un préréglage à moitié recopié est pire qu'absent.
+  #
+  # Le compte de service est dans **`lldap_password_manager`**, pas dans
+  # `lldap_strict_readonly` : `password_reset.disable: false` ci-dessus veut dire
+  # qu'Authelia doit pouvoir ÉCRIRE un mot de passe. Et jamais dans `lldap_admin` —
+  # un service n'a pas à pouvoir créer ni supprimer des comptes.
+  #
+  # CONSÉQUENCE À CONNAÎTRE : LLDAP interdit à un `password_manager` de changer le mot
+  # de passe d'un `lldap_admin` (anti-élévation de privilège). « Mot de passe oublié ? »
+  # ne fonctionnera donc PAS pour les comptes qui administrent l'annuaire. Leur recours
+  # est l'interface de LLDAP elle-même, et en dernier ressort `LLDAP_LDAP_USER_PASS`
+  # dans `.env` — qui est aussi la seule façon de rentrer si l'on se verrouille dehors.
+  #
+  # Le mot de passe passe par le GABARIT et non par `AUTHELIA_AUTHENTICATION_BACKEND_*` :
+  # une chose se configure à un endroit, règle payée le 2026-09-05 avec le notifier SMTP.
+  ldap:
+    implementation: 'lldap'
+    address: 'ldap://lldap:3890'
+    base_dn: '{{ env "LLDAP_BASE_DN" }}'
+    user: 'uid=authelia,ou=people,{{ env "LLDAP_BASE_DN" }}'
+    password: '{{ env "LLDAP_AUTHELIA_PASS" }}'
+
+  # --- RETOUR ARRIÈRE ---
+  # Commenter le bloc `ldap:` ci-dessus, décommenter celui-ci, redémarrer. Le fichier
+  # `users_database.yml` n'est pas supprimé par la bascule : il reste le recours tant
+  # que les comptes qu'il contient existent.
+  #
+  # file:
+  #   path: '/config/users_database.yml'
+  #   password:
+  #     algorithm: 'argon2'
+  #     argon2:
+  #       variant: 'argon2id'
+  #       iterations: 3
+  #       memory: 65536
+  #       parallelism: 4
 
 # --- Politique d'accès : tout refusé par défaut, second facteur CIBLÉ ---
 #
@@ -85,7 +119,16 @@ access_control:
         - '^/api/sharedocs/deposer-sauvegarde$'
       policy: 'two_factor'
 
-    # 3. Le reste : mot de passe seul. C'est un ABAISSEMENT assumé par rapport au
+    # 3. L'annuaire (AUTH-7). `default_policy: 'deny'` fait le reste du travail : sans
+    #    cette règle, ce domaine serait refusé à tout le monde — fermeture par défaut,
+    #    et c'est la bonne façon d'ajouter une surface. `two_factor` parce qu'on y crée
+    #    et supprime des comptes ; `bd-admins` parce que créer exige `lldap_admin`, qui
+    #    inclut supprimer, et qu'il n'existe pas de rôle « peut inscrire seulement ».
+    - domain: '{{ env "ANNUAIRE_DOMAINE" }}'
+      subject: 'group:bd-admins'
+      policy: 'two_factor'
+
+    # 4. Le reste : mot de passe seul. C'est un ABAISSEMENT assumé par rapport au
     #    2026-09-05, et il se paie sur les scans — un mot de passe suffit désormais à les
     #    atteindre. Il reste très au-dessus de l'état d'avant INFRA-1, où l'instance
     #    n'authentifiait personne.
@@ -118,7 +161,7 @@ session:
   remember_me: '1 month'
   # secret -> AUTHELIA_SESSION_SECRET
   cookies:
-    - domain: '{{ env "COOKIE_DOMAINE" }}'                       # domaine PARENT commun aux deux sous-domaines
+    - domain: '{{ env "COOKIE_DOMAINE" }}'                       # domaine PARENT commun aux TROIS sous-domaines
       authelia_url: 'https://{{ env "AUTH_DOMAINE" }}'
       default_redirection_url: 'https://{{ env "BD_DOMAINE" }}'
   redis:

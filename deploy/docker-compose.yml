@@ -107,6 +107,12 @@ services:
       - BD_DOMAINE=${BD_DOMAINE}
       - AUTH_DOMAINE=${AUTH_DOMAINE}
       - COOKIE_DOMAINE=${COOKIE_DOMAINE}
+      # Rendue par Authelia dans sa règle access_control de l'annuaire (AUTH-7). Elle
+      # est aussi passée à Caddy, qui en fait un nom de site — deux lecteurs, deux
+      # environnements, une seule source : deploy/.env. L'oublier ICI donnerait une
+      # règle au domaine VIDE, donc un annuaire refusé à tout le monde par
+      # default_policy — panne fermée, mais incompréhensible.
+      - ANNUAIRE_DOMAINE=${ANNUAIRE_DOMAINE:-annuaire.localhost}
       # Secrets injectés depuis deploy/.env (voir .env.example pour les générer)
       - AUTHELIA_SESSION_SECRET=${AUTHELIA_SESSION_SECRET}
       - AUTHELIA_STORAGE_ENCRYPTION_KEY=${AUTHELIA_STORAGE_ENCRYPTION_KEY}
@@ -133,6 +139,34 @@ services:
     expose:
       - "9091"
 
+  # ─── Annuaire (AUTH-7) ───────────────────────────────────────────────────────
+  # L'interface web de gestion des comptes. Elle remplace l'édition de
+  # `users_database.yml` en SSH — c'est la RAISON du chantier : le geste cesse
+  # d'exiger un shell sur le VPS, pas seulement du temps.
+  #
+  # AUCUN port publié. LLDAP écoute 3890 (LDAP, pour Authelia) et 17170 (web) sur
+  # le réseau interne uniquement ; son interface est servie par Caddy, DERRIÈRE
+  # Authelia et réservée à `bd-admins`. Publier 17170 reviendrait à déplacer le
+  # panneau d'un serveur fermé vers l'internet ouvert — l'inverse du gain.
+  #
+  # `UID`/`GID` et non `PUID`/`PGID` : LLDAP n'emploie pas les mêmes noms
+  # qu'Authelia. Même raison en revanche — le volume lui appartient.
+  lldap:
+    image: lldap/lldap:stable
+    container_name: bd-lldap
+    restart: unless-stopped
+    environment:
+      - UID=${BD_PUID:-1000}
+      - GID=${BD_PGID:-1000}
+      - LLDAP_JWT_SECRET=${LLDAP_JWT_SECRET}
+      - LLDAP_KEY_SEED=${LLDAP_KEY_SEED}
+      - LLDAP_LDAP_BASE_DN=${LLDAP_BASE_DN}
+      # Mot de passe du compte `admin` d'amorçage. C'est le SEUL recours si l'on se
+      # verrouille dehors (cf. le piège des mots de passe d'administrateur, AUTH-7).
+      - LLDAP_LDAP_USER_PASS=${LLDAP_ADMIN_PASS}
+    volumes:
+      - lldap-data:/data
+
   caddy:
     image: caddy:2-alpine
     container_name: bd-caddy
@@ -140,11 +174,16 @@ services:
     depends_on:
       - app
       - authelia
+      - lldap
     environment:
       # Caddy résout `{$VAR}` lui-même, à partir de SON environnement : compose ne
       # substitue rien dans un fichier qu'il ne fait que monter.
       - BD_DOMAINE=${BD_DOMAINE}
       - AUTH_DOMAINE=${AUTH_DOMAINE}
+      # Valeur de repli : un `{$VAR}` vide rendrait le bloc de site ILLISIBLE et
+      # Caddy refuserait de démarrer — donc plus d'instance du tout, pour un
+      # annuaire non configuré. Le repli est inerte (`tls internal`, nom local).
+      - ANNUAIRE_DOMAINE=${ANNUAIRE_DOMAINE:-annuaire.localhost}
     ports:
       - "80:80"
       - "443:443"
@@ -155,6 +194,7 @@ services:
 
 volumes:
   bd-data:
+  lldap-data:
   redis-data:
   caddy-data:
   caddy-config:
