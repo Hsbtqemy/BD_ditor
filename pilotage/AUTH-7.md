@@ -178,7 +178,10 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [x] **Qui crée les comptes est tranché** — 2026-09-06 : *« vous et un ou deux collègues »*. **Le critère qui pouvait décider seul ne mord donc pas** : il n'y a personne à qui déléguer un pouvoir qu'il faudrait borner, et l'invitation bornée d'Authentik n'a pas d'usage ici. C'est ce qui fait pencher, plus que le volume
 - [x] **L'échéance est connue, et elle commande l'ordre** — 2026-09-06 : *« des gens attendent déjà »*. On ne migre donc RIEN maintenant : les comptes se créent à la main avec la procédure du runbook, et le chantier se planifie ensuite, à froid, sur une instance qui tourne. INFRA-9 passe avant, comme prévu
 - [x] **Le chemin est choisi : LLDAP (chemin 2), et la raison n'est pas celle qu'on croyait** — 2026-09-06, par l'équipe : *« le problème est d'aller trafiquer un yml sur un serveur qui n'est pas accessible à tout le monde. Tant qu'on a une interface web disponible et que remplir un formulaire est juste entrer quelques infos et rattacher quelque part, aucun problème. »* Ce n'est donc PAS le temps gagné — cet argument reste faible, et la saisie demeure : trente personnes restent trente formulaires. C'est que **le geste cesse d'exiger un shell sur le VPS**. Aujourd'hui, déléguer la création d'un compte revient à déléguer un accès serveur ; demain, une adresse et un mot de passe suffisent. Un pouvoir cesse d'être surdimensionné
-- [ ] **L'interface de LLDAP est elle-même derrière Authelia et réservée à `bd-admins`**, par une règle `access_control`. Sans quoi on aurait déplacé le panneau d'un serveur « pas accessible à tout le monde » vers l'internet ouvert — l'inverse exact du gain recherché. À poser dans le même geste que le déploiement, jamais après
+- [x] **L'interface de LLDAP est derrière Authelia et réservée à `bd-admins`** — écrit le 2026-09-06 sur la branche `auth-7-lldap`. Le service ne publie AUCUN port ; Caddy sert son interface sur un sous-domaine dédié, derrière le même `forward_auth` que l'application, et `access_control` y exige `group:bd-admins` en `two_factor`. `default_policy: 'deny'` fait le reste : sans cette règle, le domaine serait refusé à tout le monde — c'est la bonne façon d'ajouter une surface
+- [ ] **Le compte de service `authelia` est dans `lldap_password_manager`** — ni `strict_readonly`, ni `lldap_admin`. La lecture ne suffit PAS : `password_reset.disable: false` veut dire qu'Authelia doit pouvoir ÉCRIRE un mot de passe, et c'est ce chemin qui porte l'inscription depuis le 2026-09-06. `lldap_admin` serait l'excès inverse — un service n'a pas à créer ni supprimer des comptes
+- [ ] **Le recours des administrateurs est éprouvé AVANT d'en avoir besoin.** LLDAP interdit à un `password_manager` de changer le mot de passe d'un `lldap_admin` — protection anti-élévation, et conséquence directe : **« Mot de passe oublié ? » ne fonctionnera pas pour vos propres comptes.** Attendu : on sait, avant de se verrouiller dehors, qu'on rentre par l'interface de LLDAP, et en dernier ressort par `LLDAP_LDAP_USER_PASS` dans `.env`. Cette variable est donc à conserver HORS de la machine
+- [ ] **La bascule se fait en UNE fois, et le retour arrière est éprouvé dans le même geste** : commenter `ldap:`, décommenter `file:`, redémarrer. `users_database.yml` n'est pas supprimé par la bascule et reste le recours tant que ses comptes existent. Attendu : le retour arrière est essayé POUR DE VRAI le jour de la bascule, pas réputé disponible — c'est la leçon du repli SMTP, qu'on n'a su bon qu'en le déclenchant
 - [ ] **La vue des comptes rend son verdict AVANT que la suppression soit déléguée** — conséquence directe du choix du 2026-09-06. Créer exige `lldap_admin`, qui inclut SUPPRIMER : il n'existe aucun rôle « peut inscrire, ne peut pas détruire » (les deux autres niveaux, `password_manager` et `strict_readonly`, sont faits pour des SERVICES). Donc la règle « ce que le compte a laissé » s'appliquera à des gens qui n'étaient pas dans la conversation où elle s'est décidée. C'est ce qui rend « verdict, pas des chiffres » non cosmétique
 
 ### Ce qu'il faut savoir AVANT de choisir (mesures, pas opinions)
@@ -212,6 +215,42 @@ pour bientôt, attendons ». Mais 4.40.0 ne concerne que l'*Initial Implementati
 des UTILISATEURS est la dernière étape de la liste, elle n'est pas commencée, et elle est
 la seule à ne porter aucune version.** Ce n'est donc pas « la prochaine version » : c'est
 une étape sans date, derrière quatre autres.
+
+## La préparation, écrite à sec — 2026-09-06
+
+Quatre fichiers, sur la branche **`auth-7-lldap`** et non sur `main` : basculer
+`authentication_backend` de `file` vers `ldap` sans LLDAP en face fermerait l'instance au
+prochain `deployer.sh`. La branche fusionne le jour de la bascule, pas avant.
+
+Le service ne publie **aucun port** — LLDAP écoute 3890 (LDAP, pour Authelia) et 17170
+(web) sur le réseau interne seulement. Publier 17170 aurait déplacé le panneau d'un serveur
+fermé vers l'internet ouvert, c'est-à-dire l'inverse exact de ce que le chantier cherche.
+Son interface passe par Caddy, derrière le même `forward_auth` que l'application.
+
+**Trois choses trouvées en écrivant, et aucune n'était dans le plan.**
+
+**Le compte de service ne peut pas être en lecture seule.** L'usage recommandé pour une
+intégration LDAP est `lldap_strict_readonly` ; il ne convient pas ici, parce que
+`password_reset.disable: false` fait qu'Authelia doit ÉCRIRE un mot de passe — et c'est ce
+chemin qui porte l'inscription depuis qu'on a décidé de ne plus transmettre de mots de
+passe. Il faut donc `lldap_password_manager`.
+
+**Ce qui entraîne un piège qu'il vaut mieux connaître avant de le rencontrer.** LLDAP
+interdit à un `password_manager` de changer le mot de passe d'un `lldap_admin` — protection
+anti-élévation, parfaitement fondée. Conséquence : **« Mot de passe oublié ? » cessera de
+fonctionner pour les comptes qui administrent l'annuaire**, c'est-à-dire les vôtres. Le
+recours est l'interface de LLDAP elle-même, et en dernier ressort `LLDAP_LDAP_USER_PASS`
+dans `.env` — qui devient donc la seule façon de rentrer si l'on se verrouille dehors, et
+mérite d'être conservée ailleurs que sur cette machine.
+
+**Et une variable lue à deux endroits, prise à la relecture.** `ANNUAIRE_DOMAINE` est rendue
+par Authelia dans sa règle d'accès ET par Caddy comme nom de site. Je ne l'avais passée qu'à
+Caddy : la règle aurait porté sur un domaine VIDE, donc un annuaire refusé à tout le monde
+par `default_policy`. Panne fermée — la bonne direction — mais incompréhensible sur
+l'écran. C'est la forme du notifier SMTP configuré des deux côtés, en moins grave. Elle
+porte aussi une valeur de repli, sans quoi un `{$VAR}` vide rendrait le bloc de site
+illisible et Caddy refuserait de démarrer : **plus d'instance du tout, pour un annuaire non
+configuré.**
 
 ## Le chiffrage, et ce qu'il conclut — 2026-09-06
 
