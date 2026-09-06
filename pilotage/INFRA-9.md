@@ -5,6 +5,18 @@ statut: à venir
 
 # INFRA-9 — Authelia tourne sur une mineure qui ne reçoit plus de correctifs
 
+**Arrêté sur** — 2026-09-06, `11c82a3` : **l'instance tourne en 4.39.22, `healthy`.**
+Le `git pull` est passé du premier coup — le premier depuis trois échecs —, et le dossier
+appartient à `ubuntu` APRÈS le démarrage : le correctif `PUID`/`PGID` tient sur la nouvelle
+base *chisel*. Aucun avertissement de dépréciation, le journal entier faisant sept lignes.
+Reste ce qui se vérifie dans un navigateur, et le repli à rejouer.
+
+**Et la montée laisse une règle durable** : le schéma de stockage a migré de 15 à 28, et
+Authelia refuse de tourner contre un schéma plus récent que lui. **L'étiquette n'est plus
+un retour arrière** — pour ce service, et pour toutes les montées à venir, le seul chemin
+retour est la restauration de la sauvegarde. Ce n'était pas connu avant : aucune des quatre
+sources lues le matin ne le disait.
+
 **Point de départ** — 2026-09-06, trouvé de biais. La case la moins chère d'`AUTH-7`
 demandait si une version plus récente d'Authelia administrait les comptes ; la réponse est
 non, mais la recherche a rendu autre chose : **l'instance est en 4.38.19 quand la dernière
@@ -15,19 +27,40 @@ publiée est 4.39.22**, du 2026-09-03. Le compose épingle `authelia/authelia:4.
 
 ### Ce qu'il faut savoir avant de monter
 - [x] **Les notes de version de 4.39 sont lues, et AUCUNE rupture ne touche cette configuration** — 2026-09-06. Quatre sources : le billet 4.39, la publication GitHub v4.39.0, le guide de migration et l'entrypoint de l'image. **Le guide de migration n'a aucune entrée pour 4.39** — il s'arrête à 4.38 —, donc aucune clé renommée ni retirée. Le seul changement de comportement NOMMÉ porte sur les revendications des jetons ID d'OpenID Connect, que ce déploiement n'utilise pas : il est en forward-auth. Les dépréciations sont des AVERTISSEMENTS, dont la suppression vise v5.0.0. Rien sur `access_control`, le backend `file`, le filtre `template`, `default_2fa_method`, `disable_startup_check`, `jwt_lifespan` ni le notifier SMTP
-- [ ] **Les avertissements de dépréciation sont LUS après la montée**, `docker compose logs authelia`, et ce qu'ils nomment est noté ici. Ils ne bloquent rien en 4.39 ; ils disent ce que v5.0.0 retirera, et c'est la seule occasion gratuite de l'apprendre. Attendu : soit aucun, soit une liste de clés à corriger avant la prochaine majeure
+- [x] **Les avertissements de dépréciation sont lus : il n'y en a AUCUN** — 2026-09-06, journal entier de sept lignes après la montée. C'était l'occasion gratuite d'apprendre ce que v5.0.0 retirera ; la réponse est que cette configuration n'emploie rien de déprécié. Un « aucun » se consigne comme un autre résultat, sans quoi on rejouera la vérification
 - [ ] Le sort des appareils TOTP déjà enrôlés lors d'une montée de mineure est établi, par la documentation ou par un essai. **C'est la même question qu'`AUTH-7` se pose** pour la migration `file` → `ldap` : une seule réponse sert aux deux, et la chercher deux fois serait du gaspillage
-- [ ] Le sort de `db.sqlite3` est établi : Authelia migre-t-il son propre stockage au passage, et cette migration est-elle réversible ? **Aucune des quatre sources lues le 2026-09-06 ne le dit** — c'est le seul point que la documentation laisse ouvert, et il ne se mesure que sur l'instance. Conséquence immédiate : la sauvegarde de la case suivante n'est pas une précaution de forme, c'est le seul retour arrière connu
+- [x] **Le sort de `db.sqlite3` est établi, et la réponse est NON RÉVERSIBLE** — 2026-09-06 : « Storage schema migration from 15 to 28 is being attempted », puis « is complete ». Treize versions de schéma en une seconde. Authelia refuse de tourner contre un schéma plus récent que lui, donc **redescendre l'étiquette ne suffit plus** : le seul chemin retour est la restauration de la sauvegarde. Aucune des quatre sources lues le matin ne le disait — cela ne se mesurait que sur l'instance, et c'est pourquoi la sauvegarde n'était pas une précaution de forme
 
 ### Le geste
-- [ ] La sauvegarde de `deploy/authelia/` PRÉCÈDE la montée, `db.sqlite3` compris. C'est le seul état que `git checkout` ne restaure pas, n'étant pas versionné — les secrets TOTP de tout le monde vivent là
-- [ ] L'étiquette cesse d'être `authelia/authelia:4.38`, et le choix entre mineure flottante et version exacte est écrit avec sa raison. La flottante a laissé l'instance vieillir en silence pendant que le déploiement se croyait à jour ; une version exacte le dirait, au prix d'un geste à faire
+- [x] **La sauvegarde a précédé la montée** — `~/authelia-avant-4.39-20260906.tgz`, 20 Ko, posée avant tout `pull`. C'est le seul état que `git checkout` ne restaure pas, n'étant pas versionné : les secrets TOTP de tout le monde vivent là. Et depuis la migration de schéma ci-dessus, elle n'est plus une précaution mais **le seul retour arrière qui existe** — à conserver tant qu'on n'a pas éprouvé la 4.39 en usage réel
+- [x] **L'étiquette est `authelia/authelia:4.39.22`, version EXACTE**, et la raison est écrite dans le compose lui-même — 2026-09-06, `11c82a3`. La flottante prend bien les correctifs de sa branche, mais elle a laissé l'instance vieillir en silence : `docker compose pull` réussissait et tirait fidèlement la dernière image d'une branche abandonnée. Le coût est assumé : plus rien n'arrive tout seul, pas même un correctif de sécurité, et monter devient un GESTE — le bon régime pour le seul point d'entrée de l'instance, où l'écart doit se voir plutôt que se creuser
 - [ ] Après la montée, quatre choses répondent : le portail s'ouvre, un compte se connecte avec son TOTP **déjà enrôlé**, `bd-admins` est toujours élevé en `two_factor`, et un compte sans accès voit le bandeau de portée vide avec ses trois cas distingués (AUTH-1)
 - [ ] `verifier_deploiement.py` passe, et notamment son contrôle BLOQUANT de cohérence des groupes admin. S'il tombe, c'est que 4.39 a changé la forme d'`access_control` — et l'apprendre par une garde plutôt que par un administrateur qui s'authentifie plus faiblement en silence est exactement ce pour quoi elle a été écrite
 
 ### Ce que la montée ne doit pas emporter
 - [ ] Le repli `filesystem` fonctionne ENCORE après la montée : `SMTP_ADRESSE` vidée seule, Authelia démarre, et un « Mot de passe oublié ? » fait grossir `/config/notification.txt`. INFRA-8 l'a éprouvé sur 4.38 ; une montée de mineure est précisément ce qui peut le défaire, et le défaire en silence
-- [ ] Le `chown -R ${PUID}:${PGID} /config` de l'entrypoint se comporte pareil en 4.39 — vérifié sur l'état d'APRÈS un démarrage, pas entre deux. C'est le mécanisme qui a coûté trois réparations annulées le 2026-09-05/06, et il vit dans l'image, donc il change avec elle. **La lecture du 2026-09-06 est rassurante sans être une preuve** : l'image change de base (Alpine → *chisel*, « no package manager, some common tools removed »), mais l'entrypoint de `master` fait toujours le `chown` et réclame `/bin/sh`, `id`, `chown` et `su-exec` — s'ils manquaient, il échouerait, donc ils sont là. Reste à le voir vrai plutôt que déduit
+- [x] **Le `chown -R ${PUID}:${PGID} /config` se comporte pareil en 4.39** — vérifié le 2026-09-06 sur l'état d'APRÈS le démarrage : `drwxrwxr-x ubuntu ubuntu`. Et la preuve la plus parlante est ailleurs, dans le `git pull` qui l'a précédé : **il est passé du premier coup**, le premier depuis trois échecs consécutifs. Le mécanisme qui les causait vit dans l'image, l'image vient de changer de base, et il se comporte identiquement. C'est le mécanisme qui a coûté trois réparations annulées le 2026-09-05/06, et il vit dans l'image, donc il change avec elle. **La lecture du 2026-09-06 est rassurante sans être une preuve** : l'image change de base (Alpine → *chisel*, « no package manager, some common tools removed »), mais l'entrypoint de `master` fait toujours le `chown` et réclame `/bin/sh`, `id`, `chown` et `su-exec` — s'ils manquaient, il échouerait, donc ils sont là. Reste à le voir vrai plutôt que déduit
+
+## La montée, faite — 2026-09-06
+
+Sept lignes de journal, et trois d'entre elles répondent à des cases.
+
+**« Storage schema migration from 15 to 28 »**, en une seconde. C'est le résultat que la
+documentation ne donnait pas, et il change une règle plutôt qu'un fait : Authelia refusant
+de tourner contre un schéma plus récent que lui, **redescendre l'étiquette n'est plus un
+retour arrière** — ni pour cette montée, ni pour aucune des suivantes. Le seul chemin
+retour est la restauration de la sauvegarde, ce qui vaut d'être su AVANT d'en avoir besoin.
+
+**Aucun avertissement de dépréciation.** Le journal entier fait sept lignes. C'était la
+seule occasion gratuite d'apprendre ce que v5.0.0 retirera ; la réponse est que cette
+configuration n'emploie rien de déprécié, et un « aucun » se consigne comme un autre
+résultat — sans quoi on rejouera la vérification en croyant ne pas l'avoir faite.
+
+**Et le `git pull` est passé du premier coup.** C'est la preuve la plus parlante de la
+journée, et elle est indirecte : le mécanisme qui a causé trois échecs consécutifs les 5 et
+6 vit dans l'entrypoint de l'image, l'image vient de changer de base — Alpine vers
+*chisel* —, et le correctif `PUID`/`PGID` tient. Le dossier appartient à `ubuntu` après le
+démarrage, pas entre deux.
 
 ## Ce que la lecture des notes a écarté, et ce qu'elle a trouvé — 2026-09-06
 
