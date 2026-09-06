@@ -1,14 +1,18 @@
 ---
 chantier: INFRA-8
-statut: interrompu
+statut: livré
 ---
 
 # INFRA-8 — l'enrôlement 2FA passe par un fichier sur le serveur
 
-**Arrêté sur** — 2026-09-06, `e7d3659` : la dernière case a une moitié qui vit dans le
-dépôt, et elle y est — la boîte d'expédition PARTAGÉE, le couplage dans ses deux sens, et
-la rotation du mot de passe d'application avec son ORDRE. L'autre moitié se fait dans
-l'interface de l'hébergeur et n'a pas d'autre chemin.
+**Arrêté sur** — 2026-09-06, `e7d3659` : **le chantier est clos, la dernière case est
+faite chez l'hébergeur.** Le mot de passe d'application porte son nom, donc il se révoque
+seul, sans toucher à l'autre site qui partage la boîte. Une réserve subsiste, qui ne
+s'écrit pas en case parce qu'elle vaut à CHAQUE rotation et non une fois : que ce soit bien
+l'identifiant en service ne se vérifie pas d'ici, et une bascule ratée serait silencieuse.
+Aucun commit de code ne l'accompagne, et c'est normal : la moitié qui vivait dans le dépôt
+— boîte d'expédition PARTAGÉE, couplage dans ses deux sens, rotation avec son ORDRE — y est
+depuis `e7d3659` ; l'autre n'avait pas d'autre chemin que l'interface de l'hébergeur.
 
 **État antérieur — 2026-09-06, `cee43ec`** : deux cases d'hygiène fermées, et **le
 durcissement a cassé un outil** — le fichier des comptes a deux lecteurs qui n'ont pas les
@@ -48,7 +52,7 @@ l'éprouver pour de bon.
 - [x] Des adresses RÉELLES ne changent rien à ce que les artefacts publient. Le cliquet rejoué le 2026-09-06 passe, balayage des 12 invocations d'outils compris. Et le constat est plus fort que le test : **`utilisateur.email` est écrit et jamais LU** — l'unique requête sur cette table sélectionne `login, nom`, et sa docstring le dit. La seule voie par laquelle une adresse réelle quitte l'instance est donc la sauvegarde INTÉGRALE, réservée aux administrateurs par `_exiger_admin_sauvegarde`. C'est un fait à connaître, pas un défaut : une sauvegarde contient la base, c'est sa définition
 
 ### Ce que la bascule a laissé ouvert
-- [ ] Le mot de passe d'application est nommé `bdediteur` chez l'hébergeur, donc révocable seul, sans toucher à l'autre site qui partage la boîte — geste à faire dans l'interface Infomaniak ; le POURQUOI et la procédure de rotation sont écrits depuis le 2026-09-06 (`docs/exploitation.md` § Le courriel, et le bloc SMTP de `.env.example`)
+- [x] Le mot de passe d'application est nommé `bdediteur` chez l'hébergeur, donc révocable seul, sans toucher à l'autre site qui partage la boîte. **Fait le 2026-09-06**, dans l'interface Infomaniak — le seul endroit où ce geste existe. Le POURQUOI et la procédure de rotation sont écrits (`docs/exploitation.md` § Le courriel, bloc SMTP de `.env.example`) : nommer sans écrire pourquoi n'aurait servi personne dans six mois. Ce que la case ne prouve PAS a sa section, plus bas
 - [x] `deploy/authelia/users_database.yml` n'est plus en `664` : il porte un hash de mot de passe et reste lisible par tout compte de la machine, quand `.env` est en `600`. Deux fichiers de secrets, deux traitements, et rien ne l'avait jamais signalé. **Fait le 2026-09-06 — et le `chmod` seul a cassé un outil** (ci-dessous) : le mode final est `600 ubuntu:ubuntu`, pas `600 root:root`
 - [x] Le dossier `deploy/authelia/` appartient à `ubuntu` **après un démarrage d'Authelia**, et c'est la formulation qui compte : l'entrypoint de l'image fait `chown -R ${PUID}:${PGID} /config` à CHAQUE démarrage, et ces variables valaient 0:0. Le réparer à la main était donc sans effet durable — trois occurrences avant qu'on lise l'entrypoint. `PUID`/`PGID` posés dans le compose, vérifié le 2026-09-06 à 09:22 sur l'état d'APRÈS le mécanisme. Le conteneur y écrit toujours : `db.sqlite3` est passé à `ubuntu` et Authelia s'exécute désormais sous cette identité
 
@@ -288,6 +292,27 @@ par `Remote-Email`, elle est écrite dans `utilisateur` (v22) et elle part dans 
 sauvegarde. AUTH-5 a précisément un cliquet pour ça — il sème une sentinelle de courriel et
 balaie 61 surfaces ; il a été écrit parce que l'énumération à la main avait échoué quatre
 fois. C'est le moment de le rejouer, pas de lui faire confiance sur parole.
+
+## Ce que la dernière case ne prouve pas — 2026-09-06
+
+Le geste est fait, et il n'avait pas d'autre chemin que l'interface de l'hébergeur. Reste à
+écrire ce qu'il laisse ouvert, parce que le mode d'échec est celui que cette fiche a déjà
+payé deux fois.
+
+**Ce qui est acquis** : l'identifiant employé par BDéditeur porte un nom, donc il se révoque
+seul. Le couplage avec l'autre site demeure entier dans l'autre sens — le mot de passe de la
+boîte peut changer pour une raison étrangère au projet — et celui-là est irréductible.
+
+**Ce qui ne se vérifie pas d'ici** : que le nom porte bien sur l'identifiant EN SERVICE.
+Selon que l'hébergeur laisse renommer en place ou impose d'en créer un — et je n'ai pas vu
+son interface —, « nommer » peut être une rotation qui ne dit pas son nom. Alors `.env`
+porte l'ancien, l'ancien se révoque, et **rien ne le signale**. Ce n'est pas une hypothèse
+de prudence : c'est le silence que `disable_startup_check` a rendu assumé, et c'est la
+raison pour laquelle la procédure de rotation impose un ORDRE.
+
+La preuve tient en un clic — « Mot de passe oublié ? » depuis le portail, le message arrive
+ou n'arrive pas. Elle n'est pas une case parce qu'une case se coche une fois : celle-ci vaut
+à chaque rotation, et sa place est donc dans la procédure, où elle est.
 
 ## La moitié qui vit dans le dépôt — 2026-09-06
 
