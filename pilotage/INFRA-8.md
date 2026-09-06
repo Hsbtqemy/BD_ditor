@@ -10,9 +10,10 @@ durcissement a cassé un outil** — le fichier des comptes a deux lecteurs qui 
 mêmes droits, et je n'en avais considéré qu'un. Le dossier, lui, était redevenu
 `root:root` — Authelia le rechowne à chaque démarrage, cause trouvée et neutralisée par
 `PUID`/`PGID`. **Le parcours d'un compte neuf est franchissable seul**, éprouvé de la
-création à la connexion, appareil perdu compris. Restent DEUX cases, toutes deux sur la
-bascule elle-même : nommer le mot de passe d'application chez l'hébergeur, et éprouver
-le repli pour de vrai.
+création à la connexion, appareil perdu compris. **Le repli est éprouvé** aussi, et il
+REMET : `SMTP_ADRESSE` vidée seule, Authelia démarre et écrit ses liens dans
+`notification.txt`. Reste UNE case, qui ne se règle pas ici — nommer le mot de passe
+d'application chez l'hébergeur, dans son interface.
 
 **État antérieur — 2026-09-05, `4b6761d` : la bascule est FAITE et le courriel arrive**.
 Relais Infomaniak, dont le SPF du domaine autorisait déjà le relais ; boîte d'expédition
@@ -49,7 +50,33 @@ l'éprouver pour de bon.
 ### Ne pas fermer l'instance en croyant régler les notifications
 - [x] `docker compose exec authelia authelia validate-config --config /config/configuration.yml` passe AVANT tout redémarrage : le contrôle de connexion est désactivé, mais une configuration structurellement invalide — `sender` manquant — empêche toujours Authelia de démarrer. **Et il NE LIT PAS le fichier des comptes**, mesuré le 2026-09-06 en y glissant une tabulation illégale : « successfully », code 0. Cette case, telle qu'elle était écrite, laissait croire à une garde avant redémarrage qui ne couvre pas ce qu'on modifie le plus souvent
 - [x] Le fichier des COMPTES a son propre contrôle avant redémarrage, puisque `validate-config` l'ignore : `python3 -c "import yaml; yaml.safe_load(open('users_database.yml'))"`, PyYAML étant déjà présent sur Ubuntu. Éprouvé dans les DEUX sens le 2026-09-06 — il accepte le fichier correct et refuse une copie contenant une tabulation. Écrit dans `docs/exploitation.md`, avec la copie de sauvegarde qui doit le précéder
-- [ ] Le repli est éprouvé pour de vrai, pas seulement écrit : vider `SMTP_ADRESSE`, redémarrer, et retrouver une instance qui laisse entrer
+- [x] Le repli est éprouvé pour de vrai, pas seulement écrit — **2026-09-06, sur l'instance en service**. `SMTP_ADRESSE` vidée SEULE, les trois autres valeurs laissées en place : Authelia démarre (`Startup complete`, `Listening`), reste `healthy`, et **aucun** « only one of 'smtp' or 'filesystem' ». C'est précisément ce qui avait échoué le 2026-09-05, où le retour arrière laissait le mot de passe et faisait repartir Authelia en boucle. Et le repli REMET : un « Mot de passe oublié ? » a porté `/config/notification.txt` de 0 à 3 492 octets. Démarrer n'aurait rien prouvé — un notifier qui n'écrit nulle part laisse une instance debout et personne dedans
+
+## Le repli, éprouvé — 2026-09-06
+
+La case demandait de le prouver « pour de vrai, pas seulement écrit ». Il l'est, sur
+l'instance en service.
+
+`SMTP_ADRESSE` vidée SEULE — les trois autres valeurs laissées en place, ce qui est le cas
+qui avait échoué. Authelia démarre, `Startup complete`, reste `healthy` une minute plus
+tard, et aucune trace de « only one of 'smtp' or 'filesystem' ». Le 2026-09-05, le retour
+arrière retirait `SMTP_ADRESSE` en laissant `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, laquelle
+instancie le notifier SMTP à elle seule : Authelia refusait d'avoir deux notifiers et
+repartait en boucle. Les quatre valeurs passant désormais par le gabarit, la bascule se
+défait par une seule ligne.
+
+**Et le repli REMET, ce qui est la moitié qui compte.** Un « Mot de passe oublié ? » depuis
+le portail a porté `/config/notification.txt` de 0 à 3 492 octets. Démarrer n'aurait rien
+prouvé : un notifier qui n'écrit nulle part laisse une instance debout et personne dedans.
+
+**Deux leçons de conduite, et la première est une faute.** Le premier essai a été perdu :
+j'avais mis l'observation et le retour arrière dans le même message, en présentant le
+second comme conditionnel. Or `up -d` avec une variable changée RECRÉE le conteneur, et
+les journaux de l'ancien partent avec lui — il ne restait rien à lire. Sur un conteneur
+qu'on recrée, « observer d'abord, revenir ensuite » n'est pas une préférence de forme.
+
+La seconde : le `sed` sur `.env` est encadré d'un `grep -c` avant et d'un `grep -n` après.
+C'est le piège du 2026-09-05 — un `sed` qui ne trouve pas sa clé ne dit rien et rend 0.
 
 ## L'arbitrage du facteur — 2026-09-06
 
