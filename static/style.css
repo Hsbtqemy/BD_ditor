@@ -542,7 +542,15 @@ button { font-family: inherit; }
      icônes dont la largeur vient du contenu et non de la police. Les deux valeurs tiennent
      sous le seuil ci-dessus, qui la couvre donc sans lui en demander un second.
      Ce qu'elle perdrait sinon : « Réinitialiser » et la bascule du panneau. Le fil
-     d'Ariane, lui, a déjà cédé au seuil de 34.9375em. */
+     d'Ariane, lui, a déjà cédé au seuil de 34.9375em.
+
+     ATTENTION à l'ordre, et le fichier s'est déjà fait mordre là (cf. `#body #panel`
+     plus bas) : la règle de base de `#toolbar` est déclarée APRÈS ce bloc, à spécificité
+     ÉGALE, et l'emporterait donc sur toute propriété qu'elle déclarerait aussi. Elle ne
+     pose aujourd'hui ni `flex-wrap` ni `row-gap` — les deux seules d'ici —, ce qui rend
+     ce bloc effectif ; le jour où on lui en ajoute une, c'est ici qu'elle cesserait
+     silencieusement d'agir. `tests/test_e2e_police.py` le verrait, à 320 px sous une
+     préférence de 20. */
   #toolbar { flex-wrap: wrap; row-gap: .3077rem; }
 }
 .surf-sep { color: var(--text-muted); opacity: .45; user-select: none; }

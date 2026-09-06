@@ -61,13 +61,50 @@ def decor(live_server):
     return {"base": live_server, "album": aid, "planche": pid, "region": rid}
 
 
-def _sonder(page, decor, surface, largeur, police):
+# Ce que la sonde ne rend pas, et qui décide si elle a mesuré quelque chose. Elle
+# parcourt `body *` : sur une page qui n'a pas rendu, `coupables` est VIDE et le test
+# passe au vert en n'ayant rien vu. C'est le mode d'échec d'ARCH-2 — une garde qui
+# approuve en ne regardant plus rien — et il se ferme ici même.
+_PLANCHER = """() => {
+  let n = 0;
+  for (const el of document.querySelectorAll('body *')) {
+    const b = el.getBoundingClientRect();
+    if (b.width > 0 && b.height > 0) n++;
+  }
+  return {n, racine: getComputedStyle(document.documentElement).fontSize};
+}"""
+
+# La racine vaut 81,25 % de la préférence — c'est la règle du fichier, et la vérifier à
+# CHAQUE cas est la garde la plus tranchante du module : si `Page.setFontSizes` cessait
+# d'agir (changement de Chromium) ou si la racine repassait en px, les seize cas
+# resteraient VERTS en mesurant la police par défaut.
+_RACINE = 0.8125
+
+# Le rendu peut légitimement perdre des éléments quand la police grossit, et c'est même le
+# but : les seuils étant en em, une grande police fait basculer la disposition étroite plus
+# tôt — ce qui masque exprès la légende de la barre d'état (41.1875em) et escamote la barre
+# latérale (67.4375em) sur un écran de 1280 px. Mesuré le 2026-09-06, la plus forte baisse
+# LÉGITIME est de 3,1 % : Visionneuse à 768 px sous une préférence de 20, 154 éléments
+# contre 159. Une page qui n'a pas rendu, elle, est à près de zéro. Le plancher sépare deux
+# populations distantes d'un ordre de grandeur, et il se calibre sur la page ELLE-MÊME
+# plutôt que sur un chiffre recopié, qui vieillirait dans le sens permissif.
+_BAISSE_TOLEREE = 0.80
+
+
+def _charger(page, decor, surface, largeur, police):
     cdp = page.context.new_cdp_session(page)
     cdp.send("Page.setFontSizes", {"fontSizes": {"standard": police, "fixed": police}})
     page.set_viewport_size({"width": largeur, "height": 900})
     page.goto(decor["base"] + SURFACES[surface](decor), wait_until="networkidle")
     page.wait_for_timeout(400)
-    return page.evaluate(SONDE)
+    return page.evaluate(SONDE), page.evaluate(_PLANCHER)
+
+
+def _sonder(page, decor, surface, largeur, police):
+    """Charge DEUX fois : à la police par défaut pour se calibrer, puis à `police`."""
+    _, temoin = _charger(page, decor, surface, largeur, 16)
+    r, mesure = _charger(page, decor, surface, largeur, police)
+    return r, temoin, mesure
 
 
 def _decrire(coupables):
@@ -81,8 +118,26 @@ def _decrire(coupables):
 @pytest.mark.parametrize("largeur,police", CAS)
 @pytest.mark.parametrize("surface", list(SURFACES))
 def test_la_preference_de_police_ne_perd_pas_de_contenu(page, decor, surface, largeur, police):
-    """Police par défaut portée à `police` px : rien ne sort de l'écran sans recours."""
-    r = _sonder(page, decor, surface, largeur, police)
+    """Police par défaut portée à `police` px : rien ne sort de l'écran sans recours.
+
+    Trois assertions et non une : ce que la sonde a vu ne vaut que si elle a regardé
+    quelque chose, et si la police a réellement changé. Les deux gardes d'AMONT sont
+    écrites avant celle qui porte le critère — un rouge sur la troisième doit vouloir dire
+    « le contenu déborde », jamais « la page était blanche ».
+    """
+    r, temoin, mesure = _sonder(page, decor, surface, largeur, police)
+
+    attendue = f"{police * _RACINE:g}px"
+    assert mesure["racine"] == attendue, (
+        f"racine à {mesure['racine']} pour une préférence de {police} px, attendu "
+        f"{attendue}. La préférence n'a pas été appliquée, ou la racine est repassée en "
+        "px — dans les deux cas l'assertion du bas ne mesurerait plus rien.")
+
+    assert mesure["n"] >= temoin["n"] * _BAISSE_TOLEREE, (
+        f"{surface} à {largeur} px : {mesure['n']} éléments visibles sous une préférence "
+        f"de {police} px contre {temoin['n']} à la police par défaut. Une baisse de cette "
+        "ampleur n'est pas un seuil qui masque, c'est un rendu qui a échoué.")
+
     perdus = [c for c in r["coupables"] if not c["cadre"] and c["id"] not in EXEMPTIONS]
     assert not perdus, (
         f"{surface} à {largeur} px avec une police par défaut de {police} px — "
