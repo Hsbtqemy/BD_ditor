@@ -1112,3 +1112,60 @@ def test_un_fichier_de_comptes_illisible_est_signale_et_non_fatal(tmp_path, monk
     assert problemes == [], (
         "un fichier de comptes illisible n'est pas un défaut de configuration : "
         f"le contrôle l'a pourtant compté comme tel ({problemes})")
+
+
+def test_le_referent_manquant_avertit_sans_bloquer(tmp_path, monkeypatch):
+    """Le référent absent est SIGNALÉ, jamais compté comme un problème.
+
+    AUTH-4 pose un référent d'instance pour que le bandeau de portée vide nomme quelqu'un.
+    Constaté en production le 2026-09-06 : la fonctionnalité était livrée depuis des jours
+    et jamais configurée, si bien que le premier arrivant lisait « demandez à un
+    administrateur » sans savoir à qui écrire. Rien ne le signalait au moment où c'était
+    devenu vrai — c'est-à-dire à l'arrivée du deuxième compte.
+
+    La propriété que ce test verrouille n'est PAS l'avertissement, c'est son caractère non
+    bloquant. `deployer.sh` appelle ce contrôle avant chaque mise en service, sous `set -e`
+    : le compter comme un problème refuserait un déploiement pour un nom manquant, alors
+    qu'un déploiement est justement ce qui permet de le poser. C'est aussi la famille de
+    défauts qu'ARCH-2 et QA-6 ont nommée — un échec dur sur une condition légitime.
+    """
+    import contextlib
+    import importlib.util
+    import io
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parent.parent / "deploy" / "verifier_deploiement.py"
+    if not source.exists():
+        pytest.skip(
+            "deploy/ est exclu du contexte de build (.dockerignore) : ce test ne tourne "
+            "QUE sur la machine de développement. Son skip dans l'image N'EST PAS une "
+            "couverture — cf. QA-6, « un skip se lit comme un succès »")
+
+    spec = importlib.util.spec_from_file_location("vd_referent", source)
+    vd = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(vd)
+
+    env = tmp_path / ".env"
+    env.write_text("BD_DOMAINE=bd.exemple.fr\nAUTH_DOMAINE=auth.exemple.fr\n"
+                   "COOKIE_DOMAINE=exemple.fr\n", encoding="utf-8")
+
+    deux_comptes = ("users:\n  a:\n    password: $argon2id$un\n"
+                    "  b:\n    password: $argon2id$deux\n")
+    vrai_exists, vrai_read = Path.exists, Path.read_text
+    monkeypatch.setattr(Path, "exists",
+                        lambda self: True if self.name == "users_database.yml"
+                        else vrai_exists(self))
+    monkeypatch.setattr(Path, "read_text",
+                        lambda self, *a, **k: deux_comptes
+                        if self.name == "users_database.yml" else vrai_read(self, *a, **k))
+
+    tampon = io.StringIO()
+    with contextlib.redirect_stdout(tampon):
+        problemes = vd.controle_config(str(env))
+    sortie = tampon.getvalue()
+
+    assert "référent" in sortie and "non déclaré" in sortie, (
+        f"deux comptes sans référent : rien n'a été signalé.\n{sortie}")
+    assert problemes == [], (
+        "l'absence de référent a été comptée comme un PROBLÈME : le contrôle rendra "
+        f"non nul et `deployer.sh` refusera de déployer ({problemes})")

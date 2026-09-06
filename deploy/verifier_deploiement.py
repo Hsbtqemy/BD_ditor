@@ -347,6 +347,25 @@ def controle_config(chemin_env):
         pbs.append("hash non généré")
     else:
         print(f"    ok {'comptes':14} présent, hash renseigné")
+
+    # Le référent (AUTH-4) devient nécessaire exactement quand il y a un DEUXIÈME compte :
+    # toute personne sans accès voit alors un bandeau qui lui dit de s'adresser à « un
+    # administrateur de l'instance », sans nom. `.env.example` l'annonçait déjà — « cela
+    # devient un cul-de-sac dès le deuxième compte » — mais rien ne le signalait au moment
+    # où c'est devenu vrai. Constaté le 2026-09-06 en production, sur le premier compte
+    # d'essai : la fonctionnalité était livrée depuis des jours et jamais configurée.
+    #
+    # Volontairement NON bloquant. Un déploiement est ce qui permet de RÉPARER ; le
+    # refuser pour un nom manquant serait disproportionné, et ce script est appelé par
+    # `deployer.sh` avant chaque mise en service. On informe, on n'interrompt pas.
+    nb_comptes = sum(1 for l in contenu.splitlines() if l.strip().startswith("password:"))
+    if nb_comptes >= 2 and not (vals.get("BD_REFERENT_NOM") or vals.get("BD_REFERENT_CONTACT")):
+        print(f"    ·· {'référent':14} non déclaré, pour {nb_comptes} comptes")
+        print("       Toute personne sans accès verra « demandez à un administrateur »")
+        print("       sans savoir à QUI écrire. Poser BD_REFERENT_NOM et")
+        print("       BD_REFERENT_CONTACT dans .env, puis `docker compose up -d app`")
+        print("       (up -d et NON restart : .env est lu à la création du conteneur).")
+        print("       Signalé sans bloquer : ce n'est pas une panne.")
     return pbs
 
 

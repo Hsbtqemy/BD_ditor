@@ -69,12 +69,22 @@ inscription TOTP : il se lit comme « rien n'est enregistré ». Il a fallu lire
 d'Authelia pour comprendre, c'est-à-dire exactement l'« intervention sur le serveur » que
 cette case interdit. `default_2fa_method: 'totp'` n'était pas déclaré.
 
-**Ce que le bandeau ne dit toujours pas : QUI.** Il renvoie vers « un administrateur de
-l'instance », sans nom. Le mécanisme d'AUTH-4 est pourtant complet de bout en bout —
-`config.py` lit l'environnement, Compose le transmet, `theme.js` rend la ligne — mais
-`BD_REFERENT_NOM` et `BD_REFERENT_CONTACT` n'ont jamais été posés dans `deploy/.env`. Une
-fonctionnalité livrée, jamais configurée, et rien ne le signalait : c'est l'écran qu'un
-arrivant voit en premier, et il lui demande d'écrire à quelqu'un qu'il ne peut pas nommer.
+**Le bandeau ne disait pas QUI, et c'est réparé le jour même.** Il renvoyait vers « un
+administrateur de l'instance », sans nom. Le mécanisme d'AUTH-4 était pourtant complet de
+bout en bout — `config.py` lit l'environnement, Compose le transmet, `theme.js` rend la
+ligne — mais `BD_REFERENT_NOM` et `BD_REFERENT_CONTACT` n'avaient jamais été posés dans
+`deploy/.env`. **Une fonctionnalité livrée depuis des jours, jamais configurée**, sur
+l'écran qu'un arrivant voit en premier. La ligne apparaît désormais, avec sa réserve :
+« l'application ne peut pas vérifier qu'il fait toujours partie de l'équipe ».
+
+`.env.example` l'annonçait déjà — « cela devient un cul-de-sac dès le deuxième compte ».
+L'oubli n'était donc pas documentaire mais opérationnel : rien ne le signalait **au moment
+où c'est devenu vrai**. `verifier_deploiement.py` le dit maintenant, et seulement quand la
+condition est remplie — au moins deux comptes, aucun référent. Volontairement NON
+bloquant : `deployer.sh` appelle ce contrôle avant chaque mise en service, et refuser un
+déploiement pour un nom manquant serait disproportionné quand c'est justement le
+déploiement qui permet de le poser. Un test verrouille cette propriété-là, pas
+l'avertissement.
 
 ## Le durcissement a cassé un outil — 2026-09-06
 
