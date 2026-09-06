@@ -8,7 +8,8 @@ statut: interrompu
 **Arrêté sur** — 2026-09-06, `cee43ec` : deux cases d'hygiène fermées, et **le
 durcissement a cassé un outil** — le fichier des comptes a deux lecteurs qui n'ont pas les
 mêmes droits, et je n'en avais considéré qu'un. Le dossier, lui, était redevenu
-`root:root` : le piège du `git pull` était réarmé et dormait. Réparé et éprouvé. Restent
+`root:root` — Authelia le rechowne à chaque démarrage, cause trouvée et neutralisée par
+`PUID`/`PGID`. Restent
 six cases, dont les deux qui comptent — le parcours d'un compte neuf, et le remplacement
 d'un appareil TOTP perdu.
 
@@ -42,7 +43,7 @@ l'éprouver pour de bon.
 ### Ce que la bascule a laissé ouvert
 - [ ] Le mot de passe d'application est nommé `bdediteur` chez l'hébergeur, donc révocable seul, sans toucher à l'autre site qui partage la boîte
 - [x] `deploy/authelia/users_database.yml` n'est plus en `664` : il porte un hash de mot de passe et reste lisible par tout compte de la machine, quand `.env` est en `600`. Deux fichiers de secrets, deux traitements, et rien ne l'avait jamais signalé. **Fait le 2026-09-06 — et le `chmod` seul a cassé un outil** (ci-dessous) : le mode final est `600 ubuntu:ubuntu`, pas `600 root:root`
-- [x] Le dossier `deploy/authelia/` appartient de nouveau à `ubuntu` — et il ne l'était PLUS le 2026-09-06, `root:root` en 775, le piège du `pull` réarmé sans que rien ne le dise. Réparé, et **prouvé par une réécriture réelle** (`git checkout --` sur un fichier suivi de ce dossier), pas par un raisonnement sur les permissions. L'autre moitié est **observée** depuis le 2026-09-06 08:56 : l'enrôlement TOTP du premier compte d'essai a écrit dans `db.sqlite3`, qui appartient toujours à `root` dans un dossier appartenant à `ubuntu`. Ce n'est plus le raisonnement « root ignore les permissions », c'est un horodatage
+- [x] Le dossier `deploy/authelia/` appartient à `ubuntu` **après un démarrage d'Authelia**, et c'est la formulation qui compte : l'entrypoint de l'image fait `chown -R ${PUID}:${PGID} /config` à CHAQUE démarrage, et ces variables valaient 0:0. Le réparer à la main était donc sans effet durable — trois occurrences avant qu'on lise l'entrypoint. `PUID`/`PGID` posés dans le compose, vérifié le 2026-09-06 à 09:22 sur l'état d'APRÈS le mécanisme. Le conteneur y écrit toujours : `db.sqlite3` est passé à `ubuntu` et Authelia s'exécute désormais sous cette identité
 
 ### Ne pas fermer l'instance en croyant régler les notifications
 - [x] `docker compose exec authelia authelia validate-config --config /config/configuration.yml` passe AVANT tout redémarrage : le contrôle de connexion est désactivé, mais une configuration structurellement invalide — `sender` manquant — empêche toujours Authelia de démarrer. **Et il NE LIT PAS le fichier des comptes**, mesuré le 2026-09-06 en y glissant une tabulation illégale : « successfully », code 0. Cette case, telle qu'elle était écrite, laissait croire à une garde avant redémarrage qui ne couvre pas ce qu'on modifie le plus souvent
@@ -147,13 +148,30 @@ que QA-6 a retrouvée avec le modèle spaCy. Un test de non-régression éprouve
 branches par substitution de `read_text` ; il se skippe dans l'image, `deploy/` étant
 exclu du contexte de build, et son message le dit — ce skip n'est pas une couverture.
 
-**Le dossier, lui, était redevenu `root:root`.** Le `chown` du 2026-09-05 n'a pas tenu, ou
-n'a jamais été appliqué ; le journal ne permet pas de trancher, et peu importe : ce qui
-compte est qu'il l'était le 6, donc que le piège du `git pull` était réarmé et dormait,
-faute d'un commit touchant ce dossier depuis. Réparé, puis ÉPROUVÉ — `git checkout --` sur
-un fichier suivi de ce dossier réécrit de nouveau. Le premier essai que j'avais proposé,
-un `touch` suivi d'un `checkout`, ne prouvait rien : `touch` ne change que la date, git
-compare le contenu, le trouve identique et ne réécrit pas.
+**Le dossier, lui, était redevenu `root:root`, et j'ai conclu trop vite.** J'ai écrit ici
+que le `chown` du 2026-09-05 « n'avait pas tenu, ou n'avait jamais été appliqué », que le
+journal ne permettait pas de trancher, et que « peu importe ». Les trois affirmations
+étaient fausses, la dernière surtout.
+
+Il importait beaucoup : **l'entrypoint de l'image Authelia fait `chown -R ${PUID}:${PGID}
+/config` à chaque démarrage**, et ces variables non déclarées valent 0:0. Le dossier
+repassait donc à root à chaque `docker compose restart authelia`, et le `git pull` suivant
+échouait en laissant `HEAD` en arrière. Trois occurrences — le 05, puis deux fois le 06 —
+traitées à la main, chacune annulée par le redémarrage d'après.
+
+**Et ma preuve de ce matin était exacte et sans valeur.** J'ai vérifié qu'un
+`git checkout --` réécrivait dans ce dossier, et je l'ai déclaré éprouvé ; la vérification
+tombait entre deux exécutions d'un mécanisme qui se rejoue. Vérifier une fois ne dit rien
+d'un processus qui recommence — leçon distincte de celles de la semaine, qui portaient
+toutes sur des mesures qu'on ne faisait pas.
+
+Le remède est le réglage prévu pour cela, `PUID`/`PGID` dans le compose : le `chown`
+continue de s'exécuter, vers la bonne identité. Vérifié sur l'état d'APRÈS un démarrage,
+cette fois — dossier `ubuntu` à 09:22, `db.sqlite3` passé à `ubuntu` lui aussi.
+
+Au passage, un essai que j'avais proposé plus tôt ne prouvait rien non plus : un `touch`
+suivi d'un `checkout`. `touch` ne change que la date, git compare le contenu, le trouve
+identique et ne réécrit pas.
 
 ## La bascule réelle — 2026-09-05
 
