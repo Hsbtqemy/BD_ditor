@@ -68,7 +68,17 @@ services:
       - redis-data:/data
 
   authelia:
-    image: authelia/authelia:4.38
+    # Version EXACTE, et non la mineure flottante `4.38` qui précédait. Le choix se
+    # paie dans les deux sens, et c'est la panne vécue qui tranche : la flottante prend
+    # bien les correctifs de SA branche, mais elle a laissé l'instance vieillir en
+    # silence — `docker compose pull` réussissait, tirait fidèlement la dernière image
+    # d'une branche abandonnée, et rien nulle part ne disait que 4.38 ne recevait plus
+    # aucun correctif de bogue. Un déploiement qui se croit à jour.
+    #
+    # Le coût assumé : plus rien n'arrive tout seul, pas même un correctif de sécurité.
+    # Monter devient un GESTE, ce qui est le bon régime pour le seul point d'entrée de
+    # l'instance — et l'écart se voit, au lieu de se creuser (INFRA-9).
+    image: authelia/authelia:4.39.22
     container_name: bd-authelia
     restart: unless-stopped
     depends_on:
