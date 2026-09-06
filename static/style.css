@@ -235,6 +235,32 @@ kbd {
   grid-row: 3; grid-column: 1;
 }
 
+/* ---- Le bandeau de portée vide prend une RANGÉE, pas une colonne (AUTH-2) -----
+   `theme.js` injecte `.portee-vide` en tête de `<main>`, sur les quatre surfaces.
+   Sur trois, `<main>` est un bloc qui défile et le bandeau s'y pose sans rien
+   déranger. Ici c'est une GRILLE taillée pour exactement TROIS panneaux : le
+   bandeau y devient un QUATRIÈME item auto-placé, prend la première colonne et
+   décale tout le reste d'un cran. Mesuré le 2026-09-06 à 1440 px — bandeau
+   240 px (la colonne de la navigation), canevas 300 px à x=1140 (celle du
+   panneau), panneau rejeté à la rangée suivante. Le canevas, seule raison d'être
+   de cet écran, recevait la plus étroite des trois colonnes.
+
+   Invisible depuis AUTH-2, et pour une raison structurelle : le bandeau ne paraît
+   que DERRIÈRE le proxy, avec une portée vide. Jamais en mono-poste, donc jamais
+   en développement — et `test_a11y_portee_vide` visite bien cet écran, mais axe
+   audite l'accessibilité, qu'une grille décalée ne blesse pas.
+
+   Les deux règles sont SÉPARÉES exprès. La première ne dépend de rien et rend la
+   largeur ; la seconde serait ignorée là où `:has()` manque, laissant un bandeau
+   pleine largeur au-dessus d'un canevas trop court — dégradé, mais plus jamais la
+   grille décalée. `:has()` plutôt qu'une classe posée par `theme.js` : cet état
+   n'aurait alors plus un propriétaire mais deux, à tenir d'accord — la faute que
+   le voile des tiroirs a déjà coûtée, juste en dessous. La présence de l'élément
+   EST la condition, et personne n'a à la recopier ailleurs.
+   ------------------------------------------------------------------------------ */
+#body > .portee-vide { grid-column: 1 / -1; }
+#body:has(> .portee-vide) { grid-template-rows: auto minmax(0, 1fr); }
+
 /* ---------- Tiroirs de la Visionneuse (UX-7) ----------------------------------
    `#body` est une grille `240px | 1fr | 300px` : 540 px de chrome FIXE quelle que
    soit la fenêtre, dont le canevas ne reçoit que le reste. Les deux seuils se

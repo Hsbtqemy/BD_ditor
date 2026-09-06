@@ -521,6 +521,74 @@ def test_a11y_portee_vide(page, seeded, theme, surface):
     assert not viol, f"Portée vide [{surface} · {theme}] :\n{_fmt(viol)}"
 
 
+def _geo(page, sel):
+    """Rectangle rendu d'un élément, en pixels CSS entiers. `None` s'il n'existe pas."""
+    return page.evaluate(
+        """s => { const e = document.querySelector(s); if (!e) return null;
+                  const r = e.getBoundingClientRect();
+                  return {x: Math.round(r.x), y: Math.round(r.y),
+                          w: Math.round(r.width), h: Math.round(r.height)}; }""", sel)
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+@pytest.mark.parametrize("largeur", [1440, 1024, 820])
+def test_portee_vide_ne_decale_pas_la_grille_de_la_visionneuse(page, seeded, largeur):
+    """Le bandeau de portée vide s'injecte en tête de `<main>` sur les QUATRE surfaces.
+    Sur trois, `<main>` est un bloc qui défile et il s'y pose sans rien déranger. Sur la
+    Visionneuse, `<main id="body">` est une grille de TROIS colonnes taillées pour TROIS
+    panneaux : le bandeau y devient un QUATRIÈME item auto-placé, prend la colonne de la
+    navigation, et décale tout le reste d'un cran — la navigation dans la colonne du
+    canevas, le canevas dans les 300 px du panneau, le panneau rejeté à la rangée
+    suivante.
+
+    `test_a11y_portee_vide` visite pourtant cet écran, et sa docstring annonce que « la
+    Visionneuse est celle dont la mise en page souffre le plus d'un bloc inattendu ». Il
+    ne l'a jamais vu : axe-core audite l'ACCESSIBILITÉ, et une grille décalée reste
+    parfaitement accessible. La garde ne s'est pas trompée, elle regardait ailleurs — et
+    c'est la forme d'échec la plus coûteuse, puisqu'elle rend un vert sincère.
+
+    Trois largeurs, une par régime de colonnes (3 · 2 · 1). Le défaut EMPIRE en
+    descendant : sous 900 px il ne reste qu'un bandeau et un canevas, qui se partagent
+    alors la hauteur en deux — `align-content: stretch` répartit le reste également
+    entre deux rangées `auto`, et le bandeau grossit d'autant.
+    """
+    page.set_viewport_size({"width": largeur, "height": 900})
+    page.set_extra_http_headers({"Remote-User": "sans-droits"})   # aucun groupe
+    page.goto(seeded["base"] + "/", wait_until="networkidle")
+    page.wait_for_selector(".portee-vide", timeout=3000)
+
+    body = _geo(page, "#body")
+    bandeau = _geo(page, ".portee-vide")
+    canevas = _geo(page, "#viewer")
+    etat = f"[{largeur} px] body={body} bandeau={bandeau} canevas={canevas}"
+
+    # 1. Le bandeau tient une RANGÉE et non une colonne : il occupe toute la largeur.
+    assert abs(bandeau["w"] - body["w"]) <= 1, \
+        "le bandeau occupe une colonne au lieu de la rangée — " + etat
+
+    # 2. Et il se dimensionne sur son CONTENU : le canevas garde le gros de la hauteur.
+    #    C'est ce que la colonne unique perd en premier, et le seul contrôle qui morde
+    #    à 820 px, où la largeur est déjà pleine des deux côtés du correctif.
+    assert canevas["h"] > bandeau["h"], \
+        "le bandeau prend autant de hauteur que le canevas — " + etat
+
+    # 3. Là où les trois colonnes existent, elles sont dans le bon ordre : les trois
+    #    panneaux sur UNE rangée, et le canevas tenant la colonne souple.
+    #
+    #    Le seuil qui les fait tomber en tiroirs vit dans `style.css` et NULLE PART
+    #    ailleurs — c'est écrit en toutes lettres dans le bloc des tiroirs, et un nombre
+    #    recopié ici en ferait une seconde vérité à tenir d'accord. On ne le recopie donc
+    #    pas : on DEMANDE à la page si la navigation est encore une colonne. Sa règle de
+    #    base ne déclare aucun `position` ; le seuil la passe en `absolute`.
+    if page.evaluate("() => getComputedStyle("
+                     "document.querySelector('#sidebar')).position === 'static'"):
+        nav, panneau = _geo(page, "#sidebar"), _geo(page, "#panel")
+        assert nav["y"] == canevas["y"] == panneau["y"], \
+            f"les panneaux ne sont pas sur la même rangée — nav={nav} panneau={panneau} {etat}"
+        assert canevas["w"] > nav["w"] + panneau["w"], \
+            f"le canevas n'a pas la colonne souple — nav={nav} panneau={panneau} {etat}"
+
+
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
 def test_a11y_proxy_sans_identite(page, seeded):
     """L'autre portée vide : l'application se croit derrière un proxy d'auth et ne reçoit
