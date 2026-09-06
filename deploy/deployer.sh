@@ -271,18 +271,34 @@ if [ "$simulation" = 1 ]; then
   exit 0
 fi
 
-# L'application met quelques secondes à répondre après un redémarrage : on attend
-# qu'elle réponde plutôt que de la déclarer morte au premier essai.
+# On attend l'APPLICATION, et surtout pas l'URL publique.
+#
+# La première version bouclait sur `curl -fsS "$url"`. FAIT OBSERVÉ les 2026-09-05 et 06,
+# deux fois de suite : elle a annoncé « l'instance répond » alors que l'application ne
+# répondait pas encore — le contrôle qui suit a échoué sur sa sonde interne, un uvicorn
+# qui n'écoutait pas. L'URL publique est servie par la chaîne proxy (Caddy + Authelia),
+# qui est debout bien avant l'application ; ce que la boucle mesurait, c'est donc la
+# disponibilité du PROXY.
+#
+# Le code exact que curl recevait n'a pas été mesuré, et il n'a pas à l'être : Authelia
+# répond 302 ou 401 selon le client — le contrôle, lui, voit 401 là où curl passait —,
+# si bien qu'une attente fondée sur ce code aurait dépendu d'un détail instable. On ne
+# règle pas le seuil, on change de question.
+#
+# C'est le défaut que la docstring de `verifier_deploiement.py` dénonce déjà pour un
+# autre chemin : « une instance ÉTEINTE passait pour parfaitement protégée ». On demande
+# donc à l'application elle-même, de l'intérieur, exactement comme le fera le contrôle.
+sonde_interne="import urllib.request as u; u.urlopen('http://127.0.0.1:8000/api/sante', timeout=5)"
 for essai in $(seq 1 20); do
-  if curl -fsS -o /dev/null --max-time 5 "$url" 2>/dev/null; then break; fi
-  [ "$essai" = 20 ] && refus "l'instance ne répond toujours pas après 20 essais.
+  if docker compose exec -T app python -c "$sonde_interne" >/dev/null 2>&1; then break; fi
+  [ "$essai" = 20 ] && refus "l'application ne répond toujours pas après 20 essais (60 s).
       Journaux : cd $racine/deploy && docker compose logs --tail 80 app
       État AVANT ce déploiement : ${avant:0:7}
       NE PAS revenir en arrière sans avoir lu les journaux : les migrations de schéma
       sont à sens unique, et remettre l'ancien code sur une base migrée est pire."
   sleep 3
 done
-ok "l'instance répond"
+ok "l'application répond (sonde interne, pas le proxy)"
 
 if ! python3 verifier_deploiement.py --url "$url"; then
   refus "le contrôle externe a échoué — l'instance TOURNE mais quelque chose ne va pas.
