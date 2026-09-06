@@ -1058,3 +1058,57 @@ def test_un_env_hors_de_deploy_reste_ignore_par_git():
     assert "deploy/.env.example" not in lignes, (
         "le gabarit doit rester VERSIONNÉ : c'est lui qui documente les clés à "
         "remplir, et l'ignorer priverait le déploiement de sa seule référence")
+
+
+def test_un_fichier_de_comptes_illisible_est_signale_et_non_fatal(tmp_path, monkeypatch):
+    """`verifier_deploiement.py` s'écrasait sur un `users_database.yml` durci en 600.
+
+    Le 2026-09-06, durcir ce fichier — qui porte un hash de mot de passe — a fait
+    remonter une `PermissionError` non rattrapée depuis `controle_config`. Le contrôle
+    ne s'est pas contenté d'échouer : il a tué la course entière, donc les vérifications
+    suivantes ET le déploiement. Un durcissement légitime ne doit pas ressembler à une
+    panne, et surtout pas se comporter en interrupteur placé en amont des autres gardes
+    (même famille que l'échec `openpyxl` d'ARCH-2, et que QA-6).
+
+    Authelia lit le fichier parce que son conteneur tourne en root ; ce script, non — il
+    s'exécute sous le compte de l'opérateur. Les deux lecteurs n'ont pas les mêmes droits,
+    et c'est ce qui avait été oublié.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parent.parent / "deploy" / "verifier_deploiement.py"
+    if not source.exists():
+        pytest.skip(
+            "deploy/ est exclu du contexte de build (.dockerignore) : ce test ne tourne "
+            "QUE sur la machine de développement. Son skip dans l'image N'EST PAS une "
+            "couverture — cf. QA-6, « un skip se lit comme un succès »")
+
+    spec = importlib.util.spec_from_file_location("vd_regression", source)
+    vd = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(vd)
+
+    env = tmp_path / ".env"
+    env.write_text("BD_DOMAINE=bd.exemple.fr\nAUTH_DOMAINE=auth.exemple.fr\n"
+                   "COOKIE_DOMAINE=exemple.fr\n", encoding="utf-8")
+
+    # `ici` vaut le dossier du script, pas celui de `--config` : on substitue donc les
+    # accès au fichier des comptes plutôt que d'en fabriquer un, ce qui rend le test
+    # indépendant de ce que contient la machine.
+    vrai_exists, vrai_read = Path.exists, Path.read_text
+
+    def exists(self):
+        return True if self.name == "users_database.yml" else vrai_exists(self)
+
+    def read_text(self, *a, **k):
+        if self.name == "users_database.yml":
+            raise PermissionError(13, "Permission denied", str(self))
+        return vrai_read(self, *a, **k)
+
+    monkeypatch.setattr(Path, "exists", exists)
+    monkeypatch.setattr(Path, "read_text", read_text)
+
+    problemes = vd.controle_config(str(env))       # ne doit pas lever
+    assert problemes == [], (
+        "un fichier de comptes illisible n'est pas un défaut de configuration : "
+        f"le contrôle l'a pourtant compté comme tel ({problemes})")

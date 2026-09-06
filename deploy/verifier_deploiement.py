@@ -312,7 +312,28 @@ def controle_config(chemin_env):
     if not comptes.exists():
         print("    !! authelia/users_database.yml absent — le copier depuis le gabarit")
         pbs.append("fichier des comptes absent")
-    elif "REMPLACER_PAR_UN_VRAI_HASH" in comptes.read_text(encoding="utf-8"):
+        return pbs
+    # Ce fichier porte un hash de mot de passe : le durcir en `600` est la BONNE
+    # configuration, et elle rend le fichier illisible à qui n'est ni son propriétaire ni
+    # root. Authelia le lit quand même (son conteneur tourne en root) ; ce contrôle-ci,
+    # non — il s'exécute sous le compte de l'opérateur.
+    #
+    # Le 2026-09-06, un `chmod 600` posé sur un fichier appartenant à `root` a fait
+    # remonter une `PermissionError` NON RATTRAPÉE : le contrôle s'est écrasé en pleine
+    # trace Python, tuant du même coup les vérifications suivantes et arrêtant le
+    # déploiement. Un durcissement légitime ne doit pas ressembler à une panne, et
+    # surtout pas se comporter en INTERRUPTEUR placé en amont des autres gardes — c'est
+    # la famille de défauts qu'ARCH-2 a nommée avec `openpyxl`, et QA-6 après lui.
+    try:
+        contenu = comptes.read_text(encoding="utf-8")
+    except PermissionError:
+        proprio = "appartient à root" if comptes.stat().st_uid == 0 else "droits restreints"
+        print(f"    ·· {'comptes':14} présent mais NON LISIBLE par ce compte ({proprio})")
+        print("       Le hash n'a donc pas pu être contrôlé — ce n'est PAS un défaut de")
+        print("       configuration. Pour lever le doute sans relâcher les droits :")
+        print(f"       sudo chown $USER {comptes}   (garder le mode 600)")
+        return pbs
+    if "REMPLACER_PAR_UN_VRAI_HASH" in contenu:
         print("    !! le mot de passe est encore le placeholder du gabarit")
         pbs.append("hash non généré")
     else:
