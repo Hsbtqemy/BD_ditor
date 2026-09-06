@@ -48,6 +48,37 @@ d'affichage, qui deviendrait orpheline.
 
 C'est le vrai contenu de ce chantier. L'écran est la partie facile.
 
+## Le modèle proposé — 2026-09-06 : l'enseignant possède, l'étudiant passe
+
+Posé par l'équipe, et il simplifie beaucoup : **le propriétaire d'une collection est
+toujours l'ENSEIGNANT** — un compte stable —, tandis que les comptes ÉTUDIANTS tournent au
+rythme des cours. Et pour ceux-là, non pas suppression mais **désactivation et archivage**.
+
+Ce modèle est déjà servi par ce qui existe, sur les deux moitiés :
+
+- **La désactivation est native.** Le backend fichier d'Authelia porte `disabled: false`
+  par compte. Un compte désactivé ne se connecte plus, mais son login reste un principal
+  valide : `collection_acces` garde son sens, le journal A3 continue d'attribuer, et rien
+  ne devient orphelin. C'est exactement l'archivage demandé, sans rien construire.
+- **Retirer l'accès d'un étudiant à la fin d'un cours ne détruit rien** — c'est un geste du
+  panneau 👥 Collections, et `test_retirer_un_acces_ne_detruit_aucune_donnee` le prouve :
+  l'album reste, le journal continue de le lui attribuer.
+- **Le fantôme devient rare**, puisque le propriétaire est stable. Il ne disparaît pas
+  pour autant : un enseignant part aussi, à l'échelle de quelques années, et la mesure
+  ci-dessus reste le chemin de sortie.
+
+**Deux limites, à connaître avant de choisir l'annuaire.**
+
+BDéditeur **ne peut pas savoir qu'un compte est désactivé.** Il ne voit que des en-têtes,
+et un compte désactivé cesse simplement d'apparaître. `utilisateur.derniere_vue` dira « ne
+s'est pas connecté depuis six mois », jamais « archivé ». Les deux vues sont
+complémentaires et aucune ne remplace l'autre : l'annuaire sait qui EXISTE, l'application
+sait qui est VENU.
+
+Et la désactivation est une propriété du backend, pas d'Authelia. Le fichier l'a ;
+**rien ne garantit qu'un annuaire donné l'ait**, et la « supprimer » y remplacerait la
+« désactiver ». C'est devenu un critère de choix, pas un détail d'implémentation.
+
 ## Trois chemins, et ce que chacun coûte
 
 **1. Garder le fichier, documenter les gestes.** L'état actuel : `docs/exploitation.md`
@@ -72,6 +103,7 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 
 ### Trancher (la décision appartient à l'équipe)
 - [x] Le rythme d'arrivée est cadré — **2026-09-06, par l'équipe** : le projet est aujourd'hui porté par un projet unique, mais il va s'ouvrir à d'autres personnes, avec des activités liées à certains COURS, donc des corpus très spécifiques et des groupes qui changent. Ce n'est plus « deux comptes stables ». Le motif redouté est nommé : *« on pourrait trop rapidement devoir gérer un SAV à l'aveugle »* — administrer sans voir. Cela déplace la balance vers le chemin 2, sans le trancher : c'est la case suivante
+- [ ] **L'annuaire retenu sait DÉSACTIVER un compte sans le supprimer** — vérifié dans sa documentation ou sur une instance d'essai, pas supposé. Le backend fichier le fait (`disabled:`) ; c'est devenu un critère de choix depuis le modèle du 2026-09-06, puisque l'archivage en dépend. Un annuaire qui ne saurait que supprimer ferait perdre la distinction entre « parti » et « n'a jamais existé »
 - [ ] Le chemin est choisi entre les trois ci-dessus, et la raison est écrite — y compris si c'est « on garde le fichier », qui est un choix légitime tant que le rythme reste faible
 
 ### Ce qu'il faut savoir AVANT de choisir (mesures, pas opinions)
