@@ -5,7 +5,14 @@ statut: interrompu
 
 # INFRA-8 — l'enrôlement 2FA passe par un fichier sur le serveur
 
-**Arrêté sur** — 2026-09-05, `4b6761d` : **la bascule est FAITE et le courriel arrive**.
+**Arrêté sur** — 2026-09-06, `cee43ec` : deux cases d'hygiène fermées, et **le
+durcissement a cassé un outil** — le fichier des comptes a deux lecteurs qui n'ont pas les
+mêmes droits, et je n'en avais considéré qu'un. Le dossier, lui, était redevenu
+`root:root` : le piège du `git pull` était réarmé et dormait. Réparé et éprouvé. Restent
+six cases, dont les deux qui comptent — le parcours d'un compte neuf, et le remplacement
+d'un appareil TOTP perdu.
+
+**État antérieur — 2026-09-05, `4b6761d` : la bascule est FAITE et le courriel arrive**.
 Relais Infomaniak, dont le SPF du domaine autorisait déjà le relais ; boîte d'expédition
 PARTAGÉE avec l'autre site du serveur, une adresse dédiée étant payante — c'est cette
 contrainte qui a fait désactiver le contrôle SMTP au démarrage, et la soirée a montré que
@@ -34,12 +41,45 @@ l'éprouver pour de bon.
 
 ### Ce que la bascule a laissé ouvert
 - [ ] Le mot de passe d'application est nommé `bdediteur` chez l'hébergeur, donc révocable seul, sans toucher à l'autre site qui partage la boîte
-- [ ] `deploy/authelia/users_database.yml` n'est plus en `664` : il porte un hash de mot de passe et reste lisible par tout compte de la machine, quand `.env` est en `600`. Deux fichiers de secrets, deux traitements, et rien ne l'avait jamais signalé
-- [ ] Le dossier `deploy/authelia/` appartient de nouveau à `ubuntu` — vérifier que le conteneur y écrit toujours (`db.sqlite3`, sessions TOTP) après un redémarrage complet de la pile, et pas seulement d'Authelia
+- [x] `deploy/authelia/users_database.yml` n'est plus en `664` : il porte un hash de mot de passe et reste lisible par tout compte de la machine, quand `.env` est en `600`. Deux fichiers de secrets, deux traitements, et rien ne l'avait jamais signalé. **Fait le 2026-09-06 — et le `chmod` seul a cassé un outil** (ci-dessous) : le mode final est `600 ubuntu:ubuntu`, pas `600 root:root`
+- [x] Le dossier `deploy/authelia/` appartient de nouveau à `ubuntu` — et il ne l'était PLUS le 2026-09-06, `root:root` en 775, le piège du `pull` réarmé sans que rien ne le dise. Réparé, et **prouvé par une réécriture réelle** (`git checkout --` sur un fichier suivi de ce dossier), pas par un raisonnement sur les permissions. Reste l'autre moitié : le conteneur y écrit-il toujours ? Le raisonnement dit oui — Authelia tourne en root, qui ignore les permissions, et c'est lui qui a écrit `db.sqlite3` — mais **aucune écriture n'a été observée depuis**. Elle le sera au premier enrôlement TOTP, c'est-à-dire par la case suivante
 
 ### Ne pas fermer l'instance en croyant régler les notifications
 - [ ] `docker compose exec authelia authelia validate-config --config /config/configuration.yml` passe AVANT tout redémarrage : le contrôle de connexion est désactivé, mais une configuration structurellement invalide — `sender` manquant — empêche toujours Authelia de démarrer
 - [ ] Le repli est éprouvé pour de vrai, pas seulement écrit : vider `SMTP_ADRESSE`, redémarrer, et retrouver une instance qui laisse entrer
+
+## Le durcissement a cassé un outil — 2026-09-06
+
+`users_database.yml` était bien en `664`, `root:root`. Le passer en `600` a fermé
+l'exposition et **cassé `verifier_deploiement.py`**, qui s'est écrasé sur une
+`PermissionError` en pleine trace Python — donc avant tous les contrôles suivants, et
+avant le déploiement.
+
+La cause tient en une phrase : **ce fichier a deux lecteurs, et ils n'ont pas les mêmes
+droits.** Authelia le lit parce que son conteneur tourne en root ; le script de contrôle,
+non — il s'exécute sous le compte de l'opérateur. Le raisonnement qui a mené au `chmod`
+n'avait considéré que le premier.
+
+Deux réparations, et elles ne se remplacent pas.
+
+Le mode final est **`600 ubuntu:ubuntu`** et non `600 root:root` : la propriété de
+sécurité est la même — illisible aux autres comptes de la machine — et les deux lecteurs
+retrouvent leur accès. `chown` plutôt que de relâcher le `chmod`.
+
+Et le contrôle DIT désormais qu'il n'a pas pu lire, au lieu de tomber (`caf4baa`). Un
+durcissement légitime ne doit pas ressembler à une panne, ni se comporter en interrupteur
+placé en amont des autres gardes — c'est la famille qu'ARCH-2 a nommée avec `openpyxl` et
+que QA-6 a retrouvée avec le modèle spaCy. Un test de non-régression éprouve les trois
+branches par substitution de `read_text` ; il se skippe dans l'image, `deploy/` étant
+exclu du contexte de build, et son message le dit — ce skip n'est pas une couverture.
+
+**Le dossier, lui, était redevenu `root:root`.** Le `chown` du 2026-09-05 n'a pas tenu, ou
+n'a jamais été appliqué ; le journal ne permet pas de trancher, et peu importe : ce qui
+compte est qu'il l'était le 6, donc que le piège du `git pull` était réarmé et dormait,
+faute d'un commit touchant ce dossier depuis. Réparé, puis ÉPROUVÉ — `git checkout --` sur
+un fichier suivi de ce dossier réécrit de nouveau. Le premier essai que j'avais proposé,
+un `touch` suivi d'un `checkout`, ne prouvait rien : `touch` ne change que la date, git
+compare le contenu, le trouve identique et ne réécrit pas.
 
 ## La bascule réelle — 2026-09-05
 
