@@ -77,6 +77,21 @@ services:
       # `template` fait lire les `{{ env "…" }}` de configuration.yml. Sans ce filtre,
       # Authelia prend l'expression pour un nom de domaine LITTÉRAL : il démarre, et la
       # session ne se pose jamais. Le filtre est déclaré stable par sa documentation.
+      # L'entrypoint de l'image fait `chown -R ${PUID}:${PGID} /config` à CHAQUE
+      # démarrage. Non déclarées, ces variables valent 0:0 : le dossier monté —
+      # `deploy/authelia/`, qui contient des fichiers SUIVIS PAR GIT — repassait donc à
+      # root à chaque redémarrage d'Authelia, et le `git pull` suivant échouait sur
+      # « unable to unlink old 'deploy/authelia/configuration.yml' » en laissant HEAD en
+      # arrière. Trois occurrences (2026-09-05, deux le 09-06) avant qu'on regarde
+      # l'entrypoint : les deux premières ont été traitées par un `chown` manuel, que le
+      # redémarrage suivant annulait. Une réparation vérifiée entre deux redémarrages est
+      # juste et sans valeur.
+      #
+      # 1000:1000 est l'uid/gid d'`ubuntu` sur cet hôte. Authelia s'exécute ensuite sous
+      # cette identité (`su-exec`), donc il écrit toujours `db.sqlite3` — il en devient
+      # propriétaire au lieu de l'être en root.
+      - PUID=${BD_PUID:-1000}
+      - PGID=${BD_PGID:-1000}
       - X_AUTHELIA_CONFIG_FILTERS=template
       # Les domaines, depuis deploy/.env — le fichier de config reste un gabarit.
       - BD_DOMAINE=${BD_DOMAINE}
