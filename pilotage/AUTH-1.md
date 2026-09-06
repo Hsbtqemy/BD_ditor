@@ -78,6 +78,43 @@ Aucun commit de code : le chantier reste `interrompu` là où il l'était.
 - [x] **Les voies de sortie sont ÉNUMÉRÉES, et non listées de mémoire** — l'inventaire refait le 2026-08-31 en cherchant qui LIT `evenement`, `activite` et `utilisateur` en trouve six, dont trois que les deux relectures précédentes avaient manquées : `tools/metadonnees_collection.py` exporte `agent` comme COLONNE NOMMÉE dans `evenement.csv` et `activite.csv`, avec les blobs `avant`/`apres` ; `tools/description_collection.py` embarque le bloc accord-inter, soit `auteurs` (des logins) et `paires` (deux logins chacune) ; et surtout `GET /api/analyse/accord-inter` (`routes/analyse.py:388` → `accord_inter.py:50`) rend la même chose par une ROUTE HTTP. **Et l'énumération elle-même était courte d'un chemin** : `metadonnees_collection.py` a TROIS sorties et non deux — le JSON, les CSV et l'onglet XLSX `qualite`, qui publiait les logins joints par « ; ». C'est la suite qui l'a dit, en cassant, le 2026-08-31 ; aucune des trois relectures ne l'avait vu. Cette dernière change la nature du problème : les cinq autres supposent un accès shell ou le droit d'administrer, celle-ci est atteignable par toute personne simplement admise sur une collection **Fermée le 2026-08-31 par [AUTH-5](AUTH-5.md)**, et pas en énumérant une cinquième fois : `tests/test_sorties_identite.py` sème trois sentinelles — un login, un nom lisible, un courriel — balaie 61 surfaces et EXIGE que chacune où l'une apparaît soit déclarée avec sa raison. L'inventaire cesse d'être une phrase dans une fiche, qui pourrit, pour devenir quelque chose qui casse. Le balayage a d'ailleurs corrigé cette énumération-ci : il trouve 11 surfaces émettrices, dont `/api/export/json` et `/api/regions/{id}/tokens`, qu'aucune des quatre passes n'avait citées
 - [x] **Le sort de `GET /api/analyse/accord-inter` est tranché** le 2026-08-31, et en DEUX endroits — la route n'était pas la sortie la plus grave. (a) La ROUTE est réservée à qui ÉCRIT (403 sinon), et son périmètre suit les albums où l'on écrit et non ceux qu'on lit : *ceux qui voient la mesure sont ceux qu'elle mesure*, les propriétaires cumulant l'écriture. Le bouton 👥 Inter reste VISIBLE et le panneau affiche le refus du serveur — il l'écrasait par « Impossible de charger le rapport », transformant une décision motivée en panne apparente. Réserver aux ADMINISTRATEURS a été écarté : `bd-admins` est un rôle d'exploitation, l'accord inter-annotateurs un instrument scientifique ; le donner à qui tient le serveur en le retirant à l'équipe qu'il mesure serait un contresens. (b) Le DÉPÔT ne porte plus de noms : `qualite.accord_inter` était classé `ouvert` et emportait `auteurs` (les logins) et `paires` (le taux d'accord de deux personnes NOMMÉES) vers l'entrepôt, DÉFINITIVEMENT. Il porte `nb_auteurs` et des paires anonymes triées par taux — triées par `(a, b)`, l'ordre alphabétique des logins transparaissait à travers des noms retirés. La valeur FAIR revendiquée est intacte : « relu à plusieurs, accord 0,87 » ne demande aucun nom. L'outil CLI, lui, nomme toujours : sans les noms on ne peut pas réunir deux personnes pour arbitrer
 
+## La pseudonymisation était contournée par la colonne d'à côté — 2026-09-06
+
+Trouvé en cherchant si écrire un nom dans le journal A3 était anodin (AUTH-7). Ça ne
+l'était pas, et pas pour la raison attendue.
+
+`pseudonymes()` retire l'identité de la colonne `agent`. Elle ne pouvait rien contre les
+CHARGES : `metadonnees_collection` publie `evenement.avant`/`apres` mot pour mot, si bien
+qu'un login pseudonymisé en colonne 4 ressortait **en clair en colonne 8, dans la même
+ligne**. Trois fuites VIVANTES, mesurées et non déduites — `collection` publiait le login
+du propriétaire, `collection_acces` le principal de chaque partage, `sharedocs` un chemin
+serveur et un nom de compte Huma-Num.
+
+**Le cliquet d'AUTH-5 ne pouvait pas le voir, et pas par malchance.** Son semis met les
+sentinelles dans la colonne `agent`, et sa charge d'événement est un token
+`{lemme, pos, morph}` — aucune sentinelle. C'est son mode d'échec documenté, le SEMIS,
+appliqué à une colonne qu'il ne garnit pas : une garde au vert qui ne regardait pas là.
+Sa limite était écrite ; ce qui manquait, c'est de la relire en ajoutant une sortie.
+
+Réparé par une liste blanche de `cible_table` partagée par les deux sérialisations
+(`3114f4a`). La coupure n'est pas « quelles colonnes » mais **quels ACTES** : le dépôt a
+besoin de savoir comment le CORPUS a été fait, jamais comment l'instance est administrée.
+D'où le retrait de l'événement entier — « annotateur-1 a modifié utilisateur/None »
+n'apprend rien et invite la question à laquelle on refuse de répondre.
+
+**La leçon est sur la garde, pas sur la fuite.** Une liste blanche échoue en se FERMANT,
+donc le danger cesse d'être la fuite et devient l'amputation silencieuse du dépôt. Mesuré :
+déplacer `token_correction` de CORPUS vers RETENUES la laisse CLASSÉE, si bien que le
+cliquet de décision reste vert — et un test d'amputation qui itérerait la déclaration
+cesserait simplement de la regarder. Deux gardes au vert, et le cœur de l'accord ANN-5
+disparu du dépôt. D'où un PLANCHER écrit à la main, comme `exiger_plancher()` d'ARCH-2.
+
+**Une conséquence assumée** : `pseudonymes()` numérote toujours sur le journal entier,
+retenues comprises, pour que personne ne change de numéro d'un dépôt au suivant. La suite
+publiée peut donc avoir des TROUS — un `annotateur-2` absent parce que ses seuls actes sont
+administratifs. Un trou se lit comme une omission ; c'est le moindre des deux maux, et il
+est écrit dans `evenements_publiables()`.
+
 ## Contexte
 
 **C'est la fiche la moins chère du lot et elle débloque tout le reste** : sans notion

@@ -1,11 +1,21 @@
 ---
 chantier: INFRA-9
-statut: à venir
+statut: interrompu
 ---
 
 # INFRA-9 — Authelia tourne sur une mineure qui ne reçoit plus de correctifs
 
-**Arrêté sur** — 2026-09-06, `11c82a3` : **l'instance tourne en 4.39.22, `healthy`.**
+**Arrêté sur** — 2026-09-06, `a0b0927` : **`deployer.sh` déployait la politique d'accès
+sans jamais l'appliquer.** Authelia lit sa configuration au démarrage du PROCESSUS, et le
+script ne relançait que le service `app` : l'arbitrage du second facteur a été poussé à
+11:16, tiré à 11:20, et n'a pris effet qu'à 18:58, au premier redémarrage fait pour une
+autre raison. Sept heures pendant lesquelles le dépôt et l'instance disaient deux choses
+différentes sur la POLITIQUE D'ACCÈS, sans un signal. Le sens était bénin — l'instance
+restait plus stricte que voulu ; le même silence tairait un durcissement. Corrigé le jour
+même : le script compare `deploy/authelia/` entre les deux commits et redémarre si elle a
+changé. **Trouvé en allant vérifier autre chose**, et c'est la seule raison qu'on le sache.
+
+Plus tôt le même jour, `11c82a3` : **l'instance tourne en 4.39.22, `healthy`.**
 Le `git pull` est passé du premier coup — le premier depuis trois échecs —, et le dossier
 appartient à `ubuntu` APRÈS le démarrage : le correctif `PUID`/`PGID` tient sur la nouvelle
 base *chisel*. Aucun avertissement de dépréciation, le journal entier faisant sept lignes.
