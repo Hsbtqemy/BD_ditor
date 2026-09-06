@@ -14,8 +14,9 @@ la délégation large, pas le volume.
 
 Plus tôt le même jour : **la vérification la moins chère n'annule rien, elle ferme
 l'attente. Et la suivante a retourné le problème.** La demande voulait les deux gestes
-actifs, supprimer et désactiver, la désactivation étant vue comme un pis-aller. C'est l'inverse : dans cette architecture, désactiver est complet et
-réversible depuis un panneau, tandis que **supprimer laisse quatre orphelins** dont un ne
+actifs, supprimer et désactiver, la désactivation étant vue comme un pis-aller. C'est
+l'inverse : dans cette architecture, désactiver est complet et réversible depuis un
+panneau, tandis que **supprimer laisse quatre orphelins** dont un ne
 se nettoie qu'en console — et dont le quatrième ment dans la vue qui devait rassurer. La
 suppression n'est donc offrable qu'à une condition, et cette condition a changé de nature
 le jour même. Ce n'est pas la FORME du login, écartée par
@@ -164,7 +165,9 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [x] **Le rythme d'arrivée est chiffré** — 2026-09-06, par l'équipe : *« un outil censé durer minimum 5 ans, le temps du financement du projet. Avec des personnes nouvelles qui s'y agrègent chaque année, voire chaque semestre, allant de 0, voire 1 ou 2, jusqu'à potentiellement 30, à chaque fois. »* Au pire — deux intakes par an de 30, cinq ans — 300 comptes, soit ~20 h de saisie ÉTALÉES, 4 h par an. La douleur n'est pas le total mais le PIC : trente personnes dans la semaine où l'on a le moins de temps
 - [x] **Qui crée les comptes est tranché** — 2026-09-06 : *« vous et un ou deux collègues »*. **Le critère qui pouvait décider seul ne mord donc pas** : il n'y a personne à qui déléguer un pouvoir qu'il faudrait borner, et l'invitation bornée d'Authentik n'a pas d'usage ici. C'est ce qui fait pencher, plus que le volume
 - [x] **L'échéance est connue, et elle commande l'ordre** — 2026-09-06 : *« des gens attendent déjà »*. On ne migre donc RIEN maintenant : les comptes se créent à la main avec la procédure du runbook, et le chantier se planifie ensuite, à froid, sur une instance qui tourne. INFRA-9 passe avant, comme prévu
-- [ ] Le chemin est choisi entre les trois ci-dessus, et la raison est écrite — y compris si c'est « on garde le fichier », qui est un choix légitime tant que le rythme reste faible
+- [x] **Le chemin est choisi : LLDAP (chemin 2), et la raison n'est pas celle qu'on croyait** — 2026-09-06, par l'équipe : *« le problème est d'aller trafiquer un yml sur un serveur qui n'est pas accessible à tout le monde. Tant qu'on a une interface web disponible et que remplir un formulaire est juste entrer quelques infos et rattacher quelque part, aucun problème. »* Ce n'est donc PAS le temps gagné — cet argument reste faible, et la saisie demeure : trente personnes restent trente formulaires. C'est que **le geste cesse d'exiger un shell sur le VPS**. Aujourd'hui, déléguer la création d'un compte revient à déléguer un accès serveur ; demain, une adresse et un mot de passe suffisent. Un pouvoir cesse d'être surdimensionné
+- [ ] **L'interface de LLDAP est elle-même derrière Authelia et réservée à `bd-admins`**, par une règle `access_control`. Sans quoi on aurait déplacé le panneau d'un serveur « pas accessible à tout le monde » vers l'internet ouvert — l'inverse exact du gain recherché. À poser dans le même geste que le déploiement, jamais après
+- [ ] **La vue des comptes rend son verdict AVANT que la suppression soit déléguée** — conséquence directe du choix du 2026-09-06. Créer exige `lldap_admin`, qui inclut SUPPRIMER : il n'existe aucun rôle « peut inscrire, ne peut pas détruire » (les deux autres niveaux, `password_manager` et `strict_readonly`, sont faits pour des SERVICES). Donc la règle « ce que le compte a laissé » s'appliquera à des gens qui n'étaient pas dans la conversation où elle s'est décidée. C'est ce qui rend « verdict, pas des chiffres » non cosmétique
 
 ### Ce qu'il faut savoir AVANT de choisir (mesures, pas opinions)
 - [x] **Une version plus récente d'Authelia administre-t-elle les comptes ? NON — et pas davantage la prochaine.** Vérifié le 2026-09-06 sur la feuille de route officielle (relevé du 2026-08-24, donc à jour) et sur les publications : la dernière version est 4.39.22, du 2026-09-03, et rien n'y administre de comptes. L'entrée « Dashboard / Control Panel and CLI for Administrators » est ACTIVE, mais l'étape *Design* est seule « in progress » ; l'*Initial Implementation* vise 4.40.0 sans être commencée, et **« User Management » n'est pas commencé et ne porte aucune version cible du tout** — c'est la DERNIÈRE étape de la liste. La vérification était censée pouvoir annuler la moitié de la fiche ; elle fait l'inverse et **ferme l'attente**, ce qui a la même valeur : on ne diffère plus le choix en espérant qu'amont le règle
@@ -229,9 +232,12 @@ rien, sur le seul point d'entrée de l'instance.
 
 **Le déclencheur à surveiller, et c'est le SEUL** : si le cercle s'élargit à « chaque
 enseignant inscrit sa classe », l'invitation bornée redevient une propriété sans équivalent
-LLDAP, et la réponse change. Ce n'est pas le volume qu'il faut surveiller — 30 personnes
-créées par vous restent 30 formulaires ; 30 personnes créées par cinq enseignants sont un
-pouvoir distribué qu'aucun panneau LLDAP ne sait borner.
+LLDAP, et la réponse change. Il est devenu CONCRET le même jour : créer un compte dans
+LLDAP exige `lldap_admin`, qui inclut supprimer — il n'y a pas de rôle « peut inscrire, ne
+peut pas détruire ». Élargir le cercle, c'est donc distribuer le droit de supprimer
+n'importe qui, et le signal est net plutôt que graduel. Ce n'est pas le volume qu'il faut
+surveiller — 30 personnes créées par vous restent 30 formulaires ; 30 créées par cinq
+enseignants sont un pouvoir distribué qu'aucun panneau LLDAP ne sait borner.
 
 **Ce que « des gens attendent déjà » change à l'ordre.** Rien ne se migre avant de les
 débloquer. La procédure manuelle du runbook y suffit, et elle a gagné le même jour deux
