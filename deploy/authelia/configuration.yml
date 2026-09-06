@@ -49,12 +49,48 @@ authentication_backend:
         memory: 65536
         parallelism: 4
 
-# --- Politique d'accès : tout refusé par défaut, 2FA exigé sur l'app ---
+# --- Politique d'accès : tout refusé par défaut, second facteur CIBLÉ ---
+#
+# Arbitrage du 2026-09-06, pris pour l'arrivée de stagiaires. `two_factor` partout exigeait
+# de chacun une application d'authentification sur un téléphone lui appartenant — ce qui,
+# pour des stagiaires, poussait vers un COMPTE PARTAGÉ. Or un compte partagé coûte cher
+# dans cet outil, et le coût est invisible : `undo.py` filtre l'annulation par AGENT, donc
+# Ctrl+Z défait l'action d'un collègue ; l'accord inter-annotateurs (ANN-5) n'a plus rien à
+# mesurer, tout le monde étant la même personne ; et le journal de provenance aplatit les
+# chaînes de révision.
+#
+# La difficulté n'était pas le second facteur, c'était le TOTP qui exige un appareil. On
+# garde donc des comptes NOMINATIFS — provenance, undo et accord restent justes — et l'on
+# place le second facteur là où le risque est réel, plutôt que partout.
+#
+# L'ORDRE compte : Authelia applique la PREMIÈRE règle qui correspond. Les deux règles
+# exigeantes doivent donc précéder la règle générale.
 access_control:
   default_policy: 'deny'
   rules:
+    # 1. Les administrateurs gardent le second facteur PARTOUT. Ce sont eux qui peuvent
+    #    élargir un cercle d'accès et lire toute collection (AUTH-4) ; ils sont peu
+    #    nombreux, et ils ont déjà leur appareil enrôlé.
     - domain: '{{ env "BD_DOMAINE" }}'
-      policy: 'two_factor'      # mets 'one_factor' si tu ne veux PAS imposer la 2FA
+      subject: 'group:bd-admins'
+      policy: 'two_factor'
+
+    # 2. La sauvegarde déverse la BASE ENTIÈRE, et son dépôt distant l'expédie ailleurs.
+    #    L'application les réserve déjà aux administrateurs (DROIT-1), donc la règle 1
+    #    couvre le cas nominal ; celle-ci est la ceinture qui reste si cette réservation
+    #    changeait un jour côté application.
+    - domain: '{{ env "BD_DOMAINE" }}'
+      resources:
+        - '^/api/sauvegarde$'
+        - '^/api/sharedocs/deposer-sauvegarde$'
+      policy: 'two_factor'
+
+    # 3. Le reste : mot de passe seul. C'est un ABAISSEMENT assumé par rapport au
+    #    2026-09-05, et il se paie sur les scans — un mot de passe suffit désormais à les
+    #    atteindre. Il reste très au-dessus de l'état d'avant INFRA-1, où l'instance
+    #    n'authentifiait personne.
+    - domain: '{{ env "BD_DOMAINE" }}'
+      policy: 'one_factor'
 
 # --- Sessions (Redis) : permet une déconnexion propre + expiration ---
 session:

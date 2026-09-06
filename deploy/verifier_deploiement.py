@@ -40,6 +40,7 @@ en bout depuis l'UI (elle passe par le navigateur et le cookie de session), et l
 restauration d'une sauvegarde sur une machine de dev.
 """
 import argparse
+import re
 import json
 import ssl
 import subprocess
@@ -347,6 +348,36 @@ def controle_config(chemin_env):
         pbs.append("hash non généré")
     else:
         print(f"    ok {'comptes':14} présent, hash renseigné")
+
+    # Le groupe des administrateurs est nommé à DEUX endroits, et rien ne les reliait :
+    # `configuration.yml` l'élève au second facteur (`subject: 'group:…'`), et
+    # l'application le lit dans `BD_AUTH_ADMIN_GROUPS`. Les faire diverger n'ouvre aucune
+    # erreur visible — l'application accorde l'administration à un groupe qu'Authelia
+    # n'élève plus, donc les administrateurs s'authentifient PLUS FAIBLEMENT que voulu,
+    # en silence. C'est la forme exacte de la panne du 2026-09-05 (le notifier SMTP
+    # configuré des deux côtés), et cette fois elle irait dans le sens permissif.
+    #
+    # Bloquant, contrairement au référent : ce n'est pas un confort manquant, c'est une
+    # politique de sécurité qui ne dit pas la même chose des deux côtés.
+    conf = ici / "authelia" / "configuration.yml"
+    if conf.exists():
+        try:
+            eleves = set(re.findall(r"subject:\s*'group:([^']+)'", conf.read_text(encoding="utf-8")))
+        except OSError:
+            eleves = None
+        if eleves is not None:
+            declares = {g.strip() for g in vals.get("BD_AUTH_ADMIN_GROUPS", "bd-admins").split(",")
+                        if g.strip()}
+            non_eleves = declares - eleves
+            if non_eleves:
+                print(f"    !! {'groupes admin':14} {', '.join(sorted(non_eleves))} : "
+                      "l'application les traite en ADMINISTRATEURS,")
+                print("       mais configuration.yml ne les élève pas au second facteur.")
+                print("       Ils s'authentifieraient plus faiblement que prévu.")
+                pbs.append("groupes admin divergents")
+            elif declares:
+                print(f"    ok {'groupes admin':14} {', '.join(sorted(declares))} — "
+                      "élevés au second facteur des deux côtés")
 
     # Le référent (AUTH-4) devient nécessaire exactement quand il y a un DEUXIÈME compte :
     # toute personne sans accès voit alors un bandeau qui lui dit de s'adresser à « un

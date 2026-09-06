@@ -49,6 +49,42 @@ l'éprouver pour de bon.
 - [x] Le fichier des COMPTES a son propre contrôle avant redémarrage, puisque `validate-config` l'ignore : `python3 -c "import yaml; yaml.safe_load(open('users_database.yml'))"`, PyYAML étant déjà présent sur Ubuntu. Éprouvé dans les DEUX sens le 2026-09-06 — il accepte le fichier correct et refuse une copie contenant une tabulation. Écrit dans `docs/exploitation.md`, avec la copie de sauvegarde qui doit le précéder
 - [ ] Le repli est éprouvé pour de vrai, pas seulement écrit : vider `SMTP_ADRESSE`, redémarrer, et retrouver une instance qui laisse entrer
 
+## L'arbitrage du facteur — 2026-09-06
+
+Le parcours ci-dessous a rendu une question qui n'était pas la sienne : **`two_factor`
+partout exige de chaque personne une application d'authentification sur un téléphone qui
+lui appartient.** Pour des stagiaires, cela pousse vers un compte PARTAGÉ — la solution
+qui se présente d'elle-même, et dont le coût est invisible.
+
+Ce que coûterait un compte partagé, dans cet outil précisément :
+
+- `undo.py` filtre l'annulation **par agent** : Ctrl+Z défait alors la dernière action d'un
+  collègue, sans que rien ne le signale ;
+- l'accord inter-annotateurs (ANN-5, livré) n'a plus rien à mesurer, tout le monde étant la
+  même personne ;
+- le journal de provenance aplatit les chaînes de révision à trois mains en une ligne.
+
+**La difficulté n'était pas le second facteur, c'était le TOTP qui exige un appareil.**
+D'où le choix : comptes NOMINATIFS sans second facteur pour l'usage courant — provenance,
+undo et accord restent justes, et l'on se connecte depuis n'importe quelle machine —, avec
+le second facteur maintenu là où le risque est réel : les administrateurs partout, et la
+sauvegarde qui déverse la base entière.
+
+C'est un **ABAISSEMENT assumé** par rapport au 2026-09-05, et il se paie sur les scans :
+un mot de passe suffit désormais à les atteindre. Il reste très au-dessus de l'état
+d'avant INFRA-1, où l'instance n'authentifiait personne. La décision appartient à AUTH-6,
+qui porte le modèle de comptes ; celle-ci en est le premier morceau, pris parce qu'il
+bloquait une arrivée.
+
+**Un nom de groupe vivait désormais à deux endroits** — `subject: 'group:bd-admins'` dans
+`configuration.yml`, `BD_AUTH_ADMIN_GROUPS` côté application — et rien ne les reliait. Les
+faire diverger n'ouvre aucune erreur visible : l'application accorde l'administration à un
+groupe qu'Authelia n'élève plus, donc les administrateurs s'authentifient PLUS FAIBLEMENT
+que voulu, en silence. C'est la forme exacte de la panne du 2026-09-05 — le notifier SMTP
+configuré des deux côtés — et cette fois elle irait dans le sens permissif.
+`verifier_deploiement.py` compare les deux, et BLOQUE : ce n'est pas un confort manquant,
+c'est une politique de sécurité qui ne dit pas la même chose des deux côtés.
+
 ## Le parcours d'un compte neuf, emprunté pour de vrai — 2026-09-06
 
 Un compte `stagiaire` a été créé, sans droit sur aucune collection, avec une adresse en
