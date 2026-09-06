@@ -309,6 +309,38 @@ def controle_config(chemin_env):
         print(f"    ·· {'SMTP':14} non configuré : les liens 2FA et les")
         print("       réinitialisations s'écrivent dans /config/notification.txt")
 
+    # L'annuaire (AUTH-7). Même forme que le contrôle SMTP ci-dessus, et pour la même
+    # raison : une configuration à moitié posée ne se signale pas d'elle-même. Ici, LLDAP
+    # repart en boucle d'échec — bruyant dans les journaux, invisible sur l'écran, et le
+    # reste de la pile continue de tourner comme si de rien n'était.
+    #
+    # Le second contrôle est le plus important des deux. `ANNUAIRE_DOMAINE` posé HORS de
+    # `COOKIE_DOMAINE` produit la panne la plus coûteuse de cette architecture : le cookie
+    # de session n'atteint pas le sous-domaine, le portail renvoie vers l'annuaire qui
+    # renvoie vers le portail, et AUCUN des deux ne signale d'erreur. C'est la boucle
+    # rencontrée le 2026-09-05 sur `X-Forwarded-Proto`, par un autre chemin.
+    ANNUAIRE = ("ANNUAIRE_DOMAINE", "LLDAP_BASE_DN", "LLDAP_JWT_SECRET",
+                "LLDAP_KEY_SEED", "LLDAP_ADMIN_PASS", "LLDAP_AUTHELIA_PASS")
+    poses = [c for c in ANNUAIRE if vals.get(c)]
+    if poses and len(poses) < len(ANNUAIRE):
+        creux = [c for c in ANNUAIRE if not vals.get(c)]
+        print(f"    !! annuaire à moitié configuré : {', '.join(creux)} manque")
+        print("       LLDAP repartira en boucle d'échec. Le reste de la pile tourne,")
+        print("       donc rien ne le dira à l'écran. Tout renseigner, ou tout vider.")
+        pbs.append("annuaire incomplet")
+    elif poses:
+        annuaire, cookie = vals["ANNUAIRE_DOMAINE"], vals.get("COOKIE_DOMAINE", "")
+        if cookie and not annuaire.endswith("." + cookie):
+            print(f"    !! ANNUAIRE_DOMAINE={annuaire} n'est pas sous COOKIE_DOMAINE={cookie} :")
+            print("       le cookie de session ne l'atteindra pas, et l'on bouclera entre")
+            print("       le portail et l'annuaire SANS qu'aucun des deux ne signale rien.")
+            pbs.append("ANNUAIRE_DOMAINE hors du domaine de cookie")
+        else:
+            print(f"    ok {'annuaire':14} {annuaire} — les 6 valeurs sont là")
+    else:
+        print(f"    ·· {'annuaire':14} non configuré : les comptes se gèrent encore")
+        print("       dans authelia/users_database.yml, en SSH")
+
     comptes = ici / "authelia" / "users_database.yml"
     if not comptes.exists():
         print("    !! authelia/users_database.yml absent — le copier depuis le gabarit")

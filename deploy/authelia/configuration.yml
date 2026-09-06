@@ -61,27 +61,37 @@ authentication_backend:
   #
   # Le mot de passe passe par le GABARIT et non par `AUTHELIA_AUTHENTICATION_BACKEND_*` :
   # une chose se configure à un endroit, règle payée le 2026-09-05 avec le notifier SMTP.
-  ldap:
-    implementation: 'lldap'
-    address: 'ldap://lldap:3890'
-    base_dn: '{{ env "LLDAP_BASE_DN" }}'
-    user: 'uid=authelia,ou=people,{{ env "LLDAP_BASE_DN" }}'
-    password: '{{ env "LLDAP_AUTHELIA_PASS" }}'
-
-  # --- RETOUR ARRIÈRE ---
-  # Commenter le bloc `ldap:` ci-dessus, décommenter celui-ci, redémarrer. Le fichier
-  # `users_database.yml` n'est pas supprimé par la bascule : il reste le recours tant
-  # que les comptes qu'il contient existent.
+  # ÉTAT ACTUEL : le fichier. Le bloc `ldap:` ci-dessous est COMMENTÉ EXPRÈS, et
+  # l'échanger est le TEMPS 2 de la bascule — un geste à lui seul, réversible en
+  # inversant les deux commentaires.
   #
-  # file:
-  #   path: '/config/users_database.yml'
-  #   password:
-  #     algorithm: 'argon2'
-  #     argon2:
-  #       variant: 'argon2id'
-  #       iterations: 3
-  #       memory: 65536
-  #       parallelism: 4
+  # L'ordre n'est pas un confort. L'interface de LLDAP est derrière Authelia, donc sa
+  # règle d'accès doit exister AVANT qu'on puisse l'atteindre ; or c'est par elle qu'on
+  # crée le compte de service dont le bloc `ldap:` a besoin. Basculer d'un coup ferme
+  # la porte sur la clé.
+  #
+  #   Temps 1 — fusionner : LLDAP tourne, Caddy sert son interface, Authelia connaît le
+  #             domaine et authentifie TOUJOURS depuis le fichier. On s'y connecte avec
+  #             son compte actuel, on crée `authelia` (groupe `lldap_password_manager`)
+  #             puis les comptes humains, sous les MÊMES logins qu'ici.
+  #   Temps 2 — échanger les deux blocs ci-dessous, redémarrer. Et essayer le retour
+  #             arrière pour de vrai dans la foulée, plutôt que de le réputer disponible.
+  file:
+    path: '/config/users_database.yml'
+    password:
+      algorithm: 'argon2'
+      argon2:
+        variant: 'argon2id'
+        iterations: 3
+        memory: 65536
+        parallelism: 4
+
+  # ldap:
+  #   implementation: 'lldap'
+  #   address: 'ldap://lldap:3890'
+  #   base_dn: '{{ env "LLDAP_BASE_DN" }}'
+  #   user: 'uid=authelia,ou=people,{{ env "LLDAP_BASE_DN" }}'
+  #   password: '{{ env "LLDAP_AUTHELIA_PASS" }}'
 
 # --- Politique d'accès : tout refusé par défaut, second facteur CIBLÉ ---
 #
