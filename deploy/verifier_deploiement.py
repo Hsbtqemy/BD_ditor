@@ -327,11 +327,20 @@ def controle_config(chemin_env):
     try:
         contenu = comptes.read_text(encoding="utf-8")
     except PermissionError:
-        proprio = "appartient à root" if comptes.stat().st_uid == 0 else "droits restreints"
-        print(f"    ·· {'comptes':14} présent mais NON LISIBLE par ce compte ({proprio})")
+        # Ce chemin REMPLACE un plantage : il doit être le plus robuste du fichier, et ne
+        # rien faire qui puisse échouer à son tour. La première version y appelait
+        # `stat()` pour nommer le propriétaire — un appel qui lève si le fichier a
+        # disparu ou si le dossier cesse d'être traversable, ce qui aurait réintroduit
+        # l'écrasement dans la branche écrite pour l'empêcher. Et `st_uid` vaut 0 pour
+        # tout sous Windows, donc l'affirmation « appartient à root » y était fausse par
+        # construction. On ne DEVINE plus le propriétaire : le remède ci-dessous couvre
+        # les deux cas sans avoir à les distinguer.
+        print(f"    ·· {'comptes':14} présent mais NON LISIBLE par ce compte")
         print("       Le hash n'a donc pas pu être contrôlé — ce n'est PAS un défaut de")
-        print("       configuration. Pour lever le doute sans relâcher les droits :")
-        print(f"       sudo chown $USER {comptes}   (garder le mode 600)")
+        print("       configuration : durcir ce fichier est la bonne pratique, et Authelia")
+        print("       le lit de son côté (son conteneur tourne en root). Pour rendre le")
+        print("       contrôle possible SANS relâcher les droits :")
+        print(f"       sudo chown $USER {comptes}      # garder le mode 600")
         return pbs
     if "REMPLACER_PAR_UN_VRAI_HASH" in contenu:
         print("    !! le mot de passe est encore le placeholder du gabarit")

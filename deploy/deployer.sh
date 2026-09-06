@@ -207,11 +207,15 @@ if [ -n "$cid" ]; then
   deploye="$(docker inspect --format '{{ index .Config.Labels "bd.commit" }}' "$cid" 2>/dev/null || true)"
 fi
 
-# `<no value>` est ce que rend un gabarit Go sur une clé absente — donc sur toute image
-# construite AVANT ce mécanisme, c'est-à-dire celle qui tourne au moment où on l'installe.
-# La traiter comme un commit ferait afficher « en service <no val » et conclure à un
-# retard pour la mauvaise raison.
-if [ -z "$deploye" ] || [ "$deploye" = "inconnu" ] || [ "$deploye" = "<no value>" ]; then
+# On reconnaît un commit à sa FORME, au lieu d'énumérer les valeurs qui n'en sont pas.
+# La première version listait `""`, `inconnu` et `<no value>` — cette dernière étant ce
+# qu'un gabarit Go rend sur une clé absente, donc sur toute image construite AVANT ce
+# mécanisme. Je n'ai PAS pu le mesurer : le démon Docker n'est pas joignable sur la
+# machine de développement. Une liste noire aurait donc reposé sur une supposition, et
+# une valeur inattendue serait passée pour un commit — « en service <no val ».
+# Une forme attendue ne dépend d'aucune supposition : tout ce qui n'est pas un SHA-1
+# complet est incomparable, et l'incomparable fait déployer plutôt que sauter.
+if ! printf '%s' "$deploye" | grep -qE '^[0-9a-f]{40}$'; then
   # Aucune étiquette : image d'avant ce mécanisme, ou service à l'arrêt. On ne peut RIEN
   # conclure, donc on ne conclut pas — et surtout on ne saute pas le déploiement.
   ok "image sans étiquette de commit — on ne peut pas comparer, on déploie"
@@ -243,9 +247,14 @@ fi
 # ── 4. Déployer ──────────────────────────────────────────────────────────────
 etape "Déploiement"
 
+# L'image qu'on construit doit SAVOIR quel commit elle sert : c'est ce que l'étape 2 bis
+# relira au prochain passage. `docker-compose.yml` transmet cette variable par
+# `build.args` ; sans elle, l'image vaut « inconnu » et le script le dit au lieu de
+# conclure. Le hash est COMPLET — l'étape 2 bis n'accepte qu'un SHA-1 de 40 caractères.
+export BD_COMMIT="$apres"
+
 # `up -d --build` et non `restart` : `restart` relance le conteneur EXISTANT avec
 # l'environnement qu'il avait à sa création, donc sans relire .env ni le nouveau code.
-export BD_COMMIT="$apres"
 faire "docker compose up -d --build app"
 faire "docker compose ps"
 
