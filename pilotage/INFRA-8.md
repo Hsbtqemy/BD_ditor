@@ -5,7 +5,12 @@ statut: interrompu
 
 # INFRA-8 — l'enrôlement 2FA passe par un fichier sur le serveur
 
-**Arrêté sur** — 2026-09-06, `cee43ec` : deux cases d'hygiène fermées, et **le
+**Arrêté sur** — 2026-09-06, `e7d3659` : la dernière case a une moitié qui vit dans le
+dépôt, et elle y est — la boîte d'expédition PARTAGÉE, le couplage dans ses deux sens, et
+la rotation du mot de passe d'application avec son ORDRE. L'autre moitié se fait dans
+l'interface de l'hébergeur et n'a pas d'autre chemin.
+
+**État antérieur — 2026-09-06, `cee43ec`** : deux cases d'hygiène fermées, et **le
 durcissement a cassé un outil** — le fichier des comptes a deux lecteurs qui n'ont pas les
 mêmes droits, et je n'en avais considéré qu'un. Le dossier, lui, était redevenu
 `root:root` — Authelia le rechowne à chaque démarrage, cause trouvée et neutralisée par
@@ -43,7 +48,7 @@ l'éprouver pour de bon.
 - [x] Des adresses RÉELLES ne changent rien à ce que les artefacts publient. Le cliquet rejoué le 2026-09-06 passe, balayage des 12 invocations d'outils compris. Et le constat est plus fort que le test : **`utilisateur.email` est écrit et jamais LU** — l'unique requête sur cette table sélectionne `login, nom`, et sa docstring le dit. La seule voie par laquelle une adresse réelle quitte l'instance est donc la sauvegarde INTÉGRALE, réservée aux administrateurs par `_exiger_admin_sauvegarde`. C'est un fait à connaître, pas un défaut : une sauvegarde contient la base, c'est sa définition
 
 ### Ce que la bascule a laissé ouvert
-- [ ] Le mot de passe d'application est nommé `bdediteur` chez l'hébergeur, donc révocable seul, sans toucher à l'autre site qui partage la boîte
+- [ ] Le mot de passe d'application est nommé `bdediteur` chez l'hébergeur, donc révocable seul, sans toucher à l'autre site qui partage la boîte — geste à faire dans l'interface Infomaniak ; le POURQUOI et la procédure de rotation sont écrits depuis le 2026-09-06 (`docs/exploitation.md` § Le courriel, et le bloc SMTP de `.env.example`)
 - [x] `deploy/authelia/users_database.yml` n'est plus en `664` : il porte un hash de mot de passe et reste lisible par tout compte de la machine, quand `.env` est en `600`. Deux fichiers de secrets, deux traitements, et rien ne l'avait jamais signalé. **Fait le 2026-09-06 — et le `chmod` seul a cassé un outil** (ci-dessous) : le mode final est `600 ubuntu:ubuntu`, pas `600 root:root`
 - [x] Le dossier `deploy/authelia/` appartient à `ubuntu` **après un démarrage d'Authelia**, et c'est la formulation qui compte : l'entrypoint de l'image fait `chown -R ${PUID}:${PGID} /config` à CHAQUE démarrage, et ces variables valaient 0:0. Le réparer à la main était donc sans effet durable — trois occurrences avant qu'on lise l'entrypoint. `PUID`/`PGID` posés dans le compose, vérifié le 2026-09-06 à 09:22 sur l'état d'APRÈS le mécanisme. Le conteneur y écrit toujours : `db.sqlite3` est passé à `ubuntu` et Authelia s'exécute désormais sous cette identité
 
@@ -283,3 +288,34 @@ par `Remote-Email`, elle est écrite dans `utilisateur` (v22) et elle part dans 
 sauvegarde. AUTH-5 a précisément un cliquet pour ça — il sème une sentinelle de courriel et
 balaie 61 surfaces ; il a été écrit parce que l'énumération à la main avait échoué quatre
 fois. C'est le moment de le rejouer, pas de lui faire confiance sur parole.
+
+## La moitié qui vit dans le dépôt — 2026-09-06
+
+La dernière case demande un geste chez l'hébergeur, et rien ne peut le faire à sa place.
+Mais nommer un identifiant ne sert à rien si personne ne sait, dans six mois, POURQUOI il
+porte ce nom ni quoi en faire — et cette moitié-là, elle, est écrite.
+
+`docs/exploitation.md` § Le courriel décrivait le repli et le silence assumé d'une panne
+SMTP. Il ne disait rien de la **boîte PARTAGÉE**, qui est pourtant la contrainte dont tout
+le reste découle et qui ne vivait que dans le `## Contexte` de cette fiche — c'est-à-dire
+nulle part pour qui ouvre la doc d'exploitation à deux heures du matin. Elle couple dans
+les deux sens, et un seul se maîtrise : le mot de passe de la boîte peut changer pour une
+raison étrangère au projet, on ne peut que subir ; l'identifiant d'ici, lui, se révoque
+seul — à condition d'être un mot de passe d'APPLICATION et d'être NOMMÉ. Un identifiant
+partagé et anonyme ne se révoque pas, il se subit.
+
+La procédure de rotation est écrite avec son ORDRE, parce que c'est là qu'elle casse :
+révoquer l'ancien avant d'avoir confirmé que le nouveau expédie ferme le seul canal
+d'enrôlement, et la panne ne se signale nulle part — c'est le silence assumé de
+`disable_startup_check` qui se retourne. Elle reprend les deux pièges déjà payés le
+2026-09-05, `restart` qui ne relit pas `.env` et le `sed` qui rend 0 sans rien dire.
+
+`.env.example` porte la même chose à sa place : le `535 5.7.0 Invalid login or password`
+n'était documenté que comme un incident passé, en fin de document, jamais à côté de la
+variable qu'il concerne.
+
+**Les références de cette fiche ont été rejouées le même jour**, avant d'écrire quoi que ce
+soit : les contrôles SMTP / groupes admin / référent de `verifier_deploiement.py` existent
+et font ce qui est annoncé, le test de non-régression du fichier de comptes illisible est
+à `tests/test_regressions.py:1063` avec son skip qui dit ne pas être une couverture, et la
+procédure YAML est bien dans `docs/exploitation.md`. Aucune trace morte.
