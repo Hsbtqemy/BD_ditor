@@ -41,9 +41,12 @@ deux moitiés.** Attribuer un accès à une collection reste dans BDéditeur (pa
 👥 Collections, existant) ; créer, activer et désactiver un compte vit ailleurs. Deux
 écrans, un seul critère — zéro console pour les gestes courants.
 
-Conséquence sur la section « ce que BDéditeur pourrait apporter » plus bas : la vue de
-l'usage (`premiere_vue`/`derniere_vue`) n'est PAS la demande. Elle reste un bonus utile —
-voir qui s'est connecté et attend un droit —, elle ne conditionne aucun choix d'annuaire.
+Conséquence sur la section « ce que BDéditeur pourrait apporter » plus bas, **révisée le
+2026-09-06** : la vue de l'usage (`premiere_vue`/`derniere_vue`) n'est toujours pas la
+demande, et elle ne conditionne toujours aucun choix d'annuaire — le cadrage de l'équipe le
+confirme même : *l'annuaire sert à FAIRE, pas à SAVOIR*. Mais elle a cessé d'être un
+bonus. Depuis que la suppression reste un geste courant du panneau, **c'est elle qui la
+rend sûre**, et les deux exigences qui l'accompagnent ne sont plus facultatives.
 
 Aujourd'hui, créer un compte c'est : éditer `users_database.yml` en SSH, générer un hash
 avec la CLI d'Authelia, contrôler le YAML, redémarrer le conteneur. Quatre gestes, sur le
@@ -152,6 +155,7 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [ ] **`premiere_vue` ne survit pas à un login réutilisé** — l'UPSERT de `main.py` ne la met pas dans son `DO UPDATE`, donc la vue des comptes daterait un arrivant de l'arrivée de son prédécesseur. Attendu : soit la suppression d'un compte efface sa ligne `utilisateur`, soit la vue signale la reprise d'un login connu. C'est le seul des quatre orphelins qui vive dans une table de BDéditeur, donc le seul réparable sans console — et il ment dans l'instrument même dont la règle ci-dessous dépend
 - [x] **La règle est validée, et son critère est MESURÉ** — 2026-09-06. Ce qui décide, c'est ce que le compte a LAISSÉ, et « laisser » se réduit à deux requêtes : `SELECT COUNT(*) FROM evenement WHERE agent = ? AND agent_type = 'humain'` et `SELECT COUNT(*) FROM collection_acces WHERE genre = 'utilisateur' AND principal = ?`. Zéro aux deux → la suppression n'orpheline rien. Autre chose → on archive. **Aucune session humaine n'ouvre d'activité** — `ouvrir_activite` n'est appelé que par `passe_ml` et le réindex NLP, deux agents machine —, donc naviguer, chercher et lire ne laissent RIEN : seules les 18 routes d'écriture journalisent. La règle est ainsi plus étroite qu'annoncée, et c'est ce qui la rend praticable
 - [x] **La suppression reste un geste courant du panneau, à côté de créer et archiver** — tranché le 2026-09-06 par l'équipe, la vue servant de garde-fou consulté avant. **La contrepartie est acceptée en connaissance de cause** : la vigilance redevient la garantie, alors que la fiche cherchait à s'en passer. Elle se paie donc sur la VUE, qui n'est plus un tableau à interpréter mais l'unique chose qui empêche une suppression fautive — voir les deux cases de la zone suivante, qui étaient des conforts et deviennent des exigences
+- [ ] **Le rythme d'arrivée RÉEL est chiffré** — c'est le fait qui départage LLDAP et Authentik, et personne hors de l'équipe ne l'a. Trente personnes par cours et deux cours par an, ou une poignée par an ? Sous le second régime LLDAP gagne largement ; sous le premier, le lien d'invitation d'Authentik paie le remplacement à lui seul. Tant que ce chiffre manque, le choix se fait au jugé
 - [ ] Le chemin est choisi entre les trois ci-dessus, et la raison est écrite — y compris si c'est « on garde le fichier », qui est un choix légitime tant que le rythme reste faible
 
 ### Ce qu'il faut savoir AVANT de choisir (mesures, pas opinions)
@@ -162,6 +166,7 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [ ] **Les panneaux TIERS sont évalués avant d'en écrire un.** `asalimonov/authelia-admin` se présente comme un panneau de gestion des utilisateurs, groupes, appareils TOTP et bannissements — exactement la moitié « créer / activer / désactiver » du critère. **Trois réserves, et aucune n'est levée au 2026-09-06** : il s'annonce pour une intégration LLDAP, donc il PRÉSUPPOSE le chemin 2 au lieu de l'éviter ; sa page visible ne mentionne que créer / éditer / supprimer, jamais désactiver, ce qui manquerait le modèle « pas de suppression, désactivation et archivage » ; et il demande l'accès au fichier de configuration ET à `db.sqlite3` d'Authelia, c'est-à-dire un couplage à un schéma privé que chaque montée de version peut rompre (`INFRA-9`). Projet à 200 étoiles, 6 forks, MIT — un candidat, pas un composant d'Authelia
 - [ ] **Une règle `deny` en tête d'`access_control` refuse bien l'accès à l'application** — à ÉPROUVER sur l'instance, pas déduit de l'ordre promis. Attendu : un compte du groupe `archives` est refusé sur `bd.edito-revue.fr` alors que les trois règles suivantes l'autoriseraient, et l'effet porte sur une session DÉJÀ ouverte, la portée se recalculant à chaque requête. Le portail `auth.` reste joignable, ce qui est sans importance — il n'y a rien derrière
 - [ ] **Ce que devient un TOTP orphelin quand le login revient** — la seule des quatre conséquences de la suppression qui ne se lise pas dans le code d'ici, donc la seule à mesurer sur l'instance. Attendu à confirmer : le stockage d'Authelia étant indexé par nom d'utilisateur et indépendant du backend, le nouvel arrivant ne peut PAS s'enrôler — une configuration existe déjà — pendant que l'appareil de l'ancien produit encore des codes valides pour ce login. Se mesure en supprimant un compte d'essai puis en le recréant sous le même nom — **la même manipulation répond à la case de migration ci-dessous**, qui interroge la même propriété dans l'autre sens : ce qui fait SUIVRE un TOTP au changement de backend est ce qui le fait RESTER après une suppression
+- [ ] **Si Authentik : le séparateur de groupes est traité DANS LE MÊME GESTE que le renommage d'en-têtes** — mesuré le 2026-09-06, et c'est une soirée épargnée. `autorisation.py:96` découpe `Remote-Groups` sur des VIRGULES ; Authentik sépare `X-authentik-groups` par des PIPES. Attendu : soit un mapping de propriété qui émet des virgules et BDéditeur ne bouge pas d'une ligne, soit une ligne qui découpe sur les deux. Jamais après la bascule — la panne se ferme en silence et le bandeau d'AUTH-1 accuse le mauvais coupable (voir plus bas)
 - [ ] Le coût réel de la migration `file` → `ldap` sur cette instance : les comptes à recréer, les groupes à reporter, et ce qui se passe pour un TOTP déjà enrôlé. **Hypothèse à éprouver** : les appareils TOTP vivent dans le stockage PROPRE d'Authelia (`db.sqlite3`), indexés par nom d'utilisateur et non par backend — à noms d'utilisateur identiques, ils devraient suivre. Se vérifie sur l'instance : `docker compose exec authelia sh -c "authelia storage user totp export --config /config/configuration.yml"` ou, à défaut, la table `totp_configurations` de `db.sqlite3`
 
 ### Ce que BDéditeur pourrait apporter, et qu'aucun annuaire ne saura
@@ -184,6 +189,85 @@ pour bientôt, attendons ». Mais 4.40.0 ne concerne que l'*Initial Implementati
 des UTILISATEURS est la dernière étape de la liste, elle n'est pas commencée, et elle est
 la seule à ne porter aucune version.** Ce n'est donc pas « la prochaine version » : c'est
 une étape sans date, derrière quatre autres.
+
+## Changer de gestionnaire ne réglerait presque rien — sauf l'inscription — 2026-09-06
+
+Question posée en séance : les orphelins seraient-ils différents ailleurs ? La réponse
+protège surtout une décision future.
+
+**Trois des quatre sont à NOUS**, et aucun annuaire ne les touche : `collection_acces`,
+`evenement` et `utilisateur` sont des tables de BDéditeur, clées sur un login.
+
+| Orphelin | Où il vit | Fichier | LLDAP | Kanidm (backend) | Authentik (remplace) |
+|---|---|---|---|---|---|
+| Droits `collection_acces` | BDéditeur | oui | oui | oui | oui\* |
+| Provenance `evenement` | BDéditeur | oui | oui | oui | oui\* |
+| Second facteur | Authelia `db.sqlite3` | oui | oui | oui | **non** |
+| Miroir `utilisateur` | BDéditeur | oui | oui | oui | oui\* |
+
+Un seul disparaît, et il faut quitter Authelia pour ça : avec un IdP intégré, le compte et
+ses facteurs sont le MÊME objet. LLDAP ou Kanidm en backend LDAP n'y changent rien —
+Authelia garde ses TOTP dans son stockage, indexés par nom d'utilisateur.
+
+**L'astérisque est le vrai point.** Le problème n'est pas l'annuaire, c'est que **le login
+EST l'identité**. Un identifiant stable jamais réattribué rendrait les trois inertes par
+construction : c'est la version GRATUITE de la convention de nommage écartée le matin même,
+puisque le login resterait `p.durand`, dictable, sans être la clé. Authentik en transmet un
+(`X-authentik-uid`). Mais il coûte : le journal A3 est LISIBLE parce que sa clé est un
+login, et `rapport_accord_inter.py` nomme exprès — *sans les noms on ne peut pas réunir
+deux personnes pour arbitrer*. Cléer sur un identifiant opaque ferait de `utilisateur` une
+pièce PORTANTE là où elle n'est qu'un miroir jetable : perdue aujourd'hui elle ne coûte
+rien, demain elle emporterait la lisibilité du journal entier.
+
+**Et un système d'authentification écrit ici ? Écarté — pas parce que « c'est
+difficile ».** Il faudrait mots de passe, sessions, réinitialisation (avec la MÊME
+dépendance SMTP qu'INFRA-8, qui n'est donc pas économisée), second facteur, régulation, et
+une revue de sécurité pour toujours. En face, des gains réels qu'il faut reconnaître : un
+seul panneau, de vraies clés étrangères entre comptes et droits, plus aucun en-tête à
+croire, un service de moins et INFRA-9 qui disparaît. Deux arguments tranchent quand même.
+
+AUTH-1 n'est pas un confort : « aucun secret en base » est ce qui rend l'histoire de
+sécurité courte, et `GET /api/sauvegarde` déverserait désormais un fichier de mots de
+passe — qui part sur ShareDocs. Surtout, **la surface d'attaque change de CATÉGORIE** :
+aujourd'hui rien de BDéditeur n'est joignable sans passer Authelia, donc un défaut n'est
+atteignable que par quelqu'un qui a déjà un compte ; un formulaire de connexion est, par
+construction, joignable par l'internet entier. Ce n'est pas un degré, c'est un régime, et
+c'est vrai même si le code est parfait.
+
+La formule : **on écrirait un système d'authentification complet pour obtenir un écran
+d'administration, qui en représente peut-être le sixième.**
+
+**Ce qui retournerait la réponse n'est pas l'administration, c'est l'INSCRIPTION.** Le
+geste coûteux n'est pas de gérer trente comptes, c'est de les CRÉER trente fois par
+semestre. Authentik envoie un lien d'invitation dont l'inscrit sort avec son mot de passe
+choisi ET dans le bon groupe — soit par un flux d'enrôlement par groupe (option native de
+l'étape `user_write`), soit par un `groups_to_add` dans les attributs de l'invitation,
+qu'une *expression policy* convertit juste avant l'écriture (« Evaluate on plan »
+désactivé, « Re-evaluate policies » activé). **La seconde forme est préférable pour une
+raison de sécurité** : l'avis `GHSA-9qwp-jf7p-vr7h` décrit un contournement de contrôle
+d'accès par réutilisation de jeton, dont les configurations touchées sont exactement
+« plusieurs flux d'enrôlement, avec étape d'invitation, accordant des permissions
+différentes ». Corrigé depuis 2022 ; mais c'est la forme qui a produit la faille, quand
+l'autre fait porter la permission par le jeton lui-même.
+
+Alors la chaîne se boucle — **et c'est AUTH-1 qui le permet.** L'enseignant donne au groupe
+`cours-bd-2026` un niveau sur la collection (une fois), crée une invitation portant ce
+groupe (une fois), envoie le lien à trente personnes : chacune arrive avec son accès déjà
+ouvert, zéro geste d'administration par personne. `collection_acces` référence un NOM de
+groupe et ne stocke jamais d'appartenance, les groupes étant relus à chaque requête — ce
+qui ressemblait à une limitation, « l'application ne sait rien des gens », est exactement
+ce qui laisse un compte naître ailleurs et avoir ses droits immédiatement.
+
+**Un piège mesuré, qui aurait coûté une soirée.** J'ai d'abord affirmé que BDéditeur ne
+changerait pas d'une ligne, Caddy sachant RENOMMER un en-tête au passage — c'est vrai et
+documenté (`Before>After`, exemple Tailscale). Mais **renommer un champ ne convertit pas sa
+valeur** : `autorisation.py:96` découpe sur des virgules, Authentik sépare par des pipes.
+L'application recevrait un unique groupe nommé `a|b|c`, qui ne correspond à rien, et
+**tous les accès par groupe s'évaporeraient — en silence, en se fermant.** Le bandeau
+d'AUTH-1 aggraverait : recevant un groupe NON vide, il conclurait au troisième cas et
+afficherait « il n'y a donc rien de cassé » sur une panne de proxy parfaitement réparable.
+Il montre la preuve — le pipe est visible — et en tire l'inverse. Encore un instrument qui
+approuve en regardant à côté.
 
 ## Supprimer et désactiver ne sont pas symétriques — 2026-09-06
 
