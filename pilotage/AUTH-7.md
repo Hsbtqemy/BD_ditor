@@ -10,6 +10,19 @@ de compte sans passer par la console, surtout au lancement du produit. Et avoir 
 tous les comptes actifs, pouvoir révoquer des droits ou supprimer directement un
 utilisateur. »*
 
+**Le critère d'acceptation, précisé le même jour** : *« tant qu'on peut avoir un panneau de
+contrôle, où on peut activer, désactiver, créer, attribuer, potentiellement dans DEUX
+ESPACES SÉPARÉS, ça me va. Tant qu'on évite la console. »*
+
+Cela tranche une question que la fiche portait sans le dire : **il n'y a pas à unifier les
+deux moitiés.** Attribuer un accès à une collection reste dans BDéditeur (panneau
+👥 Collections, existant) ; créer, activer et désactiver un compte vit ailleurs. Deux
+écrans, un seul critère — zéro console pour les gestes courants.
+
+Conséquence sur la section « ce que BDéditeur pourrait apporter » plus bas : la vue de
+l'usage (`premiere_vue`/`derniere_vue`) n'est PAS la demande. Elle reste un bonus utile —
+voir qui s'est connecté et attend un droit —, elle ne conditionne aucun choix d'annuaire.
+
 Aujourd'hui, créer un compte c'est : éditer `users_database.yml` en SSH, générer un hash
 avec la CLI d'Authelia, contrôler le YAML, redémarrer le conteneur. Quatre gestes, sur le
 serveur, dont un qui peut fermer l'instance à tout le monde s'il rate.
@@ -107,6 +120,7 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [ ] Le chemin est choisi entre les trois ci-dessus, et la raison est écrite — y compris si c'est « on garde le fichier », qui est un choix légitime tant que le rythme reste faible
 
 ### Ce qu'il faut savoir AVANT de choisir (mesures, pas opinions)
+- [ ] **Une version plus récente d'Authelia administre-t-elle les comptes ?** À vérifier AVANT d'ajouter un annuaire : cette instance tourne en 4.38.19, dont le portail ne gère que son propre second facteur et son propre mot de passe. Si une version ultérieure sait créer et désactiver un compte du backend fichier, le chemin 2 devient inutile — un service de moins à faire tourner, sauvegarder et tenir à jour. C'est la vérification la moins chère de cette fiche, et celle qui peut en annuler la moitié
 - [x] Ce que devient une collection dont on supprime le dernier propriétaire **hors de l'application** — reproduit le 2026-09-06 (`test_un_proprietaire_disparu_laisse_une_collection_administrable_par_un_admin_seul`). **Ce n'est pas une impasse, mais elle exige un administrateur.** La ligne survit : la collection garde un propriétaire FANTÔME, qui ne peut plus se connecter. Un tiers ne voit rien (404). L'administrateur ne peut pas retirer le fantôme tel quel — le 409 « dernier propriétaire » l'en empêche, et il a raison. La seule sortie : désigner un remplaçant, PUIS retirer. Faisable entièrement à l'écran, sans SQL — mais impossible sans `bd-admins`
 - [x] Ce que devient le journal A3 quand l'agent cité n'existe plus : **il survit**, et par construction. `activite.agent` est une colonne TEXTE sans clé étrangère, et rien ne joint jamais `utilisateur` — la seule requête sur cette table (`noms_lisibles`) sert aux verrous de planche, pas au journal. Une chaîne de révision continue donc d'attribuer ses actes à quelqu'un qui n'a plus de compte, ce qui est exactement ce qu'on veut : retirer un droit d'entrée n'efface pas ce qui a été fait
 - [x] **Et le verrou de planche ne bloque personne** — vérifié en lisant la route plutôt qu'en le supposant. `verrou_par` est « purement informatif : n'importe qui peut toujours déverrouiller ». Une planche verrouillée par un compte disparu se libère sans recours administrateur. C'est le genre de dépendance qu'on redoute à tort, et la nommer évite de la chercher
