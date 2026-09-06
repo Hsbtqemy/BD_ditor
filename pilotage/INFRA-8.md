@@ -9,9 +9,10 @@ statut: interrompu
 durcissement a cassé un outil** — le fichier des comptes a deux lecteurs qui n'ont pas les
 mêmes droits, et je n'en avais considéré qu'un. Le dossier, lui, était redevenu
 `root:root` — Authelia le rechowne à chaque démarrage, cause trouvée et neutralisée par
-`PUID`/`PGID`. Restent
-six cases, dont les deux qui comptent — le parcours d'un compte neuf, et le remplacement
-d'un appareil TOTP perdu.
+`PUID`/`PGID`. **Le parcours d'un compte neuf est franchissable seul**, éprouvé de la
+création à la connexion, appareil perdu compris. Restent DEUX cases, toutes deux sur la
+bascule elle-même : nommer le mot de passe d'application chez l'hébergeur, et éprouver
+le repli pour de vrai.
 
 **État antérieur — 2026-09-05, `4b6761d` : la bascule est FAITE et le courriel arrive**.
 Relais Infomaniak, dont le SPF du domaine autorisait déjà le relais ; boîte d'expédition
@@ -34,8 +35,8 @@ l'éprouver pour de bon.
 - [x] Le compte `chercheur` porte une adresse RÉELLE — le gabarit posait `chercheur@example.fr`, vers quoi un notifier SMTP aurait expédié dans le vide sans rien dire
 - [x] Le notifier bascule sur SMTP, ses identifiants dans `deploy/.env` et non dans un fichier versionné, comme les trois secrets d'Authelia
 - [x] **Le courriel part et arrive** : « Mot de passe oublié ? » sur le portail, message reçu. Il a fallu un mot de passe d'APPLICATION Infomaniak — le mot de passe ordinaire de la boîte est refusé pour du SMTP externe, `535 5.7.0 Invalid login or password`
-- [x] Un compte neuf reçoit son lien d'enrôlement 2FA PAR COURRIEL et va au bout sans intervention sur le serveur — vérifié pour la réinitialisation, pas encore pour l'enrôlement d'un compte qui n'existe pas encore. **Parcouru pour de vrai le 2026-09-06**, de la création du compte à la connexion : le courriel part et arrive, l'appareil s'enregistre, l'accès s'ouvre. Il a fallu UNE intervention — lire les journaux d'Authelia pour comprendre que le portail proposait une méthode non enrôlée — et c'est ce que `default_2fa_method` a supprimé. Depuis l'arbitrage du facteur, ce chemin ne concerne plus que `bd-admins`
-- [x] Un appareil TOTP perdu se remplace sans SSH : c'est le seul recours quand le second facteur disparaît, et le chemin n'a pas été parcouru. Éprouvé le 2026-09-06 par le geste réel — appareil supprimé depuis la page de réglages, parcours refait de bout en bout sans terminal. C'est le scénario du téléphone changé
+- [x] Un compte neuf reçoit son lien d'enrôlement 2FA PAR COURRIEL et va au bout sans intervention sur le serveur. **Parcouru pour de vrai le 2026-09-06**, de la création du compte à la connexion : le courriel part et arrive, l'appareil s'enregistre, l'accès s'ouvre. Il a fallu UNE intervention — lire les journaux d'Authelia pour comprendre que le portail proposait une méthode non enrôlée — et c'est ce que `default_2fa_method` a supprimé. Depuis l'arbitrage du facteur, ce chemin ne concerne plus que `bd-admins`
+- [x] Un appareil TOTP perdu se remplace sans SSH : c'est le seul recours quand le second facteur disparaît. Éprouvé le 2026-09-06 par le geste réel — appareil supprimé depuis la page de réglages, parcours refait de bout en bout sans terminal. C'est le scénario du téléphone changé
 
 ### La conséquence qu'on n'attend pas
 - [x] Des adresses RÉELLES ne changent rien à ce que les artefacts publient. Le cliquet rejoué le 2026-09-06 passe, balayage des 12 invocations d'outils compris. Et le constat est plus fort que le test : **`utilisateur.email` est écrit et jamais LU** — l'unique requête sur cette table sélectionne `login, nom`, et sa docstring le dit. La seule voie par laquelle une adresse réelle quitte l'instance est donc la sauvegarde INTÉGRALE, réservée aux administrateurs par `_exiger_admin_sauvegarde`. C'est un fait à connaître, pas un défaut : une sauvegarde contient la base, c'est sa définition
