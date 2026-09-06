@@ -1,20 +1,21 @@
 ---
 chantier: UX-6
-statut: à venir
+statut: interrompu
 ---
 
 # UX-6 — écran « par où commencer » et guide utilisateur
 
-**Point de départ** — le dépôt n'a aucune porte d'entrée : `/` ouvre directement la
-Visionneuse en mode Navigation, sur un corpus qui peut être vide, sans rien dire de la
-chaîne qui y mène. Et `docs/` ne contient que des notes de *conception*, une roadmap et
-un renvoi de backlog — aucun mode d'emploi. Rien n'est commencé.
+**Arrêté sur** — 2026-09-06, `91ed11e` : **la moitié documentaire est écrite**, en DEUX
+fichiers et non un — `docs/guide-utilisateur.md` (les gestes) et `docs/modele-et-droits.md`
+(les objets et les règles). Reste l'écran, et l'étape 1 à corriger avant de le câbler : elle
+nomme la Bibliothèque pour un import qui vit dans la Visionneuse.
 
 ## Reste
 
 ### Arbitrages
 - [x] La liste des étapes et leur ordre sont figés AVANT la première ligne de code, chaque étape nommant une surface et un geste : c'est le contrat commun de l'écran et du guide, et le laisser flotter ferait diverger les deux
 - [ ] Le rang vis-à-vis de UX-3 est tranché et écrit dans les deux fiches : UX-3 veut rendre les quatre modes de la Visionneuse compréhensibles *sans* documentation, UX-6 les explique — décider lequel passe d'abord, ou acter qu'ils sont indépendants
+- [ ] L'étape 1 nomme la surface qui porte RÉELLEMENT l'import de planches : mesuré le 2026-09-06, `static/corpus.js` n'appelle jamais `/api/albums/{id}/import` — le geste vit dans la Visionneuse, menu « ⇅ Import / Export », depuis le disque ou depuis ShareDocs ; la liste figée dit « Bibliothèque », et tant qu'elle le dit la case de deep-link ne peut pas être tenue
 
 ### Écran « par où commencer »
 - [ ] L'écran s'ouvre au chargement d'une des quatre surfaces tant que « ne plus afficher » n'a pas été coché ; une fois coché, aucun rechargement ne le rouvre (état en `localStorage`, clé préfixée `bd-` comme celles de `static/theme.js`)
@@ -29,11 +30,12 @@ un renvoi de backlog — aucun mode d'emploi. Rien n'est commencé.
 - [ ] Les raccourcis `N`/`E`/`A`/`T` et l'ordre des onglets de la Visionneuse sont inchangés : l'écart entre le parcours de la carte et l'ordre de la barre est assumé, pas résorbé en déplaçant un raccourci
 
 ### Guide utilisateur
-- [ ] `docs/guide-utilisateur.md` existe et couvre les huit étapes et les quatre surfaces du point de vue de la tâche — « transcrire une bulle », « corriger un lemme » — jamais de l'architecture
+- [x] `docs/guide-utilisateur.md` existe et couvre les huit étapes et les quatre surfaces du point de vue de la tâche — « transcrire une bulle », « corriger un lemme » — jamais de l'architecture
+- [x] Le MODÈLE — hiérarchie, collections, groupes, qui peut quoi, vocabulaire, régimes de diffusion — est écrit et SÉPARÉ du parcours (`docs/modele-et-droits.md`), les deux se renvoyant l'un à l'autre : c'est ce qui permet au guide de rester sur la tâche sans laisser un arrivant sans réponse sur « pourquoi je ne vois rien »
 - [ ] Chaque étape de l'écran renvoie à une section du guide qui existe : aucune ancre morte, vérifié en fin de chantier
-- [ ] Le guide traite le cas des moteurs optionnels absents (503 sur la route, mention dans `/api/sante`) au lieu de supposer l'installation complète
-- [ ] Le guide dit où vivent les exports de dépôt tant qu'ils n'ont pas de bouton (`tools/`, cf. `docs/export-metadonnees.md`) plutôt que de les passer sous silence
-- [ ] `README.md` et la section « Vue d'ensemble » de `CLAUDE.md` nomment le guide comme la documentation d'usage du dépôt, distincte des notes de conception
+- [x] Le guide traite le cas des moteurs optionnels absents (503 sur la route, mention dans `/api/sante`) au lieu de supposer l'installation complète
+- [x] Le guide dit où vivent les exports de dépôt tant qu'ils n'ont pas de bouton (`tools/`, cf. `docs/export-metadonnees.md`) plutôt que de les passer sous silence
+- [x] `README.md` et la section « Vue d'ensemble » de `CLAUDE.md` nomment le guide comme la documentation d'usage du dépôt, distincte des notes de conception
 - [ ] Une note de conception courte justifie le parcours retenu, les étapes écartées et le refus de la visite guidée surlignée
 
 ### Vérifications
@@ -129,3 +131,34 @@ carte promet donc ce qui existe, et le guide dit où trouver le reste.
 Reste hors périmètre, faute d'être tranché : une aide contextuelle par surface (un « ? »
 qui ouvre la section correspondante du guide). C'est un second chantier, à ouvrir une
 fois le guide écrit et ses sections stabilisées.
+
+### La documentation, écrite le 2026-09-06 (`91ed11e`)
+
+**DEUX fichiers et non un**, et c'est un arbitrage, pas un débordement. La fiche ne nommait
+que `docs/guide-utilisateur.md`, sur la tâche et « jamais de l'architecture ». Mais un
+arrivant sur l'instance déployée ne bute pas d'abord sur un geste : il bute sur « je ne vois
+aucun album », « pourquoi mon collègue ne voit pas ce tag », « c'est quoi une dimension ».
+Répondre exigeait le modèle — hiérarchie, collections, groupes, portées, vocabulaire — que le
+guide de tâches ne peut pas porter sans cesser d'être un guide de tâches. Le critère qui a
+tranché est le MOMENT DE LECTURE : on rouvre le guide chaque fois qu'on cherche un bouton, on
+lit le modèle une fois, avant de commencer. Les fondre aurait posé un exposé sur les groupes
+entre l'étape 2 et l'étape 3.
+
+**Périmètre élargi jusqu'au compte Authelia**, demandé explicitement. Le risque de doublon
+avec `docs/exploitation.md` est réel et traité en le DÉCLARANT : le § 6 du modèle donne la
+forme du geste et ses deux pièges — le YAML contrôlé, `bd-admins` sans lequel on arrive sur
+une application vide — puis renvoie pour les commandes exactes en écrivant que c'est
+`exploitation.md` qui fait foi. Deux endroits où lire la même commande finissent par se
+contredire ; un endroit qui explique et un endroit qui exécute, non.
+
+**L'étape 1 est fausse, et ce sont les documents qui l'ont trouvée** — parce qu'ils ont été
+écrits contre le CODE et non contre le README, qui la répète. C'est l'argument de la fiche
+retourné : le contrat commun n'a pas seulement empêché l'écran et le guide de diverger, il a
+fait diverger la LISTE d'avec l'application, et c'est le guide qui l'a dit. Le même passage
+a confirmé que `GET /api/sauvegarde` est bien réservée aux administrateurs — la § AUTH-2 de
+`CLAUDE.md` affirme encore l'inverse, non corrigé, à traiter hors de ce chantier.
+
+Deux cases du guide restent ouvertes exprès. Les **ancres** ne se vérifient qu'une fois
+l'écran écrit, puisque ce sont les siennes. Et la **note de conception** sur le parcours
+retenu n'a pas été écrite : l'essentiel de son contenu vit déjà dans ce `Contexte`, et la
+rédiger avant l'écran figerait un raisonnement que la passe de QA peut encore condamner.
