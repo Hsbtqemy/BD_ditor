@@ -102,6 +102,21 @@ besoin de savoir comment le CORPUS a été fait, jamais comment l'instance est a
 D'où le retrait de l'événement entier — « annotateur-1 a modifié utilisateur/None »
 n'apprend rien et invite la question à laquelle on refuse de répondre.
 
+**La réparation a pris DEUX commits, et le second n'a pas été trouvé par la même méthode.**
+`3114f4a` refermait l'écart du résumé dans `provenance_export.construire()` — le seul que
+j'avais sous les yeux en éditant ce fichier. Une passe de revue demandée ensuite a trouvé
+le second, qui vit ailleurs : `journal.indicateurs_provenance` compte le journal ENTIER, et
+son bloc part au dépôt par les deux mêmes outils. Mesuré — la table `evenement` de
+l'artefact publiait 7 événements et son bloc `provenance` en annonçait 11. **Le même
+document, deux nombres, et rien qui dise lequel croire** : un lecteur qui compte les lignes
+conclut à une perte plutôt qu'à un filtre. Un résumé plus large que ce qu'il résume ne se
+lit jamais comme une décision. Le filtre porte aussi sur les BORNES DE DATES — un dépôt
+ShareDocs de 2020 antidatait un corpus annoté en 2026 (`3332a29`).
+
+Ce que cela apprend sur la méthode : **filtrer une source ne suffit pas, il faut chercher
+tout ce qui la COMPTE.** Un résumé n'est pas une copie de la donnée, il est calculé — donc
+il échappe à la relecture du chemin de publication, et il contredit sans mentir.
+
 **La leçon est sur la garde, pas sur la fuite.** Une liste blanche échoue en se FERMANT,
 donc le danger cesse d'être la fuite et devient l'amputation silencieuse du dépôt. Mesuré :
 déplacer `token_correction` de CORPUS vers RETENUES la laisse CLASSÉE, si bien que le
