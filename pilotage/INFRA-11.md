@@ -5,6 +5,13 @@ statut: à venir
 
 # INFRA-11 — le fichier des comptes a deux gardes, aucune ne lit ce qu'il contient
 
+**Arrêté sur** — 2026-09-07, `deploy/verifier_comptes.py` et ses 16 tests, éprouvés dans
+les DEUX sens : il refuse le préfixe `Digest: ` qui a coupé le portail, le hash du
+gabarit, un condensé replié ou tronqué, un YAML invalide — et il ACCEPTE bcrypt, scrypt,
+pbkdf2 et sha512-crypt, ce qui vaut autant : une garde qui crie sur du correct finit
+désarmée. La procédure complète est dans `docs/exploitation.md`. **Reste la case des
+copies `.avant`**, qui n'est pas fermée par du code mais par une habitude.
+
 **Point de départ** — 2026-09-06 à 22:43, par une panne réelle. Ajouter un compte de test
 a coupé le portail **six minutes**, pour tout le monde. Le hachage collé portait le préfixe
 `Digest: ` que rend `authelia crypto hash generate` ; Authelia a refusé de démarrer et a
@@ -22,23 +29,23 @@ dehors.
 ## Reste
 
 ### Le contrôle qui manque
-- [ ] Un contrôle REFUSE un condensé malformé et ACCEPTE un fichier correct, éprouvé dans
+- [x] Un contrôle REFUSE un condensé malformé et ACCEPTE un fichier correct, éprouvé dans
       les DEUX sens le même jour — une garde qu'on n'a vue que réussir ne prouve rien,
       c'est ce que `validate-config` puis `yaml.safe_load` ont fait croire chacune à leur
       tour
-- [ ] Il attrape le cas EXACT du 2026-09-06 : un `password:` portant le préfixe `Digest: `
+- [x] Il attrape le cas EXACT du 2026-09-06 : un `password:` portant le préfixe `Digest: `
       rendu par `authelia crypto hash generate`, rejoué tel quel
-- [ ] Il tourne SANS toucher à l'instance qui sert : ni redémarrage, ni conteneur qui
+- [x] Il tourne SANS toucher à l'instance qui sert : ni redémarrage, ni conteneur qui
       prenne le port 9091, ni écriture dans `db.sqlite3`
-- [ ] Il vérifie TOUS les comptes du fichier, pas seulement celui qu'on vient d'ajouter —
+- [x] Il vérifie TOUS les comptes du fichier, pas seulement celui qu'on vient d'ajouter —
       c'est la même faute que le semis d'AUTH-5, une garde qui ne regarde qu'un endroit
 
 ### Que le geste soit franchissable seul
-- [ ] `docs/exploitation.md` décrit la séquence complète — copie de sauvegarde, hachage
+- [x] `docs/exploitation.md` décrit la séquence complète — copie de sauvegarde, hachage
       sans son préfixe, contrôle YAML, contrôle du contenu, redémarrage, attente du
       `healthy` — et quelqu'un qui la suit sans rien savoir d'autre ajoute un compte sans
       couper le portail
-- [ ] Le retour arrière est nommé au même endroit et vérifié : la copie `.avant` a servi
+- [x] Le retour arrière est nommé au même endroit et vérifié : la copie `.avant` a servi
       le 2026-09-06 et c'est elle qui a rétabli le service
 
 ### Ce que la panne a laissé traîner
