@@ -1,9 +1,17 @@
 ---
 chantier: AUTH-7
-statut: à venir
+statut: interrompu
 ---
 
 # AUTH-7 — administrer les comptes sans console
+
+**Arrêté sur** — 2026-09-06, `e193ae4` : **la vérification la moins chère est faite, et
+elle n'annule rien — elle ferme l'attente.** Aucune version d'Authelia n'administre les
+comptes, et la plus récente non plus : sur sa feuille de route, « User Management » n'est
+pas commencé et ne porte AUCUNE version cible. Attendre n'est donc pas une option ; il
+reste à choisir entre l'annuaire et le fichier. Un constat collatéral est plus urgent que
+la fiche elle-même : cette instance tourne sur une version qui ne reçoit plus de
+correctifs de bogue.
 
 **Point de départ** — 2026-09-06, demandé en propres termes : *« pouvoir gérer la création
 de compte sans passer par la console, surtout au lancement du produit. Et avoir une vue sur
@@ -120,15 +128,46 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [ ] Le chemin est choisi entre les trois ci-dessus, et la raison est écrite — y compris si c'est « on garde le fichier », qui est un choix légitime tant que le rythme reste faible
 
 ### Ce qu'il faut savoir AVANT de choisir (mesures, pas opinions)
-- [ ] **Une version plus récente d'Authelia administre-t-elle les comptes ?** À vérifier AVANT d'ajouter un annuaire : cette instance tourne en 4.38.19, dont le portail ne gère que son propre second facteur et son propre mot de passe. Si une version ultérieure sait créer et désactiver un compte du backend fichier, le chemin 2 devient inutile — un service de moins à faire tourner, sauvegarder et tenir à jour. C'est la vérification la moins chère de cette fiche, et celle qui peut en annuler la moitié
+- [x] **Une version plus récente d'Authelia administre-t-elle les comptes ? NON — et pas davantage la prochaine.** Vérifié le 2026-09-06 sur la feuille de route officielle (relevé du 2026-08-24, donc à jour) et sur les publications : la dernière version est 4.39.22, du 2026-09-03, et rien n'y administre de comptes. L'entrée « Dashboard / Control Panel and CLI for Administrators » est ACTIVE, mais l'étape *Design* est seule « in progress » ; l'*Initial Implementation* vise 4.40.0 sans être commencée, et **« User Management » n'est pas commencé et ne porte aucune version cible du tout** — c'est la DERNIÈRE étape de la liste. La vérification était censée pouvoir annuler la moitié de la fiche ; elle fait l'inverse et **ferme l'attente**, ce qui a la même valeur : on ne diffère plus le choix en espérant qu'amont le règle
 - [x] Ce que devient une collection dont on supprime le dernier propriétaire **hors de l'application** — reproduit le 2026-09-06 (`test_un_proprietaire_disparu_laisse_une_collection_administrable_par_un_admin_seul`). **Ce n'est pas une impasse, mais elle exige un administrateur.** La ligne survit : la collection garde un propriétaire FANTÔME, qui ne peut plus se connecter. Un tiers ne voit rien (404). L'administrateur ne peut pas retirer le fantôme tel quel — le 409 « dernier propriétaire » l'en empêche, et il a raison. La seule sortie : désigner un remplaçant, PUIS retirer. Faisable entièrement à l'écran, sans SQL — mais impossible sans `bd-admins`
 - [x] Ce que devient le journal A3 quand l'agent cité n'existe plus : **il survit**, et par construction. `activite.agent` est une colonne TEXTE sans clé étrangère, et rien ne joint jamais `utilisateur` — la seule requête sur cette table (`noms_lisibles`) sert aux verrous de planche, pas au journal. Une chaîne de révision continue donc d'attribuer ses actes à quelqu'un qui n'a plus de compte, ce qui est exactement ce qu'on veut : retirer un droit d'entrée n'efface pas ce qui a été fait
 - [x] **Et le verrou de planche ne bloque personne** — vérifié en lisant la route plutôt qu'en le supposant. `verrou_par` est « purement informatif : n'importe qui peut toujours déverrouiller ». Une planche verrouillée par un compte disparu se libère sans recours administrateur. C'est le genre de dépendance qu'on redoute à tort, et la nommer évite de la chercher
+- [ ] **Les panneaux TIERS sont évalués avant d'en écrire un.** `asalimonov/authelia-admin` se présente comme un panneau de gestion des utilisateurs, groupes, appareils TOTP et bannissements — exactement la moitié « créer / activer / désactiver » du critère. **Trois réserves, et aucune n'est levée au 2026-09-06** : il s'annonce pour une intégration LLDAP, donc il PRÉSUPPOSE le chemin 2 au lieu de l'éviter ; sa page visible ne mentionne que créer / éditer / supprimer, jamais désactiver, ce qui manquerait le modèle « pas de suppression, désactivation et archivage » ; et il demande l'accès au fichier de configuration ET à `db.sqlite3` d'Authelia, c'est-à-dire un couplage à un schéma privé que chaque montée de version peut rompre (`INFRA-9`). Projet à 200 étoiles, 6 forks, MIT — un candidat, pas un composant d'Authelia
 - [ ] Le coût réel de la migration `file` → `ldap` sur cette instance : les comptes à recréer, les groupes à reporter, et ce qui se passe pour un TOTP déjà enrôlé. **Hypothèse à éprouver** : les appareils TOTP vivent dans le stockage PROPRE d'Authelia (`db.sqlite3`), indexés par nom d'utilisateur et non par backend — à noms d'utilisateur identiques, ils devraient suivre. Se vérifie sur l'instance : `docker compose exec authelia sh -c "authelia storage user totp export --config /config/configuration.yml"` ou, à défaut, la table `totp_configurations` de `db.sqlite3`
 
 ### Ce que BDéditeur pourrait apporter, et qu'aucun annuaire ne saura
 - [ ] La demande dit « comptes ACTIFS », et un annuaire ne connaît que les comptes DÉCLARÉS. `utilisateur` porte `premiere_vue` et `derniere_vue` : BDéditeur sait qui a réellement ouvert l'application, et quand. Un tableau en lecture seule dans le panneau 👥 Collections répondrait à la moitié « voir » de la demande, sans dépendre du chemin choisi pour la moitié « créer »
 - [ ] Ce tableau croise l'usage et les accès : qui a une portée vide alors qu'il s'est connecté — c'est-à-dire quelqu'un qui attend un droit qu'on a oublié de lui donner. Personne ne voit ce cas aujourd'hui, ni côté Authelia ni côté application
+
+## La vérification qui devait annuler la fiche — 2026-09-06
+
+Elle a rendu une réponse claire et un effet qu'on n'attendait pas : **elle ne retire rien
+du travail, elle retire une raison d'attendre.** C'est le meilleur usage d'une mesure à
+dix minutes — non pas trouver une économie, mais empêcher qu'on remette la décision à une
+version qui n'arrive pas.
+
+Le détail compte, parce qu'une lecture rapide de la feuille de route dirait le contraire.
+L'entrée existe, elle est classée ACTIVE, et elle annonce 4.40.0 : de quoi conclure « c'est
+pour bientôt, attendons ». Mais 4.40.0 ne concerne que l'*Initial Implementation*, la
+*Segregation*, la gestion des SESSIONS et celle des clients OpenID Connect. **La gestion
+des UTILISATEURS est la dernière étape de la liste, elle n'est pas commencée, et elle est
+la seule à ne porter aucune version.** Ce n'est donc pas « la prochaine version » : c'est
+une étape sans date, derrière quatre autres.
+
+## Le constat collatéral est parti dans `INFRA-9` — 2026-09-06
+
+En cherchant la version qui administrerait les comptes, on a appris **où en est celle qui
+tourne** : 4.38.19 quand la dernière publiée est 4.39.22, et la politique de versionnement
+d'Authelia ne donne les correctifs de bogue qu'à la dernière mineure. Monter est un geste
+d'exploitation, avec sa lecture des notes de version et son retour arrière — ce n'est pas
+le travail d'AUTH-7. Le laisser dans cette fiche l'aurait endormi avec elle, qui est
+`interrompu` : il a donc sa fiche, `INFRA-9`, avec le détail.
+
+**Ce qui, en revanche, est bien l'affaire d'AUTH-7, c'est l'ORDRE.** Le chemin 2 — ajouter
+un annuaire — se poserait sur la version qui tourne aujourd'hui. Choisir un annuaire pour
+une mineure qu'on s'apprête à quitter serait le pire enchaînement possible : on éprouverait
+l'intégration deux fois, la seconde en ayant oublié pourquoi la première avait conclu ce
+qu'elle a conclu. `INFRA-9` passe donc avant la décision ci-dessous, ou avec elle.
 
 ## Contexte
 
