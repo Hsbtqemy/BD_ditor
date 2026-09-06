@@ -261,6 +261,29 @@ export BD_COMMIT="$apres"
 # `up -d --build` et non `restart` : `restart` relance le conteneur EXISTANT avec
 # l'environnement qu'il avait à sa création, donc sans relire .env ni le nouveau code.
 faire "docker compose up -d --build app"
+
+# Authelia lit sa configuration AU DÉMARRAGE DU PROCESSUS. Un `git pull` qui modifie
+# `deploy/authelia/` remplace donc bien le fichier sur le disque, et ne change RIEN à ce
+# que l'instance applique — jusqu'au prochain redémarrage, fait un jour pour une autre
+# raison. Ce script déployait sans appliquer.
+#
+# Mesuré le 2026-09-06 : l'arbitrage du second facteur a été poussé à 11:16, tiré à 11:20,
+# et n'a pris effet qu'à 18:58. Sept heures pendant lesquelles le dépôt et l'instance
+# disaient deux choses différentes sur la POLITIQUE D'ACCÈS. Le sens était bénin cette
+# fois — l'instance restait plus stricte que voulu ; le même silence tairait un
+# durcissement, et personne ne le verrait.
+#
+# `restart` et non `up -d` : le fichier est monté en volume et relu au démarrage du
+# processus, donc relancer suffit. Il ne suffirait PAS si le service lui-même avait
+# changé dans `docker-compose.yml` — image, environnement —, cas que la comparaison
+# ci-dessous ne couvre pas et qui reste un geste à la main.
+if git -C "$racine" diff --quiet "$avant" "$apres" -- deploy/authelia/ 2>/dev/null; then
+  echo "   ·· authelia    configuration inchangée, pas de redémarrage"
+else
+  echo "   !! authelia    configuration MODIFIÉE par ce déploiement — redémarrage"
+  faire "docker compose restart authelia"
+fi
+
 faire "docker compose ps"
 
 # ── 5. Contrôler depuis DEHORS ───────────────────────────────────────────────

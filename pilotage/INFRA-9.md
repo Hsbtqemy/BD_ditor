@@ -28,13 +28,14 @@ publiée est 4.39.22**, du 2026-09-03. Le compose épingle `authelia/authelia:4.
 ### Ce qu'il faut savoir avant de monter
 - [x] **Les notes de version de 4.39 sont lues, et AUCUNE rupture ne touche cette configuration** — 2026-09-06. Quatre sources : le billet 4.39, la publication GitHub v4.39.0, le guide de migration et l'entrypoint de l'image. **Le guide de migration n'a aucune entrée pour 4.39** — il s'arrête à 4.38 —, donc aucune clé renommée ni retirée. Le seul changement de comportement NOMMÉ porte sur les revendications des jetons ID d'OpenID Connect, que ce déploiement n'utilise pas : il est en forward-auth. Les dépréciations sont des AVERTISSEMENTS, dont la suppression vise v5.0.0. Rien sur `access_control`, le backend `file`, le filtre `template`, `default_2fa_method`, `disable_startup_check`, `jwt_lifespan` ni le notifier SMTP
 - [x] **Les avertissements de dépréciation sont lus : il n'y en a AUCUN** — 2026-09-06, journal entier de sept lignes après la montée. C'était l'occasion gratuite d'apprendre ce que v5.0.0 retirera ; la réponse est que cette configuration n'emploie rien de déprécié. Un « aucun » se consigne comme un autre résultat, sans quoi on rejouera la vérification
-- [ ] Le sort des appareils TOTP déjà enrôlés lors d'une montée de mineure est établi, par la documentation ou par un essai. **C'est la même question qu'`AUTH-7` se pose** pour la migration `file` → `ldap` : une seule réponse sert aux deux, et la chercher deux fois serait du gaspillage
+- [x] **Les appareils TOTP déjà enrôlés SURVIVENT à une montée de mineure** — éprouvé le 2026-09-06 par le geste réel, et le contexte rend la preuve forte : le stockage venait de migrer de TREIZE versions de schéma, et le code de `chercheur` a été accepté sans réenrôlement. **C'est la même propriété qu'`AUTH-7` interroge** pour la migration `file` → `ldap` : les appareils vivent dans le stockage propre d'Authelia, indexés par nom d'utilisateur, indépendamment du reste. Une seule mesure, deux cases
 - [x] **Le sort de `db.sqlite3` est établi, et la réponse est NON RÉVERSIBLE** — 2026-09-06 : « Storage schema migration from 15 to 28 is being attempted », puis « is complete ». Treize versions de schéma en une seconde. Authelia refuse de tourner contre un schéma plus récent que lui, donc **redescendre l'étiquette ne suffit plus** : le seul chemin retour est la restauration de la sauvegarde. Aucune des quatre sources lues le matin ne le disait — cela ne se mesurait que sur l'instance, et c'est pourquoi la sauvegarde n'était pas une précaution de forme
 
 ### Le geste
 - [x] **La sauvegarde a précédé la montée** — `~/authelia-avant-4.39-20260906.tgz`, 20 Ko, posée avant tout `pull`. C'est le seul état que `git checkout` ne restaure pas, n'étant pas versionné : les secrets TOTP de tout le monde vivent là. Et depuis la migration de schéma ci-dessus, elle n'est plus une précaution mais **le seul retour arrière qui existe** — à conserver tant qu'on n'a pas éprouvé la 4.39 en usage réel
 - [x] **L'étiquette est `authelia/authelia:4.39.22`, version EXACTE**, et la raison est écrite dans le compose lui-même — 2026-09-06, `11c82a3`. La flottante prend bien les correctifs de sa branche, mais elle a laissé l'instance vieillir en silence : `docker compose pull` réussissait et tirait fidèlement la dernière image d'une branche abandonnée. Le coût est assumé : plus rien n'arrive tout seul, pas même un correctif de sécurité, et monter devient un GESTE — le bon régime pour le seul point d'entrée de l'instance, où l'écart doit se voir plutôt que se creuser
-- [ ] Après la montée, quatre choses répondent : le portail s'ouvre, un compte se connecte avec son TOTP **déjà enrôlé**, `bd-admins` est toujours élevé en `two_factor`, et un compte sans accès voit le bandeau de portée vide avec ses trois cas distingués (AUTH-1)
+- [x] **Après la montée, la politique d'accès se comporte comme écrit** — 2026-09-06, éprouvé sur les DEUX versants, ce qui est le seul moyen de le savoir. `chercheur` (groupe `bd-admins`) se voit demander son second facteur : « https://bd.edito-revue.fr/ requires 2FA », règle 1. `stagiaire` entre au mot de passe SEUL et arrive directement dans l'application : règle 3, `one_factor`. Éprouver un seul des deux n'aurait rien prouvé — un refus universel et une politique juste se ressemblent d'un côté, une ouverture universelle et une politique juste se ressemblent de l'autre
+- [ ] Le bandeau de portée vide est revu après la montée, avec ses trois cas distingués (AUTH-1). Le compte `stagiaire` le montre — il n'a d'accès sur aucune collection —, mais il n'a pas été regardé le 2026-09-06 : la connexion a été menée jusqu'à l'entrée dans l'application, pas au-delà
 - [ ] `verifier_deploiement.py` passe, et notamment son contrôle BLOQUANT de cohérence des groupes admin. S'il tombe, c'est que 4.39 a changé la forme d'`access_control` — et l'apprendre par une garde plutôt que par un administrateur qui s'authentifie plus faiblement en silence est exactement ce pour quoi elle a été écrite
 
 ### Ce que la montée ne doit pas emporter
@@ -61,6 +62,25 @@ journée, et elle est indirecte : le mécanisme qui a causé trois échecs cons�
 6 vit dans l'entrypoint de l'image, l'image vient de changer de base — Alpine vers
 *chisel* —, et le correctif `PUID`/`PGID` tient. Le dossier appartient à `ubuntu` après le
 démarrage, pas entre deux.
+
+## Un bruit identifié, pour ne pas le rechercher trois fois — 2026-09-06
+
+Le journal de 4.39 porte des lignes qui alarment sans être un défaut :
+
+    level=error msg="Request timeout occurred while handling request from client."
+    error="read tcp 172.18.0.4:9091->172.18.0.5:53956: i/o timeout"
+    method=GET path=/ status_code=408
+
+`172.18.0.5` est **`bd-caddy`**, vérifié par `docker network inspect` : ce n'est pas un
+client externe mais le proxy de la pile. Le motif — connexions ouvertes vers le portail,
+jamais complétées, refermées après délai — est celui de connexions PERSISTANTES laissées
+inactives que Caddy garde en réserve et qu'Authelia récolte.
+
+**Ce qui est établi** : la source, le chemin, et l'absence d'effet — conteneur `healthy`,
+connexions qui passent, occurrences pendant la navigation. **Ce qui ne l'est pas** :
+pourquoi cela apparaît maintenant. Le plus probable est que 4.39 journalise en `error` ce
+que 4.38 taisait. C'est écrit ici parce qu'un bruit non identifié se recherche à chaque
+lecture de journal, et qu'il ressemble à une panne le jour où l'on en cherche une.
 
 ## Ce que la lecture des notes a écarté, et ce qu'elle a trouvé — 2026-09-06
 
