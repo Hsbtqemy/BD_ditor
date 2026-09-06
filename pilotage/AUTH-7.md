@@ -5,10 +5,16 @@ statut: interrompu
 
 # AUTH-7 — administrer les comptes sans console
 
-**Arrêté sur** — 2026-09-06, `e193ae4` : **la vérification la moins chère est faite, elle
-n'annule rien — elle ferme l'attente. Et la suivante a retourné le problème.** La demande
-voulait les deux gestes actifs, supprimer et désactiver, la désactivation étant vue comme
-un pis-aller. C'est l'inverse : dans cette architecture, désactiver est complet et
+**Arrêté sur** — 2026-09-06, `e193ae4` : **le chiffrage est fait et il recommande LLDAP** —
+le volume ne suffit pas à basculer, le critère de délégation ne mord pas (cercle restreint),
+et se tromper vers LLDAP ne coûte qu'un import documenté quand se tromper vers Authentik
+coûte le remplacement du seul point d'entrée. **Mais des gens attendent déjà** : rien ne se
+migre avant de les débloquer à la main. Le seul déclencheur qui retournerait la réponse est
+la délégation large, pas le volume.
+
+Plus tôt le même jour : **la vérification la moins chère n'annule rien, elle ferme
+l'attente. Et la suivante a retourné le problème.** La demande voulait les deux gestes
+actifs, supprimer et désactiver, la désactivation étant vue comme un pis-aller. C'est l'inverse : dans cette architecture, désactiver est complet et
 réversible depuis un panneau, tandis que **supprimer laisse quatre orphelins** dont un ne
 se nettoie qu'en console — et dont le quatrième ment dans la vue qui devait rassurer. La
 suppression n'est donc offrable qu'à une condition, et cette condition a changé de nature
@@ -155,7 +161,9 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [ ] **`premiere_vue` ne survit pas à un login réutilisé** — l'UPSERT de `main.py` ne la met pas dans son `DO UPDATE`, donc la vue des comptes daterait un arrivant de l'arrivée de son prédécesseur. Attendu : soit la suppression d'un compte efface sa ligne `utilisateur`, soit la vue signale la reprise d'un login connu. C'est le seul des quatre orphelins qui vive dans une table de BDéditeur, donc le seul réparable sans console — et il ment dans l'instrument même dont la règle ci-dessous dépend
 - [x] **La règle est validée, et son critère est MESURÉ** — 2026-09-06. Ce qui décide, c'est ce que le compte a LAISSÉ, et « laisser » se réduit à deux requêtes : `SELECT COUNT(*) FROM evenement WHERE agent = ? AND agent_type = 'humain'` et `SELECT COUNT(*) FROM collection_acces WHERE genre = 'utilisateur' AND principal = ?`. Zéro aux deux → la suppression n'orpheline rien. Autre chose → on archive. **Aucune session humaine n'ouvre d'activité** — `ouvrir_activite` n'est appelé que par `passe_ml` et le réindex NLP, deux agents machine —, donc naviguer, chercher et lire ne laissent RIEN : seules les 18 routes d'écriture journalisent. La règle est ainsi plus étroite qu'annoncée, et c'est ce qui la rend praticable
 - [x] **La suppression reste un geste courant du panneau, à côté de créer et archiver** — tranché le 2026-09-06 par l'équipe, la vue servant de garde-fou consulté avant. **La contrepartie est acceptée en connaissance de cause** : la vigilance redevient la garantie, alors que la fiche cherchait à s'en passer. Elle se paie donc sur la VUE, qui n'est plus un tableau à interpréter mais l'unique chose qui empêche une suppression fautive — voir les deux cases de la zone suivante, qui étaient des conforts et deviennent des exigences
-- [ ] **Le rythme d'arrivée RÉEL est chiffré** — c'est le fait qui départage LLDAP et Authentik, et personne hors de l'équipe ne l'a. Trente personnes par cours et deux cours par an, ou une poignée par an ? Sous le second régime LLDAP gagne largement ; sous le premier, le lien d'invitation d'Authentik paie le remplacement à lui seul. Tant que ce chiffre manque, le choix se fait au jugé
+- [x] **Le rythme d'arrivée est chiffré** — 2026-09-06, par l'équipe : *« un outil censé durer minimum 5 ans, le temps du financement du projet. Avec des personnes nouvelles qui s'y agrègent chaque année, voire chaque semestre, allant de 0, voire 1 ou 2, jusqu'à potentiellement 30, à chaque fois. »* Au pire — deux intakes par an de 30, cinq ans — 300 comptes, soit ~20 h de saisie ÉTALÉES, 4 h par an. La douleur n'est pas le total mais le PIC : trente personnes dans la semaine où l'on a le moins de temps
+- [x] **Qui crée les comptes est tranché** — 2026-09-06 : *« vous et un ou deux collègues »*. **Le critère qui pouvait décider seul ne mord donc pas** : il n'y a personne à qui déléguer un pouvoir qu'il faudrait borner, et l'invitation bornée d'Authentik n'a pas d'usage ici. C'est ce qui fait pencher, plus que le volume
+- [x] **L'échéance est connue, et elle commande l'ordre** — 2026-09-06 : *« des gens attendent déjà »*. On ne migre donc RIEN maintenant : les comptes se créent à la main avec la procédure du runbook, et le chantier se planifie ensuite, à froid, sur une instance qui tourne. INFRA-9 passe avant, comme prévu
 - [ ] Le chemin est choisi entre les trois ci-dessus, et la raison est écrite — y compris si c'est « on garde le fichier », qui est un choix légitime tant que le rythme reste faible
 
 ### Ce qu'il faut savoir AVANT de choisir (mesures, pas opinions)
@@ -189,6 +197,48 @@ pour bientôt, attendons ». Mais 4.40.0 ne concerne que l'*Initial Implementati
 des UTILISATEURS est la dernière étape de la liste, elle n'est pas commencée, et elle est
 la seule à ne porter aucune version.** Ce n'est donc pas « la prochaine version » : c'est
 une étape sans date, derrière quatre autres.
+
+## Le chiffrage, et ce qu'il conclut — 2026-09-06
+
+**Recommandation : LLDAP.** Ce n'est pas serré une fois l'asymétrie comptée — mais la case
+du choix reste ouverte, la décision appartenant à l'équipe.
+
+**Le volume ne suffit pas à basculer.** Vingt heures de saisie étalées sur cinq ans, contre
+plusieurs jours de remplacement PLUS cinq ans d'entretien d'une pile plus lourde. Sur le
+temps seul, Authentik ne se rentabilise qu'après quatre à huit cohortes — deux à quatre
+ans. L'argument horaire est faible, et il faut le dire au lieu de s'appuyer dessus.
+
+**Le critère qui pouvait tout emporter ne mord pas.** « Vous et un ou deux collègues » est
+un cercle restreint et de confiance. Ce qu'apportait l'invitation — une création BORNÉE à
+un groupe, avec usages et expiration — est une propriété de sécurité qui ne sert qu'en
+délégation large. Ici, personne à border.
+
+**Et l'incertitude sur la survie du projet tranche le reste.** *« Tout dépend aussi si ce
+projet vit en dehors du besoin actuel et qu'il perdure. »* Sous cette incertitude, l'option
+la moins chère à ENTRETENIR gagne : le scénario où le financement s'arrête est exactement
+celui où l'on ne veut pas avoir payé d'infrastructure. LLDAP est minuscule ; Authentik
+publie tous les mois avec des migrations de schéma, et `INFRA-9` vient de montrer ce que
+coûte un tapis roulant de versions même sur Authelia.
+
+**L'asymétrie ferme la question, et c'est le fait le plus utile de la journée.** Choisir
+LLDAP maintenant n'est pas une impasse : Authentik lit un annuaire LDAP comme SOURCE, et sa
+documentation précise que la source peut ensuite être retirée sans supprimer les comptes —
+« thereby acting as an import functionality ». Se tromper vers LLDAP coûte un import
+documenté ; se tromper vers Authentik coûte une couche d'authentification remplacée pour
+rien, sur le seul point d'entrée de l'instance.
+
+**Le déclencheur à surveiller, et c'est le SEUL** : si le cercle s'élargit à « chaque
+enseignant inscrit sa classe », l'invitation bornée redevient une propriété sans équivalent
+LLDAP, et la réponse change. Ce n'est pas le volume qu'il faut surveiller — 30 personnes
+créées par vous restent 30 formulaires ; 30 personnes créées par cinq enseignants sont un
+pouvoir distribué qu'aucun panneau LLDAP ne sait borner.
+
+**Ce que « des gens attendent déjà » change à l'ordre.** Rien ne se migre avant de les
+débloquer. La procédure manuelle du runbook y suffit, et elle a gagné le même jour deux
+choses qui manquaient : le contrôle YAML REPLIÉ dans la recette — il vivait cinquante
+lignes plus haut, donc nulle part pour qui agit dans l'urgence — et le chemin sans
+transmission de mot de passe, qui divise le geste par personne et rend une arrivée de
+trente supportable sans annuaire.
 
 ## Changer de gestionnaire ne réglerait presque rien — sauf l'inscription — 2026-09-06
 
