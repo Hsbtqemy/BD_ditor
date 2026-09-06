@@ -38,7 +38,9 @@ import accord_inter  # noqa: E402  (accord inter-annotateurs — ANN-5, lu au jo
 import database  # noqa: E402  (collection_row / collection_album_ids — palier collection)
 import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from config import DB_PATH, BASE_DIR  # noqa: E402
-from _commun import version_outil, environnement, portee_albums, forcer_utf8  # noqa: E402  (provenance / env / portée / stdout)
+from _commun import (version_outil, environnement, portee_albums,  # noqa: E402  (provenance /
+                     forcer_utf8, CIBLES_CORPUS)                   # env / portée / stdout
+                                                                   # + liste blanche AUTH-1
 
 
 # --------------------------------------------------------------------------- #
@@ -300,7 +302,8 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
                         "reindexe_le": meta.get("nlp_reindexed_at")},
                 # A3 : indicateurs dérivés du journal de provenance/audit (part machine vs
                 # humaine, dérive = pré-remplissage retouché, comptes de runs & d'actes).
-                "audit": journal.indicateurs_provenance(conn, album_ids),
+                "audit": journal.indicateurs_provenance(
+                    conn, album_ids, cibles=CIBLES_CORPUS),   # AUTH-1 : cf. metadonnees
                 "environnement": environnement(),  # python + versions installées (à l'export)
             },
             # Paradonnée QUALITÉ (fiabilité du corpus, tout dérivé) : part relue, accord du

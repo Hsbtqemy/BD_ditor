@@ -152,13 +152,26 @@ def version_moteur(distribution: Optional[str]) -> Optional[str]:
 # --------------------------------------------------------------------------- #
 # Indicateurs dérivés — la couverture / la dérive lues DEPUIS le journal
 # --------------------------------------------------------------------------- #
-def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None) -> dict:
+def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None, *,
+                           cibles=None) -> dict:
     """Agrégats DÉRIVÉS de la surface dénormalisée (`activite_id`/`touche`) et du journal :
     quantifient la part machine vs humaine et la DÉRIVE (pré-remplissage machine RETOUCHÉ).
 
     Le bloc `regions` est SCOPÉ par `album_ids` (export `--collection`) ; les compteurs
     `activites`/`evenements` restent au grain du CORPUS (un run/acte n'appartient pas
     proprement à un album, et l'acte survit à la suppression de sa cible → non re-scopable).
+
+    `cibles` restreint les compteurs d'événements à ces `cible_table`. Un APPELANT le passe,
+    et la liste ne vit pas ici : c'est une décision d'EXPORT (`tools/_commun.py`), et
+    `journal.py` important `tools/` inverserait le sens des dépendances — les outils lisent
+    l'application, jamais l'inverse.
+
+    Sans ce paramètre, un artefact se contredit LUI-MÊME : mesuré le 2026-09-06, le bloc
+    `provenance` annonçait 11 événements dans un dépôt dont la table `evenement` en publiait
+    7. Un lecteur qui compte les lignes en conclut que l'export a perdu des données — un
+    résumé plus large que ce qu'il résume ne se lit pas comme un filtre, mais comme un
+    défaut. C'est le même écart que `provenance_export.construire()` refermait de son côté,
+    et le refermer là ne suffisait pas.
     """
     if album_ids:
         ph = ",".join("?" * len(album_ids))
@@ -185,11 +198,23 @@ def indicateurs_provenance(conn: sqlite3.Connection, album_ids=None) -> dict:
     }
     act = {r["type"]: r["n"] for r in conn.execute(
         "SELECT type, COUNT(*) AS n FROM activite GROUP BY type ORDER BY type")}
+
+    # Le filtre porte aussi sur `premier`/`dernier` : une borne posée par un acte que
+    # l'artefact ne publie pas daterait un corpus d'après son administration.
+    if cibles is None:
+        ou, p_ev = "", []
+    else:
+        cibles = tuple(sorted(cibles))
+        ou = f" WHERE cible_table IN ({','.join('?' * len(cibles))})" if cibles else " WHERE 0"
+        p_ev = list(cibles)
+
     ev_type = {r["type"]: r["n"] for r in conn.execute(
-        "SELECT type, COUNT(*) AS n FROM evenement GROUP BY type ORDER BY type")}
+        f"SELECT type, COUNT(*) AS n FROM evenement{ou} GROUP BY type ORDER BY type", p_ev)}
     ev_agent = {r["agent_type"]: r["n"] for r in conn.execute(
-        "SELECT agent_type, COUNT(*) AS n FROM evenement GROUP BY agent_type ORDER BY agent_type")}
-    bornes = conn.execute("SELECT MIN(date) AS a, MAX(date) AS b FROM evenement").fetchone()
+        f"SELECT agent_type, COUNT(*) AS n FROM evenement{ou} "
+        f"GROUP BY agent_type ORDER BY agent_type", p_ev)}
+    bornes = conn.execute(
+        f"SELECT MIN(date) AS a, MAX(date) AS b FROM evenement{ou}", p_ev).fetchone()
     return {
         "portee_regions": "collection" if album_ids else "corpus",
         "regions": regions,

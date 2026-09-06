@@ -421,3 +421,68 @@ def test_le_resume_compte_ce_qu_il_publie(db_path):
     _semer_une_charge_par_cible(conn)
     doc = pe.construire(conn)["provenance_export"]
     assert doc["resume"]["evenements"] == len(_commun.CIBLES_CORPUS)
+
+
+def _bloc_provenance(obj):
+    """Le bloc d'indicateurs, où qu'il soit rangé dans l'artefact (`provenance`/`audit`)."""
+    if isinstance(obj, dict):
+        if isinstance(obj.get("evenements"), dict) and "par_type" in obj["evenements"]:
+            return obj
+        for v in obj.values():
+            trouve = _bloc_provenance(v)
+            if trouve:
+                return trouve
+    elif isinstance(obj, list):
+        for v in obj:
+            trouve = _bloc_provenance(v)
+            if trouve:
+                return trouve
+    return None
+
+
+def test_l_artefact_ne_se_contredit_pas_lui_meme(db_path):
+    """Le bloc `provenance` compte ce que le MÊME artefact publie, pas le journal entier.
+
+    Mesuré le 2026-09-06 : le résumé annonçait 11 événements dans un dépôt dont la table
+    `evenement` en publiait 7. Un lecteur qui compte les lignes n'y voit pas un filtre mais
+    une PERTE — et il a raison de s'en inquiéter, puisque rien dans l'artefact ne dit
+    laquelle des deux valeurs croire. Le premier correctif avait refermé cet écart dans
+    `provenance_export.construire()` et manqué celui-ci, qui vit dans `journal.py`.
+    """
+    import metadonnees_collection as mc
+
+    conn = _lire(db_path)
+    _semer_une_charge_par_cible(conn)
+
+    _, lignes = mc.tables(conn)["evenement"]
+    bloc = _bloc_provenance(mc.collecter(conn))
+    assert bloc is not None, "bloc de provenance introuvable : le test ne mesure plus rien"
+    assert bloc["evenements"]["total"] == len(lignes), (
+        f"l'artefact annonce {bloc['evenements']['total']} événements et en publie "
+        f"{len(lignes)}")
+    assert sum(bloc["evenements"]["par_type"].values()) == len(lignes)
+
+
+def test_les_bornes_de_dates_ne_datent_pas_du_journal_retenu(db_path):
+    """`premier`/`dernier` suivent le filtre : une borne posée par un acte que l'artefact
+    ne publie pas daterait le corpus d'après son ADMINISTRATION."""
+    import _commun
+    import journal as j
+
+    conn = _lire(db_path)
+    conn.execute("INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id, "
+                 "date) VALUES ('creation', 'alice', 'humain', 'sharedocs', NULL, "
+                 "'2020-01-01 00:00:00')")
+    conn.execute("INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id, "
+                 "date) VALUES ('creation', 'alice', 'humain', 'regions', 1, "
+                 "'2026-01-01 00:00:00')")
+    conn.commit()
+
+    ind = j.indicateurs_provenance(conn, cibles=_commun.CIBLES_CORPUS)
+    assert ind["evenements"]["premier"] == "2026-01-01 00:00:00", (
+        "un dépôt ShareDocs de 2020 antidate le corpus")
+    assert ind["evenements"]["total"] == 1
+
+    # Sans le paramètre, le comportement d'avant est intact : les appelants qui ne
+    # publient rien (aucun aujourd'hui) ne changent pas de réponse.
+    assert j.indicateurs_provenance(conn)["evenements"]["total"] == 2

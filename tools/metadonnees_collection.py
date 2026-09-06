@@ -49,7 +49,7 @@ import database  # noqa: E402  (réutilise numeros_editoriaux / citations_region
 import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from _commun import (version_outil, environnement, composants,  # noqa: E402  (provenance / env,
                      portee_albums, forcer_utf8, pseudonymes,   # partagés + liste blanche
-                     evenements_publiables)                     # AUTH-1)
+                     evenements_publiables, CIBLES_CORPUS)      # AUTH-1)
 
 
 def _grouper(conn, sql, cle=0):
@@ -350,7 +350,8 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
             "meta": c["meta"],                # modèle NLP + versions + dates de réindexation
             # A3 : indicateurs dérivés du journal de provenance (part machine/humaine, dérive,
             # comptes de runs & d'actes). Le détail est dans les tables `activite`/`evenement`.
-            "provenance": journal.indicateurs_provenance(conn, album_ids),
+            "provenance": journal.indicateurs_provenance(
+                conn, album_ids, cibles=CIBLES_CORPUS),   # AUTH-1 : compter ce qu'on publie
             # A4 : maturité du lexique situé (% défini), scopée par appartenance à la collection.
             "lexique": database.lexique_resume(conn, collection_id),
             "a_prevoir": ["export PROV-O au fil de l'eau", "licence & droits par jeu"],
