@@ -12,6 +12,17 @@ server:
 log:
   level: 'info'
 
+# La méthode proposée D'ABORD au second facteur. Sans ce réglage, Authelia ouvre sur la
+# clé de sécurité (WebAuthn) — constaté le 2026-09-06 sur le premier compte d'essai : la
+# personne venait d'enrôler un TOTP, et l'écran lui répondait « Enregistrez votre premier
+# appareil ». Le message est exact pour WebAuthn et parfaitement trompeur pour qui vient
+# de terminer un enrôlement : il se lit comme « rien n'est enregistré », et un arrivant
+# seul en conclut que son inscription a échoué.
+#
+# WebAuthn reste disponible — c'est un facteur plus fort, on ne le retire pas ; il cesse
+# seulement d'être celui qu'on propose à quelqu'un qui n'en a pas.
+default_2fa_method: 'totp'
+
 # --- TOTP (application d'authentification 2FA : Google Authenticator, Aegis…) ---
 totp:
   issuer: '{{ env "BD_DOMAINE" }}'
