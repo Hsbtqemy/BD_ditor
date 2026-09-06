@@ -208,13 +208,18 @@ if [ -n "$cid" ]; then
 fi
 
 # On reconnaît un commit à sa FORME, au lieu d'énumérer les valeurs qui n'en sont pas.
-# La première version listait `""`, `inconnu` et `<no value>` — cette dernière étant ce
-# qu'un gabarit Go rend sur une clé absente, donc sur toute image construite AVANT ce
-# mécanisme. Je n'ai PAS pu le mesurer : le démon Docker n'est pas joignable sur la
-# machine de développement. Une liste noire aurait donc reposé sur une supposition, et
-# une valeur inattendue serait passée pour un commit — « en service <no val ».
-# Une forme attendue ne dépend d'aucune supposition : tout ce qui n'est pas un SHA-1
-# complet est incomparable, et l'incomparable fait déployer plutôt que sauter.
+#
+# La première version listait `""`, `inconnu` et `<no value>`, cette dernière d'après ce
+# qu'un gabarit Go rend sur une clé absente. MESURÉ le 2026-09-06 sur le conteneur en
+# service, dont l'image précède ce mécanisme : la sortie est une ligne VIDE. `index` sur
+# une `map[string]string` rend la valeur zéro du type, soit `""` ; `<no value>` est ce
+# qu'on obtient sur une map NULLE, ce qui n'arrive pas ici — Compose pose toujours ses
+# propres étiquettes, donc la map existe.
+#
+# La liste noire aurait donc fonctionné par accident, en couvrant le bon cas pour la
+# mauvaise raison. C'est exactement pourquoi elle a été remplacée par une forme attendue :
+# tout ce qui n'est pas un SHA-1 complet est incomparable, et l'incomparable fait déployer
+# plutôt que sauter — quelle que soit la valeur rendue.
 if ! printf '%s' "$deploye" | grep -qE '^[0-9a-f]{40}$'; then
   # Aucune étiquette : image d'avant ce mécanisme, ou service à l'arrêt. On ne peut RIEN
   # conclure, donc on ne conclut pas — et surtout on ne saute pas le déploiement.
