@@ -521,6 +521,32 @@ def test_a11y_portee_vide(page, seeded, theme, surface):
     assert not viol, f"Portée vide [{surface} · {theme}] :\n{_fmt(viol)}"
 
 
+def _deplier_bandeau(page):
+    """Ouvre le bandeau de portée vide s'il est replié, et rend son `<details>`.
+
+    Depuis le repli, tout ce qui n'est pas le titre vit derrière un `<details>` fermé,
+    donc INVISIBLE : `wait_for()` et `inner_text()` de Playwright attendent la visibilité,
+    pas la présence. Les tests qui parlent du CONTENU (référent, groupes) l'ouvrent donc
+    d'abord — ce qu'une personne fait aussi. Celui qui parle du PLI lui-même ne l'appelle
+    pas : c'est son objet.
+    """
+    pli = page.locator(".portee-vide details")
+    pli.wait_for(timeout=3000)
+    if not pli.evaluate("e => e.open"):
+        page.click(".portee-vide summary")
+    # On attend l'ÉTAT, pas le geste. Sans cette ligne le helper cliquait et repartait
+    # sans jamais vérifier que le clic avait porté : un clic avalé — le bandeau naît
+    # après la réponse d'`/api/moi`, donc pendant un rendu — laissait le test suivant
+    # attendre trois secondes une visibilité qui ne viendrait pas, puis échouer en
+    # accusant le RÉFÉRENT d'être absent alors que le pli était resté fermé. Cinq
+    # tests passent par ici : un helper sans postcondition déplace l'erreur au lieu
+    # de la dire, et c'est le plus cher des silences.
+    page.wait_for_function(
+        "() => { const d = document.querySelector('.portee-vide details');"
+        "        return d && d.open; }", timeout=3000)
+    return pli
+
+
 def _geo(page, sel):
     """Rectangle rendu d'un élément, en pixels CSS entiers. `None` s'il n'existe pas."""
     return page.evaluate(
@@ -569,6 +595,26 @@ def test_portee_vide_ne_decale_pas_la_grille_de_la_visionneuse(page, seeded, lar
     # 2. Et il se dimensionne sur son CONTENU : le canevas garde le gros de la hauteur.
     #    C'est ce que la colonne unique perd en premier, et le seul contrôle qui morde
     #    à 820 px, où la largeur est déjà pleine des deux côtés du correctif.
+    #    Cette assertion a d'abord été seule, et elle mordait — le bandeau faisait alors
+    #    212 px. Le repli l'a ramené à 44, et elle a cessé de voir : sans la règle des
+    #    rangées, `align-content: stretch` répartit le reste également entre deux rangées
+    #    `auto`. Mesuré sous mutation le 2026-09-06 : à 1440 px le bandeau monte à 339 et
+    #    le canevas à 429, si bien que « le canevas est plus haut » reste VRAI et que la
+    #    garde approuve le défaut entier. À 1024 et 820 px elle l'attrapait encore (382
+    #    contre 386) — l'angle mort n'était donc pas total, il était pile sur la largeur
+    #    de bureau. Une garde qui ne voit plus qu'aux tailles où l'on ne travaille pas
+    #    est le mode d'échec d'ARCH-2, et il aura suffi d'ALLÉGER l'écran pour l'ouvrir.
+    #
+    #    On mesure donc l'ÉTIREMENT lui-même. `<details>` est en `display: block` : sa
+    #    hauteur suit son contenu et ne s'étire jamais. L'écart entre l'enveloppe et lui
+    #    vaut exactement le rembourrage (.9231rem × 2 = 24 px) tant que la grille ne tire
+    #    pas dessus, et vaut 321 à 368 px dès qu'elle le fait — un ordre de grandeur au-
+    #    dessus du seuil, aux TROIS largeurs. Vrai que le bandeau soit replié ou ouvert,
+    #    ce que l'ancienne formulation ne pouvait pas être.
+    pli = _geo(page, ".portee-vide > details")
+    assert bandeau["h"] - pli["h"] <= 30, (
+        f"le bandeau est ÉTIRÉ par la grille au lieu de suivre son contenu — pli={pli} "
+        + etat)
     assert canevas["h"] > bandeau["h"], \
         "le bandeau prend autant de hauteur que le canevas — " + etat
 
@@ -601,9 +647,11 @@ def test_a11y_proxy_sans_identite(page, seeded):
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")   # sans en-têtes
     page.wait_for_selector(".portee-vide", timeout=3000)
     assert page.locator(".user-chip").count() == 0
-    # `>` : le bandeau porte deux `strong` depuis AUTH-4 (le titre, et le nom du
-    # référent d'instance dans son paragraphe). Le titre est le seul enfant DIRECT.
-    assert "identité" in page.locator(".portee-vide > strong").inner_text()
+    # Le titre est dans le `<summary>` depuis le repli. Le sélecteur reste précis pour
+    # la même raison : le bandeau porte un second `strong` depuis AUTH-4, le nom du
+    # référent au milieu d'une phrase. Ce cas-ci est le SEUL ouvert d'office, donc son
+    # titre se lit sans rien déplier.
+    assert "ne vous reconnaît pas" in page.locator(".portee-vide summary > strong").inner_text()
     viol = _audit(page)
     assert not viol, f"Proxy sans identité :\n{_fmt(viol)}"
 
@@ -804,14 +852,18 @@ def test_a11y_portee_vide_nomme_un_destinataire(page, seeded, theme):
     _theme(page, theme)
     page.set_extra_http_headers({"Remote-User": "sans-droits"})
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    _deplier_bandeau(page)          # « sans-droits » n'est pas une panne → replié
     ligne = page.locator(".portee-vide-referent")
     ligne.wait_for(timeout=3000)
     assert "Ana Ruiz" in ligne.inner_text()
     # Le contact est CLIQUABLE : une adresse qu'il faut recopier à la main n'en est pas
     # tout à fait une.
     assert ligne.locator('a[href="mailto:ana@labo.fr"]').count() == 1
-    # Et la réserve est dite, pas laissée à découvrir.
-    assert "vérifier" in ligne.inner_text()
+    # La réserve est dite, pas laissée à découvrir — raccourcie le 2026-09-06 d'une
+    # phrase à une parenthèse, parce qu'elle s'adressait à un lecteur qui n'en peut rien.
+    # Elle n'a pas DISPARU : le référent vient de la configuration, l'application ne sait
+    # pas s'il est encore là, et taire cette limite serait pire que la dire brièvement.
+    assert "déclaré à la configuration" in ligne.inner_text()
     viol = _audit(page)
     assert not viol, f"Portée vide + référent [{theme}] :\n{_fmt(viol)}"
 
@@ -939,33 +991,98 @@ def test_le_verrou_dit_par_qui(page, seeded):
     assert "par vous" in page.locator("#lock-toggle").inner_text()
 
 
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_le_bandeau_ne_se_deplie_d_office_que_pour_une_vraie_panne(page, seeded):
+    """Le bandeau faisait 212 px sur les quatre surfaces, quel que soit l'état décrit.
+
+    Il se replie désormais derrière son titre — sauf dans le seul cas qu'on SACHE être
+    une panne : aucune identité ne parvient alors que `BD_AUTH_PROXY` est déclaré. Là il
+    n'existe pas de lecture bénigne, et celui qui doit réparer le `forward_auth` ne sait
+    pas qu'il faudrait déplier.
+
+    Les deux autres restent repliés, « aucun groupe » COMPRIS — et ce cas-là est le vrai
+    arbitrage. Il se donne pour un réglage de proxy, mais `autorisation.groupes()` fait
+    `headers.get("Remote-Groups") or ""` : un en-tête ABSENT et un en-tête VIDE arrivent
+    identiques, si bien que « cette personne n'appartient à aucun groupe » est une lecture
+    aussi valable. On ne déplie pas d'office pour une panne qu'on ne sait pas établir.
+
+    Le test vérifie enfin que replier n'est pas PERDRE : le référent d'AUTH-4 est toujours
+    dans le document, à un clic. C'est la seule chose qui distingue un repli d'une
+    suppression, et rien d'autre ne la garderait.
+    """
+    def etat(entetes):
+        page.set_extra_http_headers(entetes)
+        page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+        page.wait_for_selector(".portee-vide", timeout=3000)
+        return page.locator(".portee-vide details").evaluate("e => e.open")
+
+    # Identité + groupes reçus, aucun accès accordé — rien n'est cassé.
+    assert etat({"Remote-User": "carol", "Remote-Groups": "linguistes,stage"}) is False, \
+        "le cas bénin ne devrait pas se déplier d'office"
+
+    # Identité sans groupe — indécidable, donc traité comme bénin.
+    assert etat({"Remote-User": "dave"}) is False, \
+        "« aucun groupe » ne s'établit pas comme une panne : pas de dépliage d'office"
+
+    # Aucune identité derrière un proxy déclaré — la seule panne certaine.
+    assert etat({}) is True, "la panne de forward_auth doit se lire sans cliquer"
+
+    # Replier n'est pas perdre : le contenu est là, invisible, à un clic.
+    page.set_extra_http_headers({"Remote-User": "sans-droits"})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_selector(".portee-vide", timeout=3000)
+    ref = page.locator(".portee-vide-referent")
+    assert ref.count() == 1, "le référent doit être dans le document, même replié"
+    assert not ref.is_visible(), "…et masqué tant qu'on n'a pas déplié"
+    _deplier_bandeau(page)
+    assert ref.is_visible(), "un clic sur le résumé doit le rendre"
+    assert "Ana Ruiz" in ref.inner_text()
+
+    viol = _audit(page)
+    assert not viol, f"Bandeau replié :\n{_fmt(viol)}"
+
+
 @pytest.mark.parametrize("live_server", [True], indirect=True)
-def test_le_bandeau_distingue_trois_pannes_par_les_groupes(page, seeded):
-    """`/api/moi` renvoie `groupes` depuis INFRA-2 sans qu'aucune surface les lise. Ils
-    DISTINGUENT trois situations que le même écran vide confondait : aucune identité ;
-    une identité sans groupe (le proxy pose Remote-User sans Remote-Groups) ; une identité
-    AVEC ses groupes, dont aucun n'a d'accès. Les deux premières se réparent, la troisième
-    non — les confondre envoie chercher une panne qui n'existe pas."""
+def test_la_ligne_technique_distingue_trois_situations(page, seeded):
+    """La ligne technique du bandeau distingue trois situations que le même écran vide
+    confondait (AUTH-1) : aucun en-tête d'identité ; une identité sans groupe ; une
+    identité avec ses groupes, nommés. C'est là que servent les `groupes` que `/api/moi`
+    renvoie depuis INFRA-2 sans qu'aucune surface les lise.
+
+    Elle RAPPORTE, elle n'explique pas — réécrit le 2026-09-06. Elle disait auparavant
+    « le proxy pose Remote-User sans Remote-Groups », et ce test VERROUILLAIT la formule.
+    Or `autorisation.groupes()` fait `headers.get("Remote-Groups") or ""` : un en-tête
+    absent et un en-tête vide y arrivent identiques, si bien que « cette personne
+    n'appartient à aucun groupe » est une lecture aussi valable. La garde tenait donc en
+    place une affirmation que le code ne peut pas établir — le pire service qu'un test
+    puisse rendre.
+
+    Les trois situations restent distinctes, ce qu'AUTH-1 demandait ; c'est la CAUSE qui
+    n'est plus tranchée à la place de qui connaît son déploiement."""
     # Identité + groupes, mais aucun accès accordé → rien n'est cassé.
     page.set_extra_http_headers({"Remote-User": "carol", "Remote-Groups": "linguistes,stage"})
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
-    page.wait_for_selector(".portee-vide-groupes", timeout=3000)
-    txt = page.locator(".portee-vide-groupes").inner_text()
+    _deplier_bandeau(page)
+    txt = page.locator(".portee-vide-technique").inner_text()
     assert "linguistes" in txt and "stage" in txt
-    assert "rien de cassé" in txt
 
     # Identité SANS groupe → c'est un réglage du proxy, et le message le dit.
     page.set_extra_http_headers({"Remote-User": "dave"})
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
-    page.wait_for_selector(".portee-vide-groupes", timeout=3000)
-    txt = page.locator(".portee-vide-groupes").inner_text()
-    assert "Remote-Groups" in txt and "pas un droit manquant" in txt
+    _deplier_bandeau(page)
+    txt = page.locator(".portee-vide-technique").inner_text()
+    # Une OBSERVATION, pas une cause. L'ancienne formule — « c'est un réglage du proxy
+    # (Remote-Groups), pas un droit manquant » — était verrouillée ici, et le test tenait
+    # donc en place une affirmation que le code ne peut pas établir.
+    assert "Aucun groupe reçu" in txt
 
     # Aucune identité → les groupes ne disent rien, la ligne ne paraît pas.
     page.set_extra_http_headers({})
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_selector(".portee-vide", timeout=3000)
-    assert page.locator(".portee-vide-groupes").count() == 0
+    _deplier_bandeau(page)
+    assert "Aucun en-tête d'identité reçu" in page.locator(
+        ".portee-vide-technique").inner_text()
 
 
 @requires_kumiko

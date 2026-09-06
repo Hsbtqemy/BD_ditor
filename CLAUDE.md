@@ -271,13 +271,20 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
 - **404, jamais 403** : « existe mais pas pour vous » révèle la composition du corpus.
   Corollaire d'ergonomie : une portée vide rend l'app indistinguable d'un corpus vide, d'où
   le bloc `acces` de `GET /api/moi` et le bandeau `.portee-vide` injecté par `theme.js`.
-  Il distingue **trois** pannes et non deux (AUTH-1, 2026-08-31), par les GROUPES reçus :
-  aucune identité ne parvient (forward_auth muet) ; une identité mais aucun groupe (le
-  proxy pose `Remote-User` sans `Remote-Groups`) ; une identité AVEC ses groupes, dont
-  aucun n'a d'accès. Les deux premières se réparent, la troisième non — les confondre
-  envoie chercher une panne qui n'existe pas. La liste des groupes EST le diagnostic, et
-  c'est le seul endroit où elle sert : `GET /api/moi` les renvoyait depuis INFRA-2 sans
-  qu'aucune surface les lise.
+  Il distingue **trois** situations et non deux (AUTH-1, 2026-08-31) : aucun en-tête
+  d'identité ne parvient (forward_auth muet) ; une identité mais aucun groupe ; une
+  identité AVEC ses groupes, dont aucun n'a d'accès. La liste des groupes EST le
+  diagnostic, et c'est le seul endroit où elle sert : `GET /api/moi` les renvoyait depuis
+  INFRA-2 sans qu'aucune surface les lise. **Le bandeau RAPPORTE ces observations et
+  n'explique aucune cause** (réécrit le 2026-09-06). Il disait de la deuxième « le proxy
+  pose `Remote-User` sans `Remote-Groups` » ; `autorisation.groupes()` fait
+  `headers.get("Remote-Groups") or ""`, si bien qu'un en-tête ABSENT et un en-tête VIDE y
+  arrivent identiques — « cette personne n'appartient à aucun groupe » est une lecture
+  aussi valable, et un test verrouillait la formule fautive. Lever l'ambiguïté demanderait
+  de distinguer `None` de `""` ET de mesurer ce qu'Authelia émet pour un compte sans
+  `groups:` : **non fait**. **Et le bandeau s'adresse d'abord à qui est BLOQUÉ, pas à qui
+  répare** : trois libellés humains et UNE ligne technique, sous un `<details>` replié
+  (ouvert d'office pour le seul cas certain, l'absence d'identité).
 - **Un pouvoir inévitable, mais pas invisible** (AUTH-4, v25) : un administrateur lit et
   écrit toute collection **sans figurer** dans `collection_acces` — sa portée totale
   court-circuite la table. Ce n'est pas un défaut, c'est la vérité de tout auto-hébergement ;

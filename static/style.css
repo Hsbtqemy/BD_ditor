@@ -1646,16 +1646,38 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    d'accessibilité de CLAUDE.md). */
 .portee-vide {
   margin: .9231rem 0; padding: .9231rem 1.2308rem;
-  border: 1px solid var(--border); border-left: 4px solid var(--accent-blue);
+  /* Ambre et non bleu : « attention » plutôt que « information ». Pas de rouge — rien
+     n'est cassé dans le cas courant, et une alarme qu'on apprend à ignorer ne sert plus
+     le jour où elle a raison. La couleur est ici une BORDURE, donc un usage graphique
+     (seuil 3:1) : l'accent brut convient, contrairement au petit texte coloré. */
+  border: 1px solid var(--border); border-left: 4px solid var(--accent-amber);
   border-radius: 6px; background: var(--bg-panel);
 }
-/* `>` : le titre seulement. Depuis AUTH-4 le bandeau porte un second `strong` — le
-   nom du référent, au milieu d'une phrase. Sans le chevron, `display:block` le
-   jetait à la ligne et coupait « Référent de cette instance : X — contact » en trois.
-   Aucun audit ne l'aurait dit : axe vérifie le contraste et les rôles, pas le sens
-   d'une phrase découpée. */
-.portee-vide > strong { display: block; margin-bottom: .3077rem; }
-.portee-vide p { margin: 0; color: var(--text-muted); font-size: 1rem; max-width: 70ch; }
+/* Le titre vit dans le `<summary>` depuis le repli, et le sélecteur reste PRÉCIS pour
+   la raison qui l'avait rendu tel : depuis AUTH-4 le bandeau porte un second `strong` —
+   le nom du référent, au milieu d'une phrase — qu'un `display:block` attrapé au large
+   jetait à la ligne, coupant « Référent de cette instance : X — contact » en trois.
+   Aucun audit ne l'aurait dit : axe vérifie le contraste et les rôles, pas le sens d'une
+   phrase découpée. Viser le `summary` nomme la cible au lieu de l'approcher. */
+.portee-vide summary { cursor: pointer; }
+.portee-vide summary > strong { font-weight: 600; }
+/* Le chevron est ce qui ANNONCE qu'il y a autre chose à lire : sans lui, un titre replié
+   passerait pour tout le message. Même teinte que les autres sommaires du dépôt. */
+.portee-vide summary::marker { color: var(--text-muted); }
+/* L'écart ne se paie qu'une fois ouvert — replié, il ajouterait du vide sous une ligne. */
+.portee-vide > details[open] > summary { margin-bottom: .3077rem; }
+/* Le texte OCCUPE la largeur du bandeau. Il portait `max-width: 70ch`, la mesure
+   typographique classique (45 à 75 caractères, au-delà de quoi l'œil perd le début de la
+   ligne suivante) ; retiré sur décision du 2026-09-06, en connaissance de ce que cela
+   coûte — à 1440 px les lignes montent à ~200 caractères, deux à trois fois la plage
+   confortable. La décision est écrite ici plutôt que déduite d'une absence : sans cette
+   note, quelqu'un rétablirait le plafond en croyant réparer un oubli.
+
+   Deux choses en amortissent l'effet, et aucune n'était le motif. Recherche et
+   Exploration bornent déjà leur conteneur (84,6 et 83,1rem), donc le bandeau n'y dépasse
+   jamais ~1100 px. Et sur la Visionneuse il naît REPLIÉ : les lignes longues ne se voient
+   qu'une fois dépliées, c'est-à-dire rarement. */
+.portee-vide p { margin: 0; color: var(--text-muted); font-size: 1rem; }
 
 /* ── Collections (AUTH-3) — écran d'administration des espaces de travail ─────────── */
 .col-item { border-top: 1px solid var(--border); padding: .55rem 0; }
@@ -1705,7 +1727,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .portee-vide-referent { margin-top: .4rem; }
 /* La ligne de diagnostic des groupes (AUTH-1) : elle DISTINGUE trois pannes que le
    même écran vide confondait, donc elle se lit avant le référent. */
-.portee-vide-groupes { margin-top: .4rem; }
+.portee-vide-technique { margin-top: .4rem; }
 
 /* ── État des moteurs (SANTE-1) ────────────────────────────────────────────────────
    Le MOT porte l'état, la couleur ne fait que le renforcer : « opérationnel » / « en

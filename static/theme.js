@@ -251,61 +251,95 @@
     var titre, texte;
     if (d.utilisateur) {
       titre = "Aucune collection ne vous est ouverte.";
-      texte = "Vous êtes bien connecté" + (d.nom ? " (" + d.nom + ")" : "")
-        + " : ce n'est pas une panne, et le corpus n'est pas vide. L'accès se donne "
-        + "collection par collection — demandez-en un à un administrateur de l'instance.";
+      texte = "Rien n'est cassé : l'accès se donne collection par collection.";
     } else {
       /* Portée vide SANS identité : l'application se croit derrière un proxy d'auth
          (BD_AUTH_PROXY) mais aucun en-tête ne lui parvient. Elle ferme alors tout, par
          choix — panne bruyante plutôt que fuite. Reste à ce que le bruit soit AUDIBLE :
          sans ce message, l'écran est celui d'un corpus vide. Message d'exploitation,
          donc, et il ne dit rien du corpus. */
-      titre = "Aucune identité ne parvient à l'application.";
-      texte = "Elle est configurée comme étant derrière un proxy d'authentification "
-        + "(BD_AUTH_PROXY) et n'a reçu aucun en-tête d'identité : elle ferme donc tout, "
-        + "délibérément. Si vous administrez cette instance, vérifiez le forward_auth "
-        + "du reverse-proxy — voir docs/deploiement-docker.md.";
+      titre = "L'application ne vous reconnaît pas.";
+      texte = "Elle attend votre identité d'un portail d'authentification et ne la "
+        + "reçoit pas.";
     }
     var main = document.querySelector("main") || document.body;
     var box = el("div", "portee-vide");
     box.setAttribute("role", "status");
-    box.appendChild(el("strong", null, titre));
-    box.appendChild(el("p", null, texte));
-    var grp = groupesLigne(d);
-    if (grp) box.appendChild(grp);
-    var ref = referentLigne(a.referent);
-    if (ref) box.appendChild(ref);
+
+    /* Le corps se REPLIE derrière son titre, et ce qui décide n'est pas la place gagnée
+       (212 px mesurés) : c'est que le titre suffit à répondre à la question qui amène
+       ici. « Aucune collection ne vous est ouverte » dit POURQUOI l'écran est vide ; le
+       reste dit QUOI EN FAIRE, et cela peut attendre un clic que le chevron annonce.
+
+       OUVERT dans un seul cas, et c'est le seul qu'on SACHE être une panne : aucune
+       identité ne parvient alors que `BD_AUTH_PROXY` est déclaré. Il n'en existe pas de
+       lecture bénigne, et celui qui doit le réparer ne sait pas qu'il faudrait déplier.
+
+       Les deux autres restent repliés, « aucun groupe » COMPRIS — et c'est un
+       changement de lecture, pas un oubli. Ce cas se donne pour un réglage de proxy,
+       mais `autorisation.groupes()` fait `headers.get("Remote-Groups") or ""` : un
+       en-tête ABSENT et un en-tête VIDE arrivent identiques. « Cette personne
+       n'appartient à aucun groupe » est une lecture aussi valable, et on ne déplie pas
+       d'office pour une panne qu'on ne sait pas établir.
+
+       `<details>` natif plutôt qu'une bascule maison : le clavier, le rôle et l'état
+       plié viennent avec, il n'y a aucun état à posséder, et c'est déjà le motif du
+       dépôt (facettes de Recherche, collections de la Bibliothèque). `role="status"`
+       reste sur l'ENVELOPPE, parce que le poser sur `<details>` écraserait sa
+       sémantique de dépliant.
+
+       Ce qu'on NE SAIT PAS, et qu'il vaut mieux écrire que supposer : une région live
+       insérée DÉJÀ REMPLIE n'est pas annoncée de façon fiable — la règle est qu'elle
+       préexiste à ce qu'elle annonce, et ce bandeau naît peuplé. C'était déjà vrai
+       avant le repli, axe ne le mesure pas, et aucun test d'ici ne le mesurera. Le
+       repli ne dégrade donc rien de ce côté : replié, le titre reste le seul contenu
+       qu'une annonce POURRAIT porter, et il s'atteint au clavier comme dépliant. */
+    var pli = el("details");
+    if (!d.utilisateur) pli.open = true;
+    var resume = el("summary");
+    resume.appendChild(el("strong", null, titre));
+    pli.appendChild(resume);
+    pli.appendChild(el("p", null, texte));
+    var ref = referentLigne(a.referent, d.utilisateur ? "Demandez un accès à "
+                                                        : "Prévenez ");
+    if (ref) pli.appendChild(ref);
+    var tech = ligneTechnique(d);
+    if (tech) pli.appendChild(tech);
+    box.appendChild(pli);
     main.insertBefore(box, main.firstChild);
   }
 
-  /* ---- Les groupes reçus (AUTH-1) ----
-     `/api/moi` renvoie `groupes` depuis INFRA-2 et AUCUNE surface ne les lisait. C'est ici
-     qu'ils servent, et pas ailleurs : ils DISTINGUENT trois pannes que le même écran vide
-     confondait. Aucune identité (le forward_auth ne passe rien) ; une identité mais aucun
-     groupe (le proxy pose `Remote-User` sans `Remote-Groups`, faute de configuration) ;
-     une identité AVEC ses groupes, dont aucun n'a reçu d'accès — et là il n'y a rien à
-     réparer, seulement un accès à demander.
+  /* ---- La ligne technique (AUTH-1) ----
+     UNE ligne, et elle ne s'adresse pas au même lecteur que le reste du bandeau. Tout ce
+     qui précède parle à qui est BLOQUÉ ; celle-ci parle à qui peut RÉPARER. C'est la
+     leçon du 2026-09-06 : le bandeau expliquait « le proxy pose Remote-User sans
+     Remote-Groups » à un stagiaire, c'est-à-dire à la seule personne que ça n'aide pas.
 
-     Les deux premières se réparent par l'administrateur, la troisième non. Les confondre,
-     c'est envoyer quelqu'un chercher une panne qui n'existe pas, ou en ignorer une qui
-     existe. On les nomme donc, sans commenter : la liste EST le diagnostic. */
-  function groupesLigne(d) {
-    if (!d.utilisateur) return null;          // sans identité, les groupes ne disent rien
+     Elle RAPPORTE une observation, elle n'explique aucune cause — et ce n'est pas de la
+     concision, c'est de l'exactitude. « Aucun groupe reçu » est vrai quoi qu'il arrive ;
+     « le proxy ne pose pas les groupes » ne l'est pas forcément, puisque `groupes()` fait
+     `headers.get("Remote-Groups") or ""` : un en-tête ABSENT et un en-tête VIDE y
+     arrivent identiques, et « cette personne n'appartient à aucun groupe » est une
+     lecture aussi valable. L'ancien libellé tranchait ; ce que le code sait ne le
+     permettait pas.
+
+     Les trois observations restent DISTINCTES, et c'est tout ce qu'AUTH-1 demandait :
+     aucun en-tête d'identité / aucun groupe / les groupes, nommés. Qui connaît son
+     déploiement en tire la suite ; le bandeau ne la tire plus à sa place. */
+  function ligneTechnique(d) {
+    var p = el("p", "portee-vide-technique");
+    if (!d.utilisateur) {
+      p.textContent = "Aucun en-tête d'identité reçu — vérifier le forward_auth.";
+      return p;
+    }
     var g = d.groupes || [];
-    var p = el("p", "portee-vide-groupes");
     if (!g.length) {
-      p.appendChild(document.createTextNode(
-        "Aucun groupe ne parvient avec votre identité : le proxy pose bien « qui vous "
-        + "êtes » mais pas « à quoi vous appartenez ». Si des accès vous ont été accordés "
-        + "par groupe, ils ne peuvent pas s'appliquer — c'est un réglage du proxy "
-        + "(Remote-Groups), pas un droit manquant."));
+      p.textContent = "Aucun groupe reçu.";
       return p;
     }
     p.appendChild(document.createTextNode("Groupes reçus : "));
     p.appendChild(el("strong", null, g.join(", ")));
-    p.appendChild(document.createTextNode(
-      ". Aucun n'a reçu d'accès sur une collection — il n'y a donc rien de cassé, "
-      + "seulement un accès à demander."));
+    p.appendChild(document.createTextNode("."));
     return p;
   }
 
@@ -319,18 +353,16 @@
      La déclaration est DÉCLARATIVE et le dit : l'application ne connaît les groupes que
      de la personne qui frappe (AUTH-1), donc elle ne peut pas vérifier que ce nom
      appartient encore à l'équipe. Le dire vaut mieux que le laisser découvrir. */
-  function referentLigne(r) {
+  function referentLigne(r, amorce) {
     if (!r || (!r.nom && !r.contact)) return null;
     var p = el("p", "portee-vide-referent");
-    p.appendChild(document.createTextNode("Référent de cette instance : "));
+    p.appendChild(document.createTextNode(amorce));
     p.appendChild(el("strong", null, r.nom || r.contact));
     if (r.contact) {
       p.appendChild(document.createTextNode(" — "));
       p.appendChild(contactNoeud(r.contact));
     }
-    p.appendChild(document.createTextNode(
-      " (déclaré à la configuration : l'application ne peut pas vérifier qu'il fait "
-      + "toujours partie de l'équipe)."));
+    p.appendChild(document.createTextNode(" (contact déclaré à la configuration)."));
     return p;
   }
 
