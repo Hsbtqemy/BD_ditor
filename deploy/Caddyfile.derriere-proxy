@@ -38,6 +38,24 @@ http://{$AUTH_DOMAINE} {
 	reverse_proxy authelia:9091
 }
 
+# --- Annuaire LLDAP (protégé, réservé aux administrateurs) ---
+# Même `forward_auth` que l'application : c'est Authelia qui décide, et sa règle
+# `access_control` pour ce domaine exige `group:bd-admins` en `two_factor`.
+#
+# ATTENTION — dans cette variante, poser ce bloc NE SUFFIT PAS. Le proxy de l'hôte
+# occupe 80 et 443 : il lui faut son propre bloc de serveur pour ce nom, son
+# certificat, et un `proxy_pass` vers 127.0.0.1:8080 — exactement ce qui a été fait
+# pour les deux autres sous-domaines. Sans lui, le DNS mène au VPS et le proxy ne
+# connaît pas le nom : ni Caddy ni Authelia ne verront jamais la requête.
+http://{$ANNUAIRE_DOMAINE} {
+	forward_auth authelia:9091 {
+		uri /api/authz/forward-auth
+		copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+	}
+
+	reverse_proxy lldap:17170
+}
+
 # --- Application BéDéditeur (protégée) ---
 http://{$BD_DOMAINE} {
 	# Plafonne la taille des uploads. À tenir cohérent avec le `client_max_body_size` du
