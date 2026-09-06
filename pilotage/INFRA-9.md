@@ -14,9 +14,10 @@ publiée est 4.39.22**, du 2026-09-03. Le compose épingle `authelia/authelia:4.
 ## Reste
 
 ### Ce qu'il faut savoir avant de monter
-- [ ] Les notes de version de 4.39 sont lues, et les ruptures qui touchent CETTE configuration sont listées nommément : `access_control` ordonné, backend `file`, `X_AUTHELIA_CONFIG_FILTERS=template`, `default_2fa_method`, `disable_startup_check`, `jwt_lifespan`, `PUID`/`PGID`, notifier SMTP. Une rupture qui ne concerne pas ce déploiement n'a pas à figurer dans la liste — c'est ce qui la rend lisible
+- [x] **Les notes de version de 4.39 sont lues, et AUCUNE rupture ne touche cette configuration** — 2026-09-06. Quatre sources : le billet 4.39, la publication GitHub v4.39.0, le guide de migration et l'entrypoint de l'image. **Le guide de migration n'a aucune entrée pour 4.39** — il s'arrête à 4.38 —, donc aucune clé renommée ni retirée. Le seul changement de comportement NOMMÉ porte sur les revendications des jetons ID d'OpenID Connect, que ce déploiement n'utilise pas : il est en forward-auth. Les dépréciations sont des AVERTISSEMENTS, dont la suppression vise v5.0.0. Rien sur `access_control`, le backend `file`, le filtre `template`, `default_2fa_method`, `disable_startup_check`, `jwt_lifespan` ni le notifier SMTP
+- [ ] **Les avertissements de dépréciation sont LUS après la montée**, `docker compose logs authelia`, et ce qu'ils nomment est noté ici. Ils ne bloquent rien en 4.39 ; ils disent ce que v5.0.0 retirera, et c'est la seule occasion gratuite de l'apprendre. Attendu : soit aucun, soit une liste de clés à corriger avant la prochaine majeure
 - [ ] Le sort des appareils TOTP déjà enrôlés lors d'une montée de mineure est établi, par la documentation ou par un essai. **C'est la même question qu'`AUTH-7` se pose** pour la migration `file` → `ldap` : une seule réponse sert aux deux, et la chercher deux fois serait du gaspillage
-- [ ] Le sort de `db.sqlite3` est établi : Authelia migre-t-il son propre stockage au passage, et cette migration est-elle réversible ? Si elle ne l'est pas, le geste change de nature — ce n'est plus « changer une étiquette », c'est une bascule dont le retour arrière passe par une restauration
+- [ ] Le sort de `db.sqlite3` est établi : Authelia migre-t-il son propre stockage au passage, et cette migration est-elle réversible ? **Aucune des quatre sources lues le 2026-09-06 ne le dit** — c'est le seul point que la documentation laisse ouvert, et il ne se mesure que sur l'instance. Conséquence immédiate : la sauvegarde de la case suivante n'est pas une précaution de forme, c'est le seul retour arrière connu
 
 ### Le geste
 - [ ] La sauvegarde de `deploy/authelia/` PRÉCÈDE la montée, `db.sqlite3` compris. C'est le seul état que `git checkout` ne restaure pas, n'étant pas versionné — les secrets TOTP de tout le monde vivent là
@@ -26,7 +27,32 @@ publiée est 4.39.22**, du 2026-09-03. Le compose épingle `authelia/authelia:4.
 
 ### Ce que la montée ne doit pas emporter
 - [ ] Le repli `filesystem` fonctionne ENCORE après la montée : `SMTP_ADRESSE` vidée seule, Authelia démarre, et un « Mot de passe oublié ? » fait grossir `/config/notification.txt`. INFRA-8 l'a éprouvé sur 4.38 ; une montée de mineure est précisément ce qui peut le défaire, et le défaire en silence
-- [ ] Le `chown -R ${PUID}:${PGID} /config` de l'entrypoint se comporte pareil en 4.39 — vérifié sur l'état d'APRÈS un démarrage, pas entre deux. C'est le mécanisme qui a coûté trois réparations annulées le 2026-09-05/06, et il vit dans l'image, donc il change avec elle
+- [ ] Le `chown -R ${PUID}:${PGID} /config` de l'entrypoint se comporte pareil en 4.39 — vérifié sur l'état d'APRÈS un démarrage, pas entre deux. C'est le mécanisme qui a coûté trois réparations annulées le 2026-09-05/06, et il vit dans l'image, donc il change avec elle. **La lecture du 2026-09-06 est rassurante sans être une preuve** : l'image change de base (Alpine → *chisel*, « no package manager, some common tools removed »), mais l'entrypoint de `master` fait toujours le `chown` et réclame `/bin/sh`, `id`, `chown` et `su-exec` — s'ils manquaient, il échouerait, donc ils sont là. Reste à le voir vrai plutôt que déduit
+
+## Ce que la lecture des notes a écarté, et ce qu'elle a trouvé — 2026-09-06
+
+**Écarté, mesuré plutôt que supposé.** Un piège documenté veut que `PUID`/`PGID` non nuls
+empêchent Authelia de lire des secrets montés dans `/run/secrets/`, ce dossier appartenant
+à root. Il ne s'applique pas ici : **aucun secret Docker n'est employé**, les trois secrets
+d'Authelia et les quatre valeurs SMTP passant tous par l'environnement depuis `.env`.
+
+**Trouvé, et c'était le seul vrai risque.** L'image quitte Alpine pour une base *chisel*
+minimale — « there is no package manager, and some unnecessary but common tools have been
+removed ». Deux choses de ce déploiement en dépendent. L'entrypoint, d'abord, qui porte le
+`chown` sans lequel `deploy/authelia/` repasse à root et casse le `git pull` suivant : il
+est intact sur `master` et réclame quatre binaires, qui existent donc dans la nouvelle
+base. Et les commandes de runbook qui entrent dans le conteneur, ensuite — inventoriées :
+`docker compose run --rm --entrypoint authelia … validate-config` appelle le binaire sans
+shell, `deployer.sh` n'entre que dans le conteneur de l'APPLICATION, et le seul
+`sh -c` du dépôt (fiche `AUTH-7`, export des TOTP) survit puisque l'entrypoint prouve la
+présence de `/bin/sh`.
+
+Le `VOLUME` retiré des images ne change rien ici — tout est en montage lié. Les unités
+Systemd non plus : ce déploiement est en Docker.
+
+**Ce qu'il reste d'inconnu tient en une ligne**, et c'est la seule à traiter avec méfiance :
+personne ne dit si la migration du stockage propre d'Authelia est réversible. La sauvegarde
+de `db.sqlite3` n'est donc pas une précaution de forme.
 
 ## Contexte
 
