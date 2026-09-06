@@ -1,0 +1,20 @@
+# Le déclencheur. Cinq minutes est un compromis lisible : la mise en service suit le
+# `git push origin dev:main` d'assez près pour qu'on fasse le lien, et le `git fetch`
+# qu'elle coûte est négligeable.
+#
+# `OnUnitActiveSec` compte depuis la FIN de la dernière exécution, pas depuis son début :
+# un déploiement de dix minutes ne se fait donc pas rattraper par le tir suivant.
+[Unit]
+Description=BeDediteur — veille sur main toutes les cinq minutes
+
+[Timer]
+# Au démarrage de la machine, laisser la pile Docker se lever avant de regarder.
+OnBootSec=5min
+OnUnitActiveSec=5min
+# Décale le tir de 0 à 30 s : rien de critique ici, c'est pour ne pas taper le dépôt
+# à la seconde ronde en même temps que tout le monde.
+RandomizedDelaySec=30
+Unit=bd-deploiement.service
+
+[Install]
+WantedBy=timers.target

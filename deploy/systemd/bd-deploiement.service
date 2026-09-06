@@ -1,0 +1,37 @@
+# Déploie `main` quand elle a avancé. Posé par un timer, jamais lancé à la main —
+# `./deploy/deployer.sh` reste le geste manuel, et il est plus direct.
+#
+#   sudo cp deploy/systemd/bd-deploiement.* /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now bd-deploiement.timer
+#
+# Cf. docs/exploitation.md § Le déploiement automatique.
+[Unit]
+Description=BeDediteur — deploie main quand elle a avance
+Documentation=file:///home/ubuntu/BD_ditor/docs/exploitation.md
+# La veille appelle `docker compose` par `deployer.sh` : sans le démon, elle échouerait
+# à chaque démarrage de la machine, ce qui est un bruit et non un signal.
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+# `oneshot` : systemd n'en lance jamais deux à la fois. C'est ce qui empêche un
+# déploiement de démarrer par-dessus un autre quand la construction de l'image dépasse
+# l'intervalle du timer.
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/BD_ditor
+ExecStart=/home/ubuntu/BD_ditor/deploy/veille-deploiement.sh
+
+# Une unité systemd démarre avec un environnement quasi vide : sans PATH, ni `git` ni
+# `docker` ne se trouvent, et l'échec ressemble à une panne du dépôt.
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# La construction de l'image et la suite qui la suit prennent plusieurs minutes ; le
+# défaut de 90 s tuerait tout déploiement en cours de suite. Une heure est large exprès —
+# le but est de ne jamais interrompre un déploiement, pas de le borner.
+TimeoutStartSec=3600
+
+# Pas de redémarrage automatique : un REFUS de la veille est une décision, pas une panne
+# passagère, et le rejouer toutes les trente secondes n'en changerait pas la cause.
