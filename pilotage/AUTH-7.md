@@ -10,11 +10,16 @@ n'annule rien — elle ferme l'attente. Et la suivante a retourné le problème.
 voulait les deux gestes actifs, supprimer et désactiver, la désactivation étant vue comme
 un pis-aller. C'est l'inverse : dans cette architecture, désactiver est complet et
 réversible depuis un panneau, tandis que **supprimer laisse quatre orphelins** dont un ne
-se nettoie qu'en console — et dont le quatrième ment dans la vue qui devait rassurer. La suppression n'est donc offrable qu'à une condition — et cette
-condition a changé de nature le jour même. Ce n'est pas la FORME du login, écartée par
+se nettoie qu'en console — et dont le quatrième ment dans la vue qui devait rassurer. La
+suppression n'est donc offrable qu'à une condition, et cette condition a changé de nature
+le jour même. Ce n'est pas la FORME du login, écartée par
 l'équipe comme une friction à chaque arrivée : c'est ce que le compte a **laissé**. Rien au
-journal ni dans `collection_acces` : on supprime. Quelque chose : on archive. La vue des
-comptes demandée au départ devient ainsi ce qui rend la suppression sûre.
+journal ni dans `collection_acces` : on supprime. Quelque chose : on archive. La règle est
+validée et son critère mesuré — deux requêtes, et **naviguer ou lire ne laisse rien**.
+L'équipe a choisi de garder la suppression comme geste courant du panneau, la vue servant
+de garde-fou : la vigilance redevient donc la garantie, en connaissance de cause, et toute
+la charge passe sur la vue des comptes — qui doit rendre un VERDICT et signaler le retour
+d'un login connu.
 
 Le même jour, plus tôt : **aucune version d'Authelia n'administre les comptes**, et la
 plus récente non plus — sur sa feuille de route, « User Management » n'est pas commencé et
@@ -145,7 +150,8 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [ ] **L'annuaire retenu sait DÉSACTIVER un compte sans le supprimer** — mesuré pour les trois candidats le 2026-09-06. **LLDAP : non**, issue #750 ouverte depuis le 2 décembre 2023, *help wanted*, sans PR. **Kanidm : oui, mais son admin passe par la CLI** — sa web UI vise le libre-service et ses panneaux d'admin ont été retirés, donc hors critère. **Authentik : oui**, et il REMPLACE Authelia. La case reste ouverte parce que la conception a bougé : la désactivation vient désormais d'une règle `deny`, pas de l'annuaire — ce qui rend la réponse de LLDAP non disqualifiante
 - [x] **Le login ne portera PAS l'année** — tranché le 2026-09-06 par l'équipe : *« pas les années, ça me paraît beaucoup trop éloigné des préoccupations de facilitation. Tant qu'on peut créer des comptes, on n'a pas à être gêné par ça. »* Un login qu'on n'ose pas dicter coûte à chaque arrivée, pour un risque rare : faire payer le cas courant pour le cas rare est le mauvais échange. La non-réutilisation ne peut donc plus reposer sur la forme du login, et se déplace — case suivante
 - [ ] **`premiere_vue` ne survit pas à un login réutilisé** — l'UPSERT de `main.py` ne la met pas dans son `DO UPDATE`, donc la vue des comptes daterait un arrivant de l'arrivée de son prédécesseur. Attendu : soit la suppression d'un compte efface sa ligne `utilisateur`, soit la vue signale la reprise d'un login connu. C'est le seul des quatre orphelins qui vive dans une table de BDéditeur, donc le seul réparable sans console — et il ment dans l'instrument même dont la règle ci-dessous dépend
-- [ ] **La règle de remplacement est validée : ce qui décide, c'est ce que le compte a LAISSÉ.** Aucun acte au journal A3 et aucune ligne dans `collection_acces` → la suppression n'orpheline rien, et c'est le cas de tous les comptes qu'on supprime vraiment : essais, doublons, personnes jamais venues. Quelque chose de laissé → on archive. **Proposition du 2026-09-06, pas encore une décision d'équipe.** Son mérite est de se VÉRIFIER au lieu de se respecter ; son coût est de déplacer la charge sur la vue des comptes, qui doit alors dire lequel est lequel
+- [x] **La règle est validée, et son critère est MESURÉ** — 2026-09-06. Ce qui décide, c'est ce que le compte a LAISSÉ, et « laisser » se réduit à deux requêtes : `SELECT COUNT(*) FROM evenement WHERE agent = ? AND agent_type = 'humain'` et `SELECT COUNT(*) FROM collection_acces WHERE genre = 'utilisateur' AND principal = ?`. Zéro aux deux → la suppression n'orpheline rien. Autre chose → on archive. **Aucune session humaine n'ouvre d'activité** — `ouvrir_activite` n'est appelé que par `passe_ml` et le réindex NLP, deux agents machine —, donc naviguer, chercher et lire ne laissent RIEN : seules les 18 routes d'écriture journalisent. La règle est ainsi plus étroite qu'annoncée, et c'est ce qui la rend praticable
+- [x] **La suppression reste un geste courant du panneau, à côté de créer et archiver** — tranché le 2026-09-06 par l'équipe, la vue servant de garde-fou consulté avant. **La contrepartie est acceptée en connaissance de cause** : la vigilance redevient la garantie, alors que la fiche cherchait à s'en passer. Elle se paie donc sur la VUE, qui n'est plus un tableau à interpréter mais l'unique chose qui empêche une suppression fautive — voir les deux cases de la zone suivante, qui étaient des conforts et deviennent des exigences
 - [ ] Le chemin est choisi entre les trois ci-dessus, et la raison est écrite — y compris si c'est « on garde le fichier », qui est un choix légitime tant que le rythme reste faible
 
 ### Ce qu'il faut savoir AVANT de choisir (mesures, pas opinions)
@@ -161,6 +167,8 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 ### Ce que BDéditeur pourrait apporter, et qu'aucun annuaire ne saura
 - [ ] La demande dit « comptes ACTIFS », et un annuaire ne connaît que les comptes DÉCLARÉS. `utilisateur` porte `premiere_vue` et `derniere_vue` : BDéditeur sait qui a réellement ouvert l'application, et quand. Un tableau en lecture seule dans le panneau 👥 Collections répondrait à la moitié « voir » de la demande, sans dépendre du chemin choisi pour la moitié « créer ». **Promu le 2026-09-06 de confort à CONDITION** : depuis que la sûreté d'une suppression se juge sur ce que le compte a laissé, c'est ce tableau qui doit le dire — il lui faut donc, en plus de l'usage, le compte d'actes au journal A3 et les accès détenus
 - [ ] Ce tableau croise l'usage et les accès : qui a une portée vide alors qu'il s'est connecté — c'est-à-dire quelqu'un qui attend un droit qu'on a oublié de lui donner. Personne ne voit ce cas aujourd'hui, ni côté Authelia ni côté application
+- [ ] **La vue rend un VERDICT, pas des chiffres** — « aucun acte, aucun accès : supprimable » ou « 42 actes, 2 collections : à archiver », et les comptes sont GROUPÉS par verdict. Exigence née du choix du 2026-09-06 : un tableau de nombres demande d'interpréter au moment où l'on est pressé, ce qui est précisément la vigilance qu'on voulait éviter. Lire dans quelle liste quelqu'un se trouve demande moins que compter ses actes
+- [ ] **La vue signale le RETOUR d'un login connu** — le filet quand la vigilance a manqué. Le geste de suppression vit dans l'autre panneau et rien ne peut l'empêcher ; ce qui reste possible, c'est de voir qu'un login réapparaît alors que `utilisateur` en garde déjà la ligne, avec des actes au journal. C'est la différence entre une provenance corrompue en silence et une provenance corrompue signalée — et c'est bon marché, la ligne étant déjà là
 
 ## La vérification qui devait annuler la fiche — 2026-09-06
 
@@ -192,10 +200,13 @@ l'application n'apprend jamais qu'un compte a disparu, elle ne voit que des en-t
 **Recréer le même login rend immédiatement au nouvel arrivant les accès de l'ancien**, sans
 qu'aucun écran ne le signale.
 
-**2. La provenance, et c'est la plus grave pour cet outil.** `activite.agent` est du texte
-sans clé étrangère — voulu, mesuré, et c'est ce qui fait survivre le journal à la
-suppression de sa cible. La même propriété fait qu'un login réutilisé **fusionne deux
-personnes RÉTROACTIVEMENT** : ANN-5 mesurerait l'accord d'une personne avec elle-même, et
+**2. La provenance, et c'est la plus grave pour cet outil.** La trace d'un humain vit dans
+`evenement.agent` — colonne TEXTE, `agent_type` valant `humain` — et non dans
+`activite.agent`, qui porte les passes ML ; la fiche citait d'abord la seconde, corrigé le
+2026-09-06. Ni l'une ni l'autre n'a de clé étrangère : c'est voulu, et c'est ce qui fait
+survivre le journal à la suppression de sa cible. La même propriété fait qu'un login
+réutilisé **fusionne deux personnes RÉTROACTIVEMENT** : ANN-5 mesurerait l'accord
+d'une personne avec elle-même, et
 `pseudonymes()` les exporterait sous un seul `annotateur-N`. Une donnée de recherche
 devient fausse sans que personne ne mente et sans qu'aucun test ne bronche.
 
