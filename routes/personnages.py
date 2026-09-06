@@ -37,6 +37,7 @@ from socle import (
     LexiqueIn, LocuteurIn, PersonnageIn, PersonnageUpdate, PresenceIn, ValeurIn,
     _attributs_de, _clause_personnage, _get_dimension, _get_personnage, _get_region,
     _get_valeur, _norm_tag, _patch_lexique, _row, _rows, _sans_accents, db, portee_courante,
+    _descendre_portee,          # v24 : la portée suit le rattachement, et elle DESCEND
 )
 
 router = APIRouter()
@@ -388,8 +389,9 @@ def patch_domaine_lexique(dom_id: int, payload: LexiqueIn, conn: sqlite3.Connect
                           portee: autorisation.Portee = Depends(portee_courante)):
     """Documente un domaine (même couche SKOS que dimensions/valeurs/tags)."""
     _get_domaine(conn, portee, dom_id, ecriture=True)
-    _patch_lexique(conn, "domaine", dom_id, payload, portee)
-    return _row(conn.execute("SELECT * FROM domaine WHERE id = ?", (dom_id,)))
+    promus = _patch_lexique(conn, "domaine", dom_id, payload, portee)
+    return {**_row(conn.execute("SELECT * FROM domaine WHERE id = ?", (dom_id,))),
+            "promus": promus}
 
 
 # --- Attributs FACETTÉS & ÉMERGENTS : dimensions (axes) / valeurs canoniques /
@@ -454,12 +456,36 @@ def create_dimension(payload: DimensionIn, conn: sqlite3.Connection = Depends(db
 def patch_dimension_domaine(dim_id: int, payload: DimensionDomaineIn,
                             conn: sqlite3.Connection = Depends(db),
                             portee: autorisation.Portee = Depends(portee_courante)):
-    """Rattache une dimension à un domaine (ou l'en détache avec `domaine_id: null`)."""
+    """Rattache une dimension à un domaine (ou l'en détache avec `domaine_id: null`).
+
+    v24 — la PORTÉE suit le rattachement. La création héritait déjà du domaine ; ce
+    déplacement ne le faisait pas, si bien qu'une dimension GLOBALE passée sous un domaine
+    PRIVÉ y restait globale (mesuré le 2026-09-06, HTTP 200 sans un mot). Ce qui fuyait
+    alors n'était pas un mot mais le NOM DE L'AXE — la grille d'analyse d'une collection
+    fermée, nommée à tout le monde, ce que v24 décrit précisément comme le défaut à fermer.
+
+    DÉTACHER ne promeut pas. `domaine_id: null` laisse la portée en place, alors que la
+    création sans domaine naît globale : les deux ne sont pas le même geste. Sortir une
+    dimension de son domaine est un rangement ; la rendre globale au passage serait une
+    publication que personne n'a demandée — exactement la classe de défaut réparée ici.
+    """
     _get_dimension(conn, portee, dim_id, ecriture=True)
+    # « Ne pas toucher à la portée » et « la mettre à NULL » sont deux choses, et NULL
+    # est une valeur légitime : il faut donc un troisième état pour dire « rien ».
+    RIEN = object()
+    cible = RIEN
     if payload.domaine_id is not None:
-        _get_domaine(conn, portee, payload.domaine_id, ecriture=True)
+        dom = _get_domaine(conn, portee, payload.domaine_id, ecriture=True)
+        cible = dom["collection_id"]
     conn.execute("UPDATE attribut_dimension SET domaine_id = ? WHERE id = ?",
                  (payload.domaine_id, dim_id))
+    if cible is not RIEN:
+        conn.execute("UPDATE attribut_dimension SET collection_id = ? WHERE id = ?",
+                     (cible, dim_id))
+        # Et la portée DESCEND : une dimension devenue locale laisserait ses valeurs
+        # globales au-dessus d'elle. Même réserve que la migration v24 — seules les valeurs
+        # sans portée bougent ; une valeur déjà locale ailleurs est un fait délibéré.
+        _descendre_portee(conn, "attribut_dimension", dim_id, cible)
     conn.commit()
     return _row(conn.execute("SELECT * FROM attribut_dimension WHERE id = ?", (dim_id,)))
 

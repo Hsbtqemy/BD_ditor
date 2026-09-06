@@ -292,12 +292,78 @@ def _attributs_de(conn, portee, table, col, oid):
 _ETATS_LEXIQUE = ("provisoire", "defini")
 
 
+# v24 — de qui un terme DÉPEND. Absent de cette table = aucun parent : un `domaine` est
+# la racine, et un `tag` est plat (aucune colonne ne le rattache à quoi que ce soit), donc
+# sa promotion ne bute jamais. La chaîne fait TROIS niveaux au plus, ce qui est la raison
+# pour laquelle un refus peut nommer tout ce qui manque au lieu d'en citer un et de laisser
+# découvrir le reste au coup suivant.
+_PARENT_TERME = {
+    "attribut_valeur": ("attribut_dimension", "dimension_id", "valeur"),
+    "attribut_dimension": ("domaine", "domaine_id", "nom"),
+}
+_NOM_TERME = {"attribut_valeur": "valeur", "attribut_dimension": "nom",
+              "domaine": "nom", "tags": "label"}
+_LIBELLE = {"attribut_valeur": "valeur", "attribut_dimension": "dimension",
+            "domaine": "domaine", "tags": "tag"}
+
+
+def _ancetres_terme(conn, table, oid) -> list:
+    """La chaîne de dépendance d'un terme, du parent immédiat vers la racine.
+
+    Chaque entrée : (table, id, nom, collection_id). Vide pour un domaine ou un tag.
+    """
+    chaine = []
+    while table in _PARENT_TERME:
+        p_table, fk, _ = _PARENT_TERME[table]
+        ligne = conn.execute(f"SELECT {fk} FROM {table} WHERE id = ?", (oid,)).fetchone()
+        if ligne is None or ligne[fk] is None:
+            break
+        parent = conn.execute(
+            f"SELECT id, {_NOM_TERME[p_table]} AS nom, collection_id "
+            f"FROM {p_table} WHERE id = ?", (ligne[fk],)).fetchone()
+        if parent is None:
+            break
+        chaine.append((p_table, parent["id"], parent["nom"], parent["collection_id"]))
+        table, oid = p_table, parent["id"]
+    return chaine
+
+
+def _descendre_portee(conn, table, oid, cible) -> list:
+    """Fait DESCENDRE une portée aux termes qui en dépendent et deviendraient plus globaux.
+
+    Symétrique de la garde de promotion, et nécessaire pour la même raison : rendre un
+    terme plus LOCAL peut laisser ses enfants au-dessus de lui. C'est la logique de la
+    migration v24 — « le domaine descend vers ses dimensions, qui descendent vers leurs
+    valeurs » — appliquée aux routes, qui ne l'avaient jamais eue.
+
+    RÉSERVE de la migration, gardée telle quelle : on ne touche QUE les enfants GLOBAUX,
+    c'est-à-dire ceux qui violeraient l'invariant. Un enfant déjà local à une autre
+    collection est un fait délibéré, pas une omission, et l'écraser déplacerait chez
+    quelqu'un le vocabulaire de quelqu'un d'autre.
+    """
+    if cible is None:                      # devenir global ne peut rien rendre trop global
+        return []
+    enfants = [(t, fk) for t, (p, fk, _) in _PARENT_TERME.items() if p == table]
+    bouges = []
+    for t_enfant, fk in enfants:
+        lignes = conn.execute(
+            f"SELECT id, {_NOM_TERME[t_enfant]} AS nom FROM {t_enfant} "
+            f"WHERE {fk} = ? AND collection_id IS NULL", (oid,)).fetchall()
+        for l in lignes:
+            conn.execute(f"UPDATE {t_enfant} SET collection_id = ? WHERE id = ?",
+                         (cible, l["id"]))
+            bouges.append(f"{_LIBELLE[t_enfant]} « {l['nom']} »")
+            bouges += _descendre_portee(conn, t_enfant, l["id"], cible)
+    return bouges
+
+
 def _patch_lexique(conn, table, oid, payload, portee, *, col_definition="definition"):
     """Mise à jour PARTIELLE de la couche définitionnelle (definition/note_portee/etat/
     collection_id) d'un terme. `col_definition='description'` pour les tags (leur glose EST
     la définition). Valide l'état et l'existence de la collection de portée. Champ omis =
     inchangé ; `collection_id: null` explicite = promotion en global."""
     fields = payload.model_dump(exclude_unset=True)
+    fields.pop("promouvoir_parents", None)      # une INSTRUCTION, pas un champ à écrire
     updates = {}
     if "definition" in fields:
         updates[col_definition] = fields["definition"]
@@ -320,10 +386,49 @@ def _patch_lexique(conn, table, oid, payload, portee, *, col_definition="definit
         elif conn.execute("SELECT 1 FROM collection WHERE id = ?",
                           (cible,)).fetchone() is None:
             raise HTTPException(404, f"Collection {cible} introuvable.")
+
+    # v24 — UN TERME N'EST JAMAIS PLUS GLOBAL QUE CELUI DONT IL DÉPEND. L'invariant était
+    # posé à la CRÉATION (une dimension hérite de son domaine, une valeur de sa dimension)
+    # et dans la MIGRATION qui a recollé l'existant ; les routes qui DÉPLACENT ne l'ont
+    # jamais eu. Mesuré le 2026-09-06 : promouvoir une valeur sous une dimension privée
+    # répondait 200, et rien ne cassait — le terme était COMPTÉ dans le « % défini » de
+    # tout le monde (`lexique_resume` compte par appartenance) et MASQUÉ de leurs listes
+    # (qui filtrent le parent en plus du terme). Le désaccord même que v24 avait effacé.
+    #
+    # Le refus NOMME tout ce qui bloque, exhaustivement — la chaîne fait trois niveaux au
+    # plus, donc il n'y a pas de raison d'en citer un et de laisser découvrir le reste au
+    # coup suivant. C'est ce qui rend `promouvoir_parents` un consentement ÉCLAIRÉ plutôt
+    # qu'un « oui » à l'aveugle : on ne l'écrit qu'après avoir lu ce qu'il emporte.
+    #
+    # La règle ne borde QUE le sens interdit. Un terme plus LOCAL que son parent est
+    # légitime — c'est le vocabulaire situé d'A4 — et deux termes locaux à des collections
+    # DIFFÉRENTES ne sont ni l'un ni l'autre plus globaux : ce cas n'est pas tranché ici,
+    # et le trancher au passage inventerait une règle que personne n'a décidée.
+    promus = []
+    if "collection_id" in updates and updates["collection_id"] is None:
+        bloquants = [a for a in _ancetres_terme(conn, table, oid) if a[3] is not None]
+        if bloquants and not getattr(payload, "promouvoir_parents", False):
+            quoi = " et ".join(f"{_LIBELLE[t]} « {nom} »" for t, _, nom, _ in bloquants)
+            accord = "qui restent locaux" if len(bloquants) > 1 else "qui reste local"
+            raise HTTPException(409, f"Ce terme dépend de {quoi}, {accord}. Un terme ne peut "
+                                     f"pas être plus global que celui dont il dépend. Pour "
+                                     f"les promouvoir aussi : promouvoir_parents=true.")
+        for t_anc, id_anc, nom_anc, col_anc in bloquants:
+            if not portee.peut_ecrire_terme(col_anc):
+                raise HTTPException(403, f"Promouvoir {_LIBELLE[t_anc]} « {nom_anc} » demande "
+                                         f"un droit d'écriture sur sa collection.")
+        for t_anc, id_anc, nom_anc, _ in bloquants:
+            conn.execute(f"UPDATE {t_anc} SET collection_id = NULL WHERE id = ?", (id_anc,))
+            promus.append(f"{_LIBELLE[t_anc]} « {nom_anc} »")
+
     if updates:
         cols = ", ".join(f"{k} = ?" for k in updates)
         conn.execute(f"UPDATE {table} SET {cols} WHERE id = ?", (*updates.values(), oid))
+        # L'autre sens : rendre un terme plus LOCAL laisserait ses enfants au-dessus de lui.
+        if "collection_id" in updates:
+            _descendre_portee(conn, table, oid, updates["collection_id"])
         conn.commit()
+    return promus
 
 
 # --------------------------------------------------------------------------- #
@@ -708,6 +813,12 @@ class LexiqueIn(BaseModel):
     note_portee: Optional[str] = None     # SKOS scopeNote — le « situé »
     etat: Optional[str] = None            # 'provisoire' | 'defini'
     collection_id: Optional[int] = None   # portée d'appartenance ; null = global
+    # v24 / COL-1 — promouvoir AUSSI les ancêtres qui bloquent. Faux par défaut : un terme
+    # ne peut pas devenir plus global que celui dont il dépend, et le refus nomme alors
+    # exhaustivement ce qu'il faudrait emporter (au plus deux, la chaîne étant
+    # domaine→dimension→valeur). Ce drapeau n'est donc jamais coché à l'aveugle — on ne
+    # l'écrit qu'après avoir lu le 409 qui dit ce qu'il déplace.
+    promouvoir_parents: bool = False
 
 
 class AttributIn(BaseModel):

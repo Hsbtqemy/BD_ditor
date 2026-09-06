@@ -164,3 +164,160 @@ def test_export_porte_le_lexique(client, db_path):
     conn.close()
     assert {"definition", "note_portee", "etat", "collection_id",
             "dim_definition", "dim_etat"} <= set(cols)
+
+
+# --------------------------------------------------------------------------- #
+# v24 sur les routes qui DÉPLACENT (COL-1)
+#
+# « Un terme n'est jamais plus GLOBAL que celui dont il dépend » était posé à la CRÉATION
+# (une dimension hérite de son domaine, une valeur de sa dimension) et dans la MIGRATION
+# qui a recollé l'existant. Les routes qui déplacent ne l'avaient jamais eu : mesuré le
+# 2026-09-06, promouvoir une valeur sous une dimension privée répondait 200.
+#
+# Rien ne cassait, et c'est ce qui rend le défaut coûteux : `lexique_resume` compte par
+# APPARTENANCE quand les listes filtrent le PARENT en plus du terme, si bien que le terme
+# était compté dans le « % défini » de tout le monde et masqué de leurs listes.
+# --------------------------------------------------------------------------- #
+def _branche(client, db_path, nom="A"):
+    """Une collection privée, et dessous domaine → dimension → valeur, tous locaux."""
+    conn = _lire(db_path)
+    conn.execute("INSERT INTO collection (nom) VALUES (?)", (f"Incubateur {nom}",))
+    cid = conn.execute("SELECT id FROM collection WHERE nom = ?",
+                       (f"Incubateur {nom}",)).fetchone()["id"]
+    conn.commit()
+    conn.close()
+    dom = client.post("/api/domaines", json={"nom": f"emotions{nom}"}).json()
+    client.patch(f"/api/domaines/{dom['id']}/lexique", json={"collection_id": cid})
+    dim = client.post("/api/attributs/dimensions",
+                      json={"cible": "personnage", "nom": f"valence{nom}",
+                            "domaine_id": dom["id"]}).json()
+    val = client.post(f"/api/attributs/dimensions/{dim['id']}/valeurs",
+                      json={"valeur": f"colere{nom}"}).json()
+    return cid, dom["id"], dim["id"], val["id"]
+
+
+def _portee(db_path, table, oid):
+    conn = _lire(db_path)
+    try:
+        return conn.execute(f"SELECT collection_id FROM {table} WHERE id = ?",
+                            (oid,)).fetchone()["collection_id"]
+    finally:
+        conn.close()
+
+
+def test_promotion_refusee_si_un_ancetre_reste_local(client, db_path):
+    """409, et il NOMME tout ce qui bloque — la chaîne fait trois niveaux au plus, donc il
+    n'y a pas de raison d'en citer un et de laisser découvrir le reste au coup suivant."""
+    cid, dom, dim, val = _branche(client, db_path)
+    r = client.patch(f"/api/attributs/valeurs/{val}/lexique", json={"collection_id": None})
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    # Les noms sont NORMALISÉS à la création (`_norm_tag` minuscule) : le message cite
+    # donc ce que la base contient, pas ce qu'on a tapé.
+    assert "valencea" in detail and "emotionsa" in detail, detail
+    assert "restent locaux" in detail, "l'accord doit suivre le nombre d'ancêtres"
+    assert "promouvoir_parents" in detail
+    assert _portee(db_path, "attribut_valeur", val) == cid    # rien n'a bougé
+
+
+def test_la_promotion_consentie_emporte_les_ancetres(client, db_path):
+    """Le geste que COL-1 veut : promouvoir la branche. Il existe, mais il se DIT — et on
+    ne l'écrit qu'après avoir lu le 409 qui nomme ce qu'il emporte."""
+    cid, dom, dim, val = _branche(client, db_path)
+    r = client.patch(f"/api/attributs/valeurs/{val}/lexique",
+                     json={"collection_id": None, "promouvoir_parents": True})
+    assert r.status_code == 200, r.text
+    assert _portee(db_path, "domaine", dom) is None
+    assert _portee(db_path, "attribut_dimension", dim) is None
+    assert _portee(db_path, "attribut_valeur", val) is None
+    # Et la réponse REND COMPTE : deux autres termes ont bougé sur une demande qui n'en
+    # visait qu'un. Le 409 éclaire le consentement, ceci en montre la conséquence.
+    promus = r.json()["promus"]
+    promus_txt = " | ".join(promus)
+    assert len(promus) == 2, promus
+    assert "valencea" in promus_txt and "emotionsa" in promus_txt, promus
+
+
+def test_un_tag_n_a_pas_de_parent_et_ne_bute_jamais(client, db_path):
+    """`tags` est plat : aucune colonne ne le rattache. Sa promotion ne peut pas bloquer,
+    et faire passer un tag par la garde serait inventer une dépendance qui n'existe pas."""
+    _, _, tag_id = _dim_val_tag(client, db_path)
+    conn = _lire(db_path)
+    conn.execute("INSERT INTO collection (nom) VALUES ('Étude T')")
+    cid = conn.execute("SELECT id FROM collection WHERE nom='Étude T'").fetchone()["id"]
+    conn.commit()
+    conn.close()
+    client.patch(f"/api/tags/{tag_id}/lexique", json={"collection_id": cid})
+    r = client.patch(f"/api/tags/{tag_id}/lexique", json={"collection_id": None})
+    assert r.status_code == 200 and _portee(db_path, "tags", tag_id) is None
+
+
+def test_plus_local_que_son_parent_reste_legitime(client, db_path):
+    """La règle ne borde QUE le sens interdit. Un domaine promu seul laisse ses dimensions
+    locales, et c'est le vocabulaire situé d'A4 — pas un état à réparer."""
+    cid, dom, dim, val = _branche(client, db_path)
+    r = client.patch(f"/api/domaines/{dom}/lexique", json={"collection_id": None})
+    assert r.status_code == 200, r.text
+    assert _portee(db_path, "domaine", dom) is None
+    assert _portee(db_path, "attribut_dimension", dim) == cid
+
+
+def test_rendre_un_terme_local_fait_DESCENDRE_la_portee(client, db_path):
+    """L'autre sens de l'invariant : rendre un parent local laisserait ses enfants
+    au-dessus de lui. C'est la logique de la migration v24, appliquée aux routes."""
+    cid, dom, dim, val = _branche(client, db_path)
+    client.patch(f"/api/attributs/valeurs/{val}/lexique",
+                 json={"collection_id": None, "promouvoir_parents": True})
+    assert _portee(db_path, "attribut_valeur", val) is None       # tout est global
+
+    r = client.patch(f"/api/domaines/{dom}/lexique", json={"collection_id": cid})
+    assert r.status_code == 200, r.text
+    assert _portee(db_path, "attribut_dimension", dim) == cid
+    assert _portee(db_path, "attribut_valeur", val) == cid        # descendu sur deux crans
+
+
+def test_la_descente_epargne_un_terme_deja_local_ailleurs(client, db_path):
+    """Réserve reprise de la migration v24 : un enfant déjà local à une AUTRE collection
+    est un fait délibéré, pas une omission. L'écraser rangerait chez quelqu'un le
+    vocabulaire de quelqu'un d'autre."""
+    cid, dom, dim, val = _branche(client, db_path)
+    conn = _lire(db_path)
+    conn.execute("INSERT INTO collection (nom) VALUES ('Ailleurs')")
+    autre = conn.execute("SELECT id FROM collection WHERE nom='Ailleurs'").fetchone()["id"]
+    conn.execute("UPDATE attribut_valeur SET collection_id = ? WHERE id = ?", (autre, val))
+    conn.execute("UPDATE attribut_dimension SET collection_id = NULL WHERE id = ?", (dim,))
+    conn.commit()
+    conn.close()
+
+    client.patch(f"/api/domaines/{dom}/lexique", json={"collection_id": cid})
+    assert _portee(db_path, "attribut_dimension", dim) == cid     # global → descendu
+    assert _portee(db_path, "attribut_valeur", val) == autre      # déjà placé → épargné
+
+
+def test_rattacher_une_dimension_lui_donne_la_portee_du_domaine(client, db_path):
+    """Second chemin vers l'état interdit, et il n'y avait aucune promotion : une dimension
+    GLOBALE passée sous un domaine PRIVÉ y restait globale. Ce qui fuyait n'était pas un
+    mot mais le NOM DE L'AXE — la grille d'analyse d'une collection fermée."""
+    cid, dom, _, _ = _branche(client, db_path)
+    libre = client.post("/api/attributs/dimensions",
+                        json={"cible": "case", "nom": "cadrage"}).json()
+    vlibre = client.post(f"/api/attributs/dimensions/{libre['id']}/valeurs",
+                         json={"valeur": "plongee"}).json()
+    assert _portee(db_path, "attribut_dimension", libre["id"]) is None
+
+    r = client.patch(f"/api/attributs/dimensions/{libre['id']}/domaine",
+                     json={"domaine_id": dom})
+    assert r.status_code == 200, r.text
+    assert _portee(db_path, "attribut_dimension", libre["id"]) == cid
+    assert _portee(db_path, "attribut_valeur", vlibre["id"]) == cid   # descendue aussi
+
+
+def test_detacher_une_dimension_ne_la_promeut_pas(client, db_path):
+    """Créer sans domaine naît global ; DÉTACHER n'est pas le même geste. Sortir une
+    dimension de son domaine est un rangement — la rendre globale au passage serait une
+    publication que personne n'a demandée, soit la classe de défaut réparée ici."""
+    cid, dom, dim, val = _branche(client, db_path)
+    r = client.patch(f"/api/attributs/dimensions/{dim}/domaine", json={"domaine_id": None})
+    assert r.status_code == 200, r.text
+    assert r.json()["domaine_id"] is None
+    assert _portee(db_path, "attribut_dimension", dim) == cid

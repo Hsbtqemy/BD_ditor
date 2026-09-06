@@ -135,8 +135,9 @@ def patch_dimension_lexique(dim_id: int, payload: LexiqueIn,
                             portee: autorisation.Portee = Depends(portee_courante)):
     """Documente une dimension : définition + note de portée + état + portée d'appartenance."""
     _get_dimension(conn, portee, dim_id, ecriture=True)
-    _patch_lexique(conn, "attribut_dimension", dim_id, payload, portee)
-    return _row(conn.execute("SELECT * FROM attribut_dimension WHERE id = ?", (dim_id,)))
+    promus = _patch_lexique(conn, "attribut_dimension", dim_id, payload, portee)
+    return {**_row(conn.execute("SELECT * FROM attribut_dimension WHERE id = ?", (dim_id,))),
+            "promus": promus}
 
 
 @router.patch("/api/attributs/valeurs/{val_id}/lexique")
@@ -145,8 +146,9 @@ def patch_valeur_lexique(val_id: int, payload: LexiqueIn,
                          portee: autorisation.Portee = Depends(portee_courante)):
     """Documente une valeur canonique (même couche définitionnelle)."""
     _get_valeur(conn, portee, val_id, ecriture=True)
-    _patch_lexique(conn, "attribut_valeur", val_id, payload, portee)
-    return _row(conn.execute("SELECT * FROM attribut_valeur WHERE id = ?", (val_id,)))
+    promus = _patch_lexique(conn, "attribut_valeur", val_id, payload, portee)
+    return {**_row(conn.execute("SELECT * FROM attribut_valeur WHERE id = ?", (val_id,))),
+            "promus": promus}
 
 
 @router.patch("/api/tags/{tag_id}/lexique")
@@ -162,5 +164,7 @@ def patch_tag_lexique(tag_id: int, payload: LexiqueIn,
         raise HTTPException(404, f"Tag {tag_id} introuvable")
     if not portee.peut_ecrire_terme(tag.get("collection_id")):
         raise HTTPException(403, "Ce tag est en lecture seule pour vous.")
-    _patch_lexique(conn, "tags", tag_id, payload, portee, col_definition="description")
-    return _row(conn.execute("SELECT * FROM tags WHERE id = ?", (tag_id,)))
+    promus = _patch_lexique(conn, "tags", tag_id, payload, portee,
+                            col_definition="description")
+    return {**_row(conn.execute("SELECT * FROM tags WHERE id = ?", (tag_id,))),
+            "promus": promus}
