@@ -47,8 +47,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import DB_PATH, BASE_DIR  # noqa: E402
 import database  # noqa: E402  (réutilise numeros_editoriaux / citations_regions)
 import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
-from _commun import (version_outil, environnement, composants,  # noqa: E402  (provenance / env, partagés)
-                     portee_albums, forcer_utf8, pseudonymes)
+from _commun import (version_outil, environnement, composants,  # noqa: E402  (provenance / env,
+                     portee_albums, forcer_utf8, pseudonymes,   # partagés + liste blanche
+                     evenements_publiables)                     # AUTH-1)
 
 
 def _grouper(conn, sql, cle=0):
@@ -548,7 +549,7 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
         [[e["id"], e["activite_id"], e["type"], pseudo.get(e["agent"], e["agent"]),
           e["agent_type"],
           e["cible_table"], e["cible_id"], e["avant"], e["apres"], e["date"]]
-         for e in conn.execute("SELECT * FROM evenement ORDER BY id")])
+         for e in evenements_publiables(conn)])
     return out
 
 

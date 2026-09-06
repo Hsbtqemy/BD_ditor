@@ -212,6 +212,82 @@ def version_outil(base_dir) -> dict:
 # --------------------------------------------------------------------------- #
 # Pseudonymisation des annotateurs à la SORTIE (AUTH-1, 2026-08-31)
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Ce que le journal A3 publie AU DÉPÔT — par cible_table, et PAR DÉCISION (AUTH-1)
+#
+# `pseudonymes()` ci-dessous retire l'identité de la colonne `agent`. Elle ne pouvait
+# rien contre les CHARGES : `metadonnees_collection` publie `avant`/`apres` mot pour mot,
+# si bien qu'un login pseudonymisé en colonne 4 ressortait en clair en colonne 8, dans la
+# même ligne. Mesuré le 2026-09-06 sur trois événements VIVANTS — `collection` publiait le
+# login du propriétaire, `collection_acces` le principal de chaque partage, `sharedocs`
+# un chemin serveur et un nom de compte Huma-Num.
+#
+# Le cliquet d'AUTH-5 ne pouvait pas le voir, et pas par accident : son semis met les
+# sentinelles dans la colonne `agent`, et sa charge d'événement est un token
+# (`{lemme, pos, morph}`). Une garde qui approuve en ne regardant pas la bonne colonne.
+#
+# La coupure n'est donc PAS « quelles colonnes » mais « quels ACTES » : le dépôt a besoin
+# de savoir comment le CORPUS a été fait, jamais comment l'instance est administrée. Un
+# lecteur ne tire rien de « annotateur-1 a modifié utilisateur/None », et la ligne seule
+# invite la question à laquelle on refuse de répondre — d'où le retrait de l'événement
+# entier plutôt que de sa charge.
+#
+# Une table ABSENTE des deux ensembles fait échouer `test_journal_publie_par_decision` :
+# c'est le seul moyen qu'une future table administrative soit retenue PAR DÉFAUT et non
+# par décision. Même forme que le correctif de `GET /api/export/json`, qui a cessé de
+# faire `SELECT *` pour nommer ses colonnes.
+# --------------------------------------------------------------------------- #
+CIBLES_CORPUS = frozenset({
+    "regions",             # géométrie et arbre de structure
+    "annotations",         # note et tags d'une région
+    "bulle_locuteur",      # attribution d'une bulle à un personnage
+    "personnage_presence", # présence d'un personnage dans une case
+    "token_correction",    # correction grammaticale — le cœur de l'accord ANN-5
+    "planches",            # statut et validation d'une planche
+    "evenement",           # les `annulation` de l'undo (D1) : un acte défait EST de la
+                           # provenance de corpus, et le taire donnerait un historique
+                           # où des actes annulés paraissent tenir encore
+})
+
+CIBLES_RETENUES = {
+    "sharedocs":
+        "SHARE-1 — chemin serveur du dépôt et nom du compte Huma-Num employé. Sauvegarder "
+        "est un geste d'EXPLOITATION ; l'entrepôt n'a rien à en apprendre, et le nom de "
+        "compte est une identité de tiers que personne n'a consenti à publier.",
+    "collection":
+        "AUTH-3 — la charge de création porte `proprietaire`, un login. Les descripteurs "
+        "de la collection partent au dépôt par les blocs prévus pour cela, où ils sont "
+        "choisis ; les faire ressortir ici les publierait une seconde fois, sans tri.",
+    "collection_acces":
+        "AUTH-3 — `principal` est un login ou un NOM DE GROUPE. Un registre de qui a eu "
+        "accès à quoi est une pièce d'audit interne : il sert à répondre d'un accès "
+        "accordé par erreur, et cette réponse se doit à l'équipe, pas à l'entrepôt.",
+}
+
+
+def evenements_publiables(conn, ordre: str = "ASC"):
+    """Les événements du journal A3 qui partent au dépôt, dans l'ordre demandé.
+
+    UN seul endroit fait le filtre, et les deux sérialisations l'appellent — pour la même
+    raison que `pseudonymes()` est partagé : deux vues du même journal qui n'auraient pas
+    les mêmes actes se contrediraient, et rien ne le signalerait.
+
+    CONSÉQUENCE À CONNAÎTRE : `pseudonymes()` numérote sur le journal ENTIER, retenues
+    comprises, et ce n'est pas un oubli. Son invariant est qu'une personne garde son numéro
+    d'un artefact à l'autre et d'un dépôt au suivant ; le restreindre aux actes publiés le
+    ferait dépendre de la liste blanche, si bien qu'y ajouter une table demain renumérote
+    des dépôts déjà déposés. Le prix est que la suite publiée peut avoir des TROUS — un
+    `annotateur-2` absent du graphe parce que ses seuls actes sont administratifs. Un trou
+    se lit comme une omission ; c'est le moindre des deux maux, et il est ici par écrit.
+    """
+    if ordre not in ("ASC", "DESC"):
+        raise ValueError(f"ordre : ASC ou DESC, pas {ordre!r}")
+    cibles = tuple(sorted(CIBLES_CORPUS))
+    return conn.execute(
+        f"SELECT * FROM evenement WHERE cible_table IN ({','.join('?' * len(cibles))}) "
+        f"ORDER BY id {ordre}", cibles)
+
+
 def pseudonymes(conn) -> dict:
     """login humain → « annotateur-N ». Partagé par TOUS les exports d'un même corpus.
 

@@ -280,3 +280,144 @@ def test_prov_export_cli(client, derriere_proxy, album, db_path, data_dir):
     doc = json.loads(r.stdout)["provenance_export"]
     assert doc["resume"]["evenements"] >= 1
     assert "prov" in doc and doc["prov"]["prefix"]["prov"].startswith("http://www.w3.org/ns/prov")
+
+
+# --------------------------------------------------------------------------- #
+# Ce que le journal publie AU DÉPÔT (AUTH-1, liste blanche de `cible_table`)
+#
+# `pseudonymes()` retirait l'identité de la colonne `agent` et ne pouvait rien contre les
+# CHARGES : `metadonnees_collection` publie `avant`/`apres` mot pour mot. Mesuré le
+# 2026-09-06 sur trois événements vivants — `collection` sortait le login du propriétaire,
+# `collection_acces` le principal de chaque partage, `sharedocs` un chemin serveur et un
+# compte Huma-Num — tous dans la ligne même dont l'agent était pseudonymisé.
+#
+# Une liste blanche échoue en se FERMANT : le danger n'est plus la fuite mais l'amputation
+# silencieuse du dépôt. Les tests vont donc dans les deux sens.
+# --------------------------------------------------------------------------- #
+def _semer_une_charge_par_cible(conn):
+    """Un événement par `cible_table` connue, chacun porteur d'un marqueur unique."""
+    import _commun
+    cibles = sorted(_commun.CIBLES_CORPUS | set(_commun.CIBLES_RETENUES))
+    for i, table in enumerate(cibles, 1):
+        conn.execute(
+            "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id, "
+            "avant, apres) VALUES ('modification', 'alice', 'humain', ?, ?, ?, ?)",
+            (table, i, json.dumps({"marqueur": f"CHARGE-{table}"}),
+             json.dumps({"marqueur": f"CHARGE-{table}"})))
+    conn.commit()
+    return cibles
+
+
+def test_journal_publie_par_decision():
+    """Toute `cible_table` du code est classée PUBLIÉE ou RETENUE — jamais ni l'un ni l'autre.
+
+    Le cliquet : relevée par AST sur les appels à `journal.journaliser`, donc une table
+    ajoutée demain fait échouer ce test au lieu de partir au dépôt par défaut. C'est la
+    même forme que le correctif de `GET /api/export/json`, qui a cessé de faire `SELECT *`.
+    """
+    import ast
+    import _commun
+
+    ecrites, non_litteral = set(), []
+    for f in REPO_ROOT.rglob("*.py"):
+        if {"tests", ".venv", "spike", "__pycache__"} & set(f.parts):
+            continue
+        try:
+            arbre = ast.parse(f.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for n in ast.walk(arbre):
+            if not isinstance(n, ast.Call):
+                continue
+            nom = n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", None)
+            if nom != "journaliser" or len(n.args) < 3:
+                continue
+            cible = n.args[2]
+            if isinstance(cible, ast.Constant):
+                ecrites.add(cible.value)
+            else:
+                non_litteral.append(f"{f.relative_to(REPO_ROOT).as_posix()}:{n.lineno}")
+
+    assert not non_litteral, (
+        "`cible_table` calculée : le relevé par AST ne la voit pas, donc le cliquet "
+        f"cesse de garder — {non_litteral}")
+    assert ecrites, "aucun appel à journaliser relevé : le cliquet ne mesure plus rien"
+
+    classees = _commun.CIBLES_CORPUS | set(_commun.CIBLES_RETENUES)
+    assert not (ecrites - classees), (
+        f"cible_table ni publiée ni retenue : {sorted(ecrites - classees)} — la classer "
+        "dans `tools/_commun.py`, avec sa raison si elle est retenue")
+    assert not (_commun.CIBLES_CORPUS & set(_commun.CIBLES_RETENUES)), (
+        "une table à la fois publiée et retenue : les deux sérialisations diraient "
+        "des choses différentes selon celle qu'elles consultent")
+    assert all(len(r) > 40 for r in _commun.CIBLES_RETENUES.values()), (
+        "une raison de retenue trop courte pour être une raison")
+
+
+def test_les_actes_administratifs_ne_partent_pas_au_depot(db_path):
+    """Ni leur charge, ni leur ligne : « annotateur-1 a modifié utilisateur/None »
+    n'apprend rien et invite la question à laquelle on refuse de répondre."""
+    import _commun
+    import metadonnees_collection as mc
+    import provenance_export as pe
+
+    conn = _lire(db_path)
+    _semer_une_charge_par_cible(conn)
+
+    _, lignes = mc.tables(conn)["evenement"]
+    csv_texte = json.dumps(lignes, ensure_ascii=False)
+    prov_texte = json.dumps(pe.construire(conn), ensure_ascii=False)
+    tables_csv = {l[5] for l in lignes}
+
+    for table in sorted(_commun.CIBLES_RETENUES):
+        assert table not in tables_csv, f"{table} : la ligne part au dépôt"
+        assert f"CHARGE-{table}" not in csv_texte, f"{table} : la charge part au dépôt"
+        assert f"CHARGE-{table}" not in prov_texte, f"{table} : la charge part en PROV/TEI"
+
+
+# Le PLANCHER de publication : ces actes partent au dépôt, et le savoir ne se déduit pas
+# de `CIBLES_CORPUS`. Mesuré le 2026-09-06 : déplacer une table de `CIBLES_CORPUS` vers
+# `CIBLES_RETENUES` la laisse CLASSÉE — le cliquet de décision reste vert — et le test
+# d'amputation, s'il itérait la déclaration, cesserait simplement de la regarder. Deux
+# gardes au vert, et `token_correction` — le cœur de l'accord ANN-5 — disparu du dépôt.
+#
+# C'est la forme d'`exiger_plancher()` d'ARCH-2, et pour la même raison : une garde qui
+# tire son attendu de ce qu'elle garde devient plus verte à mesure qu'elle voit moins.
+# Retirer une ligne d'ici est un ACTE, qui doit s'argumenter contre ce commentaire.
+PLANCHER_PUBLIE = {
+    "regions", "annotations", "bulle_locuteur", "personnage_presence",
+    "token_correction", "planches", "evenement",
+}
+
+
+def test_les_actes_de_corpus_partent_toujours(db_path):
+    """L'autre sens, et c'est le mode d'échec d'une liste blanche : amputer le dépôt."""
+    import _commun
+    import metadonnees_collection as mc
+
+    assert PLANCHER_PUBLIE <= _commun.CIBLES_CORPUS, (
+        "des actes du plancher ont été retirés de la publication : "
+        f"{sorted(PLANCHER_PUBLIE - _commun.CIBLES_CORPUS)}")
+
+    conn = _lire(db_path)
+    _semer_une_charge_par_cible(conn)
+
+    _, lignes = mc.tables(conn)["evenement"]
+    csv_texte = json.dumps(lignes, ensure_ascii=False)
+    tables_csv = {l[5] for l in lignes}
+
+    for table in sorted(PLANCHER_PUBLIE | _commun.CIBLES_CORPUS):
+        assert table in tables_csv, f"{table} : acte de corpus absent du dépôt"
+        assert f"CHARGE-{table}" in csv_texte, f"{table} : charge de corpus perdue"
+
+
+def test_le_resume_compte_ce_qu_il_publie(db_path):
+    """Un résumé qui compterait tous les événements annoncerait un nombre que le graphe
+    ne contient pas, et l'écart passerait pour une perte."""
+    import _commun
+    import provenance_export as pe
+
+    conn = _lire(db_path)
+    _semer_une_charge_par_cible(conn)
+    doc = pe.construire(conn)["provenance_export"]
+    assert doc["resume"]["evenements"] == len(_commun.CIBLES_CORPUS)

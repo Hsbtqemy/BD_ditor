@@ -34,7 +34,8 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import DB_PATH, BASE_DIR  # noqa: E402
-from _commun import pseudonymes, version_outil  # noqa: E402  (provenance de l'outil — paradonnée)
+from _commun import (pseudonymes, version_outil,  # noqa: E402  (provenance de l'outil,
+                     evenements_publiables)                     # liste blanche AUTH-1)
 
 _PREFIXE = {
     "bd": "https://bedediteur.huma-num.fr/prov/",
@@ -104,7 +105,7 @@ def prov_json(conn) -> dict:
                 "prov:activity": aid, "prov:agent": _agent_id(_nom(a["agent"]))}
 
     # 2) Événements (actes atomiques) → activités PROV + relations avec la cible.
-    for e in conn.execute("SELECT * FROM evenement ORDER BY id"):
+    for e in evenements_publiables(conn):
         eid = f"bd:evt/{e['id']}"
         ev = {"prov:type": e["type"], "bd:agent_type": e["agent_type"]}
         if e["date"]:
@@ -159,7 +160,7 @@ def tei_revision_desc(conn) -> str:
     # Le MÊME mapping que PROV-JSON : deux sérialisations du même journal qui nommeraient
     # différemment la même personne se contrediraient, et rien ne le signalerait.
     pseudo = _pseudo(conn)
-    for e in conn.execute("SELECT * FROM evenement ORDER BY id DESC"):   # plus récent d'abord (usage TEI)
+    for e in evenements_publiables(conn, "DESC"):     # plus récent d'abord (usage TEI)
         ch = ET.SubElement(root, "change")
         agent = pseudo.get(e["agent"], e["agent"])
         if e["date"]:
@@ -179,7 +180,9 @@ def construire(conn) -> dict:
     """Document complet : PROV-JSON + TEI revisionDesc + résumé (comptes)."""
     prov = prov_json(conn)
     nb_act = conn.execute("SELECT COUNT(*) FROM activite").fetchone()[0]
-    nb_evt = conn.execute("SELECT COUNT(*) FROM evenement").fetchone()[0]
+    # Compter TOUS les événements contredirait la liste blanche : le résumé annoncerait
+    # un nombre que le graphe ne contient pas, et l'écart passerait pour une perte.
+    nb_evt = sum(1 for _ in evenements_publiables(conn))
     return {"provenance_export": {
         "genere_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "outil": version_outil(BASE_DIR),
