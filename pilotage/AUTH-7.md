@@ -5,7 +5,31 @@ statut: interrompu
 
 # AUTH-7 — administrer les comptes sans console
 
-**Arrêté sur** — 2026-09-06, `e3e572b` : **le seul des quatre orphelins réparable sans
+**Arrêté sur** — 2026-09-07 : **LA BASCULE EST FAITE.** L'authentification de l'instance
+passe par LLDAP. `chercheur` entre avec son mot de passe d'annuaire et son TOTP **déjà
+enrôlé**, sans réinscription — l'hypothèse centrale de cette fiche, écrite depuis deux jours
+et jamais éprouvée sur ce chemin, est confirmée. `bd-admins` traverse jusqu'à
+`Remote-Groups` : l'administration fonctionne comme avant.
+
+**Ce que la journée a appris sur la méthode, et qui vaut plus que le résultat.** Deux
+vérifications ont chacune évité une panne, et aucune des deux n'était une formalité.
+
+`validate-config` dans un conteneur JETABLE a refusé la configuration : « ldap: option
+'password' is required ». Le bloc lit ses valeurs par gabarit, et Authelia résout `env` dans
+SON conteneur — or `LLDAP_BASE_DN` et `LLDAP_AUTHELIA_PASS` étaient passées à `lldap` et pas
+à lui. Un `restart` aurait coupé le portail pour tout le monde, et le message envoie chercher
+un mot de passe manquant dans `.env`, où il se trouve pourtant. **C'était la deuxième fois
+que cette erreur exacte se produisait** — le 2026-09-05, `ANNUAIRE_DOMAINE` était passé à
+Caddy et pas à Authelia. Une garde mécanique est possible : croiser les `{{ env "…" }}` de
+`configuration.yml` avec l'environnement du service `authelia`. Elle aurait attrapé les deux.
+
+Et l'ordre « prouver la chaîne AVANT le proxy » a payé : le `curl` interne à 302 a fermé la
+moitié de l'espace de recherche avant qu'un défaut n'apparaisse. Au passage, le premier essai
+rendait 400 et j'ai failli chercher un défaut dans le bloc annuaire — la comparaison avec
+`bd.edito-revue.fr`, dont on SAIT qu'il fonctionne, a rendu 400 aussi. Comparer à un cas
+connu bon a coûté une commande et évité une chasse.
+
+Plus tôt, le 2026-09-06, `e3e572b` : **le seul des quatre orphelins réparable sans
 console est réparé, et il l'est avant la vue qui devait le lire.** Un login repris laisse
 désormais une trace datée au journal A3. La raison de ne pas attendre est que cette trace
 ne se RECONSTRUIT pas : l'ancienne valeur est perdue à l'instant de l'écrasement, et le
@@ -179,9 +203,9 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [x] **L'échéance est connue, et elle commande l'ordre** — 2026-09-06 : *« des gens attendent déjà »*. On ne migre donc RIEN maintenant : les comptes se créent à la main avec la procédure du runbook, et le chantier se planifie ensuite, à froid, sur une instance qui tourne. INFRA-9 passe avant, comme prévu
 - [x] **Le chemin est choisi : LLDAP (chemin 2), et la raison n'est pas celle qu'on croyait** — 2026-09-06, par l'équipe : *« le problème est d'aller trafiquer un yml sur un serveur qui n'est pas accessible à tout le monde. Tant qu'on a une interface web disponible et que remplir un formulaire est juste entrer quelques infos et rattacher quelque part, aucun problème. »* Ce n'est donc PAS le temps gagné — cet argument reste faible, et la saisie demeure : trente personnes restent trente formulaires. C'est que **le geste cesse d'exiger un shell sur le VPS**. Aujourd'hui, déléguer la création d'un compte revient à déléguer un accès serveur ; demain, une adresse et un mot de passe suffisent. Un pouvoir cesse d'être surdimensionné
 - [x] **L'interface de LLDAP est derrière Authelia et réservée à `bd-admins`** — écrit le 2026-09-06 sur la branche `auth-7-lldap`. Le service ne publie AUCUN port ; Caddy sert son interface sur un sous-domaine dédié, derrière le même `forward_auth` que l'application, et `access_control` y exige `group:bd-admins` en `two_factor`. `default_policy: 'deny'` fait le reste : sans cette règle, le domaine serait refusé à tout le monde — c'est la bonne façon d'ajouter une surface
-- [ ] **Le compte de service `authelia` est dans `lldap_password_manager`** — ni `strict_readonly`, ni `lldap_admin`. La lecture ne suffit PAS : `password_reset.disable: false` veut dire qu'Authelia doit pouvoir ÉCRIRE un mot de passe, et c'est ce chemin qui porte l'inscription depuis le 2026-09-06. `lldap_admin` serait l'excès inverse — un service n'a pas à créer ni supprimer des comptes
+- [x] **Le compte de service `authelia` est dans `lldap_password_manager`** — fait le 2026-09-07, et VÉRIFIÉ en LDAP plutôt que sur l'écran qui l'a créé : `ldapsearch` renvoie `memberof: cn=lldap_password_manager`. Ni `strict_readonly` (réinitialiser un mot de passe ÉCRIT), ni `lldap_admin` (un service n'a pas à créer de comptes). Sans le bon groupe, la lecture aurait parfaitement marché et seule la réinitialisation aurait échoué — des semaines plus tard, le jour où quelqu'un en a besoin
 - [ ] **Le recours des administrateurs est éprouvé AVANT d'en avoir besoin.** LLDAP interdit à un `password_manager` de changer le mot de passe d'un `lldap_admin` — protection anti-élévation, et conséquence directe : **« Mot de passe oublié ? » ne fonctionnera pas pour vos propres comptes.** Attendu : on sait, avant de se verrouiller dehors, qu'on rentre par l'interface de LLDAP, et en dernier ressort par `LLDAP_LDAP_USER_PASS` dans `.env`. Cette variable est donc à conserver HORS de la machine
-- [ ] **La bascule se fait en UNE fois, et le retour arrière est éprouvé dans le même geste** : commenter `ldap:`, décommenter `file:`, redémarrer. `users_database.yml` n'est pas supprimé par la bascule et reste le recours tant que ses comptes existent. Attendu : le retour arrière est essayé POUR DE VRAI le jour de la bascule, pas réputé disponible — c'est la leçon du repli SMTP, qu'on n'a su bon qu'en le déclenchant
+- [ ] **Le retour arrière n'a PAS été éprouvé, et la bascule est faite** — 2026-09-07. Inverser les deux commentaires est écrit, en place et lisible dans le fichier, mais personne ne l'a exécuté. C'est exactement la réserve que cette fiche oppose ailleurs : *un repli qu'on n'a pas déclenché n'est pas un repli*. La leçon du notifier SMTP, qu'on n'a su bon qu'en le vidant pour de bon. À faire à froid, pas le jour où il faudra
 - [ ] **La vue des comptes rend son verdict AVANT que la suppression soit déléguée** — conséquence directe du choix du 2026-09-06. Créer exige `lldap_admin`, qui inclut SUPPRIMER : il n'existe aucun rôle « peut inscrire, ne peut pas détruire » (les deux autres niveaux, `password_manager` et `strict_readonly`, sont faits pour des SERVICES). Donc la règle « ce que le compte a laissé » s'appliquera à des gens qui n'étaient pas dans la conversation où elle s'est décidée. C'est ce qui rend « verdict, pas des chiffres » non cosmétique
 
 ### Le temps 1, engagé le 2026-09-07
@@ -207,7 +231,7 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [ ] **Une règle `deny` en tête d'`access_control` refuse bien l'accès à l'application** — à ÉPROUVER sur l'instance, pas déduit de l'ordre promis. Attendu : un compte du groupe `archives` est refusé sur `bd.edito-revue.fr` alors que les trois règles suivantes l'autoriseraient, et l'effet porte sur une session DÉJÀ ouverte, la portée se recalculant à chaque requête. Le portail `auth.` reste joignable, ce qui est sans importance — il n'y a rien derrière
 - [ ] **Ce que devient un TOTP orphelin quand le login revient** — la seule des quatre conséquences de la suppression qui ne se lise pas dans le code d'ici, donc la seule à mesurer sur l'instance. Attendu à confirmer : le stockage d'Authelia étant indexé par nom d'utilisateur et indépendant du backend, le nouvel arrivant ne peut PAS s'enrôler — une configuration existe déjà — pendant que l'appareil de l'ancien produit encore des codes valides pour ce login. Se mesure en supprimant un compte d'essai puis en le recréant sous le même nom — **la même manipulation répond à la case de migration ci-dessous**, qui interroge la même propriété dans l'autre sens : ce qui fait SUIVRE un TOTP au changement de backend est ce qui le fait RESTER après une suppression
 - [ ] **Si Authentik : le séparateur de groupes est traité DANS LE MÊME GESTE que le renommage d'en-têtes** — mesuré le 2026-09-06, et c'est une soirée épargnée. `autorisation.py:96` découpe `Remote-Groups` sur des VIRGULES ; Authentik sépare `X-authentik-groups` par des PIPES. Attendu : soit un mapping de propriété qui émet des virgules et BDéditeur ne bouge pas d'une ligne, soit une ligne qui découpe sur les deux. Jamais après la bascule — la panne se ferme en silence et le bandeau d'AUTH-1 accuse le mauvais coupable (voir plus bas)
-- [ ] Le coût réel de la migration `file` → `ldap` sur cette instance : les comptes à recréer, les groupes à reporter, et ce qui se passe pour un TOTP déjà enrôlé. **Hypothèse à éprouver** : les appareils TOTP vivent dans le stockage PROPRE d'Authelia (`db.sqlite3`), indexés par nom d'utilisateur et non par backend — à noms d'utilisateur identiques, ils devraient suivre. Se vérifie sur l'instance : `docker compose exec authelia sh -c "authelia storage user totp export --config /config/configuration.yml"` ou, à défaut, la table `totp_configurations` de `db.sqlite3`
+- [x] **Le coût réel de la migration est DEUX COMPTES**, mesuré le 2026-09-07 et non estimé : `collection_acces` est VIDE (aucun accès explicite n'a jamais été accordé — `chercheur` voit tout parce qu'il est administrateur, `stagiaire` ne voit rien), et `utilisateur` ne contient que `chercheur` et `stagiaire`. La corvée annoncée était deux formulaires. **Et l'hypothèse sur le TOTP est CONFIRMÉE** : `chercheur` s'est connecté avec son mot de passe LLDAP puis son appareil DÉJÀ enrôlé, sans réinscription — les appareils vivent dans le stockage propre d'Authelia, indexés par login, indépendamment du backend. C'était l'inconnue portée par cette fiche depuis deux jours
 
 ### Ce que BDéditeur pourrait apporter, et qu'aucun annuaire ne saura
 - [ ] La demande dit « comptes ACTIFS », et un annuaire ne connaît que les comptes DÉCLARÉS. `utilisateur` porte `premiere_vue` et `derniere_vue` : BDéditeur sait qui a réellement ouvert l'application, et quand. Un tableau en lecture seule dans le panneau 👥 Collections répondrait à la moitié « voir » de la demande, sans dépendre du chemin choisi pour la moitié « créer ». **Promu le 2026-09-06 de confort à CONDITION** : depuis que la sûreté d'une suppression se juge sur ce que le compte a laissé, c'est ce tableau qui doit le dire — il lui faut donc, en plus de l'usage, le compte d'actes au journal A3 et les accès détenus
