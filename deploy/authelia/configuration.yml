@@ -95,8 +95,26 @@ access_control:
 # --- Sessions (Redis) : permet une déconnexion propre + expiration ---
 session:
   name: 'authelia_session'
-  expiration: '1 hour'
-  inactivity: '15 minutes'
+  # Demandé par l'équipe le 2026-09-06 : « 15 min, c'est trop peu ; minimum 30 min, voire
+  # 1 h ». C'est `inactivity` qui se faisait sentir — le délai d'INACTIVITÉ, pas la durée
+  # de la session. Annoter, c'est lire une planche, ouvrir un dictionnaire, revenir : le
+  # travail lui-même produit des silences de plus d'un quart d'heure.
+  #
+  # LES DEUX sont relevées, et pas par excès de zèle. La documentation d'Authelia définit
+  # `expiration` par « the period of time before the cookie expires » sans dire si elle est
+  # RAFRAÎCHIE à chaque requête ou si elle plafonne depuis la connexion. Selon la réponse,
+  # ne toucher qu'à `inactivity` donnerait soit le résultat voulu, soit une déconnexion au
+  # bout d'une heure de travail CONTINU — le contraire de ce qui est demandé. Lever les
+  # deux rend le réglage indépendant de cette incertitude : `inactivity` borne, quoi qu'il
+  # arrive, et 12 h couvre une journée de travail si `expiration` est un plafond absolu.
+  #
+  # Ce que cela coûte en sécurité, et pourquoi c'est peu : `remember_me` accorde déjà UN
+  # MOIS à qui coche la case au portail. Les 15 minutes ne bordaient donc que les personnes
+  # qui ne la cochent pas — une friction pour les prudents, aucune gêne pour les autres.
+  # Un réglage strict qui voisine avec un réglage permissif ne protège rien ; il apprend
+  # seulement à cocher la case.
+  expiration: '12 hours'
+  inactivity: '1 hour'
   remember_me: '1 month'
   # secret -> AUTHELIA_SESSION_SECRET
   cookies:
