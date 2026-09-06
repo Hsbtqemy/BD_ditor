@@ -138,6 +138,17 @@ ENV BD_DATA_DIR=/data \
 # quatre chantiers livrés (Exploration, ANN-4, NLP-1, ANN-5) en silence.
 RUN python tools/verifier_moteurs.py --exiger kumiko,bulles,ocr,nlp
 
+# QUEL commit cette image sert-elle ? Sans cette étiquette, le déploiement ne peut
+# comparer que des choses qui n'ont pas de rapport — `deployer.sh` regardait si SON
+# `git pull` avait ramené quelque chose, ce qui n'est pas la même question que « l'image
+# en service est-elle en retard ». Les deux se séparent dès que quelqu'un tire à la main,
+# et c'est arrivé le 2026-09-06 : le dépôt était à jour, le conteneur d'avant-veille, et
+# le script a répondu « rien de neuf ».
+#
+# Placé APRÈS tout ce qui coûte : changer de commit n'invalide que cette couche-ci.
+ARG BD_COMMIT=inconnu
+LABEL bd.commit=$BD_COMMIT
+
 EXPOSE 8000
 
 # 1 SEUL worker : l'app garde des états en mémoire (jobs, session, modèles).

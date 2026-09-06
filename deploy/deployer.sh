@@ -115,21 +115,19 @@ faire "git pull --ff-only"
 
 apres="$(git rev-parse HEAD)"
 
-# LA garde du 2026-09-05. `git pull` peut mettre à jour l'arbre puis échouer à délier un
-# fichier — un dossier appartenant à root suffit — et RENDRE 0 en laissant HEAD en
-# arrière. Le VPS a vécu neuf commits de retard avec un `pull` qui semblait réussir.
-if [ "$simulation" = 0 ] && [ "$avant" = "$apres" ]; then
-  if [ "$forcer" = 0 ]; then
-    echo "   rien de neuf : HEAD n'a pas bougé."
-    echo "   Si vous ATTENDIEZ une mise à jour, c'est le symptôme du 2026-09-05 —"
-    echo "   vérifiez les droits : ls -ld deploy/authelia  (doit appartenir à ubuntu)"
-    echo "   Sinon, --forcer pour reconstruire quand même."
-    exit 0
-  fi
-  ok "HEAD inchangé, mais --forcer demandé"
+# HEAD inchangé n'est PAS une anomalie : quelqu'un a pu tirer à la main entre-temps.
+# Ce qui l'était le 2026-09-05 — un `git pull` qui met à jour les fichiers, échoue à en
+# délier un et rend 0 en laissant HEAD en arrière — se voit ailleurs, et mieux : l'arbre
+# reste SALE après le pull, ce que le contrôle suivant refuse. C'est lui la garde.
+if [ "$avant" = "$apres" ]; then
+  ok "HEAD inchangé par ce pull"
 else
   ok "après : $(git log --oneline -1 --no-decorate)"
 fi
+
+# On NE DÉCIDE PAS ici s'il y a quelque chose à faire : « mon pull a-t-il ramené quelque
+# chose » n'est pas la question. La bonne est « l'image en service est-elle en retard sur
+# HEAD », et elle se pose plus bas, une fois Compose joignable — cf. étape 2 bis.
 
 # Un `pull` partiellement appliqué laisse des traces ici alors qu'il a rendu 0.
 [ -z "$(git status --porcelain)" ] || {
@@ -194,6 +192,40 @@ ok "override 'derriere-proxy' actif (127.0.0.1:8080)"
 faire "python3 verifier_deploiement.py --config .env"
 constat "configuration cohérente"
 
+# ── 2 bis. Y a-t-il quelque chose à déployer ? ───────────────────────────────
+# La question porte sur l'IMAGE EN SERVICE, pas sur le pull. Le 2026-09-06, le dépôt
+# était à jour — quelqu'un avait tiré à la main — et le conteneur datait de l'avant-veille ;
+# le script a répondu « rien de neuf » et n'a rien déployé. Un indicateur pris pour la
+# chose qu'il indique, exactement ce que ce dépôt traque ailleurs.
+#
+# L'image porte donc son commit (`LABEL bd.commit`, cf. Dockerfile), et on le LIT.
+etape "Ce que sert l'instance"
+
+deploye=""
+cid="$(docker compose ps -q app 2>/dev/null || true)"
+if [ -n "$cid" ]; then
+  deploye="$(docker inspect --format '{{ index .Config.Labels "bd.commit" }}' "$cid" 2>/dev/null || true)"
+fi
+
+# `<no value>` est ce que rend un gabarit Go sur une clé absente — donc sur toute image
+# construite AVANT ce mécanisme, c'est-à-dire celle qui tourne au moment où on l'installe.
+# La traiter comme un commit ferait afficher « en service <no val » et conclure à un
+# retard pour la mauvaise raison.
+if [ -z "$deploye" ] || [ "$deploye" = "inconnu" ] || [ "$deploye" = "<no value>" ]; then
+  # Aucune étiquette : image d'avant ce mécanisme, ou service à l'arrêt. On ne peut RIEN
+  # conclure, donc on ne conclut pas — et surtout on ne saute pas le déploiement.
+  ok "image sans étiquette de commit — on ne peut pas comparer, on déploie"
+elif [ "$deploye" = "$apres" ]; then
+  ok "l'image sert déjà ${apres:0:7}"
+  if [ "$forcer" = 0 ]; then
+    echo "   rien à faire. --forcer pour reconstruire quand même."
+    exit 0
+  fi
+  ok "--forcer demandé"
+else
+  ok "en service ${deploye:0:7}, attendu ${apres:0:7} — il y a à déployer"
+fi
+
 # ── 3. La suite DANS l'image ─────────────────────────────────────────────────
 # QA-5, mesuré le 2026-08-27 : 451 tests verts dans le venv local et trois moteurs morts
 # dans l'image, le même jour. Le venv n'est pas l'artefact livré.
@@ -213,6 +245,7 @@ etape "Déploiement"
 
 # `up -d --build` et non `restart` : `restart` relance le conteneur EXISTANT avec
 # l'environnement qu'il avait à sa création, donc sans relire .env ni le nouveau code.
+export BD_COMMIT="$apres"
 faire "docker compose up -d --build app"
 faire "docker compose ps"
 
