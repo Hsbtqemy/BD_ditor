@@ -5,15 +5,21 @@ statut: interrompu
 
 # AUTH-7 — administrer les comptes sans console
 
-**Arrêté sur** — 2026-09-06, `e193ae4` : **la vérification la moins chère est faite, et
-elle n'annule rien — elle ferme l'attente.** Aucune version d'Authelia n'administre les
-comptes, et la plus récente non plus : sur sa feuille de route, « User Management » n'est
-pas commencé et ne porte AUCUNE version cible. Attendre n'est donc pas une option ; il
-reste à choisir entre l'annuaire et le fichier. Un constat collatéral est plus urgent que
-la fiche elle-même : cette instance tourne sur une version qui ne reçoit plus de
-correctifs de bogue.
+**Arrêté sur** — 2026-09-06, `e193ae4` : **la vérification la moins chère est faite, elle
+n'annule rien — elle ferme l'attente. Et la suivante a retourné le problème.** La demande
+voulait les deux gestes actifs, supprimer et désactiver, la désactivation étant vue comme
+un pis-aller. C'est l'inverse : dans cette architecture, désactiver est complet et
+réversible depuis un panneau, tandis que **supprimer laisse trois orphelins** dont un ne se
+nettoie qu'en console. La suppression n'est donc offrable qu'à une condition, et c'est une
+règle de nommage — un login ne se réutilise jamais.
 
-**Point de départ** — 2026-09-06, demandé en propres termes : *« pouvoir gérer la création
+Le même jour, plus tôt : **aucune version d'Authelia n'administre les comptes**, et la
+plus récente non plus — sur sa feuille de route, « User Management » n'est pas commencé et
+ne porte aucune version cible. Attendre n'est donc pas une option ; il reste à choisir
+entre l'annuaire et le fichier. Un constat collatéral est parti dans `INFRA-9` : cette
+instance tourne sur une mineure qui ne reçoit plus de correctifs de bogue.
+
+**La demande, en propres termes** — 2026-09-06 : *« pouvoir gérer la création
 de compte sans passer par la console, surtout au lancement du produit. Et avoir une vue sur
 tous les comptes actifs, pouvoir révoquer des droits ou supprimer directement un
 utilisateur. »*
@@ -114,6 +120,15 @@ de groupes — un groupe LDAP `stagiaires` remplace le groupe fichier `stagiaire
 rien ne s'en aperçoive. L'isolement d'AUTH-1 paie exactement ici. Coût : un service de plus
 à faire tourner, sauvegarder et tenir à jour, et les comptes existants à recréer.
 
+**Corrigé le 2026-09-06 — LLDAP ne sait pas désactiver**, et ce chemin s'écrivait comme si
+c'était acquis. L'issue lldap#750 le demande depuis le 2 décembre 2023, *help wanted*,
+toujours ouverte, sans PR. Le chemin tient quand même, mais pour une raison qu'il faut
+écrire : **la désactivation n'a pas à venir de l'annuaire.** Elle vient d'`access_control`,
+par une règle `deny` en tête sur un groupe `archives` — et ce qu'on demande alors à LLDAP,
+c'est de gérer une APPARTENANCE de groupe, ce qu'il fait nativement et bien. Ne pas confier
+à l'annuaire ce que le proxy tranche déjà est d'ailleurs cohérent avec AUTH-1 : l'annuaire
+dit QUI, Authelia dit s'il entre.
+
 **3. Un outil d'administration écrit ici.** À écarter, sauf raison forte : il faudrait
 manipuler des hashs de mots de passe, orchestrer un redémarrage d'Authelia, et surtout ce
 serait un outil DISTINCT de BDéditeur — l'application n'authentifie personne (AUTH-1), et
@@ -124,7 +139,8 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 
 ### Trancher (la décision appartient à l'équipe)
 - [x] Le rythme d'arrivée est cadré — **2026-09-06, par l'équipe** : le projet est aujourd'hui porté par un projet unique, mais il va s'ouvrir à d'autres personnes, avec des activités liées à certains COURS, donc des corpus très spécifiques et des groupes qui changent. Ce n'est plus « deux comptes stables ». Le motif redouté est nommé : *« on pourrait trop rapidement devoir gérer un SAV à l'aveugle »* — administrer sans voir. Cela déplace la balance vers le chemin 2, sans le trancher : c'est la case suivante
-- [ ] **L'annuaire retenu sait DÉSACTIVER un compte sans le supprimer** — vérifié dans sa documentation ou sur une instance d'essai, pas supposé. Le backend fichier le fait (`disabled:`) ; c'est devenu un critère de choix depuis le modèle du 2026-09-06, puisque l'archivage en dépend. Un annuaire qui ne saurait que supprimer ferait perdre la distinction entre « parti » et « n'a jamais existé »
+- [ ] **L'annuaire retenu sait DÉSACTIVER un compte sans le supprimer** — mesuré pour les trois candidats le 2026-09-06. **LLDAP : non**, issue #750 ouverte depuis le 2 décembre 2023, *help wanted*, sans PR. **Kanidm : oui, mais son admin passe par la CLI** — sa web UI vise le libre-service et ses panneaux d'admin ont été retirés, donc hors critère. **Authentik : oui**, et il REMPLACE Authelia. La case reste ouverte parce que la conception a bougé : la désactivation vient désormais d'une règle `deny`, pas de l'annuaire — ce qui rend la réponse de LLDAP non disqualifiante
+- [ ] **La convention de login est arrêtée, et c'est elle qui décide si la suppression peut être offerte.** `p.durand` ou `p.durand.2026` ? Un login qui porte l'année, la promotion ou le cours rend la réutilisation impossible PAR CONSTRUCTION plutôt que par vigilance, et rend du même coup les trois orphelins inertes. À trancher avant le trentième compte : les logins déjà distribués, eux, resteront réutilisables
 - [ ] Le chemin est choisi entre les trois ci-dessus, et la raison est écrite — y compris si c'est « on garde le fichier », qui est un choix légitime tant que le rythme reste faible
 
 ### Ce qu'il faut savoir AVANT de choisir (mesures, pas opinions)
@@ -133,6 +149,8 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [x] Ce que devient le journal A3 quand l'agent cité n'existe plus : **il survit**, et par construction. `activite.agent` est une colonne TEXTE sans clé étrangère, et rien ne joint jamais `utilisateur` — la seule requête sur cette table (`noms_lisibles`) sert aux verrous de planche, pas au journal. Une chaîne de révision continue donc d'attribuer ses actes à quelqu'un qui n'a plus de compte, ce qui est exactement ce qu'on veut : retirer un droit d'entrée n'efface pas ce qui a été fait
 - [x] **Et le verrou de planche ne bloque personne** — vérifié en lisant la route plutôt qu'en le supposant. `verrou_par` est « purement informatif : n'importe qui peut toujours déverrouiller ». Une planche verrouillée par un compte disparu se libère sans recours administrateur. C'est le genre de dépendance qu'on redoute à tort, et la nommer évite de la chercher
 - [ ] **Les panneaux TIERS sont évalués avant d'en écrire un.** `asalimonov/authelia-admin` se présente comme un panneau de gestion des utilisateurs, groupes, appareils TOTP et bannissements — exactement la moitié « créer / activer / désactiver » du critère. **Trois réserves, et aucune n'est levée au 2026-09-06** : il s'annonce pour une intégration LLDAP, donc il PRÉSUPPOSE le chemin 2 au lieu de l'éviter ; sa page visible ne mentionne que créer / éditer / supprimer, jamais désactiver, ce qui manquerait le modèle « pas de suppression, désactivation et archivage » ; et il demande l'accès au fichier de configuration ET à `db.sqlite3` d'Authelia, c'est-à-dire un couplage à un schéma privé que chaque montée de version peut rompre (`INFRA-9`). Projet à 200 étoiles, 6 forks, MIT — un candidat, pas un composant d'Authelia
+- [ ] **Une règle `deny` en tête d'`access_control` refuse bien l'accès à l'application** — à ÉPROUVER sur l'instance, pas déduit de l'ordre promis. Attendu : un compte du groupe `archives` est refusé sur `bd.edito-revue.fr` alors que les trois règles suivantes l'autoriseraient, et l'effet porte sur une session DÉJÀ ouverte, la portée se recalculant à chaque requête. Le portail `auth.` reste joignable, ce qui est sans importance — il n'y a rien derrière
+- [ ] **Ce que devient un TOTP orphelin quand le login revient** — la seule des trois conséquences de la suppression qui ne se lise pas dans le code d'ici, donc la seule à mesurer. Attendu à confirmer : le stockage d'Authelia étant indexé par nom d'utilisateur et indépendant du backend, le nouvel arrivant ne peut PAS s'enrôler — une configuration existe déjà — pendant que l'appareil de l'ancien produit encore des codes valides pour ce login. Se mesure en supprimant un compte d'essai puis en le recréant sous le même nom — **la même manipulation répond à la case de migration ci-dessous**, qui interroge la même propriété dans l'autre sens : ce qui fait SUIVRE un TOTP au changement de backend est ce qui le fait RESTER après une suppression
 - [ ] Le coût réel de la migration `file` → `ldap` sur cette instance : les comptes à recréer, les groupes à reporter, et ce qui se passe pour un TOTP déjà enrôlé. **Hypothèse à éprouver** : les appareils TOTP vivent dans le stockage PROPRE d'Authelia (`db.sqlite3`), indexés par nom d'utilisateur et non par backend — à noms d'utilisateur identiques, ils devraient suivre. Se vérifie sur l'instance : `docker compose exec authelia sh -c "authelia storage user totp export --config /config/configuration.yml"` ou, à défaut, la table `totp_configurations` de `db.sqlite3`
 
 ### Ce que BDéditeur pourrait apporter, et qu'aucun annuaire ne saura
@@ -153,6 +171,54 @@ pour bientôt, attendons ». Mais 4.40.0 ne concerne que l'*Initial Implementati
 des UTILISATEURS est la dernière étape de la liste, elle n'est pas commencée, et elle est
 la seule à ne porter aucune version.** Ce n'est donc pas « la prochaine version » : c'est
 une étape sans date, derrière quatre autres.
+
+## Supprimer et désactiver ne sont pas symétriques — 2026-09-06
+
+La demande voulait **les deux gestes actifs**, la désactivation étant présentée comme un
+pis-aller par rapport à la suppression. Les deux restent le bon objectif ; le rapport entre
+eux est l'inverse de celui qu'on croyait.
+
+**Supprimer un compte libère son login. Or dans cette application, un login est une CLÉ —
+dans trois tables, et aucune ne porte de contrainte d'intégrité.**
+
+**1. Les droits.** `collection_acces.principal` est du TEXTE sans clé étrangère, et il
+entre dans la clé primaire (`database.py`). Rien ne peut nettoyer ces lignes :
+l'application n'apprend jamais qu'un compte a disparu, elle ne voit que des en-têtes.
+**Recréer le même login rend immédiatement au nouvel arrivant les accès de l'ancien**, sans
+qu'aucun écran ne le signale.
+
+**2. La provenance, et c'est la plus grave pour cet outil.** `activite.agent` est du texte
+sans clé étrangère — voulu, mesuré, et c'est ce qui fait survivre le journal à la
+suppression de sa cible. La même propriété fait qu'un login réutilisé **fusionne deux
+personnes RÉTROACTIVEMENT** : ANN-5 mesurerait l'accord d'une personne avec elle-même, et
+`pseudonymes()` les exporterait sous un seul `annotateur-N`. Une donnée de recherche
+devient fausse sans que personne ne mente et sans qu'aucun test ne bronche.
+
+**3. Le second facteur.** Supprimer dans l'annuaire ne touche pas le stockage propre
+d'Authelia : TOTP et WebAuthn y restent, indexés par nom d'utilisateur. **C'est exactement
+la propriété qui rendait la migration `file` vers `ldap` indolore** — l'hypothèse écrite
+plus haut dans cette fiche — et elle se retourne ici. Reste à mesurer, c'est une case.
+
+**Aucun des trois ne se règle depuis un panneau.** Le premier se nettoie dans
+👥 Collections, mais seulement si l'on y pense — rien ne le rappelle, et ce serait une
+seconde chose à retenir au moment précis où l'on cherchait à ne plus rien retenir. Le
+deuxième ne doit **pas** être nettoyé : le journal est append-only par construction, et
+c'est correct. Le troisième exige `authelia storage user totp delete` et `webauthn delete`,
+**console uniquement** — précisément ce que le critère d'acceptation refuse.
+
+| | complet | depuis un panneau | réversible |
+|---|---|---|---|
+| **Désactiver** (`archives` + `deny`) | oui, rien ne reste | oui | oui |
+| **Supprimer** (annuaire) | non, trois orphelins | non, un geste en console | non |
+
+**D'où la condition, et elle ne coûte rien : un login ne se réutilise jamais.** Alors les
+trois orphelins deviennent de l'encombrement et non un risque, et le journal A3 devient
+définitivement non ambigu — ce qui a une valeur propre pour un outil dont c'est le cœur.
+Sans cette règle, offrir la suppression revient à poser une bombe dont l'amorce est une
+homonymie, et le délai, une rentrée.
+
+C'est une convention de nommage, pas du code, et c'est ce qui la rend urgente : elle se
+décide aujourd'hui pour rien, et plus du tout après trente comptes distribués.
 
 ## Le constat collatéral est parti dans `INFRA-9` — 2026-09-06
 
