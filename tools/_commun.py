@@ -250,6 +250,10 @@ CIBLES_CORPUS = frozenset({
 })
 
 CIBLES_RETENUES = {
+    "utilisateur":
+        "AUTH-7 — la reprise d'un login. La charge porte le NOM AFFICHÉ d'une personne "
+        "et son login, en clair : c'est exactement ce que `pseudonymes()` retire de la "
+        "colonne d'à côté. Administration de comptes, jamais provenance de corpus.",
     "sharedocs":
         "SHARE-1 — chemin serveur du dépôt et nom du compte Huma-Num employé. Sauvegarder "
         "est un geste d'EXPLOITATION ; l'entrepôt n'a rien à en apprendre, et le nom de "

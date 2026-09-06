@@ -1675,6 +1675,27 @@ _VUS_TTL = 3600.0
 _vus: dict = {}
 
 
+def _identite_reprise(ancien_nom, ancien_email, nom, email) -> Optional[tuple]:
+    """Les champs d'identité qui ont changé sous un login DÉJÀ connu, ou None (AUTH-7).
+
+    Ne compte qu'un passage d'une valeur renseignée à une AUTRE valeur renseignée. Une
+    valeur qui apparaît ou qui disparaît est une variation d'EN-TÊTE — un proxy qui cesse
+    d'envoyer `Remote-Name`, ou qui se met à l'envoyer — et non un indice sur la personne ;
+    les compter ferait battre la trace à chaque alternance, dans une table append-only.
+
+    Ce que la fonction constate est un CHANGEMENT D'ATTRIBUTS, jamais un changement de
+    personne : quelqu'un qui se marie déclenche la même chose que quelqu'un qui succède.
+    C'est la vue des comptes qui interprète, et c'est pourquoi l'événement porte les deux
+    valeurs plutôt qu'un verdict.
+    """
+    champs = [(cle, a, b) for cle, a, b in (("nom", ancien_nom, nom),
+                                            ("email", ancien_email, email))
+              if a and b and a != b]
+    if not champs:
+        return None
+    return ({cle: a for cle, a, _ in champs}, {cle: b for cle, _, b in champs})
+
+
 def _enregistrer_utilisateur(conn: sqlite3.Connection, request: Request) -> Optional[str]:
     """Crée ou rafraîchit la ligne `utilisateur` de la personne connectée (AUTH-1).
 
@@ -1689,12 +1710,43 @@ def _enregistrer_utilisateur(conn: sqlite3.Connection, request: Request) -> Opti
     email = (request.headers.get("Remote-Email") or "").strip() or None
     connu = _vus.get(login)
     if connu is None or connu[:2] != (nom, email) or time.monotonic() - connu[2] > _VUS_TTL:
+        # La comparaison se fait contre la BASE et non contre `_vus` : le cache est vide
+        # au démarrage du processus, et c'est précisément là qu'un login repris se présente
+        # pour la première fois. Un SELECT sur le chemin lent seulement — au plus un par
+        # heure et par login (`_VUS_TTL`), la ligne étant ensuite servie par le cache.
+        ancien = conn.execute(
+            "SELECT nom, email FROM utilisateur WHERE login = ?", (login,)).fetchone()
+        reprise = (_identite_reprise(ancien["nom"], ancien["email"], nom, email)
+                   if ancien else None)
         conn.execute(
             "INSERT INTO utilisateur (login, nom, email, derniere_vue) "
             "VALUES (?, ?, ?, datetime('now')) "
             "ON CONFLICT(login) DO UPDATE SET nom = excluded.nom, email = excluded.email, "
             "derniere_vue = datetime('now')",
             (login, nom, email))
+        if reprise:
+            # AUTH-7 — `utilisateur` est un MIROIR : l'UPSERT ci-dessus écrase l'ancien
+            # nom, et rien ne disait qu'il avait existé. Or un login se réutilise (tranché
+            # le 2026-09-06 : il ne portera pas l'année), et alors `premiere_vue` date le
+            # nouvel arrivant de l'arrivée de son prédécesseur — dans l'instrument même
+            # dont la règle de suppression dépend.
+            #
+            # La trace ne peut pas être RECONSTRUITE plus tard : sans elle, l'ancienne
+            # valeur est perdue à l'instant de l'écrasement. C'est ce qui la rend urgente
+            # alors que la vue qui la lira n'existe pas encore.
+            #
+            # Elle vaut au-delà de l'administration. Le journal A3 attribue les actes au
+            # LOGIN ; si deux personnes l'ont porté, l'export les fond en un seul
+            # `annotateur-N` et la chaîne de révision devient fausse. L'événement étant
+            # DATÉ, la coupe reste reconstructible — on ne l'applique pas, on cesse de la
+            # perdre.
+            #
+            # `cible_table='utilisateur'`, `cible_id` NULL : `login` est du texte, donc
+            # l'identifiant vit dans la charge. Même contrat que `sharedocs` plus haut, et
+            # l'undo ne le voit pas — sa liste blanche de tables ne le contient pas.
+            journal.journaliser(conn, "modification", "utilisateur", None,
+                                avant={"login": login, **reprise[0]},
+                                apres={"login": login, **reprise[1]})
         conn.commit()
         _vus[login] = (nom, email, time.monotonic())
     return login

@@ -9,7 +9,10 @@ est derrière le proxy. Sans le drapeau, ils sont ignorés — sinon n'importe q
 atteignant l'app en direct pourrait se déclarer qui il veut, ce qui deviendra une
 escalade de privilège dès que l'autorisation en dépendra (AUTH-2, AUTH-3).
 """
+import json
 import sqlite3
+
+import pytest
 
 import main
 
@@ -170,6 +173,113 @@ def test_aucun_secret_dans_la_table(client, derriere_proxy, db_path):
     finally:
         conn.close()
     assert not (cols & {"password", "mot_de_passe", "hash", "jeton", "token", "secret"})
+
+
+# --------------------------------------------------------------------------- #
+# La reprise d'un login (AUTH-7)
+#
+# `utilisateur` est un miroir : l'UPSERT écrase l'ancien nom sans rien laisser. Un login
+# se réutilisant (tranché le 2026-09-06 : il ne portera pas l'année), `premiere_vue` date
+# alors un arrivant de l'arrivée de son prédécesseur — dans l'instrument même dont la
+# règle de suppression de comptes dépend. La trace ne se reconstruit pas après coup.
+# --------------------------------------------------------------------------- #
+def _traces_utilisateur(db_path):
+    conn = sqlite3.connect(db_path)
+    try:
+        return [(r[0], r[1], json.loads(r[2]), json.loads(r[3])) for r in conn.execute(
+            "SELECT type, agent, avant, apres FROM evenement "
+            "WHERE cible_table = 'utilisateur' ORDER BY id")]
+    finally:
+        conn.close()
+
+
+def test_reprise_d_un_login_laisse_une_trace_datee(client, derriere_proxy, db_path):
+    """Le nom change sous un login connu → un événement A3 qui porte les DEUX valeurs.
+
+    L'ancienne valeur n'existe plus nulle part après l'UPSERT ; c'est ce qui rend la
+    capture urgente, alors que la vue qui la lira n'est pas écrite."""
+    client.get("/api/moi", headers={"Remote-User": "stagiaire1",
+                                    "Remote-Name": "Alice Martin"})
+    client.get("/api/moi", headers={"Remote-User": "stagiaire1",
+                                    "Remote-Name": "Bob Durand"})
+    traces = _traces_utilisateur(db_path)
+    assert len(traces) == 1
+    type_, agent, avant, apres = traces[0]
+    assert (type_, agent) == ("modification", "stagiaire1")
+    assert avant == {"login": "stagiaire1", "nom": "Alice Martin"}
+    assert apres == {"login": "stagiaire1", "nom": "Bob Durand"}
+
+
+def test_la_trace_porte_le_login_car_cible_id_est_nul(client, derriere_proxy, db_path):
+    """`cible_id` est un INTEGER et un login est du TEXTE : sans le login dans la charge,
+    l'événement ne désignerait aucun compte."""
+    client.get("/api/moi", headers={"Remote-User": "stagiaire1", "Remote-Name": "Alice"})
+    client.get("/api/moi", headers={"Remote-User": "stagiaire1", "Remote-Name": "Bob"})
+    conn = sqlite3.connect(db_path)
+    try:
+        cid = conn.execute("SELECT cible_id FROM evenement "
+                           "WHERE cible_table = 'utilisateur'").fetchone()[0]
+    finally:
+        conn.close()
+    assert cid is None
+    assert all(c["login"] == "stagiaire1" for _, _, a, b in _traces_utilisateur(db_path)
+               for c in (a, b))
+
+
+def test_premiere_visite_ne_laisse_aucune_trace(client, derriere_proxy, db_path):
+    """Une création n'est pas une reprise : sans valeur antérieure, il n'y a rien à dire."""
+    client.get("/api/moi", headers={"Remote-User": "chercheur", "Remote-Name": "Jeanne"})
+    assert _traces_utilisateur(db_path) == []
+
+
+def test_un_nom_inchange_ne_laisse_aucune_trace(client, derriere_proxy, db_path):
+    """Le chemin lent se reparcourt (cache vide, TTL) sans rien journaliser."""
+    for _ in range(3):
+        main._vus.clear()
+        client.get("/api/moi", headers={"Remote-User": "chercheur", "Remote-Name": "Jeanne"})
+    assert _traces_utilisateur(db_path) == []
+
+
+def test_une_valeur_qui_apparait_n_est_pas_une_reprise(client, derriere_proxy, db_path):
+    """Un proxy qui SE MET à envoyer `Remote-Name` enrichit le miroir ; personne n'a
+    changé. Compter ce cas ferait battre la trace à chaque variation d'en-tête."""
+    client.get("/api/moi", headers={"Remote-User": "chercheur"})
+    client.get("/api/moi", headers={"Remote-User": "chercheur", "Remote-Name": "Jeanne"})
+    assert _traces_utilisateur(db_path) == []
+
+
+def test_une_valeur_qui_disparait_n_est_pas_une_reprise(client, derriere_proxy, db_path):
+    """Et un proxy qui CESSE de l'envoyer est une panne d'en-tête, pas une succession."""
+    client.get("/api/moi", headers={"Remote-User": "chercheur", "Remote-Name": "Jeanne"})
+    client.get("/api/moi", headers={"Remote-User": "chercheur"})
+    assert _traces_utilisateur(db_path) == []
+
+
+def test_la_trace_n_est_pas_annulable(client, derriere_proxy, db_path):
+    """La reprise est une OBSERVATION, pas un acte : `Ctrl+Z` ne doit pas la proposer.
+
+    Elle est hors de la liste blanche de tables de l'undo — la même protection que
+    `sharedocs`, et elle vaut d'être éprouvée plutôt que déduite."""
+    client.get("/api/moi", headers={"Remote-User": "stagiaire1", "Remote-Name": "Alice"})
+    client.get("/api/moi", headers={"Remote-User": "stagiaire1", "Remote-Name": "Bob"})
+    assert len(_traces_utilisateur(db_path)) == 1
+    r = client.get("/api/undo/prochain", headers={"Remote-User": "stagiaire1"})
+    assert r.status_code == 200 and r.json() is None
+
+
+@pytest.mark.parametrize("ancien, nouveau, attendu", [
+    (("Alice", "a@x.fr"), ("Bob", "a@x.fr"), ({"nom": "Alice"}, {"nom": "Bob"})),
+    (("Alice", "a@x.fr"), ("Alice", "b@x.fr"), ({"email": "a@x.fr"}, {"email": "b@x.fr"})),
+    (("Alice", "a@x.fr"), ("Bob", "b@x.fr"),
+     ({"nom": "Alice", "email": "a@x.fr"}, {"nom": "Bob", "email": "b@x.fr"})),
+    (("Alice", "a@x.fr"), ("Alice", "a@x.fr"), None),   # rien n'a bougé
+    ((None, None), ("Alice", "a@x.fr"), None),          # apparition
+    (("Alice", "a@x.fr"), (None, None), None),          # disparition
+    (("Alice", None), ("Bob", "b@x.fr"), ({"nom": "Alice"}, {"nom": "Bob"})),
+])
+def test_identite_reprise_table_de_verite(ancien, nouveau, attendu):
+    """La règle sans la base : seul un renseigné→renseigné DIFFÉRENT compte."""
+    assert main._identite_reprise(*ancien, *nouveau) == attendu
 
 
 # --------------------------------------------------------------------------- #
