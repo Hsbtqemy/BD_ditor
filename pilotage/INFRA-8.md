@@ -42,12 +42,39 @@ l'éprouver pour de bon.
 ### Ce que la bascule a laissé ouvert
 - [ ] Le mot de passe d'application est nommé `bdediteur` chez l'hébergeur, donc révocable seul, sans toucher à l'autre site qui partage la boîte
 - [x] `deploy/authelia/users_database.yml` n'est plus en `664` : il porte un hash de mot de passe et reste lisible par tout compte de la machine, quand `.env` est en `600`. Deux fichiers de secrets, deux traitements, et rien ne l'avait jamais signalé. **Fait le 2026-09-06 — et le `chmod` seul a cassé un outil** (ci-dessous) : le mode final est `600 ubuntu:ubuntu`, pas `600 root:root`
-- [x] Le dossier `deploy/authelia/` appartient de nouveau à `ubuntu` — et il ne l'était PLUS le 2026-09-06, `root:root` en 775, le piège du `pull` réarmé sans que rien ne le dise. Réparé, et **prouvé par une réécriture réelle** (`git checkout --` sur un fichier suivi de ce dossier), pas par un raisonnement sur les permissions. Reste l'autre moitié : le conteneur y écrit-il toujours ? Le raisonnement dit oui — Authelia tourne en root, qui ignore les permissions, et c'est lui qui a écrit `db.sqlite3` — mais **aucune écriture n'a été observée depuis**. Elle le sera au premier enrôlement TOTP, c'est-à-dire par la case suivante
+- [x] Le dossier `deploy/authelia/` appartient de nouveau à `ubuntu` — et il ne l'était PLUS le 2026-09-06, `root:root` en 775, le piège du `pull` réarmé sans que rien ne le dise. Réparé, et **prouvé par une réécriture réelle** (`git checkout --` sur un fichier suivi de ce dossier), pas par un raisonnement sur les permissions. L'autre moitié est **observée** depuis le 2026-09-06 08:56 : l'enrôlement TOTP du premier compte d'essai a écrit dans `db.sqlite3`, qui appartient toujours à `root` dans un dossier appartenant à `ubuntu`. Ce n'est plus le raisonnement « root ignore les permissions », c'est un horodatage
 
 ### Ne pas fermer l'instance en croyant régler les notifications
 - [x] `docker compose exec authelia authelia validate-config --config /config/configuration.yml` passe AVANT tout redémarrage : le contrôle de connexion est désactivé, mais une configuration structurellement invalide — `sender` manquant — empêche toujours Authelia de démarrer. **Et il NE LIT PAS le fichier des comptes**, mesuré le 2026-09-06 en y glissant une tabulation illégale : « successfully », code 0. Cette case, telle qu'elle était écrite, laissait croire à une garde avant redémarrage qui ne couvre pas ce qu'on modifie le plus souvent
 - [x] Le fichier des COMPTES a son propre contrôle avant redémarrage, puisque `validate-config` l'ignore : `python3 -c "import yaml; yaml.safe_load(open('users_database.yml'))"`, PyYAML étant déjà présent sur Ubuntu. Éprouvé dans les DEUX sens le 2026-09-06 — il accepte le fichier correct et refuse une copie contenant une tabulation. Écrit dans `docs/exploitation.md`, avec la copie de sauvegarde qui doit le précéder
 - [ ] Le repli est éprouvé pour de vrai, pas seulement écrit : vider `SMTP_ADRESSE`, redémarrer, et retrouver une instance qui laisse entrer
+
+## Le parcours d'un compte neuf, emprunté pour de vrai — 2026-09-06
+
+Un compte `stagiaire` a été créé, sans droit sur aucune collection, avec une adresse en
+sous-adressage Gmail (`+stagiaire`) — distincte pour Authelia, livrée dans la même boîte,
+sans avoir à payer une adresse de plus chez l'hébergeur.
+
+**Ce qui a marché du premier coup.** Le courriel d'enrôlement part et arrive. Le mot de
+passe est accepté (`requires 2FA, cannot be redirected yet`). L'appareil TOTP s'enregistre.
+Et le bandeau de portée vide dit exactement ce qu'AUTH-1 lui demandait : *« Groupes reçus :
+stagiaires. Aucun n'a reçu d'accès sur une collection — il n'y a donc rien de cassé,
+seulement un accès à demander. »* Le troisième cas, celui qui ne se répare pas côté proxy,
+distingué en conditions réelles pour la première fois.
+
+**Ce qui a bloqué, et personne ne l'avait conçu.** Après l'enrôlement, le portail propose
+une CLÉ DE SÉCURITÉ et affiche « Enregistrez votre premier appareil ». Le message est exact
+— aucun WebAuthn n'est enregistré — et parfaitement trompeur pour qui vient de terminer une
+inscription TOTP : il se lit comme « rien n'est enregistré ». Il a fallu lire les journaux
+d'Authelia pour comprendre, c'est-à-dire exactement l'« intervention sur le serveur » que
+cette case interdit. `default_2fa_method: 'totp'` n'était pas déclaré.
+
+**Ce que le bandeau ne dit toujours pas : QUI.** Il renvoie vers « un administrateur de
+l'instance », sans nom. Le mécanisme d'AUTH-4 est pourtant complet de bout en bout —
+`config.py` lit l'environnement, Compose le transmet, `theme.js` rend la ligne — mais
+`BD_REFERENT_NOM` et `BD_REFERENT_CONTACT` n'ont jamais été posés dans `deploy/.env`. Une
+fonctionnalité livrée, jamais configurée, et rien ne le signalait : c'est l'écran qu'un
+arrivant voit en premier, et il lui demande d'écrire à quelqu'un qu'il ne peut pas nommer.
 
 ## Le durcissement a cassé un outil — 2026-09-06
 
