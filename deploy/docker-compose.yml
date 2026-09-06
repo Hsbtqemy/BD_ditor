@@ -113,6 +113,20 @@ services:
       # règle au domaine VIDE, donc un annuaire refusé à tout le monde par
       # default_policy — panne fermée, mais incompréhensible.
       - ANNUAIRE_DOMAINE=${ANNUAIRE_DOMAINE:-annuaire.localhost}
+      # AUTH-7 — Authelia RÉSOUT `{{ env "…" }}` dans SON conteneur, au rendu du gabarit.
+      # Ces deux valeurs vivent aussi chez `lldap`, mais sous d'autres noms et dans un
+      # autre environnement : les y avoir posées ne les donne pas à Authelia.
+      #
+      # Oubliées, le bloc `ldap:` se rend avec un `base_dn` et un `password` VIDES, et
+      # Authelia refuse de démarrer — « option 'password' is required ». Mesuré le
+      # 2026-09-07 par `validate-config`, avant le redémarrage : sans cette validation,
+      # la bascule aurait coupé le portail pour tout le monde.
+      #
+      # Défauts vides EXPRÈS : tant que l'annuaire n'est pas configuré, le bloc `ldap:`
+      # est commenté et personne ne les lit. Un défaut de repli les rendrait plausibles
+      # là où l'absence doit rester bruyante.
+      - LLDAP_BASE_DN=${LLDAP_BASE_DN:-}
+      - LLDAP_AUTHELIA_PASS=${LLDAP_AUTHELIA_PASS:-}
       # Secrets injectés depuis deploy/.env (voir .env.example pour les générer)
       - AUTHELIA_SESSION_SECRET=${AUTHELIA_SESSION_SECRET}
       - AUTHELIA_STORAGE_ENCRYPTION_KEY=${AUTHELIA_STORAGE_ENCRYPTION_KEY}
