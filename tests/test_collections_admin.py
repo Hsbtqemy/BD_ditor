@@ -515,3 +515,61 @@ def test_sans_declaration_il_n_y_a_pas_de_referent_d_instance(client, derriere_p
     """Pas de faux référent : un bloc vide vaut mieux qu'un nom inventé."""
     acces = client.get("/api/moi", headers={"Remote-User": "bob"}).json()["acces"]
     assert acces["referent"] is None
+
+
+# --------------------------------------------------------------------------- #
+# AUTH-7 — mesure : que devient une collection dont le propriétaire DISPARAÎT ?
+# --------------------------------------------------------------------------- #
+def test_un_proprietaire_disparu_laisse_une_collection_administrable_par_un_admin_seul(
+        client, collection_a_alice):
+    """Mesure demandée par AUTH-7 : supprimer un compte HORS de l'application.
+
+    `collection_acces.principal` est une colonne TEXTE sans clé étrangère — c'est
+    l'invariant d'AUTH-1, on stocke une RÉFÉRENCE et jamais une appartenance. Supprimer le
+    compte d'alice dans Authelia (ou dans un annuaire) ne touche donc pas cette ligne :
+    la collection garde un propriétaire qui ne peut plus jamais se connecter.
+
+    Ce n'est PAS l'état « zéro propriétaire » que les 409 interdisent — c'est son
+    symétrique, et il n'est gardé par rien : un propriétaire fantôme. On mesure ici ce que
+    cela produit, sans le corriger : le constat appartient à AUTH-7.
+
+    Ce que le test établit, dans l'ordre :
+
+    1. le fantôme reste inscrit, avec son niveau ;
+    2. plus personne ne peut administrer la collection SAUF un administrateur — alice ne
+       revient pas, et un tiers ne voit même pas la collection (404, AUTH-2) ;
+    3. l'administrateur ne peut pas simplement retirer le fantôme : le 409 « dernier
+       propriétaire » l'en empêche, et il a raison ;
+    4. le chemin de sortie existe et n'en a qu'un : désigner un remplaçant, PUIS retirer le
+       fantôme. C'est faisable entièrement à l'écran, sans SQL.
+    """
+    cid = collection_a_alice["id"]
+
+    # 1 — le fantôme est toujours là. Le compte d'alice n'existe plus côté Authelia ; rien
+    #     dans l'application ne l'a appris, et c'est le comportement voulu.
+    acces = client.get(f"/api/collections/{cid}/acces", headers=ADMIN).json()
+    fantome = [a for a in acces if a["principal"] == "alice"]
+    assert fantome and fantome[0]["niveau"] == "proprietaire", acces
+
+    # 2 — un tiers ne voit rien : la collection n'existe pas pour lui (AUTH-2, 404 et non
+    #     403, pour ne pas révéler la composition du corpus).
+    r = client.get(f"/api/collections/{cid}/acces", headers={"Remote-User": "bob"})
+    assert r.status_code == 404, r.text
+
+    # 3 — l'administrateur non plus ne peut pas retirer le fantôme tel quel.
+    r = client.delete(f"/api/collections/{cid}/acces/utilisateur/alice", headers=ADMIN)
+    assert r.status_code == 409, r.text
+    assert "dernier propriétaire" in r.json()["detail"]
+
+    # 4 — le chemin de sortie : un remplaçant D'ABORD, le retrait ENSUITE.
+    r = client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
+                   json={"genre": "utilisateur", "principal": "bob",
+                         "niveau": "proprietaire"})
+    assert r.status_code in (200, 201, 204), r.text
+    r = client.delete(f"/api/collections/{cid}/acces/utilisateur/alice", headers=ADMIN)
+    assert r.status_code == 204, r.text
+
+    # bob administre désormais sans l'aide de personne.
+    r = client.get(f"/api/collections/{cid}/acces", headers={"Remote-User": "bob"})
+    assert r.status_code == 200
+    assert not [a for a in r.json() if a["principal"] == "alice"]
