@@ -7,8 +7,18 @@ statut: interrompu
 
 **Arrêté sur** — 2026-09-06, `91ed11e` : **la moitié documentaire est écrite**, en DEUX
 fichiers et non un — `docs/guide-utilisateur.md` (les gestes) et `docs/modele-et-droits.md`
-(les objets et les règles). Reste l'écran, et l'étape 1 à corriger avant de le câbler : elle
-nomme la Bibliothèque pour un import qui vit dans la Visionneuse.
+(les objets et les règles). Reste l'écran.
+
+**Et l'étape 1 n'est PAS à corriger — cette phrase disait l'inverse jusqu'au 2026-09-07.**
+Elle annonçait « l'étape 1 à corriger avant de le câbler : elle nomme la Bibliothèque pour
+un import qui vit dans l'Atelier ». La décision a été RETOURNÉE le lendemain (`aa930c9`),
+après coordination avec UX-11 : l'étape s'appelle « CONSTITUER le corpus », et constituer
+c'est verser quarante pages, pas ajouter la trente-huitième. La liste figée le 2026-08-27
+nommait donc le bon lieu — c'est le CODE qui était en retard, et UX-11 le rattrape.
+Corriger l'étape aurait inscrit une régression dans le contrat commun de l'écran et du
+guide, puis obligé à la défaire aussitôt UX-11 livré. **Un entête qui survit à la décision
+qu'il annonce est pire qu'un entête vide** : il est lu en premier, et il envoie refaire ce
+qu'on vient d'écarter.
 
 ## Reste
 
@@ -27,7 +37,7 @@ nomme la Bibliothèque pour un import qui vit dans la Visionneuse.
 - [ ] L'écran est bâti sur `static/lib/dialog.js` — piège à focus, Échap, retour du focus au déclencheur — sans modale réécrite pour l'occasion
 - [ ] L'écran dit ce que l'outil ne fait PAS : les trois passes ML ne font que pré-remplir, l'annotation reste entièrement humaine ; une carte muette là-dessus laisserait croire à une chaîne automatique
 - [ ] Une étape dont le moteur est absent (`GET /api/sante` la donne indisponible) se présente comme optionnelle et non comme cassée
-- [ ] L'étape 8 ne promet que ce que l'UI porte aujourd'hui (JSON-LD / CSV / TEI depuis la Visionneuse) ; les exports de dépôt — métadonnées de collection, IIIF — n'y entrent qu'une fois C5 livré
+- [ ] L'étape 8 ne promet que ce que l'UI porte aujourd'hui (JSON-LD / CSV / TEI depuis la Visionneuse) ; les exports de dépôt — métadonnées de collection, IIIF — n'y entrent qu'une fois `EXP-1` livré (le C5 de la roadmap)
 - [ ] Les raccourcis `N`/`E`/`A`/`T` et l'ordre des onglets de la Visionneuse sont inchangés : l'écart entre le parcours de la carte et l'ordre de la barre est assumé, pas résorbé en déplaçant un raccourci
 
 ### Guide utilisateur
@@ -126,7 +136,7 @@ se pose pas. Déployé, il s'ouvre devant quelqu'un qui n'a jamais vu la chaîne
 L'étape 8 est la seule qui dépende d'un autre chantier, et **UX-6 ne l'attend pas** : les
 exports de contenu (JSON-LD / CSV / TEI) sont dans l'UI depuis longtemps, seuls les
 exports de dépôt — métadonnées de collection, IIIF — vivent encore dans `tools/` sans
-bouton, jusqu'à C5. Bloquer un chantier entier là-dessus serait disproportionné ; la
+bouton, jusqu'à `EXP-1`. Bloquer un chantier entier là-dessus serait disproportionné ; la
 carte promet donc ce qui existe, et le guide dit où trouver le reste.
 
 Reste hors périmètre, faute d'être tranché : une aide contextuelle par surface (un « ? »
