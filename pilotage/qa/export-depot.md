@@ -20,10 +20,40 @@ Deux droits distincts cohabitent ici, et la passe existe pour les voir séparém
 Elle se rejoue à chaque fois que `colDetail` change de structure, qu'un format s'ajoute, ou
 qu'une garde se déplace dans `routes/depot.py` ou `main.deposer_export`.
 
-**Décor à préparer** (une fois) : une collection avec au moins un album et une planche
-importée ; un compte `lectrice` avec l'accès **lecture** sur cette collection ; un compte
-propriétaire ; l'instance derrière le proxy. Le décor se pose au besoin par
-`tools/gerer_collections.py`, ou par le panneau Collections avec un compte propriétaire.
+**Elle se joue EN LOCAL, sur une base jetable — pas sur le VPS.** La zone qui compte
+demande de voir l'écran sous DEUX identités, ce que le mono-poste ne permet pas : sans
+proxy la portée est totale, donc tout est administrable et la garde ne se voit jamais.
+`tools/faux_proxy_auth.py` existe pour cet angle mort précis.
+
+**Décor** (une fois, ~5 min). En PowerShell — les commandes du docstring de l'outil sont
+en syntaxe bash, où `VAR=x commande` marche ; ici il faut poser les variables d'abord :
+
+```powershell
+$env:BD_DATA_DIR = "C:\temp\qa-depot"; $env:BD_DB_PATH = "C:\temp\qa-depot\demo.sqlite"
+python tools/semer_demo.py                     # corpus jetable : albums, planches, texte
+$env:BD_AUTH_PROXY = "1"
+$env:BD_AUTH_LOGOUT_URL = "http://127.0.0.1:8002/_connexion"
+python -m uvicorn main:app --port 8003          # l'application, derrière le drapeau
+```
+
+Puis, dans un SECOND terminal, `python tools/faux_proxy_auth.py`, et
+<http://127.0.0.1:8002/_connexion> pour choisir qui l'on est.
+
+Deux identités suffisent, et elles sont les deux côtés de la garde :
+
+| Identité | Ce qu'elle est | Ce qu'elle doit voir |
+|---|---|---|
+| `claire` | groupe `chercheurs`, un accès **lecture** accordé | le bloc d'export, **sans** la ligne de dépôt |
+| `admin` | `bd-admins` | le bloc **et** la ligne de dépôt |
+
+L'accès de `claire` se pose sous `admin`, dans *Administration → 👥 Collections* : déplier
+une collection, `claire` / utilisateur / lecture. Pour la voir en PROPRIÉTAIRE plutôt qu'en
+administratrice, faites-lui créer sa propre collection depuis son identité — le créateur en
+devient propriétaire, et la ligne de dépôt doit y apparaître.
+
+⚠ `faux_proxy_auth.py` n'authentifie personne : il pose l'identité qu'on lui demande,
+`bd-admins` comprise. Il n'écoute que sur `127.0.0.1`, et cela ne suffit pas à le rendre
+inoffensif ailleurs.
 
 ### Le bloc est là pour qui LIT
 
