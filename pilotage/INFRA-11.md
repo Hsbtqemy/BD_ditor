@@ -9,8 +9,16 @@ statut: à venir
 les DEUX sens : il refuse le préfixe `Digest: ` qui a coupé le portail, le hash du
 gabarit, un condensé replié ou tronqué, un YAML invalide — et il ACCEPTE bcrypt, scrypt,
 pbkdf2 et sha512-crypt, ce qui vaut autant : une garde qui crie sur du correct finit
-désarmée. La procédure complète est dans `docs/exploitation.md`. **Reste la case des
-copies `.avant`**, qui n'est pas fermée par du code mais par une habitude.
+désarmée. La procédure complète est dans `docs/exploitation.md`.
+
+**La case des copies `.avant` est fermée le 2026-09-07 (`fbad9b2`), et la façon dont elle
+s'est fermée vaut d'être notée.** Cette page annonçait qu'elle ne l'était « pas par du code
+mais par une habitude ». L'habitude a tenu un jour : un `users_database.yml.avant` oublié a
+fait refuser le déploiement du matin — le quatrième fichier de cette famille. Le diagnostic
+était pourtant écrit et juste depuis la veille ; c'est le REMÈDE qui était faux. Demander de
+la vigilance par une étape 5 revient à la demander au seul moment où elle manque, puisqu'on
+ne crée ces copies que les soirs de panne. Une garde qui suppose qu'on est disponible garde
+les jours où l'on n'avait besoin de rien.
 
 **Point de départ** — 2026-09-06 à 22:43, par une panne réelle. Ajouter un compte de test
 a coupé le portail **six minutes**, pour tout le monde. Le hachage collé portait le préfixe
@@ -49,9 +57,14 @@ dehors.
       le 2026-09-06 et c'est elle qui a rétabli le service
 
 ### Ce que la panne a laissé traîner
-- [ ] Les copies `.avant` ne restent pas dans `deploy/authelia/` : elles portent des hashs,
+- [x] Les copies `.avant` ne restent pas dans `deploy/authelia/` : elles portent des hashs,
       `.gitignore` ne les attrape pas (motifs par nom EXACT, vérifié le 2026-09-06), et
-      trois fichiers de cette famille ont déjà bloqué un déploiement le soir même
+      trois fichiers de cette famille ont déjà bloqué un déploiement le soir même.
+      **Fermé par du code le 2026-09-07, `fbad9b2`** — et il aura fallu que l'habitude
+      lâche d'abord : un quatrième fichier a fait refuser le déploiement du matin. Les
+      motifs sont désormais LARGES avec les gabarits en exception explicite, et
+      `configuration.yml.*` y entre, que personne n'avait vu venir alors que la même
+      procédure le fait créer
 
 ## Contexte
 
