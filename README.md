@@ -7,7 +7,7 @@ hiérarchiques. Aucune IA dans la boucle d'annotation — tout le travail
 interprétatif est humain.
 
 **Pour s'en servir** : [`docs/guide-utilisateur.md`](docs/guide-utilisateur.md) (les gestes —
-le parcours en huit étapes, les quatre surfaces) et
+le parcours en huit étapes, les cinq surfaces) et
 [`docs/modele-et-droits.md`](docs/modele-et-droits.md) (les objets et les règles —
 hiérarchie, collections, groupes, qui peut quoi, vocabulaire). Le reste de `docs/` explique
 les décisions de conception, pas l'usage.

@@ -80,7 +80,7 @@ de la plupart des malentendus.
 
 | Rôle | Ce que ça veut dire | Où ça se voit |
 |---|---|---|
-| **Espace de travail** | c'est elle qui porte les accès : donner un droit sur une collection le donne sur tous ses albums | panneau *👥 Collections* de la Bibliothèque |
+| **Espace de travail** | c'est elle qui porte les accès : donner un droit sur une collection le donne sur tous ses albums | bloc *👥 Collections* de l'Administration |
 | **Unité de dépôt** | 1 collection = 1 dépôt Nakala/HAL = 1 DOI ; elle porte licence, base légale, régime de diffusion, responsables scientifiques | outils `tools/`, cf. [`export-metadonnees.md`](export-metadonnees.md) |
 | **Portée d'appartenance du vocabulaire** | un terme peut être *global* ou *local à une collection* | panneau *📖 Lexique* de l'Exploration |
 
@@ -171,7 +171,7 @@ il se l'accorde.
 Le groupe `bd-admins` lit et écrit **tout le corpus sans figurer dans aucune liste d'accès**.
 Ce n'est pas un défaut : c'est la vérité de tout auto-hébergement — qui tient la machine tient
 les données. Ce qui serait fautif, c'est que ce pouvoir soit **invisible**. Le panneau
-*👥 Collections* le **déclare donc en clair**, en nommant les groupes réellement lus plutôt
+*👥 Collections* de l'Administration le **déclare donc en clair**, en nommant les groupes lus plutôt
 qu'une constante recopiée dans un coin.
 
 C'est aussi un **recours** : sans lui, le départ du dernier propriétaire d'une collection
@@ -372,7 +372,7 @@ Trois choses valent d'être sues :
   autrement indistinguables.
 - **Une échéance passée ne rend rien publiable toute seule.** L'outil ignore *pourquoi*
   l'embargo existe : un délai qu'on s'est donné se lève seul, un délai imposé par un ayant
-  droit non. Une échéance dépassée est **signalée** — dans l'écran Collections, dans le
+  droit non. Une échéance dépassée est **signalée** — dans l'écran d'Administration, dans le
   manifeste, dans l'outil en ligne de commande — pour qu'un corpus ne reste pas fermé par
   inertie. La décision, elle, reste humaine.
 - **Une date illisible retient aussi.** Une faute de frappe ne doit ni ouvrir la porte, ni
@@ -385,7 +385,7 @@ notice. Le cloisonnement des accès s'y applique entièrement : on ne cite que c
 Cf. [`figure-citable.md`](figure-citable.md) et [`hebergement-securite.md`](hebergement-securite.md).
 
 Régime, licence, base légale, embargo et responsables **n'ont pas encore de formulaire** :
-ils s'affichent dans la Bibliothèque, mais s'écrivent par `tools/gerer_collections.py`
+ils s'affichent dans l'Administration, mais s'écrivent par `tools/gerer_collections.py`
 (cf. [`export-metadonnees.md`](export-metadonnees.md)).
 
 ---
@@ -403,7 +403,7 @@ ils s'affichent dans la Bibliothèque, mais s'écrivent par `tools/gerer_collect
 
 | | Comptes et groupes | Accès aux collections |
 |---|---|---|
-| Où | `deploy/authelia/users_database.yml`, sur le serveur | dans l'application, panneau *👥 Collections* |
+| Où | `deploy/authelia/users_database.yml`, sur le serveur | dans l'application, bloc *👥 Collections* de l'Administration |
 | Qui | administrateur système (accès shell) | tout **propriétaire** de la collection |
 | Effet | qui peut **entrer** | qui voit **quoi** |
 | Prise d'effet | au redémarrage du conteneur Authelia | immédiate |
@@ -434,7 +434,7 @@ par « mot de passe oublié ».
 
 Il n'y a rien à créer. Un groupe **existe** dès qu'un compte le porte dans le fichier des
 comptes ; l'application le découvre en le lisant dans les en-têtes. Côté application, il
-suffit de le nommer dans le panneau *👥 Collections*, en choisissant le genre **groupe**
+suffit de le nommer dans le bloc *👥 Collections* de l'Administration, en choisissant le genre **groupe**
 plutôt qu'utilisateur — le genre est demandé explicitement parce qu'un login et un groupe
 peuvent porter le même nom, et qu'une ambiguïté silencieuse sur un contrôle d'accès n'est pas
 une hypothèse qu'on se permet.

@@ -23,24 +23,31 @@ saisi par quelqu'un** : il ne remplit que le vide.
 
 Ces trois moteurs sont **optionnels**. Sans eux, l'outil fonctionne entièrement : on dessine
 les régions à la main et on saisit le texte. Une passe dont le moteur est absent répond par un
-refus explicite, jamais par une erreur obscure. Le panneau **🩺 Moteurs** de la Bibliothèque
+refus explicite, jamais par une erreur obscure. Le bloc **🩺 Moteurs** de l'Administration
 dit lesquels sont là — et le bouton *Éprouver les moteurs* va plus loin en les **important
 pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser de démarrer.
 
 ---
 
-## 2. Les quatre surfaces
+## 2. Les cinq surfaces
 
 | Surface | Adresse | Ce qu'on y fait |
 |---|---|---|
-| **Bibliothèque** | `/corpus` | créer et décrire les albums, importer les planches, lancer les traitements par lot, gérer les collections et leurs accès, contrôler les moteurs |
+| **Bibliothèque** | `/corpus` | créer et décrire les albums, lancer les traitements par lot, suivre l'avancement planche par planche |
 | **Atelier** | `/` | tout ce qui se fait sur une planche : corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
 | **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
 | **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus ; documenter le vocabulaire |
+| **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : les collections et leurs accès, les comptes, l'état des moteurs |
 
-Une barre de navigation commune les relie, sur les quatre pages. Les réglages d'affichage —
+Une barre de navigation commune les relie, sur les cinq pages. Les réglages d'affichage —
 thème clair/sombre, contraste élevé, zoom de l'interface — y sont aussi, et suivent d'une
 surface à l'autre.
+
+> **L'Administration n'est pas réservée**, et ça surprend. La page s'ouvre à tout le monde :
+> c'est **chaque bloc** qui décide de ce qu'il montre — la liste des collections est filtrée
+> par vos droits, la vue des comptes n'apparaît que si le serveur vous la sert, et l'état des
+> moteurs est ouvert à tous, parce que savoir si l'OCR fonctionne n'est un pouvoir pour
+> personne. Fermer la page entière aurait enfermé des choses qui n'ont rien à y faire.
 
 > **Un mot sur le nom de la première.** La barre de navigation l'appelle **Atelier**, et
 > c'est le nom retenu ici puisque c'est celui qu'on lit à l'écran. Le code, le `README.md` et
@@ -212,9 +219,17 @@ L'inventaire et le poste de commande.
   faire, en cours ou faites.
 - **Traitements par lot** : cocher les passes voulues, sélectionner des albums ou des planches,
   lancer. Progression et annulation en direct.
+
+### Administration (`/administration`)
+
+Ce qui porte sur l'instance : qui voit quoi, quels comptes existent, et si les moteurs
+répondent encore. Trois blocs, chacun avec sa propre règle d'accès (cf. §2).
+
 - **👥 Collections** : créer une collection, la renommer, la supprimer, accorder et retirer les
-  accès, désigner un référent. Le panneau déclare aussi quels groupes d'administration voient
-  tout le corpus. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3.
+  accès, désigner un référent. Le bloc déclare aussi quels groupes d'administration voient
+  tout le corpus, et signale les embargos échus. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3.
+- **Comptes vus par l'application** : n'apparaît que si le serveur vous le sert. C'est un
+  miroir d'affichage — l'application n'a pas d'annuaire (cf. [`modele-et-droits.md`](modele-et-droits.md) §3).
 - **🩺 Moteurs** : quels moteurs sont présents, et *Éprouver les moteurs* pour vérifier qu'ils
   démarrent réellement.
 
@@ -289,7 +304,7 @@ d'un simple manque d'accès, et nomme la personne à qui écrire quand l'instanc
 une. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3, et §7 pour la question complète.
 
 **Le bouton `Segmenter` (ou `Bulles`, ou `OCR`) ne fait rien / répond une erreur.**
-Le moteur n'est probablement pas installé. Ouvrez **🩺 Moteurs** dans la Bibliothèque : il
+Le moteur n'est probablement pas installé. Ouvrez **🩺 Moteurs** dans l'Administration : il
 distingue « absent » de « présent mais cassé ». Un moteur absent n'empêche que sa propre passe.
 
 **Le lot a sauté des planches.**
