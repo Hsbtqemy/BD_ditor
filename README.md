@@ -12,12 +12,13 @@ le parcours en huit étapes, les cinq surfaces) et
 hiérarchie, collections, groupes, qui peut quoi, vocabulaire). Le reste de `docs/` explique
 les décisions de conception, pas l'usage.
 
-L'app s'organise en **quatre espaces** : la **Bibliothèque** (`/corpus`) pour
-gérer le corpus et lancer des traitements par lot, la **Visionneuse** (`/`) pour
+L'app s'organise en **cinq espaces** : la **Bibliothèque** (`/corpus`) pour
+gérer le corpus et lancer des traitements par lot, l'**Atelier** (`/`) pour
 segmenter / corriger / annoter / transcrire (+ corriger l'analyse grammaticale),
-la **Recherche** (`/recherche`) pour interroger les dialogues corrigés, et
+la **Recherche** (`/recherche`) pour interroger les dialogues corrigés,
 l'**Exploration** (`/exploration`) pour les distributions et comparaisons
-linguistiques du corpus.
+linguistiques du corpus, et l'**Administration** (`/administration`) pour ce qui
+porte sur l'instance — collections, accès, santé des moteurs.
 
 ## Spécifications techniques
 
@@ -63,7 +64,7 @@ jamais bloquer le reste :
 - **Lemmes** indexés dans FTS5 — « otage » trouve « otages », « obéir » trouve
   « obéissait » (ce que le préfixe + accents ne couvre pas).
 - **Analyse grammaticale** par token (lemme, POS/**UPOS**, traits morphologiques)
-  — corrigeable à la main dans la Visionneuse. La correction humaine est une
+  — corrigeable à la main dans l'Atelier. La correction humaine est une
   couche *overlay* (`token_correction`) qui survit à toute réindexation ; la vue
   `tokens_effectifs` expose la valeur effective (correction vivante ⊕ auto).
 
@@ -219,7 +220,7 @@ produit quoi* sans inverser la base. Il **survit à la suppression** de sa cible
 **Annulation** (undo, D1) : `undo.py` **remonte ce journal** pour rejouer l'inverse de la
 dernière action d'annotation — région (créer / modifier / supprimer + **cascade** recréée à
 l'identique), annotation, locuteur, présence. Pile via événements `annulation` (append-only
-préservé) ; **Ctrl+Z** dans la Visionneuse. Les actes machine ne sont pas annulables.
+préservé) ; **Ctrl+Z** dans l'Atelier. Les actes machine ne sont pas annulables.
 Cf. `docs/undo.md`.
 
 **Lexique situé** (A4) : le vocabulaire émergent (dimensions, valeurs, tags) porte une
@@ -235,7 +236,7 @@ dans le panneau **📖 Lexique**. Cf. `docs/domaines.md`.
 
 **Alignement d'autorité** (A5) : `personnage_alignement` relie une entité personnage à
 des référentiels externes (Wikidata/VIAF/IdRef…, `skos:exactMatch`, source auto-détectée).
-Édité dans le panneau **Personnage** de la Visionneuse. Cf. `docs/alignement-autorite.md`.
+Édité dans le panneau **Personnage** de l'Atelier. Cf. `docs/alignement-autorite.md`.
 
 **Matériel de numérisation** (A6) : la résolution (`dpi_x`/`dpi_y`) et le `mode`
 colorimétrique sont **captés à l'ingest** (Pillow) et stockés sur `planches` ; les
@@ -295,8 +296,8 @@ Cf. `docs/materiel-numerisation.md`.
 | `POST` | `/api/sharedocs/deposer-sauvegarde` | déposer la sauvegarde sur ShareDocs |
 | `GET` | `/api/sante` | disponibilité des moteurs (kumiko / bulles / ocr / lemmes) |
 
-**Pages** : `/` (Visionneuse) · `/recherche` · `/corpus` (Bibliothèque) ·
-`/exploration`. Documentation interactive de l'API : `http://127.0.0.1:8000/docs`.
+**Pages** : `/` (Atelier) · `/recherche` · `/corpus` (Bibliothèque) ·
+`/exploration` · `/administration`. Documentation interactive de l'API : `http://127.0.0.1:8000/docs`.
 
 ## Structure
 
@@ -340,7 +341,7 @@ bd_annotator/
 │   ├── exploration.js   # distributions + comparaison de sous-corpus
 │   ├── theme.js         # réglages d'affichage partagés (thème, contraste, zoom)
 │   ├── lib/             # modules UMD testés sous Node : common.js, nav.js, dialog.js, sante.js
-│   └── style.css        # thème sombre/clair (partagé par les 4 pages)
+│   └── style.css        # thème sombre/clair (partagé par les 5 pages)
 ├── tools/               # scripts hors-app : reindex_nlp.py, reindex_materiel.py, pdf_check.py, sharedocs_check.py,
 │                        #   rapport_accord (modèle↔humain) · rapport_accord_inter (inter-annotateurs) ·
 │                        #   importer_vocabulaire (amorçage taxonomie CSV, cf. docs/import-vocabulaire.md) ·
@@ -465,7 +466,7 @@ uvicorn main:app --reload          # dev : redémarre automatiquement à chaque 
 #      les fichiers en continu → boucle de rechargement, le serveur cesse de répondre.
 
 # 5 — Ouvrir dans le navigateur
-#   http://127.0.0.1:8000            → Visionneuse
+#   http://127.0.0.1:8000            → Atelier
 #   http://127.0.0.1:8000/corpus     → Bibliothèque
 #   http://127.0.0.1:8000/recherche  → Recherche · /exploration → Exploration
 #   http://127.0.0.1:8000/docs       → doc interactive de l'API

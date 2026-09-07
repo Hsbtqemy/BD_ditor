@@ -108,7 +108,7 @@ pytest --cov=. --cov-report=term-missing        # couverture (dépend des moteur
 - **Suite DANS l'image** (QA-5) : `docker build -f deploy/Dockerfile --target test -t bdediteur:suite . && docker run --rm bdediteur:suite`. Le venv local n'est PAS l'artefact livré — mesuré le 2026-08-27 : 451 tests verts en local, trois moteurs morts dans l'image le même jour. L'étape `runtime` reste sans outil de test.
 - Le marqueur `e2e` est exclu par défaut via `pytest.ini` (`addopts = -m "not e2e"`).
 - **Tests JS purs** (`static/lib/*.js`) : lancés par `tests/test_js_unit.py`, qui appelle `node --test tests/js/*.test.js`. Skippés proprement si Node absent. Pas de runner JS séparé.
-- **Accessibilité** : `tests/test_e2e_a11y.py` (marqueur `e2e`) audite les 4 surfaces × thèmes (sombre/clair) via **axe-core** (WCAG 2.1 AA) et échoue à toute violation sérieuse/critique. axe est **vendu hors ligne** dans `tests/js/vendor/axe.min.js` (skip si absent — cf. son README).
+- **Accessibilité** : `tests/test_e2e_a11y.py` (marqueur `e2e`) audite les 5 surfaces × thèmes (sombre/clair) via **axe-core** (WCAG 2.1 AA) et échoue à toute violation sérieuse/critique. axe est **vendu hors ligne** dans `tests/js/vendor/axe.min.js` (skip si absent — cf. son README).
 - Les tests des moteurs ML (Kumiko, bulles, OCR) et du NLP se **skippent automatiquement** si le moteur n'est pas installé (`requires_kumiko` / `requires_bulles` / `requires_ocr` dans `tests/conftest.py`). La couverture mesurée en dépend (les routes `/api/analyse/*` + correction de tokens ne sont pas encore couvertes — QA-3, livré ; cf. `docs/roadmap.md`).
 
 ## Architecture
@@ -119,11 +119,19 @@ Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, 
 
 | Route | Template | JS | Rôle |
 |---|---|---|---|
-| `/` | `index.html` | `viewer.js` | **Visionneuse** : modes Édition / Annotation / Transcription / Navigation, arbre de structure, ShareDocs, deep-link |
+| `/` | `index.html` | `viewer.js` | **Atelier** : modes Édition / Annotation / Transcription / Navigation, arbre de structure, ShareDocs, deep-link |
 | `/recherche` | `recherche.html` | `recherche.js` | **Recherche** FTS5 + nuage de tags |
 | `/corpus` | `corpus.html` | `corpus.js` | **Bibliothèque** : CRUD albums/planches + lancement de lots |
-| `/exploration` | `exploration.html` | `exploration.js` | **Exploration** linguistique du corpus — 4 vues : distribution (fréquences), **concordance KWIC** (aligné/liste, deep-link Visionneuse), **croisement 2D** (tableau de contingence facette×facette, heatmap, cellule→concordance), comparaison A/B ; + panneaux **📖 Lexique**, **🎯 Accord** (modèle↔humain) et **👥 Inter** (inter-annotateurs) |
+| `/exploration` | `exploration.html` | `exploration.js` | **Exploration** linguistique du corpus — 4 vues : distribution (fréquences), **concordance KWIC** (aligné/liste, deep-link Atelier), **croisement 2D** (tableau de contingence facette×facette, heatmap, cellule→concordance), comparaison A/B ; + panneaux **📖 Lexique**, **🎯 Accord** (modèle↔humain) et **👥 Inter** (inter-annotateurs) |
 | `/administration` | `administration.html` | `administration.js` | **Administration** (UX-10) : ce qui porte sur l'INSTANCE et non sur un album — panneaux **👥 Collections** (AUTH-3, + vue des comptes AUTH-7) et **🩺 Moteurs** (SANTE-1). Aucune garde d'écran : chaque bloc pose sa propre question d'autorisation, jamais le contenant (leçon AUTH-4) |
+
+**« Atelier » et « Visionneuse » désignent la MÊME page, `/`.** L'écran dit *Atelier*
+(`static/theme.js`), et c'est le nom retenu ici comme dans `docs/guide-utilisateur.md` :
+celui qu'on lit à l'écran prime sur celui des notes. Aligné le 2026-09-07 sur ce fichier et
+`README.md` seulement — les fiches de `pilotage/` et les notes de `docs/` antérieures
+disent encore *Visionneuse*, et on ne les réécrit pas : ce sont des traces DATÉES, et leur
+faire dire aujourd'hui ce qu'elles ne disaient pas serait la seule chose pire que le double
+nom. Si vous croisez l'un ou l'autre mot, c'est la même surface.
 
 `static/lib/` contient des modules **UMD réutilisables et testés sous Node** (pas d'accès DOM au chargement) : `common.js` (helpers partagés par les CINQ surfaces — `$`, `apiGet`, `apiSend`, `escapeHtml`/`esc`, `toast` — exposés en globals pour que les appels nus restent inchangés, et require()-ables par les tests), `nav.js` (navigation/round-trip entre surfaces), `dialog.js` (modale accessible : piège à focus, Échap, retour du focus) et `sante.js` (état affiché des moteurs, SANTE-1 : le croisement présent/éprouvé × absent/en panne, et le bilan d'une épreuve). Un module y entre pour une PROPRIÉTÉ — logique pure, donc vérifiable par table de vérité — et non parce qu'il serait partagé : `sante.js` ne sert qu'à la page d'Administration, et il est là parce qu'un test lisant le source de la surface déclarait sa règle couverte sans l'être (mesuré). Leur logique pure est verrouillée par `tests/js/*.test.js`. **Ne pas redupliquer ces helpers dans un fichier de surface** : c'était le constat « duplication frontend » de l'audit de juin, et `common.js` est ce qui l'a fermé.
 
@@ -372,11 +380,12 @@ porte de l'OUBLI, pas celle de l'erreur : il vérifie qu'une route consulte la p
 jamais qu'elle en tire la bonne conclusion — d'où les tests de comportement, dont la
 couverture est une liste et non une garantie.
 
-Cf. `docs/hebergement-securite.md` (§6). Sa décision du 2026-08-27 — les deux routes de
-sauvegarde ouvertes à tout compte authentifié — a été REJOUÉE dès le lendemain par sa
-propre condition de réouverture : elles sont **réservées aux administrateurs** (DROIT-1,
-cf. § Droits de diffusion ci-dessous) et sont SORTIES de `HORS_PERIMETRE` à cette
-occasion. La sauvegarde reste ENTIÈRE — elle a changé de public, pas de portée.
+Cf. `docs/hebergement-securite.md` (§6). **Les deux routes de sauvegarde sont réservées aux
+administrateurs** (DROIT-1, cf. § Droits de diffusion ci-dessous), et elles sont SORTIES de
+`HORS_PERIMETRE` à cette occasion. C'est un renversement daté : la décision du 2026-08-27
+les avait laissées ouvertes à tout compte authentifié, et sa propre condition de réouverture
+l'a rejouée dès le lendemain. La sauvegarde reste ENTIÈRE — elle a changé de public, pas de
+portée.
 
 ### Droits de diffusion (DROIT-1) — citer n'est pas publier
 
@@ -494,7 +503,7 @@ Invariants :
 
 ### Annulation (undo, D1)
 
-`undo.py` : **remonte le journal A3** pour rejouer l'INVERSE de la dernière action d'annotation. Le journal EST l'historique (pas de pile ; append-only préservé) : annuler = exécuter l'inverse + ajouter un événement `annulation` (`cible_table='evenement'`, `cible_id`=l'acte annulé) ; la « dernière action annulable » = l'événement **humain** le plus récent, d'un type annulable, non déjà référencé par une annulation → `Ctrl+Z` répété remonte la pile. Inversions en mutations **brutes** (+ réindex FTS), **hors routes** (sinon rejournalisation) ; un seul `annulation` par undo ; atomique (rollback si échec). Périmètre : région (créer/modifier/supprimer+**cascade** recréée depuis l'instantané profond, mêmes `id`), annotation (note+tags), locuteur, présence ; actes **machine non annulables**. `GET /api/undo/prochain` + `POST /api/undo` (404 si rien, 409 si `id` réattribué) ; **UI Ctrl+Z** dans la Visionneuse. Dormant : grammaire/validation, **redo**. Cf. `docs/undo.md`.
+`undo.py` : **remonte le journal A3** pour rejouer l'INVERSE de la dernière action d'annotation. Le journal EST l'historique (pas de pile ; append-only préservé) : annuler = exécuter l'inverse + ajouter un événement `annulation` (`cible_table='evenement'`, `cible_id`=l'acte annulé) ; la « dernière action annulable » = l'événement **humain** le plus récent, d'un type annulable, non déjà référencé par une annulation → `Ctrl+Z` répété remonte la pile. Inversions en mutations **brutes** (+ réindex FTS), **hors routes** (sinon rejournalisation) ; un seul `annulation` par undo ; atomique (rollback si échec). Périmètre : région (créer/modifier/supprimer+**cascade** recréée depuis l'instantané profond, mêmes `id`), annotation (note+tags), locuteur, présence ; actes **machine non annulables**. `GET /api/undo/prochain` + `POST /api/undo` (404 si rien, 409 si `id` réattribué) ; **UI Ctrl+Z** dans l'Atelier. Dormant : grammaire/validation, **redo**. Cf. `docs/undo.md`.
 
 ### Lexique situé (A4, v17)
 
@@ -502,7 +511,7 @@ Couche définitionnelle **SKOS** sur le vocabulaire ÉMERGENT (dimensions, valeu
 
 ### Alignement d'autorité (A5, v18)
 
-Relie une **entité personnage** à des référentiels externes (`personnage_alignement` : personnage → 0..N URI Wikidata/VIAF/IdRef…, chacune un `skos:exactMatch`). `source` **auto-détectée** depuis l'hôte de l'URI (contrôlé-ouvert ; NULL si inconnu). `CASCADE` à la suppression ; la **fusion** de personnages recolle les alignements (dédup par URI). Édition : `GET/POST/DELETE /api/personnages/{id}/alignements` + UI dans le **panneau Personnage** de la Visionneuse (puces-liens + ajout d'URI, atteignable via locuteur ET boîte personnage). Export : `personnages.alignements[]` + table CSV + indicateur `% aligné`. Les **contributeurs** restent hors périmètre (chaînes non-entités → promotion requise d'abord, dormant). Cf. `docs/alignement-autorite.md`.
+Relie une **entité personnage** à des référentiels externes (`personnage_alignement` : personnage → 0..N URI Wikidata/VIAF/IdRef…, chacune un `skos:exactMatch`). `source` **auto-détectée** depuis l'hôte de l'URI (contrôlé-ouvert ; NULL si inconnu). `CASCADE` à la suppression ; la **fusion** de personnages recolle les alignements (dédup par URI). Édition : `GET/POST/DELETE /api/personnages/{id}/alignements` + UI dans le **panneau Personnage** de l'Atelier (puces-liens + ajout d'URI, atteignable via locuteur ET boîte personnage). Export : `personnages.alignements[]` + table CSV + indicateur `% aligné`. Les **contributeurs** restent hors périmètre (chaînes non-entités → promotion requise d'abord, dormant). Cf. `docs/alignement-autorite.md`.
 
 ### Domaines analytiques (piste B, v20)
 
