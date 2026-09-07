@@ -21,8 +21,10 @@
 #
 # Le champ `password` est un HASH argon2id, jamais le mot de passe en clair.
 # Générer un hash :
-#   docker run --rm authelia/authelia:4.38 \
-#       authelia crypto hash generate argon2 --password 'TonMotDePasse'
+#   docker run --rm -it authelia/authelia:4.39.22 \
+#       authelia crypto hash generate argon2
+# `-it` fait DEMANDER le mot de passe ; `--password` l'écrirait dans l'historique
+# du shell, où il survit à la session et se relit sans droit particulier.
 # puis colle la valeur ($argon2id$...) ci-dessous.
 #
 # Ajoute autant de blocs d'utilisateurs que nécessaire sous `users:`.

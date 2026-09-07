@@ -1240,3 +1240,106 @@ def test_le_referent_manquant_avertit_sans_bloquer(tmp_path, monkeypatch):
     assert problemes == [], (
         "l'absence de référent a été comptée comme un PROBLÈME : le contrôle rendra "
         f"non nul et `deployer.sh` refusera de déployer ({problemes})")
+
+
+def _fichiers_documentaires():
+    """Les fichiers versionnés où une commande peut être RECOPIÉE par quelqu'un.
+
+    `deploy/` est absent de l'image de test (`.dockerignore` l'exclut entier, parce que
+    `users_database.yml` y porte un condensé). La garde ne s'en trouve pas creuse : elle
+    compare les mentions ENTRE ELLES plutôt qu'à une référence unique, donc elle garde
+    `docs/` là-bas et tout le reste ici.
+    """
+    from pathlib import Path
+
+    racine = Path(__file__).resolve().parent.parent
+    vus = []
+    for motif in ("*.md", "docs/*.md", "deploy/docker-compose.yml",
+                  "deploy/.env.example", "deploy/authelia/*.example.yml"):
+        vus.extend(sorted(racine.glob(motif)))
+    return vus
+
+
+def test_une_seule_version_d_authelia_est_documentee():
+    """Quatre fichiers nommaient `authelia:4.38` alors que l'instance sert `4.39.22`.
+
+    `INFRA-9` a épinglé la version EXACTE le 2026-09-06, et la raison est écrite dans le
+    compose : la flottante avait laissé l'instance vieillir en silence, donc monter devient
+    un GESTE et « l'écart doit se voir plutôt que se creuser ». L'écart s'est creusé
+    ailleurs — dans les documents, qui ont continué de nommer la version quittée. Épingler
+    rend la version décidée à UN endroit ; rien n'obligeait les quatre autres à suivre.
+
+    Ce que ça coûte n'est pas cosmétique : `docs/exploitation.md` portait DEUX procédures
+    d'ajout de compte, et celle qui nommait `4.38` était aussi celle qui taisait le préfixe
+    `Digest: ` — la faute exacte qui a coupé le portail six minutes le 2026-09-06. Un
+    aide-mémoire périmé est pire que pas d'aide-mémoire : on ne le relit pas.
+    """
+    import re
+
+    mentions = {}
+    for f in _fichiers_documentaires():
+        for v in re.findall(r"authelia/authelia:([0-9][\w.\-]*)", f.read_text(encoding="utf-8")):
+            mentions.setdefault(v, []).append(f.name)
+
+    assert mentions, (
+        "aucune mention d'image Authelia trouvée : la garde ne garde plus rien. Si les "
+        "motifs de `_fichiers_documentaires` ont bougé, c'est ICI qu'il faut regarder — "
+        "une garde qui n'inspecte rien passe au vert")
+    assert len(mentions) == 1, (
+        "deux versions d'Authelia documentées à la fois : "
+        + " ; ".join("%s dans %s" % (v, sorted(set(f))) for v, f in sorted(mentions.items()))
+        + ". Une seule est servie (`deploy/docker-compose.yml`), et celle qu'on recopie "
+          "depuis un document périmé ne rend pas l'erreur visible : elle rend une réponse")
+
+
+def test_aucune_commande_documentee_ne_pose_un_secret_sur_la_ligne():
+    """Trois procédures faisaient écrire le mot de passe dans l'historique du shell.
+
+    `authelia crypto hash generate argon2 --password '…'` marche, et c'est le problème :
+    le secret survit à la session dans `~/.bash_history`, se relit sans droit particulier,
+    et part dans toute sauvegarde du compte. La forme `-it` le fait DEMANDER à l'invite.
+
+    Le plus instructif est d'où venait la bonne version. `docs/exploitation.md` portait
+    deux blocs pour le même geste ; celui qu'on tenait pour l'aide-mémoire périmé — image
+    plus ancienne, contrôle plus faible — était le SEUL à faire demander le mot de passe,
+    et il l'expliquait en commentaire. Deux copies ne divergent pas dans le même sens :
+    chacune finit par porter ce qui manque à l'autre, si bien que « la plus récente fait
+    foi » est une règle qui perd quelque chose à chaque fois.
+    """
+    fautifs, inspectees = [], []
+    for f in _fichiers_documentaires():
+        # Ce qu'on garde, ce sont les lignes qu'on COPIE-COLLE, et la marque en est le bloc
+        # de code. Une prose qui NOMME la forme fautive pour en avertir en contient
+        # forcément les mots — le premier jet de cette garde s'est déclenché sur le
+        # paragraphe de remédiation écrit pour l'éteindre. Distinguer par le vocabulaire
+        # revenait à interdire d'écrire ce dont on met en garde.
+        markdown = f.suffix == ".md"
+        dans_bloc = not markdown          # hors markdown, tout le fichier est du copiable
+        for n, ligne in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if markdown and ligne.lstrip().startswith("```"):
+                dans_bloc = not dans_bloc
+                continue
+            if not dans_bloc:
+                continue
+            if "crypto hash generate" in ligne:
+                inspectees.append("%s:%d" % (f.name, n))
+                if "--password" in ligne:
+                    fautifs.append("%s:%d" % (f.name, n))
+            elif "--password" in ligne and "docker run" in ligne:
+                fautifs.append("%s:%d" % (f.name, n))
+
+    # Sans ceci, la garde passe au VERT en n'inspectant RIEN : `assert not fautifs` est
+    # trivialement vrai sur une liste vide. Mesuré le 2026-09-07 en vidant les motifs de
+    # `_fichiers_documentaires` — elle a approuvé. C'est le défaut d'ARCH-2 (une garde plus
+    # verte à mesure qu'elle voit moins) reproduit dans la garde écrite le jour même pour
+    # une faute de la même famille. La garde voisine s'en défendait ; celle-ci non, et rien
+    # ne le disait — les deux se lisaient pareil.
+    assert inspectees, (
+        "aucune commande `crypto hash generate` inspectée : la garde ne garde plus rien. "
+        "Soit les motifs de `_fichiers_documentaires` ont cessé d'atteindre la procédure, "
+        "soit la procédure a disparu — dans les deux cas c'est ICI qu'il faut regarder, "
+        "et surtout pas conclure du vert que rien ne pose de secret sur la ligne")
+    assert not fautifs, (
+        "commande documentée posant un secret sur la ligne : " + ", ".join(fautifs)
+        + ". Employer `docker run --rm -it …` sans `--password` : l'invite ne laisse "
+          "rien dans l'historique du shell")

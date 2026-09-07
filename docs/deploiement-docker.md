@@ -129,8 +129,8 @@ qu'un hash de mot de passe parte dans un dépôt public.
 2. **Mot de passe du 1er compte** — le gabarit se COPIE avant d'être rempli :
    ```bash
    cp authelia/users_database.example.yml authelia/users_database.yml
-   docker run --rm authelia/authelia:4.38 \
-     authelia crypto hash generate argon2 --password 'TonMotDePasse'
+   docker run --rm -it authelia/authelia:4.39.22 \
+     authelia crypto hash generate argon2      # `-it` : le secret n'entre pas dans l'historique
    ```
    Colle le hash dans la copie (champ `password`), et ajuste `displayname` / `email`.
    Pour d'autres comptes, duplique le bloc. Le groupe `bd-admins` est indispensable :
