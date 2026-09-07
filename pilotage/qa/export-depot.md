@@ -82,6 +82,10 @@ inoffensif ailleurs.
 
 ### Le dépôt, et son compte
 
+- [ ] Sans session ShareDocs ouverte, la ligne de dépôt n'offre PAS de bouton mais un lien « Se connecter à ShareDocs… », et une phrase qui dit qu'aucune session n'est ouverte
+- [ ] Ce lien ouvre l'Atelier avec la modale de connexion DÉJÀ dépliée, et un bouton « ← Retour » visible en haut
+- [ ] « ← Retour » ramène bien sur *Administration*, et non sur la page précédente au hasard
+- [ ] Une fois connecté, la ligne de dépôt montre le compte employé et retrouve son sélecteur et son bouton
 - [ ] Propriétaire, la ligne de dépôt propose les six artefacts, chacun d'un libellé distinct et lisible
 - [ ] Un dépôt réussi affiche le chemin ET le compte Huma-Num employé
 - [ ] Le compte affiché est bien celui attendu — le sien si une session personnelle est ouverte, `instance` sinon
