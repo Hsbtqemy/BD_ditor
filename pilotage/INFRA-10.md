@@ -5,9 +5,12 @@ statut: interrompu
 
 # INFRA-10 — déployer se fait à la main, donc quand on y pense
 
-**Arrêté sur** — le mécanisme est écrit et éprouvé LOCALEMENT : `deploy/veille-deploiement.sh`,
-deux unités systemd, douze tests sur deux vrais dépôts git. **Il n'a jamais tourné sur le
-VPS**, et c'est la limite à garder en tête en lisant le reste.
+**Arrêté sur** — `0a32688`, la correction du document d'exploitation, et elle n'est pas de
+moi : il a fallu qu'une session voisine ouvre `docs/exploitation.md` pour voir que la section
+que j'y avais écrite annonçait AU PRÉSENT un mécanisme non posé. Le mécanisme lui-même n'a pas
+bougé depuis `e0314b9` — écrit, éprouvé LOCALEMENT (`deploy/veille-deploiement.sh`, deux unités
+systemd, douze tests sur deux vrais dépôts git), **jamais tourné sur le VPS**. C'est la limite
+à garder en tête en lisant le reste.
 
 **Point de départ** — 2026-09-06. `deployer.sh` fait bien son travail depuis INFRA-7, mais
 il faut ouvrir une session SSH et penser à le lancer. La question posée : GitHub pourrait-il
@@ -43,6 +46,10 @@ gardes : le silence se lit comme une approbation.
 ### Ce que ce mécanisme rend plus probable
 - [ ] La comparaison Authelia de `deployer.sh` porte sur `$avant..$apres` — ce que ce PULL a ramené — alors que l'étape 2 bis sait que la référence est le commit SERVI par l'image. Un déploiement qui échoue après le pull laisse donc la politique d'accès non appliquée au passage suivant, en silence : même famille que la panne de sept heures d'INFRA-9. À trancher — comparer depuis le commit servi
 - [ ] Un déploiement automatique qui échoue a été constaté au moins une fois pour de vrai, et le témoin d'échec s'est comporté comme prévu : refus au tir suivant, et non retour au vert
+
+### Ce que le timer ne répare PAS
+- [ ] Un écart entre le commit SERVI et `origin/main` se constate sans le chercher. Les deux bouts EXISTENT déjà et ne se rencontrent nulle part : `deploy/Dockerfile:150` pose `LABEL bd.commit`, `deploy/deployer.sh:207` le lit par `docker inspect` — mais pendant un déploiement, c'est-à-dire au seul instant où quelqu'un regarde déjà. Ce qui manque n'est donc pas la donnée, c'est qu'elle ne quitte jamais le script qui la calcule ; `GET /api/sante` (`main.py:1651`) est l'endroit d'où une surface lit déjà l'état de l'instance. Le timer réduit la FRÉQUENCE de l'écart, il ne le rend pas visible, et tant que rien ne compare, le 2026-09-07 reste reproductible à l'identique
+- [ ] L'arrêt du timer ne se constate que depuis le VPS : `systemctl stop bd-deploiement.timer` est le recours que `docs/exploitation.md` recommande en cas de doute, et il rétablit le déploiement manuel sans que la machine de développement en sache rien — le geste prudent recrée exactement la panne, en silence
 
 ## Contexte
 
