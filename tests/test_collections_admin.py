@@ -645,6 +645,25 @@ def test_un_acces_explicite_se_voit(client, derriere_proxy, db_path):
     assert c["acces_explicites"] == 1 and c["verdict"] == "laisse des accès"
 
 
+def test_le_verdict_nomme_TOUT_ce_qui_serait_orphelin(client, derriere_proxy, db_path):
+    """Un `elif` disait « laisse des actes » a un compte qui laissait AUSSI des acces :
+    exact, et tronque la ou l ecran groupe et ou quelqu un decide. Un verdict qui tait la
+    moitie du motif est pire qu un chiffre, parce qu il a l air complet."""
+    client.get("/api/moi", headers={"Remote-User": "double"})
+    conn = sqlite3.connect(db_path)
+    conn.execute("INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id) "
+                 "VALUES ('modification', 'double', 'humain', 'regions', 1)")
+    conn.execute("INSERT INTO collection (nom) VALUES ('Etude D')")
+    cid = conn.execute("SELECT id FROM collection WHERE nom='Etude D'").fetchone()[0]
+    conn.execute("INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
+                 "VALUES (?, 'utilisateur', 'double', 'lecture')", (cid,))
+    conn.commit()
+    conn.close()
+    c = next(c for c in _comptes(client, ADMIN).json()["comptes"] if c["login"] == "double")
+    assert c["actes"] == 1 and c["acces_explicites"] == 1
+    assert c["verdict"] == "laisse des actes et des accès", c["verdict"]
+
+
 def test_la_vue_DECLARE_ce_qu_elle_ne_peut_pas_savoir(client, derriere_proxy):
     """Sans cette déclaration, un administrateur — qui n'a AUCUNE ligne dans
     `collection_acces` — se lirait « rien à orpheliner ». Exact, et parfaitement trompeur.

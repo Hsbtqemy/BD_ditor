@@ -844,6 +844,50 @@ def test_a11y_collections_embargo_echu(page, seeded, theme):
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
 @pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_vue_des_comptes(page, seeded, theme):
+    """La vue des comptes (AUTH-7) auditée avec des LIGNES, pas avec son message vide.
+
+    `test_a11y_corpus_collections` ouvre déjà cette modale et l'audite — mais sans proxy,
+    donc `utilisateur` est vide et le bloc rend « aucun compte n'a encore ouvert de page ».
+    L'audit approuvait un écran dont le tableau n'existait pas : en-têtes de colonnes,
+    chiffres alignés, et le signal de reprise en `--ink-red` sur du petit texte, qui est
+    précisément le cas où un accent brut échouerait le 4.5:1.
+
+    C'est le piège que `UX-10` décrit à propos des listes de surfaces, rencontré une taille
+    en dessous : l'instrument regarde le bon écran et n'y voit pas le bon état.
+    """
+    from conftest import ADMIN
+
+    # Deux comptes VUS par l'application, dont un qui a changé d'identité sous le même
+    # login — pour que la colonne « Signal » ait quelque chose à rendre.
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
+    try:
+        c.get("/api/moi", headers={"Remote-User": "ancien", "Remote-Name": "Nom Un"})
+        c.get("/api/moi", headers={"Remote-User": "ancien", "Remote-Name": "Nom Deux"})
+        c.get("/api/moi", headers={"Remote-User": "neuf", "Remote-Name": "Personne Neuve"})
+    finally:
+        c.close()
+
+    _theme(page, theme)
+    page.set_extra_http_headers(ADMIN)
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.click("#btn-collections")
+    page.wait_for_selector("#comptes-bloc table.comptes-table", timeout=5000)
+
+    # Le tableau porte bien des lignes, et le signal de reprise est un LIBELLÉ — pas une
+    # couleur seule, ce qu'aucun audit automatique ne saurait reprocher (WCAG 1.4.1).
+    assert page.locator("#comptes-body tbody tr").count() >= 2
+    assert "identité changée" in page.locator(".compte-repris").first.inner_text()
+    # Et la limite est AFFICHÉE : sans elle un administrateur se lit « rien à orpheliner ».
+    assert "GROUPE" in page.locator("#comptes-limite").inner_text()
+
+    viol = _audit(page)
+    assert not viol, f"Vue des comptes [{theme}] :\n{_fmt(viol)}"
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+@pytest.mark.parametrize("theme", ["dark", "light"])
 def test_a11y_portee_vide_nomme_un_destinataire(page, seeded, theme):
     """Le bandeau envoyait une personne BLOQUÉE « demander un accès à un administrateur »
     sans lui dire à qui. Or elle ne lit AUCUNE collection, donc aucun référent de

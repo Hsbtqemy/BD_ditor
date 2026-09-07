@@ -904,6 +904,70 @@ async function loadCollections() {
     return;
   }
   cols.forEach((c) => body.appendChild(colItem(c)));
+  // Après la liste : elle sert à DÉCIDER d'un accès, et la vue des comptes est ce qui
+  // renseigne la décision. Son échec ne doit pas emporter le panneau.
+  loadComptes();
+}
+
+/* --- Vue des comptes (AUTH-7) ---------------------------------------------------
+   Ce que chaque login a LAISSÉ, pour que la règle de suppression — validée le 2026-09-06
+   — soit consultable par des gens qui n'étaient pas dans la conversation où elle s'est
+   décidée. D'où un VERDICT plutôt que des chiffres, et des comptes GROUPÉS par verdict.
+
+   Le verdict parle de CONSÉQUENCE, jamais de recommandation : « rien à orpheliner » et
+   non « supprimable ». L'écran dit ce qu'une suppression casserait ; décider reste un
+   geste humain, et il se fait ailleurs — dans l'annuaire, que cet écran ne commande pas.
+   -------------------------------------------------------------------------------- */
+async function loadComptes() {
+  const bloc = $("#comptes-bloc");
+  let d;
+  // On DEMANDE, et un refus signifie « pas pour vous ». La garde vit sur la route
+  // (403 aux non-administrateurs) ; la reproduire ici en lisant les groupes ferait
+  // deux sources à tenir d'accord, et l'écran finirait par mentir dans un sens ou l'autre.
+  try { d = await apiGet("/api/comptes"); }
+  catch (e) { bloc.hidden = true; return; }
+  bloc.hidden = false;
+
+  // La limite EST le contenu : sans elle, un administrateur — qui n'a aucune ligne
+  // d'accès explicite — se lit « rien à orpheliner ». Exact, et trompeur.
+  $("#comptes-limite").textContent = d.limite || "";
+
+  const body = $("#comptes-body");
+  if (!d.comptes.length) {
+    body.innerHTML = `<p class="col-note">Aucun compte n'a encore ouvert de page.</p>`;
+    return;
+  }
+  // « Rien à orpheliner » d'abord : c'est le groupe sur lequel on agit, et celui qui
+  // porte aussi le signal « s'est connecté et ne voit rien ».
+  const groupes = new Map();
+  d.comptes.forEach((c) => {
+    if (!groupes.has(c.verdict)) groupes.set(c.verdict, []);
+    groupes.get(c.verdict).push(c);
+  });
+  const ordre = [...groupes.keys()].sort(
+    (a, b) => (a === "rien à orpheliner" ? -1 : b === "rien à orpheliner" ? 1 : a.localeCompare(b)));
+
+  body.innerHTML = ordre.map((v) => `
+    <h5 class="comptes-verdict">${esc(v)} <span class="muted">(${groupes.get(v).length})</span></h5>
+    <table class="corpus-table comptes-table">
+      <thead><tr>
+        <th scope="col">Login</th><th scope="col">Nom</th>
+        <th scope="col">Dernière visite</th>
+        <th scope="col" class="c-num">Actes</th><th scope="col" class="c-num">Accès</th>
+        <th scope="col">Signal</th>
+      </tr></thead>
+      <tbody>${groupes.get(v).map((c) => `
+        <tr>
+          <td class="c-titre">${esc(c.login)}</td>
+          <td>${esc(c.nom || "—")}</td>
+          <td>${esc((c.derniere_vue || "—").slice(0, 10))}</td>
+          <td class="c-num">${c.actes}</td>
+          <td class="c-num">${c.acces_explicites}</td>
+          <td>${c.reprises
+              ? `<span class="compte-repris">identité changée ${c.reprises}\u00a0×</span>`
+              : ""}</td>
+        </tr>`).join("")}</tbody>
+    </table>`).join("");
 }
 
 function openCollections() {

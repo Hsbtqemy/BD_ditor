@@ -158,6 +158,17 @@
         <button id="col-add" class="primary small" type="button">+ Créer</button>
       </div>
       <div id="col-body"></div>
+
+      <!-- Vue des comptes (AUTH-7). `hidden` par défaut et levé par le JS SEULEMENT si
+           la route répond : la garde est celle du serveur, pas celle de cet écran.
+           Décider ici à partir des groupes reproduirait l'erreur d'AUTH-4, où le référent
+           s'est retrouvé derrière la garde du PARTAGE parce qu'il vivait dans ce panneau. -->
+      <section id="comptes-bloc" hidden aria-labelledby="comptes-titre">
+        <h4 id="comptes-titre">Comptes vus par l'application</h4>
+        <p class="col-note" id="comptes-limite"></p>
+        <div id="comptes-body"></div>
+      </section>
+
       <div class="modal-actions">
         <button id="col-close" class="ghost small">Fermer</button>
         <span id="col-msg" class="muted small" role="status" aria-live="polite"></span>

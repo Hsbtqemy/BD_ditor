@@ -304,12 +304,12 @@ def _comptes(conn) -> list:
     for u in conn.execute("SELECT * FROM utilisateur ORDER BY login"):
         login = u["login"]
         n_actes, n_acces = actes.get(login, 0), acces.get(login, 0)
-        if n_actes:
-            verdict = "laisse des actes"
-        elif n_acces:
-            verdict = "laisse des accès"
-        else:
-            verdict = "rien à orpheliner"
+        # Le verdict NOMME tout ce qui serait orphelin, jamais le premier motif trouvé.
+        # Un `elif` disait « laisse des actes » à un compte qui laissait AUSSI des accès :
+        # exact, et tronqué là où l'écran groupe et où quelqu'un décide. Un verdict qui
+        # tait la moitié du motif est pire qu'un chiffre, parce qu'il a l'air complet.
+        motifs = [m for m, n in (("des actes", n_actes), ("des accès", n_acces)) if n]
+        verdict = ("laisse " + " et ".join(motifs)) if motifs else "rien à orpheliner"
         out.append({
             "login": login, "nom": u["nom"], "email": u["email"],
             "premiere_vue": u["premiere_vue"], "derniere_vue": u["derniere_vue"],
