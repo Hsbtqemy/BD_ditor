@@ -5,8 +5,14 @@ statut: interrompu
 
 # INFRA-10 — déployer se fait à la main, donc quand on y pense
 
-**Arrêté sur** — 2026-09-07, `b2f2801` : **la première pose sur le VPS a échoué en
-`203/EXEC`, et douze tests verts ne pouvaient pas le voir.**
+**Arrêté sur** — 2026-09-07, `b2f2801` : **LE MÉCANISME TOURNE SUR LE VPS.** La réserve
+que cette fiche portait depuis son ouverture — « écrit, éprouvé LOCALEMENT, jamais tourné
+sur le VPS » — est levée : timer actif, service lancé par systemd, `rien à faire — main est
+à a5a9f6e` à 19:04:51. Reste à voir un déploiement PARTIR tout seul, ce que seul un
+prochain `push dev:main` montrera.
+
+**Mais la première pose a échoué en `203/EXEC`, et douze tests verts ne pouvaient pas le
+voir.**
 `deploy/veille-deploiement.sh` était commité en mode `100644` quand `deployer.sh` est en
 `100755`. `ExecStart` exige le bit d'exécution : systemd n'a pas pu LANCER le fichier, et
 l'unité est passée `failed` sans qu'une seule ligne du script ne tourne.
@@ -77,8 +83,8 @@ gardes : le silence se lit comme une approbation.
 ### Poser le mécanisme sur l'instance
 - [x] Le clone du VPS tire en HTTPS — constaté le 2026-09-07 : `origin https://github.com/Hsbtqemy/BD_ditor.git`. (`git -C ~/BD_ditor remote -v`) : le dépôt est public, donc `git fetch` n'a besoin d'aucune clé — mais un clone en SSH exigerait un agent que systemd n'a pas, et la veille échouerait toutes les cinq minutes
 - [x] Les unités sont installées et le timer actif : `systemctl list-timers bd-deploiement.timer` annonce un prochain tir — fait le 2026-09-07, le clone tirant bien en HTTPS
-- [ ] **Le service ne tombe plus en `203/EXEC`** : le mode `100755` est poussé, mais l'instance sert encore la version sans lui. Il faut un `./deploy/deployer.sh` À LA MAIN une fois — la veille ne peut pas tirer le correctif qui la répare. Et surtout PAS de `chmod +x` sur le VPS : git compte un changement de mode comme une modification, l'arbre deviendrait SALE, et `deployer.sh` refuse de déployer sur un arbre sale — le geste réparateur bloquerait la réparation
-- [ ] `./deploy/veille-deploiement.sh --simulation` rend « rien à faire » LANCÉ PAR SYSTEMD (`systemctl start bd-deploiement.service`) et pas seulement depuis un terminal de connexion — une unité démarre avec un environnement quasi vide, et c'est là que `git` ou `docker` disparaissent
+- [x] **Le service ne tombe plus en `203/EXEC`** — 2026-09-07, `b2f2801` déployé : le journal non tronqué a confirmé le diagnostic mot pour mot (`status=203/EXEC` aux trois premiers tirs), et le tir de 19:04:51 est propre. La sortie était bien un `./deploy/deployer.sh` à la main : la veille ne pouvait pas tirer le correctif qui la répare. Piège à garder écrit — NE PAS faire de `chmod +x` sur l'instance : git compte un changement de mode comme une modification, l'arbre deviendrait sale, et `deployer.sh` refuse de déployer sur un arbre sale ; le geste réparateur bloquerait la réparation
+- [x] La veille rend « rien à faire » LANCÉE PAR SYSTEMD — 2026-09-07, 19:04:51 : `rien à faire — main est à a5a9f6e`, puis `Deactivated successfully`. Éprouvé mieux que la case ne demandait : par le service RÉEL (`systemctl start bd-deploiement.service`) et non par `--simulation`, donc l'environnement quasi vide d'une unité a bien été traversé — `git` et `docker` s'y trouvent, ce qui était le sujet de la case
 
 ### Le premier déploiement automatique, regardé
 - [ ] Un `git push origin dev:main` sans migration déclenche le déploiement dans les cinq minutes, et l'instance SERT le nouveau commit — vérifié sur l'étiquette `bd.commit` de l'image (`docker inspect`), pas sur l'absence d'erreur
