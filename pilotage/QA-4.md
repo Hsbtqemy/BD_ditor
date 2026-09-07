@@ -141,9 +141,11 @@ qu'une collecte réussie, puisqu'il assertionne lui-même « Conformité stricte
 **Et l'instrument était muet.** Le `CMD` de l'étape `test` passait `-q` quand `pytest.ini`
 en porte déjà un : `-qq` supprime la ligne de bilan. Une image dont la suite ne dit pas
 combien de tests ont tourné ne permet pas de distinguer 833 verts de 12 — dans l'artefact
-même dont QA-5 fait la vérité contre le venv local. Corrigé (`c6b33a2`) ; la vérification
-ci-dessus a dû passer par un override au `docker run`, si bien que **cette correction-là
-n'est pas éprouvée par un build**, le contexte construit la précédant.
+même dont QA-5 fait la vérité contre le venv local. Corrigé (`c6b33a2`), puis ÉPROUVÉ : reconstruction sur
+cache (9 couches reprises), l'image porte `["python","-m","pytest"]` quand le témoin
+d'avant porte `[…,"-q"]`, et cette commande y sort bien « N passed ». Le premier contrôle
+tenté ne valait rien et c'est instructif — passer la commande à `docker run` REMPLACE le
+`CMD`, donc il éprouvait tout sauf ce qu'il prétendait.
 
 Deux mesures de méthode valent d'être gardées, parce qu'elles se sont produites ici même.
 La première mesure du `-qq` était FAUSSE : le filtre appliqué à la sortie contenait le mot
