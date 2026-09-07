@@ -29,10 +29,10 @@ raisons dans `INFRA-8`. Ce chantier peut le défaire, mais en connaissant ce qu'
 - [ ] **Le second facteur se règle-t-il compte par compte, et selon quoi ?** Techniquement c'est un GROUPE — `subject: ['group:bd-admins', 'group:bd-2fa']` dans `access_control` —, et le sens du réglage se choisit : opt-in vers le fort (le défaut reste `one_factor`, l'appartenance renforce) plutôt qu'un groupe « dispensé », où un oubli affaiblirait quelqu'un en silence. Non posé le 2026-09-06 exprès : aucun cas intermédiaire n'existe encore, et un mécanisme de sécurité sans utilisateur est un mécanisme que personne ne vérifie
 - [ ] **Ou le facteur dépend-il de la COLLECTION plutôt que de la personne ?** Une collection sous embargo ou à base légale non établie appelle peut-être un second facteur que le corpus libre n'exige pas. Cette lecture-là rendrait le groupe ci-dessus inutile — les deux s'excluent, et c'est ce chantier qui tranche
 - [ ] **L'OUTILLAGE de ce modèle est parti dans `AUTH-7`** — administrer les comptes sans console, demandé le 2026-09-06. Les deux se lisent ensemble : choisir un annuaire avant de savoir quels groupes on veut serait absurde, arrêter un modèle sans savoir ce qu'il coûtera à administrer aussi
-- [ ] **Le réglage restera-t-il sur le SERVEUR ?** Donner ou retirer le second facteur à quelqu'un, c'est aujourd'hui éditer `users_database.yml`, contrôler le YAML et redémarrer Authelia. L'application ne peut pas le faire à sa place sans cesser d'être ce qu'elle est : elle N'AUTHENTIFIE PERSONNE (AUTH-1), et lui confier la base d'authentification effondrerait tout le raisonnement de sécurité. Une interface d'administration des comptes serait donc un outil DISTINCT, parlant au fichier d'Authelia — chantier à part entière, et c'est la friction nommée le 2026-09-05 : « s'il faut sortir du site à chaque fois »
+- [ ] **Le réglage restera-t-il sur le SERVEUR ?** **La question s'est COUPÉE EN DEUX le 2026-09-07 (AUTH-7), et une moitié seulement a sa réponse.** L'APPARTENANCE à un groupe se change désormais dans l'interface web de LLDAP, derrière Authelia et réservée à `bd-admins` : plus de shell, plus de YAML, plus de redémarrage — c'est exactement la friction nommée le 2026-09-05 (« s'il faut sortir du site à chaque fois »), et elle tombe. La POLITIQUE, elle, reste un fichier sur le serveur : décider qu'un groupe `bd-2fa` exige un second facteur, c'est éditer `access_control` dans `deploy/authelia/configuration.yml` et redémarrer Authelia — qui relit sa configuration au démarrage du PROCESSUS (INFRA-9). L'application ne peut toujours pas le faire à sa place sans cesser d'être ce qu'elle est : elle N'AUTHENTIFIE PERSONNE (AUTH-1), et lui confier la base d'authentification effondrerait tout le raisonnement de sécurité. Reste donc à trancher la seule moitié qui demeure : la politique bouge-t-elle assez rarement pour qu'un fichier suffise ?
 
 ### Deux pièges à vérifier dans le code
-- [ ] Ce que devient un accès dont le GROUPE a été renommé ou supprimé dans `users_database.yml` : `collection_acces` stocke une RÉFÉRENCE au nom du groupe, jamais une appartenance — la ligne survit donc à un groupe qui n'existe plus, et personne ne la relie à rien. Attendu à écrire : le panneau le signale, ou bien on documente qu'il ne le fait pas
+- [ ] Ce que devient un accès dont le GROUPE a été renommé ou supprimé **dans LLDAP** (`users_database.yml` jusqu'au 2026-09-07, AUTH-7) : `collection_acces` stocke une RÉFÉRENCE au nom du groupe, jamais une appartenance — la ligne survit donc à un groupe qui n'existe plus, et personne ne la relie à rien. Attendu à écrire : le panneau le signale, ou bien on documente qu'il ne le fait pas. **Le piège n'a pas changé de nature, il a changé d'écran** — renommer un groupe demandait une session SSH et une relecture de YAML, cela demande maintenant deux clics dans une interface web : le geste qui casse silencieusement un accès est devenu le geste facile, ce qui monte l'intérêt de cette case sans rien changer à son énoncé
 - [ ] Ce qu'une collection devient quand son unique propriétaire perd son groupe : la base refuse le zéro-propriétaire par un 409, mais ce refus porte sur une SUPPRESSION d'accès, pas sur une appartenance qui s'évapore côté Authelia. `bd-admins` est le recours prévu ; vérifier qu'il suffit
 
 ### Préparer l'arrivée
@@ -53,6 +53,14 @@ annotation n'est pas moins la sienne parce qu'elle a changé d'équipe — mais 
 que la provenance nomme des gens qui n'ont plus accès, et c'est exactement pourquoi les
 sorties pseudonymisent (`annotateur-N`, AUTH-1).
 
-**Le backend fichier a une limite non mesurée.** `users_database.yml` convient à une petite
-équipe ; à partir de quel nombre de comptes l'édition à la main devient-elle le goulot ?
-La question se pose avec INFRA-8 (notifier SMTP), qui rend l'enrôlement délégable.
+**Le backend fichier avait une limite non mesurée, et elle a été tranchée sans jamais être
+mesurée.** `users_database.yml` convenait à une petite équipe ; « à partir de quel nombre de
+comptes l'édition à la main devient-elle le goulot ? » n'a jamais reçu de chiffre et n'en
+recevra pas — AUTH-7 a basculé sur LLDAP le 2026-09-07.
+
+**Et le motif n'était pas le volume**, ce qui vaut d'être gardé parce que l'intuition de
+cette page allait dans l'autre sens. Le chiffrage d'AUTH-7 conclut explicitement que le
+temps de saisie ne justifie pas la bascule : trente arrivants restent trente formulaires.
+Ce qui a décidé, c'est que le geste cessait d'exiger un shell sur le VPS — déléguer la
+création d'un compte revenait à déléguer un accès serveur. La limite du backend fichier
+n'était pas sa CAPACITÉ, c'était QUI pouvait s'en servir.

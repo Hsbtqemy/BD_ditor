@@ -39,7 +39,7 @@ Aucun commit de code : le chantier reste `interrompu` là où il l'était.
 
 ### Une identité en base, sans second système d'auth
 - [x] Table `utilisateur` (v22), clé = login Authelia, ligne créée à la première visite via `/api/moi` ; aucun secret en base, vérifié par un test qui refuse toute colonne password/hash/token
-- [x] Les groupes ne sont PAS stockés : relus à chaque requête, donc un retrait dans `users_database.yml` prend effet immédiatement. Un test refuse toute colonne `groupes`/`role`
+- [x] Les groupes ne sont PAS stockés : relus à chaque requête, donc un retrait prend effet immédiatement. Un test refuse toute colonne `groupes`/`role`. **L'invariant a été ÉPROUVÉ le 2026-09-07 par un changement qu'il n'attendait pas** : la source des comptes est passée de `users_database.yml` à LLDAP (AUTH-7), les groupes venant désormais de `memberof`, et l'application n'a pas eu une ligne à changer. Ne rien stocker, c'est n'avoir rien à resynchroniser — la propriété était écrite comme une précaution, elle a servi de portance
 - [x] Le mono-poste local reste identique (agent NULL, acte anonyme) — et va plus loin : sans `BD_AUTH_PROXY`, une en-tête FORGÉE est ignorée, vérifié dans l'image
 
 ### Ce que l'identité débloque immédiatement
@@ -166,8 +166,16 @@ d'utilisateur en base, ni AUTH-2 (autorisation), ni AUTH-3 (espaces), ni INFRA-3
 La doctrine du dépôt reste intacte : **pas d'authentification dans le code**. Authelia
 authentifie, l'application se contente de croire l'en-tête que le proxy pose — ce qu'elle
 fait déjà depuis INFRA-2. On n'ajoute pas un système de comptes, on branche celui qui
-existe : `deploy/authelia/users_database.yml` porte déjà un compte `chercheur` dans un
-groupe `annotateurs`, et Authelia est en `default_policy: deny` avec 2FA.
+existe.
+
+**Écrit quand les comptes vivaient dans `deploy/authelia/users_database.yml` ; deux choses
+ont bougé depuis, et aucune ne touche la doctrine.** Les comptes vivent dans **LLDAP**
+depuis le 2026-09-07 (AUTH-7) — le fichier reste sur le disque comme recours et ne gouverne
+plus rien. Et le second facteur n'est plus universel : `default_policy: 'deny'` tient
+toujours, mais `two_factor` ne vaut que pour `bd-admins` et les deux routes de sauvegarde,
+le reste entrant au mot de passe seul (règle 4 d'`access_control`, abaissement assumé le
+2026-09-06 — les raisons sont dans INFRA-8, et elles tiennent au coût caché du compte
+PARTAGÉ que la 2FA universelle poussait à créer).
 
 **Angle mort découvert le 2026-08-27 en relisant ce chantier.** Le dépôt documente
 minutieusement les droits du CORPUS — `base_legale`, `statut_diffusion`, tiering,
