@@ -5,12 +5,28 @@ statut: interrompu
 
 # INFRA-10 — déployer se fait à la main, donc quand on y pense
 
-**Arrêté sur** — `0a32688`, la correction du document d'exploitation, et elle n'est pas de
-moi : il a fallu qu'une session voisine ouvre `docs/exploitation.md` pour voir que la section
-que j'y avais écrite annonçait AU PRÉSENT un mécanisme non posé. Le mécanisme lui-même n'a pas
-bougé depuis `e0314b9` — écrit, éprouvé LOCALEMENT (`deploy/veille-deploiement.sh`, deux unités
-systemd, douze tests sur deux vrais dépôts git), **jamais tourné sur le VPS**. C'est la limite
-à garder en tête en lisant le reste.
+**Arrêté sur** — 2026-09-07, `025b0d9` : **le déployeur comparait la configuration Authelia
+depuis le mauvais bout, et rejouait ainsi la panne de sept heures d'INFRA-9 à l'intérieur
+de sa propre correction.** Il regardait `$avant..$apres` — ce que le pull venait de ramener
+— alors que son étape 2 bis établit dix lignes plus haut que le dépôt et l'image divergent.
+Quand le pull ne ramène rien, la comparaison ne voit rien, et Authelia continue de servir
+une politique d'accès que le disque a cessé de porter. Corrigé : la référence est
+`bd.commit`, le commit que l'image PORTE.
+
+Ce défaut ne devient sérieux qu'ici. Il dormait depuis INFRA-9 parce qu'un déploiement
+manuel est regardé par quelqu'un ; sous un timer, plus personne ne lit la ligne « pas de
+redémarrage ». **Un mécanisme d'automatisation ne se contente pas de répéter ce qu'on
+faisait : il retire le témoin qui rattrapait les erreurs de ce qu'on faisait.**
+
+Et la même prémisse abandonnée — *c'est le pull qui décide*, remplacée par l'étape 2 bis —
+avait survécu à deux autres endroits, sans dents mais trompeurs : l'aide de `--forcer`, et
+`docs/exploitation.md`, dont la recette de secours À LA MAIN omettait entièrement le
+redémarrage d'Authelia. La page qu'on suit quand le script est indisponible décrivait donc
+la panne de sept heures comme la procédure normale.
+
+Le mécanisme lui-même n'a pas bougé depuis `e0314b9` — écrit, éprouvé LOCALEMENT
+(`deploy/veille-deploiement.sh`, deux unités systemd, douze tests sur deux vrais dépôts
+git), **jamais tourné sur le VPS**. C'est la limite à garder en tête en lisant le reste.
 
 **Point de départ** — 2026-09-06. `deployer.sh` fait bien son travail depuis INFRA-7, mais
 il faut ouvrir une session SSH et penser à le lancer. La question posée : GitHub pourrait-il
@@ -44,11 +60,13 @@ gardes : le silence se lit comme une approbation.
 - [ ] Un REFUS se voit : pousser une migration de schéma et constater que `systemctl status bd-deploiement.service` est `failed`, avec le message qui nomme les deux versions
 
 ### Ce que ce mécanisme rend plus probable
-- [ ] La comparaison Authelia de `deployer.sh` porte sur `$avant..$apres` — ce que ce PULL a ramené — alors que l'étape 2 bis sait que la référence est le commit SERVI par l'image. Un déploiement qui échoue après le pull laisse donc la politique d'accès non appliquée au passage suivant, en silence : même famille que la panne de sept heures d'INFRA-9. À trancher — comparer depuis le commit servi
+- [x] La comparaison Authelia de `deployer.sh` porte sur le commit SERVI (`bd.commit`) et non sur ce que le pull a ramené — `025b0d9`. Tranché dans le sens que la case proposait. Trois états et non deux : inchangée, modifiée, et « je n'ai pas pu comparer » (image sans étiquette, service à l'arrêt), qui redémarre par précaution SANS inscrire au journal une modification que personne n'a constatée. Mesuré des deux côtés de la coupe — `tests/test_deployeur.py` joue le script réel en `--simulation` sur un vrai dépôt git, et deux de ses quatre cas virent au rouge sur la version d'avant
 - [ ] Un déploiement automatique qui échoue a été constaté au moins une fois pour de vrai, et le témoin d'échec s'est comporté comme prévu : refus au tir suivant, et non retour au vert
 
 ### Ce que le timer ne répare PAS
-- [ ] Un écart entre le commit SERVI et `origin/main` se constate sans le chercher. Les deux bouts EXISTENT déjà et ne se rencontrent nulle part : `deploy/Dockerfile:150` pose `LABEL bd.commit`, `deploy/deployer.sh:207` le lit par `docker inspect` — mais pendant un déploiement, c'est-à-dire au seul instant où quelqu'un regarde déjà. Ce qui manque n'est donc pas la donnée, c'est qu'elle ne quitte jamais le script qui la calcule ; `GET /api/sante` (`main.py:1651`) est l'endroit d'où une surface lit déjà l'état de l'instance. Le timer réduit la FRÉQUENCE de l'écart, il ne le rend pas visible, et tant que rien ne compare, le 2026-09-07 reste reproductible à l'identique
+- [ ] Un écart entre le commit SERVI et `origin/main` se constate sans le chercher. Les deux bouts EXISTENT déjà et ne se rencontrent nulle part : `deploy/Dockerfile` pose `LABEL bd.commit=$BD_COMMIT`, et `deployer.sh` le lit par `docker inspect` à son étape 2 bis — mais pendant un déploiement, c'est-à-dire au seul instant où quelqu'un regarde déjà. Ce qui manque n'est donc pas la donnée, c'est qu'elle ne quitte jamais le script qui la calcule ; la route `GET /api/sante` de `main.py` est l'endroit d'où une surface lit déjà l'état de l'instance. Le timer réduit la FRÉQUENCE de l'écart, il ne le rend pas visible, et tant que rien ne compare, le 2026-09-07 reste reproductible à l'identique
+- [ ] La CONDITION d'un tel affichage est posée : l'image ne connaît son commit qu'en `ARG` (`LABEL bd.commit`), qui ne survit pas au build — le processus qui tourne ne peut pas le lire. Il faut un `ENV` en plus du `LABEL`, sans quoi la surface n'aurait rien à afficher. Constaté le 2026-09-07 en cherchant par où faire sortir la donnée
+- [ ] L'EXPOSITION est tranchée avant d'être écrite : `GET /api/sante` est ouverte sans identité (déclarée telle dans `tests/test_autorisation.py`, parce que c'est la sonde d'un conteneur), et derrière Authelia elle tombe sous la règle générale `one_factor`. Y publier le commit servi le rend lisible de tout compte de l'instance — sur un dépôt PUBLIC, cela dit quels correctifs sont en place et lesquels ne le sont pas. À trancher : `/api/sante` pour tous, ou un champ réservé à qui peut administrer
 - [ ] L'arrêt du timer ne se constate que depuis le VPS : `systemctl stop bd-deploiement.timer` est le recours que `docs/exploitation.md` recommande en cas de doute, et il rétablit le déploiement manuel sans que la machine de développement en sache rien — le geste prudent recrée exactement la panne, en silence
 
 ## Contexte
