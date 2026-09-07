@@ -91,6 +91,55 @@ def chemins_cites(fichier, servies):
             if any(s == p or s.startswith(p + "?") for s in textes)}
 
 
+def listes_de_surfaces(fichier, servies):
+    """Les littéraux qui ÉNUMÈRENT des surfaces ailleurs que dans la déclaration.
+
+    Rend `[(ligne, [chemins])]`. Le seuil est DEUX : un littéral qui ne nomme qu'une
+    surface désigne une cible précise — `page.goto(".../corpus")`, une exemption ciblée —
+    et n'a rien d'une énumération. À partir de deux, le littéral fait ce que la
+    déclaration fait déjà, et les deux vont diverger.
+
+    **Le défaut est mesuré, et il a survécu à la première garde.** `test_e2e_a11y`
+    déclarait correctement ses cinq surfaces le 2026-09-07 et portait, quatre cents lignes
+    plus bas, un `@pytest.mark.parametrize("surface", ["/corpus", "/", "/recherche",
+    "/exploration"])` écrit à la main. La déclaration était juste, les chemins étaient bien
+    cités, et `/administration` n'entrait dans aucun des états que ce test-là visite —
+    le bandeau de portée vide, injecté par `theme.js` sur TOUTES les surfaces. Rien ne
+    signalait le trou : la garde d'à côté ferme « aucun audit ne mentionne cette surface »,
+    pas « cet audit la mentionne ici et l'oublie là ».
+
+    Les deux déclarations sont exclues, elles et tout ce qu'elles contiennent : ce sont les
+    seules à avoir le droit d'énumérer. Tout le reste doit DÉRIVER d'elles.
+    """
+    arbre = ast.parse(Path(fichier).read_text(encoding="utf-8"))
+
+    exclus = set()
+    for noeud in arbre.body:
+        if isinstance(noeud, ast.Assign) and any(
+                isinstance(c, ast.Name) and c.id in (NOM_AUDITEES, NOM_HORS)
+                for c in noeud.targets):
+            # `id()` et non l'égalité : deux nœuds AST distincts peuvent être égaux, et on
+            # veut exclure CES nœuds-là. L'arbre reste vivant tant que `arbre` l'est.
+            exclus.update(id(sous) for sous in ast.walk(noeud.value))
+
+    trouves = []
+    for noeud in ast.walk(arbre):
+        if id(noeud) in exclus:
+            continue
+        if isinstance(noeud, (ast.List, ast.Tuple, ast.Set)):
+            elements = noeud.elts
+        elif isinstance(noeud, ast.Dict):
+            elements = [c for c in noeud.keys if c is not None]
+        else:
+            continue
+        vus = {p for e in elements
+               if isinstance(e, ast.Constant) and isinstance(e.value, str)
+               for p in servies if e.value == p or e.value.startswith(p + "?")}
+        if len(vus) >= 2:
+            trouves.append((noeud.lineno, sorted(vus)))
+    return trouves
+
+
 def declarations(fichier):
     """`(auditees, hors_perimetre)` lus dans le source, ou `(None, None)` si absents.
 

@@ -129,6 +129,80 @@ def test_la_declaration_est_RATTACHEE_a_ce_que_le_module_fait(fichier, client):
 
 
 @pytest.mark.parametrize("fichier", surfaces.modules_d_audit(), ids=lambda f: f.name)
+def test_aucune_seconde_liste_de_surfaces(fichier, client):
+    """Une déclaration juste ne suffit pas : encore faut-il qu'elle soit la SEULE.
+
+    Trouvé le 2026-09-07, et par la passe E2E plutôt que par les gardes de ce fichier.
+    `test_e2e_a11y` déclarait ses cinq surfaces correctement — les contrôles ci-dessus
+    étaient tous verts, à juste titre — et portait quatre cents lignes plus bas un
+    `@pytest.mark.parametrize("surface", ["/corpus", "/", "/recherche", "/exploration"])`
+    écrit à la main. `/administration` n'entrait donc dans aucun des états que ce test-là
+    visite : le bandeau de portée vide, que `theme.js` injecte pourtant sur TOUTES les
+    surfaces.
+
+    Aucune garde ne pouvait le voir, et c'est le point. `test_la_declaration_est_RATTACHEE`
+    vérifie que les chemins déclarés sont bien CITÉS par le module — ils l'étaient tous.
+    `test_aucune_surface_n_echappe` ferme « aucun audit ne mentionne cette surface » ;
+    le défaut ici est « cet audit la mentionne À UN ENDROIT et l'oublie à un autre ».
+    Une couche plus bas, même famille : deux copies dont l'une vieillit.
+    """
+    servies = surfaces.surfaces_servies(client)
+    assert servies, (
+        "aucune surface HTML détectée : ce contrôle ne prouverait rien, il ne trouverait "
+        "simplement aucun chemin à reconnaître dans les littéraux (ARCH-2)")
+
+    doublons = surfaces.listes_de_surfaces(fichier, servies)
+    assert not doublons, (
+        f"{fichier.name} énumère des surfaces ailleurs que dans sa déclaration : "
+        + " ; ".join(f"ligne {ligne} → {chemins}" for ligne, chemins in doublons)
+        + f". Cette liste et `{surfaces.NOM_AUDITEES}` disent la même chose deux fois, "
+        "donc l'une des deux finira par mentir — et ce sera celle qu'on ne relit pas. "
+        f"La DÉRIVER : `list({surfaces.NOM_AUDITEES})`, ou une compréhension sur elle si "
+        "ce test-ci ne porte que sur une partie des surfaces")
+
+
+def test_la_detection_de_seconde_liste_voit_encore_quelque_chose(tmp_path):
+    """Le contrôle précédent ne vaut que si sa DÉTECTION reconnaît encore un littéral.
+
+    ARCH-2 appliqué à l'outil plutôt qu'à l'inventaire : `assert not doublons` est
+    trivialement vrai sur une liste vide. Une détection qui cesserait de voir — un
+    changement de forme d'AST, un renommage des deux constantes — rendrait la garde VERTE
+    en ne regardant plus rien, et plus verte à mesure qu'elle voit moins. On l'éprouve donc
+    sur des doublures, comme `test_inventaire_routes` éprouve l'aplatissement des routeurs.
+
+    Les trois propriétés qui la définissent, et pas seulement la première : elle TROUVE une
+    seconde liste, elle ÉPARGNE la déclaration (sinon tout module serait fautif de se
+    déclarer), et elle épargne un littéral qui ne nomme QU'UNE surface — une cible précise
+    n'est pas une énumération, et crier dessus rendrait la garde insupportable donc
+    contournée.
+    """
+    servies = {"/", "/corpus", "/recherche"}
+
+    def ecrire(source):
+        chemin = tmp_path / "faux_audit.py"
+        chemin.write_text(source, encoding="utf-8")
+        return chemin
+
+    declaration = ('SURFACES_AUDITEES = {"/": 1, "/corpus": 2, "/recherche": 3}\n'
+                   'SURFACES_HORS_PERIMETRE = {}\n')
+
+    trouves = surfaces.listes_de_surfaces(ecrire(declaration), servies)
+    assert trouves == [], (
+        f"la déclaration elle-même est signalée ({trouves}) : la garde serait rouge sur "
+        "tout module correctement écrit, donc désactivée dans la semaine")
+
+    f = ecrire(declaration + 'AILLEURS = ["/corpus", "/recherche"]\n')
+    assert [c for _, c in surfaces.listes_de_surfaces(f, servies)] == [["/corpus", "/recherche"]], (
+        "la détection ne reconnaît plus une seconde liste de surfaces : le contrôle "
+        "`test_aucune_seconde_liste_de_surfaces` est devenu vacant sans échouer")
+
+    f = ecrire(declaration + 'CIBLE = ["/corpus"]\n')
+    assert surfaces.listes_de_surfaces(f, servies) == [], (
+        "un littéral ne nommant qu'UNE surface est signalé : ce n'est pas une "
+        "énumération, et le seuil de deux est ce qui rend cette garde vivable")
+
+
+@pytest.mark.parametrize("fichier", surfaces.modules_d_audit(), ids=lambda f: f.name)
 def test_une_exemption_porte_une_vraie_raison(fichier):
     """Sans ceci, l'exemption devient un moyen de faire taire le test plutôt que de décider.
 

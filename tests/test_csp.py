@@ -203,6 +203,36 @@ def test_tout_blocage_admis_vise_une_surface_reellement_chargee():
             "retirer.")
 
 
+def test_toute_surface_html_est_effectivement_balayee():
+    """`SURFACES_BALAYEES` n'était confrontée qu'à `BLOCAGES_ADMIS`, dans UN seul sens.
+
+    Le contrôle voisin interdit une tolérance qui vise un chemin non balayé. Rien
+    n'interdisait l'inverse : une SURFACE non balayée. Or les deux listes de ce fichier ne
+    se recoupent pas d'elles-mêmes — `SURFACES_HTML` est vérifiée contre l'application
+    (elle échouerait sur une page neuve non inscrite), `SURFACES_BALAYEES` contre personne.
+    Une sixième surface serait donc ajoutée à la première, faute de quoi la suite tombe, et
+    oubliée dans la seconde sans que rien ne le dise : la page ne serait JAMAIS chargée
+    dans un navigateur pour éprouver sa CSP, et `test_csp` continuerait de passer.
+
+    Trouvé le 2026-09-07 par la garde d'UX-10 (`test_surfaces.listes_de_surfaces`), qui
+    cherchait des secondes listes dans les audits E2E et a signalé les deux d'ici. Elles
+    sont légitimement DEUX — la seconde porte des requêtes, des gabarits, et `/docs` comme
+    `/redoc` qui ne sont pas des surfaces d'application. Ce n'est donc pas l'égalité qu'on
+    exige, c'est la COUVERTURE, dans le seul sens qui protège.
+
+    Le mode d'échec fermé ici est celui que ce fichier connaît déjà, écrit en tête de
+    `test_les_surfaces_html_suivent_l_application` : une liste manuelle n'oublie pas ce
+    qu'elle voyait, elle oublie ce qu'on AJOUTE.
+    """
+    manquantes = [p for p in SURFACES_HTML
+                  if not any(e == p or e.startswith(p + "?") for e in SURFACES_BALAYEES)]
+    assert not manquantes, (
+        f"{manquantes} sert du HTML et n'est chargé par aucune entrée de "
+        "SURFACES_BALAYEES : sa politique de sécurité n'est éprouvée dans aucun "
+        "navigateur, et ce fichier reste vert. L'y ajouter, avec la requête qui rend la "
+        "page représentative s'il en faut une.")
+
+
 @pytest.mark.e2e
 @pytest.mark.parametrize("live_server", [True], indirect=True)
 @pytest.mark.parametrize("chemin", SURFACES_BALAYEES)
