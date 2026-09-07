@@ -5,7 +5,25 @@ statut: interrompu
 
 # INFRA-10 — déployer se fait à la main, donc quand on y pense
 
-**Arrêté sur** — 2026-09-07, `7f80899` : **le commit servi a quitté le script qui le
+**Arrêté sur** — 2026-09-07, `b2f2801` : **la première pose sur le VPS a échoué en
+`203/EXEC`, et douze tests verts ne pouvaient pas le voir.**
+`deploy/veille-deploiement.sh` était commité en mode `100644` quand `deployer.sh` est en
+`100755`. `ExecStart` exige le bit d'exécution : systemd n'a pas pu LANCER le fichier, et
+l'unité est passée `failed` sans qu'une seule ligne du script ne tourne.
+
+**Le harnais ne pouvait pas le trouver, et c'est mécanique** : il invoque
+`[BASH, "deploy/veille-deploiement.sh"]`, c'est-à-dire le script comme ARGUMENT de bash —
+une forme qui ne consulte jamais le bit d'exécution. Il éprouvait donc parfaitement la
+DÉCISION de la veille, sur un chemin d'invocation que la production n'emprunte pas. C'est
+la limite que cette fiche s'écrivait à elle-même depuis le début — « éprouvé LOCALEMENT,
+jamais tourné sur le VPS » — arrivée par l'endroit qu'on ne surveillait pas : non pas la
+logique, mais la façon dont on la lance.
+
+Le contrôle neuf lit le mode dans l'INDEX git (le disque ne le porte pas sous Windows) et
+se DÉRIVE des unités : une unité future pointant vers un script non exécutable tombe dans
+le même trou, et un test qui ne connaîtrait que ce fichier-ci la laisserait passer.
+
+**Plus tôt le même jour, `7f80899` : le commit servi a quitté le script qui le
 calcule.** Le bloc 🏷️ Version servie ouvre la page d'Administration, réservé à qui peut
 administrer — le dépôt étant public, le commit servi dit quels correctifs sont en place.
 L'écran n'affirme rien qu'il n'ait vu : il connaît un seul bout de la comparaison, le dit,
@@ -57,8 +75,9 @@ gardes : le silence se lit comme une approbation.
 ## Reste
 
 ### Poser le mécanisme sur l'instance
-- [ ] Le clone du VPS tire en HTTPS (`git -C ~/BD_ditor remote -v`) : le dépôt est public, donc `git fetch` n'a besoin d'aucune clé — mais un clone en SSH exigerait un agent que systemd n'a pas, et la veille échouerait toutes les cinq minutes
-- [ ] Les unités sont installées et le timer actif : `systemctl list-timers bd-deploiement.timer` annonce un prochain tir
+- [x] Le clone du VPS tire en HTTPS — constaté le 2026-09-07 : `origin https://github.com/Hsbtqemy/BD_ditor.git`. (`git -C ~/BD_ditor remote -v`) : le dépôt est public, donc `git fetch` n'a besoin d'aucune clé — mais un clone en SSH exigerait un agent que systemd n'a pas, et la veille échouerait toutes les cinq minutes
+- [x] Les unités sont installées et le timer actif : `systemctl list-timers bd-deploiement.timer` annonce un prochain tir — fait le 2026-09-07, le clone tirant bien en HTTPS
+- [ ] **Le service ne tombe plus en `203/EXEC`** : le mode `100755` est poussé, mais l'instance sert encore la version sans lui. Il faut un `./deploy/deployer.sh` À LA MAIN une fois — la veille ne peut pas tirer le correctif qui la répare. Et surtout PAS de `chmod +x` sur le VPS : git compte un changement de mode comme une modification, l'arbre deviendrait SALE, et `deployer.sh` refuse de déployer sur un arbre sale — le geste réparateur bloquerait la réparation
 - [ ] `./deploy/veille-deploiement.sh --simulation` rend « rien à faire » LANCÉ PAR SYSTEMD (`systemctl start bd-deploiement.service`) et pas seulement depuis un terminal de connexion — une unité démarre avec un environnement quasi vide, et c'est là que `git` ou `docker` disparaissent
 
 ### Le premier déploiement automatique, regardé
