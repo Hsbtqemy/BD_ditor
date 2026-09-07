@@ -35,7 +35,8 @@ Usage : ./deploy/deployer.sh [options]
 
   --url URL        instance à contrôler après coup (défaut : https://bd.edito-revue.fr)
   --simulation     tout afficher, ne rien exécuter qui modifie l'instance
-  --forcer         redéployer même si `git pull` n'a rien ramené
+  --forcer         redéployer même si l'image sert DÉJÀ le commit attendu
+                   (ce n'est pas le pull qui décide : cf. étape 2 bis)
   --sans-suite     NE PAS jouer la suite dans l'image avant de déployer
                    (à n'employer qu'en urgence : c'est la garde qui a le plus servi)
   -h, --aide       cette aide
@@ -287,11 +288,63 @@ faire "docker compose up -d --build app"
 # déclenchera le redémarrage, y compris un qu'on n'a pas prévu. C'est le bon sens de l'erreur
 # — redémarrer pour rien coûte deux secondes, ne pas redémarrer laisse Authelia servir une
 # configuration périmée en silence. On ne retire donc que ce dont on est SÛR qu'il n'est pas lu.
-if git -C "$racine" diff --quiet "$avant" "$apres"      -- deploy/authelia/ ':(exclude)deploy/authelia/*.example.*' 2>/dev/null; then
-  echo "   ·· authelia    configuration inchangée, pas de redémarrage"
-else
-  echo "   !! authelia    configuration MODIFIÉE par ce déploiement — redémarrage"
+#
+# ── La RÉFÉRENCE est le commit SERVI, pas celui d'avant le pull ──────────────
+#
+# Ce bloc a longtemps comparé `$avant..$apres`, c'est-à-dire CE QUE CE PULL A RAMENÉ. Or
+# l'étape 2 bis établit dix lignes plus haut que le dépôt et l'instance divergent, et
+# c'est même sa panne fondatrice : le 2026-09-06, le dépôt était à jour parce que
+# quelqu'un avait tiré à la main, et le conteneur datait de l'avant-veille. Dans cet
+# état, `$avant` égale `$apres`, la comparaison ne voit RIEN, et Authelia continue de
+# servir une configuration que le disque a cessé de porter.
+#
+# Le script rejouait donc, à l'intérieur de la correction, la panne qu'il corrigeait :
+# sept heures de politique d'accès non appliquée, sans un signal. Le même chemin s'ouvre
+# quand un déploiement ÉCHOUE après le pull — au passage suivant, le pull ne ramène plus
+# rien, et la configuration reste non appliquée. La veille systemd (INFRA-10) tirant sans
+# personne pour regarder, cette fenêtre cesse d'être un accident rare.
+#
+# On compare donc depuis `$deploye`, le commit que l'image porte et que l'instance sert.
+# L'invariant qui rend cette référence juste : Authelia n'est redémarré que par ICI, à
+# l'instant où l'image est construite avec ce commit. Un redémarrage fait à la main le
+# rendrait CONSERVATEUR — on redémarrerait pour rien —, jamais permissif.
+reference=""
+if printf '%s' "$deploye" | grep -qE '^[0-9a-f]{40}$' &&
+   git -C "$racine" cat-file -e "$deploye^{commit}" 2>/dev/null; then
+  reference="$deploye"
+fi
+
+# Trois cas et non deux, et le troisième est NEUF — introduit par cette correction.
+# L'ancienne écriture ne pouvait pas le rencontrer : ses deux bornes étaient deux
+# `git rev-parse HEAD`, toujours valides, si bien que son `2>/dev/null` ne couvrait rien
+# qui soit jamais arrivé. La nouvelle référence, elle, peut MANQUER — image d'avant
+# `LABEL bd.commit`, service à l'arrêt, commit inconnu de ce clone.
+#
+# On le NOMME au lieu de le replier sur « modifiée ». L'acte serait le même — redémarrer,
+# puisqu'on ne sait pas —, mais le journal du déploiement affirmerait une modification que
+# personne n'a constatée, et c'est ce journal qu'on relit après un incident.
+if [ -z "$reference" ]; then
+  echo "   !! authelia    commit servi inconnu — comparaison impossible, redémarrage par précaution"
   faire "docker compose restart authelia"
+else
+  # `|| etat=$?` et non le `if` direct : `git diff --quiet` rend 1 quand il TROUVE une
+  # différence, et sous `set -e` une commande qui rend 1 hors condition arrête le script.
+  #
+  # On sépare ce 1 des codes SUPÉRIEURS, qui ne disent pas « ça a changé » mais « je n'ai
+  # pas pu regarder ». La branche `*)` n'est exercée par aucun test — la provoquer
+  # demanderait de casser le dépôt sous les pieds du script en pleine exécution — et on
+  # l'écrit plutôt que de la taire : son acte est le bon (redémarrer), et son intérêt est
+  # de ne pas inscrire au journal une modification que personne n'a vue.
+  etat=0
+  git -C "$racine" diff --quiet "$reference" "$apres" \
+      -- deploy/authelia/ ':(exclude)deploy/authelia/*.example.*' || etat=$?
+  case "$etat" in
+    0) echo "   ·· authelia    configuration inchangée depuis ${reference:0:7}, pas de redémarrage" ;;
+    1) echo "   !! authelia    configuration MODIFIÉE depuis ${reference:0:7} (servi) — redémarrage"
+       faire "docker compose restart authelia" ;;
+    *) echo "   !! authelia    comparaison en échec (git rend $etat) — redémarrage par précaution"
+       faire "docker compose restart authelia" ;;
+  esac
 fi
 
 faire "docker compose ps"
