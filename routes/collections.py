@@ -32,7 +32,8 @@ from config import STATUTS_DIFFUSION
 from database import collection_row, collections, etat_embargo, nom_reserve
 
 from socle import (
-    AccesIn, CollectionIn, CollectionUpdate, _get_album, _rows, db, portee_courante,
+    AccesIn, CollectionIn, CollectionUpdate, _get_album, _get_collection, _rows, db,
+    portee_courante,
 )
 
 router = APIRouter()
@@ -44,24 +45,6 @@ router = APIRouter()
 # Trois paliers, et le troisième est la nouveauté : lire · écrire · POSSÉDER. Écrire, c'est
 # annoter ; posséder, c'est décider qui d'autre entrera. Le second ne découle pas du premier.
 # =========================================================================== #
-def _get_collection(conn, portee: autorisation.Portee, collection_id: int, *,
-                    administrer: bool = False):
-    """Collection VISIBLE (404 sinon) et, si `administrer`, qu'on a le droit de partager.
-
-    Le refus d'administration est un **403** et non un 404 : la collection vient d'être
-    listée, on connaît son nom, un « introuvable » mentirait. C'est la distinction
-    qu'AUTH-2 fait déjà entre un terme (403, déjà listé) et une donnée (404, l'absence ne
-    fuit rien) — ici, la collection est déjà connue de l'appelant.
-    """
-    c = collection_row(conn, collection_id)
-    if c is None or not portee.peut_lire(collection_id):
-        raise HTTPException(404, f"Collection {collection_id} introuvable")
-    if administrer and not portee.peut_administrer(collection_id):
-        raise HTTPException(403, "Seul un propriétaire de cette collection peut la "
-                                 "partager ou la modifier.")
-    return c
-
-
 def _niveau_dans(portee: autorisation.Portee, collection_id: int):
     """Le niveau de l'APPELANT sur cette collection, pour que l'UI sache quoi proposer.
 

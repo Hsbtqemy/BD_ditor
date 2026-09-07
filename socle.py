@@ -10,8 +10,9 @@ de cycle : `routes/*` importe `socle`, `main` importe `routes/*`.
 
 Deux choses y gagnent plus qu'un rangement.
 
-Les **accesseurs gardés** (`_get_album`, `_get_planche`, `_get_region`) sont, dit
-CLAUDE.md, « la seule façon d'atteindre un objet du corpus ». C'était jusqu'ici une
+Les **accesseurs gardés** (`_get_album`, `_get_planche`, `_get_region`,
+`_get_collection`) sont, dit CLAUDE.md, « la seule façon d'atteindre un objet du
+corpus ». C'était jusqu'ici une
 convention : rien n'empêchait un nouveau bloc d'écrire son propre `SELECT * FROM albums`.
 Les rassembler dans un module que les routes doivent IMPORTER en fait une contrainte
 qu'on voit, sans rien changer à leur comportement.
@@ -32,7 +33,7 @@ from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 import autorisation
-from database import get_connection
+from database import collection_row, get_connection
 
 # --------------------------------------------------------------------------- #
 # Dépendance connexion
@@ -170,6 +171,32 @@ def _get_region(conn, portee: autorisation.Portee, region_id: int, *,
     if r is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
     return r
+
+
+def _get_collection(conn, portee: autorisation.Portee, collection_id: int, *,
+                    administrer: bool = False) -> dict:
+    """Collection VISIBLE (404 sinon) et, si `administrer`, qu'on a le droit de partager.
+
+    Le refus d'administration est un **403** et non un 404 : la collection vient d'être
+    listée, on connaît son nom, un « introuvable » mentirait. C'est la distinction
+    qu'AUTH-2 fait déjà entre un terme (403, déjà listé) et une donnée (404, l'absence ne
+    fuit rien) — ici, la collection est déjà connue de l'appelant.
+
+    IL A VÉCU DANS `routes/collections.py` jusqu'au 2026-09-07, et il en descend le jour où
+    un SECOND domaine en a besoin (EXP-1, l'export de dépôt). C'est la place que la
+    doctrine ARCH-1 lui donne : les accesseurs gardés vivent ici parce qu'« la seule façon
+    d'atteindre un objet » était une convention, et qu'un module qu'il faut IMPORTER en
+    fait une contrainte visible. Le laisser là-haut aurait obligé un module de routes à en
+    importer un autre, ou — bien pire — à redériver la garde, ce que ce bloc existe
+    précisément pour interdire.
+    """
+    c = collection_row(conn, collection_id)
+    if c is None or not portee.peut_lire(collection_id):
+        raise HTTPException(404, f"Collection {collection_id} introuvable")
+    if administrer and not portee.peut_administrer(collection_id):
+        raise HTTPException(403, "Seul un propriétaire de cette collection peut la "
+                                 "partager ou la modifier.")
+    return c
 
 
 def _refuser_si_verrouillee(planche: dict) -> dict:
