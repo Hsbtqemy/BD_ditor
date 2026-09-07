@@ -207,6 +207,30 @@ alors qu'un proxy est déclaré. Quand une instance a déclaré un **référent 
 qu'il est nommé — et c'est le seul endroit possible, puisqu'une portée vide ne lit aucune
 collection, donc aucun référent de collection.
 
+### Un écran peut sembler ouvert et refuser quand on agit
+
+Le serveur distingue finement ce que vous pouvez faire : lire, écrire, administrer, et
+plusieurs questions plus étroites sur le vocabulaire. **Le navigateur, lui, n'en reçoit
+qu'une** — « puis-je administrer cette collection ? ». Le droit d'**écrire** ne traverse pas.
+
+La conséquence est visible et vaut d'être connue : sur une collection où vous n'avez que la
+lecture, les écrans ne se ferment pas. Le panneau d'annotation s'ouvre, les champs
+s'affichent, le bouton répond — et **c'est en enregistrant que le refus arrive**. Rien n'est
+cassé ; personne ne vous a menti ; l'interface ne savait simplement pas quoi masquer.
+
+C'est un compromis assumé, et il tient parce que **la garde est du côté du serveur**. Un
+bouton visible n'accorde rien : l'acte est vérifié quand il est demandé, jamais quand il est
+affiché. Le prix se paie en confort, pas en sécurité — un refus tardif plutôt qu'un bouton
+absent.
+
+Le revers concerne qui fabrique l'application plus que qui l'utilise, mais il explique une
+famille de bogues : **tout ce qu'on ajoute dans un panneau déjà gardé hérite de cette garde
+par défaut, et non par décision.** C'est ainsi que le référent — une simple adresse, décrite
+plus bas — s'est retrouvé derrière la garde du *partage*, donc lisible du seul propriétaire :
+celui qui venait de l'écrire. L'erreur échoue en se **fermant**, ne casse aucun test, et une
+revue de sécurité l'approuve. La règle écrite dans `CLAUDE.md` (§ AUTH-2) est qu'une garde
+d'interface se pose sur l'**acte**, jamais sur l'écran qui le contient.
+
 ### Le référent : une adresse, pas un droit
 
 Une collection peut nommer un **référent** — un nom lisible et un moyen de le joindre. Le

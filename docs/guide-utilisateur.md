@@ -308,6 +308,11 @@ Soit la région sélectionnée ne porte pas de texte, soit l'analyse linguistiqu
 installée sur cette instance. Dans le second cas, tout le reste fonctionne et la recherche
 retombe sur le préfixe.
 
+**Le champ s'ouvre, je saisis, et l'enregistrement est refusé.**
+Vous n'avez que la lecture sur cette collection. L'interface ne reçoit pas votre droit
+d'écriture, donc elle n'a rien masqué : le refus arrive au moment d'agir, pas avant. Rien
+n'est cassé, et rien n'a été enregistré. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3.
+
 **J'ai corrigé des mots, puis quelqu'un a relancé l'OCR. Mes corrections ?**
 Intactes. Elles vivent dans une couche séparée que la réindexation ne touche pas.
 
