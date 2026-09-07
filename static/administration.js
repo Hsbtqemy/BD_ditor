@@ -321,8 +321,20 @@ async function loadComptes() {
   const ordre = [...groupes.keys()].sort(
     (a, b) => (a === "rien à orpheliner" ? -1 : b === "rien à orpheliner" ? 1 : a.localeCompare(b)));
 
+  // UX-7 — le cadre défilant, comme les quatre autres tableaux larges du dépôt (albums,
+  // planches, Accord, Inter). Six colonnes ne tiennent pas dans 320 px, et sans cadre le
+  // débordement sort de l'écran au lieu de défiler. Il manquait ici, et le harnais de
+  // reflow ne pouvait pas le dire : sans `BD_AUTH_PROXY` le décor n'inscrit personne dans
+  // `utilisateur`, donc ce tableau se rend VIDE pendant la mesure. Ce que la page ne rend
+  // pas, l'instrument ne le voit pas — l'avertissement que `test_e2e_reflow.py` s'écrit à
+  // lui-même pour la Recherche vaut ici, et personne ne l'y avait appliqué.
+  //
+  // L'étiquette porte le VERDICT parce qu'il y a un tableau par groupe : plusieurs
+  // régions au nom identique se valent un « lequel ? » à la navigation par régions.
   body.innerHTML = ordre.map((v) => `
     <h4 class="comptes-verdict">${esc(v)} <span class="muted">(${groupes.get(v).length})</span></h4>
+    <div class="table-cadre" tabindex="0" role="region"
+         aria-label="Comptes — ${esc(v)}">
     <table class="corpus-table comptes-table">
       <thead><tr>
         <th scope="col">Login</th><th scope="col">Nom</th>
@@ -341,7 +353,8 @@ async function loadComptes() {
               ? `<span class="compte-repris">identité changée ${c.reprises}\u00a0×</span>`
               : ""}</td>
         </tr>`).join("")}</tbody>
-    </table>`).join("");
+    </table>
+    </div>`).join("");
 }
 
 async function creerCollection() {

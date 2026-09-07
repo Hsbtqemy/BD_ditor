@@ -42,8 +42,15 @@ import sys
 # sonde ferait exactement la faute qu'elle répare — deux versions d'une même règle, dont
 # une seule serait corrigée le jour où l'on apprend quelque chose. Lire `sys.argv` ou
 # reconfigurer `stdout` à l'import agirait donc sur une course de pytest.
-SURFACES = [("Visionneuse", "/"), ("Recherche", "/recherche"),
-            ("Bibliothèque", "/corpus"), ("Exploration", "/exploration")]
+# UX-10 a ajouté `/administration` le 2026-09-07, et cette liste ne l'a pas suivi : elle
+# a exploré QUATRE surfaces sur cinq jusqu'au 2026-09-07. `test_e2e_reflow.py` l'avait,
+# lui — d'où le piège, une liste juste à côté d'une liste périmée, sans que rien ne les
+# confronte. Le nom de la première suit la barre de navigation (« Atelier » depuis
+# `1cc3a41`) et non le vocabulaire du code, parce que ce nom-là s'imprime dans un rapport
+# qu'on lit à côté de l'écran.
+SURFACES = [("Atelier", "/"), ("Recherche", "/recherche"),
+            ("Bibliothèque", "/corpus"), ("Exploration", "/exploration"),
+            ("Administration", "/administration")]
 # Deux largeurs ne suffisent pas : elles ne disent rien de la BANDE entre les deux, et
 # c'est là qu'un correctif à seuil laisse un trou. Mesuré le 2026-09-04 — la bande 1
 # réparée à 320 px laissait sortir le menu « Aa » de 55 px à 480 px, juste au-dessus du
