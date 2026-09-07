@@ -37,12 +37,14 @@ SQLite (`check_same_thread=False`, `main.py:51-65`).
 
 ## 2. Sécurité — failles à corriger AVANT exposition
 
-Toutes amplifiées par l'absence d'authentification.
+Relevées quand rien n'authentifiait, ce qui les amplifiait toutes. **L'instance sert
+derrière Authelia depuis le 2026-09-05 (INFRA-1)** : la colonne Sévérité dit l'état
+constaté au 2026-09-07, pas celui du relevé d'origine.
 
 | Sévérité | Faille | Référence | Détail |
 |---|---|---|---|
 | ✅ **Corrigé** | **SSRF via ShareDocs** | `pipeline/sharedocs.py` (`_check_url`, `_client`) | Était : URL contrôlée par le client + `follow_redirects=True` → cible interne possible. **Corrigé** : allowlist d'hôte (`BD_SHAREDOCS_ALLOWED_HOSTS`, défaut `sharedocs.huma-num.fr`), refus des IP internes, `follow_redirects=False`. |
-| 🔴 Élevé | **Exfiltration totale non authentifiée** | `main.py:647`, `main.py:1103` | `GET /api/sauvegarde` → snapshot **complet** de la base en un GET. `/derivatives/...` (StaticFiles) → toutes les images, énumérables. Tout le corpus (données + images) téléchargeable par n'importe qui. |
+| ✅ **Corrigé** | **Exfiltration totale non authentifiée** | `main.py` (`_exiger_admin_sauvegarde`, route `/derivatives`) | Était : `GET /api/sauvegarde` → snapshot **complet** de la base en un GET, et `/derivatives/...` monté en `StaticFiles` → toutes les images, aux chemins parfaitement devinables. **Corrigé en DEUX temps, et les deux moitiés n'ont pas la même leçon.** Le montage est devenu une ROUTE cloisonnée (AUTH-2), la base servant d'allowlist — un montage n'a aucune dépendance, le cliquet ne le voyait donc pas, et c'est une relecture qui l'a trouvé ; `MONTAGES_AUTORISES` ne porte plus que `/static`. Les deux routes de sauvegarde sont réservées aux administrateurs (DROIT-1, cf. §6), leur raison écrite ayant porté sa propre condition de réouverture. |
 | ✅ **Corrigé** (partiel) | **OOM upload + bombe de décompression** | `config.py` (`MAX_IMAGE_PIXELS`), `ingest.py`, `ocr.py` | **Corrigé** : garde Pillow réactivée (`MAX_IMAGE_PIXELS` borné, défaut 200 Mpx, `BD_MAX_IMAGE_PIXELS`) → plus d'OOM sur image-bombe ; limite de taille d'upload posée côté **proxy Caddy** (`request_body 200MB`). Restant (mineur) : `file.file.read()` en RAM + image ouverte deux fois. |
 | ✅ **Corrigé** | **Pic RAM de la sauvegarde** | `pipeline/backup.py` | **Corrigé** : `make_backup` zippe désormais directement depuis le fichier snapshot (plus de `read_bytes()` complet en RAM) → pic ÷ ~2. |
 | ✅ **Corrigé** | **Aucune Content-Security-Policy** | `main.py` (`_csp`) | Était : aucun en-tête, donc rien pour amortir un XSS qui passerait l'échappement, ni contre le clickjacking. **Corrigé (SEC-2)** : `script-src 'self'` sans `'unsafe-inline'` — les quatre surfaces n'ont aucun script inline, la politique ne coûte donc rien —, plus `object-src`/`base-uri`/`frame-ancestors` fermés. `/docs` et `/redoc` reçoivent une politique DISTINCTE (CDN autorisé, principes gardés) plutôt qu'une exemption. |
@@ -282,20 +284,35 @@ l'inverse n'était pas le mot mais le NOM de son parent — une dimension, un do
 c'est-à-dire une grille d'analyse. La relecture du 2026-08-28 l'a trouvé sur une suite
 entièrement verte : les routes filtraient bien le terme demandé, pas son parent.
 
-### Ce qui reste ouvert à tous — décision du 2026-08-27
+### Ce qui était ouvert à tous — décision du 2026-08-27, REJOUÉE le 2026-08-28
 
 `GET /api/sauvegarde` et `POST /api/sharedocs/deposer-sauvegarde` déversent la base
-**ENTIÈRE**, toutes collections confondues, et **restent accessibles à tout utilisateur
-authentifié**. Ce n'est pas un oubli, c'est un arbitrage : une sauvegarde partielle ne
-restaure pas une instance, et le nom deviendrait trompeur.
+**ENTIÈRE**, toutes collections confondues. Ils sont **réservés aux administrateurs**
+depuis DROIT-1 (`main.py`, `_exiger_admin_sauvegarde`).
 
-Conséquence à assumer telle quelle : **toute personne ayant accès à l'instance peut
-aspirer l'intégralité du corpus.** Le cloisonnement protège de l'accident et de la
-confusion — deux équipes qui ne se marchent pas dessus, un chercheur qui ne voit que son
-étude — pas d'une exfiltration délibérée.
+**La décision d'origine portait sa propre condition de réouverture, et c'est elle qui a
+tiré.** Le 2026-08-27, ces routes restaient accessibles à tout compte authentifié, au motif
+qu'une sauvegarde partielle ne restaure pas une instance et que le nom deviendrait
+trompeur ; la condition écrite était « dès que l'instance accueille quelqu'un qui n'a pas
+le droit de tout voir — un partenaire extérieur, **un tiering de droits effectif
+(DROIT-1)**, un corpus sous embargo ». DROIT-1 est arrivé le lendemain.
 
-**Condition de réouverture** : dès que l'instance accueille quelqu'un qui n'a pas le droit
-de tout voir — un partenaire extérieur, un tiering de droits effectif (DROIT-1), un corpus
-sous embargo — cette décision se rejoue. Elle est verrouillée par un test qui la cite
-nommément (`tests/test_autorisation.py`, `HORS_PERIMETRE`) : la changer suppose de
-toucher à cette liste, donc de la relire.
+**L'argument d'origine tient, et c'est pourquoi la route n'a PAS été cloisonnée** : la
+sauvegarde reste ENTIÈRE et change de PUBLIC. Sauvegarder est un geste d'exploitation, pas
+de recherche — le restreindre ne retire rien à personne qui en avait l'usage.
+
+**Ce qui a rendu la bascule impossible à oublier** vaut d'être noté, parce que c'était le
+but : la raison était écrite dans `HORS_PERIMETRE` (`tests/test_autorisation.py`), donc la
+changer supposait de relire la liste. Les deux routes en sont SORTIES le 2026-08-28 et
+consultent désormais la portée comme les autres. Leur comportement est verrouillé par
+`test_la_sauvegarde_est_reservee_aux_administrateurs` — 403 pour un compte ordinaire, 200
+pour un administrateur — et par `test_le_mono_poste_garde_sa_sauvegarde` : sans proxy, il
+n'y a personne à qui refuser, et le comportement d'avant est strictement conservé.
+
+**Cette page a pourtant affirmé le contraire pendant dix jours**, relevé le 2026-09-07. Le
+sens de l'erreur mérite d'être nommé : elle décrivait l'instance comme plus OUVERTE qu'elle
+n'est. Personne n'en tire donc un faux sentiment de sécurité — on refait un travail déjà
+fait, ou l'on renonce à exposer une instance qui peut l'être. **Ce n'est pas la décision
+qui a vieilli, c'est le verrou qui a bougé sans que la page le suive** : `HORS_PERIMETRE`
+était nommée ici comme la garde, et elle a cessé de l'être le jour où les deux routes en
+sont sorties.

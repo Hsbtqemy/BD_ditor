@@ -371,8 +371,11 @@ porte de l'OUBLI, pas celle de l'erreur : il vérifie qu'une route consulte la p
 jamais qu'elle en tire la bonne conclusion — d'où les tests de comportement, dont la
 couverture est une liste et non une garantie.
 
-Cf. `docs/hebergement-securite.md` (§6), dont la décision assumée : `GET /api/sauvegarde`
-reste ouverte à tous et déverse la base entière.
+Cf. `docs/hebergement-securite.md` (§6). Sa décision du 2026-08-27 — les deux routes de
+sauvegarde ouvertes à tout compte authentifié — a été REJOUÉE dès le lendemain par sa
+propre condition de réouverture : elles sont **réservées aux administrateurs** (DROIT-1,
+cf. § Droits de diffusion ci-dessous) et sont SORTIES de `HORS_PERIMETRE` à cette
+occasion. La sauvegarde reste ENTIÈRE — elle a changé de public, pas de portée.
 
 ### Droits de diffusion (DROIT-1) — citer n'est pas publier
 
@@ -541,7 +544,7 @@ Statut de **relecture grammaticale** (`à faire` / `en cours` / `faite`), **orth
 
 ### Sauvegarde
 
-`pipeline/backup.py` : snapshot SQLite cohérent par `VACUUM INTO` → zip horodaté. Téléchargeable (`/api/sauvegarde`) ou déposable sur ShareDocs.
+`pipeline/backup.py` : snapshot SQLite cohérent par `VACUUM INTO` → zip horodaté. Téléchargeable (`/api/sauvegarde`) ou déposable sur ShareDocs — les deux **réservées aux administrateurs** (DROIT-1, `_exiger_admin_sauvegarde`), la sauvegarde restant ENTIÈRE : elle a changé de public, pas de portée.
 
 ## Conventions de code
 
