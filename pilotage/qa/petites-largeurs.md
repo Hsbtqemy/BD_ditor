@@ -35,6 +35,11 @@ et l'appareil en tête. Et si la passe se dément elle-même sur un point — c'
   fait partie depuis UX-10 —, aucun élément n'est hors champ sans cadre défilant ni bascule
   qui le ramène. Plus la démonstration que la garde naïve sur `scrollWidth` aurait été
   vacante, et les deux contrôles de l'exemption.
+- `test_e2e_reflow.test_la_table_des_comptes_ne_perd_pas_de_contenu` : la table des comptes
+  d'`/administration` est RENDUE à 320 px — trois identités semées, et l'assertion porte sur
+  le NOMBRE DE LIGNES, pas sur la présence du sélecteur. La différence est tout le test :
+  jusqu'au 2026-09-07 la table se rendait vide pendant la mesure, et un contrôle de présence
+  l'aurait déclarée conforme sans jamais la voir.
 - `test_e2e_tiroirs.py` : le focus ne sort pas d'un tiroir ouvert, dans les deux sens et
   sur les deux tiroirs ; Échap referme et rend le focus à la bascule ; le piège se désarme
   quand la fenêtre s'élargit.
@@ -91,7 +96,7 @@ de savoir qu'on le peut.
 - [ ] Le **tableau de croisement** défile maintenant dans un cadre borné à 70vh : sur un croisement d'au moins 40 lignes, les en-têtes de colonnes restent visibles pendant le défilement, et la molette ne donne pas l'impression de se battre entre deux barres
 - [ ] Sur ce même croisement, atteindre la dernière colonne ET la dernière ligne se fait sans jamais perdre de vue à quelle ligne on est — le collage des deux axes tient ensemble
 - [ ] Le tableau des panneaux 🎯 Accord et 👥 Inter déborde de 38 px à 320 px : vérifier sur un corpus AYANT des tokens relus que ce débordement se voit et se franchit, et qu'il ne fait pas défiler le titre de la modale avec lui
-- [ ] Le **tableau des comptes** d'`/administration` (six colonnes) défile dans son cadre depuis le 2026-09-07 : il n'en avait aucun, et le harnais ne pouvait pas le dire — sans `BD_AUTH_PROXY` le décor n'inscrit personne dans `utilisateur`, donc ce tableau se rend VIDE pendant la mesure. À éprouver sur une instance ayant de VRAIS comptes, seule condition où il existe : la correction est aujourd'hui juste et non mesurée
+- [ ] Le **tableau des comptes** d'`/administration` (six colonnes) défile dans son cadre depuis le 2026-09-07. Sa géométrie est désormais mesurée automatiquement, donc ce n'est PAS ce qu'on vient chercher ici : la question est celle des cinq autres zones — sur une instance ayant de vrais comptes, comprend-on que le tableau se prolonge à droite sans l'avoir deviné en tâtonnant, et la colonne « Signal » se laisse-t-elle atteindre ?
 
 ### Ce que la mesure a déclaré conforme sans le juger
 
