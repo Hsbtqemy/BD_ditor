@@ -237,7 +237,7 @@ termes, et la couche de définition qu'elles partagent.
 | Structure | aucune | **domaine → dimension → valeur** |
 | S'applique à | n'importe quelle région, via son annotation | un **personnage** (profil) ou une **case** (situation de scène) |
 | Bon pour | repérer, marquer, retrouver | **compter, croiser, comparer** |
-| Où on l'écrit | panneau *Tags* de la Visionneuse | panneaux *Personnage* et *Situation (scène)* de la Visionneuse |
+| Où on l'écrit | panneau *Tags* de l'Atelier | panneaux *Personnage* et *Situation (scène)* de l'Atelier |
 | Où on le documente | panneau *📖 Lexique* de l'Exploration | panneau *📖 Lexique* de l'Exploration |
 
 La règle de choix tient en une phrase : **un tag se cherche, un attribut se compte.** « scène
@@ -355,7 +355,7 @@ Trois choses valent d'être sues :
   passer pour une décision.
 
 **Citer, en revanche, n'est jamais bloqué par le régime.** La **figure citable** (bouton
-*＋ Figure* de la Visionneuse) produit un crop accompagné de sa légende — référence `pl·c·b`,
+*＋ Figure* de l'Atelier) produit un crop accompagné de sa légende — référence `pl·c·b`,
 responsabilité, édition, licence, base légale, « non établie » quand c'est le cas — et de sa
 notice. Le cloisonnement des accès s'y applique entièrement : on ne cite que ce qu'on voit.
 Cf. [`figure-citable.md`](figure-citable.md) et [`hebergement-securite.md`](hebergement-securite.md).

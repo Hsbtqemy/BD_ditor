@@ -34,13 +34,18 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 | Surface | Adresse | Ce qu'on y fait |
 |---|---|---|
 | **Bibliothèque** | `/corpus` | créer et décrire les albums, importer les planches, lancer les traitements par lot, gérer les collections et leurs accès, contrôler les moteurs |
-| **Visionneuse** | `/` | tout ce qui se fait sur une planche : corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
-| **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre la Visionneuse pile sur la région |
+| **Atelier** | `/` | tout ce qui se fait sur une planche : corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
+| **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
 | **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus ; documenter le vocabulaire |
 
 Une barre de navigation commune les relie, sur les quatre pages. Les réglages d'affichage —
 thème clair/sombre, contraste élevé, zoom de l'interface — y sont aussi, et suivent d'une
 surface à l'autre.
+
+> **Un mot sur le nom de la première.** La barre de navigation l'appelle **Atelier**, et
+> c'est le nom retenu ici puisque c'est celui qu'on lit à l'écran. Le code, le `README.md` et
+> les notes de conception disent encore **Visionneuse** : c'est la même page, `/`. Si vous
+> croisez l'un ou l'autre mot, ils désignent la même chose.
 
 ---
 
@@ -51,10 +56,10 @@ entre directement à l'étape 4, 5 ou 6 selon ce qui reste à faire : la Bibliot
 pour chaque planche son statut, sa validation et son avancement de relecture.
 
 ### Étape 1 — Constituer le corpus
-**Bibliothèque · `+ Nouvel album` — puis Visionneuse, menu `⇅ Import / Export` pour les images**
+**Bibliothèque · `+ Nouvel album` — puis Atelier, menu `⇅ Import / Export` pour les images**
 
-L'album se crée dans la Bibliothèque (ou par le `＋` de la barre latérale de la Visionneuse).
-**L'import des images, lui, se fait depuis la Visionneuse** : *⤓ Importer des images…* pour
+L'album se crée dans la Bibliothèque (ou par le `＋` de la barre latérale de l'Atelier).
+**L'import des images, lui, se fait depuis l'Atelier** : *⤓ Importer des images…* pour
 votre disque, *🖼 Depuis ShareDocs…* pour parcourir un dossier Huma-Num distant et importer une
 sélection entière. La Bibliothèque gère l'inventaire, pas l'entrée des fichiers.
 
@@ -83,7 +88,7 @@ maintenant coûte cinq minutes ; le faire deux ans plus tard suppose de retrouve
 Trois passes, dans cet ordre : les **cases**, puis les **bulles** à l'intérieur des cases, puis
 le **texte** des bulles. Elles se lancent par lot sur une sélection d'albums et de planches, en
 tâche de fond, avec une barre de progression et un bouton d'annulation. On peut aussi les
-lancer planche par planche depuis la Visionneuse (menu *⚙ Traitement*).
+lancer planche par planche depuis l'Atelier (menu *⚙ Traitement*).
 
 L'ordre de lecture — rangées de haut en bas, gauche à droite, bulles groupées par case — est
 recalculé automatiquement après chaque passe.
@@ -95,7 +100,7 @@ Si un moteur n'est pas installé, cette étape se saute entièrement — la suit
 identiquement, avec plus de travail manuel à l'étape 4.
 
 ### Étape 4 — Corriger le découpage
-**Visionneuse · mode Édition (`E`)**
+**Atelier · mode Édition (`E`)**
 
 Redimensionnez les régions par leurs poignées, ajustez au pixel près par saisie numérique,
 dessinez les régions manquantes au cliquer-glisser, supprimez les fausses (`Suppr`). Une
@@ -107,7 +112,7 @@ région** : une bulle mal détourée est illisible, donc intranscriptible. Elle 
 en revanche — la géométrie contraint le texte, pas l'interprétation.
 
 ### Étape 5 — Transcrire et relire
-**Visionneuse · mode Transcription (`T`), puis panneau Grammaire**
+**Atelier · mode Transcription (`T`), puis panneau Grammaire**
 
 Le mode Transcription est un plein écran bulle à bulle : le crop net à gauche, l'éditeur à
 droite, `Tab` et `Maj+Tab` pour avancer et reculer, un enchaînement possible sur tout l'album.
@@ -126,7 +131,7 @@ La Bibliothèque affiche par planche un **statut de relecture** — à faire, en
 qui avance tout seul à mesure que les mots sont relus, et qu'on peut forcer si besoin.
 
 ### Étape 6 — Annoter
-**Visionneuse · mode Annotation (`A`)**
+**Atelier · mode Annotation (`A`)**
 
 C'est le cœur du travail. Sélectionnez une région ; le panneau de droite propose, selon son
 type :
@@ -155,7 +160,7 @@ un tag se cherche, un attribut se compte.
 La **Recherche** interroge en plein texte les dialogues, les notes et les tags — et les lemmes
 si l'analyse linguistique est active, auquel cas « otage » trouve « otages ». Les accents sont
 ignorés. Filtres par album, type de région et tags, nuage de tags, export CSV des résultats.
-Chaque résultat montre un extrait surligné et une vignette, et **rouvre la Visionneuse
+Chaque résultat montre un extrait surligné et une vignette, et **rouvre l'Atelier
 exactement sur la région**.
 
 L'**Exploration** mesure au lieu de retrouver, en quatre vues :
@@ -163,7 +168,7 @@ L'**Exploration** mesure au lieu de retrouver, en quatre vues :
 | Vue | Ce qu'elle répond |
 |---|---|
 | **Distribution** | quels lemmes, catégories ou traits morphologiques, et à quelle fréquence |
-| **Concordance (KWIC)** | où exactement, avec le contexte de chaque occurrence — et un lien vers la Visionneuse |
+| **Concordance (KWIC)** | où exactement, avec le contexte de chaque occurrence — et un lien vers l'Atelier |
 | **Croisement (2D)** | une facette contre une autre, en tableau de contingence avec carte de chaleur ; une cellule s'ouvre en concordance |
 | **Comparaison A / B** | ce qui est sur-représenté dans un sous-corpus par rapport à un autre |
 
@@ -176,7 +181,7 @@ Ce dernier est le seul rapport **réservé** : il faut écrire quelque part pour
 parce qu'il mesure des personnes et non un corpus.
 
 ### Étape 8 — Exporter
-**Visionneuse · menu `⇅ Import / Export`**
+**Atelier · menu `⇅ Import / Export`**
 
 Trois formats, par album : **JSON-LD**, **CSV** et **TEI P5**. Une **sauvegarde** complète de
 la base est également téléchargeable depuis ce menu — réservée aux administrateurs.
@@ -213,7 +218,7 @@ L'inventaire et le poste de commande.
 - **🩺 Moteurs** : quels moteurs sont présents, et *Éprouver les moteurs* pour vérifier qu'ils
   démarrent réellement.
 
-### Visionneuse (`/`)
+### Atelier (`/`)
 
 Quatre modes, un sélecteur en haut, un raccourci chacun :
 
