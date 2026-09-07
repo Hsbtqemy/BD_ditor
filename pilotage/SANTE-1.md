@@ -32,7 +32,7 @@ panne »). Elle a trouvé un cul-de-sac au clavier. Le chantier est LIVRÉ.
 - [x] Les quatre états passent l'audit axe en thèmes sombre ET clair, le décor les forçant tous à l'écran ; l'accent rouge brut y échoue (mesuré)
 - [x] Le panneau reste utilisable AU CLAVIER pendant une épreuve : `aria-disabled` et non `disabled`, parce que désarmer le bouton qui porte le focus le rend au `<body>` — Tab s'échappe et Échap ne ferme plus, quinze secondes durant. L'audit axe n'y voyait rien : il photographie un écran, il n'appuie sur aucune touche
 - [x] Rouvrir le panneau pendant une épreuve n'efface pas le message qui explique le bouton grisé
-- [x] `docs/deploiement-docker.md` § 8 « Un moteur en panne » : où le voir (panneau / route / CLI), les trois pannes rencontrées avec leur remède, et le redémarrage qu'exige la mémoïsation. Un test exige que chaque symptôme documenté ait son geste
+- [x] `docs/deploiement-docker.md`, section « Un moteur en panne » : où le voir (panneau / route / CLI), les trois pannes rencontrées avec leur remède, et le redémarrage qu'exige la mémoïsation. Un test exige que chaque symptôme documenté ait son geste
 
 ## Contexte
 

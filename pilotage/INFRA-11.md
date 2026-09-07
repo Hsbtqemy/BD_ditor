@@ -1,6 +1,6 @@
 ---
 chantier: INFRA-11
-statut: à venir
+statut: livré
 ---
 
 # INFRA-11 — le fichier des comptes a deux gardes, aucune ne lit ce qu'il contient
