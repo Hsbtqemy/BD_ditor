@@ -18,12 +18,29 @@ montré ce que cette limite laisse passer.
 
 ### Un conflit déjà ouvert entre deux fichiers épinglés
 - [ ] `requirements-export.txt` et `requirements.lock` cessent d'être mutuellement exclusifs : `iiif-prezi3==3.1.1` exige `Pillow<=12.0.0` (dépendance OBLIGATOIRE, pas un extra) quand le verrou épingle `pillow==12.1.0` — pip répond `ResolutionImpossible`
-- [ ] Le test de conformance IIIF (`tests/test_export_metadonnees.py:246`) s'exécute quelque part : aujourd'hui il se skippe dans l'image ET sur la machine de dev, donc **nulle part**, alors que `docs/roadmap.md` donne l'IIIF pour « validé via iiif-prezi3 »
+- [ ] Le test de conformance IIIF (`test_iiif_conformance_stricte`, dans `tests/test_export_metadonnees.py`) s'exécute quelque part : aujourd'hui il se skippe dans l'image ET sur la machine de dev, donc **nulle part**, alors que `docs/roadmap.md` donne l'IIIF pour « validé via iiif-prezi3 »
 - [ ] `docs/roadmap.md` dit ce qui est réellement vérifié aujourd'hui, ou la vérification est rétablie — les deux conviennent, la situation actuelle non
 
 ### Cohérence
 - [ ] `torch` et `torchvision` ne sont plus épinglés dans le Dockerfile pendant que `requirements.lock` prétend être « LE verrou » : soit ils y entrent, soit son en-tête dit où ils vivent
 - [ ] Le cas des paquets JUMEAUX est traité explicitement — deux distributions fournissant le même paquet d'import, dont une seule est épinglée
+
+## Un second verrou est apparu à côté, et il n'est pas celui-ci — 2026-09-07
+
+Relevé en revérifiant les références de cette fiche. ARCH-2 a posé le 2026-09-05 un
+dispositif qui RESSEMBLE à ce que la première zone demande, sans y répondre : `fastapi` est
+plafonné dans `requirements.txt` (`>=0.133,<0.137`), `requirements-dev.lock` épingle la
+version qui a protégé la production, et `tests/test_verrou_dependances.py` **interdit
+désormais à une spec et à son verrou de se contredire**.
+
+Ce qui est fermé et ce qui ne l'est pas : la contradiction entre deux fichiers du dépôt est
+attrapée — donc le conflit `pillow` / `iiif-prezi3` de la zone suivante est exactement le
+genre de chose que cette garde voit. Ce qui reste entier, c'est le TRANSITIF : 76 paquets
+flottent toujours sous les épinglés, et aucun verrou produit depuis l'image Linux n'existe.
+Une garde de cohérence entre deux listes ne dit rien de ce qui n'est sur aucune des deux.
+
+À vérifier avant d'ouvrir le chantier : si `test_verrou_dependances` échoue déjà sur le
+couple `pillow`/`iiif-prezi3`, la deuxième zone est plus avancée qu'écrit ici.
 
 ## Contexte
 

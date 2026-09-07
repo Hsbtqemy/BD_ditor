@@ -7,7 +7,8 @@ statut: à venir
 
 **Point de départ** — décidé le 2026-09-04, sur constat d'usage : « On n'a pas d'export
 direct des résultats à chaque type d'exploration ? » Non, et c'est mesuré ci-dessous.
-Rien n'est commencé ; le travail attend la fin de l'étape 1 d'UX-7.
+Rien n'est commencé. Le travail attendait la fin de l'étape 1 d'UX-7 : **UX-7 est `livré`
+depuis le 2026-09-05, 19 cases sur 19, et ce verrou est levé.**
 
 ## L'état des lieux, mesuré le 2026-09-04
 
@@ -79,5 +80,12 @@ de dépôt, nommer comme le CLI en assumant que l'écran le fait déjà, ou refu
 ce panneau-là — et aucune ne se déduit des règles existantes.
 
 **Priorité et moment.** Décidé le 2026-09-04 : fiché maintenant, codé APRÈS l'étape 1
-d'`UX-7`, qui est ouverte et à moitié faite. Le manque est un manque d'usage, pas un
-défaut : rien n'est perdu ni faux à l'écran.
+d'`UX-7`. **`UX-7` a été livré le 2026-09-05 en ENTIER — 19 cases sur 19 — donc la
+condition est remplie et au-delà de ce qu'elle demandait** (relevé le 2026-09-07 : cette
+page l'annonçait encore « ouverte et à moitié faite »). Le manque reste un manque d'usage,
+pas un défaut : rien n'est perdu ni faux à l'écran, et c'est ce qui décide de la priorité —
+plus l'attente d'un autre chantier.
+
+L'état des lieux ci-dessus a été REVÉRIFIÉ le 2026-09-07 et il tient : le dépôt ne porte
+toujours que deux sorties CSV, `/api/recherche/export.csv` et `/api/export/csv`. Aucune des
+quatre vues d'Exploration n'en a.
