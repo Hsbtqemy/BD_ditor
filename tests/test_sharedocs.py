@@ -416,6 +416,31 @@ def test_upload_refused_403(monkeypatch):
         sd.upload("ro/backup.zip", b"data", principal=MOI)
 
 
+@pytest.mark.parametrize("code", [404, 409])
+def test_upload_dossier_absent_NOMME_la_cause(monkeypatch, code):
+    """« 404 » ne disait à personne ce qui n'allait pas (2026-09-08).
+
+    Le PUT WebDAV ne crée pas les dossiers manquants : la RFC 4918 répond 409 sur une
+    collection absente, les serveurs Nextcloud souvent 404. Le code brut ne distingue pas
+    « ce dossier n'existe pas » de « ce chemin n'a pas la bonne forme », et les deux ne se
+    corrigent pas pareil — constaté sur un chemin recopié depuis le fil d'Ariane de
+    l'interface web, guillemets et chevrons compris.
+
+    Le message doit donc porter TROIS choses : le dossier en cause, le fait que rien ne
+    sera créé, et la forme attendue.
+    """
+    _use(monkeypatch, _rw_handler(code))
+    sd.configurer(BASE, "u", "p", principal=MOI)
+    with pytest.raises(sd.ShareDocsError) as exc:
+        sd.upload("Mes fichiers/BD test/x.json", b"d", principal=MOI)
+    msg = str(exc.value)
+    assert "Mes fichiers/BD test" in msg, msg          # le dossier en cause, nommé
+    assert "ne crée pas" in msg, msg                   # rien ne sera créé pour vous
+    assert "RELATIF" in msg, msg                       # la forme attendue
+    # Et il ne se contente PAS du code : c'est tout ce qu'il disait avant.
+    assert msg.strip() != f"Dépôt de 'Mes fichiers/BD test/x.json' : {code}."
+
+
 def test_upload_server_error(monkeypatch):
     _use(monkeypatch, _rw_handler(500))
     sd.configurer(BASE, "u", "p", principal=MOI)

@@ -382,7 +382,9 @@ def upload(path: str, data: bytes, *, principal, compte=None) -> dict:
     Renvoie {'chemin', 'status', 'compte', 'user'} : le compte EMPLOYÉ fait partie du
     résultat, parce que l'appelant doit pouvoir le journaliser — qui a cliqué et sous quel
     compte Huma-Num sont deux faits différents dès qu'il y a deux comptes possibles.
-    Un 403 signale un dossier en lecture seule (cas des montages partagés « tools »).
+    Un 403 signale un dossier en lecture seule (cas des montages partagés « tools ») ;
+    un 404/409, un dossier PARENT qui n'existe pas — le cas ordinaire quand on recopie le
+    fil d'Ariane de l'interface web au lieu d'un chemin WebDAV.
     """
     session, origine = resoudre(principal, compte)
     target = _join(session["url"], path)
@@ -396,6 +398,21 @@ def upload(path: str, data: bytes, *, principal, compte=None) -> dict:
         raise ShareDocsError(
             "Écriture refusée par ShareDocs (403) — ce dossier est en lecture "
             "seule. Choisissez un dossier perso/projet inscriptible.")
+    # 404/409 — le PUT WebDAV ne crée pas les dossiers manquants : la RFC 4918 répond 409
+    # sur une collection absente, et les serveurs Nextcloud répondent souvent 404. Les
+    # deux disent la même chose, et le code brut ne la disait à personne : « 404 » ne
+    # distingue pas « ce dossier n'existe pas » de « ce chemin n'a pas la bonne forme »,
+    # qui ne se corrigent pas pareil. Constaté le 2026-09-08, sur un chemin recopié depuis
+    # l'interface web — guillemets, chevrons et nom d'affichage compris.
+    if r.status_code in (404, 409):
+        parent = path.rsplit("/", 1)[0] if "/" in path else ""
+        raise ShareDocsError(
+            f"Dossier introuvable sur ShareDocs ({r.status_code}) : "
+            + (f"« {parent} » n'existe pas, " if parent else "")
+            + "et le dépôt ne crée pas les dossiers manquants. Attendu : un chemin "
+              "RELATIF à la racine WebDAV, séparé par des barres obliques — sans "
+              "guillemets ni chevrons. Le nom affiché dans l'interface web n'est pas "
+              "toujours celui du chemin (chez Huma-Num, « Mes fichiers » y est `@Home`).")
     if r.status_code >= 400:
         raise ShareDocsError(f"Dépôt de {path!r} : {r.status_code}.")
     return {"chemin": path, "status": r.status_code,

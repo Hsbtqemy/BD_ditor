@@ -254,8 +254,8 @@ function colExport(c) {
           ${BDDepot.choix().map((o) =>
             `<option value="${o.quoi}|${o.format}">${esc(o.libelle)}</option>`).join("")}
         </select>
-        <input class="dep-dossier" placeholder="Dossier (vide = racine)"
-               aria-label="Dossier ShareDocs de destination">
+        <input class="dep-dossier" placeholder="ex. @Home/mon-dossier (vide = racine)"
+               aria-label="Dossier ShareDocs de destination, chemin relatif à la racine WebDAV">
         <button class="ghost small" ${b} data-depot="1">Déposer</button>`
         : `<a class="ghost small dep-connexion"
               href="${BDDepot.lienConnexionSharedocs()}">Se connecter à ShareDocs…</a>`}
@@ -263,7 +263,10 @@ function colExport(c) {
       ${SD.connecte
         ? `<p class="muted small dep-aide">Compte employé :
              <b>${esc(SD.actif ? (SD.actif.compte || "") : "")}</b>
-             ${SD.actif && SD.actif.user ? `(${esc(SD.actif.user)})` : ""}.</p>`
+             ${SD.actif && SD.actif.user ? `(${esc(SD.actif.user)})` : ""}.
+             Le dossier est un chemin <b>relatif</b>, séparé par des barres obliques — pas
+             le fil d'Ariane de l'interface web, dont les noms d'affichage diffèrent des
+             chemins réels. Le dépôt ne crée aucun dossier manquant.</p>`
         : `<p class="muted small dep-aide">Aucune session ShareDocs n'est ouverte. Le lien
              ci-dessus ouvre la connexion dans l'Atelier et ramène ici.</p>`}` : ""}
       <p class="dep-msg" role="status" aria-live="polite"></p>
