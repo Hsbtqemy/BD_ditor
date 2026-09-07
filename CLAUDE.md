@@ -99,11 +99,21 @@ pip install opencv-python-headless numpy requests
 
 ```bash
 pytest                       # suite par défaut (exclut e2e ; INCLUT le test `live` = serveur uvicorn en sous-processus)
-pytest -m "not live"         # sans le test d'intégration sous-processus
+pytest -m "not e2e and not live"   # sans le test d'intégration sous-processus — RÉPÉTER `not e2e`, cf. ci-dessous
 pytest -m e2e                # E2E navigateur Playwright (nécessite : python -m playwright install chromium)
 pytest tests/test_api.py::test_nom_du_test      # un seul test
 pytest --cov=. --cov-report=term-missing        # couverture (dépend des moteurs optionnels installés)
 ```
+
+**Un `-m` sur la ligne de commande ÉCRASE celui de `pytest.ini`, il ne s'y ajoute pas.**
+`addopts` porte `-m "not e2e"` et se préfixe à la ligne ; le dernier `-m` gagne, donc
+`pytest -m "not live"` RÉACTIVE les e2e. Mesuré le 2026-09-07 par `--collect-only` :
+`pytest` → **810** tests · `pytest -m "not live"` → **988** (+177 e2e, dans un Chromium) ·
+`pytest -m "not e2e and not live"` → **809**. Cette page a documenté la forme fautive comme
+un run PLUS PETIT, et l'erreur n'échoue jamais : elle rend seulement la passe très longue,
+ce qui se lit comme de la lenteur et non comme un défaut. Elle a coûté une demi-heure de
+processeur le jour où on l'a trouvée, sur une passe partie en arrière-plan que plus personne
+ne regardait. Toute exclusion ajoutée doit donc RÉPÉTER `not e2e`.
 
 - **Suite DANS l'image** (QA-5) : `docker build -f deploy/Dockerfile --target test -t bdediteur:suite . && docker run --rm bdediteur:suite`. Le venv local n'est PAS l'artefact livré — mesuré le 2026-08-27 : 451 tests verts en local, trois moteurs morts dans l'image le même jour. L'étape `runtime` reste sans outil de test.
 - Le marqueur `e2e` est exclu par défaut via `pytest.ini` (`addopts = -m "not e2e"`).
