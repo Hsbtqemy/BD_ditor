@@ -31,15 +31,18 @@ et l'appareil en tête. Et si la passe se dément elle-même sur un point — c'
 
 ## Ce que les tests couvrent déjà — ne pas le refaire ici
 
-- `test_e2e_reflow.py` : à 320 et 768 px, sur les quatre surfaces, aucun élément n'est hors
-  champ sans cadre défilant ni bascule qui le ramène. Plus la démonstration que la garde
-  naïve sur `scrollWidth` aurait été vacante, et les deux contrôles de l'exemption.
+- `test_e2e_reflow.py` : à 320 et 768 px, sur les **cinq** surfaces — `/administration` en
+  fait partie depuis UX-10 —, aucun élément n'est hors champ sans cadre défilant ni bascule
+  qui le ramène. Plus la démonstration que la garde naïve sur `scrollWidth` aurait été
+  vacante, et les deux contrôles de l'exemption.
 - `test_e2e_tiroirs.py` : le focus ne sort pas d'un tiroir ouvert, dans les deux sens et
   sur les deux tiroirs ; Échap referme et rend le focus à la bascule ; le piège se désarme
   quand la fenêtre s'élargit.
 - `test_e2e_a11y.py` : aucune violation axe sérieuse ou critique — **à la largeur par
   défaut seulement**. C'est le trou que la zone *Ce qu'axe ne regarde pas* vient combler.
-- `tools/mesurer_reflow.py` : sept largeurs balayées à la demande, pour explorer.
+- `tools/mesurer_reflow.py` : sept largeurs balayées à la demande, pour explorer. Il a
+  ignoré `/administration` jusqu'au 2026-09-07, alors que `test_e2e_reflow.py` l'avait :
+  deux listes voisines dont rien ne confrontait l'une à l'autre. Corrigé.
 
 ## Reste
 
@@ -51,14 +54,14 @@ et l'appareil en tête. Et si la passe se dément elle-même sur un point — c'
 
 ### Le repli s'explique tout seul
 
-- [ ] Sur la Visionneuse en largeur de téléphone, quelqu'un qui n'a pas construit l'outil trouve comment afficher la liste des planches, sans qu'on lui dise que ☰ existe
+- [ ] Sur l'Atelier en largeur de téléphone, quelqu'un qui n'a pas construit l'outil trouve comment afficher la liste des planches, sans qu'on lui dise que ☰ existe
 - [ ] Il trouve de même le panneau d'annotation (▤), et sait dire à quoi sert chacune des deux icônes après les avoir ouvertes une fois
 - [ ] Refermer un tiroir se devine : la personne essaie au moins un des trois gestes prévus (retoucher la bascule, toucher hors du tiroir, Échap) sans qu'on l'oriente
 - [ ] Un tiroir ouvert ne laisse pas croire que l'application est bloquée : le voile assombrit sans faire disparaître le canevas
 
 ### Annoter, et pas seulement consulter
 
-L'arbitrage du 2026-09-05 a tranché « annotation tactile » : la Visionneuse n'est pas une
+L'arbitrage du 2026-09-05 a tranché « annotation tactile » : l'Atelier n'est pas une
 surface de consultation qu'on rendrait lisible faute de mieux. Ces cases jugent ce choix,
 et peuvent le condamner.
 
@@ -73,26 +76,30 @@ et peuvent le condamner.
 Trois éléments disparaissent en petite largeur. Chacun a été retiré pour une raison
 mesurée ; reste à savoir si son absence se paie.
 
-- [ ] Le **fil d'Ariane** est masqué sous 659 px. Il servait aussi à DÉSÉLECTIONNER : vérifier qu'on sort d'une sélection sans lui, au doigt, sans clavier — la racine de l'arbre de structure est la voie prévue
+- [ ] Le **fil d'Ariane** est masqué sous **559 px** — la passe a dit 659 px du 2026-09-05 au 2026-09-07, et c'était faux : la règle vit dans `@media (max-width: 34.9375em)`, pas dans celle de 41.1875em. À 600 px il est donc PRÉSENT, et une passe jouée là aurait conclu que l'outil se trompait. Il servait aussi à DÉSÉLECTIONNER : vérifier qu'on sort d'une sélection sans lui, au doigt, sans clavier — la racine de l'arbre de structure est la voie prévue
 - [ ] La **légende de la barre d'état** est masquée sous 659 px : vérifier qu'on distingue toujours une case d'une bulle d'un personnage à leurs seules couleurs de contour
 - [ ] Les **libellés des modes** tombent sous 899 px : il reste une pastille de couleur et une lettre (N/E/A/T), le libellé restant dans l'arbre d'accessibilité. Vérifier qu'on sait dans quel mode on est sans avoir à essayer, et qu'on retrouve celui qu'on veut — la pastille et la lettre ne disent pas la même chose, et laquelle porte l'information est justement la question
 
 ### Les cadres de défilement se laissent trouver
 
-Cinq zones défilent maintenant dans leur propre cadre — les deux tableaux de la
-Bibliothèque, le croisement, et les tableaux des panneaux Accord et Inter. Les tests
-prouvent qu'on PEUT y accéder ; ils ne disent rien de savoir qu'on le peut.
+SIX zones défilent maintenant dans leur propre cadre — les deux tableaux de la
+Bibliothèque, le croisement, les tableaux des panneaux Accord et Inter, et depuis le
+2026-09-07 celui des comptes. Les tests prouvent qu'on PEUT y accéder ; ils ne disent rien
+de savoir qu'on le peut.
 
 - [ ] Les deux tableaux de la Bibliothèque — celui des albums et celui des planches d'un album : on comprend qu'ils se prolongent à droite sans avoir à le deviner en tâtonnant, et les DEUX sont éprouvés (celui des planches vit dans `corpus.js` et se fait oublier)
 - [ ] Le **tableau de croisement** défile maintenant dans un cadre borné à 70vh : sur un croisement d'au moins 40 lignes, les en-têtes de colonnes restent visibles pendant le défilement, et la molette ne donne pas l'impression de se battre entre deux barres
 - [ ] Sur ce même croisement, atteindre la dernière colonne ET la dernière ligne se fait sans jamais perdre de vue à quelle ligne on est — le collage des deux axes tient ensemble
 - [ ] Le tableau des panneaux 🎯 Accord et 👥 Inter déborde de 38 px à 320 px : vérifier sur un corpus AYANT des tokens relus que ce débordement se voit et se franchit, et qu'il ne fait pas défiler le titre de la modale avec lui
+- [ ] Le **tableau des comptes** d'`/administration` (six colonnes) défile dans son cadre depuis le 2026-09-07 : il n'en avait aucun, et le harnais ne pouvait pas le dire — sans `BD_AUTH_PROXY` le décor n'inscrit personne dans `utilisateur`, donc ce tableau se rend VIDE pendant la mesure. À éprouver sur une instance ayant de VRAIS comptes, seule condition où il existe : la correction est aujourd'hui juste et non mesurée
 
 ### Ce que la mesure a déclaré conforme sans le juger
 
 - [ ] La vignette d'un résultat de recherche tombe à 72 px sur un téléphone : vérifier qu'elle sert encore à reconnaître une planche, ou qu'elle est devenue une décoration qu'il vaudrait mieux masquer
 - [ ] À 320 px, un résultat de recherche laisse 174 px au texte : lire trois résultats de suite et dire si l'extrait reste exploitable ou s'il faut ouvrir la planche à chaque fois
 - [ ] La barre d'état s'enroule sous 659 px (`flex-wrap: wrap`, hauteur `auto`) : compter les lignes qu'elle prend réellement à 320 px et en paysage, et dire si la hauteur qu'elle mange reste acceptable — le nombre de lignes n'a jamais été mesuré, seulement la largeur de son contenu (651 px)
+
+- [ ] Le **bandeau de portée vide** est devenu un `<details>` repliable (2026-09-06) : sur une instance où la portée est vide, vérifier en largeur de téléphone que le résumé se touche au doigt, que le chevron se comprend sans l'avoir déjà ouvert, et que le contenu déplié ne pousse pas la page hors champ
 
 ### Ce qu'axe ne regarde pas
 
