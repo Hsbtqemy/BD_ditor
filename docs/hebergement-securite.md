@@ -186,9 +186,11 @@ pouvoir déclaré de l'administrateur (AUTH-4) et le 404-jamais-403 restent enti
 `tools/faux_proxy_auth.py` ferme cet angle mort. Il tient le rôle d'Authelia et rien
 d'autre — il pose `Remote-User` / `Remote-Groups` / `Remote-Name` / `Remote-Email` et
 relaie —, ce qui est précisément le partage des rôles d'AUTH-1 : **le proxy dit QUI,
-l'application décide QUOI**. Cinq identités, choisies pour montrer chacune un état
-différent, dont les trois pannes que le bandeau de portée vide distingue. Le mode
-d'emploi est en tête du fichier.
+l'application décide QUOI**. Six identités, choisies pour montrer chacune un état
+différent, dont les quatre situations que le bandeau de portée vide distingue. Deux
+d'entre elles — `alice` et `dora` — ne se séparent que par un détail de protocole :
+`Remote-Groups` absent contre `Remote-Groups` reçu VIDE (AUTH-8). Le mode d'emploi est en
+tête du fichier.
 
 C'est un outil de DÉVELOPPEMENT : il n'authentifie personne et pose l'identité qu'on lui
 demande. Devant une instance réelle il donnerait à quiconque l'identité de son choix,

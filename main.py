@@ -1839,6 +1839,17 @@ def moi(request: Request, conn: sqlite3.Connection = Depends(db),
                       # personne, qui a déjà tout. Un nom exact au service d'une phrase
                       # fausse.
                       "groupes_admin": sorted(AUTH_ADMIN_GROUPS) if AUTH_PROXY else [],
+                      # AUTH-8 — `groupes` ci-dessus ne distingue pas « aucun groupe
+                      # déclaré » de « les groupes ne sont pas parvenus » : les deux
+                      # rendent une liste vide. Ce booléen porte la différence, et rien
+                      # d'autre. True = l'en-tête est là (même vide) ; False = il manque
+                      # derrière le proxy ; null = hors proxy, la question ne se pose pas.
+                      #
+                      # ICI et nulle part ailleurs : `acces` porte déjà le diagnostic
+                      # d'une portée vide, et c'est le seul endroit où la liste des
+                      # groupes sert (AUTH-1). Un champ de plus au niveau racine servirait
+                      # à quelqu'un d'autre — il n'y a personne d'autre.
+                      "entete_groupes": autorisation.entete_groupes_recu(request),
                       # Le référent d'INSTANCE : le seul lisible par une portée VIDE, donc
                       # le seul qui serve la personne que le bandeau envoie « demander un
                       # accès » sans dire à qui.

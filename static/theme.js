@@ -276,12 +276,13 @@
        identité ne parvient alors que `BD_AUTH_PROXY` est déclaré. Il n'en existe pas de
        lecture bénigne, et celui qui doit le réparer ne sait pas qu'il faudrait déplier.
 
-       Les deux autres restent repliés, « aucun groupe » COMPRIS — et c'est un
-       changement de lecture, pas un oubli. Ce cas se donne pour un réglage de proxy,
-       mais `autorisation.groupes()` fait `headers.get("Remote-Groups") or ""` : un
-       en-tête ABSENT et un en-tête VIDE arrivent identiques. « Cette personne
-       n'appartient à aucun groupe » est une lecture aussi valable, et on ne déplie pas
-       d'office pour une panne qu'on ne sait pas établir.
+       Les autres restent repliés, « aucun groupe » COMPRIS — et c'est un changement de
+       lecture, pas un oubli. AUTH-8 a rendu ce cas plus fin : l'application distingue
+       désormais l'en-tête ABSENT de l'en-tête VIDE, et la ligne technique le dit. Le
+       dépliage d'office ne suit PAS, volontairement — que « absent » signifie une panne
+       de recopie est déduit des sources d'Authelia, pas mesuré sur ce déploiement, et
+       cette mesure est une case encore ouverte. On ne déplie d'office que pour une panne
+       qu'on sait établir ; le jour où la case se ferme, ce `if` aura un second cas.
 
        `<details>` natif plutôt qu'une bascule maison : le clavier, le rôle et l'état
        plié viennent avec, il n'y a aucun état à posséder, et c'est déjà le motif du
@@ -317,16 +318,21 @@
      Remote-Groups » à un stagiaire, c'est-à-dire à la seule personne que ça n'aide pas.
 
      Elle RAPPORTE une observation, elle n'explique aucune cause — et ce n'est pas de la
-     concision, c'est de l'exactitude. « Aucun groupe reçu » est vrai quoi qu'il arrive ;
-     « le proxy ne pose pas les groupes » ne l'est pas forcément, puisque `groupes()` fait
-     `headers.get("Remote-Groups") or ""` : un en-tête ABSENT et un en-tête VIDE y
-     arrivent identiques, et « cette personne n'appartient à aucun groupe » est une
-     lecture aussi valable. L'ancien libellé tranchait ; ce que le code sait ne le
-     permettait pas.
+     concision, c'est de l'exactitude. L'ancien libellé tranchait (« le proxy pose
+     Remote-User sans Remote-Groups ») ; ce que le code savait alors ne le permettait pas,
+     `groupes()` faisant arriver un en-tête ABSENT et un en-tête VIDE de façon identique.
 
-     Les trois observations restent DISTINCTES, et c'est tout ce qu'AUTH-1 demandait :
-     aucun en-tête d'identité / aucun groupe / les groupes, nommés. Qui connaît son
-     déploiement en tire la suite ; le bandeau ne la tire plus à sa place. */
+     AUTH-8 a levé cette ambiguïté-là — dans le CODE, pas dans le protocole : elle n'était
+     jamais indépassable, seulement non traitée. `acces.entete_groupes` porte désormais la
+     différence, et les observations sont QUATRE : aucun en-tête d'identité ; l'en-tête
+     des groupes non reçu ; reçu mais vide ; les groupes, nommés. La troisième est la
+     seule qui n'appelle aucune réparation, la deuxième la seule qui en appelle une — et
+     c'est tout l'intérêt de les séparer, puisque le même écran vide les confondait.
+
+     Ce qui n'a pas changé : le bandeau ne tranche pas la CAUSE à la place de qui connaît
+     son déploiement. « Non reçu » est un fait de fil ; ce qu'il faut en conclure reste au
+     lecteur, et l'instruction « à vérifier côté proxy » dit où regarder, pas ce qui s'est
+     passé. */
   function ligneTechnique(d) {
     var p = el("p", "portee-vide-technique");
     if (!d.utilisateur) {
@@ -334,13 +340,34 @@
       return p;
     }
     var g = d.groupes || [];
-    if (!g.length) {
-      p.textContent = "Aucun groupe reçu.";
+    if (g.length) {
+      p.appendChild(document.createTextNode("Groupes reçus : "));
+      p.appendChild(el("strong", null, g.join(", ")));
+      p.appendChild(document.createTextNode("."));
       return p;
     }
-    p.appendChild(document.createTextNode("Groupes reçus : "));
-    p.appendChild(el("strong", null, g.join(", ")));
-    p.appendChild(document.createTextNode("."));
+    /* Pas de groupe : DEUX situations, et une seule appelle une réparation (AUTH-8).
+       `acces.entete_groupes` porte la différence que `groupes` écrase — il rend une liste
+       vide dans les deux cas, ce qui est correct pour une liste et insuffisant ici.
+
+       Les deux libellés RAPPORTENT ce qui est arrivé sur le fil, comme les deux autres :
+       « non reçu » et « reçu vide » sont vérifiables sur les en-têtes. Ce qui suit le
+       tiret dans le premier cas est une INSTRUCTION — où regarder —, jamais une cause
+       affirmée : que l'absence signifie une panne de recopie repose sur les sources
+       d'Authelia, pas sur une mesure de CE déploiement, et cette mesure est une case
+       encore ouverte d'AUTH-8. */
+    var a = d.acces || {};
+    if (a.entete_groupes === false) {
+      p.textContent = "En-tête Remote-Groups NON reçu, alors que Remote-User l'est "
+        + "— à vérifier côté proxy : les accès par groupe sont sans effet.";
+    } else if (a.entete_groupes === true) {
+      p.textContent = "En-tête Remote-Groups reçu, mais VIDE : aucun groupe déclaré "
+        + "pour ce compte.";
+    } else {
+      /* `null` : hors proxy, ou une réponse antérieure à AUTH-8. On retombe sur ce que
+         l'on sait dire sans se tromper, plutôt que d'inventer un troisième diagnostic. */
+      p.textContent = "Aucun groupe reçu.";
+    }
     return p;
   }
 

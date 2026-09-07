@@ -187,18 +187,22 @@ Un album auquel vous n'avez pas accès répond **404 — introuvable**, jamais 4
 sur quoi travaillent les autres équipes.
 
 Ce choix a un prix d'ergonomie, assumé et compensé : **une portée vide rend l'application
-indistinguable d'un corpus vide.** D'où un bandeau qui distingue **trois** pannes — et non
-deux — par les groupes reçus :
+indistinguable d'un corpus vide.** D'où un bandeau qui distingue **quatre** situations — et
+non deux — par ce que le portail transmet :
 
 | Ce qui parvient | Ce que ça signifie | Qui répare |
 |---|---|---|
 | aucune identité | le portail ne transmet rien : l'application est joignable sans passer par lui | administrateur système |
-| une identité, **aucun groupe** | le portail transmet le login mais pas les groupes | administrateur système |
+| une identité, la liste des groupes **non transmise** | le portail transmet le login mais pas les groupes : tous les accès accordés à un GROUPE sont sans effet | administrateur système |
+| une identité, la liste des groupes **transmise et vide** | tout fonctionne : ce compte n'appartient simplement à aucun groupe | un **propriétaire** de collection |
 | une identité **et** ses groupes, dont aucun n'a d'accès | tout fonctionne : personne ne vous a encore donné accès | un **propriétaire** de collection |
 
-Les deux premières se réparent dans la configuration ; la troisième non. Les confondre envoie
-chercher une panne qui n'existe pas — c'est pourquoi la liste des groupes reçus se lit à cet
-endroit précis, et à cet endroit seulement.
+**Seule la deuxième se répare dans la configuration.** Les deux du milieu se ressemblent — dans
+les deux cas vous n'avez aucun groupe — et l'application les a longtemps confondues : elles ne
+se distinguent qu'à un détail de protocole, la liste vide n'étant pas la même chose que la
+liste absente. Les confondre envoie chercher une panne qui n'existe pas, ou fait ignorer
+celle qui existe. C'est pourquoi ce que le portail transmet se lit à cet endroit précis, et à
+cet endroit seulement.
 
 Le bandeau donne d'abord la réponse courte — *pourquoi* l'écran est vide — et **replie le
 détail derrière son titre** : ce qu'il faut en faire peut attendre un clic. Il s'ouvre de
@@ -444,9 +448,12 @@ une hypothèse qu'on se permet.
 ## 7. Questions fréquentes
 
 **Je me connecte et je ne vois rien. C'est cassé ?**
-Pas forcément. Lisez le bandeau : il distingue trois situations (§3). S'il nomme vos groupes,
+Pas forcément. Lisez le bandeau : il distingue quatre situations (§3). S'il nomme vos groupes,
 tout fonctionne — il manque seulement qu'un propriétaire vous donne accès à une collection.
-S'il n'en nomme aucun, c'est une panne de configuration côté serveur.
+S'il n'en nomme aucun, il précise laquelle des deux raisons s'applique : la liste des groupes
+n'est **pas transmise** (panne de configuration côté serveur, à signaler), ou elle est
+**transmise et vide** (rien à réparer : vous n'êtes dans aucun groupe, et l'accès peut vous
+être donné à votre nom).
 
 **J'ai donné un accès et la personne ne voit toujours rien.**
 Vérifiez l'orthographe du login ou du nom de groupe. L'application n'a aucun annuaire : un nom

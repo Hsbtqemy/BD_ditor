@@ -18,8 +18,10 @@ VPS, c'est-à-dire INFRA-1, bloqué.
 
 Ce script tient ce rôle et rien d'autre : il choisit une IDENTITÉ (cookie), pose les
 quatre en-têtes, et relaie. C'est exactement le partage des rôles qu'AUTH-1 décrit — le
-proxy dit QUI, l'application décide QUOI. Cinq identités, choisies pour montrer chacune un
-état différent, dont les trois pannes que le bandeau de portée vide distingue.
+proxy dit QUI, l'application décide QUOI. Six identités, choisies pour montrer chacune un
+état différent, dont les quatre situations que le bandeau de portée vide distingue —
+`alice` et `dora` sont la paire qu'AUTH-8 a séparée, en-tête des groupes ABSENT contre
+en-tête reçu VIDE, et l'application les recevait identiques jusqu'au 2026-09-07.
 
     # 1. une base JETABLE, semée
     BD_DATA_DIR=/tmp/demo BD_DB_PATH=/tmp/demo/demo.sqlite python tools/semer_demo.py
@@ -46,10 +48,18 @@ COOKIE = "bd_demo_identite"
 OUVREUR = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 # login | nom lisible | courriel | groupes — et chacun montre un ÉTAT différent.
+#
+# `groupes` est à TROIS états, et c'est tout le sujet d'AUTH-8 : `None` = l'en-tête n'est
+# pas posé du tout (proxy mal configuré) ; `""` = il est posé VIDE (Authelia le fait dès
+# qu'il y a un login, `strings.Join([], ",")` valant `""`) ; une chaîne = des groupes.
+# Les deux premiers donnaient jusqu'ici la même chose à l'application, et l'un est une
+# panne quand l'autre n'est rien.
 PERSONNAGES = {
-    "": ("", "", "", "", "Personne — aucune identité ne parvient (le proxy est muet)"),
-    "alice": ("alice", "Alice Duval", "alice@exemple.fr", "",
-              "Identité SANS groupe — le proxy pose Remote-User, pas Remote-Groups"),
+    "": (None, "", "", None, "Personne — aucune identité ne parvient (le proxy est muet)"),
+    "alice": ("alice", "Alice Duval", "alice@exemple.fr", None,
+              "Identité, Remote-Groups ABSENT — les accès par groupe sont sans effet"),
+    "dora": ("dora", "Dora Lemaire", "dora@exemple.fr", "",
+             "Identité, Remote-Groups reçu VIDE — n'appartient à aucun groupe, rien à réparer"),
     "bob": ("bob", "Bob Marchand", "bob@exemple.fr", "chercheurs",
             "Identité AVEC groupes, dont aucun n'a d'accès — la panne qui ne se répare pas"),
     "claire": ("claire", "Claire Ferrand", "claire@exemple.fr", "chercheurs",
@@ -92,8 +102,10 @@ def page(courant):
         detail = f"<code>{login or '—'}</code>"
         if groupes:
             detail += f" · groupes <code>{groupes}</code>"
+        elif login and groupes == "":
+            detail += " · <code>Remote-Groups</code> reçu VIDE"
         elif login:
-            detail += " · <code>Remote-Groups</code> absent"
+            detail += " · <code>Remote-Groups</code> ABSENT"
         items.append(f"<li{actif}><a href=\"/_connexion?qui={cle}\">{titre}</a> — {detail}"
                      f"<div class=\"quoi\">{quoi}</div></li>")
     return PAGE.format(items="".join(items), courant=courant or "(personne)")
@@ -163,9 +175,12 @@ class Relais(http.server.BaseHTTPRequestHandler):
             req.add_header("Remote-User", login)
             req.add_header("Remote-Name", nom)
             req.add_header("Remote-Email", email)
-            # Une identité SANS groupe est un état à part entière : on n'envoie pas
-            # l'en-tête du tout, comme un proxy mal configuré.
-            if groupes:
+            # `is not None` et non `if groupes` : une chaîne VIDE doit être POSÉE, c'est
+            # l'état « ce compte n'appartient à aucun groupe » qu'Authelia produit
+            # réellement. Le tester par sa vérité les confondrait avec l'en-tête absent —
+            # soit exactement le défaut qu'AUTH-8 corrige, reproduit dans l'instrument
+            # censé le montrer.
+            if groupes is not None:
                 req.add_header("Remote-Groups", groupes)
 
         try:

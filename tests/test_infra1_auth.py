@@ -66,7 +66,14 @@ def test_moi_sans_auth_local_renvoie_null(client, monkeypatch):
                            # déclaré à l'environnement. Nommer l'un ou l'autre ferait
                            # parler l'écran d'un tiers à qui écrire, sur une machine où
                            # l'on est seul.
-                           "groupes_admin": [], "referent": None},
+                           "groupes_admin": [], "referent": None,
+                           # AUTH-8 : `null` et non `False`. `False` voudrait dire
+                           # « l'en-tête des groupes manque alors qu'il aurait dû venir »,
+                           # c'est-à-dire une panne de recopie à réparer. En mono-poste il
+                           # n'y a ni proxy ni en-tête à recevoir, et la question ne se
+                           # pose pas — annoncer une panne ici serait un diagnostic
+                           # inventé, exactement le travers qu'AUTH-8 ferme.
+                           "entete_groupes": None},
                  "deconnexion_url": None}
 
 

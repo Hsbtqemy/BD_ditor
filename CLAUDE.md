@@ -133,7 +133,7 @@ Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, 
 | `/recherche` | `recherche.html` | `recherche.js` | **Recherche** FTS5 + nuage de tags |
 | `/corpus` | `corpus.html` | `corpus.js` | **Bibliothèque** : CRUD albums/planches + lancement de lots |
 | `/exploration` | `exploration.html` | `exploration.js` | **Exploration** linguistique du corpus — 4 vues : distribution (fréquences), **concordance KWIC** (aligné/liste, deep-link Atelier), **croisement 2D** (tableau de contingence facette×facette, heatmap, cellule→concordance), comparaison A/B ; + panneaux **📖 Lexique**, **🎯 Accord** (modèle↔humain) et **👥 Inter** (inter-annotateurs) |
-| `/administration` | `administration.html` | `administration.js` | **Administration** (UX-10) : ce qui porte sur l'INSTANCE et non sur un album — panneaux **👥 Collections** (AUTH-3, + vue des comptes AUTH-7) et **🩺 Moteurs** (SANTE-1). Aucune garde d'écran : chaque bloc pose sa propre question d'autorisation, jamais le contenant (leçon AUTH-4) |
+| `/administration` | `administration.html` | `administration.js` | **Administration** (UX-10) : ce qui porte sur l'INSTANCE et non sur un album — panneaux **🏷️ Version servie** (INFRA-10, réservé aux administrateurs), **👥 Collections** (AUTH-3, + vue des comptes AUTH-7) et **🩺 Moteurs** (SANTE-1). Aucune garde d'écran : chaque bloc pose sa propre question d'autorisation, jamais le contenant (leçon AUTH-4) |
 
 **« Atelier » et « Visionneuse » désignent la MÊME page, `/`.** L'écran dit *Atelier*
 (`static/theme.js`), et c'est le nom retenu ici comme dans `docs/guide-utilisateur.md` :
@@ -290,20 +290,28 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
 - **404, jamais 403** : « existe mais pas pour vous » révèle la composition du corpus.
   Corollaire d'ergonomie : une portée vide rend l'app indistinguable d'un corpus vide, d'où
   le bloc `acces` de `GET /api/moi` et le bandeau `.portee-vide` injecté par `theme.js`.
-  Il distingue **trois** situations et non deux (AUTH-1, 2026-08-31) : aucun en-tête
-  d'identité ne parvient (forward_auth muet) ; une identité mais aucun groupe ; une
-  identité AVEC ses groupes, dont aucun n'a d'accès. La liste des groupes EST le
-  diagnostic, et c'est le seul endroit où elle sert : `GET /api/moi` les renvoyait depuis
-  INFRA-2 sans qu'aucune surface les lise. **Le bandeau RAPPORTE ces observations et
-  n'explique aucune cause** (réécrit le 2026-09-06). Il disait de la deuxième « le proxy
-  pose `Remote-User` sans `Remote-Groups` » ; `autorisation.groupes()` fait
-  `headers.get("Remote-Groups") or ""`, si bien qu'un en-tête ABSENT et un en-tête VIDE y
-  arrivent identiques — « cette personne n'appartient à aucun groupe » est une lecture
-  aussi valable, et un test verrouillait la formule fautive. Lever l'ambiguïté demanderait
-  de distinguer `None` de `""` ET de mesurer ce qu'Authelia émet pour un compte sans
-  `groups:` : **non fait**. **Et le bandeau s'adresse d'abord à qui est BLOQUÉ, pas à qui
-  répare** : trois libellés humains et UNE ligne technique, sous un `<details>` replié
-  (ouvert d'office pour le seul cas certain, l'absence d'identité).
+  Il distingue **quatre** situations et non deux : aucun en-tête d'identité ne parvient
+  (forward_auth muet) ; une identité mais l'en-tête des groupes NON REÇU ; une identité et
+  cet en-tête REÇU VIDE ; une identité AVEC ses groupes, dont aucun n'a d'accès. La liste
+  des groupes EST le diagnostic, et c'est le seul endroit où elle sert : `GET /api/moi` les
+  renvoyait depuis INFRA-2 sans qu'aucune surface les lise. **Le bandeau RAPPORTE ces
+  observations et n'explique aucune cause** (réécrit le 2026-09-06). Il disait autrefois
+  « le proxy pose `Remote-User` sans `Remote-Groups` » alors que `autorisation.groupes()`
+  fait `headers.get("Remote-Groups") or ""` — un en-tête ABSENT et un en-tête VIDE y
+  arrivaient identiques —, et un test verrouillait cette formule fautive.
+  **L'ambiguïté était celle du CODE, jamais celle du protocole** (AUTH-8, 2026-09-07) :
+  `autorisation.entete_groupes_recu()` distingue `None` de `""` et publie la différence
+  dans `acces.entete_groupes` (True reçu, False manquant, `null` hors proxy) ; le contrat
+  de `groupes()` ne change pas — elle rend une liste, et la différence voyage à part.
+  La deuxième situation est la seule qui appelle une réparation : elle rend TOUS les accès
+  par groupe silencieusement inopérants. **Ce qui reste ouvert est la MESURE, pas le
+  code** : qu'un en-tête absent signifie une panne de recopie est déduit des sources
+  d'Authelia `v4.39.22` (`handleAuthzAuthorizedStandard` pose l'en-tête inconditionnellement
+  dès qu'il y a un login), et lire un dépôt n'est pas mesurer un déploiement. D'où un
+  arbitrage à deux degrés : le bandeau NOMME les quatre situations, mais ne se déplie
+  d'office que pour la seule panne CERTAINE, l'absence d'identité. **Et il s'adresse
+  d'abord à qui est BLOQUÉ, pas à qui répare** : des libellés humains et UNE ligne
+  technique, sous un `<details>` replié.
 - **Un pouvoir inévitable, mais pas invisible** (AUTH-4, v25) : un administrateur lit et
   écrit toute collection **sans figurer** dans `collection_acces` — sa portée totale
   court-circuite la table. Ce n'est pas un défaut, c'est la vérité de tout auto-hébergement ;

@@ -1052,11 +1052,17 @@ def test_le_bandeau_ne_se_deplie_d_office_que_pour_une_vraie_panne(page, seeded)
     n'existe pas de lecture bénigne, et celui qui doit réparer le `forward_auth` ne sait
     pas qu'il faudrait déplier.
 
-    Les deux autres restent repliés, « aucun groupe » COMPRIS — et ce cas-là est le vrai
-    arbitrage. Il se donne pour un réglage de proxy, mais `autorisation.groupes()` fait
-    `headers.get("Remote-Groups") or ""` : un en-tête ABSENT et un en-tête VIDE arrivent
-    identiques, si bien que « cette personne n'appartient à aucun groupe » est une lecture
-    aussi valable. On ne déplie pas d'office pour une panne qu'on ne sait pas établir.
+    Les autres restent repliés, « aucun groupe » COMPRIS — et ce cas-là est le vrai
+    arbitrage. AUTH-8 l'a rendu plus fin : l'application distingue désormais l'en-tête
+    ABSENT de l'en-tête VIDE, et la ligne technique le dit (cf. le test des quatre
+    situations). Le dépliage d'office ne suit PAS, et c'est délibéré : que « absent »
+    signifie une panne de recopie est DÉDUIT des sources d'Authelia, pas mesuré sur ce
+    déploiement, et cette mesure est une case encore ouverte. On ne déplie d'office que
+    pour une panne qu'on sait établir.
+
+    Distinguer à l'écran et déplier d'office sont donc deux décisions séparées, prises sur
+    deux degrés de certitude différents. Le jour où la case se ferme, c'est ici que le
+    second cas s'ajoutera — et ce test est l'endroit qui l'exige.
 
     Le test vérifie enfin que replier n'est pas PERDRE : le référent d'AUTH-4 est toujours
     dans le document, à un clic. C'est la seule chose qui distingue un repli d'une
@@ -1072,9 +1078,14 @@ def test_le_bandeau_ne_se_deplie_d_office_que_pour_une_vraie_panne(page, seeded)
     assert etat({"Remote-User": "carol", "Remote-Groups": "linguistes,stage"}) is False, \
         "le cas bénin ne devrait pas se déplier d'office"
 
-    # Identité sans groupe — indécidable, donc traité comme bénin.
+    # Identité, en-tête des groupes absent — nommé à l'écran depuis AUTH-8, mais pas
+    # établi comme panne SUR CE DÉPLOIEMENT : reste replié.
     assert etat({"Remote-User": "dave"}) is False, \
-        "« aucun groupe » ne s'établit pas comme une panne : pas de dépliage d'office"
+        "l'en-tête absent se NOMME sans se déplier : la déduction n'est pas une mesure"
+
+    # Identité, en-tête des groupes reçu vide — bénin, et le seul des deux à l'être.
+    assert etat({"Remote-User": "erin", "Remote-Groups": ""}) is False, \
+        "« aucun groupe déclaré » n'est pas une panne du tout"
 
     # Aucune identité derrière un proxy déclaré — la seule panne certaine.
     assert etat({}) is True, "la panne de forward_auth doit se lire sans cliquer"
@@ -1095,22 +1106,31 @@ def test_le_bandeau_ne_se_deplie_d_office_que_pour_une_vraie_panne(page, seeded)
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)
-def test_la_ligne_technique_distingue_trois_situations(page, seeded):
-    """La ligne technique du bandeau distingue trois situations que le même écran vide
-    confondait (AUTH-1) : aucun en-tête d'identité ; une identité sans groupe ; une
-    identité avec ses groupes, nommés. C'est là que servent les `groupes` que `/api/moi`
-    renvoie depuis INFRA-2 sans qu'aucune surface les lise.
+def test_la_ligne_technique_distingue_quatre_situations(page, seeded):
+    """La ligne technique du bandeau distingue quatre situations que le même écran vide
+    confondait : aucun en-tête d'identité ; l'en-tête des groupes NON REÇU ; reçu mais
+    VIDE ; les groupes, nommés. C'est là que servent les `groupes` que `/api/moi` renvoie
+    depuis INFRA-2 sans qu'aucune surface les lise.
 
-    Elle RAPPORTE, elle n'explique pas — réécrit le 2026-09-06. Elle disait auparavant
-    « le proxy pose Remote-User sans Remote-Groups », et ce test VERROUILLAIT la formule.
-    Or `autorisation.groupes()` fait `headers.get("Remote-Groups") or ""` : un en-tête
-    absent et un en-tête vide y arrivent identiques, si bien que « cette personne
-    n'appartient à aucun groupe » est une lecture aussi valable. La garde tenait donc en
-    place une affirmation que le code ne peut pas établir — le pire service qu'un test
-    puisse rendre.
+    Elle en distinguait TROIS (AUTH-1) : « aucun groupe » recouvrait les deux du milieu.
+    `groupes()` fait `headers.get("Remote-Groups") or ""`, si bien qu'un en-tête absent et
+    un en-tête vide y arrivaient identiques — correct pour une LISTE, insuffisant pour un
+    diagnostic, puisque l'un rend tous les accès par groupe inopérants et l'autre
+    n'appelle aucune réparation. AUTH-8 fait voyager la différence à part
+    (`acces.entete_groupes`).
 
-    Les trois situations restent distinctes, ce qu'AUTH-1 demandait ; c'est la CAUSE qui
-    n'est plus tranchée à la place de qui connaît son déploiement."""
+    Elle RAPPORTE toujours, elle n'explique pas. Ce test a déjà VERROUILLÉ une formule
+    fautive — « le proxy pose Remote-User sans Remote-Groups », affirmée quand le code ne
+    pouvait pas l'établir. Ce qu'il verrouille ici est vérifiable sur les en-têtes : « non
+    reçu » et « reçu vide » sont des faits de fil. Ce qui suit le tiret est une
+    INSTRUCTION — où regarder —, pas une cause : que l'absence signifie une panne de
+    recopie est déduit des sources d'Authelia, et sa mesure sur l'instance reste une case
+    ouverte d'AUTH-8.
+
+    MESURÉ AVANT D'ÊTRE ÉCRIT, parce que tout ce test en dépend : Playwright transmet bien
+    un en-tête de valeur VIDE (`Remote-Groups: `), il ne le supprime pas. S'il l'avait
+    supprimé, le cas « reçu vide » aurait en réalité rejoué le cas « absent », et le test
+    serait resté vert sans avoir jamais vu l'état qu'il prétend couvrir."""
     # Identité + groupes, mais aucun accès accordé → rien n'est cassé.
     page.set_extra_http_headers({"Remote-User": "carol", "Remote-Groups": "linguistes,stage"})
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
@@ -1118,15 +1138,24 @@ def test_la_ligne_technique_distingue_trois_situations(page, seeded):
     txt = page.locator(".portee-vide-technique").inner_text()
     assert "linguistes" in txt and "stage" in txt
 
-    # Identité SANS groupe → c'est un réglage du proxy, et le message le dit.
+    # Identité, en-tête des groupes ABSENT → la seule des quatre qui appelle une réparation.
     page.set_extra_http_headers({"Remote-User": "dave"})
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     _deplier_bandeau(page)
     txt = page.locator(".portee-vide-technique").inner_text()
-    # Une OBSERVATION, pas une cause. L'ancienne formule — « c'est un réglage du proxy
-    # (Remote-Groups), pas un droit manquant » — était verrouillée ici, et le test tenait
-    # donc en place une affirmation que le code ne peut pas établir.
-    assert "Aucun groupe reçu" in txt
+    assert "NON reçu" in txt, txt
+    assert "sans effet" in txt, (
+        "le seul cas réparable doit se distinguer de celui qui ne l'est pas, sinon ce "
+        f"chantier n'aura servi à rien : {txt!r}")
+
+    # Identité, en-tête des groupes REÇU VIDE → rien à réparer, et il faut le dire.
+    page.set_extra_http_headers({"Remote-User": "erin", "Remote-Groups": ""})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    _deplier_bandeau(page)
+    txt = page.locator(".portee-vide-technique").inner_text()
+    assert "VIDE" in txt and "aucun groupe déclaré" in txt, txt
+    assert "NON reçu" not in txt, (
+        f"les deux situations doivent être distinctes à l'écran, pas seulement en base : {txt!r}")
 
     # Aucune identité → les groupes ne disent rien, la ligne ne paraît pas.
     page.set_extra_http_headers({})

@@ -97,6 +97,45 @@ def groupes(request) -> list[str]:
     return [g for g in (x.strip() for x in brut.split(",")) if g]
 
 
+def entete_groupes_recu(request) -> Optional[bool]:
+    """`Remote-Groups` est-il PARVENU, quel que soit son contenu ? (AUTH-8)
+
+    True s'il est là — même vide ; False s'il manque alors qu'on est derrière le proxy ;
+    None hors proxy, où aucun en-tête n'est lu et où la question ne se pose donc pas.
+    C'est la forme d'`auteur()`, qui rend déjà None dans ce cas.
+
+    POURQUOI UNE FONCTION À PART, plutôt qu'un troisième état rendu par `groupes()` : le
+    contrat de `groupes()` est une LISTE, et tout ce qui l'appelle en dépend. Un appelant
+    qui ignore cette fonction-ci continue de se comporter exactement comme avant.
+
+    CE QUE `groupes()` ÉCRASE, et qu'on ne peut pas lui reprocher : son
+    `headers.get("Remote-Groups") or ""` fait arriver un en-tête ABSENT et un en-tête VIDE
+    de façon identique. Pour une LISTE de groupes c'est le bon comportement — dans les
+    deux cas il n'y en a aucun. Mais les deux ne veulent pas dire la même chose :
+
+    | en-têtes reçus                          | ce que ça signifie                     |
+    |-----------------------------------------|----------------------------------------|
+    | `Remote-User` absent                     | aucune identité                        |
+    | `Remote-User` + `Remote-Groups` ABSENT   | les groupes ne sont pas recopiés       |
+    | `Remote-User` + `Remote-Groups` VIDE     | ce compte n'appartient à aucun groupe  |
+
+    La deuxième ligne rend TOUS les accès par groupe silencieusement inopérants : on se
+    connecte correctement, on voit une application vide, et jusqu'ici le seul indice
+    disponible était le même que pour un simple défaut d'accès.
+
+    CE QUE CETTE FONCTION N'ÉTABLIT PAS. Que « absent » signifie une panne de recopie
+    repose sur une lecture des sources d'Authelia `v4.39.22` — `handleAuthzAuthorizedStandard`
+    pose `Remote-Groups` INCONDITIONNELLEMENT dès qu'il y a un login, et
+    `strings.Join([], ",")` vaut `""`. Lire un dépôt n'est pas mesurer un déploiement, et
+    la confirmation sur l'instance reste une case ouverte d'AUTH-8. D'où l'observation
+    rapportée telle quelle à l'écran, sans que la cause soit tranchée à la place de qui
+    connaît son déploiement.
+    """
+    if not AUTH_PROXY:
+        return None
+    return request.headers.get("Remote-Groups") is not None
+
+
 # --------------------------------------------------------------------------- #
 # La portée
 # --------------------------------------------------------------------------- #

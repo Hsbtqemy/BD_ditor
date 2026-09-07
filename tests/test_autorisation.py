@@ -864,6 +864,56 @@ def test_moi_compte_les_acces_accordes(client, db_path, deux_albums, derriere_pr
 
 
 # --------------------------------------------------------------------------- #
+# « Aucun groupe » recouvrait deux situations (AUTH-8)
+#
+# `groupes()` fait `headers.get("Remote-Groups") or ""` : un en-tête ABSENT et un en-tête
+# VIDE y arrivent identiques. Pour une LISTE c'est correct — dans les deux cas il n'y en a
+# aucun. Mais l'un veut dire « les groupes ne sont pas recopiés », ce qui rend TOUS les
+# accès par groupe silencieusement inopérants, et l'autre « ce compte n'appartient à aucun
+# groupe », qui n'appelle aucune réparation. Le même écran vide les confondait.
+# --------------------------------------------------------------------------- #
+def test_moi_distingue_l_entete_de_groupes_absent_de_l_entete_vide(client, derriere_proxy):
+    """Et `groupes` rend la MÊME chose dans les deux cas : c'est bien ce qu'on lui demande.
+
+    Le test le vérifie explicitement, parce que c'est la condition posée par AUTH-8 — la
+    différence voyage à part, et un appelant qui ignore le nouveau champ continue de se
+    comporter exactement comme avant.
+    """
+    absent = client.get("/api/moi", headers={"Remote-User": "bob"}).json()
+    vide = client.get("/api/moi", headers={"Remote-User": "bob",
+                                           "Remote-Groups": ""}).json()
+    plein = client.get("/api/moi", headers={"Remote-User": "bob",
+                                            "Remote-Groups": "linguistes"}).json()
+
+    assert absent["acces"]["entete_groupes"] is False
+    assert vide["acces"]["entete_groupes"] is True
+    assert plein["acces"]["entete_groupes"] is True
+
+    assert absent["groupes"] == vide["groupes"] == [], (
+        "le contrat de `groupes()` ne change pas : une liste, vide dans les deux cas")
+    assert plein["groupes"] == ["linguistes"]
+
+
+def test_hors_proxy_la_question_des_groupes_ne_se_pose_pas(client):
+    """`null` et non `False` — sans `BD_AUTH_PROXY`, aucun en-tête n'est LU.
+
+    La distinction compte : `False` signifie « il manque alors qu'il aurait dû venir »,
+    c'est-à-dire une panne à réparer. En mono-poste il n'y a ni proxy ni groupes, et
+    annoncer une panne de recopie y serait un diagnostic inventé — le travers exact que ce
+    chantier ferme. Aucune des deux situations nouvelles ne peut donc y apparaître.
+
+    Pas de fixture `derriere_proxy` ici, et c'est le sujet du test : les en-têtes envoyés
+    sont ignorés, précisément parce qu'un client qui atteindrait l'app en direct pourrait
+    sinon se déclarer qui il veut.
+    """
+    for entetes in ({}, {"Remote-User": "bob"}, {"Remote-User": "bob",
+                                                 "Remote-Groups": "bd-admins"}):
+        d = client.get("/api/moi", headers=entetes).json()
+        assert d["acces"]["entete_groupes"] is None, entetes
+        assert d["groupes"] == [], entetes
+
+
+# --------------------------------------------------------------------------- #
 # Relecture des filtres de LECTURE (AUTH-2, dernier bloc)
 #
 # Le cliquet ci-dessus prouve qu'une route CONSULTE la portée, jamais qu'elle en tire la
