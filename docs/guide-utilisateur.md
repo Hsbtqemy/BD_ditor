@@ -275,7 +275,7 @@ Elles sont documentées ; elles ne sont simplement pas dans l'interface.
 | Rapports d'accord (modèle↔humain, inter-annotateurs) en CSV/JSON | `tools/` | [`rapport-accord.md`](rapport-accord.md), [`accord-inter.md`](accord-inter.md) |
 | Réindexer tout le corpus après un changement de modèle linguistique | `tools/reindex_nlp.py` | [`correction-grammaticale.md`](correction-grammaticale.md) |
 | Relire la résolution des planches importées avant cette fonctionnalité | `tools/reindex_materiel.py` | [`materiel-numerisation.md`](materiel-numerisation.md) |
-| Créer un compte, un groupe | fichier des comptes du portail | [`exploitation.md`](exploitation.md) §2 |
+| Créer un compte, un groupe | fichier des comptes du portail | [`exploitation.md`](exploitation.md), « Ajouter un compte sans couper le portail » |
 
 L'**import PDF** est annoncé dans le menu mais désactivé : il n'est pas encore implémenté.
 

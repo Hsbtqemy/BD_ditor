@@ -397,8 +397,7 @@ ils s'affichent dans la Bibliothèque, mais s'écrivent par `tools/gerer_collect
 > forme et les pièges, pour comprendre et pour expliquer.
 >
 > Le renvoi nomme cette sous-section et non le § entier, exprès : « fait foi » sur toute une
-> section endosse d'avance ce qu'on y ajoutera, et personne ne reviendra le relire. Deux
-> procédures d'ajout de compte y cohabitent d'ailleurs déjà, et elles ont divergé.
+> section endosse d'avance ce qu'on y ajoutera, et personne ne reviendra le relire.
 
 ### Où vit quoi
 
