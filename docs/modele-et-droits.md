@@ -392,8 +392,13 @@ ils s'affichent dans la Bibliothèque, mais s'écrivent par `tools/gerer_collect
 
 ## 6. Administrer l'instance : comptes et groupes
 
-> Les commandes exactes vivent dans [`exploitation.md`](exploitation.md) §2, qui **fait foi**.
-> Ce qui suit en donne la forme et les pièges, pour comprendre et pour expliquer.
+> Les commandes exactes vivent dans [`exploitation.md`](exploitation.md), sous
+> « **Ajouter un compte sans couper le portail** », qui **fait foi**. Ce qui suit en donne la
+> forme et les pièges, pour comprendre et pour expliquer.
+>
+> Le renvoi nomme cette sous-section et non le § entier, exprès : « fait foi » sur toute une
+> section endosse d'avance ce qu'on y ajoutera, et personne ne reviendra le relire. Deux
+> procédures d'ajout de compte y cohabitent d'ailleurs déjà, et elles ont divergé.
 
 ### Où vit quoi
 
