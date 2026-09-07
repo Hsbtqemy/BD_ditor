@@ -23,9 +23,11 @@ et l'index. Ils promettent l'invariant qui reste vérifiable hors ligne, et qui 
 qui a manqué : la spec et le verrou ne se CONTREDISENT pas.
 """
 import re
+from importlib import metadata
 from pathlib import Path
 
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -168,3 +170,80 @@ def test_les_paquets_dont_on_lit_les_entrailles_portent_un_plafond():
                 "Le retirer rouvre la dérive entre le venv de développement et l'image "
                 "livrée ; si la raison a cessé de valoir, retirez l'entrée de PLAFONNES "
                 "en écrivant pourquoi.")
+
+
+def _pins_des_verrous() -> dict:
+    """{paquet canonique: (fichier, Version)} pour tout ce que les verrous épinglent."""
+    pins = {}
+    for nom in VERROUS:
+        for paquet, paires in _exigences([nom]).items():
+            for _, exig in paires:
+                for s in exig.specifier:
+                    if s.operator == "==":
+                        pins[canonicalize_name(paquet)] = (nom, Version(s.version))
+    return pins
+
+
+def test_aucun_paquet_installe_ne_contredit_le_verrou():
+    """Les exigences que les paquets portent EUX-MÊMES respectent-elles nos pins ?
+
+    Les deux tests ci-dessus confrontent des fichiers du dépôt entre eux. Ils ne peuvent
+    donc RIEN voir d'une borne qui vit dans les métadonnées d'un paquet — et c'est
+    exactement par là que le trou de QA-4 est passé : `iiif-prezi3==3.1.1` exige
+    `Pillow<=12.0.0`, `requirements.lock` est monté à `pillow==12.1.0` en juin 2026, et les
+    deux sont devenus mutuellement exclusifs sans qu'aucune lecture du dépôt puisse le
+    dire. Découvert deux mois et demi plus tard, en construisant l'image.
+
+    Ce cas précis est désormais REDIT dans `requirements-export.txt`, donc attrapé hors
+    ligne par le test du haut, même sans le paquet installé. Ce test-ci couvre l'AUTRE
+    moitié : le couple qu'on n'a pas prévu. C'est la leçon de l'incident opencv — un pin
+    ne vaut que si rien d'autre ne le contredit —, et elle ne se referme pas en traitant
+    les cas un par un.
+
+    Il ne résout aucune dépendance et ne touche pas le réseau : il lit ce qui est
+    INSTALLÉ ici. Sa limite est donc son environnement, et il la DIT plutôt que de la
+    taire — un paquet absent est nommé dans le message, jamais confondu avec un paquet sain.
+    """
+    pins = _pins_des_verrous()
+    fautes, examines, absents, derives = [], [], [], []
+    for paquet, (fichier, epinglee) in sorted(pins.items()):
+        try:
+            posee = Version(metadata.version(paquet))
+            exigences = metadata.requires(paquet) or []
+        except metadata.PackageNotFoundError:
+            absents.append(paquet)
+            continue
+        examines.append(paquet)
+        # Ce qu'on lit ici sont les exigences de la version POSÉE, qui n'est pas toujours
+        # celle du verrou — ce venv en fait dériver sept (QA-4, zone 1). Le message doit
+        # donc citer la version LUE : l'attribuer au pin ferait dire au test une chose
+        # qu'il n'a pas mesurée, dans le fichier même qui traque cet écart.
+        if posee != epinglee:
+            derives.append(f"{paquet} {posee} posé / {epinglee} épinglé")
+        for brute in exigences:
+            exig = Requirement(brute)
+            # Les extras ne sont pas installés, et un marqueur de plateforme non satisfait
+            # ne s'applique pas ici : les évaluer évite des faux positifs bruyants.
+            if exig.marker and not exig.marker.evaluate({"extra": ""}):
+                continue
+            cible = canonicalize_name(exig.name)
+            if cible not in pins:
+                continue          # transitif flottant — c'est la zone 1 de QA-4, pas ici
+            f_cible, v_cible = pins[cible]
+            if v_cible not in exig.specifier:
+                fautes.append(
+                    f"{paquet} {posee} (posé ici) exige `{exig}`, que {f_cible} contredit "
+                    f"en épinglant {cible}=={v_cible}. Les deux ne s'installeront jamais "
+                    "ensemble — pip répondra `ResolutionImpossible`, ou pire, un test se "
+                    "skippera en silence.")
+
+    assert examines, (
+        "Aucun paquet du verrou n'est installé : ce test n'a rien regardé, et un vert "
+        "voudrait dire « je n'ai rien vu » plutôt que « tout va bien ». Installez "
+        "requirements-dev.lock.")
+    assert not fautes, (
+        f"Le verrou se contredit lui-même ({len(examines)} paquets examinés, "
+        f"{len(absents)} non installés : {', '.join(absents) or '—'} ; "
+        f"{len(derives)} posés à une autre version que le pin : "
+        f"{', '.join(derives) or '—'}) :\n  "
+        + "\n  ".join(fautes))

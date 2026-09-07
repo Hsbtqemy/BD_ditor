@@ -5,3 +5,29 @@ openpyxl==3.1.5
 # Validation STRICTE des manifests IIIF (tools/valider_iiif.py) via la bibliothèque
 # officielle. Optionnel : la validation structurelle n'en dépend pas (import protégé).
 iiif-prezi3==3.1.1
+
+# La contrainte que `iiif-prezi3` pose sur le RESTE du dépôt, REDITE ici — c'est le point.
+# Il exige `Pillow<=12.0.0` en dépendance OBLIGATOIRE, et cette borne ne vivait que dans
+# ses métadonnées : invisible à la lecture, invisible à `test_verrou_dependances`, qui ne
+# résout aucune dépendance. `requirements.lock` est donc passé à `pillow==12.1.0` en juin
+# 2026 sans que rien ne bronche, et `iiif-prezi3` est devenu ININSTALLABLE à côté du
+# verrou pendant deux mois et demi — vu seulement parce qu'on a construit l'image.
+# Écrite ICI, la borne devient une contradiction ENTRE DEUX FICHIERS DU DÉPÔT, ce que le
+# cliquet d'ARCH-2 attrape hors ligne, partout, même sans le paquet installé (QA-4,
+# 2026-09-07). À monter en même temps qu'`iiif-prezi3`, jamais séparément.
+#
+# CE PLAFOND RETIENT UNE VERSION VULNÉRABLE, et il faut le savoir avant de s'y fier.
+# CVE-2026-25990 (écriture hors limites sur une image PSD forgée, tuiles à décalage
+# négatif) touche Pillow >= 10.3.0 et n'est corrigé qu'en **12.1.1**. L'ancien pin 12.1.0
+# était donc DÉJÀ vulnérable — redescendre à 12.0.0 n'a rien ouvert —, mais `iiif-prezi3`
+# interdit d'aller chercher le correctif, et il n'existe aucune sortie par le haut :
+# 3.1.1 est la DERNIÈRE version publiée et son `main` porte encore `Pillow<=12.0.0`
+# (vérifié le 2026-09-07).
+#
+# L'arbitrage n'appartient pas à ce fichier ; ce qui lui appartient, c'est de ne pas le
+# taire. Trois issues, aucune gratuite : monter Pillow et perdre la validation IIIF
+# stricte ; garder ce plafond ; ou sortir `iiif-prezi3` dans son propre environnement.
+# Indépendamment du choix, le contournement officiel s'applique et ne coûte rien ici —
+# `Image.open(..., formats=[...])` : le dépôt n'ouvre que du TIFF et du JPEG
+# (`pipeline/ingest.py`, `pipeline/ocr.py`) et n'a aucune raison d'accepter un PSD.
+pillow<=12.0.0

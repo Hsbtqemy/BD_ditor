@@ -88,16 +88,19 @@ RUN git clone --depth 1 https://github.com/njean42/kumiko.git lib/kumiko
 #             de l'image.
 FROM base AS test
 
-# `openpyxl` est épinglé dans `requirements-dev.lock` (outil de test) et n'entre donc pas
-# dans `runtime` : deux tests d'export s'y skippaient sans lui.
+# `openpyxl` et `iiif-prezi3` sont épinglés dans `requirements-dev.lock` (outils de test)
+# et n'entrent donc pas dans `runtime` : l'application ne les importe jamais, seuls les
+# scripts `tools/` s'en servent. Sans eux, des tests d'export se skippent.
 #
-# `iiif-prezi3` NE PEUT PAS y entrer, et c'est une découverte du 2026-08-27 :
-# `iiif-prezi3==3.1.1` exige `Pillow<=12.0.0` (dépendance OBLIGATOIRE, pas un extra) et
-# `requirements.lock` épingle `pillow==12.1.0`. Les deux sont mutuellement exclusifs — pip
-# répond `ResolutionImpossible`. Conséquence : le test de conformance IIIF se skippe dans
-# l'image ET sur la machine de dev, donc il ne tourne NULLE PART, alors que
-# `docs/roadmap.md` donne l'IIIF pour « validé via iiif-prezi3 ». C'était vrai quand ça a
-# été écrit ; ça ne l'est plus, et un skip se lit comme un succès. Cf. QA-4.
+# `iiif-prezi3` n'a PAS TOUJOURS PU y entrer, et la raison mérite d'être gardée :
+# `iiif-prezi3==3.1.1` exige `Pillow<=12.0.0` (dépendance OBLIGATOIRE, pas un extra) quand
+# `requirements.lock` épinglait `pillow==12.1.0` — mutuellement exclusifs, pip répondait
+# `ResolutionImpossible`. Le test de conformance IIIF se skippait donc ici, alors que
+# `docs/roadmap.md` donne l'IIIF pour « prouvé via iiif-prezi3 » : un skip se lit comme un
+# succès. Réparé le 2026-09-07 (QA-4) en redescendant `pillow` à 12.0.0, ce que rien dans
+# le dépôt ne contredit. Les deux pins se tiennent — remonter pillow refermerait cette
+# validation en silence, et `tests/test_verrou_dependances.py` échoue désormais si on le
+# fait.
 COPY requirements.lock requirements-dev.lock ./
 RUN pip install --no-cache-dir -r requirements-dev.lock
 

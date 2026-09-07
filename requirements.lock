@@ -16,7 +16,10 @@
 # VERSION (cross-plateforme), pas au niveau wheel.
 #
 # NON couvert ici : requirements-export.txt (openpyxl, iiif-prezi3) — utilisé par les
-# scripts `tools/`, jamais importé par l'application.
+# scripts `tools/`, jamais importé par l'application. Ces paquets CONTRAIGNENT néanmoins
+# ce fichier : la suite les installe pour éprouver les sorties, donc leurs exigences
+# doivent rester compatibles avec les pins ci-dessous (cf. `pillow`).
+# `tests/test_verrou_dependances.py` le vérifie sur les paquets INSTALLÉS.
 #
 # À part (non pip) :
 #   python -m spacy download fr_core_news_sm           # modèle NLP français
@@ -26,7 +29,19 @@
 # Noyau — API + serveur + images + client WebDAV
 fastapi==0.133.0
 uvicorn[standard]==0.41.0
-pillow==12.1.0
+# pillow est PLAFONNÉ par un paquet qui n'est pas dans ce fichier, et c'est la seule
+# raison de ne pas le monter : `iiif-prezi3==3.1.1` (requirements-export.txt) exige
+# `Pillow<=12.0.0` en dépendance OBLIGATOIRE. Épinglé à 12.1.0 en juin 2026 sur le jeu
+# « connu-bon du moment », il rendait `iiif-prezi3` ININSTALLABLE à côté du verrou
+# (`ResolutionImpossible`), donc le test de conformance IIIF se skippait dans l'image —
+# et un skip se lit comme un succès. Redescendu le 2026-09-07 (QA-4) : rien dans le dépôt
+# ne demande 12.1 (`pipeline/` n'appelle qu'`Image.open`/`resize`/`LANCZOS`), et
+# `requirements.txt` dit `pillow>=10.0`. Le remonter REFERME la validation IIIF stricte —
+# mais plus en silence : `requirements-export.txt` porte désormais la borne `pillow<=12.0.0`,
+# et `tests/test_verrou_dependances.py` échoue. Monter `iiif-prezi3` d'abord — sachant
+# que ce plafond RETIENT le correctif de CVE-2026-25990 (Pillow 12.1.1) : l'arbitrage et
+# son contournement sont écrits dans `requirements-export.txt`, à côté de la borne.
+pillow==12.0.0
 python-multipart==0.0.22
 httpx==0.28.1
 

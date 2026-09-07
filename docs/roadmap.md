@@ -27,7 +27,10 @@ Beaucoup est **livré** — l'ouvert ci-dessous est ce qui *reste*, pas l'ensemb
 - **Dette/sécurité** : les 5 passes d'audit largement corrigées (parent_id validé, bornes
   géométriques, SSRF/HTTPS ShareDocs, `UNIQUE(album_id, numero)`, TEI XML-safe, lockfile…).
 - **FAIR / métadonnées** *(chantier récent, hors backlog)* : exports additifs
-  description / records / IIIF (conforme, prouvé via `iiif-prezi3`), paradonnée (versions +
+  description / records / IIIF (conforme, prouvé via `iiif-prezi3` — la passe stricte est
+  RÉELLEMENT exécutée, `test_iiif_conformance_stricte` ; elle ne l'était plus DANS L'IMAGE
+  du 2026-08-27 au 2026-09-07, où le pin de `pillow` rendait la bibliothèque ininstallable,
+  QA-4), paradonnée (versions +
   révision git + SBOM), droits **descriptifs**, **palier Collection (v14)**, **descriptif N0
   Zotero-like (v15)** + **crosswalk DC/DataCite (A2)**, le **journal de provenance/audit
   (v16, A3)** — `activite`/`evenement` append-only, indicateurs de dérive, export PROV-O/TEI —,
