@@ -78,6 +78,33 @@ Aucun commit de code : le chantier reste `interrompu` là où il l'était.
 - [x] **Les voies de sortie sont ÉNUMÉRÉES, et non listées de mémoire** — l'inventaire refait le 2026-08-31 en cherchant qui LIT `evenement`, `activite` et `utilisateur` en trouve six, dont trois que les deux relectures précédentes avaient manquées : `tools/metadonnees_collection.py` exporte `agent` comme COLONNE NOMMÉE dans `evenement.csv` et `activite.csv`, avec les blobs `avant`/`apres` ; `tools/description_collection.py` embarque le bloc accord-inter, soit `auteurs` (des logins) et `paires` (deux logins chacune) ; et surtout `GET /api/analyse/accord-inter` (`routes/analyse.py:388` → `accord_inter.py:50`) rend la même chose par une ROUTE HTTP. **Et l'énumération elle-même était courte d'un chemin** : `metadonnees_collection.py` a TROIS sorties et non deux — le JSON, les CSV et l'onglet XLSX `qualite`, qui publiait les logins joints par « ; ». C'est la suite qui l'a dit, en cassant, le 2026-08-31 ; aucune des trois relectures ne l'avait vu. Cette dernière change la nature du problème : les cinq autres supposent un accès shell ou le droit d'administrer, celle-ci est atteignable par toute personne simplement admise sur une collection **Fermée le 2026-08-31 par [AUTH-5](AUTH-5.md)**, et pas en énumérant une cinquième fois : `tests/test_sorties_identite.py` sème trois sentinelles — un login, un nom lisible, un courriel — balaie 61 surfaces et EXIGE que chacune où l'une apparaît soit déclarée avec sa raison. L'inventaire cesse d'être une phrase dans une fiche, qui pourrit, pour devenir quelque chose qui casse. Le balayage a d'ailleurs corrigé cette énumération-ci : il trouve 11 surfaces émettrices, dont `/api/export/json` et `/api/regions/{id}/tokens`, qu'aucune des quatre passes n'avait citées
 - [x] **Le sort de `GET /api/analyse/accord-inter` est tranché** le 2026-08-31, et en DEUX endroits — la route n'était pas la sortie la plus grave. (a) La ROUTE est réservée à qui ÉCRIT (403 sinon), et son périmètre suit les albums où l'on écrit et non ceux qu'on lit : *ceux qui voient la mesure sont ceux qu'elle mesure*, les propriétaires cumulant l'écriture. Le bouton 👥 Inter reste VISIBLE et le panneau affiche le refus du serveur — il l'écrasait par « Impossible de charger le rapport », transformant une décision motivée en panne apparente. Réserver aux ADMINISTRATEURS a été écarté : `bd-admins` est un rôle d'exploitation, l'accord inter-annotateurs un instrument scientifique ; le donner à qui tient le serveur en le retirant à l'équipe qu'il mesure serait un contresens. (b) Le DÉPÔT ne porte plus de noms : `qualite.accord_inter` était classé `ouvert` et emportait `auteurs` (les logins) et `paires` (le taux d'accord de deux personnes NOMMÉES) vers l'entrepôt, DÉFINITIVEMENT. Il porte `nb_auteurs` et des paires anonymes triées par taux — triées par `(a, b)`, l'ordre alphabétique des logins transparaissait à travers des noms retirés. La valeur FAIR revendiquée est intacte : « relu à plusieurs, accord 0,87 » ne demande aucun nom. L'outil CLI, lui, nomme toujours : sans les noms on ne peut pas réunir deux personnes pour arbitrer
 
+## Un nom français traverse-t-il `Remote-Name` ? — 2026-09-07, NON RÉSOLU
+
+Trouvé de biais en écrivant un test de la vue des comptes : `TestClient` a refusé
+d'émettre `Remote-Name: Léa` — « 'ascii' codec can't encode ». Ce n'est pas une réponse,
+c'est une limite de l'instrument ; mais la question qu'il soulève est réelle et le corpus
+est franco-belge.
+
+**Ce qui est établi par le code** : `request.headers.get("Remote-Name")` ne décode rien
+(vérifié — aucun `decode` d'en-tête nulle part), et Starlette lit les en-têtes en
+**latin-1**. Un proxy qui pose des octets UTF-8 — ce que font nginx et Caddy, qui recopient
+l'octet brut — donnerait donc `JÃ©rÃ´me` dans `utilisateur.nom` et à l'écran.
+
+**Ce qui ne l'est pas** : ce qu'Authelia émet réellement. Elle peut translittérer,
+percent-encoder, ou omettre le champ. La chaîne complète n'a jamais été éprouvée avec un
+nom accentué, et tous les comptes actuels sont en ASCII par hasard.
+
+**Deux conséquences si le défaut existe**, et la seconde n'est pas évidente. L'affichage
+serait fautif — désagréable, visible, réparable. Mais surtout, `_identite_reprise`
+(AUTH-7) déclencherait une TRACE DE REPRISE au premier changement d'encodage de la chaîne :
+`Jérôme` → `JÃ©rÃ´me` est un passage d'une valeur renseignée à une autre valeur
+renseignée, donc exactement ce que la règle compte. Un correctif d'affichage fabriquerait
+une fausse succession de personne dans le journal A3.
+
+**Mesure à faire, une minute** : donner un `displayname` accentué à un compte d'essai dans
+LLDAP, se connecter, et lire ce que `GET /api/moi` renvoie. Le faire AVANT qu'un vrai
+arrivant ne porte un accent, parce qu'après, la fausse trace sera déjà écrite.
+
 ## La pseudonymisation était contournée par la colonne d'à côté — 2026-09-06
 
 Trouvé en cherchant si écrire un nom dans le journal A3 était anodin (AUTH-7). Ça ne
