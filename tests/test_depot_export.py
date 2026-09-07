@@ -340,6 +340,16 @@ def test_deposer_demande_de_POUVOIR_ADMINISTRER_la_collection(client, monkeypatc
                          json={"quoi": "description", "format": "json"}, headers=moi)
     assert depose.status_code == 403, depose.text
 
+    # Et le refus nomme LE GESTE REFUSÉ. Il héritait du message générique de
+    # `_get_collection` — « peut la partager ou la modifier » — donc on refusait un geste
+    # qu'on n'avait pas demandé en en nommant deux autres qu'on n'avait pas tentés.
+    # Trouvé en jouant le cas à la main : le test ne regardait que le code.
+    detail = depose.json()["detail"]
+    assert "ShareDocs" in detail, detail
+    assert "partager ou la modifier" not in detail, detail
+    # Il dit aussi ce qui RESTE possible : le refus porte sur le dépôt, pas sur l'export.
+    assert "téléchargement" in detail, detail
+
 
 def test_un_refus_de_ShareDocs_est_rendu_TEL_QUEL(client, monkeypatch, derriere_proxy):
     """400 en portant le message du serveur WebDAV : « Écriture refusée (403) » se corrige

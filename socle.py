@@ -173,14 +173,25 @@ def _get_region(conn, portee: autorisation.Portee, region_id: int, *,
     return r
 
 
+_MOTIF_ADMIN = ("Seul un propriétaire de cette collection peut la partager ou la "
+                "modifier.")
+
+
 def _get_collection(conn, portee: autorisation.Portee, collection_id: int, *,
-                    administrer: bool = False) -> dict:
+                    administrer: bool = False, motif: str = _MOTIF_ADMIN) -> dict:
     """Collection VISIBLE (404 sinon) et, si `administrer`, qu'on a le droit de partager.
 
     Le refus d'administration est un **403** et non un 404 : la collection vient d'être
     listée, on connaît son nom, un « introuvable » mentirait. C'est la distinction
     qu'AUTH-2 fait déjà entre un terme (403, déjà listé) et une donnée (404, l'absence ne
     fuit rien) — ici, la collection est déjà connue de l'appelant.
+
+    `motif` dit CE QU'ON REFUSE, et il ne s'agit pas d'un détail de rédaction. Le texte
+    par défaut parle de partager ou modifier la collection, parce que c'est ce que faisait
+    l'unique appelant. Un second est arrivé — déposer un export sur ShareDocs (EXP-1) — et
+    il héritait de ce message : on refusait à quelqu'un un geste qu'il n'avait pas
+    demandé, en lui nommant deux autres qu'il n'avait pas tentés. Mesuré en jouant le cas
+    à la main, pas par un test : les tests vérifiaient le CODE 403, jamais ce qu'il dit.
 
     IL A VÉCU DANS `routes/collections.py` jusqu'au 2026-09-07, et il en descend le jour où
     un SECOND domaine en a besoin (EXP-1, l'export de dépôt). C'est la place que la
@@ -194,8 +205,7 @@ def _get_collection(conn, portee: autorisation.Portee, collection_id: int, *,
     if c is None or not portee.peut_lire(collection_id):
         raise HTTPException(404, f"Collection {collection_id} introuvable")
     if administrer and not portee.peut_administrer(collection_id):
-        raise HTTPException(403, "Seul un propriétaire de cette collection peut la "
-                                 "partager ou la modifier.")
+        raise HTTPException(403, motif)
     return c
 
 

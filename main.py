@@ -997,7 +997,11 @@ def deposer_export(collection_id: int, payload: DeposerExportIn,
     C'est une garde posée sur l'ACTE et non sur l'écran qui le contient (leçon AUTH-4) : le
     téléchargement reste offert à qui lit, dans le même panneau.
     """
-    _get_collection(conn, portee, collection_id, administrer=True)
+    _get_collection(
+        conn, portee, collection_id, administrer=True,
+        motif="Déposer un export sur ShareDocs écrit dans un dossier partagé dont "
+              "l'application ne contrôle pas l'audience : seul un propriétaire de cette "
+              "collection peut le faire. Le téléchargement, lui, vous reste ouvert.")
     nom, _type, data = _routes_depot.produire(
         conn, portee, collection_id, payload.quoi, payload.format,
         verbatim=payload.verbatim, base_url=payload.base_url)
