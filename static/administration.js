@@ -233,15 +233,19 @@ function colExport(c) {
         <label class="dep-verbatim"><input type="checkbox" data-verbatim="1">
           <span>avec le texte relevé</span></label>
       </div>
-      <div class="dep-ligne">
-        <span class="dep-quoi">Manifeste IIIF</span>
-        <input type="url" class="dep-base" placeholder="https://serveur-images/iiif"
-               aria-label="Adresse du serveur qui servira les images">
+      <div class="dep-ligne dep-iiif">
+        <span class="dep-quoi">Manifeste IIIF
+          <span class="dep-moment">au moment du dépôt</span></span>
+        <input type="url" class="dep-base" placeholder="Adresse publique des images (facultatif)"
+               aria-label="Adresse publique sous laquelle les images seront servies (facultatif)">
         <button class="ghost small" ${b} data-dep="iiif" data-fmt="zip">Télécharger</button>
       </div>
-      <p class="muted small dep-aide">Le manifeste demande l'adresse du serveur qui servira
-        les images : l'application ne peut pas la deviner, et se désigner elle-même
-        produirait des images introuvables chez le destinataire.</p>
+      <p class="muted small dep-aide">Le manifeste décrit les planches et <b>pointe</b> vers
+        les images : il ne les contient pas, et n'attend pas un serveur IIIF — de simples
+        JPEG suffisent. L'adresse est celle sous laquelle le dossier <code>derivatives/</code>
+        sera publiquement servi : un partage ShareDocs, ou ce que rend l'entrepôt.
+        <b>Laissez vide tant que les images ne sont publiées nulle part</b> — le manifeste
+        sort alors en aperçu, et le déclare.</p>
       ${c.administrable ? `
       <div class="dep-ligne dep-depot">
         <span class="dep-quoi">Déposer sur ShareDocs</span>

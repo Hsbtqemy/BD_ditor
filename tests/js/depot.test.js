@@ -56,14 +56,18 @@ test("une adresse d'images n'INJECTE pas de paramètres", () => {
   assert.equal(p.get("base_url"), "https://i.example/iiif?x=1&verbatim=true");
 });
 
-test("le manifeste refuse de partir sans serveur d'images, et le DIT", () => {
+test("sans adresse, le manifeste part quand même — et sans paramètre vide", () => {
+  // Règle renversée le 2026-09-07 : le champ a été obligatoire une demi-journée, et
+  // c'était une faute d'usage. On ne peut pas nommer l'adresse d'images qu'on n'a pas
+  // encore publiées — le cas de tout le monde avant le premier dépôt.
   for (const base of [undefined, "", "   "]) {
     const r = urlDepot({ collectionId: 1, quoi: "iiif", format: "zip", baseUrl: base });
-    assert.ok(r.refus, `base « ${base} » devrait être refusée`);
-    assert.ok(!r.url);
-    // Le message doit dire POURQUOI l'application ne comble pas le vide elle-même :
-    // elle sert bien les images, mais par une route cloisonnée (AUTH-2).
-    assert.match(r.refus, /deviner/);
+    assert.ok(r.url, `base « ${base} » devrait passer`);
+    assert.ok(!r.refus);
+    // `base_url=` vide n'est PAS envoyé : le serveur distingue « absent » de « vide »
+    // pour décider de l'aperçu, et lui envoyer une chaîne vide serait lui mentir sur
+    // une intention. C'est la même distinction qu'AUTH-8 a dû faire sur Remote-Groups.
+    assert.equal(params(r.url).has("base_url"), false, r.url);
   }
 });
 

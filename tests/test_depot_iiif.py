@@ -81,16 +81,47 @@ def test_l_archive_porte_la_collection_et_un_manifeste_par_album(client,
     assert manifeste["items"], "aucun Canvas : la planche n'a pas été vue"
 
 
-def test_base_url_est_OBLIGATOIRE(client, collection_avec_planche):
-    """L'application ne peut pas le deviner, et un défaut plausible serait le pire des cas.
+def test_sans_adresse_le_manifeste_sort_en_APERCU_et_le_dit(client,
+                                                            collection_avec_planche):
+    """Le champ a été obligatoire une demi-journée, et c'était une faute d'usage.
 
-    Elle sert bien `/derivatives`, mais par une route cloisonnée depuis AUTH-2 : se
-    désigner elle-même fabriquerait un manifeste dont chaque image répond 404 chez le
-    destinataire — un défaut qui MARCHE localement et casse à la remise.
+    On ne peut pas nommer l'adresse d'images qu'on n'a pas encore publiées — le cas de
+    tout le monde avant le premier dépôt —, et l'exiger interdisait de simplement
+    REGARDER son manifeste. Décision du 2026-09-07 : il devient facultatif.
+
+    Mais l'aperçu doit se DÉCLARER. Sans cela il ressemblerait à un dépôt ayant perdu ses
+    images, et c'est précisément la confusion que tout ce module existe pour empêcher. La
+    déclaration passe par DEUX canaux, parce que le premier suppose qu'on ouvre l'archive :
+    le nom du fichier, qui survit au téléchargement, et `AVERTISSEMENTS.txt`.
     """
     col, _ = collection_avec_planche
     r = client.get(f"/api/collections/{col['id']}/depot/iiif", headers=ADMIN)
-    assert r.status_code == 422, r.text
+    assert r.status_code == 200, r.text
+    assert "depot-iiif-apercu-c" in r.headers["content-disposition"],         r.headers["content-disposition"]
+    with _archive(r) as z:
+        assert "AVERTISSEMENTS.txt" in z.namelist()
+        avertis = z.read("AVERTISSEMENTS.txt").decode("utf-8")
+        manifeste = z.read(f"manifest-a{_.get('id', 1)}.json").decode("utf-8")
+    assert "APERÇU" in avertis, avertis
+    # Le message dit quoi mettre, et ne parle pas d'un « serveur IIIF » : le manifeste
+    # référence de simples JPEG.
+    assert "derivatives/" in avertis, avertis
+    # Les identifiants portent le préfixe d'exemple — une URI est exigée par IIIF, donc
+    # « rien » n'est pas une option, et `exemple.org` ne trompe personne à la lecture.
+    assert iiif_manifest.PLACEHOLDER in manifeste
+
+
+def test_le_manifeste_normal_ne_se_dit_PAS_apercu(client, collection_avec_planche):
+    """L'autre bout de la bascule : sans lui, un outil qui crierait « aperçu » à tout
+    coup passerait le test précédent."""
+    col, _ = collection_avec_planche
+    r = client.get(f"/api/collections/{col['id']}/depot/iiif?base_url={BASE}",
+                   headers=ADMIN)
+    assert r.status_code == 200, r.text
+    assert "apercu" not in r.headers["content-disposition"]
+    with _archive(r) as z:
+        if "AVERTISSEMENTS.txt" in z.namelist():
+            assert "APERÇU" not in z.read("AVERTISSEMENTS.txt").decode("utf-8")
 
 
 def test_le_placeholder_est_refuse_avec_le_message_de_l_outil(client,

@@ -257,10 +257,15 @@ Trois choses à savoir avant de cliquer.
 
 - **L'export porte sur CETTE collection**, jamais sur le corpus entier — c'est ce qui rend
   la fiche citable, et ce qui garantit que rien d'un autre corpus ne s'y glisse.
-- **Le manifeste IIIF demande l'adresse du serveur qui servira les images.** L'application
-  ne peut pas la deviner : elle sert bien les images, mais seulement à ceux qu'elle a admis.
-  S'y désigner elle-même produirait un manifeste dont chaque image serait introuvable chez
-  le destinataire.
+- **Le manifeste IIIF ne contient pas les images : il pointe vers elles.** Le champ
+  d'adresse n'attend donc pas un « serveur IIIF » — de simples JPEG suffisent — mais
+  l'adresse publique sous laquelle le dossier `derivatives/` sera servi : un partage
+  ShareDocs, ou ce que rend l'entrepôt. L'application ne peut pas la deviner : elle sert
+  bien vos images, mais seulement à ceux qu'elle a admis, et se désigner elle-même
+  produirait un manifeste introuvable chez le destinataire.
+- **Laissez le champ vide tant que les images ne sont publiées nulle part** — le cas
+  ordinaire avant un premier dépôt. Le manifeste sort alors en **aperçu** : on peut le
+  regarder, il ne se dépose pas, et son nom de fichier le dit (`depot-iiif-apercu-…`).
 - **Un manifeste sans images n'est pas un échec.** C'est la forme habituelle d'un dépôt,
   qui porte les Canvas et l'enrichissement. L'archive contient alors un fichier
   `AVERTISSEMENTS.txt` qui dit *pourquoi* les scans sont retenus — collection non déclarée

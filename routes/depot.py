@@ -157,6 +157,12 @@ def produire(conn, portee, collection_id: int, quoi: str, format: str, *,
         data, ext = _faire_metadonnees(conn, collection_id, format, verbatim)
     else:
         data, ext = _faire_iiif(conn, collection_id, base_url, verbatim), "zip"
+        # Le NOM porte la distinction, parce qu'il survit au téléchargement là où
+        # `AVERTISSEMENTS.txt` suppose qu'on ouvre l'archive. Un aperçu déposé par
+        # mégarde serait un dépôt aux images mortes, et rien dans le fichier déposé ne
+        # dirait qu'on s'est trompé de bouton.
+        if not base_url.strip():
+            quoi = "iiif-apercu"
     return _nom_fichier(quoi, collection_id, ext), _TYPES[ext], data
 
 
@@ -248,7 +254,7 @@ _REFUS_HTTP = {
 
 @router.get("/api/collections/{collection_id}/depot/iiif")
 def depot_iiif(collection_id: int,
-               base_url: str = Query(..., min_length=1),
+               base_url: str = Query(""),
                verbatim: bool = False,
                conn: sqlite3.Connection = Depends(db),
                portee: autorisation.Portee = Depends(portee_courante)):
@@ -259,10 +265,18 @@ def depot_iiif(collection_id: int,
     `date_embargo` peut retenir davantage. La règle n'est pas rejouée ici — elle vit dans
     `iiif_manifest.diagnostic_regime`, que la CLI et cette route consultent toutes deux.
 
-    **`base_url` est OBLIGATOIRE, et l'application ne peut pas le deviner.** Elle sert bien
+    **`base_url` est FACULTATIF, et l'application ne peut pas le deviner.** Elle sert bien
     `/derivatives`, mais par une route cloisonnée depuis AUTH-2 : s'y désigner elle-même
-    fabriquerait un manifeste dont chaque image répond 404 chez le destinataire. Il n'y a
-    pas de défaut raisonnable, seulement un défaut plausible — et c'est le pire des deux.
+    fabriquerait un manifeste dont chaque image répond 404 chez le destinataire. Ce n'est
+    pas un service d'images qu'on attend ici — le manifeste référence des JPEG ordinaires
+    — mais l'adresse publique sous laquelle le dossier `derivatives/` sera servi.
+
+    Il a été obligatoire une demi-journée, et c'était une faute d'usage : on ne peut pas
+    nommer l'adresse d'images qu'on n'a pas encore publiées, ce qui est le cas de tout le
+    monde avant le premier dépôt. Sans adresse, le manifeste sort donc en **APERÇU** —
+    identifiants sur le préfixe d'exemple, aucune image, et le fichier s'appelle
+    `depot-iiif-apercu-…` pour que la distinction survive au téléchargement, là où
+    `AVERTISSEMENTS.txt` suppose qu'on ouvre l'archive.
 
     **Les avertissements voyagent DANS l'archive** (`AVERTISSEMENTS.txt`). La CLI les
     écrit sur `stderr`, où un humain les lit au moment où il tape la commande ; un
@@ -289,7 +303,10 @@ def _faire_iiif(conn, collection_id: int, base_url: str, verbatim: bool) -> byte
     constats += iiif_manifest.diagnostic_regime(bloc, reg, verbatim=verbatim)
     _refuser(constats)
 
-    base = base_url.rstrip("/")
+    # Sans adresse, les identifiants prennent le préfixe d'exemple : un identifiant IIIF
+    # doit être une URI, donc « rien » n'est pas une option. `exemple.org` a l'avantage de
+    # ne tromper personne à la lecture.
+    base = base_url.strip().rstrip("/") or iiif_manifest.PLACEHOLDER
     nom = bloc["nom"] if bloc else None
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:

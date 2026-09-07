@@ -60,7 +60,7 @@ rendent, sur une **collection nommée** :
 |---|---|---|
 | `/api/collections/{id}/depot/description` | `json` · `csv` | `description_collection.py --collection {id}` |
 | `/api/collections/{id}/depot/metadonnees` | `json` · `zip` · `xlsx` (+ `verbatim`) | `metadonnees_collection.py --collection {id}` |
-| `/api/collections/{id}/depot/iiif` | `zip` (+ `base_url` **requis**, `verbatim`) | `iiif_manifest.py --collection {id} --out-dir …` |
+| `/api/collections/{id}/depot/iiif` | `zip` (+ `base_url` *facultatif*, `verbatim`) | `iiif_manifest.py --collection {id} --out-dir …` |
 
 **Les cœurs sont partagés, rien n'est réécrit côté serveur.** L'extraction a coûté trois
 petits déplacements, tous dans le sens du partage : `zip_tables` / `xlsx_tables` sortent du
@@ -78,10 +78,18 @@ Quatre points où une route ne peut pas se comporter comme une CLI :
 - **Lire la collection suffit.** Ces artefacts décrivent un périmètre auquel on est déjà
   admis (cf. `docs/hebergement-securite.md` §6). Le refus est un **404** et non un 403 —
   « existe mais pas pour vous » révèle la composition du corpus.
-- **`base_url` n'a pas de défaut, et c'est délibéré.** L'application sert bien
-  `/derivatives`, mais par une route cloisonnée depuis AUTH-2 : s'y désigner elle-même
-  fabriquerait un manifeste dont chaque image répond 404 chez le destinataire. Il n'y a
-  pas de défaut raisonnable, seulement un défaut *plausible*, qui est pire.
+- **`base_url` n'a pas de défaut, et l'application ne peut pas le deviner.** Elle sert
+  bien `/derivatives`, mais par une route cloisonnée depuis AUTH-2 : s'y désigner elle-même
+  fabriquerait un manifeste dont chaque image répond 404 chez le destinataire. Ce n'est pas
+  un service d'images qu'on attend là — le manifeste référence de simples JPEG — mais
+  l'adresse publique sous laquelle le dossier `derivatives/` sera servi.
+- **Il est FACULTATIF, et il a été obligatoire une demi-journée** (renversé le 2026-09-07).
+  On ne peut pas nommer l'adresse d'images qu'on n'a pas encore publiées, ce qui est le cas
+  de tout le monde avant le premier dépôt : l'exiger interdisait de simplement REGARDER son
+  manifeste. Sans adresse, il sort en **aperçu** — identifiants sur le préfixe d'exemple,
+  aucune image — et le fichier s'appelle `depot-iiif-apercu-…`. Le NOM porte la
+  distinction parce qu'il survit au téléchargement, là où `AVERTISSEMENTS.txt` suppose
+  qu'on ouvre l'archive : un aperçu déposé par mégarde serait un dépôt aux images mortes.
 - **Les avertissements voyagent DANS l'archive IIIF** (`AVERTISSEMENTS.txt`). La CLI les
   écrit sur `stderr`, où un humain les lit en tapant la commande ; un téléchargement n'a
   personne devant lui. Les perdre effacerait ce qui distingue un dépôt qui *retient* ses

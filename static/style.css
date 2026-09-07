@@ -1833,6 +1833,12 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .dep-depot { border-top: 1px dashed var(--border); padding-top: .45rem; margin-top: .5rem; }
 .dep-dossier { flex: 1; min-width: 9rem; }
 .dep-choix { max-width: 16rem; }
+/* La ligne IIIF se détache : la fiche et les enregistrements se consultent EN COURS de
+   travail, le manifeste ne sert qu'au dépôt. Les trois alignés donnaient à croire qu'ils
+   répondent au même besoin — remarqué par l'usage, pas par une relecture. */
+.dep-iiif { border-top: 1px dashed var(--border); padding-top: .45rem; margin-top: .5rem; }
+.dep-moment { display: block; font-size: .76rem; color: var(--text-muted);
+              font-style: italic; }
 /* Vue des comptes (AUTH-7) — dans le panneau Collections, sous la liste. */
 #comptes-bloc { border-top: 1px solid var(--border); margin-top: .9rem; padding-top: .6rem; }
 #comptes-bloc h4 { margin: 0 0 .3rem; font-size: .95rem; }

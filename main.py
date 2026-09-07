@@ -47,7 +47,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     PersonnageIn, PersonnageUpdate, PresenceIn, RegionIn, RegionUpdate, RelectureIn,
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
     ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
-    _PARENT_TERME, _ancetres_terme, _annotation_for_region, _attributs_de, _auteur,
+    _MOTIF_ADMIN, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _attributs_de, _auteur,
     _clause_personnage, _csv_response, _csv_safe, _descendre_portee, _ensure_tags,
     _get_album, _get_collection, _get_dimension, _get_personnage, _get_planche,
     _get_region, _get_valeur,

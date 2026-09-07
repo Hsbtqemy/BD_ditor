@@ -30,13 +30,16 @@
   "use strict";
 
   /* Ce que chaque export accepte, en face de `routes/depot.py`.
-     `verbatim` : la route déclare-t-elle le paramètre. `base` : l'exige-t-elle. */
+     `verbatim` et `base` disent si la route DÉCLARE le paramètre — plus si elle l'exige.
+     `base_url` a été obligatoire une demi-journée, et c'était une faute d'usage : on ne
+     peut pas nommer l'adresse d'images qu'on n'a pas encore publiées. Sans elle, le
+     manifeste sort en aperçu, et c'est le serveur qui le déclare. */
   const ROUTES = {
     description: { libelle: "Fiche de description", formats: ["json", "csv"],
                    verbatim: false, base: false },
     metadonnees: { libelle: "Enregistrements", formats: ["json", "zip", "xlsx"],
                    verbatim: true, base: false },
-    iiif: { libelle: "Manifeste IIIF", formats: ["zip"], verbatim: true, base: true },
+    iiif: { libelle: "Manifeste IIIF", formats: ["zip"], verbatim: true, base: false },
   };
 
   /* Le nom d'un format à l'écran. « CSV (zip) » plutôt que « zip » : ce qu'on télécharge
@@ -69,14 +72,13 @@
       return { refus: "Le format « " + d.format + " » n'existe pas pour cet export." };
     }
     const base = String(d.baseUrl || "").trim();
-    if (spec.base && !base) {
-      return { refus: "Indiquez l'adresse du serveur qui servira les images : "
-                      + "l'application ne peut pas la deviner." };
-    }
     let url = "/api/collections/" + encodeURIComponent(d.collectionId)
             + "/depot/" + d.quoi + "?format=" + encodeURIComponent(d.format);
     if (spec.verbatim && d.verbatim) url += "&verbatim=true";
-    if (spec.base) url += "&base_url=" + encodeURIComponent(base);
+    // Envoyé seulement s'il y a quelque chose à envoyer : une adresse vide fait sortir
+    // le manifeste en APERÇU, ce qui est le cas ordinaire tant que les images ne sont
+    // publiées nulle part. `base` reste dans la table pour dire QUI accepte ce paramètre.
+    if (spec.base !== undefined && base) url += "&base_url=" + encodeURIComponent(base);
     return { url: url };
   }
 

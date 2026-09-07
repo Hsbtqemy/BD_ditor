@@ -233,6 +233,21 @@ def diagnostic_base_url(base: str, *, remis: bool) -> list:
     """
     base = (base or "").rstrip("/")
     constats = []
+    # Adresse ABSENTE : ce n'est pas une erreur, c'est un aperçu — décision du 2026-09-07.
+    # Le champ était obligatoire, ce qui interdisait de simplement REGARDER son manifeste ;
+    # or on ne peut pas nommer l'adresse d'images qu'on n'a pas encore publiées, et c'est
+    # le cas de tout le monde avant le premier dépôt. L'aperçu doit se DÉCLARER, faute de
+    # quoi il ressemblerait à un dépôt ayant perdu ses images — la confusion même que
+    # `requiredStatement` existe pour empêcher.
+    if not base:
+        constats.append(Constat(
+            "attention", "apercu",
+            "APERÇU — aucune adresse d'images n'a été donnée. Les identifiants et les URL "
+            f"de ce manifeste portent le préfixe d'exemple « {PLACEHOLDER} » et ne mènent "
+            "nulle part : il se regarde, il ne se dépose pas. Pour un manifeste déposable, "
+            "indiquez l'adresse publique sous laquelle le dossier `derivatives/` sera "
+            "servi — un partage ShareDocs, ou l'adresse que rend l'entrepôt."))
+        return constats
     if remis and base == PLACEHOLDER.rstrip("/"):
         constats.append(Constat(
             "refus", "placeholder",
