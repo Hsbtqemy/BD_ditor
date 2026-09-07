@@ -237,3 +237,53 @@ def test_un_commit_de_plus_sur_main_relance_la_veille(instance):
     assert instance["temoin"].exists(), "le témoin d'échec a bloqué un correctif"
     assert not (instance["etat"] / "echec").exists(), (
         "le témoin survit à un déploiement réussi — il refuserait tout, ensuite")
+
+
+# --------------------------------------------------------------------------- #
+# Ce que douze tests verts ne pouvaient pas voir — 2026-09-07, sur le VPS
+#
+# `deploy/veille-deploiement.sh` était commité en mode 100644. La première pose du timer
+# a échoué en `203/EXEC` : systemd n'a pas pu LANCER le fichier, et l'unité s'est mise en
+# `failed` sans qu'une seule ligne du script ne s'exécute.
+#
+# Aucun test d'ici ne pouvait le trouver, et pour une raison précise : le harnais invoque
+# `[BASH, "deploy/veille-deploiement.sh"]`, c'est-à-dire le script comme ARGUMENT de bash.
+# Cette forme ne consulte jamais le bit d'exécution. `ExecStart` de systemd, si. Le harnais
+# éprouvait donc parfaitement la DÉCISION de la veille, sur un chemin d'invocation que la
+# production n'emprunte pas.
+# --------------------------------------------------------------------------- #
+def test_les_unites_systemd_lancent_des_fichiers_EXÉCUTABLES():
+    """Le mode est lu dans l'INDEX git, pas sur le disque.
+
+    C'est ce qui rend le contrôle valable partout : sur Windows le système de fichiers ne
+    porte pas de bit d'exécution, et `core.fileMode` y vaut `false` — un `os.access(X_OK)`
+    y répondrait n'importe quoi. Ce qui est déployé est ce que git RESTITUE, donc c'est
+    l'index qu'il faut interroger.
+
+    Le contrôle se DÉRIVE des unités plutôt que de nommer le fichier fautif : une unité
+    neuve pointant vers un script non exécutable tomberait dans le même trou, et un test
+    qui ne connaîtrait que `veille-deploiement.sh` la laisserait passer.
+    """
+    unites = sorted((RACINE / "deploy" / "systemd").glob("*.service"))
+    assert unites, "aucune unité trouvée : le contrôle ne mesurerait rien"
+
+    cibles = []
+    for u in unites:
+        for ligne in u.read_text(encoding="utf-8").splitlines():
+            if ligne.startswith("ExecStart="):
+                # `ExecStart=/chemin/absolu/sur/le/VPS args…` → chemin relatif au dépôt.
+                chemin = ligne.split("=", 1)[1].split()[0].lstrip("-+!@:")
+                cibles.append((u.name, chemin.split("/BD_ditor/", 1)[-1]))
+    assert cibles, f"aucun ExecStart dans {[u.name for u in unites]}"
+
+    for unite, rel in cibles:
+        assert (RACINE / rel).exists(), f"{unite} lance {rel}, qui n'existe pas"
+        mode = subprocess.run(["git", "ls-files", "-s", "--", rel], cwd=str(RACINE),
+                              capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", check=True).stdout.split()
+        assert mode, f"{rel} n'est pas suivi par git — il n'arrivera jamais sur le VPS"
+        assert mode[0] == "100755", (
+            f"{unite} lance {rel}, commité en mode {mode[0]} et non 100755. systemd "
+            f"refusera de l'exécuter (203/EXEC) et l'unité passera `failed` sans qu'une "
+            f"ligne du script ne tourne — panne constatée le 2026-09-07 à la pose. "
+            f"Réparer : git update-index --chmod=+x {rel}")
