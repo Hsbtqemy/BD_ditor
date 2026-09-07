@@ -1,15 +1,31 @@
 ---
 chantier: INFRA-10
-statut: interrompu
+statut: livré
 ---
 
 # INFRA-10 — déployer se fait à la main, donc quand on y pense
 
-**Arrêté sur** — 2026-09-07, `b2f2801` : **LE MÉCANISME TOURNE SUR LE VPS.** La réserve
-que cette fiche portait depuis son ouverture — « écrit, éprouvé LOCALEMENT, jamais tourné
-sur le VPS » — est levée : timer actif, service lancé par systemd, `rien à faire — main est
-à a5a9f6e` à 19:04:51. Reste à voir un déploiement PARTIR tout seul, ce que seul un
-prochain `push dev:main` montrera.
+**Arrêté sur** — 2026-09-07, `b2f2801` : **LE MÉCANISME EST POSÉ, ET IL A DÉPLOYÉ TOUT
+SEUL.** Poussé à 19:31:17, tir du timer à 19:32, `DÉPLOYÉ a5a9f6e → 889e23f` à 19:38:20 —
+sans qu'une main touche le VPS. La réserve que cette fiche portait depuis son ouverture,
+« écrit, éprouvé LOCALEMENT, jamais tourné sur le VPS », est levée.
+
+Deux observations valent plus que le succès lui-même. La ligne
+`·· authelia configuration inchangée depuis a5a9f6e` est la signature du `deployer.sh`
+corrigé le matin même : il NOMME la référence employée, et cette référence est le commit
+SERVI. La correction se lit donc dans son propre journal de production. Et le tir suivant
+a été déclenché dans la MÊME SECONDE que la fin du déploiement — systemd avait accumulé un
+déclenchement pendant les six minutes de travail —, répondant « rien à faire ». C'est
+`Type=oneshot` plus la bonne question (« l'image est-elle en retard », et non « le timer
+a-t-il sonné ») : un mécanisme qui aurait redéployé là aurait bouclé sur lui-même.
+
+**CE QUI RESTE OUVERT EST LE CHEMIN D'ÉCHEC, et c'est le plus important pour un mécanisme
+sans surveillance.** Un REFUS n'a jamais été VU : ni la migration de schéma qui doit faire
+passer l'unité en `failed` avec le message nommant les deux versions, ni le témoin d'échec
+qui doit refuser au tir suivant plutôt que de repasser au vert. Les deux se fabriquent
+exprès, ou s'observent le jour où ça arrive ; ni l'un ni l'autre n'a eu lieu. Le statut
+`livré` parle de ce qui FONCTIONNE et de son intégration — il ne dit rien de ces deux
+cases, et c'est pour cela qu'elles restent ouvertes plutôt que d'être rangées ailleurs.
 
 **Mais la première pose a échoué en `203/EXEC`, et douze tests verts ne pouvaient pas le
 voir.**
@@ -87,8 +103,8 @@ gardes : le silence se lit comme une approbation.
 - [x] La veille rend « rien à faire » LANCÉE PAR SYSTEMD — 2026-09-07, 19:04:51 : `rien à faire — main est à a5a9f6e`, puis `Deactivated successfully`. Éprouvé mieux que la case ne demandait : par le service RÉEL (`systemctl start bd-deploiement.service`) et non par `--simulation`, donc l'environnement quasi vide d'une unité a bien été traversé — `git` et `docker` s'y trouvent, ce qui était le sujet de la case
 
 ### Le premier déploiement automatique, regardé
-- [ ] Un `git push origin dev:main` sans migration déclenche le déploiement dans les cinq minutes, et l'instance SERT le nouveau commit — vérifié sur l'étiquette `bd.commit` de l'image (`docker inspect`), pas sur l'absence d'erreur
-- [ ] La suite dans l'image a bien tourné pendant ce déploiement automatique : c'est la garde qui a le plus servi, et un timer qui la sauterait serait pire que pas de timer
+- [x] Un `git push origin dev:main` sans migration déclenche le déploiement dans les cinq minutes, et l'instance SERT le nouveau commit — 2026-09-07 : poussé à 19:31:17, tir à 19:32, `DÉPLOYÉ a5a9f6e → 889e23f` à 19:38:20, sans qu'une main touche le VPS. Vérifié sur l'étiquette comme la case l'exigeait : `docker inspect` rend `889e23f86adf4ddbe84a234019971c5fdb955a5d`, et non sur l'absence d'erreur
+- [x] La suite dans l'image a bien tourné pendant ce déploiement automatique — regardée défiler dans `journalctl -f`, de 19:32 à 19:38, cliquet AUTH-2 compris (`118/125 routes cloisonnées`, même inventaire qu'en local : l'aplatissement des routes se comporte pareil dans l'image, ce qu'ARCH-2 avait vu se taire)
 - [ ] Un REFUS se voit : pousser une migration de schéma et constater que `systemctl status bd-deploiement.service` est `failed`, avec le message qui nomme les deux versions
 
 ### Ce que ce mécanisme rend plus probable
