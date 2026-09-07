@@ -6,8 +6,12 @@
 > ces outils ne touchent ni aux exports existants ni au schéma, et lisent la base en
 > **lecture seule**. Cadre conceptuel : `docs/dictionnaire-metadonnees.md`.
 
-Tout passe par des **scripts hors-app** (`tools/`), pas par l'API. Périmètre par
-défaut : le **corpus entier**. Depuis le schéma **v14**, l'entité `collection` existe en
+Tout passait par des **scripts hors-app** (`tools/`), pas par l'API — vrai tant que
+l'outil tournait en mono-poste, et faux depuis **EXP-1** : les trois exports descriptifs
+ont aussi une route (cf. § *Depuis l'application, sans shell*), sur les mêmes cœurs. Les
+scripts restent la voie complète, et la seule pour le crosswalk et la provenance.
+Périmètre par défaut **en CLI** : le **corpus entier** — les routes, elles, exigent une
+collection nommée, pour la raison écrite plus bas. Depuis le schéma **v14**, l'entité `collection` existe en
 base (palier supérieur du dictionnaire, unité de dépôt) : on la gère avec
 `tools/gerer_collections.py`, et chaque export accepte `--collection <id>` pour se
 restreindre à ses albums. Sans collection, le corpus entier tient lieu de collection implicite.
@@ -44,6 +48,58 @@ seule lecture) ; ses sous-commandes : `lister`, `montrer ID`, `creer`, `modifier
 prennent `--collection <id>` (défaut : corpus entier).
 
 La base suit la config du projet (`BD_DB_PATH` / `BD_DATA_DIR`).
+
+## Depuis l'application, sans shell (EXP-1)
+
+La doctrine « scripts hors-app » supposait le **mono-poste** : le chercheur était *sur* la
+machine de la base. Déployé derrière Authelia, plus personne n'a de shell — les trois
+outils descriptifs deviennent hors d'atteinte de ceux à qui ils servent. Trois routes les
+rendent, sur une **collection nommée** :
+
+| Route (`GET`) | Formats | Équivalent CLI |
+|---|---|---|
+| `/api/collections/{id}/depot/description` | `json` · `csv` | `description_collection.py --collection {id}` |
+| `/api/collections/{id}/depot/metadonnees` | `json` · `zip` · `xlsx` (+ `verbatim`) | `metadonnees_collection.py --collection {id}` |
+| `/api/collections/{id}/depot/iiif` | `zip` (+ `base_url` **requis**, `verbatim`) | `iiif_manifest.py --collection {id} --out-dir …` |
+
+**Les cœurs sont partagés, rien n'est réécrit côté serveur.** L'extraction a coûté trois
+petits déplacements, tous dans le sens du partage : `zip_tables` / `xlsx_tables` sortent du
+`main()` des métadonnées (la CLI passe désormais par elles, faute de quoi le chemin
+partagé ne serait exercé par aucun test), et les constats de l'IIIF deviennent des
+**données** — `diagnostic_base_url` et `diagnostic_regime` rendent une liste de
+`Constat(gravite, code, message)`, la CLI ne gardant que la mise en forme.
+
+Quatre points où une route ne peut pas se comporter comme une CLI :
+
+- **La collection est un segment de CHEMIN, jamais un paramètre facultatif.** Les outils
+  traitent `--collection` absent comme « corpus entier », sans consulter la moindre
+  portée : c'est le bon défaut sur la machine de la base, et c'est exactement ce qu'une
+  route ne doit jamais faire. En chemin, le cas cesse d'être joignable.
+- **Lire la collection suffit.** Ces artefacts décrivent un périmètre auquel on est déjà
+  admis (cf. `docs/hebergement-securite.md` §6). Le refus est un **404** et non un 403 —
+  « existe mais pas pour vous » révèle la composition du corpus.
+- **`base_url` n'a pas de défaut, et c'est délibéré.** L'application sert bien
+  `/derivatives`, mais par une route cloisonnée depuis AUTH-2 : s'y désigner elle-même
+  fabriquerait un manifeste dont chaque image répond 404 chez le destinataire. Il n'y a
+  pas de défaut raisonnable, seulement un défaut *plausible*, qui est pire.
+- **Les avertissements voyagent DANS l'archive IIIF** (`AVERTISSEMENTS.txt`). La CLI les
+  écrit sur `stderr`, où un humain les lit en tapant la commande ; un téléchargement n'a
+  personne devant lui. Les perdre effacerait ce qui distingue un dépôt qui *retient* ses
+  scans d'un dépôt qui les a *oubliés* — la confusion même que `requiredStatement` existe
+  pour empêcher.
+
+Les refus gardent le message de l'outil, au mot près, et prennent le code qui dit la
+nature de la panne : **422** pour un `base_url` inutilisable (erreur de saisie), **403**
+pour un `verbatim` hors régime (la demande est bien formée, c'est le droit qui manque),
+**503** pour un format dont l'extra n'est pas installé (`openpyxl`), en nommant le paquet.
+
+**Ce qui n'est PAS exposé, et pourquoi.** Le **crosswalk** (`crosswalk_depot.py`) et la
+**provenance** (`provenance_export.py`) restent en CLI seule. Ce n'est pas un oubli : ce
+sont les deux artefacts que l'on produit au moment de DÉPOSER, geste rare, préparé, et qui
+suppose déjà un accès à l'entrepôt — là où la fiche, les enregistrements et le manifeste se
+consultent en cours de travail pour voir où en est la description. La condition de
+réouverture est écrite : dès qu'un dépôt se fait sans que personne n'ait de shell, les deux
+suivent par le même patron, qui ne demandera pas de nouvelle décision.
 
 ## Portée d'une collection (`--collection`)
 

@@ -1811,6 +1811,28 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .col-referent legend { font-size: .82rem; color: var(--text-muted); padding: 0 .3rem; }
 .col-referent input { margin-right: .4rem; }
 .col-note-admin { border-left: 2px solid var(--accent-green); padding-left: .5rem; }
+/* ── Export de dépôt d'une collection (EXP-1) ─────────────────────────────────────── */
+.col-export { border-top: 1px solid var(--border); margin-top: .7rem; padding-top: .5rem; }
+.col-export h4 { margin: 0 0 .2rem; font-size: .95rem; }
+.dep-ligne { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center;
+             margin: .35rem 0; }
+/* Une largeur fixe aligne les trois lignes sans table : l'œil suit une colonne, et le
+   libellé reste lisible à 375 px puisque `flex-wrap` le laisse passer à la ligne. */
+.dep-quoi { min-width: 10.5rem; font-size: .85rem; }
+.dep-base { flex: 1; min-width: 12rem; }
+.dep-verbatim { display: inline-flex; align-items: center; gap: .3rem;
+                font-size: .82rem; color: var(--text-muted); }
+.dep-aide { margin: .2rem 0 0; }
+.dep-msg { margin: .35rem 0 0; font-size: .85rem; min-height: 1.1em; }
+/* Encre AA-sûre et non l'accent brut, qui échoue le 4.5:1 sur du petit texte. Le message
+   PORTE la cause du refus : « pas publique », « embargo en cours », « date illisible » ne
+   se corrigent pas de la même façon, et une couleur seule n'en dirait aucune. */
+.dep-msg.erreur { color: var(--ink-red); }
+/* Le dépôt ShareDocs (EXP-1) : une ligne à part, séparée des téléchargements parce que
+   le geste l'est aussi — écrire dans un dossier partagé, et non emporter pour soi. */
+.dep-depot { border-top: 1px dashed var(--border); padding-top: .45rem; margin-top: .5rem; }
+.dep-dossier { flex: 1; min-width: 9rem; }
+.dep-choix { max-width: 16rem; }
 /* Vue des comptes (AUTH-7) — dans le panneau Collections, sous la liste. */
 #comptes-bloc { border-top: 1px solid var(--border); margin-top: .9rem; padding-top: .6rem; }
 #comptes-bloc h4 { margin: 0 0 .3rem; font-size: .95rem; }

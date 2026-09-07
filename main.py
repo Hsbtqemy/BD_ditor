@@ -42,7 +42,7 @@ import sante as sante_moteurs
 # en a aucun, et l'outil de recalcul s'arrête s'il en apparaît un.
 from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     AccesIn, AlbumIn, AlbumUpdate, AlignementIn, AnnotationIn, AttributIn, CollectionIn,
-    CollectionUpdate, ContributionIn, ContributionRoleIn, DeposerIn, DimensionDomaineIn,
+    CollectionUpdate, ContributionIn, ContributionRoleIn, DeposerExportIn, DeposerIn, DimensionDomaineIn,
     DimensionIn, DomaineIn, FigureIn, FusionIn, JobIn, LexiqueIn, LocuteurIn, MoveIn,
     PersonnageIn, PersonnageUpdate, PresenceIn, RegionIn, RegionUpdate, RelectureIn,
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
@@ -967,6 +967,58 @@ def deposer_sauvegarde(payload: DeposerIn,
     # blanche de tables ne le contient pas.
     journal.journaliser(conn, "creation", "sharedocs", None,
                         apres={"chemin": chemin, "taille": len(data),
+                               "compte": depot["compte"], "compte_user": depot["user"]})
+    conn.commit()
+    return {"depose": chemin, "taille": len(data),
+            "compte": depot["compte"], "compte_user": depot["user"]}
+
+
+@app.post("/api/collections/{collection_id}/depot/deposer")
+def deposer_export(collection_id: int, payload: DeposerExportIn,
+                   conn: sqlite3.Connection = Depends(db),
+                   portee: autorisation.Portee = Depends(portee_courante)):
+    """Dépose un export de dépôt sur ShareDocs plutôt que de le télécharger (EXP-1).
+
+    **Elle vit ICI et non dans `routes/depot.py`**, parce que SHARE-1 épingle dans ce
+    fichier la seule réponse à « qui est je » (`_principal_sharedocs`), et qu'un module de
+    routes ne remonte jamais vers `main` — le cycle marcherait en test et tomberait
+    ailleurs. L'artefact, lui, vient de `routes.depot.produire` : les deux voies de sortie
+    fabriquent le même octet, sans quoi un entrepôt garderait deux versions du même nom
+    sans que rien ne dise laquelle a été déposée.
+
+    **Elle exige de POUVOIR ADMINISTRER la collection, là où le téléchargement se contente
+    de la lire**, et cette asymétrie est délibérée. Télécharger, c'est emporter pour soi ce
+    qu'on lit déjà. Déposer, c'est écrire dans un dossier partagé dont l'application ne
+    contrôle pas l'audience — le second des deux motifs qui réservent déjà le dépôt de
+    sauvegarde (SHARE-1), et le seul qui s'applique ici : décrire une collection n'est pas
+    un geste d'exploitation. Or décider ce qui sort d'une collection vers un espace commun
+    est une décision SUR la collection, ce qu'AUTH-3 appelle précisément posséder.
+
+    C'est une garde posée sur l'ACTE et non sur l'écran qui le contient (leçon AUTH-4) : le
+    téléchargement reste offert à qui lit, dans le même panneau.
+    """
+    _get_collection(conn, portee, collection_id, administrer=True)
+    nom, _type, data = _routes_depot.produire(
+        conn, portee, collection_id, payload.quoi, payload.format,
+        verbatim=payload.verbatim, base_url=payload.base_url)
+
+    folder = payload.dossier.strip("/")
+    chemin = f"{folder}/{nom}" if folder else nom
+    try:
+        depot = sharedocs.upload(chemin, data,
+                                 principal=_principal_sharedocs(portee),
+                                 compte=payload.compte)
+    except ShareDocsError as exc:
+        raise HTTPException(400, str(exc))
+
+    # Même forme que le dépôt de sauvegarde : la personne qui a cliqué (l'agent, capté par
+    # la dépendance globale) et le compte Huma-Num employé sont DEUX faits distincts dès
+    # qu'il y a deux comptes possibles. `cible_table='sharedocs'` n'est pas une table du
+    # schéma, et c'est déjà le contrat du journal ; l'undo ne le voit pas.
+    journal.journaliser(conn, "creation", "sharedocs", None,
+                        apres={"chemin": chemin, "taille": len(data),
+                               "export": payload.quoi, "format": payload.format,
+                               "collection_id": collection_id,
                                "compte": depot["compte"], "compte_user": depot["user"]})
     conn.commit()
     return {"depose": chemin, "taille": len(data),

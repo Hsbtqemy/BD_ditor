@@ -152,6 +152,158 @@ function colReferentLu(c) {
     <strong>${esc(nom || contact)}</strong>${nom && contact ? ` — ${esc(contact)}` : ""}.</p>`;
 }
 
+/* Le dépôt ShareDocs. Il RÉUTILISE les réglages des lignes du dessus — la case
+   « avec le texte relevé » et l'adresse du serveur d'images — parce que ce sont les mêmes
+   réglages du même artefact : les redemander ici laisserait deux jeux de valeurs se
+   contredire à l'écran, et personne ne saurait lequel est parti.
+
+   Le bloc n'existe que pour qui ADMINISTRE la collection, et c'est le serveur qui tranche
+   (403) : `administrable` ne fait que lui éviter de proposer un geste qu'il refusera.
+   L'inverse — décider ici et laisser le serveur ouvert — est l'erreur qui ne se voit
+   jamais, puisque l'écran a l'air correct. */
+async function colDeposer(bouton) {
+  const boite = bouton.closest(".col-export");
+  const msg = boite.querySelector(".dep-msg");
+  const [quoi, format] = boite.querySelector(".dep-choix").value.split("|");
+  const base = boite.querySelector(".dep-base").value.trim();
+
+  // La même règle que pour le téléchargement : un manifeste sans serveur d'images ne
+  // part pas, et le dire avant d'appeler évite un aller-retour pour rien.
+  const { refus } = BDDepot.urlDepot({ collectionId: bouton.dataset.col, quoi, format,
+                                       baseUrl: base });
+  if (refus) { msg.textContent = refus; msg.className = "dep-msg erreur"; return; }
+
+  msg.className = "dep-msg";
+  msg.textContent = "Dépôt en cours…";
+  try {
+    const r = await apiSend("POST", `/api/collections/${bouton.dataset.col}/depot/deposer`,
+      { quoi, format, verbatim: Boolean(boite.querySelector("[data-verbatim]").checked),
+        base_url: base, dossier: boite.querySelector(".dep-dossier").value.trim() });
+    // Le compte EMPLOYÉ vient du serveur et s'affiche : un dépôt fait sous le compte de
+    // l'instance alors qu'on en a un personnel doit se voir (SHARE-1).
+    msg.textContent = `Déposé : ${r.depose} (compte ${r.compte}).`;
+  } catch (e) {
+    msg.className = "dep-msg erreur";
+    msg.textContent = e.message || "Échec du dépôt.";
+  }
+}
+
+/* Branche les boutons du bloc d'export. Appelé par les DEUX branches de `colDetail` :
+   c'est le seul endroit où l'oubli serait silencieux — un bouton sans gestionnaire ne
+   proteste pas, il ne fait rien. */
+function colBrancherExport(box) {
+  box.querySelectorAll("[data-dep]").forEach((b) => {
+    b.type = "button";
+    b.onclick = () => colTelecharger(b);
+  });
+  const dep = box.querySelector("[data-depot]");
+  if (dep) { dep.type = "button"; dep.onclick = () => colDeposer(dep); }
+}
+
+
+/* EXP-1 — l'export de dépôt, pour qui n'a pas de shell.
+
+   Ce bloc s'affiche dans les DEUX branches de `colDetail`, et c'est la leçon d'AUTH-4
+   appliquée avant de se refaire prendre : une garde d'interface se pose sur l'ACTE, jamais
+   sur l'écran qui le contient. Décrire une collection qu'on lit n'est pas la partager —
+   le serveur n'exige ici que `peut_lire`, et le ranger sous le `return` réservé aux
+   propriétaires en ferait, exactement comme le référent, un droit d'écriture déguisé. On
+   se serait aperçu de rien : l'erreur échoue en se FERMANT, aucun test ne tombe, et une
+   revue de sécurité l'approuve.
+
+   Le nom du fichier vient du serveur (`Content-Disposition`) : le recomposer ici ferait
+   diverger deux horodatages pour un seul export — même raison que l'export de figures. */
+function colExport(c) {
+  const b = `data-col="${c.id}"`;
+  return `
+    <div class="col-export">
+      <h4>Export de dépôt</h4>
+      <p class="muted small">Ce que produisaient les scripts <code>tools/</code>, sur cette
+        collection seulement.</p>
+      <div class="dep-ligne">
+        <span class="dep-quoi">Fiche de description</span>
+        <button class="ghost small" ${b} data-dep="description" data-fmt="json">JSON</button>
+        <button class="ghost small" ${b} data-dep="description" data-fmt="csv">CSV</button>
+      </div>
+      <div class="dep-ligne">
+        <span class="dep-quoi">Enregistrements</span>
+        <button class="ghost small" ${b} data-dep="metadonnees" data-fmt="json">JSON</button>
+        <button class="ghost small" ${b} data-dep="metadonnees" data-fmt="zip">CSV (zip)</button>
+        <button class="ghost small" ${b} data-dep="metadonnees" data-fmt="xlsx">XLSX</button>
+        <label class="dep-verbatim"><input type="checkbox" data-verbatim="1">
+          <span>avec le texte relevé</span></label>
+      </div>
+      <div class="dep-ligne">
+        <span class="dep-quoi">Manifeste IIIF</span>
+        <input type="url" class="dep-base" placeholder="https://serveur-images/iiif"
+               aria-label="Adresse du serveur qui servira les images">
+        <button class="ghost small" ${b} data-dep="iiif" data-fmt="zip">Télécharger</button>
+      </div>
+      <p class="muted small dep-aide">Le manifeste demande l'adresse du serveur qui servira
+        les images : l'application ne peut pas la deviner, et se désigner elle-même
+        produirait des images introuvables chez le destinataire.</p>
+      ${c.administrable ? `
+      <div class="dep-ligne dep-depot">
+        <span class="dep-quoi">Déposer sur ShareDocs</span>
+        <select class="dep-choix" aria-label="Artefact à déposer">
+          ${BDDepot.choix().map((o) =>
+            `<option value="${o.quoi}|${o.format}">${esc(o.libelle)}</option>`).join("")}
+        </select>
+        <input class="dep-dossier" placeholder="Dossier (vide = racine)"
+               aria-label="Dossier ShareDocs de destination">
+        <button class="ghost small" ${b} data-depot="1">Déposer</button>
+      </div>` : ""}
+      <p class="dep-msg" role="status" aria-live="polite"></p>
+    </div>`;
+}
+
+/* Le téléchargement lui-même. Les refus du serveur sont RENDUS À L'ÉCRAN et non avalés :
+   ils portent des messages qui distinguent quatre causes (pas publique, embargo en cours,
+   date illisible, aucune collection nommée), et ces quatre-là ne se corrigent pas de la
+   même façon. Les remplacer par « échec » perdrait tout ce que l'outil sait dire. */
+async function colTelecharger(bouton) {
+  const boite = bouton.closest(".col-export");
+  const msg = boite.querySelector(".dep-msg");
+  const quoi = bouton.dataset.dep;
+  const verbatim = boite.querySelector("[data-verbatim]")?.checked;
+  const base = boite.querySelector(".dep-base")?.value.trim();
+
+  // L'adresse se DÉCIDE dans `static/lib/depot.js`, pas ici : trois erreurs y sont
+  // muettes — `verbatim` envoyé à une route qui l'ignore, une adresse d'images non
+  // encodée qui INJECTE des paramètres, un format proposé pour le mauvais export. Une
+  // concaténation dans ce gestionnaire ne serait vérifiable que par un test qui relit le
+  // source, et le dépôt sait depuis `sante.js` ce que vaut cette lecture-là.
+  const { url, refus } = BDDepot.urlDepot({
+    collectionId: bouton.dataset.col, quoi, format: bouton.dataset.fmt, verbatim,
+    baseUrl: base,
+  });
+  if (refus) {
+    msg.textContent = refus;
+    msg.className = "dep-msg erreur";
+    return;
+  }
+
+  msg.className = "dep-msg";
+  msg.textContent = "Préparation…";
+  try {
+    const r = await fetch(url);
+    if (!r.ok) {
+      throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    }
+    const nom = (r.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/);
+    const href = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a");
+    a.href = href; a.download = nom ? nom[1] : "export";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(href);
+    msg.textContent = nom ? `${nom[1]} téléchargé.` : "Export téléchargé.";
+  } catch (e) {
+    msg.className = "dep-msg erreur";
+    msg.textContent = e.message || "Échec de l'export.";
+  }
+}
+
+
 async function colDetail(d, c) {
   const box = d.querySelector(".col-detail");
   if (!c.administrable) {
@@ -163,7 +315,8 @@ async function colDetail(d, c) {
     // seule garde confondait.
     box.innerHTML = `<p class="col-note">Vous participez à cette collection sans la
       posséder : seul un propriétaire voit et modifie la liste des accès.</p>
-      ${colReferentLu(c)}${colAdminNote()}`;
+      ${colReferentLu(c)}${colAdminNote()}${colExport(c)}`;
+    colBrancherExport(box);
     return;
   }
   box.innerHTML = `<p class="col-note">Chargement…</p>`;
@@ -209,7 +362,9 @@ async function colDetail(d, c) {
     <div class="modal-actions">
       <button class="ghost small" data-renommer="1" type="button">Renommer</button>
       <button class="ghost small" data-supprimer="1" type="button">Supprimer la collection</button>
-    </div>`;
+    </div>
+    ${colExport(c)}`;
+  colBrancherExport(box);
 
   const recharger = async () => { await loadCollections(); };
   const btnRef = box.querySelector("[data-referent]");

@@ -194,7 +194,7 @@ Regime = namedtuple("Regime", "images statut embargo date genere_le")
 Regime.__new__.__defaults__ = (True, None, None, None, None)
 
 
-def _regime(bloc, aujourdhui=None):
+def regime(bloc, aujourdhui=None):
     """Le `Regime` du bloc `collection` de l'arbre — None = corpus entier.
 
     `embargo` est l'état de la date (`database.etat_embargo`) : None | 'pendant' | 'echu'
@@ -209,6 +209,112 @@ def _regime(bloc, aujourdhui=None):
     return Regime(images=statut == "public" and embargo in (None, "echu"),
                   statut=statut, embargo=embargo,
                   date=(bloc or {}).get("date_embargo"), genere_le=jour)
+
+
+Constat = namedtuple("Constat", "gravite code message")
+
+# La valeur que `--base-url` prend quand personne ne l'a renseignée. Nommée plutôt que
+# répétée : le refus qui l'attrape la compare, et la CLI la donne pour défaut.
+PLACEHOLDER = "https://exemple.org/iiif"
+
+
+def diagnostic_base_url(base: str, *, remis: bool) -> list:
+    """Les deux méprises de `--base-url` qui se VOIENT (AUTH-2).
+
+    Aucune ne peut PROUVER que l'URL désigne un serveur d'images ; elles attrapent celles
+    qui se remarquent. `remis` dit si les manifests vont être remis à quelqu'un : sur un
+    aperçu jeté sur la sortie standard, le placeholder ne trompe personne.
+
+    Ces constats sont RENDUS et non imprimés, depuis EXP-1. La CLI les écrit sur `stderr`,
+    où un humain les lit ; une route n'a personne à qui parler et doit les faire voyager
+    avec l'archive. Tant que la mise en forme vivait ici, le partage était impossible — et
+    l'alternative, une route qui redirait la règle dans ses propres mots, est exactement
+    ce que la fiche EXP-1 interdit.
+    """
+    base = (base or "").rstrip("/")
+    constats = []
+    if remis and base == PLACEHOLDER.rstrip("/"):
+        constats.append(Constat(
+            "refus", "placeholder",
+            "`--base-url` est resté sur le placeholder. Écrire des manifests destinés à "
+            "être remis avec des URL d'images mortes ne rend service à personne : "
+            "précisez le serveur qui servira les images."))
+    hote = base.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    if hote in ("localhost", "127.0.0.1", "::1", "[::1]") or hote.endswith(".local"):
+        constats.append(Constat(
+            "attention", "hote_local",
+            f"`--base-url` désigne un hôte local ({hote}), qui est sans doute "
+            "l'application elle-même. Depuis AUTH-2, elle sert /derivatives par une route "
+            "cloisonnée : un destinataire de ce manifeste n'obtiendrait que des 404. Les "
+            "images doivent venir d'un serveur qui lui est accessible."))
+    return constats
+
+
+def diagnostic_regime(bloc, reg, *, verbatim: bool) -> list:
+    """Ce que le régime de diffusion impose, et ce qu'il faut en dire (DROIT-1).
+
+    Même extraction, même raison que `diagnostic_base_url` : les messages restent au mot
+    près, ils cessent seulement d'être imprimés ici.
+    """
+    nom = bloc["nom"] if bloc else None
+    constats = []
+
+    # Une échéance dépassée ne change RIEN au calcul — elle ne promeut pas — mais elle
+    # cesse d'être muette. C'est le seul endroit où quelqu'un s'apprête à publier : c'est
+    # donc là que « l'embargo est fini, et personne ne l'a levé » se dit utilement.
+    if reg.embargo == "echu" and reg.statut == "embargo":
+        constats.append(Constat(
+            "attention", "embargo_echu",
+            f"l'embargo de « {nom} » est ÉCHU depuis le {reg.date}, et la collection est "
+            "toujours déclarée « embargo ». L'outil ne la publie pas pour autant : une "
+            "date qui passe ne dit pas que les droits sont acquis. Si l'embargo est bien "
+            "levé, déclarez-la `public`."))
+
+    if reg.images:
+        return constats
+
+    # Deux pannes distinctes, deux gestes distincts : « déclarez-la `public` » ne sert
+    # à rien quand elle L'EST déjà et qu'un embargo la retient.
+    cause = (f"la collection « {nom} » est déclarée « {reg.statut} », et son "
+             f"embargo court jusqu'au {reg.date}" if reg.embargo == "pendant" else
+             f"la collection « {nom} » déclare une date d'embargo illisible "
+             f"(« {reg.date} », attendu AAAA-MM-JJ)" if reg.embargo == "illisible" else
+             f"la collection « {nom} » est déclarée « {reg.statut} »" if reg.statut
+             else f"la collection « {nom} » ne déclare aucun régime de "
+                  "diffusion" if bloc else
+             "aucune collection n'est nommée (--collection), donc aucun régime n'est "
+             "déclaré")
+
+    if verbatim:
+        constats.append(Constat(
+            "refus", "verbatim_hors_regime",
+            f"`--verbatim` fait sortir le texte de l'œuvre, et {cause}."
+            " Publier suppose une collection déclarée `public` et hors embargo ; "
+            "pour un usage savant ponctuel, citez plutôt (export de figure)."))
+        return constats
+
+    constats.append(Constat(
+        "attention", "sans_images",
+        f"manifeste SANS IMAGES : {cause}. "
+        "La géométrie et l'enrichissement sont publiables, les scans non."
+        # Ne promettre la sortie automatique QUE si elle aura bien lieu : sur une
+        # collection qui n'est pas déclarée `public`, l'échéance ne publiera rien,
+        # et l'annoncer serait le message qui ment — déjà attrapé sur AUTH-3.
+        + (" Les images sortiront d'elles-mêmes une fois la date passée."
+           if reg.embargo == "pendant" and reg.statut == "public" else
+           " À l'échéance il faudra encore la déclarer `public` : l'outil ne lève "
+           "pas un embargo tout seul."
+           if reg.embargo == "pendant" else
+           " Corrigez la date (AAAA-MM-JJ) pour que l'outil puisse la lire."
+           if reg.embargo == "illisible" else
+           # Ne pas présenter le cas NORMAL comme un manque (précision du
+           # 2026-08-28) : un dépôt Nakala reçoit d'abord le manifeste et ses
+           # Canvas, pas les planches. « Déclarez-la public » en conclusion sèche
+           # ferait de la forme attendue une déficience à corriger.
+           " C'est la forme habituelle d'un dépôt, qui porte le manifeste et ses "
+           "Canvas ; pour y joindre les scans, la collection doit être déclarée "
+           "`public`.")))
+    return constats
 
 
 # Libellé du `requiredStatement` qui DÉCLARE l'absence des scans. Un consommateur doit
@@ -288,11 +394,23 @@ def _connexion_ro():
     return conn
 
 
+def _rendre(constats) -> bool:
+    """Imprime les constats sur `stderr` et dit s'il y a un REFUS.
+
+    C'est tout ce que la CLI garde en propre depuis EXP-1 : la mise en forme et le
+    destinataire. La règle, elle, vit dans les deux `diagnostic_*` et se partage.
+    """
+    for c in constats:
+        prefixe = "REFUS" if c.gravite == "refus" else "ATTENTION"
+        print(f"{prefixe} — {c.message}", file=sys.stderr)
+    return any(c.gravite == "refus" for c in constats)
+
+
 def main(argv=None) -> int:
     from _commun import forcer_utf8
     forcer_utf8()                             # Windows : stdout/stderr en UTF-8 (cp1252 sinon)
     ap = argparse.ArgumentParser(description="Génère des manifests IIIF Presentation 3.0.")
-    ap.add_argument("--base-url", default="https://exemple.org/iiif",
+    ap.add_argument("--base-url", default=PLACEHOLDER,
                     help="préfixe d'URI des identifiants et des images (défaut : placeholder)")
     ap.add_argument("--out-dir", metavar="DOSSIER",
                     help="écrit collection.json + un manifest par album ; sinon stdout (album 1)")
@@ -303,20 +421,11 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     base = args.base_url.rstrip("/")
 
-    # Garde-fous sur `--base-url` (AUTH-2). Aucun des deux ne peut PROUVER que l'URL
-    # désigne un serveur d'images ; ils attrapent les deux méprises qui se voient.
-    hote = base.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0]
-    if args.out_dir and base == ap.get_default("base_url").rstrip("/"):
-        print("REFUS — `--base-url` est resté sur le placeholder. Écrire des manifests "
-              "destinés à être remis avec des URL d'images mortes ne rend service à "
-              "personne : précisez le serveur qui servira les images.", file=sys.stderr)
+    # Garde-fous sur `--base-url` (AUTH-2), rendus AVANT d'ouvrir la base : un refus ici
+    # doit sortir sans que les constats de régime s'y ajoutent, sinon le message qui
+    # compte se noie dans ceux qu'on ne peut pas encore corriger.
+    if _rendre(diagnostic_base_url(base, remis=bool(args.out_dir))):
         return 2
-    if hote in ("localhost", "127.0.0.1", "::1", "[::1]") or hote.endswith(".local"):
-        print(f"ATTENTION — `--base-url` désigne un hôte local ({hote}), qui est sans "
-              "doute l'application elle-même. Depuis AUTH-2, elle sert /derivatives par "
-              "une route cloisonnée : un destinataire de ce manifeste n'obtiendrait que "
-              "des 404. Les images doivent venir d'un serveur qui lui est accessible.",
-              file=sys.stderr)
 
     with _connexion_ro() as conn:
         arbre = mc.collecter(conn, verbatim=args.verbatim, collection_id=args.collection)
@@ -326,57 +435,9 @@ def main(argv=None) -> int:
 
     # DROIT-1 — le régime de la collection NOMMÉE décide si les images sortent, et la
     # date d'embargo peut le restreindre encore.
-    reg = _regime(bloc)
-    images, statut, embargo, date_embargo = reg.images, reg.statut, reg.embargo, reg.date
-
-    # Une échéance dépassée ne change RIEN au calcul — elle ne promeut pas — mais elle
-    # cesse d'être muette. C'est le seul endroit où quelqu'un s'apprête à publier : c'est
-    # donc là que « l'embargo est fini, et personne ne l'a levé » se dit utilement.
-    if embargo == "echu" and statut == "embargo":
-        print(f"ATTENTION — l'embargo de « {nom_collection} » est ÉCHU depuis le "
-              f"{date_embargo}, et la collection est toujours déclarée « embargo ». "
-              "L'outil ne la publie pas pour autant : une date qui passe ne dit pas que "
-              "les droits sont acquis. Si l'embargo est bien levé, déclarez-la `public`.",
-              file=sys.stderr)
-
-    if not images:
-        # Deux pannes distinctes, deux gestes distincts : « déclarez-la `public` » ne sert
-        # à rien quand elle L'EST déjà et qu'un embargo la retient.
-        cause = (f"la collection « {nom_collection} » est déclarée « {statut} », et son "
-                 f"embargo court jusqu'au {date_embargo}" if embargo == "pendant" else
-                 f"la collection « {nom_collection} » déclare une date d'embargo illisible "
-                 f"(« {date_embargo} », attendu AAAA-MM-JJ)" if embargo == "illisible" else
-                 f"la collection « {nom_collection} » est déclarée « {statut} »" if statut
-                 else f"la collection « {nom_collection} » ne déclare aucun régime de "
-                      "diffusion" if bloc else
-                 "aucune collection n'est nommée (--collection), donc aucun régime n'est "
-                 "déclaré")
-        if args.verbatim:
-            print(f"REFUS — `--verbatim` fait sortir le texte de l'œuvre, et {cause}."
-                  " Publier suppose une collection déclarée `public` et hors embargo ; "
-                  "pour un usage savant ponctuel, citez plutôt (export de figure).",
-                  file=sys.stderr)
-            return 2
-        print(f"ATTENTION — manifeste SANS IMAGES : {cause}. "
-              "La géométrie et l'enrichissement sont publiables, les scans non."
-              # Ne promettre la sortie automatique QUE si elle aura bien lieu : sur une
-              # collection qui n'est pas déclarée `public`, l'échéance ne publiera rien,
-              # et l'annoncer serait le message qui ment — déjà attrapé sur AUTH-3.
-              + (" Les images sortiront d'elles-mêmes une fois la date passée."
-                 if embargo == "pendant" and statut == "public" else
-                 " À l'échéance il faudra encore la déclarer `public` : l'outil ne lève "
-                 "pas un embargo tout seul."
-                 if embargo == "pendant" else
-                 " Corrigez la date (AAAA-MM-JJ) pour que l'outil puisse la lire."
-                 if embargo == "illisible" else
-                 # Ne pas présenter le cas NORMAL comme un manque (précision du
-                 # 2026-08-28) : un dépôt Nakala reçoit d'abord le manifeste et ses
-                 # Canvas, pas les planches. « Déclarez-la public » en conclusion sèche
-                 # ferait de la forme attendue une déficience à corriger.
-                 " C'est la forme habituelle d'un dépôt, qui porte le manifeste et ses "
-                 "Canvas ; pour y joindre les scans, la collection doit être déclarée "
-                 "`public`."),
-              file=sys.stderr)
+    reg = regime(bloc)
+    if _rendre(diagnostic_regime(bloc, reg, verbatim=args.verbatim)):
+        return 2
 
     if not args.out_dir:
         if not albums:

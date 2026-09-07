@@ -25,7 +25,19 @@ import zipfile
 
 import pytest
 
-from conftest import ADMIN
+from conftest import ADMIN, direct_query
+
+
+def _acces(db_path, collection_id, principal, niveau, genre="utilisateur"):
+    """Pose un accès directement en base (le décor, pas le geste testé)."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("INSERT OR REPLACE INTO collection_acces "
+                     "(collection_id, genre, principal, niveau) VALUES (?, ?, ?, ?)",
+                     (collection_id, genre, principal, niveau))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # --------------------------------------------------------------------------- #
@@ -258,3 +270,112 @@ def test_un_format_inconnu_est_refuse_avant_tout_calcul(client, chemin, mauvais,
     r = client.get(f"/api/collections/{col['id']}/depot/{chemin}?format={mauvais}",
                    headers=ADMIN)
     assert r.status_code == 422, r.text
+
+
+# --------------------------------------------------------------------------- #
+# 4. Le dépôt ShareDocs — même artefact, autre destination, autre droit
+# --------------------------------------------------------------------------- #
+def _capter_upload(monkeypatch):
+    """Remplace l'envoi WebDAV et retient ce qui serait parti."""
+    import pipeline.sharedocs as sd
+    capte = {}
+    monkeypatch.setattr(
+        sd, "upload",
+        lambda chemin, data, *, principal, compte=None:
+            capte.update(chemin=chemin, data=data, principal=principal, compte=compte)
+            or {"chemin": chemin, "compte": "instance", "user": "u"})
+    return capte
+
+
+def test_le_depot_envoie_L_ARTEFACT_et_le_journalise(client, db_path, monkeypatch,
+                                                     derriere_proxy):
+    """Le dépôt et le téléchargement fabriquent le MÊME octet.
+
+    C'est la raison d'être de `routes.depot.produire` : deux fabrications séparées
+    donneraient deux artefacts au même nom et au contenu différent, et un entrepôt garde
+    les deux versions sans que rien ne dise laquelle a été déposée.
+    """
+    capte = _capter_upload(monkeypatch)
+    col = _collection(client, "Corpus")
+    r = client.post(f"/api/collections/{col['id']}/depot/deposer",
+                    json={"dossier": "Projets/BD", "quoi": "description",
+                          "format": "json"}, headers=ADMIN)
+    assert r.status_code == 200, r.text
+    assert capte["chemin"].startswith("Projets/BD/depot-description-c")
+    assert capte["chemin"].endswith(".json")
+
+    # Le même artefact que la voie GET, au nom et à l'horodatage près.
+    g = client.get(f"/api/collections/{col['id']}/depot/description", headers=ADMIN)
+    assert json.loads(capte["data"]) == json.loads(g.content)
+
+    # SHARE-1 — l'acte est tracé, et il distingue la personne du compte employé.
+    lignes = direct_query(db_path,
+                          "SELECT type, cible_table, apres FROM evenement "
+                          "WHERE cible_table = 'sharedocs'")
+    assert len(lignes) == 1, lignes
+    apres = json.loads(lignes[0]["apres"])
+    assert apres["export"] == "description" and apres["collection_id"] == col["id"]
+    assert apres["compte"] == "instance"
+
+
+def test_deposer_demande_de_POUVOIR_ADMINISTRER_la_collection(client, monkeypatch,
+                                                              db_path, derriere_proxy):
+    """Télécharger, c'est emporter pour soi ce qu'on lit déjà ; déposer, c'est écrire dans
+    un dossier partagé dont l'application ne contrôle pas l'audience.
+
+    L'asymétrie est le cœur de l'arbitrage : la MÊME personne, sur la MÊME collection,
+    obtient le fichier et se voit refuser le dépôt. Un test qui ne vérifierait que le
+    refus passerait aussi sur une garde posée trop haut — celle qui fermerait les deux,
+    c'est-à-dire l'erreur d'AUTH-4.
+    """
+    _capter_upload(monkeypatch)
+    col = _collection(client, "Corpus")          # créée par `decor`, qui en est propriétaire
+    _acces(db_path, col["id"], "lectrice", "lecture")
+    moi = {"Remote-User": "lectrice"}
+
+    lu = client.get(f"/api/collections/{col['id']}/depot/description", headers=moi)
+    assert lu.status_code == 200, "lire la collection doit suffire à télécharger"
+
+    depose = client.post(f"/api/collections/{col['id']}/depot/deposer",
+                         json={"quoi": "description", "format": "json"}, headers=moi)
+    assert depose.status_code == 403, depose.text
+
+
+def test_un_refus_de_ShareDocs_est_rendu_TEL_QUEL(client, monkeypatch, derriere_proxy):
+    """400 en portant le message du serveur WebDAV : « Écriture refusée (403) » se corrige
+    chez Huma-Num, pas dans l'application."""
+    import pipeline.sharedocs as sd
+
+    def boom(chemin, data, *, principal, compte=None):
+        raise sd.ShareDocsError("Écriture refusée (403)")
+
+    monkeypatch.setattr(sd, "upload", boom)
+    col = _collection(client, "Corpus")
+    r = client.post(f"/api/collections/{col['id']}/depot/deposer",
+                    json={"quoi": "description", "format": "json"}, headers=ADMIN)
+    assert r.status_code == 400
+    assert "403" in r.json()["detail"]
+
+
+
+@pytest.mark.parametrize("quoi,mauvais", [("description", "xlsx"), ("metadonnees", "csv"),
+                                          ("iiif", "json")])
+def test_le_depot_refuse_un_format_qui_n_existe_pas_pour_cet_export(client, monkeypatch,
+                                                                    quoi, mauvais,
+                                                                    derriere_proxy):
+    """Le corps JSON du dépôt n'a pas le `Query(pattern=…)` des routes GET, et le
+    dispatch retombait sur sa dernière branche.
+
+    Concrètement : `{"quoi": "metadonnees", "format": "csv"}` déposait un CLASSEUR XLSX,
+    au nom cohérent avec son contenu et sans rapport avec la demande. Une
+    réinterprétation silencieuse est pire qu'un refus — le fichier a l'air bon, et c'est
+    l'entrepôt qui découvre l'écart.
+    """
+    capte = _capter_upload(monkeypatch)
+    col = _collection(client, "Corpus")
+    r = client.post(f"/api/collections/{col['id']}/depot/deposer",
+                    json={"quoi": quoi, "format": mauvais,
+                          "base_url": "https://i.example/iiif"}, headers=ADMIN)
+    assert r.status_code == 422, r.text
+    assert mauvais in r.json()["detail"]
+    assert not capte, "un artefact est parti malgré le refus"

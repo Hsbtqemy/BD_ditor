@@ -42,10 +42,12 @@ si un nom repassait, il échouerait ici sans qu'on ait rien à déclarer.
 """
 from __future__ import annotations
 
+import io
 import json
 import os
 import sqlite3
 import sys
+import zipfile
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -67,6 +69,7 @@ if _TOOLS not in sys.path:
 
 import description_collection      # noqa: E402  (cf. l'insertion de chemin ci-dessus)
 import metadonnees_collection      # noqa: E402
+import iiif_manifest               # noqa: E402
 
 router = APIRouter()
 
@@ -78,8 +81,8 @@ _TYPES = {
 }
 
 
-def _telechargement(data: bytes, quoi: str, collection_id: int, ext: str) -> Response:
-    """La pièce jointe, nommée et DATÉE.
+def _nom_fichier(quoi: str, collection_id: int, ext: str) -> str:
+    """Le nom de la pièce, DATÉ.
 
     Datée pour la même raison que le manifeste IIIF l'est depuis DROIT-1 : ce qui part
     d'ici est figé, et deux exports de la même collection à un an d'intervalle seraient
@@ -92,8 +95,13 @@ def _telechargement(data: bytes, quoi: str, collection_id: int, ext: str) -> Res
     `Content-Disposition` n'est pas l'endroit où découvrir lequel.
     """
     horo = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    nom = f"depot-{quoi}-c{collection_id}-{horo}.{ext}"
-    return Response(data, media_type=_TYPES[ext],
+    return f"depot-{quoi}-c{collection_id}-{horo}.{ext}"
+
+
+def _piece_jointe(fabrique) -> Response:
+    """Emballe le résultat de `produire` en pièce jointe téléchargeable."""
+    nom, media_type, data = fabrique
+    return Response(data, media_type=media_type,
                     headers={"Content-Disposition": f'attachment; filename="{nom}"'})
 
 
@@ -104,6 +112,52 @@ def _json_bytes(obj) -> bytes:
     `\\uXXXX` rendraient les deux gestes pénibles pour un corpus francophone.
     """
     return (json.dumps(obj, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+# Ce que chaque export accepte. Les routes GET le redisent dans leur `Query(pattern=…)`,
+# qui est ce que /docs publie ; le DÉPÔT ShareDocs, lui, reçoit un corps JSON libre et
+# n'avait rien pour le contredire. Sans cette table, `{"quoi": "metadonnees", "format":
+# "csv"}` tombait dans la dernière branche de `_faire_metadonnees` et déposait un CLASSEUR
+# XLSX — nom et contenu cohérents entre eux, et sans rapport avec la demande. Une
+# réinterprétation silencieuse est pire qu'un refus : le fichier a l'air bon.
+_FORMATS = {
+    "description": ("json", "csv"),
+    "metadonnees": ("json", "zip", "xlsx"),
+    "iiif": ("zip",),
+}
+
+
+def produire(conn, portee, collection_id: int, quoi: str, format: str, *,
+             verbatim: bool = False, base_url: str = "") -> tuple:
+    """Fabrique UN artefact de dépôt. Rend `(nom_de_fichier, type_mime, octets)`.
+
+    Point de passage unique des DEUX voies de sortie : le téléchargement, juste en
+    dessous, et le dépôt ShareDocs — qui vit dans `main.py`, parce que SHARE-1 y épingle
+    la résolution du compte (`_principal_sharedocs`) et qu'un module de routes ne remonte
+    jamais vers `main`. Les laisser fabriquer chacun de leur côté donnerait deux artefacts
+    au même nom et au contenu différent, ce qu'un entrepôt ne pardonne pas : il garde les
+    deux versions, et plus rien ne dit laquelle a été déposée.
+
+    La garde est ici, donc commune aux deux voies : LIRE la collection. Ce que le dépôt
+    ShareDocs exige en plus lui appartient et se pose là-bas — envoyer dans un dossier
+    partagé que l'application ne contrôle pas n'est pas le même geste que télécharger
+    pour soi.
+    """
+    if quoi not in _FORMATS:
+        raise HTTPException(422, f"Export « {quoi} » inconnu (attendu : "
+                                 f"{', '.join(_FORMATS)}).")
+    if format not in _FORMATS[quoi]:
+        raise HTTPException(422, f"Le format « {format} » n'existe pas pour l'export "
+                                 f"« {quoi} » (attendu : {', '.join(_FORMATS[quoi])}).")
+
+    _get_collection(conn, portee, collection_id)
+    if quoi == "description":
+        data, ext = _faire_description(conn, collection_id, format)
+    elif quoi == "metadonnees":
+        data, ext = _faire_metadonnees(conn, collection_id, format, verbatim)
+    else:
+        data, ext = _faire_iiif(conn, collection_id, base_url, verbatim), "zip"
+    return _nom_fichier(quoi, collection_id, ext), _TYPES[ext], data
 
 
 @router.get("/api/collections/{collection_id}/depot/description")
@@ -119,12 +173,14 @@ def depot_description(collection_id: int,
     est ce qui fait lire les accents à Excel, et un chercheur qui télécharge un CSV
     l'ouvre dans un tableur.
     """
-    _get_collection(conn, portee, collection_id)
+    return _piece_jointe(produire(conn, portee, collection_id, "description", format))
+
+
+def _faire_description(conn, collection_id: int, format: str) -> tuple:
     rollup, agg = description_collection.collecter(conn, collection_id=collection_id)
     if format == "csv":
-        texte = description_collection.catalogue_csv(agg)
-        return _telechargement(texte.encode("utf-8-sig"), "description", collection_id, "csv")
-    return _telechargement(_json_bytes(rollup), "description", collection_id, "json")
+        return description_collection.catalogue_csv(agg).encode("utf-8-sig"), "csv"
+    return _json_bytes(rollup), "json"
 
 
 @router.get("/api/collections/{collection_id}/depot/metadonnees")
@@ -150,18 +206,20 @@ def depot_metadonnees(collection_id: int,
     indisponible n'est pas une erreur de l'appelant — les deux autres formats marchent, et
     lui dire lequel installer est la seule chose utile.
     """
-    _get_collection(conn, portee, collection_id)
+    return _piece_jointe(produire(conn, portee, collection_id, "metadonnees", format,
+                                 verbatim=verbatim))
 
+
+def _faire_metadonnees(conn, collection_id: int, format: str, verbatim: bool) -> tuple:
     if format == "json":
         arbre = metadonnees_collection.collecter(conn, verbatim=verbatim,
                                                  collection_id=collection_id)
-        return _telechargement(_json_bytes(arbre), "metadonnees", collection_id, "json")
+        return _json_bytes(arbre), "json"
 
     tbls = metadonnees_collection.tables(conn, verbatim=verbatim,
                                          collection_id=collection_id)
     if format == "zip":
-        return _telechargement(metadonnees_collection.zip_tables(tbls),
-                               "metadonnees", collection_id, "zip")
+        return metadonnees_collection.zip_tables(tbls), "zip"
 
     # XLSX — le classeur porte en plus l'arbre et la fiche descriptive, comme `--xlsx`.
     arbre = metadonnees_collection.collecter(conn, verbatim=verbatim,
@@ -169,7 +227,98 @@ def depot_metadonnees(collection_id: int,
     fiche = description_collection.collecter(
         conn, collection_id=collection_id)[0]["description_collection"]
     try:
-        classeur = metadonnees_collection.xlsx_tables(tbls, arbre, fiche)
+        return metadonnees_collection.xlsx_tables(tbls, arbre, fiche), "xlsx"
     except metadonnees_collection.ExportIndisponible as exc:
         raise HTTPException(503, str(exc))
-    return _telechargement(classeur, "metadonnees", collection_id, "xlsx")
+
+
+# --------------------------------------------------------------------------- #
+# Manifeste IIIF — le seul des trois qui PUBLIE
+# --------------------------------------------------------------------------- #
+_REFUS_HTTP = {
+    # Un `base_url` inutilisable est une erreur d'appelant : 422, et le message dit quoi
+    # corriger.
+    "placeholder": 422,
+    # Le verbatim hors régime n'est pas une erreur de saisie : la demande est bien formée
+    # et c'est le DROIT qui manque. 403, et le message nomme la cause exacte — « pas
+    # publique » et « embargo en cours » ne se corrigent pas de la même façon.
+    "verbatim_hors_regime": 403,
+}
+
+
+@router.get("/api/collections/{collection_id}/depot/iiif")
+def depot_iiif(collection_id: int,
+               base_url: str = Query(..., min_length=1),
+               verbatim: bool = False,
+               conn: sqlite3.Connection = Depends(db),
+               portee: autorisation.Portee = Depends(portee_courante)):
+    """Les manifests IIIF Presentation 3.0 de la collection, en archive.
+
+    C'est le seul des trois artefacts qui serve à PUBLIER, et il porte donc la seule
+    question de droits du module : DROIT-1 fait mordre `statut_diffusion` à la sortie, et
+    `date_embargo` peut retenir davantage. La règle n'est pas rejouée ici — elle vit dans
+    `iiif_manifest.diagnostic_regime`, que la CLI et cette route consultent toutes deux.
+
+    **`base_url` est OBLIGATOIRE, et l'application ne peut pas le deviner.** Elle sert bien
+    `/derivatives`, mais par une route cloisonnée depuis AUTH-2 : s'y désigner elle-même
+    fabriquerait un manifeste dont chaque image répond 404 chez le destinataire. Il n'y a
+    pas de défaut raisonnable, seulement un défaut plausible — et c'est le pire des deux.
+
+    **Les avertissements voyagent DANS l'archive** (`AVERTISSEMENTS.txt`). La CLI les
+    écrit sur `stderr`, où un humain les lit au moment où il tape la commande ; un
+    téléchargement n'a personne devant lui. Les perdre serait le vrai risque : le message
+    « manifeste SANS IMAGES » est ce qui distingue un dépôt qui RETIENT ses scans d'un
+    dépôt qui les a OUBLIÉS, et c'est exactement la confusion que `requiredStatement`
+    existe pour empêcher côté visionneuse.
+    """
+    return _piece_jointe(produire(conn, portee, collection_id, "iiif", "zip",
+                                 verbatim=verbatim, base_url=base_url))
+
+
+def _faire_iiif(conn, collection_id: int, base_url: str, verbatim: bool) -> bytes:
+    # L'ordre compte, et il est celui de la CLI : un `base_url` inutilisable se signale
+    # avant qu'on parle de régime, sinon le seul message corrigeable se noie.
+    constats = iiif_manifest.diagnostic_base_url(base_url, remis=True)
+    _refuser(constats)
+
+    arbre = metadonnees_collection.collecter(conn, verbatim=verbatim,
+                                             collection_id=collection_id)
+    bloc = arbre["metadonnees_collection"].get("collection")
+    albums = arbre["metadonnees_collection"]["albums"]
+    reg = iiif_manifest.regime(bloc)
+    constats += iiif_manifest.diagnostic_regime(bloc, reg, verbatim=verbatim)
+    _refuser(constats)
+
+    base = base_url.rstrip("/")
+    nom = bloc["nom"] if bloc else None
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("collection.json",
+                   _json_bytes(iiif_manifest.collection(albums, base, nom)))
+        for a in albums:
+            z.writestr(f"manifest-a{a['id']}.json",
+                       _json_bytes(iiif_manifest.manifeste_album(a, base, verbatim, reg)))
+        if constats:
+            z.writestr("AVERTISSEMENTS.txt", _avertissements(constats).encode("utf-8"))
+    return buf.getvalue()
+
+
+def _refuser(constats) -> None:
+    """Traduit un constat de REFUS en réponse HTTP, en gardant le message de l'outil.
+
+    Le message est repris au mot près plutôt que reformulé : c'est lui qui distingue les
+    quatre causes possibles d'un manifeste amputé, et les redire ici les ferait diverger
+    au premier ajustement.
+    """
+    for c in constats:
+        if c.gravite == "refus":
+            raise HTTPException(_REFUS_HTTP.get(c.code, 422), c.message)
+
+
+def _avertissements(constats) -> str:
+    """Le fichier qui accompagne l'archive. Daté, pour la même raison que l'archive l'est."""
+    quand = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    lignes = [f"Constats émis à la génération de cette archive ({quand}).", ""]
+    lignes += [f"ATTENTION — {c.message}" for c in constats if c.gravite == "attention"]
+    return "\n".join(lignes) + "\n"
+

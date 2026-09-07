@@ -716,6 +716,19 @@ class DeposerIn(BaseModel):
     compte: Optional[str] = None
 
 
+class DeposerExportIn(DeposerIn):
+    """Dépôt ShareDocs d'un export de dépôt (EXP-1). Hérite du dossier et du compte.
+
+    Les quatre champs qui s'ajoutent sont ceux de la requête GET équivalente : c'est le
+    même artefact, produit par le même `routes.depot.produire`, et seule sa destination
+    change.
+    """
+    quoi: str                       # description | metadonnees | iiif
+    format: str = "json"
+    verbatim: bool = False
+    base_url: str = ""
+
+
 class JobIn(BaseModel):
     passes: list[str] = Field(default_factory=list)        # segmenter / bulles / ocr
     album_ids: list[int] = Field(default_factory=list)

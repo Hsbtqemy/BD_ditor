@@ -197,8 +197,10 @@ Pour citer une image dans un article, utilisez plutôt le bouton **`＋ Figure`*
 région : il constitue un lot de figures, exporté en archive avec, pour chacune, le crop, sa
 légende (référence de citation, responsabilité, édition, licence) et sa notice.
 
-Les exports de **dépôt** — description de collection, notices, manifestes IIIF — n'ont pas
-encore de bouton : voir §5.
+Les exports de **dépôt** — fiche de description, enregistrements, manifestes IIIF — se
+prennent ailleurs, parce qu'ils portent sur une **collection** et non sur un album :
+*Administration → 👥 Collections*, en dépliant la collection voulue (§4). Les **notices**
+Dublin Core / DataCite et la **provenance** restent, elles, en ligne de commande (§5).
 
 ---
 
@@ -238,6 +240,37 @@ d'accès (cf. §2).
   miroir d'affichage — l'application n'a pas d'annuaire (cf. [`modele-et-droits.md`](modele-et-droits.md) §3).
 - **🩺 Moteurs** : quels moteurs sont présents, et *Éprouver les moteurs* pour vérifier qu'ils
   démarrent réellement.
+
+#### Exporter une collection pour un dépôt
+
+Dans **Administration → 👥 Collections**, dépliez une collection : le bloc **Export de
+dépôt** produit, sans passer par la ligne de commande, les trois artefacts qu'un entrepôt
+attend.
+
+| Ce que vous obtenez | À quoi ça sert | Formats |
+|---|---|---|
+| **Fiche de description** | *quels champs employez-vous, et avec quelle couverture ?* | JSON, CSV |
+| **Enregistrements** | les métadonnées elles-mêmes, entité par entité | JSON, CSV (zip), XLSX |
+| **Manifeste IIIF** | ce qu'on dépose chez Nakala : les Canvas, et les images si le régime le permet | archive |
+
+Trois choses à savoir avant de cliquer.
+
+- **L'export porte sur CETTE collection**, jamais sur le corpus entier — c'est ce qui rend
+  la fiche citable, et ce qui garantit que rien d'un autre corpus ne s'y glisse.
+- **Le manifeste IIIF demande l'adresse du serveur qui servira les images.** L'application
+  ne peut pas la deviner : elle sert bien les images, mais seulement à ceux qu'elle a admis.
+  S'y désigner elle-même produirait un manifeste dont chaque image serait introuvable chez
+  le destinataire.
+- **Un manifeste sans images n'est pas un échec.** C'est la forme habituelle d'un dépôt,
+  qui porte les Canvas et l'enrichissement. L'archive contient alors un fichier
+  `AVERTISSEMENTS.txt` qui dit *pourquoi* les scans sont retenus — collection non déclarée
+  publique, embargo en cours, date illisible — et les trois ne se corrigent pas de la même
+  façon.
+
+Un **propriétaire** de la collection peut en plus **déposer** l'artefact sur ShareDocs
+plutôt que de le télécharger. Ce droit-là est plus étroit que le téléchargement, et c'est
+volontaire : emporter un fichier pour soi n'est pas l'écrire dans un dossier partagé dont
+l'application ne contrôle pas l'audience.
 
 ### Atelier (`/`)
 
@@ -291,7 +324,6 @@ Elles sont documentées ; elles ne sont simplement pas dans l'interface.
 | Opération | Où | Documentation |
 |---|---|---|
 | Régime de diffusion, licence, base légale, embargo, responsables d'une collection | `tools/gerer_collections.py` | [`export-metadonnees.md`](export-metadonnees.md) |
-| Description de collection, enregistrements CSV/XLSX/JSON, manifestes IIIF | `tools/` | [`export-metadonnees.md`](export-metadonnees.md) |
 | Notices Dublin Core / DataCite, provenance PROV-O / TEI | `tools/` | [`crosswalk-depot.md`](crosswalk-depot.md), [`provenance-audit.md`](provenance-audit.md) |
 | Rapports d'accord (modèle↔humain, inter-annotateurs) en CSV/JSON | `tools/` | [`rapport-accord.md`](rapport-accord.md), [`accord-inter.md`](accord-inter.md) |
 | Réindexer tout le corpus après un changement de modèle linguistique | `tools/reindex_nlp.py` | [`correction-grammaticale.md`](correction-grammaticale.md) |

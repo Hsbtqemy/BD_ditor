@@ -378,6 +378,13 @@ QUETES = {
     # elles savent en parler. On les interroge sans le filtre — c'est le cas ordinaire.
     "/api/analyse/concordance": "lemme=otage",
     "/api/analyse/croisement": "axe_x=pos&axe_y=provenance",
+    # EXP-1 — `base_url` n'a AUCUN défaut, et c'est délibéré : l'application ne peut pas
+    # deviner quel serveur servira les images, et s'y désigner elle-même fabriquerait un
+    # manifeste dont chaque image répond 404 chez le destinataire. Sans valeur ici, la
+    # route répondrait 422 et quitterait le balayage — or c'est l'une des rares surfaces
+    # qui publie les métadonnées d'album, et la SEULE destinée à sortir de l'instance.
+    "/api/collections/{collection_id}/depot/iiif":
+        "base_url=https://images.example.org/iiif",
 }
 
 
