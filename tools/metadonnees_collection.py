@@ -581,6 +581,45 @@ _BOM = "\ufeff"          # BOM UTF-8 : permet à Excel de lire les accents
 _XLSX_INJECT = ("=", "+", "-", "@")
 
 
+class ExportIndisponible(RuntimeError):
+    """Un format demandé exige une dépendance qui n'est pas installée.
+
+    Ce cas levait un `SystemExit` au fond de `_ecrire_xlsx` — parfait tant que le seul
+    appelant était une CLI, et intenable dès qu'une route partage le même cœur (EXP-1) :
+    `SystemExit` n'hérite pas d'`Exception`, il traverse donc les `except Exception` d'un
+    serveur sans être attrapé. La CLI en refait un `SystemExit` avec le même message, son
+    comportement ne bouge pas ; la route en fait un 503 qui nomme la dépendance.
+    """
+
+
+def zip_tables(tbls: dict) -> bytes:
+    """Les tables CSV réunies dans une archive zip, EN MÉMOIRE.
+
+    Extraite du `main()` le 2026-09-07 (EXP-1). La CLI l'écrit ensuite sur disque, la
+    route de dépôt la renvoie telle quelle : c'est la SEULE différence entre les deux
+    appelants, et c'est ce que la fiche exige — aucune logique d'export réécrite côté
+    serveur.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for nom, (cols, rows) in tbls.items():
+            t = io.StringIO()
+            _ecrire_table(t, cols, rows)
+            z.writestr(f"{nom}.csv", _BOM + t.getvalue())   # BOM UTF-8 (Excel)
+    return buf.getvalue()
+
+
+def xlsx_tables(tbls: dict, arbre: dict, fiche: dict) -> bytes:
+    """Le classeur XLSX en mémoire. Même remarque que `zip_tables`.
+
+    Rien n'est réécrit : `openpyxl.Workbook.save` accepte un flux binaire aussi bien
+    qu'un chemin, donc `_ecrire_xlsx` sert les deux appelants sans changer d'un iota.
+    """
+    buf = io.BytesIO()
+    _ecrire_xlsx(tbls, arbre, fiche, buf)
+    return buf.getvalue()
+
+
 def _neutraliser_ligne(ws, num_ligne):
     """Anti-injection : force en TEXTE toute valeur de donnée commençant par = + - @
     (sinon Excel/openpyxl l'interprète en formule). Ne touche pas aux formules qu'on
@@ -590,18 +629,21 @@ def _neutraliser_ligne(ws, num_ligne):
             cell.data_type = "s"
 
 
-def _ecrire_xlsx(tbls: dict, arbre: dict, fiche: dict, chemin: str) -> None:
+def _ecrire_xlsx(tbls: dict, arbre: dict, fiche: dict, sortie) -> None:
     """Classeur XLSX. Onglets : `fiche` (roll-up descriptif) · `arbre` (hiérarchie
     repliable + liens vers le détail) · `_tables` (index) · une table par niveau.
     En-tête gelé/gras, filtres. `openpyxl` requis (import protégé : hors noyau —
-    JSON/CSV marchent sans)."""
+    JSON/CSV marchent sans).
+
+    `sortie` est un chemin OU un flux binaire — `Workbook.save` accepte les deux, ce qui
+    permet à `xlsx_tables` de produire le même classeur sans fichier temporaire."""
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font
         from openpyxl.utils import get_column_letter
     except ImportError:
-        raise SystemExit("XLSX demandé mais 'openpyxl' est absent "
-                         "(pip install -r requirements-export.txt).")
+        raise ExportIndisponible("XLSX demandé mais 'openpyxl' est absent "
+                                 "(pip install -r requirements-export.txt).")
     gras = Font(bold=True)
     lien = Font(color="1155CC", underline="single")
     wb = Workbook()
@@ -734,7 +776,7 @@ def _ecrire_xlsx(tbls: dict, arbre: dict, fiche: dict, chemin: str) -> None:
 
     # --- ordre des onglets : fiche, qualité, arbre, index, puis les tables --- #
     wb._sheets = [fs] + ([qs] if qs is not None else []) + [arb, idx] + detail
-    wb.save(chemin)
+    wb.save(sortie)
 
 
 # --------------------------------------------------------------------------- #
@@ -797,15 +839,17 @@ def main(argv=None) -> int:
         print(f"Tables CSV écrites : {args.csv_dir}", file=sys.stderr)
 
     if args.zip:
-        with zipfile.ZipFile(args.zip, "w", zipfile.ZIP_DEFLATED) as z:
-            for nom, (cols, rows) in tbls.items():
-                buf = io.StringIO()
-                _ecrire_table(buf, cols, rows)
-                z.writestr(f"{nom}.csv", _BOM + buf.getvalue())   # BOM UTF-8 (Excel)
+        with open(args.zip, "wb") as f:
+            f.write(zip_tables(tbls))
         print(f"Archive écrite : {args.zip}", file=sys.stderr)
 
     if args.xlsx:
-        _ecrire_xlsx(tbls, arbre, fiche, args.xlsx)
+        try:
+            classeur = xlsx_tables(tbls, arbre, fiche)
+        except ExportIndisponible as exc:
+            raise SystemExit(str(exc))     # message et code de sortie inchangés
+        with open(args.xlsx, "wb") as f:
+            f.write(classeur)
         print(f"Classeur XLSX écrit : {args.xlsx}", file=sys.stderr)
     return 0
 

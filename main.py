@@ -61,6 +61,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
 from routes import analyse as _routes_analyse
 from routes import annulation as _routes_annulation
 from routes import collections as _routes_collections
+from routes import depot as _routes_depot
 from routes import figures as _routes_figures
 from routes import lexique as _routes_lexique
 from routes import personnages as _routes_personnages
@@ -124,6 +125,7 @@ app.include_router(_routes_figures.router)
 app.include_router(_routes_personnages.router)
 app.include_router(_routes_annulation.router)
 app.include_router(_routes_collections.router)
+app.include_router(_routes_depot.router)
 app.include_router(_routes_lexique.router)
 
 
