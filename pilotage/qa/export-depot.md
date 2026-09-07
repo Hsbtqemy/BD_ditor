@@ -89,7 +89,8 @@ inoffensif ailleurs.
 - [ ] Propriétaire, la ligne de dépôt propose les six artefacts, chacun d'un libellé distinct et lisible
 - [ ] Un dépôt réussi affiche le chemin ET le compte Huma-Num employé
 - [ ] Le compte affiché est bien celui attendu — le sien si une session personnelle est ouverte, `instance` sinon
-- [ ] Un dossier inexistant ou en lecture seule affiche le message renvoyé par ShareDocs, pas « échec »
+- [ ] Un dossier INEXISTANT affiche un message qui NOMME le dossier en cause, dit que le dépôt ne crée aucun dossier manquant, et rappelle qu'on attend un chemin relatif — pas un « 404 » nu
+- [ ] Un dossier en LECTURE SEULE affiche le message de ShareDocs sur le dossier non inscriptible, distinct du précédent
 
 ### Étroit, clavier, thèmes
 
