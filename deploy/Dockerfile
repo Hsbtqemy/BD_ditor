@@ -114,7 +114,14 @@ ENV BD_DATA_DIR=/tmp/bd-test-data \
     HOME=/tmp/bd-test-home \
     PYTHONUNBUFFERED=1
 
-CMD ["python", "-m", "pytest", "-q"]
+# `pytest` NU, sans `-q` : `pytest.ini` en porte déjà un dans `addopts`, et le second en
+# ferait `-qq` — qui SUPPRIME la ligne de bilan. Mesuré le 2026-09-07 : `pytest -q` sort
+# les points et rien d'autre, `pytest` nu sort « N passed ». L'image resterait donc muette
+# sur le NOMBRE de tests exécutés, ce qui est précisément ce qu'on vient lui demander :
+# QA-5 fait de cette image l'artefact de vérité, et « 833 verts » et « 12 verts, 821 non
+# collectés » s'y affichaient à l'identique. Une suite qui ne dit pas ce qu'elle a mesuré
+# approuve sans avoir rien vu (QA-4).
+CMD ["python", "-m", "pytest"]
 
 # --------------------------------------------------------------------------- #
 # runtime — l'image LIVRÉE  (étape par défaut : la dernière du fichier)
