@@ -143,6 +143,75 @@ def test_aucune_surface_ne_perd_de_contenu(page, decor, surface, largeur):
         f"{surface} à {largeur} px — contenu INATTEIGNABLE (1.4.10) :\n{_decrire(perdus)}")
 
 
+# ── Le bloc que la page ne RENDAIT pas, donc que rien ne mesurait (UX-10, 2026-09-07) ──
+#
+# Ce fichier s'avertit lui-même vingt lignes plus haut, à propos de la Recherche : « ce que
+# la page ne rend pas, l'instrument ne le voit pas ». C'est arrivé une seconde fois, et
+# cette fois sur une surface parfaitement déclarée.
+#
+# `test_aucune_surface_ne_perd_de_contenu` visite bien `/administration` — la déclaration
+# est juste, la garde d'UX-10 est verte à raison. Mais `decor` prend `live_server` SANS
+# `BD_AUTH_PROXY` : aucune identité n'atteint l'UPSERT de `main.py`, `utilisateur` reste
+# vide, `/api/comptes` répond `{"comptes": []}`, et `#comptes-bloc` s'affiche **sans une
+# seule ligne**. La table à SIX colonnes n'a donc jamais été rendue à 320 px, ni mesurée.
+# Trouvée à l'œil par une session voisine en rejouant la QA des petites largeurs.
+#
+# La garde d'UX-10 ne pouvait pas le dire : elle vérifie qu'une SURFACE est déclarée et
+# visitée, jamais qu'un BLOC de cette surface ait quelque chose à montrer une fois qu'on y
+# est. « Auditée » et « rendue » sont deux choses, et le vide passe tous les contrôles.
+#
+# Un test à PART plutôt qu'un décor commun, et c'est un arbitrage : ce bloc n'existe que
+# derrière le proxy, or faire passer tout l'audit derrière changerait ce que les cinq
+# surfaces mesurent — la portée, les bandeaux, les gardes d'écran. On paie un serveur de
+# plus pour ne pas déplacer la mesure des autres.
+COMPTES_DECOR = [("alice", "Alice Marchand"),
+                 ("bruno", "Bruno Nguyen"),
+                 ("camille", "Camille Ferreira-Lopes")]
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_la_table_des_comptes_ne_perd_pas_de_contenu(page, live_server):
+    """La vue des comptes (AUTH-7) tient à 320 px, et on prouve d'abord qu'elle est LÀ.
+
+    Le plancher sur le nombre de lignes n'est pas une précaution de style : sans lui, ce
+    test rendrait exactement le même vert que celui qu'il complète, et pour la même
+    raison — une table vide n'a aucun élément hors champ. C'est la leçon d'ARCH-2 appliquée
+    au DÉCOR plutôt qu'à l'inventaire : un instrument qui ne peut rien voir ne dit pas
+    « je ne vois rien », il dit « tout va bien ».
+    """
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30)
+    try:
+        for login, nom in COMPTES_DECOR:
+            r = c.get("/api/moi", headers={"Remote-User": login, "Remote-Name": nom,
+                                           "Remote-Groups": "bd-admins"})
+            assert r.status_code == 200, r.text
+    finally:
+        c.close()
+
+    page.set_extra_http_headers({"Remote-User": "decor", "Remote-Name": "Décor Reflow",
+                                 "Remote-Groups": "bd-admins"})
+    page.set_viewport_size({"width": 320, "height": 900})
+    page.goto(live_server + "/administration", wait_until="networkidle")
+    # On attend la TABLE et non le bloc : le bloc existe `hidden` dans le gabarit, la table
+    # n'est rendue que si la route a répondu avec des lignes. C'est elle qu'on vient
+    # mesurer, donc c'est elle dont l'apparition prouve que la mesure aura un objet.
+    page.wait_for_selector("#comptes-bloc table.comptes-table", timeout=5000)
+
+    lignes = page.locator("#comptes-bloc table.comptes-table tbody tr").count()
+    assert lignes >= len(COMPTES_DECOR), (
+        f"{lignes} ligne(s) de comptes pour {len(COMPTES_DECOR)} identités semées : le "
+        "décor ne peuple plus `utilisateur`, et l'assertion suivante mesurerait une table "
+        "absente — le défaut même que ce test existe pour fermer")
+
+    r = page.evaluate(SONDE)
+    perdus = [x for x in r["coupables"] if not x["cadre"] and x["id"] not in EXEMPTIONS]
+    assert not perdus, (
+        "La vue des comptes perd du contenu à 320 px (1.4.10) :\n" + _decrire(perdus)
+        + "\n\nLes tableaux larges du dépôt vivent dans un `.table-cadre` "
+          "(`tabindex=\"0\" role=\"region\"`) : le 1.4.10 tolère le défilement horizontal "
+          "d'un contenu à deux dimensions, à condition qu'il soit atteignable au clavier.")
+
+
 def test_la_surface_de_pan_reste_bornee_et_commandee(page, decor):
     """Ce que l'exemption de `#canvas` doit continuer de mériter.
 

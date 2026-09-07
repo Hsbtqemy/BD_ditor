@@ -278,9 +278,6 @@ async function loadCollections() {
     return;
   }
   cols.forEach((c) => body.appendChild(colItem(c)));
-  // Après la liste : elle sert à DÉCIDER d'un accès, et la vue des comptes est ce qui
-  // renseigne la décision. Son échec ne doit pas emporter le panneau.
-  loadComptes();
 }
 
 /* --- Vue des comptes (AUTH-7) ---------------------------------------------------
@@ -448,8 +445,26 @@ async function santeEprouver() {
 
 function setup() {
   // Pas de modale à ouvrir : les trois blocs sont la page. On charge donc d'emblée —
-  // deux requêtes, dont l'une (`/api/comptes`) peut légitimement être refusée.
+  // trois requêtes, dont l'une (`/api/comptes`) peut légitimement être refusée.
+  //
+  // `loadComptes()` s'appelle ICI, et non depuis `loadCollections()` où elle a vécu
+  // jusqu'au 2026-09-07. Elle y était nichée APRÈS le `return` du cas « aucune
+  // collection », si bien qu'une portée sans collection escamotait la vue des comptes —
+  // un bloc masqué par une condition qui ne le concerne pas, c'est-à-dire très exactement
+  // le motif d'AUTH-4 que cette page existe pour fermer. Mesuré : sans collection,
+  // `/api/comptes` n'était JAMAIS demandé par le navigateur ; avec, la table se rendait.
+  //
+  // Le déménagement n'a pas créé le défaut, il l'a rendu ATTEIGNABLE : dans la modale de
+  // la Bibliothèque, `loadCollections()` était le geste d'ouverture, donc la nidification
+  // ne se voyait pas et ne coûtait rien. C'est l'argument inverse de celui qu'on oppose
+  // d'habitude aux déménagements.
+  //
+  // Le commentaire ci-dessus disait « deux requêtes » depuis le premier jour : il
+  // décrivait l'intention et se lisait comme une description du fait. Qui cherchait dans
+  // `setup()` si les comptes se chargeaient d'emblée y trouvait « oui », à trois lignes de
+  // la ligne qui disait le contraire.
   loadCollections();
+  loadComptes();
   santeCharger();
   $("#col-add").onclick = creerCollection;
   $("#col-nom").addEventListener("keydown", (e) => {
