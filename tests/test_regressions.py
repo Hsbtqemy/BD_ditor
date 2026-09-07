@@ -1060,6 +1060,77 @@ def test_un_env_hors_de_deploy_reste_ignore_par_git():
         "remplir, et l'ignorer priverait le déploiement de sa seule référence")
 
 
+def _ignore_par_gitignore(chemin, lignes):
+    """Le verdict de `.gitignore` sur un chemin, sans appeler git.
+
+    On applique les motifs DANS L'ORDRE, le dernier qui correspond l'emporte, et `!`
+    nie — c'est la règle de git, et c'est tout ce qu'emploient les motifs concernés.
+    Un motif contenant une barre est ancré au dépôt ; un motif nu vaut à toute
+    profondeur, d'où la comparaison sur le nom de fichier seul.
+
+    C'est une APPROXIMATION assumée (ni `**`, ni motifs de dossier), et elle est
+    préférée à `git check-ignore` pour la raison écrite au-dessus : la suite tourne
+    aussi dans l'image Docker (QA-5), où git n'est pas installé. Un test qui s'y
+    skipperait ne garderait rien là où la garde compte le plus.
+    """
+    import fnmatch
+
+    verdict = False
+    for ligne in lignes:
+        if not ligne or ligne.startswith("#"):
+            continue
+        nie = ligne.startswith("!")
+        motif = ligne[1:] if nie else ligne
+        cibles = [chemin] if "/" in motif.rstrip("/") else [chemin, chemin.split("/")[-1]]
+        if any(fnmatch.fnmatchcase(c, motif) for c in cibles):
+            verdict = not nie
+    return verdict
+
+
+def test_les_copies_de_retour_arriere_des_fichiers_de_secrets_sont_ignorees():
+    """Une copie suffixée d'un fichier de secrets atterrissait dans l'arbre d'un dépôt PUBLIC.
+
+    La procédure d'exploitation fait créer une copie AVANT toute édition — « d'abord,
+    toujours » —, et c'est elle qui a rétabli le service le 2026-09-06. Mais les motifs
+    de `.gitignore` visaient des noms EXACTS (`users_database.yml`, `.env`), si bien que
+    `users_database.yml.avant` ou `.env.avec-smtp` passaient au travers.
+
+    Deux conséquences, et la seconde est la plus coûteuse. `deployer.sh` refuse un arbre
+    sale : trois de ces fichiers ont bloqué un déploiement le 2026-09-06 au soir, un
+    quatrième le 2026-09-07 — et le refus accuse « quelqu'un a modifié des fichiers en
+    place », ce qui envoie chercher une édition sauvage qui n'existe pas. Surtout, un
+    `git add -A` les aurait committés : des condensés de mots de passe dans un dépôt
+    public.
+
+    Le remède écrit le 2026-09-06 était une étape 5 — penser à supprimer la copie. Or on
+    crée ces copies exactement les soirs où l'on ne pense plus à rien : celui-là, le
+    portail était tombé depuis six minutes. Une discipline n'est pas une garde.
+    """
+    from pathlib import Path
+
+    lignes = [l.strip() for l in
+              (Path(__file__).resolve().parent.parent / ".gitignore")
+              .read_text(encoding="utf-8").splitlines()]
+
+    for chemin in ["deploy/authelia/users_database.yml",
+                   "deploy/authelia/users_database.yml.avant",
+                   "deploy/authelia/users_database.avant.yml",
+                   "deploy/authelia/configuration.yml.avant",
+                   ".env", "deploy/.env", ".env.avec-smtp", "deploy/.env.avant"]:
+        assert _ignore_par_gitignore(chemin, lignes), (
+            f"{chemin} doit être ignoré : il porte des secrets, ce dépôt est PUBLIC, "
+            f"et tant qu'il traîne dans l'arbre il bloque aussi tout déploiement")
+
+    # L'exception est explicite, et elle doit le RESTER : un motif large sans négation
+    # emporterait les gabarits, qui sont la seule documentation des clés à remplir.
+    for chemin in ["deploy/authelia/users_database.example.yml",
+                   "deploy/.env.example",
+                   "deploy/authelia/configuration.yml"]:
+        assert not _ignore_par_gitignore(chemin, lignes), (
+            f"{chemin} doit rester VERSIONNÉ : c'est un gabarit ou une configuration "
+            f"sans secret, et l'ignorer priverait le déploiement de sa référence")
+
+
 def test_un_fichier_de_comptes_illisible_est_signale_et_non_fatal(tmp_path, monkeypatch):
     """`verifier_deploiement.py` s'écrasait sur un `users_database.yml` durci en 600.
 

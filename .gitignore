@@ -44,10 +44,22 @@ docs/exemples/
 # signalé — ni git, qui le voyait comme un fichier neuf ordinaire, ni la pile, qui a
 # simplement démarré sans SMTP.
 .env
+# Et les COPIES DE RETOUR ARRIÈRE, que la procédure d'exploitation fait créer AVANT
+# toute édition (« d'abord, toujours »). Les motifs ci-dessus et ci-dessous visaient des
+# noms EXACTS, si bien qu'une copie suffixée passait au travers et atterrissait dans
+# l'arbre d'un dépôt PUBLIC. Deux fois de suite : trois fichiers le 2026-09-06 au soir,
+# un `users_database.yml.avant` le 2026-09-07 — chaque fois `deployer.sh` a refusé de
+# déployer, et il avait raison. Le remède écrit alors était de PENSER à supprimer la
+# copie ; or on la crée précisément les soirs où l'on ne pense plus à rien.
+.env.*
+!.env.example
 # Le fichier des comptes porte des HASHS de mots de passe, et ce dépôt est PUBLIC.
 # Seul le gabarit `users_database.example.yml` est versionné ; on le copie sur la
-# machine qui héberge, comme `.env.example` → `.env` juste au-dessus.
-deploy/authelia/users_database.yml
+# machine qui héberge, comme `.env.example` → `.env` juste au-dessus. Le motif est large
+# et l'exception EXPLICITE : l'inverse laisserait passer `users_database.avant.yml`.
+deploy/authelia/users_database*
+!deploy/authelia/users_database.example.yml
+deploy/authelia/configuration.yml.*
 deploy/authelia/db.sqlite3
 deploy/authelia/notification.txt
 deploy/authelia/*.log
