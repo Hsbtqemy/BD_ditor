@@ -5,7 +5,14 @@ statut: interrompu
 
 # INFRA-10 — déployer se fait à la main, donc quand on y pense
 
-**Arrêté sur** — 2026-09-07, `025b0d9` : **le déployeur comparait la configuration Authelia
+**Arrêté sur** — 2026-09-07, `7f80899` : **le commit servi a quitté le script qui le
+calcule.** Le bloc 🏷️ Version servie ouvre la page d'Administration, réservé à qui peut
+administrer — le dépôt étant public, le commit servi dit quels correctifs sont en place.
+L'écran n'affirme rien qu'il n'ait vu : il connaît un seul bout de la comparaison, le dit,
+et renvoie à `origin/main` plutôt que d'écrire « à jour ». Une phrase qu'il ne pourrait pas
+fonder serait le silence lu comme une approbation — ce qui a laissé passer les six commits.
+
+**Plus tôt le même jour, `025b0d9` : le déployeur comparait la configuration Authelia
 depuis le mauvais bout, et rejouait ainsi la panne de sept heures d'INFRA-9 à l'intérieur
 de sa propre correction.** Il regardait `$avant..$apres` — ce que le pull venait de ramener
 — alors que son étape 2 bis établit dix lignes plus haut que le dépôt et l'image divergent.
@@ -64,9 +71,10 @@ gardes : le silence se lit comme une approbation.
 - [ ] Un déploiement automatique qui échoue a été constaté au moins une fois pour de vrai, et le témoin d'échec s'est comporté comme prévu : refus au tir suivant, et non retour au vert
 
 ### Ce que le timer ne répare PAS
-- [ ] Un écart entre le commit SERVI et `origin/main` se constate sans le chercher. Les deux bouts EXISTENT déjà et ne se rencontrent nulle part : `deploy/Dockerfile` pose `LABEL bd.commit=$BD_COMMIT`, et `deployer.sh` le lit par `docker inspect` à son étape 2 bis — mais pendant un déploiement, c'est-à-dire au seul instant où quelqu'un regarde déjà. Ce qui manque n'est donc pas la donnée, c'est qu'elle ne quitte jamais le script qui la calcule ; la route `GET /api/sante` de `main.py` est l'endroit d'où une surface lit déjà l'état de l'instance. Le timer réduit la FRÉQUENCE de l'écart, il ne le rend pas visible, et tant que rien ne compare, le 2026-09-07 reste reproductible à l'identique
-- [ ] La CONDITION d'un tel affichage est posée : l'image ne connaît son commit qu'en `ARG` (`LABEL bd.commit`), qui ne survit pas au build — le processus qui tourne ne peut pas le lire. Il faut un `ENV` en plus du `LABEL`, sans quoi la surface n'aurait rien à afficher. Constaté le 2026-09-07 en cherchant par où faire sortir la donnée
-- [ ] L'EXPOSITION est tranchée avant d'être écrite : `GET /api/sante` est ouverte sans identité (déclarée telle dans `tests/test_autorisation.py`, parce que c'est la sonde d'un conteneur), et derrière Authelia elle tombe sous la règle générale `one_factor`. Y publier le commit servi le rend lisible de tout compte de l'instance — sur un dépôt PUBLIC, cela dit quels correctifs sont en place et lesquels ne le sont pas. À trancher : `/api/sante` pour tous, ou un champ réservé à qui peut administrer
+- [x] Le commit SERVI a QUITTÉ le script qui le calcule — `7f80899`. Le bloc **🏷️ Version servie** ouvre la page d'Administration ; l'image porte le commit deux fois (`LABEL` pour `docker inspect`, `ENV` pour le processus), et `GET /api/version` le rend. Ce que la case demandait — que l'écart se constate sans le chercher — est à moitié fait, et la moitié restante est décrite ci-dessous
+- [x] L'EXPOSITION a été tranchée AVANT d'être écrite, le 2026-09-07 : **réservé à qui peut administrer**, dans une route SÉPARÉE de `/api/sante`. Cette dernière doit répondre sans identité (sonde de conteneur, déclarée telle dans `tests/test_autorisation.py`) ; y greffer une branche dépendant de l'appelant aurait rendu cette déclaration fausse. Le motif du refus n'est pas qu'un numéro de version soit secret, c'est que le dépôt est PUBLIC : le commit servi dit quels correctifs sont en place
+- [x] La CONDITION technique est levée : un `ARG` ne survit pas au build, donc `LABEL bd.commit` seul laissait le processus ignorer ce qu'il sert. `ENV BD_COMMIT` s'ajoute, et un test l'exige — retirer l'`ENV` ne casserait RIEN de visible, la page affichant alors « l'image ne déclare pas son commit », ce qu'elle affiche aussi, légitimement, sur un poste de développement
+- [ ] L'AUTRE BOUT reste hors de portée de l'application, et c'est assumé plutôt que résolu : `origin/main` vit dans le dépôt, l'app ne le connaît pas et n'ira pas le chercher (le déploiement se TIRE, aucune sortie vers GitHub). L'écran renvoie donc à `git log --oneline -1 origin/main` au lieu d'affirmer « à jour » — une phrase qu'il ne pourrait pas fonder serait le silence lu comme une approbation, exactement ce qui a laissé passer les six commits. Reste à décider si quelqu'un doit COMPARER automatiquement, et où : la veille du VPS tient les deux bouts toutes les cinq minutes, mais elle n'écrit rien (l'arbre resterait sale, cf. plus bas), donc l'endroit n'existe pas encore
 - [ ] L'arrêt du timer ne se constate que depuis le VPS : `systemctl stop bd-deploiement.timer` est le recours que `docs/exploitation.md` recommande en cas de doute, et il rétablit le déploiement manuel sans que la machine de développement en sache rien — le geste prudent recrée exactement la panne, en silence
 
 ## Contexte
