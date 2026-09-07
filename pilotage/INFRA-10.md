@@ -14,6 +14,20 @@ il faut ouvrir une session SSH et penser à le lancer. La question posée : GitH
 déployer sur poussée de `main` ? La réponse retenue est OUI pour le déclenchement, NON pour
 GitHub — le déploiement se TIRE.
 
+**La thèse de cette fiche a reçu sa preuve datée le 2026-09-07, et elle est plus dure que
+l'énoncé.** « Déployer se fait quand on y pense » suggère un retard qu'on constate ; ce qui
+s'est passé est qu'on ne l'a pas constaté. L'instance servait `305e0bc` pendant que `main`
+avait avancé de six commits, dont une fonctionnalité livrée, testée et annoncée — la vue des
+comptes d'AUTH-7. Personne n'a rien vu, et il n'y avait rien à voir : aucun écran ne compare
+ce qui est servi à ce qui est poussé, donc l'écart n'a pas d'endroit où apparaître. Il n'est
+apparu qu'à la première commande qui l'a interrogé, par hasard, en préparant autre chose.
+
+**Le coût n'est donc pas le retard, c'est la CONFIANCE MAL PLACÉE.** Entre le push et la
+découverte, on a raisonné — et écrit — comme si l'instance portait le nouveau code : « ce
+que l'écran vous montrera ce soir ». Un déploiement manuel oublié ne laisse pas un trou, il
+laisse une croyance. C'est le même mode d'échec que celui qu'`ARCH-2` décrit pour les
+gardes : le silence se lit comme une approbation.
+
 ## Reste
 
 ### Poser le mécanisme sur l'instance
