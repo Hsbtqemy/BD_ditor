@@ -15,7 +15,8 @@ nomme la Bibliothèque pour un import qui vit dans la Visionneuse.
 ### Arbitrages
 - [x] La liste des étapes et leur ordre sont figés AVANT la première ligne de code, chaque étape nommant une surface et un geste : c'est le contrat commun de l'écran et du guide, et le laisser flotter ferait diverger les deux
 - [ ] Le rang vis-à-vis de UX-3 est tranché et écrit dans les deux fiches : UX-3 veut rendre les quatre modes de la Visionneuse compréhensibles *sans* documentation, UX-6 les explique — décider lequel passe d'abord, ou acter qu'ils sont indépendants
-- [ ] L'étape 1 nomme la surface qui porte RÉELLEMENT l'import de planches : mesuré le 2026-09-06, `static/corpus.js` n'appelle jamais `/api/albums/{id}/import` — le geste vit dans la Visionneuse, menu « ⇅ Import / Export », depuis le disque ou depuis ShareDocs ; la liste figée dit « Bibliothèque », et tant qu'elle le dit la case de deep-link ne peut pas être tenue
+- [ ] L'étape 1 n'est PAS corrigée, et son câblage attend UX-11 : « Bibliothèque : créer un album, importer des planches » nomme le bon lieu et DEVANCE le code (mesuré le 2026-09-06 — `static/corpus.js` n'appelle jamais `/api/albums/{id}/import`, le geste vit dans l'Atelier et fait `files[0]`, une planche à la fois). Deep-linker l'étape vers l'Atelier aujourd'hui enverrait quelqu'un constituer un corpus de quarante pages à un contrôle qui en prend une, et serait à re-pointer après UX-11
+- [ ] Une fois UX-11 livré, l'étape 1 du guide distingue les DEUX imports — la Bibliothèque pour constituer en lot, l'Atelier pour la planche ajoutée en cours d'annotation — au lieu de remplacer l'un par l'autre : UX-11 garde explicitement celui de l'Atelier, et un guide qui n'en nommerait qu'un ferait chercher le mauvais
 
 ### Écran « par où commencer »
 - [ ] L'écran s'ouvre au chargement d'une des quatre surfaces tant que « ne plus afficher » n'a pas été coché ; une fois coché, aucun rechargement ne le rouvre (état en `localStorage`, clé préfixée `bd-` comme celles de `static/theme.js`)
@@ -162,3 +163,30 @@ Deux cases du guide restent ouvertes exprès. Les **ancres** ne se vérifient qu
 l'écran écrit, puisque ce sont les siennes. Et la **note de conception** sur le parcours
 retenu n'a pas été écrite : l'essentiel de son contenu vit déjà dans ce `Contexte`, et la
 rédiger avant l'écran figerait un raisonnement que la passe de QA peut encore condamner.
+
+### L'étape 1, reprise le 2026-09-07 : la liste avait raison
+
+UX-11 ouvre l'import en lot dans la Bibliothèque, et sa fiche pose la collision avec la case
+écrite ici la veille. Elle proposait deux sorties — nommer l'Atelier maintenant et corriger
+après, ou nommer les deux d'emblée. **Aucune des deux n'est retenue, parce que la case posait
+mal le problème.**
+
+L'étape 1 s'appelle « **Constituer** le corpus ». Constituer, c'est verser quarante pages,
+pas ajouter la trente-huitième. La liste figée disait « Bibliothèque » : elle nommait le lieu
+du geste tel qu'il doit être, et c'est le CODE qui était en retard — pas elle. Corriger la
+liste vers l'Atelier aurait donc inscrit dans le contrat une régression, puis obligé à la
+défaire. La case devient une DÉPENDANCE : ne rien corriger, ne pas câbler, attendre UX-11.
+
+Ce que la première rédaction avait manqué, faute d'avoir lu UX-11 : **le chantier ne DÉPLACE
+pas l'import, il en ajoute un second.** « Les deux surfaces importeront, pour deux besoins
+distincts », écrit sa fiche. La sortie « nommer les deux » aurait donc été juste sur le fond
+et fausse sur le calendrier — les deux, oui, mais seulement après. D'où la seconde case, qui
+porte sur le guide et non sur la carte : c'est lui qui devra dire lequel sert à quoi.
+
+Le vrai défaut trouvé ce jour-là est ailleurs et n'attend personne : les deux documents
+disaient **Visionneuse**, quand la nav transverse (`static/theme.js`) affiche **Atelier**
+depuis `1cc3a41`. Un guide d'usage qui nomme un onglet autrement que l'écran envoie chercher
+ce qui n'existe pas — c'est exactement la panne qu'il est censé éviter. Corrigé : les
+documents disent Atelier, avec une note qui rattache le mot à celui du code. `CLAUDE.md` et
+`README.md` disent toujours Visionneuse, et ce n'est pas rien : la nomenclature interne et
+l'écran ont divergé sans que personne l'écrive. Hors périmètre d'UX-6, à signaler.
