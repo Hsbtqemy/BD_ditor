@@ -1,17 +1,25 @@
 ---
 chantier: EXP-1
-statut: interrompu
+statut: livré
 ---
 
 # EXP-1 — exposer les exports de dépôt dans l'UI
 
-**Arrêté sur** — 2026-09-07, `58e0c6a` : **LES CINQ CASES DE CODE SONT FAITES, ET RIEN
-N'EST ENCORE VÉRIFIÉ À L'ÉCRAN.** Trois routes de téléchargement sur une collection nommée
-(`routes/depot.py`), une route de dépôt ShareDocs (`main.deposer_export`, là où SHARE-1
-épingle la résolution du compte), un bloc **Export de dépôt** dans le panneau Collections.
-29 tests Python, 8 tests Node, trois passes de mutation — 5, 7 et 1 défauts injectés,
-tous rouges sur le test qui prétend les couvrir. Reste la passe de QA, qui porte sur ce que la
-suite ne peut pas voir : **qui a le bloc sous les yeux**.
+**Arrêté sur** — 2026-09-08, `027ca7f` : **LE CHANTIER EST FAIT ET VÉRIFIÉ À L'ÉCRAN.**
+Trois routes de téléchargement sur une collection nommée (`routes/depot.py`), une route de
+dépôt ShareDocs (`main.deposer_export`), un bloc **Export de dépôt** dans le panneau
+Collections. 32 tests Python, 9 tests Node, et SIX vérifications par mutation — les routes
+de téléchargement (5 défauts), le manifeste IIIF (7), la garde de format, le message du
+refus, le lien d'aller-retour (2) et le débordement. Toutes rouges sur le test qui prétend
+les couvrir. Reste la FUSION
+vers `main`, qui est la mise en production.
+
+**La passe de QA a trouvé trois défauts que la suite ne pouvait pas voir**, et c'est le
+fait marquant. Un refus qui nommait deux gestes que personne n'avait tentés (message
+hérité d'un accesseur générique). Un champ obligatoire que personne ne pouvait remplir —
+on ne nomme pas l'adresse d'images qu'on n'a pas publiées. Un `404` nu là où le chemin
+saisi était le fil d'Ariane de l'interface web. Aucun n'était un défaut de CODE : les
+trois étaient dans ce que l'écran DIT ou DEMANDE.
 
 ## Reste
 
@@ -20,7 +28,7 @@ suite ne peut pas voir : **qui a le bloc sous les yeux**.
 - [x] Le fichier produit est téléchargeable par le navigateur ET déposable sur ShareDocs, sur le patron déjà en place pour `/api/sauvegarde`
 - [x] Les cœurs restent partagés entre la CLI et la route : aucune logique d'export n'est réécrite côté serveur, comme l'import de vocabulaire a déjà une CLI et un bouton
 - [x] Le choix d'exposer ou non le crosswalk et la provenance est tranché et écrit
-- [ ] La passe `pilotage/qa/export-depot.md` est jouée, et sa zone « Le bloc est là pour qui LIT » est verte : le bloc s'affiche pour un participant NON propriétaire, la ligne de dépôt seulement pour un propriétaire
+- [x] La passe `pilotage/qa/export-depot.md` est jouée, et sa zone « Le bloc est là pour qui LIT » est verte : le bloc s'affiche pour un participant NON propriétaire, la ligne de dépôt seulement pour un propriétaire. **Jouée le 2026-09-08**, derrière `faux_proxy_auth.py`, sur une base jetable — quatre zones sur quatre, et elle a trouvé trois défauts qu'aucun test n'avait vus
 - [ ] Le chantier est FUSIONNÉ sur `origin/main`, donc déployé — le VPS suit cette branche seule (INFRA-10). `origin/dev` suffit à l'INTÉGRATION et le journal ne dément plus ; cette case-ci parle de la mise en production, et elle attend la passe de QA
 
 ## Contexte
