@@ -5,9 +5,9 @@ statut: interrompu
 
 # QA-4 — le verrou ne couvre que 15 paquets sur 91
 
-**Arrêté sur** — le conflit `pillow`/`iiif-prezi3` est fermé et la validation IIIF stricte
-s'exécute de nouveau, commit `39d1f12`, 7 septembre. Restent le verrou TRANSITIF (zone 1,
-entière, elle demande Docker) et la zone Cohérence.
+**Arrêté sur** — vérifié DANS L'IMAGE, commit `c6b33a2`, 7 septembre : `iiif-prezi3` y
+cohabite avec le verrou et le test IIIF y passe. Restent le verrou TRANSITIF (zone 1,
+entière) et la zone Cohérence, qui a gagné deux constats mesurés en chemin.
 
 **Point de départ** — QA-1 a livré `requirements.lock` en juin 2026, en épinglant
 délibérément les seules dépendances DIRECTES. Le premier build d'image, le 2026-08-27, a
@@ -24,9 +24,11 @@ montré ce que cette limite laisse passer.
 - [x] `requirements-export.txt` et `requirements.lock` cessent d'être mutuellement exclusifs : `iiif-prezi3==3.1.1` exige `Pillow<=12.0.0` (dépendance OBLIGATOIRE, pas un extra) quand le verrou épingle `pillow==12.1.0` — pip répond `ResolutionImpossible`
 - [x] Le test de conformance IIIF (`test_iiif_conformance_stricte`, dans `tests/test_export_metadonnees.py`) s'exécute quelque part : aujourd'hui il se skippe dans l'image ET sur la machine de dev, donc **nulle part**, alors que `docs/roadmap.md` donne l'IIIF pour « validé via iiif-prezi3 »
 - [x] `docs/roadmap.md` dit ce qui est réellement vérifié aujourd'hui, ou la vérification est rétablie — les deux conviennent, la situation actuelle non
-- [ ] La construction de l'image confirme que `iiif-prezi3` s'y installe et que `test_iiif_conformance_stricte` y PASSE : non vérifié le 2026-09-07, Docker n'étant pas lancé — et c'est exactement la réserve de QA-5, le venv local n'est pas l'artefact livré
+- [x] La construction de l'image confirme que `iiif-prezi3` s'y installe et que `test_iiif_conformance_stricte` y PASSE — c'est la réserve de QA-5, le venv local n'est pas l'artefact livré ; vérifié le 2026-09-07 sur une image construite depuis `2e70028`
 
 ### Cohérence
+- [ ] `COPY requirements.lock` ne précède plus une installation qui n'en dépend PAS : mesuré le 2026-09-07 dans le log de build, changer le seul pin de `pillow` invalide la couche `#8` et fait RETÉLÉCHARGER 191,8 Mo de torch, alors que `#6` (apt) et `#7` (WORKDIR) restent CACHED
+- [ ] Le double travail entre torch et le verrou est supprimé ou constaté par écrit : `#9` pose `numpy 2.5.2` en dépendance de torch, `#10` le DÉSINSTALLE pour poser le `2.4.6` du verrou — ça se termine bien parce que le verrou passe en second, mais c'est le motif des JUMEAUX et il ne tient qu'à l'ordre
 - [ ] `torch` et `torchvision` ne sont plus épinglés dans le Dockerfile pendant que `requirements.lock` prétend être « LE verrou » : soit ils y entrent, soit son en-tête dit où ils vivent
 - [ ] Le cas des paquets JUMEAUX est traité explicitement — deux distributions fournissant le même paquet d'import, dont une seule est épinglée
 
@@ -116,3 +118,35 @@ traque cet écart.
 
 **Un constat de sécurité est sorti de la passe de revue, et il part en fiche : SEC-3.**
 Le plafond qu'on vient de poser retient `CVE-2026-25990`, corrigé dans Pillow 12.1.1.
+
+## La case de l'image est fermée, et par deux mesures distinctes — 2026-09-07
+
+Docker lancé, image `test` construite depuis un `git archive` de `2e70028` — et non depuis
+l'arbre de travail, qu'une session voisine modifiait : `COPY . .` y aurait fait entrer des
+fichiers non commités, si bien qu'un rouge, ou pire un VERT, aurait pu venir d'un travail
+qui n'est pas celui-ci. Contrôlé avant de construire : pins présents, fichiers de l'autre
+chantier absents.
+
+**(a) Ce que pip a résolu, constaté dans un conteneur et non lu dans le log du build.**
+`pillow 12.0.0` et `iiif-prezi3 3.1.1` s'importent tous deux dans la même image. Un
+`DONE` de pip aurait seulement dit qu'il avait réussi, pas ce qu'il avait résolu.
+
+**(b) Le test s'EXÉCUTE.** `1 passed` sur le nom complet, `-rs` sans un seul skip. Le
+premier essai, `-k "iiif"`, rendait « 6 passed » — six tests dont l'affichage compact ne
+nommait aucun, donc une réponse qui n'en était pas une : c'est la vacuité par le filtre,
+et il a fallu nommer le test pour que la mesure porte. Son vert vaut d'ailleurs plus
+qu'une collecte réussie, puisqu'il assertionne lui-même « Conformité stricte
+(iiif-prezi3) : exécutée » dans la sortie de l'outil.
+
+**Et l'instrument était muet.** Le `CMD` de l'étape `test` passait `-q` quand `pytest.ini`
+en porte déjà un : `-qq` supprime la ligne de bilan. Une image dont la suite ne dit pas
+combien de tests ont tourné ne permet pas de distinguer 833 verts de 12 — dans l'artefact
+même dont QA-5 fait la vérité contre le venv local. Corrigé (`c6b33a2`) ; la vérification
+ci-dessus a dû passer par un override au `docker run`, si bien que **cette correction-là
+n'est pas éprouvée par un build**, le contexte construit la précédant.
+
+Deux mesures de méthode valent d'être gardées, parce qu'elles se sont produites ici même.
+La première mesure du `-qq` était FAUSSE : le filtre appliqué à la sortie contenait le mot
+`warning`, donc il mangeait la ligne de bilan qu'il cherchait. Et la passe locale lancée
+plus tôt avait été canalisée dans un `tail`, qui bufferise — sa sortie est restée vide
+pendant sept minutes, invisible au moment exact où elle coûtait le processeur.
