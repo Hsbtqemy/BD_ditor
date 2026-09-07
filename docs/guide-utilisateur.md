@@ -50,9 +50,9 @@ surface à l'autre.
 > personne. Fermer la page entière aurait enfermé des choses qui n'ont rien à y faire.
 
 > **Un mot sur le nom de la première.** La barre de navigation l'appelle **Atelier**, et
-> c'est le nom retenu ici puisque c'est celui qu'on lit à l'écran. Le code, le `README.md` et
-> les notes de conception disent encore **Visionneuse** : c'est la même page, `/`. Si vous
-> croisez l'un ou l'autre mot, ils désignent la même chose.
+> c'est le nom retenu ici puisque c'est celui qu'on lit à l'écran. Elle s'est longtemps
+> appelée **Visionneuse**, mot qu'on croise encore dans le code et dans les documents
+> antérieurs : c'est la même page, `/`.
 
 ---
 
