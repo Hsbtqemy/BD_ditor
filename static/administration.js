@@ -249,14 +249,23 @@ function colExport(c) {
       ${c.administrable ? `
       <div class="dep-ligne dep-depot">
         <span class="dep-quoi">Déposer sur ShareDocs</span>
+        ${SD.connecte ? `
         <select class="dep-choix" aria-label="Artefact à déposer">
           ${BDDepot.choix().map((o) =>
             `<option value="${o.quoi}|${o.format}">${esc(o.libelle)}</option>`).join("")}
         </select>
         <input class="dep-dossier" placeholder="Dossier (vide = racine)"
                aria-label="Dossier ShareDocs de destination">
-        <button class="ghost small" ${b} data-depot="1">Déposer</button>
-      </div>` : ""}
+        <button class="ghost small" ${b} data-depot="1">Déposer</button>`
+        : `<a class="ghost small dep-connexion"
+              href="${BDDepot.lienConnexionSharedocs()}">Se connecter à ShareDocs…</a>`}
+      </div>
+      ${SD.connecte
+        ? `<p class="muted small dep-aide">Compte employé :
+             <b>${esc(SD.actif ? (SD.actif.compte || "") : "")}</b>
+             ${SD.actif && SD.actif.user ? `(${esc(SD.actif.user)})` : ""}.</p>`
+        : `<p class="muted small dep-aide">Aucune session ShareDocs n'est ouverte. Le lien
+             ci-dessus ouvre la connexion dans l'Atelier et ramène ici.</p>`}` : ""}
       <p class="dep-msg" role="status" aria-live="polite"></p>
     </div>`;
 }
@@ -428,6 +437,22 @@ async function colDetail(d, c) {
    copie aurait fini par répondre autre chose. `theme.js` ne demande `/api/moi` qu'une
    fois par page ; ce helper ne fait que mémoïser la lecture du résultat. */
 let MOI = { login: null, groupes_admin: [] };
+
+/* L'état de la session ShareDocs, lu une fois par chargement de page (EXP-1).
+
+   Il ne DÉCIDE rien — le serveur refusera de lui-même —, il évite seulement de proposer
+   un dépôt qui échouerait sur une erreur de transport WebDAV, laquelle ne nomme pas la
+   cause. Relu au chargement suffit : on revient ici par un aller-retour, qui recharge. */
+let SD = { connecte: false, actif: null };
+
+async function loadEtatSharedocs() {
+  // Un échec ici ne doit rien empêcher : sans état connu, on retombe sur « pas de
+  // session », qui propose le lien de connexion. Se tromper dans ce sens fait proposer un
+  // geste inutile ; se tromper dans l'autre ferait échouer un dépôt sans l'expliquer.
+  try { SD = await apiGet("/api/sharedocs/etat"); }
+  catch (e) { SD = { connecte: false, actif: null }; }
+}
+
 
 async function loadCollections() {
   const body = $("#col-body");
@@ -667,7 +692,7 @@ function setup() {
   // `setup()` si les comptes se chargeaient d'emblée y trouvait « oui », à trois lignes de
   // la ligne qui disait le contraire.
   loadVersion();
-  loadCollections();
+  loadEtatSharedocs().then(loadCollections);   // l'état AVANT le rendu des collections
   loadComptes();
   santeCharger();
   $("#col-add").onclick = creerCollection;

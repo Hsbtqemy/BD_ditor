@@ -61,6 +61,23 @@
     return out;
   }
 
+  /* Le retour de l'aller-retour vers l'Atelier. Un chemin ABSOLU, et c'est tout le
+     piège : `Nav.safeRetour` n'accepte qu'un chemin commençant par « / » — protection
+     contre l'open-redirect —, et l'écrire sans la barre le ferait REJETER en silence.
+     Le lien « ← Retour » ne s'afficherait simplement pas, et l'aller-retour deviendrait
+     un aller simple sans que rien n'échoue. `tests/js/depot.test.js` confronte donc cette
+     valeur à la règle de `nav.js` plutôt que de la relire. */
+  const RETOUR_ADMINISTRATION = "/administration";
+
+  /* Le lien qui ouvre la session ShareDocs dans l'Atelier et ramène ici (EXP-1).
+
+     La connexion vit là-bas parce qu'elle est arrivée par l'import d'images ; le dépôt
+     d'exports vit ici. Plutôt que d'indiquer un chemin à suivre — une réponse de
+     documentation à un problème d'interface —, on emmène et on ramène. */
+  function lienConnexionSharedocs() {
+    return "/?sharedocs=1&retour=" + encodeURIComponent(RETOUR_ADMINISTRATION);
+  }
+
   /* Rend `{ url }` ou `{ refus }`. Jamais les deux, jamais ni l'un ni l'autre : un
      appelant qui oublierait de tester `refus` construirait sinon une requête depuis
      `undefined`, et le serveur répondrait quelque chose de plausible. */
@@ -82,5 +99,6 @@
     return { url: url };
   }
 
-  return { ROUTES, FORMATS, choix, urlDepot };
+  return { ROUTES, FORMATS, RETOUR_ADMINISTRATION, choix, lienConnexionSharedocs,
+           urlDepot };
 });

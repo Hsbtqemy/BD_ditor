@@ -2677,6 +2677,17 @@ function setupKeyboard() {
    ?album=&planche=&region=. */
 async function applyDeepLink() {
   const p = new URLSearchParams(INITIAL_QS);   // URL d'origine (avant que syncUrl ne l'ait modifiée)
+
+  // EXP-1 — `?sharedocs=1` ouvre la modale de session. La connexion ShareDocs vit ICI
+  // parce qu'elle est arrivée par l'import d'images ; le dépôt d'exports, lui, vit dans
+  // Administration, et son bouton était un cul-de-sac : il échouait sur une erreur de
+  // transport au lieu de dire « ouvrez une session ». Le paramètre, joint au `?retour=`
+  // que `nav.js` porte déjà, en fait un aller-retour plutôt qu'une consigne à suivre.
+  //
+  // AVANT le `return` ci-dessous, et pas après : il n'y a ni planche ni région dans ce
+  // lien-là, donc la garde qui suit l'aurait renvoyé sans rien faire.
+  if (p.get("sharedocs")) sdOpen();
+
   const album = p.get("album"), planche = p.get("planche"), region = p.get("region");
   if (!planche && !region) return;
   try {

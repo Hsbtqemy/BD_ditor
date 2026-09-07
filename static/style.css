@@ -1839,6 +1839,9 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .dep-iiif { border-top: 1px dashed var(--border); padding-top: .45rem; margin-top: .5rem; }
 .dep-moment { display: block; font-size: .76rem; color: var(--text-muted);
               font-style: italic; }
+/* Le lien de connexion prend l'allure d'un bouton : c'est une ACTION, et le rendre
+   discret le ferait manquer par ceux à qui il s'adresse — ceux qui n'ont pas de session. */
+.dep-connexion { display: inline-block; text-decoration: none; }
 /* Vue des comptes (AUTH-7) — dans le panneau Collections, sous la liste. */
 #comptes-bloc { border-top: 1px solid var(--border); margin-top: .9rem; padding-top: .6rem; }
 #comptes-bloc h4 { margin: 0 0 .3rem; font-size: .95rem; }
