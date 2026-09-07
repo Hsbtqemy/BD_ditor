@@ -31,12 +31,17 @@ from tools.mesurer_reflow import SONDE          # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
-SURFACES = {
-    "visionneuse": lambda d: f"/?album={d['album']}&planche={d['planche']}&region={d['region']}",
-    "recherche":   lambda d: "/recherche?q=pouvoir",
-    "corpus":      lambda d: "/corpus",
-    "exploration": lambda d: "/exploration?champ=lemme",
+# UX-10 — LA liste de cet audit, et elle sert de déclaration : `tests/test_surfaces.py`
+# la confronte aux surfaces réellement servies. C'est la MÊME structure que le test
+# parcourt, pas une copie posée à côté — une déclaration jumelle dériverait de sa liste
+# sans que rien ne le dise, ce qui a été mesuré le 2026-09-07 sur un premier jet.
+SURFACES_AUDITEES = {
+    "/":            lambda d: f"/?album={d['album']}&planche={d['planche']}&region={d['region']}",
+    "/recherche":   lambda d: "/recherche?q=pouvoir",
+    "/corpus":      lambda d: "/corpus",
+    "/exploration": lambda d: "/exploration?champ=lemme",
 }
+SURFACES_HORS_PERIMETRE = {}
 
 # Reprise à l'identique de `test_e2e_reflow.EXEMPTIONS` : le canevas de la Visionneuse est
 # une surface de pan/zoom, exemptée par le 1.4.10 lui-même et gardée là-bas.
@@ -95,7 +100,7 @@ def _charger(page, decor, surface, largeur, police):
     cdp = page.context.new_cdp_session(page)
     cdp.send("Page.setFontSizes", {"fontSizes": {"standard": police, "fixed": police}})
     page.set_viewport_size({"width": largeur, "height": 900})
-    page.goto(decor["base"] + SURFACES[surface](decor), wait_until="networkidle")
+    page.goto(decor["base"] + SURFACES_AUDITEES[surface](decor), wait_until="networkidle")
     page.wait_for_timeout(400)
     return page.evaluate(SONDE), page.evaluate(_PLANCHER)
 
@@ -116,7 +121,7 @@ def _decrire(coupables):
 
 
 @pytest.mark.parametrize("largeur,police", CAS)
-@pytest.mark.parametrize("surface", list(SURFACES))
+@pytest.mark.parametrize("surface", list(SURFACES_AUDITEES))
 def test_la_preference_de_police_ne_perd_pas_de_contenu(page, decor, surface, largeur, police):
     """Police par défaut portée à `police` px : rien ne sort de l'écran sans recours.
 

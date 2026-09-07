@@ -30,9 +30,18 @@ pytestmark = pytest.mark.e2e
 # La Visionneuse est absente à dessein : sa coque distribue le défilement entre plusieurs
 # bandes (arbre, canevas, panneau), et il n'existe pas UN cadre à désigner. Elle a sa
 # propre question, ouverte dans UX-7.
-SURFACES = [("/recherche", "#search-body"),
-            ("/corpus", "#corpus-body"),
-            ("/exploration", "#explo-body")]
+# UX-10 — LA liste de cet audit, et elle sert de déclaration : `tests/test_surfaces.py`
+# la confronte aux surfaces réellement servies. C'est la MÊME structure que le test
+# parcourt, pas une copie posée à côté — une déclaration jumelle dériverait de sa liste
+# sans que rien ne le dise, ce qui a été mesuré le 2026-09-07 sur un premier jet.
+SURFACES_AUDITEES = {"/recherche": "#search-body",
+                     "/corpus": "#corpus-body",
+                     "/exploration": "#explo-body"}
+SURFACES_HORS_PERIMETRE = {
+    "/": "la Visionneuse est un canevas de pan/zoom : son cadre ne DOIT pas défiler, et "
+         "l'y soumettre inventerait un défaut. Même exemption que `test_e2e_reflow`, et "
+         "elle vient du 1.4.10 lui-même.",
+}
 
 SONDE = """(sel) => {
   const el = document.querySelector(sel);
@@ -70,7 +79,7 @@ def corpus_dense(live_server):
     return live_server
 
 
-@pytest.mark.parametrize("chemin, cadre", SURFACES)
+@pytest.mark.parametrize("chemin, cadre", SURFACES_AUDITEES.items())
 def test_chaque_surface_document_possede_un_cadre_qui_defile(page, corpus_dense,
                                                              chemin, cadre):
     """La propriété, indépendamment du décor : le cadre EXISTE et il défile.

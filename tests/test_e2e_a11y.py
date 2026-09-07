@@ -98,20 +98,25 @@ def seeded(live_server):
     return {"base": live_server, "album": aid, "planche": pid, "region": rid}
 
 
-SURFACES = {
-    "visionneuse": lambda s: f"/?album={s['album']}&planche={s['planche']}&region={s['region']}",
-    "recherche":   lambda s: "/recherche?q=pouvoir",
-    "corpus":      lambda s: "/corpus",
-    "exploration": lambda s: "/exploration?champ=lemme",
+# UX-10 — LA liste de cet audit, et elle sert de déclaration : `tests/test_surfaces.py`
+# la confronte aux surfaces réellement servies. C'est la MÊME structure que le test
+# parcourt, pas une copie posée à côté — une déclaration jumelle dériverait de sa liste
+# sans que rien ne le dise, ce qui a été mesuré le 2026-09-07 sur un premier jet.
+SURFACES_AUDITEES = {
+    "/":            lambda s: f"/?album={s['album']}&planche={s['planche']}&region={s['region']}",
+    "/recherche":   lambda s: "/recherche?q=pouvoir",
+    "/corpus":      lambda s: "/corpus",
+    "/exploration": lambda s: "/exploration?champ=lemme",
 }
+SURFACES_HORS_PERIMETRE = {}
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
-@pytest.mark.parametrize("surface", list(SURFACES))
+@pytest.mark.parametrize("surface", list(SURFACES_AUDITEES))
 def test_a11y_chargement(page, seeded, surface, theme):
     """Chargement de chaque surface : aucune violation sérieuse/critique."""
     _theme(page, theme)
-    page.goto(seeded["base"] + SURFACES[surface](seeded), wait_until="networkidle")
+    page.goto(seeded["base"] + SURFACES_AUDITEES[surface](seeded), wait_until="networkidle")
     page.wait_for_timeout(600)
     viol = _audit(page)
     assert not viol, f"{surface} [{theme}] :\n{_fmt(viol)}"
@@ -122,7 +127,7 @@ def test_a11y_visionneuse_modes(page, seeded, theme):
     """États interactifs de la Visionneuse (Édition → poignées, Annotation →
     panneau grammaire)."""
     _theme(page, theme)
-    page.goto(seeded["base"] + SURFACES["visionneuse"](seeded), wait_until="networkidle")
+    page.goto(seeded["base"] + SURFACES_AUDITEES["/"](seeded), wait_until="networkidle")
     page.wait_for_timeout(700)
     for sel, label in (('.mode-btn[data-mode="edition"]', "édition"),
                        ('.mode-btn[data-mode="annotation"]', "annotation")):
@@ -263,7 +268,7 @@ def test_a11y_visionneuse_undo(page, seeded):
         assert c.get(f"/api/regions/{seeded['region']}/locuteur").json()["locuteur"]  # bien posé
     finally:
         c.close()
-    page.goto(seeded["base"] + SURFACES["visionneuse"](seeded), wait_until="networkidle")
+    page.goto(seeded["base"] + SURFACES_AUDITEES["/"](seeded), wait_until="networkidle")
     page.wait_for_timeout(700)
     page.locator("body").press("Control+z")                  # hors champ de saisie
     page.wait_for_timeout(500)
@@ -358,7 +363,7 @@ def test_a11y_visionneuse_alignement(page, seeded):
         c.put(f"/api/regions/{seeded['region']}/locuteur", json={"personnage_id": p["id"]})
     finally:
         c.close()
-    page.goto(seeded["base"] + SURFACES["visionneuse"](seeded), wait_until="networkidle")
+    page.goto(seeded["base"] + SURFACES_AUDITEES["/"](seeded), wait_until="networkidle")
     page.wait_for_timeout(700)
     page.click('.mode-btn[data-mode="annotation"]')
     page.wait_for_selector("#loc-align-section:not([hidden])", timeout=3000)
@@ -752,7 +757,7 @@ def test_a11y_figure_citable(page, seeded, theme):
     sur un panier vide promet une action qui n'aboutit pas.
     """
     _theme(page, theme)
-    page.goto(seeded["base"] + SURFACES["visionneuse"](seeded), wait_until="networkidle")
+    page.goto(seeded["base"] + SURFACES_AUDITEES["/"](seeded), wait_until="networkidle")
     page.wait_for_timeout(600)
     assert page.locator("#btn-fig-open").is_hidden()      # panier vide → pas de promesse
     page.click("#btn-fig-add")
@@ -777,7 +782,7 @@ def test_les_mentions_viennent_du_serveur(page, seeded):
     exactement ce que `GET /api/figure/champs` annonce."""
     attendus = httpx.get(seeded["base"] + "/api/figure/champs", trust_env=False,
                          timeout=30).json()
-    page.goto(seeded["base"] + SURFACES["visionneuse"](seeded), wait_until="networkidle")
+    page.goto(seeded["base"] + SURFACES_AUDITEES["/"](seeded), wait_until="networkidle")
     page.wait_for_timeout(600)
     page.click("#btn-fig-add")
     page.click("#btn-fig-open")
@@ -791,7 +796,7 @@ def test_export_de_figure_telecharge_un_zip(page, seeded):
     """Le bout de la chaîne : le zip arrive vraiment dans le navigateur, et il porte le
     nom composé par le SERVEUR — le recomposer côté client ferait diverger deux
     horodatages pour un seul export."""
-    page.goto(seeded["base"] + SURFACES["visionneuse"](seeded), wait_until="networkidle")
+    page.goto(seeded["base"] + SURFACES_AUDITEES["/"](seeded), wait_until="networkidle")
     page.wait_for_timeout(600)
     page.click("#btn-fig-add")
     page.click("#btn-fig-open")

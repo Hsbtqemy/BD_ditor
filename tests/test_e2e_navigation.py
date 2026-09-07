@@ -252,12 +252,19 @@ def test_menus_au_dessus_du_panneau_transcription(page, seeded_ocr):
 # --------------------------------------------------------------------------- #
 # Navigation transverse unifiée + menus de la Visionneuse (theme.js)
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("path,label", [
-    ("/", "Atelier"),
-    ("/corpus", "Bibliothèque"),
-    ("/recherche", "Recherche"),
-    ("/exploration", "Exploration"),
-])
+# UX-10 — LA liste de cet audit, et elle sert de déclaration : `tests/test_surfaces.py`
+# la confronte aux surfaces réellement servies. Les libellés sont ceux de la barre de
+# `theme.js`, donc cette structure porte aussi le contrat du nom affiché.
+SURFACES_AUDITEES = {
+    "/": "Atelier",
+    "/corpus": "Bibliothèque",
+    "/recherche": "Recherche",
+    "/exploration": "Exploration",
+}
+SURFACES_HORS_PERIMETRE = {}
+
+
+@pytest.mark.parametrize("path,label", SURFACES_AUDITEES.items())
 def test_nav_unifiee_injectee_et_surbrillance(page, live_server, path, label):
     """La barre de nav est injectée à l'identique sur les 4 surfaces (4 liens), et la
     surface courante — et elle seule — porte aria-current=page (« vous êtes ici »)."""
@@ -486,7 +493,7 @@ def test_confort_de_lecture(page, live_server):
     expect(page.locator("html")).to_have_attribute("data-lecture", "confort", timeout=15000)
 
 
-@pytest.mark.parametrize("path", ["/", "/corpus", "/recherche", "/exploration"])
+@pytest.mark.parametrize("path", list(SURFACES_AUDITEES))
 def test_deux_bandes_navigation_au_dessus_des_outils(page, live_server, path):
     """Structure en deux bandes : la bande 1 (#site-nav, navigation) est tout en haut
     et identique partout (4 surfaces) ; la bande 2 (#header, outils de page) est juste

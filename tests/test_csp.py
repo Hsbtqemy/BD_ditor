@@ -15,7 +15,7 @@ bundle — deux choses qu'aucune relecture de source ne pouvait voir.
 import httpx
 import pytest
 
-import inventaire_routes
+import surfaces
 from conftest import make_png
 
 ADMIN = {"Remote-User": "csp", "Remote-Groups": "bd-admins"}
@@ -42,14 +42,11 @@ def test_les_surfaces_html_suivent_l_application(client):
     `SURFACES_BALAYEES` porte des paramètres de requête et deux chemins de documentation
     qu'aucune énumération ne devinerait, et cette intention-là s'écrit.
     """
-    servies = set()
-    for r in inventaire_routes.routes_api():
-        # Les gabarits paramétrés sont écartés : `/derivatives/{chemin:path}` sert des
-        # IMAGES, pas du HTML, et aucune surface d'application n'est paramétrée.
-        if "GET" not in r.methods or r.path.startswith("/api/") or "{" in r.path:
-            continue
-        if "text/html" in client.get(r.path).headers.get("content-type", ""):
-            servies.add(r.path)
+    # La détection vit dans `surfaces.surfaces_servies` depuis UX-10, où `test_surfaces`
+    # l'emploie aussi. La partager plutôt que d'en garder une copie ici est la leçon du
+    # 2026-09-07 : deux copies ne dérivent jamais dans le même sens, si bien que chacune
+    # finit par porter ce qui manque à l'autre — et l'on ne s'en aperçoit pas.
+    servies = surfaces.surfaces_servies(client)
 
     assert servies, (
         "aucune surface HTML trouvée : l'inventaire est vide, donc ce contrôle ne prouve "

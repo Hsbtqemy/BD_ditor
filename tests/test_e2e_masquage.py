@@ -50,8 +50,13 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 # couvrir quelque chose, et cette information n'a aucune raison d'attendre un run long.
 
 RACINE = Path(__file__).resolve().parent.parent
-SURFACES = [("/", "viewer.js"), ("/recherche", "recherche.js"),
-            ("/corpus", "corpus.js"), ("/exploration", "exploration.js")]
+# UX-10 — LA liste de cet audit, et elle sert de déclaration : `tests/test_surfaces.py`
+# la confronte aux surfaces réellement servies. C'est la MÊME structure que le test
+# parcourt, pas une copie posée à côté — une déclaration jumelle dériverait de sa liste
+# sans que rien ne le dise, ce qui a été mesuré le 2026-09-07 sur un premier jet.
+SURFACES_AUDITEES = {"/": "viewer.js", "/recherche": "recherche.js",
+                     "/corpus": "corpus.js", "/exploration": "exploration.js"}
+SURFACES_HORS_PERIMETRE = {}
 
 DIRECT = re.compile(r'\$\(\s*"#([a-z0-9-]+)"\s*\)\.hidden\s*=')
 AFFECT = re.compile(r'(\w+)\s*=\s*(?:\$\(\s*"#([a-z0-9-]+)"\s*\)'
@@ -103,7 +108,7 @@ SONDE = """(ids) => {
 
 
 @pytest.mark.e2e
-@pytest.mark.parametrize("chemin, script", SURFACES)
+@pytest.mark.parametrize("chemin, script", SURFACES_AUDITEES.items())
 def test_un_element_declare_cache_l_est_vraiment(page, live_server, chemin, script):
     """Pour CHAQUE élément que la surface masque, poser `hidden` doit donner `display:none`.
 
@@ -125,7 +130,7 @@ def test_un_element_declare_cache_l_est_vraiment(page, live_server, chemin, scri
         "fautive, comme la dizaine qui existent déjà.")
 
 
-@pytest.mark.parametrize("chemin, script", SURFACES)
+@pytest.mark.parametrize("chemin, script", SURFACES_AUDITEES.items())
 def test_toute_cible_illisible_est_declaree(chemin, script):
     """Le périmètre du balayage ne rétrécit pas en silence.
 

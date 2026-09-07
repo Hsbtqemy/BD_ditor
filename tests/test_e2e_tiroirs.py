@@ -17,6 +17,19 @@ ne le connaît pas. Ouvrir un tiroir à 320 px puis élargir la fenêtre rend le
 colonne — le piège doit alors se DÉSARMER seul, sans qu'aucun nombre soit recopié dans le
 JS. Il le fait en demandant au DOM si la bascule est affichée.
 """
+# UX-10 — ce que cet audit COUVRE, et ce qu'il écarte avec sa raison.
+#
+# Le piège à focus d'UX-7 garde les TIROIRS de la Visionneuse — l'arbre de structure et le
+# panneau latéral, qui s'escamotent sous le seuil derrière un voile. Aucune autre surface
+# n'a de tiroir, donc aucune autre n'a de piège à éprouver.
+SURFACES_AUDITEES = ("/",)
+SURFACES_HORS_PERIMETRE = {
+    "/corpus": "pas de tiroir escamotable : rien à piéger",
+    "/recherche": "pas de tiroir escamotable : rien à piéger",
+    "/exploration": "pas de tiroir escamotable : rien à piéger",
+}
+
+
 import httpx
 import pytest
 

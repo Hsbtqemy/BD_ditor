@@ -79,12 +79,17 @@ def decor(live_server):
 # rend aucun résultat, donc ni `.r-thumb` ni `.result`. Trois largeurs figées ont vécu des
 # mois sans être mesurées pour exactement cette raison — ce que la page ne rend pas,
 # l'instrument ne le voit pas (UX-7, 2026-09-05).
-SURFACES = {
-    "visionneuse": lambda d: f"/?album={d['album']}&planche={d['planche']}&region={d['region']}",
-    "recherche":   lambda d: "/recherche?q=pouvoir",
-    "corpus":      lambda d: "/corpus",
-    "exploration": lambda d: "/exploration?champ=lemme",
+# UX-10 — LA liste de cet audit, et elle sert de déclaration : `tests/test_surfaces.py`
+# la confronte aux surfaces réellement servies. C'est la MÊME structure que le test
+# parcourt, pas une copie posée à côté — une déclaration jumelle dériverait de sa liste
+# sans que rien ne le dise, ce qui a été mesuré le 2026-09-07 sur un premier jet.
+SURFACES_AUDITEES = {
+    "/":            lambda d: f"/?album={d['album']}&planche={d['planche']}&region={d['region']}",
+    "/recherche":   lambda d: "/recherche?q=pouvoir",
+    "/corpus":      lambda d: "/corpus",
+    "/exploration": lambda d: "/exploration?champ=lemme",
 }
+SURFACES_HORS_PERIMETRE = {}
 
 
 # Une exemption NOMMÉE, sur le modèle de `HORS_PERIMETRE` (test_autorisation) et de
@@ -113,7 +118,7 @@ COMMANDES_CANEVAS = ["#zoom-out", "#zoom-in", "#zoom-fit", "#zoom-reset"]
 
 def _sonder(page, decor, surface, largeur):
     page.set_viewport_size({"width": largeur, "height": 900})
-    page.goto(decor["base"] + SURFACES[surface](decor), wait_until="networkidle")
+    page.goto(decor["base"] + SURFACES_AUDITEES[surface](decor), wait_until="networkidle")
     page.wait_for_timeout(400)          # les surfaces peuplent leur DOM après le chargement
     return page.evaluate(SONDE)
 
@@ -127,7 +132,7 @@ def _decrire(coupables):
 
 
 @pytest.mark.parametrize("largeur", LARGEURS)
-@pytest.mark.parametrize("surface", list(SURFACES))
+@pytest.mark.parametrize("surface", list(SURFACES_AUDITEES))
 def test_aucune_surface_ne_perd_de_contenu(page, decor, surface, largeur):
     """À 320 et 768 px, aucun élément n'est hors champ sans cadre ni bascule."""
     r = _sonder(page, decor, surface, largeur)
@@ -150,7 +155,7 @@ def test_la_surface_de_pan_reste_bornee_et_commandee(page, decor):
     test, lui, charge une planche, et `#canvas` y fait 800 px pour 768 de fenêtre.
     """
     page.set_viewport_size({"width": 320, "height": 900})
-    page.goto(decor["base"] + SURFACES["visionneuse"](decor), wait_until="networkidle")
+    page.goto(decor["base"] + SURFACES_AUDITEES["/"](decor), wait_until="networkidle")
     page.wait_for_timeout(400)
     r = page.evaluate("""(commandes) => {
       const st = document.querySelector('#stage');

@@ -27,6 +27,19 @@ pytestmark = pytest.mark.e2e
 # ne parle pas d'autorisation.
 
 
+# UX-10 — ce que cet audit COUVRE, et ce qu'il écarte avec sa raison.
+#
+# Cet audit suit un PANNEAU, pas une page : 🩺 Moteurs (SANTE-1) ne vit aujourd'hui que
+# dans la Bibliothèque. Le jour où il déménagera vers `/administration`, cette déclaration
+# devra suivre — et c'est précisément ce qu'on veut qu'elle force à voir.
+SURFACES_AUDITEES = ("/corpus",)
+SURFACES_HORS_PERIMETRE = {
+    "/": "le panneau des moteurs n'y est pas rendu",
+    "/recherche": "le panneau des moteurs n'y est pas rendu",
+    "/exploration": "le panneau des moteurs n'y est pas rendu",
+}
+
+
 @pytest.fixture
 def moteurs(live_server, page):
     """Détourne `/api/sante` et COMPTE les appels — tous, et les profonds à part. Le

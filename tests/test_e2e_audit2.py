@@ -9,6 +9,18 @@ règle couverte sans l'être — c'est exactement le défaut que SANTE-1 a mesur
 
 Marqués `e2e` → hors du run par défaut (`pytest -m e2e`).
 """
+# UX-10 — ce que cet audit COUVRE, et ce qu'il écarte avec sa raison.
+#
+# Cet audit suit deux CORRECTIFS nommés (AUDIT-2 F1 et D1/D2), pas un inventaire d'écrans :
+# le thème qui traverse les onglets, et le nuage de tags qui se reconstruit sans perdre sa
+# sélection. Il va donc là où ces deux comportements vivent, et nulle part ailleurs.
+SURFACES_AUDITEES = ("/recherche", "/corpus", "/exploration")
+SURFACES_HORS_PERIMETRE = {
+    "/": "la Visionneuse ne porte pas de nuage de tags ; l'onglet qui reçoit l'événement "
+         "`storage` du correctif F1 est ouvert sur la Recherche et la Bibliothèque.",
+}
+
+
 import json
 
 import httpx
