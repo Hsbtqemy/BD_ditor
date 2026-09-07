@@ -187,6 +187,21 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
 # mérite sa décision, comme celle du 31 août sur l'accord inter-annotateurs.
 SORTIES_DECLAREES = {
     # ---- Routes ----------------------------------------------------------- #
+    ("route", "/api/comptes"): (
+        {"login", "nom", "courriel"},
+        "La vue des comptes (AUTH-7) : elle EXISTE pour nommer des personnes, et les trois "
+        "sortes y sont le sujet plutôt qu'un effet de bord. Le login parce que c'est la clé "
+        "à laquelle tout est indexé — journal A3, `collection_acces`, appareils TOTP — et "
+        "que c'est LUI qu'on retapera dans l'annuaire ; le nom lisible parce qu'un écran qui "
+        "n'affiche que des logins fait traduire la personne qui lit, et que deux logins "
+        "voisins se confondent (même raison que `verrou_par_nom`) ; le courriel parce que "
+        "c'est par lui qu'on JOINT quelqu'un avant de toucher à son compte — décider qu'un "
+        "login est réutilisable sans pouvoir écrire à qui le portait serait précisément le "
+        "geste que cette vue doit rendre impossible. "
+        "Elle est RÉSERVÉE aux administrateurs d'instance (403 sinon), pour la raison qui "
+        "réserve déjà `accord-inter` : elle porte sur des PERSONNES, pas sur le corpus. "
+        "Et elle ne sort de l'instance par AUCUN artefact — ni export, ni dépôt : c'est un "
+        "écran d'administration, la ligne DEDANS / DEHORS de DROIT-1 s'applique entière."),
     ("route", "/api/moi"): (
         {"login", "nom"},
         "L'identité de l'APPELANT, la sienne — c'est l'objet même de la route, et elle ne "

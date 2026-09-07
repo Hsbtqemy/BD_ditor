@@ -20,6 +20,7 @@ recopiés à l'œil — c'est cette erreur-là qui a produit 49 tests rouges au 
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -252,6 +253,104 @@ def delete_collection(collection_id: int, conn: sqlite3.Connection = Depends(db)
                         avant={"nom": c["nom"]})
     conn.commit()
     return Response(status_code=204)
+
+
+# --------------------------------------------------------------------------- #
+# La vue des comptes (AUTH-7)
+#
+# Elle vit ICI et non dans un module à elle : elle existe pour décider d'un ACCÈS, sa
+# source principale est `collection_acces`, et le même panneau la lira. Un module pour une
+# route en lecture ajouterait un routeur à l'inventaire d'ARCH-1 sans domaine encore
+# distinct. Si elle grandit — AUTH-7 lui prévoit quatre cases —, elle l'aura méritée.
+#
+# CE QU'ELLE NE PEUT PAS SAVOIR, et c'est structurel : les groupes. L'application ne
+# connaît que ceux de la personne qui FRAPPE, à l'instant de sa requête (AUTH-1) ; elle ne
+# les stocke jamais. Un compte peut donc lire tout le corpus par un groupe, ou tout par
+# `bd-admins`, sans qu'une seule ligne de `collection_acces` ne le montre. La vue le DIT
+# plutôt que de laisser conclure — sans quoi elle désignerait un administrateur comme
+# « sans accès », ce qui serait exact et parfaitement trompeur.
+# --------------------------------------------------------------------------- #
+def _comptes(conn) -> list:
+    """Un état par login connu : ce qu'il a laissé, et ce qu'on ne peut pas savoir de lui.
+
+    Le VERDICT porte sur une conséquence, jamais sur une recommandation — « rien à
+    orpheliner » et non « supprimable ». La nuance n'est pas de style : la règle validée
+    le 2026-09-06 dit ce qu'une suppression casserait, elle ne dit pas s'il faut supprimer,
+    et l'écran sera lu par des gens qui n'étaient pas dans cette conversation.
+    """
+    actes = {r["agent"]: r["n"] for r in conn.execute(
+        # Les traces de REPRISE D'IDENTITÉ sont exclues du compte : elles portent bien
+        # l'agent, mais ce n'est pas un acte qu'il a posé — c'est un changement observé sur
+        # son propre compte. Les compter ferait passer un mariage pour du travail laissé.
+        "SELECT agent, COUNT(*) AS n FROM evenement "
+        "WHERE agent_type = 'humain' AND agent IS NOT NULL "
+        "  AND cible_table != 'utilisateur' "
+        "GROUP BY agent")}
+    acces = {r["principal"]: r["n"] for r in conn.execute(
+        "SELECT principal, COUNT(*) AS n FROM collection_acces "
+        "WHERE genre = ? GROUP BY principal", (autorisation.UTILISATEUR,))}
+    reprises = {}
+    for r in conn.execute(
+            "SELECT avant, date FROM evenement "
+            "WHERE cible_table = 'utilisateur' ORDER BY id"):
+        try:
+            login = json.loads(r["avant"] or "{}").get("login")
+        except ValueError:                                   # pragma: no cover
+            continue
+        if login:
+            reprises[login] = reprises.get(login, 0) + 1
+
+    out = []
+    for u in conn.execute("SELECT * FROM utilisateur ORDER BY login"):
+        login = u["login"]
+        n_actes, n_acces = actes.get(login, 0), acces.get(login, 0)
+        if n_actes:
+            verdict = "laisse des actes"
+        elif n_acces:
+            verdict = "laisse des accès"
+        else:
+            verdict = "rien à orpheliner"
+        out.append({
+            "login": login, "nom": u["nom"], "email": u["email"],
+            "premiere_vue": u["premiere_vue"], "derniere_vue": u["derniere_vue"],
+            "actes": n_actes, "acces_explicites": n_acces,
+            "verdict": verdict,
+            # Le filet quand la vigilance a manqué : le geste de suppression vit dans
+            # l'annuaire et rien ici ne peut l'empêcher. Ce qui reste possible, c'est de
+            # SIGNALER qu'un login connu a changé de mains — la trace est datée, donc la
+            # coupe entre les deux personnes reste reconstructible.
+            "reprises": reprises.get(login, 0),
+        })
+    return out
+
+
+@router.get("/api/comptes")
+def liste_comptes(conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
+    """Les comptes que l'application a VUS, et ce que chacun a laissé (AUTH-7).
+
+    RÉSERVÉE AUX ADMINISTRATEURS D'INSTANCE, et pour la raison qui réserve déjà
+    `GET /api/analyse/accord-inter` : cette vue porte sur des PERSONNES et non sur le
+    corpus — elle nomme, date et compte. Un propriétaire de collection n'y gagnerait rien
+    qu'il ne sache déjà (il choisit qui il ajoute) et y verrait la composition d'équipes
+    qui ne sont pas la sienne. La portée est corpus-entier par nature : un compte n'a pas
+    de collection.
+
+    LE PÉRIMÈTRE EST CELUI DE L'APPLICATION, pas celui de l'annuaire, et la différence
+    compte : `utilisateur` ne contient que les gens qui ont OUVERT une page. Quelqu'un
+    créé dans l'annuaire hier et qui n'est jamais venu n'apparaît pas ici — ce n'est pas un
+    oubli, c'est ce que « compte ACTIF » veut dire, et c'est précisément ce qu'un annuaire
+    ne sait pas dire.
+    """
+    if not portee.tout:
+        raise HTTPException(403, "La vue des comptes est réservée aux administrateurs : "
+                                 "elle porte sur des personnes, pas sur le corpus.")
+    return {"comptes": _comptes(conn),
+            # Déclaré plutôt que laissé à découvrir : sans cela, un administrateur — qui
+            # n'a AUCUNE ligne dans `collection_acces` — se lit « rien à orpheliner ».
+            "limite": "Les accès accordés par GROUPE n'apparaissent pas : l'application ne "
+                      "connaît que les groupes de la personne qui frappe (AUTH-1), jamais "
+                      "ceux des autres. Un compte peut donc tout lire sans figurer ici."}
 
 
 @router.get("/api/collections/{collection_id}/acces")

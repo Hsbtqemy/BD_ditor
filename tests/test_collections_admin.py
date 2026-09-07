@@ -573,3 +573,91 @@ def test_un_proprietaire_disparu_laisse_une_collection_administrable_par_un_admi
     r = client.get(f"/api/collections/{cid}/acces", headers={"Remote-User": "bob"})
     assert r.status_code == 200
     assert not [a for a in r.json() if a["principal"] == "alice"]
+
+
+# --------------------------------------------------------------------------- #
+# La vue des comptes (AUTH-7)
+#
+# Elle existe parce que la suppression d'un compte reste un geste courant du panneau
+# d'annuaire, et que la règle « ce que le compte a LAISSÉ » s'appliquera à des gens qui
+# n'étaient pas dans la conversation où elle s'est décidée. D'où un VERDICT et non des
+# chiffres — et un verdict qui parle de CONSÉQUENCE, jamais de recommandation.
+# --------------------------------------------------------------------------- #
+def _comptes(client, headers):
+    return client.get("/api/comptes", headers=headers)
+
+
+def test_la_vue_des_comptes_est_reservee_aux_administrateurs(client, derriere_proxy):
+    """Elle porte sur des PERSONNES, pas sur le corpus — même raison qu'`accord-inter`."""
+    client.get("/api/moi", headers={"Remote-User": "simple"})
+    r = _comptes(client, {"Remote-User": "simple"})
+    assert r.status_code == 403
+    assert "personnes" in r.json()["detail"]
+
+
+def test_un_compte_sans_rien_ne_laisse_rien(client, derriere_proxy):
+    """« rien à orpheliner » — et le mot compte : la vue dit ce qu'une suppression
+    casserait, pas s'il faut supprimer."""
+    client.get("/api/moi", headers={"Remote-User": "neuf", "Remote-Name": "Personne Neuve"})
+    d = _comptes(client, ADMIN).json()
+    c = next(c for c in d["comptes"] if c["login"] == "neuf")
+    assert (c["actes"], c["acces_explicites"]) == (0, 0)
+    assert c["verdict"] == "rien à orpheliner"
+    assert c["nom"] == "Personne Neuve"
+
+
+def test_un_compte_qui_a_annote_laisse_des_actes(client, derriere_proxy, db_path):
+    """Le journal A3 est la source : un acte humain compte, et il interdit la suppression
+    silencieuse — c'est le critère validé le 2026-09-06."""
+    client.get("/api/moi", headers={"Remote-User": "hugo"})
+    conn = sqlite3.connect(db_path)
+    conn.execute("INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id) "
+                 "VALUES ('modification', 'hugo', 'humain', 'regions', 1)")
+    conn.commit()
+    conn.close()
+    c = next(c for c in _comptes(client, ADMIN).json()["comptes"] if c["login"] == "hugo")
+    assert c["actes"] == 1 and c["verdict"] == "laisse des actes"
+
+
+def test_une_reprise_d_identite_n_est_PAS_un_acte(client, derriere_proxy, db_path):
+    """Elle porte l'agent, mais ce n'est pas un travail qu'il a posé : c'est un changement
+    OBSERVÉ sur son propre compte. La compter ferait passer un mariage pour du travail
+    laissé, et rendrait un compte neuf indéfiniment inarchivable."""
+    client.get("/api/moi", headers={"Remote-User": "lea", "Remote-Name": "Lea Un"})
+    client.get("/api/moi", headers={"Remote-User": "lea", "Remote-Name": "Lea Deux"})
+    c = next(c for c in _comptes(client, ADMIN).json()["comptes"] if c["login"] == "lea")
+    assert c["actes"] == 0, "la trace de reprise a été comptée comme un acte"
+    assert c["verdict"] == "rien à orpheliner"
+    # Mais elle est SIGNALÉE : c'est le filet quand la vigilance a manqué.
+    assert c["reprises"] == 1
+
+
+def test_un_acces_explicite_se_voit(client, derriere_proxy, db_path):
+    client.get("/api/moi", headers={"Remote-User": "membre"})
+    conn = sqlite3.connect(db_path)
+    conn.execute("INSERT INTO collection (nom) VALUES ('Etude Z')")
+    cid = conn.execute("SELECT id FROM collection WHERE nom='Etude Z'").fetchone()[0]
+    conn.execute("INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
+                 "VALUES (?, 'utilisateur', 'membre', 'lecture')", (cid,))
+    conn.commit()
+    conn.close()
+    c = next(c for c in _comptes(client, ADMIN).json()["comptes"] if c["login"] == "membre")
+    assert c["acces_explicites"] == 1 and c["verdict"] == "laisse des accès"
+
+
+def test_la_vue_DECLARE_ce_qu_elle_ne_peut_pas_savoir(client, derriere_proxy):
+    """Sans cette déclaration, un administrateur — qui n'a AUCUNE ligne dans
+    `collection_acces` — se lirait « rien à orpheliner ». Exact, et parfaitement trompeur.
+
+    C'est la conséquence directe d'AUTH-1 : l'application ne connaît que les groupes de la
+    personne qui frappe, jamais ceux des autres, et ne les stocke pas."""
+    d = _comptes(client, ADMIN).json()
+    assert "GROUPE" in d["limite"] and "AUTH-1" in d["limite"]
+
+
+def test_le_perimetre_est_l_application_pas_l_annuaire(client, derriere_proxy):
+    """`utilisateur` ne contient que ceux qui ont OUVERT une page. Quelqu'un créé dans
+    l'annuaire et jamais venu n'apparaît pas — ce n'est pas un oubli, c'est ce que
+    « compte actif » veut dire, et c'est ce qu'un annuaire ne sait pas dire."""
+    d = _comptes(client, ADMIN).json()
+    assert d["comptes"] == [] or all(c["derniere_vue"] for c in d["comptes"])
