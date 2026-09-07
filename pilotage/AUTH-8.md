@@ -1,9 +1,23 @@
 ---
 chantier: AUTH-8
-statut: à venir
+statut: interrompu
 ---
 
 # AUTH-8 — « aucun groupe » recouvre deux situations, et le code les écrase
+
+**Arrêté sur** — 2026-09-07, `a7afa30` : **le code ne les écrase plus, et le titre de
+cette fiche est désormais au passé.** `autorisation.entete_groupes_recu()` distingue
+l'en-tête ABSENT de l'en-tête VIDE, `GET /api/moi` publie la différence dans
+`acces.entete_groupes`, et la ligne technique du bandeau nomme QUATRE situations au lieu
+de trois — dont une seule appelle une réparation.
+
+**Ce qui reste n'est pas du code, c'est une MESURE**, et c'est la vraie leçon de ce
+chantier. La table de correspondance en tête de cette fiche est lue dans les sources
+d'Authelia `v4.39.22` et de Caddy ; lire un dépôt n'est pas mesurer un déploiement. D'où
+un arbitrage à DEUX DEGRÉS plutôt qu'un seul : l'écran NOMME les quatre situations —
+aucune ne demande de certitude, ce sont des faits de fil —, mais il ne se déplie d'office
+que pour la panne qu'on SAIT établir. Distinguer et conclure ne coûtent pas la même
+preuve, et les mélanger aurait refait l'erreur du 2026-09-06 sous une forme plus fine.
 
 **Point de départ** — 2026-09-07, en réécrivant le bandeau de portée vide. Il annonçait
 « aucun groupe » comme un réglage de proxy ; on l'a ramené à une observation faute de
@@ -49,30 +63,45 @@ l'application ne savait pas isoler.
       a coupé le portail six minutes
 
 ### Ne plus écraser la différence
-- [ ] `autorisation` distingue l'en-tête ABSENT de l'en-tête VIDE, sans changer le contrat
-      de `groupes()` qui rend une liste — l'information « l'en-tête n'est pas venu » voyage
-      à part, et un appelant qui l'ignore continue de fonctionner comme avant
-- [ ] Le mono-poste est INCHANGÉ : sans `BD_AUTH_PROXY`, aucun en-tête n'est lu et la
-      question ne se pose pas. Attendu : aucune des deux nouvelles situations ne peut
-      apparaître hors proxy, vérifié par un test
-- [ ] `GET /api/moi` publie de quoi trancher, dans le bloc `acces` qui porte déjà le
-      diagnostic — et rien de plus : c'est le seul endroit où la liste des groupes sert
+- [x] `autorisation.entete_groupes_recu()` distingue l'en-tête ABSENT de l'en-tête VIDE
+      sans toucher au contrat de `groupes()` — un test vérifie EXPLICITEMENT que `groupes`
+      rend la même liste vide dans les deux cas, parce que c'est la condition posée ici et
+      non un effet de bord à constater plus tard
+- [x] Le mono-poste est INCHANGÉ : la fonction rend `None` — et non `False`, qui voudrait
+      dire « il manque alors qu'il aurait dû venir ». C'est la forme d'`auteur()`, qui rend
+      déjà None hors proxy. Vérifié sur les trois jeux d'en-têtes, tous ignorés
+- [x] `GET /api/moi` publie `acces.entete_groupes`, et rien de plus. L'égalité EXACTE de
+      `test_moi_sans_auth_local_renvoie_null` a bronché sur ce champ — elle existe pour ça,
+      et son propre commentaire dit comment la mettre à jour : ajouter la clé, jamais
+      relâcher l'égalité
 
 ### Le dire, sans revenir au sur-diagnostic
-- [ ] La ligne technique du bandeau dit l'une de TROIS choses selon l'état réel, et chacune
-      reste une observation vérifiable — pas une cause supposée. « Aucun groupe reçu » ne
-      doit subsister que là où c'est encore la seule chose qu'on sache
-- [ ] Le cas « le proxy ne recopie pas les groupes » est le seul des trois qui appelle une
-      réparation : il se distingue à l'écran de celui qui n'en appelle aucune, sinon ce
-      chantier n'aura servi à rien
-- [ ] Les tests couvrent les TROIS états par leurs en-têtes, y compris `Remote-Groups`
-      envoyé VIDE — un cas qu'aucun test actuel ne produit, et sans lequel le nouveau code
-      serait vert sans jamais être exercé
+- [x] La ligne technique dit l'une de QUATRE choses — « aucun en-tête d'identité »,
+      « Remote-Groups NON reçu », « reçu mais VIDE », « groupes reçus : … » — et chacune
+      est vérifiable sur les en-têtes. Ce qui suit le tiret dans le deuxième cas est une
+      INSTRUCTION (où regarder), pas une cause affirmée
+- [x] Le cas réparable se distingue à l'écran de celui qui ne l'est pas, et le test
+      l'exige des DEUX côtés : « sans effet » présent sur l'un, « NON reçu » absent de
+      l'autre. Une assertion sur le seul libellé attendu aurait passé si les deux disaient
+      la même chose
+- [x] Les tests couvrent les QUATRE états par leurs en-têtes. Et le point qui décidait de
+      tout a été MESURÉ avant d'être écrit : Playwright transmet bien `Remote-Groups:`
+      vide, il ne le supprime pas. S'il l'avait supprimé, le cas « reçu vide » aurait
+      rejoué le cas « absent » et le test serait resté vert sans voir l'état qu'il couvre
 
 ### Ce que la doctrine doit cesser de dire
-- [ ] `CLAUDE.md` remplace sa mention « non fait » par le résultat, et la phrase qui annonce
-      l'ambiguïté comme indépassable disparaît — elle était vraie du code, jamais du
-      protocole
+- [x] `CLAUDE.md` dit le résultat : l'ambiguïté était celle du CODE, jamais celle du
+      protocole. Le passage nomme les quatre situations, la fonction, le champ publié, et
+      sépare ce qui est fait de ce qui reste à mesurer
+
+### L'arbitrage à deux degrés, et ce qu'il attend
+- [ ] Le bandeau NOMME les quatre situations mais ne se déplie d'office que pour la seule
+      panne CERTAINE — l'absence d'identité. Distinguer à l'écran et déplier d'office sont
+      deux décisions prises sur deux degrés de certitude différents, et la seconde attend
+      la première case de cette fiche. Le jour où la mesure sur l'instance confirme la
+      table, `test_le_bandeau_ne_se_deplie_d_office_que_pour_une_vraie_panne`
+      (`tests/test_e2e_a11y.py`) est l'endroit qui exigera le second cas — il porte déjà
+      la consigne dans sa docstring
 
 ## Contexte
 
@@ -82,16 +111,18 @@ règle. Ce qui change, c'est que l'observation devient plus fine : on ne dira pa
 proxy » parce qu'on le suppose, on le dira parce que l'en-tête manque alors qu'Authelia
 l'aurait posé.
 
-**Et le bandeau reste destiné à qui est BLOQUÉ.** Les trois formulations vivent dans la
+**Et le bandeau reste destiné à qui est BLOQUÉ.** Les quatre formulations vivent dans la
 ligne technique, sous le pli, avec le reste qui parle en français à quelqu'un qui n'y peut
-rien. Ajouter un état ne doit pas ramener du jargon au-dessus du pli.
+rien. Ajouter un état n'a pas ramené de jargon au-dessus du pli — le titre et le corps sont
+inchangés, et c'était la condition.
 
 **Pourquoi ça vaut la peine, alors que le cas est rare.** Un proxy qui pose `Remote-User`
 sans `Remote-Groups` rend TOUS les accès par groupe silencieusement inopérants. Les
-personnes concernées se connectent correctement, voient une application vide, et le seul
-indice disponible aujourd'hui est un message qui dit la même chose que pour un simple
-défaut d'accès. C'est exactement la panne qu'AUTH-1 voulait rendre distinguable, et elle ne
-l'était qu'à moitié.
+personnes concernées se connectent correctement et voient une application vide. Le seul
+indice disponible disait jusqu'ici la même chose que pour un simple défaut d'accès :
+c'était exactement la panne qu'AUTH-1 voulait rendre distinguable, et elle ne l'était qu'à
+moitié. Elle l'est maintenant à l'écran ; ce qui manque est la mesure qui autoriserait à
+en TIRER une conclusion sans qu'un lecteur la tire lui-même.
 
 **Voisinage.** AUTH-1 (les trois situations, et le libellé réécrit le 2026-09-07), AUTH-2
 (`Remote-Groups` relu à chaque requête, jamais stocké), INFRA-11 (le contrôle du fichier
