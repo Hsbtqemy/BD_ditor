@@ -14,7 +14,7 @@ personne qui frappe (AUTH-1). La vue le DÉCLARE, ce qui est honnête et ne rép
 
 Deux instruments ont approuvé en regardant ailleurs, le même jour, à deux tailles
 différentes. Un `elif` faisait dire « laisse des actes » à un compte qui laissait AUSSI des
-accès — exact, et tronqué là précisément où quelqu'un décide. Et `test_a11y_corpus_collections`
+accès — exact, et tronqué là précisément où quelqu'un décide. Et `test_a11y_administration_collections`
 auditait déjà cette modale, mais SANS proxy : `utilisateur` y est vide, si bien qu'axe
 approuvait le message « aucun compte » et n'avait jamais vu le tableau. C'est le piège
 qu'`UX-10` décrit pour les listes de surfaces, rencontré une taille en dessous — l'instrument
