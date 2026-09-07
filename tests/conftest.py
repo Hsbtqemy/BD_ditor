@@ -234,7 +234,14 @@ def live_server(request, tmp_path):
            # l'audit ne regarderait jamais — le reproche exact que le test de portée vide
            # se fait à lui-même.
            "BD_REFERENT_NOM": "Ana Ruiz",
-           "BD_REFERENT_CONTACT": "ana@labo.fr"}
+           "BD_REFERENT_CONTACT": "ana@labo.fr",
+           # INFRA-10 — même argument, une ligne plus bas. Sans commit déclaré, le bloc
+           # « Version servie » rend son état INCONNU, qui est une phrase courte ; l'état
+           # qui compte est l'autre — quarante caractères hexadécimaux dans un `<code>`,
+           # c'est-à-dire le seul contenu de cette page qui ne peut pas se couper. À 320 px
+           # c'est précisément ce que la garde de reflux surveille, et sans ce décor elle
+           # regarderait le bon écran dans le mauvais état.
+           "BD_COMMIT": "4a7f2b9e15c8d306f9b24e7a1c05d8f36b9e2a41"}
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app",
          "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],

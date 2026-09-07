@@ -9,6 +9,7 @@ déployer les données ailleurs que dans le dépôt et d'isoler les tests :
     BD_DB_PATH    chemin explicite de la base   (défaut : DATA_DIR/bd_annotator.sqlite)
 """
 import os
+import re
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -84,6 +85,43 @@ AUTH_ADMIN_GROUPS = frozenset(
 # c'est écrit plutôt que laissé à découvrir.
 REFERENT_NOM = os.environ.get("BD_REFERENT_NOM", "").strip()
 REFERENT_CONTACT = os.environ.get("BD_REFERENT_CONTACT", "").strip()
+
+# Le commit que sert CETTE instance (INFRA-10). `deployer.sh` le passe en argument de
+# build ; l'image le porte DEUX fois — en `LABEL bd.commit`, que le script relit de
+# l'extérieur pour décider s'il y a à déployer, et en variable d'environnement, seule
+# forme qu'un processus puisse lire de l'INTÉRIEUR. Un `LABEL` ne survit pas au build.
+#
+# Cela existe parce que la donnée ne quittait jamais le script qui la calcule : elle
+# n'était lisible qu'au cours d'un déploiement, c'est-à-dire au seul instant où quelqu'un
+# regardait déjà. Le 2026-09-07, l'instance a servi `305e0bc` pendant que `main` avait
+# six commits d'avance, dont une fonctionnalité livrée et annoncée — et l'écart n'avait
+# aucun endroit où apparaître.
+#
+# ON RECONNAÎT UN COMMIT À SA FORME, jamais en énumérant ce qui n'en est pas. Hors
+# conteneur la variable est absente ; construite sans l'argument, elle vaut la chaîne
+# `inconnu` (le défaut de l'`ARG` du Dockerfile). Deux états distincts pour une seule
+# conclusion — on ne sait pas —, et la règle par la forme couvre aussi le troisième cas
+# qu'on n'a pas prévu. C'est la leçon de l'étape 2 bis de `deployer.sh`, où une liste
+# noire aurait fermé le bon cas pour la mauvaise raison.
+#
+# La règle est une FONCTION plutôt qu'une expression posée ici : `COMMIT_SERVI` se fige à
+# l'import, si bien qu'une table de vérité sur la forme exigerait de recharger le module
+# dans le processus de test — ce qui casserait les autres modules qui ont importé ses
+# constantes par valeur. La fonction s'appelle, et la table se lit.
+def commit_valide(brut: str):
+    """Le commit si `brut` en est un, sinon None. Même règle que `deployer.sh`.
+
+    Volontairement SANS `.lower()`, alors que ce serait une tolérance gratuite : la même
+    valeur est lue à deux endroits — ici pour l'affichage, et par `deployer.sh` en
+    `grep -qE '^[0-9a-f]{40}$'` pour DÉCIDER s'il redémarre Authelia. Deux lecteurs d'une
+    même donnée qui n'appliquent pas la même règle finissent par se contredire sur un cas
+    que personne n'a prévu, et c'est le lecteur qui décide qui aurait raison.
+    """
+    brut = (brut or "").strip()
+    return brut if re.fullmatch(r"[0-9a-f]{40}", brut) else None
+
+
+COMMIT_SERVI = commit_valide(os.environ.get("BD_COMMIT", ""))
 
 # Garde-fou anti-bombe de décompression : nombre max de pixels décodés par image.
 # Très au-dessus d'un scan de BD (≤ ~100 Mpx même en haute résolution) mais bloque

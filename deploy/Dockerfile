@@ -148,6 +148,12 @@ RUN python tools/verifier_moteurs.py --exiger kumiko,bulles,ocr,nlp
 # Placé APRÈS tout ce qui coûte : changer de commit n'invalide que cette couche-ci.
 ARG BD_COMMIT=inconnu
 LABEL bd.commit=$BD_COMMIT
+# DEUX fois, et pour deux lecteurs qui ne peuvent pas se remplacer. Le `LABEL` se lit de
+# l'EXTÉRIEUR par `docker inspect` : c'est ce que `deployer.sh` interroge pour décider
+# s'il y a à déployer. L'`ENV` se lit de l'INTÉRIEUR : un `ARG` ne survit pas au build,
+# donc sans lui le processus qui tourne ignore quel commit il sert, et la page
+# d'Administration n'aurait rien à afficher (INFRA-10).
+ENV BD_COMMIT=$BD_COMMIT
 
 EXPOSE 8000
 

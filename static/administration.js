@@ -1,8 +1,9 @@
 /* Administration (UX-10) — le lieu des gestes qui portent sur l'INSTANCE.
 
-   Trois blocs, et aucun n'est une affaire de Bibliothèque : les collections décident qui
-   voit quoi dans tout le corpus, la vue des comptes dit ce que chaque login a laissé, les
-   moteurs disent si l'instance sait encore reconnaître quelque chose. Ils vivaient dans
+   Quatre blocs, et aucun n'est une affaire de Bibliothèque : la version servie dit quel
+   commit tourne ici (INFRA-10), les collections décident qui voit quoi dans tout le
+   corpus, la vue des comptes dit ce que chaque login a laissé, les moteurs disent si
+   l'instance sait encore reconnaître quelque chose. Les trois derniers vivaient dans
    `/corpus` par ACCRÉTION — c'était le seul écran administratif, et tout ce qui y
    ressemblait s'y est ajouté —, donc les atteindre depuis la Visionneuse demandait de
    quitter son travail.
@@ -11,16 +12,22 @@
    portes vers la même pièce se paient toujours, l'une des deux vieillit, et c'est celle
    qu'on ne regarde plus.
 
-   ET CE NE SONT PLUS DES MODALES. Une page est un lieu : les trois blocs sont là, lisibles
+   ET CE NE SONT PLUS DES MODALES. Une page est un lieu : les blocs sont là, lisibles
    ensemble, sans piège à focus ni Échap à gérer. `dialog.js` ne sert donc plus ici.
 
    LA GARDE RESTE SUR L'ACTE, JAMAIS SUR L'ÉCRAN QUI LE CONTIENT. C'est la condition posée
    par UX-10, et elle vient d'une erreur réelle : dans AUTH-4, le référent d'une collection
    — une simple ADRESSE — s'est retrouvé derrière la garde du PARTAGE parce qu'il vivait
    dans ce panneau-là, donc lisible du seul propriétaire. Ici, chaque bloc pose SA question :
-   les collections sont filtrées par la portée du serveur, la vue des comptes n'apparaît que
-   si `GET /api/comptes` répond, et les moteurs sont ouverts à tous — regarder si l'OCR
-   fonctionne n'est pas un pouvoir. La page, elle, ne garde rien. */
+   la version servie et la vue des comptes n'apparaissent que si leur route répond (403
+   aux non-administrateurs), les collections sont filtrées par la portée du serveur, et
+   les moteurs sont ouverts à tous — regarder si l'OCR fonctionne n'est pas un pouvoir.
+   La page, elle, ne garde rien.
+
+   Et la garde d'un bloc RÉSERVÉ se pose au même endroit que celle d'un bloc ouvert : sur
+   la route. Un `if` côté client qui lirait les groupes ferait deux sources à tenir
+   d'accord — et celle qui se tromperait serait la muette, puisqu'un bloc masqué à tort
+   ne lève aucune erreur et ne casse aucun test. */
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Collections (AUTH-3) — espaces de travail : créer, partager, ranger
@@ -280,6 +287,37 @@ async function loadCollections() {
   cols.forEach((c) => body.appendChild(colItem(c)));
 }
 
+/* --- Version servie (INFRA-10) ---------------------------------------------------
+   L'application ne connaît QU'UN BOUT de la comparaison : le commit qu'elle sert. L'autre
+   — `origin/main` — vit dans le dépôt, et l'écran le dit au lieu de faire croire qu'il
+   compare. Une phrase qui affirmerait « à jour » sans avoir vu la référence serait pire
+   que pas de phrase : c'est le silence lu comme une approbation, le mode d'échec
+   d'`ARCH-2`, et c'est exactement ce qui a laissé passer six commits de retard.
+   -------------------------------------------------------------------------------- */
+async function loadVersion() {
+  const bloc = $("#version-bloc");
+  let d;
+  // On DEMANDE, et un refus signifie « pas pour vous » — même patron que les comptes.
+  try { d = await apiGet("/api/version"); }
+  catch (e) { bloc.hidden = true; return; }
+  bloc.hidden = false;
+
+  const corps = $("#version-corps");
+  if (!d.commit) {
+    // La `note` vient du SERVEUR : lui seul sait pourquoi il ne sait pas, et une raison
+    // devinée ici enverrait chercher la mauvaise panne.
+    corps.textContent = d.note || "Commit servi inconnu.";
+    return;
+  }
+  corps.innerHTML =
+    `Cette instance sert le commit <code>${esc(d.commit.slice(0, 7))}</code> ` +
+    `<span class="muted">(${esc(d.commit)})</span>.<br>` +
+    `À comparer avec <code>git log --oneline -1 origin/main</code> depuis le dépôt : ` +
+    `l'application ne connaît que ce bout-là, et ne peut donc pas dire elle-même ` +
+    `si elle est à jour.`;
+}
+
+
 /* --- Vue des comptes (AUTH-7) ---------------------------------------------------
    Ce que chaque login a LAISSÉ, pour que la règle de suppression — validée le 2026-09-06
    — soit consultable par des gens qui n'étaient pas dans la conversation où elle s'est
@@ -444,8 +482,14 @@ async function santeEprouver() {
 
 
 function setup() {
-  // Pas de modale à ouvrir : les trois blocs sont la page. On charge donc d'emblée —
-  // trois requêtes, dont l'une (`/api/comptes`) peut légitimement être refusée.
+  // Pas de modale à ouvrir : les blocs SONT la page. On charge donc d'emblée — quatre
+  // requêtes, dont deux (`/api/version` et `/api/comptes`) peuvent légitimement être
+  // refusées, chacune masquant son propre bloc et rien d'autre.
+  //
+  // Le compte est tenu à jour ICI parce que ce commentaire a déjà menti : il disait
+  // « deux requêtes » depuis le premier jour, à trois lignes de la ligne qui le
+  // contredisait (cf. plus bas). Un chiffre dans un commentaire est une affirmation
+  // vérifiable, et il vieillit dans le sens rassurant.
   //
   // `loadComptes()` s'appelle ICI, et non depuis `loadCollections()` où elle a vécu
   // jusqu'au 2026-09-07. Elle y était nichée APRÈS le `return` du cas « aucune
@@ -463,6 +507,7 @@ function setup() {
   // décrivait l'intention et se lisait comme une description du fait. Qui cherchait dans
   // `setup()` si les comptes se chargeaient d'emblée y trouvait « oui », à trois lignes de
   // la ligne qui disait le contraire.
+  loadVersion();
   loadCollections();
   loadComptes();
   santeCharger();

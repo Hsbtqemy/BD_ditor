@@ -19,8 +19,8 @@ from fastapi import (Depends, FastAPI, File, Form, HTTPException, Request,
                      UploadFile)
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, DATA_DIR,
-                    REFERENT_CONTACT, REFERENT_NOM, RELECTURE, ROLES_PLANCHE,
+from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, COMMIT_SERVI,
+                    DATA_DIR, REFERENT_CONTACT, REFERENT_NOM, RELECTURE, ROLES_PLANCHE,
                     STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_REGION)
 from database import (citations_regions, collection_par_defaut, contributions_album,
                       dimensions_cm, init_db, noms_lisibles, numeros_editoriaux,
@@ -1670,6 +1670,40 @@ def sante(profond: bool = False):
     if profond:
         rep["profond"] = sante_moteurs.rapport()
     return rep
+
+
+@app.get("/api/version")
+def version_servie(portee: autorisation.Portee = Depends(portee_courante)):
+    """Le commit que sert cette instance. RÉSERVÉ AUX ADMINISTRATEURS (INFRA-10).
+
+    Route SÉPARÉE de `/api/sante`, et ce n'est pas un rangement. `/api/sante` est
+    déclarée hors périmètre dans `test_autorisation.py` parce qu'elle doit répondre SANS
+    identité — c'est la sonde d'un conteneur, appelée avant qu'Authelia ne soit
+    forcément debout. Y ajouter une branche qui dépend de l'appelant rendrait cette
+    déclaration fausse, et ferait d'une sonde une réponse variable.
+
+    POURQUOI RÉSERVÉ, alors qu'un numéro de version n'est pas un secret : le dépôt est
+    PUBLIC, si bien que connaître le commit servi revient à connaître exactement quels
+    correctifs sont en place et lesquels ne le sont pas. Ce n'est pas un pouvoir, c'est un
+    renseignement, et il n'est utile qu'à qui exploite l'instance. Arbitré le 2026-09-07.
+
+    En mono-poste, `portee.tout` est vrai : la question ne se pose pas quand il n'y a
+    qu'une personne — même raison qui rend `acces.groupes_admin` vide dans ce cas (AUTH-4).
+    """
+    if not portee.tout:
+        raise HTTPException(
+            403, "La version servie est réservée aux administrateurs : sur un dépôt "
+                 "public, elle dit quels correctifs sont en place.")
+    # `note` porte ce qu'un `null` ne dit pas. Sans elle, l'écran devrait deviner POURQUOI
+    # il ne sait pas, et finirait par en donner une raison qui n'est pas la bonne — le
+    # même travers que le bandeau de portée vide a dû désapprendre (AUTH-1).
+    return {
+        "commit": COMMIT_SERVI,
+        "note": None if COMMIT_SERVI else
+                "L'image ne déclare pas le commit qu'elle sert : construite hors "
+                "`deployer.sh` (sans l'argument `BD_COMMIT`), ou serveur lancé hors "
+                "conteneur — c'est le cas normal en développement.",
+    }
 
 
 _VUS_TTL = 3600.0

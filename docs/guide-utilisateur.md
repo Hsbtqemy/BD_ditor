@@ -222,9 +222,15 @@ L'inventaire et le poste de commande.
 
 ### Administration (`/administration`)
 
-Ce qui porte sur l'instance : qui voit quoi, quels comptes existent, et si les moteurs
-répondent encore. Trois blocs, chacun avec sa propre règle d'accès (cf. §2).
+Ce qui porte sur l'instance : quelle version tourne ici, qui voit quoi, quels comptes
+existent, et si les moteurs répondent encore. Quatre blocs, chacun avec sa propre règle
+d'accès (cf. §2).
 
+- **🏷️ Version servie** : le commit que cette instance fait tourner. N'apparaît que si le
+  serveur vous le sert — c'est réservé aux administrateurs, parce que le dépôt est public
+  et qu'un numéro de version y dit quels correctifs sont en place. L'application ne connaît
+  que ce bout-là : elle affiche le commit servi et vous laisse le comparer à `origin/main`,
+  plutôt que d'affirmer « à jour » sans avoir vu la référence.
 - **👥 Collections** : créer une collection, la renommer, la supprimer, accorder et retirer les
   accès, désigner un référent. Le bloc déclare aussi quels groupes d'administration voient
   tout le corpus, et signale les embargos échus. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3.

@@ -24,10 +24,27 @@
   <header id="header">
     <h1>Administration</h1>
     <p class="muted small">Ce qui porte sur l'<b>instance</b> plutôt que sur un album :
-      qui voit quoi, quels comptes existent, et si les moteurs répondent encore.</p>
+      quelle version tourne ici, qui voit quoi, quels comptes existent, et si les moteurs
+      répondent encore.</p>
   </header>
 
   <main id="admin-body">
+
+    <!-- ───────── Version servie (INFRA-10) — ce que cette instance fait tourner ─────────
+         `hidden` par défaut, levé par le JS SEULEMENT si `GET /api/version` répond. La
+         garde vit sur la ROUTE (403 aux non-administrateurs), comme pour la vue des
+         comptes : la reproduire ici en lisant les groupes ferait deux sources à tenir
+         d'accord, et l'écran finirait par mentir dans un sens ou dans l'autre.
+
+         En PREMIER, et c'est le point : l'écart entre le commit servi et celui qu'on a
+         poussé n'avait jusqu'ici aucun endroit où apparaître. La donnée ne quittait pas
+         `deployer.sh`, qui ne la calcule qu'au cours d'un déploiement — au seul instant
+         où quelqu'un regarde déjà. Le 2026-09-07, l'instance a servi six commits de
+         retard, dont une fonctionnalité livrée et annoncée, sans que rien ne le dise. -->
+    <section class="admin-bloc" id="version-bloc" hidden aria-labelledby="version-titre">
+      <h2 id="version-titre">🏷️ Version servie</h2>
+      <p id="version-corps" class="muted small"></p>
+    </section>
 
     <!-- ───────── Collections (AUTH-3) — espaces de travail : posséder, partager ─────────
          Aucune garde d'écran ici, et c'est voulu (UX-10) : la liste est filtrée par la
