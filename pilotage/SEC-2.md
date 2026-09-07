@@ -6,9 +6,10 @@ statut: interrompu
 # SEC-2 — CSP maintenant, CSRF avec les sessions
 
 **Arrêté sur** — le commit `584d607`, 2026-08-31 : **la zone CSP est close**, la zone CSRF
-reste entière et dépend toujours d'INFRA-1. D'où `différé` et non `interrompu` : ce n'est
-pas un travail abandonné en route, c'est une moitié livrée et une moitié qui attend un
-déploiement pour avoir un sens.
+reste entière et dépendait alors d'INFRA-1 : ce n'est pas un travail abandonné en route,
+c'est une moitié livrée et une moitié qui attendait un déploiement pour avoir un sens. Le
+statut qui suivait de là était `différé` — **il a été rejoué le 2026-09-05, deux paragraphes
+plus bas, et c'est celui-là qui vaut.**
 
 **Le blocage est LEVÉ — 2026-09-05.** INFRA-1 est livré : l'instance sert en HTTPS sur `bd.edito-revue.fr`, derrière Authelia, avec des comptes nommés et des sessions réelles. La raison de la mise en attente n'existe plus, et le statut change avec elle : laisser `différé` ferait annoncer par la fresque qu'on attend une instance qui tourne déjà.
 

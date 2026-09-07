@@ -17,7 +17,7 @@ ni l'autre n'existe : SHARE-1 (2026-08-28) a livré `_perso`, un dictionnaire in
 principal, et `configurer(..., principal=)` dont le paramètre est OBLIGATOIRE et
 keyword-only sans défaut — précisément pour qu'un appelant distrait ne retombe pas sur le
 compte de l'instance. Trois des quatre cases sont donc satisfaites par un autre chantier.
-La fiche reste `différé` sur la seule qui demeure, et qui n'a jamais été un portage :
+La fiche reste OUVERTE sur la seule qui demeure, et qui n'a jamais été un portage :
 faut-il PERSISTER des identifiants ShareDocs, chiffrés, plutôt que de les redemander à
 chaque redémarrage du serveur ?
 
@@ -33,9 +33,10 @@ SHARE-1 qui les a fermées, et l'attribution lui revient.
 
 ## Contexte
 
-**Différé, pas interrompu** : c'est une mise en attente délibérée derrière INFRA-1, pas
-un travail abandonné en cours de route. Mise en attente actée le 2026-08-27 ; aucun
-commit de code n'a jamais cité ce code.
+**`différé` jusqu'au 2026-09-05, `à venir` depuis** : c'était une mise en attente
+délibérée derrière INFRA-1, pas un travail abandonné en cours de route. Actée le
+2026-08-27, levée le jour où l'instance a servi ; aucun commit de code n'a jamais cité ce
+code.
 
 **Ce qui a été la raison d'être de cette fiche est traité** — et il vaut la peine de garder
 le constat, parce qu'il était juste. Vérifié le 2026-08-27 : `pipeline/sharedocs.py`

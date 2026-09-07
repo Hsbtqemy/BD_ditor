@@ -16,8 +16,21 @@ demander « aucun développement », ce qui reposait sur une doctrine depuis pr�
 
 **Le dossier à porter est écrit** (`docs/dossier-base-legale.md`, 2026-08-28) : ce que
 l'outil détient, ce qui peut en sortir et par quel geste, ce que le code borde déjà, et
-huit questions ordonnées. La démarche peut partir avec ses pièces au lieu de partir à
-blanc. Le statut reste `différé` : la réponse ne dépend pas du dépôt.
+**douze questions ordonnées — huit sur les ŒUVRES, quatre sur les PERSONNES**. Cette page
+en annonçait huit, ce qui était exact à l'écriture : AUTH-1 a ajouté le 2026-08-31 une
+quatrième nature de donnée (l'outil détient un fichier de personnes) et les questions 9 à
+12 avec elle. La démarche peut partir avec ses pièces au lieu de partir à blanc. Le statut
+reste `différé` : la réponse ne dépend pas du dépôt.
+
+**Le `Reste` ci-dessous ne couvre que les huit premières**, et les quatre autres sont chez
+`AUTH-1` — `différé` pour exactement la même raison, une réponse institutionnelle et pas du
+code. Ses deux cases ouvertes portent les questions **9 à 11** : conservation, effacement
+d'un partant, sort des sauvegardes déjà déposées. **La 12 n'est portée par aucune case, ni
+ici ni là-bas** — « qui est responsable de traitement, et l'annotateur en est-il
+informé ? ». Relevé le 2026-09-07 : le dossier la pose, les deux fiches l'ignorent, et rien
+ne la remonterait le jour où l'on part porter le dossier. À loger dans l'une des deux avant
+ce jour-là, la seconde moitié — informer l'intéressé — étant la seule des douze qui appelle
+peut-être un geste dans l'application plutôt qu'une réponse d'institution.
 
 ## Reste
 
