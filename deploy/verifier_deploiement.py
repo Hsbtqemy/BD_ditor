@@ -164,7 +164,19 @@ def controle_externe(base, verifier_tls, sans_proxy):
 
 
 def controle_interne(service):
-    """Les moteurs répondent VRAIMENT, vus depuis le conteneur."""
+    """Les moteurs répondent VRAIMENT, vus depuis le conteneur.
+
+    Rend `(manques, empechement)`. La distinction n'est pas cosmétique : `manques` dit
+    « j'ai demandé et la réponse est non », `empechement` dit « je n'ai pas pu demander ».
+    Les confondre faisait annoncer « moteur(s) absents ou cassés » — avec l'avertissement
+    sur le NLP silencieux — à quelqu'un qui avait simplement lancé le script hors de
+    `deploy/`, où `docker compose` ne trouve pas son fichier. Un diagnostic qu'on n'a pas
+    mesuré, servi dans les termes d'un diagnostic mesuré.
+
+    Ce script séparait DÉJÀ les deux pour les chemins HTTP — « refusé » contre « on ne
+    SAIT RIEN », avec « ne pas le lire comme une protection ». Il ne l'appliquait pas à
+    sa propre sonde.
+    """
     print("\n  DEDANS — les moteurs, importés pour de bon (?profond=1)")
     try:
         res = subprocess.run(
@@ -172,15 +184,20 @@ def controle_interne(service):
             capture_output=True, text=True, timeout=300)
     except FileNotFoundError:
         print("    ?  `docker` introuvable — ce contrôle se lance DEPUIS le VPS")
-        return ["docker absent"]
+        return [], "`docker` introuvable — ce contrôle se lance depuis le VPS"
     if res.returncode != 0:
-        print(f"    !! `compose exec` a échoué : {(res.stderr or '').strip()[:300]}")
-        return ["compose exec"]
+        err = (res.stderr or "").strip()
+        print(f"    ?  `compose exec` n'a pas pu être lancé : {err[:300]}")
+        indice = ""
+        if "no configuration file" in err:
+            indice = (" — le script se lance DEPUIS `deploy/`, où vit `docker-compose.yml` "
+                      "(`cd ~/BD_ditor/deploy && python3 verifier_deploiement.py …`)")
+        return [], f"`compose exec` n'a pas pu être lancé{indice}"
     try:
         rep = json.loads(res.stdout.strip().splitlines()[-1])
     except Exception:
-        print(f"    !! réponse illisible : {res.stdout.strip()[:200]}")
-        return ["réponse illisible"]
+        print(f"    ?  réponse illisible : {res.stdout.strip()[:200]}")
+        return [], "la sonde a répondu quelque chose d'illisible"
 
     profond = rep.get("profond") or {}
     manques = []
@@ -196,12 +213,12 @@ def controle_interne(service):
             # ce qui est arrivé le 2026-09-05 avec `lemmes`.
             print(f"    ?? {moteur:8} rapide={present}, mais le rapport profond n'a pas "
                   f"de clé « {cle_profonde} » — les noms ont divergé, relire `sante.py`")
-            manques.append(f"{moteur} (clé introuvable)")
+            manques.append(f"{moteur} (clé introuvable)")   # mesuré : le rapport existe
         else:
             raison = detail.get("erreur") or "sans raison rapportée"
             print(f"    !! {moteur:8} rapide={present} mais profond={ok} — {raison}")
             manques.append(moteur)
-    return manques
+    return manques, None
 
 
 def controle_config(chemin_env):
@@ -458,7 +475,7 @@ def main():
     print(f"\n  Instance : {a.url}")
     fuites, indetermines = controle_externe(a.url, verifier_tls=not a.tls_non_verifie,
                                             sans_proxy=a.sans_proxy)
-    manques = [] if a.sans_interne else controle_interne(a.service)
+    manques, empechement = ([], None) if a.sans_interne else controle_interne(a.service)
 
     print("\n  ── Bilan ──")
     if fuites:
@@ -473,18 +490,27 @@ def main():
         print("      place donnent tous ce résultat. Ne pas le lire comme une protection.")
     if not fuites and not indetermines:
         print(f"  Les {len(CHEMINS_PROTEGES)} chemins sont refusés ou redirigés vers le portail.")
+    if empechement:
+        # On ne SAIT RIEN des moteurs, et c'est un troisième état — ni sains, ni cassés.
+        # Le dire ainsi coûte une ligne et évite d'envoyer chercher une panne d'instance
+        # là où c'est l'invocation du contrôle qui a échoué.
+        print(f"  ÉCHEC — on ne SAIT RIEN des moteurs : {empechement}.")
+        print("      Ce n'est PAS « les moteurs sont cassés » : la sonde n'a pas pu être")
+        print("      posée. Le résultat est indéterminé, comme un chemin qui rend 502.")
     if manques:
         print(f"  ÉCHEC — moteur(s) absents ou cassés : {', '.join(manques)}")
         print("      Le NLP est le plus coûteux et le plus SILENCIEUX : sans lui,")
         print("      l'Exploration, la relecture (ANN-4) et les deux rapports d'accord")
         print("      sortent vides, sans qu'aucun message ne le dise.")
-    elif not a.sans_interne:
+    elif not a.sans_interne and not empechement:
         print("  Les quatre moteurs répondent réellement.")
 
     print("\n  Restent à vérifier à la main (hors de portée d'un script) :")
     print("    · la déconnexion depuis l'UI, pas seulement via /api/moi")
     print("    · une sauvegarde prise ici, restaurée sur une machine de dev")
-    return 1 if (fuites or indetermines or manques or incoherences) else 0
+    # Un résultat INDÉTERMINÉ rend non nul, comme les chemins dont on ne sait rien :
+    # « je n'ai pas pu vérifier » ne doit jamais se lire comme « c'est bon ».
+    return 1 if (fuites or indetermines or manques or empechement or incoherences) else 0
 
 
 if __name__ == "__main__":

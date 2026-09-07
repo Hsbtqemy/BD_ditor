@@ -277,7 +277,17 @@ faire "docker compose up -d --build app"
 # processus, donc relancer suffit. Il ne suffirait PAS si le service lui-même avait
 # changé dans `docker-compose.yml` — image, environnement —, cas que la comparaison
 # ci-dessous ne couvre pas et qui reste un geste à la main.
-if git -C "$racine" diff --quiet "$avant" "$apres" -- deploy/authelia/ 2>/dev/null; then
+# Les GABARITS sont exclus, et cela s'est payé : le 2026-09-07, une correction de
+# `users_database.example.yml` — un fichier qu'Authelia ne lit JAMAIS, il n'est même pas
+# monté — a redémarré le portail. Le contrôle qui a suivi a trouvé `/` en 502, parce qu'il
+# a tapé un Authelia encore `health: starting`. Une correction de documentation a donc
+# produit une micro-coupure ET un faux échec de déploiement.
+#
+# La comparaison reste LARGE par ailleurs : tout autre fichier ajouté dans `deploy/authelia/`
+# déclenchera le redémarrage, y compris un qu'on n'a pas prévu. C'est le bon sens de l'erreur
+# — redémarrer pour rien coûte deux secondes, ne pas redémarrer laisse Authelia servir une
+# configuration périmée en silence. On ne retire donc que ce dont on est SÛR qu'il n'est pas lu.
+if git -C "$racine" diff --quiet "$avant" "$apres"      -- deploy/authelia/ ':(exclude)deploy/authelia/*.example.*' 2>/dev/null; then
   echo "   ·· authelia    configuration inchangée, pas de redémarrage"
 else
   echo "   !! authelia    configuration MODIFIÉE par ce déploiement — redémarrage"
