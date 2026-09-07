@@ -143,6 +143,60 @@ def test_aucune_surface_ne_perd_de_contenu(page, decor, surface, largeur):
         f"{surface} à {largeur} px — contenu INATTEIGNABLE (1.4.10) :\n{_decrire(perdus)}")
 
 
+# ── Le CADRE peut être la page elle-même, et alors la garde ci-dessus s'aveugle ──
+#
+# Trouvé le 2026-09-08 à l'œil, sur une capture d'écran, comme le débordement de barre
+# d'UX-7 avant lui. À 375 px, le formulaire « + Accorder » d'/administration sortait de
+# 89 px (144 à 320), et `test_aucune_surface_ne_perd_de_contenu` restait VERT.
+#
+# Il avait raison dans son périmètre : ce contenu n'était pas perdu, on pouvait le
+# rejoindre en défilant. Mais le cadre qui le rendait atteignable était `main#admin-body`,
+# c'est-à-dire le corps de la page — et un `overflow-x: auto` posé là excuse TOUT ce que
+# la surface contient. La sonde cherchait un cadre ; elle en trouvait un ; il était la
+# page.
+#
+# CLAUDE.md tranche autrement, et c'est la règle qu'on garde ici : un contenu large
+# défile « dans son propre conteneur », et « le corps de la page ne doit JAMAIS défiler
+# horizontalement ». Les deux contrôles sont complémentaires — l'un demande si le contenu
+# est atteignable, celui-ci demande à quel PRIX. Le second ne remplace pas le premier :
+# un contenu clippé sans cadre du tout resterait invisible ici, puisque rien ne défile.
+#
+# Portée volontairement limitée à `/administration` : c'est la surface mesurée, et
+# généraliser demanderait de vérifier que les quatre autres ne s'appuient pas sur ce
+# défilement de page — l'Atelier en particulier, dont le canevas a déjà son exemption
+# écrite. Élargir est un geste d'UX-7, pas un effet de bord de ce constat.
+@pytest.mark.parametrize("largeur", LARGEURS)
+def test_l_administration_ne_defile_pas_de_cote(page, decor, largeur):
+    """Le corps de la page ne défile jamais horizontalement (règle de CLAUDE.md).
+
+    On déplie une collection avant de mesurer : le formulaire d'accès qui débordait vit
+    dans le détail, et une page repliée ne montre pas ce qu'on cherche — c'est l'erreur
+    qu'`AUTH-7` a déjà payée deux lignes plus bas, où un bloc vide passait tous les
+    contrôles.
+    """
+    page.set_viewport_size({"width": largeur, "height": 900})
+    page.goto(decor["base"] + "/administration", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    som = page.query_selector(".col-item summary")
+    assert som, "aucune collection à déplier : le contrôle ne mesurerait rien"
+    som.click()
+    page.wait_for_timeout(600)
+
+    debordants = page.evaluate("""() => {
+      const cands = [document.documentElement, document.body,
+                     ...document.querySelectorAll("main")];
+      return cands.filter(Boolean)
+        .map((el) => ({ nom: el.tagName.toLowerCase() + (el.id ? "#" + el.id : ""),
+                        clientW: el.clientWidth, scrollW: el.scrollWidth }))
+        .filter((v) => v.scrollW > v.clientW + 1);
+    }""")
+    assert not debordants, (
+        f"/administration à {largeur} px — le corps de la page défile de côté :\n  "
+        + "\n  ".join(f"{d['nom']} : {d['clientW']} px visibles pour {d['scrollW']} px "
+                      "de contenu" for d in debordants)
+        + "\n\nUn contenu large défile dans SON conteneur, pas en emportant la page.")
+
+
 # ── Le bloc que la page ne RENDAIT pas, donc que rien ne mesurait (UX-10, 2026-09-07) ──
 #
 # Ce fichier s'avertit lui-même vingt lignes plus haut, à propos de la Recherche : « ce que

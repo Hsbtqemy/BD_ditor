@@ -1645,8 +1645,15 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 }
 .contrib-row:last-child { border-bottom: 0; }
 .contrib-nom { flex: 1; font-size: 1rem; color: var(--text); }
-.contrib-add { display: flex; gap: .6154rem; align-items: center; }
-.contrib-add input { flex: 1; }
+/* `flex-wrap` : sans lui, la ligne « + Accorder » dépassait de 89 px à 375 et de 144 à
+   320 (mesuré le 2026-09-08). Elle restait ATTEIGNABLE — `main` porte `overflow-x: auto`
+   et défilait —, ce qui explique que `test_e2e_reflow` la laissait passer : il vérifie
+   qu'aucun contenu n'est inatteignable, pas qu'on n'a pas à défiler de côté. C'est le
+   critère Reflow (WCAG 1.4.10) qui le refuse, et il ne s'audite pas tout seul. */
+.contrib-add { display: flex; flex-wrap: wrap; gap: .6154rem; align-items: center; }
+/* `min-width` plutôt que `flex: 1` seul : à 320 px, un champ qui accepte de rétrécir
+   indéfiniment garde la ligne sur un seul rang et repousse le bouton hors du cadre. */
+.contrib-add input { flex: 1; min-width: 8rem; }
 .modal-box h3 { margin: 0; }
 .modal-box label { display: flex; flex-direction: column; gap: .3077rem; font-size: .9231rem; color: var(--text-muted); }
 /* `display:flex` ci-dessus l'emporte sur la règle UA `[hidden] { display: none }` (même
