@@ -72,7 +72,9 @@ inoffensif ailleurs.
 
 ### Le manifeste dit ce qu'il retient
 
-- [ ] Sans rien saisir dans le champ d'adresse, *Manifeste IIIF → Télécharger* refuse et le message explique que l'application ne peut pas deviner le serveur d'images
+- [ ] Sans rien saisir dans le champ d'adresse, *Manifeste IIIF → Télécharger* produit un fichier nommé `depot-iiif-apercu-…`, et non un refus
+- [ ] L'`AVERTISSEMENTS.txt` de cet aperçu commence par « APERÇU » et dit quoi mettre dans le champ — l'adresse publique du dossier `derivatives/`, pas un « serveur IIIF »
+- [ ] Avec une adresse renseignée, le nom du fichier ne contient plus `apercu`
 - [ ] Avec une adresse, sur une collection NON déclarée `public`, l'archive contient `AVERTISSEMENTS.txt`
 - [ ] Ce fichier nomme la cause exacte — « déclarée restreint », « embargo court jusqu'au … », « date d'embargo illisible » — et non un message générique
 - [ ] Sur une collection déclarée `public` et hors embargo, l'archive ne contient PAS `AVERTISSEMENTS.txt`, et un `manifest-a*.json` porte des URL commençant par l'adresse saisie
