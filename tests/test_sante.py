@@ -193,13 +193,23 @@ def test_le_panneau_renvoie_a_une_section_qui_existe():
     """Le bilan du panneau ne se contente pas de dire « en panne », il dit où aller —
     sinon l'opérateur est exactement où il était, avec un mot de plus. Encore faut-il que
     la section existe : un renvoi vers un titre renommé est pire qu'aucun renvoi, parce
-    qu'il fait chercher."""
+    qu'il fait chercher.
+
+    Le contrôle porte sur le TITRE et non sur le numéro, corrigé le 2026-09-07. Il exigeait
+    `## 8. Un moteur en panne` et a échoué le jour où une section a été INSÉRÉE plus haut —
+    un renumérotage qui ne déplace pas la cible d'un pouce et ne trompe personne. Il aurait
+    fini par se faire relâcher pour la mauvaise raison, alors que ce qu'il garde est juste :
+    l'écran nomme une section, et cette section doit exister sous ce nom. C'est la même
+    règle que pour les renvois de `CLAUDE.md` — citer par section, jamais par numéro, parce
+    qu'un numéro désigne ce qui a glissé dessous."""
     js = (_STATIC / "lib" / "sante.js").read_text(encoding="utf-8")
     doc = (Path(__file__).resolve().parent.parent / "docs"
            / "deploiement-docker.md").read_text(encoding="utf-8")
     assert "« Un moteur en panne »" in js, (
         "le bilan ne renvoie plus nulle part")
-    assert "## 8. Un moteur en panne" in doc
+    assert re.search(r"^## \d+\. Un moteur en panne\s*$", doc, re.M), (
+        "l'écran renvoie à « Un moteur en panne » et aucun titre de `deploiement-docker.md` "
+        "ne porte ce nom : le renvoi fait chercher au lieu de conduire")
 
 
 def test_la_doc_dit_quoi_faire_de_chaque_panne_connue():

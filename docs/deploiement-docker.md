@@ -124,7 +124,7 @@ qu'un hash de mot de passe parte dans un dépôt public.
    le seul destinataire qu'elle puisse lire — quelqu'un qui n'accède à aucune collection
    ne voit aucun nom en base. Les laisser vides est juste tant qu'on est seul ; dès le
    deuxième compte, le bandeau envoie demander un accès sans dire à qui.
-   Cf. §6, `BD_AUTH_ADMIN_GROUPS`.
+   Cf. §7, `BD_AUTH_ADMIN_GROUPS`.
 
 2. **Mot de passe du 1er compte** — le gabarit se COPIE avant d'être rempli :
    ```bash
@@ -135,7 +135,7 @@ qu'un hash de mot de passe parte dans un dépôt public.
    Colle le hash dans la copie (champ `password`), et ajuste `displayname` / `email`.
    Pour d'autres comptes, duplique le bloc. Le groupe `bd-admins` est indispensable :
    sans lui, chacun se connectera et trouvera une application VIDE
-   (cf. §6, `BD_AUTH_ADMIN_GROUPS`).
+   (cf. §7, `BD_AUTH_ADMIN_GROUPS`).
 
 3. **Vérifie avant de démarrer** — les trois domaines se contredisent en silence :
    ```bash
@@ -236,7 +236,51 @@ Enfin, chaque compte de `users_database.yml` doit porter une **adresse réelle**
 gabarit en pose une d'exemple, et un notifier SMTP expédierait dans le vide sans que rien
 ne le signale.
 
-## 6. Déconnexion
+## 6. Durée de session, et second facteur
+
+Trois lignes d'`authelia/configuration.yml` gouvernent le confort réel — et ce n'est pas la
+politique 2FA :
+
+| Réglage | Valeur | Ce qu'elle borne |
+|---|---|---|
+| `expiration` | `12 hours` | la durée de vie du cookie |
+| `inactivity` | `1 hour` | le temps sans toucher l'onglet avant qu'on redemande |
+| `remember_me` | `1 month` | ce qu'accorde la case cochée au portail |
+
+**L'attendu est écrit, et il commande les trois : une journée de travail sans ressaisir.**
+Annoter, c'est lire une planche, ouvrir un dictionnaire, revenir — le travail lui-même
+produit des silences de plus d'un quart d'heure. Les valeurs d'origine (`1 hour` /
+`15 minutes`) déconnectaient en plein travail ; relevées le 2026-09-06 à la demande de
+l'équipe (« 15 min, c'est trop peu ; minimum 30 min, voire 1 h »).
+
+**Les DEUX sont relevées, et pas par excès de zèle.** La documentation d'Authelia définit
+`expiration` par « the period of time before the cookie expires » sans dire si elle est
+rafraîchie à chaque requête ou si elle plafonne depuis la connexion. Ne toucher qu'à
+`inactivity` donnerait donc, selon la réponse, soit le résultat voulu, soit une déconnexion
+au bout d'une heure de travail CONTINU — le contraire de ce qui est demandé. Lever les deux
+rend le réglage indépendant de cette incertitude.
+
+**Ce que ça coûte en sécurité, et pourquoi c'est peu** : `remember_me` accorde déjà UN MOIS
+à qui coche la case au portail. Les quinze minutes ne bordaient donc que les personnes qui
+ne la cochent pas — une friction pour les prudents, aucune gêne pour les autres. Un réglage
+strict qui voisine avec un réglage permissif ne protège rien ; il apprend à cocher la case.
+
+**Le second facteur est une DÉROGATION PAR GROUPE, pas un assouplissement général.** Le
+défaut est `one_factor` ; `bd-admins` garde `two_factor` partout, et les deux routes de
+sauvegarde l'exigent quel que soit l'appelant (`access_control`, règles 1 et 2). Le sens du
+réglage est délibéré : on renforce par appartenance, on ne dispense pas — un groupe
+« dispensé » affaiblirait quelqu'un en silence le jour où on l'y oublie.
+
+Ce qu'on perd en descendant à `one_factor` pour le cas courant est écrit plutôt que passé sous silence :
+**un mot de passe suffit désormais à atteindre les scans**. C'est un abaissement assumé par
+rapport au 2026-09-05, et il a une raison — `two_factor` partout exigeait de chacun une
+application d'authentification sur un téléphone lui appartenant, ce qui poussait vers un
+COMPTE PARTAGÉ. Le coût de celui-là est invisible et bien pire : `undo.py` filtre
+l'annulation par agent (Ctrl+Z défait le travail d'un collègue), l'accord inter-annotateurs
+n'a plus rien à mesurer, et le journal de provenance aplatit les chaînes de révision. Cf.
+`pilotage/INFRA-8.md` et `pilotage/AUTH-6.md`.
+
+## 7. Déconnexion
 
 `https://auth.example.fr/logout` — détruit la session (côté Redis). L'interface
 **affiche déjà ce lien** : la bande de navigation montre « 👤 *nom* · Déconnexion »
@@ -266,7 +310,7 @@ n'est presque jamais une base perdue, c'est un droit manquant — ou un `forward
 ne pose pas `Remote-User`, auquel cas la portée est vide par fermeture délibérée
 (cf. `docs/hebergement-securite.md` §6).
 
-## 7. Opérations courantes
+## 8. Opérations courantes
 
 ```bash
 docker compose ps                 # état des conteneurs
@@ -281,7 +325,7 @@ docker compose up -d --build      # rebuild + relance après une mise à jour du
 - **Sauvegarde** : la base reste accessible via `/api/sauvegarde` (désormais
   derrière l'auth). Pense aussi à sauvegarder le volume `bd-data` (masters TIFF).
 
-## 8. Un moteur en panne
+## 9. Un moteur en panne
 
 **« En panne » n'est pas « absent ».** Les quatre moteurs (Kumiko, bulles, OCR, spaCy)
 sont OPTIONNELS : absent, un moteur ne casse rien — sa passe répond 503 et le reste de
@@ -364,7 +408,7 @@ en développement local, inacceptable pour un artefact livré. Un contrat d'IMAG
 autre chose qu'un contrat de test : non pas « le code se comporte bien quand un moteur
 manque », mais « cet artefact-ci DOIT porter ces moteurs-là ».
 
-## 9. Ce que cette pile corrige (cf. docs/hebergement-securite.md)
+## 10. Ce que cette pile corrige (cf. docs/hebergement-securite.md)
 
 - 🔴 Exfiltration non authentifiée (`/api/sauvegarde`, `/derivatives`) → **gatée**.
 - 🟠 OOM upload → **plafond `request_body` 200 Mo** dans Caddy (penser à
@@ -374,7 +418,7 @@ manque », mais « cet artefact-ci DOIT porter ces moteurs-là ».
   `sharedocs.huma-num.fr`), refus des IP privées, `follow_redirects=False`. La garde
   vaut pour TOUTES les sessions, y compris personnelles (SHARE-1).
 
-## 10. Limites connues / à garder en tête
+## 11. Limites connues / à garder en tête
 
 - **1 seul worker uvicorn** (état en mémoire) → ne pas scaler horizontalement
   l'app ; la 2FA/proxy, eux, encaissent la charge.
