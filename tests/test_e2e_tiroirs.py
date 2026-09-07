@@ -27,6 +27,8 @@ SURFACES_HORS_PERIMETRE = {
     "/corpus": "pas de tiroir escamotable : rien à piéger",
     "/recherche": "pas de tiroir escamotable : rien à piéger",
     "/exploration": "pas de tiroir escamotable : rien à piéger",
+    "/administration": "pas de tiroir escamotable : la page empile trois blocs et défile, "
+                       "il n'y a aucun voile ni piège à focus à éprouver",
 }
 
 

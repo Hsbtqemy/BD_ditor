@@ -16,6 +16,7 @@
     root.escapeHtml = api.escapeHtml;
     root.esc = api.escapeHtml;            // alias historique (corpus / exploration)
     root.toast = api.toast;
+    root.identite = api.identite;
   }
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
@@ -112,5 +113,37 @@
     setTimeout(() => el.remove(), 4000);
   }
 
-  return { $, apiGet, apiSend, escapeHtml, toast, messageErreur };
+  /* L'identité courante, mémoïsée — le login et les groupes qui administrent l'instance.
+
+     Elle vit ICI parce que DEUX surfaces en dépendent depuis UX-10, et pour deux besoins
+     qui n'ont rien à voir : la Bibliothèque veut le login pour écrire « verrouillé par
+     vous » sous une planche, l'Administration veut `groupes_admin` pour DÉCLARER le
+     pouvoir des administrateurs (AUTH-4). Six lignes recopiées d'un fichier à l'autre
+     auraient fini par se répondre différemment — c'est la leçon du 2026-09-07, où deux
+     copies d'une même procédure avaient dérivé chacune dans son sens.
+
+     Elle ne DEMANDE rien : `theme.js` publie `window.BDMoi`, une promesse unique par page,
+     et `/api/moi` n'est interrogé qu'une fois. Deux appels écrivaient deux fois dans le
+     miroir `utilisateur` pour rien.
+
+     Sans identité — mono-poste, ou proxy muet — elle rend `{ login: null,
+     groupes_admin: [] }` plutôt que d'échouer : un écran qui ne sait pas qui vous êtes
+     doit s'afficher quand même, et c'est la portée vide d'AUTH-2 qui parle de l'accès. */
+  let _identite = null;
+  function identite(promesse) {
+    if (_identite) return _identite;
+    const source = promesse !== undefined
+      ? promesse
+      : (typeof globalThis !== "undefined" && globalThis.BDMoi) || null;
+    _identite = Promise.resolve(source)
+      .then((moi) => ({
+        login: (moi && moi.utilisateur) || null,
+        groupes_admin: (moi && moi.acces && moi.acces.groupes_admin) || [],
+      }))
+      .catch(() => ({ login: null, groupes_admin: [] }));
+    return _identite;
+  }
+  identite.oublier = () => { _identite = null; };   // pour les tests, jamais en page
+
+  return { $, apiGet, apiSend, escapeHtml, toast, messageErreur, identite };
 });

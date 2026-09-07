@@ -293,7 +293,7 @@ construisant la première image, et rien ne le disait.
 
 | Où | Comment | Pour qui |
 |---|---|---|
-| **Bibliothèque → 🩺 Moteurs** | bouton **Éprouver les moteurs** | l'opérateur sans accès shell — c'est la seule fenêtre dont il dispose |
+| **Administration → 🩺 Moteurs** | bouton **Éprouver les moteurs** | l'opérateur sans accès shell — c'est la seule fenêtre dont il dispose |
 | API | `GET /api/sante?profond=1` | script, supervision |
 | Conteneur | `docker exec bd-app python tools/verifier_moteurs.py` | qui a le shell ; `--json` pour une sortie machine |
 

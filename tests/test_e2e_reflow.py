@@ -88,6 +88,7 @@ SURFACES_AUDITEES = {
     "/recherche":   lambda d: "/recherche?q=pouvoir",
     "/corpus":      lambda d: "/corpus",
     "/exploration": lambda d: "/exploration?champ=lemme",
+    "/administration": lambda d: "/administration",
 }
 SURFACES_HORS_PERIMETRE = {}
 

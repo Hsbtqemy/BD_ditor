@@ -55,7 +55,8 @@ RACINE = Path(__file__).resolve().parent.parent
 # parcourt, pas une copie posée à côté — une déclaration jumelle dériverait de sa liste
 # sans que rien ne le dise, ce qui a été mesuré le 2026-09-07 sur un premier jet.
 SURFACES_AUDITEES = {"/": "viewer.js", "/recherche": "recherche.js",
-                     "/corpus": "corpus.js", "/exploration": "exploration.js"}
+                     "/corpus": "corpus.js", "/exploration": "exploration.js",
+                     "/administration": "administration.js"}
 SURFACES_HORS_PERIMETRE = {}
 
 DIRECT = re.compile(r'\$\(\s*"#([a-z0-9-]+)"\s*\)\.hidden\s*=')

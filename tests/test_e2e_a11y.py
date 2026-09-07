@@ -1,8 +1,8 @@
-"""Audit d'accessibilité automatisé (axe-core) — non-régression des 4 surfaces.
+"""Audit d'accessibilité automatisé (axe-core) — non-régression des 5 surfaces.
 
 Injecte axe-core (vendu dans `tests/js/vendor/axe.min.js`) dans un vrai Chromium
 piloté par Playwright et ÉCHOUE si une violation WCAG 2.1 A/AA **sérieuse ou
-critique** apparaît. Couvre le chargement des 4 surfaces en thèmes sombre + clair,
+critique** apparaît. Couvre le chargement des 5 surfaces en thèmes sombre + clair,
 plus des états interactifs (modes Édition/Annotation, modale album) où
 l'accessibilité régresse le plus souvent (focus, labels, rôles).
 
@@ -107,6 +107,7 @@ SURFACES_AUDITEES = {
     "/recherche":   lambda s: "/recherche?q=pouvoir",
     "/corpus":      lambda s: "/corpus",
     "/exploration": lambda s: "/exploration?champ=lemme",
+    "/administration": lambda s: "/administration",
 }
 SURFACES_HORS_PERIMETRE = {}
 
@@ -173,9 +174,13 @@ def test_a11y_corpus_modale(page, seeded):
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
-def test_a11y_corpus_sante(page, seeded, theme):
-    """Panneau des moteurs (SANTE-1) : la modale (piège à focus, titre lié) et les quatre
-    états d'un moteur, éprouvés dans les deux thèmes.
+def test_a11y_administration_sante(page, seeded, theme):
+    """Panneau des moteurs (SANTE-1) : les quatre états d'un moteur, dans les deux thèmes.
+
+    Le panneau a quitté la modale de la Bibliothèque pour une SECTION de `/administration`
+    le 2026-09-07 (UX-10). Ce que ce test auditait du piège à focus et du titre lié part
+    donc avec elle — `dialog.js` n'est plus chargé sur cette page —, et ce qui reste est
+    ce qui portait le vrai enjeu.
 
     Le contraste est l'enjeu : « en panne » est du PETIT texte coloré, là où l'accent
     rouge plein échoue le 4.5:1 — d'où `--ink-red` et un `--accent-green` assombri en
@@ -186,11 +191,10 @@ def test_a11y_corpus_sante(page, seeded, theme):
         body=json.dumps(SANTE_PROFOND if "profond=1" in r.request.url
                         else SANTE_RAPIDE)))
     _theme(page, theme)
-    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
-    page.click("#btn-sante")
-    page.wait_for_selector("#sante-modal:not([hidden]) .sante-ligne", timeout=3000)
+    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
+    page.wait_for_selector("#sante-body .sante-ligne", timeout=3000)
     viol = _audit(page)
-    assert not viol, f"Corpus/moteurs [{theme}] :\n{_fmt(viol)}"
+    assert not viol, f"Administration/moteurs [{theme}] :\n{_fmt(viol)}"
 
     page.click("#sante-eprouver")
     page.wait_for_selector(".sante-panne", timeout=5000)
@@ -198,7 +202,7 @@ def test_a11y_corpus_sante(page, seeded, theme):
     for classe in (".sante-ok", ".sante-panne", ".sante-absent"):
         assert page.locator(classe).count(), f"état {classe} absent du rendu"
     viol = _audit(page)
-    assert not viol, f"Corpus/moteurs éprouvés [{theme}] :\n{_fmt(viol)}"
+    assert not viol, f"Administration/moteurs éprouvés [{theme}] :\n{_fmt(viol)}"
 
 def test_a11y_corpus_materiel(page, seeded):
     """Matériel de numérisation (A6) : détail d'album ouvert (table planches + ligne matériel
@@ -506,7 +510,7 @@ def test_a11y_exploration_accord_inter(page, seeded):
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
-@pytest.mark.parametrize("surface", ["/corpus", "/", "/recherche", "/exploration"])
+@pytest.mark.parametrize("surface", list(SURFACES_AUDITEES))
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_a11y_portee_vide(page, seeded, theme, surface):
     """Bandeau « aucune collection ne vous est ouverte » (AUTH-2).
@@ -515,8 +519,13 @@ def test_a11y_portee_vide(page, seeded, theme, surface):
     une identité à qui rien n'a été accordé. Sans ce test, le seul écran que verra une
     personne mal configurée serait aussi le seul que l'audit n'aurait jamais regardé.
 
-    Les QUATRE surfaces : `theme.js` l'injecte en tête de `<main>` partout, et la
-    Visionneuse est celle dont la mise en page souffre le plus d'un bloc inattendu.
+    TOUTES les surfaces, et la liste se DÉRIVE de `SURFACES_AUDITEES` : `theme.js`
+    injecte le bandeau en tête de `<main>` partout, donc toute surface neuve hérite de
+    cet état sans que personne y pense. Elle était écrite à la main jusqu'au 2026-09-07,
+    dans le fichier même dont la déclaration venait de passer à cinq — la garde d'UX-10
+    ne pouvait pas la voir : elle interdit une liste de surfaces posée À CÔTÉ de la
+    déclaration, pas une seconde liste plus bas dans le même module. La Visionneuse reste
+    celle dont la mise en page souffre le plus d'un bloc inattendu.
     """
     _theme(page, theme)
     page.set_extra_http_headers({"Remote-User": "sans-droits"})   # aucun groupe
@@ -665,16 +674,15 @@ def test_a11y_proxy_sans_identite(page, seeded):
 # Collections (AUTH-3) — l'écran qui remplace `tools/gerer_collections.py`
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("theme", ["dark", "light"])
-def test_a11y_corpus_collections(page, seeded, theme):
+def test_a11y_administration_collections(page, seeded, theme):
     """Écran Collections : créer, déplier, accorder un accès — audité à chaque étape.
 
     C'est le seul écran du dépôt où l'on décide QUI entre. Une régression d'accessibilité
     y coûterait plus cher qu'ailleurs : on n'administre pas des droits à l'aveugle.
     """
     _theme(page, theme)
-    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
     page.wait_for_timeout(400)
-    page.click("#btn-collections")
     page.wait_for_selector("#col-body .col-item", timeout=3000)
     viol = _audit(page)
     assert not viol, f"Collections [{theme}] :\n{_fmt(viol)}"
@@ -829,9 +837,8 @@ def test_a11y_collections_embargo_echu(page, seeded, theme):
         c.close()
 
     _theme(page, theme)
-    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
     page.wait_for_timeout(400)
-    page.click("#btn-collections")
     page.wait_for_selector("#col-body .col-item", timeout=3000)
     # La pastille est RENDUE, et son libellé porte le sens — pas la seule couleur.
     pastille = page.locator("#col-body .col-item", has_text="Fonds sous embargo").locator(
@@ -852,7 +859,7 @@ def test_a11y_collections_embargo_echu(page, seeded, theme):
 def test_a11y_vue_des_comptes(page, seeded, theme):
     """La vue des comptes (AUTH-7) auditée avec des LIGNES, pas avec son message vide.
 
-    `test_a11y_corpus_collections` ouvre déjà cette modale et l'audite — mais sans proxy,
+    `test_a11y_administration_collections` ouvre déjà cette modale et l'audite — mais sans proxy,
     donc `utilisateur` est vide et le bloc rend « aucun compte n'a encore ouvert de page ».
     L'audit approuvait un écran dont le tableau n'existait pas : en-têtes de colonnes,
     chiffres alignés, et le signal de reprise en `--ink-red` sur du petit texte, qui est
@@ -875,9 +882,8 @@ def test_a11y_vue_des_comptes(page, seeded, theme):
 
     _theme(page, theme)
     page.set_extra_http_headers(ADMIN)
-    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
     page.wait_for_timeout(400)
-    page.click("#btn-collections")
     page.wait_for_selector("#comptes-bloc table.comptes-table", timeout=5000)
 
     # Le tableau porte bien des lignes, et le signal de reprise est un LIBELLÉ — pas une
@@ -924,9 +930,8 @@ def test_le_panneau_des_acces_declare_les_administrateurs(page, seeded):
     trois noms là où quatre personnes lisent, sur un écran qui protège soigneusement cette
     liste au motif qu'elle parle de personnes. Défaut de DÉCLARATION, pas d'autorisation."""
     page.set_extra_http_headers({"Remote-User": "alice", "Remote-Groups": "bd-admins"})
-    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
     page.wait_for_timeout(400)
-    page.click("#btn-collections")
     page.wait_for_selector("#col-body .col-item", timeout=3000)
     page.locator("#col-body .col-item").first.locator("summary").click()
     note = page.locator(".col-note-admin")
@@ -940,9 +945,8 @@ def test_le_referent_d_une_collection_s_enregistre(page, seeded):
     """Une ADRESSE, pas un droit : la nommer n'accorde rien. DÉSIGNER reste au
     propriétaire — choisir l'interlocuteur d'un espace engage l'espace entier."""
     page.set_extra_http_headers({"Remote-User": "alice", "Remote-Groups": "bd-admins"})
-    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
     page.wait_for_timeout(400)
-    page.click("#btn-collections")
     page.wait_for_selector("#col-body .col-item", timeout=3000)
     page.locator("#col-body .col-item").first.locator("summary").click()
     page.wait_for_selector(".col-ref-nom", timeout=3000)
@@ -984,9 +988,8 @@ def test_le_participant_non_proprietaire_voit_le_referent(page, seeded):
 
     # bob lit la collection sans la posséder : `administrable` est faux pour lui.
     page.set_extra_http_headers({"Remote-User": "bob", "Remote-Groups": "chercheurs"})
-    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
     page.wait_for_timeout(400)
-    page.click("#btn-collections")
     page.wait_for_selector("#col-body .col-item", timeout=3000)
     page.locator("#col-body .col-item").first.locator("summary").click()
 

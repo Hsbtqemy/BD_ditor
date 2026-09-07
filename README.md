@@ -380,7 +380,7 @@ Trois couches de tests, toutes lançables via `python -m pytest` :
   par défaut**) : deep-link, round-trip entre surfaces, durcissement anti-XSS,
   rendu — dans un vrai Chromium piloté par Playwright.
 - **Accessibilité** (`tests/test_e2e_a11y.py`, marqueur `e2e`) : audit
-  **axe-core** (WCAG 2.1 A/AA) des 4 surfaces en thèmes sombre + clair et de
+  **axe-core** (WCAG 2.1 A/AA) des 5 surfaces en thèmes sombre + clair et de
   quelques états interactifs (modes, modale) ; échoue à la moindre violation
   sérieuse/critique. axe est **vendu hors ligne** dans `tests/js/vendor/`
   (cf. son README) ; le test se skippe si le fichier est absent.

@@ -36,7 +36,8 @@ pytestmark = pytest.mark.e2e
 # sans que rien ne le dise, ce qui a été mesuré le 2026-09-07 sur un premier jet.
 SURFACES_AUDITEES = {"/recherche": "#search-body",
                      "/corpus": "#corpus-body",
-                     "/exploration": "#explo-body"}
+                     "/exploration": "#explo-body",
+                     "/administration": "#admin-body"}
 SURFACES_HORS_PERIMETRE = {
     "/": "la Visionneuse est un canevas de pan/zoom : son cadre ne DOIT pas défiler, et "
          "l'y soumettre inventerait un défaut. Même exemption que `test_e2e_reflow`, et "

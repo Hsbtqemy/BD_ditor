@@ -171,7 +171,8 @@
     { href: "/",            label: "Atelier",      icon: "✏️", group: "atelier" },
     { href: "/corpus",      label: "Bibliothèque", icon: "📚", group: "analyse" },
     { href: "/recherche",   label: "Recherche",    icon: "🔍", group: "analyse" },
-    { href: "/exploration", label: "Exploration",  icon: "📊", group: "analyse" }
+    { href: "/exploration", label: "Exploration",  icon: "📊", group: "analyse" },
+    { href: "/administration", label: "Administration", icon: "⚙️", group: "instance" }
   ];
 
   function buildHeaderNav() {

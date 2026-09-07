@@ -29,12 +29,15 @@ pytestmark = pytest.mark.e2e
 
 # UX-10 — ce que cet audit COUVRE, et ce qu'il écarte avec sa raison.
 #
-# Cet audit suit un PANNEAU, pas une page : 🩺 Moteurs (SANTE-1) ne vit aujourd'hui que
-# dans la Bibliothèque. Le jour où il déménagera vers `/administration`, cette déclaration
-# devra suivre — et c'est précisément ce qu'on veut qu'elle force à voir.
-SURFACES_AUDITEES = ("/corpus",)
+# Cet audit suit un PANNEAU, pas une page. Écrit le 2026-09-07 en annonçant : « le jour
+# où il déménagera vers `/administration`, cette déclaration devra suivre ». Il a déménagé
+# le jour même (UX-10), et la garde a bien forcé à le voir.
+SURFACES_AUDITEES = ("/administration",)
 SURFACES_HORS_PERIMETRE = {
     "/": "le panneau des moteurs n'y est pas rendu",
+    "/corpus": "le panneau en est PARTI le 2026-09-07 ; la Bibliothèque ne doit même plus "
+               "interroger `/api/sante`, ce que `test_la_bibliotheque_ne_sonde_plus_rien` "
+               "affirme de son côté",
     "/recherche": "le panneau des moteurs n'y est pas rendu",
     "/exploration": "le panneau des moteurs n'y est pas rendu",
 }
@@ -68,16 +71,17 @@ def test_le_panneau_montre_la_panne_sans_confondre_avec_l_absence(page, moteurs)
     pendant que les moteurs simplement ABSENTS se taisent. Confondre les deux derniers
     n'échoue nulle part — ça apprend seulement à ne plus lire le panneau.
     """
-    page.goto(moteurs["base"] + "/corpus", wait_until="networkidle")
-    page.click("#btn-sante")
+    page.goto(moteurs["base"] + "/administration", wait_until="networkidle")
     corps = page.locator("#sante-body")
     corps.wait_for(state="visible")
 
-    # 1. Ouvrir n'éprouve pas. Le premier import de torch coûte des secondes et des
-    #    centaines de mégaoctets ; le payer pour afficher un écran rétablirait exactement
-    #    ce que la séparation des deux profondeurs évite.
+    # 1. AFFICHER n'éprouve pas. Depuis UX-10 le panneau n'est plus une modale qu'on ouvre :
+    #    il est le contenu de la page, donc le contrôle RAPIDE part au chargement. Ce qui
+    #    reste un geste — et doit le rester — c'est le contrôle PROFOND : le premier import
+    #    de torch coûte des secondes et des centaines de mégaoctets, et le payer pour
+    #    afficher un écran rétablirait exactement ce que la séparation des deux évite.
     assert moteurs["profonds"] == [], (
-        "ouvrir le panneau a déclenché le contrôle profond : " + str(moteurs["profonds"]))
+        "afficher la page a déclenché le contrôle profond : " + str(moteurs["profonds"]))
 
     # 2. La présence ne s'annonce pas comme un fonctionnement.
     texte = corps.inner_text()
@@ -117,20 +121,53 @@ def test_le_panneau_montre_la_panne_sans_confondre_avec_l_absence(page, moteurs)
     # Comparer les deux couleurs RENDUES est le seul moyen de le dire : la classe était
     # bien là, et le sélecteur qui lui donne sa teinte, ailleurs.
     rouge = msg.evaluate("el => getComputedStyle(el).color")
-    gris = page.locator("#sel-info").evaluate("el => getComputedStyle(el).color")
+    # Le TÉMOIN de « message ordinaire ». C'était `#sel-info` tant que le panneau vivait
+    # dans la Bibliothèque ; il n'existe pas sur `/administration` (UX-10), et le test s'y
+    # est cassé — l'échec est venu d'un décor manquant, pas de la propriété gardée.
+    # `#col-msg` est l'équivalent exact : mêmes classes (`muted small`) et même rôle, un
+    # ÉTAT et non un contenu. On vérifie qu'il est bien neutre avant de s'en servir : un
+    # témoin qui porterait lui-même `erreur` rendrait les deux couleurs égales, et le test
+    # échouerait en accusant le CSS d'un défaut qui serait dans son propre décor.
+    temoin = page.locator("#col-msg")
+    assert "erreur" not in (temoin.get_attribute("class") or ""), (
+        "le témoin porte la classe `erreur` : il ne peut pas servir de référence de "
+        "message ordinaire, et la comparaison ci-dessous ne mesurerait plus rien")
+    gris = temoin.evaluate("el => getComputedStyle(el).color")
     assert rouge != gris, (
         f"le bilan d'une panne s'affiche comme un message ordinaire ({rouge}) : "
         "la classe `erreur` n'est reçue par aucune règle CSS")
 
 
-def test_le_panneau_ne_s_ouvre_pas_tout_seul(page, moteurs):
-    """Charger la Bibliothèque ne doit rien demander à `/api/sante` : le contrôle, même
-    rapide, appartient à un geste. Une page qui sonde d'elle-même finit par sonder
-    profond « puisque c'est déjà branché »."""
+def test_la_bibliotheque_ne_sonde_plus_rien(page, moteurs):
+    """La Bibliothèque ne demande RIEN à `/api/sante` — et l'affirmation s'est durcie.
+
+    Elle disait avant « le panneau ne s'ouvre pas tout seul », le panneau y vivant derrière
+    un bouton. Il en est PARTI le 2026-09-07 (UX-10), donc la Bibliothèque ne doit plus
+    toucher cette route du tout. Garder le test en le pointant sur l'autre page aurait
+    laissé un trou exactement là : un `santeCharger()` oublié dans `corpus.js` ne serait
+    plus vu par personne.
+    """
     page.goto(moteurs["base"] + "/corpus", wait_until="networkidle")
-    assert page.locator("#sante-modal").is_hidden()
+    assert page.locator("#sante-body").count() == 0, (
+        "le panneau des moteurs est encore rendu en Bibliothèque : il a déménagé, et deux "
+        "portes vers la même pièce se paient — l'une des deux vieillit")
     assert moteurs["tous"] == [], (
-        "la Bibliothèque interroge `/api/sante` d'elle-même : " + str(moteurs["tous"]))
+        "la Bibliothèque interroge `/api/sante` alors que le panneau n'y est plus : "
+        + str(moteurs["tous"]))
+
+
+def test_la_page_d_administration_ne_sonde_QUE_le_rapide(page, moteurs):
+    """L'autre moitié de la propriété d'avant, déplacée avec le panneau.
+
+    Le contrôle rapide part au chargement, puisqu'il EST le contenu. Le profond ne doit
+    jamais partir avec lui : c'est la seule chose qui empêche « puisque c'est déjà
+    branché » de devenir quinze secondes d'import à chaque ouverture de la page.
+    """
+    page.goto(moteurs["base"] + "/administration", wait_until="networkidle")
+    page.locator("#sante-body").wait_for(state="visible")
+    assert moteurs["tous"], "la page n'a même pas fait le contrôle rapide"
+    assert moteurs["profonds"] == [], (
+        "afficher la page a déclenché le contrôle PROFOND : " + str(moteurs["profonds"]))
 
 
 # Retarder la réponse profonde, DANS LA PAGE. Le faire dans le gestionnaire `page.route`
@@ -159,34 +196,36 @@ def moteurs_lents(live_server, page):
     return live_server
 
 
-def test_rouvrir_pendant_une_epreuve_n_efface_pas_ce_qui_l_explique(page, moteurs_lents):
-    """Fermer le panneau n'annule pas l'épreuve : le fetch continue et le bouton reste
-    désarmé. Rouvrir remettait le message à zéro — on retrouvait un « Éprouver » grisé,
-    sans un mot, pendant les quinze secondes que dure l'import de torch. Rien ne casse,
-    aucune exception : ça se lit simplement comme une panne du panneau lui-même, au moment
-    où il est en train de faire exactement son travail."""
-    page.goto(moteurs_lents + "/corpus", wait_until="networkidle")
-    page.click("#btn-sante")
-    page.wait_for_selector("#sante-modal:not([hidden]) .sante-ligne", timeout=3000)
+def test_le_focus_ne_quitte_pas_le_bouton_pendant_une_epreuve(page, moteurs_lents):
+    """Ce qui SURVIT au déménagement du panneau, et ce qui a disparu avec lui.
+
+    Ce test gardait deux choses. La première tenait à la MODALE : fermer pendant une
+    épreuve n'annulait pas le fetch, et rouvrir remettait le message à zéro — on
+    retrouvait un « Éprouver » grisé sans un mot, pendant les quinze secondes que dure
+    l'import de torch, ce qui se lit comme une panne du panneau au moment précis où il
+    travaille. Depuis UX-10 (2026-09-07) le panneau est une PAGE : il n'y a plus rien à
+    fermer ni à rouvrir, donc plus de message à effacer. La propriété n'est pas devenue
+    fausse, son objet a cessé d'exister — et c'est pour cela qu'elle est retirée ici
+    plutôt que reformulée ailleurs, où elle n'aurait rien gardé.
+
+    La seconde survit entière, et c'est le cœur : `aria-disabled` plutôt qu'un vrai
+    `disabled`. Un `disabled` sur le bouton qui PORTE le focus le rend au `<body>` ; la
+    tabulation repart du début de la page, et l'on perd sa place pour toute la durée de
+    l'épreuve. Aucune exception, et l'audit axe n'y voit rien : il photographie un écran,
+    il n'appuie sur aucune touche.
+    """
+    page.goto(moteurs_lents + "/administration", wait_until="networkidle")
+    page.wait_for_selector("#sante-body .sante-ligne", timeout=3000)
     page.click("#sante-eprouver")
     occupe = page.locator('#sante-eprouver[aria-disabled="true"]')
     assert occupe.count(), "l'épreuve devrait s'annoncer en cours"
 
-    # Le cœur de l'affaire, et ce que ce test garde vraiment : le focus ne quitte pas la
-    # modale. Un vrai `disabled` sur le bouton qui le PORTE le rend au <body> — Tab n'est
-    # plus piégé, Échap ne ferme plus, et le panneau devient un cul-de-sac au clavier
-    # pendant toute la durée de l'épreuve. Aucune exception, et l'audit axe n'y voit rien :
-    # il photographie un écran, il n'appuie sur aucune touche.
     assert page.evaluate("() => document.activeElement.id") == "sante-eprouver", (
-        "le focus a quitté le bouton pendant l'épreuve")
+        "le focus a quitté le bouton pendant l'épreuve : un `disabled` réel le rend au "
+        "`<body>`, et la tabulation repart du début de la page")
 
-    page.keyboard.press("Escape")            # on ferme pendant que ça charge
-    page.wait_for_selector("#sante-modal", state="hidden", timeout=3000)
-    page.click("#btn-sante")                 # …et on rouvre aussitôt
-    page.wait_for_selector("#sante-modal:not([hidden])", timeout=3000)
-
-    assert occupe.count(), (
-        "le bouton devrait rester occupé : l'épreuve n'est pas finie")
+    # Et l'épreuve reste EXPLIQUÉE tant qu'elle dure : un bouton désarmé sans un mot se
+    # lit comme une panne. C'est ce qui restait vrai de la moitié perdue.
     assert page.locator("#sante-msg").inner_text().strip(), (
         "bouton grisé et message vide : le panneau paraît cassé alors qu'il travaille")
 

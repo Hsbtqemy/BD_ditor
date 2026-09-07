@@ -5,7 +5,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { escapeHtml, messageErreur } = require("../../static/lib/common.js");
+const { escapeHtml, messageErreur, identite } = require("../../static/lib/common.js");
 
 test("escapeHtml échappe les métacaractères HTML", () => {
   assert.equal(escapeHtml("<b>&\"'"), "&lt;b&gt;&amp;&quot;&#39;");
@@ -69,4 +69,49 @@ test("sans corps exploitable, on retombe sur le statut HTTP", () => {
   for (const vide of [{}, null, undefined, { detail: "" }, { detail: [] }, { detail: 42 }]) {
     assert.equal(messageErreur(vide, "Service Unavailable"), "Service Unavailable");
   }
+});
+
+
+/* --- identite() (UX-10) --------------------------------------------------------
+   Elle est montée dans `common.js` parce que DEUX surfaces en dépendent depuis que
+   l'administration a sa page : la Bibliothèque pour dire « verrouillé par vous », la
+   page d'administration pour DÉCLARER le pouvoir des administrateurs (AUTH-4). La
+   recopier d'un fichier à l'autre aurait laissé les deux dériver — la faute mesurée le
+   2026-09-07 sur deux procédures d'ajout de compte.
+
+   Ce qui se teste ici est une PROPRIÉTÉ, au sens où `static/lib/` l'entend : la fonction
+   ne touche ni au DOM ni au réseau, elle transforme une promesse en un couple, et sa
+   table de vérité tient en quatre lignes. */
+
+test("identite lit le login et les groupes administrateurs", async () => {
+  identite.oublier();
+  const a = await identite(Promise.resolve(
+    { utilisateur: "lea", acces: { groupes_admin: ["bd-admins"] } }));
+  assert.deepEqual(a, { login: "lea", groupes_admin: ["bd-admins"] });
+});
+
+test("identite MÉMOÏSE : la seconde lecture n'interroge plus", async () => {
+  identite.oublier();
+  await identite(Promise.resolve({ utilisateur: "lea", acces: { groupes_admin: [] } }));
+  // Une source qui rendrait autre chose : si le mémo ne tenait pas, on la verrait passer.
+  const b = await identite(Promise.resolve({ utilisateur: "AUTRE" }));
+  assert.equal(b.login, "lea",
+    "sans mémo, `/api/moi` serait interrogé une fois par appelant — et le miroir "
+    + "`utilisateur` réécrit à chaque fois pour rien");
+});
+
+test("sans identité, elle rend un couple VIDE et n'échoue pas", async () => {
+  // Mono-poste, ou proxy muet : un écran qui ne sait pas qui vous êtes doit s'afficher
+  // quand même. C'est la portée vide d'AUTH-2 qui parle de l'accès, pas ce helper.
+  for (const rien of [null, undefined, {}, { acces: {} }]) {
+    identite.oublier();
+    assert.deepEqual(await identite(Promise.resolve(rien)),
+                     { login: null, groupes_admin: [] });
+  }
+});
+
+test("une source en ÉCHEC ne casse pas l'écran", async () => {
+  identite.oublier();
+  assert.deepEqual(await identite(Promise.reject(new Error("réseau"))),
+                   { login: null, groupes_admin: [] });
 });

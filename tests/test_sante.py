@@ -170,13 +170,23 @@ def test_le_panneau_connait_tous_les_moteurs(client):
 # chose auraient été pires qu'un : on aurait fini par croire le moins cher.
 
 def test_la_page_charge_le_module_du_panneau():
-    """`corpus.js` appelle `BDSante` : sans la balise, le panneau lève une ReferenceError
-    au premier clic. Un oubli de <script> ne casse aucun test Python et aucun test Node —
-    les deux voient le module, seul le navigateur ne le verrait pas."""
-    html = (Path(__file__).resolve().parent.parent / "templates" / "corpus.html").read_text(
-        encoding="utf-8")
+    """`administration.js` appelle `BDSante` : sans la balise, le panneau lève une
+    ReferenceError au premier rendu. Un oubli de <script> ne casse aucun test Python et
+    aucun test Node — les deux voient le module, seul le navigateur ne le verrait pas.
+
+    La page a CHANGÉ le 2026-09-07 : le panneau des moteurs a quitté la Bibliothèque pour
+    `/administration` (UX-10). Ce test l'a signalé de lui-même en devenant rouge, ce qui
+    est exactement ce qu'on lui demande — il suit le panneau, pas l'écran d'hier.
+    """
+    html = (Path(__file__).resolve().parent.parent / "templates"
+            / "administration.html").read_text(encoding="utf-8")
     assert "/static/lib/sante.js" in html
-    assert "BDSante" in (_STATIC / "corpus.js").read_text(encoding="utf-8")
+    assert "BDSante" in (_STATIC / "administration.js").read_text(encoding="utf-8")
+    # Et il ne doit PLUS être chargé là où il ne sert plus : un <script> orphelin coûte une
+    # requête et fait croire que le panneau est encore là.
+    corpus = (Path(__file__).resolve().parent.parent / "templates" / "corpus.html").read_text(
+        encoding="utf-8")
+    assert "/static/lib/sante.js" not in corpus
 
 
 def test_le_panneau_renvoie_a_une_section_qui_existe():

@@ -30,8 +30,8 @@
     <!-- Barre d'actions + traitement par lot -->
     <div class="corpus-toolbar">
       <button id="btn-new" class="primary">+ Nouvel album</button>
-      <button id="btn-collections" class="ghost">👥 Collections</button>
-      <button id="btn-sante" class="ghost" title="Les moteurs de reconnaissance fonctionnent-ils vraiment ?">🩺 Moteurs</button>
+      <span class="muted small">Collections et moteurs ont leur page :
+        <a href="/administration">Administration</a>.</span>
       <div class="batch">
         <span class="muted small">Lot sur la sélection :</span>
         <label class="pass"><input type="checkbox" id="pass-segmenter"> Segmenter</label>
@@ -145,65 +145,10 @@
     </div>
   </div>
 
-  <!-- ───────── Collections (AUTH-3) — espaces de travail : posséder, partager ───────── -->
-  <div id="collections-modal" hidden>
-    <div class="modal-box lexique-box">
-      <h3 id="collections-title">Collections</h3>
-      <p class="muted small">Une <b>collection</b> est un espace de travail, et l'unité qui
-        porte les accès : un album suit celle qui le contient. Trois niveaux —
-        <b>lecture</b>, <b>écriture</b> (annoter), <b>propriétaire</b> (décider qui entre).</p>
-      <div class="contrib-add">
-        <input id="col-nom" placeholder="Nom d'une nouvelle collection" autocomplete="off"
-               aria-label="Nom de la nouvelle collection">
-        <button id="col-add" class="primary small" type="button">+ Créer</button>
-      </div>
-      <div id="col-body"></div>
-
-      <!-- Vue des comptes (AUTH-7). `hidden` par défaut et levé par le JS SEULEMENT si
-           la route répond : la garde est celle du serveur, pas celle de cet écran.
-           Décider ici à partir des groupes reproduirait l'erreur d'AUTH-4, où le référent
-           s'est retrouvé derrière la garde du PARTAGE parce qu'il vivait dans ce panneau. -->
-      <section id="comptes-bloc" hidden aria-labelledby="comptes-titre">
-        <h4 id="comptes-titre">Comptes vus par l'application</h4>
-        <p class="col-note" id="comptes-limite"></p>
-        <div id="comptes-body"></div>
-      </section>
-
-      <div class="modal-actions">
-        <button id="col-close" class="ghost small">Fermer</button>
-        <span id="col-msg" class="muted small" role="status" aria-live="polite"></span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ───────── Moteurs (SANTE-1) — la présence n'est pas le fonctionnement ───────── -->
-  <div id="sante-modal" hidden>
-    <div class="modal-box lexique-box">
-      <h3 id="sante-title">Moteurs de reconnaissance</h3>
-      <p class="muted small">Les moteurs sont <b>optionnels</b> : absent, un moteur ne casse
-        rien — sa passe répond 503 et le reste de l'outil vit sa vie. Le cas grave est
-        l'autre, et c'est celui qu'on vient chercher ici : un moteur <b>installé mais
-        cassé</b>, qu'un contrôle de présence annonce disponible.</p>
-      <div id="sante-body"></div>
-      <p class="muted small">Ce qui précède ne dit que la <b>présence</b> des modules,
-        et c'est précisément ce qui peut mentir : un moteur trouvé sur le disque peut
-        très bien refuser de s'importer. <b>Éprouver</b> les importe pour de bon :
-        quelques secondes et quelques centaines de mégaoctets au premier appel, puis le
-        résultat est retenu jusqu'au prochain redémarrage du serveur.</p>
-      <div class="contrib-add">
-        <button id="sante-eprouver" class="primary small" type="button">Éprouver les moteurs</button>
-      </div>
-      <div class="modal-actions">
-        <button id="sante-close" class="ghost small">Fermer</button>
-        <span id="sante-msg" class="muted small" role="status" aria-live="polite"></span>
-      </div>
-    </div>
-  </div>
 </div>
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
 <script src="/static/lib/dialog.js"></script>
-<script src="/static/lib/sante.js"></script>
 <script src="/static/corpus.js"></script>
 </body>
 </html>

@@ -184,7 +184,7 @@
    continue de les citer en pixels, parce que c'est ainsi qu'ils ont été MESURÉS ; voici
    la table de lecture, valable pour une préférence de 16 px :
 
-       19.5em = 312 px  ·  34.9375em = 559 px  ·  41.1875em = 659 px
+       28em = 448 px  ·  34.9375em = 559 px  ·  41.1875em = 659 px  ·  54em = 864 px
        45em   = 720 px  ·  56.1875em = 899 px  ·  67.4375em = 1079 px
 
    Sous une préférence plus grande, chacun s'écarte dans la même proportion, et c'est
@@ -461,6 +461,22 @@ button { font-family: inherit; }
 .surf-nav { display: flex; align-items: center; gap: .6154rem; }
 .brand-court { display: none; }          /* la marque abrégée n'apparaît que sous 560 px */
 
+/* Un lien ne replie JAMAIS son libellé sous son icône, et ce n'est pas une question de
+   goût. Sans cette ligne, une barre trop étroite ne déborde pas : elle S'ÉCRASE — chaque
+   lien passe à deux lignes (30 → 48 px) dans une bande qui en fait 34, donc les liens
+   sortent VERTICALEMENT de leur propre barre. Mesuré le 2026-09-07 entre 690 et 880 px,
+   « ← Retour » visible.
+
+   Ce qui rend l'écrasement dangereux, c'est qu'il est INVISIBLE à toute sonde de
+   débordement : le contenu se repliant pour tenir, `scrollWidth` reste égal à la largeur
+   disponible. `test_e2e_reflow` répond donc « rien n'est inatteignable » — ce qui est
+   VRAI dans son périmètre — et une mesure à la main répond « marge de 14 px » sur une
+   barre en train de se tasser. C'est ce qui est arrivé le 2026-09-07 : les seuils avaient
+   été redérivés d'une mesure qui ne regardait pas la bonne grandeur, et seul un œil
+   humain l'a vu. En `nowrap`, un manque de place redevient un débordement : laid à l'œil,
+   et ROUGE sous l'audit. */
+.surf-link { white-space: nowrap; }
+
 /* ---------- Petits écrans : la bande 1 tombe aux ICÔNES SEULES (UX-7) ----------
    Mesuré le 2026-09-04 à 320 px : telle quelle, la bande 1 fait 535 px et déborde de
    215 — et `html, body { overflow: hidden }` fait que ce débordement n'est pas défilable
@@ -518,7 +534,28 @@ button { font-family: inherit; }
   #stat-mode { min-width: 0; }
 }
 
-@media (max-width: 34.9375em) {
+/* ---------- Le seuil des LIBELLÉS suit la barre, plus la mise en page (UX-10) ----------
+   Il valait 34.9375em, la même valeur que le bloc ci-dessus, et cette coïncidence n'était
+   pas un choix : une barre à QUATRE entrées tenait justement là. À cinq elle ne tient plus,
+   et l'échec se voyait à 768 px sous une préférence de 20 px — le menu « Aa » sortait de
+   58 px. Mesuré le 2026-09-07 : la barre à libellés demande 826 px pour une préférence de
+   20, soit 41,3em. **Ce premier calibrage était FAUX, et il l'était pour la raison que
+   `.surf-link { white-space: nowrap }` traite plus haut** : il mesurait `scrollWidth`, qui
+   ne bouge pas quand les liens se replient au lieu de sortir. 43em rendait donc une barre
+   « sans débordement » et complètement écrasée entre 690 et 880 px — vu par un œil humain
+   sur une capture d'écran, pas par la sonde. Remesuré liens en `nowrap`, et sur le PIRE
+   cas réel : cinq libellés AVEC le lien « ← Retour », qui coûte 80 px à lui seul et que
+   toutes les mesures précédentes avaient pris masqué. La barre rompt sous 850 px, soit
+   53,1em ; 54em laisse 1,6 % de marge et vaut pour toutes les tailles, tout étant
+   en rem.
+
+   Ce que le relèvement coûte, et c'est le seul prix : entre 560 et 864 px à police
+   par défaut, les libellés tombent alors qu'ils s'affichaient. Mais
+   ils s'y AFFICHAIENT ÉCRASÉS dès que le « ← Retour » paraissait, et cela DÉJÀ à quatre
+   entrées : mesuré le 2026-09-07, la bande fautive allait de 560 à ~710 px avant cette
+   page, elle irait de 560 à 850 px avec elle. Le seuil ne retire donc pas des libellés
+   lisibles, il retire des libellés repliés sous leur icône. */
+@media (max-width: 54em) {
   .surf-label, .brand-long {
     position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
     overflow: hidden; clip-path: inset(50%); white-space: nowrap;
@@ -537,9 +574,10 @@ button { font-family: inherit; }
    quel que soit le réglage : 307 px pour une préférence de 16 px, 382 px pour 20 px —
    strictement proportionnel, puisque tout y est désormais en rem. La condition « elle ne
    tient plus » s'écrit donc UNE fois, en em, et vaut pour tous les réglages ; en px il
-   aurait fallu un seuil par taille de police. 19.5em laisse une marge de 1,5 % sur la
-   mesure et ne se déclenche pas à 320 px sous une préférence de 16 px — la largeur
-   canonique du 1.4.10, où l'arbitrage d'UX-7 (icônes seules, UNE ligne) doit tenir.
+   aurait fallu un seuil par taille de police. 19.5em laissait une marge de 1,5 % sur la
+   mesure et ne se déclenchait pas à 320 px sous une préférence de 16 px — la largeur
+   canonique du 1.4.10, où l'arbitrage d'UX-7 (icônes seules, UNE ligne) devait tenir.
+
 
    Ce que l'enroulement coûte, mesuré au même endroit : la bande 1 passe de 43 à 91 px et
    la barre du canevas de 50 à 95 px, soit 93 px de hauteur pour les deux — une rangée
@@ -551,8 +589,39 @@ button { font-family: inherit; }
    se contredire : ce qu'il refusait, c'était d'enrouler la barre à LIBELLÉS à la police
    par défaut, où elle coûtait 165 px pour un déficit qu'on pouvait combler autrement (les
    icônes seules). Ici les libellés sont déjà tombés, il n'y a plus rien à retirer, et
-   l'alternative n'est plus « une ligne de plus » mais « trois commandes en moins ». */
-@media (max-width: 19.5em) {
+   l'alternative n'est plus « une ligne de plus » mais « trois commandes en moins ».
+
+   **Porté à 23em le 2026-09-07 : c'est la PRÉMISSE qui a bougé, pas la mesure.** Ces
+   19,2 em sont ceux d'une barre à QUATRE entrées. La cinquième (`/administration`, UX-10)
+   la porte à 22,6 em — 361 px demandés contre 320 disponibles à la largeur canonique,
+   soit 41 px de menu « Aa » hors de l'écran, sur les CINQ surfaces d'un coup. Le seuil
+   n'avait pas vieilli et ne s'était pas trompé : il a continué de s'appliquer exactement
+   comme prévu, au mauvais endroit, parce que le nombre d'entrées était la seule variable
+   que « quel que soit le réglage » ne couvrait pas.
+
+   **Puis porté à 28em le même jour, et pour la MÊME omission commise deux fois** : 23em
+   sortait d'une mesure prise le lien « ← Retour » MASQUÉ. Ce lien coûte 80 px, il paraît
+   dès qu'on arrive d'une autre surface — l'usage ordinaire du round-trip —, et sans lui
+   la barre à icônes rompait encore à 400 px (38 px de menu « Aa » dehors), 500 px sous une
+   préférence de 20, 600 px sous 24. Élargir l'enroulement ne coûte rien là où il ne sert
+   pas : `flex-wrap` n'enroule que ce qui dépasse, donc entre 368 et 448 px sans lien de
+   retour, la barre reste sur une ligne exactement comme avant. Le raisonnement était écrit ici, à
+   trente lignes du changement qui l'invalidait.
+
+   **Et cela retourne l'arbitrage d'UX-7 à 320 px, délibérément.** Ce qu'il refusait,
+   c'était d'enrouler TANT QU'IL RESTAIT quelque chose à retirer — les libellés. À 320 px
+   ils sont déjà tombés ; il ne resterait que le logotype, dont la disparition rendrait
+   47 px pour un besoin de 41, laissant la barre à 6 px de la rupture suivante — alors
+   qu'elle tenait déjà à 3 px près AVANT la cinquième entrée. Mesuré au passage, et cela
+   tranche : le lien « ← Retour » était masqué pendant ces mesures, et la barre s'allonge
+   encore quand il paraît. Une barre serrée au pixel ne l'absorbe pas ; une barre qui
+   enroule, si.
+
+   Ce que la cinquième entrée coûte VRAIMENT, mesuré sous le nouveau seuil : à 320 px et
+   police par défaut, RIEN — 72 px de bande avec quatre comme avec cinq, elles tiennent
+   sur les mêmes rangées. Sous une préférence de 20 px, une rangée de plus : 118 → 161 px.
+   Le prix se paie donc exactement là où l'enroulement sert, et nulle part ailleurs. */
+@media (max-width: 28em) {
   /* Les DEUX premières rangées en `auto` : la bande 2 tient la sienne du bloc 34.9375em
      ci-dessus, plus haut dans la source, qu'il ne faut pas écraser en la réécrivant. */
   #app { grid-template-rows: auto auto 1fr auto; }
@@ -1436,6 +1505,24 @@ a.dist-row:hover { background: color-mix(in srgb, var(--accent-blue) 13%, transp
 .r-type { text-transform: capitalize; color: var(--accent-cyan); }
 .search-hint { padding: 3.0769rem; text-align: center; color: var(--text-muted); }
 mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2px; padding: 0 .0769rem; }
+
+/* =================================================================== */
+/* Page Administration (UX-10)                                        */
+/* ===================================================================
+   Même patron que les autres surfaces, et ce n'est pas un copier-coller de confort :
+   `html, body { overflow: hidden }` clippe la racine, donc CHAQUE page doit porter son
+   propre cadre défilant, sinon ce qui dépasse devient inatteignable — sans barre ni
+   molette. C'est le défaut mesuré sur l'Exploration le 2026-09-04, et
+   `test_e2e_defilement` l'affirme désormais de cette page aussi. */
+#admin-app { display: flex; flex-direction: column; height: 100%; }
+#admin-app #header { min-height: var(--header-h); flex: 0 0 auto; padding: .6rem 1.5385rem; }
+#admin-app #header h1 { margin: 0 0 .2rem; font-size: 1.15rem; }
+#admin-body { flex: 1; overflow-y: auto; padding: 1.2308rem 1.5385rem; }
+
+/* Un bloc = un sujet. Les trois se lisent ensemble, ce qu'une modale interdisait. */
+.admin-bloc { max-width: 62rem; margin: 0 0 2rem; }
+.admin-bloc > h2 { margin: 0 0 .3rem; font-size: 1.05rem; }
+.admin-bloc + .admin-bloc { border-top: 1px solid var(--border); padding-top: 1.4rem; }
 
 /* =================================================================== */
 /* Page Bibliothèque / gestion de corpus                              */

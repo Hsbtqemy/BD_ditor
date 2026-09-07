@@ -20,7 +20,7 @@ from conftest import make_png
 
 ADMIN = {"Remote-User": "csp", "Remote-Groups": "bd-admins"}
 
-SURFACES_HTML = ("/", "/corpus", "/recherche", "/exploration")
+SURFACES_HTML = ("/", "/corpus", "/recherche", "/exploration", "/administration")
 
 
 def test_les_surfaces_html_suivent_l_application(client):
@@ -183,6 +183,7 @@ SURFACES_BALAYEES = [
     "/recherche?q=pouvoir",
     "/corpus",
     "/exploration?champ=lemme",
+    "/administration",
     "/docs",
     "/redoc",
 ]

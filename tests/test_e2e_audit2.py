@@ -18,6 +18,10 @@ SURFACES_AUDITEES = ("/recherche", "/corpus", "/exploration")
 SURFACES_HORS_PERIMETRE = {
     "/": "la Visionneuse ne porte pas de nuage de tags ; l'onglet qui reçoit l'événement "
          "`storage` du correctif F1 est ouvert sur la Recherche et la Bibliothèque.",
+    "/administration": "ni nuage de tags, ni second onglet dans le scénario du thème : les "
+                       "deux correctifs d'AUDIT-2 n'ont rien à y observer. Le thème y est "
+                       "appliqué comme partout par `theme.js`, et c'est `test_e2e_a11y` qui "
+                       "l'éprouve sur les deux thèmes.",
 }
 
 

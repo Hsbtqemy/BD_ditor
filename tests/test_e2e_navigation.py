@@ -260,16 +260,27 @@ SURFACES_AUDITEES = {
     "/corpus": "Bibliothèque",
     "/recherche": "Recherche",
     "/exploration": "Exploration",
+    "/administration": "Administration",
 }
 SURFACES_HORS_PERIMETRE = {}
+
+# La barre montre UNE entrée par surface de l'application — auditée ici ou non —, donc ce
+# compte se DÉRIVE des deux déclarations au lieu de s'écrire. Il valait `4` en dur à deux
+# endroits jusqu'au 2026-09-07, dans ce module même dont la déclaration venait de passer à
+# cinq. La garde d'UX-10 ne pouvait pas les voir : elle interdit une LISTE de surfaces
+# écrite à la main à côté de la déclaration, elle ne sait rien de leur NOMBRE — même
+# espèce de défaut, un cran plus bas, et c'est la passe E2E qui l'a trouvée.
+NB_ENTREES_NAV = len(SURFACES_AUDITEES) + len(SURFACES_HORS_PERIMETRE)
 
 
 @pytest.mark.parametrize("path,label", SURFACES_AUDITEES.items())
 def test_nav_unifiee_injectee_et_surbrillance(page, live_server, path, label):
-    """La barre de nav est injectée à l'identique sur les 4 surfaces (4 liens), et la
+    """La barre de nav est injectée à l'identique sur TOUTES les surfaces (un lien par
+    surface, compté depuis la déclaration), et la
     surface courante — et elle seule — porte aria-current=page (« vous êtes ici »)."""
     page.goto(f"{live_server}{path}", wait_until="networkidle")
-    expect(page.locator(".surf-nav a.surf-link")).to_have_count(4, timeout=15000)
+    expect(page.locator(".surf-nav a.surf-link")).to_have_count(
+        NB_ENTREES_NAV, timeout=15000)
     current = page.locator('.surf-nav a[aria-current="page"]')
     expect(current).to_have_count(1)
     expect(current).to_contain_text(label)
@@ -496,12 +507,12 @@ def test_confort_de_lecture(page, live_server):
 @pytest.mark.parametrize("path", list(SURFACES_AUDITEES))
 def test_deux_bandes_navigation_au_dessus_des_outils(page, live_server, path):
     """Structure en deux bandes : la bande 1 (#site-nav, navigation) est tout en haut
-    et identique partout (4 surfaces) ; la bande 2 (#header, outils de page) est juste
+    et identique partout (une entrée par surface) ; la bande 2 (#header, outils de page) est juste
     en dessous, sans chevauchement. Garantit la séparation navigation / outils."""
     page.goto(f"{live_server}{path}", wait_until="networkidle")
     nav = page.locator("#site-nav")
     expect(nav).to_be_visible(timeout=15000)
-    expect(page.locator("#site-nav .surf-nav a.surf-link")).to_have_count(4)
+    expect(page.locator("#site-nav .surf-nav a.surf-link")).to_have_count(NB_ENTREES_NAV)
     nb, hb = nav.bounding_box(), page.locator("#header").bounding_box()
     assert nb["y"] == 0                                 # nav tout en haut
     assert hb["y"] >= nb["y"] + nb["height"] - 1        # outils dessous, pas de chevauchement
