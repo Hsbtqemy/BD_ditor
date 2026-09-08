@@ -72,8 +72,10 @@ qui est la base entière par construction. Le cliquet d'AUTH-5
 
 ## Ce qui est journalisé
 
-**Passes ML** (`journal.passe_ml`, enveloppe les 3 routes + le worker de lot + le reindex
-NLP) — sans coupler le code pipeline : on **diffe** les régions de la planche avant/après.
+**Passes ML** (`journal.passe_ml`, enveloppe les 3 routes directes + les 3 passes du worker
+de lot — SIX appelants, et pas un de plus : le reindex NLP appelle `ouvrir_activite`
+directement, dans `database.reindex_all`, et commit par lots. Corrigé le 2026-09-08 : cette
+phrase l'y rangeait, et elle a failli faire croire que le correctif du jour le couvrait) — sans coupler le code pipeline : on **diffe** les régions de la planche avant/après.
 Chaque passe = une `activite` ; les régions **créées** sont rattachées à leur run
 (`regions.activite_id` = PROV `wasGeneratedBy`) et donnent un événement `creation` ; l'OCR
 qui remplit une région donne un `modification`. Les régions machine *remplacées* par une
