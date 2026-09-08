@@ -56,12 +56,15 @@ def _reset_global_state():
     l'autre. Centralisé ici pour couvrir TOUTE la suite, pas un seul fichier."""
     jobs_mod._jobs.clear()
     jobs_mod._counter = 0
+    if ocr_mod._minuterie is not None:      # CONC-1 : l'échéance du master résident
+        ocr_mod._minuterie.cancel()         # sinon elle survit au test qui l'a armée
+        ocr_mod._minuterie = None
     if ocr_mod._crop_cache.get("img") is not None:
         try:
             ocr_mod._crop_cache["img"].close()
         except Exception:
             pass
-    ocr_mod._crop_cache.update(planche_id=None, img=None, scale=1.0)
+    ocr_mod._crop_cache.update(planche_id=None, img=None, scale=1.0, dernier_acces=0.0)
     sharedocs_mod.reinitialiser()      # SHARE-1 : DEUX magasins (instance + perso)
     main._vus.clear()          # AUTH-1 : miroir des identités déjà écrites en base
     sante_mod._reset()         # SANTE-1 : mémoïsation des contrôles profonds

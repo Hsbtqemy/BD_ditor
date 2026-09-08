@@ -14,8 +14,9 @@ from __future__ import annotations
 import importlib.util
 import sqlite3
 import threading
+import time
 
-from config import DATA_DIR, MAX_IMAGE_PIXELS, PILLOW_FORMATS
+from config import DATA_DIR, MAX_IMAGE_PIXELS, PILLOW_FORMATS, TTL_MASTER_CROP
 from database import reindex_region
 
 # Types de régions porteuses de texte.
@@ -138,8 +139,82 @@ def ocr_planche(conn: sqlite3.Connection, planche_id: int,
 # --------------------------------------------------------------------------- #
 # Cache 1 image : on garde le master de la dernière planche ouvert, pour que la
 # navigation bulle-à-bulle ne ré-ouvre pas un TIFF de 50 Mo à chaque crop.
-_crop_cache: dict = {"planche_id": None, "img": None, "scale": 1.0}
+_crop_cache: dict = {"planche_id": None, "img": None, "scale": 1.0,
+                     "dernier_acces": 0.0}
 _crop_lock = threading.Lock()  # le cache est partagé entre threads du pool
+
+# CONC-1 — le master n'était fermé qu'à l'ouverture d'une AUTRE planche : une session de
+# transcription terminée laissait 53 Mo résidents pour toujours (mesuré le 2026-09-08 sur
+# un master réel de 17,7 Mpx).
+#
+# LE PORTEUR EST UNE MINUTERIE D'INACTIVITÉ, ET NON UN FIL DE FOND. La fiche supposait
+# qu'il en faudrait un, parce qu'un contrôle paresseux ne ferme rien quand plus personne
+# n'appelle — ce qui est exactement le cas visé, et reste vrai. Mais un `threading.Timer`
+# réarmé n'existe QUE tant que le cache tient quelque chose : armé au premier crop, il
+# meurt avec l'image qu'il ferme, et le module n'a aucun objet vivant quand le cache est
+# vide. C'est le fil de fond sans sa permanence.
+_minuterie: threading.Timer | None = None
+
+
+def _fermer_master() -> bool:
+    """Ferme le master caché et vide l'entrée. **À appeler SOUS `_crop_lock`.**"""
+    img = _crop_cache["img"]
+    if img is None:
+        return False
+    try:
+        img.close()
+    except Exception:                       # pragma: no cover - fermeture best-effort
+        pass
+    _crop_cache.update(planche_id=None, img=None, scale=1.0)
+    return True
+
+
+def _echoir_master() -> None:
+    """Corps de la minuterie : ferme le master si personne ne l'a redemandé depuis.
+
+    **Le contrôle d'âge n'est pas une ceinture, c'est la correction d'une course.**
+    `Timer.cancel()` ne rattrape pas une minuterie DÉJÀ partie : celle-ci peut être en
+    attente de `_crop_lock` pendant qu'un crop tout neuf s'en sert, le réarmement
+    n'annulant plus rien. Sans ce contrôle elle fermerait, en sortant du verrou, une image
+    qui vient d'être utilisée — la refermeture serait correcte du point de vue du cache,
+    mais l'échéance ne voudrait plus rien dire.
+
+    **Et trop tôt, elle SE RÉARME au lieu de renoncer.** Écrit d'abord avec un simple
+    `return`, ce corps laissait le master résident pour de bon dès que la minuterie se
+    réveillait un cheveu avant l'heure — `Event.wait()` le fait, la granularité d'horloge
+    y suffit. Le fil mourait, personne ne le remplaçait, et la seule chose qui pouvait
+    encore fermer l'image était le changement de planche : exactement l'état qu'on
+    voulait quitter. Le test de l'échéance l'a attrapé au premier lancement.
+    """
+    with _crop_lock:
+        if _crop_cache["img"] is None:
+            return                          # rien à fermer : on ne réarme pas dans le vide
+        reste = TTL_MASTER_CROP - (time.monotonic() - _crop_cache["dernier_acces"])
+        if reste > 0:
+            _armer_echeance(reste)          # réveil anticipé, ou accès plus récent
+            return
+        _fermer_master()
+
+
+def _armer_echeance(delai: float | None = None) -> None:
+    """(Ré)arme la minuterie. **À appeler SOUS `_crop_lock`.**
+
+    `delai` sert au réarmement depuis `_echoir_master`, pour ne compter que le temps qui
+    RESTE ; par défaut l'échéance repart entière, depuis l'accès qui vient d'avoir lieu.
+
+    À `TTL_MASTER_CROP <= 0` aucun fil n'est créé : le cache retrouve exactement son
+    comportement d'avant, fermé au seul changement de planche.
+    """
+    global _minuterie
+    if _minuterie is not None:
+        _minuterie.cancel()
+        _minuterie = None
+    if TTL_MASTER_CROP <= 0:
+        return
+    _minuterie = threading.Timer(TTL_MASTER_CROP if delai is None else delai,
+                                 _echoir_master)
+    _minuterie.daemon = True                # ne retient jamais l'arrêt du process
+    _minuterie.start()
 
 
 def region_crop_png(conn: sqlite3.Connection, region_id: int,
@@ -183,6 +258,10 @@ def region_crop_png(conn: sqlite3.Connection, region_id: int,
         # s'en remettre à un détail d'implémentation ferait reposer une propriété de
         # sûreté sur un accident : ici elle est écrite.
         crop.load()
+
+        # Le master vient de servir : l'échéance repart de maintenant (CONC-1).
+        _crop_cache["dernier_acces"] = time.monotonic()
+        _armer_echeance()
 
     # --- Hors verrou (CONC-1). `crop` est un objet NEUF, local à ce thread, que plus
     # rien ne partage : le redimensionner et l'encoder ne touche plus au cache ni au

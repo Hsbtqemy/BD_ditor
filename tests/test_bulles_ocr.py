@@ -4,6 +4,7 @@ Les chemins « logique » sont testés en mockant l'appel moteur (rapide,
 déterministe) ; un test d'intégration réel (gated) valide le bout-en-bout.
 """
 import io
+import time
 
 import pytest
 from PIL import Image, ImageDraw, ImageFont
@@ -471,3 +472,94 @@ def test_le_crop_ne_serialise_plus_le_resize_ni_l_encodage(client, album, monkey
         "l'ouverture du master REMPLACE l'image partagée : elle doit rester sous le verrou")
     assert vu["verrou_pendant_png"] is False, (
         "l'encodage PNG travaille sur un objet local au thread : il n'a rien à sérialiser")
+
+
+def test_le_master_resident_est_ferme_apres_son_echeance(client, album, monkeypatch):
+    """CONC-1 — le master n'était fermé qu'à l'ouverture d'une AUTRE planche.
+
+    Une session de transcription terminée laissait donc 53 Mo résidents pour toujours
+    (mesuré le 2026-09-08 sur un master réel). Le porteur retenu est une minuterie
+    d'INACTIVITÉ et non un fil de fond : elle n'existe que tant que le cache tient
+    quelque chose.
+
+    Ce test attend une VRAIE minuterie plutôt que d'appeler son corps à la main : c'est
+    précisément l'armement qui est en cause, et un test qui invoquerait `_echoir_master`
+    directement passerait alors même que rien ne l'appellerait jamais — le défaut d'un
+    contrôle paresseux, celui que ce choix écarte.
+    """
+    monkeypatch.setattr(ocr, "TTL_MASTER_CROP", 0.05)
+
+    buf = io.BytesIO()
+    Image.new("RGB", (800, 600), "white").save(buf, "PNG")
+    p = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("m.png", buf.getvalue(), "image/png")}).json()
+    r = client.post(f"/api/planches/{p['id']}/regions",
+                    json={"type": "bulle", "x": 10, "y": 10, "w": 200, "h": 100}).json()
+
+    assert client.get(f"/api/regions/{r['id']}/crop").status_code == 200
+    assert ocr._crop_cache["img"] is not None, "le crop doit avoir mis le master en cache"
+
+    fin = time.monotonic() + 3.0
+    while ocr._crop_cache["img"] is not None and time.monotonic() < fin:
+        time.sleep(0.02)
+    assert ocr._crop_cache["img"] is None, (
+        "l'échéance passée, le master doit être fermé sans que personne n'appelle")
+    assert ocr._crop_cache["planche_id"] is None
+
+
+def test_une_minuterie_deja_partie_ne_ferme_pas_un_master_reutilise(client, album):
+    """CONC-1 — `Timer.cancel()` ne rattrape pas une minuterie DÉJÀ partie.
+
+    Elle peut attendre `_crop_lock` pendant qu'un crop tout neuf s'en sert : le
+    réarmement n'annule alors plus rien, et elle fermerait en sortant du verrou une image
+    qui vient de servir. Le contrôle d'âge dans `_echoir_master` est ce qui la neutralise
+    — d'où ce test, qui joue exactement cette séquence en appelant le corps de la
+    minuterie APRÈS un accès.
+    """
+    buf = io.BytesIO()
+    Image.new("RGB", (800, 600), "white").save(buf, "PNG")
+    p = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("m2.png", buf.getvalue(), "image/png")}).json()
+    r = client.post(f"/api/planches/{p['id']}/regions",
+                    json={"type": "bulle", "x": 10, "y": 10, "w": 200, "h": 100}).json()
+
+    assert client.get(f"/api/regions/{r['id']}/crop").status_code == 200
+    garde = ocr._crop_cache["img"]
+    assert garde is not None
+
+    # On efface la minuterie AVANT d'appeler son corps, et ce détail porte la seconde
+    # assertion : c'est l'état du réveil ANTICIPÉ, où le fil qui s'exécute est le seul
+    # armé et va mourir en sortant. Sans cet effacement, la minuterie du crop resterait
+    # vivante et « un fil est armé » serait vrai sans que personne l'ait réarmé — une
+    # assertion increvable, mesurée telle quelle : la mutation qui supprime le
+    # réarmement passait au vert.
+    ocr._minuterie = None
+    ocr._echoir_master()          # la minuterie partie AVANT ce dernier accès
+
+    assert ocr._crop_cache["img"] is garde, (
+        "une minuterie doublée par un accès plus récent ne doit rien fermer : sinon "
+        "l'échéance ne mesure plus l'inactivité, mais l'ancienneté de la minuterie")
+    assert ocr._minuterie is not None and ocr._minuterie.is_alive(), (
+        "et elle doit se RÉARMER sur le temps qui reste : renoncer laisserait le master "
+        "résident pour de bon, plus rien ne pouvant le fermer qu'un changement de planche")
+
+
+def test_a_ttl_nul_aucune_minuterie_n_est_armee(client, album, monkeypatch):
+    """CONC-1 — la porte de sortie, pour qui préfère la RAM au fil.
+
+    `BD_TTL_MASTER_CROP=0` doit rendre au cache son comportement d'avant, fermé au seul
+    changement de planche — et surtout ne créer AUCUN fil. Un réglage qui armerait quand
+    même une minuterie sans échéance utile serait le pire des deux.
+    """
+    monkeypatch.setattr(ocr, "TTL_MASTER_CROP", 0)
+
+    buf = io.BytesIO()
+    Image.new("RGB", (800, 600), "white").save(buf, "PNG")
+    p = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("m3.png", buf.getvalue(), "image/png")}).json()
+    r = client.post(f"/api/planches/{p['id']}/regions",
+                    json={"type": "bulle", "x": 10, "y": 10, "w": 200, "h": 100}).json()
+
+    assert client.get(f"/api/regions/{r['id']}/crop").status_code == 200
+    assert ocr._crop_cache["img"] is not None, "le cache doit fonctionner comme avant"
+    assert ocr._minuterie is None, "à TTL nul, aucun fil ne doit être créé"

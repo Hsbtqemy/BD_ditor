@@ -129,6 +129,21 @@ COMMIT_SERVI = commit_valide(os.environ.get("BD_COMMIT", ""))
 # Configurable via l'environnement.
 MAX_IMAGE_PIXELS = int(os.environ.get("BD_MAX_IMAGE_PIXELS", 200_000_000))
 
+# Durée d'inactivité au bout de laquelle le master gardé ouvert pour les crops de la
+# Transcription est refermé (CONC-1). Mesuré le 2026-09-08 sur un master de 53 Mo :
+# le décoder coûte 39 ms et le garder coûte 53 Mo de RAM, indéfiniment — jusqu'ici il
+# n'était fermé qu'à l'ouverture d'une AUTRE planche.
+#
+# Le délai peut être COURT justement parce que le défaut de cache est bon marché : la
+# même mesure qui rend la résidence chère rend son échéance sans risque. Deux minutes
+# couvrent le rythme d'une transcription (on lit, on tape, on revient) ; au-delà, la
+# session est finie et l'image ne sert plus personne.
+#
+# À 0 (ou moins) la minuterie n'est jamais armée : le cache reprend son comportement
+# d'avant, fermé au seul changement de planche. Pour une machine où la RAM est libre et
+# où l'on préfère ne pas voir un fil s'armer.
+TTL_MASTER_CROP = float(os.environ.get("BD_TTL_MASTER_CROP", 120))
+
 # Les formats d'image que le corpus accepte, et RIEN d'autre (SEC-3).
 #
 # Un seul endroit, et les deux vues en DÉRIVENT : `IMG_EXTS` filtre ce qu'on peut
