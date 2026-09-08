@@ -15,7 +15,7 @@ import importlib.util
 import sqlite3
 import threading
 
-from config import DATA_DIR, MAX_IMAGE_PIXELS
+from config import DATA_DIR, MAX_IMAGE_PIXELS, PILLOW_FORMATS
 from database import reindex_region
 
 # Types de régions porteuses de texte.
@@ -68,10 +68,14 @@ def _open_image(planche):
     from PIL import Image
     Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS   # garde anti-bombe (jamais None)
     if planche["chemin_tiff"] and (DATA_DIR / planche["chemin_tiff"]).is_file():
-        img = Image.open(DATA_DIR / planche["chemin_tiff"])
+        # SEC-3 — même borne qu'à l'ingest, et elle sert ici PLUS qu'ailleurs : ce
+        # fichier a été écrit sur disque à l'import, donc un master forgé qui aurait
+        # franchi l'ingest serait redécodé à chaque passe OCR. Borner aux deux endroits
+        # coûte un paramètre ; n'en borner qu'un laisse le second faire le travail.
+        img = Image.open(DATA_DIR / planche["chemin_tiff"], formats=PILLOW_FORMATS)
         scale = 1.0
     else:
-        img = Image.open(DATA_DIR / planche["chemin_web"])
+        img = Image.open(DATA_DIR / planche["chemin_web"], formats=PILLOW_FORMATS)
         scale = img.width / planche["largeur_px"] if planche["largeur_px"] else 1.0
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")

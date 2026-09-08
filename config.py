@@ -129,6 +129,40 @@ COMMIT_SERVI = commit_valide(os.environ.get("BD_COMMIT", ""))
 # Configurable via l'environnement.
 MAX_IMAGE_PIXELS = int(os.environ.get("BD_MAX_IMAGE_PIXELS", 200_000_000))
 
+# Les formats d'image que le corpus accepte, et RIEN d'autre (SEC-3).
+#
+# Un seul endroit, et les deux vues en DÉRIVENT : `IMG_EXTS` filtre ce qu'on peut
+# téléverser, `PILLOW_FORMATS` borne ce que Pillow a le droit de DÉCODER. Les tenir à deux
+# endroits reviendrait à parier qu'on pensera aux deux ; or c'est le format resté hors de
+# la seconde liste qui rouvrirait le trou, et il ne se remarquerait pas — le corpus
+# marcherait exactement pareil.
+#
+# Pourquoi borner le décodage alors que l'extension est déjà filtrée : parce que Pillow
+# ne regarde PAS l'extension. `Image.open` renifle l'en-tête, si bien qu'un PSD renommé
+# `.tif` passe le filtre d'extension et arrive au décodeur PSD. C'est le vecteur de
+# `CVE-2026-25990` (écriture hors limites sur des tuiles à décalage négatif), et le
+# paramètre `formats` est le contournement que l'avis lui-même propose. Il vaut quelle que
+# soit la version de Pillow installée — donc il ne dépend pas du plafond que
+# `iiif-prezi3` nous impose.
+#
+# Les clés sont les identifiants de format de Pillow, PAS des extensions
+# (`Image.EXTENSION` fait la correspondance ; vérifié le 2026-09-08).
+FORMATS_IMAGE = {
+    "TIFF": (".tif", ".tiff"),                                   # masters de numérisation
+    "JPEG": (".jpg", ".jpeg"),                                   # dérivés web
+    "JPEG2000": (".jp2", ".j2k", ".jpf", ".jpx", ".jpc", ".j2c"),
+    "PNG": (".png",),
+    "BMP": (".bmp",),
+    "GIF": (".gif",),
+    "WEBP": (".webp",),
+}
+
+# Ce que Pillow a le droit de décoder. Tuple figé : `Image.open(..., formats=…)`.
+PILLOW_FORMATS = tuple(FORMATS_IMAGE)
+
+# Ce qu'on accepte de recevoir. Dérivé, jamais recopié.
+IMG_EXTS = tuple(e for exts in FORMATS_IMAGE.values() for e in exts)
+
 # Statuts possibles d'une planche (progression linéaire)
 STATUTS = ("importee", "segmentee", "corrigee", "annotee")
 

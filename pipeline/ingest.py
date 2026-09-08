@@ -19,6 +19,7 @@ from pathlib import Path
 from PIL import Image
 
 from config import (CORPUS_DIR, DATA_DIR, DERIVATIVES_DIR, MAX_IMAGE_PIXELS,
+                    PILLOW_FORMATS,
                     WEB_JPEG_QUALITY, WEB_SCALE)
 
 # Garde anti-bombe de décompression : on relève la limite Pillow à une valeur
@@ -56,8 +57,16 @@ def _next_numero(conn: sqlite3.Connection, album_id: int) -> int:
 
 
 def read_metadata(source: Path) -> dict:
-    """Lit dimensions, mode couleur et DPI d'une image sans la convertir."""
-    with Image.open(source) as img:
+    """Lit dimensions, mode couleur et DPI d'une image sans la convertir.
+
+    `formats=` borne ce que Pillow a le droit de DÉCODER (SEC-3). Le filtre d'extension
+    de l'API ne suffit pas : `Image.open` ne regarde pas le nom du fichier, il renifle
+    l'en-tête — un PSD renommé `.tif` passe le premier et arrive au décodeur PSD, qui est
+    le vecteur de `CVE-2026-25990`. Le paramètre est le contournement que l'avis propose
+    lui-même, et il vaut quelle que soit la version de Pillow, donc il ne dépend pas du
+    plafond que nous impose `iiif-prezi3`.
+    """
+    with Image.open(source, formats=PILLOW_FORMATS) as img:
         dpi = img.info.get("dpi")
         # dpi peut être scalaire (300) ou non numérique selon l'encodeur :
         # normalise en paire d'entiers, ou None si illisible (image valide quand même).
@@ -85,7 +94,7 @@ def make_web_derivative(source: Path, dest: Path,
                         quality: int = WEB_JPEG_QUALITY) -> tuple[int, int]:
     """Génère le dérivé web JPEG et retourne ses dimensions (largeur, hauteur)."""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with Image.open(source) as img:
+    with Image.open(source, formats=PILLOW_FORMATS) as img:   # SEC-3, cf. read_metadata
         # JPEG ne gère que RGB / L : on convertit CMYK, 16 bits, palette, etc.
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")

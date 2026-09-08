@@ -20,8 +20,8 @@ from fastapi import (Depends, FastAPI, File, Form, HTTPException, Request,
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, COMMIT_SERVI,
-                    DATA_DIR, REFERENT_CONTACT, REFERENT_NOM, RELECTURE, ROLES_PLANCHE,
-                    STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_REGION)
+                    DATA_DIR, IMG_EXTS, REFERENT_CONTACT, REFERENT_NOM, RELECTURE,
+                    ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_REGION)
 from database import (citations_regions, collection_par_defaut, contributions_album,
                       dimensions_cm, init_db, noms_lisibles, numeros_editoriaux,
                       relecture_planches, reindex_region, unindex_region)
@@ -80,9 +80,6 @@ from pipeline import sharedocs
 from pipeline.sharedocs import ShareDocsError
 
 # Extensions image acceptées à l'import (Pillow ; PDF non géré pour l'instant).
-IMG_EXTS = (".tif", ".tiff", ".jpg", ".jpeg",
-            ".jp2", ".j2k", ".jpf", ".jpx", ".jpc", ".j2c",   # JPEG2000 (Pillow/OpenJPEG)
-            ".png", ".bmp", ".gif", ".webp")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

@@ -41,7 +41,32 @@ def _load_model():
                 "huggingface_hub (voir requirements-ocr.txt)."
             )
         from huggingface_hub import hf_hub_download
+
+        # SEC-3 — `ultralytics` REMPLACE `PIL.Image.open` au chargement
+        # (`ultralytics/utils/patches.py`, « Image.open = image_open ») par une enveloppe
+        # qui, sur TOUTE exception, appelle `check_requirements("pi-heif")` — donc lance
+        # un `pip install` depuis le réseau, au milieu d'une requête, puis réessaie.
+        #
+        # Trois raisons de le défaire, et la première suffit :
+        #
+        # 1. Un serveur ne va pas chercher un paquet sur Internet parce qu'une image est
+        #    illisible. C'est un décodeur qui s'ajoute à l'exécution, sur une entrée que
+        #    l'appelant contrôle — l'inverse exact de ce que ce chantier borne.
+        # 2. Ça DÉFIGURE nos refus : un `UnidentifiedImageError` volontaire ressort en
+        #    `ModuleNotFoundError: pi_heif` quand l'installation échoue, c'est-à-dire
+        #    toujours dans l'image, qui n'a pas de réseau. Mesuré le 2026-09-08 : trois
+        #    tests de SEC-3 tombaient là-dessus dès qu'`ultralytics` était importé.
+        # 3. Le format que ce greffon apporte — HEIC/HEIF — n'est pas dans
+        #    `FORMATS_IMAGE`. On paierait un décodeur de plus pour un format qu'on refuse.
+        #
+        # On restaure la fonction d'origine plutôt que d'empêcher le patch : ultralytics
+        # décode ses propres images par OpenCV, et nous ne lui donnons jamais de HEIC.
+        from PIL import Image as _PIL_Image
+        _open_avant = _PIL_Image.open
         from ultralytics import YOLO
+        if _PIL_Image.open is not _open_avant:
+            _PIL_Image.open = _open_avant
+
         _model = YOLO(hf_hub_download(repo_id=HF_REPO, filename=HF_FILE))
     return _model
 

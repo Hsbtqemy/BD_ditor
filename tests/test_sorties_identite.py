@@ -469,6 +469,11 @@ def _invocations(t):
          ["--csv-dir", str(t / "csv")], [t / "csv"]),
         ("metadonnees_collection.py --xlsx", "metadonnees_collection.py",
          ["--xlsx", str(t / "m.xlsx")], [t / "m.xlsx"]),
+        # SEC-3 — il ne lit ni la base ni le corpus : il croise les verrous du dépôt avec
+        # les métadonnées des paquets INSTALLÉS. Balayé quand même, parce que « ne devrait
+        # rien émettre » est exactement ce qu'on croyait des trois chemins de
+        # `metadonnees_collection` avant qu'un `KeyError` n'en trouve un quatrième.
+        ("plafonds_dependances.py", "plafonds_dependances.py", [], []),
         ("provenance_export.py --out-dir", "provenance_export.py",
          ["--out-dir", str(t / "prov")], [t / "prov"]),
         ("rapport_accord.py --json", "rapport_accord.py",
