@@ -12,11 +12,12 @@
 Les routes sont des `def` **synchrones** → FastAPI les exécute dans un
 threadpool (~40 threads). Donc, **même en un seul process uvicorn, plusieurs
 requêtes s'exécutent réellement en parallèle**, chacune avec sa propre connexion
-SQLite (`check_same_thread=False`, `main.py:51-65`).
+SQLite (`check_same_thread=False`, dans `database.get_connection`).
 
-- **État global au process** : `_jobs` (`pipeline/jobs.py:19`), `_session`
-  ShareDocs (`pipeline/sharedocs.py:33`), `_model` YOLO (`pipeline/bulles.py:23`),
-  `_reader` EasyOCR (`pipeline/ocr.py:24`), `_crop_cache` (`pipeline/ocr.py:123`).
+- **État global au process** : `_jobs` (`pipeline/jobs.py`), `_session` ShareDocs
+  (`pipeline/sharedocs.py`), `_model` YOLO (`pipeline/bulles.py`), `_reader` EasyOCR
+  et `_crop_cache` (`pipeline/ocr.py`) — nommés par leur SYMBOLE et non par leur ligne,
+  qui dérive à chaque commit sans que rien ne le signale.
   → **Mono-process obligatoire.** Interdit de lancer `uvicorn --workers N` /
   gunicorn multi-workers : l'état divergerait (jobs, session, modèles).
 
