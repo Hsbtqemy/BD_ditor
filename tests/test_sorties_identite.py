@@ -231,6 +231,20 @@ SORTIES_DECLAREES = {
         "annotateurs n'est pas un rapport affaibli, c'en est plus un du tout. TRANCHÉ le "
         "2026-08-31 : réservée à qui ÉCRIT, de sorte que ceux qui voient la mesure soient "
         "ceux qu'elle mesure. Cf. docs/accord-inter.md."),
+    ("route", "/api/analyse/accord-inter.csv"): (
+        {"login"},
+        "Le MÊME rapport que sa jumelle JSON, en fichier — donc les mêmes noms, et le "
+        "même 403 HÉRITÉ et non réécrit. TRANCHÉ le 2026-09-08 (ANA-7), et la question "
+        "était neuve : le dépôt tenait déjà TROIS positions — l'écran nomme, le CLI nomme "
+        "(« un rapport d'accord se lit pour arbitrer, puis se jette »), le dépôt ne publie "
+        "que `nb_auteurs` et des taux —, et un fichier téléchargé tombait entre le CLI et "
+        "le dépôt, là où AUTH-1 n'avait pas tracé de ligne. Retenu : NOMMER. Refuser au "
+        "fichier ce que l'écran donne à la même personne serait une friction sans "
+        "protection, la capture d'écran restant possible ; et ce fichier a UN usage — "
+        "réunir deux personnes pour arbitrer un désaccord — que des pseudonymes rendraient "
+        "impraticable. Ce qu'on accepte en échange est écrit plutôt que tu : un fichier "
+        "PERSISTE et circule là où le CLI se jette. La garde n'est donc pas dans la forme, "
+        "elle est dans l'accès."),
     ("route", "/api/sauvegarde"): (
         {"login", "nom", "courriel"},
         "La base ENTIÈRE, par construction — c'est ce qu'on attend d'une sauvegarde, et "
@@ -378,6 +392,12 @@ QUETES = {
     # elles savent en parler. On les interroge sans le filtre — c'est le cas ordinaire.
     "/api/analyse/concordance": "lemme=otage",
     "/api/analyse/croisement": "axe_x=pos&axe_y=provenance",
+    # ANA-7 — les exports CSV des vues d'analyse. Mêmes exigences que leurs jumelles
+    # JSON, et pour la même raison : sans ces valeurs elles répondent 422 et quittent le
+    # balayage. Ce sont les surfaces les plus bavardes du domaine — un fichier qu'on
+    # emporte —, donc exactement celles qu'un cliquet doit voir.
+    "/api/analyse/concordance.csv": "lemme=otage",
+    "/api/analyse/croisement.csv": "axe_x=pos&axe_y=provenance",
     # EXP-1 — `base_url` n'a AUCUN défaut, et c'est délibéré : l'application ne peut pas
     # deviner quel serveur servira les images, et s'y désigner elle-même fabriquerait un
     # manifeste dont chaque image répond 404 chez le destinataire. Sans valeur ici, la

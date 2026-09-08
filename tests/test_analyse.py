@@ -346,3 +346,107 @@ def test_croisement_axe_inconnu_422(client, album, planche):
                       params={"axe_x": "farfelu", "axe_y": "pos"}).status_code == 422
     assert client.get("/api/analyse/croisement",
                       params={"axe_x": "dim:99999", "axe_y": "pos"}).status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# ANA-7 — les exports CSV des vues d'analyse
+# --------------------------------------------------------------------------- #
+def test_l_export_de_distribution_dit_la_meme_chose_que_sa_route_json(client, album,
+                                                                     planche, db_path):
+    """ANA-7 — le CSV et le JSON partagent leur cœur, donc ils ne peuvent pas diverger.
+
+    C'est la propriété que la case du chantier demande. Deux chemins de calcul finiraient
+    par se séparer sur un filtre, et la divergence serait invisible : les deux réponses
+    resteraient plausibles. On la vérifie sur le CONTENU, pas sur la structure du code —
+    un test qui lirait le source dirait que la règle est couverte sans l'être.
+    """
+    r = _region(client, planche["id"])
+    _seed(db_path, r, [(0, "chat", "chat", "NOUN", ""), (1, "chat", "chat", "NOUN", ""),
+                       (2, "dort", "dormir", "VERB", "")])
+
+    js = client.get("/api/analyse/frequences?champ=lemme").json()["results"]
+    csv_txt = client.get("/api/analyse/frequences.csv?champ=lemme").text
+    lignes = [l for l in csv_txt.lstrip("﻿").strip().split("\n")]
+
+    assert lignes[0] == "lemme,pos,frequence"
+    assert len(lignes) - 1 == len(js), "le CSV et le JSON ne comptent pas les mêmes lignes"
+    for attendu, ligne in zip(js, lignes[1:]):
+        assert ligne == f'{attendu["lemme"]},{attendu["pos"]},{attendu["freq"]}'
+
+
+def test_un_export_d_analyse_neutralise_l_injection_de_formule(client, album, planche,
+                                                              db_path):
+    """ANA-7 — `_csv_safe` sur tout texte libre, comme les deux exports qui existaient.
+
+    Le lemme vient de l'OCR puis de corrections humaines : c'est du texte libre, et un
+    tableur exécute une cellule qui commence par `=`. La case du chantier l'exige, et elle
+    a raison de l'exiger explicitement — un `csv.writer` nu est exactement ce qu'on écrit
+    quand on ne se pose pas la question.
+    """
+    r = _region(client, planche["id"])
+    _seed(db_path, r, [(0, "=CMD()", "=CMD()", "NOUN", "")])
+    txt = client.get("/api/analyse/frequences.csv?champ=lemme").text
+    assert "'=CMD()" in txt, f"formule non neutralisée : {txt!r}"
+
+
+def test_le_croisement_s_exporte_dans_les_deux_formes(client, album, planche, db_path):
+    """ANA-7 — arbitrage du 2026-09-08 : les deux, au choix.
+
+    La matrice se cite dans un article, les lignes plates se retraitent dans R ou pandas,
+    et une matrice se reconstruit d'un pivot quand l'inverse perd de l'information. Les
+    deux partent du MÊME cœur : ce sont deux mises en forme, pas deux calculs.
+    """
+    r = _region(client, planche["id"])
+    _seed(db_path, r, [(0, "chat", "chat", "NOUN", ""), (1, "dort", "dormir", "VERB", "")])
+
+    plat = client.get("/api/analyse/croisement.csv?axe_x=pos&axe_y=provenance").text
+    plat = plat.lstrip("﻿").strip().split("\n")
+    assert plat[0] == "catégorie (POS),provenance,n,marge_x,marge_y"
+    assert any(l.startswith("NOUN,auto,1") for l in plat[1:]), plat
+
+    mat = client.get(
+        "/api/analyse/croisement.csv?axe_x=pos&axe_y=provenance&forme=matrice").text
+    mat = mat.lstrip("﻿").strip().split("\n")
+    assert mat[0].startswith("catégorie (POS) × provenance,")
+    assert mat[0].endswith(",Total"), mat[0]
+    assert mat[-1].startswith("Total,"), mat[-1]
+
+    assert client.get(
+        "/api/analyse/croisement.csv?axe_x=pos&axe_y=provenance&forme=zzz"
+    ).status_code == 422
+
+
+def test_le_nom_du_fichier_porte_la_troncature(client, album, planche, db_path,
+                                               monkeypatch):
+    """ANA-7 — le fichier doit DIRE qu'il est amputé, et le nom est la seule place gratuite.
+
+    Une ligne de commentaire en tête décale l'en-tête pour un tableur ; une ligne en pied
+    entre dans les données pour pandas ; un en-tête HTTP ne survit pas au premier
+    déplacement du fichier. Le nom voyage avec lui et ne touche pas son contenu.
+    """
+    import routes.analyse as ra
+    r = _region(client, planche["id"])
+    _seed(db_path, r, [(0, "chat", "chat", "NOUN", ""), (1, "dort", "dormir", "VERB", "")])
+
+    entier = client.get("/api/analyse/frequences.csv")
+    assert 'filename="distribution-lemme.csv"' in entier.headers["content-disposition"]
+
+    monkeypatch.setattr(ra, "PLAFOND_EXPORT", 1)         # le plafond mord
+    coupe = client.get("/api/analyse/frequences.csv")
+    assert 'filename="distribution-lemme-tronque-1.csv"' in coupe.headers["content-disposition"]
+
+
+def test_un_export_d_analyse_est_lisible_par_un_tableur(client, album, planche, db_path):
+    """ANA-7 — BOM UTF-8 et `Content-Disposition`, par `_csv_response` et non à la main.
+
+    Sans le BOM, Excel sous Windows rend les accents illisibles ; sans l'en-tête de
+    disposition, le fichier s'affiche dans l'onglet au lieu de se télécharger. Les deux
+    exports qui existaient passaient déjà par ce helper : la case du chantier demande que
+    les six neufs en fassent autant, plutôt qu'un `Response` monté sur place.
+    """
+    r = _region(client, planche["id"])
+    _seed(db_path, r, [(0, "été", "été", "NOUN", "")])
+    rep = client.get("/api/analyse/frequences.csv")
+    assert rep.content.startswith("﻿".encode("utf-8")), "BOM absent : Excel lira mal les accents"
+    assert rep.headers["content-type"].startswith("text/csv")
+    assert "attachment;" in rep.headers["content-disposition"]
