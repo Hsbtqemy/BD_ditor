@@ -67,7 +67,11 @@ avec ce chantier-ci.
 
 **À ne pas confondre avec `EXP-1`**, qui expose dans l'UI les exports de DÉPÔT (fiche de
 description de collection, manifeste IIIF, crosswalk) — des artefacts FAIR destinés à
-Nakala, différés derrière INFRA-1. Ici il s'agit des RÉSULTATS d'une analyse, qu'on
+Nakala. **`EXP-1` est `livré` depuis le 2026-09-07** : le bloc *Export de dépôt* vit dans
+Administration → 👥 Collections, et cette page le donnait encore pour « différé derrière
+INFRA-1 ». Et l'asymétrie que ce chantier dénonce s'est CREUSÉE : l'export de dépôt a
+désormais son bouton, celui de l'Exploration n'en a toujours aucun — la surface qui produit
+des chiffres reste la seule qui ne les rende pas. Ici il s'agit des RÉSULTATS d'une analyse, qu'on
 emporte pour les retravailler ou les citer. Même verbe, deux destinations : `EXP-1` va
 vers l'entrepôt du FIGÉ, `ANA-7` vers le tableur du chercheur.
 

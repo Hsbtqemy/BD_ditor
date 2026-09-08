@@ -9,9 +9,15 @@ statut: à venir
 la Visionneuse n'est pas une surface de consultation qu'on rendrait lisible faute de
 mieux, c'est l'écran de travail, et il doit rester un écran de travail au doigt.
 
-**Dépend d'UX-7.** Les tiroirs y restent, parce qu'ils relèvent du 1.4.10 et qu'ils
-servent aussi bien le téléphone que la tablette. Sans eux, il n'y a pas de canevas à
-toucher : 540 px de chrome fixe sur une tablette de 768 en laissent 228.
+**Dépendait d'UX-7, et le verrou est LEVÉ** — UX-7 est `livré` depuis le 2026-09-05,
+19 cases sur 19. Les tiroirs y sont restés, parce qu'ils relèvent du 1.4.10 et qu'ils
+servent aussi bien le téléphone que la tablette : sans eux, il n'y a pas de canevas à
+toucher — 540 px de chrome fixe sur une tablette de 768 en laissent 228.
+
+**Ce chantier est donc démarrable, et cette page a annoncé le contraire pendant trois
+jours** (relevé le 2026-09-08). C'est le mode d'échec le plus coûteux d'une dépendance
+écrite : elle ne fait rien échouer, elle fait seulement qu'on ne choisit pas le chantier.
+Un blocage périmé se lit exactement comme un blocage réel.
 
 ## Reste
 

@@ -24,6 +24,9 @@ d'ordonnanceur, et les identifiants ShareDocs ne vivent qu'en mémoire serveur (
 CLAUDE.md). Un dépôt automatique après redémarrage n'aurait donc aucun identifiant à
 utiliser tant qu'un humain ne les a pas re-saisis.
 
-Cette contrainte pousse la fiche derrière INFRA-3 (identifiants persistants chiffrés),
-elle-même derrière INFRA-1. À ne pas commencer en croyant que c'est un petit sujet de
-tuyauterie.
+Cette contrainte pousse la fiche derrière INFRA-3 (identifiants persistants chiffrés).
+**INFRA-3 n'attend plus rien depuis le 2026-09-05** — son propre verrou, INFRA-1, est levé,
+et cette page le décrivait encore comme bloqué. La chaîne n'a donc plus qu'un maillon :
+INFRA-3 tranche s'il faut persister des secrets chiffrés, ce qui est une rupture de
+doctrine assumée et non un portage, et INFRA-6 suit. À ne pas commencer en croyant que
+c'est un petit sujet de tuyauterie.

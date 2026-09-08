@@ -133,8 +133,13 @@ des notes de version devient le vrai travail.
 **Deux raisons de ne pas laisser dormir.** Ce service est le seul point d'entrée de
 l'instance depuis INFRA-1 — personne n'atteint BDéditeur sans passer par lui. Et le
 chemin 2 d'`AUTH-7`, ajouter un annuaire, se poserait sur cette version-là : **choisir un
-annuaire pour une mineure qu'on va quitter serait le pire ordre.** Cette fiche passe donc
-AVANT la décision d'AUTH-7, ou avec elle, jamais après.
+annuaire pour une mineure qu'on va quitter serait le pire ordre.** Cette fiche devait donc
+passer AVANT la décision d'AUTH-7, ou avec elle, jamais après.
+
+**L'ordre a été tenu, et il a servi** : la montée en 4.39.22 est du 2026-09-06, la bascule
+vers LLDAP du 2026-09-07. Le bénéfice n'est pas théorique — AUTH-7 a dû vérifier que son
+bloc `ldap:`, écrit AVANT la montée, était encore valide en 4.39, et il l'était. Écrit dans
+l'autre ordre, cette vérification aurait porté sur une configuration déjà en service.
 
 **Ce qui a rendu la dette invisible**, et c'est la leçon transposable : une étiquette de
 mineure flottante donne toutes les apparences d'un déploiement à jour. `docker compose

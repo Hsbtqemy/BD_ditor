@@ -55,14 +55,17 @@ garde du sens : elle ne dépend d'aucune hypothèse sur les voisins.
 - [x] **Le script inline est interdit, et la seule tolérance est bornée et écrite** — `script-src 'self'`, sans `'unsafe-inline'` ni `'unsafe-eval'`. La tolérance porte sur `style-src` seulement, pour dix attributs `style="width:…%"` qui transportent des valeurs CALCULÉES (barres, heatmap, jauges d'accord) et ne peuvent pas rejoindre la feuille de style. `style-src-elem 'self'` reprend d'une main ce que `style-src` donne de l'autre : aucun `<style>` n'existe, donc le canal ÉLÉMENT est strict gratuitement, et seul l'attribut reste ouvert ; un navigateur qui ignore `-elem` retombe sur la règle permissive — plus faible, jamais cassé
 - [x] **L'audit e2e reste vert, après avoir failli mourir de la CSP** : `test_e2e_a11y.py` injectait axe par `page.add_script_tag(content=…)`, c'est-à-dire un `<script>` inline, que `script-src 'self'` bloque net. C'est `page.evaluate` désormais — le protocole de débogage, hors du modèle de sécurité de la page. C'est ce qu'on veut d'un instrument de mesure : qu'il n'ait pas besoin qu'on desserre ce qu'il vient vérifier
 
-### CSRF — dépend d'INFRA-1
+### CSRF — le verrou INFRA-1 est levé, la zone reste entière
 - [ ] Une protection CSRF est en place sur les routes mutantes. **La prémisse de cette case a changé le 2026-09-05** : elle disait « aucune session de navigateur à voler », ce qui était vrai en mono-poste et ne l'est plus — il y a un cookie Authelia. La mesure ci-dessus dit ce qui reste : `Lax` ferme l'inter-sites, le sous-domaine reste ouvert par construction. La CSP n'y touche toujours pas — `form-action 'self'` borde les formulaires, pas les requêtes `fetch`
 
 ## Contexte
 
 Fiche **scindée exprès en deux zones** : le backlog les traitait comme un seul ticket P3,
-ce qui masquait que la moitié est faisable immédiatement. La CSP ne dépend de rien ; le
-CSRF n'a aucun sens tant qu'il n'y a pas de session à voler, donc dépend d'INFRA-1.
+ce qui masquait que la moitié est faisable immédiatement. La CSP ne dépendait de rien ; le
+CSRF n'avait aucun sens tant qu'il n'y avait pas de session à voler, donc il dépendait
+d'INFRA-1 — **livré le 2026-09-05, et le cookie Authelia existe depuis**. Le découpage a
+donc rendu ce qu'on en attendait : une moitié livrée dix jours avant que l'autre ne devienne
+seulement possible.
 
 La quatrième case restera ouverte tant qu'INFRA-1 n'aura pas abouti — c'est normal et
 c'est l'information utile : la fiche ne se clora pas avant le déploiement.

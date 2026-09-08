@@ -25,4 +25,6 @@ Effort S, priorité P2. La seule subtilité est l'ordre : retirer l'instrumentat
 d'avoir pris la mesure ferait perdre la raison même de l'avoir posée — d'où la première
 case, qui n'est pas du code.
 
-Dépend donc d'INFRA-1 dans les faits, sans en dépendre techniquement.
+Dépendait donc d'INFRA-1 dans les faits, sans en dépendre techniquement — **verrou levé le
+2026-09-05** (cf. l'entête). Ce qui retient le chantier n'est plus une attente mais un
+geste : aller prendre la mesure sur une instance qui tourne.

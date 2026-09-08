@@ -37,7 +37,7 @@ qu'on vient d'écarter.
 - [ ] L'écran est bâti sur `static/lib/dialog.js` — piège à focus, Échap, retour du focus au déclencheur — sans modale réécrite pour l'occasion
 - [ ] L'écran dit ce que l'outil ne fait PAS : les trois passes ML ne font que pré-remplir, l'annotation reste entièrement humaine ; une carte muette là-dessus laisserait croire à une chaîne automatique
 - [ ] Une étape dont le moteur est absent (`GET /api/sante` la donne indisponible) se présente comme optionnelle et non comme cassée
-- [ ] L'étape 8 ne promet que ce que l'UI porte aujourd'hui (JSON-LD / CSV / TEI depuis la Visionneuse) ; les exports de dépôt — métadonnées de collection, IIIF — n'y entrent qu'une fois `EXP-1` livré (le C5 de la roadmap)
+- [ ] L'étape 8 ne promet que ce que l'UI porte aujourd'hui, et l'UI en porte PLUS qu'à la rédaction de cette case : les exports de contenu (JSON-LD / CSV / TEI) depuis l'Atelier, ET les exports de dépôt — fiche de description, enregistrements, manifeste IIIF — depuis Administration → 👥 Collections, `EXP-1` étant `livré` depuis le 2026-09-07. La carte les nomme donc tous les deux au lieu d'excuser un manque. Le guide le fait déjà : c'est la carte qui est en retard sur lui, et non l'inverse
 - [ ] Les raccourcis `N`/`E`/`A`/`T` et l'ordre des onglets de la Visionneuse sont inchangés : l'écart entre le parcours de la carte et l'ordre de la barre est assumé, pas résorbé en déplaçant un raccourci
 
 ### Guide utilisateur
@@ -134,11 +134,16 @@ Rangé **C6** dans la piste C de `docs/roadmap.md`, P2·M, **déclenché par C1*
 bascule que C5 : en mono-poste, l'outil s'apprend en le construisant, et la question ne
 se pose pas. Déployé, il s'ouvre devant quelqu'un qui n'a jamais vu la chaîne.
 
-L'étape 8 est la seule qui dépende d'un autre chantier, et **UX-6 ne l'attend pas** : les
-exports de contenu (JSON-LD / CSV / TEI) sont dans l'UI depuis longtemps, seuls les
-exports de dépôt — métadonnées de collection, IIIF — vivent encore dans `tools/` sans
-bouton, jusqu'à `EXP-1`. Bloquer un chantier entier là-dessus serait disproportionné ; la
-carte promet donc ce qui existe, et le guide dit où trouver le reste.
+L'étape 8 était la seule à dépendre d'un autre chantier, et **UX-6 ne l'attendait pas** :
+les exports de contenu (JSON-LD / CSV / TEI) sont dans l'UI depuis longtemps, seuls les
+exports de dépôt — métadonnées de collection, IIIF — vivaient dans `tools/` sans bouton,
+jusqu'à `EXP-1`. Bloquer un chantier entier là-dessus aurait été disproportionné ; la carte
+promet ce qui existe, et le guide dit où trouver le reste.
+
+**`EXP-1` est `livré` depuis le 2026-09-07, et la contrainte tombe** : le bloc *Export de
+dépôt* vit dans Administration → 👥 Collections. Le guide le dit déjà — il renvoie l'étape 8
+vers ce bloc —, donc c'est la CARTE qui reste en retard sur le guide, et non l'inverse. Une
+étape 8 écrite aujourd'hui peut nommer les deux sorties au lieu d'en excuser une.
 
 Reste hors périmètre, faute d'être tranché : une aide contextuelle par surface (un « ? »
 qui ouvre la section correspondante du guide). C'est un second chantier, à ouvrir une
