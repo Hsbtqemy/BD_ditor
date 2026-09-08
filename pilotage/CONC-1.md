@@ -6,10 +6,12 @@ audit: AUDIT.md
 
 # CONC-1 — cache de crop, purge des jobs, annulation préemptive
 
-**Arrêté sur** — 2026-09-08, `7f13d0f` : **la zone du registre et celle du verrou de crop
-sont CLOSES.** Le registre dans l'ordre que la lecture du matin avait imposé —
-`_job_visible` durci d'abord (`838c931`), purge ensuite (`e17556c`) —, puis la coupe du
-verrou. Restent le TTL et l'annulation.
+**Arrêté sur** — 2026-09-08, `a163761` : **la zone du registre et celle du verrou de crop
+sont CLOSES, et une passe de revue est repassée dessus après coup.** Le registre dans
+l'ordre que la lecture du matin avait imposé — `_job_visible` durci d'abord (`838c931`),
+purge ensuite (`e17556c`) —, puis la coupe du verrou (`7f13d0f`). La revue a trouvé quatre
+choses dans ces trois correctifs, dont un DÉFAUT que la purge avait ouvert (`fc406b0`) :
+voir la section datée en bas. Restent le TTL et l'annulation.
 
 **La mesure a dépassé l'hypothèse, et c'est ce qui justifie la coupe.** Trois régions d'un
 vrai master TIFF, médiane sur cinq passes : ouverture 4-7 %, crop 1,6-2,5 %, resize 19-31 %,
@@ -44,6 +46,8 @@ verrou de crop trop large, registre de jobs sans purge, annulation non préempti
 ### Le registre des jobs
 - [x] **`_job_visible` distingue « job inconnu » de « job dont toutes les planches sont autorisées », AVANT toute purge.** `main.py` fait `set(jobs.planches_du_job(job_id)) <= autorisees` : pour un identifiant inconnu, `planches_du_job` rend `[]`, l'ensemble vide est inclus dans tout, et la garde répond **True**. Aucune fuite aujourd'hui — les quatre appelants testent l'existence par ailleurs — mais la primitive était permissive et ce sont les ORDRES de vérification qui sauvaient. **Fait le 2026-09-08, `838c931`** : `planches_du_job` rend `None` pour un inconnu, et l'existence se teste AVANT la portée — « ce job n'existe pas » n'est pas une question de périmètre. Le comportement observable ne bouge pas d'un octet ; ce qui change, c'est qu'il ne dépend plus d'une coïncidence
 - [x] Le registre `_jobs` (`pipeline/jobs.py`) est purgé de ses entrées anciennes, et sa taille ne croît plus indéfiniment. **Dans cet ordre seulement** : la purge fait passer « job inconnu » d'un cas rare — quelqu'un tape un mauvais numéro — à l'état FINAL de tous les jobs. **Fait le 2026-09-08, `e17556c`** : plafond de `JOBS_CONSERVES = 100` lots TERMINÉS, purge à la création sous `_lock` — seul instant où le registre grandit, donc pas de fil de fond. On borne le NOMBRE et non l'ÂGE, seul des deux à tenir « ne croît plus indéfiniment » : une rafale déborde une purge par ancienneté
+
+- [x] **La revue d'après-coup a trouvé ce que la purge avait ouvert dans `all_jobs`, et ce n'était dans aucun énoncé.** L'énumération lisait `_jobs` sans verrou — liste des identifiants, puis instantané un par un. Sûr tant que le registre ne faisait que GRANDIR ; le RETRAIT rend possible un identifiant listé, purgé, puis interrogé, dont `snapshot` rend `None` — `GET /api/jobs` fait `s["id"]` dessus et répond 500. La Bibliothèque interroge cette route chaque seconde pendant un lot, et c'est le lancement d'un autre lot, depuis le même écran, qui purge ; le poll avale ses erreurs, donc la progression se figerait sans un mot. **Fait le 2026-09-08, `fc406b0`** : `all_jobs` prend `_lock`, celui-là même sous lequel la purge retire — impossible plutôt que rattrapé. Les six autres accès au registre ont été revus un par un, tous déjà sûrs
 
 ### L'annulation
 - [ ] Annuler un lot interrompt réellement une passe longue en cours, et le sous-processus Kumiko est tué et non laissé orphelin
@@ -108,6 +112,43 @@ le plus utile à établir en premier.
 registre dans l'ordre que ces constats imposaient. Ce paragraphe reste ici parce qu'il date
 une méthode et non un état : mesurer d'abord ce qui se mesure sans rien exécuter a produit
 l'ordre, et l'ordre a évité de charger un ressort mal ancré.
+
+## Ce que la passe de revue a trouvé dans ces trois correctifs — 2026-09-08
+
+Suite verte, trois zones closes, six mutations rouges chacune pour sa propre raison. La
+revue d'après-coup a quand même trouvé quatre choses, et **la première est un défaut de
+concurrence introduit par le correctif d'un défaut de concurrence** — l'objet même de ce
+chantier, dans du code écrit pour le fermer.
+
+**1. La purge a ouvert une course sur `all_jobs`** (`fc406b0`, case ci-dessus). Le point
+de méthode : la purge a été relue pour ce qu'elle AJOUTE — un plafond — et pas pour ce
+qu'elle CHANGE dans les invariants des autres fonctions. « Le registre ne perd jamais
+rien » était une propriété non écrite dont un lecteur dépendait.
+
+**2. La coupe du verrou de crop avait un prix, et il n'était pas écrit** (`a163761`). Le
+verrou large bornait AUSSI la mémoire : un seul crop décodé à la fois. Chaque thread tient
+désormais le sien. Négligeable en régime réel, pas au plafond de `MAX_IMAGE_PIXELS`. Non
+mesuré, donc non borné — poser un sémaphore sur une hypothèse serait ce que ce chantier
+refuse. Le prix est écrit à côté du gain, faute de quoi il se paierait plus tard et par
+quelqu'un qui ne saurait pas d'où il vient.
+
+**3. Un test du registre polluait le suivant sur son chemin d'échec** (dans `fc406b0`).
+`test_un_lot_purge_n_est_visible_de_personne` injectait dans le registre RÉEL et ne le
+défaisait qu'en cas de succès. Même famille que le `_counter` global attrapé le matin même :
+un test écrit pour prouver, qui laisse une chance au hasard.
+
+**4. Trois renvois de ligne sur cinq désignaient autre chose** dans
+`docs/hebergement-securite.md` (`9917c1c`), dont un que `e17556c` venait de casser en
+déplaçant `_jobs`. Le pire pointait sur `failed += 1` — du code réel, plausible, sans
+rien qui signale l'erreur.
+
+**Et une cinquième, laissée ouverte exprès** : le balayage mécanique trouve **30 renvois de
+ligne** dans les documents VIVANTS (`docs/`, `pilotage/`, `CLAUDE.md`) — cinq pointent sur
+une ligne VIDE, donc certainement morts ; les autres demandent une lecture une par une, et
+une décision qui n'appartient pas à ce chantier : un renvoi dans une case OUVERTE égare
+aujourd'hui, un renvoi dans un récit DATÉ est une trace qu'on ne réécrit pas. `AUDIT.md` en
+est écarté à dessein — c'est un audit daté, ses renvois décrivent l'état du code au jour de
+l'audit.
 
 ## Contexte
 
