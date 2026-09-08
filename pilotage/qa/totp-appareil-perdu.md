@@ -30,6 +30,12 @@ agit sur un compte d'essai.
 promu dans `bd-admins` le temps de la passe et retiré ensuite — c'est le seul compte dont
 le blocage ne coûte rien. Un enfermement de vérification est un enfermement quand même.
 
+**Le geste de promotion a changé de lieu depuis la rédaction de cette passe** (2026-09-06,
+avant la bascule d'AUTH-7) : l'appartenance à `bd-admins` se modifie dans l'interface web
+de LLDAP, derrière Authelia, et non plus en éditant `users_database.yml` sur le serveur.
+Rien d'autre ne bouge ici — le stockage TOTP est propre à Authelia et indexé par login,
+indépendamment du backend, ce que la montée en 4.39 puis la bascule ont confirmé deux fois.
+
 ## Reste
 
 ### Ce qui se lit sans rien perdre

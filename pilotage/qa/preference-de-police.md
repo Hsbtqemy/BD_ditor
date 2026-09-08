@@ -38,13 +38,13 @@ pas la case.
 
 ## Ce que les tests couvrent déjà — ne pas le refaire ici
 
-- `tests/test_e2e_police.py` : à 1280/24, 1280/20, 768/20 et 320/20, sur les quatre
+- `tests/test_e2e_police.py` : à 1280/24, 1280/20, 768/20 et 320/20, sur les CINQ
   surfaces, aucun élément n'est hors champ sans cadre ni bascule. Plus deux gardes d'amont
   — la racine vaut bien 81,25 % de la préférence, et la page a bien rendu.
 - Le même fichier vérifie que le zoom UI (`A−`/`A+`) fonctionne toujours et survit à un
   rechargement, en lisant le RECTANGLE et non les valeurs calculées.
 - `tests/test_e2e_reflow.py` et `test_e2e_a11y.py` : reflow à 320 et 768 px, et audit axe
-  sur les quatre surfaces × deux thèmes — **à la police par défaut**, dans les deux cas.
+  sur les CINQ surfaces × deux thèmes — **à la police par défaut**, dans les deux cas.
 - Mesuré le 2026-09-06 et non à revérifier : le rendu à la police par défaut est identique
   au pixel près à celui d'avant le chantier (2865 rectangles comparés).
 
@@ -58,7 +58,7 @@ pas la case.
 ### Ce que la sonde ne voit pas — le texte coupé dans son cadre
 
 - [ ] Exploration, grande police : le gabarit du champ morpho se coupe (« filtre morpho (ex. Tense=Pas »). Constat CONNU en Chromium à 24 px ; le champ porte `aria-label="Filtrer par trait morphologique"`, donc son nom accessible est intact. À confirmer, et à dire s'il se coupe plus tôt ailleurs
-- [ ] Aucun libellé de bouton ne se coupe en milieu de mot sur les quatre surfaces — un libellé qui passe à la ligne est normal, un libellé tronqué ne l'est pas
+- [ ] Aucun libellé de bouton ne se coupe en milieu de mot sur les CINQ surfaces — un libellé qui passe à la ligne est normal, un libellé tronqué ne l'est pas
 - [ ] Les en-têtes du tableau de la Bibliothèque restent lisibles en entier, ou passent à la ligne — aucun n'est coupé par la colonne voisine
 - [ ] Dans la Visionneuse, le nom de planche et le fil d'Ariane se raccourcissent par ellipse (« … ») et non par coupure sèche
 

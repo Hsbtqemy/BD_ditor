@@ -40,7 +40,7 @@ et clavier* restent jouables seules ; la zone *Trop, ou pas assez* attend.
 - [ ] Chaque étape ouvre la surface **et** l'outil annoncés en un clic, sans écran intermédiaire
 - [ ] Une étape dont le moteur est absent se lit comme optionnelle, pas comme cassée — vérifié en coupant un moteur, pas en le supposant
 - [ ] L'étape 8 ne promet que les exports que l'UI porte : rien sur la carte ne renvoie à un bouton qui n'existe pas
-- [ ] Rappelée depuis chacune des quatre surfaces, la carte revient à l'identique
+- [ ] Rappelée depuis chacune des CINQ surfaces, la carte revient à l'identique — `/administration` comprise (UX-10, 2026-09-07)
 
 ### Fermeture et retour
 
