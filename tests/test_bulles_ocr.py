@@ -423,3 +423,51 @@ def test_ocr_reel(client, album):
     reg = next(x for x in client.get(f"/api/planches/{p['id']}/regions").json()
                if x["type"] == "bulle")
     assert (reg["ocr_texte"] or "").strip()  # un texte non vide a été pré-rempli
+
+
+def test_le_crop_ne_serialise_plus_le_resize_ni_l_encodage(client, album, monkeypatch):
+    """CONC-1 — le verrou du cache enveloppait TOUT le corps de `region_crop_png`.
+
+    Ouverture du master, crop, resize et encodage PNG étaient sérialisés ensemble, alors
+    que les deux derniers travaillent sur un objet neuf que plus rien ne partage. Mesuré le
+    2026-09-08 : resize 19-31 % du temps de l'appel, PNG 59-75 % — 85 à 94 % qui n'avaient
+    aucune raison d'attendre.
+
+    **Les DEUX assertions sont nécessaires, et la seconde est celle qu'on oublie.** Un test
+    qui vérifie seulement que le verrou est LÂCHÉ pendant l'encodage passerait aussi si l'on
+    avait purement supprimé le verrou — ce qui rouvrirait la course que CONC-1 décrit. La
+    première exige donc qu'il soit TENU pendant `_open_image`, qui remplace l'image
+    partagée.
+    """
+    vu = {}
+
+    ouvrir_reel = ocr._open_image
+
+    def ouvrir_espion(planche):
+        vu["verrou_pendant_ouverture"] = ocr._crop_lock.locked()
+        return ouvrir_reel(planche)
+
+    save_reel = Image.Image.save
+
+    def save_espion(self, fp, *a, **kw):
+        vu.setdefault("verrou_pendant_png", ocr._crop_lock.locked())
+        return save_reel(self, fp, *a, **kw)
+
+    monkeypatch.setattr(ocr, "_open_image", ouvrir_espion)
+    monkeypatch.setattr(Image.Image, "save", save_espion)
+
+    buf = io.BytesIO()
+    Image.new("RGB", (2000, 800), "white").save(buf, "PNG")
+    p = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("w.png", buf.getvalue(), "image/png")}).json()
+    r = client.post(f"/api/planches/{p['id']}/regions",
+                    json={"type": "bulle", "x": 10, "y": 10, "w": 1800, "h": 200}).json()
+
+    ocr._crop_cache.update(planche_id=None, img=None, scale=1.0)   # force le MISS
+    vu.clear()
+    assert client.get(f"/api/regions/{r['id']}/crop").status_code == 200
+
+    assert vu["verrou_pendant_ouverture"] is True, (
+        "l'ouverture du master REMPLACE l'image partagée : elle doit rester sous le verrou")
+    assert vu["verrou_pendant_png"] is False, (
+        "l'encodage PNG travaille sur un objet local au thread : il n'a rien à sérialiser")

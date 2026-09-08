@@ -176,10 +176,29 @@ def region_crop_png(conn: sqlite3.Connection, region_id: int,
         img, scale = _crop_cache["img"], _crop_cache["scale"]
         x, y, w, h = (round((r[k] or 0) * scale) for k in ("x", "y", "w", "h"))
         crop = img.crop((x, y, x + max(1, w), y + max(1, h)))
-        if crop.width > max_dim:
-            crop = crop.resize(
-                (max_dim, max(1, round(crop.height * max_dim / crop.width))),
-                Image.LANCZOS)
-        buf = io.BytesIO()
-        crop.convert("RGB").save(buf, "PNG")
-        return buf.getvalue()
+        # Le décodage est FORCÉ sous le verrou, et c'est ce qui rend la sortie sûre :
+        # Pillow est paresseux, et un `crop` non matérialisé relirait l'image PARTAGÉE
+        # plus tard — c'est-à-dire potentiellement après qu'un autre thread a changé de
+        # planche et fermé cette image-là. Les versions récentes matérialisent déjà, mais
+        # s'en remettre à un détail d'implémentation ferait reposer une propriété de
+        # sûreté sur un accident : ici elle est écrite.
+        crop.load()
+
+    # --- Hors verrou (CONC-1). `crop` est un objet NEUF, local à ce thread, que plus
+    # rien ne partage : le redimensionner et l'encoder ne touche plus au cache ni au
+    # master. Mesuré le 2026-09-08 sur trois régions d'un vrai master TIFF — resize
+    # 19-31 % du temps de l'appel, encodage PNG 59-75 %, soit 85 à 94 % qui sortent de
+    # la sérialisation. Et davantage en régime réel : le master étant caché, l'ouverture
+    # ne se paie qu'au changement de planche, si bien qu'une navigation bulle-à-bulle ne
+    # garde plus sous le verrou que le crop lui-même, ~2 %.
+    #
+    # L'attendu d'origine de CONC-1 — « le verrou ne couvre plus que la manipulation du
+    # dictionnaire de cache » — était FAUX : le `crop` lit l'image partagée, et
+    # `_open_image` la remplace. Les sortir aurait produit un accès après fermeture.
+    if crop.width > max_dim:
+        crop = crop.resize(
+            (max_dim, max(1, round(crop.height * max_dim / crop.width))),
+            Image.LANCZOS)
+    buf = io.BytesIO()
+    crop.convert("RGB").save(buf, "PNG")
+    return buf.getvalue()
