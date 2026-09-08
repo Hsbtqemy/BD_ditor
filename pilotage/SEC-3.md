@@ -1,15 +1,25 @@
 ---
 chantier: SEC-3
-statut: interrompu
+statut: livré
 ---
 
 # SEC-3 — une dépendance nous retient sous un correctif de sécurité
 
-**Arrêté sur** — 2026-09-08, `0c89204` : **LE VECTEUR EST FERMÉ, LE PLAFOND EST TRANCHÉ, ET
-LE BALAYAGE A TROUVÉ AUTRE CHOSE.** Les quatre `Image.open` bornent leur décodage par
-`formats=PILLOW_FORMATS`, dérivé de la même table que `IMG_EXTS` dans `config.py`. Onze
-tests, six mutations. Reste à rejouer le balayage des plafonds dans l'IMAGE, où
-`iiif-prezi3` est réellement installé.
+**Arrêté sur** — 2026-09-08, `d4641de` : **LE VECTEUR EST FERMÉ, LE PLAFOND EST TRANCHÉ, ET
+LE BALAYAGE VOIT ENFIN CE QU'IL ÉTAIT VENU CHERCHER.** Les quatre `Image.open` bornent leur
+décodage par `formats=PILLOW_FORMATS`, dérivé de la même table que `IMG_EXTS` dans
+`config.py` ; le correctif est en production depuis `ec8f442`. 37 tests, 12 mutations.
+
+Le balayage rejoué dans l'image n'a pas fermé sa case, il a montré un second défaut : il
+rangeait `<=12.0.0` parmi les conventions de version majeure et masquait donc le plafond
+qui l'avait motivé. Corrigé, testé, et le compte du chantier s'en trouve REFAIT — trois des
+quatre « plafonds serrés » annoncés la veille sont derrière un `extra` et ne retiennent
+personne.
+
+*La précédente version de cette ligne citait `0c89204`, c'est-à-dire le commit d'EXP-1 : le
+script qui l'a écrite avait lu `HEAD` avant de commiter le code. Une fiche qui cite le
+commit d'un AUTRE chantier ne se voit pas — l'écran ne la dit décalée que sur un commit plus
+récent, jamais sur un commit étranger.*
 
 **Point de départ** — trouvé le 2026-09-07 par la passe de revue de QA-4, en posant la
 question « qu'est-ce que ce correctif a OUVERT ? » à une descente de version. Aucun test
@@ -28,8 +38,10 @@ laissé ouvert.
 - [x] Condition de réouverture écrite ci-dessous, sur le patron de DROIT-1
 
 ### Chercher la forme, pas l'endroit
-- [x] La question est posée pour tout le verrou, et elle est REJOUABLE : `tools/plafonds_dependances.py`. Quatre plafonds serrés trouvés — dont `ultralytics` qui retient `numpy<=2.3.5`, exactement la forme de `iiif-prezi3` sur Pillow. Le motif n'était pas isolé
-- [ ] Le balayage est rejoué DANS L'IMAGE : lancé sur le venv local, il ne voit pas `iiif-prezi3`, qui n'y est pas installé — le paquet qui motive ce chantier est invisible à sa propre mesure (QA-5)
+- [x] La question est posée pour tout le verrou, et elle est REJOUABLE : `tools/plafonds_dependances.py`
+- [x] Le balayage est rejoué DANS L'IMAGE, et il y a fallu DEUX corrections plutôt qu'un changement d'environnement. Le venv local ne voit pas `iiif-prezi3` — il le DIT, et c'était la limite prévue (QA-5). Mais la première exécution dans l'image ne montrait pas ce plafond non plus : l'outil rangeait `<=12.0.0` parmi les conventions de version majeure
+- [x] Le compte est REFAIT sur ce que les plafonds retiennent vraiment, marqueurs lus : un seul plafond obligatoire fige une release, `Pillow<=12.0.0` par `iiif-prezi3`. Le « motif n'était pas isolé » de la première mesure était faux, et il l'était dans le sens rassurant — cf. ci-dessous
+- [x] La règle de classement a sa table de vérité (`tests/test_plafonds_dependances.py`, 25 tests) et sa passe de mutation (6/6 rattrapées). L'outil n'avait aucun test : `tools/` est hors couverture, et un rapport n'a pas de contrat — c'est ce qui a laissé le défaut trois jours
 
 ## Contexte
 
@@ -105,6 +117,52 @@ ce chantier ont franchi un `Image.open` sans borne, et un fichier déposé à la
 disque par un administrateur n'est passé par aucune garde. `tools/reindex_materiel.py`
 relit ces masters, mais il appelle `read_metadata` — il hérite donc de la garde et
 refuserait ce que l'ingest refuse aujourd'hui.
+
+## Le balayage masquait ce qu'il était venu chercher (2026-09-08)
+
+Rejoué dans l'image pour fermer la dernière case, il n'a pas fermé la case : il a montré
+que **`Pillow<=12.0.0` était rangé parmi les « plafonds de version majeure »**, donc caché
+sans `--tous`. Le plafond qui a motivé cet outil était le seul que son rapport ne nommait
+pas.
+
+**La cause tient en un mot oublié : l'OPÉRATEUR.** Le classement ne lisait que le numéro
+(`MAJEUR = ^\d+(\.0)*$`), et `12.0.0` a la forme d'une borne de majeure. Or `<2.0` exclut
+toute la majeure suivante — la convention de l'écosystème, elle ne retient personne sous un
+correctif, qui paraît en mineure ou en corrective — tandis que `<=12.0.0` admet cette
+release et rien au-dessus. **Le même numéro change de camp selon l'opérateur qui le porte**,
+et le `<=` est le plafond le plus serré qui existe. Le commentaire du code disait d'ailleurs
+juste — « Ce sont les AUTRES qu'on vient chercher, comme `Pillow<=12.0.0` » : l'intention
+était écrite, c'est l'implémentation qui faisait l'inverse.
+
+**Le mode d'échec ne s'annonce jamais.** L'outil sort en 0 quoi qu'il arrive — décision
+assumée, un plafond de majeure n'est pas un défaut — donc rien ne bronche ; et une liste
+courte de plafonds serrés se lit comme une bonne nouvelle. C'est la forme d'ARCH-2 : non
+pas une garde qui tombe, mais **un rapport qui rassure en n'ayant pas regardé**.
+
+**Deux autres défauts sont sortis avec, et ils changent la conclusion du chantier.**
+
+1. **Les marqueurs étaient jetés** (`; extra == "dev"`, `; python_version >= "3.13"`). Une
+   borne derrière un extra ne mord que si l'on installe cet extra — la compter comme
+   obligatoire annonce un plafond qui ne retient personne. Elle est désormais RAPPORTÉE
+   mais MARQUÉE : la masquer serait refaire la faute qu'on vient de réparer, l'outil ne
+   pouvant pas deviner quels extras sont posés.
+2. **Un extra sur la CIBLE emportait la spécification** : `requests[security]<3.0` était
+   coupé au premier `[`, et le plafond disparaissait en silence.
+
+**Le compte refait, marqueurs lus.** `httpx<0.29.0` (starlette) est sous `extra == 'full'`
+et `numpy<=2.3.5` (ultralytics) sous deux extras d'export : aucun des deux ne nous retient.
+Reste `numpy<2.8` (scipy), obligatoire mais lâche — quatre mineures de marge —, et
+**`Pillow<=12.0.0`, seul plafond obligatoire qui fige une release**. La première mesure
+concluait « le motif n'était pas isolé » ; c'est faux, et faux dans le sens rassurant.
+L'arbitrage du plafond ne bouge pas pour autant : il portait sur Pillow, dont la contrainte
+est bien obligatoire (`Pillow<=12.0.0,>=9.1.1`, sans marqueur, vérifié dans l'image aux
+côtés de `pydantic` et `requests`).
+
+**Pourquoi il a fallu trois jours.** L'outil n'avait aucun test. `tools/` est hors
+couverture (`.coveragerc`), et un rapport n'a pas de contrat qu'une suite puisse vérifier —
+alors que sa règle de classement est de la LOGIQUE PURE, justiciable d'une table de vérité,
+exactement le critère qui fait entrer un module dans `static/lib/`. Elle en a une
+maintenant, et la passe de mutation remet le défaut d'origine en première position.
 
 ## Un décodeur qui s'installe tout seul (trouvé le 2026-09-08)
 
