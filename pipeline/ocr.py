@@ -195,6 +195,16 @@ def region_crop_png(conn: sqlite3.Connection, region_id: int,
     # L'attendu d'origine de CONC-1 — « le verrou ne couvre plus que la manipulation du
     # dictionnaire de cache » — était FAUX : le `crop` lit l'image partagée, et
     # `_open_image` la remplace. Les sortir aurait produit un accès après fermeture.
+    #
+    # Ce que la coupe COÛTE, parce qu'un gain qu'on annonce sans son prix se paie plus
+    # tard : le verrou large bornait AUSSI la mémoire — un seul crop décodé à la fois,
+    # quelle que soit la charge. Chaque thread tient désormais le sien pendant le resize
+    # et l'encodage. En régime réel c'est négligeable (un crop de bulle pèse quelques
+    # centaines de Ko, et un navigateur n'ouvre qu'une poignée de connexions) ; le cas
+    # extrême ne l'est pas — une région couvrant une planche entière sur un master au
+    # plafond de `MAX_IMAGE_PIXELS` se compte en centaines de Mo, par thread. Ce n'est
+    # PAS mesuré, donc ce n'est pas borné ici : re-sérialiser coûterait tout le gain, et
+    # poser un sémaphore sur une hypothèse serait exactement ce que ce chantier refuse.
     if crop.width > max_dim:
         crop = crop.resize(
             (max_dim, max(1, round(crop.height * max_dim / crop.width))),
