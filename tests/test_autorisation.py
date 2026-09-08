@@ -1218,3 +1218,29 @@ def test_accord_inter_ne_porte_que_sur_ce_qu_on_ecrit(client, db_path, deux_albu
                    headers={"Remote-User": "bob"}).json()
     assert r["auteurs"] == [], "un album qu'on LIT seulement ne doit rien livrer"
     assert r["retouches"] == 0
+
+
+def test_un_lot_purge_n_est_visible_de_personne(client, db_path, deux_albums,
+                                                derriere_proxy):
+    """CONC-1 — la purge fait de « job inconnu » l'état FINAL de tout lot.
+
+    C'est la raison de l'ordre imposé par la fiche : avant le durcissement de
+    `_job_visible`, un identifiant purgé aurait été APPROUVÉ par la garde
+    (`set([]) <= autorisees`), et seul l'ordre des vérifications à chaque appel l'aurait
+    rattrapé. Ce test relie les deux moitiés — ce que la purge produit, la garde le refuse
+    — là où le test de la purge, lui, ne regarde que le registre.
+    """
+    import pipeline.jobs as jobs_mod
+    from conftest import ADMIN
+
+    jobs_mod._jobs[4242] = {"id": 4242, "passes": ["ocr"],
+                            "planche_ids": [deux_albums["pl1"]["id"]],
+                            "total": 1, "done": 1, "current": None,
+                            "errors": [], "status": "termine", "cancel": False}
+    assert client.get("/api/jobs/4242", headers=ADMIN).status_code == 200
+
+    del jobs_mod._jobs[4242]                                  # ce que la purge fera
+
+    assert client.get("/api/jobs/4242", headers=ADMIN).status_code == 404
+    assert client.post("/api/jobs/4242/annuler", headers=ADMIN).status_code == 404
+    assert all(s["id"] != 4242 for s in client.get("/api/jobs", headers=ADMIN).json())

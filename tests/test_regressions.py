@@ -1343,3 +1343,46 @@ def test_aucune_commande_documentee_ne_pose_un_secret_sur_la_ligne():
         "commande documentée posant un secret sur la ligne : " + ", ".join(fautifs)
         + ". Employer `docker run --rm -it …` sans `--password` : l'invite ne laisse "
           "rien dans l'historique du shell")
+
+
+# --------------------------------------------------------------------------- #
+# CONC-1 — le registre des lots ne perdait jamais rien
+# --------------------------------------------------------------------------- #
+def test_le_registre_des_lots_ne_croit_plus_indefiniment(monkeypatch):
+    """`_jobs` vit en RAM et gardait chaque lot lancé, pour toujours.
+
+    Invisible en session courte, sensible sur une instance qui tourne des jours
+    (INFRA-1). On borne le NOMBRE et non l'ÂGE : c'est le seul des deux qui tienne
+    « sa taille ne croît plus indéfiniment », une purge par ancienneté laissant grossir
+    une rafale de lots lancés coup sur coup.
+
+    Trois propriétés, et la deuxième est celle qui casserait un écran : le plafond est
+    tenu, un lot NON terminé survit quel que soit son rang, et ce sont les PLUS ANCIENS
+    qui partent — purger au hasard tiendrait le plafond tout aussi bien.
+    """
+    from pipeline import jobs
+
+    monkeypatch.setattr(jobs, "_run", lambda job_id: None)   # pas de worker : on teste le registre
+    monkeypatch.setattr(jobs, "_jobs", {})                   # registre neuf, restauré par monkeypatch
+    monkeypatch.setattr(jobs, "_counter", 10_000)            # sinon le jid tiré du compteur GLOBAL
+                                                             # peut percuter un id injecté ci-dessous,
+                                                             # selon les tests joués avant celui-ci
+
+    for i in range(1, jobs.JOBS_CONSERVES + 51):             # 50 de trop, exprès
+        jobs._jobs[i] = {"id": i, "passes": ["ocr"], "planche_ids": [i], "total": 1,
+                         "done": 1, "current": None, "errors": [], "status": "termine",
+                         "cancel": False}
+    vieux_mais_vivant = 1
+    jobs._jobs[vieux_mais_vivant]["status"] = "en_cours"     # le PLUS ancien, et il tourne
+
+    neuf = jobs.start_job(["ocr"], [42])["id"]
+
+    finis = [j for j in jobs._jobs.values() if j["status"] in jobs._STATUTS_TERMINAUX]
+    # L'ordre des assertions COMPTE : le plafond en premier masquait celle-ci, qui est
+    # la seule à casser un écran. Mesuré — une purge ignorant le statut faisait rougir
+    # « plafond non tenu : 99 », un motif qui n'a rien à voir avec ce qu'elle démentait.
+    assert vieux_mais_vivant in jobs._jobs, "un lot EN COURS a été purgé"
+    assert len(finis) == jobs.JOBS_CONSERVES, f"plafond non tenu : {len(finis)}"
+    assert neuf in jobs._jobs, "le lot qu'on vient de lancer a été purgé"
+    assert 2 not in jobs._jobs and 50 not in jobs._jobs, "les PLUS ANCIENS doivent partir"
+    assert 150 in jobs._jobs, "et les plus récents rester — purger au hasard tiendrait le plafond aussi"

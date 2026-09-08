@@ -22,6 +22,20 @@ from database import get_connection
 
 PASSES = ("segmenter", "bulles", "ocr")   # ordre canonique d'exécution
 
+# CONC-1 — le registre vit en RAM et ne perdait jamais rien. Invisible en session courte,
+# sensible sur une instance qui tourne des jours (INFRA-1) : chaque lot y laissait une
+# entrée pour toujours.
+#
+# On borne le NOMBRE et non l'ÂGE, et c'est le seul des deux qui tienne la promesse « sa
+# taille ne croît plus indéfiniment » : une purge par ancienneté laisse grossir une rafale
+# de lots lancés coup sur coup, un plafond non.
+#
+# Le plafond est LARGE exprès. Ce qu'on borde est une fuite lente, pas une empreinte : cent
+# entrées de quelques centaines d'octets ne pèsent rien, et un plafond serré ferait
+# disparaître sous les yeux de quelqu'un le lot qu'il vient de regarder.
+JOBS_CONSERVES = 100
+_STATUTS_TERMINAUX = frozenset(("termine", "echec", "annule"))
+
 _jobs: dict = {}
 _lock = threading.Lock()        # protège le registre + le compteur
 _run_lock = threading.Lock()    # un seul job s'exécute à la fois
@@ -149,6 +163,27 @@ def planches_du_job(job_id: int) -> list | None:
     return list(j["planche_ids"]) if j else None
 
 
+def _purger_registre() -> None:
+    """Retire les lots TERMINÉS les plus anciens au-delà de `JOBS_CONSERVES` (CONC-1).
+
+    Appelée sous `_lock`, à la CRÉATION d'un lot : c'est le seul instant où le registre
+    grandit, donc le seul où une purge ait quelque chose à faire. Pas de fil de fond pour
+    ça — un objet vivant de plus se justifie quand il faut agir en l'absence d'appel, ce
+    qui n'est pas le cas ici et l'est pour le TTL du cache de crop.
+
+    **Un lot non terminé n'est JAMAIS purgé**, quel que soit son rang : `en_cours` couvre
+    aussi les lots en file derrière `_run_lock`, qui n'ont encore rien fait et dont un
+    écran attend la progression.
+
+    Ce que la purge rend routinier — un identifiant qui ne désigne plus rien — était un cas
+    rare avant elle. C'est pourquoi `_job_visible` a été durci D'ABORD : il approuvait tout
+    job inconnu, la liste vide étant incluse dans n'importe quelle portée.
+    """
+    finis = [jid for jid in sorted(_jobs) if _jobs[jid]["status"] in _STATUTS_TERMINAUX]
+    for jid in finis[:max(0, len(finis) - JOBS_CONSERVES)]:
+        del _jobs[jid]
+
+
 def start_job(passes, planche_ids) -> dict:
     global _counter
     with _lock:
@@ -159,6 +194,7 @@ def start_job(passes, planche_ids) -> dict:
             "total": len(planche_ids), "done": 0, "current": None,
             "errors": [], "status": "en_cours", "cancel": False,
         }
+        _purger_registre()
     threading.Thread(target=_run, args=(jid,), daemon=True).start()
     return snapshot(jid)
 
