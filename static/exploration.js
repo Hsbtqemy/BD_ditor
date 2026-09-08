@@ -243,6 +243,35 @@ function drillUrl(valeur, filtres, attributs) {
   return "/recherche?" + p.toString();
 }
 
+/* ANA-7 — l'export rejoue les paramètres qui ont produit l'AFFICHAGE.
+
+   Ils sont retenus ici, à l'endroit exact où la vue les construit, plutôt que rebâtis au
+   moment du clic. Les rebâtir, ce serait écrire une seconde fois la même chose : les deux
+   copies finiraient par diverger sur un filtre, et personne ne le verrait — l'écran et le
+   fichier resteraient tous les deux plausibles. C'est la même raison qui fait partager un
+   cœur aux routes JSON et CSV côté serveur.
+
+   `limit` n'y entre PAS : il borne l'aperçu, et l'export a le sien, plus haut. */
+function armerExport(vue, p) {
+  state.exportAnalyse = { vue, params: p.toString() };
+  $("#btn-export-analyse").disabled = false;
+  $("#croise-forme").hidden = vue !== "croisement";
+}
+
+function desarmerExport() {
+  state.exportAnalyse = null;
+  $("#btn-export-analyse").disabled = true;
+  $("#croise-forme").hidden = true;
+}
+
+function exporterAnalyse() {
+  const e = state.exportAnalyse;
+  if (!e) return;
+  const q = new URLSearchParams(e.params);
+  if (e.vue === "croisement") q.set("forme", $("#croise-forme").value);
+  window.location = `/api/analyse/${e.vue}.csv?` + q.toString();
+}
+
 /* ---------------- Exécution ---------------- */
 function run() {
   history.replaceState(null, "", "?" + stateParams().toString());
@@ -265,6 +294,7 @@ function run() {
     selectedAttributs("f").forEach((val) => p.append("a_attributs", val));
     selectedAttributs("b").forEach((val) => p.append("b_attributs", val));
     if (tagScope() === "propre") p.set("tag_scope", "propre");
+    armerExport("comparaison", p);
     apiGet("/api/analyse/comparaison?" + p.toString()).then(done(renderComparaison)).catch(fail);
   } else if (v === "concordance") {
     const p = concordanceParams();
@@ -273,12 +303,15 @@ function run() {
       $("#kwic").className = "kwic";              // retire une grille « aligné » résiduelle d'un rendu précédent
       $("#kwic").innerHTML =
         '<p class="muted small">Précisez un lemme / mot, ou un filtre POS, morpho, tag, locuteur ou attribut.</p>';
+      desarmerExport();          // rien n'a été demandé : il n'y a rien à emporter
       return;
     }
+    armerExport("concordance", p);
     p.set("limit", String(Resultats.LIMITE + 1));
     apiGet("/api/analyse/concordance?" + p.toString()).then(done(renderKwic)).catch(fail);
   } else if (v === "croisement") {
     const p = croisementParams();
+    armerExport("croisement", p);
     p.set("limit", String(CROISE_LIMIT));
     apiGet("/api/analyse/croisement?" + p.toString()).then(done(renderCroise)).catch(fail);
   } else {
@@ -287,6 +320,7 @@ function run() {
     for (const [k, val] of Object.entries(sideFilters("f"))) if (val) p.set(k, val);
     selectedAttributs("f").forEach((val) => p.append("attributs", val));
     if (tagScope() === "propre") p.set("tag_scope", "propre");
+    armerExport("frequences", p);
     p.set("limit", String(Resultats.LIMITE + 1));
     apiGet("/api/analyse/frequences?" + p.toString()).then(done(renderDist)).catch(fail);
   }
@@ -904,6 +938,12 @@ async function setup() {
     BDDialog.register($("#lexique-modal"),
       { box: ".modal-box", labelledby: "lexique-title", onClose: closeLexique });
   // Accord modèle↔humain (NLP-1) — modale accessible.
+  $("#btn-export-analyse").onclick = exporterAnalyse;
+  // Les deux panneaux n'ont pas de critères : leur export est l'écran, en fichier.
+  $("#btn-export-accord").onclick = () => { window.location = "/api/analyse/accord.csv"; };
+  $("#btn-export-accord-inter").onclick = () => {
+    window.location = "/api/analyse/accord-inter.csv";
+  };
   $("#btn-accord").onclick = openAccord;
   $("#accord-close").onclick = closeAccord;
   $("#accord-modal").addEventListener("mousedown", (e) => {

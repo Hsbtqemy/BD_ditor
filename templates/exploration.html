@@ -119,7 +119,19 @@
       </div>
     </div>
 
-    <div id="dist-info" class="muted small" role="status" aria-live="polite"></div>
+    <div class="dist-barre">
+      <div id="dist-info" class="muted small" role="status" aria-live="polite"></div>
+      <div class="dist-actions">
+        <select id="croise-forme" class="small" hidden
+                aria-label="Forme du fichier exporté pour le croisement">
+          <option value="plat">lignes plates (R, pandas)</option>
+          <option value="matrice">matrice (tableur)</option>
+        </select>
+        <button id="btn-export-analyse" class="ghost small" disabled>⤓ Exporter (CSV)</button>
+      </div>
+    </div>
+    <p class="muted small">Le fichier rend le jeu TROUVÉ, pas l'aperçu affiché ci-dessous ;
+      s'il a fallu le couper, son nom porte <code>-tronque-</code>.</p>
     <div id="dist" class="dist"></div>
     <div id="comparaison" class="comparaison" hidden></div>
     <div id="kwic" class="kwic" hidden></div>
@@ -156,6 +168,7 @@
         souvent les cas douteux.</p>
       <div id="accord-body"></div>
       <div class="modal-actions">
+        <button id="btn-export-accord" class="ghost small" type="button">⤓ Exporter (CSV)</button>
         <button id="accord-close" class="ghost small" type="button">Fermer</button>
       </div>
     </div>
@@ -169,7 +182,11 @@
         garde-t-il (accord) ou change-t-il (divergence) sa valeur ? Mesuré sur la chaîne de
         révisions du journal — rare tant qu'on n'est pas multi-utilisateur.</p>
       <div id="accord-inter-body"></div>
+      <p class="muted small">Le fichier <b>nomme</b> les annotateurs, comme cet écran :
+        c'est ce qui permet de réunir deux personnes pour arbitrer. Il en garde donc la
+        même réserve — il ne s'ouvre qu'à qui écrit sur le corpus.</p>
       <div class="modal-actions">
+        <button id="btn-export-accord-inter" class="ghost small" type="button">⤓ Exporter (CSV)</button>
         <button id="accord-inter-close" class="ghost small" type="button">Fermer</button>
       </div>
     </div>

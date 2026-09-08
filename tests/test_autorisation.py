@@ -1249,3 +1249,160 @@ def test_un_lot_purge_n_est_visible_de_personne(client, db_path, deux_albums,
     assert client.get("/api/jobs/4242", headers=ADMIN).status_code == 404
     assert client.post("/api/jobs/4242/annuler", headers=ADMIN).status_code == 404
     assert all(s["id"] != 4242 for s in client.get("/api/jobs", headers=ADMIN).json())
+
+
+# --------------------------------------------------------------------------- #
+# ANA-7 — les six exports d'analyse, face à la portée
+# --------------------------------------------------------------------------- #
+def _relire_un_token(db_path, region_id, auteur="admin"):
+    """Pose une correction humaine sur le premier token d'une région.
+
+    Sans elle, l'accord modèle↔humain n'a RIEN à compter : le rapport porte sur les tokens
+    RELUS, et un décor sans relecture rendrait deux rapports vides — donc un test de portée
+    qui passerait sans rien mesurer. C'est le piège que QA-6 a nommé, « un skip se lit
+    comme un succès », transposé au décor plutôt qu'au moteur.
+    """
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        t = conn.execute("SELECT ordre, texte, lemme, pos FROM tokens WHERE region_id = ? "
+                         "ORDER BY ordre LIMIT 1", (region_id,)).fetchone()
+        assert t is not None, (
+            f"aucun token sur la région {region_id} : le décor ne porte rien à mesurer "
+            "(spaCy absent ?), et le test de portée serait vide")
+        conn.execute("INSERT INTO token_correction (region_id, ordre, forme, lemme, pos, "
+                     "etat, auteur) VALUES (?, ?, ?, ?, ?, 'corrige', ?)",
+                     (region_id, t[0], t[1], t[2], t[3], auteur))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# Les CINQ exports que ce décor suffit à distinguer. Le sixième, `accord-inter.csv`, a
+# son propre test plus bas : son rapport ne lit qu'une chaîne de révision entre deux
+# auteurs, qu'il faut poser dans le journal A3 — sans elle il est vide des DEUX côtés, et
+# « identique » n'y prouverait rien.
+EXPORTS_ANALYSE = [
+    ("/api/analyse/frequences.csv", ""),
+    # `motsecret` est dans les DEUX albums — c'est indispensable : un critère propre à
+    # l'album autorisé ferait tester le FILTRE et non la portée, et le test passerait pour
+    # une raison qui n'a rien à voir avec ce qu'il prétend garder. Mesuré : avec
+    # `lemme=ici`, l'administrateur et bob recevaient le même fichier.
+    ("/api/analyse/concordance.csv", "?lemme=motsecret"),
+    ("/api/analyse/comparaison.csv", ""),
+    ("/api/analyse/croisement.csv", "?axe_x=pos&axe_y=provenance"),
+    ("/api/analyse/accord.csv", ""),
+]
+
+
+@pytest.mark.parametrize("chemin,quete", EXPORTS_ANALYSE)
+def test_un_export_d_analyse_ne_rend_rien_hors_portee(client, db_path, deux_albums,
+                                                      derriere_proxy, chemin, quete):
+    """ANA-7 — six sorties neuves, et le cliquet ne dit PAS qu'elles concluent juste.
+
+    `test_autorisation` exige qu'une route consulte la portée ; il ne vérifie jamais
+    qu'elle en tire la bonne conclusion. Un export qui recalculerait ses filtres à côté de
+    `_analyse_filtres` serait vert et fuirait. D'où ce test de COMPORTEMENT, sur les six.
+
+    **Il est construit pour ne pas pouvoir passer à vide** : chaque cas exige d'abord de
+    voir ce qui est AUTORISÉ avant de vérifier l'absence de ce qui ne l'est pas. Un décor
+    muet — spaCy manquant, aucun token, aucune relecture — ferait échouer la première
+    assertion au lieu de rendre la seconde triviale. C'est la leçon d'AUTH-5 : le mode
+    d'échec d'un cliquet est le SEMIS, pas la garde.
+    """
+    from conftest import ADMIN
+    _relire_un_token(db_path, deux_albums["r1"]["id"], "alice")
+    _relire_un_token(db_path, deux_albums["r2"]["id"], "bob")
+
+    admin = client.get(chemin + quete, headers=ADMIN)
+    assert admin.status_code == 200, admin.text
+    tout = admin.text
+    assert tout.strip(), f"{chemin} ne rend rien même pour un administrateur : décor muet"
+
+    _ouvrir(db_path, deux_albums["c1"], "bob", "ecriture")   # bob n'a QUE la collection 1
+    h = {"Remote-User": "bob"}
+    r = client.get(chemin + quete, headers=h)
+    assert r.status_code == 200, r.text
+    assert "Interdit" not in r.text, (
+        f"{chemin} laisse fuir le TITRE d'un album hors portée")
+    assert "ailleurs" not in r.text.lower(), (
+        f"{chemin} laisse fuir un lemme d'un album hors portée")
+    # L'ANTI-VACUITÉ, et ma première version était fausse : elle comparait des LONGUEURS,
+    # or « 2 » et « 1 » font la même largeur — le croisement passait de 2 à 1 partout sans
+    # que la chaîne change de taille. Une différence de CONTENU dit la même chose sans
+    # supposer que filtrer raccourcisse.
+    assert r.text != tout, (
+        f"{chemin} rend exactement la même chose à bob qu'à l'administrateur : la portée "
+        "n'a rien filtré, ou le décor ne distingue pas les deux albums")
+
+
+def test_l_export_inter_herite_du_403_de_sa_route(client, db_path, deux_albums,
+                                                  derriere_proxy):
+    """ANA-7 — le refus est HÉRITÉ, pas réécrit.
+
+    Un contrôle recopié dans l'export finirait par diverger de celui de la route JSON, et
+    la divergence serait silencieuse : les deux réponses resteraient plausibles. Ici on
+    vérifie qu'un compte qui LIT sans écrire nulle part reçoit le même 403 des deux côtés.
+    """
+    _ouvrir(db_path, deux_albums["c1"], "lecteur", "lecture")
+    h = {"Remote-User": "lecteur"}
+    assert client.get("/api/analyse/accord-inter", headers=h).status_code == 403
+    assert client.get("/api/analyse/accord-inter.csv", headers=h).status_code == 403
+
+
+def _chaine_de_revision(db_path, region_id, forme, lemme_a, lemme_b):
+    """Deux annotateurs qui se relisent sur le MÊME token — la seule donnée que le rapport
+    inter-annotateurs sache lire.
+
+    Elle vit dans le journal A3 et non dans le modèle : celui-ci ne garde qu'UNE correction
+    par token, si bien qu'une révision de plus efface la précédente. Le décor doit donc
+    poser les deux ÉVÉNEMENTS, faute de quoi le rapport est vide — et un test de portée sur
+    un rapport vide passerait des deux côtés sans rien prouver.
+    """
+    import json as _json
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        tc = conn.execute(
+            "INSERT INTO token_correction (region_id, ordre, forme, lemme, pos, auteur) "
+            "VALUES (?, 0, ?, ?, 'NOUN', 'bob')", (region_id, forme, lemme_b)).lastrowid
+        for agent, lemme in (("alice", lemme_a), ("bob", lemme_b)):
+            conn.execute(
+                "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id, "
+                "avant, apres) VALUES ('modification', ?, 'humain', 'token_correction', "
+                "?, ?, ?)",
+                (agent, tc, _json.dumps({"lemme": lemme_a, "pos": "NOUN", "morph": ""}),
+                 _json.dumps({"lemme": lemme, "pos": "NOUN", "morph": ""})))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_l_export_inter_ne_cite_pas_une_divergence_hors_portee(client, db_path,
+                                                               deux_albums, derriere_proxy):
+    """ANA-7 — la SIXIÈME sortie, et la seule qui nomme des personnes.
+
+    Les cinq autres se vérifient par un décor commun ; celle-ci exige une chaîne de
+    révision entre deux auteurs, sans quoi son rapport est vide des deux côtés et
+    « identique » ne prouverait rien. C'est précisément l'export dont le contenu compte le
+    plus : il nomme, il apparie, et il cite à la ligne près.
+
+    Le 403 hérité garde la PORTE ; ce test garde ce qui passe par elle — un annotateur qui
+    écrit sur une collection ne doit pas lire les désaccords d'une autre équipe.
+    """
+    from conftest import ADMIN
+    _chaine_de_revision(db_path, deux_albums["r1"]["id"], "ICI", "ici_a", "ici_b")
+    _chaine_de_revision(db_path, deux_albums["r2"]["id"], "AILLEURS", "ail_a", "ail_b")
+
+    tout = client.get("/api/analyse/accord-inter.csv", headers=ADMIN)
+    assert tout.status_code == 200
+    assert "ICI" in tout.text and "AILLEURS" in tout.text, (
+        f"le décor ne produit pas deux divergences : {tout.text!r}")
+    assert "alice" in tout.text and "bob" in tout.text, "l'export doit NOMMER (ANA-7)"
+
+    _ouvrir(db_path, deux_albums["c1"], "bob", "ecriture")
+    r = client.get("/api/analyse/accord-inter.csv", headers={"Remote-User": "bob"})
+    assert r.status_code == 200, r.text
+    assert "ICI" in r.text, "bob doit voir la divergence de SA collection"
+    assert "AILLEURS" not in r.text, (
+        "l'export inter cite une divergence d'une collection que bob n'écrit pas")

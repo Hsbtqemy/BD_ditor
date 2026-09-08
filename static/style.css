@@ -1715,6 +1715,16 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .lex-import-portee select { background: var(--bg-panel); color: var(--text);
   border: 1px solid var(--border); border-radius: 5px; padding: .3077rem .4615rem; font: inherit; }
 .modal-actions #lex-close { margin-left: auto; }
+/* ANA-7 — « Fermer » reste à droite quand un export s'ajoute à sa gauche : c'est la
+   position qu'on cherche des yeux, et la déplacer parce qu'un bouton est apparu ferait
+   payer l'ajout à qui ne s'en sert pas. */
+.modal-actions #accord-close,
+.modal-actions #accord-inter-close { margin-left: auto; }
+
+/* ANA-7 — la barre de résultats de l'Exploration : l'état à gauche, l'export à droite. */
+.dist-barre { display: flex; align-items: center; gap: .9231rem; flex-wrap: wrap; }
+.dist-barre #dist-info { flex: 1 1 auto; }
+.dist-actions { display: flex; align-items: center; gap: .4615rem; margin-left: auto; }
 
 /* Accord modèle↔humain (NLP-1) — modale de qualité de l'index (overlay partagé avec #lexique-modal). */
 .accord-box { width: min(43.0769rem, 94vw); }

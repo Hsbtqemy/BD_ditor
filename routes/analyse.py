@@ -8,6 +8,8 @@ produit 49 tests rouges au premier bloc extrait.
 """
 from __future__ import annotations
 
+import csv
+import io
 import sqlite3
 from typing import Optional
 
@@ -22,10 +24,29 @@ from database import citations_regions, reindex_region
 from pipeline import nlp
 
 from socle import (
-    TokenCorrectionIn, _auteur, _get_region, _norm_tag, _rows, db, portee_courante,
+    TokenCorrectionIn, _auteur, _csv_response, _csv_safe, _get_region, _norm_tag,
+    _rows, db, portee_courante,
 )
 
 router = APIRouter()
+
+# ANA-7 — deux plafonds, et l'écart entre eux EST la décision du chantier.
+#
+# Les plafonds d'AFFICHAGE bornent un aperçu à l'écran ; celui de l'EXPORT borne un jeu
+# qu'on emporte pour le retravailler. `recherche_export` avait déjà tranché dans ce sens
+# — « on exporte le jeu trouvé, pas seulement l'aperçu » — avec 5000.
+#
+# Ce que la mesure dit du risque : le corpus de développement compte 443 tokens pour 235
+# lemmes distincts, si bien qu'aucun plafond n'y mord et qu'un export tronqué s'y verrait
+# identique à un export complet. Sur un corpus réel de quelques centaines de milliers de
+# tokens, l'ordre de grandeur (loi de Heaps) est de 8 000 à 10 000 lemmes distincts : le
+# plafond d'affichage n'en montrerait qu'un dixième. Un CSV muet ferait passer ce dixième
+# pour un tout — d'où le plafond relevé ET la ligne de troncature écrite dans le fichier.
+PLAFOND_FREQ = 1000
+PLAFOND_CONCORDANCE = 500
+PLAFOND_COMPARAISON = 200
+PLAFOND_CROISEMENT = 50
+PLAFOND_EXPORT = 5000
 
 def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags=None,
                      tag_scope="herite", personnage=None, attributs=None, auteur=None):
@@ -120,9 +141,29 @@ def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
     (défaut, groupé avec son POS) | `pos` | `morph`. Filtres : album, type de région,
     pos, lemme, morph (sous-chaîne UD), provenance, auteur (de la correction). Base
     des champs lexicaux et distributions (Exploration)."""
+    return {"champ": champ,
+            "results": _frequences_rows(conn, portee, champ, album, type, pos, lemme,
+                                        morph, provenance, auteur, tags, tag_scope,
+                                        personnage, attributs, limit, PLAFOND_FREQ)}
+
+
+def _frequences_rows(conn, portee, champ, album, type, pos, lemme, morph, provenance,
+                     auteur, tags, tag_scope, personnage, attributs, limit, plafond):
+    """Cœur de la distribution — PARTAGÉ par la route JSON et son export CSV (ANA-7).
+
+    Extrait pour que l'export ne réécrive pas le calcul : deux chemins finiraient par
+    diverger sur un filtre, et c'est le genre de divergence qu'on ne voit pas — les deux
+    réponses restent plausibles. Même patron que `_recherche_rows`, partagé de la même
+    façon par `/api/recherche` et son `export.csv`.
+
+    `plafond` est un PARAMÈTRE et non une constante, parce que les deux appelants n'ont pas
+    le même : l'écran affiche un aperçu, l'export rend le jeu trouvé. C'est la seule chose
+    qui les distingue, et la rendre explicite évite qu'un troisième appelant hérite d'un
+    plafond d'affichage sans le savoir.
+    """
     if champ not in ("lemme", "pos", "morph"):
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
-    limit = max(1, min(limit, 1000))
+    limit = max(1, min(limit, plafond))
     _valider_facette(conn, personnage, attributs)
     where, params, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags, tag_scope,
                                      personnage, attributs, auteur)
@@ -134,7 +175,58 @@ def analyse_frequences(champ: str = "lemme", album: Optional[int] = None,
         sql += "WHERE " + " AND ".join(where) + " "
     sql += f"GROUP BY {cols} ORDER BY freq DESC, {champ if champ != 'lemme' else 'te.lemme'} LIMIT ?"
     params.append(limit)
-    return {"champ": champ, "results": _rows(conn.execute(sql, params))}
+    return _rows(conn.execute(sql, params))
+
+
+@router.get("/api/analyse/frequences.csv")
+def analyse_frequences_export(champ: str = "lemme", album: Optional[int] = None,
+                              type: Optional[str] = None, pos: Optional[str] = None,
+                              lemme: Optional[str] = None, morph: Optional[str] = None,
+                              provenance: Optional[str] = None, auteur: Optional[str] = None,
+                              tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
+                              personnage: Optional[int] = None,
+                              attributs: Optional[list[int]] = Query(None),
+                              conn: sqlite3.Connection = Depends(db),
+                              portee: autorisation.Portee = Depends(portee_courante)):
+    """Export CSV de la distribution — MÊMES critères que `/api/analyse/frequences` (ANA-7).
+
+    Pas de paramètre `limit` : l'écran affiche un aperçu, le fichier rend le jeu trouvé
+    jusqu'à `PLAFOND_EXPORT`. C'est la décision du chantier, et elle suit celle que
+    `recherche_export` avait déjà prise.
+    """
+    lignes = _frequences_rows(conn, portee, champ, album, type, pos, lemme, morph,
+                              provenance, auteur, tags, tag_scope, personnage, attributs,
+                              PLAFOND_EXPORT, PLAFOND_EXPORT)
+    cols = (["lemme", "pos", "frequence"] if champ == "lemme" else [champ, "frequence"])
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(cols)
+    for r in lignes:
+        w.writerow([_csv_safe(r["lemme"]), _csv_safe(r["pos"]), r["freq"]]
+                   if champ == "lemme" else [_csv_safe(r[champ]), r["freq"]])
+    return _csv_response(buf.getvalue(), _nom_export("distribution", champ, lignes))
+
+
+def _nom_export(vue: str, precision: Optional[str], lignes, tronque=None) -> str:
+    """Nom de fichier d'un export d'analyse — et il PORTE la troncature (ANA-7).
+
+    Le fichier doit dire qu'il est tronqué, sans quoi il fait passer un aperçu pour un
+    tout. Restait à choisir OÙ le dire, et aucune place n'est neutre : une ligne de
+    commentaire en tête décale l'en-tête pour un tableur, une ligne en pied entre dans les
+    données pour pandas, un en-tête HTTP ne survit pas au premier déplacement du fichier.
+
+    Le NOM voyage avec le fichier et ne touche pas son contenu — c'est la seule place qui
+    ne coûte rien à aucun des deux lecteurs. Un `-tronque-5000` dans le nom se voit dans un
+    dossier, dans une pièce jointe et dans un `ls`, six mois après.
+
+    `tronque` se passe explicitement quand la coupe ne se lit pas au nombre de lignes —
+    le croisement tronque par AXE, et un fichier de dix lignes peut y être amputé.
+    """
+    bout = f"-{precision}" if precision else ""
+    if tronque is None:
+        tronque = len(lignes) >= PLAFOND_EXPORT
+    coupe = f"-tronque-{PLAFOND_EXPORT}" if tronque else ""
+    return f"{vue}{bout}{coupe}.csv"
 
 
 @router.get("/api/analyse/concordance")
@@ -150,9 +242,18 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
     aux critères, AVEC leur contexte (région, planche, album, texte OCR) — pour montrer
     chaque emploi en contexte multimodal (socle de Recherche+++). Au moins un critère
     grammatical (lemme / pos / morph) est requis."""
+    results = _concordance_rows(conn, portee, lemme, pos, morph, provenance, auteur,
+                                album, type, tags, tag_scope, personnage, attributs,
+                                limit, PLAFOND_CONCORDANCE)
+    return {"count": len(results), "results": results}
+
+
+def _concordance_rows(conn, portee, lemme, pos, morph, provenance, auteur, album, type,
+                      tags, tag_scope, personnage, attributs, limit, plafond):
+    """Cœur de la concordance KWIC — PARTAGÉ par la route JSON et son export CSV (ANA-7)."""
     if not (lemme or pos or morph or tags or personnage or attributs or auteur):
         raise HTTPException(422, "Préciser au moins un critère (grammatical, tag, personnage, attribut ou auteur).")
-    limit = max(1, min(limit, 500))
+    limit = max(1, min(limit, plafond))
     _valider_facette(conn, personnage, attributs)
     where, params, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags, tag_scope,
                                      personnage, attributs, auteur)
@@ -176,7 +277,41 @@ def analyse_concordance(lemme: Optional[str] = None, pos: Optional[str] = None,
     cits = citations_regions(conn, [r["region_id"] for r in results])
     for r in results:
         r["citation"] = cits.get(r["region_id"])   # chaque ligne KWIC se cite
-    return {"count": len(results), "results": results}
+    return results
+
+
+@router.get("/api/analyse/concordance.csv")
+def analyse_concordance_export(lemme: Optional[str] = None, pos: Optional[str] = None,
+                               morph: Optional[str] = None, provenance: Optional[str] = None,
+                               auteur: Optional[str] = None, album: Optional[int] = None,
+                               type: Optional[str] = None,
+                               tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
+                               personnage: Optional[int] = None,
+                               attributs: Optional[list[int]] = Query(None),
+                               conn: sqlite3.Connection = Depends(db),
+                               portee: autorisation.Portee = Depends(portee_courante)):
+    """Export CSV de la concordance — MÊMES critères que `/api/analyse/concordance` (ANA-7).
+
+    La CITATION est en tête, avant le texte : c'est ce qu'on emporte une concordance pour
+    faire — citer un emploi en contexte. Même choix que `recherche_export`, dont le
+    commentaire dit « le CSV est l'artefact que le chercheur emporte pour citer ».
+    """
+    lignes = _concordance_rows(conn, portee, lemme, pos, morph, provenance, auteur, album,
+                               type, tags, tag_scope, personnage, attributs,
+                               PLAFOND_EXPORT, PLAFOND_EXPORT)
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator=chr(10))
+    w.writerow(["citation", "album", "planche", "region_id", "type", "locuteur",
+                "texte", "lemme", "pos", "morph", "provenance", "ocr_texte"])
+    for r in lignes:
+        cit = r.get("citation") or {}
+        w.writerow([cit.get("texte", ""), _csv_safe(r["album_titre"]),
+                    cit.get("planche") if cit.get("planche") is not None else "",
+                    r["region_id"], r["type"], _csv_safe(r["locuteur"] or ""),
+                    _csv_safe(r["texte"]), _csv_safe(r["lemme"]), _csv_safe(r["pos"]),
+                    _csv_safe(r["morph"] or ""), r["provenance"],
+                    _csv_safe(r["ocr_texte"] or "")])
+    return _csv_response(buf.getvalue(), _nom_export("concordance", lemme or pos or morph, lignes))
 
 
 def _distribution(conn, portee, champ, album, type, pos, morph, provenance, tags=None,
@@ -213,9 +348,29 @@ def analyse_comparaison(champ: str = "lemme",
     """Compare deux sous-corpus A et B : valeurs (lemme|pos|morph) les plus
     SUR-représentées dans chacun, par différence de fréquence RELATIVE (rel = freq /
     total du sous-corpus → comparable malgré des tailles différentes)."""
+    out, ta, tb = _comparaison_rows(
+        conn, portee, champ, tag_scope,
+        (a_album, a_type, a_pos, a_morph, a_provenance, a_tags, a_personnage, a_attributs, a_auteur),
+        (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur))
+    limit = max(1, min(limit, PLAFOND_COMPARAISON))
+    return {"champ": champ, "total_a": ta, "total_b": tb,
+            "sur_a": [x for x in out[:limit] if x["diff"] > 0],
+            "sur_b": [x for x in reversed(out[-limit:]) if x["diff"] < 0]}
+
+
+def _comparaison_rows(conn, portee, champ, tag_scope, cote_a, cote_b):
+    """Cœur de la comparaison A/B — PARTAGÉ par la route JSON et son export CSV (ANA-7).
+
+    Rend la liste ENTIÈRE, triée par différence décroissante, et les deux totaux. La
+    troncature reste à l'appelant, et ce n'est pas un détail de découpage : la route
+    JSON coupe en DEUX listes (`sur_a`, `sur_b`), l'export rend une ligne par valeur —
+    deux formes de la même mesure, qui doivent partir du même calcul faute de quoi le
+    fichier et l'écran finiraient par se contredire sur les valeurs de bord.
+    """
     if champ not in ("lemme", "pos", "morph"):
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
-    limit = max(1, min(limit, 200))
+    (a_album, a_type, a_pos, a_morph, a_provenance, a_tags, a_personnage, a_attributs, a_auteur) = cote_a
+    (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur) = cote_b
     _valider_facette(conn, a_personnage, a_attributs)
     _valider_facette(conn, b_personnage, b_attributs)
     da, ta = _distribution(conn, portee, champ, a_album, a_type, a_pos, a_morph, a_provenance, a_tags, tag_scope,
@@ -231,9 +386,107 @@ def analyse_comparaison(champ: str = "lemme",
                     "rel_a": round(ra, 6), "rel_b": round(rb, 6),
                     "diff": round(ra - rb, 6)})
     out.sort(key=lambda x: x["diff"], reverse=True)
-    return {"champ": champ, "total_a": ta, "total_b": tb,
-            "sur_a": [x for x in out[:limit] if x["diff"] > 0],
-            "sur_b": [x for x in reversed(out[-limit:]) if x["diff"] < 0]}
+    return out, ta, tb
+
+
+@router.get("/api/analyse/comparaison.csv")
+def analyse_comparaison_export(champ: str = "lemme",
+                               a_album: Optional[int] = None, a_type: Optional[str] = None,
+                               a_pos: Optional[str] = None, a_morph: Optional[str] = None,
+                               a_provenance: Optional[str] = None, a_auteur: Optional[str] = None,
+                               a_tags: Optional[list[str]] = Query(None),
+                               a_personnage: Optional[int] = None,
+                               a_attributs: Optional[list[int]] = Query(None),
+                               b_album: Optional[int] = None, b_type: Optional[str] = None,
+                               b_pos: Optional[str] = None, b_morph: Optional[str] = None,
+                               b_provenance: Optional[str] = None, b_auteur: Optional[str] = None,
+                               b_tags: Optional[list[str]] = Query(None),
+                               b_personnage: Optional[int] = None,
+                               b_attributs: Optional[list[int]] = Query(None),
+                               tag_scope: str = "herite",
+                               conn: sqlite3.Connection = Depends(db),
+                               portee: autorisation.Portee = Depends(portee_courante)):
+    """Export CSV de la comparaison A/B — MÊMES critères que `/api/analyse/comparaison`.
+
+    UNE ligne par valeur, et non les deux listes de l'écran. L'écran montre les têtes de
+    chaque côté parce qu'un humain lit un classement ; un fichier se trie et se filtre tout
+    seul, et couper le milieu lui retirerait justement ce qui distingue une valeur ABSENTE
+    d'un sous-corpus d'une valeur également répartie. Les deux totaux sont en tête, sans
+    quoi les fréquences relatives ne se recalculent pas — en COLONNES répétées, pas en
+    ligne de commentaire, qui décalerait l'en-tête pour un tableur.
+    """
+    out, ta, tb = _comparaison_rows(
+        conn, portee, champ, tag_scope,
+        (a_album, a_type, a_pos, a_morph, a_provenance, a_tags, a_personnage, a_attributs, a_auteur),
+        (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur))
+    lignes = out[:PLAFOND_EXPORT]
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator=chr(10))
+    # Les deux TOTAUX sont des colonnes répétées, et non une ligne de commentaire en tête.
+    # Une telle ligne décalerait l'en-tête pour un tableur — le défaut que le nom de
+    # fichier a justement été choisi pour éviter sur la troncature. La redondance coûte
+    # deux colonnes constantes et rend le fichier lisible des deux côtés sans convention.
+    w.writerow(["valeur", "freq_a", "rel_a", "freq_b", "rel_b", "diff",
+                "total_a", "total_b"])
+    for x in lignes:
+        w.writerow([_csv_safe(x["valeur"]), x["freq_a"], x["rel_a"],
+                    x["freq_b"], x["rel_b"], x["diff"], ta, tb])
+    return _csv_response(buf.getvalue(), _nom_export("comparaison", champ, lignes))
+
+
+@router.get("/api/analyse/croisement.csv")
+def analyse_croisement_export(axe_x: str, axe_y: str, forme: str = "plat",
+                              album: Optional[int] = None, type: Optional[str] = None,
+                              pos: Optional[str] = None, lemme: Optional[str] = None,
+                              morph: Optional[str] = None, provenance: Optional[str] = None,
+                              auteur: Optional[str] = None,
+                              tags: Optional[list[str]] = Query(None), tag_scope: str = "herite",
+                              personnage: Optional[int] = None,
+                              attributs: Optional[list[int]] = Query(None),
+                              conn: sqlite3.Connection = Depends(db),
+                              portee: autorisation.Portee = Depends(portee_courante)):
+    """Export CSV du tableau croisé — MÊMES critères que `/api/analyse/croisement` (ANA-7).
+
+    DEUX formes, parce que les deux usages sont réels et qu'aucun ne se déduit de l'autre.
+    `forme=plat` (défaut) rend une ligne par cellule non vide, avec les deux marges en
+    colonnes : c'est ce qui se retraite dans R ou pandas, et une matrice s'en reconstruit
+    par pivot. `forme=matrice` rend le tableau de contingence tel qu'on le cite, avec sa
+    ligne et sa colonne de totaux — l'opération inverse, elle, perd de l'information dès
+    qu'un axe est coupé.
+
+    LE PIÈGE EST DANS LA MATRICE, et il est écrit plutôt que corrigé : les marges sont les
+    fréquences réelles quand les cellules sont coupées au top-N, si bien qu'une matrice
+    tronquée montre des totaux qui ne somment pas à ses propres cases. Le plafond d'export
+    (`PLAFOND_EXPORT` par axe, contre 50 à l'écran) rend le cas rare ; quand il arrive, le
+    NOM du fichier porte `-tronque-`. Corriger en recalculant les marges sur les seules
+    cellules retenues serait pire : le fichier deviendrait cohérent et FAUX, en affirmant
+    un total que le corpus ne porte pas.
+    """
+    if forme not in ("plat", "matrice"):
+        raise HTTPException(422, "forme invalide (plat | matrice).")
+    d = _croisement_data(conn, portee, axe_x, axe_y, album, type, pos, lemme, morph,
+                         provenance, auteur, tags, tag_scope, personnage, attributs,
+                         PLAFOND_EXPORT, PLAFOND_EXPORT)
+    tronque = d["x_tronque"] or d["y_tronque"]
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator=chr(10))
+    if forme == "matrice":
+        w.writerow([f"{d['libelle_x']} × {d['libelle_y']}"]
+                   + [_csv_safe(y["libelle"]) for y in d["y"]] + ["Total"])
+        for i, x in enumerate(d["x"]):
+            w.writerow([_csv_safe(x["libelle"])] + list(d["grille"][i]) + [x["total"]])
+        w.writerow(["Total"] + [y["total"] for y in d["y"]] + [d["total"]])
+    else:
+        w.writerow([d["libelle_x"], d["libelle_y"], "n", "marge_x", "marge_y"])
+        for i, x in enumerate(d["x"]):
+            for j, y in enumerate(d["y"]):
+                n = d["grille"][i][j]
+                if n:                      # une cellule vide n'est pas une observation
+                    w.writerow([_csv_safe(x["libelle"]), _csv_safe(y["libelle"]),
+                                n, x["total"], y["total"]])
+    return _csv_response(buf.getvalue(),
+                         _nom_export("croisement", f"{axe_x}-{axe_y}-{forme}", [],
+                                     tronque=tronque))
 
 
 # --- Tableaux croisés 2D (ANA-2) : contingence TOKEN × TOKEN sur deux facettes. Réutilise
@@ -315,7 +568,22 @@ def analyse_croisement(axe_x: str, axe_y: str,
     axe « fan-out » (tag/dimension) fait compter le token dans CHAQUE valeur présente (NULL =
     absence → ligne « (vide) »). Marges = fréquences réelles (les cellules visibles peuvent
     moins sommer à cause du top-N). Cellule → preuves (concordance)."""
-    limit = max(1, min(limit, 50))
+    return _croisement_data(conn, portee, axe_x, axe_y, album, type, pos, lemme, morph,
+                            provenance, auteur, tags, tag_scope, personnage, attributs,
+                            limit, PLAFOND_CROISEMENT)
+
+
+def _croisement_data(conn, portee, axe_x, axe_y, album, type, pos, lemme, morph,
+                     provenance, auteur, tags, tag_scope, personnage, attributs,
+                     limit, plafond):
+    """Cœur du tableau croisé — PARTAGÉ par la route JSON et son export CSV (ANA-7).
+
+    À retenir en le lisant : les MARGES (`x[].total`, `y[].total`) sont calculées sur
+    TOUTES les lignes, puis les axes sont coupés au top-N. Marges réelles, cellules
+    tronquées — c'est voulu à l'écran, qui l'annonce, et c'est le piège d'un CSV en
+    matrice, dont la colonne « Total » ne sommerait alors pas à ses propres cases.
+    """
+    limit = max(1, min(limit, plafond))
     _valider_facette(conn, personnage, attributs)
     jx, ex, cx, px, fx, lx = _axe_croisement(axe_x, "x", tag_scope, conn)
     jy, ey, cy, py, fy, ly = _axe_croisement(axe_y, "y", tag_scope, conn)
@@ -414,6 +682,79 @@ def analyse_accord_inter(conn: sqlite3.Connection = Depends(db),
                  "désaccords : il est réservé à qui écrit sur le corpus, de sorte que "
                  "ceux qui voient la mesure soient ceux qu'elle mesure.")
     return accord_inter.rapport(conn, album_ids=_albums_inscriptibles(conn, portee))
+
+
+@router.get("/api/analyse/accord.csv")
+def analyse_accord_export(conn: sqlite3.Connection = Depends(db),
+                          portee: autorisation.Portee = Depends(portee_courante)):
+    """Export CSV de l'accord modèle↔humain — même cœur que `/api/analyse/accord` (ANA-7).
+
+    Une ligne par champ, comme `tools/rapport_accord.py --csv`, PLUS le modèle et la date
+    de réindexation en colonnes répétées. Sans eux le fichier ne sert pas à ce pour quoi
+    ce rapport existe — comparer `sm` et `lg` sur le même corpus relu : deux fichiers de
+    taux sans le nom du modèle ne se distinguent pas.
+
+    La matrice de confusion POS n'y est pas, comme dans le CLI : c'est un second tableau,
+    de forme différente, et l'entasser sous le premier ferait un fichier qu'aucun des deux
+    lecteurs — tableur ou pandas — ne saurait ouvrir d'une pièce. Elle reste à l'écran.
+
+    Ce rapport NE NOMME PERSONNE : `accord.py` n'a ni `agent` ni `auteur`, c'est ce qui le
+    laisse ouvert en lecture là où son voisin `accord-inter` est réservé.
+    """
+    r = accord.rapport(conn, album_ids=_albums_lisibles(conn, portee))
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator=chr(10))
+    w.writerow(["champ", "revus", "accord", "taux", "modele", "indexe_le"])
+    for ch, c in r["champs"].items():
+        w.writerow([ch, c.get("revus"), c.get("accord"), c.get("taux"),
+                    _csv_safe(r.get("modele") or ""), r.get("indexe_le") or ""])
+    return _csv_response(buf.getvalue(), _nom_export("accord", None, [], tronque=False))
+
+
+@router.get("/api/analyse/accord-inter.csv")
+def analyse_accord_inter_export(conn: sqlite3.Connection = Depends(db),
+                                portee: autorisation.Portee = Depends(portee_courante)):
+    """Export CSV de l'accord INTER-annotateurs — même cœur que sa route JSON (ANA-7).
+
+    **IL NOMME, et c'est une décision datée du 2026-09-08**, prise en connaissance des
+    trois positions que le dépôt tenait déjà : l'écran nomme (réservé à qui écrit), le CLI
+    nomme (« un rapport d'accord se lit pour arbitrer, puis se jette »), le dépôt ne publie
+    que `nb_auteurs` et des taux. Un fichier téléchargé tombait entre le CLI et le dépôt,
+    et AUTH-1 n'avait jamais tranché ce cas. Retenu : nommer, parce que refuser au fichier
+    ce que l'écran donne déjà à la même personne serait une friction sans protection — la
+    capture d'écran reste possible — et parce que ce fichier a UN usage, réunir deux
+    personnes pour arbitrer un désaccord, que des pseudonymes rendraient impraticable.
+
+    Ce qu'on accepte en échange, et qu'il faut avoir en tête : un fichier PERSISTE et
+    circule là où le CLI se lit puis se jette. La garde n'est donc pas dans la forme mais
+    dans l'accès — le 403 ci-dessous est celui de la route JSON, hérité et non réécrit.
+
+    UNE LIGNE PAR CHAMP DIVERGENT, et le taux de la paire en colonnes : c'est le document
+    d'une réunion d'arbitrage, où l'on veut à la fois le cas précis et le contexte qui dit
+    s'il est isolé. Les taux par champ restent à l'écran et dans le CLI.
+    """
+    if not portee.peut_ecrire_quelque_part():
+        raise HTTPException(
+            403, "L'accord inter-annotateurs nomme les annotateurs et cite leurs "
+                 "désaccords : il est réservé à qui écrit sur le corpus, de sorte que "
+                 "ceux qui voient la mesure soient ceux qu'elle mesure.")
+    r = accord_inter.rapport(conn, album_ids=_albums_inscriptibles(conn, portee))
+    taux = {tuple(sorted((p["a"], p["b"]))): p for p in r["paires"]}
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator=chr(10))
+    w.writerow(["citation", "forme", "champ", "de", "valeur_de", "a", "valeur_a",
+                "taux_paire", "retouches_paire"])
+    for d in r["divergences"]:
+        cit = (d.get("citation") or {}).get("texte", "")
+        pr = taux.get(tuple(sorted((d["de"], d["a"]))), {})
+        for df in d["diffs"]:
+            w.writerow([cit, _csv_safe(d.get("forme") or ""), df["champ"],
+                        _csv_safe(d["de"]), _csv_safe(df.get("avant") or ""),
+                        _csv_safe(d["a"]), _csv_safe(df.get("apres") or ""),
+                        pr.get("taux"), pr.get("retouches")])
+    return _csv_response(buf.getvalue(),
+                         _nom_export("accord-inter", None, [],
+                                     tronque=bool(r.get("divergences_tronque"))))
 
 
 @router.get("/api/regions/{region_id}/tokens")
