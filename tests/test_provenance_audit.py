@@ -11,6 +11,8 @@ import os
 import sqlite3
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -19,6 +21,9 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import database  # noqa: E402
 import journal  # noqa: E402
+import main  # noqa: E402
+import pipeline.segmentation as seg  # noqa: E402
+from pipeline import interruption  # noqa: E402
 
 # Utilisateur « connecté » (en-tête d'auth, INFRA-2). Le groupe vient d'AUTH-2 : hugo
 # annote, donc il lui faut le droit d'écrire — sans quoi ces tests ne mesureraient
@@ -486,3 +491,81 @@ def test_les_bornes_de_dates_ne_datent_pas_du_journal_retenu(db_path):
     # Sans le paramètre, le comportement d'avant est intact : les appelants qui ne
     # publient rien (aucun aujourd'hui) ne changent pas de réponse.
     assert j.indicateurs_provenance(conn)["evenements"]["total"] == 2
+
+
+# --------------------------------------------------------------------------- #
+# Le journal ne gardait que ce qui avait marché (2026-09-08)
+# --------------------------------------------------------------------------- #
+def _activites(colonne="comptes"):
+    with database.get_connection() as conn:
+        return conn.execute(
+            f"SELECT id, type, agent, agent_type, {colonne}, date_debut, date_fin "
+            "FROM activite ORDER BY id").fetchall()
+
+
+def test_une_passe_ml_ratee_laisse_une_trace_au_journal_en_route_directe(
+        client, planche, monkeypatch):
+    """Le journal A3 ne gardait QUE ce qui avait marché.
+
+    `passe_ml` clôturait bien l'activité sur `echec: True` — le commentaire disait même
+    « run raté (souvent rollback) » —, mais ce rollback emportait la ligne qu'on venait
+    d'écrire. Mesuré le 2026-09-08 : zéro activité après un échec, une après un succès,
+    en route directe COMME en lot. Une couche dont la raison d'être est de dire qui a
+    produit quoi ne disait rien des runs qui ont raté.
+
+    **La dernière assertion n'est pas cosmétique.** `comptes` SORT de l'instance
+    (`metadonnees_collection`, `provenance_export`) : y verser le message de l'exception
+    enverrait des chemins serveur au dépôt. Ce test verrouille que la trace reste
+    minimale, faute de quoi le correctif rouvrirait ce qu'AUTH-1 a fermé.
+    """
+    monkeypatch.setattr(main, "kumiko_available", lambda: True)
+    monkeypatch.setattr(main, "segment_planche", lambda c, pid, **kw: (_ for _ in ()).throw(
+        seg.KumikoError(r"panne dans C:\Dev\BD_ditor\corpus\album_1\planche_0001.tif")))
+
+    assert client.post(f"/api/planches/{planche['id']}/segmenter").status_code == 500
+
+    lignes = _activites()
+    assert len(lignes) == 1, f"un run raté doit laisser UNE trace, pas {len(lignes)}"
+    a = lignes[0]
+    assert a["type"] == "segmentation" and a["agent"] == "kumiko"
+    assert a["agent_type"] == "moteur"
+    assert a["date_debut"] and a["date_fin"], "un run clos porte ses deux bornes"
+    assert a["date_debut"] <= a["date_fin"]
+    assert json.loads(a["comptes"]) == {"echec": True}, (
+        "`comptes` part au dépôt : la trace d'échec doit rester minimale")
+
+
+def test_une_passe_interrompue_est_journalisee_interrompue_et_non_echouee(
+        client, planche, monkeypatch):
+    """Une annulation n'est pas une panne, et l'append-only ne se corrige pas.
+
+    Cette branche avait été écrite puis RETIRÉE avec CONC-1 : tant que le rollback
+    effaçait la trace, elle était du code que rien ne pouvait rendre vrai. Elle revient
+    avec le correctif qui la rend observable.
+    """
+    monkeypatch.setattr(main, "kumiko_available", lambda: True)
+    entre = threading.Event()
+
+    def seg_longue(c, pid):
+        entre.set()
+        for _ in range(2000):
+            interruption.verifier()
+            time.sleep(0.01)
+    monkeypatch.setattr(seg, "segment_planche", seg_longue)
+
+    jid = client.post("/api/jobs", json={"passes": ["segmenter"],
+                                         "planche_ids": [planche["id"]]}).json()["id"]
+    assert entre.wait(timeout=3), "la passe n'a pas démarré"
+    client.post(f"/api/jobs/{jid}/annuler")
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 3:
+        if client.get(f"/api/jobs/{jid}").json()["status"] != "en_cours":
+            break
+        time.sleep(0.02)
+
+    lignes = _activites()
+    assert len(lignes) == 1, f"un lot annulé doit laisser UNE trace, pas {len(lignes)}"
+    comptes = json.loads(lignes[0]["comptes"])
+    assert comptes == {"interrompu": True}, (
+        "une interruption demandée inscrite comme un échec est un mensonge que "
+        "l'append-only rend définitif")

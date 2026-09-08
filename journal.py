@@ -25,6 +25,8 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Any, Iterator, Optional
 
+from pipeline.interruption import PasseInterrompue
+
 # Identité de l'utilisateur connecté pour la requête courante (None = local / hors requête).
 agent_courant: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "agent_courant", default=None)
@@ -62,6 +64,32 @@ def cloturer_activite(conn: sqlite3.Connection, activite_id: int, *, comptes: An
     """Ferme une activité : horodate la fin + enregistre le bilan `comptes` (dict → JSON)."""
     conn.execute("UPDATE activite SET date_fin = datetime('now'), comptes = ? WHERE id = ?",
                  (_js(comptes), activite_id))
+
+
+def inscrire_run_termine(conn: sqlite3.Connection, type: str, *, agent: Optional[str],
+                         agent_type: str, version: Optional[str], params: Any,
+                         portee: Any, debut: str, comptes: Any) -> int:
+    """Inscrit une activité DÉJÀ CLOSE, et la valide SEULE — après un `rollback`.
+
+    Ouvrir puis clore ne suffit pas quand l'appelant défait la transaction : l'activité
+    part avec les données. Mesuré le 2026-09-08 sur les deux chemins — une passe ML ratée
+    laissait **zéro** ligne dans `activite`, en lot comme en route directe, alors que le
+    succès en laissait une. Le journal ne gardait donc que ce qui avait marché.
+
+    D'où la forme : une seule ligne, complète, insérée APRÈS que les données partielles
+    sont parties, et validée pour elle-même. Une seconde connexion aurait été plus propre
+    en théorie et fausse en pratique — SQLite n'admet qu'un écrivain, elle aurait attendu
+    le verrou que tient justement la transaction qu'on veut défaire.
+
+    `date_debut` est celle de l'ouverture, relue en base pour être au même format et à la
+    même horloge que toutes les autres.
+    """
+    cur = conn.execute(
+        "INSERT INTO activite (type, agent, agent_type, version, params, portee, "
+        "comptes, date_debut, date_fin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+        (type, agent, agent_type, version, _js(params), _js(portee), _js(comptes), debut))
+    conn.commit()
+    return cur.lastrowid
 
 
 def journaliser(conn: sqlite3.Connection, type: str, cible_table: str,
@@ -238,12 +266,39 @@ def passe_ml(conn: sqlite3.Connection, type: str, planche_id: int, *, agent: str
     Rend l'`activite_id` (utile si l'appelant veut journaliser d'autres actes du run)."""
     avant = {r["id"]: r["ocr_texte"] for r in conn.execute(
         "SELECT id, ocr_texte FROM regions WHERE planche_id = ?", (planche_id,))}
+    portee = {"planche_id": planche_id}
     aid = ouvrir_activite(conn, type, agent=agent, agent_type="moteur", version=version,
-                          params=params, portee={"planche_id": planche_id})
+                          params=params, portee=portee)
+    debut = conn.execute(
+        "SELECT date_debut FROM activite WHERE id = ?", (aid,)).fetchone()["date_debut"]
+
+    def _rate(comptes):
+        """Un run qui ne s'est pas terminé : on défait les données, on garde la TRACE.
+
+        Le `rollback` est fait ICI plutôt que laissé à l'appelant, et c'est ce qui change
+        tout : il emportait l'activité que la ligne suivante venait d'écrire. Les deux
+        appelants roulaient déjà en arrière — le worker de lot explicitement, la
+        dépendance `db` sur exception —, et aucun n'a d'écriture en attente en entrant
+        ici. Le leur laisser n'aurait donc rien préservé, et effaçait tout.
+
+        `comptes` reste MINIMAL, et ce n'est pas de la paresse : cette colonne SORT de
+        l'instance (`metadonnees_collection`, `provenance_export`). Y verser le message
+        de l'exception enverrait des chemins serveur au dépôt — exactement ce qu'AUTH-1 a
+        fermé sur `GET /api/export/json`.
+        """
+        conn.rollback()
+        inscrire_run_termine(conn, type, agent=agent, agent_type="moteur", version=version,
+                             params=params, portee=portee, debut=debut, comptes=comptes)
+
     try:
         yield aid
+    except PasseInterrompue:
+        # DEMANDÉE, pas subie. Sans cette branche une annulation entrerait au journal
+        # comme une panne, dans une couche append-only où cela ne se corrige plus.
+        _rate({"interrompu": True})
+        raise
     except Exception:
-        cloturer_activite(conn, aid, comptes={"echec": True})   # run raté (souvent rollback)
+        _rate({"echec": True})
         raise
     else:
         apres = {r["id"]: r["ocr_texte"] for r in conn.execute(

@@ -80,6 +80,24 @@ qui remplit une région donne un `modification`. Les régions machine *remplacé
 re-passe ne donnent pas d'événement individuel (bruit ; le travail humain, lui, est préservé
 par SEG-1) mais sont **comptées** au bilan.
 
+**Un run qui ne se termine pas laisse une trace lui aussi**, et il fallut un correctif pour
+cela (2026-09-08). `passe_ml` clôturait bien l'activité sur `echec` — son commentaire disait
+même « souvent rollback » — mais ce rollback, fait par l'appelant, emportait la ligne qu'on
+venait d'écrire. Mesuré sur les deux chemins : **zéro** activité après une passe ratée, une
+après un succès, en route directe comme en lot. Le journal ne gardait que ce qui avait
+marché, c'est-à-dire exactement ce dont on a le moins besoin pour comprendre un corpus.
+
+`passe_ml` défait donc la transaction LUI-MÊME, puis réinscrit une activité complète et la
+valide seule. Une seconde connexion aurait été plus propre en théorie et fausse en pratique :
+SQLite n'admet qu'un écrivain, elle aurait attendu le verrou que tient justement la
+transaction qu'on veut défaire. Deux bilans : `{"echec": true}` et `{"interrompu": true}` —
+une annulation demandée n'est pas une panne, et l'append-only ne se corrige pas.
+
+Le bilan reste **minimal**, et c'est une contrainte et non un choix d'économie : `comptes`
+SORT de l'instance (`metadonnees_collection`, `provenance_export`). Y verser le message de
+l'exception enverrait des chemins serveur au dépôt — ce qu'AUTH-1 a fermé sur
+`GET /api/export/json`. Un test le verrouille.
+
 **Actes humains** (routes) — événement `creation`/`modification`/`suppression`/`validation`/
 `lien`/`delien` avec **avant/après** : édition de zone (création, retouche, déplacement,
 suppression **profonde**), annotation (note + tags), correction/validation grammaticale,
