@@ -70,6 +70,11 @@ L'album se crée dans la Bibliothèque (ou par le `＋` de la barre latérale de
 votre disque, *🖼 Depuis ShareDocs…* pour parcourir un dossier Huma-Num distant et importer une
 sélection entière. La Bibliothèque gère l'inventaire, pas l'entrée des fichiers.
 
+**Sept formats sont acceptés, et rien d'autre** : TIFF et JPEG — les deux du corpus —, puis
+JPEG 2000, PNG, BMP, GIF et WebP. La liste est courte exprès : elle borne aussi ce que le
+décodeur d'images a le droit d'ouvrir, ce qui ferme une classe de fichiers piégés. Un
+fichier hors liste est refusé sans rien enregistrer ; §6 dit à quoi ressemble le refus.
+
 Chaque image importée est rangée en deux exemplaires : le **master** (le scan haute
 résolution, jamais modifié) et un **dérivé web** allégé, qui est ce que vous voyez à l'écran.
 La résolution et le mode colorimétrique sont lus dans le fichier au passage, ce qui permettra
@@ -345,6 +350,14 @@ L'**import PDF** est annoncé dans le menu mais désactivé : il n'est pas encor
 Lisez le bandeau en haut de page, et **dépliez-le** : il distingue une panne de configuration
 d'un simple manque d'accès, et nomme la personne à qui écrire quand l'instance en a déclaré
 une. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3, et §7 pour la question complète.
+
+**Mon image est refusée à l'import.**
+Son format n'est pas dans les sept acceptés (étape 1). C'est le **contenu** du fichier qui
+décide, pas son extension : renommer un `.psd` en `.tif` ne le fait pas passer, et c'est
+précisément ce que le contrôle empêche. Le message diffère selon la provenance — depuis
+ShareDocs, le refus est immédiat et dit « type non géré (image attendue) » ; depuis votre
+disque, le fichier est lu d'abord et le message commence par « Échec de l'ingestion ». Dans
+les deux cas rien n'a été enregistré : convertissez en TIFF ou en JPEG et réimportez.
 
 **Le bouton `Segmenter` (ou `Bulles`, ou `OCR`) ne fait rien / répond une erreur.**
 Le moteur n'est probablement pas installé. Ouvrez **🩺 Moteurs** dans l'Administration : il
