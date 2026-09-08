@@ -1,10 +1,25 @@
 ---
 chantier: CONC-1
-statut: à venir
+statut: interrompu
 audit: AUDIT.md
 ---
 
 # CONC-1 — cache de crop, purge des jobs, annulation préemptive
+
+**Arrêté sur** — 2026-09-08, `e17556c` : **la zone du registre est CLOSE**, dans l'ordre que
+la lecture du 2026-09-08 avait imposé — `_job_visible` durci d'abord (`838c931`), purge
+ensuite. Restent le verrou de crop, le TTL et l'annulation.
+
+Ce que l'ordre a évité se mesure : la purge fait de « job inconnu » l'état FINAL de tout
+lot, là où c'était un cas rare. Posée d'abord, elle aurait mis en charge une garde qui
+approuvait tout identifiant inconnu — sans rien casser, et sans que rien ne le dise.
+
+**Et les deux mutations ont corrigé les tests avant de valider le code.** Celle qui fait
+purger sans regarder le statut rougissait sur « plafond non tenu : 99 », un motif sans
+rapport avec la propriété qu'elle démentait : l'assertion sur le lot en cours n'était
+jamais atteinte. Réordonnées, celle qui casserait un écran d'abord. Un troisième défaut
+était dans le test lui-même — `start_job` tire son id d'un `_counter` GLOBAL que le test
+n'isolait pas, donc un vert possible par accident.
 
 **Point de départ** — trois défauts de cycle de vie relevés à l'audit, jamais repris :
 verrou de crop trop large, registre de jobs sans purge, annulation non préemptive.
@@ -20,8 +35,8 @@ verrou de crop trop large, registre de jobs sans purge, annulation non préempti
 - [ ] **Le porteur du TTL est tranché par écrit, parce qu'un contrôle paresseux ne répond PAS à la case ci-dessus** : vérifier l'échéance à chaque appel ne ferme rien quand plus personne n'appelle, c'est-à-dire exactement le cas visé. Il faut un fil de fond, donc un objet vivant de plus dans un module qui n'en a aucun — arbitrage, pas implémentation
 
 ### Le registre des jobs
-- [ ] **`_job_visible` distingue « job inconnu » de « job dont toutes les planches sont autorisées », AVANT toute purge.** `main.py` fait `set(jobs.planches_du_job(job_id)) <= autorisees` : pour un identifiant inconnu, `planches_du_job` rend `[]`, l'ensemble vide est inclus dans tout, et la garde répond **True**. Aucune fuite aujourd'hui — les quatre appelants testent l'existence par ailleurs — mais la primitive est permissive et ce sont les ORDRES de vérification qui sauvent
-- [ ] Le registre `_jobs` (`pipeline/jobs.py`) est purgé de ses entrées anciennes, et sa taille ne croît plus indéfiniment. **Dans cet ordre seulement** : la purge fait passer « job inconnu » d'un cas rare — quelqu'un tape un mauvais numéro — à l'état FINAL de tous les jobs
+- [x] **`_job_visible` distingue « job inconnu » de « job dont toutes les planches sont autorisées », AVANT toute purge.** `main.py` fait `set(jobs.planches_du_job(job_id)) <= autorisees` : pour un identifiant inconnu, `planches_du_job` rend `[]`, l'ensemble vide est inclus dans tout, et la garde répond **True**. Aucune fuite aujourd'hui — les quatre appelants testent l'existence par ailleurs — mais la primitive était permissive et ce sont les ORDRES de vérification qui sauvaient. **Fait le 2026-09-08, `838c931`** : `planches_du_job` rend `None` pour un inconnu, et l'existence se teste AVANT la portée — « ce job n'existe pas » n'est pas une question de périmètre. Le comportement observable ne bouge pas d'un octet ; ce qui change, c'est qu'il ne dépend plus d'une coïncidence
+- [x] Le registre `_jobs` (`pipeline/jobs.py`) est purgé de ses entrées anciennes, et sa taille ne croît plus indéfiniment. **Dans cet ordre seulement** : la purge fait passer « job inconnu » d'un cas rare — quelqu'un tape un mauvais numéro — à l'état FINAL de tous les jobs. **Fait le 2026-09-08, `e17556c`** : plafond de `JOBS_CONSERVES = 100` lots TERMINÉS, purge à la création sous `_lock` — seul instant où le registre grandit, donc pas de fil de fond. On borne le NOMBRE et non l'ÂGE, seul des deux à tenir « ne croît plus indéfiniment » : une rafale déborde une purge par ancienneté
 
 ### L'annulation
 - [ ] Annuler un lot interrompt réellement une passe longue en cours, et le sous-processus Kumiko est tué et non laissé orphelin
@@ -76,11 +91,16 @@ mauvais numéro — pour devenir **l'état final de tous les jobs**. Le ressort 
 d'inerte à chargé. D'où la case ajoutée AVANT celle de la purge : durcir `_job_visible`
 d'abord, purger ensuite.
 
-**Aucun code n'a été écrit**, et c'est délibéré : ce chantier touche du verrou et de
-l'autorisation, la suite ne pouvait pas être lancée pendant cette session, et un correctif
-de concurrence qu'aucun test n'a vu rougir ne prouve rien. Ces trois constats sont ce qui
-se mesure sans rien exécuter ; ils changent l'ORDRE du chantier, ce qui était le plus utile
-à établir en premier.
+**Aucun code n'avait été écrit à ce stade**, et c'était délibéré : ce chantier touche du
+verrou et de l'autorisation, la suite ne pouvait pas être lancée à ce moment-là, et un
+correctif de concurrence qu'aucun test n'a vu rougir ne prouve rien. Ces trois constats
+sont ce qui se mesure sans rien exécuter ; ils changent l'ORDRE du chantier, ce qui était
+le plus utile à établir en premier.
+
+**Le code est venu ensuite, le même jour, une fois la suite disponible** — la zone du
+registre dans l'ordre que ces constats imposaient. Ce paragraphe reste ici parce qu'il date
+une méthode et non un état : mesurer d'abord ce qui se mesure sans rien exécuter a produit
+l'ordre, et l'ordre a évité de charger un ressort mal ancré.
 
 ## Contexte
 
