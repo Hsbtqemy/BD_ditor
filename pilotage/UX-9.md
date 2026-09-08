@@ -47,8 +47,10 @@ transporte à qui sait le lire.
       ainsi que sur tout nom d'agent autre que l'auteur du rapport
 
 ### Le geste et sa base
-- [ ] Le bouton est atteignable depuis les quatre surfaces, au clavier, et son libellé dit
-      ce qu'il fait sans jargon — audité par axe comme les autres surfaces
+- [ ] Le bouton est atteignable depuis les CINQ surfaces, au clavier, et son libellé dit
+      ce qu'il fait sans jargon — audité par axe comme les autres surfaces. La cinquième
+      (`/administration`, UX-10) est celle où le besoin est le plus probable : on y arrive
+      quand quelque chose ne va pas
 - [ ] Un dépôt qui échoue (réseau coupé, base verrouillée) le DIT à la personne au lieu de
       disparaître en silence : le 409 de contention SQLite est déjà traité ailleurs, il
       doit l'être ici aussi

@@ -29,9 +29,9 @@ qu'on vient d'écarter.
 - [ ] Une fois UX-11 livré, l'étape 1 du guide distingue les DEUX imports — la Bibliothèque pour constituer en lot, l'Atelier pour la planche ajoutée en cours d'annotation — au lieu de remplacer l'un par l'autre : UX-11 garde explicitement celui de l'Atelier, et un guide qui n'en nommerait qu'un ferait chercher le mauvais
 
 ### Écran « par où commencer »
-- [ ] L'écran s'ouvre au chargement d'une des quatre surfaces tant que « ne plus afficher » n'a pas été coché ; une fois coché, aucun rechargement ne le rouvre (état en `localStorage`, clé préfixée `bd-` comme celles de `static/theme.js`)
+- [ ] L'écran s'ouvre au chargement d'une des cinq surfaces tant que « ne plus afficher » n'a pas été coché ; une fois coché, aucun rechargement ne le rouvre (état en `localStorage`, clé préfixée `bd-` comme celles de `static/theme.js`)
 - [ ] Fermer sans cocher — croix ou Échap — ne vaut pas renoncement : l'écran revient au chargement suivant
-- [ ] Il est rappelable à tout moment depuis la nav transverse, sur les quatre surfaces — donc injecté par `static/theme.js`, pas recopié dans quatre gabarits
+- [ ] Il est rappelable à tout moment depuis la nav transverse, sur les cinq surfaces — donc injecté par `static/theme.js`, pas recopié dans cinq gabarits
 - [ ] Chaque étape mène en un clic à la surface ET à l'outil qu'elle décrit (deep-link, cf. `docs/navigation-round-trip.md`), pas seulement à la page d'accueil de cette surface
 - [ ] Une étape tient en un titre, une phrase et un lien : le détail vit dans le guide, pas dans la carte — aucune n'a besoin d'être dépliée pour être comprise
 - [ ] L'écran est bâti sur `static/lib/dialog.js` — piège à focus, Échap, retour du focus au déclencheur — sans modale réécrite pour l'occasion
@@ -41,7 +41,7 @@ qu'on vient d'écarter.
 - [ ] Les raccourcis `N`/`E`/`A`/`T` et l'ordre des onglets de la Visionneuse sont inchangés : l'écart entre le parcours de la carte et l'ordre de la barre est assumé, pas résorbé en déplaçant un raccourci
 
 ### Guide utilisateur
-- [x] `docs/guide-utilisateur.md` existe et couvre les huit étapes et les quatre surfaces du point de vue de la tâche — « transcrire une bulle », « corriger un lemme » — jamais de l'architecture
+- [x] `docs/guide-utilisateur.md` existe et couvre les huit étapes et les cinq surfaces du point de vue de la tâche — « transcrire une bulle », « corriger un lemme » — jamais de l'architecture
 - [x] Le MODÈLE — hiérarchie, collections, groupes, qui peut quoi, vocabulaire, régimes de diffusion — est écrit et SÉPARÉ du parcours (`docs/modele-et-droits.md`), les deux se renvoyant l'un à l'autre : c'est ce qui permet au guide de rester sur la tâche sans laisser un arrivant sans réponse sur « pourquoi je ne vois rien »
 - [ ] Chaque étape de l'écran renvoie à une section du guide qui existe : aucune ancre morte, vérifié en fin de chantier
 - [x] Le guide traite le cas des moteurs optionnels absents (503 sur la route, mention dans `/api/sante`) au lieu de supposer l'installation complète
@@ -51,7 +51,7 @@ qu'on vient d'écarter.
 - [x] **Les deux documents d'usage décrivent QUATRE surfaces, et il y en a cinq depuis le 2026-09-07** (UX-10 : `/administration`, où 👥 Collections et 🩺 Moteurs ont DÉMÉNAGÉ — la Bibliothèque n'y renvoie plus). Constat déposé ici par la session UX-10, qui n'a pas touché ces fichiers : ils appartiennent à ce chantier, et deux sessions n'écrivent pas dans le même fichier. Neuf emplacements, relevés : `docs/guide-utilisateur.md` — le titre « ## 2. Les quatre surfaces », la mention du panneau 🩺 Moteurs « de la Bibliothèque » en tête, les deux entrées 👥 Collections / 🩺 Moteurs de la liste des panneaux, et le dépannage « Ouvrez 🩺 Moteurs dans la Bibliothèque » ; `docs/modele-et-droits.md` — le tableau « panneau *👥 Collections* de la Bibliothèque », la phrase sur ce que le panneau déclare des groupes admin, le tableau « dans l'application, panneau *👥 Collections* », et le passage sur le genre **groupe**. `README.md` (ligne 10) décrit ce que CONTIENT le guide et suivra. Attendu : plus aucun renvoi vers la Bibliothèque pour ces deux panneaux, et le compte de surfaces juste — fait le 2026-09-07 (`909fe18`), sur DIX emplacements et non neuf : le § 5 de `modele-et-droits.md` disait des descripteurs de diffusion qu'« ils s'affichent dans la Bibliothèque », alors que `static/corpus.js` n'a plus une occurrence d'`embargo` — tout est dans `static/administration.js`. Le relevé nommait les deux panneaux ; l'affichage du régime avait déménagé sans être nommé, et c'est en vérifiant la liste plutôt qu'en la suivant qu'il est apparu
 
 ### Vérifications
-- [ ] `pytest -m e2e` reste sans violation axe sérieuse ou critique sur les quatre surfaces × deux thèmes, **écran ouvert** : l'audit actuel ne voit jamais de modale au chargement
+- [ ] `pytest -m e2e` reste sans violation axe sérieuse ou critique sur les cinq surfaces × deux thèmes, **écran ouvert** : l'audit actuel ne voit jamais de modale au chargement
 - [ ] La suite E2E existante passe sans qu'aucun test n'ait été réécrit pour contourner l'écran : le harnais le neutralise explicitement, en un seul endroit
 - [ ] Aucun petit texte coloré de l'écran n'utilise un accent brut : tokens d'encre AA-sûrs, règle d'accessibilité de `CLAUDE.md`
 - [ ] Sur 375 px de large, la carte des étapes reste lisible et la fermeture atteignable sans défilement horizontal
@@ -61,7 +61,7 @@ qu'on vient d'écarter.
 
 Forme retenue le 2026-08-27 : un **écran « par où commencer »** — une carte des étapes,
 chacune renvoyant par deep-link à sa surface et à son outil. Pas de visite guidée
-surlignant les vrais éléments : elle se couple au DOM des quatre surfaces, or UX-3
+surlignant les vrais éléments : elle se couple au DOM des cinq surfaces, or UX-3
 (hiérarchie des actions) et UX-4 (cohérence inter-surfaces) sont ouverts et vont
 précisément déplacer ces éléments. Une visite écrite maintenant serait à réécrire deux
 fois. L'assistant de mise en route — celui qui *fait* les gestes du premier corpus — a
