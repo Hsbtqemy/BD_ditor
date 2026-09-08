@@ -6,9 +6,16 @@ audit: AUDIT.md
 
 # CONC-1 — cache de crop, purge des jobs, annulation préemptive
 
-**Arrêté sur** — 2026-09-08, `e17556c` : **la zone du registre est CLOSE**, dans l'ordre que
-la lecture du 2026-09-08 avait imposé — `_job_visible` durci d'abord (`838c931`), purge
-ensuite. Restent le verrou de crop, le TTL et l'annulation.
+**Arrêté sur** — 2026-09-08, `7f13d0f` : **la zone du registre et celle du verrou de crop
+sont CLOSES.** Le registre dans l'ordre que la lecture du matin avait imposé —
+`_job_visible` durci d'abord (`838c931`), purge ensuite (`e17556c`) —, puis la coupe du
+verrou. Restent le TTL et l'annulation.
+
+**La mesure a dépassé l'hypothèse, et c'est ce qui justifie la coupe.** Trois régions d'un
+vrai master TIFF, médiane sur cinq passes : ouverture 4-7 %, crop 1,6-2,5 %, resize 19-31 %,
+encodage PNG 59-75 %. 85 à 94 % du temps sortent de la sérialisation — et davantage en
+régime réel, le master étant caché : une navigation bulle-à-bulle ne garde plus sous le
+verrou que le crop, environ 2 %.
 
 Ce que l'ordre a évité se mesure : la purge fait de « job inconnu » l'état FINAL de tout
 lot, là où c'était un cas rare. Posée d'abord, elle aurait mis en charge une garde qui
@@ -27,8 +34,8 @@ verrou de crop trop large, registre de jobs sans purge, annulation non préempti
 ## Reste
 
 ### Le verrou de crop
-- [ ] **Le resize LANCZOS et l'encodage PNG sortent du verrou `_crop_lock`** (`pipeline/ocr.py`), qui enveloppe aujourd'hui tout le corps de `region_crop_png` — ouverture du master par `_open_image`, crop, resize, encodage —, tout sérialisé. **L'attendu d'origine disait « ne couvre plus que la manipulation du dictionnaire de cache » : il est FAUX, et l'appliquer casserait quelque chose** — voir la section datée ci-dessous. `_open_image` et le `crop` restent dedans ; ce qui sort, ce sont les deux étapes qui travaillent sur un objet neuf et local au thread
-- [ ] Le gain est MESURÉ et non supposé : l'encodage PNG d'un crop de 1600 px est la part la plus chère de l'appel, et c'est ce qui justifie la coupe. Sans mesure, on aura déplacé une accolade
+- [x] **Le resize LANCZOS et l'encodage PNG sortent du verrou `_crop_lock`** (`pipeline/ocr.py`), qui enveloppe aujourd'hui tout le corps de `region_crop_png` — ouverture du master par `_open_image`, crop, resize, encodage —, tout sérialisé. **L'attendu d'origine disait « ne couvre plus que la manipulation du dictionnaire de cache » : il est FAUX, et l'appliquer casserait quelque chose** — voir la section datée ci-dessous. `_open_image` et le `crop` restent dedans ; ce qui sort, ce sont les deux étapes qui travaillent sur un objet neuf et local au thread. **Fait le 2026-09-08, `7f13d0f`** — et `crop.load()` sous le verrou EST la sûreté de la sortie : Pillow est paresseux, un crop non matérialisé relirait l'image partagée après qu'un autre thread l'a fermée. Les versions récentes matérialisent déjà ; s'en remettre à cela ferait reposer une propriété de sûreté sur un accident
+- [x] Le gain est MESURÉ et non supposé : l'encodage PNG d'un crop de 1600 px est la part la plus chère de l'appel, et c'est ce qui justifie la coupe. Sans mesure, on aura déplacé une accolade. **Mesuré le 2026-09-08** : resize 19-31 %, PNG 59-75 %, soit 85 à 94 % qui sortent. L'hypothèse de la case — « l'encodage est la part la plus chère » — était juste, et le resize à lui seul pesait déjà plus que l'ouverture et le crop réunis
 
 ### Le master résident
 - [ ] Un TTL ferme le master gardé ouvert dans `_crop_cache` (`pipeline/ocr.py`), qui n'est fermé aujourd'hui qu'à l'ouverture d'une AUTRE planche — un master de 50 Mo reste donc résident indéfiniment
