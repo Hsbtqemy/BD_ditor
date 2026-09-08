@@ -1,17 +1,25 @@
 ---
 chantier: CONC-1
-statut: interrompu
+statut: livré
 audit: AUDIT.md
 ---
 
 # CONC-1 — cache de crop, purge des jobs, annulation préemptive
 
-**Arrêté sur** — 2026-09-08, `dfcc456` : **trois zones sur quatre sont CLOSES.** Le
+**Arrêté sur** — 2026-09-08, `407cf95` : **les quatre zones sont CLOSES.** Le
 registre dans l'ordre que la lecture du matin avait imposé — `_job_visible` durci d'abord
 (`838c931`), purge ensuite (`e17556c`) —, puis la coupe du verrou (`7f13d0f`), puis le TTL
-(`dfcc456`). Une passe de revue est repassée sur les trois premiers correctifs et y a
-trouvé quatre choses, dont un DÉFAUT que la purge avait ouvert (`fc406b0`) : voir la
-section datée en bas. **Reste l'annulation, et elle seule.**
+(`dfcc456`), puis l'annulation préemptive (`407cf95`). Une passe de revue est repassée sur
+les trois premiers correctifs et y a trouvé quatre choses, dont un DÉFAUT que la purge
+avait ouvert (`fc406b0`) : voir les sections datées en bas.
+
+**Trois constats d'audit jamais repris, fermés en un jour — et le chiffre qui compte est
+ailleurs : sur cinq cases d'origine, TROIS étaient fausses ou trompeuses**, chacune
+démentie par la lecture ou la mesure avant qu'une ligne soit écrite. « Le verrou ne couvre
+plus que le dictionnaire » aurait produit un accès après fermeture ; « il faut un fil de
+fond » pour le TTL, alors qu'une minuterie éphémère suffit ; « le sous-processus Kumiko
+n'est pas tué », alors que la stdlib le tuait déjà. Un audit vieillit moins dans son fond
+que dans ses ATTENDUS.
 
 **Le TTL a coûté une mesure et un arbitrage, dans cet ordre — et la mesure a failli
 dissoudre l'arbitrage.** Sur un master réel de 53 Mo : le décoder coûte 39 ms, le garder
@@ -59,8 +67,9 @@ verrou de crop trop large, registre de jobs sans purge, annulation non préempti
 - [x] **La revue d'après-coup a trouvé ce que la purge avait ouvert dans `all_jobs`, et ce n'était dans aucun énoncé.** L'énumération lisait `_jobs` sans verrou — liste des identifiants, puis instantané un par un. Sûr tant que le registre ne faisait que GRANDIR ; le RETRAIT rend possible un identifiant listé, purgé, puis interrogé, dont `snapshot` rend `None` — `GET /api/jobs` fait `s["id"]` dessus et répond 500. La Bibliothèque interroge cette route chaque seconde pendant un lot, et c'est le lancement d'un autre lot, depuis le même écran, qui purge ; le poll avale ses erreurs, donc la progression se figerait sans un mot. **Fait le 2026-09-08, `fc406b0`** : `all_jobs` prend `_lock`, celui-là même sous lequel la purge retire — impossible plutôt que rattrapé. Les six autres accès au registre ont été revus un par un, tous déjà sûrs
 
 ### L'annulation
-- [ ] Annuler un lot interrompt réellement une passe longue en cours, et le sous-processus Kumiko est tué et non laissé orphelin
-- [ ] Un test couvre l'annulation d'un job long sans laisser de processus résiduel
+- [x] Annuler un lot interrompt réellement une passe longue en cours, et le sous-processus Kumiko est tué et non laissé orphelin. **Fait le 2026-09-08, `407cf95`** : un interrupteur PAR FIL (`pipeline/interruption.py`), consulté par `run_kumiko` entre deux tranches d'attente et par l'OCR entre deux régions. Le délai entre le clic et l'arrêt tombe de 300 s à une demi-seconde. **La seconde moitié de la case était fausse** : mesuré, `subprocess.run(timeout=…)` tue déjà l'enfant dans ses deux clauses `except` — l'orphelin n'existait pas, et c'est le passage à `Popen` qui en prend la charge
+- [x] Un test couvre l'annulation d'un job long sans laisser de processus résiduel. **Fait le 2026-09-08, `407cf95`** : un VRAI sous-processus, et le test ne demande à aucun outil système s'il vit — il regarde s'il TRAVAILLE encore, seule forme portable entre Windows et l'image Linux. Il garde une propriété que le correctif pouvait DÉTRUIRE, pas une qu'il apporte
+- [x] **L'interrupteur passe par le FIL et non par les signatures.** Case ajoutée : le choix se mesure, il ne se devine pas. Neuf doublures de test remplacent `segment_planche` par un `lambda c, pid` — un paramètre de plus les cassait toutes, pour rendre visible dans quatre signatures une chose qui n'intéresse qu'un appelant. C'est aussi l'idiome du dépôt pour l'agent courant du journal
 
 ## Ce que la lecture du code a trouvé, avant d'y toucher — 2026-09-08
 
@@ -121,6 +130,32 @@ le plus utile à établir en premier.
 registre dans l'ordre que ces constats imposaient. Ce paragraphe reste ici parce qu'il date
 une méthode et non un état : mesurer d'abord ce qui se mesure sans rien exécuter a produit
 l'ordre, et l'ordre a évité de charger un ressort mal ancré.
+
+## L'annulation, et le défaut qu'elle a révélé AILLEURS — 2026-09-08
+
+**Le `finally` de `run_kumiko` est le cœur du correctif, et il ne corrige rien** : il
+RESTITUE. `subprocess.run` tuait l'enfant gratuitement ; `Popen`, qu'il fallait pour
+devenir interruptible, laisse cette charge à l'appelant. Sans ces trois lignes, ce commit
+créerait l'orphelin que la case lui demandait de fermer. C'est le troisième cas du
+chantier où l'énoncé d'une case décrivait un défaut absent — et le seul où le suivre à la
+lettre aurait quand même produit le bon code, par accident.
+
+**Deux défauts trouvés par les tests, toujours.** Le `finally` appelait `communicate()`
+sans délai : sur un enfant qui ne répond pas, son exception REMPLAÇAIT celle qui sortait du
+`try`, et un dépassement de délai devenait un `TimeoutExpired` nu. Et la doublure du test
+de délai cédait après ses 10 000 tranches, plus vite que l'échéance qu'elle devait laisser
+expirer — un test qui ne mesurait pas ce qu'il croyait.
+
+**Ce qui est SIGNALÉ et non traité, parce qu'il est plus large que ce chantier.**
+`journal.passe_ml` clôt toute exception sur `echec: True`, et une passe interrompue y
+entrerait comme une panne — dans une couche append-only, donc incorrigeable. La branche
+`interrompu` a été écrite puis RETIRÉE, et la mesure explique pourquoi : aujourd'hui une
+passe RATÉE ne laisse **aucune** trace au journal — lot en erreur, table `activite` vide —,
+le `rollback` du worker effaçant l'enregistrement qui la décrit. Une branche `interrompu`
+y serait du code que rien ne peut rendre vrai. Le défaut est antérieur, il touche la couche
+dont la raison d'être est de dire qui a produit quoi, et il appelle une décision sur la
+frontière transactionnelle entre provenance et données. Pas de fiche : le code de chantier
+reste à choisir.
 
 ## Le TTL, et ce que le test a trouvé dans le correctif — 2026-09-08
 
