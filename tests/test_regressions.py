@@ -1386,3 +1386,60 @@ def test_le_registre_des_lots_ne_croit_plus_indefiniment(monkeypatch):
     assert neuf in jobs._jobs, "le lot qu'on vient de lancer a été purgé"
     assert 2 not in jobs._jobs and 50 not in jobs._jobs, "les PLUS ANCIENS doivent partir"
     assert 150 in jobs._jobs, "et les plus récents rester — purger au hasard tiendrait le plafond aussi"
+
+
+def test_l_enumeration_des_lots_ne_peut_plus_croiser_une_purge(monkeypatch):
+    """CONC-1 — la purge a ouvert un mode de panne que le registre sans retrait n'avait pas.
+
+    `all_jobs` listait les identifiants puis demandait leur instantané un par un, sans
+    verrou. Un lot purgé entre les deux rend `snapshot(...) is None`, et `GET /api/jobs`
+    déréférence `s["id"]` dessus : 500. La Bibliothèque interroge cette route chaque
+    seconde pendant un lot, et c'est le lancement d'un AUTRE lot, depuis le même écran,
+    qui purge — le poll avale ses erreurs, donc la progression se figerait sans un mot.
+
+    **Les DEUX assertions font l'argument, et aucune ne suffit.** Le retrait concurrent
+    n'est impossible que si les deux côtés tiennent LE MÊME verrou : l'énumération ici,
+    la purge dans `start_job`. Vérifier un seul côté laisserait passer la mutation qui
+    déverrouille l'autre.
+
+    Elles portent sur le MÉCANISME, faute de mieux et non par facilité : un fil qui
+    purgerait pendant l'énumération se bloque désormais sur `_lock`, si bien qu'un test
+    de la propriété — « aucune entrée nulle » — passerait au vert dans un registre
+    monofil quoi qu'on fasse au code. Une assertion increvable ne vaut pas mieux que pas
+    d'assertion du tout.
+    """
+    from pipeline import jobs
+
+    monkeypatch.setattr(jobs, "_run", lambda job_id: None)   # pas de worker : on teste le registre
+    monkeypatch.setattr(jobs, "_jobs", {})
+    monkeypatch.setattr(jobs, "_counter", 10_000)
+
+    vu = {"enumeration": [], "purge": None}
+
+    snapshot_reel, purge_reelle = jobs.snapshot, jobs._purger_registre
+
+    def snapshot_espion(jid):
+        vu["enumeration"].append(jobs._lock.locked())
+        return snapshot_reel(jid)
+
+    def purge_espionne():
+        vu["purge"] = jobs._lock.locked()
+        return purge_reelle()
+
+    monkeypatch.setattr(jobs, "snapshot", snapshot_espion)
+    monkeypatch.setattr(jobs, "_purger_registre", purge_espionne)
+
+    for i in range(1, 4):
+        jobs._jobs[i] = {"id": i, "passes": ["ocr"], "planche_ids": [i], "total": 1,
+                         "done": 1, "current": None, "errors": [], "status": "termine",
+                         "cancel": False}
+    jobs.start_job(["ocr"], [42])
+    vu["enumeration"].clear()        # `start_job` finit par un snapshot, HORS verrou et à raison
+
+    assert jobs.all_jobs(), "l'énumération doit rendre les lots, pas seulement tenir un verrou"
+    assert vu["purge"] is True, (
+        "la purge RETIRE du registre : elle doit tenir `_lock`, sans quoi le verrou pris "
+        "à l'énumération ne protège de rien")
+    assert vu["enumeration"] and all(vu["enumeration"]), (
+        "l'énumération lit le registre entrée par entrée : sans `_lock`, une purge "
+        "concurrente lui fait rendre un `None` que `GET /api/jobs` déréférence")

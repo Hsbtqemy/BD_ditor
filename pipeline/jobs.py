@@ -142,7 +142,28 @@ def snapshot(job_id: int):
 
 
 def all_jobs() -> list:
-    return [snapshot(jid) for jid in sorted(_jobs, reverse=True)]
+    """Instantané de tous les lots, du plus récent au plus ancien.
+
+    **Sous `_lock`, et c'est la purge qui l'a rendu nécessaire** (CONC-1). Cette fonction
+    lisait le registre sans verrou : elle en tirait la liste des identifiants, puis
+    demandait leur instantané un par un. Tant que `_jobs` ne faisait que GRANDIR, seule
+    l'insertion pouvait s'y glisser — un `RuntimeError: dictionary changed size during
+    iteration`, déjà possible et jamais vu. La purge y ajoute le RETRAIT, et avec lui un
+    mode de panne neuf : un identifiant listé, purgé, puis interrogé, dont `snapshot`
+    rend `None`. `GET /api/jobs` fait alors `s["id"]` dessus et répond 500.
+
+    Ce n'est pas une course d'école. La Bibliothèque interroge cette route CHAQUE SECONDE
+    pendant un lot, et c'est le lancement d'un autre lot — depuis le même écran — qui
+    purge. Le poll avale ses erreurs (`catch { return; }`) : rien ne s'afficherait, la
+    progression se figerait sans un mot.
+
+    `_purger_registre` n'est appelée que par `start_job`, sous CE verrou. Le tenir ici
+    rend le retrait concurrent IMPOSSIBLE plutôt que rattrapé — filtrer les `None` en
+    plus serait du code que rien ne peut faire rougir. Corollaire pour la suite :
+    `snapshot` ne prend pas `_lock`, et le lui faire prendre suffirait à bloquer ici.
+    """
+    with _lock:
+        return [snapshot(jid) for jid in sorted(_jobs, reverse=True)]
 
 
 def planches_du_job(job_id: int) -> list | None:

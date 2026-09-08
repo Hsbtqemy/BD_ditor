@@ -1221,7 +1221,7 @@ def test_accord_inter_ne_porte_que_sur_ce_qu_on_ecrit(client, db_path, deux_albu
 
 
 def test_un_lot_purge_n_est_visible_de_personne(client, db_path, deux_albums,
-                                                derriere_proxy):
+                                                derriere_proxy, monkeypatch):
     """CONC-1 — la purge fait de « job inconnu » l'état FINAL de tout lot.
 
     C'est la raison de l'ordre imposé par la fiche : avant le durcissement de
@@ -1232,6 +1232,11 @@ def test_un_lot_purge_n_est_visible_de_personne(client, db_path, deux_albums,
     """
     import pipeline.jobs as jobs_mod
     from conftest import ADMIN
+
+    # Registre de travail, restauré par `monkeypatch` quoi qu'il arrive : le `del`
+    # ci-dessous est le chemin NOMINAL, et une assertion qui échoue avant lui laisserait
+    # 4242 derrière elle. Un test qui pollue le suivant fait échouer un innocent.
+    monkeypatch.setattr(jobs_mod, "_jobs", dict(jobs_mod._jobs))
 
     jobs_mod._jobs[4242] = {"id": 4242, "passes": ["ocr"],
                             "planche_ids": [deux_albums["pl1"]["id"]],
