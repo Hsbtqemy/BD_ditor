@@ -6,12 +6,20 @@ audit: AUDIT.md
 
 # CONC-1 — cache de crop, purge des jobs, annulation préemptive
 
-**Arrêté sur** — 2026-09-08, `a163761` : **la zone du registre et celle du verrou de crop
-sont CLOSES, et une passe de revue est repassée dessus après coup.** Le registre dans
-l'ordre que la lecture du matin avait imposé — `_job_visible` durci d'abord (`838c931`),
-purge ensuite (`e17556c`) —, puis la coupe du verrou (`7f13d0f`). La revue a trouvé quatre
-choses dans ces trois correctifs, dont un DÉFAUT que la purge avait ouvert (`fc406b0`) :
-voir la section datée en bas. Restent le TTL et l'annulation.
+**Arrêté sur** — 2026-09-08, `dfcc456` : **trois zones sur quatre sont CLOSES.** Le
+registre dans l'ordre que la lecture du matin avait imposé — `_job_visible` durci d'abord
+(`838c931`), purge ensuite (`e17556c`) —, puis la coupe du verrou (`7f13d0f`), puis le TTL
+(`dfcc456`). Une passe de revue est repassée sur les trois premiers correctifs et y a
+trouvé quatre choses, dont un DÉFAUT que la purge avait ouvert (`fc406b0`) : voir la
+section datée en bas. **Reste l'annulation, et elle seule.**
+
+**Le TTL a coûté une mesure et un arbitrage, dans cet ordre — et la mesure a failli
+dissoudre l'arbitrage.** Sur un master réel de 53 Mo : le décoder coûte 39 ms, le garder
+coûte 53 Mo. Le cache achète donc 39 ms au prix d'une résidence permanente, sur une
+requête dont la réponse pèse 593 Ko. Supprimer le cache aurait tout dissous — plus de TTL,
+plus de verrou, plus de résidence — et c'est la mesure qui l'écarte : le cache BORNE aussi
+la mémoire, et sans lui N requêtes simultanées décodent N masters. Une pointe transitoire
+vaut pire qu'une résidence sur un petit VPS.
 
 **La mesure a dépassé l'hypothèse, et c'est ce qui justifie la coupe.** Trois régions d'un
 vrai master TIFF, médiane sur cinq passes : ouverture 4-7 %, crop 1,6-2,5 %, resize 19-31 %,
@@ -40,8 +48,9 @@ verrou de crop trop large, registre de jobs sans purge, annulation non préempti
 - [x] Le gain est MESURÉ et non supposé : l'encodage PNG d'un crop de 1600 px est la part la plus chère de l'appel, et c'est ce qui justifie la coupe. Sans mesure, on aura déplacé une accolade. **Mesuré le 2026-09-08** : resize 19-31 %, PNG 59-75 %, soit 85 à 94 % qui sortent. L'hypothèse de la case — « l'encodage est la part la plus chère » — était juste, et le resize à lui seul pesait déjà plus que l'ouverture et le crop réunis
 
 ### Le master résident
-- [ ] Un TTL ferme le master gardé ouvert dans `_crop_cache` (`pipeline/ocr.py`), qui n'est fermé aujourd'hui qu'à l'ouverture d'une AUTRE planche — un master de 50 Mo reste donc résident indéfiniment
-- [ ] **Le porteur du TTL est tranché par écrit, parce qu'un contrôle paresseux ne répond PAS à la case ci-dessus** : vérifier l'échéance à chaque appel ne ferme rien quand plus personne n'appelle, c'est-à-dire exactement le cas visé. Il faut un fil de fond, donc un objet vivant de plus dans un module qui n'en a aucun — arbitrage, pas implémentation
+- [x] Un TTL ferme le master gardé ouvert dans `_crop_cache` (`pipeline/ocr.py`), qui n'est fermé aujourd'hui qu'à l'ouverture d'une AUTRE planche — un master de 50 Mo reste donc résident indéfiniment. **Fait le 2026-09-08, `dfcc456`** : `TTL_MASTER_CROP` (120 s, `config.py`, `BD_TTL_MASTER_CROP=0` pour désarmer). Le délai peut être COURT précisément parce que le défaut de cache est bon marché — 39 ms mesurées : la même mesure qui rend la résidence chère rend son échéance sans risque
+- [x] **Le porteur du TTL est tranché par écrit, parce qu'un contrôle paresseux ne répond PAS à la case ci-dessus** : vérifier l'échéance à chaque appel ne ferme rien quand plus personne n'appelle, c'est-à-dire exactement le cas visé. Il faut un fil de fond, donc un objet vivant de plus dans un module qui n'en a aucun — arbitrage, pas implémentation. **Tranché le 2026-09-08 : une MINUTERIE D'INACTIVITÉ, et le raisonnement de la case tenait à un détail près.** Un `threading.Timer` réarmé n'existe QUE tant que le cache tient quelque chose — armé au premier crop, il meurt avec l'image qu'il ferme, et le module n'a aucun objet vivant quand le cache est vide. C'est le fil de fond sans sa permanence, et la case avait raison de refuser le contrôle paresseux
+- [x] **La minuterie se réarme quand elle se réveille trop tôt.** Case ajoutée APRÈS coup, parce que le premier jet ne le faisait pas et que le test l'a attrapé au premier lancement : `Event.wait()` rend la main un cheveu avant l'heure, le fil mourait sans successeur, et seul un changement de planche pouvait encore fermer le master — l'état exact qu'on voulait quitter. Un correctif de fuite qui ne fuit plus qu'une fois sur deux, et rien ne l'aurait dit
 
 ### Le registre des jobs
 - [x] **`_job_visible` distingue « job inconnu » de « job dont toutes les planches sont autorisées », AVANT toute purge.** `main.py` fait `set(jobs.planches_du_job(job_id)) <= autorisees` : pour un identifiant inconnu, `planches_du_job` rend `[]`, l'ensemble vide est inclus dans tout, et la garde répond **True**. Aucune fuite aujourd'hui — les quatre appelants testent l'existence par ailleurs — mais la primitive était permissive et ce sont les ORDRES de vérification qui sauvaient. **Fait le 2026-09-08, `838c931`** : `planches_du_job` rend `None` pour un inconnu, et l'existence se teste AVANT la portée — « ce job n'existe pas » n'est pas une question de périmètre. Le comportement observable ne bouge pas d'un octet ; ce qui change, c'est qu'il ne dépend plus d'une coïncidence
@@ -112,6 +121,33 @@ le plus utile à établir en premier.
 registre dans l'ordre que ces constats imposaient. Ce paragraphe reste ici parce qu'il date
 une méthode et non un état : mesurer d'abord ce qui se mesure sans rien exécuter a produit
 l'ordre, et l'ordre a évité de charger un ressort mal ancré.
+
+## Le TTL, et ce que le test a trouvé dans le correctif — 2026-09-08
+
+**Deux défauts, et le premier était dans le correctif lui-même.** Écrite avec un simple
+`return` quand l'échéance n'est pas atteinte, la minuterie laissait le master résident pour
+de bon dès qu'elle se réveillait avant l'heure. Elle se réarme désormais sur le temps qui
+RESTE. C'est le deuxième défaut de concurrence introduit par un correctif de concurrence
+dans ce chantier — après la course sur `all_jobs`. Le rapprochement vaut d'être écrit : les
+deux étaient invisibles à la lecture et visibles à l'exécution.
+
+**Le second était dans le TEST**, et il est de la famille qui inquiète le plus. Mon
+assertion sur le réarmement voyait la minuterie armée par le CROP, pas un réarmement : la
+mutation qui supprime le réarmement passait au vert. Une assertion increvable ne vaut pas
+mieux que pas d'assertion, et celle-ci prétendait garder la ligne qui venait de manquer.
+Le test efface la minuterie avant d'appeler son corps, ce qui reconstitue l'état du réveil
+anticipé — le seul où le réarmement porte quelque chose.
+
+Quatre mutations tiennent la zone : minuterie jamais armée · contrôle d'âge supprimé (elle
+fermerait une image qui vient de servir — la course que `Timer.cancel()` ne rattrape pas,
+une minuterie DÉJÀ partie ne s'annule plus) · réarmement supprimé · porte de sortie à TTL
+nul ignorée.
+
+**Et `crop.load()`, posé le matin même sous le verrou, est devenu load-bearing** : la
+minuterie ferme le master de façon ASYNCHRONE, si bien qu'un crop non matérialisé relirait
+une image fermée par un fil qui n'existait pas quand cette ligne a été écrite. Elle avait
+été écrite pour ne pas faire reposer une propriété de sûreté sur un accident
+d'implémentation ; elle protège aujourd'hui d'une cause qui n'existait pas encore.
 
 ## Ce que la passe de revue a trouvé dans ces trois correctifs — 2026-09-08
 
