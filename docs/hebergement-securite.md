@@ -81,12 +81,16 @@ voler — il dépend d'INFRA-1.
 
 ### Points confirmés SAINS (ne pas sur-corriger)
 - **Pas d'injection SQL** : recherche FTS5 avec tokens échappés + `MATCH` paramétré
-  (`main.py:783-787`) ; ailleurs, valeurs liées et noms de colonnes statiques.
+  (`_recherche_rows`, `routes/recherche.py`) ; ailleurs, valeurs liées et noms de
+  colonnes statiques.
 - **Pas de traversée de chemin** : fichiers nommés `planche_{numero:04d}`, seul le
-  suffixe vient du client et ne peut contenir de `/` (`pipeline/ingest.py:153-157`) ;
-  `_rel_posix` via `relative_to(DATA_DIR)`.
-- Course écriture→lecture déjà traitée (commit explicite, `main.py:51-57`).
-- Préservation du travail humain à la re-détection (CTE `doomed`, `bulles.py:107-122`).
+  suffixe vient du client et ne peut contenir de `/` (`store_upload`,
+  `pipeline/ingest.py`) ; `_rel_posix` via `relative_to(DATA_DIR)`.
+- Course écriture→lecture déjà traitée : le commit est explicite dans chaque route
+  d'écriture et non après le `yield` de la dépendance `db` (`socle.py`), dont le code
+  post-`yield` s'exécuterait APRÈS l'envoi de la réponse.
+- Préservation du travail humain à la re-détection (CTE `doomed`, dans `detect_bulles`,
+  `pipeline/bulles.py`).
 
 ## 3. Capacités VPS recommandées
 

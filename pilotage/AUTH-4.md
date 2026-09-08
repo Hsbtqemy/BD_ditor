@@ -83,8 +83,9 @@ vérification : le glissement se ferait sans qu'on le décide.
 un administrateur et un propriétaire, dans les deux sens : le badge de l'écran Collections
 affiche « Administrateur » et jamais « Propriétaire », parce que « le dire à un
 administrateur lui ferait croire à un lien personnel avec une collection qui n'est pas la
-sienne » (`static/corpus.js:690`) ; un administrateur qui crée une collection n'en devient
-pas propriétaire (`routes/collections.py:179`) ; et la garde du dernier propriétaire porte sur l'ÉTAT
+sienne » (`static/administration.js` — le panneau des accès a suivi UX-10 vers la
+cinquième surface, il ne vit plus dans `corpus.js`) ; un administrateur qui crée une
+collection n'en devient pas propriétaire (`create_collection`, `routes/collections.py`) ; et la garde du dernier propriétaire porte sur l'ÉTAT
 et non sur l'acteur, si bien qu'un administrateur ne peut pas évincer un propriétaire d'un
 seul geste — il doit d'abord en désigner un autre, ce qui laisse deux événements
 `lien`/`delien` au journal. AUTH-4 continue cette ligne : il ne crée pas la distinction,

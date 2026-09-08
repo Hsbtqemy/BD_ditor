@@ -64,7 +64,7 @@ Aucun commit de code : le chantier reste `interrompu` là où il l'était.
 > attendent une réponse institutionnelle, pas du code. Elles ont seulement cessé d'attendre
 > que quelqu'un pense à les poser. C'est ce qui fait passer AUTH-1 en `différé`.
 - [ ] Le sort des données personnelles d'annotateurs (`utilisateur.nom`, `utilisateur.email`) est tranché et écrit : combien de temps on les garde, ce qu'on en fait, comment on efface quelqu'un qui quitte l'équipe
-- [ ] La conséquence sur les sauvegardes est traitée : `VACUUM INTO` (`pipeline/backup.py:28`) emporte la base ENTIÈRE, donc ces emails, et `pipeline/sharedocs.py` sait déposer ce zip sur ShareDocs — donc hors de la machine
+- [ ] La conséquence sur les sauvegardes est traitée : `VACUUM INTO` (`make_backup`, `pipeline/backup.py`) emporte la base ENTIÈRE, donc ces emails, et `pipeline/sharedocs.py` sait déposer ce zip sur ShareDocs — donc hors de la machine
 > **Ce que le 2026-08-28 a changé, sans refermer la case.** DROIT-1 a réservé les deux
 > routes de sauvegarde aux ADMINISTRATEURS : l'audience se réduit, la question reste
 > entière — combien de temps garde-t-on ces emails, comment efface-t-on quelqu'un. SHARE-1

@@ -59,7 +59,7 @@ Ce n'est pas une déclaration périmée : c'est le décor qui a disparu. Le semi
 insère une ligne dans `token_correction` par SQL direct, avec le login sentinelle en
 `auteur`. Mais la vue `tokens_effectifs` — le read model canonique de toutes les surfaces
 d'analyse — est construite `FROM tokens t LEFT JOIN token_correction c`
-(`database.py:498`). Elle part donc des tokens AUTO, que seul spaCy produit. Sans moteur,
+(`_VIEWS_SQL`, `database.py`). Elle part donc des tokens AUTO, que seul spaCy produit. Sans moteur,
 `tokens` est vide, la correction semée n'a pas de ligne de base à rejoindre, la route
 n'émet plus rien, et le cliquet conclut que la déclaration mentait.
 
