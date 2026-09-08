@@ -105,6 +105,7 @@ gardes : le silence se lit comme une approbation.
 ### Le premier déploiement automatique, regardé
 - [x] Un `git push origin dev:main` sans migration déclenche le déploiement dans les cinq minutes, et l'instance SERT le nouveau commit — 2026-09-07 : poussé à 19:31:17, tir à 19:32, `DÉPLOYÉ a5a9f6e → 889e23f` à 19:38:20, sans qu'une main touche le VPS. Vérifié sur l'étiquette comme la case l'exigeait : `docker inspect` rend `889e23f86adf4ddbe84a234019971c5fdb955a5d`, et non sur l'absence d'erreur
 - [x] La suite dans l'image a bien tourné pendant ce déploiement automatique — regardée défiler dans `journalctl -f`, de 19:32 à 19:38, cliquet AUTH-2 compris (`118/125 routes cloisonnées`, même inventaire qu'en local : l'aplatissement des routes se comporte pareil dans l'image, ce qu'ARCH-2 avait vu se taire)
+- [x] **Le panneau 🏷️ Version servie a servi à constater un déploiement RÉEL, et pas seulement à exister** — 2026-09-08 : 31 commits poussés à 16:02, le panneau annonce `b717a6d…6417`, c'est-à-dire la tête de `origin/main`. C'est sa première utilisation en situation ; le déploiement du 2026-09-07 avait été constaté par `docker inspect` SUR le VPS, donc par le canal que ce panneau existe précisément pour remplacer. La chaîne entière est vérifiée depuis un poste de travail : push → tir du timer → image construite avec `BD_COMMIT` → processus servant ce commit
 - [ ] Un REFUS se voit : pousser une migration de schéma et constater que `systemctl status bd-deploiement.service` est `failed`, avec le message qui nomme les deux versions
 
 ### Ce que ce mécanisme rend plus probable
@@ -159,6 +160,31 @@ arbre sale. La veille se serait bloquée elle-même au deuxième passage.
 de déploiement. L'intervalle qui existait — on avançait `main`, puis on décidait d'aller
 lancer le script — disparaît, et avec lui la dernière occasion de se raviser. Le recours
 est d'arrêter le timer, pas de courir après.
+
+## Ce que la vérification EXTERNE ne peut pas dire — 2026-09-08
+
+Mesuré depuis un poste sans identifiants, après le push de 31 commits. Les trois URL —
+`/`, `/api/sante`, `/api/version` — rendent **302 vers `auth.edito-revue.fr`**, avec le
+`rd=` attendu. DNS, TLS, reverse proxy et forward-auth sont donc debout.
+
+**Et cela ne dit RIEN de l'application.** Le forward-auth intercepte AVANT de transmettre :
+une requête non authentifiée ne touche jamais le backend, si bien qu'un conteneur mort
+rendrait exactement le même 302. Ce n'est pas un trou de la vérification, c'est la
+conception — `access_control` pose `default_policy: 'deny'` et **aucune règle de
+contournement**, pas même pour une sonde. `/api/sante` répond bien sans identité, mais elle
+est appelée depuis l'INTÉRIEUR du conteneur.
+
+Cela ajoute un second angle mort à celui que la case « l'AUTRE BOUT » décrit déjà. Celle-ci
+dit que l'application ignore `origin/main` ; celui-là dit que **personne, du dehors, ne peut
+observer l'application** — seulement le portail qui la garde. Les deux se rejoignent sur la
+même conséquence : le seul endroit d'où l'on constate un déploiement est un écran qui exige
+d'être administrateur, ou le VPS lui-même.
+
+Ce n'est pas présenté comme un défaut à corriger. Ouvrir une surface non authentifiée pour
+faire plaisir à une sonde serait payer un renseignement public — le dépôt étant public, le
+commit servi dit quels correctifs sont en place, ce qui est exactement le motif pour lequel
+`/api/version` est réservée. La note existe pour que le prochain qui cherche « pourquoi je
+ne peux pas juste faire un curl » trouve la réponse écrite plutôt que de la redécouvrir.
 
 ## Ce qui n'a PAS été éprouvé — 2026-09-06
 
