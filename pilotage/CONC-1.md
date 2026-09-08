@@ -154,8 +154,13 @@ passe RATÉE ne laisse **aucune** trace au journal — lot en erreur, table `act
 le `rollback` du worker effaçant l'enregistrement qui la décrit. Une branche `interrompu`
 y serait du code que rien ne peut rendre vrai. Le défaut est antérieur, il touche la couche
 dont la raison d'être est de dire qui a produit quoi, et il appelle une décision sur la
-frontière transactionnelle entre provenance et données. Pas de fiche : le code de chantier
-reste à choisir.
+frontière transactionnelle entre provenance et données.
+
+**Traité le jour même, `133de65`**, et cette ligne est ajoutée plutôt que le paragraphe
+ci-dessus réécrit : il dit ce qui était vrai au moment du correctif d'annulation, et le
+relire ainsi est le seul moyen de comprendre pourquoi la branche `interrompu` y avait été
+retirée. `passe_ml` défait désormais la transaction lui-même puis réinscrit une activité
+complète ; la branche `interrompu` est revenue avec elle, observable donc testable.
 
 ## Le TTL, et ce que le test a trouvé dans le correctif — 2026-09-08
 
