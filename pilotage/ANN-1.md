@@ -5,9 +5,10 @@ statut: interrompu
 
 # ANN-1 — peupler le vocabulaire d'étude avec les linguistes
 
-**Arrêté sur** — 2026-09-08, `48a40a2` : le matériel de la séance est prêt (proposition de
-vocabulaire, arbitrage d'import, cliquet de complétude). Rien n'est importé, aucune case
-n'est cochée — la séance n'a pas eu lieu, et c'est elle qui coche.
+**Arrêté sur** — 2026-09-08, `a848443` : le matériel de la séance est prêt (proposition de
+vocabulaire, arbitrage d'import, cliquet de complétude), et il a été repassé une fois — un
+axe mal nommé et une définition de domaine qui se serait figée fausse. Rien n'est importé,
+aucune case n'est cochée : la séance n'a pas eu lieu, et c'est elle qui coche.
 
 ## Reste
 
@@ -21,8 +22,8 @@ n'est cochée — la séance n'a pas eu lieu, et c'est elle qui coche.
 ### Peuplement
 - [ ] Le CSV amendé est importé APRÈS la séance, et `GET /api/lexique` renvoie un « % défini » supérieur à 0 — ce qui demande de cocher « défini » dans le panneau 📖 Lexique, l'import laissant tout `provisoire` exprès
 - [ ] Une planche réelle est annotée de bout en bout avec ce vocabulaire, sans qu'aucun terme manquant n'ait dû être inventé en cours de route
-- [ ] La vue Croisement de l'Exploration affiche un axe `dim:<id>` peuplé et non vide — donc en codant des cases QUI ONT du texte : le croisement compte des TOKENS, et 27 des 45 cases du corpus local sont muettes
-- [ ] Si un axe `cible=personnage` doit servir (genre, âge, origine perçue, rôle actanciel), des LOCUTEURS sont posés : le croisement joint ces axes par `bulle_locuteur`, une simple présence (`personnage_presence`) n'y suffit pas, et le corpus local compte 0 personnage
+- [ ] La vue Croisement de l'Exploration affiche un axe `dim:<id>` peuplé et non vide — ce qui demande de coder des cases DONT LES BULLES SONT TRANSCRITES : le croisement part de `tokens_effectifs`, et 26 des 45 cases du corpus local portent des bulles encore sans token
+- [ ] Si un axe `cible=personnage` doit servir (genre, âge, origine perçue, rôle narratif), des LOCUTEURS sont posés : le croisement joint ces axes par `bulle_locuteur`, une simple présence (`personnage_presence`) n'y suffit pas, et le corpus local compte 0 personnage
 
 ## Contexte
 
@@ -74,15 +75,32 @@ contournement disponible est le croisement *profil du locuteur × situation de l
 requête-thèse de §13.1 — qui ne vaut que pour les personnages qui PARLENT. À décider en
 séance : est-ce que l'étude s'en accommode, ou faut-il ouvrir un chantier de modèle ?
 
-**Et le Croisement compte des TOKENS.** Mesuré le 2026-09-08 sur le corpus local : **27 des
-45 cases n'ont aucun token**, soit 60 %. Une émotion codée sur une case muette est
-parfaitement enregistrée, parfaitement exportée, et **invisible dans la vue Croisement** —
-qui part de `tokens_effectifs` et rejoint la case par `region_attribut ... IN (r.id,
-r.parent_id)`. Pour une étude d'émotions en bande dessinée, où la case sans texte est un lieu
-d'affect majeur, c'est un angle mort à connaître avant de bâtir un protocole de codage
-dessus, pas après. Même mécanique côté personnage : ces axes-là passent par
-`bulle_locuteur`, donc un personnage montré mais muet ne pèse rien, et le corpus local compte
-0 personnage, 0 locuteur, 0 présence.
+**Et le Croisement part des TOKENS.** Il compte sur `tokens_effectifs` et rejoint la case
+par `region_attribut ... IN (r.id, r.parent_id)` : une case qui ne porte aucun token ne pèse
+rien, quoi qu'on ait codé dessus. Une émotion posée là est parfaitement enregistrée,
+parfaitement exportée, et **invisible dans l'écran censé la montrer**.
+
+Deux populations tombent dans ce trou, et **il faut les séparer** — mesuré le 2026-09-08 sur
+le corpus local, 45 cases :
+
+- **1 case sans aucune bulle**, muette pour de bon. C'est la limite DURABLE, et c'est une
+  propriété du modèle, pas une statistique : une case sans parole est structurellement hors
+  du Croisement. Sur un corpus de bande dessinée, où l'affect passe souvent par la case
+  silencieuse, cette part peut être bien plus grande qu'elle ne l'est ici.
+- **26 cases qui ont des bulles mais aucun token**, donc simplement PAS ENCORE TRANSCRITES.
+  C'est la limite du MOMENT, et elle se résorbe en transcrivant.
+
+**Confondre les deux est le piège, et la première rédaction de cette fiche y est tombée** :
+elle lisait « 27 cases sans token » comme « 27 cases muettes » et concluait à 60 % d'angle
+mort. Le chiffre était juste, la lecture non — c'était l'avancement de la transcription,
+pas la nature du corpus. Le vrai risque de séance est ailleurs, et plus immédiat : coder les
+émotions maintenant, ouvrir le Croisement, et le trouver presque vide — 18 cases sur 45
+rendraient quelque chose — sans que rien à l'écran ne distingue « codage pas fait » de
+« transcription pas faite » ou d'« axe mal choisi ».
+
+Même mécanique côté personnage : ces axes-là passent par `bulle_locuteur`, donc un
+personnage montré mais muet ne pèse rien, et le corpus local compte 0 personnage,
+0 locuteur, 0 présence.
 
 **Enfin, le tableur n'amende pas ce qu'il a créé.** Mesuré le même jour, et silencieux : une
 glose corrigée dans le CSV puis rejouée ne remplace pas celle qui est en base, le bilan
