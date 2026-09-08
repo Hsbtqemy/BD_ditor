@@ -569,3 +569,29 @@ def test_une_passe_interrompue_est_journalisee_interrompue_et_non_echouee(
     assert comptes == {"interrompu": True}, (
         "une interruption demandée inscrite comme un échec est un mensonge que "
         "l'append-only rend définitif")
+
+
+def test_la_tenue_du_journal_ne_masque_pas_l_erreur_d_origine(client, planche, monkeypatch):
+    """Un bloc de réparation qui lève remplace l'erreur qu'il devait accompagner.
+
+    `inscrire_run_termine` fait un `commit()`, et SQLite n'admet qu'un écrivain : pendant
+    un lot ML, il peut lever « database is locked ». Sans garde, cette exception sortirait
+    à la place de celle du moteur — et `main` la traduirait en 409 « réessayer », qui n'a
+    rien à voir avec la panne réelle. On préfère PERDRE la trace : on la voulait pour
+    comprendre l'échec, pas pour le masquer.
+
+    Trouvé en relecture avant un push, une heure après le même défaut dans le `finally` de
+    `run_kumiko`. C'est un piège qui se reforme à chaque bloc de réparation qu'on écrit.
+    """
+    monkeypatch.setattr(main, "kumiko_available", lambda: True)
+    monkeypatch.setattr(main, "segment_planche", lambda c, pid, **kw: (_ for _ in ()).throw(
+        seg.KumikoError("panne d'origine du moteur")))
+
+    def refuse(*a, **kw):
+        raise sqlite3.OperationalError("database is locked")
+    monkeypatch.setattr(journal, "inscrire_run_termine", refuse)
+
+    r = client.post(f"/api/planches/{planche['id']}/segmenter")
+    assert r.status_code == 500, (
+        f"HTTP {r.status_code} : l'erreur du journal a remplacé celle du moteur")
+    assert "panne d'origine du moteur" in r.json()["detail"]

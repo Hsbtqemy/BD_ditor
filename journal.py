@@ -286,9 +286,23 @@ def passe_ml(conn: sqlite3.Connection, type: str, planche_id: int, *, agent: str
         de l'exception enverrait des chemins serveur au dépôt — exactement ce qu'AUTH-1 a
         fermé sur `GET /api/export/json`.
         """
-        conn.rollback()
-        inscrire_run_termine(conn, type, agent=agent, agent_type="moteur", version=version,
-                             params=params, portee=portee, debut=debut, comptes=comptes)
+        try:
+            conn.rollback()
+            inscrire_run_termine(conn, type, agent=agent, agent_type="moteur",
+                                 version=version, params=params, portee=portee,
+                                 debut=debut, comptes=comptes)
+        except Exception:
+            # **La tenue du journal ne doit jamais changer l'erreur que l'appelant voit.**
+            # `commit()` peut lever un « database is locked » — un lot ML tient le verrou
+            # d'écriture, SQLite n'admet qu'un écrivain —, et cette exception REMPLACERAIT
+            # celle qui sort du `try` : « Kumiko a échoué (code 1) » deviendrait un 409
+            # « réessayer », qui n'a rien à voir. On perd alors la trace, ce qui est le
+            # moindre mal : on la voulait pour comprendre l'échec, pas pour le masquer.
+            #
+            # Trouvé en relecture, une heure après avoir corrigé le MÊME défaut dans le
+            # `finally` de `run_kumiko`. Un bloc de réparation qui lève est un piège qui
+            # se reforme à chaque fois qu'on en écrit un.
+            pass
 
     try:
         yield aid
