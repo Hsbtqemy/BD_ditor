@@ -19,6 +19,12 @@ Séparateur **point-virgule** (défaut d'Excel FR ; les virgules dans le texte n
 aucun guillemet), en-tête **obligatoire**, encodage UTF-8 (avec ou sans BOM). Modèle livré :
 [`tools/vocabulaire-modele.csv`](../tools/vocabulaire-modele.csv).
 
+Deux fichiers, à ne pas confondre : `vocabulaire-modele.csv` montre le **format** (colonnes,
+conventions) avec des termes jetables ; [`tools/vocabulaire-etude-propose.csv`](../tools/vocabulaire-etude-propose.csv)
+est une **proposition de contenu** pour l'étude — deux domaines, neuf axes, quarante et une
+valeurs, chaque dimension avec sa `definition` et sa `note_portee`. Elle est faite pour être
+**amendée en séance** (ANN-1), et n'a encore été importée nulle part.
+
 | Colonne | Rôle |
 |---|---|
 | `domaine` | champ analytique de rattachement (**vide = dimension hors domaine**) |
@@ -57,6 +63,54 @@ une saisie humaine :
 
 Deux définitions **différentes** pour un même terme dans le fichier → **avertissement** (faute de
 saisie typique) ; la première fait foi (cohérent avec le « ne jamais écraser »).
+
+## Arbitrage (ANN-1) — amorcer par le tableur, finir dans l'app
+
+**La question s'est posée pour de bon** en préparant la séance de vocabulaire d'ANN-1 :
+saisir les termes d'étude un par un dans le panneau 📖 Lexique, ou les amorcer depuis un
+tableur ? Tranché le **2026-09-08** — *le tableur pour l'amorçage, l'app pour tout ce qui
+vient après*, et la frontière n'est pas une préférence : elle est **imposée par la
+doctrine ci-dessus**.
+
+Ce qui décide n'est pas le volume — neuf dimensions et quarante et une valeurs se
+saisissent à la main en une heure. C'est la **trace**. Un vocabulaire d'étude est une
+décision collective : il s'amende, il se discute, et il faut pouvoir dire six mois plus
+tard qui a changé quoi et pourquoi. Un fichier versionné donne un diff lisible ; cinquante
+gestes dans une modale ne laissent que leur résultat.
+
+### Ce qui a été mesuré
+
+Sur [`tools/vocabulaire-etude-propose.csv`](../tools/vocabulaire-etude-propose.csv), le
+2026-09-08, base jetable :
+
+- **L'import est idempotent.** Rejoué tel quel : `0 créé`, 2 domaines / 9 dimensions /
+  41 valeurs `déjà présents`. Un tableur se rejoue sans jamais dupliquer.
+- **Le tableur ne porte pas tout.** Aucune colonne pour la `note_portee` d'un **domaine**
+  ni d'une **valeur** — seule celle des *dimensions* y tient — et l'`etat`
+  (`provisoire`→`defini`) en est exclu **exprès**. Ces trois-là sont des gestes d'app, et
+  c'est le bon endroit : ce sont ceux qui demandent le contexte.
+
+### Le piège, et c'est lui qui fixe l'ordre des opérations
+
+**Un tableur CORRIGÉ ne corrige pas ce que le tableur a lui-même créé** — et il ne le dit
+pas. Mesuré : définition importée, définition changée dans le fichier, import rejoué → la
+base garde l'ancienne, et le bilan annonce paisiblement « 0 créé, 9 déjà présents ». C'est
+la conséquence exacte du *« renseignée que si elle est encore vide »* ; l'avertissement
+« deux définitions divergentes » ne joue qu'**à l'intérieur** d'un fichier, jamais entre le
+fichier et la base.
+
+Donc l'import n'est pas un aller-retour, c'est un **amorçage à un coup, par terme** :
+
+1. **Les amendements de la séance se portent dans le CSV AVANT le premier import.** Après,
+   le fichier est doublé par la base sans qu'aucun signal ne le dise.
+2. Une fois importé, **une correction se fait dans l'app** — c'est le seul chemin qui
+   écrit par-dessus.
+3. Le CSV reste alors la trace **datée de l'amorçage**, pas l'état courant du vocabulaire.
+   Le lire comme la source de vérité serait l'erreur que ce paragraphe ferme.
+
+> Rattraper un import prématuré ne demande pas de vider la base : un terme dont la glose
+> est encore **vide** est toujours renseignable par un réimport. Ce sont les termes déjà
+> glosés qu'il faut reprendre à la main.
 
 ## Utilisation
 

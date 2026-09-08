@@ -22,6 +22,7 @@ import importer_vocabulaire as iv  # noqa: E402
 from conftest import direct_query  # noqa: E402
 
 MODELE = TOOLS / "vocabulaire-modele.csv"
+PROPOSE = TOOLS / "vocabulaire-etude-propose.csv"
 
 # Un petit tableur autonome (deux domaines, dont un traversant personnage ET case).
 CSV_MINI = (
@@ -242,6 +243,34 @@ def test_cli_charge_la_template_livree(data_dir, db_path):
     assert direct_query(db_path, "SELECT COUNT(*) c FROM domaine")[0]["c"] == 3
     assert direct_query(db_path, "SELECT COUNT(*) c FROM attribut_dimension")[0]["c"] == 8
     assert direct_query(db_path, "SELECT COUNT(*) c FROM attribut_valeur")[0]["c"] == 21
+
+
+def test_la_proposition_d_etude_est_glosee_de_bout_en_bout(data_dir, db_path):
+    """La proposition de vocabulaire d'ANN-1 s'importe, et CHAQUE dimension y arrive avec sa
+    `definition` ET sa `note_portee`.
+
+    Volontairement SANS compte attendu, contrairement à la template : ce fichier existe pour
+    être AMENDÉ en séance, et un compte figé se casserait au premier ajout légitime — ce qui
+    apprendrait à mettre à jour le chiffre plutôt qu'à regarder. La propriété gardée est celle
+    qui doit survivre à tout amendement : un axe sans note de portée n'est pas « situé », et
+    l'export SKOS sort creux sans que rien ne le signale (le `etat` provisoire→défini est une
+    case à cocher LIBRE, il ne mesure pas la complétude). C'est la case 2 d'ANN-1, rendue
+    mécanique sur le matériel avant qu'il n'entre en base.
+    """
+    r = _run(db_path, data_dir, str(PROPOSE))
+    assert r.returncode == 0, r.stderr
+    # L'outil préfixe « ⚠ » CHAQUE anomalie et CHAQUE avertissement (`_bilan`) — c'est le
+    # seul marqueur qu'il émette, le mot « anomalie » n'apparaissant nulle part dans sa
+    # sortie. Les deux comptent ici : une cible invalide fait perdre une ligne en silence,
+    # et deux gloses divergentes pour un même terme trahissent un amendement à moitié fait.
+    assert "⚠" not in r.stderr, r.stderr
+
+    nues = direct_query(db_path, """
+        SELECT cible, nom FROM attribut_dimension
+        WHERE COALESCE(TRIM(definition), '') = '' OR COALESCE(TRIM(note_portee), '') = ''
+    """)
+    assert not nues, f"dimensions sans definition/note_portee : {[dict(d) for d in nues]}"
+    assert direct_query(db_path, "SELECT COUNT(*) c FROM attribut_dimension")[0]["c"] > 0
 
 
 def test_cli_dry_run_n_ecrit_rien(tmp_path, data_dir, db_path):

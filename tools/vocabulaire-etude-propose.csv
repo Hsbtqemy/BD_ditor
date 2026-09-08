@@ -1,0 +1,42 @@
+domaine;domaine_definition;cible;dimension;dimension_definition;dimension_note_portee;valeur;valeur_definition
+émotions;Charge affective que la planche donne à voir. Domaine de la CASE : ce qui est mis en scène, non ce qu'un personnage est censé éprouver en général.;case;émotion représentée;Famille d'émotion que la case donne à voir (base Ekman, élargie à un neutre et à un indéterminé).;Coder ce que la case MONTRE — visage, posture, idéogrammes, lettrage, couleur — jamais l'état interne prêté au personnage ni l'effet sur le lecteur. Axe MULTI-VALUÉ : une case peut porter plusieurs émotions, le modèle est N-N et n'en refusera aucune. « aucune » et « indéterminée » sont les deux seules valeurs exclusives.;colère;Hostilité, courroux, agressivité exprimée
+émotions;;case;émotion représentée;;;joie;Plaisir, allégresse, soulagement
+émotions;;case;émotion représentée;;;peur;Crainte, effroi, angoisse
+émotions;;case;émotion représentée;;;tristesse;Peine, abattement, chagrin
+émotions;;case;émotion représentée;;;dégoût;Répulsion, mépris
+émotions;;case;émotion représentée;;;surprise;Étonnement, sidération — sans polarité propre, à croiser avec la valence
+émotions;;case;émotion représentée;;;aucune;La case ne met aucune émotion en scène. Constat, pas absence de codage.
+émotions;;case;émotion représentée;;;indéterminée;La case en met une, on n'arrive pas à la nommer. C'est une donnée, pas un renoncement.
+émotions;;case;valence;Polarité affective de la scène.;Se code indépendamment de l'émotion représentée et sur la même case : une surprise peut être heureuse ou terrible. Axe MONO-VALUÉ — « ambivalente » existe précisément pour n'avoir pas à poser deux valeurs contradictoires.;positive;
+émotions;;case;valence;;;négative;
+émotions;;case;valence;;;ambivalente;Coexistence d'affects opposés dans la même case
+émotions;;case;valence;;;neutre;
+émotions;;case;intensité;Degré d'EXPRESSION affective, tel que la mise en scène le gradue.;Gradue l'expression et non l'émotion supposée : une colère rentrée se code « faible ». Axe MONO-VALUÉ. Ne pas coder l'intensité d'une case dont l'émotion est « aucune ».;faible;
+émotions;;case;intensité;;;moyenne;
+émotions;;case;intensité;;;forte;
+émotions;;case;vecteur d'expression;Par quel moyen graphique ou textuel l'affect est porté.;L'axe qui justifie un corpus MULTIMODAL : il enregistre ce qui PORTE l'émotion, et c'est la seule dimension qu'un corpus de texte seul ne permettrait pas de coder. MULTI-VALUÉ par nature — une case cumule souvent visage et lettrage.;visage;Expression faciale, regard, larmes dessinées
+émotions;;case;vecteur d'expression;;;posture et gestuelle;Attitude du corps, mouvement, distance entre les personnages
+émotions;;case;vecteur d'expression;;;idéogramme;Signe conventionnel de la BD (emanata) : gouttes de sueur, étoiles, spirales, nuage d'orage
+émotions;;case;vecteur d'expression;;;lettrage;Forme du phylactère, corps et graisse du texte, ponctuation expressive
+émotions;;case;vecteur d'expression;;;couleur et décor;Palette, éclairage, cadrage du décor comme porteurs d'affect
+émotions;;case;vecteur d'expression;;;dialogue seul;Constat FORT : l'émotion n'est portée que par le texte, rien dans l'image ne la soutient
+représentation;Représentation des groupes et des minorités : qui est montré, comment, et dans quel rôle.;personnage;genre représenté;Genre du personnage tel que la représentation le donne à lire.;PROFIL D'ENTITÉ : la valeur vaut pour le personnage sur TOUT le corpus, pas case par case — le modèle n'attache qu'un profil par entité. Coder le genre PERÇU dans la représentation (traits, vêtement, accords, adresse), jamais l'identité d'une personne réelle. Axe MONO-VALUÉ.;femme;
+représentation;;personnage;genre représenté;;;homme;
+représentation;;personnage;genre représenté;;;non-binaire ou ambigu;Représentation qui ne tranche pas, ou qui joue de l'ambiguïté
+représentation;;personnage;genre représenté;;;non assignable;La planche ne donne rien à lire. Donnée, pas renoncement.
+représentation;;personnage;âge représenté;Tranche d'âge que la représentation donne à lire.;Profil d'entité, comme le genre. Un personnage montré à deux âges du récit demande DEUX entités distinctes, ou un arbitrage écrit : le modèle ne porte qu'un profil par personnage. Axe MONO-VALUÉ.;enfant;
+représentation;;personnage;âge représenté;;;adolescent;
+représentation;;personnage;âge représenté;;;adulte;
+représentation;;personnage;âge représenté;;;personne âgée;
+représentation;;personnage;âge représenté;;;non assignable;
+représentation;;personnage;origine perçue;Position majoritaire ou minorisée que la représentation assigne au personnage.;L'axe le plus délicat de l'étude, et sa note de portée FAIT PARTIE de l'axe. On code la REPRÉSENTATION — traits graphiques, onomastique, langue prêtée, place dans le récit — telle qu'un lecteur la reçoit dans le contexte franco-belge du corpus. On ne code NI l'identité d'une personne réelle, NI une appartenance vérifiée. Poser « non assignable » sans hésiter quand la planche ne tranche pas. Axe MONO-VALUÉ.;majoritaire;
+représentation;;personnage;origine perçue;;;minorisée;Représentation renvoyant à un groupe minorisé dans le contexte de publication
+représentation;;personnage;origine perçue;;;non assignable;
+représentation;;personnage;rôle actanciel;Fonction du personnage dans l'économie du récit.;Profil d'entité, donc à l'échelle de l'album et non de la case. C'est le croisement de cet axe avec « origine perçue » qui porte l'hypothèse de l'étude — d'où l'intérêt de le coder même quand il paraît évident. Axe MONO-VALUÉ.;protagoniste;
+représentation;;personnage;rôle actanciel;;;antagoniste;
+représentation;;personnage;rôle actanciel;;;adjuvant;Personnage qui aide le protagoniste sans porter l'action
+représentation;;personnage;rôle actanciel;;;faire-valoir;Personnage servant à mettre un autre en valeur
+représentation;;personnage;rôle actanciel;;;figurant;Présent, sans fonction narrative propre
+représentation;;case;scène stéréotypée;La case mobilise-t-elle un stéréotype sur un groupe ?;Porte sur la CASE et non sur le personnage : c'est la mise en scène qui stéréotype, pas l'entité. « discutable » est une valeur pleine et non un entre-deux honteux — c'est elle qui alimente l'arbitrage entre annotateurs (panneau 👥 Inter). Axe MONO-VALUÉ.;oui;
+représentation;;case;scène stéréotypée;;;non;
+représentation;;case;scène stéréotypée;;;discutable;
