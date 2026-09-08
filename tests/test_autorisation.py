@@ -504,6 +504,45 @@ def test_un_lot_ne_montre_pas_les_travaux_des_autres(client, db_path, deux_album
     assert client.post("/api/jobs/1/annuler", headers=h).status_code == 404
 
 
+def test_un_job_inconnu_n_est_visible_de_personne(client, db_path, deux_albums,
+                                                  derriere_proxy):
+    """CONC-1 — la garde approuvait un job qui n'existe pas.
+
+    `planches_du_job` rendait `[]` pour un identifiant inconnu, et l'ensemble vide est
+    inclus dans n'importe quel autre : `set([]) <= autorisees` vaut True quelle que soit
+    la portée, y compris une portée qui n'autorise rien.
+
+    **Ce test porte sur la PRIMITIVE et non sur les routes, et c'est tout le point.** Par
+    les routes, la réponse est un 404 avant comme après le correctif — chacune teste
+    l'existence par ailleurs. Le défaut n'était donc visible nulle part, et ce qui
+    protégeait était l'ORDRE des vérifications à chaque appel, jamais la garde elle-même :
+    correct par accident, pas par construction. La purge du registre que CONC-1 demande
+    fera de « job inconnu » l'état FINAL de tous les jobs, et chargera ce ressort.
+
+    Les trois portées sont éprouvées exprès, dont `tout=True` : une portée totale
+    court-circuite les ensembles, et c'est le chemin par lequel un mono-poste ou un
+    administrateur aurait obtenu `True` même après un correctif posé au mauvais endroit.
+    """
+    import sqlite3
+    import pipeline.jobs as jobs_mod
+
+    inconnu = 999_999
+    assert inconnu not in jobs_mod._jobs
+    assert jobs_mod.planches_du_job(inconnu) is None, (
+        "un job inconnu doit rester DISTINGUABLE d'un job sans planche : une liste vide "
+        "rend les deux identiques, et c'est ce qui rendait la garde permissive")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        for portee in (autorisation.Portee(),                            # n'autorise rien
+                       autorisation.Portee(lecture=frozenset({deux_albums["c1"]})),
+                       autorisation.Portee(tout=True)):                  # mono-poste, admin
+            assert main._job_visible(conn, portee, inconnu) is False
+            assert main._job_visible(conn, portee, inconnu, ecriture=True) is False
+    finally:
+        conn.close()
+
+
 def test_liberer_les_modeles_est_reserve_aux_administrateurs(client, deux_albums,
                                                              derriere_proxy):
     """403 et non 404 : le verrou ML est global, le refus parle des droits de l'appelant

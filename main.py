@@ -1414,11 +1414,28 @@ def _job_visible(conn, portee: autorisation.Portee, job_id: int,
     autorisée et une autre révélerait, par son total et sa progression, qu'un travail
     existe ailleurs. Conséquence assumée : un lot lancé par un administrateur sur tout
     le corpus n'apparaît qu'à lui.
+
+    **L'EXISTENCE se teste avant la portée** (CONC-1), et l'ordre n'est pas cosmétique :
+    « ce job n'existe pas » n'est pas une question de périmètre. `planches_du_job` rendait
+    `[]` pour un identifiant inconnu, l'ensemble vide est inclus dans tout, et cette garde
+    répondait donc `True` sur un job qui n'existe pas — y compris pour une portée qui
+    n'autorise rien.
+
+    Rien ne fuyait, et c'est ce qui rendait le défaut durable : les quatre appelants
+    testent l'existence par ailleurs — `GET /api/jobs/{id}` regarde `snapshot(...) is
+    None`, `GET /api/jobs` n'énumère que ce qui existe, `POST …/annuler` retombe sur le
+    404 de `cancel_job`. C'était donc l'ORDRE des vérifications à chaque appel qui
+    protégeait, jamais la primitive : correct par accident, pas par construction. La purge
+    du registre que CONC-1 demande ferait passer « job inconnu » d'un cas rare — quelqu'un
+    tape un mauvais numéro — à l'état FINAL de tous les jobs.
     """
+    planches = jobs.planches_du_job(job_id)
+    if planches is None:                       # job inconnu : invisible, portée comprise
+        return False
     autorisees = _planches_autorisees(conn, portee, ecriture=ecriture)
     if autorisees is None:
         return True
-    return set(jobs.planches_du_job(job_id)) <= autorisees
+    return set(planches) <= autorisees
 
 
 @app.get("/api/jobs")

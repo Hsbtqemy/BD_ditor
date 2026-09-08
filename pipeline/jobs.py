@@ -131,12 +131,22 @@ def all_jobs() -> list:
     return [snapshot(jid) for jid in sorted(_jobs, reverse=True)]
 
 
-def planches_du_job(job_id: int) -> list:
-    """Planches couvertes par un job. Hors de `snapshot` À DESSEIN : c'est une donnée
-    d'AUTORISATION (AUTH-2 : à qui ce job appartient-il ?), pas de progression — la
-    renvoyer dans le snapshot reviendrait à publier ce qu'on cherche justement à filtrer."""
+def planches_du_job(job_id: int) -> list | None:
+    """Planches couvertes par un job — `None` si le job n'existe pas.
+
+    Hors de `snapshot` À DESSEIN : c'est une donnée d'AUTORISATION (AUTH-2 : à qui ce job
+    appartient-il ?), pas de progression — la renvoyer dans le snapshot reviendrait à
+    publier ce qu'on cherche justement à filtrer.
+
+    **Le `None` n'est pas une commodité, c'est ce qui ferme un fail-open** (CONC-1). Cette
+    fonction rendait `[]` pour un identifiant inconnu, et l'ensemble vide est inclus dans
+    n'importe quel autre : un appelant qui teste « planches ⊆ autorisées » approuvait donc
+    un job qui n'existe pas. Un job RÉEL porte toujours au moins une planche — la route de
+    création refuse par 422 une sélection vide —, si bien que la liste vide ne désignait
+    QUE l'inconnu. Les deux cas étaient distinguables et rendus identiques.
+    """
     j = _jobs.get(job_id)
-    return list(j["planche_ids"]) if j else []
+    return list(j["planche_ids"]) if j else None
 
 
 def start_job(passes, planche_ids) -> dict:
