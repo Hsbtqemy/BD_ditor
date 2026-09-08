@@ -72,8 +72,8 @@ tableur ? Tranché le **2026-09-08** — *le tableur pour l'amorçage, l'app pou
 vient après*, et la frontière n'est pas une préférence : elle est **imposée par la
 doctrine ci-dessus**.
 
-Ce qui décide n'est pas le volume — neuf dimensions et quarante et une valeurs se
-saisissent à la main en une heure. C'est la **trace**. Un vocabulaire d'étude est une
+Ce qui décide n'est pas le volume : neuf dimensions et quarante et une valeurs se
+saisiraient à la main sans drame. C'est la **trace**. Un vocabulaire d'étude est une
 décision collective : il s'amende, il se discute, et il faut pouvoir dire six mois plus
 tard qui a changé quoi et pourquoi. Un fichier versionné donne un diff lisible ; cinquante
 gestes dans une modale ne laissent que leur résultat.

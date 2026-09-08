@@ -1,5 +1,5 @@
 domaine;domaine_definition;cible;dimension;dimension_definition;dimension_note_portee;valeur;valeur_definition
-émotions;Charge affective que la planche donne à voir. Domaine de la CASE : ce qui est mis en scène, non ce qu'un personnage est censé éprouver en général.;case;émotion représentée;Famille d'émotion que la case donne à voir (base Ekman, élargie à un neutre et à un indéterminé).;Coder ce que la case MONTRE — visage, posture, idéogrammes, lettrage, couleur — jamais l'état interne prêté au personnage ni l'effet sur le lecteur. Axe MULTI-VALUÉ : une case peut porter plusieurs émotions, le modèle est N-N et n'en refusera aucune. « aucune » et « indéterminée » sont les deux seules valeurs exclusives.;colère;Hostilité, courroux, agressivité exprimée
+émotions;Charge affective que la planche donne à voir : ce qu'elle MET EN SCÈNE, et non ce qu'un personnage est censé éprouver en général — d'où des axes portés par la case.;case;émotion représentée;Famille d'émotion que la case donne à voir (base Ekman, élargie à un neutre et à un indéterminé).;Coder ce que la case MONTRE — visage, posture, idéogrammes, lettrage, couleur — jamais l'état interne prêté au personnage ni l'effet sur le lecteur. Axe MULTI-VALUÉ : une case peut porter plusieurs émotions, le modèle est N-N et n'en refusera aucune. « aucune » et « indéterminée » sont les deux seules valeurs exclusives.;colère;Hostilité, courroux, agressivité exprimée
 émotions;;case;émotion représentée;;;joie;Plaisir, allégresse, soulagement
 émotions;;case;émotion représentée;;;peur;Crainte, effroi, angoisse
 émotions;;case;émotion représentée;;;tristesse;Peine, abattement, chagrin
@@ -32,11 +32,11 @@ représentation;;personnage;âge représenté;;;non assignable;
 représentation;;personnage;origine perçue;Position majoritaire ou minorisée que la représentation assigne au personnage.;L'axe le plus délicat de l'étude, et sa note de portée FAIT PARTIE de l'axe. On code la REPRÉSENTATION — traits graphiques, onomastique, langue prêtée, place dans le récit — telle qu'un lecteur la reçoit dans le contexte franco-belge du corpus. On ne code NI l'identité d'une personne réelle, NI une appartenance vérifiée. Poser « non assignable » sans hésiter quand la planche ne tranche pas. Axe MONO-VALUÉ.;majoritaire;
 représentation;;personnage;origine perçue;;;minorisée;Représentation renvoyant à un groupe minorisé dans le contexte de publication
 représentation;;personnage;origine perçue;;;non assignable;
-représentation;;personnage;rôle actanciel;Fonction du personnage dans l'économie du récit.;Profil d'entité, donc à l'échelle de l'album et non de la case. C'est le croisement de cet axe avec « origine perçue » qui porte l'hypothèse de l'étude — d'où l'intérêt de le coder même quand il paraît évident. Axe MONO-VALUÉ.;protagoniste;
-représentation;;personnage;rôle actanciel;;;antagoniste;
-représentation;;personnage;rôle actanciel;;;adjuvant;Personnage qui aide le protagoniste sans porter l'action
-représentation;;personnage;rôle actanciel;;;faire-valoir;Personnage servant à mettre un autre en valeur
-représentation;;personnage;rôle actanciel;;;figurant;Présent, sans fonction narrative propre
+représentation;;personnage;rôle narratif;Fonction du personnage dans l'économie du récit.;Profil d'entité, donc à l'échelle de l'album et non de la case. C'est le croisement de cet axe avec « origine perçue » qui porte l'hypothèse de l'étude — d'où l'intérêt de le coder même quand il paraît évident. Axe MONO-VALUÉ. Nommé « narratif » et non « actanciel » EXPRÈS : protagoniste et antagoniste ne sont pas des actants au sens de Greimas. Si la séance veut le modèle actantiel (sujet, objet, destinateur, destinataire, adjuvant, opposant), c'est un AUTRE axe, à ajouter plutôt qu'à renommer.;protagoniste;
+représentation;;personnage;rôle narratif;;;antagoniste;
+représentation;;personnage;rôle narratif;;;adjuvant;Personnage qui aide le protagoniste sans porter l'action
+représentation;;personnage;rôle narratif;;;faire-valoir;Personnage servant à mettre un autre en valeur
+représentation;;personnage;rôle narratif;;;figurant;Présent, sans fonction narrative propre
 représentation;;case;scène stéréotypée;La case mobilise-t-elle un stéréotype sur un groupe ?;Porte sur la CASE et non sur le personnage : c'est la mise en scène qui stéréotype, pas l'entité. « discutable » est une valeur pleine et non un entre-deux honteux — c'est elle qui alimente l'arbitrage entre annotateurs (panneau 👥 Inter). Axe MONO-VALUÉ.;oui;
 représentation;;case;scène stéréotypée;;;non;
 représentation;;case;scène stéréotypée;;;discutable;
