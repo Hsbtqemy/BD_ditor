@@ -8,6 +8,7 @@ import main
 import pipeline.bulles as bul
 import pipeline.ocr as ocrm
 import pipeline.segmentation as seg
+from pipeline import interruption
 
 
 def _wait_done(client, jid, timeout=5.0):
@@ -300,3 +301,39 @@ def test_job_etat_et_liste(client, planche, monkeypatch):
     assert any(j["id"] == jid for j in client.get("/api/jobs").json())
     assert client.get("/api/jobs/9999").status_code == 404
     assert client.post("/api/jobs/9999/annuler").status_code == 404
+
+
+def test_annuler_interrompt_une_passe_longue_en_cours(client, planche, monkeypatch):
+    """CONC-1 — l'annulation n'était consultée qu'ENTRE deux planches et deux passes.
+
+    Une passe longue ne la voyait jamais : Kumiko peut tourner cinq minutes sur une
+    planche, et le lot continuait tout ce temps, l'écran affichant « en cours » avec un
+    bouton Annuler sur lequel on venait de cliquer.
+
+    La passe est simulée par une boucle qui interroge l'interrupteur, exactement comme le
+    fait la vraie attente de Kumiko entre deux tranches. **Les trois assertions ne disent
+    pas la même chose** : l'arrêt a bien lieu (sinon on attendrait la fin), il est compté
+    comme une ANNULATION et non un échec, et aucune erreur n'est collectée — personne n'a
+    raté quoi que ce soit.
+    """
+    monkeypatch.setattr(main, "kumiko_available", lambda: True)
+    entre = threading.Event()
+
+    def seg_longue(c, pid):
+        entre.set()
+        for _ in range(2000):              # ~20 s si rien ne l'interrompt
+            interruption.verifier()
+            time.sleep(0.01)
+        raise AssertionError("la passe n'a pas été interrompue")
+    monkeypatch.setattr(seg, "segment_planche", seg_longue)
+
+    jid = client.post("/api/jobs", json={"passes": ["segmenter"],
+                                         "planche_ids": [planche["id"]]}).json()["id"]
+    assert entre.wait(timeout=3), "la passe n'a pas démarré"
+
+    assert client.post(f"/api/jobs/{jid}/annuler").status_code == 200
+    snap = _wait_done(client, jid, timeout=3)
+
+    assert snap["status"] == "annule", snap
+    assert snap["errors"] == [], "une interruption DEMANDÉE n'est pas une erreur"
+    assert snap["done"] == 0, "la planche interrompue ne compte pas comme faite"

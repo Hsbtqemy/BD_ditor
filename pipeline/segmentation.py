@@ -19,13 +19,22 @@ import subprocess
 import sys
 import sqlite3
 import tempfile
+import time
 from pathlib import Path
 
 from config import DATA_DIR, KUMIKO_DIR
 from database import avancer_statut, reindex_region, unindex_region
+from pipeline import interruption
 from pipeline.ordering import reorder_planche
 
 KUMIKO_ENTRY = KUMIKO_DIR / "kumiko"
+
+# Délai total d'une segmentation, et grain auquel on redevient sensible à une annulation
+# (CONC-1). `subprocess.run(timeout=…)` ne rendait la main qu'au bout des 300 s : un lot
+# annulé continuait jusque-là, l'écran affichant « en cours » avec un bouton Annuler sur
+# lequel on venait de cliquer.
+DELAI_KUMIKO = 300
+PAS_INTERRUPTION = 0.5
 
 
 class KumikoError(RuntimeError):
@@ -58,6 +67,30 @@ def _normalize_panel(panel) -> tuple[int, int, int, int]:
         raise KumikoError(f"Panneau Kumiko illisible : {panel!r}") from exc
 
 
+def _attendre_kumiko(proc) -> str:
+    """Attend la fin du sous-processus en restant SENSIBLE à l'annulation.
+
+    `communicate(timeout=…)` est rappelé par TRANCHES plutôt qu'une fois pour toutes :
+    entre deux tranches on interroge l'interrupteur du fil, ce qu'une attente unique de
+    300 s ne permet pas. Vérifié sous Windows le 2026-09-08 — l'appel répété rend bien la
+    sortie complète et le code de retour, six tranches puis un retour propre.
+
+    L'échéance se calcule sur l'HORLOGE et non en comptant les tranches : une tranche peut
+    durer plus longtemps qu'on ne l'a demandée, et le budget dériverait alors dans le sens
+    permissif.
+    """
+    echeance = time.monotonic() + DELAI_KUMIKO
+    while True:
+        reste = echeance - time.monotonic()
+        if reste <= 0:
+            raise KumikoError(f"Kumiko a dépassé le délai ({DELAI_KUMIKO}s)")
+        try:
+            _, stderr = proc.communicate(timeout=min(PAS_INTERRUPTION, reste))
+            return stderr or ""
+        except subprocess.TimeoutExpired:
+            interruption.verifier()   # lève PasseInterrompue -> le `finally` tue l'enfant
+
+
 def run_kumiko(image_path: Path) -> dict:
     """Exécute Kumiko sur une image et renvoie la page (dict avec size/panels)."""
     if not kumiko_available():
@@ -70,25 +103,42 @@ def run_kumiko(image_path: Path) -> dict:
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
         out_path = Path(tmp.name)
 
+    proc = subprocess.Popen(
+        [sys.executable, str(KUMIKO_ENTRY),
+         "-i", str(image_path), "-o", str(out_path)],
+        cwd=str(KUMIKO_DIR),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
     try:
-        proc = subprocess.run(
-            [sys.executable, str(KUMIKO_ENTRY),
-             "-i", str(image_path), "-o", str(out_path)],
-            cwd=str(KUMIKO_DIR),
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
+        stderr = _attendre_kumiko(proc)
         if proc.returncode != 0:
             raise KumikoError(
-                f"Kumiko a échoué (code {proc.returncode}).\n{proc.stderr.strip()}"
+                f"Kumiko a échoué (code {proc.returncode}).\n{stderr.strip()}"
             )
         data = json.loads(out_path.read_text(encoding="utf-8"))
-    except subprocess.TimeoutExpired as exc:
-        raise KumikoError(f"Kumiko a dépassé le délai ({exc.timeout}s)") from exc
     except json.JSONDecodeError as exc:
         raise KumikoError(f"Sortie Kumiko illisible : {exc}") from exc
     finally:
+        # **Ce `finally` rend ce que `subprocess.run` donnait gratuitement.** Mesuré le
+        # 2026-09-08 : la stdlib TUE l'enfant au dépassement de délai comme sur toute
+        # exception (`process.kill()` dans ses deux clauses `except`) — l'orphelin que
+        # l'audit annonçait n'existait donc pas. C'est en passant à `Popen`, pour devenir
+        # interruptible, qu'on prend la charge de l'enfant ; sans ces trois lignes le
+        # correctif CRÉERAIT le défaut qu'il prétend corriger, et sur tous les chemins :
+        # interruption, délai, sortie illisible.
+        if proc.poll() is None:
+            proc.kill()
+            try:
+                proc.communicate(timeout=PAS_INTERRUPTION)   # récolte le zombie
+            except Exception:
+                # On a TUÉ ; ce qui suit n'est que de la récolte. Une exception ici
+                # remplacerait celle qui sort du `try` — le dépassement de délai devenait
+                # un `TimeoutExpired` nu, et l'appelant perdait la seule phrase qui
+                # explique ce qui s'est passé. Mesuré : c'est ainsi que le test du délai
+                # a échoué la première fois.
+                pass
         out_path.unlink(missing_ok=True)
 
     # Kumiko renvoie une liste de pages ; on traite une image à la fois.

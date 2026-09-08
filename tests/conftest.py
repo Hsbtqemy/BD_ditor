@@ -35,7 +35,8 @@ KUMIKO_SAMPLE = (REPO_ROOT
 
 import pipeline.bulles as bulles_mod  # noqa: E402
 import pipeline.jobs as jobs_mod  # noqa: E402
-import pipeline.ocr as ocr_mod  # noqa: E402
+import pipeline.ocr as ocr_mod
+from pipeline import interruption as interruption_mod  # noqa: E402
 import pipeline.sharedocs as sharedocs_mod  # noqa: E402
 import sante as sante_mod  # noqa: E402
 
@@ -68,6 +69,9 @@ def _reset_global_state():
     sharedocs_mod.reinitialiser()      # SHARE-1 : DEUX magasins (instance + perso)
     main._vus.clear()          # AUTH-1 : miroir des identités déjà écrites en base
     sante_mod._reset()         # SANTE-1 : mémoïsation des contrôles profonds
+    interruption_mod.retirer()  # CONC-1 : sonde d'interruption, PAR FIL — les tests
+                                # tournent tous dans le même, donc une sonde oubliée
+                                # ferait s'arrêter la passe d'un test étranger
     yield
 
 

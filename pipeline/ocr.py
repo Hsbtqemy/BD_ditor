@@ -18,6 +18,7 @@ import time
 
 from config import DATA_DIR, MAX_IMAGE_PIXELS, PILLOW_FORMATS, TTL_MASTER_CROP
 from database import reindex_region
+from pipeline import interruption
 
 # Types de régions porteuses de texte.
 TEXT_TYPES = ("bulle", "cartouche", "texte")
@@ -109,6 +110,11 @@ def ocr_planche(conn: sqlite3.Connection, planche_id: int,
     done = skipped = failed = 0
     try:
         for r in rows:
+            # Sensible à l'annulation ENTRE deux régions (CONC-1). C'est le seul grain
+            # disponible : `readtext` d'EasyOCR est un appel opaque qu'on ne peut pas
+            # découper. Une planche chargée en compte plusieurs dizaines, ce qui suffit —
+            # avant, une passe OCR entière ignorait l'annulation du début à la fin.
+            interruption.verifier()
             if only_empty and (r["ocr_texte"] or "").strip():
                 skipped += 1
                 continue

@@ -1,13 +1,14 @@
 """Tests unitaires du wrapper Kumiko (subprocess mocké, sans lancer Kumiko)."""
 import json
 import subprocess
-import types
+import time
 from pathlib import Path
 
 import pytest
 
 import database
 import pipeline.segmentation as seg
+from pipeline import interruption
 from pipeline.segmentation import (KumikoError, _normalize_panel, run_kumiko,
                                    segment_planche)
 
@@ -31,15 +32,44 @@ def test_normalize_panel_forme_invalide_leve_kumikoerror():
         _normalize_panel([1, 2])  # pas assez de valeurs
 
 
-# ---- run_kumiko : chemins d'erreur, avec subprocess.run mocké ---- #
-def _fake_run(write=None, returncode=0, stderr="", raises=None):
-    def run(args, **kw):
-        if raises is not None:
-            raise raises
-        if write is not None:
-            Path(args[args.index("-o") + 1]).write_text(write, encoding="utf-8")
-        return types.SimpleNamespace(returncode=returncode, stderr=stderr, stdout="")
-    return run
+# ---- run_kumiko : chemins d'erreur, avec `subprocess.Popen` mocké ---- #
+#
+# La doublure portait sur `subprocess.run`. CONC-1 l'a remplacé par `Popen` + une attente
+# par tranches, seule forme qui laisse interroger l'interrupteur entre deux tranches : la
+# doublure suit le mécanisme, puisque c'est lui qu'elle simule. Elle expose donc ce que le
+# code appelle vraiment — `communicate(timeout=…)`, `returncode`, `poll()`, `kill()` — et
+# `tue` retient si l'enfant a été tué, ce dont dépend le test d'orphelin.
+class _FauxProc:
+    def __init__(self, args, write=None, returncode=0, stderr="", timeouts=0):
+        self.args, self._write, self._stderr = args, write, stderr
+        self.returncode = None
+        self._code, self._restant, self.tue = returncode, timeouts, False
+
+    def communicate(self, timeout=None):
+        if self._restant > 0:              # tranches d'attente avant la fin
+            self._restant -= 1
+            raise subprocess.TimeoutExpired(cmd="kumiko", timeout=timeout)
+        if self._write is not None:
+            Path(self.args[self.args.index("-o") + 1]).write_text(
+                self._write, encoding="utf-8")
+        self.returncode = self._code
+        return "", self._stderr
+
+    def poll(self):
+        return self.returncode
+
+    def kill(self):
+        self.tue = True
+        self.returncode = -9
+
+
+def _fake_popen(**kw):
+    """Remplace `subprocess.Popen` ; garde le dernier processus créé sous `.dernier`."""
+    def popen(args, **_):
+        popen.dernier = _FauxProc(args, **kw)
+        return popen.dernier
+    popen.dernier = None
+    return popen
 
 
 @pytest.fixture
@@ -54,35 +84,41 @@ def test_run_kumiko_absent(monkeypatch, tmp_path):
 
 
 def test_run_kumiko_code_retour_non_nul(monkeypatch, kumiko_on, tmp_path):
-    monkeypatch.setattr(seg.subprocess, "run", _fake_run(returncode=1, stderr="boom"))
+    monkeypatch.setattr(seg.subprocess, "Popen",
+                        _fake_popen(returncode=1, stderr="boom"))
     with pytest.raises(KumikoError, match="échoué"):
         run_kumiko(tmp_path / "x.png")
 
 
 def test_run_kumiko_timeout(monkeypatch, kumiko_on, tmp_path):
-    monkeypatch.setattr(
-        seg.subprocess, "run",
-        _fake_run(raises=subprocess.TimeoutExpired(cmd="kumiko", timeout=1)))
+    """Le délai TOTAL est épuisé — l'enfant est tué, et le message le dit."""
+    monkeypatch.setattr(seg, "DELAI_KUMIKO", 0.05)
+    monkeypatch.setattr(seg, "PAS_INTERRUPTION", 0.01)
+    faux = _fake_popen(timeouts=10 ** 9)         # ne finit JAMAIS : c'est l'horloge qui
+                                                 # doit trancher, pas un compte de tranches
+                                                 # (à 10 000 la doublure cédait la première)
+    monkeypatch.setattr(seg.subprocess, "Popen", faux)
     with pytest.raises(KumikoError, match="délai"):
         run_kumiko(tmp_path / "x.png")
+    assert faux.dernier.tue, "un enfant qui dépasse le délai ne doit pas rester orphelin"
 
 
 def test_run_kumiko_json_invalide(monkeypatch, kumiko_on, tmp_path):
-    monkeypatch.setattr(seg.subprocess, "run", _fake_run(write="pas du json"))
+    monkeypatch.setattr(seg.subprocess, "Popen", _fake_popen(write="pas du json"))
     with pytest.raises(KumikoError, match="illisible"):
         run_kumiko(tmp_path / "x.png")
 
 
 def test_run_kumiko_sans_clef_panels(monkeypatch, kumiko_on, tmp_path):
-    monkeypatch.setattr(seg.subprocess, "run",
-                        _fake_run(write=json.dumps([{"size": [1, 1]}])))
+    monkeypatch.setattr(seg.subprocess, "Popen",
+                        _fake_popen(write=json.dumps([{"size": [1, 1]}])))
     with pytest.raises(KumikoError, match="panels"):
         run_kumiko(tmp_path / "x.png")
 
 
 def test_run_kumiko_succes(monkeypatch, kumiko_on, tmp_path):
     page = [{"size": [10, 20], "panels": [[0, 0, 5, 5]]}]
-    monkeypatch.setattr(seg.subprocess, "run", _fake_run(write=json.dumps(page)))
+    monkeypatch.setattr(seg.subprocess, "Popen", _fake_popen(write=json.dumps(page)))
     assert run_kumiko(tmp_path / "x.png")["panels"] == [[0, 0, 5, 5]]
 
 
@@ -317,3 +353,61 @@ def test_resegmentation_s2_fusion_conserve_les_deux(client, planche, monkeypatch
     assert cases[0]["id"] in ids and cases[1]["id"] in ids          # les 2 anciennes survivent
     for mot in ("CASEHAUT", "CASEBAS"):                              # annotations cherchables in situ
         assert client.get("/api/recherche", params={"q": mot}).json()["results"]
+
+
+# ---- CONC-1 : l'annulation atteint le sous-processus ---- #
+def test_l_interruption_tue_le_sous_processus(monkeypatch, kumiko_on, tmp_path):
+    """L'interrupteur est consulté ENTRE deux tranches d'attente, et l'enfant est tué.
+
+    Doublure ici : on éprouve le chemin de code, pas le système. Le test suivant, lui,
+    lance un VRAI processus — les deux sont nécessaires et ne disent pas la même chose.
+    """
+    monkeypatch.setattr(seg, "PAS_INTERRUPTION", 0.01)
+    faux = _fake_popen(timeouts=10 ** 9)
+    monkeypatch.setattr(seg.subprocess, "Popen", faux)
+    interruption.poser(lambda: True)
+
+    with pytest.raises(interruption.PasseInterrompue):
+        run_kumiko(tmp_path / "x.png")
+    assert faux.dernier.tue, "l'enfant doit être tué, pas abandonné à son sort"
+
+
+def test_un_vrai_sous_processus_ne_survit_pas_a_l_annulation(monkeypatch, kumiko_on,
+                                                             tmp_path):
+    """CONC-1 — « sans laisser de processus résiduel », éprouvé sur un vrai processus.
+
+    Le point mesuré le 2026-09-08 : `subprocess.run(timeout=…)` TUAIT déjà l'enfant, dans
+    sa clause de délai comme dans sa clause générale. L'orphelin annoncé par l'audit
+    n'existait pas — c'est le passage à `Popen`, nécessaire pour devenir interruptible,
+    qui prend la charge de l'enfant. **Ce test garde donc une propriété que le correctif
+    pouvait DÉTRUIRE, pas une qu'il apporte.**
+
+    Il ne demande à aucun outil système si le processus vit : il regarde s'il TRAVAILLE
+    encore. Un enfant tué cesse d'écrire ; un enfant orphelin continue. C'est la seule
+    forme portable, et le dépôt doit tourner sous Linux dans son image comme ici.
+    """
+    marqueur = tmp_path / "vivant.txt"
+    script = tmp_path / "faux_kumiko.py"
+    script.write_text(
+        "import os, time\n"
+        "chemin = os.environ['BD_TEST_MARQUEUR']\n"
+        "for _ in range(2000):\n"
+        "    open(chemin, 'a').write('.')\n"
+        "    time.sleep(0.01)\n", encoding="utf-8")
+
+    monkeypatch.setenv("BD_TEST_MARQUEUR", str(marqueur))
+    monkeypatch.setattr(seg, "KUMIKO_ENTRY", script)
+    monkeypatch.setattr(seg, "PAS_INTERRUPTION", 0.05)
+    # L'interruption n'est demandée qu'une fois l'enfant AU TRAVAIL : sinon on tuerait
+    # un processus qui n'a pas commencé, et le test ne prouverait rien.
+    interruption.poser(lambda: marqueur.exists())
+
+    with pytest.raises(interruption.PasseInterrompue):
+        run_kumiko(tmp_path / "x.png")
+
+    assert marqueur.exists(), "l'enfant n'a jamais démarré : le test ne mesure rien"
+    taille = marqueur.stat().st_size
+    time.sleep(0.3)                       # 30 écritures s'il avait survécu
+    assert marqueur.stat().st_size == taille, (
+        f"le sous-processus écrit encore après l'annulation ({taille} -> "
+        f"{marqueur.stat().st_size} octets) : il a été laissé orphelin")

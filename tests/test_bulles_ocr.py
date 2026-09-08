@@ -13,6 +13,7 @@ import database
 import pipeline.bulles as bulles
 import pipeline.ingest as ingest
 import pipeline.ocr as ocr
+from pipeline import interruption
 from conftest import requires_bulles, requires_ocr
 
 
@@ -563,3 +564,34 @@ def test_a_ttl_nul_aucune_minuterie_n_est_armee(client, album, monkeypatch):
     assert client.get(f"/api/regions/{r['id']}/crop").status_code == 200
     assert ocr._crop_cache["img"] is not None, "le cache doit fonctionner comme avant"
     assert ocr._minuterie is None, "à TTL nul, aucun fil ne doit être créé"
+
+
+def test_l_ocr_est_interruptible_entre_deux_regions(client, album, monkeypatch):
+    """CONC-1 — une passe OCR entière ignorait l'annulation, du début à la fin.
+
+    Une planche chargée porte plusieurs dizaines de régions, chacune un appel à EasyOCR :
+    la passe pouvait durer des minutes sans jamais regarder si on lui avait demandé de
+    s'arrêter. Le grain est la RÉGION, et c'est le seul disponible — `readtext` est un
+    appel opaque qu'on ne peut pas découper.
+
+    Le lecteur est remplacé par un objet nu : le moteur n'a rien à voir avec ce qui est
+    éprouvé, et le test doit tourner là où EasyOCR n'est pas installé — sans quoi il ne
+    vaudrait que sur les machines qui l'ont, c'est-à-dire nulle part en intégration.
+    """
+    monkeypatch.setattr(ocr, "_get_reader", lambda langs: object())
+
+    buf = io.BytesIO()
+    Image.new("RGB", (400, 300), "white").save(buf, "PNG")
+    p = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("i.png", buf.getvalue(), "image/png")}).json()
+    for y in (10, 120):
+        client.post(f"/api/planches/{p['id']}/regions",
+                    json={"type": "bulle", "x": 10, "y": y, "w": 200, "h": 80})
+
+    interruption.poser(lambda: True)
+    conn = database.get_connection()
+    try:
+        with pytest.raises(interruption.PasseInterrompue):
+            ocr.ocr_planche(conn, p["id"])
+    finally:
+        conn.close()

@@ -19,6 +19,8 @@ import threading
 import traceback
 
 from database import get_connection
+from pipeline import interruption
+from pipeline.interruption import PasseInterrompue
 
 PASSES = ("segmenter", "bulles", "ocr")   # ordre canonique d'exécution
 
@@ -84,6 +86,11 @@ def _run(job_id: int) -> None:
     conn = None
     echec = None
     with _run_lock:                       # jobs traités en file (un à la fois)
+        # L'interrupteur est posé pour CE fil, et les passes le consultent sans rien
+        # savoir du lot (CONC-1). Le retirer dans le `finally` n'est pas une politesse :
+        # ce fil est éphémère, mais une sonde oubliée déciderait de l'arrêt d'un travail
+        # étranger si le modèle de fils changeait — et rien ne le dirait.
+        interruption.poser(lambda: job["cancel"])
         try:
             conn = get_connection()
             for pid in job["planche_ids"]:
@@ -100,10 +107,18 @@ def _run(job_id: int) -> None:
                         with ML_LOCK:                    # pas d'inférence ML concurrente
                             _apply_pass(conn, passe, pid)
                         conn.commit()
+                    except PasseInterrompue:
+                        # DEMANDÉE, donc pas une erreur : rien à collecter, personne n'a
+                        # raté quoi que ce soit. Et rien à garder non plus — une passe
+                        # coupée en deux n'a pas de résultat partiel qui vaille.
+                        conn.rollback()
+                        break
                     except Exception as exc:              # une passe ratée n'arrête pas le lot
                         conn.rollback()
                         job["errors"].append(
                             {"planche_id": pid, "passe": passe, "erreur": str(exc)})
+                if job["cancel"]:
+                    break                 # la planche interrompue ne compte pas comme faite
                 job["done"] += 1
         except Exception as exc:
             # Le lot MEURT ici, et c'est le seul endroit qui puisse le dire. Deux lignes
@@ -122,6 +137,7 @@ def _run(job_id: int) -> None:
             # sortie, plus du bruit dans la suite.
             traceback.print_exc()
         finally:                          # statut TOUJOURS positionné (même si get_connection lève)
+            interruption.retirer()
             if conn is not None:
                 conn.close()
             from pipeline.modeles import liberer_modeles_ml
