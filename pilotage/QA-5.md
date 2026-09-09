@@ -1,13 +1,13 @@
 ---
 chantier: QA-5
-statut: interrompu
+statut: livré
 ---
 
 # QA-5 — la suite ne s'exécute jamais dans l'artefact livré
 
-**Arrêté sur** — le commit `7046a57`, 2026-09-09 : **deux des trois items restants sont clos**, le conflit IIIF
-l'ayant été par QA-4. Reste UN item, et c'est le plus gros : faire tourner les e2e quelque
-part de reproductible.
+**Arrêté sur** — le commit `a423f98`, 2026-09-09 : **tous les items sont clos.** La suite
+tourne dans l'artefact, l'écart poste/image est mesuré et gardé, et les e2e ont rejoint
+l'image — 184 passés, 4 ignorés, 0 échec en 26 min 08, sous un bandeau qui cite le commit servi.
 
 **L'écart venv/image, enfin MESURÉ.** Ce chantier reposait depuis le 2026-08-27 sur une
 anecdote — « 451 tests verts en local, trois moteurs morts dans l'image ». Le chiffre
@@ -36,6 +36,49 @@ est précisément ce que ce chantier existe pour obtenir : le cliquet d'AUTH-5 e
 le nouvel outil soit déclaré, et ma propre garde anti-cimetière échouait là-bas — un défaut
 de conception, `ECARTS_ADMIS` décrivant un POSTE et l'image n'en étant pas un.
 
+**Ce que le chantier a produit de plus utile n'est pas l'étape Docker, c'est ce qu'elle a
+trouvé le jour même.** `/administration` à 320 px faisait défiler le CORPS de la page —
+325 px de contenu pour 320 —, à cause de l'empreinte complète du commit affichée par le
+panneau « Version servie » (INFRA-10) : 40 caractères sans un espace, insécables. Le poste
+ne le voyait pas, l'image si. **La même chaîne, deux polices, cinq pixels.**
+
+Et le défaut n'était pas propre à l'image : sur le poste il apparaît dès que la préférence
+de police du navigateur passe à 20 px (350 px pour 320) — un réglage que
+`test_e2e_police.CAS` audite DÉJÀ à cette largeur. Cet audit-là visitait donc la bonne page
+au bon réglage, et posait l'AUTRE question, « le contenu est-il perdu ? », à laquelle un
+`overflow-x` sur le corps de la page répond oui. La garde stricte, elle, ne s'exerçait qu'à
+la police INSTALLÉE : verte ici, rouge là-bas. Elle a gagné l'axe de la police, et le
+défaut se reproduit désormais partout.
+
+**Trois affirmations fausses ont été corrigées dans les commentaires du chantier**, toutes
+écrites par la session qui les a corrigées : « Chromium sur une `slim` n'a aucune police »
+(`--with-deps` en installe quatre familles — pas DejaVu, ce qui sauve la ligne mais pas sa
+raison) ; « DejaVu est le plus large des défauts courants » (jamais mesuré) ; et « la suite
+collecte 924 tests dans l'image » — elle en COLLECTE 920, 924 étant le BILAN, qui compte
+quatre modules sautés au niveau du MODULE sans jamais les collecter. Ce dernier chiffre
+masquait la démonstration qu'il devait porter : `959 - 920 = 39`, exactement les tests
+`deploy` que les exclusions déclarent.
+
+**Trois limites restent, et aucune n'appartient à ce chantier.**
+
+1. *Reproductible n'est pas automatique.* Rien ne lance cette image tout seul : deux
+   commandes, à la main. L'item demandait un endroit reproductible, et c'est acquis ;
+   l'exécution automatique est un sujet d'intégration continue, que ce dépôt n'a pas.
+2. *Le navigateur s'installe en AVAL de la copie du code* — `e2e` hérite de `test`, qui
+   fait `COPY . .`. Tout commit invalide donc la couche et redéclenche ~400 Mo de
+   téléchargement, ce qui rend la construction dépendante du réseau : mesuré le
+   2026-09-09, un `deb.debian.org` injoignable a fait échouer un build. La réparation
+   existe — une étape intermédiaire sans code — mais elle duplique les variables
+   d'environnement de `test`, donc crée un risque de divergence. ÉCARTÉE aujourd'hui,
+   écrite ici.
+3. *Les e2e coûtent 7,7 s par test* contre 0,29 s hors e2e, vingt-six fois plus. Aucune
+   fixture de `conftest.py` ne déclare de portée : chacun des 184 tests lance son uvicorn
+   et resème son décor, OCR compris. La répartition setup/call n'est PAS mesurée
+   (`--durations` la donnerait), et l'explication qui vient à l'esprit — le chargement à
+   froid de spaCy — ne tient pas telle quelle : 184 fois 10 s dépasserait le temps total.
+   À ouvrir en fiche propre. Le remède évident, une portée `module`, s'achète avec de
+   l'ISOLATION, et ce dépôt sait ce que coûte une garde qui cesse de voir.
+
 ## Reste
 
 ### Faire tourner la suite là où le code s'exécutera
@@ -46,10 +89,10 @@ de conception, `ECARTS_ADMIS` décrivant un POSTE et l'image n'en étant pas un.
 ### Ce que ça doit attraper
 - [x] Les trois défauts du 2026-08-27 ont été RÉELLEMENT rejoués dans des images cassées à dessein. Verdict : **deux sur trois détectés**, le troisième NON — mesuré, pas raisonné
 - [x] Le moteur ML manquant est détecté à la CONSTRUCTION : `tools/verifier_moteurs.py --exiger` tourne dans l'étape `runtime` (SANTE-1, `ed17b32`). Les trois défauts du jour y sont rejetés, 3/3 — là où la suite n'en voyait que 2
-- [ ] Les E2E tournent quelque part de reproductible : elles exigent un navigateur, restent sur la machine de dev, et sont donc le dernier morceau non couvert par l'artefact
+- [x] **Les E2E tournent dans un artefact** — étape `e2e` du Dockerfile, `FROM test` plus Chromium, placée AVANT `runtime` parce que l'étape par défaut d'un Dockerfile est la DERNIÈRE. 4,79 Go contre 3,76 pour `test` et 3,55 pour le livrable, qui n'en hérite RIEN. 184 passés, 4 ignorés, 0 échec en 26 min 08, bandeau d'identité en tête. Elle a rapporté dès sa première passe un défaut invisible sur le poste, ce qui est l'argument entier de ce chantier
 - [x] **Un écart de version entre le venv local et l'image est SIGNALÉ.** `tests/test_ecart_venv_image.py` fait échouer la suite sur toute divergence NON DÉCLARÉE portant une épingle délibérée, et sur tout paquet épinglé mais absent — cette seconde forme étant la plus traître, puisqu'elle fait SKIPPER au lieu d'échouer, et qu'un skip se lit comme un succès (QA-6). Les quatre écarts constatés le 2026-09-09 sont déclarés avec leur date et leur coût ; un troisième test interdit à ces déclarations de survivre à leur objet, sans quoi la liste deviendrait un cimetière qui excuse d'avance
 - [x] **Le marqueur d'image est POSÉ, jamais deviné** — `ENV BD_IMAGE=1` dans l'étape `base`. La garde anti-cimetière se saute là-bas, et lui seul du module : ses déclarations décrivent un POSTE DE TRAVAIL, or l'image porte exactement les versions des verrous, si bien qu'elle les lirait toutes comme périmées. Reconnaître l'image à son chemin, à sa plateforme ou à l'absence de `.git` marcherait aujourd'hui et mentirait le jour où un poste sous Linux ressemblerait assez à l'image pour tromper la devinette
-- [x] **La liste des exclusions du Dockerfile est complète et CHIFFRÉE** — elle en annonçait deux, il y en a quatre. La manquante était la plus grosse : `.dockerignore` exclut `deploy/` en entier pour une raison de sécurité, donc quatre modules d'infrastructure ne sont pas collectés. 924 tests mesurés dans l'image contre 959 sur le poste, et rien ne le disait
+- [x] **La liste des exclusions du Dockerfile est complète et CHIFFRÉE** — elle en annonçait deux, il y en a quatre. La manquante était la plus grosse : `.dockerignore` exclut `deploy/` en entier pour une raison de sécurité, donc quatre modules d'infrastructure ne sont pas collectés. l'image COLLECTE 920 tests contre 959 sur le poste — 39 de moins, exactement les quatre modules `deploy` —, et rien ne le disait. (Cette ligne a d'abord écrit 924, qui est le BILAN et non la collecte : un module sauté au niveau du MODULE y est compté sans être collecté. Corrigé le 2026-09-09 ; le chiffre faux masquait justement l'égalité qui rend la liste des exclusions vérifiable)
 
 ## Contexte
 
