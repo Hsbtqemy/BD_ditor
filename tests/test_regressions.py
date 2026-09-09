@@ -1443,3 +1443,42 @@ def test_l_enumeration_des_lots_ne_peut_plus_croiser_une_purge(monkeypatch):
     assert vu["enumeration"] and all(vu["enumeration"]), (
         "l'énumération lit le registre entrée par entrée : sans `_lock`, une purge "
         "concurrente lui fait rendre un `None` que `GET /api/jobs` déréférence")
+
+
+# --------------------------------------------------------------------------- #
+# `Cache-Control: no-cache` — la liste de chemins avait oublié la cinquième page
+# --------------------------------------------------------------------------- #
+def test_administration_n_est_pas_cachable(client):
+    """`/administration` (UX-10) manquait à la liste du middleware `_no_cache_assets`.
+
+    Conséquence, sur un poste de développement seulement : le navigateur intégré d'un
+    IDE peut servir une page périmée alors que le disque est à jour — le défaut même que
+    ce middleware existe pour empêcher, actif sur quatre surfaces et pas sur la cinquième.
+    Rien dans la suite ne regardait cet en-tête, donc rien ne pouvait le dire.
+    """
+    assert client.get("/administration").headers.get("cache-control") == "no-cache"
+
+
+def test_toute_surface_html_est_revalidee(client):
+    """Le cliquet, et il ne connaît AUCUNE liste de surfaces.
+
+    Une liste écrite à la main oublie ce qu'on ajoute : c'est ainsi que la cinquième page
+    est passée à travers. `surfaces_servies` demande à l'application ce qu'elle sert
+    réellement en `text/html`, si bien qu'une sixième surface est couverte le jour où elle
+    naît, sans que personne y pense.
+
+    Le plancher n'est pas décoratif : l'énumération pourrait rétrécir (leçon d'ARCH-2, où
+    deux cliquets ont continué de PASSER en ne regardant plus que 53 routes sur 122), et
+    ce test-ci deviendrait vert en ne mesurant rien.
+    """
+    import surfaces
+
+    servies = surfaces.surfaces_servies(client)
+    assert len(servies) >= 5, (
+        f"seulement {len(servies)} surface(s) HTML détectée(s) : le balayage ne voit plus "
+        f"ce qu'il garde")
+    manquantes = sorted(c for c in servies
+                        if client.get(c).headers.get("cache-control") != "no-cache")
+    assert not manquantes, (
+        f"{manquantes} servent du HTML sans `Cache-Control: no-cache` : un navigateur "
+        f"intégré d'IDE peut en servir une version périmée")

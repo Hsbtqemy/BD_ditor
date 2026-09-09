@@ -276,10 +276,26 @@ async def _no_cache_assets(request, call_next):
     navigateur intégré d'un IDE (Cursor/VS Code, basé Chromium) peut servir un
     style.css / theme.js PÉRIMÉ tout en chargeant le HTML neuf → bandes non stylées,
     layout cassé, alors que le disque est à jour. ETag/Last-Modified de StaticFiles
-    restent honorés (réponse 304 si rien n'a changé) : coût négligeable."""
+    restent honorés (réponse 304 si rien n'a changé) : coût négligeable.
+
+    **Les pages se reconnaissent à ce qu'elles RENDENT, plus à une liste de chemins.**
+    Cette condition énumérait quatre surfaces, et `/administration` (UX-10) n'y a jamais
+    été ajoutée : la cinquième page servait donc du HTML cachable pendant que les quatre
+    autres ne l'étaient pas. Le défaut est invisible à l'usage — un rechargement suffit à
+    le masquer, et il ne se voit que dans le navigateur intégré d'un IDE, sur un poste de
+    développement, le jour où l'on modifie `administration.js`.
+
+    Une liste ÉCRITE À LA MAIN oublie ce qu'on ajoute, et c'est le mode d'échec que
+    `tests/surfaces.py` décrit déjà pour les audits E2E. Ici il n'y avait même pas de
+    garde : rien, dans toute la suite, ne regardait cet en-tête. Le Content-Type est la
+    réponse de l'application elle-même à « est-ce une page ? », donc une sixième surface
+    est couverte sans que personne y pense. `/docs` et `/redoc` le deviennent aussi, ce
+    qui est sans effet : leur bundle vient d'un CDN, la page qui l'appelle est engendrée
+    à chaque requête. Les réponses JSON de l'API ne sont pas concernées et ne l'étaient
+    pas — leur cache est l'affaire du client."""
     response = await call_next(request)
-    path = request.url.path
-    if path.startswith("/static") or path in ("/", "/recherche", "/corpus", "/exploration"):
+    if (request.url.path.startswith("/static")
+            or response.headers.get("content-type", "").startswith("text/html")):
         response.headers["Cache-Control"] = "no-cache"
     return response
 
