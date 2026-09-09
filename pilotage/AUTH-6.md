@@ -5,10 +5,10 @@ statut: interrompu
 
 # AUTH-6 — le modèle de comptes et de groupes, avant les stagiaires
 
-**Arrêté sur** — le commit `58c6e71`, 2026-09-09 : le cadrage est rendu, les neuf
-questions sont tranchées, et **la première des trois constructions qu'elles ont créées est
-faite** — la nature d'un compte est dans le modèle, ANN-5 refuse de mesurer sur un agent
-collectif, et les sorties le déclarent.
+**Arrêté sur** — le commit `9e594b8`, 2026-09-09 : le cadrage est rendu, les neuf
+questions sont tranchées, et **deux constructions sur trois sont faites** — la nature d'un
+compte est dans le modèle (`58c6e71` : ANN-5 refuse de mesurer sur un agent collectif, les
+sorties le déclarent), et un accès accordé à un login jamais vu le DIT.
 
 **Le défaut réel n'était pas celui que cette fiche annonçait, et il était pire.** Elle
 écrivait qu'ANN-5 rendrait « aucun désaccord » sous un login partagé. Sa condition de
@@ -67,7 +67,12 @@ raisons dans `INFRA-8`. Ce chantier peut le défaire, mais en connaissant ce qu'
 ### Les pièges que le modèle ne signale pas
 - [ ] Ce que devient un accès dont le GROUPE a été renommé ou supprimé **dans LLDAP** — `collection_acces` stocke une RÉFÉRENCE au nom du groupe, jamais une appartenance : la ligne survit à un groupe qui n'existe plus, et personne ne la relie à rien. **La réponse a CHANGÉ dans la même heure, le 2026-09-09, et les deux états sont gardés parce que le second n'annule pas le raisonnement du premier.** D'abord « on documente que l'application ne le détecte pas » — la branche déjà prise pour les logins jamais vus (AUTH-3), et la seule possible tant que l'application ne lit aucun annuaire. Puis la lecture de l'annuaire a été décidée, ce qui rend la détection POSSIBLE. Attendu : le panneau signale un groupe qui n'existe plus, et **échoue en disant qu'il n'a pas pu vérifier** plutôt qu'en déclarant l'accès mort
 - [ ] Ce qu'une collection devient quand son unique propriétaire perd son groupe : la base refuse le zéro-propriétaire par un 409, mais ce refus porte sur une SUPPRESSION d'accès, pas sur une appartenance qui s'évapore côté annuaire. **Tranché le 2026-09-09 : `bd-admins` comme recours ne suffit pas, les collections orphelines doivent être SIGNALÉES.** Attendu : un écran ou un contrôle liste les collections dont aucun propriétaire déclaré n'a d'appartenance vivante, et un test joue le scénario entier — le propriétaire perd son groupe, la collection apparaît dans la liste, un administrateur réattribue la propriété
-- [ ] **Un accès accordé à un login que l'application n'a JAMAIS vu le dit.** **Tranché le 2026-09-09 : on l'implémente.** Faisable sans rien ajouter — la table `utilisateur` le sait déjà. Attendu : après enregistrement, le panneau rapporte l'observation (« ce nom n'a encore ouvert l'application ») sans en nommer la cause, et un test la couvre. Le rapport ne doit PAS prétendre distinguer une faute de frappe d'un arrivant qui n'est pas encore venu — l'application ne le peut pas, et le bandeau de portée vide a été réécrit pour cette raison exacte. **Avec des dizaines de comptes, cette case monte en valeur** : le risque de frappe croît avec le nombre d'attributions
+- [x] **Un accès accordé à un login que l'application n'a JAMAIS vu le dit** — fait le 2026-09-09 (`9e594b8`). `_acces_de` rend `jamais_vu` : le panneau des accès marque le login d'un « n'a pas encore ouvert l'application », et la note sous le formulaire a été RÉÉCRITE, sans quoi l'écran se serait contredit à deux centimètres — elle affirmait qu'un login mal orthographié n'ouvre rien « sans le dire », ce qui vient de cesser d'être vrai pour les logins et reste vrai pour les groupes.
+
+  **Le champ ne distingue PAS une faute de frappe d'un arrivant qui n'est pas encore venu**, et c'est la moitié de sa valeur : les deux produisent la même absence, l'application ne peut pas les départager, et prétendre le contraire enverrait chercher la mauvaise panne. Même raison qui a fait réécrire le bandeau de portée vide le 2026-09-06.
+
+  **`None` pour un GROUPE, jamais `False`** — le cœur du chantier. L'application ne lit aucun annuaire (AUTH-1) ; répondre `False` affirmerait « ce groupe existe », ce qu'elle n'a aucun moyen de savoir. C'est la leçon d'AUTH-8, où `None` et `False` ont dû être séparés parce qu'un en-tête ABSENT et un en-tête VIDE arrivaient identiques. La mutation qui remplace `None` par `False` ne fait tomber QUE le test des groupes : la distinction est réellement gardée
+- [x] **Le panneau des accès est audité AVEC du contenu dedans** — trou trouvé en relecture, et il était entier. `test_a11y_chargement` visite bien `/administration`, mais la liste des accès vit dans un `<details>` que rien n'ouvre et qui ne se charge qu'au dépliage : AUCUN élément de ce panneau n'était jamais passé devant axe. Le nouvel audit prend un décor DERRIÈRE LE PROXY — sans identité, créer une collection est refusé, donc le panneau se rendrait vide — et attend le marqueur LUI-MÊME plutôt que son conteneur. Éprouvé : une couleur à contraste insuffisant fait échouer l'audit en nommant `.acces-jamais-vu`, en thème sombre seulement
 
 ### Ce que le cadrage du 2026-09-09 met à construire
 
