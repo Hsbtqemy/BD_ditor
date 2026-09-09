@@ -328,6 +328,14 @@ NON_BALAYE = {
         "aucun ne vient du corpus, et c'est ce qui le rend inoffensif pour ce cliquet-ci. "
         "Sa dangerosité est ailleurs, et elle est écrite en tête du fichier : devant une "
         "instance réelle il donnerait à quiconque l'identité de son choix."),
+    ("outil", "identite_pile.py"): (
+        "Rapporte l'identité de la PILE (QA-5) : version de Python, plateforme, empreintes "
+        "des verrous, versions de paquets, état des moteurs, et le commit servi lu dans "
+        "`BD_COMMIT`. Il n'ouvre JAMAIS la base — sa seule source est `importlib.metadata` "
+        "et les fichiers de verrou du dépôt, donc aucune colonne d'identité ne peut le "
+        "traverser. Le `commit` qu'il affiche est celui de l'ARTEFACT, pas d'une personne : "
+        "c'est la même valeur que le panneau de version d'INFRA-10, déjà déclarée ailleurs "
+        "dans ce cliquet."),
     ("outil", "mesurer_reflow.py"): (
         "Outil de CONSTAT (UX-7) : pilote un Chromium sur une instance DÉJÀ lancée et "
         "compare le rectangle de chaque élément à la largeur de la fenêtre. Il n'ouvre "

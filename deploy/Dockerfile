@@ -32,6 +32,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Marqueur EXPLICITE, hérité par `test` comme par `runtime` : « cette pile EST l'image ».
+# Il sert à une question qui n'a de sens que hors d'ici — `tests/test_ecart_venv_image.py`
+# compare le poste de travail à l'artefact, et dans l'artefact la comparaison porterait
+# sur lui-même. Un marqueur POSÉ plutôt que DEVINÉ : reconnaître l'image à son chemin, à
+# sa plateforme ou à l'absence de `.git` marcherait aujourd'hui et mentirait le jour où un
+# poste de dev sous Linux ressemblerait assez à l'image pour tromper la devinette.
+ENV BD_IMAGE=1
+
 # 1) Dépendances Python d'abord (couche de cache indépendante du code).
 #    On installe des verrous TRANSITIFS (QA-4, `verrou-*.lock`), engendrés par
 #    `pip freeze` DANS cette image et non depuis un venv de dev. `requirements.lock`
@@ -104,7 +112,7 @@ RUN git init -q lib/kumiko \
 # visible, alors qu'il ne l'est pas depuis le venv de dev.
 #
 # TROIS exclusions ASSUMÉES, à connaître pour ne pas se croire couvert. Mesuré le
-# 2026-09-09 : la suite collecte 917 tests ici contre 952 sur la machine de dev, et la
+# 2026-09-09 : la suite collecte 924 tests ici contre 959 sur la machine de dev, et la
 # liste ci-dessous rend compte des 35 manquants — sans quoi l'écart se lirait comme un
 # détail d'environnement.
 #   · e2e   — `pytest -m e2e` exige un navigateur ; installer Chromium ici ramènerait
@@ -113,6 +121,12 @@ RUN git init -q lib/kumiko \
 #   · JS    — `tests/test_js_unit.py` appelle `node`, absent de l'image : il se skippe
 #             proprement, et sa logique est pure (aucun accès DOM), donc indépendante
 #             de l'image. (1 skip)
+#   · écart  — `test_ecart_venv_image.py::test_les_declarations_ne_survivent_pas_a_leur_objet`
+#             se saute ici, et lui seul : il garde `ECARTS_ADMIS` de devenir un cimetière,
+#             or ces déclarations décrivent un POSTE DE TRAVAIL. Dans l'image, où l'écart
+#             est nul par construction, il les lirait toutes comme périmées. Les deux
+#             autres tests du module TOURNENT et gardent quelque chose : que l'image ne
+#             contredise aucune épingle délibérée. (1 skip)
 #   · deploy — les scripts d'infrastructure ne sont pas dans l'image : `.dockerignore`
 #             exclut `deploy/` en ENTIER, parce que `deploy/authelia/users_database.yml`
 #             porte un hash de mot de passe qui n'a rien à faire là. Quatre modules
@@ -156,6 +170,12 @@ ENV BD_DATA_DIR=/tmp/bd-test-data \
     HOME=/tmp/bd-test-home \
     PYTHONUNBUFFERED=1
 
+# Le commit servi, comme dans `runtime` (INFRA-10). Ici il ne sert pas un panneau
+# d'écran mais le bandeau d'identité ci-dessous : un journal de construction gardé trois
+# semaines doit encore dire SUR QUOI la suite est passée.
+ARG BD_COMMIT=inconnu
+ENV BD_COMMIT=$BD_COMMIT
+
 # `pytest` NU, sans `-q` : `pytest.ini` en porte déjà un dans `addopts`, et le second en
 # ferait `-qq` — qui SUPPRIME la ligne de bilan. Mesuré le 2026-09-07 : `pytest -q` sort
 # les points et rien d'autre, `pytest` nu sort « N passed ». L'image resterait donc muette
@@ -163,7 +183,17 @@ ENV BD_DATA_DIR=/tmp/bd-test-data \
 # QA-5 fait de cette image l'artefact de vérité, et « 833 verts » et « 12 verts, 821 non
 # collectés » s'y affichaient à l'identique. Une suite qui ne dit pas ce qu'elle a mesuré
 # approuve sans avoir rien vu (QA-4).
-CMD ["python", "-m", "pytest"]
+#
+# L'IDENTITÉ EST IMPRIMÉE D'ABORD (QA-5). Un échec de suite dans l'image ne disait ni quel
+# commit, ni quelle pile : il fallait reconstruire pour le savoir, c'est-à-dire remplacer
+# la chose qu'on voulait examiner. Le bandeau pose le commit, la version de Python, les
+# empreintes des trois verrous, dix versions clés et l'état des moteurs.
+#
+# `;` et non `&&` : le bandeau est un instrument de LECTURE, et un instrument cassé ne doit
+# pas empêcher la mesure. S'il levait, `&&` supprimerait la suite entière au profit d'une
+# erreur de mise en forme — l'inverse de ce qu'on lui demande. Le code de retour reste
+# celui de pytest.
+CMD ["sh", "-c", "python tools/identite_pile.py --identite; python -m pytest"]
 
 # --------------------------------------------------------------------------- #
 # runtime — l'image LIVRÉE  (étape par défaut : la dernière du fichier)
