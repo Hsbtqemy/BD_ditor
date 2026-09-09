@@ -1,11 +1,38 @@
 ---
 chantier: INFRA-9
-statut: interrompu
+statut: livré
 ---
 
 # INFRA-9 — Authelia tourne sur une mineure qui ne reçoit plus de correctifs
 
-**Arrêté sur** — 2026-09-06, `a0b0927` : **`deployer.sh` déployait la politique d'accès
+**Arrêté sur** — 2026-09-09, chantier TERMINÉ par la mesure, **sans commit de code** (le
+dernier reste `a0b0927`, qui vit sur `origin/main`) : les trois cases ouvertes sont faites,
+et deux d'entre elles ont rapporté autre chose que ce qu'on venait chercher.
+
+`verifier_deploiement.py` passe des deux côtés — **4.39 n'a pas changé la forme
+d'`access_control`**, et son contrôle BLOQUANT de cohérence des groupes admin le dit.
+
+Le bandeau de portée vide a été revu sur l'instance, sous un compte jetable créé dans
+LLDAP : `<details>` replié, moitié humaine juste, et **le référent d'AUTH-4 s'affiche enfin
+avec un nom et un contact réels** — l'oubli du 2026-09-06 est fermé sur l'écran qu'un
+arrivant voit en premier. Mais sa ligne technique ACCUSE À TORT, et ce défaut appartient à
+AUTH-8, où il est écrit : un compte sans groupe ne reçoit pas `Remote-Groups` vide, il ne le
+reçoit pas du tout.
+
+**Le repli `filesystem` survit à la montée, et l'éprouver a corrigé son propre attendu** :
+le fichier de notifications a RÉTRÉCI, le notifier écrasant au lieu d'ajouter. Retour
+arrière fait dans la foulée et vérifié des DEUX côtés — le courriel repart par SMTP ET le
+fichier reste figé, ce qui distingue « le SMTP est revenu » de « les deux notifiers
+tournent », la panne du 2026-09-05.
+
+**Ce que cette journée dit d'une montée de mineure**, et c'est la leçon transposable :
+aucune des trois cases n'a trouvé ce qu'elle cherchait. La montée n'avait rien cassé — ni
+`access_control`, ni la recopie des en-têtes, ni le repli. Ce que la vérification a rapporté,
+ce sont deux ATTENDUS faux et un diagnostic d'écran qui accuse à tort, tous trois antérieurs
+à la montée. Vérifier après coup ne sert pas seulement à trouver ce que le changement a
+défait ; c'est l'occasion où l'on regarde enfin des choses qu'on n'avait jamais regardées.
+
+**État antérieur — 2026-09-06, `a0b0927`** : **`deployer.sh` déployait la politique d'accès
 sans jamais l'appliquer.** Authelia lit sa configuration au démarrage du PROCESSUS, et le
 script ne relançait que le service `app` : l'arbitrage du second facteur a été poussé à
 11:16, tiré à 11:20, et n'a pris effet qu'à 18:58, au premier redémarrage fait pour une
@@ -45,11 +72,11 @@ publiée est 4.39.22**, du 2026-09-03. Le compose épingle `authelia/authelia:4.
 - [x] **La sauvegarde a précédé la montée** — `~/authelia-avant-4.39-20260906.tgz`, 20 Ko, posée avant tout `pull`. C'est le seul état que `git checkout` ne restaure pas, n'étant pas versionné : les secrets TOTP de tout le monde vivent là. Et depuis la migration de schéma ci-dessus, elle n'est plus une précaution mais **le seul retour arrière qui existe** — à conserver tant qu'on n'a pas éprouvé la 4.39 en usage réel
 - [x] **L'étiquette est `authelia/authelia:4.39.22`, version EXACTE**, et la raison est écrite dans le compose lui-même — 2026-09-06, `11c82a3`. La flottante prend bien les correctifs de sa branche, mais elle a laissé l'instance vieillir en silence : `docker compose pull` réussissait et tirait fidèlement la dernière image d'une branche abandonnée. Le coût est assumé : plus rien n'arrive tout seul, pas même un correctif de sécurité, et monter devient un GESTE — le bon régime pour le seul point d'entrée de l'instance, où l'écart doit se voir plutôt que se creuser
 - [x] **Après la montée, la politique d'accès se comporte comme écrit** — 2026-09-06, éprouvé sur les DEUX versants, ce qui est le seul moyen de le savoir. `chercheur` (groupe `bd-admins`) se voit demander son second facteur : « https://bd.edito-revue.fr/ requires 2FA », règle 1. `stagiaire` entre au mot de passe SEUL et arrive directement dans l'application : règle 3, `one_factor`. Éprouver un seul des deux n'aurait rien prouvé — un refus universel et une politique juste se ressemblent d'un côté, une ouverture universelle et une politique juste se ressemblent de l'autre
-- [ ] Le bandeau de portée vide est revu après la montée, avec ses trois cas distingués (AUTH-1). Le compte `stagiaire` le montre — il n'a d'accès sur aucune collection —, mais il n'a pas été regardé le 2026-09-06 : la connexion a été menée jusqu'à l'entrée dans l'application, pas au-delà
-- [ ] `verifier_deploiement.py` passe, et notamment son contrôle BLOQUANT de cohérence des groupes admin. S'il tombe, c'est que 4.39 a changé la forme d'`access_control` — et l'apprendre par une garde plutôt que par un administrateur qui s'authentifie plus faiblement en silence est exactement ce pour quoi elle a été écrite
+- [x] **Le bandeau de portée vide est revu après la montée, et le revoir a rapporté un défaut** — 2026-09-09. Deux corrections à la case elle-même avant de la lire : les cas sont QUATRE et non trois depuis AUTH-8 (2026-09-07), et `stagiaire` ne pouvait plus servir, ayant reçu des accès entre-temps — la prémisse d'une case vieillit comme le reste. Mesuré sur un compte jetable créé dans LLDAP, sans groupe ni accès. **Ce qui marche** : `<details>` replié comme voulu, moitié humaine juste, et le référent d'AUTH-4 nommé avec un contact réel. **Ce qui ne marche pas** : `entete_groupes: false` pour un compte sans groupe, si bien que la ligne technique annonce « les accès par groupe sont sans effet — à vérifier côté proxy » à quelqu'un dont le proxy va bien. Le défaut est écrit dans AUTH-8 et ne rouvre pas cette fiche
+- [x] **`verifier_deploiement.py` passe, contrôle BLOQUANT compris** — 2026-09-09, et il a fallu le lancer DEUX fois : `--url` seul n'exécute que les contrôles réseau, la cohérence des groupes admin vivant dans `controle_config`, donc sous `--config`. Une invocation partielle rendait 0 sans avoir regardé la garde que cette case vise, ce qui est la forme d'ARCH-2 en miniature — un vert qui n'a rien vu. DEHORS : les dix chemins refusés en anonyme, `/static` et `/api/sauvegarde` compris. DEDANS : les quatre moteurs importés pour de bon par la voie profonde. AVANT : `groupes admin  bd-admins — élevés au second facteur des deux côtés`, donc **4.39 n'a pas changé la forme d'`access_control`**. Une ligne à ne pas lire de travers : `ok comptes` porte sur `users_database.yml`, qui ne gouverne plus rien depuis LLDAP — l'instrument approuve un fichier sans effet, et c'est une case ouverte d'AUTH-7
 
 ### Ce que la montée ne doit pas emporter
-- [ ] Le repli `filesystem` fonctionne ENCORE après la montée : `SMTP_ADRESSE` vidée seule, Authelia démarre, et un « Mot de passe oublié ? » fait grossir `/config/notification.txt`. INFRA-8 l'a éprouvé sur 4.38 ; une montée de mineure est précisément ce qui peut le défaire, et le défaire en silence
+- [x] **Le repli `filesystem` fonctionne ENCORE après la montée, et l'attendu de cette case était FAUX** — 2026-09-09. `SMTP_ADRESSE` vidée seule (les trois autres valeurs laissées : c'est le cas qui avait échoué le 2026-09-05), `validate-config` sur un conteneur JETABLE, puis `up -d --force-recreate` — `healthy`, `Startup complete`, aucun « only one of 'smtp' or 'filesystem' ». **Le geste qui prouve la remise a démenti la case** : `/config/notification.txt` a RÉTRÉCI, 3 492 → 1 918 octets, le notifier `filesystem` ÉCRASANT au lieu d'ajouter. INFRA-8 avait relevé « de 0 à 3 492 » sur un fichier qui partait vide — un cas particulier pris pour une règle, et « le fichier doit avoir grossi » aurait fait conclure à une panne un jour où tout marche. La preuve est le CONTENU : jeton portant `"username":"essai-sansgroupe"`, émis à 21:34:48 UTC contre un `Startup complete` à 21:33:01, durée de vie de 15 minutes — ce qui confirme au passage le `jwt_lifespan` relevé de 5 à 15 par INFRA-8. Retour arrière vérifié des DEUX côtés, courriel reçu ET fichier figé à 1 918 : un fichier immobile seul ne distinguerait pas « le SMTP est revenu » de « rien ne part »
 - [x] **Le `chown -R ${PUID}:${PGID} /config` se comporte pareil en 4.39** — vérifié le 2026-09-06 sur l'état d'APRÈS le démarrage : `drwxrwxr-x ubuntu ubuntu`. Et la preuve la plus parlante est ailleurs, dans le `git pull` qui l'a précédé : **il est passé du premier coup**, le premier depuis trois échecs consécutifs. Le mécanisme qui les causait vit dans l'image, l'image vient de changer de base, et il se comporte identiquement. C'est le mécanisme qui a coûté trois réparations annulées le 2026-09-05/06, et il vit dans l'image, donc il change avec elle. **La lecture du 2026-09-06 est rassurante sans être une preuve** : l'image change de base (Alpine → *chisel*, « no package manager, some common tools removed »), mais l'entrypoint de `master` fait toujours le `chown` et réclame `/bin/sh`, `id`, `chown` et `su-exec` — s'ils manquaient, il échouerait, donc ils sont là. Reste à le voir vrai plutôt que déduit
 
 ## La montée, faite — 2026-09-06
@@ -72,6 +99,22 @@ journée, et elle est indirecte : le mécanisme qui a causé trois échecs cons�
 6 vit dans l'entrypoint de l'image, l'image vient de changer de base — Alpine vers
 *chisel* —, et le correctif `PUID`/`PGID` tient. Le dossier appartient à `ubuntu` après le
 démarrage, pas entre deux.
+
+## Trouvé de biais, et ce n'est pas d'ici — 2026-09-09
+
+La notification écrite par le repli dit « This email was intended for **.** » — destinataire
+VIDE. Ce n'est pas un défaut du repli, et c'est cohérent avec ce que `GET /api/moi` avait
+rendu une heure plus tôt : `nom` retombe sur le login pour `essai-sansgroupe` **comme pour
+`stagiaire`**, c'est-à-dire pour un compte réel.
+
+Deux causes possibles, non départagées : l'annuaire n'a pas de nom d'affichage pour ces
+comptes, ou `Remote-Name` ne parvient pas jusqu'à l'application. C'est la même famille de
+question que `Remote-Groups`, et elle se mesure de la même façon — sauf qu'ici l'effet est
+visible PARTOUT : tous les écrans montrent un login là où ils devraient montrer un nom.
+
+Écrit ici parce que c'est ici qu'on l'a vu ; le sujet est celui d'**AUTH-7**, qui devrait
+lui ouvrir une case. L'y inscrire le jour même aurait été le bon endroit au mauvais moment,
+une autre session travaillant ces fiches.
 
 ## Un bruit identifié, pour ne pas le rechercher trois fois — 2026-09-06
 
