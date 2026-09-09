@@ -1,13 +1,36 @@
 ---
 chantier: QA-4
-statut: interrompu
+statut: livré
 ---
 
 # QA-4 — le verrou ne couvre que 15 paquets sur 91
 
-**Arrêté sur** — vérifié DANS L'IMAGE, commit `c6b33a2`, 7 septembre : `iiif-prezi3` y
-cohabite avec le verrou et le test IIIF y passe. Restent le verrou TRANSITIF (zone 1,
-entière) et la zone Cohérence, qui a gagné deux constats mesurés en chemin.
+**Arrêté sur** — le commit `d2fb7ce`, 2026-09-09 : **les trois zones sont closes.** Le verrou transitif
+existe, engendré DEPUIS l'image par `deploy/geler_verrous.py` ; le Dockerfile l'installe ;
+une construction `--no-cache` est verte et `--verifier` confirme que les trois verrous
+décrivent exactement l'image obtenue. Suite DANS l'image : **910 passés, 7 ignorés**.
+
+**Le titre de cette fiche est faux depuis le premier jour où on l'a mesuré, et c'est
+instructif.** « 15 paquets sur 91 » : au 2026-09-09 l'image porte **91 paquets à
+l'exécution pour 13 épinglés**, et 105 avec les outils de test pour 17. Les chiffres
+d'une fiche vieillissent dans le sens qui rassure — le dénominateur monte quand personne
+ne regarde.
+
+**Ce qui flottait n'était pas du feuillage.** Sous les treize épinglés : `uvicorn` (le
+serveur), `starlette` (le socle de FastAPI), `pydantic` (toute la couche de validation).
+Le verrou décrivait la façade d'une pile dont l'ossature était libre.
+
+**Et deux entrées échappaient à TOUT verrou, même transitif** — la fiche ne les nommait
+pas, et ce sont les plus conséquentes, parce qu'elles décident de ce que l'outil CALCULE
+et non de ce qui est installé :
+
+· le **modèle spaCy**, tiré par `python -m spacy download fr_core_news_sm` sans version —
+  donc le plus récent compatible. Il produit les lemmes, donc l'index de recherche, le
+  statut de relecture (ANN-4) et les rapports d'accord. Refermé sans mécanisme spécial :
+  `pip freeze` le rend déjà sous la forme `fr_core_news_sm @ URL#sha256=…`, épinglé par
+  version ET par empreinte.
+· **Kumiko**, cloné en `--depth 1` sur la tête de branche. Un push amont changeait la
+  segmentation. Épinglé par `ARG KUMIKO_REV` sur un SHA.
 
 **Point de départ** — QA-1 a livré `requirements.lock` en juin 2026, en épinglant
 délibérément les seules dépendances DIRECTES. Le premier build d'image, le 2026-08-27, a
@@ -16,9 +39,10 @@ montré ce que cette limite laisse passer.
 ## Reste
 
 ### Refermer le trou
-- [ ] Un verrou TRANSITIF complet existe pour l'image de déploiement, produit **depuis l'image Linux construite** (`pip freeze`) et non sur la machine de dev
-- [ ] Le Dockerfile installe ce verrou complet, et deux constructions à un mois d'écart donnent le même jeu de versions
-- [ ] La procédure de régénération est écrite : quand et comment refaire le gel, et comment vérifier que la suite reste verte après
+- [x] **Un verrou TRANSITIF complet existe, produit DEPUIS l'image Linux construite.** `deploy/geler_verrous.py` construit les deux étapes, y lance `pip freeze` et écrit **trois** fichiers — la séparation n'est pas cosmétique, chacun s'installe autrement : `verrou-torch.lock` (13 paquets) vient de l'index CPU de PyTorch, ses versions portant un identifiant LOCAL `+cpu` qui n'existe pas sur PyPI ; `verrou-image.lock` (77) et `verrou-test.lock` (15) viennent de PyPI, à deux étapes différentes
+- [x] **`requirements.lock` reste la liste des dépendances CHOISIES**, et c'est ce qui a décidé de la forme. Y verser 90 lignes transitives aurait noyé les 13 décisions **et tué le cliquet** de `test_verrou_dependances.py`, qui exige qu'un pin ait une spec ou une raison écrite. Deux questions distinctes — « qu'a-t-on décidé », « qu'est-ce qui en découle » — donc deux familles de fichiers, et un test qui leur interdit de se contredire
+- [x] **Le Dockerfile installe ce verrou complet, et deux constructions donnent le même jeu de versions.** Construction `--no-cache` verte le 2026-09-09 ; `python deploy/geler_verrous.py --verifier` régèle depuis l'image obtenue et compare : « les trois verrous décrivent exactement l'image construite ». Ce n'est pas un mois d'écart — c'est le mécanisme qui rend l'écart d'un mois vérifiable en une commande
+- [x] **La procédure de régénération est écrite, et elle est EXÉCUTABLE.** L'en-tête de `deploy/geler_verrous.py` dit quand refaire le gel (après un changement de `requirements*.lock`, de la ligne torch, ou de la base Python) et surtout quand NE PAS le refaire : un gel régénéré « pour voir » ramasse les publications du jour, ce qu'on vient précisément de fermer. Chaque fichier engendré porte son en-tête de provenance et l'interdiction de l'éditer à la main
 
 ### Un conflit déjà ouvert entre deux fichiers épinglés
 - [x] `requirements-export.txt` et `requirements.lock` cessent d'être mutuellement exclusifs : `iiif-prezi3==3.1.1` exige `Pillow<=12.0.0` (dépendance OBLIGATOIRE, pas un extra) quand le verrou épingle `pillow==12.1.0` — pip répond `ResolutionImpossible`
@@ -27,10 +51,12 @@ montré ce que cette limite laisse passer.
 - [x] La construction de l'image confirme que `iiif-prezi3` s'y installe et que `test_iiif_conformance_stricte` y PASSE — c'est la réserve de QA-5, le venv local n'est pas l'artefact livré ; vérifié le 2026-09-07 sur une image construite depuis `2e70028`
 
 ### Cohérence
-- [ ] `COPY requirements.lock` ne précède plus une installation qui n'en dépend PAS : mesuré le 2026-09-07 dans le log de build, changer le seul pin de `pillow` invalide la couche `#8` et fait RETÉLÉCHARGER 191,8 Mo de torch, alors que `#6` (apt) et `#7` (WORKDIR) restent CACHED
-- [ ] Le double travail entre torch et le verrou est supprimé ou constaté par écrit : `#9` pose `numpy 2.5.2` en dépendance de torch, `#10` le DÉSINSTALLE pour poser le `2.4.6` du verrou — ça se termine bien parce que le verrou passe en second, mais c'est le motif des JUMEAUX et il ne tient qu'à l'ordre
-- [ ] `torch` et `torchvision` ne sont plus épinglés dans le Dockerfile pendant que `requirements.lock` prétend être « LE verrou » : soit ils y entrent, soit son en-tête dit où ils vivent
-- [ ] Le cas des paquets JUMEAUX est traité explicitement — deux distributions fournissant le même paquet d'import, dont une seule est épinglée
+- [x] **`COPY` ne précède plus une installation qui n'en dépend PAS** : chaque verrou est copié juste avant le `RUN` qui le lit. Auparavant un seul `COPY requirements.lock` précédait les DEUX installations, si bien que changer le pin de `pillow` invalidait la couche torch — une reconstruction complète pour un fichier dont cette couche ne se sert pas
+- [x] **Le double travail entre torch et le verrou est SUPPRIMÉ**, et il l'est par construction plutôt que constaté : `numpy` et `pillow` entrent dans `verrou-torch.lock`, donc l'étape torch les pose d'emblée à leur version finale. Mesuré dans le log `--no-cache` du 2026-09-09 : **zéro « Attempting uninstall »**, là où l'étape suivante désinstallait `numpy 2.5.2` pour poser `2.4.6` à chaque construction
+- [x] **`torch` et `torchvision` ne sont plus épinglés dans le Dockerfile** : ils vivent dans `verrou-torch.lock` avec leur fermeture. Et un cliquet l'interdit désormais — `test_le_dockerfile_n_epingle_aucune_version_hors_verrou` joint les continuations `\` avant de balayer, parce que la version se trouve justement sur la SECONDE ligne d'un `RUN` continué et qu'un balayage naïf resterait vert
+- [x] **Le cas des paquets JUMEAUX est traité ET gardé.** Le traitement existait — les deux OpenCV épinglés à la même version, avec la raison écrite dans le verrou. Ce qui manquait était la garde : rien n'obligeait les deux versions à rester égales. `JUMEAUX` déclare la famille AVEC sa raison (patron de `HORS_PERIMETRE`), et le test balaie les deux familles de verrous
+- [x] **Une exclusion de la suite d'image manquait à la liste du Dockerfile**, trouvée en comptant : il annonçait « deux exclusions assumées » (e2e, JS) et il y en a **trois**. Les quatre modules qui éprouvent les scripts d'infrastructure ne sont pas collectés, `.dockerignore` excluant `deploy/` en entier pour une raison de sécurité — 39 tests réduits à 4 skips, plus 2 skips ailleurs. La suite d'image mesurait donc 917 tests contre 952 en local, sans que rien ne le dise. C'est le reproche de QA-5 retourné contre sa propre documentation : une suite qui ne dit pas ce qu'elle n'a PAS mesuré laisse croire qu'elle a tout vu
+- [x] **Une recette de dépannage contournait l'épingle du modèle.** `docs/deploiement-docker.md` conseillait `docker exec … python -m spacy download` pour réparer un modèle manquant : la commande fonctionne, et c'est le problème — elle prend le plus RÉCENT compatible, donc pas celui de l'image. La réparation passe désormais par le verrou, avec l'interdiction et sa raison écrites. `docs/exploitation.md` nommait de son côté `requirements.lock` comme « la forme que l'image LIVRE », ce qui a cessé d'être vrai le jour où l'image a installé le verrou transitif
 
 ## Un second verrou est apparu à côté, et il n'est pas celui-ci — 2026-09-07
 
