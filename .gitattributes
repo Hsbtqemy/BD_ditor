@@ -4,3 +4,11 @@
 # produit dès qu'un outil réécrit le fichier — on le fige ici plutôt que de dépendre du
 # `core.autocrlf` de chacun.
 *.sh text eol=lf
+
+# Les verrous sont ENGENDRÉS depuis Windows et CONSOMMÉS par une image Linux
+# (`deploy/geler_verrous.py`). Sans cette ligne, le fichier régénéré sur une machine
+# et sur l'autre diffère à chaque ligne sans qu'aucune version ne change — un diff
+# illisible qui masquerait la seule chose qu'on veut y lire : quelle dépendance a
+# bougé. Mesuré le 2026-09-09 : deux des trois verrous étaient en CRLF, le troisième
+# en LF parce qu'un `sed -i` l'avait réécrit en passant.
+*.lock text eol=lf

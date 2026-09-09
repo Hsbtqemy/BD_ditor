@@ -1,0 +1,33 @@
+# Verrou de TEST — ce que l'étape `test` ajoute
+#
+# ENGENDRÉ — ne pas éditer à la main. Régénérer par :
+#     python deploy/geler_verrous.py
+#
+# Produit le 2026-09-09 par `pip freeze` DANS l'image `bdediteur:gel-test`, et non
+# depuis un environnement de développement : le venv local n'est pas l'artefact livré
+# (QA-5, mesuré le 2026-08-27 — 451 tests verts en local, trois moteurs morts dans
+# l'image le même jour).
+#
+# La différence entre les deux étapes, et rien d'autre : `runtime` reste
+# indemne de tout outil de test (QA-5).
+#
+# Ce fichier ne remplace pas `requirements.lock`, qui reste la liste des dépendances
+# CHOISIES, chacune avec sa spec ou sa raison écrite. Celui-ci dit ce qui SUIT de ces
+# choix — `tests/test_verrou_dependances.py` vérifie que les deux ne se contredisent
+# jamais.
+
+coverage==7.16.0
+et_xmlfile==2.0.0
+greenlet==3.5.5
+iiif-prezi3==3.1.1
+iniconfig==2.3.0
+openpyxl==3.1.5
+playwright==1.62.0
+pluggy==1.6.0
+pyee==13.0.1
+pytest==9.0.2
+pytest-base-url==2.1.0
+pytest-cov==7.0.0
+pytest-playwright==0.8.0
+python-slugify==8.0.4
+text-unidecode==1.3

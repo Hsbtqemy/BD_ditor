@@ -36,6 +36,24 @@ SPECS = ("requirements.txt", "requirements-dev.txt", "requirements-export.txt",
          "requirements-ocr.txt", "requirements-nlp.txt", "requirements-kumiko.txt")
 VERROUS = ("requirements.lock", "requirements-dev.lock")
 
+# Les verrous TRANSITIFS, engendrés depuis l'image par `deploy/geler_verrous.py` (QA-4).
+# Ils ne remplacent pas les précédents : ceux-là disent ce qu'on a CHOISI, ceux-ci ce qui
+# SUIT de ces choix. Mesuré le 2026-09-09 — 91 paquets à l'exécution pour 13 épinglés.
+VERROUS_IMAGE = ("verrou-torch.lock", "verrou-image.lock", "verrou-test.lock")
+
+# Deux distributions qui fournissent le MÊME paquet d'import. Elles s'écrasent l'une
+# l'autre à l'installation, si bien qu'épingler l'une sans l'autre ne borde rien : c'est
+# la dernière posée qui gagne. Une famille se déclare ici AVEC sa raison — le patron de
+# `HORS_PERIMETRE` dans `test_autorisation`, où une exception s'écrit au lieu de se
+# constater.
+JUMEAUX = {
+    ("opencv-python", "opencv-python-headless"):
+        "les deux s'installent dans le même `cv2/`. Mesuré le 2026-08-27 dans l'image : "
+        "headless 4.13 posé par le verrou, `opencv-python` résolu librement en 5.0.0.93, "
+        "`cv2.__version__ == 5.0.0` — et Kumiko cassé (`HoughLinesP` rend (N, 4) en "
+        "OpenCV 5 au lieu de (N, 1, 4)) pendant que `/api/sante` annonçait `kumiko: true`",
+}
+
 # Les paquets dont le dépôt lit un détail que le paquet ne PROMET pas. Ceux-là portent un
 # plafond, et la raison s'écrit à côté du plafond, dans la spec.
 #
@@ -247,3 +265,98 @@ def test_aucun_paquet_installe_ne_contredit_le_verrou():
         f"{len(derives)} posés à une autre version que le pin : "
         f"{', '.join(derives) or '—'}) :\n  "
         + "\n  ".join(fautes))
+
+
+# --------------------------------------------------------------------------- #
+# QA-4 — les verrous transitifs, et ce qu'ils ne doivent jamais contredire
+# --------------------------------------------------------------------------- #
+def _pins(nom: str) -> dict:
+    """{paquet canonique: version} d'un fichier de verrou.
+
+    Les lignes `nom @ URL` sont IGNORÉES : elles épinglent par empreinte et non par
+    version (le modèle spaCy), donc elles n'ont pas de version à comparer.
+    """
+    d = {}
+    for l in _lignes(nom):
+        m = re.match(r"^([A-Za-z0-9._-]+)\s*==\s*([^\s;]+)", l)
+        if m:
+            d[canonicalize_name(m.group(1))] = m.group(2)
+    return d
+
+
+def test_les_verrous_d_image_ne_contredisent_pas_les_verrous_choisis():
+    """Une dépendance CHOISIE doit se retrouver dans l'image à la version choisie.
+
+    Les deux familles de verrous répondent à des questions différentes — « qu'a-t-on
+    décidé » et « qu'est-ce qui en découle » —, et c'est justement pourquoi elles peuvent
+    diverger sans que rien ne le dise : `requirements.lock` n'est plus installé DANS
+    l'image depuis QA-4, donc une modification qu'on y ferait n'aurait aucun effet, et le
+    fichier continuerait d'affirmer une version que l'image ne porte pas.
+
+    C'est le mode d'échec le plus vicieux de ce chantier : le verrou lu par un humain et
+    le verrou exécuté par la machine cesseraient de parler du même logiciel.
+    """
+    choisis = {}
+    for nom in VERROUS:
+        for paquet, version in _pins(nom).items():
+            choisis[paquet] = (version, nom)
+
+    image = {}
+    for nom in VERROUS_IMAGE:
+        image.update(_pins(nom))
+
+    ecarts = {p: (v, image[p]) for p, (v, _) in choisis.items()
+              if p in image and image[p] != v}
+    assert not ecarts, (
+        "ces paquets sont épinglés à une version que l'image ne porte pas "
+        f"(choisi, image) : {ecarts}. Régénérer par `python deploy/geler_verrous.py`")
+
+    absents = sorted(p for p in choisis if p not in image)
+    assert not absents, (
+        f"{absents} sont épinglés dans {VERROUS} sans exister dans l'image : le verrou "
+        f"décrit un logiciel qui n'est pas installé")
+
+
+def test_les_paquets_jumeaux_portent_la_meme_version():
+    """Deux distributions qui écrasent le même `import` ne peuvent pas diverger.
+
+    Épingler l'une sans l'autre ne borde RIEN — la dernière posée gagne —, et les
+    épingler à des versions différentes est pire : l'installation « réussit », l'import
+    prend la mauvaise, et rien ne le dit. C'est ainsi que Kumiko est mort dans l'image
+    pendant que `/api/sante` l'annonçait vivant.
+
+    La garde balaie les DEUX familles de verrous : celle des choix comme celle du gel.
+    Un jumeau qui n'apparaît nulle part n'est pas une faute — la famille se déclare pour
+    le cas où il apparaît.
+    """
+    for nom in VERROUS + VERROUS_IMAGE:
+        pins = _pins(nom)
+        for famille, raison in JUMEAUX.items():
+            presents = {canonicalize_name(x): pins[canonicalize_name(x)]
+                        for x in famille if canonicalize_name(x) in pins}
+            versions = set(presents.values())
+            assert len(versions) <= 1, (
+                f"{nom} épingle {presents} à des versions différentes — {raison}")
+
+
+def test_le_dockerfile_n_epingle_aucune_version_hors_verrou():
+    """Toute version installée dans l'image vient d'un fichier de verrou, jamais d'une
+    ligne du Dockerfile.
+
+    `torch==2.13.0 torchvision==0.28.0` y était écrit à la main pendant que
+    `requirements.lock` se disait « LE verrou » : deux endroits décidaient des versions,
+    dont un seul se lisait comme tel. Le gel les a repris ; cette garde empêche qu'on en
+    réintroduise un, ce qui est le geste le plus naturel du monde quand une construction
+    échoue et qu'on veut « juste forcer une version ».
+    """
+    # Les continuations `\` sont jointes d'abord : un `RUN pip install` tient souvent sur
+    # deux lignes, et c'est justement sur la SECONDE que la version se trouve — un
+    # balayage ligne à ligne ne verrait rien et resterait vert.
+    texte = (RACINE / "deploy" / "Dockerfile").read_text(encoding="utf-8")
+    texte = texte.replace("\\\n", " ")
+    fautives = [l.strip() for l in texte.splitlines()
+                if not l.strip().startswith("#") and "pip install" in l and "==" in l]
+    assert not fautives, (
+        f"le Dockerfile épingle des versions hors verrou : {fautives}. Les ajouter au "
+        f"verrou concerné et régénérer (`python deploy/geler_verrous.py`) — sinon deux "
+        f"endroits décident des versions, dont un seul se lit comme tel")

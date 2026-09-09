@@ -33,12 +33,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # 1) Dépendances Python d'abord (couche de cache indépendante du code).
-#    On installe le VERROU (requirements.lock, QA-1), pas les requirements*.txt à
-#    bornes ouvertes : sans lui, deux reconstructions ne donnent pas la même image.
-#    Le lock runtime couvre noyau + OCR/bulles + spaCy + les deps de Kumiko
-#    (opencv/numpy/requests) ; les outils de test vivent dans requirements-dev.lock
-#    et n'entrent QUE dans l'étape `test`.
-COPY requirements.lock ./
+#    On installe des verrous TRANSITIFS (QA-4, `verrou-*.lock`), engendrés par
+#    `pip freeze` DANS cette image et non depuis un venv de dev. `requirements.lock`
+#    reste la liste des dépendances CHOISIES — 13 pins, chacun avec sa spec ou sa raison
+#    écrite — mais il ne dit rien de ce qui SUIT : mesuré le 2026-09-09, l'image portait
+#    91 paquets à l'exécution pour 13 épinglés, dont `uvicorn`, `starlette` et
+#    `pydantic`. Deux constructions à un mois d'écart ne donnaient pas la même image.
+#
+#    CHAQUE VERROU EST COPIÉ JUSTE AVANT SON INSTALLATION. Auparavant un seul
+#    `COPY requirements.lock` précédait les DEUX `RUN` : mesuré le 2026-09-07 dans le
+#    log de build, changer le seul pin de `pillow` invalidait la couche torch, qui ne
+#    dépend pas de ce fichier — une reconstruction complète pour rien.
 
 #    1a) torch en variante CPU, AVANT le reste. Mesuré le 2026-08-27 : la roue torch
 #    par défaut de PyPI est compilée pour CUDA 13 et traîne 2 196 Mo de wheels GPU
@@ -54,23 +59,42 @@ COPY requirements.lock ./
 #    « RuntimeError: operator torchvision::nms does not exist » au premier import
 #    d'ultralytics — et `/api/sante` n'y voit RIEN, car il ne fait que localiser
 #    le module (`find_spec`), jamais l'importer.
+#
+#    Le verrou porte la FERMETURE de torch — treize paquets, `numpy` et `pillow`
+#    compris. Ces deux-là y sont pour une raison mesurée : sans eux, cette étape les
+#    résolvait librement (numpy 2.5.2) et la suivante les DÉSINSTALLAIT pour poser les
+#    versions du verrou (2.4.6). Un travail fait deux fois, à chaque construction.
+COPY verrou-torch.lock ./
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
-        torch==2.13.0 torchvision==0.28.0
+        -r verrou-torch.lock
 
-#    1b) le reste, depuis le verrou.
-RUN pip install --no-cache-dir -r requirements.lock
-
-# 2) Modèle NLP français — couche séparée, ~15 Mo, indépendante du reste.
-#    SANS lui, `nlp_available()` est False et tout dégrade EN SILENCE : la table
+#    1b) le reste de l'exécution, depuis PyPI — modèle NLP français COMPRIS.
+#    SANS ce modèle, `nlp_available()` est False et tout dégrade EN SILENCE : la table
 #    `tokens` reste vide, donc l'Exploration ne montre rien, le statut de relecture
 #    (ANN-4) reste « à faire » partout, les rapports d'accord (NLP-1, ANN-5) sortent
 #    vides et la recherche perd les lemmes. Aucune erreur ne le signalerait.
-#    Modèle surchargeable au runtime par BD_SPACY_MODEL (défaut : celui-ci).
-RUN python -m spacy download fr_core_news_sm
+#    Modèle surchargeable au runtime par BD_SPACY_MODEL (défaut : celui du verrou).
+#
+#    Il vient du verrou et non plus de `python -m spacy download`, qui prenait le plus
+#    RÉCENT compatible : le gel le porte sous sa forme `fr_core_news_sm @ URL#sha256=…`,
+#    donc épinglé par version ET par empreinte. Ce n'est pas un détail d'installation —
+#    ce modèle produit les lemmes, donc l'index de recherche et le statut de relecture.
+#    Le remplacer en silence changerait ce que l'application CALCULE.
+COPY verrou-image.lock ./
+RUN pip install --no-cache-dir -r verrou-image.lock
 
-# 3) Kumiko (passe 1) cloné dans lib/kumiko (ses dépendances opencv/numpy/requests
-#    sont installées par le lock ci-dessus).
-RUN git clone --depth 1 https://github.com/njean42/kumiko.git lib/kumiko
+# 2) Kumiko (passe 1) dans lib/kumiko, à une RÉVISION FIXE (ses dépendances
+#    opencv/numpy/requests viennent des verrous ci-dessus).
+#    `git clone --depth 1` prenait la tête de la branche par défaut : un push amont
+#    changeait la segmentation sans qu'aucun verrou ne bouge. Comme le modèle spaCy,
+#    c'est une entrée qui décide de ce que l'outil CALCULE, et elle ne se voyait dans
+#    aucune liste de dépendances. Pour avancer : changer ce SHA, reconstruire, relancer
+#    la suite dans l'image.
+ARG KUMIKO_REV=9d587ae9498bc84dfda06fc19c6ad89f421bec14
+RUN git init -q lib/kumiko \
+ && git -C lib/kumiko remote add origin https://github.com/njean42/kumiko.git \
+ && git -C lib/kumiko fetch -q --depth 1 origin ${KUMIKO_REV} \
+ && git -C lib/kumiko checkout -q --detach FETCH_HEAD
 
 # --------------------------------------------------------------------------- #
 # test — la suite s'exécute sur les MÊMES dépendances que la production
@@ -79,13 +103,31 @@ RUN git clone --depth 1 https://github.com/njean42/kumiko.git lib/kumiko
 # OpenCV et du même Kumiko que `runtime`. Un écart de version qui casse un moteur y est
 # visible, alors qu'il ne l'est pas depuis le venv de dev.
 #
-# Deux exclusions ASSUMÉES, à connaître pour ne pas se croire couvert :
+# TROIS exclusions ASSUMÉES, à connaître pour ne pas se croire couvert. Mesuré le
+# 2026-09-09 : la suite collecte 917 tests ici contre 952 sur la machine de dev, et la
+# liste ci-dessous rend compte des 35 manquants — sans quoi l'écart se lirait comme un
+# détail d'environnement.
 #   · e2e   — `pytest -m e2e` exige un navigateur ; installer Chromium ici ramènerait
 #             les centaines de mégaoctets que `runtime` vient d'économiser. Ces tests
-#             restent sur la machine de dev.
+#             restent sur la machine de dev. (181 désélectionnés)
 #   · JS    — `tests/test_js_unit.py` appelle `node`, absent de l'image : il se skippe
 #             proprement, et sa logique est pure (aucun accès DOM), donc indépendante
-#             de l'image.
+#             de l'image. (1 skip)
+#   · deploy — les scripts d'infrastructure ne sont pas dans l'image : `.dockerignore`
+#             exclut `deploy/` en ENTIER, parce que `deploy/authelia/users_database.yml`
+#             porte un hash de mot de passe qui n'a rien à faire là. Quatre modules
+#             (`test_deployeur`, `test_veille_deploiement`, `test_verifier_comptes`,
+#             `test_verifier_deploiement`) se sautent donc au niveau du MODULE : leurs
+#             39 tests ne sont pas collectés et se réduisent à 4 skips, d'où l'écart net
+#             de 35. Deux tests de `test_regressions` s'y ajoutent, skippés un par un
+#             pour la même raison. Tous le disent à leur propre site — « son skip dans
+#             l'image N'EST PAS une couverture ». Ils tournent sur la machine de dev.
+#             (39 tests non collectés, 4 + 2 skips)
+#
+# Cette liste était INCOMPLÈTE jusqu'au 2026-09-09 : elle nommait deux exclusions sur
+# trois, et la manquante était la plus grosse. C'est le mode d'échec que QA-5 dénonce
+# retourné contre sa propre documentation — une suite qui ne dit pas ce qu'elle n'a pas
+# mesuré laisse croire qu'elle a tout vu.
 FROM base AS test
 
 # `openpyxl` et `iiif-prezi3` sont épinglés dans `requirements-dev.lock` (outils de test)
@@ -101,8 +143,8 @@ FROM base AS test
 # le dépôt ne contredit. Les deux pins se tiennent — remonter pillow refermerait cette
 # validation en silence, et `tests/test_verrou_dependances.py` échoue désormais si on le
 # fait.
-COPY requirements.lock requirements-dev.lock ./
-RUN pip install --no-cache-dir -r requirements-dev.lock
+COPY verrou-test.lock ./
+RUN pip install --no-cache-dir -r verrou-test.lock
 
 COPY . .
 

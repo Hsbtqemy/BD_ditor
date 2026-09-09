@@ -379,12 +379,21 @@ transitif. Si la panne revient, c'est qu'une installation en a désépinglé un 
 `pip list | grep -i opencv`.
 
 **3. `OSError: [E050] Can't find model 'fr_core_news_sm'`** — moteur `nlp`.
-Le modèle spaCy n'est pas un paquet ordinaire, il se télécharge :
+Le modèle spaCy est un paquet pip comme un autre, et depuis QA-4 il vient du **verrou**,
+épinglé par version ET par empreinte :
 
 ```bash
-docker exec bd-app python -m spacy download fr_core_news_sm
+docker exec bd-app pip install -r verrou-image.lock
 docker compose restart app
 ```
+
+**Ne pas faire `python -m spacy download fr_core_news_sm` ici.** La commande fonctionne,
+et c'est le problème : elle prend le modèle le plus RÉCENT compatible avec le spaCy
+installé, donc pas nécessairement celui de l'image. Or ce modèle produit les lemmes —
+l'index de recherche, le statut de relecture (ANN-4) et les rapports d'accord en
+dépendent. Réparer par cette voie remplacerait en silence ce que l'outil CALCULE, et le
+`sha256` du verrou est précisément ce qui l'interdit. C'est aussi pourquoi le Dockerfile
+ne l'utilise plus.
 
 C'est la plus discrète des trois, parce qu'elle est **silencieuse à l'usage** : la
 couche NLP est conçue pour dégrader proprement, donc rien ne casse. La table `tokens`

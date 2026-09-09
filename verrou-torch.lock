@@ -1,0 +1,33 @@
+# Verrou TORCH — servi par l'index CPU de PyTorch
+#
+# ENGENDRÉ — ne pas éditer à la main. Régénérer par :
+#     python deploy/geler_verrous.py
+#
+# Produit le 2026-09-09 par `pip freeze` DANS l'image `bdediteur:gel-base`, et non
+# depuis un environnement de développement : le venv local n'est pas l'artefact livré
+# (QA-5, mesuré le 2026-08-27 — 451 tests verts en local, trois moteurs morts dans
+# l'image le même jour).
+#
+# Fermeture de `torch` + `torchvision`. À part des autres parce que ses
+# versions portent un identifiant LOCAL (`+cpu`) absent de PyPI, et parce
+# qu'y inclure `numpy` et `pillow` évite que l'étape suivante ne les
+# rétrograde — le double travail que QA-4 relevait.
+#
+# Ce fichier ne remplace pas `requirements.lock`, qui reste la liste des dépendances
+# CHOISIES, chacune avec sa spec ou sa raison écrite. Celui-ci dit ce qui SUIT de ces
+# choix — `tests/test_verrou_dependances.py` vérifie que les deux ne se contredisent
+# jamais.
+
+filelock==3.32.3
+fsspec==2026.7.0
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+mpmath==1.3.0
+networkx==3.6.1
+numpy==2.4.6
+pillow==12.0.0
+setuptools==78.1.0
+sympy==1.14.0
+torch==2.13.0+cpu
+torchvision==0.28.0+cpu
+typing_extensions==4.16.0
