@@ -5,10 +5,18 @@ statut: interrompu
 
 # AUTH-6 — le modèle de comptes et de groupes, avant les stagiaires
 
-**Arrêté sur** — 2026-09-09 : **le cadrage a été rendu, les neuf questions sont
-tranchées, et AUCUN code n'a encore été écrit** — ce chantier n'a donc pas de commit à
-citer, et c'est normal : il posait des questions, pas des routes. Ce qu'il laisse derrière
-lui est une liste de constructions, dont trois qui n'existaient pas avant les réponses.
+**Arrêté sur** — le commit `58c6e71`, 2026-09-09 : le cadrage est rendu, les neuf
+questions sont tranchées, et **la première des trois constructions qu'elles ont créées est
+faite** — la nature d'un compte est dans le modèle, ANN-5 refuse de mesurer sur un agent
+collectif, et les sorties le déclarent.
+
+**Le défaut réel n'était pas celui que cette fiche annonçait, et il était pire.** Elle
+écrivait qu'ANN-5 rendrait « aucun désaccord » sous un login partagé. Sa condition de
+re-touche est `agent_précédent != agent` : deux personnes qui se relisent sous le même
+login ne produisent donc pas un faux accord, elles SORTENT de l'échantillon. Le taux
+portait sur moins de travail qu'on ne croyait, et l'écart n'apparaissait nulle part — le
+mode d'échec d'ARCH-2, une mesure qui rétrécit en silence, découvert en écrivant le
+correctif de ce qu'on croyait être l'autre défaut.
 
 **Ce que le cadrage change vraiment**, et qui ne se devine pas en lisant les réponses une
 par une : le corpus sera annoté **majoritairement sous des identités non individuelles**.
@@ -63,7 +71,8 @@ raisons dans `INFRA-8`. Ce chantier peut le défaire, mais en connaissant ce qu'
 
 ### Ce que le cadrage du 2026-09-09 met à construire
 
-- [ ] **La nature COLLECTIVE d'un compte est portée par le modèle, à un seul endroit** — `utilisateur` gagne un champ (`nominatif` | `collectif`), posé par un administrateur. Sans lui, deux mécanismes mentent EN SILENCE, et c'est le seul coût réel du compte partagé : ANN-5 rendrait « aucun désaccord » là où il faut lire « je ne peux pas mesurer » (deux personnes qui se relisent sous un même login sont un seul agent), et la pseudonymisation de sortie laisserait `annotateur-N` passer pour une personne. Attendu : ANN-5 REFUSE de mesurer sur un agent collectif, les sorties le DÉCLARENT, et un test couvre les deux
+- [x] **La nature COLLECTIVE d'un compte est portée par le modèle, à un seul endroit** — `utilisateur.nature` (v26, `58c6e71`), défaut `nominatif` RÉTROACTIF plutôt que NULL : une nature inconnue obligerait chaque lecteur à décider quoi en faire, et le premier qui traiterait NULL comme « pas collectif » réintroduirait le silence que la colonne ferme. Posée par `PATCH /api/comptes/{login}/nature`, réservée aux administrateurs, et par un sélecteur dans la vue des comptes — sans écran, elle se poserait en SQL, ce qu'AUTH-7 venait de supprimer. Elle ne borde AUCUN droit. ANN-5 rend désormais `non_attribuable` (révisions internes à un login partagé + paires dont un côté est un groupe, retirées des taux), TOUJOURS présent même à zéro, sans quoi son absence se lirait comme une absence de problème ; les sorties rendent `collectif-N` au lieu d'`annotateur-N`, en gardant le numéro de la série commune. Quatre mutations rouges
+- [x] **Le rapport décrit SON échantillon, jamais l'instance** — trouvé en relecture le 2026-09-09, et aucun cliquet ne pouvait le voir. `agents_collectifs` publiait tous les comptes collectifs de l'instance alors qu'`accord-inter` est cloisonnable par albums (AUTH-2) : des logins de GROUPES partaient à qui ne lit que ses propres albums. Le cliquet d'AUTH-5 était structurellement aveugle — sa sentinelle n'est pas déclarée collective, donc ce chemin ne s'allumait jamais
 - [ ] **L'undo se borne dans le TEMPS pour un compte collectif** — `undo.py` filtre par AGENT, donc sous un login partagé n'importe qui défait l'acte d'un autre par Ctrl+Z. Attendu : `GET /api/undo/prochain` n'offre, sur un agent collectif, que les actes de moins de N minutes. Le TEMPS et non la session, parce que l'application n'a aucune notion de session et ne doit pas s'en fabriquer une (AUTH-1) — et parce que le vrai risque est de défaire ce qu'un collègue a fait il y a une heure, pas il y a trente secondes
 - [ ] **L'application LIT l'annuaire, en seule lecture, et l'autorisation n'y touche pas** — décidé le 2026-09-09. Le but n'est pas le diagnostic mais la COMPOSITION : connaître les comptes et groupes existants pour attribuer collections et droits sans deviner un login dans un champ libre. Attendu en trois parties : (a) le chemin d'autorisation continue de ne lire que `Remote-Groups`, requête par requête, et un test le verrouille ; (b) l'application n'authentifie toujours personne ; (c) une panne de lecture dit « je n'ai pas pu vérifier » et ne déclare jamais un accès mort. **Le coût qui reste une fois les mauvais arguments retirés** : un identifiant de service dans l'environnement de l'application, classe de secret qu'elle n'a pas aujourd'hui. L'objection de DISPONIBILITÉ est retirée — Authelia dépend déjà de LLDAP, donc s'il tombe, personne n'est connecté pour consulter l'écran
 
