@@ -5,9 +5,11 @@ statut: livré
 
 # NLP-3 — normalisation de casse de l'OCR (capitales vers minuscules)
 
-**Arrêté sur** — arbitrage rendu et mis en œuvre : le stocké reste verbatim, la
-normalisation est un geste humain outillé, aucun réglage ; commit `35a28ce`, 9 septembre.
-Pas encore poussé — l'écran le dira « hors de <refs> » jusque-là, et c'est juste.
+**Arrêté sur** — la couche NLP est hors d'atteinte de la passe, mesuré plutôt que supposé,
+et la propriété qui l'assure est verrouillée ; commit `c0f3a31`, 9 septembre. L'arbitrage
+et sa mise en œuvre sont au commit `35a28ce`. Poussé sur `origin/dev` le 9 septembre — les
+trois commits de code vivent sur une ref d'intégration, le démenti tombe. `main` n'a pas
+suivi : c'est la branche DÉPLOYÉE, et l'avancer est un geste à part.
 
 ## Reste
 
@@ -23,6 +25,8 @@ Pas encore poussé — l'écran le dira « hors de <refs> » jusque-là, et c'es
 - [x] Le rattrapage en lot existe (`tools/normaliser_casse.py`, `--album`/`--planche`/`--dry-run`), ne pose pas `regions.touche`, se journalise en `agent_type='moteur'` donc hors Ctrl+Z, et réindexe le FTS
 - [x] Un test couvre un sigle, un nom propre et une majuscule de début de phrase — nommément, plus les trois règles propres à la BD (saut de ligne, points de suspension, point d'un sigle)
 - [x] Les limites sont verrouillées COMME limites, avec leur raison : `FBI` et les noms propres ne sont pas relevés, et un test le dit pour que la relecture suivante ne « corrige » pas en devinant
+- [x] La couche NLP est prouvée hors d'atteinte : `normaliser(t).lower() == t.lower()` verrouillé sur toute la table, plus un bout-en-bout montrant qu'une correction grammaticale humaine survit à la passe (`obsolete = 0`, même ordre) et que `relecture_planches` ne recule pas
+- [x] Ce que la passe COÛTE est écrit, et pas seulement ce qu'elle apporte : noms propres à relever, contraste de casse effacé du texte par une passe corpus-entier, et pas d'annulation outillée
 
 ## Contexte
 
