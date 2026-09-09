@@ -111,13 +111,20 @@ RUN git init -q lib/kumiko \
 # OpenCV et du même Kumiko que `runtime`. Un écart de version qui casse un moteur y est
 # visible, alors qu'il ne l'est pas depuis le venv de dev.
 #
-# TROIS exclusions ASSUMÉES, à connaître pour ne pas se croire couvert. Mesuré le
-# 2026-09-09 : la suite collecte 924 tests ici contre 959 sur la machine de dev, et la
-# liste ci-dessous rend compte des 35 manquants — sans quoi l'écart se lirait comme un
-# détail d'environnement.
-#   · e2e   — `pytest -m e2e` exige un navigateur ; installer Chromium ici ramènerait
-#             les centaines de mégaoctets que `runtime` vient d'économiser. Ces tests
-#             restent sur la machine de dev. (181 désélectionnés)
+# QUATRE exclusions ASSUMÉES, à connaître pour ne pas se croire couvert.
+#
+# DEUX CHIFFRES, et les confondre fait rater la démonstration. Mesuré le 2026-09-09 :
+# l'image COLLECTE 920 tests contre 959 sur la machine de dev — 39 de moins, c'est-à-dire
+# exactement les quatre modules `deploy` détaillés plus bas. Le BILAN, lui, en affiche
+# 924 : un module sauté au niveau du MODULE est compté dans le total sans jamais être
+# collecté, et ces 4 skips ramènent l'écart NET à 35. Les deux chiffres sont justes et ne
+# se comparent pas l'un à l'autre. Cette page a d'abord écrit « la suite collecte 924 »,
+# ce qui mélangeait les deux — et masquait que 959 − 920 tombe pile sur les 39 de `deploy`,
+# la seule vérification qui rende cette liste crédible.
+#   · e2e   — `pytest -m e2e` exige un navigateur, et l'étape `test` s'en passe pour
+#             rester à la taille de `base`. Ils ne sont plus pour autant confinés à la
+#             machine de dev : depuis le 2026-09-09 ils tournent dans l'étape `e2e`
+#             ci-dessous, qui hérite de celle-ci et ajoute Chromium. (184 désélectionnés)
 #   · JS    — `tests/test_js_unit.py` appelle `node`, absent de l'image : il se skippe
 #             proprement, et sa logique est pure (aucun accès DOM), donc indépendante
 #             de l'image. (1 skip)
@@ -138,10 +145,12 @@ RUN git init -q lib/kumiko \
 #             l'image N'EST PAS une couverture ». Ils tournent sur la machine de dev.
 #             (39 tests non collectés, 4 + 2 skips)
 #
-# Cette liste était INCOMPLÈTE jusqu'au 2026-09-09 : elle nommait deux exclusions sur
-# trois, et la manquante était la plus grosse. C'est le mode d'échec que QA-5 dénonce
-# retourné contre sa propre documentation — une suite qui ne dit pas ce qu'elle n'a pas
-# mesuré laisse croire qu'elle a tout vu.
+# Cette liste était INCOMPLÈTE jusqu'au 2026-09-09 : elle n'en nommait que deux, et la
+# plus grosse — `deploy`, 39 tests — n'y était pas. C'est le mode d'échec que QA-5 dénonce
+# retourné contre sa propre documentation : une suite qui ne dit pas ce qu'elle n'a pas
+# mesuré laisse croire qu'elle a tout vu. Le compte des exclusions se relit donc à chaque
+# fois qu'on en ajoute une : la quatrième est arrivée le matin même, et la mention
+# « TROIS » lui a survécu jusqu'au soir.
 FROM base AS test
 
 # `openpyxl` et `iiif-prezi3` sont épinglés dans `requirements-dev.lock` (outils de test)
@@ -194,6 +203,64 @@ ENV BD_COMMIT=$BD_COMMIT
 # erreur de mise en forme — l'inverse de ce qu'on lui demande. Le code de retour reste
 # celui de pytest.
 CMD ["sh", "-c", "python tools/identite_pile.py --identite; python -m pytest"]
+
+# --------------------------------------------------------------------------- #
+# e2e — les tests navigateur, dans un artefact eux aussi
+# --------------------------------------------------------------------------- #
+# Le dernier pan que l'artefact ne couvrait pas : les tests Playwright (184 au
+# 2026-09-09) qui ne tournaient que sur la machine de dev. Ils exigent un navigateur, et l'étape `test` s'en passe
+# délibérément — c'est ce qui la garde à la taille de `base`.
+#
+#   docker build -f deploy/Dockerfile --target e2e -t bdediteur:e2e .
+#   docker run --rm bdediteur:e2e
+#
+# HÉRITE DE `test` ET NON DE `base` : le navigateur s'ajoute à la suite, il ne la
+# remplace pas. `runtime` reste FROM `base` et n'hérite donc RIEN d'ici — la séparation
+# des étapes est ce qui permet d'embarquer 400 Mo de navigateur sans toucher au livrable.
+#
+# PLACÉE AVANT `runtime`, et ce n'est pas cosmétique : l'étape par défaut d'un Dockerfile
+# est la DERNIÈRE, et `runtime` doit le rester. Mettre celle-ci après ferait construire
+# une image de test à qui lance `docker build -t bdediteur .` sans `--target`.
+#
+# La révision du navigateur n'est PAS épinglée par nos verrous, et elle n'a pas besoin de
+# l'être : Playwright embarque une révision de Chromium par version, et `playwright` est
+# épinglé dans `verrou-test.lock`. La chaîne tient donc — mais par une propriété de
+# Playwright, pas par une décision de ce dépôt, et c'est écrit ici pour qu'on ne le
+# découvre pas le jour où elle cesserait d'être vraie.
+FROM test AS e2e
+
+# `--with-deps` installe les bibliothèques système du navigateur (apt). Il refait son
+# propre `apt-get update` : `base` a supprimé les listes pour ne pas les traîner.
+RUN python -m playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
+# Les polices — et la première rédaction de ce commentaire était FAUSSE. Elle affirmait
+# que Chromium sur une `slim` n'en a aucune ; le journal de construction dit le contraire,
+# `--with-deps` installant déjà liberation, freefont, ipafont et noto-color-emoji. Ce
+# qu'il n'installe pas — mesuré en comparant les deux transactions apt, le 2026-09-09 —
+# c'est DejaVu.
+#
+# On l'ajoute quand même, et pour une raison qui n'est pas « sinon rien ne s'affiche » :
+# deux audits de ce dépôt MESURENT des rectangles — `test_e2e_reflow` compare la largeur
+# de chaque élément à celle de la fenêtre, `test_e2e_police` fait varier la police par
+# défaut du navigateur. DejaVu Sans est le sans-serif par défaut d'une Debian de bureau,
+# donc ce qu'un poste Linux rend RÉELLEMENT ; on mesure contre lui pour cela, et pour
+# rien d'autre. Ce qu'on n'a PAS mesuré, et qu'il ne faut donc pas déduire d'ici : lequel
+# de DejaVu, Liberation (métriques d'Arial) ou FreeSans est le plus large. Le seul écart
+# chiffré est DejaVu contre la police d'un poste Windows — cinq pixels, le 2026-09-09.
+#
+# Ce qui a changé le 2026-09-09 : la garde stricte de `/administration` ne DÉPEND plus de
+# ce choix. Elle a trouvé son défaut ici et pas sur le poste — même chaîne, deux polices,
+# cinq pixels — puis a gagné l'axe de la préférence de police, qui le reproduit partout.
+# La fonte installée rend la mesure RÉALISTE ; elle ne la rend plus VALIDE.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
+# Le marqueur d'image vaut ici aussi (hérité de `base`), et le bandeau d'identité précède
+# la suite pour la même raison qu'à l'étape `test` : un journal doit rester lisible sans
+# qu'on reconstruise ce qu'il décrit.
+CMD ["sh", "-c", "python tools/identite_pile.py --identite; python -m pytest -m e2e"]
 
 # --------------------------------------------------------------------------- #
 # runtime — l'image LIVRÉE  (étape par défaut : la dernière du fichier)

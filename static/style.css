@@ -1524,6 +1524,18 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .admin-bloc > h2 { margin: 0 0 .3rem; font-size: 1.05rem; }
 .admin-bloc + .admin-bloc { border-top: 1px solid var(--border); padding-top: 1.4rem; }
 
+/* L'empreinte COMPLÈTE du commit (INFRA-10) est un jeton de 40 caractères sans un seul
+   espace : elle ne peut se replier nulle part, et à 320 px elle emporte le corps de la
+   page — ce que CLAUDE.md interdit, un contenu large devant défiler dans SON conteneur.
+   Mesuré le 2026-09-09 : 325 px de contenu pour 320 visibles dans l'image, et 350 pour
+   320 sur le poste dès que la police PAR DÉFAUT du navigateur passe à 20 px. Le poste ne
+   le voyait pas à 16 px, l'image si — la même chaîne, deux polices, cinq pixels.
+   On la COUPE plutôt que de la tronquer : la version courte est déjà affichée juste
+   avant, et c'est la longue qui permet la comparaison avec `git log` — la raccourcir
+   viderait le panneau de sa seule raison d'être. Même remède que `.sante-note`, et la
+   même cause : une chaîne venue d'ailleurs, longue et sans espace. */
+#version-corps { overflow-wrap: anywhere; }
+
 /* =================================================================== */
 /* Page Bibliothèque / gestion de corpus                              */
 /* =================================================================== */

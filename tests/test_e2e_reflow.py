@@ -48,6 +48,60 @@ pytestmark = pytest.mark.e2e
 # — à tort, la Visionneuse n'y laissant que 228 px de canevas avant les tiroirs.
 LARGEURS = [320, 768]
 
+# La préférence de police du navigateur, second axe du contrôle strict ci-dessous. Elle
+# n'a été ajoutée qu'au 2026-09-09, et l'omission avait un coût mesurable : à 16 px le
+# poste ne voyait pas le débordement de `/administration`, l'IMAGE si — polices
+# différentes, cinq pixels d'écart sur la même chaîne. Un contrôle de reflow qui ne dépend
+# que de la police INSTALLÉE est vert par accident, et son vert se déplace d'une machine à
+# l'autre. 20 px reproduit le défaut PARTOUT (350 px de contenu pour 320) : ce n'est pas
+# un réglage exotique, c'est la valeur que `test_e2e_police.CAS` audite déjà à 320 px —
+# cet audit-là visitait donc la bonne page au bon réglage, et posait l'AUTRE question
+# (« le contenu est-il perdu ? »), à laquelle un `overflow-x` sur le corps de la page
+# répond oui.
+POLICES = [16, 20]
+
+
+def _preference_police(page, police):
+    """Le réglage de police PAR DÉFAUT du navigateur, posé par CDP.
+
+    Même instrument qu'`test_e2e_police`, et pour la même raison : injecter
+    `html{font-size:…}` écraserait la racine de l'application et mesurerait autre chose.
+
+    Deux lignes RECOPIÉES plutôt qu'importées. Ses conditions de module sont aujourd'hui
+    les mêmes qu'ici (`playwright`), donc l'importer marcherait — mais `test_e2e_a11y` a
+    montré ce qui arrive ensuite : un module e2e finit par acquérir sa propre condition
+    de saut (là-bas, la présence d'axe-core), et tout ce qu'on lui a emprunté disparaît
+    avec lui, sans que rien ne le dise. C'est l'argument déjà écrit sur `decor`, quinze
+    lignes plus bas. Ce qu'on ne duplique jamais reste la RÈGLE ; un instrument de deux
+    lignes ne l'est pas.
+    """
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Page.setFontSizes", {"fontSizes": {"standard": police, "fixed": police}})
+
+
+# La sonde STRICTE, à un seul endroit : « le corps de la page ne défile pas de côté ».
+# Elle est distincte de `SONDE` (importée de `tools/mesurer_reflow.py`), qui demande si le
+# contenu est PERDU — deux questions complémentaires, cf. le long commentaire plus bas.
+# Constante plutôt que recopiée, pour la raison qui vaut dans tout ce fichier : ce qu'on ne
+# duplique jamais, c'est la RÈGLE ; les décors, eux, peuvent l'être.
+_CORPS_QUI_DEFILE = """() => {
+  const cands = [document.documentElement, document.body,
+                 ...document.querySelectorAll("main")];
+  return cands.filter(Boolean)
+    .map((el) => ({ nom: el.tagName.toLowerCase() + (el.id ? "#" + el.id : ""),
+                    clientW: el.clientWidth, scrollW: el.scrollWidth }))
+    .filter((v) => v.scrollW > v.clientW + 1);
+}"""
+
+
+def _exiger_pas_de_defilement(page, quoi):
+    debordants = page.evaluate(_CORPS_QUI_DEFILE)
+    assert not debordants, (
+        f"{quoi} — le corps de la page défile de côté :\n  "
+        + "\n  ".join(f"{d['nom']} : {d['clientW']} px visibles pour {d['scrollW']} px "
+                      "de contenu" for d in debordants)
+        + "\n\nUn contenu large défile dans SON conteneur, pas en emportant la page.")
+
 
 @pytest.fixture
 def decor(live_server):
@@ -165,15 +219,24 @@ def test_aucune_surface_ne_perd_de_contenu(page, decor, surface, largeur):
 # généraliser demanderait de vérifier que les quatre autres ne s'appuient pas sur ce
 # défilement de page — l'Atelier en particulier, dont le canevas a déjà son exemption
 # écrite. Élargir est un geste d'UX-7, pas un effet de bord de ce constat.
+@pytest.mark.parametrize("police", POLICES)
 @pytest.mark.parametrize("largeur", LARGEURS)
-def test_l_administration_ne_defile_pas_de_cote(page, decor, largeur):
+def test_l_administration_ne_defile_pas_de_cote(page, decor, largeur, police):
     """Le corps de la page ne défile jamais horizontalement (règle de CLAUDE.md).
 
     On déplie une collection avant de mesurer : le formulaire d'accès qui débordait vit
     dans le détail, et une page repliée ne montre pas ce qu'on cherche — c'est l'erreur
     qu'`AUTH-7` a déjà payée deux lignes plus bas, où un bloc vide passait tous les
     contrôles.
+
+    **La préférence de police est un paramètre depuis le 2026-09-09.** Le panneau de
+    version affiche l'empreinte COMPLÈTE du commit — 40 caractères sans un espace —, et à
+    320 px elle emportait le corps de la page. Ce test était vert sur le poste et rouge
+    dans l'image, pour la seule raison que les polices n'y ont pas la même chasse : un
+    vert qui voyage mal est exactement ce que QA-5 existe pour supprimer. `POLICES` rend
+    le défaut reproductible partout, sans dépendre de ce qui est installé.
     """
+    _preference_police(page, police)
     page.set_viewport_size({"width": largeur, "height": 900})
     page.goto(decor["base"] + "/administration", wait_until="networkidle")
     page.wait_for_timeout(400)
@@ -182,19 +245,8 @@ def test_l_administration_ne_defile_pas_de_cote(page, decor, largeur):
     som.click()
     page.wait_for_timeout(600)
 
-    debordants = page.evaluate("""() => {
-      const cands = [document.documentElement, document.body,
-                     ...document.querySelectorAll("main")];
-      return cands.filter(Boolean)
-        .map((el) => ({ nom: el.tagName.toLowerCase() + (el.id ? "#" + el.id : ""),
-                        clientW: el.clientWidth, scrollW: el.scrollWidth }))
-        .filter((v) => v.scrollW > v.clientW + 1);
-    }""")
-    assert not debordants, (
-        f"/administration à {largeur} px — le corps de la page défile de côté :\n  "
-        + "\n  ".join(f"{d['nom']} : {d['clientW']} px visibles pour {d['scrollW']} px "
-                      "de contenu" for d in debordants)
-        + "\n\nUn contenu large défile dans SON conteneur, pas en emportant la page.")
+    _exiger_pas_de_defilement(
+        page, f"/administration à {largeur} px (police par défaut {police} px)")
 
 
 # ── Le bloc que la page ne RENDAIT pas, donc que rien ne mesurait (UX-10, 2026-09-07) ──
@@ -223,8 +275,9 @@ COMPTES_DECOR = [("alice", "Alice Marchand"),
                  ("camille", "Camille Ferreira-Lopes")]
 
 
+@pytest.mark.parametrize("police", POLICES)
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
-def test_la_table_des_comptes_ne_perd_pas_de_contenu(page, live_server):
+def test_la_table_des_comptes_ne_perd_pas_de_contenu(page, live_server, police):
     """La vue des comptes (AUTH-7) tient à 320 px, et on prouve d'abord qu'elle est LÀ.
 
     Le plancher sur le nombre de lignes n'est pas une précaution de style : sans lui, ce
@@ -244,6 +297,7 @@ def test_la_table_des_comptes_ne_perd_pas_de_contenu(page, live_server):
 
     page.set_extra_http_headers({"Remote-User": "decor", "Remote-Name": "Décor Reflow",
                                  "Remote-Groups": "bd-admins"})
+    _preference_police(page, police)
     page.set_viewport_size({"width": 320, "height": 900})
     page.goto(live_server + "/administration", wait_until="networkidle")
     # On attend la TABLE et non le bloc : le bloc existe `hidden` dans le gabarit, la table
@@ -264,6 +318,19 @@ def test_la_table_des_comptes_ne_perd_pas_de_contenu(page, live_server):
         + "\n\nLes tableaux larges du dépôt vivent dans un `.table-cadre` "
           "(`tabindex=\"0\" role=\"region\"`) : le 1.4.10 tolère le défilement horizontal "
           "d'un contenu à deux dimensions, à condition qu'il soit atteignable au clavier.")
+
+    # Et la règle STRICTE sur la même page, ajoutée le 2026-09-09. Elle manquait ici, et
+    # le trou avait la forme que ce fichier décrit vingt lignes plus haut : la garde
+    # stricte de `/administration` s'exerce sur le décor SANS proxy, où `#comptes-bloc`
+    # est vide — donc la table à six colonnes, la seule chose large de cet écran, n'était
+    # jamais passée devant elle. Une tolérance de cadre (`.table-cadre`) et une fuite du
+    # corps de la page se ressemblent beaucoup vues du dessus, et seule la seconde est un
+    # défaut. Mesuré le 2026-09-09 : aucun débordement, à 16 comme à 20 px de préférence —
+    # le cadre fait son travail. Le test n'est donc pas un correctif, c'est le constat qui
+    # manquait.
+    _exiger_pas_de_defilement(
+        page, f"/administration à 320 px, table des comptes rendue "
+              f"(police par défaut {police} px)")
 
 
 def test_la_surface_de_pan_reste_bornee_et_commandee(page, decor):
