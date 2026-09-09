@@ -304,9 +304,13 @@ NON_BALAYE = {
         "chez Huma-Num, pas la base : aucune colonne d'identité ne la traverse."),
     ("outil", "_commun.py"): (
         "Bibliothèque partagée, sans `main()` — elle ne produit rien."),
-    # Ces huit-là IMPRIMENT un compte rendu — dire « aucune sortie » serait faux. Ce
-    # qu'on affirme est plus étroit et se vérifie : aucun ne mentionne `utilisateur`,
-    # `agent`, `auteur`, `verrou_par` ni un en-tête `Remote-` (relevé le 2026-08-31).
+    # CEUX-CI IMPRIMENT un compte rendu — dire « aucune sortie » serait faux. Ce qu'on
+    # affirme est plus étroit et se vérifie : aucun ne mentionne `utilisateur`, `agent`,
+    # `auteur`, `verrou_par` ni un en-tête `Remote-` (relevé le 2026-08-31).
+    # Le compte a été retiré de cette phrase le 2026-09-09 : elle annonçait « ces huit-là »
+    # devant DOUZE entrées. Un nombre posé au-dessus d'une liste où l'on ajoute vieillit
+    # forcément, et il vieillit vers une phrase qui a encore du sens — donc que personne
+    # ne relit. La liste se compte toute seule.
     ("outil", "importer_vocabulaire.py"): (
         "IMPORTE un tableur de vocabulaire : il écrit en base, et son compte rendu ne "
         "nomme que des termes."),
@@ -316,6 +320,14 @@ NON_BALAYE = {
     ("outil", "reindex_nlp.py"): (
         "Maintenance : régénère les tokens et l'index FTS. Son compte rendu est un "
         "décompte de régions."),
+    ("outil", "normaliser_casse.py"): (
+        "Maintenance (NLP-3) : normalise la casse des transcriptions et réindexe. Son "
+        "compte rendu est un décompte, plus un APERÇU de huit répliques avant/après — donc "
+        "du texte de bulle, jamais une colonne d'identité. C'est la seule de ces sorties "
+        "qui recopie du contenu de corpus, et c'est voulu : on ne juge pas une règle de "
+        "casse sur un chiffre. La passe se journalise en `agent_type='moteur'` sous le nom "
+        "du LOGICIEL (`normalisation-casse`), jamais sous celui de qui la lance — la règle "
+        "d'AUTH-1, « les moteurs gardent leur nom »."),
     ("outil", "semer_demo.py"): (
         "Sème un corpus de démonstration. Il écrit `albums.auteur` — l'AUTEUR DE LA BD, "
         "pas un annotateur : dans ce projet le mot désigne les deux, et c'est le seul "

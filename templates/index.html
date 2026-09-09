@@ -322,6 +322,11 @@
       <textarea id="tr-text" placeholder="Texte de la bulle…  (Tab ou Ctrl+Entrée = suivante)"></textarea>
       <div id="tr-controls">
         <button id="tr-prev" class="ghost">‹ Précédent</button>
+        <!-- NLP-3 : le lettrage arrive en CAPITALES et `ocr_texte` le garde tel quel.
+             Normaliser est un GESTE — la machine propose, on relit, on retouche. Le
+             bouton s'éteint dès que la bulle n'est plus intégralement capitale : le
+             geste est déjà fait, ou le texte corrigé. Cf. docs/normalisation-casse.md. -->
+        <button id="tr-casse" class="ghost">Normaliser la casse</button>
         <span id="tr-save" class="save-state muted"></span>
         <button id="tr-next" class="ghost">Valider + Suivant ›</button>
       </div>
@@ -458,6 +463,7 @@
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
 <script src="/static/lib/dialog.js"></script>
+<script src="/static/lib/casse.js"></script>
 <script src="/static/viewer.js"></script>
 </body>
 </html>

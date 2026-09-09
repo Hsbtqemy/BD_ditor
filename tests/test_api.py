@@ -439,6 +439,25 @@ def test_dialog_js_servi_et_charge_avant_le_script_de_page(client):
         assert html.index("/static/lib/dialog.js") < html.index(page_script), route
 
 
+def test_casse_js_servi_et_charge_avant_le_script_de_page(client):
+    """Même garde-fou pour la normalisation de casse (static/lib/casse.js, NLP-3) : servi,
+    et chargé AVANT viewer.js, seule surface qui l'utilise.
+
+    Sans lui, `BDCasse` est indéfini quand `renderTranscription` appelle `majBoutonCasse` —
+    et le mode Transcription tombe ENTIER sur une `ReferenceException`, pas seulement le
+    bouton. Le garde-fou porte donc sur bien plus que la fonctionnalité qu'il nomme.
+    """
+    js = client.get("/static/lib/casse.js")
+    assert js.status_code == 200 and "normaliser" in js.text
+    html = client.get("/").text
+    assert "/static/lib/casse.js" in html
+    assert html.index("/static/lib/casse.js") < html.index("/static/viewer.js")
+    # Le bouton est dans le gabarit, et son libellé DIT le geste : « Aa » seul laisserait
+    # deviner, et un bouton qu'on n'ose pas cliquer ne sert personne.
+    assert 'id="tr-casse"' in html
+    assert "Normaliser la casse" in html
+
+
 def test_export_album_inexistant_404(client):
     assert client.get("/api/export/json",
                       params={"album_id": 999}).status_code == 404

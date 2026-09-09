@@ -340,9 +340,10 @@ bd_annotator/
 │   ├── corpus.js        # gestion albums/planches + rôle/validation/verrou + lots
 │   ├── exploration.js   # distributions + comparaison de sous-corpus
 │   ├── theme.js         # réglages d'affichage partagés (thème, contraste, zoom)
-│   ├── lib/             # modules UMD testés sous Node : common.js, nav.js, dialog.js, sante.js
+│   ├── lib/             # modules UMD testés sous Node : common.js, nav.js, dialog.js, sante.js, casse.js
 │   └── style.css        # thème sombre/clair (partagé par les 5 pages)
 ├── tools/               # scripts hors-app : reindex_nlp.py, reindex_materiel.py, pdf_check.py, sharedocs_check.py,
+│                        #   normaliser_casse (casse des transcriptions, cf. docs/normalisation-casse.md) ·
 │                        #   rapport_accord (modèle↔humain) · rapport_accord_inter (inter-annotateurs) ·
 │                        #   importer_vocabulaire (amorçage taxonomie CSV, cf. docs/import-vocabulaire.md) ·
 │                        #   export métadonnées : gerer_collections · description_collection ·
@@ -428,6 +429,12 @@ humaine) — la qualité finale vient de la relecture humaine.
   l'analyse grammaticale : la recherche **retombe** sur le préfixe + accents.
   Après un changement de modèle/paramètre, réindexer le corpus avec
   `tools/reindex_nlp.py`.
+- **Le lettrage BD arrivant en CAPITALES**, l'OCR pré-remplit en tout-majuscule, et
+  `regions.ocr_texte` le garde tel quel : normaliser la casse est un **geste**, jamais
+  une transformation automatique. Un bouton du mode Transcription propose la casse de
+  phrase (sigles pointés préservés, noms propres laissés en bas de casse) ;
+  `tools/normaliser_casse.py --dry-run` rattrape un corpus déjà océrisé. Une ligne qui
+  n'est pas intégralement capitale n'est jamais touchée. Cf. `docs/normalisation-casse.md`.
 - Les tags sont insensibles à la casse et stockés en minuscules ; un tag
   s'applique à n'importe quel niveau de la hiérarchie. Aucune taxonomie n'est
   imposée — les catégories émergent du corpus.

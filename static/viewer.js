@@ -1063,6 +1063,7 @@ function renderTranscription() {
   ta.value = r ? (r.ocr_texte || "") : "";
   ta.disabled = !r;
   setTrSave("");
+  majBoutonCasse();
 
   // surlignage + défilement dans la mini-planche
   const svg = $("#tr-mini svg");
@@ -1076,6 +1077,40 @@ function renderTranscription() {
 }
 
 function trCurrent() { return state.trRegions[state.trIndex]; }
+
+/* --- NLP-3 : normalisation de casse, un GESTE et non une transformation ---------- */
+/* Le bouton n'est offert que s'il a quelque chose à faire. La sûreté ne dépend PAS de
+   cette garde d'écran — `only_upper` vit dans `BDCasse.normaliser`, donc un clic sur un
+   texte déjà mixte ne ferait rien de toute façon. Elle sert à ne pas offrir un geste
+   inerte : un bouton qui ne répond pas s'apprend comme une panne.
+   Le `title` porte la RAISON, mais on ne peut pas compter dessus quand il éteint : les
+   navigateurs ne s'accordent pas sur l'infobulle d'un contrôle `disabled` (Chrome
+   supprime les événements de souris, donc l'infobulle avec). C'est pourquoi le LIBELLÉ
+   est écrit en toutes lettres plutôt qu'un « Aa » : lui reste lisible dans les deux
+   états, et c'est lui qui doit suffire. */
+function majBoutonCasse() {
+  const ta = $("#tr-text");
+  const offrable = !ta.disabled && BDCasse.estToutCapitales(ta.value);
+  const btn = $("#tr-casse");
+  btn.disabled = !offrable;
+  btn.title = offrable
+    ? "Passer cette bulle en casse de phrase. Les sigles pointés (F.B.I.) sont "
+      + "préservés ; les noms propres restent en bas de casse, à relever à la relecture."
+    : "Rien à normaliser : cette bulle n'est pas intégralement en capitales.";
+}
+
+/* Remplit la zone de saisie avec la proposition, puis l'enregistre par le MÊME chemin
+   qu'une frappe. Ne PAS enregistrer serait un état imaginaire : `trNext()` sauvegarde de
+   toute façon dès que la zone diffère du stocké, si bien qu'un « en attente de votre
+   confirmation » mentirait. Ce qui protège n'est donc pas un différé d'écriture, c'est le
+   geste — rien ne bouge sans ce clic — et l'idempotence de la règle. */
+function trNormaliserCasse() {
+  const ta = $("#tr-text");
+  const propose = BDCasse.normaliser(ta.value);
+  if (propose !== ta.value) { ta.value = propose; trScheduleSave(); }
+  majBoutonCasse();
+  ta.focus();          // on relit et on retouche là où le texte vient de changer
+}
 
 function setTrSave(kind) {
   const el = $("#tr-save");
@@ -1130,6 +1165,9 @@ async function trPrev() {
 
 function setupTranscription() {
   $("#tr-text").addEventListener("input", trScheduleSave);
+  // La frappe peut faire SORTIR le texte des capitales (ou y rentrer, sur un collage) :
+  // sans cette seconde écoute, le bouton garderait l'état calculé au rendu de la bulle.
+  $("#tr-text").addEventListener("input", majBoutonCasse);
   $("#tr-text").addEventListener("keydown", (e) => {
     if ((e.key === "Enter" && (e.ctrlKey || e.metaKey)) ||
         (e.key === "Tab" && !e.shiftKey)) { e.preventDefault(); trNext(); }
@@ -1137,6 +1175,7 @@ function setupTranscription() {
   });
   $("#tr-next").onclick = trNext;
   $("#tr-prev").onclick = trPrev;
+  $("#tr-casse").onclick = trNormaliserCasse;
   $("#tr-exit").onclick = () => setMode("navigation");
 }
 

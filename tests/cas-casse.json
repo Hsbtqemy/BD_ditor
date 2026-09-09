@@ -1,0 +1,107 @@
+[
+  {
+    "nom": "la réplique complète — sigle, nom propre et majuscule de phrase à la fois",
+    "entree": "ALORS TINTIN, LE F.B.I. T'ATTEND À NEW YORK ? SACRÉ MILOU !",
+    "attendu": "Alors tintin, le F.B.I. t'attend à new york ? Sacré milou !"
+  },
+  {
+    "nom": "un sigle pointé survit, et son point ne relève pas le mot suivant",
+    "entree": "LE F.B.I. ARRIVE.",
+    "attendu": "Le F.B.I. arrive."
+  },
+  {
+    "nom": "un sigle en fin de texte",
+    "entree": "C'EST LE F.B.I.",
+    "attendu": "C'est le F.B.I."
+  },
+  {
+    "nom": "un sigle en tête de texte consomme la majuscule de phrase",
+    "entree": "F.B.I. ! OUVREZ !",
+    "attendu": "F.B.I. ! Ouvrez !"
+  },
+  {
+    "nom": "LIMITE ASSUMÉE — un sigle non pointé est indétectable sur une entrée capitale",
+    "entree": "LE FBI ARRIVE.",
+    "attendu": "Le fbi arrive."
+  },
+  {
+    "nom": "LIMITE ASSUMÉE — un nom propre n'est pas relevé (gazetteer ANN-3 absent)",
+    "entree": "BONJOUR TINTIN.",
+    "attendu": "Bonjour tintin."
+  },
+  {
+    "nom": "majuscule après un point",
+    "entree": "IL PART. IL REVIENT.",
+    "attendu": "Il part. Il revient."
+  },
+  {
+    "nom": "majuscule après un point d'exclamation puis d'interrogation",
+    "entree": "QUOI ?! MOI ?",
+    "attendu": "Quoi ?! Moi ?"
+  },
+  {
+    "nom": "une suite de points d'interrogation ferme quand même la phrase",
+    "entree": "QUOI ??? OUI.",
+    "attendu": "Quoi ??? Oui."
+  },
+  {
+    "nom": "le saut de ligne NE ferme PAS la phrase (le lettrage coupe au milieu)",
+    "entree": "JE SUIS\nLÀ.",
+    "attendu": "Je suis\nlà."
+  },
+  {
+    "nom": "les points de suspension NE ferment PAS la phrase (hésitation)",
+    "entree": "JE... JE NE SAIS PAS.",
+    "attendu": "Je... je ne sais pas."
+  },
+  {
+    "nom": "le signe … non plus",
+    "entree": "JE… JE NE SAIS PAS.",
+    "attendu": "Je… je ne sais pas."
+  },
+  {
+    "nom": "les deux-points ne ferment pas une phrase en français",
+    "entree": "IL DIT : JE PARS.",
+    "attendu": "Il dit : je pars."
+  },
+  {
+    "nom": "un chiffre consomme la majuscule de phrase",
+    "entree": "J'AI 30 ANS. 30 ANS !",
+    "attendu": "J'ai 30 ans. 30 ans !"
+  },
+  {
+    "nom": "les guillemets et tirets ne la consomment pas",
+    "entree": "« ÉCOUTE-MOI ! »",
+    "attendu": "« Écoute-moi ! »"
+  },
+  {
+    "nom": "une capitale accentuée se relève et se rabaisse",
+    "entree": "ÉCOUTE-MOI, ÉMILE !",
+    "attendu": "Écoute-moi, émile !"
+  },
+  {
+    "nom": "l'apostrophe ne coupe pas le mot",
+    "entree": "L'HOMME EST LÀ.",
+    "attendu": "L'homme est là."
+  },
+  {
+    "nom": "only_upper — un texte déjà mixte n'est pas touché",
+    "entree": "Je suis là, Tintin.",
+    "attendu": "Je suis là, Tintin."
+  },
+  {
+    "nom": "only_upper — une correction humaine en bas de casse n'est pas touchée",
+    "entree": "je suis là",
+    "attendu": "je suis là"
+  },
+  {
+    "nom": "only_upper — un texte sans lettre n'a rien à normaliser",
+    "entree": "?!  …",
+    "attendu": "?!  …"
+  },
+  {
+    "nom": "only_upper — le vide",
+    "entree": "",
+    "attendu": ""
+  }
+]

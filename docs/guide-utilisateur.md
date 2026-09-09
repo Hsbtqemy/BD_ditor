@@ -130,6 +130,21 @@ Le mode Transcription est un plein écran bulle à bulle : le crop net à gauche
 droite, `Tab` et `Maj+Tab` pour avancer et reculer, un enchaînement possible sur tout l'album.
 La sauvegarde est automatique.
 
+**Le lettrage est en capitales, et l'OCR les restitue telles quelles.** Le bouton
+*Normaliser la casse* propose la casse de phrase pour la bulle affichée — « ALORS TINTIN,
+LE F.B.I. T'ATTEND » devient « Alors tintin, le F.B.I. t'attend ». Il ne fait rien tout
+seul : c'est vous qui cliquez, et vous relisez avant de passer à la suivante. Deux choses
+à savoir, parce qu'elles sont voulues :
+
+- **les noms propres restent en bas de casse** (« tintin »). L'outil ne les connaît pas et
+  ne les devine pas ; il vous laisse les relever, ce qui est plus rapide que de rattraper
+  ceux qu'une devinette aurait inventés ;
+- **les sigles ponctués sont préservés** (`F.B.I.`), les autres non (`FBI` devient `fbi`) —
+  sur un texte tout en capitales, rien ne distingue `FBI` d'un mot ordinaire.
+
+Le bouton s'éteint dès que la bulle n'est plus intégralement en capitales : le geste est
+déjà fait, ou le texte a été corrigé, et le recliquer ne peut pas défaire votre travail.
+
 Si l'analyse linguistique est installée, le **panneau Grammaire** apparaît dès qu'une région
 sélectionnée porte du texte : il liste ses mots avec lemme, catégorie grammaticale et traits
 morphologiques. Chaque mot se corrige à la main, ou se valide tel quel ; le bouton
