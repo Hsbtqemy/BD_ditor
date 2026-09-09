@@ -125,6 +125,28 @@ def test_la_normalisation_est_reversible_quand_la_source_etait_capitale():
             assert casse.normaliser(cas["entree"]).upper() == cas["entree"]
 
 
+@pytest.mark.parametrize("cas", TABLE, ids=[c["nom"] for c in TABLE])
+def test_la_regle_ne_change_QUE_la_casse(cas):
+    """`normaliser(t).lower() == t.lower()` — et c'est ce qui met toute la couche NLP hors
+    d'atteinte.
+
+    `pipeline/nlp.analyse` MINUSCULE avant spaCy (palier A, sinon le lettrage passe pour
+    des noms propres). Si la règle ne change que la casse, l'entrée réelle de spaCy est
+    donc rigoureusement identique avant et après la passe : mêmes tokens, mêmes lemmes,
+    mêmes POS — et surtout, `_reancrer_corrections` retrouve ses formes.
+
+    Ce test existe parce que le raisonnement inverse était crédible et faux. Le ré-ancrage
+    aligne sur la FORME du mot (`difflib` sur `tokens.texte`) et ne garde une correction
+    que si `new_forme[no] == c["forme"]` : normaliser « TINTIN » en « tintin » semblait
+    donc devoir ORPHELINER toute correction grammaticale de la région, faire retomber le
+    statut de relecture de « faite » à « à faire », et cela EN SILENCE. Mesuré le
+    2026-09-09 : il n'en est rien, `tokens.texte` étant déjà minuscule. Mais l'immunité
+    tient à cette propriété seule — une règle qui ajouterait ou retirerait un caractère
+    (une espace insécable, une élision) la romprait, et rien d'autre ne le dirait.
+    """
+    assert casse.normaliser(cas["entree"]).lower() == cas["entree"].lower()
+
+
 @pytest.mark.parametrize("texte,attendu", [
     ("ALORS", True),
     ("Alors", False),

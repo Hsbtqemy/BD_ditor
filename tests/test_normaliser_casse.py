@@ -35,6 +35,7 @@ sys.path.insert(0, str(REPO_ROOT))
 import database  # noqa: E402
 import normaliser_casse as nc  # noqa: E402
 import undo  # noqa: E402
+from pipeline.nlp import nlp_available  # noqa: E402
 
 CAPITALES = "ALORS TINTIN, LE F.B.I. T'ATTEND À NEW YORK ?"
 NORMALISE = "Alors tintin, le F.B.I. t'attend à new york ?"
@@ -91,6 +92,50 @@ def test_le_texte_indexe_suit(conn):
         "SELECT ocr_texte FROM recherche WHERE region_id = ?", (rid,)).fetchone()
     assert indexe is not None, "la région a disparu de l'index FTS"
     assert indexe["ocr_texte"] == NORMALISE
+
+
+@pytest.mark.skipif(not nlp_available(), reason="spaCy / modèle absent")
+def test_une_correction_grammaticale_humaine_survit_a_la_passe(conn):
+    """La question qui a failli être répondue par « ça devrait aller ».
+
+    `_reancrer_corrections` aligne sur la FORME du mot et ne garde une correction que si
+    `new_forme[no] == c["forme"]`. Normaliser « TINTIN » en « tintin » semblait donc devoir
+    ORPHELINER toute correction de la région — et faire retomber le statut de relecture de
+    la planche, en silence, sur un corpus entier.
+
+    Il n'en est rien, parce que `nlp.analyse` minuscule AVANT spaCy : `tokens.texte` n'a
+    jamais porté les capitales. L'immunité vient donc du palier A, pas de la passe — et
+    elle ne tient que tant que la règle ne change QUE la casse (cf.
+    `test_la_regle_ne_change_QUE_la_casse`). Ce test la mesure de bout en bout, parce que
+    la propriété est prouvée sur une chaîne et que ce qui compte est ce qu'il advient d'une
+    ligne de `token_correction`.
+    """
+    _, (rid,) = _semer(conn, [CAPITALES])
+    pid = conn.execute("SELECT planche_id FROM regions WHERE id = ?", (rid,)).fetchone()[0]
+    database.reindex_region(conn, rid)
+    conn.commit()
+
+    toks = conn.execute("SELECT ordre, texte FROM tokens WHERE region_id = ? ORDER BY ordre",
+                        (rid,)).fetchall()
+    assert toks, "aucun token : le décor ne mesure rien"
+    cible = toks[1]
+    conn.execute(
+        "INSERT INTO token_correction (region_id, ordre, forme, lemme, pos, morph, etat, "
+        "auteur, date_modif, obsolete) VALUES (?, ?, ?, 'Tintin', 'PROPN', '', 'corrige', "
+        "'hugo', datetime('now'), 0)", (rid, cible["ordre"], cible["texte"]))
+    conn.commit()
+    relecture_avant = database.relecture_planches(conn, [pid])
+
+    nc.appliquer(conn, nc.candidates(conn), portee={"corpus": True})
+
+    corr = conn.execute("SELECT * FROM token_correction WHERE region_id = ?",
+                        (rid,)).fetchall()
+    assert len(corr) == 1
+    assert corr[0]["obsolete"] == 0, "correction orpheline : la passe a cassé le ré-ancrage"
+    assert corr[0]["lemme"] == "Tintin"
+    assert corr[0]["ordre"] == cible["ordre"]
+    # Le statut de relecture en DÉRIVE (ANN-4) : c'est lui qui aurait reculé.
+    assert database.relecture_planches(conn, [pid]) == relecture_avant
 
 
 # --------------------------------------------------------------------------- #

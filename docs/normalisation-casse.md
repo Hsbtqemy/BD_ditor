@@ -144,6 +144,63 @@ oublie — d'où `tests/test_normaliser_casse.py`, `tools/` étant hors couvertu
   recherche et l'analyse grammaticale continueraient de porter sur l'ancienne casse —
   invisible, puisque FTS5 plie la casse de toute façon.
 
+## La couche NLP est hors d'atteinte, et il a fallu le mesurer
+
+La question s'est posée après coup, et elle a failli recevoir un « ça devrait aller ».
+
+`_reancrer_corrections` (cf. `docs/correction-grammaticale.md` §4) réaligne les corrections
+humaines après régénération des tokens **par la FORME du mot** — `difflib` sur
+`tokens.texte` — et ne conserve une correction que si `new_forme[no] == c["forme"]`.
+Normaliser « TINTIN » en « tintin » semblait donc devoir **orpheliner toutes les
+corrections grammaticales** des régions traitées, faire retomber le statut de relecture des
+planches de « faite » à « à faire », et cela **en silence, sur un corpus entier**.
+
+**Mesuré le 2026-09-09 : il n'en est rien.** `pipeline/nlp.analyse` minuscule AVANT spaCy —
+c'est le palier A, sans quoi tout le lettrage passerait pour des noms propres — si bien que
+`tokens.texte` n'a **jamais** porté les capitales. Sur « ALORS TINTIN, LE F.B.I.
+T'ATTEND. », les tokens auto sont déjà `alors`, `tintin`, `le`, `f.b.i`, `t'`, `attend`,
+avant comme après la passe. La correction survit, à son ordre, `obsolete = 0`, et le statut
+de relecture ne bouge pas.
+
+**L'immunité vient donc du palier A, pas de la passe** — et elle tient à une propriété, une
+seule, désormais verrouillée sur toute la table de cas :
+
+```
+normaliser(t).lower() == t.lower()
+```
+
+La règle ne change QUE la casse. L'entrée réelle de spaCy est donc rigoureusement identique
+avant et après : mêmes tokens, mêmes lemmes, mêmes POS, même index FTS de lemmes. Une règle
+future qui ajouterait ou retirerait un caractère — une espace insécable avant un `!`, une
+élision « recollée » — romprait l'immunité, et **rien d'autre ne le dirait**. D'où
+`test_la_regle_ne_change_QUE_la_casse`, doublé du bout-en-bout
+`test_une_correction_grammaticale_humaine_survit_a_la_passe`.
+
+## Ce que la passe COÛTE quand même
+
+Rien de ce qui suit n'est un défaut à corriger : ce sont les conséquences du choix, et les
+taire rendrait la note complaisante.
+
+- **Les noms propres et les sigles non pointés redescendent en bas de casse.** Sur un
+  corpus déjà transcrit, la passe de lot échange donc un défaut visible (le tout-majuscule)
+  contre un autre (« tintin », « new york », « fbi »), et le second demande une relecture
+  humaine que le premier ne demandait pas. Ce n'est un gain net que si quelqu'un repasse
+  derrière — ou si ANN-3 arrive.
+- **Appliquée à tout un corpus, elle efface le CONTRASTE de casse du TEXTE.** C'est la
+  contrepartie exacte de l'argument qui a fait garder le verbatim : tant que les bulles sont
+  en capitales, un cartouche en bas de casse SE VOIT. Une fois tout normalisé, il ne se
+  distingue plus de ses voisins. Le journal A3 garde l'avant/après ligne à ligne, donc
+  l'information n'est pas perdue — mais elle a quitté le texte pour la trace, et personne ne
+  lit une trace en annotant. **Le geste unitaire n'a pas ce défaut ; la passe corpus-entier
+  l'a.**
+- **La passe de lot n'a pas d'annulation outillée.** Elle est hors de Ctrl+Z par
+  construction (acte machine), et il n'existe pas de `--annuler`. « Réversible » veut dire
+  que l'original se recalcule (`upper()`) ou se relit dans le journal, pas qu'un bouton le
+  fasse. Concrètement : `--dry-run` d'abord, et une sauvegarde avant une passe large.
+- **L'OCR continue de produire des capitales**, puisqu'il n'est pas touché. Un corpus
+  traité par morceaux se retrouve donc dans deux états à la fois — sans conséquence pour la
+  recherche ni l'analyse, qui plient la casse, mais visible à la lecture.
+
 ## Une règle en double, et son accord mesuré
 
 La règle vit **deux fois** : `casse.py` pour l'outil de lot, `static/lib/casse.js` pour le
