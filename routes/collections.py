@@ -29,11 +29,12 @@ from fastapi.responses import Response
 import autorisation
 import journal
 from config import STATUTS_DIFFUSION
-from database import collection_row, collections, etat_embargo, nom_reserve
+from database import (NATURES, collection_row, collections, etat_embargo,
+                      nom_reserve)
 
 from socle import (
-    AccesIn, CollectionIn, CollectionUpdate, _get_album, _get_collection, _rows, db,
-    portee_courante,
+    AccesIn, CollectionIn, CollectionUpdate, NatureIn, _get_album, _get_collection, _rows,
+    db, portee_courante,
 )
 
 router = APIRouter()
@@ -267,7 +268,13 @@ def _comptes(conn) -> list:
         # son propre compte. Les compter ferait passer un mariage pour du travail laissé.
         "SELECT agent, COUNT(*) AS n FROM evenement "
         "WHERE agent_type = 'humain' AND agent IS NOT NULL "
-        "  AND cible_table != 'utilisateur' "
+        # `utilisateur_nature` s'ajoute à l'exclusion le 2026-09-09 (AUTH-6), et pour une
+        # raison DIFFÉRENTE de celle du voisin : celle-là est bien un acte posé par un
+        # administrateur, pas un changement observé. Mais le verdict répond à « qu'est-ce
+        # qu'une suppression orphelinerait ? », et déclarer la nature d'un tiers
+        # n'orpheline aucune annotation. La compter ferait lire « laisse des actes » à qui
+        # n'a fait qu'administrer, dans l'écran même où l'on décide de supprimer.
+        "  AND cible_table NOT IN ('utilisateur', 'utilisateur_nature') "
         "GROUP BY agent")}
     acces = {r["principal"]: r["n"] for r in conn.execute(
         "SELECT principal, COUNT(*) AS n FROM collection_acces "
@@ -295,6 +302,11 @@ def _comptes(conn) -> list:
         verdict = ("laisse " + " et ".join(motifs)) if motifs else "rien à orpheliner"
         out.append({
             "login": login, "nom": u["nom"], "email": u["email"],
+            # AUTH-6 — ce qu'un login EST. Rendu à l'écran parce que c'est là qu'on le
+            # pose, et rendu à TOUS les lecteurs de la vue (qui sont déjà administrateurs)
+            # parce qu'un compte collectif change la lecture de tout le reste de la ligne :
+            # « laisse des actes » ne désigne alors pas une personne.
+            "nature": u["nature"],
             "premiere_vue": u["premiere_vue"], "derniere_vue": u["derniere_vue"],
             "actes": n_actes, "acces_explicites": n_acces,
             "verdict": verdict,
@@ -334,6 +346,54 @@ def liste_comptes(conn: sqlite3.Connection = Depends(db),
             "limite": "Les accès accordés par GROUPE n'apparaissent pas : l'application ne "
                       "connaît que les groupes de la personne qui frappe (AUTH-1), jamais "
                       "ceux des autres. Un compte peut donc tout lire sans figurer ici."}
+
+
+@router.patch("/api/comptes/{login}/nature")
+def poser_nature(login: str, payload: NatureIn,
+                 conn: sqlite3.Connection = Depends(db),
+                 portee: autorisation.Portee = Depends(portee_courante)):
+    """Déclarer qu'un login est PARTAGÉ, ou qu'il ne l'est plus (AUTH-6).
+
+    RÉSERVÉE AUX ADMINISTRATEURS, comme la vue qui la porte et pour la même raison : elle
+    parle d'une personne — ou justement du fait qu'il n'y en a pas une seule.
+
+    **Elle n'accorde et ne retire AUCUN droit.** Un compte collectif écrit partout où ses
+    accès le portent, décidé le 2026-09-09 ; ce qui change est ce que les MESURES ont le
+    droit d'affirmer sur lui. Confondre les deux ferait de cette route une porte
+    d'autorisation déguisée, et `autorisation.py` cesserait d'être le seul endroit qui
+    tranche.
+
+    Le login doit avoir été VU : on ne déclare pas la nature d'un compte que l'application
+    ne connaît pas. Ce n'est pas une restriction, c'est le périmètre de la table — un login
+    créé dans l'annuaire et jamais venu n'a pas de ligne, et lui en fabriquer une ici
+    inventerait un compte actif qui ne l'est pas.
+
+    Journalisée sous `cible_table='utilisateur_nature'` et non `'utilisateur'` : cette
+    dernière porte les REPRISES d'identité, qu'AUTH-7 compte pour signaler qu'un login a
+    changé de mains. Y verser ce changement-ci gonflerait ce compteur d'un événement qui
+    n'a rien d'une reprise — un mensonge silencieux dans l'écran qui sert à décider d'une
+    suppression.
+    """
+    if not portee.tout:
+        raise HTTPException(403, "Déclarer la nature d'un compte est réservé aux "
+                                 "administrateurs.")
+    if payload.nature not in NATURES:
+        raise HTTPException(422, f"Nature invalide : {payload.nature} "
+                                 f"({' | '.join(NATURES)}).")
+    ligne = conn.execute("SELECT nature FROM utilisateur WHERE login = ?",
+                         (login,)).fetchone()
+    if ligne is None:
+        raise HTTPException(404, f"Aucun compte connu sous « {login} » : l'application ne "
+                                 "voit que les logins qui ont ouvert une page.")
+    ancienne = ligne["nature"]
+    if ancienne != payload.nature:
+        conn.execute("UPDATE utilisateur SET nature = ? WHERE login = ?",
+                     (payload.nature, login))
+        journal.journaliser(conn, "modification", "utilisateur_nature", None,
+                            avant={"login": login, "nature": ancienne},
+                            apres={"login": login, "nature": payload.nature})
+        conn.commit()
+    return {"login": login, "nature": payload.nature}
 
 
 @router.get("/api/collections/{collection_id}/acces")

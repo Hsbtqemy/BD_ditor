@@ -595,3 +595,36 @@ def test_la_tenue_du_journal_ne_masque_pas_l_erreur_d_origine(client, planche, m
     assert r.status_code == 500, (
         f"HTTP {r.status_code} : l'erreur du journal a remplacé celle du moteur")
     assert "panne d'origine du moteur" in r.json()["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# AUTH-6 — un agent COLLECTIF ne part pas au dépôt sous les traits d'une personne
+# --------------------------------------------------------------------------- #
+def test_un_agent_collectif_sort_sous_collectif_n(client, derriere_proxy, db_path):
+    """La pseudonymisation DÉCLARE la nature au lieu de la faire disparaître.
+
+    C'est le seul endroit du dépôt où la confusion « un login = une personne » serait
+    PUBLIÉE — définitivement, dans un entrepôt qui garde ses versions. Le préfixe joue le
+    rôle de la déclaration de droits d'un manifeste : il dit ce que l'artefact ne peut pas
+    promettre.
+
+    Le NUMÉRO reste celui de la série commune, et le test le vérifie sur DEUX agents :
+    deux séries séparées feraient coexister `annotateur-2` et `collectif-2`, deux agents
+    distincts sous le même rang, ce qui casserait l'invariant « chacun garde son numéro ».
+    """
+    import _commun
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    for i, (agent, quand) in enumerate((("alice", "2026-01-01"), ("promo-l3", "2026-02-01"))):
+        conn.execute(
+            "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id, date) "
+            "VALUES ('creation', ?, 'humain', 'regions', ?, ?)", (agent, 900 + i, quand))
+    conn.execute("INSERT INTO utilisateur (login, nature) VALUES ('promo-l3', 'collectif')")
+    conn.commit()
+
+    pseudo = _commun.pseudonymes(conn)
+    conn.close()
+    assert pseudo["alice"] == "annotateur-1"
+    assert pseudo["promo-l3"] == "collectif-2", (
+        "le préfixe déclare la nature, le numéro reste celui de la série commune")

@@ -118,3 +118,75 @@ def test_cli_rapport_accord_inter(client, db_path, data_dir, tmp_path):
     assert "Accord inter-annotateurs" in res.stderr and "1 re-touche" in res.stderr
     data = json.loads(out.read_text(encoding="utf-8"))
     assert data["retouches"] == 1 and data["champs"]["pos"]["accords"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# AUTH-6 — un agent COLLECTIF n'est pas mesurable, et le rapport le DIT
+# --------------------------------------------------------------------------- #
+def _collectif(db_path, login):
+    conn = sqlite3.connect(db_path)
+    conn.execute("INSERT INTO utilisateur (login, nature) VALUES (?, 'collectif') "
+                 "ON CONFLICT(login) DO UPDATE SET nature = 'collectif'", (login,))
+    conn.commit()
+    conn.close()
+
+
+def test_deux_relectures_sous_un_login_partage_sont_comptees_et_non_mesurees(
+        client, db_path):
+    """Le cas qui cassait DÉJÀ, sans que rien ne le dise.
+
+    La condition de re-touche est `agent_précédent != agent` : deux personnes qui se
+    relisent sous le même login ne produisent donc pas un faux accord, elles SORTENT de
+    l'échantillon. Le taux affiché portait alors sur moins de travail qu'on ne croyait, et
+    l'écart n'apparaissait nulle part — le mode d'échec d'ARCH-2, une mesure qui rétrécit
+    en silence. Le seul remède est de COMPTER ce qu'on ne peut pas mesurer.
+    """
+    _collectif(db_path, "promo-l3")
+    _ev(db_path, 21, "promo-l3", {"pos": "NOUN"}, typ="creation")
+    _ev(db_path, 21, "promo-l3", {"pos": "VERB"}, avant={"pos": "NOUN"})
+
+    r = client.get("/api/analyse/accord-inter").json()
+    assert r["retouches"] == 0, "rien n'est mesurable sous un login partagé"
+    assert r["non_attribuable"]["revisions_internes"] == 1
+    assert r["non_attribuable"]["agents_collectifs"] == ["promo-l3"]
+
+
+def test_une_paire_avec_un_agent_collectif_sort_des_taux(client, db_path):
+    """Un taux (personne, groupe) aurait un sens statistique et aucun sens scientifique :
+    on ne peut pas réunir « le groupe » pour arbitrer une divergence, ce qui est l'usage
+    entier de ce rapport."""
+    _collectif(db_path, "promo-l3")
+    _ev(db_path, 22, "alice", {"pos": "NOUN"}, typ="creation")
+    _ev(db_path, 22, "promo-l3", {"pos": "VERB"}, avant={"pos": "NOUN"})
+
+    r = client.get("/api/analyse/accord-inter").json()
+    assert r["retouches"] == 0 and r["paires"] == [] and r["divergences"] == []
+    assert r["non_attribuable"]["revisions_avec_collectif"] == 1
+
+
+def test_le_bloc_non_attribuable_est_toujours_la(client):
+    """Présent même à zéro. Une clé qui n'apparaîtrait qu'en cas de problème ferait lire
+    son absence comme une absence de problème, alors qu'elle signifierait « je n'ai pas
+    regardé »."""
+    r = client.get("/api/analyse/accord-inter").json()
+    assert r["non_attribuable"] == {"agents_collectifs": [], "revisions_internes": 0,
+                                    "revisions_avec_collectif": 0}
+
+
+def test_un_compte_collectif_etranger_a_l_echantillon_n_est_pas_nomme(client, db_path):
+    """Le rapport décrit SON échantillon, jamais l'instance — et c'est aussi une voie de
+    sortie d'identité.
+
+    Cette route est cloisonnable par `album_ids` (AUTH-2). Rendre tous les comptes
+    collectifs de l'instance publierait des logins de GROUPES à quelqu'un qui ne lit que
+    ses propres albums. Trouvé en relecture le 2026-09-09 : le cliquet d'AUTH-5 ne pouvait
+    pas le voir, sa sentinelle n'étant pas déclarée collective.
+    """
+    _collectif(db_path, "promo-l3")          # déclaré, mais sans aucun acte
+    _ev(db_path, 23, "alice", {"pos": "NOUN"}, typ="creation")
+    _ev(db_path, 23, "bob", {"pos": "NOUN"}, avant={"pos": "NOUN"})
+
+    r = client.get("/api/analyse/accord-inter").json()
+    assert r["non_attribuable"]["agents_collectifs"] == [], (
+        "un groupe absent de l'échantillon n'a pas à être nommé")
+    assert r["retouches"] == 1, "la mesure entre nominatifs n'est pas affectée"

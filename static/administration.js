@@ -56,6 +56,20 @@ async function colTenter(fn) {
   catch (e) { colMsg(e.message || "Échec", true); return false; }
 }
 
+/* AUTH-6 — les deux natures d'un compte, LIBELLÉES pour qui n'était pas dans la décision.
+   « Collectif (login partagé) » plutôt que « collectif » seul : le mot désigne ici un fait
+   technique précis — plusieurs personnes derrière un même login — et non une appartenance
+   à une équipe, que le lecteur pourrait comprendre à la place. La conséquence est dite au
+   même endroit, sous le tableau, parce qu'un choix sans conséquence visible se fait au
+   hasard. */
+const COMPTE_NATURES = [["nominatif", "Nominatif (une personne)"],
+                        ["collectif", "Collectif (login partagé)"]];
+
+function natureOptions(courante) {
+  return COMPTE_NATURES.map(([v, l]) =>
+    `<option value="${v}"${v === courante ? " selected" : ""}>${l}</option>`).join("");
+}
+
 function niveauOptions(courant) {
   return COL_NIVEAUX.map(([v, l]) =>
     `<option value="${v}"${v === courant ? " selected" : ""}>${l}</option>`).join("");
@@ -526,7 +540,14 @@ async function loadComptes() {
 
   // La limite EST le contenu : sans elle, un administrateur — qui n'a aucune ligne
   // d'accès explicite — se lit « rien à orpheliner ». Exact, et trompeur.
-  $("#comptes-limite").textContent = d.limite || "";
+  //
+  // AUTH-6 y ajoute la conséquence de la nature. Elle est écrite à CÔTÉ du sélecteur qui la
+  // pose, et pas seulement dans une fiche : déclarer un login collectif retire du travail
+  // à une mesure, ce qui ne se devine pas depuis un menu à deux entrées.
+  $("#comptes-limite").textContent = (d.limite || "") + " Un compte déclaré COLLECTIF est "
+    + "un login partagé par plusieurs personnes : l'accord inter-annotateurs cesse de le "
+    + "mesurer — il compte à part ce qu'il ne peut pas trancher — et les exports le "
+    + "nomment « collectif-N » au lieu de « annotateur-N ». Aucun droit n'en dépend.";
 
   const body = $("#comptes-body");
   if (!d.comptes.length) {
@@ -544,7 +565,8 @@ async function loadComptes() {
     (a, b) => (a === "rien à orpheliner" ? -1 : b === "rien à orpheliner" ? 1 : a.localeCompare(b)));
 
   // UX-7 — le cadre défilant, comme les quatre autres tableaux larges du dépôt (albums,
-  // planches, Accord, Inter). Six colonnes ne tiennent pas dans 320 px, et sans cadre le
+  // planches, Accord, Inter). SEPT colonnes depuis AUTH-6 (2026-09-09) — la nature s'y est
+  // ajoutée — et elles ne tiennent pas dans 320 px ; sans cadre le
   // débordement sort de l'écran au lieu de défiler. Il manquait ici, et le harnais de
   // reflow ne pouvait pas le dire : sans `BD_AUTH_PROXY` le décor n'inscrit personne dans
   // `utilisateur`, donc ce tableau se rend VIDE pendant la mesure. Ce que la page ne rend
@@ -559,7 +581,7 @@ async function loadComptes() {
          aria-label="Comptes — ${esc(v)}">
     <table class="corpus-table comptes-table">
       <thead><tr>
-        <th scope="col">Login</th><th scope="col">Nom</th>
+        <th scope="col">Login</th><th scope="col">Nature</th><th scope="col">Nom</th>
         <th scope="col">Dernière visite</th>
         <th scope="col" class="c-num">Actes</th><th scope="col" class="c-num">Accès</th>
         <th scope="col">Signal</th>
@@ -567,6 +589,9 @@ async function loadComptes() {
       <tbody>${groupes.get(v).map((c) => `
         <tr>
           <td class="c-titre">${esc(c.login)}</td>
+          <td><select data-nature-de="${esc(c.login)}"
+                      aria-label="Nature du compte ${esc(c.login)}">${
+            natureOptions(c.nature)}</select></td>
           <td>${esc(c.nom || "—")}</td>
           <td>${esc((c.derniere_vue || "—").slice(0, 10))}</td>
           <td class="c-num">${c.actes}</td>
@@ -577,6 +602,26 @@ async function loadComptes() {
         </tr>`).join("")}</tbody>
     </table>
     </div>`).join("");
+
+  // Le geste qui POSE la nature. Il vit ici et non dans un écran à part parce que c'est
+  // là qu'on lit ce qu'un compte a laissé — et qu'un compte collectif change la lecture de
+  // toute sa ligne : « laisse des actes » cesse alors de désigner une personne.
+  body.querySelectorAll("select[data-nature-de]").forEach((sel) => {
+    sel.onchange = async () => {
+      const login = sel.dataset.natureDe;
+      try {
+        await apiSend("PATCH", `/api/comptes/${encodeURIComponent(login)}/nature`,
+                      { nature: sel.value });
+      } catch (e) {
+        toast(e.message || "Échec", "err");
+      }
+      // On recharge dans les DEUX cas, comme le sélecteur de niveau d'accès : en cas de
+      // refus, le <select> afficherait une nature que le serveur n'a pas enregistrée, et
+      // l'écran mentirait sur l'état réel. Ici le mensonge coûterait plus cher qu'ailleurs
+      // — c'est cette valeur qui décide si une mesure d'accord a le droit de répondre.
+      loadComptes();
+    };
+  });
 }
 
 async function creerCollection() {

@@ -842,6 +842,16 @@ class AccesIn(BaseModel):
     niveau: str = autorisation.LECTURE         # 'lecture' | 'ecriture' | 'proprietaire'
 
 
+class NatureIn(BaseModel):
+    """La nature d'un compte (AUTH-6) : `nominatif` ou `collectif`.
+
+    Un seul champ, et c'est voulu — la nature ne se pose pas en passant, au milieu d'une
+    mise à jour de profil. C'est une déclaration sur ce qu'un login EST, et deux mesures en
+    dépendent : l'accord inter-annotateurs et la pseudonymisation de sortie.
+    """
+    nature: str
+
+
 class DimensionDomaineIn(BaseModel):
     domaine_id: Optional[int] = None   # null = retirer la dimension de son domaine
 

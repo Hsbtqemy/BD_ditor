@@ -6,6 +6,24 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
+# Racine du dépôt (tools/_commun.py → dépôt) et clone Kumiko vendu dedans.
+_REPO = Path(__file__).resolve().parent.parent
+
+# La graphie des natures de compte vient du modèle, jamais recopiée ici (AUTH-6). C'est le
+# précédent posé par `tools/semer_demo.py` avec `main.EN_TETE_REQUETE` : `tools/` est hors
+# couverture, donc une divergence de chaîne y donnerait un outil cassé et une suite verte.
+#
+# La racine est ajoutée ICI et non laissée aux appelants. Une première rédaction affirmait
+# qu'ils s'en chargeaient tous ; c'était FAUX, et le cliquet d'AUTH-5 l'a montré en
+# EXÉCUTANT les outils — `dictionnaire_xlsx.py` importe ce module sans avoir touché à
+# `sys.path`, et mourait sur `ModuleNotFoundError`. Ajoutée en FIN de chemin : un module du
+# dépôt ne doit pas pouvoir masquer un module standard pour les onze outils qui passent
+# par ici.
+if str(_REPO) not in sys.path:
+    sys.path.append(str(_REPO))
+
+import database  # noqa: E402  (après l'ajustement de sys.path ci-dessus)
+
 
 def forcer_utf8() -> None:
     """Force stdout/stderr en UTF-8. À appeler en tête de `main()` de chaque tool.
@@ -19,8 +37,6 @@ def forcer_utf8() -> None:
         except (AttributeError, ValueError):
             pass
 
-# Racine du dépôt (tools/_commun.py → dépôt) et clone Kumiko vendu dedans.
-_REPO = Path(__file__).resolve().parent.parent
 _KUMIKO_DIR = _REPO / "lib" / "kumiko"        # clone git (cf. requirements-kumiko.txt)
 
 # Paquets suivis (union des requirements : noyau + ocr + nlp + kumiko + export).
@@ -254,6 +270,13 @@ CIBLES_RETENUES = {
         "AUTH-7 — la reprise d'un login. La charge porte le NOM AFFICHÉ d'une personne "
         "et son login, en clair : c'est exactement ce que `pseudonymes()` retire de la "
         "colonne d'à côté. Administration de comptes, jamais provenance de corpus.",
+    "utilisateur_nature":
+        "AUTH-6 — la déclaration qu'un login est PARTAGÉ, avec ce login en clair dans la "
+        "charge. Même famille que la ligne précédente : administration de comptes, jamais "
+        "provenance de corpus. Ce que le dépôt doit savoir de cette nature n'est PAS "
+        "l'événement qui l'a posée, c'est son EFFET — un agent collectif y sort sous "
+        "`collectif-N` et non `annotateur-N`, ce qui le déclare sans nommer personne ni "
+        "dater qui l'a décidé.",
     "sharedocs":
         "SHARE-1 — chemin serveur du dépôt et nom du compte Huma-Num employé. Sauvegarder "
         "est un geste d'EXPLOITATION ; l'entrepôt n'a rien à en apprendre, et le nom de "
@@ -331,6 +354,20 @@ def pseudonymes(conn) -> dict:
       est append-only et porte les vraies dates ; `token_correction` n'est là que pour les
       corpus dont le journal ne couvre pas tout — sans elle, un correcteur sans acte
       journalisé sortirait sous son login.
+
+    **UN AGENT COLLECTIF SORT SOUS `collectif-N`** (AUTH-6, 2026-09-09). Le cadrage a
+    décidé des logins PARTAGÉS ; les fondre dans la même série `annotateur-N` ferait passer
+    un GROUPE pour une personne dans un graphe de provenance — et c'est le seul endroit du
+    dépôt où cette confusion serait publiée, définitivement, dans un entrepôt qui garde ses
+    versions. Le préfixe est donc une DÉCLARATION, au même titre que la déclaration de
+    droits d'un manifeste : il dit ce que l'artefact ne peut pas promettre.
+
+    Le NUMÉRO reste celui de la série commune, et ce n'est pas un détail — deux séries
+    séparées feraient coexister `annotateur-3` et `collectif-3`, deux agents distincts sous
+    le même rang. La propriété « chacun garde son numéro » tient donc exactement comme
+    avant ; ce qui peut changer d'un dépôt à l'autre est le PRÉFIXE, le jour où un
+    administrateur corrige une nature mal déclarée. C'est le comportement voulu : la
+    correction d'un fait doit se voir, et un dépôt antérieur reste vrai à sa date.
     """
     vus: dict = {}
     for sql in (
@@ -347,5 +384,10 @@ def pseudonymes(conn) -> dict:
             nom, d = r[0], r[1] or ""
             if nom not in vus or d < vus[nom]:
                 vus[nom] = d
+    natures = {r[0]: r[1] for r in conn.execute(
+        "SELECT login, nature FROM utilisateur")}
     ordre = sorted(vus, key=lambda n: (vus[n], n))
-    return {nom: f"annotateur-{i}" for i, nom in enumerate(ordre, 1)}
+    return {nom: (f"collectif-{i}"
+                  if natures.get(nom) == database.NATURE_COLLECTIF
+                  else f"annotateur-{i}")
+            for i, nom in enumerate(ordre, 1)}

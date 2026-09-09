@@ -680,3 +680,95 @@ def test_le_perimetre_est_l_application_pas_l_annuaire(client, derriere_proxy):
     « compte actif » veut dire, et c'est ce qu'un annuaire ne sait pas dire."""
     d = _comptes(client, ADMIN).json()
     assert d["comptes"] == [] or all(c["derniere_vue"] for c in d["comptes"])
+
+
+# --------------------------------------------------------------------------- #
+# AUTH-6 — la NATURE d'un compte (2026-09-09)
+#
+# Le cadrage a décidé des logins PARTAGÉS : groupes d'étudiants, stagiaires, démos, à côté
+# de dix comptes nominatifs au plus. Un login partagé n'est pas un compte comme un autre,
+# et la colonne existe pour une raison étroite : deux mesures cessent de dire vrai dessus,
+# et toutes deux échouent EN SILENCE. Elle ne borde AUCUN droit — un compte collectif écrit
+# partout où ses accès le portent.
+# --------------------------------------------------------------------------- #
+def test_un_compte_est_nominatif_par_defaut(client, derriere_proxy):
+    """Le défaut est RÉTROACTIF, et c'est ce que les comptes existants SONT.
+
+    NULL aurait obligé chaque lecteur à décider quoi faire d'une nature inconnue, et le
+    premier qui aurait traité NULL comme « pas collectif » réintroduisait le silence que
+    cette colonne ferme.
+    """
+    client.get("/api/moi", headers={"Remote-User": "solo"})
+    comptes = {c["login"]: c for c in _comptes(client, ADMIN).json()["comptes"]}
+    assert comptes["solo"]["nature"] == "nominatif"
+
+
+def test_poser_une_nature_est_reserve_aux_administrateurs(client, derriere_proxy):
+    """Même garde que la vue qui la porte : elle parle d'une personne — ou justement du
+    fait qu'il n'y en a pas une seule."""
+    client.get("/api/moi", headers={"Remote-User": "simple"})
+    r = client.patch("/api/comptes/simple/nature", json={"nature": "collectif"},
+                     headers={"Remote-User": "simple"})
+    assert r.status_code == 403
+    assert "administrateurs" in r.json()["detail"]
+
+
+def test_une_nature_inventee_est_refusee_en_nommant_les_valeurs(client, derriere_proxy):
+    """422 qui NOMME ce qui est admis. Un refus qui ne dit pas ce qu'il attend envoie
+    chercher la réponse dans le code, ce qu'un administrateur ne fera pas."""
+    client.get("/api/moi", headers={"Remote-User": "solo"})
+    r = client.patch("/api/comptes/solo/nature", json={"nature": "partage"}, headers=ADMIN)
+    assert r.status_code == 422
+    assert "nominatif" in r.json()["detail"] and "collectif" in r.json()["detail"]
+
+
+def test_un_login_jamais_vu_n_a_pas_de_nature_a_declarer(client, derriere_proxy):
+    """404, et ce n'est pas une restriction : c'est le périmètre de la table.
+
+    `utilisateur` ne contient que les logins qui ont OUVERT une page. Fabriquer une ligne
+    ici inventerait un compte actif qui ne l'est pas — dans l'écran même dont la règle de
+    suppression dépend de ce que chaque compte a laissé.
+    """
+    r = client.patch("/api/comptes/fantome/nature", json={"nature": "collectif"},
+                     headers=ADMIN)
+    assert r.status_code == 404
+    assert "ouvert une page" in r.json()["detail"]
+
+
+def test_declarer_une_nature_ne_gonfle_ni_les_actes_ni_les_reprises(client, derriere_proxy):
+    """LA garde de ce chantier, et elle porte sur une contamination.
+
+    L'événement est journalisé sous `cible_table='utilisateur_nature'` et non
+    `'utilisateur'`, qui porte les REPRISES d'identité — AUTH-7 les compte pour signaler
+    qu'un login a changé de mains, dans l'écran où l'on décide d'une suppression. Y verser
+    ce changement-ci gonflerait ce compteur d'un événement qui n'a rien d'une reprise.
+
+    Et symétriquement, l'acte ne doit pas compter comme du travail LAISSÉ par
+    l'administrateur qui le pose : déclarer la nature d'un tiers n'orpheline aucune
+    annotation, or le verdict répond exactement à « qu'est-ce qu'une suppression
+    orphelinerait ? ».
+    """
+    client.get("/api/moi", headers={"Remote-User": "equipe"})
+    client.get("/api/moi", headers=ADMIN)
+    r = client.patch("/api/comptes/equipe/nature", json={"nature": "collectif"},
+                     headers=ADMIN)
+    assert r.status_code == 200 and r.json()["nature"] == "collectif"
+
+    comptes = {c["login"]: c for c in _comptes(client, ADMIN).json()["comptes"]}
+    assert comptes["equipe"]["nature"] == "collectif"
+    assert comptes["equipe"]["reprises"] == 0, "un changement de nature n'est pas une reprise"
+    assert comptes["decor"]["actes"] == 0, "administrer n'est pas laisser du travail"
+
+
+def test_reposer_la_meme_nature_n_ecrit_rien(client, db_path, derriere_proxy):
+    """Le journal est APPEND-ONLY : une route idempotente qui journalise quand même
+    fabriquerait un historique de changements qui n'ont pas eu lieu."""
+    client.get("/api/moi", headers={"Remote-User": "solo"})
+    for _ in range(3):
+        assert client.patch("/api/comptes/solo/nature", json={"nature": "nominatif"},
+                            headers=ADMIN).status_code == 200
+    conn = sqlite3.connect(db_path)
+    n = conn.execute("SELECT COUNT(*) FROM evenement "
+                     "WHERE cible_table = 'utilisateur_nature'").fetchone()[0]
+    conn.close()
+    assert n == 0

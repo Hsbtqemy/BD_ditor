@@ -18,7 +18,17 @@ from config import DB_PATH, STATUTS
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
+
+# AUTH-6 (2026-09-09) — les deux natures d'un compte, et la SEULE liste qui fasse foi.
+# `nominatif` : une personne derrière un login, ce que suppose tout le raisonnement de
+# provenance. `collectif` : un login partagé, décidé le 2026-09-09 pour les groupes
+# d'étudiants, les stagiaires et les démos. La distinction ne borde AUCUN droit — un
+# compte collectif écrit partout où ses accès le portent —, elle borde ce que les MESURES
+# ont le droit d'affirmer.
+NATURE_NOMINATIF = "nominatif"
+NATURE_COLLECTIF = "collectif"
+NATURES = (NATURE_NOMINATIF, NATURE_COLLECTIF)
 
 
 # --------------------------------------------------------------------------- #
@@ -441,7 +451,27 @@ CREATE TABLE IF NOT EXISTS utilisateur (
     nom            TEXT,                           -- Remote-Name : nom affiché
     email          TEXT,                           -- Remote-Email
     premiere_vue   TEXT DEFAULT (datetime('now')), -- première requête vue de cette personne
-    derniere_vue   TEXT                            -- dernière requête vue
+    derniere_vue   TEXT,                           -- dernière requête vue
+    -- v26 (AUTH-6) — 'nominatif' | 'collectif'. Un login PARTAGÉ par plusieurs personnes
+    -- est décidé le 2026-09-09, et il n'est pas un compte comme les autres : deux
+    -- mécanismes cessent de dire vrai dessus, et tous deux échouent EN SILENCE. L'accord
+    -- inter-annotateurs (ANN-5) ne voit pas deux personnes qui se relisent sous le même
+    -- login — sa condition est `agent_précédent != agent` —, si bien que ces révisions
+    -- disparaissent de l'échantillon au lieu d'être comptées ; et la pseudonymisation de
+    -- sortie fondrait le groupe dans un `annotateur-N` que rien ne distingue d'une
+    -- personne. La colonne existe pour que ces deux-là puissent REFUSER plutôt que rendre
+    -- un chiffre.
+    --
+    -- Elle est POSÉE par un administrateur, jamais devinée : l'application ne peut pas
+    -- savoir combien de personnes tapent derrière un login (elle ne voit que
+    -- `Remote-User`), et une heuristique — « beaucoup d'actes », « connexions
+    -- simultanées » — se tromperait un jour sans le dire.
+    --
+    -- Pas de contrainte CHECK, et c'est délibéré : SQLite ne sait pas en ajouter une par
+    -- ALTER, donc une base MIGRÉE ne la porterait pas et une base NEUVE si. Deux schémas
+    -- qui divergent sur une garde valent moins qu'une garde unique dans le code —
+    -- `database.NATURES`, lu par la route ET par le test.
+    nature         TEXT NOT NULL DEFAULT 'nominatif'
 );
 
 CREATE INDEX IF NOT EXISTS idx_regions_parent   ON regions(parent_id);
@@ -795,6 +825,18 @@ def _migrate(conn: sqlite3.Connection) -> None:
                WHERE collection_id IS NULL
                  AND (SELECT x.collection_id FROM attribut_dimension x
                        WHERE x.id = dimension_id) IS NOT NULL""")
+
+    # v25 → v26 : nature du compte (AUTH-6). ALTER simple, valeur par défaut `nominatif` —
+    # c'est ce que toutes les lignes existantes SONT, l'instance n'ayant eu que des comptes
+    # personnels jusqu'ici (mesuré le 2026-09-07 : `chercheur` et `stagiaire`). Défaut
+    # RÉTROACTIF plutôt que NULL : une nature inconnue obligerait chaque lecteur à décider
+    # quoi en faire, et le premier qui traiterait NULL comme « pas collectif » réintroduirait
+    # exactement le silence que cette colonne ferme. Aucun index : la table se lit par clé
+    # primaire, et la nature ne sert qu'en jointure sur des lots minuscules.
+    ucols = {r["name"] for r in conn.execute("PRAGMA table_info(utilisateur)")}
+    if ucols and "nature" not in ucols:
+        conn.execute("ALTER TABLE utilisateur ADD COLUMN nature TEXT NOT NULL "
+                     f"DEFAULT '{NATURE_NOMINATIF}'")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
