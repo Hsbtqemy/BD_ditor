@@ -1389,41 +1389,96 @@ def reindex_all(conn: sqlite3.Connection, chunk: int = 500) -> int:
     un modèle plus riche, p.ex. `lg` hors ligne (transition vers la consultation).
     Commit par lots (transaction bornée, index mis à jour au fur et à mesure).
     Enregistre le modèle utilisé dans `meta` (reproductibilité). Renvoie le nombre
-    de régions traitées. Sans spaCy : réindexation structurelle (repli propre)."""
+    de régions traitées. Sans spaCy : réindexation structurelle (repli propre).
+
+    Un run qui ÉCHOUE ou qu'on INTERROMPT (Ctrl+C) laisse lui aussi une activité
+    CLOSE au journal (A3), avec son bilan partiel — sans quoi une réindexation ratée
+    et une réindexation jamais lancée seraient indistinguables."""
     from pipeline.nlp import analyse_batch, model_info
     import journal
     aid = journal.ouvrir_activite(conn, "reindex_nlp", agent="spacy", agent_type="moteur",
                                   version=(model_info().get("model") or None),
                                   params={"chunk": chunk})
-    rows = conn.execute("SELECT id, ocr_texte FROM regions ORDER BY id").fetchall()
-    notes = {r["region_id"]: (r["note"] or "")
-             for r in conn.execute("SELECT region_id, note FROM annotations")}
-    n = 0
-    for start in range(0, len(rows), chunk):
-        batch = rows[start:start + chunk]
-        ocr_res = analyse_batch([r["ocr_texte"] or "" for r in batch])
-        note_res = analyse_batch([notes.get(r["id"], "") for r in batch])
-        for j, r in enumerate(batch):
-            toks = ocr_res[j][1]
-            lemmes = (ocr_res[j][0] + " " + note_res[j][0]).strip()
-            fiable = bool(toks) or not (r["ocr_texte"] or "").strip()
-            lemmes = _appliquer_corrections(conn, r["id"], toks, lemmes, reancrer=fiable)
-            _index_region(conn, r["id"], _region_index_payload(conn, r["id"]),
-                          lemmes, toks)
-            n += 1
-        conn.commit()
-    info = model_info()
-    meta = {"nlp_model": info.get("model", ""), "nlp_spacy": info.get("spacy", ""),
-            "nlp_reindexed_count": str(n), "nlp_reindexed_at": "datetime"}
-    for cle, val in meta.items():
-        if val == "datetime":
-            conn.execute("INSERT INTO meta (cle, valeur) VALUES (?, datetime('now')) "
-                         "ON CONFLICT(cle) DO UPDATE SET valeur = datetime('now')", (cle,))
-        else:
-            conn.execute("INSERT INTO meta (cle, valeur) VALUES (?, ?) "
-                         "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur", (cle, val))
-    journal.cloturer_activite(conn, aid, comptes={"regions": n})
+    # La trace du DÉPART est validée tout de suite, et c'est ce qui la fait survivre à
+    # l'échec de ce qui suit. Sans ce commit, l'activité n'était persistée qu'en même temps
+    # que le PREMIER lot : une panne avant lui — un `analyse_batch` qui lève sur le lot
+    # initial, un « database is locked » sur l'un des deux SELECT ci-dessous — la faisait
+    # partir avec le `rollback` de l'appelant. Le journal ne gardait alors que les
+    # réindexations qui avaient marché, et une réindexation ratée ne se distinguait pas
+    # d'une réindexation jamais lancée. C'est la panne réparée le 2026-09-08 dans
+    # `journal.passe_ml`, sur l'autre chemin de la même famille.
+    #
+    # Ouvrir puis commiter plutôt qu'inscrire un run déjà clos (`inscrire_run_termine`) :
+    # ici les lots SONT validés au fur et à mesure, si bien qu'une panne tardive laisse
+    # une activité déjà persistée. Réinscrire en produirait une SECONDE, et le journal
+    # compterait deux runs là où il y en a eu un.
     conn.commit()
+    n = 0
+    try:
+        rows = conn.execute("SELECT id, ocr_texte FROM regions ORDER BY id").fetchall()
+        notes = {r["region_id"]: (r["note"] or "")
+                 for r in conn.execute("SELECT region_id, note FROM annotations")}
+        for start in range(0, len(rows), chunk):
+            batch = rows[start:start + chunk]
+            ocr_res = analyse_batch([r["ocr_texte"] or "" for r in batch])
+            note_res = analyse_batch([notes.get(r["id"], "") for r in batch])
+            for j, r in enumerate(batch):
+                toks = ocr_res[j][1]
+                lemmes = (ocr_res[j][0] + " " + note_res[j][0]).strip()
+                fiable = bool(toks) or not (r["ocr_texte"] or "").strip()
+                lemmes = _appliquer_corrections(conn, r["id"], toks, lemmes,
+                                                reancrer=fiable)
+                _index_region(conn, r["id"], _region_index_payload(conn, r["id"]),
+                              lemmes, toks)
+                n += 1
+            conn.commit()
+        # L'ÉPILOGUE est DANS le `try`, et ce n'est pas de la symétrie : les deux
+        # écritures de `meta` et la clôture peuvent lever un « database is locked » comme
+        # n'importe quelle écriture SQLite. Hors du `try`, une panne ici laissait
+        # l'activité ouverte alors que tout le travail était fait — le même mensonge, à
+        # la dernière ligne près.
+        info = model_info()
+        meta = {"nlp_model": info.get("model", ""), "nlp_spacy": info.get("spacy", ""),
+                "nlp_reindexed_count": str(n), "nlp_reindexed_at": "datetime"}
+        for cle, val in meta.items():
+            if val == "datetime":
+                conn.execute(
+                    "INSERT INTO meta (cle, valeur) VALUES (?, datetime('now')) "
+                    "ON CONFLICT(cle) DO UPDATE SET valeur = datetime('now')", (cle,))
+            else:
+                conn.execute(
+                    "INSERT INTO meta (cle, valeur) VALUES (?, ?) "
+                    "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur", (cle, val))
+        journal.cloturer_activite(conn, aid, comptes={"regions": n})
+        conn.commit()
+    except BaseException as exc:
+        # `BaseException` et non `Exception`, et c'est le seul appelant qui l'exige :
+        # `tools/reindex_nlp.py` est une CLI qui tourne des MINUTES sur le fil principal,
+        # donc Ctrl+C y est l'interruption réaliste — et `KeyboardInterrupt` n'est pas une
+        # `Exception`. Sans cette largeur, une réindexation abandonnée à la main laissait
+        # son activité OUVERTE pour toujours, et tout consommateur du journal la lisait
+        # comme un run encore en cours. `journal.passe_ml` s'en tient à `Exception` sans
+        # avoir ce défaut : il vit dans un fil de travail, où Ctrl+C n'arrive jamais.
+        #
+        # DEMANDÉE, donc pas une panne — la distinction est celle de `passe_ml`, et elle
+        # compte dans une couche append-only où l'on ne se corrige plus.
+        interrompu = isinstance(exc, (KeyboardInterrupt, SystemExit))
+        bilan = {"regions": n, "interrompu" if interrompu else "echec": True}
+        # Le bilan reste MINIMAL par contrainte : `comptes` SORT de l'instance
+        # (`metadonnees_collection`, `provenance_export`), et y verser le message de
+        # l'exception enverrait des chemins serveur au dépôt. `regions` dit ce qui a été
+        # traité avant l'arrêt, ce qui est l'information utile pour reprendre.
+        #
+        # Le `try` interne existe parce que tenir le journal ne doit jamais changer
+        # l'erreur que l'appelant voit : un `commit()` qui lèverait « database is locked »
+        # transformerait ici une panne de modèle en 409 « réessayer ».
+        try:
+            conn.rollback()
+            journal.cloturer_activite(conn, aid, comptes=bilan)
+            conn.commit()
+        except Exception:
+            pass
+        raise
     return n
 
 

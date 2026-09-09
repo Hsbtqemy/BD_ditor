@@ -1586,3 +1586,173 @@ def test_l_instantane_d_un_lot_ne_partage_plus_sa_liste_d_erreurs(client, monkey
     assert len(jobs.snapshot(jid)["errors"]) == 1, (
         "l'instantané SUIVANT doit bien voir l'erreur — sinon on ne copie pas, on perd")
 
+
+# --------------------------------------------------------------------------- #
+# A3 — une réindexation qui échoue laisse une trace, elle aussi
+# --------------------------------------------------------------------------- #
+def _activites_reindex(db_path):
+    import sqlite3
+    raw = sqlite3.connect(db_path)
+    raw.row_factory = sqlite3.Row
+    try:
+        return [dict(r) for r in raw.execute(
+            "SELECT id, date_fin, comptes FROM activite WHERE type = 'reindex_nlp' "
+            "ORDER BY id")]
+    finally:
+        raw.close()
+
+
+@pytest.mark.parametrize("rang_qui_leve, quand", [(1, "avant le premier lot"),
+                                                  (3, "après un lot validé")])
+def test_une_reindexation_ratee_laisse_sa_trace(client, planche, db_path, monkeypatch,
+                                                rang_qui_leve, quand):
+    """`reindex_all` ouvrait son activité SANS la valider : elle n'était persistée qu'avec
+    le premier lot, et une panne avant lui l'emportait avec le `rollback` de l'appelant.
+
+    Le journal ne gardait alors que les réindexations qui avaient MARCHÉ — une passe ratée
+    et une passe jamais lancée devenaient indistinguables, dans une couche append-only où
+    cela ne se corrige plus. C'est la panne réparée le 2026-09-08 dans `journal.passe_ml`,
+    sur l'autre chemin de la même famille.
+
+    Les deux rangs éprouvent les deux côtés du seul commit qui séparait les cas, et le
+    second garde une chose que le premier ne peut pas voir : qu'on n'inscrit pas une
+    SECONDE activité quand la première est déjà persistée. Compter deux runs là où il y en
+    a eu un serait l'autre façon de mentir.
+    """
+    import database
+    import pipeline.nlp
+
+    for i in range(2):
+        client.post(f"/api/planches/{planche['id']}/regions",
+                    json={"type": "bulle", "x": i, "y": 1, "w": 9, "h": 9,
+                          "ocr_texte": f"REPLIQUE {i}"})
+    avant = len(_activites_reindex(db_path))
+
+    appels = {"n": 0}
+
+    def analyse_qui_leve(textes):
+        appels["n"] += 1
+        if appels["n"] >= rang_qui_leve:
+            raise RuntimeError("le modèle a lâché")
+        return [("", []) for _ in textes]
+
+    monkeypatch.setattr(pipeline.nlp, "analyse_batch", analyse_qui_leve)
+
+    conn = database.get_connection()
+    try:
+        with pytest.raises(RuntimeError):
+            database.reindex_all(conn, chunk=1)
+        conn.rollback()          # ce que fait l'appelant réel (la dépendance `db`, le CLI)
+    finally:
+        conn.close()
+
+    runs = _activites_reindex(db_path)
+    assert len(runs) == avant + 1, (
+        f"{quand} : {len(runs) - avant} activité(s) au lieu d'une — soit la trace est "
+        f"partie avec le rollback, soit elle a été inscrite deux fois")
+    dernier = runs[-1]
+    assert dernier["date_fin"], f"{quand} : l'activité reste OUVERTE, sans fin ni bilan"
+    assert '"echec": true' in (dernier["comptes"] or "").lower(), (
+        f"{quand} : le bilan ne dit pas que le run a échoué — {dernier['comptes']!r}")
+    assert "le modèle a lâché" not in (dernier["comptes"] or ""), (
+        "le message de l'exception ne doit PAS entrer dans `comptes` : cette colonne SORT "
+        "de l'instance, elle emporterait des chemins serveur au dépôt (AUTH-1)")
+
+
+def test_une_reindexation_interrompue_au_clavier_se_distingue_d_une_panne(
+        client, planche, db_path, monkeypatch):
+    """Ctrl+C sur `tools/reindex_nlp.py` — l'interruption RÉALISTE de cette fonction.
+
+    C'est une CLI qui tourne des minutes sur le FIL PRINCIPAL, donc `KeyboardInterrupt`
+    y arrive vraiment ; et il n'est pas une `Exception`. Un `except Exception` laissait
+    donc l'activité ouverte pour toujours, et tout consommateur du journal la lisait
+    comme un run encore en cours — précisément le mensonge que ce chantier ferme.
+
+    `journal.passe_ml` s'en tient à `Exception` sans avoir ce défaut : il vit dans un fil
+    de travail, où Ctrl+C n'arrive jamais. L'asymétrie est justifiée, pas subie.
+
+    Et l'arrêt DEMANDÉ se distingue de la panne SUBIE, comme dans `passe_ml` : dans une
+    couche append-only, une annulation entrée au journal comme une panne ne se corrige
+    plus.
+    """
+    import database
+    import pipeline.nlp
+
+    client.post(f"/api/planches/{planche['id']}/regions",
+                json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                      "ocr_texte": "REPLIQUE"})
+    avant = len(_activites_reindex(db_path))
+
+    def analyse_interrompue(textes):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(pipeline.nlp, "analyse_batch", analyse_interrompue)
+
+    conn = database.get_connection()
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            database.reindex_all(conn, chunk=1)
+        conn.rollback()
+    finally:
+        conn.close()
+
+    runs = _activites_reindex(db_path)
+    assert len(runs) == avant + 1, "l'activité est partie avec le rollback"
+    assert runs[-1]["date_fin"], "Ctrl+C laisse l'activité OUVERTE, sans fin ni bilan"
+    comptes = (runs[-1]["comptes"] or "").lower()
+    assert '"interrompu": true' in comptes, (
+        f"un arrêt demandé doit se lire comme tel, pas comme une panne — {comptes!r}")
+    assert '"echec"' not in comptes, (
+        "une interruption n'est pas un échec : la confondre est irréversible dans une "
+        "couche append-only")
+
+
+def test_une_panne_dans_l_epilogue_ferme_quand_meme_l_activite(client, planche, db_path,
+                                                               monkeypatch):
+    """Le travail est FAIT, et c'est la dernière ligne qui lâche.
+
+    L'épilogue de `reindex_all` — les deux écritures de `meta`, puis la clôture — est
+    fait de requêtes SQLite comme les autres : un « database is locked » y est aussi
+    possible qu'ailleurs, et c'est précisément ce que le WAL et le 409 gèrent partout.
+    Laissé HORS du `try`, il produisait le même mensonge que la panne du milieu — une
+    activité restée ouverte —, à la dernière ligne près.
+
+    La doublure fait échouer la PREMIÈRE clôture seulement : la seconde, celle du
+    rattrapage, doit aboutir. Un test où toutes échouent ne distinguerait pas « on ne
+    rattrape pas » de « on ne peut pas rattraper ».
+    """
+    import sqlite3
+
+    import database
+    import journal
+
+    client.post(f"/api/planches/{planche['id']}/regions",
+                json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                      "ocr_texte": "REPLIQUE"})
+    avant = len(_activites_reindex(db_path))
+
+    reelle = journal.cloturer_activite
+    appels = {"n": 0}
+
+    def cloture_qui_lache(conn, activite_id, *, comptes=None):
+        appels["n"] += 1
+        if appels["n"] == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return reelle(conn, activite_id, comptes=comptes)
+
+    monkeypatch.setattr(journal, "cloturer_activite", cloture_qui_lache)
+
+    conn = database.get_connection()
+    try:
+        with pytest.raises(sqlite3.OperationalError):
+            database.reindex_all(conn, chunk=1)
+        conn.rollback()
+    finally:
+        conn.close()
+
+    assert appels["n"] == 2, (
+        "la clôture de rattrapage n'a pas été tentée : l'épilogue est resté hors du `try`")
+    runs = _activites_reindex(db_path)
+    assert len(runs) == avant + 1
+    assert runs[-1]["date_fin"], (
+        "une panne d'épilogue laisse l'activité OUVERTE alors que tout le travail est fait")
