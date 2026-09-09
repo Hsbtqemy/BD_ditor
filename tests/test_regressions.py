@@ -1407,6 +1407,12 @@ def test_l_enumeration_des_lots_ne_peut_plus_croiser_une_purge(monkeypatch):
     de la propriété — « aucune entrée nulle » — passerait au vert dans un registre
     monofil quoi qu'on fasse au code. Une assertion increvable ne vaut pas mieux que pas
     d'assertion du tout.
+
+    **La doublure porte sur `_snapshot_nu` et non sur `snapshot`**, depuis que ce dernier
+    prend `_lock` lui-même : `all_jobs` ne peut pas l'appeler sans s'auto-bloquer, et
+    espionner un nom que l'énumération n'emprunte plus rendrait ce test vert sans rien
+    voir. C'est la forme d'échec d'ARCH-1 — un test qui remplace un nom PAR le module
+    cesse d'agir en silence dès que le nom déménage.
     """
     from pipeline import jobs
 
@@ -1416,7 +1422,7 @@ def test_l_enumeration_des_lots_ne_peut_plus_croiser_une_purge(monkeypatch):
 
     vu = {"enumeration": [], "purge": None}
 
-    snapshot_reel, purge_reelle = jobs.snapshot, jobs._purger_registre
+    snapshot_reel, purge_reelle = jobs._snapshot_nu, jobs._purger_registre
 
     def snapshot_espion(jid):
         vu["enumeration"].append(jobs._lock.locked())
@@ -1426,7 +1432,7 @@ def test_l_enumeration_des_lots_ne_peut_plus_croiser_une_purge(monkeypatch):
         vu["purge"] = jobs._lock.locked()
         return purge_reelle()
 
-    monkeypatch.setattr(jobs, "snapshot", snapshot_espion)
+    monkeypatch.setattr(jobs, "_snapshot_nu", snapshot_espion)
     monkeypatch.setattr(jobs, "_purger_registre", purge_espionne)
 
     for i in range(1, 4):
@@ -1434,7 +1440,7 @@ def test_l_enumeration_des_lots_ne_peut_plus_croiser_une_purge(monkeypatch):
                          "done": 1, "current": None, "errors": [], "status": "termine",
                          "cancel": False}
     jobs.start_job(["ocr"], [42])
-    vu["enumeration"].clear()        # `start_job` finit par un snapshot, HORS verrou et à raison
+    vu["enumeration"].clear()        # `start_job` finit par un snapshot, qui prend le sien
 
     assert jobs.all_jobs(), "l'énumération doit rendre les lots, pas seulement tenir un verrou"
     assert vu["purge"] is True, (
@@ -1482,3 +1488,101 @@ def test_toute_surface_html_est_revalidee(client):
     assert not manquantes, (
         f"{manquantes} servent du HTML sans `Cache-Control: no-cache` : un navigateur "
         f"intégré d'IDE peut en servir une version périmée")
+
+
+# --------------------------------------------------------------------------- #
+# AUDIT P2 — l'état d'un lot se lit et s'écrit sous `_lock`
+# --------------------------------------------------------------------------- #
+class _LotEspion(dict):
+    """Un lot qui note, à chaque écriture d'un champ, si `_lock` était tenu."""
+
+    def __init__(self, source, vu):
+        super().__init__(source)
+        self._vu = vu
+        self["errors"] = _ErreursEspionnes(self.get("errors") or [], vu)
+
+    def __setitem__(self, cle, valeur):
+        from pipeline import jobs
+        if cle in jobs._CHAMPS_SNAPSHOT and hasattr(self, "_vu"):
+            self._vu.append((cle, jobs._lock.locked()))
+        super().__setitem__(cle, valeur)
+
+
+class _ErreursEspionnes(list):
+    """`errors` est mutée par `append`, jamais réaffectée : elle a son propre espion."""
+
+    def __init__(self, source, vu):
+        super().__init__(source)
+        self._vu = vu
+
+    def append(self, item):
+        from pipeline import jobs
+        self._vu.append(("errors", jobs._lock.locked()))
+        super().append(item)
+
+
+def test_l_etat_d_un_lot_s_ecrit_toujours_sous_le_verrou(client, monkeypatch):
+    """Le worker écrivait `current`/`done`/`errors`/`status` pendant que `snapshot` les
+    lisait, **sans `_lock`** — constat P2 d'`AUDIT.md`, la moitié que CONC-1 avait laissée.
+
+    Ce qui manquait n'était pas l'atomicité : le GIL rend chaque champ atomique pris
+    séparément, et c'est pourquoi « ça marche ». C'est la COMPOSITION qui manquait —
+    `snapshot` lit sept champs à la suite, et le worker pouvait écrire entre deux. Un
+    lecteur pouvait donc voir « terminé » avec une planche encore en cours.
+
+    Le test mesure la propriété directement plutôt que par ses effets : un lot espion note
+    à chaque écriture si le verrou était tenu. Une course, elle, ne se reproduit pas à la
+    demande — c'est la raison pour laquelle ce constat a survécu à deux passes.
+    """
+    import time
+    from pipeline import jobs
+
+    vu: list = []
+    registre = {}
+
+    class _Registre(dict):
+        def __setitem__(self, jid, job):
+            super().__setitem__(jid, _LotEspion(job, vu))
+
+    monkeypatch.setattr(jobs, "_jobs", _Registre(registre))
+    monkeypatch.setattr(jobs, "_apply_pass", lambda conn, passe, pid: None)
+    monkeypatch.setattr(jobs, "_est_verrouillee", lambda conn, pid: False)
+
+    jid = jobs.start_job(["segmenter"], [1, 2])["id"]
+    for _ in range(100):
+        time.sleep(0.05)
+        if jobs.snapshot(jid)["status"] != "en_cours":
+            break
+
+    # Anti-aveuglement : sans écriture observée, « toutes sous verrou » est vrai du vide.
+    assert len(vu) >= 4, (
+        f"seulement {len(vu)} écriture(s) observée(s) : le lot n'a rien fait, et "
+        f"l'assertion suivante serait vraie de rien")
+    nues = [cle for cle, verrouille in vu if not verrouille]
+    assert not nues, (
+        f"{sorted(set(nues))} sont écrits hors `_lock` : un `snapshot` concurrent peut "
+        f"les voir dans un état composite incohérent")
+
+
+def test_l_instantane_d_un_lot_ne_partage_plus_sa_liste_d_erreurs(client, monkeypatch):
+    """`snapshot` rendait la liste VIVANTE du lot, pas une copie.
+
+    L'appelant sérialisait donc un objet que le worker pouvait allonger sous lui, et le
+    gardait ensuite comme une vue là où il croyait tenir une mesure. C'est un défaut
+    d'aliasing avant d'être un défaut de concurrence : il vaut sur un seul fil, et c'est
+    pourquoi il se teste sans course.
+    """
+    from pipeline import jobs
+
+    monkeypatch.setattr(jobs, "_run", lambda job_id: None)      # pas de worker
+    monkeypatch.setattr(jobs, "_jobs", {})
+    jid = jobs.start_job(["segmenter"], [1])["id"]
+
+    instantane = jobs.snapshot(jid)
+    jobs._jobs[jid]["errors"].append({"planche_id": 1, "passe": "ocr", "erreur": "après"})
+
+    assert instantane["errors"] == [], (
+        "l'instantané a suivi le lot : il rend la liste vivante et non une copie")
+    assert len(jobs.snapshot(jid)["errors"]) == 1, (
+        "l'instantané SUIVANT doit bien voir l'erreur — sinon on ne copie pas, on perd")
+

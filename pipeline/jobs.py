@@ -39,7 +39,11 @@ JOBS_CONSERVES = 100
 _STATUTS_TERMINAUX = frozenset(("termine", "echec", "annule"))
 
 _jobs: dict = {}
-_lock = threading.Lock()        # protège le registre + le compteur
+# Protège le registre, le compteur, ET l'état mutable de chaque lot — `current`,
+# `done`, `errors`, `status`, `cancel`. Ce dernier point est la moitié qui manquait :
+# le GIL rend chaque champ atomique PRIS SÉPARÉMENT, mais `snapshot` en lit sept à la
+# suite, et rien n'empêchait le worker d'écrire entre deux.
+_lock = threading.Lock()
 _run_lock = threading.Lock()    # un seul job s'exécute à la fois
 _counter = 0
 
@@ -82,7 +86,8 @@ def _apply_pass(conn, passe: str, planche_id: int) -> None:
 
 
 def _run(job_id: int) -> None:
-    job = _jobs[job_id]
+    with _lock:
+        job = _jobs[job_id]
     conn = None
     echec = None
     with _run_lock:                       # jobs traités en file (un à la fois)
@@ -90,15 +95,22 @@ def _run(job_id: int) -> None:
         # savoir du lot (CONC-1). Le retirer dans le `finally` n'est pas une politesse :
         # ce fil est éphémère, mais une sonde oubliée déciderait de l'arrêt d'un travail
         # étranger si le modèle de fils changeait — et rien ne le dirait.
+        #
+        # La sonde lit `cancel` SANS `_lock`, et c'est délibéré : une lecture de champ est
+        # atomique, elle n'a rien à composer, et elle est appelée depuis l'INTÉRIEUR de
+        # `ML_LOCK` — y prendre `_lock` créerait un ordre `ML_LOCK` → `_lock` que rien
+        # d'autre ne respecte, c'est-à-dire un interblocage en attente de son appelant.
         interruption.poser(lambda: job["cancel"])
         try:
             conn = get_connection()
             for pid in job["planche_ids"]:
                 if job["cancel"]:
                     break
-                job["current"] = pid
+                with _lock:
+                    job["current"] = pid
                 if _est_verrouillee(conn, pid):     # verrou posé après le lancement
-                    job["done"] += 1
+                    with _lock:
+                        job["done"] += 1
                     continue
                 for passe in job["passes"]:
                     if job["cancel"]:
@@ -115,11 +127,14 @@ def _run(job_id: int) -> None:
                         break
                     except Exception as exc:              # une passe ratée n'arrête pas le lot
                         conn.rollback()
-                        job["errors"].append(
-                            {"planche_id": pid, "passe": passe, "erreur": str(exc)})
+                        with _lock:
+                            job["errors"].append(
+                                {"planche_id": pid, "passe": passe,
+                                 "erreur": str(exc)})
                 if job["cancel"]:
                     break                 # la planche interrompue ne compte pas comme faite
-                job["done"] += 1
+                with _lock:
+                    job["done"] += 1
         except Exception as exc:
             # Le lot MEURT ici, et c'est le seul endroit qui puisse le dire. Deux lignes
             # échappent au `try` par passe : l'ouverture de la connexion et la relecture du
@@ -129,8 +144,9 @@ def _run(job_id: int) -> None:
             # à la première planche : 0/3, aucune erreur, une réussite AFFIRMÉE. Un statut
             # bloqué se remarque ; un succès faux ne se remarque jamais.
             echec = exc
-            job["errors"].append({"planche_id": job["current"], "passe": None,
-                                  "erreur": str(exc)})
+            with _lock:
+                job["errors"].append({"planche_id": job["current"], "passe": None,
+                                      "erreur": str(exc)})
             # La trace part sur stderr ICI plutôt qu'en relevant l'exception : « database
             # is locked » ne dit pas OÙ, et l'écran n'affiche que ce message. Relever
             # laisserait mourir un thread daemon sur une exception non traitée — même
@@ -143,18 +159,44 @@ def _run(job_id: int) -> None:
             from pipeline.modeles import liberer_modeles_ml
             with ML_LOCK:                 # CONC-2 : libère HORS inférence (pas de course avec une route ML)
                 liberer_modeles_ml()      # rendre la RAM après le lot (modèles déchargés)
-            job["current"] = None
-            # L'ANNULATION prime : demandée avant la panne, c'est elle qui explique l'arrêt.
-            job["status"] = ("annule" if job["cancel"]
-                             else "echec" if echec is not None else "termine")
+            # Les deux ENSEMBLE, sous le verrou : `current` est vidé avant que le statut
+            # devienne terminal, et un lecteur ne peut plus surprendre l'entre-deux —
+            # « terminé » avec une planche encore en cours.
+            with _lock:
+                job["current"] = None
+                # L'ANNULATION prime : demandée avant la panne, c'est elle qui explique
+                # l'arrêt.
+                job["status"] = ("annule" if job["cancel"]
+                                 else "echec" if echec is not None else "termine")
 
 
-def snapshot(job_id: int):
+_CHAMPS_SNAPSHOT = ("id", "passes", "total", "done", "current", "errors", "status")
+
+
+def _snapshot_nu(job_id: int):
+    """Instantané d'un lot, **`_lock` déjà TENU par l'appelant**.
+
+    Le dédoublement n'est pas de la cérémonie : `_lock` est un `Lock` et non un `RLock`,
+    et `all_jobs` tient le verrou pendant qu'il demande chaque instantané — faire prendre
+    le verrou à `snapshot` sans cette version-ci l'aurait fait s'auto-bloquer. Le nom dit
+    qui tient quoi, ce qu'un `RLock` aurait masqué : la ré-entrance rend légal l'ordre
+    qu'on n'a pas réfléchi.
+
+    `errors` et `passes` sont COPIÉS. `snapshot` rendait la liste vivante du lot, si bien
+    que l'appelant sérialisait un objet que le worker pouvait allonger sous lui — et la
+    gardait ensuite comme une vue, jamais comme une mesure. C'est un défaut d'aliasing
+    avant d'être un défaut de concurrence : il vaudrait même sur un seul fil.
+    """
     j = _jobs.get(job_id)
     if j is None:
         return None
-    return {k: j[k] for k in
-            ("id", "passes", "total", "done", "current", "errors", "status")}
+    return {k: (list(j[k]) if isinstance(j[k], list) else j[k]) for k in _CHAMPS_SNAPSHOT}
+
+
+def snapshot(job_id: int):
+    """Instantané d'un lot, ou `None` s'il n'existe pas (ou plus — cf. la purge)."""
+    with _lock:
+        return _snapshot_nu(job_id)
 
 
 def all_jobs() -> list:
@@ -175,11 +217,13 @@ def all_jobs() -> list:
 
     `_purger_registre` n'est appelée que par `start_job`, sous CE verrou. Le tenir ici
     rend le retrait concurrent IMPOSSIBLE plutôt que rattrapé — filtrer les `None` en
-    plus serait du code que rien ne peut faire rougir. Corollaire pour la suite :
-    `snapshot` ne prend pas `_lock`, et le lui faire prendre suffirait à bloquer ici.
+    plus serait du code que rien ne peut faire rougir.
+
+    Elle appelle `_snapshot_nu` et non `snapshot` : depuis que ce dernier prend le verrou
+    lui-même, l'appeler ici bloquerait le fil sur un `Lock` qu'il tient déjà.
     """
     with _lock:
-        return [snapshot(jid) for jid in sorted(_jobs, reverse=True)]
+        return [_snapshot_nu(jid) for jid in sorted(_jobs, reverse=True)]
 
 
 def planches_du_job(job_id: int) -> list | None:
@@ -195,9 +239,15 @@ def planches_du_job(job_id: int) -> list | None:
     un job qui n'existe pas. Un job RÉEL porte toujours au moins une planche — la route de
     création refuse par 422 une sélection vide —, si bien que la liste vide ne désignait
     QUE l'inconnu. Les deux cas étaient distinguables et rendus identiques.
+
+    Sous `_lock` comme les autres lecteurs, alors que `planche_ids` ne bouge jamais après
+    la création : c'est le REGISTRE qu'on interroge, et la purge en retire des entrées.
+    Laisser cette lecture seule hors verrou aurait demandé de justifier l'exception à
+    chaque relecture — une règle qui souffre une exception se relit à chaque fois.
     """
-    j = _jobs.get(job_id)
-    return list(j["planche_ids"]) if j else None
+    with _lock:
+        j = _jobs.get(job_id)
+        return list(j["planche_ids"]) if j else None
 
 
 def _purger_registre() -> None:
@@ -237,9 +287,22 @@ def start_job(passes, planche_ids) -> dict:
 
 
 def cancel_job(job_id: int) -> bool:
-    j = _jobs.get(job_id)
-    if j is None:
-        return False
-    if j["status"] == "en_cours":
-        j["cancel"] = True
-    return True
+    """Demande l'annulation d'un lot. `False` si l'identifiant ne désigne rien.
+
+    **Ce que le verrou ferme, et ce qu'il ne ferme pas — les deux méritent d'être dits.**
+    Il ferme le composite : lire le statut et poser `cancel` deviennent un seul geste, que
+    le worker ne peut plus couper en deux.
+
+    Il ne ferme PAS la fenêtre « annuler à l'instant où le lot finit », et aucun verrou ne
+    le pourrait : le worker sort de sa boucle, décharge les modèles (des secondes), puis
+    prend `_lock` pour poser son statut. Une annulation demandée dans cet intervalle donne
+    un lot marqué `annule` avec `done == total`. Ce n'est pas un défaut à masquer — c'est
+    ce qui s'est passé : le travail était fait, et quelqu'un a bien cliqué Annuler.
+    """
+    with _lock:
+        j = _jobs.get(job_id)
+        if j is None:
+            return False
+        if j["status"] == "en_cours":
+            j["cancel"] = True
+        return True
