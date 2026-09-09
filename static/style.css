@@ -1879,6 +1879,12 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 /* Le signal porte un LIBELLÉ, pas seulement une couleur : l'encre AA-sûre `--ink-red`
    et non l'accent brut, qui échoue le 4.5:1 sur du petit texte (WCAG 2.1 AA). */
 .compte-repris { color: var(--ink-red); font-size: .8rem; }
+/* AUTH-6 — le login qui n'a encore ouvert l'application. `--text-muted` et non `--ink-red` :
+   ce n'est pas une ERREUR, c'est une observation, et la teinte d'alerte ferait lire une
+   faute de frappe là où il peut s'agir d'un arrivant qui n'est pas encore venu. Le MOT
+   porte l'état, comme pour les moteurs de SANTE-1 ; la couleur ne fait que l'accompagner. */
+.acces-jamais-vu { color: var(--text-muted); font-size: .78rem; font-style: italic;
+                   margin-left: .35rem; }
 .portee-vide-referent { margin-top: .4rem; }
 /* La ligne de diagnostic des groupes (AUTH-1, affiné par AUTH-8) : elle DISTINGUE
    quatre situations que le même écran vide confondait, donc elle se lit avant le

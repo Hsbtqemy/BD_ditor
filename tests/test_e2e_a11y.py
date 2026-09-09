@@ -1230,3 +1230,56 @@ def test_segmenter_depuis_la_visionneuse_ne_fait_pas_regresser_l_ecran(page, see
         c.close()
     assert pl["statut"] == "annotee"
     assert pl["date_segmentation"], "la segmentation n'a pas eu lieu : le test ne prouve rien"
+
+
+# --------------------------------------------------------------------------- #
+# AUTH-6 — le panneau des ACCÈS, et il n'était jamais audité AVEC du contenu
+#
+# `test_a11y_chargement` visite bien `/administration`, mais la liste des accès vit dans un
+# `<details>` que rien n'ouvre : elle ne se charge qu'au dépliage. Aucun des éléments de ce
+# panneau — ni le marqueur « n'a pas encore ouvert l'application » (AUTH-6), ni les
+# libellés de genre — n'était donc passé devant axe. C'est le même piège que le décor des
+# moteurs quarante lignes plus haut : un audit qui n'a rien sous les yeux approuve une
+# palette qu'il n'a pas regardée.
+#
+# Décor DERRIÈRE LE PROXY, et c'est ce qui coûte le serveur en plus : sans identité, créer
+# une collection est refusé (403), donc `collection_acces` reste vide et le panneau se
+# rendrait sans une seule ligne. Le décor d'`a11y` ordinaire ne peut pas servir ici.
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("theme", ["dark", "light"])
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_a11y_administration_acces(page, live_server, theme):
+    """Le panneau des accès déplié, dans les deux thèmes.
+
+    Le contraste est l'enjeu, exactement comme pour les moteurs : le marqueur d'AUTH-6 est
+    du PETIT texte en `--text-muted` italique, et il porte une observation qu'on doit
+    pouvoir lire. Les deux thèmes parce que `--text-muted` n'a pas la même valeur dans
+    l'un et dans l'autre.
+    """
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30,
+                     headers={"Remote-User": "decor", "Remote-Groups": "bd-admins",
+                              **{k: v for k, v in ECRITURE.items()
+                                 if k not in ("Remote-User", "Remote-Groups")}})
+    try:
+        cid = c.post("/api/collections", json={"nom": "Corpus a11y"}).json()["id"]
+        # Un login JAMAIS VU et un GROUPE : les deux formes que le marqueur distingue —
+        # signalé pour l'un, silencieux pour l'autre, l'application n'ayant pas d'annuaire.
+        c.put(f"/api/collections/{cid}/acces",
+              json={"genre": "utilisateur", "principal": "arrivante", "niveau": "lecture"})
+        c.put(f"/api/collections/{cid}/acces",
+              json={"genre": "groupe", "principal": "bd-etudiants", "niveau": "ecriture"})
+    finally:
+        c.close()
+
+    _theme(page, theme)
+    page.set_extra_http_headers({"Remote-User": "decor", "Remote-Groups": "bd-admins"})
+    page.goto(live_server + "/administration", wait_until="networkidle")
+    page.wait_for_selector(".col-item summary", timeout=5000)
+    page.click(".col-item summary")
+    # On attend le MARQUEUR et non le bloc : c'est lui qu'on vient auditer, donc c'est son
+    # apparition qui prouve que la mesure aura un objet. Attendre le conteneur laisserait
+    # passer un panneau vide, et l'audit approuverait en n'ayant rien vu.
+    page.wait_for_selector(".acces-jamais-vu", timeout=5000)
+
+    viol = _audit(page)
+    assert not viol, f"Administration/accès [{theme}] :\n{_fmt(viol)}"

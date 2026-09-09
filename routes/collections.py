@@ -63,12 +63,43 @@ def _niveau_dans(portee: autorisation.Portee, collection_id: int):
 
 
 def _acces_de(conn, collection_id: int) -> list[dict]:
-    """Les accès accordés sur une collection, propriétaires d'abord."""
-    return _rows(conn.execute(
+    """Les accès accordés sur une collection, propriétaires d'abord.
+
+    **`jamais_vu` RAPPORTE une observation et n'explique aucune cause** (AUTH-6,
+    2026-09-09). Un accès se déclare par un NOM : `collection_acces` accepte n'importe
+    quelle chaîne, et un login mal orthographié n'ouvre rien sans que rien ne le dise. La
+    table `utilisateur` sait pourtant déjà quelque chose d'utile — elle contient les logins
+    qui ont OUVERT une page —, et cette connaissance ne servait nulle part.
+
+    Ce que le champ ne fait PAS, et c'est la moitié de sa valeur : il ne distingue pas une
+    faute de frappe d'un arrivant qui n'est pas encore venu. Les deux produisent exactement
+    la même absence, et l'application ne peut pas les départager. Prétendre le contraire
+    enverrait chercher la mauvaise panne — c'est pour cette raison précise que le bandeau
+    de portée vide a été réécrit le 2026-09-06.
+
+    **`None` pour un GROUPE, jamais `False`.** L'application ne lit aucun annuaire
+    (invariant AUTH-1) : elle ne connaît que les groupes de la personne qui frappe, à
+    l'instant de sa requête. Répondre `False` affirmerait « ce groupe existe », ce qu'elle
+    n'a aucun moyen de savoir. C'est la leçon d'AUTH-8, où `None` et `False` ont dû être
+    séparés parce qu'un en-tête ABSENT et un en-tête VIDE arrivaient identiques — et où le
+    code, pas le protocole, portait l'ambiguïté.
+    """
+    lignes = _rows(conn.execute(
         "SELECT genre, principal, niveau, date_creation FROM collection_acces "
         "WHERE collection_id = ? "
         "ORDER BY CASE niveau WHEN 'proprietaire' THEN 0 WHEN 'ecriture' THEN 1 ELSE 2 END, "
         "         genre, principal", (collection_id,)))
+    logins = sorted({acc["principal"] for acc in lignes
+                     if acc["genre"] == autorisation.UTILISATEUR})
+    connus = set()
+    if logins:
+        qm = ",".join("?" * len(logins))
+        connus = {r[0] for r in conn.execute(
+            f"SELECT login FROM utilisateur WHERE login IN ({qm})", logins)}
+    for acc in lignes:
+        acc["jamais_vu"] = (acc["principal"] not in connus
+                            if acc["genre"] == autorisation.UTILISATEUR else None)
+    return lignes
 
 
 def _compte_proprietaires(conn, collection_id: int) -> int:

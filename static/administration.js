@@ -357,7 +357,10 @@ async function colDetail(d, c) {
     <ul class="acces-liste">${acces.map((a) => `
       <li>
         <span class="acces-principal">${esc(a.principal)}</span>
-        <span class="acces-genre">${a.genre === "groupe" ? "groupe" : "utilisateur"}</span>
+        <span class="acces-genre">${a.genre === "groupe" ? "groupe" : "utilisateur"}</span>${
+          a.jamais_vu === true
+            ? `<span class="acces-jamais-vu">n'a pas encore ouvert l'application</span>`
+            : ""}
         <select data-genre="${esc(a.genre)}" data-principal="${esc(a.principal)}"
                 aria-label="Niveau de ${esc(a.principal)}">${niveauOptions(a.niveau)}</select>
         <button class="ghost small" data-retirer="1" data-genre="${esc(a.genre)}"
@@ -376,7 +379,11 @@ async function colDetail(d, c) {
     </div>
     <p class="col-note">Un accès se déclare par un NOM, pas par une personne vérifiée :
       l'application n'a aucun annuaire, elle lit les groupes dans les en-têtes du proxy à
-      chaque requête. Un login mal orthographié n'ouvre rien — sans le dire.</p>
+      chaque requête. Un LOGIN qui n'a pas encore ouvert l'application est signalé
+      ci-dessus — l'observation seule&nbsp;: une faute de frappe et un arrivant qui
+      n'est pas encore venu produisent la même absence, et rien ici ne peut les
+      distinguer. Un nom de GROUPE, lui, ne peut pas l'être : l'application n'en
+      connaît aucun.</p>
     ${colAdminNote()}
     <fieldset class="col-referent">
       <legend>Référent de cette collection</legend>

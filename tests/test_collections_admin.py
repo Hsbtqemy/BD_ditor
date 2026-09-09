@@ -45,10 +45,18 @@ def test_creer_une_collection_rend_proprietaire(collection_a_alice):
 
     Aucun droit préalable n'est demandé — refuser la création à qui n'a encore rien
     rendrait l'application inutilisable au premier jour de chacun.
+
+    `jamais_vu` vaut True pour la fondatrice elle-même (AUTH-6, 2026-09-09), et ce n'est
+    pas un défaut du champ : `utilisateur` n'est alimentée que par `GET /api/moi`, appelé
+    au CHARGEMENT d'une page. Ce décor crée la collection par l'API sans jamais ouvrir
+    d'écran, donc alice n'a effectivement pas de ligne. Dans un navigateur le cas ne se
+    produit pas — toute surface appelle `/api/moi` —, et le champ dit exactement ce qu'il
+    promet : « ce nom n'a pas ouvert l'application », pas « ce nom n'existe pas ».
     """
     assert collection_a_alice["acces"] == [
         {"genre": "utilisateur", "principal": "alice", "niveau": "proprietaire",
-         "date_creation": collection_a_alice["acces"][0]["date_creation"]}]
+         "date_creation": collection_a_alice["acces"][0]["date_creation"],
+         "jamais_vu": True}]
 
 
 def test_proprietaire_implique_ecriture_et_lecture(client, collection_a_alice):
@@ -772,3 +780,62 @@ def test_reposer_la_meme_nature_n_ecrit_rien(client, db_path, derriere_proxy):
                      "WHERE cible_table = 'utilisateur_nature'").fetchone()[0]
     conn.close()
     assert n == 0
+
+
+# --------------------------------------------------------------------------- #
+# AUTH-6 — un accès accordé à un login JAMAIS VU le dit (2026-09-09)
+#
+# `collection_acces` accepte n'importe quelle chaîne : un login mal orthographié n'ouvre
+# rien, et rien ne le disait. La table `utilisateur` sait pourtant déjà quelque chose
+# d'utile — les logins qui ont OUVERT une page — et cette connaissance ne servait nulle
+# part. Avec des dizaines de comptes à attribuer, le risque de frappe croît avec le nombre.
+# --------------------------------------------------------------------------- #
+def _acces_rendus(client, cid, headers):
+    return {a["principal"]: a for a in client.get(f"/api/collections/{cid}/acces",
+                                                  headers=headers).json()}
+
+
+def test_un_login_jamais_vu_est_signale(client, collection_a_alice):
+    """L'observation, et elle est exacte : ce nom n'a pas de ligne dans `utilisateur`."""
+    cid = collection_a_alice["id"]
+    r = client.put(f"/api/collections/{cid}/acces",
+                   json={"genre": "utilisateur", "principal": "bobb", "niveau": "lecture"},
+                   headers={"Remote-User": "alice"})
+    assert r.status_code == 200, r.text
+    assert _acces_rendus(client, cid, {"Remote-User": "alice"})["bobb"]["jamais_vu"] is True
+
+
+def test_un_login_deja_venu_n_est_pas_signale(client, collection_a_alice):
+    """Le témoin de l'autre côté : sans lui, un champ toujours vrai passerait pour une
+    mesure — le mode d'échec d'ARCH-2 appliqué à un booléen."""
+    cid = collection_a_alice["id"]
+    client.get("/api/moi", headers={"Remote-User": "bob"})
+    client.put(f"/api/collections/{cid}/acces",
+               json={"genre": "utilisateur", "principal": "bob", "niveau": "lecture"},
+               headers={"Remote-User": "alice"})
+    assert _acces_rendus(client, cid, {"Remote-User": "alice"})["bob"]["jamais_vu"] is False
+
+
+def test_un_groupe_n_est_ni_vu_ni_inconnu(client, collection_a_alice):
+    """`None`, jamais `False`, et c'est le cœur de ce chantier.
+
+    L'application ne lit AUCUN annuaire (AUTH-1) : elle ne connaît que les groupes de la
+    personne qui frappe, à l'instant de sa requête. Répondre `False` affirmerait « ce
+    groupe existe », ce qu'elle n'a aucun moyen de savoir — et un écran qui affirme sans
+    savoir est exactement ce qu'AUTH-8 a dû défaire, là où un en-tête ABSENT et un en-tête
+    VIDE arrivaient identiques.
+    """
+    cid = collection_a_alice["id"]
+    client.put(f"/api/collections/{cid}/acces",
+               json={"genre": "groupe", "principal": "bd-etudiants", "niveau": "lecture"},
+               headers={"Remote-User": "alice"})
+    rendu = _acces_rendus(client, cid, {"Remote-User": "alice"})["bd-etudiants"]
+    assert rendu["jamais_vu"] is None, "un groupe ne se juge pas : l'app n'a pas d'annuaire"
+
+
+def test_le_champ_est_toujours_present(client, collection_a_alice):
+    """Même pour le propriétaire fondateur. Un champ qui n'apparaîtrait que dans un cas
+    ferait lire son absence comme une réponse."""
+    cid = collection_a_alice["id"]
+    rendu = _acces_rendus(client, cid, {"Remote-User": "alice"})["alice"]
+    assert "jamais_vu" in rendu
