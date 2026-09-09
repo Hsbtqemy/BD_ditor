@@ -38,7 +38,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from conftest import ADMIN, make_png            # noqa: E402
+from conftest import ECRITURE, make_png         # noqa: E402
 from tools.mesurer_reflow import SONDE          # noqa: E402
 
 pytestmark = pytest.mark.e2e
@@ -59,7 +59,7 @@ def decor(live_server):
     conditions sans aucun rapport. Ce qu'il ne fallait pas dupliquer, c'est la RÈGLE
     (`SONDE`), pas huit lignes de décor.
     """
-    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ADMIN)
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
     try:
         aid = c.post("/api/albums", json={"titre": "Reflow", "auteur": "X"}).json()["id"]
         pid = c.post(f"/api/albums/{aid}/import",

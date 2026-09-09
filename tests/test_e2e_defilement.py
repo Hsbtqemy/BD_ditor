@@ -23,7 +23,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
-from conftest import ADMIN, make_png  # noqa: E402
+from conftest import ECRITURE, make_png  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -65,7 +65,7 @@ SONDE = """(sel) => {
 def corpus_dense(live_server):
     """Assez de contenu pour dépasser une fenêtre courte — sinon rien ne déborderait et
     le test mesurerait le vide."""
-    c = httpx.Client(base_url=live_server, trust_env=False, timeout=180, headers=ADMIN)
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=180, headers=ECRITURE)
     try:
         aid = c.post("/api/albums", json={"titre": "Défilement"}).json()["id"]
         pid = c.post(f"/api/albums/{aid}/import",
@@ -164,7 +164,7 @@ def test_le_decor_du_croisement_a_la_forme_de_la_vraie_reponse(live_server):
     invente ferait croire à une couverture qui n'existe pas. C'est le mode d'échec du
     semis, celui que `test_sorties_identite` nomme déjà.
     """
-    c = httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=ADMIN)
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=ECRITURE)
     try:
         r = c.get("/api/analyse/croisement", params={"axe_x": "pos", "axe_y": "morph"})
     finally:

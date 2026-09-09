@@ -111,7 +111,17 @@ def data_dir(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client(data_dir):
-    return TestClient(main.app)
+    """Client de test, porteur de l'en-tête anti-CSRF (SEC-2).
+
+    Il est posé ICI, en un seul endroit, plutôt que sur des centaines d'appels : ce que la
+    suite éprouve est le comportement des routes, et un navigateur réel envoie cet en-tête
+    à chaque écriture. Le lui retirer test par test aurait fait mesurer la garde partout et
+    les routes nulle part.
+
+    Les tests de la garde elle-même construisent leur propre client, sans l'en-tête — sans
+    quoi ils ne pourraient pas la faire échouer.
+    """
+    return TestClient(main.app, headers={main.EN_TETE_REQUETE: "1"})
 
 
 @pytest.fixture
@@ -144,6 +154,11 @@ def png_bytes():
 # qui se casse sans bruit. Les en-têtes, eux, sont explicites et sans effet quand ils ne
 # servent pas.
 ADMIN = {"Remote-User": "decor", "Remote-Groups": "bd-admins"}
+# SEC-2 — ce qu'un NAVIGATEUR ajoute à toute écriture. Les clients qui parlent au serveur
+# LIVE (e2e) ne passent pas par la fixture `client` : ils doivent donc le poser eux-mêmes,
+# exactement comme `apiSend` le fait dans la page. Séparé d'`ADMIN`, qui dit QUI et non par
+# quel canal — les mélanger ferait croire que l'en-tête anti-CSRF est une identité.
+ECRITURE = {**ADMIN, main.EN_TETE_REQUETE: "1"}
 
 
 @pytest.fixture

@@ -99,13 +99,13 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 
 | # | Item | Prio·Effort | Note |
 |---|---|---|---|
-| **C1** | **INFRA-1 — déploiement Docker réel sur le VPS** | P1·L | app-side **fait** ; reste le build d'image + déploiement (hors machine de dev). Cf. [`docs/deploiement-docker.md`](deploiement-docker.md) |
-| C2 | INFRA-3 — credentials WebDAV **par utilisateur** (chiffrés) | P2·M | dépend C1 |
-| C3 | SEC-2 — **CSP** (faisable maintenant) + CSRF | P3·M | CSRF dépend des sessions (C1) ; à traiter avant exposition réseau |
+| ~~**C1**~~ | ✅ **Fait 2026-09-05 — INFRA-1, l'instance sert sur `bd.edito-revue.fr`** en HTTPS derrière Authelia, le VPS suivant `main`. Cf. [`docs/deploiement-docker.md`](deploiement-docker.md) et `pilotage/INFRA-1.md` | P1·L | débloque C2, C3 et B6 ; **appelle** C5 et C6 |
+| C2 | INFRA-3 — credentials WebDAV **par utilisateur** (chiffrés) | P2·M | ~~dépend C1~~ — verrou levé le 2026-09-05 ; reste suspendu à des comptes multiples qui annotent pour de bon |
+| ~~C3~~ | ✅ **Fait — SEC-2, ses DEUX zones** : la CSP le 2026-08-31 (avant la première exposition, comme l'ordre le demandait), le CSRF le 2026-09-09. Ce que la session a changé n'est pas ce qu'on croyait : `SameSite=Lax` fermait déjà l'inter-sites, mais le cookie Authelia porte le domaine PARENT, donc tout `*.edito-revue.fr` est *same-site*. Cf. `pilotage/SEC-2.md` | P3·M | — |
 | C4 | CONC-2 v2 — **isolation subprocess ML** (worker séparé, redémarrable) | P2·M | v1 fait (déchargement) ; seule option garantissant le **zéro-OOM** |
 | **C5** | **Exposer les exports de dépôt dans l'UI** (métadonnées fiche/records + IIIF, éventuellement crosswalk/provenance) : bouton → génération **côté serveur** → **téléchargement** navigateur **+ dépôt ShareDocs** | P2·M | **déclenché par C1** : la doctrine « scripts hors-app » (`tools/`) supposait le **mono-poste local** (chercheur *sur* la machine de la base) ; **déployé, l'accès shell disparaît**. Même patron que `/api/sauvegarde` (fichier produit côté serveur, téléchargeable **et** déposable ShareDocs), **cœurs déjà partagés** (`metadonnees_collection` / `description_collection`, comme l'import de vocabulaire a une CLI **et** un bouton). Cf. [`docs/export-metadonnees.md`](export-metadonnees.md) |
 | **C6** | **UX-6 — écran « par où commencer » + guide utilisateur** : carte des étapes (chacune deep-linkée vers sa surface ET son outil) au premier chargement, persistée navigateur, rappelable depuis la nav transverse ; `docs/guide-utilisateur.md` derrière | P2·M | **déclenché par C1**, même bascule que C5 : en mono-poste, l'outil s'apprend en le construisant ; **déployé, il s'ouvre sur un corpus rempli par quelqu'un d'autre**, devant une personne qui n'a jamais vu la chaîne. `docs/` ne porte que des notes de **conception** — aucun mode d'emploi n'existe. Dette de test connue : une modale au premier chargement traverse toute la suite E2E (contexte navigateur neuf par test). Cf. `pilotage/UX-6.md` |
-| — | CONC-1 (cache crop TTL + purge jobs + annulation préemptive) · INFRA-4 (retirer `[import-timing]`) · INFRA-5 (reprise `sessionStorage`) · INFRA-6 (sauvegardes auto ShareDocs) | P2-P3 | hygiène / confort |
+| — | ~~CONC-1 (cache crop TTL + purge jobs + annulation préemptive)~~ ✅ **livré 2026-09-08** · INFRA-4 (retirer `[import-timing]`) · INFRA-5 (reprise `sessionStorage`) · INFRA-6 (sauvegardes auto ShareDocs) | P2-P3 | hygiène / confort |
 
 ---
 
@@ -137,15 +137,18 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 2. ~~**D2** (gating `_migrate`)~~ — ✅ **fait 2026-07-16**, avant de toucher au schéma en A1.
 3. **Ouvrir la décision B1** en parallèle (vocabulaire émotions) — elle exige une discussion
    d'équipe *en amont*, autant l'amorcer tôt.
-4. Selon le cap suivant : **C1** (déploiement VPS) si le multi-utilisateur devient réel —
-   débloque C2, C3 (CSRF), B6 (accord inter-annotateurs) et **appelle C5** (exposer les
-   exports de dépôt dans l'UI : une fois en ligne, l'accès shell aux `tools/` disparaît).
+4. ~~Selon le cap suivant : **C1** (déploiement VPS) si le multi-utilisateur devient réel~~
+   ✅ **fait le 2026-09-05** — et ce qu'il a débloqué a suivi : ~~C3~~ (CSRF, fermé le
+   2026-09-09). Restent C2, B6 (accord inter-annotateurs) et l'appel de **C5** et **C6**
+   (une fois en ligne, l'accès shell aux `tools/` disparaît).
 5. ~~**A3 / D1** ensemble (même journal append-only)~~ ✅ **faits** — A3 (v16) puis D1 (undo,
    2026-07-18) construit dessus.
 
 ## Dépendances notables
 
-- **C1 (auth déployée)** débloque → C2 (WebDAV/utilisateur), C3 (CSRF), et sert B6.
+- ~~**C1 (auth déployée)** débloque → C2 (WebDAV/utilisateur), C3 (CSRF), et sert B6.~~
+  → **C1 livré (2026-09-05), C3 livré (2026-09-09)**. Restent C2 et B6, toujours suspendus
+  à la même chose : des comptes multiples qui annotent pour de bon.
 - **C1 (mise en ligne)** rend **C5 nécessaire** : les exports de métadonnées/IIIF vivent dans
   des **scripts `tools/`** exécutés *là où est la base* — déployé, plus d'accès shell pour le
   chercheur → les exposer dans l'UI (téléchargement + ShareDocs, patron `/api/sauvegarde`).

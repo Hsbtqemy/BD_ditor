@@ -126,9 +126,9 @@ Les faiblesses ne remettent pas en cause le produit : elles concernent surtout l
 
 - ✅ **FERMÉ** (`master.unlink(missing_ok=True)` sur les deux chemins d'échec, `main.py:827` et `:831`, plus l'import ShareDocs `:1279`) — ~~**Master orphelin sur disque si l'ingestion échoue.**~~ `store_upload` écrit le fichier *avant* l'INSERT ([pipeline/ingest.py:142-151](pipeline/ingest.py#L142-L151)) ; si `ingest_image` lève ensuite ([main.py:331-334](main.py#L331-L334)), le master (et parfois le dérivé) reste sur disque sans ligne en base. **Correctif** : nettoyage dans le `except`.
 
-### 🟡 P3 — Sécurité — **1 ouvert sur 4** au 2026-09-01
+### 🟡 P3 — Sécurité — **0 ouvert sur 4** au 2026-09-09 (était 1 sur 4 au 2026-09-01)
 
-*Reste le CSRF seul, et il dépend d'INFRA-1 : il n'y a pas de session de navigateur à voler tant que l'application n'authentifie personne. Cf. `pilotage/SEC-2.md`, dont la zone CSP est close.*
+*Rien ne reste. Le CSRF a été fermé le 2026-09-09, quatre jours après qu'INFRA-1 lui a donné un sens — il n'y avait pas de session de navigateur à voler tant que l'application n'authentifiait personne. Cf. `pilotage/SEC-2.md`, close des deux zones.*
 
 - ✅ **FERMÉ** (`pipeline/sharedocs._check_url` : allowlist d'hôte, refus des IP internes, `follow_redirects=False`) — ~~**ShareDocs : pas de garde HTTPS ni de normalisation de chemin.**~~ `configure()` accepte n'importe quelle URL cliente ([pipeline/sharedocs.py:124-131](pipeline/sharedocs.py#L124-L131)) : aucun contrôle `scheme == "https"` → identifiants Basic potentiellement en clair sur une URL `http://` ; et un hôte interne arbitraire (SSRF théorique). Le `chemin` distant n'est pas normalisé des `..` ([pipeline/sharedocs.py:48-54](pipeline/sharedocs.py#L48-L54)) → remontée d'arborescence WebDAV possible (bornée par les droits du serveur distant). Acceptable pour un poste local de confiance, à documenter comme tel.
 
@@ -136,7 +136,7 @@ Les faiblesses ne remettent pas en cause le produit : elles concernent surtout l
 
 - ✅ **FERMÉ** (vérifié le 2026-09-01 : plus aucune interpolation de donnée utilisateur hors `esc()` / `textContent` / `confirm()` ; la CSP de SEC-2 est la seconde moitié du correctif recommandé) — ~~**XSS résiduels côté client.**~~ Le code échappe *généralement* bien, mais quelques `innerHTML` interpolent des données sans `escapeHtml` : labels de tags ([static/viewer.js:703](static/viewer.js#L703), [static/viewer.js:915](static/viewer.js#L915)). Un tag contenant `<img onerror=…>` injecté via l'API s'exécuterait. Pas de CSP dans les templates pour mitiger. **Correctif** : échapper systématiquement, ajouter une CSP.
 
-- **Pas de protection CSRF.** Les `apiSend` POST/PUT/DELETE n'envoient ni token ni en-tête custom ([static/viewer.js:58-66](static/viewer.js#L58-L66)). Sans cookie de session côté backend, le risque est faible, mais à confirmer si l'app est un jour exposée.
+- ✅ **FERMÉ** (SEC-2, 2026-09-09 : une écriture doit porter `X-BD-Requete` ou venir d'une origine que le navigateur déclare `same-origin`. La mesure qui a cadré le correctif — 72 routes mutantes, 61 déjà protégées par le préflight, **11 forgeables par un `<form>`**, dont `POST /api/undo` — dit aussi pourquoi le constat barré ci-après sous-estimait le risque : il raisonnait sur l'ABSENCE de session, alors que la vulnérabilité est arrivée avec Authelia, et par le domaine PARENT du cookie, que `SameSite=Lax` ne borde pas) — ~~**Pas de protection CSRF.**~~ Les `apiSend` POST/PUT/DELETE n'envoient ni token ni en-tête custom ([static/viewer.js:58-66](static/viewer.js#L58-L66)). Sans cookie de session côté backend, le risque est faible, mais à confirmer si l'app est un jour exposée.
 
 ### 🟢 P4 — Qualité, tests, reproductibilité — **4 ouverts sur 6** au 2026-09-01
 

@@ -80,12 +80,20 @@
     return r.json();
   }
 
+  /* SEC-2 — l'en-tête accompagne TOUTE écriture, y compris celles sans corps.
+     Ce sont justement elles qui étaient forgeables : `fetch` ne pose de Content-Type que
+     s'il y a un corps, si bien qu'un POST sans corps était une requête « simple » qu'un
+     `<form>` d'un site voisin pouvait émettre avec le cookie. */
+  const EN_TETE_REQUETE = "X-BD-Requete";
+
   /* POST/PUT/DELETE JSON. `opts.signal` : AbortController optionnel (annulation).
      204 → null (pas de corps à parser). */
   async function apiSend(method, path, body, opts = {}) {
+    const headers = { [EN_TETE_REQUETE]: "1" };
+    if (body) headers["Content-Type"] = "application/json";
     const r = await fetch(path, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers,
       body: body ? JSON.stringify(body) : undefined,
       signal: opts.signal,
     });

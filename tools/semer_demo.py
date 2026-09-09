@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient  # noqa: E402
-from main import app  # noqa: E402
+from main import EN_TETE_REQUETE, app  # noqa: E402
 
 LARGEUR, HAUTEUR = 1240, 1754
 MARGE, GOUTTIERE = 40, 30
@@ -217,7 +217,12 @@ def semer(cli):
 def main() -> int:
     from _commun import forcer_utf8
     forcer_utf8()                             # Windows : stdout/stderr en UTF-8 (cp1252 sinon)
-    with TestClient(app) as cli:
+    # SEC-2 — l'outil parle à l'application par HTTP, comme un navigateur, et la garde
+    # anti-CSRF ne fait pas d'exception pour un client local : sans l'en-tête, chaque
+    # écriture repart en 403 et `raise_for_status` échoue au premier album. La constante
+    # vient de `main` plutôt que d'être recopiée — deux graphies qui divergent donneraient
+    # un outil cassé et une suite verte, `tools/` étant hors couverture.
+    with TestClient(app, headers={EN_TETE_REQUETE: "1"}) as cli:
         semer(cli)
     return 0
 

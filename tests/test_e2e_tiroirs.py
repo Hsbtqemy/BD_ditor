@@ -37,7 +37,7 @@ import pytest
 
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
-from conftest import ADMIN, make_png            # noqa: E402
+from conftest import ECRITURE, make_png         # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -59,7 +59,7 @@ OU_EST_LE_FOCUS = """(sel) => {
 @pytest.fixture
 def visionneuse(live_server, page):
     """Un album et une planche, pour que l'arbre de structure ait de quoi se peupler."""
-    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ADMIN)
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
     try:
         aid = c.post("/api/albums", json={"titre": "Tiroirs", "auteur": "X"}).json()["id"]
         c.post(f"/api/albums/{aid}/import",

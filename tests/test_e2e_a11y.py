@@ -18,8 +18,8 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
 # AUTH-2 : `ADMIN` monte le décor avec les droits qu'il faut (sans effet hors proxy).
-from conftest import (ADMIN, SANTE_PROFOND, SANTE_RAPIDE, make_png,  # noqa: E402
-                      requires_kumiko)
+from conftest import (ADMIN, ECRITURE, SANTE_PROFOND, SANTE_RAPIDE,  # noqa: E402
+                      make_png, requires_kumiko)
 
 pytestmark = pytest.mark.e2e
 
@@ -71,7 +71,7 @@ def seeded(live_server):
     """Album + planche + une bulle (avec OCR + annotation) pour peupler les 4
     surfaces, via l'API sur le serveur live."""
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         aid = c.post("/api/albums", json={"titre": "A11y", "auteur": "X"}).json()["id"]
         pid = c.post(f"/api/albums/{aid}/import",
@@ -221,7 +221,7 @@ def test_a11y_corpus_materiel(page, seeded):
     page.click("#m-save")
     page.wait_for_timeout(500)
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         alb = c.get("/api/albums").json()
     finally:
@@ -242,7 +242,7 @@ def test_a11y_corpus_relecture(page, seeded):
     page.select_option(".rel-sel", "faite")
     page.wait_for_timeout(500)
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         planches = c.get(f"/api/albums/{seeded['album']}/planches").json()
     finally:
@@ -265,7 +265,7 @@ def test_a11y_visionneuse_undo(page, seeded):
     dans la Visionneuse (round-trip UI → serveur → rafraîchissement) ; le toast d'annulation
     reste accessible."""
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         p = c.post("/api/personnages", json={"nom": "Tournesol"}).json()
         c.put(f"/api/regions/{seeded['region']}/locuteur", json={"personnage_id": p["id"]})
@@ -279,7 +279,7 @@ def test_a11y_visionneuse_undo(page, seeded):
     viol = _audit(page)
     assert not viol, f"Visionneuse/undo :\n{_fmt(viol)}"
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         assert c.get(f"/api/regions/{seeded['region']}/locuteur").json()["locuteur"] is None
     finally:
@@ -290,7 +290,7 @@ def test_a11y_exploration_domaines(page, seeded):
     """Domaines (piste B) : créer un domaine dans la modale Lexique (a11y audité), puis
     rattacher une dimension via le sélecteur → persisté (round-trip UI → serveur)."""
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         c.post("/api/attributs/dimensions", json={"cible": "case", "nom": "valence"})
     finally:
@@ -310,7 +310,7 @@ def test_a11y_exploration_domaines(page, seeded):
     page.locator('.lex-term select[data-f="domaine_id"]').first.select_option(label="émotions")
     page.wait_for_timeout(400)
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         dims = c.get("/api/attributs/dimensions").json()
     finally:
@@ -324,7 +324,7 @@ def test_a11y_exploration_lexique(page, seeded):
     saisie dans l'UI est bien persistée via PATCH)."""
     # Peuple le vocabulaire facetté (dimension + valeur) en plus du tag semé.
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         dim = c.post("/api/attributs/dimensions",
                      json={"cible": "case", "nom": "registre"}).json()
@@ -347,7 +347,7 @@ def test_a11y_exploration_lexique(page, seeded):
     ta.blur()
     page.wait_for_timeout(400)
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         lex = c.get("/api/lexique").json()
     finally:
@@ -361,7 +361,7 @@ def test_a11y_visionneuse_alignement(page, seeded):
     """Panneau Personnage → alignement d'autorité (A5) : audite l'a11y de la section ouverte
     (puce-lien + champ) ET vérifie le round-trip (URI saisie dans l'UI → persistée)."""
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         p = c.post("/api/personnages", json={"nom": "Tournesol"}).json()
         c.put(f"/api/regions/{seeded['region']}/locuteur", json={"personnage_id": p["id"]})
@@ -379,7 +379,7 @@ def test_a11y_visionneuse_alignement(page, seeded):
     inp.press("Enter")
     page.wait_for_timeout(400)
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         al = c.get(f"/api/personnages/{p['id']}/alignements").json()
     finally:
@@ -436,7 +436,7 @@ def test_a11y_exploration_accord(page, seeded):
     table, barres). Si le corpus a des tokens (spaCy), on valide un token d'abord pour exercer
     aussi le rendu du tableau (sinon on audite l'état « aucun token relu »)."""
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         toks = c.get(f"/api/regions/{seeded['region']}/tokens").json()
         if toks:                                     # valider le 1er token → 1 token relu
@@ -479,7 +479,7 @@ def test_a11y_exploration_accord_inter(page, seeded):
     EXPLICITE : ne rien pouvoir mesurer et mesurer zéro ne sont pas le même résultat.
     """
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
-                     headers=ADMIN)
+                     headers=ECRITURE)
     try:
         toks = c.get(f"/api/regions/{seeded['region']}/tokens").json()
         if not toks:
@@ -706,7 +706,7 @@ def test_a11y_administration_collections(page, seeded, theme):
     page.locator("[data-accorder]").first.click()
     page.wait_for_timeout(500)
 
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ADMIN)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
         cols = c.get("/api/collections").json()
         cid = next(x["id"] for x in cols if x["nom"] == "Corpus colonial")
@@ -724,7 +724,7 @@ def test_corpus_appartenance_album(page, seeded):
     Le refus de sortir de la DERNIÈRE collection doit être RENDU : c'est un 409 qui nomme
     un état interdit, pas un droit manquant, et l'avaler ferait croire à un bug.
     """
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ADMIN)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
         autre = c.post("/api/collections", json={"nom": "Représentations"}).json()["id"]
     finally:
@@ -746,7 +746,7 @@ def test_corpus_appartenance_album(page, seeded):
     page.wait_for_function(
         "() => document.querySelectorAll('#m-appartenance-liste li').length === 2",
         timeout=3000)
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ADMIN)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
         vues = c.get(f"/api/albums/{seeded['album']}/collections").json()
     finally:
@@ -827,7 +827,7 @@ def test_a11y_collections_embargo_echu(page, seeded, theme):
     Audité dans les deux thèmes parce que la pastille est du PETIT TEXTE coloré — la
     catégorie qui échoue le 4.5:1 quand on y met un accent brut au lieu d'un token d'encre.
     """
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ADMIN)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
         cid = c.post("/api/collections", json={"nom": "Fonds sous embargo"}).json()["id"]
         r = c.patch(f"/api/collections/{cid}",
@@ -868,7 +868,6 @@ def test_a11y_vue_des_comptes(page, seeded, theme):
     C'est le piège que `UX-10` décrit à propos des listes de surfaces, rencontré une taille
     en dessous : l'instrument regarde le bon écran et n'y voit pas le bon état.
     """
-    from conftest import ADMIN
 
     # Deux comptes VUS par l'application, dont un qui a changé d'identité sous le même
     # login — pour que la colonne « Signal » ait quelque chose à rendre.
@@ -973,7 +972,8 @@ def test_le_participant_non_proprietaire_voit_le_referent(page, seeded):
     écrire, et qu'un administrateur d'instance lit ici sans y figurer. Désigner engage la
     collection et reste au propriétaire ; lire est le geste de quelqu'un qui a une
     question."""
-    admin = {"Remote-User": "alice", "Remote-Groups": "bd-admins"}
+    admin = {"Remote-User": "alice", "Remote-Groups": "bd-admins",
+             "X-BD-Requete": "1"}
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=admin)
     try:
         cid = c.get("/api/collections").json()[0]["id"]
@@ -1016,7 +1016,7 @@ def test_le_verrou_dit_par_qui(page, seeded):
     porter le même nom, et se voir attribuer le verrou d'un homonyme serait pire que de ne
     rien dire."""
     alice = {"Remote-User": "alice", "Remote-Name": "Alice Renard",
-             "Remote-Groups": "bd-admins"}
+             "Remote-Groups": "bd-admins", "X-BD-Requete": "1"}
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=alice)
     try:
         c.get("/api/moi")                       # alimente le miroir `utilisateur`
@@ -1187,7 +1187,7 @@ def test_segmenter_depuis_la_visionneuse_ne_fait_pas_regresser_l_ecran(page, see
 
     Le test tourne avec le vrai moteur et se skippe là où le clone est absent.
     """
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=60, headers=ADMIN)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=60, headers=ECRITURE)
     try:
         assert c.patch(f"/api/planches/{seeded['planche']}/statut",
                        json={"statut": "annotee"}).status_code == 200
@@ -1222,7 +1222,7 @@ def test_segmenter_depuis_la_visionneuse_ne_fait_pas_regresser_l_ecran(page, see
 
     # Et la base est d'accord — sans quoi le test ne dirait rien de l'écran, seulement
     # que rien ne s'est passé.
-    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ADMIN)
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
         pl = [p for p in c.get(f"/api/albums/{seeded['album']}/planches").json()
               if p["id"] == seeded["planche"]][0]

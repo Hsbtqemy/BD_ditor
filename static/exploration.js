@@ -784,7 +784,8 @@ async function importerTableur(e) {
   const cid = $("#lex-import-portee").value;
   if (cid) fd.append("collection_id", cid);
   try {
-    const r = await fetch("/api/lexique/importer", { method: "POST", body: fd });
+    const r = await fetch("/api/lexique/importer",
+      { method: "POST", headers: { "X-BD-Requete": "1" }, body: fd });
     const out = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(out.detail || r.statusText);
     const s = out.resume;

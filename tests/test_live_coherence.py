@@ -31,7 +31,10 @@ pytestmark = pytest.mark.live
 
 
 def test_ecriture_puis_lecture_immediate_coherentes(live_server):
-    c = httpx.Client(base_url=live_server, trust_env=False, timeout=10)
+    # SEC-2 — ce client parle au serveur LIVE, hors de la fixture `client` : il pose
+    # l'en-tête anti-CSRF lui-même, comme le ferait un navigateur.
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=10,
+                     headers={"X-BD-Requete": "1"})
     aid = c.post("/api/albums", json={"titre": "Live"}).json()["id"]
     buf = io.BytesIO()
     Image.new("RGB", (200, 250), "white").save(buf, "PNG")

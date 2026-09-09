@@ -76,8 +76,26 @@ Trois faits qui expliquent pourquoi elle a coûté si peu :
   `cdn.redoc.ly` depuis l'intérieur de son bundle. Ce dernier reste BLOQUÉ et déclaré :
   on n'ouvre pas un hôte tiers pour une image décorative.
 
-Reste ouvert dans SEC-2 : le CSRF, qui n'a pas de sens tant qu'il n'y a pas de session à
-voler — il dépend d'INFRA-1.
+**Le CSRF est fermé depuis le 2026-09-09** (SEC-2), et ce qui l'a décidé est une mesure :
+sur 72 routes mutantes, 61 étaient déjà hors d'atteinte — leur méthode ou leur Content-Type
+en fait des requêtes « non simples », donc préflightées, et l'application ne sert aucun
+en-tête CORS. **Onze restaient forgeables par un simple `<form>`**, dont `POST /api/undo`,
+les trois lancements de passe ML et les deux imports de fichier ; toutes des POST sans
+corps JSON ou en `multipart/form-data`.
+
+Le cookie Authelia porte `SameSite=Lax` — l'inter-sites classique était déjà mort — mais
+aussi `domain=edito-revue.fr`, le domaine PARENT, nécessaire au partage de session entre
+`auth.` et `bd.`. Or `SameSite` raisonne par domaine ENREGISTRABLE : tout
+`*.edito-revue.fr` est *same-site* et reçoit le cookie. La protection dépendait donc de
+l'hygiène d'un voisin que ce projet n'héberge pas.
+
+La règle posée : **une écriture passe si elle porte `X-BD-Requete`, ou si le navigateur
+déclare `Sec-Fetch-Site: same-origin`.** Les deux mécanismes couvrent chacun le trou de
+l'autre — l'en-tête vaut sur tout navigateur, même ancien, et aucune balise HTML ne peut le
+poser ; `Sec-Fetch-Site` est écrit par le navigateur seul (son nom est interdit aux
+scripts) et laisse vivre le « Try it out » de `/docs`, qui n'a aucune raison de connaître
+notre en-tête. **Conséquence à connaître** : un client HTTP hors navigateur doit désormais
+poser `X-BD-Requete` ; le 403 le NOMME plutôt que d'échouer en silence.
 
 ### Points confirmés SAINS (ne pas sur-corriger)
 - **Pas d'injection SQL** : recherche FTS5 avec tokens échappés + `MATCH` paramétré

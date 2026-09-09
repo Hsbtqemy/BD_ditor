@@ -15,10 +15,13 @@ bundle — deux choses qu'aucune relecture de source ne pouvait voir.
 import httpx
 import pytest
 
+import main
 import surfaces
 from conftest import make_png
 
 ADMIN = {"Remote-User": "csp", "Remote-Groups": "bd-admins"}
+# SEC-2 — le client parle au serveur live, hors fixture : il pose l'en-tête lui-même.
+ECRITURE = {**ADMIN, main.EN_TETE_REQUETE: "1"}
 
 SURFACES_HTML = ("/", "/corpus", "/recherche", "/exploration", "/administration")
 
@@ -145,7 +148,7 @@ def corpus_csp(live_server):
     l'ERREUR est un signal honnête — elle dit « je n'ai rien mesuré », là où un test lent
     aurait dit « tout va bien ».
     """
-    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ADMIN)
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
     try:
         aid = c.post("/api/albums", json={"titre": "CSP"}).json()["id"]
         pid = c.post(f"/api/albums/{aid}/import",

@@ -1891,7 +1891,8 @@ function setupImport() {
     fd.append("file", file);
     toast("Import en cours…");
     try {
-      const r = await fetch(`${API}/api/albums/${state.albumId}/import`, { method: "POST", body: fd });
+      const r = await fetch(`${API}/api/albums/${state.albumId}/import`,
+        { method: "POST", headers: { "X-BD-Requete": "1" }, body: fd });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
       await selectAlbum(state.albumId);
       toast("Planche importée", "success");
@@ -2515,7 +2516,8 @@ async function figExport() {
   figMsg("Préparation…");
   try {
     const r = await fetch(API + "/api/figures", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-BD-Requete": "1" },
       body: JSON.stringify({ regions: FIG.regions.map((x) => x.id), champs: FIG.champs }),
     });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);

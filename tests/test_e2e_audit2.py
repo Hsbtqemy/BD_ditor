@@ -33,7 +33,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 from playwright.sync_api import expect  # noqa: E402
 
-from conftest import ADMIN, make_png  # noqa: E402
+from conftest import ECRITURE, make_png  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -42,7 +42,7 @@ pytestmark = pytest.mark.e2e
 def corpus_tags(live_server):
     """Un album, une planche, une région ANNOTÉE — un tag n'entre dans le nuage que
     s'il a au moins une occurrence (`loadTags` filtre sur `frequence > 0`)."""
-    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ADMIN)
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
     try:
         aid = c.post("/api/albums", json={"titre": "AUDIT-2"}).json()["id"]
         pid = c.post(f"/api/albums/{aid}/import",
@@ -54,7 +54,7 @@ def corpus_tags(live_server):
               json={"note": "", "tags": ["dialogue"]})
         return {"base": live_server, "album": aid, "planche": pid, "region": rid,
                 "client": lambda: httpx.Client(base_url=live_server, trust_env=False,
-                                               timeout=30, headers=ADMIN)}
+                                               timeout=30, headers=ECRITURE)}
     finally:
         c.close()
 

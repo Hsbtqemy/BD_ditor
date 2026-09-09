@@ -26,7 +26,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from conftest import ADMIN, make_png            # noqa: E402
+from conftest import ECRITURE, make_png         # noqa: E402
 from tools.mesurer_reflow import SONDE          # noqa: E402
 
 pytestmark = pytest.mark.e2e
@@ -53,7 +53,7 @@ CAS = [(1280, 24), (1280, 20), (768, 20), (320, 20)]
 
 @pytest.fixture
 def decor(live_server):
-    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ADMIN)
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
     try:
         aid = c.post("/api/albums", json={"titre": "Police", "auteur": "X"}).json()["id"]
         pid = c.post(f"/api/albums/{aid}/import",

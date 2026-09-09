@@ -581,6 +581,32 @@ Statut de **relecture grammaticale** (`à faire` / `en cours` / `faite`), **orth
 - **CSP** (SEC-2) : un middleware pose `Content-Security-Policy` sur **toute** réponse — `script-src 'self'` sans `'unsafe-inline'`, ce qui ne coûte rien puisque les gabarits n'ont aucun script inline. `/docs` et `/redoc` reçoivent une politique DISTINCTE (le CDN de Swagger et ReDoc autorisé, `object-src`/`base-uri`/`frame-ancestors` toujours fermés) : une politique par surface, jamais une exemption. Seule tolérance, écrite : `style-src 'unsafe-inline'` pour dix largeurs CALCULÉES, avec `style-src-elem 'self'` qui garde le canal élément strict. `tests/test_csp.py` EXÉCUTE la politique dans un vrai Chromium (`securitypolicyviolation`) — c'est lui qui a trouvé le favicon `data:` et le logo distant de ReDoc, invisibles à la lecture ; un blocage assumé se déclare dans `BLOCAGES_ADMIS` avec sa raison.
 - Export disponible en **JSON-LD / CSV / TEI P5** (`main.py`, routes `/api/export/*`). Texte libre assaini avant sérialisation : `_xml_safe` (retire les caractères interdits XML 1.0 → TEI re-parsable) et `_csv_safe` (préfixe `'` une cellule débutant par `= + - @` → anti-injection de formule tableur).
 - `tests/test_regressions.py` : un test de non-régression par bug corrigé.
+- **CSRF** (SEC-2) : un middleware refuse toute requête **POST/PUT/PATCH/DELETE** qui ne
+  porte ni `X-BD-Requete` (`main.EN_TETE_REQUETE`) ni un `Sec-Fetch-Site: same-origin` posé
+  par le navigateur. Il est **déclaré AVANT `_csp`** à dessein — Starlette applique les
+  middlewares dans l'ordre INVERSE de leur déclaration, et le déplacer ferait ressortir son
+  403 sans politique de sécurité, rendant fausse la promesse « sur TOUTE réponse ». La
+  mesure qui a cadré le correctif : sur 72 routes mutantes, **61 étaient déjà hors
+  d'atteinte** (méthode ou Content-Type non « simples » → préflight, et l'application ne
+  sert aucun en-tête CORS) ; **onze restaient forgeables par un `<form>`**, dont
+  `POST /api/undo`, les trois passes ML et les deux imports de fichier. Ce n'est PAS
+  `SameSite=Lax` qui manquait : le cookie Authelia le porte, mais sur le domaine PARENT
+  `edito-revue.fr`, et `SameSite` raisonne par domaine ENREGISTRABLE — tout
+  `*.edito-revue.fr` est *same-site* et reçoit le cookie. **Trois conséquences pour qui
+  écrit du code ici**, et les trois se sont manifestées le jour même :
+  - `apiSend` pose l'en-tête : une écriture ordinaire n'a rien à faire. Un **`fetch`
+    construit à la main** (les deux envois multipart, le zip de figures) doit le poser
+    LUI-MÊME — `test_csrf.py` balaie `static/**/*.js` et l'exige de tout `method:`
+    littéral mutant.
+  - **Un client de test qui parle au serveur LIVE ne passe pas par la fixture `client`** :
+    il prend `ECRITURE` et non `ADMIN` (`tests/conftest.py`). Le mode d'échec est
+    silencieux et cher — la réponse 403 se lit `{"detail": …}`, donc un
+    `.json()["id"]` de fixture lève un **`KeyError`**, douze minutes après le lancement
+    du navigateur. **Neuf fichiers de test et un outil** sont tombés là-dessus, dont
+    six qu'une première passe de relecture avait manqués.
+  - **Un outil hors navigateur doit poser l'en-tête** (`tools/semer_demo.py` importe
+    `main.EN_TETE_REQUETE` plutôt que de recopier la graphie : `tools/` est hors
+    couverture, une divergence y donnerait un outil cassé et une suite verte).
 - **Accessibilité (WCAG 2.1 AA)** : les accents pleins `--accent-*` servent les fills / bordures / marqueurs (seuil graphique 3:1) ; pour du **petit texte** coloré, utiliser les tokens d'encre AA-sûrs (`--ink-red`, `--danger`, ou un accent **assombri** en thème clair) — **jamais l'accent brut**, qui échoue le 4.5:1. L'audit axe (`pytest -m e2e`) verrouille la non-régression.
 - **La documentation d'USAGE est distincte des notes de conception**, et elle tient en deux fichiers : `docs/guide-utilisateur.md` (les gestes — le parcours en huit étapes et les surfaces) et `docs/modele-et-droits.md` (les objets et les règles — hiérarchie, collections, groupes, qui peut quoi, vocabulaire, régimes de diffusion). Tout le reste de `docs/` explique POURQUOI une décision a été prise, jamais comment se servir de l'outil : y envoyer quelqu'un qui cherche « comment faire » est l'erreur que ces deux fichiers ferment. Ils sont la moitié documentaire d'UX-6, écrite avant l'écran d'accueil qu'elle alimentera.
 - `docs/` documente les décisions de conception non évidentes (grammaire, numérotation, round-trip, sécurité, Docker) ; `pilotage/` est le **suivi vivant** ticket-par-ticket (une fiche par chantier, cf. § Pilotage ; `docs/backlog.md` n'en est plus que le renvoi), `docs/roadmap.md` la **vue stratégique par pistes** (cap + ordre conseillé), `AUDIT.md` l'audit technique daté. `spike/` et `tools/` sont hors couverture (`.coveragerc`). L'**export de métadonnées** (description du corpus + IIIF ; scripts hors-app `tools/gerer_collections.py` — gestion des collections, seul outil d'écriture —, `description_collection.py`, `metadonnees_collection.py`, `iiif_manifest.py`, `valider_iiif.py`) est documenté dans `docs/export-metadonnees.md`.

@@ -195,6 +195,65 @@ _CHEMINS_DOCS = frozenset(
                 app.swagger_ui_oauth2_redirect_url) if c)
 
 
+# SEC-2 — CSRF. Mesuré le 2026-09-08 : sur 72 routes mutantes, 61 sont déjà hors d'atteinte
+# d'une requête forgée — leur MÉTHODE (PUT/PATCH/DELETE) ou leur Content-Type
+# (`application/json`) en font des requêtes « non simples », donc soumises à un préflight
+# que rien n'autorise, l'application ne servant aucun en-tête CORS.
+#
+# Restaient ONZE portes, et la liste explique pourquoi ce n'est pas théorique : `POST
+# /api/undo` annule la dernière annotation de quelqu'un, `/segmenter`, `/ocr` et
+# `/detecter-bulles` lancent des passes ML, `/api/albums/{id}/import` et
+# `/api/lexique/importer` acceptent un fichier. Toutes sont des POST qu'un simple
+# `<form>` peut émettre : soit `multipart/form-data`, soit sans corps du tout — et
+# `fetch` n'envoie de Content-Type QUE s'il y a un corps.
+#
+# Ce qu'Authelia ferme, et ce qu'il ne ferme pas. Le cookie porte `SameSite=Lax` (mesuré
+# sur l'instance le 2026-09-05) : l'inter-sites classique est mort. Mais il porte aussi
+# `domain=edito-revue.fr`, le domaine PARENT — nécessaire pour partager la session entre
+# `auth.` et `bd.` —, or `SameSite` raisonne par domaine ENREGISTRABLE : tout
+# `*.edito-revue.fr` est *same-site* et reçoit le cookie. La protection dépendait donc de
+# l'hygiène d'un voisin que nous n'hébergeons pas.
+#
+# LA RÈGLE : une requête mutante passe si elle porte notre en-tête, OU si le navigateur
+# déclare `Sec-Fetch-Site: same-origin`. Les deux mécanismes couvrent chacun le trou de
+# l'autre. L'en-tête ne peut pas être posé par un `<form>` (aucune balise HTML ne pose
+# d'en-tête) ni par un `fetch` d'une autre origine (il rend la requête non simple, donc
+# préflightée, donc refusée faute de CORS) — et il vaut sur TOUT navigateur, même ancien.
+# `Sec-Fetch-Site` est posé par le navigateur seul, jamais par un script — c'est un nom
+# d'en-tête interdit —, et il laisse vivre le « Try it out » de `/docs`, qui est
+# same-origin et n'a aucune raison de connaître notre en-tête.
+#
+# CE QUE ÇA COÛTE, et c'est écrit plutôt que découvert : un client HTTP hors navigateur
+# (curl, un script) doit désormais poser `X-BD-Requete`. C'est le prix normal d'une API
+# protégée contre la CSRF, et il est visible — un 403 qui NOMME l'en-tête manquant, pas
+# un échec silencieux.
+EN_TETE_REQUETE = "X-BD-Requete"
+_METHODES_MUTANTES = frozenset(("POST", "PUT", "PATCH", "DELETE"))
+
+
+@app.middleware("http")
+async def _garde_csrf(request, call_next):
+    """Refuse une requête mutante qui ne prouve pas venir de l'application (SEC-2).
+
+    DÉFINI AVANT `_csp` À DESSEIN. Starlette applique les middlewares dans l'ordre
+    INVERSE de leur déclaration : le dernier déclaré enveloppe les autres. Celui-ci doit
+    donc être déclaré en PREMIER pour être le plus interne, faute de quoi son 403
+    ressortirait sans politique de sécurité — et la promesse de `_csp`, « sur TOUTE
+    réponse », deviendrait fausse pour les seules réponses qu'on vient de refuser.
+    """
+    if request.method in _METHODES_MUTANTES:
+        if not (request.headers.get(EN_TETE_REQUETE)
+                or request.headers.get("sec-fetch-site") == "same-origin"):
+            return JSONResponse(
+                status_code=403,
+                content={"detail":
+                         "Requête refusée : une écriture doit porter l'en-tête "
+                         f"{EN_TETE_REQUETE}, ou venir de l'application elle-même. "
+                         "C'est la protection contre les requêtes forgées depuis un "
+                         "autre site (SEC-2)."})
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def _csp(request, call_next):
     """Pose la CSP sur TOUTE réponse, pas seulement sur les pages HTML.
