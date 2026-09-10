@@ -33,6 +33,18 @@ Personne ne parcourt donc ni n'importe depuis ShareDocs aujourd'hui, stagiaires 
 C'est écrit dans `docs/exploitation.md` pour qu'on ne le découvre pas le jour de leur
 arrivée.
 
+## Un commit de code lui est attribué, et il n'est pas d'elle — 2026-09-10
+
+`4221748` — le commit qui laisse les variables ShareDocs vides — nomme `SHARE-3` dans son
+corps pour dire ce qui lèvera l'attente. Il touche `deploy/`, donc il compte comme du code,
+et l'outil cherche le code d'un chantier dans le sujet **ou le corps**. **Cette fiche `à
+venir` s'affichera donc avec un commit de code alors qu'aucune ligne n'en est écrite**, et
+l'écran la démentira — ce démenti est ATTENDU, il ne signale pas un travail commencé.
+
+Le même mécanisme frappe `INFRA-7` le même jour, et `COL-1` depuis plus longtemps. La règle
+qui en sort : **le renvoi vers un autre chantier appartient à la fiche, pas au message d'un
+commit de code.**
+
 ## Reste
 
 ### Palier 1 — la racine par collection, sans un seul secret déplacé

@@ -5,7 +5,7 @@ statut: livré
 
 # INFRA-3 — credentials WebDAV par utilisateur
 
-**Arrêté sur** — 2026-09-10, `b59e4da` : la seule question restante est tranchée — **on ne persiste
+**Arrêté sur** — 2026-09-10, `4221748` : la seule question restante est tranchée — **on ne persiste
 pas** —, et le geste qui l'a rendue facile n'était pas celui qu'on cherchait. Voir « Ce que
 la question cachait » ci-dessous.
 

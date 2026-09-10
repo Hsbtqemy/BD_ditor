@@ -48,6 +48,24 @@ la configuration livrée par INFRA-1, relue et non éprouvée.
 - [x] **Ce que ça coûte, et pourquoi ça ne se rattrape pas tout seul** : l'outil date un chantier en cherchant son code dans les sujets de commit. **Et la symétrie est plus exacte que cette fiche ne le disait** — recomptée le 2026-09-10, chaque sujet a EXACTEMENT un commit de code sous `INFRA-7` : `0914094` pour la session (`docs/deploiement-docker.md`, `tests/test_sante.py`) et `87544ba` pour le déploiement. Les deux sont poussés, donc le sujet perdant garde une attribution fausse quoi qu'on choisisse. Ce n'était donc pas un critère de décision, c'était un coût égal des deux côtés — et le voir a évité de choisir pour une raison qui n'existait pas
 - [x] **Tranché le 2026-09-10 : la session GARDE `INFRA-7`, le déploiement prend `INFRA-12`** et reçoit `pilotage/INFRA-12.md`, la première fiche qu'il ait jamais eue — `deployer.sh` était né sous `9ee9a98` sans code, `verifier_deploiement.py` sous INFRA-1, c'est-à-dire en passant. Les trois emplois vivants sont repointés dans le même geste. **Ce qui a fait pencher, les coûts étant symétriques** : aucun fichier de fiche n'est renommé, donc aucune référence extérieure au dépôt ne casse, et le sujet qui détenait le code depuis le 2026-09-05 le conserve. **Ce qu'on accepte en échange, par écrit** : `87544ba` continue de dater cette fiche-ci au 2026-09-07 pour du travail qui n'est pas le sien, indéfiniment — consigné dans `INFRA-12` plutôt que laissé silencieux, seule chose qui distingue une erreur portée d'une erreur subie
 
+## La fresque redate cette fiche, et c'est le geste qui la corrigeait — 2026-09-10
+
+**`dbb67d1` porte « INFRA-7 » dans son corps**, à l'endroit où il explique que la durée de
+session GARDE ce code. Il touche `tests/`, donc il compte comme un commit de code ; et
+l'outil cherche le code d'un chantier dans le SUJET **ou le CORPS**. La fresque montrera
+donc INFRA-7 travaillée le 2026-09-10, alors que ce commit ne fait que repointer deux
+docstrings vers `INFRA-12`.
+
+**C'est exactement le défaut que cette zone décrivait, reproduit par sa réparation.** Il
+n'est pas rattrapable — le commit est poussé, son sujet et son corps ne se réécrivent pas —
+et le point d'arrêt ci-dessus n'est pas modifié pour l'absorber : citer `dbb67d1` ici
+ferait dire à cette fiche qu'un travail de nomenclature est son dernier commit de code, ce
+qui est faux dans l'autre sens.
+
+**La leçon est transposable et ne concerne pas que cette fiche** : dans un commit de CODE,
+nommer le code d'un autre chantier — même pour dire qu'on ne travaille pas dessus — le lui
+attribue. Le renvoi appartient à la fiche, pas au message de commit.
+
 ## `inactivity` observé, sans l'avoir cherché — 2026-09-10
 
 La première case de la première zone demande ce que `inactivity: 1 hour` fait sur une
