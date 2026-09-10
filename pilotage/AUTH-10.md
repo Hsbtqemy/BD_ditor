@@ -23,6 +23,13 @@ entier, et `undo.py` ne connaît que quatre tables (`regions`, `annotations`,
 `bulle_locuteur`, `personnage_presence`) : cette suppression-là ne se défait pas. Le seul
 retour est la sauvegarde, c'est-à-dire hors de l'application.
 
+**Cette dernière phrase est RÉFUTÉE depuis le 2026-09-10, et par cette fiche elle-même** —
+voir « Le fait trouvé en chiffrant ». La sauvegarde ne contient pas les images, la
+suppression d'album efface les masters du disque et n'inscrit aucun événement au journal.
+Il n'y a donc pas de retour du tout. La phrase est gardée telle quelle parce que c'est
+elle qu'on a crue en ouvrant le chantier, et que la corriger sur place ferait disparaître
+la raison pour laquelle on a cherché ailleurs.
+
 ## L'inventaire, mesuré — 73 routes mutantes
 
 Relevé par AST sur `main.py` + `routes/*.py` le 2026-09-10. Quatre familles, séparées par
@@ -49,7 +56,8 @@ trois écarts restants sont tous à l'intérieur d'`ecriture`.
 ## Reste
 
 ### Trancher — et la première décision est de ne rien faire, éventuellement
-- [ ] **Le REMÈDE MOINS CHER est évalué avant le remède structurel** : aligner l'undo sur son propre périmètre — rendre la correction de tokens et la validation grammaticale annulables — supprime la moitié du problème sans toucher au modèle de droits. Attendu : un chiffrage des deux, côte à côte, avant de choisir. D1 nomme déjà « grammaire/validation » comme dormante, donc le travail est identifié
+- [x] **Le REMÈDE MOINS CHER est évalué avant le remède structurel** — chiffré le 2026-09-10, section « Les deux remèdes, chiffrés » ci-dessous. **Le résultat contredit l'énoncé de cette case** : le remède de l'undo ne supprime pas « la moitié du problème », il porte sur 2 routes de la famille où le dommage est DÉJÀ réversible, et ne touche pas d'un cheveu les 17 routes de structure. Les deux remèdes ne sont donc pas substituables, et le chiffrage a fait apparaître un TROISIÈME remède, moins cher que les deux et qui vise le dommage réel
+- [ ] **Trancher entre les trois remèdes, maintenant qu'ils sont chiffrés.** L'ordre n'est plus une question de coût mais de ce que chacun ACHÈTE : la trace et le sursis (remède C) rendent une suppression d'album rattrapable ; le niveau `contribution` (remède B) empêche que la question se pose ; l'alignement de l'undo (remède A) rend homogène une famille qui ne détruit rien d'irremplaçable. C et B ne s'excluent pas — C protège les gens qui ont légitimement le droit de supprimer, et aucun niveau de droits ne les couvre
 - [ ] **La décision d'ajouter un niveau est prise avec son coût écrit.** Un quatrième niveau est une quatrième occasion de refus SILENCIEUX : `Portee.__init__` cumule à un seul endroit, et AUTH-3 a déjà nommé le mode d'échec — « un `in portee.ecriture` qui oublierait les propriétaires serait un refus silencieux et parfaitement crédible ». Ce défaut ne casse aucun test
 - [ ] **Si un niveau est retenu, c'est `contribution`, et la raison est STRUCTURELLE et non ergonomique.** Le cumul de ce modèle est dérivé d'un ORDRE, pas stocké : `collection_acces` a pour clé primaire `(collection_id, genre, principal)` — une ligne, un seul `niveau` — et `Portee.__init__` fait `ecriture |= propriete` puis `lecture |= ecriture`. Seul ce qui s'ORDONNE peut donc s'y insérer. `lecture ⊂ contribution ⊂ ecriture ⊂ proprietaire` s'ordonne ; « vocabulaire » et « structure » ne s'ordonnent pas entre eux, et leur imposer un rang inventerait une hiérarchie que le travail n'a pas
 - [ ] **Le périmètre exact de `contribution` est écrit route par route**, et il ne se déduit pas de l'objet : les 13 routes de région, corrections de tokens comprises. L'attendu est une LISTE, parce que « les routes de région » a déjà deux exceptions connues
@@ -70,6 +78,68 @@ trois écarts restants sont tous à l'intérieur d'`ecriture`.
 ### Le trou d'affichage, qui existe indépendamment de ce chantier
 - [ ] **Un refus d'écriture sur une donnée est un 404, et il ment à qui VOIT l'objet.** `_get_region(..., ecriture=True)` lève « Région 42 introuvable » sur une région affichée à l'écran. La règle vient d'AUTH-2 — « 404, jamais 403 : "existe mais pas pour vous" révèle la composition du corpus » — mais elle ne s'applique PAS ici : la personne lit déjà cette région. Le 404 ne lui cache rien du corpus, il lui cache la raison du refus. Attendu : un 403 nommé quand l'objet est LISIBLE et l'écriture refusée, le 404 restant pour qui ne le voit pas. La doctrine n'est pas rompue, elle est précisée
 - [ ] Ce raffinement est éprouvé dans les DEUX sens — un lecteur reçoit 403 sur ce qu'il voit, un étranger reçoit 404 sur ce qu'il ne voit pas — sans quoi on aurait remplacé un mensonge par une fuite
+
+## Les deux remèdes, chiffrés — 2026-09-10
+
+**Le remède A se coupe en deux moitiés qui n'ont pas le même prix**, et l'énoncé qui les
+réunissait — « rendre la correction de tokens et la validation grammaticale annulables » —
+masquait l'écart.
+
+**A1, la correction d'un token, est bon marché parce que le journal porte déjà tout.**
+`corriger_token` inscrit un événement `creation`/`modification` sur `token_correction` avec
+`avant` ET `apres` complets — les six colonnes `ordre, forme, lemme, pos, morph, etat` ;
+`annuler_correction` inscrit une `suppression` avec son `avant`. Rien à changer côté
+écriture. Ce qui manque est dans `undo.py` seul : la table dans `_TABLES`, une branche dans
+`_inverser` sur le patron exact de `_restaurer_annotation`, et un `reindex_region`. Un
+écueil à trancher, petit mais réel : `cible_id` y est l'id de la ligne `token_correction`,
+qui est RÉATTRIBUÉ après suppression — c'est précisément pourquoi les actes d'annotation
+ciblent `region_id` et non l'id d'annotation. Soit on accepte le 409 « id réattribué » que
+`_inverser` sait déjà rendre, soit on re-cible sur la région, ce qui suppose de porter
+l'`ordre` dans un `cible_id` qui est un entier unique.
+
+**A2, la validation grammaticale, est chère, et pas pour la raison qu'on suppose.** Son
+événement est écrit sans `avant` (`validation` / `regions`, avec pour tout contenu
+`{"grammaire": "validee"}`), et `validation` ne figure pas dans `undo._TYPES`. Surtout,
+l'acte est EN LOT : il passe à `valide` toutes les corrections non obsolètes de la région
+et INSÈRE une ligne par token qui n'en avait pas. Son inverse demande l'état antérieur de
+chaque ligne touchée — que le journal ne porte pas. Il faut donc changer ce que la route
+inscrit, et les événements DÉJÀ écrits resteront non inversibles, le journal étant
+append-only. La dormance nommée par D1 n'était pas de la paresse.
+
+**Ce que le remède A n'achète pas, et c'est le résultat du chiffrage.** Il porte sur 2
+routes des 13 de la famille « région » — celle qui est déjà réversible et dont le pire
+dommage est un lemme à retaper. Les 17 routes de structure restent exactement où elles
+étaient. « La moitié du problème » était une estimation faite avant de regarder.
+
+## Le fait trouvé en chiffrant, et qui déplace la question — 2026-09-10
+
+Cette fiche disait : « le seul retour est la sauvegarde, c'est-à-dire hors de
+l'application ». **C'est trop optimiste, et de loin.** Mesuré en lisant `delete_album` :
+
+- elle exige `_get_album(..., ecriture=True)` — le droit d'annoter une bulle, comme annoncé ;
+- **elle ne journalise RIEN.** Aucun appel à `journal.journaliser` : là où la suppression
+  d'une RÉGION inscrit son instantané profond, celle d'un album n'inscrit rien du tout. Un
+  undo étendu à la famille « structure » n'aurait donc rien à lire — le substrat manque
+  avant même la question du périmètre ;
+- elle appelle `remove_album_files`, c'est-à-dire un `shutil.rmtree` sur le dossier
+  `corpus/album_N` **et** son dérivé : **les masters TIFF quittent le disque** ;
+- et la sauvegarde de `pipeline/backup.py` est un `VACUUM INTO` de la base, zippé. **Elle
+  ne contient aucune image** — `docs/hebergement-securite.md` dit pourquoi en une ligne :
+  le disque est dominé par les masters, dizaines à centaines de Go.
+
+**Donc restaurer la sauvegarde après une suppression d'album rend une base qui pointe vers
+des fichiers absents.** Et les masters sont la seule chose du corpus qui ne se refabrique
+pas : tout le reste — dérivés, régions, tokens, index — se recalcule à partir d'eux ; eux
+sont des numérisations d'albums physiques, qu'il faudrait re-scanner.
+
+**Le remède C, qui n'était pas dans la fiche et qui coûte moins que les deux autres.**
+Journaliser la suppression (l'instantané profond existe déjà pour les régions, le patron
+est écrit) et ne pas effacer les fichiers dans le même geste — un sursis, une corbeille,
+un dossier `corpus/.supprime/` purgé par une commande explicite. Il ne touche **aucun
+modèle de droits**, ne crée aucune occasion de refus silencieux, et il protège quelqu'un
+que B ne protégera jamais : la personne qui a LÉGITIMEMENT le droit de supprimer et se
+trompe d'album. Un niveau de droits répond à « qui » ; il ne répond pas à « je n'avais pas
+vu que c'était celui-là ».
 
 ## Contexte
 
