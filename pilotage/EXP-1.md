@@ -29,7 +29,7 @@ trois étaient dans ce que l'écran DIT ou DEMANDE.
 - [x] Les cœurs restent partagés entre la CLI et la route : aucune logique d'export n'est réécrite côté serveur, comme l'import de vocabulaire a déjà une CLI et un bouton
 - [x] Le choix d'exposer ou non le crosswalk et la provenance est tranché et écrit
 - [x] La passe `pilotage/qa/export-depot.md` est jouée, et sa zone « Le bloc est là pour qui LIT » est verte : le bloc s'affiche pour un participant NON propriétaire, la ligne de dépôt seulement pour un propriétaire. **Jouée le 2026-09-08**, derrière `faux_proxy_auth.py`, sur une base jetable — quatre zones sur quatre, et elle a trouvé trois défauts qu'aucun test n'avait vus
-- [ ] Le chantier est FUSIONNÉ sur `origin/main`, donc déployé — le VPS suit cette branche seule (INFRA-10). `origin/dev` suffit à l'INTÉGRATION et le journal ne dément plus ; cette case-ci parle de la mise en production, et elle attend la passe de QA
+- [ ] Le chantier est FUSIONNÉ sur `origin/main`, donc déployé — le VPS suit cette branche seule (INFRA-10). `origin/dev` suffit à l'INTÉGRATION et le journal ne dément plus ; cette case-ci parle de la mise en production. **La passe de QA qu'elle attendait est FAITE le 2026-09-10** (`pilotage/qa/export-depot.md`, 27 cases sur 29) : il ne reste que la fusion
 
 ## Contexte
 

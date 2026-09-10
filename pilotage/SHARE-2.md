@@ -19,7 +19,7 @@ a besoin, exactement comme la session.
 ## Reste
 
 - [ ] Le formulaire de connexion ShareDocs (URL, utilisateur, mot de passe, sélecteur de compte) vit dans un module montable, chargé par au moins deux surfaces
-- [ ] L'Administration ouvre la session SANS quitter la page — plus d'aller-retour vers l'Atelier pour un formulaire de trois champs
+- [ ] L'Administration ouvre la session SANS quitter la page — plus d'aller-retour vers l'Atelier pour un formulaire de trois champs. **Cette case ferme aussi un constat d'EXP-1** (QA du 2026-09-10) : arrivé par `?sharedocs=1&retour=/administration`, on ne voit pas le `← Retour`, la modale étant un piège à focus et `#back-link` vivant dans le bandeau de la page. On sort par `Fermer ✕` puis `← Retour` — deux clics visibles, dont le premier parle de la BOÎTE et non du TRAJET. Ne pas le réparer dans la modale : ici, on supprime le trajet
 - [ ] **L'explorateur de dossiers sert à CHOISIR la destination d'un dépôt**, au lieu de taper un chemin. Attendu : depuis la ligne de dépôt, on parcourt son espace et on désigne un dossier — le champ se remplit tout seul, avec le chemin RÉEL et non le nom d'affichage
 - [ ] L'import d'images depuis ShareDocs continue de fonctionner à l'identique : la coupe sépare la SESSION et l'EXPLORATEUR de l'IMPORT, qui reste propre à l'Atelier
 - [ ] Le composant refuse de désigner un dossier en lecture seule, ou le signale — `upload` rend déjà un 403 nommé sur ce cas (montages « tools »), et le découvrir après avoir tout préparé est le pire moment
@@ -47,6 +47,14 @@ le PUT WebDAV ne crée pas les dossiers manquants — et dit la forme attendue p
 rendre le code brut. Le champ porte un exemple (`@Home/mon-dossier`) et une phrase sur le
 chemin relatif. C'est un pansement honnête : il apprend à taper juste, là où le chantier
 supprimera la saisie.
+
+**Ce que la QA d'EXP-1 a ajouté au dossier — 2026-09-10.** Deux des trois cases non cochées
+de sa passe tiennent à ShareDocs, et les deux disparaissent avec ce chantier. Le retour
+invisible ci-dessus ; et le fait qu'**un chemin se DÉCOUVRE aujourd'hui par ses messages
+d'erreur** — trois ont été éprouvés dans la même séance, un 404 sur un dossier absent, un
+500 sur `@Shares` (un point de montage virtuel, que ShareDocs refuse sans le nommer), et le
+403 « lecture seule » qui n'a PAS pu l'être faute d'un dossier qui s'y prête. Un explorateur
+supprime la classe entière : on ne vise pas un point de montage quand on désigne un dossier.
 
 **Pourquoi ça ne suffit pas.** Trois champs et un bouton ne justifient pas de quitter la
 page où l'on travaille. Et l'aller-retour a un défaut propre : la session ShareDocs vit en

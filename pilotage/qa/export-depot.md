@@ -57,44 +57,79 @@ inoffensif ailleurs.
 
 ### Le bloc est là pour qui LIT
 
-- [ ] Connecté comme `lectrice`, *Administration → 👥 Collections*, la collection se déplie et montre un bloc **Export de dépôt**
-- [ ] Ce bloc porte les trois lignes — fiche de description, enregistrements, manifeste IIIF — et aucune n'est grisée
-- [ ] La ligne **Déposer sur ShareDocs** est ABSENTE pour `lectrice`
-- [ ] Connecté comme propriétaire, le même bloc porte EN PLUS la ligne de dépôt
+- [x] Connecté comme `claire`, *Administration → 👥 Collections*, la collection se déplie et montre un bloc **Export de dépôt**
+- [x] Ce bloc porte les trois lignes — fiche de description, enregistrements, manifeste IIIF — et aucune n'est grisée
+- [x] La ligne **Déposer sur ShareDocs** est ABSENTE pour `claire`
+- [x] Connecté comme propriétaire, le même bloc porte EN PLUS la ligne de dépôt
 
 ### Ce qui sort est le bon fichier
 
-- [ ] *Fiche de description → JSON* télécharge un fichier nommé `depot-description-c<id>-<date>-<heure>.json`
-- [ ] Ce JSON ouvert, `identite.nom` porte le nom de la collection déployée, et `couverture.albums` compte ses albums à elle — pas ceux du corpus
-- [ ] *Fiche de description → CSV* s'ouvre dans un tableur avec les accents corrects (é, à, œ), sans réglage d'encodage
-- [ ] *Enregistrements → CSV (zip)* donne une archive dont chaque `.csv` s'ouvre lisiblement
-- [ ] *Enregistrements → XLSX* ouvre un classeur à plusieurs onglets, dont `fiche` et `arbre` — ou affiche un message nommant `openpyxl` si l'extra n'est pas installé sur l'instance
+**Sous `claire`** — lire doit suffire à TÉLÉCHARGER, et c'est cette moitié de la garde qu'on
+éprouve ici. **Une exception** : la case `couverture.albums` ne discrimine rien sous `claire`,
+sa portée se confondant avec la collection — un export qui ignorerait `collection_id` et
+déverserait le corpus rendrait le même chiffre. Elle se joue sous **`admin`**, et seulement
+une fois qu'une DEUXIÈME collection existe.
+
+- [x] *Fiche de description → JSON* télécharge un fichier nommé `depot-description-c<id>-<date>-<heure>.json`
+- [x] Ce JSON ouvert, `identite.nom` porte le nom de la collection déployée, et `couverture.albums` compte ses albums à elle — pas ceux du corpus
+- [x] *Fiche de description → CSV* s'ouvre dans un tableur avec les accents corrects (é, à, œ), sans réglage d'encodage
+- [x] *Enregistrements → CSV (zip)* donne une archive dont chaque `.csv` s'ouvre lisiblement
+- [x] *Enregistrements → XLSX* ouvre un classeur à plusieurs onglets, dont `fiche` et `arbre` — ou affiche un message nommant `openpyxl` si l'extra n'est pas installé sur l'instance
 
 ### Le manifeste dit ce qu'il retient
 
-- [ ] Sans rien saisir dans le champ d'adresse, *Manifeste IIIF → Télécharger* produit un fichier nommé `depot-iiif-apercu-…`, et non un refus
-- [ ] L'`AVERTISSEMENTS.txt` de cet aperçu commence par « APERÇU » et dit quoi mettre dans le champ — l'adresse publique du dossier `derivatives/`, pas un « serveur IIIF »
-- [ ] Avec une adresse renseignée, le nom du fichier ne contient plus `apercu`
-- [ ] Avec une adresse, sur une collection NON déclarée `public`, l'archive contient `AVERTISSEMENTS.txt`
-- [ ] Ce fichier nomme la cause exacte — « déclarée restreint », « embargo court jusqu'au … », « date d'embargo illisible » — et non un message générique
-- [ ] Sur une collection déclarée `public` et hors embargo, l'archive ne contient PAS `AVERTISSEMENTS.txt`, et un `manifest-a*.json` porte des URL commençant par l'adresse saisie
-- [ ] Cocher **avec le texte relevé** sur une collection non publique fait refuser le manifeste, avec un message qui propose de citer plutôt que de publier
+**Sous `claire`** — c'est le même droit que la zone précédente, le téléchargement.
+
+**L'adresse à saisir**, pour les cases qui en demandent une :
+`https://sharedocs.huma-num.fr/bdediteur/derivatives`. Deux valeurs sont à ÉVITER, et
+aucune des deux ne se devine — `diagnostic_base_url` les traite à part. Un hôte local
+(`127.0.0.1`, `localhost`, `*.local`) ajoute un constat « hôte local », donc un
+`AVERTISSEMENTS.txt` **même sur une collection publique** : la case suivante paraîtrait
+alors échouer sans défaut. Et `https://exemple.org/iiif` EST le placeholder : il est
+refusé dès que le manifeste est destiné à être remis.
+
+- [x] Sans rien saisir dans le champ d'adresse, *Manifeste IIIF → Télécharger* produit un fichier nommé `depot-iiif-apercu-…`, et non un refus
+- [x] L'`AVERTISSEMENTS.txt` de cet aperçu commence par « APERÇU » et dit quoi mettre dans le champ — l'adresse publique du dossier `derivatives/`, pas un « serveur IIIF »
+- [x] Avec une adresse renseignée, le nom du fichier ne contient plus `apercu`
+- [x] Avec une adresse, sur une collection NON déclarée `public`, l'archive contient `AVERTISSEMENTS.txt` — **le manifeste amputé DIT qu'il l'est**. DROIT-1 ferme par défaut : sans régime `public`, les images ne partent pas, les Canvas si. Sans cette annonce, « j'ai retenu mes images » et « j'ai perdu mes images » seraient indistinguables — et `valider_iiif.py` n'exempte un manifeste de l'exigence d'images QUE s'il porte `« Scans non diffusés »` dans son `requiredStatement`. Le fichier du zip est le même geste, pour l'humain qui l'ouvre
+- [x] Ce fichier nomme la cause EXACTE, et non un message générique. **Cinq sont possibles**, et le décor décide laquelle : « déclarée `<statut>` » ; « déclarée `<statut>`, et son embargo court jusqu'au … » ; « déclare une date d'embargo illisible (…, attendu AAAA-MM-JJ) » ; « ne déclare aucun régime de diffusion » — celui d'une collection dont `statut_diffusion` est vide, donc d'une base de démonstration ; « aucune collection n'est nommée ». Cette case en énumérait TROIS jusqu'au 2026-09-10, et les deux manquantes étaient justement celles qu'une base neuve produit : une énumération incomplète fait lire un échec là où le message est exact
+- [x] Sur une collection déclarée `public` et hors embargo, l'archive ne contient PAS `AVERTISSEMENTS.txt`, et un `manifest-a*.json` porte des URL commençant par l'adresse saisie
+- [x] Cocher **avec le texte relevé** sur une collection non publique fait refuser le manifeste, avec un message qui propose de citer plutôt que de publier
 
 ### Le dépôt, et son compte
 
-- [ ] Sans session ShareDocs ouverte, la ligne de dépôt n'offre PAS de bouton mais un lien « Se connecter à ShareDocs… », et une phrase qui dit qu'aucune session n'est ouverte
+**Sous propriétaire**, donc `claire` sur SA collection — déposer exige de POSSÉDER, pas de
+lire, et c'est l'autre moitié de la garde. Sans identifiants Huma-Num sous la main, seules
+les trois premières cases se cochent : laisser les autres vides et le DIRE, une case non
+cochée faute de décor n'étant pas un échec.
+
+- [x] Sans session ShareDocs ouverte, la ligne de dépôt n'offre PAS de bouton mais un lien « Se connecter à ShareDocs… », et une phrase qui dit qu'aucune session n'est ouverte
 - [ ] Ce lien ouvre l'Atelier avec la modale de connexion DÉJÀ dépliée, et un bouton « ← Retour » visible en haut
-- [ ] « ← Retour » ramène bien sur *Administration*, et non sur la page précédente au hasard
-- [ ] Une fois connecté, la ligne de dépôt montre le compte employé et retrouve son sélecteur et son bouton
-- [ ] Propriétaire, la ligne de dépôt propose les six artefacts, chacun d'un libellé distinct et lisible
-- [ ] Un dépôt réussi affiche le chemin ET le compte Huma-Num employé
-- [ ] Le compte affiché est bien celui attendu — le sien si une session personnelle est ouverte, `instance` sinon
-- [ ] Un dossier INEXISTANT affiche un message qui NOMME le dossier en cause, dit que le dépôt ne crée aucun dossier manquant, et rappelle qu'on attend un chemin relatif — pas un « 404 » nu
+      *(Non cochée le 2026-09-10, et le défaut est CONNU : la modale est un piège à focus, `#back-link` vit
+      dans le bandeau de la page, donc il est derrière elle. La sortie n'est pas un secret — la modale porte
+      un `Fermer ✕` —, mais elle demande deux clics et le premier parle de la BOÎTE, pas du TRAJET. Non
+      réparé exprès : la deuxième case de SHARE-2 supprime l'aller-retour lui-même, en ouvrant la session
+      depuis Administration. **Cette note se RETIRE le jour où SHARE-2 aboutit** — la case redeviendra soit
+      vraie, soit sans objet.)*
+- [x] « ← Retour » ramène bien sur *Administration*, et non sur la page précédente au hasard
+- [x] Une fois connecté, la ligne de dépôt montre le compte employé et retrouve son sélecteur et son bouton
+- [x] Propriétaire, la ligne de dépôt propose les six artefacts, chacun d'un libellé distinct et lisible
+- [x] Un dépôt réussi affiche le chemin ET le compte Huma-Num employé
+- [x] Le compte affiché est bien celui attendu — le sien si une session personnelle est ouverte, `instance` sinon
+- [x] Un dossier INEXISTANT affiche un message qui NOMME le dossier en cause, dit que le dépôt ne crée aucun dossier manquant, et rappelle qu'on attend un chemin relatif — pas un « 404 » nu
 - [ ] Un dossier en LECTURE SEULE affiche le message de ShareDocs sur le dossier non inscriptible, distinct du précédent
+      *(NON TESTABLE le 2026-09-10, faute de décor et non par échec : le compte d'essai a l'écriture partout
+      dans `@Shares`. Ce qu'il faudrait pour la jouer — un partage ouvert en lecture seule, ou un montage de
+      type `tools`. À NE PAS confondre avec `@Shares` lui-même, essayé ce jour-là : point de montage virtuel,
+      ShareDocs y répond **500** et non 403, donc c'est le catch-all `status >= 400` qui parle et la case
+      n'est pas exercée.)*
 
 ### Étroit, clavier, thèmes
 
-- [ ] À 375 px de large, aucune ligne du bloc ne déborde horizontalement ; les libellés passent à la ligne
-- [ ] Chaque bouton et chaque champ du bloc s'atteint à la tabulation, dans l'ordre visuel, avec un contour de focus visible
-- [ ] En thème sombre comme en clair, un message d'erreur du bloc reste lisible et n'est pas signalé par la seule couleur
-- [ ] Le champ d'adresse d'images et le sélecteur d'artefact portent un libellé annoncé par un lecteur d'écran
+**Sous l'identité qui voit le bloc le plus COMPLET** — propriétaire ou `admin` : la ligne de
+dépôt doit être à l'écran pour qu'on mesure sa largeur, sa tabulation et ses contrastes.
+
+- [x] À 375 px de large, aucune ligne du bloc ne déborde horizontalement ; les libellés passent à la ligne
+- [x] Chaque bouton et chaque champ du bloc s'atteint à la tabulation, dans l'ordre visuel, avec un contour de focus visible
+- [x] En thème sombre comme en clair, un message d'erreur du bloc reste lisible et n'est pas signalé par la seule couleur
+- [x] Le champ d'adresse d'images et le sélecteur d'artefact portent un libellé annoncé par un lecteur d'écran
