@@ -48,7 +48,8 @@ services:
       # demande, jamais pour trois mois.
       #
       # LES TROIS SONT REQUISES : une URL sans mot de passe ne fait pas une session, elle
-      # ne fait que pré-remplir un formulaire.
+      # ne fait que pré-remplir un formulaire. VIDES sur la production au 2026-09-10,
+      # exprès : la racine dépend du projet et ne se choisit pas encore à l'écran (SHARE-3).
       #
       # L'URL EST LA RACINE, et c'est la garde qui compte ici. Tout chemin demandé lui est
       # relatif, et `_join` refuse tout segment `..` — donc pointer le DOSSIER DU CORPUS
