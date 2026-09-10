@@ -44,6 +44,27 @@ la configuration livrée par INFRA-1, relue et non éprouvée.
 - [ ] **Ce que ça coûte, et pourquoi ça ne se rattrape pas tout seul** : l'outil date un chantier en cherchant son code dans les sujets de commit. La fresque montre donc INFRA-7 travaillée le 2026-09-07 alors que son sujet — la session — n'a JAMAIS reçu une ligne de code sous ce code ; et le durcissement du contrôle de déploiement est attribué à une fiche qui parle d'autre chose, c'est-à-dire attribué nulle part de juste
 - [ ] **Attendu : un des deux sujets change de code, et l'autre garde INFRA-7.** Le travail de déploiement n'a aujourd'hui AUCUNE fiche — `deployer.sh` est né sous `9ee9a98` sans code, `verifier_deploiement.py` sous INFRA-1 —, alors qu'il a désormais quatre scripts et deux modules de tests. Lui en ouvrir une est le candidat naturel ; le décider revient à l'équipe, et inventer une attribution serait pire que le désordre actuel
 
+## `inactivity` observé, sans l'avoir cherché — 2026-09-10
+
+La première case de la première zone demande ce que `inactivity: 1 hour` fait sur une
+session ordinaire. **La moitié serveur est mesurée**, relevée dans les journaux d'Authelia
+pendant la passe `repli-annuaire` : une session de la veille, présentée le lendemain
+matin, rend
+
+    level=info msg="Session for user not marked as remembered has exceeded configured
+    session inactivity" username=essai-sansgroupe
+
+suivi d'un renvoi anonyme au portail. Donc : la session est bien expirée CÔTÉ SERVEUR,
+Authelia le nomme explicitement, et le compte redevient `<anonymous>`.
+
+**Ce qui n'est pas mesuré, et que cette observation ne peut pas rendre** : ce que le
+portail redemande alors — mot de passe seul, ou mot de passe ET second facteur. Le compte
+observé est en `one_factor` (règle 4 d'`access_control`), donc il ne peut pas départager.
+Il faudrait la même attente sur un compte de `bd-admins`.
+
+La case reste donc ouverte, mais son attendu a rétréci : la mécanique d'expiration est
+établie, seul le parcours de réouverture ne l'est pas.
+
 ## Contexte
 
 Trois lignes gouvernent le confort réel, et ce n'est PAS la politique 2FA. Telles qu'elles

@@ -2,7 +2,7 @@
 passe: Repli de l'annuaire vers le fichier
 chantier: AUTH-7
 duree: 40 min
-derniere: 2026-09-07
+derniere: 2026-09-10
 ---
 
 # QA — le retour arrière existe-t-il ailleurs que dans un commentaire
@@ -42,9 +42,9 @@ shell : on n'est jamais enfermé dehors tant qu'on a la machine.
 - [ ] **Le mot de passe à employer est celui d'AVANT la bascule, pas celui d'aujourd'hui.** `users_database.yml` porte les condensés figés au 2026-09-07 : les mots de passe TEMPORAIRES posés à la création des comptes. Ceux qui ont été choisis depuis vivent dans LLDAP et n'ont jamais touché ce fichier. **C'est le piège de faux négatif de cette passe** — essayer son mot de passe courant échouera, et l'on conclura que le repli est mort alors qu'on aura simplement présenté la mauvaise clé
 - [ ] **Ce que la rotation ne ferme pas, si elle a lieu un jour.** Changer un mot de passe dans LLDAP ne touche pas ce fichier : son condensé reste celui d'avant, et basculer sur le repli le RÉADMET. Attendu : ou bien le condensé est regénéré ici aussi, ou bien c'est écrit et assumé. Aujourd'hui c'est sans gravité — les valeurs concernées sont des mots de passe temporaires déjà remplacés (constaté par l'équipe le 2026-09-07) —, mais la propriété tiendra encore le jour où elles ne le seront plus. Et `verifier_comptes.py` ne dira rien : il approuve une syntaxe, jamais une fraîcheur
 - [ ] **Une clé existe, et elle est en main.** Attendu : on nomme le login qu'on emploiera et l'on produit son mot de passe depuis le gestionnaire — pas « ce devait être l'ancien ». **Si personne ne l'a, la passe s'arrête ici, et c'est un RÉSULTAT** : le repli est nominal, et il faudra régénérer un condensé avant de le réputer disponible
-- [ ] **Le fichier de repli est encore LISIBLE par Authelia** — `python3 -c "import yaml; yaml.safe_load(open('users_database.yml'))"`, depuis `~/BD_ditor/deploy/authelia`. Ce n'est pas une précaution de forme : **`validate-config` ne lit PAS ce fichier** (mesuré le 2026-09-06 en y glissant une tabulation — « successfully », code 0), et depuis la bascule PLUS RIEN ne le lit. Une faute qu'on y aurait laissée est donc latente, et ne se découvrirait qu'au redémarrage, c'est-à-dire au pire moment. Un fichier cesse d'être contrôlé à l'instant précis où il cesse de servir
+- [ ] **Le fichier de repli est encore LISIBLE par Authelia** — `python3 -c "import yaml; yaml.safe_load(open('users_database.yml'))"`, depuis `~/BD_ditor/deploy/authelia`. Ce n'est pas une précaution de forme : **`validate-config` ne lit PAS ce fichier** (mesuré le 2026-09-06 en y glissant une tabulation — « successfully », code 0), et depuis la bascule PLUS RIEN ne le lit. Une faute qu'on y aurait laissée est donc latente, et ne se découvrirait qu'au redémarrage, c'est-à-dire au pire moment. Un fichier cesse d'être contrôlé à l'instant précis où il cesse de servir. **Préférer `python3 deploy/verifier_comptes.py` (INFRA-11), qui fait les DEUX contrôles** — celui-ci et celui de la case suivante — et qui existe précisément parce que ni `validate-config` ni un `safe_load` n'ont vu la panne du 2026-09-06 : la syntaxe était parfaite, c'est la VALEUR d'un condensé qui ne l'était pas. Ajouté le 2026-09-10 : la passe décrivait les deux contrôles à la main alors que l'outil les porte.
 - [ ] La syntaxe ne suffit pas, et c'est la panne du 2026-09-06 à 22:43 : un condensé portant le préfixe `Digest: ` rendu par `crypto hash generate` donne un YAML parfaitement valide et une VALEUR invalide — Authelia boucle au démarrage, six minutes de portail fermé. Attendu : aucune valeur de `password:` ne commence par autre chose que `$argon2id$`. À vérifier SANS afficher les condensés
-- [ ] La clé se vérifie SANS rien casser, ou l'on constate qu'elle ne se vérifie pas. Attendu à confirmer : `authelia crypto hash validate` existe en 4.39.22 et accepte le condensé en argument en demandant le mot de passe À L'INVITE — la commande exacte est recopiée ici telle qu'elle a répondu. **Jamais `--password` sur la ligne de commande** : l'historique du shell la garde
+- [ ] La clé se vérifie SANS rien casser, ou l'on constate qu'elle ne se vérifie pas. Attendu à confirmer : `authelia crypto hash validate` existe en 4.39.22 et accepte le condensé en argument en demandant le mot de passe À L'INVITE — la commande exacte est recopiée ici telle qu'elle a répondu. **Jamais `--password` sur la ligne de commande** : l'historique du shell la garde. **CONFIRMÉ le 2026-09-10, et la forme n'était pas celle qu'on supposait** — `--digest` n'existe pas ; le condensé se passe en argument APRÈS `--`, et sans `--password` la commande demande le mot de passe à l'invite. Telle qu'elle a répondu, depuis `~/BD_ditor/deploy` : `H=$(python3 -c "import yaml;print(yaml.safe_load(open('authelia/users_database.yml'))['users']['chercheur']['password'])")` puis `docker compose run --rm --entrypoint authelia authelia crypto hash validate -- "$H"` → « The password matches the digest. » Le condensé transite par une VARIABLE et n'est jamais affiché
 
 ### La bascule vers le fichier
 - [ ] `validate-config` accepte la configuration inversée, **dans un conteneur jetable**, AVANT tout redémarrage. C'est la garde qui a évité une coupure le 2026-09-07 en refusant le bloc `ldap:` privé de ses variables — la première fois qu'on l'employait
@@ -64,6 +64,56 @@ shell : on n'est jamais enfermé dehors tant qu'on a la machine.
 - [ ] **La liste des logins présents dans les DEUX backends est écrite ici, avec sa date.** Attendu au 2026-09-07 : les mêmes des deux côtés, le temps 1 les ayant recréés à l'identique. C'est cette coïncidence qui rend le repli complet, et elle expire à la première inscription faite dans l'annuaire seul
 - [ ] La conséquence est reportée dans `AUTH-7` : soit le repli est déclaré PARTIEL par écrit, soit toute création dans l'annuaire s'accompagne d'une ligne dans le fichier. La seconde option rétablit le geste en console que ce chantier veut supprimer — ce n'est donc pas un détail d'exploitation, c'est un arbitrage
 - [ ] La commande d'ajout au repli répond bien telle qu'elle est écrite. Les quatre fichiers qui nommaient `authelia/authelia:4.38` sont alignés sur `4.39.22` le 2026-09-07 (`test_une_seule_version_d_authelia_est_documentee` interdit la dérive), et la forme est passée à `-it` — mais alignée n'est pas éprouvée : personne n'a lancé la commande corrigée. C'est là qu'on ira le jour où il faudra ajouter un compte au repli
+
+## Ce que la passe a mesuré — 2026-09-10
+
+**Le repli EXISTE.** Éprouvé de bout en bout, dans les deux sens, sur l'instance en service.
+
+| ce qui était supposé | ce qui a été mesuré |
+|---|---|
+| une clé existe peut-être | `chercheur` : « The password matches the digest. » — vérifié SANS rien couper |
+| la coupure dure ? | **08:14:01 → 08:16 UTC**, dont **moins d'une seconde** de service |
+| l'appareil TOTP survit-il au sens RETOUR ? | oui — second facteur demandé, appareil déjà enrôlé accepté |
+| `bd-admins` traverse-t-il depuis les `groups:` du fichier ? | oui — `acces.admin: true` |
+| le retour à l'annuaire ? | `essai-sansgroupe` entre — il n'existe QUE dans LLDAP, donc c'est LLDAP qui répond |
+
+**Le chiffre de coupure se lit par sa COMPOSITION, pas par son total.** Deux minutes de
+bout en bout, dont une seconde de machine : `Shutdown complete` et `Startup complete`
+portent la même seconde, et tout le reste est un humain qui ouvre une fenêtre privée et
+tape un code TOTP. La question que la case posait — *utilisable à trois heures du matin ?* —
+a donc une réponse franche, et elle ne dépend pas de la machine.
+
+**Le compte discriminant vaut mieux que le compte évident.** La case demandait « un compte
+LLDAP entre de nouveau » ; `chercheur` existe dans les DEUX backends, donc son succès
+n'aurait pas dit lequel avait répondu. `essai-sansgroupe`, créé dans l'annuaire le
+2026-09-09 et absent du fichier, tranche. Même forme que la mesure d'AUTH-8 la veille : il
+faut deux points pour conclure, et l'un des deux doit être le point qui discrimine.
+
+**Et la divergence des populations est CONSOMMÉE.** Cette passe avait été écrite pour
+« dater la coïncidence pendant qu'elle tient encore » : au 2026-09-07 les deux backends
+portaient les mêmes logins. Au 2026-09-10 ce n'est plus vrai — le fichier porte
+**`chercheur` et `stagiaire`**, l'annuaire porte au moins ces deux-là plus
+`essai-sansgroupe` et les stagiaires en écriture. **Le repli authentifierait donc une
+population plus petite, ce qui ressemble à un succès.** C'est le seul constat de cette
+passe qui se dégrade tout seul avec le temps, et il s'est dégradé dans son propre délai de
+trois jours.
+
+## Ce que la passe a trouvé de biais, et qui n'est pas d'ici — 2026-09-10
+
+**La garde de l'arbre sale est TARDIVE, et on l'a appris en se trompant.** On attendait
+qu'un arbre sale fasse échouer la veille toutes les cinq minutes, ce qui aurait fermé une
+case d'INFRA-10 gratuitement. Il n'en est rien : les deux gardes sont EN SÉRIE, et
+`veille-deploiement.sh` sort en « rien à faire — main est à … » avant d'atteindre
+`deployer.sh`, seul à refuser sur un arbre sale. Tant que `main` ne bouge pas, une édition
+en place sur le VPS ne déclenche donc rien — ni avertissement, ni témoin. Le refus arrive
+au jour où l'on pousse, c'est-à-dire au moment où l'on voulait déployer. Reporté dans
+`INFRA-10`, dont la case reste OUVERTE : rien n'a échoué.
+
+**`inactivity` a été observé sans qu'on le cherche.** Une session d'hier sur
+`essai-sansgroupe`, présentée ce matin : *« Session for user not marked as remembered has
+exceeded configured session inactivity »*, puis renvoi anonyme au portail. Reporté dans
+`INFRA-7`, dont c'est une case ouverte — la moitié serveur est mesurée, la moitié écran
+(redemande-t-on le second facteur ?) ne l'est pas, ce compte étant en `one_factor`.
 
 ## Où reportent les constats
 

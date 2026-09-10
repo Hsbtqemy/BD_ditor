@@ -119,6 +119,42 @@ gardes : le silence se lit comme une approbation.
 - [ ] L'AUTRE BOUT reste hors de portée de l'application, et c'est assumé plutôt que résolu : `origin/main` vit dans le dépôt, l'app ne le connaît pas et n'ira pas le chercher (le déploiement se TIRE, aucune sortie vers GitHub). L'écran renvoie donc à `git log --oneline -1 origin/main` au lieu d'affirmer « à jour » — une phrase qu'il ne pourrait pas fonder serait le silence lu comme une approbation, exactement ce qui a laissé passer les six commits. Reste à décider si quelqu'un doit COMPARER automatiquement, et où : la veille du VPS tient les deux bouts toutes les cinq minutes, mais elle n'écrit rien (l'arbre resterait sale, cf. plus bas), donc l'endroit n'existe pas encore
 - [ ] L'arrêt du timer ne se constate que depuis le VPS : `systemctl stop bd-deploiement.timer` est le recours que `docs/exploitation.md` recommande en cas de doute, et il rétablit le déploiement manuel sans que la machine de développement en sache rien — le geste prudent recrée exactement la panne, en silence
 
+## La garde de l'arbre sale est TARDIVE — 2026-09-10
+
+**Trouvé en essayant de fermer une case, et l'essai a échoué pour une raison utile.** La
+passe `repli-annuaire` laisse l'arbre du VPS sale pendant une demi-heure. On attendait donc
+que la veille refuse toutes les cinq minutes — `deployer.sh` porte cette garde depuis la
+panne du 2026-09-05 —, ce qui aurait fermé gratuitement la case « un déploiement
+automatique qui échoue a été constaté au moins une fois pour de vrai ».
+
+Il ne s'est rien passé. Trois tirs, tous verts, `rien à faire — main est à 40ea44c`, et le
+dossier de témoin n'existe même pas : `~/.local/state/bd-deploiement/` est absent, ce qui
+confirme qu'aucun échec n'a jamais eu lieu depuis la pose.
+
+**Les deux gardes sont EN SÉRIE, et l'extérieure masque l'intérieure.**
+`veille-deploiement.sh` compare `main` à ce qui est déployé et sort AVANT d'appeler
+`deployer.sh` quand rien n'a bougé. La garde de l'arbre sale n'est donc atteignable que
+lorsque `main` avance.
+
+**Conséquence, et c'est le mode d'échec inverse de celui qu'on redoutait.** Une édition en
+place sur le serveur ne déclenche RIEN tant que personne ne pousse : ni avertissement, ni
+témoin, ni unité rouge. Elle reste invisible jusqu'au jour où `main` avance — et le refus
+tombe alors au moment précis où l'on voulait déployer. Ce n'est pas un écrasement
+silencieux, c'est un blocage DIFFÉRÉ, et il se manifeste au plus mauvais moment possible.
+
+**Les deux cases d'observation restent donc OUVERTES**, et elles le resteront tant qu'un
+vrai échec ne se produira pas. On ne peut pas le provoquer proprement : il faudrait pousser
+sur `main` en laissant l'arbre du VPS sale, c'est-à-dire fabriquer exprès la situation
+qu'on veut éviter. Écrit ici pour qu'on ne réessaie pas la même chose en croyant à un
+oubli.
+
+**Et le document d'exploitation disait le contraire.** `docs/exploitation.md` portait
+encore « ### Le déploiement automatique (INFRA-10) — PAS ENCORE POSÉ » et « aujourd'hui,
+cela ne déclenche rien », trois jours après la pose. Corrigé le 2026-09-10. Cette section
+a désormais menti dans les DEUX sens — au présent avant d'exister, au passé après —, et
+c'est la même faute : un guide d'exploitation décrit un ÉTAT à quelqu'un qui l'ouvre parce
+qu'il ne sait pas.
+
 ## Contexte
 
 **Le travail était déjà fait, il ne manquait qu'un déclencheur.** `deployer.sh` EST le
