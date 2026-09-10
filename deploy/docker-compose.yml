@@ -166,7 +166,27 @@ services:
   # `UID`/`GID` et non `PUID`/`PGID` : LLDAP n'emploie pas les mêmes noms
   # qu'Authelia. Même raison en revanche — le volume lui appartient.
   lldap:
-    image: lldap/lldap:stable
+    # Version EXACTE, et non l'étiquette `stable` qui précédait (AUTH-7, 2026-09-10).
+    # C'est la leçon d'INFRA-9, appliquée au second point d'entrée de l'instance — mais
+    # le défaut est PIRE ici, et il faut voir en quoi. `authelia:4.38` était une mineure
+    # flottante : elle suivait fidèlement une branche, laquelle avait cessé de bouger.
+    # `stable` n'est pas une version du tout, c'est un LABEL mobile — rien n'y borne le
+    # saut, pas même un majeur. L'annuaire pouvait donc changer de modèle de données sous
+    # nos pieds au premier `pull`, sur le service qui authentifie tout le monde depuis la
+    # bascule du 2026-09-07.
+    #
+    # `-alpine` est délibéré, pas un détail de copie : c'est la variante qui TOURNAIT,
+    # relevée sur l'instance le 2026-09-10 — `org.opencontainers.image.version` rendait
+    # `v0.6.3-alpine`, image `sha256:2a8454b668c1aba7157e832eab0e242e1e7eb5fb7591d7e7774ba05286511ca8`.
+    # Épingler `v0.6.3` tout court aurait changé l'image de base en silence, sous couvert
+    # de figer ce qui existe : une épingle doit reproduire l'état, pas le corriger.
+    #
+    # Le coût est le même qu'avec Authelia, et il est assumé : plus rien n'arrive tout
+    # seul, monter devient un GESTE. Contrepartie connue — le schéma de stockage d'LLDAP
+    # a déjà migré jusqu'à 11 sur une base neuve, et une montée devra se préparer comme
+    # celle du 2026-09-06 : sauvegarde d'abord, notes de version lues, retour arrière
+    # établi AVANT d'en avoir besoin.
+    image: lldap/lldap:v0.6.3-alpine
     container_name: bd-lldap
     restart: unless-stopped
     environment:
