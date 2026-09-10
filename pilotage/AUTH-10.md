@@ -187,6 +187,36 @@ chiffre est dans `AUTH-7`, et c'est le pic, pas le total, qui décide.
 **Le remède le moins cher reste C** (journaliser + surseoir à l'effacement), et il ne
 demande aucune décision de modèle de droits — s'il faut agir vite un jour, c'est par là.
 
+## Ce qui rouvrira la question sans la décider — 2026-09-10
+
+**Ne rien engager suppose qu'on n'ouvre pas le modèle de droits EXPRÈS. Cela ne suppose
+pas que le code reste immobile, et il ne le restera pas.** Trois chantiers ouverts portent
+déjà une case qui atterrit dans ce code-ci, et aucun ne mentionnait AUTH-10 avant ce jour.
+
+- **`AUTH-6`** en porte deux. Sa case sur le compte COLLECTIF constate qu'`undo.py` filtre
+  par AGENT, donc que sous un login partagé n'importe qui défait l'acte d'un autre : qui la
+  traitera sera DANS `undo.py`, à quelques lignes de la branche `token_correction` du
+  remède A1 — dont le journal porte déjà tout ce qu'il faut. Le risque n'est pas le conflit,
+  c'est qu'un remède se fasse sans être déclaré, ou qu'on passe à côté en y étant. Ses deux
+  autres cases — un groupe renommé ou supprimé dans l'annuaire, une collection dont l'unique
+  propriétaire perd son groupe — travaillent la sémantique de `collection_acces`,
+  c'est-à-dire la table que le remède B modifierait.
+- **`UX-11`** construit une Bibliothèque qui sait « ouvrir et supprimer une planche », et
+  cite déjà l'asymétrie d'AUTH-2 — le client ne reçoit pas `peut_ecrire` et découvre un
+  refus en recevant son 403. C'est exactement la famille de routes que cette fiche décrit,
+  et l'écran qui la rendra atteignable en deux clics.
+- **`COL-1`** fera circuler le travail ENTRE collections : c'est la famille « vocabulaire »,
+  la seule des quatre à DÉBORDER la collection où l'on travaille.
+
+**Ce que ça change à la décision : rien. Ce que ça change à sa TENUE : elle doit être
+lisible depuis ces chantiers-là et non depuis cette fiche seule** — une décision de
+différer qui ne dit pas ce qui la rouvrira se fait contourner sans que personne l'ait
+voulu. Les trois fiches portent désormais un renvoi ici.
+
+**Et le remède C ne croise aucun d'eux** : journaliser une suppression et surseoir à
+l'effacement ne touche ni `collection_acces`, ni `undo.py`, ni le modèle de droits. Il
+reste disponible à tout moment, sans rien attendre ni bloquer.
+
 ## Contexte
 
 **Pourquoi ça se pose maintenant et pas avant.** Le modèle à trois niveaux répond à

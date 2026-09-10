@@ -121,3 +121,9 @@ fichier de comptes actuel, avec LLDAP, ou avec Authentik. Il ne touche pas non p
 que les faire jouer ensemble. Le seul lien est de sens : si l'inscription en nombre
 devient réelle (`AUTH-7`), l'incubateur devient le lieu naturel où ces arrivants
 travaillent.
+
+**Renvoi vers `AUTH-10`, posé le 2026-09-10.** Faire circuler le travail entre collections
+touche la famille « vocabulaire » — la seule des quatre qu'AUTH-10 recense à DÉBORDER la
+collection où l'on travaille, et la moins couverte par le niveau `ecriture`. AUTH-10 est
+différée sans être engagée ; si ce chantier redessine ce qui traverse une frontière de
+collection, la question s'y posera avant de se poser là-bas.

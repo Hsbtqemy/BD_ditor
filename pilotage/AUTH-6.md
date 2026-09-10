@@ -116,3 +116,10 @@ temps de saisie ne justifie pas la bascule : trente arrivants restent trente for
 Ce qui a décidé, c'est que le geste cessait d'exiger un shell sur le VPS — déléguer la
 création d'un compte revenait à déléguer un accès serveur. La limite du backend fichier
 n'était pas sa CAPACITÉ, c'était QUI pouvait s'en servir.
+
+**Renvoi vers `AUTH-10`, posé le 2026-09-10.** Trois cases de cette fiche atterrissent dans
+le code qu'AUTH-10 décrit : celle du compte collectif ouvre `undo.py` — où la branche du
+remède A1 attend, le journal portant déjà `avant` et `apres` sur `token_correction` —, et
+celles du groupe renommé ou supprimé travaillent la sémantique de `collection_acces`, la
+table qu'un quatrième niveau modifierait. AUTH-10 est `à venir` et l'équipe a décidé le
+2026-09-10 de ne rien y engager ; y toucher au passage est possible, mais alors DÉCLARÉ.
