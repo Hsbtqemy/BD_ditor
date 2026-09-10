@@ -1,4 +1,4 @@
-"""INFRA-7 — le contrôle de déploiement doit distinguer « non » de « je n'ai pas pu demander ».
+"""INFRA-12 — le contrôle de déploiement doit distinguer « non » de « je n'ai pas pu demander ».
 
 Ce module existe à cause d'une sortie lue le 2026-09-07 sur l'instance :
 

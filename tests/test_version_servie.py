@@ -1,6 +1,6 @@
 """INFRA-10 — quel commit sert cette instance, et qui a le droit de le savoir.
 
-La donnée existait depuis INFRA-7 et ne quittait jamais `deployer.sh` : elle n'était
+La donnée existait depuis INFRA-12 et ne quittait jamais `deployer.sh` : elle n'était
 lisible qu'au cours d'un déploiement, c'est-à-dire au seul instant où quelqu'un regardait
 déjà. Le 2026-09-07, l'instance a servi six commits de retard — dont une fonctionnalité
 livrée, testée et annoncée — sans que rien ne le dise, parce que l'écart n'avait aucun
