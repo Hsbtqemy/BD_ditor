@@ -11,22 +11,43 @@ une collection déclarée `public` ; l'écran d'Administration **AFFICHE** `stat
 `tools/gerer_collections.py modifier 1 --statut public`. Décidé dans la foulée : il faut une
 interface, **probablement dans la Bibliothèque**.
 
-**Le chantier est plus petit qu'il n'en a l'air, et c'est le fait à retenir avant de
-l'ouvrir.** `PATCH /api/collections/{id}` existe, il est **gardé** (`_get_collection(...,
+**Rien à écrire côté serveur, et c'est le seul point sur lequel le cadrage d'origine
+tenait.** `PATCH /api/collections/{id}` existe, il est **gardé** (`_get_collection(...,
 administrer=True)`, donc propriétaire), il valide le vocabulaire contrôlé de
 `statut_diffusion` (422 nommant les valeurs admises) et il protège le nom réservé de la
 collection de repli. Dix champs sont déjà acceptés par `CollectionUpdate` : `nom`,
 `description`, `licence_defaut`, `base_legale`, `statut_diffusion`, `date_embargo`,
-`date_debut`, `date_fin`, `referent_nom`, `referent_contact`. **Il n'y a rien à écrire côté
-serveur** — c'est un chantier de front.
+`date_debut`, `date_fin`, `referent_nom`, `referent_contact`.
+
+**Mais « plus petit qu'il n'en a l'air » était FAUX, et l'a été jusqu'au 2026-09-10.**
+Cette fiche a été écrite, puis arbitrée une première fois, sans que personne ouvre
+`static/administration.js`. Mesuré depuis : le panneau **👥 Collections** ne fait pas
+qu'AFFICHER — il **crée** une collection (`POST /api/collections`), la **renomme**
+(`PATCH`, champ `nom`), la **supprime** (`DELETE`), gère ses **accès**, et pose son
+**référent** (`referent_nom`, `referent_contact`). Trois des dix champs sont donc déjà
+éditables à l'écran, plus l'existence même de l'objet.
+
+Il ne manque que **sept champs** : `description`, `date_debut`, `date_fin`, et le bloc qui
+compte — `statut_diffusion`, `date_embargo`, `licence_defaut`, `base_legale`, c'est-à-dire
+ce qui décide de ce qui SORT de l'instance. Et comme la frontière retenue place ces
+champs-là dans la Bibliothèque, **le chantier n'est pas un ajout : c'est un
+DÉPLACEMENT** — plus gros que ce qui était annoncé, et portant sur du code qui marche.
 
 ## Reste
 
 ### Trancher, avant d'écrire une ligne
-- [x] **Où vit l'écran, et la raison est écrite — tranché le 2026-09-10 : la BIBLIOTHÈQUE.** La frontière, qui est l'attendu de cette case et non la préférence : **_qui entre_ relève de l'INSTANCE et vit dans Administration ; _ce que la collection EST_ relève du CORPUS et vit dans la Bibliothèque.** Le panneau **👥 Collections** (AUTH-3) garde donc les accès, et les dix champs de `CollectionUpdate` — régime de diffusion compris — vont à la Bibliothèque. La phrase se vérifie sur le cas limite qui la teste le mieux : `statut_diffusion` décide de ce qui SORT, ce qui sonne administratif, mais il décrit ce que la collection EST vis-à-vis du dehors et se lit à côté de sa licence et de son embargo — pas à côté de la liste de ses membres. Cohérent avec UX-10, dont Administration porte « ce qui porte sur l'INSTANCE et non sur un album »
+- [x] **Où vit l'écran, et la raison est écrite — tranché le 2026-09-10 : la BIBLIOTHÈQUE.** La frontière, qui est l'attendu de cette case et non la préférence : **_qui entre_ relève de l'INSTANCE et vit dans Administration ; _ce que la collection EST_ relève du CORPUS et vit dans la Bibliothèque.** Le panneau **👥 Collections** (AUTH-3) garde donc les accès, et les dix champs de `CollectionUpdate` — régime de diffusion compris — vont à la Bibliothèque. La phrase se vérifie sur le cas limite qui la teste le mieux : `statut_diffusion` décide de ce qui SORT, ce qui sonne administratif, mais il décrit ce que la collection EST vis-à-vis du dehors et se lit à côté de sa licence et de son embargo — pas à côté de la liste de ses membres. Cohérent avec UX-10, dont Administration porte « ce qui porte sur l'INSTANCE et non sur un album ». **Arbitrée DEUX FOIS le même jour, et la seconde est celle qui vaut** : la première l'a été sans avoir lu `static/administration.js`, donc sans savoir que le panneau éditait déjà le nom — « ce que la collection EST » — et le référent, qui n'est pas « qui entre ». La frontière était contredite dès le premier jour par du code qui marche. Remise à l'équipe avec la mesure, elle a été TENUE : la Bibliothèque reçoit les sept champs manquants **et** récupère le nom, la création, la suppression et le référent ; Administration ne garde que les accès et la vue des comptes
+
 - [ ] **Quels champs entrent dans le formulaire, et lesquels restent dehors.** Les dix de `CollectionUpdate` ne sont pas de même nature : descripteurs (`nom`, `description`, `date_debut`/`date_fin`), droits (`licence_defaut`, `base_legale`, `statut_diffusion`, `date_embargo`), exploitation (`referent_nom`, `referent_contact`). Un formulaire plat les mettrait sur le même plan alors qu'ils n'engagent pas la même chose
 - [ ] **La garde de l'écran est celle de l'ACTE, et elle est nommée.** Le serveur exige `peut_administrer` — propriétaire, pas simple écriture —, et c'est justifié : ces champs décident de ce qui SORT de l'instance (DROIT-1). L'écran doit poser sa propre question plutôt que d'hériter de celle de son contenant : c'est la leçon d'AUTH-4, où le référent, une simple adresse, s'est retrouvé derrière la garde du PARTAGE
 - [ ] **Le sort de `tools/gerer_collections.py` est décidé et écrit.** Il ne disparaît pas — c'est ainsi qu'un script agit —, donc deux portes mènent au même champ. `statut_diffusion` a déjà vécu cet état : l'outil validait, la route non, et « un champ à deux portes dont une seule contrôle n'est pas contrôlé ». La validation est partagée depuis (`config.STATUTS_DIFFUSION`) ; toute règle ajoutée par l'écran devra l'être au même endroit
+
+### Le déménagement, et ce qu'il coûte
+- [ ] **Ce qui part et ce qui reste est écrit acte par acte, avant de toucher au premier fichier.** Partent vers la Bibliothèque : créer, renommer, supprimer, le référent, et les sept champs absents. Restent en Administration : les accès (AUTH-3) et la vue des comptes (AUTH-7). Attendu : une liste, pas une intention — le panneau actuel mêle les deux familles dans le même bloc, et c'est sur cette liste que le diff se lira
+- [ ] **La création n'exige AUCUN droit, l'édition en exige un, et ce sera le même écran.** `POST /api/collections` est ouvert à qui a une identité — délibéré, sa docstring le dit : « refuser la création à qui n'a encore rien rendrait l'application inutilisable au premier jour de chacun ». `PATCH` et `DELETE` exigent `administrer=True`. Un écran qui poserait UNE garde pour tout le bloc masquerait le bouton de création à tout arrivant, et l'erreur échouerait en se FERMANT — c'est mot pour mot AUTH-4, où le référent s'est retrouvé derrière la garde du partage. Attendu : deux questions distinctes dans le même écran, et une épreuve sous une identité qui ne possède rien
+- [ ] **Rien ne subsiste en double.** Le panneau d'Administration cesse de porter le nom, la création, la suppression et le référent le jour où la Bibliothèque les prend. Deux portes vers le même champ sont exactement ce que la frontière voulait éviter, et `statut_diffusion` a déjà vécu cet état — l'outil validait, la route non
+- [ ] **Le 409 de la suppression reste lisible après le déménagement** : supprimer une collection est refusé si un album se retrouvait sans aucune collection, et le message NOMME les albums isolés. L'écran doit rendre ce refus, pas le reproduire — la règle vit dans `routes/collections.py`, et l'y redupliquer serait la faute que COL-2 dénonce ailleurs
+- [ ] **Ce que le déménagement coûte est écrit AVANT d'être payé.** On déplace du code éprouvé pour une raison d'organisation, et un propriétaire gérera désormais les accès dans un écran et tout le reste dans un autre. Attendu : que ce partage se dise en une phrase À L'ÉCRAN, dans les deux sens — sinon on aura remplacé la question « où change-t-on le régime ? » par « où donne-t-on l'accès ? », et gagné un déménagement pour rien
 
 ### Les trois pièges du formulaire, qui ne se devinent pas
 - [ ] **`date_embargo` RETIENT, elle ne PROMEUT jamais.** Une échéance passée ne rend rien publiable toute seule, et une date ILLISIBLE retient aussi. Un champ de date qui suggérerait le contraire ferait passer une faute de frappe pour une décision. L'écran doit dire ce que la date fait, pas seulement l'accepter
