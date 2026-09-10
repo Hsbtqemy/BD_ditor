@@ -64,6 +64,15 @@ ce que ce compte voit, toute identité de l'application peut le parcourir.
 le seul chemin d'écriture distante est le dépôt de sauvegarde, réservé aux administrateurs
 (DROIT-1). Câbler ce compte n'ouvre donc aucun droit d'écriture chez Huma-Num.
 
+**Les trois variables sont câblées et laissées VIDES, exprès — même jour, même heure.**
+Le raisonnement ci-dessus (« le compte d'instance se recharge seul ») décrit ce que le
+mécanisme FAIT, pas ce que la production a. L'équipe a décidé de ne rien y mettre pour
+l'instant : la racine utile dépend du projet et ne se choisit pas encore à l'écran, donc la
+fixer reviendrait à figer un projet ou à tout exposer. **La décision de ne pas persister ne
+dépend pas de ce réglage** — elle tient à ce que la population des sessions personnelles
+restera minuscule —, mais il ne faut pas lire cette fiche comme si ShareDocs était
+configuré. Il ne l'est pas, et `docs/exploitation.md` dit ce que ça coûte.
+
 **Ce qui reste ouvert ailleurs** : l'idée d'un compte choisi par les administrateurs de
 COLLECTION est partie dans `SHARE-3` — elle ne se règle pas par configuration, un album
 vivant dans plusieurs collections depuis AUTH-3.
