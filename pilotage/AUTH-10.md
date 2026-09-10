@@ -23,12 +23,15 @@ entier, et `undo.py` ne connaît que quatre tables (`regions`, `annotations`,
 `bulle_locuteur`, `personnage_presence`) : cette suppression-là ne se défait pas. Le seul
 retour est la sauvegarde, c'est-à-dire hors de l'application.
 
-**Cette dernière phrase est RÉFUTÉE depuis le 2026-09-10, et par cette fiche elle-même** —
-voir « Le fait trouvé en chiffrant ». La sauvegarde ne contient pas les images, la
-suppression d'album efface les masters du disque et n'inscrit aucun événement au journal.
-Il n'y a donc pas de retour du tout. La phrase est gardée telle quelle parce que c'est
-elle qu'on a crue en ouvrant le chantier, et que la corriger sur place ferait disparaître
-la raison pour laquelle on a cherché ailleurs.
+**Cette dernière phrase est INEXACTE, et de deux façons opposées** (mesuré le 2026-09-10,
+voir « Le fait trouvé en chiffrant »). La sauvegarde ne suffit pas : elle ne contient
+aucune image, la suppression efface les masters du disque et n'inscrit **aucun** événement
+au journal. Mais elle n'est pas non plus le seul retour : l'équipe garde une copie des
+masters hors du VPS. Le vrai coût est donc entre les deux — une restauration de base, donc
+la perte de ce qui a été annoté depuis la dernière sauvegarde MANUELLE, plus un re-dépôt
+des images. La phrase est gardée telle quelle parce que c'est elle qu'on a crue en ouvrant
+le chantier, et que la corriger sur place ferait disparaître la raison pour laquelle on a
+cherché ailleurs.
 
 ## L'inventaire, mesuré — 73 routes mutantes
 
@@ -57,7 +60,7 @@ trois écarts restants sont tous à l'intérieur d'`ecriture`.
 
 ### Trancher — et la première décision est de ne rien faire, éventuellement
 - [x] **Le REMÈDE MOINS CHER est évalué avant le remède structurel** — chiffré le 2026-09-10, section « Les deux remèdes, chiffrés » ci-dessous. **Le résultat contredit l'énoncé de cette case** : le remède de l'undo ne supprime pas « la moitié du problème », il porte sur 2 routes de la famille où le dommage est DÉJÀ réversible, et ne touche pas d'un cheveu les 17 routes de structure. Les deux remèdes ne sont donc pas substituables, et le chiffrage a fait apparaître un TROISIÈME remède, moins cher que les deux et qui vise le dommage réel
-- [ ] **Trancher entre les trois remèdes, maintenant qu'ils sont chiffrés.** L'ordre n'est plus une question de coût mais de ce que chacun ACHÈTE : la trace et le sursis (remède C) rendent une suppression d'album rattrapable ; le niveau `contribution` (remède B) empêche que la question se pose ; l'alignement de l'undo (remède A) rend homogène une famille qui ne détruit rien d'irremplaçable. C et B ne s'excluent pas — C protège les gens qui ont légitimement le droit de supprimer, et aucun niveau de droits ne les couvre
+- [ ] **Trancher entre les trois remèdes, maintenant qu'ils sont chiffrés.** L'ordre n'est plus une question de coût mais de ce que chacun ACHÈTE : la trace et le sursis (remède C) rendent une suppression d'album rattrapable ; le niveau `contribution` (remède B) empêche que la question se pose ; l'alignement de l'undo (remède A) rend homogène une famille qui ne détruit rien d'irremplaçable. C et B ne s'excluent pas — C protège les gens qui ont légitimement le droit de supprimer, et aucun niveau de droits ne les couvre. **Cette case reste ouverte EXPRÈS : le 2026-09-10, l'équipe a décidé de ne rien engager pour l'instant**, section « La décision du 2026-09-10 » — l'exposition qui demeure y est écrite, pour qu'elle soit acceptée et non subie
 - [ ] **La décision d'ajouter un niveau est prise avec son coût écrit.** Un quatrième niveau est une quatrième occasion de refus SILENCIEUX : `Portee.__init__` cumule à un seul endroit, et AUTH-3 a déjà nommé le mode d'échec — « un `in portee.ecriture` qui oublierait les propriétaires serait un refus silencieux et parfaitement crédible ». Ce défaut ne casse aucun test
 - [ ] **Si un niveau est retenu, c'est `contribution`, et la raison est STRUCTURELLE et non ergonomique.** Le cumul de ce modèle est dérivé d'un ORDRE, pas stocké : `collection_acces` a pour clé primaire `(collection_id, genre, principal)` — une ligne, un seul `niveau` — et `Portee.__init__` fait `ecriture |= propriete` puis `lecture |= ecriture`. Seul ce qui s'ORDONNE peut donc s'y insérer. `lecture ⊂ contribution ⊂ ecriture ⊂ proprietaire` s'ordonne ; « vocabulaire » et « structure » ne s'ordonnent pas entre eux, et leur imposer un rang inventerait une hiérarchie que le travail n'a pas
 - [ ] **Le périmètre exact de `contribution` est écrit route par route**, et il ne se déduit pas de l'objet : les 13 routes de région, corrections de tokens comprises. L'attendu est une LISTE, parce que « les routes de région » a déjà deux exceptions connues
@@ -128,9 +131,26 @@ l'application ». **C'est trop optimiste, et de loin.** Mesuré en lisant `delet
   le disque est dominé par les masters, dizaines à centaines de Go.
 
 **Donc restaurer la sauvegarde après une suppression d'album rend une base qui pointe vers
-des fichiers absents.** Et les masters sont la seule chose du corpus qui ne se refabrique
-pas : tout le reste — dérivés, régions, tokens, index — se recalcule à partir d'eux ; eux
-sont des numérisations d'albums physiques, qu'il faudrait re-scanner.
+des fichiers absents.**
+
+**Ce que ça coûte VRAIMENT — corrigé le 2026-09-10, quelques minutes après avoir été
+écrit trop noir.** Cette section concluait qu'il faudrait re-scanner les albums physiques.
+C'est faux : l'équipe garde une copie des masters hors du VPS, et `corpus/` n'est pas
+l'unique exemplaire. La perte n'est donc pas le corpus, c'est **le temps de re-déposer les
+images et de réaligner ce qui pend à leur identifiant** — un album supprimé emporte ses
+planches et ses régions par CASCADE, donc les annotations avec. Deux choses restent vraies
+et suffisent à motiver le chantier : la suppression n'inscrit **aucun** événement, donc le
+journal ne dira jamais qui l'a faite ni sur quoi ; et le retour passe par une restauration
+de base, c'est-à-dire par la perte de tout ce qui a été annoté depuis la dernière
+sauvegarde — **qui est un geste MANUEL** (`deployer.sh` le dit lui-même : il ne sauvegarde
+pas), donc d'une fraîcheur qui dépend de ce que quelqu'un a pensé à faire.
+
+**La leçon d'écriture, notée parce qu'elle se répète** : la phrase fautive n'était pas une
+mesure, c'était une déduction — de « la sauvegarde ne contient pas d'images » à « les
+images n'existent nulle part ailleurs ». Le dépôt savait la première ; la seconde
+demandait de connaître les habitudes d'une équipe, ce qu'aucun fichier ne dit. Même forme
+que la lecture de sources réfutée par AUTH-8 la veille : *lire un dépôt n'est pas mesurer
+un déploiement*.
 
 **Le remède C, qui n'était pas dans la fiche et qui coûte moins que les deux autres.**
 Journaliser la suppression (l'instantané profond existe déjà pour les régions, le patron
@@ -140,6 +160,32 @@ modèle de droits**, ne crée aucune occasion de refus silencieux, et il protèg
 que B ne protégera jamais : la personne qui a LÉGITIMEMENT le droit de supprimer et se
 trompe d'album. Un niveau de droits répond à « qui » ; il ne répond pas à « je n'avais pas
 vu que c'était celui-là ».
+
+## La décision du 2026-09-10 : on ne fait rien maintenant
+
+**Aucun des trois remèdes n'est engagé**, et le chantier reste `à venir`. Décidé par
+l'équipe le jour même du chiffrage, en connaissance de ce qui suit — c'est-à-dire pas par
+inadvertance, et c'est toute la différence entre une exposition acceptée et une exposition
+ignorée.
+
+**Ce qui reste ouvert en production pendant ce temps**, écrit ici pour que la reprise
+n'ait pas à le redécouvrir :
+
+- des comptes en `ecriture` — des stagiaires, et c'est voulu — peuvent supprimer un album
+  ou une planche ;
+- l'acte n'inscrit aucun événement au journal : ni auteur, ni date, ni instantané ;
+- il efface les fichiers du disque dans le même geste, sans sursis ;
+- le retour existe, mais il coûte une restauration de base (donc la perte des annotations
+  postérieures à la dernière sauvegarde manuelle) plus un re-dépôt des images depuis la
+  copie tenue hors du VPS.
+
+**Ce qui rend l'attente tenable** : la copie hors VPS existe, la population concernée est
+petite et connue, et rien n'indique que le cas se soit produit. **Ce qui la rendrait
+intenable** : un premier incident, ou l'arrivée d'une promotion de trente personnes — le
+chiffre est dans `AUTH-7`, et c'est le pic, pas le total, qui décide.
+
+**Le remède le moins cher reste C** (journaliser + surseoir à l'effacement), et il ne
+demande aucune décision de modèle de droits — s'il faut agir vite un jour, c'est par là.
 
 ## Contexte
 
