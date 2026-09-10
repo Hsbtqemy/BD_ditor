@@ -75,7 +75,7 @@ Le mécanisme lui-même n'a pas bougé depuis `e0314b9` — écrit, éprouvé LO
 (`deploy/veille-deploiement.sh`, deux unités systemd, douze tests sur deux vrais dépôts
 git), **jamais tourné sur le VPS**. C'est la limite à garder en tête en lisant le reste.
 
-**Point de départ** — 2026-09-06. `deployer.sh` fait bien son travail depuis INFRA-7, mais
+**Point de départ** — 2026-09-06. `deployer.sh` fait bien son travail depuis INFRA-12, mais
 il faut ouvrir une session SSH et penser à le lancer. La question posée : GitHub pourrait-il
 déployer sur poussée de `main` ? La réponse retenue est OUI pour le déclenchement, NON pour
 GitHub — le déploiement se TIRE.
