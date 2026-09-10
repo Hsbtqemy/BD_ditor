@@ -40,6 +40,29 @@ services:
       # collections ouvertes pour eux dans `collection_acces` — et une instance neuve n'en
       # ouvre aucune, donc SANS au moins un administrateur, personne ne voit rien.
       # - BD_AUTH_ADMIN_GROUPS=bd-admins   # défaut ; décommenter pour changer de nom
+      # SHARE-1 : le compte ShareDocs de l'INSTANCE. Il se charge de l'environnement au
+      # premier accès — sans clic, sans administrateur —, et c'est ce qui en fait un repli
+      # pour tout le monde : « la mienne si j'en ai une, celle de l'instance sinon ».
+      # Sans lui, quiconque n'a pas de compte Huma-Num personnel ne peut NI parcourir NI
+      # importer, et les stagiaires n'en auront pas — un compte ShareDocs s'ouvre à la
+      # demande, jamais pour trois mois.
+      #
+      # LES TROIS SONT REQUISES : une URL sans mot de passe ne fait pas une session, elle
+      # ne fait que pré-remplir un formulaire.
+      #
+      # L'URL EST LA RACINE, et c'est la garde qui compte ici. Tout chemin demandé lui est
+      # relatif, et `_join` refuse tout segment `..` — donc pointer le DOSSIER DU CORPUS
+      # plutôt que la racine du compte confine réellement : ni `@Home`, ni `@Shares`, juste
+      # ce dossier et ses sous-dossiers. C'est nécessaire parce que `GET /api/sharedocs/liste`
+      # n'a AUCUNE garde d'administrateur : ce que ce compte voit, toute personne ayant une
+      # identité dans l'application peut le parcourir.
+      #
+      # Vers ShareDocs, un non-administrateur ne peut qu'AVALER : `importer` exige
+      # l'écriture sur l'album visé, et le seul chemin d'écriture distante — le dépôt de
+      # sauvegarde — est réservé aux administrateurs (DROIT-1).
+      - BD_SHAREDOCS_URL=${BD_SHAREDOCS_URL:-}
+      - BD_SHAREDOCS_USER=${BD_SHAREDOCS_USER:-}
+      - BD_SHAREDOCS_PASS=${BD_SHAREDOCS_PASS:-}
       # AUTH-4 : à qui écrire quand on est bloqué. Le SEUL référent lisible par une portée
       # VIDE — donc par la personne que le bandeau envoie « demander un accès » sans lui
       # dire à qui. Il est déclaratif : l'app ne connaît les groupes que de la personne qui
