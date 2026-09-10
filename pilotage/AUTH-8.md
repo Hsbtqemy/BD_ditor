@@ -1,12 +1,20 @@
 ---
 chantier: AUTH-8
-statut: interrompu
+statut: livré
 ---
 
 # AUTH-8 — « aucun groupe » recouvre deux situations, et le code les écrase
 
-**Arrêté sur** — 2026-09-09, mesure sur l'instance, **sans commit de code** (le dernier
-reste `a7afa30`) : **la table lue dans les sources est FAUSSE pour ce déploiement**, et la
+**Arrêté sur** — 2026-09-10, `830675a` : **la réparation est faite, et la passe de revue
+a trouvé l'affirmation à QUATRE endroits au lieu d'un.** La ligne technique rapporte
+désormais le fait et sa limite mesurée au lieu d'en tirer une cause ; le test ne verrouille
+plus aucune formulation mais deux PROPRIÉTÉS ; `CLAUDE.md`, `docs/modele-et-droits.md`,
+`docs/deploiement-docker.md` et `tools/faux_proxy_auth.py` cessent de dire ce que la mesure
+a réfuté. Détail en § La réparation. Reste une seule case, et elle ne borde rien : savoir
+qui, d'Authelia ou de Caddy, avale l'en-tête vide.
+
+**État antérieur — 2026-09-09**, mesure sur l'instance, **sans commit de code** (le dernier
+était alors `a7afa30`) : **la table lue dans les sources est FAUSSE pour ce déploiement**, et la
 branche qu'elle justifiait accuse à tort. Un compte sans aucun groupe ne reçoit pas
 `Remote-Groups` VIDE — il ne le reçoit pas du tout, et le bandeau lui annonce donc « les
 accès par groupe sont sans effet — à vérifier côté proxy » alors que rien n'est cassé. On
@@ -83,36 +91,42 @@ l'application ne savait pas isoler.
       que personne ne rejoue la consigne en croyant à un oubli
 
 ### Ce que la mesure oblige à défaire
-- [ ] La branche `entete_groupes === false` de `static/theme.js` cesse d'affirmer « les
-      accès par groupe sont sans effet » et de renvoyer « côté proxy » : mesuré, cet état
-      est celui d'un compte SANS GROUPE, pas celui d'une panne. Elle se replie sur
-      l'observation nue — « Aucun groupe reçu. », ce que la branche `null` dit déjà
-- [ ] Le test qui verrouille la distinction à l'écran est réécrit AVEC elle : il exige
-      aujourd'hui « sans effet » présent sur un cas et absent de l'autre, donc il
-      verrouille la phrase fautive et rendrait la réparation ROUGE. Une garde qui tient une
-      erreur en place est la forme la plus coûteuse de ce défaut
-- [ ] **`CLAUDE.md` porte l'affirmation réfutée, et c'est le plus PRESSANT des quatre** —
-      non parce que c'est le plus grave, mais parce que c'est le seul fichier chargé
-      d'office dans CHAQUE session, quand cette fiche ne l'est pas. D'ici la réparation,
-      une session qui ouvre le dépôt lira la déduction comme un fait établi et pourra
-      bâtir dessus sans jamais croiser AUTH-8. Deux choses à corriger au § Autorisation
-      par collection : la phrase « qu'un en-tête absent signifie une panne de recopie est
-      déduit des sources d'Authelia `v4.39.22` … et lire un dépôt n'est pas mesurer un
-      déploiement », et l'annonce des QUATRE situations, dont la troisième — en-tête REÇU
-      VIDE — ne se produit pas sur ce déploiement. **La déduction se DATE, elle ne
-      s'efface pas** : sa dernière clause a annoncé sa propre réfutation et permis de la
-      reconnaître, et c'est la seule chose qui a marché dans ce raisonnement. **Le même
-      geste RETIRE le renvoi posé par la case suivante** — dans le même commit, pas après
-- [ ] Le renvoi existe dans les DEUX sens, et sa SORTIE se programme en même temps que son
-      entrée : tant que `CLAUDE.md` n'est pas corrigé, son paragraphe dit qu'une mesure le
-      contredit et pointe ici ; le jour de la correction, on le RETIRE au lieu de le mettre
-      à jour. Une note sur l'état d'un AUTRE document ne se répare pas — « une mesure
-      contredit ce paragraphe » devant un paragraphe qui a cessé de l'être se lit encore
-      très bien, et c'est PLUS difficile à repérer qu'une affirmation fausse, parce que ça
-      a l'air prudent. La péremption d'ici est déjà la pire de sa famille : la phrase
-      fautive garde tout son SENS, elle est seulement fausse, donc personne ne la relit, et
-      aucun contrôle mécanique ne la voit. Y ajouter un avertissement sans date de sortie
-      doublerait le défaut au lieu de le border
+- [x] **La branche `entete_groupes === false` n'affirme plus rien** — 2026-09-10,
+      `830675a`. Trois libellés étaient possibles, et l'arbitrage a écarté le repli sur
+      l'observation nue que cette case proposait : le commentaire de `theme.js` dit que
+      cette ligne s'adresse à qui RÉPARE, or se taire lui retirerait un fait vrai. Elle
+      rapporte donc le fait ET sa limite — « En-tête Remote-Groups non reçu. Sur ce
+      déploiement, un compte sans aucun groupe donne le même résultat (mesuré le
+      2026-09-09) : l'absence ne distingue pas les deux. » Les quatre branches restent :
+      la distinction `None` / `""` est juste dans le code, et un déploiement configuré
+      autrement peut produire le vide
+- [x] **Le test ne verrouille plus aucune FORMULATION, mais deux PROPRIÉTÉS** —
+      2026-09-10. Le piège était de le mettre à jour d'après le nouveau texte : une garde
+      réécrite d'après ce qu'elle juge devient un MIROIR, qui affirmera toujours ce que le
+      code dit, donc plus jamais rien. Il exige désormais que la ligne ne tire aucune
+      CONCLUSION de l'absence (« sans effet » et « côté proxy » interdits) et que les deux
+      états du fil restent DISTINCTS à l'écran — vrai quel que soit le libellé. La seconde
+      propriété compte autant : la distinction a coûté un chantier, la faire disparaître de
+      l'écran remplacerait une fausse alerte par une confusion. Suite a11y complète verte,
+      64 tests
+- [x] **`CLAUDE.md` est corrigé, et la déduction y est DATÉE plutôt qu'effacée** —
+      2026-09-10. Sa dernière clause, « lire un dépôt n'est pas mesurer un déploiement »,
+      a annoncé sa propre réfutation et permis de la reconnaître : c'est la seule chose qui
+      a marché dans ce raisonnement, et l'effacer l'aurait fait disparaître. **Mais cette
+      case ne nommait qu'UN fichier, et il y en avait QUATRE** — voir § La réparation. Les
+      trois autres ne se seraient pas trouvés en suivant la fiche : il a fallu chercher la
+      PHRASE dans le dépôt entier
+- [x] **Le renvoi n'a jamais eu à exister** — la réparation a suivi la mesure d'un jour,
+      donc aucun avertissement provisoire n'a été posé et il n'y a rien à retirer. La case
+      reste écrite parce que son raisonnement vaut au-delà de son occasion : une note sur
+      l'état d'un AUTRE document ne se répare pas, elle se RETIRE, et sa sortie se programme
+      en même temps que son entrée. « Une mesure contredit ce paragraphe » devant un
+      paragraphe qui a cessé de l'être se lit encore très bien, et c'est plus difficile à
+      repérer qu'une affirmation fausse parce que ça a l'air prudent. Éprouvé le jour même
+      sur une autre fiche : `pilotage/NLP-3.md` disait « pas encore poussé », faux dix
+      minutes après une poussée, et rien ne l'a signalé — quand son `Arrêté sur` décalé, lui,
+      a été annoncé par l'outil. **Un démenti mécanique existe pour la FORME, aucun pour le
+      FOND**
 - [ ] Ce qui reste réellement à mesurer est NOMMÉ : lequel d'Authelia ou de Caddy laisse
       tomber l'en-tête vide — `/api/authz/forward-auth` interrogé depuis le conteneur Caddy
       le dirait, et Caddy avait été lu sur `master` plutôt que sur le tag de
@@ -217,6 +231,41 @@ la table confrontée (ici). Le compte jetable a été créé dans l'interface de
 geste qu'AUTH-7 venait de rendre possible sans SSH, et sans lequel cette mesure aurait
 demandé d'éditer `users_database.yml` sur le serveur, ce que la seconde case de cette fiche
 entourait justement de précautions.
+
+## La réparation, et ce que la passe de revue a trouvé — 2026-09-10
+
+La fiche annonçait UN fichier à corriger. La phrase vivait à QUATRE endroits, et le premier
+était le plus embarrassant.
+
+1. **`static/theme.js` lui-même**, quinze lignes au-dessus de la branche réparée. Le
+   commentaire d'en-tête de `ligneTechnique` portait encore le classement — « la troisième
+   est la seule qui n'appelle aucune réparation, la deuxième la seule qui en appelle une ».
+   **La justification survivait à ce qu'elle justifiait.** C'est le mode d'échec le plus
+   probable d'une réparation ciblée : on corrige ce que la fiche désigne, et le raisonnement
+   qui l'avait produit reste en place, prêt à la reproduire.
+2. **`docs/modele-et-droits.md`**, et c'est le plus lourd des trois autres — un document
+   d'USAGE, celui qu'on met entre les mains de quelqu'un. Son tableau désignait
+   « administrateur système » comme réparateur d'un cas qui n'est pas une panne, **deux
+   lignes au-dessus d'un paragraphe expliquant que confondre ces cas « envoie chercher une
+   panne qui n'existe pas »**.
+3. **`docs/deploiement-docker.md`** : « dont une seule appelle une réparation côté proxy ».
+4. **`tools/faux_proxy_auth.py`** : le persona `alice` portait le libellé fautif. `tools/`
+   est hors couverture (`.coveragerc`), donc aucun test ne l'aurait jamais signalé.
+
+**Ce que l'outil y gagne, et ce n'est pas une consolation.** L'instance ne produisant jamais
+l'en-tête REÇU VIDE, `faux_proxy_auth.py` est désormais le SEUL endroit où cet état existe :
+`dora` joue un cas que la production ne sait pas fabriquer. Sans elle, la branche `true` de
+`theme.js` ne serait plus atteignable nulle part.
+
+**Ce qui n'a PAS été touché, et c'est une décision.** Les fiches de `pilotage/` autres que
+celle-ci — `AUTH-7`, `INFRA-8`, `AUDIT-1` citent la formule. Ce sont des traces DATÉES : les
+faire dire aujourd'hui ce qu'elles ne disaient pas serait pire que le double discours. La
+réfutation vit ici, c'est ici qu'on la cherche.
+
+**Et la leçon de méthode tient en une ligne** : une case qui nomme un fichier fait chercher
+un fichier. Pour trouver les trois autres, il a fallu chercher la PHRASE — dans le code, la
+doc d'usage, la doc de déploiement et les outils. Une affirmation fausse se propage par
+citation, pas par dépendance, et rien dans l'outillage ne suit ce chemin-là.
 
 ## Contexte
 
