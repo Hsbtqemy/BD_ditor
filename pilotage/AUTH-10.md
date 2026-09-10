@@ -6,9 +6,16 @@ statut: à venir
 # AUTH-10 — `ecriture` recouvre l'acte qu'on défait et celui dont on ne revient pas
 
 **Point de départ** — 2026-09-10, en conversation, à partir d'une mesure qui cherchait
-autre chose. Le `GET /api/moi` de `stagiaire` sur la production rend `ecriture: 0` : il
-peut lire, il ne peut annoter nulle part. La question « faut-il un droit d'annoter ? » a
-rendu un constat plus précis, et vérifiable.
+autre chose. Le `GET /api/moi` du compte `stagiaire` sur la production rend `ecriture: 0`,
+et la question « faut-il un droit d'annoter ? » a rendu un constat plus précis.
+
+**Corrigé le jour même, et la correction RENFORCE la fiche.** Ce compte-là est atypique :
+des stagiaires ont bien l'écriture en production, et c'est voulu. Ce chantier n'est donc
+pas ouvert sur un arrivant qui ne peut rien faire — il est ouvert sur l'inverse. **Des
+personnes ont aujourd'hui le droit de supprimer un album, et aucun Ctrl+Z ne le
+rattrape.** La prémisse d'origine était une lecture hâtive d'un compte d'essai ; elle est
+écrite ici plutôt que remplacée, parce que c'est en la corrigeant qu'on a vu que le
+risque était actuel et non hypothétique.
 
 **`DELETE /api/albums/{id}` exige `_get_album(..., ecriture=True)` — exactement le même
 droit qu'annoter une bulle.** Qui reçoit l'écriture pour annoter peut supprimer un album
