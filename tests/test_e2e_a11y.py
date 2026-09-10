@@ -1119,13 +1119,25 @@ def test_la_ligne_technique_distingue_quatre_situations(page, seeded):
     n'appelle aucune réparation. AUTH-8 fait voyager la différence à part
     (`acces.entete_groupes`).
 
-    Elle RAPPORTE toujours, elle n'explique pas. Ce test a déjà VERROUILLÉ une formule
-    fautive — « le proxy pose Remote-User sans Remote-Groups », affirmée quand le code ne
-    pouvait pas l'établir. Ce qu'il verrouille ici est vérifiable sur les en-têtes : « non
-    reçu » et « reçu vide » sont des faits de fil. Ce qui suit le tiret est une
-    INSTRUCTION — où regarder —, pas une cause : que l'absence signifie une panne de
-    recopie est déduit des sources d'Authelia, et sa mesure sur l'instance reste une case
-    ouverte d'AUTH-8.
+    Elle RAPPORTE toujours, elle n'explique pas — et ce test a VERROUILLÉ DEUX FOIS une
+    formule qui expliquait. D'abord « le proxy pose Remote-User sans Remote-Groups »,
+    affirmée quand le code ne pouvait pas l'établir. Puis, après AUTH-8, « à vérifier côté
+    proxy : les accès par groupe sont sans effet » — cette fois le code POUVAIT établir
+    l'état de l'en-tête, mais pas ce qu'il signifie. La mesure du 2026-09-09 l'a tranché
+    dans l'autre sens : un compte sans aucun groupe ne reçoit pas l'en-tête VIDE, il ne le
+    reçoit pas du tout ; et un compte AVEC groupe rend l'en-tête, donc la recopie
+    fonctionne, donc l'absence ne peut pas être une panne. La ligne accusait un proxy qui
+    va bien.
+
+    CE QUE CE TEST GARDE DÉSORMAIS, et il fallait le choisir plutôt que le subir : une
+    garde réécrite d'après le texte qu'elle juge devient un MIROIR — elle affirmera
+    toujours ce que le code dit, donc plus jamais rien. Il ne verrouille donc AUCUNE
+    formulation. Il exige deux PROPRIÉTÉS, vraies quel que soit le libellé : que la ligne
+    ne tire aucune CONCLUSION de l'absence de l'en-tête, et que les deux états du fil
+    restent DISTINCTS à l'écran. Le second compte autant que le premier — la distinction
+    `None` / `""` survit dans le code, un déploiement configuré autrement peut produire le
+    vide, et la faire disparaître de l'écran remplacerait une fausse alerte par une
+    confusion.
 
     MESURÉ AVANT D'ÊTRE ÉCRIT, parce que tout ce test en dépend : Playwright transmet bien
     un en-tête de valeur VIDE (`Remote-Groups: `), il ne le supprime pas. S'il l'avait
@@ -1138,24 +1150,31 @@ def test_la_ligne_technique_distingue_quatre_situations(page, seeded):
     txt = page.locator(".portee-vide-technique").inner_text()
     assert "linguistes" in txt and "stage" in txt
 
-    # Identité, en-tête des groupes ABSENT → la seule des quatre qui appelle une réparation.
+    # Identité, en-tête des groupes ABSENT. Le FAIT est dicible ; la conclusion ne l'est
+    # plus, et c'est la mesure du 2026-09-09 qui l'a retirée.
     page.set_extra_http_headers({"Remote-User": "dave"})
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     _deplier_bandeau(page)
-    txt = page.locator(".portee-vide-technique").inner_text()
-    assert "NON reçu" in txt, txt
-    assert "sans effet" in txt, (
-        "le seul cas réparable doit se distinguer de celui qui ne l'est pas, sinon ce "
-        f"chantier n'aura servi à rien : {txt!r}")
+    txt_absent = page.locator(".portee-vide-technique").inner_text()
+    assert "non reçu" in txt_absent.lower(), txt_absent
+    for conclusion in ("sans effet", "côté proxy"):
+        assert conclusion not in txt_absent, (
+            "l'absence de l'en-tête n'autorise AUCUNE conclusion sur ce déploiement : "
+            "mesuré le 2026-09-09, c'est aussi ce que rend un compte sans groupe, et un "
+            "compte avec groupe prouve que la recopie fonctionne. Une ligne qui accuse "
+            f"envoie chercher une panne qui n'existe pas : {txt_absent!r}")
 
-    # Identité, en-tête des groupes REÇU VIDE → rien à réparer, et il faut le dire.
+    # Identité, en-tête des groupes REÇU VIDE → un autre état du fil, donc un autre
+    # message. Ce déploiement ne le produit pas ; un autre le peut, et le code le sait.
     page.set_extra_http_headers({"Remote-User": "erin", "Remote-Groups": ""})
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     _deplier_bandeau(page)
-    txt = page.locator(".portee-vide-technique").inner_text()
-    assert "VIDE" in txt and "aucun groupe déclaré" in txt, txt
-    assert "NON reçu" not in txt, (
-        f"les deux situations doivent être distinctes à l'écran, pas seulement en base : {txt!r}")
+    txt_vide = page.locator(".portee-vide-technique").inner_text()
+    assert "VIDE" in txt_vide and "aucun groupe déclaré" in txt_vide, txt_vide
+    assert txt_vide != txt_absent, (
+        "les deux états d'en-tête doivent rester DISTINCTS à l'écran : la différence "
+        "survit dans le code (None vs \"\"), elle a coûté un chantier, et la faire "
+        f"disparaître de l'écran la rendrait invisible là où elle sert : {txt_vide!r}")
 
     # Aucune identité → les groupes ne disent rien, la ligne ne paraît pas.
     page.set_extra_http_headers({})

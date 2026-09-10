@@ -325,14 +325,19 @@
      AUTH-8 a levé cette ambiguïté-là — dans le CODE, pas dans le protocole : elle n'était
      jamais indépassable, seulement non traitée. `acces.entete_groupes` porte désormais la
      différence, et les observations sont QUATRE : aucun en-tête d'identité ; l'en-tête
-     des groupes non reçu ; reçu mais vide ; les groupes, nommés. La troisième est la
-     seule qui n'appelle aucune réparation, la deuxième la seule qui en appelle une — et
-     c'est tout l'intérêt de les séparer, puisque le même écran vide les confondait.
+     des groupes non reçu ; reçu mais vide ; les groupes, nommés.
+
+     CE QU'IL NE FAUT PLUS EN CONCLURE. Ce bloc annonçait que la troisième était la seule
+     à n'appeler aucune réparation, et la deuxième la seule à en appeler une. Mesuré sur
+     l'instance le 2026-09-09 : ici, un compte sans aucun groupe produit la DEUXIÈME et
+     non la troisième, laquelle ne se produit jamais. La deuxième est donc le cas
+     ORDINAIRE d'un arrivant. Les quatre OBSERVATIONS restent justes — ce sont des états
+     d'en-tête —, leur classement en « panne » et « rien à réparer » ne l'était pas. Le
+     détail est dans le bloc des deux branches sans groupe, plus bas.
 
      Ce qui n'a pas changé : le bandeau ne tranche pas la CAUSE à la place de qui connaît
      son déploiement. « Non reçu » est un fait de fil ; ce qu'il faut en conclure reste au
-     lecteur, et l'instruction « à vérifier côté proxy » dit où regarder, pas ce qui s'est
-     passé. */
+     lecteur. */
   function ligneTechnique(d) {
     var p = el("p", "portee-vide-technique");
     if (!d.utilisateur) {
@@ -346,20 +351,34 @@
       p.appendChild(document.createTextNode("."));
       return p;
     }
-    /* Pas de groupe : DEUX situations, et une seule appelle une réparation (AUTH-8).
-       `acces.entete_groupes` porte la différence que `groupes` écrase — il rend une liste
-       vide dans les deux cas, ce qui est correct pour une liste et insuffisant ici.
+    /* Pas de groupe : DEUX situations sur le fil, et il a fallu une MESURE pour savoir ce
+       qu'elles valent (AUTH-8). `acces.entete_groupes` porte la différence que `groupes`
+       écrase — il rend une liste vide dans les deux cas, correct pour une liste et
+       insuffisant ici.
 
-       Les deux libellés RAPPORTENT ce qui est arrivé sur le fil, comme les deux autres :
-       « non reçu » et « reçu vide » sont vérifiables sur les en-têtes. Ce qui suit le
-       tiret dans le premier cas est une INSTRUCTION — où regarder —, jamais une cause
-       affirmée : que l'absence signifie une panne de recopie repose sur les sources
-       d'Authelia, pas sur une mesure de CE déploiement, et cette mesure est une case
-       encore ouverte d'AUTH-8. */
+       CE QUI A CHANGÉ LE 2026-09-09, ET C'EST UNE RÉFUTATION. Ce bloc annonçait que
+       l'absence de l'en-tête était la seule des quatre situations à appeler une
+       réparation, et il envoyait « vérifier côté proxy ». C'était DÉDUIT des sources
+       d'Authelia — l'en-tête y est posé inconditionnellement dès qu'il y a un login, donc
+       un compte sans groupe devait le recevoir PRÉSENT ET VIDE. Mesuré sur l'instance, il
+       ne le reçoit pas du tout.
+
+       La mesure conclut parce qu'elle a DEUX points, et c'est le premier qui la rend
+       concluante : un compte AVEC groupe rend bien l'en-tête, donc la recopie fonctionne,
+       donc l'absence ne peut pas être une panne — c'est la forme que prend le vide. Le
+       libellé accusait donc le proxy de quelqu'un dont le proxy va bien, et l'envoyait
+       chercher une panne qui n'existe pas.
+
+       Il RAPPORTE désormais le fait ET sa limite, au lieu d'en tirer une cause. Cette
+       ligne s'adresse à qui répare : ce qu'il faut lui dire est précisément ce que
+       l'observation ne permet PAS de conclure. Les deux branches restent DISTINCTES à
+       l'écran — elles décrivent deux états d'en-tête différents, la distinction survit
+       dans le code, et un déploiement configuré autrement peut produire le vide. */
     var a = d.acces || {};
     if (a.entete_groupes === false) {
-      p.textContent = "En-tête Remote-Groups NON reçu, alors que Remote-User l'est "
-        + "— à vérifier côté proxy : les accès par groupe sont sans effet.";
+      p.textContent = "En-tête Remote-Groups non reçu. Sur ce déploiement, un compte "
+        + "sans aucun groupe donne le même résultat (mesuré le 2026-09-09) : l'absence "
+        + "ne distingue pas les deux.";
     } else if (a.entete_groupes === true) {
       p.textContent = "En-tête Remote-Groups reçu, mais VIDE : aucun groupe déclaré "
         + "pour ce compte.";

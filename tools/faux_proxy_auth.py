@@ -52,14 +52,17 @@ OUVREUR = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 # `groupes` est à TROIS états, et c'est tout le sujet d'AUTH-8 : `None` = l'en-tête n'est
 # pas posé du tout (proxy mal configuré) ; `""` = il est posé VIDE (Authelia le fait dès
 # qu'il y a un login, `strings.Join([], ",")` valant `""`) ; une chaîne = des groupes.
-# Les deux premiers donnaient jusqu'ici la même chose à l'application, et l'un est une
-# panne quand l'autre n'est rien.
+# Les deux premiers donnaient jusqu'ici la même chose à l'application, et les SÉPARER
+# était juste. Ce qu'on en concluait ne l'était pas : mesuré sur l'instance le 2026-09-09,
+# un compte sans aucun groupe y reçoit `None` et non `""`. Cet outil est donc le SEUL
+# endroit où le deuxième état existe — `dora` joue un état que la production ne sait pas
+# produire, et c'est ce qui la rend utile plutôt que redondante.
 PERSONNAGES = {
     "": (None, "", "", None, "Personne — aucune identité ne parvient (le proxy est muet)"),
     "alice": ("alice", "Alice Duval", "alice@exemple.fr", None,
-              "Identité, Remote-Groups ABSENT — les accès par groupe sont sans effet"),
+              "Identité, Remote-Groups ABSENT — sur l'instance, c'est aussi un compte sans groupe"),
     "dora": ("dora", "Dora Lemaire", "dora@exemple.fr", "",
-             "Identité, Remote-Groups reçu VIDE — n'appartient à aucun groupe, rien à réparer"),
+             "Identité, Remote-Groups reçu VIDE — un état que l'instance réelle ne produit pas"),
     "bob": ("bob", "Bob Marchand", "bob@exemple.fr", "chercheurs",
             "Identité AVEC groupes, dont aucun n'a d'accès — la panne qui ne se répare pas"),
     "claire": ("claire", "Claire Ferrand", "claire@exemple.fr", "chercheurs",

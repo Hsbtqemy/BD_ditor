@@ -193,16 +193,24 @@ non deux — par ce que le portail transmet :
 | Ce qui parvient | Ce que ça signifie | Qui répare |
 |---|---|---|
 | aucune identité | le portail ne transmet rien : l'application est joignable sans passer par lui | administrateur système |
-| une identité, la liste des groupes **non transmise** | le portail transmet le login mais pas les groupes : tous les accès accordés à un GROUPE sont sans effet | administrateur système |
+| une identité, la liste des groupes **non transmise** | le login parvient, la liste des groupes non — mais **sur cette instance, c'est aussi ce que produit un compte sans aucun groupe** (mesuré le 2026-09-09) | à départager avant de réparer |
 | une identité, la liste des groupes **transmise et vide** | tout fonctionne : ce compte n'appartient simplement à aucun groupe | un **propriétaire** de collection |
 | une identité **et** ses groupes, dont aucun n'a d'accès | tout fonctionne : personne ne vous a encore donné accès | un **propriétaire** de collection |
 
-**Seule la deuxième se répare dans la configuration.** Les deux du milieu se ressemblent — dans
-les deux cas vous n'avez aucun groupe — et l'application les a longtemps confondues : elles ne
-se distinguent qu'à un détail de protocole, la liste vide n'étant pas la même chose que la
-liste absente. Les confondre envoie chercher une panne qui n'existe pas, ou fait ignorer
-celle qui existe. C'est pourquoi ce que le portail transmet se lit à cet endroit précis, et à
-cet endroit seulement.
+**Aucune des quatre ne se répare sur la seule foi du bandeau, et la deuxième moins que les
+autres.** Cette page a longtemps écrit qu'elle signalait une panne de configuration — le
+portail transmettant le login sans les groupes, ce qui rend inopérant tout accès accordé à
+un GROUPE. C'était déduit du fonctionnement annoncé d'Authelia, jamais mesuré ici. Mesuré le
+2026-09-09, c'est faux sur cette instance : un compte sans aucun groupe ne reçoit pas une
+liste vide, il ne reçoit rien. La deuxième situation est donc le cas ORDINAIRE d'un
+arrivant, et la troisième ne se produit jamais.
+
+Les deux du milieu se ressemblent — dans les deux cas vous n'avez aucun groupe — et
+l'application les a longtemps confondues : elles ne se distinguent qu'à un détail de
+protocole, la liste vide n'étant pas la même chose que la liste absente. La DISTINCTION
+reste juste et vaut d'être lue ; c'est ce qu'on en concluait qui ne l'était pas. Les
+confondre envoie chercher une panne qui n'existe pas, ou fait ignorer celle qui existe — et
+cette page en avait fait l'expérience dans le premier sens.
 
 Le bandeau donne d'abord la réponse courte — *pourquoi* l'écran est vide — et **replie le
 détail derrière son titre** : ce qu'il faut en faire peut attendre un clic. Il s'ouvre de

@@ -304,15 +304,30 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   `autorisation.entete_groupes_recu()` distingue `None` de `""` et publie la différence
   dans `acces.entete_groupes` (True reçu, False manquant, `null` hors proxy) ; le contrat
   de `groupes()` ne change pas — elle rend une liste, et la différence voyage à part.
-  La deuxième situation est la seule qui appelle une réparation : elle rend TOUS les accès
-  par groupe silencieusement inopérants. **Ce qui reste ouvert est la MESURE, pas le
-  code** : qu'un en-tête absent signifie une panne de recopie est déduit des sources
-  d'Authelia `v4.39.22` (`handleAuthzAuthorizedStandard` pose l'en-tête inconditionnellement
-  dès qu'il y a un login), et lire un dépôt n'est pas mesurer un déploiement. D'où un
-  arbitrage à deux degrés : le bandeau NOMME les quatre situations, mais ne se déplie
-  d'office que pour la seule panne CERTAINE, l'absence d'identité. **Et il s'adresse
-  d'abord à qui est BLOQUÉ, pas à qui répare** : des libellés humains et UNE ligne
-  technique, sous un `<details>` replié.
+  **La MESURE a été faite le 2026-09-09, et elle RÉFUTE la lecture des sources.** On tenait
+  de `handleAuthzAuthorizedStandard` — qui pose l'en-tête inconditionnellement dès qu'il y
+  a un login — qu'un compte sans groupe le recevrait PRÉSENT ET VIDE, et donc que son
+  absence signalait une panne de recopie rendant tous les accès par groupe inopérants. La
+  phrase qui l'annonçait s'avertissait elle-même : « lire un dépôt n'est pas mesurer un
+  déploiement ». Deux comptes derrière le proxy réel ont tranché — avec un groupe,
+  `entete_groupes: true` ; sans aucun groupe, **`false`**. L'en-tête n'arrive pas vide, il
+  n'arrive pas ; et comme le premier compte prouve que la recopie FONCTIONNE, l'absence
+  n'est pas une panne mais la forme que prend le vide. **Sur ce déploiement, la troisième
+  situation ne se produit donc jamais et la deuxième est le cas ORDINAIRE d'un arrivant** —
+  le bandeau l'envoyait « vérifier côté proxy », c'est-à-dire chercher une panne
+  inexistante, à quelqu'un dont le proxy va bien. Corrigé le 2026-09-10 : la ligne rapporte
+  le fait ET sa limite. Les quatre branches restent dans le code — un déploiement configuré
+  autrement peut produire le vide —, et le test ne verrouille plus aucune FORMULATION : il
+  exige deux propriétés, que la ligne ne CONCLUE pas, et que les deux états du fil restent
+  distincts à l'écran. Une garde réécrite d'après le texte qu'elle juge devient un miroir.
+  **Ce qui reste ouvert est de savoir QUI, d'Authelia ou de Caddy, laisse tomber l'en-tête
+  vide** — sans effet sur ce que l'application peut dire, puisqu'elle ne lit aucun annuaire
+  et ne saura jamais si un compte a des groupes. L'arbitrage à deux degrés, lui, a payé
+  autrement qu'attendu : le bandeau NOMME les quatre situations mais ne se déplie d'office
+  que pour la seule panne CERTAINE, l'absence d'identité — n'avoir pas déplié sur un
+  diagnostic non mesuré est ce qui a rendu ce défaut discret plutôt que criant. **Et il
+  s'adresse d'abord à qui est BLOQUÉ, pas à qui répare** : des libellés humains et UNE
+  ligne technique, sous un `<details>` replié.
 - **Un pouvoir inévitable, mais pas invisible** (AUTH-4, v25) : un administrateur lit et
   écrit toute collection **sans figurer** dans `collection_acces` — sa portée totale
   court-circuite la table. Ce n'est pas un défaut, c'est la vérité de tout auto-hébergement ;

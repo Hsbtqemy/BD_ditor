@@ -437,7 +437,8 @@ manque », mais « cet artefact-ci DOIT porter ces moteurs-là ».
   Conséquence à connaître : sans `BD_AUTH_PROXY` l'app ne CROIT pas les en-têtes et
   tout reste anonyme ; avec le drapeau mais sans en-tête d'identité, la portée est
   VIDE et l'app paraît vide pour tout le monde (fermeture par défaut). Le bandeau qui
-  l'explique distingue les quatre situations possibles, dont une seule appelle une
-  réparation côté proxy.
+  l'explique distingue les quatre situations possibles, et il les RAPPORTE sans conclure :
+  mesuré le 2026-09-09, l'absence de `Remote-Groups` est aussi ce que produit un compte
+  sans aucun groupe, donc elle ne signale pas à elle seule une panne côté proxy.
 - Test local sans domaine : possible en faisant écouter Caddy en HTTP simple,
   mais la 2FA/cookies se valident mieux directement sur le VPS avec le vrai domaine.
