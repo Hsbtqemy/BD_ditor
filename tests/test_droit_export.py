@@ -377,3 +377,23 @@ def test_ce_qui_sort_suit_la_portee_d_export_pas_celle_de_lecture(client, db_pat
         assert "MOTSECRET ici" in rep.text or route != "/api/recherche/export.csv"
         assert "grille-b" not in rep.text, (
             f"{route} emporte un terme qu'on lit sans pouvoir l'exporter")
+
+
+def test_api_moi_dit_ce_qu_un_export_transversal_emportera(client, db_path, sortie):
+    """La Recherche et l'Exploration n'ont aucune collection sous la main à qui demander
+    `exportable` : `/api/moi` le leur dit, en trois états. « rien » passe AVANT la
+    comparaison — sans quoi une portée vide, lecture et export vides donc égaux, se lirait
+    « tout », et l'écran proposerait un export à qui n'a rien."""
+    from conftest import ADMIN
+
+    def etat(h):
+        return client.get("/api/moi", headers=h).json()["acces"]["exporter"]
+
+    bob = sortie["bob"]                       # écrit c1, lit c2, aucune case
+    assert etat(bob) == "rien"
+    _poser_export(db_path, sortie["c1"], "bob")
+    assert etat(bob) == "partiel"
+    _poser_export(db_path, sortie["c2"], "bob")
+    assert etat(bob) == "tout"
+    assert etat({"Remote-User": "personne"}) == "rien"      # portée vide
+    assert etat(ADMIN) == "tout"

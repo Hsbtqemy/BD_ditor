@@ -17,6 +17,8 @@
     root.esc = api.escapeHtml;            // alias historique (corpus / exploration)
     root.toast = api.toast;
     root.identite = api.identite;
+    root.etatExport = api.etatExport;
+    root.noteExport = api.noteExport;
   }
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
@@ -153,5 +155,28 @@
   }
   identite.oublier = () => { _identite = null; };   // pour les tests, jamais en page
 
-  return { $, apiGet, apiSend, escapeHtml, toast, messageErreur, identite };
+  /* DROIT-2 — ce qu'un export qui TRAVERSE plusieurs collections emportera, lu dans
+     `acces.exporter` de /api/moi : « tout », « partiel » ou « rien ». La Recherche et
+     l'Exploration n'ont aucune collection sous la main pour poser la question elles-mêmes,
+     et cette règle vit ICI pour ne pas s'écrire deux fois.
+
+     Sans réponse lisible — /api/moi en échec, un serveur antérieur, une valeur inconnue —,
+     « tout » : l'écran n'invente pas de refus. La garde est au serveur, sur chaque porte,
+     et c'est lui qui refusera en le disant ; ceci n'évite qu'un geste perdu. */
+  const NOTES_EXPORT = {
+    tout: "",
+    partiel: "Le fichier n'emporte que les collections que vous pouvez exporter : "
+      + "l'écran peut en montrer davantage.",
+    rien: "Exporter demande un droit que le propriétaire d'une collection accorde : "
+      + "vous ne l'avez sur aucune de celles que vous lisez.",
+  };
+  const aLaCle = (cle) => Object.prototype.hasOwnProperty.call(NOTES_EXPORT, cle);
+  function etatExport(moi) {
+    const e = moi && moi.acces && moi.acces.exporter;
+    return aLaCle(e) ? e : "tout";
+  }
+  function noteExport(etat) { return aLaCle(etat) ? NOTES_EXPORT[etat] : ""; }
+
+  return { $, apiGet, apiSend, escapeHtml, toast, messageErreur, identite,
+           etatExport, noteExport };
 });

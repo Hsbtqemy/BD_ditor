@@ -1975,6 +1975,20 @@ def _referent_instance():
     return {"nom": REFERENT_NOM or None, "contact": REFERENT_CONTACT or None}
 
 
+def _etat_export(portee: autorisation.Portee) -> str:
+    """« tout », « partiel » ou « rien » : ce qu'un export qui TRAVERSE plusieurs
+    collections emportera (DROIT-2).
+
+    Un RÉSUMÉ, pas une décision : chaque porte consulte la Portee elle-même. « rien »
+    passe avant la comparaison, sans quoi une portée VIDE — lecture et export vides,
+    donc égaux — se lirait « tout »."""
+    if portee.tout:
+        return "tout"
+    if not portee.export:
+        return "rien"
+    return "tout" if portee.export == portee.lecture else "partiel"
+
+
 @app.get("/api/moi")
 def moi(request: Request, conn: sqlite3.Connection = Depends(db),
         portee: autorisation.Portee = Depends(portee_courante)):
@@ -2028,6 +2042,12 @@ def moi(request: Request, conn: sqlite3.Connection = Depends(db),
                       # Le référent d'INSTANCE : le seul lisible par une portée VIDE, donc
                       # le seul qui serve la personne que le bandeau envoie « demander un
                       # accès » sans dire à qui.
+                      # DROIT-2 — ce qu'un export qui TRAVERSE plusieurs collections
+                      # emportera. La Recherche et l'Exploration n'ont aucune
+                      # collection sous la main à qui demander `exportable` : la
+                      # réponse se calcule ICI, une fois, plutôt que de se déduire,
+                      # page par page, d'une liste qu'elles n'ont pas.
+                      "exporter": _etat_export(portee),
                       "referent": _referent_instance()},
             "deconnexion_url": AUTH_LOGOUT_URL or None}
 

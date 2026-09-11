@@ -308,7 +308,10 @@ d'accès (cf. §2).
   que ce bout-là : elle affiche le commit servi et vous laisse le comparer à `origin/main`,
   plutôt que d'affirmer « à jour » sans avoir vu la référence.
 - **👥 Accès aux collections** : accorder, changer et retirer les accès, collection par
-  collection. Le bloc déclare aussi quels groupes d'administration voient tout le corpus.
+  collection. Chaque accès porte une case **peut exporter** : sortir le contenu en
+  fichier est un droit à part, que le propriétaire accorde ici — il l'a lui-même
+  d'office, et sa case le montre sans se laisser décocher. Le bloc déclare aussi quels
+  groupes d'administration voient tout le corpus.
   Créer, décrire, renommer, supprimer ou exporter une collection se fait dans la
   Bibliothèque. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3.
 - **Comptes vus par l'application** : n'apparaît que si le serveur vous le sert. C'est un

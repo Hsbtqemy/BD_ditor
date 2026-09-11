@@ -39,6 +39,10 @@
    Trois niveaux, et le troisième est la nouveauté : lecture · écriture · PROPRIÉTAIRE.
    Écrire, c'est annoter ; posséder, c'est décider qui d'autre entrera.
 
+   DROIT-2 (2026-09-11) — et une case à côté du niveau : « peut exporter ». Sortir le
+   contenu en fichier ne s'ordonne pas avec annoter ; un propriétaire exporte d'office,
+   et sa case le montre sans se laisser décocher.
+
    COL-2 (2026-09-11) — CE QUE LA COLLECTION EST a déménagé dans la Bibliothèque : la
    créer, la renommer, la supprimer, la décrire, désigner son référent, régler sa
    diffusion, l'exporter. Tout cela s'était accumulé ici parce que c'était le seul écran
@@ -163,6 +167,12 @@ async function colDetail(d, c) {
             : ""}
         <select data-genre="${esc(a.genre)}" data-principal="${esc(a.principal)}"
                 aria-label="Niveau de ${esc(a.principal)}">${niveauOptions(a.niveau)}</select>
+        <label class="acces-export"><input type="checkbox" data-export="1"
+                 data-genre="${esc(a.genre)}" data-principal="${esc(a.principal)}"
+                 data-niveau="${esc(a.niveau)}" aria-label="${esc(a.principal)} peut exporter"
+                 ${a.exporter ? "checked" : ""}${a.niveau === "proprietaire" ? " disabled" : ""}>
+          peut exporter${a.niveau === "proprietaire"
+            ? ` <span class="muted small">(d'office, en propriétaire)</span>` : ""}</label>
         <button class="ghost small" data-retirer="1" data-genre="${esc(a.genre)}"
                 data-principal="${esc(a.principal)}" type="button"
                 title="Retirer l'accès de ${esc(a.principal)}">✕</button>
@@ -175,6 +185,8 @@ async function colDetail(d, c) {
         <option value="groupe">Groupe</option>
       </select>
       <select class="col-niveau-neuf" aria-label="Niveau accordé">${niveauOptions("lecture")}</select>
+      <label class="acces-export"><input type="checkbox" class="col-export-neuf">
+        peut exporter</label>
       <button class="ghost small" data-accorder="1" type="button">+ Accorder</button>
     </div>
     <p class="col-note">Un accès se déclare par un NOM, pas par une personne vérifiée :
@@ -184,6 +196,9 @@ async function colDetail(d, c) {
       n'est pas encore venu produisent la même absence, et rien ici ne peut les
       distinguer. Un nom de GROUPE, lui, ne peut pas l'être : l'application n'en
       connaît aucun.</p>
+    <p class="col-note">« Peut exporter », c'est sortir le contenu de la collection en
+      fichier — un album, une concordance, une figure, un export de dépôt. Lire ou
+      annoter n'y suffit pas ; un propriétaire exporte d'office.</p>
     ${colAdminNote()}
     ${colAilleurs()}`;
 
@@ -206,13 +221,24 @@ async function colDetail(d, c) {
       recharger();
     };
   });
+  box.querySelectorAll("input[data-export]").forEach((i) => {
+    i.onchange = async () => {
+      const { genre, principal, niveau } = i.dataset;
+      // Même règle que le niveau : on recharge dans les deux cas, pour que la case
+      // affichée soit celle que le serveur a enregistrée, pas celle qu'on a cliquée.
+      await colTenter(() => apiSend("PUT", `/api/collections/${c.id}/acces`,
+        { genre, principal, niveau, exporter: i.checked }));
+      recharger();
+    };
+  });
   box.querySelector("[data-accorder]").onclick = async () => {
     const principal = box.querySelector(".col-principal").value.trim();
     if (!principal) { colMsg("Indiquez un login ou un nom de groupe.", true); return; }
     if (await colTenter(() => apiSend("PUT", `/api/collections/${c.id}/acces`, {
         genre: box.querySelector(".col-genre").value,
         principal,
-        niveau: box.querySelector(".col-niveau-neuf").value })))
+        niveau: box.querySelector(".col-niveau-neuf").value,
+        exporter: box.querySelector(".col-export-neuf").checked })))
       recharger();
   };
 }

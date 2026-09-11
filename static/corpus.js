@@ -901,14 +901,27 @@ function colBrancherExport(box) {
    Ce bloc s'affiche dans les DEUX branches de `colDetail`, et c'est la leçon d'AUTH-4
    appliquée avant de se refaire prendre : une garde d'interface se pose sur l'ACTE, jamais
    sur l'écran qui le contient. Décrire une collection qu'on lit n'est pas la partager —
-   le serveur n'exige ici que `peut_lire`, et le ranger sous le `return` réservé aux
+   le serveur n'exigeait ici que `peut_lire`, et le ranger sous le `return` réservé aux
    propriétaires en ferait, exactement comme le référent, un droit d'écriture déguisé. On
    se serait aperçu de rien : l'erreur échoue en se FERMANT, aucun test ne tombe, et une
    revue de sécurité l'approuve.
 
    Le nom du fichier vient du serveur (`Content-Disposition`) : le recomposer ici ferait
-   diverger deux horodatages pour un seul export — même raison que l'export de figures. */
+   diverger deux horodatages pour un seul export — même raison que l'export de figures.
+
+   DROIT-2 (2026-09-11) — le serveur exige désormais le droit d'EXPORTER, une case que le
+   propriétaire accorde accès par accès. Le bloc suit `exportable` : sans le droit, il se
+   réduit à une note qui dit ce qui manque — dans les deux branches, toujours. La garde
+   reste sur l'acte, au serveur ; l'écran évite seulement de proposer un geste perdu. */
 function colExport(c) {
+  if (!c.exportable) {
+    return `
+    <div class="col-export">
+      <h4>Export de dépôt</h4>
+      <p class="col-note">Exporter cette collection demande le droit d'exporter, que son
+        propriétaire accorde accès par accès : la lire n'y suffit pas.</p>
+    </div>`;
+  }
   const b = `data-col="${c.id}"`;
   return `
     <div class="col-export">

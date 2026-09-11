@@ -62,6 +62,10 @@
             <button data-fmt="json">Export JSON-LD</button>
             <button data-fmt="csv">Export CSV</button>
             <button data-fmt="tei">Export TEI P5</button>
+            <!-- DROIT-2 : à la place des trois formats quand aucune collection de l'album ne
+                 peut être exportée par vous. Une entrée qui DIT pourquoi, plutôt qu'un menu
+                 où l'export aurait simplement disparu. -->
+            <button id="export-pourquoi" hidden>Exporter : droit manquant…</button>
           </div>
         </div>
       </div>
@@ -361,6 +365,23 @@
         <button id="fig-vider" class="ghost small">Vider</button>
         <button id="fig-close" class="ghost small">Fermer</button>
         <span id="fig-msg" class="muted small" role="status" aria-live="polite"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Exporter un album (DROIT-2) ─────────
+       Un album exportable au titre de PLUSIEURS collections : le choix revient à qui
+       exporte, et l'export dit sous quel droit il est parti. -->
+  <div id="export-modal" hidden>
+    <div class="modal-box">
+      <h3 id="export-title">Exporter au titre de quelle collection ?</h3>
+      <p class="muted small">Cet album vit dans plusieurs collections que vous pouvez
+        exporter. L'export part au titre de l'une d'elles, et le dit.</p>
+      <div id="export-choix" class="export-choix" role="radiogroup"
+           aria-labelledby="export-title"></div>
+      <div class="modal-actions">
+        <button id="export-go" class="primary" type="button">Exporter</button>
+        <button id="export-close" class="ghost small" type="button">Annuler</button>
       </div>
     </div>
   </div>

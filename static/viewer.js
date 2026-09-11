@@ -97,6 +97,8 @@ async function loadAlbums() {
 
 async function selectAlbum(id, autoSelect = true) {
   state.albumId = id;
+  state.exportCols = null;        // DROIT-2 : à redemander pour cet album
+  chargerExportables();
   state.planches = await apiGet(`/api/albums/${id}/planches`);
   renderPlancheList();
   // `autoSelect=false` : un deep-link va choisir une planche PRÉCISE → ne pas charger
@@ -2042,11 +2044,9 @@ function setupMenus() {
   document.addEventListener("bd:menu-open", (e) => { if (e.detail !== "dropdown") closeAll(); });
 
   document.querySelectorAll("[data-fmt]").forEach((a) => {
-    a.onclick = () => {
-      if (!state.albumId) { toast("Aucun album", "error"); return; }
-      window.open(`${API}/api/export/${a.dataset.fmt}?album_id=${state.albumId}`, "_blank");
-    };
+    a.onclick = () => exporterAlbum(a.dataset.fmt);
   });
+  $("#export-pourquoi").onclick = () => toast(MOTIF_EXPORT_ALBUM, "error");
 }
 
 /* ===================================================================
@@ -2580,6 +2580,73 @@ function figVider() {
 }
 
 /* ===================================================================
+   Exporter un album (DROIT-2) — au titre d'une collection où l'on a le droit
+
+   Exporter est une case que le propriétaire d'une collection accorde accès par accès, et un
+   album vit dans plusieurs collections : il sort AU TITRE de l'une d'elles, où l'on a le
+   droit, et l'export le dit. Une seule collection exportable : c'est elle. Plusieurs : le
+   choix revient à qui exporte. Aucune : les formats cèdent la place à une entrée qui dit
+   pourquoi, et l'ajout de figures disparaît avec eux — une figure SORT aussi.
+
+   La garde reste au serveur, sur chaque porte ; l'écran n'évite qu'un geste perdu.
+   =================================================================== */
+const MOTIF_EXPORT_ALBUM = "Exporter cet album demande le droit d'exporter l'une de ses "
+  + "collections, que son propriétaire accorde accès par accès : le lire ou l'annoter n'y "
+  + "suffit pas.";
+state.exportCols = null;          // null = pas encore su pour l'album courant
+
+async function chargerExportables() {
+  const id = state.albumId;
+  if (!id) return;
+  let cols = [];
+  try { cols = (await apiGet(`/api/albums/${id}/collections`)).filter((c) => c.exportable); }
+  catch (_) { /* rien d'exportable affiché ; le serveur trancherait de toute façon */ }
+  if (state.albumId !== id) return;          // l'album a changé pendant la requête
+  state.exportCols = cols;
+  majExport();
+}
+
+function majExport() {
+  const aucune = Array.isArray(state.exportCols) && state.exportCols.length === 0;
+  document.querySelectorAll("[data-fmt]").forEach((b) => { b.hidden = aucune; });
+  $("#export-pourquoi").hidden = !aucune;
+  $("#btn-fig-add").hidden = aucune;
+}
+
+function exporterAlbum(fmt) {
+  if (!state.albumId) { toast("Aucun album", "error"); return; }
+  // Pas d'attente ICI : `window.open` après un `await` n'est plus un geste de l'utilisateur,
+  // et le navigateur bloque l'onglet. Si les droits ne sont pas encore connus — un clic
+  // pendant le chargement de l'album —, on le dit et on les demande.
+  if (state.exportCols === null) {
+    toast("Vérification du droit d'exporter… réessayez dans un instant.");
+    chargerExportables();
+    return;
+  }
+  const cols = state.exportCols;
+  if (!cols.length) { toast(MOTIF_EXPORT_ALBUM, "error"); return; }
+  if (cols.length === 1) { ouvrirExport(fmt, cols[0].id); return; }
+  ouvrirChoixExport(fmt);
+}
+
+function ouvrirExport(fmt, collectionId) {
+  window.open(`${API}/api/export/${fmt}?album_id=${state.albumId}`
+    + `&collection_id=${collectionId}`, "_blank");
+}
+
+function ouvrirChoixExport(fmt) {
+  const m = $("#export-modal");
+  m.dataset.fmt = fmt;
+  $("#export-choix").innerHTML = state.exportCols.map((c, i) => `
+    <label><input type="radio" name="export-col" value="${c.id}"${i ? "" : " checked"}>
+      ${esc(c.nom)}</label>`).join("");
+  m.hidden = false;
+  $("#export-choix input").focus();
+}
+
+function fermerChoixExport() { $("#export-modal").hidden = true; }
+
+/* ===================================================================
    Câblage des contrôles & raccourcis
    =================================================================== */
 function setupControls() {
@@ -2603,6 +2670,19 @@ function setupControls() {
   if (window.BDDialog)
     BDDialog.register($("#figure-modal"),
       { box: ".modal-box", labelledby: "figure-title", onClose: figClose });
+  // DROIT-2 : le choix de la collection d'export, quand l'album en a plusieurs.
+  $("#export-go").onclick = () => {
+    const choix = $("#export-choix input:checked");
+    if (choix) ouvrirExport($("#export-modal").dataset.fmt, choix.value);
+    fermerChoixExport();
+  };
+  $("#export-close").onclick = fermerChoixExport;
+  $("#export-modal").addEventListener("mousedown", (e) => {
+    if (e.target.id === "export-modal") fermerChoixExport();
+  });
+  if (window.BDDialog)
+    BDDialog.register($("#export-modal"),
+      { box: ".modal-box", labelledby: "export-title", onClose: fermerChoixExport });
   $("#zoom-in").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.2); };
   $("#zoom-out").onclick = () => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
   $("#zoom-fit").onclick = fitView;

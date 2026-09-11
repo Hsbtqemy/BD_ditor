@@ -305,6 +305,14 @@ async function setup() {
   $("#f-morph").addEventListener("input", deb);
   ["#f-album", "#f-type", "#f-pos", "#f-prov"].forEach((s) => { $(s).onchange = search; });
   $("#btn-export").onclick = exportCsv;   // export du jeu de résultats courant (CSV)
+  // DROIT-2 — le bouton ne se propose qu'à qui peut exporter quelque part, et la note
+  // dit quand le fichier emportera moins que l'écran. La garde reste au serveur.
+  Promise.resolve(window.BDMoi).then(etatExport, () => "tout").then((etat) => {
+    $("#btn-export").hidden = etat === "rien";
+    const note = $("#export-note");
+    note.textContent = noteExport(etat);
+    note.hidden = !note.textContent;
+  });
   $("#preview-close").onclick = closePreview;
   document.addEventListener("keydown", (e) => {   // Échap ferme l'aperçu
     if (e.key === "Escape" && !$("#preview").hidden) closePreview();

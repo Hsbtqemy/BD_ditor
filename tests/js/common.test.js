@@ -115,3 +115,29 @@ test("une source en ÉCHEC ne casse pas l'écran", async () => {
   assert.deepEqual(await identite(Promise.reject(new Error("réseau"))),
                    { login: null, groupes_admin: [] });
 });
+
+
+/* --- etatExport / noteExport (DROIT-2) --------------------------------------------
+   Ce que la Recherche et l'Exploration disent de leurs exports, d'après `/api/moi`. La
+   propriété qui compte le plus est la seconde : sans réponse lisible, l'écran ne fabrique
+   PAS de refus — la garde est au serveur, et une note fausse qui dirait « vous n'avez aucun
+   droit » serait pire qu'un bouton qu'on refuse. */
+const { etatExport, noteExport } = require("../../static/lib/common.js");
+
+test("etatExport lit les trois états", () => {
+  for (const e of ["tout", "partiel", "rien"])
+    assert.equal(etatExport({ acces: { exporter: e } }), e);
+});
+
+test("sans réponse lisible, etatExport ne fabrique pas de refus", () => {
+  for (const x of [null, undefined, {}, { acces: {} }, { acces: { exporter: "RIEN" } },
+                   { acces: { exporter: "toString" } }])
+    assert.equal(etatExport(x), "tout", JSON.stringify(x));
+});
+
+test("noteExport ne parle que d'un export partiel ou impossible", () => {
+  assert.equal(noteExport("tout"), "");
+  assert.match(noteExport("partiel"), /n'emporte que/);
+  assert.match(noteExport("rien"), /aucune/);
+  assert.equal(noteExport("constructor"), "");
+});
