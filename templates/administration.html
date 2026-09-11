@@ -46,33 +46,37 @@
       <p id="version-corps" class="muted small"></p>
     </section>
 
-    <!-- ───────── Collections (AUTH-3) — espaces de travail : posséder, partager ─────────
+    <!-- ───────── Accès aux collections (AUTH-3) — qui entre, et à quel niveau ─────────
          Aucune garde d'écran ici, et c'est voulu (UX-10) : la liste est filtrée par la
          PORTÉE du serveur, et chaque bloc pose sa propre question. Garder la page entière
          derrière un droit reproduirait l'erreur d'AUTH-4, où une simple adresse s'est
-         retrouvée réservée parce qu'elle vivait dans un panneau gardé. -->
+         retrouvée réservée parce qu'elle vivait dans un panneau gardé.
+
+         COL-2 (2026-09-11) : ce que la collection EST — la créer, la décrire, la renommer,
+         la supprimer, l'exporter — a déménagé dans la Bibliothèque. Qui ENTRE relève de
+         l'instance, ce que la collection EST relève du corpus. -->
     <section class="admin-bloc" aria-labelledby="collections-title">
-      <h2 id="collections-title">👥 Collections</h2>
-      <p class="muted small">Une <b>collection</b> est un espace de travail, et l'unité qui
-        porte les accès : un album suit celle qui le contient. Trois niveaux —
-        <b>lecture</b>, <b>écriture</b> (annoter), <b>propriétaire</b> (décider qui entre).</p>
-      <div class="contrib-add">
-        <input id="col-nom" placeholder="Nom d'une nouvelle collection" autocomplete="off"
-               aria-label="Nom de la nouvelle collection">
-        <button id="col-add" class="primary small" type="button">+ Créer</button>
-      </div>
+      <h2 id="collections-title">👥 Accès aux collections</h2>
+      <p class="muted small">Qui entre dans chaque collection, et à quel niveau :
+        <b>lecture</b>, <b>écriture</b> (annoter), <b>propriétaire</b> (décider qui entre).
+        Créer, décrire, renommer, supprimer ou exporter une collection se fait dans la
+        <a href="/corpus">Bibliothèque</a>.</p>
       <div id="col-body"></div>
       <p id="col-msg" class="muted small" role="status" aria-live="polite"></p>
+    </section>
 
-      <!-- Vue des comptes (AUTH-7). `hidden` par défaut, levé par le JS SEULEMENT si la
-           route répond : la garde est celle du serveur (403 aux non-administrateurs), pas
-           celle de cet écran. La décider ici à partir des groupes ferait deux sources à
-           tenir d'accord, et l'écran finirait par mentir dans un sens ou dans l'autre. -->
-      <section id="comptes-bloc" hidden aria-labelledby="comptes-titre">
-        <h3 id="comptes-titre">Comptes vus par l'application</h3>
-        <p class="col-note" id="comptes-limite"></p>
-        <div id="comptes-body"></div>
-      </section>
+    <!-- Vue des comptes (AUTH-7). `hidden` par défaut, levé par le JS SEULEMENT si la route
+         répond : la garde est celle du serveur (403 aux non-administrateurs), pas celle de
+         cet écran. La décider ici à partir des groupes ferait deux sources à tenir
+         d'accord, et l'écran finirait par mentir dans un sens ou dans l'autre.
+
+         Un bloc à part depuis COL-2. Elle vivait NICHÉE dans le panneau des collections, et
+         y aurait suivi un déménagement qui ne la concerne pas : elle dit ce que chaque LOGIN
+         a laissé, pas ce qu'une collection est. -->
+    <section class="admin-bloc" id="comptes-bloc" hidden aria-labelledby="comptes-titre">
+      <h2 id="comptes-titre">👤 Comptes vus par l'application</h2>
+      <p class="col-note" id="comptes-limite"></p>
+      <div id="comptes-body"></div>
     </section>
 
     <!-- ───────── Moteurs (SANTE-1) — la présence n'est pas le fonctionnement ─────────
@@ -101,7 +105,6 @@
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
 <script src="/static/lib/sante.js"></script>
-<script src="/static/lib/depot.js"></script>
 <script src="/static/administration.js"></script>
 </body>
 </html>

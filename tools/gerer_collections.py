@@ -20,10 +20,17 @@ Sous-commandes :
     retirer   ID --albums 1,2         retire des albums (n'efface pas les albums)
     supprimer ID                      supprime la collection (pas les albums)
 
-AUTH-3 — depuis l'écran Collections de la Bibliothèque, cet outil n'est plus le SEUL moyen
-d'écrire : c'était son défaut, il exigeait un accès shell pour ouvrir un espace de travail.
-Il reste utile pour l'amorçage et les descripteurs de dépôt (licence, embargo, responsables),
-que l'écran ne couvre pas.
+AUTH-3 puis COL-2 — cet outil n'est plus le SEUL moyen d'écrire : c'était son défaut, il
+exigeait un accès shell pour ouvrir un espace de travail. Depuis le 2026-09-11, le bloc
+Collections de la Bibliothèque crée, renomme, supprime et décrit une collection — régime
+de diffusion, embargo, licence, base légale, dates, référent. Il reste deux raisons de
+passer par ici : l'AMORÇAGE (créer avec son propriétaire et ses albums d'un coup), et
+les RESPONSABLES scientifiques (`--responsable`), que l'écran ne couvre pas.
+
+Deux portes mènent donc aux mêmes champs, et une seule règle leur est commune : la liste
+du régime, `config.STATUTS_DIFFUSION`. Cet outil écrit en base sans passer par la route
+d'édition — une règle ajoutée à l'une ne vaut pas pour l'autre tant qu'on ne l'y a pas
+posée aussi. Un champ à deux portes dont une seule contrôle n'est pas contrôlé.
 
 Une collection créée ici naît SANS PROPRIÉTAIRE — donc administrable par les seuls
 `bd-admins`. C'est cohérent (il n'y a pas d'identité dans un shell), mais rarement ce qu'on

@@ -1,7 +1,8 @@
 /* ===================================================================
    BéDéditeur — page Bibliothèque / gestion de corpus (vanilla JS)
-   Gère les albums (CRUD + métadonnées), les planches (ouvrir/supprimer)
-   et le traitement par lot (segmentation / bulles / OCR) en arrière-plan.
+   Gère les albums (CRUD + métadonnées), les planches (ouvrir/supprimer),
+   le traitement par lot (segmentation / bulles / OCR) en arrière-plan — et,
+   depuis COL-2, ce que chaque collection EST (la créer, la décrire, l'exporter).
    =================================================================== */
 "use strict";
 
@@ -45,6 +46,7 @@ async function loadAlbums() {
   else { state.openId = null; state.checkedPlanches.clear(); $("#album-detail").hidden = true; }
   updateSelInfo();
   loadSynthese();
+  rafraichirCollections();   // COL-2 : le décompte d'albums bouge
 }
 
 /* Badge « validées / total » avec mini-barre (vert si tout est validé). */
@@ -289,7 +291,11 @@ async function openModal(album) {
   $("#m-contrib-role").value = "";
   const exist = !!state.editingId;
   $("#m-contrib-hint").hidden = exist;
-  $(".contrib-add").style.display = exist ? "" : "none";
+  // Par son IDENTIFIANT, et non par `$(".contrib-add")` : ce sélecteur rendait la
+  // PREMIÈRE ligne de cette classe dans la page. C'était déjà celle de l'appartenance et
+  // non celle des contributions ; depuis COL-2, c'eût été le formulaire de création de
+  // collection, masqué à chaque « Nouvel album » sans qu'aucune erreur ne le dise.
+  $("#m-contrib-ligne").style.display = exist ? "" : "none";
   $("#m-contribs").innerHTML = "";
   if (exist) { loadRoles(); loadContributions(state.editingId); }
   // AWAIT avant d'ouvrir : sans cela, une sauvegarde plus rapide que la requête verrait
@@ -681,6 +687,7 @@ async function loadAppartenance(albumId) {
         await apiSend("DELETE", `/api/albums/${albumId}/collections/${b.dataset.sortir}`);
         appMsg("");
         loadAppartenance(albumId);
+        rafraichirCollections();
       } catch (e) { appMsg(e.message, true); }
     };
   });
@@ -698,9 +705,542 @@ async function rangerAlbum() {
     await apiSend("PUT", `/api/albums/${id}/collections/${cible}`);
     appMsg("");
     loadAppartenance(id);
+    rafraichirCollections();
   } catch (e) { appMsg(e.message, true); }
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Collections (COL-2) — ce que chaque collection EST
+
+   La frontière, tranchée le 2026-09-11 et TENUE en connaissance de cause : QUI ENTRE relève
+   de l'instance et vit dans l'Administration ; CE QUE LA COLLECTION EST relève du corpus et
+   vit ici — la créer, la renommer, la supprimer, la décrire, désigner son référent, régler
+   sa diffusion, l'exporter. Tout cela s'était accumulé dans le panneau des accès, et le
+   régime de diffusion ne s'y écrivait même pas : passer une collection en « public »
+   demandait `tools/gerer_collections.py`, donc un shell.
+
+   DÉMÉNAGÉ, PAS DUPLIQUÉ (UX-10) : l'Administration ne garde que les accès, et chaque écran
+   dit où vit l'autre moitié.
+
+   LA GARDE RESTE SUR L'ACTE, et ce bloc en pose TROIS. Créer n'exige aucun droit — une
+   identité suffit : refuser la création à qui n'a encore rien rendrait l'outil inutilisable
+   au premier jour. Éditer, renommer, supprimer exigent la propriété (`administrable`, que
+   le serveur calcule). Lire les descripteurs est ouvert à qui voit la collection. Une garde
+   unique posée sur le bloc masquerait le bouton de création à tout arrivant, et l'erreur
+   échouerait en se FERMANT : c'est mot pour mot AUTH-4.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Le vocabulaire du régime de diffusion — en DOUBLE de `config.STATUTS_DIFFUSION`, parce
+   que les gabarits sont servis tels quels et qu'aucune route ne le publie. Leur accord est
+   MESURÉ : `tests/test_collections_admin.py` échoue si l'un bouge sans l'autre. La valeur
+   vide est « sans régime » — NULL en base, l'état de toute collection neuve. */
+const REGIMES_DIFFUSION = [
+  ["", "sans régime"],
+  ["public", "public"],
+  ["embargo", "sous embargo"],
+  ["restreint", "restreint"],
+  ["prive", "privé"],
+];
+
+/* Les champs, dans l'ordre où on les lit, et rangés par ce qu'ils ENGAGENT (fiche COL-2) :
+   un formulaire plat mettrait le nom et la base légale sur le même plan. `responsables`
+   n'y est pas, et c'est voulu : scientifique, porteur d'ORCID, parti au dépôt, il ne passe
+   pas par `CollectionUpdate` et reste à `tools/gerer_collections.py`. */
+const COL_GROUPES = [
+  { id: "description", legende: "Description", champs: [
+    { cle: "nom", libelle: "Nom" },
+    { cle: "description", libelle: "Description", zone: true },
+    { cle: "date_debut", libelle: "Début", aide: "AAAA ou AAAA-MM-JJ" },
+    { cle: "date_fin", libelle: "Fin", aide: "AAAA ou AAAA-MM-JJ" },
+  ] },
+  { id: "diffusion", legende: "Diffusion — ce qui sort de l'instance", champs: [
+    { cle: "statut_diffusion", libelle: "Régime de diffusion", regime: true },
+    // Un champ TEXTE et non `type=date` : un champ date affiche VIDE une valeur qu'il ne
+    // sait pas lire. Une date illisible disparaîtrait donc de l'écran, et le premier
+    // enregistrement l'effacerait — une levée d'embargo déguisée en faute de frappe.
+    { cle: "date_embargo", libelle: "Fin d'embargo", aide: "AAAA-MM-JJ" },
+    { cle: "licence_defaut", libelle: "Licence", aide: "ex. CC-BY-4.0" },
+    { cle: "base_legale", libelle: "Base légale" },
+  ] },
+  { id: "referent", legende: "Référent — à qui s'adresser", champs: [
+    { cle: "referent_nom", libelle: "Nom lisible" },
+    { cle: "referent_contact", libelle: "Contact", aide: "Courriel ou adresse de page" },
+  ] },
+];
+
+/* Vrai dès que la liste a été dessinée une fois : avant, un rafraîchissement des décomptes
+   n'a rien à rafraîchir, et le déclencher ferait dessiner la liste deux fois au démarrage,
+   dont une AVANT que l'état ShareDocs soit connu. */
+let COLS_RENDUES = false;
+
+function colMsg(texte, erreur) {
+  const el = $("#col-msg");
+  el.textContent = texte || "";
+  el.classList.toggle("erreur", !!erreur);
+}
+
+/* Les refus du serveur sont RENDUS, jamais avalés : un 409 qui dit combien d'albums une
+   suppression laisserait sans collection, un 422 qui nomme les valeurs admises, un 403 qui
+   dit qu'aucune identité ne parvient. Trois causes qui ne se corrigent pas de la même
+   façon, qu'un « échec » générique ferait prendre pour un bug. */
+async function colTenter(fn) {
+  try { await fn(); colMsg(""); return true; }
+  catch (e) { colMsg(e.message || "Échec", true); return false; }
+}
+
+/* Le libellé d'un régime. Une valeur HORS vocabulaire — un reste d'avant la validation —
+   s'affiche telle quelle plutôt que d'être maquillée en « sans régime ». */
+function colRegime(v) {
+  const r = REGIMES_DIFFUSION.find(([val]) => val === (v || ""));
+  return r ? r[1] : String(v);
+}
+
+/* ── Déplacé TEL QUEL de l'Administration (COL-2, 2026-09-11) ─────────────────────────
+   L'état d'embargo, le référent lu, l'export de dépôt et l'état ShareDocs ci-dessous sont
+   ceux qui vivaient dans le panneau des accès, sans une ligne changée. La garde de l'export
+   — lire pour télécharger, posséder pour déposer — n'est PAS l'affaire de ce déménagement :
+   exporter devient un droit à part dans DROIT-2, qui la posera au serveur, à un seul
+   endroit. La restreindre ici aurait laissé les neuf autres portes ouvertes en donnant
+   l'impression d'avoir fermé. */
+
+/* DROIT-1 — ce que la date d'embargo raconte, en clair.
+
+   L'application ne lève JAMAIS un embargo toute seule : une date qui passe dit que le
+   délai a couru, pas que les droits sont acquis. Mais se taire aurait son propre coût —
+   un embargo échu que personne ne remarque garde un corpus fermé par inertie, ce qui
+   trahit l'orientation open-science aussi sûrement qu'une fuite trahit les droits.
+
+   Le libellé PORTE le sens ; la couleur ne fait que le renforcer (WCAG 1.4.1). */
+function colEmbargo(c) {
+  const date = c.date_embargo || "";
+  if (c.embargo === "echu")
+    return [`Embargo échu`, "est-echu",
+            `L'embargo est échu depuis le ${date}, et la collection reste déclarée `
+            + `« ${c.statut_diffusion || "sans régime"} ». L'application ne la publie pas `
+            + `pour autant : si les droits sont acquis, déclarez-la « public ».`];
+  if (c.embargo === "illisible")
+    return [`Embargo : date illisible`, "est-echu",
+            `« ${date} » n'est pas une date lisible (attendu AAAA-MM-JJ). Par précaution, `
+            + `les scans ne sortent pas tant qu'elle ne l'est pas.`];
+  if (c.embargo === "pendant")
+    return [`Embargo jusqu'au ${date}`, "",
+            c.statut_diffusion === "public"
+              ? `La collection est déclarée « public », mais l'embargo court jusqu'au `
+                + `${date} : les scans ne sortiront pas avant cette date.`
+              : `L'embargo court jusqu'au ${date}. Le travail interne n'en est pas `
+                + `affecté : seule la publication l'est.`];
+  return null;
+}
+
+/* Le référent, en LECTURE. Le contact s'affiche en TEXTE et non en lien, contrairement au
+   référent d'instance du bandeau (`theme.js`) : celui-là vient de l'environnement, donc de
+   qui déploie, tandis que celui-ci est saisi par un propriétaire de collection. Plutôt que
+   de recopier ici l'autorisation de schémas — deux listes qui divergeraient un jour —, on
+   n'ouvre pas la porte du tout : un `href` est la seule chose qui rende `javascript:`
+   dangereux, et une adresse reste lisible sans être cliquable. */
+function colReferentLu(c) {
+  const nom = (c.referent_nom || "").trim();
+  const contact = (c.referent_contact || "").trim();
+  if (!nom && !contact) return "";
+  return `<p class="col-note col-note-referent">Référent de cette collection :
+    <strong>${esc(nom || contact)}</strong>${nom && contact ? ` — ${esc(contact)}` : ""}.</p>`;
+}
+
+/* Le dépôt ShareDocs. Il RÉUTILISE les réglages des lignes du dessus — la case
+   « avec le texte relevé » et l'adresse du serveur d'images — parce que ce sont les mêmes
+   réglages du même artefact : les redemander ici laisserait deux jeux de valeurs se
+   contredire à l'écran, et personne ne saurait lequel est parti.
+
+   Le bloc n'existe que pour qui ADMINISTRE la collection, et c'est le serveur qui tranche
+   (403) : `administrable` ne fait que lui éviter de proposer un geste qu'il refusera.
+   L'inverse — décider ici et laisser le serveur ouvert — est l'erreur qui ne se voit
+   jamais, puisque l'écran a l'air correct. */
+async function colDeposer(bouton) {
+  const boite = bouton.closest(".col-export");
+  const msg = boite.querySelector(".dep-msg");
+  const [quoi, format] = boite.querySelector(".dep-choix").value.split("|");
+  const base = boite.querySelector(".dep-base").value.trim();
+
+  // La même règle que pour le téléchargement : un manifeste sans serveur d'images ne
+  // part pas, et le dire avant d'appeler évite un aller-retour pour rien.
+  const { refus } = BDDepot.urlDepot({ collectionId: bouton.dataset.col, quoi, format,
+                                       baseUrl: base });
+  if (refus) { msg.textContent = refus; msg.className = "dep-msg erreur"; return; }
+
+  msg.className = "dep-msg";
+  msg.textContent = "Dépôt en cours…";
+  try {
+    const r = await apiSend("POST", `/api/collections/${bouton.dataset.col}/depot/deposer`,
+      { quoi, format, verbatim: Boolean(boite.querySelector("[data-verbatim]").checked),
+        base_url: base, dossier: boite.querySelector(".dep-dossier").value.trim() });
+    // Le compte EMPLOYÉ vient du serveur et s'affiche : un dépôt fait sous le compte de
+    // l'instance alors qu'on en a un personnel doit se voir (SHARE-1).
+    msg.textContent = `Déposé : ${r.depose} (compte ${r.compte}).`;
+  } catch (e) {
+    msg.className = "dep-msg erreur";
+    msg.textContent = e.message || "Échec du dépôt.";
+  }
+}
+
+/* Branche les boutons du bloc d'export. Appelé par les DEUX branches de `colDetail` :
+   c'est le seul endroit où l'oubli serait silencieux — un bouton sans gestionnaire ne
+   proteste pas, il ne fait rien. */
+function colBrancherExport(box) {
+  box.querySelectorAll("[data-dep]").forEach((b) => {
+    b.type = "button";
+    b.onclick = () => colTelecharger(b);
+  });
+  const dep = box.querySelector("[data-depot]");
+  if (dep) { dep.type = "button"; dep.onclick = () => colDeposer(dep); }
+}
+
+
+/* EXP-1 — l'export de dépôt, pour qui n'a pas de shell.
+
+   Ce bloc s'affiche dans les DEUX branches de `colDetail`, et c'est la leçon d'AUTH-4
+   appliquée avant de se refaire prendre : une garde d'interface se pose sur l'ACTE, jamais
+   sur l'écran qui le contient. Décrire une collection qu'on lit n'est pas la partager —
+   le serveur n'exige ici que `peut_lire`, et le ranger sous le `return` réservé aux
+   propriétaires en ferait, exactement comme le référent, un droit d'écriture déguisé. On
+   se serait aperçu de rien : l'erreur échoue en se FERMANT, aucun test ne tombe, et une
+   revue de sécurité l'approuve.
+
+   Le nom du fichier vient du serveur (`Content-Disposition`) : le recomposer ici ferait
+   diverger deux horodatages pour un seul export — même raison que l'export de figures. */
+function colExport(c) {
+  const b = `data-col="${c.id}"`;
+  return `
+    <div class="col-export">
+      <h4>Export de dépôt</h4>
+      <p class="muted small">Ce que produisaient les scripts <code>tools/</code>, sur cette
+        collection seulement.</p>
+      <div class="dep-ligne">
+        <span class="dep-quoi">Fiche de description</span>
+        <button class="ghost small" ${b} data-dep="description" data-fmt="json">JSON</button>
+        <button class="ghost small" ${b} data-dep="description" data-fmt="csv">CSV</button>
+      </div>
+      <div class="dep-ligne">
+        <span class="dep-quoi">Enregistrements</span>
+        <button class="ghost small" ${b} data-dep="metadonnees" data-fmt="json">JSON</button>
+        <button class="ghost small" ${b} data-dep="metadonnees" data-fmt="zip">CSV (zip)</button>
+        <button class="ghost small" ${b} data-dep="metadonnees" data-fmt="xlsx">XLSX</button>
+        <label class="dep-verbatim"><input type="checkbox" data-verbatim="1">
+          <span>avec le texte relevé</span></label>
+      </div>
+      <div class="dep-ligne dep-iiif">
+        <span class="dep-quoi">Manifeste IIIF
+          <span class="dep-moment">au moment du dépôt</span></span>
+        <input type="url" class="dep-base" placeholder="Adresse publique des images (facultatif)"
+               aria-label="Adresse publique sous laquelle les images seront servies (facultatif)">
+        <button class="ghost small" ${b} data-dep="iiif" data-fmt="zip">Télécharger</button>
+      </div>
+      <p class="muted small dep-aide">Le manifeste décrit les planches et <b>pointe</b> vers
+        les images : il ne les contient pas, et n'attend pas un serveur IIIF — de simples
+        JPEG suffisent. L'adresse est celle sous laquelle le dossier <code>derivatives/</code>
+        sera publiquement servi : un partage ShareDocs, ou ce que rend l'entrepôt.
+        <b>Laissez vide tant que les images ne sont publiées nulle part</b> — le manifeste
+        sort alors en aperçu, et le déclare.</p>
+      ${c.administrable ? `
+      <div class="dep-ligne dep-depot">
+        <span class="dep-quoi">Déposer sur ShareDocs</span>
+        ${SD.connecte ? `
+        <select class="dep-choix" aria-label="Artefact à déposer">
+          ${BDDepot.choix().map((o) =>
+            `<option value="${o.quoi}|${o.format}">${esc(o.libelle)}</option>`).join("")}
+        </select>
+        <input class="dep-dossier" placeholder="ex. @Home/mon-dossier (vide = racine)"
+               aria-label="Dossier ShareDocs de destination, chemin relatif à la racine WebDAV">
+        <button class="ghost small" ${b} data-depot="1">Déposer</button>`
+        : `<a class="ghost small dep-connexion"
+              href="${BDDepot.lienConnexionSharedocs()}">Se connecter à ShareDocs…</a>`}
+      </div>
+      ${SD.connecte
+        ? `<p class="muted small dep-aide">Compte employé :
+             <b>${esc(SD.actif ? (SD.actif.compte || "") : "")}</b>
+             ${SD.actif && SD.actif.user ? `(${esc(SD.actif.user)})` : ""}.
+             Le dossier est un chemin <b>relatif</b>, séparé par des barres obliques — pas
+             le fil d'Ariane de l'interface web, dont les noms d'affichage diffèrent des
+             chemins réels. Le dépôt ne crée aucun dossier manquant.</p>`
+        : `<p class="muted small dep-aide">Aucune session ShareDocs n'est ouverte. Le lien
+             ci-dessus ouvre la connexion dans l'Atelier et ramène ici.</p>`}` : ""}
+      <p class="dep-msg" role="status" aria-live="polite"></p>
+    </div>`;
+}
+
+/* Le téléchargement lui-même. Les refus du serveur sont RENDUS À L'ÉCRAN et non avalés :
+   ils portent des messages qui distinguent quatre causes (pas publique, embargo en cours,
+   date illisible, aucune collection nommée), et ces quatre-là ne se corrigent pas de la
+   même façon. Les remplacer par « échec » perdrait tout ce que l'outil sait dire. */
+async function colTelecharger(bouton) {
+  const boite = bouton.closest(".col-export");
+  const msg = boite.querySelector(".dep-msg");
+  const quoi = bouton.dataset.dep;
+  const verbatim = boite.querySelector("[data-verbatim]")?.checked;
+  const base = boite.querySelector(".dep-base")?.value.trim();
+
+  // L'adresse se DÉCIDE dans `static/lib/depot.js`, pas ici : trois erreurs y sont
+  // muettes — `verbatim` envoyé à une route qui l'ignore, une adresse d'images non
+  // encodée qui INJECTE des paramètres, un format proposé pour le mauvais export. Une
+  // concaténation dans ce gestionnaire ne serait vérifiable que par un test qui relit le
+  // source, et le dépôt sait depuis `sante.js` ce que vaut cette lecture-là.
+  const { url, refus } = BDDepot.urlDepot({
+    collectionId: bouton.dataset.col, quoi, format: bouton.dataset.fmt, verbatim,
+    baseUrl: base,
+  });
+  if (refus) {
+    msg.textContent = refus;
+    msg.className = "dep-msg erreur";
+    return;
+  }
+
+  msg.className = "dep-msg";
+  msg.textContent = "Préparation…";
+  try {
+    const r = await fetch(url);
+    if (!r.ok) {
+      throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    }
+    const nom = (r.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/);
+    const href = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a");
+    a.href = href; a.download = nom ? nom[1] : "export";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(href);
+    msg.textContent = nom ? `${nom[1]} téléchargé.` : "Export téléchargé.";
+  } catch (e) {
+    msg.className = "dep-msg erreur";
+    msg.textContent = e.message || "Échec de l'export.";
+  }
+}
+
+
+/* L'état de la session ShareDocs, lu une fois par chargement de page (EXP-1).
+
+   Il ne DÉCIDE rien — le serveur refusera de lui-même —, il évite seulement de proposer
+   un dépôt qui échouerait sur une erreur de transport WebDAV, laquelle ne nomme pas la
+   cause. Relu au chargement suffit : on revient ici par un aller-retour, qui recharge. */
+let SD = { connecte: false, actif: null };
+
+async function loadEtatSharedocs() {
+  // Un échec ici ne doit rien empêcher : sans état connu, on retombe sur « pas de
+  // session », qui propose le lien de connexion. Se tromper dans ce sens fait proposer un
+  // geste inutile ; se tromper dans l'autre ferait échouer un dépôt sans l'expliquer.
+  try { SD = await apiGet("/api/sharedocs/etat"); }
+  catch (e) { SD = { connecte: false, actif: null }; }
+}
+
+
+/* Un champ du formulaire. Aucune valeur n'est interprétée ici : le serveur valide, et ses
+   refus sont rendus tels quels. Une valeur de régime HORS vocabulaire reste sélectionnée et
+   nommée comme telle, pour qu'enregistrer autre chose ne la fasse pas disparaître en
+   silence. */
+function colChamp(c, f) {
+  const id = `col-${c.id}-${f.cle}`;
+  const v = c[f.cle] == null ? "" : String(c[f.cle]);
+  const a = `id="${id}" data-champ="${f.cle}"`;
+  let champ;
+  if (f.regime) {
+    const connue = REGIMES_DIFFUSION.some(([val]) => val === v);
+    champ = `<select ${a}>${REGIMES_DIFFUSION.map(([val, lib]) =>
+      `<option value="${val}"${val === v ? " selected" : ""}>${esc(lib)}</option>`).join("")}${
+      connue ? "" : `<option value="${esc(v)}" selected>${esc(v)} (hors vocabulaire)</option>`}</select>`;
+  } else if (f.zone) {
+    champ = `<textarea ${a} rows="2">${esc(v)}</textarea>`;
+  } else {
+    champ = `<input ${a} value="${esc(v)}" autocomplete="off"${
+      f.aide ? ` placeholder="${esc(f.aide)}"` : ""}>`;
+  }
+  return `<div class="contrib-add col-champ"><label for="${id}">${esc(f.libelle)}</label>${champ}</div>`;
+}
+
+/* Ce que chaque groupe ENGAGE, dit sous ses champs. La date d'embargo est la plus traître :
+   l'écran doit dire ce qu'elle FAIT, pas seulement l'accepter (piège écrit dans COL-2). */
+function colNoteGroupe(c, g) {
+  if (g.id === "diffusion") {
+    const emb = colEmbargo(c);
+    return `${emb ? `<p class="col-note">${esc(emb[2])}</p>` : ""}
+      <p class="col-note">Le régime décide de ce qui SORT de l'instance — les images d'un
+        manifeste IIIF, l'avertissement d'un dépôt ; à l'intérieur, il ne borne rien. La date
+        d'embargo RETIENT : tant qu'elle court, les scans ne sortent pas, même d'une
+        collection « public ». Elle ne publie jamais rien d'elle-même — une échéance passée
+        se signale sans rien lever, et une date illisible retient aussi.</p>`;
+  }
+  if (g.id === "referent") {
+    return `<p class="col-note">C'est une ADRESSE, pas un droit : la nommer n'accorde rien et
+      ne retire rien. Elle ne sort d'aucun export, et ce n'est pas le responsable
+      scientifique, qui part au dépôt avec son ORCID.</p>`;
+  }
+  return "";
+}
+
+function colFormulaire(c) {
+  return COL_GROUPES.map((g) => `
+    <fieldset class="modal-section">
+      <legend>${esc(g.legende)}</legend>
+      ${g.champs.map((f) => colChamp(c, f)).join("")}
+      ${colNoteGroupe(c, g)}
+    </fieldset>`).join("") + `
+    <div class="modal-actions">
+      <button class="primary small" data-enregistrer="1" type="button">Enregistrer</button>
+      <button class="ghost small" data-supprimer="1" type="button">Supprimer la collection</button>
+    </div>`;
+}
+
+/* Ce qu'un participant non propriétaire LIT. Il sait sous quel régime il travaille, et à
+   qui écrire ; il ne peut rien changer. Le régime s'affiche toujours, même vide : « sans
+   régime » est une information, pas une absence. */
+function colDescriptionLue(c) {
+  const lignes = [`<p class="col-note"><b>Régime de diffusion</b> :
+    ${esc(colRegime(c.statut_diffusion))}</p>`];
+  for (const g of COL_GROUPES) {
+    for (const f of g.champs) {
+      if (f.cle === "nom" || f.regime || g.id === "referent") continue;
+      const v = c[f.cle];
+      if (v == null || String(v).trim() === "") continue;
+      lignes.push(`<p class="col-note"><b>${esc(f.libelle)}</b> : ${esc(String(v))}</p>`);
+    }
+  }
+  const emb = colEmbargo(c);
+  if (emb) lignes.push(`<p class="col-note">${esc(emb[2])}</p>`);
+  return lignes.join("");
+}
+
+/* Où est l'autre moitié. Dite dans les DEUX branches, pour la même raison que dans
+   l'Administration : la frontière coupe en deux le trajet le plus courant. */
+function colAilleurs() {
+  return `<p class="col-note">Qui entre dans cette collection, et à quel niveau, se règle
+    dans l'<a href="/administration">Administration → Accès aux collections</a>.</p>`;
+}
+
+function colItem(c) {
+  const d = document.createElement("details");
+  d.className = "col-item";
+  d.dataset.id = String(c.id);
+  const emb = colEmbargo(c);
+  d.innerHTML = `
+    <summary>
+      <span class="col-nom">${esc(c.nom)}</span>
+      <span class="muted small col-nb">${c.nb_albums} album(s)</span>
+      <span class="muted small col-regime">${esc(colRegime(c.statut_diffusion))}</span>
+      ${emb ? `<span class="col-embargo ${emb[1]}" title="${esc(emb[2])}">${esc(emb[0])}</span>`
+            : ""}
+    </summary>
+    <div class="col-detail"></div>`;
+  d.addEventListener("toggle", () => { if (d.open) colDetail(d, c); });
+  return d;
+}
+
+function colDetail(d, c) {
+  const box = d.querySelector(".col-detail");
+  if (!c.administrable) {
+    // LIRE et MODIFIER sont deux droits distincts, qu'une seule garde confondait (AUTH-4).
+    box.innerHTML = `${colDescriptionLue(c)}${colReferentLu(c)}
+      <p class="col-note">Seul un propriétaire de la collection modifie sa description, son
+        régime de diffusion et son référent.</p>
+      ${colExport(c)}${colAilleurs()}`;
+    colBrancherExport(box);
+    return;
+  }
+  box.innerHTML = colFormulaire(c) + colExport(c) + colAilleurs();
+  colBrancherExport(box);
+  box.querySelector("[data-enregistrer]").onclick = () => colEnregistrer(box, c);
+  box.querySelector("[data-supprimer]").onclick = () => colSupprimer(c);
+}
+
+/* N'envoie que ce qui a CHANGÉ, et pour deux raisons qui se vérifient. Un régime HORS
+   vocabulaire — un reste d'avant la validation — ferait refuser TOUT l'enregistrement en
+   422 s'il était renvoyé tel quel, alors qu'on voulait seulement corriger la licence. Et un
+   champ qu'on n'a pas touché ne doit pas écraser ce qu'une autre personne vient d'y écrire.
+   La date d'embargo illisible, elle, est protégée par son champ TEXTE (cf. `COL_GROUPES`) :
+   c'est lui qui la réaffiche telle quelle. Un champ vidé part en `null` — c'est un geste,
+   pas un oubli. */
+async function colEnregistrer(box, c) {
+  const modifs = {};
+  box.querySelectorAll("[data-champ]").forEach((el) => {
+    const cle = el.dataset.champ;
+    const avant = c[cle] == null ? "" : String(c[cle]).trim();
+    const apres = el.value.trim();
+    if (apres !== avant) modifs[cle] = apres === "" ? null : apres;
+  });
+  if (!Object.keys(modifs).length) { colMsg("Rien n'a changé."); return; }
+  if (await colTenter(() => apiSend("PATCH", `/api/collections/${c.id}`, modifs))) {
+    colMsg(`« ${modifs.nom || c.nom} » enregistrée.`);
+    chargerCollections(c.id);
+  }
+}
+
+async function colSupprimer(c) {
+  if (!confirm(`Supprimer « ${c.nom} » ? Ses albums ne sont pas supprimés : ils sortent `
+               + `simplement de cette collection.`)) return;
+  if (await colTenter(() => apiSend("DELETE", `/api/collections/${c.id}`))) {
+    colMsg(`« ${c.nom} » supprimée.`);
+    chargerCollections();
+  }
+}
+
+async function creerCollection() {
+  const nom = $("#col-nom").value.trim();
+  if (!nom) { colMsg("Donnez un nom à la collection.", true); return; }
+  let creee = null;
+  if (await colTenter(async () => {
+    creee = await apiSend("POST", "/api/collections", { nom });
+  })) {
+    $("#col-nom").value = "";
+    // Le trajet que la frontière coupe en deux : on crée ICI, on fait entrer LÀ-BAS. Le
+    // dire au moment où l'on vient de créer, c'est le seul moment où la question se pose.
+    const el = $("#col-msg");
+    el.classList.remove("erreur");
+    el.innerHTML = `« ${esc(nom)} » créée — vous en êtes propriétaire. Pour y faire entrer
+      quelqu'un : <a href="/administration">Administration → Accès aux collections</a>.`;
+    chargerCollections(creee && creee.id);
+  }
+}
+
+async function chargerCollections(ouvrir) {
+  const body = $("#col-body");
+  let cols = [];
+  try { cols = await apiGet("/api/collections"); }
+  catch (e) { body.innerHTML = `<p class="col-note">${esc(e.message)}</p>`; return; }
+  // Les collections dépliées le restent : recharger après un enregistrement ne doit pas
+  // replier sous les yeux celle qu'on vient de modifier.
+  const ouvertes = new Set([...body.querySelectorAll("details.col-item[open]")]
+    .map((d) => d.dataset.id));
+  if (ouvrir != null) ouvertes.add(String(ouvrir));
+  body.innerHTML = "";
+  COLS_RENDUES = true;
+  if (!cols.length) {
+    body.innerHTML = `<p class="col-note">Aucune collection ouverte pour vous. Créez-en une
+      ci-dessus : vous en serez propriétaire.</p>`;
+    return;
+  }
+  for (const c of cols) {
+    const d = colItem(c);
+    body.appendChild(d);
+    if (ouvertes.has(String(c.id))) d.open = true;
+  }
+}
+
+/* Après un geste sur les ALBUMS — créer, supprimer, ranger —, seul le décompte bouge. On ne
+   redessine donc pas la liste, ce qui replierait un formulaire en cours de saisie et
+   perdrait ce qu'on y a tapé : on met à jour les nombres, et on ne reconstruit que si
+   l'ensemble des collections a changé (la première création d'album en fait naître une). */
+async function rafraichirCollections() {
+  if (!COLS_RENDUES) return;
+  let cols;
+  try { cols = await apiGet("/api/collections"); } catch (e) { return; }
+  const body = $("#col-body");
+  const affichees = [...body.querySelectorAll("details.col-item")].map((d) => d.dataset.id);
+  const ids = cols.map((c) => String(c.id));
+  if (affichees.length !== ids.length || affichees.some((id, i) => id !== ids[i])) {
+    chargerCollections();
+    return;
+  }
+  for (const c of cols) {
+    const n = body.querySelector(`details.col-item[data-id="${c.id}"] .col-nb`);
+    if (n) n.textContent = `${c.nb_albums} album(s)`;
+  }
+}
 
 function setup() {
   setupBack();
@@ -721,10 +1261,15 @@ function setup() {
       { box: ".modal-box", labelledby: "modal-title", onClose: closeModal });
   PASSES.forEach((p) => { $("#pass-" + p).onchange = updateSelInfo; });
   $("#btn-run").onclick = runBatch;
-  // Collections (AUTH-3) et Moteurs (SANTE-1) ont DÉMÉNAGÉ vers `/administration`
-  // (UX-10, 2026-09-07). Ils ne sont pas restés joignables ici « le temps de
-  // s'habituer » : deux portes vers la même pièce, l'une des deux vieillit, et c'est
-  // celle qu'on ne regarde plus.
+  // Les ACCÈS aux collections (AUTH-3) et les Moteurs (SANTE-1) vivent dans
+  // `/administration` (UX-10). Ce que la collection EST — la créer, la décrire,
+  // l'exporter — est revenu ICI avec COL-2 (2026-09-11). Rien n'est joignable des deux
+  // côtés : deux portes vers la même pièce, l'une vieillit, et c'est celle qu'on ne
+  // regarde plus.
+  $("#col-add").onclick = creerCollection;
+  $("#col-nom").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); creerCollection(); }
+  });
   $("#m-appartenance-add").onclick = rangerAlbum;
   // AUTH-1 — amorcé ici, et non à la seule ouverture des collections : `parQui()` a besoin
   // du login courant pour dire « par vous », et la table des planches se dessine bien avant
@@ -733,6 +1278,7 @@ function setup() {
   identite().then((m) => { MOI = m; });
   loadCorpus();   // stats d'en-tête (bande 2)
   loadAlbums();
+  loadEtatSharedocs().then(() => chargerCollections());   // l'état AVANT le rendu (EXP-1)
   pollJobs();     // reprend l'affichage d'un éventuel job déjà en cours
 }
 

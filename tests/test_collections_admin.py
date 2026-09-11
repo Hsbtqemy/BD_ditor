@@ -839,3 +839,29 @@ def test_le_champ_est_toujours_present(client, collection_a_alice):
     cid = collection_a_alice["id"]
     rendu = _acces_rendus(client, cid, {"Remote-User": "alice"})["alice"]
     assert "jamais_vu" in rendu
+
+
+def test_le_formulaire_propose_exactement_le_regime_du_serveur():
+    """COL-2 — le régime de diffusion se choisit à l'écran dans une liste FERMÉE, et cette
+    liste vit en double : les gabarits sont servis tels quels, aucune route ne la publie.
+    Deux listes qui divergent, et l'écran proposerait une valeur que le serveur refuse —
+    rendue en 422, mais après coup — ou tairait une valeur qu'il accepte, qu'on ne pourrait
+    plus choisir sans terminal. On mesure donc leur accord au lieu de l'espérer.
+
+    Lire le source d'une surface ne prouve aucune LOGIQUE, et ce dépôt le sait (SANTE-1).
+    Ici on ne vérifie pas une règle, on compare deux énumérations de DONNÉES : c'est ce que
+    le source dit exactement, et rien d'autre ne le dit."""
+    import re
+    from pathlib import Path
+
+    from config import STATUTS_DIFFUSION
+    src = (Path(__file__).resolve().parent.parent / "static" / "corpus.js").read_text(
+        encoding="utf-8")
+    m = re.search(r"const REGIMES_DIFFUSION = \[(.*?)\];", src, re.S)
+    assert m, "REGIMES_DIFFUSION introuvable dans static/corpus.js"
+    valeurs = re.findall(r'\[\s*"([^"]*)"\s*,', m.group(1))
+    assert "" in valeurs, "« sans régime » (NULL en base) doit rester proposable"
+    assert len(valeurs) == len(set(valeurs)), f"une valeur proposée deux fois : {valeurs}"
+    assert set(valeurs) - {""} == set(STATUTS_DIFFUSION), (
+        f"l'écran propose {sorted(set(valeurs) - {''})}, le serveur accepte "
+        f"{sorted(STATUTS_DIFFUSION)}")

@@ -132,9 +132,9 @@ Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, 
 |---|---|---|---|
 | `/` | `index.html` | `viewer.js` | **Atelier** : modes Édition / Annotation / Transcription / Navigation, arbre de structure, ShareDocs, deep-link |
 | `/recherche` | `recherche.html` | `recherche.js` | **Recherche** FTS5 + nuage de tags |
-| `/corpus` | `corpus.html` | `corpus.js` | **Bibliothèque** : CRUD albums/planches + lancement de lots |
+| `/corpus` | `corpus.html` | `corpus.js` | **Bibliothèque** : CRUD albums/planches + lancement de lots, et **📚 Collections** (COL-2) : ce que la collection EST — la créer, la décrire, régler sa diffusion, désigner son référent, l'exporter. Trois gardes dans un même bloc : créer demande une identité, décrire la propriété, lire la seule portée |
 | `/exploration` | `exploration.html` | `exploration.js` | **Exploration** linguistique du corpus — 4 vues : distribution (fréquences), **concordance KWIC** (aligné/liste, deep-link Atelier), **croisement 2D** (tableau de contingence facette×facette, heatmap, cellule→concordance), comparaison A/B ; + panneaux **📖 Lexique**, **🎯 Accord** (modèle↔humain) et **👥 Inter** (inter-annotateurs) |
-| `/administration` | `administration.html` | `administration.js` | **Administration** (UX-10) : ce qui porte sur l'INSTANCE et non sur un album — panneaux **🏷️ Version servie** (INFRA-10, réservé aux administrateurs), **👥 Collections** (AUTH-3, + vue des comptes AUTH-7) et **🩺 Moteurs** (SANTE-1). Aucune garde d'écran : chaque bloc pose sa propre question d'autorisation, jamais le contenant (leçon AUTH-4) |
+| `/administration` | `administration.html` | `administration.js` | **Administration** (UX-10) : ce qui porte sur l'INSTANCE et non sur un album — panneaux **🏷️ Version servie** (INFRA-10, réservé aux administrateurs), **👥 Accès aux collections** (AUTH-3 — qui entre, et à quel niveau ; ce que la collection EST a déménagé dans la Bibliothèque avec COL-2), **👤 Comptes vus** (AUTH-7) et **🩺 Moteurs** (SANTE-1). Aucune garde d'écran : chaque bloc pose sa propre question d'autorisation, jamais le contenant (leçon AUTH-4) |
 
 **« Atelier » et « Visionneuse » désignent la MÊME page, `/`.** L'écran dit *Atelier*
 (`static/theme.js`), et c'est le nom retenu ici comme dans `docs/guide-utilisateur.md` :

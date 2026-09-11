@@ -8,7 +8,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ROUTES, RETOUR_ADMINISTRATION, choix, lienConnexionSharedocs, urlDepot }
+const { ROUTES, RETOUR_BIBLIOTHEQUE, choix, lienConnexionSharedocs, urlDepot }
   = require("../../static/lib/depot.js");
 
 const params = (u) => new URLSearchParams(u.split("?")[1] || "");
@@ -117,7 +117,7 @@ test("l'écran n'offre AUCUNE combinaison que la règle refuserait", () => {
 test("le lien de connexion ShareDocs REVIENT bien ici", () => {
   // Le défaut que ce test attrape est muet : `Nav.safeRetour` n'accepte qu'un chemin
   // commençant par « / » (protection contre l'open-redirect). Écrire
-  // « retour=administration » sans la barre le ferait rejeter, le bouton « ← Retour »
+  // « retour=corpus » sans la barre le ferait rejeter, le bouton « ← Retour »
   // ne s'afficherait pas, et l'aller-retour deviendrait un aller simple — sans erreur,
   // sans trace, et sans que personne pense à regarder de ce côté.
   //
@@ -130,6 +130,6 @@ test("le lien de connexion ShareDocs REVIENT bien ici", () => {
 
   const p = new URLSearchParams(qs);
   assert.equal(p.get("sharedocs"), "1", "la modale ne s'ouvrirait pas");
-  assert.equal(Nav.safeRetour(p.get("retour")), RETOUR_ADMINISTRATION,
+  assert.equal(Nav.safeRetour(p.get("retour")), RETOUR_BIBLIOTHEQUE,
                "`retour` est rejeté par nav.js : le ← Retour disparaîtrait en silence");
 });

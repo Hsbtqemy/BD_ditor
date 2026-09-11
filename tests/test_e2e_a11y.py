@@ -675,30 +675,40 @@ def test_a11y_proxy_sans_identite(page, seeded):
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_a11y_administration_collections(page, seeded, theme):
-    """Écran Collections : créer, déplier, accorder un accès — audité à chaque étape.
+    """Accès aux collections : déplier, accorder un accès — audité à chaque étape.
 
     C'est le seul écran du dépôt où l'on décide QUI entre. Une régression d'accessibilité
     y coûterait plus cher qu'ailleurs : on n'administre pas des droits à l'aveugle.
+
+    COL-2 — la collection se CRÉE désormais dans la Bibliothèque
+    (`test_a11y_bibliotheque_collections`) ; ce test la pose par l'API et ne garde que ce
+    que cet écran fait encore : les accès.
     """
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
+    try:
+        r = c.post("/api/collections", json={"nom": "Corpus colonial"})
+        assert r.status_code == 201, r.text
+    finally:
+        c.close()
+
     _theme(page, theme)
     page.goto(seeded["base"] + "/administration", wait_until="networkidle")
     page.wait_for_timeout(400)
     page.wait_for_selector("#col-body .col-item", timeout=3000)
     viol = _audit(page)
-    assert not viol, f"Collections [{theme}] :\n{_fmt(viol)}"
+    assert not viol, f"Accès aux collections [{theme}] :\n{_fmt(viol)}"
+    # Déménagé, pas dupliqué (UX-10) : aucun geste de création ne doit subsister ici.
+    assert page.locator("#col-nom").count() == 0, "la création vit dans la Bibliothèque"
 
-    page.fill("#col-nom", "Corpus colonial")
-    page.click("#col-add")
-    page.wait_for_function(
-        "() => [...document.querySelectorAll('#col-body .col-nom')]"
-        "        .some(e => e.textContent === 'Corpus colonial')", timeout=3000)
-
-    # Déplier la collection créée → la liste des accès et le formulaire apparaissent.
+    # Déplier la collection → la liste des accès et le formulaire d'accord apparaissent.
     page.locator("#col-body .col-item", has_text="Corpus colonial").locator(
         "summary").click()
     page.wait_for_selector("#col-body .col-principal", timeout=3000)
+    # L'autre moitié est nommée À L'ÉCRAN : décrire et exporter vivent dans la Bibliothèque,
+    # et un panneau qui ne le dirait pas ferait chercher au mauvais endroit (COL-2).
+    assert page.locator('#col-body a[href="/corpus"]').count() >= 1
     viol = _audit(page)
-    assert not viol, f"Collections/accès [{theme}] :\n{_fmt(viol)}"
+    assert not viol, f"Accès aux collections/accès [{theme}] :\n{_fmt(viol)}"
 
     page.locator(".col-principal").first.fill("bd-lettrage")
     page.locator(".col-genre").first.select_option("groupe")
@@ -715,6 +725,34 @@ def test_a11y_administration_collections(page, seeded, theme):
         c.close()
     assert ("bd-lettrage", "groupe", "ecriture") in {
         (a["principal"], a["genre"], a["niveau"]) for a in acces}
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_bibliotheque_collections(page, seeded, theme):
+    """COL-2 — créer une collection et la décrire, dans la Bibliothèque, audité à chaque
+    étape.
+
+    L'état qui compte est le FORMULAIRE déplié : trois groupes de champs et des notes en
+    petit texte, c'est-à-dire la catégorie qui échoue le 4.5:1. Le bloc replié n'en montre
+    rien, et un audit qui s'arrêterait là approuverait sans avoir vu.
+    """
+    _theme(page, theme)
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.wait_for_selector("#col-body .col-item", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Bibliothèque/collections [{theme}] :\n{_fmt(viol)}"
+
+    page.fill("#col-nom", "Corpus colonial")
+    page.click("#col-add")
+    # La collection créée s'ouvre sur son formulaire : c'est le geste suivant de qui crée.
+    item = page.locator("#col-body .col-item", has_text="Corpus colonial")
+    item.locator('[data-champ="statut_diffusion"]').wait_for(timeout=3000)
+    # Le trajet que la frontière coupe en deux : le message dit où faire entrer quelqu'un.
+    assert page.locator('#col-msg a[href="/administration"]').count() == 1, (
+        page.locator("#col-msg").inner_text())
+    viol = _audit(page)
+    assert not viol, f"Bibliothèque/formulaire [{theme}] :\n{_fmt(viol)}"
 
 
 def test_corpus_appartenance_album(page, seeded):
@@ -826,6 +864,9 @@ def test_a11y_collections_embargo_echu(page, seeded, theme):
 
     Audité dans les deux thèmes parce que la pastille est du PETIT TEXTE coloré — la
     catégorie qui échoue le 4.5:1 quand on y met un accent brut au lieu d'un token d'encre.
+
+    COL-2 — la pastille a suivi la date dans la Bibliothèque : l'échéance se signale là où
+    elle se modifie.
     """
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
@@ -837,7 +878,7 @@ def test_a11y_collections_embargo_echu(page, seeded, theme):
         c.close()
 
     _theme(page, theme)
-    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(400)
     page.wait_for_selector("#col-body .col-item", timeout=3000)
     # La pastille est RENDUE, et son libellé porte le sens — pas la seule couleur.
@@ -942,17 +983,22 @@ def test_le_panneau_des_acces_declare_les_administrateurs(page, seeded):
 @pytest.mark.parametrize("live_server", [True], indirect=True)
 def test_le_referent_d_une_collection_s_enregistre(page, seeded):
     """Une ADRESSE, pas un droit : la nommer n'accorde rien. DÉSIGNER reste au
-    propriétaire — choisir l'interlocuteur d'un espace engage l'espace entier."""
+    propriétaire — choisir l'interlocuteur d'un espace engage l'espace entier.
+
+    COL-2 — le référent a suivi les descripteurs dans la Bibliothèque, et se saisit dans le
+    même formulaire qu'eux."""
     page.set_extra_http_headers({"Remote-User": "alice", "Remote-Groups": "bd-admins"})
-    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(400)
     page.wait_for_selector("#col-body .col-item", timeout=3000)
     page.locator("#col-body .col-item").first.locator("summary").click()
-    page.wait_for_selector(".col-ref-nom", timeout=3000)
-    page.locator(".col-ref-nom").first.fill("Ana Ruiz")
-    page.locator(".col-ref-contact").first.fill("ana@labo.fr")
-    page.locator("[data-referent]").first.click()
-    page.wait_for_timeout(600)
+    page.wait_for_selector('#col-body [data-champ="referent_nom"]', timeout=3000)
+    page.locator('#col-body [data-champ="referent_nom"]').first.fill("Ana Ruiz")
+    page.locator('#col-body [data-champ="referent_contact"]').first.fill("ana@labo.fr")
+    page.locator("#col-body [data-enregistrer]").first.click()
+    page.wait_for_function(
+        "() => document.querySelector('#col-msg').textContent.includes('enregistrée')",
+        timeout=3000)
 
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
                      headers={"Remote-User": "alice", "Remote-Groups": "bd-admins"})
@@ -965,13 +1011,18 @@ def test_le_referent_d_une_collection_s_enregistre(page, seeded):
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)
-def test_le_participant_non_proprietaire_voit_le_referent(page, seeded):
+@pytest.mark.parametrize("niveau", ["lecture", "ecriture"])
+def test_le_participant_non_proprietaire_voit_le_referent(page, seeded, niveau):
     """Le premier jet mettait le référent ET la déclaration d'administration sous le
     `return` du panneau réservé au propriétaire — donc visibles de la seule personne qui
     les avait écrits. Or c'est le participant SANS pouvoir qui a besoin de savoir à qui
-    écrire, et qu'un administrateur d'instance lit ici sans y figurer. Désigner engage la
-    collection et reste au propriétaire ; lire est le geste de quelqu'un qui a une
-    question."""
+    écrire, et qu'un administrateur d'instance lit sans figurer dans les accès. Désigner
+    engage la collection et reste au propriétaire ; lire est le geste de quelqu'un qui a
+    une question.
+
+    COL-2 — les deux vivent désormais sur deux écrans : le référent dans la Bibliothèque,
+    avec la description ; la déclaration dans l'Administration, avec les accès. Et le
+    formulaire reste invisible en ÉCRITURE comme en lecture : annoter n'est pas décrire."""
     admin = {"Remote-User": "alice", "Remote-Groups": "bd-admins",
              "X-BD-Requete": "1"}
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=admin)
@@ -982,27 +1033,34 @@ def test_le_participant_non_proprietaire_voit_le_referent(page, seeded):
                              "referent_contact": "ana@labo.fr"}).status_code == 200
         assert c.put(f"/api/collections/{cid}/acces",
                       json={"principal": "bob", "genre": "utilisateur",
-                            "niveau": "lecture"}).status_code in (200, 201)
+                            "niveau": niveau}).status_code in (200, 201)
     finally:
         c.close()
 
-    # bob lit la collection sans la posséder : `administrable` est faux pour lui.
+    # bob participe sans posséder : `administrable` est faux pour lui.
     page.set_extra_http_headers({"Remote-User": "bob", "Remote-Groups": "chercheurs"})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.wait_for_selector("#col-body .col-item", timeout=3000)
+    page.locator("#col-body .col-item").first.locator("summary").click()
+    page.wait_for_selector(".col-note-referent", timeout=3000)
+    assert "Ana Ruiz" in page.locator(".col-note-referent").inner_text()
+    # Il LIT la description ; il ne la modifie pas, et ne désigne personne.
+    assert page.locator("#col-body [data-champ]").count() == 0, "il ne doit pas pouvoir DÉSIGNER"
+    assert page.locator("#col-body [data-enregistrer]").count() == 0
+
+    # Dans l'Administration, il apprend qu'un administrateur lit sans y figurer — sans voir
+    # la liste des accès, qui est une donnée sur des personnes.
     page.goto(seeded["base"] + "/administration", wait_until="networkidle")
     page.wait_for_timeout(400)
     page.wait_for_selector("#col-body .col-item", timeout=3000)
     page.locator("#col-body .col-item").first.locator("summary").click()
-
-    # Il ne voit PAS la liste des accès (c'est une donnée sur des personnes)...
-    page.wait_for_selector(".col-note-referent", timeout=3000)
-    # `#col-body` : `.acces-liste` est aussi la classe d'un `<ul>` STATIQUE du gabarit
-    # (`corpus.html:82`, la liste d'appartenance). Non porté, ce sélecteur comptait 1 quoi
-    # qu'il arrive — une assertion qui échoue pour la mauvaise raison en vaut une qui
+    page.locator(".col-note-admin").wait_for(timeout=3000)
+    # `#col-body` : `.acces-liste` est aussi la classe d'un `<ul>` STATIQUE de la
+    # Bibliothèque (la liste d'appartenance). Non porté, ce sélecteur compterait ce qui
+    # n'est pas là — une assertion qui échoue pour la mauvaise raison en vaut une qui
     # passe pour la mauvaise raison.
     assert page.locator("#col-body .acces-liste").count() == 0
-    assert page.locator(".col-ref-nom").count() == 0, "il ne doit pas pouvoir DÉSIGNER"
-    # ...mais il sait à qui écrire, et que quelqu'un d'autre lit ici.
-    assert "Ana Ruiz" in page.locator(".col-note-referent").inner_text()
     assert "bd-admins" in page.locator(".col-note-admin").inner_text()
 
 

@@ -1,5 +1,5 @@
 /* Adresse d'un export de dépôt (EXP-1) — logique PURE, sans DOM.
-   Chargé en <script> AVANT administration.js → expose `window.BDDepot` ; aussi
+   Chargé en <script> AVANT corpus.js (la Bibliothèque, depuis COL-2) → expose `window.BDDepot` ; aussi
    require()-able par `tests/js/depot.test.js`.
 
    Pourquoi une règle isolée plutôt qu'une concaténation dans le gestionnaire du bouton.
@@ -67,7 +67,7 @@
      Le lien « ← Retour » ne s'afficherait simplement pas, et l'aller-retour deviendrait
      un aller simple sans que rien n'échoue. `tests/js/depot.test.js` confronte donc cette
      valeur à la règle de `nav.js` plutôt que de la relire. */
-  const RETOUR_ADMINISTRATION = "/administration";
+  const RETOUR_BIBLIOTHEQUE = "/corpus";
 
   /* Le lien qui ouvre la session ShareDocs dans l'Atelier et ramène ici (EXP-1).
 
@@ -75,7 +75,7 @@
      d'exports vit ici. Plutôt que d'indiquer un chemin à suivre — une réponse de
      documentation à un problème d'interface —, on emmène et on ramène. */
   function lienConnexionSharedocs() {
-    return "/?sharedocs=1&retour=" + encodeURIComponent(RETOUR_ADMINISTRATION);
+    return "/?sharedocs=1&retour=" + encodeURIComponent(RETOUR_BIBLIOTHEQUE);
   }
 
   /* Rend `{ url }` ou `{ refus }`. Jamais les deux, jamais ni l'un ni l'autre : un
@@ -99,6 +99,6 @@
     return { url: url };
   }
 
-  return { ROUTES, FORMATS, RETOUR_ADMINISTRATION, choix, lienConnexionSharedocs,
+  return { ROUTES, FORMATS, RETOUR_BIBLIOTHEQUE, choix, lienConnexionSharedocs,
            urlDepot };
 });

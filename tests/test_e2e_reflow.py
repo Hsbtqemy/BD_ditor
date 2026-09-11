@@ -249,6 +249,29 @@ def test_l_administration_ne_defile_pas_de_cote(page, decor, largeur, police):
         page, f"/administration à {largeur} px (police par défaut {police} px)")
 
 
+# ── COL-2 : le formulaire d'une collection a déménagé dans la Bibliothèque ─────────────
+# Même question que pour l'Administration, sur le contenu NEUF de `/corpus` : trois groupes
+# de champs, leurs notes et le bloc d'export, déplié — une page repliée ne montre pas ce
+# qu'on cherche. La mesure porte sur la page entière, parce que c'est la règle ; si elle
+# tombe ailleurs que dans ce bloc, le message nomme l'élément fautif.
+@pytest.mark.parametrize("police", POLICES)
+@pytest.mark.parametrize("largeur", LARGEURS)
+def test_le_formulaire_de_collection_ne_defile_pas_de_cote(page, decor, largeur, police):
+    """Le corps de la Bibliothèque ne défile pas de côté, collection dépliée sur son
+    formulaire (règle de CLAUDE.md, critère Reflow WCAG 1.4.10)."""
+    _preference_police(page, police)
+    page.set_viewport_size({"width": largeur, "height": 900})
+    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    som = page.query_selector("#col-body .col-item summary")
+    assert som, "aucune collection à déplier : le contrôle ne mesurerait rien"
+    som.click()
+    page.wait_for_selector("#col-body [data-enregistrer]", timeout=3000)
+
+    _exiger_pas_de_defilement(
+        page, f"/corpus, collection dépliée, à {largeur} px (police par défaut {police} px)")
+
+
 # ── Le bloc que la page ne RENDAIT pas, donc que rien ne mesurait (UX-10, 2026-09-07) ──
 #
 # Ce fichier s'avertit lui-même vingt lignes plus haut, à propos de la Recherche : « ce que

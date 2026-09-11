@@ -33,11 +33,11 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 
 | Surface | Adresse | Ce qu'on y fait |
 |---|---|---|
-| **Bibliothèque** | `/corpus` | créer et décrire les albums, lancer les traitements par lot, suivre l'avancement planche par planche |
+| **Bibliothèque** | `/corpus` | créer et décrire les albums et les collections, régler la diffusion d'une collection et l'exporter, lancer les traitements par lot, suivre l'avancement planche par planche |
 | **Atelier** | `/` | tout ce qui se fait sur une planche : corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
 | **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
 | **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus ; documenter le vocabulaire |
-| **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : les collections et leurs accès, les comptes, l'état des moteurs |
+| **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : qui entre dans chaque collection, les comptes, l'état des moteurs |
 
 Une barre de navigation commune les relie, sur les cinq pages. Les réglages d'affichage —
 thème clair/sombre, contraste élevé, zoom de l'interface — y sont aussi, et suivent d'une
@@ -219,7 +219,7 @@ légende (référence de citation, responsabilité, édition, licence) et sa not
 
 Les exports de **dépôt** — fiche de description, enregistrements, manifestes IIIF — se
 prennent ailleurs, parce qu'ils portent sur une **collection** et non sur un album :
-*Administration → 👥 Collections*, en dépliant la collection voulue (§4). Les **notices**
+*Bibliothèque → 📚 Collections*, en dépliant la collection voulue (§4). Les **notices**
 Dublin Core / DataCite et la **provenance** restent, elles, en ligne de commande (§5).
 
 ---
@@ -241,29 +241,18 @@ L'inventaire et le poste de commande.
   faire, en cours ou faites.
 - **Traitements par lot** : cocher les passes voulues, sélectionner des albums ou des planches,
   lancer. Progression et annulation en direct.
-
-### Administration (`/administration`)
-
-Ce qui porte sur l'instance : quelle version tourne ici, qui voit quoi, quels comptes
-existent, et si les moteurs répondent encore. Quatre blocs, chacun avec sa propre règle
-d'accès (cf. §2).
-
-- **🏷️ Version servie** : le commit que cette instance fait tourner. N'apparaît que si le
-  serveur vous le sert — c'est réservé aux administrateurs, parce que le dépôt est public
-  et qu'un numéro de version y dit quels correctifs sont en place. L'application ne connaît
-  que ce bout-là : elle affiche le commit servi et vous laisse le comparer à `origin/main`,
-  plutôt que d'affirmer « à jour » sans avoir vu la référence.
-- **👥 Collections** : créer une collection, la renommer, la supprimer, accorder et retirer les
-  accès, désigner un référent. Le bloc déclare aussi quels groupes d'administration voient
-  tout le corpus, et signale les embargos échus. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3.
-- **Comptes vus par l'application** : n'apparaît que si le serveur vous le sert. C'est un
-  miroir d'affichage — l'application n'a pas d'annuaire (cf. [`modele-et-droits.md`](modele-et-droits.md) §3).
-- **🩺 Moteurs** : quels moteurs sont présents, et *Éprouver les moteurs* pour vérifier qu'ils
-  démarrent réellement.
+- **📚 Collections** : créer une collection — il suffit d'être connecté, et l'on en devient
+  propriétaire —, la décrire (description, dates), régler sa diffusion (régime, embargo,
+  licence, base légale), désigner son référent, la renommer, la supprimer, et l'exporter
+  pour un dépôt (ci-dessous). Seul un propriétaire modifie ; un participant lit la
+  description et sait à qui écrire. La date d'embargo **retient** : tant qu'elle court, les
+  scans ne sortent pas, même d'une collection « public » — et elle ne publie jamais rien
+  d'elle-même. Qui entre dans une collection, et à quel niveau, se règle dans
+  l'Administration.
 
 #### Exporter une collection pour un dépôt
 
-Dans **Administration → 👥 Collections**, dépliez une collection : le bloc **Export de
+Dans **Bibliothèque → 📚 Collections**, dépliez une collection : le bloc **Export de
 dépôt** produit, sans passer par la ligne de commande, les trois artefacts qu'un entrepôt
 attend.
 
@@ -296,6 +285,26 @@ Un **propriétaire** de la collection peut en plus **déposer** l'artefact sur S
 plutôt que de le télécharger. Ce droit-là est plus étroit que le téléchargement, et c'est
 volontaire : emporter un fichier pour soi n'est pas l'écrire dans un dossier partagé dont
 l'application ne contrôle pas l'audience.
+
+### Administration (`/administration`)
+
+Ce qui porte sur l'instance : quelle version tourne ici, qui voit quoi, quels comptes
+existent, et si les moteurs répondent encore. Quatre blocs, chacun avec sa propre règle
+d'accès (cf. §2).
+
+- **🏷️ Version servie** : le commit que cette instance fait tourner. N'apparaît que si le
+  serveur vous le sert — c'est réservé aux administrateurs, parce que le dépôt est public
+  et qu'un numéro de version y dit quels correctifs sont en place. L'application ne connaît
+  que ce bout-là : elle affiche le commit servi et vous laisse le comparer à `origin/main`,
+  plutôt que d'affirmer « à jour » sans avoir vu la référence.
+- **👥 Accès aux collections** : accorder, changer et retirer les accès, collection par
+  collection. Le bloc déclare aussi quels groupes d'administration voient tout le corpus.
+  Créer, décrire, renommer, supprimer ou exporter une collection se fait dans la
+  Bibliothèque. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3.
+- **Comptes vus par l'application** : n'apparaît que si le serveur vous le sert. C'est un
+  miroir d'affichage — l'application n'a pas d'annuaire (cf. [`modele-et-droits.md`](modele-et-droits.md) §3).
+- **🩺 Moteurs** : quels moteurs sont présents, et *Éprouver les moteurs* pour vérifier qu'ils
+  démarrent réellement.
 
 ### Atelier (`/`)
 
@@ -348,7 +357,7 @@ Elles sont documentées ; elles ne sont simplement pas dans l'interface.
 
 | Opération | Où | Documentation |
 |---|---|---|
-| Régime de diffusion, licence, base légale, embargo, responsables d'une collection | `tools/gerer_collections.py` | [`export-metadonnees.md`](export-metadonnees.md) |
+| Responsables scientifiques d'une collection (nom, rôle, ORCID) — tout le reste de sa description se règle dans la Bibliothèque | `tools/gerer_collections.py` | [`export-metadonnees.md`](export-metadonnees.md) |
 | Notices Dublin Core / DataCite, provenance PROV-O / TEI | `tools/` | [`crosswalk-depot.md`](crosswalk-depot.md), [`provenance-audit.md`](provenance-audit.md) |
 | Rapports d'accord (modèle↔humain, inter-annotateurs) en CSV/JSON | `tools/` | [`rapport-accord.md`](rapport-accord.md), [`accord-inter.md`](accord-inter.md) |
 | Réindexer tout le corpus après un changement de modèle linguistique | `tools/reindex_nlp.py` | [`correction-grammaticale.md`](correction-grammaticale.md) |

@@ -79,7 +79,9 @@ Source : table `collection` + liaison `collection_album` (appartenance **N-N**,
 album ∈ 0..N collections) — **réalisé (schéma v14)**. Palier qui décrit **le jeu de données
 lui-même** — une sélection constituée pour une étude. **Transversal** (un album peut vivre
 dans plusieurs collections) et **unité de dépôt** : une collection = un dépôt Nakala/HAL =
-un DOI = la « description des données » d'un PGD. Gestion **hors-app** :
+un DOI = la « description des données » d'un PGD. Gestion **dans l'application** depuis AUTH-3 et COL-2 — créer, décrire, régler la diffusion
+dans la Bibliothèque ; les accès dans l'Administration — et, pour l'amorçage et les
+responsables scientifiques :
 `tools/gerer_collections.py` (créer / ranger des albums / éditer) ; les exports acceptent
 `--collection <id>` pour scoper leur périmètre. Restent *à prévoir* le gel versionné et le
 PID (dormants).
@@ -445,7 +447,9 @@ Chantiers de FAIRisation dérivés de ce dictionnaire, par couche :
 - **Collection (palier supérieur)** : **réalisé (v14)** — `collection` + `collection_album`
   (N-N statique avec `rang`), descripteurs de jeu (nom, description, licence, base légale,
   statut de diffusion, responsables, dates), agrégats dérivés à l'export (couverture,
-  provenance globale). Gestion : `tools/gerer_collections.py` ; scope d'export : `--collection`.
+  provenance globale). Gestion : bloc Collections de la Bibliothèque (COL-2), et
+  `tools/gerer_collections.py` pour l'amorçage et les responsables ; scope d'export :
+  `--collection`.
   Restent *à prévoir* : gel versionné et PID (dormants), appartenance fine planche/région
   (dormant), description PGD dérivée.
 - **Descriptif (N0)** : **✅ réalisé (v15)** — **contribution** Zotero-like (nom + rôle

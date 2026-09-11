@@ -30,7 +30,7 @@
     <!-- Barre d'actions + traitement par lot -->
     <div class="corpus-toolbar">
       <button id="btn-new" class="primary">+ Nouvel album</button>
-      <span class="muted small">Collections et moteurs ont leur page :
+      <span class="muted small">Les accès aux collections et les moteurs ont leur page :
         <a href="/administration">Administration</a>.</span>
       <div class="batch">
         <span class="muted small">Lot sur la sélection :</span>
@@ -47,6 +47,26 @@
 
     <!-- Synthèse d'avancement du corpus -->
     <section id="corpus-synthese" class="corpus-synthese" hidden></section>
+
+    <!-- Collections (COL-2) — ce que chaque collection EST. Déménagé de l'Administration
+         le 2026-09-11 : qui ENTRE relève de l'instance (Administration → Accès), ce que
+         la collection EST relève du corpus, donc d'ici. Aucune garde d'écran : créer
+         demande une identité, éditer la propriété, lire la seule portée — trois
+         questions que le serveur tranche, chacune pour son geste. -->
+    <section id="collections-bloc" aria-labelledby="collections-titre">
+      <h2 id="collections-titre">📚 Collections</h2>
+      <p class="muted small">Une <b>collection</b> regroupe des albums pour une étude, et
+        c'est l'unité qu'on décrit et qu'on dépose : sa description, son régime de
+        diffusion, son référent, ses exports. Qui y entre, et à quel niveau, se règle dans
+        l'<a href="/administration">Administration</a>.</p>
+      <div class="contrib-add">
+        <input id="col-nom" placeholder="Nom d'une nouvelle collection" autocomplete="off"
+               aria-label="Nom de la nouvelle collection">
+        <button id="col-add" class="primary small" type="button">+ Créer</button>
+      </div>
+      <div id="col-body"></div>
+      <p id="col-msg" class="muted small" role="status" aria-live="polite"></p>
+    </section>
 
     <!-- Table des albums -->
     <!-- Cadre de défilement horizontal (UX-7) : la table fait 693 px et sortait de
@@ -126,7 +146,7 @@
       <fieldset class="modal-section">
         <legend>Contributions <span class="muted small">(nom + rôle)</span></legend>
         <div id="m-contribs"></div>
-        <div class="contrib-add">
+        <div class="contrib-add" id="m-contrib-ligne">
           <input id="m-contrib-nom" placeholder="Nom" autocomplete="off"
                  aria-label="Nom du contributeur">
           <input id="m-contrib-role" list="dl-roles" placeholder="Rôle" autocomplete="off"
@@ -149,6 +169,7 @@
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
 <script src="/static/lib/dialog.js"></script>
+<script src="/static/lib/depot.js"></script>
 <script src="/static/corpus.js"></script>
 </body>
 </html>

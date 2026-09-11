@@ -88,7 +88,8 @@ Identifiants gardés **en mémoire serveur uniquement** (jamais sur disque).
 **Description des métadonnées** (corpus entier ou **par collection**, additive, pour la
 réutilisation / le dépôt Nakala-HAL) : fiche descriptive, enregistrements (CSV par niveau ·
 **XLSX** multi-feuilles · JSON arbre) et manifests **IIIF Presentation 3.0** — scripts
-`tools/` hors-app. La **collection** est l'unité de dépôt (`gerer_collections.py`) et les
+`tools/` hors-app. La **collection** est l'unité de dépôt — décrite dans la Bibliothèque, ou par
+`gerer_collections.py` — et les
 albums portent une **paternité** (contributions Zotero-like) + des champs d'édition.
 Notices d'entrepôt **Dublin Core & DataCite** (`crosswalk_depot.py`) et provenance
 **PROV-O / TEI** du journal d'audit (`provenance_export.py`). Le vocabulaire (attributs +
