@@ -5,7 +5,7 @@ statut: à venir
 
 # DROIT-2 — exporter est un droit à part, accordé par collection
 
-**Arrêté sur** — 2026-09-11, `a2ed353` : les tags qu'on ne lit pas ne sortent plus des lectures ni de l'Atelier, et l'écriture les préserve. Le droit d'exporter lui-même n'est pas commencé : la migration (v27), la `Portee`, les portes et l'écran restent entiers.
+**Arrêté sur** — 2026-09-11, `ac39dae` : le lot SERVEUR est fait — la case, la Portee qui la lit, et les quinze routes qui produisent un fichier la consultent, sous un cliquet qui les énumère. L'ÉCRAN reste entier : aujourd'hui, la case ne se pose que par l'API. **Ne pas déployer ce lot seul** : la migration ferme l'export à tout non-propriétaire, et aucun écran ne permettrait encore de le lui rouvrir.
 
 **Point de départ** — 2026-09-11, pendant COL-2. À la question « le bloc d'export suit-il
 les descripteurs vers la Bibliothèque ? », l'équipe a répondu : *« tout dépend de qui a
@@ -52,22 +52,24 @@ le premier à l'éprouver.
 ## Reste
 
 ### Le modèle
-- [ ] **Une colonne booléenne `exporter` sur `collection_acces`**, par migration (incrément de `SCHEMA_VERSION` et étape de `_migrate()`), défaut faux. Le niveau reste une seule valeur ordonnée : la case s'y ajoute sans y entrer, et le cumul des niveaux reste dérivé à un seul endroit
-- [ ] **`Portee` gagne un ensemble `export` et une question `peut_exporter(collection_id)`** : les propriétaires, les lignes cochées, et tout pour un administrateur comme en mono-poste. `autorisation.py` reste le seul endroit qui tranche — une deuxième règle dans une route serait la divergence à venir
-- [ ] **Accorder ou retirer le droit est un geste de PROPRIÉTAIRE** (`peut_administrer`). Décider ce qui sort engage la collection autant que décider qui entre
-- [ ] **Le changement est tracé au journal A3**, comme les autres changements d'accès
+- [x] **Une colonne booléenne `exporter` sur `collection_acces`**, schéma v27, défaut faux et AUCUN rattrapage — la migration ferme l'export à qui lisait, et c'est écrit comme un changement de comportement. `704b98a` ; `test_la_migration_v27_ferme_l_export_a_qui_lisait`
+- [x] **`Portee` gagne un ensemble `export` et une question `peut_exporter(collection_id)`** — la case plus la propriété, réduite à la lecture par ceinture, et tout en portée totale. `704b98a` ; `test_exporter_est_une_case_a_cote_du_niveau_pas_un_palier`, `test_on_n_exporte_pas_ce_qu_on_ne_lit_pas`, `test_la_case_se_lit_en_base_par_login_et_par_groupe`
+- [x] **Accorder ou retirer le droit est un geste de PROPRIÉTAIRE** — même route que le niveau, même garde ; absent de la requête, le droit n'est pas touché. `704b98a` ; `test_accorder_la_case_est_un_geste_de_proprietaire_et_se_trace`
+- [x] **Le changement est tracé au journal A3**, dans le même événement que le niveau, avec l'état d'avant. `704b98a` ; même test
 
 ### Les portes
-- [ ] **Les dix portes exigent `peut_exporter`, sauf la sauvegarde**, qui reste aux administrateurs. Le dépôt ShareDocs garde son exigence de propriétaire EN PLUS : envoyer dans un dossier partagé que l'application ne contrôle pas n'est pas le même geste que télécharger pour soi
-- [ ] **Un export qui traverse plusieurs collections filtre par droit d'EXPORTER, pas par droit de LIRE.** La Recherche et l'Exploration portent sur tout ce qu'on lit ; sans ce filtre, qui exporte la collection A emporterait le texte de B dans une concordance qui couvre les deux. `Portee` doit donc offrir une clause d'export, analogue à `clause_album`, et les deux cœurs partagés (`_recherche_rows`, `_analyse_filtres`) doivent pouvoir la recevoir
-- [ ] **L'export d'un ALBUM se fait au titre d'une collection NOMMÉE**, choisie quand l'album en a plusieurs — tranché le 2026-09-11 par l'équipe, après avoir vu ce qu'un export d'album contient : métadonnées, découpage, texte relevé, notes et tags, et aucune image (le TEI ne porte qu'un lien vers le dérivé web). Un album vit dans plusieurs collections depuis AUTH-3, et le droit peut être accordé sur l'une et pas sur l'autre : « au moins une » était permissif, « toutes » fermait un album dès son second rangement. C'est le patron du manifeste IIIF de DROIT-1 : un droit sur UNE collection suffit, et l'export dit sous quel droit il est parti
-- [ ] **Le panier de figures en fait partie.** DROIT-1 dit que citer n'est jamais bloqué par le RÉGIME de diffusion, et ça reste vrai : qui a le droit d'exporter cite, même depuis une collection sous embargo. Ce qui change est QUI peut exporter, pas ce que le régime retient
-- [ ] **Un cliquet énumère les portes, parce que l'oubli d'une garde échoue ici OUVERT.** Toute route qui produit un fichier téléchargeable doit consulter `peut_exporter`, ou être déclarée avec sa raison. Une porte oubliée continuerait de laisser sortir — c'est précisément l'état d'aujourd'hui, et il ne ferait tomber aucun test. Même forme que le cliquet des sorties d'identité d'AUTH-5, et même exigence d'un plancher dérivé du source (ARCH-2)
+- [x] **Les portes exigent `peut_exporter`, sauf la sauvegarde** — mesurées à QUINZE routes et non dix : le tableau comptait par familles. Le dépôt ShareDocs garde la propriété en plus, et son message cesse de promettre un téléchargement. `4b1d530` ; `test_une_porte_refuse_qui_lit_sans_la_case` et sa contre-épreuve `test_la_meme_porte_s_ouvre_avec_la_case`, joués sur chaque porte
+- [x] **Un export qui traverse plusieurs collections filtre par droit d'EXPORTER, pas par droit de LIRE** — non par une clause de plus, comme la case l'envisageait, mais par une PORTEE de plus (`Portee.pour_export()`), que les deux cœurs partagés consomment sans rien apprendre. `4b1d530` ; `test_la_case_sur_a_n_emporte_pas_b`, et `test_ce_qui_sort_suit_la_portee_d_export_pas_celle_de_lecture` pour le contenu
+- [x] **L'export d'un ALBUM se fait au titre d'une collection NOMMÉE** (`socle._collection_d_export`) : nommée, elle doit contenir l'album (404) et s'exporter (403) ; non nommée, la seule exportable, et un 422 qui NOMME les candidates s'il y en a plusieurs. L'export le dit — `exporte_au_titre_de` dans le JSON, `availability` dans le TEI, le nom du fichier CSV. Tranché le 2026-09-11 par l'équipe. `4b1d530` ; `test_un_album_sort_au_titre_d_une_collection_nommee`
+- [x] **Le panier de figures en fait partie** — chaque région doit appartenir à un album qu'on peut exporter, et la légende ne crédite qu'une collection exportable ; le régime ne bloque toujours pas la citation. `4b1d530`
+- [x] **Un cliquet énumère les portes, parce que l'oubli d'une garde échoue ici OUVERT** — toute route qui produit un fichier, repérée par son source ET son chemin (l'export JSON d'un album ne pose aucun en-tête de pièce jointe), est une porte déclarée ou déclarée hors du droit ; une déclaration sans route échoue aussi ; plancher dérivé du source. `4b1d530` ; `test_toute_route_qui_sort_un_fichier_est_une_porte_declaree`, et deux mutations sur le cliquet lui-même parmi les treize
 
 ### L'écran
 - [ ] **Une case « peut exporter » dans le panneau des accès**, à côté du niveau, libellée par l'ACTE et non par un nom de niveau — c'est l'exigence qu'AUTH-10 a posée pour ses cases. Chez un propriétaire, elle apparaît cochée et non modifiable, avec la raison écrite à côté
-- [ ] **`GET /api/collections` porte `exportable`**, comme il porte `administrable`. Les boutons d'export se cachent pour qui n'a pas le droit ; la garde reste celle du serveur, et l'écran ne fait qu'éviter de proposer un geste qu'il refusera
-- [ ] **Un refus d'export est un 403 NOMMÉ, pas un 404** : l'objet est lisible — on vient de l'afficher —, donc un 404 mentirait. C'est la précision qu'AUTH-10 a écrite pour les refus d'écriture sur un objet visible
+- [ ] **`GET /api/collections` porte `exportable`**, comme il porte `administrable` — le SERVEUR le rend depuis `704b98a`, avec les collections d'un album ; reste l'écran. Les boutons d'export se cachent pour qui n'a pas le droit ; la garde reste celle du serveur, et l'écran ne fait qu'éviter de proposer un geste qu'il refusera
+- [x] **Un refus d'export est un 403 NOMMÉ, pas un 404** — le serveur le rend sur chaque porte, avec ce qui manque (`socle._MOTIF_EXPORT`). `4b1d530` ; `test_une_porte_refuse_qui_lit_sans_la_case` vérifie le code ET le mot
+
+- [ ] **Un album qu'on peut exporter au titre de plusieurs collections propose de CHOISIR** — dans l'Atelier (menu d'export) et partout où un album s'exporte. Aujourd'hui, le serveur répond 422 en nommant les candidates ; sans l'écran, ce refus arrive en message d'erreur au lieu d'une question
 
 ### Les tags qu'on ne lit pas
 - [x] **Les lectures qui ont leur propre requête taisent un tag local à une collection qu'on ne lit pas** — la Recherche et son CSV, le CSV d'un album, l'axe « tag » du croisement (JSON et CSV), et les deux filtres par nom de tag, qui étaient des ORACLES : ils n'affichaient rien, mais chercher le nom disait quelles régions le portent. `df20d3d` ; quatre tests dans `test_autorisation.py`, cinq mutants tués
@@ -80,10 +82,10 @@ le premier à l'éprouver.
 - [ ] **Une région dont il ne reste que des tags cachés reste marquée « annotée »** — `annotee`, `nb_annotees` et le compteur de la Recherche lisent l'existence de la ligne `annotations` : l'écran montre une région annotée sans rien d'annoté. Un indice mineur. Attendu : le marqueur suit ce qu'on voit, ou la limite est écrite
 
 ### Ce qui devra être vrai
-- [ ] Un compte en écriture, sans la case, n'exporte rien : ni le TEI de l'Atelier, ni une concordance, ni une figure — éprouvé sous son identité, porte par porte
-- [ ] Le même compte, case cochée sur la collection A, exporte A et pas B, y compris dans une concordance qui traverse les deux
-- [ ] Un propriétaire exporte sa collection sans avoir rien à cocher
-- [ ] Le mono-poste est inchangé : sans proxy, la portée est totale, export compris
+- [x] Un compte en écriture, sans la case, n'exporte rien : ni le TEI de l'Atelier, ni une concordance, ni une figure — éprouvé sous son identité, porte par porte (`test_une_porte_refuse_qui_lit_sans_la_case`, quinze cas)
+- [x] Le même compte, case cochée sur la collection A, exporte A et pas B, y compris dans une concordance qui traverse les deux (`test_la_case_sur_a_n_emporte_pas_b`)
+- [x] Un propriétaire exporte sa collection sans avoir rien à cocher — éprouvé au MODÈLE et par la résolution réelle derrière le proxy (`test_un_proprietaire_exporte_sans_rien_cocher`, `test_exporter_est_une_case_a_cote_du_niveau_pas_un_palier`), et non porte par porte : les portes consultent la même `Portee`
+- [x] Le mono-poste est inchangé : sans proxy, la portée est totale, export compris, et rien n'est à nommer (`test_le_mono_poste_exporte_sans_rien_nommer`, `test_la_portee_totale_exporte_tout`)
 
 ## Contexte
 
