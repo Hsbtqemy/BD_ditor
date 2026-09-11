@@ -217,6 +217,19 @@ voulu. Les trois fiches portent désormais un renvoi ici.
 l'effacement ne touche ni `collection_acces`, ni `undo.py`, ni le modèle de droits. Il
 reste disponible à tout moment, sans rien attendre ni bloquer.
 
+## Une capacité hors de l'échelle est engagée ailleurs — 2026-09-11
+
+**Exporter devient un droit à part, accordé par collection** (`DROIT-2`). C'est le patron
+que cette fiche a écrit — *« une capacité non ordonnable serait un drapeau de plus, pas un
+changement de modèle »* — appliqué à un acte qui n'est PAS dans son inventaire : les
+exports sont des lectures qui sortent, et les 73 routes recensées ici sont des écritures.
+
+**Ce que ça change pour cette fiche** : sa décision de ne rien engager tient, mais le patron
+sera éprouvé avant qu'on ait à le poser sur la suppression. Le jour où ce chantier se
+rouvrira, `DROIT-2` dira ce qu'a coûté une case à côté du niveau — la migration, le cliquet
+d'une garde qui échoue ouvert, l'écran —, et la décision se prendra sur une mesure au lieu
+d'une prévision.
+
 ## Contexte
 
 **Pourquoi ça se pose maintenant et pas avant.** Le modèle à trois niveaux répond à
