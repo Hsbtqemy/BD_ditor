@@ -14,8 +14,15 @@ FERMANT — elle ne casse aucun test, et une revue de sécurité l'approuve.
 
 Deux droits distincts cohabitent ici, et la passe existe pour les voir séparément :
 
-- **lire** la collection suffit à TÉLÉCHARGER ;
+- **le droit d'exporter** — la case « peut exporter » d'un accès, d'office pour un
+  propriétaire — est exigé pour TÉLÉCHARGER ;
 - **la posséder** est exigé pour DÉPOSER sur ShareDocs.
+
+**Réécrite le 2026-09-11, et ses coches du 2026-09-10 ne valent plus toutes.** Elle disait
+que LIRE suffisait à télécharger, et plaçait le bloc dans l'Administration : DROIT-2 a fait
+d'exporter un droit à part, COL-2 a déménagé le bloc dans la Bibliothèque. Les cases que ces
+deux chantiers ont changées sont réécrites ET décochées ; les autres gardent leur coche, qui
+porte sur ce qu'elles disaient déjà. Sur la pile locale complète, `lectrice` joue `claire`.
 
 Elle se rejoue à chaque fois que `colDetail` change de structure, qu'un format s'ajoute, ou
 qu'une garde se déplace dans `routes/depot.py` ou `main.deposer_export`.
@@ -43,29 +50,31 @@ Deux identités suffisent, et elles sont les deux côtés de la garde :
 
 | Identité | Ce qu'elle est | Ce qu'elle doit voir |
 |---|---|---|
-| `claire` | groupe `chercheurs`, un accès **lecture** accordé | le bloc d'export, **sans** la ligne de dépôt |
+| `claire` | groupe `chercheurs`, un accès **lecture** accordé, **case « peut exporter » cochée** | le bloc d'export, **sans** la ligne de dépôt |
 | `admin` | `bd-admins` | le bloc **et** la ligne de dépôt |
 
-L'accès de `claire` se pose sous `admin`, dans *Administration → 👥 Collections* : déplier
-une collection, `claire` / utilisateur / lecture. Pour la voir en PROPRIÉTAIRE plutôt qu'en
-administratrice, faites-lui créer sa propre collection depuis son identité — le créateur en
-devient propriétaire, et la ligne de dépôt doit y apparaître.
+L'accès de `claire` se pose sous `admin`, dans *Administration → 👥 Accès aux collections* :
+déplier une collection, `claire` / utilisateur / lecture, et cocher « peut exporter ». Le
+bloc d'export, lui, se lit dans *Bibliothèque → 📚 Collections*. Pour la voir en
+PROPRIÉTAIRE plutôt qu'en administratrice, faites-lui créer sa propre collection depuis son
+identité, dans la Bibliothèque — le créateur en devient propriétaire, exporte d'office, et
+la ligne de dépôt doit y apparaître.
 
 ⚠ `faux_proxy_auth.py` n'authentifie personne : il pose l'identité qu'on lui demande,
 `bd-admins` comprise. Il n'écoute que sur `127.0.0.1`, et cela ne suffit pas à le rendre
 inoffensif ailleurs.
 
-### Le bloc est là pour qui LIT
+### Le bloc est là pour qui peut EXPORTER
 
-- [x] Connecté comme `claire`, *Administration → 👥 Collections*, la collection se déplie et montre un bloc **Export de dépôt**
-- [x] Ce bloc porte les trois lignes — fiche de description, enregistrements, manifeste IIIF — et aucune n'est grisée
+- [ ] Connecté comme `claire` SANS la case, *Bibliothèque → 📚 Collections*, le bloc **Export de dépôt** n'a aucun bouton, et dit que la lire n'y suffit pas
+- [ ] La case cochée, le même bloc porte les trois lignes — fiche de description, enregistrements, manifeste IIIF — et aucune n'est grisée
 - [x] La ligne **Déposer sur ShareDocs** est ABSENTE pour `claire`
 - [x] Connecté comme propriétaire, le même bloc porte EN PLUS la ligne de dépôt
 
 ### Ce qui sort est le bon fichier
 
-**Sous `claire`** — lire doit suffire à TÉLÉCHARGER, et c'est cette moitié de la garde qu'on
-éprouve ici. **Une exception** : la case `couverture.albums` ne discrimine rien sous `claire`,
+**Sous `claire`, case cochée** — le droit d'exporter doit suffire à TÉLÉCHARGER, sans
+posséder, et c'est cette moitié de la garde qu'on éprouve ici. **Une exception** : la case `couverture.albums` ne discrimine rien sous `claire`,
 sa portée se confondant avec la collection — un export qui ignorerait `collection_id` et
 déverserait le corpus rendrait le même chiffre. Elle se joue sous **`admin`**, et seulement
 une fois qu'une DEUXIÈME collection existe.
