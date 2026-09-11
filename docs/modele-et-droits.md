@@ -135,7 +135,8 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 |---|:---:|:---:|:---:|:---:|
 | **Créer** une collection | ✅ | ✅ | ✅ | ✅ |
 | Voir les albums, planches, régions, annotations | ✅ | ✅ | ✅ | ✅ |
-| Chercher, explorer, exporter le contenu (JSON-LD / CSV / TEI) | ✅ | ✅ | ✅ | ✅ |
+| Chercher, explorer le contenu | ✅ | ✅ | ✅ | ✅ |
+| **Exporter** le contenu — un album (JSON-LD / CSV / TEI), les CSV de la Recherche et de l'Exploration, les figures, les exports de dépôt | avec la case | avec la case | ✅ | ✅ |
 | Transcrire, corriger le découpage, annoter, relire la grammaire | — | ✅ | ✅ | ✅ |
 | Lancer les passes automatiques (cases, bulles, OCR) | — | ✅ | ✅ | ✅ |
 | Créer et documenter du vocabulaire local à la collection | — | ✅ | ✅ | ✅ |
@@ -149,6 +150,18 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 **Écrire n'est pas administrer, et la distinction est délibérée** : annoter, c'est travailler ;
 décider qui d'autre entrera, c'est autre chose. Un membre en écriture n'hérite pas du droit
 d'élargir le cercle.
+
+**Exporter est une case, pas un niveau** (depuis le 2026-09-11). Voir un contenu n'est pas
+l'emporter : un fichier qui quitte l'instance part vers un poste qu'elle ne contrôle plus.
+Le propriétaire coche donc, pour chaque accès de sa collection, s'il peut **exporter** —
+quel que soit son niveau : un stagiaire en écriture annote sans pouvoir sortir le texte,
+un relecteur en lecture peut recevoir la case. Un propriétaire exporte d'office.
+
+- Un export qui porte sur **plusieurs** collections — la Recherche, l'Exploration —
+  n'emporte que celles où vous avez la case : l'écran peut montrer plus que le fichier.
+- Un album rangé dans plusieurs collections sort **au titre de l'une d'elles**, où vous
+  avez la case ; si vous l'avez sur plusieurs, il faut dire laquelle, et l'export le dit.
+- Sans la case, l'export est **refusé en le disant**, jamais rendu vide.
 
 Une seule mesure d'analyse est **réservée**, et c'est l'accord inter-annotateurs : toutes les
 autres portent sur le corpus, celle-ci porte sur des **personnes** — elle nomme, apparie et
@@ -503,6 +516,11 @@ dépôt — jamais le travail interne (§5).
 **Qui peut télécharger toute la base ?**
 Les seuls membres de `bd-admins`. Une sauvegarde est entière par nature — une sauvegarde
 partielle ne restaure pas une instance — donc elle change de public plutôt que de contenu.
+
+**Je vois une collection : pourquoi ne puis-je pas l'exporter ?**
+Parce qu'exporter est un droit à part, que le propriétaire accorde accès par accès (§ Les
+trois niveaux) : la lire ou l'annoter n'y suffit pas. Demandez-le à son propriétaire, ou
+à son référent.
 
 **Où sont les mots de passe et les groupes dans la base ?**
 Nulle part. Aucun secret n'y est stocké, et aucune appartenance de groupe non plus : la table

@@ -214,6 +214,13 @@ parce qu'il mesure des personnes et non un corpus.
 Trois formats, par album : **JSON-LD**, **CSV** et **TEI P5**. Une **sauvegarde** complète de
 la base est également téléchargeable depuis ce menu — réservée aux administrateurs.
 
+**Exporter demande un droit à part**, que le propriétaire d'une collection accorde à
+chaque accès : lire ou annoter un album n'y suffit pas (cf.
+[`modele-et-droits.md`](modele-et-droits.md)). Il vaut pour tout ce qui sort : l'album,
+les figures, les CSV de la Recherche et de l'Exploration, les exports de dépôt. Sans lui,
+l'export est refusé en le disant. Un album rangé dans plusieurs collections sort au titre
+de l'une d'elles, et l'export dit laquelle.
+
 Pour citer une image dans un article, utilisez plutôt le bouton **`＋ Figure`** du panneau de
 région : il constitue un lot de figures, exporté en archive avec, pour chacune, le crop, sa
 légende (référence de citation, responsabilité, édition, licence) et sa notice.
@@ -263,8 +270,10 @@ attend.
 | **Enregistrements** | les métadonnées elles-mêmes, entité par entité | JSON, CSV (zip), XLSX |
 | **Manifeste IIIF** | ce qu'on dépose chez Nakala : les Canvas, et les images si le régime le permet | archive |
 
-Trois choses à savoir avant de cliquer.
+Ce qu'il faut savoir avant de cliquer.
 
+- **Il faut le droit d'exporter CETTE collection.** Son propriétaire l'accorde accès par
+  accès ; la lire n'y suffit pas.
 - **L'export porte sur CETTE collection**, jamais sur le corpus entier — c'est ce qui rend
   la fiche citable, et ce qui garantit que rien d'un autre corpus ne s'y glisse.
 - **Le manifeste IIIF ne contient pas les images : il pointe vers elles.** Le champ

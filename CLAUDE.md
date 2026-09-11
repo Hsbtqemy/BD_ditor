@@ -285,6 +285,20 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   un droit** (403 nommant la panne derrière le proxy) ; le nom `Collection par défaut` est
   **réservé** (se l'attribuer capturerait les albums créés sans collection explicite) ; et
   les changements d'accès sont **tracés au journal A3** (`lien`/`delien`, non annulables).
+- **Exporter est une case À CÔTÉ du niveau, pas un palier** (DROIT-2, v27) :
+  `collection_acces.exporter`, faux par défaut, d'office pour les propriétaires. Écrire n'y
+  suffit pas — les stagiaires annotent sans sortir le texte — et lire avec la case y suffit.
+  `Portee.export` en porte le cumul, `peut_exporter()` la question, et `pour_export()` rend
+  la même personne réduite à ce qu'elle peut SORTIR : c'est ce que reçoivent les exports qui
+  traversent plusieurs collections (Recherche, Exploration), sans qu'aucun cœur l'ait
+  appris. Un album sort **au titre d'une collection nommée** (`socle._collection_d_export`)
+  et le dit. Le refus est un **403 nommé**, jamais un 404 — l'objet est lisible. **L'oubli
+  d'une garde échoue ici OUVERT** : une porte oubliée continuerait de laisser sortir sans
+  faire tomber un test. D'où le cliquet de `tests/test_droit_export.py` — toute route qui
+  produit un fichier, repérée par son source ET par son chemin (l'export JSON d'un album
+  ne pose aucun en-tête de pièce jointe), est une porte déclarée ou déclarée hors du droit,
+  et chaque porte est JOUÉE : refus sans la case, succès avec. La migration a FERMÉ
+  l'export à qui lisait : c'est le but du chantier, pas un effet de bord.
 - **Aucun album hors collection** (`database.collection_par_defaut`) : un orphelin ne
   correspondrait à aucune règle, et il faudrait inventer une politique dans le code. La
   création d'album accepte `collection_id` et retombe sinon sur la collection de repli.
@@ -346,9 +360,10 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   groupes_admin` est vide — nommer `bd-admins` là où l'on est seul distinguerait deux rôles
   qui n'en font qu'un.
 - **Une garde d'interface se pose sur l'ACTE, jamais sur l'écran qui le contient.** Le
-  serveur distingue sept questions (`peut_lire` / `peut_ecrire` / `peut_administrer`,
-  `clause_album` / `clause_terme` / `peut_ecrire_terme` / `peut_ecrire_quelque_part`) ; le
-  client n'en reçoit qu'une, `administrable`, et `peut_ecrire` ne traverse même pas — l'UI
+  serveur distingue neuf questions (`peut_lire` / `peut_ecrire` / `peut_administrer` /
+  `peut_exporter`, `clause_album` / `clause_terme` / `peut_ecrire_terme` /
+  `peut_ecrire_quelque_part` / `peut_exporter_quelque_part`) ; le client n'en reçoit que
+  deux, `administrable` et `exportable` (DROIT-2), et `peut_ecrire` ne traverse même pas — l'UI
   découvre un refus d'écriture en recevant son 403. Tant que cette asymétrie tient, tout ce
   qu'on ajoute dans un panneau gardé hérite de sa garde **par défaut et non par décision** :
   c'est ainsi que le référent d'AUTH-4, une simple ADRESSE, s'est retrouvé derrière la
@@ -444,7 +459,8 @@ rien : il était déclaré, jamais respecté. Il devient opposable **à la sorti
   édition, licence, base légale — « non établie » quand c'est le cas) et à sa notice JSON.
   Les mentions sont CHOISIES par l'appelant (`champs`), dans l'ordre bibliographique de
   `figure.CHAMPS` et non celui de la demande. Le cloisonnement d'AUTH-2 s'applique
-  entièrement : on ne cite que ce qu'on voit.
+  entièrement : on ne cite que ce qu'on voit — et, depuis DROIT-2, que ce qu'on a le droit
+  d'EXPORTER : le régime ne bloque toujours pas la citation, c'est ce droit qui la borne.
 - **`GET /api/sauvegarde` est réservée aux administrateurs** : la condition de réouverture
   écrite le 2026-08-27 (« dès qu'un tiering de droits est effectif ») s'est déclenchée. Elle
   reste ENTIÈRE — une sauvegarde partielle ne restaure pas une instance — et change de
@@ -489,7 +505,7 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 25). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 27). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
 
