@@ -82,8 +82,9 @@ dessus le cloisonnement d'AUTH-2. Les journaux serveur posent le problème symé
 le journal A3 nomme les agents, et le dépôt pseudonymise à chaque export précisément pour
 que l'activité d'une personne ne voyage pas sous son nom.
 
-**Où ça vit.** En base, avec un panneau d'administration dans la Bibliothèque, à côté de
-👥 Collections et 🩺 Moteurs. Pas d'e-mail — c'est ce qu'on fuit —, pas de traqueur
+**Où ça vit.** En base, avec un panneau d'administration à côté des accès aux collections
+et de 🩺 Moteurs — c'est-à-dire dans `/administration` depuis UX-10 (2026-09-07). La phrase
+d'origine disait « dans la Bibliothèque » : elle a été écrite avant le déménagement. Pas d'e-mail — c'est ce qu'on fuit —, pas de traqueur
 externe : envoyer du contexte de corpus à un tiers contredirait « auto-hébergé,
 traitement local », et l'entrepôt du figé, c'est Nakala, pas un service de tickets.
 

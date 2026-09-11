@@ -37,7 +37,7 @@ qu'on vient d'écarter.
 - [ ] L'écran est bâti sur `static/lib/dialog.js` — piège à focus, Échap, retour du focus au déclencheur — sans modale réécrite pour l'occasion
 - [ ] L'écran dit ce que l'outil ne fait PAS : les trois passes ML ne font que pré-remplir, l'annotation reste entièrement humaine ; une carte muette là-dessus laisserait croire à une chaîne automatique
 - [ ] Une étape dont le moteur est absent (`GET /api/sante` la donne indisponible) se présente comme optionnelle et non comme cassée
-- [ ] L'étape 8 ne promet que ce que l'UI porte aujourd'hui, et l'UI en porte PLUS qu'à la rédaction de cette case : les exports de contenu (JSON-LD / CSV / TEI) depuis l'Atelier, ET les exports de dépôt — fiche de description, enregistrements, manifeste IIIF — depuis Administration → 👥 Collections, `EXP-1` étant `livré` depuis le 2026-09-07. La carte les nomme donc tous les deux au lieu d'excuser un manque. Le guide le fait déjà : c'est la carte qui est en retard sur lui, et non l'inverse
+- [ ] L'étape 8 ne promet que ce que l'UI porte aujourd'hui, et l'UI en porte PLUS qu'à la rédaction de cette case : les exports de contenu (JSON-LD / CSV / TEI) depuis l'Atelier, ET les exports de dépôt — fiche de description, enregistrements, manifeste IIIF — depuis la Bibliothèque → 📚 Collections, `EXP-1` étant `livré` depuis le 2026-09-07 — le bloc vivait dans Administration → 👥 Collections jusqu'à `COL-2` (2026-09-11), qui l'a déménagé avec ce que la collection EST. La carte les nomme donc tous les deux au lieu d'excuser un manque. Le guide le fait déjà : c'est la carte qui est en retard sur lui, et non l'inverse
 - [ ] Les raccourcis `N`/`E`/`A`/`T` et l'ordre des onglets de la Visionneuse sont inchangés : l'écart entre le parcours de la carte et l'ordre de la barre est assumé, pas résorbé en déplaçant un raccourci
 
 ### Guide utilisateur
@@ -144,6 +144,11 @@ promet ce qui existe, et le guide dit où trouver le reste.
 dépôt* vit dans Administration → 👥 Collections. Le guide le dit déjà — il renvoie l'étape 8
 vers ce bloc —, donc c'est la CARTE qui reste en retard sur le guide, et non l'inverse. Une
 étape 8 écrite aujourd'hui peut nommer les deux sorties au lieu d'en excuser une.
+
+**Et le bloc a déménagé depuis.** `COL-2` (2026-09-11) l'a porté dans la Bibliothèque →
+📚 Collections, avec les descripteurs de la collection ; l'Administration ne garde que les
+accès. Le guide, relu le même jour, range bien l'export de collection dans la Bibliothèque
+(§ 2, tableau des surfaces) : c'est là que l'étape 8 doit renvoyer.
 
 Reste hors périmètre, faute d'être tranché : une aide contextuelle par surface (un « ? »
 qui ouvre la section correspondante du guide). C'est un second chantier, à ouvrir une

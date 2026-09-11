@@ -30,3 +30,14 @@ et cette page le décrivait encore comme bloqué. La chaîne n'a donc plus qu'un
 INFRA-3 tranche s'il faut persister des secrets chiffrés, ce qui est une rupture de
 doctrine assumée et non un portage, et INFRA-6 suit. À ne pas commencer en croyant que
 c'est un petit sujet de tuyauterie.
+
+**INFRA-3 a tranché le 2026-09-10 (`4221748`, livré), et le blocage a changé de nature**
+— relu le 2026-09-11. La réponse est NON, on ne persiste pas, et la question s'est dissoute :
+le compte d'INSTANCE se recharge seul de l'environnement (`BD_SHAREDOCS_URL` / `_USER` /
+`_PASS`) au premier accès, donc un redémarrage ne le perd pas. C'est lui qu'un dépôt
+automatique emploierait, et le paragraphe précédent, qui ne voyait que des identifiants
+saisis à la main, est dépassé. Mais l'équipe a décidé le même jour de laisser ces trois
+variables VIDES sur la production, la racine utile dépendant du projet. Un dépôt
+automatique n'a donc aujourd'hui AUCUN compte à employer. Ce chantier attend que ces
+variables soient posées — une décision d'équipe, pas un chantier de code —, puis le choix
+d'un déclencheur, l'application n'ayant toujours pas d'ordonnanceur.

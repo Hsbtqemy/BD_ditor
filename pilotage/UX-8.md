@@ -32,7 +32,7 @@ Un blocage périmé se lit exactement comme un blocage réel.
 - [ ] Le geste de zoom du navigateur n'est PAS désactivé : `user-scalable=no` réglerait le conflit en violant le 1.4.4
 
 ### Ce qu'on ne sait pas encore
-- [ ] Le comportement du `pointerdown`/`pointermove` existant est relu sous l'angle tactile : le code vise la souris, et `PointerEvent` unifie les deux — reste à savoir ce qui casse quand deux pointeurs arrivent en même temps
+- [ ] Les écouteurs de tracé de l'Atelier passent aux `PointerEvent`, puis sont relus sous l'angle tactile. **Le code n'en écoute AUCUN aujourd'hui** : le tracé tient sur `mousedown` (la scène), `mousemove` et `mouseup` (la fenêtre), dans `static/viewer.js` — relevé le 2026-09-11, alors que cette case parlait d'un « `pointerdown`/`pointermove` existant ». Le chantier commence donc par un PORTAGE, pas par une relecture. `PointerEvent` unifie souris et doigt — reste à savoir ce qui casse quand deux pointeurs arrivent en même temps
 - [ ] La tablette de test est nommée, avec sa taille et son navigateur : « ça marche sur tablette » sans machine désignée est une affirmation invérifiable
 
 ## Contexte

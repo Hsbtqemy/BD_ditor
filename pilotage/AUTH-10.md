@@ -75,7 +75,7 @@ trois écarts restants sont tous à l'intérieur d'`ecriture`.
 - [ ] Un compte `contribution` annote, transcrit et corrige un token, et reçoit un refus NOMMÉ sur la suppression d'une planche ou d'un album — pas un 404
 - [ ] Un compte `contribution` ne peut ni fusionner deux valeurs, ni fusionner deux personnages, ni renommer un terme global : ces actes ne se défont pas et débordent la collection où l'on travaille
 - [ ] Un compte `contribution` ne peut pas lancer de lot : le `ML_LOCK` est sérialisé, et le dommage n'est pas la perte mais l'ACCAPAREMENT — une passe sur tout le corpus bloque les autres pendant des minutes
-- [ ] Le cliquet de `tests/test_autorisation.py` exige que chaque route ait tranché ENTRE QUATRE niveaux et non trois — sans quoi une route neuve hériterait du niveau le plus permissif par défaut et non par décision
+- [ ] Le cliquet de `tests/test_autorisation.py` exige que chaque route ait tranché ENTRE QUATRE niveaux — **ce qu'il ne fait pas aujourd'hui, même à trois** : il vérifie qu'une route CONSULTE la portée, jamais QUEL niveau elle exige (relu le 2026-09-11). C'est donc une EXTENSION du cliquet, pas son passage de trois à quatre — sans quoi une route neuve hériterait du niveau le plus permissif par défaut et non par décision
 - [ ] Le cumul est éprouvé par table de vérité aux QUATRE niveaux, et pas seulement aux extrémités : c'est le seul endroit où l'oubli d'AUTH-3 se reproduirait
 
 ### Le trou d'affichage, qui existe indépendamment de ce chantier
