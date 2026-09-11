@@ -5,7 +5,7 @@ statut: à venir
 
 # DROIT-2 — exporter est un droit à part, accordé par collection
 
-**Arrêté sur** — 2026-09-11, `ac39dae` : le lot SERVEUR est fait — la case, la Portee qui la lit, et les quinze routes qui produisent un fichier la consultent, sous un cliquet qui les énumère. L'ÉCRAN reste entier : aujourd'hui, la case ne se pose que par l'API. **Ne pas déployer ce lot seul** : la migration ferme l'export à tout non-propriétaire, et aucun écran ne permettrait encore de le lui rouvrir.
+**Arrêté sur** — 2026-09-11, `6d08b87` : le droit d'exporter est posé de bout en bout — la case et la Portee, les quinze portes sous leur cliquet, et l'écran qui ne propose un export qu'à qui peut le faire. Ce qui reste ouvert est la famille des termes qu'on ne lit pas, dont deux cases reportées par l'équipe. L'avertissement de déploiement tombe avec l'écran : la case se pose désormais dans le panneau des accès.
 
 **Point de départ** — 2026-09-11, pendant COL-2. À la question « le bloc d'export suit-il
 les descripteurs vers la Bibliothèque ? », l'équipe a répondu : *« tout dépend de qui a
@@ -65,11 +65,11 @@ le premier à l'éprouver.
 - [x] **Un cliquet énumère les portes, parce que l'oubli d'une garde échoue ici OUVERT** — toute route qui produit un fichier, repérée par son source ET son chemin (l'export JSON d'un album ne pose aucun en-tête de pièce jointe), est une porte déclarée ou déclarée hors du droit ; une déclaration sans route échoue aussi ; plancher dérivé du source. `4b1d530` ; `test_toute_route_qui_sort_un_fichier_est_une_porte_declaree`, et deux mutations sur le cliquet lui-même parmi les treize
 
 ### L'écran
-- [ ] **Une case « peut exporter » dans le panneau des accès**, à côté du niveau, libellée par l'ACTE et non par un nom de niveau — c'est l'exigence qu'AUTH-10 a posée pour ses cases. Chez un propriétaire, elle apparaît cochée et non modifiable, avec la raison écrite à côté
-- [ ] **`GET /api/collections` porte `exportable`**, comme il porte `administrable` — le SERVEUR le rend depuis `704b98a`, avec les collections d'un album ; reste l'écran. Les boutons d'export se cachent pour qui n'a pas le droit ; la garde reste celle du serveur, et l'écran ne fait qu'éviter de proposer un geste qu'il refusera
+- [x] **Une case « peut exporter » dans le panneau des accès**, sur chaque accès et dans le formulaire d'ajout, libellée par l'acte ; chez un propriétaire, cochée et non modifiable, avec la raison à côté. `6d08b87` ; `test_la_case_cochee_dans_les_acces_rend_l_export_a_l_ecran`, audité par `test_a11y_la_case_et_le_choix_d_export`
+- [x] **`GET /api/collections` porte `exportable`, et les boutons d'export se cachent pour qui n'a pas le droit** — Bibliothèque, Atelier, Recherche et Exploration, ces deux dernières par `acces.exporter` de `/api/moi`, qui dit « tout », « partiel » ou « rien » ; sans le droit, une note DIT ce qui manque. Un piège trouvé en route : `.dropdown-menu button { display: block }` l'emportait sur `hidden`. `6d08b87` ; `test_sans_la_case_aucune_surface_ne_propose_d_exporter`
 - [x] **Un refus d'export est un 403 NOMMÉ, pas un 404** — le serveur le rend sur chaque porte, avec ce qui manque (`socle._MOTIF_EXPORT`). `4b1d530` ; `test_une_porte_refuse_qui_lit_sans_la_case` vérifie le code ET le mot
 
-- [ ] **Un album qu'on peut exporter au titre de plusieurs collections propose de CHOISIR** — dans l'Atelier (menu d'export) et partout où un album s'exporte. Aujourd'hui, le serveur répond 422 en nommant les candidates ; sans l'écran, ce refus arrive en message d'erreur au lieu d'une question
+- [x] **Un album qu'on peut exporter au titre de plusieurs collections propose de CHOISIR** — une fenêtre dans l'Atelier, et l'export part au titre de la collection choisie. `6d08b87` ; `test_un_album_exportable_au_titre_de_deux_collections_fait_choisir`
 
 ### Les tags qu'on ne lit pas
 - [x] **Les lectures qui ont leur propre requête taisent un tag local à une collection qu'on ne lit pas** — la Recherche et son CSV, le CSV d'un album, l'axe « tag » du croisement (JSON et CSV), et les deux filtres par nom de tag, qui étaient des ORACLES : ils n'affichaient rien, mais chercher le nom disait quelles régions le portent. `df20d3d` ; quatre tests dans `test_autorisation.py`, cinq mutants tués
