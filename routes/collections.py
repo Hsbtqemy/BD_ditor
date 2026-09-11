@@ -85,7 +85,7 @@ def _acces_de(conn, collection_id: int) -> list[dict]:
     code, pas le protocole, portait l'ambiguïté.
     """
     lignes = _rows(conn.execute(
-        "SELECT genre, principal, niveau, date_creation FROM collection_acces "
+        "SELECT genre, principal, niveau, exporter, date_creation FROM collection_acces "
         "WHERE collection_id = ? "
         "ORDER BY CASE niveau WHEN 'proprietaire' THEN 0 WHEN 'ecriture' THEN 1 ELSE 2 END, "
         "         genre, principal", (collection_id,)))
@@ -97,6 +97,11 @@ def _acces_de(conn, collection_id: int) -> list[dict]:
         connus = {r[0] for r in conn.execute(
             f"SELECT login FROM utilisateur WHERE login IN ({qm})", logins)}
     for acc in lignes:
+        # DROIT-2 — le droit EFFECTIF, pas la case stockée : un propriétaire exporte
+        # d'office, et une liste qui le dirait « sans export » parce que sa case n'a
+        # jamais été cochée serait exacte et trompeuse.
+        acc["exporter"] = (bool(acc["exporter"])
+                           or acc["niveau"] == autorisation.PROPRIETAIRE)
         acc["jamais_vu"] = (acc["principal"] not in connus
                             if acc["genre"] == autorisation.UTILISATEUR else None)
     return lignes
@@ -148,6 +153,10 @@ def list_collections(conn: sqlite3.Connection = Depends(db),
     for c in vues:
         c["mon_niveau"] = _niveau_dans(portee, c["id"])
         c["administrable"] = portee.peut_administrer(c["id"])
+        # DROIT-2 — la seconde question que le client reçoit, et pour la même raison
+        # qu'`administrable` : cacher un bouton d'export qu'on refuserait. La garde
+        # reste celle du serveur, sur chaque porte ; ceci n'évite qu'un geste perdu.
+        c["exportable"] = portee.peut_exporter(c["id"])
         # DROIT-1 — l'état de la date d'embargo, DÉRIVÉ ici comme il l'est à la sortie :
         # `tools/iiif_manifest.py` lit la MÊME fonction, sans quoi l'écran et l'export
         # finiraient par ne plus dire la même chose du même champ. Un embargo échu que
@@ -449,6 +458,10 @@ def accorder_acces(collection_id: int, payload: AccesIn,
     `Remote-Groups`. On n'accorde donc rien à une personne qu'on aurait vérifiée : on
     déclare qu'un nom ouvre une collection. L'application n'a aucun annuaire (invariant
     AUTH-1), et un nom mal orthographié n'ouvre simplement rien.
+
+    `exporter` (DROIT-2) se pose dans le même geste, et par le même PROPRIÉTAIRE :
+    décider ce qui sort d'une collection l'engage autant que décider qui y entre. Il
+    est tracé avec le niveau, dans le même événement du journal.
     """
     _get_collection(conn, portee, collection_id, administrer=True)
     if payload.genre not in autorisation.GENRES:
@@ -472,22 +485,28 @@ def accorder_acces(collection_id: int, payload: AccesIn,
         raise HTTPException(409, "C'est le dernier propriétaire de cette collection : "
                                  "désignez-en un autre avant de le rétrograder.")
     avant = conn.execute(
-        "SELECT niveau FROM collection_acces WHERE collection_id = ? AND genre = ? "
-        "AND principal = ?", (collection_id, payload.genre, principal)).fetchone()
+        "SELECT niveau, exporter FROM collection_acces WHERE collection_id = ? "
+        "AND genre = ? AND principal = ?",
+        (collection_id, payload.genre, principal)).fetchone()
+    # `exporter` absent veut dire « ne pas y toucher » : re-poser un principal pour
+    # changer son niveau ne lui retire pas une case qu'on n'a pas mentionnée.
+    exporter = (bool(payload.exporter) if payload.exporter is not None
+                else bool(avant["exporter"]) if avant else False)
     conn.execute(
-        "INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
-        "VALUES (?, ?, ?, ?) ON CONFLICT(collection_id, genre, principal) "
-        "DO UPDATE SET niveau = excluded.niveau",
-        (collection_id, payload.genre, principal, payload.niveau))
+        "INSERT INTO collection_acces (collection_id, genre, principal, niveau, exporter) "
+        "VALUES (?, ?, ?, ?, ?) ON CONFLICT(collection_id, genre, principal) "
+        "DO UPDATE SET niveau = excluded.niveau, exporter = excluded.exporter",
+        (collection_id, payload.genre, principal, payload.niveau, int(exporter)))
     # Qui a ouvert quoi à qui, et quand. La séparation « écrire ≠ partager » se justifie
     # par la TRAÇABILITÉ d'un accès accordé par erreur — sans trace, l'argument ne tenait
     # pas. `cible_id` est la collection : `collection_acces` a une clé composite et pas
     # d'id, et c'est bien la collection dont la liste d'accès change.
     _journaliser_acces(conn, collection_id, "lien",
                        avant={"genre": payload.genre, "principal": principal,
-                              "niveau": avant["niveau"]} if avant else None,
+                              "niveau": avant["niveau"],
+                              "exporter": bool(avant["exporter"])} if avant else None,
                        apres={"genre": payload.genre, "principal": principal,
-                              "niveau": payload.niveau})
+                              "niveau": payload.niveau, "exporter": exporter})
     conn.commit()
     return _acces_de(conn, collection_id)
 
@@ -505,8 +524,8 @@ def retirer_acces(collection_id: int, genre: str, principal: str,
     """
     _get_collection(conn, portee, collection_id, administrer=True)
     ligne = conn.execute(
-        "SELECT niveau FROM collection_acces WHERE collection_id = ? AND genre = ? "
-        "AND principal = ?", (collection_id, genre, principal)).fetchone()
+        "SELECT niveau, exporter FROM collection_acces WHERE collection_id = ? "
+        "AND genre = ? AND principal = ?", (collection_id, genre, principal)).fetchone()
     if ligne is None:
         raise HTTPException(404, "Cet accès n'existe pas.")
     if (ligne["niveau"] == autorisation.PROPRIETAIRE
@@ -517,7 +536,8 @@ def retirer_acces(collection_id: int, genre: str, principal: str,
                  "AND principal = ?", (collection_id, genre, principal))
     _journaliser_acces(conn, collection_id, "delien",
                        avant={"genre": genre, "principal": principal,
-                              "niveau": ligne["niveau"]})
+                              "niveau": ligne["niveau"],
+                              "exporter": bool(ligne["exporter"])})
     conn.commit()
     return Response(status_code=204)
 
@@ -539,7 +559,8 @@ def list_collections_album(album_id: int, conn: sqlite3.Connection = Depends(db)
         "JOIN collection c ON c.id = ca.collection_id "
         "WHERE ca.album_id = ? ORDER BY c.nom", (album_id,)))
     return [{**c, "mon_niveau": _niveau_dans(portee, c["id"]),
-             "administrable": portee.peut_administrer(c["id"])}
+             "administrable": portee.peut_administrer(c["id"]),
+             "exportable": portee.peut_exporter(c["id"])}
             for c in rows if portee.peut_lire(c["id"])]
 
 

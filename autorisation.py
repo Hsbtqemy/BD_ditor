@@ -19,6 +19,12 @@ qui pose la question.
 donc une fonction à part et non un `peut_ecrire()` plus exigeant — un membre en écriture
 n'hérite pas du droit d'élargir le cercle.
 
+**Et une capacité HORS de l'échelle : exporter** (DROIT-2). Les stagiaires écrivent, et
+c'est voulu ; ils n'exportent pas pour autant, et une règle « écriture et plus » ne les
+arrêterait pas. `exporter` est donc une case posée À CÔTÉ du niveau, accordée par
+collection, d'office pour les propriétaires — et `peut_exporter()` une question de
+plus, pas un palier de plus.
+
 Trois principes.
 
 **La collection est l'unité de cloisonnement.** On n'autorise jamais un album directement :
@@ -147,12 +153,12 @@ class Portee:
     dans ce cas — elle serait juste au moment du calcul et fausse dès la création suivante.
     """
 
-    __slots__ = ("tout", "admin", "lecture", "ecriture", "propriete",
+    __slots__ = ("tout", "admin", "lecture", "ecriture", "propriete", "export",
                  "utilisateur", "groupes")
 
     def __init__(self, *, tout: bool = False, admin: bool = False,
                  lecture: frozenset = frozenset(), ecriture: frozenset = frozenset(),
-                 propriete: frozenset = frozenset(),
+                 propriete: frozenset = frozenset(), export: frozenset = frozenset(),
                  utilisateur: Optional[str] = None, groupes: tuple = ()):
         self.tout = tout
         self.admin = admin
@@ -162,6 +168,12 @@ class Portee:
         # oublierait les propriétaires serait un refus silencieux et parfaitement crédible.
         self.ecriture = frozenset(ecriture) | self.propriete
         self.lecture = frozenset(lecture) | self.ecriture
+        # DROIT-2 — exporter est une capacité À CÔTÉ de l'échelle, pas un palier : les
+        # propriétaires l'ont d'office (décider ce qui sort de sa collection engage la
+        # collection autant que décider qui y entre), les autres par la case. Réduit à
+        # la lecture, par ceinture : on ne sort pas ce qu'on ne voit pas, quoi que dise
+        # une ligne en base.
+        self.export = (frozenset(export) | self.propriete) & self.lecture
         self.utilisateur = utilisateur
         self.groupes = tuple(groupes)
 
@@ -186,6 +198,39 @@ class Portee:
         un UPDATE en SQL — c'est-à-dire exactement ce que ce chantier existe pour supprimer.
         """
         return self.admin or collection_id in self.propriete
+
+    def peut_exporter(self, collection_id: int) -> bool:
+        """A-t-on le droit de SORTIR le contenu de cette collection — un fichier qui
+        quitte l'instance pour un poste qu'elle ne contrôle plus ?  DROIT-2.
+
+        Lire n'y suffit plus : télécharger n'est pas travailler dans l'instance, c'est
+        sortir, et la base légale du corpus n'est pas établie (DEPOT-1). Écrire n'y
+        suffit pas davantage — exporter ne s'ordonne pas avec annoter. L'administrateur
+        passe outre comme partout, et le mono-poste aussi : sans proxy, il n'y a
+        personne à qui refuser."""
+        return self.tout or collection_id in self.export
+
+    def peut_exporter_quelque_part(self) -> bool:
+        """A-t-on le droit d'exporter, où que ce soit ? Sert aux exports qui traversent
+        plusieurs collections (Recherche, Exploration) : sans aucun droit, le fichier
+        serait vide, et un refus qui dit pourquoi vaut mieux qu'un fichier qui se tait."""
+        return self.tout or bool(self.export)
+
+    def pour_export(self) -> "Portee":
+        """La même personne, réduite à ce qu'elle peut SORTIR.  DROIT-2.
+
+        Un export qui traverse plusieurs collections filtre par le droit d'exporter et
+        non par celui de lire — sans quoi qui exporte A emporterait le texte de B dans
+        une concordance qui couvre les deux. Plutôt qu'une clause de plus que chaque cœur
+        devrait apprendre à recevoir, une Portee de plus : `clause_album`,
+        `clause_terme` et les accesseurs gardés la consomment telle quelle, et la règle
+        reste écrite ici."""
+        if self.tout:
+            return self
+        return Portee(admin=self.admin, lecture=self.export,
+                      ecriture=self.ecriture & self.export,
+                      propriete=self.propriete & self.export, export=self.export,
+                      utilisateur=self.utilisateur, groupes=self.groupes)
 
     # -- filtrage des requêtes ---------------------------------------------- #
     def clause_album(self, alias: str = "a.id", *, ecriture: bool = False) -> tuple[str, list]:
@@ -255,7 +300,8 @@ class Portee:
             return f"<Portee TOUT admin={self.admin} user={self.utilisateur!r}>"
         return (f"<Portee lecture={sorted(self.lecture)} "
                 f"ecriture={sorted(self.ecriture)} "
-                f"propriete={sorted(self.propriete)} user={self.utilisateur!r}>")
+                f"propriete={sorted(self.propriete)} export={sorted(self.export)} "
+                f"user={self.utilisateur!r}>")
 
 
 TOTALE = Portee(tout=True, admin=True)
@@ -265,9 +311,11 @@ TOTALE = Portee(tout=True, admin=True)
 # Résolution
 # --------------------------------------------------------------------------- #
 def collections_du_principal(conn: sqlite3.Connection, login: str,
-                             noms_groupes: list[str]) -> tuple[frozenset, frozenset, frozenset]:
-    """(lecture, écriture, propriété) — les collections ouvertes à ce login ou à l'un de
-    ses groupes, rangées par niveau.
+                             noms_groupes: list[str]) -> tuple[frozenset, frozenset,
+                                                               frozenset, frozenset]:
+    """(lecture, écriture, propriété, export) — les collections ouvertes à ce login ou à
+    l'un de ses groupes, rangées par niveau, plus celles dont la case `exporter` est
+    cochée (DROIT-2) — à quelque niveau que ce soit.
 
     Une seule requête : le nombre de groupes est petit, et cette fonction est appelée à
     chaque requête HTTP.
@@ -280,12 +328,15 @@ def collections_du_principal(conn: sqlite3.Connection, login: str,
     conditions = " OR ".join("(genre = ? AND principal = ?)" for _ in principaux)
     params = [v for paire in principaux for v in paire]
     par_niveau = {LECTURE: set(), ECRITURE: set(), PROPRIETAIRE: set()}
-    for cid, niveau in conn.execute(
-            f"SELECT collection_id, niveau FROM collection_acces WHERE {conditions}",
-            params):
+    export = set()
+    for cid, niveau, exporter in conn.execute(
+            f"SELECT collection_id, niveau, exporter FROM collection_acces "
+            f"WHERE {conditions}", params):
         par_niveau.get(niveau, par_niveau[LECTURE]).add(cid)
+        if exporter:
+            export.add(cid)
     return (frozenset(par_niveau[LECTURE]), frozenset(par_niveau[ECRITURE]),
-            frozenset(par_niveau[PROPRIETAIRE]))
+            frozenset(par_niveau[PROPRIETAIRE]), frozenset(export))
 
 
 def resoudre(conn: sqlite3.Connection, request) -> Portee:
@@ -298,6 +349,7 @@ def resoudre(conn: sqlite3.Connection, request) -> Portee:
         return Portee(groupes=tuple(noms_groupes))   # pas passé par Authelia : rien
     if AUTH_ADMIN_GROUPS & set(noms_groupes):
         return Portee(tout=True, admin=True, utilisateur=login, groupes=tuple(noms_groupes))
-    lecture, ecriture, propriete = collections_du_principal(conn, login, noms_groupes)
-    return Portee(lecture=lecture, ecriture=ecriture, propriete=propriete,
+    lecture, ecriture, propriete, export = collections_du_principal(conn, login,
+                                                                    noms_groupes)
+    return Portee(lecture=lecture, ecriture=ecriture, propriete=propriete, export=export,
                   utilisateur=login, groupes=tuple(noms_groupes))

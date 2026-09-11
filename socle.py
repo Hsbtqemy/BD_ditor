@@ -917,6 +917,10 @@ class AccesIn(BaseModel):
     genre: str = autorisation.UTILISATEUR      # 'utilisateur' | 'groupe'
     principal: str
     niveau: str = autorisation.LECTURE         # 'lecture' | 'ecriture' | 'proprietaire'
+    # DROIT-2 — le droit de sortir le contenu, À CÔTÉ du niveau. `None` veut dire « ne
+    # pas y toucher » : re-poser un principal pour changer son niveau ne doit pas lui
+    # retirer une case qu'on n'a pas mentionnée. Une ligne NEUVE part sans le droit.
+    exporter: Optional[bool] = None
 
 
 class NatureIn(BaseModel):

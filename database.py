@@ -18,7 +18,7 @@ from config import DB_PATH, STATUTS
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 26
+SCHEMA_VERSION = 27
 
 # AUTH-6 (2026-09-09) — les deux natures d'un compte, et la SEULE liste qui fasse foi.
 # `nominatif` : une personne derrière un login, ce que suppose tout le raisonnement de
@@ -364,7 +364,11 @@ CREATE TABLE IF NOT EXISTS collection_acces (
     collection_id  INTEGER NOT NULL REFERENCES collection(id) ON DELETE CASCADE,
     genre          TEXT NOT NULL,       -- 'utilisateur' | 'groupe'
     principal      TEXT NOT NULL,       -- login, ou nom de groupe Remote-Groups
-    niveau         TEXT NOT NULL,       -- 'lecture' | 'ecriture'
+    niveau         TEXT NOT NULL,       -- 'lecture' | 'ecriture' | 'proprietaire'
+    -- v27 (DROIT-2) : le droit de SORTIR le contenu, posé À CÔTÉ du niveau et non
+    -- dedans, parce qu'exporter ne s'ordonne pas avec annoter. Faux par défaut ; un
+    -- propriétaire exporte d'office, sans que la case soit posée (`autorisation.Portee`).
+    exporter       INTEGER NOT NULL DEFAULT 0,
     date_creation  TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (collection_id, genre, principal)
 );
@@ -837,6 +841,18 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if ucols and "nature" not in ucols:
         conn.execute("ALTER TABLE utilisateur ADD COLUMN nature TEXT NOT NULL "
                      f"DEFAULT '{NATURE_NOMINATIF}'")
+
+    # v26 → v27 : le droit d'exporter (DROIT-2), une colonne à côté du niveau. FAUX par
+    # défaut, et c'est un changement de COMPORTEMENT autant que de schéma : jusqu'ici,
+    # toute personne qui lisait une collection pouvait en sortir le contenu. Après la
+    # migration, seuls ses propriétaires le peuvent, jusqu'à ce qu'ils cochent la case
+    # pour d'autres — décidé le 2026-09-11 (« l'export reste quelque chose de
+    # particulièrement sensible »). AUCUN rattrapage : ouvrir d'office à qui lisait
+    # reconduirait exactement l'état que le chantier ferme.
+    acols = {r["name"] for r in conn.execute("PRAGMA table_info(collection_acces)")}
+    if acols and "exporter" not in acols:
+        conn.execute("ALTER TABLE collection_acces ADD COLUMN exporter INTEGER NOT NULL "
+                     "DEFAULT 0")
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
