@@ -22,7 +22,19 @@ from test_e2e_a11y import _audit, _fmt, _theme  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
-NOTE = "Premier ultimatum ; le cadrage serré de la case le souligne."
+# UX-10 — le périmètre se DÉCLARE (`tests/test_surfaces.py`). Oublié au premier commit de
+# ce module, et c'est la suite complète qui l'a dit : un audit qui ne dit pas ce qu'il
+# regarde ne permet pas de voir qu'une surface neuve lui échappe.
+SURFACES_AUDITEES = ("/exploration",)
+SURFACES_HORS_PERIMETRE = {
+    "/": "l'Atelier n'affiche aucune ligne de concordance : le KWIC ne vit que dans l'Exploration",
+    "/recherche": "la Recherche n'a pas de concordance ; ses puces de résultat sont les "
+                  "`.r-tag`, que test_e2e_a11y audite déjà sur un résultat tagué",
+    "/corpus": "la Bibliothèque n'affiche aucune ligne de concordance",
+    "/administration": "l'Administration n'affiche aucune ligne de concordance",
+}
+
+NOTE ="Premier ultimatum ; le cadrage serré de la case le souligne."
 
 
 @pytest.fixture
