@@ -303,8 +303,10 @@ dans `collection_acces`. Une instance neuve n'en ouvre AUCUNE. Concrètement, si
 n'appartient à un groupe d'administration, **tout le monde se connecte correctement et
 voit une application vide** — et rien n'indique pourquoi.
 
-Le défaut est `bd-admins` : déclarez ce groupe dans `deploy/authelia/users_database.yml`
-et mettez-y au moins une personne, ou changez le nom via cette variable. Ensuite seulement,
+Le défaut est `bd-admins` : créez ce groupe dans l'annuaire LLDAP et mettez-y au moins une
+personne, ou changez le nom via cette variable. Depuis la bascule du 2026-09-07 (AUTH-7),
+les groupes vivent dans l'annuaire, et `deploy/authelia/users_database.yml` n'est plus que
+le repli (cf. `docs/exploitation.md`, *Basculer vers l'annuaire LLDAP*). Ensuite seulement,
 les accès des autres se donnent collection par collection.
 
 C'est aussi le symptôme à connaître : **une instance qui paraît vide pour tout le monde**

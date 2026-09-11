@@ -442,14 +442,17 @@ CREATE INDEX IF NOT EXISTS idx_regions_planche  ON regions(planche_id);
 -- hash, pas de jeton. La clé est le login du proxy (`Remote-User`) ; `nom` et `email`
 -- ne servent qu'à l'affichage, et sont rafraîchis à chaque fois qu'on revoit la personne.
 --
--- Les GROUPES ne sont volontairement PAS stockés : ils vivent dans
--- `deploy/authelia/users_database.yml` et sont relus dans `Remote-Groups` à chaque
--- requête. Les figer en base créerait une seconde source de vérité, et retirer quelqu'un
--- d'un groupe n'aurait aucun effet tant qu'on n'aurait pas aussi touché la base.
+-- Les GROUPES ne sont volontairement PAS stockés : ils vivent dans l'annuaire LLDAP depuis
+-- la bascule du 2026-09-07 (AUTH-7) — `deploy/authelia/users_database.yml` n'en est plus
+-- que le REPLI — et sont relus dans `Remote-Groups` à chaque requête. Les figer en base
+-- créerait une seconde source de vérité, et retirer quelqu'un d'un groupe n'aurait aucun
+-- effet tant qu'on n'aurait pas aussi touché la base.
 --
--- La ligne existe pour que d'autres chantiers aient une identité STABLE à référencer :
--- les identifiants WebDAV chiffrés par personne (INFRA-3) et le propriétaire d'une
--- collection (AUTH-3). Elle n'est PAS une table de droits.
+-- La ligne existe pour que d'autres chantiers aient une identité STABLE à référencer : le
+-- propriétaire d'une collection (AUTH-3) et la nature du compte (AUTH-6, colonne
+-- ci-dessous). INFRA-3 l'avait aussi prévue pour des identifiants WebDAV chiffrés par
+-- personne, et a tranché le 2026-09-10 de ne rien persister. Elle n'est PAS une table de
+-- droits.
 CREATE TABLE IF NOT EXISTS utilisateur (
     login          TEXT PRIMARY KEY,               -- identifiant Authelia (en-tête Remote-User)
     nom            TEXT,                           -- Remote-Name : nom affiché

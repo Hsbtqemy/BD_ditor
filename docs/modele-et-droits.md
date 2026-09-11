@@ -420,9 +420,12 @@ scientifiques** n'ont pas de formulaire : ils s'écrivent par `tools/gerer_colle
 
 ## 6. Administrer l'instance : comptes et groupes
 
-> Les commandes exactes vivent dans [`exploitation.md`](exploitation.md), sous
-> « **Ajouter un compte sans couper le portail** », qui **fait foi**. Ce qui suit en donne la
-> forme et les pièges, pour comprendre et pour expliquer.
+> **Depuis la bascule du 2026-09-07 (AUTH-7), les comptes et les groupes vivent dans
+> l'annuaire LLDAP**, administré par son interface web, derrière Authelia. Le fichier des
+> comptes n'est plus que le REPLI. Les commandes de l'annuaire sont dans
+> [`exploitation.md`](exploitation.md), sous « **Basculer vers l'annuaire LLDAP** » ; celles
+> du fichier, sous « **Ajouter un compte sans couper le portail** », qui **fait foi** pour le
+> repli. Ce qui suit donne la forme et les pièges, pour comprendre et pour expliquer.
 >
 > Le renvoi nomme cette sous-section et non le § entier, exprès : « fait foi » sur toute une
 > section endosse d'avance ce qu'on y ajoutera, et personne ne reviendra le relire.
@@ -431,16 +434,21 @@ scientifiques** n'ont pas de formulaire : ils s'écrivent par `tools/gerer_colle
 
 | | Comptes et groupes | Accès aux collections |
 |---|---|---|
-| Où | `deploy/authelia/users_database.yml`, sur le serveur | dans l'application, bloc *👥 Accès aux collections* de l'Administration |
-| Qui | administrateur système (accès shell) | tout **propriétaire** de la collection |
+| Où | l'annuaire LLDAP, par son interface web (le fichier `deploy/authelia/users_database.yml` n'est plus que le repli) | dans l'application, bloc *👥 Accès aux collections* de l'Administration |
+| Qui | un administrateur (`bd-admins`), sans accès shell | tout **propriétaire** de la collection |
 | Effet | qui peut **entrer** | qui voit **quoi** |
-| Prise d'effet | au redémarrage du conteneur Authelia | immédiate |
+| Prise d'effet | sans redémarrer Authelia — c'était le cas du fichier, et c'est ce que la bascule a supprimé | immédiate |
 
 Les deux sont nécessaires, et dans cet ordre. **Un compte créé sans accès ouvre une
 application vide** — la personne se connectera parfaitement et ne verra rien, sans qu'aucun
 message ne l'explique autrement que par le bandeau de portée vide.
 
 ### Ajouter quelqu'un — la forme
+
+**Dans l'annuaire**, un compte se crée par l'interface de LLDAP, puis on le range dans ses
+groupes : un formulaire, sans shell, sans redémarrage. **Les étapes suivantes ne valent plus
+que pour le fichier de REPLI** — elles restent écrites parce que ce recours existe. Les trois
+points qui les suivent, eux, valent pour l'annuaire aussi.
 
 1. Générer un **hash** de mot de passe (jamais le mot de passe en clair dans un fichier ou
    dans l'historique du shell).
@@ -460,8 +468,10 @@ par « mot de passe oublié ».
 
 ### Créer un groupe
 
-Il n'y a rien à créer. Un groupe **existe** dès qu'un compte le porte dans le fichier des
-comptes ; l'application le découvre en le lisant dans les en-têtes. Côté application, il
+**Dans l'annuaire, un groupe se CRÉE** dans l'interface de LLDAP, puis on y range les comptes
+(cf. [`exploitation.md`](exploitation.md), étape 7 de *Basculer vers l'annuaire LLDAP*). Dans
+le fichier de repli, il n'y a rien à créer : un groupe existe dès qu'un compte le porte. Dans
+les deux cas, l'application le découvre en le lisant dans les en-têtes. Côté application, il
 suffit de le nommer dans le bloc *👥 Accès aux collections* de l'Administration, en choisissant le genre **groupe**
 plutôt qu'utilisateur — le genre est demandé explicitement parce qu'un login et un groupe
 peuvent porter le même nom, et qu'une ambiguïté silencieuse sur un contrôle d'accès n'est pas
