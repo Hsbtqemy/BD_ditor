@@ -953,6 +953,28 @@ def test_une_facette_qu_on_ne_lit_pas_repond_comme_une_facette_absente(client,
                 "999999", str(cachee)), quoi
 
 
+def test_la_recherche_ne_filtre_pas_par_une_valeur_qu_on_ne_lit_pas(client,
+                                                                   facettes_illisibles):
+    """AUTH-11 — la Recherche a son PROPRE filtre par valeur d'attribut, et il ne consultait
+    rien : une valeur locale à une collection qu'on ne lit pas, posée sur une région qu'on
+    lit, la faisait sortir. Chercher l'identifiant disait donc quelles régions la portent —
+    l'oracle fermé dans l'analyse, resté ouvert ici, et trouvé en repassant. Elle ne filtre
+    plus rien, comme un tag qu'on ne lit pas, et répond ce qu'elle répond à un identifiant
+    libre : aucun résultat. L'export CSV partage le cœur. Anti-vacuité : l'administrateur
+    la trouve, et Bob trouve la même région par la valeur qu'il lit."""
+    from conftest import ADMIN
+    f = facettes_illisibles
+
+    def trouve(vid, h):
+        rep = client.get("/api/recherche", params={"attributs": vid}, headers=h)
+        assert rep.status_code == 200, rep.text
+        return rep.json()["count"]
+
+    assert trouve(f["cachee"]["id"], ADMIN) >= 1
+    assert trouve(f["connue"]["id"], f["bob"]) >= 1
+    assert trouve(f["cachee"]["id"], f["bob"]) == trouve(999999, f["bob"]) == 0
+
+
 def test_creer_un_terme_en_lecture_seule_est_refuse(client, db_path, deux_albums,
                                                     derriere_proxy):
     """403 : enrichir un vocabulaire que tout le monde partage suppose de pouvoir écrire

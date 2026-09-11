@@ -139,7 +139,16 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
         where.append("EXISTS (SELECT 1 FROM bulle_locuteur bl "
                      "WHERE bl.region_id = r.id AND bl.personnage_id = ?)")
         params.append(personnage)
+    # AUTH-11 — une valeur qu'on ne lit pas ne filtre rien, comme un tag : sans cette clause,
+    # chercher son identifiant dirait quelles régions la portent. Elle répond alors ce que
+    # répond un identifiant libre, aucun résultat. (Le locuteur n'a pas besoin de la même
+    # garde : il ne cherche que dans les régions qu'on lit, où un locuteur qu'on ne voit
+    # pas n'apparaît par définition nulle part.)
+    ou_val, p_val = portee.clause_terme("vz.collection_id")
     for vid in (attributs or []):
+        where.append(f"EXISTS (SELECT 1 FROM attribut_valeur vz WHERE vz.id = ? AND {ou_val})")
+        params.append(vid)
+        params.extend(p_val)
         where.append(
             "(EXISTS (SELECT 1 FROM bulle_locuteur bl JOIN personnage_attribut pa "
             "         ON pa.personnage_id = bl.personnage_id "
