@@ -201,6 +201,12 @@ déjà une case qui atterrit dans ce code-ci, et aucun ne mentionnait AUTH-10 av
   autres cases — un groupe renommé ou supprimé dans l'annuaire, une collection dont l'unique
   propriétaire perd son groupe — travaillent la sémantique de `collection_acces`,
   c'est-à-dire la table que le remède B modifierait.
+
+  **Déclaré le 2026-09-11** : la case du compte collectif est faite (`ff95ec0`). Elle est
+  passée DANS `undo.py`, comme prévu : un délai de cinq minutes sur la recherche du dernier
+  acte et sur le ciblage par id. Elle n'a touché ni `_TABLES` ni `_TYPES`. La branche
+  `token_correction` d'A1 reste donc dormante, rien du remède n'a été fait en passant, et la
+  décision de ne rien engager tient.
 - **`UX-11`** construit une Bibliothèque qui sait « ouvrir et supprimer une planche », et
   cite déjà l'asymétrie d'AUTH-2 — le client ne reçoit pas `peut_ecrire` et découvre un
   refus en recevant son 403. C'est exactement la famille de routes que cette fiche décrit,

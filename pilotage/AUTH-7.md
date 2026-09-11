@@ -5,7 +5,11 @@ statut: interrompu
 
 # AUTH-7 — administrer les comptes sans console
 
-**Arrêté sur** — 2026-09-07, `1d3d01c` : **la vue des comptes est livrée, et le repli a
+**Arrêté sur** — 2026-09-11, `fd7be0f` : **le contrôle du fichier des comptes dit enfin si
+ce fichier sert.** Sa sortie commence par REPLI depuis la bascule vers l'annuaire. Le reste
+de la fiche attend des gestes sur l'instance ou une décision de l'équipe.
+
+Plus tôt, 2026-09-07, `1d3d01c` : **la vue des comptes est livrée, et le repli a
 enfin une procédure.** Trois des quatre cases « voir » sont fermées — `GET /api/comptes`
 rend un VERDICT groupé plutôt que des chiffres, et signale le retour d'un login connu. La
 quatrième ne l'est pas et ne le sera pas ainsi : « aucun accès » reste indistinguable de
@@ -245,7 +249,7 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 ### Ce que la reprise du 2026-09-07 a vérifié, et ce qu'elle a trouvé
 - [x] **La branche `auth-7-lldap` survit à la dérive** — rebasée sur `dev` (17 commits de retard), **zéro conflit**, et elle a bien absorbé le relèvement de session d'hier (`expiration: 12 hours`, `inactivity: 1 hour`). L'étiquette `authelia/authelia:4.39.22` est intacte
 - [x] **Le bloc `ldap:` est encore valide en 4.39, et c'est le point qui pourrissait** — il avait été écrit AVANT la montée. Vérifié contre la documentation de la version servie : `address`, `implementation`, `base_dn`, `user`, `password` sont toutes des clés courantes, et `implementation: 'lldap'` est une valeur acceptée (aux côtés de `custom`, `activedirectory`, `rfc2307bis`, `freeipa`, `glauth`). Une préparation à sec écrite avant un changement de version est exactement ce qui échoue au pire moment ; celle-ci tient
-- [ ] **`verifier_comptes.py` (INFRA-11) approuvera un fichier qui ne gouverne plus rien** — trouvé en rapprochant les deux chantiers, le 2026-09-07. Après la bascule, `users_database.yml` cesse d'être la source, mais il RESTE SUR LE DISQUE comme recours (c'est écrit, et c'est juste). Lancer le contrôle rendra donc « ok, N comptes » sur un fichier sans effet — la forme habituelle du défaut ici : un instrument qui rassure en regardant ailleurs. Il n'est branché nulle part (ni `deployer.sh`, ni le timer), donc il ne BLOQUE pas la bascule ; il faudra qu'il dise quel backend est actif, ou qu'il refuse de répondre quand ce n'est pas `file`
+- [x] **`verifier_comptes.py` (INFRA-11) approuvera un fichier qui ne gouverne plus rien** — trouvé en rapprochant les deux chantiers, le 2026-09-07. Après la bascule, `users_database.yml` cesse d'être la source, mais il RESTE SUR LE DISQUE comme recours (c'est écrit, et c'est juste). Lancer le contrôle rendra donc « ok, N comptes » sur un fichier sans effet — la forme habituelle du défaut ici : un instrument qui rassure en regardant ailleurs. Il n'est branché nulle part (ni `deployer.sh`, ni le timer), donc il ne BLOQUE pas la bascule ; il faudra qu'il dise quel backend est actif, ou qu'il refuse de répondre quand ce n'est pas `file`. **Fait le 2026-09-11 (`fd7be0f`), et il DIT au lieu de refuser** : sa sortie commence par REPLI, « actif » ou INCONNU avec sa raison. Refuser de répondre aurait désarmé le contrôle du seul recours, et le fichier reste celui que le retour arrière servira. **La mesure a imposé la forme** : la configuration servie ne se lit pas en YAML (ses directives de gabarit font échouer PyYAML), si bien qu'une lecture YAML aurait répondu INCONNU pour toujours. Le script lit donc le bloc comme du TEXTE, et un test exige que la configuration du dépôt se lise. Ce qu'il ne voit toujours pas : un condensé PÉRIMÉ, dont le mot de passe a changé dans l'annuaire
 - [ ] **La panne d'INFRA-11 est l'argument le plus concret de cette fiche, et elle est arrivée après le chiffrage** — 2026-09-06 à 22:43 : ajouter un compte a coupé le portail SIX MINUTES pour tout le monde, un préfixe `Digest: ` collé avec le condensé. Le chiffrage concluait que le gain n'était pas le temps de saisie mais la disparition du shell ; il manquait ceci, qui est plus fort — **l'étape supprimée est celle qui a déjà cassé la production**. À reporter dans le raisonnement du chemin 2, qui reste écrit sans cet argument
 
 ### Ce qu'il faut savoir AVANT de choisir (mesures, pas opinions)
