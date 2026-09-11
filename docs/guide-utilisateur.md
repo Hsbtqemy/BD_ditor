@@ -195,7 +195,7 @@ L'**Exploration** mesure au lieu de retrouver, en quatre vues :
 | Vue | Ce qu'elle répond |
 |---|---|
 | **Distribution** | quels lemmes, catégories ou traits morphologiques, et à quelle fréquence |
-| **Concordance (KWIC)** | où exactement, avec le contexte de chaque occurrence — et un lien vers l'Atelier |
+| **Concordance (KWIC)** | où exactement, avec le contexte de chaque occurrence, ses tags (ceux de la case compris, marqués « case ») et sa note — et un lien vers l'Atelier. Un lemme terminé par `*` cherche par préfixe : `otage*` trouve « otage » et « otages » |
 | **Croisement (2D)** | une facette contre une autre, en tableau de contingence avec carte de chaleur ; une cellule s'ouvre en concordance |
 | **Comparaison A / B** | ce qui est sur-représenté dans un sous-corpus par rapport à un autre |
 
