@@ -903,24 +903,18 @@ def sharedocs_importer(payload: SharedocsImportIn,
             continue
         master = None
         try:
-            t0 = time.perf_counter()
             data = sharedocs.download(
                 chemin, principal=_principal_sharedocs(portee), compte=payload.compte)
             if not data:
                 raise ShareDocsError("fichier vide")
-            t_dl = time.perf_counter() - t0
             numero = _allouer_numero(conn, album_id, None)   # auto (MAX+1) ; index unique = filet
             master = store_upload(album_id, nom, data, numero)
-            t1 = time.perf_counter()
             planche = ingest_image(conn, album_id, master, numero=numero)
-            t_ing = time.perf_counter() - t1
             planche["url_web"] = "/" + planche["chemin_web"]
             importes.append(planche)
             # Segmentation best-effort : un échec ici ne doit JAMAIS invalider
             # un import déjà réussi (la planche est déjà ingérée et comptée).
-            t_seg = 0.0
             if payload.segmenter and kumiko_available():
-                t2 = time.perf_counter()
                 try:
                     with jobs.ML_LOCK:               # cohérent : pas de ML concurrent
                         res_seg = segment_planche(conn, planche["id"])
@@ -938,12 +932,6 @@ def sharedocs_importer(payload: SharedocsImportIn,
                     # (CONC-2) — se taire n'est pas être robuste.
                     print(f"[import] segmentation ignorée pour {nom} : "
                           f"{type(exc).__name__}: {exc}")
-                t_seg = time.perf_counter() - t2
-            # Chronométrage par phase (diagnostic de la vitesse d'import).
-            print(f"[import-timing] {nom} : download={t_dl:.2f}s "
-                  f"derive={t_ing:.2f}s segment={t_seg:.2f}s "
-                  f"total={t_dl + t_ing + t_seg:.2f}s "
-                  f"taille={len(data) / 1e6:.1f}Mo", flush=True)
         except Exception as exc:   # un fichier en échec ne stoppe pas le lot
             # Pas de master orphelin sur disque si l'ingestion a échoué après écriture.
             if master is not None:
