@@ -842,6 +842,117 @@ def test_annuler_sous_l_autre_identite_ne_perd_pas_le_tag_cache(client, db_path,
     assert (ann["note"] or "") == ""
 
 
+@pytest.fixture
+def facettes_illisibles(client, db_path, deux_albums, derriere_proxy):
+    """AUTH-11 — le décor des facettes qu'on ne lit pas. Sur une région que Bob lit : deux
+    valeurs d'une dimension de case GLOBALE, l'une globale, l'autre locale à la collection
+    qu'il ne lit pas, et la valeur d'une dimension LOCALE à cette collection ; un locuteur
+    qu'il voit. Sur la région qu'il ne lit pas : un locuteur qui n'apparaît que là. Plus un
+    token, pour que les surfaces d'analyse voient la première."""
+    import sqlite3
+    from conftest import ADMIN
+    c2, r1, r2 = deux_albums["c2"], deux_albums["r1"]["id"], deux_albums["r2"]["id"]
+
+    def dimension(nom):
+        return client.post("/api/attributs/dimensions", json={"cible": "case", "nom": nom},
+                           headers=ADMIN).json()
+
+    def valeur(dim, v):
+        return client.post(f"/api/attributs/dimensions/{dim['id']}/valeurs",
+                           json={"valeur": v}, headers=ADMIN).json()
+
+    commune, privee = dimension("ambiance"), dimension("grille secrete")
+    connue, cachee = valeur(commune, "calme"), valeur(commune, "tendue")
+    dedans = valeur(privee, "codee")
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("UPDATE attribut_dimension SET collection_id = ? WHERE id = ?",
+                     (c2, privee["id"]))
+        conn.execute("UPDATE attribut_valeur SET collection_id = ? WHERE id IN (?, ?)",
+                     (c2, cachee["id"], dedans["id"]))
+        conn.executemany("INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
+                         [(r1, v["id"]) for v in (connue, cachee, dedans)])
+        vu = conn.execute("INSERT INTO personnages (nom) VALUES ('Visible')").lastrowid
+        masque = conn.execute("INSERT INTO personnages (nom) VALUES ('Masque')").lastrowid
+        conn.executemany("INSERT INTO bulle_locuteur (region_id, personnage_id) VALUES (?, ?)",
+                         [(r1, vu), (r2, masque)])
+        conn.execute("INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
+                     "VALUES (?, 0, 'DIS', 'dire', 'VERB', '')", (r1,))
+        conn.commit()
+    finally:
+        conn.close()
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    return {"commune": commune, "privee": privee, "connue": connue, "cachee": cachee,
+            "vu": vu, "masque": masque, "bob": {"Remote-User": "bob"}}
+
+
+def test_l_axe_dimension_du_croisement_tait_ce_qu_on_ne_lit_pas(client, facettes_illisibles):
+    """AUTH-11 — l'axe `dim:<id>` lisait la dimension par son seul identifiant : celle d'une
+    collection qu'on ne lit pas rendait son NOM — le libellé de l'axe, une grille d'analyse
+    — et ses valeurs. Elle répond désormais comme une dimension absente, au mot près. Et sur
+    une dimension lisible, une valeur qu'on ne lit pas ne fait pas de ligne : la portée se
+    pose sur la LIAISON, comme pour l'axe des tags. Le cœur est partagé par la route JSON et
+    son export CSV. Anti-vacuité : l'administrateur voit tout, d'abord."""
+    from conftest import ADMIN
+    f = facettes_illisibles
+
+    def croiser(axe, h):
+        return client.get("/api/analyse/croisement",
+                          params={"axe_x": axe, "axe_y": "type"}, headers=h)
+
+    def lignes(dim, h):
+        rep = croiser(f"dim:{dim['id']}", h)
+        assert rep.status_code == 200, rep.text
+        # Une région sans valeur de l'axe fait une ligne « (vide) », sans libellé : elle ne
+        # dit rien des termes, et sa présence dépend du corpus semé, pas de la règle.
+        return (rep.json()["libelle_x"],
+                {x["libelle"] for x in rep.json()["x"] if x["libelle"] is not None})
+
+    assert lignes(f["commune"], ADMIN) == ("ambiance", {"calme", "tendue"})
+    assert lignes(f["privee"], ADMIN) == ("grille secrete", {"codee"})
+    assert lignes(f["commune"], f["bob"]) == ("ambiance", {"calme"})
+    cachee = croiser(f"dim:{f['privee']['id']}", f["bob"])
+    absente = croiser("dim:999999", f["bob"])
+    assert cachee.status_code == absente.status_code == 404
+    assert cachee.json()["detail"] == absente.json()["detail"].replace(
+        "999999", str(f["privee"]["id"]))
+
+
+def _filtrer(client, route, extra, cle, ident, h):
+    return client.get(route, params={**extra, cle: ident}, headers=h)
+
+
+def test_une_facette_qu_on_ne_lit_pas_repond_comme_une_facette_absente(client,
+                                                                        facettes_illisibles):
+    """AUTH-11 — `_valider_facette` ne vérifiait que l'EXISTENCE : 404 pour un identifiant
+    libre, 200 pour une valeur d'attribut d'une collection qu'on ne lit pas, ou pour un
+    locuteur qui n'apparaît que là. Énumérer les identifiants disait lesquels existent
+    ailleurs — un oracle sans nom. Ce qu'on ne voit pas répond désormais EXACTEMENT comme
+    ce qui n'existe pas, sur chacun des quatre cœurs qui valident leurs facettes.
+    Anti-vacuité : l'administrateur passe, et Bob passe sur ce qu'il voit."""
+    from conftest import ADMIN
+    f = facettes_illisibles
+    surfaces = [("/api/analyse/frequences", {}, ""),
+                ("/api/analyse/concordance", {}, ""),
+                ("/api/analyse/croisement", {"axe_x": "type", "axe_y": "pos"}, ""),
+                ("/api/analyse/comparaison", {}, "a_"),
+                ("/api/analyse/comparaison", {}, "b_")]
+    facettes = [("attributs", f["cachee"]["id"], f["connue"]["id"]),
+                ("personnage", f["masque"], f["vu"])]
+    for route, extra, prefixe in surfaces:
+        for cle, cachee, vue in facettes:
+            quoi = (route, cle)
+            assert _filtrer(client, route, extra, prefixe + cle, cachee,
+                            ADMIN).status_code == 200, quoi
+            assert _filtrer(client, route, extra, prefixe + cle, vue,
+                            f["bob"]).status_code == 200, quoi
+            illisible = _filtrer(client, route, extra, prefixe + cle, cachee, f["bob"])
+            absente = _filtrer(client, route, extra, prefixe + cle, 999999, f["bob"])
+            assert illisible.status_code == absente.status_code == 404, quoi
+            assert illisible.json()["detail"] == absente.json()["detail"].replace(
+                "999999", str(cachee)), quoi
+
+
 def test_creer_un_terme_en_lecture_seule_est_refuse(client, db_path, deux_albums,
                                                     derriere_proxy):
     """403 : enrichir un vocabulaire que tout le monde partage suppose de pouvoir écrire

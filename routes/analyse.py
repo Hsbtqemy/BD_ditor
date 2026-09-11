@@ -24,8 +24,9 @@ from database import citations_regions, reindex_region
 from pipeline import nlp
 
 from socle import (
-    TokenCorrectionIn, _auteur, _clause_lemme, _csv_response, _csv_safe, _get_region, _norm_tag,
-    _portee_d_export, _rows, db, portee_courante,
+    TokenCorrectionIn, _auteur, _clause_lemme, _csv_response, _csv_safe, _get_dimension,
+    _get_personnage, _get_region, _get_valeur, _norm_tag, _portee_d_export, _rows, db,
+    portee_courante,
 )
 
 router = APIRouter()
@@ -121,15 +122,19 @@ def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags=No
     return where, params, len(where) - 1
 
 
-def _valider_facette(conn, personnage=None, attributs=None):
+def _valider_facette(conn, portee: autorisation.Portee, personnage=None, attributs=None):
     """404 si un id de facette (personnage / valeur d'attribut) n'existe pas — évite
-    un résultat vide silencieux sur un id erroné (revue ANN-2 #6)."""
-    if personnage is not None and conn.execute(
-            "SELECT 1 FROM personnages WHERE id = ?", (personnage,)).fetchone() is None:
-        raise HTTPException(404, f"Personnage {personnage} introuvable")
+    un résultat vide silencieux sur un id erroné (revue ANN-2 #6).
+
+    AUTH-11 — et 404 aussi, au mot près, s'il existe mais qu'on ne le VOIT pas : les
+    accesseurs gardés tranchent, avec le message qu'on rendait à un identifiant libre. Ne
+    vérifier que l'existence faisait de ce contrôle un oracle — 200 pour une valeur d'une
+    collection qu'on ne lit pas, ou un locuteur qui n'apparaît que là, 404 pour le reste —
+    et énumérer les identifiants disait lesquels existent ailleurs."""
+    if personnage is not None:
+        _get_personnage(conn, portee, personnage)
     for vid in (attributs or []):
-        if conn.execute("SELECT 1 FROM attribut_valeur WHERE id = ?", (vid,)).fetchone() is None:
-            raise HTTPException(404, f"Valeur d'attribut {vid} introuvable")
+        _get_valeur(conn, portee, vid)
 
 
 @router.get("/api/analyse/frequences")
@@ -170,7 +175,7 @@ def _frequences_rows(conn, portee, champ, album, type, pos, lemme, morph, proven
     if champ not in ("lemme", "pos", "morph"):
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
     limit = max(1, min(limit, plafond))
-    _valider_facette(conn, personnage, attributs)
+    _valider_facette(conn, portee, personnage, attributs)
     where, params, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags, tag_scope,
                                      personnage, attributs, auteur)
     cols = "te.lemme, te.pos" if champ == "lemme" else f"te.{champ}"
@@ -269,7 +274,7 @@ def _concordance_rows(conn, portee, lemme, pos, morph, provenance, auteur, album
     if not (lemme or pos or morph or tags or personnage or attributs or auteur):
         raise HTTPException(422, "Préciser au moins un critère (grammatical, tag, personnage, attribut ou auteur).")
     limit = max(1, min(limit, plafond))
-    _valider_facette(conn, personnage, attributs)
+    _valider_facette(conn, portee, personnage, attributs)
     where, params, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags, tag_scope,
                                      personnage, attributs, auteur)
     if not _n:      # critères fournis mais aucun effectif (p.ex. tag vide) → évite un
@@ -430,8 +435,8 @@ def _comparaison_rows(conn, portee, champ, tag_scope, cote_a, cote_b):
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
     (a_album, a_type, a_pos, a_morph, a_provenance, a_tags, a_personnage, a_attributs, a_auteur) = cote_a
     (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur) = cote_b
-    _valider_facette(conn, a_personnage, a_attributs)
-    _valider_facette(conn, b_personnage, b_attributs)
+    _valider_facette(conn, portee, a_personnage, a_attributs)
+    _valider_facette(conn, portee, b_personnage, b_attributs)
     da, ta = _distribution(conn, portee, champ, a_album, a_type, a_pos, a_morph, a_provenance, a_tags, tag_scope,
                            a_personnage, a_attributs, a_auteur)
     db_, tb = _distribution(conn, portee, champ, b_album, b_type, b_pos, b_morph, b_provenance, b_tags, tag_scope,
@@ -565,8 +570,9 @@ _AXES_SIMPLES = {
 def _axe_croisement(kind, sfx, tag_scope, conn, portee):
     """Un axe → (joins, expr_valeur, expr_cle, params, filtre_concordance, libellé). `sfx`
     (x|y) désambiguïse les alias entre les deux axes. `expr_cle` = clé de drill (id pour
-    locuteur/dimension, sinon = la valeur). `portee` ne sert qu'à l'axe des tags : ses
-    libellés SONT des termes, et un terme qu'on ne lit pas n'a pas à devenir une ligne."""
+    locuteur/dimension, sinon = la valeur). `portee` sert aux deux axes dont les libellés
+    SONT des termes, les tags et les dimensions (AUTH-11) : un terme qu'on ne lit pas n'a
+    pas à devenir une ligne."""
     if kind in _AXES_SIMPLES:
         expr, filtre, lib = _AXES_SIMPLES[kind]
         return "", expr, expr, [], filtre, lib
@@ -593,15 +599,20 @@ def _axe_croisement(kind, sfx, tag_scope, conn, portee):
             dim_id = int(kind[4:])
         except ValueError:
             raise HTTPException(422, f"Axe dimension invalide : {kind}")
-        d = conn.execute("SELECT nom, cible FROM attribut_dimension WHERE id = ?",
-                         (dim_id,)).fetchone()
-        if d is None:
-            raise HTTPException(404, f"Dimension {dim_id} introuvable")
+        # AUTH-11 — par l'accesseur gardé : une dimension qu'on ne lit pas répond comme une
+        # dimension absente. Lue par son seul identifiant, elle rendait son NOM, qui devient
+        # le libellé de l'axe — une grille d'analyse, pas un mot.
+        d = _get_dimension(conn, portee, dim_id)
         # Le filtre de dimension porte sur l'AFFECTATION (valeur_id d'un attribut de cette
         # dimension), pas sur la valeur jointe : sinon un locuteur/case portant AUSSI d'autres
         # dimensions produirait une fausse ligne « (vide) » (fan-out sur toutes les dimensions).
-        av = f"avx_{sfx}"
-        sous = f"{{}}.valeur_id IN (SELECT id FROM attribut_valeur WHERE dimension_id = ?)"
+        # La portée des valeurs s'y pose aussi, sur la LIAISON comme pour l'axe des tags : une
+        # valeur qu'on ne lit pas ne fait pas de ligne, et une case qui ne porte qu'elle compte
+        # parmi les « (vide) ».
+        av, vz = f"avx_{sfx}", f"vzx_{sfx}"
+        ou_val, p_val = portee.clause_terme(f"{vz}.collection_id")
+        sous = (f"{{}}.valeur_id IN (SELECT {vz}.id FROM attribut_valeur {vz} "
+                f"WHERE {vz}.dimension_id = ? AND {ou_val})")
         if d["cible"] == "personnage":                       # valeur via le LOCUTEUR
             bl, pa = f"bld_{sfx}", f"pax_{sfx}"
             joins = (f"LEFT JOIN bulle_locuteur {bl} ON {bl}.region_id = r.id "
@@ -613,7 +624,7 @@ def _axe_croisement(kind, sfx, tag_scope, conn, portee):
             joins = (f"LEFT JOIN region_attribut {ra} ON {ra}.region_id IN (r.id, r.parent_id) "
                      f"  AND {sous.format(ra)} "
                      f"LEFT JOIN attribut_valeur {av} ON {av}.id = {ra}.valeur_id")
-        return joins, f"{av}.valeur", f"{av}.id", [dim_id], "attributs", d["nom"]
+        return joins, f"{av}.valeur", f"{av}.id", [dim_id, *p_val], "attributs", d["nom"]
     raise HTTPException(422, f"Axe inconnu : {kind} (pos|morph|type|provenance|auteur|"
                              "locuteur|tag|dim:<id>)")
 
@@ -649,7 +660,7 @@ def _croisement_data(conn, portee, axe_x, axe_y, album, type, pos, lemme, morph,
     matrice, dont la colonne « Total » ne sommerait alors pas à ses propres cases.
     """
     limit = max(1, min(limit, plafond))
-    _valider_facette(conn, personnage, attributs)
+    _valider_facette(conn, portee, personnage, attributs)
     jx, ex, cx, px, fx, lx = _axe_croisement(axe_x, "x", tag_scope, conn, portee)
     jy, ey, cy, py, fy, ly = _axe_croisement(axe_y, "y", tag_scope, conn, portee)
     where, wparams, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags, tag_scope,
