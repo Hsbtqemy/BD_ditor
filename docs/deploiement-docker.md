@@ -184,10 +184,13 @@ automatiquement dès que le DNS pointe bien sur le VPS — **attendre que les tr
 résolvent avant ce `up`** : Let's Encrypt limite les validations échouées, et un démarrage
 prématuré grille des tentatives sans cause visible.
 
-À ce stade, **Authelia ne peut encore authentifier personne** : l'annuaire est vide, sans
-compte de service ni compte humain. Selon ce qu'il vérifie au démarrage, il peut même
-refuser de démarrer tant que son compte de service manque — non mesuré ici. Les deux sont
-attendus : l'amorçage qui suit les crée.
+À ce stade, **Authelia refuse de démarrer, et c'est attendu.** Son contrôle de démarrage se
+connecte à l'annuaire avec le compte de service `authelia`, qui n'existe pas encore :
+`docker compose ps` le montre en redémarrage perpétuel, ses journaux disent
+`LDAP Result Code 49 "Invalid Credentials"`, et ceux de LLDAP
+`Authentication error for user "authelia"`. Mesuré le 2026-09-11 sur une pile neuve. La
+boucle cesse dès que l'amorçage qui suit a créé ce compte — après le `restart` de sa
+dernière étape, Authelia rend « Startup complete ».
 
 ### Amorcer l'annuaire — une fois, par un tunnel SSH
 
@@ -229,10 +232,16 @@ Désormais l'interface s'ouvre par `https://<ANNUAIRE_DOMAINE>`, derrière Authe
 second facteur. **Le tunnel n'est PAS un accès courant** : il contourne la seule garde de
 l'interface qui crée et supprime des comptes.
 
-> **Ce parcours n'a pas encore été joué sur une instance neuve** — la bascule du
-> 2026-09-07 est passée par le fichier, et c'est la seule qui ait eu lieu. S'il accroche,
-> c'est ici qu'il se corrige ; la case correspondante est dans `pilotage/AUTH-7.md`, et
-> cette réserve se retire le jour où il a été éprouvé.
+> **Éprouvé EN PARTIE, le 2026-09-11, sur une pile locale neuve** — les vrais fichiers de
+> la pile, un annuaire vide, puis l'amorçage (comptes créés par l'API de LLDAP, celle
+> qu'appelle son interface). Authelia démarre alors, authentifie par l'annuaire et
+> transmet `Remote-Groups` : un compte ordinaire entre dans l'application et se voit
+> refuser l'annuaire, un compte `bd-admins` est renvoyé au second facteur, un mauvais
+> mot de passe est refusé. **Pas encore éprouvé** : le tunnel lui-même (l'épreuve publiait
+> le port sur la boucle locale, Windows ne rendant pas les conteneurs joignables), le DNS,
+> les certificats, Caddy et l'enrôlement du second facteur. S'il accroche, c'est ici qu'il
+> se corrige ; la case est dans `pilotage/AUTH-7.md`, et cette réserve se retire le jour où
+> le parcours entier a été joué sur une instance neuve.
 
 ## 5. Première connexion + activation de la 2FA
 
