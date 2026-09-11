@@ -5,9 +5,14 @@ statut: interrompu
 
 # AUTH-7 — administrer les comptes sans console
 
-**Arrêté sur** — 2026-09-11, `fd7be0f` : **le contrôle du fichier des comptes dit enfin si
-ce fichier sert.** Sa sortie commence par REPLI depuis la bascule vers l'annuaire. Le reste
-de la fiche attend des gestes sur l'instance ou une décision de l'équipe.
+**Arrêté sur** — 2026-09-11, `c7efda6` : **quatre textes affirmaient encore que les comptes
+et les groupes vivent dans `users_database.yml`** — le commentaire du schéma de
+`database.py`, le § 6 de `modele-et-droits.md`, `deploiement-docker.md` et
+`exploitation.md`. Ils disent désormais l'annuaire, le fichier restant le repli. La
+recherche a porté sur tout le dépôt : 18 fichiers citent ce fichier, dont 14 légitimement.
+Plus tôt le même jour, `fd7be0f` : **le contrôle du fichier des comptes dit enfin si ce
+fichier sert** — sa sortie commence par REPLI. Le reste de la fiche attend des gestes sur
+l'instance ou une décision de l'équipe, et une case neuve sur l'installation.
 
 Plus tôt, 2026-09-07, `1d3d01c` : **la vue des comptes est livrée, et le repli a
 enfin une procédure.** Trois des quatre cases « voir » sont fermées — `GET /api/comptes`
@@ -268,6 +273,9 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [ ] Ce tableau croise l'usage et les accès : qui a une portée vide alors qu'il s'est connecté — c'est-à-dire quelqu'un qui attend un droit qu'on a oublié de lui donner. Personne ne voit ce cas aujourd'hui, ni côté Authelia ni côté application. **RESTE OUVERTE après la livraison du 2026-09-07, et c'est la limite structurelle de la vue** : « aucun accès » y est indistinguable de « des accès par un GROUPE », l'application ne connaissant que les groupes de la personne qui frappe (AUTH-1). La vue le DÉCLARE plutôt que de laisser conclure, ce qui est honnête et ne répond pas : quelqu'un qui attend un droit se lit exactement comme un administrateur
 - [x] **La vue rend un VERDICT, pas des chiffres** — « aucun acte, aucun accès : supprimable » ou « 42 actes, 2 collections : à archiver », et les comptes sont GROUPÉS par verdict. Exigence née du choix du 2026-09-06 : un tableau de nombres demande d'interpréter au moment où l'on est pressé, ce qui est précisément la vigilance qu'on voulait éviter. Lire dans quelle liste quelqu'un se trouve demande moins que compter ses actes. **Fait**, et le verdict parle de CONSÉQUENCE et non de recommandation — « rien à orpheliner », jamais « supprimable » : l'écran dit ce qu'une suppression casserait, décider reste humain et se fait ailleurs. La passe de revue y a trouvé un `elif` qui taisait la moitié du motif — un compte laissant des actes ET des accès ne lisait que « laisse des actes » —, corrigé et verrouillé par `test_le_verdict_nomme_TOUT_ce_qui_serait_orphelin`
 - [x] **La vue signale le RETOUR d'un login connu** — le filet quand la vigilance a manqué. Le geste de suppression vit dans l'autre panneau et rien ne peut l'empêcher ; ce qui reste possible, c'est de voir qu'un login réapparaît alors que `utilisateur` en garde déjà la ligne, avec des actes au journal. C'est la différence entre une provenance corrompue en silence et une provenance corrompue signalée — et c'est bon marché, la ligne étant déjà là. **Fait** : `_identite_reprise` (`e3e572b`) journalise le changement, la colonne « Signal » le rend en `--ink-red`, et un test exige qu'une reprise ne soit PAS comptée comme un acte — la compter ferait passer un mariage pour du travail laissé, et rendrait un compte neuf indéfiniment inarchivable. **Sa portée est étroite et il faut le savoir** : elle ne se déclenche que si `nom` ou `email` passe d'une valeur renseignée à une AUTRE valeur renseignée, donc un login rendu à quelqu'un dont le proxy ne transmet rien ne signale rien
+
+### La documentation d'installation, relue le 2026-09-11
+- [ ] **`docs/deploiement-docker.md` décrit une première installation SANS annuaire**, alors que la configuration versionnée active LLDAP — relevé en balayant `users_database` après `c7efda6`. Le guide ne nomme jamais LLDAP et fait copier le gabarit du fichier des comptes pour créer le premier compte. Or `deploy/authelia/configuration.yml` active le bloc `ldap:`, qui lit `LLDAP_BASE_DN` et `LLDAP_AUTHELIA_PASS` — des variables que ce guide ne fait jamais poser. C'est la configuration que `validate-config` a déjà refusée une fois pour cette raison exacte (« ldap: option 'password' is required », 2026-09-07). Attendu, à trancher : ou bien le parcours d'installation monte l'annuaire d'emblée, en renvoyant à *Basculer vers l'annuaire LLDAP* (temps 1), ou bien il installe sur le fichier et bascule ensuite, ce qui suppose que la configuration versionnée le permette sans édition. Dans les deux cas, le parcours est éprouvé sur une instance NEUVE, pas à la lecture
 
 ## La vérification qui devait annuler la fiche — 2026-09-06
 
