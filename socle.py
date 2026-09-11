@@ -25,9 +25,11 @@ la fiche ARCH-1 posait comme condition du découpage.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 import unicodedata
 from typing import Iterator, Optional
+from urllib.parse import quote
 
 from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -538,11 +540,36 @@ def _get_personnage(conn, portee: autorisation.Portee, personnage_id, *,
 _BOM = chr(0xFEFF)   # BOM UTF-8 : permet à Excel (Windows) de lire les accents correctement
 
 
+def _disposition(nom: str) -> str:
+    """En-tête `Content-Disposition` d'un téléchargement, sûr QUEL QUE SOIT le nom (ANA-6).
+
+    Le nom d'un export d'analyse porte la saisie de l'utilisateur (`concordance-<lemme>`),
+    et l'en-tête la recevait telle quelle. Trois pannes, mesurées le 2026-09-11 :
+    `lemme=œil` levait `UnicodeEncodeError` — un en-tête HTTP s'encode en latin-1, et « œ »
+    n'y est pas, donc « cœur », « sœur » ou « œuvre » rendaient un 500 ; `a"b` refermait
+    les guillemets au milieu du nom ; `otage*` proposait un nom que Windows refuse.
+
+    Deux formes, comme le prévoit la RFC 6266 : `filename` porte un repli ASCII que tout
+    client comprend, `filename*` le nom exact en UTF-8 (RFC 5987), que les navigateurs
+    préfèrent quand ils le connaissent. Les caractères interdits dans un nom de fichier
+    sont remplacés dans LES DEUX : un nom exact que le système refuse ne sert à rien.
+    `NFKD` retire les diacritiques du repli (« été » → « ete ») mais laisse intactes les
+    deux ligatures du français, qui n'ont pas de décomposition — elles sont dépliées à la
+    main, sans quoi « œil » deviendrait « il ».
+    """
+    sain = re.sub(r'[\\/:*?"<>|\x00-\x1f\x7f]+', "_", nom).strip(" .") or "export"
+    deplie = (sain.replace("œ", "oe").replace("Œ", "OE")
+                  .replace("æ", "ae").replace("Æ", "AE"))
+    repli = unicodedata.normalize("NFKD", deplie).encode("ascii", "ignore").decode("ascii")
+    repli = re.sub(r"[^A-Za-z0-9._-]+", "_", repli).strip("_") or "export"
+    return f"attachment; filename=\"{repli}\"; filename*=UTF-8''{quote(sain, safe='')}"
+
+
 def _csv_response(contenu: str, filename: str) -> Response:
     """Réponse CSV téléchargeable, préfixée d'un BOM UTF-8 pour qu'Excel (Windows) lise
     correctement les accents français. (R/pandas : lire en `utf-8-sig`.)"""
     return Response(content=_BOM + contenu, media_type="text/csv; charset=utf-8",
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+                    headers={"Content-Disposition": _disposition(filename)})
 
 
 def _csv_safe(v):

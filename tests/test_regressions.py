@@ -1756,3 +1756,25 @@ def test_une_panne_dans_l_epilogue_ferme_quand_meme_l_activite(client, planche, 
     assert len(runs) == avant + 1
     assert runs[-1]["date_fin"], (
         "une panne d'épilogue laisse l'activité OUVERTE alors que tout le travail est fait")
+
+
+@pytest.mark.parametrize("lemme,repli,exact", [
+    ("cœur", "concordance-coeur.csv", "concordance-cœur.csv"),   # hors latin-1 : un 500
+    ("été", "concordance-ete.csv", "concordance-été.csv"),       # latin-1 : passait déjà
+    ('a"b', "concordance-a_b.csv", "concordance-a_b.csv"),       # refermait les guillemets
+])
+def test_export_concordance_nom_de_fichier_sur(client, lemme, repli, exact):
+    """ANA-6 — le lemme saisi finissait tel quel dans `Content-Disposition`.
+
+    Un en-tête HTTP s'encode en latin-1 : « œ » n'y est pas, et `lemme=cœur` faisait lever
+    `UnicodeEncodeError` au moment d'écrire la réponse — un 500 sur l'export de la
+    concordance pour l'un des mots les plus courants du français. Le guillemet, lui,
+    passait, mais fermait le nom au milieu. Le test lit les DEUX formes de l'en-tête :
+    le repli ASCII que tout client comprend, et le nom exact que le navigateur préfère.
+    """
+    from urllib.parse import unquote
+    rep = client.get("/api/analyse/concordance.csv", params={"lemme": lemme})
+    assert rep.status_code == 200, rep.text
+    dispo = rep.headers["content-disposition"]
+    assert f'filename="{repli}"' in dispo, dispo
+    assert unquote(dispo.split("filename*=UTF-8''", 1)[1]) == exact, dispo
