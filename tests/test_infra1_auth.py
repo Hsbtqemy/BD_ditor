@@ -73,7 +73,14 @@ def test_moi_sans_auth_local_renvoie_null(client, monkeypatch):
                            # n'y a ni proxy ni en-tête à recevoir, et la question ne se
                            # pose pas — annoncer une panne ici serait un diagnostic
                            # inventé, exactement le travers qu'AUTH-8 ferme.
-                           "entete_groupes": None},
+                           "entete_groupes": None,
+                           # DROIT-2 : « tout », parce qu'en mono-poste la portée est
+                           # totale, export compris. Le champ ne NOMME rien : il dit à la
+                           # Recherche et à l'Exploration, qui n'ont aucune collection sous
+                           # la main, si leurs boutons d'export ont un sens. C'est un ÉTAT
+                           # de droit et non une identité — d'où il entre ici sans que
+                           # l'égalité se relâche.
+                           "exporter": "tout"},
                  "deconnexion_url": None}
 
 
