@@ -22,6 +22,7 @@ tous les comptes voient la même chose », ce qui n'est plus vrai — cf.
 | **authelia** | Portail de connexion : comptes, login/**logout**, **2FA**, anti-bruteforce | Non (interne) |
 | **redis** | Mémorise les sessions (permet expiration + déconnexion propre) | Non (interne) |
 | **app** | L'application FastAPI BéDéditeur | **Non** (jamais en direct) |
+| **lldap** | L'annuaire des comptes et des groupes (AUTH-7) : Authelia l'interroge, et son interface web sert à créer, ranger et retirer des comptes sans shell | **Non** (interne ; l'interface passe par Caddy, derrière Authelia) |
 
 Principe clé : **seul Caddy est exposé**. Toute requête vers l'app passe d'abord
 par Authelia (`forward_auth`). Non connecté → redirection vers le portail.
@@ -65,24 +66,30 @@ par Authelia (`forward_auth`). Non connecté → redirection vers le portail.
   2 Go peuvent suffire à une instance qui n'enchaîne jamais les passes — ce cas-là n'a pas
   été mesuré, et l'OOM se manifeste par un process tué SANS traceback Python, donc sans
   rien à lire pour comprendre.
-- Un **nom de domaine** avec **deux sous-domaines** pointant (enregistrement DNS
+- Un **nom de domaine** avec **trois sous-domaines** pointant (enregistrement DNS
   **A**) vers l'IP du VPS :
-  - `bd.example.fr`   → l'application
-  - `auth.example.fr` → le portail Authelia
+  - `bd.example.fr`       → l'application
+  - `auth.example.fr`     → le portail Authelia
+  - `annuaire.example.fr` → l'interface de l'annuaire (LLDAP)
 - Les **ports 80 et 443 ouverts** sur le VPS (Caddy en a besoin pour les certificats).
 
-> Les deux sous-domaines doivent partager un **domaine parent commun**
-> (`example.fr`) : c'est ce qui permet à la session de couvrir les deux.
+> Les trois sous-domaines doivent partager un **domaine parent commun**
+> (`example.fr`) : c'est ce qui permet à la session de les couvrir. Pour l'annuaire, ce
+> n'est pas négociable — posé ailleurs, le cookie ne l'atteint pas, et l'on boucle entre
+> le portail et l'interface sans qu'aucun des deux ne signale d'erreur. Si l'instance
+> tourne derrière un proxy de l'hôte, celui-ci doit aussi connaître le nom de l'annuaire
+> (cf. `exploitation.md`, *Basculer vers l'annuaire LLDAP*, le préalable).
 
 **Sans domaine à soi**, `sslip.io` en tient lieu : il résout n'importe quel nom contenant
-une IP vers cette IP, donc `bd.203-0-113-42.sslip.io` et `auth.203-0-113-42.sslip.io`
-existent immédiatement, avec `203-0-113-42.sslip.io` pour parent. Une réserve, et elle
+une IP vers cette IP, donc `bd.203-0-113-42.sslip.io`, `auth.203-0-113-42.sslip.io` et
+`annuaire.203-0-113-42.sslip.io` existent immédiatement, avec `203-0-113-42.sslip.io` pour
+parent. Une réserve, et elle
 est pratique : `sslip.io` n'étant pas un suffixe public, Let's Encrypt le compte comme UN
 domaine enregistré et sa limite hebdomadaire est partagée avec tous les utilisateurs du
-service — on la heurte vite. Poser `tls internal` dans les deux blocs du Caddyfile fait
-alors signer Caddy par sa propre autorité : le navigateur avertit, mais cookies `Secure`,
-redirections HTTPS et `forward_auth` se comportent comme en production. Le jour du vrai
-domaine, on retire ces deux lignes et on change trois valeurs dans `.env`.
+service — on la heurte vite. Poser `tls internal` dans chaque bloc de site du Caddyfile
+fait alors signer Caddy par sa propre autorité : le navigateur avertit, mais cookies
+`Secure`, redirections HTTPS et `forward_auth` se comportent comme en production. Le jour du
+vrai domaine, on retire ces lignes et on change les valeurs de domaine dans `.env`.
 
 ## 3. Configuration — deux fichiers, tous deux hors de git
 
@@ -119,6 +126,22 @@ qu'un hash de mot de passe parte dans un dépôt public.
    ce filtre, Authelia prend l'expression pour un nom de domaine littéral : il démarre
    normalement, et la session ne se pose jamais.
 
+   **L'annuaire a ses six valeurs dans le même fichier** (AUTH-7), et l'installation le
+   monte d'emblée : la configuration versionnée d'Authelia active le bloc `ldap:`. Quatre
+   sont aléatoires et s'écrivent de la même façon, sans passer par l'écran :
+   ```bash
+   for k in LLDAP_JWT_SECRET LLDAP_KEY_SEED LLDAP_ADMIN_PASS LLDAP_AUTHELIA_PASS; do
+     sed -i "s|^$k=.*|$k=$(openssl rand -hex 32)|" .env
+   done
+   grep -c '^LLDAP_.*=.\{64\}$' .env      # doit afficher 4
+   # puis renseigne ANNUAIRE_DOMAINE et LLDAP_BASE_DN (cf. leur commentaire dans .env)
+   ```
+   Deux d'entre elles sortent de la machine, et c'est la seule exception : `LLDAP_KEY_SEED`
+   dérive les clés de l'annuaire (la perdre invalide les mots de passe), et
+   `LLDAP_ADMIN_PASS` est le SEUL recours si l'on se verrouille dehors. Les recopier dans un
+   gestionnaire de mots de passe, HORS du VPS. `LLDAP_AUTHELIA_PASS` se retapera une fois,
+   à l'amorçage (§4).
+
    Deux valeurs facultatives closent le même fichier : `BD_REFERENT_NOM` et
    `BD_REFERENT_CONTACT` (AUTH-4). Elles ne servent qu'à une portée VIDE, et elles sont
    le seul destinataire qu'elle puisse lire — quelqu'un qui n'accède à aucune collection
@@ -126,18 +149,23 @@ qu'un hash de mot de passe parte dans un dépôt public.
    deuxième compte, le bandeau envoie demander un accès sans dire à qui.
    Cf. §7, `BD_AUTH_ADMIN_GROUPS`.
 
-2. **Mot de passe du 1er compte** — le gabarit se COPIE avant d'être rempli :
+2. **Le fichier de REPLI — un administrateur, sous le login qu'il aura dans l'annuaire.**
+   Authelia ne lit PAS ce fichier : l'annuaire est le backend actif. Il existe pour le
+   retour arrière (cf. `exploitation.md`, *Le repli de l'annuaire vers le fichier*), et
+   `verifier_deploiement.py` exige sa présence. Le gabarit se COPIE avant d'être rempli :
    ```bash
    cp authelia/users_database.example.yml authelia/users_database.yml
    docker run --rm -it authelia/authelia:4.39.22 \
      authelia crypto hash generate argon2      # `-it` : le secret n'entre pas dans l'historique
    ```
-   Colle le hash dans la copie (champ `password`), et ajuste `displayname` / `email`.
-   Pour d'autres comptes, duplique le bloc. Le groupe `bd-admins` est indispensable :
-   sans lui, chacun se connectera et trouvera une application VIDE
-   (cf. §7, `BD_AUTH_ADMIN_GROUPS`).
+   Colle le hash dans la copie (champ `password`), et ajuste `displayname` / `email`. Le
+   login doit être CELUI que ce compte aura dans l'annuaire : le journal, les accès et
+   l'appareil TOTP y sont indexés, et un repli sous un autre nom ouvrirait sur un inconnu.
+   Le groupe `bd-admins` y est indispensable, comme dans l'annuaire (cf. §7,
+   `BD_AUTH_ADMIN_GROUPS`).
 
-3. **Vérifie avant de démarrer** — les trois domaines se contredisent en silence :
+3. **Vérifie avant de démarrer** — les domaines se contredisent en silence, l'annuaire
+   compris, et un annuaire à moitié configuré aussi :
    ```bash
    python3 verifier_deploiement.py --config .env
    ```
@@ -148,16 +176,69 @@ qu'un hash de mot de passe parte dans un dépôt public.
 
 Depuis `deploy/` :
 ```bash
-docker compose up -d --build      # construit l'app et lance les 4 conteneurs
+docker compose up -d --build      # construit l'app et lance les 5 conteneurs
 docker compose logs -f            # suivre les logs (Ctrl+C pour quitter)
 ```
 Le premier build est long (torch + modèles). Caddy obtient les certificats TLS
-automatiquement dès que le DNS pointe bien sur le VPS.
+automatiquement dès que le DNS pointe bien sur le VPS — **attendre que les trois noms
+résolvent avant ce `up`** : Let's Encrypt limite les validations échouées, et un démarrage
+prématuré grille des tentatives sans cause visible.
+
+À ce stade, **Authelia ne peut encore authentifier personne** : l'annuaire est vide, sans
+compte de service ni compte humain. Selon ce qu'il vérifie au démarrage, il peut même
+refuser de démarrer tant que son compte de service manque — non mesuré ici. Les deux sont
+attendus : l'amorçage qui suit les crée.
+
+### Amorcer l'annuaire — une fois, par un tunnel SSH
+
+**La porte ouvre sur la clé.** L'interface de LLDAP est servie derrière Authelia, réservée
+à `bd-admins` avec second facteur — et Authelia authentifie par LLDAP, qui ne contient
+encore aucun compte `bd-admins`. La bascule du 2026-09-07 l'avait contournée par le fichier
+des comptes, qui servait encore. Une installation qui monte l'annuaire d'emblée l'ouvre UNE
+fois par un tunnel SSH, qui atteint l'interface sans passer par Authelia. Le conteneur ne
+publie aucun port, et c'est voulu : le tunnel n'ouvre rien sur Internet et se referme avec
+la session.
+
+```bash
+# Sur le VPS : l'adresse du conteneur sur le réseau de la pile
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' bd-lldap
+
+# Depuis VOTRE poste, dans un autre terminal, laissé ouvert le temps de l'amorçage
+ssh -N -L 17170:<adresse-ci-dessus>:17170 <compte>@<VPS>
+```
+
+Puis ouvrir `http://localhost:17170` sur votre poste :
+
+1. Se connecter en `admin`, mot de passe = `LLDAP_ADMIN_PASS`.
+2. Créer le compte de service `authelia`, mot de passe = `LLDAP_AUTHELIA_PASS`, et le
+   mettre dans **`lldap_password_manager`** — ni `strict_readonly` (la réinitialisation de
+   mot de passe ÉCRIT), ni `lldap_admin` (un service n'a pas à créer de comptes).
+3. Créer le groupe **`bd-admins`**, et ceux des cours s'ils sont connus. LLDAP ne fournit
+   que ses trois groupes techniques ; oublier `bd-admins` laisserait l'instance sans
+   personne pour l'administrer.
+4. Créer VOTRE compte, sous le login du fichier de repli, avec une adresse réelle, et le
+   ranger dans `bd-admins`.
+
+Refermer le tunnel (Ctrl+C), puis relancer Authelia et lire ce qu'il en dit :
+```bash
+docker compose restart authelia
+docker compose logs authelia | tail -30
+```
+
+Désormais l'interface s'ouvre par `https://<ANNUAIRE_DOMAINE>`, derrière Authelia, avec le
+second facteur. **Le tunnel n'est PAS un accès courant** : il contourne la seule garde de
+l'interface qui crée et supprime des comptes.
+
+> **Ce parcours n'a pas encore été joué sur une instance neuve** — la bascule du
+> 2026-09-07 est passée par le fichier, et c'est la seule qui ait eu lieu. S'il accroche,
+> c'est ici qu'il se corrige ; la case correspondante est dans `pilotage/AUTH-7.md`, et
+> cette réserve se retire le jour où il a été éprouvé.
 
 ## 5. Première connexion + activation de la 2FA
 
 1. Ouvre `https://bd.example.fr` → tu es redirigé vers `https://auth.example.fr`.
-2. Connecte-toi (identifiant `chercheur` + ton mot de passe).
+2. Connecte-toi avec le compte créé à l'amorçage : le mot de passe est celui de
+   l'annuaire, pas celui du fichier de repli.
 3. Pour enregistrer la 2FA, Authelia génère un lien. Avec le notifier
    « filesystem » (par défaut), récupère-le ici :
    ```bash
@@ -232,9 +313,9 @@ appartenir au compte utilisé) ; un nom affiché ACCENTUÉ, que certains relais 
 sans le dire ; et le port 25 sortant, bloqué par la quasi-totalité des hébergeurs — d'où
 465 ou 587.
 
-Enfin, chaque compte de `users_database.yml` doit porter une **adresse réelle** : le
-gabarit en pose une d'exemple, et un notifier SMTP expédierait dans le vide sans que rien
-ne le signale.
+Enfin, chaque compte de l'annuaire — et du fichier de repli — doit porter une **adresse
+réelle** : le gabarit en pose une d'exemple, et un notifier SMTP expédierait dans le vide
+sans que rien ne le signale.
 
 ## 6. Durée de session, et second facteur
 
