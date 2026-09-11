@@ -37,6 +37,13 @@ Ce qui reste est une décision d'équipe, pas une décision de conception. La ro
 précisément parce qu'elle exige une discussion humaine en amont et que rien ne la
 débloque côté code.
 
+**Renvoi vers `AUTH-11`, posé le 2026-09-11.** L'axe `dim:<id>` du croisement — celui
+qu'une case ci-dessus veut voir peuplé — lit la dimension par son identifiant sans
+consulter la portée des termes : une dimension locale à une collection qu'on ne lit pas y
+rend son NOM et ses valeurs. Reporté par l'équipe. Sans effet sur la séance tant que le
+vocabulaire est global ; si elle le veut LOCAL (la case sur la portée, ci-dessus), c'est ce
+trou qui devient réel.
+
 **Ce qui est prêt** (2026-09-08) — `tools/vocabulaire-etude-propose.csv` : deux domaines,
 neuf axes, quarante et une valeurs, importable tel quel (éprouvé sur base jetable : aucune
 anomalie, idempotent au rejeu). Ce n'est **pas** un vocabulaire décidé, et il ne prétend pas

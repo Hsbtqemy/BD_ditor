@@ -1,11 +1,11 @@
 ---
 chantier: DROIT-2
-statut: à venir
+statut: livré
 ---
 
 # DROIT-2 — exporter est un droit à part, accordé par collection
 
-**Arrêté sur** — 2026-09-11, `6d08b87` : le droit d'exporter est posé de bout en bout — la case et la Portee, les quinze portes sous leur cliquet, et l'écran qui ne propose un export qu'à qui peut le faire. Ce qui reste ouvert est la famille des termes qu'on ne lit pas, dont deux cases reportées par l'équipe. L'avertissement de déploiement tombe avec l'écran : la case se pose désormais dans le panneau des accès.
+**Arrêté sur** — 2026-09-11, `6d08b87` : le droit d'exporter est posé de bout en bout — la case et la Portee, les quinze portes sous leur cliquet, et l'écran qui ne propose un export qu'à qui peut le faire. Livré sur `dev` le jour même. Les six cases restées ouvertes sur les termes qu'on ne lit pas ont déménagé dans `AUTH-11` : elles portent sur ce qu'on VOIT d'un terme, pas sur ce qu'on peut SORTIR. **Au déploiement**, la migration v27 ferme l'export à tout non-propriétaire : la case se pose dans le panneau des accès, et il faut la cocher pour qui doit exporter. Et ce déploiement ne se fera pas tout seul : `main` est en v25, et la veille (`deploy/veille-deploiement.sh`) refuse toute mise à jour qui change `SCHEMA_VERSION` — c'est un geste humain.
 
 **Point de départ** — 2026-09-11, pendant COL-2. À la question « le bloc d'export suit-il
 les descripteurs vers la Bibliothèque ? », l'équipe a répondu : *« tout dépend de qui a
@@ -74,12 +74,7 @@ le premier à l'éprouver.
 ### Les tags qu'on ne lit pas
 - [x] **Les lectures qui ont leur propre requête taisent un tag local à une collection qu'on ne lit pas** — la Recherche et son CSV, le CSV d'un album, l'axe « tag » du croisement (JSON et CSV), et les deux filtres par nom de tag, qui étaient des ORACLES : ils n'affichaient rien, mais chercher le nom disait quelles régions le portent. `df20d3d` ; quatre tests dans `test_autorisation.py`, cinq mutants tués
 - [x] **L'Atelier et les exports JSON et TEI d'un album le taisent, et l'écriture le PRÉSERVE** — `_annotation_for_region` reçoit la portée ; le PUT relit les tags cachés (`_tags_caches`) et les remet ; vider ce qu'on voit ne supprime plus une annotation qui en porte encore ; le journal garde l'annotation ENTIÈRE, sans quoi Ctrl+Z effacerait ce qu'on a caché — piège signalé par la session voisine avant l'écriture. `a2ed353` ; trois tests, quatre mutants tués
-- [ ] **Les exports de dépôt d'une collection emportent les termes des AUTRES collections** — le catalogue de tous les tags de l'instance avec leur définition et leur `collection_id` (`metadonnees_collection`, clé `tags_cat` : JSON et onglet « tags ») ; les tags posés, sans portée des termes (`ann_tags`) ; les valeurs d'attribut des personnages (`perso_attr`) ; les sujets DataCite et Dublin Core, qui prennent tous les tags et toutes les valeurs (`crosswalk_depot._sujets`). Ces artefacts QUITTENT l'instance. Attendu : l'export de A ne porte que le vocabulaire de A — global ⊕ local à A, la règle que suit déjà le « % défini » —, quel que soit qui exporte ; et `docs/export-metadonnees.md`, qui dit « les catalogues de référence restent globaux », réécrit avec. **Reporté le 2026-09-11 par l'équipe, à traiter avec la garde de ces mêmes portes**
-- [ ] **L'axe « dimension » du croisement lit une dimension par son identifiant, sans portée** — `dim:<id>` d'une collection qu'on ne lit pas rend son NOM (le libellé de l'axe) et ses valeurs. Attendu : un 404, comme pour un terme absent, et une valeur illisible ne fait pas de ligne (la portée posée sur la liaison, comme sur l'axe des tags). **Reporté le 2026-09-11 par l'équipe**
-- [ ] **Le filtre par valeur d'attribut (`attributs=<id>`) ne vérifie que l'EXISTENCE de la valeur** (`_valider_facette`) — un oracle par énumération d'identifiants, sans nom. Attendu : la même règle que le filtre par tag
-- [ ] **L'index plein texte contient le nom des tags** : une recherche par mot trouve une région par un tag qu'on ne lit pas, sans l'afficher. Un oracle — il faut connaître le mot. Attendu : décider si l'index garde les tags, l'oracle étant alors écrit comme une limite, ou s'il les perd au profit du seul filtre par tag
-- [ ] **Taper le nom d'un tag caché l'attache** : le libellé est unique dans toute l'instance (`_ensure_tags`, `ON CONFLICT(label)`), donc qui tape le nom d'un tag local à une collection qu'il ne lit pas s'attache CE tag — qui disparaît aussitôt de son écran. Un oracle par l'écriture. Attendu : il se ferme par une unicité (libellé, collection), c'est-à-dire un changement de schéma, pas par une garde
-- [ ] **Une région dont il ne reste que des tags cachés reste marquée « annotée »** — `annotee`, `nb_annotees` et le compteur de la Recherche lisent l'existence de la ligne `annotations` : l'écran montre une région annotée sans rien d'annoté. Un indice mineur. Attendu : le marqueur suit ce qu'on voit, ou la limite est écrite
+Les six cases restées ouvertes dans cette zone ont déménagé dans `AUTH-11` le 2026-09-11 — les exports de dépôt, l'axe « dimension » du croisement, le filtre par valeur d'attribut, l'index plein texte, la collision de libellés et le marqueur « annotée ». Elles portent sur ce qu'on VOIT d'un terme, pas sur ce qu'on peut SORTIR.
 
 ### Ce qui devra être vrai
 - [x] Un compte en écriture, sans la case, n'exporte rien : ni le TEI de l'Atelier, ni une concordance, ni une figure — éprouvé sous son identité, porte par porte (`test_une_porte_refuse_qui_lit_sans_la_case`, quinze cas)
@@ -112,7 +107,7 @@ c'est à l'équipe de dire qui le prend. Mais DROIT-2 touchera cette jointure po
 clause d'export ; il faut savoir qu'elle a déjà ce trou, pour ne pas le conserver par
 recopie. La concordance, elle, filtre ses tags par `clause_terme` depuis `efeb0bf`.
 
-**Pris par ce chantier le 2026-09-11, en tête, à la demande de l'équipe** — et il n'était pas seul. La même lecture sans portée des termes se trouvait à sept endroits où un nom de tag s'affiche, plus deux filtres qui servaient d'oracle ; la passe de revue en a trouvé d'autres, sur les dimensions et les valeurs et dans les exports de dépôt. Fermés en deux commits pour les tags ; ce qui reste est dans la zone « Les tags qu'on ne lit pas », avec ce que l'équipe a reporté.
+**Pris par ce chantier le 2026-09-11, en tête, à la demande de l'équipe** — et il n'était pas seul. La même lecture sans portée des termes se trouvait à sept endroits où un nom de tag s'affiche, plus deux filtres qui servaient d'oracle ; la passe de revue en a trouvé d'autres, sur les dimensions et les valeurs et dans les exports de dépôt. Fermés en deux commits pour les tags ; ce qui restait, dont deux cases reportées par l'équipe, a déménagé dans `AUTH-11` le 2026-09-11.
 
 **Ce que COL-2 en fait.** Le bloc d'export de collection déménage TEL QUEL dans la
 Bibliothèque ; ce chantier-ci pose ensuite sa garde au serveur et `exportable` à l'écran,
@@ -124,4 +119,5 @@ laissé les neuf autres portes ouvertes en donnant l'impression d'avoir fermé.
 capacité hors de l'échelle, dont ceci est le premier cas réel), `AUTH-2` / `AUTH-3` (la
 portée et ses deux cœurs partagés), `AUTH-5` (le patron du cliquet des sorties),
 `DEPOT-1` (la base légale non établie, qui rend la question pressante), `ANA-6` (l'export
-de concordance, en cours), `COL-2` (le déménagement du bloc).
+de concordance, en cours), `COL-2` (le déménagement du bloc), `AUTH-11` (les termes qu'on
+ne lit pas, déménagés d'ici le 2026-09-11).

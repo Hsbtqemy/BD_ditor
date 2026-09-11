@@ -78,3 +78,11 @@ plutôt que de laisser un blanc.
 `différé` et non `à venir` : la démarche dépend d'interlocuteurs extérieurs au dépôt.
 Elle n'a pas de dépendance technique, et peut donc être ouverte en parallèle de
 n'importe quoi d'autre — y compris tout de suite, comme ANN-1.
+
+**Renvoi vers `AUTH-11`, posé le 2026-09-11.** Les exports de dépôt d'une collection
+emportent aujourd'hui le vocabulaire des AUTRES collections de l'instance : le catalogue
+des tags avec leurs définitions, les sujets Dublin Core et DataCite. Mesuré pendant
+`DROIT-2`, reporté par l'équipe, et rien ne le rouvrira de lui-même. Tant qu'on ne dépose
+pas, la fuite reste interne — le fichier va à qui exporte la collection, qui peut ne pas
+lire les autres. Au premier dépôt, elle partirait dans un entrepôt qui garde ses versions.
+À fermer AVANT, comme la base légale.

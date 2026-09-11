@@ -127,3 +127,12 @@ touche la famille « vocabulaire » — la seule des quatre qu'AUTH-10 recense �
 collection où l'on travaille, et la moins couverte par le niveau `ecriture`. AUTH-10 est
 différée sans être engagée ; si ce chantier redessine ce qui traverse une frontière de
 collection, la question s'y posera avant de se poser là-bas.
+
+**Renvoi vers `AUTH-11`, posé le 2026-09-11.** Le libellé d'un tag est unique dans toute
+l'instance (`_ensure_tags`, `ON CONFLICT(label)`) : taper le nom d'un tag local à une
+autre collection s'attache CE tag, qui disparaît aussitôt de l'écran. L'incubateur est
+l'endroit où cela arrivera — des stagiaires qui réinventent un mot déjà pris ailleurs.
+AUTH-11 envisage de le fermer par une unicité (libellé, collection) ; elle permettrait un
+« X » global et un « X » local, et PROMOUVOIR le local rencontrerait alors son homonyme :
+fusionner, refuser ou renommer, à trancher ici. Si AUTH-11 pose l'unicité d'abord, la
+promotion hérite de la question ; si ce chantier passe d'abord, il la trouvera ouverte.
