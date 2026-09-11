@@ -419,23 +419,60 @@ function kwicMeta(r) {
             : (r.planche_numero != null ? "pl." + r.planche_numero : "—");
   return esc(cit + (r.locuteur ? " · " + r.locuteur : "") + (r.pos ? " · " + r.pos : ""));
 }
-function kwicRowAligne(r) {
+/* ANA-6 — tags et note d'une ligne. Le serveur les ordonne PROPRES puis HÉRITÉS de la
+   case ; l'hérité se dit par la forme (pointillé) ET par le mot « case », jamais par la
+   seule couleur. `tags` et `note` peuvent manquer (doublure de test, réponse ancienne) :
+   absents, il n'y a rien à montrer. */
+const KWIC_PUCES = 2;   // au-delà, « +N » : une ligne à quatre tags n'élargit pas toute la grille
+const kwicLibelle = (t) => (t.herite ? "case · " : "") + t.label;
+function kwicPuce(t) {
+  // Une VRAIE espace entre « case » et le libellé, pas une marge : deux <span> collés se
+  // lisent « casecolère » au lecteur d'écran — l'œil voyait l'écart, l'oreille non.
+  return t.herite
+    ? `<span class="kw-tag kw-herite"><span class="kw-pref">case</span> ${esc(t.label)}</span>`
+    : `<span class="kw-tag">${esc(t.label)}</span>`;
+}
+function kwicPuces(r, plafond) {
+  const tags = r.tags || [];
+  const vus = plafond ? tags.slice(0, plafond) : tags;
+  const reste = tags.slice(vus.length).map(kwicLibelle).join(", ");
+  // Le « +N » cache des noms : l'infobulle les montre à la souris, le texte masqué à
+  // l'ŒIL SEULEMENT les dit au lecteur d'écran — une infobulle ne s'annonce pas.
+  const plus = reste
+    ? `<span class="kw-tag kw-plus" title="${esc(reste)}" aria-hidden="true">+${tags.length - vus.length}</span>` +
+      `<span class="kw-cache">, et ${esc(reste)}</span>`
+    : "";
+  return vus.map(kwicPuce).join("") + plus;
+}
+function kwicRepere(r) {
+  return r.note ? '<span class="kw-note" role="img" aria-label="porte une note"'
+    + ' title="Porte une note — le rendu liste la montre en entier">📝</span>' : "";
+}
+function kwicRowAligne(r, avecTags) {
   const parts = splitPivot(r.ocr_texte, r.texte);
   const L = parts ? esc(parts.left) : esc(r.ocr_texte || "");
   const K = parts ? esc(parts.key) : "";
   const R = parts ? esc(parts.right) : "";
+  // Une cellule par ligne dans la 5e colonne, VIDE comprise : les lignes sont en
+  // `display: contents`, et une cellule manquante décalerait toute la grille.
+  const tags = avecTags
+    ? `<span class="kw-tags">${kwicPuces(r, KWIC_PUCES)}${kwicRepere(r)}</span>` : "";
   return `<a class="kwic-row" href="${esc(kwicViewerHref(r))}" title="Voir la case">` +
     `<span class="kw-left">${L}</span><span class="kw-key">${K}</span>` +
-    `<span class="kw-right">${R}</span><span class="kw-meta">${kwicMeta(r)}</span></a>`;
+    `<span class="kw-right">${R}</span><span class="kw-meta">${kwicMeta(r)}</span>${tags}</a>`;
 }
 function kwicRowListe(r) {
   const parts = splitPivot(r.ocr_texte, r.texte);
   const texte = parts
     ? `${esc(parts.left)}<b class="kw-hit">${esc(parts.key)}</b>${esc(parts.right)}`
     : esc(r.ocr_texte || "");
+  // La liste dit TOUT : les tags sans plafond, et la note entière en encre pleine — c'est
+  // ici qu'on la lit, et une note en petit texte atténué serait l'invisible déplacé.
+  const tags = (r.tags || []).length ? `<span class="kwic-tags">${kwicPuces(r, 0)}</span>` : "";
+  const note = r.note ? `<span class="kwic-note">📝 ${esc(r.note)}</span>` : "";
   return `<a class="kwic-item" href="${esc(kwicViewerHref(r))}" title="Voir la case">` +
     `<span class="kwic-meta">${kwicMeta(r)}</span>` +
-    `<span class="kwic-text">« ${texte} »</span></a>`;
+    `<span class="kwic-text">« ${texte} »</span>${tags}${note}</a>`;
 }
 function renderKwic(res) {
   const box = $("#kwic");
@@ -452,8 +489,12 @@ function renderKwic(res) {
     return;
   }
   const aligne = kwicStyle() === "aligne";
-  box.className = "kwic" + (aligne ? " kwic-aligned" : " kwic-list");
-  box.innerHTML = rows.map((r) => aligne ? kwicRowAligne(r) : kwicRowListe(r)).join("");
+  // La 5e colonne n'existe que si une ligne AFFICHÉE a quelque chose à y mettre : sur un
+  // corpus sans annotation, elle ne coûterait qu'une gouttière vide.
+  const avecTags = aligne && rows.some((r) => (r.tags || []).length || r.note);
+  box.className = "kwic" + (aligne ? " kwic-aligned" + (avecTags ? " kwic-tags" : "")
+                                   : " kwic-list");
+  box.innerHTML = rows.map((r) => aligne ? kwicRowAligne(r, avecTags) : kwicRowListe(r)).join("");
 }
 
 /* ---------------- Rendu : tableau croisé 2D (ANA-2) ---------------- */
