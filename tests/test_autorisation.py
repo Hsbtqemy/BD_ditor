@@ -618,6 +618,38 @@ def test_la_frequence_d_un_tag_ne_compte_que_le_lisible(client, db_path, deux_al
     assert freq["partout"] == 1                  # posé sur deux régions, une seule lisible
 
 
+def test_une_ligne_de_concordance_tait_un_tag_local_illisible(client, db_path, deux_albums,
+                                                              derriere_proxy):
+    """ANA-6 — une ligne de concordance montre les tags de sa région, mais pas TOUS.
+
+    Un tag peut devenir local après avoir été posé, et un album vit dans plusieurs
+    collections : une région qu'on lit peut donc porter un tag d'une collection qu'on ne
+    lit pas. Son nom est un morceau de grille d'analyse — la raison même de la portée des
+    termes (v24). La garde anti-vacuité exige que l'administrateur voie les DEUX d'abord.
+    """
+    import sqlite3
+    from conftest import ADMIN
+    _poser_tag(db_path, "prive", deux_albums["c2"])      # local à la collection interdite
+    r1 = deux_albums["r1"]["id"]
+    client.put(f"/api/regions/{r1}/annotation",
+               json={"note": "", "tags": ["prive", "commun"]}, headers=ADMIN)
+    conn = sqlite3.connect(db_path)                      # APRÈS l'annotation : elle réindexe
+    try:
+        conn.execute("INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
+                     "VALUES (?, 0, 'DIS', 'dire', 'VERB', '')", (r1,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    def tags_vus(h):
+        rep = client.get("/api/analyse/concordance", params={"lemme": "dire"}, headers=h)
+        return {t["label"] for ligne in rep.json()["results"] for t in ligne["tags"]}
+
+    assert tags_vus(ADMIN) == {"prive", "commun"}
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    assert tags_vus({"Remote-User": "bob"}) == {"commun"}
+
+
 def test_creer_un_terme_en_lecture_seule_est_refuse(client, db_path, deux_albums,
                                                     derriere_proxy):
     """403 : enrichir un vocabulaire que tout le monde partage suppose de pouvoir écrire

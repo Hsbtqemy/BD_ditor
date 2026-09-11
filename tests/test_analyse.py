@@ -518,3 +518,50 @@ def test_le_nom_du_fichier_dit_le_prefixe(client, album, planche, db_path):
     refuse `*` dans un nom de fichier."""
     rep = client.get("/api/analyse/concordance.csv", params={"lemme": "otage*"})
     assert 'filename="concordance-otage-prefixe.csv"' in rep.headers["content-disposition"]
+
+
+# --------------------------------------------------------------------------- #
+# ANA-6 — une ligne de concordance porte ses tags et sa note
+# --------------------------------------------------------------------------- #
+def test_une_ligne_porte_ses_tags_propres_puis_herites_et_sa_note(client, album, planche,
+                                                                  db_path):
+    """Propres d'abord, hérités de la case ensuite — et un tag porté par les deux est
+    PROPRE, il ne se répète pas. Sans les hérités, une ligne trouvée par un tag de case
+    (la portée par défaut du filtre) n'afficherait rien qui explique sa présence."""
+    case = _region(client, planche["id"], type="case")
+    bulle, nue = _region(client, planche["id"]), _region(client, planche["id"])
+    _tags(client, case, ["colère", "menace"])
+    client.put(f"/api/regions/{bulle}/annotation",
+               json={"note": "Premier ultimatum.", "tags": ["menace", "refus"]})
+    _seed(db_path, bulle, [(0, "DIS", "dire", "VERB", "")], parent_id=case)
+    _seed(db_path, nue, [(0, "DIT", "dire", "VERB", "")])
+
+    lignes = {r["region_id"]: r for r in
+              client.get("/api/analyse/concordance", params={"lemme": "dire"}).json()["results"]}
+    assert lignes[bulle]["tags"] == [{"label": "menace", "herite": False},
+                                     {"label": "refus", "herite": False},
+                                     {"label": "colère", "herite": True}]
+    assert lignes[bulle]["note"] == "Premier ultimatum."
+    assert lignes[nue]["tags"] == [] and lignes[nue]["note"] == ""   # rien, et pas None
+    assert "parent_id" not in lignes[bulle]                          # sert, ne sort pas
+
+
+def test_l_export_de_concordance_porte_tags_et_note_en_fin_de_ligne(client, album, planche,
+                                                                    db_path):
+    """Deux colonnes AJOUTÉES en fin de ligne : un script qui lit les douze premières par
+    position ne voit rien changer. L'hérité se DIT (`case:`), le séparateur est celui de
+    l'export de la Recherche."""
+    import csv
+    import io
+    case = _region(client, planche["id"], type="case")
+    bulle = _region(client, planche["id"])
+    _tags(client, case, ["colère"])
+    client.put(f"/api/regions/{bulle}/annotation",
+               json={"note": "=CMD()", "tags": ["refus"]})
+    _seed(db_path, bulle, [(0, "DIS", "dire", "VERB", "")], parent_id=case)
+
+    texte = client.get("/api/analyse/concordance.csv", params={"lemme": "dire"}).text
+    tete, ligne = list(csv.reader(io.StringIO(texte.lstrip("﻿"))))[:2]
+    assert tete[-2:] == ["tags", "note"] and len(tete) == 14
+    assert ligne[-2] == "refus|case:colère"
+    assert ligne[-1] == "'=CMD()"             # une note est du texte libre : `_csv_safe`

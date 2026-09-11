@@ -267,13 +267,14 @@ def _concordance_rows(conn, portee, lemme, pos, morph, provenance, auteur, album
         # sous-corpus « tout ce qui est visible », qui n'est pas ce qu'on a demandé
         raise HTTPException(422, "Aucun critère de recherche effectif.")
     sql = ("SELECT te.region_id, te.ordre, te.texte, te.lemme, te.pos, te.morph, "
-           "       te.provenance, r.type, p.id AS planche_id, p.numero AS planche_numero, "
-           "       a.id AS album_id, a.titre AS album_titre, r.ocr_texte, "
-           "       loc.nom AS locuteur "
+           "       te.provenance, r.type, r.parent_id, p.id AS planche_id, "
+           "       p.numero AS planche_numero, a.id AS album_id, a.titre AS album_titre, "
+           "       r.ocr_texte, loc.nom AS locuteur, an.note AS note "
            "FROM tokens_effectifs te "
            "JOIN regions r ON r.id = te.region_id "
            "JOIN planches p ON p.id = r.planche_id "
            "JOIN albums a ON a.id = p.album_id "
+           "LEFT JOIN annotations an ON an.region_id = r.id "       # 1:1 (region_id UNIQUE)
            "LEFT JOIN bulle_locuteur blc ON blc.region_id = r.id "
            "LEFT JOIN personnages loc ON loc.id = blc.personnage_id "
            "WHERE " + " AND ".join(where) + " "
@@ -283,7 +284,45 @@ def _concordance_rows(conn, portee, lemme, pos, morph, provenance, auteur, album
     cits = citations_regions(conn, [r["region_id"] for r in results])
     for r in results:
         r["citation"] = cits.get(r["region_id"])   # chaque ligne KWIC se cite
+    _joindre_tags(conn, portee, results)
     return results
+
+
+def _joindre_tags(conn, portee, lignes) -> None:
+    """Pose sur chaque ligne ses TAGS — ceux de sa région, puis ceux de sa case (ANA-6).
+
+    Les HÉRITÉS sont là parce que c'est la portée par défaut du filtre
+    (`tag_scope=herite`) : sans eux, une ligne trouvée par un tag posé sur la case
+    n'afficherait rien qui explique sa présence. Un tag porté par les deux est PROPRE, et
+    ne se répète pas en hérité.
+
+    Filtrés par `clause_terme`, et ce n'est pas une précaution : un tag peut devenir LOCAL
+    après avoir été posé (lexique situé), et un album vit dans plusieurs collections. Une
+    région qu'on lit peut donc porter un tag d'une collection qu'on ne lit pas — son nom
+    est alors un morceau de grille d'analyse qui n'est pas à nous.
+
+    Une seule requête pour tout le jeu, jamais une par ligne : la concordance s'exporte
+    jusqu'au plafond d'export. `parent_id` sert ici et ne sort pas.
+    """
+    parents = {r["region_id"]: r.pop("parent_id") for r in lignes}
+    cibles = sorted(set(parents) | {p for p in parents.values() if p is not None})
+    par_region: dict = {}
+    if cibles:
+        ou, pp = portee.clause_terme("tg.collection_id")
+        marques = ",".join("?" * len(cibles))
+        for row in conn.execute(
+                "SELECT an.region_id, tg.label FROM annotation_tags at "
+                "JOIN tags tg ON tg.id = at.tag_id "
+                "JOIN annotations an ON an.id = at.annotation_id "
+                f"WHERE an.region_id IN ({marques}) AND {ou} ORDER BY tg.label",
+                (*cibles, *pp)):
+            par_region.setdefault(row["region_id"], []).append(row["label"])
+    for r in lignes:
+        propres = par_region.get(r["region_id"], [])
+        herites = [t for t in par_region.get(parents[r["region_id"]], []) if t not in propres]
+        r["tags"] = ([{"label": t, "herite": False} for t in propres]
+                     + [{"label": t, "herite": True} for t in herites])
+        r["note"] = r["note"] or ""
 
 
 @router.get("/api/analyse/concordance.csv")
@@ -308,7 +347,8 @@ def analyse_concordance_export(lemme: Optional[str] = None, pos: Optional[str] =
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator=chr(10))
     w.writerow(["citation", "album", "planche", "region_id", "type", "locuteur",
-                "texte", "lemme", "pos", "morph", "provenance", "ocr_texte"])
+                "texte", "lemme", "pos", "morph", "provenance", "ocr_texte",
+                "tags", "note"])
     for r in lignes:
         cit = r.get("citation") or {}
         w.writerow([cit.get("texte", ""), _csv_safe(r["album_titre"]),
@@ -316,7 +356,11 @@ def analyse_concordance_export(lemme: Optional[str] = None, pos: Optional[str] =
                     r["region_id"], r["type"], _csv_safe(r["locuteur"] or ""),
                     _csv_safe(r["texte"]), _csv_safe(r["lemme"]), _csv_safe(r["pos"]),
                     _csv_safe(r["morph"] or ""), r["provenance"],
-                    _csv_safe(r["ocr_texte"] or "")])
+                    _csv_safe(r["ocr_texte"] or ""),
+                    # Même séparateur que l'export de la Recherche ; l'hérité se DIT.
+                    _csv_safe("|".join(("case:" if t["herite"] else "") + t["label"]
+                                       for t in r["tags"])),
+                    _csv_safe(r["note"])])
     return _csv_response(buf.getvalue(), _nom_export("concordance", lemme or pos or morph, lignes))
 
 
