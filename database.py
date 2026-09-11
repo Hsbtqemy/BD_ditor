@@ -18,7 +18,13 @@ from config import DB_PATH, STATUTS
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 27
+SCHEMA_VERSION = 28
+
+# NLP-2 (v28) — ce que l'annotateur a VU en corrigeant : le modèle, et sa proposition.
+# Une seule liste, lue par la migration ET par le ré-ancrage : celui-ci réinsère ses
+# lignes colonne par colonne, et une colonne qu'il oublierait repartirait à NULL à chaque
+# réindexation.
+COLONNES_VU = ("modele_auto", "auto_lemme", "auto_pos", "auto_morph")
 
 # AUTH-6 (2026-09-09) — les deux natures d'un compte, et la SEULE liste qui fasse foi.
 # `nominatif` : une personne derrière un login, ce que suppose tout le raisonnement de
@@ -187,6 +193,15 @@ CREATE TABLE IF NOT EXISTS token_correction (
     auteur      TEXT,
     date_modif  TEXT DEFAULT (datetime('now')),
     obsolete    INTEGER NOT NULL DEFAULT 0,
+    -- v28 (NLP-2) : ce que l'annotateur a VU. `modele_auto` = le modèle chargé au moment
+    -- du geste, même identifiant que `meta.nlp_model` (version comprise) ; `auto_*` = sa
+    -- proposition telle qu'elle s'affichait, '' quand il n'en avait pas. Un champ de
+    -- correction NULL veut dire « j'accepte CETTE proposition », pas celle du prochain
+    -- modèle. Tout à NULL = correction antérieure à la v28, qui n'a rien gardé.
+    modele_auto TEXT,
+    auto_lemme  TEXT,
+    auto_pos    TEXT,
+    auto_morph  TEXT,
     UNIQUE(region_id, ordre)
 );
 
@@ -857,6 +872,21 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE collection_acces ADD COLUMN exporter INTEGER NOT NULL "
                      "DEFAULT 0")
 
+    # v27 → v28 : ce que l'annotateur a VU (NLP-2). Un champ de correction NULL veut dire
+    # « j'accepte la proposition du modèle » — mais la proposition n'était pas gardée, et
+    # le rapport d'accord la relisait dans `tokens`, que chaque réindexation régénère.
+    # Après un passage à un autre modèle, un mot validé sous l'ancien comptait donc comme
+    # un accord avec le nouveau, dont personne n'avait vu la proposition. Décidé le
+    # 2026-09-11 : garder le modèle ET sa proposition, pas le nom seul. AUCUN rattrapage —
+    # relire `tokens` aujourd'hui serait DEVINER ce qui s'affichait hier : retoucher le
+    # texte ailleurs dans la bulle change l'étiquette d'un mot inchangé, et sa correction
+    # survit au ré-ancrage. NULL dit « on ne sait pas », et le rapport retombe alors sur
+    # sa lecture d'avant, pour ces seules lignes.
+    tccols = {r["name"] for r in conn.execute("PRAGMA table_info(token_correction)")}
+    for col in COLONNES_VU:
+        if tccols and col not in tccols:
+            conn.execute(f"ALTER TABLE token_correction ADD COLUMN {col} TEXT")
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -1380,16 +1410,20 @@ def _reancrer_corrections(conn: sqlite3.Connection, region_id: int, new_tokens: 
             orphans.append(c)
     # réécriture propre (DELETE + réinsertion) → aucune collision d'UNIQUE possible
     conn.execute("DELETE FROM token_correction WHERE region_id = ?", (region_id,))
+    # NLP-2 : ce que l'annotateur a vu voyage avec sa correction, survivante ou orpheline.
     ins = ("INSERT INTO token_correction "
-           "(region_id, ordre, forme, lemme, pos, morph, etat, auteur, date_modif, obsolete) "
-           "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+           "(region_id, ordre, forme, lemme, pos, morph, etat, auteur, date_modif, obsolete, "
+           f" {', '.join(COLONNES_VU)}) "
+           f"VALUES ({', '.join('?' * (10 + len(COLONNES_VU)))})")
     for c, no in survivors:
         conn.execute(ins, (region_id, no, new_forme[no], c["lemme"], c["pos"], c["morph"],
-                           c["etat"], c["auteur"], c["date_modif"], 0))
+                           c["etat"], c["auteur"], c["date_modif"], 0,
+                           *(c[k] for k in COLONNES_VU)))
     park = -1                                   # ordres négatifs : ne rejoignent aucun token
     for c in orphans:
         conn.execute(ins, (region_id, park, c["forme"], c["lemme"], c["pos"], c["morph"],
-                           c["etat"], c["auteur"], c["date_modif"], 1))
+                           c["etat"], c["auteur"], c["date_modif"], 1,
+                           *(c[k] for k in COLONNES_VU)))
         park -= 1
 
 

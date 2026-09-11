@@ -200,7 +200,10 @@ combien le nouveau modèle retrouve-t-il seul ?* (`tokens.pos` vs
 `token_correction.pos`). Un **rapport d'accord modèle↔humain** qui objective le gain
 d'un passage à `lg`. Le travail humain devient l'**étalon** d'évaluation des modèles.
 *(Optionnel : `modele_auto` par correction pour une provenance fine ; le `meta` global
-+ la date suffisent en v1.)*
++ la date suffisent en v1.)* — **Fait en v28 (NLP-2, 2026-09-11), et le `meta` global ne
+suffisait pas** : un champ de correction laissé vide accepte une proposition PRÉCISE, que la
+réindexation efface. Chaque correction garde donc le modèle ET sa proposition telle qu'elle
+s'affichait. Cf. `docs/rapport-accord.md`.
 
 ## 9. Endpoints d'édition
 

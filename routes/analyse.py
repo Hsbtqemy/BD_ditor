@@ -718,7 +718,11 @@ def _albums_inscriptibles(conn, portee: autorisation.Portee):
 
 @router.get("/api/analyse/accord")
 def analyse_accord(conn: sqlite3.Connection = Depends(db),
-                   portee: autorisation.Portee = Depends(portee_courante)):
+                   portee: autorisation.Portee = Depends(portee_courante),
+                   modele: Optional[str] = Query(
+                       None, description="NLP-2 : restreindre aux relectures faites sur la "
+                                         "sortie de ce modèle, et le mesurer au moment de "
+                                         "la relecture (cf. `par_modele`)")):
     """Rapport d'accord modèle↔humain (NLP-1) : part des tokens RELUS où le modèle NLP avait
     déjà la valeur finale (par champ lemme/POS/morpho) + confusion POS + modèle évalué. Étalon
     de qualité de l'index (transition Phase 1→2). Cf. accord.rapport / docs/rapport-accord.md.
@@ -726,7 +730,8 @@ def analyse_accord(conn: sqlite3.Connection = Depends(db),
     AUTH-2 — le rapport porte sur le sous-corpus lisible. Un taux d'accord global ne
     montrerait aucun contenu, mais dirait combien de tokens ont été relus ailleurs, donc
     l'ampleur du travail des autres."""
-    return accord.rapport(conn, album_ids=_albums_lisibles(conn, portee))
+    return accord.rapport(conn, album_ids=_albums_lisibles(conn, portee),
+                          modele=modele or None)
 
 
 @router.get("/api/analyse/accord-inter")
@@ -762,13 +767,18 @@ def analyse_accord_inter(conn: sqlite3.Connection = Depends(db),
 
 @router.get("/api/analyse/accord.csv")
 def analyse_accord_export(conn: sqlite3.Connection = Depends(db),
-                          portee: autorisation.Portee = Depends(portee_courante)):
+                          portee: autorisation.Portee = Depends(portee_courante),
+                          modele: Optional[str] = Query(
+                              None, description="NLP-2 : comme sur `/api/analyse/accord`")):
     """Export CSV de l'accord modèle↔humain — même cœur que `/api/analyse/accord` (ANA-7).
 
     Une ligne par champ, comme `tools/rapport_accord.py --csv`, PLUS le modèle et la date
     de réindexation en colonnes répétées. Sans eux le fichier ne sert pas à ce pour quoi
     ce rapport existe — comparer `sm` et `lg` sur le même corpus relu : deux fichiers de
-    taux sans le nom du modèle ne se distinguent pas.
+    taux sans le nom du modèle ne se distinguent pas. Pour la même raison, `releve_sur`
+    nomme le filtre de NLP-2 quand il y en a un : restreint, le fichier ne porte plus sur
+    tout le corpus relu. Les taux restent ceux de l'index actuel ; la mesure « au moment de
+    la relecture » est dans le JSON.
 
     La matrice de confusion POS n'y est pas, comme dans le CLI : c'est un second tableau,
     de forme différente, et l'entasser sous le premier ferait un fichier qu'aucun des deux
@@ -777,13 +787,15 @@ def analyse_accord_export(conn: sqlite3.Connection = Depends(db),
     Ce rapport NE NOMME PERSONNE : `accord.py` n'a ni `agent` ni `auteur`, c'est ce qui le
     laisse ouvert en lecture là où son voisin `accord-inter` est réservé.
     """
-    r = accord.rapport(conn, album_ids=_albums_lisibles(conn, _portee_d_export(portee)))
+    r = accord.rapport(conn, album_ids=_albums_lisibles(conn, _portee_d_export(portee)),
+                       modele=modele or None)
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator=chr(10))
-    w.writerow(["champ", "revus", "accord", "taux", "modele", "indexe_le"])
+    w.writerow(["champ", "revus", "accord", "taux", "modele", "indexe_le", "releve_sur"])
     for ch, c in r["champs"].items():
         w.writerow([ch, c.get("revus"), c.get("accord"), c.get("taux"),
-                    _csv_safe(r.get("modele") or ""), r.get("indexe_le") or ""])
+                    _csv_safe(r.get("modele") or ""), r.get("indexe_le") or "",
+                    _csv_safe(r.get("filtre_modele") or "")])
     return _csv_response(buf.getvalue(), _nom_export("accord", None, [], tronque=False))
 
 
@@ -868,11 +880,17 @@ def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
     """Corrige (ou valide) UN token : impose lemme/POS/morph et/ou marque l'état.
     Champ absent/vide = NULL = auto accepté. POS contrôlé (UPOS). La correction est
     ancrée sur la FORME actuelle du token (anti-dérive ; cf. docs/correction-grammaticale.md).
-    L'auteur connecté (en-tête Remote-User, INFRA-2) est enregistré sur la correction."""
+    L'auteur connecté (en-tête Remote-User, INFRA-2) est enregistré sur la correction.
+
+    NLP-2 — ce que l'annotateur a VU l'est aussi : la proposition du token avant la
+    correction, et le modèle chargé. Un champ laissé vide accepte CETTE proposition, pas
+    celle du prochain modèle. Limite écrite : entre un changement de `BD_SPACY_MODEL` et la
+    réindexation qui doit le suivre, une région encore indexée par l'ancien modèle recevrait
+    le nom du nouveau — la proposition gardée, elle, reste celle qui s'affichait."""
     # AUTH-2 — corriger la grammaire, c'est écrire sur la région.
     _get_region(conn, portee, region_id, ecriture=True)
-    tok = conn.execute("SELECT texte FROM tokens WHERE region_id = ? AND ordre = ?",
-                       (region_id, ordre)).fetchone()
+    tok = conn.execute("SELECT texte, lemme, pos, morph FROM tokens "
+                       "WHERE region_id = ? AND ordre = ?", (region_id, ordre)).fetchone()
     if tok is None:
         raise HTTPException(404, f"Aucun token à la position {ordre} (région {region_id}).")
     if payload.etat not in ("corrige", "valide"):
@@ -888,19 +906,25 @@ def corriger_token(region_id: int, ordre: int, payload: TokenCorrectionIn,
                             "(ou etat='valide' pour confirmer l'auto).")
     nlp.ensure_loaded()   # charge spaCy HORS transaction (sinon le cold-load tiendrait le verrou DB → 409)
     auteur = _auteur(request)
+    modele = nlp.model_info().get("model") or None      # NLP-2 ; modèle déjà chargé
+    vu = ["" if tok[k] is None else tok[k] for k in ("lemme", "pos", "morph")]
     _corr_cols = ("ordre", "forme", "lemme", "pos", "morph", "etat")
     avant_corr = conn.execute(
         f"SELECT {', '.join(_corr_cols)} FROM token_correction "
         "WHERE region_id = ? AND ordre = ?", (region_id, ordre)).fetchone()
     conn.execute(
         "INSERT INTO token_correction "
-        "  (region_id, ordre, forme, lemme, pos, morph, etat, auteur, obsolete, date_modif) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now')) "
+        "  (region_id, ordre, forme, lemme, pos, morph, etat, auteur, obsolete, date_modif, "
+        "   modele_auto, auto_lemme, auto_pos, auto_morph) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'), ?, ?, ?, ?) "
         "ON CONFLICT(region_id, ordre) DO UPDATE SET "
         "  forme=excluded.forme, lemme=excluded.lemme, pos=excluded.pos, "
         "  morph=excluded.morph, etat=excluded.etat, auteur=excluded.auteur, "
-        "  obsolete=0, date_modif=datetime('now')",
-        (region_id, ordre, tok["texte"], lemme, pos, morph, payload.etat, auteur))
+        "  obsolete=0, date_modif=datetime('now'), modele_auto=excluded.modele_auto, "
+        "  auto_lemme=excluded.auto_lemme, auto_pos=excluded.auto_pos, "
+        "  auto_morph=excluded.auto_morph",
+        (region_id, ordre, tok["texte"], lemme, pos, morph, payload.etat, auteur,
+         modele, *vu))
     # Correction humaine de l'étiquetage machine (NLP) : événement avant/après + retouche.
     corr = conn.execute(
         f"SELECT id, {', '.join(_corr_cols)} FROM token_correction "
@@ -924,25 +948,44 @@ def valider_grammaire(region_id: int, request: Request,
     ailleurs ; ne touche pas aux corrections « à revérifier ». NON bloquant : c'est
     une assertion de qualité, jamais un prérequis. L'auteur connecté (INFRA-2) est
     posé sur les tokens auto-acceptés, et REMPLIT l'auteur d'une correction qui n'en
-    avait pas — sans jamais écraser le correcteur d'origine (COALESCE)."""
+    avait pas — sans jamais écraser le correcteur d'origine (COALESCE).
+
+    NLP-2 — la proposition validée est gardée, avec le modèle, sur chaque ligne dont le token
+    s'affiche, y compris une correction existante : là où elle laisse un champ vide, la
+    validation se porte garante de ce qui s'affiche maintenant. L'auteur, lui, reste celui
+    d'origine. Sans token (moteur absent), le relevé précédent est gardé tel quel."""
     # AUTH-2 — corriger la grammaire, c'est écrire sur la région.
     _get_region(conn, portee, region_id, ecriture=True)
     if conn.execute("SELECT 1 FROM regions WHERE id = ?", (region_id,)).fetchone() is None:
         raise HTTPException(404, f"Région {region_id} introuvable")
     nlp.ensure_loaded()          # spaCy hors transaction (cf. corriger_token)
     auteur = _auteur(request)
+    modele = nlp.model_info().get("model") or None      # NLP-2 ; modèle déjà chargé
     reindex_region(conn, region_id)   # ré-ancre (aligne) d'abord → nettoie toute dérive du texte
     # 1) corrections cohérentes existantes → validées (auteur préservé : valider ≠ corriger)
     conn.execute("UPDATE token_correction "
                  "SET etat='valide', auteur=COALESCE(auteur, ?), date_modif=datetime('now') "
                  "WHERE region_id = ? AND obsolete = 0", (auteur, region_id))
+    # 1 bis) NLP-2 : leur relevé suit ce qui s'affiche — là seulement où un token s'affiche.
+    # Sans moteur, la réindexation ci-dessus vient de vider `tokens` sans ré-ancrer : relever
+    # quand même remettrait à NULL ce que l'annotateur avait vu, au seul motif que le moteur
+    # manque.
+    ici = ("t.region_id = token_correction.region_id "
+           "AND t.ordre = token_correction.ordre")
+    vu = ", ".join(f"auto_{ch} = (SELECT COALESCE(t.{ch}, '') FROM tokens t WHERE {ici})"
+                   for ch in ("lemme", "pos", "morph"))
+    conn.execute(f"UPDATE token_correction SET modele_auto = ?, {vu} "
+                 "WHERE region_id = ? AND obsolete = 0 "
+                 f"  AND EXISTS (SELECT 1 FROM tokens t WHERE {ici})", (modele, region_id))
     # 2) tokens sans correction → ligne 'valide' (accepte l'auto ; auteur = le validateur)
     conn.execute(
-        "INSERT INTO token_correction (region_id, ordre, forme, etat, auteur, obsolete) "
-        "SELECT t.region_id, t.ordre, t.texte, 'valide', ?, 0 FROM tokens t "
-        "WHERE t.region_id = ? AND NOT EXISTS "
+        "INSERT INTO token_correction (region_id, ordre, forme, etat, auteur, obsolete, "
+        "  modele_auto, auto_lemme, auto_pos, auto_morph) "
+        "SELECT t.region_id, t.ordre, t.texte, 'valide', ?, 0, ?, "
+        "       COALESCE(t.lemme, ''), COALESCE(t.pos, ''), COALESCE(t.morph, '') "
+        "FROM tokens t WHERE t.region_id = ? AND NOT EXISTS "
         "  (SELECT 1 FROM token_correction c WHERE c.region_id=t.region_id AND c.ordre=t.ordre)",
-        (auteur, region_id))
+        (auteur, modele, region_id))
     journal.journaliser(conn, "validation", "regions", region_id,
                         apres={"grammaire": "validee"})
     conn.commit()
