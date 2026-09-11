@@ -450,3 +450,71 @@ def test_un_export_d_analyse_est_lisible_par_un_tableur(client, album, planche, 
     assert rep.content.startswith("﻿".encode("utf-8")), "BOM absent : Excel lira mal les accents"
     assert rep.headers["content-type"].startswith("text/csv")
     assert "attachment;" in rep.headers["content-disposition"]
+
+
+# --------------------------------------------------------------------------- #
+# ANA-6 — le préfixe de lemme, par joker EXPLICITE
+# --------------------------------------------------------------------------- #
+def _lemmes_trouves(client, saisie):
+    rep = client.get("/api/analyse/concordance", params={"lemme": saisie})
+    assert rep.status_code == 200, rep.text
+    return sorted(x["lemme"] for x in rep.json()["results"])
+
+
+def test_le_joker_cherche_par_prefixe_et_l_exact_reste_exact(client, album, planche, db_path):
+    """`otage*` trouve « otages » ; `otage` ne trouve QUE « otage ».
+
+    L'exact n'est pas un détail : la cellule d'un croisement ouvre sa concordance par la
+    valeur exacte. Un préfixe implicite y ferait compter à `pas` les « passer » et les
+    « passage » — des nombres plausibles, et faux.
+    """
+    r = _region(client, planche["id"])
+    _seed(db_path, r, [(0, "OTAGE", "otage", "NOUN", ""), (1, "OTAGES", "otages", "NOUN", ""),
+                       (2, "PAS", "pas", "ADV", ""), (3, "PASSER", "passer", "VERB", "")])
+    assert _lemmes_trouves(client, "otage") == ["otage"]
+    assert _lemmes_trouves(client, "otage*") == ["otage", "otages"]
+    assert _lemmes_trouves(client, "OTAGE*") == ["otage", "otages"]   # minusculé comme l'exact
+    assert _lemmes_trouves(client, "pas") == ["pas"]
+    assert _lemmes_trouves(client, "pas*") == ["pas", "passer"]
+    # Les quatre surfaces partagent `_analyse_filtres` : la distribution lit le joker aussi.
+    freq = client.get("/api/analyse/frequences", params={"lemme": "otage*"}).json()
+    assert {x["lemme"] for x in freq["results"]} == {"otage", "otages"}
+
+
+def test_le_joker_echappe_les_jokers_de_like(client, album, planche, db_path):
+    """`%` et `_` sont les jokers de LIKE, pas ceux de l'utilisateur : `a_*` ne doit pas
+    lire « a, un caractère quelconque, puis n'importe quoi »."""
+    r = _region(client, planche["id"])
+    _seed(db_path, r, [(0, "x", "a_b", "X", ""), (1, "x", "axb", "X", ""),
+                       (2, "x", "c%d", "X", ""), (3, "x", "cxd", "X", "")])
+    assert _lemmes_trouves(client, "a_*") == ["a_b"]
+    assert _lemmes_trouves(client, "c%*") == ["c%d"]
+
+
+def test_un_asterisque_seul_n_est_pas_un_critere(client, album, planche, db_path):
+    """« * » ne doit pas rendre tout le corpus : il ne reste rien à chercher, donc la
+    concordance répond son 422 ordinaire, comme pour un critère vide."""
+    r = _region(client, planche["id"])
+    _seed(db_path, r, [(0, "OTAGE", "otage", "NOUN", "")])
+    assert client.get("/api/analyse/concordance", params={"lemme": "*"}).status_code == 422
+
+
+def test_la_recherche_lit_le_joker_comme_l_analyse(client, album, planche, db_path):
+    """Même contrat pour `lemme=` sur les deux surfaces : une descente de l'Exploration vers
+    la Recherche ne doit pas changer de sens en chemin. Et « * » seul n'y fabrique plus une
+    clause vide — la requête finissait en `AND )`."""
+    a, b = _region(client, planche["id"]), _region(client, planche["id"])
+    _seed(db_path, a, [(0, "OTAGES", "otages", "NOUN", "")])
+    _seed(db_path, b, [(0, "OTAGE", "otage", "NOUN", "")])
+    ids = lambda q: {x["region_id"] for x in
+                     client.get("/api/recherche", params={"lemme": q}).json()["results"]}
+    assert ids("otage*") == {a, b}
+    assert ids("otage") == {b}
+    assert client.get("/api/recherche", params={"lemme": "*"}).status_code == 200
+
+
+def test_le_nom_du_fichier_dit_le_prefixe(client, album, planche, db_path):
+    """Le joker se LIT dans le nom : laissé tel quel, il serait devenu un `_` muet — Windows
+    refuse `*` dans un nom de fichier."""
+    rep = client.get("/api/analyse/concordance.csv", params={"lemme": "otage*"})
+    assert 'filename="concordance-otage-prefixe.csv"' in rep.headers["content-disposition"]

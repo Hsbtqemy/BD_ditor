@@ -24,7 +24,7 @@ from database import citations_regions, reindex_region
 from pipeline import nlp
 
 from socle import (
-    TokenCorrectionIn, _auteur, _csv_response, _csv_safe, _get_region, _norm_tag,
+    TokenCorrectionIn, _auteur, _clause_lemme, _csv_response, _csv_safe, _get_region, _norm_tag,
     _rows, db, portee_courante,
 )
 
@@ -70,8 +70,10 @@ def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags=No
         where.append("r.type = ?"); params.append(type)
     if pos:
         where.append("te.pos = ?"); params.append(pos.upper())          # UPOS
-    if lemme:
-        where.append("te.lemme = ?"); params.append(lemme.lower())       # lemmes minusculés
+    if lemme:                                   # exact, ou préfixe `otage*` (ANA-6)
+        clause = _clause_lemme("te.lemme", lemme)
+        if clause:
+            where.append(clause[0]); params.extend(clause[1])
     if morph:
         where.append("te.morph LIKE ?"); params.append(f"%{morph}%")     # trait UD (sous-chaîne)
     if provenance:
@@ -222,6 +224,10 @@ def _nom_export(vue: str, precision: Optional[str], lignes, tronque=None) -> str
     `tronque` se passe explicitement quand la coupe ne se lit pas au nombre de lignes —
     le croisement tronque par AXE, et un fichier de dix lignes peut y être amputé.
     """
+    # Un joker de préfixe se LIT dans le nom (ANA-6) : « otage* » → `…-otage-prefixe.csv`.
+    # Laissé tel quel, `_disposition` l'aurait remplacé par un `_` muet.
+    if precision and precision.endswith("*"):
+        precision = precision.rstrip("*") + "-prefixe"
     bout = f"-{precision}" if precision else ""
     if tronque is None:
         tronque = len(lignes) >= PLAFOND_EXPORT

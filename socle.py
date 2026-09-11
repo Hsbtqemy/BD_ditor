@@ -581,6 +581,33 @@ def _csv_safe(v):
         return "'" + v
     return v
 
+
+def _clause_lemme(colonne: str, lemme: Optional[str]) -> Optional[tuple[str, list]]:
+    """Critère de lemme (ANA-6) : EXACT, ou PRÉFIXE quand la saisie finit par `*`.
+
+    Partagé par l'analyse (`_analyse_filtres`) et la facette lemme de la Recherche
+    (`_recherche_rows`) : `lemme=` doit dire la même chose partout, sans quoi une descente
+    de l'une vers l'autre changerait de sens en chemin.
+
+    Le joker est EXPLICITE, et c'est la décision. Un préfixe implicite aurait fait de
+    `pas` une recherche de « passer » et « passage » ; or la cellule d'un croisement ouvre
+    sa concordance par la valeur EXACTE, qui aurait alors compté plus que la cellule — en
+    silence, avec des nombres plausibles. `%` et `_`, les jokers de LIKE, sont échappés :
+    ici ils ne signifient rien.
+
+    Renvoie None quand il ne reste rien à chercher (vide, ou « * » seul) : l'appelant
+    n'ajoute alors aucune clause, et une concordance sans autre critère répond son 422
+    ordinaire plutôt que de rendre tout le corpus pour un astérisque.
+    """
+    v = (lemme or "").strip().lower()                        # lemmes minusculés
+    if not v.endswith("*"):
+        return (f"{colonne} = ?", [v]) if v else None
+    racine = v.rstrip("*")
+    if not racine:
+        return None
+    motif = racine.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    return f"{colonne} LIKE ? ESCAPE '\\'", [motif]
+
 # --------------------------------------------------------------------------- #
 # Qui appelle (AUTH-2) — lecture des en-têtes d'identité
 # --------------------------------------------------------------------------- #

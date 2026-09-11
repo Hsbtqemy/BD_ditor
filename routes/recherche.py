@@ -32,7 +32,8 @@ from config import STATUTS
 from database import citations_regions
 from pipeline import nlp
 
-from socle import _csv_response, _csv_safe, _norm_tag, _rows, db, portee_courante
+from socle import (_clause_lemme, _csv_response, _csv_safe, _norm_tag, _rows, db,
+                   portee_courante)
 
 router = APIRouter()
 
@@ -113,15 +114,20 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
         tw, tp = [], []
         if pos:
             tw.append("te.pos = ?"); tp.append(pos.upper())
-        if lemme:
-            tw.append("te.lemme = ?"); tp.append(lemme.lower())
+        if lemme:                               # exact, ou préfixe `otage*` (ANA-6)
+            clause = _clause_lemme("te.lemme", lemme)
+            if clause:
+                tw.append(clause[0]); tp.extend(clause[1])
         if morph:
             tw.append("te.morph LIKE ?"); tp.append(f"%{morph}%")
         if provenance:
             tw.append("te.provenance = ?"); tp.append(provenance)
-        where.append("EXISTS (SELECT 1 FROM tokens_effectifs te "
-                     "WHERE te.region_id = r.id AND " + " AND ".join(tw) + ")")
-        params.extend(tp)
+        # `tw` peut rester VIDE : un lemme réduit à « * » ne pose aucune clause. Sans
+        # cette garde, la requête finissait en `WHERE … AND )` — une erreur de syntaxe.
+        if tw:
+            where.append("EXISTS (SELECT 1 FROM tokens_effectifs te "
+                         "WHERE te.region_id = r.id AND " + " AND ".join(tw) + ")")
+            params.extend(tp)
 
     # Facettes ANN-2 : locuteur de la bulle, et attribut (profil du locuteur OU situation
     # de la case) — alignées sur /api/analyse/* pour que le drill Exploration→Recherche colle.
