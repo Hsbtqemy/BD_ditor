@@ -5,9 +5,12 @@ statut: interrompu
 
 # AUTH-6 — le modèle de comptes et de groupes, avant les stagiaires
 
-**Arrêté sur** — le commit `ff95ec0`, 2026-09-11 : **sous un compte collectif, Ctrl+Z ne
-remonte plus que cinq minutes.** Ce qui reste ouvert attend la lecture de l'annuaire (trois
-cases, elle comprise) ou une mesure de production sous l'identité d'un stagiaire.
+**Arrêté sur** — le commit `4344243`, 2026-09-11 : la passe de revue de la borne de Ctrl+Z
+(`ff95ec0`, **sous un compte collectif, Ctrl+Z ne remonte plus que cinq minutes**). L'écran
+qui déclare un compte collectif ne disait rien de Ctrl+Z ; il le dit. Et la passe a fait
+apparaître ce qui décide si la borne sert : c'est la DÉCLARATION qui la déclenche, d'où une
+case neuve sous *Préparer l'arrivée*. Ce qui reste ouvert attend la lecture de l'annuaire
+(trois cases, elle comprise), ou un geste et une mesure sur la production.
 
 Plus tôt, le commit `9e594b8`, 2026-09-09 : le cadrage est rendu, les neuf
 questions sont tranchées, et **deux constructions sur trois sont faites** — la nature d'un
@@ -88,6 +91,7 @@ raisons dans `INFRA-8`. Ce chantier peut le défaire, mais en connaissant ce qu'
   **Cette case est la CLÉ DE VOÛTE de la fiche, relevé le 2026-09-10.** Les deux cases de la zone « Les pièges que le modèle ne signale pas » en dépendent entièrement, et ce chantier ne se referme donc pas par ses cinq cases restantes prises dans n'importe quel ordre : il se referme par celle-ci d'abord. **Ce qu'elle entraîne AILLEURS, et qui n'était écrit nulle part** : le cliquet d'`AUTH-5` (`tests/test_sorties_identite.py`) exige une entrée déclarée par SORTIE, avec sa sorte et sa raison — publier des logins et des groupes que l'application n'a jamais vus en crée de nouvelles ; et `CLAUDE.md` comme `docs/hebergement-securite.md` affirment aujourd'hui que les groupes ne sont jamais stockés et se relisent dans `Remote-Groups` à chaque requête. LIRE un annuaire pour la COMPOSITION est un acte distinct d'AUTHENTIFIER, mais la distinction n'existe nulle part par écrit : sans elle, le prochain lecteur conclura que l'invariant d'AUTH-1 a sauté
 
 ### Préparer l'arrivée
+- [ ] **Les logins partagés de la production sont DÉCLARÉS collectifs** — ajouté le 2026-09-11 par la passe de revue de `ff95ec0`. Tout ce que ce chantier a construit pour un compte collectif ne s'applique qu'à un compte DÉCLARÉ : ANN-5 qui refuse de le mesurer, les sorties en `collectif-N`, la borne de cinq minutes sur Ctrl+Z. Un login partagé que personne n'a déclaré est lu comme nominatif, et l'application ne peut pas le deviner — c'est précisément ce qu'elle ne voit pas. Attendu : sous un compte `bd-admins`, dans Administration → 👤 Comptes vus, chaque login partagé déjà venu (groupes d'étudiants, démonstration, stagiaires s'ils partagent un login) porte « Collectif (login partagé) ». Un geste d'administrateur, pas un défaut de code ; il se refait à chaque nouveau login partagé, dès sa première connexion
 - [ ] Un compte stagiaire créé de bout en bout voit un corpus NON VIDE dès sa première connexion — c'est le piège d'AUTH-2, et il est silencieux : la connexion réussit, l'application s'affiche, elle est simplement vide.
 
   **Une mesure de production a été proposée le 2026-09-10 et NE FERME PAS cette case**, ce qui vaut d'être écrit parce qu'elle en avait l'air. `GET /api/moi` sous `stagiaire` rend `acces.collections: 1` — mais ce champ vaut `len(portee.lecture)`, soit le nombre de COLLECTIONS lisibles, jamais un nombre d'albums. Un stagiaire admis sur une collection VIDE rendrait exactement le même `1`, et son écran serait vide : c'est mot pour mot le piège que cette case décrit. Ce qui la fermerait tient en une requête — `GET /api/albums` sous SON identité, rendant au moins une ligne — ou en un regard sur sa Bibliothèque.
