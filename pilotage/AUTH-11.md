@@ -1,9 +1,11 @@
 ---
 chantier: AUTH-11
-statut: à venir
+statut: interrompu
 ---
 
 # AUTH-11 — un terme qu'on ne lit pas ne se montre pas, ne sort pas, ne se devine pas
+
+**Arrêté sur** — 2026-09-11, `e906810` : les deux cases qui ne demandaient aucune décision sont fermées — l'axe « dimension » du croisement, et le filtre par facette, locuteur compris. Les quatre qui restent attendent chacune autre chose qu'une clause : une décision sur l'index plein texte, un changement de schéma qui croise COL-1, le premier dépôt, et un indice mineur à fermer ou à écrire comme limite.
 
 **Point de départ** — 2026-09-11, détaché de `DROIT-2` le jour même. La session d'ANA-6
 avait mesuré que `_recherche_rows` montrait un tag local à une collection que le lecteur ne
@@ -27,11 +29,11 @@ ce sont des oracles, où le terme se devine à la réponse.
 - [ ] **Les exports de dépôt d'une collection emportent les termes des AUTRES collections** — le catalogue de tous les tags de l'instance avec leur définition et leur `collection_id` (`metadonnees_collection`, clé `tags_cat` : JSON et onglet « tags ») ; les tags posés, sans portée des termes (`ann_tags`) ; les valeurs d'attribut des personnages (`perso_attr`) ; les sujets DataCite et Dublin Core, qui prennent tous les tags et toutes les valeurs (`crosswalk_depot._sujets`). Ces artefacts QUITTENT l'instance. Attendu : l'export de A ne porte que le vocabulaire de A — global ⊕ local à A, la règle que suit déjà le « % défini » —, quel que soit qui exporte ; et `docs/export-metadonnees.md`, qui dit « les catalogues de référence restent globaux », réécrit avec. **Reporté le 2026-09-11 par l'équipe, « avec les portes, plus tard »** — et les portes ont reçu leur garde le même jour sans lui (`4b1d530`) : le report n'attend donc plus rien qui le rouvrira de lui-même. C'est le premier dépôt qui le rend pressant, et le renvoi est posé dans `DEPOT-1`
 
 ### Ce qui se montre
-- [ ] **L'axe « dimension » du croisement lit une dimension par son identifiant, sans portée** — `dim:<id>` d'une collection qu'on ne lit pas rend son NOM (le libellé de l'axe) et ses valeurs. Attendu : un 404, comme pour un terme absent, et une valeur illisible ne fait pas de ligne (la portée posée sur la liaison, comme sur l'axe des tags). **Reporté le 2026-09-11 par l'équipe**
+- [x] **L'axe « dimension » du croisement lisait une dimension par son identifiant, sans portée** — `dim:<id>` d'une collection qu'on ne lit pas rendait son NOM (le libellé de l'axe) et ses valeurs. Il passe par l'accesseur gardé et répond 404 au mot près comme pour une dimension absente ; une valeur illisible ne fait pas de ligne, la portée étant posée sur la liaison comme pour l'axe des tags. Reporté puis levé par l'équipe le 2026-09-11. `e906810` ; `test_l_axe_dimension_du_croisement_tait_ce_qu_on_ne_lit_pas`, deux mutants tués
 - [ ] **Une région dont il ne reste que des tags cachés reste marquée « annotée »** — `annotee`, `nb_annotees` et le compteur de la Recherche lisent l'existence de la ligne `annotations` : l'écran montre une région annotée sans rien d'annoté. Un indice mineur. Attendu : le marqueur suit ce qu'on voit, ou la limite est écrite
 
 ### Ce qui se devine sans se montrer
-- [ ] **Le filtre par valeur d'attribut (`attributs=<id>`) ne vérifie que l'EXISTENCE de la valeur** (`_valider_facette`) — un oracle par énumération d'identifiants, sans nom. Attendu : la même règle que le filtre par tag
+- [x] **Le filtre par valeur d'attribut (`attributs=<id>`) ne vérifiait que l'EXISTENCE de la valeur** (`_valider_facette`) — un oracle par énumération d'identifiants, sans nom. Il passe par `_get_valeur`, et le filtre par locuteur (`personnage=<id>`), qui avait le même défaut dans la même fonction, par `_get_personnage` : ce qu'on ne voit pas répond exactement comme ce qui n'existe pas, sur les quatre cœurs d'analyse et leurs exports. `e906810` ; `test_une_facette_qu_on_ne_lit_pas_repond_comme_une_facette_absente`, quatre mutants tués
 - [ ] **L'index plein texte contient le nom des tags** : une recherche par mot trouve une région par un tag qu'on ne lit pas, sans l'afficher. Un oracle — il faut connaître le mot. Attendu : décider si l'index garde les tags, l'oracle étant alors écrit comme une limite, ou s'il les perd au profit du seul filtre par tag
 - [ ] **Taper le nom d'un tag caché l'attache** : le libellé est unique dans toute l'instance (`_ensure_tags`, `ON CONFLICT(label)`), donc qui tape le nom d'un tag local à une collection qu'il ne lit pas s'attache CE tag — qui disparaît aussitôt de son écran. Un oracle par l'écriture. Attendu : il se ferme par une unicité (libellé, collection), c'est-à-dire un changement de schéma, pas par une garde
 
