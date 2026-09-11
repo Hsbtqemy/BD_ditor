@@ -81,6 +81,23 @@ passe donc après les commits d'ANA-6 sur ces fichiers ; la session concernée e
 et son export de concordance — qui existe depuis ANA-7, ANA-6 n'y ajoutant que deux colonnes,
 les tags et la note — suit la règle commune plutôt qu'une garde à part.
 
+**La voie est libre depuis le 2026-09-11.** ANA-6 a commité ses trois lots sur les fichiers
+communs (`1a1bc8a`, `15d1785`, `efeb0bf`) et les a libérés. Un fait qu'il a signalé et qui
+compte ici : `_concordance_rows` joint désormais les tags de chaque ligne par
+`_joindre_tags(conn, portee, lignes)`, qui les filtre par `portee.clause_terme`. Elle
+REÇOIT la `Portee` : faire passer la concordance d'une portée de lecture à une portée
+d'export n'aura rien à recâbler, à condition de lui passer l'objet adapté plutôt que de
+filtrer à côté.
+
+**Un trou ANTÉRIEUR sur la même jointure, mesuré par la session d'ANA-6 le 2026-09-11 et
+remonté à l'équipe.** `_recherche_rows` joint les tags de chaque résultat SANS
+`portee.clause_terme` : un tag local à une collection que le lecteur ne lit pas lui est
+montré — dans `/api/recherche` comme dans son export CSV —, alors que `/api/tags` le lui
+masque. Ce n'est pas ce chantier, et il n'est corrigé ni ici ni ailleurs en passant :
+c'est à l'équipe de dire qui le prend. Mais DROIT-2 touchera cette jointure pour la
+clause d'export ; il faut savoir qu'elle a déjà ce trou, pour ne pas le conserver par
+recopie. La concordance, elle, filtre ses tags par `clause_terme` depuis `efeb0bf`.
+
 **Ce que COL-2 en fait.** Le bloc d'export de collection déménage TEL QUEL dans la
 Bibliothèque ; ce chantier-ci pose ensuite sa garde au serveur et `exportable` à l'écran,
 à un seul endroit. Faire l'inverse — restreindre le bloc pendant le déménagement — aurait
