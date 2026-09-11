@@ -176,7 +176,8 @@ Les personnages sont des entités de corpus : le même personnage traverse les a
 Tout est sauvegardé automatiquement, une demi-seconde après la dernière frappe. **`Ctrl+Z`
 annule la dernière action d'annotation** — y compris une suppression de région, recréée avec
 tout ce qu'elle contenait et ses identifiants d'origine. Les actes des moteurs, eux, ne
-s'annulent pas.
+s'annulent pas. Sous un compte partagé, Ctrl+Z ne remonte que les cinq dernières minutes :
+au-delà, l'acte peut être celui d'un collègue qui tapait sous le même nom.
 
 Sur le choix « tag ou dimension ? », voir [`modele-et-droits.md`](modele-et-droits.md) §4 :
 un tag se cherche, un attribut se compte.
@@ -416,9 +417,11 @@ Quelqu'un a basculé une planche en `paratexte`, ou l'inverse. Le numéro édito
 parmi les seules planches de récit, recalculé à chaque lecture.
 
 **Ctrl+Z ne fait rien.**
-Trois cas : le curseur est dans un champ de saisie (c'est alors l'annulation du navigateur) ;
-la dernière action était le fait d'un moteur, et les actes machine ne s'annulent pas ; ou il
-n'y a plus rien à annuler.
+Quatre cas : le curseur est dans un champ de saisie (c'est alors l'annulation du
+navigateur) ; la dernière action était le fait d'un moteur, et les actes machine ne
+s'annulent pas ; vous travaillez sous un compte PARTAGÉ (un groupe, une démonstration), où
+Ctrl+Z ne remonte que les cinq dernières minutes — le message le dit ; ou il n'y a plus rien
+à annuler.
 
 **J'ai créé un tag et il n'apparaît pas chez un collègue.**
 Il est probablement local à une collection. Cf. [`modele-et-droits.md`](modele-et-droits.md) §4.

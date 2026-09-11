@@ -62,11 +62,19 @@ def undo_dernier(conn: sqlite3.Connection = Depends(db),
     # ailleurs suffit encore. Cf. docs/undo.md.
     if not portee.peut_ecrire_quelque_part():
         raise HTTPException(403, "Annuler demande un droit d'écriture.")
+    agent = _agent_undo(portee)
     try:
-        res = undo.annuler(conn, agent=_agent_undo(portee))
+        res = undo.annuler(conn, agent=agent)
     except undo.UndoImpossible as exc:
         raise HTTPException(409, f"Annulation impossible : {exc}")
     if res is None:
+        # Sous un compte partagé, « rien » peut vouloir dire « rien d'assez récent » (AUTH-6) :
+        # le dire, sans quoi on croirait l'historique vide. Le message garde « Rien à
+        # annuler » en tête — l'Atelier l'affiche alors comme une information, pas une erreur.
+        if undo.est_borne(conn, agent):
+            raise HTTPException(
+                404, f"Rien à annuler dans les {undo.DELAI_COLLECTIF_MINUTES} dernières "
+                     "minutes : sur un compte partagé, Ctrl+Z ne remonte pas plus loin.")
         raise HTTPException(404, "Rien à annuler.")
     conn.commit()
     return res

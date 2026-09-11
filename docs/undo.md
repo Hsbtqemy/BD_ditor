@@ -91,6 +91,27 @@ d'accès qui dépend de la FORME d'un JSON journalisé est plus fragile que le t
 bouche. Le scénario reste étroit : il faut avoir eu le droit, l'avoir perdu, et n'annuler
 que ses propres actes.
 
+## Un compte COLLECTIF : un délai de cinq minutes (AUTH-6)
+
+Sous un login **partagé** — un groupe d'étudiants, un compte de démonstration, déclarés
+`collectif` dans la vue des comptes —, le filtre par agent ne sépare plus « mes actes » de
+ceux du collègue qui tape sous le même login : l'application ne voit que `Remote-User`, et
+lui donner de quoi distinguer deux personnes reviendrait à fabriquer de l'identité, ce
+qu'AUTH-1 lui interdit. Ctrl+Z n'y remonte donc que les **cinq dernières minutes**
+(`undo.DELAI_COLLECTIF_MINUTES`, tranché le 2026-09-11).
+
+**Le temps, et non la session** : l'application n'a aucune notion de session et ne doit
+pas s'en fabriquer une ; et le vrai risque n'est pas de défaire ce qu'un autre a fait il y
+a trente secondes, mais avant la pause. La borne vaut pour l'aperçu comme pour
+l'exécution, et **viser un acte par son `id` ne la contourne pas** — nommer un acte ne le
+rajeunit pas. Au-delà, le refus le DIT (« Rien à annuler dans les 5 dernières minutes : sur
+un compte partagé… ») plutôt que de laisser croire l'historique vide.
+
+Un compte **nominatif** garde tout son historique, et le mono-poste n'a aucun délai. Ce qui
+reste vrai sous un compte collectif, et c'est la borne du remède : **dans** les cinq
+minutes, deux personnes sous le même login peuvent encore défaire l'une l'acte de l'autre.
+Le délai réduit la fenêtre, il ne sépare pas les personnes — rien ne le peut ici.
+
 ## Boucle
 
 - **API** : `GET /api/undo/prochain` (aperçu : `{evenement_id, description}` ou `null`) ·

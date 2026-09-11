@@ -391,7 +391,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
 - **Deux portées dérivées** — un personnage se voit par ses APPARITIONS (`_clause_personnage` ;
   celui qui n'apparaît nulle part reste visible, sans quoi on ne pourrait plus en créer) ;
   l'annulation (Ctrl+Z) se filtre par AGENT et non par collection, parce que la cible d'une
-  suppression n'existe plus — un filtre par album la rendrait inannulable.
+  suppression n'existe plus — un filtre par album la rendrait inannulable. Sous un compte
+  COLLECTIF, l'agent ne désigne plus une personne : elle se borne alors en plus dans le
+  TEMPS, cinq minutes (AUTH-6, `undo.DELAI_COLLECTIF_MINUTES`).
 
 **Le second cliquet, celui des SORTIES** (AUTH-5) : `tests/test_sorties_identite.py` sème
 trois sentinelles — un login, un nom lisible, un courriel — balaie 61 surfaces (49 routes

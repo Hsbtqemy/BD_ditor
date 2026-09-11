@@ -13,6 +13,7 @@ Les inversions font des mutations BRUTES (+ réindex FTS) sans repasser par les 
 elles rejournaliseraient (bruit + boucle). Un seul événement `annulation` est ajouté par undo.
 Périmètre : régions (créer/modifier/supprimer+cascade), annotations (note+tags), locuteur,
 présence. Hors périmètre (pour l'instant) : correction grammaticale, validation.
+Sous un compte COLLECTIF (AUTH-6), seuls les actes récents : `DELAI_COLLECTIF_MINUTES`.
 Cf. `docs/undo.md`.
 """
 from __future__ import annotations
@@ -22,7 +23,7 @@ import sqlite3
 from typing import Optional
 
 import journal
-from database import reindex_region, unindex_region
+from database import NATURE_COLLECTIF, reindex_region, unindex_region
 
 # Types d'événements et tables que l'undo sait inverser (le reste est ignoré : ni annulé,
 # ni bloquant — l'undo « saute » un acte non annulable et remonte au précédent).
@@ -63,6 +64,36 @@ def _charge(champ) -> Optional[dict]:
 # l'agent ANONYME, celui du mono-poste, qui est une valeur légitime en base.
 TOUS = object()
 
+# AUTH-6 — sous un compte COLLECTIF, Ctrl+Z ne remonte que les actes RÉCENTS. Un login
+# partagé est tenu par plusieurs personnes, en même temps ou tour à tour, et le filtre par
+# agent ne sépare plus « mes actes » de « ceux du collègue sous le même login » :
+# l'application ne voit que `Remote-User`, et ne doit pas fabriquer d'identité (AUTH-1).
+# Le TEMPS et non la session, parce qu'elle n'a aucune notion de session — et parce que le
+# vrai risque est de défaire ce qu'un autre a fait avant la pause, pas il y a trente
+# secondes. Cinq minutes, tranché par l'équipe le 2026-09-11 : le plus sûr des délais
+# proposés.
+DELAI_COLLECTIF_MINUTES = 5
+
+
+def _borne(conn: sqlite3.Connection, agent) -> Optional[str]:
+    """Date du journal (UTC, `datetime('now')`) avant laquelle un acte n'est plus annulable
+    par cet agent — ou None s'il n'y a pas de borne : compte nominatif, agent anonyme,
+    mono-poste. La nature se lit dans `utilisateur`, à UN endroit (`database.NATURES`) ; un
+    login que la table ne connaît pas est nominatif, comme le défaut de la colonne."""
+    if agent is TOUS or agent is None:
+        return None
+    row = conn.execute("SELECT nature FROM utilisateur WHERE login = ?", (agent,)).fetchone()
+    if row is None or row["nature"] != NATURE_COLLECTIF:
+        return None
+    return conn.execute("SELECT datetime('now', ?)",
+                        (f"-{DELAI_COLLECTIF_MINUTES} minutes",)).fetchone()[0]
+
+
+def est_borne(conn: sqlite3.Connection, agent) -> bool:
+    """L'annulation de cet agent est-elle bornée dans le temps ? La route s'en sert pour
+    dire POURQUOI il n'y a rien à annuler, sans recalculer la règle."""
+    return _borne(conn, agent) is not None
+
 
 def derniere_action_annulable(conn: sqlite3.Connection, agent=TOUS):
     """Événement HUMAIN le plus récent, d'un type/table annulable, non encore annulé
@@ -70,6 +101,8 @@ def derniere_action_annulable(conn: sqlite3.Connection, agent=TOUS):
 
     `agent` restreint aux actes de CETTE personne (AUTH-2). Ctrl+Z est un geste personnel :
     annuler l'acte d'un collègue à son insu serait une surprise, pas une fonctionnalité.
+    Sous un compte collectif, l'agent ne désigne plus une personne : la recherche s'arrête
+    donc aux `DELAI_COLLECTIF_MINUTES` dernières minutes (AUTH-6).
 
     Et c'est le seul filtre possible ici. Scoper par collection reviendrait à remonter de
     l'événement à sa région, puis à son album — or l'acte le plus important à pouvoir
@@ -81,6 +114,10 @@ def derniere_action_annulable(conn: sqlite3.Connection, agent=TOUS):
     if agent is not TOUS:
         ou = "  AND agent IS ? "                # `IS` et non `=` : gère l'agent NULL
         params = [agent]
+    borne = _borne(conn, agent)
+    if borne is not None:
+        ou += "  AND date >= ? "                # même format que la colonne : comparaison de chaînes
+        params.append(borne)
     return conn.execute(
         f"SELECT * FROM evenement "
         f"WHERE agent_type = 'humain' "
@@ -241,6 +278,10 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
         e = conn.execute("SELECT * FROM evenement WHERE id = ?", (evenement_id,)).fetchone()
         # Viser un événement par son id ne contourne pas la règle : on n'annule que le sien.
         if e is not None and agent is not TOUS and e["agent"] != agent:
+            e = None
+        # … ni le délai d'un compte collectif : nommer un acte ne le rajeunit pas.
+        borne = _borne(conn, agent)
+        if e is not None and borne is not None and (e["date"] or "") < borne:
             e = None
     if e is None:
         return None
