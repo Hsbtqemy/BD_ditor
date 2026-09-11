@@ -5,9 +5,10 @@ statut: livré
 
 # ANA-6 — détails de recherche laissés de côté par B2/B3
 
-**Arrêté sur** — l'audit e2e de la concordance annotée déclare son périmètre ; commit
-`3f605ab`, 11 septembre. Le rendu des tags et de la note (colonne de tags en aligné, tout
-en liste), choisi sur maquette entre cinq mesures, est au commit `03ebf9e`.
+**Arrêté sur** — la passe de revue : un joker seul (« * ») affiche l'invite au lieu d'une
+erreur, et la règle de la colonne de tags a enfin son test ; commit `076c7ba`,
+11 septembre. Le rendu des tags et de la note (colonne de tags en aligné, tout en liste),
+choisi sur maquette entre cinq mesures, est au commit `03ebf9e`.
 
 ## Reste
 
@@ -42,12 +43,18 @@ puces, et D ne coûte qu'une gouttière de 12 px de plus. Relevé en répondant 
 aucune ligne n'a de tag, d'où la règle qui ne la pose que lorsqu'une ligne affichée a
 quelque chose à y mettre.
 
-**Deux défauts trouvés en route, un corrigé, un signalé.**
+**Trois défauts trouvés en route : deux corrigés, un signalé.**
 
 - *Corrigé* (`1a1bc8a`) : l'export de la concordance PLANTAIT sur « cœur ». Le lemme saisi
   finissait tel quel dans `Content-Disposition`, qui s'encode en latin-1 ; « œ » n'y est
   pas, d'où un `UnicodeEncodeError` et un 500. Le joker `*` aurait mordu au commit
   suivant, Windows le refusant dans un nom de fichier.
+- *Corrigé à la passe de revue* (`076c7ba`), et créé par le joker lui-même : `*` tapé seul
+  passait la vérification cliente, puisque le champ n'était pas vide. La requête partait
+  au serveur, qui la refuse en 422, et l'écran laissait l'ancien KWIC sous
+  « Erreur : … », avec un export armé. Un joker seul se lit désormais comme un champ vide.
+  La même passe a éprouvé le chantier par mutation : douze mutations, douze tuées, dix
+  côté serveur et deux côté navigateur.
 - *Signalé, NON traité* : la Recherche montre à un lecteur le tag LOCAL d'une collection
   qu'il ne lit pas — mesuré dans le JSON de `/api/recherche` ET dans son export CSV, alors
   que `/api/tags` le lui masque. `_recherche_rows` joint les tags d'une région sans
@@ -67,6 +74,18 @@ la suite complète a dit — la passe navigateur ne collecte pas la garde des su
 **Deux réglages retenus faute d'avis contraire** : le plafond de puces en aligné (deux) et
 le repère de note (📝, le signe que la Recherche emploie déjà). Les changer ne touche que
 `KWIC_PUCES` et `kwicRepere` dans `static/exploration.js`.
+
+**Deux limites connues, écrites plutôt que corrigées.**
+
+- L'étiquette « case » d'un tag hérité nomme le parent par le seul type observé, pas par
+  son type réel : `_validate_parent` n'impose rien au parent. Mesuré sur la base de
+  développement, les 81 liens de parenté sont tous case → bulle, et tout le dépôt dit
+  « case parente » pour cet héritage. Nommer le type réel coûterait une jointure pour un
+  cas qu'on n'observe pas.
+- En aligné, les tags propres passent avant les hérités. Quand c'est l'hérité qui explique
+  la présence de la ligne (un filtre par tag, en portée héritée), il peut donc finir
+  derrière « +N ». Il reste dans l'infobulle et dans le texte dit au lecteur d'écran, et le
+  rendu en liste le montre toujours.
 
 Ces trois points étaient les « différés » notés en toutes lettres au moment de livrer
 ANA-3 et ANA-2 — ils ne venaient pas d'un audit mais de la revue de livraison.
