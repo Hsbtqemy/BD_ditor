@@ -198,7 +198,7 @@ L'**Exploration** mesure au lieu de retrouver, en quatre vues :
 | **Distribution** | quels lemmes, catégories ou traits morphologiques, et à quelle fréquence |
 | **Concordance (KWIC)** | où exactement, avec le contexte de chaque occurrence, ses tags (ceux de la case compris, marqués « case ») et sa note — et un lien vers l'Atelier. Un lemme terminé par `*` cherche par préfixe : `otage*` trouve « otage » et « otages » |
 | **Croisement (2D)** | une facette contre une autre, en tableau de contingence avec carte de chaleur ; une cellule s'ouvre en concordance |
-| **Comparaison A / B** | ce qui est sur-représenté dans un sous-corpus par rapport à un autre |
+| **Comparaison A / B** | ce qui est sur-représenté dans un sous-corpus par rapport à un autre. « Classer par » choisit la mesure : l'écart de fréquence relative, ou la **keyness** (log-vraisemblance), qui fait remonter un mot rare mais propre à un côté plutôt qu'un mot fréquent partout. L'export trie comme l'écran |
 
 L'état de la page est dans l'URL : une vue se partage par simple copier-coller du lien.
 

@@ -63,6 +63,7 @@ async function loadTags() {
 function champ() { return $("#f-champ").value; }
 function vue() { return $("#f-vue").value; }   // distribution | concordance | comparaison
 function kwicStyle() { return $("#f-kwic-style").value; }
+function metrique() { return $("#f-metrique").value; }   // comparaison : diff | ll (ANA-4)
 
 /* Filtres d'un côté (préfixe "f" = A, "b" = B) → {album,type,pos,morph,provenance}. */
 function sideFilters(pre) {
@@ -233,6 +234,7 @@ function stateParams() {
     const b = sideFilters("b");
     for (const [k, val] of Object.entries(b)) if (val) p.set("b_" + k, val);
     selectedAttributs("b").forEach((val) => p.append("b_attributs", val));
+    if (metrique() !== "diff") p.set("metrique", metrique());   // défaut omis, comme tag_scope
   }
   if (tagScope() === "propre") p.set("tag_scope", "propre");   // hérité = défaut, omis de l'URL
   if (RETOUR) p.set("retour", RETOUR);   // préservé : le ← Retour survit aux changements de filtre
@@ -301,6 +303,7 @@ function run() {
     selectedAttributs("f").forEach((val) => p.append("a_attributs", val));
     selectedAttributs("b").forEach((val) => p.append("b_attributs", val));
     if (tagScope() === "propre") p.set("tag_scope", "propre");
+    if (metrique() !== "diff") p.set("metrique", metrique());   // l'export trie comme l'écran
     armerExport("comparaison", p);
     apiGet("/api/analyse/comparaison?" + p.toString()).then(done(renderComparaison)).catch(fail);
   } else if (v === "concordance") {
@@ -369,16 +372,19 @@ function renderDist(res) {
 }
 
 /* ---------------- Rendu : comparaison A / B ---------------- */
-function compColumn(items, side, filtres, attributs) {
+/* `cle` = la mesure qui a classé la liste (`diff` ou `ll`) : la barre en montre la force,
+   sans quoi un classement par keyness s'afficherait avec les longueurs de l'autre mesure. */
+function compColumn(items, side, filtres, attributs, cle) {
   if (!items.length) return '<div class="muted small">—</div>';
-  const max = Math.max(...items.map((x) => Math.abs(x.diff))) || 1;
+  const max = Math.max(...items.map((x) => Math.abs(x[cle]))) || 1;
   return items.map((x) => {
     const v = x.valeur, label = v === "" ? "∅ (aucun trait)" : v;
-    const w = (100 * Math.abs(x.diff) / max).toFixed(1);
+    const w = (100 * Math.abs(x[cle]) / max).toFixed(1);
+    const g2 = cle === "ll" ? ` · G² ${Math.abs(x.ll)}` : "";
     const inner =
       `<span class="dist-label">${esc(label)}</span>` +
       `<span class="dist-bar"><i class="bar-${side}" style="width:${w}%"></i></span>` +
-      `<span class="dist-freq" title="A:${x.freq_a} · B:${x.freq_b}">${x.freq_a}/${x.freq_b}</span>`;
+      `<span class="dist-freq" title="A:${x.freq_a} · B:${x.freq_b}${g2}">${x.freq_a}/${x.freq_b}</span>`;
     return v === ""
       ? `<div class="dist-row">${inner}</div>`
       : `<a class="dist-row" href="${esc(drillUrl(v, filtres, attributs))}" title="Voir les emplois en contexte">${inner}</a>`;
@@ -387,18 +393,22 @@ function compColumn(items, side, filtres, attributs) {
 
 function renderComparaison(res) {
   const box = $("#comparaison");
+  const cle = res.metrique === "ll" ? "ll" : "diff";
+  const mesure = cle === "ll"
+    ? "keyness : log-vraisemblance G², qui pèse l'écart par le nombre d'occurrences"
+    : "différence de fréquence relative";
   $("#dist-info").innerHTML =
     `Comparaison par <b>${esc(res.champ)}</b> — A : ${res.total_a} occ. · B : ${res.total_b} occ. ` +
-    "(différence de fréquence relative ; cliquer pour voir en contexte)";
+    `(${mesure} ; cliquer pour voir en contexte)`;
   if (!res.total_a && !res.total_b) {
     box.innerHTML = '<div class="muted small">Aucune donnée dans ces sous-corpus.</div>';
     return;
   }
   box.innerHTML =
     `<div class="comp-col col-a"><h3 class="comp-h">▲ Sur-représentés en A</h3>` +
-      `<div class="dist">${compColumn(res.sur_a, "a", sideFilters("f"), selectedAttributs("f"))}</div></div>` +
+      `<div class="dist">${compColumn(res.sur_a, "a", sideFilters("f"), selectedAttributs("f"), cle)}</div></div>` +
     `<div class="comp-col col-b"><h3 class="comp-h">▲ Sur-représentés en B</h3>` +
-      `<div class="dist">${compColumn(res.sur_b, "b", sideFilters("b"), selectedAttributs("b"))}</div></div>`;
+      `<div class="dist">${compColumn(res.sur_b, "b", sideFilters("b"), selectedAttributs("b"), cle)}</div></div>`;
 }
 
 /* ---------------- Rendu : concordance (KWIC) ---------------- */
@@ -578,6 +588,7 @@ function syncControls() {
   $("#sub-b").hidden = v !== "comparaison";
   document.querySelectorAll(".sub-title").forEach((el) => { el.hidden = v !== "comparaison"; });
   $("#wrap-champ").hidden = v === "concordance" || v === "croisement";  // « distribuer par » : distrib./comp.
+  $("#wrap-metrique").hidden = v !== "comparaison";  // « classer par » : comparaison seule (ANA-4)
   $("#wrap-lemme").hidden = v !== "concordance";     // champ lemme/mot en concordance
   $("#wrap-kwic").hidden = v !== "concordance";      // bascule aligné/liste en concordance
   $("#wrap-axes").hidden = v !== "croisement";       // sélecteurs d'axes en croisement
@@ -593,6 +604,7 @@ function restoreFromUrl() {
   $("#f-champ").value = p.get("champ") || "lemme";
   $("#f-lemme").value = p.get("lemme") || "";
   $("#f-kwic-style").value = p.get("kwic") || "aligne";
+  $("#f-metrique").value = p.get("metrique") === "ll" ? "ll" : "diff";   // inconnu → défaut
   $("#f-axe-x").value = p.get("axe_x") || "pos";     // options déjà peuplées (populateAxes)
   $("#f-axe-y").value = p.get("axe_y") || "type";
   const setSide = (pre, keyfn) => {
@@ -969,6 +981,7 @@ async function setup() {
   $("#f-champ").onchange = () => { syncControls(); run(); };
   $("#f-vue").onchange = () => { syncControls(); run(); };
   $("#f-kwic-style").onchange = run;               // bascule aligné/liste (re-rend)
+  $("#f-metrique").onchange = run;                 // comparaison : mesure de classement
   $("#f-axe-x").onchange = run;                    // croisement : axes
   $("#f-axe-y").onchange = run;
   // Les puces d'attribut câblent leur propre clic (cf. renderAttrChips) — absentes d'ici.

@@ -22,6 +22,7 @@ import journal
 from config import UPOS_TAGS
 from database import citations_regions, reindex_region
 from pipeline import nlp
+from vraisemblance import log_vraisemblance
 
 from socle import (
     TokenCorrectionIn, _auteur, _clause_lemme, _csv_response, _csv_safe, _get_dimension,
@@ -406,23 +407,27 @@ def analyse_comparaison(champ: str = "lemme",
                         b_provenance: Optional[str] = None, b_auteur: Optional[str] = None,
                         b_tags: Optional[list[str]] = Query(None),
                         b_personnage: Optional[int] = None, b_attributs: Optional[list[int]] = Query(None),
-                        tag_scope: str = "herite",
+                        tag_scope: str = "herite", metrique: str = "diff",
                         limit: int = 50, conn: sqlite3.Connection = Depends(db),
                         portee: autorisation.Portee = Depends(portee_courante)):
     """Compare deux sous-corpus A et B : valeurs (lemme|pos|morph) les plus
     SUR-représentées dans chacun, par différence de fréquence RELATIVE (rel = freq /
-    total du sous-corpus → comparable malgré des tailles différentes)."""
+    total du sous-corpus → comparable malgré des tailles différentes) — ou, avec
+    `metrique=ll`, par keyness (log-vraisemblance, ANA-4), qui pèse l'écart par le nombre
+    d'occurrences au lieu de favoriser les mots fréquents. Le côté ne dépend pas du
+    choix : les deux mesures ont toujours le même signe."""
     out, ta, tb = _comparaison_rows(
         conn, portee, champ, tag_scope,
         (a_album, a_type, a_pos, a_morph, a_provenance, a_tags, a_personnage, a_attributs, a_auteur),
-        (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur))
+        (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur),
+        metrique)
     limit = max(1, min(limit, PLAFOND_COMPARAISON))
-    return {"champ": champ, "total_a": ta, "total_b": tb,
-            "sur_a": [x for x in out[:limit] if x["diff"] > 0],
-            "sur_b": [x for x in reversed(out[-limit:]) if x["diff"] < 0]}
+    return {"champ": champ, "metrique": metrique, "total_a": ta, "total_b": tb,
+            "sur_a": [x for x in out[:limit] if x[metrique] > 0],
+            "sur_b": [x for x in reversed(out[-limit:]) if x[metrique] < 0]}
 
 
-def _comparaison_rows(conn, portee, champ, tag_scope, cote_a, cote_b):
+def _comparaison_rows(conn, portee, champ, tag_scope, cote_a, cote_b, metrique="diff"):
     """Cœur de la comparaison A/B — PARTAGÉ par la route JSON et son export CSV (ANA-7).
 
     Rend la liste ENTIÈRE, triée par différence décroissante, et les deux totaux. La
@@ -430,9 +435,15 @@ def _comparaison_rows(conn, portee, champ, tag_scope, cote_a, cote_b):
     JSON coupe en DEUX listes (`sur_a`, `sur_b`), l'export rend une ligne par valeur —
     deux formes de la même mesure, qui doivent partir du même calcul faute de quoi le
     fichier et l'écran finiraient par se contredire sur les valeurs de bord.
+
+    `metrique` choisit l'ORDRE (ANA-4) : `diff`, l'écart de fréquence relative, ou `ll`, la
+    log-vraisemblance (`vraisemblance.py`). Chaque ligne porte les deux, si bien que le
+    fichier se retrie sur l'autre sans rien recalculer.
     """
     if champ not in ("lemme", "pos", "morph"):
         raise HTTPException(422, "champ invalide (lemme | pos | morph).")
+    if metrique not in ("diff", "ll"):
+        raise HTTPException(422, "metrique invalide (diff | ll).")
     (a_album, a_type, a_pos, a_morph, a_provenance, a_tags, a_personnage, a_attributs, a_auteur) = cote_a
     (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur) = cote_b
     _valider_facette(conn, portee, a_personnage, a_attributs)
@@ -448,8 +459,9 @@ def _comparaison_rows(conn, portee, champ, tag_scope, cote_a, cote_b):
         rb = fb / tb if tb else 0.0
         out.append({"valeur": v, "freq_a": fa, "freq_b": fb,
                     "rel_a": round(ra, 6), "rel_b": round(rb, 6),
-                    "diff": round(ra - rb, 6)})
-    out.sort(key=lambda x: x["diff"], reverse=True)
+                    "diff": round(ra - rb, 6),
+                    "ll": round(log_vraisemblance(fa, fb, ta, tb), 4)})
+    out.sort(key=lambda x: x[metrique], reverse=True)
     return out, ta, tb
 
 
@@ -467,7 +479,7 @@ def analyse_comparaison_export(champ: str = "lemme",
                                b_tags: Optional[list[str]] = Query(None),
                                b_personnage: Optional[int] = None,
                                b_attributs: Optional[list[int]] = Query(None),
-                               tag_scope: str = "herite",
+                               tag_scope: str = "herite", metrique: str = "diff",
                                conn: sqlite3.Connection = Depends(db),
                                portee: autorisation.Portee = Depends(portee_courante)):
     """Export CSV de la comparaison A/B — MÊMES critères que `/api/analyse/comparaison`.
@@ -482,7 +494,8 @@ def analyse_comparaison_export(champ: str = "lemme",
     out, ta, tb = _comparaison_rows(
         conn, _portee_d_export(portee), champ, tag_scope,
         (a_album, a_type, a_pos, a_morph, a_provenance, a_tags, a_personnage, a_attributs, a_auteur),
-        (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur))
+        (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur),
+        metrique)
     lignes = out[:PLAFOND_EXPORT]
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator=chr(10))
@@ -490,11 +503,13 @@ def analyse_comparaison_export(champ: str = "lemme",
     # Une telle ligne décalerait l'en-tête pour un tableur — le défaut que le nom de
     # fichier a justement été choisi pour éviter sur la troncature. La redondance coûte
     # deux colonnes constantes et rend le fichier lisible des deux côtés sans convention.
-    w.writerow(["valeur", "freq_a", "rel_a", "freq_b", "rel_b", "diff",
+    # ANA-4 : les DEUX mesures en colonnes, triées selon celle de l'écran — le fichier se
+    # retrie sur l'autre sans recalcul.
+    w.writerow(["valeur", "freq_a", "rel_a", "freq_b", "rel_b", "diff", "ll",
                 "total_a", "total_b"])
     for x in lignes:
         w.writerow([_csv_safe(x["valeur"]), x["freq_a"], x["rel_a"],
-                    x["freq_b"], x["rel_b"], x["diff"], ta, tb])
+                    x["freq_b"], x["rel_b"], x["diff"], x["ll"], ta, tb])
     return _csv_response(buf.getvalue(), _nom_export("comparaison", champ, lignes))
 
 
