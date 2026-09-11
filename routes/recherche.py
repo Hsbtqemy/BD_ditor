@@ -98,15 +98,19 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
         # (drill Exploration → Recherche) ne perde pas les tokens tagués au niveau case.
         cible = ("a2.region_id = r.id" if tag_scope == "propre"
                  else "a2.region_id IN (r.id, r.parent_id)")
+        # Un tag qu'on ne lit pas ne filtre rien : sans la portée des termes, chercher son
+        # nom dirait quelles régions le portent, sans jamais l'afficher.
+        ou_tag, p_tag = portee.clause_terme("tg.collection_id")
         wanted = [_norm_tag(t) for t in tags if _norm_tag(t)]
         for label in wanted:
             where.append(
                 "EXISTS (SELECT 1 FROM annotation_tags at "
                 "        JOIN tags tg ON tg.id = at.tag_id "
                 "        JOIN annotations a2 ON a2.id = at.annotation_id "
-                f"       WHERE {cible} AND tg.label = ?)"
+                f"       WHERE {cible} AND tg.label = ? AND {ou_tag})"
             )
             params.append(label)
+            params.extend(p_tag)
 
     # Facettes GRAMMATICALES (lot 3) : la région contient-elle un token (valeur
     # EFFECTIVE) répondant aux critères ? EXISTS sur tokens_effectifs, scopé à la région.
@@ -155,14 +159,19 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
     except sqlite3.OperationalError as exc:
         raise HTTPException(400, f"Requête de recherche invalide : {exc}")
 
-    # Joint les tags de chaque résultat.
+    # Joint les tags de chaque résultat — ceux dont on lit le TERME, pas tous. La portée
+    # d'album ne suffit pas : un tag peut devenir local après avoir été posé, et un album
+    # vit dans plusieurs collections, donc une région qu'on lit peut porter le tag d'une
+    # collection qu'on ne lit pas. Son nom est un morceau de grille d'analyse, que
+    # `/api/tags` masquait déjà et que la Recherche montrait — ici comme dans son CSV.
+    ou_tag, p_tag = portee.clause_terme("tg.collection_id")
     for row in results:
         row["tags"] = [t["label"] for t in _rows(conn.execute(
-            """SELECT tg.label FROM annotation_tags at
+            f"""SELECT tg.label FROM annotation_tags at
                JOIN tags tg ON tg.id = at.tag_id
                JOIN annotations an ON an.id = at.annotation_id
-               WHERE an.region_id = ? ORDER BY tg.label""",
-            (row["region_id"],),
+               WHERE an.region_id = ? AND {ou_tag} ORDER BY tg.label""",
+            (row["region_id"], *p_tag),
         ))]
         row["url_web"] = "/" + row["chemin_web"] if row["chemin_web"] else None
     cits = citations_regions(conn, [row["region_id"] for row in results])

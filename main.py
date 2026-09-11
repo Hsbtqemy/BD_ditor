@@ -1636,21 +1636,24 @@ def export_json(album_id: int, conn: sqlite3.Connection = Depends(db),
 def export_csv(album_id: int, conn: sqlite3.Connection = Depends(db),
                portee: autorisation.Portee = Depends(portee_courante)):
     _get_album(conn, portee, album_id)
+    # Lire l'album ne donne pas à lire tous les tags qu'il porte : un album vit dans
+    # plusieurs collections, et un tag local à l'une qu'on ne lit pas y reste attaché.
+    ou_tag, p_tag = portee.clause_terme("tg.collection_id")
     rows = _rows(conn.execute(
-        """SELECT a.titre AS album, p.numero AS ordre_import, r.id AS region_id,
+        f"""SELECT a.titre AS album, p.numero AS ordre_import, r.id AS region_id,
                   r.type, r.parent_id, r.x, r.y, r.w, r.h, r.ordre, r.source,
                   r.ocr_texte,
                   an.note,
                   (SELECT GROUP_CONCAT(tg.label, '|')
                      FROM annotation_tags at JOIN tags tg ON tg.id = at.tag_id
-                    WHERE at.annotation_id = an.id) AS tags
+                    WHERE at.annotation_id = an.id AND {ou_tag}) AS tags
            FROM regions r
            JOIN planches p ON p.id = r.planche_id
            JOIN albums a ON a.id = p.album_id
            LEFT JOIN annotations an ON an.region_id = r.id
            WHERE a.id = ?
            ORDER BY p.numero, r.parent_id IS NOT NULL, r.ordre, r.id""",
-        (album_id,),
+        (*p_tag, album_id),
     ))
     # Deux rôles distincts : `ordre_import` = page PHYSIQUE (position d'import, garde
     # le paratexte groupable) ; `planche` = numéro ÉDITORIAL cité (vide pour le

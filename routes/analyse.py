@@ -88,6 +88,9 @@ def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags=No
     if tags:
         cible = ("a2.region_id = r.id" if tag_scope == "propre"
                  else "a2.region_id IN (r.id, r.parent_id)")
+        # Un tag qu'on ne lit pas ne filtre rien — la même règle que `_joindre_tags`, qui
+        # ne l'affiche pas : sinon son nom resterait un critère opérant sans être visible.
+        ou_tag, p_tag = portee.clause_terme("tg.collection_id")
         for label in (_norm_tag(t) for t in tags):
             if not label:
                 continue
@@ -95,8 +98,9 @@ def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags=No
                 "EXISTS (SELECT 1 FROM annotation_tags at2 "
                 "        JOIN tags tg ON tg.id = at2.tag_id "
                 "        JOIN annotations a2 ON a2.id = at2.annotation_id "
-                f"       WHERE {cible} AND tg.label = ?)")
+                f"       WHERE {cible} AND tg.label = ? AND {ou_tag})")
             params.append(label)
+            params.extend(p_tag)
     # Filtre par LOCUTEUR (ANN-2) : la bulle est attribuée à ce personnage.
     if personnage is not None:
         where.append("EXISTS (SELECT 1 FROM bulle_locuteur bl "
@@ -553,10 +557,11 @@ _AXES_SIMPLES = {
 }
 
 
-def _axe_croisement(kind, sfx, tag_scope, conn):
+def _axe_croisement(kind, sfx, tag_scope, conn, portee):
     """Un axe → (joins, expr_valeur, expr_cle, params, filtre_concordance, libellé). `sfx`
     (x|y) désambiguïse les alias entre les deux axes. `expr_cle` = clé de drill (id pour
-    locuteur/dimension, sinon = la valeur)."""
+    locuteur/dimension, sinon = la valeur). `portee` ne sert qu'à l'axe des tags : ses
+    libellés SONT des termes, et un terme qu'on ne lit pas n'a pas à devenir une ligne."""
     if kind in _AXES_SIMPLES:
         expr, filtre, lib = _AXES_SIMPLES[kind]
         return "", expr, expr, [], filtre, lib
@@ -566,13 +571,18 @@ def _axe_croisement(kind, sfx, tag_scope, conn):
                  f"LEFT JOIN personnages {lo} ON {lo}.id = {bl}.personnage_id")
         return joins, f"{lo}.nom", f"{lo}.id", [], "personnage", "locuteur"
     if kind == "tag":
-        an, at, tg = f"anx_{sfx}", f"atx_{sfx}", f"tgx_{sfx}"
+        an, at, tg, tz = f"anx_{sfx}", f"atx_{sfx}", f"tgx_{sfx}", f"tzx_{sfx}"
         cible = (f"{an}.region_id = r.id" if tag_scope == "propre"
                  else f"{an}.region_id IN (r.id, r.parent_id)")
+        # La portée des termes se pose sur la LIAISON, pas sur le tag joint : posée sur le
+        # tag, une région portant un tag lisible ET un illisible produirait une seconde
+        # ligne sans libellé, comptée comme une région sans tag.
+        ou_tag, p_tag = portee.clause_terme(f"{tz}.collection_id")
         joins = (f"LEFT JOIN annotations {an} ON {cible} "
                  f"LEFT JOIN annotation_tags {at} ON {at}.annotation_id = {an}.id "
+                 f"AND {at}.tag_id IN (SELECT {tz}.id FROM tags {tz} WHERE {ou_tag}) "
                  f"LEFT JOIN tags {tg} ON {tg}.id = {at}.tag_id")
-        return joins, f"{tg}.label", f"{tg}.label", [], "tags", "tag"
+        return joins, f"{tg}.label", f"{tg}.label", p_tag, "tags", "tag"
     if kind.startswith("dim:"):
         try:
             dim_id = int(kind[4:])
@@ -635,8 +645,8 @@ def _croisement_data(conn, portee, axe_x, axe_y, album, type, pos, lemme, morph,
     """
     limit = max(1, min(limit, plafond))
     _valider_facette(conn, personnage, attributs)
-    jx, ex, cx, px, fx, lx = _axe_croisement(axe_x, "x", tag_scope, conn)
-    jy, ey, cy, py, fy, ly = _axe_croisement(axe_y, "y", tag_scope, conn)
+    jx, ex, cx, px, fx, lx = _axe_croisement(axe_x, "x", tag_scope, conn, portee)
+    jy, ey, cy, py, fy, ly = _axe_croisement(axe_y, "y", tag_scope, conn, portee)
     where, wparams, _n = _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags, tag_scope,
                                       personnage, attributs, auteur)
     sql = (f"SELECT {ex} AS vx, {cx} AS cx, {ey} AS vy, {cy} AS cy, COUNT(*) AS n "

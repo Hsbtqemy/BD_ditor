@@ -650,6 +650,112 @@ def test_une_ligne_de_concordance_tait_un_tag_local_illisible(client, db_path, d
     assert tags_vus({"Remote-User": "bob"}) == {"commun"}
 
 
+def test_un_resultat_de_recherche_tait_un_tag_local_illisible(client, db_path, deux_albums,
+                                                             derriere_proxy):
+    """La même règle que la concordance, sur la Recherche — où elle manquait.
+
+    `_recherche_rows` joignait les tags de chaque résultat sans la portée des termes : un
+    tag local à une collection qu'on ne lit pas sortait dans `/api/recherche` ET dans son
+    export CSV, alors que `/api/tags` le masquait. Deux chemins de sortie, vérifiés tous
+    les deux. La garde anti-vacuité exige que l'administrateur voie les DEUX tags d'abord,
+    dans le JSON comme dans le fichier.
+    """
+    from conftest import ADMIN
+    _poser_tag(db_path, "prive", deux_albums["c2"])      # local à la collection interdite
+    r1 = deux_albums["r1"]["id"]
+    client.put(f"/api/regions/{r1}/annotation",
+               json={"note": "", "tags": ["prive", "commun"]}, headers=ADMIN)
+
+    def sorties(h):
+        rep = client.get("/api/recherche", params={"q": "MOTSECRET"}, headers=h)
+        vus = {t for res in rep.json()["results"] for t in res["tags"]}
+        fichier = client.get("/api/recherche/export.csv", params={"q": "MOTSECRET"},
+                             headers=h).text
+        return vus, fichier
+
+    vus, fichier = sorties(ADMIN)
+    assert vus == {"prive", "commun"}
+    assert "prive" in fichier and "commun" in fichier
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    vus, fichier = sorties({"Remote-User": "bob"})
+    assert vus == {"commun"}
+    assert "commun" in fichier and "prive" not in fichier
+
+
+@pytest.fixture
+def tag_illisible(client, db_path, deux_albums, derriere_proxy):
+    """Une région que Bob lit, portant un tag GLOBAL et un tag LOCAL à la collection qu'il
+    ne lit pas, plus un token pour que les surfaces d'analyse la voient. L'annotation est
+    posée par un administrateur, AVANT l'accès de Bob : c'est l'état réel — un tag devenu
+    local après avoir été posé, sur un album rangé ailleurs aussi."""
+    import sqlite3
+    from conftest import ADMIN
+    _poser_tag(db_path, "prive", deux_albums["c2"])
+    r1 = deux_albums["r1"]["id"]
+    client.put(f"/api/regions/{r1}/annotation",
+               json={"note": "", "tags": ["prive", "commun"]}, headers=ADMIN)
+    conn = sqlite3.connect(db_path)                      # APRÈS l'annotation : elle réindexe
+    try:
+        conn.execute("INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
+                     "VALUES (?, 0, 'DIS', 'dire', 'VERB', '')", (r1,))
+        conn.commit()
+    finally:
+        conn.close()
+    _ouvrir(db_path, deux_albums["c1"], "bob")
+    return {**deux_albums, "bob": {"Remote-User": "bob"}}
+
+
+def test_un_tag_illisible_ne_filtre_rien(client, tag_illisible):
+    """Le filtre par nom de tag était un ORACLE : il n'affichait jamais le tag, mais
+    chercher son nom disait quelles régions le portent. Deux cœurs, deux filtres — la
+    Recherche, et `_analyse_filtres` que partagent les quatre surfaces d'analyse (éprouvé
+    ici par la concordance). Anti-vacuité : pour qui le lit, le filtre TROUVE ; et le tag
+    global filtre toujours pour Bob — le filtre n'est pas simplement cassé."""
+    from conftest import ADMIN
+    bob = tag_illisible["bob"]
+
+    def trouve(h, tag):
+        rech = client.get("/api/recherche", params={"tags": tag}, headers=h).json()
+        conc = client.get("/api/analyse/concordance", params={"tags": tag}, headers=h).json()
+        return rech["count"], conc["count"]
+
+    assert all(n >= 1 for n in trouve(ADMIN, "prive"))
+    assert trouve(bob, "prive") == (0, 0)
+    assert all(n >= 1 for n in trouve(bob, "commun"))
+
+
+def test_le_csv_d_un_album_tait_un_tag_illisible(client, tag_illisible):
+    """Lire l'album ne donne pas à lire tous les tags qu'il porte. L'export CSV d'un album
+    a sa propre requête — il ne passe ni par la Recherche ni par l'Atelier."""
+    from conftest import ADMIN
+    a1 = tag_illisible["a1"]["id"]
+
+    def fichier(h):
+        rep = client.get("/api/export/csv", params={"album_id": a1}, headers=h)
+        assert rep.status_code == 200, rep.text
+        return rep.text
+
+    assert "prive" in fichier(ADMIN)
+    vu = fichier(tag_illisible["bob"])
+    assert "commun" in vu and "prive" not in vu
+
+
+def test_le_croisement_ne_fait_pas_d_un_tag_illisible_une_ligne(client, tag_illisible):
+    """Sur l'axe des tags, chaque ligne du tableau EST un terme. Le cœur est partagé par
+    la route JSON et son export CSV : les deux sont couverts d'un coup."""
+    from conftest import ADMIN
+
+    def libelles(h):
+        rep = client.get("/api/analyse/croisement",
+                         params={"axe_x": "tag", "axe_y": "type"}, headers=h)
+        assert rep.status_code == 200, rep.text
+        return {x["libelle"] for x in rep.json()["x"]}
+
+    assert {"prive", "commun"} <= libelles(ADMIN)
+    vus = libelles(tag_illisible["bob"])
+    assert "commun" in vus and "prive" not in vus
+
+
 def test_creer_un_terme_en_lecture_seule_est_refuse(client, db_path, deux_albums,
                                                     derriere_proxy):
     """403 : enrichir un vocabulaire que tout le monde partage suppose de pouvoir écrire
