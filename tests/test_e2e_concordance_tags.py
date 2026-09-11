@@ -41,7 +41,8 @@ NOTE ="Premier ultimatum ; le cadrage serré de la case le souligne."
 def corpus_annote(live_server):
     """Une case taguée « colère » ; dedans, une bulle à TROIS tags propres et une note ;
     à côté, une bulle nue. Les deux bulles disent « POUVOIR ABSOLU » : c'est le texte dont
-    `test_e2e_a11y` sait déjà que spaCy tire le lemme « pouvoir »."""
+    `test_e2e_a11y` sait déjà que spaCy tire le lemme « pouvoir ». Une troisième bulle, nue
+    elle aussi, dit « SILENCE TOTAL » : une concordance dont AUCUNE ligne n'a de tag."""
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
     try:
         aid = c.post("/api/albums", json={"titre": "Concordance annotée"}).json()["id"]
@@ -54,10 +55,13 @@ def corpus_annote(live_server):
                                "parent_id": case}).json()["id"]
         nue = c.post(f"/api/planches/{pid}/regions",
                      json={"type": "bulle", "x": 150, "y": 10, "w": 120, "h": 80}).json()["id"]
+        muette = c.post(f"/api/planches/{pid}/regions",
+                        json={"type": "bulle", "x": 150, "y": 100, "w": 120, "h": 80}).json()["id"]
         c.put(f"/api/regions/{case}/annotation", json={"note": "", "tags": ["colère"]})
         for rid in (annotee, nue):
             # Le premier OCR charge spaCy À FROID : même marge que le décor de test_e2e_a11y.
             c.put(f"/api/regions/{rid}", json={"ocr_texte": "POUVOIR ABSOLU"}, timeout=180)
+        c.put(f"/api/regions/{muette}", json={"ocr_texte": "SILENCE TOTAL"}, timeout=180)
         c.put(f"/api/regions/{annotee}/annotation",
               json={"note": NOTE, "tags": ["menace", "refus", "ironie"]})
     finally:
@@ -106,6 +110,34 @@ def test_concordance_en_liste_dit_tout(page, corpus_annote, theme):
     assert NOTE in page.locator("#kwic .kwic-note").inner_text()
     viol = _audit(page)
     assert not viol, f"Concordance en liste annotée ({theme}) :\n{_fmt(viol)}"
+
+
+def test_la_colonne_de_tags_part_quand_aucune_ligne_n_a_rien_a_y_mettre(page, corpus_annote):
+    """La 5e colonne ne se pose que si une ligne AFFICHÉE a un tag ou une note : sinon elle
+    coûterait une gouttière vide à chaque concordance d'un corpus non annoté. Le test part
+    d'un rendu qui l'a (« pouvoir »), pour prouver qu'elle se RETIRE, pas seulement qu'elle
+    n'apparaît pas — et le préfixe `silen*` exerce le joker au passage."""
+    _concordance(page, corpus_annote, "aligne")
+    assert "kwic-tags" in page.locator("#kwic").get_attribute("class")
+    page.fill("#f-lemme", "silen*")
+    page.wait_for_function(
+        "() => document.querySelectorAll('#kwic .kwic-row').length === 1", timeout=8000)
+    assert "kwic-tags" not in page.locator("#kwic").get_attribute("class")
+    assert page.locator("#kwic .kw-tags").count() == 0
+
+
+def test_un_joker_seul_invite_au_lieu_d_echouer(page, corpus_annote):
+    """`*` seul n'est pas un préfixe, et le serveur le refuse (422). Le client doit le lire
+    comme un champ vide : l'invite, et non « Erreur : » sous l'ancien KWIC resté à l'écran,
+    avec un export armé sur un fichier voué à l'échec."""
+    _concordance(page, corpus_annote, "aligne")
+    assert page.locator("#btn-export-analyse").is_enabled()
+    page.fill("#f-lemme", "*")
+    page.wait_for_function(
+        "() => document.querySelector('#kwic').textContent.includes('Précisez')", timeout=8000)
+    assert page.locator("#kwic .kwic-row").count() == 0
+    assert "Erreur" not in page.locator("#dist-info").inner_text()
+    assert page.locator("#btn-export-analyse").is_disabled()
 
 
 def test_la_colonne_de_tags_ne_fait_pas_deborder_la_page_a_560px(page, corpus_annote):

@@ -93,10 +93,17 @@ function filtresA() {
   if (tagScope() === "propre") p.set("tag_scope", "propre");
   return p;
 }
+// Le lemme saisi, ou "" s'il ne dit rien. Un joker seul (« * ») n'est pas un préfixe : le
+// laisser partir rendrait un 422 là où l'invite doit parler, et armerait un export voué à
+// l'échec (ANA-6).
+function lemmeSaisi() {
+  const v = ($("#f-lemme").value || "").trim();
+  return v.replace(/\*+$/, "") ? v : "";
+}
 // Concordance : filtres A + le lemme/mot dédié.
 function concordanceParams() {
   const p = filtresA();
-  const lemme = ($("#f-lemme").value || "").trim();
+  const lemme = lemmeSaisi();
   if (lemme) p.set("lemme", lemme);
   return p;
 }
@@ -478,7 +485,7 @@ function renderKwic(res) {
   const box = $("#kwic");
   const compte = Resultats.etat(res.count);
   const rows = (res.results || []).slice(0, compte.n);
-  const lemme = ($("#f-lemme").value || "").trim();
+  const lemme = lemmeSaisi();
   $("#dist-info").innerHTML =
     `${compte.n} occurrence(s)` + (lemme ? ` de <b>${esc(lemme)}</b>` : "") +
     (compte.tronque ? ` (limité à ${Resultats.LIMITE})` : "") +
