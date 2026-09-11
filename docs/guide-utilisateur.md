@@ -176,8 +176,8 @@ Les personnages sont des entités de corpus : le même personnage traverse les a
 Tout est sauvegardé automatiquement, une demi-seconde après la dernière frappe. **`Ctrl+Z`
 annule la dernière action d'annotation** — y compris une suppression de région, recréée avec
 tout ce qu'elle contenait et ses identifiants d'origine. Les actes des moteurs, eux, ne
-s'annulent pas. Sous un compte partagé, Ctrl+Z ne remonte que les cinq dernières minutes :
-au-delà, l'acte peut être celui d'un collègue qui tapait sous le même nom.
+s'annulent pas. Sous un compte déclaré partagé, Ctrl+Z ne remonte que les cinq dernières
+minutes : au-delà, l'acte peut être celui d'un collègue qui tapait sous le même nom.
 
 Sur le choix « tag ou dimension ? », voir [`modele-et-droits.md`](modele-et-droits.md) §4 :
 un tag se cherche, un attribut se compte.
@@ -419,7 +419,7 @@ parmi les seules planches de récit, recalculé à chaque lecture.
 **Ctrl+Z ne fait rien.**
 Quatre cas : le curseur est dans un champ de saisie (c'est alors l'annulation du
 navigateur) ; la dernière action était le fait d'un moteur, et les actes machine ne
-s'annulent pas ; vous travaillez sous un compte PARTAGÉ (un groupe, une démonstration), où
+s'annulent pas ; vous travaillez sous un compte déclaré PARTAGÉ (un groupe, une démonstration), où
 Ctrl+Z ne remonte que les cinq dernières minutes — le message le dit ; ou il n'y a plus rien
 à annuler.
 

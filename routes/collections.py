@@ -390,9 +390,11 @@ def poser_nature(login: str, payload: NatureIn,
 
     **Elle n'accorde et ne retire AUCUN droit.** Un compte collectif écrit partout où ses
     accès le portent, décidé le 2026-09-09 ; ce qui change est ce que les MESURES ont le
-    droit d'affirmer sur lui. Confondre les deux ferait de cette route une porte
-    d'autorisation déguisée, et `autorisation.py` cesserait d'être le seul endroit qui
-    tranche.
+    droit d'affirmer sur lui — et, depuis le 2026-09-11, jusqu'où Ctrl+Z remonte : cinq
+    minutes (`undo.DELAI_COLLECTIF_MINUTES`), parce que le filtre par agent n'y désigne
+    plus une personne. C'est la portée d'une commodité, pas un droit : `autorisation.py`
+    n'en sait rien. Confondre les deux ferait de cette route une porte d'autorisation
+    déguisée, et `autorisation.py` cesserait d'être le seul endroit qui tranche.
 
     Le login doit avoir été VU : on ne déclare pas la nature d'un compte que l'application
     ne connaît pas. Ce n'est pas une restriction, c'est le périmètre de la table — un login

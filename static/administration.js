@@ -296,13 +296,17 @@ async function loadComptes() {
   // La limite EST le contenu : sans elle, un administrateur — qui n'a aucune ligne
   // d'accès explicite — se lit « rien à orpheliner ». Exact, et trompeur.
   //
-  // AUTH-6 y ajoute la conséquence de la nature. Elle est écrite à CÔTÉ du sélecteur qui la
-  // pose, et pas seulement dans une fiche : déclarer un login collectif retire du travail
-  // à une mesure, ce qui ne se devine pas depuis un menu à deux entrées.
+  // AUTH-6 y ajoute les conséquences de la nature. Elles sont écrites à CÔTÉ du sélecteur
+  // qui la pose, et pas seulement dans une fiche : déclarer un login collectif retire du
+  // travail à une mesure et raccourcit Ctrl+Z, ce qui ne se devine pas depuis un menu à
+  // deux entrées. Et c'est la DÉCLARATION qui déclenche tout : un login partagé que
+  // personne ne déclare garde un Ctrl+Z sans limite.
   $("#comptes-limite").textContent = (d.limite || "") + " Un compte déclaré COLLECTIF est "
     + "un login partagé par plusieurs personnes : l'accord inter-annotateurs cesse de le "
-    + "mesurer — il compte à part ce qu'il ne peut pas trancher — et les exports le "
-    + "nomment « collectif-N » au lieu de « annotateur-N ». Aucun droit n'en dépend.";
+    + "mesurer — il compte à part ce qu'il ne peut pas trancher —, les exports le "
+    + "nomment « collectif-N » au lieu de « annotateur-N », et Ctrl+Z n'y remonte que "
+    + "les cinq dernières minutes, faute de savoir qui a fait quoi. Aucun droit d'accès "
+    + "n'en dépend.";
 
   const body = $("#comptes-body");
   if (!d.comptes.length) {

@@ -107,6 +107,11 @@ l'exécution, et **viser un acte par son `id` ne la contourne pas** — nommer u
 rajeunit pas. Au-delà, le refus le DIT (« Rien à annuler dans les 5 dernières minutes : sur
 un compte partagé… ») plutôt que de laisser croire l'historique vide.
 
+**C'est la DÉCLARATION qui déclenche la borne**, et c'est ce qu'il faut savoir pour qu'elle
+serve : un login partagé que personne n'a déclaré `collectif` est lu comme nominatif, et
+garde un Ctrl+Z sans limite. L'application ne peut pas deviner qu'un login est partagé —
+c'est précisément ce qu'elle ne voit pas.
+
 Un compte **nominatif** garde tout son historique, et le mono-poste n'a aucun délai. Ce qui
 reste vrai sous un compte collectif, et c'est la borne du remède : **dans** les cinq
 minutes, deux personnes sous le même login peuvent encore défaire l'une l'acte de l'autre.

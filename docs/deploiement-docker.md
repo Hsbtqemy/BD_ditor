@@ -276,7 +276,9 @@ Ce qu'on perd en descendant à `one_factor` pour le cas courant est écrit plut�
 rapport au 2026-09-05, et il a une raison — `two_factor` partout exigeait de chacun une
 application d'authentification sur un téléphone lui appartenant, ce qui poussait vers un
 COMPTE PARTAGÉ. Le coût de celui-là est invisible et bien pire : `undo.py` filtre
-l'annulation par agent (Ctrl+Z défait le travail d'un collègue), l'accord inter-annotateurs
+l'annulation par agent (Ctrl+Z défait le travail d'un collègue — dans les cinq dernières
+minutes seulement depuis AUTH-6, et à condition que le compte soit DÉCLARÉ collectif dans
+l'Administration), l'accord inter-annotateurs
 n'a plus rien à mesurer, et le journal de provenance aplatit les chaînes de révision. Cf.
 `pilotage/INFRA-8.md` et `pilotage/AUTH-6.md`.
 
