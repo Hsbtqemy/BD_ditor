@@ -484,10 +484,12 @@ une hypothèse qu'on se permet.
 **Je me connecte et je ne vois rien. C'est cassé ?**
 Pas forcément. Lisez le bandeau : il distingue quatre situations (§3). S'il nomme vos groupes,
 tout fonctionne — il manque seulement qu'un propriétaire vous donne accès à une collection.
-S'il n'en nomme aucun, il précise laquelle des deux raisons s'applique : la liste des groupes
-n'est **pas transmise** (panne de configuration côté serveur, à signaler), ou elle est
-**transmise et vide** (rien à réparer : vous n'êtes dans aucun groupe, et l'accès peut vous
-être donné à votre nom).
+S'il n'en nomme aucun, il dit ce qu'il a reçu, sans en tirer de cause : la liste des groupes
+**non transmise**, ou **transmise et vide**. La première n'est PAS forcément une panne : sur
+cette instance, c'est aussi ce que produit un compte sans aucun groupe (mesuré le
+2026-09-09). Dans les deux cas, le plus probable est qu'il suffise qu'un propriétaire vous
+donne accès à votre nom ; si cela ne suffit pas, montrez à l'administrateur la ligne
+technique du bandeau (§3), qui départage.
 
 **J'ai donné un accès et la personne ne voit toujours rien.**
 Vérifiez l'orthographe du login ou du nom de groupe. L'application n'a aucun annuaire : un nom
