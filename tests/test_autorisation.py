@@ -756,6 +756,74 @@ def test_le_croisement_ne_fait_pas_d_un_tag_illisible_une_ligne(client, tag_illi
     assert "commun" in vus and "prive" not in vus
 
 
+def test_l_atelier_et_les_exports_d_album_taisent_un_tag_illisible(client, tag_illisible):
+    """Le second chemin de lecture des tags : `_annotation_for_region`, qui sert l'Atelier
+    ET les exports JSON et TEI d'un album. Filtré à part des lectures qui ont leur propre
+    requête, parce que cacher un tag là où on l'ÉDITE demande de le préserver à l'écriture
+    — ce que vérifient les deux tests suivants."""
+    from conftest import ADMIN
+    r1, a1 = tag_illisible["r1"]["id"], tag_illisible["a1"]["id"]
+
+    def lu(h):
+        ann = client.get(f"/api/regions/{r1}/annotation", headers=h).json()
+        json_ = client.get("/api/export/json", params={"album_id": a1}, headers=h).text
+        tei = client.get("/api/export/tei", params={"album_id": a1}, headers=h).text
+        return {t["label"] for t in ann["tags"]}, json_, tei
+
+    atelier, json_, tei = lu(ADMIN)
+    assert atelier == {"prive", "commun"} and "prive" in json_ and "prive" in tei
+    atelier, json_, tei = lu(tag_illisible["bob"])
+    assert atelier == {"commun"}
+    assert "commun" in json_ and "prive" not in json_
+    assert "commun" in tei and "prive" not in tei
+
+
+def test_enregistrer_ce_qu_on_voit_preserve_le_tag_cache(client, db_path, tag_illisible):
+    """Cacher un tag là où on l'édite a un prix : l'Atelier renvoie la liste qu'il a
+    montrée, et le serveur remplaçait la liste entière par elle. Bob, en écriture,
+    enregistre sa note et ses tags : le tag qu'il ne voit pas doit survivre, sans lui
+    revenir dans la réponse. Puis il VIDE ce qu'il voit — l'annotation doit rester,
+    puisqu'elle porte encore quelque chose : la supprimer emporterait le tag caché."""
+    from conftest import ADMIN
+    _ouvrir(db_path, tag_illisible["c1"], "bob", niveau="ecriture")
+    bob, r1 = tag_illisible["bob"], tag_illisible["r1"]["id"]
+
+    def tags_admin():
+        rep = client.get(f"/api/regions/{r1}/annotation", headers=ADMIN)
+        return {t["label"] for t in rep.json()["tags"]}
+
+    rep = client.put(f"/api/regions/{r1}/annotation",
+                     json={"note": "vu", "tags": ["commun", "neuf"]}, headers=bob)
+    assert rep.status_code == 200, rep.text
+    assert {t["label"] for t in rep.json()["tags"]} == {"commun", "neuf"}
+    assert tags_admin() == {"prive", "commun", "neuf"}
+
+    rep = client.put(f"/api/regions/{r1}/annotation", json={"note": "", "tags": []},
+                     headers=bob)
+    assert rep.status_code == 200, rep.text
+    assert rep.json()["tags"] == []
+    assert tags_admin() == {"prive"}, "vider ce qu'on voit a supprimé ce qu'on ne voit pas"
+
+
+def test_annuler_sous_l_autre_identite_ne_perd_pas_le_tag_cache(client, db_path,
+                                                                tag_illisible):
+    """Le piège entre l'Atelier et l'annulation. Ctrl+Z efface les tags de l'annotation,
+    puis les repose depuis l'état AVANT du journal : si cet état était pris sur la vue
+    filtrée, annuler effacerait le tag qu'on ne voit pas — en silence, puisque personne ne
+    le voit. Le journal garde donc l'annotation ENTIÈRE, et c'est ce qu'on vérifie."""
+    from conftest import ADMIN
+    _ouvrir(db_path, tag_illisible["c1"], "bob", niveau="ecriture")
+    bob, r1 = tag_illisible["bob"], tag_illisible["r1"]["id"]
+    rep = client.put(f"/api/regions/{r1}/annotation", json={"note": "vu", "tags": []},
+                     headers=bob)
+    assert rep.status_code == 200, rep.text
+    rep = client.post("/api/undo", headers=bob)
+    assert rep.status_code == 200, rep.text
+    ann = client.get(f"/api/regions/{r1}/annotation", headers=ADMIN).json()
+    assert {t["label"] for t in ann["tags"]} == {"prive", "commun"}
+    assert (ann["note"] or "") == ""
+
+
 def test_creer_un_terme_en_lecture_seule_est_refuse(client, db_path, deux_albums,
                                                     derriere_proxy):
     """403 : enrichir un vocabulaire que tout le monde partage suppose de pouvoir écrire

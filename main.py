@@ -54,7 +54,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _get_album, _get_collection, _get_dimension, _get_personnage, _get_planche,
     _get_region, _get_valeur,
     _groupes, _norm_tag, _patch_lexique, _refuser_si_verrouillee, _row, _rows,
-    _sans_accents, _validate_parent, db, portee_courante,
+    _sans_accents, _tags_caches, _validate_parent, db, portee_courante,
 )
 # ARCH-1 — les domaines sortis de ce fichier. `include_router`, plus bas, les rend
 # indiscernables de routes déclarées ici : mêmes chemins, même place dans
@@ -1198,7 +1198,7 @@ def update_role(planche_id: int, payload: RoleIn,
 def get_annotation(region_id: int, conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
     _get_region(conn, portee, region_id)
-    return _annotation_for_region(conn, region_id)
+    return _annotation_for_region(conn, portee, region_id)
 
 
 @app.put("/api/regions/{region_id}/annotation")
@@ -1211,11 +1211,18 @@ def put_annotation(region_id: int, payload: AnnotationIn,
     avant_annot = journal.snapshot_annotation(conn, region_id)
 
     tag_rows = _ensure_tags(conn, payload.tags)
+    # Les tags que l'appelant ne LIT pas ne lui ont pas été montrés, donc ne sont pas
+    # dans `payload.tags` : remplacer la liste par celle reçue les effacerait sans un
+    # mot. On les garde — et le journal enregistre l'annotation ENTIÈRE, parce que
+    # c'est ce que l'undo restaure : un instantané filtré lui ferait effacer ce qu'on
+    # a caché.
+    caches = _tags_caches(conn, portee, region_id)
     # Vider une annotation (note vide ET aucun tag) = SUPPRIMER la ligne, pas
     # laisser une coquille vide : sinon elle fausserait le compteur d'annotées,
     # ne serait pas cherchable, et ferait conserver à tort la case à la
-    # re-segmentation (préservation du travail humain).
-    if not (payload.note or "").strip() and not tag_rows:
+    # re-segmentation (préservation du travail humain). « Aucun tag » compte aussi
+    # ceux qu'on ne voit pas : vider ce qu'on voit ne supprime pas ce qu'on ne voit pas.
+    if not (payload.note or "").strip() and not tag_rows and not caches:
         conn.execute("DELETE FROM annotations WHERE region_id = ?", (region_id,))
         reindex_region(conn, region_id)
         if avant_annot is not None:
@@ -1224,7 +1231,7 @@ def put_annotation(region_id: int, payload: AnnotationIn,
             journal.journaliser(conn, "suppression", "annotations", region_id,
                                 avant=avant_annot)
         conn.commit()
-        return _annotation_for_region(conn, region_id)
+        return _annotation_for_region(conn, portee, region_id)
 
     # Upsert de l'annotation (region_id est UNIQUE).
     conn.execute(
@@ -1240,10 +1247,10 @@ def put_annotation(region_id: int, payload: AnnotationIn,
 
     # Remplace l'ensemble des tags.
     conn.execute("DELETE FROM annotation_tags WHERE annotation_id = ?", (ann_id,))
-    for t in tag_rows:
+    for tag_id in [t["id"] for t in tag_rows] + caches:
         conn.execute(
             "INSERT OR IGNORE INTO annotation_tags (annotation_id, tag_id) "
-            "VALUES (?, ?)", (ann_id, t["id"]),
+            "VALUES (?, ?)", (ann_id, tag_id),
         )
 
     # Cible = region_id (stable), pas ann_id (éphémère) → undo (D1) uniforme avec locuteur/présence.
@@ -1252,7 +1259,7 @@ def put_annotation(region_id: int, payload: AnnotationIn,
                         apres=journal.snapshot_annotation(conn, region_id))
     reindex_region(conn, region_id)
     conn.commit()
-    return _annotation_for_region(conn, region_id)
+    return _annotation_for_region(conn, portee, region_id)
 
 
 @app.get("/api/tags")
@@ -1535,7 +1542,7 @@ def annuler_job(job_id: int, conn: sqlite3.Connection = Depends(db),
 # =========================================================================== #
 # Export
 # =========================================================================== #
-def _region_tree(regions: list[dict], conn: sqlite3.Connection) -> list[dict]:
+def _region_tree(regions: list[dict], conn: sqlite3.Connection, portee) -> list[dict]:
     """Reconstruit l'arbre des régions (par parent_id) avec annotations."""
     by_parent: dict = {}
     for r in regions:
@@ -1547,7 +1554,7 @@ def _region_tree(regions: list[dict], conn: sqlite3.Connection) -> list[dict]:
         nodes = []
         for r in sorted(by_parent.get(parent_id, []),
                         key=lambda x: (x["ordre"] or 0, x["id"])):
-            ann = _annotation_for_region(conn, r["id"])
+            ann = _annotation_for_region(conn, portee, r["id"])
             nodes.append({
                 "id": r["id"], "type": r["type"],
                 "citation": cits.get(r["id"]),
@@ -1593,7 +1600,7 @@ _EXPORT_PLANCHE_RETENUES = {
 }
 
 
-def _album_payload(conn: sqlite3.Connection, album_id: int) -> dict:
+def _album_payload(conn: sqlite3.Connection, portee, album_id: int) -> dict:
     album = _row(conn.execute(
         f"SELECT {', '.join(_EXPORT_ALBUM_COLS)} FROM albums WHERE id = ?", (album_id,)))
     if album is None:
@@ -1608,7 +1615,7 @@ def _album_payload(conn: sqlite3.Connection, album_id: int) -> dict:
                                            p["dpi_x"], p["dpi_y"])
         regions = _rows(conn.execute(
             "SELECT * FROM regions WHERE planche_id = ?", (p["id"],)))
-        p["regions"] = _region_tree(regions, conn)
+        p["regions"] = _region_tree(regions, conn, portee)
     album["planches"] = planches
     return album
 
@@ -1617,7 +1624,7 @@ def _album_payload(conn: sqlite3.Connection, album_id: int) -> dict:
 def export_json(album_id: int, conn: sqlite3.Connection = Depends(db),
                 portee: autorisation.Portee = Depends(portee_courante)):
     _get_album(conn, portee, album_id)
-    album = _album_payload(conn, album_id)
+    album = _album_payload(conn, portee, album_id)
     return {
         "@context": {
             "@vocab": "https://schema.org/",
@@ -1767,7 +1774,7 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db),
                     zone.set("n", f"c{_c['case']}")
                 if r["ocr_texte"]:
                     _tei_el(zone, "line").text = _xml_safe(r["ocr_texte"])
-                ann = _annotation_for_region(conn, r["id"])
+                ann = _annotation_for_region(conn, portee, r["id"])
                 if ann["note"] or ann["tags"]:
                     note = _tei_el(zone, "note")
                     if ann["tags"]:

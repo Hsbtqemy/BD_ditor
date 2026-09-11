@@ -111,8 +111,14 @@ def _ensure_tags(conn: sqlite3.Connection, labels: list[str]) -> list[dict]:
     ))
 
 
-def _annotation_for_region(conn: sqlite3.Connection, region_id: int) -> dict:
-    """Représentation d'annotation (note + tags) ; structure vide si absente."""
+def _annotation_for_region(conn: sqlite3.Connection, portee, region_id: int) -> dict:
+    """Représentation d'annotation (note + tags) ; structure vide si absente.
+
+    Les tags sont ceux dont on lit le TERME (`clause_terme`) : lire une région ne donne
+    pas à lire tous les tags qu'elle porte, un tag pouvant être local à une collection
+    qu'on ne lit pas. La `Portee` est OBLIGATOIRE, comme dans les accesseurs gardés : une
+    valeur par défaut rendrait l'oubli invisible. Ce qu'on ne montre pas, l'écriture
+    doit le PRÉSERVER (`_tags_caches`) ; le journal, lui, garde l'annotation ENTIÈRE."""
     ann = conn.execute(
         "SELECT id, note, date_creation, date_modification "
         "FROM annotations WHERE region_id = ?", (region_id,)
@@ -120,14 +126,31 @@ def _annotation_for_region(conn: sqlite3.Connection, region_id: int) -> dict:
     if ann is None:
         return {"region_id": region_id, "note": None, "tags": [],
                 "date_modification": None}
+    ou_tag, p_tag = portee.clause_terme("t.collection_id")
     tags = _rows(conn.execute(
-        """SELECT t.id, t.label, t.couleur
+        f"""SELECT t.id, t.label, t.couleur
            FROM annotation_tags at JOIN tags t ON t.id = at.tag_id
-           WHERE at.annotation_id = ? ORDER BY t.label""",
-        (ann["id"],),
+           WHERE at.annotation_id = ? AND {ou_tag} ORDER BY t.label""",
+        (ann["id"], *p_tag),
     ))
     return {"region_id": region_id, "note": ann["note"], "tags": tags,
             "date_modification": ann["date_modification"]}
+
+
+def _tags_caches(conn: sqlite3.Connection, portee, region_id: int) -> list[int]:
+    """Ids des tags que porte la région et que l'appelant ne LIT pas — l'exact
+    complément de ce que montre `_annotation_for_region`.
+
+    Une écriture qui remplace la liste des tags ne reçoit que ce que l'écran a montré.
+    Sans ce complément, enregistrer une annotation effacerait, sans un mot, le tag
+    d'une collection qu'on ne voit pas — et personne ne le verrait disparaître."""
+    ou_tag, p_tag = portee.clause_terme("t.collection_id")
+    return [r["tag_id"] for r in conn.execute(
+        f"""SELECT at.tag_id FROM annotation_tags at
+           JOIN annotations an ON an.id = at.annotation_id
+           JOIN tags t ON t.id = at.tag_id
+           WHERE an.region_id = ? AND NOT ({ou_tag})""",
+        (region_id, *p_tag))]
 
 
 # --------------------------------------------------------------------------- #
