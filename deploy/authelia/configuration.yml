@@ -67,9 +67,9 @@ authentication_backend:
   #
   # `users_database.yml` n'est PAS supprimé et ne doit pas l'être : tant que les comptes
   # qu'il contient existent encore, il est le recours si l'annuaire devient injoignable.
-  # CONSÉQUENCE À CONNAÎTRE : il ne gouverne plus rien, mais `verifier_comptes.py`
-  # (INFRA-11) continuera de l'approuver — « ok, N comptes » sur un fichier sans effet.
-  # Un instrument qui rassure en regardant ailleurs ; case ouverte dans AUTH-7.
+  # CONSÉQUENCE À CONNAÎTRE : il ne gouverne plus rien. `verifier_comptes.py` (INFRA-11)
+  # le dit en tête de sortie (« REPLI ») en lisant CE bloc, et continue d'en contrôler la
+  # forme pour le jour du retour arrière (AUTH-7).
   #
   # L'ordre n'est pas un confort. L'interface de LLDAP est derrière Authelia, donc sa
   # règle d'accès doit exister AVANT qu'on puisse l'atteindre ; or c'est par elle qu'on

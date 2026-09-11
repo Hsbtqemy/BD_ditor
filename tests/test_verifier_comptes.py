@@ -171,3 +171,93 @@ def test_le_fichier_reel_du_depot_est_acceptable():
     d = verifier_comptes.defauts(gabarit)
     assert all("YAML" not in x and "users" not in x for x in d), \
         f"le gabarit versionné n'est pas structurellement lisible : {d}"
+
+
+# ── AUTH-7 : il dit d'abord si ce fichier SERT ───────────────────────────────────
+#
+# Depuis la bascule vers LLDAP, le fichier des comptes n'est plus que le repli, et le
+# contrôle l'approuvait sans le dire. Chaque test pose une `configuration.yml` à côté du
+# fichier, là où le script la cherche.
+
+AVANT_LDAP = """authentication_backend:
+  password_reset:
+    disable: false
+  # file:
+  #   path: '/config/users_database.yml'
+"""
+LDAP = AVANT_LDAP + """  ldap:
+    implementation: 'lldap'
+    base_dn: '{{ env "LLDAP_BASE_DN" }}'
+
+session:
+  name: 'authelia_session'
+"""
+FICHIER = """authentication_backend:
+  file:
+    path: '/config/users_database.yml'
+
+session:
+  name: 'authelia_session'
+"""
+
+
+def _config(tmp_path, contenu):
+    (tmp_path / "configuration.yml").write_text(contenu, encoding="utf-8")
+    return tmp_path / "configuration.yml"
+
+
+def test_dit_que_le_fichier_n_est_que_le_repli_quand_l_annuaire_est_actif(tmp_path, capsys):
+    """LE cas de l'instance depuis le 2026-09-07 : « ok, N comptes » sur un fichier qui ne
+    gouverne rien. La sortie doit COMMENCER par le dire — une réserve en bas de page se
+    lit après la conclusion. Le bloc `file:` commenté ne compte pas, et la valeur
+    interpolée `{{ env … }}` du bloc `ldap:` ne passe pas pour une directive."""
+    _config(tmp_path, LDAP)
+    bon = _fichier(tmp_path, GABARIT.format(h=BON))
+    assert verifier_comptes.main(["verifier_comptes.py", str(bon)]) == 0
+    assert capsys.readouterr().out.startswith("REPLI")
+
+
+def test_dit_que_le_fichier_est_actif_quand_c_est_le_backend(tmp_path, capsys):
+    """Le sens inverse — après un retour arrière : aucune alerte de repli."""
+    _config(tmp_path, FICHIER)
+    bon = _fichier(tmp_path, GABARIT.format(h=BON))
+    assert verifier_comptes.main(["verifier_comptes.py", str(bon)]) == 0
+    sortie = capsys.readouterr().out
+    assert sortie.startswith("actif") and "REPLI" not in sortie
+
+
+def test_le_repli_casse_est_toujours_refuse(tmp_path):
+    """Dire que le fichier n'est que le repli ne dispense pas de le contrôler : c'est lui
+    que le retour arrière servira, et un repli qui ne démarre pas n'est pas un repli."""
+    _config(tmp_path, LDAP)
+    mauvais = _fichier(tmp_path, GABARIT.format(h="Digest: " + BON))
+    assert verifier_comptes.main(["verifier_comptes.py", str(mauvais)]) == 1
+
+
+@pytest.mark.parametrize("contenu, motif", [
+    (None, "introuvable"),
+    ("session:\n  name: 'x'\n", "aucun bloc"),
+    (AVANT_LDAP + "  file:\n    path: 'a'\n  ldap:\n    implementation: 'lldap'\n",
+     "plusieurs"),
+    (AVANT_LDAP + "{{- if env \"ANNUAIRE\" }}\n  ldap:\n    implementation: 'lldap'\n"
+                  "{{- end }}\n", "gabarit"),
+])
+def test_ne_conclut_pas_quand_il_ne_peut_pas_savoir(tmp_path, capsys, contenu, motif):
+    """Sans configuration, sans bloc, avec deux blocs, ou derrière une directive de
+    gabarit : le script dit INCONNU et sa raison, au lieu de deviner."""
+    if contenu is not None:
+        _config(tmp_path, contenu)
+    backend, raison = verifier_comptes.backend_actif(tmp_path / "configuration.yml")
+    assert backend is None and motif in raison
+    verifier_comptes.main(["verifier_comptes.py", str(_fichier(tmp_path, GABARIT.format(h=BON)))])
+    assert capsys.readouterr().out.startswith("?? backend actif INCONNU")
+
+
+def test_la_configuration_reelle_du_depot_se_lit():
+    """La garde contre l'aveuglement. La configuration servie ne se lit pas en YAML (ses
+    directives de gabarit font échouer PyYAML), et une lecture qui échouerait dessus
+    répondrait INCONNU pour toujours, sans qu'aucun autre test ne bronche. On n'exige pas
+    `ldap` — un retour arrière est légitime —, seulement qu'elle se LISE."""
+    config = RACINE / "deploy" / "authelia" / "configuration.yml"
+    backend, raison = verifier_comptes.backend_actif(config)
+    assert backend in verifier_comptes.BACKENDS, raison

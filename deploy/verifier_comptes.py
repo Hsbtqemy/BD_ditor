@@ -27,9 +27,19 @@ pbkdf2 et les variantes crypt(3), qui n'ont ni le même nombre de champs ni les 
 paramètres. Exiger `$argon2id$` refuserait un fichier légitime, et une garde qui crie
 sur du correct finit désarmée. La seule propriété commune à TOUS ces formats est le `$`
 initial — et c'est précisément elle que le préfixe `Digest: ` brisait.
+
+AUTH-7 — IL DIT D'ABORD SI CE FICHIER SERT. Depuis la bascule vers LLDAP (2026-09-07),
+`users_database.yml` ne gouverne plus aucune connexion : il reste sur le disque comme
+RECOURS du retour arrière. Le contrôler garde donc sa valeur — c'est ce fichier que le
+repli servira —, mais répondre « ok, N comptes » sans le dire était un instrument qui
+rassure en regardant ailleurs. La sortie commence donc par le backend ACTIF, lu dans la
+`configuration.yml` voisine : REPLI, actif, ou INCONNU. Le code de retour ne change pas :
+il dit si le FICHIER est servable, ce qui reste la question du jour du repli.
 """
+import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 try:
     import yaml
@@ -42,6 +52,45 @@ DEFAUT = RACINE / "deploy" / "authelia" / "users_database.yml"
 # Les marqueurs de gabarit. `users_database.example.yml` pose REMPLACER_PAR_UN_VRAI_HASH,
 # et une valeur recopiée d'une documentation garde souvent ses points de suspension.
 MARQUEURS = ("REMPLACER", "...", "…", "VOTRE", "CHANGEME")
+
+BACKENDS = ("file", "ldap")
+
+
+def backend_actif(config) -> tuple[Optional[str], str]:
+    """(backend, raison) : `file` ou `ldap`, ou None avec la raison pour laquelle on ne sait pas.
+
+    Une lecture de TEXTE, et non de YAML. `configuration.yml` porte des directives de
+    gabarit hors de toute chaîne (`{{- if env "SMTP_ADRESSE" }}`), que PyYAML refuse —
+    mesuré sur le fichier réel. Une lecture YAML répondrait donc INCONNU sur la
+    configuration servie, c'est-à-dire ne dirait jamais rien, et le script redeviendrait
+    l'instrument qu'on répare. On cherche, sous `authentication_backend:`, une clé `file:`
+    ou `ldap:` NON commentée, à deux espaces. Une directive de gabarit en tête de ligne
+    dans ce bloc fait refuser de conclure : elle pourrait rendre un bloc conditionnel, ce
+    qu'une lecture de texte ne sait pas résoudre.
+    """
+    config = Path(config)
+    if not config.exists():
+        return None, f"{config.name} introuvable à côté du fichier des comptes"
+    dans_bloc, trouves = False, []
+    for ligne in config.read_text(encoding="utf-8").splitlines():
+        if re.match(r"authentication_backend:\s*(#.*)?$", ligne):
+            dans_bloc = True
+            continue
+        if not dans_bloc:
+            continue
+        if re.match(r"[A-Za-z_]", ligne):              # clé suivante à la racine : fin du bloc
+            break
+        if ligne.lstrip().startswith("{{"):
+            return None, "une directive de gabarit dans le bloc `authentication_backend`"
+        m = re.match(r"  (file|ldap):\s*(#.*)?$", ligne)
+        if m:
+            trouves.append(m.group(1))
+    if not trouves:
+        return None, "aucun bloc `file:` ni `ldap:` actif sous `authentication_backend`"
+    if len(trouves) > 1:
+        return None, (f"plusieurs blocs actifs ({', '.join(trouves)}) — Authelia "
+                      "refuserait de démarrer")
+    return trouves[0], config.name
 
 
 def defauts(chemin) -> list[str]:
@@ -93,6 +142,17 @@ def defauts(chemin) -> list[str]:
 
 def main(argv) -> int:
     chemin = Path(argv[1]) if len(argv) > 1 else DEFAUT
+    backend, raison = backend_actif(chemin.parent / "configuration.yml")
+    if backend == "ldap":
+        print("REPLI — l'annuaire LDAP est le backend actif (configuration.yml) : ce fichier")
+        print("   ne gouverne AUCUNE connexion aujourd'hui. Il est le recours du retour")
+        print("   arrière, et c'est pour ce jour-là que le contrôle ci-dessous vaut.\n")
+    elif backend == "file":
+        print("actif — ce fichier est le backend d'Authelia : le contrôle porte sur les")
+        print("   comptes servis.\n")
+    else:
+        print(f"?? backend actif INCONNU — {raison}.")
+        print("   Ce contrôle ne dit donc pas si ce fichier sert aujourd'hui.\n")
     trouves = defauts(chemin)
     if trouves:
         print(f"REFUS — {chemin} n'est pas en état d'être servi :")
