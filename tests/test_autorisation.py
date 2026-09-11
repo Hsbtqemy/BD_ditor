@@ -417,6 +417,7 @@ def test_l_export_csv_de_recherche_suit_la_meme_regle(client, db_path, deux_albu
     """Deux routes, une seule logique de requête : l'export ne doit pas être la porte
     dérobée de la recherche."""
     _ouvrir(db_path, deux_albums["c1"], "bob")
+    _case_export(db_path, deux_albums["c1"], "bob")   # DROIT-2 : sinon, le 403 de la porte
     csv = client.get("/api/recherche/export.csv?q=MOTSECRET",
                      headers={"Remote-User": "bob"}).text
     assert "ailleurs" not in csv       # la région interdite n'y est pas
@@ -442,6 +443,7 @@ def test_les_exports_n_exposent_pas_ce_que_l_ui_cache(client, db_path, deux_albu
     """Un export est une porte aussi large que l'UI, et plus discrète. Les trois
     sérialisations (JSON-LD, CSV, TEI) suivent la même règle que l'affichage."""
     _ouvrir(db_path, deux_albums["c1"], "bob")
+    _case_export(db_path, deux_albums["c1"], "bob")   # DROIT-2 : sinon, le 403 de la porte
     h = {"Remote-User": "bob"}
     assert client.get(f"{route}?album_id={deux_albums['a2']['id']}",
                       headers=h).status_code == 404
@@ -586,6 +588,18 @@ def _poser_tag(db_path, label, collection_id=None):
         conn.close()
 
 
+def _case_export(db_path, collection_id, principal):
+    """DROIT-2 — coche la case d'export d'un accès existant."""
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("UPDATE collection_acces SET exporter = 1 WHERE collection_id = ? "
+                     "AND principal = ?", (collection_id, principal))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def test_un_terme_global_reste_visible_un_terme_local_non(client, db_path, deux_albums,
                                                           derriere_proxy):
     """Le vocabulaire ne suit PAS la règle des données : il porte sa propre portée depuis
@@ -677,6 +691,7 @@ def test_un_resultat_de_recherche_tait_un_tag_local_illisible(client, db_path, d
     assert vus == {"prive", "commun"}
     assert "prive" in fichier and "commun" in fichier
     _ouvrir(db_path, deux_albums["c1"], "bob")
+    _case_export(db_path, deux_albums["c1"], "bob")   # DROIT-2 : sinon, le 403 de la porte
     vus, fichier = sorties({"Remote-User": "bob"})
     assert vus == {"commun"}
     assert "commun" in fichier and "prive" not in fichier
@@ -702,6 +717,9 @@ def tag_illisible(client, db_path, deux_albums, derriere_proxy):
     finally:
         conn.close()
     _ouvrir(db_path, deux_albums["c1"], "bob")
+    # DROIT-2 — Bob EXPORTE c1 : ces tests éprouvent ce que les exports taisent, et sans
+    # la case ils s'arrêteraient au 403 de la porte, avant d'avoir rien montré.
+    _case_export(db_path, deux_albums["c1"], "bob")
     return {**deux_albums, "bob": {"Remote-User": "bob"}}
 
 
@@ -1526,6 +1544,7 @@ def test_un_export_d_analyse_ne_rend_rien_hors_portee(client, db_path, deux_albu
     assert tout.strip(), f"{chemin} ne rend rien même pour un administrateur : décor muet"
 
     _ouvrir(db_path, deux_albums["c1"], "bob", "ecriture")   # bob n'a QUE la collection 1
+    _case_export(db_path, deux_albums["c1"], "bob")   # DROIT-2 : sinon, le 403 de la porte
     h = {"Remote-User": "bob"}
     r = client.get(chemin + quete, headers=h)
     assert r.status_code == 200, r.text
@@ -1607,6 +1626,7 @@ def test_l_export_inter_ne_cite_pas_une_divergence_hors_portee(client, db_path,
     assert "alice" in tout.text and "bob" in tout.text, "l'export doit NOMMER (ANA-7)"
 
     _ouvrir(db_path, deux_albums["c1"], "bob", "ecriture")
+    _case_export(db_path, deux_albums["c1"], "bob")   # DROIT-2 : sinon, le 403 de la porte
     r = client.get("/api/analyse/accord-inter.csv", headers={"Remote-User": "bob"})
     assert r.status_code == 200, r.text
     assert "ICI" in r.text, "bob doit voir la divergence de SA collection"

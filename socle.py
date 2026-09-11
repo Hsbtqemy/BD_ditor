@@ -234,6 +234,83 @@ def _get_collection(conn, portee: autorisation.Portee, collection_id: int, *,
     return c
 
 
+# --------------------------------------------------------------------------- #
+# Le droit d'EXPORTER (DROIT-2) — une garde sur ce qui SORT de l'instance
+# --------------------------------------------------------------------------- #
+# Ces helpers ne tranchent rien : `autorisation.Portee` dit qui peut sortir quoi. Ils
+# disent comment REFUSER, et le refus est un 403 NOMMÉ, jamais un 404 — l'objet est
+# lisible, on vient de l'afficher, et un « introuvable » mentirait.
+_MOTIF_EXPORT = ("Exporter demande le droit d'exporter, que le propriétaire d'une "
+                 "collection accorde collection par collection : la lire ou l'annoter "
+                 "n'y suffit pas.")
+
+
+def _exiger_export(portee: autorisation.Portee, collection_id: int) -> None:
+    """403 si l'on voit la collection sans pouvoir en sortir le contenu."""
+    if not portee.peut_exporter(collection_id):
+        raise HTTPException(403, _MOTIF_EXPORT)
+
+
+def _portee_d_export(portee: autorisation.Portee) -> autorisation.Portee:
+    """La portée d'un export qui TRAVERSE plusieurs collections (Recherche, Exploration) :
+    ce qu'on peut sortir, et non ce qu'on lit — sans quoi qui exporte A emporterait le
+    texte de B dans une concordance qui couvre les deux. 403 si l'on n'exporte nulle
+    part : le fichier serait vide, et un refus qui dit pourquoi vaut mieux qu'un fichier
+    qui se tait."""
+    if not portee.peut_exporter_quelque_part():
+        raise HTTPException(403, _MOTIF_EXPORT)
+    return portee.pour_export()
+
+
+def _exiger_export_region(conn, portee: autorisation.Portee, region_id: int) -> None:
+    """403 si la région — qu'on LIT, l'accesseur gardé l'a vérifié avant — appartient à
+    un album qu'aucune des collections qu'on peut exporter ne contient."""
+    ou, params = portee.pour_export().clause_album("pl.album_id")
+    if conn.execute(f"SELECT 1 FROM regions r JOIN planches pl ON pl.id = r.planche_id "
+                    f"WHERE r.id = ? AND {ou}", (region_id, *params)).fetchone() is None:
+        raise HTTPException(403, _MOTIF_EXPORT)
+
+
+def _collection_d_export(conn, portee: autorisation.Portee, album_id: int,
+                         collection_id: Optional[int] = None) -> Optional[dict]:
+    """Au titre de QUELLE collection cet album sort-il ? Rend `{"id", "nom"}`.  DROIT-2.
+
+    Un album vit dans plusieurs collections, et le droit d'exporter peut être accordé sur
+    l'une et pas sur l'autre. « Au moins une » était permissif ; « toutes » fermait un
+    album dès son second rangement. Tranché le 2026-09-11 : il sort AU TITRE d'une
+    collection où l'on a le droit — le patron du manifeste IIIF —, et l'export le dit.
+
+    - nommée : elle doit contenir l'album et être lue (404 sinon), et s'exporter (403) ;
+    - non nommée : la seule collection exportable de l'album ; aucune, 403 ; plusieurs,
+      un 422 qui les NOMME, parce que le choix appartient à qui exporte, pas au code.
+
+    En portée totale, rien n'est à choisir : sans collection nommée, on ne dit la
+    collection que si l'album n'en a qu'une, et `None` sinon — il ne sort alors sous
+    aucun droit particulier, et le prétendre serait inventer."""
+    rows = _rows(conn.execute(
+        "SELECT c.id, c.nom FROM collection_album ca "
+        "JOIN collection c ON c.id = ca.collection_id "
+        "WHERE ca.album_id = ? ORDER BY c.nom, c.id", (album_id,)))
+    if collection_id is not None:
+        c = next((r for r in rows
+                  if r["id"] == collection_id and portee.peut_lire(r["id"])), None)
+        if c is None:
+            raise HTTPException(404, f"Collection {collection_id} introuvable pour cet album")
+        _exiger_export(portee, collection_id)
+        return c
+    if portee.tout:
+        return rows[0] if len(rows) == 1 else None
+    ouvertes = [r for r in rows if portee.peut_exporter(r["id"])]
+    if not ouvertes:
+        raise HTTPException(403, _MOTIF_EXPORT)
+    if len(ouvertes) > 1:
+        raise HTTPException(
+            422, "Cet album vit dans plusieurs collections que vous pouvez exporter : "
+                 "précisez au titre de laquelle il sort (`collection_id`) — "
+                 + ", ".join(f"« {r['nom']} » ({r['id']})" for r in ouvertes) + ".")
+    return ouvertes[0]
+
+
 def _refuser_si_verrouillee(planche: dict) -> dict:
     """Une planche verrouillée est protégée des passes AUTOMATIQUES (segmentation /
     détection de bulles / OCR) : il faut la déverrouiller explicitement. L'édition

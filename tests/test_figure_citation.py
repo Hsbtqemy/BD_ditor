@@ -275,8 +275,11 @@ def test_la_collection_creditee_est_une_qu_on_LIT(client, db_path, album_cite,
                      (999, album_cite["album"]["id"]))
         conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
                      (secrete, album_cite["album"]["id"]))
+        # DROIT-2 — une figure SORT de l'instance : bob a la case d'export sur la collection
+        # qu'il lit, sans quoi le test s'arrêterait au 403 de la porte avant la légende.
         conn.execute("INSERT INTO collection_acces (collection_id, genre, principal, "
-                     "niveau) VALUES (?, 'utilisateur', 'bob', 'lecture')", (999,))
+                     "niveau, exporter) VALUES (?, 'utilisateur', 'bob', 'lecture', 1)",
+                     (999,))
         conn.commit()
     finally:
         conn.close()

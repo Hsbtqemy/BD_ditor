@@ -55,7 +55,7 @@ from fastapi.responses import Response
 
 import autorisation
 from config import BASE_DIR
-from socle import _get_collection, db, portee_courante
+from socle import _exiger_export, _get_collection, db, portee_courante
 
 # `tools/` n'est pas un paquet et ne s'importe pas depuis la racine : les scripts s'y
 # importent entre eux à plat (`import metadonnees_collection as mc`), donc c'est le dossier
@@ -138,7 +138,9 @@ def produire(conn, portee, collection_id: int, quoi: str, format: str, *,
     au même nom et au contenu différent, ce qu'un entrepôt ne pardonne pas : il garde les
     deux versions, et plus rien ne dit laquelle a été déposée.
 
-    La garde est ici, donc commune aux deux voies : LIRE la collection. Ce que le dépôt
+    La garde est ici, donc commune aux deux voies : LIRE la collection, puis avoir le
+    droit de l'EXPORTER (DROIT-2) — télécharger n'est pas travailler dans l'instance,
+    c'est sortir, et lire n'y suffit plus. Ce que le dépôt
     ShareDocs exige en plus lui appartient et se pose là-bas — envoyer dans un dossier
     partagé que l'application ne contrôle pas n'est pas le même geste que télécharger
     pour soi.
@@ -151,6 +153,7 @@ def produire(conn, portee, collection_id: int, quoi: str, format: str, *,
                                  f"« {quoi} » (attendu : {', '.join(_FORMATS[quoi])}).")
 
     _get_collection(conn, portee, collection_id)
+    _exiger_export(portee, collection_id)
     if quoi == "description":
         data, ext = _faire_description(conn, collection_id, format)
     elif quoi == "metadonnees":
@@ -205,7 +208,8 @@ def depot_metadonnees(collection_id: int,
     passe entre l'instance et l'ENTREPÔT, pas entre l'instance et le disque de qui y
     travaille. Celui qui télécharge ici lit déjà cet OCR dans l'Atelier — le lui rendre en
     tableau ne lui apprend rien. Le régime de diffusion mordra au moment de publier, et
-    c'est la route IIIF qui porte cette question.
+    c'est la route IIIF qui porte cette question. Ce qui mord ici n'est pas le régime
+    mais la sortie elle-même : il faut le droit d'EXPORTER la collection (DROIT-2).
 
     Le XLSX peut manquer sa dépendance : `openpyxl` est un extra d'export, absent de
     l'image `runtime`. Le cas répond **503** en NOMMANT le paquet, parce qu'un format

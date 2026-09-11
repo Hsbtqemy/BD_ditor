@@ -48,12 +48,12 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     PersonnageIn, PersonnageUpdate, PresenceIn, RegionIn, RegionUpdate, RelectureIn,
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
     ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
-    _MOTIF_ADMIN, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _attributs_de, _auteur,
-    _clause_lemme, _clause_personnage, _csv_response, _csv_safe, _descendre_portee,
-    _disposition, _ensure_tags,
+    _MOTIF_ADMIN, _MOTIF_EXPORT, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _attributs_de, _auteur,
+    _clause_lemme, _clause_personnage, _collection_d_export, _csv_response, _csv_safe, _descendre_portee,
+    _disposition, _ensure_tags, _exiger_export, _exiger_export_region,
     _get_album, _get_collection, _get_dimension, _get_personnage, _get_planche,
     _get_region, _get_valeur,
-    _groupes, _norm_tag, _patch_lexique, _refuser_si_verrouillee, _row, _rows,
+    _groupes, _norm_tag, _patch_lexique, _portee_d_export, _refuser_si_verrouillee, _row, _rows,
     _sans_accents, _tags_caches, _validate_parent, db, portee_courante,
 )
 # ARCH-1 — les domaines sortis de ce fichier. `include_router`, plus bas, les rend
@@ -1048,22 +1048,23 @@ def deposer_export(collection_id: int, payload: DeposerExportIn,
     fabriquent le même octet, sans quoi un entrepôt garderait deux versions du même nom
     sans que rien ne dise laquelle a été déposée.
 
-    **Elle exige de POUVOIR ADMINISTRER la collection, là où le téléchargement se contente
-    de la lire**, et cette asymétrie est délibérée. Télécharger, c'est emporter pour soi ce
-    qu'on lit déjà. Déposer, c'est écrire dans un dossier partagé dont l'application ne
+    **Elle exige de POUVOIR ADMINISTRER la collection, là où le téléchargement demande le
+    droit de l'EXPORTER** (DROIT-2), et cette asymétrie est délibérée. Télécharger, c'est
+    emporter pour soi ce qu'on a le droit de sortir. Déposer, c'est écrire dans un dossier partagé dont l'application ne
     contrôle pas l'audience — le second des deux motifs qui réservent déjà le dépôt de
     sauvegarde (SHARE-1), et le seul qui s'applique ici : décrire une collection n'est pas
     un geste d'exploitation. Or décider ce qui sort d'une collection vers un espace commun
     est une décision SUR la collection, ce qu'AUTH-3 appelle précisément posséder.
 
     C'est une garde posée sur l'ACTE et non sur l'écran qui le contient (leçon AUTH-4) : le
-    téléchargement reste offert à qui lit, dans le même panneau.
+    téléchargement reste offert, dans le même panneau, à qui a le droit d'exporter.
     """
     _get_collection(
         conn, portee, collection_id, administrer=True,
         motif="Déposer un export sur ShareDocs écrit dans un dossier partagé dont "
               "l'application ne contrôle pas l'audience : seul un propriétaire de cette "
-              "collection peut le faire. Le téléchargement, lui, vous reste ouvert.")
+              "collection peut le faire. Le téléchargement, lui, reste ouvert à qui "
+              "a le droit d'exporter cette collection.")
     nom, _type, data = _routes_depot.produire(
         conn, portee, collection_id, payload.quoi, payload.format,
         verbatim=payload.verbatim, base_url=payload.base_url)
@@ -1621,10 +1622,18 @@ def _album_payload(conn: sqlite3.Connection, portee, album_id: int) -> dict:
 
 
 @app.get("/api/export/json")
-def export_json(album_id: int, conn: sqlite3.Connection = Depends(db),
+def export_json(album_id: int, collection_id: Optional[int] = None,
+                conn: sqlite3.Connection = Depends(db),
                 portee: autorisation.Portee = Depends(portee_courante)):
+    """L'album entier, texte relevé compris — une PORTE de sortie (DROIT-2).
+
+    Il sort AU TITRE d'une collection où l'on a le droit d'exporter
+    (`_collection_d_export`), et le dit dans `exporte_au_titre_de`. Son contenu suit la
+    portée d'EXPORT et non celle de lecture : un tag local à une collection qu'on lit
+    sans pouvoir l'exporter ne part pas."""
     _get_album(conn, portee, album_id)
-    album = _album_payload(conn, portee, album_id)
+    titre = _collection_d_export(conn, portee, album_id, collection_id)
+    album = _album_payload(conn, portee.pour_export(), album_id)
     return {
         "@context": {
             "@vocab": "https://schema.org/",
@@ -1635,17 +1644,24 @@ def export_json(album_id: int, conn: sqlite3.Connection = Depends(db),
         },
         "@type": "Book",
         "@id": f"album:{album['id']}",
+        "exporte_au_titre_de": titre,
         **album,
     }
 
 
 @app.get("/api/export/csv")
-def export_csv(album_id: int, conn: sqlite3.Connection = Depends(db),
+def export_csv(album_id: int, collection_id: Optional[int] = None,
+               conn: sqlite3.Connection = Depends(db),
                portee: autorisation.Portee = Depends(portee_courante)):
+    """L'album en tableau — une PORTE de sortie (DROIT-2), au titre d'une collection où
+    l'on a le droit d'exporter. Un CSV n'a pas d'en-tête où le dire : c'est son NOM qui
+    porte la collection, comme ailleurs il porte la date ou la troncature."""
     _get_album(conn, portee, album_id)
+    titre = _collection_d_export(conn, portee, album_id, collection_id)
     # Lire l'album ne donne pas à lire tous les tags qu'il porte : un album vit dans
     # plusieurs collections, et un tag local à l'une qu'on ne lit pas y reste attaché.
-    ou_tag, p_tag = portee.clause_terme("tg.collection_id")
+    # Et ce qui SORT suit la portée d'export, pas celle de lecture.
+    ou_tag, p_tag = portee.pour_export().clause_terme("tg.collection_id")
     rows = _rows(conn.execute(
         f"""SELECT a.titre AS album, p.numero AS ordre_import, r.id AS region_id,
                   r.type, r.parent_id, r.x, r.y, r.w, r.h, r.ordre, r.source,
@@ -1679,7 +1695,8 @@ def export_csv(album_id: int, conn: sqlite3.Connection = Depends(db),
     writer = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)
-    return _csv_response(buf.getvalue(), f"album_{album_id}.csv")
+    nom = f"album_{album_id}" + (f"_c{titre['id']}" if titre else "") + ".csv"
+    return _csv_response(buf.getvalue(), nom)
 
 
 TEI_NS = "http://www.tei-c.org/ns/1.0"
@@ -1711,9 +1728,14 @@ def _xml_safe(text) -> str:
 
 
 @app.get("/api/export/tei")
-def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db),
+def export_tei(album_id: int, collection_id: Optional[int] = None,
+               conn: sqlite3.Connection = Depends(db),
                portee: autorisation.Portee = Depends(portee_courante)):
+    """L'album en TEI P5 — une PORTE de sortie (DROIT-2), au titre d'une collection où
+    l'on a le droit d'exporter, dite dans `publicationStmt/availability`."""
     album = _get_album(conn, portee, album_id)
+    titre = _collection_d_export(conn, portee, album_id, collection_id)
+    pe = portee.pour_export()                 # ce qui sort suit la portée d'export
 
     ET.register_namespace("", TEI_NS)
     root = ET.Element(f"{{{TEI_NS}}}TEI")
@@ -1727,6 +1749,11 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db),
         _tei_el(title_stmt, "author").text = _xml_safe(album["auteur"])
     pub = _tei_el(file_desc, "publicationStmt")
     _tei_el(pub, "publisher").text = _xml_safe(album["editeur"] or "BéDéditeur")
+    if titre:
+        # DROIT-2 — sous quel droit ce fichier est sorti. `availability` est l'endroit que
+        # la TEI réserve à ce qui encadre la diffusion d'un texte.
+        _tei_el(_tei_el(pub, "availability"), "p").text = _xml_safe(
+            f"Exporté au titre de la collection « {titre['nom']} ».")
     src = _tei_el(file_desc, "sourceDesc")
     _tei_el(src, "p").text = _xml_safe(
         f"{album['titre']}"
@@ -1774,7 +1801,7 @@ def export_tei(album_id: int, conn: sqlite3.Connection = Depends(db),
                     zone.set("n", f"c{_c['case']}")
                 if r["ocr_texte"]:
                     _tei_el(zone, "line").text = _xml_safe(r["ocr_texte"])
-                ann = _annotation_for_region(conn, portee, r["id"])
+                ann = _annotation_for_region(conn, pe, r["id"])
                 if ann["note"] or ann["tags"]:
                     note = _tei_el(zone, "note")
                     if ann["tags"]:

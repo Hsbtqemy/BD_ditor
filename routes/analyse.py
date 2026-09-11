@@ -25,7 +25,7 @@ from pipeline import nlp
 
 from socle import (
     TokenCorrectionIn, _auteur, _clause_lemme, _csv_response, _csv_safe, _get_region, _norm_tag,
-    _rows, db, portee_courante,
+    _portee_d_export, _rows, db, portee_courante,
 )
 
 router = APIRouter()
@@ -184,6 +184,11 @@ def _frequences_rows(conn, portee, champ, album, type, pos, lemme, morph, proven
     return _rows(conn.execute(sql, params))
 
 
+# DROIT-2 — les six exports CSV de ce module sont des PORTES DE SORTIE. Chacun passe à
+# son cœur la portée d'EXPORT (`_portee_d_export`) et non celle de lecture : l'écran
+# montre tout ce qu'on lit, le fichier n'emporte que ce qu'on a le droit de sortir, et
+# c'est un 403 si l'on n'exporte nulle part. Les cœurs n'ont rien appris : c'est une
+# Portee de plus, que `clause_album` et `clause_terme` consomment telle quelle.
 @router.get("/api/analyse/frequences.csv")
 def analyse_frequences_export(champ: str = "lemme", album: Optional[int] = None,
                               type: Optional[str] = None, pos: Optional[str] = None,
@@ -200,9 +205,9 @@ def analyse_frequences_export(champ: str = "lemme", album: Optional[int] = None,
     jusqu'à `PLAFOND_EXPORT`. C'est la décision du chantier, et elle suit celle que
     `recherche_export` avait déjà prise.
     """
-    lignes = _frequences_rows(conn, portee, champ, album, type, pos, lemme, morph,
-                              provenance, auteur, tags, tag_scope, personnage, attributs,
-                              PLAFOND_EXPORT, PLAFOND_EXPORT)
+    lignes = _frequences_rows(conn, _portee_d_export(portee), champ, album, type, pos,
+                              lemme, morph, provenance, auteur, tags, tag_scope,
+                              personnage, attributs, PLAFOND_EXPORT, PLAFOND_EXPORT)
     cols = (["lemme", "pos", "frequence"] if champ == "lemme" else [champ, "frequence"])
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
@@ -345,9 +350,9 @@ def analyse_concordance_export(lemme: Optional[str] = None, pos: Optional[str] =
     faire — citer un emploi en contexte. Même choix que `recherche_export`, dont le
     commentaire dit « le CSV est l'artefact que le chercheur emporte pour citer ».
     """
-    lignes = _concordance_rows(conn, portee, lemme, pos, morph, provenance, auteur, album,
-                               type, tags, tag_scope, personnage, attributs,
-                               PLAFOND_EXPORT, PLAFOND_EXPORT)
+    lignes = _concordance_rows(conn, _portee_d_export(portee), lemme, pos, morph,
+                               provenance, auteur, album, type, tags, tag_scope,
+                               personnage, attributs, PLAFOND_EXPORT, PLAFOND_EXPORT)
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator=chr(10))
     w.writerow(["citation", "album", "planche", "region_id", "type", "locuteur",
@@ -470,7 +475,7 @@ def analyse_comparaison_export(champ: str = "lemme",
     ligne de commentaire, qui décalerait l'en-tête pour un tableur.
     """
     out, ta, tb = _comparaison_rows(
-        conn, portee, champ, tag_scope,
+        conn, _portee_d_export(portee), champ, tag_scope,
         (a_album, a_type, a_pos, a_morph, a_provenance, a_tags, a_personnage, a_attributs, a_auteur),
         (b_album, b_type, b_pos, b_morph, b_provenance, b_tags, b_personnage, b_attributs, b_auteur))
     lignes = out[:PLAFOND_EXPORT]
@@ -518,9 +523,9 @@ def analyse_croisement_export(axe_x: str, axe_y: str, forme: str = "plat",
     """
     if forme not in ("plat", "matrice"):
         raise HTTPException(422, "forme invalide (plat | matrice).")
-    d = _croisement_data(conn, portee, axe_x, axe_y, album, type, pos, lemme, morph,
-                         provenance, auteur, tags, tag_scope, personnage, attributs,
-                         PLAFOND_EXPORT, PLAFOND_EXPORT)
+    d = _croisement_data(conn, _portee_d_export(portee), axe_x, axe_y, album, type, pos,
+                         lemme, morph, provenance, auteur, tags, tag_scope, personnage,
+                         attributs, PLAFOND_EXPORT, PLAFOND_EXPORT)
     tronque = d["x_tronque"] or d["y_tronque"]
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator=chr(10))
@@ -761,7 +766,7 @@ def analyse_accord_export(conn: sqlite3.Connection = Depends(db),
     Ce rapport NE NOMME PERSONNE : `accord.py` n'a ni `agent` ni `auteur`, c'est ce qui le
     laisse ouvert en lecture là où son voisin `accord-inter` est réservé.
     """
-    r = accord.rapport(conn, album_ids=_albums_lisibles(conn, portee))
+    r = accord.rapport(conn, album_ids=_albums_lisibles(conn, _portee_d_export(portee)))
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator=chr(10))
     w.writerow(["champ", "revus", "accord", "taux", "modele", "indexe_le"])
@@ -798,7 +803,11 @@ def analyse_accord_inter_export(conn: sqlite3.Connection = Depends(db),
             403, "L'accord inter-annotateurs nomme les annotateurs et cite leurs "
                  "désaccords : il est réservé à qui écrit sur le corpus, de sorte que "
                  "ceux qui voient la mesure soient ceux qu'elle mesure.")
-    r = accord_inter.rapport(conn, album_ids=_albums_inscriptibles(conn, portee))
+    # Deux gardes, et elles ne se remplacent pas : écrire (ceux qui voient la mesure sont
+    # ceux qu'elle mesure), puis exporter (le fichier SORT). Le périmètre est donc ce
+    # qu'on écrit ET qu'on peut sortir.
+    r = accord_inter.rapport(conn, album_ids=_albums_inscriptibles(
+        conn, _portee_d_export(portee)))
     taux = {tuple(sorted((p["a"], p["b"]))): p for p in r["paires"]}
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator=chr(10))

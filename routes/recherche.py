@@ -32,8 +32,8 @@ from config import STATUTS
 from database import citations_regions
 from pipeline import nlp
 
-from socle import (_clause_lemme, _csv_response, _csv_safe, _norm_tag, _rows, db,
-                   portee_courante)
+from socle import (_clause_lemme, _csv_response, _csv_safe, _norm_tag, _portee_d_export,
+                   _rows, db, portee_courante)
 
 router = APIRouter()
 
@@ -233,9 +233,13 @@ def recherche_export(q: str = "", album: Optional[int] = None,
                      conn: sqlite3.Connection = Depends(db),
                      portee: autorisation.Portee = Depends(portee_courante)):
     """Export CSV du jeu de résultats courant (mêmes critères que /api/recherche).
-    Borne haute relevée (5000) : on exporte le jeu trouvé, pas seulement l'aperçu."""
-    results = _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph,
-                              provenance, 5000, tag_scope,
+    Borne haute relevée (5000) : on exporte le jeu trouvé, pas seulement l'aperçu.
+
+    DROIT-2 — le fichier n'emporte que ce qu'on a le droit de SORTIR : la portée
+    d'export, pas celle de lecture. L'écran peut donc montrer plus de résultats que le
+    fichier n'en porte, et c'est exactement la décision : voir n'est pas emporter."""
+    results = _recherche_rows(conn, _portee_d_export(portee), q, album, type, tags, pos,
+                              lemme, morph, provenance, 5000, tag_scope,
                               personnage, attributs)
     buf = io.StringIO()
     # `planche` = numéro ÉDITORIAL (cité), `citation` = repère complet « pl·c(·b) » ;

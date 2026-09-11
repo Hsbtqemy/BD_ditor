@@ -320,8 +320,12 @@ def test_le_depot_envoie_L_ARTEFACT_et_le_journalise(client, db_path, monkeypatc
 
 def test_deposer_demande_de_POUVOIR_ADMINISTRER_la_collection(client, monkeypatch,
                                                               db_path, derriere_proxy):
-    """Télécharger, c'est emporter pour soi ce qu'on lit déjà ; déposer, c'est écrire dans
-    un dossier partagé dont l'application ne contrôle pas l'audience.
+    """Télécharger, c'est emporter pour soi ce qu'on a le droit de sortir ; déposer, c'est
+    écrire dans un dossier partagé dont l'application ne contrôle pas l'audience.
+
+    Depuis DROIT-2, lire ne suffit plus à télécharger : la lectrice reçoit la case
+    d'export. Sans elle, le test éprouverait un refus d'EXPORT, et l'asymétrie qu'il
+    garde — exporter n'est pas administrer — ne se verrait plus.
 
     L'asymétrie est le cœur de l'arbitrage : la MÊME personne, sur la MÊME collection,
     obtient le fichier et se voit refuser le dépôt. Un test qui ne vérifierait que le
@@ -331,10 +335,17 @@ def test_deposer_demande_de_POUVOIR_ADMINISTRER_la_collection(client, monkeypatc
     _capter_upload(monkeypatch)
     col = _collection(client, "Corpus")          # créée par `decor`, qui en est propriétaire
     _acces(db_path, col["id"], "lectrice", "lecture")
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("UPDATE collection_acces SET exporter = 1 WHERE principal = 'lectrice'")
+        conn.commit()
+    finally:
+        conn.close()
     moi = {"Remote-User": "lectrice"}
 
     lu = client.get(f"/api/collections/{col['id']}/depot/description", headers=moi)
-    assert lu.status_code == 200, "lire la collection doit suffire à télécharger"
+    assert lu.status_code == 200, "lire AVEC le droit d'exporter doit suffire à télécharger"
 
     depose = client.post(f"/api/collections/{col['id']}/depot/deposer",
                          json={"quoi": "description", "format": "json"}, headers=moi)

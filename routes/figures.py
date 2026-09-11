@@ -22,7 +22,8 @@ import autorisation
 import figure as figure_citable
 from pipeline.ocr import region_crop_png
 
-from socle import FigureIn, _get_region, db, portee_courante
+from socle import (FigureIn, _exiger_export, _exiger_export_region, _get_region, db,
+                   portee_courante)
 
 router = APIRouter()
 
@@ -59,17 +60,23 @@ def _figure_zip(conn, portee: autorisation.Portee, payload: FigureIn) -> tuple[s
                  f"({' | '.join(figure_citable.CHAMPS)}).")
     if payload.collection_id is not None and not portee.peut_lire(payload.collection_id):
         raise HTTPException(404, f"Collection {payload.collection_id} introuvable")
+    if payload.collection_id is not None:
+        # DROIT-2 — la figure sort AU NOM de cette collection : il faut pouvoir l'exporter.
+        _exiger_export(portee, payload.collection_id)
     taille = max(40, min(payload.taille, 2000))
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for rid in payload.regions:
             _get_region(conn, portee, rid)          # 404 si hors portée — pas de passe-droit
+            _exiger_export_region(conn, portee, rid)   # 403 : lisible, pas à sortir (DROIT-2)
             png = region_crop_png(conn, rid, max_dim=taille)
             if png is None:
                 raise HTTPException(404, f"Région {rid} introuvable")
             leg = figure_citable.legende(
                 conn, rid, champs, collection_id=payload.collection_id,
-                lisibles=None if portee.tout else portee.lecture)
+                # Ne crédite qu'une collection qu'on peut EXPORTER : la légende part avec
+                # la figure, et elle dirait sinon sous quel nom d'étude on l'a sortie.
+                lisibles=None if portee.tout else portee.export)
             base = _nom_figure(leg, rid)
             zf.writestr(f"{base}.png", png)
             zf.writestr(f"{base}.txt", figure_citable.texte(leg))
@@ -124,7 +131,10 @@ def exporter_figures(payload: FigureIn, conn: sqlite3.Connection = Depends(db),
     quand c'est le cas, ce qui est aujourd'hui la vérité du dépôt. La taire ferait passer
     pour réglé ce qui ne l'est pas.
 
-    Le cloisonnement d'AUTH-2 s'applique entièrement : on ne cite que ce qu'on voit.
+    Le cloisonnement d'AUTH-2 s'applique entièrement : on ne cite que ce qu'on voit — et,
+    depuis DROIT-2, que ce qu'on a le droit de SORTIR. Le régime ne bloque toujours pas
+    la citation ; c'est le droit d'exporter qui la borne, parce que la figure quitte
+    l'instance.
     """
     nom, octets = _figure_zip(conn, portee, payload)
     return Response(
