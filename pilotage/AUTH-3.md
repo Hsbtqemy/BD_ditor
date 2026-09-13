@@ -5,9 +5,27 @@ statut: livré
 
 # AUTH-3 — espaces de travail : ouvrir une collection, y être invité
 
-**Arrêté sur** — le chantier entier, commit `ad24c1d`, 28 août : le modèle de propriété, les 9 routes, et
+**Arrêté sur** — 2026-09-13, commit `876ef60` : le panneau des accès ne se replie plus à
+chaque réglage, et le focus ne s'y perd plus avec lui.
+
+**État antérieur** — le chantier entier, commit `ad24c1d`, 28 août : le modèle de propriété, les 9 routes, et
 l'écran Collections de la Bibliothèque. `collection_acces` cesse de se remplir en SQL à la
 main, ce qui était la seule chose entre le cloisonnement d'AUTH-2 et son usage réel.
+
+**Un défaut d'USAGE, seize jours après la livraison — 2026-09-13.** Les quatre gestes du
+panneau rechargent la liste entière, à dessein : l'écran doit montrer ce que le serveur a
+enregistré, pas ce qu'on a cliqué. Mais `loadCollections` reconstruisait chaque `<details>`
+à neuf, donc FERMÉ. Régler un accès repliait la collection sous la main et détruisait le
+contrôle qui portait le focus ; sur une collection à plusieurs accès, chaque réglage
+demandait de tout rouvrir et de retrouver sa ligne. Le correctif relève les collections
+dépliées ET la cible du focus avant de détruire le DOM, puis les rétablit.
+
+**Ce que ce défaut apprend sur la couverture de ce chantier**, et c'est la raison de
+l'écrire ici : il a vécu seize jours sous des tests verts, dont quatre tests navigateur qui
+ouvrent CE panneau. Ils interrogent l'API après le clic — `GET /api/collections/{id}/acces`
+— et ne regardent plus l'écran. Une garde exige désormais les deux moitiés, dépliant encore
+ouvert et focus encore sur la case réglée ; la seconde ne se voit qu'en naviguant sans
+souris, donc jamais à l'œil. Trouvé à l'usage, pendant la recette d'avant fusion.
 
 La décision de forme : la propriété est un NIVEAU de plus dans `collection_acces`, pas une
 colonne sur `collection`. Une seule source de vérité, la résolution d'AUTH-2 fonctionne
