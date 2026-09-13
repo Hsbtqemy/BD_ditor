@@ -5,7 +5,11 @@ statut: livré
 
 # AUTH-3 — espaces de travail : ouvrir une collection, y être invité
 
-**Arrêté sur** — 2026-09-13, commit `876ef60` : le panneau des accès ne se replie plus à
+**Arrêté sur** — 2026-09-13, commit `7ca1a87` : la passe de revue du correctif, qui a
+trouvé le défaut le plus sérieux DANS la garde — elle pouvait passer verte sans rien
+mesurer. La garde est désormais éprouvée dans les deux sens plutôt qu'affirmée.
+
+**État antérieur** — 2026-09-13, commit `876ef60` : le panneau des accès ne se replie plus à
 chaque réglage, et le focus ne s'y perd plus avec lui.
 
 **État antérieur** — le chantier entier, commit `ad24c1d`, 28 août : le modèle de propriété, les 9 routes, et
