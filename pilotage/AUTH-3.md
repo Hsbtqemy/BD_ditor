@@ -27,6 +27,50 @@ ouvrent CE panneau. Ils interrogent l'API après le clic — `GET /api/collectio
 ouvert et focus encore sur la case réglée ; la seconde ne se voit qu'en naviguant sans
 souris, donc jamais à l'œil. Trouvé à l'usage, pendant la recette d'avant fusion.
 
+**Et la passe de revue qui a suivi a trouvé le défaut DANS la garde — 2026-09-13.** Elle
+pouvait passer verte sans rien mesurer : ses trois assertions sont toutes vraies du DOM
+d'AVANT le rechargement — dépliant ouvert, case cochée, focus dessus —, et l'attente était
+un délai forfaitaire de 800 ms. Sur une machine lente, l'image e2e par exemple, le locator
+résolvait l'ancien nœud et le test approuvait sans avoir vu le nouveau. Elle prend
+désormais une poignée sur l'ancien `<details>` avant le clic et exige qu'elle soit
+DÉCONNECTÉE : c'est la seule chose qui distingue les deux DOM. Le commentaire qui
+prétendait le contraire — « la case revenue cochée prouve que le rechargement a eu lieu » —
+était faux, la case étant cochée avant comme après.
+
+**Deux affirmations du message de `876ef60` sont inexactes, et un commit poussé ne se
+réécrit pas.** Il annonce que le focus est rendu pour « les quatre gestes » : c'est faux
+pour « retirer », dont la ligne n'existe plus après suppression — il n'y a aucun sélecteur
+à retrouver, le jeton est consommé et le focus retombe sur le corps de la page. La limite
+est désormais écrite dans le code, à côté de la garde. Et il cite `renderAlbums` comme
+précédent alors que `corpus.js:chargerCollections` porte déjà l'idiome `ouvertes` à
+l'identique, commentaire compris : la restauration d'ouverture existe donc en double dans
+deux fichiers, ce qui est à savoir avant d'en toucher une.
+
+**Trois autres écarts fermés dans la foulée** : cinq chemins de sortie laissaient le jeton
+de refocus ARMÉ — le focus sautait alors des minutes plus tard, sur un dépliant rouvert à
+la main, sans cause visible à l'écran ; rien ne vérifiait que la personne n'avait pas repris
+le focus ailleurs pendant l'aller-retour réseau, si bien qu'on le lui arrachait en pleine
+frappe ; et un commentaire affirmait que la ligne d'ajout vit hors du `<details>`, ce qui
+est faux — elle y est écrite —, rendant inatteignable le bloc qu'il justifiait.
+
+**La garde a été VUE ROUGE sur le code d'avant, et en DEUX temps.** Une garde qu'on n'a
+jamais vue échouer sur le défaut qu'elle prétend fermer n'a pas été éprouvée : elle a
+seulement été écrite. Et en prouver une seule moitié laisserait l'autre affirmation non
+éprouvée, ce qui est le défaut d'origine sous un autre nom — la garde exige deux
+propriétés, elle doit donc tomber pour chacune. Rétablissement d'ouverture neutralisé :
+rouge sur `el.open`, la poignée déconnectée étant DÉJÀ satisfaite, donc un échec de
+persistance et non de rechargement. Rétablissement du focus neutralisé : les deux premières
+assertions passent, seule tombe celle du focus. Chaque rouge a été vérifié par sa CAUSE et
+non par son code de retour — un test navigateur sort aussi en 1 quand le serveur d'épreuve
+ne démarre pas, et un module sauté sortirait en 0 là où l'on attend un rouge, ce qui se
+lirait « la garde n'a rien vu ».
+
+La neutralisation s'est faite par édition reversée, jamais par `git stash` : sans chemins
+il emporte tout l'arbre de travail, partagé ici avec une autre session. Et la restitution
+est prouvée par l'EMPREINTE du fichier, égale avant et après, non par `git diff` — tant que
+le correctif n'est pas commité, ce diff est non vide dans les deux états et ne distingue
+rien.
+
 La décision de forme : la propriété est un NIVEAU de plus dans `collection_acces`, pas une
 colonne sur `collection`. Une seule source de vérité, la résolution d'AUTH-2 fonctionne
 telle quelle, et un GROUPE peut posséder — un espace de travail survit rarement au départ
