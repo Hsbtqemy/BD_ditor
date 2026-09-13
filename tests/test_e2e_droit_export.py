@@ -155,17 +155,22 @@ def test_le_depliant_reste_ouvert_et_le_focus_avec_lui(page, decor):
     case.wait_for(timeout=3000)
     assert not case.is_checked(), "prémisse fausse : Bob a déjà la case"
 
+    # La POIGNÉE sur l'ancien nœud, prise avant le clic. C'est la seule chose qui distingue
+    # le DOM d'avant de celui d'après : les trois assertions ci-dessous sont toutes vraies
+    # du DOM d'AVANT — le dépliant y est ouvert, la case cochée, le focus dessus. Sans ce
+    # repère, un rechargement en retard laisserait le locator résoudre l'ancien nœud et le
+    # test approuverait sans avoir rien mesuré. Mode d'échec VERT, et d'autant plus probable
+    # que la machine est lente : l'image e2e joue 184 tests en une vingtaine de minutes.
+    ancien = item.element_handle()
     case.check()
-    page.wait_for_timeout(800)          # le réglage part, la liste se redessine
+    page.wait_for_function("el => !el.isConnected", arg=ancien, timeout=10000)
 
     assert item.evaluate("el => el.open"), (
         "la collection s'est repliée après le réglage — le rechargement reconstruit les "
         "<details> à neuf et perd leur état d'ouverture")
-    # La case REVENUE cochée prouve que le rechargement a bien eu lieu : sans lui, on
-    # lirait l'état cliqué et non l'état enregistré, et l'assertion ci-dessus serait vide.
     assert item.locator('input[data-export][data-principal="bob"]').is_checked(), (
-        "la case n'est pas revenue cochée : le panneau n'a pas été redessiné, donc ce test "
-        "ne prouve rien de l'état d'ouverture")
+        "la case n'est pas revenue cochée : le serveur n'a pas enregistré le réglage, ou "
+        "l'écran affiche autre chose que ce qu'il a répondu")
     actif = page.evaluate(
         "() => { const a = document.activeElement; return a ? (a.dataset.principal || null) : null; }")
     assert actif == "bob", (

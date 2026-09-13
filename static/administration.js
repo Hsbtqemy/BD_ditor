@@ -245,7 +245,17 @@ async function colDetail(d, c) {
   // Le focus, rendu APRÈS que les accès sont arrivés — `colDetail` est asynchrone, donc
   // le contrôle n'existe pas encore au moment où `loadCollections` rouvre le dépliant.
   // Consommé une seule fois : deux collections rouvertes ne se disputent pas le focus.
-  if (A_REFOCUSER && A_REFOCUSER.id === String(c.id)) {
+  //
+  // `activeElement === body` est la GARDE, et pas une précaution de style : entre la
+  // destruction du DOM et l'arrivée des accès il y a un aller-retour réseau complet,
+  // pendant lequel le focus retombe sur `<body>` et la personne peut cliquer ailleurs —
+  // y compris dans le champ d'une AUTRE collection. Sans ce test, on le lui arracherait
+  // en pleine frappe. Le focus ne se rend donc qu'à quelqu'un qui ne l'a pas repris.
+  //
+  // Le geste « retirer » n'aboutit jamais ici, et c'est normal : la ligne supprimée n'a
+  // plus de sélecteur à retrouver. Le jeton est consommé, aucun focus n'est posé.
+  if (A_REFOCUSER && A_REFOCUSER.id === String(c.id)
+      && document.activeElement === document.body) {
     const cible = box.querySelector(A_REFOCUSER.sel);
     A_REFOCUSER = null;
     if (cible) cible.focus();
@@ -294,6 +304,12 @@ function _cibleFocus(el) {
 
 async function loadCollections() {
   const body = $("#col-body");
+  // DÉSARMER d'abord, capter ensuite. Ce rendu-ci peut sortir par cinq chemins sans jamais
+  // consommer le jeton — échec des deux requêtes, portée devenue vide, collection rouverte
+  // qu'on n'administre plus, accès qui ne se chargent pas. Le jeton étant global au module,
+  // il survivrait jusqu'au prochain rendu qui lui correspond : le focus sauterait alors
+  // vers une case au milieu de la liste, des minutes plus tard, sans cause à l'écran.
+  A_REFOCUSER = null;
   // Avant le rendu : la note qui déclare les administrateurs en dépend, et une note qui
   // ne paraît pas laisse la liste mentir par omission comme avant le chantier.
   MOI = await identite();
@@ -306,7 +322,10 @@ async function loadCollections() {
   const actif = document.activeElement;
   const sel = _cibleFocus(actif);
   const item = sel ? actif.closest(".col-item") : null;
-  // `id` null = un contrôle de la ligne d'ajout, qui vit hors de tout `<details>`.
+  // `id` est TOUJOURS renseigné en pratique : la ligne d'ajout est écrite dans `box`, donc
+  // à l'intérieur du `<details>`, ce qu'une première rédaction affirmait à l'envers. Le cas
+  // `null` reste traité par prudence — un contrôle qui naîtrait hors des dépliants —, mais
+  // il n'est atteint par aucun geste d'aujourd'hui, et on ne lui écrit pas de branche.
   A_REFOCUSER = sel ? { id: item ? item.dataset.id : null, sel } : null;
 
   body.innerHTML = "";
@@ -323,13 +342,6 @@ async function loadCollections() {
     // fraîche. Une collection disparue de la portée ne se rouvre pas : son id n'est plus là.
     if (ouvertes.has(String(c.id))) d.open = true;
   });
-  // La ligne d'ajout vit hors d'un `<details>` replié seulement quand la collection est
-  // dépliée ; si rien ne se rouvre, le focus n'a nulle part où aller et on l'abandonne.
-  if (A_REFOCUSER && A_REFOCUSER.id === null) {
-    const cible = body.querySelector(A_REFOCUSER.sel);
-    A_REFOCUSER = null;
-    if (cible) cible.focus();
-  }
 }
 
 /* --- Version servie (INFRA-10) ---------------------------------------------------
