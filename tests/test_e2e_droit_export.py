@@ -131,6 +131,48 @@ def test_la_case_cochee_dans_les_acces_rend_l_export_a_l_ecran(page, decor):
     assert _cache(page, "#export-note"), "Bob exporte TOUT ce qu'il lit : aucune note à faire"
 
 
+def test_le_depliant_reste_ouvert_et_le_focus_avec_lui(page, decor):
+    """AUTH-3 — régler un accès ne doit pas replier la collection sous la main.
+
+    Les quatre gestes du panneau rechargent la liste ENTIÈRE, et c'est voulu : l'écran doit
+    montrer ce que le serveur a enregistré, pas ce qu'on a cliqué. Mais `loadCollections`
+    reconstruisait chaque `<details>` à neuf, donc FERMÉ — cocher « peut exporter » repliait
+    la collection et détruisait le contrôle qui portait le focus. Sur une collection à
+    plusieurs accès, chaque réglage demandait de tout rouvrir et de retrouver sa ligne.
+
+    Aucun test ne pouvait le voir, et c'est le point : ceux de ce module interrogent l'API
+    après le clic (`/api/collections/{id}/acces`) et ne regardent plus le panneau. Relevé à
+    l'usage pendant la recette du 2026-09-13.
+
+    Les DEUX moitiés sont exigées. L'ouverture seule laisserait le clavier perdre sa place
+    à chaque réglage — un défaut qui ne se voit qu'en naviguant sans souris, donc jamais.
+    """
+    page.set_extra_http_headers(ADMIN)
+    page.goto(decor["base"] + "/administration", wait_until="networkidle")
+    item = page.locator(f'#col-body .col-item[data-id="{decor["collection"]}"]')
+    item.locator("summary").click()
+    case = item.locator('input[data-export][data-principal="bob"]')
+    case.wait_for(timeout=3000)
+    assert not case.is_checked(), "prémisse fausse : Bob a déjà la case"
+
+    case.check()
+    page.wait_for_timeout(800)          # le réglage part, la liste se redessine
+
+    assert item.evaluate("el => el.open"), (
+        "la collection s'est repliée après le réglage — le rechargement reconstruit les "
+        "<details> à neuf et perd leur état d'ouverture")
+    # La case REVENUE cochée prouve que le rechargement a bien eu lieu : sans lui, on
+    # lirait l'état cliqué et non l'état enregistré, et l'assertion ci-dessus serait vide.
+    assert item.locator('input[data-export][data-principal="bob"]').is_checked(), (
+        "la case n'est pas revenue cochée : le panneau n'a pas été redessiné, donc ce test "
+        "ne prouve rien de l'état d'ouverture")
+    actif = page.evaluate(
+        "() => { const a = document.activeElement; return a ? (a.dataset.principal || null) : null; }")
+    assert actif == "bob", (
+        f"le focus est reparti sur {actif!r} au lieu de la case réglée : le contrôle est "
+        "détruit par le re-rendu, et le clavier perd sa place à chaque réglage")
+
+
 def test_un_album_exportable_au_titre_de_deux_collections_fait_choisir(page, decor):
     """Tranché le 2026-09-11 : le choix appartient à qui exporte. L'Atelier le demande, et
     l'export part avec la collection choisie — pas la première venue."""

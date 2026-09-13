@@ -241,6 +241,15 @@ async function colDetail(d, c) {
         exporter: box.querySelector(".col-export-neuf").checked })))
       recharger();
   };
+
+  // Le focus, rendu APRÈS que les accès sont arrivés — `colDetail` est asynchrone, donc
+  // le contrôle n'existe pas encore au moment où `loadCollections` rouvre le dépliant.
+  // Consommé une seule fois : deux collections rouvertes ne se disputent pas le focus.
+  if (A_REFOCUSER && A_REFOCUSER.id === String(c.id)) {
+    const cible = box.querySelector(A_REFOCUSER.sel);
+    A_REFOCUSER = null;
+    if (cible) cible.focus();
+  }
 }
 
 /* Les noms des groupes d'administration, lus UNE fois. Ils viennent de `/api/moi` et non
@@ -252,6 +261,37 @@ async function colDetail(d, c) {
    fois par page ; ce helper ne fait que mémoïser la lecture du résultat. */
 let MOI = { login: null, groupes_admin: [] };
 
+/* AUTH-3 (2026-09-13) — ce que le rechargement emportait avec lui.
+   Les quatre gestes du panneau (niveau, case d'export, retrait, accord) rechargent la
+   liste ENTIÈRE, à dessein : l'écran doit montrer ce que le serveur a enregistré, pas ce
+   qu'on a cliqué. Mais `loadCollections` reconstruit chaque `<details>` à neuf, donc
+   FERMÉ — la collection se repliait à chaque clic, et le contrôle qu'on venait d'actionner
+   disparaissait sous le focus. Relevé en recette, invisible à la suite : les tests
+   interrogent l'API après le clic, jamais le panneau.
+   Le patron vient d'ailleurs dans ce dépôt : `renderAlbums` réapplique `state.openId`.
+   Ici on garde en plus la CIBLE DU FOCUS, parce que l'élément actif est détruit par le
+   re-rendu et que le clavier perdrait sa place à chaque réglage. */
+let A_REFOCUSER = null;          // { id, sel } — consommé par `colDetail`
+
+/* Le sélecteur qui retrouvera, APRÈS re-rendu, le contrôle actuellement actif. Rend null
+   pour tout ce qu'on ne sait pas nommer : mieux vaut ne pas rendre le focus que le rendre
+   au mauvais endroit. */
+function _cibleFocus(el) {
+  if (!el || el === document.body) return null;
+  const d = el.dataset || {};
+  if (d.principal && d.genre) {
+    const q = `[data-genre="${CSS.escape(d.genre)}"][data-principal="${CSS.escape(d.principal)}"]`;
+    if (el.matches("input[data-export]")) return `input[data-export]${q}`;
+    if (el.matches("select[data-principal]")) return `select${q}`;
+    if (el.matches("[data-retirer]")) return `[data-retirer]${q}`;
+    return null;
+  }
+  for (const c of ["col-principal", "col-genre", "col-niveau-neuf", "col-export-neuf"])
+    if (el.classList.contains(c)) return `.${c}`;
+  if (el.matches("[data-accorder]")) return "[data-accorder]";
+  return null;
+}
+
 async function loadCollections() {
   const body = $("#col-body");
   // Avant le rendu : la note qui déclare les administrateurs en dépend, et une note qui
@@ -260,13 +300,36 @@ async function loadCollections() {
   let cols = [];
   try { cols = await apiGet("/api/collections"); }
   catch (e) { body.innerHTML = `<p class="col-note">${esc(e.message)}</p>`; return; }
+  // Ce qui était DÉPLIÉ, et où le focus se tenait — relevés AVANT de détruire le DOM.
+  const ouvertes = new Set(
+    [...body.querySelectorAll(".col-item[open]")].map((d) => d.dataset.id));
+  const actif = document.activeElement;
+  const sel = _cibleFocus(actif);
+  const item = sel ? actif.closest(".col-item") : null;
+  // `id` null = un contrôle de la ligne d'ajout, qui vit hors de tout `<details>`.
+  A_REFOCUSER = sel ? { id: item ? item.dataset.id : null, sel } : null;
+
   body.innerHTML = "";
   if (!cols.length) {
     body.innerHTML = `<p class="col-note">Aucune collection ouverte pour vous. On en crée
       une dans la <a href="/corpus">Bibliothèque</a>, et l'on en devient propriétaire.</p>`;
     return;
   }
-  cols.forEach((c) => body.appendChild(colItem(c)));
+  cols.forEach((c) => {
+    const d = colItem(c);
+    body.appendChild(d);
+    // `open` APRÈS insertion : l'écouteur `toggle` posé par `colItem` déclenche alors
+    // `colDetail`, qui redemande les accès — c'est bien ce qu'on veut, la liste doit être
+    // fraîche. Une collection disparue de la portée ne se rouvre pas : son id n'est plus là.
+    if (ouvertes.has(String(c.id))) d.open = true;
+  });
+  // La ligne d'ajout vit hors d'un `<details>` replié seulement quand la collection est
+  // dépliée ; si rien ne se rouvre, le focus n'a nulle part où aller et on l'abandonne.
+  if (A_REFOCUSER && A_REFOCUSER.id === null) {
+    const cible = body.querySelector(A_REFOCUSER.sel);
+    A_REFOCUSER = null;
+    if (cible) cible.focus();
+  }
 }
 
 /* --- Version servie (INFRA-10) ---------------------------------------------------
