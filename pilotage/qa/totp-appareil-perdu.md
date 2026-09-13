@@ -11,7 +11,7 @@ derniere: 2026-09-06
 le parcours d'un compte est « franchissable seul, **appareil perdu compris** ». `AUTH-7`
 écrit que réinitialiser un TOTP exige `authelia storage user totp delete`, **console
 uniquement**. Les deux ne peuvent être vraies que si « appareil perdu » désignait le compte
-PAS ENCORE enrôlé — qui reçoit un lien d'enregistrement, ce qui est le parcours normal de
+PAS ENCORE enrôlé — qui reçoit un code d'enregistrement, ce qui est le parcours normal de
 première connexion — et non le compte DÉJÀ enrôlé dont le téléphone a disparu.
 
 **Ce que ça décide.** Depuis l'arbitrage du 2026-09-06, seuls les `bd-admins` sont soumis
@@ -36,6 +36,15 @@ de LLDAP, derrière Authelia, et non plus en éditant `users_database.yml` sur l
 Rien d'autre ne bouge ici — le stockage TOTP est propre à Authelia et indexé par login,
 indépendamment du backend, ce que la montée en 4.39 puis la bascule ont confirmé deux fois.
 
+**La forme de l'enrôlement a changé elle aussi, et c'est MESURÉ** — 2026-09-13, pile de
+recette, Authelia 4.39.22, premier appareil enrôlé de bout en bout. Le compte non enrôlé
+reçoit un **code à huit caractères** écrit dans `notification.txt`, et non un lien : le
+seul lien du fichier est celui qui RÉVOQUE la demande. Enregistrer un appareil modifie les
+paramètres de sécurité, donc Authelia élève d'abord la session, et c'est ce flux —
+`elevated_session` — qui gouverne le code, non celui de la réinitialisation de mot de
+passe. Les cases du parcours de SECOURS ci-dessous en tiennent compte, mais **ce parcours
+n'a PAS été joué** : elles disent ce qu'il faut constater, pas ce qu'on sait déjà.
+
 ## Reste
 
 ### Ce qui se lit sans rien perdre
@@ -44,9 +53,9 @@ indépendamment du backend, ce que la montée en 4.39 puis la bascule ont confir
 - [ ] Le compte `stagiaire`, promu `bd-admins` mais SANS appareil enrôlé, se voit bien proposer l'enrôlement — et non un mur. C'est le parcours qu'`INFRA-8` a éprouvé ; le rejouer ici sépare les deux cas que la contradiction confond, au lieu de supposer lequel avait été testé
 
 ### Si un chemin de secours existe, il faut savoir ce qu'il exige
-- [ ] Le parcours de secours va jusqu'au bout **sans l'ancien appareil** : un lien qui redemande un code du téléphone perdu n'est pas un recours, c'est le même mur avec une porte peinte dessus
-- [ ] Il passe par le **notifier**, et le notifier fonctionne. C'est le même chemin que la réinitialisation de mot de passe (`jwt_lifespan: 15 minutes`), donc il dépend du courriel — ou du repli `filesystem` si `SMTP_ADRESSE` est vide. Un recours qui repose sur une remise de courriel non éprouvée n'est pas éprouvé. Croise la case ouverte d'`INFRA-9`
-- [ ] Le délai de 15 minutes du lien tient pour ce parcours-là aussi. Il a été choisi pour la réinitialisation de mot de passe, en tenant compte de la remise et du temps de relever sa boîte ; rien ne dit qu'il ait été pesé pour quelqu'un qui cherche d'abord son téléphone
+- [ ] Le parcours de secours va jusqu'au bout **sans l'ancien appareil** : un parcours qui redemande un code du téléphone perdu n'est pas un recours, c'est le même mur avec une porte peinte dessus
+- [ ] Il passe par le **notifier**, et le notifier fonctionne. Le notifier porte bien le code de l'enrôlement INITIAL, mesuré le 2026-09-13 ; lequel des deux flux d'identité porte le SECOURS — `reset_password` ou `elevated_session` — est à constater ici, les deux n'ayant ni la même forme ni le même délai. Il dépend donc du courriel — ou du repli `filesystem` si `SMTP_ADRESSE` est vide. Un recours qui repose sur une remise de courriel non éprouvée n'est pas éprouvé. Croise la case ouverte d'`INFRA-9`
+- [ ] Le délai qui gouverne ce parcours est CONSTATÉ, puis comparé à ce qu'il faut pour retrouver un téléphone. Attendu à confirmer, non mesuré ici : si le secours passe par l'élévation, c'est `elevated_session.code_lifespan` = **5 minutes** — défaut compilé dans la 4.39.22, et aucun bloc `elevated_session` n'est déclaré chez nous — et non les 15 minutes de `jwt_lifespan`, qui ne valent que pour la réinitialisation de mot de passe. Ces 15 minutes sont un TRIPLEMENT délibéré du défaut de 5, posé parce que la remise du courriel s'ajoute au temps de relever sa boîte ; le même raisonnement n'a jamais été appliqué au code qui sert à récupérer un second facteur, alors qu'il emprunte le même notifier. Le réglage existe, et ce constat est le vrai enjeu de la case
 
 ### Le recours en console, qui doit exister quoi qu'il arrive
 - [ ] `docker compose exec authelia authelia storage user totp delete <login>` fonctionne **en 4.39.22**, et la commande exacte est recopiée ici telle qu'elle a répondu. La forme de cette CLI a changé entre versions ; celle qui est écrite dans `AUTH-7` date d'avant la montée et n'a jamais été exécutée sur cette instance
