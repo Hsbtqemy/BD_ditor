@@ -248,25 +248,39 @@ l'interface qui crée et supprime des comptes.
 1. Ouvre `https://bd.example.fr` → tu es redirigé vers `https://auth.example.fr`.
 2. Connecte-toi avec le compte créé à l'amorçage : le mot de passe est celui de
    l'annuaire, pas celui du fichier de repli.
-3. Pour enregistrer la 2FA, Authelia génère un lien. Avec le notifier
-   « filesystem » (par défaut), récupère-le ici :
+3. L'écran « Enregistrez votre premier appareil » s'affiche, et c'est l'application
+   d'authentification qui est proposée — `default_2fa_method: 'totp'` est déclaré pour
+   ça. Sans ce réglage, Authelia offre d'abord la clé de sécurité, et le même écran
+   réapparaît à quelqu'un qui vient justement d'enrôler un TOTP.
+4. Enregistrer un appareil MODIFIE les paramètres de sécurité : Authelia élève donc la
+   session et émet un **code à usage unique**, à saisir dans le navigateur. Avec le
+   notifier « filesystem » (par défaut), il s'écrit ici :
    ```bash
    docker compose exec authelia cat /config/notification.txt
    ```
-   Le fichier contient DEUX liens : celui qui enregistre et celui qui révoque la
-   demande. Prendre celui qui porte `/one-time-password/register`, et le plus RÉCENT :
-   le fichier s'accumule, et le jeton expire en quelques minutes.
-   ```bash
-   docker compose exec -T authelia cat /config/notification.txt \
-     | grep -o 'https://[^[:space:]]*' | grep -v revoke | tail -3
-   ```
-   Ouvre le lien, scanne le QR code avec une app TOTP (Aegis, Google
-   Authenticator…). Ensuite la connexion demandera le code à 6 chiffres.
+   Le fichier s'ACCUMULE : prendre le dernier bloc, et vérifier son `Recipient:` — un
+   code périmé se saisit aussi bien qu'un code valide, et le refus ne dit pas lequel des
+   deux on a lu. Le seul lien présent RÉVOQUE la demande ; ne pas le suivre.
+5. Scanne le QR code avec une app TOTP (Aegis, Google Authenticator…) et confirme avec
+   les six chiffres. Ensuite, les comptes soumis au second facteur — `bd-admins`, cf.
+   `access_control` — les redemanderont à chaque session.
+
+> **Mesuré le 2026-09-13 sur Authelia 4.39.22** (pile de recette). Ce paragraphe décrivait
+> la 4.38, qui écrivait un LIEN `/one-time-password/register` à extraire du fichier. La
+> 4.39 n'en écrit plus, et la commande d'extraction qui figurait ici — un `grep -o` des
+> URL, moins celle de révocation — renvoie désormais une liste VIDE. C'est le pire mode
+> d'échec pour une documentation d'installation : elle ne se contredit pas, elle ne rend
+> rien, et un résultat vide se lit comme une pile cassée.
+>
+> Autre chose que la mesure a séparée : **confirmer l'inscription n'est pas se connecter.**
+> `totp_configurations.last_used_at` reste vide, et aucune ligne `TOTP` n'entre au journal,
+> tant que la première authentification réelle n'a pas eu lieu. Un appareil enrôlé qui
+> n'ouvre aucune porte a donc la même trace qu'un appareil qui vient de marcher.
 
 ### Passer aux vrais courriels
 
 Le notifier « filesystem » ne tient que le temps d'un seul compte. Pour chaque personne
-qui arrive, il faut ouvrir une session SSH, extraire le bon lien, et le transmettre avant
+qui arrive, il faut ouvrir une session SSH, extraire le bon code, et le transmettre avant
 qu'il n'expire — en présence de l'intéressé. Ce n'est pas délégable. Un notifier SMTP rend
 l'enrôlement, la réinitialisation de mot de passe et le remplacement d'un appareil TOTP
 perdu **autonomes** : ils cessent de passer par l'administrateur.
