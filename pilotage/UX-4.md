@@ -31,6 +31,11 @@ plus jeune donc la moins alignée.
 - [ ] Le tableau fini ne porte **aucune colonne d'identité** — ni nom lisible, ni dernière visite, ni nombre d'actes (raison en Contexte : la réserve est écrite, et le cliquet ne la défendrait pas)
 - [ ] Le `<select>` de niveau reste tel quel, et la colonne « Niveau » est faite pour pouvoir changer SEULE : la rendre en cases à cocher appartient à `AUTH-10`, sur lequel l'équipe a décidé le 2026-09-10 de ne rien engager
 
+### Le menu d'export annonce ce qu'il va faire
+- [ ] **Les trois formats d'export de l'Atelier ont le même effet apparent, ou le disent.** Mesuré le 2026-09-13 pendant la recette : « Export CSV » et « Export TEI P5 » posent un `Content-Disposition: attachment` et TÉLÉCHARGENT (`album_2_c2.csv`, `album_2_tei.xml`) ; « Export JSON-LD » n'en pose aucun et AFFICHE le JSON dans un onglet. Les trois boutons se suivent dans le même menu, sous le même intertitre, et rien ne distingue leur effet avant le clic — relevé par l'équipe, qui a cru à une panne. Attendu : soit la route JSON pose l'en-tête comme ses deux voisines, soit les libellés disent lequel ouvre et lesquels téléchargent
+- [ ] **Le choix ne doit pas aveugler le cliquet de `tests/test_droit_export.py`.** Il repère les portes de sortie par leur source ET par leur chemin PRÉCISÉMENT parce que l'export JSON d'un album ne pose aucun en-tête de pièce jointe : c'est le contre-exemple qui justifie la double détection. Poser cet en-tête le ferait disparaître, et une détection par en-tête seul redeviendrait plausible — donc fausse le jour de la porte suivante. À vérifier AVANT de trancher, pas après
+- [ ] **Le menu lui-même porte le mauvais nom dans les passes de QA**, et c'est un signe : il s'appelle « ⇅ Import / Export », « Exporter » n'y étant qu'un intertitre non cliquable. `pilotage/qa/droit-export.md` l'annonçait comme « menu ☰ », qui n'existe qu'en largeur de téléphone et pour tout autre chose. Attendu : les passes nomment les contrôles comme l'écran les nomme
+
 ## Contexte
 
 Effort M, priorité P3. Les deux cases d'accessibilité sont là parce que c'est
