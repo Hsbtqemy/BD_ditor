@@ -37,6 +37,9 @@ la configuration livrée par INFRA-1, relue et non éprouvée.
 - [ ] Ce que la case « se souvenir de moi » change vraiment : la même attente, case cochée à la connexion. La session survit-elle à l'inactivité, ou seulement jusqu'à `expiration` ? C'est la question qui décide si `remember_me: 1 month` rend les deux autres réglages sans objet
 - [ ] Ce qu'une expiration fait à un LOT ML en cours : un lot lancé depuis la Bibliothèque tourne dans un thread serveur, donc l'expiration ne devrait pas l'interrompre — à vérifier, parce que « ne devrait pas » n'est pas une mesure
 - [ ] La documentation d'Authelia ne dit pas si `expiration` est RAFRAÎCHIE à chaque requête ou si elle plafonne depuis la connexion. Le réglage du 2026-09-06 a levé les deux valeurs précisément pour être juste dans les deux cas — l'incertitude est contournée, pas levée, et une mesure la trancherait
+- [ ] **Le renvoi après réouverture, quand une cible EXISTE** : être renvoyé par l'application (barre d'adresse en `auth…/?rd=…`), saisir le mot de passe, et dire si l'on revient sur la page demandée ou si l'on reste sur le portail. Le 2026-09-13, les deux connexions de `proprio` portaient bien leur cible dans `authentication_logs` (`request_uri` renseignée) — ce que le renvoi a fait ensuite n'a pas été observé, et l'équipe ne s'en souvenait pas. C'est la moitié qui décide s'il y a un défaut ou seulement un portail ouvert à la main
+- [ ] **Atteindre le portail SANS cible** — en tapant son adresse au lieu d'être renvoyé — puis se connecter : attendu, le repli `default_redirection_url` mène à l'application. Observé une fois le 2026-09-13 en sens CONTRAIRE, sans l'avoir cherché (section ci-dessous) ; une observation incidente n'est pas une mesure, et celle-ci est confondue avec la proposition d'enrôlement décrite plus bas
+- [ ] **La réouverture sur un compte de `bd-admins`**, seule question que les comptes `one_factor` ne peuvent pas départager : le portail redemande-t-il le second facteur en plus du mot de passe ? **Bloquée par un préalable** — au 2026-09-13, `totp_configurations` et `webauthn_credentials` sont VIDES sur la pile de recette, donc aucun appareil n'est enrôlé et `admin-bd` n'atteint même pas l'application (règle 1, `two_factor`). Enrôler d'abord, mesurer ensuite
 
 ### Décider — fait le 2026-09-06, par un autre chemin que celui prévu ici
 - [x] Les trois valeurs sont tranchées sur un attendu ÉCRIT (« une journée de travail sans ressaisir ») et non sur une intuition de confort : `12 hours` / `1 hour` / `1 month`, avec le raisonnement dans `authelia/configuration.yml` — dont l'argument le plus utile est que `remember_me: 1 month` accordait DÉJÀ un mois à qui coche la case, si bien que les quinze minutes ne bordaient que les prudents
@@ -86,6 +89,59 @@ Il faudrait la même attente sur un compte de `bd-admins`.
 
 La case reste donc ouverte, mais son attendu a rétréci : la mécanique d'expiration est
 établie, seul le parcours de réouverture ne l'est pas.
+
+## Le parcours de réouverture, à moitié observé — 2026-09-13
+
+**Signalé pendant la recette de `DROIT-2`**, sur la pile locale : « il n'y a pas de
+redirection directe à la connexion 1 facteur. On reste dans auth, avec la proposition de
+deux possibilités de connexion, alors qu'on est en réalité connecté. » La moitié CLIENT
+que la section précédente déclarait manquante — et elle arrive mêlée à autre chose, ce qui
+est précisément la raison de l'écrire ici plutôt que de la retenir.
+
+**Ce que les artefacts établissent.** `authentication_logs` garde la cible attachée à
+chaque connexion, et c'est elle qui départage les épisodes du jour : `proprio` à 09:25:43
+(`request_uri` = la racine de l'application) et à 15:37:30 (`…/administration`) — cible
+présente ; `lectrice` à 16:53:08 — **`request_uri` VIDE**. Les trois connexions ont
+réussi. Le portail avait donc, pour `lectrice`, à se rabattre sur `default_redirection_url`
+faute de cible, et non à « revenir » quelque part.
+
+**Ce qui l'a retenue là est un SECOND fait, indépendant du renvoi.** `totp_configurations`
+et `webauthn_credentials` sont à zéro ligne : personne n'a jamais enrôlé de second facteur
+sur cette pile. Authelia 4.39 propose alors l'enregistrement d'un appareil, et les « deux
+possibilités » sont l'application d'authentification et la clé de sécurité — non pas deux
+façons de SE CONNECTER, mais deux façons de S'ÉQUIPER. Enregistrer un appareil est une
+modification des paramètres de sécurité, d'où l'élévation de session et le code à usage
+unique écrit dans `notification.txt` à 16:53:24. Ce code n'a pas été mal saisi :
+`consumed` est nul et `revoked` porte 16:54:07 — il a été révoqué, jamais consommé.
+
+**L'écran qui dit « connectez-vous » à quelqu'un qui l'est déjà est donc le mode d'échec,
+et il n'a rien à voir avec la durée de session.** Les deux se ressemblent au point d'être
+rapportés comme un seul défaut ; les séparer a demandé la table, pas le journal.
+
+**Ce que cela rétrécit.** Pour un compte `one_factor`, la réouverture après expiration ne
+redemande QUE le mot de passe — mesuré deux fois le 2026-09-13 (`proprio`, 1FA réussie
+à 15:37:30, six secondes après l'expiration de 15:37:24). La première case de la première
+zone est donc répondue pour ce cas, et ne reste ouverte que pour `bd-admins`, comme la
+section précédente l'annonçait. Elle n'est pas cochée : son énoncé couvre les deux
+populations.
+
+**Ce que cela NE dit pas, et qu'il ne faut pas déduire** : ce que le renvoi fait quand une
+cible existe. Les deux connexions de `proprio` en portaient une ; aucun journal ne consigne
+le renvoi qui a suivi, et l'équipe ne s'en souvenait pas au moment de la question. Une
+case neuve le demande, plutôt qu'une conclusion tirée du cas de `lectrice`, qui n'avait
+pas de cible.
+
+**Pourquoi cela vaut pour la PRODUCTION et pas seulement pour la recette** : les deux
+`authelia/configuration.yml` sont identiques, `override.yml` ne touche pas au service
+Authelia, et `authelia validate-config` passe sans erreur sur la 4.39.22 qui tourne — donc
+aucune clé de la 4.38 n'y est ignorée en silence, et `default_redirection_url` est bien
+prise en compte. Ce qui s'observe ici s'observera là-bas.
+
+**Deux pistes écartées en chemin**, écrites pour ne pas les reprendre : les `status_code=408`
+qui accompagnent chaque chargement du portail sont le bruit déjà identifié par `INFRA-9`
+(§ « Un bruit identifié, pour ne pas le rechercher trois fois ») — connexions persistantes
+que Caddy garde en réserve et qu'Authelia récolte ; et le portail se sert en `HTTP 200`
+depuis l'intérieur de son conteneur, donc il n'est pas en panne.
 
 ## Contexte
 
