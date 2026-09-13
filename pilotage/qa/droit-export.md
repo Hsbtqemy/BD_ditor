@@ -46,7 +46,7 @@ v27 a fait ce que la production va vivre.
 qui échouerait au clic.
 
 - [x] *Bibliothèque → 📚 Collections → « Collection Test »* : le bloc « Export de dépôt » n'a aucun bouton, et dit « Exporter cette collection demande le droit d'exporter, que son propriétaire accorde accès par accès : la lire n'y suffit pas. »
-- [x] *Atelier*, album esther v1, menu ☰ → *Exporter* : ni « Export JSON-LD », ni « Export CSV », ni « Export TEI P5 » ; à leur place une entrée « Exporter : droit manquant… »
+- [x] *Atelier*, album esther v1, menu **⇅ Import / Export** → groupe *Exporter* (un intertitre, pas un élément cliquable) : ni « Export JSON-LD », ni « Export CSV », ni « Export TEI P5 » ; à leur place une entrée « Exporter : droit manquant… »
 - [x] Cette entrée, cliquée, affiche « Exporter cet album demande le droit d'exporter l'une de ses collections, que son propriétaire accorde accès par accès : le lire ou l'annoter n'y suffit pas. »
 - [x] *Atelier*, une région sélectionnée : le bouton « ＋ Figure » n'apparaît pas
 - [x] *Recherche* : pas de bouton d'export CSV, et sous la barre la note « Exporter demande un droit que le propriétaire d'une collection accorde : vous ne l'avez sur aucune de celles que vous lisez. »
@@ -71,7 +71,7 @@ stagiaires annotent, ils ne sortent pas le texte.
 
 - [x] Sous `proprio`, accorder à l'utilisateur `stagiaire` l'**écriture** sur « Collection Test », case « peut exporter » laissée décochée
 - [x] Sous `stagiaire` : modifier la note d'une région d'esther v1 s'enregistre
-- [x] Sous `stagiaire` : le menu *Exporter* de l'Atelier n'offre que « Exporter : droit manquant… », et la Recherche porte la note du droit manquant
+- [x] Sous `stagiaire` : dans le menu **⇅ Import / Export**, les trois formats ont cédé la place à « Exporter : droit manquant… », et la Recherche porte la note du droit manquant. « 💾 Sauvegarde (.sqlite) » reste visible dans le même groupe : elle relève des administrateurs (DROIT-1) et non du droit d'exporter, rien ne la masque, et un clic rend un 403 nommé. Écart relevé le 2026-09-13 — à trancher dans UX-4, pas un échec de cette case
 
 ### Deux collections exportables : choisir
 
