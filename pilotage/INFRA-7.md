@@ -38,7 +38,7 @@ la configuration livrée par INFRA-1, relue et non éprouvée.
 - [ ] Ce qu'une expiration fait à un LOT ML en cours : un lot lancé depuis la Bibliothèque tourne dans un thread serveur, donc l'expiration ne devrait pas l'interrompre — à vérifier, parce que « ne devrait pas » n'est pas une mesure
 - [ ] La documentation d'Authelia ne dit pas si `expiration` est RAFRAÎCHIE à chaque requête ou si elle plafonne depuis la connexion. Le réglage du 2026-09-06 a levé les deux valeurs précisément pour être juste dans les deux cas — l'incertitude est contournée, pas levée, et une mesure la trancherait
 - [ ] **Le renvoi après réouverture, quand une cible EXISTE** : être renvoyé par l'application (barre d'adresse en `auth…/?rd=…`), saisir le mot de passe, et dire si l'on revient sur la page demandée ou si l'on reste sur le portail. Le 2026-09-13, les deux connexions de `proprio` portaient bien leur cible dans `authentication_logs` (`request_uri` renseignée) — ce que le renvoi a fait ensuite n'a pas été observé, et l'équipe ne s'en souvenait pas. C'est la moitié qui décide s'il y a un défaut ou seulement un portail ouvert à la main
-- [ ] **Atteindre le portail SANS cible** — en tapant son adresse au lieu d'être renvoyé — puis se connecter : attendu, le repli `default_redirection_url` mène à l'application. Observé une fois le 2026-09-13 en sens CONTRAIRE, sans l'avoir cherché (section ci-dessous) ; une observation incidente n'est pas une mesure, et celle-ci est confondue avec la proposition d'enrôlement décrite plus bas
+- [ ] **Décider ce qu'on fait du portail atteint SANS cible**, la cause étant établie et en amont (section « Le portail sans cible » ci-dessous) : l'attendu naturel — le repli `default_redirection_url` mène à l'application — ne se produira pas, et aucun réglage ne le rend. Trois issues, à trancher : documenter le geste (partir de l'application, jamais du portail) dans `docs/exploitation.md` ; ou retirer la règle 1 pour que plus aucune règle n'exige `two_factor` par sujet, ce qui abaisserait les administrateurs ; ou l'accepter tel quel. Attendu : une décision écrite avec son coût, pas un contournement appris de bouche à oreille
 - [ ] **La réouverture sur un compte de `bd-admins`**, seule question que les comptes `one_factor` ne peuvent pas départager : le portail redemande-t-il le second facteur en plus du mot de passe ? **Bloquée par un préalable** — au 2026-09-13, `totp_configurations` et `webauthn_credentials` sont VIDES sur la pile de recette, donc aucun appareil n'est enrôlé et `admin-bd` n'atteint même pas l'application (règle 1, `two_factor`). Enrôler d'abord, mesurer ensuite
 
 ### Décider — fait le 2026-09-06, par un autre chemin que celui prévu ici
@@ -142,6 +142,58 @@ qui accompagnent chaque chargement du portail sont le bruit déjà identifié pa
 (§ « Un bruit identifié, pour ne pas le rechercher trois fois ») — connexions persistantes
 que Caddy garde en réserve et qu'Authelia récolte ; et le portail se sert en `HTTP 200`
 depuis l'intérieur de son conteneur, donc il n'est pas en panne.
+
+## Le portail sans cible : la cause est en amont, et elle est VOULUE — 2026-09-13
+
+La section précédente laissait le cas `proprio` ouvert faute d'observation. Une capture l'a
+rendu, le même soir, et la cause est désormais établie **par les sources primaires** et non
+par déduction.
+
+**Ce que l'écran montre** : `auth…/2fa/one-time-password`, « Bonjour proprio », et la
+phrase « La ressource à laquelle vous essayez d'accéder nécessite une authentification à
+deux facteurs », suivie de « Enregistrez votre premier appareil ». Le lien « MÉTHODES »
+offre les deux possibilités — mot de passe à usage unique, clé de sécurité.
+
+**Ce que les artefacts établissent, et qui rend la phrase FAUSSE dans ses propres termes** :
+la connexion de 17:47:48 a réussi avec une `request_uri` VIDE, et le journal ne porte
+aucune décision `forward-auth` depuis 16:53:59. Aucune ressource n'était donc demandée.
+L'écran nomme une ressource qui n'existe pas.
+
+**Et ce n'est pas une affaire de groupe** : `proprio` n'apparaît nulle part dans la table
+`memberships` de l'annuaire — il n'a AUCUN groupe. Seul `admin-bd` est dans `bd-admins`. La
+documentation d'Authelia est explicite sur les deux points qui en découlent : *« Rules are
+matched in sequential order. The first entry in the list where all criteria match is the
+rule which is applied »* et *« Rules that have subject reliant elements require
+authentication to determine if they match »*. Sur une vraie ressource, `proprio` saute donc
+la règle 1 et relève de la règle 4, `one_factor`.
+
+**Deux comportements amont se combinent, tous deux ouverts au 2026-09-13.**
+
+- **`authelia/authelia` discussion #7873** — dès qu'une règle exige `two_factor` pour un
+  SUJET, fût-il un groupe vide, le second facteur est activé **globalement** sur le portail
+  pour tout le monde. Le mainteneur le qualifie de voulu : *« as soon as any policy exists
+  that may require it we enable it globally »*, au nom de la simplicité (*« complexity is
+  the enemy of good design and security »*). **Aucun contournement de configuration.** C'est
+  notre règle 1 qui le déclenche, et elle n'est pas négociable : elle protège les
+  administrateurs.
+- **`authelia/authelia` issue #12853** (ouverte le 2026-08-24, branche 4.39.x, étiquetée
+  *working-as-intended* / *type/feature*) — atteint à la racine sans `rd`, le portail
+  récupère `default_redirection_url` mais ne l'évalue JAMAIS contre le contrôle d'accès
+  avant de terminer le premier facteur. Rien ne ramène donc la session vers `one_factor`.
+
+**Conséquence pratique, et elle est gratuite** : on entre en partant de l'APPLICATION et en
+se laissant renvoyer — la cible est alors évaluée, la règle 4 s'applique, le mot de passe
+suffit. On se bloque en partant du PORTAIL. Les deux connexions de `proprio` du matin
+portaient une cible ; celles de 16:53 et 17:47 n'en portaient pas.
+
+**Vaut pour la production**, qui tourne le même fichier et la même version.
+
+**Trois hypothèses ont été écartées en chemin**, écrites pour ne pas les reprendre : une
+clé de la 4.38 ignorée par la 4.39 (`validate-config` passe sans erreur) ; `proprio`
+membre de `bd-admins` (la table `memberships` le réfute) ; et l'issue #9664, citée à tort
+d'après un résumé de recherche — elle traite du cas INVERSE, l'impossibilité d'enrôler
+quand aucune règle n'exige `two_factor`. La leçon est la même que celle d'`AUTH-8` :
+lire la source, pas ce qu'on en dit.
 
 ## Contexte
 
