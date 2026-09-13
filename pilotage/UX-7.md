@@ -270,6 +270,34 @@ PANNEAU qui distingue, et le test est paramétré sur les deux depuis.
 - [x] Le test distingue le contenu ATTEIGNABLE du contenu perdu : un cadre qui défile en interne est conforme au 1.4.10, un contenu clippé ne l'est pas — c'est exactement la différence que `scrollWidth` efface. Trois états, pas deux : encadré (un ancêtre défile et tient dans l'écran), escamoté (hors champ ET référencé par un `aria-controls`, donc un tiroir fermé), perdu. Les deux exemptions ont chacune leur contrôle, dont le NÉGATIF — le même panneau privé de sa bascule doit être signalé
 - [x] L'audit axe reste sans violation sérieuse ou critique après la refonte, sur les quatre surfaces et les deux thèmes. Suite E2E entière : **138 tests verts**, dont les 20 d'UX-7. **Une limite à ne pas gommer** : axe s'exécute à la largeur PAR DÉFAUT, pas à 320 px. Il prouve donc l'absence de RÉGRESSION, pas la conformité du repli lui-même — le faire tourner aux petites largeurs est un gain réel, versé à UX-8 plutôt que réputé acquis ici
 
+## Une de ces mesures était vacante, et la fiche le dit plutôt que de se réécrire — 2026-09-13
+
+La section « Trois largeurs figées n'avaient jamais été mesurées, et pour la même raison »
+range `.display-panel` parmi les planchers « tous sous 320 px et ancrés à droite —
+**mesurés, aucun ne déborde** ». **C'est faux**, relevé pendant la recette d'avant fusion :
+le menu « Affichage » déborde à 375 px une fois OUVERT, trouvé à l'œil sur une capture
+d'écran.
+
+Trois conditions manquaient à la mesure, et chacune suffit : elle tournait **au repos**,
+donc panneau replié et sans rectangle ; **sans proxy**, donc sans la pastille utilisateur
+que `theme.js` n'injecte que derrière lui et qui est ancrée juste avant ce menu ; et aux
+deux largeurs canoniques **320 et 768**, alors que 375 est précisément la largeur où la
+bande 1 enroule sans être encore à l'étroit.
+
+L'ironie est dans la section elle-même, qui énonce la règle qui l'aurait sauvée — *« Ce que
+la page ne rend pas, l'instrument ne le voit pas »* — et l'applique à trois valeurs sans
+l'appliquer à celle qui la portait.
+
+**La phrase n'est pas corrigée sur place** : c'est une trace datée, et la réécrire ferait
+disparaître la raison pour laquelle on a cherché ailleurs. Le travail vit dans `UX-14`, qui
+porte le correctif, l'ouverture des panneaux pendant la mesure, et la question plus large
+de ce que la mesure locale ne rend pas.
+
+Cela ne remet pas ce chantier en cause : ses dix-neuf cases restent faites, et le tableau du
+2026-09-04 montre que le menu « Aa » avait déjà débordé une fois, de 214 px sur la
+Recherche — corrigé pour le BOUTON par le seuil de bande 1. C'est le panneau DÉPLIÉ qui
+n'a jamais été remesuré.
+
 ## Contexte
 
 Vient du constat **T7** de l'audit du 13 juin 2026, resté sans décision près de trois mois. La fiche
