@@ -64,6 +64,37 @@ l'éprouver pour de bon.
 - [x] Le fichier des COMPTES a son propre contrôle avant redémarrage, puisque `validate-config` l'ignore : `python3 -c "import yaml; yaml.safe_load(open('users_database.yml'))"`, PyYAML étant déjà présent sur Ubuntu. Éprouvé dans les DEUX sens le 2026-09-06 — il accepte le fichier correct et refuse une copie contenant une tabulation. Écrit dans `docs/exploitation.md`, avec la copie de sauvegarde qui doit le précéder
 - [x] Le repli est éprouvé pour de vrai, pas seulement écrit — **2026-09-06, sur l'instance en service**. `SMTP_ADRESSE` vidée SEULE, les trois autres valeurs laissées en place : Authelia démarre (`Startup complete`, `Listening`), reste `healthy`, et **aucun** « only one of 'smtp' or 'filesystem' ». C'est précisément ce qui avait échoué le 2026-09-05, où le retour arrière laissait le mot de passe et faisait repartir Authelia en boucle. Et le repli REMET : un « Mot de passe oublié ? » a porté `/config/notification.txt` de 0 à 3 492 octets. Démarrer n'aurait rien prouvé — un notifier qui n'écrit nulle part laisse une instance debout et personne dedans
 
+## La 4.39 n'écrit plus un lien mais un CODE — 2026-09-13
+
+Éprouvé sur la pile de recette, Authelia **4.39.22**, en enrôlant `admin-bd` de bout en
+bout. Le chantier reste `livré` et son point d'arrêt ne bouge pas : aucun commit de code
+ne l'accompagne, et un commit qui ne touche que `docs/` est hors datage.
+
+**Ce que le fichier contient désormais.** Un bloc par demande, avec son `Recipient:`, et un
+**code à huit caractères** à saisir dans le navigateur. Un seul lien y figure, celui qui
+RÉVOQUE la demande. Le parcours a gagné une étape en amont : enregistrer un appareil
+modifie les paramètres de sécurité, donc Authelia élève d'abord la session.
+
+**Ce que cette fiche affirme et qui a cessé d'être vrai.** Les phrases restent — elles
+étaient exactes le 2026-09-06, sous la 4.38 : « Authelia démarre et écrit ses liens dans
+`notification.txt` » (État antérieur du 2026-09-06) et « en extraire la bonne URL — le
+fichier contient AUSSI un lien de révocation » (§ Contexte). La difficulté qu'elles
+décrivent n'a pas disparu, elle a changé de forme : ce n'est plus le mauvais LIEN qu'on
+risque de prendre, c'est le mauvais BLOC, le fichier s'accumulant toujours.
+
+**Ce que ça coûtait ailleurs, et c'est la raison de cette section.** Le §5 de
+`docs/deploiement-docker.md` donnait une commande d'extraction qui renvoie aujourd'hui une
+liste VIDE. Pour une documentation d'installation, c'est le pire mode d'échec : elle ne se
+contredit pas, elle ne rend rien, et un résultat vide se lit comme une pile cassée plutôt
+que comme une page périmée. Corrigé, avec la mesure et sa date.
+
+**Une distinction que la mesure a rendue nette** : confirmer l'inscription n'est pas se
+connecter. `last_used_at` est resté vide après l'enrôlement de 23:19:24, et n'a été rempli
+qu'à 23:23:46 par la première authentification réelle — seule à produire une ligne `TOTP`
+au journal, `totp_history` portant bien les deux. Un appareil enrôlé qui n'ouvre aucune
+porte a donc la même trace qu'un appareil qui vient de marcher, tant qu'on ne regarde pas
+cette colonne. C'est ce qui a été mesuré ce soir plutôt que supposé.
+
 ## Le repli, éprouvé — 2026-09-06
 
 La case demandait de le prouver « pour de vrai, pas seulement écrit ». Il l'est, sur
