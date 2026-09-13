@@ -213,6 +213,14 @@ déjà une case qui atterrit dans ce code-ci, et aucun ne mentionnait AUTH-10 av
   et l'écran qui la rendra atteignable en deux clics.
 - **`COL-1`** fera circuler le travail ENTRE collections : c'est la famille « vocabulaire »,
   la seule des quatre à DÉBORDER la collection où l'on travaille.
+- **`UX-4`** reprend l'Administration, et sa première cible est le panneau des accès —
+  c'est-à-dire l'écran qui rend le `<select>` de niveau que la case « l'interface se rend
+  en cases à cocher » veut remplacer. **Déclaré le 2026-09-13** : la refonte en TABLEAU y
+  est écrite avec la consigne explicite de laisser ce contrôle intact et de faire en sorte
+  que la colonne « Niveau » puisse changer seule. Le risque n'est pas le conflit, il est
+  dans les deux sens : qu'un écran se mette à énumérer des ACTES sans que la décision de
+  modèle ait été prise, ou — plus discret — qu'une refonte fige le menu déroulant dans un
+  gabarit dont on ne sorte plus sans tout rouvrir.
 
 **Ce que ça change à la décision : rien. Ce que ça change à sa TENUE : elle doit être
 lisible depuis ces chantiers-là et non depuis cette fiche seule** — une décision de
