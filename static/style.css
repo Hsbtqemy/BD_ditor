@@ -1079,6 +1079,17 @@ h3.collapsible:hover { color: var(--text); }
      qu'il le sache. Deux items d'une même cellule s'empilent ; le `z-index` tranche. */
   grid-row: 3; grid-column: 1;
   z-index: 50; display: flex; background: var(--bg-deep);
+  /* `min-height: 0` ANNULE le minimum automatique de l'item de grille. Sans lui, la
+     rangée `1fr` — c'est-à-dire `minmax(auto, 1fr)` — s'étire jusqu'au contenu : le crop
+     DICTAIT la hauteur du panneau au lieu de la subir, et `height: 100%` plus bas
+     retombait sur `auto`, faute d'une hauteur définie dans la chaîne. Mesuré le
+     2026-09-14 sur un banc isolé : une bulle de 458 × 930 donnait un panneau de 1 793 px
+     dans une fenêtre de 800 — zone de saisie, boutons et barre d'aide hors écran. Une
+     bulle CARRÉE (288 × 266) débordait déjà, à 969 px : ce n'était pas le défaut des
+     seules bulles hautes, 7 situations sur 16 le montraient. Il faut les DEUX
+     `min-height: 0`, ici et sur `#tr-right` : le poser sur le seul `#tr-right` ne change
+     RIEN, mesuré aussi — c'est la rangée, en amont, qui enflait. */
+  min-height: 0;
 }
 #transcription[hidden] { display: none; }
 
@@ -1104,7 +1115,10 @@ h3.collapsible:hover { color: var(--text); }
 }
 
 #tr-right {
-  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  /* `min-height: 0` : l'autre moitié du réglage de `#transcription` ci-dessus. Colonne
+     flex, il ne peut céder sous la hauteur intrinsèque de son contenu sans cela, et
+     l'éditeur passe alors sous la fenêtre. */
+  flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
   padding: 1.3846rem 1.8462rem; gap: 1.0769rem;
 }
 #tr-head { display: flex; align-items: center; gap: 1.0769rem; }
@@ -1121,7 +1135,16 @@ h3.collapsible:hover { color: var(--text); }
     repeating-conic-gradient(var(--stage-a) 0% 25%, var(--stage-b) 0% 50%) 50% / 22px 22px;
   border: 1px solid var(--border); border-radius: 6px; overflow: auto; padding: .9231rem;
 }
-#tr-crop { width: 100%; height: 100%; object-fit: contain;
+/* BORNÉE, jamais étirée. `width/height: 100%` + `object-fit: contain` remplissait la
+   boîte, donc AGRANDISSAIT les petites bulles — jusqu'à ×6 sur le banc, et ×2,6 sur la
+   bulle 288 × 266 que l'écran montrait à 317 %. Mesuré sur la base de recette : des 31
+   bulles transcrites, 19 tiennent telles quelles dans le cadre et y gagnent leur netteté,
+   les 12 autres sont réduites pour entrer — et aucune n'est sous 300 × 160, donc aucune
+   ne devient trop petite à relire. Agrandir un crop de master n'ajoute aucune
+   information, seulement du flou. `object-fit` est RETIRÉ et non conservé par prudence :
+   sans dimension imposée la boîte épouse l'image, il n'aurait plus rien à recadrer, et
+   une déclaration inerte se lit comme une garde. */
+#tr-crop { max-width: 100%; max-height: 100%;
            background: var(--media-bg); border-radius: 2px; }
 #tr-crop[hidden] { display: none; }
 .tr-empty { margin: 0; padding: 1.8462rem; text-align: center; }
