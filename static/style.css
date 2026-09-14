@@ -429,6 +429,30 @@ button { font-family: inherit; }
 }
 .danger:hover { filter: brightness(1.1); }
 
+/* ÉTEINT doit se VOIR, et pas seulement s'expliquer en infobulle. Mesuré le 2026-09-14 :
+   `ghost`, `icon-btn` et `danger` étaient INDISTINGUABLES de leur jumeau actif — même
+   couleur, même bordure, `opacity: 1` et `cursor: pointer`, dans les deux thèmes. Le
+   bouton éteint INVITAIT donc encore au clic.
+
+   La cause n'est pas un grisage oublié, c'est un grisage ÉCRASÉ : ces trois classes posent
+   `color` en dur, ce qui l'emporte sur le rendu par défaut du navigateur — un bouton sans
+   règle de couleur, lui, se serait grisé tout seul. C'est pourquoi le défaut n'apparaît
+   qu'aux familles STYLÉES, et pourquoi il ne se voit pas en relisant le CSS : la règle
+   fautive est celle qui manque.
+
+   Deux de ces boutons naissent `disabled` DANS le gabarit — `#btn-export` de la Recherche,
+   `#btn-export-analyse` de l'Exploration : c'était l'état initial de deux surfaces, pas un
+   cas de bord. On reprend la valeur de `.primary:disabled`, seule famille déjà servie,
+   plutôt que d'inventer une seconde apparence pour le même état.
+
+   Le `:hover` est neutralisé explicitement : Chrome ne le déclenche pas sur un contrôle
+   désactivé, d'autres moteurs si — c'est déjà la précaution que prend
+   `.dropdown-menu button:disabled:hover`. */
+.ghost:disabled, .icon-btn:disabled, .danger:disabled { opacity: .45; cursor: not-allowed; }
+.ghost:disabled:hover { background: transparent; }
+.icon-btn:disabled:hover { background: var(--bg-input); color: var(--text); }
+.danger:disabled:hover { filter: none; }
+
 .dropdown { position: relative; }
 .dropdown-menu {
   position: absolute; right: 0; top: 110%; z-index: 20;
