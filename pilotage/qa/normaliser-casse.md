@@ -8,12 +8,23 @@ duree: 10 min
 
 La règle est verrouillée par une table de cas lue par les deux suites, Python et
 navigateur. Ce que la passe regarde est ce qu'aucun test ne voit : le bouton sur de VRAIES
-bulles, et **ce que la garde fait d'un OCR réel**. Mesuré sur cette base : des 31 bulles
-transcrites, **4 seulement sont intégralement en capitales**. Les 27 autres portent des
-minuscules parasites de l'OCR (« JE sUis LE YOTHEA… », « TU SAis… ») et le bouton y reste
-éteint. C'est la garde qui joue — une ligne qui n'est pas toute en capitales n'est jamais
-touchée — et non une panne ; mais cela dit ce que le geste vaudra sur ce corpus tant que
-l'OCR laisse passer ces lettres.
+bulles, et **ce que la garde fait d'un OCR réel**.
+
+**Remesuré le 2026-09-14, et la première rédaction était fausse.** Elle annonçait « 4 bulles
+en capitales, les 27 autres à minuscules parasites », ce qui faisait de la garde un obstacle
+général et rendait la passe peu probante. Les 31 bulles font **trois** populations, pas deux :
+
+- **4 intégralement en capitales** — le bouton est actif (régions 25, 136, 139, 142) ;
+- **3 à minuscules PARASITES**, de 3,9 % à 6,2 % des lettres : 137 « TU SAis… » (3 sur 76),
+  138 « "GRAND FRÈRE", REGARDE ! … » (2 sur 45), 141 « JE sUis LE YOTHEA… » (10 sur 161).
+  Le bouton y est éteint pour une poignée de caractères, et c'est LE cas intéressant ;
+- **24 réellement mixtes**, de 14,8 % à 100 % — « Hey Abdou 1 C'est quo1 "PÉDÉ" ? »,
+  « c'était trop bien ! ». Le bouton doit y être éteint : ce n'est pas du lettrage capital
+  abîmé, c'est de la casse ordinaire.
+
+**Les deux dernières populations ne se recouvrent pas** : 6,2 % puis 14,8 %, et rien entre
+les deux. La garde ne coûte donc que sur TROIS bulles de ce corpus. C'est la garde qui joue
+— une ligne qui n'est pas toute en capitales n'est jamais touchée — et non une panne.
 
 Rappel d'un angle mort écrit dans NLP-3 : l'audit axe n'entre jamais en mode Transcription.
 La dernière zone est la seule vérification d'accessibilité de ce panneau.
@@ -27,9 +38,9 @@ geste MODIFIE le texte stocké — sans conséquence ici, la base est une copie.
 
 ### Le bouton n'est offert que s'il a quelque chose à faire
 
-- [ ] Sur la bulle « ARRÊTEZ L'ENFANT AUSSI ! », « Normaliser la casse » est actif
-- [ ] Sur la bulle « TU SAis, IL NY 4 PLUS DE… », il est éteint, et son libellé reste lisible tel quel — c'est lui qui doit dire ce qu'il ferait, l'infobulle d'un bouton éteint ne s'affichant pas partout
-- [ ] Sur la planche 22, la bulle « JE sUis LE YOTHEA PHAT… » : éteint aussi, à cause du « s » et du « i » minuscules que l'OCR a laissés
+- [x] Sur la bulle « ARRÊTEZ L'ENFANT AUSSI ! », « Normaliser la casse » est actif
+- [x] Sur la bulle « TU SAis, IL NY 4 PLUS DE… », il est éteint, et son libellé reste lisible tel quel — c'est lui qui doit dire ce qu'il ferait, l'infobulle d'un bouton éteint ne s'affichant pas partout
+- [ ] Sur la planche 22, la bulle « JE sUis LE YOTHEA PHAT… » : éteint aussi — 10 lettres minuscules sur 161, dont le « s » et le « i » de « sUis ». Les autres sont plus loin dans la bulle : le compte ne se lit pas sur les premiers mots
 
 ### Le geste, et ce qu'il enregistre
 

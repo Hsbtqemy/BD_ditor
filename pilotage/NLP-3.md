@@ -68,3 +68,24 @@ question ouverte — le corpus reste en capitales, et c'est `casse.py` qui sait 
 Et le relevé des noms propres, laissé ouvert ici exprès, est exactement ce qu'ANN-3
 apportera : le jour où le gazetteer existe, la règle gagne une sixième clause sans que rien
 d'autre ne bouge.
+
+## Ce que la garde coûte sur un corpus réel — 2026-09-14
+
+Mesuré sur la base de recette en jouant `qa/normaliser-casse`, et ce n'est pas ce que la
+passe annonçait. Des 31 bulles transcrites, **4** sont intégralement capitales et le bouton
+y est actif ; **3** portent des minuscules PARASITES de l'OCR — 3,9 %, 4,4 % et 6,2 % des
+lettres — et le bouton y est éteint pour une poignée de caractères ; les **24** restantes
+sont en casse ordinaire, de 14,8 % à 100 %, et le bouton doit y être éteint.
+
+**Les deux populations ne se recouvrent pas.** Entre 6,2 % et 14,8 %, rien. Ce vide est le
+fait qui compte : il rend un SEUIL mesurable là où il aurait fallu l'inventer. `only_upper`
+est binaire — `est_tout_capitales(t)` vaut `any(lettre) and t == t.upper()`, donc une seule
+minuscule éteint le bouton —, et cette rigueur est exactement ce qui rend le geste
+idempotent : un second clic ne démolit pas « Tintin ».
+
+**Aucune décision ici, et c'est volontaire.** Le chantier est `livré` ; ce constat dit ce
+qu'il COÛTE, pas ce qu'il faut changer. Relâcher la garde pour rattraper trois bulles ferait
+entrer dans le périmètre du geste des textes que personne n'a mesurés — et trois bulles d'un
+seul album ne font pas une population. La question est posée à l'équipe le 2026-09-14 et
+n'est pas tranchée ; elle est écrite ici plutôt que décidée, pour que le silence ne se lise
+pas comme un oubli.
