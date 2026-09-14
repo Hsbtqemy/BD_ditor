@@ -44,13 +44,13 @@ geste MODIFIE le texte stocké — sans conséquence ici, la base est une copie.
 
 ### Le geste, et ce qu'il enregistre
 
-- [ ] Sur la bulle « ARRÊTEZ L'ENFANT AUSSI ! » — planche 24, celle de la première case — cliquer sur le bouton « Normaliser la casse », dans la barre SOUS la zone de saisie, entre « ‹ Précédent » et « Valider + Suivant › ». Il n'y a pas de bouton « Arrêtez » : c'est le nom de la bulle. La zone de saisie devient alors exactement « Arrêtez l'enfant aussi ! », l'accent de « Arrêtez » conservé, et l'état de sauvegarde indique l'enregistrement
-- [ ] Juste après, le bouton s'est éteint : la bulle n'est plus en capitales, un second clic n'aurait rien à faire
-- [ ] Le focus est resté dans la zone de saisie, à l'endroit où l'on relit et retouche
-- [ ] Toujours planche 24, `Tab` jusqu'à « MIT PHAT ! QU'ATTENDS - TU POUR TE SAISIR DE CET ENNEMI DE L'ANGKAR ? », puis de nouveau « Normaliser la casse » : la proposition est « Mit phat ! Qu'attends - tu pour te saisir de cet ennemi de l'angkar ? » — la phrase après « ! » reprend sa majuscule, et « phat » et « angkar », noms propres, restent en bas de casse : c'est la LIMITE écrite, à relever à la main, pas un échec
-- [ ] Retoucher à la main en « Mit Phat ! … l'Angkar ? », passer à la bulle suivante, revenir : c'est la version retouchée qui est stockée
-- [ ] Quitter la Transcription (`N`), recharger la page, y revenir : les deux bulles gardent leur texte normalisé — le geste a bien écrit, par le même chemin qu'une frappe
-- [ ] Quitter la Transcription, puis Ctrl+Z dans l'Atelier : la dernière bulle modifiée retrouve son texte précédent. Si elle ne le retrouve pas, c'est un constat à remonter, pas une limite écrite
+- [x] Sur la bulle « ARRÊTEZ L'ENFANT AUSSI ! » — planche 24, celle de la première case — cliquer sur le bouton « Normaliser la casse », dans la barre SOUS la zone de saisie, entre « ‹ Précédent » et « Valider + Suivant › ». Il n'y a pas de bouton « Arrêtez » : c'est le nom de la bulle. La zone de saisie devient alors exactement « Arrêtez l'enfant aussi ! », l'accent de « Arrêtez » conservé, et l'état de sauvegarde indique l'enregistrement
+- [x] Juste après, le bouton s'est éteint : la bulle n'est plus en capitales, un second clic n'aurait rien à faire
+- [x] Le focus est resté dans la zone de saisie, à l'endroit où l'on relit et retouche
+- [x] Toujours planche 24, `Tab` jusqu'à « MIT PHAT ! QU'ATTENDS - TU POUR TE SAISIR DE CET ENNEMI DE L'ANGKAR ? », puis de nouveau « Normaliser la casse » : la proposition est « Mit phat ! Qu'attends - tu pour te saisir de cet ennemi de l'angkar ? » — la phrase après « ! » reprend sa majuscule, et « phat » et « angkar », noms propres, restent en bas de casse : c'est la LIMITE écrite, à relever à la main, pas un échec
+- [x] Retoucher à la main en « Mit Phat ! … l'Angkar ? », passer à la bulle suivante, revenir : c'est la version retouchée qui est stockée
+- [x] Quitter la Transcription (`Échap`, ou le bouton « Quitter »), recharger la page, y revenir : les deux bulles gardent leur texte normalisé — le geste a bien écrit, par le même chemin qu'une frappe
+- [x] Quitter la Transcription, puis Ctrl+Z dans l'Atelier : la dernière bulle modifiée retrouve son texte précédent. Si elle ne le retrouve pas, c'est un constat à remonter, pas une limite écrite
 
 ### Un stagiaire peut le faire, là où il écrit
 
@@ -59,5 +59,6 @@ geste MODIFIE le texte stocké — sans conséquence ici, la base est une copie.
 ### Clavier, thèmes
 
 - [ ] Depuis la zone de saisie, `Maj+Tab` ne sort pas vers le bouton — c'est « bulle précédente » ; le bouton s'atteint à la souris, ou à la tabulation depuis « ‹ Précédent »
+- [ ] Les deux raccourcis de mode font ce qu'ils annoncent, et RIEN d'autre : depuis l'Atelier, `T` ouvre la Transcription sans écrire « t » dans la première bulle ; depuis la Transcription, `Échap` en sort sans écrire « échap » ni rien. Les deux écrivaient leur caractère dans le texte avant le 2026-09-14, et l'enregistraient 500 ms plus tard sans qu'aucun autre geste soit fait
 - [ ] En thème clair comme en sombre, le bouton ÉTEINT se distingue de l'actif, et son libellé reste lisible
 - [ ] Un lecteur d'écran annonce le bouton par son libellé, et l'annonce comme indisponible quand il est éteint
