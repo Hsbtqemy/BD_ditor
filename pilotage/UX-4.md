@@ -39,6 +39,12 @@ plus jeune donc la moins alignée.
 - [ ] **Trancher le sort de « 💾 Sauvegarde (.sqlite) », quatrième entrée du même groupe.** Relevé en recette le 2026-09-13 sous un compte stagiaire : les trois formats cèdent la place à « Exporter : droit manquant… », elle reste. Mesuré — `#btn-backup` n'est câblé qu'une fois dans tout `static/` (`viewer.js`), sans aucune lecture de droits, et le serveur refuse par un 403 NOMMÉ (réservée aux administrateurs, `DROIT-1`). Les deux côtés se défendent, d'où une décision et non un correctif : `AUTH-2` accepte que l'UI découvre un refus en recevant son 403 — `peut_ecrire` ne traverse même pas jusqu'au client ; mais le principe de ce menu-ci était « une entrée qui DIT pourquoi, plutôt qu'un bouton qui disparaît », et l'écran offre ici un geste qui n'aboutira pas, à côté de trois qui s'expliquent. Attendu : ou bien elle se comporte comme ses voisines, ou bien la doctrine est ÉCRITE pour que la question ne se rouvre pas — aucune décision n'existe aujourd'hui, ni dans `pilotage/` ni dans `docs/`, vérifié
 - [ ] **Et sa PLACE est la même question, posée autrement** : le tableau d'inventaire de `DROIT-2` situe cette porte dans l'Administration — « Sauvegarde · Administration · toute la base · administrateurs » — alors qu'elle vit aussi sous l'intertitre « Exporter » de l'Atelier. L'inventaire écrit et l'écran ne disent pas la même chose ; l'un des deux doit céder. Le coût de la faire disparaître de l'Atelier est connu : `viewer.js` ne lit aucune identité aujourd'hui, mais `/api/moi` porte déjà `acces.groupes_admin` et `common.identite()` existe
 
+### L'Exploration elle-même, et sa concordance alignée
+- [ ] La colonne de tags n'introduit plus une SECONDE fonte dans la ligne : le texte KWIC est en `ui-monospace` (`.kwic-aligned`), les pastilles en `"Segoe UI", system-ui` (`.kw-tags`), et les deux se lisent côte à côte sur la même ligne
+- [ ] Le rythme vertical ne casse plus sur les seules lignes taguées : l'écart entre lignes vaut `.2308rem` quand les pastilles portent leur propre rembourrage, si bien qu'une ligne avec tags est plus haute que ses voisines nues. Attendu : une hauteur de ligne stable, taguée ou non
+- [ ] Les lignes se distinguent les unes des autres AU REPOS, et pas seulement au survol — `.kwic-aligned .kwic-row:hover > span` en est aujourd'hui la seule séparation, sur des lignes serrées à trois pixels d'intervalle
+- [ ] Ce que devient une bulle qui revient PLUSIEURS fois est décidé : `hom*` rend sept occurrences dont trois viennent de la même bulle, qui répète à l'identique son jeu de trois pastilles. Attendu : dire si l'on assume la répétition (une ligne = une occurrence, les pastilles sont celles de sa région) ou si on l'atténue — et l'écrire, parce que c'est un choix de lecture et non un défaut
+
 ## Contexte
 
 Effort M, priorité P3. Les deux cases d'accessibilité sont là parce que c'est
@@ -102,3 +108,32 @@ retirer le dernier propriétaire d'une collection. `_compte_proprietaires` exist
 serveur, mais ne sert qu'à refuser en 409 une fois le geste fait. C'est un défaut
 d'`AUTH-3`, pas de cohérence visuelle, et le noter ici plutôt que l'y coder est
 délibéré.
+
+## L'Exploration entre à son tour dans le périmètre — 2026-09-14
+
+**Constat d'usage énoncé pendant la recette d'ANA-6**, en regardant la concordance alignée
+rendre `hom*` : « il faudra reprendre l'esthétique également ». Écrit ici pour exactement la
+même raison que l'Administration le 2026-09-08 — une intention de ce genre s'évapore.
+
+**Mais celle-ci ne s'AJOUTE pas à la liste, elle en corrige la PRÉMISSE.** Le point de départ
+de cette fiche pose que « l'Exploration a été soignée récemment et sert de référence », et la
+première case du Reste en découle directement : aligner Recherche, Bibliothèque, Atelier et
+Administration SUR l'Exploration. Si sa concordance est elle-même à reprendre, on alignerait
+quatre surfaces sur un étalon qu'on n'a pas revérifié.
+
+Le point de départ n'est pas réécrit : il est daté, et il décrivait l'état d'alors. C'est
+cette section qui le nuance et la zone ci-dessus qui en tire les cases. **Conséquence
+d'ORDRE, et c'est le seul vrai changement** : « L'Exploration elle-même » se traite AVANT la
+première case de « L'alignement des cinq surfaces », sans quoi l'alignement propagerait ce
+qu'on vient de relever.
+
+**Les quatre constats ont été confirmés un par un par l'équipe**, et chacun se vérifie dans
+`static/style.css` au lieu de rester une impression : deux fontes dans la même ligne, un
+rythme vertical qui ne casse que sur les lignes taguées, aucune séparation au repos, et la
+répétition du jeu de pastilles pour une bulle qui revient. Le quatrième est le seul qui
+puisse se conclure par « on assume » — les trois autres sont des écarts, pas des arbitrages.
+
+**Ce qui n'est PAS touché ici**, et qui attend une décision : la première case de
+« L'alignement des cinq surfaces » dit toujours « suivent ceux de l'Exploration », sans
+réserve. La corriger changerait le périmètre d'une case ouverte, ce qui appartient à l'équipe
+et non à cette note.
