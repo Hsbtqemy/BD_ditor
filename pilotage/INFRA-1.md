@@ -11,9 +11,12 @@ pendant que `443:443` ne publie que du TCP — mesuré des deux côtés, Caddy �
 `udp :::443` dans le conteneur et RIEN n'écoute sur l'UDP 443 de l'hôte. Le navigateur
 mémorise l'annonce à sa première visite, bascule sur QUIC aux suivantes et tombe dans le
 vide : `ERR_CONNECTION_CLOSED`, quand HTTP/1.1 et HTTP/2 répondent sur le même port.
-L'annonce est retirée, pas le protocole. **Non déployé** — aucune session n'a d'accès au
-serveur, donc la production annonce encore ce qu'elle ne sert pas ; la pile de recette,
-elle, est corrigée et rechargée à chaud.
+L'annonce est retirée, pas le protocole. **Non déployé** — ce commit vit sur `dev`, et la
+veille du VPS ne déploie que depuis `main` (`INFRA-10`) : la production annonce donc encore
+ce qu'elle ne sert pas, jusqu'à la fusion, qui l'emportera sans que personne la lance. La
+pile de recette, elle, est corrigée et rechargée à chaud. Le motif d'abord écrit ici —
+« aucune session n'a d'accès au serveur » — était FAUX ; la section datée ci-dessous garde
+l'erreur et dit ce qui la remplace.
 
 **État antérieur** — 2026-09-05, `64b063f` : l'instance SERT, en HTTPS, sur
 `https://bd.edito-revue.fr` — derrière le nginx qui servait déjà un autre site. Dix
@@ -113,6 +116,45 @@ quoi l'en-tête a disparu des réponses en HTTP/1.1 comme en HTTP/2, et les deux
 répondent toujours. Reste que le navigateur qui a déjà mis l'annonce en cache la garde
 jusqu'à expiration : retirer l'annonce arrête la contagion, elle ne guérit pas les postes
 déjà touchés.
+
+## Le motif du « non déployé » était faux — 2026-09-14
+
+**La conclusion tenait, le motif était faux, et le motif corrigé est plus utile que les
+deux.** Le point d'arrêt ci-dessus expliquait que la production annonce encore HTTP/3
+parce qu'« aucune session n'a d'accès au serveur », et le message de `4f72328` le répète
+sous une autre forme — « faute d'un déploiement que personne ici ne peut faire ». La phrase
+est vraie AILLEURS : aucune session n'a de SSH sur le VPS, et c'est noté depuis le
+peuplement de l'instance. Elle a été recopiée ici comme si elle expliquait CE fait-là, et
+elle ne l'explique pas.
+
+**Depuis le 2026-09-07, la production se déploie TOUTE SEULE** (`INFRA-10`) : un timer
+systemd l'a prise de `a5a9f6e` à `889e23f` sans qu'une main touche le VPS. Personne n'a
+besoin d'un accès pour qu'un correctif parte — il suffit que `main` avance.
+
+**Le vrai motif tient en une ligne de `deploy/veille-deploiement.sh`** : elle lit la branche
+du clone et refuse tout ce qui n'est pas `main`, pour qu'une machine restée par accident sur
+`dev` ne déploie pas du travail en cours. `4662ce3` est sur `dev`. Il n'est donc pas bloqué
+parce qu'il serait hors d'atteinte ; il attend d'être sur la branche déployée, et il partira
+alors de lui-même, sans que personne le lance.
+
+**Ce que la correction change pour la suite**, et c'est la raison de l'écrire plutôt que de
+réparer une phrase : ce correctif n'est pas une tâche suspendue à un accès qu'on n'a pas,
+c'est une conséquence automatique d'une fusion déjà prévue. Ce que cette fusion-ci
+déclenchera exactement est écrit dans `INFRA-10`, parce que la réponse n'est pas « elle
+déploiera » : le saut de schéma v25 → v28 fait REFUSER la veille, et la main revient à un
+humain.
+
+**La forme de l'erreur mérite d'être gardée, parce qu'elle ne ressemble pas à une erreur.**
+Un fait vrai, vérifié, mais daté d'un AUTRE contexte, employé comme explication d'un fait
+qu'il ne commande pas. Il ne se contredit nulle part, aucune relecture ne l'accroche — il
+n'est tombé que devant la source, `pilotage/INFRA-10.md`, ouverte pour tout autre chose. Le
+même motif avait essaimé dans le point d'arrêt d'`AUTH-7`, corrigé du même geste : une
+phrase commode se recopie plus vite qu'elle ne se vérifie.
+
+Le point d'arrêt ci-dessus est corrigé plutôt que laissé faux — il décrit le PRÉSENT, et un
+présent faux se lit comme un fait constaté. Ce qui ne se réécrit pas, et reste donc tel
+quel : le message de `4f72328`, déjà poussé, et la section du protocole annoncé, qui ne
+portait pas ce motif.
 
 ## Le déploiement réel — 2026-09-05
 
