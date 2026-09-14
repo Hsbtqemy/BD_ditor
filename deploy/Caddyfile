@@ -16,6 +16,31 @@
 # redirections HTTPS, forward_auth — se comporte exactement comme en production.
 # Le jour du vrai domaine : retirer les deux lignes `tls internal`, rien d'autre.
 
+# --- Protocoles servis : HTTP/1.1 et HTTP/2, jamais HTTP/3 ---
+# Caddy active h3 par défaut et l'ANNONCE dans chaque réponse (`Alt-Svc: h3=":443"`,
+# trente jours de validité). Or le compose ne publie que `443:443`, c'est-à-dire du TCP :
+# le port UDP dont QUIC a besoin n'est jamais transmis hors du conteneur. Mesuré des deux
+# côtés le 2026-09-14 — Caddy écoute bien `udp :::443` à l'intérieur, et RIEN n'écoute sur
+# l'UDP 443 de l'hôte.
+#
+# Le navigateur mémorise l'annonce à sa PREMIÈRE visite, réussie en TCP, puis bascule sur
+# QUIC aux suivantes et tombe dans le vide : `ERR_CONNECTION_CLOSED`, alors que HTTP/1.1 et
+# HTTP/2 répondent parfaitement sur le même port. La panne est donc INTERMITTENTE, elle
+# n'arrive qu'après un premier succès, et elle ne ressemble en rien à sa cause — une heure
+# de diagnostic sur la pile de recette, en écartant d'abord le proxy, l'horloge et le
+# certificat.
+#
+# Annoncer un protocole qu'on ne sert pas EST le défaut : on cesse de l'annoncer, plutôt
+# que d'ouvrir l'UDP au pare-feu du VPS pour un gain nul sur un outil à petite équipe. Le
+# jour où l'on voudra vraiment HTTP/3 : publier `443:443/udp` dans le compose, ouvrir
+# l'UDP 443 sur le VPS, et retirer ce bloc — les trois ensemble, jamais l'un sans l'autre,
+# sinon on rétablit exactement ce piège.
+{
+    servers {
+        protocols h1 h2
+    }
+}
+
 # --- Portail Authelia ---
 {$AUTH_DOMAINE} {
     tls internal
