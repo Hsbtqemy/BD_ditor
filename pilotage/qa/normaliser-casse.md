@@ -54,11 +54,11 @@ geste MODIFIE le texte stocké — sans conséquence ici, la base est une copie.
 
 ### Un stagiaire peut le faire, là où il écrit
 
-- [ ] Sous `stagiaire`, qui écrit sur « Collection Test » depuis la passe *Le droit d'exporter, à l'écran* — vérifié le 2026-09-14, et s'il ne l'a plus, lui accorder l'écriture d'abord : *esther v1*, planche 1, la bulle « PÉDÉ ! » est intégralement en capitales et se normalise de la même façon
+- [x] Sous `stagiaire`, qui écrit sur « Collection Test » depuis la passe *Le droit d'exporter, à l'écran* — vérifié le 2026-09-14, et s'il ne l'a plus, lui accorder l'écriture d'abord : *esther v1*, planche 1, la bulle « PÉDÉ ! » est intégralement en capitales et se normalise de la même façon
 
 ### Clavier, thèmes
 
-- [ ] Depuis la zone de saisie, `Maj+Tab` ne sort pas vers le bouton — c'est « bulle précédente » ; le bouton s'atteint à la souris, ou à la tabulation depuis « ‹ Précédent »
-- [ ] Les deux raccourcis de mode font ce qu'ils annoncent, et RIEN d'autre : depuis l'Atelier, `T` ouvre la Transcription sans écrire « t » dans la première bulle ; depuis la Transcription, `Échap` en sort sans écrire « échap » ni rien. Les deux écrivaient leur caractère dans le texte avant le 2026-09-14, et l'enregistraient 500 ms plus tard sans qu'aucun autre geste soit fait
-- [ ] En thème clair comme en sombre, le bouton ÉTEINT se distingue de l'actif, et son libellé reste lisible
-- [ ] Un lecteur d'écran annonce le bouton par son libellé, et l'annonce comme indisponible quand il est éteint
+- [x] Depuis la zone de saisie, `Maj+Tab` ne sort pas vers le bouton — c'est « bulle précédente » ; le bouton s'atteint à la souris, ou à la tabulation depuis « ‹ Précédent »
+- [x] Les deux raccourcis de mode font ce qu'ils annoncent, et RIEN d'autre : depuis l'Atelier, `T` ouvre la Transcription sans écrire « t » dans la première bulle ; depuis la Transcription, `Échap` en sort sans écrire « échap » ni rien. Les deux écrivaient leur caractère dans le texte avant le 2026-09-14, et l'enregistraient 500 ms plus tard sans qu'aucun autre geste soit fait
+- [x] En thème clair comme en sombre, le bouton ÉTEINT se distingue de l'actif, et son libellé reste lisible
+- [x] Un lecteur d'écran annonce le bouton par son libellé, et l'annonce comme indisponible quand il est éteint
