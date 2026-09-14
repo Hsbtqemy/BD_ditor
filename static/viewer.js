@@ -1177,6 +1177,20 @@ async function trPrev() {
 }
 
 function setupTranscription() {
+  /* `Échap` quitte, et c'est `N` qui ne le pouvait PAS. Le bouton annonçait « Quitter (N) »
+     alors que ce raccourci est impossible ici par construction : `renderTranscription()`
+     focalise la zone de saisie, et `setupKeyboard` rend la main aux raccourcis natifs dès
+     que le focus est dans un champ — sans cette garde, la lettre « n » deviendrait
+     intapable. Mesuré le 2026-09-14 dans un Chromium : la touche écrivait « n » dans la
+     bulle ET ne sortait pas.
+     L'écouteur est posé sur la SECTION et non sur la seule zone de saisie : depuis les
+     boutons du panneau, `Échap` retomberait sinon sur la branche de `setupKeyboard`, qui
+     désélectionne au lieu de sortir — un second raccourci à moitié vrai. */
+  $("#transcription").addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    setMode("navigation");     // `setMode` appelle `trSaveFlush()` : rien n'est perdu
+  });
   $("#tr-text").addEventListener("input", trScheduleSave);
   // La frappe peut faire SORTIR le texte des capitales (ou y rentrer, sur un collage) :
   // sans cette seconde écoute, le bouton garderait l'état calculé au rendu de la bulle.
@@ -2780,11 +2794,24 @@ function setupKeyboard() {
     if (typing) return;
 
     const k = e.key.toLowerCase();
-    if (k === "n") setMode("navigation");
-    else if (k === "e") setMode("edition");
-    else if (k === "a") setMode("annotation");
-    else if (k === "t") setMode("transcription");
-    else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+    const MODES = { n: "navigation", e: "edition", a: "annotation", t: "transcription" };
+    // `preventDefault` AVANT de changer de mode, et ce qu'on arrête est le CARACTÈRE, pas
+    // le raccourci. `setMode("transcription")` donne aussitôt le focus à la zone de saisie
+    // (`renderTranscription`) : sans cela, le « t » du raccourci s'insérait dans la bulle
+    // qui venait de s'ouvrir. Et il n'y restait pas sans conséquence — `setupTranscription`
+    // attache `trScheduleSave` à l'événement `input`, si bien que la coquille partait en
+    // base toute seule après le délai, sans le moindre `Tab`. Mesuré dans un Chromium le
+    // 2026-09-14 : « BONJOURXYZt ».
+    // Les quatre touches sont traitées ensemble bien que `t` soit la seule à prendre le
+    // focus : aucune des quatre n'a de comportement natif à préserver ici, et laisser
+    // trois branches se comporter autrement que la quatrième invite le défaut à revenir
+    // par le premier mode qui focalisera un champ.
+    if (MODES[k]) {
+      e.preventDefault();
+      setMode(MODES[k]);
+      return;
+    }
+    if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       if (state.selectedId != null) moveRegion(state.selectedId, e.key === "ArrowUp" ? "haut" : "bas");
       e.preventDefault();
     }
