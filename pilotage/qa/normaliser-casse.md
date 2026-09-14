@@ -40,14 +40,14 @@ geste MODIFIE le texte stocké — sans conséquence ici, la base est une copie.
 
 - [x] Sur la bulle « ARRÊTEZ L'ENFANT AUSSI ! », « Normaliser la casse » est actif
 - [x] Sur la bulle « TU SAis, IL NY 4 PLUS DE… », il est éteint, et son libellé reste lisible tel quel — c'est lui qui doit dire ce qu'il ferait, l'infobulle d'un bouton éteint ne s'affichant pas partout
-- [ ] Sur la planche 22, la bulle « JE sUis LE YOTHEA PHAT… » : éteint aussi — 10 lettres minuscules sur 161, dont le « s » et le « i » de « sUis ». Les autres sont plus loin dans la bulle : le compte ne se lit pas sur les premiers mots
+- [x] Sur la planche 22, la bulle « JE sUis LE YOTHEA PHAT… » : éteint aussi — 10 lettres minuscules sur 161, dont le « s » et le « i » de « sUis ». Les autres sont plus loin dans la bulle : le compte ne se lit pas sur les premiers mots
 
 ### Le geste, et ce qu'il enregistre
 
-- [ ] Cliquer sur « Arrêtez… » : la zone de saisie devient exactement « Arrêtez l'enfant aussi ! », l'accent de « Arrêtez » conservé, et l'état de sauvegarde indique l'enregistrement
+- [ ] Sur la bulle « ARRÊTEZ L'ENFANT AUSSI ! » — planche 24, celle de la première case — cliquer sur le bouton « Normaliser la casse », dans la barre SOUS la zone de saisie, entre « ‹ Précédent » et « Valider + Suivant › ». Il n'y a pas de bouton « Arrêtez » : c'est le nom de la bulle. La zone de saisie devient alors exactement « Arrêtez l'enfant aussi ! », l'accent de « Arrêtez » conservé, et l'état de sauvegarde indique l'enregistrement
 - [ ] Juste après, le bouton s'est éteint : la bulle n'est plus en capitales, un second clic n'aurait rien à faire
 - [ ] Le focus est resté dans la zone de saisie, à l'endroit où l'on relit et retouche
-- [ ] Sur « MIT PHAT ! QU'ATTENDS - TU POUR TE SAISIR DE CET ENNEMI DE L'ANGKAR ? », la proposition est « Mit phat ! Qu'attends - tu pour te saisir de cet ennemi de l'angkar ? » — la phrase après « ! » reprend sa majuscule, et « phat » et « angkar », noms propres, restent en bas de casse : c'est la LIMITE écrite, à relever à la main, pas un échec
+- [ ] Toujours planche 24, `Tab` jusqu'à « MIT PHAT ! QU'ATTENDS - TU POUR TE SAISIR DE CET ENNEMI DE L'ANGKAR ? », puis de nouveau « Normaliser la casse » : la proposition est « Mit phat ! Qu'attends - tu pour te saisir de cet ennemi de l'angkar ? » — la phrase après « ! » reprend sa majuscule, et « phat » et « angkar », noms propres, restent en bas de casse : c'est la LIMITE écrite, à relever à la main, pas un échec
 - [ ] Retoucher à la main en « Mit Phat ! … l'Angkar ? », passer à la bulle suivante, revenir : c'est la version retouchée qui est stockée
 - [ ] Quitter la Transcription (`N`), recharger la page, y revenir : les deux bulles gardent leur texte normalisé — le geste a bien écrit, par le même chemin qu'une frappe
 - [ ] Quitter la Transcription, puis Ctrl+Z dans l'Atelier : la dernière bulle modifiée retrouve son texte précédent. Si elle ne le retrouve pas, c'est un constat à remonter, pas une limite écrite
