@@ -155,6 +155,41 @@ a désormais menti dans les DEUX sens — au présent avant d'exister, au passé
 c'est la même faute : un guide d'exploitation décrit un ÉTAT à quelqu'un qui l'ouvre parce
 qu'il ne sait pas.
 
+## Ce que la fusion de `dev` dans `main` déclenchera — 2026-09-14
+
+**Écrit AVANT la fusion, parce qu'une surprise se prépare mal après.** `dev` porte seize
+commits qui touchent `deploy/` — onze fichiers, +722/−57, mesuré le 2026-09-14
+(`git diff --stat main..dev -- deploy/`). Le Dockerfile, le compose, le Caddyfile, la
+configuration d'Authelia, `deployer.sh` lui-même, et deux outils qui n'existaient pas
+(`geler_verrous.py`, `verifier_comptes.py`). Le premier déploiement d'après la fusion les
+emporte tous d'un coup.
+
+**Et il n'aura pas lieu tout seul.** `SCHEMA_VERSION` passe de **25** à **28**, et la veille
+refuse une mise à jour qui migre le schéma : elle nomme les deux versions, laisse l'unité en
+`failed`, et renvoie à `./deploy/deployer.sh` après sauvegarde. Le geste n'est donc pas
+« pousser puis rien » — c'est pousser, s'attendre à une unité ROUGE, sauvegarder, déployer à
+la main.
+
+**Cette unité rouge sera le comportement CORRECT**, et c'est le piège de lecture à
+désamorcer d'avance : un `failed` sous les yeux ressemble à une panne du mécanisme, alors
+que c'est exactement l'arbitrage écrit dans le Contexte ci-dessous — « l'ordinaire passe
+seul, l'irréversible garde sa main ». Le confondre ferait chercher une réparation là où il
+n'y a qu'une décision rendue à un humain.
+
+**Les deux cases d'observation trouvent là leur occasion, sans qu'on fabrique rien.** La
+section du 2026-09-10 conclut qu'un vrai refus ne se provoque pas proprement — il faudrait
+salir exprès l'arbre du VPS, c'est-à-dire fabriquer la situation qu'on veut éviter. Celui-ci
+arrive de lui-même, à une date qu'on choisit. Reste à le CONSTATER, et c'est pourquoi les
+cases restent OUVERTES : le message nomme-t-il bien v25 et v28, et le témoin refuse-t-il au
+tir suivant plutôt que de repasser au vert. Ce qui est écrit ici est ce qu'on ATTEND, pas ce
+qu'on a vu.
+
+**Une conséquence qui ne se voit pas depuis cette fiche** : `4662ce3` corrige dans
+`deploy/Caddyfile` une annonce HTTP/3 que la production sert toujours. `INFRA-1` expliquait
+ce retard par un défaut d'accès au serveur — motif FAUX, corrigé là-bas le même jour, et
+c'est cette fiche-ci qui l'a fait tomber, ouverte pour tout autre chose. Le correctif
+n'attend pas un accès : il attend cette fusion.
+
 ## Contexte
 
 **Le travail était déjà fait, il ne manquait qu'un déclencheur.** `deployer.sh` EST le
