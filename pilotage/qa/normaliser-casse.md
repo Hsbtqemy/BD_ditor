@@ -43,7 +43,7 @@ geste MODIFIE le texte stocké — sans conséquence ici, la base est une copie.
 
 ### Un stagiaire peut le faire, là où il écrit
 
-- [ ] Sous `stagiaire`, s'il a reçu l'écriture sur « Collection Test » dans la passe *Le droit d'exporter, à l'écran* : *esther v1*, planche 1, la bulle en capitales se normalise de la même façon
+- [ ] Sous `stagiaire`, qui écrit sur « Collection Test » depuis la passe *Le droit d'exporter, à l'écran* — vérifié le 2026-09-14, et s'il ne l'a plus, lui accorder l'écriture d'abord : *esther v1*, planche 1, la bulle « PÉDÉ ! » est intégralement en capitales et se normalise de la même façon
 
 ### Clavier, thèmes
 

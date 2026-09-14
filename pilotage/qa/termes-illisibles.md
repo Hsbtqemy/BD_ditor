@@ -16,8 +16,11 @@ coup.
 d'exporter, à l'écran* jouée au moins jusqu'à la création d'« Étude B » : `proprio`
 possède « Collection Test » et « Étude B », l'album esther v1 vit dans les deux,
 `lectrice` lit « Collection Test » par le groupe `annotateurs`, `stagiaire` y écrit.
-Si `lectrice` a reçu la lecture sur « Étude B » dans cette autre passe, la retirer d'abord
-— sans quoi elle lit ce que la passe veut lui cacher.
+**Premier geste, et il n'est pas optionnel** : `lectrice` LIT « Étude B » par le groupe
+`annotateurs` — mesuré le 2026-09-14 — et il faut retirer cet accès avant de commencer,
+dans *Administration → 👥 Accès aux collections*. Sans quoi elle lit exactement ce que la
+passe veut lui cacher, et les sept cases suivantes passent au vert en ne mesurant rien.
+Le rendre à la fin si l'on veut retrouver le décor d'origine.
 
 **Décor** (sous `proprio`, ~5 min) :
 
