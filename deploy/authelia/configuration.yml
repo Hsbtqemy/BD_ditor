@@ -28,6 +28,24 @@ totp:
   issuer: '{{ env "BD_DOMAINE" }}'
 
 identity_validation:
+  # Enregistrer un appareil MODIFIE les paramètres de sécurité : Authelia élève d'abord la
+  # session et envoie un code à usage unique PAR LE NOTIFIER — le même canal que le lien
+  # ci-dessous. Mesuré le 2026-09-13 en enrôlant un appareil de bout en bout sur la pile de
+  # recette, pas déduit. Le raisonnement écrit sous `reset_password` lui vaut donc mot pour
+  # mot, et il ne lui avait jamais été appliqué : le défaut de 5 minutes tenait par oubli,
+  # pas par arbitrage. Aligné le 2026-09-14.
+  #
+  # L'asymétrie était même INVERSÉE, et c'est ce qui a emporté la décision. Le lien de
+  # réinitialisation pose un nouveau mot de passe : intercepté, il suffit à prendre le
+  # compte. Ce code-ci ne sert qu'à quelqu'un DÉJÀ authentifié — l'élévation n'existe que
+  # pour réidentifier une session ouverte. Le jeton le plus dangereux avait le délai long,
+  # le moins dangereux le délai court.
+  elevated_session:
+    code_lifespan: '15 minutes'
+    # `elevation_lifespan` (10 minutes par défaut) est une AUTRE fenêtre : celle de la
+    # session une fois le code échangé, pas celle dont on dispose pour le saisir. Non
+    # touchée — l'allonger élargirait la durée d'un pouvoir, pas le confort d'une saisie.
+
   reset_password:
     # 5 minutes suffisaient quand le lien s'allait lire dans un fichier sur le serveur.
     # Par courriel, le délai de remise s'ajoute à celui de la personne qui relève sa
