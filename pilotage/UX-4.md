@@ -1,9 +1,16 @@
 ---
 chantier: UX-4
-statut: à venir
+statut: interrompu
 ---
 
 # UX-4 — cohérence visuelle inter-surfaces
+
+**Arrêté sur** — 2026-09-14, `55b0e18` : l'état ÉTEINT d'un bouton se voit enfin. Trois
+familles sur quatre — `ghost`, `icon-btn`, `danger` — étaient indistinguables de leur jumeau
+actif, `.primary` étant la seule servie ; elles reprennent sa valeur. C'est le PREMIER commit
+de code du chantier et il ne ferme aucune case : le statut passe à `interrompu` parce que
+`à venir` décrit une fiche qui n'a pas commencé, et que l'outil dément mécaniquement un
+`à venir` portant des commits de code.
 
 **Point de départ** — l'Exploration a été soignée récemment et sert de référence ; les
 QUATRE autres surfaces ne s'y sont jamais alignées. Elles étaient trois quand cette fiche
@@ -44,6 +51,25 @@ plus jeune donc la moins alignée.
 - [ ] Le rythme vertical ne casse plus sur les seules lignes taguées : l'écart entre lignes vaut `.2308rem` quand les pastilles portent leur propre rembourrage, si bien qu'une ligne avec tags est plus haute que ses voisines nues. Attendu : une hauteur de ligne stable, taguée ou non
 - [ ] Les lignes se distinguent les unes des autres AU REPOS, et pas seulement au survol — `.kwic-aligned .kwic-row:hover > span` en est aujourd'hui la seule séparation, sur des lignes serrées à trois pixels d'intervalle
 - [ ] Ce que devient une bulle qui revient PLUSIEURS fois est décidé : `hom*` rend sept occurrences dont trois viennent de la même bulle, qui répète à l'identique son jeu de trois pastilles. Attendu : dire si l'on assume la répétition (une ligne = une occurrence, les pastilles sont celles de sa région) ou si on l'atténue — et l'écrire, parce que c'est un choix de lecture et non un défaut
+
+### L'état ÉTEINT d'un bouton se voit
+- [ ] Une garde retient l'écart : un bouton `disabled` diffère VISIBLEMENT de son jumeau
+      actif, pour les quatre familles et dans les deux thèmes. Rien ne le retient
+      aujourd'hui — les deux seules assertions du dépôt sur cet état sont de COMPORTEMENT
+      (`is_disabled`, `to_be_disabled`), et une règle CSS retirée par mégarde ne ferait
+      tomber aucun test
+- [ ] Tranché : `.dropdown-menu button:disabled` garde `opacity: .55` et `cursor: default`
+      là où la maison dit désormais `.45` et `not-allowed`. Deux valeurs pour le même état
+      dans la même feuille, chacune avec son intention écrite — ou bien elles s'unifient,
+      ou bien la raison de les distinguer est écrite à côté des deux
+- [ ] Vérifié à l'écran, dans les deux thèmes : `opacity: .45` sur `.danger`, texte blanc
+      sur fond rouge, reste lisible. Le 1.4.3 exempte les contrôles désactivés, donc l'audit
+      axe ne le dira jamais — c'est une lecture humaine ou rien
+- [ ] Ce que pose le commentaire de `majBoutonCasse()` est vérifié plutôt que supposé : il
+      affirme que Chrome supprime l'infobulle d'un contrôle `disabled`, et c'est la raison
+      ÉCRITE de faire porter le sens au libellé. L'équipe a pourtant vu l'infobulle changer
+      le 2026-09-14. Si elle s'affiche, la conclusion tient toujours — un libellé porteur
+      vaut mieux qu'une infobulle — mais elle ne tient plus par cette raison-là
 
 ## Contexte
 
@@ -137,3 +163,33 @@ puisse se conclure par « on assume » — les trois autres sont des écarts, pa
 « L'alignement des cinq surfaces » dit toujours « suivent ceux de l'Exploration », sans
 réserve. La corriger changerait le périmètre d'une case ouverte, ce qui appartient à l'équipe
 et non à cette note.
+
+## Un état de bouton qui ne se voyait pas — 2026-09-14
+
+**Relevé par l'équipe en jouant `qa/normaliser-casse`** : « quand tu dis "éteint", ça ne veut
+pas dire grand-chose visuellement. Il n'y a pas de changement de couleur ou de grisage. Juste
+le tooltip qui change. » La passe portait exactement cette case dans sa zone « Clavier,
+thèmes » — elle a fait son travail, et c'est la deuxième fois en deux jours qu'une passe
+rapporte ce qu'aucune suite ne voit.
+
+**Trois familles sur quatre étaient indistinguables**, mesuré sur un banc isolé comparant les
+styles CALCULÉS d'un bouton et de son jumeau désactivé : `ghost`, `icon-btn` et `danger`
+rendaient la même couleur, la même bordure, `opacity: 1` et `cursor: pointer`, dans les deux
+thèmes. `.primary` était la seule famille servie.
+
+**La cause éclaire le chantier autant que le défaut.** Ce n'est pas un grisage oublié mais un
+grisage ÉCRASÉ : ces classes posent `color` en dur, ce qui l'emporte sur le rendu par défaut
+du navigateur. Un bouton SANS règle de couleur se grise tout seul — c'est le cas des entrées
+de menu déroulant. Le défaut ne frappe donc que les familles STYLÉES, et il ne se voit pas en
+relisant la feuille, puisque la règle fautive est celle qui MANQUE. Une revue de CSS ne
+trouve pas ce genre de chose ; un banc qui compare deux états, oui.
+
+**Et « cohérence inter-surfaces » ne le décrit pas, ce qui valait d'ouvrir une zone.** Le
+défaut était uniforme sur les cinq surfaces : elles étaient cohéremment fautives. Ce qui est
+réparé ici est une incohérence INTERNE au système de composants — une famille sur quatre
+avait sa règle d'état. La case « un même composant a la même apparence sur les cinq
+surfaces » ne l'aurait jamais attrapé.
+
+**Le pire cas n'était pas celui qui a été signalé** : `#btn-export` de la Recherche et
+`#btn-export-analyse` de l'Exploration naissent `disabled` DANS le gabarit. C'était l'état
+initial de deux surfaces sur cinq, et non un cas de bord atteint après quelques gestes.
