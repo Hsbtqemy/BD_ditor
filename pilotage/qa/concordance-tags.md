@@ -28,15 +28,15 @@ compte comme propre et ne se répète pas : d'où les libellés distincts.
 - [x] Un préfixe suivi de `*` rend les formes de sa famille ; le même mot sans `*` n'en rend que le lemme exact, en autant de lignes ou moins
 
 ### Les tags en aligné
-- [ ] **Chercher le mot noté au préalable** : les lignes de la bulle préparée apparaissent, et leur colonne de tags — la dernière, tout à droite de la ligne — montre deux puces puis « +N », avec un repère 📝 pour la note. On ne sélectionne rien : dans l'Exploration, une bulle se retrouve en cherchant un de ses mots
-- [ ] Le tag venu de la case porte la marque « case », séparée du mot par un espace et non collée (« case colère », pas « casecolère »)
-- [ ] Sur un lemme dont aucune ligne affichée n'a de tag ni de note, la colonne de tags disparaît au lieu de laisser une gouttière vide
+- [x] **Chercher le mot noté au préalable** : les lignes de la bulle préparée apparaissent, et leur colonne de tags — la dernière, tout à droite de la ligne — montre deux puces puis « +N », avec un repère 📝 pour la note. On ne sélectionne rien : dans l'Exploration, une bulle se retrouve en cherchant un de ses mots
+- [x] Le tag venu de la case porte la marque « case », séparée du mot par un espace et non collée (« case colère », pas « casecolère »)
+- [x] **Chercher `abdou`** : cinq lignes, dont aucune région ni case parente ne porte de tag ou de note — la colonne de tags disparaît ENTIÈREMENT, au lieu de laisser une gouttière vide. Si ce lemme a été tagué depuis, en prendre un autre dont aucune ligne affichée n'a ni tag ni note : c'est la propriété qui compte, le mot n'est qu'un raccourci mesuré le 2026-09-14
 
 ### Les tags en liste
-- [ ] En liste, la même ligne montre tous ses tags et la note ENTIÈRE
+- [x] Basculer le sélecteur **« Affichage »** de `aligné` sur `liste` : la même ligne montre alors TOUS ses tags — plus de « +N », la liste ne plafonne pas — et la note ENTIÈRE
 
 ### L'export
-- [ ] L'export de la concordance donne un CSV avec des colonnes `tags` et `note`, et les lignes de la bulle préparée y portent ses tags et sa note
+- [x] Le bouton **« ⤓ Exporter (CSV) »**, au-dessus des résultats à droite, donne un CSV avec des colonnes `tags` et `note`, et les lignes de la bulle préparée y portent ses tags et sa note. Il rend le jeu TROUVÉ et non l'aperçu affiché, ce que la page annonce elle-même juste en dessous
 
 ### Petite largeur
-- [ ] À 560 px de large, la concordance alignée défile dans son propre cadre et la page ne défile jamais de côté
+- [x] À 560 px de large — fenêtre rétrécie, ou mode responsive des outils de développement — et **avec des résultats à l'écran**, la concordance alignée défile dans son propre cadre et la page ne défile jamais de côté
