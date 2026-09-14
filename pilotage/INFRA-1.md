@@ -5,7 +5,17 @@ statut: livré
 
 # INFRA-1 — déploiement Docker réel sur le VPS
 
-**Arrêté sur** — 2026-09-05, `64b063f` : l'instance SERT, en HTTPS, sur
+**Arrêté sur** — 2026-09-14, `4662ce3` : **Caddy annonçait un HTTP/3 que le compose ne
+publie pas.** `Alt-Svc: h3=":443"` partait dans chaque réponse, trente jours de validité,
+pendant que `443:443` ne publie que du TCP — mesuré des deux côtés, Caddy écoute bien
+`udp :::443` dans le conteneur et RIEN n'écoute sur l'UDP 443 de l'hôte. Le navigateur
+mémorise l'annonce à sa première visite, bascule sur QUIC aux suivantes et tombe dans le
+vide : `ERR_CONNECTION_CLOSED`, quand HTTP/1.1 et HTTP/2 répondent sur le même port.
+L'annonce est retirée, pas le protocole. **Non déployé** — aucune session n'a d'accès au
+serveur, donc la production annonce encore ce qu'elle ne sert pas ; la pile de recette,
+elle, est corrigée et rechargée à chaud.
+
+**État antérieur** — 2026-09-05, `64b063f` : l'instance SERT, en HTTPS, sur
 `https://bd.edito-revue.fr` — derrière le nginx qui servait déjà un autre site. Dix
 chemins anonymes refusés, quatre moteurs importés pour de bon, un compte connecté en 2FA,
 une sauvegarde reprise sur une machine de dev. Le chantier se ferme sur ce qu'il a trouvé
@@ -67,6 +77,42 @@ partagée avec tous ses utilisateurs.
 - [x] Une sauvegarde prise sur le VPS se restaure sur une machine de dev : album témoin créé en ligne, `/api/sauvegarde` téléchargée, dézippée, servie par `BD_DB_PATH` sur le port 8001, l'album y est. Elle ne porte QUE la base : un corpus complet aux images absentes est le comportement attendu, pas un échec
 - [x] **L'identité a fait le trajet, pas seulement la donnée** : la base restaurée porte `chercheur / Chercheur / …@example.fr` dans `utilisateur` (v22) — écrit côté serveur depuis les en-têtes par le MÊME `_auteur(request)` qui alimente `_capter_agent`. C'est ce qui exclut la panne d'attribution du 2026-09-02, qui ne se voit nulle part ailleurs
 - [x] Le référent d'AUTH-4 s'active sans toucher un fichier versionné : `BD_REFERENT_NOM`/`_CONTACT` passent par `.env` comme les trois domaines, et `docker compose config` sur le VPS les rend en chaînes vides, sans avertissement de variable absente
+
+## Un protocole annoncé mais jamais servi — 2026-09-14
+
+Trouvé en diagnostiquant une panne de la pile de recette, et la cause a mis une heure à
+apparaître parce qu'elle ne ressemble pas du tout à ce qu'elle produit.
+
+**Le symptôme** : Chrome rend `ERR_CONNECTION_CLOSED` sur l'application, à l'instant même
+où `curl` obtient `302` sur la même URL. Quatre hypothèses ont été écartées PAR LA MESURE
+avant la bonne, et les écrire évite de les reprendre : un proxy (c'était celui du shell qui
+mesurait, pas celui de la machine) ; l'horloge (hôte et conteneurs à la seconde près) ; le
+certificat (l'autorité manquait vraiment au magasin Windows — vrai, corrigé au passage, et
+sans rapport avec la panne) ; l'intermédiaire absent (le serveur envoie bien les deux).
+
+**La cause** : Caddy active HTTP/3 par défaut et l'ANNONCE — `Alt-Svc: h3=":443"`,
+`ma=2592000`, trente jours — tandis que `docker-compose.yml` publie `443:443`, donc du TCP
+seulement. Le port UDP n'est jamais transmis hors du conteneur : `udp :::443` est écouté à
+l'intérieur, aucun écouteur UDP 443 sur l'hôte.
+
+**Ce qui rend ce défaut coûteux et pas seulement gênant** : il n'arrive QU'APRÈS un premier
+succès. La première visite passe en TCP et remplit le cache d'annonces du navigateur ; les
+suivantes tombent dans le vide. Il est donc intermittent, il frappe d'abord les habitués,
+et il résiste au raisonnement « ça marchait hier » — qui est précisément vrai.
+
+**Le correctif porte sur l'annonce, pas sur le protocole** : un bloc d'options globales
+borne les protocoles servis à `h1 h2`. L'autre voie — publier `443:443/udp` et ouvrir
+l'UDP 443 sur le VPS — donnerait un vrai HTTP/3 pour un gain nul sur un outil à petite
+équipe, en ajoutant une règle de pare-feu à tenir. La condition de réouverture est écrite à
+côté du bloc, en trois gestes indissociables : n'en faire qu'un rétablirait ce piège.
+
+**Éprouvé sur la pile de recette** : `caddy validate` sur une copie temporaire AVANT de
+toucher au fichier servi — une erreur de syntaxe empêcherait Caddy de démarrer, donc
+fermerait l'instance entière —, puis `caddy reload` à chaud, code 0, sans coupure. Après
+quoi l'en-tête a disparu des réponses en HTTP/1.1 comme en HTTP/2, et les deux protocoles
+répondent toujours. Reste que le navigateur qui a déjà mis l'annonce en cache la garde
+jusqu'à expiration : retirer l'annonce arrête la contagion, elle ne guérit pas les postes
+déjà touchés.
 
 ## Le déploiement réel — 2026-09-05
 
