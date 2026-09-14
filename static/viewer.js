@@ -1045,6 +1045,17 @@ function buildTrMini() {
 function renderTranscription() {
   const list = state.trRegions;
   const r = list[state.trIndex];
+  // Le curseur de la Transcription vit dans `trIndex` — une AUTRE variable que
+  // `selectedId`, seul état que `syncUrl` publie. Sans cette ligne, `Tab` et le clic dans
+  // la mini-planche changent de bulle sans que l'adresse bouge : un lien copié désignait
+  // la bulle d'AVANT, et un rechargement y ramenait. Le défaut est silencieux — les deux
+  // montrent bien une bulle, simplement pas la même.
+  // Effet voulu en quittant le mode : `setMode` re-rend l'overlay et le panneau, donc
+  // l'Atelier retrouve la bulle qu'on éditait, et non celle par laquelle on est entré.
+  // Ce que cela ne répare PAS, et c'est assumé : `applyDeepLink` force `navigation` dès
+  // qu'une région est nommée, si bien qu'un rechargement rouvre sur la bonne bulle mais
+  // pas en Transcription. Rétablir le MODE demanderait de le porter dans l'URL aussi.
+  if (r) { state.selectedId = r.id; syncUrl(); }
   $("#tr-progress").textContent = list.length
     ? `Bulle ${state.trIndex + 1} / ${list.length}` : "Aucune région de texte";
   $("#tr-type").textContent = r ? r.type : "";
