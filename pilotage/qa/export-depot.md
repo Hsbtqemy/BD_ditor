@@ -2,6 +2,7 @@
 passe: Export de dépôt depuis l'écran
 chantier: EXP-1
 duree: 25 min
+derniere: —
 ---
 
 # QA — l'export de dépôt, et la garde qui ne doit pas glisser

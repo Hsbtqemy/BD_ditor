@@ -2,7 +2,7 @@
 passe: Écran « par où commencer »
 chantier: UX-6
 duree: 20 min
-derniere: 2026-08-27
+derniere: —
 ---
 
 # QA — carte d'accueil : le bon volume d'information

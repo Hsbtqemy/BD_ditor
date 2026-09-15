@@ -2,6 +2,7 @@
 passe: Les collections dans la Bibliothèque
 chantier: COL-2
 duree: 20 min
+derniere: —
 ---
 
 # QA — ce que la collection EST se gère dans la Bibliothèque, qui entre dans l'Administration

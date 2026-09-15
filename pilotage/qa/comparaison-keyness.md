@@ -2,6 +2,7 @@
 passe: Comparaison A/B classée par keyness
 chantier: ANA-4
 duree: 10 min
+derniere: —
 ---
 
 # QA — la comparaison se classe par écart ou par keyness, et l'écran suit la mesure

@@ -2,7 +2,7 @@
 passe: Préférence de police — ce que la géométrie ne dit pas
 chantier: A11Y-2
 duree: 30 min
-derniere: 2026-09-06
+derniere: —
 ---
 
 # QA — le texte agrandi reste-t-il LISIBLE, et pas seulement dans l'écran

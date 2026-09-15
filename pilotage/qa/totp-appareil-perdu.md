@@ -2,7 +2,7 @@
 passe: TOTP — l'administrateur qui perd son téléphone
 chantier: AUTH-7
 duree: 20 min
-derniere: 2026-09-06
+derniere: —
 ---
 
 # QA — le recours au second facteur existe-t-il ailleurs qu'en console

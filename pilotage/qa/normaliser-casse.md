@@ -2,6 +2,7 @@
 passe: Normaliser la casse d'une bulle
 chantier: NLP-3
 duree: 10 min
+derniere: —
 ---
 
 # QA — la casse se normalise par un geste, sur les bulles qui en ont besoin

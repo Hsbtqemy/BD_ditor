@@ -2,7 +2,7 @@
 passe: Petites largeurs — ce que la mesure ne dit pas
 chantier: UX-7
 duree: 45 min
-derniere: 2026-09-05
+derniere: —
 ---
 
 # QA — le repli tient-il à l'usage, et pas seulement au rectangle
