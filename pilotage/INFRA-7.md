@@ -5,7 +5,13 @@ statut: interrompu
 
 # INFRA-7 — la session est trop courte pour du travail d'annotation
 
-**Arrêté sur** — 2026-09-10 : la zone de nomenclature est tranchée — cette fiche GARDE `INFRA-7`,
+**Arrêté sur** — 2026-09-15, `cac2a4b` : le portail atteint sans destination est TRANCHÉ — on
+documente le geste (partir de l'application, jamais du portail) et le lien de déconnexion
+porte désormais sa cible `rd`. Rien n'est mesuré sur une pile : la recette lit bien le compose
+du dépôt, mais son conteneur `app` n'a pas été recréé, une passe de QA y tournant ce jour-là.
+Les deux mesures attendues sont dans la zone « Le portail sans destination ».
+
+**État antérieur** — 2026-09-10 : la zone de nomenclature est tranchée — cette fiche GARDE `INFRA-7`,
 et le contrôle de déploiement part sous `INFRA-12`, qui reçoit sa première fiche. Le dernier
 commit de code reste `0914094` (2026-09-07), la durée de session n'ayant pas rouvert depuis.
 
@@ -37,9 +43,13 @@ la configuration livrée par INFRA-1, relue et non éprouvée.
 - [ ] Ce que la case « se souvenir de moi » change vraiment : la même attente, case cochée à la connexion. La session survit-elle à l'inactivité, ou seulement jusqu'à `expiration` ? C'est la question qui décide si `remember_me: 1 month` rend les deux autres réglages sans objet
 - [ ] Ce qu'une expiration fait à un LOT ML en cours : un lot lancé depuis la Bibliothèque tourne dans un thread serveur, donc l'expiration ne devrait pas l'interrompre — à vérifier, parce que « ne devrait pas » n'est pas une mesure
 - [ ] La documentation d'Authelia ne dit pas si `expiration` est RAFRAÎCHIE à chaque requête ou si elle plafonne depuis la connexion. Le réglage du 2026-09-06 a levé les deux valeurs précisément pour être juste dans les deux cas — l'incertitude est contournée, pas levée, et une mesure la trancherait
-- [ ] **Le renvoi après réouverture, quand une cible EXISTE** : être renvoyé par l'application (barre d'adresse en `auth…/?rd=…`), saisir le mot de passe, et dire si l'on revient sur la page demandée ou si l'on reste sur le portail. Le 2026-09-13, les deux connexions de `proprio` portaient bien leur cible dans `authentication_logs` (`request_uri` renseignée) — ce que le renvoi a fait ensuite n'a pas été observé, et l'équipe ne s'en souvenait pas. C'est la moitié qui décide s'il y a un défaut ou seulement un portail ouvert à la main
-- [ ] **Décider ce qu'on fait du portail atteint SANS cible**, la cause étant établie et en amont (section « Le portail sans cible » ci-dessous) : l'attendu naturel — le repli `default_redirection_url` mène à l'application — ne se produira pas, et aucun réglage ne le rend. Trois issues, à trancher : documenter le geste (partir de l'application, jamais du portail) dans `docs/exploitation.md` ; ou retirer la règle 1 pour que plus aucune règle n'exige `two_factor` par sujet, ce qui abaisserait les administrateurs ; ou l'accepter tel quel. Attendu : une décision écrite avec son coût, pas un contournement appris de bouche à oreille
+- [ ] **Le renvoi après réouverture, quand une cible EXISTE** : être renvoyé par l'application (barre d'adresse en `auth…/?rd=…`), saisir le mot de passe, et dire si l'on revient sur la page demandée ou si l'on reste sur le portail. Le 2026-09-13, les deux connexions de `proprio` portaient bien leur cible dans `authentication_logs` (`request_uri` renseignée) — ce que le renvoi a fait ensuite n'a pas été observé, et l'équipe ne s'en souvenait pas. C'est la moitié qui décide s'il y a un défaut ou seulement un portail ouvert à la main. **Une trace y répond peut-être déjà** (relevée le 2026-09-15) : `INFRA-9` consigne le 2026-09-06 que `stagiaire` « entre au mot de passe SEUL et arrive directement dans l'application », alors que la règle `two_factor` des administrateurs existait — le second facteur était donc activé pour tous, et seule la branche AVEC cible mène là. C'était une première connexion et non une réouverture, d'où la case laissée ouverte ; la mesure de la déconnexion (zone « Le portail sans destination ») la tranche au passage
 - [ ] **La réouverture sur un compte de `bd-admins`**, seule question que les comptes `one_factor` ne peuvent pas départager : le portail redemande-t-il le second facteur en plus du mot de passe ? **Bloquée par un préalable** — au 2026-09-13, `totp_configurations` et `webauthn_credentials` sont VIDES sur la pile de recette, donc aucun appareil n'est enrôlé et `admin-bd` n'atteint même pas l'application (règle 1, `two_factor`). Enrôler d'abord, mesurer ensuite
+
+### Le portail sans destination — tranché le 2026-09-15
+- [x] **Décider ce qu'on fait du portail atteint SANS cible** — tranché le 2026-09-15 avec l'équipe, `cac2a4b`. **Retenu : documenter le geste ET poser la cible du lien de déconnexion.** Le geste (partir de l'application, jamais du portail) est écrit là où l'arrivant le reçoit — `docs/exploitation.md`, *Ajouter un compte*, où le message d'accueil donne désormais l'adresse de l'application, et `docs/modele-et-droits.md` — et le coût dans `docs/deploiement-docker.md`, *Durée de session, et second facteur*. **Ce qu'on accepte** : le « Mot de passe oublié ? » d'un arrivant mène toujours à « Enregistrez votre premier appareil », et seule la phrase du message l'en détourne. **Écarté** : « retirer la règle 1 », qui ne produisait RIEN telle qu'écrite (section « Décision » ci-dessous), et une redirection Caddy de la racine du portail, qui ne voit aucun des deux chemins réels. **Ce qui rouvre** : une réponse favorable à l'option demandée le 2026-09-14 sous `authelia/authelia#12853` (évaluer `default_redirection_url` pour une session à un facteur) — à regarder à chaque montée d'Authelia, avec les notes de version
+- [ ] **La déconnexion ramène à l'application** — sur la recette, qui lit le compose du dépôt, une fois son SEUL conteneur `app` recréé à partir de `cac2a4b` ou plus récent (ni Authelia ni Caddy ; avec l'accord de l'équipe, et jamais pendant une passe en cours, le lien changeant sous ses pieds). Préalable : `/api/moi` rend un `deconnexion_url` terminé par `?rd=https://bd…/`. Puis, connecté en `proprio`, cliquer « Déconnexion » dans l'application. Attendu : la barre d'adresse passe par `bd…` puis par `auth…/?rd=https://bd…/` ; le mot de passe seul fait entrer dans l'application, sans écran de second facteur ; et `authentication_logs` porte une `request_uri` renseignée pour cette connexion. Contre-épreuve, sans rien changer à la pile : ouvrir `auth…/logout` nu, se reconnecter sur l'écran où l'on est ramené — attendu « Enregistrez votre premier appareil »
+- [ ] **Le « Mot de passe oublié ? » ramène au portail SANS destination** — c'est la prémisse de la phrase écrite dans `docs/exploitation.md`, lue dans le frontend d'Authelia (`ResetPasswordStep2` navigue vers l'accueil sans `rd`) et non mesurée. Pour un compte sans appareil enrôlé : partir de l'application, réinitialiser le mot de passe, puis se connecter sur l'écran où l'on est ramené. Attendu : la barre d'adresse est `auth…/` sans `rd`, et la connexion mène à « Enregistrez votre premier appareil ». Si elle mène à l'application, la phrase est fausse et se retire de la documentation
 
 ### Décider — fait le 2026-09-06, par un autre chemin que celui prévu ici
 - [x] Les trois valeurs sont tranchées sur un attendu ÉCRIT (« une journée de travail sans ressaisir ») et non sur une intuition de confort : `12 hours` / `1 hour` / `1 month`, avec le raisonnement dans `authelia/configuration.yml` — dont l'argument le plus utile est que `remember_me: 1 month` accordait DÉJÀ un mois à qui coche la case, si bien que les quinze minutes ne bordaient que les prudents
@@ -171,10 +181,10 @@ la règle 1 et relève de la règle 4, `one_factor`.
 
 - **`authelia/authelia` discussion #7873** — dès qu'une règle exige `two_factor` pour un
   SUJET, fût-il un groupe vide, le second facteur est activé **globalement** sur le portail
-  pour tout le monde. Le mainteneur le qualifie de voulu : *« as soon as any policy exists
+  pour tout le monde. **Inexact, corrigé le 2026-09-15** (section « Décision ») : ce n'est pas le SUJET qui déclenche, c'est n'importe quelle règle en `two_factor`. Le mainteneur le qualifie de voulu : *« as soon as any policy exists
   that may require it we enable it globally »*, au nom de la simplicité (*« complexity is
   the enemy of good design and security »*). **Aucun contournement de configuration.** C'est
-  notre règle 1 qui le déclenche, et elle n'est pas négociable : elle protège les
+  notre règle 1 qui le déclenche — et les règles 2 et 3 tout autant, même correction —, et elle n'est pas négociable : elle protège les
   administrateurs.
 - **`authelia/authelia` issue #12853** (ouverte le 2026-08-24, branche 4.39.x, étiquetée
   *working-as-intended* / *type/feature*) — atteint à la racine sans `rd`, le portail
@@ -194,6 +204,58 @@ membre de `bd-admins` (la table `memberships` le réfute) ; et l'issue #9664, ci
 d'après un résumé de recherche — elle traite du cas INVERSE, l'impossibilité d'enrôler
 quand aucune règle n'exige `two_factor`. La leçon est la même que celle d'`AUTH-8` :
 lire la source, pas ce qu'on en dit.
+
+## Décision — 2026-09-15 : aucune version ne change la donne, et l'une des trois issues n'existait pas
+
+**Les versions d'abord, avant toute proposition.** Cinq sont sorties depuis la 4.39.22, de la
+4.39.23 (2026-09-08) à la 4.39.27 (publiée le jour même). Leurs notes ne touchent ni la
+redirection ni le premier facteur — et c'est le CODE qui l'établit, pas les notes :
+`Handle1FAResponse` (`internal/handlers/response.go`) et `NewAuthorizer`
+(`internal/authorization/authorizer.go`) sont identiques à la 4.39.22, à la 4.39.27 et sur
+`master`, à un en-tête de licence près. Sous `#12853`, le mainteneur a répondu le 2026-08-24 :
+*« This is working as intended. The default redirection URL intentionally only applies once
+they've 2FA'd »*, au nom de qui voudrait gérer son compte plutôt qu'être renvoyé. Étiquetée
+*type/feature* le 2026-09-10, assignée le 2026-09-13. Le 2026-09-14, un tiers y demande une
+option à activer, correctif à l'appui ; seule sa question sur WebAuthn a reçu réponse (renvoi
+à `#9664`), pas celle sur l'option.
+
+**L'issue « retirer la règle 1 » ne produisait rien.** La section précédente tenait de `#7873`
+que le second facteur s'active dès qu'une règle l'exige « pour un SUJET ». La source dit autre
+chose : `NewAuthorizer` pose `mfa = true` dès que la politique par défaut OU n'importe quelle
+règle est en `two_factor`, sans regarder le sujet. Or `access_control` en compte trois — les
+administrateurs sur l'application, les deux routes de sauvegarde (sans sujet), les
+administrateurs sur l'annuaire. Retirer la première laissait les deux autres activer le second
+facteur pour tous. La seule forme qui marche est de les retirer TOUTES : plus de second facteur
+nulle part, et, `ConfigurationGET` ne publiant ses méthodes que sous ce même interrupteur, plus
+même d'enrôlement possible. **C'est la leçon d'`AUTH-8` une fois de plus** : on avait lu la
+discussion, pas le code dont elle parle.
+
+**Le portail sans destination n'était pas un accident d'usage : deux chemins y mènent
+d'office.** Lus dans le frontend de la 4.39.22, non mesurés :
+
+- **la réinitialisation** — `ResetPasswordStep2` navigue vers l'accueil sans `rd`. Or c'est le
+  parcours que `docs/exploitation.md` prescrivait pour une arrivée nombreuse : qui suivait la
+  procédure y passait. C'est aussi le parcours que l'auteur de `#12853` décrit dans son second
+  commentaire — son rapport initial, lui, reproduit le chemin suivant ;
+- **la déconnexion** — `BD_AUTH_LOGOUT_URL` valait `…/logout` nu ; la page de déconnexion lit
+  `rd`, et sans lui revient à l'accueil.
+
+Les connexions sans `request_uri` de `lectrice` et de `proprio` le 2026-09-13 sont COMPATIBLES
+avec l'un ou l'autre chemin. Rien ne consigne comment elles y sont arrivées, et on ne
+l'affirme pas.
+
+**Une redirection Caddy de la racine du portail vers `/?rd=…` a été envisagée, et écartée.**
+Les deux navigations ci-dessus sont INTERNES à la page : aucune requête ne part, Caddy ne les
+voit jamais. Elle ne servirait que le portail ouvert depuis un favori, au prix d'une règle de
+plus sur le seul point d'entrée.
+
+**Ce qui est fait, `cac2a4b`** : la cible `rd` sur le lien de déconnexion — le seul des deux
+chemins qui se corrige ici —, le geste écrit là où l'arrivant le reçoit, le coût écrit dans
+`deploiement-docker.md`, et une garde, `test_la_deconnexion_renvoie_vers_l_application`,
+éprouvée par deux mutations (cible retirée, cible pointée vers le portail). **Rien n'a changé
+en service sur la recette** : elle lit le compose du dépôt, donc le lien changera à la
+prochaine recréation de son conteneur `app` — pas avant, et pas pendant la passe de QA qui y
+tournait.
 
 ## Contexte
 
