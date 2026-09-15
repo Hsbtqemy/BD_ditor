@@ -58,8 +58,8 @@ ce qu'on voit effaçait ce qu'on ne voyait pas.
 
 - [ ] Sous `stagiaire`, la bulle du décor ne montre que `commun` ; lui ajouter une note, et enregistrer
 - [ ] Sous `proprio`, la même bulle porte toujours `grille-b`, avec `commun` et la note du stagiaire
-- [ ] Sous `stagiaire`, retirer `commun` : la bulle n'affiche plus aucun tag. Sous `proprio`, elle garde `grille-b` — vider ce qu'on voit n'a pas supprimé l'annotation
-- [ ] Sous `stagiaire`, Ctrl+Z : `commun` revient. Sous `proprio`, `grille-b` est toujours là — l'annulation n'a pas effacé ce qui était caché
+- [ ] Sous `stagiaire`, vider la note de la case précédente et attendre « Enregistré », PUIS retirer `commun` : la bulle n'affiche plus ni note ni tag. Sous `proprio`, elle garde `grille-b` — vider TOUT ce qu'on voit n'a pas supprimé l'annotation. La note part d'abord, et ce n'est pas un détail : tant qu'elle reste, le serveur ne supprime jamais l'annotation, correctif ou pas, et la case passerait sans rien éprouver
+- [ ] Sous `stagiaire`, sortir de tout champ en cliquant sur le mot « Région » du panneau — un texte, pas un champ : dans la note ou la saisie de tag, Ctrl+Z est celui du navigateur, et `Échap` n'en fait pas sortir —, puis UN SEUL Ctrl+Z : `commun` revient. Sous `proprio`, `grille-b` est toujours là — l'annulation n'a pas effacé ce qui était caché. Que la note revienne aussi dépend de l'enregistrement, commun ou séparé, des deux gestes (`UX-5`) : la case ne porte pas sur elle. Un seul Ctrl+Z, parce que les actes précédents de `stagiaire` visent la bulle 30, supprimée depuis
 
 ### Ce que le propriétaire voit, lui
 
