@@ -43,29 +43,29 @@ schéma ; ne pas la jouer ici comme un échec.
 
 **Sous `lectrice`.**
 
-- [ ] *Atelier*, la bulle du décor : ses tags montrent `commun` et pas `grille-b`
-- [ ] *Atelier*, la case du décor : « Situation (scène) » ne montre pas `ambiance-b : tendue`
-- [ ] *Recherche*, un mot de cette bulle : le résultat porte `commun` et pas `grille-b` ; le nuage de tags ne propose pas `grille-b`
-- [ ] *Recherche*, l'adresse tapée à la main avec `?tags=grille-b` : aucun résultat, exactement comme avec un nom de tag qui n'existe pas
-- [ ] *Exploration*, vue Croisement : la liste des axes ne propose pas `ambiance-b`, et l'axe « tag » ne fait pas de ligne `grille-b`
-- [ ] *Exploration*, l'adresse tapée avec `?vue=croisement&axe_x=dim:<id>` — l'identifiant d'`ambiance-b`, relevé sous `proprio` — affiche la même erreur qu'avec un identifiant libre comme `dim:99999`, au nombre près, et aucun nom d'axe
-- [ ] *Exploration → 📖 Lexique* : ni `grille-b`, ni `ambiance-b`, ni `tendue`
+- [x] *Atelier*, la bulle du décor : ses tags montrent `commun` et pas `grille-b`
+- [x] *Atelier*, la case du décor : « Situation (scène) » ne montre pas `ambiance-b : tendue`
+- [x] *Recherche*, un mot de cette bulle : le résultat porte `commun` et pas `grille-b` ; le nuage de tags ne propose pas `grille-b`
+- [x] *Recherche*, l'adresse tapée à la main avec `?tags=grille-b` : aucun résultat, exactement comme avec un nom de tag qui n'existe pas
+- [x] *Exploration*, vue Croisement : la liste des axes ne propose pas `ambiance-b`, et l'axe « tag » ne fait pas de ligne `grille-b`
+- [x] *Exploration*, l'adresse tapée avec `?vue=croisement&axe_x=dim:<id>` — l'identifiant d'`ambiance-b`, relevé sous `proprio` — affiche la même erreur qu'avec un identifiant libre comme `dim:99999`, au nombre près, et aucun nom d'axe
+- [x] *Exploration → 📖 Lexique* : ni `grille-b`, ni `ambiance-b`, ni `tendue`
 
 ### L'écriture préserve ce qu'elle cache
 
 **Sous `stagiaire`, puis sous `proprio`.** Le piège que le chantier a fermé : enregistrer
 ce qu'on voit effaçait ce qu'on ne voyait pas.
 
-- [ ] Sous `stagiaire`, la bulle du décor ne montre que `commun` ; lui ajouter une note, et enregistrer
-- [ ] Sous `proprio`, la même bulle porte toujours `grille-b`, avec `commun` et la note du stagiaire
-- [ ] Sous `stagiaire`, vider la note de la case précédente et attendre « Enregistré », PUIS retirer `commun` : la bulle n'affiche plus ni note ni tag. Sous `proprio`, elle garde `grille-b` — vider TOUT ce qu'on voit n'a pas supprimé l'annotation. La note part d'abord, et ce n'est pas un détail : tant qu'elle reste, le serveur ne supprime jamais l'annotation, correctif ou pas, et la case passerait sans rien éprouver
-- [ ] Sous `stagiaire`, sortir de tout champ en cliquant sur le mot « Région » du panneau — un texte, pas un champ : dans la note ou la saisie de tag, Ctrl+Z est celui du navigateur, et `Échap` n'en fait pas sortir —, puis UN SEUL Ctrl+Z : `commun` revient. Sous `proprio`, `grille-b` est toujours là — l'annulation n'a pas effacé ce qui était caché. Que la note revienne aussi dépend de l'enregistrement, commun ou séparé, des deux gestes (`UX-5`) : la case ne porte pas sur elle. Un seul Ctrl+Z, parce que les actes précédents de `stagiaire` visent la bulle 30, supprimée depuis
+- [x] Sous `stagiaire`, la bulle du décor ne montre que `commun` ; lui ajouter une note, et enregistrer
+- [x] Sous `proprio`, la même bulle porte toujours `grille-b`, avec `commun` et la note du stagiaire
+- [x] Sous `stagiaire`, vider la note de la case précédente et attendre « Enregistré », PUIS retirer `commun` : la bulle n'affiche plus ni note ni tag. Sous `proprio`, elle garde `grille-b` — vider TOUT ce qu'on voit n'a pas supprimé l'annotation. La note part d'abord, et ce n'est pas un détail : tant qu'elle reste, le serveur ne supprime jamais l'annotation, correctif ou pas, et la case passerait sans rien éprouver
+- [x] Sous `stagiaire`, sortir de tout champ en cliquant sur le mot « Région » du panneau — un texte, pas un champ : dans la note ou la saisie de tag, Ctrl+Z est celui du navigateur, et `Échap` n'en fait pas sortir —, puis UN SEUL Ctrl+Z : `commun` revient. Sous `proprio`, `grille-b` est toujours là — l'annulation n'a pas effacé ce qui était caché. Que la note revienne aussi dépend de l'enregistrement, commun ou séparé, des deux gestes (`UX-5`) : la case ne porte pas sur elle. Un seul Ctrl+Z, parce que les actes précédents de `stagiaire` visent la bulle 30, supprimée depuis
 
 ### Ce que le propriétaire voit, lui
 
 **Sous `proprio`** — l'autre côté de chaque case, sans quoi les précédentes pourraient
 passer sur un écran simplement cassé.
 
-- [ ] La bulle montre `grille-b` et `commun`, la case `ambiance-b : tendue`
-- [ ] *Recherche* avec `?tags=grille-b` trouve la bulle
-- [ ] *Exploration*, Croisement : `ambiance-b` est proposé comme axe, et l'axe « tag » fait une ligne `grille-b`
+- [x] La bulle montre `grille-b` et `commun`, la case `ambiance-b : tendue`
+- [x] *Recherche* avec `?tags=grille-b` trouve la bulle
+- [x] *Exploration*, Croisement : `ambiance-b` est proposé comme axe, et l'axe « tag » fait une ligne `grille-b`
