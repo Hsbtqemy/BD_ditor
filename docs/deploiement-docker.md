@@ -386,13 +386,36 @@ l'Administration), l'accord inter-annotateurs
 n'a plus rien à mesurer, et le journal de provenance aplatit les chaînes de révision. Cf.
 `pilotage/INFRA-8.md` et `pilotage/AUTH-6.md`.
 
+**Le portail ouvert SANS destination demande un second facteur à tout le monde, et aucun
+réglage ne l'évite** (INFRA-7, décidé le 2026-09-15). Authelia active le second facteur pour
+tous dès qu'UNE règle d'`access_control` est en `two_factor`, quel qu'en soit le sujet.
+Arrivé au portail sans adresse à atteindre, il n'évalue pas la règle de
+`default_redirection_url` : il envoie à « Enregistrez votre premier appareil », y compris un
+compte `one_factor`, qui est pourtant déjà connecté. C'est voulu en amont et inchangé à la
+4.39.27 (`authelia/authelia#12853`, *working as intended*). Retirer les règles `two_factor`
+— toutes, puisqu'une seule suffit — le ferait disparaître, mais ôterait le second facteur
+aux administrateurs, à la sauvegarde et à l'annuaire : écarté. **Le coût retenu est un
+geste** : on entre en partant de l'APPLICATION, jamais du portail. Deux chemins menaient
+d'office au portail sans destination — la déconnexion, corrigée ci-dessous, et le « Mot de
+passe oublié ? » d'un arrivant, qui ne se corrige pas et se DIT (cf. `exploitation.md`,
+*Ajouter un compte*).
+
 ## 7. Déconnexion
 
-`https://auth.example.fr/logout` — détruit la session (côté Redis). L'interface
+`https://auth.example.fr/logout?rd=https://bd.example.fr/` — détruit la session (côté
+Redis), puis renvoie vers l'application. L'interface
 **affiche déjà ce lien** : la bande de navigation montre « 👤 *nom* · Déconnexion »
 dès que l'app est derrière le proxy (en-tête `Remote-User`). Le lien pointe vers
 `BD_AUTH_LOGOUT_URL` (réglé dans `docker-compose.yml`). En local, sans proxy, ni le
 nom ni le lien n'apparaissent.
+
+**La cible `rd` n'est pas un confort** (INFRA-7). Sans elle, la page de déconnexion revient à
+l'accueil du portail, et se reconnecter de là mène à l'enrôlement d'un second facteur, pour
+la raison écrite à la fin de la section précédente. Avec elle, on repart de l'application :
+son `forward_auth` renvoie au portail en disant où l'on va, et c'est la règle de CETTE
+adresse qui décide. Lu dans la source d'Authelia 4.39.22 — la page de déconnexion lit `rd`
+et la suit si elle est sous le domaine du cookie ; la mesure sur une pile réelle est une
+case de `pilotage/INFRA-7.md`.
 
 **`BD_AUTH_PROXY` (AUTH-1) — à ne pas oublier.** L'application n'exploite les en-têtes
 d'identité que si ce drapeau est posé ; `docker-compose.yml` le pose à `1`. Sans lui, la

@@ -33,8 +33,13 @@ services:
       # Authelia devant l'app : sinon n'importe quel client pourrait se déclarer
       # qui il veut, et ce sera une escalade de privilège dès AUTH-2/AUTH-3.
       - BD_AUTH_PROXY=1
-      # Lien de déconnexion affiché dans l'UI (portail Authelia).
-      - BD_AUTH_LOGOUT_URL=https://${AUTH_DOMAINE}/logout
+      # Lien de déconnexion affiché dans l'UI (portail Authelia). La cible `rd` fait partie
+      # de la valeur (INFRA-7) : sans elle, le portail revient à sa propre page d'accueil,
+      # et s'y reconnecter mène TOUT LE MONDE à l'enrôlement d'un second facteur, comptes
+      # `one_factor` compris — Authelia ne consulte la règle d'une adresse que si on la lui
+      # donne. Avec elle, on repart de l'application, et c'est sa règle qui décide.
+      # Cf. docs/deploiement-docker.md, « Déconnexion ».
+      - BD_AUTH_LOGOUT_URL=https://${AUTH_DOMAINE}/logout?rd=https://${BD_DOMAINE}/
       # AUTH-2 : groupes dont les membres voient TOUT le corpus et administrent les accès.
       # Doit correspondre à un groupe déclaré dans Authelia. Les autres n'accèdent qu'aux
       # collections ouvertes pour eux dans `collection_acces` — et une instance neuve n'en

@@ -41,8 +41,10 @@ WEB_SCALE = 0.25          # le dérivé fait 25 % de la taille du master
 WEB_JPEG_QUALITY = 82
 
 # Déconnexion (INFRA-1). Derrière le proxy d'authentification (Authelia), l'URL de
-# logout vit sur le sous-domaine du PORTAIL (ex. https://auth.example.fr/logout) :
-# elle est propre au déploiement, donc configurable. Vide en local (pas de proxy
+# logout vit sur le sous-domaine du PORTAIL, cible comprise :
+# https://auth.example.fr/logout?rd=https://bd.example.fr/ — sans `rd`, on se
+# reconnecte depuis un portail sans destination (INFRA-7, cf. deploy/docker-compose.yml).
+# Elle est propre au déploiement, donc configurable. Vide en local (pas de proxy
 # d'auth) → l'UI n'affiche ni utilisateur ni lien de déconnexion (dégradation propre).
 AUTH_LOGOUT_URL = os.environ.get("BD_AUTH_LOGOUT_URL", "").strip()
 

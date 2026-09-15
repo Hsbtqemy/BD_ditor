@@ -464,7 +464,10 @@ Trois points qui ne se devinent pas : **une adresse par personne, jamais une adr
 d'équipe** (qui lit cette boîte peut réinitialiser le mot de passe puis réenrôler la 2FA) ;
 le groupe `bd-admins` voit tout le corpus, à donner en connaissance de cause ; et pour une
 arrivée nombreuse, poser un mot de passe **aléatoire non transmis** et laisser chacun passer
-par « mot de passe oublié ».
+par « mot de passe oublié » — **puis ouvrir l'adresse de l'application, jamais celle du
+portail** : revenu au portail sans destination, Authelia propose d'enrôler un second facteur
+à tout le monde, y compris à qui n'en a pas besoin (cf. [`exploitation.md`](exploitation.md),
+*Ajouter un compte*).
 
 ### Créer un groupe
 

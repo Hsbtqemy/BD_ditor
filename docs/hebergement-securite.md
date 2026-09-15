@@ -155,6 +155,10 @@ poser `X-BD-Requete` ; le 403 le NOMME plutôt que d'échouer en silence.
   s'ajoutent, une par principal, et restent comme avant **en mémoire serveur
   uniquement** — deux magasins désormais, aucun sur disque.
 - Auth (derrière proxy) : `BD_AUTH_LOGOUT_URL` = URL de déconnexion du portail
+  (ex. `https://auth.example.fr/logout?rd=https://bd.example.fr/`), affichée dans l'UI
+  avec l'utilisateur connecté (`Remote-User`). Vide en local → ni nom ni lien affichés.
+  **La cible `rd` fait partie de la valeur** (INFRA-7) : cf. `deploiement-docker.md`,
+  *Déconnexion*.
 - Auth (derrière proxy) : **`BD_AUTH_PROXY`** = déclare qu'un proxy d'authentification
   est bien devant l'application (AUTH-1). **Sans ce drapeau, les en-têtes d'identité
   (`Remote-User`, `Remote-Groups`, `Remote-Name`, `Remote-Email`) sont IGNORÉS** et tout
@@ -162,8 +166,6 @@ poser `X-BD-Requete` ; le 403 le NOMME plutôt que d'échouer en silence.
   autrement, n'importe quel client atteignant l'app en direct pourrait se déclarer qui il
   veut — sans conséquence tant que rien n'est autorisé sur cette base, escalade de
   privilège dès qu'une autorisation en dépendra.
-  (ex. `https://auth.example.fr/logout`), affichée dans l'UI avec l'utilisateur
-  connecté (`Remote-User`). Vide en local → ni nom ni lien affichés.
 - Auth (derrière proxy) : **`BD_AUTH_ADMIN_GROUPS`** = groupes dont les membres voient
   tout le corpus (défaut `bd-admins`). Comme les autres groupes, leur composition n'est
   jamais stockée : elle vit dans Authelia et est relue à chaque requête.

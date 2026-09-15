@@ -1345,6 +1345,40 @@ def test_aucune_commande_documentee_ne_pose_un_secret_sur_la_ligne():
           "rien dans l'historique du shell")
 
 
+def test_la_deconnexion_renvoie_vers_l_application():
+    """INFRA-7 — se déconnecter puis se reconnecter menait à l'enrôlement d'un second facteur.
+
+    Le lien pointait sur `…/logout` sans cible. La page de déconnexion d'Authelia revient
+    alors à l'accueil du PORTAIL, et une connexion faite de là n'a aucune adresse à évaluer :
+    dès qu'une règle d'`access_control` est en `two_factor`, Authelia envoie tout le monde à
+    « Enregistrez votre premier appareil », comptes `one_factor` compris. Voulu en amont
+    (`authelia/authelia#12853`), sans réglage qui l'évite ; la cible `rd` fait repartir de
+    l'application, dont la règle décide.
+
+    Rien ne casse sans elle, et c'est pourquoi il faut une garde : la personne est bel et
+    bien connectée, l'écran dit seulement le contraire. `deploy/` est absent de l'image de
+    test (cf. `_fichiers_documentaires`), d'où le saut plutôt qu'un échec.
+    """
+    import re
+    from pathlib import Path
+    from urllib.parse import parse_qs, urlsplit
+
+    compose = Path(__file__).resolve().parent.parent / "deploy" / "docker-compose.yml"
+    if not compose.exists():
+        pytest.skip("deploy/ n'est pas copié dans l'image de test")
+    valeurs = re.findall(r"^\s*-\s*BD_AUTH_LOGOUT_URL=(\S+)\s*$",
+                         compose.read_text(encoding="utf-8"), re.M)
+    assert len(valeurs) == 1, (
+        f"{len(valeurs)} déclaration(s) de BD_AUTH_LOGOUT_URL dans le compose : zéro ferait "
+        "passer la garde sans rien avoir regardé, deux ne disent plus laquelle est servie")
+    url = urlsplit(valeurs[0])
+    assert url.path == "/logout", valeurs[0]
+    assert parse_qs(url.query).get("rd") == ["https://${BD_DOMAINE}/"], (
+        f"le lien de déconnexion ({valeurs[0]}) ne renvoie pas vers l'application : se "
+        "reconnecter depuis un portail sans destination mène tout le monde à l'enrôlement "
+        "d'un second facteur (INFRA-7)")
+
+
 # --------------------------------------------------------------------------- #
 # CONC-1 — le registre des lots ne perdait jamais rien
 # --------------------------------------------------------------------------- #
