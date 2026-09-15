@@ -413,9 +413,8 @@ nom ni le lien n'apparaissent.
 l'accueil du portail, et se reconnecter de là mène à l'enrôlement d'un second facteur, pour
 la raison écrite à la fin de la section précédente. Avec elle, on repart de l'application :
 son `forward_auth` renvoie au portail en disant où l'on va, et c'est la règle de CETTE
-adresse qui décide. Lu dans la source d'Authelia 4.39.22 — la page de déconnexion lit `rd`
-et la suit si elle est sous le domaine du cookie ; la mesure sur une pile réelle est une
-case de `pilotage/INFRA-7.md`.
+adresse qui décide. Mesuré sur la pile de recette le 2026-09-15 : après « Déconnexion », un
+compte `one_factor` revient dans l'application au mot de passe seul.
 
 **`BD_AUTH_PROXY` (AUTH-1) — à ne pas oublier.** L'application n'exploite les en-têtes
 d'identité que si ce drapeau est posé ; `docker-compose.yml` le pose à `1`. Sans lui, la
