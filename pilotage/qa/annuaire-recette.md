@@ -23,18 +23,18 @@ démarrer avant l'amorçage (`LDAP Result Code 49 "Invalid Credentials"`), puis 
 comptes cesse d'exiger un shell sur le serveur.
 
 ### L'accès à l'annuaire
-- [ ] Sous `lectrice`, `https://annuaire.127-0-0-1.sslip.io` est REFUSÉ par Authelia : l'interface de LLDAP ne s'affiche pas
-- [ ] Sous `admin-bd`, le second facteur est demandé (enrôlement TOTP la première fois, code dans `authelia/notification.txt` de la pile), puis la page de connexion de LLDAP s'affiche
-- [ ] `admin-bd` s'y connecte avec le même mot de passe, et la liste des comptes montre les huit comptes de la recette (le service `authelia` compris) et `admin`
+- [x] Sous `lectrice`, `https://annuaire.127-0-0-1.sslip.io` est REFUSÉ par Authelia : l'interface de LLDAP ne s'affiche pas
+- [x] Sous `admin-bd`, le second facteur est demandé (enrôlement TOTP la première fois, code dans `authelia/notification.txt` de la pile), puis la page de connexion de LLDAP s'affiche
+- [x] `admin-bd` s'y connecte avec le même mot de passe, et la liste des comptes montre les huit comptes de la recette (le service `authelia` compris) et `admin`
 
 ### Le geste sans shell
-- [ ] Dans l'interface de LLDAP, un compte `essai-recette` est créé, avec un mot de passe, sans groupe
-- [ ] `essai-recette` se connecte à l'application (mot de passe seul) et voit le bandeau « Aucune collection ne vous est ouverte. »
-- [ ] Dans LLDAP, `essai-recette` est ajouté au groupe `annotateurs` ; sans se reconnecter ni rien redémarrer, la Bibliothèque lui montre « esther v1 » au plus cinq minutes plus tard. L'application relit les groupes à chaque requête, mais Authelia ne relit ceux de l'annuaire qu'à son intervalle de rafraîchissement, cinq minutes par défaut : noter le délai réellement observé
+- [x] Dans l'interface de LLDAP, un compte `essai-recette` est créé, avec un mot de passe, sans groupe
+- [x] `essai-recette` se connecte à l'application (mot de passe seul) et voit le bandeau « Aucune collection ne vous est ouverte. »
+- [x] Dans LLDAP, `essai-recette` est ajouté au groupe `annotateurs` ; sans se reconnecter ni rien redémarrer, la Bibliothèque lui montre « esther v1 » au plus cinq minutes plus tard. L'application relit les groupes à chaque requête, mais Authelia ne relit ceux de l'annuaire qu'à son intervalle de rafraîchissement, cinq minutes par défaut : noter le délai réellement observé
 
 ### Le mot de passe oublié
-- [ ] Au portail, « Mot de passe oublié ? » pour `lectrice` : le lien arrive dans `authelia/notification.txt`, et le nouveau mot de passe permet d'entrer
-- [ ] Le même geste pour `admin-bd` ÉCHOUE : LLDAP interdit au compte de service de changer le mot de passe d'un `lldap_admin`. Attendu : l'échec est visible à l'écran, et le recours est l'interface de LLDAP
+- [x] Au portail, « Mot de passe oublié ? » pour `lectrice` : le lien arrive dans `authelia/notification.txt`, et le nouveau mot de passe permet d'entrer
+- [x] Le même geste pour `admin-bd` ÉCHOUE : LLDAP interdit au compte de service de changer le mot de passe d'un `lldap_admin`. Attendu : l'échec est visible à l'écran, et le recours est l'interface de LLDAP
 
 ### Le vérificateur
-- [ ] Depuis le dépôt, `python deploy/verifier_comptes.py` commence par « REPLI — l'annuaire LDAP est le backend actif » : le fichier de comptes y est annoncé comme recours et non comme la source des connexions
+- [x] Depuis le dépôt, `python deploy/verifier_comptes.py` commence par « REPLI — l'annuaire LDAP est le backend actif » : le fichier de comptes y est annoncé comme recours et non comme la source des connexions
