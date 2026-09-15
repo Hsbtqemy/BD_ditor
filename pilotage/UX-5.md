@@ -50,6 +50,29 @@ seule mention est une note de backlog, `9756074` —, d'où `à venir` et ce `Po
       décidé. `tests/test_e2e_undo_rafraichit.py` ne l'éprouve pas : son geste unique produit
       un seul enregistrement, et c'est précisément pourquoi il n'a rien reproduit
 
+### Rétablir ce que Ctrl+Z a défait par erreur
+- [ ] Tranché et ÉCRIT : la FORME du rétablissement — une action « Rétablir » portée par le
+      toast de l'annulation, qui ne vit que le temps du message ; ou une pile de
+      rétablissement que tout nouvel acte de la même personne vide, comme dans un éditeur.
+      `docs/undo.md` le range « hors périmètre de ce cran » sans en donner la raison : une
+      étape pas faite, pas une décision contre
+- [ ] Rétablir une création annulée recrée la région sous son NUMÉRO d'origine, et le choix
+      dit ce qui arrive quand ce numéro a été repris. `regions.id` est un `INTEGER PRIMARY KEY`
+      sans `AUTOINCREMENT` : la création suivante — n'importe où dans l'instance, par
+      n'importe qui — reprend le plus grand numéro s'il vient d'être libéré. L'attendu est le
+      refus nommé qui existe déjà pour l'annulation d'une suppression (409, identifiant
+      « réattribué »), jamais un écrasement
+- [ ] Ce qu'un rétablissement REFAIT suit l'arbitrage de granularité de la première zone :
+      tant que Ctrl+Z défait un enregistrement de 500 ms, rétablir en referait un, états
+      intermédiaires compris. Les deux se tranchent ensemble, ou le second attend le premier
+- [ ] Sous un compte collectif (AUTH-6), le choix dit si la borne de cinq minutes s'applique au
+      rétablissement, et depuis QUAND elle court — l'acte d'origine ou son annulation. Dans la
+      fenêtre, rétablir l'annulation d'un collègue sous le même login rouvre ce que la borne
+      réduit
+- [ ] Le rétablissement s'écrit comme l'annulation : un événement de plus, qui annule une
+      annulation, sans qu'aucun événement existant soit réécrit — l'append-only d'A3 tient
+      par construction, et une garde le vérifie
+
 ## Contexte
 
 **Deux conceptions justes qui ne s'étaient jamais rencontrées.** `docs/undo.md` pose le but de
@@ -80,3 +103,11 @@ d'*esther v1* a reçu onze modifications en dix-sept secondes — des « t » ta
 mode puis effacés à la main, chacun enregistré. La défaire par Ctrl+Z demanderait onze appuis,
 et un douzième déferait une normalisation légitime : c'est exactement ce défaut, vu de l'autre
 côté.
+
+**Rétablir, demandé en recette le 2026-09-15.** En jouant `qa/compte-collectif`, un Ctrl+Z de
+trop sous `collectif` — 14:40:08 heure locale, événement 78 — a défait la création d'une bulle
+voulue, la région 146 : rien ne pouvait la faire revenir, sinon la retracer. L'équipe a proposé
+un bouton « Rétablir ». Le même journal montre pourquoi ce n'est pas qu'un bouton : en moins
+d'une heure, les numéros 144, 145 et 147 ont chacun désigné DEUX régions différentes, repris à
+la création suivante après une suppression ou une annulation (événements 57-59, 63-66, 68-73).
+Un rétablissement qui recrée sous l'ancien numéro trouverait souvent la place prise.
