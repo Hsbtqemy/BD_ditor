@@ -43,7 +43,7 @@ la configuration livrée par INFRA-1, relue et non éprouvée.
 - [ ] Ce que la case « se souvenir de moi » change vraiment : la même attente, case cochée à la connexion. La session survit-elle à l'inactivité, ou seulement jusqu'à `expiration` ? C'est la question qui décide si `remember_me: 1 month` rend les deux autres réglages sans objet
 - [ ] Ce qu'une expiration fait à un LOT ML en cours : un lot lancé depuis la Bibliothèque tourne dans un thread serveur, donc l'expiration ne devrait pas l'interrompre — à vérifier, parce que « ne devrait pas » n'est pas une mesure
 - [ ] La documentation d'Authelia ne dit pas si `expiration` est RAFRAÎCHIE à chaque requête ou si elle plafonne depuis la connexion. Le réglage du 2026-09-06 a levé les deux valeurs précisément pour être juste dans les deux cas — l'incertitude est contournée, pas levée, et une mesure la trancherait
-- [ ] **Le renvoi après réouverture, quand une cible EXISTE** : être renvoyé par l'application (barre d'adresse en `auth…/?rd=…`), saisir le mot de passe, et dire si l'on revient sur la page demandée ou si l'on reste sur le portail. Le 2026-09-13, les deux connexions de `proprio` portaient bien leur cible dans `authentication_logs` (`request_uri` renseignée) — ce que le renvoi a fait ensuite n'a pas été observé, et l'équipe ne s'en souvenait pas. C'est la moitié qui décide s'il y a un défaut ou seulement un portail ouvert à la main. **Une trace y répond peut-être déjà** (relevée le 2026-09-15) : `INFRA-9` consigne le 2026-09-06 que `stagiaire` « entre au mot de passe SEUL et arrive directement dans l'application », alors que la règle `two_factor` des administrateurs existait — le second facteur était donc activé pour tous, et seule la branche AVEC cible mène là. C'était une première connexion et non une réouverture, d'où la case laissée ouverte ; la mesure de la déconnexion (zone « Le portail sans destination ») la tranche au passage
+- [ ] **Le renvoi après réouverture, quand une cible EXISTE** : être renvoyé par l'application (barre d'adresse en `auth…/?rd=…`), saisir le mot de passe, et dire si l'on revient sur la page demandée ou si l'on reste sur le portail. Le 2026-09-13, les deux connexions de `proprio` portaient bien leur cible dans `authentication_logs` (`request_uri` renseignée) — ce que le renvoi a fait ensuite n'a pas été observé, et l'équipe ne s'en souvenait pas. C'est la moitié qui décide s'il y a un défaut ou seulement un portail ouvert à la main. **Une trace y répond peut-être déjà** (relevée le 2026-09-15) : `INFRA-9` consigne le 2026-09-06 que `stagiaire` « entre au mot de passe SEUL et arrive directement dans l'application », alors que la règle `two_factor` des administrateurs existait — le second facteur était donc activé pour tous, et seule la branche AVEC cible mène là. C'était une première connexion et non une réouverture, d'où la case laissée ouverte ; la mesure de la déconnexion (zone « Le portail sans destination ») la tranche au passage. **La recette l'a montré le 2026-09-15**, sur une connexion qui n'était pas davantage une réouverture (visite anonyme, aucune session expirée au journal) : `stagiaire` réussit son premier facteur à 13:53:40.42 avec `request_uri` = la racine de l'application, et `bd-app` sert `GET /` puis `/api/moi` à 13:53:40.58 — le renvoi a eu lieu. Détail dans la section « Le retour avec destination, vu dans les journaux »
 - [ ] **La réouverture sur un compte de `bd-admins`**, seule question que les comptes `one_factor` ne peuvent pas départager : le portail redemande-t-il le second facteur en plus du mot de passe ? **Bloquée par un préalable** — au 2026-09-13, `totp_configurations` et `webauthn_credentials` sont VIDES sur la pile de recette, donc aucun appareil n'est enrôlé et `admin-bd` n'atteint même pas l'application (règle 1, `two_factor`). Enrôler d'abord, mesurer ensuite
 
 ### Le portail sans destination — tranché le 2026-09-15
@@ -256,6 +256,42 @@ chemins qui se corrige ici —, le geste écrit là où l'arrivant le reçoit, l
 en service sur la recette** : elle lit le compose du dépôt, donc le lien changera à la
 prochaine recréation de son conteneur `app` — pas avant, et pas pendant la passe de QA qui y
 tournait.
+
+## Le retour avec destination, vu dans les journaux — 2026-09-15
+
+**Signalé le même jour, pendant la conception : « après le mot de passe, on ne revient pas
+dans l'application », pour tous les comptes.** Le signalement a failli faire retirer
+`cac2a4b` et bâtir un contournement — une page d'accueil publique ouvrant le portail dans une
+fenêtre superposée, qui aurait détecté la session elle-même. Trois journaux de la recette,
+lus sans rien toucher ni redémarrer, disent autre chose :
+
+- `authentication_logs` : `stagiaire` réussit son premier facteur à 13:53:40.42 avec
+  `request_uri` = `https://bd.127-0-0-1.sslip.io/` ; `collectif` réussit le sien à 13:54:00
+  avec une `request_uri` VIDE ;
+- `bd-app` sert `GET /`, puis `/api/moi`, les albums et les planches à 13:53:40.58, soit
+  150 ms après la connexion de `stagiaire`, sans autre connexion à ce moment-là ;
+- `bd-authelia` ne porte aucun « requires 2FA, cannot be redirected yet » après 11:46 —
+  celui-là est `admin-bd`, dont la connexion avait une cible et a été traitée comme prévu :
+  second facteur demandé, puis entrée à 11:47:19.
+
+**Le renvoi avec destination fonctionne ; ce qui a bloqué `collectif`, c'est une connexion
+sans destination.** L'écran `/settings/two-factor-authentication` où il est resté est celui
+qu'ouvre le bouton d'enregistrement de l'écran du second facteur (`SecondFactorForm`,
+`onRegisterClick`) — pas un mécanisme de plus. Entre les deux connexions, l'application n'a
+reçu aucune requête : la forme d'un clic sur « Déconnexion », dont le lien est encore nu sur
+la recette, et l'équipe confirme que ses changements de compte passent par là. **Ce n'est
+pas un cas isolé** : sur les treize premiers facteurs réussis de la journée, douze sont
+arrivés sans destination — la signature des changements de compte d'une passe de QA.
+
+**En attendant la recréation du conteneur `app`**, le geste qui évite le blocage : après
+« Déconnexion », ne pas se connecter sur l'écran du portail, taper d'abord l'adresse de
+l'application, et se connecter sur l'écran où elle renvoie.
+
+**La leçon vaut dans les deux sens.** Le signalement était exact sur l'écran et faux sur la
+cause : l'enchaînement qui y menait ne se voyait pas depuis le navigateur. Et la réponse
+« on revient dedans » était juste, mais affirmée d'après la source avant d'être montrée —
+c'est ce qui l'a rendue discutable, au point de la retirer à tort une première fois. La
+trace a tranché en une lecture ; elle aurait dû précéder les deux affirmations.
 
 ## Contexte
 
