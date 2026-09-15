@@ -565,6 +565,25 @@ une mineure qu'on s'apprête à quitter serait le pire enchaînement possible : 
 l'intégration deux fois, la seconde en ayant oublié pourquoi la première avait conclu ce
 qu'elle a conclu. `INFRA-9` passe donc avant la décision ci-dessous, ou avec elle.
 
+## Un ajout de groupe prend effet en cinq minutes, mesuré en recette — 2026-09-15
+
+**Un compte ajouté à un groupe dans LLDAP en reçoit les droits en cinq minutes environ, sans
+se reconnecter ni rien redémarrer.** Mesuré pendant la passe `qa/annuaire-recette` :
+`essai-recette`, déjà connecté à l'application, est rattaché au groupe `annotateurs` à
+16:35:07 dans l'interface de LLDAP, et la Bibliothèque lui montre « esther v1 » à 16:40.
+Relevé à la minute, donc entre 4 min 53 s et 5 min 52 s.
+
+**Ce qui fixe ce délai n'est pas l'application** : elle relit `Remote-Groups` à chaque
+requête (AUTH-1). C'est Authelia, qui ne relit les groupes de l'annuaire qu'à son intervalle
+de rafraîchissement. Ni la configuration du dépôt ni celle de la pile de recette ne déclarent
+`refresh_interval` : c'est donc son défaut qui a joué, cinq minutes selon la passe, et la
+mesure ne le contredit pas.
+
+**Ce que la mesure ne dit pas : le RETRAIT.** Le supposer symétrique est plausible, le même
+rafraîchissement le porterait ; mais c'est la moitié qui compte pour la sûreté — pendant ce
+délai, quelqu'un qu'on vient de retirer d'un groupe lirait encore. Elle reste à mesurer, sur
+un compte d'essai retiré du groupe pendant qu'il a une page ouverte.
+
 ## Contexte
 
 Distinct d'`AUTH-6`, qui porte le MODÈLE — combien de comptes, quels groupes, quels droits.
