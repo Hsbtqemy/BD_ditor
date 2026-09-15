@@ -652,10 +652,34 @@ secours, et non `reset_password`. **Son délai se lit sur le code lui-même** : 
 2026-09-14, Authelia démarré le 2026-09-15 à 08:34). La production, sur `main`, sert encore
 le défaut de cinq minutes.
 
-**Ce qui n'est pas éprouvé.** La remise par COURRIEL : la pile écrit ses messages dans un
-fichier, quand la production enverrait le même code par SMTP. Et une connexion NEUVE avec le
-nouvel appareil : son code a été accepté à l'enregistrement, et aucune connexion `1FA` suivie
-d'un `TOTP` ne vient après dans le journal.
+**Ce qui n'est pas éprouvé : la remise par COURRIEL.** La pile écrit ses messages dans un
+fichier, quand la production enverrait le même code par SMTP. Le nouvel appareil, lui, a bien
+ouvert une porte : à 15:53:38, `authentication_logs` porte un `TOTP` réussi et `last_used_at`
+est rempli — ce que la seule confirmation d'un enrôlement ne fait pas, mesuré dans `INFRA-8`
+le 2026-09-13. *(La première rédaction de ce paragraphe, dans `6e7cec7`, en tirait « aucune
+connexion `1FA` suivie d'un `TOTP` » : exact, et sans objet, faute d'avoir appliqué cette
+distinction.)*
+
+**Le recours en console, éprouvé le même jour sur `stagiaire`.** La commande a répondu sous
+cette forme, en 4.39.22 :
+
+    docker exec bd-authelia authelia storage user totp delete stagiaire --config /config/configuration.yml
+    Successfully deleted TOTP configuration for user 'stagiaire'
+
+Le chemin de configuration lui a été donné parce que l'aide de la version servie annonce pour
+défaut `configuration.yml`, relatif, quand le fichier vit sous `/config` ; la forme sans ce
+chemin n'a pas été essayée. Aucun redémarrage : la ligne quitte `totp_configurations`, et le
+service ne la trouve plus à la connexion suivante. Le compte s'est alors ré-enrôlé de bout en
+bout — proposition d'enrôlement, code d'élévation émis à 16:07:04 et consommé à 16:07:26,
+appareil enregistré à 16:09:13, dont le code ouvre la porte à 16:10:20. **WebAuthn est
+activé** — la page « Réglages » propose d'ajouter un identifiant — mais aucun n'existe sur la
+pile : `webauthn delete` fait donc partie du recours écrit, sans avoir rien à supprimer
+aujourd'hui.
+
+**Remis en état.** `stagiaire` est retiré de `bd-admins` : sa connexion de 16:12:45 n'a plus
+déclenché « requires 2FA », quand celles de 16:04:34 et 16:06:56 l'avaient fait. Son appareil
+est supprimé par la même commande. `admin-bd` s'est reconnecté de zéro à 16:16:35 — un code
+refusé à 16:16:48, puis accepté à 16:16:56 : son appareil tient.
 
 **Le recours et la faiblesse sont la même porte.** Le code d'élévation a suffi à une session
 à UN facteur. Le binaire servi connaît pourtant `elevated_session.require_second_factor` (lu
