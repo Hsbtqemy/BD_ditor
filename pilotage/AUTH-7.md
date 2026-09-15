@@ -250,6 +250,7 @@ lui confier la base d'authentification effondrerait le raisonnement de sécurit�
 - [ ] **Le repli PERD DÉJÀ des gens, et ça empire tout seul** — mesuré le 2026-09-10, trois jours après que la passe eut prévu la dégradation. `users_database.yml` porte DEUX logins, `chercheur` et `stagiaire` ; l'annuaire en porte davantage — au moins `essai-sansgroupe` et les stagiaires admis en écriture. Basculer sur le repli authentifierait donc correctement une population plus petite, **ce qui ressemble à un succès** et ne se signale nulle part. Attendu, à trancher : ou bien toute création dans l'annuaire s'accompagne d'une écriture dans le fichier, ou bien le repli est déclaré PARTIEL par écrit — « il ouvre à l'administrateur, pas à l'équipe ». La troisième réponse, le laisser croire complet, est la seule à exclure
 - [ ] **État antérieur de cette case — 2026-09-07.** Inverser les deux commentaires est écrit, en place et lisible dans le fichier, mais personne ne l'a exécuté. C'est exactement la réserve que cette fiche oppose ailleurs : *un repli qu'on n'a pas déclenché n'est pas un repli*. La leçon du notifier SMTP, qu'on n'a su bon qu'en le vidant pour de bon. À faire à froid, pas le jour où il faudra. **La manœuvre est écrite le 2026-09-07** — `pilotage/qa/repli-annuaire.md`, une passe rejouable — et l'écrire a déplacé la question : la mécanique se vérifie en dix secondes par `validate-config`, tandis que rien ne dit que quelqu'un connaisse encore les mots de passe dont `users_database.yml` porte les condensés. Un fichier gardé par prudence dont personne n'a la clé n'est pas un recours
 - [ ] **La vue des comptes rend son verdict AVANT que la suppression soit déléguée** — conséquence directe du choix du 2026-09-06. Créer exige `lldap_admin`, qui inclut SUPPRIMER : il n'existe aucun rôle « peut inscrire, ne peut pas détruire » (les deux autres niveaux, `password_manager` et `strict_readonly`, sont faits pour des SERVICES). Donc la règle « ce que le compte a laissé » s'appliquera à des gens qui n'étaient pas dans la conversation où elle s'est décidée. C'est ce qui rend « verdict, pas des chiffres » non cosmétique
+- [ ] **Exiger le second facteur pour s'élever, ou garder le secours par le notifier** — mesuré le 2026-09-15 en recette, section datée « Un second facteur perdu se remplace sans console ». Un administrateur qui a perdu son téléphone remplace son appareil depuis « Gérer les appareils » avec son mot de passe et un code envoyé par le notifier, sans console ; la même porte s'ouvre donc à qui tient son mot de passe ET sa boîte aux lettres. `elevated_session.require_second_factor`, que la version servie connaît et que la configuration ne déclare pas, fermerait cette porte avec le recours. Attendu : une décision écrite avec son coût — garder le secours, et écrire que le second facteur d'un administrateur vaut, pour ce geste, l'accès à sa boîte ; ou l'exiger, et écrire que la perte d'un téléphone se répare en console, et par qui
 
 ### Le temps 2, fait le 2026-09-07
 - [x] **L'arbitrage du second facteur SURVIT au changement de backend** — vérifié après la bascule, sur les deux versants : `chercheur` (`bd-admins`) se voit exiger son TOTP et l'appareil DÉJÀ enrôlé est accepté ; `stagiaire` entre au mot de passe seul, et le journal ne porte aucune ligne « requires 2FA » pour lui. La politique d'accès ne dépend donc pas de la source des comptes, seulement des GROUPES qu'elle reçoit — ce qui n'allait pas de soi, puisque ces groupes viennent désormais de `memberof` et non d'une liste écrite à la main
@@ -583,6 +584,91 @@ mesure ne le contredit pas.
 rafraîchissement le porterait ; mais c'est la moitié qui compte pour la sûreté — pendant ce
 délai, quelqu'un qu'on vient de retirer d'un groupe lirait encore. Elle reste à mesurer, sur
 un compte d'essai retiré du groupe pendant qu'il a une page ouverte.
+
+## Un second facteur perdu se remplace sans console, par le mot de passe et le notifier — 2026-09-15
+
+**Relevé pour la première case de `qa/totp-appareil-perdu`**, qui demande de décrire cet écran
+avant de chercher s'il offre un recours. Pile de recette, Authelia 4.39.22 ; compte
+`admin-bd`, le seul à porter un TOTP (enrôlé le 2026-09-13, lu dans `totp_configurations`),
+aucune clé de sécurité (`webauthn_credentials` vide). Atteint depuis une fenêtre privée
+neuve : l'application, puis le mot de passe. Tel que l'équipe l'a recopié :
+
+    Bonjour admin-bd
+    Se déconnecter | Changer d'utilisateur | Méthodes
+    Mot de passe à usage unique
+    Entrez le mot de passe à usage unique
+    Entrez le mot de passe à usage unique
+
+    Gérer les appareils
+
+**L'attendu de la case disait « un champ de code, et la question est de savoir si quelque
+chose d'autre l'accompagne ». Quatre choses l'accompagnent** : trois liens en tête — se
+déconnecter, changer d'utilisateur, « Méthodes » — et un lien « Gérer les appareils » sous le
+champ. Aucun libellé ne parle d'appareil perdu. Le texte « Entrez le mot de passe à usage
+unique » apparaît deux fois, tel que recopié ; qu'il s'agisse d'un intitulé et du texte
+indicatif du même champ n'est pas vérifié.
+
+**« Gérer les appareils » s'ouvre avec le MOT DE PASSE SEUL, et c'est mesuré.** Suivi depuis
+cet écran, sans saisir de code, le lien mène à la page « Réglages » d'Authelia.
+`authentication_logs` départage : dernier TOTP d'`admin-bd` à 15:30:24 UTC, puis une
+connexion `1FA` neuve à 15:32:53 — la fenêtre privée rouverte pour le relevé — et AUCUN
+second facteur après elle. La page vue ensuite l'a donc été par une session à un seul
+facteur. Elle montre, relevé sur capture :
+
+- « Mot de passe à usage unique » : un bouton « Ajouter » ÉTEINT, et l'appareil
+  `bd.127-0-0-1.sslip.io` (« Ajouté hier », « Dernière utilisation il y a 3 minutes ») avec
+  deux icônes, information et corbeille ;
+- « Identifiants WebAuthn » : un bouton « Ajouter » ACTIF, et « Aucun identifiant WebAuthn n'a
+  été enregistré » ;
+- « Options » : « Méthode par défaut », un seul choix, « Mot de passe à usage unique ».
+
+**Un chemin « appareil perdu » est donc PROPOSÉ** — la corbeille et l'ajout d'un identifiant
+sont à l'écran d'une session qui n'a pas le téléphone. Rien n'y a été validé sur `admin-bd`,
+le seul appareil enrôlé de la pile ; ce que le chemin exige a été joué ensuite sur un compte
+d'essai.
+
+**Et il va jusqu'au bout SANS l'ancien appareil — joué sur `stagiaire` le même jour** (heures
+UTC, lues dans la base d'Authelia). Promu dans `bd-admins` depuis LLDAP, `stagiaire` a d'abord
+reçu la proposition d'enrôlement, et non un mur : connexion `1FA` à 15:43:31, code d'élévation
+émis à 15:44:21 et consommé à 15:46:15, premier appareil enregistré à 15:46:49. Puis la
+perte, jouée sans saisir un seul code de cet appareil :
+
+- 15:51:11 — connexion neuve, mot de passe seul ;
+- « Gérer les appareils », puis la corbeille : une boîte de vérification d'identité, et un
+  code à huit caractères émis par le notifier à 15:51:26, consommé à 15:52:24 ;
+- la suppression confirmée, puis un nouvel appareil enregistré à 15:53:05, dont le code est
+  accepté à 15:53:38.
+
+`authentication_logs` ne porte aucun second facteur entre 15:51:11 et 15:53:05. Une
+connexion avec l'ancien appareil, à 15:50:52, PRÉCÈDE la partie : la fenêtre rouverte a exigé
+de nouveau le mot de passe à 15:51:11, ce qui prouve que cette session n'y était plus.
+
+**Par quel flux — mesuré, pas déduit.** `one_time_code` porte les deux codes (intention
+`use`) ; `identity_verification`, où vivent les jetons de réinitialisation de mot de passe,
+n'a aucune ligne pour `stagiaire`, et le seul lien d'action du message est
+`/revoke/one-time-code`. C'est l'élévation de session (`elevated_session`) qui porte le
+secours, et non `reset_password`. **Son délai se lit sur le code lui-même** : émis à
+15:51:26, il expirait à 16:06:26 — les quinze minutes que la pile a chargées (fichier du
+2026-09-14, Authelia démarré le 2026-09-15 à 08:34). La production, sur `main`, sert encore
+le défaut de cinq minutes.
+
+**Ce qui n'est pas éprouvé.** La remise par COURRIEL : la pile écrit ses messages dans un
+fichier, quand la production enverrait le même code par SMTP. Et une connexion NEUVE avec le
+nouvel appareil : son code a été accepté à l'enregistrement, et aucune connexion `1FA` suivie
+d'un `TOTP` ne vient après dans le journal.
+
+**Le recours et la faiblesse sont la même porte.** Le code d'élévation a suffi à une session
+à UN facteur. Le binaire servi connaît pourtant `elevated_session.require_second_factor` (lu
+dans `/app/authelia`) ; la configuration ne le déclare pas, et le comportement mesuré est
+celui d'un réglage qui ne l'exige pas. Quiconque tient le mot de passe d'un administrateur ET
+la boîte où part le notifier peut donc remplacer son second facteur. L'exiger fermerait cette
+porte, et fermerait du même coup le recours de l'administrateur qui a perdu son téléphone,
+renvoyé à la console. C'est une décision, posée comme telle dans « Trancher ».
+
+**Ce que ça corrige ailleurs.** La phrase « console uniquement » de la section « Supprimer et
+désactiver ne sont pas symétriques » reste juste dans son contexte — nettoyer le TOTP d'un
+compte SUPPRIMÉ, c'est-à-dire de quelqu'un d'autre — et ne vaut pas pour se dépanner soi-même.
+Elle n'est pas réécrite, sa section étant datée ; c'est la nuance que la passe annonçait.
 
 ## Contexte
 

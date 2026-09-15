@@ -64,6 +64,26 @@ l'éprouver pour de bon.
 - [x] Le fichier des COMPTES a son propre contrôle avant redémarrage, puisque `validate-config` l'ignore : `python3 -c "import yaml; yaml.safe_load(open('users_database.yml'))"`, PyYAML étant déjà présent sur Ubuntu. Éprouvé dans les DEUX sens le 2026-09-06 — il accepte le fichier correct et refuse une copie contenant une tabulation. Écrit dans `docs/exploitation.md`, avec la copie de sauvegarde qui doit le précéder
 - [x] Le repli est éprouvé pour de vrai, pas seulement écrit — **2026-09-06, sur l'instance en service**. `SMTP_ADRESSE` vidée SEULE, les trois autres valeurs laissées en place : Authelia démarre (`Startup complete`, `Listening`), reste `healthy`, et **aucun** « only one of 'smtp' or 'filesystem' ». C'est précisément ce qui avait échoué le 2026-09-05, où le retour arrière laissait le mot de passe et faisait repartir Authelia en boucle. Et le repli REMET : un « Mot de passe oublié ? » a porté `/config/notification.txt` de 0 à 3 492 octets. Démarrer n'aurait rien prouvé — un notifier qui n'écrit nulle part laisse une instance debout et personne dedans
 
+## « Appareil perdu compris » ne disait pas lequel — 2026-09-15
+
+L'État antérieur du 2026-09-06 écrit que le parcours d'un compte est « franchissable seul,
+appareil perdu compris ». `AUTH-7` écrivait le même jour qu'un TOTP ne se réinitialise
+qu'en console. La passe `qa/totp-appareil-perdu` est née de cette contradiction, et elle
+demande que la phrase dise lequel des deux cas elle a éprouvé.
+
+**Ce que cette fiche documente, relu** : la section « Le parcours d'un compte neuf, emprunté
+pour de vrai » décrit l'ENRÔLEMENT d'un compte qui n'a pas encore d'appareil — le courriel
+part, l'appareil s'enregistre. Aucune section ne décrit un compte DÉJÀ enrôlé qui retrouve
+l'accès sans son téléphone. La phrase ne peut donc s'appuyer que sur le premier cas.
+
+**Le second est mesuré depuis, ailleurs** : le 2026-09-15, sur la pile de recette
+(Authelia 4.39.22, notifier fichier), un compte `bd-admins` déjà enrôlé a remplacé son
+appareil sans console, par son mot de passe et un code envoyé par le notifier — détail et
+conséquence dans `AUTH-7`, section « Un second facteur perdu se remplace sans console ». La
+phrase du 2026-09-06 est donc vraie aujourd'hui pour les deux cas, sans que cette fiche ait
+éprouvé le second, et sous une autre version que celle qui tournait ce jour-là. Elle n'est pas
+réécrite : elle est datée, et c'est cette section qui dit ce qu'elle couvrait.
+
 ## La 4.39 n'écrit plus un lien mais un CODE — 2026-09-13
 
 Éprouvé sur la pile de recette, Authelia **4.39.22**, en enrôlant `admin-bd` de bout en
