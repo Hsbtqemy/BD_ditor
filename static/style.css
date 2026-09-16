@@ -1378,6 +1378,14 @@ h3.collapsible:hover { color: var(--text); }
 .facet-row input { flex: 1 1 13.8462rem; }
 .results-head { display: flex; align-items: center; justify-content: space-between; gap: .7692rem; margin-bottom: .6154rem; }
 .back-link { border-color: var(--accent-blue); color: var(--accent-blue); font-weight: 600; }
+/* UX-14 — « ← Retour » réduit à son icône, à toutes les largeurs (cf. `buildBack` dans
+   theme.js). Le mot reste le NOM du lien : caché à l'œil seulement, par le procédé des
+   libellés de la barre, et jamais par `display: none`, qui le retirerait aussi au lecteur
+   d'écran. */
+.back-label {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
 
 /* Aperçu en place (volet lecture seule à côté des résultats) */
 #results-pane { display: flex; gap: 1.2308rem; align-items: flex-start; }

@@ -61,6 +61,19 @@ def test_back_link_depuis_retour_interne(page, seeded):
     back = page.locator("#back-link")
     expect(back).to_be_visible(timeout=15000)
     assert back.get_attribute("href").endswith("/recherche?q=pouvoir")
+
+    # UX-14 — le lien est réduit à son ICÔNE, et c'est ce qui rend ces trois contrôles
+    # nécessaires : une icône seule ne dit rien à un lecteur d'écran. Le nom accessible
+    # reste « Retour » et non « flèche gauche » ; l'info-bulle reste ; et le mot est caché à
+    # l'œil sans être retiré — un rectangle d'un pixel, pas un `display: none`, qui
+    # donnerait le même écran et un lien sans nom.
+    expect(back).to_have_accessible_name("Retour")
+    expect(back).to_have_attribute("title", "Revenir d'où l'on vient")
+    expect(back.locator("[aria-hidden='true']")).to_have_text("←")
+    boite = back.locator(".back-label").bounding_box()
+    assert boite is not None and boite["width"] <= 1, (
+        f"le mot « Retour » n'est pas caché à l'œil seulement : {boite}")
+
     back.click()
     expect(page).to_have_url(re.compile(r"/recherche\?q=pouvoir"))
 

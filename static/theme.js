@@ -482,7 +482,34 @@
       .catch(function () {});                       // hors-ligne / 4xx → silencieux
   }
 
+  /* ---- « ← Retour » réduit à son icône (UX-14, source unique) ----
+     Les cinq gabarits écrivent « ← Retour » dans `#back-link`, et chaque surface ne fait
+     que le montrer et lui donner sa cible. C'est donc ICI, une fois, qu'il devient une
+     icône — comme la barre de navigation, injectée d'ici plutôt que recopiée cinq fois.
+     Le texte des gabarits reste, remplacé au chargement : le lien naît `hidden`, et aucune
+     surface ne le montre avant que ce script ait tourné.
+
+     Ce que le lien gagne à se réduire : 43 px de bande sous une préférence de 16, 54 sous
+     20 (mesuré le 2026-09-16), dans la bande que la pastille d'identité faisait déborder.
+
+     La flèche est cachée au lecteur d'écran, qui l'énoncerait « flèche gauche » ; le mot
+     « Retour » est caché à l'œil SEULEMENT, par le même procédé que les libellés de la
+     barre — `display: none` le retirerait de l'arbre d'accessibilité, et le lien n'aurait
+     plus d'autre nom que son info-bulle. Contenant une lettre, il échappe aussi à
+     `reflectAria`, qui aurait sinon promu l'info-bulle en nom. */
+  function buildBack() {
+    var back = document.getElementById("back-link");
+    if (!back || back.querySelector(".back-label")) return;
+    back.textContent = "";
+    var ico = el("span", "back-ico", "←");
+    ico.setAttribute("aria-hidden", "true");
+    back.appendChild(ico);
+    back.appendChild(el("span", "back-label", "Retour"));
+    if (!back.title) back.title = "Revenir d'où l'on vient";
+  }
+
   function wire() {
+    buildBack();
     buildHeaderNav();
     buildUserChip();
     document.querySelectorAll(".btn-theme").forEach(buildMenu);
