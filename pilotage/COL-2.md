@@ -5,7 +5,7 @@ statut: livré
 
 # COL-2 — gérer une collection à l'écran, et pas seulement en ligne de commande
 
-**Arrêté sur** — 2026-09-16, `1677c67` : les deux défauts relevés par la passe de recette sont réparés. Un message de collection s'affiche dans la collection où l'on a agi, et un test lit sa PLACE, plus seulement son texte (`e07e89b`) ; un nouvel accès n'a plus de genre par défaut (`1677c67`). Le test de place a trouvé en route que *Enregistrer* faisait sauter l'écran de 564 px, corrigé dans le même commit. Rien n'a été écrit côté serveur. Reste à jouer les trois cases neuves de la passe *Les collections dans la Bibliothèque*.
+**Arrêté sur** — 2026-09-16, `de38999` : la passe de revue demandée par Hugo est faite, et ce qu'elle a établi est réparé — un seul message de collection à la fois, un message qui survit à une relecture ratée, des tests qui exigent qu'il SE VOIE. Avant elle, le même jour : le message s'affiche dans la collection où l'on a agi et *Enregistrer* ne fait plus sauter l'écran (`e07e89b`), un nouvel accès n'a plus de genre par défaut (`1677c67`). Rien n'a été écrit côté serveur. Reste une case ouverte, qui attend une mesure et non du code : les annonces sous NVDA. Les cases non cochées de la passe *Les collections dans la Bibliothèque* la portent, et supposent une pile reconstruite — elle sert encore `61662f0`.
 
 Le déménagement lui-même était fait le 2026-09-11 (`6737b52`) : la Bibliothèque porte ce que la collection EST — la créer, la décrire, régler sa diffusion, désigner son référent, l'exporter —, l'Administration ne garde que les accès, et chaque écran dit où vit l'autre moitié.
 
@@ -47,7 +47,7 @@ DÉPLACEMENT** — plus gros que ce qui était annoncé, et portant sur du code 
 - [x] **Le sort de `tools/gerer_collections.py` est décidé et écrit** — il reste, pour l'amorçage et les responsables scientifiques, que l'écran ne couvre pas. Sa docstring disait « l'écran ne couvre pas licence ni embargo » ; c'est corrigé, et elle dit la seule règle commune aux deux portes (`config.STATUTS_DIFFUSION`) — et que toute autre règle ajoutée à l'une ne vaut pas pour l'autre
 
 ### Le déménagement, et ce qu'il coûte
-- [x] **Ce qui part et ce qui reste est écrit acte par acte — 2026-09-11, avant le premier fichier touché.** Partent vers la Bibliothèque : **créer** ; **renommer**, qui devient un champ du formulaire au lieu d'un `prompt()` ; **supprimer** ; le **référent**, écrit par le propriétaire et lu par tout participant ; les **sept champs absents** ; la **pastille d'embargo** et son message, là où la date se modifie ; et le **bloc d'export de dépôt**, déplacé TEL QUEL. Sa garde — lire pour télécharger, posséder pour déposer — ne change pas ici : exporter devient un droit à part dans `DROIT-2`, qui la posera au serveur, à un seul endroit. Restent en Administration : la liste avec MON niveau ; les **accès** (accorder, changer, retirer, « jamais vu ») ; la **déclaration des administrateurs d'instance** ; la **vue des comptes**, qui devient un bloc à part au lieu d'être nichée sous les collections ; et `#col-msg`, dont `test_e2e_sante` se sert de témoin
+- [x] **Ce qui part et ce qui reste est écrit acte par acte — 2026-09-11, avant le premier fichier touché.** Partent vers la Bibliothèque : **créer** ; **renommer**, qui devient un champ du formulaire au lieu d'un `prompt()` ; **supprimer** ; le **référent**, écrit par le propriétaire et lu par tout participant ; les **sept champs absents** ; la **pastille d'embargo** et son message, là où la date se modifie ; et le **bloc d'export de dépôt**, déplacé TEL QUEL. Sa garde — lire pour télécharger, posséder pour déposer — ne change pas ici : exporter devient un droit à part dans `DROIT-2`, qui la posera au serveur, à un seul endroit. Restent en Administration : la liste avec MON niveau ; les **accès** (accorder, changer, retirer, « jamais vu ») ; la **déclaration des administrateurs d'instance** ; la **vue des comptes**, qui devient un bloc à part au lieu d'être nichée sous les collections ; et `#col-msg`, dont `test_e2e_sante` se sert de témoin (disparu le 2026-09-16 : les messages vivent désormais dans chaque collection, cf. « Un message s'affiche là où l'on a agi », et le témoin a changé)
 - [x] **La création n'exige AUCUN droit, l'édition en exige un, et c'est le même écran** — éprouvé sous une identité qui ne possède rien : elle ne voit pas la collection du décor, voit le bouton, crée, et c'est son formulaire qui s'ouvre (`test_creer_ne_demande_aucun_droit_mais_decrire_si`)
 - [x] **Rien ne subsiste en double** — l'Administration a perdu la création, le renommage, la suppression, le référent, la pastille d'embargo et l'export ; le script du déménagement refusait d'écrire s'il en restait une trace, et `test_a11y_administration_collections` exige qu'aucun champ de création n'y subsiste
 - [x] **Le 409 de la suppression reste lisible après le déménagement** — rendu tel quel dans le message du bloc, et la collection survit au refus (`test_supprimer_rend_le_409_et_son_compte_d_albums`). Cette case disait que le message NOMME les albums isolés : il les COMPTE (« 1 album(s) n'appartiennent qu'à cette collection… »). Mesuré en écrivant le test, dont le premier jet ne vérifiait que le mot « album » et aurait donc passé sur l'affirmation fausse
@@ -57,7 +57,7 @@ DÉPLACEMENT** — plus gros que ce qui était annoncé, et portant sur du code 
 ### Les trois pièges du formulaire, qui ne se devinent pas
 - [x] **`date_embargo` RETIENT, elle ne PROMEUT jamais, et l'écran le dit** — sous le champ, une note dit ce que la date fait. Le piège s'est révélé plus concret que prévu : un champ `type=date` affiche VIDE une date qu'il ne sait pas lire, donc le premier enregistrement l'aurait effacée. D'où un champ TEXTE, et l'envoi des seuls champs modifiés (`test_le_formulaire_n_envoie_que_ce_qui_a_change`)
 - [x] **`referent_*` et `responsables` ne sont pas confondus** — le référent a son groupe, dont la note dit que c'est une ADRESSE qui ne sort d'aucun export, et qu'elle n'est pas le responsable scientifique ; les responsables ne sont pas dans le formulaire
-- [x] **Le nom de la collection de repli est RÉSERVÉ, et son 422 est rendu** — le nom n'est envoyé que s'il a changé, donc le repli s'édite sans être renommé ; prendre son nom est refusé et lisible (`test_prendre_le_nom_du_repli_est_refuse_et_lisible`)
+- [x] **Le nom de la collection de repli est RÉSERVÉ, et son 422 est rendu** — le nom n'est envoyé que s'il a changé, donc le repli s'édite sans être renommé ; prendre son nom est refusé et lisible (`test_prendre_le_nom_du_repli_est_refuse_la_ou_l_on_a_agi`)
 
 ### Ce qui doit se voir à l'écran une fois fait
 - [x] Depuis la Bibliothèque, un propriétaire pose `statut_diffusion` à `public` sans ouvrir de terminal, et le manifeste IIIF cesse d'emporter son `AVERTISSEMENTS.txt` — le geste exact qui a manqué le 2026-09-10 (`test_passer_public_a_l_ecran_libere_le_manifeste`)
@@ -67,10 +67,11 @@ DÉPLACEMENT** — plus gros que ce qui était annoncé, et portant sur du code 
 
 ### Un message s'affiche là où l'on a agi
 - [x] *Bibliothèque → 📚 Collections*, trois collections dont une dépliée : prendre le nom « Collection par défaut » puis *Enregistrer* montre le refus DANS la collection dépliée, visible sans défiler depuis le bouton. Même attendu pour la confirmation d'enregistrement et pour le 409 de *Supprimer la collection* — **fait le 2026-09-16, `e07e89b`** : chaque collection dépliée porte sa ligne, sous *Enregistrer* et *Supprimer*, et les trois messages y tombent (`test_prendre_le_nom_du_repli_est_refuse_la_ou_l_on_a_agi`, `test_le_formulaire_n_envoie_que_ce_qui_a_change`, `test_passer_public_a_l_ecran_libere_le_manifeste`, `test_supprimer_rend_le_409_et_son_compte_d_albums`). Une suppression RÉUSSIE ne peut pas parler dans la collection, qui disparaît : sa confirmation prend la place qu'elle occupait dans la liste. `#col-msg` n'existe plus
-- [x] Le message qui suit *+ Créer* s'affiche sous le champ de création, en haut du bloc, et non sous la liste des collections — `#col-creer-msg`, entre le champ et la liste ; le refus d'un nom vide ou réservé y tombe aussi (`test_a11y_bibliotheque_collections` y cherche le lien vers l'Administration)
+- [x] Le message qui suit *+ Créer* s'affiche sous le champ de création, en haut du bloc, et non sous la liste des collections — `#col-creer-msg`, entre le champ et la liste. Situé à l'ÉCRAN, pour le refus d'un nom vide comme pour le succès (`test_la_creation_parle_sous_son_champ`, ajouté par la passe de revue : la première version de cette case citait un test qui ne lisait que l'adresse de la ligne)
 - [x] *Administration → 👥 Accès aux collections* : un refus d'accorder, de changer un niveau ou de retirer un accès s'affiche dans la collection dépliée — sa ligne est sous la ligne d'ajout. Le piège n'y était pas une hypothèse : changer un niveau RECHARGE la liste même sur un refus, donc le 409 du dernier propriétaire s'effaçait aussitôt affiché si on ne le reportait pas dans la collection redessinée (`test_un_refus_d_acces_survit_au_rechargement_de_la_collection`)
-- [x] Un test lit la PLACE du message et non plus seulement son texte : il tombe si le refus du nom réservé revient sous la liste — `_message_du_geste` cherche le message par son TEXTE, n'importe où dans la page, puis exige que sa boîte soit dans celle de la collection dépliée et dans la fenêtre. Quatre mutants tués, chacun sur sa raison : messages sous la liste (le nom réservé et le 409 tombent « hors de la collection dépliée »), report perdu dans la Bibliothèque, report perdu dans l'Administration, remplissage de la collection différé (« hors de la fenêtre »)
+- [x] Un test lit la PLACE du message et non plus seulement son texte : il tombe si le refus du nom réservé revient sous la liste — `_message_du_geste` cherche le message par son TEXTE, n'importe où dans la page, puis exige que sa boîte soit dans celle de la collection dépliée, et qu'il se VOIE : le point au début de sa première ligne doit le désigner (`elementFromPoint`). La première version se contentait des 720 px du viewport, alors que la page défile dans `main` sous un en-tête — une sonde a montré un message rogné (y = 63) qu'elle approuvait, et que le critère actuel refuse. Mutants tués, chacun sur sa raison : messages sous la liste (« hors de la collection dépliée »), report perdu dans la Bibliothèque, report perdu dans l'Administration, remplissage de la collection différé (« pas visible à l'écran »)
 - [x] Le genre d'un nouvel accès est tranché, et la raison écrite : sans valeur par défaut (*+ Accorder* refuse tant que le genre n'est pas choisi), ou « Utilisateur » gardé — **tranché par Hugo le 2026-09-16 : SANS valeur par défaut**, fait dans `1677c67`. La raison : l'erreur ne se RATTRAPE pas à l'écran. Un groupe accordé en utilisateur n'ouvre rien à personne, et le seul signal est « n'a pas encore ouvert l'application », qui ne distingue pas cette faute d'un arrivant pas encore venu — et ne doit pas la distinguer (AUTH-6). Ne pouvant la signaler après coup, l'écran l'empêche d'arriver par inertie : un choix de plus, pour un geste rare. La liste démarre sur « Utilisateur ou groupe ? », et le refus dit pourquoi, dans la collection (`test_accorder_demande_de_choisir_utilisateur_ou_groupe` ; deux mutants tués, présélection rétablie et garde retirée)
+- [ ] Les messages suivis d'un rechargement sont ANNONCÉS par un lecteur d'écran, ou la correction est décidée sur mesure — la confirmation d'enregistrement de la Bibliothèque et le 409 d'un niveau dans l'Administration naissent dans une ligne détruite un aller-retour plus tard, ce que la ligne unique d'avant ne faisait pas (WCAG 4.1.3). **Tranché par Hugo le 2026-09-16 : mesurer d'abord.** Attendu : les deux cases NVDA de la passe *Les collections dans la Bibliothèque* sont jouées ; si NVDA lit les deux messages, la case se coche sans code ; s'il en tait un, une région d'annonce persistante hors de la liste le porte, et les lignes visibles cessent d'être « live »
 
 ## Ce que le déménagement a trouvé — 2026-09-11
 
@@ -130,11 +131,15 @@ remplie dans la même tâche (`e07e89b`).
 **L'Administration a été mesurée, pas supposée.** Son rechargement attend un aller-retour
 réseau par collection rouverte, donc le même saut y semblait inévitable. Sonde avec 300 ms
 de latence sur la liste des accès, huit accès et le sélecteur en haut de la fenêtre : le
-défilement tient (265 avant, 265 après), le message reste visible. L'explication est
-raisonnée, pas mesurée : les blocs posés sous la liste — Comptes, Moteurs — gardent la page
-assez haute pendant l'attente, et pour qu'elle raccourcisse sous le défilement, il faudrait
-avoir descendu la collection hors de la fenêtre. Une liste d'accès bien plus longue que
-huit la mettrait à l'épreuve. Rien n'y a été changé pour cette raison. Une première sonde, défilée au
+défilement tient (265 avant, 265 après), le message reste visible — dans CETTE position, la seule mesurée. Le paragraphe
+en tirait une explication générale, et elle était fausse (relevé par la passe de revue) : il
+suffisait selon lui d'avoir la collection dans la fenêtre pour que la page ne raccourcisse
+pas. En réalité le défilement est ramené dès que la hauteur perdue pendant « Chargement… »
+dépasse ce qui reste de page SOUS le bas de la fenêtre — donc en bas de page, et plus
+facilement sans le bloc Comptes, qu'un propriétaire non administrateur ne voit pas. Ce cas
+n'est pas mesuré ; l'attendu de la case, « dans la collection dépliée », ne promet d'ailleurs
+pas qu'un refus de l'Administration se voie sans défiler, et une longue liste d'accès
+l'éloigne de toute façon de la ligne qu'on a réglée. Rien n'y a été changé pour cette raison. Une première sonde, défilée au
 maximum, n'avait rien prouvé : elle avait sorti le sélecteur de la fenêtre AVANT le geste.
 
 **La passe de recette portait deux avertissements que ce chantier rend faux** — « le refus
@@ -143,6 +148,57 @@ défaut ». Réécrits dans `pilotage/qa/collections-bibliotheque.md`, sans touc
 et trois cases NON cochées y sont ajoutées pour ce que l'écran doit maintenant montrer : le
 refus sous les boutons, l'écran qui ne saute plus à l'enregistrement, et le refus
 d'accorder sans genre.
+
+## Ce que la passe de revue a trouvé — 2026-09-16
+
+Demandée par Hugo après les trois premiers commits. Un relecteur qui n'avait pas écrit le
+code a lu les commits en entier, et ce qu'il avançait a été vérifié dans la source ou mesuré
+avant d'être corrigé. Les défauts se trouvaient en LISANT : la suite était verte, et les
+mutants tués plus tôt dans la journée n'y voyaient rien.
+
+**Établis, et réparés dans `de38999`.**
+- *Des messages périmés, reposés indéfiniment.* Chaque collection ayant sa ligne, un refus
+  restait affiché — et reposé à chaque rechargement — après un geste réussi dans une AUTRE
+  collection, à côté d'un formulaire qui ne contenait plus le nom refusé ; « créée » restait
+  en tête du bloc après la suppression de la collection créée. La ligne unique d'avant, que
+  chaque geste écrasait, ne le faisait pas. Un seul message à la fois, dans les deux écrans.
+- *Une confirmation qui disparaît derrière une erreur.* Si la relecture de la liste échouait
+  après un enregistrement réussi, l'erreur remplaçait la liste et emportait « enregistrée ».
+  Le dernier message survit désormais à l'erreur, dans la Bibliothèque et dans
+  l'Administration, que la relecture rate sur la liste ou sur les accès.
+- *Un test qui approuvait l'invisible.* « Dans la fenêtre » voulait dire « dans les 720 px
+  du viewport » ; la page défile dans `main`, sous un en-tête. Sonde : un message rogné sous
+  l'en-tête, à y = 63, passait. Le critère est devenu celui d'un œil (`elementFromPoint`),
+  et la même sonde le voit refuser l'état rogné.
+- *Des affirmations sans test* : la place de la confirmation d'une suppression réussie ; la
+  place de la ligne de création, lue par son adresse ; la garde du genre, « prouvée » par une
+  liste d'accès vide que le serveur, qui refuse lui-même un genre vide, garantissait de toute
+  façon — elle se prouve maintenant par l'absence de requête. Et aucun audit axe n'avait
+  jamais photographié un refus rouge ALLUMÉ : c'est fait, dans les deux thèmes.
+- *Deux cases de QA injouables.* L'une visait « Collection Test » dans l'Administration, à
+  une zone où la passe l'a déjà supprimée ; l'autre enregistrait une description juste après
+  un refus du nom, sans remettre le nom — le 422 serait revenu, et l'écran aurait été accusé.
+- *Trois textes* : un renvoi à un test renommé, une phrase datée devenue fausse sur
+  `#col-msg`, et l'explication du défilement de l'Administration, dont la condition était
+  fausse (cf. « Ce que la réparation a trouvé »).
+
+Quinze mutants tués, chacun sur l'assertion qu'il visait — dont deux pour une même garde,
+parce qu'une assertion qui en affirme deux doit tomber pour chacune.
+
+**Probable, non mesuré, et c'est le seul point laissé ouvert.** Les messages suivis d'un
+rechargement ne sont sans doute pas annoncés par un lecteur d'écran : la ligne `role=status`
+qui les reçoit est détruite un aller-retour plus tard, pendant que le focus retombe. Un
+commentaire du code affirmait le contraire ; il est corrigé. Hugo a choisi de mesurer avant
+de corriger — case ouverte ci-dessus, et deux cases NVDA dans la passe.
+
+**Vu et laissé, avec la raison.** Deux rechargements qui se chevauchent dans l'Administration
+pourraient perdre un message : il faut deux gestes quasi simultanés dans deux collections,
+hypothèse non éprouvée. Et après *Enregistrer*, le focus de la Bibliothèque retombe sur la
+page : c'était déjà le cas avant ce chantier.
+
+**La pile de recette sert `61662f0`**, une image du 2026-09-14, lue sur le conteneur. Les
+cases neuves de la passe n'y sont pas jouables avant reconstruction, ce que la passe dit en
+tête.
 
 ## Contexte
 

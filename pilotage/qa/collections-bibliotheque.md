@@ -40,6 +40,12 @@ Test », `lectrice` la lit par le groupe `annotateurs`, et `stagiaire` y écrit 
 passe *Le droit d'exporter, à l'écran* — vérifié le 2026-09-14, et s'il ne l'a plus, lui
 accorder cette écriture d'abord. `arrivant` n'a aucun accès nulle part.
 
+**Les cases non cochées, ajoutées le 2026-09-16, supposent une pile construite depuis
+`de38999` ou après.** Ce jour-là, la pile servait `61662f0`, une image du 2026-09-14 : ni les
+messages affichés dans la collection, ni le genre à choisir n'y existaient. Lire d'abord le
+commit servi — *Administration → 🏷️ Version servie*, sous `admin-bd` — et ne jouer ces cases
+que s'il est au moins aussi récent.
+
 ### Le propriétaire décrit sa collection
 
 **Sous `proprio`**, *Bibliothèque → 📚 Collections*, « Collection Test » dépliée.
@@ -52,9 +58,21 @@ accorder cette écriture d'abord. `arrivant` n'a aucun accès nulle part.
 - [x] Une date illisible (`31/12/2030`) n'efface rien et ne passe pas pour une date : elle est signalée comme illisible
 - [x] La note du référent dit que c'est une ADRESSE, qui ne sort d'aucun export, et pas le responsable scientifique
 - [x] Prendre le nom « Collection par défaut » est refusé, avec un message lisible
-- [ ] Le même refus, rejoué en descendant le formulaire jusqu'à *Enregistrer* : le message rouge s'affiche juste sous les boutons de « Collection Test », lisible sans faire défiler, et pas sous la dernière collection de la liste
-- [ ] Ajouter un mot à la description, puis *Enregistrer* : « enregistrée » s'affiche sous les mêmes boutons, et l'écran ne saute pas — *Enregistrer* est encore à la hauteur où l'on a cliqué
+- [ ] Le même refus, rejoué en descendant le formulaire jusqu'à *Enregistrer* : le message rouge s'affiche juste sous les boutons *Enregistrer* et *Supprimer la collection* de « Collection Test », au-dessus du bloc d'export, lisible sans faire défiler
+- [ ] Remettre « Collection Test » dans le champ Nom — sans quoi le nom refusé repartirait avec l'enregistrement —, ajouter un mot à la description, descendre jusqu'à *Enregistrer* et cliquer : « enregistrée » s'affiche sous les mêmes boutons, le refus précédent a disparu, et l'écran ne saute pas — *Enregistrer* est encore à la hauteur où l'on a cliqué
 - [x] La collection dépliée nomme l'Administration comme l'endroit où l'on règle qui entre, avec un lien qui y mène
+
+### Sous un lecteur d'écran
+
+**NVDA lancé**, le navigateur au premier plan. Ces deux cases mesurent ce qu'aucun test ne
+peut lire : un message écrit juste avant que la liste ne se redessine est-il ANNONCÉ ? La
+ligne qui le porte est détruite un aller-retour plus tard, ce que la ligne unique d'avant
+COL-2 ne faisait pas. Décidé le 2026-09-16 : mesurer ici avant de rien corriger. Si NVDA
+reste muet, ne pas cocher et le noter : c'est précisément ce que la case cherche à savoir,
+pas un incident de la passe — COL-2 en décidera.
+
+- [ ] Sous `proprio`, *Bibliothèque*, « Collection Test » dépliée : ajouter un mot à la description, puis *Enregistrer* — NVDA lit « « Collection Test » enregistrée. ». Retirer le mot et enregistrer de nouveau, pour rendre le décor
+- [ ] Sous `admin-bd`, *Administration → 👥 Accès aux collections*, « Étude B » dépliée : passer `proprio` de *Propriétaire* à *Lecture* — NVDA lit le refus « C'est le dernier propriétaire de cette collection… », et la liste remontre `proprio` en *Propriétaire*
 
 ### Les autres la lisent sans la modifier
 
@@ -86,7 +104,7 @@ régression à signaler, pas un détour à faire.
 - [x] Le bloc « 👥 Accès aux collections » ne permet ni de créer, ni de renommer, ni de supprimer une collection, ni d'en changer le référent
 - [x] Chaque collection y renvoie vers la Bibliothèque pour ce qu'elle EST, avec un lien
 - [x] Le bloc déclare quels groupes d'administration voient tout le corpus, en nommant `bd-admins`
-- [ ] « Collection Test » dépliée, saisir `annotateurs` et laisser le genre sur « Utilisateur ou groupe ? », puis *+ Accorder* : un refus rouge s'affiche sous la ligne d'ajout de « Collection Test » et demande de choisir, et la liste des accès n'a pas changé
+- [ ] « Collection par défaut » dépliée — « Collection Test » a été supprimée à la zone précédente —, saisir `annotateurs` et laisser le genre sur « Utilisateur ou groupe ? », puis *+ Accorder* : un refus rouge s'affiche sous la ligne d'ajout de cette collection et demande de choisir entre utilisateur et groupe — et non « Genre invalide », qui viendrait du serveur et voudrait dire que la demande est partie
 
 ### Étroit, clavier, thèmes
 
