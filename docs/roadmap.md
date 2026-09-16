@@ -143,11 +143,18 @@ AUTH-6 (le modèle, et la lecture de l'annuaire décidée le 2026-09-09), AUTH-7
 sans console), AUTH-9 (la page à soi), AUTH-10 (un droit d'écriture qui permet de supprimer
 un album). Des gens testent la production : c'est eux que ce cap sert d'abord.
 
-**Après lui : le travail à plusieurs sur une même planche (CONC-3).** Ajouté le même jour.
-Aujourd'hui, l'Atelier ne dit rien de ce que les autres changent sur une planche ouverte ;
-à la lecture, une note enregistrée peut effacer un tag posé ailleurs entre-temps. Le
-chantier commence par MESURER ces pertes sur la recette. Cette mesure peut précéder le cap
-des comptes, et dire si l'attente est tenable.
+**Le travail à plusieurs sur une même planche (CONC-3) passe en partie DEVANT.** Mesuré
+le même jour : une note efface le tag posé par quelqu'un d'autre (et l'inverse), deux notes
+ou deux transcriptions s'écrasent, et rien ne s'affiche. Tranché par Hugo en deux temps :
+l'Atelier n'envoie plus que ce qui a changé, **tout de suite** ; le refus d'une version
+périmée, par un 409 qui nomme le conflit, **avant la prochaine mise en production**. Le
+Ctrl+Z sous un compte partagé reste une limite, écrite dans le guide.
+
+**La prochaine grande étape attend.** Hugo préfère ne pas fusionner dans `main` avant
+d'avoir avancé les chantiers AUTH (le cap des comptes) et UX, et joué TOUTES les passes de
+QA, y compris les trois jamais jouées (`accueil-par-ou-commencer`, `petites-largeurs`,
+`preference-de-police`). `dev` continue d'être poussée : elle met le travail à l'abri sans
+rien montrer aux testeurs.
 
 **Le rythme : `dev` avance, `main` bouge par GRANDES étapes.** Le VPS suit `main`
 (INFRA-10), donc chaque fusion est un déploiement que les testeurs voient. On n'y fusionne

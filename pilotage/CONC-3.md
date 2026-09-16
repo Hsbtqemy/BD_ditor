@@ -23,8 +23,18 @@ n'est écrit, et le chantier commence par une mesure.
 - [x] Les quatre mesures rejouées sous le compte COLLECTIF d'AUTH-6, deux navigateurs sous le même login. Attendu : on sait si Ctrl+Z chez l'une défait l'acte de l'autre dans la fenêtre de cinq minutes
 
 ### Trancher la forme, sur les pertes mesurées
-- [ ] Écrit : le remède retenu, choisi parmi trois familles, ou « rien, et pourquoi ». Refuser un enregistrement fait sur une version périmée (409 qui nomme le conflit). Signaler que la planche a changé ailleurs, avec un geste pour actualiser. Réserver la bulle ou la planche à qui l'édite. Le choix s'appuie sur ce que la zone précédente a MESURÉ, pas sur l'hypothèse de départ
+- [x] Écrit : le remède retenu, choisi parmi trois familles, ou « rien, et pourquoi ». Refuser un enregistrement fait sur une version périmée (409 qui nomme le conflit). Signaler que la planche a changé ailleurs, avec un geste pour actualiser. Réserver la bulle ou la planche à qui l'édite. Le choix s'appuie sur ce que la zone précédente a MESURÉ, pas sur l'hypothèse de départ — **tranché par Hugo le 2026-09-16, en deux temps** : (a) tout de suite, l'Atelier n'envoie que ce qui a changé ; (b) avant la prochaine mise en production, le refus d'une version périmée, par un 409 qui nomme le conflit. La réservation est écartée. Le Ctrl+Z collectif est une limite, écrite (cf. Contexte)
 - [ ] Si l'écran change, la disposition se tranche sur une maquette interactive, pas sur de la prose
+
+### Temps a — n'envoyer que ce qui a changé (tout de suite)
+- [ ] Enregistrer la NOTE d'une bulle n'envoie plus sa liste de tags, et ajouter ou retirer un TAG n'envoie plus sa note. Attendu : la mesure 1 rejouée à deux navigateurs garde le tag de B ET la note de A, prouvé par le journal A3
+- [ ] Ctrl+Z après une note ou un tag isolé ne rend que ce champ-là : il ne défait pas, par un instantané entier, le geste qu'une autre personne a fait sur l'autre champ entre-temps
+- [ ] Une garde e2e à deux contextes rejoue la mesure 1, et elle est vue ROUGE sur le code d'avant le correctif
+
+### Temps b — refuser un enregistrement fait sur une version périmée (avant la prochaine mise en production)
+- [ ] Une note, une liste de tags ou un texte transcrit enregistré sur une version que quelqu'un d'autre a modifiée depuis est refusé par un 409 qui nomme qui a modifié et quand. Attendu : les mesures 2 et 3 rejouées ne perdent plus rien en silence, et l'écran propose de recharger la bulle sans jeter la saisie en cours
+- [ ] Une case supprimée par quelqu'un d'autre : B lit qu'elle a été supprimée, et non « Échec mise à jour : Région N introuvable », et la case disparaît de son écran
+- [ ] Fait AVANT la prochaine fusion de `dev` dans `main` : les testeurs de la production travaillent à plusieurs
 
 ## Contexte
 
@@ -120,6 +130,23 @@ gestes, là où la fenêtre réelle est le temps passé sur une bulle. Authelia 
 (les en-têtes sont simulés). Les corrections grammaticales et le panneau Personnage ou
 Locuteur. Le changement de PLANCHE puis retour, qui recharge les régions (lu dans le code,
 non joué). La forme du remède n'est pas tranchée : c'est la seconde zone, et elle est à Hugo.
+
+**Tranché le 2026-09-16 — deux temps, et une limite écrite.** Les mesures 1 à 4 viennent de
+deux causes distinctes, et c'est ce qui fait deux temps. La première ne demande aucun
+écran : chaque enregistrement renvoie TOUT l'état chargé à la sélection, note ET tags, si
+bien qu'un geste sur un champ efface l'autre champ d'autrui. N'envoyer que ce qui change la
+ferme sans rien montrer de neuf (temps a). La seconde est le même champ touché par deux
+personnes, ou une case disparue : là, il faut que le serveur SACHE que l'écran est périmé et
+le dise, ce qui touche le message affiché (temps b). La réservation d'une bulle ou d'une
+planche est écartée : elle ajoute un état à libérer, pour un conflit que le 409 suffit à
+rendre visible.
+
+La mesure 5 n'a pas de remède ici. L'application ne voit que `Remote-User`, et lui donner
+de quoi séparer deux personnes sous un même login serait fabriquer de l'identité, ce
+qu'AUTH-1 interdit — `docs/undo.md` le disait déjà (« dans les cinq minutes, deux personnes
+sous le même login peuvent encore défaire l'une l'acte de l'autre »). Ce qui manquait était
+côté USAGE : `docs/guide-utilisateur.md` laissait entendre qu'en deçà des cinq minutes, l'acte
+annulé était le sien. Il le dit désormais.
 
 *Rejouer.* Le script a vécu dans un scratchpad de session (`conc3/mesure_conc3.py`), qui ne
 dure pas ; son protocole est ci-dessus, et il se réécrit avec trois précautions mesurées ce

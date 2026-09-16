@@ -177,7 +177,11 @@ Tout est sauvegardé automatiquement, une demi-seconde après la dernière frapp
 annule la dernière action d'annotation** — y compris une suppression de région, recréée avec
 tout ce qu'elle contenait et ses identifiants d'origine. Les actes des moteurs, eux, ne
 s'annulent pas. Sous un compte déclaré partagé, Ctrl+Z ne remonte que les cinq dernières
-minutes : au-delà, l'acte peut être celui d'un collègue qui tapait sous le même nom.
+minutes : au-delà, l'acte peut être celui d'un collègue qui tapait sous le même nom. **Et
+même dans ces cinq minutes**, l'application ne distingue pas deux personnes connectées sous
+le même nom : Ctrl+Z peut défaire le geste d'un collègue, dont l'écran continue de le
+montrer comme fait (mesuré le 2026-09-16). Sur un compte partagé, ne comptez pas sur Ctrl+Z
+pour ne défaire que vos propres gestes.
 
 Sur le choix « tag ou dimension ? », voir [`modele-et-droits.md`](modele-et-droits.md) §4 :
 un tag se cherche, un attribut se compte.
