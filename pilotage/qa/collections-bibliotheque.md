@@ -52,6 +52,8 @@ accorder cette écriture d'abord. `arrivant` n'a aucun accès nulle part.
 - [x] Une date illisible (`31/12/2030`) n'efface rien et ne passe pas pour une date : elle est signalée comme illisible
 - [x] La note du référent dit que c'est une ADRESSE, qui ne sort d'aucun export, et pas le responsable scientifique
 - [x] Prendre le nom « Collection par défaut » est refusé, avec un message lisible
+- [ ] Le même refus, rejoué en descendant le formulaire jusqu'à *Enregistrer* : le message rouge s'affiche juste sous les boutons de « Collection Test », lisible sans faire défiler, et pas sous la dernière collection de la liste
+- [ ] Ajouter un mot à la description, puis *Enregistrer* : « enregistrée » s'affiche sous les mêmes boutons, et l'écran ne saute pas — *Enregistrer* est encore à la hauteur où l'on a cliqué
 - [x] La collection dépliée nomme l'Administration comme l'endroit où l'on règle qui entre, avec un lien qui y mène
 
 ### Les autres la lisent sans la modifier
@@ -67,9 +69,10 @@ collection de `proprio`. Pour la seconde moitié de la dernière case, sous `pro
 avoir supprimé « Collection Test » : créer « Collection isolée » ; *+ Nouvel album*
 « Album isolé », Collection = « Collection isolée », sans planche ; supprimer « Collection
 isolée » — c'est elle que le refus doit compter. Puis supprimer l'album (🗑), et la
-collection, qui part alors sans refus. **Le refus s'affiche en bas du bloc**, sous toutes
-les collections (défaut consigné dans COL-2) : défiler avant de conclure qu'il n'est pas
-venu.
+collection, qui part alors sans refus. **Le refus s'affiche dans « Collection isolée »,
+sous ses boutons.** Joué le 2026-09-16, il tombait en bas du bloc, sous toutes les
+collections ; COL-2 l'a ramené près du geste le jour même. S'il retombe en bas, c'est une
+régression à signaler, pas un détour à faire.
 
 - [x] Sous `arrivant` : le bouton de création est là ; créer « Carnet d'arrivant » ouvre aussitôt SON formulaire, dont il est propriétaire
 - [x] Le message qui suit la création dit où faire entrer quelqu'un, avec le lien vers l'Administration
@@ -83,6 +86,7 @@ venu.
 - [x] Le bloc « 👥 Accès aux collections » ne permet ni de créer, ni de renommer, ni de supprimer une collection, ni d'en changer le référent
 - [x] Chaque collection y renvoie vers la Bibliothèque pour ce qu'elle EST, avec un lien
 - [x] Le bloc déclare quels groupes d'administration voient tout le corpus, en nommant `bd-admins`
+- [ ] « Collection Test » dépliée, saisir `annotateurs` et laisser le genre sur « Utilisateur ou groupe ? », puis *+ Accorder* : un refus rouge s'affiche sous la ligne d'ajout de « Collection Test » et demande de choisir, et la liste des accès n'a pas changé
 
 ### Étroit, clavier, thèmes
 
@@ -98,10 +102,12 @@ La passe a supprimé « Collection Test » et changé son régime. Sans cette zo
 qui s'appuient sur elle échouent plus tard sur un décor absent — et rien ne dira que la
 cause est ici. L'état ci-dessous est celui mesuré le 2026-09-14, avant le jeu.
 
-**Le genre d'un accès vaut « Utilisateur » par défaut** sur la ligne *+ Accorder*, et un
-groupe accordé en utilisateur n'ouvre rien à personne, sans message — la liste dit
-seulement « n'a pas encore ouvert l'application ». Passer `annotateurs` et `etudiants` en
-**Groupe** AVANT d'accorder : les deux ont été posés en utilisateurs le 2026-09-16.
+**La ligne *+ Accorder* n'a pas de genre par défaut** : choisir **Groupe** pour
+`annotateurs` et `etudiants`, **Utilisateur** pour `stagiaire` — le bouton refuse tant
+que ce n'est pas fait. Le 2026-09-16, « Utilisateur » était présélectionné, et les deux
+groupes ont d'abord été posés en utilisateurs : un groupe accordé ainsi n'ouvre rien à
+personne, et la liste n'en dit que « n'a pas encore ouvert l'application ». COL-2 a
+retiré la présélection le jour même.
 
 **Si « Étude B » a été supprimée** (cf. l'avertissement de tête) : la recréer sous
 `proprio` ; ranger esther v1 dans « Collection Test » et dans « Étude B » **sous

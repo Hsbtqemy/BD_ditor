@@ -5,7 +5,9 @@ statut: livré
 
 # COL-2 — gérer une collection à l'écran, et pas seulement en ligne de commande
 
-**Arrêté sur** — 2026-09-11, `6737b52` : le déménagement est fait. La Bibliothèque porte ce que la collection EST — la créer, la décrire, régler sa diffusion, désigner son référent, l'exporter —, l'Administration ne garde que les accès, et chaque écran dit où vit l'autre moitié. Rien n'a été écrit côté serveur.
+**Arrêté sur** — 2026-09-16, `1677c67` : les deux défauts relevés par la passe de recette sont réparés. Un message de collection s'affiche dans la collection où l'on a agi, et un test lit sa PLACE, plus seulement son texte (`e07e89b`) ; un nouvel accès n'a plus de genre par défaut (`1677c67`). Le test de place a trouvé en route que *Enregistrer* faisait sauter l'écran de 564 px, corrigé dans le même commit. Rien n'a été écrit côté serveur. Reste à jouer les trois cases neuves de la passe *Les collections dans la Bibliothèque*.
+
+Le déménagement lui-même était fait le 2026-09-11 (`6737b52`) : la Bibliothèque porte ce que la collection EST — la créer, la décrire, régler sa diffusion, désigner son référent, l'exporter —, l'Administration ne garde que les accès, et chaque écran dit où vit l'autre moitié.
 
 **Point de départ** — 2026-09-10, trouvé pendant la passe de QA d'EXP-1. Une case demandait
 une collection déclarée `public` ; l'écran d'Administration **AFFICHE** `statut_diffusion`
@@ -64,11 +66,11 @@ DÉPLACEMENT** — plus gros que ce qui était annoncé, et portant sur du code 
 - [x] Une personne en écriture seule ne voit pas le formulaire, et une personne sans accès ne voit pas la collection — éprouvé en lecture ET en écriture, puis sous une identité sans accès (`test_le_participant_non_proprietaire_voit_le_referent`, `test_creer_ne_demande_aucun_droit_mais_decrire_si`)
 
 ### Un message s'affiche là où l'on a agi
-- [ ] *Bibliothèque → 📚 Collections*, trois collections dont une dépliée : prendre le nom « Collection par défaut » puis *Enregistrer* montre le refus DANS la collection dépliée, visible sans défiler depuis le bouton. Même attendu pour la confirmation d'enregistrement et pour le 409 de *Supprimer la collection*. Aujourd'hui tous passent par l'unique `#col-msg`, sous la liste entière
-- [ ] Le message qui suit *+ Créer* s'affiche sous le champ de création, en haut du bloc, et non sous la liste des collections
-- [ ] *Administration → 👥 Accès aux collections* : un refus d'accorder, de changer un niveau ou de retirer un accès s'affiche dans la collection dépliée. Le panneau a aujourd'hui la même ligne unique, `#col-msg`, sous la liste
-- [ ] Un test lit la PLACE du message et non plus seulement son texte : il tombe si le refus du nom réservé revient sous la liste. `test_e2e_collections.py` n'attend aujourd'hui que le contenu et la classe de `#col-msg`
-- [ ] Le genre d'un nouvel accès est tranché, et la raison écrite : sans valeur par défaut (*+ Accorder* refuse tant que le genre n'est pas choisi), ou « Utilisateur » gardé. Un groupe accordé en utilisateur n'ouvre rien à personne, et le seul signal à l'écran est « n'a pas encore ouvert l'application », qui ne distingue pas cette faute d'un arrivant pas encore venu
+- [x] *Bibliothèque → 📚 Collections*, trois collections dont une dépliée : prendre le nom « Collection par défaut » puis *Enregistrer* montre le refus DANS la collection dépliée, visible sans défiler depuis le bouton. Même attendu pour la confirmation d'enregistrement et pour le 409 de *Supprimer la collection* — **fait le 2026-09-16, `e07e89b`** : chaque collection dépliée porte sa ligne, sous *Enregistrer* et *Supprimer*, et les trois messages y tombent (`test_prendre_le_nom_du_repli_est_refuse_la_ou_l_on_a_agi`, `test_le_formulaire_n_envoie_que_ce_qui_a_change`, `test_passer_public_a_l_ecran_libere_le_manifeste`, `test_supprimer_rend_le_409_et_son_compte_d_albums`). Une suppression RÉUSSIE ne peut pas parler dans la collection, qui disparaît : sa confirmation prend la place qu'elle occupait dans la liste. `#col-msg` n'existe plus
+- [x] Le message qui suit *+ Créer* s'affiche sous le champ de création, en haut du bloc, et non sous la liste des collections — `#col-creer-msg`, entre le champ et la liste ; le refus d'un nom vide ou réservé y tombe aussi (`test_a11y_bibliotheque_collections` y cherche le lien vers l'Administration)
+- [x] *Administration → 👥 Accès aux collections* : un refus d'accorder, de changer un niveau ou de retirer un accès s'affiche dans la collection dépliée — sa ligne est sous la ligne d'ajout. Le piège n'y était pas une hypothèse : changer un niveau RECHARGE la liste même sur un refus, donc le 409 du dernier propriétaire s'effaçait aussitôt affiché si on ne le reportait pas dans la collection redessinée (`test_un_refus_d_acces_survit_au_rechargement_de_la_collection`)
+- [x] Un test lit la PLACE du message et non plus seulement son texte : il tombe si le refus du nom réservé revient sous la liste — `_message_du_geste` cherche le message par son TEXTE, n'importe où dans la page, puis exige que sa boîte soit dans celle de la collection dépliée et dans la fenêtre. Quatre mutants tués, chacun sur sa raison : messages sous la liste (le nom réservé et le 409 tombent « hors de la collection dépliée »), report perdu dans la Bibliothèque, report perdu dans l'Administration, remplissage de la collection différé (« hors de la fenêtre »)
+- [x] Le genre d'un nouvel accès est tranché, et la raison écrite : sans valeur par défaut (*+ Accorder* refuse tant que le genre n'est pas choisi), ou « Utilisateur » gardé — **tranché par Hugo le 2026-09-16 : SANS valeur par défaut**, fait dans `1677c67`. La raison : l'erreur ne se RATTRAPE pas à l'écran. Un groupe accordé en utilisateur n'ouvre rien à personne, et le seul signal est « n'a pas encore ouvert l'application », qui ne distingue pas cette faute d'un arrivant pas encore venu — et ne doit pas la distinguer (AUTH-6). Ne pouvant la signaler après coup, l'écran l'empêche d'arriver par inertie : un choix de plus, pour un geste rare. La liste démarre sur « Utilisateur ou groupe ? », et le refus dit pourquoi, dans la collection (`test_accorder_demande_de_choisir_utilisateur_ou_groupe` ; deux mutants tués, présélection rétablie et garde retirée)
 
 ## Ce que le déménagement a trouvé — 2026-09-11
 
@@ -108,6 +110,39 @@ groupes — journal A3, événements 117 à 122. La faute a été rattrapée ; l
 nommait pas. Le code ne pose que `jamais_vu`, qui
 RAPPORTE une absence et n'en explique aucune (AUTH-6) : un nom de groupe accordé en
 utilisateur et un login pas encore venu y sont indistinguables, et c'est voulu.
+
+## Ce que la réparation a trouvé — 2026-09-16
+
+**Le test qui lit la place a trouvé un défaut plus ancien que lui.** Sa première passe est
+tombée sur les deux tests d'enregistrement : la confirmation était bien DANS la collection
+redessinée, mais à y = 991 dans une fenêtre de 720. La première hypothèse — le document
+ramené en haut — était fausse : `scrollY` restait à 0, la page ne défile pas. C'est
+`main#corpus-body` qui défile, et la sonde l'a montré passer de 564 à 0 au rechargement.
+`chargerCollections` vidait la liste, rouvrait les collections, mais ne les remplissait qu'à
+l'événement `toggle`, qui arrive après : entre les deux, la zone ne mesurait plus que sa
+propre hauteur, et le navigateur y ramenait le défilement. La collection qu'on venait
+d'enregistrer réapparaissait 564 px plus bas, hors de la fenêtre. Ce rechargement est
+antérieur au chantier et remplissait déjà les collections à `toggle` : *Enregistrer*
+faisait donc sauter l'écran avant lui — déduit du code, pas rejoué sur l'ancienne version —,
+et lire le seul TEXTE d'un message ne pouvait pas le voir. La collection rouverte est désormais
+remplie dans la même tâche (`e07e89b`).
+
+**L'Administration a été mesurée, pas supposée.** Son rechargement attend un aller-retour
+réseau par collection rouverte, donc le même saut y semblait inévitable. Sonde avec 300 ms
+de latence sur la liste des accès, huit accès et le sélecteur en haut de la fenêtre : le
+défilement tient (265 avant, 265 après), le message reste visible. L'explication est
+raisonnée, pas mesurée : les blocs posés sous la liste — Comptes, Moteurs — gardent la page
+assez haute pendant l'attente, et pour qu'elle raccourcisse sous le défilement, il faudrait
+avoir descendu la collection hors de la fenêtre. Une liste d'accès bien plus longue que
+huit la mettrait à l'épreuve. Rien n'y a été changé pour cette raison. Une première sonde, défilée au
+maximum, n'avait rien prouvé : elle avait sorti le sélecteur de la fenêtre AVANT le geste.
+
+**La passe de recette portait deux avertissements que ce chantier rend faux** — « le refus
+s'affiche en bas du bloc, défiler avant de conclure » et « le genre vaut Utilisateur par
+défaut ». Réécrits dans `pilotage/qa/collections-bibliotheque.md`, sans toucher à une coche,
+et trois cases NON cochées y sont ajoutées pour ce que l'écran doit maintenant montrer : le
+refus sous les boutons, l'écran qui ne saute plus à l'enregistrement, et le refus
+d'accorder sans genre.
 
 ## Contexte
 
