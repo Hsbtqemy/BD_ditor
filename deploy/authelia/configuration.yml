@@ -100,6 +100,14 @@ authentication_backend:
   #             puis les comptes humains, sous les MÊMES logins qu'ici.
   #   Temps 2 — échanger les deux blocs ci-dessous, redémarrer. Et essayer le retour
   #             arrière pour de vrai dans la foulée, plutôt que de le réputer disponible.
+  #
+  # Les quatre repères `# >>>` / `# <<<` sont ce que vise la procédure de repli de
+  # `docs/exploitation.md`, et ils sont en colonne 0 exprès : les deux `sed` ne touchent que
+  # les lignes indentées, donc jamais un repère. La procédure visait des NUMÉROS de ligne,
+  # et un bloc ajouté plus haut les a décalés de dix-huit — sur la production, la commande
+  # aurait édité d'autres lignes le jour de la panne. `tests/test_repli_annuaire.py` rejoue
+  # les commandes de la documentation sur ce fichier.
+# >>> repli-fichier
   # file:
   #   path: '/config/users_database.yml'
   #   password:
@@ -109,13 +117,16 @@ authentication_backend:
   #       iterations: 3
   #       memory: 65536
   #       parallelism: 4
+# <<< repli-fichier
 
+# >>> annuaire-ldap
   ldap:
     implementation: 'lldap'
     address: 'ldap://lldap:3890'
     base_dn: '{{ env "LLDAP_BASE_DN" }}'
     user: 'uid=authelia,ou=people,{{ env "LLDAP_BASE_DN" }}'
     password: '{{ env "LLDAP_AUTHELIA_PASS" }}'
+# <<< annuaire-ldap
 
 # --- Politique d'accès : tout refusé par défaut, second facteur CIBLÉ ---
 #
