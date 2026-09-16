@@ -710,6 +710,13 @@ def test_a11y_administration_collections(page, seeded, theme):
     viol = _audit(page)
     assert not viol, f"Accès aux collections/accès [{theme}] :\n{_fmt(viol)}"
 
+    # Un refus AFFICHÉ, dans la collection dépliée : l'encre rouge en petit texte, jamais
+    # photographiée allumée par un audit avant la passe de revue de COL-2.
+    page.locator("[data-accorder]").first.click()
+    page.locator("#col-body .col-msg.erreur").wait_for(timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Accès aux collections/refus affiché [{theme}] :\n{_fmt(viol)}"
+
     page.locator(".col-principal").first.fill("bd-lettrage")
     page.locator(".col-genre").first.select_option("groupe")
     page.locator(".col-niveau-neuf").first.select_option("ecriture")
@@ -754,6 +761,15 @@ def test_a11y_bibliotheque_collections(page, seeded, theme):
         page.locator("#col-creer-msg").inner_text())
     viol = _audit(page)
     assert not viol, f"Bibliothèque/formulaire [{theme}] :\n{_fmt(viol)}"
+
+    # Un refus AFFICHÉ, dans la collection dépliée. Il vivait sous la liste jusqu'à COL-2 ;
+    # son encre rouge est du petit texte, la catégorie qui échoue le 4.5:1, et aucun audit
+    # ne l'avait jamais photographiée allumée — ni avant le déménagement, ni après.
+    item.locator('[data-champ="nom"]').fill("Collection par défaut")
+    item.locator("[data-enregistrer]").click()
+    item.locator(".col-msg.erreur").wait_for(timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Bibliothèque/refus affiché [{theme}] :\n{_fmt(viol)}"
 
 
 def test_corpus_appartenance_album(page, seeded):

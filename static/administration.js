@@ -59,8 +59,23 @@ const COL_NIVEAUX = [["lecture", "Lecture"], ["ecriture", "Écriture"],
    collection dépliée porte donc SA ligne, sous la ligne d'ajout : `el` est toujours la
    ligne du geste. */
 function colMsg(el, texte, erreur) {
+  // UN message à la fois pour tout le panneau, comme au temps de la ligne unique : sinon le
+  // refus d'une collection resterait affiché — et reposé à chaque rechargement — après un
+  // geste réussi dans une autre, sous un champ qu'on a vidé depuis. Passe de revue, 2026-09-16.
+  document.querySelectorAll("#col-body .col-msg").forEach((l) => {
+    if (l === el) return;
+    l.textContent = "";
+    l.classList.remove("erreur");
+  });
   el.textContent = texte || "";
   el.classList.toggle("erreur", !!erreur);
+}
+
+/* Une ligne de message hors de toute collection : ce qui reste quand la liste, ou les
+   accès d'une collection, ne se relisent pas. Le dernier message survit à l'erreur. */
+function colLigneSeule(msg) {
+  return msg ? `<p class="col-msg muted small${msg.erreur ? " erreur" : ""}">${esc(msg.texte)}</p>`
+             : "";
 }
 
 /* Ce qu'une collection dépliée affiche, relevé AVANT que `loadCollections` ne la détruise.
@@ -171,7 +186,10 @@ async function colDetail(d, c, msg) {
   box.innerHTML = `<p class="col-note">Chargement…</p>`;
   let acces = [];
   try { acces = await apiGet(`/api/collections/${c.id}/acces`); }
-  catch (e) { box.innerHTML = `<p class="col-note">${esc(e.message)}</p>`; return; }
+  catch (e) {
+    box.innerHTML = `<p class="col-note">${esc(e.message)}</p>${colLigneSeule(msg)}`;
+    return;
+  }
   box.innerHTML = `
     <ul class="acces-liste">${acces.map((a) => `
       <li>
@@ -220,7 +238,10 @@ async function colDetail(d, c, msg) {
     ${colAilleurs()}`;
 
   const ligne = box.querySelector(".col-msg");
-  // Reposé sans être annoncé une seconde fois : il l'a été dans la ligne où il est né.
+  // Reposé tel quel dans la collection redessinée. Qu'un lecteur d'écran l'ait ANNONCÉ
+  // n'est pas établi : la ligne où il est né a été détruite un aller-retour plus tard, ce
+  // que la ligne unique d'avant ne faisait pas. À mesurer sous NVDA avant d'en rien conclure
+  // (décision du 2026-09-16 ; passe de QA « Les collections dans la Bibliothèque »).
   if (msg) colMsg(ligne, msg.texte, msg.erreur);
   const recharger = async () => { await loadCollections(); };
   box.querySelectorAll("[data-retirer]").forEach((b) => {
@@ -348,7 +369,11 @@ async function loadCollections() {
   MOI = await identite();
   let cols = [];
   try { cols = await apiGet("/api/collections"); }
-  catch (e) { body.innerHTML = `<p class="col-note">${esc(e.message)}</p>`; return; }
+  catch (e) {
+    const garde = [...body.querySelectorAll(".col-item[open]")].map(colMsgReleve).find(Boolean);
+    body.innerHTML = `<p class="col-note">${esc(e.message)}</p>${colLigneSeule(garde)}`;
+    return;
+  }
   // Ce qui était DÉPLIÉ, ce que chaque dépliant disait, et où le focus se tenait — relevés
   // AVANT de détruire le DOM.
   const ouvertes = new Map(

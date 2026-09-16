@@ -783,8 +783,30 @@ let COLS_RENDUES = false;
    sous ses boutons, et la création a la sienne, sous son champ : `el` est toujours la
    ligne du geste, jamais une ligne commune. */
 function colMsg(el, texte, erreur) {
+  // UN message à la fois pour tout le bloc, comme au temps de la ligne unique, que chaque
+  // geste écrasait. Les lignes vivant désormais chacune dans sa collection, écrire ici doit
+  // effacer les autres : sinon un refus resterait posé — et reposé à chaque rechargement —
+  // à côté d'un formulaire qui ne contient plus ce qu'il refusait, ou « créée » au-dessus
+  // d'une collection qu'on vient de supprimer. Trouvé par la passe de revue (2026-09-16).
+  document.querySelectorAll("#collections-bloc .col-msg").forEach((l) => {
+    if (l === el) return;
+    if (l.dataset.trace) { l.remove(); return; }
+    l.textContent = "";
+    l.classList.remove("erreur");
+  });
   el.textContent = texte || "";
   el.classList.toggle("erreur", !!erreur);
+}
+
+/* Une ligne de message qui n'appartient plus à aucune collection : ce qui reste quand
+   celle qui parlait a disparu — supprimée, ou toute la liste remplacée par une erreur de
+   relecture. Marquée, pour que le geste suivant l'ôte au lieu de la vider. */
+function colTrace(texte, erreur) {
+  const p = document.createElement("p");
+  p.className = "col-msg muted small";
+  p.dataset.trace = "1";
+  colMsg(p, texte, erreur);
+  return p;
 }
 
 /* Ce qu'une collection dépliée affiche, relevé AVANT qu'un rechargement ne la détruise.
@@ -1183,7 +1205,10 @@ function colDetail(d, c, msg) {
   }
   box.innerHTML = colFormulaire(c) + colExport(c) + colAilleurs();
   colBrancherExport(box);
-  // Reposé sans être annoncé une seconde fois : il l'a été dans la ligne où il est né.
+  // Reposé tel quel dans la collection redessinée. Qu'un lecteur d'écran l'ait ANNONCÉ
+  // n'est pas établi : la ligne où il est né a été détruite un aller-retour plus tard, ce
+  // que la ligne unique d'avant ne faisait pas. À mesurer sous NVDA avant d'en rien conclure
+  // (décision du 2026-09-16 ; passe de QA « Les collections dans la Bibliothèque »).
   if (msg) colMsg(box.querySelector(".col-msg"), msg.texte, msg.erreur);
   box.querySelector("[data-enregistrer]").onclick = () => colEnregistrer(box, c);
   box.querySelector("[data-supprimer]").onclick = () => colSupprimer(d, c);
@@ -1224,11 +1249,8 @@ async function colSupprimer(d, c) {
     const ids = [...body.querySelectorAll("details.col-item")].map((x) => x.dataset.id);
     const suivante = ids[ids.indexOf(String(c.id)) + 1];
     await chargerCollections();
-    const trace = document.createElement("p");
-    trace.className = "col-msg muted small";
-    trace.textContent = `« ${c.nom} » supprimée.`;
     const avant = suivante && body.querySelector(`details.col-item[data-id="${suivante}"]`);
-    body.insertBefore(trace, avant || null);
+    body.insertBefore(colTrace(`« ${c.nom} » supprimée.`), avant || null);
   }
 }
 
@@ -1254,7 +1276,15 @@ async function chargerCollections(ouvrir) {
   const body = $("#col-body");
   let cols = [];
   try { cols = await apiGet("/api/collections"); }
-  catch (e) { body.innerHTML = `<p class="col-note">${esc(e.message)}</p>`; return; }
+  catch (e) {
+    // Le message du dernier geste survit à l'échec de la relecture : un « enregistrée » qui
+    // disparaîtrait derrière l'erreur ferait croire raté un enregistrement qui a eu lieu.
+    const garde = [...body.querySelectorAll("details.col-item[open]")]
+      .map(colMsgReleve).find(Boolean);
+    body.innerHTML = `<p class="col-note">${esc(e.message)}</p>`;
+    if (garde) body.appendChild(colTrace(garde.texte, garde.erreur));
+    return;
+  }
   // Les collections dépliées le restent, et gardent ce qu'elles disaient : recharger après
   // un enregistrement ne doit ni replier sous les yeux celle qu'on vient de modifier, ni
   // effacer le message qui le confirme.
@@ -1276,8 +1306,9 @@ async function chargerCollections(ouvrir) {
     // Rouverte ET remplie dans la même tâche, et non à l'événement `toggle`, qui arrive
     // après. Entre les deux, le navigateur pouvait mettre en page une liste de collections
     // toutes vides : la zone qui défile (`main`) raccourcissait d'autant, son défilement
-    // revenait en haut, et la collection qu'on venait d'enregistrer réapparaissait 564 px
-    // plus bas — sa confirmation hors de la fenêtre. Mesuré le 2026-09-16 par le test qui
+    // revenait en haut, et la collection qu'on venait d'enregistrer réapparaissait d'autant
+    // plus bas qu'on avait défilé (564 px dans le décor du test) — sa confirmation hors de
+    // la fenêtre. Mesuré le 2026-09-16 par le test qui
     // lit la PLACE du message (COL-2) ; lire son seul texte ne pouvait pas le voir.
     d.open = true;
     d.dataset.remplie = "1";

@@ -73,9 +73,15 @@ def _message_du_geste(page, item, motif):
     elle lisait le texte et la classe de `#col-msg`, jamais sa place.
 
     Deux propriétés, qui sont l'attendu de la fiche : le message est DANS la collection
-    dépliée (sa boîte est contenue dans celle du `<details>`), et il se voit SANS DÉFILER
-    (dans la fenêtre, telle que le clic l'a laissée). `item` est un locator : après un
-    enregistrement la collection est redessinée, et il se résout dans la nouvelle."""
+    dépliée (sa boîte est contenue dans celle du `<details>`), et il se VOIT sans défiler,
+    telle que le clic a laissé l'écran. `item` est un locator : après un enregistrement la
+    collection est redessinée, et il se résout dans la nouvelle.
+
+    « Se voit » ne veut pas dire « tombe dans les 720 px du viewport », et la première
+    version de ce test confondait les deux. La page défile dans `main`, SOUS un en-tête :
+    une boîte peut être dans le viewport tout en étant rognée par le débordement de `main`,
+    ou recouverte. Le critère est donc celui d'un œil — le point au début de sa première
+    ligne désigne-t-il le message lui-même (`elementFromPoint`) ?"""
     message = page.locator("[role=status]", has_text=motif)
     message.wait_for(timeout=5000)
     m, i = message.bounding_box(), item.bounding_box()
@@ -83,11 +89,22 @@ def _message_du_geste(page, item, motif):
     assert i["y"] <= m["y"] and m["y"] + m["height"] <= i["y"] + i["height"], (
         f"le message « {message.inner_text()} » s'affiche HORS de la collection dépliée "
         f"(message {m}, collection {i}) : loin du geste, là où la recette ne l'a pas vu")
-    hauteur = page.viewport_size["height"]
-    assert m["y"] >= 0 and m["y"] + m["height"] <= hauteur, (
-        f"le message est hors de la fenêtre ({m}, hauteur {hauteur}) : il faut défiler "
-        "pour le voir")
+    assert _se_voit(message), (
+        f"le message n'est pas visible à l'écran ({m}) : hors de la fenêtre, rogné par la "
+        "zone qui défile ou recouvert — il faut défiler pour le lire")
     return message.inner_text()
+
+
+def _se_voit(locator):
+    """Vrai si le point au début de la première ligne de l'élément désigne l'élément
+    lui-même : ni hors de la fenêtre (`elementFromPoint` rend `null`), ni rogné par un
+    conteneur qui défile, ni recouvert (il rend alors ce qui est par-dessus)."""
+    return locator.evaluate("""el => {
+      const r = el.getBoundingClientRect();
+      const vu = document.elementFromPoint(r.left + Math.min(r.width, 24) / 2,
+                                           r.top + Math.min(r.height, 16) / 2);
+      return !!vu && (vu === el || el.contains(vu));
+    }""")
 
 
 def _enregistrer(page, cid):
@@ -199,6 +216,45 @@ def test_supprimer_rend_le_409_et_son_compte_d_albums(page, decor):
             "la collection a disparu malgré le refus")
 
 
+def test_supprimer_laisse_sa_confirmation_a_la_place_de_la_collection(page, decor):
+    """Une suppression RÉUSSIE ne peut pas parler dans la collection : elle disparaît, et sa
+    ligne de message avec elle. Sa confirmation prend donc la PLACE qu'occupait la
+    collection dans la liste, entre sa voisine d'avant et celle d'après — là où l'œil est
+    resté. La fiche et le code l'affirmaient ; aucun test ne le vérifiait avant la passe de
+    revue du 2026-09-16."""
+    with _client(decor["base"]) as c:
+        crees = {c.post("/api/collections", json={"nom": n}).json()["id"]
+                 for n in ("Espace A", "Espace B", "Espace C")}
+    page.on("dialog", lambda d: d.accept())      # le confirm() de la suppression
+    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
+    rendues = page.locator("#col-body .col-item")
+    rendues.first.wait_for(timeout=3000)
+    ordre = [int(rendues.nth(i).get_attribute("data-id")) for i in range(rendues.count())]
+    assert len(ordre) == 4, ordre
+    # Une collection vide, qu'on peut donc supprimer, et qui a une voisine de chaque côté.
+    rang = next(k for k in range(1, len(ordre) - 1) if ordre[k] in crees)
+    avant, cid, apres = ordre[rang - 1], ordre[rang], ordre[rang + 1]
+
+    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+    item.locator("summary").click()
+    item.locator("[data-supprimer]").click()
+    item.wait_for(state="detached", timeout=5000)
+    trace = page.locator("#col-body p", has_text="supprimée")
+    trace.wait_for(timeout=5000)
+    places = page.evaluate("""([avant, apres]) => {
+      const k = [...document.querySelector('#col-body').children];
+      return [k.findIndex((e) => e.dataset.id === String(avant)),
+              k.findIndex((e) => e.tagName === 'P' && e.textContent.includes('supprimée')),
+              k.findIndex((e) => e.dataset.id === String(apres))];
+    }""", [avant, apres])
+    assert places[0] + 1 == places[1] and places[1] + 1 == places[2], (
+        f"la confirmation n'est pas à la place de la collection supprimée : {places} "
+        "(rangs de la voisine d'avant, de la confirmation, de la voisine d'après)")
+    assert _se_voit(trace), "la confirmation de suppression n'est pas visible à l'écran"
+    with _client(decor["base"]) as c:
+        assert cid not in {x["id"] for x in c.get("/api/collections").json()}
+
+
 def test_prendre_le_nom_du_repli_est_refuse_la_ou_l_on_a_agi(page, decor):
     """Le nom de la collection de repli est RÉSERVÉ : se l'attribuer capturerait les albums
     créés sans collection explicite. La garde interdit de le PRENDRE, et le serveur répond
@@ -206,10 +262,12 @@ def test_prendre_le_nom_du_repli_est_refuse_la_ou_l_on_a_agi(page, decor):
     copie finirait par dire autre chose que la première.
 
     Et il le rend LÀ OÙ L'ON A AGI. C'est ce refus-là que la passe de recette du 2026-09-16
-    a manqué : lisible, mais sous toute la liste. D'où le décor de la fiche — trois
-    collections, et celle qu'on renomme en a une autre dessous. Sous une seule collection,
-    « sous la liste » et « sous le bouton » se touchent presque, et rien ne distinguerait
-    le défaut de sa réparation."""
+    a manqué : lisible, mais sous toute la liste. Le décor est celui de la fiche — trois
+    collections, et celle qu'on renomme en a une autre dessous —, parce que c'est la
+    situation où la recette l'a manqué. Il n'est pas ce qui fait mordre le test : la boîte
+    du message doit tenir dans celle de la collection, ce qu'un message posé sous la liste
+    ne fait pas, même sous une seule collection (le mutant l'a montré sur le 409, dont le
+    décor n'en a qu'une)."""
     repli = _collection_du_decor(decor["base"], decor["album"])["nom"]
     with _client(decor["base"]) as c:
         crees = {c.post("/api/collections", json={"nom": n}).json()["id"]
@@ -321,12 +379,17 @@ def test_accorder_demande_de_choisir_utilisateur_ou_groupe(page, decor):
     item.locator(".col-principal").fill("annotateurs")
     assert item.locator(".col-genre").input_value() == "", (
         "un genre est présélectionné : l'erreur de la recette redevient possible par inertie")
+    # Ce qui prouve la garde est qu'AUCUNE requête ne part, pas qu'aucun accès n'est créé :
+    # le serveur refuse lui-même un genre vide (422), donc « rien de créé » serait vrai sans
+    # la garde. La première version de ce test vérifiait la liste des accès, et ne pouvait
+    # tomber que par le texte du message (passe de revue, 2026-09-16).
+    envois = []
+    page.on("request", lambda r: envois.append(r.url)
+            if r.method == "PUT" and "/acces" in r.url else None)
     item.locator("[data-accorder]").click()
     message = _message_du_geste(page, item, "utilisateur ou un groupe")
     assert "annotateurs" in message, message
-    with _client(decor["base"]) as c:
-        assert c.get(f"/api/collections/{cid}/acces").json() == [], (
-            "l'accès est parti sans genre choisi")
+    assert envois == [], f"la demande est partie au serveur sans genre choisi : {envois}"
 
     item.locator(".col-genre").select_option("groupe")
     item.locator("[data-accorder]").click()
@@ -335,3 +398,158 @@ def test_accorder_demande_de_choisir_utilisateur_ou_groupe(page, decor):
         acces = c.get(f"/api/collections/{cid}/acces").json()
     assert [(a["principal"], a["genre"], a["niveau"]) for a in acces] == [
         ("annotateurs", "groupe", "lecture")], acces
+
+
+def _message_sous_le_champ(page, motif):
+    """Le message de création, trouvé par son texte puis situé : entre le champ de création
+    et la liste des collections, et visible."""
+    message = page.locator("#collections-bloc [role=status]", has_text=motif)
+    message.wait_for(timeout=5000)
+    champ = page.locator("#col-nom").bounding_box()
+    liste = page.locator("#col-body").bounding_box()
+    m = message.bounding_box()
+    assert champ["y"] + champ["height"] <= m["y"] and m["y"] + m["height"] <= liste["y"], (
+        f"le message « {message.inner_text()} » n'est pas entre le champ de création "
+        f"({champ}) et la liste ({liste}) : {m}")
+    assert _se_voit(message), f"le message de création n'est pas visible ({m})"
+    return message.inner_text()
+
+
+def test_la_creation_parle_sous_son_champ(page, decor):
+    """Le message de création — refus comme succès — s'affiche sous le champ, en haut du
+    bloc, et non sous la liste. Situé à l'écran et plus seulement cherché à son adresse :
+    `#col-creer-msg` déplacé sous la liste garderait `test_a11y_bibliotheque_collections`
+    vert, qui ne lit que l'adresse — relevé par la passe de revue du 2026-09-16."""
+    with _client(decor["base"]) as c:
+        for n in ("Un espace", "Un autre espace"):
+            c.post("/api/collections", json={"nom": n})
+    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
+    page.locator("#col-body .col-item").first.wait_for(timeout=3000)
+    page.click("#col-add")                       # sans nom
+    assert "Donnez un nom" in _message_sous_le_champ(page, "Donnez un nom")
+    page.fill("#col-nom", "Espace neuf")
+    page.click("#col-add")
+    assert "Espace neuf" in _message_sous_le_champ(page, "créée")
+
+
+def test_un_geste_efface_le_message_d_une_autre_collection(page, decor):
+    """UN message à la fois, comme au temps de la ligne unique. Les lignes vivent chacune
+    dans leur collection : sans cette règle, un refus restait affiché — et reposé à chaque
+    rechargement — après un geste réussi ailleurs, à côté d'un formulaire qui ne contenait
+    plus le nom refusé ; et « créée » restait en tête du bloc après la suppression de la
+    collection créée. Trouvé par la passe de revue du 2026-09-16."""
+    repli = _collection_du_decor(decor["base"], decor["album"])["nom"]
+    with _client(decor["base"]) as c:
+        a = c.post("/api/collections", json={"nom": "Espace A"}).json()["id"]
+        b = c.post("/api/collections", json={"nom": "Espace B"}).json()["id"]
+    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
+    page.fill("#col-nom", "Espace C")
+    page.click("#col-add")
+    _message_sous_le_champ(page, "créée")
+
+    item_a = page.locator(f'#col-body .col-item[data-id="{a}"]')
+    item_a.locator("summary").click()
+    item_a.locator('[data-champ="nom"]').fill(repli)
+    item_a.locator("[data-enregistrer]").click()
+    _message_du_geste(page, item_a, "réservé")
+    assert page.locator("#collections-bloc .col-msg", has_text="créée").count() == 0, (
+        "« créée » reste affiché après un geste dans une autre collection")
+
+    item_b = page.locator(f'#col-body .col-item[data-id="{b}"]')
+    item_b.locator("summary").click()
+    item_b.locator('[data-champ="licence_defaut"]').fill("CC-BY-4.0")
+    _message_du_geste(page, _enregistrer(page, b), "enregistrée")
+    assert page.locator("#collections-bloc .col-msg", has_text="réservé").count() == 0, (
+        "le refus d'« Espace A » est reposé après l'enregistrement d'« Espace B » : il "
+        "parle d'un nom que le formulaire redessiné ne contient plus")
+
+
+def test_une_relecture_ratee_ne_cache_pas_l_enregistrement(page, decor):
+    """Enregistrer réussit, puis la relecture de la liste échoue : l'erreur remplace la
+    liste, et la confirmation — qui vivait dans la collection — partait avec. On croyait
+    raté un enregistrement qui avait eu lieu. La ligne unique d'avant COL-2, hors de la
+    liste, y survivait ; trouvé par la passe de revue du 2026-09-16."""
+    with _client(decor["base"]) as c:
+        cid = c.post("/api/collections", json={"nom": "Un espace"}).json()["id"]
+    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
+    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+    item.locator("summary").click()
+    item.locator('[data-champ="licence_defaut"]').fill("CC-BY-4.0")
+
+    def panne(route):
+        if route.request.method == "GET":
+            route.fulfill(status=500, content_type="application/json",
+                          body='{"detail": "Relecture impossible (panne simulée)."}')
+        else:
+            route.continue_()
+    page.route("**/api/collections", panne)
+    item.locator("[data-enregistrer]").click()
+    page.get_by_text("Relecture impossible").wait_for(timeout=5000)
+    confirmation = page.locator("#col-body .col-msg", has_text="enregistrée")
+    confirmation.wait_for(timeout=3000)
+    assert _se_voit(confirmation), "la confirmation survit, mais ne se voit pas"
+    with _client(decor["base"]) as c:
+        col = next(x for x in c.get("/api/collections").json() if x["id"] == cid)
+    assert col["licence_defaut"] == "CC-BY-4.0"
+
+
+def test_un_geste_d_acces_efface_le_refus_d_une_autre_collection(page, decor):
+    """Administration : même règle d'un message à la fois. Un refus dans A, puis un accès
+    accordé dans B, qui recharge la liste : le refus d'A, qui nommait « annotateurs », ne
+    doit pas être reposé sous un champ que le rechargement a vidé."""
+    with _client(decor["base"]) as c:
+        a = c.post("/api/collections", json={"nom": "Espace A"}).json()["id"]
+        b = c.post("/api/collections", json={"nom": "Espace B"}).json()["id"]
+    page.goto(decor["base"] + "/administration", wait_until="networkidle")
+    item_a = page.locator(f'#col-body .col-item[data-id="{a}"]')
+    item_a.locator("summary").click()
+    item_a.locator(".col-principal").fill("annotateurs")
+    item_a.locator("[data-accorder]").click()
+    _message_du_geste(page, item_a, "utilisateur ou un groupe")
+
+    item_b = page.locator(f'#col-body .col-item[data-id="{b}"]')
+    item_b.locator("summary").click()
+    item_b.locator(".col-principal").fill("annotateurs")
+    item_b.locator(".col-genre").select_option("groupe")
+    item_b.locator("[data-accorder]").click()
+    item_b.locator(".acces-principal", has_text="annotateurs").wait_for(timeout=5000)
+    # Attendre le rendu COMPLET d'A redessinée : sans cela, on regarderait une collection
+    # encore « Chargement… », où aucun message ne peut être — le test passerait sans voir.
+    item_a.locator(".col-principal").wait_for(timeout=5000)
+    assert page.locator("#col-body .col-msg", has_text="utilisateur ou un groupe").count() == 0, (
+        "le refus d'« Espace A » est reposé après un accès accordé dans « Espace B »")
+
+
+@pytest.mark.parametrize("relecture", ["**/api/collections", "**/api/collections/*/acces"],
+                         ids=["liste", "acces"])
+def test_un_refus_d_acces_survit_a_une_relecture_ratee(page, decor, relecture):
+    """Administration : un refus de niveau recharge la liste, et ce rechargement peut
+    échouer — sur la liste elle-même, ou sur les accès de la collection rouverte. L'erreur
+    remplace alors ce qui portait le 409, qui partait avec : on ne saurait plus que le
+    niveau a été refusé. Le dernier message survit à l'erreur, dans les deux cas. Relevé
+    par la passe de revue du 2026-09-16 ; éprouvé ici parce que le commentaire du code
+    l'affirmait sans qu'aucun test ne le lise."""
+    with _client(decor["base"]) as c:
+        cid = c.post("/api/collections", json={"nom": "Un espace"}).json()["id"]
+        r = c.put(f"/api/collections/{cid}/acces", json={
+            "genre": "utilisateur", "principal": "pilote", "niveau": "proprietaire"})
+        assert r.status_code == 200, r.text
+
+    page.goto(decor["base"] + "/administration", wait_until="networkidle")
+    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+    item.locator("summary").click()
+    niveau = item.locator('select[data-principal="pilote"]')
+    niveau.wait_for(timeout=5000)
+
+    def panne(route):
+        if route.request.method == "GET":
+            route.fulfill(status=500, content_type="application/json",
+                          body='{"detail": "Relecture impossible (panne simulée)."}')
+        else:
+            route.continue_()
+    page.route(relecture, panne)          # armé APRÈS l'ouverture, qui doit réussir
+    niveau.select_option("lecture")
+    page.locator("#col-body", has_text="Relecture impossible").wait_for(timeout=5000)
+    refus = page.locator("#col-body .col-msg", has_text="dernier propriétaire")
+    refus.wait_for(timeout=3000)
+    assert _se_voit(refus), "le refus survit à la relecture ratée, mais ne se voit pas"
