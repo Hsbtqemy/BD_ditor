@@ -5,7 +5,13 @@ statut: livré
 
 # QA-5 — la suite ne s'exécute jamais dans l'artefact livré
 
-**Arrêté sur** — le commit `a423f98`, 2026-09-09 : **tous les items sont clos.** La suite
+**Arrêté sur** — 2026-09-16, `fd0f8b2` : **le `.venv` du dépôt fait foi pour les tests.**
+Deux Pythons mesuraient ce dépôt sans le dire ; le `.venv`, qu'une partie des sessions
+employait, portait `fastapi` 0.137. Réaligné sur les verrous, il a vidé `ECARTS_ADMIS` et
+`ABSENCES_ADMISES`, écrits pour le Python système, et CLAUDE.md dit désormais l'interpréteur
+et la commande qui répare un écart. Tranché par l'équipe le jour même.
+
+**État antérieur** — le commit `a423f98`, 2026-09-09 : **tous les items sont clos.** La suite
 tourne dans l'artefact, l'écart poste/image est mesuré et gardé, et les e2e ont rejoint
 l'image — 184 passés, 4 ignorés, 0 échec en 26 min 08, sous un bandeau qui cite le commit servi.
 

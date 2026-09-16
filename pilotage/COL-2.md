@@ -5,7 +5,13 @@ statut: livré
 
 # COL-2 — gérer une collection à l'écran, et pas seulement en ligne de commande
 
-**Arrêté sur** — 2026-09-16, `de38999` : la passe de revue demandée par Hugo est faite, et ce qu'elle a établi est réparé — un seul message de collection à la fois, un message qui survit à une relecture ratée, des tests qui exigent qu'il SE VOIE. Avant elle, le même jour : le message s'affiche dans la collection où l'on a agi et *Enregistrer* ne fait plus sauter l'écran (`e07e89b`), un nouvel accès n'a plus de genre par défaut (`1677c67`). Rien n'a été écrit côté serveur. Reste une case ouverte, qui attend une mesure et non du code : les annonces sous NVDA. Les cases non cochées de la passe *Les collections dans la Bibliothèque* la portent, et supposent une pile reconstruite — elle sert encore `61662f0`.
+**Arrêté sur** — 2026-09-16, `5d6fb7b` : ce commit n'est PAS du travail de ce chantier. Il
+déclare les surfaces d'un test d'UX-15, et son corps cite « la session COL-2 », qui avait
+trouvé le défaut : l'outil de suivi le rattache donc ici. La mention est dans un commit déjà
+recouvert par d'autres, et ne se retire plus. Le dernier travail de COL-2 est l'état
+antérieur ci-dessous.
+
+**État antérieur** — 2026-09-16, `de38999` : la passe de revue demandée par Hugo est faite, et ce qu'elle a établi est réparé — un seul message de collection à la fois, un message qui survit à une relecture ratée, des tests qui exigent qu'il SE VOIE. Avant elle, le même jour : le message s'affiche dans la collection où l'on a agi et *Enregistrer* ne fait plus sauter l'écran (`e07e89b`), un nouvel accès n'a plus de genre par défaut (`1677c67`). Rien n'a été écrit côté serveur. Reste une case ouverte, qui attend une mesure et non du code : les annonces sous NVDA. Les cases non cochées de la passe *Les collections dans la Bibliothèque* la portent, et supposent une pile reconstruite — elle sert encore `61662f0`.
 
 Le déménagement lui-même était fait le 2026-09-11 (`6737b52`) : la Bibliothèque porte ce que la collection EST — la créer, la décrire, régler sa diffusion, désigner son référent, l'exporter —, l'Administration ne garde que les accès, et chaque écran dit où vit l'autre moitié.
 

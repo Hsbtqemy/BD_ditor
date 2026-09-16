@@ -5,7 +5,15 @@ statut: livré
 
 # INFRA-12 — le contrôle de déploiement dit ce qu'il n'a PAS pu vérifier
 
-**Arrêté sur** — 2026-09-10, `dbb67d1` : les deux docstrings d'ouverture sont repointées et
+**Arrêté sur** — 2026-09-16, `06c23c1` : **le contrôle de configuration lit ce que
+l'application REÇOIT.** Il comparait à Authelia une `BD_AUTH_ADMIN_GROUPS` lue dans `.env`,
+que `docker-compose.yml` ne transmet pas : une valeur posée là refusait un déploiement à
+tort. Il lit désormais les fichiers de `COMPOSE_FILE`, signale une valeur inerte sans
+bloquer, et refuse une variable transmise vide. Le référent manquant est signalé dès que
+l'annuaire sert, au lieu de se juger au fichier de repli. Trois tests de régression, joués
+contre la version d'avant.
+
+**État antérieur** — 2026-09-10, `dbb67d1` : les deux docstrings d'ouverture sont repointées et
 ce chantier existe enfin sous son nom. **Le travail qu'il décrit est ANTÉRIEUR à son
 premier commit** — `87544ba` (2026-09-07), où le contrôle cesse d'annoncer « moteurs
 absents ou cassés » pour une sonde qu'il n'avait pas pu poser, porte « INFRA-7 » dans son
