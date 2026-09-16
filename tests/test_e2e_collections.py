@@ -301,3 +301,37 @@ def test_un_refus_d_acces_survit_au_rechargement_de_la_collection(page, decor):
     with _client(decor["base"]) as c:
         acces = c.get(f"/api/collections/{cid}/acces").json()
     assert ("pilote", "proprietaire") in {(a["principal"], a["niveau"]) for a in acces}
+
+
+def test_accorder_demande_de_choisir_utilisateur_ou_groupe(page, decor):
+    """AUCUN genre par défaut pour un nouvel accès — tranché le 2026-09-16.
+
+    « Utilisateur » était présélectionné, et la passe de recette a accordé `annotateurs` et
+    `etudiants` comme des logins : deux fois sur deux. L'erreur ne se voit pas après coup —
+    un groupe accordé en utilisateur n'ouvre rien à personne, et l'écran n'a pour le dire
+    que « n'a pas encore ouvert l'application », qui vaut aussi pour un arrivant. Faute de
+    pouvoir la signaler, l'écran l'empêche : *+ Accorder* refuse tant que le genre n'est
+    pas choisi, et le dit dans la collection. Puis, le genre choisi, l'accès part tel quel."""
+    with _client(decor["base"]) as c:
+        cid = c.post("/api/collections", json={"nom": "Un espace"}).json()["id"]
+
+    page.goto(decor["base"] + "/administration", wait_until="networkidle")
+    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+    item.locator("summary").click()
+    item.locator(".col-principal").fill("annotateurs")
+    assert item.locator(".col-genre").input_value() == "", (
+        "un genre est présélectionné : l'erreur de la recette redevient possible par inertie")
+    item.locator("[data-accorder]").click()
+    message = _message_du_geste(page, item, "utilisateur ou un groupe")
+    assert "annotateurs" in message, message
+    with _client(decor["base"]) as c:
+        assert c.get(f"/api/collections/{cid}/acces").json() == [], (
+            "l'accès est parti sans genre choisi")
+
+    item.locator(".col-genre").select_option("groupe")
+    item.locator("[data-accorder]").click()
+    item.locator(".acces-principal", has_text="annotateurs").wait_for(timeout=5000)
+    with _client(decor["base"]) as c:
+        acces = c.get(f"/api/collections/{cid}/acces").json()
+    assert [(a["principal"], a["genre"], a["niveau"]) for a in acces] == [
+        ("annotateurs", "groupe", "lecture")], acces

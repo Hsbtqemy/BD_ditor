@@ -196,6 +196,7 @@ async function colDetail(d, c, msg) {
       <input class="col-principal" placeholder="Login ou nom de groupe" autocomplete="off"
              aria-label="Login ou nom de groupe à qui accorder l'accès">
       <select class="col-genre" aria-label="Genre du principal">
+        <option value="" selected>Utilisateur ou groupe ?</option>
         <option value="utilisateur">Utilisateur</option>
         <option value="groupe">Groupe</option>
       </select>
@@ -253,8 +254,21 @@ async function colDetail(d, c, msg) {
   box.querySelector("[data-accorder]").onclick = async () => {
     const principal = box.querySelector(".col-principal").value.trim();
     if (!principal) { colMsg(ligne, "Indiquez un login ou un nom de groupe.", true); return; }
+    // AUCUN genre par défaut (COL-2, tranché le 2026-09-16). « Utilisateur » l'était, et la
+    // passe de recette a accordé deux groupes sur deux comme des logins. L'erreur ne se
+    // rattrape pas à l'écran : un groupe posé en utilisateur n'ouvre rien à personne, et la
+    // liste dit seulement « n'a pas encore ouvert l'application » — ce qu'elle dit aussi
+    // d'un arrivant pas encore venu, et c'est voulu (AUTH-6). Faute de pouvoir la signaler
+    // après coup, on l'empêche d'arriver par inertie : un choix de plus, pour un geste rare.
+    const genre = box.querySelector(".col-genre").value;
+    if (!genre) {
+      colMsg(ligne, `Dites si « ${principal} » est un utilisateur ou un groupe : un groupe `
+             + `accordé comme utilisateur n'ouvrirait rien à personne, et rien ici ne le `
+             + `signalerait.`, true);
+      return;
+    }
     if (await colTenter(ligne, () => apiSend("PUT", `/api/collections/${c.id}/acces`, {
-        genre: box.querySelector(".col-genre").value,
+        genre,
         principal,
         niveau: box.querySelector(".col-niveau-neuf").value,
         exporter: box.querySelector(".col-export-neuf").checked })))
