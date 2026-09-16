@@ -5,7 +5,14 @@ statut: interrompu
 
 # AUTH-7 — administrer les comptes sans console
 
-**Arrêté sur** — 2026-09-14, `bcd2e11` : **le code qui enrôle un second facteur avait cinq
+**Arrêté sur** — 2026-09-16, `208e781` : **la procédure de repli de l'annuaire visait des
+NUMÉROS de ligne, et `bcd2e11` les avait décalés.** Le bloc `elevated_session` ajouté plus haut
+dans `configuration.yml` a déplacé `file:` et `ldap:` de dix-huit lignes : sur la production,
+après la fusion, la commande documentée aurait édité d'autres lignes le jour de la panne. Elle
+vise désormais des repères, et un test rejoue les commandes de la page. Section datée
+ci-dessous.
+
+**État antérieur** — 2026-09-14, `bcd2e11` : **le code qui enrôle un second facteur avait cinq
 minutes, et personne ne l'avait décidé.** `identity_validation.elevated_session` n'était pas
 déclaré, donc il vivait sur le défaut compilé ; il est aligné sur les quinze minutes que ce
 même fichier donne déjà au lien de réinitialisation, pour la raison qui y est écrite — les
@@ -693,6 +700,34 @@ renvoyé à la console. C'est une décision, posée comme telle dans « Trancher
 désactiver ne sont pas symétriques » reste juste dans son contexte — nettoyer le TOTP d'un
 compte SUPPRIMÉ, c'est-à-dire de quelqu'un d'autre — et ne vaut pas pour se dépanner soi-même.
 Elle n'est pas réécrite, sa section étant datée ; c'est la nuance que la passe annonçait.
+
+## Le repli visait des numéros de ligne — 2026-09-16
+
+**Trouvé en lisant, par la session qui cadrait la gestion des comptes (`AUTH-12`).** La
+procédure « Le repli de l'annuaire vers le fichier » de `docs/exploitation.md`, éprouvée de
+bout en bout le 2026-09-10, basculait `authentication_backend` par `sed -i '85,93s/…/'` et
+`sed -i '95,100s/…/'`. Justes sur `main`, où `# file:` est en ligne 85 et `ldap:` en 95. Sur
+`dev`, `bcd2e11` — le délai du code d'élévation, dans cette même fiche — a inséré dix-huit
+lignes plus haut : `# file:` en 103, `ldap:` en 113. **L'épreuve du 2026-09-10 ne protégeait
+donc que la version du fichier où elle avait été jouée.** Une procédure de secours ne
+s'exécute que le jour où l'on en a besoin, et rien d'autre ne l'aurait signalé.
+
+**Corrigé par `208e781`**, sans changer ce que la procédure fait :
+
+- quatre repères en colonne 0 encadrent les deux blocs (`# >>> repli-fichier`,
+  `# <<< repli-fichier`, `# >>> annuaire-ldap`, `# <<< annuaire-ldap`). Les deux substitutions
+  ne touchent que des lignes indentées, donc jamais un repère ;
+- les `sed` visent ces repères par adresses de motif, et la lecture de contrôle montre les
+  deux blocs, eux seuls ;
+- `tests/test_repli_annuaire.py` extrait les commandes de la PAGE et les rejoue sur une copie :
+  aucune adresse numérique, les repères encadrent exactement les deux blocs, et après la
+  procédure la section porte `file` et plus `ldap`, sans une ligne changée ailleurs. Cinq
+  mutants tués.
+
+**Ce qui a été vérifié, et ce qui ne l'a pas été.** `authelia validate-config` (4.39.22, dans le
+conteneur de la recette) accepte les deux états, avant et après la procédure. Le repli n'a
+PAS été rejoué sur l'instance : la bascule elle-même n'a pas changé, seules les adresses des
+commandes ont changé, et le test les rejoue.
 
 ## Contexte
 
