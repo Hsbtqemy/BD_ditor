@@ -2,8 +2,10 @@
 
 AUTH-2 avait fait le cloisonnement mais pas son administration : `collection_acces` ne se
 remplissait qu'en SQL à la main. Ces tests portent sur le troisième palier — POSSÉDER, qui
-ne découle pas d'écrire — et sur les deux invariants que le chantier ne doit jamais casser :
-jamais zéro propriétaire, jamais un album sans collection.
+ne découle pas d'écrire — et sur les deux gestes que le chantier refuse : retirer ou
+rétrograder le DERNIER propriétaire d'une collection, et laisser un album sans collection.
+Une collection peut en revanche NAÎTRE sans propriétaire (administrateur, mono-poste, outil
+en ligne de commande sans `--proprietaire`), et seule une portée totale l'administre alors.
 """
 import json
 import sqlite3
@@ -987,3 +989,21 @@ def test_l_outil_ecrit_au_journal_ce_que_les_routes_y_ecrivent(client, db_path):
     assert json.loads(evs[1]["apres"]) == {"licence_defaut": "CC-BY-4.0"}
     assert json.loads(evs[1]["avant"]) == {"licence_defaut": None}
     assert json.loads(evs[2]["avant"]) == {"nom": "Sans album"}
+
+
+def test_la_liste_dit_ou_l_on_ecrit(client, db_path, collection_a_alice):
+    """AUTH-12 — `ecrivable`, sur le modèle d'`exportable` : la modale d'album proposait des
+    collections qu'on ne fait que lire. Le serveur répond la question, l'écran ne recalcule
+    pas l'ordre des niveaux. Vrai pour la propriétaire, pour qui écrit par un GROUPE et pour
+    l'administrateur ; faux pour qui lit seulement."""
+    cid = collection_a_alice["id"]
+    _acces(db_path, cid, "bob", "lecture")
+    _acces(db_path, cid, "annotateurs", "ecriture", genre="groupe")
+
+    def ecrivable(headers):
+        return next(c for c in client.get("/api/collections", headers=headers).json()
+                    if c["id"] == cid)["ecrivable"]
+    assert ecrivable({"Remote-User": "alice"}) is True
+    assert ecrivable({"Remote-User": "bob"}) is False
+    assert ecrivable({"Remote-User": "dora", "Remote-Groups": "annotateurs"}) is True
+    assert ecrivable(ADMIN) is True

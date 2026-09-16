@@ -254,9 +254,20 @@ async function remplirCollections(edition) {
   if (edition) return;
   let cols = [];
   try { cols = await apiGet("/api/collections"); } catch (e) { cols = []; }
+  // AUTH-12 — seulement celles où l'on ÉCRIT : une collection qu'on ne fait que lire
+  // menait à « Collection N introuvable » à l'enregistrement. Le serveur le dit
+  // (`ecrivable`), comme `exportable` pour l'export.
+  cols = cols.filter((c) => c.ecrivable);
   if (!cols.length) {
-    note.textContent = "Aucune collection : l'album entrera dans une collection par "
-      + "défaut, créée à cette occasion.";
+    // Sans collection où écrire, deux cas que la note ne doit pas confondre : qui écrit
+    // PARTOUT (administrateur, mono-poste) verra naître la collection de repli ; les
+    // autres seront refusés, et le savoir avant de remplir le formulaire vaut mieux.
+    const moi = await Promise.resolve(window.BDMoi).catch(() => null);
+    note.textContent = moi && moi.acces && moi.acces.total
+      ? "Aucune collection : l'album entrera dans une collection par défaut, créée à "
+        + "cette occasion."
+      : "Vous n'écrivez dans aucune collection : l'album ne pourra pas être créé. "
+        + "Demandez un accès en écriture au propriétaire d'une collection.";
     note.hidden = false;
     return;
   }
@@ -692,7 +703,8 @@ async function loadAppartenance(albumId) {
     };
   });
   cible.innerHTML = "";
-  const restantes = toutes.filter((c) => !dedans.has(c.id));
+  // AUTH-12 — ranger exige d'écrire dans la collection cible : n'offrir que celles-là.
+  const restantes = toutes.filter((c) => !dedans.has(c.id) && c.ecrivable);
   for (const c of restantes) cible.appendChild(new Option(c.nom, String(c.id)));
   cible.disabled = !restantes.length;
   $("#m-appartenance-add").disabled = !restantes.length;
@@ -1265,9 +1277,24 @@ async function creerCollection() {
     $("#col-nom").value = "";
     // Le trajet que la frontière coupe en deux : on crée ICI, on fait entrer LÀ-BAS. Le
     // dire au moment où l'on vient de créer, c'est le seul moment où la question se pose.
+    //
+    // AUTH-12 — « vous en êtes propriétaire » n'était vrai que pour qui n'administre pas
+    // l'instance. Un administrateur crée une collection SANS propriétaire (AUTH-3, décision
+    // tenue le 2026-09-16), et le mono-poste aussi : le message lit la réponse du serveur
+    // au lieu de le supposer.
+    const moi = await identite();
+    const proprietaire = !!moi.login && ((creee && creee.acces) || []).some((a) =>
+      a.niveau === "proprietaire" && a.genre === "utilisateur" && a.principal === moi.login);
+    const lien = `<a href="/administration">Administration → Accès aux collections</a>`;
     ligne.classList.remove("erreur");
-    ligne.innerHTML = `« ${esc(nom)} » créée — vous en êtes propriétaire. Pour y faire entrer
-      quelqu'un : <a href="/administration">Administration → Accès aux collections</a>.`;
+    ligne.innerHTML = proprietaire
+      ? `« ${esc(nom)} » créée — vous en êtes propriétaire. Pour y faire entrer
+        quelqu'un : ${lien}.`
+      : moi.login
+        ? `« ${esc(nom)} » créée. Vous l'administrez comme administrateur de l'instance,
+          sans en être propriétaire : désignez-lui un propriétaire dans ${lien}, pour
+          qu'elle ne dépende pas de vous.`
+        : `« ${esc(nom)} » créée. Qui peut y entrer se règle dans ${lien}.`;
     chargerCollections(creee && creee.id);
   }
 }
@@ -1294,8 +1321,11 @@ async function chargerCollections(ouvrir) {
   body.innerHTML = "";
   COLS_RENDUES = true;
   if (!cols.length) {
+    // « vous en serez propriétaire » ne vaut que pour qui n'écrit pas partout (AUTH-12).
+    const moi = await Promise.resolve(window.BDMoi).catch(() => null);
+    const total = !!(moi && moi.acces && moi.acces.total);
     body.innerHTML = `<p class="col-note">Aucune collection ouverte pour vous. Créez-en une
-      ci-dessus : vous en serez propriétaire.</p>`;
+      ci-dessus${total ? "." : " : vous en serez propriétaire."}</p>`;
     return;
   }
   for (const c of cols) {

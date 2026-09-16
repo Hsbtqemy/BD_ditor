@@ -553,3 +553,68 @@ def test_un_refus_d_acces_survit_a_une_relecture_ratee(page, decor, relecture):
     refus = page.locator("#col-body .col-msg", has_text="dernier propriétaire")
     refus.wait_for(timeout=3000)
     assert _se_voit(refus), "le refus survit à la relecture ratée, mais ne se voit pas"
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_la_modale_d_album_ne_propose_que_ou_l_on_ecrit(page, live_server):
+    """AUTH-12 — la modale proposait toutes les collections LUES, et ranger un album dans
+    une collection qu'on ne fait que lire répondait « Collection N introuvable ». Zoé lit
+    « Lue » et écrit dans « Écrite » et « Autre écrite » : à la création, « Lue » n'est
+    pas proposée ; à l'édition d'un album d'« Écrite », non plus. Et Yann, qui ne fait que
+    lire, apprend AVANT de remplir le formulaire qu'il ne pourra pas créer d'album."""
+    admin = {"Remote-User": "decor", "Remote-Groups": "bd-admins",
+             **{k: v for k, v in ECRITURE.items() if k not in ("Remote-User", "Remote-Groups")}}
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
+        ids = {n: c.post("/api/collections", json={"nom": n}).json()["id"]
+               for n in ("Lue", "Écrite", "Autre écrite")}
+        for n, niveau in (("Lue", "lecture"), ("Écrite", "ecriture"), ("Autre écrite", "ecriture")):
+            r = c.put(f"/api/collections/{ids[n]}/acces",
+                      json={"genre": "utilisateur", "principal": "zoe", "niveau": niveau})
+            assert r.status_code == 200, r.text
+        c.put(f"/api/collections/{ids['Lue']}/acces",
+              json={"genre": "utilisateur", "principal": "yann", "niveau": "lecture"})
+        album = c.post("/api/albums", json={"titre": "Rangé dans Écrite",
+                                            "collection_id": ids["Écrite"]}).json()["id"]
+
+    page.set_extra_http_headers({"Remote-User": "zoe"})
+    page.goto(live_server + "/corpus", wait_until="networkidle")
+    page.click("#btn-new")
+    page.locator("#m-collection-wrap").wait_for(state="visible", timeout=5000)
+    proposees = page.locator("#m-collection option").all_inner_texts()
+    assert "Lue" not in proposees and {"Écrite", "Autre écrite"} <= set(proposees), proposees
+    page.click("#m-cancel")
+
+    page.locator('.album-row [data-act="edit"]').first.click()
+    page.locator("#m-appartenance:not([hidden])").wait_for(timeout=5000)
+    cibles = page.locator("#m-appartenance-cible option").all_inner_texts()
+    assert cibles == ["Autre écrite"], cibles
+    page.click("#m-cancel")
+
+    page.set_extra_http_headers({"Remote-User": "yann"})
+    page.goto(live_server + "/corpus", wait_until="networkidle")
+    page.click("#btn-new")
+    note = page.locator("#m-collection-note")
+    note.wait_for(state="visible", timeout=5000)
+    assert "n'écrivez dans aucune collection" in note.inner_text(), note.inner_text()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_la_creation_ne_dit_proprietaire_qu_a_qui_l_est(page, live_server):
+    """AUTH-12, option B tranchée le 2026-09-16 — un administrateur crée une collection SANS
+    propriétaire (AUTH-3), et la Bibliothèque lui disait « vous en êtes propriétaire ».
+    Le message lit désormais la réponse du serveur : à l'administrateur, qu'il administre
+    sans posséder et où désigner un propriétaire ; à une personne, qu'elle possède."""
+    page.set_extra_http_headers({"Remote-User": "chef", "Remote-Groups": "bd-admins"})
+    page.goto(live_server + "/corpus", wait_until="networkidle")
+    page.fill("#col-nom", "Espace de l'administrateur")
+    page.click("#col-add")
+    message = _message_sous_le_champ(page, "créée")
+    assert "sans en être propriétaire" in message, message
+    assert "vous en êtes propriétaire" not in message, message
+
+    page.set_extra_http_headers({"Remote-User": "ines"})
+    page.goto(live_server + "/corpus", wait_until="networkidle")
+    page.fill("#col-nom", "Espace d'Inès")
+    page.click("#col-add")
+    message = _message_sous_le_champ(page, "créée")
+    assert "vous en êtes propriétaire" in message, message

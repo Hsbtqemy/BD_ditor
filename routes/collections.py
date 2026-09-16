@@ -5,9 +5,12 @@ CLOISONNEMENT, et ce module est ce par quoi on l'administre autrement qu'en SQL 
 créer, partager, retirer un accès, ranger un album.
 
 Trois paliers qui s'empilent — lire · écrire · POSSÉDER — et le troisième ne découle pas du
-second : écrire c'est annoter, posséder c'est décider qui d'autre entrera. Deux états sont
-refusés par un 409 qui les NOMME : zéro propriétaire sur une collection, zéro collection
-pour un album.
+second : écrire c'est annoter, posséder c'est décider qui d'autre entrera. Deux gestes sont
+refusés par un 409 qui les NOMME : retirer ou rétrograder le DERNIER propriétaire d'une
+collection, et laisser un album sans collection. Une collection peut en revanche NAÎTRE sans
+propriétaire — créée par un administrateur, en mono-poste, ou par l'outil en ligne de
+commande sans `--proprietaire` — et seule une portée totale l'administre alors (AUTH-12,
+option B tranchée le 2026-09-16).
 
 Ce module APPLIQUE ces règles ; il ne les décide pas. `autorisation.py` reste le seul
 endroit qui tranche « qui voit quoi », et le découpage n'y touche pas — sans quoi la règle
@@ -157,6 +160,11 @@ def list_collections(conn: sqlite3.Connection = Depends(db),
         # qu'`administrable` : cacher un bouton d'export qu'on refuserait. La garde
         # reste celle du serveur, sur chaque porte ; ceci n'évite qu'un geste perdu.
         c["exportable"] = portee.peut_exporter(c["id"])
+        # AUTH-12 — la même raison pour ÉCRIRE : la modale d'album proposait des collections
+        # qu'on ne fait que lire, et l'enregistrement répondait « Collection N introuvable ».
+        # L'écran lit la réponse au lieu de recalculer l'ordre des niveaux ; la garde reste
+        # celle de `create_album` et `ranger_album`.
+        c["ecrivable"] = portee.peut_ecrire(c["id"])
         # DROIT-1 — l'état de la date d'embargo, DÉRIVÉ ici comme il l'est à la sortie :
         # `tools/iiif_manifest.py` lit la MÊME fonction, sans quoi l'écran et l'export
         # finiraient par ne plus dire la même chose du même champ. Un embargo échu que
@@ -170,7 +178,8 @@ def list_collections(conn: sqlite3.Connection = Depends(db),
 @router.post("/api/collections", status_code=201)
 def create_collection(payload: CollectionIn, conn: sqlite3.Connection = Depends(db),
                       portee: autorisation.Portee = Depends(portee_courante)):
-    """Crée une collection ; son créateur en devient PROPRIÉTAIRE.
+    """Crée une collection ; son créateur en devient PROPRIÉTAIRE — sauf un administrateur
+    et le mono-poste, pour les raisons ci-dessous, tenues par AUTH-12 le 2026-09-16.
 
     AUTH-3 — cette route remplace `tools/gerer_collections.py creer`, qui exigeait un accès
     shell : ouvrir un espace de travail ne peut pas demander d'être administrateur système.
