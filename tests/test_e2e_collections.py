@@ -618,3 +618,26 @@ def test_la_creation_ne_dit_proprietaire_qu_a_qui_l_est(page, live_server):
     page.click("#col-add")
     message = _message_sous_le_champ(page, "créée")
     assert "vous en êtes propriétaire" in message, message
+
+
+@pytest.mark.parametrize("live_server", [False, True], indirect=True, ids=["mono", "proxy"])
+def test_une_liste_vide_ne_promet_la_propriete_qu_a_qui_la_recevra(page, live_server, request):
+    """AUTH-12, option B — les deux listes vides disaient « vous en serez propriétaire »
+    (Bibliothèque) et « l'on en devient propriétaire » (Administration) à tout le monde.
+    C'est faux pour qui écrit PARTOUT : en mono-poste et pour un administrateur, créer une
+    collection ne pose aucun propriétaire. Le serveur de test est neuf, donc SANS aucune
+    collection : en mono-poste, aucune promesse ; derrière le proxy, une personne sans accès
+    la reçoit, et c'est alors vrai."""
+    derriere_proxy = request.node.callspec.params["live_server"]
+    if derriere_proxy:
+        page.set_extra_http_headers({"Remote-User": "nadia"})
+    for chemin, promesse in (("/corpus", "vous en serez propriétaire"),
+                             ("/administration", "l'on en devient propriétaire")):
+        page.goto(live_server + chemin, wait_until="networkidle")
+        note = page.locator("#col-body .col-note", has_text="Aucune collection ouverte")
+        note.wait_for(timeout=5000)
+        texte = note.inner_text()
+        if derriere_proxy:
+            assert promesse in texte, (chemin, texte)
+        else:
+            assert "propriétaire" not in texte, (chemin, texte)

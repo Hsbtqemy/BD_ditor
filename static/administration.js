@@ -389,8 +389,13 @@ async function loadCollections() {
 
   body.innerHTML = "";
   if (!cols.length) {
+    // « l'on en devient propriétaire » ne vaut que pour qui n'écrit pas partout : un
+    // administrateur ou le mono-poste crée une collection SANS propriétaire (AUTH-12,
+    // option B). `MOI` ne porte pas la portée ; `/api/moi` la dit.
+    const moi = await Promise.resolve(window.BDMoi).catch(() => null);
+    const total = !!(moi && moi.acces && moi.acces.total);
     body.innerHTML = `<p class="col-note">Aucune collection ouverte pour vous. On en crée
-      une dans la <a href="/corpus">Bibliothèque</a>, et l'on en devient propriétaire.</p>`;
+      une dans la <a href="/corpus">Bibliothèque</a>${total ? "." : ", et l'on en devient propriétaire."}</p>`;
     return;
   }
   cols.forEach((c) => {
