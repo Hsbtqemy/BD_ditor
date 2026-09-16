@@ -151,13 +151,20 @@ SONDE = """() => {
 #              un objet. Le menu « Aa » ne porte pas d'`aria-controls`, d'où la déclaration.
 #   surfaces — les chemins où il existe. Un contrôle déclaré et ABSENT échoue lui aussi :
 #              une déclaration périmée est une mesure qui ne se fait plus.
+#   proxy    — (facultatif) il n'existe que derrière le proxy d'identité. Le test des
+#              surfaces sans proxy ne l'attend donc pas, et c'est le test de la bande 1 de
+#              production qui l'ouvre.
+# Les chemins DÉRIVÉS de `SURFACES` : les recopier ferait une seconde liste des surfaces,
+# de celles qui gardent la cinquième quand la sixième arrive.
+_TOUTES = [chemin for _, chemin in SURFACES]
+
 DEPLIES = {
     # `theme.js` l'injecte partout : le corriger une fois le corrige partout, et le mesurer
     # sur une seule surface laisserait les quatre autres à la merci de leur propre bande 1.
     ".display-menu > button": {
         "nom": "menu Affichage",
         "panneau": ".display-panel",
-        "surfaces": ["/", "/recherche", "/corpus", "/exploration", "/administration"],
+        "surfaces": _TOUTES,
     },
     # Les deux menus de la bande 2 de l'Atelier, et ses deux tiroirs (UX-7). Les tiroirs
     # étaient déjà ESCAMOTÉS pour la sonde — hors champ et commandés, donc conformes —, ce
@@ -170,6 +177,11 @@ DEPLIES = {
         "nom": "tiroir des planches", "panneau": "#sidebar", "surfaces": ["/"]},
     "#btn-tiroir-panneau": {
         "nom": "tiroir d'annotation", "panneau": "#panel", "surfaces": ["/"]},
+    # Le menu du compte (UX-14) : « Déconnexion » y a quitté la bande. `theme.js` ne le
+    # construit que s'il a au moins une entrée, donc derrière le proxy.
+    ".user-chip button.user-who": {
+        "nom": "menu du compte", "panneau": ".compte-panel", "proxy": True,
+        "surfaces": _TOUTES},
 }
 
 # Les contrôles repliables présents dans la page, pour l'inventaire. `aria-expanded` est
@@ -269,6 +281,10 @@ def main(base):
                     if chemin not in d["surfaces"]:
                         continue
                     page.goto(BASE + chemin, wait_until="networkidle", timeout=30000)
+                    if d.get("proxy") and not page.query_selector(controle):
+                        print(f"  {nom + ', ' + d['nom']:38} — absent : derrière le proxy "
+                              "seulement, cette instance n'en a pas")
+                        continue
                     try:
                         deplier(page, controle)
                     except AssertionError as e:

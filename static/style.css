@@ -397,6 +397,41 @@ kbd {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* UX-14 — le menu du compte : le nom devient le bouton, « Déconnexion » passe dans un
+   panneau (cf. `buildUserChip` dans theme.js). La coupe à 14ch passe du bouton au NOM
+   qu'il contient : posée sur le bouton, elle rognerait le chevron, c'est-à-dire le seul
+   signe visible qu'il s'ouvre.
+
+   Le panneau part du bord GAUCHE de la pastille, et au moins aussi large qu'elle. C'est
+   l'inverse de « Aa », et pour la raison qui a fait déborder « Aa » : ancré à droite, il
+   suivrait une pastille que l'enroulement pose en tête de rangée, et pendrait hors du bord
+   gauche. Ancré à gauche et à la largeur de la pastille, il tient tant que ses entrées
+   tiennent dans cette largeur — ce que le test de la bande 1 de production mesure menu
+   OUVERT, et qui dira quand une entrée ajoutée ne tiendra plus. */
+.user-chip button.user-who {
+  display: inline-flex; align-items: center; gap: .3077rem; max-width: none;
+}
+.user-chip .user-nom {
+  max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.user-chip .user-chevron { font-size: .8462rem; }
+.compte-menu { position: relative; }
+.compte-panel {
+  position: absolute; left: 0; top: calc(100% + .4615rem); z-index: 60;
+  min-width: 100%; box-sizing: border-box; padding: .3077rem 0;
+  display: flex; flex-direction: column;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 20px var(--shadow);
+}
+/* Même garde que `.display-panel[hidden]` : sans elle, `display: flex` l'emporterait sur
+   l'attribut, et le menu resterait ouvert en permanence. */
+.compte-panel[hidden] { display: none; }
+.compte-panel a {
+  display: block; padding: .6154rem .9231rem; white-space: nowrap;
+  color: var(--text); text-decoration: none;
+}
+.compte-panel a:hover { background: var(--bg-input); }
+
 /* Les deux bandes d'en-tête restent AU-DESSUS de l'overlay plein écran (#transcription,
    z-index 50) : leurs menus déroulants s'ouvrent vers le bas DANS la zone du corps et
    doivent rester cliquables. position:relative active le z-index sur ces items de grille.

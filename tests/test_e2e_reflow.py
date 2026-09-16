@@ -254,7 +254,10 @@ def test_aucun_panneau_deplie_ne_perd_de_contenu(page, decor, surface):
         "panneau n'a pas de rectangle et la sonde ne le verra jamais. Le déclarer, avec "
         "le panneau qu'il ouvre.")
     presents = {c["declare"] for c in inventaire}
-    attendus = {k for k, d in DEPLIES.items() if surface in d["surfaces"]}
+    # Sans proxy : ce qui n'existe que derrière lui n'est pas attendu ici, et le test de la
+    # bande 1 de production l'ouvre à sa place.
+    attendus = {k for k, d in DEPLIES.items()
+                if surface in d["surfaces"] and not d.get("proxy")}
     assert presents == attendus, (
         f"{surface} — `DEPLIES` ne décrit plus la page. Déclarés mais absents : "
         f"{sorted(attendus - presents)} ; présents mais déclarés pour d'autres surfaces : "
@@ -363,9 +366,10 @@ def test_le_bandeau_de_portee_vide_ne_perd_pas_de_contenu(page, live_server):
 # parce que la GRILLE qui l'accueille ne l'est pas — d'où le second contrôle, vertical.
 NOM_LONG = "Camille Ferreira-Lopes"
 LARGEURS_BANDE = [320, 375, 480, 560, 640, 720, 900, 1024, 1280]
-# Le panneau « Aa » se mesure ouvert sur deux surfaces seulement : il est le même partout,
-# et c'est la position de son BOUTON dans la bande qui décide de la sienne.
-SURFACES_AA_OUVERT = ["/", "/corpus"]
+# Les menus de la BANDE 1, c'est-à-dire ceux que la pastille déplace. Déclarés, et pas
+# déduits de `DEPLIES` : les menus et tiroirs de l'Atelier y figurent aussi, et vivent
+# ailleurs que dans la bande.
+MENUS_BANDE_1 = [".display-menu > button", ".user-chip button.user-who"]
 
 _CHEVAUCHEMENT = """() => {
   const n = document.getElementById('site-nav'), h = document.getElementById('header');
@@ -404,6 +408,15 @@ def test_la_bande_1_de_production_ne_perd_pas_de_contenu(page, live_server):
                 if surface != "/administration":        # la seule sans lien de retour
                     assert decor["retour"], f"{surface} : « ← Retour » non rendu"
 
+                # L'inventaire des repliables, DERRIÈRE le proxy : le test des surfaces le
+                # fait sans lui, et un menu qui n'existe qu'ici lui échapperait.
+                if largeur == LARGEURS_BANDE[0] and police == POLICES[0]:
+                    oublies = sorted({c["ident"] for c in page.evaluate(
+                        INVENTAIRE, list(DEPLIES)) if not c["declare"]})
+                    assert not oublies, (
+                        f"{surface}, derrière le proxy — contrôle(s) repliable(s) absent(s) "
+                        f"de `DEPLIES` : {oublies}")
+
                 cas = f"{surface}, {largeur} px, police {police} px"
                 perdus = [c for c in page.evaluate(SONDE)["coupables"]
                           if not c["cadre"] and c["id"] not in EXEMPTIONS]
@@ -413,12 +426,18 @@ def test_la_bande_1_de_production_ne_perd_pas_de_contenu(page, live_server):
                 if v and v["bas"] > v["haut"] + 1:
                     echecs.append(f"{cas} : la bande 1 recouvre la bande 2 de "
                                   f"{v['bas'] - v['haut']} px")
-                if surface in SURFACES_AA_OUVERT:
-                    deplier(page, ".display-menu > button")
+                # Les menus de la bande, ouverts sur TOUTES les surfaces. Ils s'y ouvraient
+                # d'abord sur deux, nommées à la main — une seconde liste de surfaces, que
+                # `test_surfaces` refuse à raison : c'est ainsi qu'une surface finit par
+                # sortir d'un audit sans que rien ne le dise. Ouvrir sans recharger ne
+                # coûte qu'une évaluation.
+                for controle in MENUS_BANDE_1:
+                    deplier(page, controle)
                     perdus = [c for c in page.evaluate(SONDE)["coupables"]
                               if not c["cadre"] and c["id"] not in EXEMPTIONS]
                     if perdus:
-                        echecs.append(f"{cas}, « Aa » ouvert :\n{_decrire(perdus)}")
+                        echecs.append(f"{cas}, {DEPLIES[controle]['nom']} ouvert :\n"
+                                      f"{_decrire(perdus)}")
     assert not echecs, (
         "La bande 1 de production perd du contenu :\n" + "\n".join(echecs))
 

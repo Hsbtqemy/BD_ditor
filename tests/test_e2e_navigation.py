@@ -379,6 +379,108 @@ def test_menu_affichage_ferme_par_defaut(page, live_server):
 
 
 # --------------------------------------------------------------------------- #
+# UX-14 — le menu du compte, et le patron qu'il partage avec « Aa »
+# --------------------------------------------------------------------------- #
+# Derrière le proxy seulement : la pastille n'existe pas sans identité. Le nom est le plus
+# long que la pastille affiche, celui du test de la bande 1 de production.
+IDENTITE_LONGUE = {"Remote-User": "camille", "Remote-Name": "Camille Ferreira-Lopes",
+                   "Remote-Groups": "bd-admins"}
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_menu_du_compte_au_clavier(page, live_server):
+    """« Déconnexion » vit derrière le nom du compte, et tout s'y fait au clavier.
+
+    Entrée ouvre, Tab entre dans le menu, Échap le ferme ET rend le focus au nom — sans
+    quoi le focus tomberait sur `<body>` avec le panneau passé en `display: none`. Espace
+    ouvre aussi. Et Tab qui SORT du menu le referme : un panneau ouvert derrière le focus
+    recouvre ce qu'on vient d'atteindre.
+    """
+    page.set_extra_http_headers(IDENTITE_LONGUE)
+    page.goto(f"{live_server}/corpus", wait_until="networkidle")
+    nom, panneau = page.locator(".user-chip button.user-who"), page.locator(".compte-panel")
+    sortie = page.locator(".user-logout")
+    expect(nom).to_be_visible(timeout=15000)
+    expect(nom).to_have_accessible_name("Camille Ferreira-Lopes")
+    expect(nom).to_have_attribute("aria-haspopup", "true")
+    expect(panneau).to_be_hidden()
+    expect(sortie).to_be_hidden()                  # plus dans la bande : dans le menu
+
+    nom.focus()
+    page.keyboard.press("Enter")
+    expect(panneau).to_be_visible()
+    expect(nom).to_have_attribute("aria-expanded", "true")
+    page.keyboard.press("Tab")
+    expect(sortie).to_be_focused()
+    expect(panneau).to_be_visible()                # entrer dans le menu ne le ferme pas
+    page.keyboard.press("Escape")
+    expect(panneau).to_be_hidden()
+    expect(nom).to_be_focused()
+    expect(nom).to_have_attribute("aria-expanded", "false")
+
+    page.keyboard.press("Space")
+    expect(panneau).to_be_visible()
+    page.keyboard.press("Tab")                     # sur la sortie
+    page.keyboard.press("Tab")                     # hors du menu
+    expect(panneau).to_be_hidden()
+    expect(nom).to_have_attribute("aria-expanded", "false")
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_un_seul_menu_de_bande_ouvert_et_tab_referme_aa(page, live_server):
+    """Le compte et « Aa » ne sont jamais ouverts ensemble, un clic ailleurs ferme, et
+    « Aa » se referme désormais quand Tab en sort — il restait ouvert derrière le focus
+    avant qu'on extraie le patron qu'il partage avec le compte."""
+    page.set_extra_http_headers(IDENTITE_LONGUE)
+    page.goto(f"{live_server}/corpus", wait_until="networkidle")
+    nom, compte = page.locator(".user-chip button.user-who"), page.locator(".compte-panel")
+    aa, affichage = page.locator(".display-menu > button"), page.locator(".display-panel")
+    expect(nom).to_be_visible(timeout=15000)
+
+    nom.click()
+    expect(compte).to_be_visible()
+    aa.click()
+    expect(affichage).to_be_visible()
+    expect(compte).to_be_hidden()
+    nom.click()
+    expect(compte).to_be_visible()
+    expect(affichage).to_be_hidden()
+    page.locator("#site-nav .brand").click()       # un clic ailleurs, sur un non-contrôle
+    expect(compte).to_be_hidden()
+
+    aa.focus()
+    page.keyboard.press("Enter")
+    expect(affichage).to_be_visible()
+    for _ in range(affichage.locator("button, input").count() + 1):
+        page.keyboard.press("Tab")
+    expect(affichage).to_be_hidden()
+    expect(aa).to_have_attribute("aria-expanded", "false")
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_sans_entree_le_nom_du_compte_reste_un_texte(page, live_server):
+    """Sans lien de déconnexion, le menu n'aurait aucune entrée : pas de bouton, alors, qui
+    promettrait un geste qui n'existe pas.
+
+    Doublure ASSUMÉE : `live_server` pose toujours `BD_AUTH_LOGOUT_URL`, comme la
+    production, et c'est justement pour que le reste de la suite rende la vraie pastille.
+    On retire donc le lien de la réponse de `/api/moi`, pour ce test seul.
+    """
+    def sans_sortie(route):
+        reponse = route.fetch()
+        d = reponse.json()
+        d["deconnexion_url"] = None
+        route.fulfill(response=reponse, json=d)
+
+    page.set_extra_http_headers(IDENTITE_LONGUE)
+    page.route("**/api/moi", sans_sortie)
+    page.goto(f"{live_server}/corpus", wait_until="networkidle")
+    expect(page.locator(".user-chip .user-who")).to_be_visible(timeout=15000)
+    expect(page.locator(".user-chip button")).to_have_count(0)
+    expect(page.locator(".compte-panel")).to_have_count(0)
+
+
+# --------------------------------------------------------------------------- #
 # Modales accessibles (static/lib/dialog.js) : role=dialog, focus piégé, Échap,
 # retour du focus au déclencheur
 # --------------------------------------------------------------------------- #

@@ -155,6 +155,14 @@ def test_a11y_pastille_utilisateur(page, seeded, theme):
     viol = _audit(page)
     assert not viol, f"Pastille utilisateur [{theme}] :\n{_fmt(viol)}"
 
+    # UX-14 — « Déconnexion » est passé dans le menu du compte. Fermé, le menu n'a pas de
+    # rectangle et axe ne l'audite pas : l'audit ci-dessus approuverait un lien qu'il n'a
+    # jamais rendu. On l'ouvre, on vérifie que la sortie est À L'ÉCRAN, puis on audite.
+    page.click(".user-chip button.user-who")
+    page.wait_for_selector(".compte-panel .user-logout", state="visible", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Menu du compte ouvert [{theme}] :\n{_fmt(viol)}"
+
 
 def test_a11y_corpus_modale(page, seeded):
     """Modale d'édition d'album (piège à focus + labels de formulaire)."""

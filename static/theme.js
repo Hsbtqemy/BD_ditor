@@ -95,19 +95,52 @@
     return e;
   }
 
+  /* ---- Un menu déroulant de la bande 1 : UN patron, pour « Aa » et pour le compte ----
+     Écrit d'abord pour « Aa », puis EXTRAIT quand le compte a eu besoin du sien (UX-14) :
+     deux menus voisins qui ne s'ouvriraient pas de la même façon divergeraient au premier
+     correctif, et seul l'un des deux serait réparé. `detail` nomme le menu dans
+     `bd:menu-open`, qui garantit qu'un seul est ouvert, toutes barres confondues — les
+     menus de l'Atelier écoutent le même événement.
+
+     Tab qui SORT du menu le referme, et c'est un ajout : « Aa » restait ouvert derrière le
+     focus, alors que les menus de l'Atelier se referment (cf. `setupMenus`). Un panneau
+     ouvert que le clavier a quitté recouvre ce qu'on vient d'atteindre. On ne regarde que
+     les sorties VERS un autre élément de la page : `relatedTarget` vaut `null` quand la
+     fenêtre perd le focus, et un menu ne doit pas se fermer parce qu'on a changé d'onglet. */
+  function menuDeroulant(wrap, btn, panel, detail) {
+    btn.setAttribute("aria-haspopup", "true");
+    btn.setAttribute("aria-expanded", "false");
+    panel.hidden = true;
+    function open(o) { panel.hidden = !o; btn.setAttribute("aria-expanded", String(o)); }
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var willOpen = panel.hidden;
+      if (willOpen) document.dispatchEvent(new CustomEvent("bd:menu-open", { detail: detail }));
+      open(willOpen);
+    });
+    panel.addEventListener("click", function (e) { e.stopPropagation(); });
+    document.addEventListener("click", function () { open(false); });
+    document.addEventListener("bd:menu-open", function (e) { if (e.detail !== detail) open(false); });
+    // Échap ferme ET rend le focus au déclencheur (sinon il se perd, le panneau passant
+    // en display:none) — important pour la navigation clavier.
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !panel.hidden) { open(false); btn.focus(); }
+    });
+    wrap.addEventListener("focusout", function (e) {
+      if (!panel.hidden && e.relatedTarget && !wrap.contains(e.relatedTarget)) open(false);
+    });
+  }
+
   // Transforme un bouton .btn-theme existant en déclencheur du menu « Affichage ».
   function buildMenu(btn) {
     var wrap = el("span", "display-menu");
     btn.parentNode.insertBefore(wrap, btn);
     btn.textContent = "Aa";
     btn.title = "Affichage (thème, contraste, zoom)";
-    btn.setAttribute("aria-haspopup", "true");
-    btn.setAttribute("aria-expanded", "false");
     btn.setAttribute("aria-label", "Réglages d'affichage");
     wrap.appendChild(btn);
 
     var panel = el("div", "display-panel");
-    panel.hidden = true;
     panel.setAttribute("aria-label", "Réglages d'affichage");
 
     var rT = el("div", "dm-row"); rT.appendChild(el("span", "dm-label", "Thème"));
@@ -138,24 +171,7 @@
     rZ.appendChild(zM); rZ.appendChild(zV); rZ.appendChild(zP); rZ.appendChild(zR); panel.appendChild(rZ);
 
     wrap.appendChild(panel);
-
-    function open(o) { panel.hidden = !o; btn.setAttribute("aria-expanded", String(o)); }
-    btn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      var willOpen = panel.hidden;
-      // Signale l'ouverture aux autres systèmes de menus (dropdowns du visualiseur)
-      // → un seul menu ouvert à la fois, toutes barres confondues.
-      if (willOpen) document.dispatchEvent(new CustomEvent("bd:menu-open", { detail: "display" }));
-      open(willOpen);
-    });
-    panel.addEventListener("click", function (e) { e.stopPropagation(); });
-    document.addEventListener("click", function () { open(false); });
-    document.addEventListener("bd:menu-open", function (e) { if (e.detail !== "display") open(false); });
-    // Échap ferme ET rend le focus au déclencheur (sinon il se perd, le panneau passant
-    // en display:none) — important pour la navigation clavier.
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && !panel.hidden) { open(false); btn.focus(); }
-    });
+    menuDeroulant(wrap, btn, panel, "display");
 
     menus.push({ cb: cb, lecCb: lecCb, zoomVal: zV, bL: bL, bD: bD });
   }
@@ -455,22 +471,52 @@
                                                    // qu'il faut expliquer.
         if (!d.utilisateur) return;                // pas d'auth (local) → pas de pastille
         var wrap = el("span", "user-chip");
-        var who = el("span", "user-who");
         var nom = d.nom || d.utilisateur;
-        who.textContent = nom;
         // Les groupes dans l'infobulle (AUTH-1) : ils gouvernent ce qu'on voit, et
         // personne ne pouvait les consulter — pas même pour vérifier une faute de frappe
         // dans un nom de groupe, qui n'ouvre rien SANS LE DIRE (invariant d'AUTH-2).
         var g = d.groupes || [];
-        who.title = "Connecté : " + nom + " (" + d.utilisateur + ")"
+        var titre = "Connecté : " + nom + " (" + d.utilisateur + ")"
           + (g.length ? " — groupes : " + g.join(", ")
                       : " — aucun groupe reçu du proxy");
         var ico = el("span", "user-ico", "👤"); ico.setAttribute("aria-hidden", "true");
-        wrap.appendChild(ico); wrap.appendChild(who);
+        wrap.appendChild(ico);
+
+        /* Le MENU DU COMPTE (UX-14). « Déconnexion » sortait en toutes lettres dans la
+           bande, et la bande de production débordait. Il vit désormais derrière le nom, à
+           toutes les largeurs, ouvert par le même patron que « Aa ».
+
+           Ses entrées sont une LISTE, et c'est l'emplacement réservé : « Mon compte »
+           (AUTH-9) et les liens vers le portail (AUTH-12) se rangeront AVANT la sortie,
+           qui reste la dernière entrée — là où on la cherche. Rien d'autre ne changera
+           pour les accueillir.
+
+           Sans aucune entrée, pas de menu : un bouton qui ouvrirait un panneau vide
+           promettrait un geste qui n'existe pas. Le nom reste alors un texte. */
+        var entrees = [];
         if (d.deconnexion_url) {
-          var out = el("a", "ghost small user-logout", "Déconnexion");
-          out.href = d.deconnexion_url; out.title = "Se déconnecter";
-          wrap.appendChild(out);
+          var out = el("a", "user-logout", "Déconnexion");
+          out.href = d.deconnexion_url;
+          entrees.push(out);
+        }
+        if (!entrees.length) {
+          var who = el("span", "user-who", nom);
+          who.title = titre;
+          wrap.appendChild(who);
+        } else {
+          wrap.classList.add("compte-menu");
+          var btn = el("button", "ghost small user-who");
+          btn.type = "button";
+          btn.title = titre;
+          btn.appendChild(el("span", "user-nom", nom));
+          var chevron = el("span", "user-chevron", "▾");
+          chevron.setAttribute("aria-hidden", "true");
+          btn.appendChild(chevron);
+          var panel = el("div", "compte-panel");
+          entrees.forEach(function (x) { panel.appendChild(x); });
+          wrap.appendChild(btn);
+          wrap.appendChild(panel);
+          menuDeroulant(wrap, btn, panel, "compte");
         }
         // Ancre AVANT le menu « Aa ». buildMenu a déplacé .btn-theme DANS un
         // wrapper .display-menu (enfant direct de #site-nav) ; viser .btn-theme
