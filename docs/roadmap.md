@@ -143,6 +143,12 @@ AUTH-6 (le modèle, et la lecture de l'annuaire décidée le 2026-09-09), AUTH-7
 sans console), AUTH-9 (la page à soi), AUTH-10 (un droit d'écriture qui permet de supprimer
 un album). Des gens testent la production : c'est eux que ce cap sert d'abord.
 
+**Après lui : le travail à plusieurs sur une même planche (CONC-3).** Ajouté le même jour.
+Aujourd'hui, l'Atelier ne dit rien de ce que les autres changent sur une planche ouverte ;
+à la lecture, une note enregistrée peut effacer un tag posé ailleurs entre-temps. Le
+chantier commence par MESURER ces pertes sur la recette. Cette mesure peut précéder le cap
+des comptes, et dire si l'attente est tenable.
+
 **Le rythme : `dev` avance, `main` bouge par GRANDES étapes.** Le VPS suit `main`
 (INFRA-10), donc chaque fusion est un déploiement que les testeurs voient. On n'y fusionne
 pas un lot dès qu'il est prêt : on avance les chantiers sur `dev`, on recette l'ensemble,
