@@ -258,12 +258,17 @@ et **un nom mal orthographié n'ouvre rien, silencieusement**. C'est le mode d'�
 connaître avant d'exploiter une instance : si quelqu'un ne voit toujours rien après un
 partage, vérifier l'orthographe du login avant de chercher ailleurs.
 
-**Deux états sont interdits, et refusés par un 409 qui les nomme** — pas par un 403 : ce
-n'est pas un droit qui manque, c'est un état que le modèle n'admet pas.
+**Deux retraits sont refusés, par un 409 qui les nomme** — pas par un 403 : ce n'est pas
+un droit qui manque, c'est un état que le retrait fabriquerait.
 
-- *Zéro propriétaire sur une collection.* Retirer ou rétrograder le dernier est refusé.
+- *Le dernier propriétaire d'une collection.* Le retirer ou le rétrograder est refusé.
   Sans cela, seule une intervention d'administrateur pourrait rouvrir la collection — le
-  SQL à la main que ce chantier existe pour supprimer.
+  SQL à la main que ce chantier existe pour supprimer. **Ce n'est PAS « jamais zéro
+  propriétaire »**, comme ce paragraphe l'a dit jusqu'au 2026-09-16 : une collection créée
+  par un administrateur, en mono-poste ou par `tools/gerer_collections.py` sans
+  `--proprietaire` naît sans propriétaire, et reste administrable par les seuls
+  administrateurs — par tous en mono-poste, où la portée est totale —, qui peuvent lui en
+  désigner un (option B d'AUTH-12).
 - *Zéro collection pour un album.* Sortir un album de sa dernière collection est refusé, et
   supprimer une collection l'est aussi tant qu'un album n'a qu'elle. Un orphelin ne
   correspondrait à aucune règle d'accès (invariant AUTH-2). Déplacer, c'est donc ranger

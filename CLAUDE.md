@@ -287,9 +287,14 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   **`peut_administrer()` est distinct de `peut_ecrire()`** : écrire c'est annoter,
   posséder c'est décider qui d'autre entrera — un membre en écriture n'hérite pas du droit
   d'élargir le cercle. `bd-admins` passe outre, et c'est écrit : sans ce recours, le départ
-  d'un propriétaire fabriquerait une collection définitivement bloquée. Deux états sont
-  interdits en base et refusés par un **409 qui les nomme** : zéro propriétaire sur une
-  collection, zéro collection pour un album. **Créer une collection exige une IDENTITÉ, pas
+  d'un propriétaire fabriquerait une collection définitivement bloquée. Deux retraits sont
+  refusés par un **409 qui les nomme** : retirer ou rétrograder le DERNIER propriétaire
+  d'une collection, et sortir un album de sa dernière collection. **Une collection peut en
+  revanche NAÎTRE sans propriétaire** — créée par un administrateur, en mono-poste, ou par
+  `gerer_collections.py` sans `--proprietaire` — et seule une portée TOTALE l'administre
+  alors, `bd-admins` ou le mono-poste (option B d'AUTH-12, 2026-09-16 ; « zéro
+  propriétaire interdit en base », écrit ici jusque-là, était faux). Un album, lui,
+  n'existe jamais hors collection. **Créer une collection exige une IDENTITÉ, pas
   un droit** (403 nommant la panne derrière le proxy) ; le nom `Collection par défaut` est
   **réservé** (se l'attribuer capturerait les albums créés sans collection explicite) ; et
   les changements d'accès sont **tracés au journal A3** (`lien`/`delien`, non annulables).

@@ -62,7 +62,11 @@ from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
 # `proprietaire` (AUTH-3) est un niveau et non une colonne à part : une seule table reste
 # la source de vérité, la résolution écrite pour AUTH-2 fonctionne telle quelle, et un
 # GROUPE peut posséder une collection — un espace de travail survit rarement au départ
-# d'une personne. Contrepartie assumée, gardée en base : jamais zéro propriétaire.
+# d'une personne. Contrepartie assumée : on ne RETIRE jamais le dernier propriétaire. Une
+# collection peut en revanche NAÎTRE sans propriétaire — créée par un administrateur, en
+# mono-poste, ou par `tools/gerer_collections.py` sans `--proprietaire` — et seule une
+# portée TOTALE l'administre alors : un administrateur, ou le mono-poste (option B
+# d'AUTH-12, 2026-09-16).
 LECTURE = "lecture"
 ECRITURE = "ecriture"
 PROPRIETAIRE = "proprietaire"

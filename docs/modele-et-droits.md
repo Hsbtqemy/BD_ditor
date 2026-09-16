@@ -92,8 +92,12 @@ Trois règles en découlent, qu'il vaut mieux connaître avant de les rencontrer
   la *Collection par défaut* — un album orphelin ne correspondrait à aucune règle, et il
   faudrait en inventer une dans le code. Ce nom est **réservé** : personne ne peut le donner
   à une collection neuve.
-- **Retirer le dernier lien est refusé**, avec un message qui nomme la contrainte : ni
-  collection sans propriétaire, ni album sans collection.
+- **Retirer le dernier lien est refusé**, avec un message qui nomme la contrainte : on ne
+  retire pas son dernier propriétaire à une collection, ni sa dernière collection à un
+  album.
+- **Une collection créée par un administrateur n'a pas de propriétaire.** Elle naît ainsi,
+  et les administrateurs la gèrent sans en être propriétaires ; ils peuvent lui en désigner
+  un dans *Administration → Accès aux collections*, au niveau *Propriétaire*.
 
 ---
 
