@@ -124,11 +124,14 @@ def test_le_panneau_montre_la_panne_sans_confondre_avec_l_absence(page, moteurs)
     # Le TÉMOIN de « message ordinaire ». C'était `#sel-info` tant que le panneau vivait
     # dans la Bibliothèque ; il n'existe pas sur `/administration` (UX-10), et le test s'y
     # est cassé — l'échec est venu d'un décor manquant, pas de la propriété gardée.
-    # `#col-msg` est l'équivalent exact : mêmes classes (`muted small`) et même rôle, un
-    # ÉTAT et non un contenu. On vérifie qu'il est bien neutre avant de s'en servir : un
-    # témoin qui porterait lui-même `erreur` rendrait les deux couleurs égales, et le test
-    # échouerait en accusant le CSS d'un défaut qui serait dans son propre décor.
-    temoin = page.locator("#col-msg")
+    # `#col-msg` l'a remplacé, puis a disparu à son tour : depuis COL-2 (2026-09-16), les
+    # messages des collections s'affichent dans la collection dépliée, et la page n'a plus
+    # de ligne commune. Le témoin est désormais le paragraphe d'introduction du MÊME bloc :
+    # mêmes classes (`muted small`), présent au chargement sans rien déplier. On vérifie
+    # qu'il est bien neutre avant de s'en servir : un témoin qui porterait lui-même
+    # `erreur` rendrait les deux couleurs égales, et le test échouerait en accusant le CSS
+    # d'un défaut qui serait dans son propre décor.
+    temoin = page.locator('section[aria-labelledby="sante-title"] > p.muted.small').first
     assert "erreur" not in (temoin.get_attribute("class") or ""), (
         "le témoin porte la classe `erreur` : il ne peut pas servir de référence de "
         "message ordinaire, et la comparaison ci-dessous ne mesurerait plus rien")

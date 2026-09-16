@@ -1899,7 +1899,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 /* Le refus du serveur se LIT : les 409 d'AUTH-3 nomment un état interdit (dernier
    propriétaire, dernière collection), pas un droit manquant. Token d'encre AA-sûr, jamais
    l'accent brut, qui échoue le 4.5:1 en petit texte. */
-#col-msg.erreur, #m-appartenance-msg.erreur,
+.col-msg.erreur, #m-appartenance-msg.erreur,
 #sante-msg.erreur { color: var(--ink-red); }
 
 /* ── Figures citables (DROIT-1) ───────────────────────────────────────────────────── */

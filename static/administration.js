@@ -53,18 +53,32 @@
 const COL_NIVEAUX = [["lecture", "Lecture"], ["ecriture", "Écriture"],
                      ["proprietaire", "Propriétaire"]];
 
-function colMsg(texte, erreur) {
-  const el = $("#col-msg");
+/* COL-2 (2026-09-16) — un message s'affiche LÀ OÙ L'ON A AGI. Le panneau n'avait qu'une
+   ligne, `#col-msg`, sous toute la liste : la Bibliothèque avait la même, et la passe de
+   recette y a manqué deux refus rouges et lisibles, tombés loin du bouton. Chaque
+   collection dépliée porte donc SA ligne, sous la ligne d'ajout : `el` est toujours la
+   ligne du geste. */
+function colMsg(el, texte, erreur) {
   el.textContent = texte || "";
   el.classList.toggle("erreur", !!erreur);
+}
+
+/* Ce qu'une collection dépliée affiche, relevé AVANT que `loadCollections` ne la détruise.
+   Ici le piège n'est pas une hypothèse : changer un niveau ou une case RECHARGE dans les
+   deux cas, refus compris (cf. `colDetail`). Sans ce relevé, le 409 du dernier
+   propriétaire s'effacerait dans l'aller-retour qui suit son affichage. */
+function colMsgReleve(d) {
+  const l = d.querySelector(".col-msg");
+  return l && l.textContent ? { texte: l.textContent, erreur: l.classList.contains("erreur") }
+                            : null;
 }
 
 /* Les refus du serveur sont RENDUS, jamais avalés. Les deux cas d'AUTH-3 (dernier
    propriétaire, dernière collection) sont des 409 qui nomment un ÉTAT INTERDIT et non un
    droit manquant : les remplacer par un « échec » générique ferait croire à un bug. */
-async function colTenter(fn) {
-  try { await fn(); colMsg(""); return true; }
-  catch (e) { colMsg(e.message || "Échec", true); return false; }
+async function colTenter(el, fn) {
+  try { await fn(); colMsg(el, ""); return true; }
+  catch (e) { colMsg(el, e.message || "Échec", true); return false; }
 }
 
 /* AUTH-6 — les deux natures d'un compte, LIBELLÉES pour qui n'était pas dans la décision.
@@ -89,7 +103,7 @@ function niveauOptions(courant) {
 /* Une collection = un <details>. Repliée, elle dit son nom, son volume et MON niveau ;
    dépliée, elle montre qui a accès — mais seulement si je peux l'administrer, la liste
    des membres d'une étude étant une donnée sur des personnes. */
-function colItem(c) {
+function colItem(c, msg) {
   const d = document.createElement("details");
   d.className = "col-item";
   d.dataset.id = String(c.id);
@@ -106,7 +120,8 @@ function colItem(c) {
       ${badge}
     </summary>
     <div class="col-detail"></div>`;
-  d.addEventListener("toggle", () => { if (d.open) colDetail(d, c); });
+  // Reposé UNE fois : replier puis déplier la collection ne ressuscite pas un vieux refus.
+  d.addEventListener("toggle", () => { if (d.open) { colDetail(d, c, msg); msg = null; } });
   return d;
 }
 
@@ -141,7 +156,7 @@ function colAilleurs() {
     <a href="/corpus">Bibliothèque</a>.</p>`;
 }
 
-async function colDetail(d, c) {
+async function colDetail(d, c, msg) {
   const box = d.querySelector(".col-detail");
   if (!c.administrable) {
     // Le participant NON propriétaire ne voit pas la liste des accès — c'est une donnée
@@ -189,6 +204,7 @@ async function colDetail(d, c) {
         peut exporter</label>
       <button class="ghost small" data-accorder="1" type="button">+ Accorder</button>
     </div>
+    <p class="col-msg muted small" role="status" aria-live="polite"></p>
     <p class="col-note">Un accès se déclare par un NOM, pas par une personne vérifiée :
       l'application n'a aucun annuaire, elle lit les groupes dans les en-têtes du proxy à
       chaque requête. Un LOGIN qui n'a pas encore ouvert l'application est signalé
@@ -202,11 +218,14 @@ async function colDetail(d, c) {
     ${colAdminNote()}
     ${colAilleurs()}`;
 
+  const ligne = box.querySelector(".col-msg");
+  // Reposé sans être annoncé une seconde fois : il l'a été dans la ligne où il est né.
+  if (msg) colMsg(ligne, msg.texte, msg.erreur);
   const recharger = async () => { await loadCollections(); };
   box.querySelectorAll("[data-retirer]").forEach((b) => {
     b.onclick = async () => {
       const { genre, principal } = b.dataset;
-      if (await colTenter(() => apiSend("DELETE",
+      if (await colTenter(ligne, () => apiSend("DELETE",
           `/api/collections/${c.id}/acces/${genre}/${encodeURIComponent(principal)}`)))
         recharger();
     };
@@ -216,7 +235,7 @@ async function colDetail(d, c) {
       const { genre, principal } = s.dataset;
       // On recharge dans les DEUX cas : en cas de refus, le <select> afficherait sinon
       // un niveau que le serveur n'a pas accordé — l'écran mentirait sur l'état réel.
-      await colTenter(() => apiSend("PUT", `/api/collections/${c.id}/acces`,
+      await colTenter(ligne, () => apiSend("PUT", `/api/collections/${c.id}/acces`,
         { genre, principal, niveau: s.value }));
       recharger();
     };
@@ -226,15 +245,15 @@ async function colDetail(d, c) {
       const { genre, principal, niveau } = i.dataset;
       // Même règle que le niveau : on recharge dans les deux cas, pour que la case
       // affichée soit celle que le serveur a enregistrée, pas celle qu'on a cliquée.
-      await colTenter(() => apiSend("PUT", `/api/collections/${c.id}/acces`,
+      await colTenter(ligne, () => apiSend("PUT", `/api/collections/${c.id}/acces`,
         { genre, principal, niveau, exporter: i.checked }));
       recharger();
     };
   });
   box.querySelector("[data-accorder]").onclick = async () => {
     const principal = box.querySelector(".col-principal").value.trim();
-    if (!principal) { colMsg("Indiquez un login ou un nom de groupe.", true); return; }
-    if (await colTenter(() => apiSend("PUT", `/api/collections/${c.id}/acces`, {
+    if (!principal) { colMsg(ligne, "Indiquez un login ou un nom de groupe.", true); return; }
+    if (await colTenter(ligne, () => apiSend("PUT", `/api/collections/${c.id}/acces`, {
         genre: box.querySelector(".col-genre").value,
         principal,
         niveau: box.querySelector(".col-niveau-neuf").value,
@@ -316,9 +335,10 @@ async function loadCollections() {
   let cols = [];
   try { cols = await apiGet("/api/collections"); }
   catch (e) { body.innerHTML = `<p class="col-note">${esc(e.message)}</p>`; return; }
-  // Ce qui était DÉPLIÉ, et où le focus se tenait — relevés AVANT de détruire le DOM.
-  const ouvertes = new Set(
-    [...body.querySelectorAll(".col-item[open]")].map((d) => d.dataset.id));
+  // Ce qui était DÉPLIÉ, ce que chaque dépliant disait, et où le focus se tenait — relevés
+  // AVANT de détruire le DOM.
+  const ouvertes = new Map(
+    [...body.querySelectorAll(".col-item[open]")].map((d) => [d.dataset.id, colMsgReleve(d)]));
   const actif = document.activeElement;
   const sel = _cibleFocus(actif);
   const item = sel ? actif.closest(".col-item") : null;
@@ -335,7 +355,7 @@ async function loadCollections() {
     return;
   }
   cols.forEach((c) => {
-    const d = colItem(c);
+    const d = colItem(c, ouvertes.get(String(c.id)));
     body.appendChild(d);
     // `open` APRÈS insertion : l'écouteur `toggle` posé par `colItem` déclenche alors
     // `colDetail`, qui redemande les accès — c'est bien ce qu'on veut, la liste doit être

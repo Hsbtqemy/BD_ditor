@@ -749,8 +749,9 @@ def test_a11y_bibliotheque_collections(page, seeded, theme):
     item = page.locator("#col-body .col-item", has_text="Corpus colonial")
     item.locator('[data-champ="statut_diffusion"]').wait_for(timeout=3000)
     # Le trajet que la frontière coupe en deux : le message dit où faire entrer quelqu'un.
-    assert page.locator('#col-msg a[href="/administration"]').count() == 1, (
-        page.locator("#col-msg").inner_text())
+    # Sous le champ de création, et non sous la liste (COL-2, 2026-09-16).
+    assert page.locator('#col-creer-msg a[href="/administration"]').count() == 1, (
+        page.locator("#col-creer-msg").inner_text())
     viol = _audit(page)
     assert not viol, f"Bibliothèque/formulaire [{theme}] :\n{_fmt(viol)}"
 
@@ -996,9 +997,7 @@ def test_le_referent_d_une_collection_s_enregistre(page, seeded):
     page.locator('#col-body [data-champ="referent_nom"]').first.fill("Ana Ruiz")
     page.locator('#col-body [data-champ="referent_contact"]').first.fill("ana@labo.fr")
     page.locator("#col-body [data-enregistrer]").first.click()
-    page.wait_for_function(
-        "() => document.querySelector('#col-msg').textContent.includes('enregistrée')",
-        timeout=3000)
+    page.locator("#col-body .col-msg", has_text="enregistrée").wait_for(timeout=3000)
 
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
                      headers={"Remote-User": "alice", "Remote-Groups": "bd-admins"})

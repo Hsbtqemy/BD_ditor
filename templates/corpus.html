@@ -64,8 +64,10 @@
                aria-label="Nom de la nouvelle collection">
         <button id="col-add" class="primary small" type="button">+ Créer</button>
       </div>
+      <!-- Sous le champ, et non sous la liste : chaque collection dépliée a sa propre ligne,
+           sous ses boutons (COL-2, 2026-09-16). Une ligne commune tombait loin du geste. -->
+      <p id="col-creer-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
       <div id="col-body"></div>
-      <p id="col-msg" class="muted small" role="status" aria-live="polite"></p>
     </section>
 
     <!-- Table des albums -->

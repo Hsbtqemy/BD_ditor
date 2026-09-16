@@ -774,19 +774,35 @@ const COL_GROUPES = [
    dont une AVANT que l'état ShareDocs soit connu. */
 let COLS_RENDUES = false;
 
-function colMsg(texte, erreur) {
-  const el = $("#col-msg");
+/* COL-2 (2026-09-16) — un message s'affiche LÀ OÙ L'ON A AGI.
+
+   Il n'y avait qu'une ligne, `#col-msg`, sous TOUTE la liste. La passe de recette y a vu
+   arriver le refus du nom réservé, rouge et lisible — et ne l'a pas vu : il tombait sous
+   les autres collections, loin du bouton. La suite ne pouvait pas le dire, elle lisait le
+   texte de la ligne et jamais sa place. Chaque collection dépliée porte donc SA ligne,
+   sous ses boutons, et la création a la sienne, sous son champ : `el` est toujours la
+   ligne du geste, jamais une ligne commune. */
+function colMsg(el, texte, erreur) {
   el.textContent = texte || "";
   el.classList.toggle("erreur", !!erreur);
+}
+
+/* Ce qu'une collection dépliée affiche, relevé AVANT qu'un rechargement ne la détruise.
+   Enregistrer redessine la liste, donc la collection qu'on vient de modifier : sans ce
+   relevé, sa confirmation partirait avec elle, une fraction de seconde après être née. */
+function colMsgReleve(d) {
+  const l = d.querySelector(".col-msg");
+  return l && l.textContent ? { texte: l.textContent, erreur: l.classList.contains("erreur") }
+                            : null;
 }
 
 /* Les refus du serveur sont RENDUS, jamais avalés : un 409 qui dit combien d'albums une
    suppression laisserait sans collection, un 422 qui nomme les valeurs admises, un 403 qui
    dit qu'aucune identité ne parvient. Trois causes qui ne se corrigent pas de la même
    façon, qu'un « échec » générique ferait prendre pour un bug. */
-async function colTenter(fn) {
-  try { await fn(); colMsg(""); return true; }
-  catch (e) { colMsg(e.message || "Échec", true); return false; }
+async function colTenter(el, fn) {
+  try { await fn(); colMsg(el, ""); return true; }
+  catch (e) { colMsg(el, e.message || "Échec", true); return false; }
 }
 
 /* Le libellé d'un régime. Une valeur HORS vocabulaire — un reste d'avant la validation —
@@ -1097,7 +1113,8 @@ function colFormulaire(c) {
     <div class="modal-actions">
       <button class="primary small" data-enregistrer="1" type="button">Enregistrer</button>
       <button class="ghost small" data-supprimer="1" type="button">Supprimer la collection</button>
-    </div>`;
+    </div>
+    <p class="col-msg muted small" role="status" aria-live="polite"></p>`;
 }
 
 /* Ce qu'un participant non propriétaire LIT. Il sait sous quel régime il travaille, et à
@@ -1140,11 +1157,20 @@ function colItem(c) {
             : ""}
     </summary>
     <div class="col-detail"></div>`;
-  d.addEventListener("toggle", () => { if (d.open) colDetail(d, c); });
+  // Remplie une fois par OUVERTURE. `chargerCollections` devance l'événement pour les
+  // collections qu'il rouvre (il les remplit dans la même tâche, cf. là-bas) : `toggle`,
+  // qui n'arrive qu'après, ne les redessine donc pas une seconde fois — ce qui effacerait
+  // le message qu'il vient d'y reposer. Replier puis déplier redessine à neuf, sans lui.
+  d.addEventListener("toggle", () => {
+    if (!d.open) { delete d.dataset.remplie; return; }
+    if (d.dataset.remplie) return;
+    d.dataset.remplie = "1";
+    colDetail(d, c);
+  });
   return d;
 }
 
-function colDetail(d, c) {
+function colDetail(d, c, msg) {
   const box = d.querySelector(".col-detail");
   if (!c.administrable) {
     // LIRE et MODIFIER sont deux droits distincts, qu'une seule garde confondait (AUTH-4).
@@ -1157,8 +1183,10 @@ function colDetail(d, c) {
   }
   box.innerHTML = colFormulaire(c) + colExport(c) + colAilleurs();
   colBrancherExport(box);
+  // Reposé sans être annoncé une seconde fois : il l'a été dans la ligne où il est né.
+  if (msg) colMsg(box.querySelector(".col-msg"), msg.texte, msg.erreur);
   box.querySelector("[data-enregistrer]").onclick = () => colEnregistrer(box, c);
-  box.querySelector("[data-supprimer]").onclick = () => colSupprimer(c);
+  box.querySelector("[data-supprimer]").onclick = () => colSupprimer(d, c);
 }
 
 /* N'envoie que ce qui a CHANGÉ, et pour deux raisons qui se vérifient. Un régime HORS
@@ -1169,6 +1197,7 @@ function colDetail(d, c) {
    c'est lui qui la réaffiche telle quelle. Un champ vidé part en `null` — c'est un geste,
    pas un oubli. */
 async function colEnregistrer(box, c) {
+  const ligne = box.querySelector(".col-msg");
   const modifs = {};
   box.querySelectorAll("[data-champ]").forEach((el) => {
     const cle = el.dataset.champ;
@@ -1176,35 +1205,46 @@ async function colEnregistrer(box, c) {
     const apres = el.value.trim();
     if (apres !== avant) modifs[cle] = apres === "" ? null : apres;
   });
-  if (!Object.keys(modifs).length) { colMsg("Rien n'a changé."); return; }
-  if (await colTenter(() => apiSend("PATCH", `/api/collections/${c.id}`, modifs))) {
-    colMsg(`« ${modifs.nom || c.nom} » enregistrée.`);
+  if (!Object.keys(modifs).length) { colMsg(ligne, "Rien n'a changé."); return; }
+  if (await colTenter(ligne, () => apiSend("PATCH", `/api/collections/${c.id}`, modifs))) {
+    colMsg(ligne, `« ${modifs.nom || c.nom} » enregistrée.`);
     chargerCollections(c.id);
   }
 }
 
-async function colSupprimer(c) {
+async function colSupprimer(d, c) {
+  const ligne = d.querySelector(".col-msg");
   if (!confirm(`Supprimer « ${c.nom} » ? Ses albums ne sont pas supprimés : ils sortent `
                + `simplement de cette collection.`)) return;
-  if (await colTenter(() => apiSend("DELETE", `/api/collections/${c.id}`))) {
-    colMsg(`« ${c.nom} » supprimée.`);
-    chargerCollections();
+  if (await colTenter(ligne, () => apiSend("DELETE", `/api/collections/${c.id}`))) {
+    colMsg(ligne, `« ${c.nom} » supprimée.`);
+    // La collection disparaît, et sa ligne avec elle. La confirmation prend donc la PLACE
+    // qu'elle occupait dans la liste — c'est là que l'œil est resté —, avant la suivante.
+    const body = $("#col-body");
+    const ids = [...body.querySelectorAll("details.col-item")].map((x) => x.dataset.id);
+    const suivante = ids[ids.indexOf(String(c.id)) + 1];
+    await chargerCollections();
+    const trace = document.createElement("p");
+    trace.className = "col-msg muted small";
+    trace.textContent = `« ${c.nom} » supprimée.`;
+    const avant = suivante && body.querySelector(`details.col-item[data-id="${suivante}"]`);
+    body.insertBefore(trace, avant || null);
   }
 }
 
 async function creerCollection() {
+  const ligne = $("#col-creer-msg");
   const nom = $("#col-nom").value.trim();
-  if (!nom) { colMsg("Donnez un nom à la collection.", true); return; }
+  if (!nom) { colMsg(ligne, "Donnez un nom à la collection.", true); return; }
   let creee = null;
-  if (await colTenter(async () => {
+  if (await colTenter(ligne, async () => {
     creee = await apiSend("POST", "/api/collections", { nom });
   })) {
     $("#col-nom").value = "";
     // Le trajet que la frontière coupe en deux : on crée ICI, on fait entrer LÀ-BAS. Le
     // dire au moment où l'on vient de créer, c'est le seul moment où la question se pose.
-    const el = $("#col-msg");
-    el.classList.remove("erreur");
-    el.innerHTML = `« ${esc(nom)} » créée — vous en êtes propriétaire. Pour y faire entrer
+    ligne.classList.remove("erreur");
+    ligne.innerHTML = `« ${esc(nom)} » créée — vous en êtes propriétaire. Pour y faire entrer
       quelqu'un : <a href="/administration">Administration → Accès aux collections</a>.`;
     chargerCollections(creee && creee.id);
   }
@@ -1215,11 +1255,12 @@ async function chargerCollections(ouvrir) {
   let cols = [];
   try { cols = await apiGet("/api/collections"); }
   catch (e) { body.innerHTML = `<p class="col-note">${esc(e.message)}</p>`; return; }
-  // Les collections dépliées le restent : recharger après un enregistrement ne doit pas
-  // replier sous les yeux celle qu'on vient de modifier.
-  const ouvertes = new Set([...body.querySelectorAll("details.col-item[open]")]
-    .map((d) => d.dataset.id));
-  if (ouvrir != null) ouvertes.add(String(ouvrir));
+  // Les collections dépliées le restent, et gardent ce qu'elles disaient : recharger après
+  // un enregistrement ne doit ni replier sous les yeux celle qu'on vient de modifier, ni
+  // effacer le message qui le confirme.
+  const ouvertes = new Map([...body.querySelectorAll("details.col-item[open]")]
+    .map((d) => [d.dataset.id, colMsgReleve(d)]));
+  if (ouvrir != null && !ouvertes.has(String(ouvrir))) ouvertes.set(String(ouvrir), null);
   body.innerHTML = "";
   COLS_RENDUES = true;
   if (!cols.length) {
@@ -1230,7 +1271,17 @@ async function chargerCollections(ouvrir) {
   for (const c of cols) {
     const d = colItem(c);
     body.appendChild(d);
-    if (ouvertes.has(String(c.id))) d.open = true;
+    const id = String(c.id);
+    if (!ouvertes.has(id)) continue;
+    // Rouverte ET remplie dans la même tâche, et non à l'événement `toggle`, qui arrive
+    // après. Entre les deux, le navigateur pouvait mettre en page une liste de collections
+    // toutes vides : la zone qui défile (`main`) raccourcissait d'autant, son défilement
+    // revenait en haut, et la collection qu'on venait d'enregistrer réapparaissait 564 px
+    // plus bas — sa confirmation hors de la fenêtre. Mesuré le 2026-09-16 par le test qui
+    // lit la PLACE du message (COL-2) ; lire son seul texte ne pouvait pas le voir.
+    d.open = true;
+    d.dataset.remplie = "1";
+    colDetail(d, c, ouvertes.get(id));
   }
 }
 
