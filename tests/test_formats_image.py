@@ -17,6 +17,7 @@ l'ingest refuse ce qui n'est pas une image. La première fonction existe pour ç
 le reste est décoratif.
 """
 import io
+import re
 import struct
 from pathlib import Path
 
@@ -93,6 +94,64 @@ def test_aucun_format_decodable_n_est_hors_du_corpus():
     inutiles = [f for f in PILLOW_FORMATS if f not in apportes]
     assert not inutiles, (
         f"formats décodables qu'aucune extension acceptée n'apporte : {inutiles}")
+
+
+# Le front porte DEUX copies de la liste, que rien ne reliait à `IMG_EXTS` (IMG-1) : le
+# filtre du dialogue d'import de l'Atelier, et la regex qui décide dans l'explorateur ShareDocs
+# quels fichiers se proposent à l'import. Une extension ajoutée au serveur et oubliée là
+# resterait acceptée sans jamais être proposée — c'était le cas du `.jp2` dans le dialogue.
+RACINE = Path(__file__).resolve().parent.parent
+
+
+def _extensions_de_la_regex_sharedocs() -> set[str]:
+    """Les extensions que `SD_IMG` reconnaît, relues dans `static/viewer.js`.
+
+    On DÉPLIE l'alternative plutôt que d'éprouver quelques noms : un échantillon dirait que
+    la regex accepte ce qu'on lui montre, jamais qu'elle n'accepte rien d'autre. Le dépliage
+    ne sait lire qu'une forme simple — lettres et chiffres, un `?` au plus après un
+    caractère — et ÉCHOUE sur toute autre plutôt que de deviner.
+    """
+    source = (RACINE / "static" / "viewer.js").read_text(encoding="utf-8")
+    m = re.search(r"const SD_IMG = /\\\.\(([^)]*)\)\$/i;", source)
+    assert m, "`SD_IMG` introuvable, ou de forme inattendue, dans static/viewer.js"
+    extensions = set()
+    for alternative in m.group(1).split("|"):
+        assert re.fullmatch(r"(?:[a-z0-9]\??)+", alternative), (
+            f"alternative que ce test ne sait pas déplier : {alternative!r}")
+        variantes = [""]
+        for car, optionnel in re.findall(r"([a-z0-9])(\??)", alternative):
+            avec = [v + car for v in variantes]
+            variantes = avec + variantes if optionnel else avec
+        extensions.update("." + v for v in variantes)
+    return extensions
+
+
+def test_le_depliage_de_la_regex_sait_ce_qu_il_lit():
+    """`jpe?g` doit donner `.jpg` ET `.jpeg` : sans ce contrôle, un dépliage faux rendrait
+    le test suivant vert ou rouge pour une raison qui n'est pas la liste."""
+    assert {".jpg", ".jpeg"} <= _extensions_de_la_regex_sharedocs()
+
+
+def test_l_explorateur_ShareDocs_propose_exactement_la_liste_du_serveur():
+    assert _extensions_de_la_regex_sharedocs() == set(IMG_EXTS)
+
+
+def test_le_dialogue_d_import_propose_exactement_la_liste_du_serveur():
+    """L'`accept` de `#file-input` est comparé à `IMG_EXTS` sans jeton MIME.
+
+    `image/*` y figurait : il laisse le système d'exploitation décider de ce qu'est une
+    image, ce qui n'est pas notre liste — et rien ne garantissait qu'un `.jp2` en fasse
+    partie. Que le dialogue MONTRE bien un `.jp2` sous Windows reste un geste à jouer à la
+    main : ce test ne lit que l'attribut.
+    """
+    source = (RACINE / "templates" / "index.html").read_text(encoding="utf-8")
+    balise = re.search(r'<input[^>]*id="file-input"[^>]*>', source)
+    assert balise, "`#file-input` introuvable dans templates/index.html"
+    accept = re.search(r'accept="([^"]*)"', balise.group(0))
+    assert accept, "`#file-input` n'a pas d'attribut `accept`"
+    jetons = [j.strip() for j in accept.group(1).split(",") if j.strip()]
+    assert sorted(jetons) == sorted(IMG_EXTS), (
+        f"le dialogue propose {jetons}, le serveur accepte {list(IMG_EXTS)}")
 
 
 def test_le_PSD_n_est_ni_accepte_ni_decodable():
