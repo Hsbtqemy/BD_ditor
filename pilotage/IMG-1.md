@@ -1,16 +1,17 @@
 ---
 chantier: IMG-1
-statut: interrompu
+statut: différé
 ---
 
 # IMG-1 — accepter un format n'est pas savoir le convertir
 
-**Arrêté sur** — le dialogue d'import qui propose exactement `IMG_EXTS`, commit `654562f`,
-16 septembre, après le gris 16 bits (`fb53e67`), l'outil de régénération (`fd7cd38`), sa
-déclaration au cliquet des sorties (`944f071`) et le filtre d'extension (`cfbf85d`). Rien
-n'est poussé. Le JPEG 2000 est la priorité (décision de Hugo) : le temps d'import d'un vrai
-scan converti sans perte est MESURÉ — 7 à 11 s contre 0,4 s en TIFF —, et la décision qui en
-découle attend Hugo, comme le premier JP2 produit par le scanner de l'équipe.
+**Arrêté sur** — la relecture du chantier, commit `7087fca`, 16 septembre, juste après le
+cache des dérivés (`e9811c7` : `no-cache` et 304, mesuré dans Chromium avant et après). Avant
+eux : le gris 16 bits (`fb53e67`), l'outil de régénération (`fd7cd38`, déclaré au cliquet par
+`944f071`), le filtre d'extension (`cfbf85d`), le dialogue d'import (`654562f`). Rien n'est
+poussé. DIFFÉRÉ exprès : ce qui reste attend le TIFF et le JP2 réels du scanner de l'équipe,
+et les décisions de Hugo sur le stockage des masters et le coût d'import du JP2 ; la passe de
+QA `derives-et-import-jp2` est à jouer.
 
 ## Reste
 
@@ -26,7 +27,7 @@ découle attend Hugo, comme le premier JP2 produit par le scanner de l'équipe.
 ### Rattraper les dérivés existants
 - [x] Un outil régénère le dérivé d'une planche depuis son master (`--album`, `--planche`, `--dry-run`, sur le patron de `tools/reindex_materiel.py`). Aujourd'hui `make_web_derivative` n'a qu'un appelant, `ingest_image` : un dérivé faux le reste, et changer `WEB_SCALE` ou `WEB_JPEG_QUALITY` ne touche aucune planche déjà importée
 - [ ] Sur une planche segmentée puis régénérée, les cases restent à leur place dans l'Atelier : la régénération ne touche ni `largeur_px` ni `hauteur_px` (dimensions MASTER), et le navigateur recalcule l'échelle depuis l'image chargée. La base est ÉPROUVÉE par `tests/test_regenerer_derives.py` (ligne `planches` et régions identiques) ; le recalcul d'échelle est LU dans `static/viewer.js` (`webScale = naturalWidth / largeur_px`), pas joué dans l'Atelier. À jouer par la passe `pilotage/qa/derives-et-import-jp2.md`, zone « Les cases restent sur le dessin quand le dérivé change de taille »
-- [ ] Après régénération, une planche déjà ouverte dans l'Atelier montre le NOUVEAU dérivé au simple rechargement de la page, sans vider le cache. `GET /derivatives/…` répond un `FileResponse` sans `Cache-Control` (lu dans `main.py` le 2026-09-16) : un navigateur peut garder l'ancienne image par fraîcheur heuristique. Hypothèse, non mesurée — le middleware `no-cache` ne couvre que `/static` et les pages HTML
+- [x] Après régénération, une planche déjà ouverte dans l'Atelier montre le NOUVEAU dérivé au simple rechargement de la page, sans vider le cache. `GET /derivatives/…` répond un `FileResponse` sans `Cache-Control` (lu dans `main.py` le 2026-09-16) : un navigateur peut garder l'ancienne image par fraîcheur heuristique. Hypothèse, non mesurée — le middleware `no-cache` ne couvre que `/static` et les pages HTML. MESURÉ le 2026-09-16 côté serveur (client HTTP) : aucun `Cache-Control`, un `ETag` et un `Last-Modified` présents, mais une requête conditionnelle reçoit TOUJOURS 200 et le corps entier — la route ne répond jamais 304. Le comportement du navigateur reste à mesurer. DÉCISION de Hugo (2026-09-16) : `Cache-Control: no-cache` ET une réponse 304 quand l'ETag concorde, dans la même route, le 304 décidé APRÈS le contrôle de portée ; pas de bouton d'actualisation, personne ne sachant quand un dérivé a été régénéré. LIMITE ASSUMÉE : une planche déjà affichée au moment de la régénération ne change qu'au rechargement de la page ou au changement de planche. MESURÉ dans Chromium (Playwright) le même jour, dérivé vieilli de 30 jours puis refait au double : SANS le correctif, un rechargement (F5) montrait toujours l'ancien dérivé SANS AUCUNE requête au serveur, une nouvelle navigation aussi, et seul un cache vide voyait le nouveau ; AVEC le correctif, F5 montre le nouveau dérivé, et la navigation suivante ne coûte qu'un 304 sans corps. Le rechargement est mesuré, le changement de planche ne l'est pas
 
 ### JPEG 2000
 - [x] La chaîne de production des JP2 est connue et écrite ici : l'outil qui les produit, avec ou sans perte, et si le master reste un TIFF archivé ailleurs. Seule elle tranche `resc`/`resd` et le 12 bits ; questions posées à Hugo le 2026-09-16. Réponses du même jour : le LOGICIEL DU SCANNER de l'équipe (modèle non précisé) ; SANS PERTE comme cas nominal (« le moins de perte possible ») ; master NON DÉCIDÉ — tout TIFF, TIFF et JP2 mêlés, ou JP2 privilégié à terme, donc l'application porte les deux formats de master sans supposer lequel l'emporte ; profondeur INCONNUE
@@ -169,7 +170,7 @@ ce chantier : trois dans `tests/test_surfaces.py` (`test_e2e_undo_rafraichit.py`
 pas ses surfaces) et deux dans `tests/test_ecart_venv_image.py` — le venv local a dérivé de
 ses verrous (`fastapi` 0.137.0 pour 0.133.0, `pytest` 9.1.0 pour 9.0.2…), et `numpy` /
 `pillow` y sont déclarés en écart alors qu'ils sont redevenus conformes. Signalé à la
-coordination, pas réparé ici.
+coordination, qui a réaligné le venv sur ses verrous le même jour — pas ce chantier.
 
 **Le JP2 sans perte sur de VRAIS scans — mesuré le 2026-09-16** dans un conteneur jetable de
 `bd-recette-app` (image de `f5fd1eb`), volume de données monté en LECTURE SEULE, 8 cœurs,
@@ -193,9 +194,9 @@ temps est dans le DÉCODAGE plein du JP2. Les 19,2 s du cas fabriqué étaient u
 
 Deux faits en marge. *Le JP2 écrit par Pillow ne porte AUCUNE résolution*, même quand on lui
 passe `dpi` : son encodeur n'écrit ni `resc` ni `resd` — l'import en tire donc `dpi = None`,
-et cela ne dit RIEN du scanner. *Les TIFF de la recette sont non compressés* : le gain de
-44–49 % se compare à du brut, et un TIFF compressé sans perte (Deflate, LZW) serait un point
-intermédiaire, NON mesuré, dont le décodage resterait probablement rapide — hypothèse.
+et cela ne dit RIEN du scanner. *Les TIFF de la recette sont non compressés* : le JP2 pèse
+44–49 % d'un TIFF BRUT, et un TIFF compressé sans perte est un point intermédiaire — mesuré
+plus bas, dans la table du TIFF compressé.
 
 **Décoder le JP2 à résolution réduite** (`reduce`, que Pillow expose) pour le dérivé au quart,
 mesuré sur les mêmes fichiers, comparé pixel à pixel au dérivé actuel (décodage plein puis
@@ -240,3 +241,33 @@ encore ~25 % de stockage, pour 7 à 11 s par planche. Le temps d'ÉCRITURE (1 à
 TIFF, 11 à 14 s pour le JP2) est payé une fois par qui produit le fichier, pas à l'import.
 Deux scans RVB d'une seule campagne, compressés par Pillow et non par le scanner : le couple
 TIFF + JP2 réel que Hugo va chercher reste ce qui tranche.
+
+**Différé le 2026-09-16, et pourquoi.** Tout ce qui se faisait sans le scanner est fait :
+gris 16 et 12 bits, refus de `I` et `F`, outil de régénération, filtre d'extension, dialogue
+d'import, cache des dérivés. Ce qui reste attend trois choses, qui ne dépendent pas de ce
+chantier : le couple TIFF + JP2 que Hugo va chercher au scanner (profondeur, boîtes de
+résolution, poids et temps réels), ses deux décisions (format de stockage des masters, coût
+d'import du JP2 sans perte), et une passe de QA jouée à la main. Le TIFF multipage, décidé,
+attend que le cas se présente. **Ce qui rouvre** : l'arrivée des fichiers du scanner, ou une
+décision de stockage qui ferait du JP2 le master courant — le décodage réduit (`reduce=1`,
+mesuré) redeviendrait alors la première piste. La question plus large, voir ce que les
+AUTRES changent sur une planche ouverte, n'est pas celle-ci et vit ailleurs.
+
+**Relecture du 2026-09-16, faite avant de différer.** Lu : les onze commits du chantier du
+jour, code et fiches, leurs diffs et la fiche et la passe ASSEMBLÉES. Trouvé et corrigé
+(`7087fca` pour le code et le guide, ce commit pour la fiche et la passe) : cinq phrases qui
+promettaient plus que le code — « le seul chemin vers 8 bits » (Kumiko passe par OpenCV),
+« avant d'écrire quoi que ce soit » (le dossier est créé), un `.jp2` « absent » du dialogue
+jamais mesuré, « réexportez en 16 bits » sans « non signés », un refus « immédiat » qui suit
+le téléversement ; et, dans la fiche, un « gain de 44–49 % » qui était un poids, une
+hypothèse déjà mesurée plus bas, une dérive du venv réparée entre-temps ; dans la passe, une
+phrase sur le commit servi par la recette, qui aurait vieilli. Chaque test neuf a été prouvé
+dans les deux sens, sur une copie de `HEAD` et jamais dans l'arbre partagé : dix-sept
+mutations, chacune rouge en échec d'assertion sur le test visé, témoins verts ; le test du
+cache, rouge sur l'instantané sans correctif et sur un mutant qui décide le 304 avant la
+portée.
+La suite par défaut ENTIÈRE, jouée sur un instantané de `7087fca` avec `lib/kumiko` et sous
+le `.venv` : 1262 verts, aucun test sauté, 2 rouges étrangers au chantier — un module e2e
+d'une autre session qui répète sa liste de surfaces, et `test_les_unites_systemd_lancent_des_
+fichiers_EXÉCUTABLES`, qui appelle `git ls-files` et ne peut que tomber hors d'un dépôt git :
+joué dans l'arbre, il est vert.

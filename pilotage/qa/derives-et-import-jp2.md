@@ -14,8 +14,10 @@ en base (dimensions MASTER et régions intactes) — mais que les cases restent 
 dessin quand le dérivé change de taille dépend du navigateur, qui recalcule l'échelle depuis
 l'image chargée, et cela ne se voit qu'à l'écran.
 
-**Pas sur la pile de recette.** Elle sert `f5fd1eb`, antérieur au nouveau filtre (`654562f`).
-La passe se joue sur un serveur LOCAL lancé depuis le dépôt, avec des données ISOLÉES dans
+**Pas sur la pile de recette.** La seconde zone fait refaire un dérivé par des commandes
+posées sur les données du serveur, ce qui ne se fait pas sur une pile partagée ; et la
+recette servait, à l'écriture de la passe, un commit antérieur au nouveau filtre. La passe se
+joue donc sur un serveur LOCAL lancé depuis le dépôt, avec des données ISOLÉES dans
 `C:\temp\qa-img1` — rien n'y touche la base du dépôt ni la recette. Sous Windows, dans
 Chrome. Toutes les commandes se tapent dans PowerShell, depuis la racine du dépôt
 (`C:\Dev\BD_ditor`), au commit `654562f` ou plus récent. Les trois commandes ci-dessous ont
