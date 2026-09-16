@@ -37,6 +37,14 @@ Une collection créée ici naît SANS PROPRIÉTAIRE — donc administrable par l
 veut : `--proprietaire LOGIN` (ou `--proprietaire-groupe NOM`) l'inscrit d'emblée, et évite
 d'avoir à ouvrir la base pour rendre la collection utilisable par quelqu'un.
 
+AUTH-12 — les deux portes ont maintenant les MÊMES gardes et le même journal. `retirer` et
+`supprimer` refusent de laisser un album sans aucune collection, comme la Bibliothèque le
+refuse (un album sans collection ne correspond à aucune règle d'accès). `creer`,
+`modifier` et `supprimer` écrivent au journal ce que les routes y écrivent ; ranger et
+retirer des albums n'y écrivent rien, pas plus qu'à l'écran — c'est une limite des deux
+portes, pas de celle-ci. Un shell n'ayant pas d'identité, l'agent de ces actes est vide,
+comme en mono-poste.
+
 La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
 """
 from __future__ import annotations
@@ -49,6 +57,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import database  # noqa: E402
+import journal  # noqa: E402
 
 # Importé de config : la route d'édition (AUTH-3) valide la MÊME liste. Deux chemins
 # d'écriture sur un champ contrôlé ne peuvent pas avoir chacun la sienne.
@@ -143,6 +152,23 @@ def _albums_existants(conn, ids) -> list[int]:
         if i not in ok:
             _err(f"  ⚠ album {i} introuvable — ignoré")
     return [i for i in ids if i in ok]
+
+
+def _albums_isoles(conn, collection_id, album_ids=None) -> list[int]:
+    """Les albums de la collection qui n'appartiennent à AUCUNE autre — ceux qu'un retrait
+    ou une suppression laisserait sans collection, donc sans règle d'accès (AUTH-2). Même
+    requête que la route `DELETE /api/collections/{id}` ; `album_ids` restreint aux albums
+    qu'on s'apprête à retirer."""
+    sql = ("SELECT ca.album_id FROM collection_album ca WHERE ca.collection_id = ? "
+           "AND NOT EXISTS (SELECT 1 FROM collection_album x WHERE x.album_id = ca.album_id "
+           "                AND x.collection_id <> ca.collection_id)")
+    params = [collection_id]
+    if album_ids is not None:
+        if not album_ids:
+            return []
+        sql += f" AND ca.album_id IN ({','.join('?' * len(album_ids))})"
+        params += list(album_ids)
+    return [r[0] for r in conn.execute(sql + " ORDER BY ca.album_id", params)]
 
 
 def _ranger(conn, collection_id, album_ids):
@@ -244,6 +270,8 @@ def cmd_creer(args) -> int:
                 "INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
                 "VALUES (?, ?, ?, 'proprietaire')",
                 (cid, "groupe" if args.proprietaire_groupe else "utilisateur", proprio))
+        journal.journaliser(conn, "creation", "collection", cid,
+                            apres={"nom": args.nom, "proprietaire": proprio})
     _checkpoint()
     _err(f"Collection créée : {cid} — « {args.nom} » ({n} album(s))"
          + (f", propriétaire : {proprio}" if proprio else
@@ -261,13 +289,19 @@ def cmd_modifier(args) -> int:
     if not maj:
         raise SystemExit("Rien à modifier (aucun descripteur fourni).")
     with database.connect() as conn:
-        if database.collection_row(conn, args.id) is None:
+        c = database.collection_row(conn, args.id)
+        if c is None:
             raise SystemExit(f"Collection {args.id} introuvable.")
-        set_sql = ", ".join(f"{k} = ?" for k in maj)
-        conn.execute(f"UPDATE collection SET {set_sql} WHERE id = ?",
-                     [*maj.values(), args.id])
+        changes = {k: v for k, v in maj.items() if c[k] != v}
+        if changes:
+            set_sql = ", ".join(f"{k} = ?" for k in changes)
+            conn.execute(f"UPDATE collection SET {set_sql} WHERE id = ?",
+                         [*changes.values(), args.id])
+            journal.journaliser(conn, "modification", "collection", args.id,
+                                avant={k: c[k] for k in changes}, apres=changes)
     _checkpoint()
-    _err(f"Collection {args.id} modifiée ({', '.join(maj)}).")
+    _err(f"Collection {args.id} modifiée ({', '.join(changes)})." if changes
+         else f"Collection {args.id} : rien n'a changé.")
     return 0
 
 
@@ -287,6 +321,12 @@ def cmd_retirer(args) -> int:
     with database.connect() as conn:
         if database.collection_row(conn, args.id) is None:
             raise SystemExit(f"Collection {args.id} introuvable.")
+        isoles = _albums_isoles(conn, args.id, ids)
+        if isoles:
+            raise SystemExit(
+                f"Refusé : {len(isoles)} album(s) n'appartiennent qu'à cette collection "
+                f"({', '.join(map(str, isoles))}) et se retrouveraient sans aucune règle "
+                "d'accès. Rangez-les ailleurs d'abord (`ajouter`).")
         n = 0
         if ids:
             qm = ",".join("?" * len(ids))
@@ -301,9 +341,18 @@ def cmd_retirer(args) -> int:
 
 def cmd_supprimer(args) -> int:
     with database.connect() as conn:
-        if database.collection_row(conn, args.id) is None:
+        c = database.collection_row(conn, args.id)
+        if c is None:
             raise SystemExit(f"Collection {args.id} introuvable.")
+        isoles = _albums_isoles(conn, args.id)
+        if isoles:
+            raise SystemExit(
+                f"Refusé : {len(isoles)} album(s) n'appartiennent qu'à cette collection "
+                f"({', '.join(map(str, isoles))}) et se retrouveraient sans aucune règle "
+                "d'accès. Rangez-les ailleurs d'abord (`ajouter`).")
         conn.execute("DELETE FROM collection WHERE id = ?", (args.id,))
+        journal.journaliser(conn, "suppression", "collection", args.id,
+                            avant={"nom": c["nom"]})
     _checkpoint()
     _err(f"Collection {args.id} supprimée (les albums sont conservés).")
     return 0
@@ -360,12 +409,14 @@ def main(argv=None) -> int:
     p.add_argument("--albums", required=True, help="« 1,2,3 »")
     p.set_defaults(func=cmd_ajouter)
 
-    p = sub.add_parser("retirer", help="retire des albums d'une collection")
+    p = sub.add_parser("retirer", help="retire des albums d'une collection (refusé si un "
+                       "album n'appartiendrait plus à aucune collection)")
     p.add_argument("id", type=int)
     p.add_argument("--albums", required=True, help="« 1,2,3 »")
     p.set_defaults(func=cmd_retirer)
 
-    p = sub.add_parser("supprimer", help="supprime une collection (pas les albums)")
+    p = sub.add_parser("supprimer", help="supprime une collection, pas ses albums (refusé si "
+                       "un album n'appartiendrait plus à aucune collection)")
     p.add_argument("id", type=int)
     p.set_defaults(func=cmd_supprimer)
 

@@ -5,6 +5,7 @@ remplissait qu'en SQL à la main. Ces tests portent sur le troisième palier —
 ne découle pas d'écrire — et sur les deux invariants que le chantier ne doit jamais casser :
 jamais zéro propriétaire, jamais un album sans collection.
 """
+import json
 import sqlite3
 
 import pytest
@@ -374,6 +375,43 @@ def test_les_changements_d_acces_sont_traces(client, db_path, collection_a_alice
     assert all(a["agent"] == "alice" for a in actes)          # QUI a ouvert à qui
     assert "bob" in actes[0]["apres"] and "bob" in actes[1]["avant"]
     assert "collection_acces" not in undo._TABLES             # jamais annulable
+
+
+def test_modifier_une_collection_laisse_une_trace(client, db_path, collection_a_alice):
+    """AUTH-12 — la création, la suppression et les accès d'une collection étaient
+    journalisés, sa MODIFICATION non : un référent remplacé, un régime passé à `public`
+    n'avaient ni auteur ni date. Un événement par modification, avec l'avant et l'après des
+    seuls champs qui CHANGENT — renvoyer une valeur identique n'en est pas une.
+
+    Le référent entre ainsi au journal. Il ne doit sortir d'aucun artefact (AUTH-4) : la
+    cible `collection` est retenue de toute sortie, et c'est ce qui rend la trace sûre."""
+    import _commun
+    cid = collection_a_alice["id"]
+    h = {"Remote-User": "alice"}
+    corps = {"nom": "Corpus colonial", "referent_nom": "Ana Ruiz",
+             "licence_defaut": "CC-BY-4.0"}
+    assert client.patch(f"/api/collections/{cid}", json=corps, headers=h).status_code == 200
+    # La même demande une seconde fois : rien ne change, rien ne s'écrit.
+    assert client.patch(f"/api/collections/{cid}", json=corps, headers=h).status_code == 200
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        actes = conn.execute(
+            "SELECT type, agent, avant, apres FROM evenement "
+            "WHERE cible_table = 'collection' AND cible_id = ? AND type = 'modification'",
+            (cid,)).fetchall()
+    finally:
+        conn.close()
+    assert len(actes) == 1, [dict(a) for a in actes]
+    acte = actes[0]
+    assert acte["agent"] == "alice"
+    assert json.loads(acte["apres"]) == {"referent_nom": "Ana Ruiz",
+                                         "licence_defaut": "CC-BY-4.0"}
+    assert json.loads(acte["avant"]) == {"referent_nom": None, "licence_defaut": None}
+    assert "collection" in _commun.CIBLES_RETENUES, (
+        "le référent est au journal : si la cible `collection` cessait d'être retenue, il "
+        "partirait au dépôt avec la provenance")
 
 
 def test_le_nom_du_repli_est_reserve(client, collection_a_alice):
@@ -866,3 +904,86 @@ def test_le_formulaire_propose_exactement_le_regime_du_serveur():
     assert set(valeurs) - {""} == set(STATUTS_DIFFUSION), (
         f"l'écran propose {sorted(set(valeurs) - {''})}, le serveur accepte "
         f"{sorted(STATUTS_DIFFUSION)}")
+
+
+# --------------------------------------------------------------------------- #
+# L'outil en ligne de commande — les mêmes gardes que les routes (AUTH-12)
+# --------------------------------------------------------------------------- #
+def _outil(db_path, *args):
+    """Lance `tools/gerer_collections.py` en sous-processus, sur la base de test."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    racine = Path(__file__).resolve().parent.parent
+    env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(db_path.parent)}
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")    # le sous-processus voit tout
+    finally:
+        conn.close()
+    r = subprocess.run([sys.executable, str(racine / "tools" / "gerer_collections.py"), *args],
+                       cwd=str(racine), env=env, capture_output=True)
+    return r.returncode, r.stdout.decode("utf-8"), r.stderr.decode("utf-8")
+
+
+def _evenements(db_path, cid):
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        return [dict(e) for e in conn.execute(
+            "SELECT type, avant, apres FROM evenement WHERE cible_table = 'collection' "
+            "AND cible_id = ? ORDER BY id", (cid,))]
+    finally:
+        conn.close()
+
+
+def test_l_outil_refuse_de_laisser_un_album_sans_collection(client, db_path):
+    """AUTH-12 — `retirer` et `supprimer` défaisaient ce que les routes gardent : un album
+    sorti de sa SEULE collection ne correspond plus à aucune règle d'accès (AUTH-2), et la
+    Bibliothèque le refuse par un 409. Deux portes vers les mêmes lignes, dont une seule
+    gardée, ce n'était pas une garde. Refusé ici aussi, et la base n'a pas bougé."""
+    album = client.post("/api/albums", json={"titre": "Seul ici"}).json()["id"]
+    code, cid, err = _outil(db_path, "creer", "--nom", "Étude", "--albums", str(album))
+    assert code == 0, err
+    # L'album vit aussi dans la collection de repli : la retirer de « Étude » le laisse
+    # ailleurs. On l'en sort d'abord par SQL, pour qu'« Étude » soit sa SEULE collection.
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("DELETE FROM collection_album WHERE album_id = ? AND collection_id <> ?",
+                     (album, int(cid)))
+        conn.commit()
+    finally:
+        conn.close()
+
+    for geste in (("retirer", cid.strip(), "--albums", str(album)),
+                  ("supprimer", cid.strip())):
+        code, _, err = _outil(db_path, *geste)
+        assert code != 0 and "sans aucune règle d'accès" in err, (geste, code, err)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute("SELECT 1 FROM collection WHERE id = ?", (int(cid),)).fetchone()
+        assert conn.execute("SELECT 1 FROM collection_album WHERE album_id = ?",
+                            (album,)).fetchone(), "l'album a été sorti malgré le refus"
+    finally:
+        conn.close()
+
+
+def test_l_outil_ecrit_au_journal_ce_que_les_routes_y_ecrivent(client, db_path):
+    """AUTH-12 — créer, modifier et supprimer une collection par la ligne de commande ne
+    laissaient aucune trace, alors que les mêmes gestes à l'écran en laissent une. Mêmes
+    événements, même forme : seuls les champs qui CHANGENT pour une modification."""
+    code, cid, err = _outil(db_path, "creer", "--nom", "Sans album")
+    assert code == 0, err
+    cid = int(cid.strip())
+    assert _outil(db_path, "modifier", str(cid), "--licence", "CC-BY-4.0",
+                  "--nom", "Sans album")[0] == 0
+    assert _outil(db_path, "modifier", str(cid), "--licence", "CC-BY-4.0")[0] == 0
+    assert _outil(db_path, "supprimer", str(cid))[0] == 0
+
+    evs = _evenements(db_path, cid)
+    assert [e["type"] for e in evs] == ["creation", "modification", "suppression"], evs
+    assert json.loads(evs[1]["apres"]) == {"licence_defaut": "CC-BY-4.0"}
+    assert json.loads(evs[1]["avant"]) == {"licence_defaut": None}
+    assert json.loads(evs[2]["avant"]) == {"nom": "Sans album"}

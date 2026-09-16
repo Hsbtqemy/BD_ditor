@@ -243,10 +243,21 @@ def update_collection(collection_id: int, payload: CollectionUpdate,
         raise HTTPException(
             422, f"Statut de diffusion inconnu : {fields['statut_diffusion']} "
                  f"({' | '.join(STATUTS_DIFFUSION)}).")
-    if fields:
-        cols = ", ".join(f"{k} = ?" for k in fields)
+    # Ce qui CHANGE, et rien d'autre : renvoyer une valeur identique n'est pas une
+    # modification, et le journal n'a pas à en inventer une.
+    changes = {k: v for k, v in fields.items() if c[k] != v}
+    if changes:
+        cols = ", ".join(f"{k} = ?" for k in changes)
         conn.execute(f"UPDATE collection SET {cols} WHERE id = ?",
-                     (*fields.values(), collection_id))
+                     (*changes.values(), collection_id))
+        # AUTH-12 — modifier une collection ne laissait aucune trace : ni auteur ni date
+        # pour un référent remplacé, un régime passé à `public`, une base légale effacée,
+        # alors que la création, la suppression et les accès en laissent une. La cible
+        # `collection` est RETENUE de toute sortie (`tools/_commun.CIBLES_RETENUES`) : le
+        # référent et son contact entrent au journal sans pouvoir en ressortir, ce qu'AUTH-4
+        # exige d'eux — et le cliquet des cibles retenues l'éprouve.
+        journal.journaliser(conn, "modification", "collection", collection_id,
+                            avant={k: c[k] for k in changes}, apres=changes)
         conn.commit()
     return collection_row(conn, collection_id)
 
