@@ -97,6 +97,14 @@ pip install opencv-python-headless numpy requests
 
 ### Tests
 
+**L'interpréteur qui fait foi est le `.venv` du dépôt, aligné sur les verrous** (tranché le
+2026-09-16). Deux Pythons mesuraient ce dépôt sans le dire : le Python système, partagé avec
+d'autres projets et qui ne peut donc pas suivre nos verrous, et le `.venv`, qui portait
+`fastapi` 0.137 — la version qu'ARCH-2 plafonne. Les commandes ci-dessous se lancent donc
+par `.venv\Scripts\python -m pytest …`, et un écart se répare au lieu de se déclarer :
+`.venv\Scripts\python -m pip install -r requirements.lock -r requirements-dev.lock`
+(`tests/test_ecart_venv_image.py` le signale).
+
 ```bash
 pytest                       # suite par défaut (exclut e2e ; INCLUT le test `live` = serveur uvicorn en sous-processus)
 pytest -m "not e2e and not live"   # sans le test d'intégration sous-processus — RÉPÉTER `not e2e`, cf. ci-dessous

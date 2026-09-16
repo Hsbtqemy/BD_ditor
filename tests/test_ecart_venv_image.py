@@ -22,6 +22,15 @@ là, un écart est actionnable en une commande.
 Les écarts CONSTATÉS le sont dans `ECARTS_ADMIS`, avec leur date et ce qu'ils coûtent.
 Déclarer n'est pas fermer — c'est empêcher que la liste grandisse sans que personne ne
 l'ait voulu, et c'est le patron de `HORS_PERIMETRE` et de `BLOCAGES_ADMIS` ailleurs.
+
+**Le 2026-09-16, l'interpréteur qui fait foi est devenu le `.venv` du dépôt.** Deux
+Pythons mesuraient ce dépôt sans le dire : le Python système, partagé, pour lequel les
+déclarations ci-dessous avaient été écrites, et le `.venv`, qu'une partie des sessions
+employait et qui portait `fastapi` 0.137 — la version même qu'ARCH-2 plafonne. Le `.venv`
+a été réaligné sur les deux verrous, et ce test y a échoué pour la seule raison que ses
+trois écarts admis ne décrivaient plus rien. Un Python partagé ne se plie pas aux verrous
+d'un dépôt ; un `.venv` qui lui appartient, si. Les déclarations sont donc vidées, et un
+écart qui réapparaît se répare par la commande ci-dessous au lieu de se déclarer.
 """
 import os
 import sys
@@ -41,32 +50,19 @@ import identite_pile  # noqa: E402
 # silence : tant qu'ils tiennent, un défaut propre à ces versions-là ne peut pas être vu
 # ici. Ce qui les rend supportables est que l'image, elle, EST vérifiée — la suite y
 # tourne (QA-5) et les verrous y sont contrôlés (QA-4).
-ECARTS_ADMIS = {
-    "numpy": "2026-09-09 — local 1.26.2 contre 2.4.6 dans l'image, un saut de version "
-             "MAJEURE. C'est le plus lourd des trois : numpy 2 change des règles de "
-             "promotion de types et de copie sur lesquelles reposent OpenCV, torch, "
-             "scipy et scikit-image. Non corrigé ici parce que ce Python est PARTAGÉ "
-             "avec d'autres projets du poste, et qu'y imposer numpy 2 déborde de ce "
-             "dépôt. La couverture réelle de ces chemins est celle de l'image.",
-    "pillow": "2026-09-09 — local 12.1.0 contre 12.0.0. L'épingle à 12.0.0 vient de QA-4 "
-              "et n'est pas cosmétique : `iiif-prezi3==3.1.1` exige `Pillow<=12.0.0`, "
-              "et c'est ce qui a permis au test de conformance IIIF de cesser de se "
-              "skipper dans l'image. Le venv local porte donc la version qui rendait ce "
-              "test impossible — d'où, ci-dessous, son absence d'`iiif-prezi3`.",
-    "requests": "2026-09-09 — local 2.31.0 contre 2.32.5. Le moins conséquent des trois ; "
-                "il n'est ici que parce que le poste traîne une version ancienne, pas "
-                "parce qu'une décision l'y retient.",
-}
+#
+# VIDE depuis le 2026-09-16 (cf. la docstring) : `numpy`, `pillow` et `requests` y étaient
+# déclarés pour le Python système — local 1.26.2, 12.1.0 et 2.31.0 le 2026-09-09. Le
+# `.venv` qui fait foi porte les versions des verrous. Git garde les raisons écrites alors.
+ECARTS_ADMIS = {}
 
 # Un paquet épinglé mais ABSENT ici. Ce n'est pas un écart de version, c'est une COUVERTURE
 # qui manque : un test qui en dépend se SKIPPE, et un skip se lit comme un succès (QA-6).
-ABSENCES_ADMISES = {
-    "iiif-prezi3": "2026-09-09 — outil de test seulement, et son absence a une CAUSE "
-                   "mesurée : il exige `Pillow<=12.0.0` quand ce poste porte 12.1.0. "
-                   "`test_iiif_conformance_stricte` se skippe donc ici et ne tourne QUE "
-                   "dans l'image, où QA-4 a vérifié qu'il PASSE. C'est le seul test du "
-                   "dépôt dont la couverture repose entièrement sur l'artefact.",
-}
+#
+# VIDE depuis le 2026-09-16 : `iiif-prezi3` manquait au Python système, qui portait
+# Pillow 12.1.0 quand il exige `Pillow<=12.0.0`. Le `.venv` a les deux, et
+# `test_iiif_conformance_stricte` y tourne au lieu de ne tourner que dans l'image.
+ABSENCES_ADMISES = {}
 
 
 @pytest.fixture(scope="module")
