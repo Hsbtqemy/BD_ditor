@@ -30,13 +30,14 @@ découle attend Hugo, comme le premier JP2 produit par le scanner de l'équipe.
 
 ### JPEG 2000
 - [x] La chaîne de production des JP2 est connue et écrite ici : l'outil qui les produit, avec ou sans perte, et si le master reste un TIFF archivé ailleurs. Seule elle tranche `resc`/`resd` et le 12 bits ; questions posées à Hugo le 2026-09-16. Réponses du même jour : le LOGICIEL DU SCANNER de l'équipe (modèle non précisé) ; SANS PERTE comme cas nominal (« le moins de perte possible ») ; master NON DÉCIDÉ — tout TIFF, TIFF et JP2 mêlés, ou JP2 privilégié à terme, donc l'application porte les deux formats de master sans supposer lequel l'emporte ; profondeur INCONNUE
+- [ ] Le format de stockage des masters est décidé par Hugo et écrit ici — TIFF brut, TIFF compressé sans perte, JP2 sans perte, ou un mélange —, avec le coût d'import qu'il accepte. La comparaison mesurée sur deux vrais scans est au Contexte ; l'application porte déjà les deux formats de master
 - [ ] Un JP2 produit par CE scanner, réglé sans perte, accompagné du TIFF de la MÊME page, est relevé, et la fiche note : le modèle du scanner et son réglage ; les boîtes de résolution présentes (`resc`, `resd`, les deux, aucune) et le `dpi` que l'import en tire ; la précision en bits et gris ou couleur (le mode Pillow à l'import) ; le poids du JP2 face au TIFF ; le temps d'import de chacun dans l'image. Ce seul couple de fichiers tranche le modèle, la profondeur et la case `resd` ci-dessous
 - [ ] Un JP2 gris en 12 bits RÉEL, importé, donne un dérivé qui suit ses tons. `image_8_bits` le traite comme du 16 bits parce que le décodeur de Pillow étend toute précision à 16 (`shift = 16 - prec` dans `Jpeg2KDecode.c`, LU au tag 12.0.0) ; non mesuré, Pillow n'écrivant pas de JP2 12 bits. Si c'était faux, le dérivé sortirait presque NOIR
 - [ ] Un JP2 RÉEL du corpus visé est inspecté, et la fiche dit s'il porte une boîte `resc`, `resd`, les deux, ou aucune. La case suivante ne se tranche pas sur un fichier fabriqué. Le JP2 du scanner de la case précédente EST ce fichier
 - [ ] Un JP2 dont la résolution n'est écrite que dans `resd` reçoit un `dpi` à l'import — ou la fiche écrit pourquoi on s'y refuse. Aujourd'hui Pillow ne lit que `resc` : mesuré sur quatre fichiers forgés, `resc` → (300, 300), `resd` seule → `None`, `resd` puis `resc` → (300, 300). Sans dpi, pas de centimètres et la planche ne compte pas « avec résolution ». L'arbitrage est réel : `resc` dit ce que le scanner a capté, `resd` ce qu'on recommande d'afficher, et A6 décrit le MATÉRIEL
 - [ ] Sous Windows, dans Chrome, le dialogue ouvert par ⤓ Importer des images… (Atelier) montre un fichier `.jp2` sans qu'on change le filtre. L'`accept` de `#file-input` ne citait que `image/*,.tif,.tiff` ; depuis `654562f` il énumère les quatorze extensions de `IMG_EXTS`, `.jp2` compris, sans `image/*`. Que le dialogue le MONTRE reste à jouer à la main
 - [x] Un test compare à `config.IMG_EXTS` les deux copies de la liste d'extensions que porte le front : l'`accept` de `#file-input` dans `templates/index.html`, et la regex `SD_IMG` de l'explorateur ShareDocs dans `static/viewer.js`. `SD_IMG` coïncide avec la liste aujourd'hui, et rien ne l'y oblige
-- [ ] Le temps d'import d'un JP2 SANS PERTE est mesuré sur un VRAI scan dans l'image, et une décision est écrite s'il dépasse ce qu'un annotateur attend devant le toast « Import en cours… ». Le cas fabriqué — A4 à 300 dpi rempli de bruit, le pire cas pour la compression — prend 19,2 s pour le seul dérivé dans `bd-recette-app`, contre 2,6 s en avec perte, et la requête d'import attend pendant ce temps. MESURÉ sur deux VRAIS scans le 2026-09-16 (chiffres au Contexte) : la requête d'import passe de 0,4 s en TIFF à 7 à 11 s en JP2 sans perte. La décision est posée à Hugo, non prise
+- [ ] Le temps d'import d'un JP2 SANS PERTE est mesuré sur un VRAI scan dans l'image, et une décision est écrite s'il dépasse ce qu'un annotateur attend devant le toast « Import en cours… ». Le cas fabriqué — A4 à 300 dpi rempli de bruit, le pire cas pour la compression — prend 19,2 s pour le seul dérivé dans `bd-recette-app`, contre 2,6 s en avec perte, et la requête d'import attend pendant ce temps. MESURÉ sur deux VRAIS scans le 2026-09-16 (chiffres au Contexte) : la requête d'import passe de 0,4 s en TIFF à 7 à 11 s en JP2 sans perte. La décision est posée à Hugo, non prise. Hugo (2026-09-16) : elle ATTEND un TIFF et un JP2 réels sortis du scanner, qu'il va chercher dans les prochains jours ; ni le décodage réduit ni la tâche de fond ne se codent d'ici là
 
 ### TIFF multipage
 - [ ] Un TIFF de deux pages importé depuis l'Atelier est REFUSÉ avec un message qui dit « plusieurs pages », et rien n'est enregistré. Arbitrage rendu par Hugo le 2026-09-16 : refuser, et NON prioritaire — le code attendra que le cas se présente. Aujourd'hui seule la première page est lue et la seconde disparaît sans avertissement (mesuré : `n_frames` = 2, taille et pixel de la page 1)
@@ -214,3 +215,28 @@ résolution échoue aussi (mesuré : deux résolutions, `reduce=2` → même err
 qu'un décodage réduit exigerait un REPLI sur le décodage plein. Les écarts de `reduce=1` se
 logent probablement dans les trames d'impression, que l'ondelette filtre autrement que
 LANCZOS — hypothèse, non regardée à l'écran.
+
+**Le TIFF compressé sans perte, pour la décision de stockage — mesuré le 2026-09-16**, mêmes
+conditions et mêmes deux masters que le JP2 ci-dessus, à la demande de Hugo. Compression par
+Pillow/libtiff. Le prédicteur horizontal passe par `tiffinfo={317: 2}` alors que Pillow ne
+range pas la balise dans son noyau libtiff : il est APPLIQUÉ, vérifié en relisant la balise
+(2) et au poids. Toutes les variantes relisent des pixels identiques et gardent leur dpi.
+
+| variante | plus lourd : poids | import | médian : poids | import |
+|---|---|---|---|---|
+| brut | 53,0 Mo (100 %) | 0,44 / 0,51 s | 37,7 Mo (100 %) | 0,53 / 0,36 s |
+| LZW | 49,5 Mo (93 %) | 1,05 / 1,10 s | 37,3 Mo (99 %) | 0,85 / 0,88 s |
+| LZW + prédicteur | 33,8 Mo (64 %) | 1,15 / 1,18 s | 27,1 Mo (72 %) | 1,02 / 0,85 s |
+| Deflate | 41,5 Mo (78 %) | 0,74 / 0,67 s | 30,7 Mo (81 %) | 0,53 / 0,44 s |
+| Deflate + prédicteur | 31,2 Mo (59 %) | 0,82 / 0,74 s | 23,9 Mo (63 %) | 0,57 / 0,54 s |
+| JP2 sans perte | 23,1 Mo (44 %) | 8,5 / 11,4 s | 18,5 Mo (49 %) | 7,4 / 9,6 s |
+
+(« import » = la requête `POST /api/albums/{id}/import` entière, deux répétitions. Pic
+mémoire de la requête : 204–254 Mo en Deflate + prédicteur, 237–310 Mo en brut, 383–483 Mo
+en JP2.) LZW est dominé par Deflate sur les deux fichiers, et sans prédicteur il ne gagne
+presque rien sur le médian. **Ce que la table met en balance, sans trancher** : Deflate +
+prédicteur ramène le master à ~60 % pour +0,2 à 0,3 s d'import ; le JP2 sans perte gagne
+encore ~25 % de stockage, pour 7 à 11 s par planche. Le temps d'ÉCRITURE (1 à 4 s pour les
+TIFF, 11 à 14 s pour le JP2) est payé une fois par qui produit le fichier, pas à l'import.
+Deux scans RVB d'une seule campagne, compressés par Pillow et non par le scanner : le couple
+TIFF + JP2 réel que Hugo va chercher reste ce qui tranche.
