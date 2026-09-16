@@ -403,11 +403,13 @@ kbd {
    signe visible qu'il s'ouvre.
 
    Le panneau part du bord GAUCHE de la pastille, et au moins aussi large qu'elle. C'est
-   l'inverse de « Aa », et pour la raison qui a fait déborder « Aa » : ancré à droite, il
-   suivrait une pastille que l'enroulement pose en tête de rangée, et pendrait hors du bord
-   gauche. Ancré à gauche et à la largeur de la pastille, il tient tant que ses entrées
-   tiennent dans cette largeur — ce que le test de la bande 1 de production mesure menu
-   OUVERT, et qui dira quand une entrée ajoutée ne tiendra plus. */
+   l'inverse de « Aa », et pour la raison qui a fait déborder « Aa » — mais pour le jour où
+   elle jouera, pas pour aujourd'hui. Tant que le panneau a la largeur de la pastille, les
+   deux ancrages donnent la même boîte : mesuré par mutation le 2026-09-16, un ancrage à
+   droite restait vert partout. C'est une entrée PLUS LARGE que la pastille qui départagera
+   : ancré à droite, le panneau pendrait alors hors du bord gauche dès que l'enroulement
+   pose la pastille en tête de rangée. Ancré à gauche, il tient tant que ses entrées tiennent
+   dans la fenêtre — ce que le test de la bande 1 de production mesure menu OUVERT. */
 .user-chip button.user-who {
   display: inline-flex; align-items: center; gap: .3077rem; max-width: none;
 }

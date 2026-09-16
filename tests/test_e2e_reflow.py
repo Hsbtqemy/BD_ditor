@@ -39,7 +39,8 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from conftest import ECRITURE, make_png         # noqa: E402
-from tools.mesurer_reflow import DEPLIES, INVENTAIRE, SONDE, deplier   # noqa: E402
+from tools.mesurer_reflow import (DEPLIES, ECRASEMENT, INVENTAIRE, SONDE,  # noqa: E402
+                                  decrire_ecrasement, deplier)
 
 pytestmark = pytest.mark.e2e
 
@@ -278,6 +279,13 @@ def test_aucun_panneau_deplie_ne_perd_de_contenu(page, decor, surface):
                 if perdus:
                     echecs.append(f"{DEPLIES[controle]['nom']} ouvert, {largeur} px, "
                                   f"police {police} px :\n{_decrire(perdus)}")
+                # Ce que la sonde ne voit pas : le panneau tient dans la fenêtre, mais son
+                # contenu y est-il lisible ? Cf. `ECRASEMENT`.
+                ecrase = decrire_ecrasement(
+                    page.evaluate(ECRASEMENT, DEPLIES[controle]["panneau"]))
+                if ecrase:
+                    echecs.append(f"{DEPLIES[controle]['nom']} ouvert, {largeur} px, "
+                                  f"police {police} px, ÉCRASÉ :\n" + "\n".join(ecrase))
     assert not echecs, (
         f"{surface} — contenu INATTEIGNABLE une fois un panneau ouvert (1.4.10) :\n"
         + "\n".join(echecs))
@@ -371,11 +379,18 @@ LARGEURS_BANDE = [320, 375, 480, 560, 640, 720, 900, 1024, 1280]
 # ailleurs que dans la bande.
 MENUS_BANDE_1 = [".display-menu > button", ".user-chip button.user-who"]
 
+# Le bas du CONTENU de la bande, et non de sa boîte. Écrit d'abord sur la boîte, ce contrôle
+# était aveugle au défaut même qu'il existait pour voir : dans la grille de l'Atelier, une
+# rangée figée ÉTIRE la boîte de `#site-nav` à sa hauteur, et c'est la seconde rangée de
+# liens qui déborde par-dessus la barre d'outils, hors de la boîte. Mesuré par mutation le
+# 2026-09-16 : les trois rangées remises à `var(--nav-h)`, le test restait vert.
 _CHEVAUCHEMENT = """() => {
   const n = document.getElementById('site-nav'), h = document.getElementById('header');
   if (!n || !h) return null;
-  return { bas: Math.round(n.getBoundingClientRect().bottom),
-           haut: Math.round(h.getBoundingClientRect().top) };
+  const bas = [...n.children].map((c) => c.getBoundingClientRect())
+    .filter((b) => b.width > 0 && b.height > 0)
+    .reduce((m, b) => Math.max(m, b.bottom), n.getBoundingClientRect().bottom);
+  return { bas: Math.round(bas), haut: Math.round(h.getBoundingClientRect().top) };
 }"""
 
 
@@ -383,10 +398,12 @@ _CHEVAUCHEMENT = """() => {
 def test_la_bande_1_de_production_ne_perd_pas_de_contenu(page, live_server):
     """Au pire cas de production, ni « Aa » ni la pastille ne sortent, de 320 à 1280 px.
 
-    Deux contrôles par page, et le second ne se voit pas en largeur : une bande qui passe à
-    la ligne GRANDIT, et dans la grille de l'Atelier sa rangée avait une hauteur figée
-    (`var(--nav-h)`). Elle déborderait alors sur la barre d'outils sans qu'aucun rectangle
-    ne sorte de la fenêtre — la sonde resterait verte.
+    Trois contrôles par page, et les deux derniers ne se voient pas en largeur. Une bande qui
+    passe à la ligne GRANDIT, et dans la grille de l'Atelier sa rangée avait une hauteur
+    figée (`var(--nav-h)`) : elle déborderait sur la barre d'outils sans qu'aucun rectangle
+    ne sorte de la fenêtre. Et une bande qui tient dans la fenêtre peut être ÉCRASÉE — des
+    liens qui se chevauchent, un texte qui déborde de sa boîte (cf. `ECRASEMENT`). La
+    sonde resterait verte dans les deux cas, et une relecture par mutation l'a montré.
     """
     page.set_extra_http_headers({"Remote-User": "camille", "Remote-Name": NOM_LONG,
                                  "Remote-Groups": "bd-admins"})
@@ -426,6 +443,9 @@ def test_la_bande_1_de_production_ne_perd_pas_de_contenu(page, live_server):
                 if v and v["bas"] > v["haut"] + 1:
                     echecs.append(f"{cas} : la bande 1 recouvre la bande 2 de "
                                   f"{v['bas'] - v['haut']} px")
+                ecrase = decrire_ecrasement(page.evaluate(ECRASEMENT, "#site-nav"))
+                if ecrase:
+                    echecs.append(f"{cas} : bande 1 ÉCRASÉE :\n" + "\n".join(ecrase))
                 # Les menus de la bande, ouverts sur TOUTES les surfaces. Ils s'y ouvraient
                 # d'abord sur deux, nommées à la main — une seconde liste de surfaces, que
                 # `test_surfaces` refuse à raison : c'est ainsi qu'une surface finit par
@@ -438,6 +458,11 @@ def test_la_bande_1_de_production_ne_perd_pas_de_contenu(page, live_server):
                     if perdus:
                         echecs.append(f"{cas}, {DEPLIES[controle]['nom']} ouvert :\n"
                                       f"{_decrire(perdus)}")
+                    ecrase = decrire_ecrasement(
+                        page.evaluate(ECRASEMENT, DEPLIES[controle]["panneau"]))
+                    if ecrase:
+                        echecs.append(f"{cas}, {DEPLIES[controle]['nom']} ouvert, ÉCRASÉ :\n"
+                                      + "\n".join(ecrase))
     assert not echecs, (
         "La bande 1 de production perd du contenu :\n" + "\n".join(echecs))
 

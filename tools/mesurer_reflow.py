@@ -131,6 +131,64 @@ SONDE = """() => {
   return { scrollWidth: r.scrollWidth, clientWidth: large, coupables: coupables.slice(0, 6) };
 }"""
 
+# ── L'ÉCRASEMENT, que `SONDE` ne voit pas (UX-14, relecture du 2026-09-16) ─────────────
+#
+# `SONDE` demande si un élément SORT de la fenêtre. Un contenu peut être rendu illisible
+# sans que rien ne sorte : une barre de liens rétrécie dont les liens se chevauchent, une
+# entrée de menu dont le texte déborde de sa boîte. Mesuré par mutation, les deux, et la
+# garde restait verte — une barre de navigation écrasée sur la pastille, un menu de
+# l'Atelier réduit à 120 px pour un texte de 163.
+#
+# Deux questions, posées à l'intérieur d'une RACINE (la bande, un panneau ouvert) :
+#   chevauchements — deux commandes visibles qui se recouvrent, hors d'une paire
+#                    parent-enfant ;
+#   rognes         — une boîte dont le contenu est plus large qu'elle, et qui ne l'assume
+#                    ni par un cadre qui défile ni par des points de suspension.
+# Un élément d'un pixel est écarté : c'est le procédé des libellés cachés à l'œil
+# seulement (`.surf-label`, `.back-label`), qui déborde de sa boîte PAR CONSTRUCTION.
+ECRASEMENT = """(racine) => {
+  const r = document.querySelector(racine);
+  if (!r) return null;
+  const visible = (e) => { const b = e.getBoundingClientRect(); return b.width > 1 && b.height > 1; };
+  const nom = (e) => e.id ? '#' + e.id : e.tagName.toLowerCase() +
+    (typeof e.className === 'string' && e.className.trim()
+       ? '.' + e.className.trim().split(/\\s+/).join('.') : '') +
+    (e.textContent && e.textContent.trim() ? ' « ' + e.textContent.trim().slice(0, 20) + ' »' : '');
+  const commandes = [...r.querySelectorAll('a, button, input, select, textarea, summary')]
+    .filter(visible);
+  const chevauchements = [];
+  for (let i = 0; i < commandes.length; i++) {
+    for (let j = i + 1; j < commandes.length; j++) {
+      const a = commandes[i], b = commandes[j];
+      if (a.contains(b) || b.contains(a)) continue;
+      const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      const l = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
+      const h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
+      if (l > 1 && h > 1) chevauchements.push({ a: nom(a), b: nom(b), px: Math.round(l) });
+    }
+  }
+  const rognes = [];
+  for (const e of [r, ...r.querySelectorAll('*')]) {
+    if (!visible(e)) continue;
+    const st = getComputedStyle(e);
+    if (st.textOverflow === 'ellipsis' || /(auto|scroll)/.test(st.overflowX)) continue;
+    if (e.scrollWidth > e.clientWidth + 1 && e.clientWidth > 0)
+      rognes.push({ el: nom(e), contenu: e.scrollWidth, boite: e.clientWidth });
+  }
+  return { chevauchements: chevauchements.slice(0, 6), rognes: rognes.slice(0, 6) };
+}"""
+
+
+def decrire_ecrasement(e):
+    """Le rapport d'`ECRASEMENT` en lignes lisibles, vide s'il n'y a rien à dire."""
+    if not e:
+        return []
+    return ([f"  {c['a']} et {c['b']} se chevauchent sur {c['px']} px"
+             for c in e["chevauchements"]]
+            + [f"  {x['el']} : {x['contenu']} px de contenu pour {x['boite']} px de boîte"
+               for x in e["rognes"]])
+
+
 # ── Ce qui doit être OUVERT pendant la mesure (UX-14) ───────────────────────────────────
 #
 # La sonde lit des rectangles, et un élément `hidden` n'en a pas : ce qui est replié

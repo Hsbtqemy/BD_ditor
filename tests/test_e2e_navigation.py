@@ -473,6 +473,12 @@ def test_sans_entree_le_nom_du_compte_reste_un_texte(page, live_server):
         route.fulfill(response=reponse, json=d)
 
     page.set_extra_http_headers(IDENTITE_LONGUE)
+    # Le TÉMOIN d'abord : avec le lien, le nom EST un bouton. Sans ce premier temps, le test
+    # passait aussi sur l'écran d'avant le menu du compte, qui n'avait jamais de bouton — il
+    # était vert sans rien prouver. Relevé en relisant le lot, le 2026-09-16.
+    page.goto(f"{live_server}/corpus", wait_until="networkidle")
+    expect(page.locator(".user-chip button.user-who")).to_have_count(1, timeout=15000)
+
     page.route("**/api/moi", sans_sortie)
     page.goto(f"{live_server}/corpus", wait_until="networkidle")
     expect(page.locator(".user-chip .user-who")).to_be_visible(timeout=15000)
