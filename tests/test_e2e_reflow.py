@@ -280,6 +280,74 @@ def test_aucun_panneau_deplie_ne_perd_de_contenu(page, decor, surface):
         + "\n".join(echecs))
 
 
+# ── Ce que `theme.js` n'injecte que derrière le proxy (UX-14) ──────────────────────────
+#
+# `decor` prend `live_server` SANS proxy, et c'est voulu (cf. la table des comptes, plus
+# bas). Mais deux éléments de `theme.js` n'existent qu'avec lui : la pastille d'identité
+# et le bandeau de portée vide. La pastille était déjà rendue, par ACCIDENT, par le test de
+# la table des comptes — à 320 px seulement, où la bande enroule, et sans le lien
+# « Déconnexion » que la production affiche : jamais aux largeurs où elle casse. Le
+# bandeau, lui, ne l'était par aucun audit de reflow. Il est mesuré ici, et il est en outre
+# un `<details>`, c'est-à-dire un repli que l'inventaire `aria-expanded` ci-dessus ne
+# compte pas : il fallait le déplier à la main.
+#
+# 320 et 375 px, et pas 768 : le bandeau est un bloc qui suit la largeur de `<main>`, et
+# la mesure à la main du 2026-09-16 le donnait sain aux trois largeurs. Ce sont les deux
+# étroites qui peuvent casser.
+LARGEURS_BANDEAU = [320, 375]
+BANDEAU_IDENTITES = {
+    # Sans identité, le bandeau naît DÉPLIÉ : c'est la seule panne certaine (AUTH-8).
+    "anonyme": {},
+    # Avec une identité et aucune collection, il naît replié et parle d'accès à demander.
+    "identité sans accès": {"Remote-User": "sans-droits"},
+}
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_le_bandeau_de_portee_vide_ne_perd_pas_de_contenu(page, live_server):
+    """Le bandeau de portée vide tient à 320 et 375 px, replié comme déplié.
+
+    Mesuré à la main le 2026-09-16 avant d'être écrit, et il tenait : ce test n'est pas un
+    correctif, c'est le constat qui manquait — la même forme que la garde stricte de la
+    table des comptes. On déplie par la propriété `open` et non par un clic, pour mesurer
+    les deux états quel que soit celui dans lequel le bandeau naît.
+    """
+    echecs = []
+    for nom, entetes in BANDEAU_IDENTITES.items():
+        page.set_extra_http_headers(entetes)
+        for police in POLICES:
+            _preference_police(page, police)
+            for largeur in LARGEURS_BANDEAU:
+                page.set_viewport_size({"width": largeur, "height": 900})
+                for surface in SURFACES_AUDITEES:
+                    page.goto(live_server + surface, wait_until="networkidle")
+                    page.wait_for_selector(".portee-vide details", timeout=5000)
+                    for ouvert in (False, True):
+                        page.evaluate("(o) => { document.querySelector("
+                                      "'.portee-vide details').open = o; }", ouvert)
+                        page.wait_for_timeout(100)
+                        if ouvert:
+                            # Le plancher : déplié, la ligne technique a un rectangle. Sans
+                            # lui, un bandeau vidé passerait la sonde exactement comme un
+                            # bandeau sain.
+                            haut = page.evaluate(
+                                "() => { const p = document.querySelector("
+                                "'.portee-vide-technique'); return p ? "
+                                "p.getBoundingClientRect().height : 0; }")
+                            assert haut > 0, (
+                                f"{surface}, {nom} : bandeau déplié sans ligne technique — "
+                                "la mesure n'aurait pas d'objet")
+                        r = page.evaluate(SONDE)
+                        perdus = [c for c in r["coupables"]
+                                  if not c["cadre"] and c["id"] not in EXEMPTIONS]
+                        if perdus:
+                            echecs.append(
+                                f"{surface}, {nom}, {'déplié' if ouvert else 'replié'}, "
+                                f"{largeur} px, police {police} px :\n{_decrire(perdus)}")
+    assert not echecs, (
+        "Le bandeau de portée vide perd du contenu (1.4.10) :\n" + "\n".join(echecs))
+
+
 # ── Le CADRE peut être la page elle-même, et alors la garde ci-dessus s'aveugle ──
 #
 # Trouvé le 2026-09-08 à l'œil, sur une capture d'écran, comme le débordement de barre

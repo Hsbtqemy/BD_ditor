@@ -263,7 +263,13 @@ def live_server(request, tmp_path):
            # c'est-à-dire le seul contenu de cette page qui ne peut pas se couper. À 320 px
            # c'est précisément ce que la garde de reflux surveille, et sans ce décor elle
            # regarderait le bon écran dans le mauvais état.
-           "BD_COMMIT": "4a7f2b9e15c8d306f9b24e7a1c05d8f36b9e2a41"}
+           "BD_COMMIT": "4a7f2b9e15c8d306f9b24e7a1c05d8f36b9e2a41",
+           # UX-14 — la pastille d'identité TELLE QU'EN PRODUCTION, où le compose pose ce
+           # lien. Sans lui, tout audit derrière le proxy rendait une pastille plus étroite
+           # que la vraie, et il existe des largeurs où la bande 1 des tests tient quand
+           # celle de production sort de la fenêtre — 600 px avec « ← Retour », mesuré le
+           # 2026-09-16. Sans effet hors proxy : la pastille n'existe pas.
+           "BD_AUTH_LOGOUT_URL": "https://auth.example.fr/logout?rd=https://bd.example.fr/"}
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app",
          "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
