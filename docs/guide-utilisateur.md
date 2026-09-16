@@ -250,10 +250,11 @@ L'inventaire et le poste de commande.
 - **Traitements par lot** : cocher les passes voulues, sélectionner des albums ou des planches,
   lancer. Progression et annulation en direct.
 - **📚 Collections** : créer une collection — il suffit d'être connecté, et l'on en devient
-  propriétaire —, la décrire (description, dates), régler sa diffusion (régime, embargo,
-  licence, base légale), désigner son référent, la renommer, la supprimer, et l'exporter
-  pour un dépôt (ci-dessous). Seul un propriétaire modifie ; un participant lit la
-  description et sait à qui écrire. La date d'embargo **retient** : tant qu'elle court, les
+  propriétaire, sauf un administrateur, qui l'administre sans la posséder et peut lui
+  désigner un propriétaire dans l'Administration —, la décrire (description, dates), régler
+  sa diffusion (régime, embargo, licence, base légale), désigner son référent, la renommer,
+  la supprimer, et l'exporter pour un dépôt (ci-dessous). Seuls un propriétaire et un
+  administrateur modifient ; un participant lit la description et sait à qui écrire. La date d'embargo **retient** : tant qu'elle court, les
   scans ne sortent pas, même d'une collection « public » — et elle ne publie jamais rien
   d'elle-même. Qui entre dans une collection, et à quel niveau, se règle dans
   l'Administration.

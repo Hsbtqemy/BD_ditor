@@ -376,8 +376,12 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   serveur distingue neuf questions (`peut_lire` / `peut_ecrire` / `peut_administrer` /
   `peut_exporter`, `clause_album` / `clause_terme` / `peut_ecrire_terme` /
   `peut_ecrire_quelque_part` / `peut_exporter_quelque_part`) ; le client n'en reçoit que
-  deux, `administrable` et `exportable` (DROIT-2), et `peut_ecrire` ne traverse même pas — l'UI
-  découvre un refus d'écriture en recevant son 403. Tant que cette asymétrie tient, tout ce
+  trois, collection par collection : `administrable` et `exportable` (DROIT-2), dans
+  `GET /api/collections` et la liste des collections d'un album, et `ecrivable` dans
+  `GET /api/collections` seule (AUTH-12, 2026-09-16 — la modale d'album et « ranger dans une
+  collection » proposaient toutes les collections LUES, et choisir l'une d'elles répondait
+  « introuvable »). Partout ailleurs, `peut_ecrire` ne traverse pas : l'UI découvre un refus
+  d'écriture en recevant son 403. Tant que cette asymétrie tient, tout ce
   qu'on ajoute dans un panneau gardé hérite de sa garde **par défaut et non par décision** :
   c'est ainsi que le référent d'AUTH-4, une simple ADRESSE, s'est retrouvé derrière la
   garde du PARTAGE, donc lisible du seul propriétaire — celui qui venait de l'écrire.
