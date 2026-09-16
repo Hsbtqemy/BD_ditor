@@ -348,6 +348,81 @@ def test_le_bandeau_de_portee_vide_ne_perd_pas_de_contenu(page, live_server):
         "Le bandeau de portée vide perd du contenu (1.4.10) :\n" + "\n".join(echecs))
 
 
+# ── La bande 1 TELLE QU'EN PRODUCTION (UX-14) ──────────────────────────────────────────
+#
+# La pastille au nom le plus long qu'elle affiche (`.user-who` coupe à 14ch), son lien de
+# déconnexion (posé par `live_server`, comme le compose de production le pose) et
+# « ← Retour ». Mesuré le 2026-09-16 : cette bande demande 672 px sur une ligne sous une
+# préférence de 16, 1081 libellés affichés, et 836 / 1348 sous 20 ; les seuils de 28em et
+# de 54em avaient été calibrés sans pastille. « Aa » sortait donc par la droite jusque sur
+# un portable de 1024 px — le menu par lequel on règle la police.
+#
+# D'où un balayage et non deux largeurs canoniques : le défaut vivait ENTRE les seuils, et
+# chaque seuil de cette bande a déjà été mal réglé une fois pour une largeur qu'on n'avait
+# pas visitée. La bande est la même sur les cinq surfaces ; on les visite quand même,
+# parce que la GRILLE qui l'accueille ne l'est pas — d'où le second contrôle, vertical.
+NOM_LONG = "Camille Ferreira-Lopes"
+LARGEURS_BANDE = [320, 375, 480, 560, 640, 720, 900, 1024, 1280]
+# Le panneau « Aa » se mesure ouvert sur deux surfaces seulement : il est le même partout,
+# et c'est la position de son BOUTON dans la bande qui décide de la sienne.
+SURFACES_AA_OUVERT = ["/", "/corpus"]
+
+_CHEVAUCHEMENT = """() => {
+  const n = document.getElementById('site-nav'), h = document.getElementById('header');
+  if (!n || !h) return null;
+  return { bas: Math.round(n.getBoundingClientRect().bottom),
+           haut: Math.round(h.getBoundingClientRect().top) };
+}"""
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_la_bande_1_de_production_ne_perd_pas_de_contenu(page, live_server):
+    """Au pire cas de production, ni « Aa » ni la pastille ne sortent, de 320 à 1280 px.
+
+    Deux contrôles par page, et le second ne se voit pas en largeur : une bande qui passe à
+    la ligne GRANDIT, et dans la grille de l'Atelier sa rangée avait une hauteur figée
+    (`var(--nav-h)`). Elle déborderait alors sur la barre d'outils sans qu'aucun rectangle
+    ne sorte de la fenêtre — la sonde resterait verte.
+    """
+    page.set_extra_http_headers({"Remote-User": "camille", "Remote-Name": NOM_LONG,
+                                 "Remote-Groups": "bd-admins"})
+    echecs = []
+    for police in POLICES:
+        _preference_police(page, police)
+        for largeur in LARGEURS_BANDE:
+            page.set_viewport_size({"width": largeur, "height": 900})
+            for surface in SURFACES_AUDITEES:
+                page.goto(f"{live_server}{surface}?{RETOUR}", wait_until="networkidle")
+                page.wait_for_selector(".user-chip", timeout=5000)
+                page.wait_for_timeout(250)
+                # Le plancher : la pastille porte son lien, et « ← Retour » est rendu là où
+                # la surface le gère. Sans eux, la bande mesurée serait celle du poste.
+                decor = page.evaluate("""() => ({
+                  logout: !!document.querySelector('.user-logout'),
+                  retour: !document.getElementById('back-link').hidden })""")
+                assert decor["logout"], "pastille sans lien de déconnexion : décor absent"
+                if surface != "/administration":        # la seule sans lien de retour
+                    assert decor["retour"], f"{surface} : « ← Retour » non rendu"
+
+                cas = f"{surface}, {largeur} px, police {police} px"
+                perdus = [c for c in page.evaluate(SONDE)["coupables"]
+                          if not c["cadre"] and c["id"] not in EXEMPTIONS]
+                if perdus:
+                    echecs.append(f"{cas} :\n{_decrire(perdus)}")
+                v = page.evaluate(_CHEVAUCHEMENT)
+                if v and v["bas"] > v["haut"] + 1:
+                    echecs.append(f"{cas} : la bande 1 recouvre la bande 2 de "
+                                  f"{v['bas'] - v['haut']} px")
+                if surface in SURFACES_AA_OUVERT:
+                    deplier(page, ".display-menu > button")
+                    perdus = [c for c in page.evaluate(SONDE)["coupables"]
+                              if not c["cadre"] and c["id"] not in EXEMPTIONS]
+                    if perdus:
+                        echecs.append(f"{cas}, « Aa » ouvert :\n{_decrire(perdus)}")
+    assert not echecs, (
+        "La bande 1 de production perd du contenu :\n" + "\n".join(echecs))
+
+
 # ── Le CADRE peut être la page elle-même, et alors la garde ci-dessus s'aveugle ──
 #
 # Trouvé le 2026-09-08 à l'œil, sur une capture d'écran, comme le débordement de barre

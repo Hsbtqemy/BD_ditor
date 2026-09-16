@@ -212,7 +212,9 @@ kbd {
 /* ---------- Layout principal ---------- */
 #app {
   display: grid;
-  grid-template-rows: var(--nav-h) var(--header-h) 1fr var(--status-h);
+  /* Rangée 1 en `auto` : la bande 1 passe à la ligne à toutes les largeurs (UX-14, cf.
+     `#site-nav`), et une rangée figée la laisserait recouvrir la barre d'outils. */
+  grid-template-rows: auto var(--header-h) 1fr var(--status-h);
   /* `minmax(0, 1fr)` et pas `auto` : la colonne implicite d'une grille se dimensionne
      sur le contenu MINIMAL de ses items, qui ont `min-width: auto` par défaut. La
      coque entière grossissait donc jusqu'à la plus large de ses bandes — 665 px
@@ -349,15 +351,42 @@ kbd {
 }
 
 /* ---------- Bande 1 — Navigation du site (identique sur les 4 surfaces) ---------- */
+/* UX-14 — la bande passe à la ligne à TOUTES les largeurs, et plus sous un seuil.
+   Chacun de ses seuils a été mal réglé au moins une fois, et toujours pour la même raison :
+   calibré sur une bande qui n'était pas celle qu'on sert. 23em sans « ← Retour », 28em et
+   54em sans la pastille d'identité — que seul le proxy de production affiche, avec son lien
+   de déconnexion. Mesurée telle qu'en production le 2026-09-16, la bande demandait 672 px
+   sous une préférence de 16 (1081 libellés affichés) et 836 sous 20 (1348) : « Aa » et la
+   pastille sortaient par la droite de 449 à 671 px et de 865 à 1080, jusque sur un portable
+   de 1024 px. Un seuil de plus aurait été réglé sur la bande d'aujourd'hui, et le prochain
+   élément qu'on y ajoute l'aurait recassé.
+
+   `flex-wrap` n'enroule que ce qui dépasse : là où la bande tient, rien ne change — une
+   ligne, `--nav-h` de haut, garanti par `min-height`. Là où elle ne tient pas, elle prend
+   une rangée de plus au lieu de rendre un menu inatteignable. La marge verticale reste
+   dans le bloc 28em : posée ici, elle ajouterait quelques pixels à la bande qui TIENT.
+   `.surf-nav` enroule aussi ses propres liens, pour le cas où la barre à libellés ne
+   tiendrait pas seule sur sa rangée — sous le zoom de l'interface, que les media queries
+   ne voient pas.
+
+   Contrepartie à tenir ailleurs : la rangée de la bande 1 dans la grille de l'Atelier est
+   `auto`, et non plus `var(--nav-h)`, sans quoi une bande de deux rangées recouvrirait la
+   barre d'outils sans qu'aucun rectangle ne sorte de la fenêtre. */
 #site-nav {
   flex: 0 0 auto;                       /* coquilles flex-colonne : ne pas écraser */
-  display: flex; align-items: center; gap: 1.2308rem;
-  height: var(--nav-h); padding: 0 1.0769rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .3077rem 1.2308rem;
+  min-height: var(--nav-h); padding: 0 1.0769rem;
   background: var(--bg-input);          /* légèrement distincte de la bande 2 */
   border-bottom: 1px solid var(--border);
 }
 #site-nav .brand { flex: 0 0 auto; }
 #site-nav .nav-spacer { flex: 1; }      /* pousse Retour + Aa à droite, quoi qu'il arrive */
+#site-nav .surf-nav { flex-wrap: wrap; }
+/* « Aa » à droite de SA rangée : `.nav-spacer` ne pousse que sur la sienne, et la bande qui
+   passe à la ligne posait le bouton en tête de la suivante. Une marge automatique compte
+   pour zéro quand le navigateur répartit les éléments entre les rangées : elle ne change
+   aucune coupure. */
+.display-menu { margin-left: auto; }
 
 /* Pastille « utilisateur connecté · déconnexion » (INFRA-1), injectée par theme.js
    à droite de la bande 1 ; absente en local (pas d'auth). */
@@ -533,7 +562,7 @@ button { font-family: inherit; }
    montrent déjà à l'écran. On la retire de la vue et du flux, pas du document,
    puisqu'elle redevient utile dès qu'il y a la place. */
 @media (max-width: 41.1875em) {
-  #app { grid-template-rows: var(--nav-h) var(--header-h) 1fr auto; }
+  #app { grid-template-rows: auto var(--header-h) 1fr auto; }
   #statusbar { flex-wrap: wrap; row-gap: .1538rem; height: auto; min-height: var(--status-h); }
   #statusbar .legend { display: none; }
 }
@@ -545,7 +574,7 @@ button { font-family: inherit; }
 @media (max-width: 34.9375em) {
   /* Les DEUX rangées en `auto` : ce bloc est plus bas dans la source que celui
      de la bande 4 et écraserait sinon son réglage, à spécificité égale. */
-  #app { grid-template-rows: var(--nav-h) auto 1fr auto; }
+  #app { grid-template-rows: auto auto 1fr auto; }
   #header { flex-wrap: wrap; row-gap: .3077rem; padding-top: .3077rem; padding-bottom: .3077rem; }
   .modes { margin-left: 0; }        /* ne pousse plus à droite une fois seule sur sa ligne */
 
@@ -663,14 +692,15 @@ button { font-family: inherit; }
    sur les mêmes rangées. Sous une préférence de 20 px, une rangée de plus : 118 → 161 px.
    Le prix se paie donc exactement là où l'enroulement sert, et nulle part ailleurs. */
 @media (max-width: 28em) {
-  /* Les DEUX premières rangées en `auto` : la bande 2 tient la sienne du bloc 34.9375em
+  /* UX-14 : ce seuil ne décide plus de l'enroulement de la bande 1, qui passe à la ligne à
+     toutes les largeurs (cf. `#site-nav`) — le récit ci-dessus est celui d'avant, gardé
+     parce qu'il dit pourquoi un seuil ne suffisait pas. Il ne décide plus que de la marge
+     verticale de la bande, de la barre du canevas et de l'ancrage du panneau « Aa ».
+
+     Les DEUX premières rangées en `auto` : la bande 2 tient la sienne du bloc 34.9375em
      ci-dessus, plus haut dans la source, qu'il ne faut pas écraser en la réécrivant. */
   #app { grid-template-rows: auto auto 1fr auto; }
-  #site-nav {
-    flex-wrap: wrap; height: auto; min-height: var(--nav-h);
-    row-gap: .3077rem; padding-top: .3077rem; padding-bottom: .3077rem;
-  }
-  .surf-nav { flex-wrap: wrap; }
+  #site-nav { padding-top: .3077rem; padding-bottom: .3077rem; }
 
   /* La barre du canevas relève de la même condition, mesurée le même jour : 310 px pour
      une préférence de 16, 372 px pour 20, et elle est en `nowrap`. En em cela fait 19,4
@@ -701,7 +731,9 @@ button { font-family: inherit; }
      devient le bloc conteneur : le panneau se cale sur la marge droite de la bande, sous
      la dernière rangée, qui est celle du bouton puisqu'il est le dernier enfant. Le
      `margin-left: auto` renvoie ce bouton à droite de sa rangée, au-dessus du panneau :
-     c'est l'intention que `.nav-spacer` écrit et que l'enroulement défaisait.
+     c'est l'intention que `.nav-spacer` écrit et que l'enroulement défaisait. (Il vit
+     désormais près de `#site-nav`, à toutes les largeurs, puisque la bande enroule
+     partout.)
 
      Et l'ancrage ne suffisait pas seul : sous une préférence de 20, le panneau demande
      322 px, plus que les 320 de la fenêtre. `max-width` le borne à la bande, et ses rangées
@@ -713,7 +745,7 @@ button { font-family: inherit; }
      1,5, le panneau sortait encore de 16 px par la gauche, 128 sous un zoom de 2. Mesuré
      le 2026-09-16, après un correctif que le test déclarait vert : le test ne règle pas ce
      zoom. */
-  .display-menu { position: static; margin-left: auto; }
+  .display-menu { position: static; }
   .display-panel {
     right: 1.0769rem; max-width: calc(100% - 2.1538rem);
     min-width: min(16.1538rem, 100% - 2.1538rem);
