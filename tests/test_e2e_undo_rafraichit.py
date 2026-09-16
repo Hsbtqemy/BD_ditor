@@ -26,6 +26,16 @@ from conftest import ECRITURE, make_png  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
+# UX-10 — ce que `tests/test_surfaces.py` confronte au source. Ce test suit UN geste,
+# normaliser puis annuler, et ce geste ne vit que dans l'Atelier.
+SURFACES_AUDITEES = ("/",)
+SURFACES_HORS_PERIMETRE = {
+    "/recherche": "ni mode Transcription ni Ctrl+Z : l'annulation n'y est pas branchée",
+    "/corpus": "ni mode Transcription ni Ctrl+Z : l'annulation n'y est pas branchée",
+    "/exploration": "ni mode Transcription ni Ctrl+Z : l'annulation n'y est pas branchée",
+    "/administration": "ni mode Transcription ni Ctrl+Z : l'annulation n'y est pas branchée",
+}
+
 CAPITALES = "BONJOURXYZ"
 NORMALISE = "Bonjourxyz"
 
