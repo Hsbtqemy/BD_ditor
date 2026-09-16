@@ -39,7 +39,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from conftest import ECRITURE, make_png         # noqa: E402
-from tools.mesurer_reflow import SONDE          # noqa: E402
+from tools.mesurer_reflow import DEPLIES, INVENTAIRE, SONDE, deplier   # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -182,7 +182,8 @@ def _decrire(coupables):
     lignes = []
     for c in coupables:
         ident = (f"#{c['id']}" if c["id"] else (f".{c['cls']}" if c["cls"] else ""))
-        lignes.append(f"  <{c['tag']}>{ident} — {c['largeur']} px, dépasse de {c['depasse']} px")
+        lignes.append(f"  <{c['tag']}>{ident} — {c['largeur']} px, "
+                      f"dépasse de {c['depasse']} px {c['sens']}")
     return "\n".join(lignes)
 
 
@@ -195,6 +196,88 @@ def test_aucune_surface_ne_perd_de_contenu(page, decor, surface, largeur):
               if not c["cadre"] and c["id"] not in EXEMPTIONS]
     assert not perdus, (
         f"{surface} à {largeur} px — contenu INATTEIGNABLE (1.4.10) :\n{_decrire(perdus)}")
+
+
+# ── Ce qui est replié n'existe pas pour la sonde (UX-14, 2026-09-13) ───────────────────
+#
+# `_sonder` redimensionne, charge et attend : aucun clic, donc aucun panneau ouvert, et un
+# élément `hidden` n'a pas de rectangle. Le menu « Affichage » a vécu là. UX-7 l'avait
+# rangé parmi les largeurs « mesurées, aucune ne déborde » — mesurées au repos —, et une
+# fois ouvert il pendait hors du bord GAUCHE : son ancrage `right: 0` suivait un bouton
+# que l'enroulement de la bande 1 avait posé en tête de rangée. Trouvé à l'œil, sur une
+# capture d'écran, comme le formulaire d'accès plus bas et le débordement de barre d'UX-7
+# avant lui. Trois fois le même scénario : c'est la cause qu'on traite ici.
+#
+# Deux choix de décor, et chacun vient d'une mesure du 2026-09-16 :
+#
+# - **375 px s'ajoute aux largeurs canoniques.** C'est celle où le défaut a été VU, et la
+#   bande où la bande 1 enroule sans être encore à l'étroit : à 320 px et police par
+#   défaut, le bouton tombait assez à droite pour que le panneau tienne, défaut compris.
+# - **Le lien « ← Retour » est rendu** (`retour=`). Il coûte 80 px de bande et paraît dans
+#   l'usage ordinaire du round-trip ; sans lui, le défaut ne se montrait à 375 px que sous
+#   une police de 20. Le seuil de 28em a déjà été mal réglé une fois pour l'avoir mesuré
+#   masqué — le commentaire du seuil, dans `static/style.css`, le raconte.
+LARGEURS_DEPLIES = [320, 375, 768]
+RETOUR = "retour=%2Frecherche"
+
+
+@pytest.mark.parametrize("surface", list(SURFACES_AUDITEES))
+def test_aucun_panneau_deplie_ne_perd_de_contenu(page, decor, surface):
+    """Chaque contrôle repliable de la surface est DÉCLARÉ, puis mesuré OUVERT.
+
+    L'inventaire passe d'abord, et il est la vraie protection : la liste `DEPLIES` seule
+    ne ferait que déplacer l'oubli — un menu ajouté demain et non déclaré serait replié
+    pour l'instrument exactement comme celui-ci l'a été, et le test resterait vert. On
+    compte donc les `aria-expanded` de la page et on exige que chacun soit déclaré, dans
+    les deux sens : un contrôle déclaré qui n'existe plus est une mesure qui ne se fait
+    plus, et elle doit le dire aussi.
+
+    Un seul serveur par surface, et les combinaisons dans la boucle : `decor` relance
+    uvicorn et réécrit l'OCR — donc réindexe — à chaque test, et 54 paramètres auraient
+    payé 54 fois ce décor. Les cinq surfaces tiennent en deux minutes (mesuré le
+    2026-09-16). Les échecs sont RASSEMBLÉS avant l'assertion, parce que la carte des
+    combinaisons qui cassent dit le mécanisme — un seul échec ne dit que le premier : la
+    première passe a rapporté d'un coup le panneau « Aa » sur cinq surfaces ET les deux
+    menus déroulants de l'Atelier, que personne n'avait vus sortir par la gauche.
+    """
+    url = decor["base"] + SURFACES_AUDITEES[surface](decor)
+    url += ("&" if "?" in url else "?") + RETOUR
+
+    page.set_viewport_size({"width": LARGEURS_DEPLIES[0], "height": 900})
+    page.goto(url, wait_until="networkidle")
+    page.wait_for_timeout(400)
+    inventaire = page.evaluate(INVENTAIRE, list(DEPLIES))
+    non_declares = sorted({c["ident"] for c in inventaire if not c["declare"]})
+    assert not non_declares, (
+        f"{surface} — contrôle(s) repliable(s) absent(s) de `DEPLIES` "
+        f"(tools/mesurer_reflow.py) : {non_declares}\n\nReplié pendant la mesure, son "
+        "panneau n'a pas de rectangle et la sonde ne le verra jamais. Le déclarer, avec "
+        "le panneau qu'il ouvre.")
+    presents = {c["declare"] for c in inventaire}
+    attendus = {k for k, d in DEPLIES.items() if surface in d["surfaces"]}
+    assert presents == attendus, (
+        f"{surface} — `DEPLIES` ne décrit plus la page. Déclarés mais absents : "
+        f"{sorted(attendus - presents)} ; présents mais déclarés pour d'autres surfaces : "
+        f"{sorted(presents - attendus)}")
+
+    echecs = []
+    for police in POLICES:
+        _preference_police(page, police)
+        for largeur in LARGEURS_DEPLIES:
+            page.set_viewport_size({"width": largeur, "height": 900})
+            for controle in sorted(attendus):
+                page.goto(url, wait_until="networkidle")
+                page.wait_for_timeout(400)
+                deplier(page, controle)
+                r = page.evaluate(SONDE)
+                perdus = [c for c in r["coupables"]
+                          if not c["cadre"] and c["id"] not in EXEMPTIONS]
+                if perdus:
+                    echecs.append(f"{DEPLIES[controle]['nom']} ouvert, {largeur} px, "
+                                  f"police {police} px :\n{_decrire(perdus)}")
+    assert not echecs, (
+        f"{surface} — contenu INATTEIGNABLE une fois un panneau ouvert (1.4.10) :\n"
+        + "\n".join(echecs))
 
 
 # ── Le CADRE peut être la page elle-même, et alors la garde ci-dessus s'aveugle ──

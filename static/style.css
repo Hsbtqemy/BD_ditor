@@ -549,6 +549,20 @@ button { font-family: inherit; }
   #header { flex-wrap: wrap; row-gap: .3077rem; padding-top: .3077rem; padding-bottom: .3077rem; }
   .modes { margin-left: 0; }        /* ne pousse plus à droite une fois seule sur sa ligne */
 
+  /* UX-14 — les deux menus déroulants de l'Atelier avaient l'ancrage du menu
+     « Affichage », et tombaient de la même façon : `right: 0` sur `.dropdown` suppose un
+     bouton à DROITE, ce que `margin-left: auto` des modes garantissait sur une ligne et que
+     la ligne au-dessus retire sur deux. Enroulée, la bande pose « Traitement » et
+     « Import / Export » en tête de rangée, et leurs menus pendaient hors du bord gauche —
+     83 et 54 px à 320 px, 103 et 66 sous une préférence de 20. Mesuré le 2026-09-16 par la
+     première passe qui les OUVRAIT : toutes les précédentes les avaient pris repliés.
+     Même correctif que la bande 1 (cf. le bloc 28em) : ancrés à la bande, bornés par elle. */
+  .header-actions { margin-left: auto; }
+  .dropdown { position: static; }
+  .dropdown-menu {
+    right: 1.0769rem; top: calc(100% + .3077rem); max-width: calc(100% - 2.1538rem);
+  }
+
 
   /* La barre du canevas déborde à son tour : le fil d'Ariane pousse la bascule du
      panneau hors de l'écran (mesuré à 331 px pour 320). Il cède le premier parce que
@@ -674,6 +688,37 @@ button { font-family: inherit; }
      silencieusement d'agir. `tests/test_e2e_police.py` le verrait, à 320 px sous une
      préférence de 20. */
   #toolbar { flex-wrap: wrap; row-gap: .3077rem; }
+
+  /* UX-14 — le panneau « Affichage » s'ancre à la BANDE, plus au bouton.
+     `right: 0` sur `.display-menu` n'est juste que tant que le bouton est à droite, et
+     `.nav-spacer` ne le garantit que sur UNE ligne : l'enroulement pose « Aa » en tête de
+     rangée, et le panneau pendait hors du bord GAUCHE, sur les cinq surfaces — 115 px à
+     375 px avec « ← Retour », 69 px avec la pastille d'identité, 258 px sous une préférence
+     de 20. Jamais par la droite (mesuré le 2026-09-16). C'est le pire des deux sens : un
+     corps qui défilerait ne ramènerait pas ce qui est AVANT l'origine.
+
+     `.display-menu` cesse donc d'être positionné, et `#site-nav` — déjà `relative` —
+     devient le bloc conteneur : le panneau se cale sur la marge droite de la bande, sous
+     la dernière rangée, qui est celle du bouton puisqu'il est le dernier enfant. Le
+     `margin-left: auto` renvoie ce bouton à droite de sa rangée, au-dessus du panneau :
+     c'est l'intention que `.nav-spacer` écrit et que l'enroulement défaisait.
+
+     Et l'ancrage ne suffisait pas seul : sous une préférence de 20, le panneau demande
+     322 px, plus que les 320 de la fenêtre. `max-width` le borne à la bande, et ses rangées
+     passent à la ligne plutôt que de sortir de leur cadre.
+
+     Le plancher se borne AUSSI, et une première écriture l'avait oublié : `min-width`
+     l'emporte sur `max-width` quand ils se contredisent, et ils se contredisent dès que le
+     zoom de l'interface (« A+ ») rétrécit la bande sous 16rem — à 320 px sous un zoom de
+     1,5, le panneau sortait encore de 16 px par la gauche, 128 sous un zoom de 2. Mesuré
+     le 2026-09-16, après un correctif que le test déclarait vert : le test ne règle pas ce
+     zoom. */
+  .display-menu { position: static; margin-left: auto; }
+  .display-panel {
+    right: 1.0769rem; max-width: calc(100% - 2.1538rem);
+    min-width: min(16.1538rem, 100% - 2.1538rem);
+  }
+  .display-panel .dm-row { flex-wrap: wrap; }
 }
 .surf-sep { color: var(--text-muted); opacity: .45; user-select: none; }
 .surf-link.active {

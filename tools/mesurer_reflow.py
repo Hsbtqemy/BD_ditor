@@ -1,4 +1,4 @@
-"""Mesure le débordement horizontal des quatre surfaces — outil de constat pour UX-7.
+"""Mesure le débordement horizontal des cinq surfaces — outil de constat pour UX-7.
 
 Répond à une question que la suite ne pose pas : à une largeur donnée, du contenu
 sort-il de l'écran, et lequel ? Le critère WCAG 2.1 AA **1.4.10 « Reflow »** demande un
@@ -25,13 +25,18 @@ de 280 px qui défile est conforme ; le même tableau sans cadre, sous `overflow
 perd 413 px. Les deux se ressemblent exactement si l'on ne regarde que le rectangle, et
 c'est ce que faisait cet outil jusqu'au 2026-09-04.
 
-**Cet outil mesure l'état AU REPOS, et c'est sa limite** : il charge les quatre surfaces
+**Cet outil mesure l'état AU REPOS, et c'est sa limite** : il charge les cinq surfaces
 sans paramètres, donc sans planche ouverte, sans résultat de recherche, sans toast et sans
 token relu. Ce que la page ne rend pas, il ne le voit pas — quatre défauts ont vécu là
 (la vignette de résultat, `.accord-table`, le toast, et `#canvas` qui fait 800 px dès
 qu'une planche est chargée). La GARDE est `tests/test_e2e_reflow.py`, qui monte un décor
 et vise des URL peuplées ; celui-ci reste l'instrument d'exploration, celui qu'on lance à
 la main pour balayer sept largeurs et LIRE ce qui sort. Les deux partagent `SONDE`.
+
+Le repos a cessé d'être le SEUL état mesuré avec UX-14 : chaque surface est aussi mesurée
+une fois par panneau déclaré dans `DEPLIES`, ouvert. Un cinquième défaut vivait là — le
+menu « Affichage », déclaré sain par UX-7 parce qu'il était replié pendant la mesure.
+L'outil et le test partagent cette liste comme ils partagent `SONDE`.
 
   # sur une instance déjà lancée (base jetable de préférence)
   python tools/mesurer_reflow.py [URL]        # défaut : http://127.0.0.1:8000
@@ -104,6 +109,14 @@ SONDE = """() => {
         break;
       }
     }
+    // Le CÔTÉ par lequel il sort, et pas seulement de combien (UX-14). `depasse` valait
+    // `right - large`, si bien qu'un panneau qui pendait hors du bord GAUCHE se rapportait
+    // en nombre NÉGATIF — « dépasse de -69 px » —, ce qui se lit comme « tient ». Les deux
+    // sens ne relèvent pas du même correctif : à droite, quelque chose est trop large ; à
+    // gauche, un ancrage `right: 0` a suivi un contrôle que l'enroulement a déplacé.
+    // Les seuils sont ceux du filtre ci-dessus, et non les valeurs arrondies : un bord à
+    // -1,3 px s'arrondit à 1, et le côté se serait nommé « à droite ».
+    const aGauche = b.left < -1, aDroite = b.right > large + 1;
     coupables.push({
       cadre,
       tag: el.tagName.toLowerCase(),
@@ -111,11 +124,128 @@ SONDE = """() => {
       cls: (el.className && typeof el.className === 'string')
              ? el.className.split(/\\s+/).slice(0, 2).join('.') : null,
       largeur: Math.round(b.width),
-      depasse: Math.round(b.right - large),
+      depasse: Math.max(Math.round(-b.left), Math.round(b.right - large)),
+      sens: aGauche && aDroite ? 'des deux côtés' : (aGauche ? 'à gauche' : 'à droite'),
     });
   }
   return { scrollWidth: r.scrollWidth, clientWidth: large, coupables: coupables.slice(0, 6) };
 }"""
+
+# ── Ce qui doit être OUVERT pendant la mesure (UX-14) ───────────────────────────────────
+#
+# La sonde lit des rectangles, et un élément `hidden` n'en a pas : ce qui est replié
+# n'existe pas pour elle. Le menu « Affichage » a vécu là. UX-7 l'avait mesuré et déclaré
+# sain — au REPOS, donc panneau fermé —, et il sortait de 115 px par la gauche dès qu'on
+# l'ouvrait à 375 px avec le lien « ← Retour ». Trouvé à l'œil sur une capture d'écran, le
+# 2026-09-13, pour la troisième fois de ce dépôt dans les mêmes circonstances.
+#
+# D'où une liste DÉCLARÉE, sur le modèle d'`EXEMPTIONS` dans `tests/test_e2e_reflow.py`,
+# et PARTAGÉE avec lui pour la raison qui vaut déjà pour `SONDE` : ce qui s'ouvre doit
+# s'ouvrir des deux côtés, ou d'aucun. Le test ajoute ce qu'une liste seule ne ferait pas —
+# il inventorie les contrôles `aria-expanded` de chaque page et échoue sur celui qui n'y
+# figure pas. Sans cet inventaire, un menu ajouté demain serait replié pour l'instrument
+# exactement comme celui-ci l'a été, et rien ne le dirait.
+#
+# Clé : le sélecteur du CONTRÔLE, que l'inventaire compare aux éléments de la page.
+#   panneau  — ce qui doit avoir un rectangle une fois ouvert : la preuve que la mesure a
+#              un objet. Le menu « Aa » ne porte pas d'`aria-controls`, d'où la déclaration.
+#   surfaces — les chemins où il existe. Un contrôle déclaré et ABSENT échoue lui aussi :
+#              une déclaration périmée est une mesure qui ne se fait plus.
+DEPLIES = {
+    # `theme.js` l'injecte partout : le corriger une fois le corrige partout, et le mesurer
+    # sur une seule surface laisserait les quatre autres à la merci de leur propre bande 1.
+    ".display-menu > button": {
+        "nom": "menu Affichage",
+        "panneau": ".display-panel",
+        "surfaces": ["/", "/recherche", "/corpus", "/exploration", "/administration"],
+    },
+    # Les deux menus de la bande 2 de l'Atelier, et ses deux tiroirs (UX-7). Les tiroirs
+    # étaient déjà ESCAMOTÉS pour la sonde — hors champ et commandés, donc conformes —, ce
+    # qui dit qu'ils sont atteignables et rien de ce qu'on trouve une fois arrivé dedans.
+    "#btn-traitement": {
+        "nom": "menu Traitement", "panneau": "#traitement-menu", "surfaces": ["/"]},
+    "#btn-donnees": {
+        "nom": "menu Import / Export", "panneau": "#donnees-menu", "surfaces": ["/"]},
+    "#btn-tiroir-nav": {
+        "nom": "tiroir des planches", "panneau": "#sidebar", "surfaces": ["/"]},
+    "#btn-tiroir-panneau": {
+        "nom": "tiroir d'annotation", "panneau": "#panel", "surfaces": ["/"]},
+}
+
+# Les contrôles repliables présents dans la page, pour l'inventaire. `aria-expanded` est
+# le contrat ARIA d'un bouton qui déplie quelque chose : c'est donc lui qu'on compte, et ce
+# qu'il ne couvre pas est écrit — un `<details>` natif n'en porte pas, ni une boîte de
+# dialogue ouverte par un bouton ordinaire. Ceux-là restent hors de l'inventaire.
+INVENTAIRE = """(cles) => [...document.querySelectorAll('[aria-expanded]')].map((el) => ({
+  declare: cles.find((c) => el.matches(c)) || null,
+  ident: el.id ? '#' + el.id : el.tagName.toLowerCase() + '.' + el.className,
+}))"""
+
+# Un contrôle DÉJÀ ouvert n'est pas recliqué : ce serait le refermer, et l'attente qui suit
+# échouerait en accusant le panneau.
+_OUVRIR = """(sel) => {
+  const c = document.querySelector(sel);
+  if (!c) return false;
+  if (c.getAttribute('aria-expanded') !== 'true') c.click();
+  return true;
+}"""
+
+# Ouvert, et FINI de s'ouvrir : les tiroirs glissent (`transform` en transition), et un
+# rectangle pris en plein vol se lirait comme un contenu à moitié hors champ. On n'attend
+# que les animations du PANNEAU — lui, ses ancêtres, ses descendants —, pas celles du
+# document : un indicateur de chargement qui tourne en boucle bloquerait sinon toute
+# ouverture, et accuserait le panneau d'un délai qui n'est pas le sien.
+_OUVERT = """(d) => {
+  const c = document.querySelector(d.controle), p = document.querySelector(d.panneau);
+  if (!c || !p || c.getAttribute('aria-expanded') !== 'true') return false;
+  const b = p.getBoundingClientRect();
+  const siennes = document.getAnimations().filter((a) => {
+    const t = a.effect && a.effect.target;
+    return t && (t.contains(p) || p.contains(t));
+  });
+  return b.width > 0 && b.height > 0 && siennes.every((a) => a.playState !== 'running');
+}"""
+
+
+def deplier(page, controle):
+    """Ouvre le contrôle déclaré et attend que son panneau ait un rectangle.
+
+    Le clic est DOM (`element.click()`) et non celui de Playwright, et c'est mesuré :
+    Playwright fait défiler l'élément dans la vue avant de cliquer, y compris dans un corps
+    en `overflow: hidden` — à 480 px derrière le proxy, il a décalé `body` de 19 px, et la
+    mesure prise ensuite portait sur une page qu'aucun utilisateur ne peut obtenir. Un
+    contrôle hors champ reste l'affaire de la mesure au repos, qui le verra.
+
+    Lève si rien ne s'ouvre : un panneau qui reste replié donnerait une mesure verte sans
+    objet, c'est-à-dire le défaut même que la liste existe pour fermer.
+    """
+    d = DEPLIES[controle]
+    if not page.evaluate(_OUVRIR, controle):
+        raise AssertionError(f"{d['nom']} : contrôle `{controle}` absent de la page")
+    try:
+        page.wait_for_function(_OUVERT, arg={"controle": controle, "panneau": d["panneau"]},
+                               timeout=3000)
+    except Exception as e:
+        raise AssertionError(
+            f"{d['nom']} : `{controle}` cliqué, mais `{d['panneau']}` n'a pas de rectangle "
+            "ou le contrôle ne se dit pas ouvert (`aria-expanded`) — la mesure n'aurait "
+            "aucun objet") from e
+
+
+def _rapporter(libelle, r):
+    perdus = [c for c in r["coupables"] if not c["cadre"]]
+    encadres = [c for c in r["coupables"] if c["cadre"]]
+    etat = "OK" if not perdus else f"{len(perdus)} élément(s) COUPÉ(s)"
+    print(f"  {libelle:38} → {etat}")
+    for c in perdus:
+        ident = c["id"] and f"#{c['id']}" or (c["cls"] and f".{c['cls']}") or ""
+        print(f"       ✗ <{c['tag']}>{ident}  largeur {c['largeur']} px,"
+              f" dépasse de {c['depasse']} {c['sens']} — INATTEIGNABLE")
+    for c in encadres:
+        ident = c["id"] and f"#{c['id']}" or (c["cls"] and f".{c['cls']}") or ""
+        print(f"       · <{c['tag']}>{ident}  largeur {c['largeur']} px,"
+              f" défile dans {c['cadre']} — conforme 1.4.10")
+
 
 def main(base):
     from playwright.sync_api import sync_playwright
@@ -132,19 +262,19 @@ def main(base):
                 except Exception as e:
                     print(f"  {nom:14} — inatteignable ({type(e).__name__})")
                     continue
-                r = page.evaluate(SONDE)
-                perdus = [c for c in r["coupables"] if not c["cadre"]]
-                encadres = [c for c in r["coupables"] if c["cadre"]]
-                etat = "OK" if not perdus else f"{len(perdus)} élément(s) COUPÉ(s)"
-                print(f"  {nom:14} → {etat}")
-                for c in perdus:
-                    ident = c["id"] and f"#{c['id']}" or (c["cls"] and f".{c['cls']}") or ""
-                    print(f"       ✗ <{c['tag']}>{ident}  largeur {c['largeur']} px,"
-                          f" dépasse de {c['depasse']} — INATTEIGNABLE")
-                for c in encadres:
-                    ident = c["id"] and f"#{c['id']}" or (c["cls"] and f".{c['cls']}") or ""
-                    print(f"       · <{c['tag']}>{ident}  largeur {c['largeur']} px,"
-                          f" défile dans {c['cadre']} — conforme 1.4.10")
+                _rapporter(nom, page.evaluate(SONDE))
+                # Chaque panneau sur une page RECHARGÉE : les menus se ferment l'un
+                # l'autre, et un état hérité du précédent fausserait la mesure du suivant.
+                for controle, d in DEPLIES.items():
+                    if chemin not in d["surfaces"]:
+                        continue
+                    page.goto(BASE + chemin, wait_until="networkidle", timeout=30000)
+                    try:
+                        deplier(page, controle)
+                    except AssertionError as e:
+                        print(f"  {nom + ', ' + d['nom']:38} — ne s'ouvre pas : {e}")
+                        continue
+                    _rapporter(f"{nom}, {d['nom']} ouvert", page.evaluate(SONDE))
             ctx.close()
         nav.close()
     print("\nfin de la mesure")
