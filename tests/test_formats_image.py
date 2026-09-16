@@ -99,7 +99,8 @@ def test_aucun_format_decodable_n_est_hors_du_corpus():
 # Le front porte DEUX copies de la liste, que rien ne reliait à `IMG_EXTS` (IMG-1) : le
 # filtre du dialogue d'import de l'Atelier, et la regex qui décide dans l'explorateur ShareDocs
 # quels fichiers se proposent à l'import. Une extension ajoutée au serveur et oubliée là
-# resterait acceptée sans jamais être proposée — c'était le cas du `.jp2` dans le dialogue.
+# resterait acceptée sans jamais être proposée. Le dialogue citait `image/*,.tif,.tiff`, et
+# rien ne garantissait que Windows range un `.jp2` sous `image/*` — ce n'est pas mesuré.
 RACINE = Path(__file__).resolve().parent.parent
 
 

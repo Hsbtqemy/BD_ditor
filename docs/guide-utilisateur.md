@@ -390,7 +390,7 @@ une. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3, et §7 pour la questi
 
 **Mon image est refusée à l'import.**
 Son format n'est pas dans les sept acceptés (étape 1). Deux contrôles se suivent, et l'un
-ne remplace pas l'autre. L'**extension** du nom d'abord : hors liste, le refus est immédiat
+ne remplace pas l'autre. L'**extension** du nom d'abord : hors liste, le fichier est refusé sans être décodé
 — depuis ShareDocs il dit « type non géré (image attendue) », depuis votre disque il nomme
 l'extension refusée. Puis le **contenu** : renommer un `.psd` en `.tif` passe le premier
 contrôle mais pas le second, et c'est précisément ce qu'il empêche ; depuis votre disque, ce
@@ -399,7 +399,8 @@ convertissez en TIFF ou en JPEG et réimportez.
 
 Un format accepté peut aussi être refusé pour sa **profondeur** : un scan en entiers 32 bits
 (mode `I`) ou en nombres flottants (mode `F`) n'a pas d'équivalent sûr à l'écran, et le
-message nomme le mode entre guillemets. Réexportez-le en 8 ou 16 bits. Les niveaux de gris
+message nomme le mode entre guillemets. Réexportez-le en 8 ou 16 bits entiers NON SIGNÉS : un
+16 bits signé est rangé avec le 32 bits, et refusé de même. Les niveaux de gris
 en 12 ou 16 bits, eux, sont acceptés et s'affichent avec leurs tons.
 
 **Le bouton `Segmenter` (ou `Bulles`, ou `OCR`) ne fait rien / répond une erreur.**

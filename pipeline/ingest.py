@@ -116,11 +116,13 @@ def _bits_portes(img: Image.Image) -> int:
 def image_8_bits(img: Image.Image) -> Image.Image:
     """Ramène une image décodée en `L` ou `RGB`, les deux modes que JPEG et l'OCR reçoivent.
 
-    **Le seul chemin d'un master vers 8 bits** (IMG-1) : le dérivé web et l'OCR l'appellent
-    tous deux. Ils faisaient chacun `convert("RGB")`, qui ÉCRÊTE un gris 16 bits au lieu de
-    le réduire — 0, 100 et 255 passent, tout ce qui dépasse sort à 255. Un scan réel devenait
-    une page presque blanche, sans erreur à l'import, et l'OCR lisait la même page blanche
-    même quand le dérivé était juste. Corriger l'un sans l'autre laissait le défaut entier.
+    **Le seul chemin, dans Pillow, d'un master vers 8 bits** (IMG-1) : le dérivé web et l'OCR
+    l'appellent tous deux. Ces deux sites faisaient chacun `convert("RGB")`, qui ÉCRÊTE un
+    gris 16 bits au lieu de le réduire — 0, 100 et 255 passent, tout ce qui dépasse sort à
+    255. Un scan réel devenait une page presque blanche, sans erreur à l'import, et l'OCR
+    lisait la même page blanche même quand le dérivé était juste. Corriger l'un sans l'autre
+    laissait le défaut entier. Kumiko sur master (`use_master=True`) ne passe pas par ici : il
+    lit le fichier avec OpenCV, qui réduit un TIFF 16 bits et refuse un 12 bits (mesuré).
 
     Ce que la conversion fait, et rien de plus :
     - gris 12 ou 16 bits (`I;16`, `I;16B`, `I;16L`) : réduit à 8 bits en gardant ses tons
@@ -154,8 +156,9 @@ def make_web_derivative(source: Path, dest: Path,
                         quality: int = WEB_JPEG_QUALITY) -> tuple[int, int]:
     """Génère le dérivé web JPEG et retourne ses dimensions (largeur, hauteur).
 
-    Lève `ModeImageRefuse` AVANT d'écrire quoi que ce soit si le master n'a pas de
-    réduction juste en 8 bits : l'import le rend en 400 et retire le master.
+    Lève `ModeImageRefuse` AVANT d'écrire le dérivé si le master n'a pas de réduction juste
+    en 8 bits — seul le dossier de l'album a pu être créé : l'import le rend en 400 et retire
+    le master.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     with Image.open(source, formats=PILLOW_FORMATS) as img:   # SEC-3, cf. read_metadata
