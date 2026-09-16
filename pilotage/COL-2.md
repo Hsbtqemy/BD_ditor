@@ -63,6 +63,13 @@ DÉPLACEMENT** — plus gros que ce qui était annoncé, et portant sur du code 
 - [x] L'échéance d'embargo dépassée est SIGNALÉE là où on la modifie — la pastille a suivi la date dans la Bibliothèque, et son message est repris sous le champ (`test_a11y_collections_embargo_echu`)
 - [x] Une personne en écriture seule ne voit pas le formulaire, et une personne sans accès ne voit pas la collection — éprouvé en lecture ET en écriture, puis sous une identité sans accès (`test_le_participant_non_proprietaire_voit_le_referent`, `test_creer_ne_demande_aucun_droit_mais_decrire_si`)
 
+### Un message s'affiche là où l'on a agi
+- [ ] *Bibliothèque → 📚 Collections*, trois collections dont une dépliée : prendre le nom « Collection par défaut » puis *Enregistrer* montre le refus DANS la collection dépliée, visible sans défiler depuis le bouton. Même attendu pour la confirmation d'enregistrement et pour le 409 de *Supprimer la collection*. Aujourd'hui tous passent par l'unique `#col-msg`, sous la liste entière
+- [ ] Le message qui suit *+ Créer* s'affiche sous le champ de création, en haut du bloc, et non sous la liste des collections
+- [ ] *Administration → 👥 Accès aux collections* : un refus d'accorder, de changer un niveau ou de retirer un accès s'affiche dans la collection dépliée. Le panneau a aujourd'hui la même ligne unique, `#col-msg`, sous la liste
+- [ ] Un test lit la PLACE du message et non plus seulement son texte : il tombe si le refus du nom réservé revient sous la liste. `test_e2e_collections.py` n'attend aujourd'hui que le contenu et la classe de `#col-msg`
+- [ ] Le genre d'un nouvel accès est tranché, et la raison écrite : sans valeur par défaut (*+ Accorder* refuse tant que le genre n'est pas choisi), ou « Utilisateur » gardé. Un groupe accordé en utilisateur n'ouvre rien à personne, et le seul signal à l'écran est « n'a pas encore ouvert l'application », qui ne distingue pas cette faute d'un arrivant pas encore venu
+
 ## Ce que le déménagement a trouvé — 2026-09-11
 
 **Un piège qui aurait été muet.** `openModal()` masquait la ligne d'ajout des
@@ -81,6 +88,26 @@ recopié, et sa garde sera posée là-bas, au serveur, pour les dix portes à la
 
 **Aucun fichier de style touché.** Le formulaire réutilise les classes existantes ;
 `static/style.css` restait libre pour la session voisine, qui y travaillait au même moment.
+
+## Ce que la passe de recette a trouvé — 2026-09-16
+
+La passe *Les collections dans la Bibliothèque* a été jouée 27/27 sur la pile locale. Ses
+cases disent vrai ; deux choses qu'aucune ne portait se sont vues en jouant.
+
+**Les messages tombent loin du geste.** Le refus du nom « Collection par défaut » est
+arrivé, en rouge et lisible, et n'a pas été vu : il était sous toutes les collections,
+avant la table des albums. Le 409 d'une suppression refusée a fait la même chose plus tard
+dans la passe. Les deux se voyaient en défilant. `colMsg()` écrit dans une seule ligne pour tout
+le bloc — confirmation, refus, création —, et la suite ne pouvait pas le voir : elle lit le
+texte et la classe de cette ligne, jamais sa distance au bouton. Le panneau des accès de
+l'Administration a la même ligne, pas encore jouée sous un refus.
+
+**Le genre par défaut a trompé deux fois sur deux.** À la remise en état, `annotateurs` et
+`etudiants` ont d'abord été accordés en « Utilisateur », puis retirés et reposés en
+groupes — journal A3, événements 117 à 122. La faute a été rattrapée ; l'écran ne la
+nommait pas. Le code ne pose que `jamais_vu`, qui
+RAPPORTE une absence et n'en explique aucune (AUTH-6) : un nom de groupe accordé en
+utilisateur et un login pas encore venu y sont indistinguables, et c'est voulu.
 
 ## Contexte
 

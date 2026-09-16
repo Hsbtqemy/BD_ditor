@@ -26,6 +26,14 @@ chaque identité.
 > **La jouer donc en FIN de série**, et fermer sa dernière zone avant de passer à autre
 > chose. Elle change en outre le régime de diffusion en `public`, ce dont *Export de dépôt*
 > dépend.
+>
+> **« Étude B » tombe de la même façon, et aucune case ne la demande.** esther v1 vit
+> aussi ailleurs, donc sa suppression RÉUSSIT — jouée par erreur le 2026-09-16, en
+> cherchant une collection à faire refuser. Elle emporte deux choses que la remise en
+> état ne rendait pas : ses termes locaux `grille-b` et `ambiance-b`, dont *Un terme
+> qu'on ne lit pas ne se voit pas* a besoin, deviennent GLOBAUX ; et `proprio`, qui
+> n'atteint plus esther v1 que par elle une fois « Collection Test » supprimée, ne voit
+> plus AUCUN album. Ne supprimer que ce que les cases nomment.
 
 **Sur la pile locale**, `https://bd.127-0-0-1.sslip.io`. `proprio` possède « Collection
 Test », `lectrice` la lit par le groupe `annotateurs`, et `stagiaire` y écrit depuis la
@@ -54,6 +62,15 @@ accorder cette écriture d'abord. `arrivant` n'a aucun accès nulle part.
 
 ### Créer ne demande qu'une identité
 
+**Le décor du refus n'existe pas d'office** : aucun album ne vit seulement dans une
+collection de `proprio`. Pour la seconde moitié de la dernière case, sous `proprio` et APRÈS
+avoir supprimé « Collection Test » : créer « Collection isolée » ; *+ Nouvel album*
+« Album isolé », Collection = « Collection isolée », sans planche ; supprimer « Collection
+isolée » — c'est elle que le refus doit compter. Puis supprimer l'album (🗑), et la
+collection, qui part alors sans refus. **Le refus s'affiche en bas du bloc**, sous toutes
+les collections (défaut consigné dans COL-2) : défiler avant de conclure qu'il n'est pas
+venu.
+
 - [x] Sous `arrivant` : le bouton de création est là ; créer « Carnet d'arrivant » ouvre aussitôt SON formulaire, dont il est propriétaire
 - [x] Le message qui suit la création dit où faire entrer quelqu'un, avec le lien vers l'Administration
 - [x] Sous `arrivant`, supprimer « Carnet d'arrivant » (vide) réussit
@@ -80,6 +97,18 @@ accorder cette écriture d'abord. `arrivant` n'a aucun accès nulle part.
 La passe a supprimé « Collection Test » et changé son régime. Sans cette zone, les passes
 qui s'appuient sur elle échouent plus tard sur un décor absent — et rien ne dira que la
 cause est ici. L'état ci-dessous est celui mesuré le 2026-09-14, avant le jeu.
+
+**Le genre d'un accès vaut « Utilisateur » par défaut** sur la ligne *+ Accorder*, et un
+groupe accordé en utilisateur n'ouvre rien à personne, sans message — la liste dit
+seulement « n'a pas encore ouvert l'application ». Passer `annotateurs` et `etudiants` en
+**Groupe** AVANT d'accorder : les deux ont été posés en utilisateurs le 2026-09-16.
+
+**Si « Étude B » a été supprimée** (cf. l'avertissement de tête) : la recréer sous
+`proprio` ; ranger esther v1 dans « Collection Test » et dans « Étude B » **sous
+`admin-bd`**, puisque `proprio` ne le voit plus ; puis, sous `proprio`, *Exploration →
+📖 Lexique*, passer la **Portée** de `grille-b` et de `ambiance-b` sur « Étude B » — la
+valeur `tendue` suit sa dimension, `commun` reste global. « Étude B » ne reçoit aucun
+accès : `proprio` y était seul.
 
 - [x] « Collection Test » est recréée depuis la Bibliothèque **sous `proprio`**, qui en redevient donc propriétaire du même coup
 - [x] L'album *esther v1* y est rattaché
