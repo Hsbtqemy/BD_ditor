@@ -16,11 +16,11 @@ n'est écrit, et le chantier commence par une mesure.
 ## Reste
 
 ### Mesurer ce qui se perd, avant de choisir un remède
-- [ ] Deux navigateurs sous deux comptes en écriture, sur la même bulle. A sélectionne la bulle ; B la sélectionne, lui AJOUTE un tag et attend l'enregistrement ; A modifie alors la note et attend l'enregistrement. Attendu : on sait si le tag de B survit. Le journal A3 (`evenement`, avant/après) sert de preuve, et le résultat est écrit ici
-- [ ] Même décor, deux notes : A et B modifient la note de la même bulle à quelques secondes d'intervalle. Attendu : on sait laquelle reste, et si celle ou celui dont le texte a disparu en reçoit un signe à l'écran
-- [ ] Même décor en Transcription : A et B corrigent le texte de la même bulle. Attendu : on sait ce que montre l'écran de A une fois que B a enregistré, y compris après un changement de bulle puis un retour sur celle-ci
-- [ ] A supprime une case pendant que B la modifie. Attendu : on sait ce que B lit à l'écran quand son enregistrement tombe sur une case disparue (un 404 affiché tel quel, un message, ou rien)
-- [ ] Les quatre mesures rejouées sous le compte COLLECTIF d'AUTH-6, deux navigateurs sous le même login. Attendu : on sait si Ctrl+Z chez l'une défait l'acte de l'autre dans la fenêtre de cinq minutes
+- [x] Deux navigateurs sous deux comptes en écriture, sur la même bulle. A sélectionne la bulle ; B la sélectionne, lui AJOUTE un tag et attend l'enregistrement ; A modifie alors la note et attend l'enregistrement. Attendu : on sait si le tag de B survit. Le journal A3 (`evenement`, avant/après) sert de preuve, et le résultat est écrit ici
+- [x] Même décor, deux notes : A et B modifient la note de la même bulle à quelques secondes d'intervalle. Attendu : on sait laquelle reste, et si celle ou celui dont le texte a disparu en reçoit un signe à l'écran
+- [x] Même décor en Transcription : A et B corrigent le texte de la même bulle. Attendu : on sait ce que montre l'écran de A une fois que B a enregistré, y compris après un changement de bulle puis un retour sur celle-ci
+- [x] A supprime une case pendant que B la modifie. Attendu : on sait ce que B lit à l'écran quand son enregistrement tombe sur une case disparue (un 404 affiché tel quel, un message, ou rien)
+- [x] Les quatre mesures rejouées sous le compte COLLECTIF d'AUTH-6, deux navigateurs sous le même login. Attendu : on sait si Ctrl+Z chez l'une défait l'acte de l'autre dans la fenêtre de cinq minutes
 
 ### Trancher la forme, sur les pertes mesurées
 - [ ] Écrit : le remède retenu, choisi parmi trois familles, ou « rien, et pourquoi ». Refuser un enregistrement fait sur une version périmée (409 qui nomme le conflit). Signaler que la planche a changé ailleurs, avec un geste pour actualiser. Réserver la bulle ou la planche à qui l'édite. Le choix s'appuie sur ce que la zone précédente a MESURÉ, pas sur l'hypothèse de départ
@@ -59,3 +59,71 @@ de ce chantier). AUTH-6 (le compte collectif utilisé SIMULTANÉMENT, que l'appl
 distinguera jamais). UX-5 (la granularité de l'annulation : un enregistrement toutes les
 500 ms n'est pas un geste). CONC-1 et CONC-2 portent sur les lots ML, pas sur les
 personnes.
+
+**Mesuré le 2026-09-16 — la première zone.** Code servi : `6cdcbe4`. Aucun code de
+l'application n'a été touché.
+
+*Le décor.* Un serveur uvicorn LOCAL sur un clone du dépôt (`git clone --shared`, puis
+`checkout 6cdcbe4`), données isolées dans `BD_DATA_DIR`, `BD_AUTH_PROXY=1`. Les identités
+sont SIMULÉES par en-têtes (`Remote-User`), comme dans les tests derrière le proxy : pas
+d'Authelia, pas de pile de recette. Chromium par Playwright, un contexte par personne,
+chaque cas sur sa propre bulle. Les accès sont posés directement en base, niveau `ecriture` sur
+la collection de l'album. Le compte collectif est déclaré par la vraie route (`PATCH
+/api/comptes/collectif/nature`). Chaque enregistrement est ATTENDU à l'écran (« Enregistré »)
+avant le geste suivant, et ce que chaque personne VOIT est relevé : champs, puces, toasts,
+requêtes d'écriture et leurs codes. La preuve est le journal A3 (`evenement`, avant/après).
+
+*Un instrument a menti, et c'est écrit parce qu'il aurait conclu à tort.* À la première
+passe, la capture des toasts observait `document.documentElement` depuis le script
+d'initialisation, où il n'existe pas encore : toutes les listes sont revenues vides, y compris
+celle qui DEVAIT contenir « Région supprimée ». Sans ce témoin, on aurait écrit « aucun signe
+à l'écran » partout. La seconde passe observe `document`, enveloppe aussi `window.toast`, et
+vérifie le témoin : les deux instruments concordent. Les pertes, prouvées par le journal, sont
+identiques d'une passe à l'autre.
+
+*Les résultats — identiques sous deux comptes nominatifs et sous le compte collectif.*
+
+1. **Le tag ajouté par B est effacé, sans un mot.** A et B sélectionnent la bulle ; B ajoute
+   `tag-de-b` (`creation`, tags `["tag-de-b"]`) ; A tape une note, et son enregistrement
+   (`modification`, 200) passe les tags de `["tag-de-b"]` à `[]`. Aucun toast, ni chez A ni
+   chez B. L'écran de B montre ENCORE la puce `tag-de-b`, disparue en base. **L'hypothèse
+   tient, et la perte va dans les DEUX sens.** Dans le contrôle qui la départage, B, restée
+   sur la bulle, ajoute un second tag : son enregistrement remet `tag-de-b` mais efface la
+   note « note de A » (`"note": ""`, la note chargée à SA sélection). Une A qui rouvre la
+   bulle APRÈS l'enregistrement de B, elle, garde les deux tags. Ce n'est donc pas le serveur
+   qui efface : c'est l'état chargé à la sélection que chaque enregistrement renvoie en entier,
+   note ET tags.
+2. **Deux notes : la dernière enregistrée reste, et la première n'en sait rien.** A écrit
+   « note de A » ; trois secondes plus tard, B écrit « note de B » (`modification`, avant
+   « note de A », après « note de B »). L'écran de A garde « note de A » et « Enregistré »,
+   sans toast ni requête. Seul un rechargement lui montre « note de B ».
+3. **Transcription : l'écran de A reste sur l'ancien texte, et sa saisie suivante écrase
+   celle de B.** B corrige « TEXTE INITIAL » en « TEXTE DE B ». La zone de A montre encore
+   « TEXTE INITIAL » — tout de suite, et après bulle suivante (`Tab`) puis retour
+   (`Maj+Tab`) : le texte vient des régions chargées à l'ouverture de la planche. A ajoute
+   « + A » : la base passe de « TEXTE DE B » à « TEXTE INITIAL + A » (journal, avant/après).
+   Aucun toast, deux 200.
+4. **Case supprimée pendant que B la modifie : B reçoit une erreur brute, et la case reste
+   dessinée.** A supprime (`DELETE` 204, toast « Région supprimée »). B change sa coordonnée X :
+   `PUT` 404, toast d'erreur « Échec mise à jour : Région 4 introuvable ». La case reste tracée
+   sur l'écran de B, le champ X garde la valeur saisie. Le message ne dit pas que quelqu'un
+   d'autre l'a supprimée.
+5. **Ctrl+Z sous le compte COLLECTIF défait l'acte de l'autre navigateur.** A (navigateur 1)
+   ajoute un tag ; B (navigateur 2, même login, aucun acte sur cette bulle) tape Ctrl+Z :
+   toast « Annulé : ajout d'une annotation », `POST /api/undo` 200, événement `annulation`
+   qui vise l'acte de A. L'écran de A montre encore la puce, sans toast. Sous deux comptes
+   NOMINATIFS, le même geste répond « Rien à annuler. » (404) et le tag reste : le filtre par
+   agent protège, le délai de cinq minutes ne sépare pas deux personnes sous un même login.
+
+*Ce qui n'est pas mesuré.* Les délais réels d'un usage — ici quelques secondes entre deux
+gestes, là où la fenêtre réelle est le temps passé sur une bulle. Authelia et la pile réelle
+(les en-têtes sont simulés). Les corrections grammaticales et le panneau Personnage ou
+Locuteur. Le changement de PLANCHE puis retour, qui recharge les régions (lu dans le code,
+non joué). La forme du remède n'est pas tranchée : c'est la seconde zone, et elle est à Hugo.
+
+*Rejouer.* Le script a vécu dans un scratchpad de session (`conc3/mesure_conc3.py`), qui ne
+dure pas ; son protocole est ci-dessus, et il se réécrit avec trois précautions mesurées ce
+jour-là. Un client HTTP local doit ignorer le proxy système (`httpx.Client(trust_env=False)`,
+Chromium `--no-proxy-server`), sans quoi les requêtes n'atteignent jamais le serveur. La lecture
+d'une région passe par `GET /api/planches/{id}/regions`, puisqu'il n'y a pas de
+`GET /api/regions/{id}` (405). Et la capture des toasts se vérifie par un témoin positif.
