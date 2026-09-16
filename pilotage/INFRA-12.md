@@ -5,7 +5,16 @@ statut: livré
 
 # INFRA-12 — le contrôle de déploiement dit ce qu'il n'a PAS pu vérifier
 
-**Arrêté sur** — 2026-09-16, `06c23c1` : **le contrôle de configuration lit ce que
+**Arrêté sur** — 2026-09-16, `de581d7` : **les groupes d'administration se demandent à
+Compose.** Trouvé en relisant `06c23c1` le jour même : pour savoir ce que l'application
+reçoit, le contrôle imitait Compose par des expressions régulières, contre la règle que
+`deployer.sh` pose pour les ports. L'imitation refusait à tort `$VAR`, écriture valide, et
+laissait passer à tort les variables du shell, `env_file:` et `include:`.
+`docker compose config --format json` fait désormais foi ; la lecture des fichiers ne sert
+plus que de repli quand Compose ne répond pas, la sortie l'annonce, et elle suit toute la
+grammaire d'interpolation. Dix mutants tués sur une copie, chacun par l'assertion visée.
+
+**État antérieur** — 2026-09-16, `06c23c1` : **le contrôle de configuration lit ce que
 l'application REÇOIT.** Il comparait à Authelia une `BD_AUTH_ADMIN_GROUPS` lue dans `.env`,
 que `docker-compose.yml` ne transmet pas : une valeur posée là refusait un déploiement à
 tort. Il lit désormais les fichiers de `COMPOSE_FILE`, signale une valeur inerte sans
