@@ -5,13 +5,12 @@ statut: interrompu
 
 # IMG-1 — accepter un format n'est pas savoir le convertir
 
-**Arrêté sur** — le filtre d'extension de l'import depuis le disque, commit `cfbf85d`,
-16 septembre, après le gris 16 bits (`fb53e67`), l'outil de régénération (`fd7cd38`) et sa
-déclaration au cliquet des sorties (`944f071`). Rien n'est poussé. Hugo a tranché le jour
-même : mesure de production sans objet, TIFF multipage refusé mais non prioritaire, et le
-JPEG 2000 devient la PRIORITÉ de la reprise — le poids des TIFF pèse sur le stockage. À
-reprendre par le temps d'import d'un vrai scan converti en JP2 sans perte, puis le test des
-listes d'extensions du front.
+**Arrêté sur** — le dialogue d'import qui propose exactement `IMG_EXTS`, commit `654562f`,
+16 septembre, après le gris 16 bits (`fb53e67`), l'outil de régénération (`fd7cd38`), sa
+déclaration au cliquet des sorties (`944f071`) et le filtre d'extension (`cfbf85d`). Rien
+n'est poussé. Le JPEG 2000 est la priorité (décision de Hugo) : le temps d'import d'un vrai
+scan converti sans perte est MESURÉ — 7 à 11 s contre 0,4 s en TIFF —, et la décision qui en
+découle attend Hugo, comme le premier JP2 produit par le scanner de l'équipe.
 
 ## Reste
 
@@ -30,13 +29,14 @@ listes d'extensions du front.
 - [ ] Après régénération, une planche déjà ouverte dans l'Atelier montre le NOUVEAU dérivé au simple rechargement de la page, sans vider le cache. `GET /derivatives/…` répond un `FileResponse` sans `Cache-Control` (lu dans `main.py` le 2026-09-16) : un navigateur peut garder l'ancienne image par fraîcheur heuristique. Hypothèse, non mesurée — le middleware `no-cache` ne couvre que `/static` et les pages HTML
 
 ### JPEG 2000
-- [ ] La chaîne de production des JP2 est connue et écrite ici : l'outil qui les produit, avec ou sans perte, et si le master reste un TIFF archivé ailleurs. Seule elle tranche `resc`/`resd` et le 12 bits ; questions posées à Hugo le 2026-09-16
+- [x] La chaîne de production des JP2 est connue et écrite ici : l'outil qui les produit, avec ou sans perte, et si le master reste un TIFF archivé ailleurs. Seule elle tranche `resc`/`resd` et le 12 bits ; questions posées à Hugo le 2026-09-16. Réponses du même jour : le LOGICIEL DU SCANNER de l'équipe (modèle non précisé) ; SANS PERTE comme cas nominal (« le moins de perte possible ») ; master NON DÉCIDÉ — tout TIFF, TIFF et JP2 mêlés, ou JP2 privilégié à terme, donc l'application porte les deux formats de master sans supposer lequel l'emporte ; profondeur INCONNUE
+- [ ] Un JP2 produit par CE scanner, réglé sans perte, accompagné du TIFF de la MÊME page, est relevé, et la fiche note : le modèle du scanner et son réglage ; les boîtes de résolution présentes (`resc`, `resd`, les deux, aucune) et le `dpi` que l'import en tire ; la précision en bits et gris ou couleur (le mode Pillow à l'import) ; le poids du JP2 face au TIFF ; le temps d'import de chacun dans l'image. Ce seul couple de fichiers tranche le modèle, la profondeur et la case `resd` ci-dessous
 - [ ] Un JP2 gris en 12 bits RÉEL, importé, donne un dérivé qui suit ses tons. `image_8_bits` le traite comme du 16 bits parce que le décodeur de Pillow étend toute précision à 16 (`shift = 16 - prec` dans `Jpeg2KDecode.c`, LU au tag 12.0.0) ; non mesuré, Pillow n'écrivant pas de JP2 12 bits. Si c'était faux, le dérivé sortirait presque NOIR
-- [ ] Un JP2 RÉEL du corpus visé est inspecté, et la fiche dit s'il porte une boîte `resc`, `resd`, les deux, ou aucune. La case suivante ne se tranche pas sur un fichier fabriqué
+- [ ] Un JP2 RÉEL du corpus visé est inspecté, et la fiche dit s'il porte une boîte `resc`, `resd`, les deux, ou aucune. La case suivante ne se tranche pas sur un fichier fabriqué. Le JP2 du scanner de la case précédente EST ce fichier
 - [ ] Un JP2 dont la résolution n'est écrite que dans `resd` reçoit un `dpi` à l'import — ou la fiche écrit pourquoi on s'y refuse. Aujourd'hui Pillow ne lit que `resc` : mesuré sur quatre fichiers forgés, `resc` → (300, 300), `resd` seule → `None`, `resd` puis `resc` → (300, 300). Sans dpi, pas de centimètres et la planche ne compte pas « avec résolution ». L'arbitrage est réel : `resc` dit ce que le scanner a capté, `resd` ce qu'on recommande d'afficher, et A6 décrit le MATÉRIEL
-- [ ] Sous Windows, dans Chrome, le dialogue ouvert par ⤓ Importer des images… (Atelier) montre un fichier `.jp2` sans qu'on change le filtre. L'`accept` de `#file-input` ne cite aujourd'hui que `image/*,.tif,.tiff`, et le rangement de `.jp2` sous `image/*` n'a pas été vérifié
-- [ ] Un test compare à `config.IMG_EXTS` les deux copies de la liste d'extensions que porte le front : l'`accept` de `#file-input` dans `templates/index.html`, et la regex `SD_IMG` de l'explorateur ShareDocs dans `static/viewer.js`. `SD_IMG` coïncide avec la liste aujourd'hui, et rien ne l'y oblige
-- [ ] Le temps d'import d'un JP2 SANS PERTE est mesuré sur un VRAI scan dans l'image, et une décision est écrite s'il dépasse ce qu'un annotateur attend devant le toast « Import en cours… ». Le cas fabriqué — A4 à 300 dpi rempli de bruit, le pire cas pour la compression — prend 19,2 s pour le seul dérivé dans `bd-recette-app`, contre 2,6 s en avec perte, et la requête d'import attend pendant ce temps
+- [ ] Sous Windows, dans Chrome, le dialogue ouvert par ⤓ Importer des images… (Atelier) montre un fichier `.jp2` sans qu'on change le filtre. L'`accept` de `#file-input` ne citait que `image/*,.tif,.tiff` ; depuis `654562f` il énumère les quatorze extensions de `IMG_EXTS`, `.jp2` compris, sans `image/*`. Que le dialogue le MONTRE reste à jouer à la main
+- [x] Un test compare à `config.IMG_EXTS` les deux copies de la liste d'extensions que porte le front : l'`accept` de `#file-input` dans `templates/index.html`, et la regex `SD_IMG` de l'explorateur ShareDocs dans `static/viewer.js`. `SD_IMG` coïncide avec la liste aujourd'hui, et rien ne l'y oblige
+- [ ] Le temps d'import d'un JP2 SANS PERTE est mesuré sur un VRAI scan dans l'image, et une décision est écrite s'il dépasse ce qu'un annotateur attend devant le toast « Import en cours… ». Le cas fabriqué — A4 à 300 dpi rempli de bruit, le pire cas pour la compression — prend 19,2 s pour le seul dérivé dans `bd-recette-app`, contre 2,6 s en avec perte, et la requête d'import attend pendant ce temps. MESURÉ sur deux VRAIS scans le 2026-09-16 (chiffres au Contexte) : la requête d'import passe de 0,4 s en TIFF à 7 à 11 s en JP2 sans perte. La décision est posée à Hugo, non prise
 
 ### TIFF multipage
 - [ ] Un TIFF de deux pages importé depuis l'Atelier est REFUSÉ avec un message qui dit « plusieurs pages », et rien n'est enregistré. Arbitrage rendu par Hugo le 2026-09-16 : refuser, et NON prioritaire — le code attendra que le cas se présente. Aujourd'hui seule la première page est lue et la seconde disparaît sans avertissement (mesuré : `n_frames` = 2, taille et pixel de la page 1)
@@ -169,3 +169,48 @@ pas ses surfaces) et deux dans `tests/test_ecart_venv_image.py` — le venv loca
 ses verrous (`fastapi` 0.137.0 pour 0.133.0, `pytest` 9.1.0 pour 9.0.2…), et `numpy` /
 `pillow` y sont déclarés en écart alors qu'ils sont redevenus conformes. Signalé à la
 coordination, pas réparé ici.
+
+**Le JP2 sans perte sur de VRAIS scans — mesuré le 2026-09-16** dans un conteneur jetable de
+`bd-recette-app` (image de `f5fd1eb`), volume de données monté en LECTURE SEULE, 8 cœurs,
+OpenJPEG 2.5.4, aucun Chromium en parallèle. Deux masters de la recette, TIFF RVB **non
+compressés** à 400 dpi : le plus lourd des 129 et un médian. Conversion par Pillow sans
+perte (ondelette réversible, réglages par défaut) — ce n'est PAS le logiciel du scanner.
+
+| | le plus lourd (3748 × 4710) | médian (3110 × 4045) |
+|---|---|---|
+| poids TIFF → JP2 | 53,0 Mo → 23,1 Mo (44 %) | 37,7 Mo → 18,5 Mo (49 %) |
+| pixels relus | identiques | identiques |
+| dérivé, TIFF | 0,23 / 0,25 s, pic 112 Mo | 0,18 / 0,19 s, pic 86 Mo |
+| dérivé, JP2 | 8,7 / 8,9 s, pic 350 Mo | 7,3 / 7,2 s, pic 256 Mo |
+| requête d'import, TIFF | 0,40 / 0,43 s | 0,37 / 0,33 s |
+| requête d'import, JP2 | 8,5 / 11,4 s | 7,4 / 9,6 s |
+
+(Deux répétitions chacune, dans un Python neuf. Le second passage JP2 par la route est plus
+lent sans cause établie.) `read_metadata` coûte 30 à 40 ms dans les deux formats : tout le
+temps est dans le DÉCODAGE plein du JP2. Les 19,2 s du cas fabriqué étaient un pire cas
+(bruit) ; un vrai scan coûte deux fois moins, et reste vingt fois plus lent qu'un TIFF brut.
+
+Deux faits en marge. *Le JP2 écrit par Pillow ne porte AUCUNE résolution*, même quand on lui
+passe `dpi` : son encodeur n'écrit ni `resc` ni `resd` — l'import en tire donc `dpi = None`,
+et cela ne dit RIEN du scanner. *Les TIFF de la recette sont non compressés* : le gain de
+44–49 % se compare à du brut, et un TIFF compressé sans perte (Deflate, LZW) serait un point
+intermédiaire, NON mesuré, dont le décodage resterait probablement rapide — hypothèse.
+
+**Décoder le JP2 à résolution réduite** (`reduce`, que Pillow expose) pour le dérivé au quart,
+mesuré sur les mêmes fichiers, comparé pixel à pixel au dérivé actuel (décodage plein puis
+LANCZOS), avant compression JPEG :
+
+| | le plus lourd | médian |
+|---|---|---|
+| `reduce=1` (moitié) + LANCZOS | 3,0 s, pic 114 Mo ; écart moyen 3,5/255, 15 % des pixels à plus de 8 | 2,1 s, pic 90 Mo ; écart moyen 1,5/255, 1,8 % à plus de 8 |
+| `reduce=2` (quart), sans LANCZOS | 0,9 s, pic 66 Mo ; écart moyen 10/255, maximum 138, 25 % à plus de 8 | **ÉCHEC** : `OSError: broken data stream` |
+
+`reduce=2` est donc écarté : visiblement différent là où il marche, et il ÉCHOUE sur un vrai
+scan. Hypothèse cohérente avec les trois observations, non vérifiée dans OpenJPEG : Pillow
+calcule la taille réduite en `int((n + 2) / 4)` quand le décodeur rend l'arrondi supérieur ;
+les deux ne divergent que si `n` vaut 1 modulo 4 — 4045, la seule hauteur qui a échoué.
+`reduce=1` (`int((n + 1) / 2)`) coïncide toujours. Un JP2 à trop peu de niveaux de
+résolution échoue aussi (mesuré : deux résolutions, `reduce=2` → même erreur), si bien
+qu'un décodage réduit exigerait un REPLI sur le décodage plein. Les écarts de `reduce=1` se
+logent probablement dans les trames d'impression, que l'ondelette filtre autrement que
+LANCZOS — hypothèse, non regardée à l'écran.
