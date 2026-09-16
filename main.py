@@ -2067,7 +2067,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/derivatives/{chemin:path}")
-def derivative(chemin: str, conn: sqlite3.Connection = Depends(db),
+def derivative(chemin: str, request: Request, conn: sqlite3.Connection = Depends(db),
                portee: autorisation.Portee = Depends(portee_courante)):
     """Image web d'une planche, CLOISONNÉE (AUTH-2).
 
@@ -2081,6 +2081,13 @@ def derivative(chemin: str, conn: sqlite3.Connection = Depends(db),
     La base sert d'ALLOWLIST : on ne sert que des fichiers dont le chemin figure dans
     `planches.chemin_web`. Cela autorise et, du même coup, rend toute traversée de
     répertoire impossible — un `..` ne correspond à aucune ligne.
+
+    Deux défauts mesurés le 2026-09-16 (IMG-1). Aucun `Cache-Control` — ni avant ni après
+    le remplacement : un navigateur pouvait resservir par fraîcheur heuristique un dérivé
+    qu'on venait de régénérer. Et aucun 304, perdu AU remplacement : `StaticFiles` répond
+    « inchangé » quand l'ETag concorde, `FileResponse` ignore `If-None-Match` — si bien que
+    `no-cache` seul aurait fait retélécharger chaque dérivé à chaque affichage. D'où
+    `no-cache`, qui revalide toujours, et un 304 sans corps quand l'ETag concorde.
     """
     ou, params = portee.clause_album("planches.album_id")
     row = _row(conn.execute(
@@ -2091,7 +2098,15 @@ def derivative(chemin: str, conn: sqlite3.Connection = Depends(db),
     fichier = DATA_DIR / row["chemin_web"]
     if not fichier.is_file():
         raise HTTPException(404, "Image introuvable")
-    return FileResponse(str(fichier))
+    # Le 304 se décide APRÈS le contrôle de portée, jamais avant : répondre « inchangé »
+    # là où l'on doit répondre 404 dirait qu'une image existe à ce chemin.
+    reponse = FileResponse(str(fichier), stat_result=fichier.stat(),
+                           headers={"Cache-Control": "no-cache"})
+    etag = reponse.headers["etag"]
+    demandes = request.headers.get("if-none-match", "")
+    if etag in (e.strip().removeprefix("W/") for e in demandes.split(",")):
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-cache"})
+    return reponse
 
 
 @app.get("/", response_class=HTMLResponse)
