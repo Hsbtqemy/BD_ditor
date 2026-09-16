@@ -6,7 +6,13 @@ audit: AUDIT.md
 
 # AUDIT-1 — les reliquats ouverts des cinq passes d'audit
 
-**Arrêté sur** — le commit `1786a17`, 2026-08-31 : B6 avait un JUMEAU dans la visionneuse,
+**Arrêté sur** — 2026-09-16, `a12f5c2` : le test du jumeau B6 écrit par `1786a17` attendait
+le toast « Segmentation en cours… », posé AVANT l'appel au serveur, et ne tenait que par la
+vitesse de Kumiko. Il est tombé trois fois dans l'ordre de son module lors de la passe
+navigateur entière qui précédait une poussée, et passait seul. Il attend désormais le toast
+de succès ou d'erreur. Aucun code de l'application n'a changé.
+
+**État antérieur** — le commit `1786a17`, 2026-08-31 : B6 avait un JUMEAU dans la visionneuse,
 trouvé par une seconde passe de revue sur un commit déjà fait. `viewer.js` posait
 `state.planche.statut = "segmentee"` après un clic sur « Segmenter », exactement comme la
 réponse d'import. La première passe avait relevé les quatre sites d'écriture EN BASE et
