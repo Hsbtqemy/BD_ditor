@@ -317,6 +317,11 @@ NON_BALAYE = {
     ("outil", "reindex_materiel.py"): (
         "Maintenance : relit les masters et écrit `planches.dpi_*`/`mode`. Son compte "
         "rendu est un décompte de planches."),
+    ("outil", "regenerer_derives.py"): (
+        "Maintenance (IMG-1) : réécrit les dérivés JPEG depuis les masters, sans écrire "
+        "en base. Son compte rendu est un décompte, des identifiants de planche et, en "
+        "cas d'échec, le message de l'exception — un chemin de fichier au plus, jamais "
+        "une colonne d'identité."),
     ("outil", "reindex_nlp.py"): (
         "Maintenance : régénère les tokens et l'index FTS. Son compte rendu est un "
         "décompte de régions."),
