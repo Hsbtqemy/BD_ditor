@@ -29,7 +29,7 @@ DB_PATH = (Path(os.environ["BD_DB_PATH"]).resolve()
            else DATA_DIR / "bd_annotator.sqlite")
 
 CORPUS_DIR = DATA_DIR / "corpus"            # masters TIFF (gitignore)
-DERIVATIVES_DIR = DATA_DIR / "derivatives"  # PNG/JPEG web générés (gitignore)
+DERIVATIVES_DIR = DATA_DIR / "derivatives"  # dérivés web, toujours JPEG (gitignore)
 
 # Chemins de code (toujours relatifs au dépôt).
 STATIC_DIR = BASE_DIR / "static"

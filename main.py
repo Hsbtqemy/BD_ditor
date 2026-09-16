@@ -486,13 +486,23 @@ def import_planche(
     portee: autorisation.Portee = Depends(portee_courante),
 ):
     _get_album(conn, portee, album_id, ecriture=True)
+    nom = file.filename or "planche.tif"
+    # IMG-1 — le NOM est filtré comme depuis ShareDocs. Sans ce contrôle, `store_upload`
+    # rangeait le master sous le suffixe reçu : un `planche_0001.dat` entrait dans `corpus/`.
+    # Le contenu reste jugé par le décodeur borné (`PILLOW_FORMATS`), et les deux contrôles
+    # ne se remplacent pas : l'un refuse un nom qui ment, l'autre un contenu qui ment.
+    extension = os.path.splitext(nom)[1].lower()
+    if extension not in IMG_EXTS:
+        raise HTTPException(
+            400, f"Extension « {extension or '(aucune)'} » non gérée : image attendue "
+                 f"({', '.join(IMG_EXTS)}).")
     data = file.file.read()
     if not data:
         raise HTTPException(400, "Fichier vide")
     # Numéro alloué AVANT écriture (DB-1) : un numéro explicite déjà pris → 409, sans
     # écraser les fichiers (master/dérivé nommés d'après lui) de la planche existante.
     numero = _allouer_numero(conn, album_id, numero)
-    master = store_upload(album_id, file.filename or "planche.tif", data, numero)
+    master = store_upload(album_id, nom, data, numero)
     try:
         planche = ingest_image(conn, album_id, master, numero=numero)
     except sqlite3.IntegrityError:

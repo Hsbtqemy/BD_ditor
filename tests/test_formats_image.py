@@ -140,6 +140,46 @@ def test_la_route_d_import_refuse_et_ne_LAISSE_RIEN_sur_disque(client, album, da
         f"fichier(s) laissé(s) sur disque : {sorted(fichiers() - avant)}")
 
 
+def _tiff_valide() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), "white").save(buf, "TIFF")
+    return buf.getvalue()
+
+
+def test_la_route_d_import_refuse_une_extension_hors_liste(client, album, data_dir):
+    """Le NOM est filtré aussi, pas seulement le contenu (IMG-1).
+
+    Le contenu est un TIFF parfaitement valide : seul le nom est en cause. Un fichier
+    illisible serait refusé de toute façon par l'ingest, et le test ne prouverait alors
+    rien sur le filtre.
+
+    L'import ShareDocs filtrait déjà par extension, l'upload non : `store_upload` rangeait le
+    master sous le suffixe reçu, et un `planche_0001.dat` entrait dans `corpus/` (joué le
+    2026-09-16 : 201). Ce n'était pas une faille — le décodage reste borné par
+    `PILLOW_FORMATS` —, mais deux portes du même corpus qui ne filtrent pas pareil, et un
+    fichier dont le nom ment.
+    """
+    octets = _tiff_valide()
+    assert Image.open(io.BytesIO(octets)).format == "TIFF"
+
+    fichiers = lambda: {p for p in Path(data_dir).rglob("*")          # noqa: E731
+                        if p.is_file() and p.parent.name.startswith("album_")}
+    avant = fichiers()
+    r = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("scan.dat", octets, "image/tiff")}, headers=ADMIN)
+    assert r.status_code == 400, r.text
+    assert "« .dat »" in r.json()["detail"], r.json()["detail"]
+    assert fichiers() == avant, f"fichier(s) laissé(s) : {sorted(fichiers() - avant)}"
+
+
+def test_l_extension_se_compare_sans_la_casse(client, album):
+    """L'autre bout : un `.TIF` d'appareil passe, comme depuis ShareDocs qui minuscule. Sans
+    lui, un filtre qui refuserait tout passerait le test précédent."""
+    r = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("SCAN.TIF", _tiff_valide(), "image/tiff")}, headers=ADMIN)
+    assert r.status_code == 201, r.text
+
+
 def test_une_vraie_image_passe_toujours(client, album, png_bytes):
     """L'autre bout : sans lui, une garde qui refuserait TOUT passerait les tests
     ci-dessus."""

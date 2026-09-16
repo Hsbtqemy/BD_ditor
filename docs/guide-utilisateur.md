@@ -389,12 +389,13 @@ d'un simple manque d'accès, et nomme la personne à qui écrire quand l'instanc
 une. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3, et §7 pour la question complète.
 
 **Mon image est refusée à l'import.**
-Son format n'est pas dans les sept acceptés (étape 1). C'est le **contenu** du fichier qui
-décide, pas son extension : renommer un `.psd` en `.tif` ne le fait pas passer, et c'est
-précisément ce que le contrôle empêche. Le message diffère selon la provenance — depuis
-ShareDocs, le refus est immédiat et dit « type non géré (image attendue) » ; depuis votre
-disque, le fichier est lu d'abord et le message commence par « Échec de l'ingestion ». Dans
-les deux cas rien n'a été enregistré : convertissez en TIFF ou en JPEG et réimportez.
+Son format n'est pas dans les sept acceptés (étape 1). Deux contrôles se suivent, et l'un
+ne remplace pas l'autre. L'**extension** du nom d'abord : hors liste, le refus est immédiat
+— depuis ShareDocs il dit « type non géré (image attendue) », depuis votre disque il nomme
+l'extension refusée. Puis le **contenu** : renommer un `.psd` en `.tif` passe le premier
+contrôle mais pas le second, et c'est précisément ce qu'il empêche ; depuis votre disque, ce
+refus-là commence par « Échec de l'ingestion ». Dans tous les cas rien n'a été enregistré :
+convertissez en TIFF ou en JPEG et réimportez.
 
 Un format accepté peut aussi être refusé pour sa **profondeur** : un scan en entiers 32 bits
 (mode `I`) ou en nombres flottants (mode `F`) n'a pas d'équivalent sûr à l'écran, et le
