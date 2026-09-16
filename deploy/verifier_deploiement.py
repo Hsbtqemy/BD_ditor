@@ -222,8 +222,39 @@ def controle_interne(service):
     return manques, None
 
 
+def environnement_app_resolu(ici, chemin_env):
+    """L'environnement du service `app` tel que Compose le RÉSOUT, ou None s'il ne répond pas.
+
+    C'est la source qui fait foi : `deployer.sh` le dit déjà pour les ports (« on ne le
+    devine pas : on demande à Compose ce qu'il a résolu »). Compose y applique tout ce
+    qu'une lecture des fichiers doit imiter et imite mal : `COMPOSE_FILE`, toutes les formes
+    d'interpolation, les variables du shell qui priment sur `.env`, `env_file:`, `include:`.
+
+    Les `$` du résultat sont ÉCHAPPÉS en `$$` (mesuré avec Compose v5.4), pour que la sortie
+    reste une configuration valide : l'appelant les rend simples.
+    """
+    try:
+        res = subprocess.run(
+            ["docker", "compose", "--env-file", str(Path(chemin_env).resolve()),
+             "config", "--format", "json"],
+            cwd=ici, capture_output=True, text=True, encoding="utf-8", timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if res.returncode != 0:
+        return None
+    try:
+        env = json.loads(res.stdout)["services"]["app"].get("environment") or {}
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return env if isinstance(env, dict) else None
+
+
 def groupes_admin_transmis(ici, vals):
-    """Ce que l'APPLICATION reçoit dans `BD_AUTH_ADMIN_GROUPS`, et non ce que `.env` en dit.
+    """Ce que l'APPLICATION reçoit dans `BD_AUTH_ADMIN_GROUPS`, lu dans les fichiers.
+
+    Le REPLI d'`environnement_app_resolu`, quand Compose ne répond pas (un poste sans
+    Docker, par exemple). C'est une imitation, et la sortie le dit : ni les variables du
+    shell, ni `env_file:`, ni `include:`.
 
     Rend None si aucun fichier de la pile ne transmet la variable : l'application garde
     alors son défaut, `bd-admins` (`config.py`). `.env` ne sert à Compose qu'à INTERPOLER
@@ -233,6 +264,9 @@ def groupes_admin_transmis(ici, vals):
 
     Les fichiers sont ceux de `COMPOSE_FILE`, comme Compose les lit ; sans elle, ceux que
     Compose prend par défaut. Le dernier fichier qui déclare la variable l'emporte.
+    L'interpolation suit la grammaire de Compose ENTIÈRE : la première version ne lisait
+    que `${VAR}`, `${VAR:-…}` et `${VAR-…}`, si bien que `$VAR`, écriture parfaitement
+    valide, arrivait littérale et faisait refuser le déploiement.
     """
     liste = vals.get("COMPOSE_FILE")
     separateur = vals.get("COMPOSE_PATH_SEPARATOR", os.pathsep)
@@ -255,11 +289,23 @@ def groupes_admin_transmis(ici, vals):
         return None
 
     def interpoler(m):
-        nom, forme, defaut = m.group(1), m.group(2) or "", m.group(3) or ""
-        if nom in vals and (vals[nom] or forme == "-"):
-            return vals[nom]
-        return defaut
-    return re.sub(r"\$\{(\w+)(?:(:?-)([^}]*))?\}", interpoler, valeur)
+        if m.group(0) == "$$":
+            return "$"
+        nom, forme, arg = m.group(1) or m.group(4), m.group(2) or "", m.group(3) or ""
+        definie = nom in vals
+        non_vide = definie and vals[nom] != ""
+        if forme == ":-":
+            return vals[nom] if non_vide else arg
+        if forme == "-":
+            return vals[nom] if definie else arg
+        if forme == ":+":
+            return arg if non_vide else ""
+        if forme == "+":
+            return arg if definie else ""
+        # `$VAR`, `${VAR}`, `${VAR:?…}`, `${VAR?…}` : la valeur. Là où Compose REFUSERAIT
+        # une variable absente, `deployer.sh` s'est déjà arrêté sur `docker compose config`.
+        return vals.get(nom, "")
+    return re.sub(r"\$\$|\$\{(\w+)(?:(:?[-?+])([^}]*))?\}|\$(\w+)", interpoler, valeur)
 
 
 def controle_config(chemin_env):
@@ -420,7 +466,14 @@ def controle_config(chemin_env):
         texte_conf = None
     if texte_conf is not None:
         eleves = set(re.findall(r"subject:\s*'group:([^']+)'", texte_conf))
-        transmis = groupes_admin_transmis(ici, vals)
+        resolu = environnement_app_resolu(ici, chemin_env)
+        if resolu is not None:
+            brut = resolu.get("BD_AUTH_ADMIN_GROUPS")
+            transmis = None if brut is None else str(brut).replace("$$", "$")
+        else:
+            transmis = groupes_admin_transmis(ici, vals)
+            print(f"    ·· {'groupes admin':14} Compose n'a pas répondu : la variable est LUE dans les")
+            print("       fichiers de COMPOSE_FILE, sans les variables du shell ni env_file:")
         if transmis is None:
             declares = {"bd-admins"}
             poses = {g.strip() for g in vals.get("BD_AUTH_ADMIN_GROUPS", "").split(",") if g.strip()}

@@ -1834,13 +1834,18 @@ def _verifier_deploiement(nom):
     return vd
 
 
-def _controle(vd, env, monkeypatch, comptes, configuration=None):
+def _controle(vd, env, monkeypatch, comptes, configuration=None, resolu=None):
     """Lance `controle_config` avec un fichier des comptes et, au besoin, une configuration
-    d'Authelia SUBSTITUÉS, pour ne dépendre d'aucun fichier non suivi de la machine."""
+    d'Authelia SUBSTITUÉS, pour ne dépendre d'aucun fichier non suivi de la machine.
+
+    `resolu` tient lieu de la réponse de Compose : None dit « Compose n'a pas répondu », et
+    le contrôle retombe sur la lecture des fichiers. Jamais de vrai `docker compose` ici —
+    le résultat dépendrait de la machine qui lance la suite."""
     import contextlib
     import io
     from pathlib import Path
 
+    monkeypatch.setattr(vd, "environnement_app_resolu", lambda ici, chemin_env: resolu)
     vrai_exists, vrai_read = Path.exists, Path.read_text
 
     def exists(self):
@@ -1942,3 +1947,111 @@ def test_le_referent_manque_des_que_l_annuaire_sert(tmp_path, monkeypatch):
     problemes, sortie = _controle(vd, env, monkeypatch, _UN_COMPTE, configuration=fichier_actif)
     assert "référent" not in sortie, (
         f"Authelia servant son fichier, un seul compte ne demande pas de référent :\n{sortie}")
+
+
+def test_les_groupes_admin_se_demandent_a_compose_avant_de_lire_les_fichiers(tmp_path, monkeypatch):
+    """Ce que Compose RÉSOUT prime sur ce que le contrôle sait lire.
+
+    Trouvé en relisant INFRA-12 le jour même : la première version imitait Compose par des
+    expressions régulières, alors que `deployer.sh` pose la règle inverse pour les ports —
+    « on ne le devine pas : on demande à Compose ». Une variable du shell, un `env_file:` ou
+    un `include:` échappaient à l'imitation, dans le sens PERMISSIF : le contrôle comparait
+    `bd-admins` pendant que l'application recevait autre chose.
+    """
+    vd = _verifier_deploiement("vd_groupes_compose")
+    env = tmp_path / ".env"
+    env.write_text(_DOMAINES, encoding="utf-8")
+
+    # Les fichiers ne transmettent rien ; Compose dit que l'application reçoit `profs`.
+    problemes, sortie = _controle(vd, env, monkeypatch, _UN_COMPTE,
+                                  resolu={"BD_AUTH_ADMIN_GROUPS": "profs"})
+    assert "groupes admin divergents" in problemes, (
+        f"la réponse de Compose a été ignorée au profit de la lecture des fichiers :\n{sortie}")
+    assert "n'a pas répondu" not in sortie, f"Compose a répondu, la sortie dit le contraire :\n{sortie}"
+
+    # Compose rend ses `$` échappés en `$$` (mesuré, v5.4) : la valeur REÇUE n'en a qu'un.
+    problemes, sortie = _controle(vd, env, monkeypatch, _UN_COMPTE,
+                                  resolu={"BD_AUTH_ADMIN_GROUPS": "bd-admins,a$$b"})
+    assert "a$b" in sortie and "a$$b" not in sortie, (
+        f"l'échappement de Compose a été pris pour la valeur que l'application reçoit :\n{sortie}")
+
+    # Compose répond sans la variable : défaut de l'application, et la valeur de .env est inerte.
+    env.write_text(_DOMAINES + "BD_AUTH_ADMIN_GROUPS=profs\n", encoding="utf-8")
+    problemes, sortie = _controle(vd, env, monkeypatch, _UN_COMPTE, resolu={"HOME": "/app"})
+    assert problemes == [] and "SANS EFFET" in sortie, (
+        f"variable absente de la résolution de Compose : ({problemes})\n{sortie}")
+
+    # Compose ne répond pas : le repli est ANNONCÉ, pas pris en silence.
+    problemes, sortie = _controle(vd, env, monkeypatch, _UN_COMPTE, resolu=None)
+    assert "n'a pas répondu" in sortie, f"le repli sur la lecture des fichiers est muet :\n{sortie}"
+
+
+@pytest.mark.parametrize("ecrit, variables, attendu", [
+    ("$G", {"G": "profs"}, "profs"),
+    ("${G}", {"G": "profs"}, "profs"),
+    ("${G:-bd-admins}", {"G": ""}, "bd-admins"),
+    ("${G-bd-admins}", {"G": ""}, ""),
+    ("${G-bd-admins}", {}, "bd-admins"),
+    ("${G:+bd-admins}", {"G": "profs"}, "bd-admins"),
+    ("${G:+bd-admins}", {"G": ""}, ""),
+    ("${G+bd-admins}", {"G": ""}, "bd-admins"),
+    ("${G:?requise}", {"G": "profs"}, "profs"),
+    ("bd-$$admins", {}, "bd-$admins"),
+    ("$G,${H:-invites}", {"G": "profs"}, "profs,invites"),
+])
+def test_la_lecture_de_repli_suit_toute_l_interpolation_de_compose(tmp_path, ecrit, variables, attendu):
+    """La lecture des fichiers ne connaissait que `${VAR}`, `${VAR:-…}` et `${VAR-…}`.
+
+    `$VAR` arrivait donc LITTÉRAL, nommait un groupe « $VAR » qu'Authelia n'élève pas, et le
+    contrôle refusait le déploiement pour une écriture valide. La table suit la grammaire
+    documentée de Compose, forme par forme."""
+    vd = _verifier_deploiement("vd_interpolation")
+    surcouche = tmp_path / "surcouche.yml"
+    surcouche.write_text(f"services:\n  app:\n    environment:\n      - BD_AUTH_ADMIN_GROUPS={ecrit}\n",
+                         encoding="utf-8")
+    vals = dict(variables, COMPOSE_FILE=str(surcouche))
+    assert vd.groupes_admin_transmis(tmp_path, vals) == attendu
+
+
+def test_la_resolution_de_compose_rend_none_des_qu_elle_n_a_pas_de_reponse_lisible(tmp_path, monkeypatch):
+    """`None` veut dire « je n'ai pas pu demander », et doit le vouloir dire à CHAQUE issue.
+
+    Une réponse partielle prise pour un environnement vide ferait conclure « variable non
+    transmise », donc `bd-admins` : un verdict sur une question qu'on n'a pas su poser, la
+    faute qu'INFRA-12 a fermée pour la sonde des moteurs."""
+    import json
+    import subprocess
+
+    vd = _verifier_deploiement("vd_resolution")
+    env = tmp_path / ".env"
+    env.write_text("", encoding="utf-8")
+
+    class Reponse:
+        def __init__(self, code, sortie):
+            self.returncode, self.stdout, self.stderr = code, sortie, ""
+
+    def repondre(code, sortie):
+        monkeypatch.setattr(vd.subprocess, "run", lambda *a, **k: Reponse(code, sortie))
+
+    pile = {"services": {"app": {"environment": {"BD_AUTH_ADMIN_GROUPS": "profs"}}}}
+    repondre(0, json.dumps(pile))
+    assert vd.environnement_app_resolu(tmp_path, env) == {"BD_AUTH_ADMIN_GROUPS": "profs"}
+
+    repondre(0, json.dumps({"services": {"app": {"image": "x"}}}))
+    assert vd.environnement_app_resolu(tmp_path, env) == {}, "un service sans environnement ne transmet rien"
+
+    for code, sortie, cas in ((1, json.dumps(pile), "code de retour non nul"),
+                              (0, "pas du json", "sortie illisible"),
+                              (0, json.dumps({"services": {"caddy": {}}}), "aucun service app")):
+        repondre(code, sortie)
+        assert vd.environnement_app_resolu(tmp_path, env) is None, cas
+
+    def absent(*a, **k):
+        raise FileNotFoundError("docker")
+    monkeypatch.setattr(vd.subprocess, "run", absent)
+    assert vd.environnement_app_resolu(tmp_path, env) is None, "docker introuvable"
+
+    def trop_long(*a, **k):
+        raise subprocess.TimeoutExpired("docker", 60)
+    monkeypatch.setattr(vd.subprocess, "run", trop_long)
+    assert vd.environnement_app_resolu(tmp_path, env) is None, "délai dépassé"
