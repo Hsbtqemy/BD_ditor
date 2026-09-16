@@ -7,8 +7,11 @@ statut: interrompu
 
 **Arrêté sur** — le filtre d'extension de l'import depuis le disque, commit `cfbf85d`,
 16 septembre, après le gris 16 bits (`fb53e67`), l'outil de régénération (`fd7cd38`) et sa
-déclaration au cliquet des sorties (`944f071`). Rien n'est poussé. Ce qui reste attend
-Hugo : la mesure de production, un JP2 réel du corpus, l'arbitrage du TIFF multipage.
+déclaration au cliquet des sorties (`944f071`). Rien n'est poussé. Hugo a tranché le jour
+même : mesure de production sans objet, TIFF multipage refusé mais non prioritaire, et le
+JPEG 2000 devient la PRIORITÉ de la reprise — le poids des TIFF pèse sur le stockage. À
+reprendre par le temps d'import d'un vrai scan converti en JP2 sans perte, puis le test des
+listes d'extensions du front.
 
 ## Reste
 
@@ -18,8 +21,8 @@ Hugo : la mesure de production, un JP2 réel du corpus, l'arbitrage du TIFF mult
 - [x] Un test importe un vrai dégradé 16 bits par `POST /api/albums/{id}/import` et exige un dérivé NON saturé ; il est joué ROUGE sur le code d'avant correctif — sans quoi il pourrait passer sur n'importe quel dérivé
 - [x] Les modes `I` (32 bits entiers) et `F` (flottant) sont mesurés comme `I;16` l'a été, et chacun reçoit une réponse : converti juste, ou refusé à l'import avec un message qui nomme le mode. Non mesurés le 2026-09-14
 - [x] Le commentaire de `make_web_derivative` (« on convertit CMYK, 16 bits, palette ») ne promet que ce que la conversion corrigée fait vraiment
-- [ ] Sur la base de production, `SELECT mode, COUNT(*) FROM planches GROUP BY mode` dit combien de planches ont un master `I;16`, `I;16B`, `I` ou `F` (la colonne est persistée depuis A6). Zéro : rien à rattraper. Sinon, la zone suivante n'est plus facultative. Si la colonne rend `None`, la commande de repli en lecture seule du Contexte lit le mode dans les masters eux-mêmes
-- [ ] Si la mesure de production trouve un master `I` ou `F` importé avant le refus : `GET /api/regions/{id}/crop` (Transcription, vignettes) et `POST /api/figures` répondent un message qui nomme le mode, et non un 500 nu. `_open_image` lève désormais `OCRError` sur ce master, et seule la route OCR la rattrape — LU dans le code le 2026-09-16, non joué. Aucun master de ce mode : case sans objet
+- [x] Sur la base de production, `SELECT mode, COUNT(*) FROM planches GROUP BY mode` dit combien de planches ont un master `I;16`, `I;16B`, `I` ou `F` (la colonne est persistée depuis A6). Zéro : rien à rattraper. Sinon, la zone suivante n'est plus facultative. Si la colonne rend `None`, la commande de repli en lecture seule du Contexte lit le mode dans les masters eux-mêmes. SANS OBJET, décidé par Hugo le 2026-09-16 : les planches déjà importées sont des planches de travail, sans incidence sur la constitution de la base réelle — la mesure n'est pas lancée
+- [x] Si la mesure de production trouve un master `I` ou `F` importé avant le refus : `GET /api/regions/{id}/crop` (Transcription, vignettes) et `POST /api/figures` répondent un message qui nomme le mode, et non un 500 nu. `_open_image` lève désormais `OCRError` sur ce master, et seule la route OCR la rattrape — LU dans le code le 2026-09-16, non joué. Aucun master de ce mode : case sans objet. SANS OBJET par la même décision : aucun master antérieur au refus ne compte, et tout import neuf en `I` ou `F` est refusé
 
 ### Rattraper les dérivés existants
 - [x] Un outil régénère le dérivé d'une planche depuis son master (`--album`, `--planche`, `--dry-run`, sur le patron de `tools/reindex_materiel.py`). Aujourd'hui `make_web_derivative` n'a qu'un appelant, `ingest_image` : un dérivé faux le reste, et changer `WEB_SCALE` ou `WEB_JPEG_QUALITY` ne touche aucune planche déjà importée
@@ -27,6 +30,7 @@ Hugo : la mesure de production, un JP2 réel du corpus, l'arbitrage du TIFF mult
 - [ ] Après régénération, une planche déjà ouverte dans l'Atelier montre le NOUVEAU dérivé au simple rechargement de la page, sans vider le cache. `GET /derivatives/…` répond un `FileResponse` sans `Cache-Control` (lu dans `main.py` le 2026-09-16) : un navigateur peut garder l'ancienne image par fraîcheur heuristique. Hypothèse, non mesurée — le middleware `no-cache` ne couvre que `/static` et les pages HTML
 
 ### JPEG 2000
+- [ ] La chaîne de production des JP2 est connue et écrite ici : l'outil qui les produit, avec ou sans perte, et si le master reste un TIFF archivé ailleurs. Seule elle tranche `resc`/`resd` et le 12 bits ; questions posées à Hugo le 2026-09-16
 - [ ] Un JP2 gris en 12 bits RÉEL, importé, donne un dérivé qui suit ses tons. `image_8_bits` le traite comme du 16 bits parce que le décodeur de Pillow étend toute précision à 16 (`shift = 16 - prec` dans `Jpeg2KDecode.c`, LU au tag 12.0.0) ; non mesuré, Pillow n'écrivant pas de JP2 12 bits. Si c'était faux, le dérivé sortirait presque NOIR
 - [ ] Un JP2 RÉEL du corpus visé est inspecté, et la fiche dit s'il porte une boîte `resc`, `resd`, les deux, ou aucune. La case suivante ne se tranche pas sur un fichier fabriqué
 - [ ] Un JP2 dont la résolution n'est écrite que dans `resd` reçoit un `dpi` à l'import — ou la fiche écrit pourquoi on s'y refuse. Aujourd'hui Pillow ne lit que `resc` : mesuré sur quatre fichiers forgés, `resc` → (300, 300), `resd` seule → `None`, `resd` puis `resc` → (300, 300). Sans dpi, pas de centimètres et la planche ne compte pas « avec résolution ». L'arbitrage est réel : `resc` dit ce que le scanner a capté, `resd` ce qu'on recommande d'afficher, et A6 décrit le MATÉRIEL
@@ -35,7 +39,7 @@ Hugo : la mesure de production, un JP2 réel du corpus, l'arbitrage du TIFF mult
 - [ ] Le temps d'import d'un JP2 SANS PERTE est mesuré sur un VRAI scan dans l'image, et une décision est écrite s'il dépasse ce qu'un annotateur attend devant le toast « Import en cours… ». Le cas fabriqué — A4 à 300 dpi rempli de bruit, le pire cas pour la compression — prend 19,2 s pour le seul dérivé dans `bd-recette-app`, contre 2,6 s en avec perte, et la requête d'import attend pendant ce temps
 
 ### TIFF multipage
-- [ ] Un TIFF de deux pages importé depuis l'Atelier est soit REFUSÉ avec un message qui dit « plusieurs pages », soit éclaté en deux planches — l'arbitrage est rendu avant le code. Aujourd'hui seule la première page est lue et la seconde disparaît sans avertissement (mesuré : `n_frames` = 2, taille et pixel de la page 1)
+- [ ] Un TIFF de deux pages importé depuis l'Atelier est REFUSÉ avec un message qui dit « plusieurs pages », et rien n'est enregistré. Arbitrage rendu par Hugo le 2026-09-16 : refuser, et NON prioritaire — le code attendra que le cas se présente. Aujourd'hui seule la première page est lue et la seconde disparaît sans avertissement (mesuré : `n_frames` = 2, taille et pixel de la page 1)
 
 ### Le filtre d'extension
 - [x] `POST /api/albums/{id}/import` d'un TIFF valide nommé `scan.dat` répond 400 et ne laisse aucun fichier dans `corpus/`, comme l'import ShareDocs le fait déjà. Aujourd'hui `import_planche` ne consulte pas `IMG_EXTS`, et `store_upload` range le master sous le suffixe reçu : lu dans le code le 2026-09-14, NON joué — la première étape est de le jouer. Ce n'est pas une faille, le décodage restant borné par `PILLOW_FORMATS` (SEC-3)
@@ -110,10 +114,12 @@ dans le venv (Pillow 12.0.0), sur des fichiers forgés, sauf mention contraire.
   mesuré avec cv2 4.13, un TIFF 16 bits sort juste (réduit à la lecture) et un TIFF 12 bits
   est REFUSÉ (`imread` rend `None`). Pas de page blanche, donc pas de case.
 
-**La mesure de production est transmise à Hugo** par la session de coordination, aucune
-session n'ayant d'accès au VPS. La commande de la case, puis celle de repli si la colonne
-est vide — une ligne, base ouverte en lecture seule, chaque master ouvert (en-tête seul)
-puis refermé avant le suivant, formats bornés comme dans l'app :
+**La mesure de production a été préparée, puis déclarée sans objet par Hugo** le même jour :
+les planches importées jusqu'ici sont des planches de travail, sans incidence sur la base
+réelle. Elle n'est donc PAS lancée, et il n'y a rien à lui demander. Les deux commandes
+restent ici parce qu'elles vaudront le jour où la base réelle existera — une ligne chacune,
+base ouverte en lecture seule, chaque master ouvert (en-tête seul) puis refermé avant le
+suivant, formats bornés comme dans l'app :
 
     docker exec bd-app python -c "import sqlite3; c = sqlite3.connect('file:/data/bd_annotator.sqlite?mode=ro', uri=True); print(c.execute('SELECT mode, COUNT(*) FROM planches GROUP BY mode ORDER BY 2 DESC').fetchall())"
 
@@ -123,15 +129,22 @@ Jouées sur la RECETTE par la session de coordination : la première rend `[(Non
 aucune planche de la recette n'a de mode en base —, la seconde `Counter({'RGB': 129})` en
 0,7 s. Un TIFF 12 bits apparaît en `I;16` dans les deux.
 
-**Deux arbitrages sont posés à Hugo, non tranchés.** *TIFF multipage* : la recommandation
-transmise est de REFUSER. Éclater oblige soit à partager un master entre N planches — et
-supprimer l'une effacerait le fichier des autres (`remove_planche_files`) —, soit à
-réencoder chaque page en un nouveau master, ce qui contredit « le master n'est jamais
-modifié ». *`resd` des JP2* : aucune recommandation sans un JP2 réel du corpus, ce que la
-case exige déjà.
+**Deux arbitrages posés à Hugo, rendus le même jour.** *TIFF multipage* : la recommandation
+transmise était de REFUSER — éclater oblige soit à partager un master entre N planches, et
+supprimer l'une effacerait le fichier des autres (`remove_planche_files`), soit à réencoder
+chaque page en un nouveau master, ce qui contredit « le master n'est jamais modifié ».
+Hugo : refuser, mais NON prioritaire ; le code attendra que le cas se présente. *`resd` des
+JP2* : aucune recommandation sans un JP2 réel. Hugo en fait la PRIORITÉ de la reprise, pour
+une raison qui n'était pas dans la fiche : le poids des TIFF dans le stockage. Aucun JP2 du
+fournisseur n'étant disponible, la reprise commence par ce qui se mesure sans lui — un vrai
+scan TIFF de la recette, lu en lecture seule et converti en JP2 sans perte dans l'image,
+pour la case du temps d'import — et par des questions à la chaîne de production (outil,
+avec ou sans perte, TIFF archivé ailleurs ou non), dont dépendent `resc`/`resd` et le
+12 bits.
 
-**Rattraper, si la mesure trouve des masters en `I;16` ou `I;16B`** — d'abord à blanc, puis
-sans `--dry-run`. Les guillemets sont obligatoires : sans eux, `;` coupe la commande et
+**Rattraper, le jour où des masters en `I;16` ou `I;16B` importés avant `fb53e67` compteront**
+(ce n'est pas le cas des planches de travail d'aujourd'hui, décision ci-dessus) — d'abord à
+blanc, puis sans `--dry-run`. Les guillemets sont obligatoires : sans eux, `;` coupe la commande et
 l'outil tourne sur les planches en mode `I` (mesuré en bash et en PowerShell).
 
     docker exec bd-app python tools/regenerer_derives.py --toutes --mode "I;16" --mode "I;16B" --dry-run
