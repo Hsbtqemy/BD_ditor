@@ -1812,3 +1812,133 @@ def test_export_concordance_nom_de_fichier_sur(client, lemme, repli, exact):
     dispo = rep.headers["content-disposition"]
     assert f'filename="{repli}"' in dispo, dispo
     assert unquote(dispo.split("filename*=UTF-8''", 1)[1]) == exact, dispo
+
+
+def _verifier_deploiement(nom):
+    """Charge `deploy/verifier_deploiement.py`, ou SAUTE là où `deploy/` n'existe pas.
+
+    Même raison que les deux tests ci-dessus : `.dockerignore` exclut `deploy/` de l'image,
+    donc ces tests ne tournent que sur la machine de développement, et leur skip dans
+    l'image n'est pas une couverture (QA-6).
+    """
+    import importlib.util
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parent.parent / "deploy" / "verifier_deploiement.py"
+    if not source.exists():
+        pytest.skip("deploy/ est exclu du contexte de build (.dockerignore) : ce test ne tourne "
+                    "QUE sur la machine de développement — cf. QA-6")
+    spec = importlib.util.spec_from_file_location(nom, source)
+    vd = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(vd)
+    return vd
+
+
+def _controle(vd, env, monkeypatch, comptes, configuration=None):
+    """Lance `controle_config` avec un fichier des comptes et, au besoin, une configuration
+    d'Authelia SUBSTITUÉS, pour ne dépendre d'aucun fichier non suivi de la machine."""
+    import contextlib
+    import io
+    from pathlib import Path
+
+    vrai_exists, vrai_read = Path.exists, Path.read_text
+
+    def exists(self):
+        return True if self.name == "users_database.yml" else vrai_exists(self)
+
+    def read_text(self, *a, **k):
+        if self.name == "users_database.yml":
+            return comptes
+        if configuration is not None and self.name == "configuration.yml":
+            return configuration
+        return vrai_read(self, *a, **k)
+
+    monkeypatch.setattr(Path, "exists", exists)
+    monkeypatch.setattr(Path, "read_text", read_text)
+    tampon = io.StringIO()
+    with contextlib.redirect_stdout(tampon):
+        problemes = vd.controle_config(str(env))
+    return problemes, tampon.getvalue()
+
+
+_DOMAINES = ("BD_DOMAINE=bd.exemple.fr\nAUTH_DOMAINE=auth.exemple.fr\n"
+             "COOKIE_DOMAINE=exemple.fr\nBD_REFERENT_NOM=Référente\n")
+_UN_COMPTE = "users:\n  a:\n    password: $argon2id$un\n"
+
+
+def test_des_groupes_admin_poses_dans_env_mais_non_transmis_ne_bloquent_pas(tmp_path, monkeypatch):
+    """Le contrôle comparait à Authelia une valeur que l'application ne REÇOIT pas.
+
+    Il lisait `BD_AUTH_ADMIN_GROUPS` dans `.env`. Or `.env` ne sert à Compose qu'à
+    interpoler ce que les fichiers déclarent, et `docker-compose.yml` porte la ligne
+    COMMENTÉE : l'application garde `bd-admins`. Relevé le 2026-09-16 en cadrant la
+    gestion des comptes. Une valeur posée là refusait donc un déploiement pour une
+    divergence qui n'existait pas — et, dans l'autre sens, un contrôle vert n'aurait rien
+    dit de ce que l'application applique vraiment.
+    """
+    vd = _verifier_deploiement("vd_groupes_env")
+    env = tmp_path / ".env"
+    env.write_text(_DOMAINES + "BD_AUTH_ADMIN_GROUPS=profs\n", encoding="utf-8")
+
+    problemes, sortie = _controle(vd, env, monkeypatch, _UN_COMPTE)
+
+    assert "SANS EFFET" in sortie, f"la valeur inerte de .env n'est pas signalée :\n{sortie}"
+    assert problemes == [], (
+        "une variable que l'application ne reçoit pas a été comparée à Authelia et comptée "
+        f"comme un problème : `deployer.sh` refuserait de déployer ({problemes})")
+
+
+def test_des_groupes_admin_transmis_par_la_pile_et_non_eleves_bloquent(tmp_path, monkeypatch):
+    """La garde tient toujours là où elle compte : ce que la pile TRANSMET.
+
+    Le compagnon du test précédent. Lire la variable dans les fichiers compose ne doit pas
+    rendre le contrôle aveugle : transmise par une surcouche de `COMPOSE_FILE` et nommant
+    un groupe qu'Authelia n'élève pas au second facteur, elle refuse ; transmise VIDE, elle
+    refuse aussi, l'application n'ayant alors aucun administrateur.
+    """
+    import os
+
+    vd = _verifier_deploiement("vd_groupes_pile")
+    surcouche = tmp_path / "surcouche.yml"
+    surcouche.write_text("services:\n  app:\n    environment:\n"
+                         "      - BD_AUTH_ADMIN_GROUPS=${BD_AUTH_ADMIN_GROUPS:-bd-admins}\n",
+                         encoding="utf-8")
+    pile = f"COMPOSE_FILE=docker-compose.yml{os.pathsep}{surcouche}\n"
+
+    env = tmp_path / ".env"
+    env.write_text(_DOMAINES + pile + "BD_AUTH_ADMIN_GROUPS=profs\n", encoding="utf-8")
+    problemes, sortie = _controle(vd, env, monkeypatch, _UN_COMPTE)
+    assert "groupes admin divergents" in problemes, (
+        f"un groupe transmis et non élevé au second facteur est passé :\n{sortie}")
+
+    surcouche.write_text("services:\n  app:\n    environment:\n"
+                         "      BD_AUTH_ADMIN_GROUPS: \"${BD_AUTH_ADMIN_GROUPS}\"\n", encoding="utf-8")
+    env.write_text(_DOMAINES + pile, encoding="utf-8")
+    problemes, sortie = _controle(vd, env, monkeypatch, _UN_COMPTE)
+    assert "aucun groupe admin" in problemes, (
+        f"une variable transmise VIDE, donc aucun administrateur, est passée :\n{sortie}")
+
+
+def test_le_referent_manque_des_que_l_annuaire_sert(tmp_path, monkeypatch):
+    """Le référent se jugeait au nombre de comptes du FICHIER, qui n'est plus que le repli.
+
+    L'avertissement ne partait qu'à partir de deux `password:` dans `users_database.yml`.
+    L'annuaire actif, ce fichier est figé à la bascule : il portait deux logins le
+    2026-09-10 quand l'annuaire en portait davantage, et un seul suffisait à taire
+    l'avertissement sur une instance à trente comptes. Quand Authelia sert son fichier, en
+    revanche, le compte reste la bonne mesure — c'est la seconde moitié de ce test.
+    """
+    vd = _verifier_deploiement("vd_referent_annuaire")
+    env = tmp_path / ".env"
+    env.write_text(_DOMAINES.replace("BD_REFERENT_NOM=Référente\n", ""), encoding="utf-8")
+
+    problemes, sortie = _controle(vd, env, monkeypatch, _UN_COMPTE)
+    assert "référent" in sortie and "non déclaré" in sortie, (
+        f"annuaire actif, un seul login dans le fichier de repli : rien n'a été signalé.\n{sortie}")
+    assert problemes == [], f"l'absence de référent a été comptée comme un PROBLÈME ({problemes})"
+
+    fichier_actif = ("authentication_backend:\n  file:\n    path: '/config/users_database.yml'\n"
+                     "access_control:\n  rules:\n    - subject: 'group:bd-admins'\n")
+    problemes, sortie = _controle(vd, env, monkeypatch, _UN_COMPTE, configuration=fichier_actif)
+    assert "référent" not in sortie, (
+        f"Authelia servant son fichier, un seul compte ne demande pas de référent :\n{sortie}")

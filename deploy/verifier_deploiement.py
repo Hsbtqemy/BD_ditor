@@ -40,6 +40,7 @@ en bout depuis l'UI (elle passe par le navigateur et le cookie de session), et l
 restauration d'une sauvegarde sur une machine de dev.
 """
 import argparse
+import os
 import re
 import json
 import ssl
@@ -221,6 +222,46 @@ def controle_interne(service):
     return manques, None
 
 
+def groupes_admin_transmis(ici, vals):
+    """Ce que l'APPLICATION reçoit dans `BD_AUTH_ADMIN_GROUPS`, et non ce que `.env` en dit.
+
+    Rend None si aucun fichier de la pile ne transmet la variable : l'application garde
+    alors son défaut, `bd-admins` (`config.py`). `.env` ne sert à Compose qu'à INTERPOLER
+    ce que les fichiers déclarent, et `docker-compose.yml` porte la ligne commentée.
+    Jusqu'au 2026-09-16, ce contrôle lisait la variable directement dans `.env` : il
+    comparait à Authelia une valeur que l'application ne recevait pas.
+
+    Les fichiers sont ceux de `COMPOSE_FILE`, comme Compose les lit ; sans elle, ceux que
+    Compose prend par défaut. Le dernier fichier qui déclare la variable l'emporte.
+    """
+    liste = vals.get("COMPOSE_FILE")
+    separateur = vals.get("COMPOSE_PATH_SEPARATOR", os.pathsep)
+    noms = liste.split(separateur) if liste else ["docker-compose.yml", "docker-compose.override.yml"]
+    valeur = None
+    for nom in noms:
+        chemin = Path(nom.strip())
+        if not chemin.is_absolute():
+            chemin = ici / chemin
+        try:
+            texte = chemin.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        # Forme liste (`- BD_AUTH_ADMIN_GROUPS=…`) ou dictionnaire (`BD_AUTH_ADMIN_GROUPS: …`).
+        # Une ligne commentée ne correspond pas : le `#` précède le nom.
+        for m in re.finditer(r"^[ \t]*(?:-[ \t]*)?[\"']?BD_AUTH_ADMIN_GROUPS[\"']?[ \t]*[=:](.*)$",
+                             texte, re.M):
+            valeur = re.sub(r"[ \t]+#.*$", "", m.group(1)).strip().strip("\"'")
+    if valeur is None:
+        return None
+
+    def interpoler(m):
+        nom, forme, defaut = m.group(1), m.group(2) or "", m.group(3) or ""
+        if nom in vals and (vals[nom] or forme == "-"):
+            return vals[nom]
+        return defaut
+    return re.sub(r"\$\{(\w+)(?:(:?-)([^}]*))?\}", interpoler, valeur)
+
+
 def controle_config(chemin_env):
     """AVANT de démarrer : les trois domaines de `.env` sont-ils cohérents ?
 
@@ -358,6 +399,67 @@ def controle_config(chemin_env):
         print(f"    ·· {'annuaire':14} non configuré : les comptes se gèrent encore")
         print("       dans authelia/users_database.yml, en SSH")
 
+    # Le groupe des administrateurs est nommé à DEUX endroits, et rien ne les reliait :
+    # `configuration.yml` l'élève au second facteur (`subject: 'group:…'`), et
+    # l'application le lit dans `BD_AUTH_ADMIN_GROUPS`. Les faire diverger n'ouvre aucune
+    # erreur visible — l'application accorde l'administration à un groupe qu'Authelia
+    # n'élève plus, donc les administrateurs s'authentifient PLUS FAIBLEMENT que voulu,
+    # en silence. C'est la forme exacte de la panne du 2026-09-05 (le notifier SMTP
+    # configuré des deux côtés), et cette fois elle irait dans le sens permissif.
+    #
+    # Bloquant, contrairement au référent : ce n'est pas un confort manquant, c'est une
+    # politique de sécurité qui ne dit pas la même chose des deux côtés.
+    #
+    # Placé AVANT la lecture du fichier des comptes (2026-09-16) : aucun des deux contrôles
+    # qui suivent n'en dépend, et ce fichier peut manquer ou être illisible, deux sorties
+    # anticipées qui les auraient sautés.
+    conf = ici / "authelia" / "configuration.yml"
+    try:
+        texte_conf = conf.read_text(encoding="utf-8") if conf.exists() else None
+    except OSError:
+        texte_conf = None
+    if texte_conf is not None:
+        eleves = set(re.findall(r"subject:\s*'group:([^']+)'", texte_conf))
+        transmis = groupes_admin_transmis(ici, vals)
+        if transmis is None:
+            declares = {"bd-admins"}
+            poses = {g.strip() for g in vals.get("BD_AUTH_ADMIN_GROUPS", "").split(",") if g.strip()}
+            if poses and poses != declares:
+                print(f"    ·· {'groupes admin':14} BD_AUTH_ADMIN_GROUPS={', '.join(sorted(poses))} dans .env est")
+                print("       SANS EFFET : aucun fichier compose ne la transmet à l'application,")
+                print("       qui garde « bd-admins ». Décommenter la ligne dans")
+                print("       docker-compose.yml, ou retirer la valeur de .env.")
+        else:
+            declares = {g.strip() for g in transmis.split(",") if g.strip()}
+        non_eleves = declares - eleves
+        if not declares:
+            print(f"    !! {'groupes admin':14} BD_AUTH_ADMIN_GROUPS est transmise VIDE : l'application")
+            print("       n'aura AUCUN administrateur, et une instance neuve ne s'ouvre à personne.")
+            pbs.append("aucun groupe admin")
+        elif non_eleves:
+            print(f"    !! {'groupes admin':14} {', '.join(sorted(non_eleves))} : "
+                  "l'application les traite en ADMINISTRATEURS,")
+            print("       mais configuration.yml ne les élève pas au second facteur.")
+            print("       Ils s'authentifieraient plus faiblement que prévu.")
+            pbs.append("groupes admin divergents")
+        else:
+            print(f"    ok {'groupes admin':14} {', '.join(sorted(declares))} — "
+                  "élevés au second facteur des deux côtés")
+
+    # Le référent quand l'ANNUAIRE sert : le fichier des comptes n'est alors que le repli,
+    # et son nombre de logins ne dit rien de l'instance. Un annuaire sert à plusieurs
+    # comptes par construction — c'est la raison de la bascule —, donc le référent manque
+    # dès qu'il manque. Même règle que ci-dessous : signalé, jamais bloquant.
+    annuaire_actif = bool(texte_conf and re.search(r"^  ldap:\s*$", texte_conf, re.M))
+    referent = vals.get("BD_REFERENT_NOM") or vals.get("BD_REFERENT_CONTACT")
+    if annuaire_actif and not referent:
+        print(f"    ·· {'référent':14} non déclaré, et l'annuaire sert les comptes")
+        print("       Toute personne sans accès verra « demandez à un administrateur »")
+        print("       sans savoir à QUI écrire. Poser BD_REFERENT_NOM et")
+        print("       BD_REFERENT_CONTACT dans .env, puis `docker compose up -d app`")
+        print("       (up -d et NON restart : .env est lu à la création du conteneur).")
+        print("       Signalé sans bloquer : ce n'est pas une panne.")
+
     comptes = ici / "authelia" / "users_database.yml"
     if not comptes.exists():
         print("    !! authelia/users_database.yml absent — le copier depuis le gabarit")
@@ -398,36 +500,6 @@ def controle_config(chemin_env):
     else:
         print(f"    ok {'comptes':14} présent, hash renseigné")
 
-    # Le groupe des administrateurs est nommé à DEUX endroits, et rien ne les reliait :
-    # `configuration.yml` l'élève au second facteur (`subject: 'group:…'`), et
-    # l'application le lit dans `BD_AUTH_ADMIN_GROUPS`. Les faire diverger n'ouvre aucune
-    # erreur visible — l'application accorde l'administration à un groupe qu'Authelia
-    # n'élève plus, donc les administrateurs s'authentifient PLUS FAIBLEMENT que voulu,
-    # en silence. C'est la forme exacte de la panne du 2026-09-05 (le notifier SMTP
-    # configuré des deux côtés), et cette fois elle irait dans le sens permissif.
-    #
-    # Bloquant, contrairement au référent : ce n'est pas un confort manquant, c'est une
-    # politique de sécurité qui ne dit pas la même chose des deux côtés.
-    conf = ici / "authelia" / "configuration.yml"
-    if conf.exists():
-        try:
-            eleves = set(re.findall(r"subject:\s*'group:([^']+)'", conf.read_text(encoding="utf-8")))
-        except OSError:
-            eleves = None
-        if eleves is not None:
-            declares = {g.strip() for g in vals.get("BD_AUTH_ADMIN_GROUPS", "bd-admins").split(",")
-                        if g.strip()}
-            non_eleves = declares - eleves
-            if non_eleves:
-                print(f"    !! {'groupes admin':14} {', '.join(sorted(non_eleves))} : "
-                      "l'application les traite en ADMINISTRATEURS,")
-                print("       mais configuration.yml ne les élève pas au second facteur.")
-                print("       Ils s'authentifieraient plus faiblement que prévu.")
-                pbs.append("groupes admin divergents")
-            elif declares:
-                print(f"    ok {'groupes admin':14} {', '.join(sorted(declares))} — "
-                      "élevés au second facteur des deux côtés")
-
     # Le référent (AUTH-4) devient nécessaire exactement quand il y a un DEUXIÈME compte :
     # toute personne sans accès voit alors un bandeau qui lui dit de s'adresser à « un
     # administrateur de l'instance », sans nom. `.env.example` l'annonçait déjà — « cela
@@ -438,8 +510,12 @@ def controle_config(chemin_env):
     # Volontairement NON bloquant. Un déploiement est ce qui permet de RÉPARER ; le
     # refuser pour un nom manquant serait disproportionné, et ce script est appelé par
     # `deployer.sh` avant chaque mise en service. On informe, on n'interrompt pas.
+    #
+    # Le COMPTE ne vaut que si Authelia sert ce fichier. L'annuaire actif, ce fichier n'est
+    # que le repli, figé à la bascule : il portait deux logins le 2026-09-10 quand
+    # l'annuaire en portait davantage. Ce cas est traité plus haut, sans compter.
     nb_comptes = sum(1 for l in contenu.splitlines() if l.strip().startswith("password:"))
-    if nb_comptes >= 2 and not (vals.get("BD_REFERENT_NOM") or vals.get("BD_REFERENT_CONTACT")):
+    if not annuaire_actif and nb_comptes >= 2 and not referent:
         print(f"    ·· {'référent':14} non déclaré, pour {nb_comptes} comptes")
         print("       Toute personne sans accès verra « demandez à un administrateur »")
         print("       sans savoir à QUI écrire. Poser BD_REFERENT_NOM et")
