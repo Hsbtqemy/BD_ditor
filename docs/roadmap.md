@@ -8,6 +8,10 @@
 > **Piste A — FAIR / dépôt : ✅ complète (v19, 2026-07-18).** **D1 (undo) livré** dans la
 > foulée (2026-07-18). Cap suivant à décider (B — vocabulaire/analyse · C — déploiement
 > multi-utilisateur · reste de la piste D — dette/sûreté).
+>
+> **Cap retenu le 2026-09-16 : la gestion des comptes et des utilisateurs**, et la manière
+> de travailler qui va avec — cf. § *Séquence conseillée (2026-09-16)*. La séquence du
+> 2026-07-16 reste plus bas, comme trace.
 
 **Légende** — Priorité : **P1** (finalité / bloquant), **P2** (important), **P3** (raffinement).
 Effort : **S** (< ½ j), **M** (1-2 j), **L** (≥ 3 j ou décision de conception requise).
@@ -123,6 +127,59 @@ posé « façon `contribution` » pour converger. **`base_legale` reste un prér
 | — | B6 (transitions de statut + régression `annotee`→`segmentee`) · T2/T4 (tests faibles) · S1/S5/S6/O1 (latents segmentation) · UX-3/UX-4 | mineurs | quick wins, à la demande |
 
 ---
+
+## Séquence conseillée (2026-09-16)
+
+Écrite après une journée à trois sessions de chantier et une de coordination. Elle ne
+recopie l'état d'aucune fiche — il vieillirait ici plus vite que là-bas : elle dit le CAP,
+le RYTHME et la MANIÈRE. L'état vit dans `pilotage/` (`npm run journal`).
+
+**Le cap : la gestion des comptes et des utilisateurs.** Dans les mots de l'équipe, c'est
+« encore trop complexe entre Authelia, l'annuaire, et les paramètres dans Bibliothèque et
+dans Administration ». Ouvrir quelqu'un à l'outil traverse aujourd'hui quatre écrans qui ne
+se connaissent pas. Le chantier commence par un CADRAGE sans code : le parcours actuel geste
+par geste, le parcours visé, les décisions à prendre. Il s'appuie sur ce qui existe déjà :
+AUTH-6 (le modèle, et la lecture de l'annuaire décidée le 2026-09-09), AUTH-7 (administrer
+sans console), AUTH-9 (la page à soi), AUTH-10 (un droit d'écriture qui permet de supprimer
+un album). Des gens testent la production : c'est eux que ce cap sert d'abord.
+
+**Le rythme : `dev` avance, `main` bouge par GRANDES étapes.** Le VPS suit `main`
+(INFRA-10), donc chaque fusion est un déploiement que les testeurs voient. On n'y fusionne
+pas un lot dès qu'il est prêt : on avance les chantiers sur `dev`, on recette l'ensemble,
+puis `main` avance d'un coup, en avance rapide. Trois conséquences :
+
+- **Pousser `dev` n'est pas déployer.** Le travail s'y met à l'abri sans rien montrer.
+- **L'avance rapide se prépare.** `main` doit être ancêtre de `dev`. Mesuré le 2026-09-16 :
+  fusionner `origin/main` dans `dev` donnait un arbre identique à `dev`, donc sans aucun
+  fichier changé. À revérifier juste avant l'étape.
+- **Une grande étape coûte ce qu'elle coûte, et on le sait d'avance.** La recette est plus
+  longue, les migrations de schéma se cumulent, et un correctif attend l'étape — sauf
+  exception décidée pour un défaut grave vu en production.
+
+**La manière : des couloirs, une file de décisions, des gardes.**
+
+- **Un couloir par surface de fichiers, une session au plus par couloir.** L'arbre de
+  travail est partagé et sans worktree. Sur un même fichier, le risque n'est pas l'édition
+  mais le COMMIT : `git add` prend le fichier entier, travail de l'autre compris. Les
+  couloirs :
+  - l'Atelier : `static/viewer.js` ;
+  - la Bibliothèque et l'Administration : `static/corpus.js`, `static/administration.js` ;
+  - les styles et leur instrument de mesure : `static/style.css`, `static/theme.js` ;
+  - les formats d'image : `pipeline/` ;
+  - les comptes et les accès : `autorisation.py`, `deploy/authelia/` ;
+  - l'exploitation : `deploy/`, `tools/` ;
+  - le hors-code : la séance ANN-1, le dossier DEPOT-1, les identifiants ShareDocs d'INFRA-6.
+- **Un fichier hors de son couloir se RÉSERVE par message**, et se rend de même.
+- **Une passe navigateur gèle les autres.** Aucune étape de build : le serveur de test relit
+  `static/` et `templates/` à chaque requête. Pendant une passe, personne n'édite l'écran,
+  le Python ni les tests, et il n'y a qu'une passe à la fois.
+- **Les décisions se prennent par lots**, rangées par ce qu'elles débloquent, et non au fil
+  des messages. La première du lot est souvent celle qui débloque le couloir le plus
+  encombré — aujourd'hui l'Atelier, suspendu à UX-5 et UX-12.
+- **Le `.venv` du dépôt fait foi** pour les tests, aligné sur les verrous (cf. CLAUDE.md).
+- **La suite par défaut passe avant chaque poussée**, et non avant chaque commit : un
+  commit se fait vite, une poussée non. En deux jours, deux défauts sont passés faute de
+  cette suite, chacun invisible aux tests ciblés qu'on avait lancés.
 
 ## Séquence conseillée (2026-07-16, modifiable)
 
