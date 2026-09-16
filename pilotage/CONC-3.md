@@ -1,9 +1,16 @@
 ---
 chantier: CONC-3
-statut: à venir
+statut: interrompu
 ---
 
 # CONC-3 — deux personnes sur la même planche : ce qui se perd, et ce que l'écran en dit
+
+**Arrêté sur** — 2026-09-16, `5caa373` : le premier temps est fait. Un enregistrement
+d'annotation ne touche plus un champ absent de la requête, les tags partent en
+différences, et l'annulation défait ce que l'acte a changé, sur l'état actuel. La mesure 1,
+rejouée par une garde à deux navigateurs, ne perd plus rien dans aucun des deux sens.
+Reste le second temps — deux personnes sur le MÊME champ, et la case supprimée —, avant la
+prochaine mise en production.
 
 **Point de départ** — 2026-09-16, une question de Hugo en tranchant le cache des dérivés
 d'IMG-1 : « ça ne servirait pas d'avoir quelque part (niveau album ou collection) un moyen
@@ -27,9 +34,9 @@ n'est écrit, et le chantier commence par une mesure.
 - [ ] Si l'écran change, la disposition se tranche sur une maquette interactive, pas sur de la prose
 
 ### Temps a — n'envoyer que ce qui a changé (tout de suite)
-- [ ] Enregistrer la NOTE d'une bulle n'envoie plus sa liste de tags, et ajouter ou retirer un TAG n'envoie plus sa note. Attendu : la mesure 1 rejouée à deux navigateurs garde le tag de B ET la note de A, prouvé par le journal A3
-- [ ] Ctrl+Z après une note ou un tag isolé ne rend que ce champ-là : il ne défait pas, par un instantané entier, le geste qu'une autre personne a fait sur l'autre champ entre-temps
-- [ ] Une garde e2e à deux contextes rejoue la mesure 1, et elle est vue ROUGE sur le code d'avant le correctif
+- [x] Enregistrer la NOTE d'une bulle n'envoie plus sa liste de tags, et ajouter ou retirer un TAG n'envoie plus sa note. Attendu : la mesure 1 rejouée à deux navigateurs garde le tag de B ET la note de A, prouvé par le journal A3 — fait par `5caa373`, et prouvé par l'état en BASE lu par l'API dans la garde e2e, non par une relecture du journal : c'est ce qui reste qui compte, et la base le dit plus directement
+- [x] Ctrl+Z après une note ou un tag isolé ne rend que ce champ-là : il ne défait pas, par un instantané entier, le geste qu'une autre personne a fait sur l'autre champ entre-temps — `test_annuler_sa_note_ne_defait_pas_le_tag_de_l_autre`, sous deux identités, dans les deux sens
+- [x] Une garde e2e à deux contextes rejoue la mesure 1, et elle est vue ROUGE sur le code d'avant le correctif — `tests/test_e2e_annotation_a_deux.py`, rouge sur `8a2a506` avec sept autres tests, et tuée par les deux mutants de l'écran (tout renvoyer, ne jamais marquer la note)
 
 ### Temps b — refuser un enregistrement fait sur une version périmée (avant la prochaine mise en production)
 - [ ] Une note, une liste de tags ou un texte transcrit enregistré sur une version que quelqu'un d'autre a modifiée depuis est refusé par un 409 qui nomme qui a modifié et quand. Attendu : les mesures 2 et 3 rejouées ne perdent plus rien en silence, et l'écran propose de recharger la bulle sans jeter la saisie en cours
@@ -147,6 +154,32 @@ qu'AUTH-1 interdit — `docs/undo.md` le disait déjà (« dans les cinq minutes
 sous le même login peuvent encore défaire l'une l'acte de l'autre »). Ce qui manquait était
 côté USAGE : `docs/guide-utilisateur.md` laissait entendre qu'en deçà des cinq minutes, l'acte
 annulé était le sien. Il le dit désormais.
+
+**Le premier temps, fait le 2026-09-16 (`5caa373`).** Trois choix à connaître pour la suite.
+
+- *Les tags partent en DIFFÉRENCES, pas en liste.* Envoyer la liste entière « quand seuls
+  les tags ont changé » aurait fermé la perte entre note et tags, mais laissé deux personnes
+  qui touchent chacune un tag DIFFÉRENT s'écraser : la liste de l'une ne connaît pas le tag
+  de l'autre. `tags_ajoutes` et `tags_retires` s'appliquent à ce que la base porte. `tags`
+  (la liste entière) reste accepté pour les appelants existants, et refusé en 422 s'il est
+  mêlé aux différences.
+- *L'annulation calcule son inverse sur l'état ACTUEL.* Restaurer l'instantané `avant`
+  entier rendait la perte par un autre chemin : annuler sa note rendait la liste de tags
+  d'avant. Seul, rien ne change : l'état actuel est alors celui d'après l'acte. Écrit dans
+  `docs/undo.md`.
+- *Un enregistrement qui ne change rien ne se journalise plus*, pour ne pas fabriquer un
+  Ctrl+Z qui ne défait rien de visible.
+
+**Éprouvé.** Suite par défaut et passe navigateur ENTIÈRES sur une copie de `5caa373` :
+1279 et 240 verts. Neuf mutants joués sur une copie, tous tués, chacun par l'assertion qui
+le vise. Un test passait sur l'ancienne route sans rien vérifier — elle ignorait
+`tags_ajoutes`, donc l'annotation dont il vérifiait la disparition n'existait jamais — et a
+reçu son témoin. Une passe de QA le rejoue à la main, à deux onglets :
+`pilotage/qa/compte-retour-et-annotation.md`.
+
+**Ce que le premier temps ne ferme pas**, et c'est le second : deux personnes sur la MÊME
+note ou le même texte transcrit (le dernier gagne, sans rien dire), un tag retiré par l'une
+pendant que l'autre le voit encore, et la case supprimée sous les yeux de quelqu'un.
 
 *Rejouer.* Le script a vécu dans un scratchpad de session (`conc3/mesure_conc3.py`), qui ne
 dure pas ; son protocole est ci-dessus, et il se réécrit avec trois précautions mesurées ce
