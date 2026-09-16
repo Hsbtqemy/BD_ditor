@@ -32,10 +32,17 @@ rollback en cas d'échec.
 | `creation` région | supprimer la région (+ sous-arbre, désindexé) |
 | `modification` région (géométrie / OCR / déplacement) | réécrire les colonnes métier depuis `avant` |
 | `suppression` région | **recréer le sous-arbre** depuis l'instantané profond (région + annotation + enfants, **mêmes `id`**) |
-| `creation` annotation | supprimer l'annotation |
-| `modification` / `suppression` annotation | (re)poser note + tags depuis `avant` |
+| `creation` / `modification` / `suppression` annotation | défaire ce que l'acte a CHANGÉ, sur l'état actuel : la note revient à `avant` si l'acte l'a changée ; les tags qu'il a ajoutés partent, ceux qu'il a retirés reviennent ; vide, l'annotation est supprimée |
 | `lien` locuteur/présence (avant ∅) | retirer le lien |
 | `lien` (avant présent) / `delien` | rétablir l'ancien lien |
+
+**Une annotation se défait par différence, et non par instantané** (CONC-3, 2026-09-16).
+Restaurer `avant` entier défaisait aussi ce qu'une autre personne avait fait sur l'AUTRE
+champ entre-temps : mesuré à deux navigateurs, annuler une note rendait la liste de tags
+d'avant, donc effaçait le tag posé par un collègue. La différence entre `avant` et `apres`
+dit ce que l'acte a changé, et seul cela est défait. Tant que personne d'autre n'a touché
+l'annotation, le résultat est exactement `avant`. Deux personnes sur le MÊME champ restent
+en « le dernier gagne », jusqu'au second temps de CONC-3.
 
 **Recréation à l'identique** : l'instantané profond porte les `id` d'origine → citations,
 deep-links et références restent valides. Si un `id` a été **réattribué** depuis (une nouvelle

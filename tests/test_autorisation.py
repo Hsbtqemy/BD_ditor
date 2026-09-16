@@ -842,6 +842,22 @@ def test_annuler_sous_l_autre_identite_ne_perd_pas_le_tag_cache(client, db_path,
     assert (ann["note"] or "") == ""
 
 
+def test_nommer_un_tag_cache_ne_le_retire_pas(client, db_path, tag_illisible):
+    """CONC-3 — les tags se retirent désormais PAR LEUR NOM (`tags_retires`). Bob ne voit
+    pas « prive », mais peut deviner ou connaître son libellé : le nommer ne doit rien lui
+    retirer, pas plus que vider ce qu'il voit ne l'emportait. Anti-vacuité : le tag qu'il
+    voit, nommé dans la même requête, part bien."""
+    from conftest import ADMIN
+    _ouvrir(db_path, tag_illisible["c1"], "bob", niveau="ecriture")
+    bob, r1 = tag_illisible["bob"], tag_illisible["r1"]["id"]
+    rep = client.put(f"/api/regions/{r1}/annotation",
+                     json={"tags_retires": ["prive", "commun"]}, headers=bob)
+    assert rep.status_code == 200, rep.text
+    ann = client.get(f"/api/regions/{r1}/annotation", headers=ADMIN).json()
+    assert {t["label"] for t in ann["tags"]} == {"prive"}, (
+        "nommer un tag qu'on ne lit pas l'a retiré, ou le tag visible n'est pas parti")
+
+
 @pytest.fixture
 def facettes_illisibles(client, db_path, deux_albums, derriere_proxy):
     """AUTH-11 — le décor des facettes qu'on ne lit pas. Sur une région que Bob lit : deux

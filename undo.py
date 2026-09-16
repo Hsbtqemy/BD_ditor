@@ -188,6 +188,29 @@ def _supprimer_annotation(conn, region_id):
     reindex_region(conn, region_id)
 
 
+def _inverser_annotation(conn, region_id, avant, apres):
+    """Défait CE QUE l'acte a changé, et rien d'autre (CONC-3).
+
+    Restaurer l'instantané `avant` entier défaisait aussi ce qu'une autre personne avait fait
+    sur l'AUTRE champ entre-temps : annuler une note rendait la liste de tags d'avant, donc
+    effaçait le tag posé par un collègue. L'inverse se calcule donc par différence, sur l'état
+    ACTUEL : la note revient à sa valeur d'avant si l'acte l'a changée ; les tags que l'acte
+    a ajoutés sont retirés, ceux qu'il a retirés sont remis, les autres ne bougent pas. Tant
+    que personne d'autre n'a touché l'annotation, c'est exactement l'instantané `avant`.
+    """
+    avant, apres = avant or {}, apres or {}
+    actuel = journal.snapshot_annotation(conn, region_id) or {}
+    note = actuel.get("note")
+    if (avant.get("note") or "") != (apres.get("note") or ""):
+        note = avant.get("note")
+    t_avant, t_apres = set(avant.get("tags", [])), set(apres.get("tags", []))
+    tags = (set(actuel.get("tags", [])) - (t_apres - t_avant)) | (t_avant - t_apres)
+    if not (note or "").strip() and not tags:
+        _supprimer_annotation(conn, region_id)
+    else:
+        _restaurer_annotation(conn, region_id, {"note": note, "tags": sorted(tags)})
+
+
 def _recreer_region_profond(conn, snap):
     """Inverse d'une SUPPRESSION : recrée la région, son annotation et son sous-arbre depuis
     l'instantané PROFOND. Réutilise les `id` d'origine (préserve citations / deep-links) ;
@@ -240,10 +263,7 @@ def _inverser(conn, e) -> int:
                 _recreer_region_profond(conn, avant)
             return cid
         if table == "annotations":        # cible_id = region_id (v20 : stable, cf. put_annotation)
-            if t == "creation":
-                _supprimer_annotation(conn, cid)
-            else:                         # modification / suppression → restaurer `avant`
-                _restaurer_annotation(conn, cid, avant)
+            _inverser_annotation(conn, cid, avant, apres)
             return cid
         if table in _LIENS:                # cible_id = region_id
             if t == "lien" and avant is None:

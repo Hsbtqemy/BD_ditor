@@ -900,8 +900,16 @@ class JobIn(BaseModel):
 
 
 class AnnotationIn(BaseModel):
+    """Ce qu'un enregistrement d'annotation CHANGE — et seulement cela (CONC-3).
+
+    Un champ ABSENT garde sa valeur en base : `{"note": …}` ne touche pas aux tags. `tags`
+    remplace la liste visible ; `tags_ajoutes` / `tags_retires` la modifient, sans rien
+    savoir des tags que d'autres ont posés entre-temps. La route refuse `tags` avec l'un des
+    deux autres. Voir `main.put_annotation`."""
     note: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
+    tags_ajoutes: list[str] = Field(default_factory=list)
+    tags_retires: list[str] = Field(default_factory=list)
 
 
 class TagIn(BaseModel):

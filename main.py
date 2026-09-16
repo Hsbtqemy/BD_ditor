@@ -1216,24 +1216,54 @@ def get_annotation(region_id: int, conn: sqlite3.Connection = Depends(db),
 def put_annotation(region_id: int, payload: AnnotationIn,
                    conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
+    """Enregistre ce que l'appelant CHANGE, et garde le reste tel qu'il est en base.
+
+    CONC-3 — l'écran renvoyait la note ET les tags chargés quand la bulle avait été
+    sélectionnée. Mesuré le 2026-09-16 à deux navigateurs : la note de A effaçait en
+    silence le tag que B venait de poser, et le tag suivant de B effaçait la note de A.
+    Un champ ABSENT de la requête n'est donc plus touché, et les tags se modifient par
+    différence (`tags_ajoutes`, `tags_retires`), sans réécrire ceux des autres. `tags`
+    remplace toujours la liste visible, pour les appelants qui l'envoient entière ; le
+    mélanger aux deux autres serait ambigu, d'où le 422. Deux personnes sur le MÊME champ
+    restent en « le dernier gagne » : c'est le second temps du chantier.
+    """
     _get_region(conn, portee, region_id, ecriture=True)
+    champs = payload.model_fields_set & {"note", "tags", "tags_ajoutes", "tags_retires"}
+    if "tags" in champs and champs & {"tags_ajoutes", "tags_retires"}:
+        raise HTTPException(422, "« tags » remplace la liste, « tags_ajoutes » et "
+                                 "« tags_retires » la modifient : pas les deux à la fois.")
+    if not champs:
+        return _annotation_for_region(conn, portee, region_id)
 
     # État avant (note + tags) pour journaliser création / modification / suppression.
     avant_annot = journal.snapshot_annotation(conn, region_id)
+    note = payload.note if "note" in champs else (avant_annot or {}).get("note")
 
-    tag_rows = _ensure_tags(conn, payload.tags)
     # Les tags que l'appelant ne LIT pas ne lui ont pas été montrés, donc ne sont pas
     # dans `payload.tags` : remplacer la liste par celle reçue les effacerait sans un
     # mot. On les garde — et le journal enregistre l'annotation ENTIÈRE, parce que
     # c'est ce que l'undo restaure : un instantané filtré lui ferait effacer ce qu'on
-    # a caché.
+    # a caché. Pour la même raison, on ne RETIRE pas un tag caché qu'on nommerait.
     caches = _tags_caches(conn, portee, region_id)
+    if "tags" in champs:
+        tag_ids = [t["id"] for t in _ensure_tags(conn, payload.tags)]
+    else:
+        tag_ids = [r["tag_id"] for r in conn.execute(
+            "SELECT at.tag_id FROM annotation_tags at JOIN annotations an "
+            "ON an.id = at.annotation_id WHERE an.region_id = ?", (region_id,))
+            if r["tag_id"] not in caches]
+        retires = {t["id"] for t in _rows(conn.execute(
+            f"SELECT id FROM tags WHERE label IN ({','.join('?' * len(payload.tags_retires))})",
+            [_norm_tag(l) for l in payload.tags_retires]))} if payload.tags_retires else set()
+        tag_ids = [i for i in tag_ids if i not in retires]
+        tag_ids += [t["id"] for t in _ensure_tags(conn, payload.tags_ajoutes)
+                    if t["id"] not in tag_ids]
     # Vider une annotation (note vide ET aucun tag) = SUPPRIMER la ligne, pas
     # laisser une coquille vide : sinon elle fausserait le compteur d'annotées,
     # ne serait pas cherchable, et ferait conserver à tort la case à la
     # re-segmentation (préservation du travail humain). « Aucun tag » compte aussi
     # ceux qu'on ne voit pas : vider ce qu'on voit ne supprime pas ce qu'on ne voit pas.
-    if not (payload.note or "").strip() and not tag_rows and not caches:
+    if not (note or "").strip() and not tag_ids and not caches:
         conn.execute("DELETE FROM annotations WHERE region_id = ?", (region_id,))
         reindex_region(conn, region_id)
         if avant_annot is not None:
@@ -1250,24 +1280,27 @@ def put_annotation(region_id: int, payload: AnnotationIn,
            ON CONFLICT(region_id) DO UPDATE SET
                note = excluded.note,
                date_modification = datetime('now')""",
-        (region_id, payload.note),
+        (region_id, note),
     )
     ann_id = conn.execute(
         "SELECT id FROM annotations WHERE region_id = ?", (region_id,)
     ).fetchone()["id"]
 
-    # Remplace l'ensemble des tags.
+    # Pose l'ensemble des tags calculé plus haut, cachés compris.
     conn.execute("DELETE FROM annotation_tags WHERE annotation_id = ?", (ann_id,))
-    for tag_id in [t["id"] for t in tag_rows] + caches:
+    for tag_id in tag_ids + caches:
         conn.execute(
             "INSERT OR IGNORE INTO annotation_tags (annotation_id, tag_id) "
             "VALUES (?, ?)", (ann_id, tag_id),
         )
 
     # Cible = region_id (stable), pas ann_id (éphémère) → undo (D1) uniforme avec locuteur/présence.
-    journal.journaliser(conn, "creation" if avant_annot is None else "modification",
-                        "annotations", region_id, avant=avant_annot,
-                        apres=journal.snapshot_annotation(conn, region_id))
+    # Un enregistrement qui ne change RIEN (retirer un tag absent) ne se journalise pas :
+    # il deviendrait un Ctrl+Z qui ne défait rien de visible.
+    apres_annot = journal.snapshot_annotation(conn, region_id)
+    if apres_annot != avant_annot:
+        journal.journaliser(conn, "creation" if avant_annot is None else "modification",
+                            "annotations", region_id, avant=avant_annot, apres=apres_annot)
     reindex_region(conn, region_id)
     conn.commit()
     return _annotation_for_region(conn, portee, region_id)

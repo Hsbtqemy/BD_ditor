@@ -58,6 +58,7 @@ const state = {
   zoom: 1, tx: 0, ty: 0,
   tagVocab: [],            // [{label, couleur, frequence}]
   currentTags: [],         // labels (string) de l'annotation en cours
+  annotSale: annotPropre(), // CONC-3 : ce qui a CHANGÉ depuis le dernier enregistrement
   saveTimer: null,
   trRegions: [],           // régions de texte à transcrire (ordre de lecture)
   trIndex: 0,
@@ -918,6 +919,7 @@ async function loadAnnotation(regionId) {
   try {
     const ann = await apiGet(`/api/regions/${regionId}/annotation`);
     state.currentTags = ann.tags.map((t) => t.label);
+    state.annotSale = annotPropre();
     $("#note-input").value = ann.note || "";
     renderTagChips();
     setSaveState("saved");
@@ -926,6 +928,7 @@ async function loadAnnotation(regionId) {
     // l'annotation de la région PRÉCÉDENTE (restée dans #note-input) sur celle-ci.
     toast("Erreur chargement annotation : " + e.message, "error");
     state.currentTags = [];
+    state.annotSale = annotPropre();
     $("#note-input").value = "";
     renderTagChips();
     setSaveState("");
@@ -949,16 +952,30 @@ function renderTagChips() {
   }
 }
 
+/* CONC-3 — l'écran n'envoie que ce qu'il a CHANGÉ. Il renvoyait la note et la liste de tags
+   chargées à la sélection : mesuré le 2026-09-16 à deux navigateurs, la note de l'une
+   effaçait en silence le tag que l'autre venait de poser, et inversement. Les tags partent
+   donc en différences, que le serveur applique à ce qu'il a, pas à ce que l'écran a lu. */
+function annotPropre() {
+  return { note: false, ajoutes: new Set(), retires: new Set() };
+}
+
 function addTag(label) {
   label = label.trim().toLowerCase().replace(/\s+/g, " ");
   if (!label || state.currentTags.includes(label)) return;
   state.currentTags.push(label);
+  if (!state.annotSale.retires.delete(label)) state.annotSale.ajoutes.add(label);
   renderTagChips();
   scheduleSave();
 }
 function removeTag(label) {
   state.currentTags = state.currentTags.filter((t) => t !== label);
+  if (!state.annotSale.ajoutes.delete(label)) state.annotSale.retires.add(label);
   renderTagChips();
+  scheduleSave();
+}
+function noteModifiee() {
+  state.annotSale.note = true;
   scheduleSave();
 }
 
@@ -983,19 +1000,43 @@ async function saveAnnotation() {
   // F8 : si le timer tombe hors mode annotation (ou sans sélection), NE PAS laisser
   // l'indicateur bloqué sur « Enregistrement… ».
   if (id == null || state.mode !== "annotation") { setSaveState(""); return; }
-  const note = $("#note-input").value;
+  // Ce qui part est retiré de « sale » AVANT l'aller-retour : un geste fait pendant qu'il
+  // court appartient à l'enregistrement suivant, pas à celui-ci.
+  const sale = state.annotSale;
+  const corps = {};
+  if (sale.note) corps.note = $("#note-input").value;
+  if (sale.ajoutes.size) corps.tags_ajoutes = [...sale.ajoutes];
+  if (sale.retires.size) corps.tags_retires = [...sale.retires];
+  state.annotSale = annotPropre();
+  if (!Object.keys(corps).length) { setSaveState("saved"); return; }
   try {
-    await apiSend("PUT", `/api/regions/${id}/annotation`, {
-      note, tags: [...state.currentTags],
-    });
+    const ann = await apiSend("PUT", `/api/regions/${id}/annotation`, corps);
     const r = state.regionsById.get(id);
-    if (r) { r.annotee = !!(note || state.currentTags.length); }
+    if (r) { r.annotee = !!(ann.note || ann.tags.length); }
+    if (state.selectedId === id) {
+      // La réponse porte aussi les tags posés AILLEURS entre-temps : on les montre, sans
+      // défaire ce qu'on a changé soi-même pendant l'aller-retour.
+      const enCours = state.annotSale;
+      const serveur = ann.tags.map((t) => t.label).filter((l) => !enCours.retires.has(l));
+      state.currentTags = [...serveur, ...[...enCours.ajoutes].filter((l) => !serveur.includes(l))];
+      renderTagChips();
+    }
     renderOverlay();
     renderTree();                            // reflète l'état annoté dans l'arbre
     setSaveState("saved");
     await refreshTagVocab();
     updateStatus();
-  } catch (e) { toast("Échec de sauvegarde : " + e.message, "error"); }
+  } catch (e) {
+    // Rien n'est perdu tant qu'on reste sur la bulle : ce qui n'est pas parti redevient à
+    // envoyer, sauf ce qu'un geste plus récent a contredit.
+    if (state.selectedId === id) {
+      const s = state.annotSale;
+      if ("note" in corps) s.note = true;
+      for (const l of corps.tags_ajoutes || []) if (!s.retires.has(l)) s.ajoutes.add(l);
+      for (const l of corps.tags_retires || []) if (!s.ajoutes.has(l)) s.retires.add(l);
+    }
+    toast("Échec de sauvegarde : " + e.message, "error");
+  }
 }
 
 async function refreshTagVocab() {
@@ -2741,7 +2782,7 @@ function setupControls() {
   $("#tree-recalc").onclick = (e) => { e.stopPropagation(); recalcOrder(); };
 
   // Annotation : note
-  $("#note-input").addEventListener("input", scheduleSave);
+  $("#note-input").addEventListener("input", noteModifiee);
 
   setupTagInput();
   setupPersoInput("#loc-input", "#loc-suggest", setLocuteur);     // locuteur (bulle)
