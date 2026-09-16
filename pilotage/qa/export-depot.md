@@ -67,8 +67,8 @@ inoffensif ailleurs.
 
 ### Le bloc est là pour qui peut EXPORTER
 
-- [ ] Connecté comme `claire` SANS la case, *Bibliothèque → 📚 Collections*, le bloc **Export de dépôt** n'a aucun bouton, et dit que la lire n'y suffit pas
-- [ ] La case cochée, le même bloc porte les trois lignes — fiche de description, enregistrements, manifeste IIIF — et aucune n'est grisée
+- [x] Connecté comme `claire` SANS la case, *Bibliothèque → 📚 Collections*, le bloc **Export de dépôt** n'a aucun bouton, et dit que la lire n'y suffit pas
+- [x] La case cochée, le même bloc porte les trois lignes — fiche de description, enregistrements, manifeste IIIF — et aucune n'est grisée
 - [x] La ligne **Déposer sur ShareDocs** est ABSENTE pour `claire`
 - [x] Connecté comme propriétaire, le même bloc porte EN PLUS la ligne de dépôt
 
