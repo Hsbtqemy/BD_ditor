@@ -13,7 +13,7 @@ qu'il se vit aujourd'hui, geste par geste ; le parcours visé ; et les décision
 séparent les deux, formulées pour Hugo avec leurs options et une recommandation. Rien n'est
 engagé. **Validée par Hugo le même jour**, qui y a fait ajouter deux sections : la finesse
 des droits, telle qu'`AUTH-10` la pose, dans l'écran d'attribution ; et la forme de l'écran,
-qui se choisira sur des maquettes interactives.
+choisie le même jour sur des maquettes interactives : une liste et une fiche, côte à côte.
 
 **Pourquoi une fiche neuve, et pas une zone d'`AUTH-7`.** `AUTH-7` avait reçu une demande
 voisine le 2026-09-06, avec un critère explicite — *« activer, désactiver, créer, attribuer,
@@ -45,7 +45,8 @@ le propriétaire d'une collection, l'administrateur, et l'administrateur systèm
 - [ ] **La personne lit ce qu'elle peut FAIRE, pas le nom de son niveau** — attendu : « Mon compte » (`AUTH-9`) dit, par collection, les actes ouverts — et que supprimer un album y est possible et ne se rattrape pas, tant que c'est vrai (`AUTH-10`, « La décision du 2026-09-10 »). Même description que l'écran d'attribution, pour que les deux écrans ne puissent pas se contredire
 
 ### La forme de l'écran
-- [ ] **La forme se choisit sur des MAQUETTES INTERACTIVES, pas sur cette prose** — attendu : une maquette par forme décrite dans « La forme de l'écran » ci-dessous, qui fait jouer d'abord les gestes fréquents de chaque rôle (« Les gestes que la maquette fait jouer d'abord »), sur les mêmes données de décor (un administrateur, un propriétaire, un groupe d'étudiants de douze comptes, un login partagé, un compte jamais venu, une collection sans propriétaire), à 1 280 px et à 375 px, en thème sombre et clair ; la forme retenue est nommée ici avec sa raison. Les croquis de cette fiche disent ce que chaque forme range où ; ils ne disent pas ce qu'on éprouve en la regardant, et c'est ce que la demande juge
+- [x] **La forme se choisit sur des MAQUETTES INTERACTIVES, pas sur cette prose** — attendu : une maquette par forme décrite dans « La forme de l'écran » ci-dessous, qui fait jouer d'abord les gestes fréquents de chaque rôle (« Les gestes que la maquette fait jouer d'abord »), sur les mêmes données de décor (un administrateur, un propriétaire, un groupe d'étudiants de douze comptes, un login partagé, un compte jamais venu, une collection sans propriétaire), à 1 280 px et à 375 px, en thème sombre et clair ; la forme retenue est nommée ici avec sa raison. Les croquis de cette fiche disent ce que chaque forme range où ; ils ne disent pas ce qu'on éprouve en la regardant, et c'est ce que la demande juge — **tranché par Hugo le 2026-09-16, sur les maquettes : la FORME 1, une liste et une fiche, côte à côte.** Ses mots : « Liste et fiches, c'est parfait. Harmonieux, bien rangé, visuellement agréable et ordonné. » Les maquettes sont une publication privée de la coordination, hors du dépôt. Les formes 2 et 3 restent décrites dans « La forme de l'écran », comme trace de l'option écartée. Ce que les maquettes ont montré à 375 px et dans chaque thème n'est pas consigné ici : la bascule en une colonne reste à éprouver à la construction
+- [ ] **Les listes se trient par NOM ou par RÉCENCE** — demandé par Hugo le 2026-09-16 en retenant la forme 1 : « Il manque seulement un mode de tri je pense (date et alphabet peut-être ?) ». Ce que la seconde version de la maquette en a fait, repris comme attendu : **« A → Z »** sur le nom LU — le nom lisible d'une personne, à défaut son login ; le nom d'un groupe ou d'une collection ; **« Récents d'abord »** par date — la dernière venue pour une personne, la dernière venue d'un de ses membres pour un groupe, la dernière modification pour une collection ; ce qui n'a pas de date passe à la fin ; « À regarder » reste en tête, hors tri. Attendu : sur chacun des trois axes, les deux tris rendent l'ordre décrit, un objet sans date est en fin de liste, et le tri choisi survit au changement d'axe et à l'adresse. **Deux de ces dates n'existent pas encore, et la troisième est approchée** — la case ne se coche pas sans elles : (1) la dernière modification d'une COLLECTION n'est pas en base : `collection` ne porte qu'une `date_creation`, et modifier ses descripteurs n'écrit rien au journal — c'est le défaut « Modifier une collection ne laisse aucune trace » qui la rendrait lisible ; ranger ou sortir un album n'y écrit rien non plus, et la définition de « modification » devra dire si cela compte ; (2) la dernière venue d'un membre suppose de connaître les MEMBRES d'un groupe, que l'application ne lit pas aujourd'hui — la lecture de l'annuaire d'`AUTH-6` ; (3) la dernière venue d'une PERSONNE existe (`utilisateur.derniere_vue`), mais seulement pour qui est venu, et à l'heure près : elle n'est réécrite qu'une fois par heure par login. Un compte jamais venu n'a pas de date, et se range donc en fin de liste
 
 ### Mesurer, avant de construire
 - [ ] **Le délai d'un RETRAIT de groupe est mesuré** — l'ajout l'est (entre 4 min 53 s et 5 min 52 s, recette, 2026-09-15, `AUTH-7`), le retrait jamais. Attendu : sur la pile de recette, un compte d'essai retiré de `annotateurs` perd l'accès à « esther v1 » au bout d'un délai noté ; et ce qui arrive à une session DÉJÀ ouverte. C'est le délai pendant lequel quelqu'un qu'on vient de retirer lit encore, et `docs/modele-et-droits.md` le dit « immédiat »
@@ -241,7 +242,9 @@ d'Authelia, l'éventuel import d'une promotion (décision 5), les recours en con
    écrit.
 3. **Les maquettes interactives** — la forme se choisit AVANT de construire les étapes 4 à
    6, et les maquettes jouent aussi les issues d'`AUTH-10` sur l'écran d'attribution
-   (zones « La forme de l'écran » et « La finesse des droits »).
+   (zones « La forme de l'écran » et « La finesse des droits »). **La forme est tranchée le
+   2026-09-16 : la forme 1.** Reste à jouer les issues d'`AUTH-10` sur l'écran
+   d'attribution.
 4. **La vue des personnes et des groupes** — décisions 1, 3, 6 et 7.
 5. **Le choix dans l'annuaire, la place des accès, et les accès en actes** — décisions 2 et
    4, dans le même geste que la refonte en tableau d'`UX-4`. `AUTH-10` peut trancher avant,
@@ -342,7 +345,14 @@ sous l'autre par quatre chantiers différents (`UX-4` l'a constaté le 2026-09-0
 Collections de la Bibliothèque, où chaque collection se déplie en un formulaire long suivi
 de son export.
 
-**La forme se choisira sur des MAQUETTES INTERACTIVES**, construites à partir de cette
+**Tranché le 2026-09-16, sur les maquettes : la forme 1**, une liste et une fiche côte à
+côte — « Liste et fiches, c'est parfait. Harmonieux, bien rangé, visuellement agréable et
+ordonné. » Hugo y a demandé un tri, par nom et par date (case « Les listes se trient par NOM
+ou par RÉCENCE »). **Les formes 2 et 3 restent décrites ci-dessous, comme trace de l'option
+écartée**, avec leurs coûts et leurs risques : c'est ce qu'on relira si la forme 1 se
+révèle mal tenir un usage qu'on n'a pas maquetté.
+
+**La forme s'est choisie sur des MAQUETTES INTERACTIVES**, construites à partir de cette
 section, et non sur la prose (case « La forme se choisit sur des maquettes », zone « La
 forme de l'écran »). Ce qui suit est écrit pour qu'on puisse les construire sans deviner :
 ce qu'on voit d'emblée, comment on passe d'un objet à l'autre, où vit chaque geste, et ce
@@ -408,10 +418,10 @@ Les deux ou trois gestes les plus fréquents de chaque rôle, dans l'ordre où i
 L'**administrateur système** n'a pas de geste fréquent ici : import de promotion (décision
 5), recours en console. Il est hors des maquettes.
 
-### Forme 1 — une liste et une fiche, côte à côte
+### Forme 1 — une liste et une fiche, côte à côte (RETENUE le 2026-09-16)
 
 **D'emblée.** Deux colonnes. À gauche, un sélecteur d'axe — *Personnes · Groupes ·
-Collections* —, un champ de filtre, puis la liste : le groupe « ⚠ À regarder (N) » DÉPLIÉ en
+Collections* —, un champ de filtre, un tri — *A → Z · Récents d'abord* —, puis la liste : le groupe « ⚠ À regarder (N) » DÉPLIÉ en
 tête, puis les autres objets par ordre alphabétique, une ligne chacun (nom, et un état court :
 « venue 14/09 », « jamais venue », « 12 comptes »). À droite, tant que rien n'est choisi, le
 détail de « À regarder » ; une fois un objet choisi, sa fiche. Le propriétaire n'a pas de
@@ -456,7 +466,7 @@ tiroirs sous le seuil (`UX-7`, piège à focus éprouvé).
 l'état dans l'adresse ; une liste parcourable au clavier. **Risque** : sur une tâche en
 série — vérifier trente arrivants —, l'aller-retour entre liste et fiche fatigue à 375 px.
 
-### Forme 2 — des onglets, un tableau par onglet, une ligne qui s'ouvre
+### Forme 2 — des onglets, un tableau par onglet, une ligne qui s'ouvre (écartée)
 
 **D'emblée.** Une rangée d'onglets — *Personnes · Groupes · Collections · Instance* —, le
 premier ouvert. Sous l'onglet, une barre de filtres dont une pastille « ⚠ À regarder (N) », puis
@@ -498,7 +508,7 @@ par une liste déroulante ; et la leçon d'`UX-10` : un bloc derrière un onglet
 rendu par aucun audit, donc chaque audit devra ouvrir chaque onglet, et le déclarer.
 **Risque** : comparer deux fiches est impossible, une seule étant ouverte.
 
-### Forme 3 — un tableau de bord, et une page par objet
+### Forme 3 — un tableau de bord, et une page par objet (écartée)
 
 **D'emblée.** Le tableau de bord de l'Administration : en tête, **À regarder**, les signaux
 en liste, chacun un lien ; puis trois cartes — *Personnes (24)*, *Groupes (5)*, *Collections
