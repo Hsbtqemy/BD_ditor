@@ -1303,8 +1303,14 @@ def test_segmenter_depuis_la_visionneuse_ne_fait_pas_regresser_l_ecran(page, see
     page.click("#btn-traitement")            # « Segmenter » vit dans un menu déroulant
     page.wait_for_selector("#btn-segmenter", state="visible", timeout=3000)
     page.click("#btn-segmenter")
-    # Kumiko tourne en sous-processus : on attend la fin, pas une durée.
-    page.wait_for_selector(".toast", timeout=120000)
+    # Kumiko tourne en sous-processus : on attend la fin, pas une durée. La FIN, c'est le
+    # toast de succès ou d'erreur. `.toast` seul prenait « Segmentation en cours… », posé
+    # AVANT l'appel, et le test ne tenait que par la vitesse du moteur, dans les 1,5 s
+    # d'attente qui suivaient. Seul, il passait ; le 2026-09-16, dans l'ordre de son module,
+    # la segmentation n'était pas finie et la dernière assertion tombait.
+    page.wait_for_selector(".toast.success, .toast.error", timeout=120000)
+    erreurs = page.locator(".toast.error").all_inner_texts()
+    assert not erreurs, f"la segmentation a échoué à l'écran : {erreurs}"
     page.wait_for_timeout(1500)
 
     # RE-SÉLECTION, et c'est tout le test. `segmenter()` ne redessine pas le bandeau —
