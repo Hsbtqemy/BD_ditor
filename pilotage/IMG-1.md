@@ -8,8 +8,8 @@ statut: différé
 **Arrêté sur** — la relecture du chantier, commit `7087fca`, 16 septembre, juste après le
 cache des dérivés (`e9811c7` : `no-cache` et 304, mesuré dans Chromium avant et après). Avant
 eux : le gris 16 bits (`fb53e67`), l'outil de régénération (`fd7cd38`, déclaré au cliquet par
-`944f071`), le filtre d'extension (`cfbf85d`), le dialogue d'import (`654562f`). Rien n'est
-poussé. DIFFÉRÉ exprès : ce qui reste attend le TIFF et le JP2 réels du scanner de l'équipe,
+`944f071`), le filtre d'extension (`cfbf85d`), le dialogue d'import (`654562f`). Poussé sur
+`origin/dev` le 2026-09-16 (`dd7f6db`). DIFFÉRÉ exprès : ce qui reste attend le TIFF et le JP2 réels du scanner de l'équipe,
 et les décisions de Hugo sur le stockage des masters et le coût d'import du JP2 ; la passe de
 QA `derives-et-import-jp2` est à jouer.
 
