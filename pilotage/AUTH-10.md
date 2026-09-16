@@ -264,3 +264,13 @@ silencieux.
 dormances), `AUTH-6` (le modèle de comptes, qui a soulevé la question par un
 `ecriture: 0`), `COL-2` (les descripteurs, l'autre chose qu'on ne peut pas encore régler à
 l'écran).
+
+**Renvoi vers `AUTH-12`, posé le 2026-09-16.** Le cadrage de la gestion des comptes construit
+l'écran d'attribution en ACTES — la case « L'interface se rend en cases à cocher » y trouve
+son écran — et dessine LIÉS les actes que le modèle accorde ensemble, pour ne pas promettre
+une finesse que le serveur n'a pas : c'est le risque que « Ce qui rouvrira la question »
+décrit à propos d'`UX-4`. L'écran y lit la description des actes servie par le serveur, de
+sorte que la décision d'ici — les remèdes, le niveau `contribution`, une case hors rang —
+change une description et non un gabarit. Aucune décision de cette fiche n'y est prise.
+`AUTH-12` note seulement que son scénario d'arrivée d'une promotion est l'un des deux
+déclencheurs que « La décision du 2026-09-10 » juge intenables.

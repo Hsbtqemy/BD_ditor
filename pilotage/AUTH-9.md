@@ -80,3 +80,10 @@ suppression casserait. Celle-ci le regarde depuis la personne, et c'est la seule
 s'adresse à quelqu'un sans droits. La correction de placement du 2026-09-07 est exactement
 ce constat : mettre le panneau sur `/administration` aurait fait de son public l'inverse du
 sien.
+
+**Renvoi vers `AUTH-12`, posé le 2026-09-16.** « Mon compte » y devient l'entrée de la
+personne dans le parcours visé, ouverte depuis le menu du compte qu'`UX-14` construit : la
+pastille y ouvre un menu, à toutes les largeurs. `AUTH-12` propose que ce panneau et la fiche
+d'une personne vue par l'administrateur soient UN seul composant, et qu'il dise, collection
+par collection, les ACTES ouverts plutôt qu'un nom de niveau. Les cases de cette fiche restent
+les siennes : modale ou page, mono-poste, portée nommée, mot de passe, crédit.

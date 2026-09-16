@@ -705,3 +705,13 @@ Le premier morceau d'AUTH-6 a déjà été pris le 2026-09-06 — comptes nomina
 `one_factor`, second facteur pour `bd-admins` et sur la sauvegarde (cf. `INFRA-8`). Il
 rend ce chantier plus urgent, pas moins : sans second facteur à enrôler, il ne reste qu'un
 mot de passe à créer, donc plus rien qui justifie un passage par la console.
+
+**Renvoi vers `AUTH-12`, posé le 2026-09-16.** La demande d'administrer les comptes est
+revenue, et elle dit que la séparation en deux espaces construite ici reste trop complexe à
+l'usage. Son cadrage vit dans `AUTH-12`, et non dans une zone de cette fiche, pour qu'elle
+garde sa plomberie lisible. Il cite sans les recopier les cases ouvertes d'ici — la règle
+`deny`, le recours des administrateurs, le repli qui perd des gens, le second facteur pour
+s'élever, le TOTP orphelin, les panneaux tiers — et fait de la règle `archives` une étape du
+départ. Sa décision 1 (l'application écrit-elle dans l'annuaire ?) reprend l'écart du
+« chemin 3 » et recommande de le tenir ; sa décision 5 met le critère « sans console » à
+l'épreuve de l'arrivée d'une promotion.

@@ -219,3 +219,11 @@ référent, et la garde d'écran qui se pose sur l'acte), `DROIT-1` (ce que le r
 ce qu'il ne borde pas), `EXP-1` (l'export de dépôt, dont la QA a révélé le manque),
 `UX-10` (l'administration rassemblée), `COL-1` (l'incubateur, qui fera circuler le travail
 ENTRE collections et supposera qu'on sache les décrire).
+
+**Renvoi vers `AUTH-12`, posé le 2026-09-16.** Le cadrage de la gestion des comptes propose
+de rouvrir la frontière tranchée ici deux fois le 2026-09-10 (sa décision 2) : régler qui
+entre dans UNE collection depuis cette collection, dans la Bibliothèque, l'Administration
+gardant la vue transverse des personnes et des groupes. La raison est la demande elle-même,
+qui nomme la répartition entre Bibliothèque et Administration comme source de la complexité.
+Rien n'est tranché. Si la frontière change, la case « Où vit l'écran » garde son état du
+2026-09-10 et reçoit un renvoi daté, plutôt que d'être réécrite.

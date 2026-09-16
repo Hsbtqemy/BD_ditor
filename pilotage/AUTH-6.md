@@ -133,3 +133,12 @@ remède A1 attend, le journal portant déjà `avant` et `apres` sur `token_corre
 celles du groupe renommé ou supprimé travaillent la sémantique de `collection_acces`, la
 table qu'un quatrième niveau modifierait. AUTH-10 est `à venir` et l'équipe a décidé le
 2026-09-10 de ne rien y engager ; y toucher au passage est possible, mais alors DÉCLARÉ.
+
+**Renvoi vers `AUTH-12`, posé le 2026-09-16.** Le cadrage de la gestion des comptes fait de
+la case « L'application LIT l'annuaire » le préalable de tout son parcours visé : la vue de
+tous les comptes et groupes, venus ou non ; le choix d'un groupe dans une liste au lieu d'un
+nom tapé ; et les deux signaux bloqués ici — le groupe renommé ou supprimé, la collection
+dont le propriétaire a perdu son groupe. Il en fixe l'ordre de passage sans recopier aucune
+case : elles restent ici. Ce qu'il ajoute qui touche ce modèle : la liste proposerait les
+GROUPES d'abord, parce que c'est le principal que la case « Quels groupes existent » a
+retenu pour un cours.

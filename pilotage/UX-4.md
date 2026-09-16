@@ -193,3 +193,14 @@ surfaces » ne l'aurait jamais attrapé.
 **Le pire cas n'était pas celui qui a été signalé** : `#btn-export` de la Recherche et
 `#btn-export-analyse` de l'Exploration naissent `disabled` DANS le gabarit. C'était l'état
 initial de deux surfaces sur cinq, et non un cas de bord atteint après quelques gestes.
+
+## Renvoi vers AUTH-12 — 2026-09-16
+
+**Le panneau des accès est l'écran que le cadrage de la gestion des comptes transforme** :
+un choix dans l'annuaire au lieu d'un champ libre, des accès en actes liés, et peut-être un
+déménagement dans la collection de la Bibliothèque (décision 2 d'`AUTH-12`). La décision du
+2026-09-13 de cette fiche — le tableau, aucune colonne d'identité, la colonne « Signal » —
+vaut dans chacune des formes qu'`AUTH-12` décrit. Ces formes — une liste et une fiche côte à
+côte, des onglets, une page par objet — se choisiront sur des maquettes interactives, et la
+forme retenue doit être celle que ce chantier étend à l'Administration, pas un sixième
+style. Refaire le tableau des accès avant ces décisions ferait refaire le travail.
