@@ -89,15 +89,77 @@ def read_metadata(source: Path) -> dict:
         }
 
 
+# Gris de plus de 8 bits que Pillow range en `I;16*` et que la conversion sait réduire (IMG-1).
+MODES_GRIS_16_BITS = ("I;16", "I;16B", "I;16L")
+
+
+class ModeImageRefuse(ValueError):
+    """Mode d'image qu'aucune réduction en 8 bits ne rendrait juste (IMG-1)."""
+
+
+def _bits_portes(img: Image.Image) -> int:
+    """Nombre de bits réellement portés par un gris rangé en `I;16`.
+
+    Pillow range un TIFF 12 bits en `I;16` SANS étendre ses valeurs : 4095 y reste 4095
+    (mesuré le 2026-09-16 sur un TIFF forgé). Son décodeur JPEG 2000, lui, étend toute
+    précision à 16 bits (`shift = 16 - prec`, lu dans `Jpeg2KDecode.c` au tag 12.0.0, non
+    mesuré faute d'encodeur 12 bits), et le PNG n'a pas d'autre profondeur que 16. Seul le
+    TIFF peut donc porter moins que son mode, et il le dit dans `BitsPerSample` (balise 258).
+    """
+    balises = getattr(img, "tag_v2", None)
+    bits = balises.get(258) if balises is not None else None
+    if isinstance(bits, (tuple, list)):
+        bits = bits[0] if bits else None
+    return bits if isinstance(bits, int) and 8 < bits <= 16 else 16
+
+
+def image_8_bits(img: Image.Image) -> Image.Image:
+    """Ramène une image décodée en `L` ou `RGB`, les deux modes que JPEG et l'OCR reçoivent.
+
+    **Le seul chemin d'un master vers 8 bits** (IMG-1) : le dérivé web et l'OCR l'appellent
+    tous deux. Ils faisaient chacun `convert("RGB")`, qui ÉCRÊTE un gris 16 bits au lieu de
+    le réduire — 0, 100 et 255 passent, tout ce qui dépasse sort à 255. Un scan réel devenait
+    une page presque blanche, sans erreur à l'import, et l'OCR lisait la même page blanche
+    même quand le dérivé était juste. Corriger l'un sans l'autre laissait le défaut entier.
+
+    Ce que la conversion fait, et rien de plus :
+    - gris 12 ou 16 bits (`I;16`, `I;16B`, `I;16L`) : réduit à 8 bits en gardant ses tons
+      (65535 → 255, 32768 → 128) ;
+    - `I` et `F` : REFUSÉS, en nommant le mode. `I` ne dit pas sa profondeur — Pillow y range
+      le 16 bits signé comme le 32 bits, et relit 4294967295 en -1 (mesuré) ; un flottant n'a
+      pas d'échelle, 1,0 est le blanc d'une convention et le noir d'une autre. Toute
+      réduction serait devinée, et une page fausse qui s'affiche coûte plus qu'un refus ;
+    - tout autre mode : `convert("RGB")`. Pour la palette et le 1 bit, c'est juste. Pour le
+      CMYK c'est NAÏF, sans profil ICC ; et l'alpha est abandonné. Le RVB 16 bits par canal
+      n'arrive jamais ici : Pillow le réduit lui-même à la lecture et l'ouvre en `RGB`.
+    """
+    if img.mode in ("RGB", "L"):
+        return img
+    if img.mode in MODES_GRIS_16_BITS:
+        diviseur = 2 ** (_bits_portes(img) - 8)
+        # `convert("I")` préserve les valeurs, y compris en gros-boutiste (mesuré) ; la
+        # division tronque, donc elle vaut `>> 8` sur 16 bits et ne sort jamais de 0-255.
+        return img.convert("I").point(lambda v: v / diviseur).convert("L")
+    if img.mode == "F" or img.mode.startswith("I"):
+        nature = {"I": "entiers dont la profondeur n'est pas connue",
+                  "F": "nombres flottants sans échelle"}.get(img.mode, "profondeur inconnue")
+        raise ModeImageRefuse(
+            f"mode d'image « {img.mode} » ({nature}) : aucune réduction en 8 bits ne serait "
+            "juste. Exportez le scan en 8 ou 16 bits entiers non signés, puis réimportez.")
+    return img.convert("RGB")
+
+
 def make_web_derivative(source: Path, dest: Path,
                         scale: float = WEB_SCALE,
                         quality: int = WEB_JPEG_QUALITY) -> tuple[int, int]:
-    """Génère le dérivé web JPEG et retourne ses dimensions (largeur, hauteur)."""
+    """Génère le dérivé web JPEG et retourne ses dimensions (largeur, hauteur).
+
+    Lève `ModeImageRefuse` AVANT d'écrire quoi que ce soit si le master n'a pas de
+    réduction juste en 8 bits : l'import le rend en 400 et retire le master.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     with Image.open(source, formats=PILLOW_FORMATS) as img:   # SEC-3, cf. read_metadata
-        # JPEG ne gère que RGB / L : on convertit CMYK, 16 bits, palette, etc.
-        if img.mode not in ("RGB", "L"):
-            img = img.convert("RGB")
+        img = image_8_bits(img)
         w = max(1, round(img.width * scale))
         h = max(1, round(img.height * scale))
         web = img.resize((w, h), Image.LANCZOS)

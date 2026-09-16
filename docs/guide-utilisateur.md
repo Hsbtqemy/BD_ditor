@@ -396,6 +396,11 @@ ShareDocs, le refus est immédiat et dit « type non géré (image attendue) » 
 disque, le fichier est lu d'abord et le message commence par « Échec de l'ingestion ». Dans
 les deux cas rien n'a été enregistré : convertissez en TIFF ou en JPEG et réimportez.
 
+Un format accepté peut aussi être refusé pour sa **profondeur** : un scan en entiers 32 bits
+(mode `I`) ou en nombres flottants (mode `F`) n'a pas d'équivalent sûr à l'écran, et le
+message nomme le mode entre guillemets. Réexportez-le en 8 ou 16 bits. Les niveaux de gris
+en 12 ou 16 bits, eux, sont acceptés et s'affichent avec leurs tons.
+
 **Le bouton `Segmenter` (ou `Bulles`, ou `OCR`) ne fait rien / répond une erreur.**
 Le moteur n'est probablement pas installé. Ouvrez **🩺 Moteurs** dans l'Administration : il
 distingue « absent » de « présent mais cassé ». Un moteur absent n'empêche que sa propre passe.

@@ -68,6 +68,7 @@ def _open_image(planche):
     """Ouvre le master si possible (sinon le dérivé web) ; renvoie (img, scale)
     où scale convertit des pixels MASTER vers les pixels de l'image ouverte."""
     from PIL import Image
+    from pipeline.ingest import ModeImageRefuse, image_8_bits
     Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS   # garde anti-bombe (jamais None)
     if planche["chemin_tiff"] and (DATA_DIR / planche["chemin_tiff"]).is_file():
         # SEC-3 — même borne qu'à l'ingest, et elle sert ici PLUS qu'ailleurs : ce
@@ -79,9 +80,14 @@ def _open_image(planche):
     else:
         img = Image.open(DATA_DIR / planche["chemin_web"], formats=PILLOW_FORMATS)
         scale = img.width / planche["largeur_px"] if planche["largeur_px"] else 1.0
-    if img.mode not in ("RGB", "L"):
-        img = img.convert("RGB")
-    return img, scale
+    # IMG-1 — la MÊME conversion que le dérivé : un `convert("RGB")` nu écrêtait le gris
+    # 16 bits, et l'OCR lisait une page blanche même quand le dérivé était juste. Un master
+    # refusé (antérieur au refus à l'import) échoue ici en nommant son mode.
+    try:
+        return image_8_bits(img), scale
+    except ModeImageRefuse as exc:
+        img.close()
+        raise OCRError(str(exc)) from exc
 
 
 def ocr_planche(conn: sqlite3.Connection, planche_id: int,

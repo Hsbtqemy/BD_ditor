@@ -17,7 +17,7 @@ et les dimensions en pixels — mais l'INSERT n'en gardait que les pixels ; `dpi
 | Donnée | Où | Provenance | Note |
 |---|---|---|---|
 | `planches.dpi_x` / `dpi_y` | planche | **auto** (ingest) | résolution captée du fichier ; NULL si absente |
-| `planches.mode` | planche | **auto** (ingest) | `RGB` / `CMYK` / `L`… (mode Pillow) |
+| `planches.mode` | planche | **auto** (ingest) | `RGB` / `CMYK` / `L` / `I;16`… (mode Pillow **du master**, jamais celui du dérivé) |
 | dimensions physiques (cm) | planche | **dérivé** | `px ÷ dpi × 2,54` — **jamais stocké** |
 | `albums.source_numerisation` | **album** | **humain** | appareil / conditions de scan (PREMIS, libre) |
 
@@ -39,7 +39,10 @@ est corrigé.
 ## Câblage
 
 - **Ingest** : `pipeline/ingest.ingest_image()` éclate `meta["dpi"]` (paire ou None) en
-  `dpi_x`/`dpi_y` et persiste `mode`.
+  `dpi_x`/`dpi_y` et persiste `mode`. Le mode reste celui du master même quand le dérivé
+  change de mode : un gris 16 bits (`I;16`) donne un dérivé `L`, et c'est `I;16` qui est
+  stocké — le matériel décrit le fichier numérisé (IMG-1, `ingest.image_8_bits`). Un master
+  en `I` ou `F` est refusé à l'import, faute de réduction juste en 8 bits.
 - **Backfill** : `tools/reindex_materiel.py` **re-lit les masters** des planches importées avant
   la v19 (matériel NULL), `--force` pour toutes, `--dry-run` pour le bilan. Saute proprement les
   planches sans master (dérivé seul) ou illisibles. UTF-8 forcé (portabilité Windows).
