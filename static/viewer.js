@@ -1123,12 +1123,19 @@ function partirApresEnregistrement(rejouer) {
     if (state.geste !== geste) return;
     state.geste = null;
     state.partirQuandMeme = true;
-    toast("L'enregistrement n'a pas abouti. Votre saisie reste dans le champ ; "
+    toast("L'enregistrement n'a pas encore abouti. Votre saisie reste dans le champ ; "
           + "refaites le geste pour partir quand même.", "error", 8000);
   }, ATTENTE_MAX_MS);
   envois.then((issues) => {
     clearTimeout(delai);
-    if (state.geste !== geste) return;       // attente expirée : la main est déjà rendue
+    if (state.geste !== geste) {
+      // Attente expirée : la main est déjà rendue. Le laissez-passer ne sert que contre un
+      // serveur MUET, et celui-ci vient de répondre — il s'éteint, sauf sur un échec. Sinon
+      // un renvoi direct (« Remplacer par la mienne », après le 409 tardif) serait abandonné
+      // par le premier clic ailleurs, sans qu'on ait insisté pour partir.
+      if (!issues.includes("echec")) state.partirQuandMeme = false;
+      return;
+    }
     state.geste = null;
     if (state.conflit) return;               // 409 : on reste, le bandeau est ouvert
     if (issues.includes("echec")) { state.partirQuandMeme = true; return; }   // déjà dit

@@ -296,7 +296,7 @@ def test_une_attente_vaine_rend_la_main_et_laisse_partir_si_l_on_insiste(page, d
         a.keyboard.type("note muette")
         a.click('.mode-btn[data-mode="navigation"]')
         expect(a.locator("#save-state")).to_have_text("Enregistrement en cours…")
-        toast = a.locator("#toasts .toast", has_text="L'enregistrement n'a pas abouti")
+        toast = a.locator("#toasts .toast", has_text="L'enregistrement n'a pas encore abouti")
         expect(toast).to_have_count(1, timeout=10000)
         expect(toast).to_contain_text("Votre saisie reste dans le champ")
         expect(a.locator('.mode-btn[data-mode="annotation"]')).to_have_attribute(
@@ -405,7 +405,7 @@ def test_partir_quand_meme_n_ecrit_pas_la_saisie_sur_la_bulle_d_arrivee(page, de
         a.keyboard.type(" deux")                          # le second attend son délai de frappe
         seconde = a.locator(f"#overlay [data-id='{s['seconde']}']").first
         seconde.click(force=True)
-        expect(a.locator("#toasts .toast", has_text="L'enregistrement n'a pas abouti")
+        expect(a.locator("#toasts .toast", has_text="L'enregistrement n'a pas encore abouti")
                ).to_have_count(1, timeout=10000)
 
         lectures = []
@@ -422,6 +422,46 @@ def test_partir_quand_meme_n_ecrit_pas_la_saisie_sur_la_bulle_d_arrivee(page, de
         a.wait_for_timeout(500)
         assert _note_en_base(s["base"], s["seconde"]) == "", \
             "la saisie de la bulle quittée a été écrite sur la bulle d'arrivée"
+    finally:
+        ctx_a.close()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_une_reponse_tardive_eteint_le_laissez_passer(page, decor):
+    """L'attente expire — le geste suivant pourrait partir sans attendre —, puis le serveur
+    répond, ici par un 409. Le laissez-passer ne sert que contre un serveur MUET : la réponse
+    l'éteint. Sans quoi « Remplacer par la mienne », renvoyé aussitôt, serait abandonné par le
+    premier clic ailleurs, alors qu'on n'a jamais insisté pour partir."""
+    s = decor
+    ctx_a, a = _contexte(page, ALICE)
+    try:
+        _ouvrir(a, s["url_bulle"], "annotation")
+        retenue = _Retenue(a, "**/api/regions/*/annotation")
+        a.click("#note-input")
+        a.keyboard.type("note de A")
+        a.click('.mode-btn[data-mode="navigation"]')
+        expect(a.locator("#toasts .toast", has_text="L'enregistrement n'a pas encore abouti")
+               ).to_have_count(1, timeout=10000)
+        with _client(s["base"]) as c:
+            c.get("/api/moi", headers=BOB)
+            assert c.put(f"/api/regions/{s['bulle']}/annotation", headers=BOB,
+                         json={"note": "de Bob", "note_vue": ""}).status_code == 200
+        renvoi = _Retenue(a, "**/api/regions/*/annotation")     # retient le renvoi à venir
+        retenue.liberer()                                         # le 409 tardif
+        bandeau = a.locator("#bandeau-conflit")
+        expect(bandeau).to_be_visible(timeout=15000)
+
+        bandeau.get_by_role("button", name="Remplacer par la mienne", exact=True).click()
+        assert renvoi.attendre(1) == 1
+        a.click('.mode-btn[data-mode="navigation"]')              # sans avoir insisté
+        expect(a.locator("#save-state")).to_have_text("Enregistrement en cours…")
+        a.wait_for_timeout(500)
+        expect(a.locator('.mode-btn[data-mode="annotation"]')).to_have_attribute(
+            "aria-pressed", "true")
+        renvoi.liberer()
+        expect(a.locator('.mode-btn[data-mode="navigation"]')).to_have_attribute(
+            "aria-pressed", "true", timeout=15000)
+        assert _note_en_base(s["base"], s["bulle"]) == "note de A"
     finally:
         ctx_a.close()
 
@@ -449,7 +489,7 @@ def test_insister_pour_partir_puis_un_409_ne_piege_pas_l_ecran(page, decor):
             a.keyboard.press("End")
             a.keyboard.type(" muet")
             a.click('.mode-btn[data-mode="navigation"]')
-            expect(a.locator("#toasts .toast", has_text="L'enregistrement n'a pas abouti")
+            expect(a.locator("#toasts .toast", has_text="L'enregistrement n'a pas encore abouti")
                    ).to_have_count(1, timeout=10000)
             a.click('.mode-btn[data-mode="navigation"]')     # on insiste
             expect(a.locator('.mode-btn[data-mode="navigation"]')).to_have_attribute(

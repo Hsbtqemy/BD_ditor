@@ -724,11 +724,14 @@ def update_region(region_id: int, patch: RegionUpdate,
     base porte autre chose, c'est un 409 qui nomme qui l'a changée et quand. Facultatif pour
     l'API (Q8) : sans `vu`, le dernier enregistrement gagne, comme avant.
     """
-    if "ocr_texte" in patch.model_fields_set:
-        nlp.ensure_loaded()        # spaCy HORS transaction : la réindexation suivra, verrou tenu
-    conflit.verrouiller(conn)      # la valeur actuelle se lit sous le verrou d'écriture
-    existing = _region_a_ecrire(conn, portee, region_id)
     fields = patch.model_dump(exclude_unset=True, exclude={"vu"})
+    # Le verrou se décide sur la REQUÊTE seule, et se prend AVANT de lire la valeur gardée :
+    # rien à écrire, rien à verrouiller.
+    if fields:
+        if "ocr_texte" in fields:
+            nlp.ensure_loaded()    # spaCy HORS transaction : la réindexation suivra, verrou tenu
+        conflit.verrouiller(conn)  # la valeur actuelle se lit sous le verrou d'écriture
+    existing = _region_a_ecrire(conn, portee, region_id)
     if "type" in fields and fields["type"] not in TYPES_REGION:
         raise HTTPException(422, f"Type invalide : {fields['type']}")
     if "parent_id" in fields:
@@ -1283,8 +1286,6 @@ def put_annotation(region_id: int, payload: AnnotationIn,
     mélanger aux deux autres serait ambigu, d'où le 422. Deux personnes sur le MÊME champ
     restent en « le dernier gagne » : c'est le second temps du chantier.
     """
-    nlp.ensure_loaded()            # spaCy HORS transaction : la réindexation suivra, verrou tenu
-    conflit.verrouiller(conn)      # la note actuelle se lit sous le verrou d'écriture
     _region_a_ecrire(conn, portee, region_id)
     champs = payload.model_fields_set & {"note", "tags", "tags_ajoutes", "tags_retires"}
     if "tags" in champs and champs & {"tags_ajoutes", "tags_retires"}:
@@ -1292,6 +1293,10 @@ def put_annotation(region_id: int, payload: AnnotationIn,
                                  "« tags_retires » la modifient : pas les deux à la fois.")
     if not champs:
         return _annotation_for_region(conn, portee, region_id)
+    # Le verrou se décide sur la REQUÊTE seule (un no-op qui ne se découvre qu'à la lecture
+    # reste sous verrou), et se prend AVANT de lire la note gardée.
+    nlp.ensure_loaded()            # spaCy HORS transaction : la réindexation suivra, verrou tenu
+    conflit.verrouiller(conn)      # la note actuelle se lit sous le verrou d'écriture
 
     # État avant (note + tags) pour journaliser création / modification / suppression.
     avant_annot = journal.snapshot_annotation(conn, region_id)
