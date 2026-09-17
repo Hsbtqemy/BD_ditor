@@ -7,10 +7,16 @@ statut: interrompu
 
 **Arrêté sur** — 2026-09-17, `6952f37` : le second temps est FAIT, serveur et écran. Il est
 éprouvé sur une copie, par mutations et par la suite par défaut et la passe navigateur
-entières. **Rien n'est poussé.** Restent : la passe `qa/conflit-a-deux.md`, à jouer sur la
-pile de recette servant `6952f37` ou plus récent, et l'accord de Hugo pour la poussée. Le
-second temps doit précéder la prochaine fusion de `dev` dans `main`. Hors de ce temps, la
-zone Q9 reste ouverte exprès.
+entières.
+
+- Poussé sur `dev` le 2026-09-17, `origin/dev` = `8987790`. La production n'est pas
+  concernée (elle suit `main`). La recette sert `8987790`.
+- Libellé « L'enregistrement n'a pas encore abouti » : VALIDÉ par Hugo le 2026-09-17, qui le
+  préfère à « n'est pas encore revenu ».
+- Délai de 5 s : gardé sur recommandation de la coordination, sans objection de Hugo.
+- Reste : la passe `qa/conflit-a-deux.md`, jouable maintenant.
+
+Hors de ce temps, la zone Q9 reste ouverte exprès.
 
 **Point de départ** — 2026-09-16, une question de Hugo en tranchant le cache des dérivés
 d'IMG-1 : « ça ne servirait pas d'avoir quelque part (niveau album ou collection) un moyen
