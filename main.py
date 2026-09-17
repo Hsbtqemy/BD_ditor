@@ -2234,10 +2234,11 @@ def administration_page():
 
     Elle ne garde rien, et c'est une décision : chaque BLOC de la page pose sa propre
     question d'autorisation — la liste des collections est filtrée par la portée,
-    `GET /api/comptes` refuse les non-administrateurs, `GET /api/sante` est ouvert. Mettre
-    la garde sur la page reproduirait l'erreur d'AUTH-4, où le référent d'une collection
-    s'est retrouvé réservé au propriétaire parce qu'il vivait dans le panneau du PARTAGE.
-    Une garde d'interface se pose sur l'acte, jamais sur l'écran qui le contient.
+    `GET /api/comptes-et-groupes` refuse les non-administrateurs, `GET /api/sante` est
+    ouvert. Mettre la garde sur la page reproduirait l'erreur d'AUTH-4, où le référent
+    d'une collection s'est retrouvé réservé au propriétaire parce qu'il vivait dans le
+    panneau du PARTAGE. Une garde d'interface se pose sur l'acte, jamais sur l'écran qui
+    le contient.
     """
     return FileResponse(str(TEMPLATES_DIR / "administration.html"))
 
