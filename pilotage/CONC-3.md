@@ -5,13 +5,12 @@ statut: interrompu
 
 # CONC-3 — deux personnes sur la même planche : ce qui se perd, et ce que l'écran en dit
 
-**Arrêté sur** — 2026-09-17, `3e74dd8` : le SERVEUR du second temps est fait (`1d374ef`),
-et prouvé par dix-sept mutations. Un enregistrement fait sur une valeur vue périmée rend un
-409 qui nomme l'auteur ; l'annulation se garde de même ; écrire sur une région supprimée
-rend un 410 nommé. L'ÉCRAN n'est pas codé : il attend le verdict de Hugo sur la maquette
-(`https://claude.ai/artifact/GPW25ZTtoJSw7N7X2Vju3p`). **Ne pas pousser le serveur sans
-l'écran** : `messageErreur` ne lit qu'un détail en chaîne, si bien que le 410 s'afficherait
-« Échec mise à jour : Gone » là où l'Atelier dit aujourd'hui « Région N introuvable ».
+**Arrêté sur** — 2026-09-17, `6952f37` : le second temps est FAIT, serveur et écran. Il est
+éprouvé sur une copie, par mutations et par la suite par défaut et la passe navigateur
+entières. **Rien n'est poussé.** Restent : la passe `qa/conflit-a-deux.md`, à jouer sur la
+pile de recette servant `6952f37` ou plus récent, et l'accord de Hugo pour la poussée. Le
+second temps doit précéder la prochaine fusion de `dev` dans `main`. Hors de ce temps, la
+zone Q9 reste ouverte exprès.
 
 **Point de départ** — 2026-09-16, une question de Hugo en tranchant le cache des dérivés
 d'IMG-1 : « ça ne servirait pas d'avoir quelque part (niveau album ou collection) un moyen
@@ -40,15 +39,18 @@ n'est écrit, et le chantier commence par une mesure.
 - [x] Une garde e2e à deux contextes rejoue la mesure 1, et elle est vue ROUGE sur le code d'avant le correctif — `tests/test_e2e_annotation_a_deux.py`, rouge sur `8a2a506` avec sept autres tests, et tuée par les deux mutants de l'écran (tout renvoyer, ne jamais marquer la note)
 
 ### Temps b — refuser un enregistrement fait sur une version périmée (avant la prochaine mise en production)
-- [ ] Une note, un texte transcrit, ou la géométrie, le type ou le parent d'une région, enregistré avec une VALEUR VUE qui n'est plus celle de la base, est refusé par un 409 qui nomme qui a modifié et quand. La version est la valeur du champ, pas une colonne, pas le journal, pas une date (Q1). Attendu : les mesures 2 et 3 rejouées ne perdent plus rien en silence
+- [x] Une note, un texte transcrit, ou la géométrie, le type ou le parent d'une région, enregistré avec une VALEUR VUE qui n'est plus celle de la base, est refusé par un 409 qui nomme qui a modifié et quand. La version est la valeur du champ, pas une colonne, pas le journal, pas une date (Q1). Attendu : les mesures 2 et 3 rejouées ne perdent plus rien en silence — `test_deux_notes_la_seconde_est_refusee_et_nomme_la_premiere`, `test_la_mesure_3_le_texte_transcrit_n_est_plus_ecrase`, et à deux navigateurs `tests/test_e2e_conflit_a_deux.py` ; la garde lit sous le verrou d'écriture depuis `ab1a7e3`, sans quoi deux enregistrements simultanés passaient tous deux (cf. Contexte)
 - [x] Si le dernier changement du champ vient d'un MOTEUR (OCR qui remplit une bulle vide), l'enregistrement humain passe sans 409, et le texte du moteur reste au journal (Q2) — `test_un_texte_pose_par_un_moteur_ne_bloque_pas_l_humain`, `1d374ef`
 - [x] Ajouter ou retirer un tag ne rend jamais de 409 : les différences commutent (Q3) — `test_les_tags_n_ont_pas_de_garde`, `1d374ef`
 - [x] Annuler une modification de RÉGION ne rend que les champs que l'acte a changés, et refuse par un 409 nommé si ces champs ont changé depuis. Attendu : A déplace une bulle, B la transcrit, A fait Ctrl+Z — le texte de B reste. Le défaut est d'abord montré par un test ROUGE sur le code d'avant (Q4) — vu rouge sur `77c0dbb` (« annuler le déplacement de A a effacé le texte de B »), vert par `1d374ef`
 - [x] Annuler une note refuse par un 409 nommé si la note n'est plus celle que l'acte avait posée, au lieu d'écraser celle écrite ensuite (cadrage (c), validé avec Q4) — `test_annuler_sa_note_modifiee_depuis_est_refuse`, `1d374ef`
-- [ ] Écrire sur une case supprimée par quelqu'un d'autre rend un 410 « supprimée par X à HH:MM » quand on LIT sa planche, et le 404 inchangé sinon. L'écran de B dit qu'elle a été supprimée, et non « Région N introuvable », et la case disparaît de son écran (Q5)
-- [ ] Au 409, un bandeau DANS le panneau (note, transcription) nomme l'auteur, montre sa version, garde la saisie en cours, suspend l'enregistrement automatique, et offre « Garder la mienne » et « Prendre la leur ». Sa forme est tranchée par Hugo sur une MAQUETTE INTERACTIVE avant que l'écran soit codé (Q6) — maquette jouée, verdict rendu le 2026-09-17 (cf. Contexte)
-- [ ] L'auteur est nommé par son nom affiché, l'heure en heure locale ; quand l'auteur a le MÊME login que l'écran, le message dit « depuis un autre écran de ce même compte » (Q7)
-- [ ] La valeur vue est FACULTATIVE pour l'API (outils, appelants existants) ; l'Atelier l'envoie toujours, et une garde e2e l'exige (Q8)
+- [x] Écrire sur une case supprimée par quelqu'un d'autre rend un 410 « supprimée par X à HH:MM » quand on LIT sa planche, et le 404 inchangé sinon. L'écran de B dit qu'elle a été supprimée, et non « Région N introuvable », et la case disparaît de son écran (Q5) — serveur `1d374ef` ; écran `fc557a3`, `test_une_case_supprimee_ailleurs_est_nommee_et_quitte_l_ecran`
+- [x] Au 409, un bandeau DANS le panneau (note, transcription) nomme l'auteur, montre sa version, garde la saisie en cours, suspend l'enregistrement automatique, et offre deux gestes — « Remplacer par la mienne » et « Garder l'autre », libellés précisés par Hugo après la maquette. Sa forme est tranchée par Hugo sur une MAQUETTE INTERACTIVE avant que l'écran soit codé (Q6) — maquette jouée, verdict rendu le 2026-09-17 (cf. Contexte) ; `fc557a3`, `eca7507`, `test_deux_notes_le_bandeau_nomme_garde_la_saisie_et_bloque_le_mode`
+- [x] L'auteur est nommé par son nom affiché, l'heure en heure locale ; quand l'auteur a le MÊME login que l'écran, le message dit « depuis un autre écran de ce même compte » (Q7) — `static/lib/conflit.js`, tables de cas en heure locale (`tests/js/conflit.test.js`) ; `test_le_meme_compte_ne_se_nomme_pas`. L'heure face à l'horloge réelle est une case de la passe QA
+- [x] La valeur vue est FACULTATIVE pour l'API (outils, appelants existants) ; l'Atelier l'envoie toujours, et une garde e2e l'exige (Q8) — `test_sans_valeur_vue_le_dernier_gagne_comme_avant` ; la garde e2e exige `note_vue` et `vu`, et les deux mutants qui les ôtent tombent
+- [x] Quitter une bulle, un mode, une planche ou un album pendant qu'un enregistrement n'est pas revenu ATTEND la réponse. Le geste se voit (« Enregistrement en cours… ») et se rejoue seul ; au 409 on reste, et le bandeau s'ouvre sur la saisie ; l'attente est bornée à 5 s, après quoi un message le dit et le geste suivant part. Tranché par Hugo SANS maquette, sur description (cf. Contexte) — `eca7507`, `6952f37`, quatre tests e2e (délai qui passe, délai qui expire, 409 en partant, réponse tardive)
+- [x] Deux enregistrements simultanés du même champ, ou une annulation et un enregistrement, ne passent pas tous deux la garde : l'un rend un 409 nommé — `ab1a7e3`, trois tests de course ; les mutants qui ôtent le verrou ou le prennent après la lecture tombent
+- [ ] La passe `qa/conflit-a-deux.md` est jouée sur la pile de recette servant `6952f37` ou plus récent, et ses cases sont cochées par qui la joue
 - [ ] Fait AVANT la prochaine fusion de `dev` dans `main` : les testeurs de la production travaillent à plusieurs
 
 ### Hors du temps b — écarté exprès le 2026-09-17, à rouvrir ailleurs (Q9)
@@ -272,3 +274,81 @@ Retenus tels que la maquette les proposait : le titre nomme le champ ; les geste
 poids ; l'écran reste utilisable pendant le conflit ; les tags s'enregistrent quand même ; la
 case supprimée donne un toast NEUTRE de 8 s ; pas de `role="alert"` en double de la région
 live. La consigne de poussée tient : rien ne part avant l'écran.
+
+**L'écran du second temps, fait le 2026-09-17** (`fc557a3` → `6952f37`). Hugo a précisé le
+premier geste après la maquette : « Remplacer par la mienne ».
+
+*Ce que la relecture a trouvé après `fc557a3`, et corrigé par `eca7507`.*
+
+- *Un écran PIÉGÉ.* Quitter le mode faisait partir l'enregistrement en attente (délai de
+  frappe), puis changeait de mode. Le 409 revenait ensuite : le bandeau s'ouvrait dans le
+  panneau masqué, et le blocage interdisait d'y revenir, jusqu'au rechargement.
+- *Deux pertes.* Pendant un conflit, recliquer la bulle ou le mode COURANTS rechargeait le
+  champ, et effaçait la saisie que le bandeau promet de garder. Et un clic dans la
+  mini-planche changeait de bulle avant le retour du 409.
+- *Un faux conflit avec soi-même.* Deux enregistrements du même champ partaient en
+  parallèle. Si un aller-retour dépassait le délai de frappe (500 ms), le second déclarait
+  la valeur vue d'AVANT le premier. Ils s'enchaînent désormais, et chacun vise la bulle d'où
+  il est parti, jamais celle d'arrivée.
+- *Le message du 409 côté serveur* disait « la note a été modifié … depuis que vous l'avez
+  vu ». L'Atelier affiche ses propres phrases ; celui-là sort vers les appelants de l'API.
+
+**Tranché par Hugo le 2026-09-17, SANS maquette, sur description — l'attente au départ d'un
+champ.** Trois formes ont été posées : (A) un toast « Rouvrir » qui ramène à la saisie, (B) un
+toast persistant avec « Copier le texte », (C) ne plus laisser partir avant la réponse. Hugo a
+retenu C, à trois conditions dans ses mots : que l'on comprenne pourquoi on ne peut pas
+bouger, que cela ne dure pas, et qu'on ne se retrouve pas coincé. A demandait un composant
+d'écran neuf, et B laissait la perte à réparer par la personne. C n'ajoute aucun élément
+d'écran : le 409 s'ouvre là où la saisie se trouve, exactement la forme validée sur maquette.
+Le délai de 5 s est proposé par la session, dans les « quelques secondes » demandées. Le
+toast d'un 409 revenu sur un champ quitté ne reste qu'en FILET, pour qui a insisté pour
+partir.
+
+**Le serveur avait une course, trouvée par un mutant de l'écran qui survivait** (`ab1a7e3`).
+Avec les enregistrements remis en parallèle, la garde e2e d'un aller-retour lent restait
+verte. La garde lisait la valeur actuelle HORS transaction : le module `sqlite3` n'en ouvre
+une qu'au premier INSERT ou UPDATE. Deux requêtes simultanées passaient donc toutes deux, et
+la seconde écrasait sans 409. `conflit.verrouiller` prend `BEGIN IMMEDIATE` avant la lecture,
+dans les deux routes et dans l'annulation. Une fois le verrou posé, le mutant est tombé : la
+cause était la bonne. Le verrou a rendu visible un défaut plus ancien. Le chargement à froid
+de spaCy se faisait pendant la réindexation, verrou tenu, et la requête concurrente sortait
+en « base occupée » au bout de `busy_timeout`. Les trois routes chargent désormais le modèle
+hors transaction, comme l'analyse.
+
+**Relecture croisée, intégrée par `6952f37`.** Un laissez-passer PÉRIMÉ : après une attente
+vaine, seule la frappe retirait le droit de partir sans attendre. Il s'éteint désormais dès
+que le serveur répond. « N'a pas abouti » est devenu « n'a pas encore abouti » : la réponse
+peut arriver une seconde plus tard. Le verrou se décide sur la requête seule, et se prend
+avant la lecture gardée.
+
+**Deux erreurs de méthode, écrites parce qu'elles ont failli passer.** Le message de
+`156a692` attribuait la survie d'un mutant (verrou de l'annulation ôté) au miroir
+`utilisateur` réécrit avant la route. C'était une hypothèse, pas une mesure. Des traces
+horodatées ont montré que l'annulation arrivait 5,3 s en retard, parce qu'elle chargeait
+spaCy à froid : `1fd7ed6` le dit et retire la fausse cause. Et un premier jet des tests de
+course passait sur un 409 « base occupée », pris pour un conflit : ils exigent désormais
+`detail.conflit`.
+
+*Éprouvé, sur des copies clonées.* Trente-deux mutants, de l'écran, de `common.js`, de
+`conflit.js` et du serveur, tous tués : ceux de l'écran sur `a4ac60e` et `ab1a7e3`, ceux du
+verrou et du laissez-passer sur `6952f37`. Deux avaient d'abord survécu, et chaque survie a
+mené à une correction : le verrou pour les enregistrements en parallèle, le chargement de
+spaCy dans le test pour le verrou de l'annulation. Une affirmation de commit a aussi été
+rejouée : sans le test du filet, ôter la garde de mode laissait les onze autres tests e2e
+verts. Suite par défaut entière et passe navigateur entière sur une copie de `6952f37` :
+1310 verts et 253 verts, aucun échec ni saut.
+
+*Ce qui reste LIMITÉ, et c'est voulu ou écrit.*
+
+- Insister pour partir abandonne ce qui restait à envoyer pour la bulle quittée. C'est le
+  sens du geste, annoncé par le message à 5 s (« refaites le geste pour partir quand
+  même »), mais la saisie abandonnée n'est nommée nulle part.
+- La visée en Transcription (`trSaveCurrent(prevu)`) n'a pas de mutant tuable. La zone de
+  texte est re-rendue au changement de bulle, avant que l'envoi enchaîné ne parte :
+  raisonné équivalent, non joué.
+- Précédent et Suivant passent par la même porte d'attente sans test propre. La porte
+  elle-même et la mini-planche en ont un.
+- Ctrl+Z vide le délai de frappe sans rien envoyer : c'est antérieur à ce chantier, et
+  inchangé.
+- La zone « Deux onglets » de `qa/compte-retour-et-annotation.md` ne bouge pas : ses deux
+  onglets touchent deux champs différents, et aucune garde ne s'y déclenche.
