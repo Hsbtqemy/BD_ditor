@@ -74,7 +74,7 @@ cette machine — un dépôt à la fois par port, c'est le modèle de l'outil.
 
 ## Vue d'ensemble
 
-Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut. **L'application n'authentifie personne** : elle fait confiance aux en-têtes d'identité posés par un proxy d'auth (Authelia), et seulement si `BD_AUTH_PROXY` déclare qu'il est bien devant — sans quoi tout acte reste anonyme (AUTH-1). Aucun secret en base : `utilisateur` (v22) n'est qu'un miroir d'affichage, et les groupes ne sont jamais stockés, relus dans `Remote-Groups` à chaque requête. **Elle AUTORISE en revanche** (AUTH-2, v23) : le cloisonnement par collection est à elle, Authelia ne dit que « qui ». Voir `docs/hebergement-securite.md`.
+Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut. **L'application n'authentifie personne** : elle fait confiance aux en-têtes d'identité posés par un proxy d'auth (Authelia), et seulement si `BD_AUTH_PROXY` déclare qu'il est bien devant — sans quoi tout acte reste anonyme (AUTH-1). Aucun secret en base : `utilisateur` (v22) n'est qu'un miroir d'affichage, et les groupes ne sont jamais stockés, relus dans `Remote-Groups` à chaque requête. **Elle LIT l'annuaire** (AUTH-6), pour composer la vue « 👥 Comptes et groupes » et rien d'autre : lire pour COMPOSER n'est ni authentifier ni autoriser — `autorisation.py` n'atteint pas `annuaire.py` (un test le verrouille), aucune portée ne change selon ce qu'il rend, rien n'en est stocké, et le compte de service ne fait que lire. **Elle AUTORISE en revanche** (AUTH-2, v23) : le cloisonnement par collection est à elle, Authelia ne dit que « qui ». Voir `docs/hebergement-securite.md`.
 
 Backend **Python 3.12 / FastAPI** — la couche API se découpe en `main.py` (montage, middlewares, export, et les blocs que les tests ÉPINGLENT), `socle.py` (le socle partagé) et `routes/` (un module par domaine, ARCH-1 ; cf. § Découpage) ; frontend **JavaScript/HTML/CSS vanilla** — aucun framework, **aucune étape de build**. On édite `static/*.js` et `templates/*.html` directement.
 
@@ -279,6 +279,21 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
 - **La collection est l'unité** (`collection_acces` : collection × principal × niveau).
   `principal` = un login OU un nom de groupe lu dans `Remote-Groups` — on stocke une
   RÉFÉRENCE au groupe, jamais une appartenance (invariant AUTH-1).
+- **Lire l'annuaire ne change rien à cette règle** (AUTH-6, 2026-09-17). Trois actes, trois
+  lieux : AUTHENTIFIER est à Authelia (qui frappe) ; AUTORISER est à `autorisation.py`, sur
+  les groupes que le portail transmet, à la requête ; LIRE l'annuaire est à `annuaire.py`,
+  qui montre à l'administrateur quels comptes et groupes EXISTENT et qui en est membre —
+  pour qu'un accès se donne sans deviner un nom, et qu'un accès mort se signale. Le troisième
+  n'alimente jamais les deux autres : `autorisation.py` n'en importe rien, un annuaire qui
+  contredit le portail ne change aucune portée (tous deux verrouillés par
+  `tests/test_annuaire.py`), et une panne de lecture dit « non vérifié » sans rien fermer.
+  Sans cette distinction écrite, on conclurait que l'invariant d'AUTH-1 a sauté ; il tient.
+  Ce qui est neuf, et c'est un coût : le compte de service (`lldap_strict_readonly` seul)
+  est un secret d'une classe que l'application n'avait pas — qui la compromet lit logins,
+  noms, courriels et appartenances de toute l'instance. Lecteur GraphQL de LLDAP derrière
+  une interface étroite, aucun cache, délai de 3 s ; composition et signaux dans
+  `comptes.py` ; doublure `tests/doublures/annuaire.json` (`BD_ANNUAIRE_ADRESSE=doublure:`,
+  refusée au déploiement).
 - **Trois niveaux qui s'empilent** (AUTH-3) : `lecture` · `ecriture` · `proprietaire`. Le
   cumul se fait dans `Portee.__init__`, une seule fois — un `in portee.ecriture` qui
   oublierait les propriétaires serait un refus silencieux et parfaitement crédible. La
@@ -348,8 +363,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   exige deux propriétés, que la ligne ne CONCLUE pas, et que les deux états du fil restent
   distincts à l'écran. Une garde réécrite d'après le texte qu'elle juge devient un miroir.
   **Ce qui reste ouvert est de savoir QUI, d'Authelia ou de Caddy, laisse tomber l'en-tête
-  vide** — sans effet sur ce que l'application peut dire, puisqu'elle ne lit aucun annuaire
-  et ne saura jamais si un compte a des groupes. L'arbitrage à deux degrés, lui, a payé
+  vide** — sans effet sur ce que le bandeau peut dire : il ne lit que ce que le portail
+  transmet pour la personne connectée, et la lecture de l'annuaire (AUTH-6), réservée à la
+  vue d'administration, ne l'alimente pas. L'arbitrage à deux degrés, lui, a payé
   autrement qu'attendu : le bandeau NOMME les quatre situations mais ne se déplie d'office
   que pour la seule panne CERTAINE, l'absence d'identité — n'avoir pas déplié sur un
   diagnostic non mesuré est ce qui a rendu ce défaut discret plutôt que criant. **Et il

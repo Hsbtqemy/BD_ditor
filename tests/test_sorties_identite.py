@@ -202,6 +202,17 @@ SORTIES_DECLAREES = {
         "réserve déjà `accord-inter` : elle porte sur des PERSONNES, pas sur le corpus. "
         "Et elle ne sort de l'instance par AUCUN artefact — ni export, ni dépôt : c'est un "
         "écran d'administration, la ligne DEDANS / DEHORS de DROIT-1 s'applique entière."),
+    ("route", "/api/comptes-et-groupes"): (
+        {"login", "nom", "courriel"},
+        "La vue « 👥 Comptes et groupes » (AUTH-12, étape 2), qui remplacera `/api/comptes` : "
+        "les trois sortes pour les raisons de celle-ci — le login est la clé qu'on retape dans "
+        "l'annuaire, le nom lisible évite de traduire, le courriel est par où l'on JOINT "
+        "quelqu'un avant de toucher à son compte. Ce qu'elle ajoute (AUTH-6) : les comptes de "
+        "l'ANNUAIRE, venus ou non, avec leurs groupes et les membres de chaque groupe. Le "
+        "balayage n'y voit que le miroir `utilisateur`, la suite ne posant aucun annuaire : "
+        "l'exposition réelle est plus large, et c'est écrit ici plutôt que tu. RÉSERVÉE aux "
+        "administrateurs d'instance (403 sinon), elle ne sort de l'instance par aucun "
+        "artefact : ni export, ni dépôt."),
     ("route", "/api/moi"): (
         {"login", "nom"},
         "L'identité de l'APPELANT, la sienne — c'est l'objet même de la route, et elle ne "

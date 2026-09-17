@@ -445,6 +445,27 @@ def controle_config(chemin_env):
         print(f"    ·· {'annuaire':14} non configuré : les comptes se gèrent encore")
         print("       dans authelia/users_database.yml, en SSH")
 
+    # La LECTURE de l'annuaire par l'application (AUTH-6), qui n'est pas l'annuaire : elle
+    # compose la vue des comptes et des groupes, et n'authentifie ni n'autorise rien.
+    #
+    # Une adresse `doublure:` est une donnée de TEST : en production, la vue afficherait un
+    # annuaire inventé, avec ses signaux, sans rien qui la distingue d'un vrai au premier
+    # regard. Bloquant, parce que c'est une information FAUSSE et non un confort manquant.
+    lecture = vals.get("BD_ANNUAIRE_ADRESSE", "")
+    if lecture.startswith("doublure:"):
+        print(f"    !! BD_ANNUAIRE_ADRESSE={lecture} est une DOUBLURE de test :")
+        print("       la vue des comptes afficherait un annuaire inventé. Poser l'adresse")
+        print("       de LLDAP vue depuis l'application (http://lldap:17170), ou la vider.")
+        pbs.append("annuaire en doublure")
+    # Le lien « Modifier ↗ » vient d'une variable DÉDIÉE, et non du domaine : le domaine ne
+    # dit pas le schéma, et derrière un proxy qui termine le TLS, Caddy sert l'annuaire en
+    # `http://`. Sans elle, la vue n'a aucun lien à proposer. Signalé sans bloquer.
+    if vals.get("ANNUAIRE_DOMAINE") and not vals.get("BD_ANNUAIRE_URL"):
+        print(f"    ·· {'lien annuaire':14} BD_ANNUAIRE_URL non posée, alors que l'annuaire a")
+        print(f"       un domaine ({vals['ANNUAIRE_DOMAINE']}) : la vue des comptes n'offrira")
+        print("       aucun lien « Modifier ↗ ». Poser l'URL web complète de l'annuaire.")
+        print("       Signalé sans bloquer : ce n'est pas une panne.")
+
     # Le groupe des administrateurs est nommé à DEUX endroits, et rien ne les reliait :
     # `configuration.yml` l'élève au second facteur (`subject: 'group:…'`), et
     # l'application le lit dans `BD_AUTH_ADMIN_GROUPS`. Les faire diverger n'ouvre aucune

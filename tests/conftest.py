@@ -269,7 +269,13 @@ def live_server(request, tmp_path):
            # que la vraie, et il existe des largeurs où la bande 1 des tests tient quand
            # celle de production sort de la fenêtre — 600 px avec « ← Retour », mesuré le
            # 2026-09-16. Sans effet hors proxy : la pastille n'existe pas.
-           "BD_AUTH_LOGOUT_URL": "https://auth.example.fr/logout?rd=https://bd.example.fr/"}
+           "BD_AUTH_LOGOUT_URL": "https://auth.example.fr/logout?rd=https://bd.example.fr/",
+           # AUTH-6 — la doublure de l'annuaire, pour que « 👥 Comptes et groupes » s'audite
+           # avec un annuaire LU : sans elle, la vue ne rendrait que son état « sans
+           # annuaire », et aucun signal qui suppose l'annuaire ne passerait jamais devant
+           # un test. Sans effet ailleurs : seule `GET /api/comptes-et-groupes` la lit.
+           "BD_ANNUAIRE_ADRESSE": "doublure:",
+           "BD_ANNUAIRE_URL": "https://annuaire.example.fr/"}
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app",
          "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],

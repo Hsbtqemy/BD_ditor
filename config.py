@@ -88,6 +88,26 @@ AUTH_ADMIN_GROUPS = frozenset(
 REFERENT_NOM = os.environ.get("BD_REFERENT_NOM", "").strip()
 REFERENT_CONTACT = os.environ.get("BD_REFERENT_CONTACT", "").strip()
 
+# Annuaire (AUTH-6) — LIRE les comptes et les groupes pour COMPOSER la vue des comptes et des
+# groupes. Ni authentifier (Authelia), ni autoriser (`autorisation.py`, qui n'en lit rien).
+#
+# ADRESSE     — l'API de LLDAP vue depuis l'application : `http://lldap:17170` dans la pile.
+#               Vide : pas d'annuaire (mono-poste), et la vue le dit sans parler de panne.
+#               `doublure:` / `doublure:panne` chargent des données fixes pour les tests ;
+#               `deploy/verifier_deploiement.py` les refuse en production.
+# COMPTE      — le compte de SERVICE de l'application, dans `lldap_strict_readonly` SEUL :
+#               il lit tout l'annuaire et n'écrit rien. Une classe de secret que l'application
+#               n'avait pas avant AUTH-6 : qui la compromet lit logins, noms, courriels et
+#               appartenances de toute l'instance.
+# MOT_DE_PASSE — le sien, posé dans `.env` sous `LLDAP_APPLICATION_PASS`.
+# URL         — l'adresse WEB de l'interface de LLDAP, pour les liens « Modifier ↗ » :
+#               DISTINCTE de l'adresse de lecture, et non dérivée du domaine, qui ne dit pas
+#               le schéma derrière un proxy qui termine le TLS.
+ANNUAIRE_ADRESSE = os.environ.get("BD_ANNUAIRE_ADRESSE", "").strip()
+ANNUAIRE_COMPTE = os.environ.get("BD_ANNUAIRE_COMPTE", "").strip()
+ANNUAIRE_MOT_DE_PASSE = os.environ.get("BD_ANNUAIRE_MOT_DE_PASSE", "")
+ANNUAIRE_URL = os.environ.get("BD_ANNUAIRE_URL", "").strip()
+
 # Le commit que sert CETTE instance (INFRA-10). `deployer.sh` le passe en argument de
 # build ; l'image le porte DEUX fois — en `LABEL bd.commit`, que le script relit de
 # l'extérieur pour décider s'il y a à déployer, et en variable d'environnement, seule

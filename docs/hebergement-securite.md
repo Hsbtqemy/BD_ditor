@@ -180,6 +180,13 @@ poser `X-BD-Requete` ; le 403 le NOMME plutôt que d'échouer en silence.
   jamais, non plus que les noms de `BD_AUTH_ADMIN_GROUPS` : sans proxy aucun groupe n'est
   lu, donc nommer `bd-admins` distinguerait deux rôles là où une seule personne a déjà
   tout.
+- Annuaire (AUTH-6) : **`BD_ANNUAIRE_ADRESSE`**, **`BD_ANNUAIRE_COMPTE`**,
+  **`BD_ANNUAIRE_MOT_DE_PASSE`** (`LLDAP_APPLICATION_PASS` dans `.env`), **`BD_ANNUAIRE_URL`**
+  = la LECTURE de l'annuaire par l'application, pour composer « 👥 Comptes et groupes ».
+  Vides : pas de lecture, et la vue le dit. Le compte de service est dans
+  `lldap_strict_readonly` seul ; c'est un secret d'une classe NEUVE — qui compromet
+  l'application lit l'annuaire entier (logins, noms, courriels, appartenances), en lecture.
+  Lire ainsi n'est ni authentifier ni autoriser : cf. § 6, « Lire l'annuaire ».
 - Les jobs sont **éphémères** (threads daemon, registre RAM) : un redémarrage les
   perd. Le travail DB déjà committé par passe survit ; le suivi de job non.
 
@@ -253,10 +260,40 @@ sache, et un accès accordé par erreur deviendrait intraçable.
 
 **Ce que « accorder un accès » veut dire exactement.** On ne désigne pas une personne
 vérifiée : on déclare qu'un NOM — un login, ou un nom de groupe tel qu'Authelia le pose dans
-`Remote-Groups` — ouvre une collection. L'application n'a aucun annuaire (invariant AUTH-1),
-et **un nom mal orthographié n'ouvre rien, silencieusement**. C'est le mode d'échec à
-connaître avant d'exploiter une instance : si quelqu'un ne voit toujours rien après un
-partage, vérifier l'orthographe du login avant de chercher ailleurs.
+`Remote-Groups` — ouvre une collection. L'application ne vérifie pas ce nom au moment
+d'autoriser (invariant AUTH-1), et **un nom mal orthographié n'ouvre rien**. C'est le mode
+d'échec à connaître avant d'exploiter une instance : si quelqu'un ne voit toujours rien après
+un partage, vérifier l'orthographe du login avant de chercher ailleurs. Depuis AUTH-6, la vue
+« 👥 Comptes et groupes » le signale quand l'annuaire est lu (un accès donné à un groupe ou à
+un compte qui n'y existe pas) ; elle ne le corrige pas, et ne pèse sur aucune portée.
+
+### Lire l'annuaire n'est ni authentifier ni autoriser (AUTH-6, 2026-09-17)
+
+L'invariant d'AUTH-1 — les groupes ne sont jamais stockés, et se relisent dans
+`Remote-Groups` à chaque requête — tient entier. Ce qui est entré est un TROISIÈME acte, et il
+faut le distinguer des deux autres pour ne pas conclure qu'il a sauté :
+
+| Acte | Qui le fait | Sur quoi | Ce qu'il décide |
+|---|---|---|---|
+| **Authentifier** | Authelia | le mot de passe, le second facteur | QUI frappe (`Remote-User`) |
+| **Autoriser** | `autorisation.py` | les groupes transmis par le portail, à la requête | ce que cette requête peut lire ou écrire |
+| **Lire l'annuaire** | `annuaire.py`, appelé par la seule vue d'administration | l'API de LLDAP, à l'ouverture de la vue | RIEN : il montre quels comptes et groupes existent, et qui en est membre |
+
+Ce qui le garantit, et c'est éprouvé plutôt que promis (`tests/test_annuaire.py`) :
+`autorisation.py` n'atteint pas `annuaire.py`, même indirectement ; un annuaire qui dit d'un
+compte qu'il est membre d'un groupe, quand le portail ne le transmet pas, n'ouvre rien ; seule
+la route `GET /api/comptes-et-groupes`, réservée aux administrateurs, lit l'annuaire. Rien
+n'en est stocké, ni en base ni au journal, et aucun cache ne le garde : un changement fait
+dans l'annuaire se voit à la prochaine ouverture de la vue, et ne s'applique aux accès que
+lorsque le portail le transmet — entre 4 min 53 s et 5 min 52 s pour un AJOUT à un groupe
+(recette, 2026-09-15, AUTH-7), le retrait n'étant pas mesuré. Une panne de lecture rend
+« non vérifié », bornée par un délai total de 3 s, et ne déclare aucun accès mort.
+
+Le coût, qui n'existait pas avant : un compte de service dans `lldap_strict_readonly`, dont le
+mot de passe vit dans l'environnement de l'application. Il lit tout et n'écrit rien — pas
+`lldap_password_manager`, qui écrit des mots de passe, jamais `lldap_admin`, qui crée des
+comptes. Écrire dans l'annuaire depuis l'application a été écarté (AUTH-12, décision 1 (A)) :
+qui compromettrait l'application se fabriquerait un administrateur.
 
 **Deux retraits sont refusés, par un 409 qui les nomme** — pas par un 403 : ce n'est pas
 un droit qui manque, c'est un état que le retrait fabriquerait.

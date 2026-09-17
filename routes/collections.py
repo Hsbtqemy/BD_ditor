@@ -23,13 +23,14 @@ recopiés à l'œil — c'est cette erreur-là qui a produit 49 tests rouges au 
 """
 from __future__ import annotations
 
-import json
 import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
+import annuaire
 import autorisation
+import comptes
 import journal
 from config import STATUTS_DIFFUSION
 from database import (NATURES, collection_row, collections, etat_embargo,
@@ -321,45 +322,16 @@ def _comptes(conn) -> list:
     orpheliner » et non « supprimable ». La nuance n'est pas de style : la règle validée
     le 2026-09-06 dit ce qu'une suppression casserait, elle ne dit pas s'il faut supprimer,
     et l'écran sera lu par des gens qui n'étaient pas dans cette conversation.
-    """
-    actes = {r["agent"]: r["n"] for r in conn.execute(
-        # Les traces de REPRISE D'IDENTITÉ sont exclues du compte : elles portent bien
-        # l'agent, mais ce n'est pas un acte qu'il a posé — c'est un changement observé sur
-        # son propre compte. Les compter ferait passer un mariage pour du travail laissé.
-        "SELECT agent, COUNT(*) AS n FROM evenement "
-        "WHERE agent_type = 'humain' AND agent IS NOT NULL "
-        # `utilisateur_nature` s'ajoute à l'exclusion le 2026-09-09 (AUTH-6), et pour une
-        # raison DIFFÉRENTE de celle du voisin : celle-là est bien un acte posé par un
-        # administrateur, pas un changement observé. Mais le verdict répond à « qu'est-ce
-        # qu'une suppression orphelinerait ? », et déclarer la nature d'un tiers
-        # n'orpheline aucune annotation. La compter ferait lire « laisse des actes » à qui
-        # n'a fait qu'administrer, dans l'écran même où l'on décide de supprimer.
-        "  AND cible_table NOT IN ('utilisateur', 'utilisateur_nature') "
-        "GROUP BY agent")}
-    acces = {r["principal"]: r["n"] for r in conn.execute(
-        "SELECT principal, COUNT(*) AS n FROM collection_acces "
-        "WHERE genre = ? GROUP BY principal", (autorisation.UTILISATEUR,))}
-    reprises = {}
-    for r in conn.execute(
-            "SELECT avant, date FROM evenement "
-            "WHERE cible_table = 'utilisateur' ORDER BY id"):
-        try:
-            login = json.loads(r["avant"] or "{}").get("login")
-        except ValueError:                                   # pragma: no cover
-            continue
-        if login:
-            reprises[login] = reprises.get(login, 0) + 1
 
+    Les comptes (actes, accès nominatifs, reprises) et le verdict vivent dans `comptes.py`
+    depuis AUTH-6 : la vue « 👥 Comptes et groupes » compte la même chose, et deux copies de
+    la règle finiraient par ne plus dire la même chose du même compte.
+    """
+    actes, acces, reprises = comptes.traces(conn)
     out = []
     for u in conn.execute("SELECT * FROM utilisateur ORDER BY login"):
         login = u["login"]
         n_actes, n_acces = actes.get(login, 0), acces.get(login, 0)
-        # Le verdict NOMME tout ce qui serait orphelin, jamais le premier motif trouvé.
-        # Un `elif` disait « laisse des actes » à un compte qui laissait AUSSI des accès :
-        # exact, et tronqué là où l'écran groupe et où quelqu'un décide. Un verdict qui
-        # tait la moitié du motif est pire qu'un chiffre, parce qu'il a l'air complet.
-        motifs = [m for m, n in (("des actes", n_actes), ("des accès", n_acces)) if n]
-        verdict = ("laisse " + " et ".join(motifs)) if motifs else "rien à orpheliner"
         out.append({
             "login": login, "nom": u["nom"], "email": u["email"],
             # AUTH-6 — ce qu'un login EST. Rendu à l'écran parce que c'est là qu'on le
@@ -369,12 +341,12 @@ def _comptes(conn) -> list:
             "nature": u["nature"],
             "premiere_vue": u["premiere_vue"], "derniere_vue": u["derniere_vue"],
             "actes": n_actes, "acces_explicites": n_acces,
-            "verdict": verdict,
+            "verdict": comptes.verdict(n_actes, n_acces),
             # Le filet quand la vigilance a manqué : le geste de suppression vit dans
             # l'annuaire et rien ici ne peut l'empêcher. Ce qui reste possible, c'est de
             # SIGNALER qu'un login connu a changé de mains — la trace est datée, donc la
             # coupe entre les deux personnes reste reconstructible.
-            "reprises": reprises.get(login, 0),
+            "reprises": reprises.get(login, (0, None))[0],
         })
     return out
 
@@ -406,6 +378,27 @@ def liste_comptes(conn: sqlite3.Connection = Depends(db),
             "limite": "Les accès accordés par GROUPE n'apparaissent pas : l'application ne "
                       "connaît que les groupes de la personne qui frappe (AUTH-1), jamais "
                       "ceux des autres. Un compte peut donc tout lire sans figurer ici."}
+
+
+@router.get("/api/comptes-et-groupes")
+def comptes_et_groupes(conn: sqlite3.Connection = Depends(db),
+                       portee: autorisation.Portee = Depends(portee_courante)):
+    """La vue « 👥 Comptes et groupes » (AUTH-12, étape 2) : ce que l'ANNUAIRE rend, ce que
+    l'application a VU, ce qu'elle a ACCORDÉ, et ce qui est « À regarder » (AUTH-6).
+
+    RÉSERVÉE AUX ADMINISTRATEURS D'INSTANCE, pour la raison de `GET /api/comptes` : elle
+    porte sur des PERSONNES, pas sur le corpus.
+
+    L'annuaire est LU ici, à chaque ouverture, pour COMPOSER cette vue — ni pour authentifier
+    (Authelia), ni pour autoriser : aucune portée ne change selon ce qu'il rend, et
+    `autorisation.py` n'en importe rien. Une panne ne bloque rien : la vue répond 200 avec
+    ce que l'application sait seule, et le dit (`annuaire.etat`).
+    """
+    if not portee.tout:
+        raise HTTPException(403, "La vue des comptes et des groupes est réservée aux "
+                                 "administrateurs : elle porte sur des personnes, pas sur "
+                                 "le corpus.")
+    return comptes.composer(conn, annuaire.lire())
 
 
 @router.patch("/api/comptes/{login}/nature")

@@ -81,6 +81,15 @@ services:
       # à chaque commande, et `config.py` lit cette chaîne vide comme « pas de référent ».
       - BD_REFERENT_NOM=${BD_REFERENT_NOM:-}
       - BD_REFERENT_CONTACT=${BD_REFERENT_CONTACT:-}
+      # AUTH-6 : l'application LIT l'annuaire pour composer « 👥 Comptes et groupes ». Elle
+      # n'y authentifie personne et n'en tire aucun accès : l'autorisation continue de ne
+      # lire que `Remote-Groups`. Vides : pas de lecture, et la vue le dit sans parler de
+      # panne. Le mot de passe du compte de service arrive sous un nom d'`.env` voisin de
+      # celui d'Authelia (`LLDAP_…_PASS`), pour qu'on les range ensemble. Cf. .env.example.
+      - BD_ANNUAIRE_ADRESSE=${BD_ANNUAIRE_ADRESSE:-}
+      - BD_ANNUAIRE_COMPTE=${BD_ANNUAIRE_COMPTE:-}
+      - BD_ANNUAIRE_MOT_DE_PASSE=${LLDAP_APPLICATION_PASS:-}
+      - BD_ANNUAIRE_URL=${BD_ANNUAIRE_URL:-}
       # - BD_SPACY_MODEL=fr_core_news_sm   # modèle NLP (lg = index plus riche, + de RAM)
       # - BD_NLP_PREWARM=1                  # charge spaCy au démarrage (évite le gel de
       #                                     #  la 1re écriture) ; à éviter en consultation pure

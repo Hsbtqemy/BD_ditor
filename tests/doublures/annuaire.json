@@ -1,0 +1,34 @@
+{
+  "_lisez_moi": "AUTH-6 — doublure de l'annuaire, à la forme de la réponse GraphQL de LLDAP 0.6.3 (users avec leurs groupes, puis groups). Chargée par BD_ANNUAIRE_ADRESSE=doublure: ; refusée en production par deploy/verifier_deploiement.py. Ne porte que ce que l'annuaire rend : les venues, natures et accès se sèment en base. Décor des maquettes d'AUTH-12 : un administrateur, un propriétaire, un groupe d'étudiants de douze comptes, un login partagé, un compte jamais venu, deux comptes de service et le compte admin d'amorçage.",
+  "data": {
+    "users": [
+      {"id": "admin", "email": "admin@annuaire.invalid", "displayName": "Administrateur de l'annuaire", "groups": [{"id": 1, "displayName": "lldap_admin"}]},
+      {"id": "authelia", "email": "authelia@annuaire.invalid", "displayName": "", "groups": [{"id": 2, "displayName": "lldap_password_manager"}]},
+      {"id": "bd-application", "email": "bd-application@annuaire.invalid", "displayName": "", "groups": [{"id": 3, "displayName": "lldap_strict_readonly"}]},
+      {"id": "admin-bd", "email": "admin-bd@exemple.invalid", "displayName": "Camille Admin", "groups": [{"id": 1, "displayName": "lldap_admin"}, {"id": 4, "displayName": "bd-admins"}]},
+      {"id": "proprio", "email": "proprio@exemple.invalid", "displayName": "Paule Propriétaire", "groups": [{"id": 5, "displayName": "annotateurs"}]},
+      {"id": "lectrice", "email": "lectrice@exemple.invalid", "displayName": "Léa Lectrice", "groups": [{"id": 5, "displayName": "annotateurs"}]},
+      {"id": "collectif", "email": "", "displayName": "Poste partagé de la salle 12", "groups": [{"id": 6, "displayName": "etudiants-bd-2026"}]},
+      {"id": "arrivant", "email": "arrivant@exemple.invalid", "displayName": "Noé Arrivant", "groups": [{"id": 6, "displayName": "etudiants-bd-2026"}]},
+      {"id": "etu01", "email": "etu01@exemple.invalid", "displayName": "Étudiant 01", "groups": [{"id": 6, "displayName": "etudiants-bd-2026"}]},
+      {"id": "etu02", "email": "etu02@exemple.invalid", "displayName": "Étudiant 02", "groups": [{"id": 6, "displayName": "etudiants-bd-2026"}]},
+      {"id": "etu03", "email": "etu03@exemple.invalid", "displayName": "Étudiant 03", "groups": [{"id": 6, "displayName": "etudiants-bd-2026"}]},
+      {"id": "etu04", "email": "etu04@exemple.invalid", "displayName": "Étudiant 04", "groups": [{"id": 6, "displayName": "etudiants-bd-2026"}]},
+      {"id": "etu05", "email": "etu05@exemple.invalid", "displayName": "Étudiant 05", "groups": [{"id": 6, "displayName": "etudiants-bd-2026"}]},
+      {"id": "etu06", "email": "etu06@exemple.invalid", "displayName": "Étudiant 06", "groups": [{"id": 6, "displayName": "etudiants-bd-2026"}]},
+      {"id": "etu07", "email": "etu07@exemple.invalid", "displayName": "Étudiant 07", "groups": [{"id": 6, "displayName": "etudiants-bd-2026"}]},
+      {"id": "etu08", "email": "etu08@exemple.invalid", "displayName": "Étudiant 08", "groups": [{"id": 6, "displayName": "etudiants-bd-2026"}]},
+      {"id": "etu09", "email": "etu09@exemple.invalid", "displayName": "Étudiant 09", "groups": [{"id": 6, "displayName": "etudiants-bd-2026"}]},
+      {"id": "etu10", "email": "etu10@exemple.invalid", "displayName": "Étudiant 10", "groups": [{"id": 6, "displayName": "etudiants-bd-2026"}]}
+    ],
+    "groups": [
+      {"id": 1, "displayName": "lldap_admin"},
+      {"id": 2, "displayName": "lldap_password_manager"},
+      {"id": 3, "displayName": "lldap_strict_readonly"},
+      {"id": 4, "displayName": "bd-admins"},
+      {"id": 5, "displayName": "annotateurs"},
+      {"id": 6, "displayName": "etudiants-bd-2026"},
+      {"id": 7, "displayName": "cours-vide"}
+    ]
+  }
+}

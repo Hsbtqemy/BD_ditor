@@ -144,3 +144,39 @@ def test_une_sonde_saine_ne_declare_rien(monkeypatch):
     manques, empechement = verifier_deploiement.controle_interne("app")
 
     assert (manques, empechement) == ([], None)
+
+
+# --------------------------------------------------------------------------- #
+# AUTH-6 — la lecture de l'annuaire par l'application
+# --------------------------------------------------------------------------- #
+# Le banc de `controle_config` vit dans `test_regressions.py` (fichiers non suivis et Compose
+# substitués) : on l'emprunte au lieu de le recopier, une copie divergerait en silence.
+from test_regressions import _DOMAINES, _UN_COMPTE, _controle  # noqa: E402
+
+
+def test_une_doublure_d_annuaire_refuse_le_deploiement(tmp_path, monkeypatch):
+    """En production, la vue des comptes afficherait un annuaire INVENTÉ, avec ses signaux :
+    une information fausse, donc bloquante. Une vraie adresse passe."""
+    env = tmp_path / ".env"
+    env.write_text(_DOMAINES + "BD_ANNUAIRE_ADRESSE=doublure:\n", encoding="utf-8")
+    problemes, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE)
+    assert "annuaire en doublure" in problemes, sortie
+
+    env.write_text(_DOMAINES + "BD_ANNUAIRE_ADRESSE=http://lldap:17170\n", encoding="utf-8")
+    problemes, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE)
+    assert "annuaire en doublure" not in problemes, sortie
+
+
+def test_un_annuaire_sans_url_web_se_signale_sans_bloquer(tmp_path, monkeypatch):
+    """Le lien « Modifier ↗ » ne se dérive pas du domaine : sans `BD_ANNUAIRE_URL`, la vue n'a
+    aucun lien à offrir. C'est un confort manquant, pas une panne : aucun problème compté."""
+    env = tmp_path / ".env"
+    env.write_text(_DOMAINES + "ANNUAIRE_DOMAINE=annuaire.exemple.fr\n", encoding="utf-8")
+    problemes, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE)
+    assert "BD_ANNUAIRE_URL non posée" in sortie, sortie
+    assert not [p for p in problemes if "BD_ANNUAIRE_URL" in p or "lien" in p], problemes
+
+    env.write_text(_DOMAINES + "ANNUAIRE_DOMAINE=annuaire.exemple.fr\n"
+                   "BD_ANNUAIRE_URL=https://annuaire.exemple.fr/\n", encoding="utf-8")
+    problemes, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE)
+    assert "BD_ANNUAIRE_URL non posée" not in sortie, sortie
