@@ -32,7 +32,7 @@ n'est écrit, et le chantier commence par une mesure.
 
 ### Trancher la forme, sur les pertes mesurées
 - [x] Écrit : le remède retenu, choisi parmi trois familles, ou « rien, et pourquoi ». Refuser un enregistrement fait sur une version périmée (409 qui nomme le conflit). Signaler que la planche a changé ailleurs, avec un geste pour actualiser. Réserver la bulle ou la planche à qui l'édite. Le choix s'appuie sur ce que la zone précédente a MESURÉ, pas sur l'hypothèse de départ — **tranché par Hugo le 2026-09-16, en deux temps** : (a) tout de suite, l'Atelier n'envoie que ce qui a changé ; (b) avant la prochaine mise en production, le refus d'une version périmée, par un 409 qui nomme le conflit. La réservation est écartée. Le Ctrl+Z collectif est une limite, écrite (cf. Contexte)
-- [ ] Si l'écran change, la disposition se tranche sur une maquette interactive, pas sur de la prose
+- [x] Si l'écran change, la disposition se tranche sur une maquette interactive, pas sur de la prose — `https://claude.ai/artifact/GPW25ZTtoJSw7N7X2Vju3p`, verdict de Hugo le 2026-09-17
 
 ### Temps a — n'envoyer que ce qui a changé (tout de suite)
 - [x] Enregistrer la NOTE d'une bulle n'envoie plus sa liste de tags, et ajouter ou retirer un TAG n'envoie plus sa note. Attendu : la mesure 1 rejouée à deux navigateurs garde le tag de B ET la note de A, prouvé par le journal A3 — fait par `5caa373`, et prouvé par l'état en BASE lu par l'API dans la garde e2e, non par une relecture du journal : c'est ce qui reste qui compte, et la base le dit plus directement
@@ -46,7 +46,7 @@ n'est écrit, et le chantier commence par une mesure.
 - [x] Annuler une modification de RÉGION ne rend que les champs que l'acte a changés, et refuse par un 409 nommé si ces champs ont changé depuis. Attendu : A déplace une bulle, B la transcrit, A fait Ctrl+Z — le texte de B reste. Le défaut est d'abord montré par un test ROUGE sur le code d'avant (Q4) — vu rouge sur `77c0dbb` (« annuler le déplacement de A a effacé le texte de B »), vert par `1d374ef`
 - [x] Annuler une note refuse par un 409 nommé si la note n'est plus celle que l'acte avait posée, au lieu d'écraser celle écrite ensuite (cadrage (c), validé avec Q4) — `test_annuler_sa_note_modifiee_depuis_est_refuse`, `1d374ef`
 - [ ] Écrire sur une case supprimée par quelqu'un d'autre rend un 410 « supprimée par X à HH:MM » quand on LIT sa planche, et le 404 inchangé sinon. L'écran de B dit qu'elle a été supprimée, et non « Région N introuvable », et la case disparaît de son écran (Q5)
-- [ ] Au 409, un bandeau DANS le panneau (note, transcription) nomme l'auteur, montre sa version, garde la saisie en cours, suspend l'enregistrement automatique, et offre « Garder la mienne » et « Prendre la leur ». Sa forme est tranchée par Hugo sur une MAQUETTE INTERACTIVE avant que l'écran soit codé (Q6)
+- [ ] Au 409, un bandeau DANS le panneau (note, transcription) nomme l'auteur, montre sa version, garde la saisie en cours, suspend l'enregistrement automatique, et offre « Garder la mienne » et « Prendre la leur ». Sa forme est tranchée par Hugo sur une MAQUETTE INTERACTIVE avant que l'écran soit codé (Q6) — maquette jouée, verdict rendu le 2026-09-17 (cf. Contexte)
 - [ ] L'auteur est nommé par son nom affiché, l'heure en heure locale ; quand l'auteur a le MÊME login que l'écran, le message dit « depuis un autre écran de ce même compte » (Q7)
 - [ ] La valeur vue est FACULTATIVE pour l'API (outils, appelants existants) ; l'Atelier l'envoie toujours, et une garde e2e l'exige (Q8)
 - [ ] Fait AVANT la prochaine fusion de `dev` dans `main` : les testeurs de la production travaillent à plusieurs
@@ -251,3 +251,24 @@ qui n'importe que `journal`.
   `tests/test_conflit_version.py`. Tests voisins verts sous le `.venv` (annulation,
   annotation, autorisation, découpage de l'API, sorties d'identité, provenance, régressions).
   La suite entière et la passe navigateur attendent l'écran.
+
+**Verdict de Hugo sur la maquette, le 2026-09-17** — la forme de l'écran, avant qu'il soit codé.
+
+1. *Variante A* : la version de l'autre est DÉPLIÉE d'office dans le bandeau.
+2. *Le focus ne saute pas au bandeau.* Il reste dans le champ ; le bandeau s'annonce par la
+   région live et s'atteint par `Tab`. Sinon une frappe tombée au moment du 409 serait perdue.
+3. *Les gestes s'appellent « Remplacer »* (renvoyer sa version, qui écrase celle de l'autre) *et
+   « Garder l'autre »* (conserver la version concurrente), partout, compte partagé compris.
+   « Remplacer » en premier, à poids égal. Les deux libellés vivent à UN seul endroit : Hugo
+   peut encore préciser « Remplacer ».
+4. *L'heure porte la date quand la modification n'est pas du jour* : « à 14 h 32 », « hier à
+   14 h 32 », « le 15/09 à 14 h 32 ».
+5. *Changer de bulle ou de mode pendant un conflit est BLOQUÉ*, avec « Choisissez d'abord une
+   version », en Annotation comme en Transcription ; Précédent et Suivant restent désactivés.
+6. *L'extension est validée* : on refuse d'annuler la création d'une région qu'un autre a
+   travaillée depuis.
+
+Retenus tels que la maquette les proposait : le titre nomme le champ ; les gestes ont le même
+poids ; l'écran reste utilisable pendant le conflit ; les tags s'enregistrent quand même ; la
+case supprimée donne un toast NEUTRE de 8 s ; pas de `role="alert"` en double de la région
+live. La consigne de poussée tient : rien ne part avant l'écran.
