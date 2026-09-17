@@ -53,7 +53,7 @@ le propriétaire d'une collection, l'administrateur, et l'administrateur systèm
 
 ### La forme de l'écran
 - [x] **La forme se choisit sur des MAQUETTES INTERACTIVES, pas sur cette prose** — attendu : une maquette par forme décrite dans « La forme de l'écran » ci-dessous, qui fait jouer d'abord les gestes fréquents de chaque rôle (« Les gestes que la maquette fait jouer d'abord »), sur les mêmes données de décor (un administrateur, un propriétaire, un groupe d'étudiants de douze comptes, un login partagé, un compte jamais venu, une collection sans propriétaire), à 1 280 px et à 375 px, en thème sombre et clair ; la forme retenue est nommée ici avec sa raison. Les croquis de cette fiche disent ce que chaque forme range où ; ils ne disent pas ce qu'on éprouve en la regardant, et c'est ce que la demande juge — **tranché par Hugo le 2026-09-16, sur les maquettes : la FORME 1, une liste et une fiche, côte à côte.** Ses mots : « Liste et fiches, c'est parfait. Harmonieux, bien rangé, visuellement agréable et ordonné. » Les maquettes sont une publication privée de la coordination, hors du dépôt. Les formes 2 et 3 restent décrites dans « La forme de l'écran », comme trace de l'option écartée. **Offert par la maquette, non jugé** — le verdict porte sur la forme 1 seule, sans mention de largeur, de thème ni de modèle de droits : les largeurs 375, 768 et 1 280 px (à 375, une colonne, la fiche en plein écran sous « ← Liste », l'axe en liste déroulante, et « Qui entre » en CARTES, une par accès ; à 768, deux colonnes, la liste plus étroite, les libellés de navigation masqués) ; les thèmes sombre et clair, sur les couleurs de `static/style.css` ; les trois issues d'`AUTH-10` sur le même gabarit ; les deux options de la décision 2. Rien de cela n'est tranché par cette case
-- [ ] **Les listes se trient par NOM ou par RÉCENCE** — demandé par Hugo le 2026-09-16 en retenant la forme 1 : « Il manque seulement un mode de tri je pense (date et alphabet peut-être ?) ». Ce que la seconde version de la maquette en a fait, repris comme attendu : **« A → Z »** sur le nom LU — le nom lisible d'une personne, à défaut son login ; le nom d'un groupe ou d'une collection ; **« Récents d'abord »** par date — la dernière venue pour une personne, la dernière venue d'un de ses membres pour un groupe, la dernière modification pour une collection ; ce qui n'a pas de date passe à la fin ; « À regarder » reste en tête, hors tri. Attendu : sur chacun des trois axes, les deux tris rendent l'ordre décrit, un objet sans date est en fin de liste, et le tri choisi survit au changement d'axe et à l'adresse. **Deux de ces dates n'existent pas encore, et la troisième est approchée** — la case ne se coche pas sans elles : (1) la dernière modification d'une COLLECTION n'est pas en base : `collection` ne porte qu'une `date_creation`, et modifier ses descripteurs n'écrit rien au journal — c'est le défaut « Modifier une collection ne laisse aucune trace » qui la rendrait lisible ; ranger ou sortir un album n'y écrit rien non plus, et la définition de « modification » devra dire si cela compte ; (2) la dernière venue d'un membre suppose de connaître les MEMBRES d'un groupe, que l'application ne lit pas aujourd'hui — la lecture de l'annuaire d'`AUTH-6` ; (3) la dernière venue d'une PERSONNE existe (`utilisateur.derniere_vue`), mais seulement pour qui est venu, et à l'heure près : elle n'est réécrite qu'une fois par heure par login. Un compte jamais venu n'a pas de date, et se range donc en fin de liste
+- [ ] **Les listes se trient par NOM ou par RÉCENCE** — demandé par Hugo le 2026-09-16 en retenant la forme 1 : « Il manque seulement un mode de tri je pense (date et alphabet peut-être ?) ». Ce que la seconde version de la maquette en a fait, repris comme attendu : **« A → Z »** sur le nom LU — le nom lisible d'une personne, à défaut son login ; le nom d'un groupe ou d'une collection ; **« Récents d'abord »** par date — la dernière venue pour une personne, la dernière venue d'un de ses membres pour un groupe, la dernière modification pour une collection ; ce qui n'a pas de date passe à la fin ; « À regarder » reste en tête, hors tri. Attendu : sur chacun des trois axes, les deux tris rendent l'ordre décrit, un objet sans date est en fin de liste, et le tri choisi survit au changement d'axe et à l'adresse. **Deux de ces dates n'existent pas encore, et la troisième est approchée** — la case ne se coche pas sans elles : (1) la dernière modification d'une COLLECTION n'est pas en base : `collection` ne porte qu'une `date_creation`, et modifier ses descripteurs n'écrit rien au journal — c'est le défaut « Modifier une collection ne laisse aucune trace » qui la rendrait lisible ; ranger ou sortir un album n'y écrit rien non plus, et la définition de « modification » devra dire si cela compte — **définition tranchée par Hugo le 2026-09-17 : la description ou les accès, jamais les albums** (section « Ce que la construction a tranché ») ; (2) la dernière venue d'un membre suppose de connaître les MEMBRES d'un groupe, que l'application ne lit pas aujourd'hui — la lecture de l'annuaire d'`AUTH-6` ; (3) la dernière venue d'une PERSONNE existe (`utilisateur.derniere_vue`), mais seulement pour qui est venu, et à l'heure près : elle n'est réécrite qu'une fois par heure par login. Un compte jamais venu n'a pas de date, et se range donc en fin de liste
 
 ### Mesurer, avant de construire
 - [x] **L'import en lot de la décision 5 (b) est mesuré** — attendu : sur la pile de recette, trente comptes FICTIFS créés en un seul geste par l'outil de LLDAP (fichier ou script), jamais les comptes qui portent le décor des passes ; la durée, les gestes et ce qu'il faut savoir sont écrits dans `docs/exploitation.md` ; un compte importé se connecte au portail, et les trente comptes sont retirés après la mesure — **mesuré le 2026-09-17** par la coordination, sur accord de Hugo pour l'identifiant d'administration de l'annuaire : `/app/bootstrap.sh` de l'image LLDAP 0.6.3, un fichier JSON par compte, trente comptes et un groupe en 8 secondes, code de retour 0 ; `essai07` accepté par le portail (`/api/firstfactor` 200), un mauvais mot de passe refusé (401) ; les trente comptes et le groupe supprimés, et la liste des comptes relue IDENTIQUE à celle d'avant. Le mot de passe d'administration ne sort jamais du conteneur. Écrit dans `docs/exploitation.md`, § « Importer une promotion en une fois », avec le piège `DO_CLEANUP=true` (qui supprimerait tout compte absent des fichiers) et la limite non mesurée : la remise des mots de passe initiaux
@@ -95,6 +95,57 @@ prête, sans la retenir.
 s'ouvre par le menu du compte déjà livré ; l'import d'une promotion, documenté
 (`docs/exploitation.md`) ; et la date de dernière modification d'une collection, que le
 journal écrit depuis `749ceb8`.
+
+## Ce que la construction a tranché — 2026-09-17
+
+Le format de lecture de l'annuaire, rédigé par la session d'`AUTH-6`, a été relu par celle de
+l'étape 2, et l'accord s'est fait par la coordination. Il a posé huit questions. Hugo en a
+tranché six, et délégué les deux questions techniques. Ce qui touche la lecture de l'annuaire
+elle-même (protocole, compte de service, pas de cache) est consigné dans `AUTH-6`.
+
+- **Le propriétaire choisit parmi les GROUPES, et vérifie un compte TAPÉ** (étape 3). La
+  liste de la décision 4 lui montre les noms des groupes, sans les groupes de rôle de
+  l'annuaire ni ceux des administrateurs. Un login tapé est vérifié, « trouvé » ou « inconnu
+  de l'annuaire », mais aucune liste des comptes ne lui est servie. Hugo a hésité avec la
+  liste complète, plus simple. Elle aurait montré à chaque propriétaire les noms de tous les
+  inscrits de tous les cours, pour le seul cas rare d'une personne ajoutée seule. La
+  vérification d'un login tapé laisse sonder l'existence d'un compte : la déclaration au
+  cliquet d'`AUTH-5` le dira.
+- **La vue des comptes cesse de se regrouper par verdict de départ.** La liste suit le tri
+  par nom ou par récence, et le verdict passe dans la partie « Départ » de la fiche. On perd
+  la vue d'un coup d'œil « qui peut partir sans rien orpheliner ». Un filtre sur le verdict
+  s'ajoutera si le besoin apparaît.
+- **« À regarder » ne signale pas un login partagé non déclaré.** L'application ne voit qu'un
+  login et ne peut pas savoir que plusieurs personnes l'emploient (`AUTH-6`, borne du
+  chantier). Toute règle serait une devinette, qu'on ne pourrait ni vérifier ni infirmer.
+  Une variante fiable, un groupe d'annuaire réservé aux logins partagés, a été proposée et
+  n'est pas retenue. Le rappel de déclarer vit à côté du sélecteur de nature.
+- **« À regarder » signale une identité changée, pendant trente jours.** C'est le filet
+  d'`AUTH-7` : un login revenu avec un autre nom ou un autre courriel. La trace ne s'efface
+  jamais du journal, et un changement de nom sans changement de personne la produit aussi.
+  Sans fenêtre, le signal ne s'éteindrait jamais et apprendrait à ignorer la liste. Au-delà
+  de trente jours, la marque reste dans la fiche du compte.
+- **La frontière entre les étapes 2 et 3.** Dans le bloc « 👥 Comptes et groupes », l'axe
+  Collections est en LECTURE SEULE : qui entre, en clair, et un lien « Régler qui entre » vers
+  le panneau « 👥 Accès aux collections ». Ce panneau reste tel quel jusqu'à l'étape 3, parce
+  qu'il sert aussi aux propriétaires, qui n'ont pas accès au bloc. À l'étape 3, il déménage
+  dans la fiche de la collection, et seul le lien change de cible. Rien ne déménage deux
+  fois. « Ouvrir une collection à ce groupe… » attend l'étape 3.
+- **« Récents d'abord » pour une collection** : la dernière modification de sa DESCRIPTION ou
+  de ses ACCÈS, les deux étant au journal. Ranger ou sortir un album ne compte pas : ce
+  n'est pas journalisé, et rien n'est ajouté pour cela.
+- **« À regarder » regroupe au-delà de cinq signaux du même type** en une ligne à déplier
+  (« 12 comptes jamais venus »). Trente arrivants à la rentrée ne font plus passer les
+  signaux rares et graves sous le bas de l'écran.
+- **À l'étape 2, la fiche affiche le NIVEAU d'un accès, pas ses actes** — tranché par la
+  coordination. La fiche y est en lecture seule. La description des actes servie par le
+  serveur se fixera avec l'écran d'attribution de l'étape 3, et les fiches de l'étape 2 y
+  passeront alors. Aucune correspondance entre niveaux et actes n'est écrite dans le
+  JavaScript, et un niveau inconnu s'affiche tel quel. Les deux étapes partent dans la même
+  fusion.
+- **Les textes du panneau d'accès actuel** (« Utilisateur ou groupe ? », « Genre du
+  principal ») se corrigent à l'étape 3, quand le panneau déménage. Tranché par la
+  coordination, pour ne réécrire qu'une fois les tests de `COL-2`.
 
 ## Le parcours actuel, geste par geste — 2026-09-16
 
