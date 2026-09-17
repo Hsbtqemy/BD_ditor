@@ -427,6 +427,48 @@ def test_partir_quand_meme_n_ecrit_pas_la_saisie_sur_la_bulle_d_arrivee(page, de
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_insister_pour_partir_puis_un_409_ne_piege_pas_l_ecran(page, decor):
+    """Le FILET. On a insisté pour partir, et l'enregistrement en suspens revient en 409. Le
+    bandeau ne s'ouvre pas dans le panneau quitté — le blocage interdirait d'y revenir — : un
+    toast le dit, et l'écran reste libre."""
+    s = decor
+    ctx_a, a = _contexte(page, ALICE)
+    try:
+        for url, mode, champ, motif, ecrire, dit in (
+                (s["url_bulle"], "annotation", "#note-input", "**/api/regions/*/annotation",
+                 lambda c: c.put(f"/api/regions/{s['bulle']}/annotation", headers=BOB,
+                                 json={"note": "de Bob", "note_vue": ""}),
+                 "la vôtre n'a pas été enregistrée"),
+                (s["url_planche"], "transcription", "#tr-text", "**/api/regions/*",
+                 lambda c: c.put(f"/api/regions/{s['bulle']}", headers=BOB,
+                                 json={"ocr_texte": "DE BOB", "vu": {"ocr_texte": "TEXTE INITIAL"}}),
+                 "le vôtre n'a pas été enregistré")):
+            _ouvrir(a, url, mode)
+            retenue = _Retenue(a, motif)
+            a.click(champ)
+            a.keyboard.press("End")
+            a.keyboard.type(" muet")
+            a.click('.mode-btn[data-mode="navigation"]')
+            expect(a.locator("#toasts .toast", has_text="L'enregistrement n'a pas abouti")
+                   ).to_have_count(1, timeout=10000)
+            a.click('.mode-btn[data-mode="navigation"]')     # on insiste
+            expect(a.locator('.mode-btn[data-mode="navigation"]')).to_have_attribute(
+                "aria-pressed", "true")
+            with _client(s["base"]) as c:
+                c.get("/api/moi", headers=BOB)
+                assert ecrire(c).status_code == 200
+            retenue.liberer()
+            expect(a.locator("#toasts .toast", has_text=dit)).to_have_count(1, timeout=15000)
+            expect(a.locator("#bandeau-conflit")).to_have_count(0)
+            # Libre : revenir au mode quitté répond.
+            a.click(f'.mode-btn[data-mode="{mode}"]')
+            expect(a.locator(f'.mode-btn[data-mode="{mode}"]')).to_have_attribute(
+                "aria-pressed", "true")
+    finally:
+        ctx_a.close()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
 def test_une_case_supprimee_ailleurs_est_nommee_et_quitte_l_ecran(page, decor):
     s = decor
     ctx_a, a = _contexte(page, ALICE)
