@@ -5,9 +5,13 @@ description fausse y serait pire qu'absente — l'écran promettrait ce que le s
 Elle est donc confrontée à `Portee`, par table de vérité : ce qu'elle dit d'un niveau, le
 cumul doit le faire.
 
-Ce que ces tests ne prouvent PAS, et c'est écrit dans `autorisation.py` : qu'une route donnée
-exige le niveau de l'acte qu'on lui associe. Le périmètre route par route (AUTH-10) n'existe
-pas encore.
+Chaque acte est aussi JOUÉ, par un geste qui le représente, sous un membre de chaque niveau :
+confronter l'échelle à `Portee` ne dit rien du couple acte → niveau, et le harnais de
+mutation l'a montré — « décider qui entre » passé en écriture survivait à la table de vérité.
+
+Ce que ces tests ne prouvent PAS, et c'est écrit dans `autorisation.py` : que TOUTES les
+routes d'un acte exigent son niveau. Un geste par acte n'est pas le périmètre route par route
+(AUTH-10), qui n'existe pas encore.
 """
 import ast
 import sys
@@ -17,9 +21,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 import autorisation  # noqa: E402
+import main  # noqa: E402
 
 from autorisation import (ACTES, ECRITURE, HORS_RANG, LECTURE, NIVEAUX,  # noqa: E402
                           PROPRIETAIRE, Portee)
+from conftest import ADMIN, make_png  # noqa: E402
 
 C = 7   # une collection quelconque
 
@@ -42,11 +48,91 @@ def test_l_echelle_est_celle_des_niveaux():
 
 def test_chaque_acte_dit_ce_que_le_cumul_fait():
     """Accordé au niveau L, un acte de niveau N est permis si et seulement si L est au-dessus
-    ou au niveau de N — et c'est `Portee`, non la description, qui répond."""
+    ou au niveau de N — et c'est `Portee`, non la description, qui répond.
+
+    Ce test éprouve l'ÉCHELLE, pas le niveau de chaque acte : la question posée se choisit
+    d'après le niveau que l'acte déclare, donc un acte déclaré trop haut ou trop bas y reste
+    cohérent. C'est le test suivant qui le prend en défaut."""
     for acte in ACTES:
         rang_acte = NIVEAUX.index(acte["niveau"])
         for accorde in NIVEAUX:
             permis = getattr(_portee(accorde), QUESTION[acte["niveau"]])(C)
+            assert permis == (NIVEAUX.index(accorde) >= rang_acte), (acte["code"], accorde)
+
+
+def _decor(client):
+    """Une collection, un membre par niveau, et de quoi jouer chaque geste : un album avec une
+    région, et un second album dont la planche est VERROUILLÉE — un lot la compte sans la
+    traiter, donc son refus se lit sans qu'aucun moteur tourne."""
+    cid = client.post("/api/collections", json={"nom": "Actes"}, headers=ADMIN).json()["id"]
+    membres = {}
+    for niveau in NIVEAUX:
+        membres[niveau] = f"membre-{niveau}"
+        r = client.put(f"/api/collections/{cid}/acces", headers=ADMIN,
+                       json={"genre": "utilisateur", "principal": membres[niveau],
+                             "niveau": niveau})
+        assert r.status_code in (200, 201), r.text
+
+    def album(titre):
+        a = client.post("/api/albums", json={"titre": titre, "collection_id": cid},
+                        headers=ADMIN).json()
+        p = client.post(f"/api/albums/{a['id']}/import", headers=ADMIN,
+                        files={"file": ("planche.png", make_png(), "image/png")}).json()
+        return a, p
+    album_lu, planche = album("Lu")
+    region = client.post(f"/api/planches/{planche['id']}/regions", headers=ADMIN,
+                         json={"type": "case", "x": 10, "y": 10, "w": 100, "h": 80}).json()
+    album_lot, planche_lot = album("Lot")
+    r = client.patch(f"/api/planches/{planche_lot['id']}/verrou", json={"verrouillee": True},
+                     headers=ADMIN)
+    assert r.status_code == 200, r.text
+    return cid, membres, album_lu["id"], region["id"], album_lot["id"]
+
+
+def test_chaque_acte_se_joue_au_niveau_qu_il_declare(client, derriere_proxy, monkeypatch):
+    """Sous un membre de chaque niveau, le geste qui représente l'acte réussit si et seulement
+    si ce niveau atteint celui que la description lui donne. Un acte ajouté à la table sans
+    geste fait échouer le test : il ne passe pas sans avoir été joué."""
+    monkeypatch.setattr(main, "kumiko_available", lambda: True)
+    cid, membres, album_id, region_id, album_lot = _decor(client)
+
+    def lire(h):
+        return album_id in [a["id"] for a in client.get("/api/albums", headers=h).json()]
+
+    def annoter(h):
+        r = client.put(f"/api/regions/{region_id}/annotation", json={"note": "vu"}, headers=h)
+        assert r.status_code in (200, 404), r.text
+        return r.status_code == 200
+
+    def structurer(h):
+        r = client.post("/api/albums", json={"titre": "Neuf", "collection_id": cid}, headers=h)
+        assert r.status_code in (201, 404), r.text
+        return r.status_code == 201
+
+    def vocabulaire(h):
+        r = client.post("/api/tags", json={"label": "motif"}, headers=h)
+        assert r.status_code in (201, 403), r.text
+        return r.status_code == 201
+
+    def lots(h):
+        r = client.post("/api/jobs", json={"passes": ["segmenter"], "album_ids": [album_lot]},
+                        headers=h)
+        assert r.status_code == 422, r.text
+        return "verrouillée" in r.json()["detail"]
+
+    def decider(h):
+        r = client.put(f"/api/collections/{cid}/acces", headers=h,
+                       json={"genre": "utilisateur", "principal": "invite", "niveau": "lecture"})
+        assert r.status_code in (200, 201, 403), r.text
+        return r.status_code in (200, 201)
+
+    gestes = {"lire": lire, "annoter": annoter, "structurer": structurer,
+              "vocabulaire": vocabulaire, "lots": lots, "decider": decider}
+    assert set(gestes) == {a["code"] for a in ACTES}, "un acte sans geste qui le joue"
+    for acte in ACTES:
+        rang_acte = NIVEAUX.index(acte["niveau"])
+        for accorde in NIVEAUX:
+            permis = gestes[acte["code"]]({"Remote-User": membres[accorde]})
             assert permis == (NIVEAUX.index(accorde) >= rang_acte), (acte["code"], accorde)
 
 
