@@ -22,6 +22,7 @@ import json
 import sqlite3
 from typing import Optional
 
+import conflit
 import journal
 from database import NATURE_COLLECTIF, reindex_region, unindex_region
 
@@ -147,6 +148,41 @@ def _descendants(conn, region_id):
         (region_id,))]
 
 
+# CONC-3 (Q4) — colonnes qu'une annulation remet sans garde. L'ordre se recalcule à chaque
+# passe et à chaque ajout ; la source suit la retouche ; la planche ne change jamais.
+_SANS_GARDE = ("ordre", "source", "planche_id")
+
+
+def _garder_creation(conn, region_id, apres):
+    """Refuse d'annuler la création d'une région que QUELQU'UN D'AUTRE a travaillée depuis.
+
+    Supprimer la région emporterait ce travail sans instantané : l'annulation est une
+    mutation brute, qui ne journalise que l'acte `annulation`. Ses propres gestes plus récents
+    sont annulés AVANT celui-ci, si bien que ce qui reste ici vient d'un autre.
+    """
+    actuel = journal.snapshot_region(conn, region_id)
+    if actuel is None:
+        return
+    for c in journal._REGION_COLS:
+        if c not in _SANS_GARDE and not conflit.egal(actuel.get(c), (apres or {}).get(c)):
+            raise conflit.Perime("regions", region_id, c, actuel.get(c),
+                                 conflit.auteur_du_champ(conn, "regions", region_id, c,
+                                                         actuel.get(c)))
+    if journal.snapshot_annotation(conn, region_id) is not None:
+        e = conn.execute("SELECT * FROM evenement WHERE cible_table = 'annotations' "
+                         "AND cible_id = ? ORDER BY id DESC LIMIT 1", (region_id,)).fetchone()
+        raise conflit.Perime("annotations", region_id, "annotation", None,
+                             conflit.auteur(conn, e) if e else None)
+    enfant = conn.execute("SELECT id FROM regions WHERE parent_id = ? ORDER BY id DESC LIMIT 1",
+                          (region_id,)).fetchone()
+    if enfant is not None:
+        e = conn.execute("SELECT * FROM evenement WHERE cible_table = 'regions' AND "
+                         "type = 'creation' AND cible_id = ? ORDER BY id DESC LIMIT 1",
+                         (enfant["id"],)).fetchone()
+        raise conflit.Perime("regions", region_id, "enfants", None,
+                             conflit.auteur(conn, e) if e else None)
+
+
 def _supprimer_region(conn, region_id):
     """Inverse d'une CRÉATION de région : supprime la région et son sous-arbre (cascade)."""
     for rid in _descendants(conn, region_id):
@@ -154,11 +190,27 @@ def _supprimer_region(conn, region_id):
     conn.execute("DELETE FROM regions WHERE id = ?", (region_id,))
 
 
-def _restaurer_region_cols(conn, region_id, avant):
-    """Inverse d'une MODIFICATION de région : réécrit les colonnes métier depuis `avant`."""
-    cols = ", ".join(f"{c} = ?" for c in journal._REGION_COLS)
-    conn.execute(f"UPDATE regions SET {cols} WHERE id = ?",
-                 (*[avant[c] for c in journal._REGION_COLS], region_id))
+def _inverser_modification_region(conn, region_id, avant, apres):
+    """Inverse d'une MODIFICATION de région : défait CE QUE l'acte a changé, rien d'autre.
+
+    CONC-3 (Q4) — lu le 2026-09-17 et vu rouge sur le code d'avant : toutes les colonnes
+    étaient réécrites depuis `avant`. A déplaçait la bulle, B la transcrivait, A faisait
+    Ctrl+Z, et le texte de B disparaissait avec le déplacement. Seules les colonnes que l'acte
+    a changées reviennent désormais, et l'annulation est REFUSÉE si l'une d'elles a changé
+    depuis (sauf par un moteur, Q2) : sinon Ctrl+Z écraserait le geste d'un autre.
+    """
+    avant, apres = avant or {}, apres or {}
+    actuel = conn.execute("SELECT * FROM regions WHERE id = ?", (region_id,)).fetchone()
+    if actuel is None:
+        raise UndoImpossible("la région n'existe plus")
+    changees = [c for c in journal._REGION_COLS if not conflit.egal(avant.get(c), apres.get(c))]
+    for c in changees:
+        if c not in _SANS_GARDE:
+            conflit.verifier(conn, "regions", region_id, c, vu=apres.get(c),
+                             actuel=actuel[c], nouveau=avant.get(c))
+    if changees:
+        conn.execute(f"UPDATE regions SET {', '.join(f'{c} = ?' for c in changees)} "
+                     "WHERE id = ?", (*[avant.get(c) for c in changees], region_id))
     reindex_region(conn, region_id)
 
 
@@ -202,6 +254,10 @@ def _inverser_annotation(conn, region_id, avant, apres):
     actuel = journal.snapshot_annotation(conn, region_id) or {}
     note = actuel.get("note")
     if (avant.get("note") or "") != (apres.get("note") or ""):
+        # Second temps (Q4) : si la note a changé depuis l'acte, la rendre écraserait celle
+        # écrite ensuite par un autre. Les tags n'ont pas de garde : ils vont par différence.
+        conflit.verifier(conn, "annotations", region_id, "note", vu=apres.get("note"),
+                         actuel=actuel.get("note"), nouveau=avant.get("note"))
         note = avant.get("note")
     t_avant, t_apres = set(avant.get("tags", [])), set(apres.get("tags", []))
     tags = (set(actuel.get("tags", [])) - (t_apres - t_avant)) | (t_avant - t_apres)
@@ -256,9 +312,10 @@ def _inverser(conn, e) -> int:
     try:
         if table == "regions":
             if t == "creation":
+                _garder_creation(conn, cid, apres)
                 _supprimer_region(conn, cid)
             elif t == "modification":
-                _restaurer_region_cols(conn, cid, avant)
+                _inverser_modification_region(conn, cid, avant, apres)
             elif t == "suppression":
                 _recreer_region_profond(conn, avant)
             return cid

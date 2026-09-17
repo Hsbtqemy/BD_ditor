@@ -29,8 +29,8 @@ rollback en cas d'échec.
 
 | Acte journalisé | Inverse |
 |---|---|
-| `creation` région | supprimer la région (+ sous-arbre, désindexé) |
-| `modification` région (géométrie / OCR / déplacement) | réécrire les colonnes métier depuis `avant` |
+| `creation` région | supprimer la région (+ sous-arbre, désindexé) — **refusé** si quelqu'un d'autre l'a modifiée, annotée ou y a rattaché une région depuis |
+| `modification` région (géométrie / OCR / déplacement) | remettre les colonnes que l'acte a CHANGÉES à leur valeur `avant` — **refusé** si l'une d'elles a changé depuis (sauf par un moteur) |
 | `suppression` région | **recréer le sous-arbre** depuis l'instantané profond (région + annotation + enfants, **mêmes `id`**) |
 | `creation` / `modification` / `suppression` annotation | défaire ce que l'acte a CHANGÉ, sur l'état actuel : la note revient à `avant` si l'acte l'a changée ; les tags qu'il a ajoutés partent, ceux qu'il a retirés reviennent ; vide, l'annotation est supprimée |
 | `lien` locuteur/présence (avant ∅) | retirer le lien |
@@ -41,8 +41,20 @@ Restaurer `avant` entier défaisait aussi ce qu'une autre personne avait fait su
 champ entre-temps : mesuré à deux navigateurs, annuler une note rendait la liste de tags
 d'avant, donc effaçait le tag posé par un collègue. La différence entre `avant` et `apres`
 dit ce que l'acte a changé, et seul cela est défait. Tant que personne d'autre n'a touché
-l'annotation, le résultat est exactement `avant`. Deux personnes sur le MÊME champ restent
-en « le dernier gagne », jusqu'au second temps de CONC-3.
+l'annotation, le résultat est exactement `avant`.
+
+**Une annulation qui écraserait le geste d'un autre est refusée** (CONC-3, second temps,
+2026-09-17). Annuler une modification de région réécrivait TOUTES ses colonnes depuis
+`avant` : A déplaçait une bulle, B la transcrivait, A faisait Ctrl+Z, et le texte de B
+disparaissait avec le déplacement — lu dans le code, puis vu rouge par un test. L'inverse ne
+touche plus que les colonnes que l'acte a changées. Et si l'une d'elles — ou la note, pour
+une annotation — ne porte plus la valeur que l'acte avait posée, l'annulation répond par le
+même **409 nommé** qu'un enregistrement périmé (`conflit.py`) : qui a changé le champ, et
+quand. Seul, rien ne change : personne n'a touché le champ depuis. Un changement fait par un
+MOTEUR ne bloque pas (l'OCR n'est qu'un pré-remplissage). L'ordre et la source ne sont pas
+gardés : l'ordre se recalcule, la source suit la retouche. La même règle refuse d'annuler la
+CRÉATION d'une région que quelqu'un d'autre a travaillée depuis : la supprimer emporterait
+son travail, et l'annulation ne garde aucun instantané de ce qu'elle supprime.
 
 **Recréation à l'identique** : l'instantané profond porte les `id` d'origine → citations,
 deep-links et références restent valides. Si un `id` a été **réattribué** depuis (une nouvelle

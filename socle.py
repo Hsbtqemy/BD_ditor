@@ -28,7 +28,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import unicodedata
-from typing import Iterator, Optional
+from typing import Any, Iterator, Optional
 from urllib.parse import quote
 
 from fastapi import Depends, HTTPException, Request, Response
@@ -811,7 +811,14 @@ class RegionIn(BaseModel):
     source: str = "manuel"
 
 
+# CONC-3 (Q1) — les champs d'une région dont l'écran peut déclarer la valeur qu'il avait vue.
+# `ordre` et `source` n'en sont pas : l'ordre se recalcule, la source suit la retouche.
+CHAMPS_VUS = ("type", "x", "y", "w", "h", "parent_id", "ocr_texte")
+
+
 class RegionUpdate(BaseModel):
+    """Ce qu'une modification de région change. `vu` associe à chaque champ changé la
+    valeur que l'écran avait vue (CONC-3) : facultatif, et vérifié par la route."""
     type: Optional[str] = None
     x: Optional[int] = Field(None, ge=0)
     y: Optional[int] = Field(None, ge=0)
@@ -821,6 +828,7 @@ class RegionUpdate(BaseModel):
     ordre: Optional[int] = None
     ocr_texte: Optional[str] = None
     source: Optional[str] = None
+    vu: Optional[dict[str, Any]] = None
 
 
 class StatutIn(BaseModel):
@@ -910,6 +918,8 @@ class AnnotationIn(BaseModel):
     tags: list[str] = Field(default_factory=list)
     tags_ajoutes: list[str] = Field(default_factory=list)
     tags_retires: list[str] = Field(default_factory=list)
+    # CONC-3, second temps : la note que l'écran avait vue. Facultative (Q8).
+    note_vue: Optional[str] = None
 
 
 class TagIn(BaseModel):

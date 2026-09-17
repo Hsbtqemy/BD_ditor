@@ -26,6 +26,7 @@ from database import (citations_regions, collection_par_defaut, contributions_al
                       dimensions_cm, init_db, noms_lisibles, numeros_editoriaux,
                       relecture_planches, reindex_region, unindex_region)
 import autorisation
+import conflit
 import journal
 import sante as sante_moteurs
 
@@ -41,6 +42,7 @@ import sante as sante_moteurs
 # appliquée. Un nom défini des DEUX côtés serait écrasé en silence par cet import : il n'y
 # en a aucun, et l'outil de recalcul s'arrête s'il en apparaît un.
 from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
+    CHAMPS_VUS,
     AccesIn, AlbumIn, AlbumUpdate, AlignementIn, AnnotationIn, AttributIn, CollectionIn,
     CollectionUpdate, ContributionIn, ContributionRoleIn, DeposerExportIn, DeposerIn, DimensionDomaineIn,
     DimensionIn, DomaineIn, FigureIn, FusionIn, JobIn, LexiqueIn, LocuteurIn, MoveIn,
@@ -679,16 +681,67 @@ def region_crop(region_id: int, taille: int = 1600,
     return Response(png, media_type="image/png")
 
 
+def _region_a_ecrire(conn, portee: autorisation.Portee, region_id: int) -> dict:
+    """La région qu'on veut modifier — ou un 410 qui dit qu'elle a été SUPPRIMÉE, et par qui.
+
+    CONC-3 (Q5, tranché le 2026-09-17). Mesuré le 2026-09-16 : qui modifiait une case qu'un
+    autre venait de supprimer lisait « Région N introuvable ». Le 410 nommé n'est rendu qu'à
+    qui LIT la planche où vivait la région : à tout autre, le 404 inchangé, pour que ni
+    l'existence passée ni son auteur ne fuient. Une région remplacée sans laisser de trace
+    (re-passe automatique) reste un 404 — le journal n'a rien à nommer.
+    """
+    try:
+        return _get_region(conn, portee, region_id, ecriture=True)
+    except HTTPException as introuvable:
+        if introuvable.status_code != 404:
+            raise
+        sup = conflit.suppression_de_region(conn, region_id)
+        if sup is None or sup["planche_id"] is None:
+            raise
+        try:
+            _get_planche(conn, portee, sup["planche_id"])
+        except HTTPException:
+            raise introuvable
+        a = sup["auteur"]
+        par = ("depuis un autre écran de ce même compte" if a["meme_compte"]
+               else f"par {a['nom'] or a['login']}" if a["login"] else "ailleurs")
+        raise HTTPException(410, {"message": f"Cette région a été supprimée {par}, le "
+                                             f"{a['le']} (UTC).",
+                                  "suppression": {"id": region_id, "auteur": a}})
+
+
+def _conflit_http(exc: conflit.Perime) -> HTTPException:
+    return HTTPException(409, exc.detail())
+
+
 @app.put("/api/regions/{region_id}")
 def update_region(region_id: int, patch: RegionUpdate,
                   conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
-    existing = _get_region(conn, portee, region_id, ecriture=True)
-    fields = patch.model_dump(exclude_unset=True)
+    """Modifie les champs envoyés, et eux seuls.
+
+    CONC-3 (Q1) — `vu` porte, pour chaque champ changé, la valeur que l'écran avait vue. Si la
+    base porte autre chose, c'est un 409 qui nomme qui l'a changée et quand. Facultatif pour
+    l'API (Q8) : sans `vu`, le dernier enregistrement gagne, comme avant.
+    """
+    existing = _region_a_ecrire(conn, portee, region_id)
+    fields = patch.model_dump(exclude_unset=True, exclude={"vu"})
     if "type" in fields and fields["type"] not in TYPES_REGION:
         raise HTTPException(422, f"Type invalide : {fields['type']}")
     if "parent_id" in fields:
         _validate_parent(conn, existing["planche_id"], fields["parent_id"], region_id)
+    vu = patch.vu or {}
+    inconnus = set(vu) - set(CHAMPS_VUS)
+    if inconnus:
+        raise HTTPException(422, f"« vu » ne porte que {', '.join(CHAMPS_VUS)} : "
+                                 f"{', '.join(sorted(inconnus))} refusé.")
+    try:
+        for champ, valeur in fields.items():
+            if champ in vu:
+                conflit.verifier(conn, "regions", region_id, champ, vu=vu[champ],
+                                 actuel=existing[champ], nouveau=valeur)
+    except conflit.Perime as exc:
+        raise _conflit_http(exc)
     if fields:
         avant = journal.snapshot_region(conn, region_id)
         cols = ", ".join(f"{k} = ?" for k in fields)
@@ -709,7 +762,7 @@ def update_region(region_id: int, patch: RegionUpdate,
 @app.delete("/api/regions/{region_id}", status_code=204)
 def delete_region(region_id: int, conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
-    _get_region(conn, portee, region_id, ecriture=True)
+    _region_a_ecrire(conn, portee, region_id)
     # Désindexe la région ET tous ses descendants (le CASCADE SQL les supprime,
     # mais l'index FTS, lui, doit être nettoyé explicitement).
     descendants = conn.execute(
@@ -1227,7 +1280,7 @@ def put_annotation(region_id: int, payload: AnnotationIn,
     mélanger aux deux autres serait ambigu, d'où le 422. Deux personnes sur le MÊME champ
     restent en « le dernier gagne » : c'est le second temps du chantier.
     """
-    _get_region(conn, portee, region_id, ecriture=True)
+    _region_a_ecrire(conn, portee, region_id)
     champs = payload.model_fields_set & {"note", "tags", "tags_ajoutes", "tags_retires"}
     if "tags" in champs and champs & {"tags_ajoutes", "tags_retires"}:
         raise HTTPException(422, "« tags » remplace la liste, « tags_ajoutes » et "
@@ -1237,6 +1290,14 @@ def put_annotation(region_id: int, payload: AnnotationIn,
 
     # État avant (note + tags) pour journaliser création / modification / suppression.
     avant_annot = journal.snapshot_annotation(conn, region_id)
+    # Second temps (Q1) : la note envoyée avec `note_vue` n'écrase pas une note qu'un autre a
+    # changée depuis. Les tags n'ont pas de garde (Q3) : leurs différences commutent.
+    if "note" in champs and "note_vue" in payload.model_fields_set:
+        try:
+            conflit.verifier(conn, "annotations", region_id, "note", vu=payload.note_vue,
+                             actuel=(avant_annot or {}).get("note"), nouveau=payload.note)
+        except conflit.Perime as exc:
+            raise _conflit_http(exc)
     note = payload.note if "note" in champs else (avant_annot or {}).get("note")
 
     # Les tags que l'appelant ne LIT pas ne lui ont pas été montrés, donc ne sont pas

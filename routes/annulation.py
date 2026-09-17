@@ -22,6 +22,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 
 import autorisation
+import conflit
 import undo
 
 from socle import db, portee_courante
@@ -67,6 +68,11 @@ def undo_dernier(conn: sqlite3.Connection = Depends(db),
         res = undo.annuler(conn, agent=agent)
     except undo.UndoImpossible as exc:
         raise HTTPException(409, f"Annulation impossible : {exc}")
+    except conflit.Perime as exc:
+        # CONC-3 (Q4) — annuler écraserait ce qu'un autre a changé depuis : même 409 nommé
+        # qu'un enregistrement périmé, et rien n'est défait (la dépendance `db` roule en
+        # arrière ce que l'inversion avait commencé).
+        raise HTTPException(409, exc.detail())
     if res is None:
         # Sous un compte partagé, « rien » peut vouloir dire « rien d'assez récent » (AUTH-6) :
         # le dire, sans quoi on croirait l'historique vide. Le message garde « Rien à
