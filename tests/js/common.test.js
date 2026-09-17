@@ -66,9 +66,22 @@ test("une contrainte INCONNUE retombe sur le texte de la bibliothèque", () => {
 });
 
 test("sans corps exploitable, on retombe sur le statut HTTP", () => {
-  for (const vide of [{}, null, undefined, { detail: "" }, { detail: [] }, { detail: 42 }]) {
+  for (const vide of [{}, null, undefined, { detail: "" }, { detail: [] }, { detail: 42 },
+                      { detail: {} }, { detail: { message: "" } }, { detail: { message: 7 } }]) {
     assert.equal(messageErreur(vide, "Service Unavailable"), "Service Unavailable");
   }
+});
+
+test("un refus STRUCTURÉ montre son message, pas le statut HTTP", () => {
+  // CONC-3 : le 409 d'une version périmée et le 410 d'une région supprimée portent un
+  // OBJET. Lu comme une chaîne, il affichait « Conflict » ou « Gone » — rien d'utile.
+  const conflit = { detail: { message: "Conflit : la note a été modifiée par Bob Martin.",
+                              conflit: { champ: "note" } } };
+  assert.equal(messageErreur(conflit, "Conflict"),
+               "Conflit : la note a été modifiée par Bob Martin.");
+  const supprimee = { detail: { message: "Cette région a été supprimée par Alice.",
+                                suppression: { id: 4 } } };
+  assert.equal(messageErreur(supprimee, "Gone"), "Cette région a été supprimée par Alice.");
 });
 
 

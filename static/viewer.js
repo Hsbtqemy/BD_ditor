@@ -59,6 +59,8 @@ const state = {
   tagVocab: [],            // [{label, couleur, frequence}]
   currentTags: [],         // labels (string) de l'annotation en cours
   annotSale: annotPropre(), // CONC-3 : ce qui a CHANGÉ depuis le dernier enregistrement
+  noteVue: "",             // CONC-3 : la note telle que le serveur l'a donnée ou acceptée
+  conflit: null,           // CONC-3 : { lieu: "note"|"transcription", regionId, conflit }
   saveTimer: null,
   trRegions: [],           // régions de texte à transcrire (ordre de lecture)
   trIndex: 0,
@@ -97,6 +99,7 @@ async function loadAlbums() {
 }
 
 async function selectAlbum(id, autoSelect = true) {
+  if (conflitBloque()) return;
   state.albumId = id;
   state.exportCols = null;        // DROIT-2 : à redemander pour cet album
   chargerExportables();
@@ -158,6 +161,7 @@ function clearStage() {
 let plancheGen = 0;   // anti-course : invalide les chargements de planche périmés
 
 async function selectPlanche(id) {
+  if (conflitBloque()) return;
   flushSave();
   const p = state.planches.find((x) => x.id === id);
   if (!p) return;
@@ -337,6 +341,7 @@ function updateOverlayScale() {
    Sélection de région
    =================================================================== */
 function selectRegion(id, reveal = true) {
+  if (id !== state.selectedId && conflitBloque()) return;
   flushSave();
   state.selectedId = id;
   // F6 : la navigation clavier (flèches) passe reveal=false → ne pas re-déplier l'arbre à
@@ -873,6 +878,7 @@ async function recalcOrder() {
 
 /* Désélectionne la région courante (retour au niveau planche). */
 function deselect() {
+  if (conflitBloque()) return;
   flushSave();
   state.selectedId = null;
   renderOverlay();
@@ -893,6 +899,7 @@ function renderBreadcrumb() {
    Modes
    =================================================================== */
 function setMode(mode) {
+  if (mode !== state.mode && conflitBloque()) return;
   flushSave();
   if (state.mode === "transcription" && mode !== "transcription") trSaveFlush();
   state.mode = mode;
@@ -920,6 +927,7 @@ async function loadAnnotation(regionId) {
     const ann = await apiGet(`/api/regions/${regionId}/annotation`);
     state.currentTags = ann.tags.map((t) => t.label);
     state.annotSale = annotPropre();
+    state.noteVue = ann.note || "";
     $("#note-input").value = ann.note || "";
     renderTagChips();
     setSaveState("saved");
@@ -929,6 +937,7 @@ async function loadAnnotation(regionId) {
     toast("Erreur chargement annotation : " + e.message, "error");
     state.currentTags = [];
     state.annotSale = annotPropre();
+    state.noteVue = "";
     $("#note-input").value = "";
     renderTagChips();
     setSaveState("");
@@ -982,7 +991,8 @@ function noteModifiee() {
 function setSaveState(kind) {
   const el = $("#save-state");
   el.className = "save-state " + kind;
-  el.textContent = { saving: "Enregistrement…", saved: "Enregistré", "": "" }[kind] || "";
+  el.textContent = { saving: "Enregistrement…", saved: "Enregistré",
+                     attente: "En attente de votre choix", "": "" }[kind] || "";
 }
 
 function scheduleSave() {
@@ -1004,13 +1014,21 @@ async function saveAnnotation() {
   // court appartient à l'enregistrement suivant, pas à celui-ci.
   const sale = state.annotSale;
   const corps = {};
-  if (sale.note) corps.note = $("#note-input").value;
+  // CONC-3, second temps : la note part avec la valeur que l'écran avait VUE. Tant qu'un
+  // conflit sur la note attend un choix, elle ne part pas du tout — les tags, si.
+  const noteEnAttente = conflitSur("note", id);
+  if (sale.note && !noteEnAttente) {
+    corps.note = $("#note-input").value;
+    corps.note_vue = state.noteVue;
+  }
   if (sale.ajoutes.size) corps.tags_ajoutes = [...sale.ajoutes];
   if (sale.retires.size) corps.tags_retires = [...sale.retires];
   state.annotSale = annotPropre();
-  if (!Object.keys(corps).length) { setSaveState("saved"); return; }
+  if (sale.note && noteEnAttente) state.annotSale.note = true;
+  if (!Object.keys(corps).length) { setSaveState(noteEnAttente ? "attente" : "saved"); return; }
   try {
     const ann = await apiSend("PUT", `/api/regions/${id}/annotation`, corps);
+    if ("note" in corps && state.selectedId === id) state.noteVue = corps.note;
     const r = state.regionsById.get(id);
     if (r) { r.annotee = !!(ann.note || ann.tags.length); }
     if (state.selectedId === id) {
@@ -1023,10 +1041,11 @@ async function saveAnnotation() {
     }
     renderOverlay();
     renderTree();                            // reflète l'état annoté dans l'arbre
-    setSaveState("saved");
+    setSaveState(conflitSur("note", id) ? "attente" : "saved");
     await refreshTagVocab();
     updateStatus();
   } catch (e) {
+    if (regionDisparue(e, id)) return;
     // Rien n'est perdu tant qu'on reste sur la bulle : ce qui n'est pas parti redevient à
     // envoyer, sauf ce qu'un geste plus récent a contredit.
     if (state.selectedId === id) {
@@ -1034,6 +1053,14 @@ async function saveAnnotation() {
       if ("note" in corps) s.note = true;
       for (const l of corps.tags_ajoutes || []) if (!s.retires.has(l)) s.ajoutes.add(l);
       for (const l of corps.tags_retires || []) if (!s.ajoutes.has(l)) s.retires.add(l);
+      // CONC-3 : la note a été changée ailleurs. Le serveur n'a RIEN écrit (ni la note ni
+      // les tags) ; le bandeau demande un choix, et les tags repartent aussitôt sans elle.
+      const c = conflitDe(e, "note");
+      if (c) {
+        ouvrirConflit("note", id, c);
+        if (s.ajoutes.size || s.retires.size) scheduleSave();
+        return;
+      }
     }
     toast("Échec de sauvegarde : " + e.message, "error");
   }
@@ -1041,6 +1068,161 @@ async function saveAnnotation() {
 
 async function refreshTagVocab() {
   try { state.tagVocab = await apiGet("/api/tags"); } catch (_) {}
+}
+
+/* ===================================================================
+   Conflits (CONC-3, second temps) — deux personnes sur le MÊME champ
+   =================================================================== */
+/* Tranché par Hugo sur maquette le 2026-09-17. Quand le serveur refuse un enregistrement
+   fait sur une valeur périmée (409), un BANDEAU s'ouvre dans le panneau, au-dessus du champ :
+   il nomme l'auteur et l'heure, montre sa version (dépliée d'office), garde la saisie en
+   cours, suspend l'enregistrement de ce champ, et offre deux gestes — « Remplacer » et
+   « Garder l'autre » (libellés : `BDConflit.GESTES`, à UN seul endroit). Le focus NE saute
+   PAS au bandeau : une frappe tombée au moment du 409 serait perdue. Il s'annonce par une
+   région live et s'atteint au clavier. Tant qu'il est ouvert, changer de bulle, de planche
+   ou de mode est bloqué. */
+
+// Les champs d'une région dont on déclare la valeur vue — la liste du serveur, `CHAMPS_VUS`.
+const CHAMPS_VUS = ["type", "x", "y", "w", "h", "parent_id", "ocr_texte"];
+
+function conflitSur(lieu, regionId) {
+  return !!(state.conflit && state.conflit.lieu === lieu && state.conflit.regionId === regionId);
+}
+
+/* Le détail d'un 409 sur ce champ, ou null. */
+function conflitDe(e, champ) {
+  const c = e && e.statut === 409 && e.detail && e.detail.conflit;
+  return c && c.champ === champ ? c : null;
+}
+
+/* Bloque un changement de bulle, de planche ou de mode pendant un conflit. */
+function conflitBloque() {
+  if (!state.conflit) return false;
+  toast("Choisissez d'abord une version", "");
+  return true;
+}
+
+/* Un 410 : la région a été supprimée ailleurs. Toast NEUTRE de 8 s, et elle quitte l'écran. */
+function regionDisparue(e, id) {
+  if (!e || e.statut !== 410) return false;
+  const r = state.regionsById.get(id);
+  toast(BDConflit.messageSuppression(e.detail && e.detail.suppression, r && r.type), "", 8000);
+  retirerRegionLocale(id);
+  return true;
+}
+
+/* La région live qui ANNONCE le bandeau sans y déplacer le focus. */
+function annoncer(texte) {
+  let zone = document.getElementById("conflit-annonce");
+  if (!zone) {
+    zone = document.createElement("div");
+    zone.id = "conflit-annonce";
+    zone.className = "sr-only";
+    zone.setAttribute("aria-live", "polite");
+    document.body.appendChild(zone);
+  }
+  zone.textContent = "";
+  setTimeout(() => { zone.textContent = texte; }, 50);   // un changement, pour être relu
+}
+
+function ouvrirConflit(lieu, regionId, conflit) {
+  fermerConflit();
+  state.conflit = { lieu, regionId, conflit };
+  const champ = lieu === "note" ? $("#note-input") : $("#tr-text");
+  const titre = BDConflit.titreConflit(conflit);
+  const a = conflit.auteur;
+  const deQui = !a ? "Version enregistrée"
+    : a.meme_compte ? "Version de l'autre écran, enregistrée"
+    : `Version de ${a.nom || a.login}, enregistrée`;
+  const quoi = lieu === "note" ? "Votre note n'est pas enregistrée." : "Votre texte n'est pas enregistré.";
+
+  const b = document.createElement("div");
+  b.className = "bandeau-conflit";
+  b.id = "bandeau-conflit";
+  b.setAttribute("role", "group");
+  b.setAttribute("aria-labelledby", "bandeau-conflit-titre");
+  b.innerHTML = `
+    <p class="bandeau-titre" id="bandeau-conflit-titre"><span aria-hidden="true">⚠</span> ${escapeHtml(titre)}</p>
+    <p class="bandeau-texte">${escapeHtml(quoi)} Elle reste dans le champ ci-dessous.</p>
+    <p class="bandeau-sous">${escapeHtml(deQui)}</p>
+    <div class="bandeau-version"></div>
+    <div class="bandeau-gestes">
+      <button type="button" class="ghost" data-geste="remplacer">${escapeHtml(BDConflit.GESTES.remplacer)}</button>
+      <button type="button" class="ghost" data-geste="garder">${escapeHtml(BDConflit.GESTES.garderAutre)}</button>
+    </div>`;
+  if (lieu === "transcription") {
+    b.querySelector(".bandeau-texte").textContent = quoi + " Il reste dans le champ ci-dessous.";
+  }
+  b.querySelector(".bandeau-version").textContent = conflit.valeur_actuelle ?? "";
+  b.querySelector('[data-geste="remplacer"]').onclick = remplacerParLaMienne;
+  b.querySelector('[data-geste="garder"]').onclick = garderLAutre;
+  champ.parentNode.insertBefore(b, champ);
+
+  if (lieu === "note") setSaveState("attente");
+  else {
+    setTrSave("attente");
+    $("#tr-prev").disabled = true;
+    $("#tr-next").disabled = true;
+  }
+  annoncer(`${titre}. ${quoi}`);
+}
+
+function fermerConflit() {
+  const b = document.getElementById("bandeau-conflit");
+  if (b) b.remove();
+  const avait = state.conflit;
+  state.conflit = null;
+  if (avait && avait.lieu === "transcription") {
+    $("#tr-prev").disabled = false;
+    $("#tr-next").disabled = false;
+  }
+}
+
+/* « Remplacer » : renvoyer SA version, qui écrase celle de l'autre. La version de l'autre
+   devient la valeur vue ; si un troisième a écrit entre-temps, un nouveau bandeau s'ouvre. */
+function remplacerParLaMienne() {
+  const c = state.conflit;
+  if (!c) return;
+  const valeur = c.conflit.valeur_actuelle ?? "";
+  fermerConflit();
+  if (c.lieu === "note") {
+    state.noteVue = valeur;
+    state.annotSale.note = true;
+    clearTimeout(state.saveTimer); state.saveTimer = null;
+    saveAnnotation();
+    $("#note-input").focus();
+  } else {
+    const r = state.regionsById.get(c.regionId);
+    if (r) r.ocr_texte = valeur;
+    const t = state.trRegions.find((x) => x.id === c.regionId);
+    if (t) t.ocr_texte = valeur;
+    trSaveCurrent();
+    $("#tr-text").focus();
+  }
+}
+
+/* « Garder l'autre » : conserver la version concurrente ; la saisie en cours est abandonnée. */
+function garderLAutre() {
+  const c = state.conflit;
+  if (!c) return;
+  const valeur = c.conflit.valeur_actuelle ?? "";
+  fermerConflit();
+  if (c.lieu === "note") {
+    $("#note-input").value = valeur;
+    state.noteVue = valeur;
+    state.annotSale.note = false;
+    setSaveState("saved");
+    $("#note-input").focus();
+  } else {
+    const r = state.regionsById.get(c.regionId);
+    if (r) r.ocr_texte = valeur;
+    const t = state.trRegions.find((x) => x.id === c.regionId);
+    if (t) t.ocr_texte = valeur;
+    $("#tr-text").value = valeur;
+    setTrSave("saved");
+    majBoutonCasse();
+    $("#tr-text").focus();
+  }
 }
 
 /* ===================================================================
@@ -1078,7 +1260,10 @@ function buildTrMini() {
     rect.setAttribute("width", r.w); rect.setAttribute("height", r.h);
     rect.setAttribute("class", "tr-region");
     rect.dataset.i = i;
-    rect.onclick = () => { trSaveFlush(); state.trIndex = i; renderTranscription(); };
+    rect.onclick = () => {
+      if (conflitBloque()) return;
+      trSaveFlush(); state.trIndex = i; renderTranscription();
+    };
   });
   mini.appendChild(svg);
 }
@@ -1097,6 +1282,8 @@ function renderTranscription() {
   // qu'une région est nommée, si bien qu'un rechargement rouvre sur la bonne bulle mais
   // pas en Transcription. Rétablir le MODE demanderait de le porter dans l'URL aussi.
   if (r) { state.selectedId = r.id; syncUrl(); }
+  // Un bandeau ne survit pas à la bulle qu'il concerne ; il survit à un nouveau rendu d'ELLE.
+  if (state.conflit && (!r || state.conflit.regionId !== r.id)) fermerConflit();
   $("#tr-progress").textContent = list.length
     ? `Bulle ${state.trIndex + 1} / ${list.length}` : "Aucune région de texte";
   $("#tr-type").textContent = r ? r.type : "";
@@ -1169,7 +1356,8 @@ function trNormaliserCasse() {
 function setTrSave(kind) {
   const el = $("#tr-save");
   el.className = "save-state " + kind;
-  el.textContent = { saving: "Enregistrement…", saved: "Enregistré", "": "" }[kind] || "";
+  el.textContent = { saving: "Enregistrement…", saved: "Enregistré",
+                     attente: "En attente de votre choix", "": "" }[kind] || "";
 }
 
 function trScheduleSave() {
@@ -1187,18 +1375,30 @@ async function trSaveCurrent() {
   state.trSaveTimer = null;
   const r = trCurrent();
   if (!r) return;
+  // CONC-3 : pendant un conflit sur ce texte, rien ne part — la saisie attend un choix.
+  if (conflitSur("transcription", r.id)) { setTrSave("attente"); return; }
   const val = $("#tr-text").value;
   if (val === (r.ocr_texte || "")) { setTrSave("saved"); return; }
   try {
-    const updated = await apiSend("PUT", `/api/regions/${r.id}`, { ocr_texte: val });
+    // `r.ocr_texte` est le texte que cet écran a VU : chargé avec la planche, puis mis à
+    // jour à chaque enregistrement réussi.
+    const updated = await apiSend("PUT", `/api/regions/${r.id}`,
+                                  { ocr_texte: val, vu: { ocr_texte: r.ocr_texte || "" } });
     Object.assign(state.regionsById.get(r.id) || {}, updated);
     r.ocr_texte = val;
     setTrSave("saved");
-  } catch (e) { toast("Sauvegarde : " + e.message, "error"); }
+  } catch (e) {
+    if (regionDisparue(e, r.id)) return;
+    const c = conflitDe(e, "ocr_texte");
+    if (c) { ouvrirConflit("transcription", r.id, c); return; }
+    toast("Sauvegarde : " + e.message, "error");
+  }
 }
 
 async function trNext() {
+  if (conflitBloque()) return;
   await trSaveCurrent();
+  if (state.conflit) return;               // l'enregistrement vient d'ouvrir un conflit
   if (state.trIndex < state.trRegions.length - 1) {
     state.trIndex++; renderTranscription();
   } else if ($("#tr-auto").checked) {
@@ -1213,7 +1413,9 @@ async function trNext() {
 }
 
 async function trPrev() {
+  if (conflitBloque()) return;
   await trSaveCurrent();
+  if (state.conflit) return;
   if (state.trIndex > 0) { state.trIndex--; renderTranscription(); }
 }
 
@@ -1237,6 +1439,9 @@ function setupTranscription() {
   // sans cette seconde écoute, le bouton garderait l'état calculé au rendu de la bulle.
   $("#tr-text").addEventListener("input", majBoutonCasse);
   $("#tr-text").addEventListener("keydown", (e) => {
+    // CONC-3 : pendant un conflit, `Tab` rend au clavier son rôle NORMAL — c'est ainsi
+    // qu'on atteint le bandeau sans que le focus y ait sauté.
+    if (e.key === "Tab" && state.conflit) return;
     if ((e.key === "Enter" && (e.ctrlKey || e.metaKey)) ||
         (e.key === "Tab" && !e.shiftKey)) { e.preventDefault(); trNext(); }
     else if (e.key === "Tab" && e.shiftKey) { e.preventDefault(); trPrev(); }
@@ -1628,39 +1833,87 @@ function loadSituation(regionId) {
 /* ===================================================================
    Édition de région (type, coordonnées, suppression)
    =================================================================== */
-async function patchRegion(id, fields) {
+async function patchRegion(id, fields, vuExplicite = null) {
   const r = state.regionsById.get(id);
+  // CONC-3 : chaque champ changé part avec la valeur que l'écran avait VUE. Les appelants
+  // n'écrivent l'état local qu'après la réponse, donc `r` porte encore cette valeur ; le
+  // glissement, qui déplace la région pendant le geste, passe la sienne (`vuExplicite`).
+  const vu = {};
+  for (const k of Object.keys(fields)) {
+    if (!CHAMPS_VUS.includes(k)) continue;
+    if (vuExplicite && k in vuExplicite) vu[k] = vuExplicite[k];
+    else if (r) vu[k] = r[k] ?? null;
+  }
   if (r && r.source === "kumiko" &&
       ("x" in fields || "y" in fields || "w" in fields || "h" in fields || "type" in fields)) {
     fields.source = "corrige";
   }
   try {
-    const updated = await apiSend("PUT", `/api/regions/${id}`, fields);
+    const updated = await apiSend("PUT", `/api/regions/${id}`,
+                                  Object.keys(vu).length ? { ...fields, vu } : fields);
     Object.assign(state.regionsById.get(id), updated);
     renderOverlay();
     renderPanel();
-  } catch (e) { toast("Échec mise à jour : " + e.message, "error"); }
+  } catch (e) {
+    if (regionDisparue(e, id)) return;
+    if (e.statut === 409 && e.detail && e.detail.conflit) {
+      // Géométrie, type ou rattachement changés ailleurs : pas de bandeau, la perte vaut un
+      // geste. La région se RECHARGE, et un toast dit qui l'a changée (verdict Q6).
+      await rechargerRegion(id);
+      toast(`${BDConflit.titreConflit(e.detail.conflit)} : la région est rechargée.`, "", 8000);
+      return;
+    }
+    toast("Échec mise à jour : " + e.message, "error");
+  }
 }
 
 async function deleteRegion(id) {
   try {
     await apiSend("DELETE", `/api/regions/${id}`);
-    // Retire la région et ses descendants localement.
-    const toRemove = new Set([id]);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const r of state.regions)
-        if (r.parent_id != null && toRemove.has(r.parent_id) && !toRemove.has(r.id)) {
-          toRemove.add(r.id); changed = true;
-        }
-    }
-    state.regions = state.regions.filter((r) => !toRemove.has(r.id));
-    state.regionsById = new Map(state.regions.map((r) => [r.id, r]));
-    if (toRemove.has(state.selectedId)) state.selectedId = null;
-    renderOverlay(); renderPanel(); updateStatus();
+    retirerRegionLocale(id);
     toast("Région supprimée");
-  } catch (e) { toast("Échec suppression : " + e.message, "error"); }
+  } catch (e) {
+    if (regionDisparue(e, id)) return;
+    toast("Échec suppression : " + e.message, "error");
+  }
+}
+
+/* Retire une région et ses descendants de l'écran — après sa suppression, ici ou ailleurs. */
+function retirerRegionLocale(id) {
+  const toRemove = new Set([id]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const r of state.regions)
+      if (r.parent_id != null && toRemove.has(r.parent_id) && !toRemove.has(r.id)) {
+        toRemove.add(r.id); changed = true;
+      }
+  }
+  if (state.conflit && toRemove.has(state.conflit.regionId)) fermerConflit();
+  state.regions = state.regions.filter((r) => !toRemove.has(r.id));
+  state.regionsById = new Map(state.regions.map((r) => [r.id, r]));
+  if (toRemove.has(state.selectedId)) state.selectedId = null;
+  if (state.mode === "transcription") {
+    const courante = trCurrent();
+    state.trRegions = state.trRegions.filter((r) => !toRemove.has(r.id));
+    const i = courante ? state.trRegions.indexOf(courante) : -1;
+    state.trIndex = i >= 0 ? i : Math.min(state.trIndex, Math.max(0, state.trRegions.length - 1));
+    buildTrMini();
+    renderTranscription();
+  }
+  renderOverlay(); renderPanel(); updateStatus();
+}
+
+/* Recharge UNE région depuis le serveur (il n'a pas de lecture unitaire : la planche). */
+async function rechargerRegion(id) {
+  if (!state.planche) return;
+  try {
+    const regions = await apiGet(`/api/planches/${state.planche.id}/regions`);
+    const fraiche = regions.find((x) => x.id === id);
+    if (!fraiche) { retirerRegionLocale(id); return; }
+    Object.assign(state.regionsById.get(id) || {}, fraiche);
+  } catch (_) { /* la vue garde l'état local : le toast dit déjà ce qui s'est passé */ }
+  renderOverlay(); renderPanel();
 }
 
 /* Plus petite case contenant le point (cx, cy) en px master, sinon null.
@@ -1815,7 +2068,9 @@ window.addEventListener("mouseup", (e) => {
     }
   } else if (d.kind === "move" || d.kind === "resize") {
     const r = selectedRegion();
-    if (r) patchRegion(r.id, { x: r.x, y: r.y, w: r.w, h: r.h });
+    // La région a bougé PENDANT le geste : la valeur vue est celle d'avant (`d.orig`).
+    if (r) patchRegion(r.id, { x: r.x, y: r.y, w: r.w, h: r.h },
+                       { w: r.w, h: r.h, ...d.orig });
   }
 });
 
@@ -2798,6 +3053,7 @@ function setupControls() {
    d'annotation (depuis le journal A3), puis rafraîchit la vue touchée. Le serveur porte la
    pile (Ctrl+Z répété remonte l'historique) ; ici on ne fait qu'appeler et rafraîchir. */
 async function undoLast() {
+  if (conflitBloque()) return;
   // Ne pas laisser une sauvegarde différée re-appliquer un buffer périmé APRÈS l'annulation.
   clearTimeout(state.saveTimer);
   state.saveTimer = null;
@@ -2805,6 +3061,11 @@ async function undoLast() {
   try {
     res = await apiSend("POST", "/api/undo");
   } catch (e) {
+    if (e.statut === 409 && e.detail && e.detail.conflit) {
+      // CONC-3 : annuler écraserait ce qu'un autre a changé depuis.
+      toast(BDConflit.messageAnnulationRefusee(e.detail.conflit), "error", 8000);
+      return;
+    }
     toast(e.message, /rien à annuler/i.test(e.message) ? "" : "error");
     return;
   }

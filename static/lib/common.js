@@ -62,6 +62,10 @@
   function messageErreur(corps, statusText) {
     const d = corps && corps.detail;
     if (typeof d === "string" && d) return d;
+    // CONC-3 — un refus STRUCTURÉ (409 d'une version périmée, 410 d'une région supprimée)
+    // porte son texte dans `message`, à côté de ce qu'un écran en reconstruit.
+    if (d && !Array.isArray(d) && typeof d === "object" && typeof d.message === "string" &&
+        d.message) return d.message;
     if (Array.isArray(d) && d.length) {
       return d.map((e) => {
         // `loc` = ["body", "annee"] : le dernier segment NOMME le champ fautif, et
@@ -76,9 +80,7 @@
   /* GET JSON ; lève une Error portant le message lisible du refus. */
   async function apiGet(path) {
     const r = await fetch(path);
-    if (!r.ok) {
-      throw new Error(messageErreur(await r.json().catch(() => ({})), r.statusText));
-    }
+    if (!r.ok) throw erreurApi(r, await r.json().catch(() => ({})));
     return r.json();
   }
 
@@ -99,15 +101,24 @@
       body: body ? JSON.stringify(body) : undefined,
       signal: opts.signal,
     });
-    if (!r.ok) {
-      throw new Error(messageErreur(await r.json().catch(() => ({})), r.statusText));
-    }
+    if (!r.ok) throw erreurApi(r, await r.json().catch(() => ({})));
     return r.status === 204 ? null : r.json();
   }
 
-  /* Toast accessible (role=status / aria-live=polite), auto-effacé après 4 s. Le
-     conteneur #toasts est créé à la demande puis réutilisé. */
-  function toast(msg, kind = "") {
+  /* L'erreur qu'on lève sur un refus de l'API : son MESSAGE est celui qu'on montre, et elle
+     garde le statut et le détail brut. CONC-3 : un 409 ou un 410 se lit par ses champs
+     (`detail.conflit`, `detail.suppression`), pas en analysant une phrase. */
+  function erreurApi(r, corps) {
+    const err = new Error(messageErreur(corps, r.statusText));
+    err.statut = r.status;
+    err.detail = corps ? corps.detail : undefined;
+    return err;
+  }
+
+  /* Toast accessible (role=status / aria-live=polite), auto-effacé après 4 s — ou après
+     `duree` ms quand l'appelant a plus à dire (CONC-3 : une case supprimée par un autre,
+     8 s). Le conteneur #toasts est créé à la demande puis réutilisé. */
+  function toast(msg, kind = "", duree = 4000) {
     let box = document.getElementById("toasts");
     if (!box) {
       box = document.createElement("div");
@@ -120,7 +131,7 @@
     el.className = "toast " + kind;
     el.textContent = msg;
     box.appendChild(el);
-    setTimeout(() => el.remove(), 4000);
+    setTimeout(() => el.remove(), duree);
   }
 
   /* L'identité courante, mémoïsée — le login et les groupes qui administrent l'instance.
