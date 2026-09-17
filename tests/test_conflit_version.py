@@ -206,6 +206,20 @@ def test_un_changement_sans_trace_est_refuse_quand_meme(client, planche):
     assert "modifié ailleurs" in rep.json()["detail"]["message"]
 
 
+def test_le_message_accorde_le_participe_au_champ(client, planche):
+    """« la note a été modifiée », « le texte a été modifié » : le message sort de l'instance
+    (outils, appelants de l'API) tel quel, et une faute d'accord s'y lit."""
+    rid = _bulle(client, planche["id"], ocr_texte="VU")
+    client.put(f"/api/regions/{rid}/annotation", json={"note": "écran 1", "note_vue": ""})
+    note = client.put(f"/api/regions/{rid}/annotation",
+                      json={"note": "écran 2", "note_vue": ""}).json()["detail"]["message"]
+    assert "la note a été modifiée " in note and "l'avez vue." in note, note
+    client.put(f"/api/regions/{rid}", json={"ocr_texte": "AUTRE", "vu": {"ocr_texte": "VU"}})
+    texte = client.put(f"/api/regions/{rid}", json={"ocr_texte": "MOI", "vu": {"ocr_texte": "VU"}}
+                       ).json()["detail"]["message"]
+    assert "le texte a été modifié " in texte and "l'avez vu." in texte, texte
+
+
 # --------------------------------------------------------------------------- #
 # Q7 — qui : le nom affiché, ou « un autre écran de ce même compte »
 # --------------------------------------------------------------------------- #
@@ -247,7 +261,7 @@ def test_un_acte_d_avant_le_proxy_ne_se_nomme_pas_none(client, planche, monkeypa
     assert rep.status_code == 409, rep.text
     d = rep.json()["detail"]
     assert d["conflit"]["auteur"]["meme_compte"] is False
-    assert "None" not in d["message"] and "modifié ailleurs" in d["message"]
+    assert "None" not in d["message"] and "modifiée ailleurs" in d["message"]
 
 
 def test_une_annulation_est_nommee_comme_auteur(client, planche, monkeypatch):

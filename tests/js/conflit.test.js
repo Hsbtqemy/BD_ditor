@@ -10,7 +10,7 @@ const iso = (d) => d.toISOString();
 const MAINTENANT = local(2026, 9, 17, 18, 0);
 
 test("les deux gestes vivent à un seul endroit, et ne se modifient pas en passant", () => {
-  assert.equal(C.GESTES.remplacer, "Remplacer");
+  assert.equal(C.GESTES.remplacer, "Remplacer par la mienne");
   assert.equal(C.GESTES.garderAutre, "Garder l'autre");
   assert.ok(Object.isFrozen(C.GESTES));
 });
@@ -57,6 +57,14 @@ test("le titre nomme le champ et l'accorde", () => {
                "Note modifiée depuis un autre écran de ce même compte à 14 h 32");
   assert.equal(C.titreConflit({ champ: "note", auteur: null }, MAINTENANT),
                "Note modifiée ailleurs");
+});
+
+test("un conflit arrivé après qu'on a quitté le champ dit que la saisie n'est pas partie", () => {
+  const auteur = { nom: "Bob Martin", login: "bob", le: iso(local(2026, 9, 17, 14, 32)) };
+  assert.equal(C.messageNonEnregistre({ champ: "note", auteur }, MAINTENANT),
+               "Note modifiée par Bob Martin à 14 h 32 : la vôtre n'a pas été enregistrée.");
+  assert.equal(C.messageNonEnregistre({ champ: "ocr_texte", auteur }, MAINTENANT),
+               "Texte modifié par Bob Martin à 14 h 32 : le vôtre n'a pas été enregistré.");
 });
 
 test("le message d'une région supprimée dit ce qu'elle était", () => {

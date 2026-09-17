@@ -16,6 +16,8 @@ const API = "";
 const HANDLE_PX = 9;      // taille écran cible des poignées
 const LABEL_PX = 13;      // taille écran cible des libellés de région
 const SAVE_DEBOUNCE = 500;
+// CONC-3 : ce qu'un geste qui quitte un champ attend son enregistrement, avant de rendre la main.
+const ATTENTE_MAX_MS = 5000;
 
 const SVGNS = "http://www.w3.org/2000/svg";
 
@@ -61,6 +63,10 @@ const state = {
   annotSale: annotPropre(), // CONC-3 : ce qui a CHANGÉ depuis le dernier enregistrement
   noteVue: "",             // CONC-3 : la note telle que le serveur l'a donnée ou acceptée
   conflit: null,           // CONC-3 : { lieu: "note"|"transcription", regionId, conflit }
+  envoiNote: null,         // CONC-3 : l'enregistrement de note pas encore revenu (promesse)
+  envoiTr: null,           // CONC-3 : de même pour le texte transcrit
+  geste: null,             // CONC-3 : le geste retenu en attendant la réponse, { rejouer }
+  partirQuandMeme: false,  // CONC-3 : après une attente vaine, le geste suivant part
   saveTimer: null,
   trRegions: [],           // régions de texte à transcrire (ordre de lecture)
   trIndex: 0,
@@ -99,7 +105,9 @@ async function loadAlbums() {
 }
 
 async function selectAlbum(id, autoSelect = true) {
-  if (conflitBloque()) return;
+  if (conflitBloque()) { $("#album-select").value = state.albumId; return; }
+  const rejouer = () => { $("#album-select").value = id; selectAlbum(id, autoSelect); };
+  if (!partirApresEnregistrement(rejouer)) { $("#album-select").value = state.albumId; return; }
   state.albumId = id;
   state.exportCols = null;        // DROIT-2 : à redemander pour cet album
   chargerExportables();
@@ -162,6 +170,7 @@ let plancheGen = 0;   // anti-course : invalide les chargements de planche péri
 
 async function selectPlanche(id) {
   if (conflitBloque()) return;
+  if (!partirApresEnregistrement(() => selectPlanche(id))) return;
   flushSave();
   const p = state.planches.find((x) => x.id === id);
   if (!p) return;
@@ -341,7 +350,10 @@ function updateOverlayScale() {
    Sélection de région
    =================================================================== */
 function selectRegion(id, reveal = true) {
-  if (id !== state.selectedId && conflitBloque()) return;
+  // CONC-3 : pendant un conflit, rien ne se sélectionne — pas même la bulle COURANTE, dont
+  // le rechargement effacerait la saisie que le bandeau garde.
+  if (state.conflit) { if (id !== state.selectedId) conflitBloque(); return; }
+  if (!partirApresEnregistrement(() => selectRegion(id, reveal))) return;
   flushSave();
   state.selectedId = id;
   // F6 : la navigation clavier (flèches) passe reveal=false → ne pas re-déplier l'arbre à
@@ -879,6 +891,7 @@ async function recalcOrder() {
 /* Désélectionne la région courante (retour au niveau planche). */
 function deselect() {
   if (conflitBloque()) return;
+  if (!partirApresEnregistrement(() => deselect())) return;
   flushSave();
   state.selectedId = null;
   renderOverlay();
@@ -899,9 +912,10 @@ function renderBreadcrumb() {
    Modes
    =================================================================== */
 function setMode(mode) {
-  if (mode !== state.mode && conflitBloque()) return;
-  flushSave();
-  if (state.mode === "transcription" && mode !== "transcription") trSaveFlush();
+  // CONC-3 : même garde que `selectRegion` — un clic sur le mode COURANT recharge le champ.
+  if (state.conflit) { if (mode !== state.mode) conflitBloque(); return; }
+  // Ce qui attendait d'être enregistré, note ou texte, part ici — et le geste l'attend.
+  if (!partirApresEnregistrement(() => setMode(mode))) return;
   state.mode = mode;
   document.querySelectorAll(".mode-btn").forEach((b) => {
     const on = b.dataset.mode === mode;
@@ -992,24 +1006,32 @@ function setSaveState(kind) {
   const el = $("#save-state");
   el.className = "save-state " + kind;
   el.textContent = { saving: "Enregistrement…", saved: "Enregistré",
+                     retenu: "Enregistrement en cours…",
                      attente: "En attente de votre choix", "": "" }[kind] || "";
 }
 
 function scheduleSave() {
   setSaveState("saving");
+  state.partirQuandMeme = false;           // on travaille de nouveau : plus de laissez-passer
   clearTimeout(state.saveTimer);
-  state.saveTimer = setTimeout(saveAnnotation, SAVE_DEBOUNCE);
+  const id = state.selectedId;
+  state.saveTimer = setTimeout(() => { state.saveTimer = null; envoyerNote(id); }, SAVE_DEBOUNCE);
 }
 function flushSave() {
-  if (state.saveTimer) { clearTimeout(state.saveTimer); state.saveTimer = null; saveAnnotation(); }
+  if (state.saveTimer) {
+    clearTimeout(state.saveTimer); state.saveTimer = null; envoyerNote(state.selectedId);
+  }
 }
 
-async function saveAnnotation() {
-  state.saveTimer = null;
+/* Rend "conflit" (le bandeau est ouvert), "echec" (rien n'est parti, et c'est dit), ou rien. */
+async function saveAnnotation(prevu = state.selectedId) {
   const id = state.selectedId;
   // F8 : si le timer tombe hors mode annotation (ou sans sélection), NE PAS laisser
   // l'indicateur bloqué sur « Enregistrement… ».
   if (id == null || state.mode !== "annotation") { setSaveState(""); return; }
+  // CONC-3 : prévu pour une bulle qu'on a quittée depuis — ce qui est à l'écran ne la
+  // concerne plus, et ne doit pas s'écrire sur celle-ci.
+  if (id !== prevu) return;
   // Ce qui part est retiré de « sale » AVANT l'aller-retour : un geste fait pendant qu'il
   // court appartient à l'enregistrement suivant, pas à celui-ci.
   const sale = state.annotSale;
@@ -1056,13 +1078,19 @@ async function saveAnnotation() {
       // CONC-3 : la note a été changée ailleurs. Le serveur n'a RIEN écrit (ni la note ni
       // les tags) ; le bandeau demande un choix, et les tags repartent aussitôt sans elle.
       const c = conflitDe(e, "note");
-      if (c) {
+      if (c && state.mode === "annotation") {
         ouvrirConflit("note", id, c);
         if (s.ajoutes.size || s.retires.size) scheduleSave();
-        return;
+        return "conflit";
       }
     }
+    // Filet : un geste qui quitte la bulle ATTEND l'enregistrement (`partirApresEnregistrement`),
+    // sauf quand on a insisté pour partir. Ouvrir alors le bandeau dans un panneau quitté
+    // piégerait l'écran — le blocage empêcherait d'y revenir. Le dire.
+    const c = conflitDe(e, "note");
+    if (c) { toast(BDConflit.messageNonEnregistre(c), "error", 8000); return "echec"; }
     toast("Échec de sauvegarde : " + e.message, "error");
+    return "echec";
   }
 }
 
@@ -1071,16 +1099,84 @@ async function refreshTagVocab() {
 }
 
 /* ===================================================================
+   Quitter un champ attend son enregistrement (CONC-3, second temps)
+   =================================================================== */
+/* Tranché par Hugo le 2026-09-17, SANS maquette, sur description. Changer de bulle, de mode,
+   de planche ou d'album pendant qu'un enregistrement n'est pas revenu RETIENT le geste : il
+   se voit (« Enregistrement en cours… », à la place de l'indicateur) et se rejoue seul à la
+   réponse, sans clic à refaire. Au 409, on reste : le bandeau s'ouvre sur la saisie. Sans
+   cette attente, le refus revenait sur un champ quitté, et le bandeau s'ouvrait dans un
+   panneau masqué, où le blocage interdisait de revenir.
+   L'attente est BORNÉE : au-delà d'ATTENTE_MAX_MS, ou sur un échec franc, un message le dit,
+   la saisie reste dans le champ, et le geste suivant part sans attendre. On ne reste jamais
+   coincé derrière un serveur muet. */
+function partirApresEnregistrement(rejouer) {
+  if (state.geste) { state.geste.rejouer = rejouer; return false; }   // le dernier geste l'emporte
+  const envois = lancerEnvois();
+  if (state.partirQuandMeme) { state.partirQuandMeme = false; return true; }
+  if (!envois) return true;
+  const geste = { rejouer };
+  state.geste = geste;
+  if (state.envoiNote) setSaveState("retenu");
+  if (state.envoiTr) setTrSave("retenu");
+  const delai = setTimeout(() => {
+    if (state.geste !== geste) return;
+    state.geste = null;
+    state.partirQuandMeme = true;
+    toast("L'enregistrement n'a pas abouti. Votre saisie reste dans le champ ; "
+          + "refaites le geste pour partir quand même.", "error", 8000);
+  }, ATTENTE_MAX_MS);
+  envois.then((issues) => {
+    clearTimeout(delai);
+    if (state.geste !== geste) return;       // attente expirée : la main est déjà rendue
+    state.geste = null;
+    if (state.conflit) return;               // 409 : on reste, le bandeau est ouvert
+    if (issues.includes("echec")) { state.partirQuandMeme = true; return; }   // déjà dit
+    geste.rejouer();
+  });
+  return false;
+}
+
+/* Fait partir ce qui attendait son délai de frappe, et rend la promesse de TOUS les
+   enregistrements pas encore revenus — null s'il n'y en a aucun. */
+function lancerEnvois() {
+  flushSave();
+  if (state.mode === "transcription") {
+    const r = trCurrent();
+    const modifie = r && !state.envoiTr && $("#tr-text").value !== (r.ocr_texte || "");
+    if (state.trSaveTimer || modifie) trSaveFlush();
+  }
+  const envois = [state.envoiNote, state.envoiTr].filter(Boolean);
+  return envois.length ? Promise.all(envois) : null;
+}
+
+/* Les enregistrements d'un même champ partent L'UN APRÈS L'AUTRE. En parallèle, le second
+   déclarerait la valeur vue d'AVANT le premier — connue seulement à son retour — et l'écran
+   entrerait en conflit avec lui-même dès qu'un aller-retour dépasse le délai de frappe. */
+function enchainer(cle, envoyer) {
+  // Rien en cours : partir TOUT DE SUITE, pendant que l'écran montre encore ce qui part.
+  const p = state[cle] ? state[cle].then(envoyer) : envoyer();
+  state[cle] = p;
+  const fin = () => { if (state[cle] === p) state[cle] = null; };
+  p.then(fin, fin);
+  return p;
+}
+
+/* Chaque enregistrement vise la bulle d'où il est parti, jamais celle d'arrivée. */
+function envoyerNote(id) { return enchainer("envoiNote", () => saveAnnotation(id)); }
+function envoyerTexte(id) { return enchainer("envoiTr", () => trSaveCurrent(id)); }
+
+/* ===================================================================
    Conflits (CONC-3, second temps) — deux personnes sur le MÊME champ
    =================================================================== */
 /* Tranché par Hugo sur maquette le 2026-09-17. Quand le serveur refuse un enregistrement
    fait sur une valeur périmée (409), un BANDEAU s'ouvre dans le panneau, au-dessus du champ :
    il nomme l'auteur et l'heure, montre sa version (dépliée d'office), garde la saisie en
-   cours, suspend l'enregistrement de ce champ, et offre deux gestes — « Remplacer » et
-   « Garder l'autre » (libellés : `BDConflit.GESTES`, à UN seul endroit). Le focus NE saute
-   PAS au bandeau : une frappe tombée au moment du 409 serait perdue. Il s'annonce par une
-   région live et s'atteint au clavier. Tant qu'il est ouvert, changer de bulle, de planche
-   ou de mode est bloqué. */
+   cours, suspend l'enregistrement de ce champ, et offre deux gestes — « Remplacer par la
+   mienne » et « Garder l'autre » (libellés : `BDConflit.GESTES`, à UN seul endroit). Le
+   focus NE saute PAS au bandeau : une frappe tombée au moment du 409 serait perdue. Il
+   s'annonce par une région live et s'atteint au clavier. Tant qu'il est ouvert, changer de
+   bulle, de planche ou de mode est bloqué. */
 
 // Les champs d'une région dont on déclare la valeur vue — la liste du serveur, `CHAMPS_VUS`.
 const CHAMPS_VUS = ["type", "x", "y", "w", "h", "parent_id", "ocr_texte"];
@@ -1178,8 +1274,9 @@ function fermerConflit() {
   }
 }
 
-/* « Remplacer » : renvoyer SA version, qui écrase celle de l'autre. La version de l'autre
-   devient la valeur vue ; si un troisième a écrit entre-temps, un nouveau bandeau s'ouvre. */
+/* « Remplacer par la mienne » : renvoyer SA version, qui écrase celle de l'autre. La version
+   de l'autre devient la valeur vue ; si un troisième a écrit entre-temps, un nouveau bandeau
+   s'ouvre. */
 function remplacerParLaMienne() {
   const c = state.conflit;
   if (!c) return;
@@ -1189,14 +1286,14 @@ function remplacerParLaMienne() {
     state.noteVue = valeur;
     state.annotSale.note = true;
     clearTimeout(state.saveTimer); state.saveTimer = null;
-    saveAnnotation();
+    envoyerNote(c.regionId);
     $("#note-input").focus();
   } else {
     const r = state.regionsById.get(c.regionId);
     if (r) r.ocr_texte = valeur;
     const t = state.trRegions.find((x) => x.id === c.regionId);
     if (t) t.ocr_texte = valeur;
-    trSaveCurrent();
+    envoyerTexte(c.regionId);
     $("#tr-text").focus();
   }
 }
@@ -1260,10 +1357,14 @@ function buildTrMini() {
     rect.setAttribute("width", r.w); rect.setAttribute("height", r.h);
     rect.setAttribute("class", "tr-region");
     rect.dataset.i = i;
-    rect.onclick = () => {
+    // Comme Précédent et Suivant : attendre l'enregistrement, pour qu'un conflit ouvre son
+    // bandeau sur la bulle qu'on quittait au lieu de la perdre.
+    const aller = () => {
       if (conflitBloque()) return;
-      trSaveFlush(); state.trIndex = i; renderTranscription();
+      if (!partirApresEnregistrement(aller)) return;
+      state.trIndex = i; renderTranscription();
     };
+    rect.onclick = aller;
   });
   mini.appendChild(svg);
 }
@@ -1357,24 +1458,33 @@ function setTrSave(kind) {
   const el = $("#tr-save");
   el.className = "save-state " + kind;
   el.textContent = { saving: "Enregistrement…", saved: "Enregistré",
+                     retenu: "Enregistrement en cours…",
                      attente: "En attente de votre choix", "": "" }[kind] || "";
 }
 
 function trScheduleSave() {
   setTrSave("saving");
+  state.partirQuandMeme = false;           // on travaille de nouveau : plus de laissez-passer
   clearTimeout(state.trSaveTimer);
-  state.trSaveTimer = setTimeout(trSaveCurrent, SAVE_DEBOUNCE);
+  const r = trCurrent();
+  const id = r && r.id;
+  state.trSaveTimer = setTimeout(() => { state.trSaveTimer = null; envoyerTexte(id); },
+                                 SAVE_DEBOUNCE);
 }
 function trSaveFlush() {
   if (state.trSaveTimer) { clearTimeout(state.trSaveTimer); state.trSaveTimer = null; }
-  trSaveCurrent();
+  const r = trCurrent();
+  return envoyerTexte(r && r.id);
 }
 
-async function trSaveCurrent() {
-  clearTimeout(state.trSaveTimer);   // purge le debounce éventuel (évite refire)
-  state.trSaveTimer = null;
+/* Rend "conflit", "echec" ou rien, comme `saveAnnotation`. Le délai de frappe se purge chez
+   l'APPELANT : enchaîné, cet enregistrement court après une frappe plus récente, dont il
+   effacerait le minuteur. */
+async function trSaveCurrent(prevu) {
   const r = trCurrent();
   if (!r) return;
+  // CONC-3 : prévu pour une bulle qu'on a quittée depuis — ne rien écrire sur celle-ci.
+  if (prevu !== undefined && r.id !== prevu) return;
   // CONC-3 : pendant un conflit sur ce texte, rien ne part — la saisie attend un choix.
   if (conflitSur("transcription", r.id)) { setTrSave("attente"); return; }
   const val = $("#tr-text").value;
@@ -1390,15 +1500,19 @@ async function trSaveCurrent() {
   } catch (e) {
     if (regionDisparue(e, r.id)) return;
     const c = conflitDe(e, "ocr_texte");
-    if (c) { ouvrirConflit("transcription", r.id, c); return; }
+    // Le bandeau ne s'ouvre que si l'on est encore sur CE texte ; sinon — on a insisté pour
+    // partir —, le conflit se dit par un toast (cf. `saveAnnotation`).
+    const ici = state.mode === "transcription" && trCurrent() && trCurrent().id === r.id;
+    if (c && ici) { ouvrirConflit("transcription", r.id, c); return "conflit"; }
+    if (c) { toast(BDConflit.messageNonEnregistre(c), "error", 8000); return "echec"; }
     toast("Sauvegarde : " + e.message, "error");
+    return "echec";
   }
 }
 
 async function trNext() {
   if (conflitBloque()) return;
-  await trSaveCurrent();
-  if (state.conflit) return;               // l'enregistrement vient d'ouvrir un conflit
+  if (!partirApresEnregistrement(trNext)) return;
   if (state.trIndex < state.trRegions.length - 1) {
     state.trIndex++; renderTranscription();
   } else if ($("#tr-auto").checked) {
@@ -1414,8 +1528,7 @@ async function trNext() {
 
 async function trPrev() {
   if (conflitBloque()) return;
-  await trSaveCurrent();
-  if (state.conflit) return;
+  if (!partirApresEnregistrement(trPrev)) return;
   if (state.trIndex > 0) { state.trIndex--; renderTranscription(); }
 }
 
@@ -1432,7 +1545,7 @@ function setupTranscription() {
   $("#transcription").addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     e.preventDefault();
-    setMode("navigation");     // `setMode` appelle `trSaveFlush()` : rien n'est perdu
+    setMode("navigation");     // `setMode` attend l'enregistrement du texte : rien n'est perdu
   });
   $("#tr-text").addEventListener("input", trScheduleSave);
   // La frappe peut faire SORTIR le texte des capitales (ou y rentrer, sur un collage) :

@@ -8,8 +8,7 @@
    le titre du bandeau, l'heure lisible, le message d'une case supprimée. Il vit ici et
    non dans viewer.js pour une propriété — l'heure relative et l'accord des mots se
    vérifient par une table de cas —, et parce que les LIBELLÉS des deux gestes doivent
-   vivre à UN seul endroit : Hugo peut encore préciser « Remplacer » (verdict du
-   2026-09-17). */
+   vivre à UN seul endroit : Hugo les a encore précisés après la maquette (2026-09-17). */
 (function (root, factory) {
   const api = factory();
   if (typeof module !== "undefined" && module.exports) module.exports = api;  // Node (tests)
@@ -17,11 +16,11 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  /* Les deux gestes du bandeau. « Remplacer » renvoie SA version, qui écrase celle de
+  /* Les deux gestes du bandeau. « Remplacer par la mienne » renvoie SA version, qui écrase celle de
      l'autre ; « Garder l'autre » conserve la version concurrente. Partout, compte partagé
      compris. Changer un libellé se fait ICI, et nulle part ailleurs. */
   const GESTES = Object.freeze({
-    remplacer: "Remplacer",
+    remplacer: "Remplacer par la mienne",
     garderAutre: "Garder l'autre",
   });
 
@@ -90,6 +89,16 @@
                   a ? quand(a.le, maintenant) : "");
   }
 
+  /* Le toast d'un conflit arrivé APRÈS qu'on a quitté le champ — l'enregistrement parti en
+     changeant de bulle ou de mode : il n'y a plus de champ où ouvrir le bandeau, et le
+     dire est tout ce qui reste. « Note modifiée par Bob Martin à 14 h 32 : la vôtre n'a
+     pas été enregistrée. » */
+  function messageNonEnregistre(conflit, maintenant) {
+    const [, genre] = CHAMPS[conflit && conflit.champ] || INCONNU;
+    return `${titreConflit(conflit, maintenant)} : ${genre === "m" ? "le" : "la"} vôtre ` +
+      `n'a pas été enregistré${accord(genre)}.`;
+  }
+
   /* Le toast d'une région supprimée par un autre : « Cette case a été supprimée par Alice
      Dupont à 8 h 14 ». */
   function messageSuppression(suppression, typeRegion, maintenant) {
@@ -107,6 +116,6 @@
                   parQui(a), a ? quand(a.le, maintenant) : "") + ".";
   }
 
-  return { GESTES, heure, quand, parQui, titreConflit, messageSuppression,
-           messageAnnulationRefusee };
+  return { GESTES, heure, quand, parQui, titreConflit, messageNonEnregistre,
+           messageSuppression, messageAnnulationRefusee };
 });

@@ -186,11 +186,15 @@ pour ne défaire que vos propres gestes.
 **À plusieurs sur la même bulle, rien ne s'écrase en silence.** Si quelqu'un d'autre a modifié
 la note ou le texte d'une bulle depuis que vous l'avez ouverte, votre enregistrement est
 refusé et un **bandeau** s'ouvre au-dessus du champ : il dit qui a modifié et quand, montre sa
-version, et garde la vôtre dans le champ. **Remplacer** enregistre votre version à la place de
-la sienne ; **Garder l'autre** reprend sa version et abandonne la vôtre. Tant que vous n'avez
-pas choisi, vous ne pouvez pas changer de bulle ni de mode — les tags, eux, continuent de
-s'enregistrer. Quand le bandeau dit « depuis un autre écran de ce même compte », c'est vous
-dans un autre onglet, ou un collègue sous le même compte partagé. Si c'est la position d'une
+version, et garde la vôtre dans le champ. **Remplacer par la mienne** enregistre votre version
+à la place de la sienne ; **Garder l'autre** reprend sa version et abandonne la vôtre. Tant
+que vous n'avez pas choisi, vous ne pouvez pas changer de bulle ni de mode — les tags, eux,
+continuent de s'enregistrer. Si vous changez de bulle, de mode ou de planche juste après avoir
+tapé, l'Atelier attend d'abord que votre saisie soit enregistrée : l'indicateur dit
+« Enregistrement en cours… », puis le geste se fait de lui-même, ou le bandeau s'ouvre si
+quelqu'un a modifié entre-temps. Si le serveur ne répond pas en quelques secondes, un message
+le dit, votre saisie reste dans le champ, et refaire le geste part sans attendre. Quand le
+bandeau dit « depuis un autre écran de ce même compte », c'est vous dans un autre onglet, ou un collègue sous le même compte partagé. Si c'est la position d'une
 région qui a changé ailleurs, elle se recharge simplement ; si la région a été supprimée, un
 message dit par qui, et elle disparaît de votre écran. Ctrl+Z refuse de même de défaire un
 geste que quelqu'un a modifié après vous.

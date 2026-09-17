@@ -50,16 +50,17 @@ class Perime(Exception):
 
     def message(self) -> str:
         quoi = LIBELLES.get(self.champ, self.champ)
+        e = "e" if quoi.startswith("la ") else ""      # « la note a été modifiée »
         a = self.auteur
         if a is None:
-            par = "modifié ailleurs"
+            par = f"modifié{e} ailleurs"
         elif a["meme_compte"]:
-            par = f"modifié depuis un autre écran de ce même compte, le {a['le']} (UTC)"
+            par = f"modifié{e} depuis un autre écran de ce même compte, le {a['le']} (UTC)"
         elif a["nom"] or a["login"]:
-            par = f"modifié par {a['nom'] or a['login']}, le {a['le']} (UTC)"
+            par = f"modifié{e} par {a['nom'] or a['login']}, le {a['le']} (UTC)"
         else:
-            par = f"modifié ailleurs, le {a['le']} (UTC)"
-        return (f"Conflit : {quoi} a été {par} depuis que vous l'avez vu. "
+            par = f"modifié{e} ailleurs, le {a['le']} (UTC)"
+        return (f"Conflit : {quoi} a été {par} depuis que vous l'avez vu{e}. "
                 "Votre modification n'est pas enregistrée.")
 
     def detail(self) -> dict:
