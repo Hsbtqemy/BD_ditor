@@ -39,9 +39,22 @@ n'est écrit, et le chantier commence par une mesure.
 - [x] Une garde e2e à deux contextes rejoue la mesure 1, et elle est vue ROUGE sur le code d'avant le correctif — `tests/test_e2e_annotation_a_deux.py`, rouge sur `8a2a506` avec sept autres tests, et tuée par les deux mutants de l'écran (tout renvoyer, ne jamais marquer la note)
 
 ### Temps b — refuser un enregistrement fait sur une version périmée (avant la prochaine mise en production)
-- [ ] Une note, une liste de tags ou un texte transcrit enregistré sur une version que quelqu'un d'autre a modifiée depuis est refusé par un 409 qui nomme qui a modifié et quand. Attendu : les mesures 2 et 3 rejouées ne perdent plus rien en silence, et l'écran propose de recharger la bulle sans jeter la saisie en cours
-- [ ] Une case supprimée par quelqu'un d'autre : B lit qu'elle a été supprimée, et non « Échec mise à jour : Région N introuvable », et la case disparaît de son écran
+- [ ] Une note, un texte transcrit, ou la géométrie, le type ou le parent d'une région, enregistré avec une VALEUR VUE qui n'est plus celle de la base, est refusé par un 409 qui nomme qui a modifié et quand. La version est la valeur du champ, pas une colonne, pas le journal, pas une date (Q1). Attendu : les mesures 2 et 3 rejouées ne perdent plus rien en silence
+- [ ] Si le dernier changement du champ vient d'un MOTEUR (OCR qui remplit une bulle vide), l'enregistrement humain passe sans 409, et le texte du moteur reste au journal (Q2)
+- [ ] Ajouter ou retirer un tag ne rend jamais de 409 : les différences commutent (Q3)
+- [ ] Annuler une modification de RÉGION ne rend que les champs que l'acte a changés, et refuse par un 409 nommé si ces champs ont changé depuis. Attendu : A déplace une bulle, B la transcrit, A fait Ctrl+Z — le texte de B reste. Le défaut est d'abord montré par un test ROUGE sur le code d'avant (Q4)
+- [ ] Annuler une note refuse par un 409 nommé si la note n'est plus celle que l'acte avait posée, au lieu d'écraser celle écrite ensuite (cadrage (c), validé avec Q4)
+- [ ] Écrire sur une case supprimée par quelqu'un d'autre rend un 410 « supprimée par X à HH:MM » quand on LIT sa planche, et le 404 inchangé sinon. L'écran de B dit qu'elle a été supprimée, et non « Région N introuvable », et la case disparaît de son écran (Q5)
+- [ ] Au 409, un bandeau DANS le panneau (note, transcription) nomme l'auteur, montre sa version, garde la saisie en cours, suspend l'enregistrement automatique, et offre « Garder la mienne » et « Prendre la leur ». Sa forme est tranchée par Hugo sur une MAQUETTE INTERACTIVE avant que l'écran soit codé (Q6)
+- [ ] L'auteur est nommé par son nom affiché, l'heure en heure locale ; quand l'auteur a le MÊME login que l'écran, le message dit « depuis un autre écran de ce même compte » (Q7)
+- [ ] La valeur vue est FACULTATIVE pour l'API (outils, appelants existants) ; l'Atelier l'envoie toujours, et une garde e2e l'exige (Q8)
 - [ ] Fait AVANT la prochaine fusion de `dev` dans `main` : les testeurs de la production travaillent à plusieurs
+
+### Hors du temps b — écarté exprès le 2026-09-17, à rouvrir ailleurs (Q9)
+- [ ] Locuteur, personnage et présence : deux personnes qui posent deux valeurs différentes sur la même bulle — mesuré à deux navigateurs, avec ce qui reste en base et ce que chaque écran en dit
+- [ ] Corrections grammaticales : deux personnes qui corrigent le même token — mesuré de même, ou la fiche écrit pourquoi « le dernier gagne par token » suffit encore
+- [ ] Attributs de situation d'une case : deux personnes sur le même attribut — mesuré de même
+- [ ] Une région créée ou supprimée ailleurs (autre personne, passe automatique) apparaît ou disparaît sur une planche déjà ouverte sans rechargement — ou la fiche écrit pourquoi on s'en passe
 
 ## Contexte
 
@@ -187,3 +200,32 @@ jour-là. Un client HTTP local doit ignorer le proxy système (`httpx.Client(tru
 Chromium `--no-proxy-server`), sans quoi les requêtes n'atteignent jamais le serveur. La lecture
 d'une région passe par `GET /api/planches/{id}/regions`, puisqu'il n'y a pas de
 `GET /api/regions/{id}` (405). Et la capture des toasts se vérifie par un témoin positif.
+
+**Tranché par Hugo le 2026-09-17 — le second temps.** Sur un cadrage proposé le même jour,
+validé d'un bloc, questions Q1 à Q9 (cases ci-dessus).
+
+- *La version vue est la VALEUR du champ* (Q1). Trois autres options ont été écartées, pour
+  des défauts lus dans le code. Une colonne `version` exigerait que chaque écrivain
+  l'incrémente — un oubli reste muet — et elle vaut pour la ligne entière : poser un tag
+  périmerait la note de l'autre, et la zone « Deux onglets » de
+  `qa/compte-retour-et-annotation.md` deviendrait un conflit, contre le temps a. Le dernier
+  événement A3 manque les annulations, journalisées sur `evenement` et non sur la cible, et
+  les régions qu'une re-passe automatique remplace sans événement. Une date de modification
+  est à la seconde, quand l'enregistrement automatique part toutes les 500 ms. Comparer la
+  valeur vue ne demande aucune migration, est précis au champ, et voit tout écrivain. Seul
+  un aller-retour X→Y→X passe inaperçu, sans rien perdre. « Qui et quand » se cherche au
+  journal ; sans trace, le message dit « modifié ailleurs ».
+- *Un moteur ne gagne pas contre un humain* (Q2). L'OCR n'est qu'un pré-remplissage.
+- *Les tags restent sans garde* (Q3). Seul cas silencieux, rare : ajouter un tag qu'on ne
+  voyait pas pendant qu'un autre le retire.
+- *L'annulation se garde aussi* (Q4). Défaut LU, pas mesuré : `undo._restaurer_region_cols`
+  réécrit TOUTES les colonnes depuis `avant`, si bien qu'annuler un déplacement efface le
+  texte transcrit ensuite par un autre. Même famille que le temps a, réparée dans ce temps.
+- *Une suppression n'est pas gardée.* Son instantané profond est pris au moment de
+  supprimer, donc il contient le travail de l'autre, et Ctrl+Z le rend. C'est l'écriture
+  qui TOMBE sur une case disparue qui change : un 410 nommé (Q5), quand on lit la planche, et
+  le 404 inchangé sinon, pour que rien ne fuie.
+- *L'écran se tranche sur maquette* (Q6), avant d'être codé. Géométrie : la région se
+  recharge avec un toast nommé. Case supprimée : toast nommé, et la région quitte l'écran.
+- *Le compte collectif ne change que le MESSAGE* (Q7). La détection compare des valeurs, pas
+  des identités ; aucune identité n'est fabriquée (AUTH-1). La mesure 5 reste une limite.
