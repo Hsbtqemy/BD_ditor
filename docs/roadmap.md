@@ -150,11 +150,26 @@ l'Atelier n'envoie plus que ce qui a changé, **tout de suite** ; le refus d'une
 périmée, par un 409 qui nomme le conflit, **avant la prochaine mise en production**. Le
 Ctrl+Z sous un compte partagé reste une limite, écrite dans le guide.
 
-**La prochaine grande étape attend.** Hugo préfère ne pas fusionner dans `main` avant
-d'avoir avancé les chantiers AUTH (le cap des comptes) et UX, et joué TOUTES les passes de
-QA, y compris les trois jamais jouées (`accueil-par-ou-commencer`, `petites-largeurs`,
-`preference-de-police`). `dev` continue d'être poussée : elle met le travail à l'abri sans
-rien montrer aux testeurs.
+**Le second temps est fait** et poussé sur `dev` le 2026-09-17. Il ne partira en production
+qu'avec la prochaine grande étape.
+
+**La prochaine grande étape a un périmètre FERMÉ** (tranché par Hugo le 2026-09-17). La
+formule précédente, « avancer les chantiers AUTH et UX », n'avait pas de bord : `AUTH-9`,
+`AUTH-10` et six fiches UX sont encore à venir. Les attendre laissait la production des
+semaines sur la version du 2026-09-08, où un login partagé ne peut même pas être déclaré
+collectif. La fusion dans `main` attend donc exactement deux choses.
+
+1. **TOUTES les passes de QA**, y compris les trois jamais jouées
+   (`accueil-par-ou-commencer`, `petites-largeurs`, `preference-de-police`).
+2. **Les étapes 1 à 3 de l'ordre de construction d'`AUTH-12`** :
+   - lire l'annuaire (`AUTH-6`) ;
+   - le bloc « 👥 Comptes et groupes » de l'Administration ;
+   - les accès dans la fiche de la collection, avec `UX-4`.
+
+   Le référent de l'instance (étape 4) la rejoint s'il est prêt, sans la retenir.
+
+`AUTH-9`, `AUTH-10` et les autres fiches UX vont à l'étape suivante. `dev` continue d'être
+poussée : elle met le travail à l'abri sans rien montrer aux testeurs.
 
 **Le rythme : `dev` avance, `main` bouge par GRANDES étapes.** Le VPS suit `main`
 (INFRA-10), donc chaque fusion est un déploiement que les testeurs voient. On n'y fusionne

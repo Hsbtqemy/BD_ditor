@@ -87,6 +87,10 @@ leurs cases.
 4. **Le référent de l'instance affiché aux administrateurs** — une ligne de lecture, en
    dernier (décision 6).
 
+**Les étapes 1 à 3 conditionnent la prochaine fusion dans `main`**, avec toutes les passes de
+QA (tranché par Hugo le 2026-09-17, `docs/roadmap.md`). L'étape 4 la rejoint si elle est
+prête, sans la retenir.
+
 **Hors de cet ordre**, parce qu'ils n'en dépendent pas : « Mon compte » (`AUTH-9`), qui
 s'ouvre par le menu du compte déjà livré ; l'import d'une promotion, documenté
 (`docs/exploitation.md`) ; et la date de dernière modification d'une collection, que le
