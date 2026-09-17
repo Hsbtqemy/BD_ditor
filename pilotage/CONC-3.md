@@ -5,12 +5,13 @@ statut: interrompu
 
 # CONC-3 — deux personnes sur la même planche : ce qui se perd, et ce que l'écran en dit
 
-**Arrêté sur** — 2026-09-16, `5caa373` : le premier temps est fait. Un enregistrement
-d'annotation ne touche plus un champ absent de la requête, les tags partent en
-différences, et l'annulation défait ce que l'acte a changé, sur l'état actuel. La mesure 1,
-rejouée par une garde à deux navigateurs, ne perd plus rien dans aucun des deux sens.
-Reste le second temps — deux personnes sur le MÊME champ, et la case supprimée —, avant la
-prochaine mise en production.
+**Arrêté sur** — 2026-09-17, `3e74dd8` : le SERVEUR du second temps est fait (`1d374ef`),
+et prouvé par dix-sept mutations. Un enregistrement fait sur une valeur vue périmée rend un
+409 qui nomme l'auteur ; l'annulation se garde de même ; écrire sur une région supprimée
+rend un 410 nommé. L'ÉCRAN n'est pas codé : il attend le verdict de Hugo sur la maquette
+(`https://claude.ai/artifact/GPW25ZTtoJSw7N7X2Vju3p`). **Ne pas pousser le serveur sans
+l'écran** : `messageErreur` ne lit qu'un détail en chaîne, si bien que le 410 s'afficherait
+« Échec mise à jour : Gone » là où l'Atelier dit aujourd'hui « Région N introuvable ».
 
 **Point de départ** — 2026-09-16, une question de Hugo en tranchant le cache des dérivés
 d'IMG-1 : « ça ne servirait pas d'avoir quelque part (niveau album ou collection) un moyen
@@ -40,10 +41,10 @@ n'est écrit, et le chantier commence par une mesure.
 
 ### Temps b — refuser un enregistrement fait sur une version périmée (avant la prochaine mise en production)
 - [ ] Une note, un texte transcrit, ou la géométrie, le type ou le parent d'une région, enregistré avec une VALEUR VUE qui n'est plus celle de la base, est refusé par un 409 qui nomme qui a modifié et quand. La version est la valeur du champ, pas une colonne, pas le journal, pas une date (Q1). Attendu : les mesures 2 et 3 rejouées ne perdent plus rien en silence
-- [ ] Si le dernier changement du champ vient d'un MOTEUR (OCR qui remplit une bulle vide), l'enregistrement humain passe sans 409, et le texte du moteur reste au journal (Q2)
-- [ ] Ajouter ou retirer un tag ne rend jamais de 409 : les différences commutent (Q3)
-- [ ] Annuler une modification de RÉGION ne rend que les champs que l'acte a changés, et refuse par un 409 nommé si ces champs ont changé depuis. Attendu : A déplace une bulle, B la transcrit, A fait Ctrl+Z — le texte de B reste. Le défaut est d'abord montré par un test ROUGE sur le code d'avant (Q4)
-- [ ] Annuler une note refuse par un 409 nommé si la note n'est plus celle que l'acte avait posée, au lieu d'écraser celle écrite ensuite (cadrage (c), validé avec Q4)
+- [x] Si le dernier changement du champ vient d'un MOTEUR (OCR qui remplit une bulle vide), l'enregistrement humain passe sans 409, et le texte du moteur reste au journal (Q2) — `test_un_texte_pose_par_un_moteur_ne_bloque_pas_l_humain`, `1d374ef`
+- [x] Ajouter ou retirer un tag ne rend jamais de 409 : les différences commutent (Q3) — `test_les_tags_n_ont_pas_de_garde`, `1d374ef`
+- [x] Annuler une modification de RÉGION ne rend que les champs que l'acte a changés, et refuse par un 409 nommé si ces champs ont changé depuis. Attendu : A déplace une bulle, B la transcrit, A fait Ctrl+Z — le texte de B reste. Le défaut est d'abord montré par un test ROUGE sur le code d'avant (Q4) — vu rouge sur `77c0dbb` (« annuler le déplacement de A a effacé le texte de B »), vert par `1d374ef`
+- [x] Annuler une note refuse par un 409 nommé si la note n'est plus celle que l'acte avait posée, au lieu d'écraser celle écrite ensuite (cadrage (c), validé avec Q4) — `test_annuler_sa_note_modifiee_depuis_est_refuse`, `1d374ef`
 - [ ] Écrire sur une case supprimée par quelqu'un d'autre rend un 410 « supprimée par X à HH:MM » quand on LIT sa planche, et le 404 inchangé sinon. L'écran de B dit qu'elle a été supprimée, et non « Région N introuvable », et la case disparaît de son écran (Q5)
 - [ ] Au 409, un bandeau DANS le panneau (note, transcription) nomme l'auteur, montre sa version, garde la saisie en cours, suspend l'enregistrement automatique, et offre « Garder la mienne » et « Prendre la leur ». Sa forme est tranchée par Hugo sur une MAQUETTE INTERACTIVE avant que l'écran soit codé (Q6)
 - [ ] L'auteur est nommé par son nom affiché, l'heure en heure locale ; quand l'auteur a le MÊME login que l'écran, le message dit « depuis un autre écran de ce même compte » (Q7)
@@ -229,3 +230,24 @@ validé d'un bloc, questions Q1 à Q9 (cases ci-dessus).
   recharge avec un toast nommé. Case supprimée : toast nommé, et la région quitte l'écran.
 - *Le compte collectif ne change que le MESSAGE* (Q7). La détection compare des valeurs, pas
   des identités ; aucune identité n'est fabriquée (AUTH-1). La mesure 5 reste une limite.
+
+**Le serveur du second temps, fait le 2026-09-17** (`1d374ef`, `3e74dd8`). La comparaison et
+la recherche de l'auteur vivent dans `conflit.py`, partagé par les routes et l'annulation, et
+qui n'importe que `journal`.
+
+- *Les contrats.* `PUT /api/regions/{id}` accepte `vu` (texte, géométrie, type, rattachement ;
+  un autre champ rend 422). `PUT /api/regions/{id}/annotation` accepte `note_vue`. Tous deux
+  sont facultatifs (Q8). Le 409 porte `detail.message` et `detail.conflit` (`champ`,
+  `valeur_actuelle`, `auteur` : `nom`, `login`, `agent_type`, `meme_compte`, `le` en UTC). Le
+  410 porte `detail.message` et `detail.suppression.auteur`.
+- *Une extension, à faire valider par Hugo avec la maquette.* La garde de l'annulation refuse
+  aussi d'annuler la CRÉATION d'une région qu'un autre a transcrite, annotée ou dans laquelle il
+  a rattaché une région : la supprimer emporterait son travail sans instantané.
+- *Ce que la relecture a trouvé avant et après le commit.* En mono-poste, le message aurait dit
+  « modifié par None » (corrigé avant `1d374ef`). Et une garde n'était exercée par aucun test :
+  un acte d'avant le proxy, sans login, contre une personne identifiée (`3e74dd8`).
+- *Éprouvé.* Test de Q4 rouge d'abord, puis vert. Dix-sept mutations sur un clone de
+  `1d374ef`, chacune rouge en échec d'assertion sur le test visé ; 22 tests dans
+  `tests/test_conflit_version.py`. Tests voisins verts sous le `.venv` (annulation,
+  annotation, autorisation, découpage de l'API, sorties d'identité, provenance, régressions).
+  La suite entière et la passe navigateur attendent l'écran.
