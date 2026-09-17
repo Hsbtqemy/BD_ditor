@@ -68,7 +68,7 @@ def decor(live_server):
     base = f"{live_server}/?album={aid}&planche={pid}"
     return {"base": live_server, "planche": pid, "bulle": bulle, "case": autre_case,
             "url_bulle": f"{base}&region={bulle}", "url_case": f"{base}&region={autre_case}",
-            "url_planche": base}
+            "url_planche": base, "seconde": seconde}
 
 
 def _contexte(page, identite):
@@ -385,6 +385,43 @@ def test_un_aller_retour_lent_n_ouvre_pas_de_conflit_avec_soi_meme(page, decor):
             assert _attendre(lire, attendu, page=a) == attendu
             a.wait_for_timeout(1000)
             expect(a.locator("#bandeau-conflit")).to_have_count(0)
+    finally:
+        ctx_a.close()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_partir_quand_meme_n_ecrit_pas_la_saisie_sur_la_bulle_d_arrivee(page, decor):
+    """On insiste pour partir pendant qu'un enregistrement est en suspens. Ce qui restait à
+    envoyer vise la bulle QUITTÉE, jamais celle d'arrivée — même quand le champ montre encore
+    l'ancienne saisie, parce que l'annotation de la nouvelle bulle tarde à venir."""
+    s = decor
+    ctx_a, a = _contexte(page, ALICE)
+    try:
+        _ouvrir(a, s["url_bulle"], "annotation")
+        retenue = _Retenue(a, "**/api/regions/*/annotation")
+        a.click("#note-input")
+        a.keyboard.type("un")
+        assert retenue.attendre(1) == 1                  # le premier est en vol
+        a.keyboard.type(" deux")                          # le second attend son délai de frappe
+        seconde = a.locator(f"#overlay [data-id='{s['seconde']}']").first
+        seconde.click(force=True)
+        expect(a.locator("#toasts .toast", has_text="L'enregistrement n'a pas abouti")
+               ).to_have_count(1, timeout=10000)
+
+        lectures = []
+        a.route(f"**/api/regions/{s['seconde']}/annotation",
+                lambda route: lectures.append(route) if route.request.method == "GET"
+                else route.fallback())
+        seconde.click(force=True)                         # on insiste
+        assert _attendre(lambda: len(lectures), 1, page=a) == 1
+        retenue.liberer()
+        a.wait_for_timeout(1500)
+        for route in lectures:
+            route.continue_()
+        assert _attendre(lambda: _note_en_base(s["base"], s["bulle"]), "un", page=a) == "un"
+        a.wait_for_timeout(500)
+        assert _note_en_base(s["base"], s["seconde"]) == "", \
+            "la saisie de la bulle quittée a été écrite sur la bulle d'arrivée"
     finally:
         ctx_a.close()
 
