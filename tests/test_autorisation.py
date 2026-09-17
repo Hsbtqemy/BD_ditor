@@ -46,7 +46,7 @@ HORS_PERIMETRE = {
     ("GET", "/administration"): (
         "idem — et la coquille est ici une DÉCISION, pas une commodité (UX-10). Chaque "
         "bloc de cette page pose sa propre question : la liste des collections est "
-        "filtrée par la portée, `GET /api/comptes` refuse les non-administrateurs, "
+        "filtrée par la portée, `GET /api/comptes-et-groupes` refuse les non-administrateurs, "
         "`GET /api/sante` est ouvert à tous. Garder la PAGE reproduirait l'erreur "
         "d'AUTH-4, où le référent d'une collection s'est retrouvé réservé au "
         "propriétaire parce qu'il vivait dans le panneau du partage"),

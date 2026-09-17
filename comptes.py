@@ -53,7 +53,7 @@ LIMITES = {
 
 
 # --------------------------------------------------------------------------- #
-# Ce qu'un compte a LAISSÉ — partagé avec `GET /api/comptes` (AUTH-7)
+# Ce qu'un compte a LAISSÉ — la règle d'AUTH-7, comptée à un seul endroit
 # --------------------------------------------------------------------------- #
 def traces(conn) -> tuple[dict, dict, dict]:
     """Les actes, les accès nominatifs et les reprises d'identité, par login.

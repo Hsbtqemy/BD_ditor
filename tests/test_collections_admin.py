@@ -631,9 +631,14 @@ def test_un_proprietaire_disparu_laisse_une_collection_administrable_par_un_admi
 # d'annuaire, et que la règle « ce que le compte a LAISSÉ » s'appliquera à des gens qui
 # n'étaient pas dans la conversation où elle s'est décidée. D'où un VERDICT et non des
 # chiffres — et un verdict qui parle de CONSÉQUENCE, jamais de recommandation.
+#
+# Servie par `GET /api/comptes-et-groupes` depuis le 2026-09-17 (AUTH-12), qui a remplacé
+# `GET /api/comptes`. Les règles ci-dessous n'ont pas changé ; elles sont éprouvées sur la
+# route qui les sert, SANS annuaire — ce que ces tests regardent est ce que l'application
+# sait seule. La composition avec l'annuaire a ses tests dans `test_comptes_et_groupes.py`.
 # --------------------------------------------------------------------------- #
 def _comptes(client, headers):
-    return client.get("/api/comptes", headers=headers)
+    return client.get("/api/comptes-et-groupes", headers=headers)
 
 
 def test_la_vue_des_comptes_est_reservee_aux_administrateurs(client, derriere_proxy):
@@ -717,18 +722,22 @@ def test_la_vue_DECLARE_ce_qu_elle_ne_peut_pas_savoir(client, derriere_proxy):
     """Sans cette déclaration, un administrateur — qui n'a AUCUNE ligne dans
     `collection_acces` — se lirait « rien à orpheliner ». Exact, et parfaitement trompeur.
 
-    C'est la conséquence directe d'AUTH-1 : l'application ne connaît que les groupes de la
-    personne qui frappe, jamais ceux des autres, et ne les stocke pas."""
+    Sans annuaire, c'est la conséquence directe d'AUTH-1 : l'application ne connaît que les
+    groupes de la personne qui frappe, jamais ceux des autres, et ne les stocke pas. La
+    phrase dépend désormais de l'état de la lecture (AUTH-6) ; ici, aucun annuaire."""
     d = _comptes(client, ADMIN).json()
-    assert "GROUPE" in d["limite"] and "AUTH-1" in d["limite"]
+    assert d["annuaire"]["etat"] == "sans_annuaire"
+    assert "par groupe" in d["limite"] and "n'apparaissent pas" in d["limite"]
 
 
-def test_le_perimetre_est_l_application_pas_l_annuaire(client, derriere_proxy):
-    """`utilisateur` ne contient que ceux qui ont OUVERT une page. Quelqu'un créé dans
-    l'annuaire et jamais venu n'apparaît pas — ce n'est pas un oubli, c'est ce que
-    « compte actif » veut dire, et c'est ce qu'un annuaire ne sait pas dire."""
+def test_sans_annuaire_le_perimetre_est_l_application(client, derriere_proxy):
+    """Sans annuaire lu, la vue ne connaît que ceux qui ont OUVERT une page, et ceux qu'un
+    accès nomme. Quelqu'un créé dans l'annuaire et jamais venu n'y apparaît pas : l'annuaire
+    lu (AUTH-6) est ce qui le fait apparaître, marqué « jamais venu »."""
+    client.get("/api/moi", headers={"Remote-User": "venue"})
     d = _comptes(client, ADMIN).json()
-    assert d["comptes"] == [] or all(c["derniere_vue"] for c in d["comptes"])
+    assert d["annuaire"]["etat"] == "sans_annuaire"
+    assert d["comptes"] and all(c["venu"] and c["derniere_vue"] for c in d["comptes"])
 
 
 # --------------------------------------------------------------------------- #

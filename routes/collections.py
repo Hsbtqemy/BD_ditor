@@ -301,93 +301,24 @@ def delete_collection(collection_id: int, conn: sqlite3.Connection = Depends(db)
 
 
 # --------------------------------------------------------------------------- #
-# La vue des comptes (AUTH-7)
+# La vue des comptes et des groupes (AUTH-7, puis AUTH-6 et AUTH-12)
 #
-# Elle vit ICI et non dans un module à elle : elle existe pour décider d'un ACCÈS, sa
-# source principale est `collection_acces`, et le même panneau la lira. Un module pour une
-# route en lecture ajouterait un routeur à l'inventaire d'ARCH-1 sans domaine encore
-# distinct. Si elle grandit — AUTH-7 lui prévoit quatre cases —, elle l'aura méritée.
-#
-# CE QU'ELLE NE PEUT PAS SAVOIR, et c'est structurel : les groupes. L'application ne
-# connaît que ceux de la personne qui FRAPPE, à l'instant de sa requête (AUTH-1) ; elle ne
-# les stocke jamais. Un compte peut donc lire tout le corpus par un groupe, ou tout par
-# `bd-admins`, sans qu'une seule ligne de `collection_acces` ne le montre. La vue le DIT
-# plutôt que de laisser conclure — sans quoi elle désignerait un administrateur comme
-# « sans accès », ce qui serait exact et parfaitement trompeur.
+# `GET /api/comptes` la servait jusqu'au 2026-09-17 : les comptes VUS par l'application, et ce
+# que chacun a laissé. `GET /api/comptes-et-groupes` la remplace, avec l'annuaire, et l'écran
+# « 👥 Comptes et groupes » a cessé de lire l'ancienne. Ce qu'un compte a laissé et son
+# verdict de départ sont comptés dans `comptes.py`, à un seul endroit.
 # --------------------------------------------------------------------------- #
-def _comptes(conn) -> list:
-    """Un état par login connu : ce qu'il a laissé, et ce qu'on ne peut pas savoir de lui.
-
-    Le VERDICT porte sur une conséquence, jamais sur une recommandation — « rien à
-    orpheliner » et non « supprimable ». La nuance n'est pas de style : la règle validée
-    le 2026-09-06 dit ce qu'une suppression casserait, elle ne dit pas s'il faut supprimer,
-    et l'écran sera lu par des gens qui n'étaient pas dans cette conversation.
-
-    Les comptes (actes, accès nominatifs, reprises) et le verdict vivent dans `comptes.py`
-    depuis AUTH-6 : la vue « 👥 Comptes et groupes » compte la même chose, et deux copies de
-    la règle finiraient par ne plus dire la même chose du même compte.
-    """
-    actes, acces, reprises = comptes.traces(conn)
-    out = []
-    for u in conn.execute("SELECT * FROM utilisateur ORDER BY login"):
-        login = u["login"]
-        n_actes, n_acces = actes.get(login, 0), acces.get(login, 0)
-        out.append({
-            "login": login, "nom": u["nom"], "email": u["email"],
-            # AUTH-6 — ce qu'un login EST. Rendu à l'écran parce que c'est là qu'on le
-            # pose, et rendu à TOUS les lecteurs de la vue (qui sont déjà administrateurs)
-            # parce qu'un compte collectif change la lecture de tout le reste de la ligne :
-            # « laisse des actes » ne désigne alors pas une personne.
-            "nature": u["nature"],
-            "premiere_vue": u["premiere_vue"], "derniere_vue": u["derniere_vue"],
-            "actes": n_actes, "acces_explicites": n_acces,
-            "verdict": comptes.verdict(n_actes, n_acces),
-            # Le filet quand la vigilance a manqué : le geste de suppression vit dans
-            # l'annuaire et rien ici ne peut l'empêcher. Ce qui reste possible, c'est de
-            # SIGNALER qu'un login connu a changé de mains — la trace est datée, donc la
-            # coupe entre les deux personnes reste reconstructible.
-            "reprises": reprises.get(login, (0, None))[0],
-        })
-    return out
-
-
-@router.get("/api/comptes")
-def liste_comptes(conn: sqlite3.Connection = Depends(db),
-                  portee: autorisation.Portee = Depends(portee_courante)):
-    """Les comptes que l'application a VUS, et ce que chacun a laissé (AUTH-7).
-
-    RÉSERVÉE AUX ADMINISTRATEURS D'INSTANCE, et pour la raison qui réserve déjà
-    `GET /api/analyse/accord-inter` : cette vue porte sur des PERSONNES et non sur le
-    corpus — elle nomme, date et compte. Un propriétaire de collection n'y gagnerait rien
-    qu'il ne sache déjà (il choisit qui il ajoute) et y verrait la composition d'équipes
-    qui ne sont pas la sienne. La portée est corpus-entier par nature : un compte n'a pas
-    de collection.
-
-    LE PÉRIMÈTRE EST CELUI DE L'APPLICATION, pas celui de l'annuaire, et la différence
-    compte : `utilisateur` ne contient que les gens qui ont OUVERT une page. Quelqu'un
-    créé dans l'annuaire hier et qui n'est jamais venu n'apparaît pas ici — ce n'est pas un
-    oubli, c'est ce que « compte ACTIF » veut dire, et c'est précisément ce qu'un annuaire
-    ne sait pas dire.
-    """
-    if not portee.tout:
-        raise HTTPException(403, "La vue des comptes est réservée aux administrateurs : "
-                                 "elle porte sur des personnes, pas sur le corpus.")
-    return {"comptes": _comptes(conn),
-            # Déclaré plutôt que laissé à découvrir : sans cela, un administrateur — qui
-            # n'a AUCUNE ligne dans `collection_acces` — se lit « rien à orpheliner ».
-            "limite": "Les accès accordés par GROUPE n'apparaissent pas : l'application ne "
-                      "connaît que les groupes de la personne qui frappe (AUTH-1), jamais "
-                      "ceux des autres. Un compte peut donc tout lire sans figurer ici."}
-
-
 @router.get("/api/comptes-et-groupes")
 def comptes_et_groupes(conn: sqlite3.Connection = Depends(db),
                        portee: autorisation.Portee = Depends(portee_courante)):
     """La vue « 👥 Comptes et groupes » (AUTH-12, étape 2) : ce que l'ANNUAIRE rend, ce que
     l'application a VU, ce qu'elle a ACCORDÉ, et ce qui est « À regarder » (AUTH-6).
 
-    RÉSERVÉE AUX ADMINISTRATEURS D'INSTANCE, pour la raison de `GET /api/comptes` : elle
-    porte sur des PERSONNES, pas sur le corpus.
+    RÉSERVÉE AUX ADMINISTRATEURS D'INSTANCE, pour la raison qui réserve déjà
+    `GET /api/analyse/accord-inter` et réservait la vue des comptes d'AUTH-7 : elle porte
+    sur des PERSONNES et non sur le corpus — elle nomme, date et compte. Un propriétaire de
+    collection n'y gagnerait rien qu'il ne sache déjà (il choisit qui il ajoute) et y
+    verrait la composition d'équipes qui ne sont pas la sienne.
 
     L'annuaire est LU ici, à chaque ouverture, pour COMPOSER cette vue — ni pour authentifier
     (Authelia), ni pour autoriser : aucune portée ne change selon ce qu'il rend, et
