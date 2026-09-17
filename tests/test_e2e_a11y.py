@@ -922,44 +922,66 @@ def test_a11y_collections_embargo_echu(page, seeded, theme):
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
 @pytest.mark.parametrize("theme", ["dark", "light"])
-def test_a11y_vue_des_comptes(page, seeded, theme):
-    """La vue des comptes (AUTH-7) auditée avec des LIGNES, pas avec son message vide.
+def test_a11y_comptes_et_groupes(page, seeded, theme):
+    """« 👥 Comptes et groupes » (AUTH-12) audité AVEC du contenu, sur la vraie route.
 
-    `test_a11y_administration_collections` ouvre déjà cette modale et l'audite — mais sans proxy,
-    donc `utilisateur` est vide et le bloc rend « aucun compte n'a encore ouvert de page ».
-    L'audit approuvait un écran dont le tableau n'existait pas : en-têtes de colonnes,
-    chiffres alignés, et le signal de reprise en `--ink-red` sur du petit texte, qui est
-    précisément le cas où un accent brut échouerait le 4.5:1.
+    Le bloc remplace la vue des comptes d'AUTH-7, et hérite de sa leçon : cette vue-là
+    s'auditait sans proxy, donc VIDE, et l'audit approuvait un tableau qui n'existait pas.
+    Ici la liste, les fiches et « À regarder » ne naissent qu'une fois la route répondue,
+    et la moitié de ce qu'ils montrent se déplie — un repli fermé n'est jamais passé devant
+    axe (leçon d'AUTH-6). On attend donc chaque ÉTAT, et on déplie avant d'auditer.
 
-    C'est le piège que `UX-10` décrit à propos des listes de surfaces, rencontré une taille
-    en dessous : l'instrument regarde le bon écran et n'y voit pas le bon état.
+    Le décor : la doublure de l'annuaire (chargée par `live_server`), un compte de
+    l'annuaire VENU, et un login hors annuaire qui a changé d'identité — pour que les
+    marques en `--ink-red` et en ambre, du petit texte coloré, aient quelque chose à rendre.
+    Trois fiches, parce que chacune a ses propres marques : un compte, un groupe de douze
+    comptes dont des jamais venus, une collection.
     """
-
-    # Deux comptes VUS par l'application, dont un qui a changé d'identité sous le même
-    # login — pour que la colonne « Signal » ait quelque chose à rendre.
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
     try:
+        # Sans `Remote-Name` : un en-tête HTTP ne porte pas d'accent, et le nom lisible vient
+        # de toute façon de l'annuaire.
+        c.get("/api/moi", headers={"Remote-User": "proprio"})
         c.get("/api/moi", headers={"Remote-User": "ancien", "Remote-Name": "Nom Un"})
         c.get("/api/moi", headers={"Remote-User": "ancien", "Remote-Name": "Nom Deux"})
-        c.get("/api/moi", headers={"Remote-User": "neuf", "Remote-Name": "Personne Neuve"})
+        collection = c.get("/api/collections", headers=ADMIN).json()[0]["id"]
     finally:
         c.close()
 
     _theme(page, theme)
+    # Une fenêtre HAUTE, et ce n'est pas du confort : la liste défile dans sa colonne, la
+    # page dans `#admin-body`, et axe ne juge pas le contraste d'un texte qu'un conteneur
+    # défilant cache — il le range en « incomplet », que `_audit` ne lit pas. Mesuré par
+    # mutation le 2026-09-17 : l'ambre BRUT sur les lignes de la liste passait l'audit dès
+    # que « À regarder » déplié les poussait hors de la colonne visible.
+    page.set_viewport_size({"width": 1280, "height": 2400})
     page.set_extra_http_headers(ADMIN)
-    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
+    page.goto(seeded["base"] + "/administration?compte=ancien", wait_until="networkidle")
     page.wait_for_timeout(400)
-    page.wait_for_selector("#comptes-bloc table.comptes-table", timeout=5000)
-
-    # Le tableau porte bien des lignes, et le signal de reprise est un LIBELLÉ — pas une
-    # couleur seule, ce qu'aucun audit automatique ne saurait reprocher (WCAG 1.4.1).
-    assert page.locator("#comptes-body tbody tr").count() >= 2
-    assert "identité changée" in page.locator(".compte-repris").first.inner_text()
-    # Et la limite est AFFICHÉE : sans elle un administrateur se lit « rien à orpheliner ».
-    assert "GROUPE" in page.locator("#comptes-limite").inner_text()
-
+    page.wait_for_selector("#cg-fiche-titre", timeout=5000)
+    # La liste porte bien les comptes de la doublure, et l'annuaire est LU : sans quoi
+    # l'audit porterait sur l'état « sans annuaire », qui n'a ni signaux ni membres.
+    assert page.locator("#cg-objets .cg-objet").count() >= 10
+    assert "Annuaire lu" in page.locator("#cg-annuaire").inner_text()
+    assert page.locator("#cg-fiche .cg-puce.rouge", has_text="identité changée").count() == 1
+    page.locator("#cg-signaux details.cg-replie > summary").first.click()
+    page.locator("#cg-fiche .cg-depart > summary").click()
+    page.locator("#cg-fiche .cg-aide > summary").click()
     viol = _audit(page)
-    assert not viol, f"Vue des comptes [{theme}] :\n{_fmt(viol)}"
+    assert not viol, f"Comptes et groupes, fiche d'un compte [{theme}] :\n{_fmt(viol)}"
+
+    page.goto(seeded["base"] + "/administration?axe=groupes&groupe=etudiants-bd-2026",
+              wait_until="networkidle")
+    page.wait_for_selector("#cg-fiche .cg-puce.alerte", timeout=5000)
+    page.locator("#cg-objets details.cg-a-parte > summary").click()
+    viol = _audit(page)
+    assert not viol, f"Comptes et groupes, fiche d'un groupe [{theme}] :\n{_fmt(viol)}"
+
+    page.goto(seeded["base"] + f"/administration?axe=collections&collection={collection}",
+              wait_until="networkidle")
+    page.wait_for_selector("#cg-fiche [data-cg-regler]", timeout=5000)
+    viol = _audit(page)
+    assert not viol, f"Comptes et groupes, fiche d'une collection [{theme}] :\n{_fmt(viol)}"
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré

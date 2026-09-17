@@ -570,20 +570,24 @@ COMPTES_DECOR = [("alice", "Alice Marchand"),
 
 @pytest.mark.parametrize("police", POLICES)
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
-def test_la_table_des_comptes_ne_perd_pas_de_contenu(page, live_server, police):
-    """La vue des comptes (AUTH-7) tient à 320 px, et on prouve d'abord qu'elle est LÀ.
+def test_comptes_et_groupes_ne_perdent_pas_de_contenu(page, live_server, police):
+    """« 👥 Comptes et groupes » (AUTH-12) tient à 320 px, et on prouve d'abord qu'il est LÀ.
 
-    Le plancher sur le nombre de lignes n'est pas une précaution de style : sans lui, ce
-    test rendrait exactement le même vert que celui qu'il complète, et pour la même
-    raison — une table vide n'a aucun élément hors champ. C'est la leçon d'ARCH-2 appliquée
-    au DÉCOR plutôt qu'à l'inventaire : un instrument qui ne peut rien voir ne dit pas
-    « je ne vois rien », il dit « tout va bien ».
+    Il remplace la vue des comptes d'AUTH-7, dont ce test gardait la table, et il en garde
+    le PLANCHER : sans lui, ce test rendrait le même vert que celui qu'il complète, et pour
+    la même raison — une liste vide n'a aucun élément hors champ.
+
+    Sous le seuil étroit, la liste et la fiche ne sont jamais à l'écran ensemble : la fiche
+    REMPLACE la liste. On mesure donc les TROIS états qui comptent — la liste avec « À
+    regarder » déplié, la fiche d'un compte avec « Départ » et l'aide de la nature dépliés,
+    la fiche d'un groupe de douze comptes. Et aucun contenu du bloc n'a le droit de se
+    réfugier dans un cadre qui défile : c'était la tolérance légitime d'un TABLEAU, le bloc
+    n'en a plus.
     """
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30)
     try:
         for login, nom in COMPTES_DECOR:
-            r = c.get("/api/moi", headers={"Remote-User": login, "Remote-Name": nom,
-                                           "Remote-Groups": "bd-admins"})
+            r = c.get("/api/moi", headers={"Remote-User": login, "Remote-Name": nom})
             assert r.status_code == 200, r.text
     finally:
         c.close()
@@ -592,38 +596,43 @@ def test_la_table_des_comptes_ne_perd_pas_de_contenu(page, live_server, police):
                                  "Remote-Groups": "bd-admins"})
     _preference_police(page, police)
     page.set_viewport_size({"width": 320, "height": 900})
-    page.goto(live_server + "/administration", wait_until="networkidle")
-    # On attend la TABLE et non le bloc : le bloc existe `hidden` dans le gabarit, la table
-    # n'est rendue que si la route a répondu avec des lignes. C'est elle qu'on vient
-    # mesurer, donc c'est elle dont l'apparition prouve que la mesure aura un objet.
-    page.wait_for_selector("#comptes-bloc table.comptes-table", timeout=5000)
 
-    lignes = page.locator("#comptes-bloc table.comptes-table tbody tr").count()
+    def mesurer(etat):
+        r = page.evaluate(SONDE)
+        perdus = [x for x in r["coupables"] if not x["cadre"] and x["id"] not in EXEMPTIONS]
+        assert not perdus, (
+            f"« Comptes et groupes » perd du contenu à 320 px, {etat} (1.4.10) :\n"
+            + _decrire(perdus))
+        encadres = [x for x in r["coupables"]
+                    if x["cadre"] and str(x["cadre"]).startswith((".cg", "#cg"))]
+        assert not encadres, (
+            f"« Comptes et groupes », {etat} : du contenu ne tient que par un cadre qui "
+            "défile dans le bloc :\n" + _decrire(encadres))
+        _exiger_pas_de_defilement(
+            page, f"/administration à 320 px, {etat} (police par défaut {police} px)")
+
+    page.goto(live_server + "/administration", wait_until="networkidle")
+    # On attend la LISTE et non le bloc : le bloc existe `hidden` dans le gabarit, la liste
+    # n'est rendue que si la route a répondu. C'est elle qu'on vient mesurer.
+    page.wait_for_selector("#cg-objets .cg-objet", timeout=5000)
+    lignes = page.locator("#cg-objets > li > .cg-objet").count()
     assert lignes >= len(COMPTES_DECOR), (
         f"{lignes} ligne(s) de comptes pour {len(COMPTES_DECOR)} identités semées : le "
-        "décor ne peuple plus `utilisateur`, et l'assertion suivante mesurerait une table "
-        "absente — le défaut même que ce test existe pour fermer")
+        "décor ne peuple plus la liste, et l'assertion suivante mesurerait un bloc vide — "
+        "le défaut même que ce test existe pour fermer")
+    page.locator("#cg-signaux details.cg-replie > summary").first.click()
+    mesurer("liste et « À regarder » dépliés")
 
-    r = page.evaluate(SONDE)
-    perdus = [x for x in r["coupables"] if not x["cadre"] and x["id"] not in EXEMPTIONS]
-    assert not perdus, (
-        "La vue des comptes perd du contenu à 320 px (1.4.10) :\n" + _decrire(perdus)
-        + "\n\nLes tableaux larges du dépôt vivent dans un `.table-cadre` "
-          "(`tabindex=\"0\" role=\"region\"`) : le 1.4.10 tolère le défilement horizontal "
-          "d'un contenu à deux dimensions, à condition qu'il soit atteignable au clavier.")
+    page.goto(live_server + "/administration?compte=camille", wait_until="networkidle")
+    page.wait_for_selector("#cg-fiche-titre", timeout=5000)
+    page.locator("#cg-fiche .cg-depart > summary").click()
+    page.locator("#cg-fiche .cg-aide > summary").click()
+    mesurer("fiche d'un compte, « Départ » déplié")
 
-    # Et la règle STRICTE sur la même page, ajoutée le 2026-09-09. Elle manquait ici, et
-    # le trou avait la forme que ce fichier décrit vingt lignes plus haut : la garde
-    # stricte de `/administration` s'exerce sur le décor SANS proxy, où `#comptes-bloc`
-    # est vide — donc la table à six colonnes, la seule chose large de cet écran, n'était
-    # jamais passée devant elle. Une tolérance de cadre (`.table-cadre`) et une fuite du
-    # corps de la page se ressemblent beaucoup vues du dessus, et seule la seconde est un
-    # défaut. Mesuré le 2026-09-09 : aucun débordement, à 16 comme à 20 px de préférence —
-    # le cadre fait son travail. Le test n'est donc pas un correctif, c'est le constat qui
-    # manquait.
-    _exiger_pas_de_defilement(
-        page, f"/administration à 320 px, table des comptes rendue "
-              f"(police par défaut {police} px)")
+    page.goto(live_server + "/administration?axe=groupes&groupe=etudiants-bd-2026",
+              wait_until="networkidle")
+    page.wait_for_selector("#cg-fiche .cg-lignes li", timeout=5000)
+    mesurer("fiche d'un groupe")
 
 
 def test_la_surface_de_pan_reste_bornee_et_commandee(page, decor):

@@ -2,8 +2,9 @@
 
    Quatre blocs, et aucun n'est une affaire de Bibliothèque : la version servie dit quel
    commit tourne ici (INFRA-10), les collections décident qui voit quoi dans tout le
-   corpus, la vue des comptes dit ce que chaque login a laissé, les moteurs disent si
-   l'instance sait encore reconnaître quelque chose. Les trois derniers vivaient dans
+   corpus, les comptes et groupes disent qui utilise l'instance et par quoi il entre
+   (AUTH-12, qui remplace la vue des comptes d'AUTH-7), les moteurs disent si l'instance
+   sait encore reconnaître quelque chose. Les trois derniers vivaient dans
    `/corpus` par ACCRÉTION — c'était le seul écran administratif, et tout ce qui y
    ressemblait s'y est ajouté —, donc les atteindre depuis la Visionneuse demandait de
    quitter son travail.
@@ -19,7 +20,7 @@
    par UX-10, et elle vient d'une erreur réelle : dans AUTH-4, le référent d'une collection
    — une simple ADRESSE — s'est retrouvé derrière la garde du PARTAGE parce qu'il vivait
    dans ce panneau-là, donc lisible du seul propriétaire. Ici, chaque bloc pose SA question :
-   la version servie et la vue des comptes n'apparaissent que si leur route répond (403
+   la version servie et les comptes et groupes n'apparaissent que si leur route répond (403
    aux non-administrateurs), les collections sont filtrées par la portée du serveur, et
    les moteurs sont ouverts à tous — regarder si l'OCR fonctionne n'est pas un pouvoir.
    La page, elle, ne garde rien.
@@ -94,20 +95,6 @@ function colMsgReleve(d) {
 async function colTenter(el, fn) {
   try { await fn(); colMsg(el, ""); return true; }
   catch (e) { colMsg(el, e.message || "Échec", true); return false; }
-}
-
-/* AUTH-6 — les deux natures d'un compte, LIBELLÉES pour qui n'était pas dans la décision.
-   « Collectif (login partagé) » plutôt que « collectif » seul : le mot désigne ici un fait
-   technique précis — plusieurs personnes derrière un même login — et non une appartenance
-   à une équipe, que le lecteur pourrait comprendre à la place. La conséquence est dite au
-   même endroit, sous le tableau, parce qu'un choix sans conséquence visible se fait au
-   hasard. */
-const COMPTE_NATURES = [["nominatif", "Nominatif (une personne)"],
-                        ["collectif", "Collectif (login partagé)"]];
-
-function natureOptions(courante) {
-  return COMPTE_NATURES.map(([v, l]) =>
-    `<option value="${v}"${v === courante ? " selected" : ""}>${l}</option>`).join("");
 }
 
 function niveauOptions(courant) {
@@ -243,7 +230,10 @@ async function colDetail(d, c, msg) {
   // que la ligne unique d'avant ne faisait pas. À mesurer sous NVDA avant d'en rien conclure
   // (décision du 2026-09-16 ; passe de QA « Les collections dans la Bibliothèque »).
   if (msg) colMsg(ligne, msg.texte, msg.erreur);
-  const recharger = async () => { await loadCollections(); };
+  // Et « 👥 Comptes et groupes » avec lui : sa fiche d'une collection dit qui entre, en
+  // lecture seule, et mentirait sur l'accès qu'on vient de changer ici jusqu'au rechargement
+  // de la page. Le lien « Régler qui entre » mène ICI ; le retour doit dire vrai.
+  const recharger = async () => { await loadCollections(); cgRafraichir(); };
   box.querySelectorAll("[data-retirer]").forEach((b) => {
     b.onclick = async () => {
       const { genre, principal } = b.dataset;
@@ -439,112 +429,619 @@ async function loadVersion() {
 }
 
 
-/* --- Vue des comptes (AUTH-7) ---------------------------------------------------
-   Ce que chaque login a LAISSÉ, pour que la règle de suppression — validée le 2026-09-06
-   — soit consultable par des gens qui n'étaient pas dans la conversation où elle s'est
-   décidée. D'où un VERDICT plutôt que des chiffres, et des comptes GROUPÉS par verdict.
+/* ═══════════════════════════════════════════════════════════════════════════
+   Comptes et groupes (AUTH-12, étape 2) — une liste et une fiche, côte à côte
 
-   Le verdict parle de CONSÉQUENCE, jamais de recommandation : « rien à orpheliner » et
-   non « supprimable ». L'écran dit ce qu'une suppression casserait ; décider reste un
-   geste humain, et il se fait ailleurs — dans l'annuaire, que cet écran ne commande pas.
-   -------------------------------------------------------------------------------- */
-async function loadComptes() {
-  const bloc = $("#comptes-bloc");
+   Remplace « 👤 Comptes vus par l'application » (AUTH-7). Ce que celle-ci montrait n'est
+   pas perdu, il a changé de place : la nature d'un compte se déclare en tête de sa fiche,
+   avec ce qu'elle change ; le VERDICT se lit dans « Départ », replié ; « identité changée »
+   est une marque de la fiche, et un signal de « À regarder » pendant trente jours. Le
+   regroupement des comptes par verdict, lui, disparaît — tranché par Hugo le 2026-09-17.
+
+   CE QUE L'ÉCRAN NE FAIT PAS, et c'est le contrat avec `GET /api/comptes-et-groupes` : il
+   ne réunit pas l'annuaire, le miroir et les accès, et ne calcule aucun signal. Le serveur
+   rend tout cela fait, « À regarder » déjà ORDONNÉ. Ce qui reste ici est de l'affichage, et
+   sa logique pure (tri, filtre, adresse, regroupement des signaux) vit dans
+   `static/lib/comptes.js`, testée par tables de cas.
+
+   IL NE MODIFIE RIEN, sauf la nature d'un compte (décision 1 (A) d'AUTH-12). Tout ce qui
+   change un compte ou un groupe se fait dans l'annuaire ; tout ce qui change un accès se
+   fait, jusqu'à l'étape 3, dans « 👥 Accès aux collections », juste au-dessus.
+
+   L'AXE, LA SÉLECTION ET LE TRI VIVENT DANS L'ADRESSE, pour qu'on puisse envoyer une fiche
+   et que « Retour » défasse le dernier saut. Le filtre n'y est pas : c'est une saisie en
+   cours, pas un endroit.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const CG = {
+  donnees: null,
+  index: null,           // { comptes: Map login, groupes: Map nom, collections: Map id }
+  axe: "comptes", tri: "alpha", sel: null,
+  filtre: "",
+  vueFiche: false,       // sous le seuil étroit, la fiche REMPLACE la liste
+  msgNature: null,       // { login, texte, erreur } — survit au rechargement du geste
+};
+
+/* Les deux natures d'un compte (AUTH-6), dans les mots de la maquette validée. La valeur
+   envoyée au serveur ne change pas ; seul le libellé suit le lexique de la décision 7. */
+const CG_NATURES = [["nominatif", "une personne"], ["collectif", "un login partagé"]];
+
+/* Le seuil étroit, en `em` comme les autres de la feuille : il suit la police choisie. La
+   même valeur que la règle `@media` de `style.css` — sinon le focus irait vers une fiche
+   que la mise en page n'affiche pas. */
+const CG_ETROIT = window.matchMedia("(max-width: 40em)");
+
+const CG_MOTIFS = { delai: "délai dépassé", refus: "accès refusé",
+                    reponse_illisible: "réponse illisible" };
+
+function cgPuce(texte, genre) {
+  return `<span class="cg-puce${genre ? " " + genre : ""}">${esc(texte)}</span>`;
+}
+
+/* Un lien qui ouvre un objet du bloc. Un BOUTON et non un <a> : il ne quitte pas la page,
+   et `data-type`/`data-id` suffisent à la délégation d'événements. */
+function cgLien(type, id, texte) {
+  return `<button type="button" class="cg-lien" data-type="${type}" `
+    + `data-id="${esc(String(id))}">${esc(texte)}</button>`;
+}
+
+function cgLienAnnuaire(texte) {
+  const href = BDComptes.lienAnnuaire(CG.donnees.annuaire.lien);
+  if (!href) return "";
+  return `<a class="cg-ext" href="${esc(href)}" target="_blank" rel="noopener">${esc(texte)}`
+    + `<span aria-hidden="true"> ↗</span><span class="sr-only"> (nouvel onglet)</span></a>`;
+}
+
+function cgAccesLu(niveau, exporter) {
+  return BDComptes.niveauLu(niveau) + (exporter ? " · peut exporter" : "");
+}
+
+/* Ce qu'on dit quand l'annuaire n'a rien pu apprendre sur un point précis. Deux phrases et
+   non une : « non vérifié » en mono-poste ferait chercher une panne qui n'existe pas. */
+function cgInconnu(quoi) {
+  return CG.donnees.annuaire.etat === "non_verifie"
+    ? `Non vérifié : l'annuaire n'a pas répondu, on ne connaît pas ${quoi}.`
+    : `Aucun annuaire n'est configuré : l'application ne connaît pas ${quoi}.`;
+}
+
+/* --- Chargement ------------------------------------------------------------------ */
+
+async function cgCharger(opts = {}) {
+  const bloc = $("#cg-bloc");
   let d;
-  // On DEMANDE, et un refus signifie « pas pour vous ». La garde vit sur la route
-  // (403 aux non-administrateurs) ; la reproduire ici en lisant les groupes ferait
-  // deux sources à tenir d'accord, et l'écran finirait par mentir dans un sens ou l'autre.
-  try { d = await apiGet("/api/comptes"); }
-  catch (e) { bloc.hidden = true; return; }
-  bloc.hidden = false;
-
-  // La limite EST le contenu : sans elle, un administrateur — qui n'a aucune ligne
-  // d'accès explicite — se lit « rien à orpheliner ». Exact, et trompeur.
-  //
-  // AUTH-6 y ajoute les conséquences de la nature. Elles sont écrites à CÔTÉ du sélecteur
-  // qui la pose, et pas seulement dans une fiche : déclarer un login collectif retire du
-  // travail à une mesure et raccourcit Ctrl+Z, ce qui ne se devine pas depuis un menu à
-  // deux entrées. Et c'est la DÉCLARATION qui déclenche tout : un login partagé que
-  // personne ne déclare garde un Ctrl+Z sans limite.
-  $("#comptes-limite").textContent = (d.limite || "") + " Un compte déclaré COLLECTIF est "
-    + "un login partagé par plusieurs personnes : l'accord inter-annotateurs cesse de le "
-    + "mesurer — il compte à part ce qu'il ne peut pas trancher —, les exports le "
-    + "nomment « collectif-N » au lieu de « annotateur-N », et Ctrl+Z n'y remonte que "
-    + "les cinq dernières minutes, faute de savoir qui a fait quoi. Aucun droit d'accès "
-    + "n'en dépend.";
-
-  const body = $("#comptes-body");
-  if (!d.comptes.length) {
-    body.innerHTML = `<p class="col-note">Aucun compte n'a encore ouvert de page.</p>`;
+  try { d = await apiGet("/api/comptes-et-groupes"); }
+  catch (e) {
+    // Un 403 veut dire « pas pour vous » : la garde est celle du serveur, et le bloc se tait.
+    // Toute AUTRE panne se dit : un administrateur devant un bloc qui disparaît sans un mot
+    // chercherait un droit qu'il a déjà.
+    if (e.statut === 403) { bloc.hidden = true; return; }
+    bloc.hidden = false;
+    const n = $("#cg-annuaire");
+    n.textContent = `La liste des comptes n'a pas pu être lue : ${e.message}`;
+    n.classList.add("erreur");
     return;
   }
-  // « Rien à orpheliner » d'abord : c'est le groupe sur lequel on agit, et celui qui
-  // porte aussi le signal « s'est connecté et ne voit rien ».
-  const groupes = new Map();
-  d.comptes.forEach((c) => {
-    if (!groupes.has(c.verdict)) groupes.set(c.verdict, []);
-    groupes.get(c.verdict).push(c);
+  bloc.hidden = false;
+  $("#cg-annuaire").classList.remove("erreur");
+  CG.donnees = d;
+  CG.index = {
+    comptes: new Map(d.comptes.map((c) => [c.login, c])),
+    groupes: new Map(d.groupes.map((g) => [g.nom, g])),
+    collections: new Map(d.collections.map((c) => [c.id, c])),
+  };
+  cgRendre();
+  // Le focus rendu APRÈS le rechargement qui suit un geste : le contrôle actionné a été
+  // détruit par le rendu, et le clavier perdrait sa place. Seulement à qui ne l'a pas repris.
+  if (opts.focus && document.activeElement === document.body) {
+    const el = document.querySelector(opts.focus);
+    if (el) el.focus();
+  }
+}
+
+/* Rechargé quand un accès change dans le panneau voisin, et seulement si le bloc est là. */
+function cgRafraichir() {
+  if (CG.donnees) cgCharger();
+}
+
+function cgLireAdresse() {
+  const a = BDComptes.lireAdresse(location.search);
+  CG.axe = a.axe; CG.tri = a.tri; CG.sel = a.sel;
+  CG.vueFiche = a.sel !== null;
+}
+
+/* `pousser` : un SAUT (choisir un objet, changer d'axe) entre dans l'historique, pour que
+   « Retour » le défasse ; un changement de tri remplace l'entrée courante. */
+function cgEcrireAdresse(pousser) {
+  const s = BDComptes.ecrireAdresse({ axe: CG.axe, tri: CG.tri, sel: CG.sel }, location.search);
+  const url = location.pathname + s + location.hash;
+  if (url === location.pathname + location.search + location.hash) return;
+  history[pousser ? "pushState" : "replaceState"](null, "", url);
+}
+
+/* --- Rendu ----------------------------------------------------------------------- */
+
+function cgRendre() {
+  cgRendreAnnuaire();
+  cgRendreControles();
+  cgRendreSignaux();
+  cgRendreListe();
+  cgRendreFiche();
+}
+
+function cgRendreAnnuaire() {
+  const a = CG.donnees.annuaire, n = $("#cg-annuaire");
+  n.classList.toggle("non-verifie", a.etat === "non_verifie");
+  if (a.etat === "lu") {
+    const t = a.lu_le ? new Date(a.lu_le) : null;
+    const heure = t && !Number.isNaN(t.getTime())
+      ? ` à ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`
+      : "";
+    // Une doublure qui s'annonce comme un annuaire serait le pire des mensonges de cet
+    // écran : des comptes inventés, présentés comme ceux de l'instance.
+    n.textContent = `Annuaire lu${heure}.` + (a.source === "doublure"
+      ? " Doublure de test : ces comptes et ces groupes ne sont pas ceux d'un annuaire réel."
+      : "");
+  } else if (a.etat === "non_verifie") {
+    const motif = CG_MOTIFS[a.motif] || a.motif;
+    n.textContent = `Non vérifié : l'annuaire n'a pas répondu${motif ? ` (${motif})` : ""}. `
+      + "Ce qui suit est ce que l'application sait seule, et les signaux qui supposent "
+      + "l'annuaire ne sont pas calculés.";
+  } else {
+    n.textContent = "Aucun annuaire n'est configuré : la liste montre les comptes déjà venus "
+      + "et ceux qui ont un accès, et les groupes nommés dans un accès.";
+  }
+}
+
+function cgRendreControles() {
+  document.querySelectorAll("#cg [data-axe]").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.axe === CG.axe)));
+  document.querySelectorAll("#cg [data-tri]").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.tri === CG.tri)));
+  const lien = $("#cg-annuaire-lien");
+  const href = BDComptes.lienAnnuaire(CG.donnees.annuaire.lien);
+  // Créer se fait dans l'annuaire, pour un compte ou un groupe — pas pour une collection,
+  // qui se crée dans la Bibliothèque.
+  lien.hidden = !href || CG.axe === "collections";
+  if (href) lien.href = href;
+  $("#cg").classList.toggle("cg--fiche", CG.vueFiche && CG.sel !== null);
+}
+
+/* « À regarder » : l'ordre est celui du serveur. Redessiné au CHARGEMENT seulement, pas à
+   chaque sélection — une ligne repliée qu'on vient de déplier ne se referme pas sous la main. */
+function cgRendreSignaux() {
+  const d = CG.donnees, liste = d.a_regarder;
+  $("#cg-regarder-titre").textContent = `⚠ À regarder (${liste.length})`;
+  const noms = {
+    collections: Object.fromEntries(d.collections.map((c) => [c.id, c.nom])),
+    comptes: Object.fromEntries(d.comptes.filter((c) => c.nom).map((c) => [c.login, c.nom])),
+  };
+  const ligne = (s) => {
+    const c = BDComptes.cibleSignal(s), texte = BDComptes.texteSignal(s, noms);
+    return `<li>${c ? cgLien(c.type, c.id, texte) : esc(texte)}</li>`;
+  };
+  const ouverts = new Set([...document.querySelectorAll("#cg-signaux details[open]")]
+    .map((x) => x.dataset.signal));
+  $("#cg-signaux").innerHTML = liste.length
+    ? BDComptes.regrouperSignaux(liste).map((x) => (x.replie
+      ? `<li><details class="cg-replie" data-signal="${esc(x.signal)}"`
+        + `${ouverts.has(x.signal) ? " open" : ""}><summary>`
+        + `${esc(BDComptes.texteGroupeSignaux(x.signal, x.signaux.length))}</summary>`
+        + `<ul>${x.signaux.map(ligne).join("")}</ul></details></li>`
+      : ligne(x))).join("")
+    : `<li class="muted small">Rien à regarder.</li>`;
+}
+
+const CG_NOMS_AXE = { comptes: ["compte", "comptes"], groupes: ["groupe", "groupes"],
+                      collections: ["collection", "collections"] };
+
+/* Ce qui sert l'ANNUAIRE plutôt que l'application — comptes de service, compte d'amorçage,
+   groupes de rôle de LLDAP — se replie en fin de liste. Rendu et non caché : qu'un compte
+   soit `lldap_admin` explique que « Mot de passe oublié ? » échoue pour lui. */
+function cgAParte(o) {
+  if (CG.axe === "comptes") return o.usage === "annuaire";
+  if (CG.axe === "groupes") return o.role_annuaire === true;
+  return false;
+}
+
+function cgRendreListe() {
+  const d = CG.donnees;
+  const brut = CG.axe === "comptes" ? d.comptes : CG.axe === "groupes" ? d.groupes
+                                                                       : d.collections;
+  const objets = BDComptes.trier(BDComptes.filtrer(brut, CG.axe, CG.filtre), CG.axe, CG.tri);
+  // Le focus est-il sur une ligne ? Le rendu va la détruire : on la retrouvera.
+  const actif = document.activeElement;
+  const garde = actif && actif.closest && actif.closest("#cg-objets")
+    && actif.dataset.id !== undefined ? actif.dataset.id : null;
+  const type = BDComptes.TYPE_DE_L_AXE[CG.axe];
+
+  const ligne = (o) => {
+    const id = BDComptes.identifiant(o, CG.axe);
+    const e = BDComptes.etatCourt(o, CG.axe, CG.tri, d.annuaire.etat);
+    const courant = CG.sel !== null && String(CG.sel) === String(id);
+    return `<li><button type="button" class="cg-objet" data-type="${type}" `
+      + `data-id="${esc(String(id))}"${courant ? ' aria-current="true"' : ""}>`
+      + `<span class="cg-nom">${esc(BDComptes.nomLu(o, CG.axe))}</span>`
+      + `<span class="cg-etat${e.alerte ? " alerte" : ""}">${esc(e.texte)}</span></button></li>`;
+  };
+  const [un, plusieurs] = CG_NOMS_AXE[CG.axe];
+  const ordinaires = objets.filter((o) => !cgAParte(o));
+  const aParte = objets.filter(cgAParte);
+  let html = ordinaires.map(ligne).join("");
+  if (aParte.length) {
+    const titre = CG.axe === "comptes"
+      ? `${aParte.length} ${aParte.length > 1 ? "comptes" : "compte"} de l'annuaire`
+      : `${aParte.length} ${aParte.length > 1 ? "groupes" : "groupe"} de rôle de l'annuaire`;
+    // Déplié quand on FILTRE : un objet trouvé ne doit pas rester caché dans un repli.
+    html += `<li><details class="cg-a-parte"${CG.filtre.trim() ? " open" : ""}>`
+      + `<summary>${esc(titre)}</summary><ul>${aParte.map(ligne).join("")}</ul></details></li>`;
+  }
+  if (!objets.length) {
+    html = `<li class="cg-vide muted small">${CG.filtre.trim()
+      ? `Aucun ${un} ne correspond à « ${esc(CG.filtre.trim())} ».` : `Aucun ${un}.`}</li>`;
+  }
+  $("#cg-objets").innerHTML = html;
+  $("#cg-objets-titre").textContent = `${plusieurs[0].toUpperCase()}${plusieurs.slice(1)} (${objets.length})`;
+  if (garde !== null) {
+    const b = document.querySelector(`#cg-objets .cg-objet[data-id="${CSS.escape(garde)}"]`);
+    if (b) b.focus();
+  }
+}
+
+function cgRendreFiche() {
+  const box = $("#cg-fiche");
+  const retour = `<button type="button" class="ghost small cg-retour" data-cg-retour="1">← Liste</button>`;
+  if (CG.sel === null) {
+    const [un] = CG_NOMS_AXE[CG.axe];
+    box.innerHTML = `<p class="muted cg-accueil">Choisissez un ${un} dans la liste pour ouvrir
+      sa fiche.</p>`;
+    return;
+  }
+  const o = CG.index[CG.axe].get(CG.sel);
+  if (!o) {
+    box.innerHTML = `${retour}<p class="col-note">« ${esc(String(CG.sel))} » n'est pas dans
+      la liste : l'adresse le nomme, mais ni l'annuaire, ni les venues, ni les accès ne le
+      connaissent.</p>`;
+    return;
+  }
+  box.innerHTML = retour + (CG.axe === "comptes" ? cgFicheCompte(o)
+    : CG.axe === "groupes" ? cgFicheGroupe(o) : cgFicheCollection(o));
+}
+
+function cgFicheCompte(c) {
+  const d = CG.donnees;
+  const vu = BDComptes.dateCourte(c.derniere_vue);
+  const puces = [];
+  if (c.administrateur === true) puces.push(cgPuce("administrateur"));
+  if (c.usage === "annuaire") puces.push(cgPuce("compte de l'annuaire"));
+  if (c.dans_annuaire === false) puces.push(cgPuce("absent de l'annuaire", "rouge"));
+  if (c.reprises) {
+    const quand = BDComptes.dateCourte(c.derniere_reprise);
+    puces.push(cgPuce(`identité changée ${c.reprises} ×${quand ? ` (dernière le ${quand})` : ""}`,
+                      "rouge"));
+  }
+
+  // La nature (AUTH-6). Elle ne se pose que sur un compte VENU : le serveur n'en connaît pas
+  // d'autre, et lui en fabriquer une inventerait un compte actif qui ne l'est pas.
+  let nature;
+  if (c.nature === null || c.nature === undefined) {
+    nature = `<p class="muted small cg-nature">Nature : se déclare à sa première connexion.</p>`;
+  } else {
+    const msg = CG.msgNature && CG.msgNature.login === c.login ? CG.msgNature : null;
+    nature = `<div class="cg-nature">
+      <label for="cg-nature">Nature</label>
+      <select id="cg-nature" data-login="${esc(c.login)}">${CG_NATURES.map(([v, l]) =>
+        `<option value="${v}"${v === c.nature ? " selected" : ""}>${l}</option>`).join("")}</select>
+      <p class="col-msg muted small${msg && msg.erreur ? " erreur" : ""}" id="cg-nature-msg"
+         role="status" aria-live="polite">${msg ? esc(msg.texte) : ""}</p>
+      <details class="cg-aide"><summary>Ce que change un login partagé</summary>
+        <p>Un login partagé est utilisé par plusieurs personnes. L'accord
+        inter-annotateurs cesse de le mesurer — il compte à part ce qu'il ne peut pas
+        trancher —, les exports le nomment « collectif-N » au lieu de « annotateur-N », et
+        Ctrl+Z n'y remonte que les cinq dernières minutes, faute de savoir qui a fait quoi.
+        Aucun droit d'accès n'en dépend. L'application ne peut pas deviner qu'un login est
+        partagé : il faut le déclarer.</p></details>
+    </div>`;
+  }
+
+  let groupes;
+  if (c.groupes === null || c.groupes === undefined) {
+    groupes = `<p class="muted small">${esc(cgInconnu("ses groupes"))}</p>`;
+  } else {
+    groupes = `<div class="cg-pastilles">${c.groupes.length
+      ? c.groupes.map((g) => cgLien("groupe", g, g)).join("")
+      : `<span class="muted small">Aucun groupe.</span>`}
+      ${c.dans_annuaire === true ? cgLienAnnuaire("Modifier dans l'annuaire") : ""}</div>`;
+  }
+
+  const lignes = c.collections.map((x) => `<li>${cgLien("collection", x.id, x.nom)}
+    <span class="muted small">${esc(cgAccesLu(x.niveau, x.exporter))} — ${x.par === "groupe"
+      ? `par le groupe ${cgLien("groupe", x.groupe, x.groupe)}` : "à son nom"}</span></li>`);
+  let collections = "";
+  if (c.administrateur === true) {
+    collections += `<p class="col-note col-note-admin">Administrateur de l'instance : lit et
+      écrit toute collection, sans figurer dans les accès.</p>`;
+  }
+  if (lignes.length) {
+    collections += `<ul class="cg-lignes">${lignes.join("")}</ul>`;
+  } else if (c.collections_completes && c.administrateur !== true) {
+    collections += `<p class="cg-explique">Aucune collection ne lui est ouverte :
+      l'application lui montre un corpus vide.</p>`;
+  } else if (!c.collections_completes) {
+    collections += `<p class="muted small">Aucun accès à son nom.</p>`;
+  }
+  // Ce que la vue ne sait pas, dit là où l'on s'en sert : c'est en lisant les collections
+  // d'un compte qu'on conclurait à tort « il n'a accès à rien ».
+  if (d.limite) collections += `<p class="col-note">${esc(d.limite)}</p>`;
+
+  let depart = "";
+  if (c.usage !== "annuaire") {
+    const rien = c.verdict === "rien à orpheliner";
+    const n = c.acces_explicites || 0;
+    const conseq = BDComptes.consequenceSuppression(c);
+    const annuaire = cgLienAnnuaire("l'annuaire") || "l'annuaire";
+    const suite = c.dans_annuaire === false
+      ? `<li>Il n'est déjà plus dans l'annuaire : ${esc(conseq)}.</li>`
+      : `<li>Le retirer de ses groupes dans ${annuaire} : cela coupe les accès qu'il tient
+           d'un groupe.</li>
+         <li>Le supprimer dans ${annuaire} : ${esc(conseq)}.</li>`;
+    depart = `<details class="cg-depart"><summary>Départ ${cgPuce(c.verdict, rien ? "ok" : "alerte")}</summary>
+      <ol>
+        <li>Retirer ses accès à son nom${n ? ` (${n})` : " — il n'en a aucun"}, dans
+          « 👥 Accès aux collections ».</li>
+        ${suite}
+      </ol></details>`;
+  }
+
+  return `<article class="cg-carte" aria-labelledby="cg-fiche-titre">
+    <div class="cg-tete">
+      <div>
+        <h3 id="cg-fiche-titre" tabindex="-1">${esc(c.nom || c.login)}</h3>
+        <p class="cg-sous"><span class="cg-login">${esc(c.login)}</span>
+          ${vu ? `<span>vu le ${esc(vu)}</span>`
+               : cgPuce("aucune connexion", c.usage === "annuaire" ? "" : "alerte")}
+          ${puces.join("")}</p>
+      </div>
+      ${nature}
+    </div>
+    <section class="cg-section"><h4>Groupes</h4>${groupes}</section>
+    <section class="cg-section"><h4>Collections</h4>${collections}</section>
+    ${depart}
+  </article>`;
+}
+
+function cgFicheGroupe(g) {
+  const puces = [];
+  if (g.dans_annuaire === false) puces.push(cgPuce("absent de l'annuaire", "rouge"));
+  if (g.administrateur === true) puces.push(cgPuce("groupe d'administration"));
+  if (g.role_annuaire === true) puces.push(cgPuce("rôle de l'annuaire"));
+
+  const ouvertes = g.collections.map((x) => `<li>${cgLien("collection", x.id, x.nom)}
+    <span class="muted small">${esc(cgAccesLu(x.niveau, x.exporter))}</span></li>`);
+  let collections = g.administrateur === true
+    ? `<p class="col-note col-note-admin">Ses membres lisent et écrivent toute collection,
+        sans figurer dans les accès.</p>` : "";
+  collections += ouvertes.length ? `<ul class="cg-lignes">${ouvertes.join("")}</ul>`
+                                 : `<p class="muted small">Aucune.</p>`;
+  // Décision 6 de la construction (2026-09-17) : ce geste vient avec l'étape 3. L'écran le
+  // DIT, pour qu'on ne le cherche pas dans une fiche qui ne l'a pas encore.
+  collections += `<p class="col-note">Ouvrir une collection à ce groupe se fera depuis la
+    fiche de la collection. D'ici là, cela se règle dans « 👥 Accès aux collections », sur
+    cette page.</p>`;
+
+  let membres, titreMembres = "Membres";
+  if (g.dans_annuaire === false) {
+    membres = `<p class="cg-explique">Ce groupe n'est pas dans l'annuaire : aucun compte n'en
+      est membre, et ses accès n'ouvrent rien à personne.</p>`;
+  } else if (g.membres === null || g.membres === undefined) {
+    membres = `<p class="muted small">${esc(cgInconnu("ses membres"))}</p>`;
+  } else if (!g.membres.length) {
+    membres = `<p class="muted small">Aucun membre.</p>`;
+  } else {
+    const comptes = g.membres.map((l) => CG.index.comptes.get(l) || { login: l, nom: null });
+    const jamais = comptes.filter((c) => !c.derniere_vue && c.usage !== "annuaire").length;
+    if (jamais) titreMembres += ` — ${jamais} jamais ${jamais > 1 ? "venus" : "venu"}`;
+    membres = `<ul class="cg-lignes">${BDComptes.trier(comptes, "comptes", "alpha").map((c) => {
+      const vu = BDComptes.dateCourte(c.derniere_vue);
+      return `<li>${cgLien("compte", c.login, c.nom || c.login)}${vu
+        ? `<span class="muted small">vu le ${esc(vu)}</span>`
+        : cgPuce("aucune connexion", c.usage === "annuaire" ? "" : "alerte")}</li>`;
+    }).join("")}</ul>`;
+  }
+
+  return `<article class="cg-carte" aria-labelledby="cg-fiche-titre">
+    <div class="cg-tete">
+      <div>
+        <h3 id="cg-fiche-titre" tabindex="-1">${esc(g.nom)}</h3>
+        <p class="cg-sous">${g.nb_comptes !== null && g.nb_comptes !== undefined
+          ? `<span>${g.nb_comptes} ${g.nb_comptes > 1 ? "comptes" : "compte"}</span>` : ""}
+          ${puces.join("")}
+          ${g.dans_annuaire === true ? cgLienAnnuaire("Défini dans l'annuaire") : ""}</p>
+      </div>
+    </div>
+    <section class="cg-section"><h4>Collections ouvertes</h4>${collections}</section>
+    <section class="cg-section"><h4>${esc(titreMembres)}</h4>${membres}</section>
+  </article>`;
+}
+
+function cgFicheCollection(c) {
+  const puces = [];
+  const diffusion = BDComptes.diffusionLue(c.statut_diffusion);
+  if (diffusion) puces.push(cgPuce(diffusion));
+  if (c.repli) puces.push(cgPuce("collection de repli"));
+  if ((c.signaux || []).includes("sans_proprietaire")) puces.push(cgPuce("sans propriétaire", "rouge"));
+  if ((c.signaux || []).includes("proprietaire_absent")) {
+    puces.push(cgPuce("propriétaire absent de l'annuaire", "rouge"));
+  }
+  const modif = BDComptes.dateCourte(c.derniere_modification);
+
+  const acces = (c.acces || []).map((a) => {
+    const groupe = a.par === "groupe";
+    const nom = groupe ? a.groupe : a.login;
+    const objet = groupe ? CG.index.groupes.get(nom) : CG.index.comptes.get(nom);
+    const absent = objet && objet.dans_annuaire === false
+      ? cgPuce("absent de l'annuaire", "rouge") : "";
+    return `<li><span><span aria-hidden="true">${groupe ? "👥" : "👤"}</span>
+      <span class="sr-only">${groupe ? "groupe" : "compte"}</span>
+      ${cgLien(groupe ? "groupe" : "compte", nom, nom)} ${absent}</span>
+      <span class="muted small">${esc(cgAccesLu(a.niveau, a.exporter))}</span></li>`;
   });
-  const ordre = [...groupes.keys()].sort(
-    (a, b) => (a === "rien à orpheliner" ? -1 : b === "rien à orpheliner" ? 1 : a.localeCompare(b)));
 
-  // UX-7 — le cadre défilant, comme les quatre autres tableaux larges du dépôt (albums,
-  // planches, Accord, Inter). SEPT colonnes depuis AUTH-6 (2026-09-09) — la nature s'y est
-  // ajoutée — et elles ne tiennent pas dans 320 px ; sans cadre le
-  // débordement sort de l'écran au lieu de défiler. Il manquait ici, et le harnais de
-  // reflow ne pouvait pas le dire : sans `BD_AUTH_PROXY` le décor n'inscrit personne dans
-  // `utilisateur`, donc ce tableau se rend VIDE pendant la mesure. Ce que la page ne rend
-  // pas, l'instrument ne le voit pas — l'avertissement que `test_e2e_reflow.py` s'écrit à
-  // lui-même pour la Recherche vaut ici, et personne ne l'y avait appliqué.
-  //
-  // L'étiquette porte le VERDICT parce qu'il y a un tableau par groupe : plusieurs
-  // régions au nom identique se valent un « lequel ? » à la navigation par régions.
-  body.innerHTML = ordre.map((v) => `
-    <h4 class="comptes-verdict">${esc(v)} <span class="muted">(${groupes.get(v).length})</span></h4>
-    <div class="table-cadre" tabindex="0" role="region"
-         aria-label="Comptes — ${esc(v)}">
-    <table class="corpus-table comptes-table">
-      <thead><tr>
-        <th scope="col">Login</th><th scope="col">Nature</th><th scope="col">Nom</th>
-        <th scope="col">Dernière visite</th>
-        <th scope="col" class="c-num">Actes</th><th scope="col" class="c-num">Accès</th>
-        <th scope="col">Signal</th>
-      </tr></thead>
-      <tbody>${groupes.get(v).map((c) => `
-        <tr>
-          <td class="c-titre">${esc(c.login)}</td>
-          <td><select data-nature-de="${esc(c.login)}"
-                      aria-label="Nature du compte ${esc(c.login)}">${
-            natureOptions(c.nature)}</select></td>
-          <td>${esc(c.nom || "—")}</td>
-          <td>${esc((c.derniere_vue || "—").slice(0, 10))}</td>
-          <td class="c-num">${c.actes}</td>
-          <td class="c-num">${c.acces_explicites}</td>
-          <td>${c.reprises
-              ? `<span class="compte-repris">identité changée ${c.reprises}\u00a0×</span>`
-              : ""}</td>
-        </tr>`).join("")}</tbody>
-    </table>
-    </div>`).join("");
+  return `<article class="cg-carte" aria-labelledby="cg-fiche-titre">
+    <div class="cg-tete">
+      <div>
+        <h3 id="cg-fiche-titre" tabindex="-1">${esc(c.nom)}</h3>
+        <p class="cg-sous"><span>${c.nb_albums} ${c.nb_albums > 1 ? "albums" : "album"}</span>
+          ${modif ? `<span>modifiée le ${esc(modif)}</span>` : ""}
+          ${puces.join("")}</p>
+      </div>
+    </div>
+    <section class="cg-section"><h4>Qui entre</h4>
+      ${acces.length ? `<ul class="cg-lignes">${acces.join("")}</ul>`
+        : `<p class="muted small">Personne : seuls les administrateurs de l'instance la
+            voient.</p>`}
+      <div><button type="button" class="ghost small" data-cg-regler="${c.id}">Régler qui
+        entre</button></div>
+      <p class="col-msg muted small" id="cg-regler-msg" role="status" aria-live="polite"></p>
+      <p class="col-note">Les accès se lisent ici ; ils se règlent dans « 👥 Accès aux
+        collections », sur cette page, jusqu'à ce qu'ils rejoignent la fiche de la collection
+        dans la Bibliothèque.</p>
+    </section>
+  </article>`;
+}
 
-  // Le geste qui POSE la nature. Il vit ici et non dans un écran à part parce que c'est
-  // là qu'on lit ce qu'un compte a laissé — et qu'un compte collectif change la lecture de
-  // toute sa ligne : « laisse des actes » cesse alors de désigner une personne.
-  body.querySelectorAll("select[data-nature-de]").forEach((sel) => {
-    sel.onchange = async () => {
-      const login = sel.dataset.natureDe;
-      try {
-        await apiSend("PATCH", `/api/comptes/${encodeURIComponent(login)}/nature`,
-                      { nature: sel.value });
-      } catch (e) {
-        toast(e.message || "Échec", "err");
-      }
-      // On recharge dans les DEUX cas, comme le sélecteur de niveau d'accès : en cas de
-      // refus, le <select> afficherait une nature que le serveur n'a pas enregistrée, et
-      // l'écran mentirait sur l'état réel. Ici le mensonge coûterait plus cher qu'ailleurs
-      // — c'est cette valeur qui décide si une mesure d'accord a le droit de répondre.
-      loadComptes();
-    };
+/* --- Gestes ---------------------------------------------------------------------- */
+
+/* Ouvrir un objet : depuis la liste, un signal, ou un lien d'une fiche. Le filtre s'efface
+   quand l'axe change — sinon l'objet visé pourrait ne pas figurer dans la liste qui s'ouvre. */
+function cgAller(type, id, depuisListe) {
+  const axe = BDComptes.AXE_DU_TYPE[type];
+  if (!axe) return;
+  if (axe !== CG.axe) {
+    CG.axe = axe;
+    CG.filtre = "";
+    $("#cg-filtre").value = "";
+  }
+  const sel = axe === "collections" ? Number(id) : id;
+  if (!CG.msgNature || CG.msgNature.login !== sel) CG.msgNature = null;
+  CG.sel = sel;
+  CG.vueFiche = true;
+  cgEcrireAdresse(true);
+  cgRendreControles();
+  cgRendreListe();
+  cgRendreFiche();
+  // Le focus suit la FICHE quand la liste disparaît (seuil étroit) ou quand on vient d'un
+  // lien ailleurs que la liste ; au large, un choix dans la liste y laisse le clavier, pour
+  // parcourir la suivante sans revenir.
+  if (!depuisListe || CG_ETROIT.matches) {
+    const t = $("#cg-fiche-titre");
+    if (t) t.focus();
+  }
+}
+
+function cgChangerAxe(axe) {
+  if (axe === CG.axe) return;
+  CG.axe = axe;
+  CG.sel = null;
+  CG.vueFiche = false;
+  CG.filtre = "";
+  CG.msgNature = null;
+  $("#cg-filtre").value = "";
+  cgEcrireAdresse(true);
+  cgRendreControles();
+  cgRendreListe();
+  cgRendreFiche();
+}
+
+async function cgPoserNature(select) {
+  const login = select.dataset.login;
+  try {
+    await apiSend("PATCH", `/api/comptes/${encodeURIComponent(login)}/nature`,
+                  { nature: select.value });
+    CG.msgNature = { login, texte: "Nature enregistrée.", erreur: false };
+  } catch (e) {
+    CG.msgNature = { login, texte: e.message || "Échec", erreur: true };
+  }
+  // On recharge dans les DEUX cas, comme la vue qu'on remplace : en cas de refus, le
+  // sélecteur afficherait une nature que le serveur n'a pas enregistrée. Ici le mensonge
+  // coûterait plus qu'ailleurs — c'est cette valeur qui décide si une mesure d'accord a le
+  // droit de répondre.
+  await cgCharger({ focus: "#cg-nature" });
+}
+
+/* « Régler qui entre » : le panneau voisin, déplié sur la collection. Le dépliant déclenche
+   lui-même le chargement de ses accès (`colItem`). */
+function cgReglerAcces(id) {
+  const d = document.querySelector(`#col-body .col-item[data-id="${CSS.escape(String(id))}"]`);
+  if (!d) {
+    const m = $("#cg-regler-msg");
+    if (m) {
+      m.textContent = "Cette collection n'est pas dans « 👥 Accès aux collections » : la liste "
+        + "ne s'est peut-être pas chargée.";
+      m.classList.add("erreur");
+    }
+    return;
+  }
+  d.open = true;
+  d.scrollIntoView({ block: "start" });
+  d.querySelector("summary").focus();
+}
+
+function cgInstaller() {
+  const racine = $("#cg");
+  racine.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button");
+    if (!b || !racine.contains(b)) return;
+    if (b.dataset.axe) { cgChangerAxe(b.dataset.axe); return; }
+    if (b.dataset.tri) {
+      if (b.dataset.tri === CG.tri) return;
+      CG.tri = b.dataset.tri;
+      cgEcrireAdresse(false);
+      cgRendreControles();
+      cgRendreListe();
+      return;
+    }
+    if (b.dataset.cgRetour) {
+      CG.vueFiche = false;
+      cgRendreControles();
+      const courant = document.querySelector('#cg-objets .cg-objet[aria-current="true"]');
+      (courant || $("#cg-filtre")).focus();
+      return;
+    }
+    if (b.dataset.cgRegler) { cgReglerAcces(b.dataset.cgRegler); return; }
+    if (b.dataset.type && b.dataset.id !== undefined) {
+      cgAller(b.dataset.type, b.dataset.id, b.classList.contains("cg-objet"));
+    }
+  });
+  $("#cg-filtre").addEventListener("input", (ev) => {
+    CG.filtre = ev.target.value;
+    if (CG.donnees) cgRendreListe();
+  });
+  racine.addEventListener("change", (ev) => {
+    if (ev.target.id === "cg-nature") cgPoserNature(ev.target);
+  });
+  // La liste se parcourt aux FLÈCHES, en plus de Tab : trois cents comptes à la tabulation
+  // ne se parcourent pas. Seules les lignes visibles comptent — un repli fermé ne vole pas
+  // le focus. Par l'état du repli et non par `offsetParent` : Chromium ne rend plus le
+  // contenu d'un <details> fermé en `display: none`, et `offsetParent` y reste renseigné
+  // (mesuré : « Fin » atterrissait dans le repli fermé).
+  $("#cg-objets").addEventListener("keydown", (ev) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(ev.key)) return;
+    const lignes = [...document.querySelectorAll("#cg-objets .cg-objet")]
+      .filter((x) => !x.closest("details:not([open])"));
+    const i = lignes.indexOf(document.activeElement);
+    if (i < 0 || !lignes.length) return;
+    ev.preventDefault();
+    const j = ev.key === "Home" ? 0 : ev.key === "End" ? lignes.length - 1
+      : Math.max(0, Math.min(lignes.length - 1, i + (ev.key === "ArrowDown" ? 1 : -1)));
+    lignes[j].focus();
+  });
+  window.addEventListener("popstate", () => {
+    if (!CG.donnees) return;
+    const avant = CG.axe;
+    cgLireAdresse();
+    if (CG.axe !== avant) { CG.filtre = ""; $("#cg-filtre").value = ""; }
+    cgRendreControles();
+    cgRendreListe();
+    cgRendreFiche();
   });
 }
 
@@ -629,16 +1126,16 @@ async function santeEprouver() {
 
 function setup() {
   // Pas de modale à ouvrir : les blocs SONT la page. On charge donc d'emblée — quatre
-  // requêtes, dont deux (`/api/version` et `/api/comptes`) peuvent légitimement être
-  // refusées, chacune masquant son propre bloc et rien d'autre.
+  // requêtes, dont deux (`/api/version` et `/api/comptes-et-groupes`) peuvent légitimement
+  // être refusées, chacune masquant son propre bloc et rien d'autre.
   //
   // Le compte est tenu à jour ICI parce que ce commentaire a déjà menti : il disait
   // « deux requêtes » depuis le premier jour, à trois lignes de la ligne qui le
   // contredisait (cf. plus bas). Un chiffre dans un commentaire est une affirmation
   // vérifiable, et il vieillit dans le sens rassurant.
   //
-  // `loadComptes()` s'appelle ICI, et non depuis `loadCollections()` où elle a vécu
-  // jusqu'au 2026-09-07. Elle y était nichée APRÈS le `return` du cas « aucune
+  // Les comptes se chargent ICI (`cgCharger()` depuis AUTH-12, `loadComptes()` avant
+  // lui), et non depuis `loadCollections()` où la vue des comptes a vécu jusqu'au 2026-09-07. Elle y était nichée APRÈS le `return` du cas « aucune
   // collection », si bien qu'une portée sans collection escamotait la vue des comptes —
   // un bloc masqué par une condition qui ne le concerne pas, c'est-à-dire très exactement
   // le motif d'AUTH-4 que cette page existe pour fermer. Mesuré : sans collection,
@@ -655,7 +1152,10 @@ function setup() {
   // la ligne qui disait le contraire.
   loadVersion();
   loadCollections();
-  loadComptes();
+  // L'adresse d'abord : le premier rendu ouvre directement l'axe et la fiche qu'elle nomme.
+  cgLireAdresse();
+  cgInstaller();
+  cgCharger();
   santeCharger();
   // SANTE-1 : éprouver reste un geste SÉPARÉ et volontaire — le contrôle profond importe
   // les moteurs pour de bon, quelques secondes et quelques centaines de mégaoctets.

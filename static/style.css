@@ -2098,14 +2098,109 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 /* Le lien de connexion prend l'allure d'un bouton : c'est une ACTION, et le rendre
    discret le ferait manquer par ceux à qui il s'adresse — ceux qui n'ont pas de session. */
 .dep-connexion { display: inline-block; text-decoration: none; }
-/* Vue des comptes (AUTH-7) — dans le panneau Collections, sous la liste. */
-#comptes-bloc { border-top: 1px solid var(--border); margin-top: .9rem; padding-top: .6rem; }
-#comptes-bloc h4 { margin: 0 0 .3rem; font-size: .95rem; }
-.comptes-verdict { margin: .7rem 0 .2rem; font-size: .85rem; font-weight: 600; }
-.comptes-table { font-size: .85rem; }
-/* Le signal porte un LIBELLÉ, pas seulement une couleur : l'encre AA-sûre `--ink-red`
-   et non l'accent brut, qui échoue le 4.5:1 sur du petit texte (WCAG 2.1 AA). */
-.compte-repris { color: var(--ink-red); font-size: .8rem; }
+/* ── Comptes et groupes (AUTH-12, étape 2) — une liste et une fiche, côte à côte ─────
+   Remplace la vue des comptes d'AUTH-7. La forme est celle de la maquette validée par
+   Hugo le 2026-09-16, sur les couleurs de CETTE feuille : aucun ton inventé, et chaque
+   petit texte coloré prend un token d'encre AA-sûr (`--accent-amber` et `--accent-green`
+   sont assombris en thème clair pour cela, `--ink-red` existe pour ça). Les marques
+   portent leur sens dans le MOT, la couleur ne fait que le renforcer (WCAG 1.4.1). */
+.admin-bloc.cg-bloc { max-width: 80rem; }
+.cg { display: grid; grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
+      border: 1px solid var(--border); border-radius: 8px; margin-top: .6rem;
+      background: var(--bg-panel); }
+/* La liste défile SEULE : trois cents comptes ne doivent pas repousser la fiche sous
+   l'écran. Elle contient des boutons, donc son défilement s'atteint au clavier. */
+.cg-liste { border-right: 1px solid var(--border); padding: .6rem; display: flex;
+            flex-direction: column; gap: .5rem; max-height: 75vh; overflow-y: auto;
+            min-width: 0; }
+.cg-liste > * { flex-shrink: 0; }
+.cg-fiche { min-width: 0; padding: .9rem 1.1rem 1.2rem; }
+.cg-axes { display: flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 6px;
+           overflow: hidden; }
+.cg-axes button { flex: 1 1 auto; background: none; border: 0; border-right: 1px solid var(--border);
+                  color: var(--text); padding: .3rem .4rem; cursor: pointer; font-size: 1rem; }
+.cg-axes button:last-child { border-right: 0; }
+.cg-axes button[aria-pressed="true"], .cg-tri button[aria-pressed="true"],
+.cg-objet[aria-current="true"] {
+  background: color-mix(in srgb, var(--accent-blue) 14%, transparent); }
+.cg-axes button[aria-pressed="true"], .cg-tri button[aria-pressed="true"] {
+  color: var(--accent-blue); font-weight: 600; }
+#cg-filtre { width: 100%; box-sizing: border-box; background: var(--bg-input); color: var(--text);
+             border: 1px solid var(--border); border-radius: 5px; padding: .35rem .55rem;
+             font-size: 1rem; font-family: inherit; }
+.cg-tri { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.cg-tri button { background: none; border: 1px solid var(--border); border-radius: 999px;
+                 color: var(--text); padding: .1rem .55rem; cursor: pointer; font-size: .92rem; }
+.cg-tri button[aria-pressed="true"] { border-color: var(--accent-blue); }
+.cg-ext { color: var(--accent-blue); }
+.cg-regarder { border: 1px solid var(--accent-amber); border-radius: 7px;
+               background: color-mix(in srgb, var(--accent-amber) 9%, transparent); }
+.cg-regarder > summary { cursor: pointer; padding: .35rem .55rem; color: var(--accent-amber);
+                         font-weight: 600; }
+.cg-regarder ul, .cg-objets, .cg-objets ul, .cg-lignes { list-style: none; margin: 0; padding: 0; }
+.cg-regarder > ul { padding: 0 .55rem .45rem; }
+.cg-regarder li { padding: .15rem 0; }
+.cg-replie > summary, .cg-a-parte > summary { cursor: pointer; color: var(--text-muted);
+                                              font-size: .92rem; padding: .2rem 0; }
+.cg-replie ul { padding-left: .9rem; }
+/* Un lien qui reste dans la page : un bouton, SOULIGNÉ — sa couleur seule ne le
+   distinguerait pas du texte voisin (WCAG 1.4.1). */
+.cg-lien { background: none; border: 0; padding: 0; color: var(--accent-blue); cursor: pointer;
+           font: inherit; text-align: left; text-decoration: underline;
+           text-underline-offset: 2px; overflow-wrap: anywhere; }
+.cg-objet { width: 100%; display: flex; flex-wrap: wrap; justify-content: space-between;
+            gap: .1rem .5rem; align-items: baseline; text-align: left; background: none;
+            border: 0; border-radius: 6px; padding: .38rem .5rem; color: var(--text);
+            cursor: pointer; font-size: 1rem; }
+.cg-objet:hover { background: var(--hover); }
+.cg-nom { min-width: 0; overflow-wrap: anywhere; }
+.cg-etat { color: var(--text-muted); font-size: .88rem; }
+.cg-etat.alerte { color: var(--accent-amber); }
+.cg-vide { padding: .4rem .5rem; }
+#cg-annuaire.non-verifie { border-left: 3px solid var(--accent-amber); padding-left: .5rem; }
+#cg-annuaire.erreur, #cg-nature-msg.erreur, #cg-regler-msg.erreur { color: var(--ink-red); }
+.cg-accueil { margin: 0; }
+.cg-tete { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .6rem 1rem;
+           align-items: flex-start; }
+.cg-tete h3 { margin: 0; font-size: 1.2rem; overflow-wrap: anywhere; }
+.cg-sous { margin: .2rem 0 0; color: var(--text-muted); display: flex; flex-wrap: wrap;
+           gap: .3rem .6rem; align-items: center; }
+.cg-login { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.cg-puce { display: inline-block; padding: .02rem .5rem; border-radius: 999px;
+           border: 1px solid var(--border); font-size: .86rem; color: var(--text-muted);
+           overflow-wrap: anywhere; }
+.cg-puce.alerte { border-color: var(--accent-amber); color: var(--accent-amber); }
+.cg-puce.rouge { border-color: var(--ink-red); color: var(--ink-red); }
+.cg-puce.ok { border-color: var(--accent-green); color: var(--accent-green); }
+.cg-nature { display: grid; gap: .25rem; justify-items: start; max-width: 24rem; margin: 0; }
+.cg-nature label { font-size: .92rem; color: var(--text-muted); }
+.cg-aide > summary { cursor: pointer; font-size: .9rem; color: var(--text-muted); }
+.cg-aide p { margin: .3rem 0 0; font-size: .9rem; }
+.cg-section { margin-top: 1rem; display: grid; gap: .4rem; }
+.cg-section > h4 { margin: 0; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em;
+                   color: var(--text-muted); font-weight: 600; }
+.cg-lignes li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .15rem .8rem;
+                padding: .38rem 0; border-bottom: 1px solid var(--border); }
+.cg-lignes li:last-child { border-bottom: 0; }
+.cg-pastilles { display: flex; flex-wrap: wrap; gap: .35rem .6rem; align-items: center; }
+.cg-explique { margin: 0; padding: .45rem .7rem; border-left: 3px solid var(--accent-amber);
+               background: color-mix(in srgb, var(--accent-amber) 8%, transparent); }
+.cg-depart { border: 1px solid var(--border); border-radius: 8px; margin-top: 1rem; }
+.cg-depart > summary { cursor: pointer; padding: .5rem .75rem; font-weight: 600; }
+.cg-depart ol { margin: 0; padding: 0 .9rem .8rem 2.2rem; display: grid; gap: .35rem; }
+/* « ← Liste » n'existe que sous le seuil étroit, où la fiche remplace la liste. */
+.cg-retour { display: none; }
+/* 40em : le même seuil que `CG_ETROIT` dans administration.js. Au-dessous, une colonne à la
+   fois — la liste, ou la fiche choisie (motif de l'Atelier, UX-7). */
+@media (max-width: 40em) {
+  .cg { grid-template-columns: minmax(0, 1fr); }
+  /* Ni hauteur bornée ni défilement : la liste occupe l'écran, et un débordement y serait
+     une PERTE que la sonde de reflow doit voir, pas un cadre qu'elle tolère. */
+  .cg-liste { border-right: 0; max-height: none; overflow: visible; }
+  .cg:not(.cg--fiche) .cg-fiche { display: none; }
+  .cg.cg--fiche .cg-liste { display: none; }
+  .cg-retour { display: inline-block; margin-bottom: .6rem; }
+}
 /* AUTH-6 — le login qui n'a encore ouvert l'application. `--text-muted` et non `--ink-red` :
    ce n'est pas une ERREUR, c'est une observation, et la teinte d'alerte ferait lire une
    faute de frappe là où il peut s'agir d'un arrivant qui n'est pas encore venu. Le MOT

@@ -66,18 +66,50 @@
       <div id="col-body"></div>
     </section>
 
-    <!-- Vue des comptes (AUTH-7). `hidden` par défaut, levé par le JS SEULEMENT si la route
-         répond : la garde est celle du serveur (403 aux non-administrateurs), pas celle de
-         cet écran. La décider ici à partir des groupes ferait deux sources à tenir
-         d'accord, et l'écran finirait par mentir dans un sens ou dans l'autre.
+    <!-- ───────── Comptes et groupes (AUTH-12, étape 2) — une liste et une fiche ─────────
+         Remplace « 👤 Comptes vus par l'application » (AUTH-7), dont rien ne se perd sans
+         être dit : la nature d'un compte se déclare dans sa fiche, le verdict se lit dans
+         « Départ », et la limite de ce que la vue sait se dit là où elle s'applique.
 
-         Un bloc à part depuis COL-2. Elle vivait NICHÉE dans le panneau des collections, et
-         y aurait suivi un déménagement qui ne la concerne pas : elle dit ce que chaque LOGIN
-         a laissé, pas ce qu'une collection est. -->
-    <section class="admin-bloc" id="comptes-bloc" hidden aria-labelledby="comptes-titre">
-      <h2 id="comptes-titre">👤 Comptes vus par l'application</h2>
-      <p class="col-note" id="comptes-limite"></p>
-      <div id="comptes-body"></div>
+         `hidden` par défaut, levé par le JS SEULEMENT si la route répond : la garde est
+         celle du serveur (403 aux non-administrateurs), pas celle de cet écran — même
+         raison que la vue qu'il remplace. Une PANNE de l'annuaire ne le cache jamais : la
+         route répond alors ce que l'application sait seule, et l'écran dit « non vérifié ».
+
+         Le squelette est ÉCRIT ici et non fabriqué par le JS : le champ de filtre garde
+         ainsi son focus pendant qu'on tape, puisque seule la liste se redessine. -->
+    <section class="admin-bloc cg-bloc" id="cg-bloc" hidden aria-labelledby="cg-titre">
+      <h2 id="cg-titre">👥 Comptes et groupes</h2>
+      <p class="muted small">Qui utilise l'instance, dans quels groupes, et qui entre dans
+        quelle collection. Les comptes et les groupes se créent et se modifient dans
+        l'<b>annuaire</b> : cet écran les lit, il ne les modifie pas.</p>
+      <p class="col-note" id="cg-annuaire"></p>
+      <div class="cg" id="cg">
+        <div class="cg-liste">
+          <div class="cg-axes" role="group" aria-label="Afficher la liste des">
+            <button type="button" data-axe="comptes" aria-pressed="true">Comptes</button>
+            <button type="button" data-axe="groupes" aria-pressed="false">Groupes</button>
+            <button type="button" data-axe="collections" aria-pressed="false">Collections</button>
+          </div>
+          <label class="sr-only" for="cg-filtre">Filtrer la liste</label>
+          <input type="search" id="cg-filtre" placeholder="Filtrer…" autocomplete="off">
+          <div class="cg-tri" role="group" aria-label="Trier la liste">
+            <span class="muted small" aria-hidden="true">Trier</span>
+            <button type="button" data-tri="alpha" aria-pressed="true">A → Z</button>
+            <button type="button" data-tri="recents" aria-pressed="false">Récents d'abord</button>
+          </div>
+          <a class="cg-ext" id="cg-annuaire-lien" hidden target="_blank" rel="noopener">+ Dans
+            l'annuaire<span aria-hidden="true"> ↗</span><span class="sr-only"> (nouvel
+            onglet)</span></a>
+          <details class="cg-regarder" id="cg-regarder" open>
+            <summary id="cg-regarder-titre">⚠ À regarder</summary>
+            <ul id="cg-signaux"></ul>
+          </details>
+          <ul class="cg-objets" id="cg-objets" aria-labelledby="cg-objets-titre"></ul>
+          <span class="sr-only" id="cg-objets-titre"></span>
+        </div>
+        <div class="cg-fiche" id="cg-fiche"></div>
+      </div>
     </section>
 
     <!-- ───────── Moteurs (SANTE-1) — la présence n'est pas le fonctionnement ─────────
@@ -106,6 +138,7 @@
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
 <script src="/static/lib/sante.js"></script>
+<script src="/static/lib/comptes.js"></script>
 <script src="/static/administration.js"></script>
 </body>
 </html>
