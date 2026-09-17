@@ -257,6 +257,13 @@ lancer des lots, décider qui entre. Les quatre actes d'écriture y sont LIÉS, 
 (`tests/test_droits.py`). Un autre la confronte à `Portee` par table de vérité : elle ne peut
 pas dire d'un niveau ce que le cumul ne fait pas.
 
+**Cette table de vérité éprouvait l'ÉCHELLE, pas le niveau de chaque acte** — corrigé le
+même jour. Elle choisissait la question posée à `Portee` d'après le niveau que l'acte
+déclare, si bien que « décider qui entre » ou « lire » déclarés en écriture y restaient
+cohérents : deux mutants ont survécu. Chaque acte est désormais JOUÉ, par un geste qui le
+représente, sous un membre de chaque niveau (`4db9e03`) — un geste par acte, qui ne devient
+pas pour autant le périmètre route par route de la case citée ci-dessous.
+
 **Aucune décision de cette fiche n'y est prise, et ses remèdes la feront évoluer.** Le remède
 B détacherait `annoter` : un niveau `contribution`, une liaison rompue, un cran de plus dans
 l'échelle — la table et ses tests changeraient, l'écran non. Le remède C retirerait
