@@ -142,3 +142,9 @@ dont le propriétaire a perdu son groupe. Il en fixe l'ordre de passage sans rec
 case : elles restent ici. Ce qu'il ajoute qui touche ce modèle : la liste proposerait les
 GROUPES d'abord, parce que c'est le principal que la case « Quels groupes existent » a
 retenu pour un cours.
+
+**Tranché le 2026-09-17** : Hugo a confirmé la lecture seule (décision 1 (A) d'`AUTH-12`),
+et retenu la liste de l'annuaire avec une saisie libre signalée « inconnu de l'annuaire »
+(décision 4 (2)) : une lecture impossible dit « je n'ai pas pu vérifier » sans bloquer, ce
+qui est l'attendu (c) de cette fiche. La lecture de l'annuaire devient le PREMIER morceau de
+la construction.

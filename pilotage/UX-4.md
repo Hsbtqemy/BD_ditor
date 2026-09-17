@@ -204,3 +204,9 @@ vaut dans chacune des formes qu'`AUTH-12` décrit. Ces formes — une liste et u
 côte, des onglets, une page par objet — se choisiront sur des maquettes interactives, et la
 forme retenue doit être celle que ce chantier étend à l'Administration, pas un sixième
 style. Refaire le tableau des accès avant ces décisions ferait refaire le travail.
+
+**Tranché le 2026-09-17.** La forme est la liste et la fiche côte à côte (2026-09-16). Hugo a
+retenu le déménagement (décision 2 (b)) : les accès d'UNE collection passeront dans sa fiche,
+dans la Bibliothèque, et c'est à ce geste que la refonte du tableau se joint. Le principal se
+choisira dans une liste de l'annuaire, groupes en tête, avec une saisie libre signalée
+(décision 4 (2)). Rien n'est à faire ici avant la lecture de l'annuaire d'`AUTH-6`.
