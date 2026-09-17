@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 import autorisation
 import conflit
 import undo
+from pipeline import nlp
 
 from socle import db, portee_courante
 
@@ -64,6 +65,8 @@ def undo_dernier(conn: sqlite3.Connection = Depends(db),
     if not portee.peut_ecrire_quelque_part():
         raise HTTPException(403, "Annuler demande un droit d'écriture.")
     agent = _agent_undo(portee)
+    nlp.ensure_loaded()            # spaCy HORS transaction : l'inversion réindexe, verrou tenu
+    conflit.verrouiller(conn)      # l'état que l'annulation garde se lit sous le verrou (Q4)
     try:
         res = undo.annuler(conn, agent=agent)
     except undo.UndoImpossible as exc:

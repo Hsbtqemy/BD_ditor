@@ -33,6 +33,20 @@ LIBELLES = {
 }
 
 
+def verrouiller(conn: sqlite3.Connection) -> None:
+    """Prend le verrou d'écriture AVANT de lire la valeur actuelle d'un champ gardé.
+
+    La garde lit, compare, puis écrit. Le module `sqlite3` n'ouvre la transaction qu'au premier
+    INSERT ou UPDATE : la lecture se faisait donc HORS transaction, et deux requêtes
+    simultanées lisaient toutes deux l'ancienne valeur, passaient toutes deux, et la seconde
+    écrasait la première sans 409 (mesuré, `test_conflit_version`). `BEGIN IMMEDIATE` fait
+    attendre la seconde — dans la limite de `busy_timeout` — jusqu'à ce que la première ait
+    validé ; elle lit alors la nouvelle valeur. La transaction se valide par le `commit` de la
+    route, et se défait à la fermeture de la connexion si la route refuse."""
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+
+
 def egal(a: Any, b: Any) -> bool:
     """Deux valeurs de champ se valent-elles ? Un texte absent et un texte vide, oui : l'écran
     ne fait pas la différence, et un conflit entre les deux n'aurait rien à montrer."""

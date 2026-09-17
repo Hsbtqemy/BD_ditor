@@ -8,12 +8,15 @@ annulation, case supprimée. L'écran a sa propre garde.
 """
 import sqlite3
 import sys
+import threading
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 import autorisation  # noqa: E402
+import conflit  # noqa: E402
 import database  # noqa: E402
 import journal  # noqa: E402
 import main  # noqa: E402
@@ -204,6 +207,92 @@ def test_un_changement_sans_trace_est_refuse_quand_meme(client, planche):
     assert rep.status_code == 409, rep.text
     assert rep.json()["detail"]["conflit"]["auteur"] is None
     assert "modifié ailleurs" in rep.json()["detail"]["message"]
+
+
+def _simultanes(envois):
+    """Lance les envois dans deux fils, le second 50 ms après le premier, et rend leur issue :
+    "ok", "conflit" pour un 409 de version périmée, ou le code et le détail sinon. Un 409
+    « database is locked » n'est PAS un conflit : le compter pour tel rendrait ce test vert
+    pour une mauvaise raison."""
+    issues = {}
+
+    def envoyer(n, f):
+        r = f()
+        detail = r.json().get("detail") if r.status_code >= 400 else None
+        if r.status_code == 200:
+            issues[n] = "ok"
+        elif r.status_code == 409 and isinstance(detail, dict) and "conflit" in detail:
+            issues[n] = "conflit"
+        else:
+            issues[n] = f"{r.status_code} {detail}"
+    fils = [threading.Thread(target=envoyer, args=(n, f)) for n, f in enumerate(envois)]
+    for fil in fils:
+        fil.start()
+        time.sleep(0.05)
+    for fil in fils:
+        fil.join()
+    return [issues[n] for n in range(len(envois))]
+
+
+def _rendez_vous_apres_lecture(monkeypatch):
+    """Fait attendre chaque requête, APRÈS qu'elle a lu la valeur actuelle, que l'autre ait lu
+    à son tour — deux secondes au plus. Sans verrou, les deux lisent l'ancienne valeur, et la
+    course se produit à coup sûr ; avec, la seconde ne lit qu'une fois la première validée, et
+    l'attente de la première expire. `conflit.verifier` est le point commun : il reçoit la
+    valeur actuelle déjà lue, dans les deux routes comme dans l'annulation."""
+    verifier = conflit.verifier
+    rendez_vous = threading.Barrier(2, timeout=2)
+
+    def apres_lecture(*args, **kwargs):
+        try:
+            rendez_vous.wait()
+        except threading.BrokenBarrierError:
+            pass
+        return verifier(*args, **kwargs)
+    monkeypatch.setattr(conflit, "verifier", apres_lecture)
+
+
+def test_deux_notes_simultanees_ne_passent_pas_toutes_deux_la_garde(client, planche, monkeypatch):
+    """La garde LIT la valeur actuelle, puis écrit. Lue hors transaction d'écriture — le module
+    `sqlite3` n'en ouvre une qu'au premier INSERT ou UPDATE —, deux requêtes simultanées
+    lisaient toutes deux l'ancienne valeur et passaient toutes deux : la seconde écrasait la
+    première sans 409. Trouvé par un mutant de l'écran qui survivait, à deux navigateurs."""
+    rid = _bulle(client, planche["id"])
+    _rendez_vous_apres_lecture(monkeypatch)
+    issues = _simultanes([
+        lambda: client.put(f"/api/regions/{rid}/annotation", json={"note": "A", "note_vue": ""}),
+        lambda: client.put(f"/api/regions/{rid}/annotation", json={"note": "B", "note_vue": ""})])
+    assert sorted(issues) == ["conflit", "ok"], issues
+    gagnante = "A" if issues[0] == "ok" else "B"
+    assert client.get(f"/api/regions/{rid}/annotation").json()["note"] == gagnante
+
+
+def test_deux_textes_simultanes_ne_passent_pas_tous_deux_la_garde(client, planche, monkeypatch):
+    """Même course sur une région : la valeur actuelle vient de la lecture de la région."""
+    rid = _bulle(client, planche["id"], ocr_texte="VU")
+    _rendez_vous_apres_lecture(monkeypatch)
+    issues = _simultanes([
+        lambda: client.put(f"/api/regions/{rid}", json={"ocr_texte": "A", "vu": {"ocr_texte": "VU"}}),
+        lambda: client.put(f"/api/regions/{rid}", json={"ocr_texte": "B", "vu": {"ocr_texte": "VU"}})])
+    assert sorted(issues) == ["conflit", "ok"], issues
+    gagnant = "A" if issues[0] == "ok" else "B"
+    assert _region(client, planche["id"], rid)["ocr_texte"] == gagnant
+
+
+def test_une_annulation_et_un_enregistrement_simultanes_ne_passent_pas_tous_deux(
+        client, planche, monkeypatch):
+    """Même course entre Ctrl+Z et l'enregistrement d'un autre : l'annulation garde aussi ce
+    qu'elle lit (Q4), et doit le lire sous le même verrou."""
+    rid = _bulle(client, planche["id"])
+    _derriere_le_proxy(monkeypatch, client)
+    client.put(f"/api/regions/{rid}", json={"x": 50}, headers=A)
+    _rendez_vous_apres_lecture(monkeypatch)
+    issues = _simultanes([
+        lambda: client.post("/api/undo", headers=A),
+        lambda: client.put(f"/api/regions/{rid}", json={"x": 80, "vu": {"x": 50}},
+                           headers=NOMME_B)])
+    assert sorted(issues) == ["conflit", "ok"], issues
+    assert _region(client, planche["id"], rid)["x"] == (0 if issues[0] == "ok" else 80)
 
 
 def test_le_message_accorde_le_participe_au_champ(client, planche):

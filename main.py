@@ -724,6 +724,9 @@ def update_region(region_id: int, patch: RegionUpdate,
     base porte autre chose, c'est un 409 qui nomme qui l'a changée et quand. Facultatif pour
     l'API (Q8) : sans `vu`, le dernier enregistrement gagne, comme avant.
     """
+    if "ocr_texte" in patch.model_fields_set:
+        nlp.ensure_loaded()        # spaCy HORS transaction : la réindexation suivra, verrou tenu
+    conflit.verrouiller(conn)      # la valeur actuelle se lit sous le verrou d'écriture
     existing = _region_a_ecrire(conn, portee, region_id)
     fields = patch.model_dump(exclude_unset=True, exclude={"vu"})
     if "type" in fields and fields["type"] not in TYPES_REGION:
@@ -1280,6 +1283,8 @@ def put_annotation(region_id: int, payload: AnnotationIn,
     mélanger aux deux autres serait ambigu, d'où le 422. Deux personnes sur le MÊME champ
     restent en « le dernier gagne » : c'est le second temps du chantier.
     """
+    nlp.ensure_loaded()            # spaCy HORS transaction : la réindexation suivra, verrou tenu
+    conflit.verrouiller(conn)      # la note actuelle se lit sous le verrou d'écriture
     _region_a_ecrire(conn, portee, region_id)
     champs = payload.model_fields_set & {"note", "tags", "tags_ajoutes", "tags_retires"}
     if "tags" in champs and champs & {"tags_ajoutes", "tags_retires"}:
