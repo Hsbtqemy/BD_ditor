@@ -135,6 +135,8 @@ def test_les_comptes_reunissent_annuaire_miroir_et_acces(client, derriere_proxy,
     parti = _par(vue["comptes"], "login", "parti")
     assert (parti["dans_annuaire"], parti["groupes"], parti["nom"]) == \
         (False, [], "Parti depuis")
+    # Absent de l'annuaire, mais sans accès nominatif : rien de mort à signaler.
+    assert parti["signaux"] == []
 
     arrivant = _par(vue["comptes"], "login", "arrivant")
     assert (arrivant["venu"], arrivant["nature"], arrivant["premiere_vue"]) == (False, None, None)

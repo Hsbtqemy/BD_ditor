@@ -173,6 +173,45 @@ def test_un_annuaire_muet_est_abandonne_dans_le_delai(lldap_configure, monkeypat
     assert duree < 2.0, duree
 
 
+def test_le_delai_est_total_et_non_par_requete(lldap_configure, monkeypatch):
+    """La connexion répond, mais tard ; la requête ne répond jamais. Un délai PAR requête
+    ferait attendre la somme des deux, et la vue avec ; le délai total rend la main à
+    `DELAI_S`, la seconde requête ne recevant que ce qui reste."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Lent(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            if self.path == "/auth/simple/login":
+                time.sleep(0.7)
+                corps = json.dumps({"token": "t"}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(corps)))
+                self.end_headers()
+                self.wfile.write(corps)
+            else:
+                time.sleep(2.5)
+
+        def log_message(self, *args):
+            pass
+
+    serveur = ThreadingHTTPServer(("127.0.0.1", 0), Lent)
+    serveur.daemon_threads = True
+    threading.Thread(target=serveur.serve_forever, daemon=True).start()
+    monkeypatch.setattr(config, "ANNUAIRE_ADRESSE", f"http://127.0.0.1:{serveur.server_address[1]}")
+    monkeypatch.setattr(annuaire, "DELAI_S", 1.0)
+    try:
+        debut = time.monotonic()
+        lecture = annuaire.lire()
+        duree = time.monotonic() - debut
+    finally:
+        serveur.shutdown()
+        serveur.server_close()
+    assert (lecture.etat, lecture.motif) == ("non_verifie", "delai")
+    assert duree < 1.4, f"{duree:.2f} s : le délai s'est appliqué par requête, pas au total"
+
+
 # --------------------------------------------------------------------------- #
 # (a) et (b) — ce que la lecture ne touche pas
 # --------------------------------------------------------------------------- #
