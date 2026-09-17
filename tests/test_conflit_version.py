@@ -285,10 +285,13 @@ def test_une_annulation_et_un_enregistrement_simultanes_ne_passent_pas_tous_deux
     qu'elle lit (Q4), et doit le lire sous le même verrou."""
     rid = _bulle(client, planche["id"])
     _derriere_le_proxy(monkeypatch, client)
-    client.put(f"/api/regions/{rid}", json={"x": 50}, headers=A)
+    # L'identité NOMMÉE partout, comme un écran réel : un nom différent de celui que
+    # `/api/moi` a inscrit fait réécrire le miroir `utilisateur` sur la connexion de la
+    # requête, AVANT la route — cette écriture prenait le verrou et masquait la course.
+    client.put(f"/api/regions/{rid}", json={"x": 50}, headers=NOMMEE_A)
     _rendez_vous_apres_lecture(monkeypatch)
     issues = _simultanes([
-        lambda: client.post("/api/undo", headers=A),
+        lambda: client.post("/api/undo", headers=NOMMEE_A),
         lambda: client.put(f"/api/regions/{rid}", json={"x": 80, "vu": {"x": 50}},
                            headers=NOMME_B)])
     assert sorted(issues) == ["conflit", "ok"], issues
