@@ -236,6 +236,20 @@ def test_en_mono_poste_deux_ecrans_sont_le_meme_compte(client, planche):
     assert "None" not in d["message"]
 
 
+def test_un_acte_d_avant_le_proxy_ne_se_nomme_pas_none(client, planche, monkeypatch):
+    """Une note écrite en mono-poste (aucun login au journal), puis l'instance passée derrière
+    le proxy : le conflit ne vient pas du même compte, et n'a aucun nom à dire."""
+    rid = _bulle(client, planche["id"])
+    client.put(f"/api/regions/{rid}/annotation", json={"note": "d'avant le proxy"})
+    _derriere_le_proxy(monkeypatch, client)
+    rep = client.put(f"/api/regions/{rid}/annotation", json={"note": "de B", "note_vue": ""},
+                     headers=B)
+    assert rep.status_code == 409, rep.text
+    d = rep.json()["detail"]
+    assert d["conflit"]["auteur"]["meme_compte"] is False
+    assert "None" not in d["message"] and "modifié ailleurs" in d["message"]
+
+
 def test_une_annulation_est_nommee_comme_auteur(client, planche, monkeypatch):
     """B a vu la note de A ; A l'annule ; B enregistre sur ce qu'il avait vu : refusé, et
     c'est A, l'autrice de l'annulation, qui est nommée."""
