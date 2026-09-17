@@ -460,6 +460,61 @@ def list_acces(collection_id: int, conn: sqlite3.Connection = Depends(db),
     return _acces_de(conn, collection_id)
 
 
+@router.get("/api/collections/{collection_id}/annuaire")
+def annuaire_de_la_collection(collection_id: int, conn: sqlite3.Connection = Depends(db),
+                              portee: autorisation.Portee = Depends(portee_courante)):
+    """Ce que la fiche d'une collection montre en s'ouvrant, pour régler qui entre (AUTH-12,
+    étape 3) : les groupes de l'annuaire à PROPOSER, et la vérification des accès déjà
+    accordés — la colonne « Signal ».
+
+    Réservée au PROPRIÉTAIRE de CETTE collection (et à l'administrateur) : 404 à qui ne la
+    lit pas, 403 nommé à qui la lit sans la posséder. Le propriétaire voit les NOMS des
+    groupes, sans groupes de rôle ni d'administration, et jamais leurs membres (UX-4).
+
+    SÉPARÉE de `…/acces` exprès : cette liste est aussi la réponse du `PUT` et du `DELETE`
+    d'un accès, et y lire l'annuaire ferait attendre chaque geste d'accès un annuaire en
+    panne. Ici, la liste s'affiche tout de suite et les marques arrivent après."""
+    _get_collection(conn, portee, collection_id, administrer=True)
+    return comptes.choix_des_acces(conn, collection_id, annuaire.lire())
+
+
+@router.get("/api/collections/{collection_id}/annuaire/verifier")
+def verifier_un_nom(collection_id: int, genre: str, nom: str,
+                    conn: sqlite3.Connection = Depends(db),
+                    portee: autorisation.Portee = Depends(portee_courante)):
+    """Un nom TAPÉ existe-t-il dans l'annuaire ? « trouve », « inconnu », « non_verifie » ou
+    « sans_annuaire » (AUTH-12, décision 4 (2) : la saisie libre est signalée, jamais
+    refusée).
+
+    Le genre est obligatoire, comme dans le `PUT` : un login et un nom de groupe peuvent être
+    la même chaîne. Le nom revient normalisé comme le `PUT` le normalise, pour que l'écran
+    rapproche une réponse de sa saisie quand on tape vite.
+
+    CE QU'ELLE LAISSE SONDER, et c'est accepté par Hugo le 2026-09-17 : un propriétaire peut
+    savoir si un compte existe. Enjeu faible — il pourrait déjà l'accorder —, préféré à la
+    liste complète des comptes, qui aurait montré à chaque propriétaire les noms de tous les
+    inscrits de l'instance. Déclaré au cliquet des sorties d'identité."""
+    _get_collection(conn, portee, collection_id, administrer=True)
+    if genre not in autorisation.GENRES:
+        raise HTTPException(422, f"Genre invalide : {genre} (utilisateur | groupe).")
+    nom = (nom or "").strip()
+    if not nom:
+        raise HTTPException(422, "Le nom (login ou nom de groupe) est requis.")
+    return {"genre": genre, "nom": nom,
+            "verification": comptes.verifier(annuaire.lire(), genre, nom)}
+
+
+@router.get("/api/droits")
+def droits():
+    """Ce que chaque niveau d'accès permet, dit en ACTES : l'échelle, les actes et leurs
+    liaisons, ce qui est hors rang (AUTH-12, « La finesse des droits »).
+
+    Statique, identique pour tous, sans aucune donnée du corpus : la table vit dans
+    `autorisation.py`, sous `NIVEAUX`, et aucune garde ne la lit. L'écran ne connaît ainsi
+    aucun niveau en dur — ce qu'AUTH-10 décidera changera la description, pas le JavaScript."""
+    return autorisation.description_des_droits()
+
+
 @router.put("/api/collections/{collection_id}/acces")
 def accorder_acces(collection_id: int, payload: AccesIn,
                    conn: sqlite3.Connection = Depends(db),
@@ -469,8 +524,9 @@ def accorder_acces(collection_id: int, payload: AccesIn,
 
     `principal` est un NOM — un login, ou un nom de groupe tel qu'Authelia le pose dans
     `Remote-Groups`. On n'accorde donc rien à une personne qu'on aurait vérifiée : on
-    déclare qu'un nom ouvre une collection. L'application n'a aucun annuaire (invariant
-    AUTH-1), et un nom mal orthographié n'ouvre simplement rien.
+    déclare qu'un nom ouvre une collection, et un nom mal orthographié n'ouvre simplement
+    rien. Cette route NE LIT PAS l'annuaire (invariant AUTH-1) : la fiche vérifie un nom à
+    part, par `…/annuaire/verifier` (AUTH-6), sans qu'aucun geste d'accès attende sa réponse.
 
     `exporter` (DROIT-2) se pose dans le même geste, et par le même PROPRIÉTAIRE :
     décider ce qui sort d'une collection l'engage autant que décider qui y entre. Il

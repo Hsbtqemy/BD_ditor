@@ -311,3 +311,55 @@ def a_regarder(comptes: list, groupes: list, collections_sortie: list) -> list:
                 lignes.append((code, col["nom"], "", {"signal": code, "collection": col["id"]}))
     lignes.sort(key=lambda l: (ORDRE_SIGNAUX.index(l[0]), _cle(l[1]), _cle(l[2])))
     return [l[3] for l in lignes]
+
+
+# --------------------------------------------------------------------------- #
+# Qui entre, vu du PROPRIÉTAIRE d'une collection (AUTH-12, étape 3)
+# --------------------------------------------------------------------------- #
+# Tranché par Hugo le 2026-09-17 (décision 2 (b), précisée) : le propriétaire voit les NOMS
+# des groupes, sans les groupes de rôle de l'annuaire ni ceux des administrateurs ; un login
+# TAPÉ se vérifie, sans qu'aucune liste des comptes lui soit servie. Il ne voit ni id, ni
+# membres, ni nombre de comptes : la composition d'équipes qui ne sont pas la sienne lui reste
+# cachée (UX-4). Les états sont rendus ici, les phrases sont celles de l'écran.
+VERIFICATIONS = ("trouve", "inconnu", "non_verifie", "sans_annuaire")
+
+
+def verifier(lecture: Lecture, genre: str, nom: str) -> str:
+    """Un nom existe-t-il dans l'annuaire ? « inconnu » veut dire « n'y existe pas », jamais
+    autre chose : la vérification porte donc sur TOUS les comptes et TOUS les groupes, groupes
+    de rôle et d'administration compris — les exclure de la LISTE est une question de
+    proposition, pas de vérité. La comparaison est EXACTE, comme celle qui ouvre un accès.
+
+    `sans_annuaire` n'est pas `non_verifie` : en mono-poste, dire « l'annuaire ne répond
+    pas » affirmerait une panne là où il n'y a pas d'annuaire du tout."""
+    if lecture.etat == "sans_annuaire":
+        return "sans_annuaire"
+    if not lecture.lu:
+        return "non_verifie"
+    if genre == autorisation.UTILISATEUR:
+        existe = any(c.login == nom for c in lecture.comptes)
+    else:
+        existe = any(g.nom == nom for g in lecture.groupes)
+    return "trouve" if existe else "inconnu"
+
+
+def choix_des_acces(conn, collection_id: int, lecture: Lecture) -> dict:
+    """La réponse de `GET /api/collections/{id}/annuaire` : les groupes à PROPOSER, et la
+    vérification des accès déjà accordés sur cette collection (la colonne « Signal »)."""
+    groupes = None
+    if lecture.lu:
+        exclus = GROUPES_DE_ROLE | autorisation.AUTH_ADMIN_GROUPS
+        groupes = sorted((g.nom for g in lecture.groupes if g.nom not in exclus),
+                         key=lambda x: (_cle(x), x))
+    lignes = conn.execute("SELECT genre, principal FROM collection_acces "
+                          "WHERE collection_id = ?", (collection_id,)).fetchall()
+    acces = []
+    for r in sorted(lignes, key=lambda r: (r["genre"] != autorisation.UTILISATEUR,
+                                           _cle(r["principal"]), r["principal"])):
+        compte = r["genre"] == autorisation.UTILISATEUR
+        acces.append({"par": "compte" if compte else "groupe",
+                      "login": r["principal"] if compte else None,
+                      "groupe": None if compte else r["principal"],
+                      "verification": verifier(lecture, r["genre"], r["principal"])})
+    return {"annuaire": {"etat": lecture.etat, "motif": lecture.motif},
+            "groupes": groupes, "acces": acces}

@@ -72,6 +72,53 @@ ECRITURE = "ecriture"
 PROPRIETAIRE = "proprietaire"
 NIVEAUX = (LECTURE, ECRITURE, PROPRIETAIRE)
 
+# Ce que chaque niveau permet, dit en ACTES — pour l'écran qui attribue les accès (AUTH-12,
+# étape 3) et pour « Mon compte ». DES DONNÉES, jamais une garde : aucune fonction de ce
+# module ne les lit pour décider, et `Portee` les ignore. Elles vivent ICI, sous `NIVEAUX`,
+# parce que l'ordre de l'échelle et son cumul sont tranchés quelques lignes plus bas
+# (`Portee.__init__`) : une description posée ailleurs pourrait dériver sans bruit.
+# `tests/test_droits.py` la confronte à `Portee` par table de vérité, si bien qu'elle ne peut
+# pas promettre ce que le cumul ne fait pas.
+#
+# Les actes qui partagent une valeur de `lies` sont accordés ENSEMBLE aujourd'hui : l'écran
+# les dessine d'un seul trait. Sans cela il promettrait une finesse que le serveur n'a pas,
+# et un refus viendrait le démentir (AUTH-10). Aucune décision d'AUTH-10 n'est prise ici :
+# ses remèdes feront évoluer ces données, pas l'écran. Ce que la description ne prouve PAS :
+# qu'une route donnée exige le niveau de son acte — le périmètre route par route n'existe pas.
+#
+# LIBELLÉS PROVISOIRES (2026-09-17), soumis à Hugo : ce sont des données, les changer ne
+# touche que cette table et ses tests.
+ACTES = (
+    {"code": "lire", "libelle": "lire", "niveau": LECTURE, "lies": None,
+     "avertissement": None},
+    {"code": "annoter", "libelle": "annoter", "niveau": ECRITURE, "lies": ECRITURE,
+     "avertissement": None},
+    {"code": "structurer", "libelle": "structurer le corpus", "niveau": ECRITURE,
+     "lies": ECRITURE,
+     # Vrai tant que la suppression d'un album efface ses masters sans trace ni sursis
+     # (AUTH-10, remède C). Se retire le jour où elle se rattrape.
+     "avertissement": "Supprimer un album efface ses images et ne se rattrape pas."},
+    {"code": "vocabulaire", "libelle": "gérer le vocabulaire", "niveau": ECRITURE,
+     "lies": ECRITURE, "avertissement": None},
+    {"code": "lots", "libelle": "lancer des lots", "niveau": ECRITURE, "lies": ECRITURE,
+     "avertissement": None},
+    {"code": "decider", "libelle": "décider qui entre", "niveau": PROPRIETAIRE, "lies": None,
+     "avertissement": None},
+)
+# Ce qui ne s'ordonne pas avec l'échelle : une case À CÔTÉ du niveau (DROIT-2).
+HORS_RANG = (
+    {"code": "exporter", "libelle": "exporter", "champ": "exporter",
+     "d_office": PROPRIETAIRE},
+)
+
+
+def description_des_droits() -> dict:
+    """La description servie par `GET /api/droits` : l'échelle, les actes, ce qui est hors
+    rang. Des copies, pour qu'aucun appelant ne modifie la table en la lisant."""
+    return {"echelle": list(NIVEAUX),
+            "actes": [dict(a) for a in ACTES],
+            "hors_rang": [dict(h) for h in HORS_RANG]}
+
 # Genres de principal. EXPLICITE plutôt que déduit : un login et un nom de groupe peuvent
 # être la même chaîne, et une ambiguïté silencieuse sur un contrôle d'accès n'est pas une
 # hypothèse qu'on se permet.

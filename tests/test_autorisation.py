@@ -57,6 +57,11 @@ HORS_PERIMETRE = {
     ("GET", "/api/figure/champs"): (
         "décrit le FORMAT d'une légende de figure (DROIT-1), pas un corpus : elle "
         "renverrait la même chose sur une instance vide"),
+    ("GET", "/api/droits"): (
+        "décrit le MODÈLE de droits en actes (AUTH-12, étape 3), identique pour tous et sans "
+        "aucune donnée du corpus : la même réponse sur une instance vide. La table vit dans "
+        "`autorisation.py` et aucune garde ne la lit ; « Mon compte » la lira aussi, pour une "
+        "personne qui ne possède rien"),
 }
 
 # --------------------------------------------------------------------------- #

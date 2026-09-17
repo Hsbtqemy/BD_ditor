@@ -241,9 +241,11 @@ def test_l_autorisation_n_atteint_pas_l_annuaire():
     assert "annuaire" not in atteints and "comptes" not in atteints, sorted(atteints)
 
 
-def test_seule_la_vue_des_comptes_lit_l_annuaire():
+def test_seules_les_routes_d_administration_lisent_l_annuaire():
     """(b) — l'application n'authentifie personne : aucun chemin de requête ne consulte
-    l'annuaire, hormis la route d'administration qui compose la vue."""
+    l'annuaire, hormis les routes d'administration — la vue des comptes et des groupes, et
+    ce que la fiche d'une collection propose à son propriétaire (étape 3). Toutes vivent
+    dans `routes/collections.py`, et leur composition dans `comptes.py`."""
     lecteurs = set()
     for fichier in [*REPO_ROOT.glob("*.py"), *REPO_ROOT.glob("routes/*.py"),
                     *REPO_ROOT.glob("pipeline/*.py")]:
