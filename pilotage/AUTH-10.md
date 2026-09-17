@@ -244,6 +244,30 @@ rouvrira, `DROIT-2` dira ce qu'a coûté une case à côté du niveau — la mig
 d'une garde qui échoue ouvert, l'écran —, et la décision se prendra sur une mesure au lieu
 d'une prévision.
 
+## Une description des actes est posée à côté de `NIVEAUX` — 2026-09-17
+
+**Déclaré, comme la décision du 2026-09-10 le demande.** `3a30843` ajoute dans
+`autorisation.py`, juste sous `NIVEAUX`, une table de DONNÉES — `ACTES` et `HORS_RANG` —
+servie par `GET /api/droits` à l'écran qui attribuera les accès (AUTH-12, étape 3). Elle dit
+en actes le modèle d'aujourd'hui : lire, annoter, structurer le corpus, gérer le vocabulaire,
+lancer des lots, décider qui entre. Les quatre actes d'écriture y sont LIÉS, puisque
+`ecriture` les accorde ensemble, et `exporter` y est hors rang.
+
+**Elle ne change aucun accès.** Aucune garde ne la lit, et un test l'exige
+(`tests/test_droits.py`). Un autre la confronte à `Portee` par table de vérité : elle ne peut
+pas dire d'un niveau ce que le cumul ne fait pas.
+
+**Aucune décision de cette fiche n'y est prise, et ses remèdes la feront évoluer.** Le remède
+B détacherait `annoter` : un niveau `contribution`, une liaison rompue, un cran de plus dans
+l'échelle — la table et ses tests changeraient, l'écran non. Le remède C retirerait
+l'avertissement sur la suppression d'un album, qui n'est vrai que tant qu'elle efface sans
+trace ni sursis.
+
+**Ce qu'elle ne prouve pas** est l'objet de la case « Le périmètre exact de `contribution` est
+écrit route par route » : qu'une route donnée exige le niveau de son acte. La table reprend le
+tableau d'AUTH-12, lui-même tiré de l'inventaire des 73 routes de cette fiche. Ses libellés
+sont provisoires et soumis à Hugo.
+
 ## Contexte
 
 **Pourquoi ça se pose maintenant et pas avant.** Le modèle à trois niveaux répond à
