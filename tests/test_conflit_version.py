@@ -20,6 +20,7 @@ import conflit  # noqa: E402
 import database  # noqa: E402
 import journal  # noqa: E402
 import main  # noqa: E402
+from pipeline import nlp  # noqa: E402
 
 A = {"Remote-User": "personne-a", "Remote-Groups": "bd-admins"}
 B = {"Remote-User": "personne-b", "Remote-Groups": "bd-admins"}
@@ -239,7 +240,13 @@ def _rendez_vous_apres_lecture(monkeypatch):
     à son tour — deux secondes au plus. Sans verrou, les deux lisent l'ancienne valeur, et la
     course se produit à coup sûr ; avec, la seconde ne lit qu'une fois la première validée, et
     l'attente de la première expire. `conflit.verifier` est le point commun : il reçoit la
-    valeur actuelle déjà lue, dans les deux routes comme dans l'annulation."""
+    valeur actuelle déjà lue, dans les deux routes comme dans l'annulation.
+
+    Le modèle spaCy est chargé d'AVANCE. Les routes le chargent avant de prendre le verrou, et
+    à froid cela prend plusieurs secondes : la requête qui le paie arrive après l'expiration
+    du rendez-vous, lit une valeur déjà validée, et la course ne se produit plus. Le test
+    passait alors sans verrou — mesuré sur l'annulation, jouée seule."""
+    nlp.ensure_loaded()
     verifier = conflit.verifier
     rendez_vous = threading.Barrier(2, timeout=2)
 
@@ -285,13 +292,10 @@ def test_une_annulation_et_un_enregistrement_simultanes_ne_passent_pas_tous_deux
     qu'elle lit (Q4), et doit le lire sous le même verrou."""
     rid = _bulle(client, planche["id"])
     _derriere_le_proxy(monkeypatch, client)
-    # L'identité NOMMÉE partout, comme un écran réel : un nom différent de celui que
-    # `/api/moi` a inscrit fait réécrire le miroir `utilisateur` sur la connexion de la
-    # requête, AVANT la route — cette écriture prenait le verrou et masquait la course.
-    client.put(f"/api/regions/{rid}", json={"x": 50}, headers=NOMMEE_A)
+    client.put(f"/api/regions/{rid}", json={"x": 50}, headers=A)
     _rendez_vous_apres_lecture(monkeypatch)
     issues = _simultanes([
-        lambda: client.post("/api/undo", headers=NOMMEE_A),
+        lambda: client.post("/api/undo", headers=A),
         lambda: client.put(f"/api/regions/{rid}", json={"x": 80, "vu": {"x": 50}},
                            headers=NOMME_B)])
     assert sorted(issues) == ["conflit", "ok"], issues
