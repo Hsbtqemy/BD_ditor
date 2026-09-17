@@ -86,22 +86,23 @@ NIVEAUX = (LECTURE, ECRITURE, PROPRIETAIRE)
 # ses remèdes feront évoluer ces données, pas l'écran. Ce que la description ne prouve PAS :
 # qu'une route donnée exige le niveau de son acte — le périmètre route par route n'existe pas.
 #
-# LIBELLÉS PROVISOIRES (2026-09-17), soumis à Hugo : ce sont des données, les changer ne
-# touche que cette table et ses tests.
+# LIBELLÉS VALIDÉS par Hugo le 2026-09-17 (AUTH-12). Ce sont des données : les changer ne
+# touche que cette table et ses tests. Les CODES, eux, ne suivent pas les libellés —
+# `structurer` et `lots` sont restés quand leurs libellés ont changé.
 ACTES = (
     {"code": "lire", "libelle": "lire", "niveau": LECTURE, "lies": None,
      "avertissement": None},
     {"code": "annoter", "libelle": "annoter", "niveau": ECRITURE, "lies": ECRITURE,
      "avertissement": None},
-    {"code": "structurer", "libelle": "structurer le corpus", "niveau": ECRITURE,
+    {"code": "structurer", "libelle": "organiser les albums", "niveau": ECRITURE,
      "lies": ECRITURE,
      # Vrai tant que la suppression d'un album efface ses masters sans trace ni sursis
      # (AUTH-10, remède C). Se retire le jour où elle se rattrape.
      "avertissement": "Supprimer un album efface ses images et ne se rattrape pas."},
     {"code": "vocabulaire", "libelle": "gérer le vocabulaire", "niveau": ECRITURE,
      "lies": ECRITURE, "avertissement": None},
-    {"code": "lots", "libelle": "lancer des lots", "niveau": ECRITURE, "lies": ECRITURE,
-     "avertissement": None},
+    {"code": "lots", "libelle": "lancer la reconnaissance automatique", "niveau": ECRITURE,
+     "lies": ECRITURE, "avertissement": None},
     {"code": "decider", "libelle": "décider qui entre", "niveau": PROPRIETAIRE, "lies": None,
      "avertissement": None},
 )
