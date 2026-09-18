@@ -6,9 +6,11 @@ règles qui trompent en silence si elles glissent : un champ inconnu vaut `None`
 l'annuaire ne s'allument pas quand il n'a pas répondu ; « À regarder » est ordonné par le
 serveur.
 """
+import json
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -296,6 +298,135 @@ def test_une_identite_changee_se_signale_trente_jours(client, derriere_proxy, do
     lea_apres = _par(apres["comptes"], "login", "lectrice")
     assert lea_apres["reprises"] == 1 and "identite_changee" not in lea_apres["signaux"]
     assert comptes.FENETRE_REPRISE_JOURS == 30
+
+
+# --------------------------------------------------------------------------- #
+# Le scénario ENTIER : une collection perd son propriétaire, puis le retrouve
+# --------------------------------------------------------------------------- #
+# La case d'AUTH-6 « Ce qu'une collection devient quand son unique propriétaire perd son
+# groupe » ne se ferme PAS par un constat, et c'est écrit dans la fiche : mesurée le
+# 2026-09-18, la recette a trois collections tenues par des propriétaires vivants, donc aucun
+# signal — et zéro signal ne démontre rien. Il fallait que le scénario soit JOUÉ, et
+# rejouable : le groupe perdu, la collection qui apparaît, la propriété réattribuée, le
+# signal qui s'éteint.
+#
+# Les tests voisins posent des ÉTATS (un propriétaire qui n'existe pas, un groupe vide) ;
+# celui-ci pose une HISTOIRE, et c'est une autre question — un code qui signalerait toujours
+# passerait les premiers et tomberait ici.
+#
+# La doublure du dépôt est FIXE, donc insuffisante : l'appartenance doit changer ENTRE deux
+# lectures. On en copie le contenu dans le dossier temporaire du test et on réécrit cette
+# copie, ce qui laisse le fichier partagé intact — d'autres sessions le lisent — et fait
+# passer chaque lecture par le MÊME analyseur que LLDAP.
+
+
+@pytest.fixture
+def annuaire_mouvant(tmp_path, monkeypatch):
+    """La doublure, rendue MOUVANTE : `quitter` vide un groupe, `supprimer` l'efface."""
+    donnees = json.loads(annuaire.DOUBLURE.read_text(encoding="utf-8"))
+    fichier = tmp_path / "annuaire.json"
+
+    def poser():
+        fichier.write_text(json.dumps(donnees, ensure_ascii=False), encoding="utf-8")
+
+    def quitter(groupe):
+        """Tous ses membres le quittent ; le groupe EXISTE toujours, vide."""
+        for compte in donnees["data"]["users"]:
+            compte["groups"] = [g for g in compte["groups"] if g["displayName"] != groupe]
+        poser()
+
+    def supprimer(groupe):
+        """Le groupe disparaît de l'annuaire, membres compris."""
+        quitter(groupe)
+        donnees["data"]["groups"] = [g for g in donnees["data"]["groups"]
+                                     if g["displayName"] != groupe]
+        poser()
+
+    poser()
+    monkeypatch.setattr(annuaire, "DOUBLURE", fichier)
+    monkeypatch.setattr(config, "ANNUAIRE_ADRESSE", "doublure:")
+    return SimpleNamespace(quitter=quitter, supprimer=supprimer)
+
+
+def _vue_lue(client):
+    """La vue, ET la preuve que l'annuaire a répondu.
+
+    Sans cette preuve, « aucun signal » se confond avec « je n'ai pas pu regarder » : une
+    panne rend `non_verifie` et ne déclare jamais rien mort (c'est voulu). Les deux temps
+    qui concluent au SILENCE passeraient donc sur un annuaire muet, et le test resterait
+    vert le jour où la doublure casserait sous lui — la maladie d'ARCH-2, une garde qui
+    approuve en ne voyant plus rien."""
+    vue = _vue(client)
+    assert vue["annuaire"]["etat"] == "lu", vue["annuaire"]
+    return vue
+
+
+def test_une_collection_perd_son_proprietaire_puis_le_retrouve(
+        client, derriere_proxy, annuaire_mouvant):
+    """Les cinq temps, de bout en bout, par la route.
+
+    Le cinquième compte autant que les autres : un test qui s'arrêterait à l'apparition
+    prouverait qu'on sait crier, jamais qu'on sait se taire.
+    """
+    cid = _collection(client, "Étude tenue par un groupe")
+    _acces(client, cid, "groupe", "annotateurs", niveau="proprietaire")
+
+    # 1. Le groupe a deux membres : quelqu'un tient la collection, et rien n'est signalé.
+    col = _par(_vue_lue(client)["collections"], "id", cid)
+    assert [(p["par"], p["groupe"], p["vivant"]) for p in col["proprietaires"]] == \
+        [("groupe", "annotateurs", True)]
+    assert col["signaux"] == []
+
+    # 2. Les membres quittent le groupe dans l'annuaire. Rien ne change dans la base :
+    #    `collection_acces` garde une RÉFÉRENCE au nom du groupe (invariant d'AUTH-1), et
+    #    c'est bien là le piège que cette case nomme.
+    annuaire_mouvant.quitter("annotateurs")
+
+    # 3. La collection apparaît : plus aucun propriétaire vivant.
+    vue = _vue_lue(client)
+    col = _par(vue["collections"], "id", cid)
+    assert col["proprietaires"][0]["vivant"] is False
+    assert col["signaux"] == ["proprietaire_absent"]
+    assert {"signal": "proprietaire_absent", "collection": cid} in vue["a_regarder"]
+
+    # 4. Un administrateur réattribue la propriété. L'ORDRE est imposé par le serveur :
+    #    retirer d'abord laisserait la collection sans personne, et le 409 dit quoi faire
+    #    avant — un 409 nu passerait ce test en ayant perdu ce qui fait sa valeur.
+    r = client.delete(f"/api/collections/{cid}/acces/groupe/annotateurs", headers=ADMIN)
+    assert r.status_code == 409, r.text
+    assert "désignez-en un autre" in r.json()["detail"]
+    _acces(client, cid, "utilisateur", "proprio", niveau="proprietaire")
+    r = client.delete(f"/api/collections/{cid}/acces/groupe/annotateurs", headers=ADMIN)
+    assert r.status_code == 204, r.text
+
+    # 5. Le signal s'ÉTEINT, et l'annuaire est toujours lu quand il s'éteint. Le silence
+    #    s'affirme AVANT la relève : c'est lui qu'on vient mesurer, et une assertion posée
+    #    après aurait rougi à sa place sous la mutation qui l'empêche de s'éteindre.
+    vue = _vue_lue(client)
+    col = _par(vue["collections"], "id", cid)
+    assert col["signaux"] == []
+    assert not [l for l in vue["a_regarder"] if l.get("collection") == cid]
+    assert [(p["par"], p["login"], p["vivant"]) for p in col["proprietaires"]] == \
+        [("compte", "proprio", True)]
+
+
+def test_un_groupe_proprietaire_qui_disparait_signale_la_collection_ET_l_acces(
+        client, derriere_proxy, annuaire_mouvant):
+    """La seconde forme de la perte que la case nomme : le groupe ne se vide pas, il
+    DISPARAÎT. La collection est orpheline, et l'accès est mort — deux signaux distincts,
+    parce qu'ils se réparent par deux gestes distincts."""
+    cid = _collection(client, "Étude d'un cours fini")
+    _acces(client, cid, "groupe", "etudiants-bd-2026", niveau="proprietaire")
+    assert _par(_vue_lue(client)["collections"], "id", cid)["signaux"] == []
+
+    annuaire_mouvant.supprimer("etudiants-bd-2026")
+
+    vue = _vue_lue(client)
+    assert _par(vue["collections"], "id", cid)["signaux"] == ["proprietaire_absent"]
+    groupe = _par(vue["groupes"], "nom", "etudiants-bd-2026")
+    assert (groupe["dans_annuaire"], groupe["signaux"]) == (False, ["groupe_absent"])
+    assert {"signal": "groupe_absent", "groupe": "etudiants-bd-2026",
+            "collection": cid} in vue["a_regarder"]
 
 
 def test_a_regarder_est_ordonne_par_le_serveur(client, derriere_proxy, doublure):
