@@ -303,6 +303,18 @@ collection, et non plus dans l'Administration.
   l'emploie**. C'est le risque inverse de celui que la case visait — non pas un sélecteur qui
   ne trouve rien, mais une classe que rien ne réclame. À retirer, ou à ré-épingler.
 
+  **Tranché le 2026-09-18 : RETIRÉE (`163061f`), après avoir posé la question dans l'autre
+  sens.** « Plus personne ne l'emploie » se dit d'un nom devenu inutile comme d'une garde qui
+  a cessé de garder : l'état d'aujourd'hui ne les distingue pas, l'ÉCART avant/après si. Les
+  quatre épingles qui la visaient ont suivi le champ sur `.qe-nom`, dans les mêmes tests et
+  pour la même chose — la couverture a bougé, elle ne s'est pas perdue. Une seule ligne avait
+  disparu sans jumelle, et c'était la bonne candidate : une attente explicitement
+  ANTI-VACUITÉ, dont le commentaire disait « sans cela le test passerait sans voir ». Le
+  RISQUE a disparu avec elle, et pour une raison structurelle : l'écran ne redessine plus que
+  la section du geste, donc la collection voisine ne repasse plus par « Chargement… », et ce
+  qui efface le message est la règle « un message à la fois » que le test éprouve
+  directement. L'assertion tient par un mécanisme au lieu de tenir par une attente.
+
 **Les trois dernières cases de la zone ne sont pas relues ici** : ce que la ligne devient
 sous le seuil étroit demande une mesure à 375 et 320 px, l'absence de colonne d'identité est
 une réserve à vérifier sur le tableau fini, et le `<select>` de niveau a déjà son renvoi du
