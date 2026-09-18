@@ -212,3 +212,57 @@ retenu le déménagement (décision 2 (b)) : les accès d'UNE collection passero
 dans la Bibliothèque, et c'est à ce geste que la refonte du tableau se joint. Le principal se
 choisira dans une liste de l'annuaire, groupes en tête, avec une saisie libre signalée
 (décision 4 (2)). Rien n'est à faire ici avant la lecture de l'annuaire d'`AUTH-6`.
+
+## Ce que l'étape 3 d'AUTH-12 a fait de la zone « Le panneau des accès se lit comme un tableau » — 2026-09-18
+
+Relu sur le code de `6ea6b60`, à la demande de la coordination, **par LECTURE seule et sans
+qu'aucune case soit cochée** : une case cochée sur lecture dirait qu'un geste a été joué
+quand personne ne l'a joué. Trois réponses possibles pour chacune — (a) l'étape 3 la
+satisfait, (b) elle l'a rendue caduque autrement, (c) elle demande encore un geste. Le
+panneau a déménagé : tout ce qui suit vit dans `static/corpus.js`, dans la fiche de la
+collection, et non plus dans l'Administration.
+
+- **Le tableau dans son cadre** — (a). `qeTableauHtml` rend un `<table class="corpus-table
+  qe-table">` dans un `<div class="table-cadre qe-cadre">`, et « exporter » comme le genre
+  s'écrivent une fois en `<th scope="col">`.
+- **Le `<details>` par collection reste** — (a). `colItem` le construit, « Qui entre » vit
+  dans son `.col-detail`, et `#col-body .col-item` reste l'ancre des audits — dans la
+  Bibliothèque désormais (`templates/corpus.html`).
+- **La ligne d'ajout devient un `<tfoot>`** — (c), et c'est la seule de la zone qui n'a pas
+  été faite. `qeAjoutHtml` rend un `<div class="qe-ajout-ligne">` SOUS le tableau, hors de
+  lui : ses champs ne tombent donc pas sous leurs colonnes. Le débordement qui motivait le
+  `<tfoot>` a été traité autrement (le cadre défilant, et une liste déroulante qui rétrécit
+  à 320 px) ; reste à décider si la forme `<tfoot>` est encore voulue, ou si elle tombe avec
+  sa raison.
+- **« Depuis le »** — (a). `qeDepuis` tronque `date_creation` à dix caractères ; la colonne
+  existe dans le tableau, et la carte la dit en toutes lettres sous 48em.
+- **« Signal » et ses trois états** — (a) pour la propriété, (b) pour son point de
+  comparaison. `qeSignal` marque si `jamais_vu` est vrai, ne dit rien s'il est faux, et rien
+  non plus pour un groupe — parce que le serveur rend `jamais_vu: null` sur un groupe
+  (`_acces_de`), et que l'écran teste `=== true`. En revanche la « septième colonne de la
+  table des comptes », qui servait d'étalon, n'existe plus : cette table a été remplacée par
+  une fiche (`3eb52e8`) et sa route retirée (`bfb9d32`).
+- **Les `aria-label` concaténés remplacés par des en-têtes croisés** — (a) dans le tableau,
+  (b) sous le seuil étroit, (c) pour ce qui compte vraiment. Les deux libellés que la case
+  nommait ont disparu : chaque case croise un `<th scope="row">` portant le principal avec
+  les en-têtes de ses colonnes, par `aria-labelledby`. Sous 48em il n'y a plus de tableau
+  mais des cartes, où le croisement se fait vers le nom et le libellé — la propriété tient,
+  la forme `th scope="row"` n'y a plus de sens. Un `aria-label` concaténé subsiste sur le
+  bouton ✕ (« Retirer l'accès de … ») : la case ne le nommait pas, et un bouton ne peut pas
+  s'en passer. **Ce qu'aucune lecture n'établit** : qu'un lecteur d'écran ÉNONCE réellement
+  la liaison. Cela se joue sous NVDA, et personne ne l'a fait.
+- **Les sélecteurs épinglés survivent sans devenir creux** — (a) pour deux, (b) pour un, et
+  un reste à trancher. `#col-body .col-item` et `.acces-jamais-vu` sont toujours épinglés
+  (`tests/test_e2e_a11y.py`). `input[data-export][data-principal]` n'existe plus nulle part,
+  ni dans le code ni dans les tests : il est devenu
+  `input.qe-case[data-hors-rang="exporter"][data-principal]`, et les tests ont suivi dans le
+  même commit — donc caduc, sans le sélecteur creux que la case redoutait, ce qui est
+  exactement ce qu'elle demandait. Reste `.col-principal` : la classe survit sur le champ de
+  la ligne d'ajout, mais **plus aucun test ne l'épingle et aucune règle de `style.css` ne
+  l'emploie**. C'est le risque inverse de celui que la case visait — non pas un sélecteur qui
+  ne trouve rien, mais une classe que rien ne réclame. À retirer, ou à ré-épingler.
+
+**Les trois dernières cases de la zone ne sont pas relues ici** : ce que la ligne devient
+sous le seuil étroit demande une mesure à 375 et 320 px, l'absence de colonne d'identité est
+une réserve à vérifier sur le tableau fini, et le `<select>` de niveau a déjà son renvoi du
+même jour.
