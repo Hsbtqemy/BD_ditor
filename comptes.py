@@ -317,13 +317,10 @@ def a_regarder(comptes: list, groupes: list, collections_sortie: list) -> list:
 # Qui entre, vu du PROPRIÉTAIRE d'une collection (AUTH-12, étape 3)
 # --------------------------------------------------------------------------- #
 # Tranché par Hugo le 2026-09-17 (décision 2 (b), précisée) : le propriétaire voit les NOMS
-# des groupes, sans les groupes de rôle de l'annuaire ni ceux des administrateurs ; un login
-# TAPÉ se vérifie, sans qu'aucune liste des comptes lui soit servie. Il ne voit ni id, ni
+# des groupes, sans les groupes de rôle de l'annuaire ni ceux des administrateurs, et aucune
+# liste des comptes ne lui est servie. Il ne voit ni id, ni
 # membres, ni nombre de comptes : la composition d'équipes qui ne sont pas la sienne lui reste
 # cachée (UX-4). Les états sont rendus ici, les phrases sont celles de l'écran.
-VERIFICATIONS = ("trouve", "inconnu", "non_verifie", "sans_annuaire")
-
-
 def verifier(lecture: Lecture, genre: str, nom: str) -> str:
     """Un nom existe-t-il dans l'annuaire ? « inconnu » veut dire « n'y existe pas », jamais
     autre chose : la vérification porte donc sur TOUS les comptes et TOUS les groupes, groupes

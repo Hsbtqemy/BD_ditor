@@ -1479,7 +1479,7 @@ function qeAjoutHtml(c, etat, garde) {
         ${opt("autre", "Un compte, ou un groupe absent de la liste…")}
       </select>
       <span class="qe-libre"${choix === "autre" ? "" : " hidden"}>
-        <input id="qe-nom-${id}" class="qe-nom col-principal" placeholder="nom exact"
+        <input id="qe-nom-${id}" class="qe-nom" placeholder="nom exact"
                autocomplete="off" aria-label="Nom exact du compte ou du groupe"
                value="${esc(nom)}">
         <select id="qe-genre-${id}" class="qe-genre" aria-label="Compte ou groupe">
