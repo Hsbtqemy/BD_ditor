@@ -9,6 +9,13 @@ statut: livré
 (v25) et celui d'instance, la déclaration d'administration dans le panneau des accès, et le
 bandeau de portée vide qui nomme enfin quelqu'un. `autorisation.py` n'est pas dans le diff.
 
+**Deux cases se rouvrent le 2026-09-18, sans code et sans changer le statut.** La
+construction de l'étape 4 d'`AUTH-12` — qui AFFICHE ce référent aux administrateurs — a
+demandé d'énumérer ses états, et en a trouvé un que ce chantier n'avait pas prévu : il se
+pose par DEUX variables, donc il peut n'être posé qu'à MOITIÉ. Le bandeau construit ici
+ignore ce cas. Les deux cases sont dans la zone « Deux états PARTIELS du référent » ; elles
+viennent d'une LECTURE de source, jamais d'une observation, et le disent.
+
 **Ce que la relecture a trouvé, sur une suite verte.** Trois défauts, tous de la même
 famille : un écran qui parle d'autre chose que de ce qu'il montre.
 
@@ -61,6 +68,10 @@ ne retire donc rien à personne : il donne un **visage** à un pouvoir qui n'en 
 ### Vérifications
 - [x] `autorisation.py` n'apparaît pas dans le diff du chantier : un référent est une ADRESSE et non un droit. S'il y entre, c'est qu'on a glissé vers le cloisonnement entre administrateurs, écarté ici
 - [x] Le cas du référent périmé est documenté et assumé : un référent qui a quitté `bd-admins` reste affiché, parce que l'application ne connaît les groupes que de la personne qui frappe, à l'instant de sa requête (AUTH-1). L'appartenance d'un TIERS lui est structurellement invérifiable — la déclaration est donc déclarative, et le dire vaut mieux que le laisser découvrir
+
+### Deux états PARTIELS du référent, trouvés le 2026-09-18
+- [ ] **Le bandeau de portée vide DIT VRAI quand le référent est nommé sans contact** — attendu : devant un référent qui porte un nom et aucun moyen de le joindre, le bandeau RAPPORTE ce qu'il a — un nom, pas d'adresse — au lieu d'affirmer qu'une adresse existe. **Constat LU dans `static/theme.js` (`referentLigne`), et cet état n'a JAMAIS été observé à l'écran** : la phrase « (contact déclaré à la configuration). » est ajoutée INCONDITIONNELLEMENT, après une branche `if (r.contact)` qui, elle, est bien conditionnelle. Un référent nommé sans contact produirait donc « Demandez un accès à **Ana Ruiz** (contact déclaré à la configuration). » — un nom, aucune adresse, et l'affirmation qu'une adresse a été déclarée. **C'est la maladie d'AUTH-8** : une phrase qui CONCLUT au lieu de rapporter. Et elle ment dans le seul cas où elle nuit — à quelqu'un qui n'a aucun accès, pour qui contacter le référent est la seule action possible. L'état est ATTEIGNABLE : `main._referent_instance()` rend un dict dès qu'UNE des deux variables est posée (`if not (REFERENT_NOM or REFERENT_CONTACT)`). Depuis `d110ce2` (AUTH-12, étape 4), `GET /api/referent` le classe `injoignable` et l'Administration le signale — l'administrateur le voit donc, le bandeau non. **À OBSERVER avant de corriger** : `pilotage/qa/referent-instance.md`, zone « Réservé, et ce que voit l'autre », porte une case qui le fait constater sans rien attendre
+- [ ] **Le bandeau n'affiche pas DEUX FOIS le contact d'un référent sans nom** — cosmétique, et écrit comme tel. Attendu : un référent posé par son seul contact s'affiche une fois. **Constat LU dans `static/theme.js` (`referentLigne`), et cet état n'a JAMAIS été observé à l'écran** : `el("strong", null, r.nom || r.contact)` retombe sur le contact faute de nom, puis la branche `if (r.contact)` l'ajoute une seconde fois en lien — « Demandez un accès à **ana@labo.fr** — ana@labo.fr (contact déclaré à la configuration). » Ici la phrase de fin dit vrai et rien n'induit en erreur : c'est une répétition, pas un mensonge, et c'est pourquoi elle passe après l'autre. Même préalable et même passe pour l'observer
 
 ## Contexte
 

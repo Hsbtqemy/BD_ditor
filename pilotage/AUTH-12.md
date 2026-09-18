@@ -251,9 +251,16 @@ Avec un nom sans contact, il rend « Demandez un accès à **Ana Ruiz** (contact
 configuration). » : il nomme quelqu'un sans adresse ET affirme qu'un contact a été déclaré,
 à la personne que cela concerne le plus. Avec un contact sans nom, `r.nom || r.contact` met
 le contact en gras, puis la branche `if (r.contact)` le réaffiche en lien — il sort DEUX
-fois. Les deux sont signalés à la coordination et laissés tels quels : ce chantier affiche
-un réglage, il ne touche pas au bandeau d'`AUTH-4`. Une case de la passe de QA les fait
-OBSERVER sans rien attendre, pour qu'on les constate au lieu de les redécouvrir.
+fois. Les deux sont laissés tels quels : ce chantier affiche un réglage, il ne touche pas au
+bandeau d'`AUTH-4`. Une case de la passe de QA les fait OBSERVER sans rien attendre, pour
+qu'on les constate au lieu de les redécouvrir.
+
+**Ils sont POSÉS dans `AUTH-4` le 2026-09-18, zone « Deux états PARTIELS du référent », et
+ce déplacement est la décision de la coordination — pas un rangement.** Le bandeau et les
+deux variables sont à `AUTH-4` ; `AUTH-6` ne porte que la case « sont-ils renseignés ».
+Surtout, laissés ICI ils seraient morts avec la fiche qui les héberge : une fois `AUTH-12`
+close, personne ne relit ses sections DATÉES en cherchant un défaut ouvert. Ce qui reste ici
+est le récit de la trouvaille ; ce qui se corrigera vit là-bas, en cases.
 
 **Éprouvé.** 10 tests (`tests/test_referent_instance.py`), dont les trois états en table et
 l'invariant d'`/api/moi`. Les quatre cliquets de routes repassent — `AUTH-2` : 132/140
