@@ -15,6 +15,13 @@ const path = require("node:path");
 const D = require("../../static/lib/droits.js");
 
 const AVERTISSEMENT = "Supprimer un album efface ses images et ne se rattrape pas.";
+// Ce que `avertissements` rend pour lui sur la description d'aujourd'hui : le texte, l'acte
+// qui le porte, et le cran qui l'accorde (correctif du 2026-09-18).
+const ATTENDU_STRUCTURER = {
+  texte: AVERTISSEMENT,
+  actes: [{ code: "structurer", libelle: "organiser les albums" }],
+  niveaux: ["ecriture"],
+};
 
 const AUJOURDHUI = {
   echelle: ["lecture", "ecriture", "proprietaire"],
@@ -177,6 +184,44 @@ test("le corps du PUT porte le niveau et CHAQUE champ hors rang, en booléen", (
                      exporter: false, vocabulaire: false });
 });
 
+test("rétrograder n'AFFIRME pas une case d'office — sinon elle est accordée au passage", () => {
+  // Le défaut du 2026-09-18, dans sa forme la plus nue : la liste rend l'export EFFECTIF d'un
+  // propriétaire (vrai d'office), et le renvoyer en le rétrogradant le STOCKE.
+  const base = { genre: "groupe", principal: "cours" };
+  const effectif = { exporter: true };
+  const corps = D.corpsAcces(AUJOURDHUI, base, "ecriture", effectif, "proprietaire");
+  assert.deepEqual(corps, { ...base, niveau: "ecriture" });
+  assert.ok(!("exporter" in corps), "la case d'office est affirmée : elle sera stockée");
+  // Sans le niveau courant, les valeurs sont des décisions : rien n'est omis (création).
+  assert.deepEqual(D.corpsAcces(AUJOURDHUI, base, "ecriture", effectif),
+                   { ...base, niveau: "ecriture", exporter: true });
+});
+
+test("une case COCHÉE à la main reste affirmée quand le niveau change", () => {
+  // En lecture, « exporter » n'est pas d'office : cochée ou décochée, c'est une décision, et
+  // une promotion ne doit pas la perdre.
+  const base = { genre: "utilisateur", principal: "zoe" };
+  assert.deepEqual(D.corpsAcces(AUJOURDHUI, base, "ecriture", { exporter: true }, "lecture"),
+                   { ...base, niveau: "ecriture", exporter: true });
+  assert.deepEqual(D.corpsAcces(AUJOURDHUI, base, "ecriture", { exporter: false }, "lecture"),
+                   { ...base, niveau: "ecriture", exporter: false });
+});
+
+test("l'omission suit la DESCRIPTION, pas un nom de champ", () => {
+  // Deux cases hors rang, une seule d'office : l'autre est affirmée depuis le même niveau.
+  const d = { ...AUJOURDHUI,
+              hors_rang: [...AUJOURDHUI.hors_rang,
+                          { code: "publier", libelle: "publier", champ: "publier", d_office: null }] };
+  assert.deepEqual(D.corpsAcces(d, {}, "ecriture", { exporter: true, publier: true }, "proprietaire"),
+                   { niveau: "ecriture", publier: true });
+  // Et une description où RIEN n'est d'office n'omet rien.
+  const sans = { ...AUJOURDHUI,
+                 hors_rang: [{ code: "exporter", libelle: "exporter", champ: "exporter",
+                               d_office: null }] };
+  assert.deepEqual(D.corpsAcces(sans, {}, "ecriture", { exporter: true }, "proprietaire"),
+                   { niveau: "ecriture", exporter: true });
+});
+
 /* ── Ce qu'un accès permet, en une phrase ────────────────────────────────────────── */
 
 const CAS_LUS = [
@@ -214,19 +259,46 @@ test("« tous les actes » ne se promet pas quand une case hors rang ne vient pa
 test("l'avertissement se dit dès qu'UN accès porte l'acte, et une seule fois", () => {
   assert.deepEqual(D.avertissements(AUJOURDHUI, ["lecture"]), []);
   assert.deepEqual(D.avertissements(AUJOURDHUI, ["lecture", "ecriture", "proprietaire"]),
-                   [AVERTISSEMENT]);
-  assert.deepEqual(D.avertissements(AUJOURDHUI, ["proprietaire"]), [AVERTISSEMENT]);
+                   [ATTENDU_STRUCTURER]);
+  assert.deepEqual(D.avertissements(AUJOURDHUI, ["proprietaire"]), [ATTENDU_STRUCTURER]);
   // Avec un cran de plus, la contribution n'atteint pas « structurer » : pas d'avertissement.
   assert.deepEqual(D.avertissements(CONTRIBUTION, ["contribution"]), []);
 });
 
-test("deux actes qui portent le MÊME avertissement ne le font dire qu'une fois", () => {
+test("l'avertissement NOMME l'acte qu'il concerne, et le cran qui l'accorde", () => {
+  // Le défaut du 2026-09-18 : rendu seul, il ne disait plus de quoi il parlait. L'acte et son
+  // cran viennent d'ici — l'écran les affiche et décrit la case, il ne les devine pas.
+  const [av] = D.avertissements(AUJOURDHUI, ["ecriture"]);
+  assert.deepEqual(av.actes, [{ code: "structurer", libelle: "organiser les albums" }]);
+  assert.deepEqual(av.niveaux, ["ecriture"]);
+  assert.equal(av.texte, AVERTISSEMENT);
+});
+
+test("deux actes qui portent le MÊME avertissement le font dire une fois, en se nommant tous les deux", () => {
   // Le cas qui éprouve « une seule fois » : sans lui, un avertissement répété survivait à la
-  // suite (mutant survivant, 2026-09-17) — aucune description n'en donnait deux pareils.
+  // suite (mutant survivant, 2026-09-17) — aucune description n'en donnait deux pareils. Et
+  // depuis le 2026-09-18 il éprouve l'autre moitié : taire l'un des deux actes serait un
+  // mensonge par omission.
   const d = { ...AUJOURDHUI,
               actes: AUJOURDHUI.actes.map((a) => (a.code === "lots"
                 ? { ...a, avertissement: AVERTISSEMENT } : { ...a })) };
-  assert.deepEqual(D.avertissements(d, ["ecriture"]), [AVERTISSEMENT]);
+  assert.deepEqual(D.avertissements(d, ["ecriture"]), [{
+    texte: AVERTISSEMENT,
+    actes: [{ code: "structurer", libelle: "organiser les albums" },
+            { code: "lots", libelle: "lancer la reconnaissance automatique" }],
+    niveaux: ["ecriture"],
+  }]);
+});
+
+test("deux actes de CRANS différents portant le même avertissement décrivent les deux cases", () => {
+  // Rien n'oblige deux actes de même avertissement à partager leur cran : `niveaux` est une
+  // liste pour cela, et l'écran décrit alors chacune des cases concernées.
+  const d = { ...CONTRIBUTION,
+              actes: CONTRIBUTION.actes.map((a) => (a.code === "decider"
+                ? { ...a, avertissement: AVERTISSEMENT } : { ...a })) };
+  const [av] = D.avertissements(d, ["proprietaire"]);
+  assert.deepEqual(av.actes.map((a) => a.code), ["structurer", "decider"]);
+  assert.deepEqual(av.niveaux, ["ecriture", "proprietaire"]);
 });
 
 /* ── Aucun niveau en dur ─────────────────────────────────────────────────────────── */

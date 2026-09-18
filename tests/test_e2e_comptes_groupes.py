@@ -296,6 +296,46 @@ def test_la_liste_se_parcourt_aux_fleches(page, live_server):
 # ── « À regarder » ─────────────────────────────────────────────────────────────────────
 
 
+def test_a_zero_signal_l_alerte_est_eteinte_et_se_rallume_au_premier(page, live_server):
+    """À ZÉRO, « À regarder » n'est plus une alerte : ni ⚠, ni ambre, ni cadre, et repliée.
+
+    Le seul élément de la page conçu pour attraper l'œil était allumé en permanence — cadre
+    ambre, ⚠, `open` —, y compris quand il n'annonçait rien (relevé par Hugo le 2026-09-18
+    sur une capture). C'est le mode d'échec le plus coûteux, parce qu'il ne se remarque
+    jamais : qui ouvre cette page chaque semaine et voit toujours le même cadre finit par ne
+    plus le lire, et le jour où il y a vraiment un accès mort, le cadre a exactement la même
+    apparence qu'un mois de rien. Même règle que le bandeau de portée vide (AUTH-2), qui
+    nomme les quatre situations mais ne se déplie d'office que pour la panne CERTAINE.
+
+    Le COMPTE reste affiché dans les deux cas : « (0) » n'est pas le problème, c'est le décor
+    d'alerte autour de lui. Et les DEUX états sont joués — une garde qui ne verrait que le
+    zéro laisserait éteindre l'alerte pour de bon.
+    """
+    vide = decor()
+    vide["a_regarder"] = []
+    _ouvrir(page, live_server, vide)
+    regarder = page.locator("#cg-regarder")
+    expect(page.locator("#cg-regarder-titre")).to_have_text("À regarder (0)")
+    assert regarder.evaluate("el => el.open") is False, "l'alerte vide s'ouvre d'office"
+    # Les valeurs CALCULÉES, et non la classe seule : une classe posée sans règle dans la
+    # feuille laisserait le cadre ambre allumé, et le test approuverait un écran inchangé.
+    fond, bordure = page.evaluate(
+        "(el) => { const s = getComputedStyle(el); return [s.backgroundColor, s.borderTopWidth]; }",
+        regarder.element_handle())
+    assert fond in ("rgba(0, 0, 0, 0)", "transparent"), f"fond encore teinté : {fond}"
+    assert bordure == "0px", f"cadre encore tracé : {bordure}"
+    expect(page.locator("#cg-signaux > li")).to_have_text("Rien à regarder.")
+
+    # Dès qu'il y a UN signal, l'alerte revient — c'est là qu'elle vaut quelque chose.
+    _servir(page, decor())
+    page.reload(wait_until="networkidle")
+    expect(page.locator("#cg-regarder-titre")).to_have_text("⚠ À regarder (16)")
+    assert page.locator("#cg-regarder").evaluate("el => el.open") is True
+    bordure = page.evaluate("(el) => getComputedStyle(el).borderTopWidth",
+                            page.locator("#cg-regarder").element_handle())
+    assert bordure != "0px", "l'alerte ne se rallume pas quand il y a quelque chose à voir"
+
+
 def test_a_regarder_replie_un_code_au_dela_de_cinq_et_mene_a_la_fiche(page, live_server):
     """Décision de Hugo du 2026-09-17 : au-delà de cinq signaux du même code, une ligne
     dépliable ; les codes rares restent ligne à ligne, dans l'ordre du serveur."""

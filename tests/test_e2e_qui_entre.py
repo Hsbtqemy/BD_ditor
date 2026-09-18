@@ -130,6 +130,59 @@ def test_faire_entrer_un_groupe_puis_cocher_l_ecriture_d_un_seul_geste(page, col
     expect(_ligne(item, "annotateurs").locator('.qe-case[data-cran="lecture"]')).to_be_disabled()
 
 
+def test_les_actes_lies_sont_chapeautes_et_l_avertissement_nomme_son_acte(page, collection):
+    """Les deux correctifs du 2026-09-18, relevés par Hugo sur une capture.
+
+    LE CHAPEAU. Les actes accordés ensemble sont couverts par un en-tête qui les nomme, en
+    `scope="colgroup"`, au-dessus de leurs propres en-têtes. Il remplace la barre tracée sous
+    la case unique : deux pixels en travers d'une cellule, une case au milieu, c'était le
+    vocabulaire d'un curseur qu'on croit pouvoir glisser. Le test exige la structure ET
+    l'absence du dessin — sans la seconde moitié, on pourrait remettre le trait sans rien
+    casser.
+
+    L'AVERTISSEMENT. Il nomme l'acte qu'il concerne, et la case du cran qui accorde cet acte
+    le cite en `aria-describedby` : cocher ce cran accorde bien cet acte, donc la description
+    est vraie. Rendu seul sous le tableau, il ne disait plus de quoi il parlait.
+
+    Tout est DÉRIVÉ de la description servie : le nombre de chapeaux, leur portée, l'acte qui
+    porte l'avertissement. Une autre issue d'AUTH-10 change les chiffres, pas le test.
+    """
+    base, cid = collection["base"], collection["id"]
+    droits = _droits(base)
+    par_niveau = {}
+    for a in droits["actes"]:
+        par_niveau.setdefault(a["niveau"], []).append(a)
+    lies = {n: actes for n, actes in par_niveau.items() if len(actes) > 1}
+    porteur = next((a for a in droits["actes"]
+                    if a["avertissement"] and a["niveau"] == "ecriture"), None)
+    assert lies and porteur, "prémisse : des actes liés, et un avertissement en écriture"
+    _accorder(base, cid, "groupe", "annotateurs", "ecriture")
+    item = _ouvrir(page, base, cid)
+
+    chapeaux = item.locator('.qe-table thead th[scope="colgroup"]')
+    expect(chapeaux).to_have_count(len(lies))
+    for i, actes in enumerate(lies.values()):
+        expect(chapeaux.nth(i)).to_have_attribute("colspan", str(len(actes)))
+        nom = chapeaux.nth(i).inner_text()
+        for a in actes:
+            assert a["libelle"] in nom, (a["libelle"], nom)
+    # Les en-têtes d'actes chapeautés vivent au SECOND rang, et restent des colonnes ; les
+    # autres colonnes traversent les deux rangs.
+    rangs = item.locator(".qe-table thead tr")
+    expect(rangs).to_have_count(2)
+    expect(rangs.nth(1).locator('th[scope="col"]')).to_have_count(
+        sum(len(actes) for actes in lies.values()))
+    fond = page.evaluate("(el) => getComputedStyle(el).backgroundImage",
+                         item.locator("td.qe-lie").first.element_handle())
+    assert fond == "none", f"la cellule fusionnée dessine encore quelque chose : {fond}"
+
+    case = item.locator('.qe-case[data-cran="ecriture"][data-principal="annotateurs"]')
+    cible = case.get_attribute("aria-describedby")
+    assert cible, "la case du cran n'est décrite par aucun avertissement"
+    texte = item.locator(f"#{cible}").inner_text()
+    assert porteur["libelle"] in texte and porteur["avertissement"] in texte, texte
+
+
 def test_un_nom_tape_inconnu_de_l_annuaire_est_accorde_et_signale(page, collection):
     """Décision 4 (2) : une saisie libre est SIGNALÉE, jamais refusée. Le texte est celui que
     Hugo a retenu, et la ligne porte « inconnu de l'annuaire »."""
@@ -246,6 +299,53 @@ def test_decocher_decider_rend_l_ecriture_et_le_retrait_rend_le_focus(page, coll
     expect(item.locator(".qe-table th[scope=row]", has_text="enseignants")).to_have_count(0)
     expect(item.locator(".qe-titre")).to_be_focused()
     assert ("groupe", "enseignants") not in _acces(base, cid)
+
+
+def test_retrograder_un_proprietaire_ne_lui_accorde_pas_l_export(page, collection):
+    """Un propriétaire exporte D'OFFICE : sa case est cochée et grisée, mais rien n'est stocké.
+    La liste rend ce droit EFFECTIF, et c'est la bonne réponse pour l'afficher — une liste qui
+    dirait « sans export » serait exacte et trompeuse (DROIT-2). L'écran renvoyait cet état
+    coché au serveur en rétrogradant, qui l'ENREGISTRAIT : le rétrogradé gardait un droit que
+    personne ne lui avait donné. Trouvé à la revue du 2026-09-18, dans `6ea6b60`.
+
+    La faute échoue OUVERT, et c'est pourquoi rien ne la montrait : l'écran affiche fidèlement
+    ce que le serveur a gardé, et la case cochée paraît normale — elle l'était une seconde
+    plus tôt, à l'autre niveau.
+
+    **Ce test regarde ce que l'écran ENVOIE, et pas seulement ce que la base garde.** La
+    réparation a deux moitiés : celle-ci, qui cesse d'affirmer une case d'office, et une
+    fermeture côté serveur, qui refuse de stocker une valeur qui ne fait que répéter le
+    d'office. Une fois la seconde posée, l'état final est juste même si la première ne se
+    déclenche jamais : un test qui ne lirait que `…/acces` serait vert sans rien mesurer de ce
+    qu'il croit mesurer (relevé par la session qui écrit l'autre moitié). La charge utile du
+    `PUT` est donc l'assertion qui porte, et l'état final celle qui couvre la paire.
+
+    Deux propriétaires, sinon la rétrogradation est refusée en 409 (dernier propriétaire).
+    """
+    base, cid = collection["base"], collection["id"]
+    _accorder(base, cid, "utilisateur", "proprio", "proprietaire")
+    _accorder(base, cid, "groupe", "enseignants", "proprietaire")
+    assert _acces(base, cid)[("groupe", "enseignants")]["exporter"] is True, (
+        "prémisse : la liste rend l'export EFFECTIF d'un propriétaire")
+
+    item = _ouvrir(page, base, cid)
+    ligne = _ligne(item, "enseignants")
+    expect(ligne.locator('.qe-case[data-hors-rang="exporter"]')).to_be_disabled()
+    with page.expect_response(
+            lambda r: r.request.method == "PUT" and r.url.endswith("/acces")) as reponse:
+        ligne.locator('.qe-case[data-cran="proprietaire"]').uncheck()
+    envoye = reponse.value.request.post_data_json
+    assert "exporter" not in envoye, (
+        "l'écran AFFIRME une case d'office en rétrogradant : le serveur la stockera, ou "
+        f"devra la refuser lui-même — {envoye}")
+
+    apres = _acces(base, cid)[("groupe", "enseignants")]
+    assert apres["niveau"] == "ecriture", apres
+    assert apres["exporter"] is False, (
+        "la rétrogradation a stocké l'export d'office : le rétrogradé exporte sans qu'aucune "
+        "décision ne l'ait accordé")
+    expect(_ligne(item, "enseignants").locator('.qe-case[data-hors-rang="exporter"]')
+           ).not_to_be_checked()
 
 
 def test_a_375_px_une_carte_par_acces_et_le_meme_geste(page, collection):

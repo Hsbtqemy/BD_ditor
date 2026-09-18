@@ -1281,19 +1281,65 @@ function qeDepuis(a) {
    chaque case CROISE l'en-tête de ligne et ceux de ses colonnes (`aria-labelledby`) : un
    lecteur d'écran entend « groupe annotateurs, annoter, organiser les albums… » sur une
    case unique, c'est-à-dire la liaison dite en clair. */
+/* L'identifiant de l'avertissement affiché : celui de son PREMIER acte, qui suffit à le
+   distinguer — un texte n'est rendu qu'une fois, quel que soit le nombre d'actes qui le
+   portent. */
+function qeIdAvertissement(c, av) {
+  return `qe-${c.id}-av-${av.actes[0].code}`;
+}
+
+/* Les avertissements AFFICHÉS, rangés par cran : la case d'un cran est DÉCRITE par
+   l'avertissement de l'acte qu'elle accorde (`aria-describedby`) — cocher ce cran accorde
+   cet acte, donc la description est vraie et non décorative. Recalculé ici plutôt que passé
+   de signature en signature : `avertissements` est une fonction pure. */
+function qeDescriptions(c, etat) {
+  const par = {};
+  if (!DROITS || !etat.acces) return par;
+  for (const av of BDDroits.avertissements(DROITS, etat.acces.map((a) => a.niveau))) {
+    for (const n of av.niveaux) par[n] = qeIdAvertissement(c, av);
+  }
+  return par;
+}
+
+function qeDecritPar(decrit, niveau) {
+  return decrit[niveau] ? ` aria-describedby="${esc(decrit[niveau])}"` : "";
+}
+
 function qeTable(c, etat) {
   const id = c.id;
   const cols = BDDroits.colonnes(DROITS);
+  const decrit = qeDescriptions(c, etat);
   const idsCran = (col) => (col.actes.length
     ? col.actes.map((a) => `qe-${id}-a-${a.code}`) : [`qe-${id}-n-${col.niveau}`]);
+  // Les actes accordés ENSEMBLE sont CHAPEAUTÉS, sur deux rangs d'en-tête. Le trait dessiné
+  // sous leur case unique disait bien la liaison, et disait aussi autre chose : deux pixels
+  // en travers d'une cellule, une case posée au milieu, c'est le vocabulaire d'un curseur
+  // qu'on croit pouvoir glisser (relevé par Hugo le 2026-09-18). L'intention était
+  // structurelle, le rendu décoratif, et c'est le rendu qui gagne. Un chapeau EST la
+  // structure : il ne se confond avec rien, et un lecteur d'écran l'annonce — un dessin, lui,
+  // ne s'annonce jamais. Le second rang n'existe que s'il y a quelque chose à chapeauter.
+  const groupe = (col) => col.type === "cran" && col.actes.length > 1;
+  const chapeaux = cols.some(groupe);
+  const rang2 = chapeaux ? ' rowspan="2"' : "";
+  const idsEnTete = (col) => (groupe(col) ? [`qe-${id}-g-${esc(col.niveau)}`] : idsCran(col));
   const tetes = cols.map((col) => {
     if (col.type !== "cran") {
-      return `<th scope="col" id="qe-${id}-h-${esc(col.code)}" class="qe-hors-rang">${esc(col.libelle)}</th>`;
+      return `<th scope="col"${rang2} id="qe-${id}-h-${esc(col.code)}" class="qe-hors-rang">${esc(col.libelle)}</th>`;
     }
-    const actes = col.actes.length ? col.actes : [{ code: null, libelle: col.libelle }];
-    return actes.map((a, k) => `<th scope="col" id="${idsCran(col)[k]}"`
-      + ` class="qe-acte">${esc(a.libelle)}</th>`).join("");
+    if (groupe(col)) {
+      return `<th scope="colgroup" colspan="${col.actes.length}" class="qe-groupe"`
+        + ` id="${idsEnTete(col)[0]}">${esc(col.libelle)}</th>`;
+    }
+    const seul = col.actes.length ? col.actes[0] : { libelle: col.libelle };
+    return `<th scope="col"${rang2} id="${idsCran(col)[0]}" class="qe-acte">${esc(seul.libelle)}</th>`;
   }).join("");
+  // Le second rang ne porte QUE les actes chapeautés : les autres colonnes le traversent par
+  // `rowspan`, et le navigateur range donc ces en-têtes sous leur chapeau, dans l'ordre.
+  const sousTetes = chapeaux
+    ? `<tr>${cols.filter(groupe).map((col) => col.actes.map((a, k) =>
+        `<th scope="col" id="${idsCran(col)[k]}" class="qe-acte">${esc(a.libelle)}</th>`)
+        .join("")).join("")}</tr>`
+    : "";
   const lignes = etat.acces.map((a, i) => {
     const qui = `qe-${id}-r${i}`;
     const valeurs = qeValeurs(a);
@@ -1303,9 +1349,12 @@ function qeTable(c, etat) {
         const n = Math.max(1, col.actes.length);
         const coche = BDDroits.cranCoche(DROITS, a.niveau, col.niveau);
         const libre = BDDroits.cranModifiable(DROITS, col.niveau);
+        // `qe-lie` ne dessine plus rien : elle NOMME la cellule fusionnée, pour la feuille
+        // comme pour le test qui vérifie que les actes liés n'ont qu'une case.
         return `<td class="qe-cran${n > 1 ? " qe-lie" : ""}"${n > 1 ? ` colspan="${n}"` : ""}>`
           + `<input type="checkbox" class="qe-case" data-cran="${esc(col.niveau)}" ${qeCle(a)}`
-          + ` aria-labelledby="${qui} ${idsCran(col).join(" ")}"`
+          + ` aria-labelledby="${qui} ${idsEnTete(col).join(" ")}"`
+          + qeDecritPar(decrit, col.niveau)
           + `${coche ? " checked" : ""}${libre ? "" : " disabled"}></td>`;
       }
       const h = hr.find((x) => x.code === col.code);
@@ -1324,8 +1373,9 @@ function qeTable(c, etat) {
   return `<div class="table-cadre qe-cadre" tabindex="0" role="region"
                aria-label="Qui entre dans ${esc(c.nom)}">
     <table class="corpus-table qe-table">
-      <thead><tr><th scope="col">Qui</th>${tetes}<th scope="col">Depuis le</th>
-        <th scope="col">Signal</th><th scope="col"><span class="sr-only">Retirer</span></th></tr></thead>
+      <thead><tr><th scope="col"${rang2}>Qui</th>${tetes}<th scope="col"${rang2}>Depuis le</th>
+        <th scope="col"${rang2}>Signal</th>
+        <th scope="col"${rang2}><span class="sr-only">Retirer</span></th></tr>${sousTetes}</thead>
       <tbody>${lignes}</tbody>
     </table></div>`;
 }
@@ -1335,6 +1385,7 @@ function qeTable(c, etat) {
 function qeCartes(c, etat) {
   const id = c.id;
   const crans = BDDroits.crans(DROITS);
+  const decrit = qeDescriptions(c, etat);
   return `<ul class="qe-cartes">${etat.acces.map((a, i) => {
     const qui = `qe-${id}-r${i}`;
     const valeurs = qeValeurs(a);
@@ -1342,6 +1393,7 @@ function qeCartes(c, etat) {
       const lib = `${qui}-n-${cr.niveau}`;
       return `<label class="qe-case-carte"><input type="checkbox" class="qe-case"`
         + ` data-cran="${esc(cr.niveau)}" ${qeCle(a)} aria-labelledby="${qui} ${lib}"`
+        + qeDecritPar(decrit, cr.niveau)
         + `${BDDroits.cranCoche(DROITS, a.niveau, cr.niveau) ? " checked" : ""}`
         + `${BDDroits.cranModifiable(DROITS, cr.niveau) ? "" : " disabled"}>`
         + ` <span id="${lib}">${esc(BDDroits.libelleCran(cr))}</span></label>`;
@@ -1453,11 +1505,22 @@ function colAdminNote() {
     provenance.</p>`;
 }
 
+/* Ce qui vaut TOUJOURS, sous la ligne de message, et d'un seul tenant : l'avertissement d'un
+   acte, l'état de l'annuaire, le pouvoir des administrateurs. Trois traitements visuels en
+   trois lignes ne disaient pas lequel comptait (relevé par Hugo le 2026-09-18) ; ils tiennent
+   désormais dans UN bloc, distinct de ce qui vient du dernier geste. L'ordre ne change pas —
+   ce qu'on est en train d'accorder d'abord, ce que l'application ne sait pas ensuite, ce
+   qu'elle n'a pas à dire deux fois à la fin. */
 function qeNotesHtml(c, etat) {
   const notes = [];
   if (DROITS && etat.acces) {
-    for (const t of BDDroits.avertissements(DROITS, etat.acces.map((a) => a.niveau))) {
-      notes.push(`<p class="col-note qe-avertissement">${esc(t)}</p>`);
+    // L'avertissement NOMME son acte. Rendu seul, il ne disait plus de quoi il parlait : on
+    // lisait « Supprimer un album efface ses images » sans savoir ce qu'on accordait. Et la
+    // case du cran qui l'accorde le cite en `aria-describedby` (cf. `qeDescriptions`).
+    for (const av of BDDroits.avertissements(DROITS, etat.acces.map((a) => a.niveau))) {
+      notes.push(`<p class="col-note qe-avertissement" id="${esc(qeIdAvertissement(c, av))}">`
+        + `<strong>${av.actes.map((a) => esc(a.libelle)).join(", ")}</strong> — `
+        + `${esc(av.texte)}</p>`);
     }
   }
   const an = etat.annuaire && etat.annuaire.annuaire;
@@ -1477,7 +1540,8 @@ function qeNotesHtml(c, etat) {
       nom.</p>`);
   }
   notes.push(colAdminNote());
-  return notes.join("");
+  const corps = notes.filter(Boolean).join("");
+  return corps ? `<div class="qe-notes-bloc">${corps}</div>` : "";
 }
 
 /* Redessine ce qui dépend des données, jamais la ligne de message : elle survit ainsi à un
@@ -1555,10 +1619,12 @@ async function qeGesteCran(input) {
   const niveau = a ? BDDroits.niveauApresGeste(DROITS, input.dataset.cran, input.checked) : null;
   if (!a || !niveau) { qeRendre(sec); return; }
   const cible = `.qe-case[data-cran="${CSS.escape(input.dataset.cran)}"]${qeSel(a)}`;
+  // Le niveau COURANT est passé : ce que la liste rend d'une case d'office n'est pas une
+  // décision, et l'affirmer en changeant de cran l'accorderait (cf. `corpsAcces`).
   await colTenter(sec.querySelector(".qe-msg"), () => apiSend("PUT",
     `/api/collections/${id}/acces`,
     BDDroits.corpsAcces(DROITS, { genre: a.genre, principal: a.principal }, niveau,
-                        qeValeurs(a))));
+                        qeValeurs(a), a.niveau)));
   await qeApres(id, cible);
 }
 
@@ -1569,9 +1635,12 @@ async function qeGesteHorsRang(input) {
   if (!a) { qeRendre(sec); return; }
   const valeurs = { ...qeValeurs(a), [input.dataset.horsRangChamp]: input.checked };
   const cible = `.qe-case[data-hors-rang="${CSS.escape(input.dataset.horsRang)}"]${qeSel(a)}`;
+  // Le niveau ne change pas ici, mais les AUTRES cases hors rang, elles, peuvent être
+  // d'office : elles ne se stockent pas parce qu'on a coché celle d'à côté.
   await colTenter(sec.querySelector(".qe-msg"), () => apiSend("PUT",
     `/api/collections/${id}/acces`,
-    BDDroits.corpsAcces(DROITS, { genre: a.genre, principal: a.principal }, a.niveau, valeurs)));
+    BDDroits.corpsAcces(DROITS, { genre: a.genre, principal: a.principal }, a.niveau, valeurs,
+                        a.niveau)));
   await qeApres(id, cible);
 }
 

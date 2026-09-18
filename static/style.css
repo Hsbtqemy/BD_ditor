@@ -2083,11 +2083,16 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .qe-table thead th.qe-acte, .qe-table thead th.qe-hors-rang {
   font-size: .85rem; text-align: center; white-space: normal; min-width: 5.5rem; }
 .qe-table td.qe-cran, .qe-table td.qe-hors-rang { text-align: center; }
-/* Les actes que le serveur accorde ENSEMBLE : une barre traverse leurs colonnes, sous la
-   case unique. La liaison se VOIT, et elle se dit aussi au lecteur d'écran, qui entend
-   les en-têtes de toutes les colonnes couvertes. */
-.qe-table td.qe-lie {
-  background: linear-gradient(var(--accent-blue), var(--accent-blue)) center / calc(100% - 1rem) 2px no-repeat;
+/* Les actes que le serveur accorde ENSEMBLE sont CHAPEAUTÉS : un en-tête couvre leurs
+   colonnes, au-dessus des leurs. Il remplace la barre qui traversait la cellule fusionnée —
+   deux pixels sous une case à cocher, c'est le vocabulaire d'un curseur, et on croyait
+   pouvoir le glisser (relevé par Hugo le 2026-09-18). Le chapeau est une STRUCTURE de
+   tableau : il s'annonce au lecteur d'écran (`scope="colgroup"`) et ne ressemble à aucun
+   contrôle. La cellule fusionnée garde sa classe `qe-lie` sans décoration : elle nomme, elle
+   ne dessine plus. */
+.qe-table thead th.qe-groupe {
+  font-size: .85rem; text-align: center; white-space: normal; font-weight: 600;
+  border-bottom: 1px solid var(--border);
 }
 /* Le trait vertical entre l'échelle et les cases hors rang : elles ne s'ordonnent pas. */
 .qe-table .qe-hors-rang { border-left: 1px solid var(--border); }
@@ -2112,6 +2117,15 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .qe-case-carte { display: flex; align-items: flex-start; gap: .4rem; }
 .qe-case-carte span { overflow-wrap: anywhere; }
 .qe-carte .qe-depuis { margin: .35rem 0 0; white-space: normal; }
+/* « Ce qui vaut toujours », d'un seul tenant : l'avertissement d'un acte, l'état de
+   l'annuaire, le pouvoir des administrateurs. Trois traitements visuels en trois lignes ne
+   disaient pas lequel comptait ; un seul filet les groupe, et les distingue de la ligne de
+   message, qui vient du dernier GESTE. La note des administrateurs perd son filet vert ICI
+   seulement — hors de ce bloc (la collection qu'on ne possède pas) elle garde le sien. */
+.qe-notes-bloc { border-left: 2px solid var(--border); padding-left: .6rem; margin-top: .5rem; }
+.qe-notes-bloc > p { margin: .25rem 0; }
+.qe-notes-bloc .col-note-admin { border-left: 0; padding-left: 0; }
+
 /* « Ouvrir une collection à ce groupe… », dans la fiche d'un groupe (Administration). */
 .cg-ouvrir { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .4rem; }
 .cg-ouvrir label { font-size: .92rem; color: var(--text-muted); }
@@ -2203,6 +2217,13 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
                background: color-mix(in srgb, var(--accent-amber) 9%, transparent); }
 .cg-regarder > summary { cursor: pointer; padding: .35rem .55rem; color: var(--accent-amber);
                          font-weight: 600; }
+/* À ZÉRO signal, l'alerte s'éteint : une ligne discrète, et rien d'autre. Une alerte allumée
+   en permanence apprend à ne plus être lue, et le jour où elle annonce vraiment quelque chose
+   elle ressemble à un mois de rien (relevé par Hugo le 2026-09-18). Le compte reste : « (0) »
+   n'est pas le problème, c'est le cadre d'alerte autour de lui. */
+.cg-regarder.est-vide { border: 0; background: none; }
+.cg-regarder.est-vide > summary { color: var(--text-muted); font-weight: 400;
+                                  padding-left: 0; padding-right: 0; }
 .cg-regarder ul, .cg-objets, .cg-objets ul, .cg-lignes { list-style: none; margin: 0; padding: 0; }
 .cg-regarder > ul { padding: 0 .55rem .45rem; }
 .cg-regarder li { padding: .15rem 0; }

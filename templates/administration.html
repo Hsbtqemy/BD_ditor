@@ -106,8 +106,11 @@
           <a class="cg-ext" id="cg-annuaire-lien" hidden target="_blank" rel="noopener">+ Dans
             l'annuaire<span aria-hidden="true"> ↗</span><span class="sr-only"> (nouvel
             onglet)</span></a>
-          <details class="cg-regarder" id="cg-regarder" open>
-            <summary id="cg-regarder-titre">⚠ À regarder</summary>
+          <!-- Ni `open` ni ⚠ ici : c'est le RENDU qui décide, et seulement s'il y a quelque
+               chose à regarder. Allumée en permanence, la seule alerte de la page apprend à
+               ne plus être lue (cf. `cgRendreSignaux`). -->
+          <details class="cg-regarder est-vide" id="cg-regarder">
+            <summary id="cg-regarder-titre">À regarder</summary>
             <ul id="cg-signaux"></ul>
           </details>
           <ul class="cg-objets" id="cg-objets" aria-labelledby="cg-objets-titre"></ul>

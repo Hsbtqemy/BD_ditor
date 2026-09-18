@@ -303,7 +303,24 @@ function cgRendreControles() {
    chaque sélection — une ligne repliée qu'on vient de déplier ne se referme pas sous la main. */
 function cgRendreSignaux() {
   const d = CG.donnees, liste = d.a_regarder;
-  $("#cg-regarder-titre").textContent = `⚠ À regarder (${liste.length})`;
+  // À ZÉRO, l'alerte s'ÉTEINT : ni ⚠, ni ambre, ni cadre, et repliée. Le seul élément de la
+  // page conçu pour attraper l'œil était allumé en permanence, y compris quand il
+  // n'annonçait rien (relevé par Hugo le 2026-09-18). Un signal montré TOUJOURS apprend à ne
+  // plus être lu : le jour où il y a vraiment un accès mort, il a la même apparence qu'un
+  // mois de rien, et on l'a perdu en l'ayant toujours montré. Même règle que le bandeau de
+  // portée vide (AUTH-2), qui nomme les quatre situations mais ne se déplie d'office que
+  // pour la seule panne CERTAINE. Le COMPTE, lui, reste affiché dans les deux cas : « (0) »
+  // n'est pas le problème, c'est le décor d'alerte autour de lui.
+  //
+  // L'ouverture ne se force qu'au PREMIER rendu et aux changements d'état : sans cela, un
+  // repli fait à la main se rouvrirait à chaque rechargement de la vue.
+  const bloc = $("#cg-regarder"), vide = !liste.length;
+  if (bloc.dataset.rendu !== "1" || vide !== bloc.classList.contains("est-vide")) {
+    bloc.open = !vide;
+  }
+  bloc.classList.toggle("est-vide", vide);
+  bloc.dataset.rendu = "1";
+  $("#cg-regarder-titre").textContent = `${vide ? "" : "⚠ "}À regarder (${liste.length})`;
   const noms = {
     collections: Object.fromEntries(d.collections.map((c) => [c.id, c.nom])),
     comptes: Object.fromEntries(d.comptes.filter((c) => c.nom).map((c) => [c.login, c.nom])),

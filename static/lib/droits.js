@@ -106,11 +106,30 @@
     });
   }
 
-  /* Le corps du `PUT` d'un accès : le niveau, et chaque champ hors rang. Le `PUT` ne change
-     pas (AUTH-12, étape 3) ; seul ce qui le remplit se déduit de la description. */
-  function corpsAcces(d, base, niveau, valeurs) {
+  /* Le corps du `PUT` d'un accès : le niveau, et chaque champ hors rang qui est une DÉCISION.
+     Le `PUT` ne change pas (AUTH-12, étape 3) ; seul ce qui le remplit se déduit de la
+     description.
+
+     `actuel` — le niveau de l'accès AVANT le geste — est ce qui fait la différence, et son
+     absence a accordé un droit d'export (relevé le 2026-09-18). La liste des accès rend le
+     droit EFFECTIF : un propriétaire y porte `exporter` vrai même si sa case n'a jamais été
+     cochée, parce qu'il exporte D'OFFICE, et c'est la bonne réponse pour l'afficher — une
+     liste qui le dirait « sans export » serait exacte et trompeuse (DROIT-2). Mais renvoyer
+     cette valeur telle quelle en le RÉTROGRADANT la stocke, et le rétrogradé garde un droit
+     que personne ne lui a donné. La faute échoue OUVERT : l'écran montre fidèlement ce que le
+     serveur a enregistré, et aucun test ne tombe.
+
+     Un champ d'office au niveau courant n'est donc pas AFFIRMÉ, il est OMIS — le serveur
+     traite un champ absent en « ne pas y toucher », et la case redevient ce qu'elle est : une
+     décision, ou rien. Sans `actuel`, rien n'est omis : les valeurs sont alors des décisions,
+     ce qui est le cas d'un accès qu'on CRÉE. */
+  function corpsAcces(d, base, niveau, valeurs, actuel) {
     const corps = { ...base, niveau };
-    for (const h of d.hors_rang) corps[h.champ] = !!(valeurs && valeurs[h.champ]);
+    const office = new Set(actuel === undefined || actuel === null ? []
+      : horsRang(d, actuel, valeurs).filter((h) => h.d_office).map((h) => h.champ));
+    for (const h of d.hors_rang) {
+      if (!office.has(h.champ)) corps[h.champ] = !!(valeurs && valeurs[h.champ]);
+    }
     return corps;
   }
 
@@ -138,18 +157,31 @@
   }
 
   /* Les avertissements à dire sous le tableau : ceux des actes qu'au moins UN accès porte,
-     une fois chacun, dans l'ordre des actes. Un avertissement que personne ne peut déclencher
-     ne se dit pas. */
+     dans l'ordre des actes. Un avertissement que personne ne peut déclencher ne se dit pas.
+
+     CHACUN PORTE SES ACTES, et c'est le correctif du 2026-09-18 : la fonction ne rendait que
+     des PHRASES, si bien que l'acte était perdu ICI, à la source. Rendue seule sous le
+     tableau, « Supprimer un album efface ses images » ne disait plus de quoi elle parlait :
+     on lisait un avertissement sans savoir ce qu'on était en train d'accorder. Le rattraper à
+     l'affichage aurait demandé à l'écran de retrouver ce que le module avait jeté.
+
+     UN SEUL PAR TEXTE, et il NOMME TOUS ses actes : deux actes qui partagent un
+     avertissement le font dire une fois, en se nommant tous les deux — le taire pour l'un
+     des deux serait un mensonge par omission. `niveaux` dit quelles cases l'accordent, pour
+     que chacune puisse être DÉCRITE par lui ; c'est une liste parce que rien n'oblige deux
+     actes de même avertissement à partager leur cran. */
   function avertissements(d, niveaux) {
-    const vus = new Set(), sortie = [];
+    const par = new Map();
     for (const a of d.actes) {
-      if (!a.avertissement || vus.has(a.avertissement)) continue;
-      if (niveaux.some((n) => cranCoche(d, n, a.niveau))) {
-        vus.add(a.avertissement);
-        sortie.push(a.avertissement);
-      }
+      if (!a.avertissement) continue;
+      if (!niveaux.some((n) => cranCoche(d, n, a.niveau))) continue;
+      const e = par.get(a.avertissement)
+        || { texte: a.avertissement, actes: [], niveaux: [] };
+      e.actes.push({ code: a.code, libelle: a.libelle });
+      if (!e.niveaux.includes(a.niveau)) e.niveaux.push(a.niveau);
+      par.set(a.avertissement, e);
     }
-    return sortie;
+    return [...par.values()];
   }
 
   return {
