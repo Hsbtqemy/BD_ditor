@@ -208,6 +208,18 @@ Construite par la session de l'écran, sur le cadrage accordé avec la coordinat
 
 ## Le parcours actuel, geste par geste — 2026-09-16
 
+**Ce parcours n'est PAS mis à jour, et c'est voulu.** Il est le AVANT sur lequel les décisions
+de Hugo se sont prises : y corriger les noms d'écrans effacerait ce qu'elles ont changé, et
+laisserait surtout une page qui a l'air à jour tout en disant faux — car ce qui a bougé n'est
+pas seulement le NOM des panneaux. Trois choses depuis : « 👤 Comptes vus » est devenu
+« 👥 Comptes et groupes », et là où un annuaire est lu il liste les comptes VENUS OU NON,
+alors qu'on lit ci-dessous qu'un arrivant n'y apparaît qu'après sa première page (`3eb52e8`,
+section « L'étape 2 construite ») ; faire entrer quelqu'un dans une collection ne se fait plus
+dans l'Administration mais en tête de CETTE collection, dans la Bibliothèque, et en actes
+plutôt qu'en niveaux (`6ea6b60`, section « L'étape 3 construite (écran) ») ; et le message qui
+suit la création, qui renvoyait « à un autre écran », mène désormais à « Qui entre », juste
+en dessous. Tout le reste de ce qui suit se lit au présent du 2026-09-16.
+
 Écrit comme on le vit. Sources : les passes de QA jouées (`annuaire-recette`,
 `repli-annuaire`, `totp-appareil-perdu`, `compte-collectif`, `bandeau-portee-vide`,
 `collections-bibliotheque`), les fiches `AUTH-6`, `AUTH-7`, `AUTH-9`, `AUTH-10`, `INFRA-8`,
