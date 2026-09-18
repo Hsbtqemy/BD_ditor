@@ -1995,6 +1995,67 @@ def version_servie(portee: autorisation.Portee = Depends(portee_courante)):
     }
 
 
+@app.get("/api/referent")
+def referent_declare(portee: autorisation.Portee = Depends(portee_courante)):
+    """Le référent de l'INSTANCE, et l'état de sa déclaration. RÉSERVÉ AUX ADMINISTRATEURS.
+
+    AUTH-12 étape 4, décision 6 (b) tranchée par Hugo le 2026-09-17.
+    `BD_REFERENT_NOM` / `BD_REFERENT_CONTACT` (AUTH-4) ne se posent que dans l'environnement
+    du serveur, et ne s'affichaient qu'à qui ne voit RIEN — le bandeau de portée vide.
+    Personne ne remarquait donc qu'ils manquent ou qu'ils ont vieilli, et un `.env` recréé
+    repartait sans eux sans qu'aucun signal ne le dise. Cette route existe pour qu'un
+    administrateur puisse le CONSTATER.
+
+    POURQUOI RÉSERVÉ, alors que le référent n'est PAS un secret — et il faut lire ceci avant
+    de « réparer » quoi que ce soit : `GET /api/moi` sert ce même référent à TOUT LE MONDE,
+    délibérément, parce que le bandeau de portée vide est le seul endroit où il doit
+    atteindre quelqu'un qui ne voit rien. Le 403 d'ici ne dit donc pas « cette donnée est
+    secrète », il dit « cette VUE n'est pas pour vous » : constater un réglage de serveur
+    n'intéresse que qui exploite l'instance, et seul un administrateur peut y répondre.
+    Fermer `/api/moi` au nom de ce 403 casserait le seul usage qui compte.
+
+    Route SÉPARÉE plutôt qu'un champ de plus sur `/api/moi`, et pour une raison de GARDE et
+    non de rangement : la garde d'un bloc réservé se pose sur sa ROUTE
+    (`static/administration.js`), et `/api/moi` répond à tout le monde — elle ne peut donc
+    rien garder. Un `if` côté client aurait fait deux sources à tenir d'accord, dont la
+    fautive serait la MUETTE : un bloc masqué à tort ne lève rien et ne casse aucun test.
+
+    `etat` distingue TROIS situations, et la troisième est la raison d'être de ce champ.
+    `_referent_instance()` rend un dict dès qu'UN des deux est posé, si bien qu'un référent
+    NOMMÉ SANS CONTACT est un état atteignable — et c'est le pire des trois : le bandeau
+    nomme alors quelqu'un sans dire comment l'atteindre, à une personne qui ne peut rien
+    faire d'autre que le contacter. Ce n'est pas un demi-référent, c'est un cul-de-sac qui a
+    l'air d'une réponse, et l'écran doit y crier plus fort que sur l'absence pure. C'est le
+    SERVEUR qui tranche l'état, pour que la règle ait une source unique et qu'un test la
+    lise — l'écran la déduirait aussi bien, et les deux finiraient par diverger.
+
+    `note` porte ce qu'un `null` ne dit pas : même champ, même raison que `/api/version`.
+    """
+    if not portee.tout:
+        raise HTTPException(
+            403, "Le référent de l'instance est réservé aux administrateurs : il dit "
+                 "comment cette instance est configurée, et seul un administrateur peut "
+                 "la régler.")
+    r = _referent_instance()
+    if r is None:
+        etat = "absent"
+        note = ("Aucun référent n'est déclaré. Une personne qui n'a accès à rien voit un "
+                "bandeau lui disant de demander un accès, et ce bandeau ne peut alors "
+                "nommer personne. Posez BD_REFERENT_NOM et BD_REFERENT_CONTACT dans "
+                "l'environnement du serveur, puis redémarrez l'application.")
+    elif not r["contact"]:
+        etat = "injoignable"
+        note = ("Un référent est nommé, mais aucun contact n'est déclaré : le bandeau de "
+                "portée vide nomme alors quelqu'un sans dire comment l'atteindre, à une "
+                "personne qui ne peut rien faire d'autre que le contacter. Posez "
+                "BD_REFERENT_CONTACT dans l'environnement du serveur, puis redémarrez "
+                "l'application.")
+    else:
+        etat = "joignable"
+        note = None
+    return {"referent": r, "etat": etat, "note": note}
+
+
 _VUS_TTL = 3600.0
 _vus: dict = {}
 

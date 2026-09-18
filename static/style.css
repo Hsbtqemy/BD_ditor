@@ -1744,6 +1744,19 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .admin-bloc > h2 { margin: 0 0 .3rem; font-size: 1.05rem; }
 .admin-bloc + .admin-bloc { border-top: 1px solid var(--border); padding-top: 1.4rem; }
 
+/* Référent de l'instance (AUTH-12, étape 4) — trois états, et le plus fort n'est PAS
+   l'absence. Un référent nommé SANS contact trompe celui qui le lit : le bandeau de portée
+   vide nomme alors quelqu'un sans dire comment l'atteindre, à quelqu'un qui ne peut rien
+   faire d'autre que le contacter. L'absence, elle, ne trompe personne — elle manque. D'où
+   le rouge d'encre sur l'un et l'ambre sur l'autre, et la barre qui ne marque que le
+   premier. Les deux tokens sont les variantes AA-sûres en PETIT TEXTE, jamais les accents
+   pleins (`--accent-red` échouerait le 4.5:1). */
+.referent-corps { margin: .2rem 0 .1rem; }
+.referent-absent { color: var(--accent-amber); }
+.referent-injoignable {
+  color: var(--ink-red); border-left: 2px solid var(--ink-red); padding-left: .5rem;
+}
+
 /* L'empreinte COMPLÈTE du commit (INFRA-10) est un jeton de 40 caractères sans un seul
    espace : elle ne peut se replier nulle part, et à 320 px elle emporte le corps de la
    page — ce que CLAUDE.md interdit, un contenu large devant défiler dans SON conteneur.

@@ -1,9 +1,10 @@
 /* Administration (UX-10) — le lieu des gestes qui portent sur l'INSTANCE.
 
-   Trois blocs, et aucun n'est une affaire de Bibliothèque : la version servie dit quel
-   commit tourne ici (INFRA-10), les comptes et groupes disent qui utilise l'instance et par
-   quoi il entre (AUTH-12, qui remplace la vue des comptes d'AUTH-7), les moteurs disent si
-   l'instance sait encore reconnaître quelque chose. Les moteurs et les accès vivaient dans
+   QUATRE blocs, et aucun n'est une affaire de Bibliothèque : la version servie dit quel
+   commit tourne ici (INFRA-10), le référent de l'instance dit à qui s'adresser quand on
+   n'a accès à rien (AUTH-12, étape 4), les comptes et groupes disent qui utilise l'instance
+   et par quoi il entre (AUTH-12, qui remplace la vue des comptes d'AUTH-7), les moteurs
+   disent si l'instance sait encore reconnaître quelque chose. Les moteurs et les accès vivaient dans
    `/corpus` par ACCRÉTION — c'était le seul écran administratif, et tout ce qui y
    ressemblait s'y est ajouté —, donc les atteindre depuis la Visionneuse demandait de
    quitter son travail.
@@ -33,6 +34,57 @@
    la route. Un `if` côté client qui lirait les groupes ferait deux sources à tenir
    d'accord — et celle qui se tromperait serait la muette, puisqu'un bloc masqué à tort
    ne lève aucune erreur et ne casse aucun test. */
+
+/* --- Référent de l'instance (AUTH-12, étape 4) ------------------------------------
+   Une ligne de LECTURE : le réglage vit dans l'environnement du serveur, et rien ici ne
+   l'écrit (décision 6 (b), 2026-09-17).
+
+   CE BLOC EST ÉCRIT POUR SES DEUX ÉTATS MUETS, et c'est ce qui décide de sa forme. Le
+   référent s'affiche déjà — mais au seul bandeau de portée vide, donc à qui ne voit rien.
+   Celui qui pourrait le corriger ne le voyait jamais. Le cas « tout va bien » se contente
+   donc d'une ligne ; les deux autres portent la note du serveur, qui dit ce qu'ils coûtent
+   et où les régler.
+
+   L'ÉTAT VIENT DU SERVEUR (`etat`), il ne se déduit pas ici. Le JS saurait le faire —
+   `referent` nul, puis `contact` nul — mais la règle serait alors écrite à deux endroits,
+   et c'est celle de l'écran qui dériverait sans que rien ne tombe.
+
+   LE CONTACT RESTE DU TEXTE, jamais un lien, et c'est délibéré. `theme.js` en fait un lien
+   parce qu'une personne BLOQUÉE doit pouvoir cliquer, et il porte pour cela une règle de
+   schéma sûr (`javascript:` refusé dans un href). La recopier ici mettrait une décision de
+   sécurité en deux exemplaires ; ce bloc CONSTATE un réglage, il ne sert pas à écrire au
+   référent. -------------------------------------------------------------------------- */
+async function loadReferent() {
+  const bloc = $("#referent-bloc");
+  let d;
+  // On DEMANDE, et un refus signifie « pas pour vous » — même patron que la version servie.
+  try { d = await apiGet("/api/referent"); }
+  catch (e) { bloc.hidden = true; return; }
+  bloc.hidden = false;
+
+  const corps = $("#referent-corps");
+  const note = $("#referent-note");
+  corps.className = "referent-corps referent-" + d.etat;
+  if (d.etat === "absent") {
+    corps.innerHTML = "<b>Personne n'est désigné.</b>";
+  } else if (d.etat === "injoignable") {
+    // Le pire des trois, et le seul qui TROMPE : le bandeau nomme quelqu'un sans dire
+    // comment l'atteindre. Il crie donc plus fort que l'absence pure.
+    corps.innerHTML = `<b>${esc(d.referent.nom)}</b> — <b>aucun contact déclaré.</b>`;
+  } else {
+    // Un contact sans nom reste JOIGNABLE : c'est une adresse, et l'adresse est ce qui
+    // sert. On dit simplement que le nom manque, sans en faire une alerte.
+    const qui = d.referent.nom
+      ? `<b>${esc(d.referent.nom)}</b>`
+      : `<span class="muted">Aucun nom déclaré</span>`;
+    corps.innerHTML = `${qui} — ${esc(d.referent.contact)}`;
+  }
+  // La note vient du SERVEUR : lui seul sait pourquoi l'état est celui-là, et une raison
+  // devinée ici enverrait régler la mauvaise variable. `textContent`, parce qu'elle
+  // n'a pas à porter de balise.
+  note.textContent = d.note || "";
+  note.hidden = !d.note;
+}
 
 /* --- Version servie (INFRA-10) ---------------------------------------------------
    L'application ne connaît QU'UN BOUT de la comparaison : le commit qu'elle sert. L'autre
@@ -761,11 +813,11 @@ async function santeEprouver() {
 
 
 function setup() {
-  // Pas de modale à ouvrir : les blocs SONT la page. On charge donc d'emblée — quatre
-  // requêtes, dont deux (`/api/version` et `/api/comptes-et-groupes`) peuvent légitimement
-  // être refusées, chacune masquant son propre bloc et rien d'autre ; la quatrième,
-  // `/api/droits`, accompagne les comptes (AUTH-12, étape 3). La liste des collections
-  // n'est plus demandée ici : les accès sont partis dans la Bibliothèque.
+  // Pas de modale à ouvrir : les blocs SONT la page. On charge donc d'emblée — CINQ
+  // requêtes, dont TROIS (`/api/version`, `/api/referent` et `/api/comptes-et-groupes`)
+  // peuvent légitimement être refusées, chacune masquant son propre bloc et rien d'autre ;
+  // la cinquième, `/api/droits`, accompagne les comptes (AUTH-12, étape 3). La liste des
+  // collections n'est plus demandée ici : les accès sont partis dans la Bibliothèque.
   //
   // Le compte est tenu à jour ICI parce que ce commentaire a déjà menti : il disait
   // « deux requêtes » depuis le premier jour, à trois lignes de la ligne qui le
@@ -790,6 +842,9 @@ function setup() {
   // `setup()` si les comptes se chargeaient d'emblée y trouvait « oui », à trois lignes de
   // la ligne qui disait le contraire.
   loadVersion();
+  // AUTH-12 étape 4 : cinquième requête, qui peut elle aussi être légitimement refusée et
+  // ne masque que son propre bloc.
+  loadReferent();
   // L'adresse d'abord : le premier rendu ouvre directement l'axe et la fiche qu'elle nomme.
   cgLireAdresse();
   cgInstaller();

@@ -24,9 +24,10 @@
   <header id="header">
     <h1>Administration</h1>
     <p class="muted small">Ce qui porte sur l'<b>instance</b> plutôt que sur un album :
-      quelle version tourne ici, quels comptes et quels groupes existent et à quoi ils
-      ont accès, et si les moteurs répondent encore. Qui entre dans une collection se règle
-      dans sa fiche, dans la <a href="/corpus">Bibliothèque</a>.</p>
+      quelle version tourne ici, à qui s'adresser quand on est bloqué, quels comptes et
+      quels groupes existent et à quoi ils ont accès, et si les moteurs répondent encore.
+      Qui entre dans une collection se règle dans sa fiche, dans la
+      <a href="/corpus">Bibliothèque</a>.</p>
   </header>
 
   <main id="admin-body">
@@ -45,6 +46,29 @@
     <section class="admin-bloc" id="version-bloc" hidden aria-labelledby="version-titre">
       <h2 id="version-titre">🏷️ Version servie</h2>
       <p id="version-corps" class="muted small"></p>
+    </section>
+
+    <!-- ───────── Référent de l'instance (AUTH-12, étape 4) — une ligne de LECTURE ───────
+         Décision 6 (b), tranchée par Hugo le 2026-09-17 : l'Administration l'AFFICHE, avec
+         « se règle dans l'environnement du serveur ». Pas de réglage à l'écran — l'option
+         (c), stocker en base, a été écartée parce que ce réglage change rarement.
+
+         `hidden` par défaut, levé par le JS SEULEMENT si `GET /api/referent` répond : même
+         patron que la version servie et les comptes, et la garde reste sur la ROUTE.
+
+         POURQUOI CE BLOC EXISTE, alors que le référent s'affiche déjà : il ne s'affichait
+         qu'à qui ne voit RIEN — le bandeau de portée vide. Personne ne remarquait donc
+         qu'il manque ou qu'il a vieilli, et un `.env` recréé repartirait sans lui. Ce bloc
+         est là pour les DEUX états muets, pas pour le cas qui va bien. -->
+    <section class="admin-bloc" id="referent-bloc" hidden aria-labelledby="referent-titre">
+      <h2 id="referent-titre">📇 Référent de l'instance</h2>
+      <p class="muted small">À qui s'adresser quand on n'a accès à rien. C'est la
+        <b>seule</b> adresse que voit une personne sans aucun accès : le bandeau qui
+        s'affiche alors la lui donne. Elle <b>se règle dans l'environnement du serveur</b>,
+        et non ici. L'application ne peut pas vérifier que ce nom appartient encore à
+        l'équipe : la déclaration est déclarative.</p>
+      <p id="referent-corps"></p>
+      <p class="col-note" id="referent-note"></p>
     </section>
 
     <!-- ───────── Comptes et groupes (AUTH-12, étape 2) — une liste et une fiche ─────────
