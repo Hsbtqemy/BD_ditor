@@ -147,6 +147,69 @@ def test_un_acces_neuf_part_sans_le_droit(client, db_path, deux_albums, derriere
     assert next(a for a in rep.json() if a["principal"] == "dora")["exporter"] is False
 
 
+def test_retrograder_un_proprietaire_ne_lui_POSE_pas_l_export(client, db_path, deux_albums,
+                                                              derriere_proxy):
+    """Le droit D'OFFICE ne doit pas pouvoir se faire passer pour une DÉCISION.
+
+    Mesuré le 2026-09-18, sur l'écran « Qui entre » (AUTH-12, `6ea6b60`) : `…/acces` rend
+    `exporter` EFFECTIF — vrai pour un propriétaire qui n'a jamais rien coché —, l'écran
+    relisait cette valeur et la reposait en rétrogradant, et la base la STOCKAIT. Le membre
+    en écriture repartait donc avec l'export, que personne ne lui avait accordé et que
+    DROIT-2 sépare exprès de l'écriture. Ce que rend la réponse dit désormais les deux
+    choses, et le `PUT` refuse de stocker ce qui n'est que la dérivation du niveau.
+
+    Le geste est envoyé SANS passer par l'écran, à dessein : la moitié écran de la
+    réparation ne doit pas pouvoir rendre ce test vert à la place du serveur.
+    """
+    c1 = deux_albums["c1"]
+    _ouvrir(db_path, c1, "carole", niveau="proprietaire")
+    _ouvrir(db_path, c1, "bob", niveau="proprietaire")
+    carole = {"Remote-User": "carole"}
+
+    lu = next(a for a in client.get(f"/api/collections/{c1}/acces", headers=carole).json()
+              if a["principal"] == "bob")
+    assert (lu["exporter"], lu["exporter_pose"]) == (True, False), "d'office, rien de posé"
+
+    rep = client.put(f"/api/collections/{c1}/acces", headers=carole,
+                     json={"genre": lu["genre"], "principal": "bob", "niveau": "ecriture",
+                           "exporter": lu["exporter"]})
+    assert rep.status_code == 200, rep.text
+    apres = next(a for a in rep.json() if a["principal"] == "bob")
+    assert (apres["niveau"], apres["exporter"], apres["exporter_pose"]) \
+        == ("ecriture", False, False)
+    assert _exportables(client, {"Remote-User": "bob"})[c1] is False
+
+    # La porte légitime reste ouverte : accorder l'export à ce membre est maintenant une
+    # décision, et elle passe — en deux gestes, ce qu'un seul ne saurait distinguer de
+    # l'écho qu'on vient de fermer.
+    rep = client.put(f"/api/collections/{c1}/acces", headers=carole,
+                     json={"genre": lu["genre"], "principal": "bob", "niveau": "ecriture",
+                           "exporter": True})
+    apres = next(a for a in rep.json() if a["principal"] == "bob")
+    assert (apres["exporter"], apres["exporter_pose"]) == (True, True)
+    assert _exportables(client, {"Remote-User": "bob"})[c1] is True
+
+
+def test_un_export_pose_survit_a_la_promotion_puis_a_la_retrogradation(client, db_path,
+                                                                      deux_albums,
+                                                                      derriere_proxy):
+    """La garde ci-dessus ne RETIRE jamais : elle laisse le posé tel quel. Sans quoi on
+    aurait fermé la fuite en effaçant des décisions prises avant elle."""
+    c1 = deux_albums["c1"]
+    _ouvrir(db_path, c1, "carole", niveau="proprietaire")
+    _ouvrir(db_path, c1, "bob", niveau="ecriture")
+    carole = {"Remote-User": "carole"}
+    def poser(corps):
+        return client.put(f"/api/collections/{c1}/acces", json=corps, headers=carole)
+
+    poser({"principal": "bob", "niveau": "ecriture", "exporter": True})      # décidé
+    poser({"principal": "bob", "niveau": "proprietaire", "exporter": True})  # promu
+    rep = poser({"principal": "bob", "niveau": "ecriture", "exporter": True})   # rétrogradé
+    apres = next(a for a in rep.json() if a["principal"] == "bob")
+    assert (apres["exporter"], apres["exporter_pose"]) == (True, True), (
+        "la garde a effacé un export qui avait été POSÉ avant la promotion")
+
+
 def test_la_migration_v27_ferme_l_export_a_qui_lisait(client, db_path, deux_albums):
     """Le changement de COMPORTEMENT de la migration, écrit comme tel : un accès existant
     arrive sans le droit. Aucun rattrapage — ouvrir d'office à qui lisait reconduirait

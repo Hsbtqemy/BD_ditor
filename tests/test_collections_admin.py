@@ -59,6 +59,7 @@ def test_creer_une_collection_rend_proprietaire(collection_a_alice):
     assert collection_a_alice["acces"] == [
         {"genre": "utilisateur", "principal": "alice", "niveau": "proprietaire",
          "exporter": True,                  # DROIT-2 : d'office pour un propriétaire
+         "exporter_pose": False,            # …et rien n'a été DÉCIDÉ (2026-09-18)
          "date_creation": collection_a_alice["acces"][0]["date_creation"],
          "jamais_vu": True}]
 

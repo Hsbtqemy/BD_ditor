@@ -104,6 +104,14 @@ def _acces_de(conn, collection_id: int) -> list[dict]:
         # DROIT-2 — le droit EFFECTIF, pas la case stockée : un propriétaire exporte
         # d'office, et une liste qui le dirait « sans export » parce que sa case n'a
         # jamais été cochée serait exacte et trompeuse.
+        #
+        # Mais l'effectif et le POSÉ sont deux choses, et les rendre sous le SEUL nom
+        # `exporter` a coûté un droit accordé par accident (revue du 2026-09-18) : l'écran
+        # relisait cette valeur et la reposait en rétrogradant un propriétaire, si bien
+        # qu'un membre en écriture repartait avec l'export, que personne ne lui avait
+        # accordé. La dérivation ne doit jamais pouvoir se faire passer pour une décision,
+        # d'où les deux champs — et la garde du `PUT`, qui ferme la porte à tout appelant.
+        acc["exporter_pose"] = bool(acc["exporter"])
         acc["exporter"] = (bool(acc["exporter"])
                            or acc["niveau"] == autorisation.PROPRIETAIRE)
         acc["jamais_vu"] = (acc["principal"] not in connus
@@ -490,8 +498,33 @@ def accorder_acces(collection_id: int, payload: AccesIn,
         (collection_id, payload.genre, principal)).fetchone()
     # `exporter` absent veut dire « ne pas y toucher » : re-poser un principal pour
     # changer son niveau ne lui retire pas une case qu'on n'a pas mentionnée.
-    exporter = (bool(payload.exporter) if payload.exporter is not None
-                else bool(avant["exporter"]) if avant else False)
+    #
+    # Et un `exporter` VRAI qui ne fait que répéter le D'OFFICE n'accorde rien non plus :
+    # c'est notre propre dérivation qui nous revient. Le cas mesuré le 2026-09-18 :
+    # l'écran lit « exporter: true » sur un propriétaire — vrai, mais dérivé de son niveau —
+    # puis le repose en le rétrogradant ; sans cette garde, la base STOCKE un droit que le
+    # geste ne demandait pas, et le membre en écriture l'emporte. La garde vaut pour le
+    # niveau que nous venons de rendre COMME pour celui qu'on demande, et pour n'importe
+    # quel appelant — écran, outil ou requête à la main.
+    #
+    # Elle ne retire jamais rien : elle laisse le posé tel quel. Un `exporter` FAUX passe
+    # (révoquer reste possible), et accorder l'export à qui n'y a pas droit d'office passe
+    # aussi. Rétrograder quelqu'un EN LUI LAISSANT l'export reste donc exprimable, en deux
+    # gestes : rétrograder, puis accorder — le second n'est plus une dérivation, il est une
+    # décision, et c'est précisément la distinction qu'on vient de payer.
+    #
+    # CE QU'ELLE NE FERME PAS, et c'est écrit plutôt que découvert : le MÊME envoi REJOUÉ
+    # après la rétrogradation n'est plus un écho — le niveau rendu entre-temps est devenu
+    # `ecriture`, où rien ne s'accorde d'office —, donc il POSE le droit. Un appelant qui
+    # réessaie sa requête à l'identique accorde ainsi ce que le premier envoi n'accordait
+    # pas. Le serveur ne peut pas distinguer ce second envoi d'une décision ; c'est la
+    # moitié ÉCRAN de la réparation qui l'empêche de partir, en cessant d'affirmer un champ
+    # que le niveau accordait déjà.
+    d_office = ((avant is not None and avant["niveau"] == autorisation.PROPRIETAIRE)
+                or payload.niveau == autorisation.PROPRIETAIRE)
+    exporter = bool(avant["exporter"]) if avant else False
+    if payload.exporter is not None and not (payload.exporter and d_office):
+        exporter = bool(payload.exporter)
     conn.execute(
         "INSERT INTO collection_acces (collection_id, genre, principal, niveau, exporter) "
         "VALUES (?, ?, ?, ?, ?) ON CONFLICT(collection_id, genre, principal) "
