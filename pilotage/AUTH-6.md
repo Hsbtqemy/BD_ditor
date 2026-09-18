@@ -10,17 +10,18 @@ statut: interrompu
 et un équivalent, suite par défaut entière verte (1345). Pas de code depuis : le 2026-09-18
 n'a produit qu'une MESURE, et c'est pourquoi cette ligne cite toujours le même commit.
 
-**La case reste OUVERTE, et pour une autre raison qu'hier.** Le 401 est LEVÉ — Hugo a reposé
-le mot de passe du compte de service, et la lecture réussit désormais sur la recette. C'est la
-seule cause d'hier qui ait été tranchée, et elle l'a été par la mesure et non par un
-raisonnement. (a) et (c) passent, avec leurs chiffres, dans la case. Ce qui manque est (b), la
-preuve de LECTURE SEULE par le COMPORTEMENT : elle n'a pas été jouée, bloquée EN AMONT par la
-garde de l'outillage de la session — ni par LLDAP, ni par l'application, rien n'étant parti
-sur le réseau. Elle reste obligatoire avant la fusion dans `main`, et Hugo tranche comment
-l'éprouver : le compte LLDAP est à lui. Les deux cases qu'elle bloquait ont leur signal côté
-serveur ET à l'écran « 👥 Comptes et groupes » (`3eb52e8`, AUTH-12) ; la recette ne porte
-AUCUN accès mort, si bien qu'elles ne se constatent toujours pas — il y manque un DÉCOR, et
-non du code.
+**La case est FERMÉE le 2026-09-18 : l'application LIT l'annuaire, et cette lecture est
+SEULE.** Le 401 est LEVÉ — Hugo a reposé le mot de passe du compte de service le matin, et la
+lecture réussit sur la recette ; c'est la seule cause supposée la veille qui ait été tranchée,
+et elle l'a été par la mesure et non par un raisonnement. (a), (b) et (c) passent, avec leurs
+chiffres, dans la case. (b) a coûté deux détours, tous deux écrits parce qu'ils se
+reproduiront : la garde de l'outillage d'une session a bloqué la mutation EN AMONT, rien
+n'étant parti sur le réseau ; et l'interface de LLDAP, qui n'offre aucun réglage au compte de
+service, ne prouve que ce que son propre frontend croit. C'est la mutation jouée depuis le
+conteneur, sur l'autorisation explicite de Hugo, qui tranche. Les deux cases que celle-ci
+bloquait ont leur signal côté serveur ET à l'écran « 👥 Comptes et groupes » (`3eb52e8`,
+AUTH-12) ; elles restent ouvertes pour des raisons qui leur sont propres — un DÉCOR qui manque
+à l'une, un TEST à écrire pour l'autre —, et non plus derrière celle-ci.
 
 Plus tôt, le commit `4344243`, 2026-09-11 : la passe de revue de la borne de Ctrl+Z
 (`ff95ec0`, **sous un compte collectif, Ctrl+Z ne remonte plus que cinq minutes**). L'écran
@@ -107,11 +108,11 @@ raisons dans `INFRA-8`. Ce chantier peut le défaire, mais en connaissant ce qu'
 - [x] **La nature COLLECTIVE d'un compte est portée par le modèle, à un seul endroit** — `utilisateur.nature` (v26, `58c6e71`), défaut `nominatif` RÉTROACTIF plutôt que NULL : une nature inconnue obligerait chaque lecteur à décider quoi en faire, et le premier qui traiterait NULL comme « pas collectif » réintroduirait le silence que la colonne ferme. Posée par `PATCH /api/comptes/{login}/nature`, réservée aux administrateurs, et par un sélecteur dans la vue des comptes — sans écran, elle se poserait en SQL, ce qu'AUTH-7 venait de supprimer. Elle ne borde AUCUN droit. ANN-5 rend désormais `non_attribuable` (révisions internes à un login partagé + paires dont un côté est un groupe, retirées des taux), TOUJOURS présent même à zéro, sans quoi son absence se lirait comme une absence de problème ; les sorties rendent `collectif-N` au lieu d'`annotateur-N`, en gardant le numéro de la série commune. Quatre mutations rouges
 - [x] **Le rapport décrit SON échantillon, jamais l'instance** — trouvé en relecture le 2026-09-09, et aucun cliquet ne pouvait le voir. `agents_collectifs` publiait tous les comptes collectifs de l'instance alors qu'`accord-inter` est cloisonnable par albums (AUTH-2) : des logins de GROUPES partaient à qui ne lit que ses propres albums. Le cliquet d'AUTH-5 était structurellement aveugle — sa sentinelle n'est pas déclarée collective, donc ce chemin ne s'allumait jamais
 - [x] **L'undo se borne dans le TEMPS pour un compte collectif** — `undo.py` filtre par AGENT, donc sous un login partagé n'importe qui défait l'acte d'un autre par Ctrl+Z. Attendu : `GET /api/undo/prochain` n'offre, sur un agent collectif, que les actes de moins de N minutes. Le TEMPS et non la session, parce que l'application n'a aucune notion de session et ne doit pas s'en fabriquer une (AUTH-1) — et parce que le vrai risque est de défaire ce qu'un collègue a fait il y a une heure, pas il y a trente secondes. **Fait le 2026-09-11 (`ff95ec0`), avec N = CINQ minutes**, le plus sûr des trois délais proposés à l'équipe. La borne vaut pour l'aperçu, pour l'exécution ET pour le ciblage d'un acte par son id — nommer un acte ne le rajeunit pas —, et le refus DIT le délai au lieu de laisser croire l'historique vide. Sa limite est écrite dans `docs/undo.md` : DANS les cinq minutes, deux personnes sous le même login peuvent encore défaire l'une l'acte de l'autre. Le délai réduit la fenêtre, il ne sépare pas les personnes. Le harnais de mutation a trouvé un test qui éprouvait un login INCONNU là où il croyait éprouver un compte nominatif : une règle qui bornait tout compte connu y survivait. Le passage dans `undo.py` est déclaré dans `AUTH-10`
-- [ ] **L'application LIT l'annuaire, en seule lecture, et l'autorisation n'y touche pas** — décidé le 2026-09-09. Le but n'est pas le diagnostic mais la COMPOSITION : connaître les comptes et groupes existants pour attribuer collections et droits sans deviner un login dans un champ libre. Attendu en trois parties : (a) le chemin d'autorisation continue de ne lire que `Remote-Groups`, requête par requête, et un test le verrouille ; (b) l'application n'authentifie toujours personne ; (c) une panne de lecture dit « je n'ai pas pu vérifier » et ne déclare jamais un accès mort. **Le coût qui reste une fois les mauvais arguments retirés** : un identifiant de service dans l'environnement de l'application, classe de secret qu'elle n'a pas aujourd'hui. L'objection de DISPONIBILITÉ est retirée — Authelia dépend déjà de LLDAP, donc s'il tombe, personne n'est connecté pour consulter l'écran.
+- [x] **L'application LIT l'annuaire, en seule lecture, et l'autorisation n'y touche pas** — décidé le 2026-09-09. Le but n'est pas le diagnostic mais la COMPOSITION : connaître les comptes et groupes existants pour attribuer collections et droits sans deviner un login dans un champ libre. Attendu en trois parties : (a) le chemin d'autorisation continue de ne lire que `Remote-Groups`, requête par requête, et un test le verrouille ; (b) l'application n'authentifie toujours personne ; (c) une panne de lecture dit « je n'ai pas pu vérifier » et ne déclare jamais un accès mort. **Le coût qui reste une fois les mauvais arguments retirés** : un identifiant de service dans l'environnement de l'application, classe de secret qu'elle n'a pas aujourd'hui. L'objection de DISPONIBILITÉ est retirée — Authelia dépend déjà de LLDAP, donc s'il tombe, personne n'est connecté pour consulter l'écran.
 
   **Construite le 2026-09-17 (`fb80fec`, `d11b91e`), et la case reste OUVERTE.** Tranché le même jour : l'API GraphQL de LLDAP derrière une interface étroite (`annuaire.py`, `lire` → `Lecture`), un compte de service dans `lldap_strict_readonly` SEUL, aucun cache ni copie en base, un délai TOTAL de 3 s ; la composition et « À regarder » dans `comptes.py`, servis par `GET /api/comptes-et-groupes` aux administrateurs, au format arrêté avec la coordination et l'écran. Éprouvé : (a) `autorisation.py` n'atteint pas `annuaire.py`, même indirectement, et un annuaire qui contredit le portail n'ouvre aucune collection ; (b) seule la vue d'administration lit l'annuaire ; (c) une panne rend `non_verifie` sans lever ni rien déclarer mort, un annuaire muet est abandonné dans le délai, et le délai est TOTAL, non par requête — `tests/test_annuaire.py`, `tests/test_comptes_et_groupes.py`. 32 mutants joués sur une copie, 31 tués ; le survivant est équivalent (`groupe_absent` exige des accès, et un groupe absent de l'annuaire ne vient QUE d'un accès). Ce qu'elle entraînait ailleurs est fait : la route est déclarée au cliquet d'`AUTH-5`, et `CLAUDE.md` comme `docs/hebergement-securite.md` écrivent la distinction entre lire, authentifier et autoriser.
 
-  **Ce qui manque pour la cocher** : la MESURE en recette, depuis le conteneur de l'application et avec son environnement, plan validé par la coordination — (a) joignabilité, liaison du compte et latence ; (b) lecture SEULE : une mutation sans effet possible (supprimer un groupe d'id inexistant) doit être REFUSÉE pour défaut de droits ; (c) la route, en 200 et `lu`. Elle attend le compte `bd-application`, créé par Hugo, et ses variables dans `.env` (`BD_ANNUAIRE_ADRESSE`, `BD_ANNUAIRE_COMPTE`, `LLDAP_APPLICATION_PASS`, `BD_ANNUAIRE_URL`). Reportée le 2026-09-17, obligatoire avant la fusion dans `main`. **Deux points ne sont éprouvés par aucun test** : `trust_env=False` (le proxy HTTP du poste n'existe pas dans la suite) et la doublure que charge `live_server`, que les tests e2e de l'écran éprouvent depuis `3eb52e8`.
+  **Le plan de la mesure, arrêté le 2026-09-17** : en recette, depuis le conteneur de l'application et avec son environnement, plan validé par la coordination — (a) joignabilité, liaison du compte et latence ; (b) lecture SEULE : une mutation sans effet possible (supprimer un groupe d'id inexistant) doit être REFUSÉE pour défaut de droits ; (c) la route, en 200 et `lu`. Elle attend le compte `bd-application`, créé par Hugo, et ses variables dans `.env` (`BD_ANNUAIRE_ADRESSE`, `BD_ANNUAIRE_COMPTE`, `LLDAP_APPLICATION_PASS`, `BD_ANNUAIRE_URL`). Reportée le 2026-09-17, obligatoire avant la fusion dans `main`. **Deux points ne sont éprouvés par aucun test** : `trust_env=False` (le proxy HTTP du poste n'existe pas dans la suite) et la doublure que charge `live_server`, que les tests e2e de l'écran éprouvent depuis `3eb52e8`.
 
   **Jouée le 2026-09-17, et arrêtée à la connexion.** Le compte et ses variables étaient posés ; aucune identité n'a été imprimée. (a) LLDAP est JOINT depuis le conteneur de l'application, et REFUSE la connexion du compte de service : 401, « Authentication error ». La cause n'est pas dans le code, ni dans Compose : la valeur que lit l'application a la longueur de celle du `.env`, qui n'y est définie qu'une fois et sans aucun caractère que Compose interpréterait (mesuré par la coordination sur la pile). Reste le compte côté LLDAP — mot de passe non posé ou différent, ou identifiant inexact —, posé à Hugo. (b) n'a PAS été tentée : le script s'arrête sur la connexion refusée, aucune mutation n'est partie. (c) la route répond 200 sous `bd-admins`, `non_verifie` pour motif `refus`, lien vers l'annuaire posé, en 12 à 41 ms au mur sur trois requêtes, et 403 sans groupe d'administration : **la panne se DIT sans rien bloquer, l'attendu (c) de la case, constaté sur la pile réelle** — mais sur un refus, pas sur une lecture. Tout est à rejouer une fois le compte réparé. **Et la mesure ne tranchera pas `trust_env=False` sur ce poste**, contrairement à ce que cette case annonçait : le conteneur ne porte aucune variable de proxy, donc l'option n'y change rien. Le point reste non éprouvé.
 
@@ -140,7 +141,7 @@ raisons dans `INFRA-8`. Ce chantier peut le défaire, mais en connaissant ce qu'
   **403** aussi. L'attendu (c) de la case — dire sans bloquer — était déjà constaté hier sur
   un REFUS ; il l'est maintenant sur une LECTURE, ce qui n'est pas le même énoncé.
 
-  **(b) N'EST PAS ÉTABLIE, et la cause n'est ni dans LLDAP ni dans l'application.**
+  **(b) — premier essai BLOQUÉ, et la cause n'est ni dans LLDAP ni dans l'application.**
   L'introspection GraphQL — une lecture, ajoutée au protocole exprès — a confirmé la
   signature exacte : `deleteGroup(groupId: Int!)`. Elle a servi : sans elle la mutation se
   serait écrite de mémoire, et une faute d'argument aurait rendu une erreur de VALIDATION,
@@ -160,9 +161,27 @@ raisons dans `INFRA-8`. Ce chantier peut le défaire, mais en connaissant ce qu'
   **COMPORTEMENT** : aucune écriture ne lui a été refusée sous nos yeux. La distinction n'est
   pas une prudence de forme. Un groupe est une déclaration, qu'une erreur d'administration
   peut rendre fausse sans que rien ne le dise ; c'est précisément pour cela que le protocole
-  demandait un refus CONSTATÉ, et c'est précisément ce qui manque. **La case reste donc
-  décochée** : son attendu exige (a), (b) ET (c), et cocher sur deux tiers reviendrait à
-  cocher plus large que la mesure.
+  demandait un refus CONSTATÉ, et c'est précisément ce qui manquait. Cocher sur deux
+  tiers aurait été cocher plus large que la mesure ; le refus CONSTATÉ a été obtenu le jour
+  même, et il est ci-dessous.
+
+  **(b) PASSE — mesurée le 2026-09-18, sur autorisation explicite de Hugo.** Deux observations
+  ce jour-là, et une seule tranche. Hugo s'est d'abord connecté à l'interface web de LLDAP AVEC
+  le compte de service : elle ne lui offre aucun réglage, seulement son profil. C'est une
+  confirmation et non une preuve — un frontend qui cache un bouton juge son propre client, et
+  ne dit rien de ce que le serveur ferait d'une écriture envoyée sans passer par lui ; c'est la
+  forme d'aveuglement d'ARCH-2, une garde qui approuve en n'ayant rien regardé. La mutation a
+  donc été jouée, une seule, depuis le conteneur de l'application et avec ses identifiants :
+  `deleteGroup(groupId: 999999)`, sur une cible dont le script vérifie d'abord l'inexistence
+  (les groupes de la pile portent les ids 1 à 7). Réponse : **HTTP 200, `data: null`, erreur
+  GraphQL « Unauthorized group deletion »**. C'est un refus de DROITS et non un « groupe
+  introuvable » — la distinction que le protocole posait comme condition d'arrêt. Et le message
+  ne parle pas de la cible : le refus tombe AVANT l'existence, donc un groupe RÉEL aurait été
+  refusé de même, ce qu'une cible inexistante ne garantissait pas à elle seule. Le statut 200
+  est celui qu'`annuaire.py` documentait déjà de mémoire (« LLDAP dit un défaut de DROITS par
+  une erreur GraphQL, avec un statut 200 ») ; la mesure le confirme sur le compte réel. Le
+  COMPORTEMENT rejoint donc la configuration, et c'est cette rencontre, pas l'une des deux
+  seule, qui ferme la case.
 
   **`trust_env=False` reste non éprouvé**, comme écrit hier : le conteneur ne porte aucune
   variable de proxy, et ni la suite ni la recette ne peuvent donc trancher l'option.
