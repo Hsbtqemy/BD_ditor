@@ -7,6 +7,13 @@ derniere: —
 
 # QA — l'export de dépôt, et la garde qui ne doit pas glisser
 
+> **Chemins et libellés remis à l'écran du 2026-09-18 (`6ea6b60`), sans toucher aux cases.**
+> Le décor se posait dans « 👥 Accès aux collections » de l'Administration ; ce panneau vit
+> désormais dans la Bibliothèque, en tête de chaque collection dépliée, sous le nom
+> « Qui entre ». On y *Fait entrer* quelqu'un — ce qui l'admet en LECTURE — puis on coche ses
+> actes, et la case dit « exporter » là où elle disait « peut exporter ». Les cases déjà
+> cochées l'ont été avant ce changement : elles ne disent rien de ces libellés-ci.
+
 Le serveur est verrouillé par 29 tests et trois passes de mutation ; ce que la suite ne
 peut pas voir, c'est **qui a le bloc sous les yeux**. C'est précisément là qu'AUTH-4 s'est
 fait prendre : le référent d'une collection, une simple adresse, s'était retrouvé derrière
@@ -51,11 +58,12 @@ Deux identités suffisent, et elles sont les deux côtés de la garde :
 
 | Identité | Ce qu'elle est | Ce qu'elle doit voir |
 |---|---|---|
-| `claire` | groupe `chercheurs`, un accès **lecture** accordé, **case « peut exporter » cochée** | le bloc d'export, **sans** la ligne de dépôt |
+| `claire` | groupe `chercheurs`, un accès **lecture** accordé, **case « exporter » cochée** | le bloc d'export, **sans** la ligne de dépôt |
 | `admin` | `bd-admins` | le bloc **et** la ligne de dépôt |
 
-L'accès de `claire` se pose sous `admin`, dans *Administration → 👥 Accès aux collections* :
-déplier une collection, `claire` / utilisateur / lecture, et cocher « peut exporter ». Le
+L'accès de `claire` se pose sous `admin`, dans *Bibliothèque → 📚 Collections*, partie
+*Qui entre* : déplier une collection, *Faire entrer* `claire` déclarée **compte** — elle entre
+en lecture, ce qui est exactement l'accès voulu —, puis cocher « exporter » sur sa ligne. Le
 bloc d'export, lui, se lit dans *Bibliothèque → 📚 Collections*. Pour la voir en
 PROPRIÉTAIRE plutôt qu'en administratrice, faites-lui créer sa propre collection depuis son
 identité, dans la Bibliothèque — le créateur en devient propriétaire, exporte d'office, et

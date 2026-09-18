@@ -48,14 +48,15 @@ Le décor est celui des autres passes : `proprio` possède « Collection Test »
 
 **Préalable de zone.** `stagiaire` n'a aujourd'hui qu'un accès, en écriture sur « Collection
 Test » : il ne LIT aucune collection sans y écrire, et la première case ne prouverait rien.
-Sous `proprio`, *Administration → 👥 Accès aux collections*, « Étude B » dépliée : accorder
-`stagiaire`, genre **Utilisateur**, niveau **Lecture**. La dernière case de la zone le retire.
+Sous `proprio`, *Bibliothèque → 📚 Collections*, « Étude B » dépliée, partie *Qui entre* :
+*Faire entrer* `stagiaire`, déclaré **compte**. Il entre en LECTURE, et l'on n'y touche
+plus — c'est exactement l'accès que la zone demande. La dernière case de la zone le retire.
 
 - [ ] Sous `stagiaire`, *Bibliothèque* : « Étude B » figure parmi les collections, puisqu'il la lit ; *+ Nouvel album* : la liste « Collection » propose « Collection Test » et PAS « Étude B ». Fermer sans créer
 - [ ] Sous `lectrice`, *Bibliothèque → + Nouvel album*, AVANT de rien remplir : une note dit « Vous n'écrivez dans aucune collection : l'album ne pourra pas être créé. Demandez un accès en écriture au propriétaire d'une collection. » Fermer sans créer
-- [ ] Sous `proprio`, *Bibliothèque → 📚 Collections*, créer « QA propriétaire » : le message dit « « QA propriétaire » créée — vous en êtes propriétaire », avec un lien vers l'Administration. Supprimer ensuite « QA propriétaire »
-- [ ] Sous `admin-bd`, même geste avec « QA administrateur » : le message dit qu'il l'administre comme administrateur de l'instance, SANS en être propriétaire, et l'invite à lui désigner un propriétaire dans l'Administration — et non « vous en êtes propriétaire ». Supprimer ensuite « QA administrateur »
-- [ ] Remettre en état : sous `proprio`, *Administration → 👥 Accès aux collections*, « Étude B » : retirer l'accès de `stagiaire` ; la liste des accès d'« Étude B » ne montre plus que `proprio`, en *Propriétaire*
+- [ ] Sous `proprio`, *Bibliothèque → 📚 Collections*, créer « QA propriétaire » : le message dit « « QA propriétaire » créée — vous en êtes propriétaire. Pour y faire entrer quelqu'un : « Qui entre », dans la collection ouverte ci-dessous. » Supprimer ensuite « QA propriétaire »
+- [ ] Sous `admin-bd`, même geste avec « QA administrateur » : le message dit qu'il l'administre comme administrateur de l'instance, SANS en être propriétaire, et l'invite à lui désigner un propriétaire dans « Qui entre », dans la collection ouverte ci-dessous — et non « vous en êtes propriétaire ». Supprimer ensuite « QA administrateur »
+- [ ] Remettre en état : sous `proprio`, *Bibliothèque → 📚 Collections*, « Étude B » dépliée, *Qui entre* : « ✕ » sur la ligne de `stagiaire` ; le tableau d'« Étude B » ne montre plus que `proprio`, toutes ses cases cochées
 
 ### Deux onglets sur la même bulle
 

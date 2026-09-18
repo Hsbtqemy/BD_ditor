@@ -7,6 +7,13 @@ derniere: —
 
 # QA — un tag ou une dimension d'une collection qu'on ne lit pas ne sort nulle part
 
+> **Chemin remis à l'écran du 2026-09-18 (`6ea6b60`), sans toucher aux cases.** Le premier
+> geste — retirer à `lectrice` son accès à « Étude B » — se faisait dans « 👥 Accès aux
+> collections » de l'Administration ; ce panneau vit désormais dans la Bibliothèque, sous le
+> nom « Qui entre ». Le geste n'a changé ni de nature ni d'effet, seulement de lieu et de
+> forme : un « ✕ » sur la ligne du groupe. Les cases déjà cochées l'ont été avant ce
+> changement.
+
 La suite verrouille les routes : chaque lecture, sous deux identités, et chaque oracle
 comparé à un identifiant absent. Ce que la passe regarde, c'est qu'aucun ÉCRAN n'en montre
 davantage que les routes — un nuage, une puce, une liste d'axes — et que l'écriture
@@ -19,7 +26,8 @@ possède « Collection Test » et « Étude B », l'album esther v1 vit dans les
 `lectrice` lit « Collection Test » par le groupe `annotateurs`, `stagiaire` y écrit.
 **Premier geste, et il n'est pas optionnel** : `lectrice` LIT « Étude B » par le groupe
 `annotateurs` — mesuré le 2026-09-14 — et il faut retirer cet accès avant de commencer,
-dans *Administration → 👥 Accès aux collections*. Sans quoi elle lit exactement ce que la
+dans *Bibliothèque → 📚 Collections*, « Étude B » dépliée, partie *Qui entre* : le « ✕ » de la
+ligne `annotateurs`. Sans quoi elle lit exactement ce que la
 passe veut lui cacher, et les sept cases suivantes passent au vert en ne mesurant rien.
 Le rendre à la fin si l'on veut retrouver le décor d'origine.
 
