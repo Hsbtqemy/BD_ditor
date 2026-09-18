@@ -33,21 +33,21 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 
 | Surface | Adresse | Ce qu'on y fait |
 |---|---|---|
-| **Bibliothèque** | `/corpus` | créer et décrire les albums et les collections, régler la diffusion d'une collection et l'exporter, lancer les traitements par lot, suivre l'avancement planche par planche |
+| **Bibliothèque** | `/corpus` | créer et décrire les albums et les collections, régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, lancer les traitements par lot, suivre l'avancement planche par planche |
 | **Atelier** | `/` | tout ce qui se fait sur une planche : corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
 | **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
 | **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus ; documenter le vocabulaire |
-| **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : qui entre dans chaque collection, les comptes, l'état des moteurs |
+| **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : quels comptes et quels groupes existent, la version servie, l'état des moteurs |
 
 Une barre de navigation commune les relie, sur les cinq pages. Les réglages d'affichage —
 thème clair/sombre, contraste élevé, zoom de l'interface — y sont aussi, et suivent d'une
 surface à l'autre.
 
 > **L'Administration n'est pas réservée**, et ça surprend. La page s'ouvre à tout le monde :
-> c'est **chaque bloc** qui décide de ce qu'il montre — la liste des collections est filtrée
-> par vos droits, la vue des comptes n'apparaît que si le serveur vous la sert, et l'état des
-> moteurs est ouvert à tous, parce que savoir si l'OCR fonctionne n'est un pouvoir pour
-> personne. Fermer la page entière aurait enfermé des choses qui n'ont rien à y faire.
+> c'est **chaque bloc** qui décide de ce qu'il montre — **👥 Comptes et groupes** n'apparaît
+> que si le serveur vous le sert, **🏷️ Version servie** de même, et l'état des moteurs est
+> ouvert à tous, parce que savoir si l'OCR fonctionne n'est un pouvoir pour personne. Fermer
+> la page entière aurait enfermé des choses qui n'ont rien à y faire.
 
 > **Un mot sur le nom de la première.** La barre de navigation l'appelle **Atelier**, et
 > c'est le nom retenu ici puisque c'est celui qu'on lit à l'écran. Elle s'est longtemps

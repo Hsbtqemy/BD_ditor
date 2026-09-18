@@ -411,9 +411,9 @@ Trois choses valent d'être sues :
   autrement indistinguables.
 - **Une échéance passée ne rend rien publiable toute seule.** L'outil ignore *pourquoi*
   l'embargo existe : un délai qu'on s'est donné se lève seul, un délai imposé par un ayant
-  droit non. Une échéance dépassée est **signalée** — dans l'écran d'Administration, dans le
-  manifeste, dans l'outil en ligne de commande — pour qu'un corpus ne reste pas fermé par
-  inertie. La décision, elle, reste humaine.
+  droit non. Une échéance dépassée est **signalée** — dans la Bibliothèque, sur la ligne de la
+  collection, dans le manifeste, dans l'outil en ligne de commande — pour qu'un corpus ne
+  reste pas fermé par inertie. La décision, elle, reste humaine.
 - **Une date illisible retient aussi.** Une faute de frappe ne doit ni ouvrir la porte, ni
   passer pour une décision.
 
