@@ -5,9 +5,11 @@ statut: interrompu
 
 # AUTH-12 — gérer les comptes : un parcours par personne, et non quatre outils à connaître
 
-**Arrêté sur** — 2026-09-18, `6ea6b60` : **l'écran de l'étape 3 est construit — « Qui entre » vit en tête de la collection dépliée, dans la Bibliothèque, et le panneau « 👥 Accès aux collections » quitte l'Administration dans le même commit.** Les accès s'y règlent en ACTES, lus dans `GET /api/droits` : l'écran n'écrit ni acte, ni libellé, ni niveau. Éprouvé sur copie : 42 cas Node pour `static/lib/droits.js` et 20 mutants sur 20 tués ; 32 mutants d'écran et de style, 31 tués ; suite par défaut entière (1371) et passe e2e entière (279) vertes. La passe de QA `pilotage/qa/qui-entre.md` est écrite, pas jouée. Détail dans la section « L'étape 3 construite (écran) ». Trois cases se cochent avec lui.
+**Arrêté sur** — 2026-09-18, `d110ce2` : **l'étape 4 est construite — le référent de l'INSTANCE se constate depuis l'Administration, et ses deux états MUETS se voient enfin.** C'est la dernière de l'ordre. `GET /api/referent` la sert, réservée par `portee.tout` comme `/api/version` : la garde d'un bloc réservé se pose sur sa ROUTE, et `/api/moi` — qui portait déjà la donnée — répond à tout le monde, donc ne peut rien garder. Trois états tranchés par le SERVEUR, dont le troisième est la raison du chantier : un référent NOMMÉ SANS CONTACT est atteignable, et c'est le seul des trois qui TROMPE. 10 tests, suite par défaut entière verte sur copie (1381). La passe `pilotage/qa/referent-instance.md` est écrite, pas jouée. Détail dans la section « L'étape 4 construite ». **Aucune case ne se coche avec lui** : l'étape 4 n'en avait aucune, l'ordre de construction la portant seul — elle en gagne une, pour sa passe.
 
-Juste avant, `0019205` : **les libellés des actes sont ceux que Hugo a validés** — « organiser les albums » et « lancer la reconnaissance automatique » remplacent « structurer le corpus » et « lancer des lots », les codes restant les mêmes (case « Les libellés des actes sont validés par Hugo »).
+Juste avant, `6ea6b60` : **l'écran de l'étape 3 est construit — « Qui entre » vit en tête de la collection dépliée, dans la Bibliothèque, et le panneau « 👥 Accès aux collections » quitte l'Administration dans le même commit.** Les accès s'y règlent en ACTES, lus dans `GET /api/droits` : l'écran n'écrit ni acte, ni libellé, ni niveau. Éprouvé sur copie : 42 cas Node pour `static/lib/droits.js` et 20 mutants sur 20 tués ; 32 mutants d'écran et de style, 31 tués ; suite par défaut entière (1371) et passe e2e entière (279) vertes. La passe de QA `pilotage/qa/qui-entre.md` est écrite, pas jouée. Détail dans la section « L'étape 3 construite (écran) ». Trois cases se cochent avec lui.
+
+Avant lui, `0019205` : **les libellés des actes sont ceux que Hugo a validés** — « organiser les albums » et « lancer la reconnaissance automatique » remplacent « structurer le corpus » et « lancer des lots », les codes restant les mêmes (case « Les libellés des actes sont validés par Hugo »).
 
 Et avant lui, `59888a7` : **l'étape 3 est construite CÔTÉ SERVEUR et éprouvée, et `GET /api/comptes` est retirée.** Ce que le propriétaire choisit — les groupes de l'annuaire, la vérification d'un login tapé — et la description des droits en actes sont servis (`3a30843`) ; l'ancienne vue des comptes n'avait plus de lecteur et disparaît (`bfb9d32`, avec la docstring qui la citait, `59888a7`). Éprouvé sur copie : suite par défaut entière verte (1365) ; 26 mutants, tous tués au bout du compte — deux ont d'abord SURVÉCU sur un vrai trou de test, bouché par `4db9e03`. Détail dans la section « L'étape 3 côté serveur ». L'écran est venu depuis (`6ea6b60`) ; reste la mesure en recette de la lecture de l'annuaire (`AUTH-6`), arrêtée sur un refus de connexion du compte de service.
 
@@ -70,6 +72,9 @@ le propriétaire d'une collection, l'administrateur, et l'administrateur systèm
 ### L'étape 3 — « Qui entre » dans la Bibliothèque
 - [ ] **La passe « Qui entre » est jouée sur la recette** — attendu : `pilotage/qa/qui-entre.md` jouée par Hugo sur la pile de recette reconstruite sur `6ea6b60` ou après, avec l'annuaire réellement lu (et non sa doublure), et ses cases cochées par lui. Elle joue les gestes du propriétaire que la maquette faisait jouer d'abord — faire entrer un cours, cocher ses actes, retirer un accès — puis ce que l'Administration en montre, et finit par la remise en état. L'annuaire en panne et l'absence des mots du modèle à l'écran ne s'y jouent pas : ils sont éprouvés par `tests/test_e2e_qui_entre.py`, la recette ne permettant pas le premier sans toucher la pile
 
+### L'étape 4 — le référent de l'instance
+- [ ] **La passe « Le référent de l'instance » est jouée** — attendu : `pilotage/qa/referent-instance.md` jouée par Hugo, et ses cases cochées par lui. Elle se joue sur le serveur LOCAL et non sur la recette, exprès : les trois états se produisent en posant deux variables d'environnement et en redémarrant, ce qui sur la recette voudrait dire redémarrer `bd-app` et déranger le décor des autres passes. L'état « personne n'est désigné » y est même le défaut, aucun décor de développement ne posant ces variables — c'est la réserve (b) de la case `BD_REFERENT_NOM` d'`AUTH-6`, qui devient ici un avantage. Ce qu'elle regarde et qu'aucun test ne lit : que les deux états muets se DISTINGUENT à l'œil, et que le cul-de-sac crie plus fort que l'absence
+
 ### Mesurer, avant de construire
 - [x] **L'import en lot de la décision 5 (b) est mesuré** — attendu : sur la pile de recette, trente comptes FICTIFS créés en un seul geste par l'outil de LLDAP (fichier ou script), jamais les comptes qui portent le décor des passes ; la durée, les gestes et ce qu'il faut savoir sont écrits dans `docs/exploitation.md` ; un compte importé se connecte au portail, et les trente comptes sont retirés après la mesure — **mesuré le 2026-09-17** par la coordination, sur accord de Hugo pour l'identifiant d'administration de l'annuaire : `/app/bootstrap.sh` de l'image LLDAP 0.6.3, un fichier JSON par compte, trente comptes et un groupe en 8 secondes, code de retour 0 ; `essai07` accepté par le portail (`/api/firstfactor` 200), un mauvais mot de passe refusé (401) ; les trente comptes et le groupe supprimés, et la liste des comptes relue IDENTIQUE à celle d'avant. Le mot de passe d'administration ne sort jamais du conteneur. Écrit dans `docs/exploitation.md`, § « Importer une promotion en une fois », avec le piège `DO_CLEANUP=true` (qui supprimerait tout compte absent des fichiers) et la limite non mesurée : la remise des mots de passe initiaux
 - [ ] **Le délai d'un RETRAIT de groupe est mesuré** — l'ajout l'est (entre 4 min 53 s et 5 min 52 s, recette, 2026-09-15, `AUTH-7`), le retrait jamais. Attendu : sur la pile de recette, un compte d'essai retiré de `annotateurs` perd l'accès à « esther v1 » au bout d'un délai noté ; et ce qui arrive à une session DÉJÀ ouverte. C'est le délai pendant lequel quelqu'un qu'on vient de retirer lit encore, et `docs/modele-et-droits.md` le dit « immédiat »
@@ -100,7 +105,9 @@ leurs cases.
    de la décision 4 et ses trois textes. L'écran ne connaît aucun niveau en dur : ce qu'`AUTH-10`
    décidera s'y logera sans le refaire.
 4. **Le référent de l'instance affiché aux administrateurs** — une ligne de lecture, en
-   dernier (décision 6).
+   dernier (décision 6). **Fait le 2026-09-18, `d110ce2`** (section « L'étape 4
+   construite »). Elle a coûté une ROUTE, ce que « une ligne de lecture » n'annonçait pas :
+   la raison est écrite là-bas, et elle tient à la garde, pas à la donnée.
 
 **Les étapes 1 à 3 conditionnent la prochaine fusion dans `main`**, avec toutes les passes de
 QA (tranché par Hugo le 2026-09-17, `docs/roadmap.md`). L'étape 4 la rejoint si elle est
@@ -205,6 +212,55 @@ Construite par la session de l'écran, sur le cadrage accordé avec la coordinat
 **LIMITE ÉCRITE, et assumée à cette étape.** « Faire entrer » un nom déjà présent est refusé par l'ÉCRAN, sur le couple (compte ou groupe, nom exact) : le `PUT` d'un accès RE-POSE un niveau, donc le geste rétrograderait en lecture quelqu'un qui écrit. Ce refus ne ferme rien côté serveur — un autre onglet, ou une liste relue avant le geste de quelqu'un d'autre, peut encore rétrograder. La fermer demanderait au `PUT` de distinguer « créer » de « régler », donc de toucher une route que cette étape n'ouvre pas : la limite est écrite plutôt que réparée à la hâte.
 
 **Éprouvé sur copie.** Node : 42 cas pour `droits.js`, 20 mutants sur 20 tués. Navigateur : `tests/test_e2e_qui_entre.py` (11 tests), et les tests des gestes d'accès, d'export, de débordement et d'accessibilité ont SUIVI l'écran dans la Bibliothèque plutôt que d'être réécrits ailleurs. Mutants d'écran et de style : 32, 31 tués. Suite par défaut entière verte (1371) et passe e2e entière verte (279), dans cet ordre et sans rien modifier entre les deux.
+
+## L'étape 4 construite — 2026-09-18
+
+Décision 6 (b) : l'Administration AFFICHE le référent de l'instance, avec « se règle dans
+l'environnement du serveur ». Aucune route d'écriture, aucune migration, aucune colonne.
+
+**Elle a pourtant coûté une ROUTE, et « une ligne de lecture » ne l'annonçait pas.** La
+donnée était bien là — `GET /api/moi` sert `acces.referent` depuis `AUTH-4` — et le premier
+réflexe était de la lire de là. Ce qui l'a interdit n'est pas la donnée mais la GARDE :
+`static/administration.js` pose en toutes lettres que la garde d'un bloc RÉSERVÉ se met sur
+sa route, jamais dans un `if` côté client, *« puisqu'un bloc masqué à tort ne lève aucune
+erreur et ne casse aucun test »*. Or `/api/moi` répond à tout le monde par construction.
+« Réservé aux administrateurs » et « aucune route en plus » ne pouvaient donc pas être vrais
+ensemble, et c'est la coordination qui a tranché plutôt que la session qui construisait.
+Le coût réel est nul en requêtes : l'écran n'appelait pas `/api/moi` non plus.
+
+**Son 403 ne dit pas « secret », et c'est écrit dans sa docstring ET gardé par un test.**
+`/api/moi` sert le même référent à tout le monde, délibérément : le bandeau de portée vide
+est le seul endroit où il doit atteindre quelqu'un qui ne voit RIEN, et cette personne n'est
+administratrice de rien. Sans cette phrase, un lecteur futur verrait un 403 d'un côté et une
+donnée ouverte de l'autre, conclurait à une fuite, et fermerait `/api/moi` — cassant le seul
+usage qui compte. `test_api_moi_sert_le_referent_a_TOUT_LE_MONDE` existe pour ça.
+
+**TROIS états, et le troisième a été trouvé par la coordination en relisant le plan.**
+`_referent_instance()` rend un dict dès qu'UN des deux est posé (`if not (REFERENT_NOM or
+REFERENT_CONTACT)`), si bien qu'un référent NOMMÉ SANS CONTACT est un état atteignable. Il
+est le pire des trois : le bandeau nomme alors quelqu'un sans dire comment l'atteindre, à
+une personne qui ne peut rien faire d'autre que le contacter. Ce n'est pas un demi-référent,
+c'est un cul-de-sac qui a l'air d'une réponse — et le seul des trois qui TROMPE celui qui le
+lit. L'écran y crie donc plus fort (rouge d'encre, barre verticale) que sur l'absence pure
+(ambre), qui manque sans tromper personne. Le SERVEUR tranche l'état : l'écran saurait le
+déduire, et les deux finiraient par diverger sans que rien ne tombe.
+
+**Ce que la construction a trouvé, et qui n'est PAS réparé ici.** Le bandeau de portée vide
+(`theme.js`, `referentLigne`) ignore les deux états partiels — lu dans le source, non joué.
+Avec un nom sans contact, il rend « Demandez un accès à **Ana Ruiz** (contact déclaré à la
+configuration). » : il nomme quelqu'un sans adresse ET affirme qu'un contact a été déclaré,
+à la personne que cela concerne le plus. Avec un contact sans nom, `r.nom || r.contact` met
+le contact en gras, puis la branche `if (r.contact)` le réaffiche en lien — il sort DEUX
+fois. Les deux sont signalés à la coordination et laissés tels quels : ce chantier affiche
+un réglage, il ne touche pas au bandeau d'`AUTH-4`. Une case de la passe de QA les fait
+OBSERVER sans rien attendre, pour qu'on les constate au lieu de les redécouvrir.
+
+**Éprouvé.** 10 tests (`tests/test_referent_instance.py`), dont les trois états en table et
+l'invariant d'`/api/moi`. Les quatre cliquets de routes repassent — `AUTH-2` : 132/140
+cloisonnées, 0 à câbler ; `AUTH-5` : balayage complet, la route n'ajoutant aucune sortie
+d'identité puisque le référent vient de l'environnement et non des sentinelles semées. Suite
+par défaut entière verte sur copie (1381). **Aucune passe navigateur n'a été jouée** : Hugo
+tenait le navigateur pour ses passes de QA, et la coordination les sérialise.
 
 ## Le parcours actuel, geste par geste — 2026-09-16
 
