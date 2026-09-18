@@ -446,7 +446,7 @@ scientifiques** n'ont pas de formulaire : ils s'écrivent par `tools/gerer_colle
 
 ### Où vit quoi
 
-| | Comptes et groupes | Accès aux collections |
+| | Comptes et groupes | Qui entre dans une collection |
 |---|---|---|
 | Où | l'annuaire LLDAP, par son interface web (le fichier `deploy/authelia/users_database.yml` n'est plus que le repli) | dans l'application, *Qui entre*, en tête de la collection dépliée (Bibliothèque) |
 | Qui | un administrateur (`bd-admins`), sans accès shell | tout **propriétaire** de la collection |
