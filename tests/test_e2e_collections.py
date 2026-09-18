@@ -23,10 +23,12 @@ from conftest import ECRITURE, make_png  # noqa: E402
 pytestmark = pytest.mark.e2e
 
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source. Les gestes d'une collection
-# vivent dans la Bibliothèque depuis COL-2 ; l'Administration n'y entre que pour la PLACE
-# d'un refus d'accès, le reste de ce panneau étant audité par `test_e2e_a11y`.
-SURFACES_AUDITEES = ("/corpus", "/administration")
+# vivent dans la Bibliothèque depuis COL-2, et ses accès l'ont rejointe avec l'étape 3
+# d'AUTH-12 : l'Administration n'a plus de geste de collection à éprouver ici.
+SURFACES_AUDITEES = ("/corpus",)
 SURFACES_HORS_PERIMETRE = {
+    "/administration": "les accès d'une collection se règlent dans la Bibliothèque depuis "
+                       "l'étape 3 d'AUTH-12 ; l'Administration ne les montre qu'en lecture",
     "/": "l'Atelier travaille une planche ; aucun geste de collection n'y vit",
     "/recherche": "aucun geste de collection n'y vit",
     "/exploration": "aucun geste de collection n'y vit — le lexique situé y range des "
@@ -323,35 +325,35 @@ def test_creer_ne_demande_aucun_droit_mais_decrire_si(page, decor):
 
 
 def test_un_refus_d_acces_survit_au_rechargement_de_la_collection(page, decor):
-    """Administration → Accès : le même défaut sur l'autre écran, avec un piège de plus.
+    """Bibliothèque → « Qui entre » : un refus s'affiche là où l'on a agi, et y RESTE.
 
-    Changer un niveau RECHARGE la liste dans les deux cas, refus compris : l'écran doit
-    montrer le niveau que le serveur a gardé, pas celui qu'on a choisi. La collection qui
-    vient d'afficher le refus est donc détruite et redessinée dans la foulée. Un message
-    écrit dans la collection sans être reporté partirait avec elle — le refus ne serait
-    plus loin du geste, il ne serait plus nulle part.
+    Décocher un cran RECHARGE les accès dans les deux cas, refus compris : l'écran doit
+    montrer le niveau que le serveur a gardé, pas la case qu'on a décochée. Le tableau qui
+    vient d'afficher le refus est donc redessiné dans la foulée ; le message, qui ne vit pas
+    dans le tableau, doit lui survivre. Le panneau vivait dans l'Administration jusqu'à
+    l'étape 3 d'AUTH-12 ; le piège a déménagé avec lui.
 
-    Le geste est le 409 du dernier propriétaire : le rétrograder laisserait une collection
-    que plus personne n'administre (AUTH-3)."""
+    Le geste est le 409 du dernier propriétaire : décocher « décider qui entre » laisserait une
+    collection que plus personne n'administre (AUTH-3)."""
     with _client(decor["base"]) as c:
         cid = c.post("/api/collections", json={"nom": "Un espace"}).json()["id"]
         r = c.put(f"/api/collections/{cid}/acces", json={
             "genre": "utilisateur", "principal": "pilote", "niveau": "proprietaire"})
         assert r.status_code == 200, r.text
 
-    page.goto(decor["base"] + "/administration", wait_until="networkidle")
+    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
     item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
     item.locator("summary").click()
-    niveau = item.locator('select[data-principal="pilote"]')
-    niveau.select_option("lecture")
-    # Attendre la version REDESSINÉE avant de chercher le message : le sélecteur y revient
-    # au niveau que le serveur a gardé. Chercher plus tôt trouverait le message dans la
-    # collection d'avant, et approuverait un report qui n'a pas eu lieu.
+    decider = item.locator('.qe-case[data-cran="proprietaire"][data-principal="pilote"]')
+    decider.uncheck()
+    # Attendre la version REDESSINÉE : la case y revient cochée, ce que le serveur a gardé.
+    # Chercher le message plus tôt le trouverait avant le rechargement, et approuverait un
+    # report qui n'a pas eu lieu.
     page.wait_for_function(
         """(cid) => {
-          const s = document.querySelector(
-            `#col-body .col-item[data-id="${cid}"] select[data-principal="pilote"]`);
-          return s && s.value === "proprietaire";
+          const s = document.querySelector(`#col-body .col-item[data-id="${cid}"] `
+            + `.qe-case[data-cran="proprietaire"][data-principal="pilote"]`);
+          return s && s.checked;
         }""", arg=cid, timeout=5000)
     message = _message_du_geste(page, item, "dernier propriétaire")
     assert "désignez-en un autre" in message, message
@@ -361,39 +363,44 @@ def test_un_refus_d_acces_survit_au_rechargement_de_la_collection(page, decor):
     assert ("pilote", "proprietaire") in {(a["principal"], a["niveau"]) for a in acces}
 
 
-def test_accorder_demande_de_choisir_utilisateur_ou_groupe(page, decor):
-    """AUCUN genre par défaut pour un nouvel accès — tranché le 2026-09-16.
+def test_faire_entrer_demande_de_dire_compte_ou_groupe(page, decor):
+    """AUCUN défaut pour un nom tapé — tranché le 2026-09-16, gardé par l'étape 3 d'AUTH-12.
 
     « Utilisateur » était présélectionné, et la passe de recette a accordé `annotateurs` et
-    `etudiants` comme des logins : deux fois sur deux. L'erreur ne se voit pas après coup —
-    un groupe accordé en utilisateur n'ouvre rien à personne, et l'écran n'a pour le dire
-    que « n'a pas encore ouvert l'application », qui vaut aussi pour un arrivant. Faute de
-    pouvoir la signaler, l'écran l'empêche : *+ Accorder* refuse tant que le genre n'est
-    pas choisi, et le dit dans la collection. Puis, le genre choisi, l'accès part tel quel."""
+    `etudiants` comme des logins : deux fois sur deux. Un groupe accordé comme compte n'ouvre
+    rien à personne. « + Faire entrer » refuse donc tant que « Compte ou groupe ? » n'est pas
+    choisi, et le dit dans la collection. Et rien n'est présélectionné dans la liste non plus :
+    « + Faire entrer » sans choix accorderait sinon le premier groupe par inertie."""
     with _client(decor["base"]) as c:
         cid = c.post("/api/collections", json={"nom": "Un espace"}).json()["id"]
 
-    page.goto(decor["base"] + "/administration", wait_until="networkidle")
+    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
     item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
     item.locator("summary").click()
-    item.locator(".col-principal").fill("annotateurs")
-    assert item.locator(".col-genre").input_value() == "", (
-        "un genre est présélectionné : l'erreur de la recette redevient possible par inertie")
-    # Ce qui prouve la garde est qu'AUCUNE requête ne part, pas qu'aucun accès n'est créé :
-    # le serveur refuse lui-même un genre vide (422), donc « rien de créé » serait vrai sans
-    # la garde. La première version de ce test vérifiait la liste des accès, et ne pouvait
-    # tomber que par le texte du message (passe de revue, 2026-09-16).
+    # Ce qui prouve la garde est qu'AUCUNE requête ne part, pas qu'aucun accès n'est créé : le
+    # serveur refuse lui-même un genre vide (422), donc « rien de créé » serait vrai sans elle.
     envois = []
     page.on("request", lambda r: envois.append(r.url)
             if r.method == "PUT" and "/acces" in r.url else None)
-    item.locator("[data-accorder]").click()
-    message = _message_du_geste(page, item, "utilisateur ou un groupe")
+    choix = item.locator(".qe-choix")
+    choix.wait_for(timeout=5000)
+    assert choix.input_value() == "", "un choix est présélectionné : l'inertie accorderait"
+    item.locator(".qe-faire-entrer").click()
+    _message_du_geste(page, item, "Choisissez un groupe")
+
+    choix.select_option("autre")
+    item.locator(".qe-nom").fill("annotateurs")
+    assert item.locator(".qe-genre").input_value() == "", (
+        "un genre est présélectionné : l'erreur de la recette redevient possible par inertie")
+    item.locator(".qe-faire-entrer").click()
+    message = _message_du_geste(page, item, "compte ou un groupe")
     assert "annotateurs" in message, message
     assert envois == [], f"la demande est partie au serveur sans genre choisi : {envois}"
 
-    item.locator(".col-genre").select_option("groupe")
-    item.locator("[data-accorder]").click()
-    item.locator(".acces-principal", has_text="annotateurs").wait_for(timeout=5000)
+    item.locator(".qe-genre").select_option("groupe")
+    item.locator(".qe-faire-entrer").click()
+    message = _message_du_geste(page, item, "entre dans")
+    assert "Cochez les autres actes" in message, message
     with _client(decor["base"]) as c:
         acces = c.get(f"/api/collections/{cid}/acces").json()
     assert [(a["principal"], a["genre"], a["niveau"]) for a in acces] == [
@@ -494,52 +501,47 @@ def test_une_relecture_ratee_ne_cache_pas_l_enregistrement(page, decor):
 
 
 def test_un_geste_d_acces_efface_le_refus_d_une_autre_collection(page, decor):
-    """Administration : même règle d'un message à la fois. Un refus dans A, puis un accès
-    accordé dans B, qui recharge la liste : le refus d'A, qui nommait « annotateurs », ne
-    doit pas être reposé sous un champ que le rechargement a vidé."""
+    """Bibliothèque : la règle d'un message à la fois vaut pour « Qui entre ». Un refus dans
+    A, puis un accès accordé dans B : le refus d'A, qui nommait « annotateurs », ne doit plus
+    s'afficher sous un geste qui a réussi ailleurs."""
     with _client(decor["base"]) as c:
         a = c.post("/api/collections", json={"nom": "Espace A"}).json()["id"]
         b = c.post("/api/collections", json={"nom": "Espace B"}).json()["id"]
-    page.goto(decor["base"] + "/administration", wait_until="networkidle")
+    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
     item_a = page.locator(f'#col-body .col-item[data-id="{a}"]')
     item_a.locator("summary").click()
-    item_a.locator(".col-principal").fill("annotateurs")
-    item_a.locator("[data-accorder]").click()
-    _message_du_geste(page, item_a, "utilisateur ou un groupe")
+    item_a.locator(".qe-choix").select_option("autre")
+    item_a.locator(".qe-nom").fill("annotateurs")
+    item_a.locator(".qe-faire-entrer").click()
+    _message_du_geste(page, item_a, "compte ou un groupe")
 
     item_b = page.locator(f'#col-body .col-item[data-id="{b}"]')
     item_b.locator("summary").click()
-    item_b.locator(".col-principal").fill("annotateurs")
-    item_b.locator(".col-genre").select_option("groupe")
-    item_b.locator("[data-accorder]").click()
-    item_b.locator(".acces-principal", has_text="annotateurs").wait_for(timeout=5000)
-    # Attendre le rendu COMPLET d'A redessinée : sans cela, on regarderait une collection
-    # encore « Chargement… », où aucun message ne peut être — le test passerait sans voir.
-    item_a.locator(".col-principal").wait_for(timeout=5000)
-    assert page.locator("#col-body .col-msg", has_text="utilisateur ou un groupe").count() == 0, (
-        "le refus d'« Espace A » est reposé après un accès accordé dans « Espace B »")
+    item_b.locator(".qe-choix").select_option("groupe:annotateurs")
+    item_b.locator(".qe-faire-entrer").click()
+    item_b.locator(".qe-table th[scope=row]", has_text="annotateurs").wait_for(timeout=5000)
+    item_b.locator(".qe-msg", has_text="entre dans").wait_for(timeout=5000)
+    assert page.locator("#col-body .col-msg", has_text="compte ou un groupe").count() == 0, (
+        "le refus d'« Espace A » est resté affiché après un accès accordé dans « Espace B »")
 
 
-@pytest.mark.parametrize("relecture", ["**/api/collections", "**/api/collections/*/acces"],
-                         ids=["liste", "acces"])
-def test_un_refus_d_acces_survit_a_une_relecture_ratee(page, decor, relecture):
-    """Administration : un refus de niveau recharge la liste, et ce rechargement peut
-    échouer — sur la liste elle-même, ou sur les accès de la collection rouverte. L'erreur
-    remplace alors ce qui portait le 409, qui partait avec : on ne saurait plus que le
-    niveau a été refusé. Le dernier message survit à l'erreur, dans les deux cas. Relevé
-    par la passe de revue du 2026-09-16 ; éprouvé ici parce que le commentaire du code
-    l'affirmait sans qu'aucun test ne le lise."""
+def test_un_refus_d_acces_survit_a_une_relecture_ratee(page, decor):
+    """Bibliothèque : un refus de cran recharge les accès, et ce rechargement peut échouer.
+    L'erreur remplace alors le tableau ; le 409 ne doit pas partir avec, sans quoi on ne
+    saurait plus que le niveau a été refusé. Relevé par la passe de revue du 2026-09-16 sur
+    l'Administration, et gardé quand le panneau a déménagé (AUTH-12, étape 3). La relecture
+    de la LISTE des collections n'est plus en jeu : un geste d'accès ne la relit pas."""
     with _client(decor["base"]) as c:
         cid = c.post("/api/collections", json={"nom": "Un espace"}).json()["id"]
         r = c.put(f"/api/collections/{cid}/acces", json={
             "genre": "utilisateur", "principal": "pilote", "niveau": "proprietaire"})
         assert r.status_code == 200, r.text
 
-    page.goto(decor["base"] + "/administration", wait_until="networkidle")
+    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
     item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
     item.locator("summary").click()
-    niveau = item.locator('select[data-principal="pilote"]')
-    niveau.wait_for(timeout=5000)
+    decider = item.locator('.qe-case[data-cran="proprietaire"][data-principal="pilote"]')
+    decider.wait_for(timeout=5000)
 
     def panne(route):
         if route.request.method == "GET":
@@ -547,8 +549,8 @@ def test_un_refus_d_acces_survit_a_une_relecture_ratee(page, decor, relecture):
                           body='{"detail": "Relecture impossible (panne simulée)."}')
         else:
             route.continue_()
-    page.route(relecture, panne)          # armé APRÈS l'ouverture, qui doit réussir
-    niveau.select_option("lecture")
+    page.route("**/api/collections/*/acces", panne)   # armé APRÈS l'ouverture, qui doit réussir
+    decider.uncheck()
     page.locator("#col-body", has_text="Relecture impossible").wait_for(timeout=5000)
     refus = page.locator("#col-body .col-msg", has_text="dernier propriétaire")
     refus.wait_for(timeout=3000)
@@ -622,22 +624,22 @@ def test_la_creation_ne_dit_proprietaire_qu_a_qui_l_est(page, live_server):
 
 @pytest.mark.parametrize("live_server", [False, True], indirect=True, ids=["mono", "proxy"])
 def test_une_liste_vide_ne_promet_la_propriete_qu_a_qui_la_recevra(page, live_server, request):
-    """AUTH-12, option B — les deux listes vides disaient « vous en serez propriétaire »
-    (Bibliothèque) et « l'on en devient propriétaire » (Administration) à tout le monde.
-    C'est faux pour qui écrit PARTOUT : en mono-poste et pour un administrateur, créer une
-    collection ne pose aucun propriétaire. Le serveur de test est neuf, donc SANS aucune
+    """AUTH-12, option B — la liste vide disait « vous en serez propriétaire » à tout le
+    monde. C'est faux pour qui écrit PARTOUT : en mono-poste et pour un administrateur, créer
+    une collection ne pose aucun propriétaire. Le serveur de test est neuf, donc SANS aucune
     collection : en mono-poste, aucune promesse ; derrière le proxy, une personne sans accès
-    la reçoit, et c'est alors vrai."""
+    la reçoit, et c'est alors vrai. L'Administration avait la même liste ; elle l'a perdue
+    avec le panneau des accès (AUTH-12, étape 3)."""
     derriere_proxy = request.node.callspec.params["live_server"]
     if derriere_proxy:
         page.set_extra_http_headers({"Remote-User": "nadia"})
-    for chemin, promesse in (("/corpus", "vous en serez propriétaire"),
-                             ("/administration", "l'on en devient propriétaire")):
-        page.goto(live_server + chemin, wait_until="networkidle")
-        note = page.locator("#col-body .col-note", has_text="Aucune collection ouverte")
-        note.wait_for(timeout=5000)
-        texte = note.inner_text()
-        if derriere_proxy:
-            assert promesse in texte, (chemin, texte)
-        else:
-            assert "propriétaire" not in texte, (chemin, texte)
+    page.goto(live_server + "/corpus", wait_until="networkidle")
+    note = page.locator("#col-body .col-note", has_text="Aucune collection ouverte")
+    note.wait_for(timeout=5000)
+    texte = note.inner_text()
+    if derriere_proxy:
+        assert "vous en serez propriétaire" in texte, texte
+    else:
+        assert "propriétaire" not in texte, texte
+
+

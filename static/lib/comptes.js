@@ -12,10 +12,9 @@
    trier, filtrer, dire l'état court d'une ligne, regrouper les signaux trop nombreux, lire
    et écrire l'adresse, et nommer ce que le serveur rend par des codes.
 
-   AUCUNE correspondance niveau → actes (décision du 2026-09-17) : l'étape 2 affiche le
-   NIVEAU seul. Les actes et leurs liaisons seront DÉCRITS par le serveur à l'étape 3, avec
-   l'écran d'attribution ; les inventer ici ferait deux tables à tenir d'accord le jour où
-   AUTH-10 en changera une. */
+   AUCUN NIVEAU ni acte ici : depuis l'étape 3, ce qu'un accès permet se dit en actes, lus
+   dans la description servie par le serveur (`static/lib/droits.js`). La table de libellés
+   de niveaux qui vivait ici à l'étape 2 est partie avec elle. */
 (function (root, factory) {
   const api = factory();
   if (typeof module !== "undefined" && module.exports) module.exports = api;  // Node (tests)
@@ -175,14 +174,6 @@
     return { texte: pluriel(objet.nb_albums || 0, "album", "albums"), alerte };
   }
 
-  /* La seule table de niveaux de l'écran, et elle ne sert qu'à ÉCRIRE : un niveau que le
-     serveur ajouterait (AUTH-10) s'affiche tel quel au lieu de disparaître. */
-  const NIVEAUX_LUS = { lecture: "lecture", ecriture: "écriture", proprietaire: "propriétaire" };
-  function niveauLu(niveau) {
-    return Object.prototype.hasOwnProperty.call(NIVEAUX_LUS, niveau) ? NIVEAUX_LUS[niveau]
-                                                                      : String(niveau);
-  }
-
   const DIFFUSIONS_LUES = { public: "public", embargo: "sous embargo", restreint: "restreint",
                             prive: "privé" };
   function diffusionLue(statut) {
@@ -304,7 +295,7 @@
     AXES, TRIS, SEUIL_REGROUPEMENT, TYPE_DE_L_AXE, AXE_DU_TYPE,
     nomLu, identifiant, dateDe, trier, normaliser, filtrer,
     lireAdresse, ecrireAdresse, dateCourte, etatCourt,
-    niveauLu, diffusionLue, cibleSignal, texteSignal, texteGroupeSignaux,
+    diffusionLue, cibleSignal, texteSignal, texteGroupeSignaux,
     regrouperSignaux, lienAnnuaire, consequenceSuppression,
   };
 });

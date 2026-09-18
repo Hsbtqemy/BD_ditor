@@ -2041,15 +2041,68 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .acces-liste { list-style: none; margin: .4rem 0 .3rem; padding: 0; }
 .acces-liste li { display: flex; align-items: center; gap: .5rem; padding: .18rem 0;
                   font-size: .9rem; flex-wrap: wrap; }
-.acces-principal { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.acces-genre { color: var(--text-muted); font-size: .8rem; }
-.acces-export { display: inline-flex; align-items: center; gap: .3rem; font-size: .85rem; }
 .col-note { color: var(--text-muted); font-size: .82rem; margin: .3rem 0 .1rem; }
 /* Le refus du serveur se LIT : les 409 d'AUTH-3 nomment un état interdit (dernier
    propriétaire, dernière collection), pas un droit manquant. Token d'encre AA-sûr, jamais
    l'accent brut, qui échoue le 4.5:1 en petit texte. */
 .col-msg.erreur, #m-appartenance-msg.erreur,
 #sante-msg.erreur { color: var(--ink-red); }
+/* Ce qui a RÉUSSI mais doit se lire : un accès accordé à un nom que l'annuaire ne connaît
+   pas (AUTH-12). L'ambre, assombri en thème clair pour le petit texte ; le MOT porte le
+   sens. */
+.col-msg.alerte { color: var(--accent-amber); }
+
+/* ── Qui entre (AUTH-12, étape 3) — les accès d'une collection, dans sa fiche ─────────
+   Déménagés de l'Administration, en tête de la collection dépliée. Un tableau au-dessus de
+   48em, dans un cadre défilant atteignable au clavier (UX-4) ; des cartes en dessous. */
+.qe { border-bottom: 1px solid var(--border); padding: .1rem 0 .8rem; margin-bottom: .6rem; }
+.qe-titre { margin: .3rem 0 .45rem; font-size: 1rem; }
+/* Le cadre POSITIONNÉ : les libellés réservés aux lecteurs d'écran (`.sr-only`) sont en
+   position absolue, et sans ancêtre positionné ils sortaient du cadre défilant — la page
+   entière défilait de côté à 768 px (1 098 px de contenu pour 768), mesuré par
+   `test_e2e_reflow` et confirmé par mutation : retirer ce cadre rejoue la même mesure. */
+.qe-cadre { position: relative; }
+.qe-table th, .qe-table td { padding: .35rem .5rem; vertical-align: middle; }
+/* Les en-têtes d'actes REPLIENT leur libellé (`corpus-table` les veut sur une ligne) : un
+   acte se nomme en plusieurs mots. Le tableau en est plus ÉTROIT — 943 px au lieu de 1 098,
+   mesuré à 768 px —, mais il défile encore dans son cadre à cette largeur : c'est de la
+   lecture, pas la réparation d'un débordement (le cadre la fait). */
+.qe-table thead th.qe-acte, .qe-table thead th.qe-hors-rang {
+  font-size: .85rem; text-align: center; white-space: normal; min-width: 5.5rem; }
+.qe-table td.qe-cran, .qe-table td.qe-hors-rang { text-align: center; }
+/* Les actes que le serveur accorde ENSEMBLE : une barre traverse leurs colonnes, sous la
+   case unique. La liaison se VOIT, et elle se dit aussi au lecteur d'écran, qui entend
+   les en-têtes de toutes les colonnes couvertes. */
+.qe-table td.qe-lie {
+  background: linear-gradient(var(--accent-blue), var(--accent-blue)) center / calc(100% - 1rem) 2px no-repeat;
+}
+/* Le trait vertical entre l'échelle et les cases hors rang : elles ne s'ordonnent pas. */
+.qe-table .qe-hors-rang { border-left: 1px solid var(--border); }
+.qe-depuis { white-space: nowrap; font-size: .85rem; color: var(--text-muted); }
+.qe-signal { font-size: .82rem; }
+.qe-marque { color: var(--accent-amber); font-weight: 600; }
+.qe-ajout-ligne { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .6rem; }
+/* Une liste déroulante prend la largeur de sa plus longue option : à 320 px, « Un compte, ou
+   un groupe absent de la liste… » emportait le corps de la page. Elle rétrécit donc. */
+.qe-choix { max-width: 100%; min-width: 0; }
+.qe-libre { display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+/* `display: inline-flex` ci-dessus l'emporterait sur la règle UA `[hidden]`. */
+.qe-libre[hidden] { display: none; }
+.qe-nom { min-width: 8rem; }
+.qe-noms { margin: .3rem 0; padding-left: 1.2rem; }
+.qe-cartes { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.qe-carte { border: 1px solid var(--border); border-radius: 6px; padding: .5rem .6rem; }
+.qe-carte-tete { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
+.qe-carte-tete .qe-retirer { margin-left: auto; }
+.qe-qui { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.qe-carte-cases { display: grid; gap: .35rem; margin-top: .45rem; }
+.qe-case-carte { display: flex; align-items: flex-start; gap: .4rem; }
+.qe-case-carte span { overflow-wrap: anywhere; }
+.qe-carte .qe-depuis { margin: .35rem 0 0; white-space: normal; }
+/* « Ouvrir une collection à ce groupe… », dans la fiche d'un groupe (Administration). */
+.cg-ouvrir { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .4rem; }
+.cg-ouvrir label { font-size: .92rem; color: var(--text-muted); }
+.cg-ouvrir select { max-width: 100%; }
 
 /* ── Figures citables (DROIT-1) ───────────────────────────────────────────────────── */
 .fig-row { gap: .4rem; }

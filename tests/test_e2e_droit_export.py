@@ -23,10 +23,14 @@ from conftest import ECRITURE, make_png  # noqa: E402
 pytestmark = [pytest.mark.e2e,
               pytest.mark.parametrize("live_server", [True], indirect=True)]
 
-# UX-10 — ce que `tests/test_surfaces.py` confronte au source. Les cinq surfaces portent
-# chacune un export, ou le panneau qui l'accorde : aucune n'est hors périmètre.
-SURFACES_AUDITEES = ("/corpus", "/administration", "/", "/recherche", "/exploration")
-SURFACES_HORS_PERIMETRE = {}
+# UX-10 — ce que `tests/test_surfaces.py` confronte au source. Quatre surfaces portent un
+# export, ou « Qui entre » qui l'accorde ; l'Administration a perdu ce panneau.
+SURFACES_AUDITEES = ("/corpus", "/", "/recherche", "/exploration")
+SURFACES_HORS_PERIMETRE = {
+    "/administration": "la case « exporter » d'un accès se coche dans « Qui entre », dans la "
+                       "Bibliothèque, depuis l'étape 3 d'AUTH-12 ; l'Administration ne fait "
+                       "que la lire",
+}
 
 # Bob ÉCRIT sur la collection de l'album, sans la case : il voit tout, il ne sort rien.
 BOB = {"Remote-User": "bob", "Remote-Groups": "etudiants"}
@@ -104,18 +108,19 @@ def test_sans_la_case_aucune_surface_ne_propose_d_exporter(page, decor):
 
 
 def test_la_case_cochee_dans_les_acces_rend_l_export_a_l_ecran(page, decor):
-    """Le trajet entier. Un administrateur coche la case de Bob dans le panneau des accès :
-    le serveur l'enregistre, et les surfaces de Bob lui rendent ses exports."""
+    """Le trajet entier. Un administrateur coche la case « exporter » de Bob dans « Qui
+    entre » (la Bibliothèque, depuis l'étape 3 d'AUTH-12) : le serveur l'enregistre, et les
+    surfaces de Bob lui rendent ses exports."""
     base = decor["base"]
     page.set_extra_http_headers(ADMIN)
-    page.goto(base + "/administration", wait_until="networkidle")
+    page.goto(base + "/corpus", wait_until="networkidle")
     item = page.locator(f'#col-body .col-item[data-id="{decor["collection"]}"]')
     item.locator("summary").click()
-    case = item.locator('input[data-export][data-principal="bob"]')
+    case = item.locator('input.qe-case[data-hors-rang="exporter"][data-principal="bob"]')
     case.wait_for(timeout=3000)
     assert not case.is_checked()
-    case.check()
-    page.wait_for_timeout(600)
+    with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith("/acces")):
+        case.check()
     with _client(base) as c:
         acces = c.get(f"/api/collections/{decor['collection']}/acces").json()
     assert next(a for a in acces if a["principal"] == "bob")["exporter"] is True
@@ -134,41 +139,32 @@ def test_la_case_cochee_dans_les_acces_rend_l_export_a_l_ecran(page, decor):
 def test_le_depliant_reste_ouvert_et_le_focus_avec_lui(page, decor):
     """AUTH-3 — régler un accès ne doit pas replier la collection sous la main.
 
-    Les quatre gestes du panneau rechargent la liste ENTIÈRE, et c'est voulu : l'écran doit
-    montrer ce que le serveur a enregistré, pas ce qu'on a cliqué. Mais `loadCollections`
-    reconstruisait chaque `<details>` à neuf, donc FERMÉ — cocher « peut exporter » repliait
-    la collection et détruisait le contrôle qui portait le focus. Sur une collection à
-    plusieurs accès, chaque réglage demandait de tout rouvrir et de retrouver sa ligne.
+    Un geste de « Qui entre » recharge les accès, et c'est voulu : l'écran doit montrer ce que
+    le serveur a enregistré, pas ce qu'on a cliqué. Le tableau est donc redessiné, et la case
+    qui portait le focus détruite. Dans l'Administration, `loadCollections` reconstruisait
+    même chaque `<details>` à neuf, donc FERMÉ — relevé à l'usage pendant la recette du
+    2026-09-13. Le panneau a déménagé dans la Bibliothèque (AUTH-12, étape 3) ; les deux
+    exigences l'ont suivi.
 
-    Aucun test ne pouvait le voir, et c'est le point : ceux de ce module interrogent l'API
-    après le clic (`/api/collections/{id}/acces`) et ne regardent plus le panneau. Relevé à
-    l'usage pendant la recette du 2026-09-13.
-
-    Les DEUX moitiés sont exigées. L'ouverture seule laisserait le clavier perdre sa place
-    à chaque réglage — un défaut qui ne se voit qu'en naviguant sans souris, donc jamais.
+    La POIGNÉE sur l'ancienne case, prise avant le clic, est ce qui distingue le DOM d'avant
+    de celui d'après : les trois assertions sont toutes vraies du DOM d'AVANT. Sans ce repère,
+    un rechargement en retard laisserait le test approuver sans rien mesurer.
     """
     page.set_extra_http_headers(ADMIN)
-    page.goto(decor["base"] + "/administration", wait_until="networkidle")
+    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
     item = page.locator(f'#col-body .col-item[data-id="{decor["collection"]}"]')
     item.locator("summary").click()
-    case = item.locator('input[data-export][data-principal="bob"]')
+    case = item.locator('input.qe-case[data-hors-rang="exporter"][data-principal="bob"]')
     case.wait_for(timeout=3000)
     assert not case.is_checked(), "prémisse fausse : Bob a déjà la case"
 
-    # La POIGNÉE sur l'ancien nœud, prise avant le clic. C'est la seule chose qui distingue
-    # le DOM d'avant de celui d'après : les trois assertions ci-dessous sont toutes vraies
-    # du DOM d'AVANT — le dépliant y est ouvert, la case cochée, le focus dessus. Sans ce
-    # repère, un rechargement en retard laisserait le locator résoudre l'ancien nœud et le
-    # test approuverait sans avoir rien mesuré. Mode d'échec VERT, et d'autant plus probable
-    # que la machine est lente : l'image e2e joue 184 tests en une vingtaine de minutes.
-    ancien = item.element_handle()
+    ancienne = case.element_handle()
     case.check()
-    page.wait_for_function("el => !el.isConnected", arg=ancien, timeout=10000)
+    page.wait_for_function("el => !el.isConnected", arg=ancienne, timeout=10000)
 
     assert item.evaluate("el => el.open"), (
-        "la collection s'est repliée après le réglage — le rechargement reconstruit les "
-        "<details> à neuf et perd leur état d'ouverture")
-    assert item.locator('input[data-export][data-principal="bob"]').is_checked(), (
+        "la collection s'est repliée après le réglage — le rechargement perd l'état d'ouverture")
+    assert item.locator('input.qe-case[data-hors-rang="exporter"][data-principal="bob"]').is_checked(), (
         "la case n'est pas revenue cochée : le serveur n'a pas enregistré le réglage, ou "
         "l'écran affiche autre chose que ce qu'il a répondu")
     actif = page.evaluate(
@@ -205,12 +201,12 @@ def test_a11y_la_case_et_le_choix_d_export(page, decor):
     from test_e2e_a11y import _audit, _fmt       # se saute seul si axe-core manque
     _deux_collections_exportables(decor)
     page.set_extra_http_headers(ADMIN)
-    page.goto(decor["base"] + "/administration", wait_until="networkidle")
+    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
     item = page.locator(f'#col-body .col-item[data-id="{decor["collection"]}"]')
     item.locator("summary").click()
-    item.locator('input[data-export][data-principal="bob"]').wait_for(timeout=3000)
+    item.locator('input.qe-case[data-hors-rang="exporter"][data-principal="bob"]').wait_for(timeout=3000)
     viol = _audit(page)
-    assert not viol, f"Accès et case d'export :\n{_fmt(viol)}"
+    assert not viol, f"Qui entre et case d'export :\n{_fmt(viol)}"
 
     page.set_extra_http_headers(BOB)
     page.goto(decor["base"] + f"/?album={decor['album']}", wait_until="networkidle")

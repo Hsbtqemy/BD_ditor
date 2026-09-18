@@ -11,8 +11,8 @@ Chaque test vise ce qu'aucun test d'API ne verrait : le serveur peut répondre j
 l'écran perdre le tri en changeant d'axe, dire « non vérifié » là où il n'y a rien à
 vérifier, ou laisser trente arrivants pousser la liste sous l'écran.
 
-Les deux gestes qui ÉCRIVENT ou qui sortent du bloc — la nature d'un compte et le lien vers
-le panneau des accès — passent, eux, par le vrai serveur ; et un test d'intégration joue la
+Les gestes qui ÉCRIVENT ou qui sortent du bloc — la nature d'un compte, et les liens vers
+« Qui entre » dans la Bibliothèque — passent, eux, par le vrai serveur ; et un test d'intégration joue la
 vraie route avec la doublure de l'annuaire, sans rien intercepter.
 """
 import json
@@ -36,7 +36,8 @@ SURFACES_AUDITEES = ("/administration",)
 SURFACES_HORS_PERIMETRE = {
     "/": "l'Atelier annote une planche ; aucun compte ni groupe ne s'y consulte",
     "/recherche": "la Recherche interroge le corpus, pas les comptes de l'instance",
-    "/corpus": "la Bibliothèque décrit les collections ; qui entre se lit à l'Administration",
+    "/corpus": "la Bibliothèque n'y est atteinte que par les liens du bloc ; « Qui entre » "
+               "s'y éprouve dans test_e2e_qui_entre",
     "/exploration": "l'Exploration mesure la langue du corpus, pas ceux qui l'annotent",
 }
 
@@ -211,11 +212,13 @@ def test_la_liste_s_ouvre_trie_a_z_et_une_fiche_se_nomme_dans_l_adresse(page, li
     # focus la retrouve — pour parcourir la suivante sans revenir.
     expect(courant).to_be_focused()
     # La fiche dit PAR QUOI on entre : à son nom, ou par un groupe — deux lignes pour la
-    # même collection, jamais un niveau fusionné.
+    # même collection, jamais un niveau fusionné. Et elle le dit en ACTES, lus dans
+    # `/api/droits` (AUTH-12, étape 3) : le dernier cran se dit « tous les actes ».
     lignes = page.locator("#cg-fiche .cg-section", has_text="Collections").locator("li")
     expect(lignes).to_have_count(2)
-    expect(lignes.nth(0)).to_contain_text("propriétaire · peut exporter — à son nom")
-    expect(lignes.nth(1)).to_contain_text("lecture · peut exporter — par le groupe annotateurs")
+    expect(lignes.nth(0)).to_contain_text("tous les actes, dont décider qui entre — à son nom")
+    expect(lignes.nth(1)).to_contain_text("lire, exporter — par le groupe annotateurs")
+    expect(page.locator("#cg-fiche")).not_to_contain_text("propriétaire · peut exporter")
 
     # « + Dans l'annuaire » crée un compte ou un groupe ; une collection se crée ailleurs.
     expect(page.locator("#cg-annuaire-lien")).to_be_visible()
@@ -438,17 +441,44 @@ def test_la_nature_se_declare_dans_la_fiche_et_le_serveur_l_enregistre(page, liv
     assert nature_en_base() == "collectif"
 
 
-def test_regler_qui_entre_deplie_le_panneau_des_acces_sur_la_collection(page, live_server):
+def test_regler_qui_entre_mene_a_la_fiche_de_la_collection(page, live_server):
+    """« Régler qui entre » ouvrait le panneau voisin, sur la même page ; depuis l'étape 3
+    d'AUTH-12, il mène à la collection dans la Bibliothèque, dépliée sur « Qui entre », le
+    focus sur son titre. Seul le lien a changé : la fiche d'ici reste en lecture seule."""
     cid = _creer_collection(live_server, "Collection Test")
     _ouvrir(page, live_server, decor(cid=cid, cid2=cid + 1000),
             f"/administration?axe=collections&collection={cid}")
     expect(page.locator("#cg-fiche-titre")).to_have_text("Collection Test")
-    expect(page.locator("#cg-fiche .cg-section", has_text="Qui entre").locator("li")
-           ).to_have_count(3)
-    page.locator("#cg-fiche [data-cg-regler]").click()
+    qui = page.locator("#cg-fiche .cg-section", has_text="Qui entre")
+    expect(qui.locator("li")).to_have_count(3)
+    expect(qui.locator("input, select")).to_have_count(0)
+    lien = page.locator("#cg-fiche a.cg-regler")
+    expect(lien).to_have_attribute("href", f"/corpus?collection={cid}")
+    lien.click()
+    page.wait_for_url(f"**/corpus?collection={cid}")
     item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
     expect(item).to_have_attribute("open", "")
-    expect(item.locator("summary")).to_be_focused()
+    expect(item.locator(".qe-titre")).to_be_focused()
+
+
+def test_ouvrir_une_collection_a_ce_groupe_le_preselectionne(page, live_server):
+    """« Ouvrir une collection à ce groupe… » attendait l'étape 3 : la collection choisie
+    s'ouvre dans la Bibliothèque, le groupe déjà choisi dans la ligne d'ajout. Le geste se
+    FAIT là-bas ; rien n'est accordé depuis cette fiche."""
+    cid = _creer_collection(live_server, "Collection Test")
+    _ouvrir(page, live_server, decor(cid=cid, cid2=cid + 1000),
+            "/administration?axe=groupes&groupe=annotateurs")
+    expect(page.locator("#cg-fiche-titre")).to_have_text("annotateurs")
+    envois = []
+    page.on("request", lambda r: envois.append(r.url) if r.method != "GET" else None)
+    page.locator("#cg-ouvrir-a").select_option(str(cid))
+    page.locator("#cg-fiche [data-cg-ouvrir]").click()
+    page.wait_for_url(f"**/corpus?collection={cid}&groupe=annotateurs")
+    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+    # `annotateurs` est dans la doublure de l'annuaire : il est CHOISI dans la liste, pas tapé.
+    expect(item.locator(".qe-choix")).to_have_value("groupe:annotateurs")
+    expect(item.locator(".qe-libre")).to_be_hidden()
+    assert envois == [], f"une écriture est partie sans geste : {envois}"
 
 
 # ── Sur la vraie route ─────────────────────────────────────────────────────────────────

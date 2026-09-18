@@ -72,6 +72,13 @@ NON_RESOLUS = {
         "identifiant, donc `getElementById` ne l'atteint pas. Vérifié à la main le "
         "2026-09-04 — `.sub-title` ne pose aucun `display`, l'attribut agit. Le jour où "
         "le balayage saura viser un sélecteur, cette entrée disparaît."),
+    ("corpus.js", "libre"): (
+        "La saisie libre de « Qui entre » (AUTH-12, étape 3), une par collection dépliée : "
+        "la cible est la CLASSE `.qe-libre`, cherchée dans sa section, pas un identifiant. "
+        "Elle pose `display: inline-flex`, d'où le garde `.qe-libre[hidden] { display: none; }` "
+        "dans la feuille — vérifié le 2026-09-17 dans les deux sens par deux tests e2e : "
+        "`test_ouvrir_une_collection_a_ce_groupe_le_preselectionne` l'exige CACHÉE, "
+        "`test_un_annuaire_en_panne_n_empeche_rien` VISIBLE."),
 }
 
 

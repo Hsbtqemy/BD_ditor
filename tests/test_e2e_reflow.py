@@ -485,38 +485,53 @@ def test_la_bande_1_de_production_ne_perd_pas_de_contenu(page, live_server):
 # est atteignable, celui-ci demande à quel PRIX. Le second ne remplace pas le premier :
 # un contenu clippé sans cadre du tout resterait invisible ici, puisque rien ne défile.
 #
-# Portée volontairement limitée à `/administration` : c'est la surface mesurée, et
-# généraliser demanderait de vérifier que les quatre autres ne s'appuient pas sur ce
-# défilement de page — l'Atelier en particulier, dont le canevas a déjà son exemption
-# écrite. Élargir est un geste d'UX-7, pas un effet de bord de ce constat.
+# Portée volontairement limitée à `/administration` — et, depuis l'étape 3 d'AUTH-12, à la
+# partie « Qui entre » de la Bibliothèque, où le formulaire mesuré a déménagé. Généraliser
+# demanderait de vérifier que les autres surfaces ne s'appuient pas sur ce défilement de
+# page — l'Atelier en particulier, dont le canevas a déjà son exemption écrite. Élargir est
+# un geste d'UX-7, pas un effet de bord de ce constat.
 @pytest.mark.parametrize("police", POLICES)
 @pytest.mark.parametrize("largeur", LARGEURS)
-def test_l_administration_ne_defile_pas_de_cote(page, decor, largeur, police):
+def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, largeur, police):
     """Le corps de la page ne défile jamais horizontalement (règle de CLAUDE.md).
 
-    On déplie une collection avant de mesurer : le formulaire d'accès qui débordait vit
-    dans le détail, et une page repliée ne montre pas ce qu'on cherche — c'est l'erreur
-    qu'`AUTH-7` a déjà payée deux lignes plus bas, où un bloc vide passait tous les
-    contrôles.
+    Sur `/administration`, puis sur la Bibliothèque avec une collection DÉPLIÉE : le
+    formulaire d'accès qui débordait de 89 px à 375 vit dans « Qui entre » depuis l'étape 3
+    d'AUTH-12, et une page repliée ne montre pas ce qu'on cherche. La collection porte TROIS
+    accès — un groupe, un compte, un groupe inconnu de l'annuaire — pour que le tableau (ou
+    les cartes, sous 48em) ait des lignes, des marques et des cases à mesurer.
 
     **La préférence de police est un paramètre depuis le 2026-09-09.** Le panneau de
     version affiche l'empreinte COMPLÈTE du commit — 40 caractères sans un espace —, et à
     320 px elle emportait le corps de la page. Ce test était vert sur le poste et rouge
-    dans l'image, pour la seule raison que les polices n'y ont pas la même chasse : un
-    vert qui voyage mal est exactement ce que QA-5 existe pour supprimer. `POLICES` rend
-    le défaut reproductible partout, sans dépendre de ce qui est installé.
+    dans l'image, pour la seule raison que les polices n'y ont pas la même chasse.
     """
+    c = httpx.Client(base_url=decor["base"], trust_env=False, timeout=30, headers=ECRITURE)
+    try:
+        cid = c.get("/api/collections").json()[0]["id"]
+        for genre, nom, niveau in (("groupe", "annotateurs", "lecture"),
+                                   ("utilisateur", "arrivant", "ecriture"),
+                                   ("groupe", "ancien-cours-de-bande-dessinee-2025", "proprietaire")):
+            r = c.put(f"/api/collections/{cid}/acces",
+                      json={"genre": genre, "principal": nom, "niveau": niveau})
+            assert r.status_code == 200, r.text
+    finally:
+        c.close()
+
     _preference_police(page, police)
     page.set_viewport_size({"width": largeur, "height": 900})
     page.goto(decor["base"] + "/administration", wait_until="networkidle")
     page.wait_for_timeout(400)
-    som = page.query_selector(".col-item summary")
-    assert som, "aucune collection à déplier : le contrôle ne mesurerait rien"
-    som.click()
-    page.wait_for_timeout(600)
-
     _exiger_pas_de_defilement(
         page, f"/administration à {largeur} px (police par défaut {police} px)")
+
+    page.goto(decor["base"] + f"/corpus?collection={cid}", wait_until="networkidle")
+    lignes = page.locator(f'#col-body .col-item[data-id="{cid}"] :is(.qe-table tbody tr, .qe-carte)')
+    lignes.first.wait_for(timeout=5000)
+    assert lignes.count() == 3, "« Qui entre » ne montre pas ses trois accès : rien à mesurer"
+    page.wait_for_timeout(600)
+    _exiger_pas_de_defilement(
+        page, f"/corpus, « Qui entre » déplié, à {largeur} px (police par défaut {police} px)")
 
 
 # ── COL-2 : le formulaire d'une collection a déménagé dans la Bibliothèque ─────────────

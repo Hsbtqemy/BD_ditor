@@ -1,13 +1,17 @@
 /* Administration (UX-10) — le lieu des gestes qui portent sur l'INSTANCE.
 
-   Quatre blocs, et aucun n'est une affaire de Bibliothèque : la version servie dit quel
-   commit tourne ici (INFRA-10), les collections décident qui voit quoi dans tout le
-   corpus, les comptes et groupes disent qui utilise l'instance et par quoi il entre
-   (AUTH-12, qui remplace la vue des comptes d'AUTH-7), les moteurs disent si l'instance
-   sait encore reconnaître quelque chose. Les trois derniers vivaient dans
+   Trois blocs, et aucun n'est une affaire de Bibliothèque : la version servie dit quel
+   commit tourne ici (INFRA-10), les comptes et groupes disent qui utilise l'instance et par
+   quoi il entre (AUTH-12, qui remplace la vue des comptes d'AUTH-7), les moteurs disent si
+   l'instance sait encore reconnaître quelque chose. Les moteurs et les accès vivaient dans
    `/corpus` par ACCRÉTION — c'était le seul écran administratif, et tout ce qui y
    ressemblait s'y est ajouté —, donc les atteindre depuis la Visionneuse demandait de
    quitter son travail.
+
+   LES ACCÈS SONT REPARTIS le 2026-09-17 (AUTH-12, décision 2 (b)) : qui entre dans UNE
+   collection se règle dans SA fiche, dans la Bibliothèque. Ici ne reste que la vue
+   TRANSVERSE — qui a accès à quoi, à travers toutes les collections — et « Régler qui
+   entre » y mène.
 
    ILS ONT DÉMÉNAGÉ, ils ne sont pas dupliqués. Décision de l'équipe le 2026-09-07 : deux
    portes vers la même pièce se paient toujours, l'une des deux vieillit, et c'est celle
@@ -21,382 +25,14 @@
    — une simple ADRESSE — s'est retrouvé derrière la garde du PARTAGE parce qu'il vivait
    dans ce panneau-là, donc lisible du seul propriétaire. Ici, chaque bloc pose SA question :
    la version servie et les comptes et groupes n'apparaissent que si leur route répond (403
-   aux non-administrateurs), les collections sont filtrées par la portée du serveur, et
-   les moteurs sont ouverts à tous — regarder si l'OCR fonctionne n'est pas un pouvoir.
+   aux non-administrateurs), et les moteurs sont ouverts à tous — regarder si l'OCR
+   fonctionne n'est pas un pouvoir.
    La page, elle, ne garde rien.
 
    Et la garde d'un bloc RÉSERVÉ se pose au même endroit que celle d'un bloc ouvert : sur
    la route. Un `if` côté client qui lirait les groupes ferait deux sources à tenir
    d'accord — et celle qui se tromperait serait la muette, puisqu'un bloc masqué à tort
    ne lève aucune erreur et ne casse aucun test. */
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Accès aux collections (AUTH-3) — qui entre, et à quel niveau
-
-   AUTH-2 avait fait le cloisonnement, pas son administration : `collection_acces` ne se
-   remplissait qu'en SQL à la main. Cet écran est ce qui rend le reste utilisable — sans
-   lui, tout le travail de routes reste du curl.
-
-   Trois niveaux, et le troisième est la nouveauté : lecture · écriture · PROPRIÉTAIRE.
-   Écrire, c'est annoter ; posséder, c'est décider qui d'autre entrera.
-
-   DROIT-2 (2026-09-11) — et une case à côté du niveau : « peut exporter ». Sortir le
-   contenu en fichier ne s'ordonne pas avec annoter ; un propriétaire exporte d'office,
-   et sa case le montre sans se laisser décocher.
-
-   COL-2 (2026-09-11) — CE QUE LA COLLECTION EST a déménagé dans la Bibliothèque : la
-   créer, la renommer, la supprimer, la décrire, désigner son référent, régler sa
-   diffusion, l'exporter. Tout cela s'était accumulé ici parce que c'était le seul écran
-   qui touchait une collection. La frontière, tenue en connaissance de cause : QUI ENTRE
-   relève de l'instance et reste ici ; ce que la collection EST relève du corpus.
-   Déménagé, pas dupliqué (UX-10) — et chaque écran dit où vit l'autre moitié.
-   ═══════════════════════════════════════════════════════════════════════════ */
-const COL_NIVEAUX = [["lecture", "Lecture"], ["ecriture", "Écriture"],
-                     ["proprietaire", "Propriétaire"]];
-
-/* COL-2 (2026-09-16) — un message s'affiche LÀ OÙ L'ON A AGI. Le panneau n'avait qu'une
-   ligne, `#col-msg`, sous toute la liste : la Bibliothèque avait la même, et la passe de
-   recette y a manqué deux refus rouges et lisibles, tombés loin du bouton. Chaque
-   collection dépliée porte donc SA ligne, sous la ligne d'ajout : `el` est toujours la
-   ligne du geste. */
-function colMsg(el, texte, erreur) {
-  // UN message à la fois pour tout le panneau, comme au temps de la ligne unique : sinon le
-  // refus d'une collection resterait affiché — et reposé à chaque rechargement — après un
-  // geste réussi dans une autre, sous un champ qu'on a vidé depuis. Passe de revue, 2026-09-16.
-  document.querySelectorAll("#col-body .col-msg").forEach((l) => {
-    if (l === el) return;
-    l.textContent = "";
-    l.classList.remove("erreur");
-  });
-  el.textContent = texte || "";
-  el.classList.toggle("erreur", !!erreur);
-}
-
-/* Une ligne de message hors de toute collection : ce qui reste quand la liste, ou les
-   accès d'une collection, ne se relisent pas. Le dernier message survit à l'erreur. */
-function colLigneSeule(msg) {
-  return msg ? `<p class="col-msg muted small${msg.erreur ? " erreur" : ""}">${esc(msg.texte)}</p>`
-             : "";
-}
-
-/* Ce qu'une collection dépliée affiche, relevé AVANT que `loadCollections` ne la détruise.
-   Ici le piège n'est pas une hypothèse : changer un niveau ou une case RECHARGE dans les
-   deux cas, refus compris (cf. `colDetail`). Sans ce relevé, le 409 du dernier
-   propriétaire s'effacerait dans l'aller-retour qui suit son affichage. */
-function colMsgReleve(d) {
-  const l = d.querySelector(".col-msg");
-  return l && l.textContent ? { texte: l.textContent, erreur: l.classList.contains("erreur") }
-                            : null;
-}
-
-/* Les refus du serveur sont RENDUS, jamais avalés. Les deux cas d'AUTH-3 (dernier
-   propriétaire, dernière collection) sont des 409 qui nomment un ÉTAT INTERDIT et non un
-   droit manquant : les remplacer par un « échec » générique ferait croire à un bug. */
-async function colTenter(el, fn) {
-  try { await fn(); colMsg(el, ""); return true; }
-  catch (e) { colMsg(el, e.message || "Échec", true); return false; }
-}
-
-function niveauOptions(courant) {
-  return COL_NIVEAUX.map(([v, l]) =>
-    `<option value="${v}"${v === courant ? " selected" : ""}>${l}</option>`).join("");
-}
-
-/* Une collection = un <details>. Repliée, elle dit son nom, son volume et MON niveau ;
-   dépliée, elle montre qui a accès — mais seulement si je peux l'administrer, la liste
-   des membres d'une étude étant une donnée sur des personnes. */
-function colItem(c, msg) {
-  const d = document.createElement("details");
-  d.className = "col-item";
-  d.dataset.id = String(c.id);
-  // « Propriétaire » ne s'affiche qu'à un vrai propriétaire : le dire à un administrateur
-  // lui ferait croire à un lien personnel avec une collection qui n'est pas la sienne.
-  const badge = c.mon_niveau
-    ? `<span class="col-niveau${c.mon_niveau === "proprietaire" ? " est-proprietaire" : ""}">`
-      + `${COL_NIVEAUX.find((n) => n[0] === c.mon_niveau)[1]}</span>`
-    : (c.administrable ? `<span class="col-niveau">Administrateur</span>` : "");
-  d.innerHTML = `
-    <summary>
-      <span class="col-nom">${esc(c.nom)}</span>
-      <span class="muted small">${c.nb_albums} album(s)</span>
-      ${badge}
-    </summary>
-    <div class="col-detail"></div>`;
-  // Reposé UNE fois : replier puis déplier la collection ne ressuscite pas un vieux refus.
-  d.addEventListener("toggle", () => { if (d.open) { colDetail(d, c, msg); msg = null; } });
-  return d;
-}
-
-/* AUTH-4 — le fait que la liste des accès taisait.
-
-   `_acces_de()` ne lit que `collection_acces`, où un administrateur d'instance ne figure
-   sur AUCUNE ligne : sa portée court-circuite la table en amont (`clause_album()` rend
-   « 1 » quand elle est totale). La liste affichait donc trois noms là où quatre personnes
-   lisent — sur un écran qui protège soigneusement cette liste au motif qu'elle parle de
-   personnes. Ce n'est pas un défaut d'autorisation, c'est un défaut de DÉCLARATION : le
-   pouvoir est inévitable dans un système auto-hébergé, son invisibilité ne l'est pas. */
-function colAdminNote() {
-  const g = (MOI.groupes_admin || []);
-  if (!g.length) return "";
-  // Formulée sans « ci-dessus » : les deux branches de `colDetail` l'affichent, et le
-  // participant non propriétaire n'a AUCUNE liste d'accès sous les yeux. Un renvoi à ce
-  // qui n'est pas là est une petite fausseté, mais c'est la même que celle qu'AUTH-4
-  // corrige — un écran qui parle d'autre chose que de ce qu'il montre.
-  return `<p class="col-note col-note-admin">Les administrateurs de l'instance
-    (${g.map(esc).join(", ")}) lisent et écrivent <strong>toute</strong> collection, sans
-    figurer dans aucune liste d'accès. Chacun de leurs actes est nommé au journal de
-    provenance.</p>`;
-}
-
-/* Où est l'autre moitié (COL-2). Dite dans les DEUX branches : la frontière coupe en deux
-   le trajet le plus courant — on crée et on décrit dans la Bibliothèque, on fait entrer
-   ici —, et un écran qui ne dit pas où vit le reste fait chercher au mauvais endroit. C'est
-   le coût écrit du déménagement, payé à l'écran plutôt que dans une documentation. */
-function colAilleurs() {
-  return `<p class="col-note">La description de cette collection, son régime de diffusion,
-    son référent et son export se lisent et se règlent dans la
-    <a href="/corpus">Bibliothèque</a>.</p>`;
-}
-
-async function colDetail(d, c, msg) {
-  const box = d.querySelector(".col-detail");
-  if (!c.administrable) {
-    // Le participant NON propriétaire ne voit pas la liste des accès — c'est une donnée
-    // sur des personnes —, mais il apprend qu'un administrateur d'instance lit ici sans y
-    // figurer (AUTH-4). Le référent, qu'il a besoin de LIRE, a suivi les descripteurs dans
-    // la Bibliothèque (COL-2) : c'est là qu'on cherche à qui écrire pour une collection.
-    box.innerHTML = `<p class="col-note">Vous participez à cette collection sans la
-      posséder : seul un propriétaire voit et modifie la liste des accès.</p>
-      ${colAdminNote()}${colAilleurs()}`;
-    return;
-  }
-  box.innerHTML = `<p class="col-note">Chargement…</p>`;
-  let acces = [];
-  try { acces = await apiGet(`/api/collections/${c.id}/acces`); }
-  catch (e) {
-    box.innerHTML = `<p class="col-note">${esc(e.message)}</p>${colLigneSeule(msg)}`;
-    return;
-  }
-  box.innerHTML = `
-    <ul class="acces-liste">${acces.map((a) => `
-      <li>
-        <span class="acces-principal">${esc(a.principal)}</span>
-        <span class="acces-genre">${a.genre === "groupe" ? "groupe" : "utilisateur"}</span>${
-          a.jamais_vu === true
-            ? `<span class="acces-jamais-vu">n'a pas encore ouvert l'application</span>`
-            : ""}
-        <select data-genre="${esc(a.genre)}" data-principal="${esc(a.principal)}"
-                aria-label="Niveau de ${esc(a.principal)}">${niveauOptions(a.niveau)}</select>
-        <label class="acces-export"><input type="checkbox" data-export="1"
-                 data-genre="${esc(a.genre)}" data-principal="${esc(a.principal)}"
-                 data-niveau="${esc(a.niveau)}" aria-label="${esc(a.principal)} peut exporter"
-                 ${a.exporter ? "checked" : ""}${a.niveau === "proprietaire" ? " disabled" : ""}>
-          peut exporter${a.niveau === "proprietaire"
-            ? ` <span class="muted small">(d'office, en propriétaire)</span>` : ""}</label>
-        <button class="ghost small" data-retirer="1" data-genre="${esc(a.genre)}"
-                data-principal="${esc(a.principal)}" type="button"
-                title="Retirer l'accès de ${esc(a.principal)}">✕</button>
-      </li>`).join("")}</ul>
-    <div class="contrib-add">
-      <input class="col-principal" placeholder="Login ou nom de groupe" autocomplete="off"
-             aria-label="Login ou nom de groupe à qui accorder l'accès">
-      <select class="col-genre" aria-label="Genre du principal">
-        <option value="" selected>Utilisateur ou groupe ?</option>
-        <option value="utilisateur">Utilisateur</option>
-        <option value="groupe">Groupe</option>
-      </select>
-      <select class="col-niveau-neuf" aria-label="Niveau accordé">${niveauOptions("lecture")}</select>
-      <label class="acces-export"><input type="checkbox" class="col-export-neuf">
-        peut exporter</label>
-      <button class="ghost small" data-accorder="1" type="button">+ Accorder</button>
-    </div>
-    <p class="col-msg muted small" role="status" aria-live="polite"></p>
-    <p class="col-note">Un accès se déclare par un NOM, pas par une personne vérifiée :
-      l'application n'a aucun annuaire, elle lit les groupes dans les en-têtes du proxy à
-      chaque requête. Un LOGIN qui n'a pas encore ouvert l'application est signalé
-      ci-dessus — l'observation seule&nbsp;: une faute de frappe et un arrivant qui
-      n'est pas encore venu produisent la même absence, et rien ici ne peut les
-      distinguer. Un nom de GROUPE, lui, ne peut pas l'être : l'application n'en
-      connaît aucun.</p>
-    <p class="col-note">« Peut exporter », c'est sortir le contenu de la collection en
-      fichier — un album, une concordance, une figure, un export de dépôt. Lire ou
-      annoter n'y suffit pas ; un propriétaire exporte d'office.</p>
-    ${colAdminNote()}
-    ${colAilleurs()}`;
-
-  const ligne = box.querySelector(".col-msg");
-  // Reposé tel quel dans la collection redessinée. Qu'un lecteur d'écran l'ait ANNONCÉ
-  // n'est pas établi : la ligne où il est né a été détruite un aller-retour plus tard, ce
-  // que la ligne unique d'avant ne faisait pas. À mesurer sous NVDA avant d'en rien conclure
-  // (décision du 2026-09-16 ; passe de QA « Les collections dans la Bibliothèque »).
-  if (msg) colMsg(ligne, msg.texte, msg.erreur);
-  // Et « 👥 Comptes et groupes » avec lui : sa fiche d'une collection dit qui entre, en
-  // lecture seule, et mentirait sur l'accès qu'on vient de changer ici jusqu'au rechargement
-  // de la page. Le lien « Régler qui entre » mène ICI ; le retour doit dire vrai.
-  const recharger = async () => { await loadCollections(); cgRafraichir(); };
-  box.querySelectorAll("[data-retirer]").forEach((b) => {
-    b.onclick = async () => {
-      const { genre, principal } = b.dataset;
-      if (await colTenter(ligne, () => apiSend("DELETE",
-          `/api/collections/${c.id}/acces/${genre}/${encodeURIComponent(principal)}`)))
-        recharger();
-    };
-  });
-  box.querySelectorAll("select[data-principal]").forEach((s) => {
-    s.onchange = async () => {
-      const { genre, principal } = s.dataset;
-      // On recharge dans les DEUX cas : en cas de refus, le <select> afficherait sinon
-      // un niveau que le serveur n'a pas accordé — l'écran mentirait sur l'état réel.
-      await colTenter(ligne, () => apiSend("PUT", `/api/collections/${c.id}/acces`,
-        { genre, principal, niveau: s.value }));
-      recharger();
-    };
-  });
-  box.querySelectorAll("input[data-export]").forEach((i) => {
-    i.onchange = async () => {
-      const { genre, principal, niveau } = i.dataset;
-      // Même règle que le niveau : on recharge dans les deux cas, pour que la case
-      // affichée soit celle que le serveur a enregistrée, pas celle qu'on a cliquée.
-      await colTenter(ligne, () => apiSend("PUT", `/api/collections/${c.id}/acces`,
-        { genre, principal, niveau, exporter: i.checked }));
-      recharger();
-    };
-  });
-  box.querySelector("[data-accorder]").onclick = async () => {
-    const principal = box.querySelector(".col-principal").value.trim();
-    if (!principal) { colMsg(ligne, "Indiquez un login ou un nom de groupe.", true); return; }
-    // AUCUN genre par défaut (COL-2, tranché le 2026-09-16). « Utilisateur » l'était, et la
-    // passe de recette a accordé deux groupes sur deux comme des logins. L'erreur ne se
-    // rattrape pas à l'écran : un groupe posé en utilisateur n'ouvre rien à personne, et la
-    // liste dit seulement « n'a pas encore ouvert l'application » — ce qu'elle dit aussi
-    // d'un arrivant pas encore venu, et c'est voulu (AUTH-6). Faute de pouvoir la signaler
-    // après coup, on l'empêche d'arriver par inertie : un choix de plus, pour un geste rare.
-    const genre = box.querySelector(".col-genre").value;
-    if (!genre) {
-      colMsg(ligne, `Dites si « ${principal} » est un utilisateur ou un groupe : un groupe `
-             + `accordé comme utilisateur n'ouvrirait rien à personne, et rien ici ne le `
-             + `signalerait.`, true);
-      return;
-    }
-    if (await colTenter(ligne, () => apiSend("PUT", `/api/collections/${c.id}/acces`, {
-        genre,
-        principal,
-        niveau: box.querySelector(".col-niveau-neuf").value,
-        exporter: box.querySelector(".col-export-neuf").checked })))
-      recharger();
-  };
-
-  // Le focus, rendu APRÈS que les accès sont arrivés — `colDetail` est asynchrone, donc
-  // le contrôle n'existe pas encore au moment où `loadCollections` rouvre le dépliant.
-  // Consommé une seule fois : deux collections rouvertes ne se disputent pas le focus.
-  //
-  // `activeElement === body` est la GARDE, et pas une précaution de style : entre la
-  // destruction du DOM et l'arrivée des accès il y a un aller-retour réseau complet,
-  // pendant lequel le focus retombe sur `<body>` et la personne peut cliquer ailleurs —
-  // y compris dans le champ d'une AUTRE collection. Sans ce test, on le lui arracherait
-  // en pleine frappe. Le focus ne se rend donc qu'à quelqu'un qui ne l'a pas repris.
-  //
-  // Le geste « retirer » n'aboutit jamais ici, et c'est normal : la ligne supprimée n'a
-  // plus de sélecteur à retrouver. Le jeton est consommé, aucun focus n'est posé.
-  if (A_REFOCUSER && A_REFOCUSER.id === String(c.id)
-      && document.activeElement === document.body) {
-    const cible = box.querySelector(A_REFOCUSER.sel);
-    A_REFOCUSER = null;
-    if (cible) cible.focus();
-  }
-}
-
-/* Les noms des groupes d'administration, lus UNE fois. Ils viennent de `/api/moi` et non
-   d'une constante recopiée ici : `BD_AUTH_ADMIN_GROUPS` est configurable, et deux listes
-   qui divergent afficheraient un groupe qui n'administre plus rien. */
-/* L'identité courante. Elle vit dans `common.identite()` depuis UX-10, parce que la
-   Bibliothèque en a besoin AUSSI — pour dire « verrouillé par vous » — et qu'une seconde
-   copie aurait fini par répondre autre chose. `theme.js` ne demande `/api/moi` qu'une
-   fois par page ; ce helper ne fait que mémoïser la lecture du résultat. */
-let MOI = { login: null, groupes_admin: [] };
-
-/* AUTH-3 (2026-09-13) — ce que le rechargement emportait avec lui.
-   Les quatre gestes du panneau (niveau, case d'export, retrait, accord) rechargent la
-   liste ENTIÈRE, à dessein : l'écran doit montrer ce que le serveur a enregistré, pas ce
-   qu'on a cliqué. Mais `loadCollections` reconstruit chaque `<details>` à neuf, donc
-   FERMÉ — la collection se repliait à chaque clic, et le contrôle qu'on venait d'actionner
-   disparaissait sous le focus. Relevé en recette, invisible à la suite : les tests
-   interrogent l'API après le clic, jamais le panneau.
-   Le patron vient d'ailleurs dans ce dépôt : `renderAlbums` réapplique `state.openId`.
-   Ici on garde en plus la CIBLE DU FOCUS, parce que l'élément actif est détruit par le
-   re-rendu et que le clavier perdrait sa place à chaque réglage. */
-let A_REFOCUSER = null;          // { id, sel } — consommé par `colDetail`
-
-/* Le sélecteur qui retrouvera, APRÈS re-rendu, le contrôle actuellement actif. Rend null
-   pour tout ce qu'on ne sait pas nommer : mieux vaut ne pas rendre le focus que le rendre
-   au mauvais endroit. */
-function _cibleFocus(el) {
-  if (!el || el === document.body) return null;
-  const d = el.dataset || {};
-  if (d.principal && d.genre) {
-    const q = `[data-genre="${CSS.escape(d.genre)}"][data-principal="${CSS.escape(d.principal)}"]`;
-    if (el.matches("input[data-export]")) return `input[data-export]${q}`;
-    if (el.matches("select[data-principal]")) return `select${q}`;
-    if (el.matches("[data-retirer]")) return `[data-retirer]${q}`;
-    return null;
-  }
-  for (const c of ["col-principal", "col-genre", "col-niveau-neuf", "col-export-neuf"])
-    if (el.classList.contains(c)) return `.${c}`;
-  if (el.matches("[data-accorder]")) return "[data-accorder]";
-  return null;
-}
-
-async function loadCollections() {
-  const body = $("#col-body");
-  // DÉSARMER d'abord, capter ensuite. Ce rendu-ci peut sortir par cinq chemins sans jamais
-  // consommer le jeton — échec des deux requêtes, portée devenue vide, collection rouverte
-  // qu'on n'administre plus, accès qui ne se chargent pas. Le jeton étant global au module,
-  // il survivrait jusqu'au prochain rendu qui lui correspond : le focus sauterait alors
-  // vers une case au milieu de la liste, des minutes plus tard, sans cause à l'écran.
-  A_REFOCUSER = null;
-  // Avant le rendu : la note qui déclare les administrateurs en dépend, et une note qui
-  // ne paraît pas laisse la liste mentir par omission comme avant le chantier.
-  MOI = await identite();
-  let cols = [];
-  try { cols = await apiGet("/api/collections"); }
-  catch (e) {
-    const garde = [...body.querySelectorAll(".col-item[open]")].map(colMsgReleve).find(Boolean);
-    body.innerHTML = `<p class="col-note">${esc(e.message)}</p>${colLigneSeule(garde)}`;
-    return;
-  }
-  // Ce qui était DÉPLIÉ, ce que chaque dépliant disait, et où le focus se tenait — relevés
-  // AVANT de détruire le DOM.
-  const ouvertes = new Map(
-    [...body.querySelectorAll(".col-item[open]")].map((d) => [d.dataset.id, colMsgReleve(d)]));
-  const actif = document.activeElement;
-  const sel = _cibleFocus(actif);
-  const item = sel ? actif.closest(".col-item") : null;
-  // `id` est TOUJOURS renseigné en pratique : la ligne d'ajout est écrite dans `box`, donc
-  // à l'intérieur du `<details>`, ce qu'une première rédaction affirmait à l'envers. Le cas
-  // `null` reste traité par prudence — un contrôle qui naîtrait hors des dépliants —, mais
-  // il n'est atteint par aucun geste d'aujourd'hui, et on ne lui écrit pas de branche.
-  A_REFOCUSER = sel ? { id: item ? item.dataset.id : null, sel } : null;
-
-  body.innerHTML = "";
-  if (!cols.length) {
-    // « l'on en devient propriétaire » ne vaut que pour qui n'écrit pas partout : un
-    // administrateur ou le mono-poste crée une collection SANS propriétaire (AUTH-12,
-    // option B). `MOI` ne porte pas la portée ; `/api/moi` la dit.
-    const moi = await Promise.resolve(window.BDMoi).catch(() => null);
-    const total = !!(moi && moi.acces && moi.acces.total);
-    body.innerHTML = `<p class="col-note">Aucune collection ouverte pour vous. On en crée
-      une dans la <a href="/corpus">Bibliothèque</a>${total ? "." : ", et l'on en devient propriétaire."}</p>`;
-    return;
-  }
-  cols.forEach((c) => {
-    const d = colItem(c, ouvertes.get(String(c.id)));
-    body.appendChild(d);
-    // `open` APRÈS insertion : l'écouteur `toggle` posé par `colItem` déclenche alors
-    // `colDetail`, qui redemande les accès — c'est bien ce qu'on veut, la liste doit être
-    // fraîche. Une collection disparue de la portée ne se rouvre pas : son id n'est plus là.
-    if (ouvertes.has(String(c.id))) d.open = true;
-  });
-}
 
 /* --- Version servie (INFRA-10) ---------------------------------------------------
    L'application ne connaît QU'UN BOUT de la comparaison : le commit qu'elle sert. L'autre
@@ -446,7 +82,7 @@ async function loadVersion() {
 
    IL NE MODIFIE RIEN, sauf la nature d'un compte (décision 1 (A) d'AUTH-12). Tout ce qui
    change un compte ou un groupe se fait dans l'annuaire ; tout ce qui change un accès se
-   fait, jusqu'à l'étape 3, dans « 👥 Accès aux collections », juste au-dessus.
+   fait dans la fiche de la collection, dans la Bibliothèque (étape 3).
 
    L'AXE, LA SÉLECTION ET LE TRI VIVENT DANS L'ADRESSE, pour qu'on puisse envoyer une fiche
    et que « Retour » défasse le dernier saut. Le filtre n'y est pas : c'est une saisie en
@@ -454,6 +90,7 @@ async function loadVersion() {
    ═══════════════════════════════════════════════════════════════════════════ */
 const CG = {
   donnees: null,
+  droits: null,          // la description des droits en actes, ou null si illisible
   index: null,           // { comptes: Map login, groupes: Map nom, collections: Map id }
   axe: "comptes", tri: "alpha", sel: null,
   filtre: "",
@@ -491,8 +128,15 @@ function cgLienAnnuaire(texte) {
     + `<span aria-hidden="true"> ↗</span><span class="sr-only"> (nouvel onglet)</span></a>`;
 }
 
-function cgAccesLu(niveau, exporter) {
-  return BDComptes.niveauLu(niveau) + (exporter ? " · peut exporter" : "");
+/* Ce qu'un accès permet, dit en ACTES (AUTH-12, étape 3), lus dans la description des
+   droits servie par `GET /api/droits` : l'écran n'écrit ni acte ni niveau. Sans description
+   lisible, le NIVEAU tel quel — la fiche ne se vide pas pour une description manquante. Les
+   valeurs hors rang sont celles de l'accès, rangées sous le `champ` que la description
+   nomme. */
+function cgAccesLu(acces) {
+  if (!CG.droits) return String(acces.niveau) + (acces.exporter ? " · exporter" : "");
+  const valeurs = Object.fromEntries(CG.droits.hors_rang.map((h) => [h.champ, !!acces[h.champ]]));
+  return BDDroits.actesLus(CG.droits, acces.niveau, valeurs);
 }
 
 /* Ce qu'on dit quand l'annuaire n'a rien pu apprendre sur un point précis. Deux phrases et
@@ -508,6 +152,7 @@ function cgInconnu(quoi) {
 async function cgCharger(opts = {}) {
   const bloc = $("#cg-bloc");
   let d;
+  const droits = apiGet("/api/droits").catch(() => null);
   try { d = await apiGet("/api/comptes-et-groupes"); }
   catch (e) {
     // Un 403 veut dire « pas pour vous » : la garde est celle du serveur, et le bloc se tait.
@@ -522,6 +167,8 @@ async function cgCharger(opts = {}) {
   }
   bloc.hidden = false;
   $("#cg-annuaire").classList.remove("erreur");
+  const description = await droits;
+  CG.droits = BDDroits.estValide(description) ? description : null;
   CG.donnees = d;
   CG.index = {
     comptes: new Map(d.comptes.map((c) => [c.login, c])),
@@ -535,11 +182,6 @@ async function cgCharger(opts = {}) {
     const el = document.querySelector(opts.focus);
     if (el) el.focus();
   }
-}
-
-/* Rechargé quand un accès change dans le panneau voisin, et seulement si le bloc est là. */
-function cgRafraichir() {
-  if (CG.donnees) cgCharger();
 }
 
 function cgLireAdresse() {
@@ -753,7 +395,7 @@ function cgFicheCompte(c) {
   }
 
   const lignes = c.collections.map((x) => `<li>${cgLien("collection", x.id, x.nom)}
-    <span class="muted small">${esc(cgAccesLu(x.niveau, x.exporter))} — ${x.par === "groupe"
+    <span class="muted small">${esc(cgAccesLu(x))} — ${x.par === "groupe"
       ? `par le groupe ${cgLien("groupe", x.groupe, x.groupe)}` : "à son nom"}</span></li>`);
   let collections = "";
   if (c.administrateur === true) {
@@ -786,7 +428,7 @@ function cgFicheCompte(c) {
     depart = `<details class="cg-depart"><summary>Départ ${cgPuce(c.verdict, rien ? "ok" : "alerte")}</summary>
       <ol>
         <li>Retirer ses accès à son nom${n ? ` (${n})` : " — il n'en a aucun"}, dans
-          « 👥 Accès aux collections ».</li>
+          « Qui entre » de chaque collection, dans la Bibliothèque.</li>
         ${suite}
       </ol></details>`;
   }
@@ -815,17 +457,24 @@ function cgFicheGroupe(g) {
   if (g.role_annuaire === true) puces.push(cgPuce("rôle de l'annuaire"));
 
   const ouvertes = g.collections.map((x) => `<li>${cgLien("collection", x.id, x.nom)}
-    <span class="muted small">${esc(cgAccesLu(x.niveau, x.exporter))}</span></li>`);
+    <span class="muted small">${esc(cgAccesLu(x))}</span></li>`);
   let collections = g.administrateur === true
     ? `<p class="col-note col-note-admin">Ses membres lisent et écrivent toute collection,
         sans figurer dans les accès.</p>` : "";
   collections += ouvertes.length ? `<ul class="cg-lignes">${ouvertes.join("")}</ul>`
                                  : `<p class="muted small">Aucune.</p>`;
-  // Décision 6 de la construction (2026-09-17) : ce geste vient avec l'étape 3. L'écran le
-  // DIT, pour qu'on ne le cherche pas dans une fiche qui ne l'a pas encore.
-  collections += `<p class="col-note">Ouvrir une collection à ce groupe se fera depuis la
-    fiche de la collection. D'ici là, cela se règle dans « 👥 Accès aux collections », sur
-    cette page.</p>`;
+  // Arrivé avec l'étape 3 (AUTH-12) : la collection choisie s'ouvre dans la Bibliothèque,
+  // sur « Qui entre », ce groupe déjà choisi dans la ligne d'ajout. Le geste se FAIT là-bas,
+  // par qui possède la collection — cette fiche n'accorde rien.
+  const choix = CG.donnees.collections;
+  if (choix.length) {
+    collections += `<div class="cg-ouvrir">
+      <label for="cg-ouvrir-a">Ouvrir une collection à ce groupe</label>
+      <select id="cg-ouvrir-a">${BDComptes.trier(choix, "collections", "alpha").map((x) =>
+        `<option value="${x.id}">${esc(x.nom)}</option>`).join("")}</select>
+      <button type="button" class="ghost small" data-cg-ouvrir="${esc(g.nom)}">Régler qui
+        entre…</button></div>`;
+  }
 
   let membres, titreMembres = "Membres";
   if (g.dans_annuaire === false) {
@@ -882,7 +531,7 @@ function cgFicheCollection(c) {
     return `<li><span><span aria-hidden="true">${groupe ? "👥" : "👤"}</span>
       <span class="sr-only">${groupe ? "groupe" : "compte"}</span>
       ${cgLien(groupe ? "groupe" : "compte", nom, nom)} ${absent}</span>
-      <span class="muted small">${esc(cgAccesLu(a.niveau, a.exporter))}</span></li>`;
+      <span class="muted small">${esc(cgAccesLu(a))}</span></li>`;
   });
 
   return `<article class="cg-carte" aria-labelledby="cg-fiche-titre">
@@ -898,12 +547,9 @@ function cgFicheCollection(c) {
       ${acces.length ? `<ul class="cg-lignes">${acces.join("")}</ul>`
         : `<p class="muted small">Personne : seuls les administrateurs de l'instance la
             voient.</p>`}
-      <div><button type="button" class="ghost small" data-cg-regler="${c.id}">Régler qui
-        entre</button></div>
-      <p class="col-msg muted small" id="cg-regler-msg" role="status" aria-live="polite"></p>
-      <p class="col-note">Les accès se lisent ici ; ils se règlent dans « 👥 Accès aux
-        collections », sur cette page, jusqu'à ce qu'ils rejoignent la fiche de la collection
-        dans la Bibliothèque.</p>
+      <p><a class="cg-regler" href="/corpus?collection=${c.id}">Régler qui entre</a></p>
+      <p class="col-note">Les accès se lisent ici ; ils se règlent dans la fiche de la
+        collection, dans la Bibliothèque.</p>
     </section>
   </article>`;
 }
@@ -967,22 +613,12 @@ async function cgPoserNature(select) {
   await cgCharger({ focus: "#cg-nature" });
 }
 
-/* « Régler qui entre » : le panneau voisin, déplié sur la collection. Le dépliant déclenche
-   lui-même le chargement de ses accès (`colItem`). */
-function cgReglerAcces(id) {
-  const d = document.querySelector(`#col-body .col-item[data-id="${CSS.escape(String(id))}"]`);
-  if (!d) {
-    const m = $("#cg-regler-msg");
-    if (m) {
-      m.textContent = "Cette collection n'est pas dans « 👥 Accès aux collections » : la liste "
-        + "ne s'est peut-être pas chargée.";
-      m.classList.add("erreur");
-    }
-    return;
-  }
-  d.open = true;
-  d.scrollIntoView({ block: "start" });
-  d.querySelector("summary").focus();
+/* « Ouvrir une collection à ce groupe… » : la Bibliothèque, adressée sur la collection
+   choisie et ce groupe (`?collection=…&groupe=…`). */
+function cgOuvrirA(groupe) {
+  const id = $("#cg-ouvrir-a").value;
+  location.href = `/corpus?collection=${encodeURIComponent(id)}`
+    + `&groupe=${encodeURIComponent(groupe)}`;
 }
 
 function cgInstaller() {
@@ -1006,7 +642,7 @@ function cgInstaller() {
       (courant || $("#cg-filtre")).focus();
       return;
     }
-    if (b.dataset.cgRegler) { cgReglerAcces(b.dataset.cgRegler); return; }
+    if (b.dataset.cgOuvrir !== undefined) { cgOuvrirA(b.dataset.cgOuvrir); return; }
     if (b.dataset.type && b.dataset.id !== undefined) {
       cgAller(b.dataset.type, b.dataset.id, b.classList.contains("cg-objet"));
     }
@@ -1127,7 +763,9 @@ async function santeEprouver() {
 function setup() {
   // Pas de modale à ouvrir : les blocs SONT la page. On charge donc d'emblée — quatre
   // requêtes, dont deux (`/api/version` et `/api/comptes-et-groupes`) peuvent légitimement
-  // être refusées, chacune masquant son propre bloc et rien d'autre.
+  // être refusées, chacune masquant son propre bloc et rien d'autre ; la quatrième,
+  // `/api/droits`, accompagne les comptes (AUTH-12, étape 3). La liste des collections
+  // n'est plus demandée ici : les accès sont partis dans la Bibliothèque.
   //
   // Le compte est tenu à jour ICI parce que ce commentaire a déjà menti : il disait
   // « deux requêtes » depuis le premier jour, à trois lignes de la ligne qui le
@@ -1135,14 +773,15 @@ function setup() {
   // vérifiable, et il vieillit dans le sens rassurant.
   //
   // Les comptes se chargent ICI (`cgCharger()` depuis AUTH-12, `loadComptes()` avant
-  // lui), et non depuis `loadCollections()` où la vue des comptes a vécu jusqu'au 2026-09-07. Elle y était nichée APRÈS le `return` du cas « aucune
+  // lui), et non depuis le chargement des collections où la vue des comptes a vécu
+  // jusqu'au 2026-09-07. Elle y était nichée APRÈS le `return` du cas « aucune
   // collection », si bien qu'une portée sans collection escamotait la vue des comptes —
   // un bloc masqué par une condition qui ne le concerne pas, c'est-à-dire très exactement
-  // le motif d'AUTH-4 que cette page existe pour fermer. Mesuré : sans collection,
-  // `/api/comptes` n'était JAMAIS demandé par le navigateur ; avec, la table se rendait.
+  // le motif d'AUTH-4 que cette page existe pour fermer. Mesuré alors : sans collection,
+  // la route des comptes n'était JAMAIS demandée par le navigateur.
   //
   // Le déménagement n'a pas créé le défaut, il l'a rendu ATTEIGNABLE : dans la modale de
-  // la Bibliothèque, `loadCollections()` était le geste d'ouverture, donc la nidification
+  // la Bibliothèque, le chargement des collections était le geste d'ouverture, donc la nidification
   // ne se voyait pas et ne coûtait rien. C'est l'argument inverse de celui qu'on oppose
   // d'habitude aux déménagements.
   //
@@ -1151,7 +790,6 @@ function setup() {
   // `setup()` si les comptes se chargeaient d'emblée y trouvait « oui », à trois lignes de
   // la ligne qui disait le contraire.
   loadVersion();
-  loadCollections();
   // L'adresse d'abord : le premier rendu ouvre directement l'axe et la fiche qu'elle nomme.
   cgLireAdresse();
   cgInstaller();

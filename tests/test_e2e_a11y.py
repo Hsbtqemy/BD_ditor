@@ -679,67 +679,75 @@ def test_a11y_proxy_sans_identite(page, seeded):
 
 
 # --------------------------------------------------------------------------- #
-# Collections (AUTH-3) — l'écran qui remplace `tools/gerer_collections.py`
+# Collections (AUTH-3) — l'écran qui remplace `tools/gerer_collections.py`, et « Qui entre »
+# qui a rejoint la Bibliothèque avec l'étape 3 d'AUTH-12
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("theme", ["dark", "light"])
-def test_a11y_administration_collections(page, seeded, theme):
-    """Accès aux collections : déplier, accorder un accès — audité à chaque étape.
+def test_a11y_qui_entre(page, seeded, theme):
+    """« Qui entre » : déplier, refuser, faire entrer, cocher un cran — audité à chaque étape.
 
-    C'est le seul écran du dépôt où l'on décide QUI entre. Une régression d'accessibilité
-    y coûterait plus cher qu'ailleurs : on n'administre pas des droits à l'aveugle.
+    C'est l'écran où l'on décide QUI entre. Une régression d'accessibilité y coûterait plus
+    cher qu'ailleurs : on n'administre pas des droits à l'aveugle. Il vivait dans
+    l'Administration (« 👥 Accès aux collections ») jusqu'à l'étape 3 d'AUTH-12 ; il vit en
+    tête de la collection dépliée, dans la Bibliothèque, et se règle en ACTES.
 
-    COL-2 — la collection se CRÉE désormais dans la Bibliothèque
-    (`test_a11y_bibliotheque_collections`) ; ce test la pose par l'API et ne garde que ce
-    que cet écran fait encore : les accès.
+    Chaque état est attendu avant d'être audité : le tableau (et non « Chargement… »), le
+    refus rouge, puis la marque ambre « inconnu de l'annuaire » — du petit texte coloré, la
+    catégorie qui échoue le 4.5:1. `bd-lettrage` n'est pas dans la doublure de l'annuaire
+    que charge `live_server` : c'est ce qui allume la marque.
     """
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
         r = c.post("/api/collections", json={"nom": "Corpus colonial"})
         assert r.status_code == 201, r.text
+        cid = r.json()["id"]
+        r = c.put(f"/api/collections/{cid}/acces", json={
+            "genre": "groupe", "principal": "annotateurs", "niveau": "ecriture"})
+        assert r.status_code == 200, r.text
     finally:
         c.close()
 
     _theme(page, theme)
-    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
-    page.wait_for_timeout(400)
-    page.wait_for_selector("#col-body .col-item", timeout=3000)
+    # Une fenêtre HAUTE : axe range en « incomplet » le contraste d'un texte qu'un conteneur
+    # défilant repousse (A11Y-3), et la collection dépliée est longue.
+    page.set_viewport_size({"width": 1280, "height": 2400})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+    item.locator("summary").click()
+    item.locator(".qe-table th[scope=row]", has_text="annotateurs").wait_for(timeout=5000)
+    item.locator(".qe-choix optgroup").wait_for(state="attached", timeout=5000)
     viol = _audit(page)
-    assert not viol, f"Accès aux collections [{theme}] :\n{_fmt(viol)}"
-    # Déménagé, pas dupliqué (UX-10) : aucun geste de création ne doit subsister ici.
-    assert page.locator("#col-nom").count() == 0, "la création vit dans la Bibliothèque"
+    assert not viol, f"Qui entre [{theme}] :\n{_fmt(viol)}"
 
-    # Déplier la collection → la liste des accès et le formulaire d'accord apparaissent.
-    page.locator("#col-body .col-item", has_text="Corpus colonial").locator(
-        "summary").click()
-    page.wait_for_selector("#col-body .col-principal", timeout=3000)
-    # L'autre moitié est nommée À L'ÉCRAN : décrire et exporter vivent dans la Bibliothèque,
-    # et un panneau qui ne le dirait pas ferait chercher au mauvais endroit (COL-2).
-    assert page.locator('#col-body a[href="/corpus"]').count() >= 1
+    # Un refus AFFICHÉ, dans la collection dépliée : l'encre rouge en petit texte.
+    item.locator(".qe-faire-entrer").click()
+    item.locator(".qe-msg.erreur").wait_for(timeout=3000)
     viol = _audit(page)
-    assert not viol, f"Accès aux collections/accès [{theme}] :\n{_fmt(viol)}"
+    assert not viol, f"Qui entre/refus affiché [{theme}] :\n{_fmt(viol)}"
 
-    # Un refus AFFICHÉ, dans la collection dépliée : l'encre rouge en petit texte, jamais
-    # photographiée allumée par un audit avant la passe de revue de COL-2.
-    page.locator("[data-accorder]").first.click()
-    page.locator("#col-body .col-msg.erreur").wait_for(timeout=3000)
+    item.locator(".qe-choix").select_option("autre")
+    item.locator(".qe-nom").fill("bd-lettrage")
+    item.locator(".qe-genre").select_option("groupe")
+    item.locator(".qe-faire-entrer").click()
+    item.locator(".qe-marque", has_text="inconnu de l'annuaire").wait_for(timeout=5000)
+    item.locator(".qe-msg.alerte").wait_for(timeout=5000)
     viol = _audit(page)
-    assert not viol, f"Accès aux collections/refus affiché [{theme}] :\n{_fmt(viol)}"
+    assert not viol, f"Qui entre/nom inconnu de l'annuaire [{theme}] :\n{_fmt(viol)}"
 
-    page.locator(".col-principal").first.fill("bd-lettrage")
-    page.locator(".col-genre").first.select_option("groupe")
-    page.locator(".col-niveau-neuf").first.select_option("ecriture")
-    page.locator("[data-accorder]").first.click()
-    page.wait_for_timeout(500)
-
+    # Le cran d'écriture, coché d'un geste : les actes liés ne se cochent pas séparément.
+    with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith("/acces")):
+        item.locator('.qe-case[data-cran="ecriture"][data-principal="bd-lettrage"]').check()
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
-        cols = c.get("/api/collections").json()
-        cid = next(x["id"] for x in cols if x["nom"] == "Corpus colonial")
         acces = c.get(f"/api/collections/{cid}/acces").json()
     finally:
         c.close()
     assert ("bd-lettrage", "groupe", "ecriture") in {
         (a["principal"], a["genre"], a["niveau"]) for a in acces}
+
+    # Déménagé, pas dupliqué (UX-10) : l'Administration n'a plus de panneau d'accès.
+    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
+    assert page.locator("#col-body").count() == 0, "le panneau des accès subsiste en Administration"
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
@@ -763,10 +771,11 @@ def test_a11y_bibliotheque_collections(page, seeded, theme):
     # La collection créée s'ouvre sur son formulaire : c'est le geste suivant de qui crée.
     item = page.locator("#col-body .col-item", has_text="Corpus colonial")
     item.locator('[data-champ="statut_diffusion"]').wait_for(timeout=3000)
-    # Le trajet que la frontière coupe en deux : le message dit où faire entrer quelqu'un.
-    # Sous le champ de création, et non sous la liste (COL-2, 2026-09-16).
-    assert page.locator('#col-creer-msg a[href="/administration"]').count() == 1, (
+    # Le message dit où faire entrer quelqu'un : « Qui entre », dans la collection qui vient
+    # de s'ouvrir (AUTH-12, étape 3). Sous le champ de création, et non sous la liste (COL-2).
+    assert "Qui entre" in page.locator("#col-creer-msg").inner_text(), (
         page.locator("#col-creer-msg").inner_text())
+    item.locator(".qe-titre").wait_for(timeout=3000)
     viol = _audit(page)
     assert not viol, f"Bibliothèque/formulaire [{theme}] :\n{_fmt(viol)}"
 
@@ -979,7 +988,7 @@ def test_a11y_comptes_et_groupes(page, seeded, theme):
 
     page.goto(seeded["base"] + f"/administration?axe=collections&collection={collection}",
               wait_until="networkidle")
-    page.wait_for_selector("#cg-fiche [data-cg-regler]", timeout=5000)
+    page.wait_for_selector("#cg-fiche a.cg-regler", timeout=5000)
     viol = _audit(page)
     assert not viol, f"Comptes et groupes, fiche d'une collection [{theme}] :\n{_fmt(viol)}"
 
@@ -1011,18 +1020,27 @@ def test_a11y_portee_vide_nomme_un_destinataire(page, seeded, theme):
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)
-def test_le_panneau_des_acces_declare_les_administrateurs(page, seeded):
+def test_qui_entre_declare_les_administrateurs(page, seeded):
     """`_acces_de()` ne lit que `collection_acces`, où un administrateur ne figure sur
     AUCUNE ligne — sa portée court-circuite la table en amont. La liste affichait donc
     trois noms là où quatre personnes lisent, sur un écran qui protège soigneusement cette
-    liste au motif qu'elle parle de personnes. Défaut de DÉCLARATION, pas d'autorisation."""
+    liste au motif qu'elle parle de personnes. Défaut de DÉCLARATION, pas d'autorisation.
+
+    La note a suivi les accès dans la Bibliothèque (AUTH-12, étape 3), sous « Qui entre ».
+    Ce test, lui, est passé au travers du déménagement : il visait `/administration`, où
+    plus aucune collection ne s'affiche. C'est la passe e2e ENTIÈRE qui l'a trouvé — ni la
+    passe ciblée ni le harnais de mutation ne le jouaient, et la relecture des tests
+    retargetés ne l'a pas vu non plus, faute de le chercher là où il n'était pas attendu.
+    """
     page.set_extra_http_headers({"Remote-User": "alice", "Remote-Groups": "bd-admins"})
-    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(400)
     page.wait_for_selector("#col-body .col-item", timeout=3000)
     page.locator("#col-body .col-item").first.locator("summary").click()
     note = page.locator(".col-note-admin")
-    note.wait_for(timeout=3000)
+    # Plus tard qu'avant : la note vit sous « Qui entre », qui attend la description des
+    # droits, les accès, puis l'annuaire.
+    note.wait_for(timeout=5000)
     txt = note.inner_text()
     assert "bd-admins" in txt and "toute" in txt
 
@@ -1065,9 +1083,10 @@ def test_le_participant_non_proprietaire_voit_le_referent(page, seeded, niveau):
     engage la collection et reste au propriétaire ; lire est le geste de quelqu'un qui a
     une question.
 
-    COL-2 — les deux vivent désormais sur deux écrans : le référent dans la Bibliothèque,
-    avec la description ; la déclaration dans l'Administration, avec les accès. Et le
-    formulaire reste invisible en ÉCRITURE comme en lecture : annoter n'est pas décrire."""
+    COL-2 puis AUTH-12 (étape 3) — les deux vivent dans la Bibliothèque, dans la collection
+    dépliée : le référent avec la description, la déclaration avec « Qui entre », que le
+    participant ne voit pas. Et le formulaire reste invisible en ÉCRITURE comme en lecture :
+    annoter n'est pas décrire."""
     admin = {"Remote-User": "alice", "Remote-Groups": "bd-admins",
              "X-BD-Requete": "1"}
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=admin)
@@ -1094,18 +1113,11 @@ def test_le_participant_non_proprietaire_voit_le_referent(page, seeded, niveau):
     assert page.locator("#col-body [data-champ]").count() == 0, "il ne doit pas pouvoir DÉSIGNER"
     assert page.locator("#col-body [data-enregistrer]").count() == 0
 
-    # Dans l'Administration, il apprend qu'un administrateur lit sans y figurer — sans voir
-    # la liste des accès, qui est une donnée sur des personnes.
-    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
-    page.wait_for_timeout(400)
-    page.wait_for_selector("#col-body .col-item", timeout=3000)
-    page.locator("#col-body .col-item").first.locator("summary").click()
+    # Il apprend, au même endroit, qu'un administrateur lit sans figurer dans les accès — sans
+    # voir « Qui entre », dont la liste est une donnée sur des personnes.
     page.locator(".col-note-admin").wait_for(timeout=3000)
-    # `#col-body` : `.acces-liste` est aussi la classe d'un `<ul>` STATIQUE de la
-    # Bibliothèque (la liste d'appartenance). Non porté, ce sélecteur compterait ce qui
-    # n'est pas là — une assertion qui échoue pour la mauvaise raison en vaut une qui
-    # passe pour la mauvaise raison.
-    assert page.locator("#col-body .acces-liste").count() == 0
+    assert page.locator("#col-body .qe").count() == 0, "il ne doit pas voir qui entre"
+    assert page.locator("#col-body .qe-case").count() == 0
     assert "bd-admins" in page.locator(".col-note-admin").inner_text()
 
 
@@ -1363,7 +1375,8 @@ def test_segmenter_depuis_la_visionneuse_ne_fait_pas_regresser_l_ecran(page, see
 # --------------------------------------------------------------------------- #
 # AUTH-6 — le panneau des ACCÈS, et il n'était jamais audité AVEC du contenu
 #
-# `test_a11y_chargement` visite bien `/administration`, mais la liste des accès vit dans un
+# (Il vit dans la Bibliothèque, sous « Qui entre », depuis l'étape 3 d'AUTH-12.)
+# `test_a11y_chargement` visite bien la page, mais la liste des accès vit dans un
 # `<details>` que rien n'ouvre : elle ne se charge qu'au dépliage. Aucun des éléments de ce
 # panneau — ni le marqueur « n'a pas encore ouvert l'application » (AUTH-6), ni les
 # libellés de genre — n'était donc passé devant axe. C'est le même piège que le décor des
@@ -1376,13 +1389,14 @@ def test_segmenter_depuis_la_visionneuse_ne_fait_pas_regresser_l_ecran(page, see
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("theme", ["dark", "light"])
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
-def test_a11y_administration_acces(page, live_server, theme):
-    """Le panneau des accès déplié, dans les deux thèmes.
+def test_a11y_qui_entre_signaux_et_cartes(page, live_server, theme):
+    """« Qui entre » déplié, avec ses deux marques, en tableau puis en cartes, dans les deux thèmes.
 
-    Le contraste est l'enjeu, exactement comme pour les moteurs : le marqueur d'AUTH-6 est
-    du PETIT texte en `--text-muted` italique, et il porte une observation qu'on doit
-    pouvoir lire. Les deux thèmes parce que `--text-muted` n'a pas la même valeur dans
-    l'un et dans l'autre.
+    Le contraste est l'enjeu : le marqueur d'AUTH-6 (« n'a pas encore ouvert l'application »)
+    est du PETIT texte en `--text-muted` italique, et « inconnu de l'annuaire » du petit texte
+    ambre. `arrivant` est dans la doublure de l'annuaire et n'est jamais venu ; `bd-etudiants`
+    n'y est pas. Les cartes, sous 48em, ont leur propre mise en page : un audit du seul
+    tableau ne les verrait jamais.
     """
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30,
                      headers={"Remote-User": "decor", "Remote-Groups": "bd-admins",
@@ -1390,10 +1404,8 @@ def test_a11y_administration_acces(page, live_server, theme):
                                  if k not in ("Remote-User", "Remote-Groups")}})
     try:
         cid = c.post("/api/collections", json={"nom": "Corpus a11y"}).json()["id"]
-        # Un login JAMAIS VU et un GROUPE : les deux formes que le marqueur distingue —
-        # signalé pour l'un, silencieux pour l'autre, l'application n'ayant pas d'annuaire.
         c.put(f"/api/collections/{cid}/acces",
-              json={"genre": "utilisateur", "principal": "arrivante", "niveau": "lecture"})
+              json={"genre": "utilisateur", "principal": "arrivant", "niveau": "lecture"})
         c.put(f"/api/collections/{cid}/acces",
               json={"genre": "groupe", "principal": "bd-etudiants", "niveau": "ecriture"})
     finally:
@@ -1401,13 +1413,17 @@ def test_a11y_administration_acces(page, live_server, theme):
 
     _theme(page, theme)
     page.set_extra_http_headers({"Remote-User": "decor", "Remote-Groups": "bd-admins"})
-    page.goto(live_server + "/administration", wait_until="networkidle")
-    page.wait_for_selector(".col-item summary", timeout=5000)
-    page.click(".col-item summary")
-    # On attend le MARQUEUR et non le bloc : c'est lui qu'on vient auditer, donc c'est son
-    # apparition qui prouve que la mesure aura un objet. Attendre le conteneur laisserait
-    # passer un panneau vide, et l'audit approuverait en n'ayant rien vu.
+    page.set_viewport_size({"width": 1280, "height": 2400})
+    page.goto(live_server + f"/corpus?collection={cid}", wait_until="networkidle")
+    # On attend les MARQUES et non le bloc : c'est elles qu'on vient auditer.
     page.wait_for_selector(".acces-jamais-vu", timeout=5000)
-
+    page.wait_for_selector(".qe-marque", timeout=5000)
     viol = _audit(page)
-    assert not viol, f"Administration/accès [{theme}] :\n{_fmt(viol)}"
+    assert not viol, f"Qui entre, tableau [{theme}] :\n{_fmt(viol)}"
+
+    page.set_viewport_size({"width": 375, "height": 2400})
+    page.wait_for_selector(".qe-carte .acces-jamais-vu", timeout=5000)
+    viol = _audit(page)
+    assert not viol, f"Qui entre, cartes [{theme}] :\n{_fmt(viol)}"
+
+

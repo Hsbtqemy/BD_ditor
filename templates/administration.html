@@ -24,8 +24,9 @@
   <header id="header">
     <h1>Administration</h1>
     <p class="muted small">Ce qui porte sur l'<b>instance</b> plutôt que sur un album :
-      quelle version tourne ici, qui voit quoi, quels comptes existent, et si les moteurs
-      répondent encore.</p>
+      quelle version tourne ici, quels comptes et quels groupes existent et à quoi ils
+      ont accès, et si les moteurs répondent encore. Qui entre dans une collection se règle
+      dans sa fiche, dans la <a href="/corpus">Bibliothèque</a>.</p>
   </header>
 
   <main id="admin-body">
@@ -44,26 +45,6 @@
     <section class="admin-bloc" id="version-bloc" hidden aria-labelledby="version-titre">
       <h2 id="version-titre">🏷️ Version servie</h2>
       <p id="version-corps" class="muted small"></p>
-    </section>
-
-    <!-- ───────── Accès aux collections (AUTH-3) — qui entre, et à quel niveau ─────────
-         Aucune garde d'écran ici, et c'est voulu (UX-10) : la liste est filtrée par la
-         PORTÉE du serveur, et chaque bloc pose sa propre question. Garder la page entière
-         derrière un droit reproduirait l'erreur d'AUTH-4, où une simple adresse s'est
-         retrouvée réservée parce qu'elle vivait dans un panneau gardé.
-
-         COL-2 (2026-09-11) : ce que la collection EST — la créer, la décrire, la renommer,
-         la supprimer, l'exporter — a déménagé dans la Bibliothèque. Qui ENTRE relève de
-         l'instance, ce que la collection EST relève du corpus. -->
-    <section class="admin-bloc" aria-labelledby="collections-title">
-      <h2 id="collections-title">👥 Accès aux collections</h2>
-      <p class="muted small">Qui entre dans chaque collection, et à quel niveau :
-        <b>lecture</b>, <b>écriture</b> (annoter), <b>propriétaire</b> (décider qui entre).
-        Créer, décrire, renommer, supprimer ou exporter une collection se fait dans la
-        <a href="/corpus">Bibliothèque</a>.</p>
-      <!-- Aucune ligne de message ici : chaque collection dépliée a la sienne, sous sa
-           ligne d'ajout (COL-2, 2026-09-16). Une ligne commune tombait loin du geste. -->
-      <div id="col-body"></div>
     </section>
 
     <!-- ───────── Comptes et groupes (AUTH-12, étape 2) — une liste et une fiche ─────────
@@ -139,6 +120,7 @@
 <script src="/static/lib/nav.js"></script>
 <script src="/static/lib/sante.js"></script>
 <script src="/static/lib/comptes.js"></script>
+<script src="/static/lib/droits.js"></script>
 <script src="/static/administration.js"></script>
 </body>
 </html>

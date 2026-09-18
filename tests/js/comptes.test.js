@@ -218,14 +218,10 @@ for (const [objet, axe, tri, etat, texte, alerte] of CAS_ETAT) {
   });
 }
 
-/* ── Niveaux et diffusion ────────────────────────────────────────────────────────── */
-
-test("un niveau inconnu s'affiche TEL QUEL, il ne disparaît pas", () => {
-  assert.equal(C.niveauLu("ecriture"), "écriture");
-  assert.equal(C.niveauLu("proprietaire"), "propriétaire");
-  assert.equal(C.niveauLu("contribution"), "contribution");   // le jour où AUTH-10 l'ajoute
-  assert.equal(C.niveauLu("toString"), "toString");            // pas un piège de prototype
-});
+/* ── Diffusion ───────────────────────────────────────────────────────────────────── */
+/* Les niveaux ne se lisent plus ici : depuis l'étape 3 d'AUTH-12, ce qu'un accès permet se
+   dit en actes (`static/lib/droits.js`), et « un niveau inconnu s'affiche tel quel » s'y
+   éprouve (`tests/js/droits.test.js`). */
 
 test("un régime de diffusion inconnu s'affiche tel quel, un régime absent ne s'affiche pas", () => {
   assert.equal(C.diffusionLue("prive"), "privé");
