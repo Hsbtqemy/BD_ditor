@@ -53,6 +53,20 @@ DÉPLACEMENT** — plus gros que ce qui était annoncé, et portant sur du code 
 - [x] **Le sort de `tools/gerer_collections.py` est décidé et écrit** — il reste, pour l'amorçage et les responsables scientifiques, que l'écran ne couvre pas. Sa docstring disait « l'écran ne couvre pas licence ni embargo » ; c'est corrigé, et elle dit la seule règle commune aux deux portes (`config.STATUTS_DIFFUSION`) — et que toute autre règle ajoutée à l'une ne vaut pas pour l'autre
 
 ### Le déménagement, et ce qu'il coûte
+
+**La frontière a BOUGÉ une seconde fois le 2026-09-18 (`6ea6b60`, `AUTH-12` étape 3), et les
+cases de cette zone ne sont pas réécrites.** Elles disent ce qui a été tranché le 2026-09-11,
+avant le premier fichier touché, et c'est leur valeur. Ce qu'il faut savoir en les lisant :
+les **accès** ne « restent » plus en Administration. Ils ont suivi les descripteurs dans la
+Bibliothèque, en tête de chaque collection dépliée, sous le nom « Qui entre » — avec la
+**déclaration des administrateurs d'instance**, qui les accompagnait. L'Administration en
+garde la LECTURE, dans « 👥 Comptes et groupes », axe *Collections*, et y mène par « Régler
+qui entre ». Ce que cette zone appelait « la vue des comptes » est devenu ce même bloc
+« 👥 Comptes et groupes ». Autrement dit, le partage que ces cases ont établi — ce que la
+collection EST d'un côté, qui y entre de l'autre — a cessé de tenir, et c'est `AUTH-12` qui
+l'a défait, en connaissance de cause : les deux moitiés se sont rejointes là où le travail se
+fait. Le raisonnement qui a présidé au premier déménagement reste lisible ici ; il ne décrit
+plus l'écran.
 - [x] **Ce qui part et ce qui reste est écrit acte par acte — 2026-09-11, avant le premier fichier touché.** Partent vers la Bibliothèque : **créer** ; **renommer**, qui devient un champ du formulaire au lieu d'un `prompt()` ; **supprimer** ; le **référent**, écrit par le propriétaire et lu par tout participant ; les **sept champs absents** ; la **pastille d'embargo** et son message, là où la date se modifie ; et le **bloc d'export de dépôt**, déplacé TEL QUEL. Sa garde — lire pour télécharger, posséder pour déposer — ne change pas ici : exporter devient un droit à part dans `DROIT-2`, qui la posera au serveur, à un seul endroit. Restent en Administration : la liste avec MON niveau ; les **accès** (accorder, changer, retirer, « jamais vu ») ; la **déclaration des administrateurs d'instance** ; la **vue des comptes**, qui devient un bloc à part au lieu d'être nichée sous les collections ; et `#col-msg`, dont `test_e2e_sante` se sert de témoin (disparu le 2026-09-16 : les messages vivent désormais dans chaque collection, cf. « Un message s'affiche là où l'on a agi », et le témoin a changé)
 - [x] **La création n'exige AUCUN droit, l'édition en exige un, et c'est le même écran** — éprouvé sous une identité qui ne possède rien : elle ne voit pas la collection du décor, voit le bouton, crée, et c'est son formulaire qui s'ouvre (`test_creer_ne_demande_aucun_droit_mais_decrire_si`)
 - [x] **Rien ne subsiste en double** — l'Administration a perdu la création, le renommage, la suppression, le référent, la pastille d'embargo et l'export ; le script du déménagement refusait d'écrire s'il en restait une trace, et `test_a11y_administration_collections` exige qu'aucun champ de création n'y subsiste

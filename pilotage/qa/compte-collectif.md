@@ -11,6 +11,15 @@ derniere: 2026-09-11
 à accepter une fois). Les mots de passe des comptes, `collectif` compris, sont dans
 `C:\temp\bd-recette\comptes.txt`, hors dépôt.
 
+**Libellés et chemins remis à l'écran du 2026-09-18 (`6ea6b60`), les cases N'ONT PAS été
+retouchées.** Le bloc « 👤 Comptes vus » a disparu avec la vue qu'il habitait, remplacé par
+« 👥 Comptes et groupes » et ses trois axes ; le sélecteur dit « une personne » / « un login
+partagé » au lieu de « Nominatif » / « Collectif ». Les cases cochées l'ont donc été sur
+l'ANCIEN écran : elles disent que le comportement a été vu, pas que ces libellés-ci l'ont
+été. Une passe se remet à jour pour rester REJOUABLE — une case vraie mais inatteignable
+coûte ce que coûte une case fausse —, et c'est pourquoi la mise à jour est datée plutôt que
+silencieuse.
+
 **Deux identités à la fois, pas trois.** Une session Authelia est partagée par tous les
 onglets d'une fenêtre — et, dans Chrome, par TOUTES les fenêtres privées : en ouvrir une
 seconde ne donne pas une identité de plus, elle prend celle de la première. On dispose donc
@@ -30,10 +39,11 @@ la région du témoin (dernière zone) au début de cette même attente évite d
 seconde.
 
 **L'état de départ se vérifie, il ne se suppose pas.** Sous `admin-bd`, Administration →
-👤 Comptes vus : `collectif` doit y être « Nominatif (une personne) », ou ne pas y figurer du
-tout — il n'y apparaît qu'après sa première connexion, et reste nominatif tant que personne ne
-l'a déclaré. Une partie précédente non remise en état le laisse « Collectif », et la troisième
-case échoue alors sans que l'écran y soit pour rien.
+👥 Comptes et groupes, axe *Comptes*, fiche de `collectif` : sa **Nature** doit être « une
+personne », ou la fiche doit dire « Nature : se déclare à sa première connexion. » — le
+sélecteur n'apparaît qu'après la première connexion du compte, et un compte reste nominatif
+tant que personne ne l'a déclaré. Une partie précédente non remise en état le laisse « un
+login partagé », et la troisième case échoue alors sans que l'écran y soit pour rien.
 
 **Poser une région**, dans toute la passe : en mode **Édition** (touche `E`), **`Maj`
 enfoncée**, tirer un rectangle sur la planche à la souris, bouton maintenu, puis relâcher —
@@ -56,8 +66,8 @@ borne y soit pour rien. Deux clics sur une case la feraient passer de « kumiko 
 - [x] Plus de cinq minutes après la seconde, toujours sous `collectif`, `Échap` puis Ctrl+Z : la seconde région disparaît, et le message dit « Annulé : création d'une région ». Un compte non déclaré n'a aucune borne
 
 ### La déclaration
-- [x] Sous `admin-bd` (second facteur TOTP ; le code d'enrôlement de la première fois est écrit dans `authelia/notification.txt` de la pile), Administration → 👤 Comptes vus liste `collectif`
-- [x] Son sélecteur passe de « Nominatif (une personne) » à « Collectif (login partagé) », et le texte du panneau dit que Ctrl+Z n'y remonte que les cinq dernières minutes, et qu'aucun droit d'accès n'en dépend
+- [x] Sous `admin-bd` (second facteur TOTP ; le code d'enrôlement de la première fois est écrit dans `authelia/notification.txt` de la pile), Administration → 👥 Comptes et groupes, axe *Comptes* : `collectif` figure dans la liste, et sa fiche s'ouvre
+- [x] Son sélecteur **Nature** passe de « une personne » à « un login partagé », la fiche répond « Nature enregistrée. », et le dépliant « Ce que change un login partagé » dit que Ctrl+Z n'y remonte que les cinq dernières minutes, et qu'aucun droit d'accès n'en dépend
 - [x] Sous `collectif`, `Échap` puis Ctrl+Z ne défait PAS la première région, vieille de plus de cinq minutes, et un message neutre (pas une erreur rouge) dit « Rien à annuler dans les 5 dernières minutes : sur un compte partagé, Ctrl+Z ne remonte pas plus loin. »
 - [x] Toujours sous `collectif`, une troisième région posée puis, aussitôt, `Échap` et Ctrl+Z : elle disparaît. La borne n'empêche pas l'annulation récente
 

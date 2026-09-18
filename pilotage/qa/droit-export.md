@@ -7,6 +7,15 @@ derniere: —
 
 # QA — exporter est une case à côté du niveau, et chaque surface la suit
 
+> **Chemins et libellés remis à l'écran du 2026-09-18 (`6ea6b60`), sans toucher aux cases.**
+> Le panneau « 👥 Accès aux collections » de l'Administration a déménagé dans la Bibliothèque,
+> en tête de chaque collection dépliée, sous le nom « Qui entre » : les droits s'y règlent en
+> ACTES, et la case dit « exporter » — suivie de « (d'office) » pour un propriétaire — là où
+> elle disait « peut exporter ». Le titre de cette passe garde le mot *niveau* parce qu'il
+> nomme la DÉCISION de `DROIT-2` — exporter ne découle pas du rang —, et cette décision-là
+> n'a pas bougé : c'est l'écran qui a changé de forme. Les cases déjà cochées l'ont été sur
+> l'ancien écran.
+
 La suite verrouille le serveur : quinze portes sous un cliquet, chacune jouée avec et sans
 la case, et quatre tests navigateur. Ce qu'elle ne voit pas, c'est **ce que l'écran DIT** à
 qui n'a pas le droit — une note qui explique, ou un bouton qui disparaît sans un mot — et
@@ -34,12 +43,13 @@ v27 a fait ce que la production va vivre.
 
 ### La migration a fermé l'export à qui lisait
 
-**Sous `admin-bd`**, *Administration → 👥 Accès aux collections*, « Collection Test ».
+**Sous `admin-bd`**, *Bibliothèque → 📚 Collections*, « Collection Test » dépliée, partie
+*Qui entre*.
 
-- [x] L'accès de `proprio` porte la case « peut exporter » COCHÉE et grisée, suivie de « (d'office, en propriétaire) »
-- [x] L'accès du groupe `annotateurs` porte la case « peut exporter » DÉCOCHÉE : la migration n'a rien rattrapé, et c'est ce qui arrivera au groupe réel de la production
-- [x] L'accès du groupe `etudiants`, en ÉCRITURE, porte lui aussi la case décochée : écrire n'y suffit pas plus que lire
-- [x] La ligne d'ajout d'un accès porte elle aussi une case « peut exporter », décochée
+- [x] L'accès de `proprio` porte la case « exporter » COCHÉE et grisée, suivie de « (d'office) »
+- [x] L'accès du groupe `annotateurs` porte la case « exporter » DÉCOCHÉE : la migration n'a rien rattrapé, et c'est ce qui arrivera au groupe réel de la production
+- [x] L'accès du groupe `etudiants`, qui ÉCRIT, porte lui aussi la case décochée : écrire n'y suffit pas plus que lire
+- [x] La ligne *Faire entrer* n'accorde que la lecture : « exporter » se coche ensuite, sur la ligne de l'accès
 
 ### Sans la case, aucune surface ne propose d'exporter
 
@@ -58,7 +68,7 @@ qui échouerait au clic.
 
 **Sous `proprio`**, puis sous `lectrice` après s'être reconnecté.
 
-- [x] Sous `proprio`, *Administration → 👥 Accès aux collections*, « Collection Test » : cocher « peut exporter » sur le groupe `annotateurs` ; l'écran se recharge, et la case est toujours cochée — c'est ce que le serveur a enregistré, pas ce qu'on a cliqué
+- [x] Sous `proprio`, *Bibliothèque → 📚 Collections*, « Collection Test » dépliée, *Qui entre* : cocher « exporter » sur le groupe `annotateurs` ; l'écran se recharge, et la case est toujours cochée — c'est ce que le serveur a enregistré, pas ce qu'on a cliqué
 - [x] Sous `lectrice` : les trois formats reviennent dans le menu de l'Atelier, et « Exporter : droit manquant… » a disparu
 - [x] « Export CSV » télécharge `album_2_c2.csv` — le nom dit au titre de quelle collection l'album est sorti
 - [x] « Export JSON-LD » ouvert, le champ `exporte_au_titre_de` nomme « Collection Test »

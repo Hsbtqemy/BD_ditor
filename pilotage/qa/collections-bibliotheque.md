@@ -5,7 +5,16 @@ duree: 20 min
 derniere: 2026-09-16
 ---
 
-# QA — ce que la collection EST se gère dans la Bibliothèque, qui entre dans l'Administration
+# QA — ce que la collection EST se gère dans la Bibliothèque, et qui y entre aussi
+
+> **Chemins et libellés remis à l'écran du 2026-09-18 (`6ea6b60`), sans toucher aux cases.**
+> Le titre de cette passe disait « qui entre dans l'Administration » : c'était vrai quand
+> elle a été écrite, et le panneau « 👥 Accès aux collections » a depuis DÉMÉNAGÉ dans la
+> Bibliothèque, en tête de chaque collection dépliée, sous le nom « Qui entre » — où les
+> droits se règlent en ACTES et non plus par un `<select>` de niveau. Les cases déjà cochées
+> l'ont donc été sur l'ancien écran : elles disent que le comportement a été vu, pas ces
+> libellés-ci. Une passe se met à jour pour rester REJOUABLE, et la mise à jour se date pour
+> qu'on ne prenne pas un ancien constat pour un nouveau.
 
 Le déménagement est verrouillé par ses tests : la création sans droit, l'édition gardée,
 le régime de diffusion aligné sur le serveur, le 409 de la suppression, les renvois entre
@@ -72,7 +81,7 @@ reste muet, ne pas cocher et le noter : c'est précisément ce que la case cherc
 pas un incident de la passe — COL-2 en décidera.
 
 - [ ] Sous `proprio`, *Bibliothèque*, « Collection Test » dépliée : ajouter un mot à la description, puis *Enregistrer* — NVDA lit « « Collection Test » enregistrée. ». Retirer le mot et enregistrer de nouveau, pour rendre le décor
-- [ ] Sous `admin-bd`, *Administration → 👥 Accès aux collections*, « Étude B » dépliée : passer `proprio` de *Propriétaire* à *Lecture* — NVDA lit le refus « C'est le dernier propriétaire de cette collection… », et la liste remontre `proprio` en *Propriétaire*
+- [ ] Sous `admin-bd`, *Bibliothèque → 📚 Collections*, « Étude B » dépliée, partie *Qui entre* : sur la ligne de `proprio`, décocher « décider qui entre » — NVDA lit le refus « C'est le dernier propriétaire de cette collection… », et la case revient cochée
 
 ### Les autres la lisent sans la modifier
 
@@ -101,9 +110,9 @@ régression à signaler, pas un détour à faire.
 
 **Sous `admin-bd`**, *Administration*.
 
-- [x] Le bloc « 👥 Accès aux collections » ne permet ni de créer, ni de renommer, ni de supprimer une collection, ni d'en changer le référent
+- [x] Le bloc « 👥 Comptes et groupes », axe *Collections*, ne permet ni de créer, ni de renommer, ni de supprimer une collection, ni d'en changer le référent — sa partie *Qui entre* y est en LECTURE seule
 - [x] Chaque collection y renvoie vers la Bibliothèque pour ce qu'elle EST, avec un lien
-- [x] Le bloc déclare quels groupes d'administration voient tout le corpus, en nommant `bd-admins`
+- [x] Les groupes d'administration qui voient tout le corpus sont déclarés, en nommant `bd-admins` — depuis `6ea6b60` cette déclaration a suivi les accès dans la Bibliothèque, sous le tableau de *Qui entre*, et ne se lit plus dans l'Administration
 - [ ] « Collection par défaut » dépliée — « Collection Test » a été supprimée à la zone précédente —, saisir `annotateurs` et laisser le genre sur « Utilisateur ou groupe ? », puis *+ Accorder* : un refus rouge s'affiche sous la ligne d'ajout de cette collection et demande de choisir entre utilisateur et groupe — et non « Genre invalide », qui viendrait du serveur et voudrait dire que la demande est partie
 
 ### Étroit, clavier, thèmes
@@ -136,6 +145,6 @@ accès : `proprio` y était seul.
 
 - [x] « Collection Test » est recréée depuis la Bibliothèque **sous `proprio`**, qui en redevient donc propriétaire du même coup
 - [x] L'album *esther v1* y est rattaché
-- [x] Ses trois accès sont reposés dans *Administration → 👥 Accès aux collections* : `annotateurs` en **lecture** avec « peut exporter » COCHÉE, `etudiants` en **écriture**, `stagiaire` en **écriture** — les trois en genre « groupe » sauf `stagiaire`, qui est un utilisateur
+- [x] Ses trois accès sont reposés dans *Bibliothèque → 📚 Collections*, « Collection Test » dépliée, partie *Qui entre* : `annotateurs` en **lecture** avec « exporter » COCHÉE, `etudiants` et `stagiaire` avec la case d'écriture cochée — les trois déclarés **groupe** sauf `stagiaire`, déclaré **compte**
 - [x] Son régime de diffusion est ramené à VIDE, et non laissé sur `public` : c'est ainsi que *Export de dépôt* attend de la trouver
 - [x] Sous `lectrice`, la Bibliothèque remontre « esther v1 » : le décor est rendu, et on le constate au lieu de le supposer
