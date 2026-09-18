@@ -23,6 +23,27 @@ bloquait ont leur signal côté serveur ET à l'écran « 👥 Comptes et groupe
 AUTH-12) ; elles restent ouvertes pour des raisons qui leur sont propres — un DÉCOR qui manque
 à l'une, un TEST à écrire pour l'autre —, et non plus derrière celle-ci.
 
+**Le même jour, `0baee01` : le motif d'une lecture qui n'a PAS eu lieu a cessé de mentir.** Une adresse
+d'annuaire posée sans identifiant de service rendait `motif="refus"`, dont l'écran faisait
+« l'annuaire n'a pas répondu (accès refusé) » : deux faussetés en sept mots, puisque rien
+n'était parti et que l'annuaire n'avait rien refusé. Le code le SAVAIT — son commentaire
+écrivait « on ne lui a rien demandé » — et rendait quand même le motif d'un refus : la cause
+n'était pas seulement expliquée, elle était INVENTÉE, la faute même qu'AUTH-8 a payée sur le
+bandeau de portée vide. Un opérateur y perdait sa journée à vérifier un compte de service qui
+va bien, son groupe et son mot de passe, pendant que la cause est une ligne vide dans `.env`
+— et le premier déploiement de l'annuaire est le moment où personne n'a de temps. Le motif
+est désormais `non_configure`, et la réparation va plus loin que lui : la phrase PORTEUSE
+mentait aussi, « l'annuaire n'a pas répondu (…) » supposant toujours qu'on lui avait demandé
+quelque chose. Les quatre motifs rendent donc une clause entière, chacune RAPPORTANT ce qui a
+eu lieu sans dire pourquoi ; celle du délai reproduit mot pour mot la phrase d'avant, pour ne
+pas déplacer le test qui la fige. `verifier_deploiement.py` signale désormais la
+moitié-configuration — une adresse sans compte de service —, sans bloquer : la vue le dit
+elle-même honnêtement, contrairement à la doublure, qui ment. **Ce défaut n'est pas la cause
+du 401 de la recette**, qui était un vrai refus levé par un mot de passe reposé ; il rendait
+seulement les deux indistinguables, ce qui est assez pour coûter une journée la prochaine
+fois. Trouvé par la relecture croisée du périmètre de fusion, par une session qui n'avait
+écrit aucune de ces lignes.
+
 Plus tôt, le commit `4344243`, 2026-09-11 : la passe de revue de la borne de Ctrl+Z
 (`ff95ec0`, **sous un compte collectif, Ctrl+Z ne remonte plus que cinq minutes**). L'écran
 qui déclare un compte collectif ne disait rien de Ctrl+Z ; il le dit. Et la passe a fait
