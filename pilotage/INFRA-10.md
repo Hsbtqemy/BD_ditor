@@ -190,6 +190,61 @@ ce retard par un défaut d'accès au serveur — motif FAUX, corrigé là-bas le
 c'est cette fiche-ci qui l'a fait tomber, ouverte pour tout autre chose. Le correctif
 n'attend pas un accès : il attend cette fusion.
 
+## La liste d'avant la fusion — 2026-09-18
+
+**Elle existe parce qu'elle n'existait pas.** Trois fiches renvoient à « la liste d'avant la
+fusion que porte la coordination » ; aucun document ne la portait, et une liste qui ne vit
+que dans un fil de conversation meurt avec la session qui la tient. Elle est ici et non dans
+`docs/roadmap.md`, qui dit le PÉRIMÈTRE — ce que la fusion attend — là où ceci dit les
+GESTES, et parce que la section du 2026-09-14 ci-dessus décrit déjà ce que la fusion
+déclenche. Les deux se lisent ensemble.
+
+Ce n'est pas un `Reste` : rien ici ne se coche, tout se fait le jour dit. Ce qui a une case
+la garde dans sa propre fiche, nommée ci-dessous.
+
+**Avant de fusionner**
+1. Les passes de QA du périmètre sont jouées (`docs/roadmap.md`, tranché le 2026-09-17), et
+   les étapes 1 à 4 d'`AUTH-12` sont sur `dev`.
+2. `main` est encore ANCÊTRE de `dev` — l'avance rapide se vérifie le jour même, pas la
+   veille : `git merge-base --is-ancestor origin/main dev`.
+3. La recette est reconstruite sur le HEAD FINAL et re-recettée. Elle a servi des commits
+   intermédiaires toute la journée du 18 ; ce qui part en production n'est éprouvé que si
+   c'est LUI qu'on a servi.
+4. Les trois défauts d'outillage relevés en lisant `AUTH-12` sont traités ou déclarés
+   différés, en le disant : la procédure de repli de `docs/exploitation.md` vise des numéros
+   de ligne que `dev` a décalés ; `verifier_deploiement.py` contrôle `BD_AUTH_ADMIN_GROUPS`
+   dans le `.env` alors que le compose ne la transmet pas ; son avertissement « référent
+   manquant » compte les comptes du fichier de REPLI et non de l'annuaire. Ils touchent ce
+   qu'on lit le jour où quelque chose ne va pas — donc le jour de la fusion.
+5. `AUTH-6` porte une case de déploiement qui naît avec la lecture de l'annuaire : une règle
+   de refus pour le compte de SERVICE dans `access_control`. Sans elle, l'identifiant qui vit
+   dans le `.env` est aussi un identifiant de portail (constaté sur la recette le
+   2026-09-18 ; sans effet tant qu'aucun accès ne lui est donné).
+6. `CONC-3` garde une case marquée « AVANT la prochaine fusion » : elle porte sur les
+   testeurs qui travaillent à plusieurs, et c'est elle qui donne son sens au second temps.
+
+**Le jour même, et dans cet ordre**
+7. Sauvegarder AVANT de pousser. `SCHEMA_VERSION` passe de 25 à 28 : la migration ne se
+   rétrograde pas.
+8. Pousser `main`, puis **s'attendre à une unité `failed`** et NE PAS la réparer. La veille
+   refuse une mise à jour qui migre le schéma ; ce rouge est le comportement correct, décrit
+   dans la section du 2026-09-14. Le confondre avec une panne ferait chercher une réparation
+   là où il n'y a qu'une décision rendue à un humain.
+9. Déployer à la main par `./deploy/deployer.sh`.
+10. CONSTATER pendant qu'on y est, sans rien fabriquer : le message du refus nomme-t-il bien
+    v25 et v28, et le témoin refuse-t-il au tir suivant plutôt que de repasser au vert. Ce
+    sont les deux cases d'observation de la zone « Le premier déploiement automatique,
+    regardé », et la section du 2026-09-14 explique pourquoi cette occasion-là ne se
+    provoque pas proprement autrement.
+11. Seize commits touchant `deploy/` partent d'un coup — Dockerfile, compose, Caddyfile,
+    configuration d'Authelia, `deployer.sh` lui-même, et deux outils qui n'existaient pas.
+    Mesuré le 2026-09-14 ; à remesurer le jour dit.
+
+**Après**
+12. Les passes qui se cochent sur la PRODUCTION et non sur le dépôt : `AUTH-6` en porte deux,
+    dont la déclaration des logins partagés, qui attendait précisément ce passage.
+
+
 ## Contexte
 
 **Le travail était déjà fait, il ne manquait qu'un déclencheur.** `deployer.sh` EST le
