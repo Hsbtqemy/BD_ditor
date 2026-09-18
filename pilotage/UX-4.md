@@ -1,6 +1,6 @@
 ---
 chantier: UX-4
-statut: interrompu
+statut: différé
 ---
 
 # UX-4 — cohérence visuelle inter-surfaces
@@ -10,7 +10,46 @@ familles sur quatre — `ghost`, `icon-btn`, `danger` — étaient indistinguabl
 actif, `.primary` étant la seule servie ; elles reprennent sa valeur. C'est le PREMIER commit
 de code du chantier et il ne ferme aucune case : le statut passe à `interrompu` parce que
 `à venir` décrit une fiche qui n'a pas commencé, et que l'outil dément mécaniquement un
-`à venir` portant des commits de code.
+`à venir` portant des commits de code. (Ce statut a changé le 2026-09-18 — voir ci-dessous ;
+la phrase reste telle quelle, elle date la décision du 14.)
+
+**La direction visuelle est TRANCHÉE le 2026-09-18** — maquette du jour, **direction D**,
+choisie par Hugo. Quatre directions lui ont été montrées, construites sur le contenu RÉEL du
+bloc « Qui entre » : **A « Sobre »** (l'existant, discipliné), **B « Éditoriale »** (le
+tableau respire, les messages en colonne latérale, les titres en serif), **C « Panneaux »**
+(une fiche par accès, les quatre actes liés tenus en UNE case). Il a demandé « un truc entre
+A et B » ; **D** est née de cette demande, et c'est elle qu'il retient.
+
+**Ce que D prend à B.** Le papier chaud, les titres en serif (Spectral) sur une interface en
+sans (IBM Plex Sans), le filet sous l'en-tête, et le RYTHME des lignes — 14 px au lieu de 11.
+C'est cette respiration qui fait l'essentiel de l'effet, davantage que la couleur ou la
+fonte : à savoir avant de chiffrer le chantier, parce qu'elle se voit plus qu'un changement
+de palette et coûte moins cher.
+
+**Ce que D garde de A.** Un cadre qui fait du bloc une unité, la bande teintée sur les actes
+liés, et les messages DANS le flux. **La colonne latérale de B est écartée**, et la raison
+vaut d'être gardée : elle ne survit pas sous 48em et demanderait une seconde conception pour
+l'étroit — alors que l'écran en a déjà une, les cartes de l'étape 3 d'`AUTH-12`. Une
+direction qui oblige à dessiner deux fois le même écran se paie à chaque retouche.
+
+**Ce que D invente.** Les messages deviennent des filets de couleur en marge au lieu
+d'encadrés pleins : la hiérarchie se garde, le poids d'alerte disparaît.
+
+**Acquis indépendamment du choix**, les quatre directions le portaient : les emoji remplacés
+par des icônes dessinées, les dates en chiffres tabulaires, et un vrai bouton NOMMÉ pour le
+retrait.
+
+**Le statut passe donc à `différé`, et pas à autre chose.** Il n'y a pas une ligne de code :
+Hugo a choisi une DIRECTION, il n'a pas ouvert le chantier. `livré` déclarerait une
+intégration qui n'existe pas, et `à venir` reste démenti par le commit de code du 14. Ce qui
+rouvrira la fiche n'est pas un autre chantier mais **deux décisions qui ne sont pas prises** :
+dans quel ORDRE les surfaces s'alignent, et ce qu'on fait des panneaux de l'Administration.
+Tant qu'elles manquent, écrire du code reviendrait à les trancher en passant.
+
+**Ce que D fait aux cases de « L'alignement des cinq surfaces » : elle y RÉPOND, elle ne les
+remplace pas.** La première demande que les quatre autres surfaces suivent l'Exploration ; ce
+qui est tranché aujourd'hui, c'est VERS QUOI elles vont. Les cases restent telles quelles, et
+se cocheront sur du code — aucune n'est ajoutée ici, puisque rien n'est ouvert.
 
 **Point de départ** — l'Exploration a été soignée récemment et sert de référence ; les
 QUATRE autres surfaces ne s'y sont jamais alignées. Elles étaient trois quand cette fiche
