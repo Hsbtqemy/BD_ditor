@@ -10,11 +10,13 @@ statut: interrompu
 entières.
 
 - Poussé sur `dev` le 2026-09-17, `origin/dev` = `8987790`. La production n'est pas
-  concernée (elle suit `main`). La recette sert `8987790`.
+  concernée (elle suit `main`).
 - Libellé « L'enregistrement n'a pas encore abouti » : VALIDÉ par Hugo le 2026-09-17, qui le
   préfère à « n'est pas encore revenu ».
 - Délai de 5 s : gardé sur recommandation de la coordination, sans objection de Hugo.
-- Reste : la passe `qa/conflit-a-deux.md`, jouable maintenant.
+- Passe `qa/conflit-a-deux.md` : JOUÉE le 2026-09-18, 30 cases sur 30, aucun défaut. Elle
+  a regardé ce que les tests ne disent pas — l'heure affichée face à l'horloge du poste, le
+  bandeau lu à côté de la saisie, et les gestes compris sous deux vrais comptes.
 
 Hors de ce temps, la zone Q9 reste ouverte exprès.
 
@@ -56,7 +58,7 @@ n'est écrit, et le chantier commence par une mesure.
 - [x] La valeur vue est FACULTATIVE pour l'API (outils, appelants existants) ; l'Atelier l'envoie toujours, et une garde e2e l'exige (Q8) — `test_sans_valeur_vue_le_dernier_gagne_comme_avant` ; la garde e2e exige `note_vue` et `vu`, et les deux mutants qui les ôtent tombent
 - [x] Quitter une bulle, un mode, une planche ou un album pendant qu'un enregistrement n'est pas revenu ATTEND la réponse. Le geste se voit (« Enregistrement en cours… ») et se rejoue seul ; au 409 on reste, et le bandeau s'ouvre sur la saisie ; l'attente est bornée à 5 s, après quoi un message le dit et le geste suivant part. Tranché par Hugo SANS maquette, sur description (cf. Contexte) — `eca7507`, `6952f37`, quatre tests e2e (délai qui passe, délai qui expire, 409 en partant, réponse tardive)
 - [x] Deux enregistrements simultanés du même champ, ou une annulation et un enregistrement, ne passent pas tous deux la garde : l'un rend un 409 nommé — `ab1a7e3`, trois tests de course ; les mutants qui ôtent le verrou ou le prennent après la lecture tombent
-- [ ] La passe `qa/conflit-a-deux.md` est jouée sur la pile de recette servant `6952f37` ou plus récent, et ses cases sont cochées par qui la joue
+- [x] La passe `qa/conflit-a-deux.md` est jouée sur la pile de recette servant `6952f37` ou plus récent, et ses cases sont cochées par qui la joue — jouée par Hugo le 2026-09-18 sur la recette servant `6ea6b60`, 30 cases sur 30, aucun défaut trouvé
 - [ ] Fait AVANT la prochaine fusion de `dev` dans `main` : les testeurs de la production travaillent à plusieurs
 
 ### Hors du temps b — écarté exprès le 2026-09-17, à rouvrir ailleurs (Q9)
