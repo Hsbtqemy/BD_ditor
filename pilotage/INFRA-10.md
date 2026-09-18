@@ -210,12 +210,25 @@ la garde dans sa propre fiche, nommée ci-dessous.
 3. La recette est reconstruite sur le HEAD FINAL et re-recettée. Elle a servi des commits
    intermédiaires toute la journée du 18 ; ce qui part en production n'est éprouvé que si
    c'est LUI qu'on a servi.
-4. Les trois défauts d'outillage relevés en lisant `AUTH-12` sont traités ou déclarés
-   différés, en le disant : la procédure de repli de `docs/exploitation.md` vise des numéros
-   de ligne que `dev` a décalés ; `verifier_deploiement.py` contrôle `BD_AUTH_ADMIN_GROUPS`
-   dans le `.env` alors que le compose ne la transmet pas ; son avertissement « référent
-   manquant » compte les comptes du fichier de REPLI et non de l'annuaire. Ils touchent ce
-   qu'on lit le jour où quelque chose ne va pas — donc le jour de la fusion.
+4. ~~Trois défauts d'outillage relevés en lisant `AUTH-12`.~~ **RETIRÉ le 2026-09-18,
+   quelques heures après avoir été écrit : les trois étaient DÉJÀ RÉPARÉS, et depuis le
+   2026-09-16.** Les numéros de ligne de `docs/exploitation.md` par `208e781` (« le repli
+   vise des repères, plus des numéros de ligne »), qui a réparé la panne exacte que le
+   constat décrivait — et la page en porte le récit daté. `BD_AUTH_ADMIN_GROUPS` par la
+   même journée : `verifier_deploiement.py` résout ce que Compose transmet, sa docstring
+   écrit « jusqu'au 2026-09-16, ce contrôle lisait la variable directement dans `.env` », et
+   il AVERTIT désormais qu'une valeur posée là est sans effet. L'avertissement « référent
+   manquant » est gardé par `annuaire_actif`, avec sa raison écrite à côté : le fichier des
+   comptes n'est que le repli quand l'annuaire sert, et son nombre ne dit rien de l'instance.
+   Vérifiés un par un dans le code, pas dans les fiches.
+
+   **Et cette entrée reste ici, barrée, parce que c'est ELLE la leçon.** Le constat venait
+   d'une lecture d'`AUTH-12`, qui gardait la trace d'un défaut fermé ailleurs sans le savoir
+   — une fiche pourrit pendant qu'on travaille à côté. Recopié dans une liste NEUVE, il
+   devenait pire que dans sa fiche : une liste d'avant la fusion a l'autorité de sa
+   fraîcheur, et personne n'aurait rouvert la question. **Une liste hérite de la péremption
+   de ses sources et la cache derrière la sienne** : chaque entrée reprise d'une fiche se
+   vérifie dans le CODE avant d'entrer ici, et celles ci-dessous l'ont été.
 5. `AUTH-6` porte une case de déploiement qui naît avec la lecture de l'annuaire : une règle
    de refus pour le compte de SERVICE dans `access_control`. Sans elle, l'identifiant qui vit
    dans le `.env` est aussi un identifiant de portail (constaté sur la recette le
