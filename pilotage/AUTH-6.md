@@ -202,6 +202,15 @@ raisons dans `INFRA-8`. Ce chantier peut le défaire, mais en connaissant ce qu'
 
 ## Contexte
 
+**Un test peut mesurer autre chose que ce que son auteur croit, et son auteur est le dernier
+à pouvoir s'en apercevoir** — appris le 2026-09-18 en écrivant le scénario de la collection
+orpheline. Le cinquième temps avait l'air de vérifier que le signal s'ÉTEINT ; le mutant qui
+l'empêche de s'éteindre a fait rougir une AUTRE assertion, celle sur la vie du nouveau
+propriétaire, posée deux lignes plus haut. Le test aurait donc été vert pour la bonne raison
+par accident, et rouge pour la mauvaise. Aucune relecture ne trouve cela : il faut jouer la
+mutation et LIRE quelle assertion tombe. Le remède tient en un geste — affirmer d'abord ce
+qu'on vient mesurer.
+
 **L'invariant à ne pas casser** (AUTH-1) : les groupes ne sont JAMAIS stockés, ils sont
 relus dans `Remote-Groups` à chaque requête. Conséquence directe et utile — déplacer
 quelqu'un d'un groupe à l'autre dans Authelia prend effet à la requête suivante, sans rien
