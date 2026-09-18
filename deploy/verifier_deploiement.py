@@ -457,6 +457,23 @@ def controle_config(chemin_env):
         print("       la vue des comptes afficherait un annuaire inventé. Poser l'adresse")
         print("       de LLDAP vue depuis l'application (http://lldap:17170), ou la vider.")
         pbs.append("annuaire en doublure")
+    # La MOITIÉ de configuration : une adresse posée, pas d'identifiant de service. Rien ne
+    # part alors vers l'annuaire, et la vue dit « non vérifié : l'annuaire n'a pas été
+    # interrogé ». C'est honnête, donc ce n'est pas bloquant — mais ça ne se voit qu'en
+    # ouvrant l'Administration, et l'oubli est probable : le mot de passe arrive sous un nom
+    # d'`.env` voisin de celui d'Authelia (`LLDAP_APPLICATION_PASS`). Signalé ICI, où on
+    # regarde encore la configuration. Jusqu'au 2026-09-18 ce cas se lisait « accès refusé »,
+    # et faisait chercher une panne chez LLDAP.
+    if lecture and not lecture.startswith("doublure:") and not (
+            vals.get("BD_ANNUAIRE_COMPTE") and vals.get("LLDAP_APPLICATION_PASS")):
+        manquantes = [n for n in ("BD_ANNUAIRE_COMPTE", "LLDAP_APPLICATION_PASS")
+                      if not vals.get(n)]
+        print(f"    ·· {'annuaire lu':14} BD_ANNUAIRE_ADRESSE est posée, mais "
+              f"{' et '.join(manquantes)} ne l'est pas :")
+        print("       l'application n'interrogera pas l'annuaire, et la vue des comptes")
+        print("       affichera « non vérifié ». Poser le compte de service, ou vider")
+        print("       l'adresse. Signalé sans bloquer : la vue le dit elle-même.")
+
     # Le lien « Modifier ↗ » vient d'une variable DÉDIÉE, et non du domaine : le domaine ne
     # dit pas le schéma, et derrière un proxy qui termine le TLS, Caddy sert l'annuaire en
     # `http://`. Sans elle, la vue n'a aucun lien à proposer. Signalé sans bloquer.

@@ -159,8 +159,17 @@ const CG_NATURES = [["nominatif", "une personne"], ["collectif", "un login parta
    que la mise en page n'affiche pas. */
 const CG_ETROIT = window.matchMedia("(max-width: 40em)");
 
-const CG_MOTIFS = { delai: "délai dépassé", refus: "accès refusé",
-                    reponse_illisible: "réponse illisible" };
+/* Ce qui s'est passé, dit en entier — et non un mot entre parenthèses derrière « l'annuaire
+   n'a pas répondu », qui supposait toujours qu'on lui avait demandé quelque chose.
+   `non_configure` est le cas qui l'a montré : sans identifiant de service, rien ne part, et
+   l'écran affichait « accès refusé » (revue du 2026-09-18). Chaque phrase RAPPORTE ce qui a
+   eu lieu, aucune ne dit pourquoi. */
+const CG_MOTIFS = {
+  delai: "l'annuaire n'a pas répondu (délai dépassé)",
+  refus: "l'annuaire a refusé la connexion",
+  reponse_illisible: "l'annuaire a répondu quelque chose d'illisible",
+  non_configure: "l'annuaire n'a pas été interrogé : aucun identifiant de service n'est configuré",
+};
 
 function cgPuce(texte, genre) {
   return `<span class="cg-puce${genre ? " " + genre : ""}">${esc(texte)}</span>`;
@@ -192,10 +201,12 @@ function cgAccesLu(acces) {
 }
 
 /* Ce qu'on dit quand l'annuaire n'a rien pu apprendre sur un point précis. Deux phrases et
-   non une : « non vérifié » en mono-poste ferait chercher une panne qui n'existe pas. */
+   non une : « non vérifié » en mono-poste ferait chercher une panne qui n'existe pas. « n'a
+   pas été LU » et non « n'a pas répondu » : les quatre motifs de `non_verifie` n'ont pas tous
+   vu partir une requête, et celui-ci ne les distingue pas — la ligne du haut le fait. */
 function cgInconnu(quoi) {
   return CG.donnees.annuaire.etat === "non_verifie"
-    ? `Non vérifié : l'annuaire n'a pas répondu, on ne connaît pas ${quoi}.`
+    ? `Non vérifié : l'annuaire n'a pas été lu, on ne connaît pas ${quoi}.`
     : `Aucun annuaire n'est configuré : l'application ne connaît pas ${quoi}.`;
 }
 
@@ -276,7 +287,7 @@ function cgRendreAnnuaire() {
       : "");
   } else if (a.etat === "non_verifie") {
     const motif = CG_MOTIFS[a.motif] || a.motif;
-    n.textContent = `Non vérifié : l'annuaire n'a pas répondu${motif ? ` (${motif})` : ""}. `
+    n.textContent = `Non vérifié : ${motif || "l'annuaire n'a pas répondu"}. `
       + "Ce qui suit est ce que l'application sait seule, et les signaux qui supposent "
       + "l'annuaire ne sont pas calculés.";
   } else {

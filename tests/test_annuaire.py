@@ -119,11 +119,21 @@ def test_la_doublure_en_panne_n_est_pas_verifiee(monkeypatch):
 # --------------------------------------------------------------------------- #
 # (c) — comment elle échoue : jamais par une exception, toujours en le disant
 # --------------------------------------------------------------------------- #
-def test_une_adresse_sans_compte_de_service_est_un_refus(monkeypatch):
+@pytest.mark.parametrize("compte,mdp", [("", ""), ("bd-application", ""), ("", "secret")],
+                         ids=["ni l'un ni l'autre", "sans mot de passe", "sans compte"])
+def test_une_adresse_sans_identifiant_de_service_n_est_PAS_un_refus(monkeypatch, compte, mdp):
+    """Une moitié de configuration ne se raconte pas comme une panne de l'annuaire.
+
+    Le motif a valu « refus » jusqu'au 2026-09-18, et l'écran en faisait « accès refusé » :
+    deux faussetés dans une phrase, puisque rien n'est parti et que l'annuaire n'a rien
+    refusé. Un opérateur y perdait sa journée à vérifier un compte de service qui va bien,
+    pendant que la cause est une ligne vide dans `.env`. L'ÉTAT ne bouge pas — la vue n'a
+    pas pu vérifier —, c'est le motif qui cesse de mentir."""
     monkeypatch.setattr(config, "ANNUAIRE_ADRESSE", LLDAP)
-    monkeypatch.setattr(config, "ANNUAIRE_COMPTE", "")
-    monkeypatch.setattr(config, "ANNUAIRE_MOT_DE_PASSE", "")
-    assert (annuaire.lire().etat, annuaire.lire().motif) == ("non_verifie", "refus")
+    monkeypatch.setattr(config, "ANNUAIRE_COMPTE", compte)
+    monkeypatch.setattr(config, "ANNUAIRE_MOT_DE_PASSE", mdp)
+    lecture = annuaire.lire()
+    assert (lecture.etat, lecture.motif) == ("non_verifie", "non_configure")
 
 
 @pytest.mark.parametrize("login,graphql,motif", [

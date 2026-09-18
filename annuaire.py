@@ -82,7 +82,8 @@ class Lecture:
     groupes: tuple[GroupeAnnuaire, ...] = ()
     lu_le: Optional[str] = None
     duree_ms: Optional[int] = None
-    motif: Optional[str] = None          # "delai" | "refus" | "reponse_illisible"
+    # "delai" | "refus" | "reponse_illisible" | "non_configure" (rien n'a été demandé)
+    motif: Optional[str] = None
     lien: Optional[str] = None
 
     @property
@@ -107,10 +108,17 @@ def lire(*, transport: Optional[httpx.BaseTransport] = None) -> Lecture:
     if adresse.startswith(PREFIXE_DOUBLURE):
         return _lire_doublure(adresse[len(PREFIXE_DOUBLURE):], lien)
     if not (config.ANNUAIRE_COMPTE and config.ANNUAIRE_MOT_DE_PASSE):
-        # Une adresse sans identifiant de service est une erreur de CONFIGURATION : l'annuaire
-        # n'a pas refusé, on ne lui a rien demandé — mais la vue doit dire qu'elle n'a pas pu
-        # vérifier, et non qu'il n'y a pas d'annuaire.
-        return Lecture("non_verifie", source="lldap", motif="refus", lien=lien)
+        # Une adresse sans identifiant de service est une erreur de CONFIGURATION, et le motif
+        # le DIT. Il a valu « refus » jusqu'au 2026-09-18, ce qui était faux deux fois : rien
+        # n'est parti, et l'annuaire n'a rien refusé. L'écran en faisait « accès refusé », donc
+        # envoyait vérifier un compte de service qui va bien, son groupe et son mot de passe,
+        # pendant que la cause est une ligne vide dans `.env` — et le premier déploiement de
+        # l'annuaire est exactement le moment où personne n'a de temps à perdre. Le commentaire
+        # d'origine SAVAIT que ce n'était pas un refus et rendait quand même celui-là : la
+        # cause n'était pas seulement expliquée, elle était inventée (la faute d'AUTH-8).
+        # L'état, lui, reste `non_verifie` : la vue n'a pas pu vérifier, et dire « sans
+        # annuaire » serait l'autre mensonge.
+        return Lecture("non_verifie", source="lldap", motif="non_configure", lien=lien)
     debut = time.monotonic()
     try:
         comptes, groupes = _lire_lldap(adresse, debut, transport)
