@@ -138,6 +138,40 @@ def test_accorder_la_case_est_un_geste_de_proprietaire_et_se_trace(client, db_pa
              "exporter": True}) in evs
 
 
+def test_accorder_l_export_a_qui_ne_fait_que_LIRE_est_une_decision_qui_se_stocke(
+        client, db_path, deux_albums, derriere_proxy):
+    """Le cas CANONIQUE de DROIT-2 — lire sans annoter, et sortir le texte —, posé par la
+    ROUTE. « Lire avec la case y suffit », et rien d'autre ne l'accorde ici.
+
+    Il n'était joué par aucun test de ce fichier : les autres accordent l'export depuis
+    l'ÉCRITURE. Un seul test le jouait depuis la lecture, dans un autre module, et son sujet
+    est l'affichage d'une liste d'accès — une couverture par ACCIDENT, qui disparaîtrait le
+    jour où ce test changerait de décor pour une raison d'affichage, ce qui serait légitime.
+    Le dépôt a déjà payé cette forme : `test_csp` était immunisé par accident à la panne
+    d'ARCH-2, et une immunité par accident a son propre mode d'échec.
+
+    Trouvé le 2026-09-18 en RESSERRANT la garde de `3b44001` de trois façons : aucune ne
+    faisait tomber un test jouant ce geste-ci. Le cliquet de ce fichier échoue OUVERT — une
+    porte oubliée continue de laisser sortir sans rien casser —, donc le geste appartient ici.
+    """
+    c1 = deux_albums["c1"]
+    _ouvrir(db_path, c1, "carole", niveau="proprietaire")
+    _ouvrir(db_path, c1, "bob", niveau="lecture")
+    carole, bob = {"Remote-User": "carole"}, {"Remote-User": "bob"}
+    assert _exportables(client, bob)[c1] is False        # lire seul ne donne rien
+
+    rep = client.put(f"/api/collections/{c1}/acces", headers=carole,
+                     json={"principal": "bob", "niveau": "lecture", "exporter": True})
+    assert rep.status_code == 200, rep.text
+
+    # Ce qu'on vient mesurer, affirmé d'abord : la collection SORT désormais pour lui, et
+    # c'est une décision STOCKÉE — aucun niveau ne la dérive, contrairement au propriétaire.
+    assert _exportables(client, bob)[c1] is True
+    pose = next(a for a in rep.json() if a["principal"] == "bob")
+    assert (pose["exporter"], pose["exporter_pose"]) == (True, True)
+    assert pose["niveau"] == "lecture"                   # sans jamais passer par l'écriture
+
+
 def test_un_acces_neuf_part_sans_le_droit(client, db_path, deux_albums, derriere_proxy):
     c1 = deux_albums["c1"]
     _ouvrir(db_path, c1, "carole", niveau="proprietaire")
