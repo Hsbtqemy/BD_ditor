@@ -5,7 +5,9 @@ statut: interrompu
 
 # AUTH-12 — gérer les comptes : un parcours par personne, et non quatre outils à connaître
 
-**Arrêté sur** — 2026-09-18, `d110ce2` : **l'étape 4 est construite — le référent de l'INSTANCE se constate depuis l'Administration, et ses deux états MUETS se voient enfin.** C'est la dernière de l'ordre. `GET /api/referent` la sert, réservée par `portee.tout` comme `/api/version` : la garde d'un bloc réservé se pose sur sa ROUTE, et `/api/moi` — qui portait déjà la donnée — répond à tout le monde, donc ne peut rien garder. Trois états tranchés par le SERVEUR, dont le troisième est la raison du chantier : un référent NOMMÉ SANS CONTACT est atteignable, et c'est le seul des trois qui TROMPE. 10 tests, suite par défaut entière verte sur copie (1381). La passe `pilotage/qa/referent-instance.md` est écrite, pas jouée. Détail dans la section « L'étape 4 construite ». **Aucune case ne se coche avec lui** : l'étape 4 n'en avait aucune, l'ordre de construction la portant seul — elle en gagne une, pour sa passe.
+**Arrêté sur** — 2026-09-18, `b9f60fe` : **la passe de revue d'avant la fusion a trouvé un droit accordé par accident, et une route qu'on payait pour rien.** Rétrograder un propriétaire lui accordait l'export (`3b44001`, moitié serveur d'une réparation qui en compte deux) ; `GET …/annuaire/verifier`, sans aucun appelant, est retirée (`b9f60fe`). Les deux sont décrits dans « Un droit accordé par accident, et la route qu'on payait pour rien », en bas de fiche.
+
+Juste avant, `d110ce2` : **l'étape 4 est construite — le référent de l'INSTANCE se constate depuis l'Administration, et ses deux états MUETS se voient enfin.** C'est la dernière de l'ordre. `GET /api/referent` la sert, réservée par `portee.tout` comme `/api/version` : la garde d'un bloc réservé se pose sur sa ROUTE, et `/api/moi` — qui portait déjà la donnée — répond à tout le monde, donc ne peut rien garder. Trois états tranchés par le SERVEUR, dont le troisième est la raison du chantier : un référent NOMMÉ SANS CONTACT est atteignable, et c'est le seul des trois qui TROMPE. 10 tests, suite par défaut entière verte sur copie (1381). La passe `pilotage/qa/referent-instance.md` est écrite, pas jouée. Détail dans la section « L'étape 4 construite ». **Aucune case ne se coche avec lui** : l'étape 4 n'en avait aucune, l'ordre de construction la portant seul — elle en gagne une, pour sa passe.
 
 Juste avant, `6ea6b60` : **l'écran de l'étape 3 est construit — « Qui entre » vit en tête de la collection dépliée, dans la Bibliothèque, et le panneau « 👥 Accès aux collections » quitte l'Administration dans le même commit.** Les accès s'y règlent en ACTES, lus dans `GET /api/droits` : l'écran n'écrit ni acte, ni libellé, ni niveau. Éprouvé sur copie : 42 cas Node pour `static/lib/droits.js` et 20 mutants sur 20 tués ; 32 mutants d'écran et de style, 31 tués ; suite par défaut entière (1371) et passe e2e entière (279) vertes. La passe de QA `pilotage/qa/qui-entre.md` est écrite, pas jouée. Détail dans la section « L'étape 3 construite (écran) ». Trois cases se cochent avec lui.
 
@@ -831,3 +833,61 @@ disent la même chose que la demande : l'écran faisait deviner.
 contrôle `BD_AUTH_ADMIN_GROUPS` dans `.env` alors que le compose ne la transmet pas ; son
 avertissement « référent manquant » compte les comptes du fichier de repli et non de
 l'annuaire. La coordination les porte sur la liste d'avant la fusion de `dev` sur `main`.
+## Un droit accordé par accident, et la route qu'on payait pour rien — 2026-09-18
+
+Deux réparations côté serveur, trouvées par la passe de revue du périmètre qui partait en
+production. La première ferme une fuite, la seconde retire une surface.
+
+**Rétrograder un propriétaire lui accordait l'export.** `…/acces` rendait sous le SEUL nom
+`exporter` le droit EFFECTIF — vrai pour un propriétaire qui n'a jamais rien coché, parce que
+DROIT-2 le lui donne d'office —, l'écran « Qui entre » relisait cette valeur et la reposait en
+rétrogradant, et le `PUT` la STOCKAIT. Le membre en écriture repartait donc avec le droit de
+sortir le corpus en fichier, que personne ne lui avait accordé et que DROIT-2 sépare
+exprès de l'écriture. Ce n'est pas un cas limite : le créateur d'une collection est inscrit
+propriétaire sans `exporter`, donc à zéro, et toute rétrogradation le faisait basculer.
+
+**Aucun des trois maillons n'était fautif seul**, et c'est pourquoi ni la suite par défaut ni
+la passe e2e ne pouvaient le voir : chacune éprouvait un côté de la couture. La règle du
+d'office (DROIT-2) est juste ; reposer ce qu'on vient de lire est le patron ordinaire d'un
+écran ; et « un champ absent ne se touche pas » est une garantie qu'on avait écrite exprès.
+C'est leur RENCONTRE qui accordait un droit.
+
+**Deux réparations, et aucune ne suffit seule** (`3b44001` côté serveur, et sa jumelle côté
+écran). Le serveur cesse de confondre — `exporter` reste l'effectif, pour qu'une liste ne
+dise pas d'un propriétaire qu'il est « sans export », ce qui serait exact et trompeur, et
+`exporter_pose` dit ce qu'une DÉCISION a posé — puis refuse de stocker une valeur qui n'est
+que la dérivation du niveau. L'écran, lui, cesse d'affirmer un champ que le niveau accordait
+déjà. La garde du serveur ne distingue pas un écho d'un envoi délibéré identique, donc elle
+laisse passer le même corps REJOUÉ juste après la rétrogradation ; l'omission de l'écran ne
+protège que l'écran, donc elle ne dit rien d'un outil ou d'une requête à la main. Chacune
+ferme ce que l'autre ne voit pas.
+
+**Ce que la garde ne fait pas** : elle ne retire jamais. Révoquer reste possible, un export
+POSÉ survit à une promotion puis à une rétrogradation, et rétrograder quelqu'un en lui
+LAISSANT l'export reste exprimable — en deux gestes, parce qu'un seul ne se distingue pas de
+l'écho. Les trois cas sont joués.
+
+**`exporter_pose` n'est lu par aucun écran aujourd'hui**, et c'est voulu : il est là pour que
+la réponse cesse de mentir sur la nature de ce qu'elle rend. Un second temps lui est ouvert —
+montrer la différence entre un propriétaire dont l'export est POSÉ et un propriétaire qui
+n'exporte que tant qu'il possède. Écrit ici pour qu'on ne le retire pas un jour en le croyant
+mort.
+
+**`GET /api/collections/{id}/annuaire/verifier` est retirée** (`b9f60fe`). Elle disait si un
+nom TAPÉ existe dans l'annuaire, pour que l'écran le vérifie AVANT de l'accorder — et c'est
+cette intention qui avait fait accepter son exposition : un oracle où un propriétaire de
+collection sonde l'existence de n'importe quel login de l'instance, sans limite de débit,
+déclaré tel quel au cliquet des sorties d'identité. L'écran livré ne l'a jamais appelée : il
+pose l'accès, relit, et lit la marque dans la liste que rend `…/annuaire`. On payait donc
+l'exposition sans rien en retirer. **Le jour où « vérifier avant d'accorder » deviendra un
+vrai besoin d'usage, la route se réécrira et son exposition se redécidera EN SACHANT ce qu'on
+achète, au lieu d'hériter d'un oui donné pour autre chose** — c'est cette phrase qui vaut,
+pas le retrait.
+
+Ce qui part avec elle : sa déclaration au cliquet des sorties, et la quête qui lui donnait un
+nom sentinelle. Ce qui reste : `comptes.verifier`, que la composition appelle pour chaque
+accès, et la règle qu'un de ses tests portait — exclure un groupe de la LISTE est une question
+de proposition et non de vérité, « inconnu » ne voulant dire qu'ABSENT de l'annuaire —, portée
+sur `…/annuaire` avec l'autre moitié que l'ancienne ne disait pas : ces groupes restent hors
+de ce qu'on propose.
+
