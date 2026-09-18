@@ -220,14 +220,6 @@ SORTIES_DECLAREES = {
         "mêmes logins que `…/acces`, un état d'annuaire en plus. Les groupes proposés au "
         "propriétaire sont des NOMS de groupe, sans membres ni id — aucune des trois sortes. "
         "Réservée au propriétaire de la collection."),
-    ("route", "/api/collections/{collection_id}/annuaire/verifier"): (
-        {"login"},
-        "Renvoie le nom TAPÉ et dit s'il existe dans l'annuaire. C'est un ORACLE, et il est "
-        "accepté : un propriétaire peut sonder l'existence d'un compte. Enjeu faible — il "
-        "pourrait déjà l'accorder —, préféré par Hugo le 2026-09-17 à la liste complète des "
-        "comptes, qui aurait montré à chaque propriétaire les noms de tous les inscrits de "
-        "l'instance. Réservée au propriétaire de la collection ; aucun nom lisible ni "
-        "courriel n'en sort."),
     ("route", "/api/moi"): (
         {"login", "nom"},
         "L'identité de l'APPELANT, la sienne — c'est l'objet même de la route, et elle ne "
@@ -436,10 +428,6 @@ def _chemin_concret(gabarit: str, seme: dict):
 # balayage les comptait « non atteintes » alors qu'elles sont parmi les plus bavardes du
 # lot. Un cliquet qui ne voit pas les exports ne vaut rien.
 QUETES = {
-    # AUTH-12, étape 3 — la vérification d'un nom TAPÉ : sans nom, 422, et la route quitterait
-    # le balayage. Avec le login sentinelle, elle le RENVOIE, et c'est ce qu'il faut voir.
-    "/api/collections/{collection_id}/annuaire/verifier":
-        "genre=utilisateur&nom=" + SENTINELLES["login"],
     "/api/export/json": "album_id={album_id}",
     "/api/export/csv": "album_id={album_id}",
     "/api/export/tei": "album_id={album_id}",

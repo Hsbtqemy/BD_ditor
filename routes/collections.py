@@ -417,32 +417,14 @@ def annuaire_de_la_collection(collection_id: int, conn: sqlite3.Connection = Dep
     return comptes.choix_des_acces(conn, collection_id, annuaire.lire())
 
 
-@router.get("/api/collections/{collection_id}/annuaire/verifier")
-def verifier_un_nom(collection_id: int, genre: str, nom: str,
-                    conn: sqlite3.Connection = Depends(db),
-                    portee: autorisation.Portee = Depends(portee_courante)):
-    """Un nom TAPÉ existe-t-il dans l'annuaire ? « trouve », « inconnu », « non_verifie » ou
-    « sans_annuaire » (AUTH-12, décision 4 (2) : la saisie libre est signalée, jamais
-    refusée).
-
-    Le genre est obligatoire, comme dans le `PUT` : un login et un nom de groupe peuvent être
-    la même chaîne. Le nom revient normalisé comme le `PUT` le normalise, pour que l'écran
-    rapproche une réponse de sa saisie quand on tape vite.
-
-    CE QU'ELLE LAISSE SONDER, et c'est accepté par Hugo le 2026-09-17 : un propriétaire peut
-    savoir si un compte existe. Enjeu faible — il pourrait déjà l'accorder —, préféré à la
-    liste complète des comptes, qui aurait montré à chaque propriétaire les noms de tous les
-    inscrits de l'instance. Déclaré au cliquet des sorties d'identité."""
-    _get_collection(conn, portee, collection_id, administrer=True)
-    if genre not in autorisation.GENRES:
-        raise HTTPException(422, f"Genre invalide : {genre} (utilisateur | groupe).")
-    nom = (nom or "").strip()
-    if not nom:
-        raise HTTPException(422, "Le nom (login ou nom de groupe) est requis.")
-    return {"genre": genre, "nom": nom,
-            "verification": comptes.verifier(annuaire.lire(), genre, nom)}
-
-
+# `GET …/annuaire/verifier` a vécu ici jusqu'au 2026-09-18 : elle disait si un nom TAPÉ
+# existe dans l'annuaire, pour que l'écran le vérifie AVANT de l'accorder. C'est cette
+# intention qui avait fait accepter son exposition — un oracle où un propriétaire sonde
+# l'existence de n'importe quel login de l'instance, sans limite de débit. L'écran livré ne
+# l'a jamais appelée : il pose l'accès, relit, et lit la vérification dans la liste que rend
+# `…/annuaire`. On payait donc l'exposition sans rien en retirer. Le jour où « vérifier avant
+# d'accorder » sera un vrai besoin d'usage, la route se réécrira et son exposition se
+# redécidera EN SACHANT ce qu'on achète, au lieu d'hériter d'un oui donné pour autre chose.
 @router.get("/api/droits")
 def droits():
     """Ce que chaque niveau d'accès permet, dit en ACTES : l'échelle, les actes et leurs
@@ -464,8 +446,9 @@ def accorder_acces(collection_id: int, payload: AccesIn,
     `principal` est un NOM — un login, ou un nom de groupe tel qu'Authelia le pose dans
     `Remote-Groups`. On n'accorde donc rien à une personne qu'on aurait vérifiée : on
     déclare qu'un nom ouvre une collection, et un nom mal orthographié n'ouvre simplement
-    rien. Cette route NE LIT PAS l'annuaire (invariant AUTH-1) : la fiche vérifie un nom à
-    part, par `…/annuaire/verifier` (AUTH-6), sans qu'aucun geste d'accès attende sa réponse.
+    rien. Cette route NE LIT PAS l'annuaire (invariant AUTH-1) : l'accès se pose, et c'est la
+    relecture par `…/annuaire` (AUTH-6) qui le marque « inconnu de l'annuaire » — signalé,
+    jamais refusé (décision 4 (2) d'AUTH-12), et sans qu'aucun geste d'accès attende l'annuaire.
 
     `exporter` (DROIT-2) se pose dans le même geste, et par le même PROPRIÉTAIRE :
     décider ce qui sort d'une collection l'engage autant que décider qui y entre. Il

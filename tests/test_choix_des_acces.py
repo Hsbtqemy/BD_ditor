@@ -2,9 +2,13 @@
 d'un nom dans l'annuaire.
 
 Tranché par Hugo le 2026-09-17 : le propriétaire voit les NOMS des groupes, sans groupes de
-rôle ni d'administration, et un login TAPÉ se vérifie sans qu'aucune liste des comptes lui
-soit servie. « inconnu » ne veut dire qu'« absent de l'annuaire ». Une panne ne bloque rien,
-et ne ralentit aucun geste d'accès.
+rôle ni d'administration, et aucune liste des comptes ne lui est servie. « inconnu » ne veut
+dire qu'« absent de l'annuaire ». Une panne ne bloque rien, et ne ralentit aucun geste
+d'accès.
+
+La vérification d'un nom TAPÉ avait sa route, `…/annuaire/verifier` ; elle est retirée le
+2026-09-18, l'écran ne l'ayant jamais appelée — il pose l'accès, relit, et lit la marque dans
+la liste. Ce qu'elle éprouvait et qui vaut encore est éprouvé ici sur `…/annuaire`.
 """
 import sys
 from pathlib import Path
@@ -37,30 +41,22 @@ def _acces(client, cid, genre, principal, niveau="lecture"):
     assert r.status_code in (200, 201), r.text
 
 
-def _verifier(client, cid, genre, nom, headers=ADMIN):
-    return client.get(f"/api/collections/{cid}/annuaire/verifier",
-                      params={"genre": genre, "nom": nom}, headers=headers)
-
-
 # --------------------------------------------------------------------------- #
 # La garde : le propriétaire de CETTE collection
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("route", ["annuaire", "annuaire/verifier"])
-def test_seul_le_proprietaire_de_la_collection_y_accede(client, derriere_proxy, doublure, route):
+def test_seul_le_proprietaire_de_la_collection_y_accede(client, derriere_proxy, doublure):
     cid = _collection(client)
     _acces(client, cid, "utilisateur", "lectrice", "lecture")
     _acces(client, cid, "utilisateur", "redactrice", "ecriture")
     _acces(client, cid, "utilisateur", "proprio", "proprietaire")
-    params = {"genre": "groupe", "nom": "annotateurs"}
-
     def code(login):
-        return client.get(f"/api/collections/{cid}/{route}", params=params,
+        return client.get(f"/api/collections/{cid}/annuaire",
                           headers={"Remote-User": login}).status_code
     assert code("etranger") == 404          # rien ne fuit à qui ne la lit pas
     assert code("lectrice") == 403          # lisible : un refus NOMMÉ
     assert code("redactrice") == 403        # écrire n'est pas décider qui entre
     assert code("proprio") == 200
-    assert client.get(f"/api/collections/{cid}/{route}", params=params,
+    assert client.get(f"/api/collections/{cid}/annuaire",
                       headers=ADMIN).status_code == 200
 
 
@@ -94,34 +90,24 @@ def test_les_acces_accordes_portent_leur_verification(client, derriere_proxy, do
 
 
 # --------------------------------------------------------------------------- #
-# La vérification d'un nom tapé
+# Ce qui est PROPOSÉ n'est pas ce qui EXISTE
 # --------------------------------------------------------------------------- #
-def test_un_nom_tape_est_trouve_ou_inconnu(client, derriere_proxy, doublure):
+def test_un_groupe_exclu_de_la_liste_n_est_pas_dit_inconnu(client, derriere_proxy, doublure):
+    """Exclure un groupe de la LISTE est une question de proposition, pas de vérité : un
+    groupe de rôle ou d'administration existe, et un compte de service aussi. « inconnu » ne
+    doit vouloir dire qu'ABSENT DE L'ANNUAIRE, sans quoi la marque enverrait corriger un nom
+    juste.
+
+    Éprouvé sur `…/annuaire` depuis le 2026-09-18 : `…/annuaire/verifier` le portait, et elle
+    est retirée faute d'appelant — la règle, elle, vaut toujours."""
     cid = _collection(client)
-    assert _verifier(client, cid, "utilisateur", "proprio").json() == \
-        {"genre": "utilisateur", "nom": "proprio", "verification": "trouve"}
-    assert _verifier(client, cid, "utilisateur", "zoe").json()["verification"] == "inconnu"
-    assert _verifier(client, cid, "groupe", "annotateurs").json()["verification"] == "trouve"
-    # Un login n'est pas un groupe : le genre compte.
-    assert _verifier(client, cid, "groupe", "proprio").json()["verification"] == "inconnu"
-    # Le nom revient normalisé comme le PUT le normalise.
-    assert _verifier(client, cid, "utilisateur", "  proprio ").json()["nom"] == "proprio"
-
-
-def test_inconnu_ne_veut_dire_qu_absent_de_l_annuaire(client, derriere_proxy, doublure):
-    """Exclure un groupe de la LISTE est une question de proposition, pas de vérité : tapé, un
-    groupe de rôle ou d'administration existe, et un compte de service aussi."""
-    cid = _collection(client)
-    for genre, nom in (("groupe", "lldap_admin"), ("groupe", "bd-admins"),
-                       ("utilisateur", "authelia")):
-        assert _verifier(client, cid, genre, nom).json()["verification"] == "trouve", nom
-
-
-def test_un_genre_ou_un_nom_manquant_est_refuse(client, derriere_proxy, doublure):
-    cid = _collection(client)
-    r = _verifier(client, cid, "personne", "proprio")
-    assert r.status_code == 422 and "Genre invalide" in r.json()["detail"]
-    assert _verifier(client, cid, "utilisateur", "   ").status_code == 422
+    _acces(client, cid, "groupe", "lldap_admin")
+    _acces(client, cid, "groupe", "bd-admins")
+    _acces(client, cid, "utilisateur", "authelia")
+    d = client.get(f"/api/collections/{cid}/annuaire", headers=ADMIN).json()
+    assert {a["verification"] for a in d["acces"]} == {"trouve"}
+    # Et ils restent hors de ce qu'on PROPOSE, ce qui est l'autre moitié de la règle.
+    assert "lldap_admin" not in d["groupes"] and "bd-admins" not in d["groupes"]
 
 
 # --------------------------------------------------------------------------- #
@@ -136,13 +122,11 @@ def test_un_annuaire_muet_ne_se_confond_pas_avec_l_absence_d_annuaire(
     d = client.get(f"/api/collections/{cid}/annuaire", headers=ADMIN).json()
     assert (d["annuaire"]["etat"], d["groupes"]) == ("non_verifie", None)
     assert d["acces"][0]["verification"] == "non_verifie"
-    assert _verifier(client, cid, "groupe", "x").json()["verification"] == "non_verifie"
 
     monkeypatch.setattr(config, "ANNUAIRE_ADRESSE", "")
     d = client.get(f"/api/collections/{cid}/annuaire", headers=ADMIN).json()
     assert (d["annuaire"]["etat"], d["groupes"]) == ("sans_annuaire", None)
     assert d["acces"][0]["verification"] == "sans_annuaire"
-    assert _verifier(client, cid, "groupe", "x").json()["verification"] == "sans_annuaire"
 
 
 def test_les_gestes_d_acces_ne_lisent_pas_l_annuaire(client, derriere_proxy, monkeypatch):
