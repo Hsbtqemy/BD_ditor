@@ -271,13 +271,24 @@ L'inventaire et le poste de commande.
   lancer. Progression et annulation en direct.
 - **📚 Collections** : créer une collection — il suffit d'être connecté, et l'on en devient
   propriétaire, sauf un administrateur, qui l'administre sans la posséder et peut lui
-  désigner un propriétaire dans l'Administration —, la décrire (description, dates), régler
+  désigner un propriétaire dans *Qui entre* —, la décrire (description, dates), régler
   sa diffusion (régime, embargo, licence, base légale), désigner son référent, la renommer,
   la supprimer, et l'exporter pour un dépôt (ci-dessous). Seuls un propriétaire et un
   administrateur modifient ; un participant lit la description et sait à qui écrire. La date d'embargo **retient** : tant qu'elle court, les
   scans ne sortent pas, même d'une collection « public » — et elle ne publie jamais rien
-  d'elle-même. Qui entre dans une collection, et à quel niveau, se règle dans
-  l'Administration.
+  d'elle-même.
+- **Qui entre** : en tête de chaque collection dépliée, qui entre dans cette collection et ce
+  qu'il peut y faire. Les accès s'y règlent en **actes** — *lire*, *annoter*, *décider qui
+  entre* — plutôt qu'en niveaux à deviner : *Faire entrer* admet en lecture, puis on coche.
+  On désigne un **compte** ou un **groupe**, la question étant posée explicitement parce
+  qu'un login et un groupe peuvent porter le même nom ; le nom tapé est confronté à
+  l'annuaire et marqué **inconnu de l'annuaire** s'il n'y existe pas, **non vérifié** si
+  l'annuaire n'a pas répondu — la marque avertit, elle ne bloque pas. **Exporter est un acte
+  à part**, en dehors de ces trois : sortir le contenu en fichier ne découle pas du droit
+  d'annoter, un propriétaire l'accorde accès par accès, et il l'a lui-même d'office. Le bloc
+  déclare aussi quels groupes d'administration lisent et écrivent tout le corpus sans figurer
+  dans aucune liste d'accès. Seul un propriétaire, ou un administrateur, y règle quelque
+  chose ; les autres lisent.
 
 #### Exporter une collection pour un dépôt
 
@@ -319,8 +330,8 @@ l'application ne contrôle pas l'audience.
 
 ### Administration (`/administration`)
 
-Ce qui porte sur l'instance : quelle version tourne ici, qui voit quoi, quels comptes
-existent, et si les moteurs répondent encore. Quatre blocs, chacun avec sa propre règle
+Ce qui porte sur l'instance : quelle version tourne ici, quels comptes et quels groupes
+existent, et si les moteurs répondent encore. Trois blocs, chacun avec sa propre règle
 d'accès (cf. §2).
 
 - **🏷️ Version servie** : le commit que cette instance fait tourner. N'apparaît que si le
@@ -328,17 +339,21 @@ d'accès (cf. §2).
   et qu'un numéro de version y dit quels correctifs sont en place. L'application ne connaît
   que ce bout-là : elle affiche le commit servi et vous laisse le comparer à `origin/main`,
   plutôt que d'affirmer « à jour » sans avoir vu la référence.
-- **👥 Accès aux collections** : accorder, changer et retirer les accès, collection par
-  collection. Chaque accès porte une case **peut exporter** : sortir le contenu en
-  fichier est un droit à part, que le propriétaire accorde ici — il l'a lui-même
-  d'office, et sa case le montre sans se laisser décocher. Le bloc déclare aussi quels
-  groupes d'administration voient tout le corpus.
-  Créer, décrire, renommer, supprimer ou exporter une collection se fait dans la
-  Bibliothèque. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3.
-- **Comptes vus par l'application** : n'apparaît que si le serveur vous le sert. C'est un
-  miroir d'affichage — l'application n'a pas d'annuaire (cf. [`modele-et-droits.md`](modele-et-droits.md) §3).
-- **🩺 Moteurs** : quels moteurs sont présents, et *Éprouver les moteurs* pour vérifier qu'ils
-  démarrent réellement.
+- **👥 Comptes et groupes** : réservé aux administrateurs, parce qu'il porte sur des
+  personnes et non sur le corpus. Il réunit trois sources qui ne se recouvrent pas — ce que
+  l'**annuaire** rend (les comptes et les groupes qui EXISTENT, venus ou non), ce que
+  l'application a **vu**, et ce qu'elle a **accordé** — sur trois axes : *Comptes*,
+  *Groupes*, *Collections*. En tête, **⚠ À regarder** liste ce qui trompe en silence : un
+  accès donné à un groupe absent de l'annuaire, une collection dont plus aucun propriétaire
+  n'est vivant, un compte qui n'est jamais venu. La fiche d'un compte porte sa **Nature** —
+  *une personne* ou *un login partagé* —, qui se déclare à sa première connexion.
+  **Les accès se lisent ici et se règlent ailleurs** : chaque fiche de collection mène à
+  *Régler qui entre*, dans la Bibliothèque. Si l'annuaire ne répond pas, le bloc s'affiche
+  quand même avec ce que l'application sait seule, et le dit — il n'annonce jamais qu'un
+  accès est mort sur la foi d'une lecture qui a échoué.
+  Cf. [`modele-et-droits.md`](modele-et-droits.md) §3.
+- **🩺 Moteurs de reconnaissance** : quels moteurs sont présents, et *Éprouver les moteurs*
+  pour vérifier qu'ils démarrent réellement.
 
 ### Atelier (`/`)
 
@@ -396,7 +411,7 @@ Elles sont documentées ; elles ne sont simplement pas dans l'interface.
 | Rapports d'accord (modèle↔humain, inter-annotateurs) en CSV/JSON | `tools/` | [`rapport-accord.md`](rapport-accord.md), [`accord-inter.md`](accord-inter.md) |
 | Réindexer tout le corpus après un changement de modèle linguistique | `tools/reindex_nlp.py` | [`correction-grammaticale.md`](correction-grammaticale.md) |
 | Relire la résolution des planches importées avant cette fonctionnalité | `tools/reindex_materiel.py` | [`materiel-numerisation.md`](materiel-numerisation.md) |
-| Créer un compte, un groupe | fichier des comptes du portail | [`exploitation.md`](exploitation.md), « Ajouter un compte sans couper le portail » |
+| Créer un compte, un groupe | l'annuaire LLDAP, par son interface web (le fichier des comptes du portail n'est plus que le repli) | [`exploitation.md`](exploitation.md), « Basculer vers l'annuaire LLDAP » |
 
 L'**import PDF** est annoncé dans le menu mais désactivé : il n'est pas encore implémenté.
 

@@ -80,7 +80,7 @@ de la plupart des malentendus.
 
 | Rôle | Ce que ça veut dire | Où ça se voit |
 |---|---|---|
-| **Espace de travail** | c'est elle qui porte les accès : donner un droit sur une collection le donne sur tous ses albums | bloc *👥 Accès aux collections* de l'Administration |
+| **Espace de travail** | c'est elle qui porte les accès : donner un droit sur une collection le donne sur tous ses albums | *Qui entre*, en tête de la collection dépliée, dans la Bibliothèque |
 | **Unité de dépôt** | 1 collection = 1 dépôt Nakala/HAL = 1 DOI ; elle porte licence, base légale, régime de diffusion, responsables scientifiques | bloc *📚 Collections* de la Bibliothèque ; les responsables scientifiques par `tools/gerer_collections.py`, cf. [`export-metadonnees.md`](export-metadonnees.md) |
 | **Portée d'appartenance du vocabulaire** | un terme peut être *global* ou *local à une collection* | panneau *📖 Lexique* de l'Exploration |
 
@@ -97,7 +97,7 @@ Trois règles en découlent, qu'il vaut mieux connaître avant de les rencontrer
   album.
 - **Une collection créée par un administrateur n'a pas de propriétaire.** Elle naît ainsi,
   et les administrateurs la gèrent sans en être propriétaires ; ils peuvent lui en désigner
-  un dans *Administration → Accès aux collections*, au niveau *Propriétaire*.
+  un dans *Qui entre*, dans la Bibliothèque, au niveau *Propriétaire*.
 
 ---
 
@@ -106,10 +106,20 @@ Trois règles en découlent, qu'il vaut mieux connaître avant de les rencontrer
 ### L'application n'authentifie personne
 
 C'est le point le plus contre-intuitif, et il explique tout le reste. BéDéditeur ne
-demande jamais de mot de passe, ne stocke aucun secret et n'a **aucun annuaire**. En
-production, c'est **Authelia** — un portail placé devant l'application — qui vérifie
-l'identité et la double authentification, puis transmet à l'application trois en-têtes :
-qui vous êtes, votre nom lisible, et vos groupes.
+demande jamais de mot de passe et ne stocke aucun secret. En production, c'est
+**Authelia** — un portail placé devant l'application — qui vérifie l'identité et la double
+authentification, puis transmet à l'application trois en-têtes : qui vous êtes, votre nom
+lisible, et vos groupes.
+
+**Trois actes, trois endroits, et il faut les tenir séparés.** *Authentifier*, c'est
+Authelia : lui seul dit QUI frappe, et l'application le croit sur parole. *Autoriser*, c'est
+l'application : elle tranche sur les groupes que le portail lui transmet, à chaque requête,
+et rien d'autre n'entre dans cette décision. *Lire l'annuaire* est un troisième acte, et il
+est récent : l'application LIT désormais les comptes et les groupes qui existent, pour
+COMPOSER la vue *👥 Comptes et groupes* et pour vérifier un nom qu'on lui tape — jamais pour
+authentifier, jamais pour autoriser. Aucun accès ne change selon ce que l'annuaire répond, et
+une panne de lecture ne ferme rien : elle dit qu'elle n'a pas pu vérifier. Lire, ce n'est donc
+ni authentifier ni décider ; c'est montrer ce qui existe pour qu'on n'ait plus à le deviner.
 
 L'application ne croit ces en-têtes que si on lui a **déclaré** qu'un proxy est bien devant
 elle (`BD_AUTH_PROXY`). Deux conséquences :
@@ -187,8 +197,8 @@ il se l'accorde.
 
 Le groupe `bd-admins` lit et écrit **tout le corpus sans figurer dans aucune liste d'accès**.
 Ce n'est pas un défaut : c'est la vérité de tout auto-hébergement — qui tient la machine tient
-les données. Ce qui serait fautif, c'est que ce pouvoir soit **invisible**. Le panneau
-*👥 Accès aux collections* de l'Administration le **déclare donc en clair**, en nommant les groupes lus plutôt
+les données. Ce qui serait fautif, c'est que ce pouvoir soit **invisible**. *Qui entre* le
+**déclare donc en clair**, sous la liste des accès, en nommant les groupes lus plutôt
 qu'une constante recopiée dans un coin.
 
 C'est aussi un **recours** : sans lui, le départ du dernier propriétaire d'une collection
@@ -438,7 +448,7 @@ scientifiques** n'ont pas de formulaire : ils s'écrivent par `tools/gerer_colle
 
 | | Comptes et groupes | Accès aux collections |
 |---|---|---|
-| Où | l'annuaire LLDAP, par son interface web (le fichier `deploy/authelia/users_database.yml` n'est plus que le repli) | dans l'application, bloc *👥 Accès aux collections* de l'Administration |
+| Où | l'annuaire LLDAP, par son interface web (le fichier `deploy/authelia/users_database.yml` n'est plus que le repli) | dans l'application, *Qui entre*, en tête de la collection dépliée (Bibliothèque) |
 | Qui | un administrateur (`bd-admins`), sans accès shell | tout **propriétaire** de la collection |
 | Effet | qui peut **entrer** | qui voit **quoi** |
 | Prise d'effet | sans redémarrer Authelia — c'était le cas du fichier, et c'est ce que la bascule a supprimé | immédiate |
@@ -479,8 +489,8 @@ portail** : revenu au portail sans destination, Authelia propose d'enrôler un s
 (cf. [`exploitation.md`](exploitation.md), étape 7 de *Basculer vers l'annuaire LLDAP*). Dans
 le fichier de repli, il n'y a rien à créer : un groupe existe dès qu'un compte le porte. Dans
 les deux cas, l'application le découvre en le lisant dans les en-têtes. Côté application, il
-suffit de le nommer dans le bloc *👥 Accès aux collections* de l'Administration, en choisissant le genre **groupe**
-plutôt qu'utilisateur — le genre est demandé explicitement parce qu'un login et un groupe
+suffit de le nommer dans *Qui entre*, dans la Bibliothèque, en répondant **groupe** à
+« Compte ou groupe ? » — la question est posée explicitement parce qu'un login et un groupe
 peuvent porter le même nom, et qu'une ambiguïté silencieuse sur un contrôle d'accès n'est pas
 une hypothèse qu'on se permet.
 
@@ -499,9 +509,13 @@ donne accès à votre nom ; si cela ne suffit pas, montrez à l'administrateur l
 technique du bandeau (§3), qui départage.
 
 **J'ai donné un accès et la personne ne voit toujours rien.**
-Vérifiez l'orthographe du login ou du nom de groupe. L'application n'a aucun annuaire : un nom
-mal écrit est accepté sans broncher et n'ouvre rien. Vérifiez aussi le **genre** — un accès
-déclaré « utilisateur » ne s'applique pas à un groupe du même nom.
+Vérifiez l'orthographe du login ou du nom de groupe, dans *Qui entre*. L'application y
+confronte désormais le nom que vous tapez à l'annuaire, et le marque : **inconnu de
+l'annuaire** s'il n'y existe pas, **non vérifié** si l'annuaire n'a pas répondu. La marque
+avertit, elle ne bloque pas — l'accès est accordé tel quel dans les deux cas, et un nom
+marqué « inconnu de l'annuaire » n'ouvre rien. C'est la première chose à regarder.
+Vérifiez aussi qu'il a été déclaré **compte** ou **groupe** selon ce qu'il est : un accès
+donné à un compte ne s'applique pas à un groupe du même nom.
 
 **Pourquoi un album que je sais exister me répond « introuvable » ?**
 Parce que répondre « interdit » révélerait sa présence, donc la composition du corpus. C'est
