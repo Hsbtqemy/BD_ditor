@@ -2,7 +2,7 @@
 passe: Repli de l'annuaire vers le fichier
 chantier: AUTH-7
 duree: 40 min
-derniere: 2026-09-10
+derniere: 2026-09-22
 ---
 
 # QA — le retour arrière existe-t-il ailleurs que dans un commentaire
@@ -63,7 +63,7 @@ shell : on n'est jamais enfermé dehors tant qu'on a la machine.
 ### Ce qu'on ne peut pas déduire, et qu'il faut consigner
 - [x] **La liste des logins présents dans les DEUX backends est écrite ici, avec sa date.** Attendu au 2026-09-07 : les mêmes des deux côtés, le temps 1 les ayant recréés à l'identique. C'est cette coïncidence qui rend le repli complet, et elle expire à la première inscription faite dans l'annuaire seul
 - [x] La conséquence est reportée dans `AUTH-7` : soit le repli est déclaré PARTIEL par écrit, soit toute création dans l'annuaire s'accompagne d'une ligne dans le fichier. La seconde option rétablit le geste en console que ce chantier veut supprimer — ce n'est donc pas un détail d'exploitation, c'est un arbitrage
-- [ ] La commande d'ajout au repli répond bien telle qu'elle est écrite. Les quatre fichiers qui nommaient `authelia/authelia:4.38` sont alignés sur `4.39.22` le 2026-09-07 (`test_une_seule_version_d_authelia_est_documentee` interdit la dérive), et la forme est passée à `-it` — mais alignée n'est pas éprouvée : personne n'a lancé la commande corrigée. C'est là qu'on ira le jour où il faudra ajouter un compte au repli
+- [x] La commande d'ajout au repli répond bien telle qu'elle est écrite. Les quatre fichiers qui nommaient `authelia/authelia:4.38` sont alignés sur `4.39.22` le 2026-09-07 (`test_une_seule_version_d_authelia_est_documentee` interdit la dérive), et la forme est passée à `-it` — mais alignée n'est pas éprouvée : personne n'a lancé la commande corrigée. C'est là qu'on ira le jour où il faudra ajouter un compte au repli
 
 ## Ce que la passe a mesuré — 2026-09-10
 
