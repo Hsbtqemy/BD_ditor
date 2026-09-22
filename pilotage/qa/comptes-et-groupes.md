@@ -74,7 +74,14 @@ qu'il soit « une personne » au départ. Ne pas sauter la remise en état.
 - [ ] « A → Z » sur l'axe *Comptes* : ordre alphabétique des noms lisibles, accents compris (« Étudiant » range avec les E)
 
 ### Clavier, largeur, thèmes
+
+**Les trois cases de hauteur et de largeur supposent une pile reconstruite sur `644d090` ou
+après** (2026-09-22). Avant, le cadre suivait la longueur de la liste et plafonnait à 80rem.
+
 - [ ] Au clavier seul : Tab jusqu'à la première ligne de la liste, `↓` passe à la suivante, `Fin` à la dernière, `Entrée` ouvre la fiche
 - [ ] Outils de développement, mode appareil à 375 px de large : la liste occupe le bloc ; choisir un compte fait apparaître sa fiche SEULE, avec « ← Liste » en tête ; « ← Liste » ramène la liste, focus sur la ligne choisie ; rien ne dépasse à droite
+- [ ] Fenêtre agrandie : passer de l'axe *Comptes* à l'axe *Collections*, qui compte moins de lignes — le cadre garde la même hauteur, et « Moteurs de reconnaissance », dessous, ne remonte pas
+- [ ] Outils de développement, mode appareil à 1280 × 500 : la liste des comptes défile dans le cadre, avec sa propre barre de défilement, et le cadre ne s'allonge pas pour les montrer tous
+- [ ] Fenêtre agrandie, la fiche de `lectrice` : *Groupes* et *Collections* côte à côte, sur une même ligne ; la fiche d'une collection : *Qui entre* sur toute la largeur de la fiche
 - [ ] Thème clair (🌙 → ☀) : « ⚠ À regarder », les pastilles « aucune connexion » (ambre) et « absent de l'annuaire » (rouge, s'il y en a) restent lisibles
 - [ ] Dans le bloc, aucun texte ne dit « principal », « genre » ni « utilisateur » — en particulier sur les fiches que la doublure des tests ne produit pas : un compte de l'annuaire (pastille « compte de l'annuaire », et aucune partie *Départ*), un groupe portant « rôle de l'annuaire », et toute pastille « absent de l'annuaire ». Les trois fiches ordinaires sont mesurées par `tests/test_e2e_qui_entre.py`
