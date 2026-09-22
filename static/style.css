@@ -2184,17 +2184,42 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    petit texte coloré prend un token d'encre AA-sûr (`--accent-amber` et `--accent-green`
    sont assombris en thème clair pour cela, `--ink-red` existe pour ça). Les marques
    portent leur sens dans le MOT, la couleur ne fait que le renforcer (WCAG 1.4.1). */
-.admin-bloc.cg-bloc { max-width: 80rem; }
+/* Toute la largeur de la page : c'est la FICHE qui s'en sert (deux colonnes, ci-dessous).
+   Les deux phrases d'en-tête gardent, elles, une mesure de lecture. */
+.admin-bloc.cg-bloc { max-width: none; }
+.cg-bloc > p { max-width: 62rem; }
+/* Une hauteur FIXE, qui ne suit pas le nombre d'entrées : celle de la fenêtre, moins la
+   barre et une marge, et jamais moins de 28rem. Huit comptes ou trois cents, le cadre ne
+   bouge pas — c'est la liste et la fiche qui défilent, chacune SEULE, et la page autour se
+   construit sur un bloc de taille connue (demandé par Hugo le 2026-09-22, « imaginons
+   trente comptes »). Plus haut que la fenêtre, il faudrait faire défiler la page pour
+   atteindre le bas de la liste : deux défilements pour un seul geste. */
 .cg { display: grid; grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr); height: max(28rem, calc(100vh - 7rem));
       border: 1px solid var(--border); border-radius: 8px; margin-top: .6rem;
       background: var(--bg-panel); }
 /* La liste défile SEULE : trois cents comptes ne doivent pas repousser la fiche sous
    l'écran. Elle contient des boutons, donc son défilement s'atteint au clavier. */
 .cg-liste { border-right: 1px solid var(--border); padding: .6rem; display: flex;
-            flex-direction: column; gap: .5rem; max-height: 75vh; overflow-y: auto;
-            min-width: 0; }
+            flex-direction: column; gap: .5rem; overflow-y: auto;
+            min-width: 0; min-height: 0; }
 .cg-liste > * { flex-shrink: 0; }
-.cg-fiche { min-width: 0; padding: .9rem 1.1rem 1.2rem; }
+/* La fiche défile seule elle aussi : les membres d'un groupe de soixante ne repoussent pas
+   la liste. Chaque fiche assez longue pour défiler porte des liens, donc Tab y descend. */
+.cg-fiche { min-width: 0; min-height: 0; overflow-y: auto; padding: .9rem 1.1rem 1.2rem;
+            container: cg-fiche / inline-size; }
+/* Au large, les deux sections de la fiche côte à côte — Groupes | Collections pour un
+   compte, Collections ouvertes | Membres pour un groupe ; l'en-tête et le départ sur toute
+   la largeur, et une section seule (la collection) aussi. Mesuré sur la largeur de la FICHE,
+   liste ôtée, et non sur celle de la fenêtre. La carte garde une mesure : sans elle, chaque
+   ligne « nom … état » s'étirerait d'un bord à l'autre de l'écran, la valeur loin de son
+   libellé. */
+.cg-carte { max-width: 90rem; }
+@container cg-fiche (min-width: 46rem) {
+  .cg-carte { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+              column-gap: 2.5rem; align-items: start; }
+  .cg-carte > :not(.cg-section), .cg-carte > .cg-section:only-of-type { grid-column: 1 / -1; }
+}
 .cg-axes { display: flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 6px;
            overflow: hidden; }
 .cg-axes button { flex: 1 1 auto; background: none; border: 0; border-right: 1px solid var(--border);
@@ -2280,10 +2305,11 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 /* 40em : le même seuil que `CG_ETROIT` dans administration.js. Au-dessous, une colonne à la
    fois — la liste, ou la fiche choisie (motif de l'Atelier, UX-7). */
 @media (max-width: 40em) {
-  .cg { grid-template-columns: minmax(0, 1fr); }
-  /* Ni hauteur bornée ni défilement : la liste occupe l'écran, et un débordement y serait
-     une PERTE que la sonde de reflow doit voir, pas un cadre qu'elle tolère. */
-  .cg-liste { border-right: 0; max-height: none; overflow: visible; }
+  .cg { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; height: auto; }
+  /* Ni hauteur fixe ni défilement : une colonne à la fois occupe l'écran, et un débordement
+     y serait une PERTE que la sonde de reflow doit voir, pas un cadre qu'elle tolère. */
+  .cg-liste { border-right: 0; overflow: visible; }
+  .cg-fiche { overflow: visible; }
   .cg:not(.cg--fiche) .cg-fiche { display: none; }
   .cg.cg--fiche .cg-liste { display: none; }
   .cg-retour { display: inline-block; margin-bottom: .6rem; }

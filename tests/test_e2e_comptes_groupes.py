@@ -563,6 +563,64 @@ def test_sur_la_vraie_route_un_acces_mort_se_signale_et_mene_a_ses_fiches(page, 
     expect(qui).to_contain_text("absent de l'annuaire")
 
 
+# ── Au large : un cadre de taille connue ───────────────────────────────────────────────
+
+
+def test_au_large_le_cadre_ne_suit_pas_le_nombre_d_entrees(page, live_server):
+    """La hauteur est FIXE (2026-09-22) : dix-sept comptes ou deux collections, le cadre ne
+    bouge pas, et c'est la liste qui défile dedans. Jusque-là, le cadre suivait la liste, et
+    tout ce qui venait après lui se déplaçait à chaque changement d'axe."""
+    page.set_viewport_size({"width": 1400, "height": 600})
+    _ouvrir(page, live_server, decor())
+    cadre, liste = page.locator("#cg"), page.locator(".cg-liste")
+    hauteur = cadre.bounding_box()["height"]
+    assert liste.evaluate("e => e.scrollHeight > e.clientHeight"), \
+        "dix-sept comptes dans une fenêtre de 600 px : la liste doit défiler dans le cadre"
+    page.locator('.cg-axes button[data-axe="collections"]').click()
+    expect(page.locator("#cg-objets .cg-objet")).to_have_count(2)
+    assert cadre.bounding_box()["height"] == hauteur
+    assert liste.evaluate("e => e.scrollHeight <= e.clientHeight")
+
+
+def test_au_large_la_fiche_met_ses_deux_sections_cote_a_cote(page, live_server):
+    """La largeur ne sert que si la fiche s'en sert : ses deux sections côte à côte, et une
+    section seule — la collection n'a que « Qui entre » — sur toute la largeur de la carte."""
+    page.set_viewport_size({"width": 1400, "height": 800})
+    _ouvrir(page, live_server, decor())
+    page.locator("#cg-objets .cg-objet", has_text="Léa Lectrice").click()
+    sections = page.locator("#cg-fiche .cg-section")
+    groupes, collections = sections.nth(0).bounding_box(), sections.nth(1).bounding_box()
+    assert abs(groupes["y"] - collections["y"]) < 1
+    assert collections["x"] >= groupes["x"] + groupes["width"]
+
+    page.locator('.cg-axes button[data-axe="collections"]').click()
+    page.locator("#cg-objets .cg-objet", has_text="Collection Test").click()
+    expect(page.locator("#cg-fiche-titre")).to_have_text("Collection Test")
+    carte = page.locator("#cg-fiche .cg-carte").bounding_box()
+    assert abs(page.locator("#cg-fiche .cg-section").bounding_box()["width"]
+               - carte["width"]) < 1
+
+
+def test_une_fiche_neuve_s_ouvre_en_haut(page, live_server):
+    """La fiche défile seule, donc elle garde sa position d'un rendu à l'autre. Deux groupes
+    de même longueur, exprès : vers une fiche COURTE, le navigateur ramènerait de lui-même
+    la position à zéro, et le test passerait sans que l'écran y soit pour rien."""
+    d = decor()
+    d["groupes"].append(_groupe("etudiants-bd-2025", ETUDIANTS, gid=7))
+    page.set_viewport_size({"width": 1400, "height": 500})
+    _ouvrir(page, live_server, d)
+    page.locator('.cg-axes button[data-axe="groupes"]').click()
+    page.locator("#cg-objets .cg-objet", has_text="etudiants-bd-2026").click()
+    fiche = page.locator("#cg-fiche")
+    assert fiche.evaluate("e => e.scrollHeight > e.clientHeight"), \
+        "douze membres dans une fenêtre de 500 px : la fiche doit défiler"
+    fiche.evaluate("e => { e.scrollTop = e.scrollHeight; }")
+    assert fiche.evaluate("e => e.scrollTop") > 0
+    page.locator("#cg-objets .cg-objet", has_text="etudiants-bd-2025").click()
+    expect(page.locator("#cg-fiche-titre")).to_have_text("etudiants-bd-2025")
+    assert fiche.evaluate("e => e.scrollTop") == 0
+
+
 # ── Seuil étroit ───────────────────────────────────────────────────────────────────────
 
 

@@ -410,6 +410,11 @@ function cgRendreListe() {
 
 function cgRendreFiche() {
   const box = $("#cg-fiche");
+  // La fiche défile seule : une fiche NEUVE s'ouvre en haut, et non à la hauteur où l'on
+  // avait laissé la précédente. Le même objet re-rendu (la nature posée recharge tout)
+  // garde sa position — c'est là qu'on était en train de lire.
+  const cle = `${CG.axe}:${CG.sel}`;
+  if (box.dataset.cle !== cle) { box.scrollTop = 0; box.dataset.cle = cle; }
   const retour = `<button type="button" class="ghost small cg-retour" data-cg-retour="1">← Liste</button>`;
   if (CG.sel === null) {
     const [un] = CG_NOMS_AXE[CG.axe];
