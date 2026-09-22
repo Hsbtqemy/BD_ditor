@@ -2,7 +2,7 @@
 passe: Les collections dans la Bibliothèque
 chantier: COL-2
 duree: 20 min
-derniere: 2026-09-16
+derniere: 2026-09-22
 ---
 
 # QA — ce que la collection EST se gère dans la Bibliothèque, et qui y entre aussi
@@ -67,8 +67,8 @@ que s'il est au moins aussi récent.
 - [x] Une date illisible (`31/12/2030`) n'efface rien et ne passe pas pour une date : elle est signalée comme illisible
 - [x] La note du référent dit que c'est une ADRESSE, qui ne sort d'aucun export, et pas le responsable scientifique
 - [x] Prendre le nom « Collection par défaut » est refusé, avec un message lisible
-- [ ] Le même refus, rejoué en descendant le formulaire jusqu'à *Enregistrer* : le message rouge s'affiche juste sous les boutons *Enregistrer* et *Supprimer la collection* de « Collection Test », au-dessus du bloc d'export, lisible sans faire défiler
-- [ ] Remettre « Collection Test » dans le champ Nom — sans quoi le nom refusé repartirait avec l'enregistrement —, ajouter un mot à la description, descendre jusqu'à *Enregistrer* et cliquer : « enregistrée » s'affiche sous les mêmes boutons, le refus précédent a disparu, et l'écran ne saute pas — *Enregistrer* est encore à la hauteur où l'on a cliqué
+- [x] Le même refus, rejoué en descendant le formulaire jusqu'à *Enregistrer* : le message rouge s'affiche juste sous les boutons *Enregistrer* et *Supprimer la collection* de « Collection Test », au-dessus du bloc d'export, lisible sans faire défiler
+- [x] Remettre « Collection Test » dans le champ Nom — sans quoi le nom refusé repartirait avec l'enregistrement —, ajouter un mot à la description, descendre jusqu'à *Enregistrer* et cliquer : « enregistrée » s'affiche sous les mêmes boutons, le refus précédent a disparu, et l'écran ne saute pas — *Enregistrer* est encore à la hauteur où l'on a cliqué
 - [x] La collection dépliée nomme l'Administration comme l'endroit où l'on règle qui entre, avec un lien qui y mène
 
 ### Sous un lecteur d'écran
@@ -80,8 +80,8 @@ COL-2 ne faisait pas. Décidé le 2026-09-16 : mesurer ici avant de rien corrige
 reste muet, ne pas cocher et le noter : c'est précisément ce que la case cherche à savoir,
 pas un incident de la passe — COL-2 en décidera.
 
-- [ ] Sous `proprio`, *Bibliothèque*, « Collection Test » dépliée : ajouter un mot à la description, puis *Enregistrer* — NVDA lit « « Collection Test » enregistrée. ». Retirer le mot et enregistrer de nouveau, pour rendre le décor
-- [ ] Sous `admin-bd`, *Bibliothèque → 📚 Collections*, « Étude B » dépliée, partie *Qui entre* : sur la ligne de `proprio`, décocher « décider qui entre » — NVDA lit le refus « C'est le dernier propriétaire de cette collection… », et la case revient cochée
+- [x] Sous `proprio`, *Bibliothèque*, « Collection Test » dépliée : ajouter un mot à la description, puis *Enregistrer* — NVDA lit « « Collection Test » enregistrée. ». Retirer le mot et enregistrer de nouveau, pour rendre le décor
+- [x] Sous `admin-bd`, *Bibliothèque → 📚 Collections*, « Étude B » dépliée, partie *Qui entre* : sur la ligne de `proprio`, décocher « décider qui entre » — NVDA lit le refus « C'est le dernier propriétaire de cette collection… », et la case revient cochée
 
 ### Les autres la lisent sans la modifier
 
@@ -113,7 +113,11 @@ régression à signaler, pas un détour à faire.
 - [x] Le bloc « 👥 Comptes et groupes », axe *Collections*, ne permet ni de créer, ni de renommer, ni de supprimer une collection, ni d'en changer le référent — sa partie *Qui entre* y est en LECTURE seule
 - [x] Chaque collection y renvoie vers la Bibliothèque pour ce qu'elle EST, avec un lien
 - [x] Les groupes d'administration qui voient tout le corpus sont déclarés, en nommant `bd-admins` — depuis `6ea6b60` cette déclaration a suivi les accès dans la Bibliothèque, sous le tableau de *Qui entre*, et ne se lit plus dans l'Administration
-- [ ] « Collection par défaut » dépliée — « Collection Test » a été supprimée à la zone précédente —, saisir `annotateurs` et laisser le genre sur « Utilisateur ou groupe ? », puis *+ Accorder* : un refus rouge s'affiche sous la ligne d'ajout de cette collection et demande de choisir entre utilisateur et groupe — et non « Genre invalide », qui viendrait du serveur et voudrait dire que la demande est partie
+- [x] Dans la **Bibliothèque**, « Collection par défaut » dépliée, partie *Qui entre* : dans *Faire entrer*, choisir « Un compte, ou un groupe absent de la liste… » — et non `annotateurs` sous « Groupes de l'annuaire », qui le déclare groupe d'office —, taper `annotateurs` dans « nom exact », laisser « Compte ou groupe ? », puis *+ Faire entrer* : un refus rouge s'affiche juste sous la ligne d'ajout et demande de dire si c'est un compte ou un groupe — et non « Genre invalide », qui viendrait du serveur et voudrait dire que la demande est partie
+      *(Réécrite le 2026-09-22 d'après le geste joué ce jour-là. Elle disait « + Accorder » et « Utilisateur
+      ou groupe ? », libellés de l'ancien panneau de l'Administration, que la remise à l'écran du 2026-09-18
+      avait manqués ; et elle faisait saisir le nom sans dire qu'un annuaire LU propose le groupe dans une
+      liste, où la question du genre ne se pose jamais.)*
 
 ### Étroit, clavier, thèmes
 
@@ -129,9 +133,10 @@ La passe a supprimé « Collection Test » et changé son régime. Sans cette zo
 qui s'appuient sur elle échouent plus tard sur un décor absent — et rien ne dira que la
 cause est ici. L'état ci-dessous est celui mesuré le 2026-09-14, avant le jeu.
 
-**La ligne *+ Accorder* n'a pas de genre par défaut** : choisir **Groupe** pour
-`annotateurs` et `etudiants`, **Utilisateur** pour `stagiaire` — le bouton refuse tant
-que ce n'est pas fait. Le 2026-09-16, « Utilisateur » était présélectionné, et les deux
+**La ligne *+ Faire entrer* n'a pas de genre par défaut** : un groupe pris sous « Groupes
+de l'annuaire » est déclaré groupe d'office ; tapé à la main, choisir **Groupe** pour
+`annotateurs` et `etudiants`, **Compte** pour `stagiaire` — le bouton refuse tant que ce
+n'est pas fait. Le 2026-09-16, « Utilisateur » était présélectionné, et les deux
 groupes ont d'abord été posés en utilisateurs : un groupe accordé ainsi n'ouvre rien à
 personne, et la liste n'en dit que « n'a pas encore ouvert l'application ». COL-2 a
 retiré la présélection le jour même.
