@@ -159,8 +159,12 @@ formule précédente, « avancer les chantiers AUTH et UX », n'avait pas de bor
 semaines sur la version du 2026-09-08, où un login partagé ne peut même pas être déclaré
 collectif. La fusion dans `main` attend donc exactement deux choses.
 
-1. **TOUTES les passes de QA**, y compris les trois jamais jouées
-   (`accueil-par-ou-commencer`, `petites-largeurs`, `preference-de-police`).
+1. **TOUTES les passes de QA**, y compris les deux jamais jouées
+   (`petites-largeurs`, `preference-de-police`). **`accueil-par-ou-commencer` en est
+   SORTIE le 2026-09-22** (Hugo, « pour l'instant ») : elle éprouve l'écran d'`UX-6`, qui
+   n'existe pas encore, donc aucune de ses cases ne se joue. L'y avoir mise le 2026-09-17
+   revenait à suspendre la fusion à un chantier que le périmètre renvoie lui-même à l'étape
+   suivante. Elle y rentre avec l'écran, dans l'étape qui le portera.
 2. **Les étapes 1 à 3 de l'ordre de construction d'`AUTH-12`** :
    - lire l'annuaire (`AUTH-6`) ;
    - le bloc « 👥 Comptes et groupes » de l'Administration ;

@@ -211,3 +211,12 @@ ce qui n'existe pas — c'est exactement la panne qu'il est censé éviter. Corr
 documents disent Atelier, avec une note qui rattache le mot à celui du code. `CLAUDE.md` et
 `README.md` disent toujours Visionneuse, et ce n'est pas rien : la nomenclature interne et
 l'écran ont divergé sans que personne l'écrive. Hors périmètre d'UX-6, à signaler.
+
+### Hors de la grande étape de fusion — 2026-09-22
+
+La passe `pilotage/qa/accueil-par-ou-commencer.md` était l'une des trois « jamais jouées »
+dont le périmètre FERMÉ du 2026-09-17 faisait attendre la fusion de `dev` dans `main`
+(`docs/roadmap.md`). Elle ne pouvait pas l'être : elle éprouve l'écran, et l'écran n'existe
+pas. **Hugo l'a sortie du périmètre le 2026-09-22, « pour l'instant ».** Ce chantier ne
+retient donc plus la fusion, et rien n'y change de calendrier : c'est la construction de
+l'écran qui la fera rentrer, avec l'étape qui le portera.
