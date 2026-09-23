@@ -2,7 +2,7 @@
 passe: Dérivés régénérés et import JPEG 2000
 chantier: IMG-1
 duree: 15 min
-derniere: —
+derniere: 2026-09-23
 ---
 
 # QA — un JP2 se choisit dans le dialogue, et un dérivé qui change de taille garde les cases en place
@@ -44,9 +44,9 @@ Chrome. Toutes les commandes se tapent dans PowerShell, depuis la racine du dép
 
 ### Le dialogue d'import propose les JP2, et seulement des images
 
-- [ ] Atelier, menu « ⇅ Import / Export » en haut, puis « ⤓ Importer des images… » ; dans le dialogue Windows, aller dans `C:\temp\qa-img1\fichiers` SANS toucher à la liste des types en bas à droite : `rectangle.jp2` et `rectangle.tif` sont listés, `notes.txt` ne l'est pas
-- [ ] Dans ce même dialogue, choisir `rectangle.jp2` : un message « Planche importée » s'affiche, et la planche montre un rectangle NOIR sur fond BLANC — ni une page blanche, ni une page noire
-- [ ] Rouvrir « ⤓ Importer des images… », changer la liste des types en bas à droite pour l'entrée qui montre tous les fichiers, choisir `notes.txt` : un message d'erreur commence par « Import : Extension « .txt » non gérée : image attendue », et aucune planche ne s'ajoute. Si la liste n'offre aucune entrée qui montre tous les fichiers, la case est sans objet (le refus est éprouvé par `tests/test_formats_image.py`) : le noter à côté
+- [x] Atelier, menu « ⇅ Import / Export » en haut, puis « ⤓ Importer des images… » ; dans le dialogue Windows, aller dans `C:\temp\qa-img1\fichiers` SANS toucher à la liste des types en bas à droite : `rectangle.jp2` et `rectangle.tif` sont listés, `notes.txt` ne l'est pas
+- [x] Dans ce même dialogue, choisir `rectangle.jp2` : un message « Planche importée » s'affiche, et la planche montre un rectangle NOIR sur fond BLANC — ni une page blanche, ni une page noire
+- [x] Rouvrir « ⤓ Importer des images… », changer la liste des types en bas à droite pour l'entrée qui montre tous les fichiers, choisir `notes.txt` : un message d'erreur commence par « Import : Extension « .txt » non gérée : image attendue », et aucune planche ne s'ajoute. Si la liste n'offre aucune entrée qui montre tous les fichiers, la case est sans objet (le refus est éprouvé par `tests/test_formats_image.py`) : le noter à côté
 
 ### Les cases restent sur le dessin quand le dérivé change de taille
 
@@ -68,11 +68,11 @@ Les rechargements de cette zone se font en `Ctrl+F5`, EXPRÈS : qu'un simple rec
 suffise est une autre question — le cache des dérivés, mesurée à part. Ici on ne regarde que
 la géométrie.
 
-- [ ] Second onglet (le dérivé) : le titre de l'onglet contient `500×700` — le quart du master, qui fait 2000 × 2800
-- [ ] Seconde fenêtre PowerShell : la commande « doubler » imprime `(1000, 1400)` ; second onglet, `Ctrl+F5` : le titre contient désormais `1000×1400`
-- [ ] Onglet de l'Atelier, `Ctrl+F5`, revenir sur la planche : le cadre de la case colle TOUJOURS aux quatre bords du rectangle noir, à l'œil, comme avant le changement de taille
-- [ ] Seconde fenêtre PowerShell : `.venv\Scripts\python tools\regenerer_derives.py --planche 1` imprime « ✓ 1 dérivé(s) régénéré(s) sur 1 planche(s). » ; second onglet, `Ctrl+F5` : le titre contient de nouveau `500×700`
-- [ ] Onglet de l'Atelier, `Ctrl+F5`, revenir sur la planche en mode Édition et sélectionner la case : son cadre colle encore aux bords du rectangle, et le bloc « Coordonnées (px master) » montre les MÊMES X, Y, L, H que ceux notés au préalable — ils sont en pixels master, et rien ne devait les toucher
+- [x] Second onglet (le dérivé) : le titre de l'onglet contient `500×700` — le quart du master, qui fait 2000 × 2800
+- [x] Seconde fenêtre PowerShell : la commande « doubler » imprime `(1000, 1400)` ; second onglet, `Ctrl+F5` : le titre contient désormais `1000×1400`
+- [x] Onglet de l'Atelier, `Ctrl+F5`, revenir sur la planche : le cadre de la case colle TOUJOURS aux quatre bords du rectangle noir, à l'œil, comme avant le changement de taille
+- [x] Seconde fenêtre PowerShell : `.venv\Scripts\python tools\regenerer_derives.py --planche 1` imprime « ✓ 1 dérivé(s) régénéré(s) sur 1 planche(s). » ; second onglet, `Ctrl+F5` : le titre contient de nouveau `500×700`
+- [x] Onglet de l'Atelier, `Ctrl+F5`, revenir sur la planche en mode Édition et sélectionner la case : son cadre colle encore aux bords du rectangle, et le bloc « Coordonnées (px master) » montre les MÊMES X, Y, L, H que ceux notés au préalable — ils sont en pixels master, et rien ne devait les toucher
 
 Fin de passe : arrêter le serveur (`Ctrl+C` dans sa fenêtre) ; `C:\temp\qa-img1` peut être
 supprimé.
