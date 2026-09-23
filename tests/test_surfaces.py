@@ -34,18 +34,29 @@ def test_le_recensement_des_audits_n_est_pas_vide():
     2026-09-07 à une garde écrite le matin même : `assert not fautifs` est trivialement
     vrai sur une liste vide.
     """
-    # ONZE depuis le 2026-09-23 (`UX-15` : le cadre du mode Transcription, et les
-    # promesses de touches de l'Atelier). NEUF auparavant, et le chiffre a été MESURÉ
-    # par cette garde même : le recensement à la main
-    # qui a précédé en comptait sept, et `test_e2e_audit2` comme `test_e2e_tiroirs` lui
-    # avaient échappé — ils ne citaient aucun des chemins que la recherche interrogeait.
-    # C'est un CLIQUET : il monte quand on ajoute un audit, et le baisser doit être un
-    # geste délibéré, jamais la façon de faire passer une suite devenue rouge.
+    # Le plancher chiffré a VIEILLI dans le sens permissif, et c'est la leçon qu'ARCH-2
+    # avait déjà payée : écrit NEUF le 2026-09-07, il l'était encore le 2026-09-23 alors
+    # que le dépôt comptait VINGT modules d'audit. Onze s'y étaient ajoutés sans jamais
+    # le faire monter — et le geste qui l'a rendu visible est celui qui l'a porté de neuf
+    # à onze, par arithmétique sur une base périmée plutôt qu'en remesurant. Un plancher
+    # recopié ne garde donc que ce qu'il voyait le jour où on l'a écrit : sous ce chiffre,
+    # un motif amputé de huit modules laissait la suite verte (mesuré le 2026-09-23).
+    #
+    # Il reste, comme dernier filet contre un dossier vide, mais la garde qui MORD est la
+    # seconde : DEUX énumérations indépendantes du même dossier doivent donner la même
+    # liste. Le chiffre n'est plus à entretenir — c'est l'écart entre deux façons de
+    # compter qui crie, et un motif rétréci se voit le jour même.
     trouves = surfaces.modules_d_audit()
-    assert len(trouves) >= 11, (
+    assert len(trouves) >= 20, (
         f"seulement {len(trouves)} module(s) d'audit E2E recensé(s) : {[f.name for f in trouves]}. "
         "Le motif de `modules_d_audit` ne les atteint plus, et tous les contrôles de ce "
         "fichier deviennent vacants sans échouer")
+    a_plat = sorted(p.name for p in surfaces.DOSSIER.iterdir()
+                    if p.name.startswith("test_e2e_") and p.suffix == ".py")
+    assert sorted(f.name for f in trouves) == a_plat, (
+        "le recensement et le contenu du dossier ne disent pas la même chose : "
+        f"manquants={sorted(set(a_plat) - {f.name for f in trouves})}, "
+        f"en trop={sorted({f.name for f in trouves} - set(a_plat))}")
 
 
 @pytest.mark.parametrize("fichier", surfaces.modules_d_audit(), ids=lambda f: f.name)
