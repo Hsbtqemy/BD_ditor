@@ -86,3 +86,16 @@ des tags avec leurs définitions, les sujets Dublin Core et DataCite. Mesuré pe
 pas, la fuite reste interne — le fichier va à qui exporte la collection, qui peut ne pas
 lire les autres. Au premier dépôt, elle partirait dans un entrepôt qui garde ses versions.
 À fermer AVANT, comme la base légale.
+
+**Fermé le 2026-09-23 (`9446d68`) — mais le renvoi ne disparaît pas, il CHANGE d'objet.**
+Le vocabulaire est scopé ; ce que la passe de revue a trouvé en le vérifiant est plus lourd
+pour ce chantier-ci. **Par le journal A3, un export de dépôt emporte le TEXTE VERBATIM des
+œuvres de toute l'instance** — `journal._REGION_COLS` contient `ocr_texte`, les charges
+`avant`/`apres` partent mot pour mot dans les tables `activite` et `evenement`, donc dans
+l'archive, le classeur et le dépôt ShareDocs (l'arbre JSON, lui, ne les porte pas). Et cela
+**sans `--verbatim`**, dont ce chantier attend justement qu'il tranche ce qui sort : la
+promesse « par défaut, présence et longueur » est contournée par une autre table. Deux
+règles franchies — `DROIT-1` à la sortie, et le périmètre de la collection. C'est une
+décision ANTÉRIEURE (le journal sort au grain corpus, « un acte n'appartient pas à un
+album ») qu'il faut rouvrir, et c'est le premier dépôt qui la rend opposable. La case vit
+dans `AUTH-11` ; ici, elle est une condition de dépôt au même titre que la base légale.
