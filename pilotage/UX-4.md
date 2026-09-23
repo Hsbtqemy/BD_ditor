@@ -32,6 +32,8 @@ vaut d'être gardée : elle ne survit pas sous 48em et demanderait une seconde c
 l'étroit — alors que l'écran en a déjà une, les cartes de l'étape 3 d'`AUTH-12`. Une
 direction qui oblige à dessiner deux fois le même écran se paie à chaque retouche.
 
+**L'ordre avec `UX-16` est tranché le 2026-09-23 : le module d'abord, D ensuite.** « Qui entre » — l'écran sur lequel les quatre directions ont été dessinées — devient un module montable (`UX-16`, décision C). Restyler avant l'extraction ferait écrire la direction D dans `static/corpus.js` puis la déplacer ; après, elle s'écrit une fois, dans le module, et vaut pour ses deux montages.
+
 **Ce que D invente.** Les messages deviennent des filets de couleur en marge au lieu
 d'encadrés pleins : la hiérarchie se garde, le poids d'alerte disparaît.
 
