@@ -1251,9 +1251,13 @@ h3.collapsible:hover { color: var(--text); }
      2026-09-14 sur un banc isolé : une bulle de 458 × 930 donnait un panneau de 1 793 px
      dans une fenêtre de 800 — zone de saisie, boutons et barre d'aide hors écran. Une
      bulle CARRÉE (288 × 266) débordait déjà, à 969 px : ce n'était pas le défaut des
-     seules bulles hautes, 7 situations sur 16 le montraient. Il faut les DEUX
-     `min-height: 0`, ici et sur `#tr-right` : le poser sur le seul `#tr-right` ne change
-     RIEN, mesuré aussi — c'est la rangée, en amont, qui enflait. */
+     seules bulles hautes, 7 situations sur 16 le montraient. Le poser sur le seul
+     `#tr-right` ne change RIEN, mesuré aussi — c'est la rangée, en amont, qui enflait.
+     CELUI-CI EST LE SEUL NÉCESSAIRE, et cette page a dit le contraire jusqu'au
+     2026-09-23 : elle concluait « il faut les DEUX » sur une mesure qui n'avait comparé
+     que « `#tr-right` seul » à « les deux », sans jamais jouer « celui-ci seul ». La
+     conclusion dépassait la mesure — la même faute, en plus petit, que la corrélation à
+     deux points qui a ouvert ce chantier. Cf. `#tr-right` pour la mesure qui tranche. */
   min-height: 0;
 }
 #transcription[hidden] { display: none; }
@@ -1280,9 +1284,18 @@ h3.collapsible:hover { color: var(--text); }
 }
 
 #tr-right {
-  /* `min-height: 0` : l'autre moitié du réglage de `#transcription` ci-dessus. Colonne
-     flex, il ne peut céder sous la hauteur intrinsèque de son contenu sans cela, et
-     l'éditeur passe alors sous la fenêtre. */
+  /* `min-height: 0` REDONDANT, et conservé en connaissance de cause. Cette ligne disait
+     que sans elle « l'éditeur passe sous la fenêtre » : c'est FAUX tant que
+     `#transcription` porte le sien. Mesuré le 2026-09-23, les deux états relevés sur la
+     MÊME page par un style en ligne — 64 combinaisons de largeur (1600 → 700) et de
+     hauteur (1000 → 400), une bulle haute puis une petite : ZÉRO écart, sur aucune boîte.
+     Gardé par défense en profondeur et non par prudence vague : il redevient la seule
+     chose qui empêche cette colonne flex de céder le jour où `#transcription` cesse
+     d'être un item de cette grille — ce qu'il n'était pas avant `464ab62`, où il se
+     plaçait sur les hauteurs de bandes. Une déclaration inerte se lit comme une garde,
+     et c'est pourquoi `object-fit` a été RETIRÉ plus bas ; la différence est écrite :
+     celui-là ne pouvait RIEN faire, par construction, celui-ci est seulement masqué par
+     un réglage en amont. */
   flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
   padding: 1.3846rem 1.8462rem; gap: 1.0769rem;
 }

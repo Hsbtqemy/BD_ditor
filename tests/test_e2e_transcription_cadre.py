@@ -53,9 +53,11 @@ SURFACES_HORS_PERIMETRE = {
 MASTER = (1200, 1600)
 # 458 × 930, rapport 0,49 : la bulle EXACTE du signalement du 2026-09-14.
 HAUTE = {"x": 100, "y": 60, "w": 458, "h": 930}
-# Plus petite que le cadre aux deux largeurs (mesuré : le cadre fait 771 × 538 à 1280 px
-# et 528 × 538 à 900 px, hauteur de fenêtre 900). Elle a donc la PLACE de grossir, ce qui
-# est la condition pour que « elle ne grossit pas » veuille dire quelque chose.
+# Plus petite que le cadre aux deux largeurs, mesuré À LA HAUTEUR QUE CE MODULE JOUE : le
+# cadre fait 771 × 438 à 1280 px et 528 × 438 à 900 px pour une fenêtre de 800 px de haut.
+# Elle a donc la PLACE de grossir, ce qui est la condition pour que « elle ne grossit
+# pas » veuille dire quelque chose — et la garde le revérifie à chaque passe plutôt que de
+# s'en remettre à ce commentaire.
 PETITE = {"x": 100, "y": 60, "w": 220, "h": 130}
 
 HAUTEUR = 800
@@ -152,8 +154,10 @@ def test_la_bulle_la_plus_haute_ne_chasse_rien_hors_de_la_fenetre(
         assert m[nom]["bas"] <= m["fenetre"], (
             f"à {largeur}×{HAUTEUR}, « {nom} » descend à {m[nom]['bas']} px pour une "
             f"fenêtre de {m['fenetre']} px : la bulle dicte de nouveau la hauteur du "
-            "panneau au lieu de la subir (les deux `min-height: 0` de `#transcription` "
-            "et `#tr-right`, ou la borne de `#tr-crop`)")
+            "panneau au lieu de la subir. Deux réglages la retiennent, et un seul a "
+            "jamais été coupable : le `min-height: 0` de `#transcription`, ou la borne "
+            "de `#tr-crop`. Celui de `#tr-right` est REDONDANT — zéro écart sur 64 "
+            "combinaisons, mesuré le 2026-09-23 — et l'accuser ferait perdre du temps")
         assert m[nom]["bas"] <= m["barre"]["haut"], (
             f"à {largeur}×{HAUTEUR}, « {nom} » descend à {m[nom]['bas']} px et recouvre "
             f"la barre d'état, qui commence à {m['barre']['haut']} px")

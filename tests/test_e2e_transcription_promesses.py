@@ -34,7 +34,17 @@ les boutons de déplacement de l'arbre, qui ne s'affichent que sur le nœud cour
 n'existeraient pas. Une annonce qui n'apparaîtrait que dans un état non visité (un bandeau
 de conflit, une modale) lui échapperait. Il lit AUSSI les libellés masqués sous l'overlay :
 un libellé caché aujourd'hui se réaffiche demain, et la visibilité serait un critère qui
-bouge tout seul.
+bouge tout seul. **Et le porteur ne distingue pas des FRÈRES de même classe** : les quatre
+boutons de mode s'effondrent en un seul `button.mode-btn`, les deux flèches de l'arbre en
+un seul `button.tn-mv`. Une touche qui migrerait d'un bouton de mode à un autre garderait
+donc un couple déjà déclaré et resterait invisible ici. C'est étroit — les deux familles
+sont des séries homogènes dont les membres promettent la même chose au même endroit — et
+les distinguer demanderait au porteur de dépendre d'un `data-mode` ou d'un rang, c'est-à-
+dire de casser dès qu'on réordonne les boutons.
+
+**Le cliquet de la DÉCLARATION vit dans `tests/test_promesses_atelier.py`**, hors marqueur
+`e2e`, avec `PROMESSES` et `CLAVIER` : il ne demande aucun navigateur et doit tourner dans
+la suite par défaut. Ce module-ci ne garde que ce qui exige un écran.
 """
 import httpx
 import pytest
@@ -43,6 +53,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 from playwright.sync_api import expect  # noqa: E402
 
 from conftest import ECRITURE, make_png  # noqa: E402
+from test_promesses_atelier import CLAVIER, PROMESSES  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -55,62 +66,8 @@ SURFACES_HORS_PERIMETRE = {
     "/administration": "aucun raccourci annoncé : la page ne porte aucun libellé de touche",
 }
 
-RAISON_MINIMALE = 30   # « à voir » et « hors sujet » ne sont pas des raisons
-JOUEE = "jouée par "
 
-
-# ---------------------------------------------------------------------------
-# Ce que l'Atelier ANNONCE, et ce que la garde en fait.
-#
-# La clé est `(porteur, touche)` : le porteur est l'élément qui affiche le libellé, désigné
-# par son `id` s'il en a un, sinon par son tag et sa première classe. La valeur dit
-# comment la promesse est tenue — « jouée par <test> », ou la raison de ne pas la jouer.
-# ---------------------------------------------------------------------------
-PROMESSES = {
-    # Les quatre badges de mode : un `<kbd>` VISIBLE dans le bouton, plus le `title`.
-    ("button.mode-btn", "N"): JOUEE + "test_les_badges_de_mode_tiennent_leur_promesse",
-    ("button.mode-btn", "E"): JOUEE + "test_les_badges_de_mode_tiennent_leur_promesse",
-    ("button.mode-btn", "A"): JOUEE + "test_les_badges_de_mode_tiennent_leur_promesse",
-    ("button.mode-btn", "T"): JOUEE + "test_les_badges_de_mode_tiennent_leur_promesse",
-
-    # Déplacement d'une région dans l'arbre de structure (nœud courant seulement).
-    ("button.tn-mv", "Alt+↑"): JOUEE + "test_les_fleches_de_l_arbre_tiennent_leur_promesse",
-    ("button.tn-mv", "Alt+↓"): JOUEE + "test_les_fleches_de_l_arbre_tiennent_leur_promesse",
-
-    # Le seul libellé qui n'annonce PAS un raccourci clavier.
-    ("p.edit-hint", "Maj"): (
-        "ce n'est pas un raccourci mais un geste de SOURIS — « Maj+glisser dans une case » "
-        "— et la touche seule ne promet rien qu'on puisse presser : la jouer au clavier "
-        "mesurerait autre chose que ce que la phrase annonce"),
-
-    # Le panneau de Transcription : la famille d'où vient le défaut, le focus y vivant
-    # TOUJOURS dans la zone de saisie (`renderTranscription()` la focalise à chaque rendu).
-    ("#tr-exit", "Échap"): JOUEE + "test_le_bouton_de_sortie_tient_la_touche_qu_il_affiche",
-    ("div.tr-hint", "Tab"): JOUEE + "test_la_barre_d_aide_tient_ses_promesses_de_navigation",
-    ("div.tr-hint", "Maj+Tab"): JOUEE + "test_la_barre_d_aide_tient_ses_promesses_de_navigation",
-    ("div.tr-hint", "Ctrl+Entrée"): JOUEE + "test_la_barre_d_aide_tient_ses_promesses_de_navigation",
-    ("div.tr-hint", "Entrée"): JOUEE + "test_entree_reste_un_retour_a_la_ligne",
-    # Le texte indicatif de la zone de saisie REDIT deux touches de la barre d'aide.
-    ("#tr-text", "Tab"): (
-        "même touche et même effet que la barre d'aide juste au-dessous, jouée là — la "
-        "rejouer ici mesurerait deux fois le même écouteur, celui de `#tr-text`"),
-    ("#tr-text", "Ctrl+Entrée"): (
-        "même touche et même effet que la barre d'aide juste au-dessous, jouée là — la "
-        "rejouer ici mesurerait deux fois le même écouteur, celui de `#tr-text`"),
-}
-
-# Traduction des noms français affichés vers les touches de Playwright. Elle sert à JOUER
-# ce qu'on a lu : une annonce intraduisible est une annonce qu'on ne peut pas éprouver,
-# et le test le dit plutôt que de la sauter.
-CLAVIER = {
-    "Échap": "Escape", "Tab": "Tab", "Entrée": "Enter", "Espace": "Space",
-    "Maj+Tab": "Shift+Tab", "Ctrl+Entrée": "Control+Enter",
-    "Alt+↑": "Alt+ArrowUp", "Alt+↓": "Alt+ArrowDown",
-    "N": "n", "E": "e", "A": "a", "T": "t",
-}
-
-
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Décor
 # ---------------------------------------------------------------------------
 @pytest.fixture
@@ -237,26 +194,6 @@ def test_aucune_touche_annoncee_n_echappe_a_la_declaration(page, planche_a_deux_
         + " ; ".join(f"{p} → {t!r}" for p, t in fantomes)
         + ". Soit le libellé a disparu — et la déclaration doit partir avec lui —, soit "
         "il a changé de porteur, et c'est précisément le déplacement qu'on veut voir")
-
-
-def test_chaque_promesse_est_jouee_ou_ecartee_avec_sa_raison():
-    """Une déclaration n'est pas un classement : elle dit ce qu'on FAIT de l'annonce.
-
-    Sans ce contrôle, `PROMESSES` deviendrait la case où ranger ce qu'on ne veut pas
-    éprouver — le risque propre à toute liste d'exceptions, qui rend l'omission visible
-    puis offre l'endroit où la faire taire. « Jouée par X » est vérifiée : X doit exister
-    dans ce module, faute de quoi un renommage de test laisserait une promesse orpheline
-    et déclarée tenue.
-    """
-    for (porteur, touche), quoi in PROMESSES.items():
-        if quoi.startswith(JOUEE):
-            nom = quoi[len(JOUEE):].strip()
-            assert callable(globals().get(nom)), (
-                f"({porteur}, {touche!r}) se dit jouée par `{nom}`, qui n'existe pas dans "
-                "ce module : la promesse n'est éprouvée par personne")
-        else:
-            assert len(quoi.strip()) >= RAISON_MINIMALE, (
-                f"({porteur}, {touche!r}) est écartée sans raison lisible : {quoi!r}")
 
 
 # ---------------------------------------------------------------------------
