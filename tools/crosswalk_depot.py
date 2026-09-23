@@ -363,12 +363,32 @@ def datacite_xml(d: dict) -> str:
 # --------------------------------------------------------------------------- #
 # Construction : lecture de la base → notices album + collection
 # --------------------------------------------------------------------------- #
-def _sujets(conn) -> list:
-    """Sujets = valeurs canoniques du vocabulaire facetté + étiquettes (tags). Catalogues
-    globaux (canoniques au corpus) — cf. `docs/export-metadonnees.md` (portée)."""
+def _sujets(conn, collection_id=None) -> list:
+    """Sujets = valeurs du vocabulaire facetté + étiquettes (tags) du périmètre.
+
+    AUTH-11 : ces deux listes sortaient GLOBALES, et la notice DataCite de la collection A
+    publiait donc, en clair et dans un dépôt pérenne, le vocabulaire d'analyse des autres
+    études de l'instance. Elles suivent désormais l'APPARTENANCE du terme — global ⊕ local
+    à la collection déposée (`database.clause_appartenance`), la règle que suit déjà le
+    « % défini ». `collection_id=None` vaut corpus entier et ne filtre rien.
+
+    La valeur est filtrée AVEC SON AXE, comme dans `metadonnees_collection._cartes` et
+    `socle._attributs_de`. Une valeur restée globale sous un axe devenu local existe (v24
+    fait descendre la portée à la création, pas rétroactivement) : la borner sur elle
+    seule faisait sortir, dans les `subjects` de la notice, un mot que les records du même
+    dépôt ne portent pas. Deux fichiers du même dépôt qui ne disent pas le même
+    vocabulaire se contredisent, et c'est le genre d'écart qu'un entrepôt garde pour
+    toujours.
+    """
+    ou_val, p_val = database.clause_appartenance(collection_id, "v.collection_id")
+    ou_dim, p_dim = database.clause_appartenance(collection_id, "d.collection_id")
+    ou_tag, p_tag = database.clause_appartenance(collection_id, "t.collection_id")
     vals = [r[0] for r in conn.execute(
-        "SELECT DISTINCT valeur FROM attribut_valeur ORDER BY valeur")]
-    tags = [r[0] for r in conn.execute("SELECT label FROM tags ORDER BY label")]
+        f"SELECT DISTINCT v.valeur FROM attribut_valeur v "
+        f"JOIN attribut_dimension d ON d.id = v.dimension_id "
+        f"WHERE {ou_val} AND {ou_dim} ORDER BY v.valeur", [*p_val, *p_dim])]
+    tags = [r[0] for r in conn.execute(
+        f"SELECT t.label FROM tags t WHERE {ou_tag} ORDER BY t.label", p_tag)]
     vus, out = set(), []
     for s in vals + tags:
         if s and s not in vus:
@@ -444,7 +464,7 @@ def construire(conn, collection_id=None, publisher="BéDéditeur", annee_depot=N
             "licence": licence, "licence_uri": licence_uri,
             "base_legale": row["base_legale"],
             "access_rights": row["statut_diffusion"],
-            "subjects": _sujets(conn), "related": related,
+            "subjects": _sujets(conn, collection_id), "related": related,
             "publisher": publisher, "publication_year": annee_depot,
         }
         collection_out = _serialiser(rec)

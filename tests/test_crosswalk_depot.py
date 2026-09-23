@@ -90,6 +90,48 @@ def test_crosswalk_collection(client, album, db_path, data_dir):
     assert "Hergé" in [c["name"] for c in cw["albums"][0]["datacite"]["creators"]]
 
 
+def test_les_sujets_ne_portent_que_le_vocabulaire_de_la_collection(client, album,
+                                                                   db_path, data_dir):
+    """AUTH-11 — `subjects` (DataCite) et `dc:subject` prenaient TOUS les tags et TOUTES
+    les valeurs de l'instance.
+
+    C'est la pire des quatre fuites de la famille, par sa destination : la notice de
+    collection part à l'entrepôt, où elle est figée et publique. La grille d'analyse d'une
+    autre étude s'y retrouvait en clair, sous le nom de la nôtre.
+
+    Le contrôle passe par la CLI en sous-processus, comme le reste de ce fichier : on
+    mesure ce que l'outil ÉMET — ici sur sa sortie standard, faute de `--out-dir`, et ce
+    sont les mêmes notices que celle-ci écrirait dans des fichiers. Anti-vacuité : le
+    sujet global et celui de la collection déposée doivent y être.
+    """
+    _checkpoint(db_path)
+    creer = _run("gerer_collections.py", db_path, data_dir, "creer",
+                 "--nom", "Corpus déposé", "--albums", str(album["id"]))
+    assert creer.returncode == 0, creer.stderr
+    cid = creer.stdout.strip()
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("INSERT INTO tags (label) VALUES ('sujet-global-9500')")
+        conn.execute("INSERT INTO tags (label, collection_id) VALUES ('sujet-ici-9501', ?)",
+                     (cid,))
+        conn.execute("INSERT INTO tags (label, collection_id) VALUES "
+                     "('sujet-ailleurs-9502', "
+                     " (SELECT id FROM collection WHERE nom = 'Collection par défaut'))")
+        conn.commit()
+    finally:
+        conn.close()
+    _checkpoint(db_path)
+
+    r = _run("crosswalk_depot.py", db_path, data_dir, "--collection", cid)
+    assert r.returncode == 0, r.stderr
+    texte = r.stdout
+    assert "sujet-global-9500" in texte, "le vocabulaire global a disparu de la notice"
+    assert "sujet-ici-9501" in texte, "la collection n'exporte plus son propre vocabulaire"
+    assert "sujet-ailleurs-9502" not in texte, (
+        "le vocabulaire d'une AUTRE collection part au dépôt sous le nom de celle-ci")
+
+
 def test_crosswalk_corpus_entier(client, album, db_path, data_dir):
     """Sans `--collection` : des notices album, aucune notice collection."""
     rc = client.post(f"/api/albums/{album['id']}/contributions",

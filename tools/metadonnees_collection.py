@@ -20,8 +20,10 @@ Le texte OCR est du CONTENU (`restreint`), pas de la métadonnée : par défaut 
 n'expose que présence + longueur. `--verbatim` inclut le texte (export détenu).
 
 Périmètre par défaut : le corpus entier. `--collection <id>` restreint aux albums d'une
-collection (records scopés ; catalogues de référence — personnages, vocabulaire, tags —
-restent globaux car canoniques au corpus). Gérer les collections : `gerer_collections.py`.
+collection — les records par leurs albums, le VOCABULAIRE par son appartenance : global ⊕
+local à la collection (AUTH-11, `database.clause_appartenance`). Les personnages restent
+globaux : ce sont des entités, pas des termes. Gérer les collections :
+`gerer_collections.py`.
 
 Usage :
     python tools/metadonnees_collection.py --json f.json
@@ -52,23 +54,38 @@ from _commun import (version_outil, environnement, composants,  # noqa: E402  (p
                      evenements_publiables, CIBLES_CORPUS)      # AUTH-1)
 
 
-def _grouper(conn, sql, cle=0):
+def _grouper(conn, sql, cle=0, params=()):
     """Regroupe les lignes d'une requête en {clé: [reste des colonnes...]}."""
     out: dict = {}
-    for row in conn.execute(sql):
+    for row in conn.execute(sql, params):
         vals = list(row)
         out.setdefault(vals[cle], []).append(vals[:cle] + vals[cle + 1:])
     return out
 
 
-def _cartes(conn, album_ids=None) -> dict:
+def _cartes(conn, album_ids=None, collection_id=None) -> dict:
     """Cartes de niveau corpus, préchargées une fois (source unique pour JSON et CSV).
 
-    `album_ids` (scoping `--collection`) filtre les cartes PAR RÉGION iterées telles quelles
-    dans les tables CSV (tokens, annotations, tags posés, attributs de région). Les
-    CATALOGUES de référence (personnages, vocabulaire, tags) restent GLOBAUX : ce sont des
-    entités canoniques de corpus, référencées par nom (cf. docs/export-metadonnees.md)."""
+    DEUX portées, et elles ne se déduisent pas l'une de l'autre.
+
+    `album_ids` (scoping `--collection`) filtre les cartes PAR RÉGION itérées telles
+    quelles dans les tables CSV (tokens, annotations, tags posés, attributs de région) :
+    c'est la portée des DONNÉES.
+
+    `collection_id` filtre le VOCABULAIRE par appartenance — global ⊕ local à la
+    collection (`database.clause_appartenance`). AUTH-11 : ces catalogues sortaient
+    GLOBAUX, si bien que l'export de A emportait les étiquettes, les axes et les valeurs
+    des autres études avec leur `collection_id`. Le filtre se pose sur la LIAISON autant
+    que sur le terme nommé : une région d'A peut porter un tag local à B (qui lit les deux
+    a pu l'y poser), et le scoping par région ne l'aurait pas retenu.
+
+    Les PERSONNAGES restent globaux : ce sont des entités, pas des termes — ils n'ont pas
+    de `collection_id`, et leur portée dérivée se lit par les apparitions (AUTH-2).
+    """
     p = portee_albums(album_ids)
+    ou_terme, p_terme = database.clause_appartenance(collection_id, "t.collection_id")
+    ou_val, p_val = database.clause_appartenance(collection_id, "v.collection_id")
+    ou_dim, p_dim = database.clause_appartenance(collection_id, "d.collection_id")
     w_reg = f" WHERE region_id IN {p['regions']}" if p else ""
     w_pl = f" WHERE album_id IN {p['albums']}" if p else ""
     pl_ids = [r[0] for r in conn.execute("SELECT id FROM planches" + w_pl)]
@@ -82,16 +99,22 @@ def _cartes(conn, album_ids=None) -> dict:
                      conn.execute("SELECT region_id, personnage_id FROM bulle_locuteur")},
         "presence": {r["region_id"]: perso_nom.get(r["personnage_id"]) for r in
                      conn.execute("SELECT region_id, personnage_id FROM personnage_presence")},
+        # La valeur ET son axe sont filtrés : une base antérieure à v24 porte des valeurs
+        # globales sous des axes privés, et c'est le NOM de l'axe qui fuit alors, pas le
+        # mot (même raison que `socle._attributs_de`).
         "region_attr": _grouper(conn,
             "SELECT ra.region_id, d.nom, v.valeur FROM region_attribut ra "
             "JOIN attribut_valeur v ON v.id = ra.valeur_id "
             "JOIN attribut_dimension d ON d.id = v.dimension_id "
-            + (f"WHERE ra.region_id IN {p['regions']} " if p else "")
-            + "ORDER BY d.nom, v.valeur"),
+            + (f"WHERE ra.region_id IN {p['regions']} AND " if p else "WHERE ")
+            + f"{ou_val} AND {ou_dim} ORDER BY d.nom, v.valeur",
+            params=[*p_val, *p_dim]),
         "perso_attr": _grouper(conn,
             "SELECT pa.personnage_id, d.nom, v.valeur FROM personnage_attribut pa "
             "JOIN attribut_valeur v ON v.id = pa.valeur_id "
-            "JOIN attribut_dimension d ON d.id = v.dimension_id ORDER BY d.nom, v.valeur"),
+            "JOIN attribut_dimension d ON d.id = v.dimension_id "
+            f"WHERE {ou_val} AND {ou_dim} ORDER BY d.nom, v.valeur",
+            params=[*p_val, *p_dim]),
         # A5 : alignements d'autorité (skos:exactMatch) par personnage — {pid: [(source, uri)]}.
         "perso_align": _grouper(conn,
             "SELECT personnage_id, source, uri FROM personnage_alignement ORDER BY id"),
@@ -103,15 +126,17 @@ def _cartes(conn, album_ids=None) -> dict:
                                   "note_portee": r["note_portee"], "etat": r["etat"],
                                   "collection_id": r["collection_id"]}
                      for r in conn.execute("SELECT label, couleur, description, note_portee, "
-                                           "etat, collection_id FROM tags")},
+                                           "etat, collection_id FROM tags t "
+                                           f"WHERE {ou_terme}", p_terme)},
         "nb_planches": {r["album_id"]: r["n"] for r in conn.execute(
             "SELECT album_id, COUNT(*) AS n FROM planches GROUP BY album_id")},
         "ann_tags": _grouper(conn,
             "SELECT a.region_id, t.label FROM annotations a "
             "JOIN annotation_tags at ON at.annotation_id = a.id "
             "JOIN tags t ON t.id = at.tag_id "
-            + (f"WHERE a.region_id IN {p['regions']} " if p else "")
-            + "ORDER BY t.label"),
+            + (f"WHERE a.region_id IN {p['regions']} AND " if p else "WHERE ")
+            + f"{ou_terme} ORDER BY t.label",
+            params=list(p_terme)),
         "tokens": _tokens_by_region(conn, album_ids),
         "contributions": _contributions_by_album(conn, album_ids),
         "numero_editorial": _numeros_editoriaux_global(conn),
@@ -225,28 +250,34 @@ def _albums_du_perimetre(conn, album_ids):
 # --------------------------------------------------------------------------- #
 def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
     row, album_ids = _resoudre(conn, collection_id)
-    c = _cartes(conn, album_ids)
+    c = _cartes(conn, album_ids, collection_id)
+    ou_app, p_app = database.clause_appartenance(collection_id)   # AUTH-11 (cf. `_cartes`)
 
     # Domaines (piste B, v20) : champs analytiques émergents qui regroupent les dimensions —
     # même couche SKOS que le reste du vocabulaire. Les émotions ne sont qu'un domaine.
-    dom_noms = {d["id"]: d["nom"] for d in conn.execute("SELECT id, nom FROM domaine")}
+    # La carte des NOMS suit la même portée que la liste : un axe du périmètre rattaché à
+    # un domaine hors périmètre sort sans nom de domaine plutôt qu'avec celui d'à côté.
+    dom_noms = {d["id"]: d["nom"] for d in conn.execute(
+        f"SELECT id, nom FROM domaine WHERE {ou_app}", p_app)}
     domaines = [{"nom": d["nom"], "definition": d["definition"], "note_portee": d["note_portee"],
                  "etat": d["etat"], "collection_id": d["collection_id"]}
                 for d in conn.execute("SELECT nom, definition, note_portee, etat, collection_id "
-                                      "FROM domaine ORDER BY nom")]
+                                      f"FROM domaine WHERE {ou_app} ORDER BY nom", p_app)]
 
     # Lexique situé (A4) : chaque dimension/valeur porte sa couche définitionnelle SKOS
     # (definition · note_portee = scopeNote · etat provisoire→défini · collection_id = portée) ;
     # `domaine` = champ analytique de rattachement (piste B).
     vocab = []
     for d in conn.execute("SELECT id, cible, nom, domaine_id, definition, note_portee, etat, "
-                          "collection_id FROM attribut_dimension ORDER BY cible, nom"):
+                          f"collection_id FROM attribut_dimension WHERE {ou_app} "
+                          "ORDER BY cible, nom", p_app):
         vals = [{"valeur": v["valeur"], "definition": v["definition"],
                  "note_portee": v["note_portee"], "etat": v["etat"],
                  "collection_id": v["collection_id"]}
                 for v in conn.execute(
                     "SELECT valeur, definition, note_portee, etat, collection_id "
-                    "FROM attribut_valeur WHERE dimension_id = ? ORDER BY valeur", (d["id"],))]
+                    f"FROM attribut_valeur WHERE dimension_id = ? AND {ou_app} "
+                    "ORDER BY valeur", (d["id"], *p_app))]
         vocab.append({"cible": d["cible"], "nom": d["nom"],
                       "domaine": dom_noms.get(d["domaine_id"]), "definition": d["definition"],
                       "note_portee": d["note_portee"], "etat": d["etat"],
@@ -366,7 +397,8 @@ def collecter(conn, verbatim: bool = False, collection_id=None) -> dict:
 # --------------------------------------------------------------------------- #
 def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
     row, album_ids = _resoudre(conn, collection_id)
-    c = _cartes(conn, album_ids)
+    c = _cartes(conn, album_ids, collection_id)
+    ou_app, p_app = database.clause_appartenance(collection_id)   # AUTH-11 (cf. `_cartes`)
     P = portee_albums(album_ids)
     w_pl = f" WHERE album_id IN {P['albums']}" if P else ""          # planches.album_id
     w_rp = f" WHERE p.album_id IN {P['albums']}" if P else ""        # regions ⋈ planches
@@ -487,14 +519,15 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
     # Lexique situé (A4) : dump plat (une ligne par valeur), colonnes SKOS aux DEUX niveaux
     # (dimension `dim_*` répétée par valeur). Une dimension SANS valeur n'a pas de ligne ici
     # (dump piloté par les valeurs) mais figure dans les records JSON.
-    # Domaines (piste B) : catalogue de référence, comme le vocabulaire (global).
+    # Domaines (piste B) : même portée d'appartenance que le reste du vocabulaire (AUTH-11).
     out["domaines"] = (
         ["nom", "definition", "note_portee", "etat", "collection_id"],
         [[d["nom"], d["definition"], d["note_portee"], d["etat"], d["collection_id"]]
          for d in conn.execute("SELECT nom, definition, note_portee, etat, collection_id "
-                               "FROM domaine ORDER BY nom")])
+                               f"FROM domaine WHERE {ou_app} ORDER BY nom", p_app)])
 
-    dom_noms = {d["id"]: d["nom"] for d in conn.execute("SELECT id, nom FROM domaine")}
+    dom_noms = {d["id"]: d["nom"] for d in conn.execute(
+        f"SELECT id, nom FROM domaine WHERE {ou_app}", p_app)}
     out["vocabulaire"] = (
         ["cible", "domaine", "dimension", "dim_definition", "dim_note_portee", "dim_etat",
          "dim_collection_id", "valeur", "definition", "note_portee", "etat", "collection_id"],
@@ -502,10 +535,11 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
           d["etat"], d["collection_id"],
           v["valeur"], v["definition"], v["note_portee"], v["etat"], v["collection_id"]]
          for d in conn.execute("SELECT id, cible, nom, domaine_id, definition, note_portee, etat, "
-                              "collection_id FROM attribut_dimension ORDER BY cible, nom")
+                              f"collection_id FROM attribut_dimension WHERE {ou_app} "
+                              "ORDER BY cible, nom", p_app)
          for v in conn.execute("SELECT valeur, definition, note_portee, etat, collection_id "
-                              "FROM attribut_valeur WHERE dimension_id = ? ORDER BY valeur",
-                              (d["id"],))])
+                              f"FROM attribut_valeur WHERE dimension_id = ? AND {ou_app} "
+                              "ORDER BY valeur", (d["id"], *p_app))])
 
     ov = version_outil(BASE_DIR)              # provenance de l'outil (paradonnée)
     env = environnement()                     # python + versions installées (à l'export)

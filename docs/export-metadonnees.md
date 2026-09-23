@@ -119,12 +119,62 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   IIIF prend son nom ;
 - la **fiche** (`description_collection.py`) renseigne son bloc `identite` depuis la ligne
   `collection` et **restreint la couverture** à ces albums ;
-- les **catalogues de référence** — personnages, vocabulaire facetté, étiquettes (tags) —
-  restent **globaux** (entités canoniques du corpus) ; seuls leurs **liens** vers des régions
-  du périmètre sont comptés/scopés. Depuis **A4 (v17)**, chaque terme de vocabulaire porte sa
-  **portée d'appartenance** (`collection_id` : NULL = global, sinon local) ; l'indicateur
-  **% défini** (`paradonnee.lexique`) est **scopé par appartenance** (global ⊕ local à la
-  collection). Cf. `docs/lexique-situe.md`.
+- le **VOCABULAIRE** — domaines, dimensions, valeurs, étiquettes (tags) — est **scopé par
+  APPARTENANCE** : global ⊕ local à la collection (`database.clause_appartenance`). C'est la
+  règle du lexique situé (**A4, v17** : `collection_id` NULL = global, sinon local ; cf.
+  `docs/lexique-situe.md`), celle que l'indicateur **% défini** (`paradonnee.lexique`)
+  suivait déjà seul. Elle vaut pour les **catalogues** (JSON `domaines`/`vocabulaire`/`tags`,
+  tables CSV et onglets du même nom, `subjects` du crosswalk) **et pour les LIAISONS** — un
+  tag posé, une valeur affectée à une région ou à un personnage : une région du périmètre
+  peut porter un terme d'ailleurs, et le scoping par album ne l'aurait pas retenu. Un terme
+  n'y est jamais **plus global que celui dont il dépend** (v24) : une valeur restée globale
+  sous un axe devenu local ne voyage pas, ni dans les records ni dans les `subjects` — deux
+  fichiers du même dépôt qui ne diraient pas le même vocabulaire se contrediraient ;
+- les **personnages** restent **globaux** : ce sont des ENTITÉS et non des termes — ils n'ont
+  pas de `collection_id`, et leur portée se dérive de leurs apparitions (AUTH-2). Seuls leurs
+  **liens** vers des régions du périmètre sont comptés/scopés.
+
+> **Pourquoi ce n'est plus « global » (AUTH-11, 2026-09-23).** Cette page a longtemps dit que
+> les catalogues de référence restaient globaux, « entités canoniques du corpus ». Mesuré :
+> l'export de la collection A emportait les étiquettes, les axes et les valeurs de toutes les
+> autres études de l'instance, avec leur définition, leur note de portée et leur
+> `collection_id` — dans l'arbre JSON, dans les tables CSV, dans le classeur XLSX et, le plus
+> grave, dans la notice DataCite qui part à l'entrepôt. Ce qui fuit n'est pas un mot, c'est
+> une **grille d'analyse**, et un dépôt est figé. Le scoping ne dépend pas de qui exporte : un
+> export de dépôt qui varierait selon la portée du compte ayant cliqué rendrait deux exports
+> de la même collection différents sans que rien ne le dise.
+>
+> **Deux endroits ne sont PAS scopés, et il vaut mieux les écrire que les découvrir.**
+>
+> 1. **Le journal A3** (tables `activite` et `evenement`, donc l'archive CSV, le classeur
+>    XLSX et le dépôt ShareDocs — l'arbre JSON, lui, ne les porte pas). Il sort au grain
+>    CORPUS par décision antérieure : « un run/acte n'appartient pas à un album, et l'acte
+>    SURVIT à la suppression de sa cible → non re-scopable » ; ce qu'il publie est filtré
+>    **par ACTE** (`tools/_commun.CIBLES_CORPUS`), jamais par collection.
+>
+>    **Ce n'est pas seulement un libellé de tag qui y voyage, et il faut le dire en toutes
+>    lettres.** `journal._REGION_COLS` contient `ocr_texte`, et les charges `avant`/`apres`
+>    sont publiées mot pour mot : **l'export d'une collection emporte donc le TEXTE des
+>    œuvres, verbatim, de toute l'instance — y compris sans `--verbatim`, et y compris des
+>    collections qu'on ne dépose pas.** Mesuré le 2026-09-23 sur
+>    `GET /api/collections/{id}/depot/metadonnees?format=zip` : la réplique transcrite d'une
+>    région d'une AUTRE collection ressort en clair dans `evenement.apres`.
+>
+>    Les deux faits se cumulent et aucun ne se rattrape par l'autre. `--verbatim` est
+>    **contourné** : le drapeau borde `regions.ocr_texte` dans les records — « par défaut,
+>    présence + longueur », la promesse de DROIT-1 — et ne borde rien dans le journal. Et le
+>    périmètre est **contourné** : ce qui sort n'est pas le contenu de la collection déposée,
+>    c'est celui de toutes. Cette limite est écrite parce qu'elle n'est pas tranchée, pas
+>    parce qu'elle serait acceptable.
+>
+> 2. **Le bloc `vocabulaire` de la FICHE** (`description_collection.py`) nomme encore toutes
+>    les dimensions, toutes leurs valeurs et tous les domaines de l'instance, et compte les
+>    tags globalement (`couverture.annotations.tags_distincts`). Son `vocabulaire.lexique`
+>    (« % défini »), lui, est scopé depuis A4. Ce décalage est CONNU et non tranché : les
+>    chiffres de cette fiche décrivent une couverture,
+>    et décider s'ils portent sur l'instance ou sur le périmètre est une question de modèle,
+>    pas une clause à poser. Conséquence visible : dans le classeur XLSX des enregistrements,
+>    l'onglet `fiche` peut nommer un axe que l'onglet `vocabulaire` ne porte pas.
 
 ## Formats produits
 

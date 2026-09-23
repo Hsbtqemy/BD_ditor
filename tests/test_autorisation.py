@@ -863,6 +863,85 @@ def test_nommer_un_tag_cache_ne_le_retire_pas(client, db_path, tag_illisible):
         "nommer un tag qu'on ne lit pas l'a retiré, ou le tag visible n'est pas parti")
 
 
+def test_une_region_aux_seuls_tags_caches_n_est_pas_annotee(client, db_path,
+                                                           tag_illisible, png_bytes):
+    """AUTH-11 — le marqueur « annotée » suit ce qu'on VOIT.
+
+    `annotee` (la pastille de l'arbre de structure), `nb_annotees` (la liste des planches)
+    et « annotées » (le compteur de la Recherche) lisaient l'EXISTENCE de la ligne
+    `annotations`. Une région dont il ne reste qu'un tag local à une collection qu'on ne
+    lit pas s'affichait donc cochée — et s'ouvrait vide. Un indice mineur sur du travail
+    qu'on ne voit pas ; surtout, un marqueur qui ment à qui le regarde, et qui divergeait
+    de la règle que l'écran applique déjà de son côté après un enregistrement.
+
+    Anti-vacuité en DEUX branches, parce que le fragment en a deux et qu'une seule était
+    éprouvée. Une région à NOTE SEULE, sans aucun tag, reste annotée pour tout le monde :
+    sans elle, remplacer la branche « note » par un faux constant ne casserait rien, le
+    décor n'ayant que des annotations sans note. Et pour l'administrateur, qui lit le tag,
+    la région aux seuls tags cachés reste annotée : le marqueur n'est pas simplement
+    éteint, il a changé de sujet.
+    """
+    from conftest import ADMIN
+    t = tag_illisible
+    bob, r1 = t["bob"], t["r1"]["id"]
+    # Il ne reste que « prive », local à la collection que Bob ne lit pas.
+    rep = client.put(f"/api/regions/{r1}/annotation",
+                     json={"tags_retires": ["commun"]}, headers=ADMIN)
+    assert rep.status_code == 200, rep.text
+
+    # Un SECOND album dans la collection de Bob, avec une région à note seule. Son
+    # identifiant doit DIFFÉRER de celui de la collection : `album_planches` passe la
+    # portée des termes PUIS l'album dans la même liste de paramètres, et le décor de
+    # base donne 1 aux deux — les intervertir y serait sans effet observable.
+    a3 = client.post("/api/albums", json={"titre": "Relu", "collection_id": t["c1"]},
+                     headers=ADMIN).json()
+    assert a3["id"] != t["c1"], (
+        "album et collection portent le même identifiant : l'ordre des paramètres "
+        "d'album_planches redevient invérifiable")
+    pl3 = client.post(f"/api/albums/{a3['id']}/import", headers=ADMIN,
+                      files={"file": ("p.png", png_bytes, "image/png")}).json()
+    r3 = client.post(f"/api/planches/{pl3['id']}/regions", headers=ADMIN,
+                     json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9}).json()
+    rep = client.put(f"/api/regions/{r3['id']}/annotation",
+                     json={"note": "relu", "tags": []}, headers=ADMIN)
+    assert rep.status_code == 200, rep.text
+    _ouvrir(db_path, t["c1"], "bob")
+
+    def annotee(planche, region, h):
+        regs = client.get(f"/api/planches/{planche}/regions", headers=h).json()
+        return next(x["annotee"] for x in regs if x["id"] == region)
+
+    def nb_annotees(album, planche, h):
+        pls = client.get(f"/api/albums/{album}/planches", headers=h).json()
+        return next(x["nb_annotees"] for x in pls if x["id"] == planche)
+
+    def corpus(h):
+        return client.get("/api/corpus", headers=h).json()["annotees"]
+
+    ann = client.get(f"/api/regions/{r1}/annotation", headers=bob).json()
+    assert (ann["note"] or "") == "" and ann["tags"] == [], (
+        "le décor ne tient plus : Bob voit quelque chose sur cette région")
+
+    # Bob : la région aux seuls tags cachés n'est pas annotée, celle à note seule l'est.
+    assert annotee(t["pl1"]["id"], r1, bob) == 0, (
+        "une région dont Bob ne peut RIEN lire lui est annoncée annotée")
+    assert annotee(pl3["id"], r3["id"], bob) == 1, (
+        "une région à NOTE SEULE n'est plus annotée : la branche « note » du fragment "
+        "ne répond plus")
+    assert nb_annotees(t["a1"]["id"], t["pl1"]["id"], bob) == 0
+    assert nb_annotees(a3["id"], pl3["id"], bob) == 1
+    assert corpus(bob) == 1, "le compteur de la Recherche ne suit pas ce que Bob voit"
+
+    # L'administrateur lit les deux : les deux régions sont annotées pour lui.
+    assert annotee(t["pl1"]["id"], r1, ADMIN) == 1, (
+        "le marqueur s'est éteint pour tout le monde : il ne suit pas la portée, "
+        "il est cassé")
+    assert annotee(pl3["id"], r3["id"], ADMIN) == 1
+    assert nb_annotees(t["a1"]["id"], t["pl1"]["id"], ADMIN) == 1
+    assert nb_annotees(a3["id"], pl3["id"], ADMIN) == 1
+    assert corpus(ADMIN) == 2
+
+
 @pytest.fixture
 def facettes_illisibles(client, db_path, deux_albums, derriere_proxy):
     """AUTH-11 — le décor des facettes qu'on ne lit pas. Sur une région que Bob lit : deux

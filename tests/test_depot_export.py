@@ -21,11 +21,24 @@ import io
 import json
 import re
 import sqlite3
+import sys
 import zipfile
+from pathlib import Path
 
 import pytest
 
-from conftest import ADMIN, direct_query
+from conftest import ADMIN, direct_query, make_png
+
+# `tools/` n'est pas un paquet et ses scripts s'importent à plat entre eux : c'est le
+# DOSSIER qui doit être sur le chemin, exactement comme `routes/depot.py` le fait. Posé
+# ici une fois plutôt que dans chaque test, ce qui était déjà l'usage plus bas.
+_TOOLS = str(Path(__file__).resolve().parent.parent / "tools")
+if _TOOLS not in sys.path:
+    sys.path.insert(0, _TOOLS)
+
+
+def _png():
+    return make_png()
 
 
 def _acces(db_path, collection_id, principal, niveau, genre="utilisateur"):
@@ -218,6 +231,249 @@ def test_aucune_route_de_depot_n_atteint_les_outils_SANS_collection():
 
 
 # --------------------------------------------------------------------------- #
+# 2 bis. Le périmètre du VOCABULAIRE (AUTH-11)
+# --------------------------------------------------------------------------- #
+# Le périmètre des ALBUMS était tenu ; celui des TERMES ne l'était pas. Les catalogues
+# sortaient GLOBAUX — « entités canoniques du corpus », disait la doc —, si bien que
+# l'export de dépôt d'une collection emportait les étiquettes, les axes et les valeurs des
+# autres études, avec leur définition, leur note de portée et leur `collection_id`. Ce
+# n'est pas un mot qui fuit, c'est une GRILLE D'ANALYSE, et elle part dans un entrepôt
+# pérenne. La règle appliquée est celle du « % défini » : global ⊕ local à la collection
+# déposée (`database.clause_appartenance`), quel que soit qui exporte.
+def _terme_local(db_path, table, colonne, libelle, collection_id):
+    """Rend un terme déjà créé LOCAL à une collection (le décor, pas le geste testé)."""
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.execute(f"UPDATE {table} SET collection_id = ? WHERE {colonne} = ?",
+                           (collection_id, libelle))
+        assert cur.rowcount == 1, f"{table}.{colonne} = {libelle!r} introuvable"
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def vocabulaire_cloisonne(client, db_path, derriere_proxy):
+    """Deux collections, un album chacune, et trois portées de vocabulaire.
+
+    Les libellés sont volontairement improbables : une fuite se cherche par `in` sur le
+    document entier, ce qui couvre du même coup les formes qu'on n'a pas énumérées (le
+    classeur XLSX, une clé JSON ajoutée demain).
+
+    Deux LIAISONS croisent exprès la frontière, parce qu'elles sont réelles — qui lit les
+    deux collections a pu les poser : la région d'Alpha porte un tag et une valeur de
+    Bravo, et le personnage (entité de corpus, sans collection) porte une valeur de
+    chaque côté. Sans elles, un filtre posé sur le seul catalogue paraîtrait suffire.
+    """
+    alpha = _collection(client, "Corpus Alpha")
+    bravo = _collection(client, "Corpus Bravo")
+    a_alpha = _album(client, "ALBUM-ALPHA-9001", alpha["id"])
+    _album(client, "ALBUM-BRAVO-9002", bravo["id"])
+    pl = client.post(f"/api/albums/{a_alpha['id']}/import", headers=ADMIN,
+                     files={"file": ("p.png", _png(), "image/png")}).json()
+    reg = client.post(f"/api/planches/{pl['id']}/regions", headers=ADMIN,
+                      json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9}).json()
+
+    def domaine(nom):
+        return client.post("/api/domaines", json={"nom": nom}, headers=ADMIN).json()
+
+    def dimension(nom, cible="case"):
+        r = client.post("/api/attributs/dimensions",
+                        json={"cible": cible, "nom": nom}, headers=ADMIN)
+        assert r.status_code in (200, 201), r.text
+        return r.json()
+
+    def valeur(dim, v):
+        r = client.post(f"/api/attributs/dimensions/{dim['id']}/valeurs",
+                        json={"valeur": v}, headers=ADMIN)
+        assert r.status_code in (200, 201), r.text
+        return r.json()
+
+    for nom in ("dom-global-9100", "dom-alpha-9101", "dom-bravo-9102"):
+        domaine(nom)
+    dims = {nom: dimension(nom) for nom in
+            ("dim-global-9200", "dim-alpha-9201", "dim-bravo-9202")}
+    # Un axe de PERSONNAGE : les attributs d'une entité passent par `personnage_attribut`,
+    # qui exige une dimension de cible `personnage` — un axe de case y est refusé en 422,
+    # et le décor serait vide sans qu'aucune assertion ne s'en plaigne.
+    dims["dim-perso-9203"] = dimension("dim-perso-9203", cible="personnage")
+    vals = {nom: valeur(dims[dim], nom) for dim, nom in
+            (("dim-global-9200", "val-global-9300"),
+             ("dim-alpha-9201", "val-alpha-9301"),
+             ("dim-bravo-9202", "val-bravo-9302"),
+             # Une valeur qui reste GLOBALE sous un axe qui deviendra local à Bravo.
+             # L'état est réel et daté : l'axe était global quand la valeur a été créée,
+             # il a été restreint ensuite (v24 fait DESCENDRE la portée à la création,
+             # pas rétroactivement). Elle est ici pour deux raisons. Elle donne au
+             # `vocabulaire` CSV une LIGNE pour cet axe — ce dump est piloté par les
+             # valeurs, donc un axe dont toutes les valeurs sont locales n'y paraît
+             # jamais, et le filtre posé sur l'axe cessait d'être mesurable. Et elle pose
+             # la règle « un terme n'est jamais plus GLOBAL que celui dont il dépend » :
+             # son axe étant hors périmètre, elle ne voyage pas avec Alpha.
+             ("dim-bravo-9202", "valg-sous-bravo-9312"),
+             ("dim-perso-9203", "valp-global-9310"),
+             ("dim-perso-9203", "valp-bravo-9311"))}
+    # Un personnage, entité de CORPUS : il porte une valeur de chaque côté.
+    perso = client.post("/api/personnages", json={"nom": "Témoin"}, headers=ADMIN).json()
+    for v in ("valp-global-9310", "valp-bravo-9311"):
+        r = client.put(f"/api/personnages/{perso['id']}/attributs",
+                       json={"valeur_id": vals[v]["id"]}, headers=ADMIN)
+        assert r.status_code == 200, r.text
+    # La région d'Alpha porte trois tags et deux valeurs, des deux côtés de la frontière.
+    r = client.put(f"/api/regions/{reg['id']}/annotation", headers=ADMIN,
+                   json={"note": "note", "tags": ["tag-global-9400", "tag-alpha-9401",
+                                                  "tag-bravo-9402"]})
+    assert r.status_code == 200, r.text
+    for v in ("val-alpha-9301", "val-bravo-9302"):
+        r = client.put(f"/api/regions/{reg['id']}/attributs",
+                       json={"valeur_id": vals[v]["id"]}, headers=ADMIN)
+        assert r.status_code == 200, r.text
+
+    # Un axe GLOBAL rattaché à un domaine LOCAL à Bravo : l'état d'une base antérieure à
+    # v24, où la portée ne DESCENDAIT pas encore du domaine vers ses dimensions. C'est la
+    # seule façon d'éprouver que le nom du domaine ne ressort pas par la bande, en
+    # libellé d'axe, sur une dimension parfaitement lisible.
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("UPDATE attribut_dimension SET domaine_id = "
+                     "(SELECT id FROM domaine WHERE nom = 'dom-bravo-9102') "
+                     "WHERE nom = 'dim-global-9200'")
+        conn.commit()
+    finally:
+        conn.close()
+
+    for table, col, libelle, cid in (
+            ("domaine", "nom", "dom-alpha-9101", alpha["id"]),
+            ("domaine", "nom", "dom-bravo-9102", bravo["id"]),
+            ("attribut_dimension", "nom", "dim-alpha-9201", alpha["id"]),
+            ("attribut_dimension", "nom", "dim-bravo-9202", bravo["id"]),
+            ("attribut_valeur", "valeur", "val-alpha-9301", alpha["id"]),
+            ("attribut_valeur", "valeur", "val-bravo-9302", bravo["id"]),
+            ("attribut_valeur", "valeur", "valp-bravo-9311", bravo["id"]),
+            ("tags", "label", "tag-alpha-9401", alpha["id"]),
+            ("tags", "label", "tag-bravo-9402", bravo["id"])):
+        _terme_local(db_path, table, col, libelle, cid)
+    return {"alpha": alpha, "bravo": bravo, "perso": perso,
+            "global": ["dom-global-9100", "dim-global-9200", "val-global-9300",
+                       "dim-perso-9203", "valp-global-9310", "tag-global-9400"],
+            "a": ["dom-alpha-9101", "dim-alpha-9201", "val-alpha-9301", "tag-alpha-9401"],
+            "b": ["dom-bravo-9102", "dim-bravo-9202", "val-bravo-9302",
+                  "valg-sous-bravo-9312", "valp-bravo-9311", "tag-bravo-9402"]}
+
+
+def _cw_texte(db_path, collection_id):
+    """Le crosswalk de dépôt (`tools/crosswalk_depot.py`), sérialisé en texte."""
+    import crosswalk_depot
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        return json.dumps(crosswalk_depot.construire(conn, collection_id=collection_id),
+                          ensure_ascii=False, default=str)
+    finally:
+        conn.close()
+
+
+def _textes_de_depot(client, db_path, collection_id):
+    """QUATRE des sorties d'une collection, en texte, chacune NOMMÉE — et pas toutes.
+
+    Mesurées ici, parce qu'elles sont écrites séparément : l'arbre JSON, les tables CSV,
+    la notice de dépôt, et la route que prend celui qui n'a plus de shell.
+
+    **Ce qui n'est PAS couvert, et qu'il ne faut pas croire couvert** : l'archive zip et
+    le classeur XLSX (ils dérivent de `tables()`, donc le même cœur, mais leur emballage
+    n'est pas relu ici), la fiche de `description_collection` (elle a sa limite écrite
+    dans `docs/export-metadonnees.md`), le manifeste IIIF, le dépôt ShareDocs, et les
+    artefacts hors de ce module — `provenance_export`, `figure`, l'export d'album. Un
+    cliquet qui ÉNUMÈRE les sorties, sur le patron d'AUTH-5, reste à écrire ; tant qu'il
+    n'existe pas, cette liste est une sélection, pas un inventaire, et une sortie ajoutée
+    demain n'y entrera pas toute seule.
+    """
+    import metadonnees_collection as mc
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        arbre = json.dumps(mc.collecter(conn, collection_id=collection_id),
+                           ensure_ascii=False, default=str)
+        brutes = mc.tables(conn, collection_id=collection_id)
+        # Le JOURNAL (A3) est HORS de ce contrôle, et c'est écrit plutôt que subi. Ses
+        # deux tables sortent au grain CORPUS par décision — « un run/acte n'appartient
+        # pas à un album, et l'acte SURVIT à la suppression de sa cible → non
+        # re-scopable » (`metadonnees_collection.tables`) —, et leurs charges
+        # `avant`/`apres` sont publiées mot pour mot. Ce qui y voyage n'est pas seulement
+        # le libellé d'un tag d'ailleurs : `journal._REGION_COLS` contient `ocr_texte`,
+        # donc le TEXTE des œuvres de toute l'instance, `--verbatim` ou non (mesuré le
+        # 2026-09-23). C'est une case ouverte à part, plus large qu'AUTH-11 ; l'exclure
+        # ICI garde le contrôle honnête sur ce qu'il mesure, au lieu de le faire échouer
+        # sur une question qu'on n'a pas tranchée. Cf. `docs/export-metadonnees.md`.
+        tbls = json.dumps({k: v for k, v in brutes.items()
+                           if k not in ("activite", "evenement")},
+                          ensure_ascii=False, default=str)
+    finally:
+        conn.close()
+    route = client.get(f"/api/collections/{collection_id}/depot/metadonnees",
+                       headers=ADMIN)
+    assert route.status_code == 200, route.text
+    return {"records JSON": arbre, "tables CSV": tbls,
+            "crosswalk de dépôt": _cw_texte(db_path, collection_id),
+            "route /depot/metadonnees": route.content.decode("utf-8")}
+
+
+def test_l_export_d_une_collection_ne_porte_que_son_vocabulaire(client, db_path,
+                                                                vocabulaire_cloisonne):
+    """AUTH-11 — l'export d'Alpha ne porte que le vocabulaire d'Alpha : global ⊕ local.
+
+    Les termes de Bravo cherchés ici ne sont pas seulement dans les CATALOGUES : le tag et
+    la valeur de Bravo sont POSÉS sur une région d'Alpha, et sur un personnage. Un filtre
+    qui ne borderait que les listes de référence laisserait passer les liaisons — c'est le
+    patron de la fiche, « la portée se pose sur la LIAISON et pas seulement sur le terme
+    nommé ».
+
+    Anti-vacuité en deux temps, et le second compte autant : le vocabulaire global ET
+    celui d'Alpha doivent SORTIR (sans quoi un filtre qui vide tout passerait), et
+    l'export de Bravo doit porter Bravo (sans quoi un filtre qui tairait toujours les
+    termes locaux passerait aussi).
+    """
+    v = vocabulaire_cloisonne
+    for quoi, texte in _textes_de_depot(client, db_path, v["alpha"]["id"]).items():
+        for mot in v["b"]:
+            assert mot not in texte, f"{quoi} : « {mot} » a fuité hors de sa collection"
+        for mot in v["global"] + v["a"]:
+            # Le crosswalk ne porte que des SUJETS (valeurs + tags), pas les axes.
+            if quoi == "crosswalk de dépôt" and mot.startswith(("dom-", "dim-")):
+                continue
+            assert mot in texte, f"{quoi} : « {mot} » manque — le filtre a tout emporté"
+
+    for quoi, texte in _textes_de_depot(client, db_path, v["bravo"]["id"]).items():
+        for mot in v["b"]:
+            if quoi == "crosswalk de dépôt" and mot.startswith(("dom-", "dim-")):
+                continue
+            assert mot in texte, f"{quoi} : Bravo n'exporte plus son propre « {mot} »"
+
+
+def test_sans_collection_les_outils_exportent_TOUT_le_vocabulaire(db_path,
+                                                                  vocabulaire_cloisonne):
+    """Le mode « corpus entier » des CLI ne change pas (AUTH-11).
+
+    `--collection` est un RESTREIGNEUR, et sans lui il n'y a pas de frontière à tenir :
+    l'export décrit l'instance. Ce test existe parce que le remède se serait aussi bien
+    écrit en filtrant toujours — auquel cas la sauvegarde descriptive du corpus entier
+    aurait perdu la moitié de son lexique sans que rien ne le dise.
+    """
+    import metadonnees_collection as mc
+    v = vocabulaire_cloisonne
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        texte = json.dumps(mc.collecter(conn), ensure_ascii=False, default=str)
+        texte += json.dumps(mc.tables(conn), ensure_ascii=False, default=str)
+    finally:
+        conn.close()
+    texte += _cw_texte(db_path, None)
+    for mot in v["global"] + v["a"] + v["b"]:
+        assert mot in texte, f"« {mot} » manque de l'export du corpus entier"
+
+
+# --------------------------------------------------------------------------- #
 # 3. Les refus disent la vérité
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("chemin", ["description", "metadonnees"])
@@ -304,9 +560,17 @@ def test_le_depot_envoie_L_ARTEFACT_et_le_journalise(client, db_path, monkeypatc
     assert capte["chemin"].startswith("Projets/BD/depot-description-c")
     assert capte["chemin"].endswith(".json")
 
-    # Le même artefact que la voie GET, au nom et à l'horodatage près.
+    # Le même artefact que la voie GET, au nom et à l'horodatage près. « À l'horodatage
+    # près » était dit ici et non FAIT : les deux fabrications posent chacune leur
+    # `genere_le`, à la SECONDE (`description_collection`), et le test échouait donc quand
+    # la seconde tournait entre les deux appels — au hasard, une fois sur quelques
+    # dizaines, mesuré le 2026-09-23. Une garde qui échoue au hasard apprend à être
+    # ignorée : on retire le champ qui bouge, et on exige qu'il soit là des deux côtés.
     g = client.get(f"/api/collections/{col['id']}/depot/description", headers=ADMIN)
-    assert json.loads(capte["data"]) == json.loads(g.content)
+    depose, servi = json.loads(capte["data"]), json.loads(g.content)
+    for artefact in (depose, servi):
+        assert artefact["description_collection"].pop("genere_le")
+    assert depose == servi
 
     # SHARE-1 — l'acte est tracé, et il distingue la personne du compte employé.
     lignes = direct_query(db_path,

@@ -86,8 +86,19 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     `agg_plat` : {(niveau, element): "valeur ou agrégat"} — sert à remplir le CSV.
     `collection_id` (scoping `--collection`) restreint la COUVERTURE aux albums de la
     collection et renseigne l'IDENTITÉ depuis la ligne `collection` ; les catalogues de
-    référence (personnages, vocabulaire, tags) restent comptés GLOBALEMENT (canoniques au
-    corpus), seuls leurs LIENS vers des régions scopées sont restreints.
+    référence (personnages, vocabulaire, tags) restent comptés GLOBALEMENT, seuls leurs
+    LIENS vers des régions scopées sont restreints.
+
+    **« Canoniques au corpus » n'est plus une doctrine du dépôt, et ce fichier est le
+    dernier à la suivre** (AUTH-11, 2026-09-23). Les enregistrements
+    (`metadonnees_collection.py`) et le crosswalk bornent désormais le VOCABULAIRE par son
+    appartenance — global ⊕ local à la collection ; le bloc `vocabulaire` de cette fiche
+    nomme encore toutes les dimensions, toutes leurs valeurs et tous les domaines de
+    l'instance, et `tags_distincts` les compte tous. L'écart est écrit, pas ignoré : les
+    chiffres d'ici décrivent une COUVERTURE, et dire s'ils portent sur l'instance ou sur
+    le périmètre est une question de modèle, pas une clause à poser. Cf.
+    `docs/export-metadonnees.md`, § Portée d'une collection. Seul `vocabulaire.lexique`
+    (le « % défini ») est scopé, depuis A4.
     """
     # --- Périmètre : identité + prédicats de portée ------------------------- #
     row = database.collection_row(conn, collection_id) if collection_id is not None else None
@@ -166,7 +177,9 @@ def collecter(conn, collection_id=None) -> tuple[dict, dict]:
     # --- Annotation interprétative ----------------------------------------- #
     notes = _un(conn, "SELECT COUNT(*) FROM annotations WHERE note IS NOT NULL "
                       "AND TRIM(note) <> ''" + A_tok)
-    tags_n = _un(conn, "SELECT COUNT(*) FROM tags")           # catalogue de référence (global)
+    # Compté sur TOUTE l'instance : écart assumé avec les enregistrements, qui bornent le
+    # vocabulaire par appartenance depuis AUTH-11 (cf. la docstring de `collecter`).
+    tags_n = _un(conn, "SELECT COUNT(*) FROM tags")
     poses = _un(conn, "SELECT COUNT(*) FROM annotation_tags" + W_pose)
 
     # --- Entités personnages (entités globales ; LIENS scopés) ------------- #

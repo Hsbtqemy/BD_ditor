@@ -33,7 +33,7 @@ from database import citations_regions
 from pipeline import nlp
 
 from socle import (_clause_lemme, _csv_response, _csv_safe, _norm_tag, _portee_d_export,
-                   _rows, db, portee_courante)
+                   _rows, _sql_a_montrer, db, portee_courante)
 
 router = APIRouter()
 
@@ -282,6 +282,10 @@ def corpus_stats(conn: sqlite3.Connection = Depends(db),
     oup, _ = portee.clause_album("pl.album_id")
     our, _ = portee.clause_album("plr.album_id")
     ou_tag, p_tag = portee.clause_terme("t.collection_id")
+    # AUTH-11 : « annotées » compte les annotations qui ont quelque chose à MONTRER —
+    # une note, ou un tag dont on lit le terme (cf. `socle._sql_a_montrer`). Compter la
+    # ligne nue faisait dire au compteur qu'on a annoté ce qu'on ne peut pas ouvrir.
+    ou_montrer, p_montrer = _sql_a_montrer(portee, "an")
     row = conn.execute(
         f"""SELECT
              (SELECT COUNT(*) FROM albums alb WHERE {ou})   AS albums,
@@ -289,7 +293,8 @@ def corpus_stats(conn: sqlite3.Connection = Depends(db),
              (SELECT COUNT(*) FROM regions r
                 JOIN planches plr ON plr.id = r.planche_id WHERE {our})  AS regions,
              (SELECT COUNT(*) FROM annotations an JOIN regions r ON r.id = an.region_id
-                JOIN planches plr ON plr.id = r.planche_id WHERE {our}) AS annotees,
+                JOIN planches plr ON plr.id = r.planche_id
+                WHERE {our} AND {ou_montrer}) AS annotees,
              (SELECT COUNT(*) FROM regions r
                 JOIN planches plr ON plr.id = r.planche_id
                 WHERE {our} AND TRIM(COALESCE(r.ocr_texte, '')) <> '') AS transcrites,
@@ -298,9 +303,10 @@ def corpus_stats(conn: sqlite3.Connection = Depends(db),
              (SELECT COUNT(*) FROM tags t WHERE {ou_tag}) AS tags,
              (SELECT COUNT(*) FROM planches pl
                 WHERE {oup} AND pl.validee IS NOT NULL) AS validees""",
-        # 5 clauses d'album, puis celle des tags, puis la 6e d'album — dans l'ORDRE
+        # 3 clauses d'album, puis la 4e SUIVIE de celle des annotations à montrer
+        # (AUTH-11), puis la 5e, celle des tags et la 6e d'album — dans l'ORDRE
         # d'apparition dans le SQL ci-dessus.
-        [*pp * 5, *p_tag, *pp],
+        [*pp * 4, *p_montrer, *pp, *p_tag, *pp],
     ).fetchone()
     res = dict(row)
     # Distribution des planches par statut (pour la barre d'avancement du corpus).

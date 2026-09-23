@@ -56,7 +56,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _get_album, _get_collection, _get_dimension, _get_personnage, _get_planche,
     _get_region, _get_valeur,
     _groupes, _norm_tag, _patch_lexique, _portee_d_export, _refuser_si_verrouillee, _row, _rows,
-    _sans_accents, _tags_caches, _validate_parent, db, portee_courante,
+    _sans_accents, _sql_a_montrer, _tags_caches, _validate_parent, db, portee_courante,
 )
 # ARCH-1 — les domaines sortis de ce fichier. `include_router`, plus bas, les rend
 # indiscernables de routes déclarées ici : mêmes chemins, même place dans
@@ -432,15 +432,18 @@ def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
 def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
     _get_album(conn, portee, album_id)
+    # AUTH-11 : `nb_annotees` compte ce qu'on VOIT — une région dont il ne reste qu'un tag
+    # d'une collection qu'on ne lit pas n'est pas annotée POUR NOUS (cf. `_sql_a_montrer`).
+    ou_montrer, p_montrer = _sql_a_montrer(portee, "an")
     planches = _rows(conn.execute(
-        """SELECT p.*,
+        f"""SELECT p.*,
                   (SELECT COUNT(*) FROM regions r WHERE r.planche_id = p.id)
                       AS nb_regions,
                   (SELECT COUNT(*) FROM regions r
                      JOIN annotations an ON an.region_id = r.id
-                   WHERE r.planche_id = p.id) AS nb_annotees
+                   WHERE r.planche_id = p.id AND {ou_montrer}) AS nb_annotees
            FROM planches p WHERE p.album_id = ? ORDER BY p.numero""",
-        (album_id,),
+        (*p_montrer, album_id),
     ))
     nums = numeros_editoriaux(conn, album_id)
     rel = relecture_planches(conn, [p["id"] for p in planches])   # ANN-4 : statut dérivé/forcé
@@ -617,15 +620,19 @@ def liberer_ml(portee: autorisation.Portee = Depends(portee_courante)):
 def planche_regions(planche_id: int, conn: sqlite3.Connection = Depends(db),
                     portee: autorisation.Portee = Depends(portee_courante)):
     _get_planche(conn, portee, planche_id)
+    # AUTH-11 : `annotee` suit ce qu'on VOIT — c'est la pastille de l'arbre de structure,
+    # et elle cochait une région dont on ne peut rien lire (cf. `_sql_a_montrer`).
+    ou_montrer, p_montrer = _sql_a_montrer(portee, "a")
     regions = _rows(conn.execute(
-        """SELECT r.*,
-                  EXISTS(SELECT 1 FROM annotations a WHERE a.region_id = r.id)
+        f"""SELECT r.*,
+                  EXISTS(SELECT 1 FROM annotations a WHERE a.region_id = r.id
+                         AND {ou_montrer})
                       AS annotee,
                   (SELECT COUNT(*) FROM regions c WHERE c.parent_id = r.id)
                       AS nb_enfants
            FROM regions r WHERE r.planche_id = ?
            ORDER BY r.parent_id IS NOT NULL, r.ordre, r.id""",
-        (planche_id,),
+        (*p_montrer, planche_id),
     ))
     cits = citations_regions(conn, [r["id"] for r in regions])
     for r in regions:

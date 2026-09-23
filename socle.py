@@ -137,6 +137,38 @@ def _annotation_for_region(conn: sqlite3.Connection, portee, region_id: int) -> 
             "date_modification": ann["date_modification"]}
 
 
+def _sql_a_montrer(portee, alias_annotation: str = "a") -> tuple[str, list]:
+    """Fragment SQL `(sql, params)` vrai quand une annotation a quelque chose À MONTRER
+    à CET appelant : une note non vide, ou au moins un tag dont il lit le terme.
+
+    AUTH-11 — `annotee`, `nb_annotees` et le compteur « annotées » de la Recherche
+    lisaient l'EXISTENCE de la ligne `annotations`. Une région dont il ne restait qu'un
+    tag local à une collection qu'on ne lit pas s'affichait donc cochée dans l'arbre de
+    structure, sans rien d'annoté à l'ouverture : un indice — mineur, mais un indice —
+    sur du travail qu'on ne voit pas, et surtout un marqueur qui ment à qui le regarde.
+
+    La ligne vide n'existe pas en base : `put_annotation` SUPPRIME l'annotation dès que
+    la note est vide et qu'il ne reste aucun tag, cachés compris. Ce fragment ne change
+    donc RIEN pour qui lit tout — il ne se distingue de « la ligne existe » que dans le
+    cas exact qu'il ferme. C'est aussi la définition que l'écran applique déjà de son
+    côté après un enregistrement (`static/viewer.js`), qui divergeait de celle du serveur.
+
+    Les alias internes sont `_atm` / `_tgm` et non `at` / `t`, exprès. Ce fragment
+    s'INSÈRE dans la requête d'un appelant, et `t` est justement l'alias usuel des tags
+    dans `routes/recherche.py` et `routes/analyse.py` : un appelant qui passerait
+    `alias_annotation="t"` verrait son propre `t` masqué par celui-ci, et la sous-requête
+    répondrait faux **sans erreur SQL** — un compteur qui se tait est précisément le
+    défaut que ce fragment vient de corriger. Aucun appel actuel n'est concerné ; le piège
+    est retiré plutôt que documenté comme une précaution à retenir.
+    """
+    ou_tag, p_tag = portee.clause_terme("_tgm.collection_id")
+    return (f"(TRIM(COALESCE({alias_annotation}.note, '')) <> '' "
+            f" OR EXISTS (SELECT 1 FROM annotation_tags _atm "
+            f"              JOIN tags _tgm ON _tgm.id = _atm.tag_id "
+            f"            WHERE _atm.annotation_id = {alias_annotation}.id AND {ou_tag}))",
+            list(p_tag))
+
+
 def _tags_caches(conn: sqlite3.Connection, portee, region_id: int) -> list[int]:
     """Ids des tags que porte la région et que l'appelant ne LIT pas — l'exact
     complément de ce que montre `_annotation_for_region`.

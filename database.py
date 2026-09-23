@@ -1265,6 +1265,30 @@ def collection_row(conn: sqlite3.Connection, collection_id: int) -> dict | None:
     return dict(r) if r else None
 
 
+def clause_appartenance(collection_id: int | None,
+                        alias: str = "collection_id") -> tuple[str, list]:
+    """Fragment SQL `(sql, params)` restreignant un TERME du vocabulaire (tag, domaine,
+    dimension, valeur) à son APPARTENANCE : global ⊕ local à `collection_id`.
+
+    C'est la règle d'AUTH-2 posée sur une COLLECTION et non sur une personne. Les deux
+    questions se ressemblent sans se confondre : `Portee.clause_terme` dit ce qu'un
+    LECTEUR voit (ses collections lisibles), celle-ci dit ce qu'une COLLECTION emporte
+    quand elle sort de l'instance — « quel que soit qui exporte » (AUTH-11). Un export de
+    dépôt est FIGÉ : le borner sur la portée de qui a cliqué rendrait deux exports de la
+    même collection différents sans que rien ne le dise.
+
+    `collection_id=None` vaut « corpus entier » et ne filtre rien : c'est le défaut des
+    CLI, jamais celui d'une route (cf. `routes/depot.py`).
+
+    La formule vivait déjà ici, dépliée dans `lexique_resume` — c'est-à-dire dans le
+    calcul du « % défini », que la fiche d'AUTH-11 désigne comme la règle à suivre. La
+    nommer évite d'en semer des copies dans chaque outil d'export.
+    """
+    if collection_id is None:
+        return "1", []
+    return f"({alias} IS NULL OR {alias} = ?)", [collection_id]
+
+
 def lexique_resume(conn: sqlite3.Connection, collection_id: int | None = None,
                    *, clause: tuple[str, list] | None = None) -> dict:
     """Indicateur « % défini » du lexique situé (A4, N7) : part des termes du vocabulaire
@@ -1275,16 +1299,14 @@ def lexique_resume(conn: sqlite3.Connection, collection_id: int | None = None,
     `collection_id`, fourni par l'appelant (`Portee.clause_terme`). Il généralise
     `collection_id` à PLUSIEURS collections lisibles. Ce module reçoit un fragment plutôt
     qu'une `Portee` pour ne pas dépendre de `autorisation` : la règle reste écrite à un
-    seul endroit, et c'est là-bas.
+    seul endroit, et c'est là-bas. Sans `clause`, le fragment est celui de
+    `clause_appartenance` — la même formule, nommée.
     """
-    if clause is not None:
-        sql_scope, params = clause
-        scope = f" AND ({sql_scope})"
-        params = list(params)
-    elif collection_id is None:
-        scope, params = "", []
-    else:
-        scope, params = " AND (collection_id IS NULL OR collection_id = ?)", [collection_id]
+    if clause is None:
+        clause = clause_appartenance(collection_id)
+    sql_scope, params = clause
+    scope = f" AND ({sql_scope})"
+    params = list(params)
     par_type, total, definis = {}, 0, 0
     for table, cle in (("domaine", "domaines"), ("attribut_dimension", "dimensions"),
                        ("attribut_valeur", "valeurs"), ("tags", "tags")):
