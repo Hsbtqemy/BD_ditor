@@ -34,13 +34,15 @@ def test_le_recensement_des_audits_n_est_pas_vide():
     2026-09-07 à une garde écrite le matin même : `assert not fautifs` est trivialement
     vrai sur une liste vide.
     """
-    # NEUF, et le chiffre a été MESURÉ par cette garde même : le recensement à la main
+    # ONZE depuis le 2026-09-23 (`UX-15` : le cadre du mode Transcription, et les
+    # promesses de touches de l'Atelier). NEUF auparavant, et le chiffre a été MESURÉ
+    # par cette garde même : le recensement à la main
     # qui a précédé en comptait sept, et `test_e2e_audit2` comme `test_e2e_tiroirs` lui
     # avaient échappé — ils ne citaient aucun des chemins que la recherche interrogeait.
     # C'est un CLIQUET : il monte quand on ajoute un audit, et le baisser doit être un
     # geste délibéré, jamais la façon de faire passer une suite devenue rouge.
     trouves = surfaces.modules_d_audit()
-    assert len(trouves) >= 9, (
+    assert len(trouves) >= 11, (
         f"seulement {len(trouves)} module(s) d'audit E2E recensé(s) : {[f.name for f in trouves]}. "
         "Le motif de `modules_d_audit` ne les atteint plus, et tous les contrôles de ce "
         "fichier deviennent vacants sans échouer")
