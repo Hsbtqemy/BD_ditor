@@ -582,6 +582,22 @@ def test_au_large_le_cadre_ne_suit_pas_le_nombre_d_entrees(page, live_server):
     assert liste.evaluate("e => e.scrollHeight <= e.clientHeight")
 
 
+def test_le_bloc_entier_tient_dans_une_fenetre_courte(page, live_server):
+    """Le cadre se compte depuis SON haut, pas depuis celui de la page : titre, phrase et
+    ligne de l'annuaire pris, le bloc amené en tête de la zone qui défile tient dans la
+    fenêtre. Trouvé par Hugo le 2026-09-23 en jouant la passe à 1280 × 500 : le cadre
+    dépassait, la PAGE défilait à sa place, et la liste — à qui il restait plus de place
+    qu'elle n'en demandait — ne défilait plus du tout. Un cadre de taille fixe qui déborde
+    ne sert plus à rien."""
+    page.set_viewport_size({"width": 1280, "height": 500})
+    _ouvrir(page, live_server, decor())
+    page.evaluate("document.querySelector('#cg-bloc').scrollIntoView({block: 'start'})")
+    bas = page.locator("#cg").evaluate("e => e.getBoundingClientRect().bottom")
+    assert bas <= page.evaluate("window.innerHeight")
+    liste = page.locator(".cg-liste")
+    assert liste.evaluate("e => e.scrollHeight > e.clientHeight")
+
+
 def test_au_large_la_fiche_met_ses_deux_sections_cote_a_cote(page, live_server):
     """La largeur ne sert que si la fiche s'en sert : ses deux sections côte à côte, et une
     section seule — la collection n'a que « Qui entre » — sur toute la largeur de la carte."""

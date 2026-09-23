@@ -2188,14 +2188,22 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    Les deux phrases d'en-tête gardent, elles, une mesure de lecture. */
 .admin-bloc.cg-bloc { max-width: none; }
 .cg-bloc > p { max-width: 62rem; }
-/* Une hauteur FIXE, qui ne suit pas le nombre d'entrées : celle de la fenêtre, moins la
-   barre et une marge, et jamais moins de 28rem. Huit comptes ou trois cents, le cadre ne
-   bouge pas — c'est la liste et la fiche qui défilent, chacune SEULE, et la page autour se
-   construit sur un bloc de taille connue (demandé par Hugo le 2026-09-22, « imaginons
-   trente comptes »). Plus haut que la fenêtre, il faudrait faire défiler la page pour
-   atteindre le bas de la liste : deux défilements pour un seul geste. */
+/* Une hauteur FIXE, qui ne suit pas le nombre d'entrées : celle de la fenêtre, moins ce qui
+   se tient AU-DESSUS du cadre, et jamais moins de 22rem. Huit comptes ou trois cents, le
+   cadre ne bouge pas — c'est la liste et la fiche qui défilent, chacune SEULE, et la page
+   autour se construit sur un bloc de taille connue (demandé par Hugo le 2026-09-22,
+   « imaginons trente comptes »).
+
+   **Les 14rem sont MESURÉS, et c'est le titre du bloc qu'ils paient** (2026-09-23) : la
+   barre de navigation et le rembourrage de la page valent 4rem, le titre, sa phrase et la
+   ligne de l'annuaire 9rem. Ils valaient 7rem jusque-là, et le bloc dépassait alors le bas
+   d'une fenêtre de 500 px : la PAGE défilait, et la liste, à qui il restait plus de place
+   qu'elle n'en demandait, cessait de défiler — le cadre ne servait plus à rien. Vu par Hugo
+   en jouant la passe, dans une fenêtre d'outils de développement. La hauteur d'un cadre qui
+   veut tenir dans la fenêtre se compte donc depuis SON haut à lui, pas depuis celui de la
+   page. */
 .cg { display: grid; grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr); height: max(28rem, calc(100vh - 7rem));
+      grid-template-rows: minmax(0, 1fr); height: max(22rem, calc(100vh - 14rem));
       border: 1px solid var(--border); border-radius: 8px; margin-top: .6rem;
       background: var(--bg-panel); }
 /* La liste défile SEULE : trois cents comptes ne doivent pas repousser la fiche sous
