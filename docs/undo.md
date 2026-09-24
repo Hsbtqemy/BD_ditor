@@ -43,6 +43,16 @@ d'avant, donc effaçait le tag posé par un collègue. La différence entre `ava
 dit ce que l'acte a changé, et seul cela est défait. Tant que personne d'autre n'a touché
 l'annotation, le résultat est exactement `avant`.
 
+**L'annulation repose les tags PAR LEUR LIBELLÉ, et sans filtre de portée** — `_ensure_tag`
+résout le libellé ou le recrée. Depuis AUTH-11 (2026-09-24), la SAISIE fait l'inverse : taper
+le nom d'un tag local à une collection qu'on ne lit pas ne l'attache plus (`socle._ensure_tags`
+reçoit la portée). **L'asymétrie est voulue, et l'inverser casserait l'undo** : restaurer
+n'est pas saisir. Le journal garde l'annotation ENTIÈRE, cachés compris, précisément pour que
+Ctrl+Z ne fasse pas disparaître le travail d'une collection qu'on ne lit pas — la même raison
+qui fait remettre ce qu'on cache à l'enregistrement (`_tags_caches`). Poser la garde de saisie
+ici ferait de l'annulation l'outil qui efface ce que l'enregistrement protège ; un test le
+verrouille dans les deux sens.
+
 **Une annulation qui écraserait le geste d'un autre est refusée** (CONC-3, second temps,
 2026-09-17). Annuler une modification de région réécrivait TOUTES ses colonnes depuis
 `avant` : A déplaçait une bulle, B la transcrivait, A faisait Ctrl+Z, et le texte de B

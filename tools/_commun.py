@@ -232,11 +232,19 @@ def version_outil(base_dir) -> dict:
 # Ce que le journal A3 publie AU DÉPÔT — par cible_table, et PAR DÉCISION (AUTH-1)
 #
 # `pseudonymes()` ci-dessous retire l'identité de la colonne `agent`. Elle ne pouvait
-# rien contre les CHARGES : `metadonnees_collection` publie `avant`/`apres` mot pour mot,
-# si bien qu'un login pseudonymisé en colonne 4 ressortait en clair en colonne 8, dans la
-# même ligne. Mesuré le 2026-09-06 sur trois événements VIVANTS — `collection` publiait le
-# login du propriétaire, `collection_acces` le principal de chaque partage, `sharedocs`
-# un chemin serveur et un nom de compte Huma-Num.
+# rien contre les CHARGES : `metadonnees_collection` publiait alors `avant`/`apres` mot
+# pour mot, si bien qu'un login pseudonymisé en colonne 4 ressortait en clair en colonne 8,
+# dans la même ligne. Mesuré le 2026-09-06 sur trois événements VIVANTS — `collection`
+# publiait le login du propriétaire, `collection_acces` le principal de chaque partage,
+# `sharedocs` un chemin serveur et un nom de compte Huma-Num.
+#
+# DEPUIS LE 2026-09-24, PLUS AUCUNE CHARGE NE PART (AUTH-11, cf.
+# `COLONNES_EVENEMENT_PUBLIEES`). Le raisonnement ci-dessous garde sa valeur et la liste
+# blanche reste nécessaire : elle ne se justifie PAS par les charges — « la ligne seule
+# invite la question à laquelle on refuse de répondre » —, et les deux coupures répondent
+# à deux questions différentes. Mais la première phrase de ce bloc décrit un état
+# RÉVOLU : la lire au présent ferait croire qu'il reste une fuite par la charge, ou
+# qu'on pourrait se passer de la liste blanche en taisant les colonnes. Ni l'un ni l'autre.
 #
 # Le cliquet d'AUTH-5 ne pouvait pas le voir, et pas par accident : son semis met les
 # sentinelles dans la colonne `agent`, et sa charge d'événement est un token
@@ -292,8 +300,41 @@ CIBLES_RETENUES = {
 }
 
 
+#: Les colonnes d'un événement qui partent au dépôt. NOMMÉES, et c'est le point :
+#: la requête faisait `SELECT *`, donc une colonne neuve se serait publiée par défaut
+#: et non par décision — la faute que `GET /api/export/json` a corrigée de son côté.
+#:
+#: `avant` et `apres` N'Y SONT PAS (décision du 2026-09-24, AUTH-11). Ces charges
+#: étaient recopiées mot pour mot, et `journal._REGION_COLS` contient `ocr_texte` :
+#: l'export d'UNE collection emportait donc le TEXTE des œuvres de TOUTE l'instance, y
+#: compris sans `--verbatim`. Deux contournements d'un coup — celui du drapeau, et celui
+#: du périmètre —, mesurés le 2026-09-23 sur les tables CSV, le classeur, l'archive et la
+#: voie du dépôt.
+#:
+#: Ce qu'on retire n'est pas ce qui fait la valeur du journal. Le contenu vit déjà dans
+#: les RECORDS, qui eux respectent le périmètre ET `--verbatim` ; la provenance d'un acte
+#: tient dans son ATTRIBUTION et sa DATE, pas dans la recopie de ce qu'il a changé. Reste
+#: donc publiable : qui (pseudonymisé), de quelle nature (humain/moteur), quel type
+#: d'acte, sur quelle cible (`cible_table`/`cible_id`, stable), quand, et sous quel run
+#: (`activite_id`). C'est exactement ce dont la valeur FAIR revendiquée a besoin — « ce
+#: qui compte est machine, puis retouché par un humain » — et c'est déjà tout ce que
+#: `provenance_export` sérialisait en PROV-O et en TEI, qui ne changent donc pas.
+#:
+#: Ce que le dépôt PERD, et il faut le savoir : on ne peut plus reconstituer l'état d'une
+#: entité à une date, ni lire le DIFF d'un acte. Un audit dira « cette région a été
+#: retouchée trois fois, par deux annotateurs, la dernière le … » et non « le texte disait
+#: ceci avant ». L'instance, elle, garde tout : la table `evenement` n'est pas touchée, et
+#: l'annulation (D1) continue de lire ses charges.
+COLONNES_EVENEMENT_PUBLIEES = ("id", "activite_id", "type", "agent", "agent_type",
+                               "cible_table", "cible_id", "date")
+
+
 def evenements_publiables(conn, ordre: str = "ASC"):
     """Les événements du journal A3 qui partent au dépôt, dans l'ordre demandé.
+
+    Deux coupures, et elles ne répondent pas à la même question. QUELS ACTES partent :
+    `CIBLES_CORPUS` ci-dessus, par `cible_table`. QUELLES COLONNES de ces actes partent :
+    `COLONNES_EVENEMENT_PUBLIEES`, qui exclut les charges `avant`/`apres`.
 
     UN seul endroit fait le filtre, et les deux sérialisations l'appellent — pour la même
     raison que `pseudonymes()` est partagé : deux vues du même journal qui n'auraient pas
@@ -311,7 +352,8 @@ def evenements_publiables(conn, ordre: str = "ASC"):
         raise ValueError(f"ordre : ASC ou DESC, pas {ordre!r}")
     cibles = tuple(sorted(CIBLES_CORPUS))
     return conn.execute(
-        f"SELECT * FROM evenement WHERE cible_table IN ({','.join('?' * len(cibles))}) "
+        f"SELECT {', '.join(COLONNES_EVENEMENT_PUBLIEES)} FROM evenement "
+        f"WHERE cible_table IN ({','.join('?' * len(cibles))}) "
         f"ORDER BY id {ordre}", cibles)
 
 

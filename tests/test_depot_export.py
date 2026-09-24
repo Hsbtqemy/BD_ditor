@@ -394,19 +394,14 @@ def _textes_de_depot(client, db_path, collection_id):
     try:
         arbre = json.dumps(mc.collecter(conn, collection_id=collection_id),
                            ensure_ascii=False, default=str)
-        brutes = mc.tables(conn, collection_id=collection_id)
-        # Le JOURNAL (A3) est HORS de ce contrôle, et c'est écrit plutôt que subi. Ses
-        # deux tables sortent au grain CORPUS par décision — « un run/acte n'appartient
-        # pas à un album, et l'acte SURVIT à la suppression de sa cible → non
-        # re-scopable » (`metadonnees_collection.tables`) —, et leurs charges
-        # `avant`/`apres` sont publiées mot pour mot. Ce qui y voyage n'est pas seulement
-        # le libellé d'un tag d'ailleurs : `journal._REGION_COLS` contient `ocr_texte`,
-        # donc le TEXTE des œuvres de toute l'instance, `--verbatim` ou non (mesuré le
-        # 2026-09-23). C'est une case ouverte à part, plus large qu'AUTH-11 ; l'exclure
-        # ICI garde le contrôle honnête sur ce qu'il mesure, au lieu de le faire échouer
-        # sur une question qu'on n'a pas tranchée. Cf. `docs/export-metadonnees.md`.
-        tbls = json.dumps({k: v for k, v in brutes.items()
-                           if k not in ("activite", "evenement")},
+        # Le JOURNAL (A3) était EXCLU de ce contrôle jusqu'au 2026-09-24, parce que ses
+        # charges `avant`/`apres` partaient mot pour mot et emportaient, avec le texte des
+        # œuvres, le libellé des tags d'ailleurs. La décision de TAIRE LES CHARGES ferme
+        # ce canal, et l'exclusion tombe avec lui : ses deux tables rentrent dans la
+        # mesure. Une exception écrite en moins vaut mieux qu'une exception bien
+        # commentée — tant qu'elle tenait, ce contrôle disait « propre » d'un artefact
+        # dont il ne regardait pas deux tables sur dix-neuf.
+        tbls = json.dumps(mc.tables(conn, collection_id=collection_id),
                           ensure_ascii=False, default=str)
     finally:
         conn.close()

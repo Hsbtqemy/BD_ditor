@@ -94,21 +94,72 @@ def _sans_accents(s: str) -> str:
     return "".join(c for c in s if not unicodedata.combining(c)).lower()
 
 
-def _ensure_tags(conn: sqlite3.Connection, labels: list[str]) -> list[dict]:
-    """Crée les tags manquants et renvoie les lignes correspondantes."""
+def _ensure_tags(conn: sqlite3.Connection, labels: list[str], portee) -> list[dict]:
+    """Crée les tags manquants et renvoie les lignes correspondantes.
+
+    **Ce qu'on ne LIT pas ne s'attache pas, et ne se crée pas non plus** (AUTH-11,
+    demi-mesure tranchée le 2026-09-24). Le libellé d'un tag est unique dans TOUTE
+    l'instance (`ON CONFLICT(label)`), si bien que taper le nom d'un tag local à une
+    collection qu'on ne lit pas attachait CE tag-là. Deux dommages, et le second est
+    celui qui coûtait : l'oracle par l'écriture, et surtout une région qui repartait
+    porteuse d'un terme étranger — invisible à qui vient de l'écrire, et **impossible à
+    retirer**, puisqu'une garde refuse de retirer un tag qu'on ne lit pas.
+
+    La `Portee` est OBLIGATOIRE, comme dans les accesseurs gardés : un défaut ferait
+    retomber un appelant distrait sur l'ancien comportement, qui marche parfaitement.
+
+    **Ce n'est PAS la fin du sujet**, et il ne faut pas le lire comme tel. La fin est une
+    unicité `(libellé, collection)` — un changement de schéma qui croise `COL-1`, doit
+    trancher la collision à la promotion, et bute sur trois pièges écrits dans la fiche
+    (les NULL distincts d'un index SQLite, le journal qui nomme les tags par libellé, et
+    « à quelle collection appartient un tag TAPÉ »). Cette garde ferme le dommage de
+    DONNÉES ; elle ne ferme pas l'oracle, puisque le libellé ne revient toujours pas.
+
+    Elle n'ajoute aucun mode de panne : le silence existait déjà. Aujourd'hui comme hier,
+    l'appelant reçoit son annotation SANS le libellé qu'il a tapé — ce qui change est
+    qu'il n'y a plus rien en base derrière ce silence.
+
+    **Un seul cas voit sa réponse changer**, et il a été mesuré : une note VIDE plus le
+    seul libellé illisible. Hier l'annotation naissait quand même, coquille ne portant que
+    le tag caché ; aujourd'hui il ne reste rien à enregistrer, donc `put_annotation`
+    supprime la ligne et rend `note: null` au lieu de `note: ""`. À l'écran c'est le même
+    vide, et la coquille était de toute façon comptée comme NON annotée depuis
+    `_sql_a_montrer`. Surtout, cela ne donne aucun bit de plus : ce qui distingue « libellé
+    pris ailleurs » de « libellé libre » reste ce qui le distinguait hier — le libellé
+    revient, ou il ne revient pas —, et on ne peut pas le retirer sans mentir.
+
+    **Elle n'atteint pas `undo._ensure_tag`, et c'est voulu.** L'annulation repose un
+    instantané pris par le journal, qui garde l'annotation ENTIÈRE, cachés compris : y
+    poser la même garde ferait de Ctrl+Z l'outil qui efface ce que `_tags_caches`
+    protège. Restaurer n'est pas saisir — on ne devine pas un libellé qu'on est en train
+    de remettre là où il était.
+    """
     normalized = sorted({_norm_tag(l) for l in labels if _norm_tag(l)})
-    for label in normalized:
+    if not normalized:
+        return []
+    marques = ",".join("?" * len(normalized))
+    ou_tag, p_tag = portee.clause_terme("t.collection_id")
+    # Deux lectures, et l'écart entre elles EST la garde : tout ce que le libellé désigne
+    # déjà dans l'instance, puis ce qu'on en lit. La différence se tait.
+    pris = {r["label"] for r in conn.execute(
+        f"SELECT label FROM tags WHERE label IN ({marques})", normalized)}
+    lisibles = _rows(conn.execute(
+        f"SELECT t.id, t.label, t.couleur FROM tags t "
+        f"WHERE t.label IN ({marques}) AND {ou_tag}", (*normalized, *p_tag)))
+    # Un libellé LIBRE se crée (global, comme avant) ; un libellé pris par un terme qu'on
+    # ne lit pas ne se crée pas — l'unicité l'en empêche — et ne s'attache pas.
+    neufs = [l for l in normalized if l not in pris]
+    for label in neufs:
         conn.execute(
             "INSERT INTO tags (label) VALUES (?) ON CONFLICT(label) DO NOTHING",
             (label,),
         )
-    if not normalized:
-        return []
-    placeholders = ",".join("?" * len(normalized))
-    return _rows(conn.execute(
-        f"SELECT id, label, couleur FROM tags WHERE label IN ({placeholders})",
-        normalized,
-    ))
+    if neufs:
+        marques_neufs = ",".join("?" * len(neufs))
+        lisibles += _rows(conn.execute(
+            f"SELECT id, label, couleur FROM tags WHERE label IN ({marques_neufs})",
+            neufs))
+    return sorted(lisibles, key=lambda r: r["label"])
 
 
 def _annotation_for_region(conn: sqlite3.Connection, portee, region_id: int) -> dict:

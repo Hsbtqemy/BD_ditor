@@ -51,7 +51,8 @@ import database  # noqa: E402  (réutilise numeros_editoriaux / citations_region
 import journal  # noqa: E402  (indicateurs de provenance dérivés du journal — A3)
 from _commun import (version_outil, environnement, composants,  # noqa: E402  (provenance / env,
                      portee_albums, forcer_utf8, pseudonymes,   # partagés + liste blanche
-                     evenements_publiables, CIBLES_CORPUS)      # AUTH-1)
+                     evenements_publiables, CIBLES_CORPUS,   # AUTH-1)
+                     COLONNES_EVENEMENT_PUBLIEES)            # AUTH-11
 
 
 def _grouper(conn, sql, cle=0, params=()):
@@ -578,12 +579,15 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
           a["version"], a["params"],
           a["portee"], a["comptes"], a["date_debut"], a["date_fin"]]
          for a in conn.execute("SELECT * FROM activite ORDER BY id")])
+    # Les ACTES, sans leurs CHARGES (AUTH-11, 2026-09-24). Les colonnes ne sont plus
+    # écrites ici : elles viennent de `COLONNES_EVENEMENT_PUBLIEES`, à côté de la liste
+    # blanche des cibles, pour qu'une seule décision gouverne les deux sérialisations. La
+    # recopier ici rouvrirait l'angle mort qu'elle ferme — un export qui publie ce qu'il
+    # a écrit à la main plutôt que ce que la règle autorise.
     out["evenement"] = (
-        ["id", "activite_id", "type", "agent", "agent_type", "cible_table", "cible_id",
-         "avant", "apres", "date"],
-        [[e["id"], e["activite_id"], e["type"], pseudo.get(e["agent"], e["agent"]),
-          e["agent_type"],
-          e["cible_table"], e["cible_id"], e["avant"], e["apres"], e["date"]]
+        list(COLONNES_EVENEMENT_PUBLIEES),
+        [[pseudo.get(e["agent"], e["agent"]) if col == "agent" else e[col]
+          for col in COLONNES_EVENEMENT_PUBLIEES]
          for e in evenements_publiables(conn)])
     return out
 

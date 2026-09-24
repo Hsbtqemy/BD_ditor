@@ -369,10 +369,10 @@ def test_les_actes_administratifs_ne_partent_pas_au_depot(db_path):
     conn = _lire(db_path)
     _semer_une_charge_par_cible(conn)
 
-    _, lignes = mc.tables(conn)["evenement"]
+    cols, lignes = mc.tables(conn)["evenement"]
     csv_texte = json.dumps(lignes, ensure_ascii=False)
     prov_texte = json.dumps(pe.construire(conn), ensure_ascii=False)
-    tables_csv = {l[5] for l in lignes}
+    tables_csv = _colonne(cols, lignes, "cible_table")
 
     for table in sorted(_commun.CIBLES_RETENUES):
         assert table not in tables_csv, f"{table} : la ligne part au dépôt"
@@ -395,8 +395,26 @@ PLANCHER_PUBLIE = {
 }
 
 
+def _colonne(cols, lignes, nom):
+    """Les valeurs d'une colonne NOMMÉE, sans supposer sa position.
+
+    L'ancienne version lisait `l[5]` pour `cible_table`. Un index en dur survit à un
+    changement de colonnes en désignant la mauvaise : retirer `avant`/`apres` a déplacé
+    `date` de la position 9 à la position 7 sans qu'aucun `l[5]` ne s'en plaigne. Ici le
+    test doit mordre sur les colonnes, il les nomme.
+    """
+    i = cols.index(nom)
+    return {l[i] for l in lignes}
+
+
 def test_les_actes_de_corpus_partent_toujours(db_path):
-    """L'autre sens, et c'est le mode d'échec d'une liste blanche : amputer le dépôt."""
+    """L'autre sens, et c'est le mode d'échec d'une liste blanche : amputer le dépôt.
+
+    Depuis le 2026-09-24 la LIGNE est toute la garantie : les charges ne partent plus
+    (cf. le test suivant), donc on ne peut plus prouver la présence d'un acte par la
+    présence de son contenu. C'est le seul endroit où ce test a changé, et il faut le
+    dire : il mesure désormais que l'acte EXISTE dans l'artefact, pas ce qu'il disait.
+    """
     import _commun
     import metadonnees_collection as mc
 
@@ -407,13 +425,83 @@ def test_les_actes_de_corpus_partent_toujours(db_path):
     conn = _lire(db_path)
     _semer_une_charge_par_cible(conn)
 
-    _, lignes = mc.tables(conn)["evenement"]
-    csv_texte = json.dumps(lignes, ensure_ascii=False)
-    tables_csv = {l[5] for l in lignes}
+    cols, lignes = mc.tables(conn)["evenement"]
+    tables_csv = _colonne(cols, lignes, "cible_table")
 
     for table in sorted(PLANCHER_PUBLIE | _commun.CIBLES_CORPUS):
         assert table in tables_csv, f"{table} : acte de corpus absent du dépôt"
-        assert f"CHARGE-{table}" in csv_texte, f"{table} : charge de corpus perdue"
+    # Anti-vacuité : l'acte n'est pas une ligne creuse — il porte de quoi l'attribuer.
+    for nom in ("type", "agent_type", "cible_id", "date"):
+        assert any(l[cols.index(nom)] not in (None, "") for l in lignes), (
+            f"la colonne `{nom}` est vide partout : l'acte publié n'apprend plus rien")
+
+
+def test_les_charges_ne_partent_plus_au_depot(db_path):
+    """AUTH-11, 2026-09-24 — le dépôt garde les ACTES et tait leurs CHARGES.
+
+    Mesuré le 2026-09-23 : `journal._REGION_COLS` contient `ocr_texte` et les charges
+    partaient mot pour mot, donc l'export d'UNE collection emportait le TEXTE des œuvres
+    de TOUTE l'instance, y compris sans `--verbatim`. Deux contournements d'un coup — le
+    drapeau et le périmètre —, et la promesse de DROIT-1 (« par défaut, présence et
+    longueur ») franchie sans qu'aucune garde ne tombe.
+
+    Le contrôle porte sur les DEUX sérialisations, parce que la coupure vit à UN endroit
+    et doit valoir pour les deux ; et sur les COLONNES autant que sur le texte, parce
+    qu'une colonne vide et une colonne absente ne se valent pas — la première invite à la
+    remplir un jour.
+    """
+    import _commun
+    import metadonnees_collection as mc
+    import provenance_export as pe
+
+    conn = _lire(db_path)
+    _semer_une_charge_par_cible(conn)
+
+    cols, lignes = mc.tables(conn)["evenement"]
+    assert "avant" not in cols and "apres" not in cols, (
+        f"les colonnes de charge sont encore déclarées : {cols}")
+    assert tuple(cols) == _commun.COLONNES_EVENEMENT_PUBLIEES, (
+        "l'export publie des colonnes qu'il a écrites lui-même, au lieu de celles que "
+        "la règle autorise — c'est l'angle mort que la règle nommée vient fermer")
+
+    csv_texte = json.dumps(lignes, ensure_ascii=False)
+    prov_texte = json.dumps(pe.construire(conn), ensure_ascii=False)
+    for table in sorted(_commun.CIBLES_CORPUS | set(_commun.CIBLES_RETENUES)):
+        assert f"CHARGE-{table}" not in csv_texte, f"{table} : la charge part au dépôt"
+        assert f"CHARGE-{table}" not in prov_texte, f"{table} : la charge part en PROV/TEI"
+
+    # Anti-vacuité : les actes de corpus, eux, sont bien là — on a tu la charge, pas l'acte.
+    assert _commun.CIBLES_CORPUS <= _colonne(cols, lignes, "cible_table")
+
+
+def test_le_journal_garde_ses_charges_DANS_l_instance(client, derriere_proxy, album,
+                                                      db_path):
+    """Ce qu'on tait à la SORTIE, l'instance le GARDE : c'est le substrat de Ctrl+Z.
+
+    Sans ce contrôle, refermer la fuite en cessant d'ÉCRIRE les charges passerait pour un
+    succès, et l'annulation (D1) perdrait en silence ce qu'elle restaure — l'undo n'ayant
+    rien à voir avec les exports, aucun test de dépôt ne s'en plaindrait.
+
+    Le geste passe par l'API, et c'est la seule façon que ce test ait un sens : semer les
+    charges à la main ne mesurerait que la main qui sème. `test_evenements_humains_avant_apres`
+    éprouve déjà le CONTENU de ces charges ; ici on vérifie qu'il en reste, au moment
+    précis où l'on vient d'apprendre à ne plus les publier.
+    """
+    conn = _lire(db_path)
+    pid = _planche(conn, album["id"])
+    conn.close()
+    r = client.post(f"/api/planches/{pid}/regions",
+                    json={"type": "bulle", "x": 1, "y": 1, "w": 2, "h": 2},
+                    headers=H).json()
+    client.put(f"/api/regions/{r['id']}", json={"ocr_texte": "au revoir"}, headers=H)
+
+    conn = _lire(db_path)
+    porteuses = conn.execute(
+        "SELECT COUNT(*) FROM evenement WHERE avant IS NOT NULL OR apres IS NOT NULL"
+    ).fetchone()[0]
+    assert porteuses > 0, (
+        "plus aucun événement ne porte de charge EN BASE : taire les charges à l'export "
+        "est devenu un arrêt de leur écriture, et l'undo n'a plus de quoi restaurer")
 
 
 def test_le_resume_compte_ce_qu_il_publie(db_path):

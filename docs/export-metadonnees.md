@@ -144,37 +144,38 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
 > export de dépôt qui varierait selon la portée du compte ayant cliqué rendrait deux exports
 > de la même collection différents sans que rien ne le dise.
 >
-> **Deux endroits ne sont PAS scopés, et il vaut mieux les écrire que les découvrir.**
+> **Le journal A3 sort au grain CORPUS — mais il a cessé de porter du CONTENU
+> (2026-09-24).** Ses deux tables, `activite` et `evenement`, voyagent dans l'archive CSV,
+> le classeur XLSX et le dépôt ShareDocs (l'arbre JSON, lui, ne les porte pas), et rien ne
+> les borne par collection : « un run/acte n'appartient pas à un album, et l'acte SURVIT à
+> la suppression de sa cible → non re-scopable ». Ce qui partait de travers n'était pas ce
+> grain, c'étaient les **charges** `avant`/`apres`, recopiées mot pour mot : comme
+> `journal._REGION_COLS` contient `ocr_texte`, l'export d'une collection emportait le texte
+> des œuvres de **toute** l'instance, y compris sans `--verbatim` — le drapeau contourné et
+> le périmètre contourné, sans qu'aucune garde ne tombe.
 >
-> 1. **Le journal A3** (tables `activite` et `evenement`, donc l'archive CSV, le classeur
->    XLSX et le dépôt ShareDocs — l'arbre JSON, lui, ne les porte pas). Il sort au grain
->    CORPUS par décision antérieure : « un run/acte n'appartient pas à un album, et l'acte
->    SURVIT à la suppression de sa cible → non re-scopable » ; ce qu'il publie est filtré
->    **par ACTE** (`tools/_commun.CIBLES_CORPUS`), jamais par collection.
+> **Décision : le dépôt garde les ACTES et tait les CHARGES.** Les colonnes publiées sont
+> nommées dans `tools/_commun.COLONNES_EVENEMENT_PUBLIEES` — agent pseudonymisé, nature,
+> type, cible, date, run —, ce qui suffit à lire la part machine et la part humaine et à
+> suivre une chaîne de révision, et ce que PROV-O et TEI sérialisaient déjà. Ce qui est
+> perdu au dépôt : le **diff** d'un acte, donc l'état d'une entité à une date ; l'instance,
+> elle, garde tout, et l'annulation continue d'y lire ses charges. Le détail du
+> raisonnement est dans `docs/provenance-audit.md`, § *À la sortie, les ACTES — sans
+> leurs CHARGES*.
 >
->    **Ce n'est pas seulement un libellé de tag qui y voyage, et il faut le dire en toutes
->    lettres.** `journal._REGION_COLS` contient `ocr_texte`, et les charges `avant`/`apres`
->    sont publiées mot pour mot : **l'export d'une collection emporte donc le TEXTE des
->    œuvres, verbatim, de toute l'instance — y compris sans `--verbatim`, et y compris des
->    collections qu'on ne dépose pas.** Mesuré le 2026-09-23 sur
->    `GET /api/collections/{id}/depot/metadonnees?format=zip` : la réplique transcrite d'une
->    région d'une AUTRE collection ressort en clair dans `evenement.apres`.
+> **Ce qui reste au grain corpus sans porter de contenu** : `activite.params`,
+> `activite.portee` et `activite.comptes` — réglages d'une passe, identifiants d'albums,
+> compteurs. Aucun texte de travail, et `comptes` est minimal par contrainte.
 >
->    Les deux faits se cumulent et aucun ne se rattrape par l'autre. `--verbatim` est
->    **contourné** : le drapeau borde `regions.ocr_texte` dans les records — « par défaut,
->    présence + longueur », la promesse de DROIT-1 — et ne borde rien dans le journal. Et le
->    périmètre est **contourné** : ce qui sort n'est pas le contenu de la collection déposée,
->    c'est celui de toutes. Cette limite est écrite parce qu'elle n'est pas tranchée, pas
->    parce qu'elle serait acceptable.
->
-> 2. **Le bloc `vocabulaire` de la FICHE** (`description_collection.py`) nomme encore toutes
->    les dimensions, toutes leurs valeurs et tous les domaines de l'instance, et compte les
->    tags globalement (`couverture.annotations.tags_distincts`). Son `vocabulaire.lexique`
->    (« % défini »), lui, est scopé depuis A4. Ce décalage est CONNU et non tranché : les
->    chiffres de cette fiche décrivent une couverture,
->    et décider s'ils portent sur l'instance ou sur le périmètre est une question de modèle,
->    pas une clause à poser. Conséquence visible : dans le classeur XLSX des enregistrements,
->    l'onglet `fiche` peut nommer un axe que l'onglet `vocabulaire` ne porte pas.
+> **Et une limite qui, elle, n'est PAS tranchée** : le bloc `vocabulaire` de la FICHE
+> (`description_collection.py`) nomme encore toutes les dimensions, toutes leurs valeurs
+> et tous les domaines de l'instance, et compte les tags globalement
+> (`couverture.annotations.tags_distincts`). Son `vocabulaire.lexique` (« % défini »),
+> lui, est scopé depuis A4. Ce décalage est CONNU et non tranché : les chiffres de cette
+> fiche décrivent une couverture, et décider s'ils portent sur l'instance ou sur le
+> périmètre est une question de modèle, pas une clause à poser. Conséquence visible :
+> dans le classeur XLSX des enregistrements, l'onglet `fiche` peut nommer un axe que
+> l'onglet `vocabulaire` ne porte pas.
 
 ## Formats produits
 
@@ -192,8 +193,9 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
   `annotations`, `tags`, `personnages`, `personnage_attributs`, **`personnage_alignements`**
   (alignement d'autorité A5), `region_attributs`,
   `vocabulaire`, `paradonnee`, **`activite`** + **`evenement`** (journal d'audit A3, grain
-  corpus) — dump relationnel recollable par les clés (`album_id`, `planche_id`, `region_id`,
-  `parent_id` ; `evenement.activite_id` → `activite.id`). Groupables en `.zip`. Écrits avec un **BOM
+  corpus — les ACTES sans leurs charges `avant`/`apres` depuis le 2026-09-24, cf. § *Portée
+  d'une collection*) — dump relationnel recollable par les clés (`album_id`, `planche_id`,
+  `region_id`, `parent_id` ; `evenement.activite_id` → `activite.id`). Groupables en `.zip`. Écrits avec un **BOM
   UTF-8** (accents lisibles dans Excel, comme l'export de l'app). Les albums portent aussi
   leurs **contributions** (nom + rôle résolu : bucket DCterms + code MARC) et le catalogue
   **`contribution_roles`** (vocabulaire contrôlé-ouvert). Depuis **A4 (v17)**, `vocabulaire` et

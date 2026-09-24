@@ -70,6 +70,44 @@ lesquelles — et il se lit puis se jette, il ne se dépose pas ; et `GET /api/s
 qui est la base entière par construction. Le cliquet d'AUTH-5
 (`tests/test_sorties_identite.py`) les tient déclarées, avec leur raison.
 
+### À la sortie, les ACTES — sans leurs CHARGES (AUTH-11, 2026-09-24)
+
+Le dépôt publie **qui a fait quoi, quand, sur quelle cible, sous quel run** ; il ne publie
+plus `avant`/`apres`. Les colonnes qui partent sont nommées une fois, dans
+`tools/_commun.COLONNES_EVENEMENT_PUBLIEES`, à côté de la liste blanche des cibles : deux
+coupures pour deux questions — *quels actes* partent, et *quelles colonnes* de ces actes.
+
+**Pourquoi.** Mesuré le 2026-09-23 : `journal._REGION_COLS` contient `ocr_texte` et les
+charges étaient recopiées mot pour mot, si bien que l'export d'**une** collection emportait
+le **texte des œuvres de toute l'instance** — y compris sans `--verbatim`. Deux
+contournements d'un coup, celui du drapeau et celui du périmètre, et la promesse de DROIT-1
+(« par défaut, présence et longueur ») franchie sans qu'aucune garde ne tombe. La charge
+n'est pas ce qui fait la valeur du journal : **le contenu vit déjà dans les records**, qui
+eux respectent le périmètre ET `--verbatim`, et la provenance d'un acte tient dans son
+**attribution** et sa **date**, pas dans la recopie de ce qu'il a changé.
+
+**Ce que le dépôt garde, et qui suffit à ce qu'on revendique** : l'agent pseudonymisé, sa
+nature (`humain` / `moteur`), le type d'acte, la cible (`cible_table` + `cible_id`, stable
+au point de survivre à la suppression), la date, et le run (`activite_id`). De quoi lire la
+part machine et la part humaine, suivre une **chaîne de révision** sur une même cible, et
+dater chaque geste — c'est exactement ce que `provenance_export.py` sérialisait déjà en
+PROV-O et en TEI, qui **ne changent pas d'un iota**.
+
+**Ce que le dépôt PERD, et il faut le savoir avant d'en avoir besoin** : on ne peut plus
+reconstituer l'état d'une entité à une date, ni lire le **diff** d'un acte. Un audit sur
+l'artefact déposé dira « cette région a été retouchée trois fois, par deux annotateurs, la
+dernière le … » ; il ne dira pas « le texte disait ceci avant ». Pour cela il faut
+l'instance, qui garde tout : **la table `evenement` n'est pas touchée**, et l'annulation
+(D1) continue de lire ses charges — un test le verrouille, sans quoi « taire à la sortie »
+pourrait dériver vers « cesser d'écrire », en silence.
+
+**Reste au grain CORPUS, et ce n'est pas sous cette décision** : la table `activite` publie
+`params`, `portee` et `comptes`, pour tous les runs de l'instance. Ce sont des réglages de
+passe, un périmètre (des identifiants d'albums) et des compteurs — aucun contenu de travail
+—, et `comptes` est **minimal par contrainte** (y verser le message d'une exception
+enverrait des chemins serveur au dépôt). Les deux sérialisations les portent, avant comme
+après cette décision.
+
 ## Ce qui est journalisé
 
 **Passes ML** (`journal.passe_ml`, enveloppe les 3 routes directes + les 3 passes du worker

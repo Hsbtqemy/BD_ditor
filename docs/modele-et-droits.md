@@ -373,6 +373,32 @@ Deux règles gouvernent cette portée, et la seconde n'est pas intuitive.
 collection ; un terme *global* se modifie si vous écrivez **quelque part**. Un refus de
 modification sur un terme est un **403** — il vient d'être listé, un 404 mentirait.
 
+**Une limite connue, et assumée : l'index plein texte.** La Recherche interroge un index qui
+agrège le dialogue, la note **et les tags** d'une région. Les tags y sont indexés tous, sans
+distinction de portée : un mot tapé dans le champ de recherche peut donc faire sortir une
+région **parce qu'elle porte un tag que vous ne lisez pas**, sans que ce tag vous soit jamais
+montré. Décision du 2026-09-24 : on garde l'index tel quel, et on écrit la limite.
+
+Ce que la mesure dit exactement, parce que c'est elle qui rend la décision tenable (mesuré le
+2026-09-23, revérifié le 2026-09-24) :
+
+- c'est un canal de **confirmation**, pas d'énumération. Il faut **déjà connaître le mot** —
+  rien ne le donne — et il n'en revient qu'un bit : « oui, une de vos régions porte ce mot » ;
+- il ne porte que sur des régions **que vous lisez déjà**. Cherché sur une région hors de
+  votre portée, le même mot ne rend **rien** : le cloisonnement des données tient ;
+- **le libellé n'est jamais rendu.** Le résultat sort avec ses tags filtrés comme partout
+  ailleurs — c'est-à-dire sans celui-là — et la Recherche ne produit aucun extrait depuis
+  l'index. Vous voyez une région qui a répondu, sans savoir à quoi.
+
+**Ce qui rouvrirait la question.** Aujourd'hui les tags sont massivement globaux, et l'oracle
+ne porte donc presque sur rien. Si le vocabulaire d'étude naît **local** (chantier `ANN-1`),
+la proportion de tags cachés monte et la valeur de ce canal avec elle. Le remède — retirer
+les tags de l'index, au profit du seul filtre par tag, qui lui est déjà cloisonné — coûte une
+migration de schéma **et une réindexation complète du corpus** : le bon moment est la
+**prochaine migration FTS forcée**, pour ne payer la réindexation qu'une fois. Retirer les
+tags de l'index ferait aussi mentir la promesse du champ de recherche, qui annonce
+« dialogues, notes, tags » ; c'est à réécrire le même jour.
+
 ### Amorcer le vocabulaire en lot
 
 On peut charger une taxonomie entière depuis un tableur CSV (séparateur `;`), colonnes :

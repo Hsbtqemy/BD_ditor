@@ -1324,7 +1324,7 @@ def put_annotation(region_id: int, payload: AnnotationIn,
     # a caché. Pour la même raison, on ne RETIRE pas un tag caché qu'on nommerait.
     caches = _tags_caches(conn, portee, region_id)
     if "tags" in champs:
-        tag_ids = [t["id"] for t in _ensure_tags(conn, payload.tags)]
+        tag_ids = [t["id"] for t in _ensure_tags(conn, payload.tags, portee)]
     else:
         tag_ids = [r["tag_id"] for r in conn.execute(
             "SELECT at.tag_id FROM annotation_tags at JOIN annotations an "
@@ -1334,7 +1334,7 @@ def put_annotation(region_id: int, payload: AnnotationIn,
             f"SELECT id FROM tags WHERE label IN ({','.join('?' * len(payload.tags_retires))})",
             [_norm_tag(l) for l in payload.tags_retires]))} if payload.tags_retires else set()
         tag_ids = [i for i in tag_ids if i not in retires]
-        tag_ids += [t["id"] for t in _ensure_tags(conn, payload.tags_ajoutes)
+        tag_ids += [t["id"] for t in _ensure_tags(conn, payload.tags_ajoutes, portee)
                     if t["id"] not in tag_ids]
     # Vider une annotation (note vide ET aucun tag) = SUPPRIMER la ligne, pas
     # laisser une coquille vide : sinon elle fausserait le compteur d'annotées,

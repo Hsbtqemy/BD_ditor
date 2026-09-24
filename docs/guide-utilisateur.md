@@ -386,6 +386,11 @@ CSV. La recherche porte sur les dialogues, les notes et les tags — plus les le
 l'analyse linguistique est installée ; sans elle, elle retombe proprement sur la recherche par
 préfixe, toujours insensible aux accents.
 
+Elle porte sur les tags **sans distinguer leur portée** : un mot peut faire sortir une de vos
+régions parce qu'elle porte un tag local à une collection que vous ne lisez pas — le tag ne
+vous est pas montré pour autant, et rien ne sort d'une région hors de votre portée. Limite
+connue et mesurée, décrite dans `docs/modele-et-droits.md` § *Le vocabulaire*.
+
 ### Exploration (`/exploration`)
 
 Les quatre vues du tableau de l'étape 7, avec des filtres communs : album, type de région,

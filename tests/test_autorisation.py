@@ -593,6 +593,36 @@ def _poser_tag(db_path, label, collection_id=None):
         conn.close()
 
 
+def _lignes_tags(db_path, region_id):
+    """Les tags RÉELLEMENT posés sur une région, lus en base — pas ce que l'API montre.
+
+    C'est la seule lecture qui distingue « rien ne s'est attaché » de « quelque chose
+    s'est attaché et l'écran le cache » : les deux rendent `tags: []` à l'appelant, et
+    c'est précisément l'écart que la garde ferme.
+    """
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT t.id, t.label, t.collection_id FROM annotation_tags at "
+            "JOIN annotations an ON an.id = at.annotation_id "
+            "JOIN tags t ON t.id = at.tag_id WHERE an.region_id = ?", (region_id,))]
+    finally:
+        conn.close()
+
+
+def _nb_tags(db_path, label):
+    """Combien de lignes `tags` portent ce libellé — l'unicité est le cœur du sujet."""
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        return conn.execute("SELECT COUNT(*) FROM tags WHERE label = ?",
+                            (label,)).fetchone()[0]
+    finally:
+        conn.close()
+
+
 def _case_export(db_path, collection_id, principal):
     """DROIT-2 — coche la case d'export d'un accès existant."""
     import sqlite3
@@ -940,6 +970,80 @@ def test_une_region_aux_seuls_tags_caches_n_est_pas_annotee(client, db_path,
     assert nb_annotees(t["a1"]["id"], t["pl1"]["id"], ADMIN) == 1
     assert nb_annotees(a3["id"], pl3["id"], ADMIN) == 1
     assert corpus(ADMIN) == 2
+
+
+def test_taper_un_libelle_qu_on_ne_lit_pas_n_attache_rien(client, db_path, tag_illisible):
+    """AUTH-11, demi-mesure du 2026-09-24 — ce qu'on ne LIT pas ne s'attache pas.
+
+    Le libellé d'un tag est unique dans TOUTE l'instance, donc taper le nom d'un tag
+    local à une collection qu'on ne lit pas attachait CE tag-là. Deux dommages, et la
+    fiche n'en nommait qu'un : l'oracle par l'écriture, et surtout une région qui
+    repartait porteuse d'un terme étranger — invisible à qui vient de l'écrire, et
+    **impossible à retirer**, puisque `tags_retires` refuse de retirer un tag caché. C'est
+    le dommage de DONNÉES qui coûtait, et c'est lui que cette garde ferme.
+
+    Anti-vacuité à deux étages, sans quoi « rien ne s'attache jamais » passerait : un
+    libellé LIBRE s'attache toujours, et l'administrateur — qui lit le terme — attache
+    bien le tag existant au lieu d'en créer un second.
+    """
+    from conftest import ADMIN
+    t = tag_illisible
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    bob = t["bob"]
+    r2 = client.post(f"/api/planches/{t['pl1']['id']}/regions", headers=ADMIN,
+                     json={"type": "bulle", "x": 1, "y": 1, "w": 5, "h": 5}).json()
+
+    def poser(label, h):
+        rep = client.put(f"/api/regions/{r2['id']}/annotation",
+                         json={"note": "n", "tags": [label]}, headers=h)
+        assert rep.status_code == 200, rep.text
+        return rep.json()
+
+    def en_base():
+        return {(l["label"], l["collection_id"]) for l in _lignes_tags(db_path, r2["id"])}
+
+    # Bob tape « prive », qu'il ne lit pas : rien ne s'attache, rien ne se crée.
+    assert poser("prive", bob)["tags"] == []
+    assert en_base() == set(), "un terme d'une autre collection s'est attaché"
+    assert _nb_tags(db_path, "prive") == 1, (
+        "un second tag homonyme a été créé : l'unicité du libellé aurait dû l'empêcher, "
+        "et le créer serait une autre décision que celle-ci")
+
+    # Anti-vacuité 1 : un libellé libre s'attache, et la réponse le rend.
+    assert [x["label"] for x in poser("libre-9600", bob)["tags"]] == ["libre-9600"]
+
+    # Anti-vacuité 2 : l'administrateur LIT le terme, donc il l'attache — et le MÊME.
+    vus = poser("prive", ADMIN)["tags"]
+    assert [x["label"] for x in vus] == ["prive"]
+    assert en_base() == {("prive", t["c2"])}, (
+        "l'administrateur a attaché autre chose que le tag existant")
+
+
+def test_la_garde_des_libelles_ne_touche_pas_ce_qu_on_cache(client, db_path,
+                                                            tag_illisible):
+    """La garde borde ce qui ENTRE ; elle ne doit rien changer à ce qu'on PRÉSERVE.
+
+    `_tags_caches` existe pour qu'une route qui réécrit ce qu'elle voit remette ce
+    qu'elle cache. Refuser d'attacher un libellé illisible et EFFACER un tag illisible
+    déjà posé sont deux gestes opposés, et la même ligne de code les sépare : il suffit
+    que la garde s'applique à la liste finale plutôt qu'à la liste reçue pour que Bob,
+    en enregistrant, emporte le travail d'une autre collection.
+    """
+    from conftest import ADMIN
+    t = tag_illisible
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    r1 = t["r1"]["id"]
+
+    # Bob réécrit ce qu'il voit, en TAPANT justement le libellé caché.
+    rep = client.put(f"/api/regions/{r1}/annotation",
+                     json={"note": "bob repasse", "tags": ["prive"]}, headers=t["bob"])
+    assert rep.status_code == 200, rep.text
+    assert rep.json()["tags"] == [], "Bob voit un terme qu'il ne lit pas"
+
+    ann = client.get(f"/api/regions/{r1}/annotation", headers=ADMIN).json()
+    assert {x["label"] for x in ann["tags"]} == {"prive"}, (
+        "le tag caché a disparu (ou le tag visible est resté) : l'écriture de Bob a "
+        "emporté le travail d'une collection qu'il ne lit pas")
 
 
 @pytest.fixture
