@@ -23,6 +23,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 import autorisation
+import conflit
 import lexique_import
 from database import lexique_resume
 
@@ -123,7 +124,15 @@ def importer_lexique(file: UploadFile = File(...),
         lignes, anomalies = lexique_import.lire(io.StringIO(texte))
     except lexique_import.FormatInvalide as e:
         raise HTTPException(400, str(e))
-    res, avert = lexique_import.importer(conn, lignes, collection_id)
+    # AUTH-11 — l'import RÉUTILISE des termes existants, et peut écrire sur eux : sa portée
+    # descend jusqu'au cœur, qui refuse toute ligne nommant un terme qu'on ne voit pas
+    # (comptée comme « libellé pris », sans rien en dire) ou qui ÉCRIRAIT sur un terme
+    # qu'on ne peut pas modifier (cf. `lexique_import._refus`). Le verrou d'écriture est
+    # pris avant la première lecture et tient jusqu'au `commit` ci-dessous : sans lui, un
+    # `PATCH …/lexique` concurrent pourrait rendre illisible, entre la lecture et
+    # l'écriture, un terme que la garde vient de juger visible.
+    conflit.verrouiller(conn)
+    res, avert = lexique_import.importer(conn, lignes, collection_id, portee=portee)
     conn.commit()
     return {"resume": res, "lignes": len(lignes),
             "anomalies": anomalies, "avertissements": avert}

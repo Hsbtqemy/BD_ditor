@@ -29,6 +29,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 import autorisation
+import conflit
 import journal
 from config import CIBLES_ATTRIBUT
 
@@ -346,16 +347,44 @@ def list_domaines(conn: sqlite3.Connection = Depends(db),
 def create_domaine(payload: DomaineIn, conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
     """AUTH-2 — même garde que la création de tag : enrichir un vocabulaire partagé
-    suppose de pouvoir écrire quelque part."""
+    suppose de pouvoir écrire quelque part.
+
+    **Créer ne rend pas ce qu'on ne lit pas** (AUTH-11, 2026-09-24). Le nom étant unique
+    dans TOUTE l'instance (`domaine.nom UNIQUE`), l'`ON CONFLICT(nom) DO NOTHING`
+    ci-dessous n'écrit rien sur un domaine existant — mais le `SELECT *` qui suit rendait
+    ce domaine entier, qu'on le lise ou non : qui écrivait dans une collection recevait en
+    201 la définition, la note de portée et le `collection_id` d'un domaine local à une
+    collection qu'il ne lit pas. Même forme, même remède que `POST /api/tags` (`b1c49d0`) :
+    l'existant se lit sur EXACTEMENT la clé que compare l'`ON CONFLICT` — le nom
+    normalisé —, et un domaine qu'on ne VOIT pas (`portee.clause_terme`) répond **409**
+    sans rien en dire ni rien écrire. Le verrou d'écriture (`conflit.verrouiller`) couvre
+    tout le trajet : pris avant de lire l'existant, il tient pendant l'`INSERT` et la
+    lecture du terme rendu, et ne tombe qu'au `commit`, qui vient APRÈS cette lecture.
+    Sans lui — ou avec un rendu lu après le `commit` —, un `PATCH …/lexique` concurrent
+    qui rattacherait le domaine à une collection illisible entre la garde et le `SELECT *`
+    le ferait rendre quand même.
+
+    Un domaine visible garde le comportement d'avant, lecture seule comprise : le
+    `DO NOTHING` ne le modifie pas, et le rendre ne dit rien qu'on ne lise déjà. Le 409
+    confirme en revanche que le nom est pris, où qu'il vive — un bit par nom deviné, le
+    même oracle que celui déjà accepté pour `socle._ensure_tags` et `POST /api/tags` ; une
+    LIMITE écrite, que l'unicité (nom, collection) fermera avec `COL-1`."""
     if not portee.peut_ecrire_quelque_part():
         raise HTTPException(403, "Créer un domaine demande un droit d'écriture sur au "
                                  "moins une collection.")
     nom = _norm_tag(payload.nom)
     if not nom:
         raise HTTPException(422, "Nom de domaine vide")
+    conflit.verrouiller(conn)      # l'existant se lit sous le verrou d'écriture
+    ou, params = portee.clause_terme("d.collection_id")
+    existant = conn.execute(f"SELECT {ou} AS visible FROM domaine d WHERE d.nom = ?",
+                            (*params, nom)).fetchone()
+    if existant is not None and not existant["visible"]:
+        raise HTTPException(409, "Ce nom de domaine est déjà pris : choisissez-en un autre.")
     conn.execute("INSERT INTO domaine (nom) VALUES (?) ON CONFLICT(nom) DO NOTHING", (nom,))
-    conn.commit()
-    return _row(conn.execute("SELECT * FROM domaine WHERE nom = ?", (nom,)))
+    rendu = _row(conn.execute("SELECT * FROM domaine WHERE nom = ?", (nom,)))
+    conn.commit()                  # le verrou tombe ici, APRÈS la lecture du rendu
+    return rendu
 
 
 @router.patch("/api/domaines/{dom_id}")
@@ -428,6 +457,21 @@ def list_dimensions(cible: Optional[str] = None, conn: sqlite3.Connection = Depe
 @router.post("/api/attributs/dimensions", status_code=201)
 def create_dimension(payload: DimensionIn, conn: sqlite3.Connection = Depends(db),
                      portee: autorisation.Portee = Depends(portee_courante)):
+    """Crée une dimension (un axe émergent), ou rend celle qui existe déjà.
+
+    **Créer ne rend pas ce qu'on ne lit pas** (AUTH-11, 2026-09-24) — même défaut et même
+    remède que `POST /api/domaines` juste au-dessus : la clé `(cible, nom)` étant unique
+    dans toute l'instance, le `SELECT *` qui suit l'`ON CONFLICT … DO NOTHING` rendait en
+    201 une dimension locale à une collection qu'on ne lit pas, définition, note de
+    portée, `collection_id` et `domaine_id` compris. Une dimension existante qu'on ne VOIT
+    pas répond donc **409**, sans rien en dire ni rien écrire ; l'existant se lit sur la
+    clé exacte de l'`ON CONFLICT` (la cible et le nom normalisé). Le verrou d'écriture est
+    pris avant cette lecture et ne tombe qu'au `commit`, qui suit la lecture du terme
+    rendu : la garde, l'`INSERT` et le rendu voient le même état. Une dimension visible
+    garde le comportement d'avant, lecture seule comprise (`DO NOTHING` ne la modifie
+    pas). Le 409 confirme qu'un nom est pris : le même oracle d'un bit que
+    `socle._ensure_tags` et `POST /api/tags`, LIMITE écrite que l'unicité par collection
+    fermera avec `COL-1`."""
     if not portee.peut_ecrire_quelque_part():
         raise HTTPException(403, "Créer une dimension demande un droit d'écriture sur au "
                                  "moins une collection.")
@@ -436,6 +480,14 @@ def create_dimension(payload: DimensionIn, conn: sqlite3.Connection = Depends(db
     nom = _norm_tag(payload.nom)
     if not nom:
         raise HTTPException(422, "Nom de dimension vide")
+    conflit.verrouiller(conn)      # l'existant se lit sous le verrou d'écriture
+    ou, params = portee.clause_terme("d.collection_id")
+    existant = conn.execute(f"SELECT {ou} AS visible FROM attribut_dimension d "
+                            f"WHERE d.cible = ? AND d.nom = ?",
+                            (*params, payload.cible, nom)).fetchone()
+    if existant is not None and not existant["visible"]:
+        raise HTTPException(409, "Ce nom de dimension est déjà pris : choisissez-en un "
+                                 "autre.")
     # AUTH-2 — la dimension HÉRITE de la portée de son domaine. Un terme ne peut pas être
     # plus global que celui dont il dépend : une dimension globale rattachée à un domaine
     # privé se montrait à tout le monde, et nommait le domaine au passage. Sans domaine,
@@ -447,9 +499,10 @@ def create_dimension(payload: DimensionIn, conn: sqlite3.Connection = Depends(db
     conn.execute("INSERT INTO attribut_dimension (cible, nom, domaine_id, collection_id) "
                  "VALUES (?, ?, ?, ?) ON CONFLICT(cible, nom) DO NOTHING",
                  (payload.cible, nom, payload.domaine_id, cid))
-    conn.commit()
-    return _row(conn.execute("SELECT * FROM attribut_dimension WHERE cible = ? AND nom = ?",
-                             (payload.cible, nom)))
+    rendu = _row(conn.execute("SELECT * FROM attribut_dimension WHERE cible = ? AND nom = ?",
+                              (payload.cible, nom)))
+    conn.commit()                  # le verrou tombe ici, APRÈS la lecture du rendu
+    return rendu
 
 
 @router.patch("/api/attributs/dimensions/{dim_id}/domaine")
@@ -524,10 +577,38 @@ def list_valeurs(dim_id: int, conn: sqlite3.Connection = Depends(db),
 @router.post("/api/attributs/dimensions/{dim_id}/valeurs", status_code=201)
 def create_valeur(dim_id: int, payload: ValeurIn, conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
+    """Crée une valeur canonique sous une dimension, ou rend celle qui existe déjà.
+
+    La dimension est gardée d'abord (`_get_dimension(ecriture=True)`) : invisible → 404,
+    visible en lecture seule → 403, AVANT qu'on regarde les valeurs — ce qui vit sous une
+    dimension qu'on ne peut pas modifier n'est donc jamais interrogé.
+
+    **Créer ne rend pas ce qu'on ne lit pas** (AUTH-11, 2026-09-24) — même défaut et même
+    remède que `POST /api/domaines` et `POST /api/attributs/dimensions` : la clé
+    `(dimension_id, valeur)` étant unique quelle que soit la portée, une valeur LOCALE à
+    une collection qu'on ne lit pas peut vivre sous une dimension qu'on lit et modifie
+    (une dimension globale, typiquement), et le `SELECT *` qui suit l'`ON CONFLICT … DO
+    NOTHING` la rendait entière en 201 — définition, note de portée, `collection_id`.
+    Une valeur existante qu'on ne VOIT pas répond donc **409**, sans rien en dire ni rien
+    écrire ; l'existant se lit sur la clé exacte de l'`ON CONFLICT` (la dimension et la
+    valeur normalisée). Le verrou d'écriture est pris avant toute lecture — la dimension
+    comprise — et ne tombe qu'au `commit`, qui suit la lecture de la valeur rendue : les
+    gardes, l'`INSERT` et le rendu voient le même état. Une valeur visible garde le
+    comportement d'avant (`DO NOTHING` ne la modifie pas). Le 409 confirme qu'une valeur
+    est prise sous cette dimension : le même oracle d'un bit que `socle._ensure_tags` et
+    `POST /api/tags`, LIMITE écrite que l'unicité par collection fermera avec `COL-1`."""
+    conflit.verrouiller(conn)      # la dimension et l'existant se lisent sous le verrou
     dim = _get_dimension(conn, portee, dim_id, ecriture=True)
     valeur = _norm_tag(payload.valeur)
     if not valeur:
         raise HTTPException(422, "Valeur vide")
+    ou, params = portee.clause_terme("v.collection_id")
+    existant = conn.execute(f"SELECT {ou} AS visible FROM attribut_valeur v "
+                            f"WHERE v.dimension_id = ? AND v.valeur = ?",
+                            (*params, dim_id, valeur)).fetchone()
+    if existant is not None and not existant["visible"]:
+        raise HTTPException(409, "Cette valeur est déjà prise dans cette dimension : "
+                                 "choisissez-en une autre.")
     # AUTH-2 — même héritage qu'un cran plus haut : la valeur prend la portée de sa
     # dimension. La route ne posait aucun `collection_id`, si bien que toute valeur
     # naissait GLOBALE — y compris sous un axe d'analyse local à une étude. Le dommage
@@ -536,9 +617,10 @@ def create_valeur(dim_id: int, payload: ValeurIn, conn: sqlite3.Connection = Dep
     conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
                  "VALUES (?, ?, ?) ON CONFLICT(dimension_id, valeur) DO NOTHING",
                  (dim_id, valeur, dim["collection_id"]))
-    conn.commit()
-    return _row(conn.execute("SELECT * FROM attribut_valeur WHERE dimension_id = ? AND valeur = ?",
-                             (dim_id, valeur)))
+    rendu = _row(conn.execute("SELECT * FROM attribut_valeur WHERE dimension_id = ? "
+                              "AND valeur = ?", (dim_id, valeur)))
+    conn.commit()                  # le verrou tombe ici, APRÈS la lecture du rendu
+    return rendu
 
 
 @router.delete("/api/attributs/valeurs/{val_id}", status_code=204)

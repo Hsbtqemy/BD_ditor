@@ -1144,6 +1144,450 @@ def test_creer_un_tag_modifiable_ou_neuf_fait_ce_qu_il_faisait(client, db_path,
     assert rep.json()["label"] == "neuf-4411" and rep.json()["collection_id"] is None
 
 
+# --- AUTH-11 — domaines, dimensions et import du vocabulaire : même forme que les tags.
+#     Les noms des termes ne contiennent pas « cach » exprès : un corps de réponse qui
+#     dirait qu'un terme est caché se verrait, au lieu de se confondre avec le nom.
+
+_FUITES_TERME = ("DEFSENTINELLE", "PORTEESENTINELLE", "collection_id", "domaine_id",
+                 "Étude B", "defini", "cach")
+
+
+def _poser_vocabulaire(db_path, collection_id, suffixe, *, note_dimension=None):
+    """Un domaine, une dimension de case rattachée à lui et une valeur sous elle, tous
+    locaux à `collection_id` (None = global) et documentés de sentinelles. La note de
+    portée de la dimension est laissée VIDE par défaut : c'est le champ qu'un import
+    « pré-remplit », donc celui qu'un import fautif écrirait. Rend les trois ids."""
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        dom = conn.execute(
+            "INSERT INTO domaine (nom, definition, note_portee, etat, collection_id) "
+            "VALUES (?, 'DEFSENTINELLE', 'PORTEESENTINELLE', 'defini', ?)",
+            (f"champ {suffixe}", collection_id)).lastrowid
+        dim = conn.execute(
+            "INSERT INTO attribut_dimension (cible, nom, domaine_id, definition, "
+            "note_portee, etat, collection_id) VALUES ('case', ?, ?, 'DEFSENTINELLE', ?, "
+            "'defini', ?)", (f"axe {suffixe}", dom, note_dimension, collection_id)).lastrowid
+        val = conn.execute(
+            "INSERT INTO attribut_valeur (dimension_id, valeur, definition, note_portee, "
+            "etat, collection_id) VALUES (?, ?, 'DEFSENTINELLE', 'PORTEESENTINELLE', "
+            "'defini', ?)", (dim, f"val {suffixe}", collection_id)).lastrowid
+        conn.commit()
+        return dom, dim, val
+    finally:
+        conn.close()
+
+
+def _etat_vocabulaire(db_path):
+    """Les trois tables du vocabulaire facetté, entières — pour mesurer qu'un refus n'a
+    RIEN écrit, création comprise."""
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        return {t: conn.execute(f"SELECT * FROM {t} ORDER BY id").fetchall()
+                for t in ("domaine", "attribut_dimension", "attribut_valeur")}
+    finally:
+        conn.close()
+
+
+def test_creer_un_domaine_ne_rend_pas_un_terme_qu_on_ne_lit_pas(client, db_path,
+                                                                 deux_albums,
+                                                                 derriere_proxy):
+    """AUTH-11 — `POST /api/domaines` faisait `ON CONFLICT(nom) DO NOTHING` puis
+    `SELECT *` : Bob, qui écrit dans c1, recevait en 201 un domaine local à c2 qu'il ne lit
+    pas, définition, note de portée et `collection_id` compris. 409, rien d'écrit, un corps
+    qui ne dit rien du terme. Le nom est envoyé NON normalisé : une garde qui chercherait
+    le nom brut ne trouverait rien et laisserait rendre le terme."""
+    t = deux_albums
+    _poser_vocabulaire(db_path, t["c2"], "b")
+    avant = _etat_vocabulaire(db_path)
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    rep = client.post("/api/domaines", headers={"Remote-User": "bob"},
+                      json={"nom": "  CHAMP   B "})
+    assert rep.status_code == 409, rep.text
+    assert _etat_vocabulaire(db_path) == avant
+    for fuite in _FUITES_TERME:
+        assert fuite not in rep.text, f"la réponse dit {fuite!r} d'un terme illisible"
+
+
+def test_creer_une_dimension_ne_rend_pas_un_terme_qu_on_ne_lit_pas(client, db_path,
+                                                                    deux_albums,
+                                                                    derriere_proxy):
+    """AUTH-11 — même forme sur `POST /api/attributs/dimensions`, clé `(cible, nom)` : la
+    dimension locale à c2 revenait entière, `domaine_id` compris. 409, rien d'écrit — y
+    compris quand la demande nomme un domaine VISIBLE : la dimension existe déjà, rien ne
+    doit naître ni se rattacher."""
+    t = deux_albums
+    _poser_vocabulaire(db_path, t["c2"], "b")
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    bob = {"Remote-User": "bob"}
+    dom_c1 = client.post("/api/domaines", headers=bob, json={"nom": "champ bob"})
+    assert dom_c1.status_code == 201, dom_c1.text
+    avant = _etat_vocabulaire(db_path)
+    for corps in ({"cible": "case", "nom": " AXE  B"},
+                  {"cible": "case", "nom": "axe b", "domaine_id": dom_c1.json()["id"]}):
+        rep = client.post("/api/attributs/dimensions", headers=bob, json=corps)
+        assert rep.status_code == 409, rep.text
+        assert _etat_vocabulaire(db_path) == avant
+        for fuite in _FUITES_TERME:
+            assert fuite not in rep.text, f"la réponse dit {fuite!r} d'un terme illisible"
+
+
+def test_creer_une_valeur_ne_rend_pas_un_terme_qu_on_ne_lit_pas(client, db_path,
+                                                                deux_albums,
+                                                                derriere_proxy):
+    """AUTH-11 — `POST /api/attributs/dimensions/{id}/valeurs` : la dimension est GLOBALE,
+    Bob peut la modifier, mais une valeur LOCALE à c2 vit dessous ; `ON CONFLICT … DO
+    NOTHING` puis `SELECT *` la lui rendait entière en 201. 409, rien d'écrit, un corps
+    muet. La valeur est envoyée NON normalisée : une garde qui chercherait la forme brute
+    ne la trouverait pas."""
+    import sqlite3
+    t = deux_albums
+    _, dim_g, _ = _poser_vocabulaire(db_path, None, "g")
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur, definition, "
+                     "note_portee, etat, collection_id) VALUES (?, 'val b2', "
+                     "'DEFSENTINELLE', 'PORTEESENTINELLE', 'defini', ?)", (dim_g, t["c2"]))
+        conn.commit()
+    finally:
+        conn.close()
+    avant = _etat_vocabulaire(db_path)
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    rep = client.post(f"/api/attributs/dimensions/{dim_g}/valeurs",
+                      headers={"Remote-User": "bob"}, json={"valeur": "  VAL   B2 "})
+    assert rep.status_code == 409, rep.text
+    assert _etat_vocabulaire(db_path) == avant
+    for fuite in _FUITES_TERME:
+        assert fuite not in rep.text, f"la réponse dit {fuite!r} d'un terme illisible"
+
+
+def test_creer_un_domaine_ou_une_dimension_visible_fait_ce_qu_il_faisait(client, db_path,
+                                                                          deux_albums,
+                                                                          derriere_proxy):
+    """Anti-vacuité : sans ceci, « refuser toujours » passerait les tests d'au-dessus.
+    Un terme local à une collection où Bob ÉCRIT, un terme local à une collection qu'il ne
+    fait que LIRE, un terme GLOBAL : 201, le terme rendu, rien de changé en base (`DO
+    NOTHING`). Même chose pour une valeur existante, sous une dimension que Bob peut
+    modifier — y compris une valeur locale à c3, qu'il lit sans y écrire : il la voit, la
+    rendre ne fuit rien. Sous une dimension en lecture seule, le 403 d'avant tient, posé
+    par la garde de la dimension. Un nom libre : créé."""
+    import sqlite3
+    t = deux_albums
+    c3 = _nouvelle_collection(db_path, "Étude C")
+    _poser_vocabulaire(db_path, t["c1"], "sien")
+    _poser_vocabulaire(db_path, c3, "lu")
+    _, dim_commun, _ = _poser_vocabulaire(db_path, None, "commun")
+    conn = sqlite3.connect(db_path)
+    try:                               # une valeur locale à c3 sous la dimension globale
+        conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
+                     "VALUES (?, 'val lue', ?)", (dim_commun, c3))
+        conn.commit()
+    finally:
+        conn.close()
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    _ouvrir(db_path, c3, "bob", niveau="lecture")
+    bob = {"Remote-User": "bob"}
+    avant = _etat_vocabulaire(db_path)
+    for suffixe, cid in (("sien", t["c1"]), ("lu", c3), ("commun", None)):
+        rep = client.post("/api/domaines", headers=bob, json={"nom": f"Champ {suffixe}"})
+        assert rep.status_code == 201, rep.text
+        assert (rep.json()["nom"], rep.json()["collection_id"]) == (f"champ {suffixe}", cid)
+        rep = client.post("/api/attributs/dimensions", headers=bob,
+                          json={"cible": "case", "nom": f"AXE {suffixe}"})
+        assert rep.status_code == 201, rep.text
+        assert (rep.json()["nom"], rep.json()["collection_id"]) == (f"axe {suffixe}", cid)
+        dim_id = rep.json()["id"]
+        rep = client.post(f"/api/attributs/dimensions/{dim_id}/valeurs", headers=bob,
+                          json={"valeur": f"VAL {suffixe}"})
+        if suffixe == "lu":
+            assert rep.status_code == 403, rep.text     # dimension en lecture seule
+        else:
+            assert rep.status_code == 201, rep.text
+            assert (rep.json()["valeur"], rep.json()["collection_id"]) == (
+                f"val {suffixe}", cid)
+    rep = client.post(f"/api/attributs/dimensions/{dim_commun}/valeurs", headers=bob,
+                      json={"valeur": " Val  LUE"})
+    assert rep.status_code == 201, rep.text
+    assert (rep.json()["valeur"], rep.json()["collection_id"]) == ("val lue", c3)
+    assert _etat_vocabulaire(db_path) == avant
+    rep = client.post(f"/api/attributs/dimensions/{dim_commun}/valeurs", headers=bob,
+                      json={"valeur": "neuve-4413"})
+    assert rep.status_code == 201 and rep.json()["collection_id"] is None, rep.text
+    rep = client.post("/api/domaines", headers=bob, json={"nom": "neuf-4412"})
+    assert rep.status_code == 201 and rep.json()["nom"] == "neuf-4412", rep.text
+    rep = client.post("/api/attributs/dimensions", headers=bob,
+                      json={"cible": "personnage", "nom": "neuf-4412"})
+    assert rep.status_code == 201 and rep.json()["nom"] == "neuf-4412", rep.text
+
+
+def _nouvelle_collection(db_path, nom):
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        cid = conn.execute("INSERT INTO collection (nom) VALUES (?)", (nom,)).lastrowid
+        conn.commit()
+        return cid
+    finally:
+        conn.close()
+
+
+_ENTETE_CSV = ("domaine;domaine_definition;cible;dimension;dimension_definition;"
+               "dimension_note_portee;valeur;valeur_definition\n")
+
+
+def _importer_csv(client, qui, collection_id, *lignes):
+    """`POST /api/lexique/importer` — la route du bouton Importer du panneau 📖 Lexique."""
+    data = (_ENTETE_CSV + "".join(l + "\n" for l in lignes)).encode("utf-8")
+    return client.post("/api/lexique/importer", headers={"Remote-User": qui},
+                       files={"file": ("voc.csv", data, "text/csv")},
+                       data={"collection_id": str(collection_id)})
+
+
+def test_importer_ne_touche_pas_un_terme_qu_on_ne_lit_pas(client, db_path, deux_albums,
+                                                          derriere_proxy):
+    """AUTH-11 — l'import cherchait la clé naturelle SANS portée : Bob, qui écrit dans c1,
+    remplissait la note de portée vide d'une dimension locale à c2, créait une valeur sous
+    elle, et le résumé (`existant: 1`) lui disait qu'elle existait. Trois lignes, trois
+    façons de toucher un terme illisible — la dimension elle-même (clé envoyée non
+    normalisée), un domaine illisible sous lequel naîtrait une dimension NEUVE (parent
+    caché), une valeur illisible sous une dimension GLOBALE — : trois refus comptés comme
+    « libellé pris », rien d'écrit, rien de compté comme existant, rien dit du terme."""
+    t = deux_albums
+    _poser_vocabulaire(db_path, t["c2"], "b")                   # note de dimension vide
+    _, dim_g, _ = _poser_vocabulaire(db_path, None, "g")
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:                                   # une valeur LOCALE à c2 sous la dimension globale
+        conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur, definition, "
+                     "collection_id) VALUES (?, 'val b2', 'DEFSENTINELLE', ?)",
+                     (dim_g, t["c2"]))
+        conn.commit()
+    finally:
+        conn.close()
+    avant = _etat_vocabulaire(db_path)
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    rep = _importer_csv(client, "bob", t["c1"],
+                        ";;case;  AXE  B ;;écrit par bob;neuve bob;",
+                        "Champ B;;case;axe neuf bob;;;;",
+                        ";;case;axe g;;;val b2;")
+    assert rep.status_code == 200, rep.text
+    corps = rep.json()
+    assert _etat_vocabulaire(db_path) == avant, "l'import a écrit sur un terme illisible"
+    assert corps["resume"]["refusees"] == {"libelle_pris": 3, "lecture_seule": 0}
+    for palier in ("domaines", "dimensions", "valeurs"):
+        assert corps["resume"][palier] == {"cree": 0, "existant": 0}, palier
+    assert len(corps["avertissements"]) == 3
+    for fuite in _FUITES_TERME:
+        assert fuite not in rep.text, f"la réponse dit {fuite!r} d'un terme illisible"
+
+
+def test_importer_repond_pareil_que_la_valeur_existe_ou_non(client, db_path, deux_albums,
+                                                            derriere_proxy):
+    """AUTH-11 — l'oracle réduit à UN bit par libellé. Sous une dimension illisible, que la
+    valeur nommée existe (« val b ») ou non (« val absente »), la réponse est la même au
+    caractère près, et n'est pas celle d'un nom libre : la ligne s'arrête sur la dimension,
+    et ce qui vit dessous reste une question sans réponse."""
+    t = deux_albums
+    _poser_vocabulaire(db_path, t["c2"], "b")
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    existe = _importer_csv(client, "bob", t["c1"], ";;case;axe b;;;val b;")
+    absente = _importer_csv(client, "bob", t["c1"], ";;case;axe b;;;val absente;")
+    assert existe.status_code == absente.status_code == 200
+    assert existe.json() == absente.json()
+    assert existe.json()["resume"]["refusees"]["libelle_pris"] == 1
+
+
+def test_importer_ne_modifie_pas_un_terme_en_lecture_seule(client, db_path, deux_albums,
+                                                           derriere_proxy):
+    """AUTH-11 — une dimension locale à une collection que Bob LIT sans y écrire : avant,
+    l'import remplissait sa note de portée vide et créait une valeur sous elle, là où
+    `PATCH …/lexique` et `POST …/valeurs` répondent 403. Refusée, comptée À PART : le terme
+    est visible, dire qu'il est en lecture seule ne révèle rien."""
+    t = deux_albums
+    c3 = _nouvelle_collection(db_path, "Étude C")
+    _poser_vocabulaire(db_path, c3, "lu")
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    _ouvrir(db_path, c3, "bob", niveau="lecture")
+    avant = _etat_vocabulaire(db_path)
+    rep = _importer_csv(client, "bob", t["c1"], ";;case;axe lu;;par bob;neuve bob;")
+    assert rep.status_code == 200, rep.text
+    assert _etat_vocabulaire(db_path) == avant, "l'import a écrit sur un terme en lecture seule"
+    assert rep.json()["resume"]["refusees"] == {"libelle_pris": 0, "lecture_seule": 1}
+
+
+def _poser_sql(db_path, sql, params=()):
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        rid = conn.execute(sql, params).lastrowid
+        conn.commit()
+        return rid
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def vocabulaire_lu(client, db_path, deux_albums, derriere_proxy):
+    """AUTH-11 — Bob écrit dans c1, LIT seulement c3, ne voit pas c2. Dans c3 : le
+    vocabulaire « lu » (domaine documenté, dimension `axe lu` à note VIDE rattachée à lui,
+    valeur documentée) et un domaine `champ vide` sans définition. Sous une dimension
+    GLOBALE `axe commun` : une valeur de c3 sans définition (`val nue`) et une documentée
+    (`val lue`). Dans c1, deux dimensions que Bob peut modifier : `axe x` rattachée au
+    domaine vide, `axe nul` sans domaine."""
+    t = deux_albums
+    c3 = _nouvelle_collection(db_path, "Étude C")
+    _poser_vocabulaire(db_path, c3, "lu")
+    _, dim_commun, _ = _poser_vocabulaire(db_path, None, "commun")
+    vide = _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) "
+                               "VALUES ('champ vide', ?)", (c3,))
+    _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, domaine_id, "
+                        "collection_id) VALUES ('case', 'axe x', ?, ?)", (vide, t["c1"]))
+    _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, collection_id) "
+                        "VALUES ('case', 'axe nul', ?)", (t["c1"],))
+    _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, collection_id) "
+                        "VALUES ('case', 'axe orphelin', ?)", (c3,))
+    _poser_sql(db_path, "INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
+                        "VALUES (?, 'val nue', ?)", (dim_commun, c3))
+    _poser_sql(db_path, "INSERT INTO attribut_valeur (dimension_id, valeur, definition, "
+                        "collection_id) VALUES (?, 'val lue', 'DEFSENTINELLE', ?)",
+               (dim_commun, c3))
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    _ouvrir(db_path, c3, "bob", niveau="lecture")
+    return {**t, "c3": c3}
+
+
+def test_importer_nommer_un_terme_en_lecture_seule_n_est_pas_l_ecrire(client, db_path,
+                                                                      vocabulaire_lu):
+    """AUTH-11, « VOIR n'est pas CHANGER » — l'import était plus strict que l'API : une
+    ligne qui ne faisait que NOMMER un terme lu était refusée, là où
+    `POST /api/attributs/dimensions` le rend en 201 ; un réimport idempotent échouait donc
+    ligne par ligne. Trois lignes qui nomment des termes en lecture seule sans rien leur
+    écrire — une dimension seule, la même avec le domaine auquel elle est DÉJÀ rattachée,
+    une valeur de c3 déjà définie sous une dimension globale — passent, comptent en
+    `existant`, et n'écrivent rien."""
+    t = vocabulaire_lu
+    avant = _etat_vocabulaire(db_path)
+    rep = _importer_csv(client, "bob", t["c1"],
+                        ";;case;axe lu;;;;",
+                        "champ lu;;case;axe lu;;;;",
+                        ";;case;axe commun;;;val lue;")
+    assert rep.status_code == 200, rep.text
+    res = rep.json()["resume"]
+    assert res["refusees"] == {"libelle_pris": 0, "lecture_seule": 0}, rep.text
+    assert res["domaines"] == {"cree": 0, "existant": 1}
+    assert res["dimensions"] == {"cree": 0, "existant": 2}
+    assert res["valeurs"] == {"cree": 0, "existant": 1}
+    assert _etat_vocabulaire(db_path) == avant
+
+
+def test_importer_refuse_ce_qui_ecrirait_sur_un_terme_en_lecture_seule(client, db_path,
+                                                                        vocabulaire_lu):
+    """AUTH-11 — l'autre moitié : une ligne qui ÉCRIRAIT sur un terme en lecture seule est
+    refusée `lecture_seule`, rien d'écrit. Une ligne par forme d'écriture, pour que retirer
+    n'importe laquelle des branches laisse passer SA ligne : remplir la note vide d'une
+    dimension, remplir la définition vide d'un domaine, faire naître une dimension sous un
+    domaine, y rattacher une dimension qui n'en avait pas, nommer une valeur sous une
+    dimension (le 403 de `POST …/valeurs`), remplir la définition vide d'une valeur — et
+    rattacher une dimension lue (`axe orphelin`, sans domaine) à un domaine NEUF : la ligne
+    le créerait dans c1 puis écrirait son `domaine_id` sur la dimension de c3. Le domaine
+    n'existant pas encore, c'est le libellé de la ligne qui annonce l'écriture, et le
+    domaine ne doit pas naître."""
+    t = vocabulaire_lu
+    avant = _etat_vocabulaire(db_path)
+    rep = _importer_csv(client, "bob", t["c1"],
+                        ";;case;axe lu;;par bob;;",
+                        "champ vide;par bob;case;axe x;;;;",
+                        "champ lu;;case;axe neuf bob;;;;",
+                        "champ lu;;case;axe nul;;;;",
+                        ";;case;axe lu;;;quelconque;",
+                        ";;case;axe commun;;;val nue;par bob",
+                        "domaine neuf;;case;axe orphelin;;;;")
+    assert rep.status_code == 200, rep.text
+    corps = rep.json()
+    assert _etat_vocabulaire(db_path) == avant, "l'import a écrit sur un terme en lecture seule"
+    assert corps["resume"]["refusees"] == {"libelle_pris": 0, "lecture_seule": 7}, rep.text
+    for palier in ("domaines", "dimensions", "valeurs"):
+        assert corps["resume"][palier] == {"cree": 0, "existant": 0}, palier
+
+
+def test_importer_le_cache_l_emporte_et_la_valeur_suit_la_route(client, db_path,
+                                                                vocabulaire_lu):
+    """AUTH-11 — deux règles que seule une ligne MIXTE départage.
+
+    Un terme caché l'emporte sur un terme en lecture seule, jugé sur la LIGNE entière et
+    non terme par terme : `champ vide` (lu, définition vide, donc écrit) précède `axe b`
+    (caché) ; juger dans l'ordre des termes répondrait `lecture_seule` et tairait que le
+    libellé est pris.
+
+    Sous une dimension en lecture seule, la valeur n'est pas cherchée — comme
+    `POST …/valeurs`, qui répond 403 sans regarder : qu'une valeur cachée (`val b3`, de c2)
+    y existe ou qu'aucune n'existe, la réponse est la même, `lecture_seule`. La chercher
+    rendrait « existe cachée » contre « n'existe pas », le bit que l'API refuse."""
+    t = vocabulaire_lu
+    _poser_vocabulaire(db_path, t["c2"], "b")
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        dim_lu = conn.execute("SELECT id FROM attribut_dimension "
+                              "WHERE nom = 'axe lu'").fetchone()[0]
+        conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur, definition, "
+                     "collection_id) VALUES (?, 'val b3', 'DEFSENTINELLE', ?)",
+                     (dim_lu, t["c2"]))
+        conn.commit()
+    finally:
+        conn.close()
+    avant = _etat_vocabulaire(db_path)
+
+    mixte = _importer_csv(client, "bob", t["c1"], "champ vide;par bob;case;axe b;;;;")
+    assert mixte.status_code == 200, mixte.text
+    assert mixte.json()["resume"]["refusees"] == {"libelle_pris": 1, "lecture_seule": 0}
+
+    existe = _importer_csv(client, "bob", t["c1"], ";;case;axe lu;;;val b3;")
+    absente = _importer_csv(client, "bob", t["c1"], ";;case;axe lu;;;val b4;")
+    assert existe.status_code == absente.status_code == 200
+    assert existe.json()["resume"]["refusees"] == {"libelle_pris": 0, "lecture_seule": 1}
+    assert existe.json()["resume"] == absente.json()["resume"]
+    assert existe.json()["avertissements"] == absente.json()["avertissements"]
+    assert _etat_vocabulaire(db_path) == avant
+    for rep in (mixte, existe, absente):
+        for fuite in _FUITES_TERME:
+            assert fuite not in rep.text, f"la réponse dit {fuite!r} d'un terme illisible"
+
+
+def test_importer_un_terme_modifiable_ou_neuf_fait_ce_qu_il_faisait(client, db_path,
+                                                                    deux_albums,
+                                                                    derriere_proxy):
+    """Anti-vacuité : sans ceci, « refuser toute ligne » passerait les trois tests
+    d'au-dessus. Une dimension locale à c1 où Bob écrit et une dimension GLOBALE, toutes
+    deux à note vide : la note se remplit, une valeur naît, et elles comptent comme
+    existantes ; un domaine et une dimension libres naissent dans c1. Aucun refus."""
+    import sqlite3
+    t = deux_albums
+    _, dim_s, _ = _poser_vocabulaire(db_path, t["c1"], "sien")
+    _, dim_c, _ = _poser_vocabulaire(db_path, None, "commun")
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    rep = _importer_csv(client, "bob", t["c1"],
+                        "champ sien;;case;axe sien;;par bob;neuve s;",
+                        ";;case;axe commun;;par bob;neuve c;",
+                        "champ libre;;personnage;axe libre;;;v libre;")
+    assert rep.status_code == 200, rep.text
+    res = rep.json()["resume"]
+    assert res["refusees"] == {"libelle_pris": 0, "lecture_seule": 0}
+    assert res["domaines"] == {"cree": 1, "existant": 1}
+    assert res["dimensions"] == {"cree": 1, "existant": 2}
+    assert res["valeurs"] == {"cree": 3, "existant": 0}
+    conn = sqlite3.connect(db_path)
+    try:
+        for dim in (dim_s, dim_c):
+            assert conn.execute("SELECT note_portee FROM attribut_dimension WHERE id = ?",
+                                (dim,)).fetchone()[0] == "par bob"
+        assert conn.execute("SELECT collection_id FROM attribut_dimension "
+                            "WHERE nom = 'axe libre'").fetchone()[0] == t["c1"]
+    finally:
+        conn.close()
+
+
 @pytest.fixture
 def facettes_illisibles(client, db_path, deux_albums, derriere_proxy):
     """AUTH-11 — le décor des facettes qu'on ne lit pas. Sur une région que Bob lit : deux

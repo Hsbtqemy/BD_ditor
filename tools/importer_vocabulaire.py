@@ -7,9 +7,10 @@ et COMPATIBLE ÉMERGENT : les annotateurs continuent de créer des dimensions/va
 l'annotation.
 
 Doctrine « pré-remplir, jamais écraser » (comme l'OCR) : un terme déjà présent est réutilisé
-(idempotent) ; sa glose n'est posée que si vide ; la portée (`collection_id`) et le
-rattachement au domaine ne se posent qu'à la CRÉATION. L'état (`provisoire`→`defini`) se
-promeut dans l'app, pas ici. Cf. docs/import-vocabulaire.md, modèle tools/vocabulaire-modele.csv.
+(idempotent) ; sa glose n'est posée que si vide, le rattachement d'une dimension à son
+domaine aussi (à la création, ou s'il manquait) ; la portée (`collection_id`) ne se pose
+qu'à la CRÉATION. L'état (`provisoire`→`defini`) se promeut dans l'app, pas ici.
+Cf. docs/import-vocabulaire.md, modèle tools/vocabulaire-modele.csv.
 
 Format (point-virgule, en-tête obligatoire) :
 
@@ -33,6 +34,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import autorisation  # noqa: E402
 import database  # noqa: E402
 import lexique_import  # noqa: E402
 from lexique_import import FormatInvalide, importer  # noqa: E402
@@ -74,7 +76,9 @@ def cmd_importer(args) -> int:
             raise SystemExit(
                 f"Collection {args.collection} introuvable "
                 f"(créez-la d'abord : tools/gerer_collections.py creer --nom \"…\").")
-        res, avert = importer(conn, lignes, args.collection)
+        # Portée TOTALE : qui lance l'outil tient la base entre ses mains, comme en
+        # mono-poste. Le cœur l'exige depuis AUTH-11 ; ici elle ne refuse rien.
+        res, avert = importer(conn, lignes, args.collection, portee=autorisation.TOTALE)
         if args.dry_run:
             conn.rollback()
         else:

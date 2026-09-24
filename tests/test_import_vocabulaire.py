@@ -17,6 +17,7 @@ TOOLS = REPO_ROOT / "tools"
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(REPO_ROOT))
 
+import autorisation  # noqa: E402
 import database  # noqa: E402
 import importer_vocabulaire as iv  # noqa: E402
 from conftest import direct_query  # noqa: E402
@@ -49,7 +50,8 @@ def _charger(fichier, collection_id=None):
     lignes, anomalies = iv.lire_csv(str(fichier))
     conn = database.get_connection()
     try:
-        res, avert = iv.importer(conn, lignes, collection_id)
+        # Portée TOTALE, celle de l'outil (AUTH-11 : le cœur l'exige, sans défaut).
+        res, avert = iv.importer(conn, lignes, collection_id, portee=autorisation.TOTALE)
         conn.commit()
     finally:
         conn.close()
