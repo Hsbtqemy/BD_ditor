@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Bash(git stash *)",
+      "Bash(git stash:*)",
+      "PowerShell(git stash *)",
+      "Bash(git checkout -- *)",
+      "Bash(git checkout --:*)",
+      "PowerShell(git checkout -- *)",
+      "Bash(git commit -a *)",
+      "Bash(git commit -am *)",
+      "Bash(git commit -A *)",
+      "Bash(git add -A *)",
+      "Bash(git add --all *)",
+      "Bash(pkill *)",
+      "Bash(killall *)",
+      "PowerShell(Stop-Process *)",
+      "Bash(docker compose down -v *)",
+      "Bash(docker volume rm *)",
+      "PowerShell(docker compose down -v *)",
+      "PowerShell(docker volume rm *)",
+      "Read(C:\\temp\\bd-recette\\comptes.txt)",
+      "Read(//C:/temp/bd-recette/comptes.txt)"
+    ],
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git --no-pager log *)",
+      "Bash(git --no-pager diff *)",
+      "Bash(git --no-pager show *)",
+      "Bash(git rev-list *)",
+      "Bash(git rev-parse *)",
+      "Bash(git merge-base *)",
+      "Bash(npm run verifier *)",
+      "PowerShell(npm run verifier *)"
+    ]
+  }
+}
