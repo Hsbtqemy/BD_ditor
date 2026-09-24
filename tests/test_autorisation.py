@@ -1046,6 +1046,104 @@ def test_la_garde_des_libelles_ne_touche_pas_ce_qu_on_cache(client, db_path,
         "emporté le travail d'une collection qu'il ne lit pas")
 
 
+def _poser_terme_documente(db_path, label, collection_id):
+    """Un tag documenté — couleur, définition (`description`), note de portée, état —,
+    pour mesurer qu'une écriture refusée n'en a RIEN changé, et qu'une réponse n'en dit
+    rien. Les valeurs sont des sentinelles : les retrouver dans un corps de réponse est
+    le défaut, pas une coïncidence."""
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("INSERT INTO tags (label, couleur, description, note_portee, etat, "
+                     "collection_id) VALUES (?, '#abcdef', 'DEFSENTINELLE', "
+                     "'PORTEESENTINELLE', 'defini', ?)", (label, collection_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _ligne_tag(db_path, label):
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        return dict(conn.execute("SELECT couleur, description, note_portee, etat, "
+                                 "collection_id FROM tags WHERE label = ?",
+                                 (label,)).fetchone())
+    finally:
+        conn.close()
+
+
+def test_creer_un_tag_ne_reecrit_pas_un_terme_qu_on_ne_lit_pas(client, db_path,
+                                                               deux_albums,
+                                                               derriere_proxy):
+    """AUTH-11 — `POST /api/tags` faisait `ON CONFLICT(label) DO UPDATE` sous la seule
+    garde « écrire quelque part » : Bob, qui écrit dans c1, réécrivait la couleur et la
+    DÉFINITION d'un tag local à c2 qu'il ne lit pas, et la réponse lui rendait ce terme
+    entier. 409, rien de changé en base, et un corps qui ne dit rien du terme.
+
+    Le libellé est envoyé NON normalisé, exprès : l'`ON CONFLICT` porte sur la forme
+    normalisée, donc une garde qui chercherait l'existant sur le libellé BRUT ne le
+    trouverait pas et laisserait passer la réécriture — mutant qui survivait avec
+    `"cache"` tapé tel quel."""
+    t = deux_albums
+    _poser_terme_documente(db_path, "cache", t["c2"])
+    avant = _ligne_tag(db_path, "cache")
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    rep = client.post("/api/tags", headers={"Remote-User": "bob"},
+                      json={"label": "  CACHE ", "couleur": "#000000",
+                            "description": "réécrit par bob"})
+    assert rep.status_code == 409, rep.text
+    assert _ligne_tag(db_path, "cache") == avant, "un terme illisible a été réécrit"
+    assert _nb_tags(db_path, "cache") == 1
+    for fuite in ("DEFSENTINELLE", "PORTEESENTINELLE", "#abcdef", "collection_id",
+                  "defini", "Étude B"):
+        assert fuite not in rep.text, f"la réponse dit {fuite!r} d'un terme caché"
+
+
+def test_creer_un_tag_ne_reecrit_pas_un_terme_en_lecture_seule(client, db_path,
+                                                                deux_albums,
+                                                                derriere_proxy):
+    """AUTH-11 — un terme local à c1, que Bob LIT sans y écrire (il écrit dans c2) : la
+    jumelle `PATCH /api/tags/{id}/lexique` répond 403, la création aussi, et sans rien
+    toucher. Le 409 ne s'applique pas : Bob voit le terme, le taire n'aurait pas de sens."""
+    t = deux_albums
+    _poser_terme_documente(db_path, "lu", t["c1"])
+    avant = _ligne_tag(db_path, "lu")
+    _ouvrir(db_path, t["c1"], "bob", niveau="lecture")
+    _ouvrir(db_path, t["c2"], "bob", niveau="ecriture")
+    rep = client.post("/api/tags", headers={"Remote-User": "bob"},
+                      json={"label": "lu", "couleur": "#000000", "description": "par bob"})
+    assert rep.status_code == 403, rep.text
+    assert _ligne_tag(db_path, "lu") == avant, "un terme en lecture seule a été réécrit"
+
+
+def test_creer_un_tag_modifiable_ou_neuf_fait_ce_qu_il_faisait(client, db_path,
+                                                                deux_albums,
+                                                                derriere_proxy):
+    """Anti-vacuité : sans ceci, « refuser toujours » passerait les deux tests d'au-dessus.
+    Un terme local à une collection où Bob ÉCRIT, un terme GLOBAL, et un libellé libre se
+    comportent comme avant — mise à jour ou création, 201, et le terme rendu."""
+    t = deux_albums
+    _poser_terme_documente(db_path, "sien", t["c1"])
+    _poser_terme_documente(db_path, "commun", None)
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    bob = {"Remote-User": "bob"}
+
+    for label in ("sien", "commun"):
+        rep = client.post("/api/tags", headers=bob,
+                          json={"label": label, "couleur": "#000000", "description": "neuve"})
+        assert rep.status_code == 201, rep.text
+        assert rep.json()["label"] == label
+        ligne = _ligne_tag(db_path, label)
+        assert (ligne["couleur"], ligne["description"]) == ("#000000", "neuve")
+        assert ligne["note_portee"] == "PORTEESENTINELLE"   # le COALESCE garde le reste
+
+    rep = client.post("/api/tags", headers=bob, json={"label": "neuf-4411"})
+    assert rep.status_code == 201, rep.text
+    assert rep.json()["label"] == "neuf-4411" and rep.json()["collection_id"] is None
+
+
 @pytest.fixture
 def facettes_illisibles(client, db_path, deux_albums, derriere_proxy):
     """AUTH-11 — le décor des facettes qu'on ne lit pas. Sur une région que Bob lit : deux

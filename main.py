@@ -1419,13 +1419,43 @@ def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db),
     créé reste global (`collection_id` NULL, comme avant) : c'est le comportement
     historique, et le rattacher d'office à une collection demanderait de choisir laquelle,
     question sans réponse quand on écrit dans plusieurs. Sans cette garde, une personne en
-    lecture seule pourrait polluer un vocabulaire que tout le monde partage."""
+    lecture seule pourrait polluer un vocabulaire que tout le monde partage.
+
+    **Créer n'est pas réécrire** (AUTH-11, 2026-09-24). Le libellé étant unique dans TOUTE
+    l'instance, l'`ON CONFLICT(label)` ci-dessous faisait de cette route une écriture sur
+    un terme EXISTANT, gardée par le seul « écrire quelque part » : qui écrivait dans une
+    collection réécrivait la couleur et la définition (`description`) d'un tag local à
+    une collection qu'il ne lit pas — et la réponse lui rendait ce terme entier. Sa
+    jumelle `PATCH /api/tags/{id}/lexique` pose les deux questions depuis AUTH-2 ; on
+    les pose ici aussi, dans le même ordre, AVANT d'écrire quoi que ce soit — et sous le
+    verrou d'écriture (`conflit.verrouiller`), pris avant de lire l'existant : sans lui,
+    un tag qu'un `PATCH …/lexique` concurrent rattache, entre la lecture et l'`INSERT`,
+    à une collection qu'on ne lit pas serait réécrit quand même.
+
+    Un terme qu'on ne VOIT pas répond **409**, et non un silence : l'appelant demande un
+    tag, lui en rendre un autre ou lui en inventer un serait mentir. Le message ne nomme
+    rien du terme. Il confirme en revanche que le libellé est pris, où qu'il vive dans
+    l'instance — un bit par mot deviné, le même oracle que celui déjà accepté pour
+    `socle._ensure_tags` (demi-mesure du 2026-09-24), et c'est une LIMITE écrite :
+    l'unicité (libellé, collection), avec `COL-1`, la fermera. Un terme visible mais
+    qu'on ne peut pas modifier répond **403**, comme la jumelle."""
     if not portee.peut_ecrire_quelque_part():
         raise HTTPException(403, "Créer un terme du vocabulaire demande un droit "
                                  "d'écriture sur au moins une collection.")
     label = _norm_tag(tag.label)
     if not label:
         raise HTTPException(422, "Label de tag vide")
+    conflit.verrouiller(conn)      # l'existant se lit sous le verrou d'écriture
+    existant = _row(conn.execute("SELECT id, collection_id FROM tags WHERE label = ?",
+                                 (label,)))
+    if existant is not None:
+        ou, params = portee.clause_terme("t.collection_id")
+        if conn.execute(f"SELECT 1 FROM tags t WHERE t.id = ? AND {ou}",
+                        (existant["id"], *params)).fetchone() is None:
+            raise HTTPException(409, "Ce libellé de tag est déjà pris : choisissez-en "
+                                     "un autre.")
+        if not portee.peut_ecrire_terme(existant["collection_id"]):
+            raise HTTPException(403, "Ce tag est en lecture seule pour vous.")
     conn.execute(
         """INSERT INTO tags (label, couleur, description) VALUES (?, ?, ?)
            ON CONFLICT(label) DO UPDATE SET
