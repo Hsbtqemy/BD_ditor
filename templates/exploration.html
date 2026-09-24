@@ -155,6 +155,10 @@
         <b>portée</b> (global ou propre à une collection). Réemployable en SKOS à l'export.</p>
       <div id="lex-resume" class="muted small" role="status" aria-live="polite"></div>
       <div id="lex-body"></div>
+      <!-- Bilan du dernier import (AUTH-11) : synthèse + détail borné, hors de #lex-body
+           que le rechargement réécrit. Rempli par exploration.js (afficherBilanImport). -->
+      <div id="lex-import-bilan" class="small" hidden></div>
+      <p id="lex-import-note" class="muted small" hidden></p>
       <div class="modal-actions">
         <label class="lex-import-portee small">Importer dans
           <select id="lex-import-portee"></select>
@@ -203,6 +207,7 @@
 <script src="/static/lib/nav.js"></script>
 <script src="/static/lib/dialog.js"></script>
 <script src="/static/lib/resultats.js"></script>
+<script src="/static/lib/bilan-import.js"></script>
 <script src="/static/exploration.js"></script>
 </body>
 </html>

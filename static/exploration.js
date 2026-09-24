@@ -655,7 +655,11 @@ function setupBack() {
 let LEX_COLLECTIONS = [];   // {id, nom, …} — menu « portée »
 let LEX_DOMAINES = [];      // {id, nom, …} — menu « domaine » des dimensions (piste B)
 
-async function openLexique() { $("#lexique-modal").hidden = false; await loadLexique(); }
+async function openLexique() {
+  $("#lex-import-bilan").hidden = true;        // un bilan d'une ouverture précédente
+  $("#lexique-modal").hidden = false;
+  await loadLexique();
+}
 function closeLexique() { $("#lexique-modal").hidden = true; }
 
 async function loadLexique() {
@@ -732,13 +736,13 @@ function termEditor(kind, term, defi) {
       await apiSend("PATCH", `/api/attributs/dimensions/${term.id}/domaine`,
                     { domaine_id: e.target.value ? Number(e.target.value) : null });
       toast("Domaine mis à jour"); loadLexique();          // regroupement changé → re-render
-    } catch (err) { toast("Échec : " + err.message, "err"); }
+    } catch (err) { toast("Échec : " + err.message, "error"); }
   });
   // `save` renvoie true/false : les MAJ optimistes (badge, % défini) ne s'appliquent QUE
   // sur succès — sinon l'UI divergerait de la base (ex. 409 base occupée, 500).
   const save = async (patch) => {
     try { await apiSend("PATCH", url, patch); toast("Enregistré"); return true; }
-    catch (e) { toast("Échec : " + e.message, "err"); return false; }
+    catch (e) { toast("Échec : " + e.message, "error"); return false; }
   };
   d.querySelectorAll("textarea[data-f]").forEach((ta) =>
     ta.addEventListener("change", () => save({ [ta.dataset.f]: ta.value })));
@@ -760,7 +764,7 @@ function renderLexique(lex) {
   const body = $("#lex-body");
   body.textContent = "";
   $("#lex-resume").textContent = lexResume(lex.resume);
-  $("#lex-import-portee").innerHTML = porteeOptions("");   // menu « portée » de l'amorçage CSV
+  remplirMenuImport();                                   // menu « portée » de l'amorçage CSV
 
   // --- Domaines (piste B) + attributs facettés regroupés par domaine -------- #
   const grp = document.createElement("div");
@@ -811,7 +815,7 @@ function renderLexique(lex) {
     const nom = $("#lex-dom-nom").value.trim();
     if (!nom) return;
     try { await apiSend("POST", "/api/domaines", { nom }); loadLexique(); }
-    catch (e) { toast("Domaine : " + e.message, "err"); }
+    catch (e) { toast("Domaine : " + e.message, "error"); }
   };
   $("#lex-dom-nom").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); $("#lex-dom-add").click(); }
@@ -833,8 +837,53 @@ async function refreshLexResume() {
 }
 
 /* Amorçage EN LOT du vocabulaire depuis un tableur CSV (bouton « Importer »). Envoi
-   multipart vers POST /api/lexique/importer (même cœur que l'outil headless) ; le bilan
-   passe en toasts et la modale se recharge. Cf. docs/import-vocabulaire.md. */
+   multipart vers POST /api/lexique/importer (même cœur que l'outil headless) ; la modale
+   se recharge. Cf. docs/import-vocabulaire.md.
+
+   Le bilan (AUTH-11) : UN toast de synthèse — lignes créées, lignes refusées par motif —
+   et le détail ligne par ligne dans la modale, borné (`BDBilanImport`). Un toast par
+   ligne ne se lisait plus au-delà de quelques lignes, et s'effaçait en 4 s. Le détail
+   vit hors de `#lex-body`, que `loadLexique` réécrit : il survit au rechargement. */
+function afficherBilanImport(b) {
+  const zone = $("#lex-import-bilan");
+  zone.textContent = "";
+  const p = document.createElement("p");
+  p.textContent = b.texte;
+  zone.appendChild(p);
+  if (b.details.length) {
+    const ul = document.createElement("ul");
+    ul.setAttribute("aria-label", "Détail de l'import, ligne par ligne");
+    for (const d of b.details.concat(b.reste ? [BDBilanImport.suite(b.reste)] : [])) {
+      const li = document.createElement("li");
+      li.textContent = d;
+      ul.appendChild(li);
+    }
+    zone.appendChild(ul);
+  }
+  zone.hidden = false;
+}
+
+/* « Importer dans » : seulement les collections où l'on ÉCRIT, et le choix précédent
+   gardé d'un rechargement à l'autre (règles dans BDBilanImport.menuImport). Fermé, l'import
+   disparaît derrière une note lisible — un contrôle `disabled` ne prend pas le focus, et
+   son explication serait hors d'atteinte au clavier. `porteeOptions`, qui liste tout ce
+   qu'on lit, reste celui des termes. */
+async function remplirMenuImport() {
+  const sel = $("#lex-import-portee");
+  const avant = sel.value;
+  const moi = await Promise.resolve(window.BDMoi).catch(() => null);
+  const m = BDBilanImport.menuImport(LEX_COLLECTIONS,
+                                     !!(moi && moi.acces && moi.acces.total), avant);
+  sel.textContent = "";
+  for (const o of m.options) sel.appendChild(new Option(o.label, o.value));
+  sel.value = m.valeur;
+  sel.closest("label").hidden = !m.ouvert;
+  $("#lex-import").hidden = !m.ouvert;
+  const note = $("#lex-import-note");
+  note.textContent = m.note;
+  note.hidden = m.ouvert;
+}
+
 async function importerTableur(e) {
   const input = e.target;
   const fichier = input.files && input.files[0];
@@ -848,13 +897,16 @@ async function importerTableur(e) {
       { method: "POST", headers: { "X-BD-Requete": "1" }, body: fd });
     const out = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(out.detail || r.statusText);
-    const s = out.resume;
-    toast(`Import : ${s.domaines.cree} domaine(s), ${s.dimensions.cree} dimension(s), `
-          + `${s.valeurs.cree} valeur(s) créé(s)`);
-    (out.anomalies || []).concat(out.avertissements || []).forEach((a) => toast(a, "err"));
+    const b = BDBilanImport.bilan(out);
+    // Un bilan qui demande à être lu reste plus longtemps que la confirmation d'un succès.
+    toast(b.texte, b.ton, b.ton === "success" ? 4000 : 10000);
+    afficherBilanImport(b);
     await loadLexique();
+    // APRÈS le rechargement, qui change la hauteur de la modale : le bilan reste en vue.
+    $("#lex-import-bilan").scrollIntoView({ block: "nearest" });
   } catch (err) {
-    toast("Import échoué : " + err.message, "err");
+    $("#lex-import-bilan").hidden = true;      // le bilan d'un import PRÉCÉDENT mentirait
+    toast("Import échoué : " + err.message, "error");
   } finally {
     input.value = "";                 // réautorise le réimport du même fichier
   }
