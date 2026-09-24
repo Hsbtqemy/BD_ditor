@@ -136,3 +136,15 @@ AUTH-11 envisage de le fermer par une unicité (libellé, collection) ; elle per
 « X » global et un « X » local, et PROMOUVOIR le local rencontrerait alors son homonyme :
 fusionner, refuser ou renommer, à trancher ici. Si AUTH-11 pose l'unicité d'abord, la
 promotion hérite de la question ; si ce chantier passe d'abord, il la trouvera ouverte.
+
+**Tranché par Hugo le 2026-09-24, et la question ARRIVE ICI.** `AUTH-11` ne pose PAS
+l'unicité : il pose une demi-mesure (`2a74dbf`) — ce qu'on ne lit pas ne s'attache plus et
+ne se crée plus —, qui ferme le dommage de données sans rien préjuger du modèle. L'unicité
+(libellé, collection) est donc la fin du sujet, et elle se séquence AVEC ce chantier. Trois
+pièges mesurés à reprendre ici : SQLite traite les NULL comme DISTINCTS dans un index
+unique, donc deux « X » GLOBAUX passeraient sans erreur ; le journal A3 nomme les tags par
+LIBELLÉ et il est append-only, donc l'annulation ne saurait plus lequel rattacher — c'est le
+coût caché le plus lourd, il touche le substrat de Ctrl+Z ; et il faut décider à quelle
+collection appartient un tag TAPÉ, aujourd'hui toujours global. Ajouter que ce n'est pas un
+chantier serveur seul : le nuage de tags et l'autocomplétion montreraient deux libellés
+identiques à qui lit les deux collections.

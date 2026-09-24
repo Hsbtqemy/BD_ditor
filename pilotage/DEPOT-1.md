@@ -99,3 +99,12 @@ règles franchies — `DROIT-1` à la sortie, et le périmètre de la collection
 décision ANTÉRIEURE (le journal sort au grain corpus, « un acte n'appartient pas à un
 album ») qu'il faut rouvrir, et c'est le premier dépôt qui la rend opposable. La case vit
 dans `AUTH-11` ; ici, elle est une condition de dépôt au même titre que la base légale.
+
+**Fermé le 2026-09-24 (`2a74dbf`), par la décision de Hugo : au dépôt, les actes partent
+SANS leurs charges.** L'artefact garde qui a fait quoi, quand et sur quelle cible ; le
+contenu reste aux records, qui respectent le périmètre et `--verbatim`. Ce que le dépôt perd
+est écrit : le diff d'un acte, donc l'état d'une entité à une date — l'instance, elle, garde
+tout. **Ce qui reste à surveiller ici** : `activite.params`, `portee` et `comptes` sortent
+encore au grain corpus. Aucun contenu de travail, mais `portee` nomme des identifiants
+d'albums de collections qu'on ne dépose pas — à trancher avant le premier dépôt réel, comme
+le reste de cette fiche.
