@@ -469,6 +469,21 @@ kbd {
 .mode-btn[data-mode="edition"]    .dot { background: var(--accent-amber); }
 .mode-btn[data-mode="annotation"] .dot { background: var(--accent-green); }
 .mode-btn[data-mode="transcription"] .dot { background: var(--accent-violet); }
+/* UX-15 — la promesse s'éteint là où le focus l'empêche. Pendant la Transcription,
+   `renderTranscription()` focalise la zone de saisie à CHAQUE rendu et `setupKeyboard`
+   rend la main au clavier natif dès que le focus est dans un champ : presser « A » n'y
+   change pas de mode, elle écrit « a » dans la bulle, et l'enregistrement automatique
+   la persiste 500 ms plus tard. Mesuré le 2026-09-23 dans un Chromium — « BONJOUR »
+   devenu « BONJOURnea », retrouvé tel quel en base. C'est la forme exacte du
+   « Quitter (N) » qui a ouvert ce chantier, à ceci près que ces badges disent vrai dans
+   les trois autres modes ; on éteint donc la promesse là où elle est fausse, et nulle
+   part ailleurs. Tranché par Hugo le 2026-09-24.
+   On éteint le BADGE, pas le bouton : il reste cliquable, et son nom reste annoncé —
+   `.mode-label` est CLIPÉ sous 56.1875em, jamais retiré de l'arbre d'accessibilité, et
+   le `title` porte le même nom. Ce qu'on y perd est mesuré et assumé : sous 900 px, le
+   libellé étant déjà clipé, le bouton n'affiche plus que sa pastille de couleur pendant
+   ce mode-là. Élargir cette bande-là est le terrain d'UX-7, pas celui-ci. */
+.modes.sans-raccourcis .mode-btn kbd { display: none; }
 .mode-btn.active { border-color: currentColor; background: var(--hover); }
 .mode-btn[data-mode="navigation"].active { color: var(--accent-blue); }
 .mode-btn[data-mode="edition"].active    { color: var(--accent-amber); }

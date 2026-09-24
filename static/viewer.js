@@ -911,17 +911,53 @@ function renderBreadcrumb() {
 /* ===================================================================
    Modes
    =================================================================== */
+/* Marque neutre de `#stat-coords` : celle du gabarit, « rien n'a encore été mesuré ». */
+const COORDS_NEUTRES = "—";
+
+/* UX-15 — le zoom et les coordonnées portent sur le CANEVAS, que l'overlay de
+   Transcription recouvre entièrement. Les laisser à l'écran, c'était afficher deux
+   chiffres d'un objet invisible à côté d'un « Mode : Transcription » exact — et le pire
+   des deux n'était pas le gelé : `#stat-coords` CONTINUAIT de suivre la souris, son
+   écouteur vivant sur `window` et non sur le canevas, et rendait les coordonnées master
+   d'un point sans rapport avec ce qu'on visait. Un chiffre faux qui bouge se croit ; un
+   chiffre gelé se repère. Tranché par Hugo le 2026-09-24 : on masque les deux, et
+   `#stat-mode` reste — c'est son voisinage qui rendait les deux autres crédibles.
+
+   On ARRÊTE aussi le calcul, dans le `mousemove` plus bas. Masquer sans arrêter ferait
+   payer un `getScreenCTM()` par mouvement de souris pour rien (mesuré : exactement un),
+   et surtout laisserait la valeur fausse revenir le jour où l'on réafficherait.
+
+   Au RETOUR, les deux reviennent, et PAS tels qu'on les avait laissés. `applyTransform()`
+   re-dérive le zoom, qui a pu changer sous l'overlay — `#tr-auto` enchaîne sur la planche
+   suivante, dont `selectPlanche` rappelle `fitView()`. Et les coordonnées repartent de
+   leur marque neutre : rien n'a été mesuré depuis l'entrée, réafficher la dernière
+   lecture recréerait le gel dans l'autre sens. Le prochain mouvement les remplit. */
+function majIndicateursDuCanevas(avant, apres) {
+  const enTranscription = apres === "transcription";
+  $("#stat-zoom").hidden = enTranscription;
+  $("#stat-coords").hidden = enTranscription;
+  if (avant === "transcription" && !enTranscription) {
+    applyTransform();
+    $("#stat-coords").textContent = COORDS_NEUTRES;
+  }
+}
+
 function setMode(mode) {
   // CONC-3 : même garde que `selectRegion` — un clic sur le mode COURANT recharge le champ.
   if (state.conflit) { if (mode !== state.mode) conflitBloque(); return; }
   // Ce qui attendait d'être enregistré, note ou texte, part ici — et le geste l'attend.
   if (!partirApresEnregistrement(() => setMode(mode))) return;
+  const avant = state.mode;
   state.mode = mode;
   document.querySelectorAll(".mode-btn").forEach((b) => {
     const on = b.dataset.mode === mode;
     b.classList.toggle("active", on);
     b.setAttribute("aria-pressed", String(on));   // état exposé aux lecteurs d'écran
   });
+  // UX-15 — le badge de raccourci s'éteint pendant la Transcription ; la règle et sa
+  // raison vivent dans `style.css`, ici on ne fait que dire dans quel mode on est.
+  $(".modes").classList.toggle("sans-raccourcis", mode === "transcription");
+  majIndicateursDuCanevas(avant, mode);
   stage.classList.toggle("mode-edition", mode === "edition");
   const label = { navigation: "Navigation", edition: "Édition",
                   annotation: "Annotation", transcription: "Transcription" }[mode];
@@ -2139,8 +2175,13 @@ stage.addEventListener("mousedown", (e) => {
 });
 
 window.addEventListener("mousemove", (e) => {
-  // coordonnées master sous le curseur
-  if (state.planche) {
+  // Coordonnées master sous le curseur — PAS en Transcription : l'overlay recouvre le
+  // canevas, et ce qu'on calculerait serait le point d'une image qu'on ne voit plus
+  // (UX-15, cf. `majIndicateursDuCanevas`). L'écouteur vit sur `window` et non sur le
+  // canevas, c'est pourquoi il tournait encore ; le `#stat-coords` masqué continuerait
+  // d'être ÉCRIT sans cette garde, et la garde e2e le mesure au `getScreenCTM()` près
+  // plutôt qu'au texte affiché — un test qui ne lirait que l'écran resterait vert.
+  if (state.planche && state.mode !== "transcription") {
     const m = clientToMaster(e);
     if (m.x >= 0 && m.y >= 0)
       $("#stat-coords").textContent = `${Math.round(m.x)}, ${Math.round(m.y)} px`;

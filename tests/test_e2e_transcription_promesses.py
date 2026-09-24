@@ -32,9 +32,12 @@ sur le texte, il le CROIT et vérifie que l'écran tient parole.
 quatre modes, sur une planche à deux bulles dont une région est sélectionnée — sans quoi
 les boutons de déplacement de l'arbre, qui ne s'affichent que sur le nœud courant,
 n'existeraient pas. Une annonce qui n'apparaîtrait que dans un état non visité (un bandeau
-de conflit, une modale) lui échapperait. Il lit AUSSI les libellés masqués sous l'overlay :
-un libellé caché aujourd'hui se réaffiche demain, et la visibilité serait un critère qui
-bouge tout seul. **Et le porteur ne distingue pas des FRÈRES de même classe** : les quatre
+de conflit, une modale) lui échapperait. Il ne compte que les libellés RENDUS — c'était
+l'inverse jusqu'au 2026-09-24, au motif qu'un libellé caché se réaffiche demain ; depuis
+qu'un badge s'éteint par DÉCISION, un recensement aveugle à la visibilité approuverait
+une promesse retirée comme une promesse tenue. Il mesure le rendu et non l'OCCLUSION :
+les boutons de l'arbre, sous l'overlay plein écran, comptent encore dans les quatre
+modes. **Et le porteur ne distingue pas des FRÈRES de même classe** : les quatre
 boutons de mode s'effondrent en un seul `button.mode-btn`, les deux flèches de l'arbre en
 un seul `button.tn-mv`. Une touche qui migrerait d'un bouton de mode à un autre garderait
 donc un couple déjà déclaré et resterait invisible ici. C'est étroit — les deux familles
@@ -53,7 +56,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 from playwright.sync_api import expect  # noqa: E402
 
 from conftest import ECRITURE, make_png  # noqa: E402
-from test_promesses_atelier import CLAVIER, PROMESSES  # noqa: E402
+from test_promesses_atelier import CLAVIER, MODES, PROMESSES  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -67,7 +70,7 @@ SURFACES_HORS_PERIMETRE = {
 }
 
 
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Décor
 # ---------------------------------------------------------------------------
 @pytest.fixture
@@ -119,6 +122,16 @@ def _transcription(page, s):
 # (« Tab ou Ctrl+Entrée = suivante ») ; une LETTRE seule ne l'est que si la parenthèse ne
 # contient QU'elle. Sans cette restriction, « morph (UD) » annoncerait deux touches et
 # « sigles pointés (F.B.I.) » trois — des recensements faux qu'on apprendrait à ignorer.
+#
+# Et un libellé n'annonce que s'il est RENDU (`getClientRects()`). Cette page disait le
+# contraire jusqu'au 2026-09-24 — « il lit AUSSI les libellés masqués », au motif qu'un
+# libellé caché se réaffiche demain. C'était défendable tant qu'aucun libellé ne
+# s'éteignait par DÉCISION ; depuis que les badges de mode s'éteignent pendant la
+# Transcription, un recensement aveugle à la visibilité ne verrait jamais l'extinction
+# et approuverait une promesse retirée comme une promesse tenue. Ce que la règle ne
+# sait pas faire est écrit : elle mesure le RENDU, pas l'OCCLUSION — les boutons de
+# l'arbre, sous l'overlay plein écran, restent comptés comme annoncés dans les quatre
+# modes.
 _RECENSEMENT = r"""() => {
   const MULTI = '(?:Tab|Entrée|Échap|Maj|Ctrl|Alt|Suppr|Espace|←|→|↑|↓)';
   const RE = new RegExp(MULTI + '(?:\\+(?:' + MULTI + '|[A-Z]))*', 'g');
@@ -128,9 +141,11 @@ _RECENSEMENT = r"""() => {
     return p.id ? '#' + p.id
                 : p.tagName.toLowerCase() + (p.classList.length ? '.' + p.classList[0] : '');
   };
+  const rendu = (e) => e.getClientRects().length > 0;
   const ajoute = (e, touche) => { if (touche) vus.add(porteur(e) + '\u0000' + touche); };
 
-  document.querySelectorAll('kbd').forEach((k) => ajoute(k, k.textContent.trim()));
+  document.querySelectorAll('kbd').forEach(
+    (k) => { if (rendu(k)) ajoute(k, k.textContent.trim()); });
 
   const parentheses = (e, txt) => {
     for (const m of txt.matchAll(/\(([^)]*)\)/g)) {
@@ -140,6 +155,7 @@ _RECENSEMENT = r"""() => {
     }
   };
   document.querySelectorAll('*').forEach((e) => {
+    if (!rendu(e)) return;
     // Seulement les nœuds de texte PROPRES à l'élément : sans cela, chaque ancêtre
     // re-déclarerait le libellé de ses descendants sous son propre nom.
     const propre = [...e.childNodes].filter((n) => n.nodeType === 3)
@@ -152,15 +168,21 @@ _RECENSEMENT = r"""() => {
 
 
 def _recenser(page, s):
-    """Les annonces vues dans les QUATRE modes, réunies."""
+    """`{mode: {couples}}` — mode par mode, et surtout pas réuni.
+
+    L'union était la forme d'avant, et elle avait un angle mort exact : une annonce faite
+    dans trois modes sur quatre y entre comme une annonce faite partout. Éteindre les
+    quatre badges pendant la Transcription ne l'aurait donc pas fait bouger d'un couple.
+    """
     _atelier(page, s)
-    vues = set(page.evaluate(_RECENSEMENT))
-    for mode in ("edition", "annotation", "transcription"):
+    releve = {}
+    for mode in MODES:
         page.locator(f'button[data-mode="{mode}"]').click()
         page.wait_for_timeout(400)
-        vues |= set(page.evaluate(_RECENSEMENT))
+        releve[mode] = {tuple(v.split("\u0000", 1))
+                        for v in page.evaluate(_RECENSEMENT)}
     page.keyboard.press("Escape")       # quitter la Transcription proprement
-    return {tuple(v.split("\u0000", 1)) for v in vues}
+    return releve
 
 
 # ---------------------------------------------------------------------------
@@ -173,27 +195,86 @@ def test_aucune_touche_annoncee_n_echappe_a_la_declaration(page, planche_a_deux_
     tombe rouge. Le sens FANTÔME ferme l'autre moitié : une déclaration qui survit au
     libellé qu'elle décrivait rassure, et les tests qui la jouent deviennent vacants.
     """
-    vues = _recenser(page, planche_a_deux_bulles)
-    assert vues, (
+    releve = _recenser(page, planche_a_deux_bulles)
+    assert any(releve.values()), (
         "aucune touche annoncée détectée dans l'Atelier : le recensement ne reconnaît plus "
         "ni les `<kbd>` ni les parenthèses, et tout ce fichier est devenu vacant sans "
         "échouer — c'est le mode d'échec d'ARCH-2, une garde qui approuve en ne voyant rien")
 
-    inconnues = sorted(vues - set(PROMESSES))
-    assert not inconnues, (
-        "l'Atelier annonce des touches que ce fichier ne déclare pas : "
-        + " ; ".join(f"{p} → {t!r}" for p, t in inconnues)
-        + ". Chacune doit être AJOUTÉE à `PROMESSES`, soit jouée par un test de ce "
-        "fichier, soit écartée avec la raison de ne pas la jouer. Une annonce qu'aucun "
-        "test ne presse est exactement « Quitter (N) » : elle a l'air vraie et elle "
-        "peut être impossible")
+    inconnues, fantomes = [], []
+    for mode in MODES:
+        attendues = {c for c, (modes, _) in PROMESSES.items() if mode in modes}
+        inconnues += [(mode, c) for c in sorted(releve[mode] - attendues)]
+        fantomes += [(mode, c) for c in sorted(attendues - releve[mode])]
 
-    fantomes = sorted(set(PROMESSES) - vues)
+    assert not inconnues, (
+        "l'Atelier annonce des touches que ce fichier ne déclare pas là : "
+        + " ; ".join(f"en {m}, {p} → {t!r}" for m, (p, t) in inconnues)
+        + ". Chacune doit être AJOUTÉE à `PROMESSES` — avec les modes où elle est faite —, "
+        "jouée par un test de ce fichier ou écartée avec sa raison. Une annonce qu'aucun "
+        "test ne presse est exactement « Quitter (N) » : elle a l'air vraie et elle peut "
+        "être impossible")
+
     assert not fantomes, (
-        "ce fichier déclare des annonces que l'Atelier ne fait plus : "
-        + " ; ".join(f"{p} → {t!r}" for p, t in fantomes)
+        "ce fichier déclare des annonces que l'Atelier ne fait plus là : "
+        + " ; ".join(f"en {m}, {p} → {t!r}" for m, (p, t) in fantomes)
         + ". Soit le libellé a disparu — et la déclaration doit partir avec lui —, soit "
-        "il a changé de porteur, et c'est précisément le déplacement qu'on veut voir")
+        "il a changé de porteur ou de MODE, et c'est précisément le déplacement qu'on veut "
+        "voir : une promesse qu'on éteint quelque part doit se déclarer éteinte")
+
+
+@pytest.mark.parametrize("largeur", [1280, 800])
+def test_le_badge_de_raccourci_s_eteint_sans_eteindre_le_bouton(
+        page, planche_a_deux_bulles, largeur):
+    """On retire la PROMESSE, pas la fonction : le bouton reste utilisable et nommé.
+
+    Décidé par Hugo le 2026-09-24. La garde mesure les trois moitiés qui séparent
+    « éteindre un badge » de « désactiver un bouton » : le `<kbd>` n'est plus rendu, le
+    bouton reste cliquable ET CLIQUÉ — seul l'essai prouve qu'aucune fonction n'est
+    perdue —, et son nom accessible ne bouge pas.
+
+    **Les deux largeurs ne sont pas une précaution, c'est LÀ qu'est la question.** Sous
+    56.1875em — 899 px —, `.mode-label` est CLIPÉ : ce qui reste visible d'un bouton de
+    mode est sa pastille et son badge, et le badge était devenu l'affordance (UX-7).
+    Éteindre le badge y laisse donc une pastille nue. Ce qu'on vérifie à 800 px est que
+    le NOM, lui, n'est pas parti avec : un clip laisse dans l'arbre d'accessibilité ce
+    qu'un `display: none` en retirerait, et le `title` porte le même nom. La perte
+    VISUELLE est mesurée et assumée (cf. `style.css`) ; élargir cette bande est le
+    terrain d'UX-7.
+    """
+    s = planche_a_deux_bulles
+    page.set_viewport_size({"width": largeur, "height": 900})
+    _transcription(page, s)
+
+    lire = """() => [...document.querySelectorAll('.mode-btn')].map((b) => {
+      const k = b.querySelector('kbd');
+      const r = b.getBoundingClientRect();
+      return {mode: b.dataset.mode, badge: k ? k.getClientRects().length > 0 : null,
+              bouton: r.width > 0 && r.height > 0, desactive: b.disabled,
+              clics: getComputedStyle(b).pointerEvents};
+    })"""
+    for b in page.evaluate(lire):
+        assert b["badge"] is False, (
+            f"à {largeur} px, le badge du bouton « {b['mode']} » est encore affiché "
+            "pendant la Transcription : il promet une touche qui y écrit sa lettre "
+            "dans la bulle au lieu de changer de mode")
+        assert b["bouton"] and not b["desactive"] and b["clics"] != "none", (
+            f"à {largeur} px, le bouton « {b['mode']} » n'est plus utilisable : {b}. On "
+            "éteint le badge, pas le bouton — la fonction ne doit rien perdre")
+
+    # Le nom reste annoncé : c'est ce qui rend le bouton identifiable sans son badge.
+    for mode, nom in (("navigation", "Navigation"), ("annotation", "Annotation")):
+        annonce = page.locator(f'.mode-btn[data-mode="{mode}"]').aria_snapshot()
+        assert nom in annonce, (
+            f"à {largeur} px, le bouton « {mode} » s'annonce {annonce!r} : sans badge "
+            "ET sans nom, il n'est plus qu'une pastille de couleur, y compris pour qui "
+            "ne voit pas l'écran")
+
+    # Cliquable, et CLIQUÉ : le mode change pour de bon.
+    page.locator('.mode-btn[data-mode="annotation"]').click()
+    expect(page.locator("#stat-mode")).to_have_text("Mode : Annotation", timeout=15000)
+    # Et la promesse revient là où elle est vraie.
+    expect(page.locator('.mode-btn[data-mode="navigation"] kbd')).to_be_visible()
 
 
 # ---------------------------------------------------------------------------
@@ -273,9 +354,10 @@ def test_les_badges_de_mode_tiennent_leur_promesse(page, planche_a_deux_bulles):
     2026-09-23 : le mode y focalise la zone de saisie à chaque rendu, si bien que `n`, `e`,
     `a` et `t` écrivent leur lettre dans la bulle — « BONJOUR » devient « BONJOURnea », et
     l'enregistrement automatique la persiste. C'est la même forme que « Quitter (N) », à
-    ceci près que ces badges-là disent vrai dans les trois autres modes ; ce que la garde
-    éprouve est donc la promesse là où elle vaut, et la question de ce que ces badges
-    devraient afficher PENDANT la Transcription reste ouverte, consignée, non tranchée ici.
+    ceci près que ces badges-là disent vrai dans les trois autres modes. La question est
+    TRANCHÉE depuis le 2026-09-24 : pendant la Transcription les badges s'éteignent, et
+    c'est `test_le_badge_de_raccourci_s_eteint_sans_eteindre_le_bouton` qui le mesure.
+    Ici on éprouve la promesse là où elle vaut — les trois autres modes, plus l'entrée.
 
     `T` vient en dernier : une fois en Transcription, la touche suivante serait tapée dans
     la bulle au lieu de changer de mode — ce que ce commentaire vient de dire.
