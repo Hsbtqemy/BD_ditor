@@ -43,6 +43,7 @@ valeurs · Provenance · Statut · Standard cible · Ouvrable ?**
 | `ouvert`   | fait ou dérivation → diffusable (CC-BY / CC0) |
 | `restreint`| expression protégée (scan, **texte verbatim**) → non rediffusable |
 | `agrégat`  | ouvert **sous forme agrégée** (fréquences), restreint en verbatim aligné |
+| `retenu`   | présent en base, **non publié du tout** — ce n'est pas un régime de diffusion mais son absence, et la décision est écrite là où elle a été prise |
 
 **Standard cible** : `DC` Dublin Core · `TEI` TEI P5 · `UD` Universal Dependencies ·
 `SKOS` thésaurus · `PROV` W3C PROV-O · `IIIF` IIIF / W3C Web Annotation.
@@ -421,11 +422,21 @@ Source : table `meta` (clé/valeur) **et**, depuis la **v16 (A3, livré 2026-07-
 | `meta.nlp_reindexed_count` / `_at` | ampleur & date de la réindexation | entier / horodatage | paradonnée | structuré | PROV | ouvert |
 | `SCHEMA_VERSION` (`user_version`) | version du schéma | entier | système | structuré | — | ouvert |
 | `activite` (run) | exécution de passe : type, agent+version, params, date, portée, comptes | table | paradonnée | **structuré (v16)** | PROV `Activity` | ouvert |
-| `evenement` (journal) | acte atomique immuable : type, agent, cible, avant/après, date, `activite_id` | table **append-only** | paradonnée | **structuré (v16)** | PROV / TEI `change` | ouvert |
+| `evenement` (journal) — l'ACTE | geste atomique immuable : type, agent, cible, date, `activite_id` | table **append-only** | paradonnée | **structuré (v16)** | PROV / TEI `change` | ouvert |
+| `evenement.avant` / `.apres` — la CHARGE | instantané de l'entité avant et après l'acte ; pour une région, il contient `ocr_texte`, donc le **texte verbatim de l'œuvre** | JSON dans la table | paradonnée | **structuré (v16)** | — (hors PROV / TEI) | **retenu (AUTH-11, 2026-09-24)** |
 | `regions.activite_id` | lien entité → run producteur | référence | paradonnée | **structuré (v16)** | PROV `wasGeneratedBy` | ouvert |
 | `regions.touche` / `date_modification` | surface dénormalisée (entité retouchée, quand) | drapeau + horodatage | paradonnée | **structuré (v16)** | PROV / TEI `@resp` | ouvert |
 | `indicateurs de couverture` | % touché · dérive · runs · actes (machine/humain) | agrégats **dérivés du journal** | dérivé | **dérivé (v16)** | — | ouvert |
 | *`licence & droits`* | régime de diffusion par jeu | licence / mention | descriptif | *absent — à prévoir* | DC:rights / DataCite | ouvert |
+
+**L'ACTE et sa CHARGE ne suivent pas le même régime, et c'est récent.** Jusqu'au 2026-09-24
+les deux partaient ensemble : les charges étaient recopiées mot pour mot dans la table
+`evenement` des exports, si bien que le dépôt d'**une** collection emportait le texte des
+œuvres de **toute** l'instance — y compris sans `--verbatim`. Le dépôt garde désormais
+l'acte (qui, quoi, sur quelle cible, quand, sous quel run) et tait la charge. L'instance,
+elle, la conserve : c'est le substrat de l'annulation. Le raisonnement, ce que l'audit y
+gagne et ce qu'il y perd : `docs/provenance-audit.md`, § *À la sortie, les ACTES — sans
+leurs CHARGES*.
 
 ---
 
@@ -436,7 +447,7 @@ cette unité, trois régimes de diffusion :
 
 | Tier | Contenu | Régime |
 |---|---|---|
-| **Ouvert** (CC-BY / CC0) | descriptif · géométrie · structure · ordre · provenance/paradonnée · lemme/POS/morph · tags · notes · personnages · attributs · métriques matérielles | diffusable + DOI |
+| **Ouvert** (CC-BY / CC0) | descriptif · géométrie · structure · ordre · provenance/paradonnée (les **actes**, sans leurs charges — cf. N8) · lemme/POS/morph · tags · notes · personnages · attributs · métriques matérielles | diffusable + DOI |
 | **Agrégat** | formes de surface (`texte`/`forme`) sous forme de fréquences/distributions | diffusable agrégé, restreint en verbatim aligné |
 | **Restreint** | scans (`chemin_*`) · **texte OCR verbatim** | détenu (exception TDM), non rediffusé — accès sur accord |
 

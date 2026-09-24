@@ -328,6 +328,33 @@ CIBLES_RETENUES = {
 COLONNES_EVENEMENT_PUBLIEES = ("id", "activite_id", "type", "agent", "agent_type",
                                "cible_table", "cible_id", "date")
 
+#: Les colonnes d'un RUN qui partent au dépôt. Aujourd'hui, toutes — la table n'en a pas
+#: d'autres, et rien n'y est retenu.
+#:
+#: Nommées quand même, et le mode d'échec explique pourquoi il fallait le faire malgré
+#: l'absence de fuite. Ici il est INVERSÉ par rapport à `evenement` : la projection était
+#: écrite à la main dans `metadonnees_collection`, donc une colonne ajoutée demain ne
+#: fuirait pas — elle serait OUBLIÉE, en silence, et le dépôt perdrait une paradonnée sans
+#: que personne l'ait décidé. C'est la forme d'échec que `test_csp` a rencontrée avec ses
+#: listes écrites à la main : « oublier ce qu'on ajoute au lieu de perdre ce qu'on voyait ».
+COLONNES_ACTIVITE_PUBLIEES = ("id", "type", "agent", "agent_type", "version", "params",
+                              "portee", "comptes", "date_debut", "date_fin")
+
+#: Les colonnes du journal qu'on RETIENT, avec leur raison — même patron que
+#: `CIBLES_RETENUES` : une colonne absente des deux ensembles fait échouer le cliquet,
+#: seul moyen qu'une colonne neuve soit traitée PAR DÉCISION et non par défaut.
+COLONNES_JOURNAL_RETENUES = {
+    "evenement.avant":
+        "AUTH-11 — l'instantané de l'entité AVANT l'acte. Pour une région il contient "
+        "`ocr_texte`, donc le texte verbatim de l'œuvre : l'export d'une collection "
+        "emportait celui de toute l'instance, `--verbatim` ou non. Le contenu vit dans "
+        "les records, qui respectent le périmètre et le drapeau.",
+    "evenement.apres":
+        "AUTH-11 — l'instantané APRÈS l'acte, même raison que `avant`. La provenance "
+        "d'un acte tient dans son attribution et sa date, pas dans la recopie de ce "
+        "qu'il a changé ; l'instance les garde, c'est le substrat de l'annulation.",
+}
+
 
 def evenements_publiables(conn, ordre: str = "ASC"):
     """Les événements du journal A3 qui partent au dépôt, dans l'ordre demandé.

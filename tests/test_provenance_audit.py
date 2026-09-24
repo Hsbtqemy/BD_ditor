@@ -300,7 +300,21 @@ def test_prov_export_cli(client, derriere_proxy, album, db_path, data_dir):
 # silencieuse du dépôt. Les tests vont donc dans les deux sens.
 # --------------------------------------------------------------------------- #
 def _semer_une_charge_par_cible(conn):
-    """Un événement par `cible_table` connue, chacun porteur d'un marqueur unique."""
+    """Un événement par `cible_table` connue, chacun porteur d'un marqueur unique.
+
+    **Le semis est son PROPRE TÉMOIN, et il doit l'être** (AUTH-5, posé ici le
+    2026-09-24). Les assertions qui cherchent `CHARGE-…` par son ABSENCE dépendent
+    entièrement de lui : un semis vidé les rend toutes vertes, et une garde qui approuve
+    en n'ayant rien regardé est pire qu'une garde qui tombe. C'était exactement soutenable
+    tant qu'une assertion cherchait aussi une charge PRÉSENTE — elle prouvait le semis par
+    ricochet. Cette assertion a disparu avec la décision de taire les charges (2026-09-24),
+    et rien ne l'a remplacée : le chemin CSV restait couvert par ses contrôles de
+    colonnes, le chemin PROV/TEI ne l'était plus par rien.
+
+    La vérification vit ICI plutôt que chez les appelants, et c'est le point : un
+    quatrième appelant l'obtient sans y penser, là où trois assertions recopiées
+    laisseraient le suivant à découvert.
+    """
     import _commun
     cibles = sorted(_commun.CIBLES_CORPUS | set(_commun.CIBLES_RETENUES))
     for i, table in enumerate(cibles, 1):
@@ -310,6 +324,17 @@ def _semer_une_charge_par_cible(conn):
             (table, i, json.dumps({"marqueur": f"CHARGE-{table}"}),
              json.dumps({"marqueur": f"CHARGE-{table}"})))
     conn.commit()
+
+    # Relu EN BASE, pas déduit de la boucle ci-dessus : ce qu'on veut savoir est que la
+    # charge est bel et bien posée, pas qu'on a exécuté un INSERT.
+    poses = {r["cible_table"]: (r["avant"], r["apres"]) for r in conn.execute(
+        "SELECT cible_table, avant, apres FROM evenement WHERE agent = 'alice'")}
+    for table in cibles:
+        avant, apres = poses.get(table, (None, None))
+        marque = f"CHARGE-{table}"
+        assert avant and marque in avant and apres and marque in apres, (
+            f"le semis n'a pas posé la charge de `{table}` : tout contrôle qui cherche "
+            f"« {marque} » par son ABSENCE passerait au vert sans rien mesurer")
     return cibles
 
 
@@ -430,10 +455,18 @@ def test_les_actes_de_corpus_partent_toujours(db_path):
 
     for table in sorted(PLANCHER_PUBLIE | _commun.CIBLES_CORPUS):
         assert table in tables_csv, f"{table} : acte de corpus absent du dépôt"
-    # Anti-vacuité : l'acte n'est pas une ligne creuse — il porte de quoi l'attribuer.
+    # Anti-vacuité : AUCUN acte publié n'est une ligne creuse. Écrit avec `all` et non
+    # `any` — mesuré le 2026-09-24, un `any` restait vert en vidant tout sauf une ligne,
+    # et n'affirmait donc que « il existe un acte non creux ». Ces quatre colonnes-là
+    # tiennent pour TOUT acte de corpus (vérifié sur création, modification, annotation,
+    # locuteur, annulation et suppression). `activite_id` et `agent` n'y sont PAS, et
+    # c'est mesuré aussi : le premier est NULL sur tout acte humain (il n'y a pas de run),
+    # le second l'est en mono-poste, où personne ne s'annonce.
     for nom in ("type", "agent_type", "cible_id", "date"):
-        assert any(l[cols.index(nom)] not in (None, "") for l in lignes), (
-            f"la colonne `{nom}` est vide partout : l'acte publié n'apprend plus rien")
+        creux = [l for l in lignes if l[cols.index(nom)] in (None, "")]
+        assert not creux, (
+            f"{len(creux)} acte(s) publié(s) sans `{nom}` : la ligne part au dépôt sans "
+            f"de quoi l'attribuer — ex. {creux[0]}")
 
 
 def test_les_charges_ne_partent_plus_au_depot(db_path):
@@ -474,18 +507,61 @@ def test_les_charges_ne_partent_plus_au_depot(db_path):
     assert _commun.CIBLES_CORPUS <= _colonne(cols, lignes, "cible_table")
 
 
+def test_toute_colonne_du_journal_est_publiee_ou_RETENUE(db_path):
+    """Une colonne neuve du journal doit être traitée PAR DÉCISION, pas par défaut.
+
+    Les deux tables ont le même besoin et des modes d'échec OPPOSÉS, ce qui est
+    précisément pourquoi un seul cliquet doit les couvrir. `evenement` publiait par
+    `SELECT *` : une colonne ajoutée serait PARTIE toute seule — c'est la fuite qu'AUTH-11
+    a fermée. `activite` publie une projection écrite à la main : une colonne ajoutée
+    serait OUBLIÉE toute seule, et le dépôt perdrait une paradonnée sans que personne
+    l'ait voulu. Aucun des deux ne se voit à la relecture d'un diff.
+
+    C'est la forme du troisième cliquet d'AUTH-5, qui exige de toute colonne de
+    `albums`/`planches` qu'elle soit publiée ou retenue avec sa raison — et celle de
+    `CIBLES_RETENUES`, juste à côté, pour les actes.
+    """
+    import _commun
+
+    conn = _lire(db_path)
+    attendu = {
+        "activite": set(_commun.COLONNES_ACTIVITE_PUBLIEES),
+        "evenement": set(_commun.COLONNES_EVENEMENT_PUBLIEES),
+    }
+    for table, publiees in attendu.items():
+        reelles = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        assert publiees <= reelles, (
+            f"{table} : on déclare publier des colonnes qui n'existent pas — "
+            f"{sorted(publiees - reelles)}")
+        for col in sorted(reelles - publiees):
+            assert f"{table}.{col}" in _commun.COLONNES_JOURNAL_RETENUES, (
+                f"`{table}.{col}` n'est ni publiée ni retenue : le dépôt la tait sans "
+                f"que ce soit écrit. Ajoutez-la à COLONNES_{table.upper()}_PUBLIEES, ou "
+                f"à COLONNES_JOURNAL_RETENUES avec sa raison.")
+
+    # L'autre sens : une raison retenue qui ne désignerait plus rien est une note morte.
+    for cle in _commun.COLONNES_JOURNAL_RETENUES:
+        table, col = cle.split(".", 1)
+        reelles = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        assert col in reelles, f"`{cle}` est retenue mais la colonne n'existe plus"
+        assert len(_commun.COLONNES_JOURNAL_RETENUES[cle]) > 40, (
+            f"`{cle}` : une raison trop courte pour être une raison")
+
+
 def test_le_journal_garde_ses_charges_DANS_l_instance(client, derriere_proxy, album,
                                                       db_path):
     """Ce qu'on tait à la SORTIE, l'instance le GARDE : c'est le substrat de Ctrl+Z.
 
-    Sans ce contrôle, refermer la fuite en cessant d'ÉCRIRE les charges passerait pour un
-    succès, et l'annulation (D1) perdrait en silence ce qu'elle restaure — l'undo n'ayant
-    rien à voir avec les exports, aucun test de dépôt ne s'en plaindrait.
+    **Ce test n'est PAS le seul rempart, et il ne faut pas le croire tel** : cesser
+    d'écrire les charges fait tomber treize tests d'annulation, très bruyamment. C'est un
+    témoin de PROXIMITÉ — il dit la conséquence à l'endroit où la décision est prise, pour
+    que qui relit « taire les charges » trouve à côté « et il faut continuer à les
+    écrire », au lieu de le déduire d'une cascade de rouges dans un autre fichier.
 
-    Le geste passe par l'API, et c'est la seule façon que ce test ait un sens : semer les
-    charges à la main ne mesurerait que la main qui sème. `test_evenements_humains_avant_apres`
-    éprouve déjà le CONTENU de ces charges ; ici on vérifie qu'il en reste, au moment
-    précis où l'on vient d'apprendre à ne plus les publier.
+    Le geste passe par l'API, et c'est la seule façon qu'il ait un sens : semer les charges
+    à la main ne mesurerait que la main qui sème. `test_evenements_humains_avant_apres`
+    éprouve déjà leur CONTENU ; ici on vérifie qu'il en reste, au moment précis où l'on
+    vient d'apprendre à ne plus les publier.
     """
     conn = _lire(db_path)
     pid = _planche(conn, album["id"])

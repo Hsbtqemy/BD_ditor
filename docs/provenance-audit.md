@@ -103,10 +103,12 @@ pourrait dériver vers « cesser d'écrire », en silence.
 
 **Reste au grain CORPUS, et ce n'est pas sous cette décision** : la table `activite` publie
 `params`, `portee` et `comptes`, pour tous les runs de l'instance. Ce sont des réglages de
-passe, un périmètre (des identifiants d'albums) et des compteurs — aucun contenu de travail
-—, et `comptes` est **minimal par contrainte** (y verser le message d'une exception
-enverrait des chemins serveur au dépôt). Les deux sérialisations les portent, avant comme
-après cette décision.
+passe et des compteurs — aucun contenu de travail. `portee` désigne le périmètre du run
+et vaut, mesuré : `{"planche_id": N}` pour une passe ML, `album_id`, `planche_id` ou
+`{"corpus": true}` pour la normalisation de casse, et **rien du tout** pour la
+réindexation NLP, qui n'en pose pas. `comptes` est **minimal par contrainte** (y verser
+le message d'une exception enverrait des chemins serveur au dépôt). Les deux
+sérialisations les portent, avant comme après cette décision.
 
 ## Ce qui est journalisé
 

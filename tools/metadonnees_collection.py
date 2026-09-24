@@ -52,7 +52,8 @@ import journal  # noqa: E402  (indicateurs de provenance dérivés du journal �
 from _commun import (version_outil, environnement, composants,  # noqa: E402  (provenance / env,
                      portee_albums, forcer_utf8, pseudonymes,   # partagés + liste blanche
                      evenements_publiables, CIBLES_CORPUS,   # AUTH-1)
-                     COLONNES_EVENEMENT_PUBLIEES)            # AUTH-11
+                     COLONNES_EVENEMENT_PUBLIEES,            # AUTH-11
+                     COLONNES_ACTIVITE_PUBLIEES)
 
 
 def _grouper(conn, sql, cle=0, params=()):
@@ -573,12 +574,12 @@ def tables(conn, verbatim: bool = False, collection_id=None) -> dict:
     # contrediraient, et la chaîne de révisions cesserait de se lire.
     pseudo = pseudonymes(conn)
     out["activite"] = (
-        ["id", "type", "agent", "agent_type", "version", "params", "portee", "comptes",
-         "date_debut", "date_fin"],
-        [[a["id"], a["type"], pseudo.get(a["agent"], a["agent"]), a["agent_type"],
-          a["version"], a["params"],
-          a["portee"], a["comptes"], a["date_debut"], a["date_fin"]]
-         for a in conn.execute("SELECT * FROM activite ORDER BY id")])
+        list(COLONNES_ACTIVITE_PUBLIEES),
+        [[pseudo.get(a["agent"], a["agent"]) if col == "agent" else a[col]
+          for col in COLONNES_ACTIVITE_PUBLIEES]
+         for a in conn.execute(
+             f"SELECT {', '.join(COLONNES_ACTIVITE_PUBLIEES)} FROM activite "
+             "ORDER BY id")])
     # Les ACTES, sans leurs CHARGES (AUTH-11, 2026-09-24). Les colonnes ne sont plus
     # écrites ici : elles viennent de `COLONNES_EVENEMENT_PUBLIEES`, à côté de la liste
     # blanche des cibles, pour qu'une seule décision gouverne les deux sérialisations. La

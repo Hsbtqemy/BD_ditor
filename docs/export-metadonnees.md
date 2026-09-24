@@ -164,8 +164,10 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
 > leurs CHARGES*.
 >
 > **Ce qui reste au grain corpus sans porter de contenu** : `activite.params`,
-> `activite.portee` et `activite.comptes` — réglages d'une passe, identifiants d'albums,
-> compteurs. Aucun texte de travail, et `comptes` est minimal par contrainte.
+> `activite.portee` et `activite.comptes` — réglages d'une passe, périmètre du run
+> (`{"planche_id": N}`, parfois `album_id` ou `{"corpus": true}`, rien pour la
+> réindexation), compteurs. Aucun texte de travail, et `comptes` est minimal par
+> contrainte.
 >
 > **Et une limite qui, elle, n'est PAS tranchée** : le bloc `vocabulaire` de la FICHE
 > (`description_collection.py`) nomme encore toutes les dimensions, toutes leurs valeurs
