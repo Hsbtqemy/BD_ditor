@@ -84,6 +84,15 @@ une dimension GLOBALE et un domaine LOCAL, tous deux visibles et modifiables par
 - [ ] Juste après ce toast, sans recharger, le sélecteur de domaine d'`axe-qa` affiche de nouveau ce qu'il affichait avant le geste — pas `champ-test`
 - [ ] Recharger la page : `axe-qa` n'est toujours sous aucun domaine
 
+### Le sélecteur « Portée »
+
+**Sous `stagiaire`**, sur une recette qui contient `27f5478`, même panneau.
+
+- [ ] Ouvrir l'éditeur d'un terme d'Étude B que `stagiaire` lit sans y écrire — s'il n'en existe pas, passer cette case : son sélecteur « Portée » est grisé, affiche « Étude B », et le survol dit « En lecture seule pour vous »
+- [ ] Sur un terme de Collection Test, le menu « Portée » propose Global et Collection Test, et aucune collection où `stagiaire` n'écrit pas
+- [ ] Sous `proprio`, suivre le conseil du rattachement refusé plus haut : ranger `axe-qa` dans Collection Test, PUIS la rattacher à `champ-test` — les deux gestes passent, sans toast rouge
+- [ ] Sous `proprio`, ranger le domaine `champ-test` dans Étude B : après « Enregistré », le panneau se recharge, l'éditeur de `champ-test` est rouvert avec le curseur sur son sélecteur, et `axe-qa` — rangée sous lui dans Collection Test — affiche désormais Étude B, sans qu'on l'ait touchée. Ranger ensuite `champ-test` de nouveau dans Collection Test pour rendre le décor : `axe-qa` suit
+
 ### Ce que le propriétaire voit
 
 **Sous `proprio`**, même panneau — l'autre côté, sans quoi les cases précédentes pourraient
