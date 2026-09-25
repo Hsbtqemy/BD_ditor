@@ -1374,7 +1374,8 @@ def test_importer_ne_touche_pas_un_terme_qu_on_ne_lit_pas(client, db_path, deux_
     assert rep.status_code == 200, rep.text
     corps = rep.json()
     assert _etat_vocabulaire(db_path) == avant, "l'import a écrit sur un terme illisible"
-    assert corps["resume"]["refusees"] == {"libelle_pris": 3, "lecture_seule": 0}
+    assert corps["resume"]["refusees"] == {"libelle_pris": 3, "lecture_seule": 0,
+                                           "parent_ailleurs": 0}
     for palier in ("domaines", "dimensions", "valeurs"):
         assert corps["resume"][palier] == {"cree": 0, "existant": 0}, palier
     assert len(corps["avertissements"]) == 3
@@ -1413,7 +1414,8 @@ def test_importer_ne_modifie_pas_un_terme_en_lecture_seule(client, db_path, deux
     rep = _importer_csv(client, "bob", t["c1"], ";;case;axe lu;;par bob;neuve bob;")
     assert rep.status_code == 200, rep.text
     assert _etat_vocabulaire(db_path) == avant, "l'import a écrit sur un terme en lecture seule"
-    assert rep.json()["resume"]["refusees"] == {"libelle_pris": 0, "lecture_seule": 1}
+    assert rep.json()["resume"]["refusees"] == {"libelle_pris": 0, "lecture_seule": 1,
+                                                "parent_ailleurs": 0}
 
 
 def _poser_sql(db_path, sql, params=()):
@@ -1474,7 +1476,8 @@ def test_importer_nommer_un_terme_en_lecture_seule_n_est_pas_l_ecrire(client, db
                         ";;case;axe commun;;;val lue;")
     assert rep.status_code == 200, rep.text
     res = rep.json()["resume"]
-    assert res["refusees"] == {"libelle_pris": 0, "lecture_seule": 0}, rep.text
+    assert res["refusees"] == {"libelle_pris": 0, "lecture_seule": 0,
+                               "parent_ailleurs": 0}, rep.text
     assert res["domaines"] == {"cree": 0, "existant": 1}
     assert res["dimensions"] == {"cree": 0, "existant": 2}
     assert res["valeurs"] == {"cree": 0, "existant": 1}
@@ -1506,7 +1509,8 @@ def test_importer_refuse_ce_qui_ecrirait_sur_un_terme_en_lecture_seule(client, d
     assert rep.status_code == 200, rep.text
     corps = rep.json()
     assert _etat_vocabulaire(db_path) == avant, "l'import a écrit sur un terme en lecture seule"
-    assert corps["resume"]["refusees"] == {"libelle_pris": 0, "lecture_seule": 7}, rep.text
+    assert corps["resume"]["refusees"] == {"libelle_pris": 0, "lecture_seule": 7,
+                                           "parent_ailleurs": 0}, rep.text
     for palier in ("domaines", "dimensions", "valeurs"):
         assert corps["resume"][palier] == {"cree": 0, "existant": 0}, palier
 
@@ -1541,12 +1545,14 @@ def test_importer_le_cache_l_emporte_et_la_valeur_suit_la_route(client, db_path,
 
     mixte = _importer_csv(client, "bob", t["c1"], "champ vide;par bob;case;axe b;;;;")
     assert mixte.status_code == 200, mixte.text
-    assert mixte.json()["resume"]["refusees"] == {"libelle_pris": 1, "lecture_seule": 0}
+    assert mixte.json()["resume"]["refusees"] == {"libelle_pris": 1, "lecture_seule": 0,
+                                                  "parent_ailleurs": 0}
 
     existe = _importer_csv(client, "bob", t["c1"], ";;case;axe lu;;;val b3;")
     absente = _importer_csv(client, "bob", t["c1"], ";;case;axe lu;;;val b4;")
     assert existe.status_code == absente.status_code == 200
-    assert existe.json()["resume"]["refusees"] == {"libelle_pris": 0, "lecture_seule": 1}
+    assert existe.json()["resume"]["refusees"] == {"libelle_pris": 0, "lecture_seule": 1,
+                                                   "parent_ailleurs": 0}
     assert existe.json()["resume"] == absente.json()["resume"]
     assert existe.json()["avertissements"] == absente.json()["avertissements"]
     assert _etat_vocabulaire(db_path) == avant
@@ -1573,7 +1579,7 @@ def test_importer_un_terme_modifiable_ou_neuf_fait_ce_qu_il_faisait(client, db_p
                         "champ libre;;personnage;axe libre;;;v libre;")
     assert rep.status_code == 200, rep.text
     res = rep.json()["resume"]
-    assert res["refusees"] == {"libelle_pris": 0, "lecture_seule": 0}
+    assert res["refusees"] == {"libelle_pris": 0, "lecture_seule": 0, "parent_ailleurs": 0}
     assert res["domaines"] == {"cree": 1, "existant": 1}
     assert res["dimensions"] == {"cree": 1, "existant": 2}
     assert res["valeurs"] == {"cree": 3, "existant": 0}
@@ -1586,6 +1592,385 @@ def test_importer_un_terme_modifiable_ou_neuf_fait_ce_qu_il_faisait(client, db_p
                             "WHERE nom = 'axe libre'").fetchone()[0] == t["c1"]
     finally:
         conn.close()
+
+
+# --- AUTH-11 — l'import suit l'héritage des routes, et la promotion ne nomme que ce qu'on lit.
+#     Bob écrit dans c1 ET c3 : chaque parent est modifiable, seule sa PORTÉE varie. Chaque
+#     combinaison est jouée deux fois, par la route unitaire sur un terme jumeau et par
+#     l'import, et c'est l'ÉGALITÉ qui est exigée — pas une valeur recopiée du code.
+
+def _deux_ecritures(db_path, t):
+    c3 = _nouvelle_collection(db_path, "Étude C")
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    _ouvrir(db_path, c3, "bob", niveau="ecriture")
+    return c3
+
+
+def _importer_global(client, qui, *lignes):
+    """Import SANS collection : le vocabulaire importé est global, sauf héritage."""
+    data = (_ENTETE_CSV + "".join(l + "\n" for l in lignes)).encode("utf-8")
+    return client.post("/api/lexique/importer", headers={"Remote-User": qui},
+                       files={"file": ("voc.csv", data, "text/csv")})
+
+
+def _id_par_nom(db_path, table, col, nom):
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        return conn.execute(f"SELECT id FROM {table} WHERE {col} = ?", (nom,)).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def test_importer_sans_collection_herite_du_parent_comme_les_routes(client, db_path,
+                                                                    deux_albums,
+                                                                    derriere_proxy):
+    """AUTH-11 — un import SANS collection créait ses termes GLOBAUX, même sous un parent
+    local : une dimension neuve sous un domaine de c3, une valeur neuve sous une dimension
+    de c3 naissaient visibles de tous, sous un parent que personne d'autre ne lit — ce que
+    v24 interdit, et ce que les routes ne produisent jamais (`POST /api/attributs/dimensions`
+    et `POST …/valeurs` font hériter l'enfant ; le promouvoir ensuite répond 409). Pour un
+    parent global, local à c1 ou local à c3 : même portée que la route.
+
+    Et une ligne qui RATTACHE une dimension orpheline GLOBALE à ce domaine répond comme
+    `PATCH …/domaine` : acceptée sous le domaine global, sans que rien ne bouge ; refusée
+    sous un domaine local (409 côté route, `parent_ailleurs` côté import), la dimension
+    restant globale et orpheline — une dimension ne peut être plus globale que son domaine,
+    et un rattachement ne déplace plus de portée (Hugo, 2026-09-24)."""
+    t = deux_albums
+    c3 = _deux_ecritures(db_path, t)
+    h = {"Remote-User": "bob"}
+    for cid, nom in ((None, "g"), (t["c1"], "un"), (c3, "trois")):
+        dom = _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) VALUES (?, ?)",
+                         (f"dom {nom}", cid))
+        dim = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, collection_id)"
+                                  " VALUES ('case', ?, ?)", (f"dim {nom}", cid))
+        par_route = client.post("/api/attributs/dimensions", headers=h,
+                                json={"cible": "case", "nom": f"route {nom}",
+                                      "domaine_id": dom})
+        val_route = client.post(f"/api/attributs/dimensions/{dim}/valeurs", headers=h,
+                                json={"valeur": f"vroute {nom}"})
+        assert par_route.status_code == val_route.status_code == 201
+        rep = _importer_global(client, "bob", f"dom {nom};;case;import {nom};;;;",
+                               f";;case;dim {nom};;;vimport {nom};")
+        assert rep.status_code == 200, rep.text
+        assert rep.json()["resume"]["refusees"] == {"libelle_pris": 0, "lecture_seule": 0,
+                                                    "parent_ailleurs": 0}
+        dim_imp = _id_par_nom(db_path, "attribut_dimension", "nom", f"import {nom}")
+        val_imp = _id_par_nom(db_path, "attribut_valeur", "valeur", f"vimport {nom}")
+        assert (_portee_du_terme(db_path, "attribut_dimension", dim_imp)
+                == par_route.json()["collection_id"] == cid), nom
+        assert (_portee_du_terme(db_path, "attribut_valeur", val_imp)
+                == val_route.json()["collection_id"] == cid), nom
+
+        orph_route = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom) "
+                                         "VALUES ('case', ?)", (f"orph route {nom}",))
+        orph_imp = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom) "
+                                       "VALUES ('case', ?)", (f"orph import {nom}",))
+        r = client.patch(f"/api/attributs/dimensions/{orph_route}/domaine", headers=h,
+                         json={"domaine_id": dom})
+        rep = _importer_global(client, "bob",
+                               f"dom {nom};;case;orph import {nom};;;vorph import {nom};")
+        assert rep.status_code == 200, rep.text
+        refuse = cid is not None
+        assert r.status_code == (409 if refuse else 200), (nom, r.text)
+        assert rep.json()["resume"]["refusees"]["parent_ailleurs"] == int(refuse), nom
+        for oid in (orph_route, orph_imp):
+            assert _portee_du_terme(db_path, "attribut_dimension", oid) is None, nom
+        if not refuse:
+            v_orph = client.post(f"/api/attributs/dimensions/{orph_route}/valeurs",
+                                 headers=h, json={"valeur": f"vorph route {nom}"})
+            v_imp = _id_par_nom(db_path, "attribut_valeur", "valeur", f"vorph import {nom}")
+            assert (_portee_du_terme(db_path, "attribut_valeur", v_imp)
+                    == v_orph.json()["collection_id"] is None), nom
+
+
+def test_importer_dans_sa_collection_sous_un_parent_global_ou_sien(client, db_path,
+                                                                   deux_albums,
+                                                                   derriere_proxy):
+    """Anti-vacuité de l'héritage : importer DANS c1 range dans c1, sous un parent global
+    comme sous un parent de c1 — ce que donnent la route de création suivie de
+    `PATCH …/lexique {collection_id: c1}`, qui accepte de rendre un terme plus local que
+    son parent (A4). Sans ceci, « toujours hériter » passerait le test d'au-dessus. Le
+    parent local à une AUTRE collection est refusé : cf. le test qui suit."""
+    t = deux_albums
+    _deux_ecritures(db_path, t)
+    h = {"Remote-User": "bob"}
+    for cid, nom in ((None, "g"), (t["c1"], "un")):
+        dom = _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) VALUES (?, ?)",
+                         (f"dom {nom}", cid))
+        dim = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, collection_id)"
+                                  " VALUES ('case', ?, ?)", (f"dim {nom}", cid))
+        d = client.post("/api/attributs/dimensions", headers=h,
+                        json={"cible": "case", "nom": f"route {nom}", "domaine_id": dom}).json()
+        v = client.post(f"/api/attributs/dimensions/{dim}/valeurs", headers=h,
+                        json={"valeur": f"vroute {nom}"}).json()
+        for route, oid in (("attributs/dimensions", d["id"]), ("attributs/valeurs", v["id"])):
+            assert client.patch(f"/api/{route}/{oid}/lexique", headers=h,
+                                json={"collection_id": t["c1"]}).status_code == 200
+        rep = _importer_csv(client, "bob", t["c1"], f"dom {nom};;case;import {nom};;;;",
+                            f";;case;dim {nom};;;vimport {nom};")
+        assert rep.status_code == 200, rep.text
+        dim_imp = _id_par_nom(db_path, "attribut_dimension", "nom", f"import {nom}")
+        val_imp = _id_par_nom(db_path, "attribut_valeur", "valeur", f"vimport {nom}")
+        assert (_portee_du_terme(db_path, "attribut_dimension", dim_imp)
+                == _portee_du_terme(db_path, "attribut_dimension", d["id"]) == t["c1"]), nom
+        assert (_portee_du_terme(db_path, "attribut_valeur", val_imp)
+                == _portee_du_terme(db_path, "attribut_valeur", v["id"]) == t["c1"]), nom
+
+
+def test_importer_dans_une_collection_sous_un_parent_d_une_autre_est_refuse(client, db_path,
+                                                                            deux_albums,
+                                                                            derriere_proxy):
+    """AUTH-11, tranché par Hugo le 2026-09-24 — importer DANS c1 un terme NEUF sous un
+    parent local à c3 (que Bob lit ET modifie) le faisait naître dans c1 : une valeur de c1
+    sous une dimension de c3, qu'aucune personne n'écrivant que dans c1 ne pouvait ensuite
+    ni lire en entier ni promouvoir. Les routes ne tranchaient pas ce cas (créer donnait c3,
+    créer puis ranger donnait c1). La ligne est désormais refusée, motif `parent_ailleurs`
+    — le parent est visible, le dire ne révèle rien —, et rien n'est écrit.
+
+    L'ordre des motifs : un parent CACHÉ reste « libellé pris », un parent en LECTURE
+    SEULE reste « lecture seule » ; `parent_ailleurs` ne parle qu'en dernier, d'un parent
+    visible et modifiable. Et seule une CRÉATION ou un RATTACHEMENT est refusé : nommer une
+    valeur qui existe déjà sous la dimension de c3 passe, comptée « existante », et nommer
+    une dimension de c1 DÉJÀ rangée sous un domaine de c1 avec le domaine de c3 aussi — elle
+    n'est pas rattachée (un rattachement existant ne change jamais), donc rien n'est rangé."""
+    t = deux_albums
+    c3 = _deux_ecritures(db_path, t)
+    c4 = _nouvelle_collection(db_path, "Étude D")
+    _ouvrir(db_path, c4, "bob", niveau="lecture")
+    dom3 = _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) "
+                               "VALUES ('dom trois', ?)", (c3,))
+    dim3 = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, domaine_id, "
+                               "collection_id) VALUES ('case', 'dim trois', ?, ?)",
+                      (dom3, c3))
+    _poser_sql(db_path, "INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
+                        "VALUES (?, 'val deja', ?)", (dim3, c3))
+    dom1 = _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) "
+                               "VALUES ('dom un', ?)", (t["c1"],))
+    _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, domaine_id, "
+                        "collection_id) VALUES ('case', 'dim rangee', ?, ?)", (dom1, t["c1"]))
+    _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) VALUES ('dom lu', ?)", (c4,))
+    _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) VALUES ('dom b', ?)",
+               (t["c2"],))
+    avant = _etat_vocabulaire(db_path)
+    rep = _importer_csv(client, "bob", t["c1"],
+                        "dom trois;;case;dim neuve;;;;",          # dimension neuve sous c3
+                        ";;case;dim trois;;;val neuve;",           # valeur neuve sous c3
+                        "dom lu;;case;dim neuve lu;;;;",           # parent en lecture seule
+                        "dom b;;case;dim neuve b;;;;",             # parent caché
+                        ";;case;dim trois;;;val deja;",            # nommer n'est pas ranger
+                        "dom trois;;case;dim rangee;;;;")          # déjà rangée : rien
+    assert rep.status_code == 200, rep.text
+    corps = rep.json()
+    assert corps["resume"]["valeurs"] == {"cree": 0, "existant": 1}, rep.text
+    assert corps["resume"]["dimensions"] == {"cree": 0, "existant": 2}, rep.text
+    assert corps["resume"]["refusees"] == {"libelle_pris": 1, "lecture_seule": 1,
+                                           "parent_ailleurs": 2}, rep.text
+    assert _etat_vocabulaire(db_path) == avant, "une ligne refusée a écrit"
+    assert [a for a in corps["avertissements"] if "hors de la collection de son parent" in a] \
+        == ["L.2 : dimension « case/dim neuve » — hors de la collection de son parent, "
+            "ligne ignorée",
+            "L.3 : valeur « dim trois/val neuve » — hors de la collection de son parent, "
+            "ligne ignorée"]
+    for fuite in ("Étude", "c3", "dom b"):
+        assert fuite not in " ".join(corps["avertissements"][:2]), fuite
+
+
+def test_importer_rattacher_une_dimension_fait_ce_que_fait_la_route(client, db_path,
+                                                                    deux_albums,
+                                                                    derriere_proxy):
+    """AUTH-11 — l'import remplissait le `domaine_id` d'une dimension orpheline sans toucher
+    sa portée, là où `PATCH /api/attributs/dimensions/{id}/domaine` la faisait passer dans
+    la collection du domaine, ses valeurs globales avec elle (v24).
+
+    **Renversement daté (Hugo, 2026-09-24)** : un rattachement ne DÉPLACE plus jamais une
+    portée, ni par la route ni par l'import. Il est permis quand la dimension n'en devient
+    pas plus globale que son domaine sans en changer — domaine global, ou même collection
+    — et REFUSÉ sinon : 409 côté route, `parent_ailleurs` côté import. Les neuf
+    combinaisons — dimension globale, de c1, de c3, sous un domaine global, de c1, de c3 —
+    sur deux jumeaux, l'un rattaché par la route, l'autre par l'import : même verdict, et
+    AUCUNE portée ne bouge, ni la dimension, ni sa valeur globale, ni sa valeur de c1."""
+    t = deux_albums
+    c3 = _deux_ecritures(db_path, t)
+    h = {"Remote-User": "bob"}
+    portees = ((None, "g"), (t["c1"], "un"), (c3, "trois"))
+    doms = {nom: _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) "
+                                     "VALUES (?, ?)", (f"dom {nom}", cid))
+            for cid, nom in portees}
+
+    def jumeau(nom, cid):
+        dim = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, collection_id)"
+                                  " VALUES ('case', ?, ?)", (nom, cid))
+        vg = _poser_sql(db_path, "INSERT INTO attribut_valeur (dimension_id, valeur) "
+                                 "VALUES (?, 'vg')", (dim,))
+        v1 = _poser_sql(db_path, "INSERT INTO attribut_valeur (dimension_id, valeur, "
+                                 "collection_id) VALUES (?, 'v1', ?)", (dim, t["c1"]))
+        return dim, vg, v1
+
+    def etat(ids):
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        try:
+            dom = conn.execute("SELECT domaine_id FROM attribut_dimension WHERE id = ?",
+                               (ids[0],)).fetchone()[0]
+        finally:
+            conn.close()
+        return (dom is not None,
+                _portee_du_terme(db_path, "attribut_dimension", ids[0]),
+                _portee_du_terme(db_path, "attribut_valeur", ids[1]),
+                _portee_du_terme(db_path, "attribut_valeur", ids[2]))
+
+    for cid_dim, n_dim in portees:
+        for cid_dom, n_dom in portees:
+            refuse = cid_dom is not None and cid_dim != cid_dom
+            route = jumeau(f"route {n_dim} {n_dom}", cid_dim)
+            imp = jumeau(f"import {n_dim} {n_dom}", cid_dim)
+            r = client.patch(f"/api/attributs/dimensions/{route[0]}/domaine", headers=h,
+                             json={"domaine_id": doms[n_dom]})
+            assert r.status_code == (409 if refuse else 200), (n_dim, n_dom, r.text)
+            rep = _importer_csv(client, "bob", t["c1"],
+                                f"dom {n_dom};;case;import {n_dim} {n_dom};;;;")
+            assert rep.status_code == 200, rep.text
+            assert rep.json()["resume"]["refusees"] == {
+                "libelle_pris": 0, "lecture_seule": 0,
+                "parent_ailleurs": int(refuse)}, (n_dim, n_dom)
+            attendu = (not refuse, cid_dim, None, t["c1"])      # rien ne bouge
+            assert etat(route) == etat(imp) == attendu, (n_dim, n_dom)
+
+
+def test_le_409_du_rattachement_dit_quoi_faire_et_ne_nomme_que_le_domaine(client, db_path,
+                                                                          deux_albums,
+                                                                          derriere_proxy):
+    """Le refus de `PATCH …/domaine` est un geste à refaire autrement, pas une impasse : il
+    dit de ranger d'abord la dimension dans la collection du domaine (📖 Lexique, menu
+    Portée), puis de la rattacher. Il nomme le domaine — Bob vient de le choisir, il le
+    lit — et rien d'autre : ni la dimension, ni une collection. Et le chemin qu'il indique
+    aboutit : rangée par `PATCH …/lexique`, la dimension se rattache."""
+    t = deux_albums
+    c3 = _deux_ecritures(db_path, t)
+    h = {"Remote-User": "bob"}
+    dom = _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) "
+                              "VALUES ('champ nommable', ?)", (c3,))
+    dim = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, collection_id) "
+                              "VALUES ('case', 'axe sentinelletu', ?)", (t["c1"],))
+    r = client.patch(f"/api/attributs/dimensions/{dim}/domaine", headers=h,
+                     json={"domaine_id": dom})
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert "« champ nommable »" in detail and "Rangez d'abord" in detail, detail
+    for fuite in ("sentinelletu", "Étude", "Autorisé"):
+        assert fuite not in detail, fuite
+    assert client.patch(f"/api/attributs/dimensions/{dim}/lexique", headers=h,
+                        json={"collection_id": c3}).status_code == 200
+    r = client.patch(f"/api/attributs/dimensions/{dim}/domaine", headers=h,
+                     json={"domaine_id": dom})
+    assert r.status_code == 200 and r.json()["domaine_id"] == dom, r.text
+
+
+def test_importer_une_glose_ne_deplace_pas_une_dimension_deja_rattachee(client, db_path,
+                                                                        deux_albums,
+                                                                        derriere_proxy):
+    """AUTH-11 — remplir une glose ne touche que la glose. Une dimension de c1, déjà rangée
+    sous un domaine de c1, à définition vide : une ligne SANS domaine qui ne fait que
+    remplir sa définition la laisse dans c1, sous son domaine. Écrit quand un rattachement
+    déplaçait encore la portée (un premier jet la déplaçait dès qu'un champ était rempli,
+    et la rendait globale) ; gardé depuis le renversement du 2026-09-24, où plus aucun
+    rattachement ne déplace rien, comme garde de ce que fait une ligne sans domaine."""
+    t = deux_albums
+    _deux_ecritures(db_path, t)
+    dom = _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) "
+                              "VALUES ('dom range', ?)", (t["c1"],))
+    dim = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, domaine_id, "
+                              "collection_id) VALUES ('case', 'axe range', ?, ?)",
+                     (dom, t["c1"]))
+    rep = _importer_csv(client, "bob", t["c1"], ";;case;axe range;glose de bob;;;")
+    assert rep.status_code == 200, rep.text
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        ligne = conn.execute("SELECT definition, collection_id, domaine_id FROM "
+                             "attribut_dimension WHERE id = ?", (dim,)).fetchone()
+    finally:
+        conn.close()
+    assert ligne == ("glose de bob", t["c1"], dom), ligne
+
+
+def _promouvoir(client, qui, val_id, **extra):
+    return client.patch(f"/api/attributs/valeurs/{val_id}/lexique",
+                        headers={"Remote-User": qui},
+                        json={"collection_id": None, **extra})
+
+
+def test_la_promotion_ne_nomme_pas_un_parent_qu_on_ne_lit_pas(client, db_path, deux_albums,
+                                                              derriere_proxy):
+    """AUTH-11 — `_patch_lexique` refuse de promouvoir un terme dont un ancêtre reste local,
+    et son 409 NOMMAIT la chaîne entière, sans filtre de portée. Carol n'écrit que dans
+    c1 ; une valeur de c1 vit sous une dimension et un domaine de c3 (l'import d'avant
+    AUTH-11 le produisait, et la production le servait) : elle recevait « Ce terme dépend
+    de dimension « … » et domaine « … » », deux noms qu'elle ne lit pas. Le refus reste,
+    mais il ne dit plus qu'UN bit — il existe un terme dont celui-ci dépend et qu'on ne lit
+    pas —, ni son nom, ni sa sorte, ni leur nombre ; `promouvoir_parents` ne le fait pas
+    parler davantage (403 muet), et rien ne bouge."""
+    t = deux_albums
+    c3 = _nouvelle_collection(db_path, "Étude C")
+    dom = _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) "
+                              "VALUES ('champ sentinelledom', ?)", (c3,))
+    dim = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, domaine_id, "
+                              "collection_id) VALUES ('case', 'axe sentinelledim', ?, ?)",
+                     (dom, c3))
+    val = _poser_sql(db_path, "INSERT INTO attribut_valeur (dimension_id, valeur, "
+                              "collection_id) VALUES (?, 'val carol', ?)", (dim, t["c1"]))
+    _ouvrir(db_path, t["c1"], "carol", niveau="ecriture")
+    avant = _etat_vocabulaire(db_path)
+    for rep, code in ((_promouvoir(client, "carol", val), 409),
+                      (_promouvoir(client, "carol", val, promouvoir_parents=True), 403)):
+        assert rep.status_code == code, rep.text
+        for fuite in ("sentinelle", "dimension", "domaine", "restent", "Étude C"):
+            assert fuite not in rep.text, f"le refus dit {fuite!r} d'un parent illisible"
+        assert "ne lisez pas" in rep.json()["detail"], rep.text      # le bit, et lui seul
+        assert "de un " not in rep.json()["detail"], rep.text        # le français aussi
+    sans_suite = _promouvoir(client, "carol", val)
+    assert "promouvoir_parents" not in sans_suite.text, \
+        "le refus propose un geste qui ne peut que répondre 403"
+    assert _etat_vocabulaire(db_path) == avant
+
+
+def test_la_promotion_nomme_toujours_le_parent_qu_on_lit(client, db_path, deux_albums,
+                                                         derriere_proxy):
+    """Anti-vacuité : un refus qui ne nommerait plus rien passerait le test d'au-dessus.
+    La dimension est de c1, que Carol lit ; seul le domaine est de c3. Le 409 nomme la
+    dimension — le consentement éclairé de `promouvoir_parents` en dépend — et tait le
+    domaine ; `promouvoir_parents` bute sur le domaine sans le nommer. Et quand Carol lit
+    c3 sans y écrire, les deux sont nommés, le 403 aussi : ce qu'on lit se dit."""
+    t = deux_albums
+    c3 = _nouvelle_collection(db_path, "Étude C")
+    dom = _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) "
+                              "VALUES ('champ sentinelledom', ?)", (c3,))
+    dim = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, domaine_id, "
+                              "collection_id) VALUES ('case', 'axe visible', ?, ?)",
+                     (dom, t["c1"]))
+    val = _poser_sql(db_path, "INSERT INTO attribut_valeur (dimension_id, valeur, "
+                              "collection_id) VALUES (?, 'val carol', ?)", (dim, t["c1"]))
+    _ouvrir(db_path, t["c1"], "carol", niveau="ecriture")
+    refus = _promouvoir(client, "carol", val)
+    assert refus.status_code == 409, refus.text
+    assert "dimension « axe visible »" in refus.json()["detail"], refus.text
+    assert "sentinelle" not in refus.text and "domaine" not in refus.text, refus.text
+    assert "ne lisez pas" in refus.json()["detail"], refus.text
+    force = _promouvoir(client, "carol", val, promouvoir_parents=True)
+    assert force.status_code == 403 and "sentinelle" not in force.text, force.text
+
+    _ouvrir(db_path, c3, "carol", niveau="lecture")
+    lu = _promouvoir(client, "carol", val)
+    assert lu.status_code == 409, lu.text
+    assert ("dimension « axe visible »" in lu.json()["detail"]
+            and "domaine « champ sentinelledom »" in lu.json()["detail"]), lu.text
+    assert ("ne lisez pas" not in lu.json()["detail"]
+            and "promouvoir_parents" in lu.json()["detail"]), lu.text
+    force = _promouvoir(client, "carol", val, promouvoir_parents=True)
+    assert force.status_code == 403, force.text
+    assert "domaine « champ sentinelledom »" in force.json()["detail"], force.text
 
 
 @pytest.fixture

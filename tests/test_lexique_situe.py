@@ -294,10 +294,17 @@ def test_la_descente_epargne_un_terme_deja_local_ailleurs(client, db_path):
     assert _portee(db_path, "attribut_valeur", val) == autre      # déjà placé → épargné
 
 
-def test_rattacher_une_dimension_lui_donne_la_portee_du_domaine(client, db_path):
+def test_rattacher_une_dimension_ne_deplace_jamais_sa_portee(client, db_path):
     """Second chemin vers l'état interdit, et il n'y avait aucune promotion : une dimension
     GLOBALE passée sous un domaine PRIVÉ y restait globale. Ce qui fuyait n'était pas un
-    mot mais le NOM DE L'AXE — la grille d'analyse d'une collection fermée."""
+    mot mais le NOM DE L'AXE — la grille d'analyse d'une collection fermée.
+
+    v24 la faisait DESCENDRE dans la collection du domaine, ses valeurs globales avec elle —
+    ce qui la retirait sans un mot à toutes les autres collections. **Renversement daté
+    (Hugo, 2026-09-24)** : un rattachement ne déplace plus jamais une portée. L'état
+    interdit reste interdit, mais par un REFUS : 409, qui dit de ranger d'abord la
+    dimension dans la collection du domaine. Ranger (`PATCH …/lexique`) reste le geste qui
+    fait descendre la portée, et après lui le rattachement passe."""
     cid, dom, _, _ = _branche(client, db_path)
     libre = client.post("/api/attributs/dimensions",
                         json={"cible": "case", "nom": "cadrage"}).json()
@@ -307,9 +314,30 @@ def test_rattacher_une_dimension_lui_donne_la_portee_du_domaine(client, db_path)
 
     r = client.patch(f"/api/attributs/dimensions/{libre['id']}/domaine",
                      json={"domaine_id": dom})
-    assert r.status_code == 200, r.text
-    assert _portee(db_path, "attribut_dimension", libre["id"]) == cid
-    assert _portee(db_path, "attribut_valeur", vlibre["id"]) == cid   # descendue aussi
+    assert r.status_code == 409, r.text
+    assert "Rangez d'abord" in r.json()["detail"]
+    assert _portee(db_path, "attribut_dimension", libre["id"]) is None
+    assert _portee(db_path, "attribut_valeur", vlibre["id"]) is None     # rien n'a bougé
+
+    client.patch(f"/api/attributs/dimensions/{libre['id']}/lexique", json={"collection_id": cid})
+    assert _portee(db_path, "attribut_valeur", vlibre["id"]) == cid      # ranger, lui, descend
+    r = client.patch(f"/api/attributs/dimensions/{libre['id']}/domaine",
+                     json={"domaine_id": dom})
+    assert r.status_code == 200 and r.json()["domaine_id"] == dom, r.text
+
+
+def test_rattacher_une_dimension_locale_a_un_domaine_global_ne_la_promeut_pas(client,
+                                                                             db_path):
+    """L'autre moitié du renversement du 2026-09-24 : sous v24, rattacher une dimension
+    LOCALE à un domaine GLOBAL la rendait globale — elle et son nom, publiés à toute
+    l'instance par un geste de rangement. Désormais permis, et rien ne bouge : un terme
+    plus local que son parent est légitime (A4)."""
+    cid, _, dim, _ = _branche(client, db_path)
+    glob = client.post("/api/domaines", json={"nom": "partage"}).json()
+    r = client.patch(f"/api/attributs/dimensions/{dim}/domaine",
+                     json={"domaine_id": glob["id"]})
+    assert r.status_code == 200 and r.json()["domaine_id"] == glob["id"], r.text
+    assert _portee(db_path, "attribut_dimension", dim) == cid
 
 
 def test_detacher_une_dimension_ne_la_promeut_pas(client, db_path):

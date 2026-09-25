@@ -626,17 +626,42 @@ def _patch_lexique(conn, table, oid, payload, portee, *, col_definition="definit
     # légitime — c'est le vocabulaire situé d'A4 — et deux termes locaux à des collections
     # DIFFÉRENTES ne sont ni l'un ni l'autre plus globaux : ce cas n'est pas tranché ici,
     # et le trancher au passage inventerait une règle que personne n'a décidée.
+    #
+    # AUTH-11 (2026-09-24) — « exhaustivement » s'entend de ce qu'on LIT. La chaîne se
+    # remonte sans filtre de portée (il faut la connaître pour refuser), et le refus
+    # nommait tout, y compris un ancêtre local à une collection que l'appelant ne lit pas :
+    # une valeur de c1 sous une dimension et un domaine de c3 (l'import d'avant AUTH-11 en
+    # produisait) livrait à qui n'écrit que dans c1 deux noms de la grille d'analyse de c3.
+    # Un ancêtre qu'on ne voit pas n'est plus nommé : il devient « un terme que vous ne
+    # lisez pas », une seule fois quel que soit leur nombre. Le message ne NOMME pas ce
+    # terme ; sa SORTE, elle, peut se déduire de la structure — l'ancêtre tu d'une
+    # dimension ne peut être qu'un domaine, et, pour une valeur dont la dimension est
+    # nommée, le terme tu est son domaine. Ce que le refus livre en plus du blocage lui-même
+    # est donc « un ancêtre, à tel palier, vit dans une collection que vous ne lisez pas »,
+    # jamais son nom ni sa collection. Le 403 de `promouvoir_parents`
+    # suit la même règle : on ne peut pas écrire ce qu'on ne lit pas, et le dire ne nomme
+    # rien. Un ancêtre qu'on lit reste nommé, et c'est lui que le consentement vise.
     promus = []
     if "collection_id" in updates and updates["collection_id"] is None:
         bloquants = [a for a in _ancetres_terme(conn, table, oid) if a[3] is not None]
         if bloquants and not getattr(payload, "promouvoir_parents", False):
-            quoi = " et ".join(f"{_LIBELLE[t]} « {nom} »" for t, _, nom, _ in bloquants)
-            accord = "qui restent locaux" if len(bloquants) > 1 else "qui reste local"
-            raise HTTPException(409, f"Ce terme dépend de {quoi}, {accord}. Un terme ne peut "
-                                     f"pas être plus global que celui dont il dépend. Pour "
-                                     f"les promouvoir aussi : promouvoir_parents=true.")
+            nommes = [f"{_LIBELLE[t]} « {nom} »" for t, _, nom, col in bloquants
+                      if portee.peut_lire(col)]
+            tait = len(nommes) < len(bloquants)
+            morceaux = nommes + (["un terme que vous ne lisez pas"] if tait else [])
+            quoi = " et ".join(morceaux)
+            quoi = f"d'{quoi}" if quoi.startswith("un ") else f"de {quoi}"
+            accord = "qui restent locaux" if len(morceaux) > 1 else "qui reste local"
+            suite = ("Seul qui écrit dans sa collection peut le promouvoir." if tait else
+                     "Pour les promouvoir aussi : promouvoir_parents=true.")
+            raise HTTPException(409, f"Ce terme dépend {quoi}, {accord}. Un terme ne peut "
+                                     f"pas être plus global que celui dont il dépend. "
+                                     f"{suite}")
         for t_anc, id_anc, nom_anc, col_anc in bloquants:
             if not portee.peut_ecrire_terme(col_anc):
+                if not portee.peut_lire(col_anc):
+                    raise HTTPException(403, "Promouvoir ce terme emporterait un terme que "
+                                             "vous ne lisez pas.")
                 raise HTTPException(403, f"Promouvoir {_LIBELLE[t_anc]} « {nom_anc} » demande "
                                          f"un droit d'écriture sur sa collection.")
         for t_anc, id_anc, nom_anc, _ in bloquants:

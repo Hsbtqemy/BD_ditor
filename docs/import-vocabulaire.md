@@ -57,9 +57,28 @@ une saisie humaine :
 - un terme **déjà présent** est **réutilisé** (jamais dupliqué) — l'import est **idempotent** ;
 - sa `definition` / `note_portee` n'est renseignée **que si elle est encore vide** ; une glose
   saisie dans l'app est intouchable ;
-- le **rattachement au domaine** ne se pose que si la dimension était *orpheline* (jamais déplacée) ;
-- la **portée** (`collection_id`) n'est fixée qu'à la **création** du terme (réimporter dans une
-  collection ne déménage pas un terme déjà global — l'appartenance est une décision humaine).
+- le **rattachement au domaine** ne se pose que si la dimension était *orpheline* : une
+  dimension déjà rangée n'est jamais déplacée d'un domaine à un autre. Et rattacher **ne
+  déplace jamais la portée** de la dimension, comme le même geste dans l'app
+  (`PATCH /api/attributs/dimensions/{id}/domaine`) — décidé le 2026-09-24 (AUTH-11), à rebours
+  de v24, qui faisait descendre la dimension dans la collection du domaine avec ses valeurs
+  globales, et rendait globale une dimension locale rangée sous un domaine global. Sous un
+  domaine **global**, ou de la **même collection**, le rattachement passe et rien ne bouge ;
+  sous un domaine propre à une **autre** collection que celle de la dimension — dimension
+  globale comprise, qui serait plus globale que son domaine —, la ligne est refusée
+  (*hors de la collection de son parent*, ci-dessous) : on range d'abord la dimension dans la
+  collection du domaine (panneau 📖 Lexique, menu *Portée*), puis on réimporte ;
+- la **portée** (`collection_id`) d'un terme **neuf** : importé **sans** collection (*Global*),
+  il hérite de la portée de son parent, comme dans l'app — une valeur créée sous une dimension
+  propre à une collection naît dans cette collection, une dimension créée sous un domaine local
+  aussi ; seuls les termes sans parent local naissent globaux. Importé **dans** une collection,
+  il y naît sous un parent global ou de cette collection ; sous un parent propre à une **autre**
+  collection, la ligne est refusée (*hors de la collection de son parent*) — décidé le
+  2026-09-24 : il y naissait, et laissait un terme qu'on ne pouvait ni lire en entier ni
+  promouvoir depuis sa collection ;
+- un terme **existant** ne change de portée par aucune voie : réimporter dans une collection ne
+  déménage pas un terme déjà là — l'appartenance est une décision humaine, qui se prend dans
+  l'app (menu *Portée* du 📖 Lexique).
 
 Deux définitions **différentes** pour un même terme dans le fichier → **avertissement** (faute de
 saisie typique) ; la première fait foi (cohérent avec le « ne jamais écraser »).
@@ -127,7 +146,8 @@ python tools/importer_vocabulaire.py mon_vocabulaire.csv --dry-run
 
 `--collection` prend un **id** de collection **existante** (à créer d'abord avec
 [`tools/gerer_collections.py`](../tools/gerer_collections.py) — seul outil d'écriture des
-collections) ; absent = global. La base suit `BD_DB_PATH` / `BD_DATA_DIR` (cf. `config.py`).
+collections) ; absent = global, sauf pour un terme créé sous un parent local, qui en hérite
+(cf. la doctrine ci-dessus). La base suit `BD_DB_PATH` / `BD_DATA_DIR` (cf. `config.py`).
 
 Le bilan (sur stderr) distingue **créés / déjà présents** par palier et liste les anomalies
 (cible inconnue, dimension vide → ligne ignorée) et avertissements (définitions divergentes).
@@ -136,8 +156,52 @@ Le bilan (sur stderr) distingue **créés / déjà présents** par palier et lis
 
 Le même import est accessible sans terminal : dans **Exploration → 📖 Lexique**, le bouton
 **« Importer un tableur… »** ouvre un sélecteur de fichier, avec un menu **« Importer dans »**
-(portée : *Global* ou une collection). Le bilan s'affiche en notifications et la modale se
-recharge. Route : `POST /api/lexique/importer` (multipart : `file` + `collection_id` optionnel).
+(portée : *Global* ou une collection **où vous écrivez** ; sous *Global*, les termes créés
+sans parent local sont visibles de toute l'instance. Si vous n'écrivez dans aucune collection,
+le menu et le bouton laissent place à une note qui le dit. Le choix est gardé d'un import à
+l'autre). La modale se recharge et le bilan s'affiche deux fois : une notification de synthèse, et sous la liste des termes, le même texte suivi du détail ligne
+par ligne — les dix premiers messages, puis « … et K autres ». Route :
+`POST /api/lexique/importer` (multipart : `file` + `collection_id` optionnel).
+
+### Les lignes refusées
+
+Derrière le portail d'authentification, l'import s'applique **avec vos droits** (AUTH-11) : une
+ligne qui toucherait un terme que vous ne pouvez pas lire ou pas modifier, ou qui rangerait
+un terme hors de la collection de son parent, est **refusée entière** — rien n'en est écrit,
+pas même la partie qui aurait pu l'être — et comptée à part, sous l'un de trois motifs, jugés
+dans cet ordre :
+
+| Motif affiché | Ce qui s'est passé |
+|---|---|
+| **libellé déjà pris** | la ligne nomme un domaine, une dimension ou une valeur dont le libellé existe déjà dans l'instance, **hors de ce que vous lisez**. |
+| **en lecture seule pour vous** | la ligne **écrirait** sur un terme que vous voyez sans pouvoir le modifier : remplir sa définition ou sa note encore vide, créer une dimension sous ce domaine ou y rattacher une dimension orpheline, nommer une valeur sous cette dimension (qu'elle existe ou non). |
+| **hors de la collection de son parent** | le parent est visible et modifiable, mais la ligne rangerait un terme hors de sa collection : importée **dans** une collection, une dimension neuve sous un domaine ou une valeur neuve sous une dimension propres à une **autre** collection ; ou le rattachement d'une dimension orpheline à un domaine propre à une autre collection que la sienne (dimension globale comprise). Nommer un terme qui existe déjà n'est pas concerné. |
+
+Nommer seulement un domaine ou une dimension en lecture seule, sans rien lui écrire, n'est
+**pas** un refus : la ligne passe et le terme compte comme déjà présent. **Sauf pour les
+valeurs** : une ligne qui nomme une valeur sous une dimension en lecture seule est refusée,
+que la valeur existe ou non — comme la route unitaire, qui refuse sans regarder les valeurs
+d'une dimension qu'on ne peut pas modifier.
+
+**« Libellé déjà pris » ne dit pas OÙ.** Il confirme qu'un libellé est pris, et rien d'autre :
+ni dans quelle collection, ni par quel terme, ni ce que ce terme porte — c'est voulu, un
+vocabulaire local est la grille d'analyse de son équipe, et l'écran ne l'élargit pas. Pour
+avancer : choisir un autre libellé, ou s'adresser à un administrateur de l'instance. (Tant que
+les libellés sont uniques dans toute l'instance, cette collision est possible ; une unicité
+(libellé, collection) du même type que celle envisagée pour les tags avec `COL-1` la
+fermerait.)
+
+La **synthèse** dit ce qui est entré et ce qui a été refusé, par motif — par exemple
+*« Import : 0 domaine, 1 dimension, 1 valeur créés. 3 lignes refusées : libellé déjà pris (2),
+en lecture seule pour vous (1). »* Quand **aucune** ligne n'est entrée, elle ne dit pas
+« 0 créé » mais *« Rien n'a été importé. »*, et la notification prend le ton d'une erreur : un
+import vide ne doit pas se lire comme un import réussi qui n'avait rien de neuf. Un import
+partiel garde un ton neutre, et les lignes mal formées (cible inconnue, dimension vide) se
+comptent à part.
+
+En mono-poste comme en ligne de commande, la portée est totale : aucune ligne n'est jamais
+refusée comme *libellé déjà pris* ni *en lecture seule*. Le troisième motif, lui, s'applique
+partout : il ne protège pas un lecteur, il garde la cohérence des portées.
 
 Le **cœur** (parsing + upsert) vit dans `lexique_import.py` ; l'outil CLI comme la route en
 sont de **minces enveloppes** — une seule logique, testée en un seul endroit.

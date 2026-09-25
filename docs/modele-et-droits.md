@@ -361,9 +361,12 @@ Deux règles gouvernent cette portée, et la seconde n'est pas intuitive.
 1. **Un terme n'est jamais plus global que celui dont il dépend.** Une dimension hérite de la
    portée de son domaine, une valeur de celle de sa dimension. Sans cette règle, une valeur
    créée sous un axe privé naîtrait globale — et ce qui fuirait ne serait pas le mot, mais le
-   **nom de l'axe**, c'est-à-dire une grille d'analyse. Déplacer une dimension sous un domaine
-   privé la fait donc **descendre** avec lui ; l'en **détacher ne la promeut pas**, parce que
-   ranger n'est pas publier.
+   **nom de l'axe**, c'est-à-dire une grille d'analyse. **Rattacher une dimension à un domaine
+   ne change jamais sa portée** (décidé le 2026-09-24 ; avant, elle descendait avec lui, ou
+   devenait globale sous un domaine global) : sous un domaine global ou de sa collection, le
+   rattachement passe ; sous un domaine propre à une autre collection, il est refusé, et
+   l'écran dit de ranger d'abord la dimension dans la collection du domaine (menu *Portée*).
+   L'en **détacher ne la promeut pas** non plus, parce que ranger n'est pas publier.
 2. **Le vocabulaire ne suit pas la même règle que les données.** Vous voyez un terme s'il est
    global **ou** local à une collection que vous lisez. En revanche ses **compteurs**
    (fréquences, usages) sont filtrés comme des données : un nuage de tags doit refléter le
@@ -413,6 +416,13 @@ garde sa définition. Il est donc rejouable sans risque. Deux portes, le même c
 *Importer un tableur…* du panneau *📖 Lexique* (avec un sélecteur de portée), et
 `tools/importer_vocabulaire.py` en ligne de commande (`--collection`, `--dry-run`, modèle dans
 `tools/vocabulaire-modele.csv`). Cf. [`import-vocabulaire.md`](import-vocabulaire.md).
+Depuis l'écran, l'import s'applique avec vos droits : le menu propose les collections où
+l'on écrit, et *Global* à quiconque écrit quelque part — un choix lourd, puisque les termes
+ainsi créés sont visibles de toute l'instance (sauf sous un parent propre à une collection,
+dont un terme neuf hérite de la portée, comme dans l'app). Une ligne qui nomme un terme que vous ne
+lisez pas (« libellé déjà pris », sans dire où), qui écrirait sur un terme en lecture
+seule pour vous, ou qui rangerait un terme hors de la collection de son parent (« hors de la
+collection de son parent ») est refusée entière, et comptée par motif dans le bilan.
 
 ---
 

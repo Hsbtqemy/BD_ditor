@@ -33,6 +33,7 @@
   const MOTIFS = {
     libelle_pris: "libellé déjà pris",
     lecture_seule: "en lecture seule pour vous",
+    parent_ailleurs: "hors de la collection de son parent",
   };
 
   const DETAILS_MAX = 10;

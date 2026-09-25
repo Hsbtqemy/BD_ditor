@@ -400,7 +400,10 @@ provenance est celui qui permet de ne mesurer que sur ce qui a été relu par un
 Le panneau **📖 Lexique** liste tout le vocabulaire — domaines, dimensions, valeurs, tags —
 avec pour chacun sa définition, sa note de portée, son état et sa portée d'appartenance, plus
 un « % défini » d'ensemble. C'est aussi de là qu'on **importe une taxonomie** depuis un
-tableur.
+tableur ; une ligne qui nommerait un terme que vous ne lisez pas, écrirait sur un terme
+en lecture seule pour vous, ou rangerait un terme hors de la collection de son parent, est
+refusée, et le bilan le dit par motif
+(cf. [`import-vocabulaire.md`](import-vocabulaire.md)).
 
 ---
 

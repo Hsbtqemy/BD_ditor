@@ -3,8 +3,9 @@
 Vérifie le chargement d'un tableur CSV point-virgule vers le palier domaine → dimension →
 valeur + couche lexique SKOS : création, IDEMPOTENCE (rejouable sans doublon), doctrine
 « pré-remplir sans écraser » (une glose humaine n'est jamais remplacée ; un champ vide se
-remplit), portée `collection_id` posée à la création, dimension hors domaine, validation
-(cible/dimension), et le bout-en-bout CLI sur la template livrée (garde UTF-8 Windows).
+remplit), portée `collection_id` posée à la création et que le rattachement ne déplace pas
+(AUTH-11), dimension hors domaine, validation (cible/dimension), et le bout-en-bout CLI sur la
+template livrée (garde UTF-8 Windows).
 """
 import os
 import sqlite3
@@ -193,6 +194,50 @@ def test_portee_non_reassignee_sur_terme_existant(tmp_path, data_dir, db_path):
     _charger(fichier, collection_id=cid)           # rejoué avec portée
     dom = direct_query(db_path, "SELECT collection_id FROM domaine WHERE nom='émotions'")[0]
     assert dom["collection_id"] is None            # reste global
+
+
+def test_rattacher_ne_deplace_jamais_une_portee(tmp_path, data_dir, db_path):
+    """AUTH-11 — l'import posait le `domaine_id` d'une dimension orpheline sans toucher sa
+    portée ; la route `PATCH …/domaine` la faisait passer dans la collection du domaine, sa
+    valeur GLOBALE avec elle. **Renversement daté (Hugo, 2026-09-24)** : un rattachement ne
+    déplace plus jamais de portée, par l'outil comme par la route. Trois cas, portée totale :
+
+    - dimension GLOBALE sous un domaine qui naît dans la collection : refusé
+      (`parent_ailleurs`), elle serait plus globale que son domaine ; rien ne bouge ;
+    - dimension de la collection sous le même domaine de la collection : rattachée, en place ;
+    - dimension de la collection sous un domaine GLOBAL : rattachée, et elle RESTE dans sa
+      collection — la route la rendait globale."""
+    conn = database.get_connection()
+    dim = conn.execute("INSERT INTO attribut_dimension (cible, nom) "
+                       "VALUES ('case', 'valence')").lastrowid
+    conn.execute("INSERT INTO attribut_valeur (dimension_id, valeur) VALUES (?, 'neutre')",
+                 (dim,))
+    conn.commit(); conn.close()
+    cid = _creer_collection()
+    res, avert, _ = _charger(_ecrire(tmp_path, CSV_MINI), collection_id=cid)
+    assert res["refusees"]["parent_ailleurs"] == 2, avert        # les deux lignes « valence »
+    lig = direct_query(db_path, "SELECT collection_id, domaine_id FROM attribut_dimension "
+                                "WHERE nom = 'valence'")[0]
+    assert (lig["collection_id"], lig["domaine_id"]) == (None, None)
+    assert direct_query(db_path, "SELECT collection_id FROM attribut_valeur "
+                                 "WHERE valeur = 'neutre'")[0]["collection_id"] is None
+
+    conn = database.get_connection()
+    conn.execute("UPDATE attribut_dimension SET collection_id = ? WHERE id = ?", (cid, dim))
+    loc = conn.execute("INSERT INTO attribut_dimension (cible, nom, collection_id) "
+                       "VALUES ('case', 'cadrage', ?)", (cid,)).lastrowid
+    conn.commit(); conn.close()
+    csv = ("domaine;domaine_definition;cible;dimension;dimension_definition;"
+           "dimension_note_portee;valeur;valeur_definition\n"
+           "cadres;;case;cadrage;;;;\n")
+    res, avert, _ = _charger(_ecrire(tmp_path, CSV_MINI))          # « émotions » naît GLOBAL
+    res2, avert2, _ = _charger(_ecrire(tmp_path, csv, "b.csv"), collection_id=cid)
+    assert res["refusees"]["parent_ailleurs"] == res2["refusees"]["parent_ailleurs"] == 0
+    for nom, oid, domaine in (("valence", dim, "émotions"), ("cadrage", loc, "cadres")):
+        lig = direct_query(db_path, "SELECT d.collection_id, o.nom AS domaine FROM "
+                                    "attribut_dimension d JOIN domaine o ON o.id = d.domaine_id "
+                                    f"WHERE d.id = {oid}")[0]
+        assert (lig["collection_id"], lig["domaine"]) == (cid, domaine), nom
 
 
 # --------------------------------------------------------------------------- #

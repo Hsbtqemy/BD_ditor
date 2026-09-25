@@ -731,12 +731,24 @@ function termEditor(kind, term, defi) {
     </div>`;
   const badge = d.querySelector('[data-role="badge"]');
   const domSel = d.querySelector('[data-f="domaine_id"]');   // dimensions seulement
+  // Ce que le sélecteur MONTRE, et non ce que dit `term.domaine_id` : un domaine qu'on ne
+  // voit pas (AUTH-2) n'est pas une option, et le sélecteur affiche alors « Hors domaine ».
+  let domaineAffiche = domSel ? domSel.value : "";
   if (domSel) domSel.addEventListener("change", async (e) => {
     try {
       await apiSend("PATCH", `/api/attributs/dimensions/${term.id}/domaine`,
                     { domaine_id: e.target.value ? Number(e.target.value) : null });
+      domaineAffiche = e.target.value;
       toast("Domaine mis à jour"); loadLexique();          // regroupement changé → re-render
-    } catch (err) { toast("Échec : " + err.message, "error"); }
+    } catch (err) {
+      // Échec (409 d'un rattachement qui déplacerait une portée, AUTH-11) : rien n'est
+      // enregistré, donc le sélecteur revient à ce qu'il montrait — sinon il afficherait un
+      // rattachement qui n'existe pas. Revenir à `term.domaine_id` ne suffit pas : pour un
+      // domaine caché, aucune option ne correspondrait, et rien ne serait sélectionné.
+      // Même patron que la case « Défini » ci-dessous.
+      e.target.value = domaineAffiche;
+      toast("Échec : " + err.message, "error");
+    }
   });
   // `save` renvoie true/false : les MAJ optimistes (badge, % défini) ne s'appliquent QUE
   // sur succès — sinon l'UI divergerait de la base (ex. 409 base occupée, 500).

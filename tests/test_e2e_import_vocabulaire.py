@@ -200,3 +200,71 @@ def test_un_import_en_echec_efface_le_bilan_precedent(page, decor):
     assert rep.value.status == 400
     expect(page.locator("#toasts .toast.error", has_text="Import échoué")).to_have_count(1)
     expect(bilan).to_be_hidden()
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_un_rattachement_refuse_ne_laisse_pas_le_selecteur_mentir(page, decor):
+    """AUTH-11, 2026-09-24 — un rattachement qui déplacerait une portée est refusé (409 de
+    `PATCH …/domaine` : ranger d'abord la dimension dans la collection du domaine). Le
+    toast le disait, mais le sélecteur de domaine du 📖 Lexique restait sur le domaine
+    choisi, alors que rien n'était enregistré : l'écran affichait un rattachement qui
+    n'existait pas, jusqu'au rechargement suivant. Après le refus, il montre de nouveau
+    ce qu'il montrait avant — « Hors domaine » pour une dimension orpheline, son domaine
+    pour une dimension déjà rangée — et la base le confirme.
+
+    Troisième cas, celui qui départage « ce qui est en base » de « ce qui était affiché » :
+    une dimension de A rangée sous un domaine CACHÉ à Bob (d'une collection qu'il ne lit
+    pas). Son domaine n'est pas une option du sélecteur, qui affiche donc « Hors domaine » ;
+    y remettre l'identifiant en base ne sélectionnerait RIEN (`selectedIndex` à -1). Le
+    refus vient ici d'un domaine d'une collection D où Bob écrit aussi."""
+    admin = {**ECRITURE, "Remote-User": "decor", "Remote-Groups": "bd-admins"}
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30, headers=admin) as c:
+        dom = c.post("/api/domaines", json={"nom": "champ de a"}).json()
+        assert c.patch(f"/api/domaines/{dom['id']}/lexique",
+                       json={"collection_id": decor["a"]}).status_code == 200
+        commun = c.post("/api/domaines", json={"nom": "champ commun"}).json()   # global
+        dims = {  # deux dimensions GLOBALES : l'une orpheline, l'autre sous le domaine global
+            "axe orphelin": c.post("/api/attributs/dimensions",
+                                   json={"cible": "case", "nom": "axe orphelin"}).json(),
+            "axe range": c.post("/api/attributs/dimensions",
+                                json={"cible": "case", "nom": "axe range",
+                                      "domaine_id": commun["id"]}).json()}
+        ids = {}
+        for nom in ("Étude D", "Étude E"):          # Bob écrit dans D, ne voit pas E
+            r = c.post("/api/collections", json={"nom": nom})
+            assert r.status_code in (200, 201), r.text
+            ids[nom] = r.json()["id"]
+        assert c.put(f"/api/collections/{ids['Étude D']}/acces", json={
+            "genre": "utilisateur", "principal": "bob",
+            "niveau": "ecriture"}).status_code == 200
+        dom_d = c.post("/api/domaines", json={"nom": "champ de d"}).json()
+        cache = c.post("/api/domaines", json={"nom": "champ cache"}).json()
+        for d_id, coll in ((dom_d["id"], ids["Étude D"]), (cache["id"], ids["Étude E"])):
+            assert c.patch(f"/api/domaines/{d_id}/lexique",
+                           json={"collection_id": coll}).status_code == 200
+        sous_cache = c.post("/api/attributs/dimensions",   # naît dans E, sous son domaine
+                            json={"cible": "case", "nom": "axe sous cache",
+                                  "domaine_id": cache["id"]}).json()
+        assert c.patch(f"/api/attributs/dimensions/{sous_cache['id']}/lexique",
+                       json={"collection_id": decor["a"]}).status_code == 200   # rangée dans A
+        dims["axe sous cache"] = sous_cache
+    attendu = {"axe orphelin": ("champ de a", "", "Hors domaine", None),
+               "axe range": ("champ de a", str(commun["id"]), "champ commun", commun["id"]),
+               "axe sous cache": ("champ de d", "", "Hors domaine", cache["id"])}
+    _ouvrir_lexique(page, decor, "bob")
+    for nom, (cible, valeur, libelle, en_base) in attendu.items():
+        terme = page.locator(".lex-term:not(.lex-domaine)",
+                             has=page.locator(".lex-name", has_text=nom))
+        terme.locator("summary").click()
+        sel = terme.locator('select[data-f="domaine_id"]')
+        with page.expect_response(lambda r: "/domaine" in r.url
+                                  and r.request.method == "PATCH") as rep:
+            sel.select_option(label=cible)
+        assert rep.value.status == 409, rep.value.text()
+        expect(page.locator("#toasts .toast.error").last).to_contain_text("Rangez d'abord")
+        expect(sel).to_have_value(valeur)
+        expect(sel.locator("option:checked")).to_have_text(libelle)
+        with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30,
+                          headers=admin) as c:
+            d = next(x for x in c.get("/api/attributs/dimensions").json()
+                     if x["id"] == dims[nom]["id"])
+        assert d["domaine_id"] == en_base, nom

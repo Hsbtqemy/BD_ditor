@@ -38,7 +38,6 @@ from socle import (
     LexiqueIn, LocuteurIn, PersonnageIn, PersonnageUpdate, PresenceIn, ValeurIn,
     _attributs_de, _clause_personnage, _get_dimension, _get_personnage, _get_region,
     _get_valeur, _norm_tag, _patch_lexique, _row, _rows, _sans_accents, db, portee_courante,
-    _descendre_portee,          # v24 : la portée suit le rattachement, et elle DESCEND
 )
 
 router = APIRouter()
@@ -511,34 +510,48 @@ def patch_dimension_domaine(dim_id: int, payload: DimensionDomaineIn,
                             portee: autorisation.Portee = Depends(portee_courante)):
     """Rattache une dimension à un domaine (ou l'en détache avec `domaine_id: null`).
 
-    v24 — la PORTÉE suit le rattachement. La création héritait déjà du domaine ; ce
-    déplacement ne le faisait pas, si bien qu'une dimension GLOBALE passée sous un domaine
-    PRIVÉ y restait globale (mesuré le 2026-09-06, HTTP 200 sans un mot). Ce qui fuyait
-    alors n'était pas un mot mais le NOM DE L'AXE — la grille d'analyse d'une collection
-    fermée, nommée à tout le monde, ce que v24 décrit précisément comme le défaut à fermer.
+    **Un rattachement ne déplace JAMAIS une portée** — renversement daté, tranché par Hugo
+    le 2026-09-24 (AUTH-11). v24 faisait suivre la portée : une dimension GLOBALE passée
+    sous un domaine PRIVÉ y descendait avec ses valeurs globales — ce qui les retirait sans
+    un mot à toutes les autres collections —, et une dimension LOCALE passée sous un
+    domaine GLOBAL devenait globale — ce qui publiait son nom à toute l'instance. Deux
+    déplacements que personne n'avait demandés, par un geste de rangement.
+
+    Désormais :
+    - sous un domaine GLOBAL, ou de la même collection que la dimension : permis, et rien
+      ne bouge (une dimension plus locale que son domaine est légitime, A4) ;
+    - sous un domaine LOCAL à une autre collection que la sienne — dimension globale
+      comprise, qui serait plus globale que son domaine (v24) : **409**, qui dit de ranger
+      d'abord la dimension dans la collection du domaine (`PATCH …/lexique`, menu Portée du
+      📖 Lexique). C'est ce geste-là qui fait descendre la portée — la dimension, et ses
+      valeurs GLOBALES avec elle ; cette descente des valeurs ne se voit pas : la réponse
+      n'en dit rien (`promus` ne compte que les ancêtres promus) et l'écran n'affiche
+      qu'« Enregistré ». Le message nomme le domaine, que l'appelant vient de choisir et
+      lit ; rien d'autre.
+
+    Le verrou d'écriture (`conflit.verrouiller`) est pris avant de lire la dimension et le
+    domaine, comme dans les autres routes d'AUTH-11 : la garde et l'écriture voient le même
+    état, et un `PATCH …/lexique` concurrent ne peut pas changer une portée entre les deux.
 
     DÉTACHER ne promeut pas. `domaine_id: null` laisse la portée en place, alors que la
     création sans domaine naît globale : les deux ne sont pas le même geste. Sortir une
     dimension de son domaine est un rangement ; la rendre globale au passage serait une
-    publication que personne n'a demandée — exactement la classe de défaut réparée ici.
+    publication que personne n'a demandée.
+
+    L'import de vocabulaire refuse les mêmes cas (`lexique_import`, motif
+    `parent_ailleurs`).
     """
-    _get_dimension(conn, portee, dim_id, ecriture=True)
-    # « Ne pas toucher à la portée » et « la mettre à NULL » sont deux choses, et NULL
-    # est une valeur légitime : il faut donc un troisième état pour dire « rien ».
-    RIEN = object()
-    cible = RIEN
+    conflit.verrouiller(conn)      # la garde et l'écriture voient le même état
+    dim = _get_dimension(conn, portee, dim_id, ecriture=True)
     if payload.domaine_id is not None:
         dom = _get_domaine(conn, portee, payload.domaine_id, ecriture=True)
-        cible = dom["collection_id"]
+        if dom["collection_id"] is not None and dim["collection_id"] != dom["collection_id"]:
+            raise HTTPException(409, f"Le domaine « {dom['nom']} » est propre à une "
+                                     f"collection, et cette dimension n'y est pas rangée. "
+                                     f"Rangez d'abord la dimension dans la collection du "
+                                     f"domaine (📖 Lexique, menu Portée), puis rattachez-la.")
     conn.execute("UPDATE attribut_dimension SET domaine_id = ? WHERE id = ?",
                  (payload.domaine_id, dim_id))
-    if cible is not RIEN:
-        conn.execute("UPDATE attribut_dimension SET collection_id = ? WHERE id = ?",
-                     (cible, dim_id))
-        # Et la portée DESCEND : une dimension devenue locale laisserait ses valeurs
-        # globales au-dessus d'elle. Même réserve que la migration v24 — seules les valeurs
-        # sans portée bougent ; une valeur déjà locale ailleurs est un fait délibéré.
-        _descendre_portee(conn, "attribut_dimension", dim_id, cible)
     conn.commit()
     return _row(conn.execute("SELECT * FROM attribut_dimension WHERE id = ?", (dim_id,)))
 

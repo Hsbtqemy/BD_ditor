@@ -51,7 +51,9 @@ analysable → dimension ; étiquette légère → tag.
 
 - **API** : `GET/POST /api/domaines` · `PATCH /api/domaines/{id}` (renommer, préserve le
   regroupement) · `DELETE …` (promotion) · `PATCH /api/domaines/{id}/lexique` (couche SKOS) ·
-  `PATCH /api/attributs/dimensions/{id}/domaine` (rattacher / détacher). `create_dimension`
+  `PATCH /api/attributs/dimensions/{id}/domaine` (rattacher / détacher ; ne change jamais la
+  portée de la dimension, et répond 409 sous un domaine propre à une autre collection que la
+  sienne — AUTH-11, 2026-09-24). `create_dimension`
   accepte un `domaine_id` optionnel. `GET /api/lexique` renvoie désormais `domaines` + le
   `domaine_id` de chaque dimension.
 - **UI** : panneau **📖 Lexique** (Exploration) — création d'un domaine, domaines documentables

@@ -8,9 +8,16 @@ l'annotation.
 
 Doctrine « pré-remplir, jamais écraser » (comme l'OCR) : un terme déjà présent est réutilisé
 (idempotent) ; sa glose n'est posée que si vide, le rattachement d'une dimension à son
-domaine aussi (à la création, ou s'il manquait) ; la portée (`collection_id`) ne se pose
-qu'à la CRÉATION. L'état (`provisoire`→`defini`) se promeut dans l'app, pas ici.
-Cf. docs/import-vocabulaire.md, modèle tools/vocabulaire-modele.csv.
+domaine aussi (à la création, ou s'il manquait). L'état (`provisoire`→`defini`) se promeut
+dans l'app, pas ici. Cf. docs/import-vocabulaire.md, modèle tools/vocabulaire-modele.csv.
+
+La portée (`collection_id`) suit les routes de l'app (AUTH-11, cf. `lexique_import`) : un
+terme NEUF va dans `--collection`, ou, sans elle, hérite de son parent (une dimension de son
+domaine, une valeur de sa dimension) ; aucun terme existant ne change de portée, pas même
+une dimension qu'on RATTACHE à un domaine. Une ligne qui rangerait un terme hors de la
+collection de son parent — terme neuf sous un parent d'une autre collection, dimension
+rattachée à un domaine d'une autre collection que la sienne — est refusée (« hors de la
+collection de son parent »), en ligne de commande comme dans l'app.
 
 Format (point-virgule, en-tête obligatoire) :
 
@@ -77,7 +84,9 @@ def cmd_importer(args) -> int:
                 f"Collection {args.collection} introuvable "
                 f"(créez-la d'abord : tools/gerer_collections.py creer --nom \"…\").")
         # Portée TOTALE : qui lance l'outil tient la base entre ses mains, comme en
-        # mono-poste. Le cœur l'exige depuis AUTH-11 ; ici elle ne refuse rien.
+        # mono-poste. Le cœur l'exige depuis AUTH-11 ; ici elle ne refuse ni « libellé
+        # déjà pris » ni « lecture seule », mais la troisième passe s'applique : une ligne
+        # hors de la collection de son parent est refusée (`parent_ailleurs`).
         res, avert = importer(conn, lignes, args.collection, portee=autorisation.TOTALE)
         if args.dry_run:
             conn.rollback()

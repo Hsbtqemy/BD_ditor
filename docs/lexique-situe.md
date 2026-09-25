@@ -60,6 +60,17 @@ Trois couches, parce qu'une seule ne suffisait pas :
 L'inverse — un terme **local sous un parent global** — reste parfaitement légitime : une
 étude peut ajouter sa valeur à un axe partagé.
 
+**Rattacher ne déplace pas** (renversement daté du 2026-09-24, AUTH-11). v24 faisait suivre
+la portée d'une dimension RATTACHÉE à un domaine : globale sous un domaine privé, elle y
+descendait avec ses valeurs globales — et disparaissait sans un mot des autres collections ;
+locale sous un domaine global, elle devenait globale — et son nom se publiait. Deux
+déplacements que personne n'avait demandés. Désormais `PATCH …/domaine` ne touche que le
+`domaine_id` : permis sous un domaine global ou de la même collection, **409** sous un domaine
+propre à une autre collection que celle de la dimension (dimension globale comprise), avec la
+marche à suivre — ranger d'abord la dimension (`PATCH …/lexique`, qui, lui, fait descendre la
+portée : la dimension, et ses valeurs globales avec elle — une descente qui ne se voit pas,
+l'écran n'affichant qu'« Enregistré »). L'import de vocabulaire refuse les mêmes lignes.
+
 ## Édition — l'API et l'UI
 
 - **API** (partielle, un `PATCH` par champ) :

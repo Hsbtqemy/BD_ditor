@@ -20,7 +20,7 @@ function reponse({ lignes = 0, cree = [0, 0, 0], refusees = {}, anomalies = [],
     resume: {
       domaines: { cree: d, existant: 0 }, dimensions: { cree: di, existant: 0 },
       valeurs: { cree: v, existant: 0 },
-      refusees: Object.assign({ libelle_pris: 0, lecture_seule: 0 }, refusees),
+      refusees: Object.assign({ libelle_pris: 0, lecture_seule: 0, parent_ailleurs: 0 }, refusees),
     },
     lignes, anomalies, avertissements,
   };
@@ -94,7 +94,8 @@ test("la synthèse ne dit rien d'autre que des chiffres, les motifs du serveur e
   for (const lignes of [0, 1, 3]) {
     for (const cree of [[0, 0, 0], [1, 1, 1], [2, 3, 4]]) {
       for (const refusees of [{}, { libelle_pris: 1 }, { lecture_seule: 2 },
-                              { libelle_pris: 2, lecture_seule: 1 }]) {
+                              { parent_ailleurs: 1 },
+                              { libelle_pris: 2, lecture_seule: 1, parent_ailleurs: 3 }]) {
         for (const anomalies of [[], ["L.2"], ["L.2", "L.3"]]) {
           cas.push(reponse({ lignes, cree, refusees, anomalies }));
         }
@@ -107,6 +108,17 @@ test("la synthèse ne dit rien d'autre que des chiffres, les motifs du serveur e
   }
   // La garde voit quelque chose : un mot ajouté la fait tomber.
   assert.notEqual(horsVocabulaire("3 lignes refusées : libellé déjà pris ailleurs (3)."), "");
+});
+
+test("le troisième motif (AUTH-11, 2026-09-24) se dit avec ses mots, après les deux autres", () => {
+  // `parent_ailleurs` : un terme neuf, ou une dimension rattachée, hors de la collection de
+  // son parent — un parent VISIBLE, que le dire ne révèle pas. Il s'affiche en toutes
+  // lettres, pas sous sa clé brute, et à sa place dans l'ordre du serveur.
+  const b = bilan(reponse({ lignes: 4, cree: [0, 1, 0],
+                            refusees: { parent_ailleurs: 2, libelle_pris: 1 } }));
+  assert.equal(b.texte, "Import : 0 domaine, 1 dimension, 0 valeur créés. 3 lignes refusées : "
+    + "libellé déjà pris (1), hors de la collection de son parent (2).");
+  assert.equal(b.ton, "");
 });
 
 test("un motif inconnu de l'écran est affiché sous sa clé, jamais perdu", () => {
