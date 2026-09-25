@@ -71,6 +71,19 @@ bascule de la barre de navigation. Un défaut de thème se rapporte à `A11Y-*`,
 - [ ] Au clavier, en partant du haut de la modale, Tab parcourt les contrôles de la modale sans jamais s'arrêter sur un élément invisible ou inerte à l'endroit de l'import
 - [ ] Avec un lecteur d'écran (NVDA : flèche bas pour lire la modale ligne à ligne), la note est lue, en entier, à l'endroit où serait le menu
 
+### Un rattachement refusé
+
+**Sous `stagiaire`**, *Exploration → 📖 Lexique*, sur une recette qui contient `bef0b83`.
+Décor, sous `proprio`, dans le même panneau : créer le domaine `champ-test` et le ranger
+dans Collection Test (menu « Portée ») ; puis passer la dimension `axe-qa` — née dans
+Collection Test par l'import plus haut — en « Global » par son menu « Portée ». On a ainsi
+une dimension GLOBALE et un domaine LOCAL, tous deux visibles et modifiables par
+`stagiaire` : exactement le rattachement que la règle refuse.
+
+- [ ] Choisir `champ-test` dans le sélecteur de domaine d'`axe-qa` : un toast ROUGE dit « Rangez d'abord la dimension dans la collection du domaine », et nomme `champ-test` et rien d'autre
+- [ ] Juste après ce toast, sans recharger, le sélecteur de domaine d'`axe-qa` affiche de nouveau ce qu'il affichait avant le geste — pas `champ-test`
+- [ ] Recharger la page : `axe-qa` n'est toujours sous aucun domaine
+
 ### Ce que le propriétaire voit
 
 **Sous `proprio`**, même panneau — l'autre côté, sans quoi les cases précédentes pourraient
