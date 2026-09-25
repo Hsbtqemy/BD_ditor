@@ -634,8 +634,9 @@ def _patch_lexique(conn, table, oid, payload, portee, *, col_definition="definit
     # PAS la seule chose connue : le sens et la sorte se déduisent souvent de la structure
     # (une valeur n'a pas d'enfant, un domaine pas de parent ; l'ancêtre d'une dimension ne
     # peut être qu'un domaine), et un rangement DEPUIS GLOBAL refusé révèle qu'une autre
-    # collection a spécialisé ce terme global — rangé sous lui un terme à elle. Ce bit n'est
-    # pas encore arbitré par Hugo (fiche AUTH-11) ; le comportement ne l'anticipe pas. Le
+    # collection a spécialisé ce terme global — rangé sous lui un terme à elle. Ce bit est
+    # ACCEPTÉ comme limite écrite (Hugo, 2026-09-25, fiche AUTH-11) : il ne se fermera que
+    # si privatiser un terme global cesse d'être ouvert à qui écrit quelque part (COL-1). Le
     # refus vient APRÈS les gardes d'écriture (sur le terme, puis sur C) : il ne répond qu'à
     # qui pourrait ranger, et rien ne parle avant elles.
     #

@@ -409,6 +409,17 @@ migration de schéma **et une réindexation complète du corpus** : le bon momen
 tags de l'index ferait aussi mentir la promesse du champ de recherche, qui annonce
 « dialogues, notes, tags » ; c'est à réécrire le même jour.
 
+**Une seconde limite assumée : ranger un terme global.** Un terme ne se range pas hors de la
+collection de ses dépendants. Ranger dans votre collection un terme **global** qui porte, sous
+lui, un terme rangé dans une collection que vous ne lisez pas est donc refusé — et le refus
+dit « un terme lié que vous ne lisez pas ». Il vous apprend ainsi qu'**une autre collection a
+précisé ce terme** : un bit par terme global, sans nom ni collection, mais la sorte du terme
+tu se déduit de la structure (sous une dimension, ce ne peut être qu'une valeur). Quiconque
+écrit quelque part peut poser la question. Décision du 2026-09-25 : on garde le refus — le
+retirer recréerait un terme séparé de ce qui en dépend — et on écrit la limite. **Ce qui la
+fermerait** : que rendre privé un terme partagé demande davantage que d'écrire quelque part,
+question ouverte avec le chantier `COL-1`.
+
 ### Amorcer le vocabulaire en lot
 
 On peut charger une taxonomie entière depuis un tableur CSV (séparateur `;`), colonnes :
