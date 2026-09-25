@@ -678,9 +678,13 @@ function lexResume(r) {
   return `${r.definis}/${r.total} terme(s) défini(s) — ${pct}`;
 }
 
+/* Le menu « Portée » : les collections où l'on ÉCRIT (`ecrivable`, AUTH-12 — comme le menu
+   « Importer dans »), plus celle où le terme vit déjà, pour que le menu dise la vérité sur
+   un terme d'une collection seulement lue. Proposer une collection lue promettait un
+   rangement que le serveur refuse (« introuvable »). */
 function porteeOptions(sel) {
   return [`<option value="">Global</option>`].concat(
-    LEX_COLLECTIONS.map((c) =>
+    LEX_COLLECTIONS.filter((c) => c.ecrivable || String(c.id) === String(sel)).map((c) =>
       `<option value="${c.id}"${String(c.id) === String(sel) ? " selected" : ""}>${esc(c.nom)}</option>`)
   ).join("");
 }
@@ -710,6 +714,7 @@ function termEditor(kind, term, defi) {
     : "";
   const d = document.createElement("details");
   d.className = "lex-term" + (kind === "domaine" ? " lex-domaine" : "");
+  d.dataset.terme = `${kind}:${term.id}`;    // pour rouvrir l'éditeur après un rechargement
   d.innerHTML = `
     <summary>
       <span class="lex-name">${esc(nom)}</span>
@@ -752,8 +757,13 @@ function termEditor(kind, term, defi) {
   });
   // `save` renvoie true/false : les MAJ optimistes (badge, % défini) ne s'appliquent QUE
   // sur succès — sinon l'UI divergerait de la base (ex. 409 base occupée, 500).
+  // `save` rend la réponse (vraie) sur succès, false sur échec.
   const save = async (patch) => {
-    try { await apiSend("PATCH", url, patch); toast("Enregistré"); return true; }
+    try {
+      const rep = await apiSend("PATCH", url, patch);
+      toast("Enregistré");
+      return rep || true;
+    }
     catch (e) { toast("Échec : " + e.message, "error"); return false; }
   };
   d.querySelectorAll("textarea[data-f]").forEach((ta) =>
@@ -767,8 +777,41 @@ function termEditor(kind, term, defi) {
     badge.classList.toggle("defini", e.target.checked);
     refreshLexResume();                       // le % défini change (succès uniquement)
   });
-  d.querySelector('[data-f="collection_id"]').addEventListener("change", (e) =>
-    save({ collection_id: e.target.value ? Number(e.target.value) : null }));
+  // Même patron que le sélecteur de domaine : après un échec (409 d'un rangement hors de
+  // la collection d'un terme lié, AUTH-11 2026-09-25), revenir à ce que le sélecteur
+  // MONTRAIT — sinon il afficherait un rangement qui n'a pas eu lieu. Ce n'est PAS
+  // `term.collection_id` : pour un terme GLOBAL, il vaut `null`, et `select.value = null`
+  // ne sélectionne aucune option — le refus depuis Global (le cas du bit, atteignable)
+  // laisserait le sélecteur vide. Ce qu'il montrait, lui, est « » : l'option « Global ».
+  //
+  // Désactivé quand le terme n'est pas modifiable : un terme d'une collection qu'on ne
+  // fait que lire (la sienne n'est pas `ecrivable`), ou un terme global quand on n'écrit
+  // nulle part — le geste répondrait 403. La collection du terme reste affichée (cf.
+  // `porteeOptions`), pour que le menu dise où il vit.
+  //
+  // Et après un succès, RECHARGER le lexique : un rangement déplace aussi d'autres termes —
+  // les descendants emportés d'une racine (AUTH-11, β), les globaux qui descendent — dont
+  // les éditeurs garderaient sinon l'ancienne portée. L'éditeur courant est rouvert, le
+  // focus rendu à son sélecteur, pour que le geste ne perde pas sa place.
+  const porteeSel = d.querySelector('[data-f="collection_id"]');
+  const porteeAffichee = porteeSel.value;
+  const saCollection = LEX_COLLECTIONS.find((c) => String(c.id) === String(term.collection_id));
+  porteeSel.disabled = term.collection_id == null
+    ? !LEX_COLLECTIONS.some((c) => c.ecrivable)
+    : !(saCollection && saCollection.ecrivable);
+  if (porteeSel.disabled) porteeSel.title = "En lecture seule pour vous";
+  porteeSel.addEventListener("change", async (e) => {
+    if (await save({ collection_id: e.target.value ? Number(e.target.value) : null })) {
+      await loadLexique();                    // l'éditeur est refait : sa mémoire avec lui
+      const rouvert = document.querySelector(`#lex-body [data-terme="${kind}:${term.id}"]`);
+      if (rouvert) {
+        rouvert.open = true;
+        rouvert.querySelector('[data-f="collection_id"]').focus();
+      }
+    } else {
+      e.target.value = porteeAffichee;
+    }
+  });
   return d;
 }
 

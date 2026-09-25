@@ -609,6 +609,111 @@ def _patch_lexique(conn, table, oid, payload, portee, *, col_definition="definit
                           (cible,)).fetchone() is None:
             raise HTTPException(404, f"Collection {cible} introuvable.")
 
+    # AUTH-11 — la TROISIÈME PORTE, fermée le 2026-09-25 (décision de Hugo). Ranger un
+    # terme dans une collection C le déplaçait sans rien regarder autour : une dimension
+    # sous un domaine de A rangée dans B, une dimension rangée dans B en laissant en A une
+    # valeur locale — l'état « hors de la collection de son parent » que l'import
+    # (`parent_ailleurs`) et le rattachement (`PATCH …/domaine`, 409) refusent depuis la
+    # veille. Refusé ici par un 409, si le parent est local à une autre collection que C ou
+    # si un terme qui en dépend l'est ; les enfants globaux descendent comme avant.
+    #
+    # RENVOYER un terme à la collection où il est déjà (relecture du 2026-09-25) n'est pas
+    # un déplacement du terme, mais sa descente l'est pour ses enfants GLOBAUX : un domaine
+    # de A dont la dimension globale porte une valeur de B faisait descendre la dimension en
+    # A — sous elle, une valeur de B. Choisi : JUGER ce que la descente déplacerait (les
+    # termes liés atteints à travers un enfant global) et refuser par le même 409, plutôt
+    # que de ne plus faire descendre. Ne pas faire descendre laisserait un enfant global
+    # au-dessus d'un parent local — l'état que v24 répare, et que la lecture masque — et le
+    # même geste ferait descendre ou non selon qu'il déplace ou renvoie : deux règles pour
+    # une. Les enfants DIRECTS d'un terme renvoyé ne sont pas jugés, eux : rien ne les
+    # déplace, et les juger bloquerait l'édition d'une base antérieure.
+    #
+    # Le refus nomme ce que l'appelant LIT, et lui seul — même forme que le 409 de la
+    # promotion ci-dessous. Tout terme lié qu'il ne lit pas devient « un terme lié que vous
+    # ne lisez pas », une seule fois : ni son nom, ni leur nombre. Ce qui en reste n'est
+    # PAS la seule chose connue : le sens et la sorte se déduisent souvent de la structure
+    # (une valeur n'a pas d'enfant, un domaine pas de parent ; l'ancêtre d'une dimension ne
+    # peut être qu'un domaine), et un rangement DEPUIS GLOBAL refusé révèle qu'une autre
+    # collection a spécialisé ce terme global — rangé sous lui un terme à elle. Ce bit n'est
+    # pas encore arbitré par Hugo (fiche AUTH-11) ; le comportement ne l'anticipe pas. Le
+    # refus vient APRÈS les gardes d'écriture (sur le terme, puis sur C) : il ne répond qu'à
+    # qui pourrait ranger, et rien ne parle avant elles.
+    #
+    # Option (β), tranchée par Hugo le même jour : ranger la RACINE d'une branche — un
+    # terme sans parent local (un domaine, une dimension sans domaine ou sous un domaine
+    # global, une valeur sous une dimension globale) — de sa collection A vers B EMPORTE ses
+    # descendants rangés dans A, d'un seul geste. Sans cela, une branche entièrement locale
+    # ne passait de A à B que par Global (`promouvoir_parents` puis le rangement de sa
+    # racine) : publique entre les deux gestes. Restent refusés : un descendant d'une
+    # TROISIÈME collection, et le milieu d'une branche (son parent est ailleurs). Depuis
+    # GLOBAL, rien n'est emporté — privatiser un terme global est une question à part
+    # (COL-1). DROITS : emporter un descendant, c'est l'écrire ; il est dans A, donc
+    # modifiable par qui écrit dans A — et ranger la racine l'exige déjà (la route garde le
+    # terme en écriture, `_get_*(ecriture=True)`, avant d'appeler ici ; il est dans A), comme
+    # elle exige d'écrire dans B (garde de la cible, au-dessus). Aucune garde de plus n'est
+    # donc nécessaire, et aucune n'est écrite : elle serait inatteignable. Les emportés sont
+    # rendus dans la réponse (`promus`, ce qui a bougé en plus du terme) — ils étaient dans
+    # A, donc lisibles de qui range.
+    emportes = []
+    if "collection_id" in updates and updates["collection_id"] is not None:
+        cible = updates["collection_id"]
+        # Les termes LIÉS qui retiennent : le parent immédiat s'il est local à une autre
+        # collection que C (un parent GLOBAL convient, A4), et les descendants locaux à une
+        # autre collection que C (un enfant déjà dans C ne gêne rien). Un enfant GLOBAL
+        # descendra (`_descendre_portee`) : ses propres enfants comptent donc, sans quoi la
+        # descente les laisserait derrière elle — ranger un domaine ferait descendre sa
+        # dimension globale et laisserait « ailleurs » une valeur locale à une autre
+        # collection. Un tag n'a ni parent ni enfant. Imbriquée et non exposée par le
+        # module : `main.py` ré-exporte tout nom que `socle` définit (ARCH-1).
+        lies = []
+
+        def descendants(t, i, tous=True):
+            # `tous=False` : ne juger que sous un enfant GLOBAL (le renvoi, plus bas).
+            for t_enfant, (p, fk, _) in _PARENT_TERME.items():
+                if p != t:
+                    continue
+                for l in conn.execute(f"SELECT id, {_NOM_TERME[t_enfant]} AS nom, "
+                                      f"collection_id FROM {t_enfant} WHERE {fk} = ? "
+                                      f"ORDER BY id", (i,)):
+                    if l["collection_id"] is None:
+                        descendants(t_enfant, l["id"])      # descendra : ses enfants comptent
+                    elif not tous:
+                        continue                            # enfant direct d'un renvoi
+                    elif emporter and l["collection_id"] == actuelle:
+                        emportes.append((t_enfant, l["id"], l["nom"]))   # (β) : part avec
+                        descendants(t_enfant, l["id"])      # la racine, et ses enfants aussi
+                    elif l["collection_id"] != cible:
+                        lies.append(("enfant", t_enfant, l["id"], l["nom"],
+                                     l["collection_id"]))
+
+        actuelle = conn.execute(f"SELECT collection_id FROM {table} WHERE id = ?",
+                                (oid,)).fetchone()["collection_id"]
+        if actuelle != cible:
+            chaine = _ancetres_terme(conn, table, oid)
+            parent_local = bool(chaine) and chaine[0][3] is not None
+            if parent_local and chaine[0][3] != cible:
+                lies.append(("parent", *chaine[0]))
+            # Une racine emporte ; depuis GLOBAL, rien : aucun descendant local n'y est « dans
+            # l'ancienne collection » (NULL), et les globaux descendent de toute façon.
+            emporter = not parent_local
+            descendants(table, oid)
+        else:                                   # renvoi : ne juger que ce qui descendrait
+            emporter = False
+            descendants(table, oid, tous=False)
+        if lies:
+            article = {"domaine": "le", "attribut_dimension": "la", "attribut_valeur": "la"}
+            nommes = [f"{article[t]} {_LIBELLE[t]} « {nom} », "
+                      f"{'dont il dépend' if role == 'parent' else 'qui en dépend'},"
+                      for role, t, _, nom, col in lies if portee.peut_lire(col)]
+            tait = len(nommes) < len(lies)
+            morceaux = nommes + (["un terme lié que vous ne lisez pas"] if tait else [])
+            verbe = "vivent" if len(morceaux) > 1 else "vit"
+            raise HTTPException(409, f"Ce terme ne peut pas être rangé dans cette collection : "
+                                     f"{' et '.join(morceaux)} {verbe} dans une autre "
+                                     f"collection. Un terme ne se range pas hors de la "
+                                     f"collection de son parent, ni de celle des termes "
+                                     f"qui en dépendent.")
+
     # v24 — UN TERME N'EST JAMAIS PLUS GLOBAL QUE CELUI DONT IL DÉPEND. L'invariant était
     # posé à la CRÉATION (une dimension hérite de son domaine, une valeur de sa dimension)
     # et dans la MIGRATION qui a recollé l'existant ; les routes qui DÉPLACENT ne l'ont
@@ -623,9 +728,10 @@ def _patch_lexique(conn, table, oid, payload, portee, *, col_definition="definit
     # qu'un « oui » à l'aveugle : on ne l'écrit qu'après avoir lu ce qu'il emporte.
     #
     # La règle ne borde QUE le sens interdit. Un terme plus LOCAL que son parent est
-    # légitime — c'est le vocabulaire situé d'A4 — et deux termes locaux à des collections
-    # DIFFÉRENTES ne sont ni l'un ni l'autre plus globaux : ce cas n'est pas tranché ici,
-    # et le trancher au passage inventerait une règle que personne n'a décidée.
+    # légitime — c'est le vocabulaire situé d'A4. Deux termes locaux à des collections
+    # DIFFÉRENTES, eux, ne sont ni l'un ni l'autre plus globaux, et ce n'est pas cette
+    # garde-ci qui les refuse : c'est celle du rangement, plus haut (AUTH-11, 2026-09-25),
+    # qui interdit d'en PRODUIRE. Promouvoir vers Global n'en produit jamais.
     #
     # AUTH-11 (2026-09-24) — « exhaustivement » s'entend de ce qu'on LIT. La chaîne se
     # remonte sans filtre de portée (il faut la connaître pour refuser), et le refus
@@ -672,8 +778,17 @@ def _patch_lexique(conn, table, oid, payload, portee, *, col_definition="definit
         cols = ", ".join(f"{k} = ?" for k in updates)
         conn.execute(f"UPDATE {table} SET {cols} WHERE id = ?", (*updates.values(), oid))
         # L'autre sens : rendre un terme plus LOCAL laisserait ses enfants au-dessus de lui.
+        # Et (β) : les descendants emportés suivent la racine, puis leurs enfants globaux
+        # descendent à leur tour — `_descendre_portee` ne traverse que des termes GLOBAUX,
+        # il ne passerait pas par eux.
         if "collection_id" in updates:
+            for t_e, i_e, _ in emportes:
+                conn.execute(f"UPDATE {t_e} SET collection_id = ? WHERE id = ?",
+                             (updates["collection_id"], i_e))
             _descendre_portee(conn, table, oid, updates["collection_id"])
+            for t_e, i_e, _ in emportes:
+                _descendre_portee(conn, t_e, i_e, updates["collection_id"])
+            promus += [f"{_LIBELLE[t_e]} « {nom_e} »" for t_e, _, nom_e in emportes]
         conn.commit()
     return promus
 

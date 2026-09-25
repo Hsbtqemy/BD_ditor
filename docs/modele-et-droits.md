@@ -366,7 +366,14 @@ Deux règles gouvernent cette portée, et la seconde n'est pas intuitive.
    devenait globale sous un domaine global) : sous un domaine global ou de sa collection, le
    rattachement passe ; sous un domaine propre à une autre collection, il est refusé, et
    l'écran dit de ranger d'abord la dimension dans la collection du domaine (menu *Portée*).
-   L'en **détacher ne la promeut pas** non plus, parce que ranger n'est pas publier.
+   L'en **détacher ne la promeut pas** non plus, parce que ranger n'est pas publier. Et
+   **ranger un terme dans une collection ne le sépare pas de ses termes liés** (décidé le
+   2026-09-25) : c'est refusé si son parent, ou un terme qui en dépend, est propre à une
+   autre collection — l'écran dit lequel, s'il vous est lisible. Un parent global convient,
+   et les termes globaux qui en dépendent suivent. Ranger la **racine** d'une branche (un
+   terme sans parent local) d'une collection à une autre **emporte** ses termes restés dans
+   l'ancienne, d'un seul geste (décidé le même jour) ; un terme d'une troisième collection
+   la retient toujours.
 2. **Le vocabulaire ne suit pas la même règle que les données.** Vous voyez un terme s'il est
    global **ou** local à une collection que vous lisez. En revanche ses **compteurs**
    (fréquences, usages) sont filtrés comme des données : un nuage de tags doit refléter le

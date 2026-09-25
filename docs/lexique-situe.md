@@ -68,8 +68,40 @@ déplacements que personne n'avait demandés. Désormais `PATCH …/domaine` ne 
 `domaine_id` : permis sous un domaine global ou de la même collection, **409** sous un domaine
 propre à une autre collection que celle de la dimension (dimension globale comprise), avec la
 marche à suivre — ranger d'abord la dimension (`PATCH …/lexique`, qui, lui, fait descendre la
-portée : la dimension, et ses valeurs globales avec elle — une descente qui ne se voit pas,
-l'écran n'affichant qu'« Enregistré »). L'import de vocabulaire refuse les mêmes lignes.
+portée : la dimension, et ses valeurs globales avec elle ; depuis le 2026-09-25, l'écran
+recharge le lexique après chaque rangement, et la descente se voit), sans promettre que ce
+rangement réussira. L'import de vocabulaire refuse les mêmes lignes.
+
+**Ranger ne sépare pas un terme de ses termes liés** (décidé le 2026-09-25, AUTH-11). Le
+rangement (`PATCH …/lexique {collection_id: C}`) était la troisième porte vers un terme rangé
+hors de la collection de son parent : une dimension sous un domaine de A rangée dans B, ou
+rangée dans B en laissant en A une valeur locale. Il est refusé désormais, par un **409** qui
+dit pourquoi, si le **parent** du terme est local à une autre collection que C, ou si un terme
+**qui en dépend** l'est — y compris sous un enfant global que la descente emmènerait. Un parent
+global convient ; les enfants globaux descendent comme avant ; ceux déjà dans C ne bougent
+pas ; un tag n'a ni parent ni enfant. Un **renvoi** — ranger un terme dans la collection où
+il est déjà — ne juge pas ses enfants directs, que rien ne déplace (sans quoi une base
+antérieure ne s'éditerait plus), mais juge ce que la descente déplacerait : sous un enfant
+global, un terme d'une autre collection refuse le renvoi, plutôt que de laisser descendre
+l'enfant au-dessus de lui (choix daté du 2026-09-25, après relecture : ne plus faire
+descendre aurait laissé l'enfant global au-dessus d'un parent local, l'état que v24
+répare). Le refus nomme les termes liés que l'appelant lit ; ceux qu'il ne lit pas deviennent
+« un terme lié que vous ne lisez pas », une seule fois. La promotion vers Global garde ses
+propres règles (ci-dessus).
+
+**Ranger la racine emporte sa branche** (option β, tranchée par Hugo le 2026-09-25). Au premier
+jet de la règle ci-dessus, une branche entièrement locale à A ne passait plus à B que par
+Global : chaque pas séparait un terme de son voisin, et il fallait la promouvoir
+(`promouvoir_parents`) puis ranger sa racine — la branche publique entre les deux gestes.
+Désormais, ranger de A vers B un terme **sans parent local** (un domaine, une dimension sans
+domaine ou sous un domaine global, une valeur sous une dimension globale) déplace aussi, d'un
+seul geste, ses descendants rangés dans A ; les descendants globaux descendent comme avant.
+Restent refusés un descendant d'une **troisième** collection et le **milieu** d'une branche
+(son parent est ailleurs, ou déjà dans B : ce n'est pas une racine). Depuis Global, rien n'est
+emporté — privatiser un terme global est une autre question (`COL-1`). Emporter, c'est
+écrire : les emportés sont dans A, où il faut déjà écrire pour ranger la racine. La réponse
+les nomme dans `promus`, et l'écran recharge le lexique : leurs éditeurs disent leur
+nouvelle portée.
 
 ## Édition — l'API et l'UI
 

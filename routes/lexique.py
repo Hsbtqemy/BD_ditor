@@ -142,7 +142,15 @@ def importer_lexique(file: UploadFile = File(...),
 def patch_dimension_lexique(dim_id: int, payload: LexiqueIn,
                             conn: sqlite3.Connection = Depends(db),
                             portee: autorisation.Portee = Depends(portee_courante)):
-    """Documente une dimension : définition + note de portée + état + portée d'appartenance."""
+    """Documente une dimension : définition + note de portée + état + portée d'appartenance.
+
+    AUTH-11 (2026-09-25) — le verrou d'écriture (`conflit.verrouiller`) est pris avant toute
+    lecture : les gardes du rangement (termes liés, emport de la branche) et l'écriture
+    voient le même état. Sans lui, une dimension créée entre la garde et l'UPDATE, dans
+    l'ancienne collection d'un domaine qu'on range, restait derrière lui (mesuré par la
+    relecture) — et l'argument « les droits des emportés sont ceux de la racine » en
+    dépend aussi."""
+    conflit.verrouiller(conn)
     _get_dimension(conn, portee, dim_id, ecriture=True)
     promus = _patch_lexique(conn, "attribut_dimension", dim_id, payload, portee)
     return {**_row(conn.execute("SELECT * FROM attribut_dimension WHERE id = ?", (dim_id,))),
@@ -153,7 +161,15 @@ def patch_dimension_lexique(dim_id: int, payload: LexiqueIn,
 def patch_valeur_lexique(val_id: int, payload: LexiqueIn,
                          conn: sqlite3.Connection = Depends(db),
                          portee: autorisation.Portee = Depends(portee_courante)):
-    """Documente une valeur canonique (même couche définitionnelle)."""
+    """Documente une valeur canonique (même couche définitionnelle).
+
+    AUTH-11 (2026-09-25) — le verrou d'écriture (`conflit.verrouiller`) est pris avant toute
+    lecture : les gardes du rangement (termes liés, emport de la branche) et l'écriture
+    voient le même état. Sans lui, une dimension créée entre la garde et l'UPDATE, dans
+    l'ancienne collection d'un domaine qu'on range, restait derrière lui (mesuré par la
+    relecture) — et l'argument « les droits des emportés sont ceux de la racine » en
+    dépend aussi."""
+    conflit.verrouiller(conn)
     _get_valeur(conn, portee, val_id, ecriture=True)
     promus = _patch_lexique(conn, "attribut_valeur", val_id, payload, portee)
     return {**_row(conn.execute("SELECT * FROM attribut_valeur WHERE id = ?", (val_id,))),
@@ -165,7 +181,15 @@ def patch_tag_lexique(tag_id: int, payload: LexiqueIn,
                       conn: sqlite3.Connection = Depends(db),
                       portee: autorisation.Portee = Depends(portee_courante)):
     """Documente un tag : sa `description` EST la définition SKOS ; + note de portée, état,
-    portée d'appartenance (même patron que le vocabulaire facetté)."""
+    portée d'appartenance (même patron que le vocabulaire facetté).
+
+    AUTH-11 (2026-09-25) — le verrou d'écriture (`conflit.verrouiller`) est pris avant toute
+    lecture : les gardes du rangement (termes liés, emport de la branche) et l'écriture
+    voient le même état. Sans lui, une dimension créée entre la garde et l'UPDATE, dans
+    l'ancienne collection d'un domaine qu'on range, restait derrière lui (mesuré par la
+    relecture) — et l'argument « les droits des emportés sont ceux de la racine » en
+    dépend aussi."""
+    conflit.verrouiller(conn)
     ou, params = portee.clause_terme("t.collection_id")
     tag = _row(conn.execute(f"SELECT * FROM tags t WHERE t.id = ? AND {ou}",
                             (tag_id, *params)))

@@ -202,7 +202,7 @@ def test_un_import_en_echec_efface_le_bilan_precedent(page, decor):
     expect(bilan).to_be_hidden()
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
-def test_un_rattachement_refuse_ne_laisse_pas_le_selecteur_mentir(page, decor):
+def test_un_rattachement_refuse_ne_laisse_pas_le_selecteur_mentir(page, decor, tmp_path):
     """AUTH-11, 2026-09-24 — un rattachement qui déplacerait une portée est refusé (409 de
     `PATCH …/domaine` : ranger d'abord la dimension dans la collection du domaine). Le
     toast le disait, mais le sélecteur de domaine du 📖 Lexique restait sur le domaine
@@ -215,7 +215,10 @@ def test_un_rattachement_refuse_ne_laisse_pas_le_selecteur_mentir(page, decor):
     une dimension de A rangée sous un domaine CACHÉ à Bob (d'une collection qu'il ne lit
     pas). Son domaine n'est pas une option du sélecteur, qui affiche donc « Hors domaine » ;
     y remettre l'identifiant en base ne sélectionnerait RIEN (`selectedIndex` à -1). Le
-    refus vient ici d'un domaine d'une collection D où Bob écrit aussi."""
+    refus vient ici d'un domaine d'une collection D où Bob écrit aussi. Cet état — une
+    dimension de A sous un domaine de E — l'API ne sait plus le produire depuis le
+    2026-09-25 (le rangement qui le créait est refusé) : il est posé directement en base,
+    comme une base antérieure le porte."""
     admin = {**ECRITURE, "Remote-User": "decor", "Remote-Groups": "bd-admins"}
     with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30, headers=admin) as c:
         dom = c.post("/api/domaines", json={"nom": "champ de a"}).json()
@@ -244,9 +247,15 @@ def test_un_rattachement_refuse_ne_laisse_pas_le_selecteur_mentir(page, decor):
         sous_cache = c.post("/api/attributs/dimensions",   # naît dans E, sous son domaine
                             json={"cible": "case", "nom": "axe sous cache",
                                   "domaine_id": cache["id"]}).json()
-        assert c.patch(f"/api/attributs/dimensions/{sous_cache['id']}/lexique",
-                       json={"collection_id": decor["a"]}).status_code == 200   # rangée dans A
-        dims["axe sous cache"] = sous_cache
+    import sqlite3                              # base du serveur live : même tmp_path
+    base = sqlite3.connect(tmp_path / "live.sqlite")
+    try:
+        base.execute("UPDATE attribut_dimension SET collection_id = ? WHERE id = ?",
+                     (decor["a"], sous_cache["id"]))        # rangée dans A, domaine en E
+        base.commit()
+    finally:
+        base.close()
+    dims["axe sous cache"] = sous_cache
     attendu = {"axe orphelin": ("champ de a", "", "Hors domaine", None),
                "axe range": ("champ de a", str(commun["id"]), "champ commun", commun["id"]),
                "axe sous cache": ("champ de d", "", "Hors domaine", cache["id"])}
@@ -268,3 +277,180 @@ def test_un_rattachement_refuse_ne_laisse_pas_le_selecteur_mentir(page, decor):
             d = next(x for x in c.get("/api/attributs/dimensions").json()
                      if x["id"] == dims[nom]["id"])
         assert d["domaine_id"] == en_base, nom
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_un_rangement_refuse_laisse_le_selecteur_portee_sur_ce_qu_il_montrait(page, decor,
+                                                                              tmp_path):
+    """AUTH-11, 2026-09-25 — le sélecteur « Portée » de l'éditeur de terme restait sur la
+    collection refusée après un échec, jusqu'au rechargement : l'écran affichait un
+    rangement qui n'avait pas eu lieu. Il revient désormais à ce qu'il montrait.
+
+    Le geste, sous Bob (écrit dans « Étude A » et « Étude D », lit seulement « Étude C ») :
+    une dimension globale rangée dans A réussit, sa valeur globale descend avec elle ; la
+    valeur est ensuite déplacée en base dans une collection E que Bob ne voit pas ; ranger
+    la dimension dans D est alors refusé par la troisième porte (409, un terme lié qu'il ne
+    lit pas). Le sélecteur revient à « Étude A », et la base dit A.
+
+    Et le menu ne propose plus « Étude C », que Bob ne fait que LIRE (AUTH-12, comme le
+    menu « Importer dans ») : le proposer promettait un rangement que le serveur refuse."""
+    admin = {**ECRITURE, "Remote-User": "decor", "Remote-Groups": "bd-admins"}
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30, headers=admin) as c:
+        ids = {}
+        for nom in ("Étude D", "Étude E"):
+            r = c.post("/api/collections", json={"nom": nom})
+            assert r.status_code in (200, 201), r.text
+            ids[nom] = r.json()["id"]
+        assert c.put(f"/api/collections/{ids['Étude D']}/acces", json={
+            "genre": "utilisateur", "principal": "bob",
+            "niveau": "ecriture"}).status_code == 200
+        dim = c.post("/api/attributs/dimensions",
+                     json={"cible": "case", "nom": "axe portee"}).json()
+        val = c.post(f"/api/attributs/dimensions/{dim['id']}/valeurs",
+                     json={"valeur": "val portee"}).json()
+    _ouvrir_lexique(page, decor, "bob")
+
+    def selecteur():
+        terme = page.locator(".lex-term:not(.lex-domaine):not(.lex-nested)",
+                             has=page.locator(".lex-name", has_text="axe portee"))
+        if terme.get_attribute("open") is None:
+            terme.locator("summary").click()
+        return terme.locator('select[data-f="collection_id"]')
+
+    sel = selecteur()
+    expect(sel.locator("option:checked")).to_have_text("Global")
+    expect(sel.locator("option", has_text="Étude C")).to_have_count(0)     # seulement lue
+    expect(sel.locator("option", has_text="Étude D")).to_have_count(1)
+    with page.expect_response(lambda r: "/lexique" in r.url
+                              and r.request.method == "PATCH") as rep:
+        sel.select_option(label="Étude A")
+    assert rep.value.status == 200, rep.value.text()
+    import sqlite3                              # base du serveur live : même tmp_path
+    base = sqlite3.connect(tmp_path / "live.sqlite")
+    try:
+        base.execute("UPDATE attribut_valeur SET collection_id = ? WHERE id = ?",
+                     (ids["Étude E"], val["id"]))
+        base.commit()
+    finally:
+        base.close()
+    sel = selecteur()
+    expect(sel.locator("option:checked")).to_have_text("Étude A")
+    with page.expect_response(lambda r: "/lexique" in r.url
+                              and r.request.method == "PATCH") as rep:
+        sel.select_option(label="Étude D")
+    assert rep.value.status == 409, rep.value.text()
+    expect(page.locator("#toasts .toast.error").last).to_contain_text(
+        "un terme lié que vous ne lisez pas")
+    expect(sel).to_have_value(str(decor["a"]))
+    expect(sel.locator("option:checked")).to_have_text("Étude A")
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30, headers=admin) as c:
+        d = next(x for x in c.get("/api/lexique").json()["dimensions"]
+                 if x["id"] == dim["id"])
+    assert d["collection_id"] == decor["a"]
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_ranger_une_racine_montre_la_portee_de_ce_qu_elle_emporte(page, decor):
+    """AUTH-11, option (β) du 2026-09-25 — ranger un domaine de A vers D emporte sa
+    dimension de A. L'écran n'affichait qu'« Enregistré », et l'éditeur de la dimension
+    emportée gardait « Étude A » jusqu'au rechargement suivant : il mentait. Après chaque
+    rangement réussi, le lexique est rechargé ; l'éditeur du domaine est rouvert, le focus
+    sur son sélecteur, et celui de la dimension dit « Étude D »."""
+    admin = {**ECRITURE, "Remote-User": "decor", "Remote-Groups": "bd-admins"}
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30, headers=admin) as c:
+        r = c.post("/api/collections", json={"nom": "Étude D"})
+        assert r.status_code in (200, 201), r.text
+        d_id = r.json()["id"]
+        assert c.put(f"/api/collections/{d_id}/acces", json={
+            "genre": "utilisateur", "principal": "bob",
+            "niveau": "ecriture"}).status_code == 200
+        dom = c.post("/api/domaines", json={"nom": "champ emporte"}).json()
+        assert c.patch(f"/api/domaines/{dom['id']}/lexique",
+                       json={"collection_id": decor["a"]}).status_code == 200
+        c.post("/api/attributs/dimensions",
+               json={"cible": "case", "nom": "axe emporte", "domaine_id": dom["id"]})
+    _ouvrir_lexique(page, decor, "bob")
+    champ = page.locator(".lex-term.lex-domaine",
+                         has=page.locator(".lex-name", has_text="champ emporte"))
+    champ.locator("summary").click()
+    with page.expect_response(lambda r: "/lexique" in r.url
+                              and r.request.method == "PATCH") as rep:
+        champ.locator('select[data-f="collection_id"]').select_option(label="Étude D")
+    assert rep.value.status == 200, rep.value.text()
+    expect(champ).to_have_attribute("open", "")
+    expect(champ.locator('select[data-f="collection_id"]')).to_be_focused()
+    axe = page.locator(".lex-term:not(.lex-domaine):not(.lex-nested)",
+                       has=page.locator(".lex-name", has_text="axe emporte"))
+    axe.locator("summary").click()
+    choisi = axe.locator('select[data-f="collection_id"] option:checked')
+    expect(choisi).to_have_text("Étude D")
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_un_rangement_refuse_depuis_global_revient_a_global(page, decor, tmp_path):
+    """AUTH-11, 2026-09-25 — le refus depuis GLOBAL, le cas du bit : une dimension globale
+    porte une valeur d'une collection E que Bob ne voit pas ; la ranger dans « Étude A »
+    répond 409 (« un terme lié que vous ne lisez pas »). Le sélecteur revient à « Global ».
+    Revenir à la portée lue au chargement (`null` pour un terme global) ne sélectionnerait
+    AUCUNE option : il faut revenir à ce que le sélecteur montrait."""
+    admin = {**ECRITURE, "Remote-User": "decor", "Remote-Groups": "bd-admins"}
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30, headers=admin) as c:
+        r = c.post("/api/collections", json={"nom": "Étude E"})
+        assert r.status_code in (200, 201), r.text
+        e_id = r.json()["id"]
+        dim = c.post("/api/attributs/dimensions",
+                     json={"cible": "case", "nom": "axe specialise"}).json()
+        val = c.post(f"/api/attributs/dimensions/{dim['id']}/valeurs",
+                     json={"valeur": "val de e"}).json()
+    import sqlite3                              # base du serveur live : même tmp_path
+    base = sqlite3.connect(tmp_path / "live.sqlite")
+    try:
+        base.execute("UPDATE attribut_valeur SET collection_id = ? WHERE id = ?",
+                     (e_id, val["id"]))
+        base.commit()
+    finally:
+        base.close()
+    _ouvrir_lexique(page, decor, "bob")
+    terme = page.locator(".lex-term:not(.lex-domaine):not(.lex-nested)",
+                         has=page.locator(".lex-name", has_text="axe specialise"))
+    terme.locator("summary").click()
+    sel = terme.locator('select[data-f="collection_id"]')
+    with page.expect_response(lambda r: "/lexique" in r.url
+                              and r.request.method == "PATCH") as rep:
+        sel.select_option(label="Étude A")
+    assert rep.value.status == 409, rep.value.text()
+    expect(page.locator("#toasts .toast.error").last).to_contain_text(
+        "un terme lié que vous ne lisez pas")
+    expect(sel).to_have_value("")
+    expect(sel.locator("option:checked")).to_have_text("Global")
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_le_selecteur_portee_dit_la_verite_et_se_ferme_sans_ecriture(page, decor):
+    """AUTH-11, 2026-09-25 — ce que le sélecteur « Portée » montre et permet.
+
+    - « axe lu » vit dans « Étude C », que Bob ne fait que LIRE : le menu, qui ne propose
+      que les collections où l'on écrit, garde tout de même la sienne, cochée — sans quoi
+      il afficherait « Global », faux. Et le sélecteur est DÉSACTIVÉ : le proposer
+      promettait un rangement que le serveur refuse (403).
+    - Un terme global, sous Bob qui écrit dans A : actif.
+    - Le même terme global, sous « lectrice » qui n'écrit nulle part : désactivé."""
+    admin = {**ECRITURE, "Remote-User": "decor", "Remote-Groups": "bd-admins"}
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30, headers=admin) as c:
+        c.post("/api/attributs/dimensions", json={"cible": "case", "nom": "axe partage"})
+
+    def selecteur(nom):
+        terme = page.locator(".lex-term:not(.lex-domaine):not(.lex-nested)",
+                             has=page.locator(".lex-name", has_text=nom))
+        terme.locator("summary").click()
+        return terme.locator('select[data-f="collection_id"]')
+
+    _ouvrir_lexique(page, decor, "bob")
+    lu = selecteur("axe lu")
+    expect(lu.locator("option:checked")).to_have_text("Étude C")
+    expect(lu).to_be_disabled()
+    expect(selecteur("axe partage")).to_be_enabled()
+
+    page.set_extra_http_headers({"Remote-User": "lectrice"})
+    page.goto(decor["base"] + "/exploration", wait_until="networkidle")
+    page.click("#btn-lexique")
+    page.locator("#lex-body .lex-group").first.wait_for()
+    expect(selecteur("axe partage")).to_be_disabled()

@@ -53,7 +53,10 @@ analysable → dimension ; étiquette légère → tag.
   regroupement) · `DELETE …` (promotion) · `PATCH /api/domaines/{id}/lexique` (couche SKOS) ·
   `PATCH /api/attributs/dimensions/{id}/domaine` (rattacher / détacher ; ne change jamais la
   portée de la dimension, et répond 409 sous un domaine propre à une autre collection que la
-  sienne — AUTH-11, 2026-09-24). `create_dimension`
+  sienne — AUTH-11, 2026-09-24) · ranger un domaine ou une dimension dans une collection
+  (`PATCH …/lexique {collection_id}`) répond 409 si son parent, ou un terme qui en dépend, est
+  propre à une autre collection (AUTH-11, 2026-09-25) — sauf ceux de son ancienne collection,
+  qu'une racine emporte avec elle (option β, même jour). `create_dimension`
   accepte un `domaine_id` optionnel. `GET /api/lexique` renvoie désormais `domaines` + le
   `domaine_id` de chaque dimension.
 - **UI** : panneau **📖 Lexique** (Exploration) — création d'un domaine, domaines documentables

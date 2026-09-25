@@ -1936,6 +1936,96 @@ def test_la_promotion_ne_nomme_pas_un_parent_qu_on_ne_lit_pas(client, db_path, d
     assert _etat_vocabulaire(db_path) == avant
 
 
+def test_emporter_une_branche_demande_d_ecrire_dans_son_ancienne_collection(client, db_path,
+                                                                             deux_albums,
+                                                                             derriere_proxy):
+    """AUTH-11, option (β) du 2026-09-25 — ranger la racine d'une branche emporte ses
+    descendants rangés dans son ancienne collection A. Les emporter, c'est les ÉCRIRE :
+    chacun est dans A, donc modifiable par qui écrit dans A — et ranger la racine exige
+    déjà d'écrire dans A (elle y est) et dans B (la cible). Dan écrit dans B (c2) et ne
+    fait que LIRE A (c1) : la racine est en lecture seule pour lui, 403, et rien ne bouge
+    — ni elle, ni ce qu'elle aurait emporté. Bob, qui écrit dans les deux, déplace la
+    branche entière (anti-vacuité)."""
+    t = deux_albums
+    dom = _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) "
+                              "VALUES ('champ a', ?)", (t["c1"],))
+    dim = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, domaine_id, "
+                              "collection_id) VALUES ('case', 'axe a', ?, ?)", (dom, t["c1"]))
+    _poser_sql(db_path, "INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
+               "VALUES (?, 'val a', ?)", (dim, t["c1"]))
+    _ouvrir(db_path, t["c1"], "dan", niveau="lecture")
+    _ouvrir(db_path, t["c2"], "dan", niveau="ecriture")
+    avant = _etat_vocabulaire(db_path)
+    r = client.patch(f"/api/domaines/{dom}/lexique", headers={"Remote-User": "dan"},
+                     json={"collection_id": t["c2"]})
+    assert r.status_code == 403, r.text
+    assert _etat_vocabulaire(db_path) == avant
+
+    _ouvrir(db_path, t["c1"], "bob", niveau="ecriture")
+    _ouvrir(db_path, t["c2"], "bob", niveau="ecriture")
+    r = client.patch(f"/api/domaines/{dom}/lexique", headers={"Remote-User": "bob"},
+                     json={"collection_id": t["c2"]})
+    assert r.status_code == 200, r.text
+    assert _portee_du_terme(db_path, "attribut_dimension", dim) == t["c2"]
+
+
+def test_ranger_ne_nomme_pas_un_terme_lie_qu_on_ne_lit_pas(client, db_path, deux_albums,
+                                                           derriere_proxy):
+    """AUTH-11, 2026-09-25 — le 409 de la troisième porte (`PATCH …/lexique {collection_id:
+    C}` refusé quand un terme lié est rangé ailleurs) ne nomme que ce que l'appelant LIT.
+    Carol écrit dans c1 et c2 et ne lit pas c3. Trois rangements vers c2, tous refusés :
+
+    - une valeur de c1 sous une dimension de c3 (parent caché) ;
+    - une dimension de c1 dont une valeur est en c3 (enfant caché) ;
+    - une dimension de c1 sous un domaine de c1 qu'elle lit, avec une valeur de c3 — le
+      domaine est nommé (anti-vacuité), la valeur ne l'est pas.
+
+    Le terme caché devient « un terme lié que vous ne lisez pas » — une fois, sans nom, ni
+    sorte, ni sens (parent ou enfant), ni nombre : le bit accepté, rien de plus. La
+    dimension de c1 porte DEUX valeurs cachées, et le message reste au singulier."""
+    t = deux_albums
+    c3 = _nouvelle_collection(db_path, "Étude C")
+    _ouvrir(db_path, t["c1"], "carol", niveau="ecriture")
+    _ouvrir(db_path, t["c2"], "carol", niveau="ecriture")
+    dim3 = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, collection_id) "
+                               "VALUES ('case', 'axe sentinelledim', ?)", (c3,))
+    val1 = _poser_sql(db_path, "INSERT INTO attribut_valeur (dimension_id, valeur, "
+                               "collection_id) VALUES (?, 'val de carol', ?)", (dim3, t["c1"]))
+    dim1 = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, collection_id) "
+                               "VALUES ('case', 'axe de carol', ?)", (t["c1"],))
+    for v in ("val sentinelleval", "val sentinelleval2"):       # deux termes tus : UNE mention
+        _poser_sql(db_path, "INSERT INTO attribut_valeur (dimension_id, valeur, "
+                            "collection_id) VALUES (?, ?, ?)", (dim1, v, c3))
+    dom1 = _poser_sql(db_path, "INSERT INTO domaine (nom, collection_id) "
+                               "VALUES ('champ de carol', ?)", (t["c1"],))
+    dim_mixte = _poser_sql(db_path, "INSERT INTO attribut_dimension (cible, nom, domaine_id, "
+                                    "collection_id) VALUES ('case', 'axe mixte', ?, ?)",
+                           (dom1, t["c1"]))
+    _poser_sql(db_path, "INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
+                        "VALUES (?, 'val sentinellemixte', ?)", (dim_mixte, c3))
+    avant = _etat_vocabulaire(db_path)
+    h = {"Remote-User": "carol"}
+    tu = "un terme lié que vous ne lisez pas"
+    for route, oid, nomme in (("attributs/valeurs", val1, None),
+                              ("attributs/dimensions", dim1, None),
+                              ("attributs/dimensions", dim_mixte,
+                               "domaine « champ de carol », dont il dépend,")):
+        r = client.patch(f"/api/{route}/{oid}/lexique", headers=h,
+                         json={"collection_id": t["c2"]})
+        assert r.status_code == 409, r.text
+        detail = r.json()["detail"]
+        assert detail.count(tu) == 1, detail
+        for fuite in ("sentinelle", "Étude", ", dont il dépend," if nomme is None else "valeur",
+                      ", qui en dépend,"):
+            assert fuite not in detail, (fuite, detail)
+        if nomme is not None:
+            assert nomme in detail, detail
+            assert "vivent dans" in detail, detail                 # deux morceaux
+        else:
+            assert " vit dans" in detail and "vivent" not in detail, detail
+    assert _etat_vocabulaire(db_path) == avant
+
+
 def test_la_promotion_nomme_toujours_le_parent_qu_on_lit(client, db_path, deux_albums,
                                                          derriere_proxy):
     """Anti-vacuité : un refus qui ne nommerait plus rien passerait le test d'au-dessus.

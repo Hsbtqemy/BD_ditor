@@ -415,7 +415,15 @@ def delete_domaine(dom_id: int, conn: sqlite3.Connection = Depends(db),
 @router.patch("/api/domaines/{dom_id}/lexique")
 def patch_domaine_lexique(dom_id: int, payload: LexiqueIn, conn: sqlite3.Connection = Depends(db),
                           portee: autorisation.Portee = Depends(portee_courante)):
-    """Documente un domaine (même couche SKOS que dimensions/valeurs/tags)."""
+    """Documente un domaine (même couche SKOS que dimensions/valeurs/tags).
+
+    AUTH-11 (2026-09-25) — le verrou d'écriture (`conflit.verrouiller`) est pris avant toute
+    lecture : les gardes du rangement (termes liés, emport de la branche) et l'écriture
+    voient le même état. Sans lui, une dimension créée entre la garde et l'UPDATE, dans
+    l'ancienne collection d'un domaine qu'on range, restait derrière lui (mesuré par la
+    relecture) — et l'argument « les droits des emportés sont ceux de la racine » en
+    dépend aussi."""
+    conflit.verrouiller(conn)
     _get_domaine(conn, portee, dom_id, ecriture=True)
     promus = _patch_lexique(conn, "domaine", dom_id, payload, portee)
     return {**_row(conn.execute("SELECT * FROM domaine WHERE id = ?", (dom_id,))),
@@ -523,11 +531,17 @@ def patch_dimension_domaine(dim_id: int, payload: DimensionDomaineIn,
     - sous un domaine LOCAL à une autre collection que la sienne — dimension globale
       comprise, qui serait plus globale que son domaine (v24) : **409**, qui dit de ranger
       d'abord la dimension dans la collection du domaine (`PATCH …/lexique`, menu Portée du
-      📖 Lexique). C'est ce geste-là qui fait descendre la portée — la dimension, et ses
-      valeurs GLOBALES avec elle ; cette descente des valeurs ne se voit pas : la réponse
-      n'en dit rien (`promus` ne compte que les ancêtres promus) et l'écran n'affiche
-      qu'« Enregistré ». Le message nomme le domaine, que l'appelant vient de choisir et
-      lit ; rien d'autre.
+      📖 Lexique) — sans promettre que ce rangement réussira : depuis le 2026-09-25, il est
+      refusé à son tour si un terme lié à la dimension est rangé dans une troisième
+      collection, et son propre 409 le dit. C'est ce geste-là qui déplace la portée — la
+      dimension, ses valeurs GLOBALES qui descendent avec elle, et, si elle est la racine
+      de sa branche, ses valeurs restées dans son ancienne collection (option β, même
+      jour). La réponse nomme ces dernières dans `promus`, pas les valeurs globales
+      descendues ; l'écran recharge le lexique après le rangement. Pour une dimension
+      déjà rangée sous un domaine de sa collection, le vrai chemin est de la détacher, la
+      ranger, puis la rattacher : rangée seule, elle serait le milieu d'une branche, et
+      son propre rangement serait refusé. Le message nomme le domaine, que l'appelant
+      vient de choisir et lit ; rien d'autre.
 
     Le verrou d'écriture (`conflit.verrouiller`) est pris avant de lire la dimension et le
     domaine, comme dans les autres routes d'AUTH-11 : la garde et l'écriture voient le même
@@ -549,7 +563,10 @@ def patch_dimension_domaine(dim_id: int, payload: DimensionDomaineIn,
             raise HTTPException(409, f"Le domaine « {dom['nom']} » est propre à une "
                                      f"collection, et cette dimension n'y est pas rangée. "
                                      f"Rangez d'abord la dimension dans la collection du "
-                                     f"domaine (📖 Lexique, menu Portée), puis rattachez-la.")
+                                     f"domaine (📖 Lexique, menu Portée) — si elle est déjà "
+                                     f"sous un autre domaine, détachez-la avant —, puis "
+                                     f"rattachez-la ; si ce rangement est refusé à son tour, "
+                                     f"son refus dit quel terme lié l'en empêche.")
     conn.execute("UPDATE attribut_dimension SET domaine_id = ? WHERE id = ?",
                  (payload.domaine_id, dim_id))
     conn.commit()
