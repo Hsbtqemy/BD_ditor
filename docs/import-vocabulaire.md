@@ -151,6 +151,26 @@ collections) ; absent = global, sauf pour un terme créé sous un parent local, 
 
 Le bilan (sur stderr) distingue **créés / déjà présents** par palier et liste les anomalies
 (cible inconnue, dimension vide → ligne ignorée) et avertissements (définitions divergentes).
+Quand des lignes sont refusées (cf. [Les lignes refusées](#les-lignes-refusées)), il les
+compte par motif, avec le libellé de l'app — par exemple
+`Refusées   : 2 ligne(s) — hors de la collection de son parent (2)` —, et n'écrit aucune
+ligne de ce genre quand rien n'est refusé.
+
+**Code de retour**, pour qu'un script qui enchaîne la commande voie un refus :
+
+| Code | Signification |
+|---|---|
+| `0` | aucune ligne refusée |
+| `1` | au moins une ligne **refusée** — les autres sont **entrées**, un refus n'annule pas l'import ; ou bien fichier, en-tête ou collection introuvables, et alors rien n'est écrit (le message le dit) |
+| `2` | erreur d'usage (option inconnue, `--collection` non entier) |
+
+C'est l'usage des autres outils de `tools/` pour un échec partiel (`regenerer_derives.py`,
+`valider_iiif.py` : bilan imprimé, puis `1` s'il y a des échecs). Les lignes **mal formées**
+(cible inconnue, dimension vide) restent des anomalies signalées, sans effet sur le code :
+ce ne sont pas des refus. `--dry-run` compte les refus et sort avec **le même code** que
+l'import qu'il annonce — un aperçu qui sortirait en `0` laisserait passer, dans un script
+qui s'en sert de porte, un import qui refuse. En ligne de commande, la portée étant
+totale, le seul refus possible est *hors de la collection de son parent*.
 
 ### Dans l'app (panneau 📖 Lexique)
 

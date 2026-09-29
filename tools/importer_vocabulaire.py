@@ -31,6 +31,20 @@ ligne (robuste au tri) ; définitions une seule fois. `domaine` vide = dimension
     python tools/importer_vocabulaire.py fichier.csv --collection 3  # → local à la collection 3
     python tools/importer_vocabulaire.py fichier.csv --dry-run       # aperçu, n'écrit rien
 
+Code de retour (l'usage de `regenerer_derives.py` et `valider_iiif.py` : 0 si tout est
+passé, 1 si une partie a échoué, le bilan étant imprimé dans les deux cas) :
+
+    0  aucune ligne refusée ;
+    1  au moins une ligne REFUSÉE (`CODE_REFUS`) — le bilan en donne le compte par motif.
+       Les autres lignes sont ENTRÉES : un refus n'annule pas l'import. Un fichier, un
+       en-tête ou une collection introuvables sortent aussi en 1, sans rien écrire ;
+    2  erreur d'usage (argparse).
+
+`--dry-run` compte les refus et sort avec le MÊME code que l'import qu'il annonce : un
+aperçu qui sortirait en 0 laisserait passer, dans un script qui s'en sert de porte, un
+import qui refuse. Les lignes mal formées (cible inconnue, dimension vide) sont signalées
+dans le bilan mais ne changent pas le code — elles ne sont pas des refus.
+
 La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
 """
 from __future__ import annotations
@@ -44,7 +58,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import autorisation  # noqa: E402
 import database  # noqa: E402
 import lexique_import  # noqa: E402
-from lexique_import import FormatInvalide, importer  # noqa: E402
+from lexique_import import MOTIFS, FormatInvalide, importer  # noqa: E402
+
+# Code de sortie quand au moins une ligne est refusée (AUTH-11). Distinct de l'erreur
+# d'usage d'argparse (2) ; le même que celui des autres outils pour un échec partiel.
+CODE_REFUS = 1
 
 
 def _err(msg):
@@ -62,6 +80,13 @@ def _bilan(res, avert, anomalies, *, dry_run):
                       ("Valeurs", "valeurs")):
         c = res[cle]
         _err(f"  {quoi:<11}: {c['cree']} créé(s), {c['existant']} déjà présent(s)")
+    # Le compte par motif, avec le libellé de l'app (`MOTIFS`) et dans son ordre ; aucune
+    # ligne quand rien n'est refusé.
+    refus = [(MOTIFS[m], n) for m, n in res["refusees"].items() if n]
+    if refus:
+        total = sum(n for _, n in refus)
+        _err(f"  {'Refusées':<11}: {total} ligne(s) — "
+             + ", ".join(f"{libelle} ({n})" for libelle, n in refus))
     for a in anomalies + avert:
         _err(f"  ⚠ {a}")
     if dry_run:
@@ -102,7 +127,8 @@ def cmd_importer(args) -> int:
     portee = "global" if args.collection is None else f"collection {args.collection}"
     _err(f"Import du vocabulaire ({portee}) — {len(lignes)} ligne(s) de valeur :")
     _bilan(res, avert, anomalies, dry_run=args.dry_run)
-    return 0
+    # Le même code en aperçu qu'à l'import : `--dry-run` annonce ce que l'import fera.
+    return CODE_REFUS if any(res["refusees"].values()) else 0
 
 
 def main(argv=None) -> int:
@@ -110,12 +136,18 @@ def main(argv=None) -> int:
     forcer_utf8()                                 # Windows : stdout/stderr en UTF-8
     ap = argparse.ArgumentParser(
         description="Import en lot du vocabulaire analytique (domaines / dimensions / "
-                    "valeurs + lexique) depuis un tableur CSV point-virgule.")
+                    "valeurs + lexique) depuis un tableur CSV point-virgule.",
+        epilog=f"Code de retour : 0 si aucune ligne n'est refusée ; {CODE_REFUS} si au moins "
+               "une l'est (compte par motif dans le bilan ; les autres lignes sont "
+               "entrées), ou si le fichier, l'en-tête ou la collection sont introuvables ; "
+               "2 pour une erreur d'usage. --dry-run compte les refus et sort avec le même "
+               "code que l'import.")
     ap.add_argument("fichier", help="tableur CSV (séparateur « ; », en-tête obligatoire)")
     ap.add_argument("--collection", type=int,
                     help="portée : id de collection (vocabulaire LOCAL) ; absent = global")
     ap.add_argument("--dry-run", action="store_true",
-                    help="analyse et compte sans rien écrire en base")
+                    help="analyse et compte sans rien écrire en base (refus et code de "
+                         "retour compris)")
     ap.set_defaults(func=cmd_importer)
     args = ap.parse_args(argv)
     database.init_db()                            # garantit le schéma (idempotent)

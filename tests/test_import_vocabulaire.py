@@ -344,6 +344,67 @@ def test_cli_entete_invalide(tmp_path, data_dir, db_path):
 
 
 # --------------------------------------------------------------------------- #
+# Lignes refusées : compte par motif et code de retour (AUTH-11)
+# --------------------------------------------------------------------------- #
+def _semer_parent_ailleurs():
+    """Une dimension GLOBALE « case/valence » déjà en base, et une collection neuve : importer
+    CSV_MINI DANS cette collection rattacherait la dimension globale au domaine « émotions »
+    qui y naît — deux lignes refusées `parent_ailleurs`, les seules possibles en portée
+    totale (cf. `test_rattacher_ne_deplace_jamais_une_portee`). Rend l'id de la collection."""
+    conn = database.get_connection()
+    conn.execute("INSERT INTO attribut_dimension (cible, nom) VALUES ('case', 'valence')")
+    conn.commit(); conn.close()
+    return _creer_collection()
+
+
+def _lignes_de_refus(stderr):
+    """Les lignes du bilan qui comptent les refus — pas les avertissements ligne à ligne
+    (« L.2 : … — hors de la collection de son parent, ligne ignorée »), qui existaient
+    déjà et portent le même libellé."""
+    return [l for l in stderr.splitlines() if l.strip().startswith("Refusées")]
+
+
+def test_cli_refus_compte_par_motif_et_code_non_nul(tmp_path, data_dir, db_path):
+    """AUTH-11 — les refus ne figuraient que dans les avertissements, et la commande sortait
+    en 0 : un script qui l'enchaîne ne voyait rien. Le bilan compte les refus par motif, avec
+    le libellé de `MOTIFS`, et le code de retour vaut CODE_REFUS."""
+    cid = _semer_parent_ailleurs()
+    r = _run(db_path, data_dir, str(_ecrire(tmp_path, CSV_MINI)), "--collection", str(cid))
+    assert _lignes_de_refus(r.stderr) == [
+        "  Refusées   : 2 ligne(s) — hors de la collection de son parent (2)"], r.stderr
+    assert r.returncode == 1, r.stderr
+    assert iv.CODE_REFUS == 1              # le code que l'aide et la doc annoncent
+    # Les autres lignes sont entrées : un refus n'annule pas l'import. « émotions » n'est
+    # nommé que par les deux lignes refusées ; « représentation » est créé.
+    assert [d["nom"] for d in direct_query(db_path, "SELECT nom FROM domaine")] == [
+        "représentation"]
+
+
+def test_cli_sans_refus_sort_en_0_et_n_imprime_aucun_refus(tmp_path, data_dir, db_path):
+    """Anti-vacuité : sans refus, aucune ligne de compte ni aucun libellé de motif, et 0."""
+    r = _run(db_path, data_dir, str(_ecrire(tmp_path, CSV_MINI)))
+    assert r.returncode == 0, r.stderr
+    assert _lignes_de_refus(r.stderr) == [], r.stderr
+    for libelle in iv.lexique_import.MOTIFS.values():
+        assert libelle not in r.stderr, r.stderr
+    assert direct_query(db_path, "SELECT COUNT(*) c FROM domaine")[0]["c"] == 2
+
+
+def test_cli_dry_run_compte_les_refus_comme_l_import(tmp_path, data_dir, db_path):
+    """`--dry-run` est l'aperçu de l'import : même compte, même code — sans quoi un script
+    qui se sert de l'aperçu comme d'une porte laisserait passer l'import qui refuse."""
+    cid = _semer_parent_ailleurs()
+    fichier = str(_ecrire(tmp_path, CSV_MINI))
+    apercu = _run(db_path, data_dir, fichier, "--collection", str(cid), "--dry-run")
+    assert "APERÇU" in apercu.stderr
+    assert direct_query(db_path, "SELECT COUNT(*) c FROM domaine")[0]["c"] == 0
+    reel = _run(db_path, data_dir, fichier, "--collection", str(cid))
+    assert apercu.returncode == reel.returncode == 1, (apercu.stderr, reel.stderr)
+    assert _lignes_de_refus(apercu.stderr) == _lignes_de_refus(reel.stderr) == [
+        "  Refusées   : 2 ligne(s) — hors de la collection de son parent (2)"]
+
+
+# --------------------------------------------------------------------------- #
 # Route API (bouton « Importer » du panneau Lexique) — même cœur partagé
 # --------------------------------------------------------------------------- #
 def _poster(client, contenu, collection_id=None):
