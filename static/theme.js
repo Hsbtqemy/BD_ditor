@@ -415,17 +415,41 @@
 
      La déclaration est DÉCLARATIVE et le dit : l'application ne connaît les groupes que
      de la personne qui frappe (AUTH-1), donc elle ne peut pas vérifier que ce nom
-     appartient encore à l'équipe. Le dire vaut mieux que le laisser découvrir. */
+     appartient encore à l'équipe. Le dire vaut mieux que le laisser découvrir.
+
+     La ligne RAPPORTE ce que la configuration porte, et rien de plus — c'est la règle de
+     la ligne technique (AUTH-8), et elle vaut ici pour les deux états PARTIELS, puisque
+     `_referent_instance()` rend un dict dès qu'UNE des deux variables est posée :
+       - nom ET contact : le nom, puis le contact (en lien si son schéma est reconnu) ;
+       - nom SEUL : le nom, puis le constat qu'aucun contact ne figure à la configuration.
+         La réserve disait autrefois « contact déclaré » SANS CONDITION, c'est-à-dire
+         qu'elle affirmait une adresse inexistante, à la seule personne pour qui la
+         joindre est la seule action possible (observé le 2026-09-29). Le constat dit ce
+         qui manque et OÙ on l'a cherché, sans en tirer de cause ni de conduite à tenir ;
+       - contact SEUL : le contact une fois, en lien. `nom || contact` le rendait deux
+         fois — une en gras, une en lien.
+     Le contact n'est donc jamais écrit deux fois, et « contact déclaré » n'est dit que
+     là où un contact l'est. */
   function referentLigne(r, amorce) {
     if (!r || (!r.nom && !r.contact)) return null;
     var p = el("p", "portee-vide-referent");
     p.appendChild(document.createTextNode(amorce));
-    p.appendChild(el("strong", null, r.nom || r.contact));
-    if (r.contact) {
-      p.appendChild(document.createTextNode(" — "));
-      p.appendChild(contactNoeud(r.contact));
+    if (r.nom) {
+      p.appendChild(el("strong", null, r.nom));
+      if (r.contact) {
+        p.appendChild(document.createTextNode(" — "));
+        p.appendChild(contactNoeud(r.contact));
+        p.appendChild(document.createTextNode(" (contact déclaré à la configuration)."));
+      } else {
+        p.appendChild(document.createTextNode(
+          " (nom déclaré à la configuration, aucun contact n'y figure)."));
+      }
+    } else {
+      var fort = el("strong");
+      fort.appendChild(contactNoeud(r.contact));
+      p.appendChild(fort);
+      p.appendChild(document.createTextNode(" (contact déclaré à la configuration)."));
     }
-    p.appendChild(document.createTextNode(" (contact déclaré à la configuration)."));
     return p;
   }
 

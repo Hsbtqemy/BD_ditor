@@ -1019,6 +1019,83 @@ def test_a11y_portee_vide_nomme_un_destinataire(page, seeded, theme):
     assert not viol, f"Portée vide + référent [{theme}] :\n{_fmt(viol)}"
 
 
+def _referent_remplace(page, referent):
+    """Laisse `/api/moi` répondre pour de vrai, et n'en remplace QUE `acces.referent`.
+
+    Le serveur live porte un référent complet (`conftest`) ; en relancer un par état
+    coûterait un serveur pour trois lignes de texte. Tout le reste de la réponse — portée
+    vide, identité, groupes — reste celui du serveur. La forme remplacée est celle de
+    `main._referent_instance()`, verrouillée côté serveur par `test_referent_instance`."""
+    def servir(route):
+        rep = route.fetch()
+        corps = rep.json()
+        corps["acces"]["referent"] = referent
+        route.fulfill(status=rep.status, json=corps)
+    page.route("**/api/moi", servir)
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+@pytest.mark.parametrize("entetes, amorce", [
+    ({"Remote-User": "sans-droits"}, "Demandez un accès à "),     # identité, rien d'ouvert
+    ({}, "Prévenez "),                                            # aucune identité reçue
+], ids=["identifie", "anonyme"])
+def test_le_bandeau_rapporte_un_referent_PARTIEL(page, seeded, entetes, amorce):
+    """`_referent_instance()` rend un dict dès qu'UNE des deux variables est posée : deux
+    états partiels sont donc atteignables, et la ligne du référent en disait faux sur les
+    deux (AUTH-4, observé à l'écran le 2026-09-29).
+
+    NOM SEUL — la réserve « (contact déclaré à la configuration) » était ajoutée sans
+    condition : un nom, aucune adresse, et l'affirmation qu'une adresse existe. C'est une
+    phrase qui CONCLUT au lieu de rapporter (AUTH-8), et elle ment à la seule personne pour
+    qui joindre le référent est la seule action possible. On exige qu'elle DISE l'absence
+    et ne dise plus « contact déclaré ».
+
+    CONTACT SEUL — `nom || contact` retombait sur le contact, que la branche du contact
+    ajoutait une seconde fois. On exige une seule occurrence, et en lien.
+
+    Les deux amorces sont jouées, parce que la ligne se compose derrière chacune."""
+    page.set_extra_http_headers(entetes)
+
+    # --- nom seul ---
+    _referent_remplace(page, {"nom": "Ana Ruiz", "contact": None})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    _deplier_bandeau(page)
+    ligne = page.locator(".portee-vide-referent")
+    texte = ligne.inner_text()
+    assert texte.startswith(amorce + "Ana Ruiz"), texte
+    assert "contact déclaré" not in texte, \
+        f"la ligne affirme un contact qui n'existe pas : {texte!r}"
+    assert "aucun contact" in texte, f"l'absence de contact n'est pas dite : {texte!r}"
+    assert ligne.locator("a").count() == 0, "aucun lien : il n'y a rien à joindre"
+    page.unroute("**/api/moi")
+
+    # --- contact seul ---
+    _referent_remplace(page, {"nom": None, "contact": "ana@labo.fr"})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    _deplier_bandeau(page)
+    texte = ligne.inner_text()
+    assert texte.startswith(amorce + "ana@labo.fr"), texte
+    assert texte.count("ana@labo.fr") == 1, f"le contact est répété : {texte!r}"
+    assert ligne.locator('a[href="mailto:ana@labo.fr"]').count() == 1, \
+        "le contact seul doit rester cliquable"
+    assert "(contact déclaré à la configuration)" in texte    # vraie, ici : elle reste
+    viol = _audit(page)
+    assert not viol, f"Portée vide + référent sans nom :\n{_fmt(viol)}"
+    page.unroute("**/api/moi")
+
+    # --- nom ET contact : inchangé ---
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    _deplier_bandeau(page)
+    assert ligne.inner_text() == (amorce + "Ana Ruiz — ana@labo.fr "
+                                  "(contact déclaré à la configuration).")
+
+    # --- aucun référent : pas de ligne du tout ---
+    _referent_remplace(page, None)
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    _deplier_bandeau(page)
+    assert ligne.count() == 0, "sans référent, le bandeau ne doit nommer personne"
+
+
 @pytest.mark.parametrize("live_server", [True], indirect=True)
 def test_qui_entre_declare_les_administrateurs(page, seeded):
     """`_acces_de()` ne lit que `collection_acces`, où un administrateur ne figure sur
