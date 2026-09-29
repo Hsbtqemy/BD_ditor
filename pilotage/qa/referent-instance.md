@@ -74,6 +74,8 @@ $env:BD_AUTH_PROXY = "1"
 - [x] `/` : le bandeau de portée vide s'affiche. Avec les deux variables posées en plus de `BD_AUTH_PROXY`, il nomme le référent et rend son contact CLIQUABLE — c'est là que le lien a un sens, et c'est l'autre écran
 - [x] Avec `BD_REFERENT_NOM` seule en plus de `BD_AUTH_PROXY` : noter ce que dit le bandeau, sans rien corriger. **Cette case est une OBSERVATION, pas un attendu** — le comportement du bandeau dans cet état est signalé à la coordination et n'a pas été modifié par ce chantier
 
+- [ ] **Après `e40f931`** (ajoutée le 2026-09-29, le correctif de ce que la case précédente a fait voir) — même état, `BD_AUTH_PROXY=1` et `BD_REFERENT_NOM` seule, serveur relancé sur un arbre qui contient `e40f931` : sur `/`, la ligne du bandeau dit « Prévenez Ana Ruiz (nom déclaré à la configuration, aucun contact n'y figure). », et ne dit plus « contact déclaré »
+
 ### Largeur et thème
 - [x] Thème clair (🌙 → ☀), les trois états rejoués : l'ambre et le rouge restent lisibles sur fond clair, et se distinguent toujours l'un de l'autre
 - [x] Contraste élevé : les deux couleurs tiennent, et la barre verticale du cul-de-sac reste visible
