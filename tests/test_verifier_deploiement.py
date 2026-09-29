@@ -180,3 +180,71 @@ def test_un_annuaire_sans_url_web_se_signale_sans_bloquer(tmp_path, monkeypatch)
                    "BD_ANNUAIRE_URL=https://annuaire.exemple.fr/\n", encoding="utf-8")
     problemes, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE)
     assert "BD_ANNUAIRE_URL non posée" not in sortie, sortie
+
+
+def test_un_compte_de_service_que_la_regle_ne_refuse_pas_se_signale(tmp_path, monkeypatch):
+    """AUTH-6 — le nom du compte de service vit dans `.env` ET dans la règle `deny` de
+    `configuration.yml`, écrit en dur. Divergents, le compte réel redevient un identifiant de
+    portail : signalé, sans bloquer (sa portée reste vide). Lu sur le VRAI fichier d'Authelia,
+    pour que l'expression qui y cherche la règle suive sa forme réelle."""
+    env = tmp_path / ".env"
+    env.write_text(_DOMAINES + "BD_ANNUAIRE_COMPTE=bd-application\n", encoding="utf-8")
+    problemes, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE)
+    assert "ok compte service" in " ".join(sortie.split()), sortie
+    assert "pourra donc" not in sortie, sortie
+
+    env.write_text(_DOMAINES + "BD_ANNUAIRE_COMPTE=lecteur-annuaire\n", encoding="utf-8")
+    problemes, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE)
+    assert "BD_ANNUAIRE_COMPTE=lecteur-annuaire" in sortie and "pourra donc" in sortie, sortie
+    assert "nomme : bd-application" in sortie, sortie
+    assert not [p for p in problemes if "compte" in p and "service" in p], problemes
+
+    # LLDAP range ses identifiants en minuscules (v0.6.3) : une majuscule dans `.env` désigne
+    # le même compte, celui que la règle refuse.
+    env.write_text(_DOMAINES + "BD_ANNUAIRE_COMPTE=BD-Application\n", encoding="utf-8")
+    _, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE)
+    assert "ok compte service" in " ".join(sortie.split()), sortie
+
+    # Deux formes fabriquées, que le vrai fichier ne montre pas : nommé en tête mais par une
+    # règle qui OUVRE, et un vrai refus mais placé APRÈS une autre règle.
+    env.write_text(_DOMAINES + "BD_ANNUAIRE_COMPTE=bd-application\n", encoding="utf-8")
+    ouvre = ("access_control:\n  rules:\n"
+             "    - domain: 'bd.exemple.fr'\n      subject: 'user:bd-application'\n"
+             "      policy: 'one_factor'\n")
+    _, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE, configuration=ouvre)
+    assert "pourra donc" in sortie and "nomme : aucun" in sortie, sortie
+
+    apres = ("access_control:\n  rules:\n"
+             "    # 1. une autre règle\n"
+             "    - domain: '*.exemple.fr'\n      policy: 'one_factor'\n\n"
+             "    - domain:\n        - 'bd.exemple.fr'\n      subject: 'user:bd-application'\n"
+             "      policy: 'deny'\n"
+             "session:\n  name: 'x'\n")
+    _, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE, configuration=apres)
+    assert "pourra donc" in sortie and "nomme : aucun" in sortie, sortie
+    en_tete = ("access_control:\n  rules:\n"
+               "    # 0. le refus\n"
+               "    - domain:\n        - 'bd.exemple.fr'\n      subject: 'user:bd-application'\n"
+               "      policy: 'deny'\n\n"
+               "    # 1. une autre règle\n"
+               "    - domain: '*.exemple.fr'\n      policy: 'one_factor'\n"
+               "session:\n  name: 'x'\n")
+    _, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE, configuration=en_tete)
+    assert "ok compte service" in " ".join(sortie.split()), sortie
+
+
+def test_le_compte_de_service_se_lit_dans_ce_que_compose_transmet(tmp_path, monkeypatch):
+    """Comme les groupes admin : ce que Compose RÉSOUT prime sur la ligne de `.env`."""
+    env = tmp_path / ".env"
+    env.write_text(_DOMAINES + "BD_ANNUAIRE_COMPTE=bd-application\n", encoding="utf-8")
+    resolu = {"BD_AUTH_ADMIN_GROUPS": "bd-admins", "BD_ANNUAIRE_COMPTE": "lecteur-annuaire"}
+    _, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE, resolu=resolu)
+    assert "BD_ANNUAIRE_COMPTE=lecteur-annuaire" in sortie and "pourra donc" in sortie, sortie
+
+
+def test_sans_compte_de_service_rien_ne_se_dit(tmp_path, monkeypatch):
+    """La lecture de l'annuaire n'est pas configurée : il n'y a rien à comparer."""
+    env = tmp_path / ".env"
+    env.write_text(_DOMAINES, encoding="utf-8")
+    _, sortie = _controle(verifier_deploiement, env, monkeypatch, _UN_COMPTE)
+    assert "compte service" not in sortie, sortie

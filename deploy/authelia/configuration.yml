@@ -1,4 +1,5 @@
-# Configuration Authelia 4.38 — portail d'authentification.
+# Configuration Authelia — portail d'authentification. La version est celle qu'épingle
+# `docker-compose.yml` (4.39.22 au 2026-09-29) : ne pas la recopier ailleurs, elle y vieillirait.
 # Les SECRETS ne sont PAS ici : ils sont injectés par variables d'environnement
 # (voir docker-compose.yml + deploy/.env). Les domaines sont ceux de l'instance :
 # `sslip.io` résout n'importe quel nom contenant une IP vers cette IP, ce qui donne
@@ -142,11 +143,66 @@ authentication_backend:
 # garde donc des comptes NOMINATIFS — provenance, undo et accord restent justes — et l'on
 # place le second facteur là où le risque est réel, plutôt que partout.
 #
-# L'ORDRE compte : Authelia applique la PREMIÈRE règle qui correspond. Les deux règles
-# exigeantes doivent donc précéder la règle générale.
+# L'ORDRE compte : Authelia applique la PREMIÈRE règle qui correspond. Le refus du compte
+# de service vient donc en tête, et les deux règles exigeantes précèdent la règle générale.
 access_control:
   default_policy: 'deny'
   rules:
+    # 0. Le compte de SERVICE de l'application n'accède à AUCUNE application derrière le
+    #    portail (AUTH-6). Numérotée 0 pour que les renvois datés à « la règle 4 » restent
+    #    justes ; les journaux d'Authelia comptent à partir de 1 (`Position N+1` pour la
+    #    règle N de ce fichier).
+    #
+    #    Constaté le 2026-09-18 sur la recette : connecté au portail comme `bd-application`,
+    #    on arrivait sur BD, portée vide, « Groupes reçus : lldap_strict_readonly ». La
+    #    règle 4 ne nomme personne ; elle avait raison tant que l'annuaire ne contenait que
+    #    des personnes. AUTH-6 y a mis un identifiant de service, dont le mot de passe vit
+    #    dans `.env` sur l'hôte : sans cette règle, il est AUSSI un identifiant de portail.
+    #    L'effet mesuré était nul, mais nul par ABSENCE d'accès et non par règle — un accès
+    #    donné un jour à ce login, ou une surface de plus derrière le portail, et plus rien
+    #    ne l'arrêtait. Elle ferme aussi l'accès DIRECT : un en-tête `Authorization: Basic`
+    #    envoyé à BD, que forward-auth accepte sans passer par le portail, ouvrait BD avec
+    #    le seul mot de passe du `.env`. L'application, elle, parle à LLDAP par le réseau
+    #    interne (`http://lldap:17170`) et ne passe jamais par ici : rien ne lui coûte.
+    #
+    #    PREMIÈRE, et sur les deux domaines : une règle placée avant pourrait correspondre à
+    #    ce compte sans nommer BD (joker, `domain_regex`) — `tests/test_acces_compte_service.py`
+    #    exige donc la tête. Le nom est ÉCRIT et non tiré de `BD_ANNUAIRE_COMPTE` : un gabarit
+    #    sur une variable vide rendrait `user:`, que la validation d'Authelia accepte et qui
+    #    ne refuse plus personne — un refus éteint en silence. Écrit, il tient même si le
+    #    compte existe dans LLDAP avant que `.env` ne le nomme. La comparaison d'Authelia est
+    #    EXACTE ; LLDAP (v0.6.3) range ses identifiants en minuscules, donc ce nom s'écrit en
+    #    minuscules. `verifier_deploiement.py` AVERTIT si `BD_ANNUAIRE_COMPTE` en diffère.
+    #
+    #    Un CHOIX, tranché le 2026-09-29 : une règle d'ACCÈS, pas un refus d'authentification.
+    #    Le mot de passe est accepté au portail, puis toute application derrière lui répond
+    #    403 — « Access to '…' is forbidden to user 'bd-application' » dans les journaux.
+    #    Refuser le mot de passe lui-même demanderait de récrire le `users_filter` du
+    #    préréglage LLDAP, ce que le bloc `ldap:` ci-dessus interdit.
+    #
+    #    La surface qui RESTE est donc écrite, et non fermée : la session de portail donne
+    #    `/settings`, le changement de son propre mot de passe et « mot de passe oublié ».
+    #    `password_change.disable` les fermerait pour TOUS les comptes, qui n'ont pas d'autre
+    #    recours (l'interface de LLDAP est réservée à `bd-admins`). Conséquence : le secret
+    #    du `.env` peut devenir faux, et « 👥 Comptes et groupes » tombe alors en « non
+    #    vérifié ». Une PANNE, pas une fuite : changer le mot de passe exige de connaître
+    #    l'ancien, donc d'avoir déjà accès à l'hôte. LLDAP ne s'y oppose pas : son
+    #    `can_change_password` (v0.6.3) ne protège que les membres de `lldap_admin`, et
+    #    Authelia écrit par son compte `lldap_password_manager`. Deux gestes à la création
+    #    du compte, dans `.env.example` : une adresse courriel non délivrable ou celle de
+    #    l'exploitation, et l'essai du changement de mot de passe par le portail.
+    #
+    #    Un visiteur NON connecté n'est pas refusé par elle : pour Authelia, un anonyme
+    #    « pourrait » être ce compte, et un `deny` à sujet le renvoie au portail au lieu de
+    #    lui fermer la porte — 302 pour une page ouverte dans un navigateur, 401 pour une
+    #    requête XHR ou non-HTML (`isAuthzResult`, `getAuthzRedirectStatusCode`, v4.39.22).
+    #    La connexion ordinaire est intacte.
+    - domain:
+        - '{{ env "BD_DOMAINE" }}'
+        - '{{ env "ANNUAIRE_DOMAINE" }}'
+      subject: 'user:bd-application'
+      policy: 'deny'
+
     # 1. Les administrateurs gardent le second facteur PARTOUT. Ce sont eux qui peuvent
     #    élargir un cercle d'accès et lire toute collection (AUTH-4) ; ils sont peu
     #    nombreux, et ils ont déjà leur appareil enrôlé.

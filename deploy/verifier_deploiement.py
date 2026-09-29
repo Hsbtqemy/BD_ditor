@@ -537,6 +537,47 @@ def controle_config(chemin_env):
             print(f"    ok {'groupes admin':14} {', '.join(sorted(declares))} — "
                   "élevés au second facteur des deux côtés")
 
+        # Le compte de SERVICE de l'annuaire est nommé à deux endroits, lui aussi (AUTH-6) :
+        # l'application le lit dans `BD_ANNUAIRE_COMPTE`, et `configuration.yml` le REFUSE
+        # par une règle `deny` au nom écrit en dur — un gabarit sur une variable vide y
+        # rendrait `user:`, accepté par Authelia et qui ne refuse plus personne. Nommés
+        # différemment, le compte réel redevient un identifiant de PORTAIL : constaté le
+        # 2026-09-18 sur la recette avant que la règle n'existe, sans effet tant qu'aucun
+        # accès ne lui est donné. Signalé sans bloquer pour cette raison — et parce que la
+        # réparation est un choix (renommer le compte, ou la règle) qu'on ne tranche pas ici.
+        #
+        # La règle ne compte qu'en TÊTE d'`access_control`, comme l'exige
+        # `tests/test_acces_compte_service.py` : Authelia prend la première qui correspond,
+        # et une règle placée avant peut correspondre à ce compte sans nommer BD. Un `deny`
+        # ailleurs dans le fichier n'est donc pas approuvé.
+        #
+        # La casse : LLDAP (v0.6.3, `CaseInsensitiveString`) range ses identifiants en
+        # minuscules, et c'est cet identifiant qu'Authelia reçoit — `BD_ANNUAIRE_COMPTE`
+        # se compare donc en minuscules. La RÈGLE, elle, se lit telle qu'écrite : Authelia
+        # compare exactement, et une majuscule dans la règle ne refuserait personne.
+        #
+        # Ce que dit la ligne `ok` est un état du FICHIER : Authelia ne le lit qu'à son
+        # redémarrage, qui vient plus loin dans `deployer.sh`.
+        compte = (resolu.get("BD_ANNUAIRE_COMPTE") if resolu is not None
+                  else vals.get("BD_ANNUAIRE_COMPTE"))
+        compte = (compte or "").strip()
+        tete = re.search(r"^  rules:\n((?:[ \t]*(?:#[^\n]*)?\n)*)(    - .*?)(?=\n    - |\n\S|\Z)",
+                         texte_conf, re.M | re.S)
+        premiere = "\n".join(ligne for ligne in (tete.group(2) if tete else "").splitlines()
+                             if not ligne.strip().startswith("#"))
+        refuses = (set(re.findall(r"subject:\s*'user:([^']+)'", premiere))
+                   if re.search(r"^\s*policy:\s*'deny'\s*$", premiere, re.M) else set())
+        if compte and compte.lower() not in refuses:
+            nommes = ", ".join(sorted(refuses)) or "aucun"
+            print(f"    ·· {'compte service':14} BD_ANNUAIRE_COMPTE={compte}, mais la règle de refus")
+            print(f"       en tête d'access_control nomme : {nommes}. Ce compte pourra donc")
+            print("       ouvrir une session sur BD par le portail. Aligner le nom de la règle")
+            print("       `deny` (règle 0, en tête) ou celui du compte, puis redémarrer Authelia.")
+            print("       Signalé sans bloquer : sa portée reste vide tant qu'on ne lui donne rien.")
+        elif compte:
+            print(f"    ok {'compte service':14} {compte} — règle de refus présente en tête "
+                  "de configuration")
+
     # Le référent quand l'ANNUAIRE sert : le fichier des comptes n'est alors que le repli,
     # et son nombre de logins ne dit rien de l'instance. Un annuaire sert à plusieurs
     # comptes par construction — c'est la raison de la bascule —, donc le référent manque

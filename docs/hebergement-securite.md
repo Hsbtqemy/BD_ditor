@@ -295,6 +295,42 @@ mot de passe vit dans l'environnement de l'application. Il lit tout et n'écrit 
 comptes. Écrire dans l'annuaire depuis l'application a été écarté (AUTH-12, décision 1 (A)) :
 qui compromettrait l'application se fabriquerait un administrateur.
 
+**Ce compte n'accède à aucune application derrière le portail.** Constaté le 2026-09-18 sur
+la recette : connecté comme `bd-application`, on arrivait sur BD, portée vide, « Groupes
+reçus : lldap_strict_readonly ». La règle d'`access_control` qui ouvre BD en `one_factor` ne
+nomme personne, et l'annuaire ne contenait jusque-là que des personnes : l'identifiant de
+service était devenu AUSSI un identifiant de portail. L'effet était nul, mais par absence
+d'accès et non par règle. `deploy/authelia/configuration.yml` porte donc, EN TÊTE (règle 0 ;
+`Position 1` dans les journaux d'Authelia), un `deny` qui nomme `user:bd-application` sur le
+domaine BD et sur celui de l'annuaire. Il ferme aussi l'accès direct par un en-tête
+`Authorization: Basic`, que forward-auth acceptait sans portail avec le seul mot de passe du
+`.env`. Authelia applique la première règle qui correspond, et
+`tests/test_acces_compte_service.py` exige que le refus soit la PREMIÈRE : une règle placée
+avant pourrait correspondre à BD sans le nommer (joker, `domain_regex`). Le nom y est écrit
+en dur, pas tiré de `BD_ANNUAIRE_COMPTE` : un gabarit sur une variable vide rendrait `user:`,
+qu'Authelia accepte et qui ne refuse plus personne. `deploy/verifier_deploiement.py` AVERTIT
+si les deux divergent — renommer le compte, c'est aussi renommer la règle. La comparaison
+d'Authelia est exacte ; LLDAP (v0.6.3) range ses identifiants en minuscules, et le
+vérificateur compare `BD_ANNUAIRE_COMPTE` en minuscules pour cette raison.
+
+**Une règle d'accès, et non un refus d'authentification : c'est un CHOIX** (tranché le
+2026-09-29). Le portail accepte le mot de passe, puis toute application derrière lui répond
+403. Refuser le mot de passe lui-même demanderait de récrire le `users_filter` du préréglage
+LLDAP, ce que la configuration interdit. La surface qui reste est donc ÉCRITE, pas fermée :
+une session sur le portail donne `/settings`, le changement de son propre mot de passe et
+« mot de passe oublié ». Les fermer par `password_change.disable` les retirerait à TOUS les
+comptes, qui n'ont pas d'autre recours — l'interface de LLDAP est réservée à `bd-admins`. La
+conséquence : le secret du `.env` peut devenir faux, et « 👥 Comptes et groupes » tombe alors
+en « non vérifié ». C'est une PANNE, pas une fuite : changer le mot de passe exige de
+connaître l'ancien, donc d'avoir déjà accès à l'hôte. LLDAP ne s'y oppose pas — lu dans son
+source à la version épinglée (v0.6.3, `can_change_password`), un `lldap_password_manager`
+peut changer le mot de passe de tout compte qui n'est pas dans `lldap_admin`, et c'est par ce
+compte-là qu'Authelia écrit ; le geste de bout en bout reste à essayer sur la recette. D'où
+deux gestes à la création du compte, écrits dans `deploy/.env.example` : lui donner une
+adresse courriel non délivrable ou celle de l'exploitation — « mot de passe oublié » envoie
+son lien là —, et vérifier par le portail si le changement de mot de passe aboutit.
+L'application, qui lit LLDAP par le réseau interne, n'est pas concernée par la règle.
+
 **Deux retraits sont refusés, par un 409 qui les nomme** — pas par un 403 : ce n'est pas
 un droit qui manque, c'est un état que le retrait fabriquerait.
 
