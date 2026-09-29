@@ -2,7 +2,7 @@
 passe: Le référent de l'instance
 chantier: AUTH-12
 duree: 15 min
-derniere: —
+derniere: 2026-09-29
 ---
 
 # QA — le référent de l'instance, et ses deux états muets
@@ -40,26 +40,26 @@ Le serveur lit ces variables **au démarrage** : chaque changement demande de l'
 ### L'état qui manque — aucune variable posée
 **Aucune des deux variables**, serveur relancé, `http://127.0.0.1:8000/administration`.
 
-- [ ] Le bloc « 📇 Référent de l'instance » est visible, en deuxième position, entre « 🏷️ Version servie » et « 👥 Comptes et groupes »
-- [ ] Il dit « **Personne n'est désigné.** », et cette ligne est en AMBRE, distincte du texte gris de la page
-- [ ] Sous cette ligne, une note dit ce que ça coûte — qu'une personne sans accès voit un bandeau qui ne peut nommer personne — et nomme les DEUX variables à poser
-- [ ] Le chapeau du bloc dit que le référent « se règle dans l'environnement du serveur », et non ici : aucun champ, aucun bouton d'enregistrement dans ce bloc
+- [x] Le bloc « 📇 Référent de l'instance » est visible, en deuxième position, entre « 🏷️ Version servie » et « 👥 Comptes et groupes »
+- [x] Il dit « **Personne n'est désigné.** », et cette ligne est en AMBRE, distincte du texte gris de la page
+- [x] Sous cette ligne, une note dit ce que ça coûte — qu'une personne sans accès voit un bandeau qui ne peut nommer personne — et nomme les DEUX variables à poser
+- [x] Le chapeau du bloc dit que le référent « se règle dans l'environnement du serveur », et non ici : aucun champ, aucun bouton d'enregistrement dans ce bloc
 
 ### Le cul-de-sac — un nom sans contact
 **`BD_REFERENT_NOM` seule**, `BD_REFERENT_CONTACT` vide ou absente, serveur relancé.
 
-- [ ] La ligne dit le nom posé, suivi de « **aucun contact déclaré.** »
-- [ ] Elle est en ROUGE et porte une barre verticale à sa gauche — plus voyante que l'ambre de l'état précédent, qu'on vient de voir
-- [ ] La note nomme `BD_REFERENT_CONTACT` et **ne parle pas** de `BD_REFERENT_NOM` : la variable juste ne doit pas être remise en doute
-- [ ] Ouvrir `/` (l'Atelier) dans la même session : le bandeau de portée vide n'apparaît pas, puisqu'en local la portée est totale. C'est normal — le bandeau se regarde dans la zone suivante
+- [x] La ligne dit le nom posé, suivi de « **aucun contact déclaré.** »
+- [x] Elle est en ROUGE et porte une barre verticale à sa gauche — plus voyante que l'ambre de l'état précédent, qu'on vient de voir
+- [x] La note nomme `BD_REFERENT_CONTACT` et **ne parle pas** de `BD_REFERENT_NOM` : la variable juste ne doit pas être remise en doute
+- [x] Ouvrir `/` (l'Atelier) dans la même session : le bandeau de portée vide n'apparaît pas, puisqu'en local la portée est totale. C'est normal — le bandeau se regarde dans la zone suivante
 
 ### Le cas qui va bien, et sa variante
 **Les deux variables posées**, serveur relancé.
 
-- [ ] La ligne dit le nom, puis le contact, en texte ORDINAIRE — ni ambre, ni rouge, ni barre
-- [ ] Le contact n'est **pas** un lien cliquable : ce bloc constate un réglage, il ne sert pas à écrire au référent
-- [ ] Aucune note ne s'affiche sous la ligne : il n'y a rien à expliquer
-- [ ] **Variante** — `BD_REFERENT_CONTACT` seule, `BD_REFERENT_NOM` vide, serveur relancé : la ligne dit « Aucun nom déclaré » en gris, suivi du contact, et reste en texte ordinaire. Une adresse sans nom reste une adresse : ce n'est pas un défaut, et l'écran ne doit pas crier
+- [x] La ligne dit le nom, puis le contact, en texte ORDINAIRE — ni ambre, ni rouge, ni barre
+- [x] Le contact n'est **pas** un lien cliquable : ce bloc constate un réglage, il ne sert pas à écrire au référent
+- [x] Aucune note ne s'affiche sous la ligne : il n'y a rien à expliquer
+- [x] **Variante** — `BD_REFERENT_CONTACT` seule, `BD_REFERENT_NOM` vide, serveur relancé : la ligne dit « Aucun nom déclaré » en gris, suivi du contact, et reste en texte ordinaire. Une adresse sans nom reste une adresse : ce n'est pas un défaut, et l'écran ne doit pas crier
 
 ### Réservé, et ce que voit l'autre
 **`BD_AUTH_PROXY=1` posée, aucune autre**, serveur relancé. Sans proxy devant, aucune
@@ -70,14 +70,14 @@ que le référent est censé servir.
 $env:BD_AUTH_PROXY = "1"
 ```
 
-- [ ] `/administration` : le bloc « 📇 Référent de l'instance » **n'apparaît pas du tout** — ni vide, ni grisé. « 🏷️ Version servie » et « 👥 Comptes et groupes » ont disparu de même ; « 🩺 Moteurs » reste
-- [ ] `/` : le bandeau de portée vide s'affiche. Avec les deux variables posées en plus de `BD_AUTH_PROXY`, il nomme le référent et rend son contact CLIQUABLE — c'est là que le lien a un sens, et c'est l'autre écran
-- [ ] Avec `BD_REFERENT_NOM` seule en plus de `BD_AUTH_PROXY` : noter ce que dit le bandeau, sans rien corriger. **Cette case est une OBSERVATION, pas un attendu** — le comportement du bandeau dans cet état est signalé à la coordination et n'a pas été modifié par ce chantier
+- [x] `/administration` : le bloc « 📇 Référent de l'instance » **n'apparaît pas du tout** — ni vide, ni grisé. « 🏷️ Version servie » et « 👥 Comptes et groupes » ont disparu de même ; « 🩺 Moteurs » reste
+- [x] `/` : le bandeau de portée vide s'affiche. Avec les deux variables posées en plus de `BD_AUTH_PROXY`, il nomme le référent et rend son contact CLIQUABLE — c'est là que le lien a un sens, et c'est l'autre écran
+- [x] Avec `BD_REFERENT_NOM` seule en plus de `BD_AUTH_PROXY` : noter ce que dit le bandeau, sans rien corriger. **Cette case est une OBSERVATION, pas un attendu** — le comportement du bandeau dans cet état est signalé à la coordination et n'a pas été modifié par ce chantier
 
 ### Largeur et thème
-- [ ] Thème clair (🌙 → ☀), les trois états rejoués : l'ambre et le rouge restent lisibles sur fond clair, et se distinguent toujours l'un de l'autre
-- [ ] Contraste élevé : les deux couleurs tiennent, et la barre verticale du cul-de-sac reste visible
-- [ ] Outils de développement, mode appareil à 320 px, état « cul-de-sac » : la note passe à la ligne sans rien pousser hors de l'écran, et la barre verticale reste collée au texte
+- [x] Thème clair (🌙 → ☀), les trois états rejoués : l'ambre et le rouge restent lisibles sur fond clair, et se distinguent toujours l'un de l'autre
+- [x] Contraste élevé : les deux couleurs tiennent, et la barre verticale du cul-de-sac reste visible
+- [x] Outils de développement, mode appareil à 320 px, état « cul-de-sac » : la note passe à la ligne sans rien pousser hors de l'écran, et la barre verticale reste collée au texte
 
 ### Remise en état
-- [ ] Fermer le terminal du serveur, ou remettre les trois variables à `""` : aucune trace ne subsiste, ces réglages ne touchent pas la base
+- [x] Fermer le terminal du serveur, ou remettre les trois variables à `""` : aucune trace ne subsiste, ces réglages ne touchent pas la base
