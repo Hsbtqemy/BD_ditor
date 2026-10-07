@@ -81,3 +81,8 @@ table de vérité et se teste comme telle.
 **Ce que ce chantier ne touche pas.** `pipeline/sharedocs.py` ne sait rien du proxy et
 range ce qu'on lui donne ; `main._principal_sharedocs` reste le seul endroit qui décide
 qui est « je ». La coupe est côté écran seulement.
+
+**Renvoi vers `UX-18`, posé le 2026-10-07.** La ligne de dépôt change de place : la
+Bibliothèque passe à une liste et une fiche, et le dépôt ShareDocs vit dans l'onglet
+*Diffusion et dépôt* de la fiche d'une collection, sous le régime et les exports. C'est là
+que le module de session et l'explorateur de dossiers se monteront.

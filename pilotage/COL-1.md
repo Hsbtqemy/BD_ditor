@@ -148,3 +148,10 @@ coût caché le plus lourd, il touche le substrat de Ctrl+Z ; et il faut décide
 collection appartient un tag TAPÉ, aujourd'hui toujours global. Ajouter que ce n'est pas un
 chantier serveur seul : le nuage de tags et l'autocomplétion montreraient deux libellés
 identiques à qui lit les deux collections.
+
+**Renvoi vers `UX-18`, posé le 2026-10-07.** La Bibliothèque passe à une liste et une
+fiche, où chaque collection a sa fiche et ses onglets. Le geste « promouvoir cette
+collection » y a un lieu, qu'il reste à nommer ici : l'onglet *Albums* (on promeut ce qu'on
+voit), ou une action de la fiche entière. La colonne « Aussi dans » de cet onglet montrera
+d'elle-même l'état intermédiaire d'une promotion — l'album rattaché à la cible et pas encore
+détaché de l'incubateur.

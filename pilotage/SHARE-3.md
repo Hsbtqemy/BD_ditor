@@ -91,3 +91,9 @@ stockage distant), `COL-2` (la frontière qui dit où le réglage se pose), `DRO
 patron « exiger que la collection soit nommée »), `AUTH-7` (la gestion sans SSH, qu'une
 sortie par l'environnement contredirait), `SHARE-2` (le parcours de dépôt, qui refera
 l'écran).
+
+**Renvoi vers `UX-18`, posé le 2026-10-07.** « La Bibliothèque, avec les autres
+descripteurs » ne désigne plus UN endroit : la fiche d'une collection y sépare l'onglet
+*Description* (nom, période, référent) de l'onglet *Diffusion et dépôt* (régime, exports,
+ShareDocs). La racine relève des deux lectures — un descripteur, et un réglage du dépôt. À
+trancher ici, pas là-bas.

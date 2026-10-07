@@ -321,3 +321,16 @@ collection, et non plus dans l'Administration.
 sous le seuil étroit demande une mesure à 375 et 320 px, l'absence de colonne d'identité est
 une réserve à vérifier sur le tableau fini, et le `<select>` de niveau a déjà son renvoi du
 même jour.
+
+## Renvoi vers UX-18 — 2026-10-07
+
+**La Bibliothèque est reprise dans sa STRUCTURE par `UX-18`** (une liste et une fiche, on
+entre par la collection), et ce chantier-là répond à moitié à la décision d'ordre que cette
+fiche attend. D a deux couches. La **globale** — le fond, la palette, les fontes — vit dans
+les tokens de `:root` et la règle `body`, communs aux cinq surfaces et aux quatre thèmes :
+elle n'a pas d'ordre, elle bascule partout d'un coup, et elle reste ICI. La **locale** — le
+rythme des lignes, les messages en filets, les icônes dessinées, les chiffres tabulaires —
+s'écrit dans le balisage de chaque écran, et part avec `UX-18` pour la Bibliothèque. Hugo a
+écarté le papier chaud de la maquette du jour : « il vaut mieux rester sur la couleur
+d'origine pour l'instant ». La case « Le gabarit liste-et-fiche est UN » d'`UX-18` porte la
+demande du 2026-09-16, « pas un sixième style ».
