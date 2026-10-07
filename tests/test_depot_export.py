@@ -379,14 +379,14 @@ def _textes_de_depot(client, db_path, collection_id):
     Mesurées ici, parce qu'elles sont écrites séparément : l'arbre JSON, les tables CSV,
     la notice de dépôt, et la route que prend celui qui n'a plus de shell.
 
-    **Ce qui n'est PAS couvert, et qu'il ne faut pas croire couvert** : l'archive zip et
-    le classeur XLSX (ils dérivent de `tables()`, donc le même cœur, mais leur emballage
-    n'est pas relu ici), la fiche de `description_collection` (elle a sa limite écrite
-    dans `docs/export-metadonnees.md`), le manifeste IIIF, le dépôt ShareDocs, et les
-    artefacts hors de ce module — `provenance_export`, `figure`, l'export d'album. Un
-    cliquet qui ÉNUMÈRE les sorties, sur le patron d'AUTH-5, reste à écrire ; tant qu'il
-    n'existe pas, cette liste est une sélection, pas un inventaire, et une sortie ajoutée
-    demain n'y entrera pas toute seule.
+    **Ceci est une SÉLECTION, et ce n'est pas elle qui garde l'inventaire.** Elle mesure
+    les CŒURS au plus près (`collecter`, `tables`, `construire`), sans emballage. Ce
+    qu'elle ne regarde pas — l'archive zip et le classeur XLSX dépliés, la fiche de
+    `description_collection`, le manifeste IIIF, la voie ShareDocs, les lignes de
+    commande, `provenance_export`, `figure`, l'export d'album — est ÉNUMÉRÉ et joué par
+    le cliquet de `tests/test_sorties_collection.py` (AUTH-11, sur le patron d'AUTH-5) :
+    c'est lui qui échoue quand une sortie apparaît sans être jouée ni déclarée. Ajouter
+    une sortie ICI ne la ferait entrer dans aucun inventaire.
     """
     import metadonnees_collection as mc
     conn = sqlite3.connect(db_path)
