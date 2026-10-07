@@ -59,7 +59,17 @@ SURFACES_AUDITEES = {"/": "viewer.js", "/recherche": "recherche.js",
                      "/administration": "administration.js"}
 SURFACES_HORS_PERIMETRE = {}
 
-DIRECT = re.compile(r'\$\(\s*"#([a-z0-9-]+)"\s*\)\.hidden\s*=')
+# UX-16 — un module MONTÉ masque pour le compte de la surface qui le monte. Le balayage ne
+# lisait que les scripts de surface : en sortant de `corpus.js`, le masquage de « Qui entre »
+# quittait donc le périmètre SANS QUE RIEN NE TOMBE, et sa déclaration dans `NON_RESOLUS`
+# restait là, à désigner un fichier qui ne contenait plus la ligne. Les modules qui touchent
+# `hidden` sont donc lus eux aussi — par la garde de périmètre, qui ne demande aucun
+# navigateur. Une clé par module, sa valeur dit qui le monte.
+MODULES_MONTES = {
+    "lib/qui-entre.js": "monté par la Bibliothèque, dans chaque collection dépliée (UX-16)",
+}
+
+DIRECT =re.compile(r'\$\(\s*"#([a-z0-9-]+)"\s*\)\.hidden\s*=')
 AFFECT = re.compile(r'(\w+)\s*=\s*(?:\$\(\s*"#([a-z0-9-]+)"\s*\)'
                     r'|document\.getElementById\(\s*"([a-z0-9-]+)"\s*\))')
 VAR = re.compile(r'(?<![.\w])(\w+)\.hidden\s*=')
@@ -72,8 +82,8 @@ NON_RESOLUS = {
         "identifiant, donc `getElementById` ne l'atteint pas. Vérifié à la main le "
         "2026-09-04 — `.sub-title` ne pose aucun `display`, l'attribut agit. Le jour où "
         "le balayage saura viser un sélecteur, cette entrée disparaît."),
-    ("corpus.js", "libre"): (
-        "La saisie libre de « Qui entre » (AUTH-12, étape 3), une par collection dépliée : "
+    ("lib/qui-entre.js", "libre"): (
+        "La saisie libre de « Qui entre » (AUTH-12, étape 3), une par panneau monté : "
         "la cible est la CLASSE `.qe-libre`, cherchée dans sa section, pas un identifiant. "
         "Elle pose `display: inline-flex`, d'où le garde `.qe-libre[hidden] { display: none; }` "
         "dans la feuille — vérifié le 2026-09-17 dans les deux sens par deux tests e2e : "
@@ -155,3 +165,59 @@ def test_toute_cible_illisible_est_declaree(chemin, script):
         + ", ".join(f"`{nom}.hidden` ligne {ligne}" for ligne, nom in non_declares)
         + ". Soit la cible reçoit un identifiant, soit l'entrée rejoint `NON_RESOLUS` "
           "avec la raison de l'y laisser ET la vérification faite à la main.")
+
+
+@pytest.mark.parametrize("script", sorted(MODULES_MONTES))
+def test_toute_cible_illisible_d_un_module_monte_est_declaree(script):
+    """La même garde, pour ce qu'une surface MONTE au lieu de l'écrire (UX-16).
+
+    Un module n'a pas de page à lui : le balayage navigateur ne peut pas le viser par une
+    adresse. Mais ce qu'il masque sans identifiant doit être déclaré comme le reste — sans
+    quoi extraire un panneau d'un script de surface suffirait à sortir ses masquages du
+    périmètre, ce qui est exactement ce qui a failli arriver.
+    """
+    _, orphelins = cibles((RACINE / "static" / script).read_text(encoding="utf-8"))
+    non_declares = [(ligne, nom) for ligne, nom in orphelins
+                    if (script, nom) not in NON_RESOLUS]
+    assert not non_declares, (
+        f"{script} : ces affectations `.hidden` ne remontent à aucun `$(\"#…\")` — "
+        + ", ".join(f"`{nom}.hidden` ligne {ligne}" for ligne, nom in non_declares)
+        + ". L'entrée rejoint `NON_RESOLUS` avec sa raison ET la vérification faite.")
+
+
+def test_tout_module_qui_masque_est_lu():
+    """La porte de l'OUBLI, du côté des modules : `MODULES_MONTES` est écrite à la main.
+
+    Tout fichier de `static/lib/` qui AFFECTE `hidden` doit y figurer. `dialog.js` n'y est
+    pas, et c'est juste : il OBSERVE l'attribut et délègue la fermeture à l'appelant — sa
+    seule affectation vit dans une fonction de repli que ce motif reconnaît, d'où
+    l'exception nommée plutôt qu'un motif rétréci pour l'épargner.
+    """
+    exceptes = {"lib/dialog.js": "repli `toggleEl.hidden = true` sur l'élément que l'appelant "
+                                 "lui confie ; la cible est celle de la surface, déjà balayée"}
+    masquent = sorted(
+        f"lib/{p.name}" for p in (RACINE / "static" / "lib").glob("*.js")
+        if VAR.search(p.read_text(encoding="utf-8")) or DIRECT.search(p.read_text(encoding="utf-8")))
+    attendus = sorted(set(MODULES_MONTES) | set(exceptes))
+    assert masquent == attendus, (
+        f"modules qui affectent `hidden` : {masquent} ; lus ou exceptés : {attendus}")
+
+
+def test_aucune_declaration_n_est_morte():
+    """Une entrée de `NON_RESOLUS` désigne une affectation qui EXISTE encore.
+
+    C'est le défaut qu'UX-16 a rendu visible : la déclaration `("corpus.js", "libre")` aurait
+    survécu au déménagement de sa ligne, en excusant d'avance la prochaine variable `libre`
+    de ce fichier — une exception sans objet est un passe-droit. Une déclaration morte se
+    retire, ou suit sa ligne.
+    """
+    scripts = set(SURFACES_AUDITEES.values()) | set(MODULES_MONTES)
+    mortes = []
+    for (script, nom) in NON_RESOLUS:
+        if script not in scripts:
+            mortes.append((script, nom, "fichier hors du balayage"))
+            continue
+        _, orphelins = cibles((RACINE / "static" / script).read_text(encoding="utf-8"))
+        if nom not in {n for _, n in orphelins}:
+            mortes.append((script, nom, "plus aucune affectation de ce nom"))
+    assert not mortes, f"déclarations sans objet dans NON_RESOLUS : {mortes}"

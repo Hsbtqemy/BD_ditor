@@ -796,18 +796,26 @@ let COLS_RENDUES = false;
    texte de la ligne et jamais sa place. Chaque collection dépliée porte donc SA ligne,
    sous ses boutons, et la création a la sienne, sous son champ : `el` est toujours la
    ligne du geste, jamais une ligne commune. */
-function colMsg(el, texte, erreur) {
-  // UN message à la fois pour tout le bloc, comme au temps de la ligne unique, que chaque
-  // geste écrasait. Les lignes vivant désormais chacune dans sa collection, écrire ici doit
-  // effacer les autres : sinon un refus resterait posé — et reposé à chaque rechargement —
-  // à côté d'un formulaire qui ne contient plus ce qu'il refusait, ou « créée » au-dessus
-  // d'une collection qu'on vient de supprimer. Trouvé par la passe de revue (2026-09-16).
+/* UN message à la fois pour tout le bloc, comme au temps de la ligne unique, que chaque
+   geste écrasait. Les lignes vivant désormais chacune dans sa collection, écrire l'une doit
+   effacer les autres : sinon un refus resterait posé — et reposé à chaque rechargement —
+   à côté d'un formulaire qui ne contient plus ce qu'il refusait, ou « créée » au-dessus
+   d'une collection qu'on vient de supprimer. Trouvé par la passe de revue (2026-09-16).
+
+   C'est une règle de CET écran, et elle a sa fonction à elle depuis UX-16 : le module
+   « Qui entre » écrit sa propre ligne et prévient l'hôte, qui fait taire le reste ICI. Monté
+   ailleurs, il n'éteint rien — une règle d'écran ne voyage pas avec un composant. */
+function colTaireSauf(el) {
   document.querySelectorAll("#collections-bloc .col-msg").forEach((l) => {
     if (l === el) return;
     if (l.dataset.trace) { l.remove(); return; }
     l.textContent = "";
     l.classList.remove("erreur", "alerte");
   });
+}
+
+function colMsg(el, texte, erreur) {
+  colTaireSauf(el);
   el.textContent = texte || "";
   // `erreur` vaut `true` pour un refus, « alerte » pour ce qui a RÉUSSI mais doit se lire :
   // un accès accordé à un nom que l'annuaire ne connaît pas (AUTH-12, décision 4).
@@ -1176,583 +1184,51 @@ function colDescriptionLue(c) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Qui entre (AUTH-12, étape 3) — les accès d'une collection, dans SA fiche
+   Qui entre — MONTÉ ici, écrit dans `static/lib/qui-entre.js` (UX-16)
 
-   Ils vivaient dans l'Administration, panneau « 👥 Accès aux collections », au nom d'une
-   frontière tranchée deux fois le 2026-09-10 : qui entre relève de l'instance. Hugo l'a
-   rouverte le 2026-09-17 (décision 2 (b) d'AUTH-12) : le trajet le plus courant d'un
-   propriétaire — créer sa collection, puis y faire entrer ses étudiants — traversait deux
-   écrans, dont un intitulé « ce qui porte sur l'instance ». Déménagé, pas dupliqué :
-   l'Administration a perdu le panneau dans le même commit, et ne garde que la vue
-   TRANSVERSE des comptes et des groupes.
+   Les accès d'une collection ont vécu dans ce fichier (AUTH-12, étape 3), après avoir vécu
+   dans l'Administration. Ils sont désormais un module, monté dans la fiche de chaque
+   collection dépliée : ce fichier ne dessine plus rien du panneau et n'appelle plus ses
+   routes — un cliquet le vérifie (`tests/test_qui_entre_module.py`), parce que le même
+   écran écrit deux fois est la faute que le module répare.
 
-   EN ACTES, JAMAIS EN NIVEAUX. Le tableau lit la description des droits servie par
-   `GET /api/droits` et n'écrit ni acte, ni libellé, ni niveau : toute la logique est dans
-   `static/lib/droits.js`, éprouvée sur la description d'aujourd'hui ET sur deux issues
-   hypothétiques d'AUTH-10. Une case par CRAN : des actes que le serveur accorde ensemble
-   ne se cochent pas séparément.
-
-   DEUX LECTURES, ET LA SECONDE N'ATTEND PAS. `…/acces` dessine le tableau tout de suite ;
-   `…/annuaire` arrive après et remplit « Signal » et la liste des groupes. Un annuaire en
-   panne ne retarde donc aucun geste (c'est la raison même des deux routes).
-
-   CE QUE LE REFUS D'ÉCRAN NE FERME PAS. Le `PUT` d'un accès RE-POSE un niveau : « faire
-   entrer » un nom déjà présent le rétrograderait en lecture. L'écran le refuse avant
-   d'envoyer, sur le couple (compte ou groupe, nom exact) — mais un autre onglet, ou une
-   liste relue avant le geste d'un autre, peut encore rétrograder. Limite écrite dans la
-   fiche AUTH-12, pas fermée côté serveur à cette étape.
+   Ce qui RESTE à l'hôte, et ce sont des règles d'ÉCRAN : la description des droits, lue une
+   fois pour la page ; la règle « un seul message à la fois » dans le bloc des collections
+   (`colTaireSauf`) ; et l'adresse `?collection=…&groupe=…`, lue ici et PASSÉE au montage.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* La description des droits, lue UNE fois par page. Illisible, elle vaut null : l'écran le
-   dit et ne dessine aucune case, plutôt que d'inventer un modèle. */
+/* La description des droits, lue UNE fois par page. Illisible, elle vaut null : le module
+   le dit et ne dessine aucune case, plutôt que d'inventer un modèle. */
 let DROITS = null;
 const DROITS_PRETS = apiGet("/api/droits")
   .then((d) => { DROITS = BDDroits.estValide(d) ? d : null; })
   .catch(() => { DROITS = null; });
 
-/* Sous 48em, le tableau devient une carte par accès (tranché par Hugo le 2026-09-17). Le
-   seuil est celui de la règle `@media` de `style.css` ; on redessine au franchissement. */
-const QE_ETROIT = window.matchMedia("(max-width: 47.9375em)");
+/* Les montages vivants, par collection : pour les démonter quand leur collection est
+   redessinée, et pour mener le focus à celui qu'une adresse désigne. */
+const QUI_ENTRE = new Map();
+let PRESELECTION = null;          // { id, groupe } — `?collection=…&groupe=…`, passée une fois
 
-/* L'état de « Qui entre », par collection : ce qu'on a lu, et ce qu'une adresse demande. */
-const QE = new Map();
-let QE_PRESELECTION = null;       // { id, groupe } — `?collection=…&groupe=…`, consommé une fois
-
-function qeEtat(c) {
-  if (!QE.has(c.id)) QE.set(c.id, { acces: null, erreur: null, annuaire: null });
-  const etat = QE.get(c.id);
-  etat.c = c;
-  return etat;
+function demonterQuiEntre() {
+  for (const poignee of QUI_ENTRE.values()) poignee.demonter();
+  QUI_ENTRE.clear();
 }
 
-function qeCle(a) {
-  return `data-genre="${esc(a.genre)}" data-principal="${esc(a.principal)}"`;
-}
-
-function qeSel(a) {
-  return `[data-genre="${CSS.escape(a.genre)}"][data-principal="${CSS.escape(a.principal)}"]`;
-}
-
-/* Le nom d'un accès, avec ce qu'il EST : l'icône pour l'œil, le mot pour le lecteur d'écran.
-   « compte » et non « utilisateur » : lexique de la décision 7 d'AUTH-12. */
-function qeQui(a) {
-  const groupe = a.genre === "groupe";
-  return `<span aria-hidden="true">${groupe ? "👥" : "👤"}</span> `
-    + `<span class="sr-only">${groupe ? "groupe" : "compte"} </span>${esc(a.principal)}`;
-}
-
-/* Les valeurs des cases hors rang d'un accès, sous leur `champ` : ce que le serveur rend
-   dans `…/acces`, et ce que le `PUT` renvoie. */
-function qeValeurs(a) {
-  return Object.fromEntries(DROITS.hors_rang.map((h) => [h.champ, !!a[h.champ]]));
-}
-
-/* Ce que l'annuaire dit d'un accès : « trouve », « inconnu », « non_verifie »,
-   « sans_annuaire », ou null tant qu'il n'a pas répondu. */
-function qeVerification(etat, genre, principal) {
-  const an = etat.annuaire;
-  if (!an || !Array.isArray(an.acces)) return null;
-  const par = genre === "groupe" ? "groupe" : "compte";
-  const v = an.acces.find((x) => x.par === par
-    && (par === "groupe" ? x.groupe : x.login) === principal);
-  return v ? v.verification : null;
-}
-
-/* La colonne « Signal » (UX-4). Ce que l'annuaire dit d'abord ; puis, pour un compte,
-   qu'il n'a pas encore ouvert l'application (AUTH-6) — l'observation seule, qui ne
-   distingue pas une faute de frappe d'un arrivant, et ne doit pas le prétendre. */
-function qeSignal(etat, a) {
-  const v = qeVerification(etat, a.genre, a.principal);
-  const marques = [];
-  if (v === "inconnu") marques.push(`<span class="qe-marque">inconnu de l'annuaire</span>`);
-  else if (v === "non_verifie") marques.push(`<span class="qe-marque">non vérifié</span>`);
-  if (a.jamais_vu === true && v !== "inconnu") {
-    marques.push(`<span class="acces-jamais-vu">n'a pas encore ouvert l'application</span>`);
-  }
-  return marques.join(" ");
-}
-
-function qeDepuis(a) {
-  return esc((a.date_creation || "").slice(0, 10));
-}
-
-/* Le tableau, au-dessus de 48em. Les en-têtes de colonnes sont les ACTES ; une case par
-   cran, dont la cellule couvre les actes qu'elle accorde ensemble. Le nom accessible de
-   chaque case CROISE l'en-tête de ligne et ceux de ses colonnes (`aria-labelledby`) : un
-   lecteur d'écran entend « groupe annotateurs, annoter, organiser les albums… » sur une
-   case unique, c'est-à-dire la liaison dite en clair. */
-/* L'identifiant de l'avertissement affiché : celui de son PREMIER acte, qui suffit à le
-   distinguer — un texte n'est rendu qu'une fois, quel que soit le nombre d'actes qui le
-   portent. */
-function qeIdAvertissement(c, av) {
-  return `qe-${c.id}-av-${av.actes[0].code}`;
-}
-
-/* Les avertissements AFFICHÉS, rangés par cran : la case d'un cran est DÉCRITE par
-   l'avertissement de l'acte qu'elle accorde (`aria-describedby`) — cocher ce cran accorde
-   cet acte, donc la description est vraie et non décorative. Recalculé ici plutôt que passé
-   de signature en signature : `avertissements` est une fonction pure. */
-function qeDescriptions(c, etat) {
-  const par = {};
-  if (!DROITS || !etat.acces) return par;
-  for (const av of BDDroits.avertissements(DROITS, etat.acces.map((a) => a.niveau))) {
-    for (const n of av.niveaux) par[n] = qeIdAvertissement(c, av);
-  }
-  return par;
-}
-
-function qeDecritPar(decrit, niveau) {
-  return decrit[niveau] ? ` aria-describedby="${esc(decrit[niveau])}"` : "";
-}
-
-function qeTable(c, etat) {
-  const id = c.id;
-  const cols = BDDroits.colonnes(DROITS);
-  const decrit = qeDescriptions(c, etat);
-  const idsCran = (col) => (col.actes.length
-    ? col.actes.map((a) => `qe-${id}-a-${a.code}`) : [`qe-${id}-n-${col.niveau}`]);
-  // Les actes accordés ENSEMBLE sont CHAPEAUTÉS, sur deux rangs d'en-tête. Le trait dessiné
-  // sous leur case unique disait bien la liaison, et disait aussi autre chose : deux pixels
-  // en travers d'une cellule, une case posée au milieu, c'est le vocabulaire d'un curseur
-  // qu'on croit pouvoir glisser (relevé par Hugo le 2026-09-18). L'intention était
-  // structurelle, le rendu décoratif, et c'est le rendu qui gagne. Un chapeau EST la
-  // structure : il ne se confond avec rien, et un lecteur d'écran l'annonce — un dessin, lui,
-  // ne s'annonce jamais. Le second rang n'existe que s'il y a quelque chose à chapeauter.
-  const groupe = (col) => col.type === "cran" && col.actes.length > 1;
-  const chapeaux = cols.some(groupe);
-  const rang2 = chapeaux ? ' rowspan="2"' : "";
-  const idsEnTete = (col) => (groupe(col) ? [`qe-${id}-g-${esc(col.niveau)}`] : idsCran(col));
-  const tetes = cols.map((col) => {
-    if (col.type !== "cran") {
-      return `<th scope="col"${rang2} id="qe-${id}-h-${esc(col.code)}" class="qe-hors-rang">${esc(col.libelle)}</th>`;
-    }
-    if (groupe(col)) {
-      return `<th scope="colgroup" colspan="${col.actes.length}" class="qe-groupe"`
-        + ` id="${idsEnTete(col)[0]}">${esc(col.libelle)}</th>`;
-    }
-    const seul = col.actes.length ? col.actes[0] : { libelle: col.libelle };
-    return `<th scope="col"${rang2} id="${idsCran(col)[0]}" class="qe-acte">${esc(seul.libelle)}</th>`;
-  }).join("");
-  // Le second rang ne porte QUE les actes chapeautés : les autres colonnes le traversent par
-  // `rowspan`, et le navigateur range donc ces en-têtes sous leur chapeau, dans l'ordre.
-  const sousTetes = chapeaux
-    ? `<tr>${cols.filter(groupe).map((col) => col.actes.map((a, k) =>
-        `<th scope="col" id="${idsCran(col)[k]}" class="qe-acte">${esc(a.libelle)}</th>`)
-        .join("")).join("")}</tr>`
-    : "";
-  const lignes = etat.acces.map((a, i) => {
-    const qui = `qe-${id}-r${i}`;
-    const valeurs = qeValeurs(a);
-    const hr = BDDroits.horsRang(DROITS, a.niveau, valeurs);
-    const cellules = cols.map((col) => {
-      if (col.type === "cran") {
-        const n = Math.max(1, col.actes.length);
-        const coche = BDDroits.cranCoche(DROITS, a.niveau, col.niveau);
-        const libre = BDDroits.cranModifiable(DROITS, col.niveau);
-        // `qe-lie` ne dessine plus rien : elle NOMME la cellule fusionnée, pour la feuille
-        // comme pour le test qui vérifie que les actes liés n'ont qu'une case.
-        return `<td class="qe-cran${n > 1 ? " qe-lie" : ""}"${n > 1 ? ` colspan="${n}"` : ""}>`
-          + `<input type="checkbox" class="qe-case" data-cran="${esc(col.niveau)}" ${qeCle(a)}`
-          + ` aria-labelledby="${qui} ${idsEnTete(col).join(" ")}"`
-          + qeDecritPar(decrit, col.niveau)
-          + `${coche ? " checked" : ""}${libre ? "" : " disabled"}></td>`;
-      }
-      const h = hr.find((x) => x.code === col.code);
-      return `<td class="qe-hors-rang"><input type="checkbox" class="qe-case"`
-        + ` data-hors-rang="${esc(col.code)}" data-hors-rang-champ="${esc(col.champ)}" ${qeCle(a)}`
-        + ` aria-labelledby="${qui} qe-${id}-h-${esc(col.code)}"`
-        + `${h.coche ? " checked" : ""}${h.d_office ? " disabled" : ""}>`
-        + `${h.d_office ? ` <span class="muted small">(d'office)</span>` : ""}</td>`;
-    }).join("");
-    return `<tr ${qeCle(a)}><th scope="row" id="${qui}">${qeQui(a)}</th>${cellules}
-      <td class="qe-depuis">${qeDepuis(a)}</td>
-      <td class="qe-signal">${qeSignal(etat, a)}</td>
-      <td><button class="ghost small qe-retirer" type="button" ${qeCle(a)}
-                  aria-label="Retirer l'accès de ${esc(a.principal)}">✕</button></td></tr>`;
-  }).join("");
-  return `<div class="table-cadre qe-cadre" tabindex="0" role="region"
-               aria-label="Qui entre dans ${esc(c.nom)}">
-    <table class="corpus-table qe-table">
-      <thead><tr><th scope="col"${rang2}>Qui</th>${tetes}<th scope="col"${rang2}>Depuis le</th>
-        <th scope="col"${rang2}>Signal</th>
-        <th scope="col"${rang2}><span class="sr-only">Retirer</span></th></tr>${sousTetes}</thead>
-      <tbody>${lignes}</tbody>
-    </table></div>`;
-}
-
-/* Les cartes, sous 48em : une par accès, une case par cran libellée des actes qu'elle
-   accorde, puis les cases hors rang, et « Depuis le » en ligne. */
-function qeCartes(c, etat) {
-  const id = c.id;
-  const crans = BDDroits.crans(DROITS);
-  const decrit = qeDescriptions(c, etat);
-  return `<ul class="qe-cartes">${etat.acces.map((a, i) => {
-    const qui = `qe-${id}-r${i}`;
-    const valeurs = qeValeurs(a);
-    const cases = crans.map((cr) => {
-      const lib = `${qui}-n-${cr.niveau}`;
-      return `<label class="qe-case-carte"><input type="checkbox" class="qe-case"`
-        + ` data-cran="${esc(cr.niveau)}" ${qeCle(a)} aria-labelledby="${qui} ${lib}"`
-        + qeDecritPar(decrit, cr.niveau)
-        + `${BDDroits.cranCoche(DROITS, a.niveau, cr.niveau) ? " checked" : ""}`
-        + `${BDDroits.cranModifiable(DROITS, cr.niveau) ? "" : " disabled"}>`
-        + ` <span id="${lib}">${esc(BDDroits.libelleCran(cr))}</span></label>`;
-    }).join("") + BDDroits.horsRang(DROITS, a.niveau, valeurs).map((h) => {
-      const lib = `${qui}-h-${h.code}`;
-      return `<label class="qe-case-carte"><input type="checkbox" class="qe-case"`
-        + ` data-hors-rang="${esc(h.code)}" data-hors-rang-champ="${esc(h.champ)}" ${qeCle(a)}`
-        + ` aria-labelledby="${qui} ${lib}"${h.coche ? " checked" : ""}${h.d_office ? " disabled" : ""}>`
-        + ` <span id="${lib}">${esc(h.libelle)}${h.d_office ? " (d'office)" : ""}</span></label>`;
-    }).join("");
-    const depuis = qeDepuis(a);
-    return `<li class="qe-carte" ${qeCle(a)}>
-      <div class="qe-carte-tete"><span class="qe-qui" id="${qui}">${qeQui(a)}</span>
-        <span class="qe-signal">${qeSignal(etat, a)}</span>
-        <button class="ghost small qe-retirer" type="button" ${qeCle(a)}
-                aria-label="Retirer l'accès de ${esc(a.principal)}">✕</button></div>
-      <div class="qe-carte-cases">${cases}</div>
-      ${depuis ? `<p class="muted small qe-depuis">Depuis le ${depuis}</p>` : ""}</li>`;
-  }).join("")}</ul>`;
-}
-
-function qeTableauHtml(c, etat) {
-  if (etat.erreur) return `<p class="col-note">${esc(etat.erreur)}</p>`;
-  if (!etat.acces) return `<p class="col-note">Chargement…</p>`;
-  if (!DROITS) {
-    return `<p class="col-note">La description des droits n'a pas pu être lue : les accès ne
-      se règlent pas d'ici tant qu'elle manque.</p>
-      <ul class="qe-noms">${etat.acces.map((a) =>
-        `<li>${qeQui(a)} — ${esc(a.niveau)}</li>`).join("")}</ul>`;
-  }
-  if (!etat.acces.length) {
-    return `<p class="col-note">Aucun accès n'est accordé sur cette collection.</p>`;
-  }
-  return QE_ETROIT.matches ? qeCartes(c, etat) : qeTable(c, etat);
-}
-
-/* Ce que la ligne d'ajout contenait, relevé avant de la redessiner : l'annuaire arrive
-   APRÈS l'ouverture, et le nom qu'on a commencé à taper ne doit pas partir avec. */
-function qeReleveAjout(sec) {
-  const choix = sec.querySelector(".qe-choix");
-  if (!choix) return null;
-  return { choix: choix.value, touche: choix.dataset.touche === "1",
-           nom: sec.querySelector(".qe-nom").value,
-           genre: sec.querySelector(".qe-genre").value };
-}
-
-/* La ligne d'ajout, dans l'ordre de la décision 4 (2) : les GROUPES de l'annuaire (leurs
-   noms seuls — le propriétaire ne voit ni les comptes ni les membres), puis la saisie
-   libre, qui exige de dire « Compte » ou « Groupe » SANS valeur par défaut (COL-2, tranché
-   le 2026-09-16 : un groupe accordé comme compte n'ouvre rien à personne). Et aucune
-   présélection d'un groupe non plus : « Choisir… » en tête, sans quoi « + Faire entrer »
-   accorderait le premier de la liste par inertie. */
-function qeAjoutHtml(c, etat, garde) {
-  if (!DROITS || etat.erreur || !etat.acces) return "";
-  const id = c.id;
-  const an = etat.annuaire;
-  const groupes = an && Array.isArray(an.groupes) ? an.groupes : [];
-  const valeurs = new Set(["", "autre", ...groupes.map((g) => `groupe:${g}`)]);
-  let choix, nom = "", genre = "", touche = false;
-  if (garde && garde.touche && valeurs.has(garde.choix)) {
-    ({ choix, nom, genre, touche } = garde);
-  } else if (garde && garde.choix === "autre" && (garde.nom || garde.genre)) {
-    ({ choix, nom, genre } = garde);
-  } else {
-    choix = groupes.length ? "" : "autre";
-  }
-  // L'adresse `?collection=…&groupe=…` (« Ouvrir une collection à ce groupe… »), consommée
-  // une fois l'annuaire connu : listé, le groupe est choisi ; absent, il est tapé.
-  if (an && QE_PRESELECTION && QE_PRESELECTION.id === id) {
-    const g = QE_PRESELECTION.groupe;
-    QE_PRESELECTION = null;
-    if (groupes.includes(g)) { choix = `groupe:${g}`; }
-    else { choix = "autre"; nom = g; genre = "groupe"; }
-    touche = true;
-  }
-  const opt = (v, lib) => `<option value="${esc(v)}"${v === choix ? " selected" : ""}>${esc(lib)}</option>`;
-  return `<div class="qe-ajout-ligne">
-      <label for="qe-choix-${id}">Faire entrer</label>
-      <select id="qe-choix-${id}" class="qe-choix"${touche ? ' data-touche="1"' : ""}>
-        ${opt("", "Choisir…")}
-        ${groupes.length ? `<optgroup label="Groupes de l'annuaire">${groupes.map((g) =>
-          opt(`groupe:${g}`, g)).join("")}</optgroup>` : ""}
-        ${opt("autre", "Un compte, ou un groupe absent de la liste…")}
-      </select>
-      <span class="qe-libre"${choix === "autre" ? "" : " hidden"}>
-        <input id="qe-nom-${id}" class="qe-nom" placeholder="nom exact"
-               autocomplete="off" aria-label="Nom exact du compte ou du groupe"
-               value="${esc(nom)}">
-        <select id="qe-genre-${id}" class="qe-genre" aria-label="Compte ou groupe">
-          <option value=""${genre ? "" : " selected"}>Compte ou groupe ?</option>
-          <option value="utilisateur"${genre === "utilisateur" ? " selected" : ""}>Compte</option>
-          <option value="groupe"${genre === "groupe" ? " selected" : ""}>Groupe</option>
-        </select>
-      </span>
-      <button class="primary small qe-faire-entrer" type="button">+ Faire entrer</button>
-    </div>`;
-}
-
-/* Les administrateurs d'instance lisent et écrivent toute collection sans figurer dans
-   aucune liste d'accès (AUTH-4). Déménagée avec le panneau : sans elle, la liste mentirait
-   par omission. Nommés d'après `/api/moi`, jamais une constante recopiée ; rien en
-   mono-poste, où l'on est seul. */
-function colAdminNote() {
-  const g = (MOI.groupes_admin || []);
-  if (!g.length) return "";
-  return `<p class="col-note col-note-admin">Les administrateurs de l'instance
-    (${g.map(esc).join(", ")}) lisent et écrivent <strong>toute</strong> collection, sans
-    figurer dans aucune liste d'accès. Chacun de leurs actes est nommé au journal de
-    provenance.</p>`;
-}
-
-/* Ce qui vaut TOUJOURS, sous la ligne de message, et d'un seul tenant : l'avertissement d'un
-   acte, l'état de l'annuaire, le pouvoir des administrateurs. Trois traitements visuels en
-   trois lignes ne disaient pas lequel comptait (relevé par Hugo le 2026-09-18) ; ils tiennent
-   désormais dans UN bloc, distinct de ce qui vient du dernier geste. L'ordre ne change pas —
-   ce qu'on est en train d'accorder d'abord, ce que l'application ne sait pas ensuite, ce
-   qu'elle n'a pas à dire deux fois à la fin. */
-function qeNotesHtml(c, etat) {
-  const notes = [];
-  if (DROITS && etat.acces) {
-    // L'avertissement NOMME son acte. Rendu seul, il ne disait plus de quoi il parlait : on
-    // lisait « Supprimer un album efface ses images » sans savoir ce qu'on accordait. Et la
-    // case du cran qui l'accorde le cite en `aria-describedby` (cf. `qeDescriptions`).
-    for (const av of BDDroits.avertissements(DROITS, etat.acces.map((a) => a.niveau))) {
-      notes.push(`<p class="col-note qe-avertissement" id="${esc(qeIdAvertissement(c, av))}">`
-        + `<strong>${av.actes.map((a) => esc(a.libelle)).join(", ")}</strong> — `
-        + `${esc(av.texte)}</p>`);
-    }
-  }
-  const an = etat.annuaire && etat.annuaire.annuaire;
-  if (an && an.etat === "non_verifie") {
-    // Le texte retenu par Hugo le 2026-09-17, sans « et ses comptes » : le propriétaire
-    // ne se voit proposer aucun compte, il n'y a donc rien à ne pas pouvoir proposer.
-    notes.push(`<p class="col-note qe-annuaire-note">L'annuaire ne répond pas : impossible de
-      proposer ses groupes, ni de vérifier le nom que vous tapez. L'accès sera accordé tel
-      quel, et marqué « non vérifié ».</p>`);
-  } else if (an && an.etat === "sans_annuaire") {
-    notes.push(`<p class="col-note">Aucun annuaire n'est configuré : un accès se déclare par
-      un nom, que l'application ne peut pas vérifier. Un compte qui n'a pas encore ouvert
-      l'application est signalé ; un nom de groupe ne peut pas l'être.</p>`);
-  } else if (an && an.etat === "erreur") {
-    notes.push(`<p class="col-note">La lecture de l'annuaire a échoué (${esc(an.motif)}) : la
-      liste des groupes et les vérifications manquent. L'accès se déclare quand même par un
-      nom.</p>`);
-  }
-  notes.push(colAdminNote());
-  const corps = notes.filter(Boolean).join("");
-  return corps ? `<div class="qe-notes-bloc">${corps}</div>` : "";
-}
-
-/* Redessine ce qui dépend des données, jamais la ligne de message : elle survit ainsi à un
-   rechargement, refus compris — le 409 du dernier propriétaire reste à l'écran après que le
-   tableau est revenu à ce que le serveur a gardé (COL-2). */
-function qeRendre(sec) {
-  if (!sec || !sec.isConnected) return;
-  const etat = QE.get(Number(sec.dataset.qe));
-  if (!etat) return;
-  const garde = qeReleveAjout(sec);
-  sec.querySelector(".qe-tableau").innerHTML = qeTableauHtml(etat.c, etat);
-  sec.querySelector(".qe-ajout").innerHTML = qeAjoutHtml(etat.c, etat, garde);
-  sec.querySelector(".qe-notes").innerHTML = qeNotesHtml(etat.c, etat);
-}
-
-function qeSection(id) {
-  return document.querySelector(`#col-body .qe[data-qe="${id}"]`);
-}
-
-/* Le focus, rendu APRÈS le rechargement qui suit un geste — le contrôle actionné a été
-   détruit par le rendu. Seulement à qui ne l'a pas repris entre-temps : l'aller-retour
-   réseau laisse le temps de cliquer ailleurs. */
-function qeRendreFocus(sec, cible) {
-  if (!cible || !sec || !sec.isConnected) return;
-  if (document.activeElement && document.activeElement !== document.body) return;
-  const el = sec.querySelector(cible);
-  if (el) el.focus();
-}
-
-async function qeLireAcces(id) {
-  const etat = QE.get(id);
-  try { etat.acces = await apiGet(`/api/collections/${id}/acces`); etat.erreur = null; }
-  catch (e) { etat.erreur = e.message || "Les accès n'ont pas pu être lus."; }
-}
-
-async function qeLireAnnuaire(id) {
-  const etat = QE.get(id);
-  try { etat.annuaire = await apiGet(`/api/collections/${id}/annuaire`); }
-  catch (e) {
-    etat.annuaire = { annuaire: { etat: "erreur", motif: e.message || "échec" },
-                      groupes: null, acces: [] };
-  }
-  return etat.annuaire;
-}
-
-/* À l'ouverture : le tableau dès que les accès sont là, les marques quand l'annuaire répond. */
-async function qeOuvrir(sec, c) {
-  const etat = qeEtat(c);
-  etat.annuaire = null;
-  await DROITS_PRETS;
-  await qeLireAcces(c.id);
-  qeRendre(qeSection(c.id));
-  await qeLireAnnuaire(c.id);
-  qeRendre(qeSection(c.id));
-}
-
-/* Après un geste : relire les accès dans les DEUX cas, et dessiner ce que le serveur a
-   enregistré plutôt que ce qu'on a cliqué. */
-async function qeApres(id, cible) {
-  await qeLireAcces(id);
-  const sec = qeSection(id);
-  qeRendre(sec);
-  qeRendreFocus(sec, cible);
-}
-
-function qeAcces(etat, el) {
-  return (etat.acces || []).find((a) => a.genre === el.dataset.genre
-    && a.principal === el.dataset.principal);
-}
-
-async function qeGesteCran(input) {
-  const sec = input.closest(".qe");
-  const id = Number(sec.dataset.qe), etat = QE.get(id);
-  const a = qeAcces(etat, input);
-  const niveau = a ? BDDroits.niveauApresGeste(DROITS, input.dataset.cran, input.checked) : null;
-  if (!a || !niveau) { qeRendre(sec); return; }
-  const cible = `.qe-case[data-cran="${CSS.escape(input.dataset.cran)}"]${qeSel(a)}`;
-  // Le niveau COURANT est passé : ce que la liste rend d'une case d'office n'est pas une
-  // décision, et l'affirmer en changeant de cran l'accorderait (cf. `corpsAcces`).
-  await colTenter(sec.querySelector(".qe-msg"), () => apiSend("PUT",
-    `/api/collections/${id}/acces`,
-    BDDroits.corpsAcces(DROITS, { genre: a.genre, principal: a.principal }, niveau,
-                        qeValeurs(a), a.niveau)));
-  await qeApres(id, cible);
-}
-
-async function qeGesteHorsRang(input) {
-  const sec = input.closest(".qe");
-  const id = Number(sec.dataset.qe), etat = QE.get(id);
-  const a = qeAcces(etat, input);
-  if (!a) { qeRendre(sec); return; }
-  const valeurs = { ...qeValeurs(a), [input.dataset.horsRangChamp]: input.checked };
-  const cible = `.qe-case[data-hors-rang="${CSS.escape(input.dataset.horsRang)}"]${qeSel(a)}`;
-  // Le niveau ne change pas ici, mais les AUTRES cases hors rang, elles, peuvent être
-  // d'office : elles ne se stockent pas parce qu'on a coché celle d'à côté.
-  await colTenter(sec.querySelector(".qe-msg"), () => apiSend("PUT",
-    `/api/collections/${id}/acces`,
-    BDDroits.corpsAcces(DROITS, { genre: a.genre, principal: a.principal }, a.niveau, valeurs,
-                        a.niveau)));
-  await qeApres(id, cible);
-}
-
-async function qeRetirer(bouton) {
-  const sec = bouton.closest(".qe");
-  const id = Number(sec.dataset.qe), etat = QE.get(id);
-  const a = qeAcces(etat, bouton);
-  if (!a) return;
-  const ok = await colTenter(sec.querySelector(".qe-msg"), () => apiSend("DELETE",
-    `/api/collections/${id}/acces/${encodeURIComponent(a.genre)}/${encodeURIComponent(a.principal)}`));
-  // La ligne disparaît avec son bouton : le focus va au titre de la partie, et non nulle
-  // part. Sur un refus, la ligne reste, et le focus retrouve son bouton.
-  await qeApres(id, ok ? ".qe-titre" : `.qe-retirer${qeSel(a)}`);
-}
-
-async function qeFaireEntrer(sec) {
-  const id = Number(sec.dataset.qe), etat = QE.get(id), c = etat.c;
-  const ligne = sec.querySelector(".qe-msg");
-  const choix = sec.querySelector(".qe-choix").value;
-  let genre, principal;
-  if (!choix) {
-    colMsg(ligne, "Choisissez un groupe dans la liste, ou « Un compte, ou un groupe absent de "
-                  + "la liste… ».", true);
-    return;
-  }
-  if (choix === "autre") {
-    principal = sec.querySelector(".qe-nom").value.trim();
-    genre = sec.querySelector(".qe-genre").value;
-    if (!principal) { colMsg(ligne, "Tapez le nom exact du compte ou du groupe.", true); return; }
-    if (!genre) {
-      colMsg(ligne, `Dites si « ${principal} » est un compte ou un groupe : un groupe accordé `
-             + "comme compte n'ouvrirait rien à personne.", true);
-      return;
-    }
-  } else {
-    genre = "groupe";
-    principal = choix.slice("groupe:".length);
-  }
-  const qui = genre === "groupe" ? "Le groupe" : "Le compte";
-  // Le couple, et non le nom seul : un compte et un groupe de même nom sont deux accès.
-  if ((etat.acces || []).some((a) => a.genre === genre && a.principal === principal)) {
-    colMsg(ligne, `${qui} ${principal} entre déjà dans « ${c.nom} » : ses actes se règlent `
-           + "dans le tableau.", true);
-    return;
-  }
-  const premier = DROITS.echelle[0];
-  const ok = await colTenter(ligne, () => apiSend("PUT", `/api/collections/${id}/acces`,
-    BDDroits.corpsAcces(DROITS, { genre, principal }, premier, {})));
-  if (!ok) return;
-  // La ligne d'ajout repart à vide : le nom est entré, le garder inviterait à le renvoyer.
-  const choixEl = sec.querySelector(".qe-choix");
-  choixEl.value = "";
-  delete choixEl.dataset.touche;
-  sec.querySelector(".qe-nom").value = "";
-  sec.querySelector(".qe-genre").value = "";
-  await qeApres(id, ".qe-choix");
-  const an = await qeLireAnnuaire(id);
-  qeRendre(qeSection(id));
-  const v = qeVerification(QE.get(id), genre, principal);
-  const l = (qeSection(id) || sec).querySelector(".qe-msg");
-  if (v === "inconnu") {
-    colMsg(l, `${qui} ${principal} n'est pas dans l'annuaire : l'accès est accordé, en `
-           + `${premier}, mais n'ouvrira rien tant que ce nom n'y existe pas.`, "alerte");
-  } else if (v === "non_verifie" || (an && an.annuaire && an.annuaire.etat === "erreur")) {
-    colMsg(l, `${qui} ${principal} entre dans « ${c.nom} », en ${premier} — non vérifié : `
-           + "l'annuaire ne répondait pas.", "alerte");
-  } else {
-    colMsg(l, `${qui} ${principal} entre dans « ${c.nom} », en ${premier}. Cochez les autres `
-           + "actes.");
-  }
-}
-
-function qeSquelette(c) {
-  return `<section class="qe" data-qe="${c.id}" aria-labelledby="qe-titre-${c.id}">
-      <h3 class="qe-titre" id="qe-titre-${c.id}" tabindex="-1">Qui entre</h3>
-      <div class="qe-tableau"><p class="col-note">Chargement…</p></div>
-      <div class="qe-ajout"></div>
-      <p class="col-msg muted small qe-msg" role="status" aria-live="polite"></p>
-      <div class="qe-notes"></div>
-    </section>`;
-}
-
-/* Les gestes de « Qui entre », délégués une fois sur la liste : les sections naissent et
-   meurent à chaque rechargement, la liste reste. */
-function qeInstaller() {
-  const body = $("#col-body");
-  body.addEventListener("change", (ev) => {
-    const t = ev.target;
-    if (!t.closest || !t.closest(".qe")) return;
-    if (t.matches(".qe-case[data-cran]")) qeGesteCran(t);
-    else if (t.matches(".qe-case[data-hors-rang]")) qeGesteHorsRang(t);
-    else if (t.matches(".qe-choix")) {
-      t.dataset.touche = "1";
-      const libre = t.closest(".qe").querySelector(".qe-libre");
-      libre.hidden = t.value !== "autre";
-      if (!libre.hidden) libre.querySelector(".qe-nom").focus();
-    }
-  });
-  body.addEventListener("click", (ev) => {
-    const b = ev.target.closest && ev.target.closest("button");
-    if (!b || !b.closest(".qe")) return;
-    if (b.classList.contains("qe-retirer")) qeRetirer(b);
-    else if (b.classList.contains("qe-faire-entrer")) qeFaireEntrer(b.closest(".qe"));
-  });
-  body.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && ev.target.matches && ev.target.matches(".qe-nom")) {
-      ev.preventDefault();
-      qeFaireEntrer(ev.target.closest(".qe"));
-    }
-  });
-  QE_ETROIT.addEventListener("change", () =>
-    document.querySelectorAll("#col-body .qe").forEach(qeRendre));
+/* Monte le panneau dans l'emplacement que `colDetail` vient de dessiner. La garde n'est pas
+   posée ici : le module reçoit `administrable` et dit lui-même ce qu'un participant non
+   propriétaire doit lire (leçon d'AUTH-4 — un bloc pose SA question, jamais son contenant). */
+function monterQuiEntre(box, c) {
+  const ancien = QUI_ENTRE.get(c.id);
+  if (ancien) ancien.demonter();
+  const groupe = PRESELECTION && PRESELECTION.id === c.id ? PRESELECTION.groupe : null;
+  if (groupe) PRESELECTION = null;
+  QUI_ENTRE.set(c.id, BDQuiEntre.monter(box.querySelector("[data-qui-entre]"), {
+    collection: { id: c.id, nom: c.nom, administrable: !!c.administrable },
+    droits: DROITS,
+    groupesAdmin: MOI.groupes_admin,
+    preselection: groupe,
+    surMessage: colTaireSauf,
+  }));
 }
 
 
@@ -1805,21 +1281,23 @@ function colDetail(d, c, msg) {
     // LIRE et MODIFIER sont deux droits distincts, qu'une seule garde confondait (AUTH-4).
     // La liste des accès est une donnée sur des PERSONNES : le participant ne la voit pas,
     // mais il apprend qu'un administrateur lit sans y figurer (déménagé de l'Administration).
-    box.innerHTML = `<p class="col-note">Seul un propriétaire de la collection voit et règle
-        qui y entre.</p>${colAdminNote()}
+    // Ce que le participant lit de « Qui entre » — qu'il ne le voit pas, et qu'un
+    // administrateur lit sans y figurer — est dit par le MODULE, dans son emplacement.
+    box.innerHTML = `<section data-qui-entre></section>
       ${colDescriptionLue(c)}${colReferentLu(c)}
       <p class="col-note">Seul un propriétaire de la collection modifie sa description, son
         régime de diffusion et son référent.</p>
       ${colExport(c)}`;
     colBrancherExport(box);
+    monterQuiEntre(box, c);
     return;
   }
   // « Qui entre » EN PREMIER : c'est le geste de chaque cours, la description est rare (ordre
   // de la maquette validée, AUTH-12). Sa ligne de message est la sienne, sous sa ligne
   // d'ajout ; celle du formulaire reste sous « Enregistrer ».
-  box.innerHTML = qeSquelette(c) + colFormulaire(c) + colExport(c);
+  box.innerHTML = `<section data-qui-entre></section>` + colFormulaire(c) + colExport(c);
   colBrancherExport(box);
-  qeOuvrir(box.querySelector(".qe"), c);
+  monterQuiEntre(box, c);
   // Reposé tel quel dans la collection redessinée. Qu'un lecteur d'écran l'ait ANNONCÉ
   // n'est pas établi : la ligne où il est né a été détruite un aller-retour plus tard, ce
   // que la ligne unique d'avant ne faisait pas. À mesurer sous NVDA avant d'en rien conclure
@@ -1913,6 +1391,7 @@ async function chargerCollections(ouvrir) {
     // disparaîtrait derrière l'erreur ferait croire raté un enregistrement qui a eu lieu.
     const garde = [...body.querySelectorAll("details.col-item[open]")]
       .map(colMsgReleve).find(Boolean);
+    demonterQuiEntre();
     body.innerHTML = `<p class="col-note">${esc(e.message)}</p>`;
     if (garde) body.appendChild(colTrace(garde.texte, garde.erreur));
     return;
@@ -1923,6 +1402,9 @@ async function chargerCollections(ouvrir) {
   const ouvertes = new Map([...body.querySelectorAll("details.col-item[open]")]
     .map((d) => [d.dataset.id, colMsgReleve(d)]));
   if (ouvrir != null && !ouvertes.has(String(ouvrir))) ouvertes.set(String(ouvrir), null);
+  // Les panneaux « Qui entre » meurent avec la liste : démontés AVANT, et après le relevé
+  // ci-dessus, pour qu'aucun ne garde un écouteur sur une section qui n'existe plus.
+  demonterQuiEntre();
   body.innerHTML = "";
   COLS_RENDUES = true;
   if (!cols.length) {
@@ -1981,18 +1463,22 @@ async function ouvrirDepuisAdresse() {
   const p = new URLSearchParams(location.search);
   const brut = p.get("collection");
   const id = brut && /^[1-9]\d*$/.test(brut) ? Number(brut) : null;
-  if (id !== null && p.get("groupe")) QE_PRESELECTION = { id, groupe: p.get("groupe") };
+  if (id !== null && p.get("groupe")) PRESELECTION = { id, groupe: p.get("groupe") };
   await chargerCollections(id);
   if (id === null) return;
   const body = $("#col-body");
   const d = body.querySelector(`details.col-item[data-id="${id}"]`);
   if (!d) {
-    QE_PRESELECTION = null;
+    PRESELECTION = null;
     body.insertBefore(colTrace(`La collection demandée n'est pas dans la liste : elle ne vous `
       + `est pas ouverte, ou elle n'existe pas.`, true), body.firstChild);
     return;
   }
-  const cible = d.querySelector(".qe-titre") || d.querySelector("summary");
+  // Le titre de « Qui entre » quand le panneau en a un ; sinon l'intitulé de la collection —
+  // un participant non propriétaire n'a pas de panneau à viser.
+  const poignee = QUI_ENTRE.get(id);
+  if (poignee && poignee.focaliser()) return;
+  const cible = d.querySelector("summary");
   cible.scrollIntoView({ block: "start" });
   cible.focus();
 }
@@ -2032,7 +1518,6 @@ function setup() {
   identite().then((m) => { MOI = m; });
   loadCorpus();   // stats d'en-tête (bande 2)
   loadAlbums();
-  qeInstaller();
   loadEtatSharedocs().then(() => ouvrirDepuisAdresse());   // l'état AVANT le rendu (EXP-1)
   pollJobs();     // reprend l'affichage d'un éventuel job déjà en cours
 }

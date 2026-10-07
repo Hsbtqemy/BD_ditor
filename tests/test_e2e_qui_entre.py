@@ -448,3 +448,153 @@ def test_le_resume_ne_dit_rien_en_mono_poste(page, collection):
     resume = page.locator(f'#col-body .col-item[data-id="{collection["id"]}"] summary')
     resume.wait_for(timeout=5000)
     expect(resume.locator(".col-niveau")).to_have_count(0)
+
+
+# ── Ce qui fait du panneau un MODULE (UX-16) ───────────────────────────────────────────
+
+_DOUBLONS = """() => {
+  const vus = new Map();
+  for (const el of document.querySelectorAll('[id]')) vus.set(el.id, (vus.get(el.id) || 0) + 1);
+  return [...vus].filter(([, n]) => n > 1).map(([id]) => id);
+}"""
+
+
+def test_deux_collections_depliees_ne_se_marchent_pas_dessus(page, live_server):
+    """Deux montages vivants sur la même page : aucun identifiant en double, et un geste dans
+    l'un part vers SA collection. Mesuré sur la requête PARTIE et non sur l'état final — deux
+    panneaux qui se croiseraient laisseraient un état plausible dans les deux collections
+    (leçon « deux moitiés, vert mutuel »). Et la règle « un seul message à la fois » reste
+    celle de l'écran : le message du second fait taire celui du premier."""
+    with _client(live_server) as c:
+        a = c.post("/api/collections", json={"nom": "Étude A montée"}).json()["id"]
+        b = c.post("/api/collections", json={"nom": "Étude B montée"}).json()["id"]
+    for cid in (a, b):
+        _accorder(live_server, cid, "groupe", "annotateurs", "lecture")
+
+    item_a = _ouvrir(page, live_server, a)
+    item_b = page.locator(f'#col-body .col-item[data-id="{b}"]')
+    item_b.locator("summary").click()
+    item_b.locator(".qe-choix").wait_for(timeout=5000)
+    expect(item_a.locator(".qe-choix")).to_be_visible()
+
+    assert page.evaluate(_DOUBLONS) == [], "deux panneaux partagent un identifiant"
+    # Chaque `label for=` désigne le champ de SON panneau.
+    for item in (item_a, item_b):
+        cible = item.locator(".qe-ajout-ligne label").get_attribute("for")
+        assert item.locator(f"#{cible}").count() == 1, cible
+
+    # Un refus dans A, pour qu'il y ait quelque chose à faire taire.
+    item_a.locator(".qe-faire-entrer").click()
+    expect(item_a.locator(".qe-msg.erreur")).to_contain_text("Choisissez un groupe")
+
+    envois = []
+    page.on("request", lambda r: envois.append((r.method, r.url))
+            if r.method in ("PUT", "DELETE") else None)
+    with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith("/acces")):
+        _ligne(item_b, "annotateurs").locator('.qe-case[data-cran="ecriture"]').check()
+    assert envois == [("PUT", f"{live_server}/api/collections/{b}/acces")], envois
+    assert _acces(live_server, b)[("groupe", "annotateurs")]["niveau"] == "ecriture"
+    assert _acces(live_server, a)[("groupe", "annotateurs")]["niveau"] == "lecture"
+    expect(item_a.locator(".qe-msg")).to_have_text("")
+    expect(item_a.locator(".qe-msg")).not_to_have_class(re.compile(r"\berreur\b"))
+
+
+def test_replier_puis_deplier_ne_fait_pas_deriver_les_identifiants(page, collection):
+    """Une collection repliée puis dépliée est REDESSINÉE : son panneau est remonté. Le
+    nouveau montage reprend les identifiants du premier — `qe-titre-<id>`, et non
+    `qe-titre-<id>m2` — parce que l'ancien est démonté, et qu'un montage mort ne retient
+    rien. Sans cela la page marcherait toujours, et l'adresse `#qe-titre-…` d'hier ne
+    désignerait plus rien demain."""
+    cid = collection["id"]
+    item = _ouvrir(page, collection["base"], cid)
+    titre = f"qe-titre-{cid}"
+    expect(item.locator(".qe-titre")).to_have_attribute("id", titre)
+    for _ in range(3):
+        item.locator("summary").click()
+        expect(item).not_to_have_attribute("open", "")
+        item.locator("summary").click()
+        item.locator(".qe-choix").wait_for(timeout=5000)
+        expect(item.locator(".qe-titre")).to_have_attribute("id", titre)
+        expect(item.locator(".qe")).to_have_attribute("aria-labelledby", titre)
+    assert page.evaluate(_DOUBLONS) == []
+    # Remonté, le panneau répond toujours, et d'UNE requête par geste.
+    envois = []
+    page.on("request", lambda r: envois.append(r.method) if r.method == "PUT" else None)
+    item.locator(".qe-choix").select_option("groupe:annotateurs")
+    with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith("/acces")):
+        item.locator(".qe-faire-entrer").click()
+    expect(item.locator(".qe-msg")).to_contain_text("Le groupe annotateurs entre dans")
+    assert envois == ["PUT"], envois
+
+
+def test_un_panneau_demonte_pendant_un_geste_ne_leve_rien(page, collection):
+    """L'hôte redessine sa liste PENDANT qu'un « + Faire entrer » est en route : le panneau
+    qui a envoyé la requête est démonté avant qu'elle ne revienne. L'accès est accordé — le
+    serveur l'a reçu —, et rien ne lève dans la page.
+
+    Trouvé à la relecture du module (2026-10-07), pas par un test : `demonter` VIDE la
+    section, ce que le panneau d'avant l'extraction ne faisait pas, et la suite du geste y
+    cherchait encore sa ligne d'ajout. L'erreur ne se voyait nulle part ailleurs que dans la
+    console — c'est pourquoi le test l'écoute."""
+    base, cid = collection["base"], collection["id"]
+    item = _ouvrir(page, base, cid)
+    erreurs = []
+    page.on("pageerror", lambda e: erreurs.append(str(e)))
+    page.on("console", lambda m: erreurs.append(m.text) if m.type == "error" else None)
+
+    retenues = []
+    page.route(f"**/api/collections/{cid}/acces",
+               lambda route: retenues.append(route) if route.request.method == "PUT"
+               else route.continue_())
+    item.locator(".qe-choix").select_option("groupe:annotateurs")
+    item.locator(".qe-faire-entrer").click()
+    for _ in range(50):
+        if retenues:
+            break
+        page.wait_for_timeout(50)
+    assert len(retenues) == 1, "prémisse : le PUT est parti, et il est retenu"
+
+    # Créer une collection redessine TOUTE la liste : le panneau qui attend est démonté.
+    avant = page.locator("#col-body .col-item").count()
+    page.locator("#col-nom").fill("Étude née entre-temps")
+    page.locator("#col-add").click()
+    expect(page.locator("#col-body .col-item")).to_have_count(avant + 1)
+    expect(page.locator("#col-creer-msg")).to_contain_text("créée")
+    page.locator(f'#col-body .col-item[data-id="{cid}"] .qe-choix').wait_for(timeout=5000)
+
+    retenues[0].continue_()
+    page.wait_for_timeout(800)
+    assert erreurs == [], erreurs
+    assert _acces(base, cid)[("groupe", "annotateurs")]["niveau"] == "lecture"
+    # Le panneau REMONTÉ, lui, est vivant et répond.
+    remonte = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+    remonte.locator(".qe-faire-entrer").click()
+    expect(remonte.locator(".qe-msg.erreur")).to_contain_text("Choisissez un groupe")
+
+
+def test_le_contrat_du_montage_se_dit_au_lieu_de_se_taire(page, collection):
+    """Deux façons de mal monter le panneau, qui ne laissaient l'une et l'autre qu'un
+    « Chargement… » muet. Une cible HORS du document : le montage passerait pour mort dès sa
+    naissance, donc `monter` lève. Une description des droits dont la promesse est REJETÉE :
+    le panneau le dit, comme il le dit d'une description illisible."""
+    base, cid = collection["base"], collection["id"]
+    page.goto(base + "/corpus", wait_until="networkidle")
+    leve = page.evaluate("""(id) => {
+      try {
+        BDQuiEntre.monter(document.createElement('section'),
+                          { collection: { id, nom: 'x', administrable: true } });
+        return null;
+      } catch (e) { return e.message; }
+    }""", cid)
+    assert leve and "dans le document" in leve, leve
+
+    page.evaluate("""(id) => {
+      const sec = document.createElement('section');
+      sec.id = 'banc-montage';
+      document.querySelector('#corpus-body').appendChild(sec);
+      BDQuiEntre.monter(sec, { collection: { id, nom: 'x', administrable: true },
+                               droits: Promise.reject(new Error('illisible')) });
+    }""", cid)
+    banc = page.locator("#banc-montage")
+    expect(banc).to_contain_text("La description des droits n'a pas pu être lue")
+    expect(banc.locator(".qe-faire-entrer")).to_have_count(0)
