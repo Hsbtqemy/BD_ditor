@@ -50,13 +50,15 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     PersonnageIn, PersonnageUpdate, PresenceIn, RegionIn, RegionUpdate, RelectureIn,
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
     ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
-    _MOTIF_ADMIN, _MOTIF_EXPORT, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _attributs_de, _auteur,
+    _MOTIF_ADMIN, _MOTIF_EXPORT, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
+    _attributs_de, _auteur,
     _clause_lemme, _clause_personnage, _collection_d_export, _csv_response, _csv_safe, _descendre_portee,
     _disposition, _ensure_tags, _exiger_export, _exiger_export_region,
     _get_album, _get_collection, _get_dimension, _get_personnage, _get_planche,
     _get_region, _get_valeur,
     _groupes, _norm_tag, _patch_lexique, _portee_d_export, _refuser_si_verrouillee, _row, _rows,
-    _sans_accents, _sql_a_montrer, _tags_caches, _validate_parent, db, portee_courante,
+    _sans_accents, _sql_a_montrer, _tags_caches, _validate_parent, _vocabulaire_d_export,
+    db, portee_courante,
 )
 # ARCH-1 — les domaines sortis de ce fichier. `include_router`, plus bas, les rend
 # indiscernables de routes déclarées ici : mêmes chemins, même place dans
@@ -1694,8 +1696,13 @@ def annuler_job(job_id: int, conn: sqlite3.Connection = Depends(db),
 # =========================================================================== #
 # Export
 # =========================================================================== #
-def _region_tree(regions: list[dict], conn: sqlite3.Connection, portee) -> list[dict]:
-    """Reconstruit l'arbre des régions (par parent_id) avec annotations."""
+def _region_tree(regions: list[dict], conn: sqlite3.Connection,
+                 clause_tag: tuple[str, list]) -> list[dict]:
+    """Reconstruit l'arbre des régions (par parent_id) avec annotations.
+
+    `clause_tag` borne le VOCABULAIRE et lui seul (`_vocabulaire_d_export`) : chaque
+    région sort, et son annotation n'est dite que s'il en reste quelque chose — une
+    note, ou un tag que le titre de l'export emporte."""
     by_parent: dict = {}
     for r in regions:
         by_parent.setdefault(r["parent_id"], []).append(r)
@@ -1706,7 +1713,7 @@ def _region_tree(regions: list[dict], conn: sqlite3.Connection, portee) -> list[
         nodes = []
         for r in sorted(by_parent.get(parent_id, []),
                         key=lambda x: (x["ordre"] or 0, x["id"])):
-            ann = _annotation_for_region(conn, portee, r["id"])
+            ann = _annotation_selon(conn, clause_tag, r["id"])
             nodes.append({
                 "id": r["id"], "type": r["type"],
                 "citation": cits.get(r["id"]),
@@ -1752,7 +1759,8 @@ _EXPORT_PLANCHE_RETENUES = {
 }
 
 
-def _album_payload(conn: sqlite3.Connection, portee, album_id: int) -> dict:
+def _album_payload(conn: sqlite3.Connection, clause_tag: tuple[str, list],
+                   album_id: int) -> dict:
     album = _row(conn.execute(
         f"SELECT {', '.join(_EXPORT_ALBUM_COLS)} FROM albums WHERE id = ?", (album_id,)))
     if album is None:
@@ -1767,9 +1775,21 @@ def _album_payload(conn: sqlite3.Connection, portee, album_id: int) -> dict:
                                            p["dpi_x"], p["dpi_y"])
         regions = _rows(conn.execute(
             "SELECT * FROM regions WHERE planche_id = ?", (p["id"],)))
-        p["regions"] = _region_tree(regions, conn, portee)
+        p["regions"] = _region_tree(regions, conn, clause_tag)
     album["planches"] = planches
     return album
+
+
+def _nom_album(album_id: int, titre: Optional[dict]) -> str:
+    """Le nom de base d'un export d'album téléchargé : `album_<id>`, suivi de `_c<N>` quand
+    il sort au titre de la collection N.
+
+    Partagé par le CSV et le TEI (AUTH-11, 2026-10-07). Le TEI s'appelait
+    `album_<id>_tei.xml` quel que soit son titre ; or le titre gouverne désormais le
+    CONTENU (`_vocabulaire_d_export`) : le même album au titre de A, au titre de B et sans
+    titre rendait trois fichiers différents sous un seul nom. Sans titre, pas de `_c<N>` —
+    c'est l'absence qui le dit."""
+    return f"album_{album_id}" + (f"_c{titre['id']}" if titre else "")
 
 
 @app.get("/api/export/json")
@@ -1779,12 +1799,13 @@ def export_json(album_id: int, collection_id: Optional[int] = None,
     """L'album entier, texte relevé compris — une PORTE de sortie (DROIT-2).
 
     Il sort AU TITRE d'une collection où l'on a le droit d'exporter
-    (`_collection_d_export`), et le dit dans `exporte_au_titre_de`. Son contenu suit la
-    portée d'EXPORT et non celle de lecture : un tag local à une collection qu'on lit
-    sans pouvoir l'exporter ne part pas."""
+    (`_collection_d_export`), et le dit dans `exporte_au_titre_de`. Son VOCABULAIRE est
+    celui de cette collection et le vocabulaire global, quel que soit qui exporte
+    (AUTH-11, `_vocabulaire_d_export`) : un tag local à une autre collection ne part
+    pas, même pour qui a le droit d'exporter l'autre aussi."""
     _get_album(conn, portee, album_id)
     titre = _collection_d_export(conn, portee, album_id, collection_id)
-    album = _album_payload(conn, portee.pour_export(), album_id)
+    album = _album_payload(conn, _vocabulaire_d_export(titre), album_id)
     return {
         "@context": {
             "@vocab": "https://schema.org/",
@@ -1809,10 +1830,10 @@ def export_csv(album_id: int, collection_id: Optional[int] = None,
     porte la collection, comme ailleurs il porte la date ou la troncature."""
     _get_album(conn, portee, album_id)
     titre = _collection_d_export(conn, portee, album_id, collection_id)
-    # Lire l'album ne donne pas à lire tous les tags qu'il porte : un album vit dans
-    # plusieurs collections, et un tag local à l'une qu'on ne lit pas y reste attaché.
-    # Et ce qui SORT suit la portée d'export, pas celle de lecture.
-    ou_tag, p_tag = portee.pour_export().clause_terme("tg.collection_id")
+    # L'album ne porte pas tous les tags posés sur ses régions : il sort au titre d'UNE
+    # collection, avec le vocabulaire de celle-là et le global — quel que soit qui
+    # exporte (AUTH-11). Une région dont le seul tag est d'ailleurs sort, sans tag.
+    ou_tag, p_tag = _vocabulaire_d_export(titre, "tg.collection_id")
     rows = _rows(conn.execute(
         f"""SELECT a.titre AS album, p.numero AS ordre_import, r.id AS region_id,
                   r.type, r.parent_id, r.x, r.y, r.w, r.h, r.ordre, r.source,
@@ -1837,6 +1858,14 @@ def export_csv(album_id: int, collection_id: Optional[int] = None,
         c = cits.get(r["region_id"]) or {}
         r["planche"] = c["planche"] if c.get("planche") is not None else ""
         r["citation"] = c.get("texte", "")
+        # L'ordre d'un `GROUP_CONCAT` sans `ORDER BY` n'est promis par personne : il suivait
+        # en pratique la clé primaire de `annotation_tags`, donc l'ordre de CRÉATION des
+        # tags. Trié ici par libellé, comme le JSON et le TEI (`ORDER BY t.label`, même
+        # ordre binaire) : deux exports du même album ne doivent pas différer par l'humeur
+        # du planificateur. Trié en Python et non dans le SQL, parce que la seule forme
+        # garantie (`GROUP_CONCAT(… ORDER BY …)`) demande SQLite 3.44, que rien n'impose ici.
+        if r["tags"]:
+            r["tags"] = "|".join(sorted(r["tags"].split("|")))
         for k in ("album", "ocr_texte", "note", "tags"):      # B7 : anti-injection de formule
             r[k] = _csv_safe(r.get(k))
     buf = io.StringIO()
@@ -1846,8 +1875,7 @@ def export_csv(album_id: int, collection_id: Optional[int] = None,
     writer = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)
-    nom = f"album_{album_id}" + (f"_c{titre['id']}" if titre else "") + ".csv"
-    return _csv_response(buf.getvalue(), nom)
+    return _csv_response(buf.getvalue(), _nom_album(album_id, titre) + ".csv")
 
 
 TEI_NS = "http://www.tei-c.org/ns/1.0"
@@ -1883,10 +1911,12 @@ def export_tei(album_id: int, collection_id: Optional[int] = None,
                conn: sqlite3.Connection = Depends(db),
                portee: autorisation.Portee = Depends(portee_courante)):
     """L'album en TEI P5 — une PORTE de sortie (DROIT-2), au titre d'une collection où
-    l'on a le droit d'exporter, dite dans `publicationStmt/availability`."""
+    l'on a le droit d'exporter, dite dans `publicationStmt/availability` et dans le NOM
+    du fichier (`_nom_album`). Son vocabulaire est celui de cette collection et le global
+    (AUTH-11, `_vocabulaire_d_export`)."""
     album = _get_album(conn, portee, album_id)
     titre = _collection_d_export(conn, portee, album_id, collection_id)
-    pe = portee.pour_export()                 # ce qui sort suit la portée d'export
+    clause_tag = _vocabulaire_d_export(titre)
 
     ET.register_namespace("", TEI_NS)
     root = ET.Element(f"{{{TEI_NS}}}TEI")
@@ -1952,7 +1982,7 @@ def export_tei(album_id: int, collection_id: Optional[int] = None,
                     zone.set("n", f"c{_c['case']}")
                 if r["ocr_texte"]:
                     _tei_el(zone, "line").text = _xml_safe(r["ocr_texte"])
-                ann = _annotation_for_region(conn, pe, r["id"])
+                ann = _annotation_selon(conn, clause_tag, r["id"])
                 if ann["note"] or ann["tags"]:
                     note = _tei_el(zone, "note")
                     if ann["tags"]:
@@ -1966,8 +1996,8 @@ def export_tei(album_id: int, collection_id: Optional[int] = None,
     xml_bytes = ET.tostring(root, encoding="utf-8", xml_declaration=True)
     return Response(
         xml_bytes, media_type="application/xml; charset=utf-8",
-        headers={"Content-Disposition":
-                 f'attachment; filename="album_{album_id}_tei.xml"'},
+        headers={"Content-Disposition": 'attachment; filename="'
+                                        + _nom_album(album_id, titre) + "_tei.xml" + '"'},
     )
 
 

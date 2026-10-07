@@ -175,6 +175,11 @@ un relecteur en lecture peut recevoir la case. Un propriétaire exporte d'office
   n'emporte que celles où vous avez la case : l'écran peut montrer plus que le fichier.
 - Un album rangé dans plusieurs collections sort **au titre de l'une d'elles**, où vous
   avez la case ; si vous l'avez sur plusieurs, il faut dire laquelle, et l'export le dit.
+- Cet export d'album (JSON-LD, CSV, TEI) ne porte que **le vocabulaire de cette
+  collection et le vocabulaire global** — **quel que soit qui exporte** (décidé le
+  2026-10-07). Un tag propre à une autre collection, posé sur une région de l'album, n'y
+  figure pas, même si vous avez aussi le droit d'exporter l'autre : la région sort, avec sa
+  note et ses autres tags, sans celui-là. C'est la règle des exports de dépôt (§ Le vocabulaire).
 - Sans la case, l'export est **refusé en le disant**, jamais rendu vide.
 
 Une seule mesure d'analyse est **réservée**, et c'est l'accord inter-annotateurs : toutes les
@@ -382,6 +387,34 @@ Deux règles gouvernent cette portée, et la seconde n'est pas intuitive.
 **Voir n'est pas modifier.** Un terme *local* se modifie si vous écrivez dans **sa**
 collection ; un terme *global* se modifie si vous écrivez **quelque part**. Un refus de
 modification sur un terme est un **403** — il vient d'être listé, un 404 mentirait.
+
+**Voir n'est pas non plus ce qui SORT, et il y a deux règles de sortie** (mis au vrai le
+2026-10-07).
+
+- **Ce qui sort au titre d'UNE collection suit la collection, pas la personne.** Les exports
+  de dépôt (depuis le 2026-09-23) et l'export d'un album en JSON-LD, CSV ou TEI (depuis le
+  2026-10-07) ne portent que le vocabulaire *global* et celui *propre à cette collection*.
+  Deux personnes qui exportent le même album au titre de la même collection obtiennent le
+  même fichier — un propriétaire de cette seule collection, un propriétaire de plusieurs,
+  un administrateur. Avant cette date, l'export d'album suivait ce que la personne avait le
+  droit d'exporter : le même fichier, étiqueté A, portait un tag propre à B pour qui
+  exportait aussi B. Ce n'était pas un accès indu ; c'était un fichier qui variait selon
+  qui cliquait, sous une étiquette qui ne variait pas.
+  Une région dont le **seul** tag est propre à une autre collection, et qui n'a pas de note,
+  sort sans être dite annotée : il n'en reste rien à montrer. Les données de l'album —
+  régions, texte, notes — sortent toujours entières.
+- **Ce qui traverse plusieurs collections suit la personne.** Les CSV de la Recherche et de
+  l'Exploration ne sortent au titre d'aucune collection : leur vocabulaire est celui des
+  collections que **vous** avez le droit d'exporter, même quand vous les filtrez sur un seul
+  album. Deux personnes n'y obtiennent donc pas forcément le même fichier, et c'est voulu.
+
+Un seul cas sort **sans titre**, et son vocabulaire n'est alors pas borné : un album rangé
+dans plusieurs collections, exporté par un administrateur (ou en mono-poste) par un appel
+direct qui n'en nomme aucune. L'Atelier nomme toujours la collection et ne produit pas cet
+export. Chaque format le dit à sa façon : le JSON porte `exporte_au_titre_de: null` ; le CSV
+et le TEI s'appellent `album_<id>.csv` et `album_<id>_tei.xml`, **sans** le `_c<N>` qui
+nomme la collection (`album_<id>_c<N>.csv`, `album_<id>_c<N>_tei.xml`) ; et le TEI n'a pas
+de bloc `availability`, où il écrit sinon « Exporté au titre de la collection … ».
 
 **Une limite connue, et assumée : l'index plein texte.** La Recherche interroge un index qui
 agrège le dialogue, la note **et les tags** d'une région. Les tags y sont indexés tous, sans

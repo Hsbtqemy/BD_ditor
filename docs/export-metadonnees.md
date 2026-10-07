@@ -144,6 +144,22 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
 > export de dépôt qui varierait selon la portée du compte ayant cliqué rendrait deux exports
 > de la même collection différents sans que rien ne le dise.
 >
+> **L'export d'un ALBUM suit la même règle depuis le 2026-10-07.** `GET
+> /api/export/{json,csv,tei}` n'est pas un export de dépôt — il sort depuis l'Atelier, pas
+> depuis l'écran des collections — mais il sort lui aussi **au titre d'une collection**
+> (DROIT-2, `exporte_au_titre_de`), nommée ou choisie par défaut quand l'album n'en a
+> qu'une d'exportable. Son seul vocabulaire, ce sont les **tags** posés sur ses régions
+> (ni attributs, ni domaines, ni lexique, ni journal n'y figurent), et ils suivaient la
+> portée d'export de la PERSONNE : étiqueté A, le fichier portait un tag local à B pour qui
+> exportait aussi B. Trouvé par le cliquet des sorties (`tests/test_sorties_collection.py`),
+> tranché par l'option (1) : il ne porte plus que le vocabulaire de A et le global, par la
+> même fonction (`database.clause_appartenance`, via `socle._vocabulaire_d_export`). Les
+> DONNÉES de l'album ne changent pas ; une région sans note dont le seul tag est d'ailleurs
+> sort sans annotation. Deux bornes écrites : les exports **transversaux** (Recherche,
+> Exploration) ne sortent au titre d'aucune collection et suivent toujours la personne ; et
+> un album exporté **sans titre** — portée totale, plusieurs collections, aucune nommée,
+> ce que l'Atelier ne fait jamais — n'a pas de collection sur laquelle borner.
+>
 > **Le journal A3 sort au grain CORPUS — mais il a cessé de porter du CONTENU
 > (2026-09-24).** Ses deux tables, `activite` et `evenement`, voyagent dans l'archive CSV,
 > le classeur XLSX et le dépôt ShareDocs (l'arbre JSON, lui, ne les porte pas), et rien ne

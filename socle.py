@@ -35,7 +35,7 @@ from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 import autorisation
-from database import collection_row, get_connection
+from database import clause_appartenance, collection_row, get_connection
 
 # --------------------------------------------------------------------------- #
 # Dépendance connexion
@@ -162,14 +162,18 @@ def _ensure_tags(conn: sqlite3.Connection, labels: list[str], portee) -> list[di
     return sorted(lisibles, key=lambda r: r["label"])
 
 
-def _annotation_for_region(conn: sqlite3.Connection, portee, region_id: int) -> dict:
-    """Représentation d'annotation (note + tags) ; structure vide si absente.
+def _annotation_selon(conn: sqlite3.Connection, clause_tag: tuple[str, list],
+                      region_id: int) -> dict:
+    """Représentation d'annotation (note + tags) ; structure vide si absente. Les tags
+    rendus sont ceux que `clause_tag` retient — un fragment `(sql, params)` sur
+    `t.collection_id`.
 
-    Les tags sont ceux dont on lit le TERME (`clause_terme`) : lire une région ne donne
-    pas à lire tous les tags qu'elle porte, un tag pouvant être local à une collection
-    qu'on ne lit pas. La `Portee` est OBLIGATOIRE, comme dans les accesseurs gardés : une
-    valeur par défaut rendrait l'oubli invisible. Ce qu'on ne montre pas, l'écriture
-    doit le PRÉSERVER (`_tags_caches`) ; le journal, lui, garde l'annotation ENTIÈRE."""
+    C'est le CŒUR, et il ne tranche rien : il reçoit un fragment plutôt qu'une `Portee`,
+    comme `database.lexique_resume`, parce que DEUX questions s'y posent et qu'elles ne
+    se confondent pas. Ce qu'une PERSONNE lit (`_annotation_for_region`, l'Atelier) ; ce
+    qu'une COLLECTION emporte quand un album sort à son titre (`_vocabulaire_d_export`,
+    AUTH-11). Le fragment est OBLIGATOIRE : un défaut qui ne filtrerait rien rendrait
+    l'oubli invisible."""
     ann = conn.execute(
         "SELECT id, note, date_creation, date_modification "
         "FROM annotations WHERE region_id = ?", (region_id,)
@@ -177,7 +181,7 @@ def _annotation_for_region(conn: sqlite3.Connection, portee, region_id: int) -> 
     if ann is None:
         return {"region_id": region_id, "note": None, "tags": [],
                 "date_modification": None}
-    ou_tag, p_tag = portee.clause_terme("t.collection_id")
+    ou_tag, p_tag = clause_tag
     tags = _rows(conn.execute(
         f"""SELECT t.id, t.label, t.couleur
            FROM annotation_tags at JOIN tags t ON t.id = at.tag_id
@@ -186,6 +190,20 @@ def _annotation_for_region(conn: sqlite3.Connection, portee, region_id: int) -> 
     ))
     return {"region_id": region_id, "note": ann["note"], "tags": tags,
             "date_modification": ann["date_modification"]}
+
+
+def _annotation_for_region(conn: sqlite3.Connection, portee, region_id: int) -> dict:
+    """L'annotation d'une région telle que CETTE personne la lit.
+
+    Les tags sont ceux dont on lit le TERME (`clause_terme`) : lire une région ne donne
+    pas à lire tous les tags qu'elle porte, un tag pouvant être local à une collection
+    qu'on ne lit pas. La `Portee` est OBLIGATOIRE, comme dans les accesseurs gardés : une
+    valeur par défaut rendrait l'oubli invisible. Ce qu'on ne montre pas, l'écriture
+    doit le PRÉSERVER (`_tags_caches`) ; le journal, lui, garde l'annotation ENTIÈRE.
+
+    Ne sert PLUS aux exports d'un album (AUTH-11, 2026-10-07) : un fichier qui sort au
+    titre d'une collection ne suit pas la portée de qui clique, cf. `_vocabulaire_d_export`."""
+    return _annotation_selon(conn, portee.clause_terme("t.collection_id"), region_id)
 
 
 def _sql_a_montrer(portee, alias_annotation: str = "a") -> tuple[str, list]:
@@ -392,6 +410,44 @@ def _collection_d_export(conn, portee: autorisation.Portee, album_id: int,
                  "précisez au titre de laquelle il sort (`collection_id`) — "
                  + ", ".join(f"« {r['nom']} » ({r['id']})" for r in ouvertes) + ".")
     return ouvertes[0]
+
+
+def _vocabulaire_d_export(titre: Optional[dict],
+                          alias: str = "t.collection_id") -> tuple[str, list]:
+    """Le VOCABULAIRE qu'emporte un album qui sort au titre de `titre` — fragment SQL
+    `(sql, params)` sur la colonne `collection_id` d'un terme.  AUTH-11, 2026-10-07.
+
+    `titre` est ce que rend `_collection_d_export` : la collection AU TITRE DE LAQUELLE
+    l'album sort, qu'elle ait été nommée ou choisie par défaut. L'album n'emporte que le
+    vocabulaire de celle-là et le vocabulaire global — **quel que soit qui exporte**.
+    C'est la règle du dépôt, et la même fonction (`database.clause_appartenance`), pas
+    une seconde écriture.
+
+    Avant, ces exports suivaient la portée d'export de la PERSONNE (`pour_export` →
+    `clause_terme`) : le même fichier, étiqueté A, portait un tag local à B pour qui
+    exporte aussi B et pas pour qui n'exporte que A. Pas un accès indu — un artefact qui
+    variait selon qui clique, sous une étiquette qui ne variait pas.
+
+    Ce fragment ne restreint jamais MOINS que la personne : `titre` est une collection
+    qu'elle a le droit d'exporter (`_collection_d_export` l'a vérifié), donc « global ⊕
+    local à A » est inclus dans ce que sa portée d'export lui laissait sortir. Le DROIT
+    reste celui de DROIT-2 et se décide avant ; ici on ne dit que ce que le fichier porte.
+
+    Il ne borne que le VOCABULAIRE. Les données de l'album — régions, texte, notes —
+    sortent entières : une région qui porte un tag d'ailleurs garde son annotation, sans
+    ce tag ; et s'il n'en reste rien à montrer, elle n'est plus dite annotée (la règle de
+    `_sql_a_montrer`, que les trois exports appliquent en lisant ce qui RESTE).
+
+    **`titre is None` ne borne rien, et c'est une limite écrite.** Le cas est unique :
+    portée TOTALE (administrateur, mono-poste), album rangé dans plusieurs collections,
+    aucune nommée — l'album « ne sort alors sous aucun droit particulier ». Il n'y a pas
+    de collection sur laquelle borner, et en inventer une serait prétendre un titre. Seule
+    une portée totale l'obtient, donc l'artefact ne varie pas selon qui clique ; l'Atelier
+    nomme toujours la collection et ne produit jamais cette requête.
+
+    Les exports TRANSVERSAUX (Recherche, Exploration) ne passent pas par ici : ils ne
+    sortent au titre d'aucune collection et suivent la personne (`_portee_d_export`)."""
+    return clause_appartenance(titre["id"] if titre else None, alias)
 
 
 def _refuser_si_verrouillee(planche: dict) -> dict:

@@ -322,6 +322,12 @@ ATTENDUS = {
         TAGS, None, "collection + un manifeste par album : les tags voyagent en "
         "annotations `tagging`, les attributs n'y sont pas"),
     # ---- Autres routes jouées --------------------------------------------- #
+    # L'export d'un album, au titre de la collection : ses tags sont ceux de CETTE
+    # collection et les globaux, quel que soit qui exporte (AUTH-11, tranché le
+    # 2026-10-07 — `socle._vocabulaire_d_export`). L'écart « À TRANCHER » que ce balayage
+    # avait trouvé et déclaré ici est fermé : ces trois sorties n'ont plus d'entrée dans
+    # ECARTS, et le tag de Bravo y est redevenu une fuite comme une autre. Le compte par
+    # compte est joué à part, par `test_depot_export` (§ 2 ter).
     ("route", "/api/export/json", "json"): Attendu(TAGS, None, "l'export d'un album"),
     ("route", "/api/export/csv", "csv"): Attendu(TAGS, None, "l'export d'un album"),
     ("route", "/api/export/tei", "tei"): Attendu(TAGS, None, "l'export d'un album"),
@@ -364,7 +370,10 @@ ATTENDUS = {
 # sentinelle annoncée qui ne passe plus aussi.
 #
 # Bâti par BALAYAGE le 2026-10-07, pas de mémoire. Il décrit l'existant, y compris ce qui
-# attend une décision : c'est un instrument d'inventaire, pas un arbitrage.
+# attend une décision : c'est un instrument d'inventaire, pas un arbitrage. Il ne reste
+# ici que des LIMITES écrites : le seul écart « à trancher » qu'il ait porté — l'export
+# d'album, dont le vocabulaire variait selon qui clique — a été tranché le jour même et
+# retiré, le cliquet ayant crié sur la déclaration devenue périmée.
 Ecart = namedtuple("Ecart", "parties raison")
 
 _AXES_BRAVO = frozenset({"dom-bravo-9102", "dim-bravo-9202", "val-bravo-9302",
@@ -385,24 +394,7 @@ _LIMITE_PORTEE = (
     "`portee` désigne des albums et des planches qu'on ne dépose pas. La décision "
     "« un acte n'est pas re-scopable » n'a pas été rouverte pour les runs.")
 
-_ECART_ALBUM = (
-    "À TRANCHER — écart entre deux règles écrites, trouvé par ce balayage le 2026-10-07. "
-    "L'export d'un album sort « au titre d'une collection nommée » (DROIT-2) mais son "
-    "vocabulaire suit la portée d'EXPORT de la PERSONNE (`pour_export` → `clause_terme`), "
-    "pas l'appartenance à la collection nommée : qui exporte A et B — un administrateur, "
-    "un propriétaire des deux — emporte, dans l'export d'un album d'A au titre d'A, le "
-    "tag local à B posé sur une de ses régions. La règle du dépôt dit l'inverse (« quel "
-    "que soit qui exporte », `database.clause_appartenance`). Ce n'est pas un accès "
-    "indu : la personne a le droit de sortir B. C'est un artefact qui varie selon qui "
-    "clique. Aucun correctif ici : la décision est à Hugo. "
-    "CE QUE CET ÉCART MASQUE, mesuré par la relecture du 2026-10-07 : tant qu'il est "
-    "déclaré, un SECOND canal qui porterait le même tag dans ces trois exports — une "
-    "colonne neuve, un bloc ajouté — passerait sous lui, l'écart étant admis pour "
-    "l'artefact entier (il n'a qu'une partie). Et `GET /api/recherche/export.csv?album=` "
-    "se comporte de même, par la règle transversale : il est hors de ce contrôle.")
-
 _PROV = _LIMITE_PORTEE + " La sérialisation PROV-O publie les mêmes trois colonnes."
-_UN_TAG = {"tag-bravo-9402"}
 
 ECARTS = {
     ("route", _DESC, "json"): Ecart({"": _AXES_BRAVO}, _LIMITE_FICHE),
@@ -423,9 +415,6 @@ ECARTS = {
     ("outil", "provenance_export.py", "--out-dir"): Ecart(
         {"provenance.json": {PORTEE_AILLEURS}}, _PROV),
     ("outil", "provenance_export.py", "(stdout)"): Ecart({"": {PORTEE_AILLEURS}}, _PROV),
-    ("route", "/api/export/json", "json"): Ecart({"": _UN_TAG}, _ECART_ALBUM),
-    ("route", "/api/export/csv", "csv"): Ecart({"": _UN_TAG}, _ECART_ALBUM),
-    ("route", "/api/export/tei", "tei"): Ecart({"": _UN_TAG}, _ECART_ALBUM),
 }
 
 

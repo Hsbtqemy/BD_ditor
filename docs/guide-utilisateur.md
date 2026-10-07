@@ -241,6 +241,13 @@ les figures, les CSV de la Recherche et de l'Exploration, les exports de dépôt
 l'export est refusé en le disant. Un album rangé dans plusieurs collections sort au titre
 de l'une d'elles, et l'export dit laquelle.
 
+**Le fichier ne porte que le vocabulaire de cette collection, plus le vocabulaire global :
+l'Atelier peut en montrer davantage.** Un tag propre à une *autre* collection, que vous
+voyez sur une région parce que vous lisez aussi cette autre collection, ne figure pas dans
+l'export — la région sort, avec sa note et ses autres tags, sans celui-là. C'est vrai pour
+tout le monde, propriétaire et administrateur compris : deux personnes qui exportent le même
+album au titre de la même collection obtiennent le même fichier (depuis le 2026-10-07).
+
 Pour citer une image dans un article, utilisez plutôt le bouton **`＋ Figure`** du panneau de
 région : il constitue un lot de figures, exporté en archive avec, pour chacune, le crop, sa
 légende (référence de citation, responsabilité, édition, licence) et sa notice.

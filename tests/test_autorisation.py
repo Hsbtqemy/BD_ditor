@@ -777,20 +777,39 @@ def test_un_tag_illisible_ne_filtre_rien(client, tag_illisible):
     assert all(n >= 1 for n in trouve(bob, "commun"))
 
 
-def test_le_csv_d_un_album_tait_un_tag_illisible(client, tag_illisible):
-    """Lire l'album ne donne pas à lire tous les tags qu'il porte. L'export CSV d'un album
-    a sa propre requête — il ne passe ni par la Recherche ni par l'Atelier."""
-    from conftest import ADMIN
-    a1 = tag_illisible["a1"]["id"]
+def _ranger_aussi(db_path, album_id, collection_id):
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
+                     (collection_id, album_id))
+        conn.commit()
+    finally:
+        conn.close()
 
-    def fichier(h):
-        rep = client.get("/api/export/csv", params={"album_id": a1}, headers=h)
+
+def test_le_csv_d_un_album_tait_un_tag_illisible(client, db_path, tag_illisible):
+    """Lire l'album ne donne pas à lire tous les tags qu'il porte. L'export CSV d'un album
+    a sa propre requête — il ne passe ni par la Recherche ni par l'Atelier.
+
+    L'anti-vacuité a changé de forme le 2026-10-07 (AUTH-11). Elle disait « pour
+    l'administrateur, le tag SORT » ; or l'album sort au titre de c1, et depuis ce jour
+    son vocabulaire est celui de c1 quel que soit qui exporte — administrateur compris.
+    Le tag sort donc là où il est chez lui : l'album rangé aussi dans c2, au titre de c2."""
+    from conftest import ADMIN
+    a1, c1, c2 = tag_illisible["a1"]["id"], tag_illisible["c1"], tag_illisible["c2"]
+    _ranger_aussi(db_path, a1, c2)
+
+    def fichier(h, collection_id):
+        rep = client.get("/api/export/csv",
+                         params={"album_id": a1, "collection_id": collection_id}, headers=h)
         assert rep.status_code == 200, rep.text
         return rep.text
 
-    assert "prive" in fichier(ADMIN)
-    vu = fichier(tag_illisible["bob"])
-    assert "commun" in vu and "prive" not in vu
+    assert "prive" in fichier(ADMIN, c2)
+    for qui in (ADMIN, tag_illisible["bob"]):
+        vu = fichier(qui, c1)
+        assert "commun" in vu and "prive" not in vu
 
 
 def test_le_croisement_ne_fait_pas_d_un_tag_illisible_une_ligne(client, tag_illisible):
@@ -809,23 +828,37 @@ def test_le_croisement_ne_fait_pas_d_un_tag_illisible_une_ligne(client, tag_illi
     assert "commun" in vus and "prive" not in vus
 
 
-def test_l_atelier_et_les_exports_d_album_taisent_un_tag_illisible(client, tag_illisible):
-    """Le second chemin de lecture des tags : `_annotation_for_region`, qui sert l'Atelier
-    ET les exports JSON et TEI d'un album. Filtré à part des lectures qui ont leur propre
-    requête, parce que cacher un tag là où on l'ÉDITE demande de le préserver à l'écriture
-    — ce que vérifient les deux tests suivants."""
+def test_l_atelier_et_les_exports_d_album_taisent_un_tag_illisible(client, db_path,
+                                                                   tag_illisible):
+    """Le second chemin de lecture des tags : le cœur `_annotation_selon`, qui sert
+    l'Atelier ET les exports JSON et TEI d'un album. Filtré à part des lectures qui ont
+    leur propre requête, parce que cacher un tag là où on l'ÉDITE demande de le préserver
+    à l'écriture — ce que vérifient les deux tests suivants.
+
+    **Les deux usages ne suivent plus la même règle** (AUTH-11, 2026-10-07). L'Atelier
+    montre ce que la PERSONNE lit : l'administrateur y voit le tag local à c2. L'export
+    porte ce que la COLLECTION emporte : au titre de c1, le même administrateur ne
+    l'emporte pas ; au titre de c2 — l'album y étant rangé aussi —, il l'emporte."""
     from conftest import ADMIN
     r1, a1 = tag_illisible["r1"]["id"], tag_illisible["a1"]["id"]
+    c1, c2 = tag_illisible["c1"], tag_illisible["c2"]
+    _ranger_aussi(db_path, a1, c2)
 
-    def lu(h):
+    def lu(h, collection_id):
         ann = client.get(f"/api/regions/{r1}/annotation", headers=h).json()
-        json_ = client.get("/api/export/json", params={"album_id": a1}, headers=h).text
-        tei = client.get("/api/export/tei", params={"album_id": a1}, headers=h).text
-        return {t["label"] for t in ann["tags"]}, json_, tei
+        params = {"album_id": a1, "collection_id": collection_id}
+        json_ = client.get("/api/export/json", params=params, headers=h)
+        tei = client.get("/api/export/tei", params=params, headers=h)
+        assert json_.status_code == 200 and tei.status_code == 200, (json_.text, tei.text)
+        return {t["label"] for t in ann["tags"]}, json_.text, tei.text
 
-    atelier, json_, tei = lu(ADMIN)
+    atelier, json_, tei = lu(ADMIN, c2)
     assert atelier == {"prive", "commun"} and "prive" in json_ and "prive" in tei
-    atelier, json_, tei = lu(tag_illisible["bob"])
+    atelier, json_, tei = lu(ADMIN, c1)
+    assert atelier == {"prive", "commun"}, "l'Atelier suit la personne, pas le titre"
+    assert "commun" in json_ and "prive" not in json_
+    assert "commun" in tei and "prive" not in tei
+    atelier, json_, tei = lu(tag_illisible["bob"], c1)
     assert atelier == {"commun"}
     assert "commun" in json_ and "prive" not in json_
     assert "commun" in tei and "prive" not in tei
