@@ -306,6 +306,36 @@ class Portee:
                 f"WHERE ca.album_id = {alias} AND ca.collection_id IN ({marques}))",
                 list(ids))
 
+    def clause_destruction(self, alias: str = "a.id") -> tuple[str, list]:
+        """Fragment SQL restreignant `alias` (un id d'album) aux albums qu'on peut
+        DÉTRUIRE — lui, ou l'une de ses planches.  AUTH-10, 2026-10-08.
+
+        Écrire dans UNE collection de l'album suffit pour l'annoter : c'est l'union de
+        `clause_album`, et elle est voulue — le travail fait dans une étude se voit dans
+        l'autre. Détruire est l'autre règle : il faut écrire dans TOUTES les collections où
+        l'album vit. Sans elle, le droit reçu sur une collection s'exerçait hors d'elle, y
+        compris sur une étude que celui qui supprime ne lit pas (reproduit le 2026-10-08).
+        Qui n'écrit que d'un côté garde un geste, qui ne détruit rien : SORTIR l'album de
+        sa collection. Il se défait — par qui écrit des deux côtés, ou par un
+        administrateur ; pas par celui qui n'écrivait dans l'album que par cette
+        collection-là : ranger demande d'y écrire, et il n'y écrit plus, qu'il continue de le
+        lire ou non.
+
+        Les deux moitiés sont nécessaires. `NOT EXISTS` seul serait vrai d'un album rangé
+        nulle part — une base retouchée à la main —, et l'ouvrirait à quiconque.
+        """
+        if self.tout:
+            return "1", []
+        ids = sorted(self.ecriture)
+        if not ids:
+            return "0", []
+        marques = ", ".join("?" * len(ids))
+        return (f"(EXISTS (SELECT 1 FROM collection_album ca "
+                f"WHERE ca.album_id = {alias} AND ca.collection_id IN ({marques})) "
+                f"AND NOT EXISTS (SELECT 1 FROM collection_album ca "
+                f"WHERE ca.album_id = {alias} AND ca.collection_id NOT IN ({marques})))",
+                list(ids) * 2)
+
     def clause_terme(self, alias: str) -> tuple[str, list]:
         """Fragment SQL restreignant un TERME du vocabulaire (tag, domaine, dimension,
         valeur) à ce qui est visible. `alias` désigne sa colonne `collection_id`.

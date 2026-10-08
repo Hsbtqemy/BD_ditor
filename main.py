@@ -50,10 +50,11 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     PersonnageIn, PersonnageUpdate, PresenceIn, RegionIn, RegionUpdate, RelectureIn,
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
     ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
-    _MOTIF_ADMIN, _MOTIF_EXPORT, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
+    _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_EXPORT, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
     _attributs_de, _auteur,
     _clause_lemme, _clause_personnage, _collection_d_export, _csv_response, _csv_safe, _descendre_portee,
-    _disposition, _ensure_tags, _exiger_export, _exiger_export_region,
+    _disposition, _ensure_tags, _exiger_destruction, _exiger_export,
+    _exiger_export_region,
     _get_album, _get_collection, _get_dimension, _get_personnage, _get_planche,
     _get_region, _get_valeur,
     _groupes, _norm_tag, _patch_lexique, _portee_d_export, _refuser_si_verrouillee, _row, _rows,
@@ -330,8 +331,19 @@ async def _sqlite_operational_handler(request, exc: sqlite3.OperationalError):
 def list_albums(conn: sqlite3.Connection = Depends(db),
                 portee: autorisation.Portee = Depends(portee_courante)):
     ou, params = portee.clause_album("a.id")
-    return _rows(conn.execute(
+    # AUTH-10 — `destructible` : la question se pose au serveur, album par album. Le client
+    # ne peut pas la déduire, la liste des collections d'un album qu'il reçoit étant
+    # PARTIELLE (`list_collections_album` ne rend que celles qu'on lit).
+    # `ecrivable` va AVEC lui, et non par confort : « non destructible » a deux causes — on
+    # n'écrit pas partout, ou on n'écrit nulle part — et l'écran n'a un geste à offrir que
+    # dans la première. Sans ce second champ, une lectrice se voyait proposer de « sortir »
+    # tous les albums, et le geste lui répondait « introuvable » (relecture croisée).
+    detruire, p_detruire = portee.clause_destruction("a.id")
+    ecrire, p_ecrire = portee.clause_album("a.id", ecriture=True)
+    albums = _rows(conn.execute(
         f"""SELECT a.*,
+                  ({detruire}) AS destructible,
+                  ({ecrire}) AS ecrivable,
                   (SELECT COUNT(*) FROM planches p WHERE p.album_id = a.id)
                       AS nb_planches,
                   (SELECT COUNT(*) FROM regions r JOIN planches p ON p.id = r.planche_id
@@ -343,8 +355,12 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
                      WHERE p.album_id = a.id AND p.validee IS NOT NULL) AS nb_validees
            FROM albums a
            WHERE {ou}
-           ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre""", params
+           ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre""", (*p_detruire, *p_ecrire, *params)
     ))
+    for a in albums:
+        a["destructible"] = bool(a["destructible"])
+        a["ecrivable"] = bool(a["ecrivable"])
+    return albums
 
 
 @app.post("/api/albums", status_code=201)
@@ -406,6 +422,7 @@ def update_album(album_id: int, patch: AlbumUpdate,
 def delete_album(album_id: int, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
     _get_album(conn, portee, album_id, ecriture=True)
+    _exiger_destruction(conn, portee, album_id)     # AUTH-10 : écrire quelque part n'y suffit pas
     # Désindexe les régions du FTS (le CASCADE SQL ne touche pas la table FTS).
     for r in conn.execute(
         "SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
@@ -421,6 +438,9 @@ def delete_album(album_id: int, conn: sqlite3.Connection = Depends(db),
 def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
     p = _get_planche(conn, portee, planche_id, ecriture=True)
+    # AUTH-10 — une planche n'a pas d'appartenance propre et ne peut pas « sortir » : sans
+    # cette garde, elle restait le chemin par lequel on vide un album partagé, une à une.
+    _exiger_destruction(conn, portee, p["album_id"])
     for r in conn.execute(
         "SELECT id FROM regions WHERE planche_id = ?", (planche_id,)).fetchall():
         unindex_region(conn, r["id"])

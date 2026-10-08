@@ -643,3 +643,184 @@ def test_une_liste_vide_ne_promet_la_propriete_qu_a_qui_la_recevra(page, live_se
         assert "propriétaire" not in texte, texte
 
 
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
+    """AUTH-10 — un album rangé dans plusieurs collections ne se supprime plus depuis une
+    seule : le serveur le refuse, et l'écran ne doit offrir que ce qui aboutira. Quatre
+    identités, parce que « on ne peut pas le supprimer » a plusieurs visages.
+
+    - **Lia ne fait que LIRE** « Incubateur » : ni corbeille ni ✕, nulle part. La relecture
+      croisée a trouvé le ✕ offert à toute lectrice, pour un geste qui répondait
+      « introuvable » — le test ne jouait alors qu'une identité qui écrit.
+    - **Paz écrit dans « Incubateur » ET dans « Archives »** : sortir « Triple » de l'une ne
+      lui retire pas l'écriture — rien à confirmer, et elle le défait elle-même.
+    - **Noa écrit dans « Incubateur » et lit « Archives »**, où « Triple » est aussi rangé :
+      le ✕ mène au bouton de la collection où elle ÉCRIT, pas au premier à l'alphabet ;
+      sortir ne lui fait pas perdre l'album de vue, mais l'écriture — un aller simple aussi,
+      qui se confirme avec le texte de SON cas, et la fiche reste ouverte.
+    - **Sam n'écrit que dans « Incubateur »** et ne lit rien d'autre : sur « Partagé », ni
+      la corbeille de l'album ni celles de ses planches ; sortir est pour lui un aller
+      simple, qui se CONFIRME, ferme la fiche d'un album qu'il ne lit plus, et laisse
+      l'album entier aux autres. Sur l'album de sa seule collection, rien n'a bougé. Et
+      nulle part l'écran ne NOMME une collection qu'il ne lit pas."""
+    admin = {"Remote-User": "decor", "Remote-Groups": "bd-admins",
+             **{k: v for k, v in ECRITURE.items() if k not in ("Remote-User", "Remote-Groups")}}
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
+        ids = {n: c.post("/api/collections", json={"nom": n}).json()["id"]
+               for n in ("Principale", "Incubateur", "Archives")}
+        albums = {}
+        for titre, rangs in (("Partagé", ("Principale", "Incubateur")),
+                             ("Triple", ("Principale", "Incubateur", "Archives")),
+                             ("Seul", ("Incubateur",))):
+            albums[titre] = c.post("/api/albums", json={
+                "titre": titre, "collection_id": ids[rangs[0]]}).json()["id"]
+            r = c.post(f"/api/albums/{albums[titre]}/import",
+                       files={"file": ("p.png", make_png(), "image/png")})
+            assert r.status_code == 201, r.text
+            for autre in rangs[1:]:
+                r = c.put(f"/api/albums/{albums[titre]}/collections/{ids[autre]}")
+                assert r.status_code == 201, r.text
+        for ou, qui, niveau in (("Incubateur", "sam", "ecriture"), ("Incubateur", "lia", "lecture"),
+                                ("Incubateur", "noa", "ecriture"), ("Archives", "noa", "lecture"),
+                                ("Incubateur", "paz", "ecriture"), ("Archives", "paz", "ecriture")):
+            r = c.put(f"/api/collections/{ids[ou]}/acces",
+                      json={"genre": "utilisateur", "principal": qui, "niveau": niveau})
+            assert r.status_code == 200, r.text
+
+    def ligne(titre):
+        return page.locator(".album-row", has=page.locator(".c-titre", has_text=titre))
+
+    def gestes(titre):
+        return (ligne(titre).locator('[data-act="del"]').count(),
+                ligne(titre).locator('[data-act="sortir"]').count())
+
+    def ouvrir(titre):
+        """Le détail de CET album, et non celui du précédent resté affiché. L'attente est
+        une FONCTION : en expression, elle passe par `eval` dès qu'elle doit patienter, et
+        la CSP (`script-src 'self'`) la refuse — vert seul, rouge dans la passe entière."""
+        ligne(titre).locator(".c-titre").click()
+        page.wait_for_function(
+            "t => { const d = document.querySelector('#album-detail');"
+            "       return !d.hidden && d.textContent.includes(t) && !!d.querySelector('.pl-thumb'); }",
+            arg=titre, timeout=5000)
+
+    demandes = []
+
+    def repondre(accepter):
+        def _(dialogue):
+            demandes.append(dialogue.message)
+            dialogue.accept() if accepter else dialogue.dismiss()
+        return _
+
+    # ── qui ne fait que lire : aucun geste qui n'aboutirait ──────────────────────────────
+    page.set_extra_http_headers({"Remote-User": "lia"})
+    page.goto(live_server + "/corpus", wait_until="networkidle")
+    ligne("Seul").wait_for(timeout=5000)
+    assert [gestes(t) for t in ("Partagé", "Triple", "Seul")] == [(0, 0)] * 3
+    ouvrir("Seul")
+    assert page.locator("#album-detail button[data-delp]").count() == 0
+
+    # ── qui écrit dans DEUX de ses collections : sortir se défait, rien à confirmer ──────
+    page.set_extra_http_headers({"Remote-User": "paz"})
+    page.goto(live_server + "/corpus", wait_until="networkidle")
+    ligne("Triple").wait_for(timeout=5000)
+    assert gestes("Triple") == (0, 1)          # elle n'écrit pas dans « Principale »
+    ligne("Triple").locator('[data-act="sortir"]').click()
+    page.locator("#album-modal:not([hidden])").wait_for(timeout=5000)
+    # Aucun gestionnaire de dialogue : s'il en venait un, Playwright le refuserait et la
+    # sortie n'aurait pas lieu. Elle écrit encore dans l'album par « Incubateur ».
+    page.locator(f'#m-appartenance-liste [data-sortir="{ids["Archives"]}"]').click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#m-appartenance-liste li').length === 1", timeout=5000)
+    page.select_option("#m-appartenance-cible", str(ids["Archives"]))
+    page.click("#m-appartenance-add")
+    page.wait_for_function(
+        "() => document.querySelectorAll('#m-appartenance-liste li').length === 2", timeout=5000)
+    assert demandes == []
+    page.click("#m-cancel")
+
+    # ── qui écrit d'un côté et LIT de l'autre ────────────────────────────────────────────
+    page.set_extra_http_headers({"Remote-User": "noa"})
+    page.goto(live_server + "/corpus", wait_until="networkidle")
+    ligne("Triple").wait_for(timeout=5000)
+    assert gestes("Triple") == (0, 1)
+    ligne("Triple").locator('[data-act="sortir"]').click()
+    page.locator("#album-modal:not([hidden])").wait_for(timeout=5000)
+    rangs = [t.split()[0] for t in page.locator("#m-appartenance-liste li").all_inner_texts()]
+    assert rangs == ["Archives", "Incubateur"], rangs
+    assert page.evaluate("() => document.activeElement.dataset.sortir") == str(ids["Incubateur"])
+    # Elle continuera de LIRE l'album par « Archives », mais « Incubateur » est la seule
+    # collection où elle y écrit : sortie, elle ne l'y rangera pas de nouveau. C'est un aller
+    # simple aussi, et il se confirme — avec SON texte, pas celui de qui perd l'album de vue.
+    # Le premier critère ne regardait que l'album qui disparaît : elle perdait l'écriture
+    # sans un mot (relecture du delta).
+    page.once("dialog", repondre(False))
+    page.keyboard.press("Enter")
+    assert len(demandes) == 1, demandes
+    assert "continuerez de lire" in demandes[0] and "n'y écrirez plus" in demandes[0], demandes
+    assert "ne le verrez plus" not in demandes[0] and "Principale" not in demandes[0]
+    assert page.locator("#m-appartenance-liste li").count() == 2      # refusé : rien ne bouge
+    # Le ✕ de la collection qu'elle ne fait que LIRE ne demande rien — il ne lui retirerait
+    # aucune écriture —, et le serveur le refuse. Sans gestionnaire, un dialogue serait
+    # écarté par Playwright et la requête ne partirait pas : c'est le refus affiché qui
+    # prouve qu'aucune confirmation n'est venue. (Ce ✕ offert sur une collection seulement
+    # lue est un défaut antérieur, laissé à UX-18 : le jour où il disparaît, ces lignes aussi.)
+    page.locator(f'#m-appartenance-liste [data-sortir="{ids["Archives"]}"]').click()
+    page.locator("#m-appartenance-msg.erreur", has_text="introuvable").wait_for(timeout=5000)
+    assert len(demandes) == 1
+    page.once("dialog", repondre(True))
+    page.locator(f'#m-appartenance-liste [data-sortir="{ids["Incubateur"]}"]').click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#m-appartenance-liste li').length === 1", timeout=5000)
+    assert page.locator("#album-modal").is_visible() and len(demandes) == 2
+    assert gestes("Triple") == (0, 0)          # redevenue lectrice de cet album
+    # Sortir de la collection qu'on ne fait que LIRE ne lui coûterait rien de plus : ce ✕-là
+    # ne demande rien (et le serveur le lui refuse — défaut antérieur, laissé à UX-18).
+    page.click("#m-cancel")
+    del demandes[:]
+
+    # ── qui n'écrit que d'un côté, et ne lit rien d'autre ────────────────────────────────
+    page.set_extra_http_headers({"Remote-User": "sam"})
+    page.goto(live_server + "/corpus", wait_until="networkidle")
+    ligne("Seul").wait_for(timeout=5000)
+    assert gestes("Seul") == (1, 0)
+    assert gestes("Partagé") == (0, 1)
+
+    # Les planches suivent leur album : une corbeille sous « Seul », aucune sous « Partagé ».
+    ouvrir("Seul")
+    assert page.locator("#album-detail button[data-delp]").count() == 1
+    ouvrir("Partagé")
+    assert page.locator("#album-detail button[data-delp]").count() == 0
+
+    # Le geste qui reste dit POURQUOI, et mène au bouton qui le fait.
+    ligne("Partagé").locator('[data-act="sortir"]').click()
+    page.locator("#album-modal:not([hidden])").wait_for(timeout=5000)
+    message = page.locator("#m-appartenance-msg").inner_text()
+    assert "sortir de la vôtre" in message, message
+    assert page.locator("#m-appartenance-liste li").all_inner_texts()[0].startswith("Incubateur")
+    assert page.evaluate("() => document.activeElement.dataset.sortir") == str(ids["Incubateur"])
+    assert "Principale" not in page.inner_text("body")
+
+    # Un aller simple se confirme. Refusé, rien ne bouge ; accepté, il le dit et aboutit.
+    page.once("dialog", repondre(False))
+    page.locator("#m-appartenance-liste [data-sortir]").click()
+    assert len(demandes) == 1 and "ne pourrez pas l'y ranger de nouveau" in demandes[0], demandes
+    assert "ne le verrez plus" in demandes[0] and "Principale" not in demandes[0]
+    assert page.locator("#album-modal").is_visible() and ligne("Partagé").count() == 1
+
+    page.once("dialog", repondre(True))
+    page.locator("#m-appartenance-liste [data-sortir]").click()
+    page.locator(".toast", has_text="Album sorti de « Incubateur »").wait_for(timeout=5000)
+    page.locator("#album-modal").wait_for(state="hidden", timeout=5000)
+    ligne("Partagé").wait_for(state="detached", timeout=5000)
+    assert ligne("Seul").count() == 1 and len(demandes) == 2
+
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
+        reste = {a["id"]: a for a in c.get("/api/albums").json()}
+        assert reste[albums["Partagé"]]["nb_planches"] == 1
+        rangs = [x["nom"] for x in c.get(f"/api/albums/{albums['Partagé']}/collections").json()]
+        assert rangs == ["Principale"], rangs
+        rangs = [x["nom"] for x in c.get(f"/api/albums/{albums['Triple']}/collections").json()]
+        assert rangs == ["Archives", "Principale"], rangs

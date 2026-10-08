@@ -336,6 +336,27 @@ def _get_collection(conn, portee: autorisation.Portee, collection_id: int, *,
 
 
 # --------------------------------------------------------------------------- #
+# DÉTRUIRE n'est pas écrire (AUTH-10) — une garde sur ce qui ne se rattrape pas
+# --------------------------------------------------------------------------- #
+# Comme pour l'export, ce helper ne tranche rien : `Portee.clause_destruction` dit qui peut
+# détruire quoi. Il dit comment REFUSER, et le refus est un 403 NOMMÉ — il ne s'appelle
+# qu'APRÈS l'accesseur gardé en écriture, donc sur un album que l'appelant lit et annote :
+# un « introuvable » lui mentirait. Ce que le message révèle est accepté par écrit (Hugo,
+# 2026-10-08) : qu'une AUTRE collection porte l'album, jamais laquelle.
+_MOTIF_DESTRUCTION = ("Cet album est aussi rangé dans une collection où vous n'écrivez "
+                      "pas : vous pouvez le sortir de la vôtre, pas le supprimer, ni "
+                      "supprimer ses planches.")
+
+
+def _exiger_destruction(conn, portee: autorisation.Portee, album_id: int) -> None:
+    """403 si l'on écrit dans l'album sans écrire dans TOUTES ses collections."""
+    ou, params = portee.clause_destruction("albums.id")
+    if conn.execute(f"SELECT 1 FROM albums WHERE id = ? AND {ou}",
+                    (album_id, *params)).fetchone() is None:
+        raise HTTPException(403, _MOTIF_DESTRUCTION)
+
+
+# --------------------------------------------------------------------------- #
 # Le droit d'EXPORTER (DROIT-2) — une garde sur ce qui SORT de l'instance
 # --------------------------------------------------------------------------- #
 # Ces helpers ne tranchent rien : `autorisation.Portee` dit qui peut sortir quoi. Ils

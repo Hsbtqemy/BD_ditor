@@ -102,14 +102,25 @@ function renderAlbums() {
       `<td class="c-num c-val-album">${validBadge(a.nb_validees, a.nb_planches)}</td>` +
       `<td class="c-act">` +
         `<button class="icon-btn" data-act="edit" title="Éditer les métadonnées">✎</button> ` +
-        `<button class="icon-btn danger" data-act="del" title="Supprimer l'album">🗑</button>` +
+        // AUTH-10 — supprimer n'est offert que là où il aboutira : le serveur le dit album
+        // par album (`destructible`), l'écran ne peut pas le déduire. À qui écrit dans
+        // l'album sans écrire partout (`ecrivable`), le geste qui reste est de le SORTIR de
+        // sa collection, dans la fiche. À qui ne fait que le lire : rien, aucun des deux
+        // n'aboutirait.
+        (a.destructible
+          ? `<button class="icon-btn danger" data-act="del" title="Supprimer l'album">🗑</button>`
+          : a.ecrivable
+            ? `<button class="icon-btn" data-act="sortir" title="${esc(SORTIR_PLUTOT)}" aria-label="Sortir l'album ${esc(a.titre)} d'une collection">✕</button>`
+            : "") +
       `</td>`;
     tr.querySelector("input").onchange = (e) => {
       e.target.checked ? state.checkedAlbums.add(a.id) : state.checkedAlbums.delete(a.id);
       updateSelInfo();
     };
     tr.querySelector('[data-act="edit"]').onclick = (e) => { e.stopPropagation(); openModal(a); };
-    tr.querySelector('[data-act="del"]').onclick = (e) => { e.stopPropagation(); deleteAlbum(a); };
+    const del = tr.querySelector('[data-act="del"]'), sortir = tr.querySelector('[data-act="sortir"]');
+    if (del) del.onclick = (e) => { e.stopPropagation(); deleteAlbum(a); };
+    if (sortir) sortir.onclick = (e) => { e.stopPropagation(); ouvrirPourSortir(a); };
     tr.onclick = (e) => { if (e.target.tagName !== "INPUT") openAlbum(a.id); };
     body.appendChild(tr);
   }
@@ -163,7 +174,7 @@ function renderDetail() {
             ${roleToggle(p)}
             ${lockToggle(p)}
             <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}" title="Ouvrir dans l'Atelier">↗</a>
-            <button class="icon-btn danger" data-delp="${p.id}" title="Supprimer la planche">🗑</button>
+            ${a.destructible ? `<button class="icon-btn danger" data-delp="${p.id}" title="Supprimer la planche">🗑</button>` : ""}
           </td>
         </tr>`).join("")
     : `<tr><td colspan="9" class="empty-cell">${videMsg}</td></tr>`;
@@ -422,6 +433,21 @@ async function saveAlbum() {
     toast("Album enregistré", "success");
   } catch (e) { $("#m-msg").textContent = "✗ " + e.message; }
   finally { btn.disabled = false; }
+}
+
+/* AUTH-10 — un album rangé aussi là où l'on n'écrit pas ne se supprime pas d'ici : ni lui,
+   ni ses planches. Le serveur le refuse (403) ; l'écran ne le propose pas, et dit pourquoi
+   au lieu de laisser un bouton manquer sans un mot. */
+const SORTIR_PLUTOT = "Cet album est aussi rangé dans une collection où vous n'écrivez pas : "
+  + "il ne se supprime pas d'ici, mais vous pouvez le sortir de la vôtre.";
+
+async function ouvrirPourSortir(a) {
+  await openModal(a);
+  appMsg(SORTIR_PLUTOT);
+  // Vers une collection où l'on ÉCRIT, pas vers la première à l'alphabet : celle-là peut
+  // n'être que lue, et son ✕ répondrait « introuvable ».
+  const premier = $("#m-appartenance-liste [data-sortir][data-ecrit]");
+  if (premier) premier.focus();
 }
 
 async function deleteAlbum(a) {
@@ -694,6 +720,7 @@ async function loadAppartenance(albumId) {
   const bloc = $("#m-appartenance"), liste = $("#m-appartenance-liste"),
         cible = $("#m-appartenance-cible");
   bloc.hidden = !albumId;
+  appMsg("");            // le message d'un album ne suit pas dans la fiche du suivant
   if (!albumId) return;
   let siennes = [], toutes = [];
   try {
@@ -701,18 +728,35 @@ async function loadAppartenance(albumId) {
     toutes = await apiGet("/api/collections");
   } catch (e) { appMsg(e.message, true); return; }
   const dedans = new Set(siennes.map((c) => c.id));
+  const ecrites = new Set(toutes.filter((c) => c.ecrivable).map((c) => c.id));
   liste.innerHTML = siennes.map((c) => `
     <li><span class="col-nom">${esc(c.nom)}</span>
-        <button class="ghost small" data-sortir="${c.id}" type="button"
+        <button class="ghost small" data-sortir="${c.id}" data-nom="${esc(c.nom)}" type="button"
+                ${ecrites.has(c.id) ? "data-ecrit" : ""}
                 title="Sortir de cette collection">✕</button></li>`).join("");
+  // AUTH-10 — sortir l'album de la SEULE collection où l'on y écrivait est un aller
+  // simple : ranger demande d'écrire dans l'album, donc on ne l'y remettra pas soi-même.
+  // Qu'on continue de le lire par une autre collection n'y change rien — on y perd
+  // l'écriture, pas forcément la vue —, et le texte dit lequel des deux. Le geste ne
+  // détruit rien, mais il ne se défait pas par celui qui le fait : il se confirme.
+  // (Un album `destructible` n'a pas d'ailleurs : le serveur refusera de lui retirer sa
+  // dernière collection, et il n'y a rien à confirmer.)
+  const album = state.albums.find((a) => a.id === albumId);
+  const ouJEcris = siennes.filter((c) => ecrites.has(c.id));
+  const resteLu = siennes.length > 1;
   liste.querySelectorAll("[data-sortir]").forEach((b) => {
     b.onclick = async () => {
+      const allerSimple = album && !album.destructible
+        && ouJEcris.length === 1 && String(ouJEcris[0].id) === b.dataset.sortir;
+      if (allerSimple && !confirm(`Sortir « ${album.titre} » de « ${b.dataset.nom} » ?\n\n`
+          + (resteLu
+            ? "Vous continuerez de lire cet album, mais vous n'y écrirez plus, "
+            : "L'album reste entier pour les autres collections, mais vous ne le verrez plus, ")
+          + "et vous ne pourrez pas l'y ranger de nouveau vous-même.")) return;
       try {
         await apiSend("DELETE", `/api/albums/${albumId}/collections/${b.dataset.sortir}`);
-        appMsg("");
-        loadAppartenance(albumId);
-        rafraichirCollections();
-      } catch (e) { appMsg(e.message, true); }
+      } catch (e) { appMsg(e.message, true); return; }
+      apresAppartenance(albumId, `Album sorti de « ${b.dataset.nom} ».`);
     };
   });
   cible.innerHTML = "";
@@ -728,10 +772,19 @@ async function rangerAlbum() {
   if (!id || !cible) return;
   try {
     await apiSend("PUT", `/api/albums/${id}/collections/${cible}`);
-    appMsg("");
-    loadAppartenance(id);
-    rafraichirCollections();
-  } catch (e) { appMsg(e.message, true); }
+  } catch (e) { appMsg(e.message, true); return; }
+  apresAppartenance(id, "");
+}
+
+/* Ranger ou sortir change ce que la LISTE dit de l'album — où il vit, donc s'il se supprime
+   (AUTH-10) : elle se relit. Et sortir un album de la seule collection qu'on lisait le fait
+   quitter l'écran : la fiche se ferme en le disant, au lieu de rester ouverte sur un album
+   que le serveur ne rend plus. */
+async function apresAppartenance(albumId, sorti) {
+  try { await loadAlbums(); } catch (e) { appMsg(e.message, true); return; }
+  if (state.albums.some((a) => a.id === albumId)) { loadAppartenance(albumId); return; }
+  closeModal();
+  if (sorti) toast(sorti);
 }
 
 
