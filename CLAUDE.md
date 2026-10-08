@@ -330,7 +330,15 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   la même personne réduite à ce qu'elle peut SORTIR : c'est ce que reçoivent les exports qui
   traversent plusieurs collections (Recherche, Exploration), sans qu'aucun cœur l'ait
   appris. Un album sort **au titre d'une collection nommée** (`socle._collection_d_export`)
-  et le dit. Le refus est un **403 nommé**, jamais un 404 — l'objet est lisible. **L'oubli
+  et le dit — et **ce titre gouverne son VOCABULAIRE** (AUTH-11, 2026-10-07) : le fichier
+  ne porte que les termes de cette collection et le global, QUEL QUE SOIT qui exporte
+  (`socle._vocabulaire_d_export` → `database.clause_appartenance`, la règle du dépôt), là
+  où les transversaux suivent `pour_export()`. D'où **aucun export sans titre** : plusieurs
+  collections exportables, 422 qui les nomme, **portée totale comprise** — renversement
+  daté du « en mono-poste, rien à nommer » de DROIT-2, qui laissait sortir un fichier dont
+  rien ne bornait le vocabulaire ; une seule, elle est prise sans qu'on la nomme ; aucune
+  collection du tout (base retouchée à la main), 409. Le refus est un **403 nommé**,
+  jamais un 404 — l'objet est lisible. **L'oubli
   d'une garde échoue ici OUVERT** : une porte oubliée continuerait de laisser sortir sans
   faire tomber un test. D'où le cliquet de `tests/test_droit_export.py` — toute route qui
   produit un fichier, repérée par son source ET par son chemin (l'export JSON d'un album
