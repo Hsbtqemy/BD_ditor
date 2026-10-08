@@ -155,10 +155,14 @@ Une collection est un **ensemble d'albums** (appartenance N-N, statique → cita
 > tranché par l'option (1) : il ne porte plus que le vocabulaire de A et le global, par la
 > même fonction (`database.clause_appartenance`, via `socle._vocabulaire_d_export`). Les
 > DONNÉES de l'album ne changent pas ; une région sans note dont le seul tag est d'ailleurs
-> sort sans annotation. Deux bornes écrites : les exports **transversaux** (Recherche,
-> Exploration) ne sortent au titre d'aucune collection et suivent toujours la personne ; et
-> un album exporté **sans titre** — portée totale, plusieurs collections, aucune nommée,
-> ce que l'Atelier ne fait jamais — n'a pas de collection sur laquelle borner.
+> sort sans annotation. Une borne écrite : les exports **transversaux** (Recherche,
+> Exploration) ne sortent au titre d'aucune collection et suivent toujours la personne. Et
+> **aucun album ne sort sans titre** (décidé le même jour) : dès que plusieurs collections
+> de l'album sont exportables pour qui demande, il exige `collection_id`, portée totale
+> comprise — 422 qui nomme les collections possibles ; une seule exportable, elle est prise
+> sans qu'on la nomme ; aucune collection du tout (base retouchée à la main), 409. L'administrateur et le mono-poste en étaient
+> dispensés depuis DROIT-2 et obtenaient alors un fichier `exporte_au_titre_de: null`,
+> dont rien ne bornait le vocabulaire.
 >
 > **Le journal A3 sort au grain CORPUS — mais il a cessé de porter du CONTENU
 > (2026-09-24).** Ses deux tables, `activite` et `evenement`, voyagent dans l'archive CSV,

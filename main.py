@@ -1780,16 +1780,16 @@ def _album_payload(conn: sqlite3.Connection, clause_tag: tuple[str, list],
     return album
 
 
-def _nom_album(album_id: int, titre: Optional[dict]) -> str:
-    """Le nom de base d'un export d'album téléchargé : `album_<id>`, suivi de `_c<N>` quand
-    il sort au titre de la collection N.
+def _nom_album(album_id: int, titre: dict) -> str:
+    """Le nom de base d'un export d'album téléchargé : `album_<id>_c<N>`, N étant la
+    collection au titre de laquelle il sort — toujours dite, aucun album ne sortant plus
+    sans titre (`_collection_d_export`, 2026-10-07).
 
     Partagé par le CSV et le TEI (AUTH-11, 2026-10-07). Le TEI s'appelait
     `album_<id>_tei.xml` quel que soit son titre ; or le titre gouverne désormais le
-    CONTENU (`_vocabulaire_d_export`) : le même album au titre de A, au titre de B et sans
-    titre rendait trois fichiers différents sous un seul nom. Sans titre, pas de `_c<N>` —
-    c'est l'absence qui le dit."""
-    return f"album_{album_id}" + (f"_c{titre['id']}" if titre else "")
+    CONTENU (`_vocabulaire_d_export`) : le même album au titre de A et au titre de B
+    rendait deux fichiers différents sous un seul nom."""
+    return f"album_{album_id}_c{titre['id']}"
 
 
 @app.get("/api/export/json")
@@ -1930,11 +1930,11 @@ def export_tei(album_id: int, collection_id: Optional[int] = None,
         _tei_el(title_stmt, "author").text = _xml_safe(album["auteur"])
     pub = _tei_el(file_desc, "publicationStmt")
     _tei_el(pub, "publisher").text = _xml_safe(album["editeur"] or "BéDéditeur")
-    if titre:
-        # DROIT-2 — sous quel droit ce fichier est sorti. `availability` est l'endroit que
-        # la TEI réserve à ce qui encadre la diffusion d'un texte.
-        _tei_el(_tei_el(pub, "availability"), "p").text = _xml_safe(
-            f"Exporté au titre de la collection « {titre['nom']} ».")
+    # DROIT-2 — sous quel droit ce fichier est sorti. `availability` est l'endroit que la
+    # TEI réserve à ce qui encadre la diffusion d'un texte. Toujours présent : aucun album
+    # ne sort plus sans titre (2026-10-07).
+    _tei_el(_tei_el(pub, "availability"), "p").text = _xml_safe(
+        f"Exporté au titre de la collection « {titre['nom']} ».")
     src = _tei_el(file_desc, "sourceDesc")
     _tei_el(src, "p").text = _xml_safe(
         f"{album['titre']}"

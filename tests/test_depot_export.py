@@ -705,9 +705,11 @@ def test_un_album_ne_sort_pas_au_titre_d_une_collection_ou_il_n_est_pas_range(
 
 def test_le_nom_du_fichier_dit_le_titre_en_csv_comme_en_tei(client, db_path,
                                                             album_partage):
-    """Trois contenus différents — au titre d'Alpha, de Bravo, sans titre — ne doivent pas
+    """Deux contenus différents — au titre d'Alpha, au titre de Bravo — ne doivent pas
     porter le même nom. Le CSV disait déjà `_c<N>` ; le TEI s'appelait
-    `album_<id>_tei.xml` dans les trois cas."""
+    `album_<id>_tei.xml` dans tous les cas. Un nom SANS `_c<N>` n'existe plus : depuis le
+    2026-10-07 aucun album ne sort sans titre (cf.
+    `test_sans_titre_un_album_de_plusieurs_collections_ne_sort_plus`)."""
     d = album_partage
     a, b, alb = d["alpha"]["id"], d["bravo"]["id"], d["album_id"]
     _ranger_aussi_dans(db_path, alb, b)
@@ -723,9 +725,7 @@ def test_le_nom_du_fichier_dit_le_titre_en_csv_comme_en_tei(client, db_path,
     assert nom("csv", a) == f"album_{alb}_c{a}.csv"
     assert nom("tei", a) == f"album_{alb}_c{a}_tei.xml"
     assert nom("tei", b) == f"album_{alb}_c{b}_tei.xml"
-    # Sans titre : c'est l'ABSENCE de `_c<N>` qui le dit, dans les deux formats.
-    assert nom("csv", None) == f"album_{alb}.csv"
-    assert nom("tei", None) == f"album_{alb}_tei.xml"
+    assert nom("csv", b) == f"album_{alb}_c{b}.csv"
 
 
 def test_les_tags_d_une_region_sortent_dans_le_meme_ordre_dans_les_trois_formats(
@@ -747,29 +747,63 @@ def test_les_tags_d_une_region_sortent_dans_le_meme_ordre_dans_les_trois_formats
         assert _annotation_exportee(fmt, blob, d["bulle_id"]) == ("", [aa, zz]), fmt
 
 
-def test_sans_titre_l_export_d_album_ne_borne_pas_son_vocabulaire(client, db_path,
-                                                                 album_partage):
-    """LIMITE ÉCRITE, pas une règle : le seul cas où un album sort sans titre.
+@pytest.mark.parametrize("fmt", ["json", "csv", "tei"])
+def test_sans_titre_un_album_de_plusieurs_collections_ne_sort_plus(client, db_path,
+                                                                   album_partage, fmt):
+    """Plus AUCUN album ne sort sans titre — portée totale comprise (Hugo, 2026-10-07).
 
-    Portée TOTALE (administrateur, mono-poste), album rangé dans plusieurs collections,
-    aucune nommée : `_collection_d_export` rend `None` — « il ne sort alors sous aucun
-    droit particulier » (DROIT-2) — et il n'y a pas de collection sur laquelle borner.
-    Le vocabulaire sort alors entier, comme le mode « corpus entier » des outils. Ce
-    n'est pas l'écart d'AUTH-11 : l'artefact ne se dit au titre d'AUCUNE collection, et
-    seule une portée totale l'obtient, donc il ne varie pas selon qui clique. L'Atelier
-    ne produit jamais cette requête (il nomme toujours la collection).
+    RENVERSEMENT DATÉ. Ce test s'appelait
+    `test_sans_titre_l_export_d_album_ne_borne_pas_son_vocabulaire` et fixait l'inverse :
+    en portée totale (administrateur, mono-poste), un album rangé dans plusieurs
+    collections et exporté sans en nommer aucune sortait en 200, `exporte_au_titre_de:
+    null`, avec TOUT le vocabulaire posé sur ses régions — « il ne sort alors sous aucun
+    droit particulier » (DROIT-2, 2026-09-11). Ancien attendu : 200, les tags d'Alpha ET
+    de Bravo. Nouvel attendu : le **422 nommé** que recevaient déjà les autres comptes.
 
-    Ce test fixe l'existant pour qu'on le change en le sachant : la décision du
-    2026-10-07 porte sur un export « au titre de A », et ne dit rien de celui-ci.
+    La raison : depuis que le titre gouverne le CONTENU (AUTH-11), « sans titre » était le
+    seul export d'album dont le vocabulaire n'était borné par rien, et le seul où le même
+    album changeait de contenu selon qu'il était rangé dans une ou deux collections.
+
+    Ce qui reste vrai, et que `test_l_album_au_titre_d_alpha_sort_identique…[par défaut]`
+    garde : un album rangé dans UNE seule collection sort sans rien nommer, au titre de
+    celle-là.
     """
     d = album_partage
-    _ranger_aussi_dans(db_path, d["album_id"], d["bravo"]["id"])
-    rep = client.get("/api/export/json", params={"album_id": d["album_id"]}, headers=ADMIN)
-    assert rep.status_code == 200, rep.text
-    assert rep.json()["exporte_au_titre_de"] is None
-    for fmt in ("json", "csv", "tei"):
-        texte = _export_album(client, fmt, d["album_id"], ADMIN).decode("utf-8")
-        assert T_GLOBAL in texte and T_ALPHA in texte and T_BRAVO in texte, fmt
+    a, b = d["alpha"]["id"], d["bravo"]["id"]
+    _ranger_aussi_dans(db_path, d["album_id"], b)
+    for nom in ("administrateur", "propriétaire d'Alpha et de Bravo"):
+        rep = client.get(f"/api/export/{fmt}", params={"album_id": d["album_id"]},
+                         headers=d["comptes"][nom])
+        assert rep.status_code == 422, (fmt, nom, rep.status_code, rep.text[:200])
+        detail = rep.json()["detail"]
+        assert "Corpus Alpha" in detail and "Corpus Bravo" in detail, detail
+        assert f"({a})" in detail and f"({b})" in detail, detail
+        for mot in (T_GLOBAL, T_ALPHA, T_BRAVO, "ALBUM-ALPHA-9001"):
+            assert mot not in rep.text, f"{fmt}, {nom} : le refus porte « {mot} »"
+    # Nommée, l'une comme l'autre répond — le refus porte sur le SILENCE, pas sur l'album.
+    for cid, porte, tait in ((a, T_ALPHA, T_BRAVO), (b, T_BRAVO, T_ALPHA)):
+        texte = _export_album(client, fmt, d["album_id"], ADMIN, cid).decode("utf-8")
+        assert porte in texte and tait not in texte, (fmt, cid)
+
+
+@pytest.mark.parametrize("fmt", ["json", "csv", "tei"])
+def test_un_album_sans_collection_ne_sort_pas_sans_titre_non_plus(client, db_path,
+                                                                 album, planche, fmt):
+    """L'invariant « aucun album hors collection » (AUTH-2) tient par les ROUTES ; une base
+    retouchée à la main peut le violer, et seule une portée totale lit alors l'album. Il
+    ne doit pas sortir pour autant sans titre : c'était la dernière façon d'atteindre un
+    export non borné. 409 qui NOMME l'état, pas un 403 « droit d'exporter » qui mentirait
+    à quelqu'un qui a tous les droits. Mono-poste, exprès : c'est le cas le plus permissif.
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("DELETE FROM collection_album WHERE album_id = ?", (album["id"],))
+        conn.commit()
+    finally:
+        conn.close()
+    rep = client.get(f"/api/export/{fmt}", params={"album_id": album["id"]})
+    assert rep.status_code == 409, (fmt, rep.status_code, rep.text[:200])
+    assert "aucune collection" in rep.json()["detail"], rep.text
 
 
 def test_les_exports_transversaux_gardent_la_regle_de_la_personne(client, db_path,

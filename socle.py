@@ -373,7 +373,7 @@ def _exiger_export_region(conn, portee: autorisation.Portee, region_id: int) -> 
 
 
 def _collection_d_export(conn, portee: autorisation.Portee, album_id: int,
-                         collection_id: Optional[int] = None) -> Optional[dict]:
+                         collection_id: Optional[int] = None) -> dict:
     """Au titre de QUELLE collection cet album sort-il ? Rend `{"id", "nom"}`.  DROIT-2.
 
     Un album vit dans plusieurs collections, et le droit d'exporter peut être accordé sur
@@ -385,9 +385,21 @@ def _collection_d_export(conn, portee: autorisation.Portee, album_id: int,
     - non nommée : la seule collection exportable de l'album ; aucune, 403 ; plusieurs,
       un 422 qui les NOMME, parce que le choix appartient à qui exporte, pas au code.
 
-    En portée totale, rien n'est à choisir : sans collection nommée, on ne dit la
-    collection que si l'album n'en a qu'une, et `None` sinon — il ne sort alors sous
-    aucun droit particulier, et le prétendre serait inventer."""
+    **La portée totale suit la MÊME règle** (Hugo, 2026-10-07) — renversement daté du
+    « en mono-poste, rien à nommer » de DROIT-2, restreint au cas multi-collections. Elle
+    rendait `None` pour un album rangé dans plusieurs collections sans qu'aucune soit
+    nommée : « il ne sort alors sous aucun droit particulier ». C'était tenable tant que le
+    titre n'était qu'une ÉTIQUETTE ; depuis AUTH-11 il gouverne le CONTENU
+    (`_vocabulaire_d_export`), et un export sans titre était le seul dont rien ne bornait
+    le vocabulaire. Il n'y a donc plus de branche à part : `peut_exporter` répond déjà
+    vrai partout en portée totale, et le 422 nommé vaut pour l'administrateur et le
+    mono-poste comme pour les autres. Une seule collection : rien à nommer, comme avant.
+
+    **Cette fonction ne rend JAMAIS `None`.** Le dernier chemin qui y menait est un album
+    rangé dans AUCUNE collection — l'invariant d'AUTH-2 l'interdit, les routes le
+    tiennent, une base retouchée à la main peut le violer, et seule une portée totale lit
+    alors l'album. Il répond 409 en nommant l'état : un 403 « droit d'exporter » mentirait
+    à qui a tous les droits, et le laisser sortir rouvrirait l'export sans titre."""
     rows = _rows(conn.execute(
         "SELECT c.id, c.nom FROM collection_album ca "
         "JOIN collection c ON c.id = ca.collection_id "
@@ -399,8 +411,10 @@ def _collection_d_export(conn, portee: autorisation.Portee, album_id: int,
             raise HTTPException(404, f"Collection {collection_id} introuvable pour cet album")
         _exiger_export(portee, collection_id)
         return c
-    if portee.tout:
-        return rows[0] if len(rows) == 1 else None
+    if not rows:
+        raise HTTPException(
+            409, "Cet album n'est rangé dans aucune collection : il ne peut sortir au "
+                 "titre d'aucune. Rangez-le dans une collection avant de l'exporter.")
     ouvertes = [r for r in rows if portee.peut_exporter(r["id"])]
     if not ouvertes:
         raise HTTPException(403, _MOTIF_EXPORT)
@@ -412,7 +426,7 @@ def _collection_d_export(conn, portee: autorisation.Portee, album_id: int,
     return ouvertes[0]
 
 
-def _vocabulaire_d_export(titre: Optional[dict],
+def _vocabulaire_d_export(titre: dict,
                           alias: str = "t.collection_id") -> tuple[str, list]:
     """Le VOCABULAIRE qu'emporte un album qui sort au titre de `titre` — fragment SQL
     `(sql, params)` sur la colonne `collection_id` d'un terme.  AUTH-11, 2026-10-07.
@@ -438,16 +452,16 @@ def _vocabulaire_d_export(titre: Optional[dict],
     ce tag ; et s'il n'en reste rien à montrer, elle n'est plus dite annotée (la règle de
     `_sql_a_montrer`, que les trois exports appliquent en lisant ce qui RESTE).
 
-    **`titre is None` ne borne rien, et c'est une limite écrite.** Le cas est unique :
-    portée TOTALE (administrateur, mono-poste), album rangé dans plusieurs collections,
-    aucune nommée — l'album « ne sort alors sous aucun droit particulier ». Il n'y a pas
-    de collection sur laquelle borner, et en inventer une serait prétendre un titre. Seule
-    une portée totale l'obtient, donc l'artefact ne varie pas selon qui clique ; l'Atelier
-    nomme toujours la collection et ne produit jamais cette requête.
+    **`titre` n'est jamais `None`** (2026-10-07) : `_collection_d_export` rend toujours une
+    collection ou lève. Un export « sans titre » a existé une journée comme limite écrite
+    — portée totale, plusieurs collections, aucune nommée — et il ne bornait rien ; il
+    répond désormais 422. Aucun repli n'est donc écrit ici : un `None` lèverait un
+    `TypeError` bruyant, là où un `clause_appartenance(None)` rendrait « corpus entier »
+    en silence — exactement l'export non borné qu'on vient de fermer.
 
     Les exports TRANSVERSAUX (Recherche, Exploration) ne passent pas par ici : ils ne
     sortent au titre d'aucune collection et suivent la personne (`_portee_d_export`)."""
-    return clause_appartenance(titre["id"] if titre else None, alias)
+    return clause_appartenance(titre["id"], alias)
 
 
 def _refuser_si_verrouillee(planche: dict) -> dict:

@@ -1278,10 +1278,10 @@ def clause_appartenance(collection_id: int | None,
     même collection différents sans que rien ne le dise.
 
     `collection_id=None` vaut « corpus entier » et ne filtre rien : c'est le défaut des
-    CLI, jamais celui d'une route de DÉPÔT (cf. `routes/depot.py`). L'export d'un ALBUM
-    suit la même règle depuis le 2026-10-07 (`socle._vocabulaire_d_export`), et il
-    atteint ce `None` dans un seul cas, écrit là-bas : portée totale, album rangé dans
-    plusieurs collections, aucune nommée — il ne sort alors au titre d'aucune.
+    CLI, jamais celui d'une route — ni de dépôt (`routes/depot.py`, où la collection est
+    un segment de chemin), ni d'export d'ALBUM, qui suit la même règle depuis le
+    2026-10-07 (`socle._vocabulaire_d_export`) et sort toujours au titre d'une collection :
+    `socle._collection_d_export` en rend une ou lève, portée totale comprise.
 
     La formule vivait déjà ici, dépliée dans `lexique_resume` — c'est-à-dire dans le
     calcul du « % défini », que la fiche d'AUTH-11 désigne comme la règle à suivre. La

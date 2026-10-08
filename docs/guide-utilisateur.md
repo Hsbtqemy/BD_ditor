@@ -239,7 +239,9 @@ chaque accès : lire ou annoter un album n'y suffit pas (cf.
 [`modele-et-droits.md`](modele-et-droits.md)). Il vaut pour tout ce qui sort : l'album,
 les figures, les CSV de la Recherche et de l'Exploration, les exports de dépôt. Sans lui,
 l'export est refusé en le disant. Un album rangé dans plusieurs collections sort au titre
-de l'une d'elles, et l'export dit laquelle.
+de l'une d'elles, et l'export dit laquelle ; l'Atelier vous demande laquelle dès que vous
+pouvez l'exporter au titre de plusieurs — à tout le monde, administrateur et mono-poste
+compris.
 
 **Le fichier ne porte que le vocabulaire de cette collection, plus le vocabulaire global :
 l'Atelier peut en montrer davantage.** Un tag propre à une *autre* collection, que vous

@@ -434,19 +434,43 @@ def test_un_album_sort_au_titre_d_une_collection_nommee(client, db_path, sortie)
 
 
 def test_le_mono_poste_exporte_sans_rien_nommer(client, db_path, deux_albums):
-    """Sans proxy, la portée est totale, export compris : rien à cocher, rien à nommer,
-    même pour un album rangé dans deux collections — et l'export ne prétend alors sortir
-    sous aucun droit particulier."""
-    a1 = deux_albums["a1"]["id"]
+    """Sans proxy, la portée est totale, export compris : rien à cocher — et rien à nommer
+    TANT QUE l'album n'est rangé que dans une collection.
+
+    RENVERSEMENT DATÉ (Hugo, 2026-10-07), restreint au cas multi-collections. Ce test
+    disait : « rien à nommer, même pour un album rangé dans deux collections — et l'export
+    ne prétend alors sortir sous aucun droit particulier » ; il attendait 200 et
+    `exporte_au_titre_de: null`. Depuis AUTH-11 le titre gouverne le CONTENU de l'export
+    (son vocabulaire), si bien qu'un export sans titre était le seul dont rien ne bornait
+    le vocabulaire. Nouvel attendu pour deux collections : le **422 nommé** des autres
+    comptes, mono-poste compris.
+
+    Ce qui reste vrai, et que la première moitié garde : une seule collection, rien à
+    nommer — l'album sort au titre de celle-là, et le dit. Et l'export transversal de la
+    Recherche, qui ne sort au titre d'aucune collection, n'a jamais rien à nommer.
+    """
+    a1, c1, c2 = deux_albums["a1"]["id"], deux_albums["c1"], deux_albums["c2"]
+    for fmt in ("json", "csv", "tei"):
+        rep = client.get(f"/api/export/{fmt}", params={"album_id": a1})
+        assert rep.status_code == 200, (fmt, rep.text[:200])
+    rep = client.get("/api/export/json", params={"album_id": a1})
+    assert rep.json()["exporte_au_titre_de"]["id"] == c1
+
     conn = sqlite3.connect(db_path)
     try:
         conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
-                     (deux_albums["c2"], a1))
+                     (c2, a1))
         conn.commit()
     finally:
         conn.close()
-    rep = client.get("/api/export/json", params={"album_id": a1})
-    assert rep.status_code == 200 and rep.json()["exporte_au_titre_de"] is None
+    for fmt in ("json", "csv", "tei"):
+        rep = client.get(f"/api/export/{fmt}", params={"album_id": a1})
+        assert rep.status_code == 422, (fmt, rep.status_code, rep.text[:200])
+        assert "Étude B" in rep.json()["detail"] and f"({c1})" in rep.json()["detail"]
+        rep = client.get(f"/api/export/{fmt}", params={"album_id": a1, "collection_id": c2})
+        assert rep.status_code == 200, (fmt, rep.text[:200])
+    rep = client.get("/api/export/json", params={"album_id": a1, "collection_id": c2})
+    assert rep.json()["exporte_au_titre_de"]["id"] == c2
     assert client.get("/api/recherche/export.csv",
                       params={"q": "MOTSECRET"}).status_code == 200
 

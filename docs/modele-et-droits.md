@@ -175,6 +175,7 @@ un relecteur en lecture peut recevoir la case. Un propriétaire exporte d'office
   n'emporte que celles où vous avez la case : l'écran peut montrer plus que le fichier.
 - Un album rangé dans plusieurs collections sort **au titre de l'une d'elles**, où vous
   avez la case ; si vous l'avez sur plusieurs, il faut dire laquelle, et l'export le dit.
+  Cela vaut pour tout le monde depuis le 2026-10-07, administrateur et mono-poste compris.
 - Cet export d'album (JSON-LD, CSV, TEI) ne porte que **le vocabulaire de cette
   collection et le vocabulaire global** — **quel que soit qui exporte** (décidé le
   2026-10-07). Un tag propre à une autre collection, posé sur une région de l'album, n'y
@@ -408,13 +409,18 @@ modification sur un terme est un **403** — il vient d'être listé, un 404 men
   collections que **vous** avez le droit d'exporter, même quand vous les filtrez sur un seul
   album. Deux personnes n'y obtiennent donc pas forcément le même fichier, et c'est voulu.
 
-Un seul cas sort **sans titre**, et son vocabulaire n'est alors pas borné : un album rangé
-dans plusieurs collections, exporté par un administrateur (ou en mono-poste) par un appel
-direct qui n'en nomme aucune. L'Atelier nomme toujours la collection et ne produit pas cet
-export. Chaque format le dit à sa façon : le JSON porte `exporte_au_titre_de: null` ; le CSV
-et le TEI s'appellent `album_<id>.csv` et `album_<id>_tei.xml`, **sans** le `_c<N>` qui
-nomme la collection (`album_<id>_c<N>.csv`, `album_<id>_c<N>_tei.xml`) ; et le TEI n'a pas
-de bloc `availability`, où il écrit sinon « Exporté au titre de la collection … ».
+**Aucun album ne sort sans titre** (décidé le 2026-10-07). S'il n'y a qu'une collection
+au titre de laquelle **vous** pouvez l'exporter, il sort au titre de celle-là sans qu'on ait
+à la nommer — même rangé ailleurs aussi, dans une collection où vous n'avez pas le droit
+d'exporter. S'il y en a plusieurs, il faut dire laquelle — y compris pour un administrateur
+et en mono-poste, qui en étaient dispensés jusque-là : la demande est refusée (422) en
+nommant les collections possibles. Un album rangé dans **aucune** collection — l'invariant
+l'interdit, seule une base retouchée à la main le produit — ne sort pas : la demande est
+refusée (409) en le disant.
+L'Atelier le fait pour vous : il nomme la collection, ou vous la demande. Chaque format dit
+son titre : le JSON dans `exporte_au_titre_de`, le CSV et le TEI dans leur nom
+(`album_<id>_c<N>.csv`, `album_<id>_c<N>_tei.xml`), et le TEI dans son bloc `availability`
+(« Exporté au titre de la collection … »).
 
 **Une limite connue, et assumée : l'index plein texte.** La Recherche interroge un index qui
 agrège le dialogue, la note **et les tags** d'une région. Les tags y sont indexés tous, sans

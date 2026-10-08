@@ -290,7 +290,7 @@ Cf. `docs/materiel-numerisation.md`.
 | `GET` | `/api/corpus` | compteurs globaux du corpus |
 | `POST/GET` | `/api/jobs` · `/api/jobs/{id}` | lancer / suivre un lot (multi-albums, arrière-plan) |
 | `POST` | `/api/jobs/{id}/annuler` | annuler un lot |
-| `GET` | `/api/export/{json,csv,tei}?album_id=&collection_id=` | export d'un album, **au titre d'une collection** où l'on a le droit d'exporter : `collection_id` la nomme, et n'est facultatif que si l'album n'en a qu'une d'exportable (sinon 422 qui les nomme). Le fichier ne porte que le vocabulaire de cette collection et le global |
+| `GET` | `/api/export/{json,csv,tei}?album_id=&collection_id=` | export d'un album, **au titre d'une collection** où l'on a le droit d'exporter : `collection_id` la nomme, et n'est facultatif que si l'album n'en a qu'une d'exportable (sinon 422 qui les nomme — pour tout le monde depuis le 2026-10-07, administrateur et mono-poste compris ; un album rangé dans aucune collection, 409). Le fichier ne porte que le vocabulaire de cette collection et le global |
 | `GET/POST` | `/api/sharedocs/{etat,connexion,deconnexion}` | session WebDAV ShareDocs (RAM only) |
 | `GET/POST` | `/api/sharedocs/{liste,importer}` | explorer / importer depuis ShareDocs |
 | `GET` | `/api/sauvegarde` | télécharger une sauvegarde (`.sqlite` zippé) |
