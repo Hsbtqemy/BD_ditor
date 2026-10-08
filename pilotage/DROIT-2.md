@@ -80,7 +80,7 @@ Les six cases restées ouvertes dans cette zone ont déménagé dans `AUTH-11` l
 - [x] Un compte en écriture, sans la case, n'exporte rien : ni le TEI de l'Atelier, ni une concordance, ni une figure — éprouvé sous son identité, porte par porte (`test_une_porte_refuse_qui_lit_sans_la_case`, quinze cas)
 - [x] Le même compte, case cochée sur la collection A, exporte A et pas B, y compris dans une concordance qui traverse les deux (`test_la_case_sur_a_n_emporte_pas_b`)
 - [x] Un propriétaire exporte sa collection sans avoir rien à cocher — éprouvé au MODÈLE et par la résolution réelle derrière le proxy (`test_un_proprietaire_exporte_sans_rien_cocher`, `test_exporter_est_une_case_a_cote_du_niveau_pas_un_palier`), et non porte par porte : les portes consultent la même `Portee`
-- [x] Le mono-poste est inchangé : sans proxy, la portée est totale, export compris, et rien n'est à nommer (`test_le_mono_poste_exporte_sans_rien_nommer`, `test_la_portee_totale_exporte_tout`)
+- [x] Le mono-poste est inchangé : sans proxy, la portée est totale, export compris, et ~~rien n'est à nommer~~ **rien n'est à nommer TANT QUE l'album n'est rangé que dans une collection** (`test_le_mono_poste_exporte_sans_rien_nommer`, `test_la_portee_totale_exporte_tout`) — **renversé en partie le 2026-10-07 par Hugo, `b886f8a` (AUTH-11)** : depuis `dda9958`, le titre d'un export d'album gouverne son VOCABULAIRE, et un album rangé dans plusieurs collections sortait en portée totale sans titre, donc sans borne. Il répond désormais 422 en nommant les collections, administrateur et mono-poste compris ; le test du même nom est réécrit vers les deux moitiés, et sa docstring date le renversement
 
 ## Contexte
 
