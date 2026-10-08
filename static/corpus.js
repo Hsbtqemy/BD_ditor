@@ -147,11 +147,11 @@ function renderDetail() {
     : state.planches;
   const videMsg = state.planches.length
     ? "Aucune planche pour ce filtre de relecture."
-    : "Aucune planche. Importez-en depuis la visionneuse ou ShareDocs.";
+    : "Aucune planche. Importez-en depuis l'Atelier, d'un fichier ou de ShareDocs.";
   const planchesRows = planches.length
     ? planches.map((p) => `
         <tr>
-          <td class="c-chk"><input type="checkbox" aria-label="Sélectionner la planche ${p.numero}" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
+          <td class="c-chk"><input type="checkbox" aria-label="Sélectionner ${esc(plancheNomLu(p))}" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
           <td><img class="pl-thumb" loading="lazy" src="${esc(p.url_web || "")}" alt=""></td>
           <td class="c-pl">${plancheNum(p)}${materielInfo(p)}</td>
           <td><span class="statut-pill statut-${esc(p.statut)}"></span> ${esc(p.statut)}</td>
@@ -162,12 +162,19 @@ function renderDetail() {
           <td class="c-act">
             ${roleToggle(p)}
             ${lockToggle(p)}
-            <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}" title="Ouvrir dans la visionneuse">↗</a>
+            <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}" title="Ouvrir dans l'Atelier">↗</a>
             <button class="icon-btn danger" data-delp="${p.id}" title="Supprimer la planche">🗑</button>
           </td>
         </tr>`).join("")
     : `<tr><td colspan="9" class="empty-cell">${videMsg}</td></tr>`;
 
+  // Les séparateurs se posent ENTRE les parties présentes, jamais derrière la dernière :
+  // concaténés un à un, ils laissaient « Auteur : X · » quand l'éditeur manquait.
+  const idParts = [
+    a.serie && "Série : " + esc(a.serie),
+    a.auteur && "Auteur : " + esc(a.auteur),
+    a.editeur && "Éditeur : " + esc(a.editeur),
+  ].filter(Boolean).join(" · ");
   const edParts = [
     a.date_edition && "Éd. " + esc(a.date_edition),
     a.langue && esc(a.langue),
@@ -179,10 +186,7 @@ function renderDetail() {
   box.innerHTML = `
     <div class="detail-head">
       <h3>${esc(a.titre)} ${a.annee ? `<span class="muted">(${a.annee})</span>` : ""}</h3>
-      <div class="detail-meta muted small">
-        ${a.serie ? "Série : " + esc(a.serie) + " · " : ""}${a.auteur ? "Auteur : " + esc(a.auteur) + " · " : ""}
-        ${a.editeur ? "Éditeur : " + esc(a.editeur) : ""}
-      </div>
+      ${idParts ? `<div class="detail-meta muted small">${idParts}</div>` : ""}
       ${edParts ? `<div class="detail-meta muted small">${edParts}</div>` : ""}
       ${a.source_numerisation ? `<div class="detail-meta muted small">Numérisation : ${esc(a.source_numerisation)}</div>` : ""}
       <div id="detail-contribs" class="detail-meta small"></div>
@@ -439,6 +443,15 @@ function plancheNum(p) {
   if (p.role === "recit")
     return `<b title="Numéro éditorial (cité)">planche ${p.numero_editorial}</b><br>${imp}`;
   return `<span class="badge" title="Paratexte — hors numérotation du récit">Paratexte</span><br>${imp}`;
+}
+
+/* Le nom d'une planche tel que l'ÉCRAN le montre, pour ce qui le dit à voix haute. La case
+   de sélection annonçait l'ordre d'IMPORT (« planche 5 ») là où la ligne affiche le numéro
+   ÉDITORIAL (« planche 3 ») : deux numéros pour la même ligne, et c'est celui qu'on ne voit
+   pas qu'entendait le lecteur d'écran. */
+function plancheNomLu(p) {
+  const imp = `i.${String(p.numero).padStart(3, "0")}`;
+  return p.role === "recit" ? `la planche ${p.numero_editorial} (${imp})` : `le paratexte ${imp}`;
 }
 
 /* Matériel de numérisation (A6) — résolution / mode / dimensions physiques (cm, dérivées

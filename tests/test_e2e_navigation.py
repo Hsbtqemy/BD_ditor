@@ -124,7 +124,8 @@ def seeded_corpus(live_server):
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30,
                      headers=ECRITURE)
     try:
-        aid = c.post("/api/albums", json={"titre": "E2E corpus"}).json()["id"]
+        aid = c.post("/api/albums", json={"titre": "E2E corpus", "serie": "Série E2E",
+                                          "auteur": "Auteur E2E"}).json()["id"]
         for _ in range(2):
             c.post(f"/api/albums/{aid}/import",
                    files={"file": ("p.png", make_png(), "image/png")})
@@ -145,6 +146,37 @@ def test_corpus_marquer_paratexte_renumerote(page, seeded_corpus):
     expect(detail).to_contain_text("Paratexte", timeout=15000)
     # renumérotation effective : il ne reste qu'UNE planche récit → plus de « planche 2 ».
     expect(detail).not_to_contain_text("planche 2")
+
+
+def test_corpus_le_detail_dit_ce_que_l_ecran_montre(page, seeded_corpus):
+    """Trois écarts entre ce que la Bibliothèque montrait et ce qu'elle disait, corrigés
+    ensemble. La case d'une planche annonçait l'ordre d'IMPORT au lecteur d'écran là où la
+    ligne affiche le numéro ÉDITORIAL — ils divergent dès qu'une planche passe en
+    paratexte. La ligne d'infos finissait par un « · » quand l'éditeur manquait. Et l'écran
+    nommait « visionneuse » la page qui s'appelle partout Atelier."""
+    page.goto(f"{seeded_corpus['base']}/corpus", wait_until="networkidle")
+    page.locator("#albums-body tr td.c-titre").first.click()
+    detail = page.locator("#album-detail")
+    expect(detail).to_contain_text("planche 2", timeout=15000)
+    detail.locator("button[data-role]").first.click()          # 1re planche → paratexte
+    expect(detail).not_to_contain_text("planche 2", timeout=15000)
+
+    cases = detail.locator("input[data-pid]")
+    expect(cases.nth(0)).to_have_attribute("aria-label", "Sélectionner le paratexte i.001")
+    # La seconde planche est la PREMIÈRE du récit : c'est ce que la ligne affiche.
+    expect(detail.locator("tbody tr").nth(1)).to_contain_text("planche 1")
+    expect(cases.nth(1)).to_have_attribute("aria-label", "Sélectionner la planche 1 (i.002)")
+
+    meta = detail.locator(".detail-meta").first
+    expect(meta).to_have_text("Série : Série E2E · Auteur : Auteur E2E")
+
+    textes = page.evaluate("""() => {
+      const app = document.querySelector('#corpus-app');
+      return [app.innerText, ...[...app.querySelectorAll('[title],[aria-label]')]
+        .map((el) => (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || ''))]
+        .join(' ');
+    }""")
+    assert "visionneuse" not in textes.lower(), "la Bibliothèque dit encore « visionneuse »"
 
 
 @pytest.fixture
