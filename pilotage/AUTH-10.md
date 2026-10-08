@@ -1,9 +1,17 @@
 ---
 chantier: AUTH-10
-statut: à venir
+statut: différé
 ---
 
 # AUTH-10 — `ecriture` recouvre l'acte qu'on défait et celui dont on ne revient pas
+
+**Arrêté sur** — 2026-10-08, commit `d92500b` (la règle écrite dans `CLAUDE.md` et la
+documentation d'usage), après `a17b634` (le code) : la zone « Supprimer n'est pas sortir » est
+codée — détruire un album ou l'une de ses planches demande d'écrire dans toutes ses
+collections, le sortir d'une collection reste permis à qui y écrit. Reste à jouer la passe
+`supprimer-n-est-pas-sortir`, et à trancher deux choses : le veto que la règle donne à qui
+range l'album chez soi, et la « collection de base » proposée par Hugo, à faire en chantier
+propre après la fusion vers `main`. Les trois remèdes du 2026-09-10 attendent toujours.
 
 **Point de départ** — 2026-09-10, en conversation, à partir d'une mesure qui cherchait
 autre chose. Le `GET /api/moi` du compte `stagiaire` sur la production rend `ecriture: 0`,
@@ -84,11 +92,13 @@ trois écarts restants sont tous à l'intérieur d'`ecriture`.
 
 ### Supprimer n'est pas sortir — un album rangé dans plusieurs collections
 - [x] **Trancher ce que « supprimer un album » fait quand il vit AUSSI ailleurs.** Aujourd'hui : écrire dans UNE de ses collections suffit à l'effacer de TOUTES (`delete_album` → `_get_album(ecriture=True)` → `clause_album(ecriture=True)`, un `EXISTS` sur les collections où l'on écrit). Options : **(1)** exiger d'écrire dans TOUTES ses collections — mais le refus, pour être honnête, doit dire qu'il vit ailleurs, c'est-à-dire révéler l'existence d'une collection qu'on ne lit pas ; **(2)** depuis une collection, le geste ne fait que l'en SORTIR tant qu'il vit ailleurs, et ne supprime que la dernière fois — c'est la règle déjà tenue pour une collection (« supprimer une collection ne supprime pas ses albums », `AUTH-3`), le geste devient réversible, et le scénario de l'incubateur est protégé. **Recommandation : (2)**, avec un message qui ne distingue pas les deux issues pour qui ne lit pas l'autre collection — sans quoi (2) fuit comme (1). Attendu : l'option, sa raison, et ce que dit l'écran dans chaque cas **Tranché le 2026-10-08 par Hugo : (2)** — « on supprime la présence dans une collection, mais pas spécialement l'album ». SORTIR est permis à qui écrit dans la collection, DÉTRUIRE seulement à qui écrit dans toutes celles où l'album vit ; la recommandation du message indistinct est abandonnée. Section « La décision du 2026-10-08 »
-- [ ] **Le constat est gardé par un test, quelle que soit l'option** — attendu : un album rangé dans deux collections, un compte qui n'écrit que dans l'une et ne lit pas l'autre ; après son geste, le lecteur de l'AUTRE collection voit toujours l'album. Reproduit le 2026-10-08 par un essai jetable, sur le code de `dev` : le compte ne lit que « Incubateur », son `DELETE` répond 204, et l'album a disparu pour la lectrice de la collection principale comme pour l'administrateur
+- [x] **Le constat est gardé par un test, quelle que soit l'option** — attendu : un album rangé dans deux collections, un compte qui n'écrit que dans l'une et ne lit pas l'autre ; après son geste, le lecteur de l'AUTRE collection voit toujours l'album. Reproduit le 2026-10-08 par un essai jetable, sur le code de `dev` : le compte ne lit que « Incubateur », son `DELETE` répond 204, et l'album a disparu pour la lectrice de la collection principale comme pour l'administrateur **Fait par `a17b634`** : `tests/test_destruction.py`, dix-neuf tests — le geste joué sous chaque identité, et ce que voient les AUTRES regardé ensuite. Y sont aussi le compte qui LIT l'autre collection sans y écrire (sans quoi « écrire partout » se réduirait en « voir partout »), le droit reçu par un GROUPE, le propriétaire d'un seul côté, et trois collections
 - [x] **La suppression d'une PLANCHE est relue sous la même question** — attendu : dit et écrit. Une planche n'a pas d'appartenance propre, elle suit son album : la supprimer depuis une collection la retire donc de toutes, et il n'y a pas de « sortir » pour elle. Si (2) est retenue pour l'album, la planche reste le chemin par lequel un compte en écriture vide un album partagé, une planche à la fois **Tranché le 2026-10-08 avec la précédente** : même règle — détruire une planche demande d'écrire dans toutes les collections de son album. Ce chemin se ferme ; le prix est qu'un compte qui n'écrit que d'un côté ne retire plus un scan fautif d'un album partagé
-- [ ] **`delete_album` et `delete_planche` exigent l'écriture dans TOUTES les collections de l'album** — attendu : le compte qui n'écrit que dans l'une reçoit un refus NOMMÉ (403 — il lit l'album, un 404 lui mentirait : c'est la case du « trou d'affichage » ci-dessus, appliquée ici), l'album et ses planches restent intacts ; qui écrit partout, ou porte une portée totale, détruit comme aujourd'hui ; un album rangé dans une seule collection se détruit comme aujourd'hui. La question s'écrit dans `autorisation.py`, à côté de `clause_album`, et non dans les deux routes
-- [ ] **Le serveur dit, album par album, si on peut le détruire, et l'écran ne propose que ce qui aboutira** — attendu : « Retirer de cette collection » pour un album qui vit ailleurs (`sortir_album` existe et suffit), « Détruire l'album » seulement quand le serveur l'annonce possible. Le client ne peut pas le déduire seul : la liste des collections d'un album qu'il reçoit est PARTIELLE (`list_collections_album` ne rend que celles qu'on lit). À faire avec la fiche d'album d'`UX-18`, qui porte ces gestes
-- [ ] **La collection de base — l'autre forme, proposée par Hugo le 2026-10-08, à trancher** — « une collection de base, qui récupère tous les imports ; et impossible de supprimer dedans, sauf admin ». Attendu : retenue ou écartée, avec sa raison. Ce qu'elle achète et ce qu'elle demande est écrit dans « La décision du 2026-10-08 ». Elle ne remplace pas les deux cases précédentes, elle s'y AJOUTE : « écrire partout », appliqué à un album qui vit aussi dans une collection où seul l'administrateur écrit, donne exactement « sauf admin »
+- [x] **`delete_album` et `delete_planche` exigent l'écriture dans TOUTES les collections de l'album** — attendu : le compte qui n'écrit que dans l'une reçoit un refus NOMMÉ (403 — il lit l'album, un 404 lui mentirait : c'est la case du « trou d'affichage » ci-dessus, appliquée ici), l'album et ses planches restent intacts ; qui écrit partout, ou porte une portée totale, détruit comme aujourd'hui ; un album rangé dans une seule collection se détruit comme aujourd'hui. La question s'écrit dans `autorisation.py`, à côté de `clause_album`, et non dans les deux routes **Fait par `a17b634`** : `Portee.clause_destruction`, et `socle._exiger_destruction` qui dit comment refuser. Le 403 ne vient qu'APRÈS l'accesseur gardé en écriture : qui n'écrit nulle part reçoit toujours son 404 ; il ne nomme aucune collection et ne dit pas combien. Un cliquet lit le source des routes — toute fonction qui efface un album, une planche ou leurs fichiers pose la garde ou figure sur `HORS_GARDE` avec sa raison : l'oubli échouait OUVERT. Dix-sept mutants côté serveur, dix-sept tués
+- [x] **Le serveur dit, album par album, si on peut le détruire, et l'écran ne propose que ce qui aboutira** — attendu : « Retirer de cette collection » pour un album qui vit ailleurs (`sortir_album` existe et suffit), « Détruire l'album » seulement quand le serveur l'annonce possible. Le client ne peut pas le déduire seul : la liste des collections d'un album qu'il reçoit est PARTIELLE (`list_collections_album` ne rend que celles qu'on lit). À faire avec la fiche d'album d'`UX-18`, qui porte ces gestes **Fait par `a17b634`, dans l'écran ACTUEL** : `GET /api/albums` publie `destructible` et `ecrivable`. La corbeille d'un album et celles de ses planches ne s'offrent qu'à qui peut détruire ; à qui écrit sans écrire partout, un ✕ de même gabarit ouvre la fiche sur « sortir », dit pourquoi, fait confirmer quand on y perd l'écriture, et ferme la fiche quand l'album a quitté ce qu'on lit ; à qui ne fait que lire, rien. Les libellés NOMMÉS — « Retirer de cette collection », « Détruire l'album » — restent à la refonte d'`UX-18` : la ligne d'aujourd'hui n'a que des icônes. Quinze mutants côté écran, quinze tués
+- [ ] **La passe `supprimer-n-est-pas-sortir` est jouée** — attendu : ses cases cochées par Hugo, sur la pile de recette reconstruite avec `a17b634`. La suite ne dit pas si un ✕ à la place d'une corbeille se COMPREND
+- [ ] **Trancher le veto de qui range l'album chez soi** — attendu : accepté par écrit, ou fermé, avec sa raison. Un co-écrivain qui range l'album dans une collection à lui retire à tous les autres le droit de le détruire, et ils ne peuvent pas le défaire. Mesuré par la relecture croisée, section « Ce que la relecture croisée a trouvé ». Sans objet si la collection de base est retenue
+- [ ] **La collection de base — l'autre forme, proposée par Hugo le 2026-10-08, à trancher** — « une collection de base, qui récupère tous les imports ; et impossible de supprimer dedans, sauf admin ». Attendu : retenue ou écartée, avec sa raison. Ce qu'elle achète et ce qu'elle demande est écrit dans « La décision du 2026-10-08 ». Elle ne remplace pas les deux cases précédentes, elle s'y AJOUTE : « écrire partout », appliqué à un album qui vit aussi dans une collection où seul l'administrateur écrit, donne exactement « sauf admin ». **Un de ses coûts est accepté par Hugo le 2026-10-08** : que supprimer une PLANCHE y devienne un geste d'administrateur. Restent à trancher l'export (la base ne doit pas compter comme titre), son écran, et la variante sans collection
 
 ## Les deux remèdes, chiffrés — 2026-09-10
 
@@ -399,6 +409,48 @@ dans le code.
 comme un chantier à elle. La règle est la garde dont la base a besoin : la base n'ajoute
 qu'un FAIT — tout album vit aussi là où seul l'administrateur écrit —, et « écrire partout »
 fait le reste sans une ligne de plus dans les routes de suppression.
+
+## Ce que la relecture croisée a trouvé, et ce que la règle laisse ouvert — 2026-10-08
+
+Le code de la zone « Supprimer n'est pas sortir » (`a17b634`) a été relu AVANT son commit par
+un agent neuf, lancé par la session de pilotage et non par celle qui l'avait écrit. La garde
+serveur est sortie juste ; quatre constats ont bloqué le commit, et aucun n'était visible à
+une suite verte et dix-neuf mutants tués.
+
+- **La garde de planche n'était pas éprouvée sur l'album qu'elle regarde.** Le décor créait
+  l'album 1 avec la planche 1 : une garde interrogeant l'id de la PLANCHE passait tout. Les
+  identifiants sont désormais décroisés, et le décor l'affirme.
+- **L'écran offrait « sortir » à qui ne fait que lire.** `destructible: false` a deux
+  causes — on n'écrit pas partout, ou on n'écrit nulle part —, et l'écran les confondait :
+  une lectrice voyait le ✕ sur TOUS les albums, pour un geste qui lui répondait
+  « introuvable ». La session l'avait vu en écrivant et l'avait écarté d'un « pas pire
+  qu'aujourd'hui » ; c'était faux, puisqu'elle y menait désormais. D'où `ecrivable`, à côté
+  de `destructible`, et un test navigateur joué sous quatre identités au lieu d'une.
+- **« Le geste se défait » était faux pour celui qui le fait.** Ranger demande d'écrire dans
+  l'album : sorti de la seule collection où il y écrivait, il ne l'y range pas de nouveau
+  (404, mesuré). Corrigé dans les quatre textes, gardé par un test, et l'écran fait CONFIRMER
+  cet aller simple. La première confirmation ne se déclenchait que si l'album DISPARAISSAIT
+  de la liste ; la relecture du delta a montré qu'on perd l'écriture sans perdre la vue dès
+  qu'on lit l'album par ailleurs. Le critère est donc l'écriture, et le texte dit lequel des
+  deux on perd.
+- **La passe de QA se contredisait** : une case « avant de sortir l'album » placée après la
+  sortie, et une précondition qui autorisait un album que `stagiaire` lisait déjà — auquel
+  cas la moitié des attendus décrivaient un autre écran.
+
+**Ce que la règle laisse ouvert, et qui n'était écrit nulle part.**
+
+- *Épingler.* Ranger un album chez soi ne demande que d'écrire dans l'album et dans la
+  collection d'arrivée, et créer une collection ne demande qu'une identité. Un simple
+  co-écrivain peut donc ranger l'album dans sa collection privée : la propriétaire d'origine
+  passe à `destructible: false`, reçoit 403, et ne peut pas le défaire — elle ne lit pas
+  cette collection. C'est un VETO offert à tout écrivain, y compris contre le retrait d'un
+  scan fautif. Mesuré par la relecture, porté à Hugo, non tranché ; la collection de base le
+  rendrait sans objet, puisque seul l'administrateur y détruirait.
+- *Supprimer la collection « de l'autre côté » rouvre la destruction* à qui n'écrivait que
+  d'un côté : l'album n'a plus qu'une collection. C'est cohérent avec la règle — elle porte
+  sur les collections où l'album VIT —, et c'est dit ici pour qu'on ne le découvre pas.
+- *Un album d'une seule collection se détruit toujours par quiconque y écrit.* Inchangé :
+  c'est la question du 2026-09-10.
 
 ## Contexte
 
