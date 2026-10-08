@@ -164,3 +164,9 @@ effacer du corpus principal un album qu'il ne sait même pas partagé. Reproduit
 2026-10-08 ; la décision est dans `AUTH-10`, zone « Supprimer n'est pas sortir ». Tant
 qu'elle n'est pas prise, la fenêtre se tient COURTE, et c'est à écrire dans le mode
 opératoire de la promotion.
+
+**Décidé le 2026-10-08, pas encore codé.** Hugo a tranché dans `AUTH-10` : depuis une
+collection on SORT un album, et le détruire — lui ou une de ses planches — demande d'écrire
+dans toutes les collections où il vit. Une fois posé, la fenêtre de la promotion cesse d'être
+dangereuse : un membre de l'incubateur ne pourra qu'en sortir l'album. D'ici là, elle se
+tient courte, comme écrit ci-dessus.

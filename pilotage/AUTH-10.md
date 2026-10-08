@@ -83,9 +83,12 @@ trois écarts restants sont tous à l'intérieur d'`ecriture`.
 - [ ] Ce raffinement est éprouvé dans les DEUX sens — un lecteur reçoit 403 sur ce qu'il voit, un étranger reçoit 404 sur ce qu'il ne voit pas — sans quoi on aurait remplacé un mensonge par une fuite
 
 ### Supprimer n'est pas sortir — un album rangé dans plusieurs collections
-- [ ] **Trancher ce que « supprimer un album » fait quand il vit AUSSI ailleurs.** Aujourd'hui : écrire dans UNE de ses collections suffit à l'effacer de TOUTES (`delete_album` → `_get_album(ecriture=True)` → `clause_album(ecriture=True)`, un `EXISTS` sur les collections où l'on écrit). Options : **(1)** exiger d'écrire dans TOUTES ses collections — mais le refus, pour être honnête, doit dire qu'il vit ailleurs, c'est-à-dire révéler l'existence d'une collection qu'on ne lit pas ; **(2)** depuis une collection, le geste ne fait que l'en SORTIR tant qu'il vit ailleurs, et ne supprime que la dernière fois — c'est la règle déjà tenue pour une collection (« supprimer une collection ne supprime pas ses albums », `AUTH-3`), le geste devient réversible, et le scénario de l'incubateur est protégé. **Recommandation : (2)**, avec un message qui ne distingue pas les deux issues pour qui ne lit pas l'autre collection — sans quoi (2) fuit comme (1). Attendu : l'option, sa raison, et ce que dit l'écran dans chaque cas
+- [x] **Trancher ce que « supprimer un album » fait quand il vit AUSSI ailleurs.** Aujourd'hui : écrire dans UNE de ses collections suffit à l'effacer de TOUTES (`delete_album` → `_get_album(ecriture=True)` → `clause_album(ecriture=True)`, un `EXISTS` sur les collections où l'on écrit). Options : **(1)** exiger d'écrire dans TOUTES ses collections — mais le refus, pour être honnête, doit dire qu'il vit ailleurs, c'est-à-dire révéler l'existence d'une collection qu'on ne lit pas ; **(2)** depuis une collection, le geste ne fait que l'en SORTIR tant qu'il vit ailleurs, et ne supprime que la dernière fois — c'est la règle déjà tenue pour une collection (« supprimer une collection ne supprime pas ses albums », `AUTH-3`), le geste devient réversible, et le scénario de l'incubateur est protégé. **Recommandation : (2)**, avec un message qui ne distingue pas les deux issues pour qui ne lit pas l'autre collection — sans quoi (2) fuit comme (1). Attendu : l'option, sa raison, et ce que dit l'écran dans chaque cas **Tranché le 2026-10-08 par Hugo : (2)** — « on supprime la présence dans une collection, mais pas spécialement l'album ». SORTIR est permis à qui écrit dans la collection, DÉTRUIRE seulement à qui écrit dans toutes celles où l'album vit ; la recommandation du message indistinct est abandonnée. Section « La décision du 2026-10-08 »
 - [ ] **Le constat est gardé par un test, quelle que soit l'option** — attendu : un album rangé dans deux collections, un compte qui n'écrit que dans l'une et ne lit pas l'autre ; après son geste, le lecteur de l'AUTRE collection voit toujours l'album. Reproduit le 2026-10-08 par un essai jetable, sur le code de `dev` : le compte ne lit que « Incubateur », son `DELETE` répond 204, et l'album a disparu pour la lectrice de la collection principale comme pour l'administrateur
-- [ ] **La suppression d'une PLANCHE est relue sous la même question** — attendu : dit et écrit. Une planche n'a pas d'appartenance propre, elle suit son album : la supprimer depuis une collection la retire donc de toutes, et il n'y a pas de « sortir » pour elle. Si (2) est retenue pour l'album, la planche reste le chemin par lequel un compte en écriture vide un album partagé, une planche à la fois
+- [x] **La suppression d'une PLANCHE est relue sous la même question** — attendu : dit et écrit. Une planche n'a pas d'appartenance propre, elle suit son album : la supprimer depuis une collection la retire donc de toutes, et il n'y a pas de « sortir » pour elle. Si (2) est retenue pour l'album, la planche reste le chemin par lequel un compte en écriture vide un album partagé, une planche à la fois **Tranché le 2026-10-08 avec la précédente** : même règle — détruire une planche demande d'écrire dans toutes les collections de son album. Ce chemin se ferme ; le prix est qu'un compte qui n'écrit que d'un côté ne retire plus un scan fautif d'un album partagé
+- [ ] **`delete_album` et `delete_planche` exigent l'écriture dans TOUTES les collections de l'album** — attendu : le compte qui n'écrit que dans l'une reçoit un refus NOMMÉ (403 — il lit l'album, un 404 lui mentirait : c'est la case du « trou d'affichage » ci-dessus, appliquée ici), l'album et ses planches restent intacts ; qui écrit partout, ou porte une portée totale, détruit comme aujourd'hui ; un album rangé dans une seule collection se détruit comme aujourd'hui. La question s'écrit dans `autorisation.py`, à côté de `clause_album`, et non dans les deux routes
+- [ ] **Le serveur dit, album par album, si on peut le détruire, et l'écran ne propose que ce qui aboutira** — attendu : « Retirer de cette collection » pour un album qui vit ailleurs (`sortir_album` existe et suffit), « Détruire l'album » seulement quand le serveur l'annonce possible. Le client ne peut pas le déduire seul : la liste des collections d'un album qu'il reçoit est PARTIELLE (`list_collections_album` ne rend que celles qu'on lit). À faire avec la fiche d'album d'`UX-18`, qui porte ces gestes
+- [ ] **La collection de base — l'autre forme, proposée par Hugo le 2026-10-08, à trancher** — « une collection de base, qui récupère tous les imports ; et impossible de supprimer dedans, sauf admin ». Attendu : retenue ou écartée, avec sa raison. Ce qu'elle achète et ce qu'elle demande est écrit dans « La décision du 2026-10-08 ». Elle ne remplace pas les deux cases précédentes, elle s'y AJOUTE : « écrire partout », appliqué à un album qui vit aussi dans une collection où seul l'administrateur écrit, donne exactement « sauf admin »
 
 ## Les deux remèdes, chiffrés — 2026-09-10
 
@@ -310,9 +313,92 @@ deux, et tout membre de l'incubateur peut l'effacer du corpus principal. La fen�
 `COL-1` ouvre pour ne perdre aucun album est celle où un album se perd le plus facilement.
 Le renvoi est posé chez lui.
 
-**Ce qui n'est pas décidé ici.** Rien : la zone « Supprimer n'est pas sortir » du `Reste`
-pose les deux options et une recommandation, et attend Hugo. La décision du 2026-09-10 de ne
-rien engager sur les niveaux n'est pas rouverte par ce constat — il ne demande aucun niveau.
+**Ce qui n'était pas décidé en l'écrivant.** Rien : la zone « Supprimer n'est pas sortir »
+du `Reste` posait les deux options et une recommandation. La décision est venue le jour
+même, section suivante. Celle du 2026-09-10 de ne rien engager sur les niveaux n'est pas
+rouverte par ce constat — il ne demande aucun niveau.
+
+## La décision du 2026-10-08 : on retire une présence, on ne détruit pas un album
+
+Hugo, en réponse à la zone « Supprimer n'est pas sortir » : *« Pour moi, on supprime la
+présence dans une collection, mais pas spécialement l'album, non ? »* — puis *« Je te
+suis »* sur la règle qui en a été tirée.
+
+**La règle.** Deux gestes là où il n'y en avait qu'un.
+
+- **SORTIR** un album de sa collection : permis à qui y écrit, tant que l'album vit
+  ailleurs. Rien à écrire côté serveur — `sortir_album` le fait déjà, 409 compris sur la
+  dernière collection.
+- **DÉTRUIRE** un album, ou l'une de ses planches : seulement à qui écrit dans TOUTES les
+  collections où l'album vit. Pour un album rangé dans une seule collection, rien ne change.
+
+Annoter reste gouverné par l'UNION, et c'est voulu : le travail fait dans une collection se
+voit dans l'autre, et il se défait par Ctrl+Z.
+
+**Deux conséquences acceptées avec elle.**
+
+1. *L'écran révèle qu'un album vit ailleurs.* « Détruire » n'étant proposé que là où il
+   aboutira, son absence dit qu'une autre collection porte l'album — sans la nommer.
+   L'éviter demanderait une corbeille avec sursis (le remède C). Cela REMPLACE la
+   recommandation écrite le matin même dans la zone, « un message qui ne distingue pas les
+   deux issues » : elle supposait un seul geste à deux issues, il y en a deux.
+2. *Un album d'une seule collection se détruit toujours par quiconque y écrit.* C'est la
+   question du 2026-09-10, et cette décision ne la rouvre pas.
+
+**Ce que cela fait à la fenêtre de `COL-1`.** Un membre de l'incubateur peut sortir l'album
+de l'incubateur — le dernier temps de la promotion, fait trop tôt, sans perte — ; il ne peut
+plus ni le détruire ni le vider planche par planche. Le prix est du même côté : tant que
+l'album vit des deux côtés, il n'en retire plus non plus un scan fautif.
+
+### L'autre forme, proposée le même jour : une collection de base
+
+Hugo, dans le même message : *« Ou sinon on fait une collection de base, qui récupère tous
+les imports. Et impossible de supprimer dedans, sauf admin ? »*
+
+**Ce qu'elle achète, et que la règle n'achète pas.** La destruction réservée à
+l'administrateur PARTOUT, y compris pour l'album d'une seule collection : c'est une réponse
+à la question du 2026-09-10 qui ne demande aucun niveau. « Supprimer » devient toujours
+rattrapable — l'album sorti de partout reste dans la base, où l'administrateur le re-range
+ou le détruit : la corbeille du remède C, sans sursis. Et la conséquence 1 disparaît,
+puisque personne d'autre ne voit jamais « détruire ».
+
+**Ce qu'elle n'est pas : la « Collection par défaut » d'aujourd'hui.** Celle-ci reçoit déjà
+les albums créés sans collection nommée (`create_album`, et l'import de l'Atelier par
+`nouvel_album`), mais c'est une collection ORDINAIRE — on y donne des accès, qui y écrit y
+supprime, et un album créé dans une collection nommée n'y figure pas.
+
+**Ce qu'elle demande.** Lu dans le code le 2026-10-08, rien n'a été joué.
+
+- *Elle est fermée à tous, sauf portée totale.* La lire serait lire tout le corpus, et le
+  cloisonnement d'`AUTH-2` tomberait. Ce serait la première collection à régime propre :
+  aujourd'hui la collection de repli n'est spéciale que par son nom.
+- *Elle heurte l'export décidé la veille.* `_collection_d_export` répond 422 à tout album
+  rangé dans plusieurs collections exportables, portée totale comprise (`AUTH-11`,
+  2026-10-07). Sous une base, TOUT album vit dans deux collections pour l'administrateur et
+  pour le mono-poste : chaque export d'album demanderait de nommer son titre, à moins que
+  la base ne compte jamais comme un titre. Même question pour les outils de dépôt, dont la
+  collection est l'unité.
+- *La planche n'a toujours pas de « sortir ».* Supprimer une planche deviendrait un geste
+  d'administrateur partout, y compris pour corriger son propre import. À accepter, ou à
+  doubler d'un retrait de planche rattrapable.
+- *Ce qui est sorti de partout s'accumule, vu du seul administrateur.* Il lui faut un écran
+  pour re-ranger ou détruire (`UX-18`), sans quoi l'instance garde des scans que personne
+  ne voit. Et le 409 « dernière collection » change de sens : sortir de sa dernière
+  collection de travail devient permis.
+- *Une migration*, et chaque chemin de création range deux fois.
+
+**Une variante, à peser avec elle** (proposée par la session, pas par Hugo). La même
+garantie sans collection : un album sorti de sa dernière collection reste en base, hors
+collection, et seule une portée totale le lit — c'est ce que la docstring de
+`_collection_d_export` dit déjà d'un orphelin, à vérifier par un test avant de s'y appuyer.
+Elle n'a ni le coût d'export ni le double rangement ; elle renverse en revanche l'invariant
+d'`AUTH-2`, « aucun album hors collection », écrit pour qu'aucune politique ne s'invente
+dans le code.
+
+**Recommandation de la session, non tranchée.** Faire la règle d'abord, la base ensuite,
+comme un chantier à elle. La règle est la garde dont la base a besoin : la base n'ajoute
+qu'un FAIT — tout album vit aussi là où seul l'administrateur écrit —, et « écrire partout »
+fait le reste sans une ligne de plus dans les routes de suppression.
 
 ## Contexte
 
