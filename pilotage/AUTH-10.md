@@ -82,6 +82,11 @@ trois écarts restants sont tous à l'intérieur d'`ecriture`.
 - [ ] **Un refus d'écriture sur une donnée est un 404, et il ment à qui VOIT l'objet.** `_get_region(..., ecriture=True)` lève « Région 42 introuvable » sur une région affichée à l'écran. La règle vient d'AUTH-2 — « 404, jamais 403 : "existe mais pas pour vous" révèle la composition du corpus » — mais elle ne s'applique PAS ici : la personne lit déjà cette région. Le 404 ne lui cache rien du corpus, il lui cache la raison du refus. Attendu : un 403 nommé quand l'objet est LISIBLE et l'écriture refusée, le 404 restant pour qui ne le voit pas. La doctrine n'est pas rompue, elle est précisée
 - [ ] Ce raffinement est éprouvé dans les DEUX sens — un lecteur reçoit 403 sur ce qu'il voit, un étranger reçoit 404 sur ce qu'il ne voit pas — sans quoi on aurait remplacé un mensonge par une fuite
 
+### Supprimer n'est pas sortir — un album rangé dans plusieurs collections
+- [ ] **Trancher ce que « supprimer un album » fait quand il vit AUSSI ailleurs.** Aujourd'hui : écrire dans UNE de ses collections suffit à l'effacer de TOUTES (`delete_album` → `_get_album(ecriture=True)` → `clause_album(ecriture=True)`, un `EXISTS` sur les collections où l'on écrit). Options : **(1)** exiger d'écrire dans TOUTES ses collections — mais le refus, pour être honnête, doit dire qu'il vit ailleurs, c'est-à-dire révéler l'existence d'une collection qu'on ne lit pas ; **(2)** depuis une collection, le geste ne fait que l'en SORTIR tant qu'il vit ailleurs, et ne supprime que la dernière fois — c'est la règle déjà tenue pour une collection (« supprimer une collection ne supprime pas ses albums », `AUTH-3`), le geste devient réversible, et le scénario de l'incubateur est protégé. **Recommandation : (2)**, avec un message qui ne distingue pas les deux issues pour qui ne lit pas l'autre collection — sans quoi (2) fuit comme (1). Attendu : l'option, sa raison, et ce que dit l'écran dans chaque cas
+- [ ] **Le constat est gardé par un test, quelle que soit l'option** — attendu : un album rangé dans deux collections, un compte qui n'écrit que dans l'une et ne lit pas l'autre ; après son geste, le lecteur de l'AUTRE collection voit toujours l'album. Reproduit le 2026-10-08 par un essai jetable, sur le code de `dev` : le compte ne lit que « Incubateur », son `DELETE` répond 204, et l'album a disparu pour la lectrice de la collection principale comme pour l'administrateur
+- [ ] **La suppression d'une PLANCHE est relue sous la même question** — attendu : dit et écrit. Une planche n'a pas d'appartenance propre, elle suit son album : la supprimer depuis une collection la retire donc de toutes, et il n'y a pas de « sortir » pour elle. Si (2) est retenue pour l'album, la planche reste le chemin par lequel un compte en écriture vide un album partagé, une planche à la fois
+
 ## Les deux remèdes, chiffrés — 2026-09-10
 
 **Le remède A se coupe en deux moitiés qui n'ont pas le même prix**, et l'énoncé qui les
@@ -274,6 +279,40 @@ trace ni sursis.
 écrit route par route » : qu'une route donnée exige le niveau de son acte. La table reprend le
 tableau d'AUTH-12, lui-même tiré de l'inventaire des 73 routes de cette fiche. Ses libellés
 sont provisoires et soumis à Hugo.
+
+
+## Un album partagé se supprime depuis une seule de ses collections — 2026-10-08
+
+Trouvé en relisant la Bibliothèque pour `UX-18`, pas en cherchant un défaut de droits. Cette
+fiche porte depuis le 2026-09-10 que la suppression d'un album ne se RATTRAPE pas, et que
+l'écriture qui permet d'annoter permet aussi de supprimer. Elle ne portait pas ceci : la
+suppression ne regarde qu'UNE des collections de l'album.
+
+**Le fait.** Un album vit dans plusieurs collections (`AUTH-3`, N-N depuis la v14, et c'est
+voulu : un même album nourrit deux études). Son droit d'écriture est l'UNION — écrire dans
+une de ses collections suffit —, ce qui est la bonne règle pour annoter : le travail fait
+dans l'une se voit dans l'autre, c'est le but. Mais la suppression passe par le même
+accesseur, et elle efface l'album partout : images, régions, annotations, pour toutes ses
+collections, y compris celles que celui qui supprime ne LIT pas. Il ne peut même pas le
+savoir — la règle du 404 lui cache l'autre collection, à raison.
+
+**Pourquoi ce n'est pas le même constat que celui du 2026-09-10.** Le premier disait : ce
+droit est trop large pour ce qu'il coûte. Celui-ci dit : ce droit s'exerce HORS de la
+collection où on l'a reçu. Les remèdes chiffrés ici n'y répondent pas tous — la trace et le
+sursis (remède C) rendraient la perte rattrapable, mais le niveau `contribution` ne change
+rien pour un compte en `ecriture` pleine, et c'est exactement ce que reçoit un groupe
+d'incubateur.
+
+**Ce qu'il fait à `COL-1`.** L'incubateur donne `ecriture` à un groupe fermé sur SA
+collection, puis promeut un album en le rattachant à la collection principale AVANT de le
+détacher de l'incubateur — « sans trou », dit sa fiche. Entre les deux, l'album vit dans les
+deux, et tout membre de l'incubateur peut l'effacer du corpus principal. La fenêtre que
+`COL-1` ouvre pour ne perdre aucun album est celle où un album se perd le plus facilement.
+Le renvoi est posé chez lui.
+
+**Ce qui n'est pas décidé ici.** Rien : la zone « Supprimer n'est pas sortir » du `Reste`
+pose les deux options et une recommandation, et attend Hugo. La décision du 2026-09-10 de ne
+rien engager sur les niveaux n'est pas rouverte par ce constat — il ne demande aucun niveau.
 
 ## Contexte
 

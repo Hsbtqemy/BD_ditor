@@ -155,3 +155,12 @@ collection » y a un lieu, qu'il reste à nommer ici : l'onglet *Albums* (on pro
 voit), ou une action de la fiche entière. La colonne « Aussi dans » de cet onglet montrera
 d'elle-même l'état intermédiaire d'une promotion — l'album rattaché à la cible et pas encore
 détaché de l'incubateur.
+
+**Renvoi vers `AUTH-10`, posé le 2026-10-08.** La promotion « sans trou » — rattacher à la
+cible, vérifier, détacher de l'incubateur — fait vivre l'album dans les DEUX collections le
+temps de la manœuvre. Or supprimer un album ne demande d'écrire que dans UNE de ses
+collections, et l'efface de toutes : pendant cette fenêtre, tout membre de l'incubateur peut
+effacer du corpus principal un album qu'il ne sait même pas partagé. Reproduit le
+2026-10-08 ; la décision est dans `AUTH-10`, zone « Supprimer n'est pas sortir ». Tant
+qu'elle n'est pas prise, la fenêtre se tient COURTE, et c'est à écrire dans le mode
+opératoire de la promotion.
