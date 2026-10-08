@@ -270,6 +270,15 @@ L'inventaire et le poste de commande.
 - **Albums** : créer, éditer les métadonnées, supprimer. La fiche porte la description, les
   contributions, les champs d'édition, la source de numérisation et l'appartenance aux
   collections.
+- **Supprimer n'est pas sortir.** Un album rangé dans plusieurs collections ne se supprime
+  — lui ou l'une de ses planches — que par qui écrit dans **toutes**. Si vous n'écrivez que
+  dans l'une, la corbeille 🗑 laisse place à un ✕ : il ouvre la fiche de l'album, d'où vous
+  le **sortez** de votre collection. L'album reste entier pour les autres. Si c'était la
+  seule collection par laquelle vous y écriviez, vous n'y écrirez plus — et vous ne le verrez
+  plus du tout si vous ne le lisiez que par elle — : vous ne pourrez donc pas l'y ranger de
+  nouveau vous-même. L'écran vous le fait confirmer ; quelqu'un qui écrit des deux côtés, ou
+  un administrateur, peut le faire. Si vous ne faites que **lire** un album, sa ligne ne
+  porte ni corbeille ni ✕.
 - **Planches** : ouvrir, supprimer, et trois marques indépendantes —
   **rôle** (`récit`, numéroté, ou `paratexte` : couverture, liminaire, publicité, écarté de la
   numérotation), **validation** (✔ relue et finalisée, décomptée par album) et

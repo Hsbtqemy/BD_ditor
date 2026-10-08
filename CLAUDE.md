@@ -345,6 +345,29 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   ne pose aucun en-tête de pièce jointe), est une porte déclarée ou déclarée hors du droit,
   et chaque porte est JOUÉE : refus sans la case, succès avec. La migration a FERMÉ
   l'export à qui lisait : c'est le but du chantier, pas un effet de bord.
+- **Détruire n'est pas écrire** (AUTH-10, 2026-10-08). Annoter un album ne demande
+  d'écrire que dans UNE de ses collections — c'est l'union de `clause_album`, et elle est
+  voulue : le travail fait dans une étude se voit dans l'autre. Le DÉTRUIRE, lui ou l'une de
+  ses planches, demande d'écrire dans TOUTES (`Portee.clause_destruction`,
+  `socle._exiger_destruction`). Le même accesseur servait aux deux, si bien qu'un compte de
+  l'incubateur effaçait du corpus principal un album qu'il ne savait même pas partagé
+  (reproduit). Qui n'écrit que d'un côté garde un geste, qui ne détruit rien : SORTIR
+  l'album de sa collection — un aller simple pour lui si c'était la seule où il y ÉCRIVAIT
+  (ranger demande d'écrire dans l'album : il n'y écrit plus, qu'il continue de le lire par
+  une autre collection ou non), que défait qui écrit des deux côtés ou un administrateur ;
+  l'écran le fait confirmer, et dit lequel des deux il perd. Le refus est un **403 nommé** — il ne vient qu'APRÈS l'accesseur gardé
+  en écriture, donc sur un album qu'on lit et annote — et il révèle qu'une AUTRE collection
+  porte l'album, jamais laquelle : accepté par écrit, l'éviter demandait une corbeille.
+  `GET /api/albums` publie `destructible` album par album et l'écran n'offre la corbeille
+  que là ; il ne peut pas le déduire, la liste des collections d'un album qu'il reçoit
+  étant PARTIELLE. `ecrivable` l'accompagne, parce que « non destructible » a deux causes
+  et que l'écran n'a un geste à offrir que dans une : à qui écrit sans écrire partout, un ✕
+  qui mène à « sortir » ; à qui ne fait que lire, RIEN — la relecture croisée a trouvé le ✕
+  offert à toute lectrice, sur tous les albums, pour un geste qui lui répondait
+  « introuvable ». Une planche n'ayant pas d'appartenance propre, elle n'a pas de
+  « sortir » : sans la même garde, elle restait le chemin par lequel on vide un album
+  partagé. **Un album d'une seule collection se détruit toujours par quiconque y écrit** :
+  la question d'origine d'AUTH-10 n'est pas rouverte ici.
 - **Aucun album hors collection** (`database.collection_par_defaut`) : un orphelin ne
   correspondrait à aucune règle, et il faudrait inventer une politique dans le code. La
   création d'album accepte `collection_id` et retombe sinon sur la collection de repli.
@@ -407,14 +430,15 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   groupes_admin` est vide — nommer `bd-admins` là où l'on est seul distinguerait deux rôles
   qui n'en font qu'un.
 - **Une garde d'interface se pose sur l'ACTE, jamais sur l'écran qui le contient.** Le
-  serveur distingue neuf questions (`peut_lire` / `peut_ecrire` / `peut_administrer` /
-  `peut_exporter`, `clause_album` / `clause_terme` / `peut_ecrire_terme` /
-  `peut_ecrire_quelque_part` / `peut_exporter_quelque_part`) ; le client n'en reçoit que
-  trois, collection par collection : `administrable` et `exportable` (DROIT-2), dans
-  `GET /api/collections` et la liste des collections d'un album, et `ecrivable` dans
-  `GET /api/collections` seule (AUTH-12, 2026-09-16 — la modale d'album et « ranger dans une
-  collection » proposaient toutes les collections LUES, et choisir l'une d'elles répondait
-  « introuvable »). Partout ailleurs, `peut_ecrire` ne traverse pas : l'UI découvre un refus
+  serveur distingue dix questions (`peut_lire` / `peut_ecrire` / `peut_administrer` /
+  `peut_exporter`, `clause_album` / `clause_destruction` / `clause_terme` /
+  `peut_ecrire_terme` / `peut_ecrire_quelque_part` / `peut_exporter_quelque_part`) ; le
+  client n'en reçoit que cinq. Trois collection par collection : `administrable` et
+  `exportable` (DROIT-2), dans `GET /api/collections` et la liste des collections d'un
+  album, et `ecrivable` dans `GET /api/collections` seule (AUTH-12, 2026-09-16 — la modale
+  d'album et « ranger dans une collection » proposaient toutes les collections LUES, et
+  choisir l'une d'elles répondait « introuvable »). Deux album par album, dans `GET /api/albums` (AUTH-10) :
+  `destructible` et `ecrivable`. Partout ailleurs, `peut_ecrire` ne traverse pas : l'UI découvre un refus
   d'écriture en recevant son 403. Tant que cette asymétrie tient, tout ce
   qu'on ajoute dans un panneau gardé hérite de sa garde **par défaut et non par décision** :
   c'est ainsi que le référent d'AUTH-4, une simple ADRESSE, s'est retrouvé derrière la

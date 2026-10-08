@@ -87,7 +87,13 @@ de la plupart des malentendus.
 Trois règles en découlent, qu'il vaut mieux connaître avant de les rencontrer.
 
 - **Un album peut vivre dans plusieurs collections** (lien N-N). Il suit alors les droits de
-  chacune : y être admis par l'une suffit.
+  chacune : y être admis par l'une suffit — pour le lire, et pour l'annoter si l'on y écrit.
+  Le **supprimer** est l'exception : effacer un album, ou l'une de ses planches, demande
+  d'écrire dans **toutes** les collections où il est rangé. Qui n'écrit que dans l'une peut
+  l'en **sortir** — l'album reste entier pour les autres. Le geste se défait par qui écrit
+  des deux côtés ou par un administrateur, pas par celui qui n'y écrivait que par cette
+  collection : ranger un album demande d'y écrire, et il n'y écrit plus — qu'il continue de
+  le lire par une autre collection ou non.
 - **Aucun album ne vit hors collection.** Un album créé sans collection explicite entre dans
   la *Collection par défaut* — un album orphelin ne correspondrait à aucune règle, et il
   faudrait en inventer une dans le code. Ce nom est **réservé** : personne ne peut le donner
@@ -154,6 +160,8 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 | Transcrire, corriger le découpage, annoter, relire la grammaire | — | ✅ | ✅ | ✅ |
 | Lancer les passes automatiques (cases, bulles, OCR) | — | ✅ | ✅ | ✅ |
 | Créer et documenter du vocabulaire local à la collection | — | ✅ | ✅ | ✅ |
+| **Sortir** un album de la collection (s'il est rangé ailleurs aussi) | — | ✅ | ✅ | ✅ |
+| **Supprimer** un album ou une planche — à condition d'écrire dans *toutes* les collections où l'album est rangé | — | ✅ | ✅ | ✅ |
 | Consulter le rapport d'accord **inter-annotateurs** (*👥 Inter*) | — | ✅ | ✅ | ✅ |
 | Accorder et retirer les accès de la collection | — | — | ✅ | ✅ |
 | Renommer, supprimer la collection, désigner son référent | — | — | ✅ | ✅ |
