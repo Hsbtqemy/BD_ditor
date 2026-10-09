@@ -234,7 +234,7 @@ def test_le_badge_de_raccourci_s_eteint_sans_eteindre_le_bouton(
     perdue —, et son nom accessible ne bouge pas.
 
     **Les deux largeurs ne sont pas une précaution, c'est LÀ qu'est la question.** Sous
-    56.1875em — 899 px —, `.mode-label` est CLIPÉ : ce qui reste visible d'un bouton de
+    63.9375em — 1023 px —, `.mode-label` est CLIPÉ : ce qui reste visible d'un bouton de
     mode est sa pastille et son badge, et le badge était devenu l'affordance (UX-7).
     Éteindre le badge y laisse donc une pastille nue. Ce qu'on vérifie à 800 px est que
     le NOM, lui, n'est pas parti avec : un clip laisse dans l'arbre d'accessibilité ce

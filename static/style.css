@@ -184,8 +184,9 @@
    continue de les citer en pixels, parce que c'est ainsi qu'ils ont été MESURÉS ; voici
    la table de lecture, valable pour une préférence de 16 px :
 
-       28em = 448 px  ·  34.9375em = 559 px  ·  41.1875em = 659 px  ·  54em = 864 px
-       45em   = 720 px  ·  56.1875em = 899 px  ·  67.4375em = 1079 px
+       28em = 448 px  ·  34.9375em = 559 px  ·  45em = 720 px  ·  54em = 864 px
+       56.1875em = 899 px  ·  62.1875em = 995 px  ·  63.9375em = 1023 px
+       67.4375em = 1079 px
 
    Sous une préférence plus grande, chacun s'écarte dans la même proportion, et c'est
    exactement ce qu'on cherche : la disposition étroite arrive quand le contenu manque de
@@ -213,8 +214,11 @@ kbd {
 #app {
   display: grid;
   /* Rangée 1 en `auto` : la bande 1 passe à la ligne à toutes les largeurs (UX-14, cf.
-     `#site-nav`), et une rangée figée la laisserait recouvrir la barre d'outils. */
-  grid-template-rows: auto var(--header-h) 1fr var(--status-h);
+     `#site-nav`), et une rangée figée la laisserait recouvrir la barre d'outils.
+     Rangée 4 en `auto` pour la même raison, depuis le 2026-10-09 : la barre d'état
+     s'enroule elle aussi à toutes les largeurs, et tient sa hauteur d'une ligne de son
+     `min-height` (cf. `#statusbar`). */
+  grid-template-rows: auto var(--header-h) 1fr auto;
   /* `minmax(0, 1fr)` et pas `auto` : la colonne implicite d'une grille se dimensionne
      sur le contenu MINIMAL de ses items, qui ont `min-width: auto` par défaut. La
      coque entière grossissait donc jusqu'à la plus large de ses bandes — 665 px
@@ -316,23 +320,72 @@ kbd {
   #body.nav-ouverte #tiroir-voile { display: block; }
 }
 
-/* La bande 2 ne tient plus : `.modes` fait à elle seule 488 px, `.header-actions`
-   154, et le nom de planche 78 — mesuré à 320 px le 2026-09-05. Les libellés se
-   masquent à l'ŒIL sans quitter l'arbre d'accessibilité, exactement comme ceux de
-   la bande 1 à l'étape 1. Ce qui reste visible sur un bouton de mode est sa PASTILLE
-   de couleur et son RACCOURCI clavier — le `<kbd>` cesse d'être une glose et devient
-   l'affordance, ce qui l'enseigne au passage. */
-@media (max-width: 56.1875em) {
+/* ---------- Le seuil des LIBELLÉS de la bande 2 n'est plus celui de la mise en page (UX-7) ----------
+   Sous ce seuil, les libellés se masquent à l'ŒIL sans quitter l'arbre d'accessibilité,
+   exactement comme ceux de la bande 1 à l'étape 1. Ce qui reste visible sur un bouton de
+   mode est sa PASTILLE de couleur et son RACCOURCI clavier — le `<kbd>` cesse d'être une
+   glose et devient l'affordance, ce qui l'enseigne au passage.
+
+   Il valait 56.1875em, la valeur du bloc de mise en page qui suit, et cette coïncidence
+   n'était pas un choix — c'est la leçon de la bande 1, écrite plus bas dans ce fichier
+   (cf. « Le seuil des LIBELLÉS suit la barre »). Aucun des nombres écrits ici ne menait à
+   899 px : on lisait « `.modes` 488 px, `.header-actions` 154, le nom de planche 78 —
+   mesuré à 320 px le 2026-09-05 ». Remesuré le 2026-10-09 : 488 est bien `.modes`
+   libellés AFFICHÉS, mais 154 est, au pixel près, la largeur des deux menus PLIÉS au plus
+   étroit — ils en demandent 263 sur une ligne. La mesure portait donc sur une bande déjà
+   écrasée, et c'est ce qu'elle a servi : de 900 à 980 px sous une préférence de 16,
+   « ⚙ / Traitement / ▾ » sur trois lignes (29 → 63 px dans une bande de 48), sorti par le
+   bas de 900 à 920 ; même défaut de 1140 à 1220 sous 20 et de 1360 à 1460 sous 24. Et
+   cela pour un titre d'album de SIX lettres : avec quatre-vingt-six caractères, les menus
+   restaient pliés jusqu'à 1440 px sous 16, et au-delà de 1920 sous 24. Vu à l'œil sous
+   Firefox pendant une passe de QA, pas par une sonde — rien ne sortait de la fenêtre,
+   cf. `.mode-btn` plus bas.
+
+   **Mesuré le 2026-10-09, boutons en `nowrap`, sous 16, 20, 24 et 28.** Les COMMANDES
+   seules — marges, quatre modes, deux menus, deux gouttières — demandent 810 px sous 16,
+   soit 50,65em, et 50,5em aux trois autres réglages : les menus portent la taille de
+   bouton du navigateur et non un `rem`, d'où l'écart. Aucun mode n'y ajoute rien, et la
+   Transcription en retire (ses `<kbd>` s'éteignent : 44,1em). Le NOM, lui, n'a pas de
+   pire cas : il porte le titre de l'album. « Police — planche 999 · segmentee » fait
+   12,3em, le titre de quatre-vingt-six caractères 39,8em — une bande de 90em. Aucun seuil
+   ne couvre cela, donc le nom cède à TOUTES les largeurs (cf. `.planche-info`), et le
+   seuil ne décide plus que d'une chose : ce qui reste au nom quand les libellés
+   paraissent. À 56.1875em il lui restait 89 px sur les 196 qu'il demande, alors qu'un
+   pixel plus bas, libellés tombés, il se lisait en entier. Le seuil se pose donc là où les
+   commandes ET ce nom de référence tiennent : 1007 px sous 16, soit 62,93em (62,8 sous 20
+   et 24). 63.9375em laisse 1,6 % de marge, et non 64em : `max-width` est INCLUSIF, et un
+   seuil rond aurait retiré les libellés à 1024 px tout juste, une largeur canonique où la
+   bande tient.
+
+   Ce que la mesure ne couvre pas, et c'est écrit : la POLICE. Sous DejaVu Sans — ce
+   qu'un poste Linux rend, et l'image des tests navigateur — les commandes demandent
+   53,5em et le nom de référence 14,05. Les commandes tiennent encore, avec près de 20 %
+   de marge ; c'est le nom qui cède de 3,6em au seuil. C'est l'ordre voulu, et non une
+   bande qui tiendrait : le seuil est calibré sur Segoe UI, la police de ce poste.
+
+   Ce que le relèvement coûte, et c'est le seul prix : de 900 à 1023 px à police par
+   défaut, les libellés tombent alors qu'ils s'affichaient. Ils ne s'y affichaient entiers
+   que de 982 à 1023 px, et pour un titre de six lettres ; partout ailleurs dans cette
+   plage, et sur toute la plage dès que le titre s'allonge, le seuil retire des libellés
+   pliés. */
+@media (max-width: 63.9375em) {
   .mode-label {
     position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
     overflow: hidden; clip-path: inset(50%); white-space: nowrap;
   }
-  .modes { gap: .3077rem; }
-  .mode-btn { padding: .3846rem .5385rem; }
-  /* Le nom de planche cède avant les commandes : on le lit, on n'agit pas dessus. */
-  #planche-info { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* `#header .modes` et non `.modes` : les règles de base sont déclarées plus bas dans
+     la source, à spécificité ÉGALE, et l'emportaient donc par l'ordre. Mesuré le
+     2026-10-09 — gouttière calculée à 6 px pour 4 déclarés, marge intérieure à 10 px pour
+     7 : ces deux lignes n'ont jamais agi depuis qu'elles sont écrites. C'est le piège de
+     `#body #panel` juste en dessous, et celui du `row-gap` de la barre d'état. Elles
+     rendent 30 px à la rangée des modes sous une préférence de 16, 37 sous 20 : ce qui
+     la fait tenir dans 320 px sous 20, où elle débordait de 5 px sur la marge. */
+  #header .modes { gap: .3077rem; }
+  #header .mode-btn { padding: .3846rem .5385rem; }
 }
 
+/* La MISE EN PAGE garde son seuil : il se lit sur le chrome fixe de `#body` (cf. « Tiroirs
+   de la Visionneuse » plus haut), pas sur ce que la bande 2 demande. */
 @media (max-width: 56.1875em) {
   #body { grid-template-columns: 1fr; }
   #btn-tiroir-panneau { display: inline-flex; }
@@ -451,7 +504,16 @@ kbd {
   border-bottom: 1px solid var(--border);
 }
 .brand { font-weight: 700; letter-spacing: .0385rem; color: var(--accent-blue); }
-.planche-info { color: var(--text-muted); flex: 0 1 auto; }
+/* Le nom de planche cède avant les commandes : on le lit, on n'agit pas dessus — et à
+   TOUTES les largeurs depuis le 2026-10-09, plus seulement sous le seuil des libellés. Il
+   porte le titre de l'album, que rien ne borne. Sans ellipse il ne cédait pas, il se
+   REPLIAIT : de 55 à 73 px de haut dans une bande de 48, sorti par le haut et par le bas
+   de 900 à 1040 px pour un titre de quatre-vingt-six caractères — pendant que les deux
+   menus, rétrécis au prorata, se pliaient avec lui. */
+.planche-info {
+  color: var(--text-muted); flex: 0 1 auto;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .modes { display: flex; gap: .4615rem; margin-left: auto; }
 .header-actions { display: flex; gap: .6154rem; align-items: center; }
 
@@ -461,6 +523,20 @@ kbd {
   border: 1px solid var(--border); border-radius: 5px;
   padding: .3846rem .7692rem; cursor: pointer; font-size: .9231rem;
 }
+/* Un bouton de la bande 2 ne se plie JAMAIS, pour la raison écrite à `.surf-link` : le
+   fichier s'est fait mordre deux fois au même endroit, à une bande d'écart. Sans cette
+   ligne, une bande trop étroite ne déborde pas, elle S'ÉCRASE — les deux menus
+   rétrécissent, « ⚙ / Traitement / ▾ » passe sur trois lignes et « ⇅ Import / Export ▾ »
+   jusqu'à cinq (30 → 99 px, mesuré le 2026-10-09), dans une bande qui en fait 48 : ils
+   en sortent par le bas et mordent sur ce qui suit. Rien ne quittant la fenêtre, la sonde
+   de débordement répondait « rien d'inatteignable », ce qui était VRAI.
+
+   En `nowrap`, la largeur minimale d'une commande est sa largeur entière : ce qui manque
+   est pris au nom de planche, qui est fait pour céder, et un manque que le nom ne peut
+   plus absorber redevient un débordement — laid à l'œil, et ROUGE sous l'audit. Les
+   boutons de mode n'ont qu'un mot et ne se pliaient pas ; ils reçoivent la règle pour le
+   jour où un libellé en aura deux. */
+.mode-btn, .header-actions .dropdown > button { white-space: nowrap; }
 .mode-btn .dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--text-muted);
@@ -479,8 +555,8 @@ kbd {
    les trois autres modes ; on éteint donc la promesse là où elle est fausse, et nulle
    part ailleurs. Tranché par Hugo le 2026-09-24.
    On éteint le BADGE, pas le bouton : il reste cliquable, et son nom reste annoncé —
-   `.mode-label` est CLIPÉ sous 56.1875em, jamais retiré de l'arbre d'accessibilité, et
-   le `title` porte le même nom. Ce qu'on y perd est mesuré et assumé : sous 900 px, le
+   `.mode-label` est CLIPÉ sous 63.9375em, jamais retiré de l'arbre d'accessibilité, et
+   le `title` porte le même nom. Ce qu'on y perd est mesuré et assumé : sous 1024 px, le
    libellé étant déjà clipé, le bouton n'affiche plus que sa pastille de couleur pendant
    ce mode-là. Élargir cette bande-là est le terrain d'UX-7, pas celui-ci. */
 .modes.sans-raccourcis .mode-btn kbd { display: none; }
@@ -610,12 +686,39 @@ button { font-family: inherit; }
    faute du seuil de la bande 1, posé à 400 px quand il en fallait 560, et retrouvée
    ici pour la même raison : un seuil recopié d'un voisin au lieu d'être mesuré.
 
+   **Ces 651 px étaient ceux d'une barre au REPOS, et le seuil qu'on en a tiré, 41.1875em,
+   laissait la barre s'écraser au-dessus de lui** — le défaut de la bande 2, une bande
+   plus bas, trouvé le même jour à l'œil sous Firefox (2026-10-09) : « 39 régions /
+   39 cases/… », « Mode : / Navigation », « Zoom / 58 % » sur deux lignes dans une rangée
+   de hauteur FIXE, donc rognées en haut et en bas. Rien ne sortait de la fenêtre. Remesuré
+   éléments en `nowrap` : la barre d'aujourd'hui demande déjà 761 px avec une seule région
+   (47,5em), et ce qu'elle porte n'a rien de fixe. Au pire — « 999 régions ·
+   9999 cases/album », « 999 annotées », « Mode : Annotation », « Zoom 4000 % », qui est la
+   borne du code — elle demande 899 px sous une préférence de 16, soit 56,2em (55,5 sous
+   20, 55,0 sous 24 : les carrés de la légende sont en px), et 39,4em sans sa légende. La
+   Transcription en demande moins : elle masque le zoom et les coordonnées (42,4em).
+
+   Deux réponses, parce qu'un seuil seul venait d'échouer deux fois sur cette barre.
+   La barre s'enroule désormais à TOUTES les largeurs (cf. `#statusbar`) : c'est le filet,
+   et il ne dépend d'aucune mesure. Le seuil, lui, ne décide plus que de la légende, et il
+   se pose là où la barre au pire tient encore sur UNE rangée avec elle — sans quoi la
+   légende coûterait une rangée au canevas. Il est calibré sur la police la plus LARGE
+   mesurée et non sur celle de ce poste : sous DejaVu Sans, ce qu'un poste Linux rend, le
+   même pire cas demande 61,1em (978 px). 62.1875em laisse 1,7 % de marge sur lui et
+   10,7 % sur Segoe UI. La bande 2 a fait l'autre choix, et pour une raison : ses libellés
+   nomment des commandes, celle-ci ne perd qu'une glose.
+
    La légende des couleurs part la première : elle ÉNONCE un code que les régions
    montrent déjà à l'écran. On la retire de la vue et du flux, pas du document,
-   puisqu'elle redevient utile dès qu'il y a la place. */
-@media (max-width: 41.1875em) {
-  #app { grid-template-rows: auto var(--header-h) 1fr auto; }
-  #statusbar { flex-wrap: wrap; row-gap: .1538rem; height: auto; min-height: var(--status-h); }
+   puisqu'elle redevient utile dès qu'il y a la place. Ensuite la barre s'enroule, ce qui
+   coûte une rangée et ne cache rien ; les compteurs, le mode, le zoom et les coordonnées
+   ne cèdent jamais.
+
+   Ce que le relèvement coûte : de 660 à 995 px à police par défaut, la légende tombe
+   alors qu'elle s'affichait. De 660 à 760 px elle s'affichait dans une barre écrasée
+   quel que soit le contenu, et jusqu'à 899 px au pire ; de 900 à 995 px elle tenait sur
+   ce poste, et c'est la part du prix payée pour les polices plus larges. */
+@media (max-width: 62.1875em) {
   #statusbar .legend { display: none; }
 }
 
@@ -624,11 +727,22 @@ button { font-family: inherit; }
    ce qui coûte une trentaine de pixels de hauteur — contre 345 px de contenu
    INATTEIGNABLE si on la laisse déborder. La rangée passe en `auto` pour l'accueillir. */
 @media (max-width: 34.9375em) {
-  /* Les DEUX rangées en `auto` : ce bloc est plus bas dans la source que celui
-     de la bande 4 et écraserait sinon son réglage, à spécificité égale. */
+  /* Les DEUX rangées en `auto` : la quatrième l'est déjà dans la règle de base, et
+     l'écrire autrement ici la figerait de nouveau sous la barre d'état. */
   #app { grid-template-rows: auto auto 1fr auto; }
   #header { flex-wrap: wrap; row-gap: .3077rem; padding-top: .3077rem; padding-bottom: .3077rem; }
-  .modes { margin-left: 0; }        /* ne pousse plus à droite une fois seule sur sa ligne */
+  /* `.modes` s'enroule à son tour, et c'est un FILET. Seule sur sa rangée, elle ne
+     tenait pas dans 320 px sous une préférence de 24 — 339 px de boutons pour 278
+     disponibles, « Transcription » coupé de 40 px à 320 px et de 20 à 340. Trouvé le
+     2026-10-09 par le balayage, et le même jour à l'œil sous Firefox ; aucune garde ne
+     jouait ce couple. Les deux règles rendues effectives plus haut (`#header .modes`) la
+     ramènent à 294 px : le bouton rentre dans la fenêtre, mais à 5 px du bord et en
+     mordant sur la marge — trop juste pour une autre police ou une préférence plus
+     grande. `flex-wrap` n'enroule que ce qui dépasse : il coûte une rangée de 320 à
+     330 px sous 24, et rien là où les quatre modes tiennent.
+     Le `margin-left` est celui d'avant : `.modes` ne pousse plus à droite une fois seule
+     sur sa ligne. */
+  .modes { margin-left: 0; flex-wrap: wrap; row-gap: .3077rem; }
 
   /* UX-14 — les deux menus déroulants de l'Atelier avaient l'ancrage du menu
      « Affichage », et tombaient de la même façon : `right: 0` sur `.dropdown` suppose un
@@ -1190,8 +1304,19 @@ h3.collapsible:hover { color: var(--text); }
 .ocr-text { white-space: pre-wrap; }
 
 /* ---------- Status bar ---------- */
+/* Un élément de la barre d'état ne se plie JAMAIS (`nowrap`), et la barre s'enroule à
+   toutes les largeurs — la réponse d'UX-14 pour la bande 1, et pour la même raison : son
+   seuil a été mal réglé chaque fois qu'on l'a posé, calibré sur une barre qui n'était pas
+   celle qu'on sert (cf. « La bande 4 a son PROPRE seuil », plus haut). Sans la première
+   ligne, une barre trop étroite ne déborde pas : ses éléments rétrécissent et passent sur
+   deux lignes dans une rangée d'une seule. Sans la seconde, elle déborde — `#stat-coords`
+   hors de la fenêtre. `flex-wrap` n'enroule que ce qui dépasse : là où la barre tient,
+   rien ne change, une ligne de `--status-h` garantie par `min-height`. La rangée de la
+   grille est `auto` (cf. `#app`), sans quoi une barre de deux rangées passerait sous la
+   fenêtre. */
 #statusbar {
-  display: flex; align-items: center; gap: 1.3846rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .1538rem 1.3846rem;
+  min-height: var(--status-h); white-space: nowrap;
   padding: 0 1.0769rem; background: var(--bg-panel);
   border-top: 1px solid var(--border); font-size: .9231rem; color: var(--text-muted);
 }
@@ -1942,12 +2067,20 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .modal-actions { display: flex; align-items: center; gap: .9231rem; }
 
 /* Lexique situé (A4) — modale de documentation SKOS du vocabulaire (partage .modal-box) */
-#lexique-modal, #accord-modal, #accord-inter-modal, #export-modal {
+/* `#figure-modal` manquait à cette liste depuis qu'elle existe : la « modale » des figures
+   n'en était pas une. Mesuré le 2026-10-09 — `position: static`, donc un CINQUIÈME item
+   de la grille de `#app`, auto-placé dans la rangée de la barre d'état, qui partait dans
+   une rangée implicite ; la boîte débordait de 540 px sous la fenêtre, et le focus qu'on
+   y posait faisait défiler `body` de 522 px, l'Atelier hors champ. Personne ne l'avait
+   vu parce que la rangée de la barre était FIGÉE à `--status-h` : la boîte débordait sans
+   rien pousser. Elle est `auto` désormais (cf. `#app`), la boîte y prenait 566 px et
+   écrasait le corps à 46 — ce que l'audit axe a vu, sur la liste des planches. */
+#lexique-modal, #accord-modal, #accord-inter-modal, #export-modal, #figure-modal {
   position: fixed; inset: 0; z-index: 100; background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
 }
 #lexique-modal[hidden], #accord-modal[hidden], #accord-inter-modal[hidden],
-#export-modal[hidden] { display: none; }
+#export-modal[hidden], #figure-modal[hidden] { display: none; }
 .lexique-box { width: min(55.3846rem, 94vw); }
 /* DROIT-2 — le choix de la collection au titre de laquelle un album sort. Une ligne par
    collection, le bouton radio À CÔTÉ de son nom : `.modal-box label` empile en colonne. */
