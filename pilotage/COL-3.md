@@ -48,14 +48,14 @@ rien y changer, « le premier projet », où tout est partagé.
 
 ### La forme — à confirmer
 
-- [ ] **La COPIE DE TRAVAIL est l'unité, et une collection choisit en prenant un document** — attendu : confirmé ou écarté par Hugo. Trois réponses, posées au moment du geste et jamais par défaut : *rejoindre* le travail d'une collection du projet (une seule copie, rangée dans les deux — le modèle d'aujourd'hui) ; *en partir* (une copie à soi, amorcée jusqu'au cran choisi) ; *partir de zéro*. Écartées, avec leur raison, en Contexte : une copie par collection OU par projet imposée à tous, les couches vivantes sur un même album, et le mi-chemin
-- [ ] **Rejoindre un travail demande l'accord de qui le tient** — attendu : tranché, et c'est la réponse au veto d'`AUTH-10`. Aujourd'hui ranger chez soi ne demande que d'écrire dans l'album : quiconque le fait s'invite dans le travail, et retire aux autres le droit de le détruire. Si le partage est un CHOIX, il se consent des deux côtés
+- [x] **La COPIE DE TRAVAIL est l'unité, et une collection choisit en prenant un document** — attendu : confirmé ou écarté par Hugo. Trois réponses, posées au moment du geste et jamais par défaut : *rejoindre* le travail d'une collection du projet (une seule copie, rangée dans les deux — le modèle d'aujourd'hui) ; *en partir* (une copie à soi, amorcée jusqu'au cran choisi) ; *partir de zéro*. Écartées, avec leur raison, en Contexte : une copie par collection OU par projet imposée à tous, les couches vivantes sur un même album, et le mi-chemin **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
+- [x] **Rejoindre un travail demande l'accord de qui le tient** — attendu : tranché, et c'est la réponse au veto d'`AUTH-10`. Aujourd'hui ranger chez soi ne demande que d'écrire dans l'album : quiconque le fait s'invite dans le travail, et retire aux autres le droit de le détruire. Si le partage est un CHOIX, il se consent des deux côtés **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
 - [ ] **Ce que la séparation abandonne est accepté par écrit** — attendu : dit. Une correction faite dans une copie n'arrive pas dans l'autre : c'est le prix de « pas d'interférence », et c'est pourquoi le partage reste possible
 - [x] **Quand le projet se construit** — **tranché par Hugo le 2026-10-09 : le plus tôt possible**, sans attendre qu'un second projet existe — *« pour éviter les malentendus, et permettre aussi l'interfaçage rapide de cette nouvelle notion »*. La session avait proposé de n'ouvrir l'étage qu'à l'arrivée d'un deuxième projet ; c'est écarté. Le code attend seulement la fusion vers `main`, pour ne pas y embarquer un changement de modèle ; la conception et la maquette n'attendent rien
 
 ### L'ordre — le projet d'abord visible, puis ce qu'il permet
 
-- [ ] **La forme se tranche sur une maquette interactive, avant la première ligne de code** — attendu : Hugo a manipulé, et dit ce qu'il garde, de quatre écrans : le projet courant dans la Bibliothèque ; « prendre un document » avec ses trois réponses et l'échelle des couches ; les deux réponses à « supprimer » ; le fonds et les projets vus de l'administrateur. Première version publiée le 2026-10-09, jouable sous trois identités (administrateur, responsable de projet, membre) : https://claude.ai/artifact/9TPyMWof747CBYGCty4sNv — privée, à partager depuis la page pour qu'un autre que Hugo l'ouvre
+- [x] **La forme se tranche sur une maquette interactive, avant la première ligne de code** — attendu : Hugo a manipulé, et dit ce qu'il garde, de quatre écrans : le projet courant dans la Bibliothèque ; « prendre un document » avec ses trois réponses et l'échelle des couches ; les deux réponses à « supprimer » ; le fonds et les projets vus de l'administrateur. Première version publiée le 2026-10-09, jouable sous trois identités (administrateur, responsable de projet, membre) : https://claude.ai/artifact/9TPyMWof747CBYGCty4sNv — privée, à partager depuis la page pour qu'un autre que Hugo l'ouvre **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
 - [ ] **Tranche 1 — le projet existe et se VOIT, et rien d'autre ne change** — attendu : tout l'existant est rangé dans un premier projet, nommé par Hugo ; son nom se lit sur les cinq surfaces ; un administrateur en crée un second et y fait entrer un compte ou un groupe ; une collection appartient à UN projet. Aucun test de comportement n'a eu à être retouché : c'est la preuve que la tranche n'a rien déplacé
 - [ ] **Tranche 2 — le fonds** — attendu : un document a une identité distincte de ses copies de travail, son origine et ses emplois sont écrits à partir de ce jour, « supprimer » a ses deux réponses, et l'administrateur a l'écran du fonds avec les demandes en attente
 - [ ] **Tranche 3 — prendre un document** — attendu : rejoindre (consenti), en partir (amorcé jusqu'à un cran), partir de zéro ; dans un projet et entre deux
@@ -68,20 +68,20 @@ rien y changer, « le premier projet », où tout est partagé.
 - [ ] **Une personne dans deux projets choisit dans lequel elle travaille** — attendu : dit, écran par écran. Un projet courant, lisible partout ; la Recherche et l'Exploration bornées à lui par défaut
 - [ ] **Le vocabulaire et les personnages ont un étage de projet** — attendu : tranché. Un terme « global » est aujourd'hui visible de toute l'instance, et un personnage traverse les albums : c'est par là que deux projets se parasiteraient d'abord — ce qui fuit n'est pas un mot, c'est une grille d'analyse (`AUTH-2`, v24). Global à l'instance, au projet, ou local à une collection ?
 - [ ] **Ce qui ne peut PAS entrer dans un projet** — attendu : qui le décide, et sur quoi. Un refus par document (ses droits, sa base légale) ou par projet ?
-- [ ] **Les accès par collection restent, à l'intérieur du projet** — attendu : confirmé. Être dans un projet n'ouvre pas toutes ses collections : l'incubateur de `COL-1` est une collection fermée DANS un projet
+- [x] **Les accès par collection restent, à l'intérieur du projet** — attendu : confirmé. Être dans un projet n'ouvre pas toutes ses collections : l'incubateur de `COL-1` est une collection fermée DANS un projet **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
 
 ### Les couches qu'on emporte en intégrant
 
 - [ ] **Les couches s'empilent, donc se choisissent sur une ÉCHELLE** — attendu : la liste arrêtée. Proposition : les images seules · + le découpage (cases, bulles, ordre de lecture) · + la transcription · + la grammaire relue · + les annotations (notes, tags, attributs, locuteurs). Chaque cran suppose ceux d'en dessous — une note tient à une bulle
-- [ ] **Qui autorise qu'on amorce depuis son travail** — attendu : tranché. Copier le travail d'un projet vers un autre le fait SORTIR du premier, comme un export : une décision du gestionnaire du projet, sur le patron de `DROIT-2` ?
+- [x] **Qui autorise qu'on amorce depuis son travail** — attendu : tranché. Copier le travail d'un projet vers un autre le fait SORTIR du premier, comme un export : une décision du gestionnaire du projet, sur le patron de `DROIT-2` ? **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »** Retenu : le RESPONSABLE du projet d'où l'on part donne son accord
 - [ ] **Ce qu'une copie garde de sa provenance** — attendu : la copie dit de quel document elle vient, de quel projet elle a été amorcée, et jusqu'à quel cran ; le journal attribue toujours le travail copié à ceux qui l'ont fait
 - [ ] **Le vocabulaire ne suit pas une copie** — attendu : dit, et son effet montré. Des tags d'un autre projet arriveraient posés et invisibles : le piège déjà décrit dans `COL-1`
 
 ### Supprimer
 
-- [ ] **Quand « Supprimer définitivement » efface directement** — attendu : la règle. Proposition : quand personne d'autre ne dépend du document — aucun autre projet ne l'emploie, et personne d'autre que celui qui l'a importé n'y a travaillé. C'est l'import par erreur, et il ne doit pas attendre un administrateur
-- [ ] **Sinon, c'est une DEMANDE, et une demande est un état** — attendu : le document porte qui demande, quand et pourquoi ; l'administrateur la voit dans le fonds et dans « À regarder », et répond par « détruire » ou « garder ». Aucune messagerie
-- [ ] **Ce que devient le travail d'un projet qui retire un document** — attendu : tranché. Gardé au fonds (rattrapable, et l'instance grossit) ou détruit avec la copie ?
+- [x] **Quand « Supprimer définitivement » efface directement** — attendu : la règle. Proposition : quand personne d'autre ne dépend du document — aucun autre projet ne l'emploie, et personne d'autre que celui qui l'a importé n'y a travaillé. C'est l'import par erreur, et il ne doit pas attendre un administrateur **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
+- [x] **Sinon, c'est une DEMANDE, et une demande est un état** — attendu : le document porte qui demande, quand et pourquoi ; l'administrateur la voit dans le fonds et dans « À regarder », et répond par « détruire » ou « garder ». Aucune messagerie **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
+- [x] **Ce que devient le travail d'un projet qui retire un document** — attendu : tranché. Gardé au fonds (rattrapable, et l'instance grossit) ou détruit avec la copie ? **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »** Retenu : gardé au fonds avec son travail, et un administrateur peut le rendre
 - [ ] **Une planche** — attendu : dit. Retirer une planche d'une copie de travail ne touche que ce projet ; le scan reste au fonds
 
 ### Le fonds
@@ -89,7 +89,16 @@ rien y changer, « le premier projet », où tout est partagé.
 - [ ] **L'origine et les emplois sont ÉCRITS** — attendu : qui a importé, quand, dans quel projet d'abord ; chaque admission et chaque retrait, datés et attribués. Relevé le 2026-10-09 : `albums` ne porte que `date_import` ; `collection_album` n'a ni date ni auteur ; ni créer, ni ranger, ni sortir, ni supprimer un album n'est journalisé. L'existant ne se reconstitue pas
 - [ ] **Le fonds a un écran, pour l'administrateur** — attendu : les documents, d'où ils viennent, quels projets les emploient, lesquels ne sont appelés par personne, les demandes de suppression en attente
 - [ ] **Deux copies du même document se savent sœurs** — attendu : un identifiant de document, que la Recherche et l'Exploration lisent. Sans lui, qui lit deux collections dont chacune a sa copie compte deux fois le même texte ; avec lui, on dédoublonne, ou on COMPARE — deux travaux indépendants sur les mêmes bulles sont la matière d'un vrai accord inter-annotateurs, là où `ANN-5` ne mesure aujourd'hui que des révisions. À éprouver, pas à promettre
-- [ ] **La consultation du fonds est tranchée contre le cloisonnement** — attendu : qui consulte, et ce qu'il voit. « 404, jamais 403 » existe pour que personne n'apprenne ce que le corpus contient hors de sa portée. Proposition : un gestionnaire de projet voit la NOTICE seule (titre, série, auteur) — ni images, ni travail, ni qui l'emploie
+- [x] **La consultation du fonds est tranchée contre le cloisonnement** — attendu : qui consulte, et ce qu'il voit. « 404, jamais 403 » existe pour que personne n'apprenne ce que le corpus contient hors de sa portée. Proposition : un gestionnaire de projet voit la NOTICE seule (titre, série, auteur) — ni images, ni travail, ni qui l'emploie **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
+
+### Les passes de QA que chaque tranche périme
+
+- [ ] **Tranche 1 — la barre du haut est rejouée à l'étroit et à grande police** — attendu : `petites-largeurs` et `preference-de-police` rejouées sur leurs cases de barre, une fois le nom du projet (ou son sélecteur) posé sur les cinq surfaces. À 320 et 375 px, et à grande police, il ne fait sortir de la fenêtre ni la navigation, ni le menu « Aa », ni la pastille d'identité : c'est la bande où il reste le moins de place, et un nom de projet ne se coupe pas
+- [ ] **Tranche 1 — la carte d'accueil dit le projet, ou dit pourquoi non** — attendu : tranché, et `accueil-par-ou-commencer` rejouée si son texte change. Un arrivant entre désormais dans un projet avant d'entrer dans une collection
+- [ ] **Tranche 2 — `supprimer-n-est-pas-sortir` est RÉÉCRITE, pas rejouée** — attendu : une passe neuve pour les deux réponses à « supprimer ». La corbeille et le ✕ qu'elle vérifie aujourd'hui sont ce que la tranche remplace
+- [ ] **Tranches 2 et 3 — `collections-bibliotheque` est rejouée sur ses gestes d'album** — attendu : rejouée. « Ranger ici » devient « prendre un document », et sortir un album de sa dernière collection cesse d'être refusé
+- [ ] **Tranche 3 — le projet a SA passe** — attendu : écrite, non cochée. Qui entre dans un projet, ce qu'il admet, ses trois réponses ; `qui-entre` et `comptes-et-groupes` restent vraies pour la collection, mais ne disent rien de l'étage au-dessus
+- [ ] **Tranche 4 — `import-bilan-refus` et `termes-illisibles` sont rejouées** — attendu : rejouées. Le menu « Portée » et « Importer dans » gagnent le projet, et « global » ne veut plus dire toute l'instance
 
 ### Ce que le chantier fait aux autres
 
@@ -107,6 +116,24 @@ voit plus, ses planches lui répondent 404, il ne peut ni y toucher ni le ranger
 l'administrateur le voit, planches intactes ; l'export le refuse (409) ; et un rangement par
 l'administrateur le rend à qui le lisait. Une seule garde s'y oppose aujourd'hui : le 409
 « dernière collection » de `sortir_album`.
+
+### Ce que le chantier fait aux passes qui restent à jouer — relevé le 2026-10-09
+
+Demandé par Hugo, au moment où il joue les passes d'avant la fusion. **Aucune n'est touchée
+aujourd'hui** : rien de ce chantier n'est codé, et rien ne le sera avant la fusion. Les sept
+passes qui ont encore des cases ouvertes — `accueil-par-ou-commencer`, `import-bilan-refus`,
+`petites-largeurs`, `preference-de-police`, `supprimer-n-est-pas-sortir`, et les reliquats
+d'`export-depot` et de `referent-instance` — vérifient le code tel qu'il part en production,
+et se jouent telles qu'elles sont écrites.
+
+Ce qui change vient APRÈS, tranche par tranche, et la zone « Les passes de QA que chaque
+tranche périme » le range. Deux choses à savoir en les jouant maintenant. `petites-largeurs`
+et `preference-de-police` seront à rejouer en partie dès la première tranche — sur la barre
+du haut seulement, le reste tient. Et `supprimer-n-est-pas-sortir` a une durée de vie
+courte : elle garde une règle qui part en production à la fusion, donc elle se joue, mais la
+deuxième tranche remplacera les gestes qu'elle vérifie. `export-depot`, `droit-export` et
+`referent-instance` ne sont pas concernées : la collection reste l'unité de dépôt et le
+titre d'un export.
 
 ### Une piste de construction, lue dans le code et non éprouvée
 
