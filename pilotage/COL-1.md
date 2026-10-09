@@ -170,3 +170,10 @@ collection on SORT un album, et le détruire — lui ou une de ses planches — 
 dans toutes les collections où il vit. Une fois posé, la fenêtre de la promotion cesse d'être
 dangereuse : un membre de l'incubateur ne pourra qu'en sortir l'album. D'ici là, elle se
 tient courte, comme écrit ci-dessus.
+
+**Renvoi vers `COL-3`, posé le 2026-10-09.** Hugo veut un étage au-dessus des collections :
+le PROJET, à qui appartient le travail fait sur un album, l'album lui-même appartenant à
+l'instance. L'incubateur décrit ici ne change pas de nature — c'est une collection fermée À
+L'INTÉRIEUR d'un projet, et sa promotion reste un rangement. Ce qui est neuf est qu'un
+travail ne passe d'un projet à un autre que par une copie, et le piège du vocabulaire décrit
+ici s'y retrouve à l'identique : des tags qui ne suivent pas.

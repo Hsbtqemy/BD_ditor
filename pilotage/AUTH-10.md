@@ -98,7 +98,7 @@ trois écarts restants sont tous à l'intérieur d'`ecriture`.
 - [x] **Le serveur dit, album par album, si on peut le détruire, et l'écran ne propose que ce qui aboutira** — attendu : « Retirer de cette collection » pour un album qui vit ailleurs (`sortir_album` existe et suffit), « Détruire l'album » seulement quand le serveur l'annonce possible. Le client ne peut pas le déduire seul : la liste des collections d'un album qu'il reçoit est PARTIELLE (`list_collections_album` ne rend que celles qu'on lit). À faire avec la fiche d'album d'`UX-18`, qui porte ces gestes **Fait par `a17b634`, dans l'écran ACTUEL** : `GET /api/albums` publie `destructible` et `ecrivable`. La corbeille d'un album et celles de ses planches ne s'offrent qu'à qui peut détruire ; à qui écrit sans écrire partout, un ✕ de même gabarit ouvre la fiche sur « sortir », dit pourquoi, fait confirmer quand on y perd l'écriture, et ferme la fiche quand l'album a quitté ce qu'on lit ; à qui ne fait que lire, rien. Les libellés NOMMÉS — « Retirer de cette collection », « Détruire l'album » — restent à la refonte d'`UX-18` : la ligne d'aujourd'hui n'a que des icônes. Quinze mutants côté écran, quinze tués
 - [ ] **La passe `supprimer-n-est-pas-sortir` est jouée** — attendu : ses cases cochées par Hugo, sur la pile de recette reconstruite avec `a17b634`. La suite ne dit pas si un ✕ à la place d'une corbeille se COMPREND
 - [ ] **Trancher le veto de qui range l'album chez soi** — attendu : accepté par écrit, ou fermé, avec sa raison. Un co-écrivain qui range l'album dans une collection à lui retire à tous les autres le droit de le détruire, et ils ne peuvent pas le défaire. Mesuré par la relecture croisée, section « Ce que la relecture croisée a trouvé ». Sans objet si la collection de base est retenue
-- [ ] **La collection de base — l'autre forme, proposée par Hugo le 2026-10-08, à trancher** — « une collection de base, qui récupère tous les imports ; et impossible de supprimer dedans, sauf admin ». Attendu : retenue ou écartée, avec sa raison. Ce qu'elle achète et ce qu'elle demande est écrit dans « La décision du 2026-10-08 ». Elle ne remplace pas les deux cases précédentes, elle s'y AJOUTE : « écrire partout », appliqué à un album qui vit aussi dans une collection où seul l'administrateur écrit, donne exactement « sauf admin ». **Un de ses coûts est accepté par Hugo le 2026-10-08** : que supprimer une PLANCHE y devienne un geste d'administrateur. Restent à trancher l'export (la base ne doit pas compter comme titre), son écran, et la variante sans collection
+- [ ] **La collection de base — l'autre forme, proposée par Hugo le 2026-10-08, à trancher** — « une collection de base, qui récupère tous les imports ; et impossible de supprimer dedans, sauf admin ». Attendu : retenue ou écartée, avec sa raison. Ce qu'elle achète et ce qu'elle demande est écrit dans « La décision du 2026-10-08 ». Elle ne remplace pas les deux cases précédentes, elle s'y AJOUTE : « écrire partout », appliqué à un album qui vit aussi dans une collection où seul l'administrateur écrit, donne exactement « sauf admin ». **Un de ses coûts est accepté par Hugo le 2026-10-08** : que supprimer une PLANCHE y devienne un geste d'administrateur. Restent à trancher l'export (la base ne doit pas compter comme titre), son écran, et la variante sans collection. **Reformulée par Hugo le 2026-10-09 en FONDS** — tout album appartient à l'instance, « supprimer » le retire d'une collection, seul l'administrateur détruit et réintègre : c'est la variante sans collection, et l'export n'y est plus un coût. Section « Le fonds », avec ce qu'un essai a montré et les décisions qui restent
 
 ## Les deux remèdes, chiffrés — 2026-09-10
 
@@ -451,6 +451,91 @@ une suite verte et dix-neuf mutants tués.
   sur les collections où l'album VIT —, et c'est dit ici pour qu'on ne le découvre pas.
 - *Un album d'une seule collection se détruit toujours par quiconque y écrit.* Inchangé :
   c'est la question du 2026-09-10.
+
+## Le fonds : tout album appartient à l'instance — proposé le 2026-10-09, non tranché
+
+Hugo, après avoir relu le veto de qui range un album chez soi : *« Pour moi, il doit y avoir
+une sorte de back où tous les albums sont stockés. Avec leurs origines et leurs utilisations
+dans différentes collections. Quitte à ce qu'on considère que tout ce qui est ajouté sur
+BéDéditeur appartient à BéDéditeur, et que les gestionnaires de collection soient en mode
+"j'ai des droits dessus dans la limite où j'intègre ceci dans ma collection". Je peux donc
+supprimer n'importe quel album, il continuera à vivre dans BéDéditeur sans être appelé par
+personne. Seuls les admins, et éventuellement une requête / consultation des éléments
+disponibles, permettent d'intégrer ou réintégrer des albums dans d'autres collections. »*
+
+**C'est la « collection de base » sans la collection**, et c'est la meilleure des deux
+formes : le fonds n'est pas un rangement de plus, c'est la table des albums elle-même. Un
+album rangé nulle part est « au fonds ». Il n'y a donc ni double rangement, ni titre
+d'export en trop — le coût qui pesait sur la collection de base disparaît.
+
+**Le code d'aujourd'hui se comporte déjà ainsi**, joué le 2026-10-09 par un essai jetable sur
+`22cc644` : un album dont on retire tous les rangements (à la main, en base) disparaît de la
+liste de qui le possédait, ses planches lui répondent 404, il ne peut ni y toucher ni le
+ranger de nouveau ; l'administrateur le voit, avec ses planches intactes, l'export le refuse
+(409, « rangé dans aucune collection ») et un rangement par l'administrateur le rend à qui
+le lisait. Une seule chose s'y oppose aujourd'hui : le 409 « dernière collection » de
+`sortir_album`, écrit pour l'invariant « aucun album hors collection ».
+
+**Ce que le fonds règle.** La destruction devient un geste d'administrateur, partout — la
+question du 2026-09-10 trouve sa réponse sans niveau de droits. « Supprimer » devient
+toujours rattrapable. Le veto n'a plus d'objet, puisque personne d'autre ne détruit. Et si
+intégrer un album est réservé, comme proposé, un écrivain ne garde plus par son propre
+rangement l'accès à un album dont on lui a retiré la collection.
+
+**Ce qu'il renverse, et qu'il faudra écrire.**
+
+- *« Aucun album hors collection »* (`AUTH-2`) devient « un album hors collection est au
+  fonds, lu des seuls administrateurs ». La raison de l'invariant — qu'aucune politique ne
+  s'invente dans le code — est tenue autrement : la politique est écrite.
+- *« Ranger demande d'écrire dans l'album et dans la collection d'arrivée »* (`AUTH-3`)
+  devient un geste d'administrateur, ou le résultat d'une demande.
+- *La règle codée la veille* (`a17b634`, écrire dans toutes les collections) se simplifie
+  en « portée totale ». Le geste « sortir », sa confirmation et le cliquet restent.
+
+**Ce qui frotte, et attend une décision.**
+
+- *La consultation du fonds contre le cloisonnement.* « 404, jamais 403 » existe pour que
+  personne n'apprenne ce que le corpus contient hors de sa portée. Un catalogue que les
+  gestionnaires consultent dit qu'un album existe. À trancher : qui le consulte, et ce
+  qu'il montre — la notice (titre, série, auteur) sans les images, sans les annotations, et
+  sans dire quelle collection l'emploie ; ou rien, la demande passant par l'administrateur.
+- *Intégrer un album, c'est rejoindre un travail partagé.* Régions, transcriptions et
+  annotations tiennent à l'album, pas à la collection : qui l'intègre les reçoit toutes,
+  et la collection qui le « supprime » laisse son travail au fonds. C'est cohérent avec
+  « tout appartient à l'instance », et c'est à DIRE aux gestionnaires. Le vocabulaire
+  local, lui, reste à sa collection.
+- *Une planche n'a pas de fonds.* La supprimer deviendrait un geste d'administrateur, y
+  compris pour retirer son propre scan fautif — accepté par Hugo le 2026-10-08 —, ou
+  demande un retrait rattrapable.
+- *Les origines et les emplois ne sont écrits nulle part.* `albums` ne porte que
+  `date_import` ; ni qui a importé, ni où ; `collection_album` n'a ni date ni auteur, et ni
+  créer, ni ranger, ni sortir, ni supprimer un album n'est journalisé. À tracer à partir du
+  jour où le fonds existe ; l'existant ne se reconstitue pas.
+- *Il faut un écran au fonds*, pour l'administrateur : les albums, d'où ils viennent, qui
+  les emploie, lesquels ne sont appelés par personne. Rien n'étant plus détruit par les
+  autres, c'est aussi là que se voit ce que l'instance garde.
+
+**Deux précisions de Hugo, le même jour.**
+
+- *Deux réponses à « supprimer ».* « Supprimer de la collection » et « Supprimer
+  définitivement » : on importe parfois ce qui n'a rien à faire dans l'instance, et il faut
+  pouvoir le dire. La seconde efface directement, ou envoie une demande à un
+  administrateur. Une demande n'a pas besoin d'une messagerie : c'est un ÉTAT de l'album
+  (qui, quand, pourquoi), que le fonds montre à l'administrateur et que « À regarder »
+  peut porter.
+- *Intégrer un album n'est pas en recevoir le travail.* Hugo refuse la phrase écrite plus
+  haut (« c'est rejoindre un travail partagé ») : un album intégré doit arriver VIERGE, ou
+  avec les couches de travail qu'on choisit d'y ajouter — et ces couches ont des droits,
+  on ne fait pas ce qu'on veut du travail d'un autre. **Cela dépasse cette fiche.**
+  Aujourd'hui un album n'a qu'UN travail : les régions tiennent à la planche,
+  `annotations.region_id` est UNIQUE, la transcription est une colonne de la région, et
+  une correction de token se range par région et par rang. Qui écrit dans une collection
+  de l'album modifie donc le travail de l'autre. C'était VOULU — arbitrage du 2026-08-27,
+  `AUTH-3` : dupliquer l'album « casserait l'analyse inter-corpus » — et c'est cette
+  décision-là que la demande rouvre. Seul le vocabulaire local est déjà masqué d'une
+  étude à l'autre.
+
+Rien n'est codé ni décidé. C'est un chantier à lui, après la fusion vers `main` : **`COL-3`**, ouvert le 2026-10-09. Le fonds, les deux réponses à « supprimer », les copies de travail et l'étage du PROJET que Hugo a posé ensuite s'y décident ; cette fiche n'en garde que la trace, et les cases « veto » et « collection de base » de sa zone trouveront leur réponse là-bas. Sa règle, elle, reste vraie à l'intérieur d'un projet.
 
 ## Contexte
 
