@@ -7,6 +7,10 @@ derniere: —
 
 # QA — un album partagé ne se supprime plus depuis une seule de ses collections
 
+**Reportée le 2026-10-09, décision de Hugo** : cette passe n'a pas été jouée avant la fusion `dev` → `main`,
+et la tranche 2 de `COL-3` la réécrira au lieu de la rejouer. Elle reste jouable telle quelle si un album partagé
+entre deux collections apparaît en production d'ici là — cf. sa case dans `pilotage/AUTH-10.md`.
+
 La suite verrouille le serveur : dix-neuf tests jouent la suppression sous plusieurs
 identités et regardent ce que voient les AUTRES ensuite, un cliquet exige que toute route
 qui détruit pose la garde, un test navigateur joue l'écran sous quatre identités. Ce qu'elle
