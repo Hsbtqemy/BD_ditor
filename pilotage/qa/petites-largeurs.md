@@ -29,6 +29,14 @@ dans `UX-8`. Ce qui condamne un SEUIL ou un repli rouvre une fiche à part, avec
 et l'appareil en tête. Et si la passe se dément elle-même sur un point — c'est arrivé le
 2026-09-04 sur le collage vertical —, c'est ce démenti qui compte, pas la case.
 
+**Reportée le 2026-10-09, et trois de ses chiffres ont changé le même jour.** Hugo l'a
+repoussée après la fusion `dev` → `main` : elle exige un vrai appareil, et la pile de
+recette n'est joignable que du poste qui la porte — elle se jouera sur la production, avec
+une tablette. Entre-temps `5a4a62f` a déplacé deux seuils de l'Atelier, et les cases qui
+les citent sont mises à jour ci-dessous : les libellés des modes tombent sous **1023 px**
+(et non 899), la légende de la barre d'état sous **995 px** (et non 659), et la barre
+d'état s'enroule désormais à TOUTES les largeurs dès qu'elle manque de place.
+
 ## Ce que les tests couvrent déjà — ne pas le refaire ici
 
 - `test_e2e_reflow.py` : à 320 et 768 px, sur les **cinq** surfaces — `/administration` en
@@ -82,8 +90,8 @@ Trois éléments disparaissent en petite largeur. Chacun a été retiré pour un
 mesurée ; reste à savoir si son absence se paie.
 
 - [ ] Le **fil d'Ariane** est masqué sous **559 px** — la passe a dit 659 px du 2026-09-05 au 2026-09-07, et c'était faux : la règle vit dans `@media (max-width: 34.9375em)`, pas dans celle de 41.1875em. À 600 px il est donc PRÉSENT, et une passe jouée là aurait conclu que l'outil se trompait. Il servait aussi à DÉSÉLECTIONNER : vérifier qu'on sort d'une sélection sans lui, au doigt, sans clavier — la racine de l'arbre de structure est la voie prévue
-- [ ] La **légende de la barre d'état** est masquée sous 659 px : vérifier qu'on distingue toujours une case d'une bulle d'un personnage à leurs seules couleurs de contour
-- [ ] Les **libellés des modes** tombent sous 899 px : il reste une pastille de couleur et une lettre (N/E/A/T), le libellé restant dans l'arbre d'accessibilité. Vérifier qu'on sait dans quel mode on est sans avoir à essayer, et qu'on retrouve celui qu'on veut — la pastille et la lettre ne disent pas la même chose, et laquelle porte l'information est justement la question
+- [ ] La **légende de la barre d'état** est masquée sous 995 px (659 jusqu'au 2026-10-09) : vérifier qu'on distingue toujours une case d'une bulle d'un personnage à leurs seules couleurs de contour
+- [ ] Les **libellés des modes** tombent sous 1023 px (899 jusqu'au 2026-10-09) : il reste une pastille de couleur et une lettre (N/E/A/T), le libellé restant dans l'arbre d'accessibilité. Vérifier qu'on sait dans quel mode on est sans avoir à essayer, et qu'on retrouve celui qu'on veut — la pastille et la lettre ne disent pas la même chose, et laquelle porte l'information est justement la question
 
 ### Les cadres de défilement se laissent trouver
 
@@ -102,7 +110,7 @@ de savoir qu'on le peut.
 
 - [ ] La vignette d'un résultat de recherche tombe à 72 px sur un téléphone : vérifier qu'elle sert encore à reconnaître une planche, ou qu'elle est devenue une décoration qu'il vaudrait mieux masquer
 - [ ] À 320 px, un résultat de recherche laisse 174 px au texte : lire trois résultats de suite et dire si l'extrait reste exploitable ou s'il faut ouvrir la planche à chaque fois
-- [ ] La barre d'état s'enroule sous 659 px (`flex-wrap: wrap`, hauteur `auto`) : compter les lignes qu'elle prend réellement à 320 px et en paysage, et dire si la hauteur qu'elle mange reste acceptable — le nombre de lignes n'a jamais été mesuré, seulement la largeur de son contenu (651 px)
+- [ ] La barre d'état s'enroule dès qu'elle manque de place, à toutes les largeurs depuis le 2026-10-09 (`flex-wrap: wrap`, hauteur `auto`) : compter les lignes qu'elle prend réellement à 320 px et en paysage, et dire si la hauteur qu'elle mange reste acceptable — le nombre de lignes n'a jamais été mesuré, seulement la largeur de son contenu (651 px)
 
 - [ ] Le **bandeau de portée vide** est devenu un `<details>` repliable (2026-09-06) : sur une instance où la portée est vide, vérifier en largeur de téléphone que le résumé se touche au doigt, que le chevron se comprend sans l'avoir déjà ouvert, et que le contenu déplié ne pousse pas la page hors champ
 

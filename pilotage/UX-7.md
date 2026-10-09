@@ -6,7 +6,25 @@ audit: AUDIT.md
 
 # UX-7 — rendre les surfaces utilisables sous 1 000 px
 
-**Arrêté sur** — 2026-09-05, `b01903b` : le chantier est FAIT, sa garde écrite, et son
+**Arrêté sur** — 2026-10-09, `5a4a62f` : **les bandes de l'Atelier ne se plient plus.** Rouvert par la passe
+« Préférence de police », jouée par Hugo sous Firefox : une bande qui manquait de place ne débordait pas, ses
+éléments se PLIAIENT — les deux menus de la bande 2 sur trois à cinq lignes, sortis par le bas (de 900 à 980 px à
+police par défaut), les éléments de la barre d'état sur deux lignes dans une rangée fixe. Rien ne sortant de la
+fenêtre, la sonde de reflow répondait « rien d'inatteignable », et c'était vrai : c'est le défaut de la bande 1
+(UX-10), une et deux bandes plus bas. Les boutons sont en `nowrap`, le nom de planche cède à toutes les largeurs,
+le seuil des libellés monte de 56.1875em à **63.9375em** (les commandes demandent 50,65em, le nom de référence
+12,3em) et cesse d'être celui de la mise en page ; la barre d'état s'enroule à toutes les largeurs et sa légende
+cède sous **62.1875em**. Trois défauts antérieurs sont tombés avec : deux règles de resserrement mortes depuis
+l'origine (ordre source), un `gap` qui écrasait le `row-gap` de la barre enroulée (18 px au lieu de 2), et la
+fenêtre des figures, qui n'avait jamais eu de règle de modale. Suite par défaut 1536, passe navigateur 333, sur
+un clone où les patchs s'appliquent seuls. **Ce qui reste, et c'est écrit** : aucun test ne tourne sous Firefox —
+la zone « Après `5a4a62f` » de `pilotage/qa/preference-de-police.md` le fait constater à la main ; le test garde
+des propriétés (« aucun bouton ne se plie ») et non la VALEUR du seuil des libellés, qu'un mutant remet à
+56.1875em sans rien faire tomber ; et sous DejaVu Sans (l'image) le nom de planche cède de 3,6em au seuil, les
+commandes tenant. La case ouverte « Sous 899 px, pendant la Transcription… » du `Reste` vaut désormais sous
+1023 px. `petites-largeurs` cite les seuils neufs et reste à jouer, sur la production, avec une tablette.
+
+Avant lui, `b01903b` (2026-09-05) : le chantier est FAIT, sa garde écrite, et son
 `Reste` entièrement coché. La Visionneuse escamote ses 540 px de chrome en tiroirs sous
 des seuils mesurés ; les cinq arbitrages qui restaient ouverts sont tranchés, et trois
 l'ont été PAR la mesure plutôt qu'avant elle. Sept largeurs vertes sur les quatre
