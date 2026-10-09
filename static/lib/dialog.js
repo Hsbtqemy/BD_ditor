@@ -17,22 +17,54 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  // Éléments potentiellement focusables au clavier.
+  /* Éléments potentiellement focusables au clavier.
+     `summary` y manquait, et un `<summary>` est focalisable SANS `tabindex` : chaque terme
+     du lexique en est un (`<details><summary>`). Seul le PREMIER `<summary>` enfant direct
+     d'un `<details>` l'est — d'où le sélecteur —, et le contenu d'un `<details>` fermé
+     n'est pas rendu : `focusables()` l'écarte déjà par `getClientRects`.
+     Cette liste n'a pas à être complète pour que le piège tienne (cf. `trapTarget`) ; elle
+     doit l'être pour que le focus d'OUVERTURE et les deux bords tombent juste. Les sept
+     modales de l'application ne portent aucun autre focalisable natif — ni
+     `contenteditable`, ni `iframe`, ni média à commandes : on ne l'allonge pas pour des
+     cas qui n'existent pas ici. */
   var FOCUSABLE =
     'a[href],button:not([disabled]),input:not([disabled]),' +
     'select:not([disabled]),textarea:not([disabled]),' +
+    'details > summary:first-of-type,' +
     '[tabindex]:not([tabindex="-1"])';
 
   /* Cible du focus quand Tab boucle dans une modale — LOGIQUE PURE (testée sous Node) :
      `list` = focusables visibles dans l'ordre du DOM, `active` = focus courant,
-     `shift` = Maj enfoncé. Renvoie l'élément à focaliser, ou null si Tab doit suivre
-     son cours normal (déplacement interne sans franchir les bords). */
-  function trapTarget(list, active, shift) {
+     `shift` = Maj enfoncé, `precede(a, b)` = « a vient avant b dans le document ».
+     Renvoie l'élément à focaliser, ou null si Tab doit suivre son cours normal
+     (déplacement interne sans franchir les bords).
+
+     **Un focus que la liste ne connaît pas n'est PAS un focus perdu.** La règle d'avant
+     renvoyait au premier élément dès que `active` n'était pas dans la liste, et c'est elle
+     qui a fait d'un oubli de sélecteur un cul-de-sac : arrivé sur le premier `<summary>`
+     du lexique, Tab repartait au début, et tout ce qui suivait — les autres termes,
+     l'import, « Fermer » — ne s'atteignait plus au clavier (mesuré le 2026-10-09).
+     Désormais on regarde OÙ il est : s'il reste un élément connu devant lui dans le sens
+     de la marche, Tab suit son cours — il ne peut alors pas quitter la boîte, puisqu'il
+     rencontrera cet élément-là au plus tard. Ce n'est qu'au-delà du dernier connu (ou en
+     deçà du premier) qu'on boucle. Sans `precede`, on ne sait pas situer le focus, et on
+     garde la règle prudente : l'extrémité d'entrée. */
+  function trapTarget(list, active, shift, precede) {
     if (!list.length) return null;
     var first = list[0], last = list[list.length - 1];
-    var inside = list.indexOf(active) !== -1;
-    if (shift) return (active === first || !inside) ? last : null;   // recule depuis le 1er → dernier
-    return (active === last || !inside) ? first : null;              // avance depuis le dernier → 1er
+    if (list.indexOf(active) !== -1) {
+      if (shift) return active === first ? last : null;   // recule depuis le 1er → dernier
+      return active === last ? first : null;              // avance depuis le dernier → 1er
+    }
+    if (!precede) return shift ? last : first;
+    if (shift) return precede(first, active) ? null : last;
+    return precede(active, last) ? null : first;
+  }
+
+  /* `a` vient-il avant `b` dans le document ? Un conteneur PRÉCÈDE ce qu'il contient :
+     c'est ce qui fait entrer Tab dans la boîte quand le focus est sur elle. */
+  function precede(a, b) {
+    return !!(a.compareDocumentPosition(b) & 4);   // Node.DOCUMENT_POSITION_FOLLOWING
   }
 
   var roots = [];                 // conteneurs enregistrés (pour reconnaître « hors modale »)
@@ -90,7 +122,7 @@
       if (e.key !== "Tab") return;
       var f = focusables(box);
       if (!f.length) { e.preventDefault(); return; }   // rien à focaliser : on ne s'échappe pas
-      var t = trapTarget(f, document.activeElement, e.shiftKey);
+      var t = trapTarget(f, document.activeElement, e.shiftKey, precede);
       if (t) { t.focus(); e.preventDefault(); }
     });
 

@@ -35,6 +35,40 @@ test("focus hors de la boîte est ramené à l'extrémité d'entrée", () => {
   assert.equal(_trapTarget(list, X, true), C);  // Maj+Tab → dernier
 });
 
+/* Un focus que la liste ne CONNAÎT pas — un `<summary>` oublié du sélecteur, le défaut
+   du 2026-10-09 — se situe par sa place dans le document. Les éléments fictifs portent
+   un rang ; `avant` est la doublure de `compareDocumentPosition`. */
+const rang = (n) => ({ rang: n });
+const avant = (a, b) => a.rang < b.rang;
+const P = rang(10), Q = rang(20), R = rang(30);
+const connus = [P, Q, R];
+
+test("focus inconnu AU MILIEU : Tab suit son cours dans les deux sens", () => {
+  const X = rang(25);                          // entre Q et R
+  assert.equal(_trapTarget(connus, X, false, avant), null);
+  assert.equal(_trapTarget(connus, X, true, avant), null);
+});
+
+test("focus inconnu APRÈS le dernier connu : Tab boucle, Maj+Tab recule seul", () => {
+  const X = rang(35);
+  assert.equal(_trapTarget(connus, X, false, avant), P);   // rien devant → premier
+  assert.equal(_trapTarget(connus, X, true, avant), null); // R est derrière lui
+});
+
+test("focus inconnu AVANT le premier connu : Maj+Tab boucle, Tab avance seul", () => {
+  const X = rang(5);
+  assert.equal(_trapTarget(connus, X, true, avant), R);    // rien derrière → dernier
+  assert.equal(_trapTarget(connus, X, false, avant), null);
+});
+
+test("un focus CONNU ne consulte jamais l'ordre : les bords décident seuls", () => {
+  const jamais = () => { throw new Error("`precede` appelé pour un élément connu"); };
+  assert.equal(_trapTarget(connus, R, false, jamais), P);
+  assert.equal(_trapTarget(connus, P, true, jamais), R);
+  assert.equal(_trapTarget(connus, Q, false, jamais), null);
+  assert.equal(_trapTarget(connus, Q, true, jamais), null);
+});
+
 test("liste vide → null (le handler empêchera Tab de s'échapper)", () => {
   assert.equal(_trapTarget([], A, false), null);
   assert.equal(_trapTarget([], A, true), null);
