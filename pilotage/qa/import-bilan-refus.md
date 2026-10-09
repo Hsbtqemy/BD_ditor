@@ -104,7 +104,7 @@ cases sur vingt.
 ### Quand on n'écrit nulle part — sous `lectrice`, Exploration → 📖 Lexique
 
 - [x] Ni menu « Importer dans » ni bouton « Importer un tableur… » : à leur place, la note « Vous n'écrivez dans aucune collection : l'import de vocabulaire vous est fermé » et l'invitation à demander un accès
-- [ ] (échouée le 2026-10-09 sur `22cc644`, à rejouer sur une recette qui contient `240dde1`) Au clavier, en partant du haut de la modale, Tab parcourt les contrôles de la modale sans jamais s'arrêter sur un élément invisible ou inerte à l'endroit de l'import
+- [x] (échouée le 2026-10-09 sur `22cc644`, à rejouer sur une recette qui contient `240dde1`) Au clavier, en partant du haut de la modale, Tab parcourt les contrôles de la modale sans jamais s'arrêter sur un élément invisible ou inerte à l'endroit de l'import
 - [x] Avec un lecteur d'écran (NVDA : flèche bas pour lire la modale ligne à ligne), la note est lue, en entier, à l'endroit où serait le menu
 
 ### Un rattachement refusé — sous `stagiaire`, Exploration → 📖 Lexique, une fois le décor monté sous `proprio`
