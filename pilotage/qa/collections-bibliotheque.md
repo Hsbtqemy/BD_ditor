@@ -69,7 +69,7 @@ que s'il est au moins aussi récent.
 - [x] Prendre le nom « Collection par défaut » est refusé, avec un message lisible
 - [x] Le même refus, rejoué en descendant le formulaire jusqu'à *Enregistrer* : le message rouge s'affiche juste sous les boutons *Enregistrer* et *Supprimer la collection* de « Collection Test », au-dessus du bloc d'export, lisible sans faire défiler
 - [x] Remettre « Collection Test » dans le champ Nom — sans quoi le nom refusé repartirait avec l'enregistrement —, ajouter un mot à la description, descendre jusqu'à *Enregistrer* et cliquer : « enregistrée » s'affiche sous les mêmes boutons, le refus précédent a disparu, et l'écran ne saute pas — *Enregistrer* est encore à la hauteur où l'on a cliqué
-- [x] La collection dépliée nomme l'Administration comme l'endroit où l'on règle qui entre, avec un lien qui y mène
+- [ ] La collection dépliée COMMENCE par « Qui entre » : on y règle qui entre sur place, sans lien vers l'Administration à suivre (décochée le 2026-10-10, `b5cfce7` : la case nommait l'Administration, où le panneau ne vivait plus depuis le 2026-09-17 ; relevé en réécrivant les cases du second montage)
 
 ### Sous un lecteur d'écran
 
@@ -102,17 +102,17 @@ collections ; COL-2 l'a ramené près du geste le jour même. S'il retombe en ba
 régression à signaler, pas un détour à faire.
 
 - [x] Sous `arrivant` : le bouton de création est là ; créer « Carnet d'arrivant » ouvre aussitôt SON formulaire, dont il est propriétaire
-- [x] Le message qui suit la création dit où faire entrer quelqu'un, avec le lien vers l'Administration
+- [ ] Le message qui suit la création dit où faire entrer quelqu'un : « Qui entre », dans la collection ouverte juste dessous — sans lien vers l'Administration (décochée le 2026-10-10, `b5cfce7` : même péremption que la case de la collection dépliée)
 - [x] Sous `arrivant`, supprimer « Carnet d'arrivant » (vide) réussit
 - [x] Sous `proprio`, supprimer « Collection Test », dont l'album esther v1 vit aussi ailleurs, puis une collection dont un album ne vit QUE là : le second refus compte les albums qui resteraient sans collection, et la collection survit au refus
 
-### L'Administration n'a gardé que les accès
+### L'Administration règle qui entre, et rien d'autre de la collection
 
 **Sous `admin-bd`**, *Administration*.
 
-- [x] Le bloc « 👥 Comptes et groupes », axe *Collections*, ne permet ni de créer, ni de renommer, ni de supprimer une collection, ni d'en changer le référent — sa partie *Qui entre* y est en LECTURE seule
+- [ ] Le bloc « 👥 Comptes et groupes », axe *Collections*, ne permet ni de créer, ni de renommer, ni de supprimer une collection, ni d'en changer le référent — on n'y règle QUE qui entre, dans la fiche de la collection (décochée le 2026-10-10, `b5cfce7` : sa partie *Qui entre* y était en lecture seule)
 - [x] Chaque collection y renvoie vers la Bibliothèque pour ce qu'elle EST, avec un lien
-- [x] Les groupes d'administration qui voient tout le corpus sont déclarés, en nommant `bd-admins` — depuis `6ea6b60` cette déclaration a suivi les accès dans la Bibliothèque, sous le tableau de *Qui entre*, et ne se lit plus dans l'Administration
+- [ ] Les groupes d'administration qui voient tout le corpus sont déclarés, en nommant `bd-admins`, sous le tableau de *Qui entre* — dans la Bibliothèque, et de nouveau dans l'Administration, dans la fiche d'une collection (décochée le 2026-10-10, `b5cfce7` : la case disait que cette déclaration ne se lisait plus dans l'Administration)
 - [x] Dans la **Bibliothèque**, « Collection par défaut » dépliée, partie *Qui entre* : dans *Faire entrer*, choisir « Un compte, ou un groupe absent de la liste… » — et non `annotateurs` sous « Groupes de l'annuaire », qui le déclare groupe d'office —, taper `annotateurs` dans « nom exact », laisser « Compte ou groupe ? », puis *+ Faire entrer* : un refus rouge s'affiche juste sous la ligne d'ajout et demande de dire si c'est un compte ou un groupe — et non « Genre invalide », qui viendrait du serveur et voudrait dire que la demande est partie
       *(Réécrite le 2026-09-22 d'après le geste joué ce jour-là. Elle disait « + Accorder » et « Utilisateur
       ou groupe ? », libellés de l'ancien panneau de l'Administration, que la remise à l'écran du 2026-09-18

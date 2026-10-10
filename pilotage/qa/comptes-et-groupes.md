@@ -52,14 +52,14 @@ qu'il soit « une personne » au départ. Ne pas sauter la remise en état.
 - [x] Axe *Comptes* : le lien « + Dans l'annuaire ↗ » est en tête de liste ; axe *Collections* : il n'y est plus
 
 ### Lire une collection, et aller régler qui entre
-- [x] Axe *Collections*, fiche de « Collection Test » : la section *Qui entre* liste `annotateurs` avec « lire » et `proprio` avec « tous les actes, dont décider qui entre », chacun avec 👥 ou 👤, sans aucune case à cocher — et une ligne dit que les accès se lisent ici et se règlent dans la fiche de la collection, dans la Bibliothèque
+- [ ] Axe *Collections*, fiche de « Collection Test » : la section *Qui entre* est le panneau de la Bibliothèque, monté ici — `annotateurs` et `proprio`, chacun avec 👥 ou 👤 et ses cases cochées selon ses actes, la ligne « Faire entrer », un ✕ par ligne. Sous le panneau, le lien « Décrire dans la Bibliothèque ↗ », et une ligne dit que ce que la collection EST se règle dans la Bibliothèque (décochée le 2026-10-10, `b5cfce7` : la section listait les accès sans aucune case à cocher, et renvoyait à la Bibliothèque pour les régler)
 - [x] Cliquer un nom de *Qui entre* : la fiche de ce groupe ou de ce compte s'ouvre
-- [x] Revenir sur « Collection Test », cliquer *Régler qui entre* : la Bibliothèque s'ouvre sur « Collection Test » dépliée, le focus clavier sur le titre « Qui entre » de la collection. Revenir à l'Administration pour la suite
+- [ ] Revenir sur « Collection Test », cocher « exporter » sur la ligne d'`annotateurs`, puis recharger la page : la case est restée cochée — le geste s'est fait ici, sans passer par la Bibliothèque. La décocher. Puis « Décrire dans la Bibliothèque ↗ » : la Bibliothèque s'ouvre sur « Collection Test » dépliée. Revenir à l'Administration pour la suite (décochée le 2026-10-10, `b5cfce7` : *Régler qui entre* n'existe plus)
 
 ### Ce qu'un départ laisserait
 - [x] Axe *Comptes*, fiche de `stagiaire` : la partie *Départ* est REPLIÉE, et son titre porte une pastille « rien à orpheliner » ou « laisse … »
 - [x] Déplier *Départ* : trois étapes — retirer ses accès à son nom, le retirer de ses groupes dans l'annuaire, le supprimer dans l'annuaire — et la troisième dit ce qui resterait à ce login, ou « rien à orpheliner ». Aucune ne dit « recommandé », « possible » ni « archives »
-- [x] La première étape envoie au bon endroit : elle dit « dans « Qui entre » de chaque collection, dans la Bibliothèque », et compte les accès à son nom (ou dit qu'il n'en a aucun)
+- [ ] La première étape envoie au bon endroit : elle dit « dans « Qui entre » de chaque collection : sa fiche s'ouvre depuis « Collections », ci-dessus », et compte les accès à son nom (ou dit qu'il n'en a aucun) (décochée le 2026-10-10, `b5cfce7` : elle envoyait dans la Bibliothèque, pour un geste qui se fait désormais sur place)
 
 ### Déclarer un login partagé — et remettre en état
 - [x] Fiche de `collectif`, sélecteur *Nature* : le passer de « une personne » à « un login partagé ». Sous le sélecteur : « Nature enregistrée. », et le sélecteur garde le focus

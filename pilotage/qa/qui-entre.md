@@ -47,9 +47,9 @@ la pile, et c'est joué par `tests/test_e2e_qui_entre.py`. L'absence des mots «
 
 ### Depuis l'Administration
 - [x] Sous `admin-bd`, *Administration* : aucun bloc « 👥 Accès aux collections » ; l'en-tête de la page dit que qui entre dans une collection se règle dans la Bibliothèque
-- [x] *👥 Comptes et groupes*, axe *Collections*, « Essai qui entre » : *Qui entre* liste `proprio` et `annotateurs` avec leurs actes en toutes lettres (« tous les actes, dont décider qui entre » ; « lire, annoter · organiser les albums · … »), sans aucune case à cocher
-- [x] « Régler qui entre » : la Bibliothèque s'ouvre sur « Essai qui entre » dépliée, le focus sur « Qui entre », et le résumé porte la pastille « administrateur »
-- [x] Revenir à l'Administration, axe *Groupes*, `annotateurs`, *Ouvrir une collection à ce groupe* : choisir « Essai qui entre », « Régler qui entre… » : la Bibliothèque s'ouvre sur la collection, `annotateurs` déjà choisi dans *Faire entrer*
+- [ ] *👥 Comptes et groupes*, axe *Collections*, « Essai qui entre » : *Qui entre* y est le MÊME panneau que dans la Bibliothèque — `proprio` et `annotateurs`, chacun avec ses cases cochées selon ses actes, la ligne « Faire entrer » et un ✕ au bout de chaque ligne : les accès s'y RÈGLENT (décochée le 2026-10-10, `b5cfce7` : la fiche les listait en toutes lettres, sans aucune case à cocher)
+- [ ] Sous le panneau, « Décrire dans la Bibliothèque ↗ » : la Bibliothèque s'ouvre sur « Essai qui entre » dépliée, et le résumé porte la pastille « administrateur » (décochée le 2026-10-10, `b5cfce7` : le lien « Régler qui entre » n'existe plus — on règle sur place, et le lien qui reste nomme ce qu'il mène voir)
+- [ ] Revenir à l'Administration, axe *Groupes*, `annotateurs`, *Ouvrir une collection à ce groupe* : choisir « Essai qui entre », « Régler qui entre… » : c'est la FICHE de la collection qui s'ouvre, dans l'Administration, `annotateurs` déjà choisi dans *Faire entrer*, et rien n'est accordé tant qu'on n'a pas cliqué « + Faire entrer » (décochée le 2026-10-10, `b5cfce7` : le geste menait à la Bibliothèque)
 
 ### Qui participe ne voit pas qui entre
 - [x] Sous `lectrice`, *Bibliothèque*, déplier « Collection Test » : aucune partie « Qui entre », la phrase « Seul un propriétaire de la collection voit et règle qui y entre », et la note qui nomme les administrateurs de l'instance

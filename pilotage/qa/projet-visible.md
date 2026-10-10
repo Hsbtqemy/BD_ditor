@@ -85,6 +85,6 @@ passe crée elle-même son second projet, « Séminaire QA », et les zones se j
 
 ### Rien d'autre n'a changé — comptes `admin-bd` puis `proprio`, Administration, Bibliothèque, Atelier
 
-- [ ] Compte `admin-bd`, premier projet choisi dans la bande du haut : Administration → « 👥 Comptes et groupes » → la collection « Étude QA » → le lien qui mène à ses accès. La Bibliothèque s'ouvre sur « Étude QA » dépliée, et la bande du haut est passée d'elle-même sur « Séminaire QA » — pas de message « elle ne vous est pas ouverte, ou elle n'existe pas »
+- [ ] Compte `admin-bd`, premier projet choisi dans la bande du haut : Administration → « 👥 Comptes et groupes » → axe *Collections* → « Étude QA » → sous son panneau *Qui entre*, « Décrire dans la Bibliothèque ↗ ». La Bibliothèque s'ouvre sur « Étude QA » dépliée, et la bande du haut est passée d'elle-même sur « Séminaire QA » — pas de message « elle ne vous est pas ouverte, ou elle n'existe pas »
 - [ ] Compte `proprio`, premier projet choisi : déplier une collection qu'elle possède — « Qui entre », la description, le régime de diffusion et l'export sont là, comme avant
 - [ ] Compte `proprio`, Atelier : ouvrir une planche, modifier la note d'une bulle, puis Ctrl+Z — la note revient, comme avant
