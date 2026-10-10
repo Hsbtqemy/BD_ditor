@@ -499,7 +499,9 @@ def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, larg
     formulaire d'accès qui débordait de 89 px à 375 vit dans « Qui entre » depuis l'étape 3
     d'AUTH-12, et une page repliée ne montre pas ce qu'on cherche. La collection porte TROIS
     accès — un groupe, un compte, un groupe inconnu de l'annuaire — pour que le tableau (ou
-    les cartes, sous 48em) ait des lignes, des marques et des cases à mesurer.
+    les cartes, sous 48em) ait des lignes, des marques et des cases à mesurer. Puis sur
+    `/administration` à nouveau, la fiche de cette collection ouverte : le même panneau y
+    est monté une seconde fois (UX-16), dans une colonne plus étroite que la page.
 
     **La préférence de police est un paramètre depuis le 2026-09-09.** Le panneau de
     version affiche l'empreinte COMPLÈTE du commit — 40 caractères sans un espace —, et à
@@ -532,6 +534,27 @@ def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, larg
     page.wait_for_timeout(600)
     _exiger_pas_de_defilement(
         page, f"/corpus, « Qui entre » déplié, à {largeur} px (police par défaut {police} px)")
+
+    # UX-16 — le MÊME panneau, monté dans la fiche d'une collection de l'Administration. Il
+    # y est plus à l'étroit qu'ailleurs : à 768 px la fiche partage la largeur avec la liste,
+    # et le tableau (qui ne devient des cartes que sous 48em de FENÊTRE) y dépasse de loin sa
+    # place. Il doit alors défiler dans SON cadre — une section de fiche est une grille, dont
+    # la piste prendrait sinon la largeur du tableau et emporterait la page.
+    page.goto(decor["base"] + f"/administration?axe=collections&collection={cid}",
+              wait_until="networkidle")
+    lignes = page.locator("#cg-fiche section[data-qui-entre] :is(.qe-table tbody tr, .qe-carte)")
+    lignes.first.wait_for(timeout=5000)
+    assert lignes.count() == 3, (
+        "« Qui entre » de la fiche de collection ne montre pas ses trois accès : rien à mesurer")
+    page.wait_for_timeout(600)
+    _exiger_pas_de_defilement(
+        page, f"/administration, fiche d'une collection, à {largeur} px "
+              f"(police par défaut {police} px)")
+    # Ni la FICHE : elle défile de haut en bas, jamais de côté — sans quoi le cadre du
+    # tableau ne servirait à rien, c'est elle qui porterait la barre.
+    fiche = page.locator("#cg-fiche")
+    assert fiche.evaluate("e => e.scrollWidth <= e.clientWidth + 1"), (
+        f"la fiche défile de côté à {largeur} px : le tableau n'est pas resté dans son cadre")
 
 
 # ── COL-2 : le formulaire d'une collection a déménagé dans la Bibliothèque ─────────────
@@ -593,16 +616,29 @@ def test_comptes_et_groupes_ne_perdent_pas_de_contenu(page, live_server, police)
     la même raison — une liste vide n'a aucun élément hors champ.
 
     Sous le seuil étroit, la liste et la fiche ne sont jamais à l'écran ensemble : la fiche
-    REMPLACE la liste. On mesure donc les TROIS états qui comptent — la liste avec « À
+    REMPLACE la liste. On mesure donc les QUATRE états qui comptent — la liste avec « À
     regarder » déplié, la fiche d'un compte avec « Départ » et l'aide de la nature dépliés,
-    la fiche d'un groupe de douze comptes. Et aucun contenu du bloc n'a le droit de se
-    réfugier dans un cadre qui défile : c'était la tolérance légitime d'un TABLEAU, le bloc
-    n'en a plus.
+    la fiche d'un groupe de douze comptes, et la fiche d'une collection, qui porte depuis
+    UX-16 le panneau « Qui entre » (en cartes à cette largeur). Et aucun contenu du bloc
+    n'a le droit de se réfugier dans un cadre qui défile : c'était la tolérance légitime
+    d'un TABLEAU, et à 320 px le bloc n'en montre aucun.
     """
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30)
     try:
         for login, nom in COMPTES_DECOR:
             r = c.get("/api/moi", headers={"Remote-User": login, "Remote-Name": nom})
+            assert r.status_code == 200, r.text
+        # UX-16 — une collection et trois accès, pour le QUATRIÈME état : sa fiche porte
+        # désormais le panneau « Qui entre », et une fiche sans accès ne montrerait qu'une
+        # phrase. Un nom long, exprès : c'est lui qui ferait sortir une carte de la fenêtre.
+        r = c.post("/api/collections", headers=ECRITURE, json={"nom": "Fonds mesuré à 320"})
+        assert r.status_code == 201, r.text
+        collection = r.json()["id"]
+        for genre, nom, niveau in (("groupe", "annotateurs", "lecture"),
+                                   ("utilisateur", "camille", "ecriture"),
+                                   ("groupe", "ancien-cours-de-bande-dessinee-2025", "proprietaire")):
+            r = c.put(f"/api/collections/{collection}/acces", headers=ECRITURE,
+                      json={"genre": genre, "principal": nom, "niveau": niveau})
             assert r.status_code == 200, r.text
     finally:
         c.close()
@@ -648,6 +684,16 @@ def test_comptes_et_groupes_ne_perdent_pas_de_contenu(page, live_server, police)
               wait_until="networkidle")
     page.wait_for_selector("#cg-fiche .cg-lignes li", timeout=5000)
     mesurer("fiche d'un groupe")
+
+    page.goto(live_server + f"/administration?axe=collections&collection={collection}",
+              wait_until="networkidle")
+    cartes = page.locator("#cg-fiche section[data-qui-entre] .qe-carte")
+    cartes.first.wait_for(timeout=5000)
+    assert cartes.count() == 3, "la fiche de collection ne montre pas ses trois accès"
+    # Les marques de l'annuaire sont posées (seconde lecture du panneau) : ce sont elles qui
+    # allongent la tête d'une carte.
+    page.wait_for_selector("#cg-fiche .qe-marque", timeout=5000)
+    mesurer("fiche d'une collection, « Qui entre » en cartes")
 
 
 def test_la_surface_de_pan_reste_bornee_et_commandee(page, decor):

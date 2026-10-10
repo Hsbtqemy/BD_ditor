@@ -2,8 +2,9 @@
 
 Le panneau a déménagé deux fois en treize jours, et chaque déménagement a recopié cinq cents
 lignes d'un fichier de surface dans un autre. Il est désormais monté — dans la Bibliothèque,
-et bientôt dans l'Administration — depuis `static/lib/qui-entre.js`. Ce fichier garde la
-COUTURE : ce que rien d'autre n'empêcherait de revenir.
+pour le propriétaire, et dans l'Administration, pour l'administrateur — depuis
+`static/lib/qui-entre.js`. Ce fichier garde la COUTURE : ce que rien d'autre n'empêcherait
+de revenir.
 
 **La faute visée n'échoue pas.** Un hôte qui se remettrait à dessiner une ligne d'accès, ou
 à appeler `…/acces` lui-même « juste pour ce cas », fonctionnerait parfaitement : les deux
@@ -12,7 +13,8 @@ quelqu'un qui règle un accès. C'est le même mode d'échec que les deux portes
 pièce d'UX-10 — celle qu'on ne regarde plus vieillit.
 
 Il ne lit que des SOURCES et tourne dans la suite par défaut. Les gestes, eux, se jouent
-dans un navigateur : `tests/test_e2e_qui_entre.py`.
+dans un navigateur, un fichier par montage : `tests/test_e2e_qui_entre.py` pour la
+Bibliothèque, `tests/test_e2e_qui_entre_administration.py` pour l'Administration.
 """
 import re
 from pathlib import Path
@@ -26,7 +28,13 @@ MODULE = STATIC / "lib" / "qui-entre.js"
 # Les hôtes : les scripts de surface qui montent le module, avec le gabarit qui les sert.
 HOTES = {
     "corpus.js": "corpus.html",
+    "administration.js": "administration.html",
 }
+
+# Les hôtes qui ont une FICHE à ouvrir pour un compte ou un groupe, et passent donc
+# `surOuvrir` au montage. La Bibliothèque n'en est pas : un propriétaire n'y a aucune fiche
+# de compte, et un nom cliquable n'y mènerait nulle part.
+OUVRENT_UNE_FICHE = {"administration.js"}
 
 # Ce qui appartient au module et à lui seul. Le balisage : toute classe ou tout identifiant
 # `qe-…` ; la classe `qe` nue dans un sélecteur (`.qe`, mais pas la propriété `x.qe`) ; et
@@ -106,6 +114,33 @@ def test_chaque_hote_monte_le_module_et_le_charge_a_temps(client, script, gabari
     servi = client.get(module)
     assert servi.status_code == 200
     assert "BDQuiEntre" in servi.text
+
+
+@pytest.mark.parametrize("script", sorted(HOTES))
+def test_seul_un_hote_qui_a_des_fiches_fait_des_noms_des_liens(script):
+    """`surOuvrir` change ce que le panneau MONTRE : chaque nom y devient un bouton.
+
+    La Bibliothèque est le témoin de l'extraction — son montage ne change pas à l'écran —,
+    et rien d'autre ne l'empêcherait de recevoir l'option « pour faire pareil » : les noms y
+    deviendraient des boutons vers des fiches qu'un propriétaire ne peut pas ouvrir. Le
+    navigateur le mesure aussi (`test_e2e_qui_entre_administration`) ; ici, c'est la
+    déclaration qui est tenue, dans la suite par défaut.
+    """
+    code = _sans_commentaires((STATIC / script).read_text(encoding="utf-8"))
+    assert ("surOuvrir" in code) == (script in OUVRENT_UNE_FICHE), (
+        f"{script} : `surOuvrir` {'manque' if script in OUVRENT_UNE_FICHE else 'est passé'} "
+        "au montage, à l'inverse de ce que `OUVRENT_UNE_FICHE` déclare")
+    assert OUVRENT_UNE_FICHE <= set(HOTES), "un hôte qui ouvre des fiches est d'abord un hôte"
+
+
+def test_le_module_ne_fait_un_lien_d_un_nom_que_sur_demande():
+    """Le plancher de la garde ci-dessus : le module lit bien une option de ce nom.
+
+    S'il la renommait, les hôtes continueraient de passer `surOuvrir` dans le vide, les noms
+    redeviendraient du texte partout, et le test précédent resterait vert."""
+    code = _sans_commentaires(MODULE.read_text(encoding="utf-8"))
+    assert code.count("options.surOuvrir") >= 2, (
+        "le module ne lit plus `options.surOuvrir` : la déclaration des hôtes ne garde rien")
 
 
 def test_tout_script_de_surface_qui_monte_le_module_est_un_hote_declare():

@@ -11,13 +11,20 @@
    quitter son travail.
 
    LES ACCÈS SONT REPARTIS le 2026-09-17 (AUTH-12, décision 2 (b)) : qui entre dans UNE
-   collection se règle dans SA fiche, dans la Bibliothèque. Ici ne reste que la vue
-   TRANSVERSE — qui a accès à quoi, à travers toutes les collections — et « Régler qui
-   entre » y mène.
+   collection se règle dans SA fiche, dans la Bibliothèque. Ici restait la vue TRANSVERSE
+   — qui a accès à quoi, à travers toutes les collections —, et un lien y menait.
 
-   ILS ONT DÉMÉNAGÉ, ils ne sont pas dupliqués. Décision de l'équipe le 2026-09-07 : deux
-   portes vers la même pièce se paient toujours, l'une des deux vieillit, et c'est celle
-   qu'on ne regarde plus.
+   ET LE PANNEAU EST MONTÉ ICI UNE SECONDE FOIS (UX-16) : dans la fiche d'une collection de
+   « Comptes et groupes », l'administrateur RÈGLE qui entre, sur place. Ce n'est pas le
+   troisième déménagement : la Bibliothèque garde le sien, à l'identique, pour le
+   propriétaire qui part de son corpus. Un panneau va là où la question se pose, et un
+   second public se sert par un second montage.
+
+   MONTÉ, PAS RECOPIÉ. La règle du 2026-09-07 tient toujours — deux portes vers la même
+   pièce se paient, l'une vieillit, et c'est celle qu'on ne regarde plus — et c'est
+   précisément pourquoi le panneau n'est ÉCRIT qu'une fois, dans `static/lib/qui-entre.js` :
+   ce fichier ne dessine rien de lui et n'appelle aucune de ses routes, un cliquet le
+   vérifie (`tests/test_qui_entre_module.py`). Deux portes, une seule pièce, un seul plan.
 
    ET CE NE SONT PLUS DES MODALES. Une page est un lieu : les blocs sont là, lisibles
    ensemble, sans piège à focus ni Échap à gérer. `dialog.js` ne sert donc plus ici.
@@ -133,9 +140,19 @@ async function loadVersion() {
    sa logique pure (tri, filtre, adresse, regroupement des signaux) vit dans
    `static/lib/comptes.js`, testée par tables de cas.
 
-   IL NE MODIFIE RIEN, sauf la nature d'un compte (décision 1 (A) d'AUTH-12). Tout ce qui
-   change un compte ou un groupe se fait dans l'annuaire ; tout ce qui change un accès se
-   fait dans la fiche de la collection, dans la Bibliothèque (étape 3).
+   IL NE MODIFIE QUE DEUX CHOSES : la nature d'un compte (décision 1 (A) d'AUTH-12), et qui
+   entre dans une collection — par le module « Qui entre », MONTÉ dans la fiche de la
+   collection (UX-16), qui lit et écrit ses propres routes. Tout ce qui change un compte ou
+   un groupe se fait dans l'annuaire. La fiche d'une collection fait donc DEUX lectures :
+   celle de la vue, pour son en-tête, et celle du panneau, pour ses accès. Ce n'est pas un
+   doublon : passer les accès de la vue au panneau ferait vivre le contrat de `…/acces`
+   dans deux écrans.
+
+   CE QUE L'ON PEUT RÉGLER SE DEMANDE AU SERVEUR, collection par collection (`administrable`,
+   dans `GET /api/collections`), et jamais parce que cette vue est réservée aux
+   administrateurs : un panneau qui se croirait réglable parce que son contenant est gardé
+   hériterait de la garde de son contenant — la leçon d'AUTH-4, celle que cette page existe
+   pour fermer.
 
    L'AXE, LA SÉLECTION ET LE TRI VIVENT DANS L'ADRESSE, pour qu'on puisse envoyer une fiche
    et que « Retour » défasse le dernier saut. Le filtre n'y est pas : c'est une saisie en
@@ -149,6 +166,12 @@ const CG = {
   filtre: "",
   vueFiche: false,       // sous le seuil étroit, la fiche REMPLACE la liste
   msgNature: null,       // { login, texte, erreur } — survit au rechargement du geste
+  // UX-16 — « Qui entre », monté dans la fiche d'une collection.
+  reglables: null,       // Map id → la collection selon `GET /api/collections` ; null = illisible
+  reglablesMotif: null,  // pourquoi elle est illisible, quand elle l'est
+  groupesAdmin: [],      // `acces.groupes_admin` de `/api/moi`, pour la note d'AUTH-4
+  quiEntre: null,        // { id, poignee } — le montage de la fiche ouverte, s'il y en a un
+  preselection: null,    // { id, groupe } — « Ouvrir une collection à ce groupe… », une fois
 };
 
 /* Les deux natures d'un compte (AUTH-6), dans les mots de la maquette validée. La valeur
@@ -231,15 +254,26 @@ async function cgCharger(opts = {}) {
   }
   bloc.hidden = false;
   $("#cg-annuaire").classList.remove("erreur");
+  // Ce qu'on peut RÉGLER, demandé une fois que la vue a répondu : à qui le bloc reste fermé,
+  // la question ne part pas. Les deux lectures qui suivent ne font tomber ni l'une ni
+  // l'autre la vue — une liste des collections illisible se DIT dans la fiche, à l'endroit
+  // où elle manque, et le reste du bloc se lit quand même.
+  const reglables = apiGet("/api/collections").then(
+    (liste) => ({ liste }), (e) => ({ motif: e.message || "échec" }));
   const description = await droits;
   CG.droits = BDDroits.estValide(description) ? description : null;
+  const lues = await reglables;
+  CG.reglables = lues.liste ? new Map(lues.liste.map((c) => [c.id, c])) : null;
+  CG.reglablesMotif = lues.liste ? null : lues.motif;
+  const moi = await Promise.resolve(window.BDMoi).catch(() => null);
+  CG.groupesAdmin = (moi && moi.acces && moi.acces.groupes_admin) || [];
   CG.donnees = d;
   CG.index = {
     comptes: new Map(d.comptes.map((c) => [c.login, c])),
     groupes: new Map(d.groupes.map((g) => [g.nom, g])),
     collections: new Map(d.collections.map((c) => [c.id, c])),
   };
-  cgRendre();
+  cgRendre(opts.garderFiche);
   // Le focus rendu APRÈS le rechargement qui suit un geste : le contrôle actionné a été
   // détruit par le rendu, et le clavier perdrait sa place. Seulement à qui ne l'a pas repris.
   if (opts.focus && document.activeElement === document.body) {
@@ -265,12 +299,24 @@ function cgEcrireAdresse(pousser) {
 
 /* --- Rendu ----------------------------------------------------------------------- */
 
-function cgRendre() {
+/* `garderFiche` : après un geste de « Qui entre », tout ce qui DÉPEND des accès se redessine
+   — la ligne de l'annuaire, « À regarder », la liste, l'en-tête de la fiche —, mais pas la
+   fiche elle-même si elle montre encore la collection qu'on vient de régler : la redessiner
+   remonterait le panneau, c'est-à-dire effacerait le message qu'il vient d'écrire et lui
+   reprendrait le focus qu'il vient de rendre. */
+function cgRendre(garderFiche) {
   cgRendreAnnuaire();
   cgRendreControles();
   cgRendreSignaux();
   cgRendreListe();
+  if (garderFiche && cgRafraichirTeteCollection()) return;
+  // Entre le geste et la relecture, on a pu ouvrir une AUTRE fiche : elle a été dessinée sur
+  // les données d'avant, donc elle se redessine. Si le clavier y était, il retrouve le titre
+  // plutôt que de retomber sur la page.
+  const box = $("#cg-fiche");
+  const dedans = garderFiche && box.contains(document.activeElement);
   cgRendreFiche();
+  if (dedans) { const t = $("#cg-fiche-titre"); if (t) t.focus(); }
 }
 
 function cgRendreAnnuaire() {
@@ -411,6 +457,13 @@ function cgRendreListe() {
 
 function cgRendreFiche() {
   const box = $("#cg-fiche");
+  // Le panneau « Qui entre » de la fiche d'avant meurt AVEC elle, et avant elle : démonté,
+  // il ne parle plus. Laissé à lui-même, un geste encore en route chez lui viendrait écrire
+  // son message — et faire taire, par `cgTaireSauf`, celui de la fiche qu'on lit maintenant.
+  cgDemonterQuiEntre();
+  // La présélection ne vaut que pour LE rendu qui suit le geste qui l'a posée.
+  const preselection = CG.preselection;
+  CG.preselection = null;
   // La fiche défile seule : une fiche NEUVE s'ouvre en haut, et non à la hauteur où l'on
   // avait laissé la précédente. Le même objet re-rendu (la nature posée recharge tout)
   // garde sa position — c'est là qu'on était en train de lire.
@@ -432,6 +485,10 @@ function cgRendreFiche() {
   }
   box.innerHTML = retour + (CG.axe === "comptes" ? cgFicheCompte(o)
     : CG.axe === "groupes" ? cgFicheGroupe(o) : cgFicheCollection(o));
+  if (CG.axe === "collections") {
+    cgMonterQuiEntre(box, o, preselection && preselection.id === o.id
+      ? preselection.groupe : null);
+  }
 }
 
 function cgFicheCompte(c) {
@@ -514,7 +571,8 @@ function cgFicheCompte(c) {
     depart = `<details class="cg-depart"><summary>Départ ${cgPuce(c.verdict, rien ? "ok" : "alerte")}</summary>
       <ol>
         <li>Retirer ses accès à son nom${n ? ` (${n})` : " — il n'en a aucun"}, dans
-          « Qui entre » de chaque collection, dans la Bibliothèque.</li>
+          « Qui entre » de chaque collection : sa fiche s'ouvre depuis « Collections »,
+          ci-dessus.</li>
         ${suite}
       </ol></details>`;
   }
@@ -549,9 +607,10 @@ function cgFicheGroupe(g) {
         sans figurer dans les accès.</p>` : "";
   collections += ouvertes.length ? `<ul class="cg-lignes">${ouvertes.join("")}</ul>`
                                  : `<p class="muted small">Aucune.</p>`;
-  // Arrivé avec l'étape 3 (AUTH-12) : la collection choisie s'ouvre dans la Bibliothèque,
-  // sur « Qui entre », ce groupe déjà choisi dans la ligne d'ajout. Le geste se FAIT là-bas,
-  // par qui possède la collection — cette fiche n'accorde rien.
+  // Arrivé avec l'étape 3 (AUTH-12), où la collection choisie s'ouvrait dans la Bibliothèque.
+  // Depuis UX-16, c'est SA FICHE qui s'ouvre, ici, ce groupe déjà choisi dans la ligne
+  // d'ajout de « Qui entre » (`cgOuvrirA`). Cette fiche-ci n'accorde toujours rien : le
+  // geste se fait dans le panneau, et c'est lui qui pose la question du droit.
   const choix = CG.donnees.collections;
   if (choix.length) {
     collections += `<div class="cg-ouvrir">
@@ -597,7 +656,11 @@ function cgFicheGroupe(g) {
   </article>`;
 }
 
-function cgFicheCollection(c) {
+/* Ce que l'en-tête d'une collection dit sous son nom. À part, parce que c'est la seule
+   partie de la fiche qui se redessine après un geste de « Qui entre » : « sans
+   propriétaire » doit disparaître quand on vient d'en désigner un, sans remonter le panneau
+   qui vient de le faire (cf. `cgRafraichirTeteCollection`). */
+function cgSousCollection(c) {
   const puces = [];
   const diffusion = BDComptes.diffusionLue(c.statut_diffusion);
   if (diffusion) puces.push(cgPuce(diffusion));
@@ -607,37 +670,115 @@ function cgFicheCollection(c) {
     puces.push(cgPuce("propriétaire absent de l'annuaire", "rouge"));
   }
   const modif = BDComptes.dateCourte(c.derniere_modification);
+  return `<span>${c.nb_albums} ${c.nb_albums > 1 ? "albums" : "album"}</span>
+          ${modif ? `<span>modifiée le ${esc(modif)}</span>` : ""}
+          ${puces.join("")}`;
+}
 
-  const acces = (c.acces || []).map((a) => {
-    const groupe = a.par === "groupe";
-    const nom = groupe ? a.groupe : a.login;
-    const objet = groupe ? CG.index.groupes.get(nom) : CG.index.comptes.get(nom);
-    const absent = objet && objet.dans_annuaire === false
-      ? cgPuce("absent de l'annuaire", "rouge") : "";
-    return `<li><span><span aria-hidden="true">${groupe ? "👥" : "👤"}</span>
-      <span class="sr-only">${groupe ? "groupe" : "compte"}</span>
-      ${cgLien(groupe ? "groupe" : "compte", nom, nom)} ${absent}</span>
-      <span class="muted small">${esc(cgAccesLu(a))}</span></li>`;
-  });
-
+/* La fiche d'une collection : son en-tête, lu dans la vue, et UNE section vide que le module
+   « Qui entre » investit (UX-16, décision A de Hugo, 2026-09-23). La liste en lecture et le
+   renvoi « Régler qui entre » ont disparu : on règle ici. Le lien qui reste nomme ce qu'il
+   mène VOIR, pas le geste — ce que la collection EST se règle dans la Bibliothèque, et y
+   reste (décision B). */
+function cgFicheCollection(c) {
   return `<article class="cg-carte" aria-labelledby="cg-fiche-titre">
     <div class="cg-tete">
       <div>
         <h3 id="cg-fiche-titre" tabindex="-1">${esc(c.nom)}</h3>
-        <p class="cg-sous"><span>${c.nb_albums} ${c.nb_albums > 1 ? "albums" : "album"}</span>
-          ${modif ? `<span>modifiée le ${esc(modif)}</span>` : ""}
-          ${puces.join("")}</p>
+        <p class="cg-sous">${cgSousCollection(c)}</p>
       </div>
     </div>
-    <section class="cg-section"><h4>Qui entre</h4>
-      ${acces.length ? `<ul class="cg-lignes">${acces.join("")}</ul>`
-        : `<p class="muted small">Personne : seuls les administrateurs de l'instance la
-            voient.</p>`}
-      <p><a class="cg-regler" href="/corpus?collection=${c.id}">Régler qui entre</a></p>
-      <p class="col-note">Les accès se lisent ici ; ils se règlent dans la fiche de la
-        collection, dans la Bibliothèque.</p>
-    </section>
+    <section class="cg-section" data-qui-entre></section>
+    <p class="cg-ailleurs"><a class="cg-decrire" href="/corpus?collection=${c.id}">Décrire
+      dans la Bibliothèque<span aria-hidden="true"> ↗</span></a></p>
+    <p class="col-note">Ce que la collection est — sa description, sa diffusion, son
+      référent, ses exports — se règle dans sa fiche, dans la Bibliothèque.</p>
   </article>`;
+}
+
+/* ── « Qui entre », monté dans la fiche d'une collection (UX-16) ─────────────────────
+   Le SECOND montage du module : la Bibliothèque le monte dans chaque collection dépliée,
+   pour le propriétaire qui part de son corpus ; ici, l'administrateur part d'une personne ou
+   d'un groupe et règle sur place. Ce que cet hôte garde, et ce sont des affaires d'ÉCRAN :
+   la question « puis-je régler celle-ci ? », qu'il pose au serveur ; la règle « un seul
+   message à la fois » de son bloc ; ce qu'il redessine autour après un geste ; et où mènent
+   les noms. Il n'écrit rien du panneau et n'appelle aucune de ses routes. */
+
+function cgDemonterQuiEntre() {
+  if (CG.quiEntre) CG.quiEntre.poignee.demonter();
+  CG.quiEntre = null;
+}
+
+/* UN message à la fois dans le bloc — une règle de CET écran, que le module ne connaît pas :
+   il écrit sa ligne et prévient. Le message du dernier geste fait taire les autres lignes du
+   bloc, et celui que la fiche d'un compte GARDE en mémoire pour survivre à son rechargement
+   (`CG.msgNature`) : sans cela, un refus de la nature reviendrait à l'écran dès qu'on
+   retrouve sa fiche par l'historique, après un geste qui n'a rien à voir avec lui. Rien
+   n'est touché hors du bloc :
+   la fiche d'un projet, à côté, a sa propre règle (`pjTaireSauf`). */
+function cgTaireSauf(el) {
+  document.querySelectorAll("#cg-bloc .col-msg").forEach((l) => {
+    if (l === el) return;
+    l.textContent = "";
+    l.classList.remove("erreur", "alerte");
+  });
+  CG.msgNature = null;
+}
+
+/* Monte le panneau dans la section que `cgFicheCollection` vient de dessiner.
+
+   LA GARDE EST CELLE DE L'ACTE. `administrable` vient de `GET /api/collections`, collection
+   par collection ; le module la reçoit et dit lui-même ce qu'il faut lire quand elle manque.
+   Une collection que cette liste ne nomme pas n'est pas réglable d'ici — on ne la lit pas.
+   Et une liste ILLISIBLE n'est pas une liste vide : la fiche dit qu'elle ne sait pas, au
+   lieu d'annoncer « seul un propriétaire… » à qui l'est peut-être. */
+function cgMonterQuiEntre(box, c, groupe) {
+  const cible = box.querySelector("[data-qui-entre]");
+  if (!cible) return;
+  if (CG.reglables === null) {
+    cible.innerHTML = `<h4>Qui entre</h4>
+      <p class="col-note">La liste des collections n'a pas pu être lue
+      (${esc(CG.reglablesMotif || "échec")}) : impossible de savoir si vous réglez qui entre
+      dans celle-ci. Rechargez la page pour le redemander.</p>`;
+    return;
+  }
+  const lue = CG.reglables.get(c.id);
+  CG.quiEntre = { id: c.id, poignee: BDQuiEntre.monter(cible, {
+    collection: { id: c.id, nom: c.nom, administrable: !!(lue && lue.administrable) },
+    droits: CG.droits,
+    groupesAdmin: CG.groupesAdmin,
+    preselection: groupe,
+    niveauTitre: 4,                 // sous le <h3> de la fiche, comme ses autres sections
+    surMessage: cgTaireSauf,
+    surChangement: cgApresAcces,
+    surOuvrir: cgOuvrirDepuisAcces,
+  }) };
+}
+
+/* Après un geste que le serveur a accepté : la vue DÉPEND des accès — « sans propriétaire »,
+   « À regarder », l'état court des lignes — et se relit. La fiche, elle, reste (cf.
+   `cgRendre`). */
+async function cgApresAcces() {
+  await cgCharger({ garderFiche: true });
+}
+
+/* Redessine la seule ligne de l'en-tête qui dépend des accès. Rend `false` quand la fiche
+   n'est plus celle de la collection montée — on a changé de fiche pendant la relecture, ou
+   la collection a disparu de la vue : à l'appelant de redessiner. Le titre n'est pas
+   touché : il peut porter le focus. */
+function cgRafraichirTeteCollection() {
+  if (CG.axe !== "collections" || !CG.quiEntre || CG.quiEntre.id !== CG.sel) return false;
+  const c = CG.index.collections.get(CG.sel);
+  const sous = document.querySelector("#cg-fiche .cg-sous");
+  if (!c || !sous) return false;
+  sous.innerHTML = cgSousCollection(c);
+  return true;
+}
+
+/* Un nom du panneau mène à SA fiche, comme la liste en lecture le faisait. Le module rend
+   le couple tel que le serveur le nomme ; c'est ici qu'il devient un axe. */
+function cgOuvrirDepuisAcces(a) {
+  cgAller(a.genre === "groupe" ? "groupe" : "compte", a.principal, false);
 }
 
 /* --- Gestes ---------------------------------------------------------------------- */
@@ -699,12 +840,22 @@ async function cgPoserNature(select) {
   await cgCharger({ focus: "#cg-nature" });
 }
 
-/* « Ouvrir une collection à ce groupe… » : la Bibliothèque, adressée sur la collection
-   choisie et ce groupe (`?collection=…&groupe=…`). */
+/* « Ouvrir une collection à ce groupe… » : la fiche de la collection choisie, ICI, ce groupe
+   déjà choisi dans la ligne d'ajout de « Qui entre ». Le geste menait à la Bibliothèque
+   (`/corpus?collection=…&groupe=…`) tant que le panneau n'y vivait que là.
+
+   La présélection n'entre PAS dans l'adresse : le paramètre `groupe` de cette page désigne
+   déjà une fiche (`?axe=groupes&groupe=…`), et le réemployer ferait dire deux choses au même
+   mot. Elle vaut donc pour ce geste et pour lui seul — recharger, ou revenir par
+   « Retour », ouvre la fiche sans elle.
+
+   Le focus va au titre de « Qui entre », comme il y allait dans la Bibliothèque ; quand il
+   n'y a pas de panneau à viser, il reste sur le titre de la fiche, où `cgAller` l'a mis. */
 function cgOuvrirA(groupe) {
-  const id = $("#cg-ouvrir-a").value;
-  location.href = `/corpus?collection=${encodeURIComponent(id)}`
-    + `&groupe=${encodeURIComponent(groupe)}`;
+  const id = Number($("#cg-ouvrir-a").value);
+  CG.preselection = { id, groupe };
+  cgAller("collection", id, false);
+  if (CG.quiEntre && CG.quiEntre.id === id) CG.quiEntre.poignee.focaliser();
 }
 
 function cgInstaller() {
@@ -1212,8 +1363,15 @@ function setup() {
   // peuvent légitimement être refusées, chacune masquant son propre bloc et rien d'autre ;
   // la cinquième, `/api/droits`, accompagne les comptes (AUTH-12, étape 3). Les deux
   // dernières sont celles des projets (COL-3) : `/api/projets`, et `/api/collections`, qui
-  // revient ici pour NOMMER les collections de chaque projet — les accès, eux, sont restés
-  // dans la Bibliothèque. Le module monté dans la fiche d'un projet lit ensuite les siennes.
+  // revient ici pour NOMMER les collections de chaque projet. Le module monté dans la fiche
+  // d'un projet lit ensuite les siennes.
+  //
+  // Une HUITIÈME part quand `/api/comptes-et-groupes` a répondu, et seulement alors :
+  // `/api/collections` une seconde fois, pour « Comptes et groupes », qui y lit ce qu'on
+  // peut RÉGLER (`administrable`, UX-16). Deux lectures de la même route, par deux blocs
+  // qui ne partagent rien — celui des projets est à lui, et doit rester lisible à qui l'autre
+  // est fermé. Et le panneau « Qui entre » monté dans la fiche d'une collection lit ensuite
+  // SES deux routes, à chaque fiche ouverte.
   //
   // Le compte est tenu à jour ICI parce que ce commentaire a déjà menti : il disait
   // « deux requêtes » depuis le premier jour, à trois lignes de la ligne qui le

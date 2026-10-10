@@ -2329,6 +2329,24 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .qe-notes-bloc { border-left: 2px solid var(--border); padding-left: .6rem; margin-top: .5rem; }
 .qe-notes-bloc > p { margin: .25rem 0; }
 .qe-notes-bloc .col-note-admin { border-left: 0; padding-left: 0; }
+/* Un nom qui mène à une fiche (UX-16) : il n'existe que là où l'hôte a une fiche à ouvrir —
+   l'Administration, jamais la Bibliothèque. Un bouton, SOULIGNÉ comme `.cg-lien` et pour la
+   même raison : sa couleur seule ne le distinguerait pas du texte voisin (WCAG 1.4.1). */
+.qe-ouvrir { background: none; border: 0; padding: 0; color: var(--accent-blue); cursor: pointer;
+             font: inherit; text-align: left; text-decoration: underline;
+             text-underline-offset: 2px; overflow-wrap: anywhere; }
+/* Le même panneau, monté dans la fiche d'une collection de l'Administration (UX-16). Il y
+   EST une section de la fiche : ni filet ni marge de fin de partie, qui le séparaient du
+   formulaire de la collection dans la Bibliothèque et ne sépareraient ici de rien. La
+   colonne se BORNE à la largeur de la fiche : une section de fiche est une grille, dont la
+   piste implicite prend la largeur de son contenu le plus large au lieu de le contraindre.
+   Mesuré par mutation le 2026-10-10 — sans cette règle, la fiche défile de côté à 768 px (le
+   tableau sort de son cadre) et c'est la PAGE qui défile à 320 px (la ligne d'ajout). Par
+   l'attribut que l'HÔTE pose sur sa section, pas par une classe du module. */
+.cg-section[data-qui-entre] { border-bottom: 0; padding: 0; margin-bottom: 0;
+                              grid-template-columns: minmax(0, 1fr); }
+.cg-ailleurs { margin: .9rem 0 0; }
+.cg-decrire { color: var(--accent-blue); }
 
 /* « Ouvrir une collection à ce groupe… », dans la fiche d'un groupe (Administration). */
 .cg-ouvrir { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .4rem; }

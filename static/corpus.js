@@ -1594,8 +1594,9 @@ async function chargerCollections(ouvrir, parAdresse) {
     return;
   }
   // COL-3 — L'ADRESSE GAGNE. `?collection=<id>` peut nommer une collection d'un AUTRE projet
-  // que le courant : c'est la cible de « Régler qui entre », depuis l'Administration, qui ne
-  // sait rien du projet où l'on travaille. Sans cette bascule, la collection ne serait pas
+  // que le courant : c'est la cible de « Décrire dans la Bibliothèque ↗ » (« Régler qui
+  // entre » jusqu'à UX-16), depuis l'Administration, qui ne sait rien du projet où l'on
+  // travaille. Sans cette bascule, la collection ne serait pas
   // dans la liste filtrée, et l'écran dirait « elle ne vous est pas ouverte, ou elle
   // n'existe pas » d'une collection ouverte. `PROJET` est posé AVANT de prévenir : l'écoute
   // de cette page reconnaît son propre choix et ne recharge pas une seconde fois.
@@ -1672,10 +1673,13 @@ async function rafraichirCollections() {
 }
 
 /* AUTH-12, étape 3 — la Bibliothèque ADRESSABLE. `?collection=<id>` déplie cette collection
-   et donne le focus au titre de « Qui entre » : c'est la cible de « Régler qui entre » dans
-   l'Administration. `&groupe=<nom>` présélectionne ce groupe dans la ligne d'ajout
-   (« Ouvrir une collection à ce groupe… »). Une collection qu'on ne lit pas n'ouvre rien, et
-   une ligne le dit — sans dire si elle existe : c'est la règle du 404 (AUTH-2). */
+   et donne le focus au titre de « Qui entre » : c'était la cible de « Régler qui entre »
+   dans l'Administration, c'est celle de « Décrire dans la Bibliothèque ↗ » depuis UX-16, où
+   l'Administration règle qui entre sur place. `&groupe=<nom>` présélectionne ce groupe dans
+   la ligne d'ajout : « Ouvrir une collection à ce groupe… » y menait, et n'y mène plus —
+   l'adresse reste valide (on la recopie, on l'a envoyée), mais plus aucun lien de
+   l'application ne l'écrit. Une collection qu'on ne lit pas n'ouvre rien, et une ligne le
+   dit — sans dire si elle existe : c'est la règle du 404 (AUTH-2). */
 async function ouvrirDepuisAdresse() {
   const p = new URLSearchParams(location.search);
   const brut = p.get("collection");
@@ -1721,8 +1725,10 @@ function setup() {
   $("#btn-run").onclick = runBatch;
   // Les Moteurs (SANTE-1) vivent dans `/administration` (UX-10). Ce que la collection EST
   // — la créer, la décrire, l'exporter — est revenu ICI avec COL-2 (2026-09-11), et QUI Y
-  // ENTRE l'a rejoint avec AUTH-12 (2026-09-17). Rien n'est joignable des deux côtés : deux
-  // portes vers la même pièce, l'une vieillit, et c'est celle qu'on ne regarde plus.
+  // ENTRE l'a rejoint avec AUTH-12 (2026-09-17). Ce que la collection EST n'est joignable
+  // que d'ici : deux portes vers la même pièce, l'une vieillit, et c'est celle qu'on ne
+  // regarde plus. « Qui entre », lui, est MONTÉ aussi dans l'Administration depuis UX-16 —
+  // un module écrit une fois, deux hôtes : c'est ce qui permet deux portes sans deux pièces.
   $("#col-add").onclick = creerCollection;
   $("#col-nom").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); creerCollection(); }

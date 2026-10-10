@@ -11,9 +11,17 @@ Chaque test vise ce qu'aucun test d'API ne verrait : le serveur peut répondre j
 l'écran perdre le tri en changeant d'axe, dire « non vérifié » là où il n'y a rien à
 vérifier, ou laisser trente arrivants pousser la liste sous l'écran.
 
-Les gestes qui ÉCRIVENT ou qui sortent du bloc — la nature d'un compte, et les liens vers
-« Qui entre » dans la Bibliothèque — passent, eux, par le vrai serveur ; et un test d'intégration joue la
-vraie route avec la doublure de l'annuaire, sans rien intercepter.
+Les gestes qui ÉCRIVENT ou qui sortent du bloc — la nature d'un compte, et le lien vers la
+Bibliothèque — passent, eux, par le vrai serveur ; et un test d'intégration joue la vraie
+route avec la doublure de l'annuaire, sans rien intercepter.
+
+**La fiche d'une COLLECTION fait deux lectures depuis UX-16**, et l'interception n'en couvre
+qu'une. Son en-tête vient de la vue, interceptée ici ; ses accès viennent du module « Qui
+entre », monté dans la fiche, qui lit SES routes sur le vrai serveur. Les tests de cette
+fiche créent donc une vraie collection et lui accordent de vrais accès — et l'un d'eux fait
+exprès de les rendre DIFFÉRENTS de ceux que la vue interceptée annonce, pour que l'écran dise
+lequel des deux il lit. Les gestes du panneau, eux, se jouent dans
+`tests/test_e2e_qui_entre_administration.py`.
 """
 import json
 import re
@@ -187,6 +195,19 @@ def _creer_collection(base, nom):
         r = c.post("/api/collections", json={"nom": nom})
         assert r.status_code == 201, r.text
         return r.json()["id"]
+
+
+def _accorder(base, cid, genre, principal, niveau):
+    with httpx.Client(base_url=base, trust_env=False, timeout=30, headers=ECRITURE) as c:
+        r = c.put(f"/api/collections/{cid}/acces",
+                  json={"genre": genre, "principal": principal, "niveau": niveau})
+        assert r.status_code == 200, r.text
+
+
+def _acces(base, cid):
+    with httpx.Client(base_url=base, trust_env=False, timeout=30, headers=ECRITURE) as c:
+        return {(a["genre"], a["principal"]): a
+                for a in c.get(f"/api/collections/{cid}/acces").json()}
 
 
 # ── La liste, la fiche, l'adresse ──────────────────────────────────────────────────────
@@ -481,44 +502,153 @@ def test_la_nature_se_declare_dans_la_fiche_et_le_serveur_l_enregistre(page, liv
     assert nature_en_base() == "collectif"
 
 
-def test_regler_qui_entre_mene_a_la_fiche_de_la_collection(page, live_server):
-    """« Régler qui entre » ouvrait le panneau voisin, sur la même page ; depuis l'étape 3
-    d'AUTH-12, il mène à la collection dans la Bibliothèque, dépliée sur « Qui entre », le
-    focus sur son titre. Seul le lien a changé : la fiche d'ici reste en lecture seule."""
+def test_la_fiche_d_une_collection_regle_qui_entre_et_ne_lit_plus_ses_acces_dans_la_vue(
+        page, live_server):
+    """La fiche d'une collection MONTE « Qui entre » (UX-16, décision A) : la liste en
+    lecture et le renvoi « Régler qui entre » ont disparu, on règle sur place. Le lien qui
+    reste nomme ce qu'il mène voir — « Décrire dans la Bibliothèque ↗ » —, et y mène.
+
+    **Deux lectures, et le test dit laquelle l'écran montre.** La vue interceptée annonce
+    TROIS accès ; le serveur n'en porte que DEUX. Le panneau en montre deux : il lit ses
+    routes, pas la vue. Un hôte qui redessinerait la liste depuis la vue « en attendant le
+    panneau » en montrerait trois, avec des cases qui ne correspondent à rien."""
     cid = _creer_collection(live_server, "Collection Test")
-    _ouvrir(page, live_server, decor(cid=cid, cid2=cid + 1000),
-            f"/administration?axe=collections&collection={cid}")
+    _accorder(live_server, cid, "utilisateur", "proprio", "proprietaire")
+    _accorder(live_server, cid, "groupe", "annotateurs", "lecture")
+    vue = decor(cid=cid, cid2=cid + 1000)
+    assert len(vue["collections"][0]["acces"]) == 3, "prémisse : la vue en annonce trois"
+    _ouvrir(page, live_server, vue, f"/administration?axe=collections&collection={cid}")
     expect(page.locator("#cg-fiche-titre")).to_have_text("Collection Test")
-    qui = page.locator("#cg-fiche .cg-section", has_text="Qui entre")
-    expect(qui.locator("li")).to_have_count(3)
-    expect(qui.locator("input, select")).to_have_count(0)
-    lien = page.locator("#cg-fiche a.cg-regler")
+
+    qui = page.locator("#cg-fiche section[data-qui-entre]")
+    # Le panneau EST une section de la fiche, titrée au rang de ses voisines.
+    expect(qui).to_have_class(re.compile(r"\bcg-section\b"))
+    expect(qui.locator("h4")).to_have_text("Qui entre")
+    lignes = qui.locator(".qe-table tbody tr")
+    expect(lignes).to_have_count(2)
+    expect(qui.locator(".qe-table")).not_to_contain_text("ancien-cours")
+    # On RÈGLE : des cases, une ligne d'ajout, un retrait par accès.
+    assert qui.locator(".qe-case").count() > 2
+    expect(qui.locator(".qe-choix")).to_be_visible()
+    expect(qui.locator(".qe-retirer")).to_have_count(2)
+
+    # Ce qui a disparu avec la lecture seule.
+    fiche = page.locator("#cg-fiche")
+    expect(fiche.locator("a.cg-regler")).to_have_count(0)
+    expect(fiche).not_to_contain_text("Régler qui entre")
+    expect(fiche).not_to_contain_text("Les accès se lisent ici")
+
+    # Ce que la collection EST reste dans la Bibliothèque (décision B), et le lien le dit.
+    lien = fiche.locator("a.cg-decrire")
+    expect(lien).to_be_visible()
+    expect(lien).to_have_text("Décrire dans la Bibliothèque ↗")
     expect(lien).to_have_attribute("href", f"/corpus?collection={cid}")
+    expect(fiche).to_contain_text(
+        "Ce que la collection est — sa description, sa diffusion, son référent, ses exports — "
+        "se règle dans sa fiche, dans la Bibliothèque.")
     lien.click()
     page.wait_for_url(f"**/corpus?collection={cid}")
     item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
     expect(item).to_have_attribute("open", "")
-    expect(item.locator(".qe-titre")).to_be_focused()
+    expect(item.locator("[data-enregistrer]")).to_be_visible()
 
 
 def test_ouvrir_une_collection_a_ce_groupe_le_preselectionne(page, live_server):
-    """« Ouvrir une collection à ce groupe… » attendait l'étape 3 : la collection choisie
-    s'ouvre dans la Bibliothèque, le groupe déjà choisi dans la ligne d'ajout. Le geste se
-    FAIT là-bas ; rien n'est accordé depuis cette fiche."""
+    """« Ouvrir une collection à ce groupe… » menait à la Bibliothèque (AUTH-12, étape 3) ;
+    depuis UX-16 la fiche de la collection s'ouvre SUR PLACE, le groupe déjà choisi dans la
+    ligne d'ajout de « Qui entre ». Rien n'est accordé par ce geste : il mène au panneau, et
+    c'est « + Faire entrer » qui accorde — sa requête part d'ici, vers cette collection.
+
+    La présélection n'entre pas dans l'adresse, dont le paramètre `groupe` désigne déjà une
+    fiche : elle vaut pour ce geste, et « Retour » puis « Suivant » rouvrent la fiche sans
+    elle."""
     cid = _creer_collection(live_server, "Collection Test")
     _ouvrir(page, live_server, decor(cid=cid, cid2=cid + 1000),
             "/administration?axe=groupes&groupe=annotateurs")
     expect(page.locator("#cg-fiche-titre")).to_have_text("annotateurs")
     envois = []
-    page.on("request", lambda r: envois.append(r.url) if r.method != "GET" else None)
+    page.on("request", lambda r: envois.append((r.method, r.url))
+            if r.method != "GET" else None)
     page.locator("#cg-ouvrir-a").select_option(str(cid))
     page.locator("#cg-fiche [data-cg-ouvrir]").click()
-    page.wait_for_url(f"**/corpus?collection={cid}&groupe=annotateurs")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+
+    # Sur place : la page n'a pas changé, l'axe et la fiche si.
+    expect(page.locator("#cg-fiche-titre")).to_have_text("Collection Test")
+    assert page.url == f"{live_server}/administration?axe=collections&collection={cid}", page.url
+    expect(page.locator('#cg [data-axe="collections"]')).to_have_attribute(
+        "aria-pressed", "true")
+    qui = page.locator("#cg-fiche section[data-qui-entre]")
     # `annotateurs` est dans la doublure de l'annuaire : il est CHOISI dans la liste, pas tapé.
-    expect(item.locator(".qe-choix")).to_have_value("groupe:annotateurs")
-    expect(item.locator(".qe-libre")).to_be_hidden()
+    expect(qui.locator(".qe-choix")).to_have_value("groupe:annotateurs")
+    expect(qui.locator(".qe-libre")).to_be_hidden()
+    # Le focus sur le titre de « Qui entre », comme il y arrivait dans la Bibliothèque.
+    expect(qui.locator(".qe-titre")).to_be_focused()
     assert envois == [], f"une écriture est partie sans geste : {envois}"
+
+    with page.expect_request(lambda r: r.method == "PUT") as envoi:
+        qui.locator(".qe-faire-entrer").click()
+    assert envoi.value.url == f"{live_server}/api/collections/{cid}/acces", envoi.value.url
+    corps = envoi.value.post_data_json
+    assert (corps["genre"], corps["principal"], corps["niveau"]) == (
+        "groupe", "annotateurs", "lecture"), corps
+    expect(qui.locator(".qe-msg")).to_contain_text(
+        "Le groupe annotateurs entre dans « Collection Test », en lecture.")
+    assert _acces(live_server, cid)[("groupe", "annotateurs")]["niveau"] == "lecture"
+
+    # Elle ne vit pas dans l'adresse : la même fiche, rouverte par l'historique, ne propose
+    # plus rien d'office.
+    page.go_back()
+    expect(page.locator("#cg-fiche-titre")).to_have_text("annotateurs")
+    page.go_forward()
+    expect(page.locator("#cg-fiche-titre")).to_have_text("Collection Test")
+    expect(page.locator("#cg-fiche .qe-choix")).to_have_value("")
+
+
+def test_le_message_d_un_geste_fait_taire_celui_que_la_fiche_d_un_compte_gardait(
+        page, live_server):
+    """« Un seul message à la fois » dans le bloc, et c'est l'HÔTE qui l'applique : le module
+    « Qui entre » écrit sa ligne et prévient, il n'efface rien ailleurs.
+
+    Dans ce bloc il n'y a qu'une fiche à l'écran, donc qu'une ligne de message à la fois ;
+    ce que la règle a réellement à faire taire, c'est un message GARDÉ. La fiche d'un compte
+    retient celui de sa nature pour survivre au rechargement qui suit le geste, et le
+    réaffiche chaque fois qu'elle est redessinée — y compris quand on y revient par
+    l'historique, après avoir fait autre chose ailleurs. Un refus de la nature resurgissait
+    donc à l'écran APRÈS un geste de « Qui entre » qui n'avait rien à voir avec lui."""
+    cid = _creer_collection(live_server, "Collection Test")
+    _accorder(live_server, cid, "utilisateur", "stagiaire", "lecture")
+    _ouvrir(page, live_server, decor(cid=cid, cid2=cid + 1000),
+            f"/administration?axe=collections&collection={cid}")
+    qui = page.locator("#cg-fiche section[data-qui-entre]")
+    qui.locator(".qe-choix").wait_for(timeout=5000)
+
+    # Le nom mène à la fiche du compte (un saut : il entre dans l'historique).
+    qui.locator(".qe-table tbody th button", has_text="stagiaire").click()
+    expect(page.locator("#cg-fiche-titre")).to_have_text("Théo Marchand")
+    # Un refus de la nature : ce compte n'existe que dans la vue interceptée.
+    page.locator("#cg-nature").select_option("collectif")
+    refus = page.locator("#cg-nature-msg")
+    expect(refus).to_be_visible()
+    expect(refus).to_contain_text("Aucun compte connu")
+
+    # « Retour » puis « Suivant », sans rien faire : le message gardé revient — c'est la
+    # prémisse, et ce qui le fait vivre plus longtemps que sa fiche.
+    page.go_back()
+    qui.locator(".qe-choix").wait_for(timeout=5000)
+    page.go_forward()
+    expect(page.locator("#cg-fiche-titre")).to_have_text("Théo Marchand")
+    expect(refus).to_contain_text("Aucun compte connu")
+
+    # « Retour », un geste dans « Qui entre », « Suivant » : le dernier geste a parlé.
+    page.go_back()
+    qui.locator(".qe-choix").wait_for(timeout=5000)
+    qui.locator(".qe-faire-entrer").click()
+    expect(qui.locator(".qe-msg.erreur")).to_be_visible()
+    expect(qui.locator(".qe-msg.erreur")).to_contain_text("Choisissez un groupe")
+    page.go_forward()
+    expect(page.locator("#cg-fiche-titre")).to_have_text("Théo Marchand")
+    expect(page.locator("#cg-nature")).to_be_visible()
+    expect(refus).to_have_text("")
 
 
 # ── Sur la vraie route ─────────────────────────────────────────────────────────────────
@@ -557,10 +687,18 @@ def test_sur_la_vraie_route_un_acces_mort_se_signale_et_mene_a_ses_fiches(page, 
     page.locator("#cg-fiche .cg-lien", has_text="Étude B").click()
     expect(page.locator("#cg-fiche-titre")).to_have_text("Étude B")
     expect(page.locator("#cg-fiche .cg-sous")).to_contain_text("sans propriétaire")
-    qui = page.locator("#cg-fiche .cg-section", has_text="Qui entre").locator("li")
+    # Depuis UX-16, la fiche porte le panneau « Qui entre » et non plus une liste en
+    # lecture : l'accès mort s'y lit dans la colonne « Signal », avec les mots du panneau —
+    # « inconnu de l'annuaire », là où la liste disait « absent de l'annuaire ».
+    qui = page.locator("#cg-fiche section[data-qui-entre] .qe-table tbody tr")
     expect(qui).to_have_count(1)
-    expect(qui).to_contain_text("ancien-cours")
-    expect(qui).to_contain_text("absent de l'annuaire")
+    expect(qui.locator("th")).to_contain_text("ancien-cours")
+    expect(qui.locator(".qe-signal")).to_be_visible()
+    expect(qui.locator(".qe-signal")).to_have_text("inconnu de l'annuaire")
+    # Et le nom y mène toujours à sa fiche, comme dans la liste qu'il remplace.
+    qui.locator("th button").click()
+    expect(page.locator("#cg-fiche-titre")).to_have_text("ancien-cours")
+    expect(page.locator('#cg [data-axe="groupes"]')).to_have_attribute("aria-pressed", "true")
 
 
 # ── Au large : un cadre de taille connue ───────────────────────────────────────────────

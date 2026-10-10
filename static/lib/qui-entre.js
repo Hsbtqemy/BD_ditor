@@ -29,6 +29,14 @@
                          une fois l'annuaire connu.
    `options.surMessage(ligne)`  appelé chaque fois que le module écrit sa ligne de message.
    `options.surChangement()`    appelé après un geste que le serveur a accepté.
+   `options.surOuvrir({ genre, principal })`  si l'hôte a une FICHE à ouvrir pour un compte
+                         ou un groupe : chaque nom devient alors un bouton qui l'appelle. Sans
+                         elle, un nom est du texte — un propriétaire, dans la Bibliothèque,
+                         n'a aucune fiche de compte à ouvrir, et un bouton qui ne mènerait
+                         nulle part serait pire que pas de bouton.
+   `options.niveauTitre` le rang du titre « Qui entre » dans le plan de l'hôte (3 par défaut,
+                         de 2 à 6) : le panneau EST une partie de la page qui le monte, et
+                         son titre se range sous celui qui le précède là-bas.
 
    CE QUE LE MODULE NE FAIT PAS, et ce sont les cinq coutures mesurées le 2026-09-23.
    Il ne cherche rien dans la page : il travaille dans SA section. Il n'efface aucun message
@@ -125,11 +133,18 @@
   }
 
   /* Le nom d'un accès, avec ce qu'il EST : l'icône pour l'œil, le mot pour le lecteur d'écran.
-     « compte » et non « utilisateur » : lexique de la décision 7 d'AUTH-12. */
-  function qui(a) {
+     « compte » et non « utilisateur » : lexique de la décision 7 d'AUTH-12.
+
+     Le nom n'est un BOUTON que si l'hôte a dit où il mène (`surOuvrir`). Sans cela il reste
+     le texte qu'il a toujours été : le montage de la Bibliothèque ne change pas d'un
+     caractère, et c'est lui le témoin. */
+  function qui(m, a) {
     const groupe = a.genre === "groupe";
+    const nom = typeof m.options.surOuvrir === "function"
+      ? `<button type="button" class="qe-ouvrir" ${cle(a)}>${esc(a.principal)}</button>`
+      : esc(a.principal);
     return `<span aria-hidden="true">${groupe ? "👥" : "👤"}</span> `
-      + `<span class="sr-only">${groupe ? "groupe" : "compte"} </span>${esc(a.principal)}`;
+      + `<span class="sr-only">${groupe ? "groupe" : "compte"} </span>${nom}`;
   }
 
   /* Les valeurs des cases hors rang d'un accès, sous leur `champ` : ce que le serveur rend
@@ -256,7 +271,7 @@
           + `${h.coche ? " checked" : ""}${h.d_office ? " disabled" : ""}>`
           + `${h.d_office ? ` <span class="muted small">(d'office)</span>` : ""}</td>`;
       }).join("");
-      return `<tr ${cle(a)}><th scope="row" id="${ligne}">${qui(a)}</th>${cellules}
+      return `<tr ${cle(a)}><th scope="row" id="${ligne}">${qui(m, a)}</th>${cellules}
       <td class="qe-depuis">${depuis(a)}</td>
       <td class="qe-signal">${signal(m, a)}</td>
       <td><button class="ghost small qe-retirer" type="button" ${cle(a)}
@@ -299,7 +314,7 @@
       }).join("");
       const d = depuis(a);
       return `<li class="qe-carte" ${cle(a)}>
-      <div class="qe-carte-tete"><span class="qe-qui" id="${ligne}">${qui(a)}</span>
+      <div class="qe-carte-tete"><span class="qe-qui" id="${ligne}">${qui(m, a)}</span>
         <span class="qe-signal">${signal(m, a)}</span>
         <button class="ghost small qe-retirer" type="button" ${cle(a)}
                 aria-label="Retirer l'accès de ${esc(a.principal)}">✕</button></div>
@@ -316,7 +331,7 @@
       return `<p class="col-note">La description des droits n'a pas pu être lue : les accès ne
       se règlent pas d'ici tant qu'elle manque.</p>
       <ul class="qe-noms">${etat.acces.map((a) =>
-        `<li>${qui(a)} — ${esc(a.niveau)}</li>`).join("")}</ul>`;
+        `<li>${qui(m, a)} — ${esc(a.niveau)}</li>`).join("")}</ul>`;
     }
     if (!etat.acces.length) {
       return `<p class="col-note">Aucun accès n'est accordé sur cette collection.</p>`;
@@ -644,8 +659,12 @@
     sec.classList.add("qe");
     sec.dataset.qe = String(m.c.id);
     sec.setAttribute("aria-labelledby", `qe-titre-${m.sfx}`);
+    // Le rang du titre est celui que l'hôte donne : sous un <h3>, la partie s'annonce <h4>.
+    // Une valeur hors de 2 à 6 retombe sur le rang d'origine plutôt que d'écrire une balise
+    // qui n'existe pas.
+    const rang = [2, 3, 4, 5, 6].includes(m.options.niveauTitre) ? m.options.niveauTitre : 3;
     sec.innerHTML = `
-      <h3 class="qe-titre" id="qe-titre-${m.sfx}" tabindex="-1">Qui entre</h3>
+      <h${rang} class="qe-titre" id="qe-titre-${m.sfx}" tabindex="-1">Qui entre</h${rang}>
       <div class="qe-tableau"><p class="col-note">Chargement…</p></div>
       <div class="qe-ajout"></div>
       <p class="col-msg muted small qe-msg" role="status" aria-live="polite"></p>
@@ -677,6 +696,11 @@
       if (!b || !sec.contains(b)) return;
       if (b.classList.contains("qe-retirer")) retirer(m, b);
       else if (b.classList.contains("qe-faire-entrer")) faireEntrer(m);
+      else if (b.classList.contains("qe-ouvrir") && typeof m.options.surOuvrir === "function") {
+        // L'hôte reçoit le couple tel que le serveur le nomme, et choisit sa fiche : le
+        // module ne sait pas ce qu'est une fiche, ni s'il y en a une.
+        m.options.surOuvrir({ genre: b.dataset.genre, principal: b.dataset.principal });
+      }
     });
     ecouter("keydown", (ev) => {
       if (ev.key === "Enter" && ev.target.matches && ev.target.matches(".qe-nom")) {

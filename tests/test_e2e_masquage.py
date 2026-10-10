@@ -66,7 +66,8 @@ SURFACES_HORS_PERIMETRE = {}
 # `hidden` sont donc lus eux aussi — par la garde de périmètre, qui ne demande aucun
 # navigateur. Une clé par module, sa valeur dit qui le monte.
 MODULES_MONTES = {
-    "lib/qui-entre.js": "monté par la Bibliothèque, dans chaque collection dépliée (UX-16)",
+    "lib/qui-entre.js": "monté par la Bibliothèque, dans chaque collection dépliée, et par "
+                        "l'Administration, dans la fiche d'une collection (UX-16)",
     "lib/membres-projet.js": "monté par l'Administration, dans la fiche d'un projet (COL-3)",
 }
 

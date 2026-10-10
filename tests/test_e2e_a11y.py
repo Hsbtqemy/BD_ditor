@@ -945,6 +945,12 @@ def test_a11y_comptes_et_groupes(page, seeded, theme):
     marques en `--ink-red` et en ambre, du petit texte coloré, aient quelque chose à rendre.
     Trois fiches, parce que chacune a ses propres marques : un compte, un groupe de douze
     comptes dont des jamais venus, une collection.
+
+    La fiche d'une collection porte le panneau « Qui entre » depuis UX-16, sur le fond de
+    CE bloc et non sur celui de la Bibliothèque. Elle s'audite donc avec des accès : un
+    compte jamais venu, un groupe de l'annuaire et un groupe qu'il ne connaît pas — ses deux
+    marques, un lien par nom, et la note des administrateurs. Sans eux le panneau dirait
+    « Aucun accès n'est accordé », et l'audit approuverait un tableau qui n'existe pas.
     """
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30)
     try:
@@ -954,6 +960,12 @@ def test_a11y_comptes_et_groupes(page, seeded, theme):
         c.get("/api/moi", headers={"Remote-User": "ancien", "Remote-Name": "Nom Un"})
         c.get("/api/moi", headers={"Remote-User": "ancien", "Remote-Name": "Nom Deux"})
         collection = c.get("/api/collections", headers=ADMIN).json()[0]["id"]
+        for genre, nom, niveau in (("utilisateur", "arrivant", "proprietaire"),
+                                   ("groupe", "annotateurs", "ecriture"),
+                                   ("groupe", "ancien-cours", "lecture")):
+            r = c.put(f"/api/collections/{collection}/acces", headers=ECRITURE,
+                      json={"genre": genre, "principal": nom, "niveau": niveau})
+            assert r.status_code == 200, r.text
     finally:
         c.close()
 
@@ -988,7 +1000,13 @@ def test_a11y_comptes_et_groupes(page, seeded, theme):
 
     page.goto(seeded["base"] + f"/administration?axe=collections&collection={collection}",
               wait_until="networkidle")
-    page.wait_for_selector("#cg-fiche a.cg-regler", timeout=5000)
+    page.wait_for_selector("#cg-fiche a.cg-decrire", timeout=5000)
+    # Le panneau est RENDU, avec ses marques : le tableau, puis l'annuaire qui les pose.
+    panneau = page.locator("#cg-fiche section[data-qui-entre]")
+    panneau.locator(".qe-marque").wait_for(timeout=5000)
+    assert panneau.locator(".qe-table tbody tr").count() == 3
+    assert panneau.locator(".acces-jamais-vu").count() == 1
+    assert panneau.locator(".col-note-admin").count() == 1
     viol = _audit(page)
     assert not viol, f"Comptes et groupes, fiche d'une collection [{theme}] :\n{_fmt(viol)}"
 
