@@ -277,12 +277,29 @@ faut le distinguer des deux autres pour ne pas conclure qu'il a sauté :
 |---|---|---|---|
 | **Authentifier** | Authelia | le mot de passe, le second facteur | QUI frappe (`Remote-User`) |
 | **Autoriser** | `autorisation.py` | les groupes transmis par le portail, à la requête | ce que cette requête peut lire ou écrire |
-| **Lire l'annuaire** | `annuaire.py`, appelé par la seule vue d'administration | l'API de LLDAP, à l'ouverture de la vue | RIEN : il montre quels comptes et groupes existent, et qui en est membre |
+| **Lire l'annuaire** | `annuaire.py`, appelé par trois routes d'administration (ci-dessous) | l'API de LLDAP, à l'ouverture de la vue ou d'une fiche | RIEN : il montre quels comptes et groupes existent, et qui en est membre |
 
 Ce qui le garantit, et c'est éprouvé plutôt que promis (`tests/test_annuaire.py`) :
 `autorisation.py` n'atteint pas `annuaire.py`, même indirectement ; un annuaire qui dit d'un
-compte qu'il est membre d'un groupe, quand le portail ne le transmet pas, n'ouvre rien ; seule
-la route `GET /api/comptes-et-groupes`, réservée aux administrateurs, lit l'annuaire. Rien
+compte qu'il est membre d'un groupe, quand le portail ne le transmet pas, n'ouvre rien ; et
+aucun chemin de requête ne lit l'annuaire hors des routes d'administration, qui tiennent
+toutes dans `routes/collections.py` — le test l'exige par égalité. **Ces routes sont trois,
+et non une** comme cette page l'a écrit jusqu'au 2026-10-10 (« seule la route
+`GET /api/comptes-et-groupes`, réservée aux administrateurs, lit l'annuaire ») : la phrase
+était juste à sa date, puis deux lecteurs sont venus, chacun avec un public plus large que
+le précédent.
+
+| Route | Qui la reçoit | Ce qu'elle rend de l'annuaire |
+|---|---|---|
+| `GET /api/comptes-et-groupes` | les administrateurs | les comptes, les groupes et leurs membres |
+| `GET /api/collections/{id}/annuaire` (AUTH-12) | le propriétaire de CETTE collection, et les administrateurs | des NOMS de groupe à proposer, et la vérification des accès déjà posés |
+| `GET /api/projets/{id}/membres/choix` (COL-3, 2026-10-10) | qui GÈRE ce projet — son responsable, et les administrateurs | des NOMS de groupe à proposer, et la vérification des membres déjà posés |
+
+Les deux dernières ne rendent ni membres ni identifiants de groupe, et taisent les groupes
+de rôle et d'administration (`comptes._groupes_a_proposer`). Ce qui s'élargit est donc
+étroit, et il faut quand même le savoir : **un responsable de projet, qui n'est ni
+administrateur ni propriétaire d'aucune collection, lit les noms des groupes de
+l'annuaire.** Rien
 n'en est stocké, ni en base ni au journal, et aucun cache ne le garde : un changement fait
 dans l'annuaire se voit à la prochaine ouverture de la vue, et ne s'applique aux accès que
 lorsque le portail le transmet — entre 4 min 53 s et 5 min 52 s pour un AJOUT à un groupe
@@ -346,7 +363,9 @@ un droit qui manque, c'est un état que le retrait fabriquerait.
   supprimer une collection l'est aussi tant qu'un album n'a qu'elle. Un orphelin ne
   correspondrait à aucune règle d'accès (invariant AUTH-2). Déplacer, c'est donc ranger
   ailleurs PUIS sortir — l'ordre inverse se voit refuser plutôt que de déverser le travail
-  dans un seau commun.
+  dans un seau commun. « Ailleurs » s'entend **dans le même projet** depuis le 2026-10-10 :
+  ranger un album dans une collection d'un autre projet est un troisième 409 nommé (cf.
+  « Le projet », ci-dessous).
 
 **Retirer un accès ne détruit AUCUNE donnée.** Les annotations faites par la personne
 restent, et le journal A3 continue de les lui attribuer : le corpus perdrait sa provenance
@@ -374,6 +393,60 @@ création, au renommage, et dans l'outil headless ; elle est insensible à la ca
 `lien` / `delien` sur `collection_acces`, avec l'agent qui les a posés. C'est la contrepartie
 de « seul le propriétaire partage » — un accès accordé par erreur doit pouvoir se retrouver.
 Ils ne sont pas annulables : défaire un partage par Ctrl+Z serait une surprise.
+
+### Le projet : un étage qui se règle, et qui ne cloisonne rien (COL-3, 2026-10-10)
+
+Depuis le schéma v29, une collection appartient à un **projet**, et l'application tient une
+seconde table de principaux : `projet_acces` (projet × principal × rôle, `membre` ou
+`responsable`). Une page de sécurité doit dire d'abord ce que cette table ne fait pas.
+
+**Elle n'autorise aucune lecture ni aucune écriture du corpus.** La collection reste l'unité
+de cloisonnement, et le haut de cette section tient entier. Être d'un projet n'ouvre ni ne
+ferme aucune collection ; un accès de collection se passe d'être du projet. Le calcul de
+la portée lit les deux tables et ne lit jamais l'une pour l'autre — éprouvé dans les deux
+sens par `tests/test_projets.py`. Ce qu'un rôle de projet permet tient en deux lignes :
+*membre*, créer une collection dans ce projet ; *responsable*, régler qui en est.
+**Conséquence d'exploitation** : faire entrer un compte dans un projet ne lui donne rien à
+voir. L'accès se donne toujours collection par collection, et un arrivant qu'on a seulement
+fait entrer dans un projet trouve une application vide.
+
+**L'invariant d'AUTH-1 tient ici aussi.** `projet_acces` stocke une RÉFÉRENCE — un login,
+ou un nom de groupe tel que le portail le pose — et jamais une appartenance. Un nom mal
+orthographié ne fait entrer personne.
+
+**Deux pouvoirs distincts**, sur le patron écrire / administrer d'AUTH-3. *Régler* qui est
+d'un projet revient à son responsable, et aux administrateurs qui passent outre. *Décider*
+quels projets existent — créer, renommer, supprimer — revient à une portée totale : les
+administrateurs, et le mono-poste. Un projet peut naître sans responsable ; il ne perd pas
+son dernier (409 nommé). Le projet de repli, où entre toute collection qui n'en nomme
+aucun, ne se supprime pas, et un projet ne se supprime que vide (409 nommés).
+
+**Ce qu'on en voit sans le gérer.** Un projet qu'on ne peut pas nommer répond 404 ; un
+projet qu'on voit sans le gérer répond un 403 NOMMÉ aux gestes de réglage — la distinction
+des collections. On peut NOMMER un projet si l'on en est, ou si l'on lit une de ses
+collections : dans ce second cas on en reçoit le nom et la description, rien de plus. La
+**liste des membres** et la **justification** du projet (pourquoi il existe, en texte libre)
+ne sont rendues qu'à qui le gère. `GET /api/moi` ne dit rien des projets.
+
+**Un rangement ne traverse pas les projets** : un album qui vit dans un projet ne se range
+pas dans une collection d'un autre — 409 nommé, par la route comme par
+`tools/gerer_collections.py`. Aucune route ne déplace une collection d'un projet à l'autre.
+
+**Ce qui se trace, et ce qui sort.** Les actes sur un projet vont au journal A3 —
+création, modification, suppression, et `lien` / `delien` sur `projet_acces`, non
+annulables comme les changements d'accès. Une justification MODIFIÉE s'y écrit, avant et
+après, et y survit à la suppression du projet. **Rien de tout cela ne quitte l'instance** :
+le projet n'est ni une unité de dépôt ni le titre d'un export, `projet` et `projet_acces`
+sont retenues de toute sortie du journal (`tools/_commun.CIBLES_RETENUES`), et un test
+sème un nom, une description, une justification et un membre puis les cherche dans les
+exports d'album, la voie du dépôt et les outils de sortie
+(`test_le_projet_ne_sort_d_aucun_artefact`). Les CSV de la Recherche et de l'Exploration et
+le zip de figures ne sont pas dans son balayage.
+
+**Le « projet courant » de l'écran n'est pas une notion de sécurité.** Il vit dans le
+navigateur et ne borne que la liste des collections de la Bibliothèque : le serveur ne le
+connaît pas, et rend toujours tout ce que la portée permet de lire. Ne pas le prendre pour
+un cloisonnement entre projets — il n'y en a pas.
 
 ### Le vocabulaire suit sa propre règle, et sa hiérarchie avec
 

@@ -14,6 +14,10 @@ conception (`docs/*.md`) sont là pour qui veut le pourquoi, jamais pour complé
 ## 1. La hiérarchie des objets
 
 ```
+PROJET          l'étage au-dessus : il se nomme en haut de chaque page, et l'on en EST
+    │           (une collection appartient à UN projet ; en être n'ouvre aucune
+    │            collection — cf. §2, « Au-dessus de la collection : le projet »)
+    ▼
 COLLECTION      espace de travail ET unité de dépôt ; c'est elle qui PORTE LES ACCÈS
     │           (lien N-N : un album peut vivre dans plusieurs collections,
     │            aucun album ne vit hors collection)
@@ -105,6 +109,59 @@ Trois règles en découlent, qu'il vaut mieux connaître avant de les rencontrer
   et les administrateurs la gèrent sans en être propriétaires ; ils peuvent lui en désigner
   un dans *Qui entre*, dans la Bibliothèque, au niveau *Propriétaire*.
 
+### Au-dessus de la collection : le projet
+
+Depuis le 2026-10-10, toute collection appartient à **un projet**, et à un seul. Le projet
+est l'étage au-dessus : le cadre à l'intérieur duquel plusieurs études se côtoient. Son nom
+se lit **en haut de chaque page**, et la Bibliothèque montre les collections du projet où
+vous travaillez.
+
+**Aujourd'hui, un projet fait trois choses, et pas une de plus.** Il se **nomme** ; on y
+**fait entrer** des comptes ou des groupes, comme *membres* ou comme *responsables* ; et
+l'on y **crée des collections**. Ce qu'il ne fait pas se rencontre plus vite que ce qu'il
+fait, et vaut d'être su d'avance.
+
+- **Entrer dans un projet n'ouvre aucune de ses collections.** Chacune garde son *Qui
+  entre*. Être membre d'un projet et n'y voir aucun album est un état normal : il manque un
+  accès de collection, pas une réparation.
+- **Un accès de collection se passe d'être du projet.** Qui lit une collection sans être
+  membre de son projet continue de la lire exactement comme avant. Il voit le **nom** du
+  projet — sans quoi sa collection ne serait rangée nulle part à l'écran — et rien d'autre :
+  ni ses membres, ni ses autres collections.
+- **Une collection ne change pas de projet.** Elle naît dans l'un et y reste : aucun geste
+  ne la déplace.
+- **Ranger un album ne traverse pas les projets.** Un album qui vit dans une collection d'un
+  projet ne se range pas dans une collection d'un autre ; le refus le dit (« le rangement ne
+  traverse pas les projets »). À l'intérieur d'un même projet, rien n'a changé : un album
+  peut toujours vivre dans plusieurs de ses collections.
+- **La Recherche et l'Exploration ne s'arrêtent pas au projet.** Elles portent toujours sur
+  tout ce que vous lisez, tous projets confondus ; seule la liste des collections de la
+  Bibliothèque suit le projet choisi.
+- **Le projet ne sort dans aucun export.** La collection reste l'unité de dépôt et le titre
+  d'un export ; ni le nom d'un projet, ni ses membres, ni sa justification ne quittent
+  l'instance.
+
+**Le projet de repli.** Tout ce qui existait avant cette date a été rangé, sans rien y
+changer, dans un premier projet. Il est né sous le nom « Projet principal » et il est fait
+pour être renommé : ce n'est pas son nom qui le désigne, c'est son rôle. C'est le **projet
+de repli** — une collection créée sans dire dans quel projet y entre. Il se renomme ; il ne
+se supprime pas. Le jour où une instance reçoit les projets, tous ceux — comptes et
+groupes — qui avaient un accès à une collection en deviennent **membres**, et personne
+n'est désigné responsable : c'est un choix, que la mise à jour ne devine pas. C'est une
+photographie de ce jour-là : recevoir plus tard un accès à une collection ne fait pas entrer
+dans son projet.
+
+**La justification.** Un projet peut porter un texte qui dit **pourquoi il existe** — sa
+justification, scientifique d'abord. Elle se saisit à sa création et se lit dans sa fiche,
+par ses responsables et par les administrateurs ; un simple membre ne la reçoit pas.
+
+**Le nom d'un projet est court, et c'est une contrainte d'écran.** Il se lit dans la bande
+du haut de chaque page, où il ne se coupe pas — ni points de suspension, ni retour à la
+ligne. Le plafond a donc été fixé en mesurant cette bande sur un écran étroit, à grande
+police ; l'écran de création l'annonce sous le champ, et un nom trop long est refusé par un
+message qui donne le plafond et la longueur du nom proposé. Deux projets ne portent pas le
+même nom, sans égard aux majuscules.
+
 ---
 
 ## 3. Qui peut quoi
@@ -153,7 +210,7 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 
 | Geste | lecture | écriture | propriétaire | `bd-admins` |
 |---|:---:|:---:|:---:|:---:|
-| **Créer** une collection | ✅ | ✅ | ✅ | ✅ |
+| **Créer** une collection — hors du projet de repli, il faut être membre du projet (cf. « Le projet », plus bas) | ✅ | ✅ | ✅ | ✅ |
 | Voir les albums, planches, régions, annotations | ✅ | ✅ | ✅ | ✅ |
 | Chercher, explorer le contenu | ✅ | ✅ | ✅ | ✅ |
 | **Exporter** le contenu — un album (JSON-LD / CSV / TEI), les CSV de la Recherche et de l'Exploration, les figures, les exports de dépôt | avec la case | avec la case | ✅ | ✅ |
@@ -206,6 +263,55 @@ inutilisable au premier jour de chacun. Deux cas ne posent pas de propriétaire,
 normal : en mono-poste, il n'y a personne à inscrire ; pour un administrateur, qui possède
 déjà tout, un lien personnel avec chaque collection créée fausserait la notion — s'il la veut,
 il se l'accorde.
+
+**« Seulement une identité » vaut pour le projet de repli** (précisé le 2026-10-10). Une
+collection naît dans le projet où vous travaillez. Dans le projet de repli, rien n'a
+changé : être connecté suffit. Dans un **autre** projet, il faut en être **membre** — le
+refus le dit (« Créer une collection dans ce projet demande d'en être membre »), et il
+arrive à qui voit le nom du projet par une collection qu'il lit, sans en être.
+
+### Le projet : en être, le régler, en décider
+
+Un projet (§2) a deux **rôles**, et l'instance deux **pouvoirs** qui ne se confondent pas.
+
+| Geste | simple membre | responsable du projet | `bd-admins` |
+|---|:---:|:---:|:---:|
+| Lire le nom du projet, en haut de chaque page | ✅ | ✅ | ✅ |
+| **Créer une collection** dans le projet | ✅ | ✅ | ✅ |
+| Lire ou annoter une collection du projet | par un accès de collection | par un accès de collection | ✅ |
+| Voir **qui est** du projet | — | ✅ | ✅ |
+| **Faire entrer**, faire sortir, nommer un autre responsable | — | ✅ | ✅ |
+| Lire la **justification** du projet | — | ✅ | ✅ |
+| **Créer**, **renommer**, **supprimer** un projet | — | — | ✅ |
+
+- **Membre ou responsable.** On fait entrer un **compte** ou un **groupe**, comme pour un
+  accès de collection, et la même règle vaut : ce qui est enregistré est un nom, jamais une
+  appartenance vérifiée. On entre toujours **membre** ; nommer quelqu'un *responsable du
+  projet* est un second geste, sur sa ligne. Un responsable est aussi membre.
+- **Régler n'est pas décider.** Le responsable règle **qui entre** dans son projet. Il ne
+  décide ni de son nom ni de son existence : créer, renommer et supprimer un projet
+  reviennent aux administrateurs de l'instance — le nom d'un projet se lit sur l'écran de
+  tous ceux qui y travaillent. En mono-poste, où l'on est seul, on fait tout.
+- **La liste des membres n'est pas publique dans le projet.** C'est une donnée sur des
+  personnes : un simple membre ne voit pas qui d'autre en est, ni qui en répond.
+- **Les administrateurs règlent tout projet sans figurer parmi ses membres**, et *Qui y
+  entre* le déclare sous la liste, comme *Qui entre* le fait pour une collection.
+- **Faire sortir quelqu'un ne lui retire aucun accès de collection**, et ne détruit rien :
+  ce qu'il lisait, il le lit encore, et son travail lui reste attribué.
+
+Trois refus se **nomment**, pour la raison qui vaut déjà pour les collections — ce n'est pas
+un droit qui manque, c'est un état que le geste fabriquerait.
+
+- *Le dernier responsable d'un projet* ne se retire pas et ne se rétrograde pas : il faut
+  en désigner un autre d'abord. Un projet peut en revanche **naître** sans responsable —
+  seuls les administrateurs le règlent alors, jusqu'à ce qu'ils en nomment un.
+- *Le projet de repli* ne se supprime pas : c'est là qu'entre une collection qui ne nomme
+  aucun projet.
+- *Un projet qui porte encore une collection* ne se supprime pas : un projet ne se supprime
+  que vide. Comme une collection ne change pas de projet, et qu'une collection ne se
+  supprime pas tant qu'un album n'a qu'elle (§2), **un projet où des albums sont entrés ne
+  se vide aujourd'hui qu'en supprimant ces albums**. À savoir avant d'en créer un pour
+  essayer.
 
 ### L'administrateur, et pourquoi il est déclaré
 
@@ -558,6 +664,13 @@ Les deux sont nécessaires, et dans cet ordre. **Un compte créé sans accès ou
 application vide** — la personne se connectera parfaitement et ne verra rien, sans qu'aucun
 message ne l'explique autrement que par le bandeau de portée vide.
 
+**Faire entrer ce compte dans un projet n'y change rien** (depuis le 2026-10-10). Le bloc
+*🗂️ Projets* de l'Administration règle qui est d'un projet ; il n'ouvre aucune collection.
+Un arrivant qu'on a seulement fait entrer dans un projet lira le nom du projet en haut de
+la page — et, comme avant, le bandeau de portée vide. Il pourra y créer une collection ; il
+ne lira aucune de celles des autres. L'accès se donne toujours collection par collection,
+dans *Qui entre*.
+
 ### Ajouter quelqu'un — la forme
 
 **Dans l'annuaire**, un compte se crée par l'interface de LLDAP, puis on le range dans ses
@@ -617,6 +730,15 @@ avertit, elle ne bloque pas — l'accès est accordé tel quel dans les deux cas
 marqué « inconnu de l'annuaire » n'ouvre rien. C'est la première chose à regarder.
 Vérifiez aussi qu'il a été déclaré **compte** ou **groupe** selon ce qu'il est : un accès
 donné à un compte ne s'applique pas à un groupe du même nom.
+
+**Je suis membre d'un projet et je n'y vois aucune collection.**
+C'est normal : entrer dans un projet n'ouvre aucune de ses collections (§2). Il faut qu'un
+propriétaire vous donne accès à la sienne, dans *Qui entre* — ou que vous en créiez une.
+
+**Je suis responsable d'un projet. Pourquoi ne puis-je pas le renommer ?**
+Parce que régler qui entre dans un projet n'est pas décider de son nom ni de son
+existence : cela revient aux administrateurs de l'instance (§3), et la fiche du projet
+vous le dit.
 
 **Pourquoi un album que je sais exister me répond « introuvable » ?**
 Parce que répondre « interdit » révélerait sa présence, donc la composition du corpus. C'est

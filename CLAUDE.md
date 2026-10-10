@@ -74,7 +74,7 @@ cette machine — un dépôt à la fois par port, c'est le modèle de l'outil.
 
 ## Vue d'ensemble
 
-Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut. **L'application n'authentifie personne** : elle fait confiance aux en-têtes d'identité posés par un proxy d'auth (Authelia), et seulement si `BD_AUTH_PROXY` déclare qu'il est bien devant — sans quoi tout acte reste anonyme (AUTH-1). Aucun secret en base : `utilisateur` (v22) n'est qu'un miroir d'affichage, et les groupes ne sont jamais stockés, relus dans `Remote-Groups` à chaque requête. **Elle LIT l'annuaire** (AUTH-6), pour composer la vue « 👥 Comptes et groupes » et rien d'autre : lire pour COMPOSER n'est ni authentifier ni autoriser — `autorisation.py` n'atteint pas `annuaire.py` (un test le verrouille), aucune portée ne change selon ce qu'il rend, rien n'en est stocké, et le compte de service ne fait que lire. **Elle AUTORISE en revanche** (AUTH-2, v23) : le cloisonnement par collection est à elle, Authelia ne dit que « qui ». Voir `docs/hebergement-securite.md`.
+Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut. **L'application n'authentifie personne** : elle fait confiance aux en-têtes d'identité posés par un proxy d'auth (Authelia), et seulement si `BD_AUTH_PROXY` déclare qu'il est bien devant — sans quoi tout acte reste anonyme (AUTH-1). Aucun secret en base : `utilisateur` (v22) n'est qu'un miroir d'affichage, et les groupes ne sont jamais stockés, relus dans `Remote-Groups` à chaque requête. **Elle LIT l'annuaire** (AUTH-6), pour composer la vue « 👥 Comptes et groupes » — et, depuis AUTH-12 puis COL-3, pour proposer des groupes et vérifier un nom à qui règle les accès d'une collection ou les membres d'un projet — et rien d'autre : lire pour COMPOSER n'est ni authentifier ni autoriser — `autorisation.py` n'atteint pas `annuaire.py` (un test le verrouille), aucune portée ne change selon ce qu'il rend, rien n'en est stocké, et le compte de service ne fait que lire. **Elle AUTORISE en revanche** (AUTH-2, v23) : le cloisonnement par collection est à elle, Authelia ne dit que « qui ». **Au-dessus des collections, un étage PROJET** (COL-3, v29) se nomme et se règle, et ne cloisonne rien : en être n'ouvre aucune collection. Voir `docs/hebergement-securite.md`.
 
 Backend **Python 3.12 / FastAPI** — la couche API se découpe en `main.py` (montage, middlewares, export, et les blocs que les tests ÉPINGLENT), `socle.py` (le socle partagé) et `routes/` (un module par domaine, ARCH-1 ; cf. § Découpage) ; frontend **JavaScript/HTML/CSS vanilla** — aucun framework, **aucune étape de build**. On édite `static/*.js` et `templates/*.html` directement.
 
@@ -128,21 +128,22 @@ ne regardait. Toute exclusion ajoutée doit donc RÉPÉTER `not e2e`.
 - Le marqueur `e2e` est exclu par défaut via `pytest.ini` (`addopts = -m "not e2e"`).
 - **Tests JS purs** (`static/lib/*.js`) : lancés par `tests/test_js_unit.py`, qui appelle `node --test tests/js/*.test.js`. Skippés proprement si Node absent. Pas de runner JS séparé.
 - **Accessibilité** : `tests/test_e2e_a11y.py` (marqueur `e2e`) audite les 5 surfaces × thèmes (sombre/clair) via **axe-core** (WCAG 2.1 AA) et échoue à toute violation sérieuse/critique. axe est **vendu hors ligne** dans `tests/js/vendor/axe.min.js` (skip si absent — cf. son README).
+- **`expect(…).to_have_text()` de Playwright lit AUSSI un élément caché** : il compare un texte, pas ce qui se voit. Une phrase qui ne doit se lire que dans UN état s'éprouve donc d'abord par `to_be_visible()`, sans quoi le test passe sur un bloc `hidden` qui porte déjà le bon texte. Trouvé le 2026-10-10 par un mutant qui survivait, pas par une relecture (`tests/test_e2e_projets.py`).
 - Les tests des moteurs ML (Kumiko, bulles, OCR) et du NLP se **skippent automatiquement** si le moteur n'est pas installé (`requires_kumiko` / `requires_bulles` / `requires_ocr` dans `tests/conftest.py`). La couverture mesurée en dépend (les routes `/api/analyse/*` + correction de tokens ne sont pas encore couvertes — QA-3, livré ; cf. `docs/roadmap.md`).
 
 ## Architecture
 
 ### Les cinq surfaces (pages)
 
-Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, partageant `static/style.css` et `static/theme.js` (thèmes clair/sombre + contraste élevé + zoom UI, et nav transverse + skip-link injectés sur les 5 pages) :
+Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, partageant `static/style.css` et `static/theme.js` (thèmes clair/sombre + contraste élevé + zoom UI, et nav transverse + skip-link injectés sur les 5 pages ; depuis COL-3, la même bande du haut dit le **projet courant** — cf. sous le tableau) :
 
 | Route | Template | JS | Rôle |
 |---|---|---|---|
 | `/` | `index.html` | `viewer.js` | **Atelier** : modes Édition / Annotation / Transcription / Navigation, arbre de structure, ShareDocs, deep-link |
 | `/recherche` | `recherche.html` | `recherche.js` | **Recherche** FTS5 + nuage de tags |
-| `/corpus` | `corpus.html` | `corpus.js` | **Bibliothèque** : CRUD albums/planches + lancement de lots, et **📚 Collections** (COL-2) : ce que la collection EST — la créer, la décrire, régler sa diffusion, désigner son référent, l'exporter — et, en tête de chaque collection dépliée, **Qui entre** (AUTH-12, étape 3) : les accès réglés en ACTES lus dans `GET /api/droits` (tableau, cartes sous 48em), la liste des groupes de l'annuaire et la vérification d'un nom tapé. Adressable par `?collection=<id>` (`&groupe=<nom>`). Des gardes posées acte par acte : créer demande une identité, décrire et régler les accès la propriété, lire la seule portée |
+| `/corpus` | `corpus.html` | `corpus.js` | **Bibliothèque** : CRUD albums/planches + lancement de lots, et **📚 Collections** (COL-2) : ce que la collection EST — la créer, la décrire, régler sa diffusion, désigner son référent, l'exporter — et, en tête de chaque collection dépliée, **Qui entre** (AUTH-12, étape 3) : les accès réglés en ACTES lus dans `GET /api/droits` (tableau, cartes sous 48em), la liste des groupes de l'annuaire et la vérification d'un nom tapé. Adressable par `?collection=<id>` (`&groupe=<nom>`). Des gardes posées acte par acte : créer demande une identité, décrire et régler les accès la propriété, lire la seule portée. **La liste des collections est celle du PROJET COURANT** (COL-3), nommé par une ligne au-dessus du bloc, et « + Créer » crée dans ce projet-là ; les albums, leur fiche et le lot ne le connaissent pas. Un filtre d'ÉCRAN, pas une garde : le serveur rend toujours tout ce qu'on lit |
 | `/exploration` | `exploration.html` | `exploration.js` | **Exploration** linguistique du corpus — 4 vues : distribution (fréquences), **concordance KWIC** (aligné/liste, deep-link Atelier), **croisement 2D** (tableau de contingence facette×facette, heatmap, cellule→concordance), comparaison A/B ; + panneaux **📖 Lexique**, **🎯 Accord** (modèle↔humain) et **👥 Inter** (inter-annotateurs) |
-| `/administration` | `administration.html` | `administration.js` | **Administration** (UX-10) : ce qui porte sur l'INSTANCE et non sur un album — panneaux **🏷️ Version servie** (INFRA-10, réservé aux administrateurs), **👥 Comptes et groupes** (AUTH-12, qui remplace la vue des comptes d'AUTH-7 : une liste et une fiche, axes Comptes · Groupes · Collections, « À regarder » en tête ; il LIT l'annuaire par `GET /api/comptes-et-groupes`, ne modifie que la nature d'un compte, et mène à « Qui entre » pour régler un accès — le panneau « 👥 Accès aux collections » d'AUTH-3 a déménagé dans la Bibliothèque avec l'étape 3) et **🩺 Moteurs** (SANTE-1). Aucune garde d'écran : chaque bloc pose sa propre question d'autorisation, jamais le contenant (leçon AUTH-4) |
+| `/administration` | `administration.html` | `administration.js` | **Administration** (UX-10) : ce qui porte sur l'INSTANCE et non sur un album — panneaux **🏷️ Version servie** (INFRA-10, réservé aux administrateurs), **👥 Comptes et groupes** (AUTH-12, qui remplace la vue des comptes d'AUTH-7 : une liste et une fiche, axes Comptes · Groupes · Collections, « À regarder » en tête ; il LIT l'annuaire par `GET /api/comptes-et-groupes`, ne modifie que la nature d'un compte, et mène à « Qui entre » pour régler un accès — le panneau « 👥 Accès aux collections » d'AUTH-3 a déménagé dans la Bibliothèque avec l'étape 3), **🗂️ Projets** (COL-3 : une liste et une fiche des projets qu'on RÈGLE — pourquoi le projet existe, « Qui y entre », celles de ses collections qu'on lit ; créer, renommer et supprimer s'y offrent à qui DÉCIDE des projets ; à qui n'en règle aucun, une phrase dit pourquoi rien ne lui est montré) et **🩺 Moteurs** (SANTE-1). Aucune garde d'écran : chaque bloc pose sa propre question d'autorisation, jamais le contenant (leçon AUTH-4) |
 
 **« Atelier » et « Visionneuse » désignent la MÊME page, `/`.** L'écran dit *Atelier*
 (`static/theme.js`), et c'est le nom retenu ici comme dans `docs/guide-utilisateur.md` :
@@ -152,7 +153,24 @@ disent encore *Visionneuse*, et on ne les réécrit pas : ce sont des traces DAT
 faire dire aujourd'hui ce qu'elles ne disaient pas serait la seule chose pire que le double
 nom. Si vous croisez l'un ou l'autre mot, c'est la même surface.
 
-`static/lib/` contient des modules **UMD réutilisables et testés sous Node** (pas d'accès DOM au chargement) : `common.js` (helpers partagés par les CINQ surfaces — `$`, `apiGet`, `apiSend`, `escapeHtml`/`esc`, `toast` — exposés en globals pour que les appels nus restent inchangés, et require()-ables par les tests), `nav.js` (navigation/round-trip entre surfaces), `dialog.js` (modale accessible : piège à focus, Échap, retour du focus) et `sante.js` (état affiché des moteurs, SANTE-1 : le croisement présent/éprouvé × absent/en panne, et le bilan d'une épreuve). Un module y entre pour une PROPRIÉTÉ — logique pure, donc vérifiable par table de vérité — et non parce qu'il serait partagé : `sante.js` ne sert qu'à la page d'Administration, et il est là parce qu'un test lisant le source de la surface déclarait sa règle couverte sans l'être (mesuré). Leur logique pure est verrouillée par `tests/js/*.test.js`. **Ne pas redupliquer ces helpers dans un fichier de surface** : c'était le constat « duplication frontend » de l'audit de juin, et `common.js` est ce qui l'a fermé.
+**La bande du haut dit dans quel PROJET on travaille, sur les cinq surfaces** (COL-3,
+2026-10-10 ; `buildProjet` dans `static/theme.js`, source unique comme la navigation).
+« Projet » puis le nom seul quand on n'en voit qu'un, un `<select>` NATIF dès deux — pas un
+menu à `aria-expanded`, qui entrerait dans l'inventaire des repliables que la mesure de
+reflow exige ouverts — et rien du tout sans projet à nommer. Elle ne dépend pas de la
+pastille d'identité : en mono-poste il n'y a personne à nommer, et il y a un projet.
+`GET /api/projets` est demandé une fois par page et partagé (`window.BDProjets`). **Le
+projet COURANT n'existe pas pour le serveur** : le navigateur le retient (stockage local,
+clé `bd-projet`, toute lecture sous try/catch), jamais l'adresse — un lien envoyé ne le
+porte pas, deux onglets le partagent. Il ne borne que la Bibliothèque ; l'Atelier, la
+Recherche et l'Exploration affichent son nom et traversent encore les projets. Une seule
+rencontre avec l'adresse : `/corpus?collection=<id>` d'un AUTRE projet le fait basculer,
+sans quoi le lien ouvrirait une liste où sa collection n'est pas. Le nom ne se coupe pas —
+ni ellipse, ni passage à la ligne : il est borné à la SOURCE
+(`database.LONGUEUR_NOM_PROJET`, fixé par la mesure de cette bande à 320 px et à grande
+police).
+
+`static/lib/` contient des modules **UMD réutilisables et testés sous Node** (pas d'accès DOM au chargement) : `common.js` (helpers partagés par les CINQ surfaces — `$`, `apiGet`, `apiSend`, `escapeHtml`/`esc`, `toast` — exposés en globals pour que les appels nus restent inchangés, et require()-ables par les tests), `nav.js` (navigation/round-trip entre surfaces), `dialog.js` (modale accessible : piège à focus, Échap, retour du focus), `sante.js` (état affiché des moteurs, SANTE-1 : le croisement présent/éprouvé × absent/en panne, et le bilan d'une épreuve) et `projet.js` (le projet COURANT, COL-3 : lequel choisir parmi ceux qu'on peut nommer — celui qu'on avait retenu s'il est encore visible, sinon le repli —, le stockage local qui peut manquer, les collections d'un projet ; chargé par les cinq gabarits, lu par la bande du haut ET par la Bibliothèque pour que les deux désignent le même). Un module y entre pour une PROPRIÉTÉ — logique pure, donc vérifiable par table de vérité — et non parce qu'il serait partagé : `sante.js` ne sert qu'à la page d'Administration, et il est là parce qu'un test lisant le source de la surface déclarait sa règle couverte sans l'être (mesuré). Leur logique pure est verrouillée par `tests/js/*.test.js`. **Ne pas redupliquer ces helpers dans un fichier de surface** : c'était le constat « duplication frontend » de l'audit de juin, et `common.js` est ce qui l'a fermé.
 
 **Un module MONTABLE est la seconde sorte de module de `static/lib/`** (UX-16, 2026-10-07). `qui-entre.js` est le premier, et la convention s'écrit ici pour que le suivant s'y range au lieu d'en inventer une (`SHARE-2`, `UX-17`). Il y entre pour une autre PROPRIÉTÉ que la logique pure : un même panneau a deux publics, et un second public se sert par un second montage, pas par un déménagement — ce panneau-là en avait subi deux en treize jours. Cinq règles, chacune née d'une couture mesurée :
 
@@ -164,13 +182,21 @@ nom. Si vous croisez l'un ou l'autre mot, c'est la même surface.
 
 Ce qui tient la convention est un cliquet, pas cette page : `tests/test_qui_entre_module.py` interdit à un hôte d'écrire le balisage du panneau ou d'appeler ses routes, exige que tout script qui le monte soit un hôte DÉCLARÉ, et vérifie d'abord que ses propres motifs mordent sur le module — une garde qui cherche ce qui n'existe nulle part approuve tout. Et `tests/test_e2e_masquage.py` lit désormais les modules montés : en quittant un script de surface, un masquage sortait du balayage sans rien faire tomber.
 
+**Le SECOND module montable s'y est rangé** (COL-3, 2026-10-10) : `membres-projet.js`, « Qui y entre » d'un projet, monté par l'Administration dans la fiche du projet. C'est le FRÈRE de `qui-entre.js`, pas sa généralisation : un accès de collection est une échelle de niveaux, des actes et une case d'export lus dans une description servie ; un membre de projet a un RÔLE parmi deux, et les fondre aurait fait porter à l'un les conditions de l'autre. Les cinq règles valent pour lui telles quelles, et il a SON cliquet, `tests/test_membres_projet_module.py`, qui importe la lecture « hors commentaires » de son aîné au lieu de la recopier. Ce qu'il ajoute à la convention : **une valeur que le serveur ne publie par aucune route ne se recopie qu'UNE fois.** Les rôles et le plafond d'un nom vivent dans `lib/projet.js`, où `tests/test_projet_ecran.py` mesure leur accord avec `autorisation.ROLES_PROJET` et `database.LONGUEUR_NOM_PROJET` — ordre compris, « + Faire entrer » posant le PREMIER rôle ; le cliquet du module lui interdit de les écrire en clair, ce qui en ferait une troisième copie que rien ne tiendrait.
+
 ### Découpage de la couche API (ARCH-1)
 
 `main.py` avait franchi les 4 400 lignes pour 125 routes, contre un seuil de 3 200
 déclaré dans `pilotage/journal.config.mjs`. Le découpage s'est fait **par domaine et par
 étapes**, chacune vérifiée par la suite entière avant la suivante ; il est terminé, et
 `main.py` fait **1 811 lignes**. Sept modules : `recherche`, `analyse`, `figures`,
-`personnages`, `annulation`, `collections`, `lexique`.
+`personnages`, `annulation`, `collections`, `lexique`. Deux s'y sont ajoutés depuis, nés
+dans `routes/` sans avoir été des blocs de `main.py` : `depot` (EXP-1), puis `projets`
+(COL-3, 2026-10-10) — neuf aujourd'hui. **Un module de `routes/` n'est pas toujours tout
+son domaine** : `GET /api/projets/{id}/membres/choix` vit dans `collections` et non dans
+`projets`, parce qu'elle lit l'annuaire et que `tests/test_annuaire.py` exige PAR ÉGALITÉ
+que les lecteurs de l'annuaire tiennent dans ce module-là. La ranger avec les siennes
+aurait demandé de desserrer une garde pour un rangement.
 
 Ce qui RESTE dans `main.py` n'y reste pas par paresse : le montage, les middlewares,
 l'export, et les blocs ÉPINGLÉS par les tests (cf. le second critère ci-dessous).
@@ -429,11 +455,68 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   **Rien de tout cela en mono-poste** : sans proxy aucun groupe n'est lu, donc `acces.
   groupes_admin` est vide — nommer `bd-admins` là où l'on est seul distinguerait deux rôles
   qui n'en font qu'un.
+- **Le PROJET est un étage AU-DESSUS des collections, et il ne borde rien de ce qui
+  précède** (COL-3, tranche 1, v29, 2026-10-10). Une collection appartient à UN projet et
+  n'en change pas — aucune route ne la déplace — ; on EST d'un projet, `membre` ou
+  `responsable` (`projet_acces`, le patron de `collection_acces` un étage plus haut :
+  toujours une RÉFÉRENCE à un login ou à un nom de groupe, jamais une appartenance ; le
+  responsable est membre, cumulé dans `Portee.__init__` comme les niveaux). **Dans cette
+  tranche il se nomme, il se règle, on y crée une collection — et c'est tout.** Ce qu'il
+  NE fait PAS est la moitié qui compte : être d'un projet n'ouvre ni ne ferme AUCUNE
+  collection (`collections_du_principal` ne lit pas `projet_acces`, et ni `clause_album`,
+  ni `clause_destruction`, ni `clause_terme` ne connaissent les projets) ; un accès de
+  collection se passe d'être du projet ; et `GET /api/moi` n'en dit rien. Lire une
+  collection permet seulement de NOMMER son projet (nom, description) — la visibilité
+  DÉRIVÉE de `clause_projet`, sans laquelle l'écran montrerait une collection d'aucun
+  projet ; ni ses membres, ni ses autres collections. **Deux pouvoirs, et le second ne
+  découle pas du premier** — la séparation d'AUTH-3, un étage plus haut. RÉGLER qui est d'un projet
+  (`peut_gerer_projet`) : son responsable, et l'administrateur qui passe outre — faire
+  entrer, faire sortir, nommer un autre responsable. DÉCIDER quels projets existent
+  (`peut_decider_des_projets`) — créer, renommer, supprimer : une portée TOTALE,
+  l'administrateur et le mono-poste ; la question ne prend pas d'identifiant, et c'est son
+  sens. Un responsable ne renomme donc pas le sien : ce nom se lit sur l'écran de tous.
+  Trois **409 qui se nomment** : supprimer le projet de repli, supprimer un projet qui
+  porte encore une collection, retirer ou rétrograder son DERNIER responsable — mais un
+  projet peut NAÎTRE sans responsable, comme une collection sans propriétaire.
+  `socle._get_projet` est le jumeau de `_get_collection` : 404 sur un projet qu'on ne
+  voit pas, 403 NOMMÉ sur un projet qu'on voit sans le gérer. **Le projet de repli se
+  désigne par un DRAPEAU (`projet.repli`), jamais par son nom** : il est fait pour être
+  renommé, là où la collection de repli se désigne par un nom réservé ;
+  `database.NOM_PROJET_DEFAUT` n'est que le nom sous lequel il naît. `collection.projet_id`
+  est NULLABLE — SQLite n'ajoute pas par `ALTER` une colonne `NOT NULL` qui porte une clé
+  étrangère, et des tests posent une collection par `INSERT` brut — et NULL se lit « le
+  projet de repli » à UN endroit, `database.sql_projet_de`, qu'`autorisation.py` importe :
+  deux écritures de la règle finiraient par ne plus répondre pareil à une collection sans
+  projet nommé. Créer une collection dans le repli ne demande toujours qu'une identité ;
+  dans un AUTRE projet il faut en être (`est_du_projet`). **Le rangement ne TRAVERSE pas
+  les projets** (`database.rangement_traverse`, un 409 nommé, par la route comme par
+  `gerer_collections.py`) : c'est ce qui garde à chaque album UN projet. La
+  `justification` — pourquoi ce projet existe — ne se rend qu'à qui le GÈRE, comme la
+  liste de ses membres : les autres ne reçoivent pas la clé du tout, une clé à `null` ne
+  se distinguant pas d'une justification jamais écrite. **Rien du projet ne sort au
+  dépôt** : il n'est ni une unité de dépôt ni le titre d'un export — la collection l'est —,
+  `projet` et `projet_acces` sont dans `tools/_commun.CIBLES_RETENUES` (leurs actes sont
+  tracés au journal A3, `projet_acces` en `lien`/`delien` non annulables), et
+  `test_le_projet_ne_sort_d_aucun_artefact` le JOUE sur les exports d'album, la voie du
+  dépôt et les outils de sortie. La
+  migration fait de l'instance d'hier le premier projet : toutes les collections y
+  entrent, quiconque tenait un accès de collection en devient membre — une photographie
+  du jour, sans aucun responsable désigné. Ce qui vient ensuite (le fonds, les demandes,
+  prendre un document, la Recherche et l'Exploration bornées au projet) n'existe pas :
+  cf. `pilotage/COL-3.md`.
 - **Une garde d'interface se pose sur l'ACTE, jamais sur l'écran qui le contient.** Le
-  serveur distingue dix questions (`peut_lire` / `peut_ecrire` / `peut_administrer` /
-  `peut_exporter`, `clause_album` / `clause_destruction` / `clause_terme` /
-  `peut_ecrire_terme` / `peut_ecrire_quelque_part` / `peut_exporter_quelque_part`) ; le
-  client n'en reçoit que cinq. Trois collection par collection : `administrable` et
+  serveur distingue quatorze questions — dix jusqu'au 2026-10-10 (`peut_lire` /
+  `peut_ecrire` / `peut_administrer` / `peut_exporter`, `clause_album` /
+  `clause_destruction` / `clause_terme` / `peut_ecrire_terme` / `peut_ecrire_quelque_part`
+  / `peut_exporter_quelque_part`), et les quatre du projet (`est_du_projet` /
+  `peut_gerer_projet` / `peut_decider_des_projets` / `clause_projet`, COL-3) ; le client
+  n'en reçoit que six. Une projet par projet, dans `GET /api/projets` : `gerable`
+  (`mon_role` l'accompagne comme `mon_niveau` accompagne une collection : il dit sous quel
+  rôle on y figure, et vaut `null` pour une portée totale, qui règle tout sans figurer
+  nulle part). « Décider des projets » ne traverse par AUCUNE clé à lui : l'écran le lit
+  dans `acces.total` de `GET /api/moi`, qui dit aujourd'hui la même chose sans que rien ne
+  l'impose — d'où `tests/test_projet_ecran.py`, qui JOUE l'accord sous quatre identités.
+  Trois collection par collection : `administrable` et
   `exportable` (DROIT-2), dans `GET /api/collections` et la liste des collections d'un
   album, et `ecrivable` dans `GET /api/collections` seule (AUTH-12, 2026-09-16 — la modale
   d'album et « ranger dans une collection » proposaient toutes les collections LUES, et
@@ -582,9 +665,10 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 28). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 29). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
+- **Le commentaire de la DERNIÈRE colonne d'une table s'écrit SOUS elle, jamais au-dessus** (v29, mesuré sur SQLite 3.49). Pour retirer la dernière colonne, `ALTER TABLE … DROP COLUMN` remonte jusqu'à la première virgule qu'il trouve — celles d'un commentaire `--` comprises — et rend un schéma tronqué : « incomplete input ». `_migrate()` ne retire aucune colonne, mais quatre fichiers de test DÉFONT ainsi une version pour rejouer un upgrade réel (`_ramener_en_v28`, dans `tests/test_projets.py`, en est le dernier) : l'erreur tombe dans le test, loin de la faute. Le commentaire de `collection.projet_id` le dit sur place.
 
 ### Couche NLP (spaCy) — OPTIONNELLE, deux paliers
 

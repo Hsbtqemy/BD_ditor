@@ -33,19 +33,22 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 
 | Surface | Adresse | Ce qu'on y fait |
 |---|---|---|
-| **Bibliothèque** | `/corpus` | créer et décrire les albums et les collections, régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, lancer les traitements par lot, suivre l'avancement planche par planche |
+| **Bibliothèque** | `/corpus` | créer et décrire les albums et les collections — celles du **projet** où vous travaillez —, régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, lancer les traitements par lot, suivre l'avancement planche par planche |
 | **Atelier** | `/` | tout ce qui se fait sur une planche : corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
 | **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
 | **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus ; documenter le vocabulaire |
-| **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : quels comptes et quels groupes existent, la version servie, l'état des moteurs |
+| **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : quels projets existent et qui y entre, quels comptes et quels groupes existent, la version servie, l'état des moteurs |
 
 Une barre de navigation commune les relie, sur les cinq pages. Les réglages d'affichage —
 thème clair/sombre, contraste élevé, zoom de l'interface — y sont aussi, et suivent d'une
-surface à l'autre.
+surface à l'autre. Elle dit enfin dans quel **projet** vous travaillez : le mot *Projet*,
+suivi de son nom — ou d'une liste déroulante dès que vous en voyez plusieurs (§4,
+*Bibliothèque*).
 
 > **L'Administration n'est pas réservée**, et ça surprend. La page s'ouvre à tout le monde :
 > c'est **chaque bloc** qui décide de ce qu'il montre — **👥 Comptes et groupes** n'apparaît
-> que si le serveur vous le sert, **🏷️ Version servie** de même, et l'état des moteurs est
+> que si le serveur vous le sert, **🏷️ Version servie** de même, **🗂️ Projets** ne montre
+> que les projets que vous réglez, et l'état des moteurs est
 > ouvert à tous, parce que savoir si l'OCR fonctionne n'est un pouvoir pour personne. Fermer
 > la page entière aurait enfermé des choses qui n'ont rien à y faire.
 
@@ -57,6 +60,9 @@ surface à l'autre.
 ---
 
 ## 3. Le parcours en huit étapes
+
+**Avant d'entrer dans une collection, vous entrez dans un projet** : son nom se lit en haut
+de chaque page, et c'est de ce projet que la Bibliothèque vous montre les collections.
 
 C'est l'ordre à suivre pour un corpus qui part de zéro. **Sur un corpus déjà rempli**, on
 entre directement à l'étape 4, 5 ou 6 selon ce qui reste à faire : la Bibliothèque affiche
@@ -267,6 +273,22 @@ Dublin Core / DataCite et la **provenance** restent, elles, en ligne de commande
 
 L'inventaire et le poste de commande.
 
+- **Le projet, en haut de la page.** La bande du haut porte le mot *Projet* et le nom de
+  celui où vous travaillez ; si vous en voyez plusieurs, c'est une liste déroulante, et
+  vous y **choisissez**. Le choix est retenu par votre navigateur : il vous suit d'une page
+  à l'autre et d'un onglet à l'autre, pas d'un poste à l'autre, et un lien que vous envoyez
+  ne le porte pas. **Dans la Bibliothèque, il borne la liste des collections** : une ligne
+  au-dessus du bloc *📚 Collections* dit *Dans le projet « … »*, la liste est celle de ce
+  projet, et *+ Créer* y crée. Ouvrir un lien vers une collection d'un autre projet vous y
+  fait basculer. Un projet où rien ne vous est ouvert le dit — *Aucune collection ouverte
+  pour vous dans le projet « … »* —, ce qui n'est pas avoir tout perdu : changez de projet.
+  **Le projet ne borne rien d'autre pour l'instant** : les albums, les planches et les lots
+  de cette page ne le suivent pas, ni l'Atelier, la Recherche et l'Exploration, qui
+  affichent son nom et portent toujours sur tout ce que vous lisez. Deux listes de cette
+  page proposent encore les collections de **tous** vos projets — *Collection*, dans
+  *+ Nouvel album*, et *+ Ranger ici*, dans la fiche d'un album ; ranger un album dans une
+  collection d'un autre projet que le sien est refusé, et le message le dit. Ce qu'est un
+  projet, et ce qu'il n'ouvre pas : [`modele-et-droits.md`](modele-et-droits.md) §2.
 - **Albums** : créer, éditer les métadonnées, supprimer. La fiche porte la description, les
   contributions, les champs d'édition, la source de numérisation et l'appartenance aux
   collections.
@@ -287,7 +309,9 @@ L'inventaire et le poste de commande.
   faire, en cours ou faites.
 - **Traitements par lot** : cocher les passes voulues, sélectionner des albums ou des planches,
   lancer. Progression et annulation en direct.
-- **📚 Collections** : créer une collection — il suffit d'être connecté, et l'on en devient
+- **📚 Collections** : créer une collection — elle naît dans le projet choisi en haut de la
+  page ; il suffit d'être connecté dans le projet de repli, et d'être membre du projet
+  dans un autre ; l'on en devient
   propriétaire, sauf un administrateur, qui l'administre sans la posséder et peut lui
   désigner un propriétaire dans *Qui entre* —, la décrire (description, dates), régler
   sa diffusion (régime, embargo, licence, base légale), désigner son référent, la renommer,
@@ -348,15 +372,53 @@ l'application ne contrôle pas l'audience.
 
 ### Administration (`/administration`)
 
-Ce qui porte sur l'instance : quelle version tourne ici, quels comptes et quels groupes
-existent, et si les moteurs répondent encore. Trois blocs, chacun avec sa propre règle
-d'accès (cf. §2).
+Ce qui porte sur l'instance : quelle version tourne ici, à qui s'adresser quand on est
+bloqué, quels projets existent et qui y entre, quels comptes et quels groupes existent, et
+si les moteurs répondent encore. Cinq blocs, chacun avec sa propre règle d'accès (cf. §2).
 
 - **🏷️ Version servie** : le commit que cette instance fait tourner. N'apparaît que si le
   serveur vous le sert — c'est réservé aux administrateurs, parce que le dépôt est public
   et qu'un numéro de version y dit quels correctifs sont en place. L'application ne connaît
   que ce bout-là : elle affiche le commit servi et vous laisse le comparer à `origin/main`,
   plutôt que d'affirmer « à jour » sans avoir vu la référence.
+- **📇 Référent de l'instance** : à qui s'adresser quand on n'a accès à rien — l'adresse
+  que donne le bandeau de portée vide. Réservé aux administrateurs, et en lecture seule :
+  elle se règle dans l'environnement du serveur, pas ici.
+- **🗂️ Projets** : les projets que vous **réglez**, en liste, et la fiche de celui que vous
+  choisissez. Le bloc s'affiche pour le responsable d'un projet, pour les administrateurs,
+  et en mono-poste. Un simple membre lit à sa place une phrase qui le lui dit — *Les projets
+  se règlent par leur responsable. Vous êtes membre du projet « … » : vous n'y réglez
+  rien.* — et qui ne voit aucun projet ne lit rien ici.
+  - **Créer un projet** (administrateurs) : un nom dans *Nouveau projet*, puis *+ Créer le
+    projet*. Le nom est court — le plafond est annoncé sous le champ, parce qu'il se lit
+    en haut de chaque page, où il ne se coupe pas. *Pourquoi ce projet existe* reçoit sa
+    justification, scientifique d'abord. Le projet naît **vide** — ni membre, ni
+    responsable, ni collection — et le message vous donne la suite : y faire entrer
+    quelqu'un dans sa fiche, puis y créer une collection depuis la Bibliothèque.
+  - **La fiche** : le nom, le nombre de collections que vous y lisez, la mention *projet
+    de repli* s'il l'est ; puis *Pourquoi ce projet existe*, *Qui y entre*, *Collections*
+    — celles que vous lisez, chacune menant à sa fiche dans la Bibliothèque — et *Ce
+    projet*.
+  - **Qui y entre** : dans *Faire entrer*, choisissez un groupe sous *Groupes de
+    l'annuaire*, ou *Un compte, ou un groupe absent de la liste…* — il faut alors taper son
+    *nom exact* et répondre à *Compte ou groupe ?*, sans valeur par défaut : un groupe
+    entré comme compte ne ferait entrer personne. Puis *+ Faire entrer*. **On entre
+    toujours *membre*** ; pour nommer un responsable, changez le rôle sur sa ligne (*membre*
+    / *responsable du projet*). Le ✕ de la ligne fait sortir. Les marques sont celles de
+    *Qui entre* : *inconnu de l'annuaire*, *non vérifié*, *n'a pas encore ouvert
+    l'application* — elles avertissent, elles ne bloquent pas. Et la partie le rappelle à
+    chaque fois : *Entrer dans le projet n'ouvre pas ses collections : chacune garde son
+    « Qui entre ».*
+  - **Ce projet** (administrateurs) : *Renommer*, et *Supprimer le projet* — après
+    confirmation. Un responsable y lit à la place : *Vous réglez qui entre dans ce projet.
+    Le renommer ou le supprimer se demande à un administrateur de l'instance.*
+  - **Trois refus, qui se disent.** Le *dernier responsable* d'un projet ne se retire pas
+    et ne se rétrograde pas : désignez-en un autre d'abord. Le *projet de repli* se
+    renomme, il ne se supprime pas — le bouton n'y est pas offert. Et *un projet ne se
+    supprime que vide* : tant qu'une collection lui appartient, c'est refusé, en disant
+    combien.
+
+  Cf. [`modele-et-droits.md`](modele-et-droits.md) §2 et §3.
 - **👥 Comptes et groupes** : réservé aux administrateurs, parce qu'il porte sur des
   personnes et non sur le corpus. Il réunit trois sources qui ne se recouvrent pas — ce que
   l'**annuaire** rend (les comptes et les groupes qui EXISTENT, venus ou non), ce que
@@ -453,6 +515,17 @@ L'**import PDF** est annoncé dans le menu mais désactivé : il n'est pas encor
 Lisez le bandeau en haut de page, et **dépliez-le** : il distingue une panne de configuration
 d'un simple manque d'accès, et nomme la personne à qui écrire quand l'instance en a déclaré
 une. Cf. [`modele-et-droits.md`](modele-et-droits.md) §3, et §7 pour la question complète.
+
+**Une collection que je lisais n'est plus dans la Bibliothèque.**
+Elle est probablement d'un autre **projet** que celui choisi en haut de la page : la liste
+des collections suit le projet. Changez-le dans la liste déroulante *Projet* — la ligne
+*Dans le projet « … »*, au-dessus des collections, dit lequel est affiché. Rien ne vous a
+été retiré : la Recherche et l'Exploration, qui ne suivent pas le projet, la lisent encore.
+
+**Je suis entré dans un projet et je n'y vois rien.**
+Entrer dans un projet n'ouvre aucune de ses collections : chacune garde son *Qui entre*.
+Demandez l'accès au propriétaire de la collection voulue, ou créez la vôtre. Cf.
+[`modele-et-droits.md`](modele-et-droits.md) §2.
 
 **Mon image est refusée à l'import.**
 Son format n'est pas dans les sept acceptés (étape 1). Deux contrôles se suivent, et l'un
