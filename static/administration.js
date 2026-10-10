@@ -779,7 +779,7 @@ function cgInstaller() {
    DEUX POUVOIRS, DEUX QUESTIONS, et aucune n'est posée par l'écran. RÉGLER qui entre dans un
    projet : le serveur le dit projet par projet (`gerable`, dans `GET /api/projets`) — son
    responsable, et l'administrateur qui passe outre. DÉCIDER quels projets existent — créer,
-   renommer, supprimer : la portée totale, que `GET /api/moi` publie (`acces.total`), donc
+   renommer, décrire et justifier, supprimer : la portée totale, que `GET /api/moi` publie (`acces.total`), donc
    l'administrateur et le mono-poste. L'écran lit ces deux réponses ; s'il se trompait, le
    serveur refuserait le geste en le nommant.
 
@@ -915,6 +915,29 @@ function pjCollections(p) {
       choisi en haut de la page.</p>`;
 }
 
+/* Un texte libre tel qu'on le COMPARE : sans ses blancs de bord, et avec les fins de ligne
+   d'une zone de saisie. Sans quoi un texte arrivé par l'API avec un retour chariot paraîtrait
+   modifié dès qu'on l'affiche, et partirait avec le premier enregistrement venu. */
+function pjTexte(v) {
+  return String(v == null ? "" : v).replace(/\r\n?/g, "\n").trim();
+}
+
+/* Les deux textes d'un projet, pour qui en DÉCIDE : sa description, et pourquoi il existe.
+   La justification n'a son champ que si le serveur l'a rendue — la clé absente ne se lit
+   pas « jamais écrite » (cf. `pjRendreFiche`), et un champ vide dessiné à sa place
+   proposerait d'effacer ce qu'on n'a pas lu. */
+function pjChampsDecrire(p) {
+  return `<div class="pj-decrire">
+      <label for="pj-decrire-description">Description</label>
+      <textarea id="pj-decrire-description" rows="2">${esc(pjTexte(p.description))}</textarea>
+      ${"justification" in p ? `<label for="pj-decrire-justification">Pourquoi ce projet
+        existe <span class="muted small">— sa justification, scientifique d'abord. Elle se lit
+        dans cette fiche, par ses responsables et les administrateurs.</span></label>
+      <textarea id="pj-decrire-justification" rows="3">${esc(pjTexte(p.justification))}</textarea>` : ""}
+      <div><button type="button" class="ghost small" data-pj-decrire="1">Enregistrer</button></div>
+    </div>`;
+}
+
 /* Ce que DÉCIDER permet, ou la phrase qui dit à qui le demander. Le projet de repli se
    renomme et ne se supprime pas : le serveur le refuserait, et le dirait — autant ne pas
    offrir un bouton dont on connaît la réponse. */
@@ -928,6 +951,7 @@ function pjDecider(p) {
       <input id="pj-renommer-nom" autocomplete="off" value="${esc(p.nom)}">
       <button type="button" class="ghost small" data-pj-renommer="1">Renommer</button>
     </div>
+    ${pjChampsDecrire(p)}
     ${p.repli
       ? `<p class="col-note">C'est le projet de repli : une collection créée sans nommer de
           projet y est rangée. Il se renomme, il ne se supprime pas.</p>`
@@ -1023,6 +1047,40 @@ async function pjRenommer() {
   $("#pj-renommer-nom").focus();
 }
 
+/* Enregistre la description et la justification — CE QUI A CHANGÉ, et rien d'autre : un
+   champ qu'on n'a pas touché ne part pas, pour qu'un texte corrigé entre-temps par quelqu'un
+   d'autre ne soit pas réécrit par-dessus avec ce que cette page avait lu. Un champ vidé part
+   à `null` : le projet n'a plus ce texte, et la fiche le dit.
+
+   La fiche est redessinée — le nouveau texte se lit là où on le lisait —, donc le bouton sur
+   lequel on a cliqué n'existe plus : le focus revient sur celui qui le remplace, au lieu de
+   retomber en haut de la page. */
+async function pjDecrire() {
+  const p = pjProjet(), ligne = $("#pj-fiche-msg");
+  if (!p) return;
+  const champs = [["description", "#pj-decrire-description", "Description"],
+                  ["justification", "#pj-decrire-justification", "Justification"]];
+  const corps = {}, dits = [];
+  for (const [cle, sel, libelle] of champs) {
+    const zone = $(sel);
+    if (!zone) continue;                       // la justification que le serveur n'a pas rendue
+    const texte = pjTexte(zone.value);
+    if (texte === pjTexte(p[cle])) continue;
+    corps[cle] = texte || null;
+    dits.push(libelle);
+  }
+  if (!dits.length) { pjMsg(ligne, "Rien n'a changé."); return; }
+  try { await apiSend("PATCH", `/api/projets/${p.id}`, corps); }
+  catch (e) { pjMsg(ligne, e.message || "Échec", true); return; }
+  if (!await pjLire()) return;
+  pjRendre();
+  pjMsg($("#pj-fiche-msg"), dits.length === 2
+    ? "Description et justification enregistrées."
+    : `${dits[0]} enregistrée.`);
+  const bouton = document.querySelector("#pj-fiche [data-pj-decrire]");
+  if (bouton) bouton.focus();
+}
+
 async function pjSupprimer() {
   const p = pjProjet(), ligne = $("#pj-fiche-msg");
   if (!p) return;
@@ -1056,6 +1114,7 @@ function pjDemarrer() {
       const courant = document.querySelector('#pj-objets .pj-objet[aria-current="true"]');
       if (courant) courant.focus();
     } else if (b.dataset.pjRenommer) pjRenommer();
+    else if (b.dataset.pjDecrire) pjDecrire();
     else if (b.dataset.pjSupprimer) pjSupprimer();
   });
   $("#pj").addEventListener("keydown", (ev) => {

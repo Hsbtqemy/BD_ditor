@@ -107,6 +107,45 @@ def test_decider_des_projets_se_lit_bien_dans_acces_total(client, deux_projets, 
         f"{qui} : acces.total={total}, renommer → {r.status_code} {r.text}")
 
 
+@pytest.mark.parametrize("qui, entetes", [("administrateur", ADMIN), ("responsable", ALICE),
+                                          ("simple membre", BOB)])
+@pytest.mark.parametrize("champ", ["description", "justification"])
+def test_decrire_un_projet_se_lit_aussi_dans_acces_total(client, deux_projets, qui, entetes,
+                                                         champ):
+    """La fiche d'un projet offre les deux champs « Description » et « Pourquoi ce projet
+    existe » à qui `GET /api/moi` dit `acces.total` — et à lui seul : le responsable, qui
+    règle qui entre, n'en reçoit aucun. Le serveur doit répondre de même, champ par champ ;
+    et un refus ne change rien à ce qui était écrit."""
+    r = client.patch(f"/api/projets/{deux_projets}", headers=ADMIN,
+                     json={"description": "avant", "justification": "avant"})
+    assert r.status_code == 200, r.text
+    total = client.get("/api/moi", headers=entetes).json()["acces"]["total"]
+    r = client.patch(f"/api/projets/{deux_projets}", json={champ: "après"}, headers=entetes)
+    assert (r.status_code == 200) == total, (
+        f"{qui} : acces.total={total}, changer {champ} → {r.status_code} {r.text}")
+    lu = next(p for p in client.get("/api/projets", headers=ADMIN).json()
+              if p["id"] == deux_projets)
+    autre = "justification" if champ == "description" else "description"
+    assert lu[champ] == ("après" if total else "avant"), (qui, champ, lu)
+    assert lu[autre] == "avant", f"{qui} : changer {champ} a touché {autre} ({lu[autre]!r})"
+
+
+def test_un_champ_vide_part_a_null_et_le_serveur_l_efface(client):
+    """L'écran envoie `null` pour un champ qu'on a vidé. Le serveur doit l'entendre comme
+    « plus de texte », pas comme « champ omis » : sans quoi vider la justification à l'écran
+    dirait « enregistrée » et la laisserait en place."""
+    r = client.post("/api/projets", json={"nom": "Second", "description": "une description",
+                                          "justification": "une raison"})
+    assert r.status_code == 201, r.text
+    pid = r.json()["id"]
+    r = client.patch(f"/api/projets/{pid}", json={"justification": None})
+    assert r.status_code == 200, r.text
+    assert (r.json()["justification"], r.json()["description"]) == (None, "une description")
+    r = client.patch(f"/api/projets/{pid}", json={"description": None})
+    assert r.status_code == 200, r.text
+    assert (r.json()["justification"], r.json()["description"]) == (None, None)
+
+
 def test_en_mono_poste_on_decide_des_projets_et_l_ecran_le_lit(client):
     """Sans proxy : une portée totale, donc les trois gestes — et `acces.total` le dit."""
     assert client.get("/api/moi").json()["acces"]["total"] is True

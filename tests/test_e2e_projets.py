@@ -18,6 +18,7 @@ La préférence de police se règle par CDP, donc sous Chromium seulement : sous
 navigateur, les tests qui la font varier jouent celle avec laquelle il a été lancé (cf.
 `_polices`), et c'est à qui le lance de la faire varier.
 """
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -489,6 +490,374 @@ def test_un_decompte_qui_bouge_ne_redessine_pas_la_liste_du_projet(page, deux_pr
     assert champ.get_attribute("data-temoin") == "1", "la collection dépliée a été redessinée"
 
 
+# ── La Bibliothèque : les deux listes d'un album suivent le projet ─────────────────────
+#
+# « Collection », quand on CRÉE un album : les collections du projet COURANT. « + Ranger
+# ici », dans la fiche d'un album : celles du projet où l'ALBUM vit — qui peut ne pas être le
+# courant, la liste des albums n'étant pas bornée par le projet. Aucune des deux n'est une
+# garde : le serveur refuse lui-même un rangement qui traverse deux projets.
+
+NOTE_FILTRE = ("Seules les collections du projet « {} » sont proposées : pour créer l'album "
+               "dans un autre projet, choisissez-le en haut de la page.")
+NOTE_AUCUNE_ICI = ("Vous n'écrivez dans aucune collection du projet « {} » : l'album ne peut "
+                   "pas y être créé. Créez-y d'abord une collection, ou choisissez un autre "
+                   "projet en haut de la page.")
+NOTE_REPLI = ("Aucune collection : l'album entrera dans une collection par défaut, créée à "
+              "cette occasion")
+LIGNE_PROJET_DE_L_ALBUM = ("Cet album vit dans le projet « {} » : seules les collections de ce "
+                           "projet sont proposées, un album ne se rangeant pas d'un projet à "
+                           "l'autre.")
+LIGNE_PLUSIEURS_PROJETS = (
+    "Cet album est rangé dans des collections de plusieurs projets ({}), ce qui ne devrait pas "
+    "arriver : il ne se range nulle part ailleurs tant que c'est le cas. Sortez-le d'abord, "
+    "par leur ✕, des collections qui ne sont pas de son projet.")
+
+
+def _album(base, titre, collection_id):
+    return _api(base, "POST", "/api/albums", {"titre": titre, "collection_id": collection_id})["id"]
+
+
+def _un_album(base):
+    albums = _api(base, "GET", "/api/albums")
+    assert len(albums) == 1, albums
+    return albums[0]["id"]
+
+
+def _bibliotheque(page, base):
+    page.goto(base + "/corpus", wait_until="networkidle")
+    page.locator("#col-body details.col-item, #col-body .col-note").first.wait_for(timeout=5000)
+
+
+def _nouvel_album(page):
+    page.locator("#btn-new").click()
+    expect(page.locator("#album-modal")).to_be_visible()
+
+
+def _fiche_de_l_album(page, titre):
+    page.locator("#albums-body tr.album-row", has_text=titre).locator('[data-act="edit"]').click()
+    expect(page.locator("#m-appartenance")).to_be_visible()
+
+
+def _proposees(page, selecteur):
+    return page.locator(f"{selecteur} option").all_inner_texts()
+
+
+def _changer_de_projet(page, projet_id, nom):
+    page.locator("#projet-choix").select_option(str(projet_id))
+    expect(page.locator("#collections-projet")).to_have_text(f"Dans le projet « {nom} »")
+
+
+def test_un_nouvel_album_ne_se_voit_proposer_que_les_collections_du_projet_courant(
+        page, deux_projets):
+    """« Collection », dans « + Nouvel album » : celles du projet courant, parmi celles où
+    l'on écrit — et une ligne dit ce qui n'est pas proposé, et où en changer. Changer de
+    projet change la liste ; la requête PARTIE porte la collection du projet qu'on lit en
+    haut de la page."""
+    d = deux_projets
+    _bibliotheque(page, d["base"])
+    _nouvel_album(page)
+    expect(page.locator("#m-collection-wrap")).to_be_visible()
+    assert _proposees(page, "#m-collection") == ["— choisir —", "Corpus de départ", "Incubateur"]
+    expect(page.locator("#m-collection-note")).to_be_visible()
+    expect(page.locator("#m-collection-note")).to_have_text(
+        NOTE_FILTRE.format(database.NOM_PROJET_DEFAUT))
+    page.locator("#m-cancel").click()
+
+    _changer_de_projet(page, d["second"], "Séminaire 2026")
+    _nouvel_album(page)
+    assert _proposees(page, "#m-collection") == ["Étude des émotions"]
+    expect(page.locator("#m-collection")).to_have_value(str(d["b1"]))     # une seule : choisie
+    expect(page.locator("#m-collection-note")).to_be_visible()
+    expect(page.locator("#m-collection-note")).to_have_text(NOTE_FILTRE.format("Séminaire 2026"))
+    page.locator("#m-titre").fill("Né au séminaire")
+    with page.expect_request(lambda r: r.method == "POST"
+                             and r.url.endswith("/api/albums")) as partie:
+        page.locator("#m-save").click()
+    assert partie.value.post_data_json["collection_id"] == d["b1"]
+    expect(page.locator("#album-modal")).to_be_hidden()
+    assert [c["id"] for c in _api(d["base"], "GET", f"/api/albums/{_un_album(d['base'])}"
+                                  "/collections")] == [d["b1"]]
+
+
+def test_la_liste_d_un_nouvel_album_suit_un_changement_de_projet(page, deux_projets):
+    """La modale « Nouvel album » est ouverte, et le projet courant change — un autre onglet
+    vient d'en choisir un : sa liste est celle du nouveau, pas celle d'un projet qu'on ne
+    lit plus en haut de la page."""
+    d = deux_projets
+    _bibliotheque(page, d["base"])
+    _nouvel_album(page)
+    assert _proposees(page, "#m-collection") == ["— choisir —", "Corpus de départ", "Incubateur"]
+    page.evaluate("(id) => BDProjet.choisir(id)", d["second"])
+    expect(page.locator("#m-collection option")).to_have_text(["Étude des émotions"])
+    expect(page.locator("#m-collection-note")).to_have_text(NOTE_FILTRE.format("Séminaire 2026"))
+    expect(page.locator("#album-modal")).to_be_visible()
+
+
+def test_sans_collection_ou_ecrire_dans_le_projet_l_ecran_le_dit_et_rien_ne_part(
+        page, deux_projets):
+    """On écrit dans des collections, mais dans aucune du projet courant : pas de liste vide,
+    une phrase qui NOMME le projet et donne les deux sorties. Et « Enregistrer » ne part pas :
+    sans collection, le serveur rangerait l'album dans la collection de repli — dans un autre
+    projet que celui qu'on lit en haut de la page."""
+    d = deux_projets
+    _bibliotheque(page, d["base"])
+    _changer_de_projet(page, d["vide"], "Projet sans rien")
+    parties = []
+    page.on("request", lambda r: parties.append(r.url) if r.method == "POST" else None)
+    _nouvel_album(page)
+    expect(page.locator("#m-collection-wrap")).to_be_hidden()
+    assert _proposees(page, "#m-collection") == []
+    expect(page.locator("#m-collection-note")).to_be_visible()
+    expect(page.locator("#m-collection-note")).to_have_text(
+        NOTE_AUCUNE_ICI.format("Projet sans rien"))
+
+    page.locator("#m-titre").fill("Sans collection où entrer")
+    page.locator("#m-save").click()
+    expect(page.locator("#m-msg")).to_have_text(
+        "Aucune collection ne peut accueillir cet album dans le projet « Projet sans rien ».")
+    expect(page.locator("#album-modal")).to_be_visible()
+    page.wait_for_timeout(300)                     # le temps qu'une requête fautive parte
+    assert not parties, f"une requête est partie sans collection : {parties}"
+    assert _api(d["base"], "GET", "/api/albums") == []
+
+    # Revenu dans un projet où l'on écrit, le même formulaire enregistre : l'arrêt ne colle pas.
+    page.locator("#m-cancel").click()
+    _changer_de_projet(page, d["second"], "Séminaire 2026")
+    _nouvel_album(page)
+    page.locator("#m-titre").fill("Né au séminaire")
+    with page.expect_response(lambda r: r.request.method == "POST"
+                              and r.url.endswith("/api/albums")) as reponse:
+        page.locator("#m-save").click()
+    assert reponse.value.status == 201
+
+
+def test_la_collection_de_repli_dit_dans_quel_projet_elle_naitra(page, live_server):
+    """Aucune collection nulle part, et l'on écrit partout : l'album entrera dans la
+    collection par défaut, qui naît dans le projet de REPLI. Quand c'est celui où l'on
+    travaille, la note est celle d'avant ; sinon elle le nomme — l'album ne sera pas là où
+    l'on regarde. Et c'est bien là que le serveur le range."""
+    repli = _repli(live_server)
+    second = _projet(live_server, "Séminaire 2026")
+    _bibliotheque(page, live_server)
+    _nouvel_album(page)
+    expect(page.locator("#m-collection-note")).to_be_visible()
+    expect(page.locator("#m-collection-note")).to_have_text(NOTE_REPLI + ".")
+    page.locator("#m-cancel").click()
+
+    page.locator("#projet-choix").select_option(str(second))
+    expect(page.locator("#projet-choix")).to_have_value(str(second))
+    _nouvel_album(page)
+    expect(page.locator("#m-collection-note")).to_be_visible()
+    expect(page.locator("#m-collection-note")).to_have_text(
+        NOTE_REPLI + f", dans le projet « {database.NOM_PROJET_DEFAUT} ».")
+    page.locator("#m-titre").fill("Premier album")
+    with page.expect_request(lambda r: r.method == "POST"
+                             and r.url.endswith("/api/albums")) as partie:
+        page.locator("#m-save").click()
+    assert "collection_id" not in partie.value.post_data_json
+    expect(page.locator("#album-modal")).to_be_hidden()
+    assert [(c["nom"], c["projet_id"]) for c in _api(live_server, "GET", "/api/collections")] == [
+        (database.NOM_COLLECTION_DEFAUT, repli)]
+
+
+def test_ranger_ici_ne_propose_que_les_collections_du_projet_de_l_album(page, deux_projets):
+    """« + Ranger ici » suit le projet de l'ALBUM, pas le projet courant. Un album du
+    séminaire ouvert depuis le projet de repli ne se voit proposer que les collections du
+    séminaire ; un album du repli ouvert depuis le séminaire, que celles du repli. Une ligne
+    dit ce qui n'est pas proposé, et la requête partie range dans le projet de l'album."""
+    d = deux_projets
+    b2 = _collection(d["base"], "Atelier lettrage", d["second"])
+    seminaire = _album(d["base"], "Album du séminaire", d["b1"])
+    _album(d["base"], "Album du repli", d["a1"])
+    _bibliotheque(page, d["base"])
+    expect(page.locator("#projet-choix")).to_have_value(str(d["repli"]))  # le courant : le repli
+    _nouvel_album(page)                            # la note de la création est écrite…
+    expect(page.locator("#m-collection-note")).to_be_visible()
+    page.locator("#m-cancel").click()
+
+    _fiche_de_l_album(page, "Album du séminaire")
+    # … et ne suit pas dans la fiche d'un album : la liste qu'elle décrit n'y est pas.
+    expect(page.locator("#m-collection-note")).to_be_hidden()
+    assert page.locator("#m-collection-note").text_content() == ""
+    assert _proposees(page, "#m-appartenance-cible") == ["Atelier lettrage"]
+    ligne = page.locator("#m-appartenance-projet")
+    expect(ligne).to_be_visible()
+    expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format("Séminaire 2026"))
+    with page.expect_response(lambda r: r.request.method == "PUT") as reponse:
+        page.locator("#m-appartenance-add").click()
+    assert reponse.value.url.endswith(f"/api/albums/{seminaire}/collections/{b2}")
+    assert reponse.value.status == 201
+    expect(page.locator("#m-appartenance-liste li")).to_have_count(2)
+    # Plus rien à proposer dans son projet : la liste est vide, et la ligne dit toujours pourquoi.
+    expect(page.locator("#m-appartenance-cible")).to_be_disabled()
+    expect(page.locator("#m-appartenance-add")).to_be_disabled()
+    expect(ligne).to_be_visible()
+    expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format("Séminaire 2026"))
+    page.locator("#m-cancel").click()
+
+    # Dans l'autre sens : le projet courant est le séminaire, l'album vit dans le repli.
+    _changer_de_projet(page, d["second"], "Séminaire 2026")
+    _fiche_de_l_album(page, "Album du repli")
+    assert _proposees(page, "#m-appartenance-cible") == ["Incubateur"]
+    expect(ligne).to_be_visible()
+    expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format(database.NOM_PROJET_DEFAUT))
+    assert "alerte" not in (ligne.get_attribute("class") or "")
+
+
+def test_ce_qu_on_disait_d_un_album_ne_suit_pas_dans_la_fiche_du_suivant(page, deux_projets):
+    """La ligne qui nomme le projet d'un album est à demeure dans SA fiche. Si la fiche du
+    suivant ne peut pas lire ses collections, elle le dit — et ne garde pas, sous une liste
+    vide, la phrase écrite pour un autre album."""
+    d = deux_projets
+    _album(d["base"], "Album du séminaire", d["b1"])
+    _album(d["base"], "Album illisible", d["a1"])
+    _bibliotheque(page, d["base"])
+    _fiche_de_l_album(page, "Album du séminaire")
+    ligne = page.locator("#m-appartenance-projet")
+    expect(ligne).to_be_visible()
+    page.locator("#m-cancel").click()
+
+    page.route("**/api/albums/*/collections", lambda route: route.fulfill(
+        status=500, content_type="application/json", body='{"detail": "panne jouée"}'))
+    _fiche_de_l_album(page, "Album illisible")
+    expect(page.locator("#m-appartenance-msg.erreur")).to_have_text("panne jouée")
+    expect(ligne).to_be_hidden()
+    assert ligne.text_content() == ""
+
+
+def test_les_listes_d_un_album_n_attendent_pas_le_bloc_des_collections(page, deux_projets):
+    """Le projet courant est lu par le bloc des collections, qui se dessine tard — après
+    l'état ShareDocs. Une modale ouverte AVANT lui ne doit pas trouver « aucun projet » et
+    en conclure qu'il n'y a rien à filtrer : chacune des deux listes lit le projet elle-même.
+    La réponse qui fait attendre le bloc est RETENUE, sans quoi le test dépendrait d'une
+    course."""
+    d = deux_projets
+    _collection(d["base"], "Atelier lettrage", d["second"])
+    _album(d["base"], "Album du séminaire", d["b1"])
+    tenues = []
+    page.route("**/api/sharedocs/etat", lambda route: tenues.append(route))
+    page.goto(d["base"] + "/corpus", wait_until="domcontentloaded")
+    page.locator("#projet-choix").wait_for(timeout=5000)           # la liste des projets est lue
+    page.locator("#albums-body tr.album-row").first.wait_for(timeout=5000)
+    assert tenues, "l'état ShareDocs n'a pas été retenu : le test ne mesure rien"
+    assert page.locator("#col-body details.col-item").count() == 0, (
+        "le bloc des collections est déjà dessiné")
+    expect(page.locator("#collections-projet")).to_be_hidden()     # le bloc n'a rien lu encore
+
+    _nouvel_album(page)
+    assert _proposees(page, "#m-collection") == ["— choisir —", "Corpus de départ", "Incubateur"]
+    page.locator("#m-cancel").click()
+    assert page.locator("#col-body details.col-item").count() == 0
+    for route in tenues:
+        route.continue_()
+    page.locator("#col-body details.col-item").first.wait_for(timeout=5000)
+
+
+def test_ranger_ici_n_attend_pas_le_bloc_des_collections(page, deux_projets):
+    """Le même défaut, pour « + Ranger ici » : la fiche d'un album ouverte avant que le bloc
+    des collections ait lu le projet ne propose pas pour autant les collections de tous."""
+    d = deux_projets
+    _collection(d["base"], "Atelier lettrage", d["second"])
+    _album(d["base"], "Album du séminaire", d["b1"])
+    tenues = []
+    page.route("**/api/sharedocs/etat", lambda route: tenues.append(route))
+    page.goto(d["base"] + "/corpus", wait_until="domcontentloaded")
+    page.locator("#projet-choix").wait_for(timeout=5000)
+    page.locator("#albums-body tr.album-row").first.wait_for(timeout=5000)
+    assert tenues, "l'état ShareDocs n'a pas été retenu : le test ne mesure rien"
+    expect(page.locator("#collections-projet")).to_be_hidden()
+
+    _fiche_de_l_album(page, "Album du séminaire")
+    assert _proposees(page, "#m-appartenance-cible") == ["Atelier lettrage"]
+    expect(page.locator("#m-appartenance-projet")).to_be_visible()
+    for route in tenues:
+        route.continue_()
+
+
+def test_avec_un_seul_projet_la_fiche_d_un_album_est_celle_d_avant(page, live_server):
+    """Un seul projet : rien n'est écarté, donc rien n'est dit. Ni la modale « Nouvel album »
+    ni la fiche d'un album ne gagnent une ligne à qui n'a rien à en apprendre."""
+    a1 = _collection(live_server, "Corpus de départ")
+    _collection(live_server, "Incubateur")
+    _album(live_server, "Seul album", a1)
+    _bibliotheque(page, live_server)
+    _nouvel_album(page)
+    assert _proposees(page, "#m-collection") == ["— choisir —", "Corpus de départ", "Incubateur"]
+    expect(page.locator("#m-collection-note")).to_be_hidden()
+    assert page.locator("#m-collection-note").text_content() == ""
+    page.locator("#m-cancel").click()
+    _fiche_de_l_album(page, "Seul album")
+    assert _proposees(page, "#m-appartenance-cible") == ["Incubateur"]
+    expect(page.locator("#m-appartenance-projet")).to_be_hidden()
+    assert page.locator("#m-appartenance-projet").text_content() == ""
+
+
+def test_un_album_range_dans_deux_projets_se_dit_et_se_repare(page, deux_projets, tmp_path):
+    """Un état que l'application ne produit pas — la base est retouchée à la main : un album
+    rangé dans des collections de DEUX projets. Le serveur refuse alors tout rangement, où
+    que ce soit ; l'écran n'en propose aucun, et le DIT au lieu de montrer une liste vide —
+    en nommant les deux projets, et le geste qui en sort. Les ✕ restent : sorti des
+    collections d'un projet, l'album retrouve sa liste."""
+    d = deux_projets
+    b2 = _collection(d["base"], "Atelier lettrage", d["second"])
+    album = _album(d["base"], "Album à cheval", d["b1"])
+    base = sqlite3.connect(tmp_path / "live.sqlite", timeout=10)
+    with base:
+        base.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
+                     (d["a1"], album))
+    base.close()
+    # Ce que l'écran affirme du serveur, mesuré : aucune collection d'arrivée n'est acceptée.
+    with httpx.Client(base_url=d["base"], trust_env=False, timeout=30, headers=ECRITURE) as c:
+        for cible in (d["a2"], b2):
+            r = c.put(f"/api/albums/{album}/collections/{cible}")
+            assert r.status_code == 409 and "traverse pas les projets" in r.text, r.text
+
+    _bibliotheque(page, d["base"])
+    _fiche_de_l_album(page, "Album à cheval")
+    expect(page.locator("#m-appartenance-liste [data-sortir]")).to_have_count(2)
+    assert _proposees(page, "#m-appartenance-cible") == []
+    expect(page.locator("#m-appartenance-cible")).to_be_disabled()
+    expect(page.locator("#m-appartenance-add")).to_be_disabled()
+    ligne = page.locator("#m-appartenance-projet")
+    expect(ligne).to_be_visible()
+    expect(ligne).to_have_text(LIGNE_PLUSIEURS_PROJETS.format(
+        f"« {database.NOM_PROJET_DEFAUT} », « Séminaire 2026 »"))
+    assert "alerte" in ligne.get_attribute("class")
+
+    with page.expect_response(lambda r: r.request.method == "DELETE") as reponse:
+        page.locator(f'#m-appartenance-liste [data-sortir="{d["a1"]}"]').click()
+    assert reponse.value.status == 204
+    expect(page.locator("#m-appartenance-liste li")).to_have_count(1)
+    expect(page.locator("#m-appartenance-cible option")).to_have_text(["Atelier lettrage"])
+    expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format("Séminaire 2026"))
+    assert "alerte" not in (ligne.get_attribute("class") or "")
+
+
+def test_sans_liste_de_projets_les_deux_listes_d_un_album_restent_celles_d_avant(
+        page, deux_projets):
+    """`GET /api/projets` en panne : aucune des deux listes n'est filtrée, et aucune ligne ne
+    parle d'un projet qu'on ne sait pas nommer. « Nouvel album » propose toutes les
+    collections où l'on écrit, « + Ranger ici » toutes celles où l'album n'est pas — une
+    panne de cette route-là ne vide pas des listes qui ne lui doivent rien."""
+    d = deux_projets
+    _album(d["base"], "Album du séminaire", d["b1"])
+    erreurs = _exceptions(page)
+    page.route("**/api/projets", lambda route: route.fulfill(
+        status=500, content_type="application/json", body='{"detail": "panne jouée"}'))
+    _bibliotheque(page, d["base"])
+    assert page.evaluate("() => window.BDProjets") is None
+    _nouvel_album(page)
+    assert _proposees(page, "#m-collection") == [
+        "— choisir —", "Corpus de départ", "Incubateur", "Étude des émotions"]
+    expect(page.locator("#m-collection-note")).to_be_hidden()
+    page.locator("#m-cancel").click()
+
+    _fiche_de_l_album(page, "Album du séminaire")
+    assert _proposees(page, "#m-appartenance-cible") == ["Corpus de départ", "Incubateur"]
+    expect(page.locator("#m-appartenance-projet")).to_be_hidden()
+    assert not erreurs, erreurs
+
+
 # ── L'Administration : le bloc « Projets » ──────────────────────────────────────────────
 
 
@@ -758,6 +1127,120 @@ def test_un_responsable_regle_son_projet_et_lui_seul(page, seminaire):
         partie.locator(".mp-faire-entrer").click()
     assert reponse.value.status == 200
     assert _membres(d["base"], d["projet"])[("groupe", "etudiants-bd-2026")] == "membre"
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_un_administrateur_corrige_la_description_et_la_justification(page, seminaire):
+    """« Ce projet », pour qui décide des projets : deux champs à côté de « Renommer », la
+    description et pourquoi le projet existe. La requête PARTIE ne porte que ce qui a
+    changé — jamais le champ qu'on n'a pas touché, et jamais l'un sous le nom de l'autre — ;
+    un champ vidé part à `null`. La fiche montre le nouveau texte sans rechargement, sa
+    ligne le confirme, le focus reste sur le bouton, et rien ne part quand rien n'a changé."""
+    d = seminaire
+    _ouvrir_la_fiche(page, d)
+    description = page.locator("#pj-decrire-description")
+    justification = page.locator("#pj-decrire-justification")
+    bouton = page.locator("#pj-fiche [data-pj-decrire]")
+    message = page.locator("#pj-fiche-msg")
+    expect(page.locator('label[for="pj-decrire-description"]')).to_have_text("Description")
+    expect(page.locator('label[for="pj-decrire-justification"]')).to_contain_text(
+        "Pourquoi ce projet existe")
+    expect(bouton).to_have_text("Enregistrer")
+    expect(description).to_have_value("")
+    expect(justification).to_have_value("Comparer deux éditions.")
+    assert _fiche(page).locator(".pj-description").count() == 0
+    page.evaluate("() => { window.__temoin = 'même page'; }")
+    parties = []
+    page.on("request", lambda r: parties.append(r.post_data_json) if r.method == "PATCH" else None)
+
+    bouton.click()                                             # rien n'a été touché
+    expect(message).to_be_visible()
+    expect(message).to_have_text("Rien n'a changé.")
+    assert not parties, f"une requête est partie sans rien à changer : {parties}"
+
+    nouvelle = "Comparer le lettrage de deux éditions,\nplanche à planche."
+    justification.fill(nouvelle)
+    with page.expect_request(lambda r: r.method == "PATCH") as partie:
+        bouton.click()
+    assert partie.value.url.endswith(f"/api/projets/{d['projet']}")
+    assert partie.value.post_data_json == {"justification": nouvelle}
+    expect(message).to_be_visible()
+    expect(message).to_have_text("Justification enregistrée.")
+    assert "erreur" not in (message.get_attribute("class") or "")
+    expect(_fiche(page).locator(".pj-justification")).to_have_text(
+        "Comparer le lettrage de deux éditions, planche à planche.")
+    expect(justification).to_have_value(nouvelle)
+    expect(bouton).to_be_focused()
+    assert _fiche(page).locator(".pj-description").count() == 0
+
+    description.fill("  Le séminaire de l'hiver 2026.  ")         # les blancs de bord ne partent pas
+    with page.expect_request(lambda r: r.method == "PATCH") as partie:
+        bouton.click()
+    assert partie.value.post_data_json == {"description": "Le séminaire de l'hiver 2026."}
+    expect(message).to_have_text("Description enregistrée.")
+    expect(_fiche(page).locator(".pj-description")).to_have_text("Le séminaire de l'hiver 2026.")
+    expect(_fiche(page).locator(".pj-justification")).to_have_text(
+        "Comparer le lettrage de deux éditions, planche à planche.")
+    expect(bouton).to_be_focused()
+
+    description.fill("Autre description.")                     # les deux à la fois, dont un vidé
+    justification.fill("")
+    with page.expect_request(lambda r: r.method == "PATCH") as partie:
+        bouton.click()
+    assert partie.value.post_data_json == {"description": "Autre description.",
+                                           "justification": None}
+    expect(message).to_have_text("Description et justification enregistrées.")
+    expect(_fiche(page).locator(".pj-description")).to_have_text("Autre description.")
+    assert _fiche(page).locator(".pj-justification").count() == 0
+    expect(_fiche(page)).to_contain_text("Aucune justification n'a été saisie.")
+    expect(justification).to_have_value("")
+
+    assert page.evaluate("() => window.__temoin") == "même page", "la page a été rechargée"
+    assert len(parties) == 3, parties
+    lu = next(p for p in _api(d["base"], "GET", "/api/projets") if p["id"] == d["projet"])
+    assert (lu["nom"], lu["description"], lu["justification"]) == (
+        "Séminaire 2026", "Autre description.", None)
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_un_refus_d_enregistrer_se_lit_et_la_saisie_reste(page, seminaire):
+    """Le serveur refuse l'enregistrement : son message se lit dans la ligne de la fiche, en
+    erreur, et ce qu'on a tapé n'est pas perdu — la fiche n'est pas redessinée sur un échec."""
+    d = seminaire
+    _ouvrir_la_fiche(page, d)
+    page.route(f"**/api/projets/{d['projet']}", lambda route: route.fulfill(
+        status=403, content_type="application/json", body='{"detail": "refus joué"}')
+        if route.request.method == "PATCH" else route.continue_())
+    page.locator("#pj-decrire-justification").fill("Une saisie que le refus ne doit pas perdre.")
+    page.locator("#pj-fiche [data-pj-decrire]").click()
+    expect(page.locator("#pj-fiche-msg.erreur")).to_be_visible()
+    expect(page.locator("#pj-fiche-msg.erreur")).to_have_text("refus joué")
+    expect(page.locator("#pj-decrire-justification")).to_have_value(
+        "Une saisie que le refus ne doit pas perdre.")
+    expect(_fiche(page).locator(".pj-justification")).to_have_text("Comparer deux éditions.")
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_un_responsable_ne_recoit_aucun_champ_pour_decrire_son_projet(page, seminaire):
+    """Décrire un projet et dire pourquoi il existe se DÉCIDE : le responsable, qui règle qui
+    entre, lit la justification et n'obtient ni champ ni bouton dans « Ce projet » — la
+    phrase qui lui dit à qui s'adresser y est seule. Le serveur le refuserait de toute façon,
+    et c'est mesuré (`tests/test_projet_ecran.py`)."""
+    d = seminaire
+    _api(d["base"], "PATCH", f"/api/projets/{d['projet']}", {"description": "Une description."})
+    _membre(d["base"], d["projet"], "proprio", "responsable")
+    _ouvrir_la_fiche(page, d, PROPRIO)
+    # Le titre EXACT : « Pourquoi ce projet existe » contient lui aussi « ce projet ».
+    ce_projet = _fiche(page).locator("section.pj-section").filter(
+        has=page.locator('h4:text-is("Ce projet")'))
+    expect(ce_projet).to_have_count(1)
+    expect(ce_projet.locator(".pj-a-demander")).to_be_visible()
+    assert ce_projet.locator("input, textarea, select, button").count() == 0
+    assert page.locator(".pj-decrire, [data-pj-decrire], #pj-decrire-description, "
+                        "#pj-decrire-justification").count() == 0
+    # Il LIT les deux textes, là où la fiche les montre.
+    expect(_fiche(page).locator(".pj-description")).to_have_text("Une description.")
+    expect(_fiche(page).locator(".pj-justification")).to_have_text("Comparer deux éditions.")
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
@@ -1286,3 +1769,45 @@ def test_a11y_le_selecteur_et_le_bloc_peuple(page, seminaire, theme):
     page.evaluate(_AXE.read_text(encoding="utf-8"))
     violations = page.evaluate(_AXE_RUN)
     assert not violations, f"/corpus, deux projets [{theme}] :\n" + "\n".join(violations)
+
+
+@pytest.mark.skipif(not _AXE.exists(), reason="axe-core absent (cf. tests/js/vendor/README.md)")
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_les_listes_d_un_album_et_ce_qu_elles_disent(page, deux_projets, tmp_path, theme):
+    """axe sur la modale d'album dans les états que cette tranche lui donne, et qu'aucun autre
+    audit ne rend : la fiche d'un album rangé dans deux projets — sa ligne en ALERTE —, la
+    liste d'un nouvel album avec sa note, et le projet où l'on n'écrit nulle part. Aucune
+    violation sérieuse ou critique, dans les deux thèmes."""
+    d = deux_projets
+    album = _album(d["base"], "Album à cheval", d["b1"])
+    base = sqlite3.connect(tmp_path / "live.sqlite", timeout=10)
+    with base:
+        base.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
+                     (d["a1"], album))
+    base.close()
+    page.add_init_script(f"localStorage.setItem('bd-theme','{theme}')")
+    _bibliotheque(page, d["base"])
+    axe = _AXE.read_text(encoding="utf-8")
+    page.evaluate(axe)
+
+    def auditer(etat):
+        violations = page.evaluate(_AXE_RUN)
+        assert not violations, f"/corpus, {etat} [{theme}] :\n" + "\n".join(violations)
+
+    _fiche_de_l_album(page, "Album à cheval")
+    expect(page.locator("#m-appartenance-projet.alerte")).to_be_visible()
+    auditer("la fiche d'un album de deux projets")
+    page.locator("#m-cancel").click()
+
+    _nouvel_album(page)
+    expect(page.locator("#m-collection-note")).to_be_visible()
+    auditer("un nouvel album, liste bornée au projet")
+    page.locator("#m-cancel").click()
+
+    _changer_de_projet(page, d["vide"], "Projet sans rien")
+    _nouvel_album(page)
+    expect(page.locator("#m-collection-wrap")).to_be_hidden()
+    page.locator("#m-titre").fill("Sans collection")
+    page.locator("#m-save").click()
+    expect(page.locator("#m-msg")).to_contain_text("Aucune collection ne peut accueillir")
+    auditer("un nouvel album, aucune collection où écrire dans le projet")

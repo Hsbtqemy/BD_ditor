@@ -106,8 +106,10 @@
            CRÉATION (déplacer un album entre collections est un geste d'AUTH-3), et se
            remplace par une note quand il n'existe encore aucune collection. -->
       <label id="m-collection-wrap" hidden>Collection
-        <select id="m-collection"></select>
+        <select id="m-collection" aria-describedby="m-collection-note"></select>
       </label>
+      <!-- COL-3 : la note dit aussi ce que la liste ne propose pas — les collections des
+           autres projets que le courant —, d'où son lien avec le sélecteur. -->
       <p id="m-collection-note" class="muted small" hidden></p>
       <!-- AUTH-3 : à l'ÉDITION, l'appartenance devient N-N et se gère. Le champ ci-dessus
            reste réservé à la création (une collection à choisir), celui-ci montre TOUTES
@@ -116,9 +118,13 @@
         <p class="muted small" style="margin:.2rem 0 .1rem">Collections</p>
         <ul id="m-appartenance-liste" class="acces-liste"></ul>
         <div class="contrib-add">
-          <select id="m-appartenance-cible" aria-label="Collection où ranger l'album"></select>
+          <select id="m-appartenance-cible" aria-label="Collection où ranger l'album"
+                  aria-describedby="m-appartenance-projet"></select>
           <button id="m-appartenance-add" class="ghost small" type="button">+ Ranger ici</button>
         </div>
+        <!-- COL-3 : ce que la liste ci-dessus ne propose pas, et pourquoi — à demeure, hors
+             de la ligne des gestes qui suit, qui s'efface à chaque geste. -->
+        <p id="m-appartenance-projet" class="muted small" hidden></p>
         <p id="m-appartenance-msg" class="muted small" role="status" aria-live="polite"></p>
       </div>
       <div class="modal-grid">

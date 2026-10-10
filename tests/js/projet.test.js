@@ -22,7 +22,7 @@ test("le module se charge sans document, sans fenêtre, sans adresse et sans sto
 });
 
 const { CLE, EVENEMENT, LONGUEUR_NOM, ROLES, courant, lire, retenir, choisir, duProjet,
-        libelleRole } = require("../../static/lib/projet.js");
+        pourRanger, libelleRole } = require("../../static/lib/projet.js");
 
 const REPLI = { id: 1, nom: "Projet principal", repli: true };
 const SECOND = { id: 4, nom: "Séminaire 2026", repli: false };
@@ -111,6 +111,34 @@ test("sans projet courant, la liste est rendue ENTIÈRE et non vidée", () => {
   assert.deepEqual(duProjet(cols, undefined), cols);
   assert.deepEqual(duProjet(null, 1), []);
 });
+
+/* Où un album peut se ranger : dans SON projet, lu dans ses collections — jamais dans le
+   projet courant, que cette fonction ne reçoit même pas. Par table :
+   [les collections de l'album, les candidates, les projets où il vit, les proposées, les écartées]. */
+const A = { id: 10, projet_id: 1 }, B = { id: 11, projet_id: 1 }, C = { id: 12, projet_id: 4 },
+      D = { id: 13, projet_id: 4 }, E = { id: 14, projet_id: 7 };
+const RANGER = [
+  ["un album d'un projet : les candidates de ce projet", [A], [B, C, D], [1], [11], 2],
+  ["le même, vu depuis ses deux collections du même projet", [A, B], [C, E], [1], [], 2],
+  ["un album de l'autre projet", [C], [A, B, D, E], [4], [13], 3],
+  ["rien à écarter : toutes les candidates sont du projet", [A], [B], [1], [11], 0],
+  ["aucune candidate", [A], [], [1], [], 0],
+  ["un album de DEUX projets : aucune candidate, toutes écartées", [A, C], [B, D, E], [1, 4], [], 3],
+  ["un album de deux projets, sans candidate", [A, C], [], [1, 4], [], 0],
+  ["on ne lit aucune collection de l'album : rien n'est écarté", [], [B, C], [], [11, 12], 0],
+  ["des collections sans projet lisible ne désignent aucun projet",
+   [{ id: 20 }, { id: 21, projet_id: null }], [B, C], [], [11, 12], 0],
+  ["des listes illisibles", null, null, [], [], 0],
+];
+
+for (const [nom, siennes, candidates, projets, proposees, ecartees] of RANGER) {
+  test(`où ranger un album — ${nom}`, () => {
+    const r = pourRanger(siennes, candidates);
+    assert.deepEqual(r.projets, projets);
+    assert.deepEqual(r.collections.map((c) => c.id), proposees);
+    assert.equal(r.ecartees, ecartees);
+  });
+}
 
 test("les rôles se disent dans les mots de l'écran, et un rôle inconnu se lit tel quel", () => {
   assert.equal(libelleRole("membre"), "membre");

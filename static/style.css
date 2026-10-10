@@ -2264,6 +2264,10 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    pas (AUTH-12). L'ambre, assombri en thème clair pour le petit texte ; le MOT porte le
    sens. */
 .col-msg.alerte { color: var(--accent-amber); }
+/* COL-3 — ce que « + Ranger ici » ne propose pas : une ligne à demeure. En alerte quand
+   l'album vit dans plusieurs projets, un état qui ne devrait pas exister. */
+#m-appartenance-projet { margin: .2rem 0 0; }
+#m-appartenance-projet.alerte { color: var(--accent-amber); }
 
 /* ── Qui entre (AUTH-12, étape 3) — les accès d'une collection, dans sa fiche ─────────
    Déménagés de l'Administration, en tête de la collection dépliée. Un tableau au-dessus de
@@ -2536,7 +2540,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .pj-creer[hidden] { display: none; }
 .pj-creer-ligne, .pj-renommer { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .pj-creer label, .pj-renommer label { font-size: .92rem; color: var(--text-muted); }
-.pj-creer input, .pj-creer textarea, .pj-renommer input {
+.pj-creer input, .pj-creer textarea, .pj-renommer input, .pj-decrire textarea {
   background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
   border-radius: 5px; padding: .35rem .55rem; font-size: 1rem; font-family: inherit; }
 /* `min-width: 0` : un champ garde sinon sa largeur de vingt caractères, et à 320 px sous
@@ -2578,6 +2582,11 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
                   gap: .2rem 1rem; }
 .pj-collections a { color: var(--accent-blue); overflow-wrap: anywhere; }
 .pj-renommer { margin-bottom: .5rem; }
+/* La description et la justification, sous « Renommer » : deux zones de saisie empilées,
+   chacune sous son libellé, à la largeur du formulaire de création. */
+.pj-decrire { display: grid; gap: .35rem; max-width: 46rem; margin-bottom: .7rem; }
+.pj-decrire label { font-size: .92rem; color: var(--text-muted); }
+.pj-decrire textarea { width: 100%; min-width: 0; resize: vertical; }
 
 /* ── Qui y entre (COL-3) — les membres d'un projet, module monté dans sa fiche ────────
    Le frère de « Qui entre », plus haut, et les mêmes précautions : une liste déroulante

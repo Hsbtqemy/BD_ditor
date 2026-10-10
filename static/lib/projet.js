@@ -6,8 +6,10 @@
    CE QUE C'EST. Une collection appartient à un projet, et l'on peut en voir plusieurs. Le
    projet COURANT est celui dans lequel on travaille : il se lit dans la bande du haut de
    chaque page (`theme.js`), et dans cette tranche il borne la BIBLIOTHÈQUE seule — la liste
-   des collections, et le projet où « créer une collection » crée. L'Atelier, la Recherche et
-   l'Exploration affichent son nom et traversent encore les projets.
+   des collections, le projet où « créer une collection » crée, et les collections proposées
+   à un album qu'on crée. L'Atelier, la Recherche et l'Exploration affichent son nom et
+   traversent encore les projets. (Un album qu'on RANGE suit une autre règle : son projet à
+   lui, pas le courant — `pourRanger`.)
 
    OÙ IL VIT : dans le NAVIGATEUR (stockage local, clé `bd-projet`), jamais au serveur ni
    dans l'adresse. Le serveur ne s'en sert pour rien autoriser — il ne le connaît pas — ; ce
@@ -99,6 +101,32 @@
     return liste.filter((c) => c.projet_id === projetId);
   }
 
+  /* Où un ALBUM peut se ranger, parmi les collections candidates : celles du projet où il
+     VIT déjà. Ce projet se lit dans SES collections (`siennes`, celles qu'on lit de lui),
+     jamais dans le projet courant — la liste des albums n'est pas bornée par le projet, et
+     l'on peut ouvrir la fiche d'un album d'un autre. Le serveur refuse un rangement qui
+     traverse deux projets ; l'écran cesse de le proposer, et le serveur reste seul à trancher.
+
+     Rend `{ projets, collections, ecartees }` : les projets où l'album vit, ce qu'on peut
+     lui proposer, et combien de candidates on a écartées — pour que l'écran DISE ce qu'il ne
+     montre pas. Trois cas :
+       · un projet       → les candidates de ce projet ;
+       · aucun           → rien n'est su de l'album, rien n'est écarté ;
+       · plusieurs       → aucune candidate. L'état ne devrait pas exister (une base
+                           retouchée à la main), et dans cet état TOUT rangement est refusé :
+                           quelle que soit la collection d'arrivée, l'album vit déjà dans un
+                           autre projet que le sien. C'est à l'écran de le dire, avec le geste
+                           qui en sort — la liste vide n'explique rien. */
+  function pourRanger(siennes, candidates) {
+    const cibles = Array.isArray(candidates) ? candidates : [];
+    const projets = [...new Set((Array.isArray(siennes) ? siennes : [])
+      .map((c) => c.projet_id).filter((id) => id !== null && id !== undefined))];
+    if (!projets.length) return { projets, collections: cibles, ecartees: 0 };
+    const collections = projets.length === 1
+      ? cibles.filter((c) => c.projet_id === projets[0]) : [];
+    return { projets, collections, ecartees: cibles.length - collections.length };
+  }
+
   /* Le rôle, dans les mots de la maquette validée. Un rôle inconnu se lit tel quel plutôt
      que d'être maquillé en « membre ». */
   function libelleRole(role) {
@@ -108,5 +136,5 @@
   }
 
   return { CLE, EVENEMENT, LONGUEUR_NOM, ROLES, courant, lire, retenir, choisir, duProjet,
-           libelleRole };
+           pourRanger, libelleRole };
 });

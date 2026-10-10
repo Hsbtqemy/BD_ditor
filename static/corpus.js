@@ -262,25 +262,61 @@ function renderDetail() {
      · une seule            → présélectionnée (la question n'a qu'une réponse) ;
      · aucune               → pas de sélecteur, une note dit que l'API en créera une.
    À l'ÉDITION, le champ disparaît : déplacer un album d'une collection à l'autre est un
-   geste d'espace de travail, qui appartient à AUTH-3. */
+   geste d'espace de travail, qui appartient à AUTH-3.
+
+   COL-3 — LE PROJET COURANT BORNE CETTE LISTE, comme il borne celle des collections plus
+   bas : un album naît dans une collection du projet où l'on travaille. Deux choses en
+   découlent, que l'écran DIT au lieu de les laisser deviner.
+     · Ce que le filtre a écarté : dès qu'une collection où l'on écrit n'est pas proposée,
+       une ligne nomme le projet, et dit où en changer.
+     · Un projet où l'on n'écrit dans AUCUNE collection, alors qu'on écrit ailleurs : pas de
+       liste vide, une phrase — et l'enregistrement s'arrête là (`SANS_COLLECTION_ICI`).
+       Sans cet arrêt, la requête partirait sans collection et le serveur rangerait l'album
+       dans la collection de repli, c'est-à-dire dans un AUTRE projet que celui qu'on lit en
+       haut de la page.
+   Sans projet courant — la liste des projets n'a pas pu être lue —, rien n'est filtré :
+   l'écran d'avant. Et ce n'est toujours pas une garde : le serveur accepte une collection
+   de n'importe quel projet où l'on écrit, l'écran range ce qu'il propose. */
+let SANS_COLLECTION_ICI = "";     // pourquoi l'album ne peut pas naître ici, ou vide
+
 async function remplirCollections(edition) {
   const wrap = $("#m-collection-wrap"), sel = $("#m-collection"), note = $("#m-collection-note");
-  wrap.hidden = true; note.hidden = true; sel.innerHTML = "";
+  wrap.hidden = true; note.hidden = true; note.textContent = ""; sel.innerHTML = "";
+  SANS_COLLECTION_ICI = "";
   if (edition) return;
   let cols = [];
   try { cols = await apiGet("/api/collections"); } catch (e) { cols = []; }
   // AUTH-12 — seulement celles où l'on ÉCRIT : une collection qu'on ne fait que lire
   // menait à « Collection N introuvable » à l'enregistrement. Le serveur le dit
   // (`ecrivable`), comme `exportable` pour l'export.
-  cols = cols.filter((c) => c.ecrivable);
+  const ecrites = cols.filter((c) => c.ecrivable);
+  // Le projet est lu ICI aussi : la modale peut s'ouvrir avant que le bloc des collections
+  // ait fini de se dessiner, et un filtre absent par simple hâte ne se verrait pas.
+  await lireProjetCourant();
+  cols = BDProjet.duProjet(ecrites, PROJET);
+  const projet = colNomProjet();
+  if (!cols.length && ecrites.length) {
+    SANS_COLLECTION_ICI = `Aucune collection ne peut accueillir cet album dans le projet `
+      + `« ${projet} ».`;
+    note.textContent = `Vous n'écrivez dans aucune collection du projet « ${projet} » : `
+      + "l'album ne peut pas y être créé. Créez-y d'abord une collection, ou choisissez un "
+      + "autre projet en haut de la page.";
+    note.hidden = false;
+    return;
+  }
   if (!cols.length) {
     // Sans collection où écrire, deux cas que la note ne doit pas confondre : qui écrit
     // PARTOUT (administrateur, mono-poste) verra naître la collection de repli ; les
     // autres seront refusés, et le savoir avant de remplir le formulaire vaut mieux.
     const moi = await Promise.resolve(window.BDMoi).catch(() => null);
+    // COL-3 — la collection de repli naît dans le projet de REPLI. Quand ce n'est pas celui
+    // où l'on travaille, la note le nomme : l'album ne sera pas là où l'on regarde.
+    const repli = PROJETS.find((p) => p.repli);
+    const ou = repli && PROJET !== null && repli.id !== PROJET
+      ? `, dans le projet « ${repli.nom} »` : "";
     note.textContent = moi && moi.acces && moi.acces.total
       ? "Aucune collection : l'album entrera dans une collection par défaut, créée à "
-        + "cette occasion."
+        + `cette occasion${ou}.`
       : "Vous n'écrivez dans aucune collection : l'album ne pourra pas être créé. "
         + "Demandez un accès en écriture au propriétaire d'une collection.";
     note.hidden = false;
@@ -290,6 +326,11 @@ async function remplirCollections(edition) {
   for (const c of cols) sel.appendChild(new Option(c.nom, String(c.id)));
   sel.value = cols.length === 1 ? String(cols[0].id) : "";
   wrap.hidden = false;
+  if (cols.length < ecrites.length) {
+    note.textContent = `Seules les collections du projet « ${projet} » sont proposées : pour `
+      + "créer l'album dans un autre projet, choisissez-le en haut de la page.";
+    note.hidden = false;
+  }
 }
 
 async function openModal(album) {
@@ -395,6 +436,12 @@ function closeModal() { $("#album-modal").hidden = true; }
 async function saveAlbum() {
   const titre = $("#m-titre").value.trim();
   if (!titre) { $("#m-msg").textContent = "Titre requis."; return; }
+  // COL-3 — aucune collection où écrire dans le projet courant : rien ne part. La note sous
+  // le titre dit quoi faire ; ici, pourquoi le bouton n'a rien enregistré.
+  if (!state.editingId && SANS_COLLECTION_ICI) {
+    $("#m-msg").textContent = SANS_COLLECTION_ICI;
+    return;
+  }
   // Le sélecteur n'est visible qu'à la création, et seulement s'il y a un choix à faire.
   const wrap = $("#m-collection-wrap");
   const collectionId = wrap.hidden ? null : ($("#m-collection").value || null);
@@ -721,6 +768,7 @@ async function loadAppartenance(albumId) {
         cible = $("#m-appartenance-cible");
   bloc.hidden = !albumId;
   appMsg("");            // le message d'un album ne suit pas dans la fiche du suivant
+  direProjetDeLAlbum({ projets: [], collections: [], ecartees: 0 });   // ni ce qu'on en disait
   if (!albumId) return;
   let siennes = [], toutes = [];
   try {
@@ -761,10 +809,48 @@ async function loadAppartenance(albumId) {
   });
   cible.innerHTML = "";
   // AUTH-12 — ranger exige d'écrire dans la collection cible : n'offrir que celles-là.
-  const restantes = toutes.filter((c) => !dedans.has(c.id) && c.ecrivable);
+  const candidates = toutes.filter((c) => !dedans.has(c.id) && c.ecrivable);
+  // COL-3 — et un rangement ne traverse pas les projets : n'offrir que celles du projet où
+  // l'ALBUM vit déjà, lu dans ses collections. Pas celles du projet courant, qui peut en
+  // être un autre — la liste des albums n'est pas bornée par le projet. La règle est dans
+  // `lib/projet.js` ; le projet est lu ici pour la même raison que dans `remplirCollections`.
+  await lireProjetCourant();
+  const tri = PROJET === null
+    ? { projets: [], collections: candidates, ecartees: 0 }     // sans projets lisibles : l'écran d'avant
+    : BDProjet.pourRanger(siennes, candidates);
+  const restantes = tri.collections;
   for (const c of restantes) cible.appendChild(new Option(c.nom, String(c.id)));
   cible.disabled = !restantes.length;
   $("#m-appartenance-add").disabled = !restantes.length;
+  direProjetDeLAlbum(tri);
+}
+
+/* Ce que « + Ranger ici » ne propose PAS, et pourquoi (COL-3). Une ligne à demeure sous la
+   liste, distincte de celle des gestes (`#m-appartenance-msg`), qui s'efface et se réécrit.
+   Rien tant que rien n'est écarté : avec un seul projet, la fiche est celle d'avant. */
+function direProjetDeLAlbum(tri) {
+  const ligne = $("#m-appartenance-projet");
+  const nommer = (id) => {
+    const p = PROJETS.find((x) => x.id === id);
+    return p ? `« ${p.nom} »` : "(un projet que vous ne pouvez pas nommer)";
+  };
+  ligne.classList.toggle("alerte", tri.projets.length > 1);
+  if (tri.projets.length > 1) {
+    // Une base retouchée à la main : l'album vit dans plusieurs projets, et le serveur
+    // refusera TOUT nouveau rangement tant que c'est le cas. Les ✕ ci-dessus restent : c'est
+    // par eux qu'on en sort.
+    ligne.textContent = `Cet album est rangé dans des collections de plusieurs projets `
+      + `(${tri.projets.map(nommer).join(", ")}), ce qui ne devrait pas arriver : il ne se `
+      + "range nulle part ailleurs tant que c'est le cas. Sortez-le d'abord, par leur ✕, "
+      + "des collections qui ne sont pas de son projet.";
+  } else if (tri.ecartees) {
+    ligne.textContent = `Cet album vit dans le projet ${nommer(tri.projets[0])} : seules les `
+      + "collections de ce projet sont proposées, un album ne se rangeant pas d'un projet à "
+      + "l'autre.";
+  } else {
+    ligne.textContent = "";
+  }
+  ligne.hidden = !ligne.textContent;
 }
 
 async function rangerAlbum() {
@@ -849,10 +935,12 @@ const COL_GROUPES = [
   ] },
 ];
 
-/* COL-3 — LE PROJET COURANT BORNE CE BLOC, et rien d'autre de la page : la liste des
-   collections, et le projet où « + Créer » crée. Les albums, leur fiche et le lot ne le
-   connaissent pas ; l'Atelier, la Recherche et l'Exploration non plus, qui en affichent
-   seulement le nom dans la bande du haut.
+/* COL-3 — LE PROJET COURANT BORNE CE BLOC — la liste des collections, et le projet où
+   « + Créer » crée — et, plus haut, les collections proposées à un album qu'on CRÉE
+   (`remplirCollections`). La liste des albums et le lot ne le connaissent pas, et la fiche
+   d'un album existant suit le projet de l'ALBUM, pas le courant (`loadAppartenance`) ;
+   l'Atelier, la Recherche et l'Exploration en affichent seulement le nom dans la bande du
+   haut.
 
    Il se lit comme la bande le lit — la règle est dans `lib/projet.js`, pour que les deux
    désignent le même projet —, sur la même liste (`window.BDProjets`, demandée une fois par
@@ -1648,6 +1736,10 @@ function setup() {
     PROJET = id;
     colTaireSauf(null);
     chargerCollections();
+    // Une modale « Nouvel album » restée ouverte propose les collections du projet d'AVANT
+    // (un autre onglet vient d'en changer) : sa liste suit. La fiche d'un album existant,
+    // non — ce qu'elle propose tient au projet de l'album, pas au courant.
+    if (!$("#album-modal").hidden && !state.editingId) remplirCollections(false);
   });
   // AUTH-1 — amorcé ici, et non à la seule ouverture des collections : `parQui()` a besoin
   // du login courant pour dire « par vous », et la table des planches se dessine bien avant
