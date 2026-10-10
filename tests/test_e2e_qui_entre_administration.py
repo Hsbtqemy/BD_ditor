@@ -19,7 +19,10 @@ ne verrait :
   focus ;
 - qu'un panneau quitté pendant un geste se tait, au lieu de faire taire la fiche qu'on lit ;
 - que le message d'un geste ne touche pas la fiche du projet, dans le bloc voisin ;
-- que les noms mènent aux fiches ICI, et restent du texte dans la Bibliothèque.
+- que les noms mènent aux fiches ICI, et restent du texte dans la Bibliothèque ;
+- que le tableau cède la place aux cartes dès que la FICHE ne le loge plus — une mesure, sans
+  largeur écrite nulle part —, sans rien perdre d'une saisie en cours, et que la
+  Bibliothèque garde, elle, son seul seuil de fenêtre.
 
 La console est écoutée : la régression de la première moitié (un geste en route pendant que
 l'hôte redessine) ne se voyait que là.
@@ -544,3 +547,272 @@ def test_l_adresse_de_la_bibliotheque_preselectionne_toujours_un_groupe(page, et
     expect(item.locator(".qe-nom")).to_have_value("cours-inconnu")
     expect(item.locator(".qe-genre")).to_have_value("groupe")
     assert envois == [], f"une écriture est partie sans geste : {envois}"
+
+
+# ── Le tableau cède la place aux cartes dès que la FICHE manque de place ───────────────
+#
+# Dans la Bibliothèque, le panneau dispose de la page, et un seuil de fenêtre (48em) suffit à
+# décider. Dans l'Administration, la fiche partage la largeur du bloc avec la liste : entre
+# 768 et 1 110 px de fenêtre, le tableau y restait, la moitié de ses colonnes hors champ
+# derrière un défilement de côté. L'Administration passe donc `ajusterALaPlace` au montage,
+# et le module MESURE — il n'y a nulle part de largeur écrite à tenir d'accord avec le
+# tableau. Les tests ne peuvent donc pas en écrire une non plus : ils mesurent, dans le même
+# navigateur, la largeur que le tableau demande, et jugent le rendu d'après elle.
+
+# Ce que le panneau montre et ce qui défile de côté, dans la fiche d'une collection.
+_RELEVE = """() => {
+  const sec = document.querySelector('#cg-fiche section[data-qui-entre]');
+  const box = sec.querySelector('.qe-tableau');
+  const cadre = sec.querySelector('.qe-cadre');
+  const fiche = document.querySelector('#cg-fiche');
+  const corps = document.querySelector('#admin-body');
+  const racine = document.documentElement;
+  return {
+    mode: sec.querySelector('.qe-table') ? 'tableau'
+        : sec.querySelector('.qe-carte') ? 'cartes' : 'rien',
+    lignes: sec.querySelectorAll('.qe-table tbody tr, .qe-carte').length,
+    place: box.clientWidth,
+    barre: fiche.offsetWidth - fiche.clientWidth,
+    fenetreEtroite: matchMedia(BDQuiEntre.SEUIL_ETROIT).matches,
+    defile: {
+      page: racine.scrollWidth > racine.clientWidth || corps.scrollWidth > corps.clientWidth,
+      fiche: fiche.scrollWidth > fiche.clientWidth,
+      cadre: !!cadre && cadre.scrollWidth > cadre.clientWidth,
+    },
+  };
+}"""
+
+# La largeur que le tableau DEMANDE : celle qu'il garde quand on lui en donne zéro. Mesurée
+# sur le tableau à l'écran, et rendue aussitôt — c'est l'instrument du test, pas une valeur
+# recopiée : une colonne de plus dans la description des droits, et elle suit.
+_BESOIN = """() => {
+  const t = document.querySelector('#cg-fiche section[data-qui-entre] .qe-table');
+  if (!t) return null;
+  const avant = t.style.width;
+  t.style.width = '0px';
+  const n = Math.ceil(t.getBoundingClientRect().width);
+  t.style.width = avant;
+  return n;
+}"""
+
+LARGEURS_DE_FICHE = (320, 600, 768, 900, 1024, 1110, 1200, 1280)
+# Les deux ancres que la décision nomme, pour le décor de ces tests (trois accès aux noms
+# courts) : à 1 024 px on lit des cartes, à 1 280 px le tableau. Les autres largeurs sont
+# jugées sur la mesure seule.
+ANCRES = {1024: "cartes", 1280: "tableau"}
+
+
+@pytest.fixture
+def trois_acces(etude):
+    """La collection de `etude`, avec trois accès : un groupe de l'annuaire, un compte, et un
+    groupe que l'annuaire ne connaît pas — des lignes, des cases et une marque à loger."""
+    for genre, nom, niveau in (("groupe", "annotateurs", "lecture"),
+                               ("utilisateur", "lectrice", "ecriture"),
+                               ("groupe", "ancien-cours", "lecture")):
+        _accorder(etude["base"], etude["id"], genre, nom, niveau)
+    return etude
+
+
+def _juger(releve, besoin, quoi):
+    """Les deux propriétés, à toute largeur : RIEN ne défile de côté, et les cartes ne
+    remplacent le tableau que s'il ne tiendrait vraiment pas — même en rendant à la fiche la
+    largeur de sa barre de défilement, que des cartes plus hautes ont pu faire naître."""
+    assert releve["lignes"] == 3, f"{quoi} : {releve['lignes']} accès à l'écran, pas trois"
+    assert not any(releve["defile"].values()), (
+        f"{quoi} : quelque chose défile de côté — {releve['defile']} (place {releve['place']} px, "
+        f"tableau {besoin} px)")
+    if releve["fenetreEtroite"]:
+        assert releve["mode"] == "cartes", f"{quoi} : sous le seuil de fenêtre, {releve['mode']}"
+    elif releve["mode"] == "cartes":
+        assert besoin > releve["place"] + releve["barre"], (
+            f"{quoi} : des cartes alors que le tableau tiendrait — il demande {besoin} px, la "
+            f"fiche en offre {releve['place']} (+ {releve['barre']} de barre)")
+    else:
+        assert releve["mode"] == "tableau", f"{quoi} : ni tableau ni cartes"
+
+
+@pytest.mark.parametrize("largeur", LARGEURS_DE_FICHE)
+def test_le_tableau_cede_la_place_aux_cartes_quand_la_fiche_ne_le_loge_plus(
+        page, trois_acces, largeur):
+    """À chaque largeur de fenêtre : tableau ou cartes, et aucun défilement de côté — ni de
+    la page, ni de la fiche, ni du cadre du tableau. Jugé sur la largeur que le tableau
+    demande, MESURÉE au large au début du test, et jamais sur un nombre écrit ici.
+
+    Les deux chemins sont joués : la fenêtre REDIMENSIONNÉE depuis le large (le panneau suit
+    sa section), puis la page RECHARGÉE à cette largeur (il se pose juste du premier coup).
+    Ils doivent rendre la même chose."""
+    base, cid = trois_acces["base"], trois_acces["id"]
+    exceptions, _ = _ecouter(page)
+    page.set_viewport_size({"width": 1600, "height": 900})
+    qui = _fiche(page, base, cid)
+    qui.locator(".qe-marque").first.wait_for(timeout=5000)
+    besoin = page.evaluate(_BESOIN)
+    large = page.evaluate(_RELEVE)
+    assert large["mode"] == "tableau" and besoin and besoin <= large["place"], (
+        f"prémisse : au large, le tableau tient ({besoin} px demandés, {large['place']} offerts)")
+
+    page.set_viewport_size({"width": largeur, "height": 900})
+    page.wait_for_timeout(300)
+    redimensionne = page.evaluate(_RELEVE)
+    _juger(redimensionne, besoin, f"fenêtre ramenée à {largeur} px")
+
+    page.reload(wait_until="networkidle")
+    qui.locator(".qe-marque").first.wait_for(timeout=5000)
+    page.wait_for_timeout(300)
+    recharge = page.evaluate(_RELEVE)
+    _juger(recharge, besoin, f"page rechargée à {largeur} px")
+    assert recharge["mode"] == redimensionne["mode"], (
+        f"à {largeur} px, {redimensionne['mode']} après redimensionnement et "
+        f"{recharge['mode']} après rechargement")
+
+    if largeur in ANCRES:
+        assert recharge["mode"] == ANCRES[largeur], (
+            f"à {largeur} px on attend {ANCRES[largeur]} : la fiche offre {recharge['place']} px "
+            f"à un tableau qui en demande {besoin}")
+    assert exceptions == [], exceptions
+
+
+def test_la_place_se_lit_sur_la_fiche_et_sur_le_tableau_jamais_sur_la_fenetre(
+        page, trois_acces):
+    """La fenêtre ne bouge pas, et le rendu change deux fois.
+
+    D'abord parce que la FICHE rétrécit : la liste voisine s'élargit, comme elle le ferait si
+    l'hôte changeait sa grille. Un seuil figé sur la fenêtre n'y verrait rien, et le tableau
+    déborderait. Puis parce que le TABLEAU s'élargit : un accès au nom long s'y ajoute. Une
+    largeur recopiée à la main — celle du tableau d'aujourd'hui — n'y verrait rien non plus."""
+    base, cid = trois_acces["base"], trois_acces["id"]
+    page.set_viewport_size({"width": 1280, "height": 900})
+    qui = _fiche(page, base, cid)
+    qui.locator(".qe-marque").first.wait_for(timeout=5000)
+    besoin = page.evaluate(_BESOIN)
+    assert page.evaluate(_RELEVE)["mode"] == "tableau"
+
+    # 1. La fiche perd de la place, fenêtre inchangée.
+    page.evaluate("() => { document.querySelector('#cg').style.gridTemplateColumns ="
+                  " '40rem minmax(0, 1fr)'; }")
+    expect(qui.locator(".qe-carte")).to_have_count(3)
+    serre = page.evaluate(_RELEVE)
+    assert page.evaluate("() => innerWidth") == 1280
+    assert serre["place"] < besoin, "prémisse : la fiche est devenue plus étroite que le tableau"
+    _juger(serre, besoin, "fiche rétrécie à fenêtre égale")
+    # Elle la retrouve : le tableau revient.
+    page.evaluate("() => { document.querySelector('#cg').style.gridTemplateColumns = ''; }")
+    expect(qui.locator(".qe-table tbody tr")).to_have_count(3)
+    _juger(page.evaluate(_RELEVE), besoin, "fiche revenue à sa largeur")
+
+    # 2. Le tableau demande plus : un nom long, la même fenêtre, la même fiche.
+    _accorder(base, cid, "groupe", "seminaire-de-lecture-des-planches-du-fonds-ancien-2026",
+              "lecture")
+    page.reload(wait_until="networkidle")
+    lignes = qui.locator(":is(.qe-table tbody tr, .qe-carte)")
+    expect(lignes).to_have_count(4)
+    qui.locator(".qe-marque").first.wait_for(timeout=5000)
+    page.wait_for_timeout(300)
+    plus_large = page.evaluate(_RELEVE)
+    assert not any(plus_large["defile"].values()), plus_large
+    # Ce que ce tableau-là demande ne se mesure qu'en le posant : on le fait au large, la
+    # carte de la fiche libérée de sa mesure de lecture pour que le tableau y tienne.
+    page.set_viewport_size({"width": 2000, "height": 900})
+    page.evaluate("() => { document.querySelector('#cg-fiche .cg-carte').style.maxWidth ="
+                  " 'none'; }")
+    expect(qui.locator(".qe-table tbody tr")).to_have_count(4)
+    besoin_large = page.evaluate(_BESOIN)
+    assert besoin_large > besoin, (
+        f"prémisse : le nom long élargit le tableau ({besoin} → {besoin_large} px)")
+    attendu = "cartes" if besoin_large > plus_large["place"] + plus_large["barre"] else "tableau"
+    assert plus_large["mode"] == attendu, (
+        f"à 1 280 px, un tableau de {besoin_large} px dans {plus_large['place']} px : "
+        f"{plus_large['mode']}, on attend {attendu}")
+    assert attendu == "cartes", (
+        "prémisse : le nom choisi ne suffit plus à faire déborder le tableau à 1 280 px — "
+        "en choisir un plus long, sans quoi ce test ne mesure plus le second cas")
+
+
+def test_redimensionner_en_cours_de_saisie_ne_perd_ni_la_saisie_ni_le_focus(page, trois_acces):
+    """On tape un nom dans la ligne d'ajout, et la fenêtre change de largeur : le tableau
+    devient des cartes, puis redevient un tableau. La ligne d'ajout n'est PAS redessinée —
+    c'est le même champ, avec ce qu'on y a tapé et le focus qu'il portait —, et « + Faire
+    entrer » envoie bien ce nom-là.
+
+    Un focus posé dans le tableau, lui, perd son nœud au basculement : il retrouve la même
+    case dans l'autre rendu, pas la page. Et tant que le rendu qui convient ne change pas,
+    rien n'est redessiné du tout."""
+    base, cid = trois_acces["base"], trois_acces["id"]
+    exceptions, console = _ecouter(page)
+    page.set_viewport_size({"width": 1280, "height": 900})
+    qui = _fiche(page, base, cid)
+    qui.locator(".qe-marque").first.wait_for(timeout=5000)
+    expect(qui.locator(".qe-table tbody tr")).to_have_count(3)
+    parties = _ecritures(page)
+
+    qui.locator(".qe-choix").select_option("autre")
+    qui.locator(".qe-genre").select_option("groupe")
+    nom = qui.locator(".qe-nom")
+    nom.click()
+    page.keyboard.type("cours-en-sai")
+    nom.evaluate("el => { el.dataset.temoin = 'pose'; }")
+
+    def la_saisie_est_intacte(suite=""):
+        expect(nom).to_have_value("cours-en-sai" + suite)
+        expect(nom).to_be_focused()
+        expect(nom).to_have_attribute("data-temoin", "pose")
+        expect(qui.locator(".qe-genre")).to_have_value("groupe")
+        expect(qui.locator(".qe-choix")).to_have_value("autre")
+
+    page.set_viewport_size({"width": 1024, "height": 900})
+    expect(qui.locator(".qe-carte")).to_have_count(3)
+    expect(qui.locator(".qe-table")).to_have_count(0)
+    la_saisie_est_intacte()
+    page.keyboard.type("sie")                      # on continue de taper, sans recliquer
+    la_saisie_est_intacte("sie")
+
+    page.set_viewport_size({"width": 1280, "height": 900})
+    expect(qui.locator(".qe-table tbody tr")).to_have_count(3)
+    la_saisie_est_intacte("sie")
+
+    # Un focus DANS le tableau suit le contrôle d'un rendu à l'autre.
+    case = '.qe-case[data-cran="ecriture"][data-principal="annotateurs"]'
+    qui.locator(f".qe-table {case}").focus()
+    page.set_viewport_size({"width": 1024, "height": 900})
+    expect(qui.locator(f".qe-carte {case}")).to_be_focused()
+    # Cartes → cartes : rien n'est redessiné, c'est le même nœud.
+    qui.locator(f".qe-carte {case}").evaluate("el => { el.dataset.temoin = 'pose'; }")
+    page.set_viewport_size({"width": 900, "height": 900})
+    page.wait_for_timeout(300)
+    expect(qui.locator(f".qe-carte {case}")).to_have_attribute("data-temoin", "pose")
+    expect(qui.locator(f".qe-carte {case}")).to_be_focused()
+    page.set_viewport_size({"width": 1280, "height": 900})
+    expect(qui.locator(f".qe-table {case}")).to_be_focused()
+    assert parties == [], f"un redimensionnement a envoyé une écriture : {parties}"
+
+    # Ce qu'on a tapé est ce qui part.
+    with page.expect_request(lambda r: r.method == "PUT") as envoi:
+        qui.locator(".qe-faire-entrer").click()
+    corps = envoi.value.post_data_json
+    assert (corps["genre"], corps["principal"]) == ("groupe", "cours-en-saisie"), corps
+    assert exceptions == [] and console == [], (exceptions, console)
+
+
+def test_la_bibliotheque_garde_son_seuil_de_fenetre(page, trois_acces):
+    """Le témoin. Dans la Bibliothèque le panneau ne suit PAS sa place : à 768 px de fenêtre
+    il montre le tableau, qui défile dans son cadre comme il l'a toujours fait, et ne passe
+    en cartes que sous le seuil de fenêtre du module. Si l'option de l'Administration lui
+    était passée « pour faire pareil », ce tableau-là deviendrait des cartes — et l'écran du
+    propriétaire aurait changé sans que personne l'ait décidé."""
+    base, cid = trois_acces["base"], trois_acces["id"]
+    page.set_viewport_size({"width": 768, "height": 900})
+    page.goto(base + f"/corpus?collection={cid}", wait_until="networkidle")
+    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+    item.locator(".qe-marque").first.wait_for(timeout=5000)
+    assert not page.evaluate("() => matchMedia(BDQuiEntre.SEUIL_ETROIT).matches"), (
+        "prémisse : 768 px est au-dessus du seuil de fenêtre")
+    expect(item.locator(".qe-table tbody tr")).to_have_count(3)
+    cadre = item.locator(".qe-cadre")
+    assert cadre.evaluate("e => e.scrollWidth > e.clientWidth"), (
+        "prémisse : à 768 px le tableau de la Bibliothèque dépasse son cadre — sans quoi ce "
+        "test ne distinguerait pas un panneau qui suit sa place d'un panneau qui ne la suit pas")
+
+    page.set_viewport_size({"width": 767, "height": 900})
+    expect(item.locator(".qe-carte")).to_have_count(3)
+    page.set_viewport_size({"width": 768, "height": 900})
+    expect(item.locator(".qe-table tbody tr")).to_have_count(3)

@@ -36,6 +36,12 @@ HOTES = {
 # de compte, et un nom cliquable n'y mènerait nulle part.
 OUVRENT_UNE_FICHE = {"administration.js"}
 
+# Les hôtes qui logent le panneau dans une COLONNE plus étroite que leur page, et passent
+# donc `ajusterALaPlace` : le tableau y cède la place aux cartes dès qu'il ne tient plus dans
+# sa section. La Bibliothèque n'en est pas — le panneau y dispose de la page, et son rendu
+# est le témoin de l'extraction : même seuil de fenêtre, à toutes les largeurs.
+SUIVENT_LEUR_PLACE = {"administration.js"}
+
 # Ce qui appartient au module et à lui seul. Le balisage : toute classe ou tout identifiant
 # `qe-…` ; la classe `qe` nue dans un sélecteur (`.qe`, mais pas la propriété `x.qe`) ; et
 # `class="… qe …"`. Les routes : les deux lectures et les deux écritures d'un accès.
@@ -141,6 +147,42 @@ def test_le_module_ne_fait_un_lien_d_un_nom_que_sur_demande():
     code = _sans_commentaires(MODULE.read_text(encoding="utf-8"))
     assert code.count("options.surOuvrir") >= 2, (
         "le module ne lit plus `options.surOuvrir` : la déclaration des hôtes ne garde rien")
+
+
+@pytest.mark.parametrize("script", sorted(HOTES))
+def test_seul_un_hote_loge_a_l_etroit_fait_suivre_la_place_au_panneau(script):
+    """`ajusterALaPlace` change QUAND le panneau passe du tableau aux cartes.
+
+    Passée par la Bibliothèque « pour faire pareil », elle ferait basculer en cartes un
+    tableau qui y défile dans son cadre depuis toujours à 768 px — et le témoin ne serait
+    plus le témoin. Le navigateur le mesure, largeur par largeur
+    (`test_e2e_qui_entre_administration`) ; ici, c'est la déclaration qui est tenue.
+    """
+    code = _sans_commentaires((STATIC / script).read_text(encoding="utf-8"))
+    assert ("ajusterALaPlace" in code) == (script in SUIVENT_LEUR_PLACE), (
+        f"{script} : `ajusterALaPlace` "
+        f"{'manque' if script in SUIVENT_LEUR_PLACE else 'est passée'} au montage, à "
+        "l'inverse de ce que `SUIVENT_LEUR_PLACE` déclare")
+    assert SUIVENT_LEUR_PLACE <= set(HOTES), "un hôte qui suit sa place est d'abord un hôte"
+
+
+def test_le_module_ne_suit_la_place_que_sur_demande_et_n_ecrit_aucune_largeur():
+    """Le plancher de la garde ci-dessus, et la propriété qui fait la valeur de l'option.
+
+    Le module lit bien une option de ce nom — renommée, les hôtes la passeraient dans le
+    vide. Et il MESURE : il n'y a dans son code aucune largeur en pixels à tenir d'accord
+    avec le tableau, qui vieillirait le jour où une colonne s'y ajoute. Le seul seuil écrit
+    reste celui de la fenêtre (`SEUIL_ETROIT`, en `em`), que `tests/js/qui-entre.test.js`
+    tient à un seul endroit.
+    """
+    code = _sans_commentaires(MODULE.read_text(encoding="utf-8"))
+    assert "options.ajusterALaPlace" in code, (
+        "le module ne lit plus `options.ajusterALaPlace` : la déclaration des hôtes ne garde rien")
+    assert "scrollWidth" in code and "clientWidth" in code, (
+        "le module ne mesure plus le débordement du tableau dans son cadre")
+    en_dur = re.findall(r"\b\d{3,4}\s*px\b|(?:innerWidth|clientWidth|scrollWidth)\s*[<>]=?\s*\d{2,}",
+                        code)
+    assert not en_dur, f"une largeur est écrite en dur dans le module : {en_dur}"
 
 
 def test_tout_script_de_surface_qui_monte_le_module_est_un_hote_declare():

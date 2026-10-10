@@ -749,6 +749,12 @@ function cgMonterQuiEntre(box, c, groupe) {
     groupesAdmin: CG.groupesAdmin,
     preselection: groupe,
     niveauTitre: 4,                 // sous le <h3> de la fiche, comme ses autres sections
+    // La fiche partage la largeur du bloc avec la liste : le panneau n'y dispose pas de la
+    // page, et le seuil de FENÊTRE du module lui laissait un tableau à moitié hors champ
+    // entre 768 et 1 110 px. Il passe donc en cartes dès que le tableau ne tient plus dans
+    // SA section — une mesure que le module fait lui-même, sans qu'aucune largeur ne soit
+    // écrite ici.
+    ajusterALaPlace: true,
     surMessage: cgTaireSauf,
     surChangement: cgApresAcces,
     surOuvrir: cgOuvrirDepuisAcces,

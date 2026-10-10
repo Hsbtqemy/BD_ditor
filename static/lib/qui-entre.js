@@ -37,6 +37,10 @@
    `options.niveauTitre` le rang du titre « Qui entre » dans le plan de l'hôte (3 par défaut,
                          de 2 à 6) : le panneau EST une partie de la page qui le monte, et
                          son titre se range sous celui qui le précède là-bas.
+   `options.ajusterALaPlace` vrai quand l'hôte loge le panneau dans une colonne plus étroite
+                         que sa page : le tableau cède alors la place aux cartes dès qu'il
+                         ne TIENT plus dans sa section, et non plus seulement sous le seuil
+                         de fenêtre (qui vaut toujours). Sans elle, seul ce seuil décide.
 
    CE QUE LE MODULE NE FAIT PAS, et ce sont les cinq coutures mesurées le 2026-09-23.
    Il ne cherche rien dans la page : il travaille dans SA section. Il n'efface aucun message
@@ -336,7 +340,75 @@
     if (!etat.acces.length) {
       return `<p class="col-note">Aucun accès n'est accordé sur cette collection.</p>`;
     }
-    return m.etroit.matches ? cartes(m) : table(m);
+    return (m.etroit.matches || m.sansPlace) ? cartes(m) : table(m);
+  }
+
+  /* LA PLACE, ET NON LA FENÊTRE (option `ajusterALaPlace`). Le seuil de fenêtre suppose que
+     le panneau dispose de la page ; monté dans une colonne — la fiche d'une collection, dans
+     l'Administration, à côté d'une liste —, il lui restait 719 px à 1 024 px de fenêtre pour
+     un tableau qui en demandait 803, et la moitié des colonnes partait hors champ, derrière
+     un défilement de côté (mesuré le 2026-10-10).
+
+     AUCUNE LARGEUR N'EST ÉCRITE, et c'est le point : ni celle du tableau, ni celle de la
+     colonne. Un nombre recopié vieillirait le jour où un acte s'ajoute à la description des
+     droits, où un nom s'allonge, où l'hôte change sa grille. On POSE donc le tableau et on
+     regarde s'il déborde de son cadre ; s'il déborde, les cartes le remplacent dans la même
+     tâche, avant que rien ne soit peint. La largeur qu'il lui aurait fallu est retenue : tant
+     que la section ne la retrouve pas, rien n'est redessiné. */
+  function largeurManquante(box) {
+    const cadre = box.querySelector(".qe-cadre");
+    if (!cadre || cadre.scrollWidth <= cadre.clientWidth) return 0;
+    return box.clientWidth + (cadre.scrollWidth - cadre.clientWidth);
+  }
+
+  /* Pose le tableau — ou les cartes. Sans l'option, c'est l'affectation qu'il y avait là, et
+     rien d'autre : le montage qui ne demande rien rend ce qu'il rendait. */
+  function poserTableau(m) {
+    const box = m.sec.querySelector(".qe-tableau");
+    m.sansPlace = false;
+    box.innerHTML = tableauHtml(m);
+    if (!m.options.ajusterALaPlace) return;
+    const besoin = largeurManquante(box);
+    if (!besoin) return;
+    m.besoin = besoin;
+    m.sansPlace = true;
+    box.innerHTML = tableauHtml(m);
+  }
+
+  /* Le repère d'un contrôle du tableau, qui vaut aussi dans les cartes : les deux rendus
+     portent les mêmes cases, les mêmes ✕ et les mêmes noms, sous les mêmes attributs. */
+  function repereDe(el) {
+    if (!el.dataset || el.dataset.principal === undefined) return null;
+    const qui = sel(el.dataset);
+    if (el.matches(".qe-case[data-cran]")) {
+      return `.qe-case[data-cran="${CSS.escape(el.dataset.cran)}"]${qui}`;
+    }
+    if (el.matches(".qe-case[data-hors-rang]")) {
+      return `.qe-case[data-hors-rang="${CSS.escape(el.dataset.horsRang)}"]${qui}`;
+    }
+    if (el.matches(".qe-retirer")) return `.qe-retirer${qui}`;
+    if (el.matches(".qe-ouvrir")) return `.qe-ouvrir${qui}`;
+    return null;
+  }
+
+  /* La section a changé de taille : la fenêtre redimensionnée, la liste voisine qui apparaît
+     ou disparaît, une police qui grossit. Rien n'est touché tant que le rendu qui convient
+     est celui qu'on a — et quand il change, SEUL le tableau est redessiné. La ligne d'ajout
+     reste le même nœud : ce qu'on y tape et le focus qu'elle porte ne bougent pas. Un focus
+     posé DANS le tableau retrouve le même contrôle dans l'autre rendu, ou à défaut le titre
+     de la partie — jamais la page. */
+  function ajuster(m) {
+    if (!vivant(m) || m.etroit.matches) return;
+    const box = m.sec.querySelector(".qe-tableau");
+    if (!box) return;
+    if (m.sansPlace ? box.clientWidth < m.besoin : !largeurManquante(box)) return;
+    const actif = m.sec.ownerDocument.activeElement;
+    const dedans = !!(actif && box.contains(actif));
+    const repere = dedans ? repereDe(actif) : null;
+    poserTableau(m);
+    if (!dedans) return;
+    const suite = (repere && box.querySelector(repere)) || m.sec.querySelector(".qe-titre");
+    if (suite) suite.focus();
   }
 
   /* Ce que la ligne d'ajout contenait, relevé avant de la redessiner : l'annuaire arrive
@@ -455,7 +527,7 @@
     if (!vivant(m)) return;
     const sec = m.sec;
     const garde = releveAjout(sec);
-    sec.querySelector(".qe-tableau").innerHTML = tableauHtml(m);
+    poserTableau(m);
     sec.querySelector(".qe-ajout").innerHTML = ajoutHtml(m, garde);
     sec.querySelector(".qe-notes").innerHTML = notesHtml(m);
   }
@@ -710,6 +782,14 @@
     });
     m.auSeuil = () => { if (vivant(m)) rendre(m); else demonter(m); };
     m.etroit.addEventListener("change", m.auSeuil);
+    // La place se suit sur la SECTION, pas sur la fenêtre : c'est elle qui rétrécit quand
+    // l'hôte lui prend de la largeur, fenêtre inchangée. L'observateur rappelle avant que
+    // le navigateur ne peigne — on ne voit jamais le tableau déborder puis se reprendre.
+    const Observateur = sec.ownerDocument.defaultView.ResizeObserver;
+    if (m.options.ajusterALaPlace && Observateur) {
+      m.observateur = new Observateur(() => ajuster(m));
+      m.observateur.observe(sec);
+    }
   }
 
   /* Rend la cible telle qu'elle a été reçue : vidée, sans la classe ni les attributs posés
@@ -718,6 +798,7 @@
     if (!m.monte) return;
     m.monte = false;
     if (m.etroit && m.auSeuil) m.etroit.removeEventListener("change", m.auSeuil);
+    if (m.observateur) { m.observateur.disconnect(); m.observateur = null; }
     if (m.sfx != null) rendreSuffixe(m.sfx, m);
     if (m.sec) for (const [type, fn] of m.ecouteurs) m.sec.removeEventListener(type, fn);
     m.ecouteurs = [];
@@ -748,6 +829,7 @@
     if (precedent) demonter(precedent);
     const m = { cible, options: o, c, droits: null, monte: true, sec: null, sfx: null,
                 etroit: null, auSeuil: null, ecouteurs: [],
+                sansPlace: false, besoin: 0, observateur: null,
                 preselection: o.preselection || null,
                 etat: { acces: null, erreur: null, annuaire: null } };
     OCCUPANTS.set(cible, m);

@@ -2340,9 +2340,12 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    formulaire de la collection dans la Bibliothèque et ne sépareraient ici de rien. La
    colonne se BORNE à la largeur de la fiche : une section de fiche est une grille, dont la
    piste implicite prend la largeur de son contenu le plus large au lieu de le contraindre.
-   Mesuré par mutation le 2026-10-10 — sans cette règle, la fiche défile de côté à 768 px (le
-   tableau sort de son cadre) et c'est la PAGE qui défile à 320 px (la ligne d'ajout). Par
-   l'attribut que l'HÔTE pose sur sa section, pas par une classe du module. */
+   Mesuré par mutation le 2026-10-10 — sans cette règle, c'est la PAGE qui défile à 320 px
+   (la ligne d'ajout), et la fiche défile de côté dès que le tableau est plus large qu'elle.
+   Le module en DÉPEND depuis qu'il passe en cartes faute de place (`ajusterALaPlace`) : il
+   lit le débordement du tableau dans son cadre, et un cadre que la piste laisse grandir avec
+   son contenu ne déborde jamais — le tableau resterait, la fiche défilerait. Par l'attribut
+   que l'HÔTE pose sur sa section, pas par une classe du module. */
 .cg-section[data-qui-entre] { border-bottom: 0; padding: 0; margin-bottom: 0;
                               grid-template-columns: minmax(0, 1fr); }
 .cg-ailleurs { margin: .9rem 0 0; }

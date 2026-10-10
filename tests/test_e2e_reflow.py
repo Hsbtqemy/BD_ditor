@@ -537,9 +537,10 @@ def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, larg
 
     # UX-16 — le MÊME panneau, monté dans la fiche d'une collection de l'Administration. Il
     # y est plus à l'étroit qu'ailleurs : à 768 px la fiche partage la largeur avec la liste,
-    # et le tableau (qui ne devient des cartes que sous 48em de FENÊTRE) y dépasse de loin sa
-    # place. Il doit alors défiler dans SON cadre — une section de fiche est une grille, dont
-    # la piste prendrait sinon la largeur du tableau et emporterait la page.
+    # et le tableau y dépasserait de loin sa place. Le panneau y passe donc en cartes dès
+    # que le tableau ne tient plus dans la fiche, et il le SAIT en mesurant son débordement —
+    # ce qui suppose une section bornée : une section de fiche est une grille, dont la piste
+    # prendrait sinon la largeur du tableau, qui resterait et emporterait la fiche.
     page.goto(decor["base"] + f"/administration?axe=collections&collection={cid}",
               wait_until="networkidle")
     lignes = page.locator("#cg-fiche section[data-qui-entre] :is(.qe-table tbody tr, .qe-carte)")
@@ -550,11 +551,11 @@ def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, larg
     _exiger_pas_de_defilement(
         page, f"/administration, fiche d'une collection, à {largeur} px "
               f"(police par défaut {police} px)")
-    # Ni la FICHE : elle défile de haut en bas, jamais de côté — sans quoi le cadre du
-    # tableau ne servirait à rien, c'est elle qui porterait la barre.
+    # Ni la FICHE : elle défile de haut en bas, jamais de côté — sans quoi c'est elle qui
+    # porterait la barre que le panneau devait éviter.
     fiche = page.locator("#cg-fiche")
     assert fiche.evaluate("e => e.scrollWidth <= e.clientWidth + 1"), (
-        f"la fiche défile de côté à {largeur} px : le tableau n'est pas resté dans son cadre")
+        f"la fiche défile de côté à {largeur} px : le panneau n'a pas tenu dans sa section")
 
 
 # ── COL-2 : le formulaire d'une collection a déménagé dans la Bibliothèque ─────────────
