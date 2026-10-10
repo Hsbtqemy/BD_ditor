@@ -88,3 +88,8 @@ courte — défaut trouvé par Hugo en jouant cette passe, le 2026-09-23.
 - [x] Fenêtre agrandie, la fiche de `lectrice` : *Groupes* et *Collections* côte à côte, sur une même ligne ; la fiche d'une collection : *Qui entre* sur toute la largeur de la fiche
 - [x] Thème clair (🌙 → ☀) : « ⚠ À regarder », les pastilles « aucune connexion » (ambre) et « absent de l'annuaire » (rouge, s'il y en a) restent lisibles
 - [x] Dans le bloc, aucun texte ne dit « principal », « genre » ni « utilisateur » — en particulier sur les fiches que la doublure des tests ne produit pas : un compte de l'annuaire (pastille « compte de l'annuaire », et aucune partie *Départ*), un groupe portant « rôle de l'annuaire », et toute pastille « absent de l'annuaire ». Les trois fiches ordinaires sont mesurées par `tests/test_e2e_qui_entre.py`
+
+### Après `72f1f16` — la fiche d'une collection à l'étroit ; compte `admin-bd`, Administration, « 👥 Comptes et groupes », axe *Collections*, « Collection Test »
+
+- [ ] Fenêtre agrandie (1 280 px ou plus) : *Qui entre* est un TABLEAU, une ligne par accès. Réduire la fenêtre vers 1 000 px : il devient une CARTE par accès, avec les mêmes cases et le même ✕, et rien ne défile de côté — ni la page, ni la fiche
+- [ ] Fenêtre agrandie, « Faire entrer » → « Un compte, ou un groupe absent de la liste… », taper quelques lettres sans valider, puis réduire la fenêtre jusqu'à voir les cartes : ce qu'on a tapé est toujours là, le curseur aussi, et l'on peut continuer de taper
