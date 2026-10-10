@@ -55,6 +55,25 @@ def _commandes_sed():
             for ligne in bloc.group(1).splitlines() if ligne.strip().startswith("sed ")]
 
 
+def _configuration():
+    """Le texte de `configuration.yml` — ou un skip, DANS L'IMAGE seulement.
+
+    `deploy/` n'est pas copié dans l'image de test : `.dockerignore` l'exclut entier depuis
+    le 2026-09-05, parce que `users_database.yml` y porte un condensé de mot de passe. Les
+    deux tests qui lisent ce fichier y tombaient donc en `FileNotFoundError`, et personne ne
+    l'avait vu : ils datent du 2026-09-16, et la suite n'a pas tourné DANS l'image entre
+    cette date et le déploiement du 2026-10-10 — qu'ils ont refusé, sur le serveur, la suite
+    de l'image étant la garde de `deployer.sh`.
+
+    Le skip se décide sur le COMPOSE, pas sur le fichier lu : là où `deploy/` existe — le
+    poste de développement —, un `configuration.yml` manquant reste une ERREUR. Un skip qui
+    couvrirait aussi ce cas-là se lirait comme un succès (QA-6).
+    """
+    if not (RACINE / "deploy" / "docker-compose.yml").exists():
+        pytest.skip("deploy/ n'est pas copié dans l'image de test")
+    return CONF.read_text(encoding="utf-8")
+
+
 def _sed():
     trouve = shutil.which("sed")
     git = Path(r"C:\Program Files\Git\usr\bin\sed.exe")
@@ -87,7 +106,7 @@ def test_la_procedure_ne_vise_aucune_ligne_par_son_numero():
 
 
 def test_les_reperes_encadrent_exactement_les_deux_blocs():
-    lignes = CONF.read_text(encoding="utf-8").splitlines()
+    lignes = _configuration().splitlines()
     positions = []
     for repere in REPERES:
         occurrences = [i for i, l in enumerate(lignes) if l == repere]
@@ -107,12 +126,12 @@ def test_les_reperes_encadrent_exactement_les_deux_blocs():
 
 
 def test_la_procedure_bascule_le_backend_et_ne_touche_rien_d_autre(tmp_path):
+    avant = _configuration()
     sed = _sed()
     if sed is None:
-        pytest.skip("aucun `sed` sur ce poste : la procédure n'est rejouée que là où elle "
-                    "le serait vraiment, dans l'image et sur le serveur")
+        pytest.skip("aucun `sed` sur ce poste : la procédure n'est rejouée que là où `sed` "
+                    "ET `deploy/` existent — le poste de développement, pas l'image")
     copie = tmp_path / "configuration.yml"
-    avant = CONF.read_text(encoding="utf-8")
     copie.write_text(avant, encoding="utf-8", newline="\n")
 
     # `password_reset` vit dans la même section et ne bouge pas : on ne regarde que les deux
