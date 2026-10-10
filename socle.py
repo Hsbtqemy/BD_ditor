@@ -335,6 +335,31 @@ def _get_collection(conn, portee: autorisation.Portee, collection_id: int, *,
     return c
 
 
+_MOTIF_PROJET = "Seul un responsable de ce projet peut régler qui y entre."
+
+
+def _get_projet(conn, portee: autorisation.Portee, projet_id: int, *,
+                gerer: bool = False, motif: str = _MOTIF_PROJET) -> dict:
+    """Projet qu'on peut NOMMER (404 sinon) et, si `gerer`, dont on règle les membres.
+
+    Le jumeau de `_get_collection`, un étage plus haut, et la même distinction : 404 sur
+    un projet qu'on ne voit pas — dire qu'il existe révélerait une étude voisine —, 403
+    NOMMÉ sur un projet qu'on voit sans le gérer, puisque son nom est déjà à l'écran et
+    qu'un « introuvable » mentirait. `motif` dit ce qu'on refuse, pour la raison écrite
+    ci-dessus : le texte par défaut ne vaut que pour le geste de régler les membres.
+
+    La ligne rendue est BRUTE, `justification` comprise : c'est à la route de décider ce
+    qu'elle en montre, et à qui (`routes/projets.py`)."""
+    ou, params = portee.clause_projet("p.id")
+    p = _row(conn.execute(f"SELECT p.* FROM projet p WHERE p.id = ? AND {ou}",
+                          (projet_id, *params)))
+    if p is None:
+        raise HTTPException(404, f"Projet {projet_id} introuvable")
+    if gerer and not portee.peut_gerer_projet(projet_id):
+        raise HTTPException(403, motif)
+    return p
+
+
 # --------------------------------------------------------------------------- #
 # DÉTRUIRE n'est pas écrire (AUTH-10) — une garde sur ce qui ne se rattrape pas
 # --------------------------------------------------------------------------- #
@@ -1301,6 +1326,34 @@ class CollectionIn(BaseModel):
     remplissent ensuite, quand la collection sert vraiment à quelque chose."""
     nom: str
     description: Optional[str] = None
+    # COL-3 — le projet où elle naît. Absent : le projet de repli, c'est-à-dire le
+    # comportement d'avant la v29. Une collection ne change pas de projet ensuite :
+    # `CollectionUpdate` ne porte pas ce champ, et c'est voulu.
+    projet_id: Optional[int] = None
+
+
+class ProjetIn(BaseModel):
+    """Création d'un projet (COL-3). `justification` dit POURQUOI il existe — texte libre,
+    scientifique d'abord ; elle ne se rend qu'à qui gère le projet."""
+    nom: str
+    description: Optional[str] = None
+    justification: Optional[str] = None
+
+
+class ProjetUpdate(BaseModel):
+    """Édition partielle d'un projet. Champ omis = inchangé. `repli` n'y est pas : le projet
+    de repli ne se désigne pas par une route."""
+    nom: Optional[str] = None
+    description: Optional[str] = None
+    justification: Optional[str] = None
+
+
+class MembreIn(BaseModel):
+    """Un membre de projet : QUI (genre + principal) et sous quel RÔLE. Le patron
+    d'`AccesIn` — `principal` est un nom, jamais une référence vérifiée."""
+    genre: str = autorisation.UTILISATEUR      # 'utilisateur' | 'groupe'
+    principal: str
+    role: str = autorisation.MEMBRE            # 'membre' | 'responsable'
 
 
 class CollectionUpdate(BaseModel):

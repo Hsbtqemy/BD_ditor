@@ -297,6 +297,16 @@ CIBLES_RETENUES = {
         "AUTH-3 — `principal` est un login ou un NOM DE GROUPE. Un registre de qui a eu "
         "accès à quoi est une pièce d'audit interne : il sert à répondre d'un accès "
         "accordé par erreur, et cette réponse se doit à l'équipe, pas à l'entrepôt.",
+    "projet":
+        "COL-3 — créer, renommer ou supprimer un projet. La charge peut porter sa "
+        "JUSTIFICATION, que l'instance ne rend qu'à qui gère le projet ; et le projet "
+        "n'est ni une unité de dépôt ni le titre d'un export — la collection l'est. "
+        "Organisation de l'instance, jamais provenance de corpus.",
+    "projet_acces":
+        "COL-3 — qui entre dans un projet, qui en sort, qui en devient responsable : "
+        "`principal` est un login ou un NOM DE GROUPE. Même famille que "
+        "`collection_acces`, un étage plus haut : une pièce d'audit interne, due à "
+        "l'équipe et non à l'entrepôt.",
 }
 
 

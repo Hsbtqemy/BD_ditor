@@ -118,6 +118,15 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
                          json={"genre": "utilisateur", "principal": SENTINELLES["login"],
                                "niveau": "lecture"})
     assert r_acces.status_code in (200, 201), r_acces.text
+    # COL-3 — et le même login MEMBRE d'un projet, pour la même raison : sans lui,
+    # `…/membres` et `…/membres/choix` rendraient des listes vides et passeraient pour
+    # muettes alors qu'elles portent des logins. Aucune vérification ici : un semis qui
+    # échouerait laisserait leurs deux déclarations annoncer un login qu'elles n'émettent
+    # pas, et c'est `test_les_declarations_ne_mentent_pas` qui tomberait.
+    projet = client.get("/api/projets", headers=ident).json()[0]
+    client.put(f"/api/projets/{projet['id']}/membres", headers=ident,
+               json={"genre": "utilisateur", "principal": SENTINELLES["login"],
+                     "role": "membre"})
 
     # Ce que l'API ne produit pas d'elle-même hors multi-utilisateur.
     conn = sqlite3.connect(db_path)
@@ -177,6 +186,7 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
             "album_id": a["id"], "planche_id": pl["id"], "region_id": r["id"],
             "collection_id": col["id"], "personnage_id": perso["id"],
             "dim_id": dim["id"],
+            "projet_id": projet["id"],
             # `chemin_web` vaut « derivatives/xxx.jpg » ; la route monte déjà sur
             # /derivatives, on ne garde donc que la partie qui suit.
             "chemin": (pl.get("chemin_web") or "").split("derivatives/")[-1]}
@@ -220,6 +230,20 @@ SORTIES_DECLAREES = {
         "mêmes logins que `…/acces`, un état d'annuaire en plus. Les groupes proposés au "
         "propriétaire sont des NOMS de groupe, sans membres ni id — aucune des trois sortes. "
         "Réservée au propriétaire de la collection."),
+    ("route", "/api/projets/{projet_id}/membres"): (
+        {"login"},
+        "Qui est d'UN projet (COL-3) : le principal d'un membre est un login ou un nom de "
+        "groupe, et c'est lui qu'on fait sortir ou dont on change le rôle. Réservée à qui "
+        "GÈRE le projet — son responsable, ou un administrateur ; un simple membre reçoit "
+        "un 403. Même forme que `…/acces` un étage plus bas : aucune colonne d'identité n'y "
+        "est jointe, ni nom lisible, ni dernière visite. `GET /api/projets`, elle, ne nomme "
+        "ni membres ni responsables, et reste muette."),
+    ("route", "/api/projets/{projet_id}/membres/choix"): (
+        {"login"},
+        "La vérification des membres DÉJÀ posés sur ce projet (COL-3) : mêmes logins que "
+        "`…/membres`, un état d'annuaire en plus. Les groupes proposés sont des NOMS de "
+        "groupe, sans membres ni id — aucune des trois sortes. Réservée à qui gère le "
+        "projet."),
     ("route", "/api/moi"): (
         {"login", "nom"},
         "L'identité de l'APPELANT, la sienne — c'est l'objet même de la route, et elle ne "

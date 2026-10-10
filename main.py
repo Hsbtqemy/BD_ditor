@@ -46,17 +46,17 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     AccesIn, AlbumIn, AlbumUpdate, AlignementIn, AnnotationIn, AttributIn, CollectionIn,
     CollectionUpdate, ContributionIn, ContributionRoleIn, DeposerExportIn, DeposerIn, DimensionDomaineIn,
     DimensionIn, DomaineIn, FigureIn, FusionIn, JobIn, LexiqueIn, LocuteurIn, MoveIn,
-    NatureIn,
-    PersonnageIn, PersonnageUpdate, PresenceIn, RegionIn, RegionUpdate, RelectureIn,
+    MembreIn, NatureIn,
+    PersonnageIn, PersonnageUpdate, PresenceIn, ProjetIn, ProjetUpdate, RegionIn, RegionUpdate, RelectureIn,
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
     ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
-    _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_EXPORT, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
+    _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
     _attributs_de, _auteur,
     _clause_lemme, _clause_personnage, _collection_d_export, _csv_response, _csv_safe, _descendre_portee,
     _disposition, _ensure_tags, _exiger_destruction, _exiger_export,
     _exiger_export_region,
     _get_album, _get_collection, _get_dimension, _get_personnage, _get_planche,
-    _get_region, _get_valeur,
+    _get_projet, _get_region, _get_valeur,
     _groupes, _norm_tag, _patch_lexique, _portee_d_export, _refuser_si_verrouillee, _row, _rows,
     _sans_accents, _sql_a_montrer, _tags_caches, _validate_parent, _vocabulaire_d_export,
     db, portee_courante,
@@ -72,6 +72,7 @@ from routes import depot as _routes_depot
 from routes import figures as _routes_figures
 from routes import lexique as _routes_lexique
 from routes import personnages as _routes_personnages
+from routes import projets as _routes_projets
 from routes import recherche as _routes_recherche
 
 from pipeline.backup import make_backup
@@ -131,6 +132,7 @@ app.include_router(_routes_annulation.router)
 app.include_router(_routes_collections.router)
 app.include_router(_routes_depot.router)
 app.include_router(_routes_lexique.router)
+app.include_router(_routes_projets.router)
 
 
 # --------------------------------------------------------------------------- #

@@ -18,7 +18,7 @@ from config import DB_PATH, STATUTS
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 
 # NLP-2 (v28) — ce que l'annotateur a VU en corrigeant : le modèle, et sa proposition.
 # Une seule liste, lue par la migration ET par le ré-ancrage : celui-ci réinsère ses
@@ -350,8 +350,61 @@ CREATE TABLE IF NOT EXISTS collection (
     referent_contact  TEXT,                          -- email ou URL — le moyen de LUI ÉCRIRE
     date_debut        TEXT,                          -- période de constitution / couverture
     date_fin          TEXT,
-    date_creation     TEXT DEFAULT (datetime('now'))
+    date_creation     TEXT DEFAULT (datetime('now')),
+    projet_id         INTEGER REFERENCES projet(id)
+    -- v29 (COL-3) : le PROJET auquel la collection appartient. NULLABLE, et NULL se lit
+    -- « le projet de repli » — à un seul endroit, `sql_projet_de`. Deux raisons, mesurées :
+    -- SQLite refuse d'AJOUTER une colonne `NOT NULL` qui porte une clé étrangère (un défaut
+    -- non nul est exigé par l'un, interdit par l'autre), si bien qu'une base migrée ne
+    -- pourrait pas porter la contrainte qu'une base neuve porterait ; et deux schémas qui
+    -- divergent sur une garde valent moins qu'une règle unique dans le code (même doctrine
+    -- que `utilisateur.nature`). Clé SANS action : ni `SET NULL` — supprimer un projet
+    -- reverserait ses collections dans le repli sans que personne l'ait décidé —, ni
+    -- `CASCADE`, qui laisserait des albums hors de toute collection.
+    --
+    -- Ce commentaire est SOUS la colonne, et il doit y rester : pour retirer la dernière
+    -- colonne d'une table, SQLite remonte jusqu'à la première virgule qu'il trouve — celles
+    -- d'un commentaire comprises — et rend alors un schéma tronqué (« incomplete input »,
+    -- mesuré sur 3.49 par le test de migration, qui défait la v29 de cette façon).
 );
+
+-- PROJET (v29, COL-3) — l'étage AU-DESSUS des collections : le périmètre à l'intérieur
+-- duquel un travail PEUT se partager. Une collection appartient à UN projet. En tranche 1
+-- le projet existe et se voit, et rien d'autre ne change : il n'ouvre ni ne ferme aucune
+-- collection, que seule `collection_acces` continue de régler.
+--
+-- `repli` désigne LE projet où tombe une collection qui n'en nomme aucun — tout l'existant
+-- au jour de la migration. Un drapeau et non un nom : ce projet-là est fait pour être
+-- renommé, là où la collection de repli se désigne par un nom réservé. Mode d'échec choisi :
+-- la ligne retirée à la main, un projet neutre et vide renaît au prochain besoin ; « le plus
+-- petit id » aurait déversé des collections dans le projet de quelqu'un, sans bruit.
+--
+-- `justification` : pourquoi ce projet existe, en texte libre — scientifique d'abord. Elle
+-- ne se rend qu'à qui gère le projet (`routes/projets.py`), jamais à ses simples membres.
+CREATE TABLE IF NOT EXISTS projet (
+    id             INTEGER PRIMARY KEY,
+    nom            TEXT NOT NULL,
+    description    TEXT,
+    justification  TEXT,
+    repli          INTEGER NOT NULL DEFAULT 0,     -- 1 = le projet de repli
+    date_creation  TEXT DEFAULT (datetime('now'))
+);
+
+-- QUI EST D'UN PROJET (v29, COL-3) — le patron de `collection_acces`, un étage plus haut :
+-- un NOM (login, ou groupe tel que `Remote-Groups` le pose) et un rôle. Toujours une
+-- RÉFÉRENCE, jamais une appartenance (invariant AUTH-1). Pas de `CHECK` sur `role`, pour la
+-- raison écrite sur `utilisateur.nature` : la liste vit dans `autorisation.ROLES_PROJET`,
+-- et un rôle inconnu s'y lit `membre`.
+CREATE TABLE IF NOT EXISTS projet_acces (
+    projet_id      INTEGER NOT NULL REFERENCES projet(id) ON DELETE CASCADE,
+    genre          TEXT NOT NULL,       -- 'utilisateur' | 'groupe'
+    principal      TEXT NOT NULL,       -- login, ou nom de groupe Remote-Groups
+    role           TEXT NOT NULL,       -- 'membre' | 'responsable'
+    date_creation  TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (projet_id, genre, principal)
+);
+-- « De quels projets est CE principal » se demande à chaque requête, comme pour les accès.
+CREATE INDEX IF NOT EXISTS idx_projet_acces_principal ON projet_acces(genre, principal);
 
 -- Appartenance album ↔ collection (N-N, statique). `rang` = ordre citable stable dans la
 -- collection. CASCADE des deux côtés : on détache la liaison si l'album OU la collection
@@ -523,7 +576,8 @@ CREATE INDEX IF NOT EXISTS idx_domaine_collection ON domaine(collection_id);
 -- — v16 ; collection_id des dimensions/valeurs/tags — v17 ; domaine_id — v20) sont créés DANS
 -- `_migrate` (après l'ALTER), PAS ici : un CREATE INDEX dans SCHEMA_SQL tournerait AVANT l'ALTER
 -- lors d'un upgrade → crash « no such column ». Cf. idx_regions_activite / idx_dim_collection /
--- idx_val_collection / idx_tags_collection / idx_dim_domaine.
+-- idx_val_collection / idx_tags_collection / idx_dim_domaine. Même règle pour
+-- `collection.projet_id` (v29) : idx_collection_projet.
 """
 
 # Index plein texte FTS5 — séparé du schéma pour pouvoir le RECRÉER en migration
@@ -887,6 +941,37 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if tccols and col not in tccols:
             conn.execute(f"ALTER TABLE token_correction ADD COLUMN {col} TEXT")
 
+    # v28 → v29 : le PROJET, étage au-dessus des collections (COL-3, tranche 1). Tables
+    # `projet` et `projet_acces` NOUVELLES (SCHEMA_SQL) ; `collection.projet_id` posée par
+    # PRÉSENCE, nullable (cf. le commentaire de la colonne). Garde de TABLES : les tests de
+    # migration montent des schémas minimaux, dont un `collection (id, nom)` sans rien autour.
+    _tables = {r["name"] for r in
+               conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if {"collection", "projet", "projet_acces"} <= _tables:
+        if "projet_id" not in _cols("collection"):
+            conn.execute("ALTER TABLE collection ADD COLUMN projet_id INTEGER "
+                         "REFERENCES projet(id)")
+        # Index créé ICI, après l'ALTER (cf. le NB de SCHEMA_SQL).
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_collection_projet "
+                     "ON collection(projet_id)")
+        # Migration de DONNÉES, donc gatée par la VERSION : rejouée à chaque démarrage, elle
+        # referait membre du premier projet quiconque en a été sorti. « L'instance d'hier
+        # est, sans rien y changer, le premier projet » : toutes les collections y entrent,
+        # et qui avait un accès à l'une d'elles — compte ou groupe — en devient MEMBRE.
+        # Aucun responsable n'est désigné : c'est un choix, que la migration ne devine pas.
+        # Une photographie du jour : un accès accordé plus tard ne fait pas entrer au projet.
+        # Le rôle est écrit en LITTÉRAL : une migration est de l'histoire, elle ne doit pas
+        # changer de sens le jour où `autorisation.ROLES_PROJET` change de mots.
+        if version < 29:
+            pid = projet_par_defaut(conn)
+            conn.execute("UPDATE collection SET projet_id = ? WHERE projet_id IS NULL",
+                         (pid,))
+            if "collection_acces" in _tables:
+                conn.execute(
+                    "INSERT OR IGNORE INTO projet_acces (projet_id, genre, principal, role) "
+                    "SELECT DISTINCT ?, genre, principal, 'membre' FROM collection_acces",
+                    (pid,))
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -1168,11 +1253,108 @@ def citations_regions(conn: sqlite3.Connection,
 # Collections (palier supérieur — v14 ; cf. docs/dictionnaire-metadonnees.md)
 # --------------------------------------------------------------------------- #
 def collections(conn: sqlite3.Connection) -> list[dict]:
-    """Toutes les collections, avec leur nombre d'albums. Ordre d'id (stable)."""
-    return [dict(r) for r in conn.execute(
-        "SELECT c.*, "
-        "(SELECT COUNT(*) FROM collection_album ca WHERE ca.collection_id = c.id) "
-        "AS nb_albums FROM collection c ORDER BY c.id")]
+    """Toutes les collections, avec leur nombre d'albums et leur PROJET. Ordre d'id (stable).
+
+    `projet_id` est ici le projet LU (`sql_projet_de`) et non la colonne brute : une
+    collection sans projet nommé se rend dans le projet de repli, avec son nom."""
+    lignes = []
+    for r in conn.execute(
+            "SELECT c.*, "
+            "(SELECT COUNT(*) FROM collection_album ca WHERE ca.collection_id = c.id) "
+            "AS nb_albums, p.id AS projet_lu, p.nom AS projet_nom "
+            f"FROM collection c LEFT JOIN projet p ON p.id = {sql_projet_de('c')} "
+            "ORDER BY c.id"):
+        c = dict(r)
+        c["projet_id"] = c.pop("projet_lu")
+        lignes.append(c)
+    return lignes
+
+
+# --------------------------------------------------------------------------- #
+# Projets (l'étage au-dessus des collections — v29, COL-3)
+# --------------------------------------------------------------------------- #
+# Nom sous lequel NAÎT le projet de repli, sur toute instance, jusqu'à ce que quelqu'un le
+# renomme. Il ne DÉSIGNE rien : le projet de repli se reconnaît à son drapeau `repli`, et
+# ce nom n'est lu nulle part ailleurs que dans `projet_par_defaut`.
+NOM_PROJET_DEFAUT = "Projet principal"
+
+# Plafond du NOM d'un projet, en caractères. Court exprès : le nom se lit dans la bande du
+# haut des cinq surfaces, où il ne doit ni se couper ni pousser la navigation hors de la
+# fenêtre. PROVISOIRE — la valeur se fixera par la mesure, sur la barre, à 320 px et à
+# grande police. Lu par les routes de `routes/projets.py`, et par elles seules.
+LONGUEUR_NOM_PROJET = 24
+
+
+def sql_projet_de(alias: str = "c") -> str:
+    """Expression SQL du projet d'une collection — la règle de LECTURE, écrite une fois.
+
+    `collection.projet_id` est nullable (cf. le schéma), et NULL se lit « le projet de
+    repli ». Tout ce qui demande « de quel projet est cette collection » passe par ICI :
+    la liste des collections, la visibilité d'un projet (`Portee.clause_projet`), le compte
+    de ses collections, le refus de ranger un album à travers deux projets. Deux écritures
+    de la règle finiraient par ne plus répondre pareil à une collection sans projet nommé —
+    et c'est exactement l'état des collections que les tests et une base retouchée à la
+    main créent par `INSERT`.
+
+    `alias` est un morceau de SQL écrit par le code appelant, jamais une valeur du client.
+    Sans projet de repli en base (ligne retirée à la main), l'expression rend NULL pour ces
+    collections : elles ne se rattachent à aucun projet tant que `projet_par_defaut` n'en a
+    pas refait un, ce que fait la première écriture qui en a besoin."""
+    return (f"COALESCE({alias}.projet_id, "
+            "(SELECT id FROM projet WHERE repli = 1 ORDER BY id LIMIT 1))")
+
+
+def projet_par_defaut(conn: sqlite3.Connection) -> int:
+    """Id du projet de repli, CRÉÉ s'il n'existe pas — le patron de `collection_par_defaut`.
+
+    C'est le projet de toute collection qui n'en nomme aucun : l'instance d'avant la v29
+    en entier, puis ce qui se crée sans préciser. Désigné par son DRAPEAU et non par son
+    nom, parce qu'il est fait pour être renommé."""
+    r = conn.execute("SELECT id FROM projet WHERE repli = 1 ORDER BY id LIMIT 1").fetchone()
+    if r:
+        return r[0]
+    cur = conn.execute(
+        "INSERT INTO projet (nom, description, repli) VALUES (?, ?, 1)",
+        (NOM_PROJET_DEFAUT,
+         "Créé automatiquement : toute collection appartient à un projet. Renommez-le, et "
+         "décrivez-le."))
+    return cur.lastrowid
+
+
+def projet_de_collection(conn: sqlite3.Connection, collection_id: int) -> int | None:
+    """Id du projet auquel cette collection appartient, par la règle de `sql_projet_de`.
+    None si la collection n'existe pas."""
+    r = conn.execute(f"SELECT {sql_projet_de('c')} FROM collection c WHERE c.id = ?",
+                     (collection_id,)).fetchone()
+    return r[0] if r else None
+
+
+def rangement_traverse(conn: sqlite3.Connection, album_id: int, collection_id: int) -> bool:
+    """Ranger cet album dans cette collection lui ferait-il TRAVERSER deux projets ?
+
+    Vrai s'il vit déjà dans une collection d'un AUTRE projet que celui de la collection
+    d'arrivée. Un album déjà rangé là ne traverse rien de plus : re-poser un rangement
+    existant reste sans effet, quoi qu'une base retouchée à la main ait laissé.
+
+    La question vit ici parce qu'elle a deux appelants qui ne doivent pas diverger : la
+    route (`ranger_album`) et l'outil en ligne de commande (`gerer_collections.py`)."""
+    if conn.execute("SELECT 1 FROM collection_album WHERE album_id = ? AND collection_id = ?",
+                    (album_id, collection_id)).fetchone():
+        return False
+    return conn.execute(
+        "SELECT 1 FROM collection_album ca JOIN collection c ON c.id = ca.collection_id "
+        f"WHERE ca.album_id = ? AND {sql_projet_de('c')} IS NOT ?",
+        (album_id, projet_de_collection(conn, collection_id))).fetchone() is not None
+
+
+def collections_sans_projet(conn: sqlite3.Connection) -> list[int]:
+    """Collections dont la colonne `projet_id` est restée NULL. Les trois chemins d'écriture
+    de l'application la posent (la route, la collection de repli, l'outil en ligne de
+    commande) : c'est la formulation exécutable de « une collection appartient à UN
+    projet », sur le modèle d'`albums_orphelins`. Une ligne ici n'est pas une panne — la
+    règle de lecture la range au repli — mais dit qu'un chemin d'écriture l'a oubliée."""
+    return [r[0] for r in conn.execute(
+        "SELECT id FROM collection WHERE projet_id IS NULL ORDER BY id")]
 
 
 # Une date d'embargo est censée être en ISO (AAAA-MM-JJ) ; le champ est du TEXTE libre, et
@@ -1241,12 +1423,21 @@ def collection_par_defaut(conn: sqlite3.Connection) -> int:
                      (NOM_COLLECTION_DEFAUT,)).fetchone()
     if r:
         return r[0]
+    # v29 — elle naît dans le projet de repli, comme toute collection qui n'en nomme aucun.
+    # La garde de table vaut pour la migration v23 rejouée sur un schéma minimal, où
+    # `collection` existe sans `projet` autour (tests de migration).
+    a_projet = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'projet'").fetchone()
+    a_colonne = "projet_id" in {r[1] for r in conn.execute("PRAGMA table_info(collection)")}
     cur = conn.execute(
         "INSERT INTO collection (nom, description) VALUES (?, ?)",
         (NOM_COLLECTION_DEFAUT,
          "Créée automatiquement : tout album doit appartenir à une collection, qui est "
          "l'unité de cloisonnement des accès. Renommez-la et décrivez-la, ou déplacez "
          "ses albums vers des collections d'étude."))
+    if a_projet and a_colonne:
+        conn.execute("UPDATE collection SET projet_id = ? WHERE id = ?",
+                     (projet_par_defaut(conn), cur.lastrowid))
     return cur.lastrowid
 
 

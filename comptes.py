@@ -340,23 +340,45 @@ def verifier(lecture: Lecture, genre: str, nom: str) -> str:
     return "trouve" if existe else "inconnu"
 
 
-def choix_des_acces(conn, collection_id: int, lecture: Lecture) -> dict:
-    """La réponse de `GET /api/collections/{id}/annuaire` : les groupes à PROPOSER, et la
-    vérification des accès déjà accordés sur cette collection (la colonne « Signal »)."""
-    groupes = None
-    if lecture.lu:
-        exclus = GROUPES_DE_ROLE | autorisation.AUTH_ADMIN_GROUPS
-        groupes = sorted((g.nom for g in lecture.groupes if g.nom not in exclus),
-                         key=lambda x: (_cle(x), x))
-    lignes = conn.execute("SELECT genre, principal FROM collection_acces "
-                          "WHERE collection_id = ?", (collection_id,)).fetchall()
-    acces = []
+def _groupes_a_proposer(lecture: Lecture) -> Optional[list]:
+    """Les NOMS de groupes qu'on propose à qui règle un accès, ou `None` sans annuaire lu."""
+    if not lecture.lu:
+        return None
+    exclus = GROUPES_DE_ROLE | autorisation.AUTH_ADMIN_GROUPS
+    return sorted((g.nom for g in lecture.groupes if g.nom not in exclus),
+                  key=lambda x: (_cle(x), x))
+
+
+def _verifications(lecture: Lecture, lignes) -> list:
+    """La vérification de principaux DÉJÀ posés (`genre`, `principal`), comptes d'abord."""
+    sortie = []
     for r in sorted(lignes, key=lambda r: (r["genre"] != autorisation.UTILISATEUR,
                                            _cle(r["principal"]), r["principal"])):
         compte = r["genre"] == autorisation.UTILISATEUR
-        acces.append({"par": "compte" if compte else "groupe",
-                      "login": r["principal"] if compte else None,
-                      "groupe": None if compte else r["principal"],
-                      "verification": verifier(lecture, r["genre"], r["principal"])})
+        sortie.append({"par": "compte" if compte else "groupe",
+                       "login": r["principal"] if compte else None,
+                       "groupe": None if compte else r["principal"],
+                       "verification": verifier(lecture, r["genre"], r["principal"])})
+    return sortie
+
+
+def choix_des_acces(conn, collection_id: int, lecture: Lecture) -> dict:
+    """La réponse de `GET /api/collections/{id}/annuaire` : les groupes à PROPOSER, et la
+    vérification des accès déjà accordés sur cette collection (la colonne « Signal »)."""
+    lignes = conn.execute("SELECT genre, principal FROM collection_acces "
+                          "WHERE collection_id = ?", (collection_id,)).fetchall()
     return {"annuaire": {"etat": lecture.etat, "motif": lecture.motif},
-            "groupes": groupes, "acces": acces}
+            "groupes": _groupes_a_proposer(lecture),
+            "acces": _verifications(lecture, lignes)}
+
+
+def choix_des_membres(conn, projet_id: int, lecture: Lecture) -> dict:
+    """La réponse de `GET /api/projets/{id}/membres/choix` (COL-3) : le jumeau de
+    `choix_des_acces`, un étage plus haut — les groupes à PROPOSER au responsable d'un
+    projet, et la vérification des membres déjà posés. Mêmes bornes : des NOMS de groupe,
+    sans membres ni id, et sans les groupes de rôle ni d'administration."""
+    lignes = conn.execute("SELECT genre, principal FROM projet_acces "
+                          "WHERE projet_id = ?", (projet_id,)).fetchall()
+    return {"annuaire": {"etat": lecture.etat, "motif": lecture.motif},
+            "groupes": _groupes_a_proposer(lecture),
+            "membres": _verifications(lecture, lignes)}

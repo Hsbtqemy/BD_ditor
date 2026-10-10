@@ -34,11 +34,12 @@ import comptes
 import journal
 from config import STATUTS_DIFFUSION
 from database import (NATURES, collection_row, collections, etat_embargo,
-                      nom_reserve)
+                      nom_reserve, projet_de_collection, projet_par_defaut,
+                      rangement_traverse, sql_projet_de)
 
 from socle import (
-    AccesIn, CollectionIn, CollectionUpdate, NatureIn, _get_album, _get_collection, _rows,
-    db, portee_courante,
+    AccesIn, CollectionIn, CollectionUpdate, NatureIn, _get_album, _get_collection,
+    _get_projet, _rows, db, portee_courante,
 )
 
 router = APIRouter()
@@ -119,6 +120,15 @@ def _acces_de(conn, collection_id: int) -> list[dict]:
     return lignes
 
 
+def _ligne(conn, collection_id: int) -> dict:
+    """La ligne d'une collection telle qu'une route la REND : `projet_id` y est le projet
+    LU (`database.sql_projet_de`), jamais la colonne brute — la même valeur que dans la
+    liste, pour qu'une collection ne change pas de projet selon la route qui la montre."""
+    c = collection_row(conn, collection_id)
+    c["projet_id"] = projet_de_collection(conn, collection_id)
+    return c
+
+
 def _compte_proprietaires(conn, collection_id: int) -> int:
     return conn.execute(
         "SELECT COUNT(*) FROM collection_acces WHERE collection_id = ? AND niveau = ?",
@@ -159,7 +169,12 @@ def list_collections(conn: sqlite3.Connection = Depends(db),
 
     AUTH-2 — on ne liste que les siennes. C'est la route la plus directement révélatrice
     du dépôt : les noms de collections DISENT quelles études existent, et le menu de portée
-    du lexique proposerait sinon de ranger un terme chez quelqu'un d'autre."""
+    du lexique proposerait sinon de ranger un terme chez quelqu'un d'autre.
+
+    COL-3 — chaque collection dit son PROJET (`projet_id`, `projet_nom`), lu par la règle
+    de `database.sql_projet_de` : jamais vide, une collection sans projet nommé étant du
+    projet de repli. Le filtre ne change pas : on liste ce qu'on LIT, quel que soit le
+    projet, et être d'un projet n'y ajoute aucune ligne."""
     vues = collections(conn) if portee.tout else [
         c for c in collections(conn) if c["id"] in portee.lecture]
     for c in vues:
@@ -216,8 +231,20 @@ def create_collection(payload: CollectionIn, conn: sqlite3.Connection = Depends(
     if not nom:
         raise HTTPException(422, "Le nom de la collection est requis.")
     _refuser_nom_reserve(nom)
-    cur = conn.execute("INSERT INTO collection (nom, description) VALUES (?, ?)",
-                       (nom, payload.description))
+    # COL-3 — une collection naît dans UN projet, et n'en change pas. Sans `projet_id`,
+    # ou en nommant le projet de repli : rien ne change, une identité suffit — sans quoi
+    # l'écran, qui enverra toujours le projet courant, fermerait ce que l'API laisse
+    # ouvert. Dans un AUTRE projet, il faut en être : 404 s'il n'est pas visible, 403 nommé
+    # si l'on en voit le nom (par une collection qu'on lit) sans en être membre.
+    projet_id = projet_par_defaut(conn)
+    if payload.projet_id is not None and payload.projet_id != projet_id:
+        projet_id = _get_projet(conn, portee, payload.projet_id)["id"]
+        if not portee.est_du_projet(projet_id):
+            raise HTTPException(403, "Créer une collection dans ce projet demande d'en "
+                                     "être membre.")
+    cur = conn.execute(
+        "INSERT INTO collection (nom, description, projet_id) VALUES (?, ?, ?)",
+        (nom, payload.description, projet_id))
     cid = cur.lastrowid
     if portee.utilisateur and not portee.admin:
         conn.execute(
@@ -227,7 +254,7 @@ def create_collection(payload: CollectionIn, conn: sqlite3.Connection = Depends(
     journal.journaliser(conn, "creation", "collection", cid,
                         apres={"nom": nom, "proprietaire": portee.utilisateur})
     conn.commit()
-    return {**collection_row(conn, cid), "acces": _acces_de(conn, cid)}
+    return {**_ligne(conn, cid), "acces": _acces_de(conn, cid)}
 
 
 @router.patch("/api/collections/{collection_id}")
@@ -277,7 +304,7 @@ def update_collection(collection_id: int, payload: CollectionUpdate,
         journal.journaliser(conn, "modification", "collection", collection_id,
                             avant={k: c[k] for k in changes}, apres=changes)
         conn.commit()
-    return collection_row(conn, collection_id)
+    return _ligne(conn, collection_id)
 
 
 @router.delete("/api/collections/{collection_id}", status_code=204)
@@ -415,6 +442,24 @@ def annuaire_de_la_collection(collection_id: int, conn: sqlite3.Connection = Dep
     panne. Ici, la liste s'affiche tout de suite et les marques arrivent après."""
     _get_collection(conn, portee, collection_id, administrer=True)
     return comptes.choix_des_acces(conn, collection_id, annuaire.lire())
+
+
+@router.get("/api/projets/{projet_id}/membres/choix")
+def choix_des_membres_du_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
+                                portee: autorisation.Portee = Depends(portee_courante)):
+    """Ce que la fiche d'un PROJET montre pour régler qui y entre (COL-3) : les groupes de
+    l'annuaire à proposer, et la vérification des membres déjà posés. Le jumeau de la route
+    ci-dessus, un étage plus haut, et les mêmes bornes : réservée à qui GÈRE ce projet
+    (404 à qui ne le voit pas, 403 nommé à qui le voit sans le gérer), des NOMS de groupe
+    sans leurs membres.
+
+    ELLE VIT ICI et non dans `routes/projets.py`, où sont toutes les autres routes du
+    projet : c'est la seule qui lise l'annuaire, et les routes qui le lisent tiennent dans
+    CE module — `tests/test_annuaire.py` le verrouille par égalité. Séparée de `…/membres`
+    pour la raison qui sépare `…/annuaire` de `…/acces` : aucun geste sur un membre
+    n'attend un annuaire en panne."""
+    _get_projet(conn, portee, projet_id, gerer=True)
+    return comptes.choix_des_membres(conn, projet_id, annuaire.lire())
 
 
 # `GET …/annuaire/verifier` a vécu ici jusqu'au 2026-09-18 : elle disait si un nom TAPÉ
@@ -571,7 +616,7 @@ def list_collections_album(album_id: int, conn: sqlite3.Connection = Depends(db)
     """
     _get_album(conn, portee, album_id)
     rows = _rows(conn.execute(
-        "SELECT c.id, c.nom FROM collection_album ca "
+        f"SELECT c.id, c.nom, {sql_projet_de('c')} AS projet_id FROM collection_album ca "
         "JOIN collection c ON c.id = ca.collection_id "
         "WHERE ca.album_id = ? ORDER BY c.nom", (album_id,)))
     return [{**c, "mon_niveau": _niveau_dans(portee, c["id"]),
@@ -590,10 +635,19 @@ def ranger_album(album_id: int, collection_id: int,
     ET écrire sur la collection d'arrivée. Sans le second, on déposerait son travail dans
     l'étude de quelqu'un d'autre ; sans le premier, on s'approprierait le travail d'un
     autre en le rangeant chez soi.
+
+    COL-3 — et le rangement ne TRAVERSE pas les projets : un album qui vit dans un projet
+    ne se range pas dans une collection d'un autre. Le refus est un 409 qui le nomme, et il
+    ne vient qu'après les deux droits — donc sur un album et une collection où l'on écrit,
+    dont on lit déjà les deux projets. C'est ce qui garde à chaque album UN projet, et il
+    n'y a rien à séparer tant que tout l'existant tient dans le premier.
     """
     _get_album(conn, portee, album_id, ecriture=True)
     if not portee.peut_ecrire(collection_id) or collection_row(conn, collection_id) is None:
         raise HTTPException(404, f"Collection {collection_id} introuvable")
+    if rangement_traverse(conn, album_id, collection_id):
+        raise HTTPException(409, "Cet album vit dans un autre projet que cette collection : "
+                                 "le rangement ne traverse pas les projets.")
     conn.execute("INSERT OR IGNORE INTO collection_album (collection_id, album_id) "
                  "VALUES (?, ?)", (collection_id, album_id))
     conn.commit()

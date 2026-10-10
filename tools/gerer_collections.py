@@ -174,6 +174,15 @@ def _albums_isoles(conn, collection_id, album_ids=None) -> list[int]:
 def _ranger(conn, collection_id, album_ids):
     """Ajoute des albums à une collection (INSERT OR IGNORE), `rang` en fin de liste.
     Renvoie le nombre effectivement ajoutés."""
+    # COL-3 — même garde que la route : un rangement ne traverse pas les projets. Tout ou
+    # rien, comme les autres refus de cet outil.
+    ailleurs = [a for a in album_ids
+                if database.rangement_traverse(conn, a, collection_id)]
+    if ailleurs:
+        raise SystemExit(
+            f"Refusé : {len(ailleurs)} album(s) ({', '.join(map(str, ailleurs))}) vivent "
+            "dans un autre projet que cette collection. Le rangement ne traverse pas les "
+            "projets.")
     depart = conn.execute(
         "SELECT COALESCE(MAX(rang), 0) FROM collection_album WHERE collection_id = ?",
         (collection_id,)).fetchone()[0]
@@ -251,10 +260,13 @@ def cmd_creer(args) -> int:
     maj["nom"] = args.nom
     maj["responsables"] = json.dumps(_parse_responsables(args.responsable),
                                      ensure_ascii=False) if args.responsable else None
-    cols = list(maj.keys())
-    vals = [maj[k] for k in cols]
-    qm = ",".join("?" * len(cols))
     with database.connect() as conn:
+        # COL-3 — une collection appartient à UN projet. L'outil n'en nomme aucun : elle
+        # naît dans le projet de repli, comme par la route quand on ne précise rien.
+        maj["projet_id"] = database.projet_par_defaut(conn)
+        cols = list(maj.keys())
+        vals = [maj[k] for k in cols]
+        qm = ",".join("?" * len(cols))
         cur = conn.execute(
             f"INSERT INTO collection ({','.join(cols)}) VALUES ({qm})", vals)
         cid = cur.lastrowid
