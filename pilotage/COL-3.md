@@ -1,11 +1,17 @@
 ---
 chantier: COL-3
-statut: à venir
+statut: interrompu
 ---
 
 # COL-3 — le fonds et les projets : un album appartient à l'instance, un travail à ceux qui le font
 
-**Point de départ** — 2026-10-09, en conversation, à partir du veto qu'`AUTH-10` venait de
+**Arrêté sur** — 2026-10-10, `6c3e19f` : le premier des deux commits de code de la tranche 1
+est sur `dev` — le projet EXISTE (modèle, règle, routes, schéma v29) et l'écran n'a pas
+bougé. Reste le second commit : la barre, la Bibliothèque, l'Administration ; puis les
+documents et les passes de QA. Le cadrage et ce que le premier commit a mesuré sont en
+Contexte.
+
+**D'où part le chantier** — 2026-10-09, en conversation, à partir du veto qu'`AUTH-10` venait de
 mettre au jour. Hugo : *« Pour moi, il doit y avoir une sorte de back où tous les albums sont
 stockés. Avec leurs origines et leurs utilisations dans différentes collections. Quitte à ce
 qu'on considère que tout ce qui est ajouté sur BéDéditeur appartient à BéDéditeur, et que
@@ -64,7 +70,8 @@ rien y changer, « le premier projet », où tout est partagé.
 ### L'ordre — le projet d'abord visible, puis ce qu'il permet
 
 - [x] **La forme se tranche sur une maquette interactive, avant la première ligne de code** — attendu : Hugo a manipulé, et dit ce qu'il garde, de quatre écrans : le projet courant dans la Bibliothèque ; « prendre un document » avec ses trois réponses et l'échelle des couches ; les deux réponses à « supprimer » ; le fonds et les projets vus de l'administrateur. Première version publiée le 2026-10-09, jouable sous trois identités (administrateur, responsable de projet, membre) : https://claude.ai/artifact/9TPyMWof747CBYGCty4sNv — privée, à partager depuis la page pour qu'un autre que Hugo l'ouvre **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
-- [ ] **Tranche 1 — le projet existe et se VOIT, et rien d'autre ne change** — attendu : tout l'existant est rangé dans un premier projet, nommé par Hugo ; son nom se lit sur les cinq surfaces ; un administrateur en crée un second et y fait entrer un compte ou un groupe ; une collection appartient à UN projet. Aucun test de comportement n'a eu à être retouché : c'est la preuve que la tranche n'a rien déplacé
+- [ ] **Tranche 1 — le projet existe et se VOIT, et rien d'autre ne change** — attendu : tout l'existant est rangé dans un premier projet, nommé par Hugo ; son nom se lit sur les cinq surfaces ; un administrateur en crée un second et y fait entrer un compte ou un groupe ; une collection appartient à UN projet. Aucun test de comportement n'a eu à être retouché : c'est la preuve que la tranche n'a rien déplacé **Premier commit fait le 2026-10-10, `6c3e19f` : le modèle, la règle et les routes ; la preuve tient pour lui (un seul fichier de test existant modifié, le cliquet des sorties d'identité, sans une ligne retirée). La case reste ouverte jusqu'au second commit, qui fait VOIR le projet.**
+- [ ] **Tranche 1 — les documents disent le projet** — attendu : écrits après le second commit de code, dans un commit à eux. `CLAUDE.md` (schéma 29, les questions d'autorisation qui passent de dix à quatorze, le tableau des surfaces, les modules de `static/lib/`), `docs/modele-et-droits.md`, `docs/guide-utilisateur.md` (la phrase de tête confirmée par Hugo), `docs/hebergement-securite.md`. D'ici là `CLAUDE.md` annonce encore le schéma 28, et c'est faux sur `dev` depuis `6c3e19f`
 - [ ] **Tranche 2 — le fonds** — attendu : un document a une identité distincte de ses copies de travail, son origine et ses emplois sont écrits à partir de ce jour, « supprimer » a ses deux réponses, et l'administrateur a l'écran du fonds avec les demandes en attente
 - [ ] **Tranche 3 — prendre un document** — attendu : rejoindre (consenti), en partir (amorcé jusqu'à un cran), partir de zéro ; dans un projet et entre deux
 - [ ] **Tranche 4 — ce qui parasite encore** — attendu : le vocabulaire et les personnages ont leur étage de projet, et la Recherche comme l'Exploration sont bornées au projet courant et ne comptent pas deux fois deux copies sœurs
@@ -173,7 +180,8 @@ se détruiraient plus qu'au fonds.
 
 ### Le cadrage de la tranche 1 — 2026-10-10, lu dans le code et non éprouvé
 
-Rendu par un agent en lecture seule, sur `3cac8aa`. Rien n'en est codé, et les décisions
+Rendu par un agent en lecture seule, sur `3cac8aa`. ~~Rien n'en est codé~~ (vrai à
+l'écriture : le premier commit a suivi le même jour, section suivante), et les décisions
 qu'il suppose sont les cases de la zone « Tranche 1 — ce qui se tranche avant le code ».
 
 **Le modèle** (schéma v29). Deux tables neuves : `projet` (`id`, `nom`, `description`,
@@ -210,6 +218,59 @@ déplacé quelque chose.
 choix de plusieurs albums et l'import qui rejoint le fonds supposent le fonds, donc les
 tranches 2 et 3. En tranche 1 un projet neuf naît vide, et un album y entre comme
 aujourd'hui, par l'import dans une de ses collections.
+
+### Le premier commit de la tranche 1 — `6c3e19f`, 2026-10-10
+
+Écrit par un agent neuf sur une copie, relu par la session de pilotage qui ne l'a pas écrit,
+puis porté dans l'arbre partagé. Onze fichiers, dont deux neufs : `routes/projets.py` et
+`tests/test_projets.py` (38 tests).
+
+**Ce qui a été mesuré.** La suite par défaut : 1 536 passés sur le commit d'avant, 1 574
+sur celui-ci, dans la copie puis dans l'arbre partagé — l'écart est exactement les 38
+tests neufs, et aucun identifiant de test n'a disparu. La passe navigateur entière, dans la
+copie : 333 passés, sous Chromium, sur le poste. Quarante-cinq mutants joués un par un,
+quarante-cinq tombés. Et la preuve de la tranche : le seul fichier de test existant modifié
+est `tests/test_sorties_identite.py` — deux déclarations et le semis de sa sentinelle, 24
+lignes ajoutées, aucune retirée, aucune vérification touchée. Sur SQLite 3.49, celui du
+poste : une colonne `NOT NULL` qui porte une clé étrangère ne s'ajoute pas par `ALTER`, avec
+ou sans défaut — les deux règles que le cadrage citait de mémoire sont confirmées.
+
+**Ce qui n'a pas été joué.** La suite DANS l'image : elle se joue sur le poste avant la
+fusion vers `main`, et sa cible navigateur aussi, la barre dépendant de la police. La base
+de production n'a pas été lue ; sa migration sera un déploiement manuel, sauvegarde faite —
+la veille de déploiement refuse un changement de schéma, et une base v29 ne redémarre pas
+sous du code v28.
+
+**Quatre écarts au cadrage, acceptés à la relecture.** La route qui propose au responsable
+les groupes de l'annuaire (`…/membres/choix`) vit dans `routes/collections.py` et non avec
+les autres routes du projet : un test exige par égalité que les routes qui lisent l'annuaire
+tiennent dans ce module, et le desserrer pour un rangement aurait été retoucher une garde.
+Créer une collection dans un projet dont on n'est pas répond 404 si l'on ne voit pas le
+projet, et un 403 NOMMÉ si l'on en voit le nom — la distinction des collections, là où le
+cadrage disait 404 dans les deux cas. La règle « sans projet nommé, la collection est du
+projet de repli » est une expression SQL écrite une fois dans `database.py`, que
+`autorisation.py` importe. Et le refus de ranger un album à travers deux projets vaut aussi
+pour l'outil en ligne de commande, pas seulement pour la route.
+
+**Où vit chaque décision**, pour qui devra en changer une : le nom de naissance du premier
+projet et le plafond d'un nom sont deux constantes de `database.py` ; les membres de départ,
+une requête de l'étape v29 de la migration ; ce que peut le responsable, deux questions de
+la `Portee` (régler les membres, décider des projets) ; la justification, une colonne de
+`projet` rendue à un seul endroit de `routes/projets.py`, à qui gère le projet — les autres
+ne reçoivent pas la clé.
+
+**Trois conséquences à connaître.** Qui lit une collection lit le nom ET la description de
+son projet, sans en être membre. Une justification modifiée s'écrit au journal, avant et
+après : elle y survit à la suppression du projet, et le journal de ces deux tables est
+retenu de tout dépôt. Et un projet qui a reçu un album ne se vide plus que par la
+destruction de l'album — aucune collection ne change de projet, aucun rangement ne traverse :
+« un projet ne se supprime que vide » est donc, d'ici la tranche 3, presque « ne se supprime
+pas ».
+
+**Ce que le second commit doit savoir.** `GET /api/projets` rend une liste VIDE à un compte
+identifié qui n'a ni projet ni collection : la barre doit tenir ce cas. Ni le plafond du nom
+ni la liste des rôles ne sont servis par une route. Et la clé de la réponse de
+`…/membres/choix` est `membres`.
 
 ### Les formes écartées
 
