@@ -282,13 +282,21 @@ L'inventaire et le poste de commande.
   projet, et *+ Créer* y crée. Ouvrir un lien vers une collection d'un autre projet vous y
   fait basculer. Un projet où rien ne vous est ouvert le dit — *Aucune collection ouverte
   pour vous dans le projet « … »* —, ce qui n'est pas avoir tout perdu : changez de projet.
-  **Le projet ne borne rien d'autre pour l'instant** : les albums, les planches et les lots
-  de cette page ne le suivent pas, ni l'Atelier, la Recherche et l'Exploration, qui
-  affichent son nom et portent toujours sur tout ce que vous lisez. Deux listes de cette
-  page proposent encore les collections de **tous** vos projets — *Collection*, dans
-  *+ Nouvel album*, et *+ Ranger ici*, dans la fiche d'un album ; ranger un album dans une
-  collection d'un autre projet que le sien est refusé, et le message le dit. Ce qu'est un
-  projet, et ce qu'il n'ouvre pas : [`modele-et-droits.md`](modele-et-droits.md) §2.
+  **Le projet ne borne presque rien d'autre pour l'instant** : la liste des albums, les
+  planches et les lots de cette page ne le suivent pas, ni l'Atelier, la Recherche et
+  l'Exploration, qui affichent son nom et portent toujours sur tout ce que vous lisez. Deux
+  listes de cette page suivent le projet, chacune le sien. *Collection*, dans *+ Nouvel
+  album*, ne propose que les collections du projet **courant** où vous écrivez, et le dit
+  dès qu'elle en écarte une : *Seules les collections du projet « … » sont proposées : pour
+  créer l'album dans un autre projet, choisissez-le en haut de la page.* Si vous n'écrivez
+  dans aucune collection de ce projet, il n'y a pas de liste vide mais une phrase — *Vous
+  n'écrivez dans aucune collection du projet « … » : l'album ne peut pas y être créé.
+  Créez-y d'abord une collection, ou choisissez un autre projet en haut de la page.* —, et
+  *Enregistrer* n'enregistre rien. *+ Ranger ici*, dans la fiche d'un album, ne propose que
+  les collections du projet où **l'album** vit déjà, qui n'est pas forcément le projet
+  courant : *Cet album vit dans le projet « … » : seules les collections de ce projet sont
+  proposées, un album ne se rangeant pas d'un projet à l'autre.* Ce qu'est un projet, et ce
+  qu'il n'ouvre pas : [`modele-et-droits.md`](modele-et-droits.md) §2.
 - **Albums** : créer, éditer les métadonnées, supprimer. La fiche porte la description, les
   contributions, les champs d'édition, la source de numérisation et l'appartenance aux
   collections.
@@ -409,9 +417,13 @@ si les moteurs répondent encore. Cinq blocs, chacun avec sa propre règle d'acc
     l'application* — elles avertissent, elles ne bloquent pas. Et la partie le rappelle à
     chaque fois : *Entrer dans le projet n'ouvre pas ses collections : chacune garde son
     « Qui entre ».*
-  - **Ce projet** (administrateurs) : *Renommer*, et *Supprimer le projet* — après
-    confirmation. Un responsable y lit à la place : *Vous réglez qui entre dans ce projet.
-    Le renommer ou le supprimer se demande à un administrateur de l'instance.*
+  - **Ce projet** (administrateurs) : *Renommer* ; deux champs, *Description* et *Pourquoi
+    ce projet existe*, avec leur bouton *Enregistrer* — seul ce que vous avez changé est
+    enregistré, un champ vidé efface son texte, et la fiche répond *Description
+    enregistrée.*, *Justification enregistrée.*, *Description et justification
+    enregistrées.* ou *Rien n'a changé.* ; et *Supprimer le projet* — après confirmation.
+    Un responsable n'y reçoit aucun champ, et y lit à la place : *Vous réglez qui entre dans
+    ce projet. Le renommer ou le supprimer se demande à un administrateur de l'instance.*
   - **Trois refus, qui se disent.** Le *dernier responsable* d'un projet ne se retire pas
     et ne se rétrograde pas : désignez-en un autre d'abord. Le *projet de repli* se
     renomme, il ne se supprime pas — le bouton n'y est pas offert. Et *un projet ne se

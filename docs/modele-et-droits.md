@@ -152,8 +152,10 @@ photographie de ce jour-là : recevoir plus tard un accès à une collection ne 
 dans son projet.
 
 **La justification.** Un projet peut porter un texte qui dit **pourquoi il existe** — sa
-justification, scientifique d'abord. Elle se saisit à sa création et se lit dans sa fiche,
-par ses responsables et par les administrateurs ; un simple membre ne la reçoit pas.
+justification, scientifique d'abord. Elle se saisit à sa création, et se corrige ensuite
+dans sa fiche — *Ce projet*, champ *Pourquoi ce projet existe* — par un administrateur,
+comme sa description. Elle se lit dans cette fiche, par ses responsables et par les
+administrateurs ; un simple membre ne la reçoit pas.
 
 **Le nom d'un projet est court, et c'est une contrainte d'écran.** Il se lit dans la bande
 du haut de chaque page, où il ne se coupe pas — ni points de suspension, ni retour à la
