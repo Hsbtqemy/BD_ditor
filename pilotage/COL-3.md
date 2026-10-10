@@ -46,6 +46,12 @@ rien y changer, « le premier projet », où tout est partagé.
 - [x] **La Recherche et l'Exploration prennent le projet pour critère** — c'est ce qui empêche de compter deux fois le texte d'un document que deux projets travaillent. Il ne suffit pas seul : deux copies du même document peuvent exister DANS un projet (case « Deux copies du même document se savent sœurs »)
 - [x] **Rien de l'existant n'est à séparer** — selon Hugo, aucun usage ne repose aujourd'hui sur un album rangé dans plusieurs collections ; et l'existant entier devient le premier projet, où ce rangement reste permis
 
+### Précisé par Hugo — 2026-10-10
+
+- [x] **Importer soi-même dans son projet ne demande rien, et le document rejoint le fonds** — Hugo, devant « faire entrer un document dans son projet se demande à un administrateur » : *« à part si ce sont les personnes qui intègrent directement dans leur projet, on est d'accord ? et ça rejoint le pot commun ? »* La demande ne porte donc que sur un document DÉJÀ au fonds, que le projet n'a pas. Un import entre dans le projet de qui importe sans attendre personne, et appartient à l'instance dès cet instant : sa notice devient lisible des responsables des autres projets, qui peuvent le demander
+- [x] **Une entrée de documents porte PLUSIEURS albums à la fois** — *« que l'ajout soit possible avec plusieurs albums à chaque fois »*. On en coche plusieurs dans le fonds, et la demande — ou l'admission, quand c'est un administrateur qui agit — part en une fois
+- [x] **La demande se dépose aussi à la CRÉATION d'un projet** — *« histoire qu'on ait une demande unique avec plein d'albums potentiellement »*. Qui la dépose, et à quel instant, reste à trancher : case « Qui dépose la demande de départ d'un projet », zone « Le fonds »
+
 ### La forme — à confirmer
 
 - [x] **La COPIE DE TRAVAIL est l'unité, et une collection choisit en prenant un document** — attendu : confirmé ou écarté par Hugo. Trois réponses, posées au moment du geste et jamais par défaut : *rejoindre* le travail d'une collection du projet (une seule copie, rangée dans les deux — le modèle d'aujourd'hui) ; *en partir* (une copie à soi, amorcée jusqu'au cran choisi) ; *partir de zéro*. Écartées, avec leur raison, en Contexte : une copie par collection OU par projet imposée à tous, les couches vivantes sur un même album, et le mi-chemin **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
@@ -61,6 +67,18 @@ rien y changer, « le premier projet », où tout est partagé.
 - [ ] **Tranche 3 — prendre un document** — attendu : rejoindre (consenti), en partir (amorcé jusqu'à un cran), partir de zéro ; dans un projet et entre deux
 - [ ] **Tranche 4 — ce qui parasite encore** — attendu : le vocabulaire et les personnages ont leur étage de projet, et la Recherche comme l'Exploration sont bornées au projet courant et ne comptent pas deux fois deux copies sœurs
 
+### Tranche 1 — ce qui se tranche avant le code (propositions de la session, 2026-10-10)
+
+- [ ] **Le nom du premier projet** — attendu : donné par Hugo. Proposition : la migration le fait naître « Projet principal », et Hugo le renomme à l'écran ; ce nom n'est écrit en dur nulle part ailleurs
+- [ ] **Qui est membre du premier projet au départ** — attendu : tranché. Proposition : tout compte ou groupe qui a déjà un accès à une collection, recopié par la migration ; personne ne perd l'écran qu'il avait
+- [ ] **Ce que peut le responsable d'un projet en tranche 1** — attendu : tranché, et « Qui gère un projet » fermée pour cette tranche. Proposition : faire entrer, faire sortir, nommer un autre responsable ; créer, renommer et supprimer restent à l'administrateur, et la fiche du projet dit au responsable que sa suppression se demande à lui
+- [ ] **Ce que borne le projet courant en tranche 1** — attendu : tranché. Proposition : la Bibliothèque seule ; la Recherche et l'Exploration attendent la tranche 4
+- [ ] **Une collection ne change pas de projet** — attendu : tranché. Proposition : aucun geste ne la déplace en tranche 1
+- [ ] **Ranger un album dans une collection d'un AUTRE projet est refusé** — attendu : tranché. Proposition : refusé dès la tranche 1, par un refus qui le nomme ; c'est ce qui garantit qu'à l'arrivée du fonds chaque copie de travail n'a qu'un projet
+- [ ] **Le nom d'un projet a un plafond court** — attendu : la longueur, mesurée sur la barre du haut à 320 px et à grande police. Proposition : 22 à 24 caractères
+- [ ] **Où se gèrent les projets** — attendu : tranché. Proposition : un bloc « Projets » dans l'Administration, sans onglets
+- [ ] **Ce que le guide en dit** — attendu : tranché. Proposition : une phrase en tête de `docs/guide-utilisateur.md` ; le reste s'écrit avec la tranche qui donne au projet un effet
+
 ### Le projet
 
 - [ ] **Qui est dans un projet** — attendu : tranché. Proposition : le patron de `collection_acces`, un étage plus haut — un accès de projet se donne à un COMPTE ou à un GROUPE de l'annuaire, et l'on ne stocke toujours qu'une référence, jamais une appartenance (invariant d'`AUTH-1`). « Intégrer quelqu'un à son arrivée » est alors un geste de l'application, et un groupe d'étudiants entre d'un seul coup
@@ -68,6 +86,7 @@ rien y changer, « le premier projet », où tout est partagé.
 - [ ] **Une personne dans deux projets choisit dans lequel elle travaille** — attendu : dit, écran par écran. Un projet courant, lisible partout ; la Recherche et l'Exploration bornées à lui par défaut
 - [ ] **Le vocabulaire et les personnages ont un étage de projet** — attendu : tranché. Un terme « global » est aujourd'hui visible de toute l'instance, et un personnage traverse les albums : c'est par là que deux projets se parasiteraient d'abord — ce qui fuit n'est pas un mot, c'est une grille d'analyse (`AUTH-2`, v24). Global à l'instance, au projet, ou local à une collection ?
 - [ ] **Ce qui ne peut PAS entrer dans un projet** — attendu : qui le décide, et sur quoi. Un refus par document (ses droits, sa base légale) ou par projet ?
+- [ ] **Un responsable DEMANDE la suppression de son projet** — attendu : confirmé par Hugo. Sa phrase du 2026-10-10 : *« D3 : demande de suppression possible aussi par les responsables des projets, non ? »* — lue par la session comme la suppression du PROJET (c'est d'elle que parlait la décision qu'il commentait), et rendue ainsi à Hugo, qui a poursuivi sans la reprendre. La demande passe par le mécanisme de la tranche 2 (case « Une demande est UN mécanisme »)
 - [x] **Les accès par collection restent, à l'intérieur du projet** — attendu : confirmé. Être dans un projet n'ouvre pas toutes ses collections : l'incubateur de `COL-1` est une collection fermée DANS un projet **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
 
 ### Les couches qu'on emporte en intégrant
@@ -90,6 +109,9 @@ rien y changer, « le premier projet », où tout est partagé.
 - [ ] **Le fonds a un écran, pour l'administrateur** — attendu : les documents, d'où ils viennent, quels projets les emploient, lesquels ne sont appelés par personne, les demandes de suppression en attente
 - [ ] **Deux copies du même document se savent sœurs** — attendu : un identifiant de document, que la Recherche et l'Exploration lisent. Sans lui, qui lit deux collections dont chacune a sa copie compte deux fois le même texte ; avec lui, on dédoublonne, ou on COMPARE — deux travaux indépendants sur les mêmes bulles sont la matière d'un vrai accord inter-annotateurs, là où `ANN-5` ne mesure aujourd'hui que des révisions. À éprouver, pas à promettre
 - [x] **La consultation du fonds est tranchée contre le cloisonnement** — attendu : qui consulte, et ce qu'il voit. « 404, jamais 403 » existe pour que personne n'apprenne ce que le corpus contient hors de sa portée. Proposition : un gestionnaire de projet voit la NOTICE seule (titre, série, auteur) — ni images, ni travail, ni qui l'emploie **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
+- [ ] **Une demande est UN mécanisme, pour trois usages** — attendu : tranché. Proposition : faire entrer des documents dans un projet, supprimer un document, supprimer un projet — le même état (qui demande, quand, pourquoi), la même place dans « À regarder », construit une fois, en tranche 2
+- [ ] **Qui dépose la demande de départ d'un projet** — attendu : tranché par Hugo. Deux lectures de « à la création d'un projet ». (a) L'administrateur crée le projet et nomme son responsable ; celui-ci trouve, à sa première ouverture d'un projet encore vide, « quels documents du fonds voulez-vous ? », et dépose UNE demande ; l'administrateur qui crée peut aussi en admettre lui-même, dans le même geste. (b) Quelqu'un qui n'a pas encore de projet demande d'un seul coup le projet ET ses documents — ce qui lui ouvre les notices du fonds, que la case « La consultation du fonds » réserve aux responsables. Proposition : (a)
+- [ ] **Comment l'administrateur répond à une demande de plusieurs documents** — attendu : tranché. Proposition : document par document, avec un « tout accepter » ; une demande peut finir acceptée en partie, et le dit à qui l'a déposée
 
 ### Les passes de QA que chaque tranche périme
 
@@ -144,6 +166,46 @@ projet où elle vit — et d'interdire qu'une collection range la copie d'un aut
 et « partir de zéro » créent une nouvelle ligne pour le même document, amorcée ou vierge,
 dans le projet comme entre deux. Les fichiers d'images seraient partagés entre copies, et ne
 se détruiraient plus qu'au fonds.
+
+### Le cadrage de la tranche 1 — 2026-10-10, lu dans le code et non éprouvé
+
+Rendu par un agent en lecture seule, sur `3cac8aa`. Rien n'en est codé, et les décisions
+qu'il suppose sont les cases de la zone « Tranche 1 — ce qui se tranche avant le code ».
+
+**Le modèle** (schéma v29). Deux tables neuves : `projet` (`id`, `nom`, `description`,
+`repli`, `date_creation`) et `projet_acces` (`projet_id`, `genre`, `principal`, `role`,
+`date_creation`), sur le patron de `collection_acces`. `collection.projet_id` reste
+NULLABLE, et `NULL` se lit « le projet de repli » — une fonction à écrire à côté de
+`database.collection_par_defaut`, sur un drapeau `repli = 1`. Deux raisons, relevées : SQLite
+n'ajoute pas une colonne `NOT NULL` par `ALTER`, et dix-neuf tests créent une collection par
+un `INSERT` brut.
+
+**La règle** vit dans `autorisation.py` et nulle part ailleurs : deux rôles (membre,
+responsable), ce que la `Portee` sait des projets où l'on est et de ceux qu'on gère, et les
+questions qui vont avec. Être d'un projet n'ouvre ni ne ferme aucune collection — c'est la
+case « Les accès par collection restent, à l'intérieur du projet ».
+
+**Les routes** : un module `routes/projets.py` — lister, créer, renommer, supprimer un
+projet ; lire et régler ses membres — et un accesseur gardé de plus dans `socle.py`.
+`GET /api/moi` ne gagne rien : un test y compare la réponse entière. `projet` et
+`projet_acces` rejoignent `CIBLES_RETENUES` dans `tools/_commun.py` : rien d'elles ne sort de
+l'instance.
+
+**L'écran** : le nom du projet dans la barre commune aux cinq surfaces (`static/theme.js`) —
+le nom seul quand on n'en a qu'un, un `<select>` natif dès deux ; le projet courant gardé par
+navigateur, en stockage local ; un bloc « Projets » dans l'Administration ; les membres par
+un module montable, sur la convention de `qui-entre.js`.
+
+**Deux commits de code** — le modèle, la règle et les routes ; puis l'écran. **La preuve de
+la tranche** se mesure : `git diff --diff-filter=M --name-only` sur `tests/` ne doit rendre
+que `tests/test_sorties_identite.py` et `tests/test_e2e_masquage.py`, deux cliquets qui
+DÉCLARENT ce qui est neuf. Un test de comportement modifié voudrait dire que la tranche a
+déplacé quelque chose.
+
+**Ce que les précisions de Hugo du 2026-10-10 n'y changent pas** : la demande groupée, le
+choix de plusieurs albums et l'import qui rejoint le fonds supposent le fonds, donc les
+tranches 2 et 3. En tranche 1 un projet neuf naît vide, et un album y entre comme
+aujourd'hui, par l'import dans une de ses collections.
 
 ### Les formes écartées
 
