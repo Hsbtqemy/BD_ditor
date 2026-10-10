@@ -132,3 +132,10 @@ angles morts CONNUS de cette passe, pas des vérifications.
 
 - [ ] Le pincement, le glissement à deux doigts et la taille des cibles relèvent d'`UX-8` et ne se jugent pas ici : les rencontrer est normal, les traiter serait déborder
 - [ ] Cette passe ne dit rien du 1.4.4 (zoom à 200 %), qui est le voisin d'`A11Y-2` : agrandir le texte à largeur constante est un autre critère, et le confondre avec celui-ci fausserait les deux
+
+### Après `9eec56e` — la bande du haut porte le projet ; 320 et 375 px, police par défaut, un compte qui voit DEUX projets
+
+- [ ] À 320 px puis à 375 px, sur les cinq surfaces : le nom du projet choisi est entier dans sa liste ; « Aa », la pastille du compte et « ← » sont dans la bande et se touchent au doigt sans toucher le voisin
+- [ ] Compter les rangées que prend la bande du haut à 320 px (une de plus qu'avant `9eec56e`) et dire si la hauteur qu'elle mange laisse encore travailler sur l'Atelier, téléphone tenu en paysage compris
+- [ ] La liste des projets s'ouvre au doigt et se referme sur un choix ; dans la Bibliothèque, la liste des collections change aussitôt, sans rechargement
+- [ ] Administration, bloc « 🗂️ Projets », à 320 px : la liste des projets passe AU-DESSUS de la fiche ; chaque ligne de « Qui y entre » se replie sans faire défiler la page de côté, et son ✕ reste au bout de sa rangée

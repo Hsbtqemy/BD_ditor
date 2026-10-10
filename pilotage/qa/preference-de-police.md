@@ -90,7 +90,7 @@ C'est voulu. Ces cases demandent si le résultat est UTILISABLE, pas s'il est co
 - [x] Sur un écran large (1280 px ou plus) avec une très grande police, la barre latérale devient un tiroir : la bascule qui la rouvre est visible, et on comprend où est passé l'arbre de structure
 - [x] Vers 768 px avec une grande police, la légende de couleurs de la barre d'état disparaît : on peut encore comprendre le code des couleurs sans elle, ou bien c'est un manque à écrire
 - [x] Aucune bascule ne se produit à un moment qui SURPREND : passer d'un cran de police au suivant ne réorganise pas l'écran sans qu'on voie pourquoi
-- [x] En largeur de téléphone avec une grande police, la barre de navigation s'enroule sur deux lignes et le menu « Aa » reste atteignable — c'est par lui qu'on revient en arrière si l'on est allé trop loin
+- [ ] En largeur de téléphone avec une grande police, la barre de navigation s'enroule sur PLUSIEURS rangées (« deux lignes » jusqu'au 2026-10-10 : `9eec56e` y a posé le nom du projet, et la case, cochée le 2026-10-09 sur l'ancien attendu, est décochée) et le menu « Aa » reste atteignable — c'est par lui qu'on revient en arrière si l'on est allé trop loin
 
 ### Les marques restées physiques
 
@@ -124,3 +124,10 @@ angles morts CONNUS de cette passe, pas des vérifications.
 - [x] Même réglage, vers 1000 px de large : dans la barre d'état du bas, « Mode : … » et « Zoom … % » tiennent chacun sur une ligne ; si la barre manque de place elle passe sur une SECONDE rangée entière, sans texte rogné, et la légende des couleurs a disparu
 - [x] Fenêtre à 320 px de large (outils de développement, vue adaptative), police 24 : les QUATRE boutons de mode sont entiers, sur deux rangées s'il le faut, et les rangées de la barre d'état sont serrées — pas plus d'une demi-ligne de vide entre deux
 - [x] Atelier, police par défaut, fenêtre ordinaire : sous un compte qui peut exporter (`proprio`), sélectionner une bulle, cliquer « ＋ Figure » dans le panneau de droite, puis le bouton « Exporter (1) » qui paraît à côté : la fenêtre « Exporter des figures » s'ouvre CENTRÉE sur un fond assombri, comme la fenêtre du lexique, et l'Atelier derrière elle ne défile pas
+
+### Après `9eec56e` — la bande du haut porte le projet ; Firefox, recette sur ce commit, un compte qui voit DEUX projets (`proprio` après la passe « Le projet se voit »)
+
+- [ ] Police par défaut portée à 24, fenêtre à 320 px de large et au moins 700 px de haut, sur chacune des cinq surfaces : le nom du projet choisi se lit EN ENTIER dans sa liste — ni « … », ni lettres mangées par la flèche —, et « Aa », la pastille du compte et « ← » sont dans la bande
+- [ ] Même réglage : le mot « Projet » peut passer AU-DESSUS de la liste, mais le nom ne passe jamais sur deux lignes, et rien ne se chevauche dans la bande
+- [ ] Même réglage, sous `admin-bd`, après avoir renommé un projet `CORPUS FRANCO-BELGE 2` (vingt et une capitales, le nom ordinaire le plus large) : mêmes attendus avec ce nom, sur l'Atelier et la Bibliothèque
+- [ ] Police 24, fenêtre de 1300 px de large : le projet tient sur la rangée de la navigation, à gauche de la pastille du compte, sans pousser « Aa » hors de la bande
