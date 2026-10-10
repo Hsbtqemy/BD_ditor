@@ -12,7 +12,7 @@ le bloc « Projets » de l'Administration), et sa finition est faite (`7eabeb7` 
 listes de la Bibliothèque suivent le projet, la description et la justification se
 modifient). Le plafond du nom, que la mesure a ramené de
 24 à 21 caractères, est confirmé par Hugo, et les documents sont écrits. Restent : les
-passes de QA, sur une recette qui porte ces commits — à reconstruire après un point avec Hugo ; et, avant la fusion vers `main`, la suite et la passe
+passes de QA, à jouer par Hugo sur la recette, montée le 2026-10-10 sur `bd89fe4` ; et, avant la fusion vers `main`, la suite et la passe
 navigateur DANS l'image. Ce que chaque commit a mesuré est en Contexte.
 
 **D'où part le chantier** — 2026-10-09, en conversation, à partir du veto qu'`AUTH-10` venait de
@@ -135,7 +135,7 @@ rien y changer, « le premier projet », où tout est partagé.
 ### Les passes de QA que chaque tranche périme
 
 - [ ] **Tranche 1 — la barre du haut est rejouée à l'étroit et à grande police** — attendu : `petites-largeurs` et `preference-de-police` rejouées sur leurs cases de barre, une fois le nom du projet (ou son sélecteur) posé sur les cinq surfaces. À 320 et 375 px, et à grande police, il ne fait sortir de la fenêtre ni la navigation, ni le menu « Aa », ni la pastille d'identité : c'est la bande où il reste le moins de place, et un nom de projet ne se coupe pas
-- [ ] **Tranche 1 — `projet-visible` est écrite, puis jouée par Hugo** — attendu : une passe neuve et courte, sur une recette qui porte `9eec56e` — le nom sur les cinq surfaces, créer un second projet et y faire entrer un compte et un groupe, ce que voient un responsable et un simple membre, la Bibliothèque bornée au projet choisi. Monter cette recette MIGRE sa base en v29, sans retour sous le code de `main` : à faire sur le mot de Hugo
+- [ ] **Tranche 1 — `projet-visible` est écrite, puis jouée par Hugo** — attendu : une passe neuve et courte, sur une recette qui porte `9eec56e` — le nom sur les cinq surfaces, créer un second projet et y faire entrer un compte et un groupe, ce que voient un responsable et un simple membre, la Bibliothèque bornée au projet choisi. Monter cette recette MIGRE sa base en v29, sans retour sous le code de `main` : à faire sur le mot de Hugo **La recette est montée le 2026-10-10, sur l'accord de Hugo, et sert `bd89fe4`** : la passe peut se jouer. Les comptes y sont comme elle les suppose, lu dans l'application : `proprio` possède « Collection Test » et « Étude B », `stagiaire` écrit dans la première, `lectrice` la lit par le groupe `annotateurs`, et l'annuaire a des groupes à proposer
 - [ ] **Tranche 1 — la carte d'accueil dit le projet, ou dit pourquoi non** — attendu : tranché, et `accueil-par-ou-commencer` rejouée si son texte change. Un arrivant entre désormais dans un projet avant d'entrer dans une collection
 - [ ] **Tranche 2 — `supprimer-n-est-pas-sortir` est RÉÉCRITE, pas rejouée** — attendu : une passe neuve pour les deux réponses à « supprimer ». La corbeille et le ✕ qu'elle vérifie aujourd'hui sont ce que la tranche remplace
 - [ ] **Tranches 2 et 3 — `collections-bibliotheque` est rejouée sur ses gestes d'album** — attendu : rejouée. « Ranger ici » devient « prendre un document », et sortir un album de sa dernière collection cesse d'être refusé
@@ -335,6 +335,25 @@ restent affichés sous la fiche du suivant, et ces ✕ agiraient sur le précéd
 `loadAppartenance`, non reproduit. Et sur une capture à 320 px, la grille « Série / Auteur »
 de la modale d'album dépasse la boîte à droite — non vérifié sur le commit d'avant, donc ni
 attribué ni écarté. Les deux relèvent de la Bibliothèque à l'étroit, pas du projet.
+
+### La migration v29 sur une base réelle — la recette, 2026-10-10
+
+Jusque-là la migration n'avait tourné que dans des tests, sur des bases ramenées en v28 par
+chirurgie. La recette lui a donné une base qui a vécu : trois collections, trois albums,
+cinq accès tenus par quatre principaux. Avant : une copie cohérente de la base, faite dans
+le conteneur encore sous l'ancien code (`VACUUM INTO`), rangée à côté d'elle dans le volume
+— `avant-v29-20261010-184017.sqlite`, version 28, intégrité vérifiée. C'est par elle qu'on
+reviendrait sous le code de `main`, la migration étant à sens unique.
+
+Après le redémarrage sur `bd89fe4`, lu dans la base et par l'application : version 29,
+intégrité intacte ; un projet, « Projet principal », drapeau de repli posé ; les trois
+collections dedans, aucune sans projet ; quatre membres pour quatre principaux — deux
+groupes, deux comptes —, aucun responsable. `GET /api/projets` rend ce projet à chacun des
+comptes de la passe avec le rôle « membre », y compris à `lectrice`, qui n'en est que par
+son groupe ; à l'administrateur avec un rôle nul et `gerable`. Aucune erreur au journal de
+l'application. C'est une répétition du déploiement, pas le déploiement : la base de
+production n'a pas été lue, et l'image de la recette n'a joué ni la suite ni la passe
+navigateur.
 
 ### Les formes écartées
 
