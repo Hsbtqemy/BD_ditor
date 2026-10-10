@@ -71,16 +71,16 @@ rien y changer, « le premier projet », où tout est partagé.
 
 ### Tranche 1 — ce qui se tranche avant le code (propositions de la session, 2026-10-10)
 
-- [ ] **Le nom du premier projet** — attendu : donné par Hugo. Proposition : la migration le fait naître « Projet principal », et Hugo le renomme à l'écran ; ce nom n'est écrit en dur nulle part ailleurs
-- [ ] **Qui est membre du premier projet au départ** — attendu : tranché. Proposition : tout compte ou groupe qui a déjà un accès à une collection, recopié par la migration ; personne ne perd l'écran qu'il avait
-- [ ] **Ce que peut le responsable d'un projet en tranche 1** — attendu : tranché, et « Qui gère un projet » fermée pour cette tranche. Proposition : faire entrer, faire sortir, nommer un autre responsable ; créer, renommer et supprimer restent à l'administrateur, et la fiche du projet dit au responsable que sa suppression se demande à lui
-- [ ] **Ce que borne le projet courant en tranche 1** — attendu : tranché. Proposition : la Bibliothèque seule ; la Recherche et l'Exploration attendent la tranche 4
-- [ ] **Une collection ne change pas de projet** — attendu : tranché. Proposition : aucun geste ne la déplace en tranche 1
-- [ ] **Ranger un album dans une collection d'un AUTRE projet est refusé** — attendu : tranché. Proposition : refusé dès la tranche 1, par un refus qui le nomme ; c'est ce qui garantit qu'à l'arrivée du fonds chaque copie de travail n'a qu'un projet
-- [ ] **Le nom d'un projet a un plafond court** — attendu : la longueur, mesurée sur la barre du haut à 320 px et à grande police. Proposition : 22 à 24 caractères
-- [ ] **Où se gèrent les projets** — attendu : tranché. Proposition : un bloc « Projets » dans l'Administration, sans onglets
-- [ ] **Le projet porte sa justification dès la tranche 1** — attendu : tranché. Proposition : une colonne de `projet` dès le schéma v29, saisie par l'administrateur qui crée le projet, lue des administrateurs et des responsables ; la DEMANDE qui la portera arrive avec le mécanisme de la tranche 2, et trouve la colonne déjà là — une migration de moins
-- [ ] **Ce que le guide en dit** — attendu : tranché. Proposition : une phrase en tête de `docs/guide-utilisateur.md` ; le reste s'écrit avec la tranche qui donne au projet un effet
+- [x] **Le nom du premier projet** — attendu : donné par Hugo. Proposition : la migration le fait naître « Projet principal », et Hugo le renomme à l'écran ; ce nom n'est écrit en dur nulle part ailleurs **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
+- [x] **Qui est membre du premier projet au départ** — attendu : tranché. Proposition : tout compte ou groupe qui a déjà un accès à une collection, recopié par la migration ; personne ne perd l'écran qu'il avait **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
+- [x] **Ce que peut le responsable d'un projet en tranche 1** — attendu : tranché, et « Qui gère un projet » fermée pour cette tranche. Proposition : faire entrer, faire sortir, nommer un autre responsable ; créer, renommer et supprimer restent à l'administrateur, et la fiche du projet dit au responsable que sa suppression se demande à lui **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
+- [x] **Ce que borne le projet courant en tranche 1** — attendu : tranché. Proposition : la Bibliothèque seule ; la Recherche et l'Exploration attendent la tranche 4 **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
+- [x] **Une collection ne change pas de projet** — attendu : tranché. Proposition : aucun geste ne la déplace en tranche 1 **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
+- [x] **Ranger un album dans une collection d'un AUTRE projet est refusé** — attendu : tranché. Proposition : refusé dès la tranche 1, par un refus qui le nomme ; c'est ce qui garantit qu'à l'arrivée du fonds chaque copie de travail n'a qu'un projet **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
+- [ ] **Le nom d'un projet a un plafond court** — attendu : la longueur, mesurée sur la barre du haut à 320 px et à grande police. Proposition : 22 à 24 caractères **Le principe est confirmé par Hugo le 2026-10-10 (« ok pour les 10 ») : un plafond, 24 caractères en attendant.** La case reste ouverte jusqu'à la MESURE, qui fixe la valeur au second commit de code.
+- [x] **Où se gèrent les projets** — attendu : tranché. Proposition : un bloc « Projets » dans l'Administration, sans onglets **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
+- [x] **Le projet porte sa justification dès la tranche 1** — attendu : tranché. Proposition : une colonne de `projet` dès le schéma v29, saisie par l'administrateur qui crée le projet, lue des administrateurs et des responsables ; la DEMANDE qui la portera arrive avec le mécanisme de la tranche 2, et trouve la colonne déjà là — une migration de moins **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
+- [x] **Ce que le guide en dit** — attendu : tranché. Proposition : une phrase en tête de `docs/guide-utilisateur.md` ; le reste s'écrit avec la tranche qui donne au projet un effet **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
 
 ### Le projet
 
