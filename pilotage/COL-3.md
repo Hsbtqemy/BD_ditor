@@ -5,11 +5,13 @@ statut: interrompu
 
 # COL-3 — le fonds et les projets : un album appartient à l'instance, un travail à ceux qui le font
 
-**Arrêté sur** — 2026-10-10, `6c3e19f` : le premier des deux commits de code de la tranche 1
-est sur `dev` — le projet EXISTE (modèle, règle, routes, schéma v29) et l'écran n'a pas
-bougé. Reste le second commit : la barre, la Bibliothèque, l'Administration ; puis les
-documents et les passes de QA. Le cadrage et ce que le premier commit a mesuré sont en
-Contexte.
+**Arrêté sur** — 2026-10-10, `9eec56e` : les deux commits de code de la tranche 1 sont sur
+`dev` — le projet EXISTE (`6c3e19f` : modèle, règle, routes, schéma v29) et il se VOIT
+(`9eec56e` : la bande du haut des cinq surfaces, la Bibliothèque bornée au projet courant,
+le bloc « Projets » de l'Administration). Restent : le mot de Hugo sur le plafond du nom,
+que la mesure a ramené de 24 à 21 caractères ; les documents ; les passes de QA, sur une
+recette qui porte ces commits ; et, avant la fusion vers `main`, la suite et la passe
+navigateur DANS l'image. Ce que chaque commit a mesuré est en Contexte.
 
 **D'où part le chantier** — 2026-10-09, en conversation, à partir du veto qu'`AUTH-10` venait de
 mettre au jour. Hugo : *« Pour moi, il doit y avoir une sorte de back où tous les albums sont
@@ -70,7 +72,8 @@ rien y changer, « le premier projet », où tout est partagé.
 ### L'ordre — le projet d'abord visible, puis ce qu'il permet
 
 - [x] **La forme se tranche sur une maquette interactive, avant la première ligne de code** — attendu : Hugo a manipulé, et dit ce qu'il garde, de quatre écrans : le projet courant dans la Bibliothèque ; « prendre un document » avec ses trois réponses et l'échelle des couches ; les deux réponses à « supprimer » ; le fonds et les projets vus de l'administrateur. Première version publiée le 2026-10-09, jouable sous trois identités (administrateur, responsable de projet, membre) : https://claude.ai/artifact/9TPyMWof747CBYGCty4sNv — privée, à partager depuis la page pour qu'un autre que Hugo l'ouvre **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
-- [ ] **Tranche 1 — le projet existe et se VOIT, et rien d'autre ne change** — attendu : tout l'existant est rangé dans un premier projet, nommé par Hugo ; son nom se lit sur les cinq surfaces ; un administrateur en crée un second et y fait entrer un compte ou un groupe ; une collection appartient à UN projet. Aucun test de comportement n'a eu à être retouché : c'est la preuve que la tranche n'a rien déplacé **Premier commit fait le 2026-10-10, `6c3e19f` : le modèle, la règle et les routes ; la preuve tient pour lui (un seul fichier de test existant modifié, le cliquet des sorties d'identité, sans une ligne retirée). La case reste ouverte jusqu'au second commit, qui fait VOIR le projet.**
+- [x] **Tranche 1 — le projet existe et se VOIT, et rien d'autre ne change** — attendu : tout l'existant est rangé dans un premier projet, nommé par Hugo ; son nom se lit sur les cinq surfaces ; un administrateur en crée un second et y fait entrer un compte ou un groupe ; une collection appartient à UN projet. Aucun test de comportement n'a eu à être retouché : c'est la preuve que la tranche n'a rien déplacé **Premier commit fait le 2026-10-10, `6c3e19f` : le modèle, la règle et les routes ; la preuve tient pour lui (un seul fichier de test existant modifié, le cliquet des sorties d'identité, sans une ligne retirée). La case reste ouverte jusqu'au second commit, qui fait VOIR le projet.** **Second commit fait le 2026-10-10, `9eec56e`, et la case se ferme sur sa preuve** : sur les deux commits, les seuls fichiers de test existants modifiés sont les deux cliquets attendus — `tests/test_sorties_identite.py` et `tests/test_e2e_masquage.py` —, 33 lignes ajoutées, aucune retirée, aucune vérification touchée. Suite par défaut : 1 536 passés avant la tranche, 1 593 après, dans l'arbre partagé. Passe navigateur entière sous Chromium, dans la copie : 381 passés. Ce que la preuve ne dit pas : ce que l'écran DIT à qui le regarde — c'est la passe `projet-visible`, à jouer par Hugo
+- [ ] **Tranche 1 — deux listes de la Bibliothèque proposent encore les collections de TOUS les projets** — attendu : tranché. Le sélecteur « Collection » de la modale « Nouvel album » et « + Ranger ici » ne sont pas bornés par le projet courant : la décision ne nommait que la liste des collections et le projet où l'on crée. Ranger à travers deux projets répond le 409 nommé du serveur, pas un silence — mais c'est offrir un choix dont on connaît le refus, le défaut qu'`AUTH-12` a déjà fermé pour les collections où l'on n'écrit pas. Sans effet tant qu'il n'existe qu'un projet. Proposition : les borner au projet courant, dans un petit commit avant la tranche 2
 - [ ] **Tranche 1 — les documents disent le projet** — attendu : écrits après le second commit de code, dans un commit à eux. `CLAUDE.md` (schéma 29, les questions d'autorisation qui passent de dix à quatorze, le tableau des surfaces, les modules de `static/lib/`), `docs/modele-et-droits.md`, `docs/guide-utilisateur.md` (la phrase de tête confirmée par Hugo), `docs/hebergement-securite.md`. D'ici là `CLAUDE.md` annonce encore le schéma 28, et c'est faux sur `dev` depuis `6c3e19f`
 - [ ] **Tranche 2 — le fonds** — attendu : un document a une identité distincte de ses copies de travail, son origine et ses emplois sont écrits à partir de ce jour, « supprimer » a ses deux réponses, et l'administrateur a l'écran du fonds avec les demandes en attente
 - [ ] **Tranche 3 — prendre un document** — attendu : rejoindre (consenti), en partir (amorcé jusqu'à un cran), partir de zéro ; dans un projet et entre deux
@@ -84,7 +87,7 @@ rien y changer, « le premier projet », où tout est partagé.
 - [x] **Ce que borne le projet courant en tranche 1** — attendu : tranché. Proposition : la Bibliothèque seule ; la Recherche et l'Exploration attendent la tranche 4 **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
 - [x] **Une collection ne change pas de projet** — attendu : tranché. Proposition : aucun geste ne la déplace en tranche 1 **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
 - [x] **Ranger un album dans une collection d'un AUTRE projet est refusé** — attendu : tranché. Proposition : refusé dès la tranche 1, par un refus qui le nomme ; c'est ce qui garantit qu'à l'arrivée du fonds chaque copie de travail n'a qu'un projet **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
-- [ ] **Le nom d'un projet a un plafond court** — attendu : la longueur, mesurée sur la barre du haut à 320 px et à grande police. Proposition : 22 à 24 caractères **Le principe est confirmé par Hugo le 2026-10-10 (« ok pour les 10 ») : un plafond, 24 caractères en attendant.** La case reste ouverte jusqu'à la MESURE, qui fixe la valeur au second commit de code.
+- [ ] **Le nom d'un projet a un plafond court** — attendu : la longueur, mesurée sur la barre du haut à 320 px et à grande police. Proposition : 22 à 24 caractères **Le principe est confirmé par Hugo le 2026-10-10 (« ok pour les 10 ») : un plafond, 24 caractères en attendant.** La case reste ouverte jusqu'à la MESURE, qui fixe la valeur au second commit de code. **MESURÉ le 2026-10-10, au second commit : 24 ne tient pas, la constante vaut 21.** Le pire coin est 320 px de large, une préférence de police de 24, deux projets visibles (le nom est alors dans un sélecteur, qui prend 26 à 29 px) et la police de l'image, DejaVu Sans : la bande laisse 249 px au texte du nom. Vingt et une capitales de français courant en demandent 238 — 12 px de marge sous Chromium, 14 sous Firefox ; vingt-deux tombent à 0 ; vingt-quatre sortent de 20 à 23 px. Il a fallu pour cela rendre le nom à la taille des petits textes sous 28em. Ce que 21 coûte : « Séminaire émotions 2026 » (23) est refusé, « Corpus franco-belge » (19) et « Projet principal » (16) passent. Ce qu'il ne garantit pas, et aucun plafond en caractères ne le ferait : un nom chargé de m, de M ou de W sort encore de ce coin-là. Reste ouvert jusqu'au mot de Hugo sur 21
 - [x] **Où se gèrent les projets** — attendu : tranché. Proposition : un bloc « Projets » dans l'Administration, sans onglets **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
 - [x] **Le projet porte sa justification dès la tranche 1** — attendu : tranché. Proposition : une colonne de `projet` dès le schéma v29, saisie par l'administrateur qui crée le projet, lue des administrateurs et des responsables ; la DEMANDE qui la portera arrive avec le mécanisme de la tranche 2, et trouve la colonne déjà là — une migration de moins **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
 - [x] **Ce que le guide en dit** — attendu : tranché. Proposition : une phrase en tête de `docs/guide-utilisateur.md` ; le reste s'écrit avec la tranche qui donne au projet un effet **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
@@ -127,6 +130,7 @@ rien y changer, « le premier projet », où tout est partagé.
 ### Les passes de QA que chaque tranche périme
 
 - [ ] **Tranche 1 — la barre du haut est rejouée à l'étroit et à grande police** — attendu : `petites-largeurs` et `preference-de-police` rejouées sur leurs cases de barre, une fois le nom du projet (ou son sélecteur) posé sur les cinq surfaces. À 320 et 375 px, et à grande police, il ne fait sortir de la fenêtre ni la navigation, ni le menu « Aa », ni la pastille d'identité : c'est la bande où il reste le moins de place, et un nom de projet ne se coupe pas
+- [ ] **Tranche 1 — `projet-visible` est écrite, puis jouée par Hugo** — attendu : une passe neuve et courte, sur une recette qui porte `9eec56e` — le nom sur les cinq surfaces, créer un second projet et y faire entrer un compte et un groupe, ce que voient un responsable et un simple membre, la Bibliothèque bornée au projet choisi. Monter cette recette MIGRE sa base en v29, sans retour sous le code de `main` : à faire sur le mot de Hugo
 - [ ] **Tranche 1 — la carte d'accueil dit le projet, ou dit pourquoi non** — attendu : tranché, et `accueil-par-ou-commencer` rejouée si son texte change. Un arrivant entre désormais dans un projet avant d'entrer dans une collection
 - [ ] **Tranche 2 — `supprimer-n-est-pas-sortir` est RÉÉCRITE, pas rejouée** — attendu : une passe neuve pour les deux réponses à « supprimer ». La corbeille et le ✕ qu'elle vérifie aujourd'hui sont ce que la tranche remplace
 - [ ] **Tranches 2 et 3 — `collections-bibliotheque` est rejouée sur ses gestes d'album** — attendu : rejouée. « Ranger ici » devient « prendre un document », et sortir un album de sa dernière collection cesse d'être refusé
@@ -271,6 +275,50 @@ pas ».
 identifié qui n'a ni projet ni collection : la barre doit tenir ce cas. Ni le plafond du nom
 ni la liste des rôles ne sont servis par une route. Et la clé de la réponse de
 `…/membres/choix` est `membres`.
+
+### Le second commit de la tranche 1 — `9eec56e`, 2026-10-10
+
+Écrit par un second agent neuf sur une copie, relu — diff et captures d'écran — par la
+session de pilotage, puis porté dans l'arbre partagé. Dix-huit fichiers, dont six neufs :
+`static/lib/projet.js` (le projet courant, logique pure), `static/lib/membres-projet.js`
+(« Qui y entre », module montable frère de « Qui entre »), leurs tests sous Node,
+`tests/test_e2e_projets.py` (48 tests navigateur), `tests/test_membres_projet_module.py` (le
+cliquet du module) et `tests/test_projet_ecran.py` (l'accord entre l'écran et le serveur).
+
+**Ce qui a été mesuré.** La suite par défaut : 1 574 passés avant, 1 593 après, dans la
+copie puis dans l'arbre partagé. La passe navigateur entière sous Chromium, dans la copie :
+381 passés, dont les 48 neufs. Sous Firefox, à des préférences de police de 16, 20 et 24 :
+les tests neufs passent aux trois ; la mesure de reflow passe à 16 et à 20, et laisse à 24
+cinq échecs IDENTIQUES sur le commit d'avant — antérieurs à la tranche, rangés chez `UX-7`.
+Soixante-cinq mutants joués un par un, soixante-cinq tombés — après que trois ont d'abord
+survécu : un test qui comptait des titres et non des écouteurs, un `to_have_text` qui lit
+aussi un élément caché, et un test qui dépendait de l'ordre d'arrivée de deux réponses.
+Les trois sont corrigés, rejoués, tombés. Et le plafond du nom, cf. sa case.
+
+**Ce qui n'a pas été joué.** L'image : ni sa suite, ni sa passe navigateur, ni le rendu de
+ses polices — les mesures de largeur forcent DejaVu Sans, installée sur le poste : la même
+famille que l'image, pas l'image. La passe navigateur ENTIÈRE sous Firefox. Un lecteur
+d'écran. Et la phrase du simple membre de trois projets ou plus : seule la forme à deux est
+jouée.
+
+**Les écarts à la maquette et au cadrage, acceptés à la relecture.** La ligne qui nomme le
+projet des collections est AU-DESSUS du bloc et non sous son titre : un test interdit le mot
+« principal » dans ce bloc — c'est un terme du modèle —, et le premier projet naît « Projet
+principal ». Tout nom de projet qui porterait « genre », « principal » ou « utilisateur »
+l'aurait fait tomber de même. Le nom n'est pas en gras : le gras de l'image est 12 % plus
+large, deux caractères de plafond. La phrase du simple membre ne parle pas du fonds, qui
+n'existe pas encore, et ne dit pas « rien de cette page ne vous est ouvert » — les moteurs
+le sont à tous. Le bloc ne liste que les projets qu'on RÈGLE. « Décider des projets » se lit
+dans ce que `GET /api/moi` publie déjà, sans rien y ajouter, et un test exige que le serveur
+réponde comme l'écran le suppose. Enfin le plafond et la liste des rôles sont recopiés dans
+l'écran, et un test fait tomber la suite si les deux s'écartent.
+
+**Ce que la tranche fait à la bande du haut**, mesuré à 320 px de large sur l'Atelier, avant
+et après. À la police par défaut, la bande prend une rangée de plus : 73 px, puis 106. Sous
+une préférence de 24, dans le cas ordinaire, elle demande la même hauteur qu'avant, 235 px ;
+dans le pire cas — nom le plus long, deux projets — 347 px au lieu de 284. La dette ouverte
+chez `UX-7` s'aggrave donc : la hauteur de fenêtre sous laquelle la bande est écrasée passe
+d'environ 553 à 610 px dans ce pire cas. C'est écrit chez elle.
 
 ### Les formes écartées
 
