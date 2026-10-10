@@ -67,6 +67,7 @@ SURFACES_HORS_PERIMETRE = {}
 # navigateur. Une clé par module, sa valeur dit qui le monte.
 MODULES_MONTES = {
     "lib/qui-entre.js": "monté par la Bibliothèque, dans chaque collection dépliée (UX-16)",
+    "lib/membres-projet.js": "monté par l'Administration, dans la fiche d'un projet (COL-3)",
 }
 
 DIRECT =re.compile(r'\$\(\s*"#([a-z0-9-]+)"\s*\)\.hidden\s*=')
@@ -89,6 +90,14 @@ NON_RESOLUS = {
         "dans la feuille — vérifié le 2026-09-17 dans les deux sens par deux tests e2e : "
         "`test_ouvrir_une_collection_a_ce_groupe_le_preselectionne` l'exige CACHÉE, "
         "`test_un_annuaire_en_panne_n_empeche_rien` VISIBLE."),
+    ("lib/membres-projet.js", "libre"): (
+        "La saisie libre de « Qui y entre » d'un projet (COL-3), une par partie montée, sur "
+        "le patron de celle de « Qui entre » : la cible est la CLASSE `.mp-libre`, cherchée "
+        "dans sa section, pas un identifiant. Elle pose `display: inline-flex`, d'où le garde "
+        "`.mp-libre[hidden] { display: none; }` dans la feuille — vérifié le 2026-10-10 dans "
+        "les deux sens par deux tests e2e : "
+        "`test_faire_entrer_un_groupe_part_avec_le_role_de_membre` l'exige CACHÉE, "
+        "`test_faire_entrer_un_compte_demande_de_dire_ce_qu_il_est` VISIBLE."),
 }
 
 

@@ -1,8 +1,9 @@
 /* Administration (UX-10) — le lieu des gestes qui portent sur l'INSTANCE.
 
-   QUATRE blocs, et aucun n'est une affaire de Bibliothèque : la version servie dit quel
+   CINQ blocs, et aucun n'est une affaire de Bibliothèque : la version servie dit quel
    commit tourne ici (INFRA-10), le référent de l'instance dit à qui s'adresser quand on
-   n'a accès à rien (AUTH-12, étape 4), les comptes et groupes disent qui utilise l'instance
+   n'a accès à rien (AUTH-12, étape 4), les projets disent quel étage coiffe les collections
+   et qui y entre (COL-3), les comptes et groupes disent qui utilise l'instance
    et par quoi il entre (AUTH-12, qui remplace la vue des comptes d'AUTH-7), les moteurs
    disent si l'instance sait encore reconnaître quelque chose. Les moteurs et les accès vivaient dans
    `/corpus` par ACCRÉTION — c'était le seul écran administratif, et tout ce qui y
@@ -766,6 +767,307 @@ function cgInstaller() {
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Projets (COL-3, tranche 1) — une liste et une fiche, pour qui en règle au moins un
+
+   Un PROJET est l'étage au-dessus des collections. Ce bloc dit lesquels on règle, et pour
+   chacun : pourquoi il existe, qui y entre, quelles collections en sont. Il est à lui — sa
+   section, ses fonctions `pj…`, son état —, et ne partage rien avec « Comptes et groupes »,
+   qui est réservé aux administrateurs par sa route : un responsable de projet doit voir SA
+   fiche, et un bloc logé dans l'autre aurait hérité de sa garde.
+
+   DEUX POUVOIRS, DEUX QUESTIONS, et aucune n'est posée par l'écran. RÉGLER qui entre dans un
+   projet : le serveur le dit projet par projet (`gerable`, dans `GET /api/projets`) — son
+   responsable, et l'administrateur qui passe outre. DÉCIDER quels projets existent — créer,
+   renommer, supprimer : la portée totale, que `GET /api/moi` publie (`acces.total`), donc
+   l'administrateur et le mono-poste. L'écran lit ces deux réponses ; s'il se trompait, le
+   serveur refuserait le geste en le nommant.
+
+   CE QUE LE BLOC NE MONTRE PAS. Les projets qu'on ne règle pas : y être simple membre ne
+   donne rien à faire ici, et la bande du haut les nomme déjà. La justification d'un projet à
+   qui ne le gère pas : le serveur ne la lui rend pas. Les collections qu'on ne lit pas : un
+   responsable ne voit de son projet que celles où il entre déjà.
+
+   QUI ENTRE est un module monté dans la fiche (`static/lib/membres-projet.js`) : il lit et
+   écrit SES routes, et ce fichier n'en appelle aucune — un cliquet le vérifie
+   (`tests/test_membres_projet_module.py`).
+
+   La sélection ne vit PAS dans l'adresse, à la différence de « Comptes et groupes » : la
+   liste est courte, et l'adresse de cette page désigne déjà une fiche de l'autre bloc.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const PJ = {
+  projets: [],           // ceux qu'on RÈGLE, dans l'ordre du serveur
+  collections: [],       // celles qu'on lit, pour nommer celles de chaque projet
+  decide: false,         // créer, renommer, supprimer
+  groupesAdmin: [],
+  sel: null,             // l'identifiant du projet dont la fiche est ouverte
+  membres: null,         // la poignée du module monté dans la fiche
+};
+
+/* UN message à la fois dans le bloc : celui de la création, celui de la fiche, celui du
+   module. Une règle de CET écran — le module écrit sa ligne et prévient, il n'efface rien. */
+function pjTaireSauf(el) {
+  document.querySelectorAll("#projets-bloc .col-msg").forEach((l) => {
+    if (l === el) return;
+    l.textContent = "";
+    l.classList.remove("erreur", "alerte");
+  });
+}
+
+function pjMsg(el, texte, erreur) {
+  pjTaireSauf(el);
+  el.textContent = texte || "";
+  el.classList.toggle("erreur", !!erreur);
+}
+
+function pjPluriel(n, mot) { return `${n} ${mot}${n > 1 ? "s" : ""}`; }
+
+/* Prévient la bande du haut que la LISTE des projets a changé : un projet créé, renommé ou
+   supprimé ici se lit là-haut sans attendre un rechargement. */
+function pjPrevenirLaBande() {
+  document.dispatchEvent(new CustomEvent("bd:projets-maj"));
+}
+
+/* Lit les projets et les collections. Rend `false` si la liste n'a pas pu être lue — et le
+   DIT : un bloc qui disparaîtrait sans un mot ferait chercher un droit qu'on a déjà. */
+async function pjLire() {
+  let projets;
+  try { projets = await apiGet("/api/projets"); }
+  catch (e) {
+    $("#projets-ferme").hidden = false;
+    $("#projets-bloc").hidden = true;
+    $("#projets-ferme-texte").textContent =
+      `La liste des projets n'a pas pu être lue : ${e.message}`;
+    return false;
+  }
+  const moi = await Promise.resolve(window.BDMoi).catch(() => null);
+  PJ.decide = !!(moi && moi.acces && moi.acces.total);
+  PJ.groupesAdmin = (moi && moi.acces && moi.acces.groupes_admin) || [];
+  PJ.projets = projets.filter((p) => p.gerable);
+  // Les collections ne servent qu'à NOMMER celles de chaque projet : sans elles, la fiche le
+  // dit, et rien d'autre n'en dépend.
+  try { PJ.collections = await apiGet("/api/collections"); }
+  catch (e) { PJ.collections = null; }
+  pjDireAuxAutres(projets);
+  return true;
+}
+
+/* À qui ne règle aucun projet : ce que la page ne lui montre pas, et pourquoi. Rien du tout
+   à qui n'en voit aucun — une portée vide a son propre bandeau, qui parle d'accès. */
+function pjDireAuxAutres(projets) {
+  const regle = PJ.decide || PJ.projets.length > 0;
+  $("#projets-bloc").hidden = !regle;
+  $("#projets-ferme").hidden = regle || !projets.length;
+  if (regle || !projets.length) return;
+  const miens = projets.filter((p) => p.mon_role).map((p) => `« ${p.nom} »`);
+  const suite = !miens.length
+    ? "Vous n'en réglez aucun."
+    : miens.length === 1
+      ? `Vous êtes membre du projet ${miens[0]} : vous n'y réglez rien.`
+      : `Vous êtes membre des projets ${miens.slice(0, -1).join(", ")} et `
+        + `${miens[miens.length - 1]} : vous n'y réglez rien.`;
+  $("#projets-ferme-texte").textContent =
+    `Les projets se règlent par leur responsable. ${suite}`;
+}
+
+async function pjCharger() {
+  if (!await pjLire()) return;
+  $("#pj-creer").hidden = !PJ.decide;
+  $("#pj-nom-aide").textContent = `${BDProjet.LONGUEUR_NOM} caractères au plus : le nom `
+    + "se lit en haut de chaque page, où il ne se coupe pas.";
+  pjRendre();
+}
+
+function pjProjet() {
+  return PJ.projets.find((p) => p.id === PJ.sel) || null;
+}
+
+function pjRendre() {
+  // La fiche ouverte reste ouverte si son projet est encore là ; sinon la première.
+  if (!pjProjet()) PJ.sel = PJ.projets.length ? PJ.projets[0].id : null;
+  pjRendreListe();
+  pjRendreFiche();
+}
+
+function pjRendreListe() {
+  $("#pj-objets").innerHTML = PJ.projets.length
+    ? PJ.projets.map((p) => `<li><button type="button" class="pj-objet" data-pj="${p.id}"`
+        + `${p.id === PJ.sel ? ' aria-current="true"' : ""}>`
+        + `<span class="pj-nom">${esc(p.nom)}</span>`
+        + `<span class="pj-etat">${esc(pjPluriel(p.nb_collections, "collection"))}</span>`
+        + `</button></li>`).join("")
+    : `<li class="muted small">Aucun projet.</li>`;
+}
+
+/* Les collections d'un projet QU'ON LIT : la liste vient de `GET /api/collections`, qui ne
+   rend que celles-là. Chaque nom mène à la Bibliothèque, où l'adresse choisit le projet. */
+function pjCollections(p) {
+  if (PJ.collections === null) {
+    return `<p class="muted small">Les collections n'ont pas pu être lues.</p>`;
+  }
+  const siennes = PJ.collections.filter((c) => c.projet_id === p.id);
+  const liens = siennes.map((c) =>
+    `<li><a href="/corpus?collection=${c.id}">${esc(c.nom)}</a></li>`).join("");
+  return (siennes.length ? `<ul class="pj-collections">${liens}</ul>`
+                         : `<p class="muted small">Aucune.</p>`)
+    + `<p class="col-note">${PJ.decide ? "" : "Seules les collections que vous lisez sont "
+      + "nommées ici. "}Une collection se crée dans la Bibliothèque, une fois ce projet
+      choisi en haut de la page.</p>`;
+}
+
+/* Ce que DÉCIDER permet, ou la phrase qui dit à qui le demander. Le projet de repli se
+   renomme et ne se supprime pas : le serveur le refuserait, et le dirait — autant ne pas
+   offrir un bouton dont on connaît la réponse. */
+function pjDecider(p) {
+  if (!PJ.decide) {
+    return `<p class="col-note pj-a-demander">Vous réglez qui entre dans ce projet. Le
+      renommer ou le supprimer se demande à un administrateur de l'instance.</p>`;
+  }
+  return `<div class="pj-renommer">
+      <label for="pj-renommer-nom">Nom</label>
+      <input id="pj-renommer-nom" autocomplete="off" value="${esc(p.nom)}">
+      <button type="button" class="ghost small" data-pj-renommer="1">Renommer</button>
+    </div>
+    ${p.repli
+      ? `<p class="col-note">C'est le projet de repli : une collection créée sans nommer de
+          projet y est rangée. Il se renomme, il ne se supprime pas.</p>`
+      : `<p><button type="button" class="danger" data-pj-supprimer="1">Supprimer le
+          projet</button></p>
+         <p class="col-note">Un projet ne se supprime que vide : tant qu'une collection lui
+          appartient, le serveur le refuse.</p>`}`;
+}
+
+function pjRendreFiche() {
+  const box = $("#pj-fiche");
+  if (PJ.membres) { PJ.membres.demonter(); PJ.membres = null; }
+  const p = pjProjet();
+  if (!p) {
+    box.innerHTML = PJ.decide
+      ? `<p class="muted">Aucun projet : créez-en un ci-dessus.</p>` : "";
+    return;
+  }
+  // La justification n'est rendue par le serveur qu'à qui gère le projet : la clé ABSENTE
+  // ne se lit pas « jamais écrite », et la fiche ne l'invente pas.
+  const justification = !("justification" in p) ? ""
+    : `<section class="pj-section"><h4>Pourquoi ce projet existe</h4>
+        ${p.justification
+          ? `<p class="pj-justification">${esc(p.justification)}</p>`
+          : `<p class="muted small">Aucune justification n'a été saisie.</p>`}</section>`;
+  box.innerHTML = `<article class="pj-carte" aria-labelledby="pj-fiche-titre">
+    <div class="pj-tete">
+      <h3 id="pj-fiche-titre" tabindex="-1">${esc(p.nom)}</h3>
+      <p class="pj-sous"><span>${esc(pjPluriel(p.nb_collections, "collection"))}</span>
+        ${p.repli ? `<span class="pj-puce">projet de repli</span>` : ""}</p>
+    </div>
+    ${p.description ? `<p class="pj-description">${esc(p.description)}</p>` : ""}
+    ${justification}
+    <section class="pj-section" data-membres-projet></section>
+    <section class="pj-section"><h4>Collections</h4>${pjCollections(p)}</section>
+    <section class="pj-section"><h4>Ce projet</h4>${pjDecider(p)}
+      <p id="pj-fiche-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
+    </section>
+  </article>`;
+  PJ.membres = BDMembresProjet.monter(box.querySelector("[data-membres-projet]"), {
+    projet: { id: p.id, nom: p.nom, gerable: !!p.gerable },
+    groupesAdmin: PJ.groupesAdmin,
+    surMessage: pjTaireSauf,
+    surChangement: pjApresMembres,
+  });
+}
+
+/* Après un geste du module sur les membres : la LISTE des projets peut avoir changé — un
+   responsable qui se fait sortir ne règle plus le sien. La fiche, elle, n'est redessinée que
+   si son projet a disparu : la remonter effacerait le message que le module vient d'écrire. */
+async function pjApresMembres() {
+  const avant = PJ.sel;
+  if (!await pjLire()) return;
+  if (pjProjet() && PJ.sel === avant) { pjRendreListe(); return; }
+  pjRendre();
+  pjPrevenirLaBande();
+}
+
+async function pjCreer() {
+  const ligne = $("#pj-msg");
+  const nom = $("#pj-nom").value.trim();
+  if (!nom) { pjMsg(ligne, "Donnez un nom au projet.", true); return; }
+  const justification = $("#pj-justification").value.trim();
+  let cree;
+  try {
+    cree = await apiSend("POST", "/api/projets",
+                         justification ? { nom, justification } : { nom });
+  } catch (e) { pjMsg(ligne, e.message || "Échec", true); return; }
+  $("#pj-nom").value = "";
+  $("#pj-justification").value = "";
+  PJ.sel = cree.id;
+  if (!await pjLire()) return;
+  pjRendre();
+  pjPrevenirLaBande();
+  pjMsg(ligne, `« ${cree.nom} » créé. Il est vide : faites-y entrer quelqu'un dans sa `
+    + "fiche, puis créez-y une collection depuis la Bibliothèque.");
+  const titre = $("#pj-fiche-titre");
+  if (titre) titre.focus();
+}
+
+async function pjRenommer() {
+  const p = pjProjet(), ligne = $("#pj-fiche-msg");
+  if (!p) return;
+  const nom = $("#pj-renommer-nom").value.trim();
+  if (!nom) { pjMsg(ligne, "Donnez un nom au projet.", true); return; }
+  if (nom === p.nom) { pjMsg(ligne, "Rien n'a changé."); return; }
+  try { await apiSend("PATCH", `/api/projets/${p.id}`, { nom }); }
+  catch (e) { pjMsg(ligne, e.message || "Échec", true); return; }
+  if (!await pjLire()) return;
+  pjRendre();
+  pjPrevenirLaBande();
+  pjMsg($("#pj-fiche-msg"), `Le projet s'appelle désormais « ${nom} ».`);
+  $("#pj-renommer-nom").focus();
+}
+
+async function pjSupprimer() {
+  const p = pjProjet(), ligne = $("#pj-fiche-msg");
+  if (!p) return;
+  if (!confirm(`Supprimer le projet « ${p.nom} » ? Ses membres en sortent. Aucune collection `
+               + "n'est touchée : un projet ne se supprime que s'il n'en porte aucune.")) return;
+  try { await apiSend("DELETE", `/api/projets/${p.id}`); }
+  catch (e) { pjMsg(ligne, e.message || "Échec", true); return; }
+  PJ.sel = null;
+  if (!await pjLire()) return;
+  pjRendre();
+  pjPrevenirLaBande();
+  pjMsg($("#pj-msg"), `« ${p.nom} » supprimé.`);
+  $("#pj-nom").focus();
+}
+
+function pjDemarrer() {
+  $("#pj-ajouter").onclick = pjCreer;
+  $("#pj-nom").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") { ev.preventDefault(); pjCreer(); }
+  });
+  $("#pj").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button");
+    if (!b) return;
+    if (b.dataset.pj) {
+      const id = Number(b.dataset.pj);
+      if (id === PJ.sel) return;
+      PJ.sel = id;
+      pjTaireSauf(null);
+      pjRendre();
+      // La liste est redessinée : le clavier retrouve la ligne qu'il vient de choisir.
+      const courant = document.querySelector('#pj-objets .pj-objet[aria-current="true"]');
+      if (courant) courant.focus();
+    } else if (b.dataset.pjRenommer) pjRenommer();
+    else if (b.dataset.pjSupprimer) pjSupprimer();
+  });
+  $("#pj").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && ev.target.id === "pj-renommer-nom") {
+      ev.preventDefault();
+      pjRenommer();
+    }
+  });
+  pjCharger();
+}
+
+
 /* ── Moteurs (SANTE-1) — la présence n'est pas le fonctionnement ───────────────────
    Le panneau qui rend le contrôle PROFOND atteignable : il existait depuis `ed17b32`,
    mais il fallait connaître `?profond=1` et l'appeler à la main — ce qu'un opérateur sans
@@ -846,11 +1148,13 @@ async function santeEprouver() {
 
 
 function setup() {
-  // Pas de modale à ouvrir : les blocs SONT la page. On charge donc d'emblée — CINQ
+  // Pas de modale à ouvrir : les blocs SONT la page. On charge donc d'emblée — SEPT
   // requêtes, dont TROIS (`/api/version`, `/api/referent` et `/api/comptes-et-groupes`)
   // peuvent légitimement être refusées, chacune masquant son propre bloc et rien d'autre ;
-  // la cinquième, `/api/droits`, accompagne les comptes (AUTH-12, étape 3). La liste des
-  // collections n'est plus demandée ici : les accès sont partis dans la Bibliothèque.
+  // la cinquième, `/api/droits`, accompagne les comptes (AUTH-12, étape 3). Les deux
+  // dernières sont celles des projets (COL-3) : `/api/projets`, et `/api/collections`, qui
+  // revient ici pour NOMMER les collections de chaque projet — les accès, eux, sont restés
+  // dans la Bibliothèque. Le module monté dans la fiche d'un projet lit ensuite les siennes.
   //
   // Le compte est tenu à jour ICI parce que ce commentaire a déjà menti : il disait
   // « deux requêtes » depuis le premier jour, à trois lignes de la ligne qui le
@@ -882,6 +1186,7 @@ function setup() {
   cgLireAdresse();
   cgInstaller();
   cgCharger();
+  pjDemarrer();                    // COL-3 : le bloc des projets, à lui (cf. `PJ`)
   santeCharger();
   // SANTE-1 : éprouver reste un geste SÉPARÉ et volontaire — le contrôle profond importe
   // les moteurs pour de bon, quelques secondes et quelques centaines de mégaoctets.

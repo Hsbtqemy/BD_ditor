@@ -487,6 +487,32 @@ kbd {
 }
 .compte-panel a:hover { background: var(--bg-input); }
 
+/* COL-3 — le projet courant, à gauche de la pastille (cf. `buildProjet` dans theme.js) :
+   « Projet », puis son nom, ou un `<select>` natif dès qu'on en voit deux.
+
+   LE NOM NE SE COUPE PAS, et c'est l'inverse exact de `.user-nom` ci-dessus : ni `max-width`,
+   ni ellipse, ni passage à la ligne. On lit ici dans quel projet on travaille ; un nom rogné
+   en désignerait deux. Il est donc borné à la SOURCE (`database.LONGUEUR_NOM_PROJET`), et ce
+   qui manque de place ne se plie pas : c'est la bande qui passe à la ligne, comme pour tout
+   ce qu'elle porte. Le libellé, lui, peut passer AU-DESSUS du nom — c'est le seul pli permis,
+   et il se fait entre les deux, jamais dans l'un. `max-width: 100%` est ce qui le déclenche :
+   sans lui l'élément garderait sa largeur d'une ligne et sortirait de la bande avec son
+   libellé, alors que le nom seul y tenait.
+
+   En `nowrap`, un nom trop large pour la bande redevient un DÉBORDEMENT, que l'audit de
+   reflow voit — et non un nom replié sur deux lignes dans une rangée qui n'en attend qu'une,
+   que rien ne verrait (la leçon de `.surf-link`). */
+.projet-courant {
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 .4615rem;
+  flex: 0 0 auto; max-width: 100%;
+}
+.projet-lbl { color: var(--text-muted); font-size: .9231rem; white-space: nowrap; }
+.projet-nom, .projet-choix { font-size: 1rem; white-space: nowrap; }
+.projet-choix {
+  font-family: inherit; color: var(--text); background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 5px; padding: .1538rem;
+}
+
 /* Les deux bandes d'en-tête restent AU-DESSUS de l'overlay plein écran (#transcription,
    z-index 50) : leurs menus déroulants s'ouvrent vers le bas DANS la zone du corps et
    doivent rester cliquables. position:relative active le z-index sur ces items de grille.
@@ -917,6 +943,16 @@ button { font-family: inherit; }
     min-width: min(16.1538rem, 100% - 2.1538rem);
   }
   .display-panel .dm-row { flex-wrap: wrap; }
+
+  /* COL-3 — le nom du projet courant prend ICI la taille des petits textes de la feuille,
+     et c'est la mesure qui l'a demandé (2026-10-10). À 320 px sous une préférence de 24,
+     la bande laisse 278 px, et le `<select>` en prend 26 à 29 pour sa flèche et son cadre.
+     À 1rem, le nom le plus long qu'un projet puisse porter n'y tient pas dans la police de
+     l'image de production (DejaVu Sans, plus large que celle du poste) ; à cette taille,
+     ses vingt et une capitales tiennent avec 12 px de marge — c'est ce couple qui a fixé
+     `database.LONGUEUR_NOM_PROJET`. Au-dessus de ce seuil la bande a la place, et le nom
+     garde la taille des liens voisins. */
+  .projet-nom, .projet-choix { font-size: .9231rem; }
 }
 .surf-sep { color: var(--text-muted); opacity: .45; user-select: none; }
 .surf-link.active {
@@ -2215,6 +2251,9 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .acces-liste { list-style: none; margin: .4rem 0 .3rem; padding: 0; }
 .acces-liste li { display: flex; align-items: center; gap: .5rem; padding: .18rem 0;
                   font-size: .9rem; flex-wrap: wrap; }
+/* COL-3 — de quel PROJET sont les collections listées : la ligne posée juste au-dessus du
+   bloc (cf. `colDireProjet` dans corpus.js, et le gabarit pour la raison de sa place). */
+.collections-projet { margin: .9rem 0 -.5rem; }
 .col-note { color: var(--text-muted); font-size: .82rem; margin: .3rem 0 .1rem; }
 /* Le refus du serveur se LIT : les 409 d'AUTH-3 nomment un état interdit (dernier
    propriétaire, dernière collection), pas un droit manquant. Token d'encre AA-sûr, jamais
@@ -2483,6 +2522,95 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
   .cg.cg--fiche .cg-liste { display: none; }
   .cg-retour { display: inline-block; margin-bottom: .6rem; }
 }
+/* ── Projets (COL-3, tranche 1) — le bloc de l'Administration ───────────────────────
+   Une liste courte et une fiche. Ni cadre à hauteur fixe ni liste qui défile seule, à la
+   différence de « Comptes et groupes » : on règle quelques projets, pas trois cents comptes,
+   et le bloc prend la hauteur de ce qu'il contient. Là où les deux ne tiennent plus côte à
+   côte, la fiche passe SOUS la liste — `flex-wrap`, sans seuil à tenir d'accord avec un
+   script. Les couleurs sont celles de la feuille, et chaque petit texte coloré prend une
+   encre AA-sûre (cf. le bloc ci-dessus). */
+.admin-bloc.pj-bloc { max-width: none; }
+.pj-bloc > p { max-width: 62rem; }
+.pj-creer { display: grid; gap: .35rem; max-width: 46rem; margin: .7rem 0 .2rem; }
+/* `display: grid` ci-dessus l'emporterait sur la règle UA `[hidden]`. */
+.pj-creer[hidden] { display: none; }
+.pj-creer-ligne, .pj-renommer { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.pj-creer label, .pj-renommer label { font-size: .92rem; color: var(--text-muted); }
+.pj-creer input, .pj-creer textarea, .pj-renommer input {
+  background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
+  border-radius: 5px; padding: .35rem .55rem; font-size: 1rem; font-family: inherit; }
+/* `min-width: 0` : un champ garde sinon sa largeur de vingt caractères, et à 320 px sous
+   une grande police c'est lui qui emporterait le corps de la page. */
+.pj-creer input, .pj-renommer input { flex: 1 1 12rem; min-width: 0; max-width: 24rem; }
+.pj-creer textarea { width: 100%; resize: vertical; }
+#pj-nom-aide { margin: 0; }
+.pj { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .8rem 1.6rem;
+      margin-top: .6rem; }
+.pj-objets { list-style: none; margin: 0; padding: 0; flex: 1 1 14rem; max-width: 20rem;
+             min-width: 0; }
+.pj-objet { width: 100%; display: flex; flex-wrap: wrap; justify-content: space-between;
+            gap: .1rem .5rem; align-items: baseline; text-align: left; background: none;
+            border: 0; border-radius: 6px; padding: .38rem .5rem; color: var(--text);
+            cursor: pointer; font-size: 1rem; }
+.pj-objet:hover { background: var(--hover); }
+.pj-objet[aria-current="true"] {
+  background: color-mix(in srgb, var(--accent-blue) 14%, transparent); font-weight: 600; }
+.pj-nom { min-width: 0; overflow-wrap: anywhere; }
+.pj-etat { color: var(--text-muted); font-size: .88rem; font-weight: 400; }
+/* Sur la ligne choisie, l'encre pleine : l'encre atténuée ne tient plus le 4.5:1 sur le fond
+   teinté quand le bloc repose sur le fond de la PAGE et non sur un panneau (thème clair,
+   relevé par axe). */
+.pj-objet[aria-current="true"] .pj-etat { color: var(--text); }
+.pj-fiche { flex: 999 1 26rem; min-width: 0; }
+.pj-carte { max-width: 62rem; }
+.pj-tete h3 { margin: 0; font-size: 1.2rem; overflow-wrap: anywhere; }
+.pj-sous { margin: .2rem 0 0; color: var(--text-muted); display: flex; flex-wrap: wrap;
+           gap: .3rem .6rem; align-items: center; }
+.pj-puce { display: inline-block; padding: .02rem .5rem; border-radius: 999px;
+           border: 1px solid var(--border); font-size: .86rem; color: var(--text-muted); }
+.pj-description, .pj-justification { margin: .5rem 0 0; overflow-wrap: anywhere; }
+/* Un texte libre, saisi sur plusieurs lignes : ses retours se lisent. */
+.pj-justification { white-space: pre-line; }
+.pj-section { margin-top: 1rem; }
+.pj-section > h4 { margin: 0 0 .4rem; font-size: .8rem; text-transform: uppercase;
+                   letter-spacing: .06em; color: var(--text-muted); font-weight: 600; }
+.pj-collections { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap;
+                  gap: .2rem 1rem; }
+.pj-collections a { color: var(--accent-blue); overflow-wrap: anywhere; }
+.pj-renommer { margin-bottom: .5rem; }
+
+/* ── Qui y entre (COL-3) — les membres d'un projet, module monté dans sa fiche ────────
+   Le frère de « Qui entre », plus haut, et les mêmes précautions : une liste déroulante
+   prend la largeur de sa plus longue option, donc elle rétrécit ; la saisie libre garde
+   `[hidden]` malgré son `display`. Une LISTE dont les lignes passent à la ligne, pas un
+   tableau : rien n'a à défiler de côté, à aucune largeur. */
+.mp-liste { list-style: none; margin: 0; padding: 0; }
+.mp-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .8rem;
+            padding: .38rem 0; border-bottom: 1px solid var(--border); }
+.mp-qui { flex: 1 1 12rem; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.mp-signal { font-size: .82rem; }
+.mp-marque { color: var(--accent-amber); font-weight: 600; }
+.mp-role, .mp-choix { max-width: 100%; min-width: 0; }
+.mp-depuis { font-size: .85rem; color: var(--text-muted); white-space: nowrap; }
+/* « Faire sortir » au bout de SA rangée, où que la ligne se soit repliée. */
+.mp-sortir { margin-left: auto; }
+.mp-ajout-ligne { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+                  margin-top: .6rem; }
+/* La saisie libre RÉTRÉCIT elle aussi, et son champ avec elle. Un champ de texte garde sinon
+   sa largeur de vingt caractères — 274 px sous une préférence de 24, pour 260 de place à
+   320 px — et la ligne d'ajout débordait de son bloc sans que rien ne sorte de la fenêtre :
+   vu par la sonde d'écrasement, pas par celle de reflow (mesuré le 2026-10-10). Le champ ne
+   s'écrase pas pour autant : `flex-wrap` décide des retours à la ligne sur sa largeur
+   PLAFONNÉE, donc le sélecteur voisin passe dessous avant que le champ ne cède. */
+.mp-libre { display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+            min-width: 0; max-width: 100%; }
+/* `display: inline-flex` ci-dessus l'emporterait sur la règle UA `[hidden]`. */
+.mp-libre[hidden] { display: none; }
+.mp-nom, .mp-genre { min-width: 0; max-width: 100%; }
+.mp-notes-bloc { border-left: 2px solid var(--border); padding-left: .6rem; margin-top: .5rem; }
+.mp-notes-bloc > p { margin: .25rem 0; }
+.mp-notes-bloc .col-note-admin { border-left: 0; padding-left: 0; }
+
 /* AUTH-6 — le login qui n'a encore ouvert l'application. `--text-muted` et non `--ink-red` :
    ce n'est pas une ERREUR, c'est une observation, et la teinte d'alerte ferait lire une
    faute de frappe là où il peut s'agir d'un arrivant qui n'est pas encore venu. Le MOT

@@ -552,6 +552,100 @@
       .catch(function () {});                       // hors-ligne / 4xx → silencieux
   }
 
+  /* ---- Le projet courant, dans la bande du haut (COL-3, source unique) ----
+     Dans quel projet on travaille se lit sur les CINQ surfaces, au même endroit. Le nom seul
+     quand on n'en voit qu'un ; un `<select>` NATIF dès deux — et pas un menu bâti sur
+     `menuDeroulant` : un contrôle à `aria-expanded` entre dans l'inventaire des repliables
+     que la mesure de reflow exige ouverts, alors qu'il n'existerait qu'à deux projets.
+
+     INDÉPENDANT DE LA PASTILLE D'IDENTITÉ, qui sort tôt sans identité : en mono-poste il n'y
+     a personne à nommer, et il y a quand même un projet. Sa lecture est donc la sienne.
+
+     `/api/projets` est demandé UNE fois par page et partagé (`window.BDProjets`), comme
+     `/api/moi`. La promesse rend `null` sur échec et une liste VIDE à qui ne voit aucun
+     projet — un compte identifié sans projet ni collection : dans les deux cas la bande ne
+     reçoit rien, pas même un libellé sans nom. La règle du choix (le projet retenu s'il est
+     encore visible, sinon celui de repli) vit dans `lib/projet.js`, que la Bibliothèque lit
+     aussi : deux écritures finiraient par ne pas désigner le même projet.
+
+     LE NOM NE SE COUPE PAS : ni ellipse, ni rognage, ni passage à la ligne — c'est la
+     différence avec le nom de la pastille, coupé à 14ch. Il est borné à la SOURCE
+     (`database.LONGUEUR_NOM_PROJET`), et la feuille dit ce que la mesure a donné. */
+  function lireProjets() {
+    return fetch("/api/projets", { headers: { Accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { return Array.isArray(d) ? d : null; })
+      .catch(function () { return null; });
+  }
+  window.BDProjets = lireProjets();
+
+  function dessinerProjet(projets) {
+    var bar = document.getElementById("site-nav");
+    var lib = window.BDProjet;
+    if (!bar || !lib) return;
+    var ancien = bar.querySelector(".projet-courant");
+    if (ancien) ancien.remove();
+    if (!projets || !projets.length) return;
+    var id = lib.courant(projets, lib.lire());
+    var wrap = el("span", "projet-courant");
+    if (projets.length === 1) {
+      wrap.appendChild(el("span", "projet-lbl", "Projet"));
+      var nom = el("span", "projet-nom", projets[0].nom);
+      nom.id = "projet-nom";
+      wrap.appendChild(nom);
+    } else {
+      var lbl = el("label", "projet-lbl", "Projet");
+      lbl.htmlFor = "projet-choix";
+      var choix = el("select", "projet-choix");
+      choix.id = "projet-choix";
+      projets.forEach(function (p) { choix.appendChild(new Option(p.nom, String(p.id))); });
+      choix.value = String(id);
+      choix.addEventListener("change", function () { lib.choisir(Number(choix.value)); });
+      wrap.appendChild(lbl);
+      wrap.appendChild(choix);
+    }
+    // Avant la pastille si elle est déjà là, sinon avant « Aa » : la pastille s'insère
+    // elle-même avant « Aa », donc l'ordre est le même quelle que soit la réponse arrivée
+    // la première. Mêmes gardes que pour elle.
+    var ancre = bar.querySelector(".user-chip") || bar.querySelector(".display-menu");
+    if (ancre && ancre.parentNode === bar) bar.insertBefore(wrap, ancre);
+    else bar.appendChild(wrap);
+  }
+
+  function buildProjet() {
+    var tour = 0;
+    function dessiner() {
+      var mien = ++tour;
+      // Une lecture dépassée par une plus récente ne dessine pas par-dessus elle.
+      window.BDProjets.then(function (p) { if (mien === tour) dessinerProjet(p); });
+    }
+    dessiner();
+    // La LISTE a changé — un projet créé, renommé ou supprimé dans l'Administration : la
+    // bande se relit, sans attendre un rechargement pour dire le nouveau nom.
+    document.addEventListener("bd:projets-maj", function () {
+      window.BDProjets = lireProjets();
+      dessiner();
+    });
+    // Le CHOIX a changé ailleurs que dans ce sélecteur — la Bibliothèque, quand l'adresse
+    // nomme une collection d'un autre projet : il suit.
+    document.addEventListener("bd:projet-change", function (e) {
+      var choix = document.getElementById("projet-choix");
+      var v = e.detail && e.detail.id != null ? String(e.detail.id) : null;
+      if (choix && v !== null && choix.value !== v) choix.value = v;
+    });
+    // …ou dans un AUTRE onglet : même raison que pour le thème, plus haut. La page est
+    // prévenue comme si le choix venait d'elle, sans le réécrire.
+    window.addEventListener("storage", function (e) {
+      var lib = window.BDProjet;
+      if (!lib || (e.key !== null && e.key !== lib.CLE)) return;
+      window.BDProjets.then(function (projets) {
+        if (!projets || !projets.length) return;
+        document.dispatchEvent(new CustomEvent(lib.EVENEMENT, {
+          detail: { id: lib.courant(projets, lib.lire()) } }));
+      });
+    });
+  }
+
   /* ---- « ← Retour » réduit à son icône (UX-14, source unique) ----
      Les cinq gabarits écrivent « ← Retour » dans `#back-link`, et chaque surface ne fait
      que le montrer et lui donner sa cible. C'est donc ICI, une fois, qu'il devient une
@@ -581,6 +675,7 @@
   function wire() {
     buildBack();
     buildHeaderNav();
+    buildProjet();
     buildUserChip();
     document.querySelectorAll(".btn-theme").forEach(buildMenu);
     sync();

@@ -1280,9 +1280,26 @@ NOM_PROJET_DEFAUT = "Projet principal"
 
 # Plafond du NOM d'un projet, en caractères. Court exprès : le nom se lit dans la bande du
 # haut des cinq surfaces, où il ne doit ni se couper ni pousser la navigation hors de la
-# fenêtre. PROVISOIRE — la valeur se fixera par la mesure, sur la barre, à 320 px et à
-# grande police. Lu par les routes de `routes/projets.py`, et par elles seules.
-LONGUEUR_NOM_PROJET = 24
+# fenêtre. Lu par les routes de `routes/projets.py`, et par elles seules ; l'écran en tient
+# une copie pour l'annoncer sous son champ (`static/lib/projet.js`), et leur accord est
+# mesuré (`tests/test_projet_ecran.py`).
+#
+# FIXÉ PAR LA MESURE le 2026-10-10 — il valait 24 en attendant, et 24 ne tient pas. Le pire
+# cas est un coin précis : 320 px de large, une préférence de police de 24, DEUX projets
+# visibles (le nom est alors dans un `<select>`, qui prend 26 à 29 px pour sa flèche et son
+# cadre), et la police de l'image de production, DejaVu Sans, plus large que celle du poste.
+# La bande y laisse 278 px, donc 249 au texte du nom. Vingt et une capitales de français
+# courant en demandent 238 (« CORPUS FRANCO-BELGE 2 ») : 12 px de marge sous Chromium, 14
+# sous Firefox. Vingt-quatre en demandent 272 et sortent de 20 à 23 px ; vingt-deux tombent
+# à 0 px de marge.
+#
+# CE QUE LE PLAFOND NE GARANTIT PAS, et aucun plafond en CARACTÈRES ne le garantirait : la
+# largeur d'un nom dépend de ses lettres. Un nom chargé de m ou de M sort encore de ce
+# coin-là, de 2 px (« Hommage aux mammouths ») à 14 (« MAMMOUTHS ET HOMMAGES ») ; vingt et un
+# W en sortent de 124, et dès une préférence de 20 — ils ne tiennent que sous 16. La borne
+# vraie est en pixels ; celle-ci est sa traduction pour un nom ordinaire, capitales
+# comprises.
+LONGUEUR_NOM_PROJET = 21
 
 
 def sql_projet_de(alias: str = "c") -> str:

@@ -24,8 +24,9 @@
   <header id="header">
     <h1>Administration</h1>
     <p class="muted small">Ce qui porte sur l'<b>instance</b> plutôt que sur un album :
-      quelle version tourne ici, à qui s'adresser quand on est bloqué, quels comptes et
-      quels groupes existent et à quoi ils ont accès, et si les moteurs répondent encore.
+      quelle version tourne ici, à qui s'adresser quand on est bloqué, quels projets
+      existent et qui y entre, quels comptes et quels groupes existent et à quoi ils ont
+      accès, et si les moteurs répondent encore.
       Qui entre dans une collection se règle dans sa fiche, dans la
       <a href="/corpus">Bibliothèque</a>.</p>
   </header>
@@ -69,6 +70,44 @@
         l'équipe : la déclaration est déclarative.</p>
       <p id="referent-corps"></p>
       <p class="col-note" id="referent-note"></p>
+    </section>
+
+    <!-- ───────── Projets (COL-3, tranche 1) — l'étage au-dessus des collections ─────────
+         DEUX sections, et jamais les deux à la fois. La première est le bloc où l'on RÈGLE :
+         `hidden` par défaut, levée par le JS seulement si `GET /api/projets` rend au moins
+         un projet `gerable`, ou si l'on décide des projets — la garde est celle du serveur,
+         projet par projet, pas celle de cet écran. La seconde dit à qui n'en règle aucun
+         POURQUOI il ne voit rien ici : une page qui se tairait ferait chercher un droit.
+
+         Le squelette est écrit ici ; la liste et la fiche se dessinent, et qui entre dans un
+         projet est un module monté dans la fiche (`static/lib/membres-projet.js`). -->
+    <section class="admin-bloc pj-bloc" id="projets-bloc" hidden aria-labelledby="projets-titre">
+      <h2 id="projets-titre">🗂️ Projets</h2>
+      <p class="muted small">Un <b>projet</b> est l'étage au-dessus des collections : chaque
+        collection appartient à un projet, et l'on y fait entrer des comptes ou des groupes.
+        <b>Entrer dans un projet n'ouvre aucune de ses collections</b> : chacune garde son
+        « Qui entre », dans la <a href="/corpus">Bibliothèque</a>.</p>
+      <div class="pj-creer" id="pj-creer" hidden>
+        <div class="pj-creer-ligne">
+          <label for="pj-nom">Nouveau projet</label>
+          <input id="pj-nom" autocomplete="off" aria-describedby="pj-nom-aide">
+          <button id="pj-ajouter" class="primary small" type="button">+ Créer le projet</button>
+        </div>
+        <p class="muted small" id="pj-nom-aide"></p>
+        <label for="pj-justification">Pourquoi ce projet existe <span class="muted small">—
+          sa justification, scientifique d'abord. Elle se lit dans sa fiche, par ses
+          responsables et les administrateurs.</span></label>
+        <textarea id="pj-justification" rows="2"></textarea>
+      </div>
+      <p id="pj-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
+      <div class="pj" id="pj">
+        <ul class="pj-objets" id="pj-objets" aria-label="Projets que vous réglez"></ul>
+        <div class="pj-fiche" id="pj-fiche"></div>
+      </div>
+    </section>
+    <section class="admin-bloc" id="projets-ferme" hidden aria-labelledby="projets-ferme-titre">
+      <h2 id="projets-ferme-titre">🗂️ Projets</h2>
+      <p id="projets-ferme-texte"></p>
     </section>
 
     <!-- ───────── Comptes et groupes (AUTH-12, étape 2) — une liste et une fiche ─────────
@@ -145,9 +184,11 @@
 </div>
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
+<script src="/static/lib/projet.js"></script>
 <script src="/static/lib/sante.js"></script>
 <script src="/static/lib/comptes.js"></script>
 <script src="/static/lib/droits.js"></script>
+<script src="/static/lib/membres-projet.js"></script>
 <script src="/static/administration.js"></script>
 </body>
 </html>

@@ -849,6 +849,44 @@ const COL_GROUPES = [
   ] },
 ];
 
+/* COL-3 — LE PROJET COURANT BORNE CE BLOC, et rien d'autre de la page : la liste des
+   collections, et le projet où « + Créer » crée. Les albums, leur fiche et le lot ne le
+   connaissent pas ; l'Atelier, la Recherche et l'Exploration non plus, qui en affichent
+   seulement le nom dans la bande du haut.
+
+   Il se lit comme la bande le lit — la règle est dans `lib/projet.js`, pour que les deux
+   désignent le même projet —, sur la même liste (`window.BDProjets`, demandée une fois par
+   page). Sans liste lisible, `PROJET` reste nul : rien n'est filtré, rien n'est nommé, et
+   créer n'envoie aucun projet — c'est-à-dire l'écran d'avant, plutôt qu'une liste vidée par
+   une panne qui ne la concerne pas.
+
+   CE N'EST PAS UNE GARDE. Le serveur rend déjà tout ce qu'on lit, quel que soit le projet,
+   et refuse lui-même de créer là où l'on n'est pas : le filtre range, il ne protège rien. */
+let PROJET = null;                // l'identifiant du projet courant
+let PROJETS = [];                 // ceux qu'on peut nommer
+
+async function lireProjetCourant() {
+  const projets = await Promise.resolve(window.BDProjets).catch(() => null);
+  PROJETS = Array.isArray(projets) ? projets : [];
+  // Ce que la PAGE a retenu prime sur le stockage, une fois qu'elle a choisi : quand il
+  // refuse d'écrire, le choix vaut encore pour elle.
+  PROJET = BDProjet.courant(PROJETS, PROJET === null ? BDProjet.lire() : PROJET);
+  colDireProjet();
+}
+
+function colNomProjet() {
+  const p = PROJETS.find((x) => x.id === PROJET);
+  return p ? p.nom : null;
+}
+
+/* La ligne au-dessus du bloc : de quel projet sont ces collections. */
+function colDireProjet() {
+  const ligne = $("#collections-projet");
+  const nom = colNomProjet();
+  ligne.hidden = nom === null;
+  ligne.textContent = nom === null ? "" : `Dans le projet « ${nom} »`;
+}
+
 /* Vrai dès que la liste a été dessinée une fois : avant, un rafraîchissement des décomptes
    n'a rien à rafraîchir, et le déclencher ferait dessiner la liste deux fois au démarrage,
    dont une AVANT que l'état ShareDocs soit connu. */
@@ -1419,7 +1457,11 @@ async function creerCollection() {
   if (!nom) { colMsg(ligne, "Donnez un nom à la collection.", true); return; }
   let creee = null;
   if (await colTenter(ligne, async () => {
-    creee = await apiSend("POST", "/api/collections", { nom });
+    // COL-3 — dans le projet COURANT : c'est lui que la liste montre, donc là que l'on
+    // s'attend à voir naître ce qu'on crée. Sans projet connu, rien n'est nommé et le
+    // serveur range la collection dans le projet de repli, comme avant.
+    creee = await apiSend("POST", "/api/collections",
+                          PROJET === null ? { nom } : { nom, projet_id: PROJET });
   })) {
     $("#col-nom").value = "";
     // Le trajet que la frontière coupait en deux se fait désormais d'un tenant : la
@@ -1446,12 +1488,13 @@ async function creerCollection() {
   }
 }
 
-async function chargerCollections(ouvrir) {
+async function chargerCollections(ouvrir, parAdresse) {
   const body = $("#col-body");
   await DROITS_PRETS;
   MOI = await identite();
-  let cols = [];
-  try { cols = await apiGet("/api/collections"); }
+  await lireProjetCourant();
+  let toutes = [];
+  try { toutes = await apiGet("/api/collections"); }
   catch (e) {
     // Le message du dernier geste survit à l'échec de la relecture : un « enregistrée » qui
     // disparaîtrait derrière l'erreur ferait croire raté un enregistrement qui a eu lieu.
@@ -1462,6 +1505,20 @@ async function chargerCollections(ouvrir) {
     if (garde) body.appendChild(colTrace(garde.texte, garde.erreur));
     return;
   }
+  // COL-3 — L'ADRESSE GAGNE. `?collection=<id>` peut nommer une collection d'un AUTRE projet
+  // que le courant : c'est la cible de « Régler qui entre », depuis l'Administration, qui ne
+  // sait rien du projet où l'on travaille. Sans cette bascule, la collection ne serait pas
+  // dans la liste filtrée, et l'écran dirait « elle ne vous est pas ouverte, ou elle
+  // n'existe pas » d'une collection ouverte. `PROJET` est posé AVANT de prévenir : l'écoute
+  // de cette page reconnaît son propre choix et ne recharge pas une seconde fois.
+  const visee = parAdresse ? toutes.find((c) => c.id === ouvrir) : null;
+  if (visee && visee.projet_id != null && visee.projet_id !== PROJET
+      && PROJETS.some((p) => p.id === visee.projet_id)) {
+    PROJET = visee.projet_id;
+    colDireProjet();
+    BDProjet.choisir(PROJET);
+  }
+  const cols = BDProjet.duProjet(toutes, PROJET);
   // Les collections dépliées le restent, et gardent ce qu'elles disaient : recharger après
   // un enregistrement ne doit ni replier sous les yeux celle qu'on vient de modifier, ni
   // effacer le message qui le confirme.
@@ -1477,7 +1534,10 @@ async function chargerCollections(ouvrir) {
     // « vous en serez propriétaire » ne vaut que pour qui n'écrit pas partout (AUTH-12).
     const moi = await Promise.resolve(window.BDMoi).catch(() => null);
     const total = !!(moi && moi.acces && moi.acces.total);
-    body.innerHTML = `<p class="col-note">Aucune collection ouverte pour vous. Créez-en une
+    // COL-3 — rien dans CE projet n'est pas rien du tout : qui lit des collections
+    // ailleurs le lit ici, plutôt que de croire qu'on lui a tout retiré.
+    const ou = toutes.length ? ` dans le projet « ${esc(colNomProjet())} »` : "";
+    body.innerHTML = `<p class="col-note">Aucune collection ouverte pour vous${ou}. Créez-en une
       ci-dessus${total ? "." : " : vous en serez propriétaire."}</p>`;
     return;
   }
@@ -1506,7 +1566,10 @@ async function chargerCollections(ouvrir) {
 async function rafraichirCollections() {
   if (!COLS_RENDUES) return;
   let cols;
-  try { cols = await apiGet("/api/collections"); } catch (e) { return; }
+  // La même liste que celle qu'on a dessinée : celle du projet courant (COL-3). Comparée à
+  // la liste entière, elle paraîtrait toujours changée, et tout se redessinerait.
+  try { cols = BDProjet.duProjet(await apiGet("/api/collections"), PROJET); }
+  catch (e) { return; }
   const body = $("#col-body");
   const affichees = [...body.querySelectorAll("details.col-item")].map((d) => d.dataset.id);
   const ids = cols.map((c) => String(c.id));
@@ -1530,7 +1593,7 @@ async function ouvrirDepuisAdresse() {
   const brut = p.get("collection");
   const id = brut && /^[1-9]\d*$/.test(brut) ? Number(brut) : null;
   if (id !== null && p.get("groupe")) PRESELECTION = { id, groupe: p.get("groupe") };
-  await chargerCollections(id);
+  await chargerCollections(id, true);
   if (id === null) return;
   const body = $("#col-body");
   const d = body.querySelector(`details.col-item[data-id="${id}"]`);
@@ -1577,6 +1640,15 @@ function setup() {
     if (e.key === "Enter") { e.preventDefault(); creerCollection(); }
   });
   $("#m-appartenance-add").onclick = rangerAlbum;
+  // COL-3 — on a changé de projet, par le sélecteur de la bande ou dans un autre onglet :
+  // la liste est celle du nouveau. Le message d'un geste fait dans le précédent ne suit pas.
+  document.addEventListener(BDProjet.EVENEMENT, (e) => {
+    const id = e.detail ? e.detail.id : null;
+    if (id == null || id === PROJET) return;
+    PROJET = id;
+    colTaireSauf(null);
+    chargerCollections();
+  });
   // AUTH-1 — amorcé ici, et non à la seule ouverture des collections : `parQui()` a besoin
   // du login courant pour dire « par vous », et la table des planches se dessine bien avant
   // que quiconque ouvre ce panneau. Amorcer n'est pas attendre — c'est `openAlbum()` qui
