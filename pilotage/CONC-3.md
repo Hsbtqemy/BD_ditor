@@ -59,7 +59,7 @@ n'est écrit, et le chantier commence par une mesure.
 - [x] Quitter une bulle, un mode, une planche ou un album pendant qu'un enregistrement n'est pas revenu ATTEND la réponse. Le geste se voit (« Enregistrement en cours… ») et se rejoue seul ; au 409 on reste, et le bandeau s'ouvre sur la saisie ; l'attente est bornée à 5 s, après quoi un message le dit et le geste suivant part. Tranché par Hugo SANS maquette, sur description (cf. Contexte) — `eca7507`, `6952f37`, quatre tests e2e (délai qui passe, délai qui expire, 409 en partant, réponse tardive)
 - [x] Deux enregistrements simultanés du même champ, ou une annulation et un enregistrement, ne passent pas tous deux la garde : l'un rend un 409 nommé — `ab1a7e3`, trois tests de course ; les mutants qui ôtent le verrou ou le prennent après la lecture tombent
 - [x] La passe `qa/conflit-a-deux.md` est jouée sur la pile de recette servant `6952f37` ou plus récent, et ses cases sont cochées par qui la joue — jouée par Hugo le 2026-09-18 sur la recette servant `6ea6b60`, 30 cases sur 30, aucun défaut trouvé
-- [ ] Fait AVANT la prochaine fusion de `dev` dans `main` : les testeurs de la production travaillent à plusieurs
+- [x] Fait AVANT la prochaine fusion de `dev` dans `main` : les testeurs de la production travaillent à plusieurs — fait : toutes les cases de la zone étaient cochées, la passe `conflit-a-deux` jouée le 2026-09-18, quand `dev` a été fusionné dans `main` le 2026-10-10 (`cd4fabb`, puis `68edccd` servi)
 
 ### Hors du temps b — écarté exprès le 2026-09-17, à rouvrir ailleurs (Q9)
 - [ ] Locuteur, personnage et présence : deux personnes qui posent deux valeurs différentes sur la même bulle — mesuré à deux navigateurs, avec ce qui reste en base et ce que chaque écran en dit

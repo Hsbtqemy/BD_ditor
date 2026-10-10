@@ -5,7 +5,9 @@ statut: interrompu
 
 # AUTH-7 — administrer les comptes sans console
 
-**Arrêté sur** — 2026-09-16, `208e781` : **la procédure de repli de l'annuaire visait des
+**Arrêté sur** — 2026-10-10, `68edccd` : **les deux tests de `208e781` ne tombent plus dans l'image.** Ils lisent `deploy/authelia/configuration.yml`, que le `.dockerignore` exclut depuis le 2026-09-05 ; verts sur le poste, ils sont tombés en `FileNotFoundError` dans la suite que `deployer.sh` joue dans l'image, le jour de la fusion `dev` → `main`, et ont fait refuser le déploiement avant toute migration. Ils se sautent désormais là où `deploy/` n'est pas copié, et là seulement — le skip se décide sur le compose, pour qu'un `configuration.yml` manquant sur un poste reste une erreur. Conséquence écrite : la procédure de repli n'est rejouée que sur le poste de développement, PAS dans l'image ni sur le serveur, contrairement à ce que disait le message de skip.
+
+Avant lui, `208e781` (2026-09-16) : **la procédure de repli de l'annuaire visait des
 NUMÉROS de ligne, et `bcd2e11` les avait décalés.** Le bloc `elevated_session` ajouté plus haut
 dans `configuration.yml` a déplacé `file:` et `ldap:` de dix-huit lignes : sur la production,
 après la fusion, la commande documentée aurait édité d'autres lignes le jour de la panne. Elle
