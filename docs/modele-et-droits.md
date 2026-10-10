@@ -84,7 +84,7 @@ de la plupart des malentendus.
 
 | Rôle | Ce que ça veut dire | Où ça se voit |
 |---|---|---|
-| **Espace de travail** | c'est elle qui porte les accès : donner un droit sur une collection le donne sur tous ses albums | *Qui entre*, en tête de la collection dépliée, dans la Bibliothèque |
+| **Espace de travail** | c'est elle qui porte les accès : donner un droit sur une collection le donne sur tous ses albums | *Qui entre*, en tête de la collection dépliée, dans la Bibliothèque ; et, pour un administrateur, dans la fiche de la collection, *👥 Comptes et groupes* de l'Administration — le même panneau, à deux endroits (cf. *Où vit quoi*, plus bas) |
 | **Unité de dépôt** | 1 collection = 1 dépôt Nakala/HAL = 1 DOI ; elle porte licence, base légale, régime de diffusion, responsables scientifiques | bloc *📚 Collections* de la Bibliothèque ; les responsables scientifiques par `tools/gerer_collections.py`, cf. [`export-metadonnees.md`](export-metadonnees.md) |
 | **Portée d'appartenance du vocabulaire** | un terme peut être *global* ou *local à une collection* | panneau *📖 Lexique* de l'Exploration |
 
@@ -107,7 +107,8 @@ Trois règles en découlent, qu'il vaut mieux connaître avant de les rencontrer
   album.
 - **Une collection créée par un administrateur n'a pas de propriétaire.** Elle naît ainsi,
   et les administrateurs la gèrent sans en être propriétaires ; ils peuvent lui en désigner
-  un dans *Qui entre*, dans la Bibliothèque, au niveau *Propriétaire*.
+  un dans *Qui entre* — dans la Bibliothèque, ou dans la fiche de la collection, dans
+  l'Administration —, en cochant *décider qui entre* sur sa ligne.
 
 ### Au-dessus de la collection : le projet
 
@@ -657,10 +658,21 @@ scientifiques** n'ont pas de formulaire : ils s'écrivent par `tools/gerer_colle
 
 | | Comptes et groupes | Qui entre dans une collection |
 |---|---|---|
-| Où | l'annuaire LLDAP, par son interface web (le fichier `deploy/authelia/users_database.yml` n'est plus que le repli) | dans l'application, *Qui entre*, en tête de la collection dépliée (Bibliothèque) |
-| Qui | un administrateur (`bd-admins`), sans accès shell | tout **propriétaire** de la collection |
+| Où | l'annuaire LLDAP, par son interface web (le fichier `deploy/authelia/users_database.yml` n'est plus que le repli) | dans l'application, *Qui entre* : en tête de la collection dépliée (Bibliothèque), et dans la fiche de la collection, *👥 Comptes et groupes*, axe *Collections* (Administration) |
+| Qui | un administrateur (`bd-admins`), sans accès shell | tout **propriétaire** de la collection, dans la Bibliothèque ; un administrateur, à l'un ou l'autre endroit |
 | Effet | qui peut **entrer** | qui voit **quoi** |
 | Prise d'effet | sans redémarrer Authelia — c'était le cas du fichier, et c'est ce que la bascule a supprimé | immédiate |
+
+**Pourquoi deux endroits pour *Qui entre*, et un seul panneau.** La question se pose à deux
+personnes qui ne partent pas du même point. Le propriétaire part de son corpus : il déplie sa
+collection, dans la Bibliothèque, et fait entrer quelqu'un dans la foulée — il n'a jamais à
+ouvrir l'Administration. L'administrateur part d'une personne ou d'un groupe : dans
+*👥 Comptes et groupes*, la fiche d'un compte nomme ses collections, chacune mène à sa fiche,
+et *Qui entre* s'y règle sur place ; depuis la fiche d'un groupe, *Ouvrir une collection à ce
+groupe* y mène avec le groupe déjà choisi. C'est le MÊME panneau, monté deux fois : mêmes
+gestes, mêmes refus, et ce qu'on règle d'un côté se lit aussitôt de l'autre. Ce que la
+collection **est** — description, diffusion, référent, exports — ne vit qu'à un endroit, la
+Bibliothèque, où *Décrire dans la Bibliothèque ↗* ramène depuis l'Administration.
 
 Les deux sont nécessaires, et dans cet ordre. **Un compte créé sans accès ouvre une
 application vide** — la personne se connectera parfaitement et ne verra rien, sans qu'aucun
@@ -705,8 +717,8 @@ portail** : revenu au portail sans destination, Authelia propose d'enrôler un s
 (cf. [`exploitation.md`](exploitation.md), étape 7 de *Basculer vers l'annuaire LLDAP*). Dans
 le fichier de repli, il n'y a rien à créer : un groupe existe dès qu'un compte le porte. Dans
 les deux cas, l'application le découvre en le lisant dans les en-têtes. Côté application, il
-suffit de le nommer dans *Qui entre*, dans la Bibliothèque, en répondant **groupe** à
-« Compte ou groupe ? » — la question est posée explicitement parce qu'un login et un groupe
+suffit de le nommer dans *Qui entre* — dans la Bibliothèque, ou dans l'Administration pour
+un administrateur —, en répondant **groupe** à « Compte ou groupe ? » — la question est posée explicitement parce qu'un login et un groupe
 peuvent porter le même nom, et qu'une ambiguïté silencieuse sur un contrôle d'accès n'est pas
 une hypothèse qu'on se permet.
 

@@ -37,7 +37,7 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 | **Atelier** | `/` | tout ce qui se fait sur une planche : corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
 | **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
 | **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus ; documenter le vocabulaire |
-| **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : quels projets existent et qui y entre, quels comptes et quels groupes existent, la version servie, l'état des moteurs |
+| **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : quels projets existent et qui y entre, quels comptes et quels groupes existent — et, pour un administrateur, qui entre dans quelle collection —, la version servie, l'état des moteurs |
 
 Une barre de navigation commune les relie, sur les cinq pages. Les réglages d'affichage —
 thème clair/sombre, contraste élevé, zoom de l'interface — y sont aussi, et suivent d'une
@@ -339,6 +339,11 @@ L'inventaire et le poste de commande.
   déclare aussi quels groupes d'administration lisent et écrivent tout le corpus sans figurer
   dans aucune liste d'accès. Seul un propriétaire, ou un administrateur, y règle quelque
   chose ; les autres lisent.
+  **Le même panneau se trouve à un second endroit**, pour un second public : un
+  administrateur, qui part d'une personne ou d'un groupe plutôt que d'un corpus, le retrouve
+  dans l'Administration, dans la fiche de chaque collection de *👥 Comptes et groupes*
+  (ci-dessous). On y fait les mêmes gestes, et ce qu'on règle d'un côté se lit de l'autre.
+  Un propriétaire n'a rien à y chercher : tout ce qu'il règle est ici.
 
 #### Exporter une collection pour un dépôt
 
@@ -439,8 +444,16 @@ si les moteurs répondent encore. Cinq blocs, chacun avec sa propre règle d'acc
   accès donné à un groupe absent de l'annuaire, une collection dont plus aucun propriétaire
   n'est vivant, un compte qui n'est jamais venu. La fiche d'un compte porte sa **Nature** —
   *une personne* ou *un login partagé* —, qui se déclare à sa première connexion.
-  **Les accès se lisent ici et se règlent ailleurs** : chaque fiche de collection mène à
-  *Régler qui entre*, dans la Bibliothèque. Si l'annuaire ne répond pas, le bloc s'affiche
+  **Les accès se règlent ici aussi** : axe *Collections*, la fiche d'une collection porte
+  *Qui entre* — le panneau de la Bibliothèque, monté ici une seconde fois, pour qui part
+  d'une personne ou d'un groupe plutôt que d'un corpus. On y fait entrer (*Faire entrer*, puis *+ Faire entrer*), on coche les
+  actes, on fait sortir par le ✕ de la ligne, sans quitter la page ; et chaque nom du
+  tableau mène à la fiche de ce compte ou de ce groupe. Depuis la fiche d'un **groupe**,
+  *Ouvrir une collection à ce groupe* puis *Régler qui entre…* ouvre la fiche de la
+  collection choisie, ce groupe déjà choisi dans *Faire entrer* : il reste à cliquer
+  *+ Faire entrer*. Ce que la collection **est** — sa description, sa diffusion, son
+  référent, ses exports — ne se règle pas ici : *Décrire dans la Bibliothèque ↗*, sous le
+  panneau, y mène. Si l'annuaire ne répond pas, le bloc s'affiche
   quand même avec ce que l'application sait seule, et le dit — il n'annonce jamais qu'un
   accès est mort sur la foi d'une lecture qui a échoué.
   Cf. [`modele-et-droits.md`](modele-et-droits.md) §3.
