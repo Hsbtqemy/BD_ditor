@@ -98,6 +98,28 @@ rien y changer, « le premier projet », où tout est partagé.
 - [x] **Le projet porte sa justification dès la tranche 1** — attendu : tranché. Proposition : une colonne de `projet` dès le schéma v29, saisie par l'administrateur qui crée le projet, lue des administrateurs et des responsables ; la DEMANDE qui la portera arrive avec le mécanisme de la tranche 2, et trouve la colonne déjà là — une migration de moins **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
 - [x] **Ce que le guide en dit** — attendu : tranché. Proposition : une phrase en tête de `docs/guide-utilisateur.md` ; le reste s'écrit avec la tranche qui donne au projet un effet **Confirmé par Hugo le 2026-10-10 : « ok pour les 10 ».**
 
+### Tranche 2 — ce qui bloque le code (propositions du cadrage, 2026-10-11)
+
+- [ ] **Où s'arrête la tranche : faire ENTRER des documents, maintenant ou à la suivante** — attendu : tranché par Hugo. Étroite : le fonds de l'administrateur, les deux réponses à « supprimer », les demandes de suppression ; tout ce qui fait entrer — la notice ouverte aux responsables, la demande de plusieurs albums, la demande à la création d'un projet — part avec « prendre un document ». Large : s'y ajoutent la notice, la demande groupée et l'admission, environ la moitié en plus, et un document « admis » ne pourrait encore être pris par aucune collection pendant toute une tranche. Proposition : étroite, le mécanisme de demande étant construit pour recevoir plusieurs documents
+- [ ] **Quand « Supprimer définitivement » efface sans rien demander** — attendu : tranché par Hugo. Ses mots : aucun autre projet n'emploie le document, et personne d'autre que celui qui l'a importé n'y a travaillé. La maquette était plus stricte sans le dire : elle exigeait aussi qu'il ne soit rangé que dans UNE collection. Le cas qui les sépare : importé par moi, rangé dans deux de mes collections, personne d'autre n'y a touché. Proposition : ses mots, la règle d'aujourd'hui (écrire dans toutes ses collections) étant gardée. « Y a travaillé » se lit dans le journal : un travail supprimé depuis ne compte plus, une reconnaissance automatique lancée par un collègue ne compte pas
+- [ ] **Les albums déjà là, dont personne ne sait qui les a importés** — attendu : tranché par Hugo. Ce n'est écrit nulle part et ne se reconstitue pas. Inconnu veut dire « demander » : sur tout l'existant, seul un administrateur détruit ; ou l'ancienne règle pour les anciens albums, travail des autres compris ; ou un importateur désigné album par album, un geste de plus à construire. Proposition : la première
+- [ ] **Supprimer une planche** — attendu : tranché par Hugo. La maquette n'en dit rien ; aujourd'hui cela efface son scan pour tout le monde. Proposition : la règle du document, sans demande — on supprime une planche là où l'on pourrait supprimer le document, sinon l'écran dit de s'adresser à un administrateur ; « retirer la planche de sa copie en gardant le scan » suppose deux copies, donc la tranche 3
+- [ ] **La demande de suppression d'un projet par son responsable, dans cette tranche** — attendu : tranché par Hugo ; ferme aussi la case « Un responsable DEMANDE la suppression de son projet ». Proposition : oui, ici — un bouton dans la fiche, un motif, une ligne dans « À regarder » ; l'administrateur accepte ou refuse, et le projet n'est supprimé que vide. Un projet qui garde des documents au fonds ne se supprime pas
+
+### Tranche 2 — ce qui peut se trancher en route (propositions du cadrage, 2026-10-11)
+
+- [ ] **Le fonds dans l'Administration : un bloc de plus, ou des onglets** — proposition : un bloc, sous « Projets »
+- [ ] **Le nom de qui demande se lit par tous ceux qui lisent la collection** — proposition : oui, comme la maquette (« suppression demandée par … ») : on a besoin de savoir à qui parler
+- [ ] **Le « pourquoi » d'une demande est obligatoire** — proposition : oui ; la maquette acceptait une demande vide
+- [ ] **Après « Garder », ce que voit celui qui avait demandé** — proposition : sa pastille disparaît, il peut redemander, et l'administrateur voit qu'une demande a déjà été refusée
+- [ ] **Retirer sa propre demande** — proposition : pas dans cette tranche
+- [ ] **Supprimer une collection dont certains albums ne sont que là** — proposition : garder le refus d'aujourd'hui et corriger sa phrase, plutôt que d'envoyer ces albums au fonds d'un coup
+- [ ] **Un compte partagé qui importe** — proposition : il ne supprime jamais définitivement tout seul, « celui qui l'a importé » n'y désignant personne
+- [ ] **L'Atelier crée ses albums dans la collection de repli, pas dans le projet où l'on travaille** — proposition : il demande dans quelle collection, comme la Bibliothèque ; sans quoi l'origine écrite est fausse pour qui travaille dans un second projet
+- [ ] **Importer compte-t-il comme du travail laissé quand un compte s'en va** — proposition : non pour l'instant ; l'importateur reste lisible dans le fonds
+- [ ] **La phrase d'avertissement de « Qui entre »** — « Supprimer un album efface ses images et ne se rattrape pas » n'est plus vraie que pour « Supprimer définitivement » : à reformuler
+- [ ] **L'administrateur et le mono-poste voient encore le texte d'un document retiré** dans la Recherche et l'Exploration, jusqu'à la tranche 4 — proposition : l'accepter, et l'écrire
+
 ### Le projet
 
 - [ ] **Qui est dans un projet** — attendu : tranché. Proposition : le patron de `collection_acces`, un étage plus haut — un accès de projet se donne à un COMPTE ou à un GROUPE de l'annuaire, et l'on ne stocke toujours qu'une référence, jamais une appartenance (invariant d'`AUTH-1`). « Intégrer quelqu'un à son arrivée » est alors un geste de l'application, et un groupe d'étudiants entre d'un seul coup
@@ -355,6 +377,50 @@ son groupe ; à l'administrateur avec un rôle nul et `gerable`. Aucune erreur a
 l'application. C'est une répétition du déploiement, pas le déploiement : la base de
 production n'a pas été lue, et l'image de la recette n'a joué ni la suite ni la passe
 navigateur.
+
+### Le cadrage de la tranche 2 — 2026-10-11, lu dans le code et non éprouvé
+
+Rendu par un agent en lecture seule, sur `d1c85d3`. Rien n'en est codé, rien n'a été
+exécuté, et son code attend les passes et la fusion de la tranche 1 (zone « L'ordre »).
+Ses décisions sont les deux zones « Tranche 2 » du Reste.
+
+**Ce que le code impose, et qu'on ne supposerait pas.** Aucun acte sur un album n'est
+journalisé — ni créer, ni modifier, ni supprimer, ni importer une planche, ni ranger, ni
+sortir : l'origine de l'existant ne se reconstitue pas. Une colonne neuve sur `albums` sort
+par trois réponses de l'API qui lisent la ligne entière, et le cliquet des colonnes
+exportables n'a pas de liste de retenues pour cette table : l'identité de qui importe ne peut
+donc pas y vivre. Le 409 « dernière collection » garde plus que l'accès : il garde le PROJET
+de l'album — une copie sans collection n'en a plus, et rien ne refuserait de la ranger dans
+un autre. Les fichiers d'images portent l'identifiant de la ligne `albums`, qui se
+réattribue : le dernier album détruit rend son numéro au suivant, donc son dossier et ses
+lignes de journal. Ctrl+Z ignore la suppression d'un album et s'y coince sur les actes de
+ses régions ; il atteint aussi une copie qu'on ne lit plus. « À regarder » vit dans une
+route réservée aux administrateurs et composée avec l'annuaire. Et l'Atelier crée ses albums
+dans la collection de repli, hors du projet courant.
+
+**Le modèle proposé.** La ligne `albums` reste la copie de travail, comme la piste de la
+fiche le disait. S'y ajoutent une table `document` — l'identité, qui a importé, quand, dans
+quel projet d'abord — et deux attaches sur `albums` : son document, son projet. La notice
+reste par copie, les fichiers ne bougent pas ; ce qui change est QUI les efface — la
+destruction du document, et elle seule. Deux tables pour les demandes, bâties pour porter
+plusieurs documents dès maintenant. Écartées : tout poser sur `albums` sans table, qui perd
+« une identité distincte de ses copies » ; et remonter la notice sur le document, le modèle
+juste, hors de proportion tant qu'un document n'a qu'une copie — trente sites de requêtes
+dans onze fichiers. La migration fait de chaque album l'unique copie d'un document neuf,
+importateur inconnu.
+
+**Trois commits de code**, plus gros ensemble que la tranche 1 entière. Le document existe
+et ses emplois s'écrivent, sans qu'aucun comportement change — il peut partir seul, et plus
+tôt il part, plus tôt les origines s'écrivent. Puis la règle, la demande et le fonds côté
+serveur, qui ne part PAS seul : l'écran d'avant y mentirait. Puis l'écran. Ici le
+comportement change, et des tests existants seront réécrits : la preuve de la tranche 1 ne
+vaut que pour le premier commit.
+
+**Ce que le plan ne règle pas.** Ctrl+Z reste coincé sur les actes d'un document détruit —
+le défaut existe aujourd'hui, la tranche le rend plus fréquent et il touche désormais des
+tiers. Modifier la notice d'un album n'est toujours pas journalisé. Une demande répondue
+reste en base, avec un login et un motif, sans durée de conservation. Et la base de
+production n'a pas été lue : combien d'albums, combien rangés dans plusieurs collections.
 
 ### Les formes écartées
 
