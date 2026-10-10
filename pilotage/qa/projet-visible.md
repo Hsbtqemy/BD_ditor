@@ -7,7 +7,7 @@ derniere: —
 
 # QA — le projet se lit en haut de chaque page, se règle dans l'Administration, et rien d'autre n'a changé
 
-`6c3e19f` puis `9eec56e` ont posé un étage au-dessus des collections : le PROJET. Tout
+`6c3e19f`, `9eec56e` puis `7eabeb7` ont posé un étage au-dessus des collections : le PROJET. Tout
 l'existant est rangé dans un premier projet ; son nom se lit dans la bande du haut des cinq
 surfaces ; la Bibliothèque ne liste que les collections du projet choisi ; l'Administration a
 un bloc « 🗂️ Projets ». C'est la tranche 1 de `COL-3`, et sa promesse tient en une phrase :
@@ -27,14 +27,14 @@ zones « Après `9eec56e` » des passes *Préférence de police* et *Petites lar
 Recherche, l'Exploration et l'Atelier, qui traversent encore les projets (tranche 4).
 
 **Où** — la pile de recette, `https://bd.127-0-0-1.sslip.io`, **reconstruite sur un HEAD qui
-contient `9eec56e`**. Sa base a migré en version 29 à ce démarrage. Quatre comptes :
+contient `7eabeb7`**. Sa base a migré en version 29 à ce démarrage. Quatre comptes :
 `admin-bd` (administrateur), `proprio`, `stagiaire`, `lectrice`. Aucun décor à monter : la
 passe crée elle-même son second projet, « Séminaire QA », et les zones se jouent DANS L'ORDRE
 — chacune s'appuie sur ce que la précédente a laissé.
 
 ### La recette porte le commit — compte `admin-bd`, Administration puis Bibliothèque
 
-- [ ] Administration, bloc « 🏷️ Version servie » : le commit affiché est `9eec56e` ou un commit plus récent — sur un serveur plus ancien, aucune case de cette passe ne mesure rien
+- [ ] Administration, bloc « 🏷️ Version servie » : le commit affiché est `7eabeb7` ou un commit plus récent — sur un serveur plus ancien, aucune case de cette passe ne mesure rien
 - [ ] Bibliothèque : les collections d'avant sont toutes là (« Collection Test », « Étude B »…), et juste au-dessus du titre « 📚 Collections » on lit « Dans le projet « Projet principal » » — tout l'existant est rangé dans le premier projet
 
 ### Un seul projet, un nom et pas de liste — compte `stagiaire`, les cinq surfaces
@@ -58,6 +58,8 @@ passe crée elle-même son second projet, « Séminaire QA », et les zones se j
 - [ ] Sur les cinq surfaces, « Projet » est suivi d'une liste déroulante à deux noms, « Projet principal » choisi
 - [ ] Bibliothèque, choisir « Séminaire QA » dans la liste du haut : sans rechargement, la ligne au-dessus de « 📚 Collections » devient « Dans le projet « Séminaire QA » », et la liste dit qu'aucune collection ne lui est ouverte DANS CE PROJET — pas « aucune collection » tout court
 - [ ] Toujours sur « Séminaire QA », créer la collection `Étude QA` : elle apparaît. Repasser sur « Projet principal » : elle n'y est pas, et les collections habituelles sont revenues. Revenir sur « Séminaire QA » : elle y est
+- [ ] « Séminaire QA » choisi, « + Nouvel album » : la liste « Collection » ne propose QUE « Étude QA », et une ligne dessous dit que seules les collections du projet « Séminaire QA » sont proposées et où changer de projet. Fermer sans enregistrer
+- [ ] « Séminaire QA » toujours choisi, ouvrir par son crayon la fiche d'un album du PREMIER projet (la liste des albums, en bas de page, ne suit pas le projet) : sous « Collections », la liste de « + Ranger ici » ne propose pas « Étude QA », et une ligne dit que cet album vit dans le projet « Projet principal » et ne se range pas d'un projet à l'autre
 - [ ] « Séminaire QA » choisi, aller sur l'Atelier, revenir à la Bibliothèque, puis recharger la page : le projet choisi est resté « Séminaire QA »
 - [ ] « Séminaire QA » choisi, ouvrir l'Atelier puis la Recherche : on y voit toujours les albums et les résultats du premier projet. C'est l'attendu de cette tranche — le projet choisi ne borne que la liste des collections. Dire ici si, à l'usage, on croit s'être trompé de projet
 
@@ -65,7 +67,7 @@ passe crée elle-même son second projet, « Séminaire QA », et les zones se j
 
 - [ ] Pas de champ « Nouveau projet ». À gauche un seul projet, « Séminaire QA » — « Projet principal », où elle n'est que membre, n'y figure pas. La fiche montre la justification que l'administrateur a saisie
 - [ ] Fiche, « Collections » : « Étude QA » est un lien ; le suivre ouvre la Bibliothèque sur cette collection dépliée, « Séminaire QA » choisi dans la bande du haut
-- [ ] Fiche, « Ce projet » : ni « Renommer » ni « Supprimer le projet » ; à leur place, une phrase dit qu'elle règle qui entre et que renommer ou supprimer se demande à un administrateur de l'instance
+- [ ] Fiche, « Ce projet » : ni « Renommer », ni champ « Description » ou « Pourquoi ce projet existe », ni « Supprimer le projet » ; à leur place, une phrase dit qu'elle règle qui entre et que renommer ou supprimer se demande à un administrateur de l'instance
 - [ ] « Qui y entre » : faire sortir `lectrice` par le ✕ de sa ligne, puis la faire rentrer comme « membre » : les deux gestes passent, chacun laisse un message, et après chacun on est toujours dans la fiche — pas renvoyé en haut de la page
 
 ### Membre, rien à régler — compte `lectrice`, Bibliothèque puis Administration
@@ -76,6 +78,8 @@ passe crée elle-même son second projet, « Séminaire QA », et les zones se j
 ### Renommer, supprimer, et ce que le serveur refuse — compte `admin-bd`, Administration, bloc « 🗂️ Projets »
 
 - [ ] Fiche de « Projet principal », « Ce projet » : pas de bouton « Supprimer le projet », et une phrase dit que c'est le projet de repli. Le renommer en `Corpus franco-belge` : le message dit « Le projet s'appelle désormais « Corpus franco-belge ». », et la bande du haut porte le nouveau nom sans rechargement
+- [ ] Fiche de « Séminaire QA », « Ce projet » : modifier le texte de « Pourquoi ce projet existe », puis « Enregistrer » : le message dit « Justification enregistrée. », et plus haut dans la fiche le texte sous « Pourquoi ce projet existe » est le nouveau, sans rechargement. Dire ici si ce message, placé sous le bouton rouge, se voit sans le chercher
+- [ ] Même fiche, « Enregistrer » sans rien avoir changé : « Rien n'a changé. » ; puis vider le champ « Description » et « Enregistrer » : la description disparaît du haut de la fiche
 - [ ] Fiche de « Séminaire QA », « Supprimer le projet », confirmer : un refus en rouge — une collection lui appartient, un projet ne se supprime que vide. Le projet est toujours dans la liste
 - [ ] Créer un projet `À jeter`, puis le supprimer : la confirmation dit que ses membres en sortent et qu'aucune collection n'est touchée ; il disparaît de la liste du bloc ET de la liste de la bande du haut
 
