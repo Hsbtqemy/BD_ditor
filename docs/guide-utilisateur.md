@@ -427,8 +427,10 @@ si les moteurs répondent encore. Cinq blocs, chacun avec sa propre règle d'acc
     enregistré, un champ vidé efface son texte, et la fiche répond *Description
     enregistrée.*, *Justification enregistrée.*, *Description et justification
     enregistrées.* ou *Rien n'a changé.* ; et *Supprimer le projet* — après confirmation.
+    Chaque réponse se lit à côté du bouton qu'on vient d'actionner.
     Un responsable n'y reçoit aucun champ, et y lit à la place : *Vous réglez qui entre dans
-    ce projet. Le renommer ou le supprimer se demande à un administrateur de l'instance.*
+    ce projet. Le renommer, corriger sa description ou sa justification, ou le supprimer se
+    demande à un administrateur de l'instance.*
   - **Trois refus, qui se disent.** Le *dernier responsable* d'un projet ne se retire pas
     et ne se rétrograde pas : désignez-en un autre d'abord. Le *projet de repli* se
     renomme, il ne se supprime pas — le bouton n'y est pas offert. Et *un projet ne se
