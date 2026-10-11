@@ -707,17 +707,30 @@ def test_sur_la_vraie_route_un_acces_mort_se_signale_et_mene_a_ses_fiches(page, 
 def test_au_large_le_cadre_ne_suit_pas_le_nombre_d_entrees(page, live_server):
     """La hauteur est FIXE (2026-09-22) : dix-sept comptes ou deux collections, le cadre ne
     bouge pas, et c'est la liste qui défile dedans. Jusque-là, le cadre suivait la liste, et
-    tout ce qui venait après lui se déplaçait à chaque changement d'axe."""
-    page.set_viewport_size({"width": 1400, "height": 600})
+    tout ce qui venait après lui se déplaçait à chaque changement d'axe.
+
+    **Une fenêtre de 800 px de haut, et non plus de 600** (2026-10-11). La règle est la
+    deuxième assertion — la hauteur du cadre ne bouge pas —, et les deux autres ne sont là
+    que pour dire que la liste, elle, a changé de longueur : elle défile sous dix-sept
+    comptes, elle ne défile pas sous deux collections. À 600 px la seconde tenait à 2,7 px
+    sur le poste (352,5 px de liste pour 355,2, Segoe UI) et tombait dans l'image, où la même
+    liste demande 383,5 px pour 338,4 : sous DejaVu Sans les trois axes prennent deux
+    rangées, la phrase du bloc trois lignes, et « À regarder » dix-huit pixels de plus. Rien
+    de cela n'est un défaut — une liste trop longue défile dans son cadre, c'est la règle —,
+    mais ce test le lisait comme tel. À 800 px les deux lectures ont de la marge sous les
+    deux polices : 247 et 265 px de trop sous dix-sept comptes, 203 et 155 px de reste sous
+    deux collections."""
+    page.set_viewport_size({"width": 1400, "height": 800})
     _ouvrir(page, live_server, decor())
     cadre, liste = page.locator("#cg"), page.locator(".cg-liste")
     hauteur = cadre.bounding_box()["height"]
     assert liste.evaluate("e => e.scrollHeight > e.clientHeight"), \
-        "dix-sept comptes dans une fenêtre de 600 px : la liste doit défiler dans le cadre"
+        "dix-sept comptes dans une fenêtre de 800 px : la liste doit défiler dans le cadre"
     page.locator('.cg-axes button[data-axe="collections"]').click()
     expect(page.locator("#cg-objets .cg-objet")).to_have_count(2)
     assert cadre.bounding_box()["height"] == hauteur
-    assert liste.evaluate("e => e.scrollHeight <= e.clientHeight")
+    assert liste.evaluate("e => e.scrollHeight <= e.clientHeight"), \
+        "deux collections dans une fenêtre de 800 px : la liste ne doit plus défiler"
 
 
 def test_le_bloc_entier_tient_dans_une_fenetre_courte(page, live_server):

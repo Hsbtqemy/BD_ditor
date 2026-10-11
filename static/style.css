@@ -2463,7 +2463,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .admin-bloc.cg-bloc { max-width: none; }
 .cg-bloc > p { max-width: 62rem; }
 /* Une hauteur FIXE, qui ne suit pas le nombre d'entrées : celle de la zone qui défile, moins
-   ce qui se tient AU-DESSUS du cadre dans le bloc, et jamais moins de 20rem. Huit comptes ou
+   ce qui se tient AU-DESSUS du cadre dans le bloc, et jamais moins de 16rem. Huit comptes ou
    trois cents, le cadre ne bouge pas — c'est la liste et la fiche qui défilent, chacune
    SEULE, et la page autour se construit sur un bloc de taille connue (demandé par Hugo le
    2026-09-22, « imaginons trente comptes »).
@@ -2487,6 +2487,20 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    Le plancher passe de 22 à 20rem, et c'est une conséquence, pas un goût : à 1280 × 500 il
    reste 273 px sous la tête du bloc, soit 21rem. Un plancher de 22rem y dépasse de 13 px.
 
+   **Puis de 20 à 16rem, parce que 20 ne tenait qu'à une police** (2026-10-11, le même jour).
+   Les 273 px étaient ceux de Segoe UI. Sous DejaVu Sans — ce que rend un poste Linux, et
+   l'image —, la phrase du bloc prend TROIS lignes au lieu de deux : il ne reste que 256 px,
+   le plancher de 260 l'emportait, et le cadre finissait 3,6 px sous une fenêtre de
+   1280 × 500. Sous Segoe UI il l'emportait déjà, de 2,8 px, pris sur le rembourrage du bas :
+   la règle tenait à moins d'une ligne de texte. Un plancher réglé sur ce qui reste dans UNE
+   fenêtre sous UNE police tombe à la suivante : celui-ci laisse à la tête du bloc, à
+   1280 × 500, 48 px de plus sous DejaVu Sans — près de trois lignes — avant de l'emporter.
+   Ce qu'il garde au cadre : les commandes de la liste (axes, filtre, tri — 96 px sous
+   Segoe UI, 113 sous DejaVu Sans, où les trois axes prennent deux rangées) et une centaine
+   de pixels dessous, où la liste défile. 16 est un CHOIX, à la différence de la borne :
+   tout plancher sous 19,7rem tient la fenêtre mesurée. Rien ne change dans une fenêtre où
+   le cadre dépassait déjà 20rem.
+
    Les marges des trois éléments de tête sont remises à plat ci-dessous : dans une colonne
    flexible elles ne se fondent plus, et la tête aurait pris 9 px.
 
@@ -2505,7 +2519,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .cg-bloc > h2 { margin-bottom: 0; }
 .cg-bloc > .col-note { margin: 0; }
 .cg { display: grid; grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr); flex: 1 1 0; min-height: 20rem;
+      grid-template-rows: minmax(0, 1fr); flex: 1 1 0; min-height: 16rem;
       border: 1px solid var(--border); border-radius: 8px; margin-top: .6rem;
       background: var(--bg-panel); }
 /* La liste défile SEULE : trois cents comptes ne doivent pas repousser la fiche sous
