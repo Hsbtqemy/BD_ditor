@@ -513,6 +513,9 @@ LIGNE_PLUSIEURS_PROJETS = (
     "par leur ✕, des collections qui ne sont pas de son projet.")
 
 
+ILLISIBLE = "Les collections de cet album n'ont pas pu être lues : {}"
+
+
 def _album(base, titre, collection_id):
     return _api(base, "POST", "/api/albums", {"titre": titre, "collection_id": collection_id})["id"]
 
@@ -720,9 +723,133 @@ def test_ce_qu_on_disait_d_un_album_ne_suit_pas_dans_la_fiche_du_suivant(page, d
     page.route("**/api/albums/*/collections", lambda route: route.fulfill(
         status=500, content_type="application/json", body='{"detail": "panne jouée"}'))
     _fiche_de_l_album(page, "Album illisible")
-    expect(page.locator("#m-appartenance-msg.erreur")).to_have_text("panne jouée")
+    expect(page.locator("#m-appartenance-msg.erreur")).to_have_text(ILLISIBLE.format("panne jouée"))
     expect(ligne).to_be_hidden()
     assert ligne.text_content() == ""
+
+
+def test_une_fiche_d_album_illisible_n_offre_aucun_geste_sur_le_precedent(page, deux_projets):
+    """La fiche d'un album dont les collections ne peuvent pas être lues ne garde RIEN de la
+    fiche ouverte avant elle : ni la liste, ni ses ✕, ni ce que « + Ranger ici » proposait.
+
+    Ces ✕ sont câblés sur l'album pour lequel ils ont été dessinés. Restés sous le titre du
+    suivant, ils sortaient le PRÉCÉDENT de ses collections ; et « + Ranger ici » rangeait
+    le suivant dans une collection choisie pour l'autre. Le test joue les deux gestes s'ils
+    sont offerts, et dit quelle requête est partie : c'est sa reproduction du défaut.
+    """
+    d = deux_projets
+    precedent = _album(d["base"], "Album précédent", d["a1"])
+    illisible = _album(d["base"], "Album illisible", d["a1"])
+    _api(d["base"], "PUT", f"/api/albums/{illisible}/collections/{d['a2']}")
+    _bibliotheque(page, d["base"])
+    _fiche_de_l_album(page, "Album précédent")
+    expect(page.locator("#m-appartenance-liste li")).to_have_count(1)
+    assert _proposees(page, "#m-appartenance-cible") == ["Incubateur"]
+    page.locator("#m-cancel").click()
+
+    parties = []
+
+    def jouer(route):
+        requete = route.request
+        if requete.method == "GET" and requete.url.endswith(f"/api/albums/{illisible}/collections"):
+            route.fulfill(status=500, content_type="application/json",
+                          body='{"detail": "panne jouée"}')
+        elif requete.method in ("PUT", "DELETE"):
+            parties.append(f"{requete.method} {requete.url.split('/api/', 1)[1]}")
+            route.fulfill(status=409, content_type="application/json",
+                          body='{"detail": "geste arrêté par le test"}')
+        else:
+            route.continue_()
+
+    page.route("**/api/albums/*/collections**", jouer)
+    _fiche_de_l_album(page, "Album illisible")
+    expect(page.locator("#modal-title")).to_have_text("Éditer l'album")
+    expect(page.locator("#m-titre")).to_have_value("Album illisible")
+    expect(page.locator("#m-appartenance-msg.erreur")).to_contain_text("panne jouée")
+
+    restes = page.locator("#m-appartenance-liste li .col-nom").all_inner_texts()
+    croix = page.locator("#m-appartenance-liste [data-sortir]")
+    if croix.count():
+        croix.first.click()
+    ranger = page.locator("#m-appartenance-add")
+    proposees = _proposees(page, "#m-appartenance-cible")
+    if ranger.is_enabled():
+        ranger.click()
+    page.wait_for_timeout(300)
+    assert not restes and not proposees and not parties, (
+        "la fiche de « Album illisible » (album n° %d), dont les collections n'ont pas pu être "
+        "lues, montre encore celles de « Album précédent » (album n° %d) : liste %s, "
+        "« + Ranger ici » propose %s. Requêtes parties par ces gestes : %s"
+        % (illisible, precedent, restes, proposees, parties or "aucune"))
+    expect(ranger).to_be_disabled()
+    expect(page.locator("#m-appartenance-cible")).to_be_disabled()
+    # Et la fiche dit CE QU'ELLE n'a pas pu lire, pas seulement le mot du serveur.
+    expect(page.locator("#m-appartenance-msg.erreur")).to_have_text(ILLISIBLE.format("panne jouée"))
+
+    # La panne passée, la même fiche rouverte montre SES collections et ses gestes.
+    page.locator("#m-cancel").click()
+    page.unroute("**/api/albums/*/collections**")
+    _fiche_de_l_album(page, "Album illisible")
+    expect(page.locator("#m-appartenance-liste li")).to_have_count(2)
+    expect(page.locator("#m-appartenance-msg")).to_have_text("")
+
+
+_MODALE_ALBUM = """() => {
+  const boite = document.querySelector('#album-modal .modal-box');
+  const b = boite.getBoundingClientRect();
+  const bord = b.left + boite.clientLeft + boite.clientWidth;      // le bord intérieur droit
+  const haut = (sel) => Math.round(document.querySelector(sel).getBoundingClientRect().top);
+  const sortis = [...boite.querySelectorAll('input, textarea, select, button, label, legend')]
+    .filter((e) => e.getClientRects().length)
+    .map((e) => ({ e, d: e.getBoundingClientRect() }))
+    .filter((x) => x.d.right > bord + 1)
+    .map((x) => (x.e.id ? '#' + x.e.id : x.e.tagName.toLowerCase() + ' « '
+                 + x.e.textContent.trim().slice(0, 20) + ' »')
+                + ' dépasse de ' + Math.round(x.d.right - bord) + ' px');
+  return { sortis, clientW: boite.clientWidth, scrollW: boite.scrollWidth,
+           serie: haut('#m-serie'), auteur: haut('#m-auteur'), annee: haut('#m-annee'),
+           largeurSerie: Math.round(document.querySelector('#m-serie').getBoundingClientRect().width) };
+}"""
+
+
+def test_la_fiche_d_un_album_tient_dans_sa_boite_a_320_px(page, deux_projets):
+    """La modale d'album à 320 px : aucun champ ne sort de la boîte, qui ne défile pas de
+    côté. La grille « Série / Auteur » gardait deux colonnes de la largeur propre d'un champ
+    de texte, et sa colonne de droite passait sous le bord de la boîte.
+
+    Et à 1280 px la grille reste à DEUX colonnes : la mesure à l'étroit ne doit pas se payer
+    d'une fiche large réarrangée.
+    """
+    d = deux_projets
+    _album(d["base"], "Album mesuré", d["a1"])
+    echecs = []
+    for police in _polices(page):
+        _preference_police(page, police)
+        cas = f"police {police or 'du lancement'}"
+        page.set_viewport_size({"width": 320, "height": 900})
+        _bibliotheque(page, d["base"])
+        _fiche_de_l_album(page, "Album mesuré")
+        m = page.evaluate(_MODALE_ALBUM)
+        echecs += [f"320 px, {cas} : {x}" for x in m["sortis"]]
+        if m["scrollW"] > m["clientW"] + 1:
+            echecs.append(f"320 px, {cas} : la boîte défile de côté — {m['clientW']} px "
+                          f"visibles pour {m['scrollW']} px de contenu")
+        if m["largeurSerie"] < 100:
+            echecs.append(f"320 px, {cas} : le champ « Série » ne fait plus que "
+                          f"{m['largeurSerie']} px")
+        page.locator("#m-cancel").click()
+
+        page.set_viewport_size({"width": 1280, "height": 900})
+        _bibliotheque(page, d["base"])
+        _fiche_de_l_album(page, "Album mesuré")
+        m = page.evaluate(_MODALE_ALBUM)
+        if not (m["serie"] == m["auteur"] < m["annee"]):
+            echecs.append(f"1280 px, {cas} : la grille n'est plus à deux colonnes — « Série » "
+                          f"à y={m['serie']}, « Auteur » à y={m['auteur']}, « Année » à "
+                          f"y={m['annee']}")
+        echecs += [f"1280 px, {cas} : {x}" for x in m["sortis"]]
+        page.locator("#m-cancel").click()
+    assert not echecs, "La fiche d'un album :\n" + "\n".join(echecs)
 
 
 def test_les_listes_d_un_album_n_attendent_pas_le_bloc_des_collections(page, deux_projets):
@@ -1054,10 +1181,10 @@ def test_renommer_et_supprimer_un_projet(page, seminaire):
     d = seminaire
     _ouvrir_la_fiche(page, d)
     page.locator("[data-pj-renommer]").click()                 # le nom qu'il porte déjà
-    expect(page.locator("#pj-fiche-msg")).to_have_text("Rien n'a changé.")
+    expect(page.locator("#pj-renommer-msg")).to_have_text("Rien n'a changé.")
     page.locator("#pj-renommer-nom").fill(database.NOM_PROJET_DEFAUT.upper())
     page.locator("#pj-renommer-nom").press("Enter")            # celui d'un autre, à la casse près
-    expect(page.locator("#pj-fiche-msg.erreur")).to_have_text(
+    expect(page.locator("#pj-renommer-msg.erreur")).to_have_text(
         f"Un projet s'appelle déjà « {database.NOM_PROJET_DEFAUT} ».")
     expect(page.locator("#pj-fiche-titre")).to_have_text("Séminaire 2026")
 
@@ -1066,14 +1193,14 @@ def test_renommer_et_supprimer_un_projet(page, seminaire):
         page.locator("[data-pj-renommer]").click()
     assert partie.value.url.endswith(f"/api/projets/{d['projet']}")
     assert partie.value.post_data_json == {"nom": "Séminaire d'hiver"}
-    expect(page.locator("#pj-fiche-msg")).to_contain_text("s'appelle désormais « Séminaire d'hiver »")
+    expect(page.locator("#pj-renommer-msg")).to_contain_text("s'appelle désormais « Séminaire d'hiver »")
     expect(page.locator("#pj-fiche-titre")).to_have_text("Séminaire d'hiver")
     expect(page.locator("#projet-choix")).to_contain_text("Séminaire d'hiver")
     expect(page.locator("#projet-choix")).not_to_contain_text("Séminaire 2026")
 
     page.on("dialog", lambda dlg: dlg.accept())
     page.locator("[data-pj-supprimer]").click()
-    expect(page.locator("#pj-fiche-msg.erreur")).to_contain_text(
+    expect(page.locator("#pj-supprimer-msg.erreur")).to_contain_text(
         "1 collection(s) appartiennent à ce projet")
     expect(page.locator("#pj-objets .pj-objet")).to_have_count(2)
 
@@ -1112,8 +1239,8 @@ def test_un_responsable_regle_son_projet_et_lui_seul(page, seminaire):
     expect(page.locator("#pj-creer")).to_be_hidden()
     assert page.locator("[data-pj-renommer], [data-pj-supprimer], #pj-renommer-nom").count() == 0
     expect(_fiche(page).locator(".pj-a-demander")).to_have_text(
-        "Vous réglez qui entre dans ce projet. Le renommer ou le supprimer se demande à un "
-        "administrateur de l'instance.")
+        "Vous réglez qui entre dans ce projet. Le renommer, corriger sa description ou sa "
+        "justification, ou le supprimer se demande à un administrateur de l'instance.")
     expect(_fiche(page).locator(".pj-justification")).to_have_text("Comparer deux éditions.")
     # Il ne lit aucune collection de son projet : aucune n'est nommée, et la fiche dit pourquoi.
     assert _fiche(page).locator(".pj-collections a").count() == 0
@@ -1141,7 +1268,7 @@ def test_un_administrateur_corrige_la_description_et_la_justification(page, semi
     description = page.locator("#pj-decrire-description")
     justification = page.locator("#pj-decrire-justification")
     bouton = page.locator("#pj-fiche [data-pj-decrire]")
-    message = page.locator("#pj-fiche-msg")
+    message = page.locator("#pj-decrire-msg")
     expect(page.locator('label[for="pj-decrire-description"]')).to_have_text("Description")
     expect(page.locator('label[for="pj-decrire-justification"]')).to_contain_text(
         "Pourquoi ce projet existe")
@@ -1213,11 +1340,95 @@ def test_un_refus_d_enregistrer_se_lit_et_la_saisie_reste(page, seminaire):
         if route.request.method == "PATCH" else route.continue_())
     page.locator("#pj-decrire-justification").fill("Une saisie que le refus ne doit pas perdre.")
     page.locator("#pj-fiche [data-pj-decrire]").click()
-    expect(page.locator("#pj-fiche-msg.erreur")).to_be_visible()
-    expect(page.locator("#pj-fiche-msg.erreur")).to_have_text("refus joué")
+    expect(page.locator("#pj-decrire-msg.erreur")).to_be_visible()
+    expect(page.locator("#pj-decrire-msg.erreur")).to_have_text("refus joué")
     expect(page.locator("#pj-decrire-justification")).to_have_value(
         "Une saisie que le refus ne doit pas perdre.")
     expect(_fiche(page).locator(".pj-justification")).to_have_text("Comparer deux éditions.")
+
+
+# Les messages de « Ce projet », LUS par ce qu'ils sont — une zone d'annonce non vide de la
+# section — et non par un identifiant : c'est leur PLACE qu'on mesure, où qu'on les ait mis.
+_CE_PROJET = """() => {
+  const section = [...document.querySelectorAll('#pj-fiche section.pj-section')].find((s) =>
+    s.querySelector('h4') && s.querySelector('h4').textContent.trim() === 'Ce projet');
+  const boite = (e) => {
+    if (!e) return null;
+    const b = e.getBoundingClientRect();
+    return { haut: Math.round(b.top), bas: Math.round(b.bottom) };
+  };
+  const dit = (e) => e.textContent.trim();
+  return {
+    messages: [...section.querySelectorAll('[role=status]')].filter(dit).map((e) => (
+      { texte: dit(e), erreur: e.classList.contains('erreur'), ...boite(e) })),
+    ailleurs: [...document.querySelectorAll('#projets-bloc [role=status]')]
+      .filter((e) => !section.contains(e)).map(dit).filter(Boolean),
+    renommer: boite(section.querySelector('[data-pj-renommer]')),
+    description: boite(section.querySelector('#pj-decrire-description')),
+    enregistrer: boite(section.querySelector('[data-pj-decrire]')),
+    supprimer: boite(section.querySelector('[data-pj-supprimer]')),
+    note: boite([...section.querySelectorAll('.col-note')].pop()),
+  };
+}"""
+
+
+def _contre_son_controle(page, cas, texte, controle, suivant):
+    """Le message `texte` est le SEUL du bloc, et il se lit contre `controle` : sur sa rangée
+    ou juste dessous, avant `suivant` — le prochain contrôle de la section."""
+    expect(_fiche(page).locator('[role="status"]', has_text=texte).first).to_be_visible()
+    m = page.evaluate(_CE_PROJET)
+    assert [x["texte"] for x in m["messages"]] == [texte] and not m["ailleurs"], (
+        f"{cas} : un seul message à la fois dans le bloc — « Ce projet » dit "
+        f"{[x['texte'] for x in m['messages']]}, le reste du bloc {m['ailleurs']}")
+    message, c, s = m["messages"][0], m[controle], m[suivant]
+    assert c and s, f"{cas} : « {controle} » ou « {suivant} » n'est pas dans la section"
+    assert message["haut"] >= c["haut"] - 2 and message["haut"] - c["bas"] <= 10, (
+        f"{cas} : « {texte} » ne se lit pas contre « {controle} » — le contrôle va de "
+        f"y={c['haut']} à y={c['bas']}, le message commence à y={message['haut']}, "
+        f"{message['haut'] - c['bas']} px plus bas")
+    assert message["bas"] <= s["haut"] + 1, (
+        f"{cas} : « {texte} » se lit APRÈS « {suivant} » (y={s['haut']}) : il finit à "
+        f"y={message['bas']}, sous un contrôle qu'on n'a pas actionné")
+    return message
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_le_message_d_un_geste_se_lit_contre_son_controle(page, seminaire):
+    """« Ce projet » porte trois gestes — renommer, enregistrer, supprimer — et le message de
+    chacun se lit à côté du contrôle qu'on vient d'actionner : une confirmation comme un
+    refus, à 1280 comme à 320 px. Une ligne unique en pied de section se lisait sous
+    « Supprimer le projet » et sa note. Et un seul message à la fois dans le bloc : celui
+    d'un geste fait taire celui du précédent."""
+    d = seminaire
+    page.on("dialog", lambda dlg: dlg.accept())
+    for largeur in (1280, 320):
+        cas = f"{largeur} px"
+        page.set_viewport_size({"width": largeur, "height": 900})
+        _ouvrir_la_fiche(page, d)
+        page.locator("[data-pj-renommer]").click()             # le nom qu'il porte déjà
+        _contre_son_controle(page, cas, "Rien n'a changé.", "renommer", "description")
+
+        page.locator("#pj-fiche [data-pj-decrire]").click()    # rien n'a été touché
+        _contre_son_controle(page, cas, "Rien n'a changé.", "enregistrer", "supprimer")
+
+        page.locator("#pj-decrire-description").fill(f"Décrit à {largeur} px.")
+        page.locator("#pj-fiche [data-pj-decrire]").click()    # la fiche est redessinée
+        _contre_son_controle(page, cas, "Description enregistrée.", "enregistrer", "supprimer")
+
+        page.locator("[data-pj-supprimer]").click()            # refusé : il porte une collection
+        refus = _contre_son_controle(
+            page, cas, "1 collection(s) appartiennent à ce projet : un projet ne se supprime que vide.",
+            "supprimer", "note")
+        assert refus["erreur"], f"{cas} : le refus de supprimer ne se lit pas en erreur"
+
+        page.route(f"**/api/projets/{d['projet']}", lambda route: route.fulfill(
+            status=403, content_type="application/json", body='{"detail": "refus joué"}')
+            if route.request.method == "PATCH" else route.continue_())
+        page.locator("#pj-decrire-description").fill("Une saisie refusée.")
+        page.locator("#pj-fiche [data-pj-decrire]").click()    # refusé : la fiche reste
+        refus = _contre_son_controle(page, cas, "refus joué", "enregistrer", "supprimer")
+        assert refus["erreur"], f"{cas} : le refus d'enregistrer ne se lit pas en erreur"
+        page.unroute(f"**/api/projets/{d['projet']}")
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré

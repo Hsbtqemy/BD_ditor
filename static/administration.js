@@ -961,8 +961,14 @@ const PJ = {
   membres: null,         // la poignée du module monté dans la fiche
 };
 
-/* UN message à la fois dans le bloc : celui de la création, celui de la fiche, celui du
-   module. Une règle de CET écran — le module écrit sa ligne et prévient, il n'efface rien. */
+/* UN message à la fois dans le bloc : celui de la création, celui d'un geste de la fiche,
+   celui du module. Une règle de CET écran — le module écrit sa ligne et prévient, il
+   n'efface rien.
+
+   Chaque geste de « Ce projet » a SA ligne, posée contre son contrôle (`pjLigneDeGeste`) :
+   une ligne unique en pied de section se lisait sous « Supprimer le projet » et sa note,
+   quatre lignes plus bas que le bouton qu'on venait d'actionner. Elles portent toutes
+   `.col-msg`, donc cette règle les tient ensemble : écrire dans l'une fait taire les autres. */
 function pjTaireSauf(el) {
   document.querySelectorAll("#projets-bloc .col-msg").forEach((l) => {
     if (l === el) return;
@@ -975,6 +981,14 @@ function pjMsg(el, texte, erreur) {
   pjTaireSauf(el);
   el.textContent = texte || "";
   el.classList.toggle("erreur", !!erreur);
+}
+
+/* La ligne de message d'UN geste de la fiche. Elle est rendue avec la fiche, vide, et non
+   posée au moment d'y écrire : un refus ne redessine pas la fiche, et une zone d'annonce
+   (`role="status"`) dit ce qui CHANGE en elle — elle doit donc déjà être là. */
+function pjLigneDeGeste(geste, balise) {
+  return `<${balise} id="pj-${geste}-msg" class="col-msg pj-geste-msg muted small" `
+    + `role="status" aria-live="polite"></${balise}>`;
 }
 
 function pjPluriel(n, mot) { return `${n} ${mot}${n > 1 ? "s" : ""}`; }
@@ -1091,29 +1105,36 @@ function pjChampsDecrire(p) {
         existe <span class="muted small">— sa justification, scientifique d'abord. Elle se lit
         dans cette fiche, par ses responsables et les administrateurs.</span></label>
       <textarea id="pj-decrire-justification" rows="3">${esc(pjTexte(p.justification))}</textarea>` : ""}
-      <div><button type="button" class="ghost small" data-pj-decrire="1">Enregistrer</button></div>
+      <div class="pj-decrire-pied"><button type="button" class="ghost small"
+        data-pj-decrire="1">Enregistrer</button>${pjLigneDeGeste("decrire", "span")}</div>
     </div>`;
 }
 
 /* Ce que DÉCIDER permet, ou la phrase qui dit à qui le demander. Le projet de repli se
    renomme et ne se supprime pas : le serveur le refuserait, et le dirait — autant ne pas
-   offrir un bouton dont on connaît la réponse. */
+   offrir un bouton dont on connaît la réponse.
+
+   La phrase du responsable nomme TOUT ce qu'il ne peut pas : il lit la description et la
+   justification dans cette fiche, et rien ne lui disait à qui demander de les corriger. */
 function pjDecider(p) {
   if (!PJ.decide) {
     return `<p class="col-note pj-a-demander">Vous réglez qui entre dans ce projet. Le
-      renommer ou le supprimer se demande à un administrateur de l'instance.</p>`;
+      renommer, corriger sa description ou sa justification, ou le supprimer se demande à un
+      administrateur de l'instance.</p>`;
   }
   return `<div class="pj-renommer">
       <label for="pj-renommer-nom">Nom</label>
       <input id="pj-renommer-nom" autocomplete="off" value="${esc(p.nom)}">
       <button type="button" class="ghost small" data-pj-renommer="1">Renommer</button>
     </div>
+    ${pjLigneDeGeste("renommer", "p")}
     ${pjChampsDecrire(p)}
     ${p.repli
       ? `<p class="col-note">C'est le projet de repli : une collection créée sans nommer de
           projet y est rangée. Il se renomme, il ne se supprime pas.</p>`
-      : `<p><button type="button" class="danger" data-pj-supprimer="1">Supprimer le
-          projet</button></p>
+      : `<p class="pj-supprimer"><button type="button" class="danger"
+          data-pj-supprimer="1">Supprimer le projet</button></p>
+         ${pjLigneDeGeste("supprimer", "p")}
          <p class="col-note">Un projet ne se supprime que vide : tant qu'une collection lui
           appartient, le serveur le refuse.</p>`}`;
 }
@@ -1144,9 +1165,7 @@ function pjRendreFiche() {
     ${justification}
     <section class="pj-section" data-membres-projet></section>
     <section class="pj-section"><h4>Collections</h4>${pjCollections(p)}</section>
-    <section class="pj-section"><h4>Ce projet</h4>${pjDecider(p)}
-      <p id="pj-fiche-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
-    </section>
+    <section class="pj-section"><h4>Ce projet</h4>${pjDecider(p)}</section>
   </article>`;
   PJ.membres = BDMembresProjet.monter(box.querySelector("[data-membres-projet]"), {
     projet: { id: p.id, nom: p.nom, gerable: !!p.gerable },
@@ -1190,7 +1209,7 @@ async function pjCreer() {
 }
 
 async function pjRenommer() {
-  const p = pjProjet(), ligne = $("#pj-fiche-msg");
+  const p = pjProjet(), ligne = $("#pj-renommer-msg");
   if (!p) return;
   const nom = $("#pj-renommer-nom").value.trim();
   if (!nom) { pjMsg(ligne, "Donnez un nom au projet.", true); return; }
@@ -1200,7 +1219,7 @@ async function pjRenommer() {
   if (!await pjLire()) return;
   pjRendre();
   pjPrevenirLaBande();
-  pjMsg($("#pj-fiche-msg"), `Le projet s'appelle désormais « ${nom} ».`);
+  pjMsg($("#pj-renommer-msg"), `Le projet s'appelle désormais « ${nom} ».`);
   $("#pj-renommer-nom").focus();
 }
 
@@ -1213,7 +1232,7 @@ async function pjRenommer() {
    lequel on a cliqué n'existe plus : le focus revient sur celui qui le remplace, au lieu de
    retomber en haut de la page. */
 async function pjDecrire() {
-  const p = pjProjet(), ligne = $("#pj-fiche-msg");
+  const p = pjProjet(), ligne = $("#pj-decrire-msg");
   if (!p) return;
   const champs = [["description", "#pj-decrire-description", "Description"],
                   ["justification", "#pj-decrire-justification", "Justification"]];
@@ -1231,7 +1250,7 @@ async function pjDecrire() {
   catch (e) { pjMsg(ligne, e.message || "Échec", true); return; }
   if (!await pjLire()) return;
   pjRendre();
-  pjMsg($("#pj-fiche-msg"), dits.length === 2
+  pjMsg($("#pj-decrire-msg"), dits.length === 2
     ? "Description et justification enregistrées."
     : `${dits[0]} enregistrée.`);
   const bouton = document.querySelector("#pj-fiche [data-pj-decrire]");
@@ -1239,7 +1258,7 @@ async function pjDecrire() {
 }
 
 async function pjSupprimer() {
-  const p = pjProjet(), ligne = $("#pj-fiche-msg");
+  const p = pjProjet(), ligne = $("#pj-supprimer-msg");
   if (!p) return;
   if (!confirm(`Supprimer le projet « ${p.nom} » ? Ses membres en sortent. Aucune collection `
                + "n'est touchée : un projet ne se supprime que s'il n'en porte aucune.")) return;

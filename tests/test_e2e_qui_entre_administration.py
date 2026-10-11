@@ -405,7 +405,7 @@ def test_un_message_de_qui_entre_ne_touche_pas_la_fiche_du_projet_voisin(page, e
         "Les administrateurs de l'instance (bd-admins) lisent et écrivent toute collection")
 
     # Un message dans la fiche du projet, à côté : « Renommer » sans rien changer.
-    voisin = page.locator("#pj-fiche-msg")
+    voisin = page.locator("#pj-renommer-msg")
     page.locator("#pj-fiche [data-pj-renommer]").click()
     expect(voisin).to_be_visible()
     expect(voisin).to_have_text("Rien n'a changé.")

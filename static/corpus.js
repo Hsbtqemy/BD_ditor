@@ -490,6 +490,9 @@ const SORTIR_PLUTOT = "Cet album est aussi rangé dans une collection où vous n
 
 async function ouvrirPourSortir(a) {
   await openModal(a);
+  // La fiche n'a pas pu lire les collections de l'album : elle l'a dit, et n'offre aucun
+  // ✕ — « vous pouvez le sortir de la vôtre » promettrait un geste qui n'est pas là.
+  if ($("#m-appartenance-msg").classList.contains("erreur")) return;
   appMsg(SORTIR_PLUTOT);
   // Vers une collection où l'on ÉCRIT, pas vers la première à l'alphabet : celle-là peut
   // n'être que lue, et son ✕ répondrait « introuvable ».
@@ -774,7 +777,20 @@ async function loadAppartenance(albumId) {
   try {
     siennes = await apiGet(`/api/albums/${albumId}/collections`);
     toutes = await apiGet("/api/collections");
-  } catch (e) { appMsg(e.message, true); return; }
+  } catch (e) {
+    // La lecture a échoué : la fiche le DIT, et ne garde rien de ce qu'elle montrait. Sans
+    // ce ménage, la liste et les ✕ de l'album ouvert AVANT restaient sous le titre de
+    // celui-ci — et ces ✕, câblés sur l'autre album, l'auraient sorti de ses collections ;
+    // « + Ranger ici » aurait rangé celui-ci dans une collection choisie pour l'autre
+    // (reproduit le 2026-10-11, route interceptée). Aucun geste n'est offert sur ce qu'on
+    // n'a pas lu.
+    liste.innerHTML = "";
+    cible.innerHTML = "";
+    cible.disabled = true;
+    $("#m-appartenance-add").disabled = true;
+    appMsg(`Les collections de cet album n'ont pas pu être lues : ${e.message}`, true);
+    return;
+  }
   const dedans = new Set(siennes.map((c) => c.id));
   const ecrites = new Set(toutes.filter((c) => c.ecrivable).map((c) => c.id));
   liste.innerHTML = siennes.map((c) => `

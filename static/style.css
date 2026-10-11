@@ -2116,7 +2116,14 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
   background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
   border-radius: 5px; padding: .5385rem .6923rem; font-size: 1rem; font-family: inherit; resize: vertical;
 }
-.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .7692rem; }
+/* Deux colonnes tant que chacune garde 11rem, une seule au-dessous. `1fr 1fr` ne rétrécit
+   pas sous la largeur PROPRE d'un champ de texte (vingt caractères) : à 320 px la colonne
+   de droite sortait de la boîte, « Auteur », « Éditeur » et la moitié de la fiche d'édition
+   coupés par son bord. Le plancher est `max(11rem, la moitié)` — la moitié interdit une
+   troisième colonne dans la boîte large, les 11rem replient à l'étroit — et il suit la
+   police, sans seuil de fenêtre : la modale n'a pas la largeur de la page. */
+.modal-grid { display: grid; gap: .7692rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(11rem, calc(50% - .7692rem))), 1fr)); }
 .modal-actions { display: flex; align-items: center; gap: .9231rem; }
 
 /* Lexique situé (A4) — modale de documentation SKOS du vocabulaire (partage .modal-box) */
@@ -2627,12 +2634,23 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .pj-collections { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap;
                   gap: .2rem 1rem; }
 .pj-collections a { color: var(--accent-blue); overflow-wrap: anywhere; }
-.pj-renommer { margin-bottom: .5rem; }
+.pj-renommer { margin-bottom: .2rem; }      /* sa ligne de message porte l'écart : cf. plus bas */
 /* La description et la justification, sous « Renommer » : deux zones de saisie empilées,
    chacune sous son libellé, à la largeur du formulaire de création. */
 .pj-decrire { display: grid; gap: .35rem; max-width: 46rem; margin-bottom: .7rem; }
 .pj-decrire label { font-size: .92rem; color: var(--text-muted); }
 .pj-decrire textarea { width: 100%; min-width: 0; resize: vertical; }
+/* La ligne de message d'UN geste de « Ce projet », contre son contrôle. Vide, un `<p>` n'a
+   aucune hauteur et ses marges se fondent avec celles de ses voisins : l'écart qu'on lit
+   sans message est le plus GRAND des trois, donc celui d'avant, et trois lignes à demeure
+   ne déplacent rien tant qu'aucune ne parle. C'est pourquoi le contrôle garde une petite
+   marge et la ligne porte la grande. Celle d'« Enregistrer » se lit sur la rangée du
+   bouton, et passe dessous quand la place manque. */
+.pj-geste-msg { margin: 0 0 .5rem; overflow-wrap: anywhere; }
+.pj-decrire-pied { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .7rem; }
+.pj-decrire-pied .pj-geste-msg { margin: 0; min-width: 0; }
+.pj-supprimer { margin-bottom: .2rem; }
+.pj-supprimer + .pj-geste-msg { margin-bottom: 1em; }
 
 /* ── Qui y entre (COL-3) — les membres d'un projet, module monté dans sa fiche ────────
    Le frère de « Qui entre », plus haut, et les mêmes précautions : une liste déroulante
