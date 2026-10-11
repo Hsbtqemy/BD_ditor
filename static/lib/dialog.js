@@ -26,7 +26,9 @@
      doit l'être pour que le focus d'OUVERTURE et les deux bords tombent juste. Les sept
      modales de l'application ne portent aucun autre focalisable natif — ni
      `contenteditable`, ni `iframe`, ni média à commandes : on ne l'allonge pas pour des
-     cas qui n'existent pas ici. */
+     cas qui n'existent pas ici.
+     Elle dit ce qui PEUT prendre le focus, pas ce que Tab dessert : un groupe de boutons
+     radio y figure en entier alors qu'il n'est qu'un arrêt (cf. `stops`). */
   var FOCUSABLE =
     'a[href],button:not([disabled]),input:not([disabled]),' +
     'select:not([disabled]),textarea:not([disabled]),' +
@@ -59,6 +61,44 @@
     if (!precede) return shift ? last : first;
     if (shift) return precede(first, active) ? null : last;
     return precede(active, last) ? null : first;
+  }
+
+  /* Un groupe de boutons radio n'est qu'UN arrêt de tabulation — LOGIQUE PURE (testée
+     sous Node). Tab ne s'arrête que sur le bouton COCHÉ, et quitte le groupe au pas
+     suivant ; les flèches font le reste. Mesuré dans Chromium et dans Firefox le
+     2026-10-11, groupe en tête, au milieu et en queue.
+
+     La liste du piège les portait tous, si bien que ses BORDS n'étaient pas ceux du
+     navigateur. Dans la modale d'export, la seconde collection cochée : Maj+Tab depuis ce
+     bouton n'était pas « le premier de la liste », le piège laissait donc faire, et le
+     navigateur — pour qui il n'y a rien avant lui dans la boîte — sortait le focus sur la
+     page derrière. Dans l'autre sens, Tab depuis « Annuler » posait le focus sur le premier
+     bouton, NON coché, d'où le coché ne s'atteignait plus que par les flèches.
+
+     `stop(list, el)` rend l'arrêt du groupe de `el` : le coché, à défaut le premier.
+     Tout autre élément est son propre arrêt. Le groupe est celui du navigateur — même
+     `name`, même formulaire — borné à `list`, donc à la boîte.
+
+     **Un groupe SANS bouton coché** n'existe dans aucune modale : celui de l'export naît
+     avec son premier choix. Les deux navigateurs y entrent par le premier bouton en
+     avançant ; en reculant, Chromium entre par le DERNIER, Firefox par le premier. On ne
+     devine pas le navigateur : le focus posé sur n'importe quel bouton d'un tel groupe
+     est lu comme étant sur son arrêt (cf. l'appel), donc aucun bord ne laisse sortir. */
+  function sameGroup(a, b) {
+    return a.type === "radio" && b.type === "radio" && !!a.name &&
+           a.name === b.name && a.form === b.form;
+  }
+
+  function stop(list, el) {
+    if (!el || el.type !== "radio" || !el.name || list.indexOf(el) === -1) return el;
+    var group = list.filter(function (r) { return sameGroup(r, el); });
+    for (var i = 0; i < group.length; i++) if (group[i].checked) return group[i];
+    return group[0];
+  }
+
+  // Les arrêts de tabulation parmi les focusables : un par groupe de boutons radio.
+  function stops(list) {
+    return list.filter(function (el) { return stop(list, el) === el; });
   }
 
   /* `a` vient-il avant `b` dans le document ? Un conteneur PRÉCÈDE ce qu'il contient :
@@ -120,9 +160,12 @@
       // gênerait la fermeture du popup natif d'un <select> (ex. #sd-album).
       if (e.key === "Escape") { e.stopPropagation(); close(); return; }
       if (e.key !== "Tab") return;
-      var f = focusables(box);
+      var all = focusables(box);
+      var f = stops(all);
       if (!f.length) { e.preventDefault(); return; }   // rien à focaliser : on ne s'échappe pas
-      var t = trapTarget(f, document.activeElement, e.shiftKey, precede);
+      // Le focus est lu sur l'ARRÊT de son groupe : un bouton radio non coché, où un clic
+      // de script ou Chromium à reculons peut le poser, ne figure pas parmi les arrêts.
+      var t = trapTarget(f, stop(all, document.activeElement), e.shiftKey, precede);
       if (t) { t.focus(); e.preventDefault(); }
     });
 
@@ -136,7 +179,7 @@
       wasOpen = open;
       if (open) {
         if (!box.contains(document.activeElement)) {
-          var f = focusables(box);
+          var f = stops(focusables(box));
           if (f.length) f[0].focus();
         }
       } else if (canFocus(lastExternalFocus)) {
@@ -148,5 +191,5 @@
     if (wasOpen) onToggle();   // déjà ouverte au câblage (rare) : pose le focus
   }
 
-  return { register: register, _trapTarget: trapTarget };
+  return { register: register, _trapTarget: trapTarget, _stop: stop, _stops: stops };
 });

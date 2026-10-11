@@ -293,3 +293,96 @@ def test_un_focalisable_inconnu_n_est_pas_un_cul_de_sac(page, decor):
     assert "span#inconnu" in noms and noms[0] != "span#inconnu" != noms[-1], (
         f"le champ planté n'est pas un arrêt du MILIEU de la boîte — {noms} : ce test ne "
         "mesure plus ce pour quoi il existe.")
+
+
+# ── Un groupe de boutons radio n'est qu'UN arrêt (AUTH-11) ──────────────────────────────
+#
+# Le tour des sept modales ci-dessus ouvre celle de l'export telle qu'elle naît : la
+# PREMIÈRE collection cochée. Dans cet état-là, le premier bouton radio de la liste du
+# piège est aussi le premier arrêt du navigateur, et le tour est juste par coïncidence.
+# Il suffit de choisir la seconde collection — le seul geste que la boîte propose — pour
+# que les deux ne coïncident plus. Mesuré le 2026-10-11 : Maj+Tab depuis le bouton coché
+# posait le focus sur `#lock-toggle`, derrière la boîte ; et Tab depuis « Annuler » le
+# posait sur le bouton NON coché.
+
+_DEDANS = """(sel) => {
+  const a = document.activeElement;
+  return document.querySelector(sel).contains(a) ? null
+    : (a ? a.tagName.toLowerCase() + (a.id ? '#' + a.id : '') : 'rien');
+}"""
+
+
+def _cocher_la_seconde(page):
+    """Par le geste du clavier : la boîte s'ouvre sur le premier bouton, la flèche coche
+    le suivant et y porte le focus."""
+    radios = page.locator("#export-choix input[type=radio]")
+    assert radios.count() >= 2, "le décor ne donne pas deux collections à l'export"
+    radios.nth(0).focus()
+    page.keyboard.press("ArrowDown")
+    assert radios.nth(1).is_checked() and not radios.nth(0).is_checked()
+    assert radios.nth(1).evaluate("(e) => e === document.activeElement")
+
+
+def test_la_seconde_collection_cochee_maj_tab_reste_dans_la_modale(page, decor):
+    """Le défaut tel qu'il a été relevé, puis le tour entier dans cet état."""
+    _export(page, decor)
+    boite = MODALES["#export-modal"]["boite"]
+    _cocher_la_seconde(page)
+    page.keyboard.press("Shift+Tab")
+    dehors = page.evaluate(_DEDANS, boite)
+    assert dehors is None, (
+        f"Maj+Tab depuis la seconde collection cochée sort de la modale d'export : le "
+        f"focus est sur {dehors}, derrière la boîte.")
+    assert page.evaluate("() => document.activeElement.id") == "export-close", (
+        "Maj+Tab depuis le premier arrêt de la boîte doit boucler sur le dernier")
+    noms = _exiger_le_tour(page, "export, la seconde collection cochée", boite, minimum=3)
+    assert len(noms) == 3, (
+        f"le groupe de boutons radio doit compter pour UN arrêt — {noms}")
+
+
+def test_un_groupe_radio_en_queue_de_boite_ne_laisse_pas_sortir(page, decor):
+    """L'autre bord. Aucune modale ne finit par un groupe de boutons radio : on le plante.
+
+    Le PREMIER bouton coché, le second après lui : pour la liste d'avant, le coché n'était
+    pas « le dernier », donc Tab suivait son cours — et pour le navigateur il n'y a plus
+    rien après lui dans la boîte.
+    """
+    _export(page, decor)
+    boite = MODALES["#export-modal"]["boite"]
+    page.evaluate(_PLANTER, [boite, "beforeend",
+                             '<label><input type="radio" name="queue" id="q1" checked>q1</label>'
+                             '<label><input type="radio" name="queue" id="q2">q2</label>'])
+    noms = _exiger_le_tour(page, "export, un groupe radio en queue", boite, minimum=4)
+    assert noms[-1] == "input#q1", (
+        f"le bouton coché planté n'est pas le dernier arrêt de la boîte — {noms} : ce "
+        "test ne mesure plus ce pour quoi il existe.")
+
+
+@pytest.mark.parametrize("touche", ["Tab", "Shift+Tab"])
+def test_un_groupe_radio_sans_coche_ne_laisse_pas_sortir(page, decor, touche):
+    """Un groupe où RIEN n'est coché, à chaque bord de la boîte : planté, lui aussi.
+
+    Les navigateurs n'y entrent pas par le même bouton — en reculant, Chromium prend le
+    dernier du groupe et Firefox le premier. Le piège ne devine pas lequel : quel que
+    soit le bouton atteint, le pas suivant reste dans la boîte, et les autres arrêts
+    restent tous desservis.
+    """
+    _export(page, decor)
+    boite = MODALES["#export-modal"]["boite"]
+    for ou, nom in (("afterbegin", "tete"), ("beforeend", "queue")):
+        page.evaluate(_PLANTER, [boite, ou, "".join(
+            f'<label><input type="radio" name="{nom}" id="{nom}{i}">{nom}{i}</label>'
+            for i in (1, 2, 3))])
+    page.locator("#export-go").focus()
+    vus, pas = [], 12
+    for _ in range(pas):
+        page.keyboard.press(touche)
+        dehors = page.evaluate(_DEDANS, boite)
+        assert dehors is None, (
+            f"{touche} sort de la boîte après {' → '.join(vus) or 'le départ'} : le focus "
+            f"est sur {dehors}.")
+        vus.append(page.evaluate(
+            "() => document.activeElement.id || document.activeElement.name"))
+    for attendu in ("export-go", "export-close", "export-col", "tete", "queue"):
+        assert any(v.startswith(attendu) for v in vus), (
+            f"{touche} ne dessert jamais « {attendu} » en {pas} pas — {' → '.join(vus)}")
