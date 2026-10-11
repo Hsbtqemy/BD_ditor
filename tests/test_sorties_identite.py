@@ -22,6 +22,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
@@ -866,10 +867,52 @@ def test_toute_colonne_exportable_est_classee(client, db_path):
 # main. `chemin_web` a donc été RETENUE avec sa raison écrite, le cliquet vert, pendant que
 # le TEI du même album l'écrivait dans un `<graphic url>` (relevé le 2026-10-07).
 #
-# Ce qui suit mesure la SORTIE : une valeur reconnaissable dans chaque colonne retenue,
-# chaque export d'album joué, et aucune de ces valeurs dans aucun d'eux.
+# Ce qui suit mesure la SORTIE, par trois recherches qui ne se recouvrent pas :
+#   - la VALEUR semée dans chaque colonne retenue (ce qu'un export LIT en base) ;
+#   - les formes du chemin RÉEL que l'import a écrit, relevées avant le semis (ce qu'un
+#     export RECONSTRUIT depuis l'album et le numéro, deux valeurs publiées) ;
+#   - le NOM d'une colonne retenue (ce qu'un export en dit sans en donner la valeur :
+#     `"verrouillee": true`).
+# Et par un inventaire de ce qui PORTE une planche, là où elle a un porteur à elle : les
+# clés de son objet JSON, les attributs et les enfants de sa `<surface>` TEI. Un porteur
+# neuf se déclare, quoi qu'il porte.
+#
+# **Ce qu'elle ne voit pas, et qu'il ne faut pas lui prêter.** Une valeur TRANSFORMÉE —
+# hachée, encodée en base64, tronquée, traduite (`type="locked"`) — ne ressemble plus à
+# rien de ce qu'on cherche : aucune recherche par valeur ne la verra, et l'inventaire ne
+# la voit que si elle arrive par un porteur NEUF de la planche. Dans un porteur qui existe
+# déjà (un attribut déclaré, le texte d'une note, une cellule du CSV), ou dans une colonne
+# neuve du CSV — dont les lignes sont des régions, que ce contrôle n'inventorie pas —,
+# elle passe. Un chemin reconstruit sous une AUTRE forme que celle de l'ingestion passe de
+# même. Le décor exerce les branches que les trois exports ONT (récit et paratexte,
+# surface vide, zone nue, zone enfant, texte, note avec et sans tag), pas celles qu'on
+# leur ajoutera : une fuite posée sous une condition neuve demande que le décor la
+# remplisse. Ne sont jouées que les routes GET sous `/api/export/`.
 EXPORTS_D_ALBUM = "/api/export/"
+TROIS_FORMATS = {"/api/export/json", "/api/export/csv", "/api/export/tei"}
+
+# Ce que le décor PUBLIE, et que chaque export doit donc porter : la preuve que le lecteur
+# lit ce qui sort, et que chaque branche du décor atteint le fichier.
 TITRE_PUBLIE = "ZZTITRE-PUBLIE-7"
+PUBLIES = {
+    "le titre de l'album": TITRE_PUBLIE,
+    "le texte de la bulle enfant": "ZZTEXTE-BULLE-7",
+    "sa note": "ZZNOTE-AVEC-TAG-7",
+    "son tag": "zztag7",
+    "le texte du cartouche de la planche paratexte": "ZZTEXTE-PARATEXTE-7",
+    "sa note, sans tag": "ZZNOTE-SEULE-7",
+}
+# Ce qui PORTE une planche dans un export, déclaré. C'est sous un porteur neuf qu'une
+# colonne retenue sortirait transformée — `"verrou": true`, `subtype="locked"`, un
+# `<graphic>` au chemin haché — sans rien qui ressemble à ce qu'on cherche.
+#   - JSON : les clés d'une planche, EN PLUS de ses colonnes publiées — dérivées de
+#     colonnes publiées, ou l'arbre de ses régions ;
+#   - TEI : les attributs d'une `<surface>` (dimensions du master, identifiant, numéro
+#     éditorial ou paratexte) et ses enfants (ses zones, rien d'autre).
+# Le CSV n'a pas de porteur de planche : ses lignes sont des RÉGIONS, hors de ce contrôle.
+DERIVEES_PLANCHE = {"numero_editorial", "dimensions_cm", "regions"}
+ATTRIBUTS_SURFACE = {"ulx", "uly", "lrx", "lry", "xml:id", "n", "type"}
+ENFANTS_SURFACE = {"zone"}
 
 
 def _jetons_retenus() -> dict:
@@ -881,10 +924,12 @@ def _jetons_retenus() -> dict:
 
     DEUX jetons, parce que deux des quatre colonnes sont des chemins et qu'un chemin fuit
     aussi par MORCEAUX : le nom du fichier sans son dossier, le dossier sans son fichier.
-    Minuscules, sans caractère qu'un XML, un JSON ou une URL échapperait.
+    Rien que des lettres minuscules et des chiffres : ni un XML, ni un JSON, ni une URL ne
+    les échappe, et une réécriture des séparateurs (tirets en soulignés) ne les entame pas.
+    Le jeton ne contient PAS le nom de sa colonne, que `_noms_retenus_dans` cherche à part.
     """
-    return {col: (f"zzdossier-{col.replace('_', '')}-7", f"zzfichier-{col.replace('_', '')}-7")
-            for col in main._EXPORT_PLANCHE_RETENUES}
+    return {col: (f"zzretenue{i}dossier7", f"zzretenue{i}fichier7")
+            for i, col in enumerate(sorted(main._EXPORT_PLANCHE_RETENUES))}
 
 
 def _retenues_dans(texte: str) -> set:
@@ -893,7 +938,66 @@ def _retenues_dans(texte: str) -> set:
     return {col for col, jetons in _jetons_retenus().items() if any(j in t for j in jetons)}
 
 
-def test_aucune_colonne_retenue_ne_sort_d_un_export_d_album(client, db_path, png_bytes):
+def _noms_retenus_dans(texte: str) -> set:
+    """Les colonnes retenues NOMMÉES dans ce texte : clé JSON, en-tête CSV, nom ou valeur
+    d'attribut du TEI. Une colonne dite sans sa valeur — `"verrouillee": true` — sort
+    quand même : c'est l'état que la liste retient, pas son horodatage."""
+    t = texte.lower()
+    return {col for col in main._EXPORT_PLANCHE_RETENUES if col.lower() in t}
+
+
+def _formes_d_un_chemin(chemin: str) -> set:
+    """Ce qu'un chemin RÉEL laisse reconnaître de lui : entier, puis par morceaux.
+
+    Les morceaux se DÉRIVENT du chemin que l'import vient d'écrire, jamais d'un motif
+    recopié ici : un motif diverge du code sans que rien le dise, et la recherche
+    deviendrait vraie par construction. `derivatives/album_1/planche_0001.jpg` rend le
+    chemin, sa racine (`derivatives/`), son dossier d'album (`album_1/`), son fichier
+    (`planche_0001.jpg`) et ce fichier sans extension (`planche_0001`, pour un chemin
+    reconstruit sous une autre extension).
+    """
+    segments = chemin.split("/")
+    fichier = segments[-1]
+    return {f.lower() for f in ({chemin, fichier, fichier.rsplit(".", 1)[0]}
+                                | {s + "/" for s in segments[:-1]})}
+
+
+def _formes_dans(texte: str, formes: set) -> set:
+    t = texte.lower()
+    return {f for f in formes if f in t}
+
+
+def _local(nom: str) -> str:
+    """`{espace}nom` → `nom`, et `xml:id` pour l'espace XML : comme on l'écrit."""
+    espace, _, local = nom.rpartition("}")
+    return ("xml:" if espace.endswith("XML/1998/namespace") else "") + local
+
+
+def _branches_du_tei(racine) -> dict:
+    """Les branches du TEI que le décor doit EXERCER, lues dans l'arbre et non dans sa
+    sérialisation : sans elles, un `<graphic>` posé sur les seules planches paratexte, ou
+    sur les seules zones enfants, ne rencontrait personne. Lues dans l'arbre pour qu'une
+    fuite ne les fasse pas tomber À SA PLACE — une surface « sans zone » le reste quand on
+    lui ajoute un `<graphic>`, et c'est la recherche de la fuite qui doit le dire."""
+    def de(nom):
+        return [e for e in racine.iter() if _local(e.tag) == nom]
+
+    surfaces, zones, notes = de("surface"), de("zone"), de("note")
+    return {
+        "une surface paratexte": any(s.get("type") == "paratexte" for s in surfaces),
+        "une surface de récit": any(s.get("n") for s in surfaces),
+        "une surface sans zone": any(not [c for c in s if _local(c.tag) == "zone"]
+                                     for s in surfaces),
+        "une zone nue": any(len(z) == 0 for z in zones),
+        "une zone dans une zone": any(_local(c.tag) == "zone" for z in zones for c in z),
+        "une ligne de texte": bool(de("line")),
+        "une note avec tags": any(n.get("ana") for n in notes),
+        "une note sans tag": any(not n.get("ana") for n in notes),
+    }
+
+
+def test_aucune_colonne_retenue_ne_sort_d_un_export_d_album(client, db_path, data_dir,
+                                                           png_bytes):
     """Les exports d'un album — JSON, CSV, TEI — tiennent la MÊME règle, mesurée à la sortie.
 
     Rouge avant le correctif du TEI : `<graphic url="/derivatives/…">` portait `chemin_web`.
@@ -912,57 +1016,161 @@ def test_aucune_colonne_retenue_ne_sort_d_un_export_d_album(client, db_path, png
         "publiable, c'est une décision à écrire (la raison dans `main.py`, et ce que "
         "`docs/dictionnaire-metadonnees.md` dit de la colonne), pas une ligne à déplacer.")
 
-    # (0) La garde MORD : un détecteur qui ne reconnaîtrait pas ce qu'il cherche
-    # approuverait tout. Trois formes sous lesquelles un chemin sort réellement.
+    # (1) Le décor. Trois planches, pour que chaque branche des exports rencontre quelque
+    # chose : une de récit (une case qui contient une bulle avec texte, note et tag, et
+    # une case NUE), une de paratexte (un cartouche avec texte et une note sans tag), une
+    # de récit sans aucune région. Le décor d'origine — une planche, une case nue —
+    # laissait passer toute fuite posée sous une condition : sur les seules planches
+    # paratexte, sur les seules zones qui ont un texte, dans une note, sur les seules
+    # zones enfants.
+    a = client.post("/api/albums", json={"titre": TITRE_PUBLIE}).json()
+
+    def importer(nom):
+        return client.post(f"/api/albums/{a['id']}/import",
+                           files={"file": (nom, png_bytes, "image/png")}).json()
+
+    def region(planche, **champs):
+        rep = client.post(f"/api/planches/{planche['id']}/regions",
+                          json={"x": 0, "y": 0, "w": 9, "h": 9, **champs})
+        assert rep.status_code in (200, 201), rep.text
+        return rep.json()
+
+    recit, paratexte, vide = importer("p1.png"), importer("p2.png"), importer("p3.png")
+    case = region(recit, type="case")
+    region(recit, type="case", x=20)          # NUE : ni texte, ni note, ni enfant
+    bulle = region(recit, type="bulle", parent_id=case["id"],
+                   ocr_texte=PUBLIES["le texte de la bulle enfant"])
+    cartouche = region(paratexte, type="cartouche",
+                       ocr_texte=PUBLIES["le texte du cartouche de la planche paratexte"])
+    for rid, corps in ((bulle["id"], {"note": PUBLIES["sa note"], "tags": [PUBLIES["son tag"]]}),
+                       (cartouche["id"], {"note": PUBLIES["sa note, sans tag"], "tags": []})):
+        rep = client.put(f"/api/regions/{rid}/annotation", json=corps)
+        assert rep.status_code == 200, rep.text
+    rep = client.patch(f"/api/planches/{paratexte['id']}/role", json={"role": "paratexte"})
+    assert rep.status_code == 200, rep.text
+    ids = [recit["id"], paratexte["id"], vide["id"]]
+
+    conn = sqlite3.connect(db_path)
+    try:
+        # (2) Les chemins RÉELS, relevés avant que le semis ne les recouvre. Ce sont ceux
+        # que l'ingestion a écrits — le dérivé est sur le disque à cet endroit —, donc ceux
+        # qu'un export retrouverait sans lire la colonne : `album_id` et `numero` suffisent
+        # à les reconstruire, et le JSON publie les deux.
+        reels = [c for ligne in conn.execute(
+            "SELECT chemin_tiff, chemin_web FROM planches WHERE album_id = ?", (a["id"],))
+            for c in ligne if c]
+        derives = [r[0] for r in conn.execute(
+            "SELECT chemin_web FROM planches WHERE album_id = ?", (a["id"],))]
+        assert len(derives) == 3 and all((data_dir / d).is_file() for d in derives), (
+            f"les chemins relevés ne sont pas ceux que l'import a écrits : {derives}")
+        assert len(reels) == 6, f"un master ou un dérivé manque au décor : {reels}"
+        formes = set().union(*(_formes_d_un_chemin(c) for c in reels))
+
+        # (3) Le semis : CHAQUE colonne retenue de CHAQUE planche porte sa valeur.
+        for col, (dossier, fichier) in jetons.items():
+            conn.execute(f"UPDATE planches SET {col} = ? WHERE album_id = ?",
+                         (f"{dossier}/{fichier}.jpg", a["id"]))
+        conn.commit()
+        en_base = {pid: dict(zip(jetons, conn.execute(
+            f"SELECT {', '.join(jetons)} FROM planches WHERE id = ?", (pid,)).fetchone()))
+            for pid in ids}
+    finally:
+        conn.close()
+    # Le mode d'échec d'un cliquet est son SEMIS : une colonne restée vide ne peut pas fuir.
+    for pid, ligne in en_base.items():
+        assert {c: _retenues_dans(v or "") for c, v in ligne.items()} == {c: {c} for c in jetons}, (
+            f"le semis n'a pas pris sur la planche {pid} : {ligne}")
+
+    # (4) Les trois recherches MORDENT : un détecteur qui ne reconnaîtrait pas ce qu'il
+    # cherche approuverait tout. Chacune est éprouvée sur ce qu'elle doit voir, et sur un
+    # témoin qu'elle ne doit pas voir.
     dossier, fichier = jetons["chemin_web"]
     assert _retenues_dans(f'<graphic url="/{dossier}/{fichier}.jpg" />') == {"chemin_web"}
     assert _retenues_dans(f"{fichier.upper()}.JPG") == {"chemin_web"}      # le nom seul
     assert _retenues_dans(json.dumps({"dossier": dossier})) == {"chemin_web"}
-    assert _retenues_dans("<surface n=\"1\" /> derivatives/album_1/planche_0001.jpg") == set()
+    assert _noms_retenus_dans('{"chemin_web": true}') == {"chemin_web"}
+    assert _noms_retenus_dans('<surface subtype="CHEMIN_TIFF" />') == {"chemin_tiff"}
+    assert formes and all(len(f) >= 6 for f in formes), (
+        f"les formes dérivées des chemins réels sont trop courtes pour rien prouver : "
+        f"{sorted(formes)}")
+    for reel in reels:
+        segments = reel.split("/")
+        assert len(segments) >= 3 and "." in segments[-1], (
+            f"`{reel}` n'a plus la forme racine/album/fichier.ext : revois "
+            "`_formes_d_un_chemin`, qui en dérive ce qu'il cherche.")
+        # Entier derrière un hôte, le fichier seul, le fichier sous une autre extension.
+        assert reel.lower() in _formes_dans(f'url="https://exemple/{reel}"', formes)
+        assert _formes_dans(f'<graphic url="{segments[-1].upper()}" />', formes)
+        assert _formes_dans(segments[-1].rsplit(".", 1)[0] + ".tif", formes)
+    temoin = '<surface xml:id="planche_1" n="1" lrx="400" /> {"album_id": 1, "numero": 1}'
+    assert not (_retenues_dans(temoin) | _noms_retenus_dans(temoin) | _formes_dans(temoin, formes))
 
-    # (1) Le décor : un album, une planche, une région (sans elle le CSV n'a aucune ligne,
-    # donc rien à lire), et CHAQUE colonne retenue porteuse de sa valeur.
-    a = client.post("/api/albums", json={"titre": TITRE_PUBLIE}).json()
-    pl = client.post(f"/api/albums/{a['id']}/import",
-                     files={"file": ("p.png", png_bytes, "image/png")}).json()
-    client.post(f"/api/planches/{pl['id']}/regions",
-                json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9})
-    conn = sqlite3.connect(db_path)
-    try:
-        for col, (dossier, fichier) in jetons.items():
-            conn.execute(f"UPDATE planches SET {col} = ? WHERE id = ?",
-                         (f"{dossier}/{fichier}.jpg", pl["id"]))
-        conn.commit()
-        en_base = dict(zip(jetons, conn.execute(
-            f"SELECT {', '.join(jetons)} FROM planches WHERE id = ?",
-            (pl["id"],)).fetchone()))
-    finally:
-        conn.close()
-    # Le mode d'échec d'un cliquet est son SEMIS : une colonne restée vide ne peut pas fuir.
-    assert {c: _retenues_dans(v or "") for c, v in en_base.items()} == {c: {c} for c in jetons}, (
-        f"le semis n'a pas pris : {en_base}")
-
-    # (2) Les exports d'album, depuis l'inventaire des routes — jamais une liste recopiée.
+    # (5) Les exports d'album, depuis l'inventaire des routes — jamais une liste recopiée.
     toutes = _routes_get()
     inventaire_routes.exiger_plancher(len(toutes), "le cliquet des colonnes retenues", "GET")
     exports = [r.path for r in toutes if r.path.startswith(EXPORTS_D_ALBUM)]
-    assert "/api/export/tei" in exports and "/api/export/json" in exports, (
-        f"les exports d'album ne sont plus sous {EXPORTS_D_ALBUM} ({exports}) : ce contrôle "
-        "ne joue plus rien, et il passerait au vert en le taisant.")
+    assert TROIS_FORMATS <= set(exports), (
+        f"{sorted(TROIS_FORMATS - set(exports))} n'est plus sous {EXPORTS_D_ALBUM} : ce "
+        "contrôle ne le joue plus, et il passerait au vert en le taisant. Un export "
+        "d'album qui change d'adresse doit rester joué ici.")
 
     for chemin in exports:
         rep = client.get(chemin, params={"album_id": a["id"]})
         assert rep.status_code == 200, (
             f"{chemin} répond {rep.status_code} avec le seul `album_id` : apprends à ce "
             f"contrôle à le jouer, sans quoi il sort sans avoir été regardé. {rep.text[:300]}")
-        texte = _texte(rep.content)
-        # Non-vacuité : le titre de l'album est PUBLIÉ, les trois formats le portent. Un
-        # export lu de travers (compressé, vide, autre album) ne le porterait pas — et
-        # paraîtrait propre.
-        assert TITRE_PUBLIE.lower() in texte.lower(), (
-            f"{chemin} ne porte pas le titre de l'album : ce contrôle ne lit pas ce qui sort.")
+        # Lu en UTF-8 quand c'est du texte — les preuves du décor portent un point médian
+        # (`c1·b1`) —, déplié comme le balayage quand c'est une archive.
+        texte = (_texte(rep.content) if rep.content[:2] == b"PK"
+                 else rep.content.decode("utf-8"))
+        # Non-vacuité : ce que le décor publie, chaque format le porte. Un export lu de
+        # travers (compressé, vide, autre album) ne le porterait pas — et paraîtrait
+        # propre ; un décor aminci non plus, et ses branches ne seraient plus exercées.
+        absents = [quoi for quoi, valeur in PUBLIES.items() if valeur.lower() not in texte.lower()]
+        assert not absents, (
+            f"{chemin} ne porte pas {absents} : ce contrôle ne lit pas ce qui sort, ou le "
+            "décor n'exerce plus les branches qu'il annonce.")
+
+        # (a) Les trois recherches. Elles passent AVANT l'inventaire et les preuves du
+        # décor : une fuite doit être dite par ce qui la cherche, pas par un voisin.
         fuites = _retenues_dans(texte)
         assert not fuites, (
             f"{chemin} publie {sorted(fuites)}, que `main._EXPORT_PLANCHE_RETENUES` retient : "
             + " ; ".join(f"{c} — {main._EXPORT_PLANCHE_RETENUES[c]}" for c in sorted(fuites))
             + ". Deux formats du même album ne tiennent pas la même règle.")
+        reconstruits = _formes_dans(texte, formes)
+        assert not reconstruits, (
+            f"{chemin} porte {sorted(reconstruits)} : la forme d'un chemin que l'import a "
+            "réellement écrit pour cet album. La colonne n'est pas lue — le semis l'aurait "
+            "montré — mais le chemin est RECONSTRUIT, et c'est le même chemin qui sort.")
+        nommees = _noms_retenus_dans(texte)
+        assert not nommees, (
+            f"{chemin} NOMME {sorted(nommees)}, que `main._EXPORT_PLANCHE_RETENUES` retient : "
+            "une colonne dite sans sa valeur sort quand même.")
+
+        # (b) Ce qui PORTE une planche est déclaré, et (c) le décor exerce ses branches.
+        if chemin == "/api/export/json":
+            planches = rep.json()["planches"]
+            cles = set().union(*(p.keys() for p in planches))
+            attendues = set(main._EXPORT_PLANCHE_COLS) | DERIVEES_PLANCHE
+            assert cles == attendues, (
+                f"une planche du JSON porte {sorted(cles - attendues)} en trop, "
+                f"{sorted(attendues - cles)} en moins : une clé neuve se DÉCLARE "
+                "(`DERIVEES_PLANCHE`) en disant de quelles colonnes publiées elle dérive.")
+            assert len(planches) == 3 and any(
+                e["enfants"] for p in planches for e in p["regions"]), (
+                "le JSON du décor n'a plus ses trois planches ou sa zone enfant.")
+        if chemin == "/api/export/tei":
+            racine = ET.fromstring(rep.content)
+            surfaces = [e for e in racine.iter() if _local(e.tag) == "surface"]
+            attributs = {_local(k) for s in surfaces for k in s.attrib}
+            enfants = {_local(c.tag) for s in surfaces for c in s}
+            assert attributs == ATTRIBUTS_SURFACE and enfants == ENFANTS_SURFACE, (
+                f"une `<surface>` du TEI porte des attributs "
+                f"({sorted(attributs ^ ATTRIBUTS_SURFACE)}) ou des enfants "
+                f"({sorted(enfants ^ ENFANTS_SURFACE)}) que ce contrôle ne déclare pas, ou "
+                "n'en porte plus qu'il déclare : ce qui porte une planche se DÉCLARE "
+                "(`ATTRIBUTS_SURFACE`, `ENFANTS_SURFACE`), en disant ce qu'il publie.")
+            sans = [quoi for quoi, vu in _branches_du_tei(racine).items() if not vu]
+            assert not sans, (
+                f"le TEI du décor ne montre plus {sans} : ces branches ne sont plus exercées.")

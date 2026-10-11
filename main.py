@@ -1781,14 +1781,19 @@ _EXPORT_PLANCHE_RETENUES = {
 }
 
 
-# Les DEUX lectures par lesquelles un export d'album atteint `albums` et `planches`
-# (AUTH-11). Le JSON nommait ses colonnes depuis AUTH-1 ; le TEI, à côté, gardait son
-# `SELECT *` et choisissait ses champs à la main — si bien que `chemin_web`, RETENUE
-# ci-dessus avec sa raison, sortait dans un `<graphic url>` du même album (relevé le
-# 2026-10-07). Les deux formats passent désormais par ici : une colonne retenue n'est pas
-# dans la ligne que le TEI reçoit, et la lire lève au lieu de la publier.
-# `test_aucune_colonne_retenue_ne_sort_d_un_export_d_album` le mesure à la SORTIE, export
-# par export.
+# Les lectures NOMMÉES par lesquelles le JSON et le TEI d'un album reçoivent leur album et
+# leurs planches (AUTH-11). Le JSON nommait ses colonnes depuis AUTH-1 ; le TEI, à côté,
+# gardait son `SELECT *` et choisissait ses champs à la main — si bien que `chemin_web`,
+# RETENUE ci-dessus avec sa raison, sortait dans un `<graphic url>` du même album (relevé
+# le 2026-10-07). Ces deux formats passent désormais par ici : une colonne retenue n'est
+# pas dans la ligne qu'ils reçoivent, et la lire lève au lieu de la publier.
+#
+# Ce que cette construction NE tient PAS : ce ne sont pas les seules lectures de ces deux
+# tables. Le CSV a sa propre jointure, `numeros_editoriaux` et `citations_regions` les
+# lisent pour dériver, et rien n'empêche une requête de plus dans un export. « Lire lève »
+# ne vaut donc que pour le JSON et le TEI, et pour la ligne reçue d'ici. Ce qui tient les
+# TROIS formats est une mesure, pas une construction :
+# `test_aucune_colonne_retenue_ne_sort_d_un_export_d_album` les joue à la SORTIE.
 def _album_exportable(conn: sqlite3.Connection, album_id: int) -> dict:
     album = _row(conn.execute(
         f"SELECT {', '.join(_EXPORT_ALBUM_COLS)} FROM albums WHERE id = ?", (album_id,)))
