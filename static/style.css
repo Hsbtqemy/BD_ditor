@@ -1042,7 +1042,11 @@ button { font-family: inherit; }
 
 /* Grammaire : lecture compacte + édition au clic */
 #gram-validate { float: right; }
-.gram-filters { display: flex; align-items: center; gap: .9231rem; margin: .3077rem 0 .6154rem; flex-wrap: wrap; }
+/* `clear` : « ✓ Valider la région » flotte à droite du titre et dépasse sous lui. Un
+   conteneur flex ne passe pas sous un flottant, il se range À CÔTÉ : sous une préférence de
+   police de 24, à 320 px, les filtres tenaient dans les 78 px laissés par le bouton, pour
+   118 de contenu (mesuré le 2026-10-11). Ils commencent désormais sous lui. */
+.gram-filters { display: flex; align-items: center; gap: .9231rem; margin: .3077rem 0 .6154rem; flex-wrap: wrap; clear: both; }
 .gram-filters label { display: inline-flex; align-items: center; gap: .3077rem; cursor: pointer; }
 .gram-legend { margin-left: auto; display: inline-flex; gap: .3077rem; }
 .gram-tokens { display: flex; flex-direction: column; gap: .1538rem; }
@@ -1255,8 +1259,14 @@ h3.collapsible:hover { color: var(--text); }
 /* Lignes de guidage de la hiérarchie : bordure gauche des sous-groupes. */
 .tgroup { margin-left: .6154rem; padding-left: .6923rem; border-left: 1px solid var(--border); }
 
+/* `flex-wrap` : le nœud COURANT porte, après son extrait, la coche et les deux boutons de
+   déplacement. Quand ce qui ne rétrécit pas ne tient plus — 227 px pour 208 de place dans
+   le tiroir à 320 px, sous une préférence de police de 24 —, les boutons sortaient du nœud
+   par la droite. Ils passent à la ligne. Cela ne joue que là : l'extrait (`.tn-txt`) compte
+   pour ZÉRO dans le choix du retour à la ligne, donc un nœud qui tenait sur une rangée y
+   reste, et l'extrait y prend la place qui reste, comme avant. */
 .tnode {
-  display: flex; align-items: center; gap: .5385rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5385rem;
   padding: .2308rem .4615rem; margin: .0769rem 0;
   border-radius: 5px; cursor: pointer; white-space: nowrap;
   border-left: 2px solid transparent;
@@ -1301,7 +1311,7 @@ h3.collapsible:hover { color: var(--text); }
 .tnode-case .tn-label { font-weight: 600; }
 .tn-id { color: var(--text-muted); font-size: .7692rem; }
 .tn-txt {
-  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   color: var(--text-muted); font-style: italic; font-size: .8462rem;
 }
 .tn-check { margin-left: .4615rem; flex: 0 0 auto; color: var(--accent-green); font-size: .8462rem; }
@@ -2068,9 +2078,16 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
   box-shadow: 0 12px 48px var(--shadow-strong); display: flex; flex-direction: column; gap: .9231rem;
   max-height: 88vh; overflow-y: auto;          /* la fiche descriptive (N0) peut être longue */
 }
+/* `min-width: 0` : un `<fieldset>` ne rétrécit pas, de lui-même, sous la largeur propre de
+   ce qu'il contient — ici un champ de texte, vingt caractères. Sous une préférence de
+   police de 24, à 320 px, c'est lui qui emportait le corps de la Bibliothèque, collection
+   dépliée : 312 px pour 260 de place sous Chromium, 310 sous Firefox, et
+   `main#corpus-body` défilait de côté de 22 et de 20 px. Dans la modale d'album,
+   « Contributions » faisait 288 px pour 238 (Chromium). Mesuré le 2026-10-11 ; la classe
+   est partagée par les deux formulaires. */
 .modal-section {
   border: 1px solid var(--border); border-radius: 8px; padding: .6154rem .9231rem .9231rem; margin: 0;
-  display: flex; flex-direction: column; gap: .7692rem;
+  display: flex; flex-direction: column; gap: .7692rem; min-width: 0;
 }
 .modal-section legend { font-size: .9231rem; color: var(--text-muted); padding: 0 .4615rem; }
 .contrib-row {
@@ -2307,10 +2324,18 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 /* Une liste déroulante prend la largeur de sa plus longue option : à 320 px, « Un compte, ou
    un groupe absent de la liste… » emportait le corps de la page. Elle rétrécit donc. */
 .qe-choix { max-width: 100%; min-width: 0; }
-.qe-libre { display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+/* La saisie libre RÉTRÉCIT elle aussi, et son champ avec elle — la règle du module frère
+   (`.mp-libre`, plus bas), posée ici le 2026-10-11. Un champ de texte garde sinon sa largeur
+   de vingt caractères : 274 px sous une préférence de police de 24, pour 260 de place dans
+   la Bibliothèque à 320 px et 215 dans la fiche d'une collection de l'Administration, dont
+   le corps de page défilait alors de côté. Repliée, la saisie libre n'a pas de rectangle :
+   aucune mesure ne l'avait vue. Le plancher de 8rem reste, il tient dans les deux hôtes. */
+.qe-libre { display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+            min-width: 0; max-width: 100%; }
 /* `display: inline-flex` ci-dessus l'emporterait sur la règle UA `[hidden]`. */
 .qe-libre[hidden] { display: none; }
-.qe-nom { min-width: 8rem; }
+.qe-nom { min-width: 8rem; max-width: 100%; }
+.qe-genre { min-width: 0; max-width: 100%; }
 .qe-noms { margin: .3rem 0; padding-left: 1.2rem; }
 .qe-cartes { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
 .qe-carte { border: 1px solid var(--border); border-radius: 6px; padding: .5rem .6rem; }

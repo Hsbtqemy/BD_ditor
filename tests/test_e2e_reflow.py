@@ -59,7 +59,15 @@ LARGEURS = [320, 768]
 # cet audit-là visitait donc la bonne page au bon réglage, et posait l'AUTRE question
 # (« le contenu est-il perdu ? »), à laquelle un `overflow-x` sur le corps de la page
 # répond oui.
-POLICES = [16, 20]
+#
+# **24 s'y ajoute le 2026-10-11**, et pour la même raison une taille plus haut. Rejouée à la
+# main sous Firefox à cette préférence, la mesure a rendu cinq échecs que 16 et 20 ne
+# voyaient pas ; rejouée sous Chromium, les MÊMES cinq — rien n'y était propre à Firefox, il
+# manquait seulement une valeur à cette liste. À 24 la racine vaut 19,5 px et un champ de
+# texte garde ses vingt caractères, soit 250 px de large : c'est la préférence où, à 320 px,
+# la largeur PROPRE d'un champ dépasse pour la première fois celle de son bloc. Ce que
+# cette valeur coûte à la passe est écrit dans le commit qui l'ajoute.
+POLICES = [16, 20, 24]
 
 
 def _preference_police(page, police):
@@ -556,6 +564,60 @@ def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, larg
     fiche = page.locator("#cg-fiche")
     assert fiche.evaluate("e => e.scrollWidth <= e.clientWidth + 1"), (
         f"la fiche défile de côté à {largeur} px : le panneau n'a pas tenu dans sa section")
+
+
+# ── La saisie libre de « Qui entre », OUVERTE ──────────────────────────────────────────
+#
+# Le test ci-dessus mesure le panneau tel qu'il naît : la liste déroulante, et la saisie
+# libre repliée. « Un compte, ou un groupe absent de la liste… » déplie un champ de texte,
+# et un champ de texte a une largeur propre de vingt caractères — 274 px sous une
+# préférence de 24, pour 260 de place à 320 px. Rien ne sort alors de la fenêtre : c'est le
+# champ qui dépasse de sa ligne, donc la sonde d'ÉCRASEMENT qui le voit, pas celle de
+# reflow. Le même défaut avait été fermé dans le module frère (les membres d'un projet) ;
+# ici, ce qui est replié n'existait pas pour l'instrument.
+#
+# Les DEUX hôtes du module : la Bibliothèque est son témoin, la fiche d'une collection dans
+# l'Administration le loge plus à l'étroit. Une règle sur `.qe-…` vaut pour les deux.
+@pytest.mark.parametrize("police", POLICES)
+def test_la_saisie_libre_de_qui_entre_tient_dans_son_bloc(page, decor, police):
+    """À 320 px, la saisie libre ouverte, rien ne dépasse de sa boîte dans « Qui entre »,
+    et le corps de la page ne défile pas de côté — dans la Bibliothèque comme dans la fiche
+    d'une collection de l'Administration."""
+    c = httpx.Client(base_url=decor["base"], trust_env=False, timeout=30, headers=ECRITURE)
+    try:
+        cid = c.get("/api/collections").json()[0]["id"]
+    finally:
+        c.close()
+    hotes = {
+        "la Bibliothèque": (f"/corpus?collection={cid}",
+                            f'#col-body .col-item[data-id="{cid}"] section.qe'),
+        "la fiche d'une collection, dans l'Administration": (
+            f"/administration?axe=collections&collection={cid}",
+            "#cg-fiche section[data-qui-entre]"),
+    }
+    _preference_police(page, police)
+    page.set_viewport_size({"width": 320, "height": 900})
+    echecs = []
+    for hote, (adresse, panneau) in hotes.items():
+        page.goto(decor["base"] + adresse, wait_until="networkidle")
+        choix = page.locator(f"{panneau} .qe-choix")
+        choix.wait_for(timeout=5000)
+        choix.select_option("autre")
+        page.locator(f"{panneau} .qe-nom").wait_for(state="visible", timeout=3000)
+        page.wait_for_timeout(300)
+        cas = f"{hote}, police {police} px"
+        ecrase = decrire_ecrasement(page.evaluate(ECRASEMENT, panneau))
+        if ecrase:
+            echecs.append(f"{cas}, ÉCRASÉ :\n" + "\n".join(ecrase))
+        echecs += [f"{cas} : {d['nom']} défile de côté — {d['clientW']} px visibles pour "
+                   f"{d['scrollW']}" for d in page.evaluate(_CORPS_QUI_DEFILE)]
+        # Le plancher : le champ est là, et il garde de quoi taper un nom.
+        largeur = page.locator(f"{panneau} .qe-nom").evaluate(
+            "e => Math.round(e.getBoundingClientRect().width)")
+        if largeur < 100:
+            echecs.append(f"{cas} : le champ du nom ne fait plus que {largeur} px")
+    assert not echecs, (
+        "« Qui entre », saisie libre ouverte, à 320 px :\n" + "\n".join(echecs))
 
 
 # ── COL-2 : le formulaire d'une collection a déménagé dans la Bibliothèque ─────────────
