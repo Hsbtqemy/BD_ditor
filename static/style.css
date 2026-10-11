@@ -1200,7 +1200,14 @@ button { font-family: inherit; }
   border: 1px solid var(--border); border-radius: 5px; padding: .3077rem .4615rem;
   font-family: inherit;
 }
-#region-parent { max-width: 62%; }
+/* `min-width: 0` : une liste déroulante ne rétrécit pas, d'elle-même, sous la largeur de sa
+   plus longue option — les 62 % étaient donc aussi son PLANCHER, et la rangée ne tenait que
+   si le libellé logeait dans les 38 % restants. Dans le tiroir à 320 px sous une préférence
+   de 24, il reste 85,8 px au libellé : « Rattachée » en demande 85,2 sous Segoe UI — la
+   rangée tenait à 0,6 px — et 99,4 sous DejaVu Sans (ce que rend un poste Linux, et
+   l'image), soit 271 px de rangée pour 257. La liste cède ce que le libellé demande, quelle
+   que soit la chasse. */
+#region-parent { max-width: 62%; min-width: 0; }
 .edit-hint { font-size: .8462rem; margin: .7692rem 0 0; line-height: 1.4; }
 .coord-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .6154rem; }
 .coord-grid label {
@@ -2127,7 +2134,14 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    police, sans seuil de fenêtre : la modale n'a pas la largeur de la page. */
 .modal-grid { display: grid; gap: .7692rem;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, max(11rem, calc(50% - .7692rem))), 1fr)); }
-.modal-actions { display: flex; align-items: center; gap: .9231rem; }
+/* `flex-wrap` : la rangée de boutons passe à la ligne au lieu de sortir de sa boîte. Sans
+   lui elle tenait par la CHASSE de la police, pas par une règle — à 320 px sous une
+   préférence de 24, « Enregistrer » et « Annuler » demandent 298 px pour 238 dans la fiche
+   d'un album, et « Supprimer la collection » finissait à 331 px d'une Bibliothèque de 320,
+   sous DejaVu Sans (ce que rend un poste Linux, et l'image). Sous Segoe UI les mêmes rangées
+   débordaient DÉJÀ, de 21 et de 3 px, mais dans le rembourrage de leur boîte : rien ne
+   sortait, donc rien ne le disait. Une rangée qui tient n'en est pas changée. */
+.modal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .9231rem; }
 
 /* Lexique situé (A4) — modale de documentation SKOS du vocabulaire (partage .modal-box) */
 /* `#figure-modal` manquait à cette liste depuis qu'elle existe : la « modale » des figures
