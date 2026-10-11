@@ -726,14 +726,47 @@ def test_le_bloc_entier_tient_dans_une_fenetre_courte(page, live_server):
     fenêtre. Trouvé par Hugo le 2026-09-23 en jouant la passe à 1280 × 500 : le cadre
     dépassait, la PAGE défilait à sa place, et la liste — à qui il restait plus de place
     qu'elle n'en demandait — ne défilait plus du tout. Un cadre de taille fixe qui déborde
-    ne sert plus à rien."""
-    page.set_viewport_size({"width": 1280, "height": 500})
+    ne sert plus à rien.
+
+    **Le bloc est amené en tête PAR LA ZONE QUI DÉFILE, et par elle seule** (2026-10-11).
+    Ce test appelait `scrollIntoView` sur le bloc, et sous Chromium ce geste fait défiler
+    aussi `html`, pourtant en `overflow: hidden` : la navigation et l'en-tête de la page
+    sortaient de la fenêtre par le haut, 108 px, et le cadre était mesuré dans un état
+    qu'aucune main n'obtient — vert, alors qu'il dépassait de 45 px le bas de la fenêtre.
+    Firefox ne fait pas défiler `html`, et c'est sous lui que le test est tombé. On fait
+    donc ce que fait la molette, et on exige que rien d'autre n'ait bougé.
+
+    Trois fenêtres : celle où le défaut a été vu, et deux autres largeurs — l'en-tête de la
+    page et la phrase du bloc n'y ont pas le même nombre de lignes, et une hauteur de cadre
+    comptée sur une constante ne tient qu'à la largeur où on l'a mesurée."""
     _ouvrir(page, live_server, decor())
-    page.evaluate("document.querySelector('#cg-bloc').scrollIntoView({block: 'start'})")
-    bas = page.locator("#cg").evaluate("e => e.getBoundingClientRect().bottom")
-    assert bas <= page.evaluate("window.innerHeight")
-    liste = page.locator(".cg-liste")
-    assert liste.evaluate("e => e.scrollHeight > e.clientHeight")
+    for largeur, hauteur in ((1280, 500), (1024, 600), (1600, 500)):
+        page.set_viewport_size({"width": largeur, "height": hauteur})
+        m = page.evaluate("""() => {
+          const zone = document.querySelector('#admin-body');
+          zone.scrollTop += document.querySelector('#cg-bloc').getBoundingClientRect().top
+                            - zone.getBoundingClientRect().top;
+          const haut = (sel) => document.querySelector(sel).getBoundingClientRect().top;
+          return { ailleurs: document.documentElement.scrollTop + document.body.scrollTop,
+                   navigation: haut('#site-nav'), zone: haut('#admin-body'),
+                   bloc: haut('#cg-bloc'),
+                   bas: document.querySelector('#cg').getBoundingClientRect().bottom,
+                   fenetre: window.innerHeight };
+        }""")
+        cas = f"{largeur} × {hauteur}"
+        assert m["ailleurs"] == 0 and m["navigation"] == 0, (
+            f"{cas} : la page a défilé hors de sa zone — la mesure ne serait pas celle de "
+            f"l'écran ({m})")
+        assert abs(m["bloc"] - m["zone"]) < 1, (
+            f"{cas} : le bloc n'est pas en tête de la zone qui défile ({m}) — il n'y a pas "
+            "assez de page sous lui pour l'y amener, et la mesure n'aurait pas d'objet")
+        assert m["bas"] <= m["fenetre"], (
+            f"{cas} : le bloc amené en tête de la zone qui défile, le cadre finit à "
+            f"y={m['bas']:.1f} pour une fenêtre de {m['fenetre']} px — il en dépasse de "
+            f"{m['bas'] - m['fenetre']:.1f} px")
+        liste = page.locator(".cg-liste")
+        assert liste.evaluate("e => e.scrollHeight > e.clientHeight"), (
+            f"{cas} : la liste ne défile plus dans le cadre")
 
 
 def test_au_large_la_fiche_met_ses_deux_sections_cote_a_cote(page, live_server):
