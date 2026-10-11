@@ -2636,7 +2636,13 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    encre AA-sûre (cf. le bloc ci-dessus). */
 .admin-bloc.pj-bloc { max-width: none; }
 .pj-bloc > p { max-width: 62rem; }
-.pj-creer { display: grid; gap: .35rem; max-width: 46rem; margin: .7rem 0 .2rem; }
+/* `minmax(0, 1fr)` : la piste implicite d'une grille (`auto`) ne descend pas sous la largeur
+   PROPRE de ce qu'elle porte, et un champ de texte garde ses vingt caractères — 244 px sous
+   Segoe UI à une préférence de 24, 268 sous DejaVu Sans dans l'image (306 sous la même
+   police sur un poste Windows), pour un bloc de 260 à 320 px. Le `min-width: 0` du champ,
+   plus bas, ne pouvait rien tant que sa piste ne rétrécissait pas. */
+.pj-creer { display: grid; grid-template-columns: minmax(0, 1fr); gap: .35rem; max-width: 46rem;
+            margin: .7rem 0 .2rem; }
 /* `display: grid` ci-dessus l'emporterait sur la règle UA `[hidden]`. */
 .pj-creer[hidden] { display: none; }
 .pj-creer-ligne, .pj-renommer { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }

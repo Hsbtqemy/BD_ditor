@@ -1147,11 +1147,22 @@ def test_nommer_un_responsable_puis_le_faire_sortir(page, seminaire):
         role.select_option("responsable")
     assert partie_req.value.post_data_json == {
         "genre": "utilisateur", "principal": "proprio", "role": "responsable"}
+    # Les responsables d'abord : c'est l'ordre du serveur, et la liste le suit.
+    #
+    # **Lu D'ABORD, et par une attente** (2026-10-11) : c'est la seule des trois lectures que
+    # la liste REDESSINÉE peut satisfaire, et les deux autres se lisent derrière elle. Elles
+    # passaient avant, dans cet ordre : la valeur de la liste déroulante, le serveur, puis la
+    # première ligne, d'un seul coup d'œil. Or la valeur vaut « responsable » dès le clic —
+    # c'est ce qu'on vient de choisir, l'attente n'attendait rien — ; `expect_request` rend la
+    # main quand la requête PART, pas quand le serveur l'a enregistrée ; et la liste ne se
+    # redessine qu'après le `PUT` puis sa relecture. Deux courses, donc, que le poste gagnait
+    # toujours : rejoué SEUL dans l'image, 25 fois, ce test tombait 6 fois — quatre sur la
+    # première ligne (« lectrice », l'ordre d'avant le geste), deux sur le serveur
+    # (« membre », lu avant que le `PUT` n'y soit arrivé).
+    expect(partie.locator(".mp-ligne").first).to_have_attribute("data-principal", "proprio")
     expect(partie.locator('.mp-ligne[data-principal="proprio"] .mp-role')).to_have_value(
         "responsable")
     assert _membres(d["base"], d["projet"])[("utilisateur", "proprio")] == "responsable"
-    # Les responsables d'abord : c'est l'ordre du serveur, et la liste le suit.
-    assert partie.locator(".mp-ligne").first.get_attribute("data-principal") == "proprio"
 
     partie.locator('.mp-ligne[data-principal="proprio"] .mp-role').select_option("membre")
     expect(partie.locator(".mp-msg.erreur")).to_contain_text(
