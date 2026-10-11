@@ -1781,15 +1781,32 @@ _EXPORT_PLANCHE_RETENUES = {
 }
 
 
-def _album_payload(conn: sqlite3.Connection, clause_tag: tuple[str, list],
-                   album_id: int) -> dict:
+# Les DEUX lectures par lesquelles un export d'album atteint `albums` et `planches`
+# (AUTH-11). Le JSON nommait ses colonnes depuis AUTH-1 ; le TEI, à côté, gardait son
+# `SELECT *` et choisissait ses champs à la main — si bien que `chemin_web`, RETENUE
+# ci-dessus avec sa raison, sortait dans un `<graphic url>` du même album (relevé le
+# 2026-10-07). Les deux formats passent désormais par ici : une colonne retenue n'est pas
+# dans la ligne que le TEI reçoit, et la lire lève au lieu de la publier.
+# `test_aucune_colonne_retenue_ne_sort_d_un_export_d_album` le mesure à la SORTIE, export
+# par export.
+def _album_exportable(conn: sqlite3.Connection, album_id: int) -> dict:
     album = _row(conn.execute(
         f"SELECT {', '.join(_EXPORT_ALBUM_COLS)} FROM albums WHERE id = ?", (album_id,)))
     if album is None:
         raise HTTPException(404, f"Album {album_id} introuvable")
-    planches = _rows(conn.execute(
+    return album
+
+
+def _planches_exportables(conn: sqlite3.Connection, album_id: int) -> list[dict]:
+    return _rows(conn.execute(
         f"SELECT {', '.join(_EXPORT_PLANCHE_COLS)} FROM planches "
         "WHERE album_id = ? ORDER BY numero", (album_id,)))
+
+
+def _album_payload(conn: sqlite3.Connection, clause_tag: tuple[str, list],
+                   album_id: int) -> dict:
+    album = _album_exportable(conn, album_id)
+    planches = _planches_exportables(conn, album_id)
     nums = numeros_editoriaux(conn, album_id)
     for p in planches:
         p["numero_editorial"] = nums.get(p["id"])   # None si paratexte ; `role` déjà présent
@@ -1935,8 +1952,19 @@ def export_tei(album_id: int, collection_id: Optional[int] = None,
     """L'album en TEI P5 — une PORTE de sortie (DROIT-2), au titre d'une collection où
     l'on a le droit d'exporter, dite dans `publicationStmt/availability` et dans le NOM
     du fichier (`_nom_album`). Son vocabulaire est celui de cette collection et le global
-    (AUTH-11, `_vocabulaire_d_export`)."""
-    album = _get_album(conn, portee, album_id)
+    (AUTH-11, `_vocabulaire_d_export`).
+
+    Il ne publie d'un album et d'une planche que ce que le JSON en publie : il les lit par
+    les mêmes lectures nommées (`_album_exportable`, `_planches_exportables`). Une
+    `<surface>` sort donc SANS `<graphic>` : une planche n'a d'autre pointeur d'image que
+    `chemin_tiff` et `chemin_web`, que le JSON retient tous deux. Elle n'y perd pas son
+    identité — `xml:id` porte l'identifiant, `@n` le numéro éditorial (ou `@type` le
+    paratexte), `@lrx`/`@lry` les dimensions du master, soit ce que le JSON donne de la
+    même planche — et ses zones restent en pixels master. C'est le Canvas sans image du
+    manifeste (DROIT-1) : la géométrie et l'enrichissement sortent, le chemin de l'image
+    non."""
+    _get_album(conn, portee, album_id)            # la garde de portée, comme le JSON
+    album = _album_exportable(conn, album_id)
     titre = _collection_d_export(conn, portee, album_id, collection_id)
     clause_tag = _vocabulaire_d_export(titre)
 
@@ -1965,8 +1993,7 @@ def export_tei(album_id: int, collection_id: Optional[int] = None,
     )
 
     facsimile = _tei_el(root, "facsimile")
-    planches = _rows(conn.execute(
-        "SELECT * FROM planches WHERE album_id = ? ORDER BY numero", (album_id,)))
+    planches = _planches_exportables(conn, album_id)
     nums = numeros_editoriaux(conn, album_id)
 
     for p in planches:
@@ -1978,8 +2005,6 @@ def export_tei(album_id: int, collection_id: Optional[int] = None,
             surface.set("n", str(ed))
         else:                              # paratexte (couverture, liminaire…) : hors numérotation
             surface.set("type", "paratexte")
-        if p["chemin_web"]:
-            _tei_el(surface, "graphic", url="/" + p["chemin_web"])
 
         regions = _rows(conn.execute(
             "SELECT * FROM regions WHERE planche_id = ?", (p["id"],)))

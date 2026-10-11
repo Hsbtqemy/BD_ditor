@@ -848,3 +848,121 @@ def test_toute_colonne_exportable_est_classee(client, db_path):
 
     for col, raison in main._EXPORT_PLANCHE_RETENUES.items():
         assert raison and len(raison) > 20, f"{col} est retenue sans raison écrite"
+
+    # Publiée ET retenue : la colonne passait les deux contrôles ci-dessus — elle est
+    # classée, deux fois — et partait au dépôt avec sa raison de ne pas partir.
+    doubles = set(main._EXPORT_PLANCHE_COLS) & set(main._EXPORT_PLANCHE_RETENUES)
+    assert not doubles, (
+        f"planches : {sorted(doubles)} est à la fois publiée et retenue. Les deux listes "
+        "se contredisent, et c'est la liste publiée qui gagne à l'export.")
+
+
+# --------------------------------------------------------------------------- #
+# Ce qui est RETENU ne sort d'aucun export d'album (AUTH-11)
+# --------------------------------------------------------------------------- #
+# Le cliquet ci-dessus compare le SCHÉMA à deux listes de `main` : il dit qu'une colonne a
+# été classée, jamais qu'un export tient le classement. Il ne joue aucun export — et le
+# TEI n'employait pas ces listes : il lisait `SELECT *` et choisissait ses champs à la
+# main. `chemin_web` a donc été RETENUE avec sa raison écrite, le cliquet vert, pendant que
+# le TEI du même album l'écrivait dans un `<graphic url>` (relevé le 2026-10-07).
+#
+# Ce qui suit mesure la SORTIE : une valeur reconnaissable dans chaque colonne retenue,
+# chaque export d'album joué, et aucune de ces valeurs dans aucun d'eux.
+EXPORTS_D_ALBUM = "/api/export/"
+TITRE_PUBLIE = "ZZTITRE-PUBLIE-7"
+
+
+def _jetons_retenus() -> dict:
+    """{colonne retenue: (jeton de dossier, jeton de fichier)} — DÉRIVÉ de la liste retenue.
+
+    Dérivé, pour qu'une colonne retenue demain soit semée sans que personne y pense : une
+    table écrite ici à la main oublierait ce qu'on ajoute, et la colonne oubliée passerait
+    pour propre faute d'avoir jamais porté de valeur à chercher.
+
+    DEUX jetons, parce que deux des quatre colonnes sont des chemins et qu'un chemin fuit
+    aussi par MORCEAUX : le nom du fichier sans son dossier, le dossier sans son fichier.
+    Minuscules, sans caractère qu'un XML, un JSON ou une URL échapperait.
+    """
+    return {col: (f"zzdossier-{col.replace('_', '')}-7", f"zzfichier-{col.replace('_', '')}-7")
+            for col in main._EXPORT_PLANCHE_RETENUES}
+
+
+def _retenues_dans(texte: str) -> set:
+    """Les colonnes retenues dont un jeton se lit dans ce texte, casse ignorée."""
+    t = texte.lower()
+    return {col for col, jetons in _jetons_retenus().items() if any(j in t for j in jetons)}
+
+
+def test_aucune_colonne_retenue_ne_sort_d_un_export_d_album(client, db_path, png_bytes):
+    """Les exports d'un album — JSON, CSV, TEI — tiennent la MÊME règle, mesurée à la sortie.
+
+    Rouge avant le correctif du TEI : `<graphic url="/derivatives/…">` portait `chemin_web`.
+    Les routes sont ÉNUMÉRÉES (toute route GET sous `/api/export/`) : un quatrième format
+    est joué le jour où il arrive, et s'il ne se laisse pas jouer avec le seul `album_id`,
+    il fait échouer au lieu de quitter le contrôle.
+    """
+    jetons = _jetons_retenus()
+
+    # Les jetons se DÉRIVENT de la liste retenue : une colonne qu'on en sort n'est plus
+    # cherchée nulle part. Pour les deux chemins, c'est une DÉCISION et non un rangement —
+    # publier un chemin, c'est le publier dans les trois formats — et la façon la plus
+    # courte de faire taire ce contrôle. Elle se prend donc ici, à voix haute.
+    assert {"chemin_tiff", "chemin_web"} <= set(jetons), (
+        "un chemin de fichier n'est plus RETENU par l'export d'album : s'il devient "
+        "publiable, c'est une décision à écrire (la raison dans `main.py`, et ce que "
+        "`docs/dictionnaire-metadonnees.md` dit de la colonne), pas une ligne à déplacer.")
+
+    # (0) La garde MORD : un détecteur qui ne reconnaîtrait pas ce qu'il cherche
+    # approuverait tout. Trois formes sous lesquelles un chemin sort réellement.
+    dossier, fichier = jetons["chemin_web"]
+    assert _retenues_dans(f'<graphic url="/{dossier}/{fichier}.jpg" />') == {"chemin_web"}
+    assert _retenues_dans(f"{fichier.upper()}.JPG") == {"chemin_web"}      # le nom seul
+    assert _retenues_dans(json.dumps({"dossier": dossier})) == {"chemin_web"}
+    assert _retenues_dans("<surface n=\"1\" /> derivatives/album_1/planche_0001.jpg") == set()
+
+    # (1) Le décor : un album, une planche, une région (sans elle le CSV n'a aucune ligne,
+    # donc rien à lire), et CHAQUE colonne retenue porteuse de sa valeur.
+    a = client.post("/api/albums", json={"titre": TITRE_PUBLIE}).json()
+    pl = client.post(f"/api/albums/{a['id']}/import",
+                     files={"file": ("p.png", png_bytes, "image/png")}).json()
+    client.post(f"/api/planches/{pl['id']}/regions",
+                json={"type": "case", "x": 0, "y": 0, "w": 9, "h": 9})
+    conn = sqlite3.connect(db_path)
+    try:
+        for col, (dossier, fichier) in jetons.items():
+            conn.execute(f"UPDATE planches SET {col} = ? WHERE id = ?",
+                         (f"{dossier}/{fichier}.jpg", pl["id"]))
+        conn.commit()
+        en_base = dict(zip(jetons, conn.execute(
+            f"SELECT {', '.join(jetons)} FROM planches WHERE id = ?",
+            (pl["id"],)).fetchone()))
+    finally:
+        conn.close()
+    # Le mode d'échec d'un cliquet est son SEMIS : une colonne restée vide ne peut pas fuir.
+    assert {c: _retenues_dans(v or "") for c, v in en_base.items()} == {c: {c} for c in jetons}, (
+        f"le semis n'a pas pris : {en_base}")
+
+    # (2) Les exports d'album, depuis l'inventaire des routes — jamais une liste recopiée.
+    toutes = _routes_get()
+    inventaire_routes.exiger_plancher(len(toutes), "le cliquet des colonnes retenues", "GET")
+    exports = [r.path for r in toutes if r.path.startswith(EXPORTS_D_ALBUM)]
+    assert "/api/export/tei" in exports and "/api/export/json" in exports, (
+        f"les exports d'album ne sont plus sous {EXPORTS_D_ALBUM} ({exports}) : ce contrôle "
+        "ne joue plus rien, et il passerait au vert en le taisant.")
+
+    for chemin in exports:
+        rep = client.get(chemin, params={"album_id": a["id"]})
+        assert rep.status_code == 200, (
+            f"{chemin} répond {rep.status_code} avec le seul `album_id` : apprends à ce "
+            f"contrôle à le jouer, sans quoi il sort sans avoir été regardé. {rep.text[:300]}")
+        texte = _texte(rep.content)
+        # Non-vacuité : le titre de l'album est PUBLIÉ, les trois formats le portent. Un
+        # export lu de travers (compressé, vide, autre album) ne le porterait pas — et
+        # paraîtrait propre.
+        assert TITRE_PUBLIE.lower() in texte.lower(), (
+            f"{chemin} ne porte pas le titre de l'album : ce contrôle ne lit pas ce qui sort.")
+        fuites = _retenues_dans(texte)
+        assert not fuites, (
+            f"{chemin} publie {sorted(fuites)}, que `main._EXPORT_PLANCHE_RETENUES` retient : "
+            + " ; ".join(f"{c} — {main._EXPORT_PLANCHE_RETENUES[c]}" for c in sorted(fuites))
+            + ". Deux formats du même album ne tiennent pas la même règle.")
