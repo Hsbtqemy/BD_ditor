@@ -91,7 +91,7 @@ stagiaires annotent, ils ne sortent pas le texte.
 - [x] *Bibliothèque → 📚 Collections* : créer « Étude B » ; elle apparaît avec `proprio` pour propriétaire, et le message qui suit la création dit où faire entrer quelqu'un
 - [x] Rattacher l'album esther v1 à « Étude B » depuis sa fiche dans la Bibliothèque ; il vit alors dans trois collections, dont deux que `proprio` peut exporter
 - [x] *Atelier*, esther v1, « Export JSON-LD » : une fenêtre « Exporter au titre de quelle collection ? » propose « Collection Test » et « Étude B », et pas la collection par défaut
-- [x] Dans cette fenêtre, Tab ne sort pas de la fenêtre ; Échap la ferme, et le focus revient sur un élément VISIBLE de l'Atelier, avec son contour — pas sur le corps de la page, le menu d'où l'on venait s'étant refermé
+- [ ] Dans cette fenêtre, Tab ne sort pas de la fenêtre — y compris après avoir choisi la SECONDE collection, puis fait Maj+Tab depuis ce bouton ; Échap la ferme, et le focus revient sur un élément VISIBLE de l'Atelier, avec son contour — pas sur le corps de la page, le menu d'où l'on venait s'étant refermé (décochée le 2026-10-11, `c6f93a9` : elle n'était vraie que la première collection cochée — la seconde choisie, Maj+Tab posait le focus derrière la fenêtre ; corrigé, à rejouer avec ce geste)
 - [x] Choisir « Étude B » puis *Exporter* : le JSON-LD porte `exporte_au_titre_de` nommant « Étude B »
 - [x] Accorder au groupe `annotateurs` la **lecture** sur « Étude B », case décochée. Sous `lectrice`, la Recherche dit alors « Le fichier n'emporte que les collections que vous pouvez exporter : l'écran peut en montrer davantage. »
 

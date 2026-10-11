@@ -83,7 +83,7 @@ courte — défaut trouvé par Hugo en jouant cette passe, le 2026-09-23.
 - [x] Au clavier seul : Tab jusqu'à la première ligne de la liste, `↓` passe à la suivante, `Fin` à la dernière, `Entrée` ouvre la fiche
 - [x] Outils de développement, mode appareil à 375 px de large : la liste occupe le bloc ; choisir un compte fait apparaître sa fiche SEULE, avec « ← Liste » en tête ; « ← Liste » ramène la liste, focus sur la ligne choisie ; rien ne dépasse à droite
 - [x] Fenêtre agrandie : passer de l'axe *Comptes* à l'axe *Collections*, qui compte moins de lignes — le cadre garde la même hauteur, et « Moteurs de reconnaissance », dessous, ne remonte pas
-- [x] Mode appareil à 1280 × 500, la page amenée sur le titre « Comptes et groupes » : le bloc ENTIER tient dans la fenêtre — on voit le bas du cadre sans défiler davantage
+- [ ] Mode appareil à 1280 × 500, la page amenée sur le titre « Comptes et groupes » : le bloc ENTIER tient dans la fenêtre — on voit le bas du cadre sans défiler davantage (décochée le 2026-10-11, `b579889` : mesurée fausse de 45 px sur le commit d'avant, dans les deux navigateurs — le bas du cadre passait sous la fenêtre ; corrigé, à rejouer)
 - [x] Dans cette même fenêtre, la liste des comptes porte sa propre barre de défilement, et le cadre ne s'allonge pas pour les montrer tous
 - [x] Fenêtre agrandie, la fiche de `lectrice` : *Groupes* et *Collections* côte à côte, sur une même ligne ; la fiche d'une collection : *Qui entre* sur toute la largeur de la fiche
 - [x] Thème clair (🌙 → ☀) : « ⚠ À regarder », les pastilles « aucune connexion » (ambre) et « absent de l'annuaire » (rouge, s'il y en a) restent lisibles
