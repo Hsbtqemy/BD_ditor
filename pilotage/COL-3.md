@@ -5,7 +5,13 @@ statut: interrompu
 
 # COL-3 — le fonds et les projets : un album appartient à l'instance, un travail à ceux qui le font
 
-**Arrêté sur** — 2026-10-11, `79da8c4` : la tranche 1 est codée, et trois retouches de ses écrans aussi
+**Arrêté sur** — 2026-10-11, `9e1f768` : **le formulaire « Nouveau projet » tient à 320 px quelle
+que soit la police, et le test du responsable attend la liste redessinée** — deux des neuf
+échecs de la passe navigateur jouée dans l'image. Le premier commit de la tranche 2 est écrit
+et relu, sur une COPIE : il n'est pas sur `dev`, et n'y viendra qu'après la fusion de la
+tranche 1 (cf. « Tranche 2 — relevé par son premier commit »).
+
+**Plus tôt le 2026-10-11** — arrêté sur `79da8c4` : la tranche 1 est codée, et trois retouches de ses écrans aussi
 (`79da8c4`, décrites dans les cases qu'elles ferment). Ses trois commits de code sont sur
 `dev` — le projet EXISTE (`6c3e19f` : modèle, règle, routes, schéma v29), il se VOIT
 (`9eec56e` : la bande du haut des cinq surfaces, la Bibliothèque bornée au projet courant,
@@ -124,6 +130,18 @@ rien y changer, « le premier projet », où tout est partagé.
 - [ ] **Importer compte-t-il comme du travail laissé quand un compte s'en va** — proposition : non pour l'instant ; l'importateur reste lisible dans le fonds
 - [ ] **La phrase d'avertissement de « Qui entre »** — « Supprimer un album efface ses images et ne se rattrape pas » n'est plus vraie que pour « Supprimer définitivement » : à reformuler
 - [ ] **L'administrateur et le mono-poste voient encore le texte d'un document retiré** dans la Recherche et l'Exploration, jusqu'à la tranche 4 — proposition : l'accepter, et l'écrire
+
+### Tranche 1 — trouvé par la passe navigateur dans l'image (2026-10-11)
+
+- [x] **Le formulaire « Nouveau projet » déborde de son bloc à 320 px sous une préférence de 24, sous une police plus large que Segoe UI** — attendu : `#pj-creer` tient dans `#projets-bloc`. Mesuré dans l'image, où la page rend DejaVu Sans : 268 px de contenu pour 260 de boîte (244 sur le poste, qui tenait). La piste implicite de la grille ne descendait pas sous la largeur propre du champ du nom ; le `min-width: 0` du champ ne pouvait rien tant que sa piste ne rétrécissait pas. **Fermée par `9e1f768`** (`minmax(0, 1fr)`), mutant rejoué dans l'image : piste remise à `auto`, 268 / 260. Non expliqué : sous la même police servie au poste, le champ fait 306 px et non 268. Preuve : passe navigateur entière dans une image reconstruite depuis le dernier des trois commits, sans montage : 434 passés, 5 ignorés, 0 échec ; la même sur le poste (Chromium) : 434 passés
+- [x] **`test_nommer_un_responsable_puis_le_faire_sortir` tombe une fois sur quatre dans l'image** — attendu : il passe à chaque rejeu, sans rien cesser de vérifier. Ce n'était ni un tri ni une mise en page : rejoué SEUL dans l'image sur `869726c`, 25 fois, 19 verts et 6 rouges (quatre sur « lectrice » en première ligne, deux sur « membre » lu au serveur) ; 25 verts sur 25 sur le poste. Trois lectures s'enchaînaient sans rien attendre : la valeur de la liste déroulante vaut « responsable » dès le clic, l'attente de la requête rend la main quand elle PART, et la liste ne se redessine qu'après l'écriture puis sa relecture. **Fermée par `9e1f768`** : le test attend d'abord la liste redessinée ; 25 verts sur 25 dans l'image finale, et il tombe encore si la liste n'est pas redessinée après le geste (mutant rejoué). Non cherché : la même course dans d'autres tests
+
+### Tranche 2 — relevé par son premier commit et sa relecture croisée, sur copie (2026-10-11)
+
+- [ ] **La tranche 2 ne part en production qu'une fois son deuxième commit écrit** — attendu : tranché par Hugo. Le cadrage disait que le premier commit, qui porte la migration v30, pouvait partir seul : « plus tôt il est déployé, plus tôt les origines s'écrivent ». La relecture croisée objecte qu'il fige deux tables, celles des demandes, qu'aucun code n'a encore écrites : tout regret trouvé en écrivant leurs routes coûterait une seconde migration. Elle en a trouvé un tout de suite — une demande ne gardait pas le NOM de son projet, dont l'identifiant se réattribue —, corrigé sur la copie avant que le schéma ne parte. Proposition : attendre le deuxième commit
+- [ ] **L'Atelier crée ses albums dans la collection de repli : dès la v30, leur origine écrite est celle du projet de repli** — attendu : tranché AVANT le déploiement de la v30, et non en route. C'est le point « L'Atelier crée ses albums dans la collection de repli » de la zone du dessus, que le premier commit rend pressant : l'origine d'un document s'écrit une fois, à sa naissance, et renverser la décision plus tard ne corrige pas les origines déjà écrites
+- [ ] **Un import depuis ShareDocs dont l'écriture au journal échoue laisse ses images sur le disque** — attendu : dit, ou fermé. Provoqué artificiellement par la relecture : la route répond 500, la transaction est défaite, et les fichiers de l'album restent dans `corpus/` et `derivatives/` sans album. Aucun déclencheur réaliste trouvé, la transaction tenant déjà le verrou d'écriture à cet instant ; l'auteur suppose, sans l'avoir mesuré, qu'un `commit` qui lève au même endroit laisse le même état depuis toujours
+- [ ] **Le projet d'ORIGINE d'un document ne garde pas son nom** — attendu : posé par la migration de la tranche 3, avant le premier projet supprimé sous un document vivant. Une demande garde le nom de son projet ; l'origine d'un document, non, par décision écrite sur la colonne : dans la tranche 2 un document n'a qu'une copie, elle porte ce même projet, et un projet que des copies désignent ne se supprime pas — le document part donc avant lui. C'est un raisonnement, pas un test
 
 ### Le projet
 
@@ -436,6 +454,48 @@ le défaut existe aujourd'hui, la tranche le rend plus fréquent et il touche d�
 tiers. Modifier la notice d'un album n'est toujours pas journalisé. Une demande répondue
 reste en base, avec un login et un motif, sans durée de conservation. Et la base de
 production n'a pas été lue : combien d'albums, combien rangés dans plusieurs collections.
+
+### Le premier commit de la tranche 2, écrit et relu sur une copie — 2026-10-11
+
+Deux commits sur la copie `fonds-c1` du scratchpad de la session de pilotage, partis de
+`869726c`, NON portés : l'ordre arrêté veut que la tranche 1 soit fusionnée avant que le code
+de la tranche 2 n'arrive sur `dev`. Ils ne se citent donc pas ici par leur identifiant, que
+ce dépôt ne connaît pas.
+
+**Ce qu'ils font.** Tout album devient la copie de travail d'un DOCUMENT : une table
+`document`, première du dépôt à porter `AUTOINCREMENT` (sans lui SQLite rend au suivant
+l'identifiant du dernier détruit, mesuré), qui dit qui a importé, quand, et dans quel projet
+d'abord ; `albums.document_id` et `albums.projet_id`, nullables et à clé sans action ; deux
+tables de demande, vides. La migration donne un document à chaque album d'hier sans inventer
+d'importateur. Créer un album, y ajouter ou en retirer un scan, le ranger, le sortir, le
+détruire s'écrivent désormais au journal, sous deux cibles retenues de toute sortie et
+absentes de l'annulation. Aucune garde ne change.
+
+**Ce que le cadrage n'avait pas vu.** Les pseudonymes de sortie numérotent sur le journal
+entier : les deux cibles neuves auraient donné le rang 1 à qui monte un album, et décalé tous
+ceux qui annotent après lui dans les artefacts déposés — un test existant est tombé dessus.
+Elles sont donc écartées de la numérotation dès leur naissance, ce qui ne renumérote rien de
+déposé ; la condition est tenue par un test, une cible sans rang ne pouvant pas être publiée.
+Et la règle de lecture du projet d'une copie ne retombe PAS sur le repli : NULL sans
+collection veut dire « n'a jamais eu de projet », ce qui porte « Importer au fonds » sans
+colonne de plus.
+
+**Ce que la relecture croisée a mesuré.** La migration sur la base de recette par deux
+chemins (v28 → v30 d'un trait ; v28 → v29 par le code d'avant, puis v30), au résultat
+identique, et sur dix bases faites pour la faire mentir ou lever : aucune ne lève. Une
+trentaine de gestes rejoués avant et après : seuls écarts, deux clés de plus sur trois
+réponses d'album (`document_id`, `projet_id`) et les lignes neuves du journal. Aucune des
+deux clés ne sort par un export ; le login d'un compte qui n'a fait qu'importer ne sort
+d'aucun artefact. Quatre de ses mutants survivaient à la suite ENTIÈRE, tous par un décor de
+test trop mince : fermés dans le second commit, avec le nom du projet sur une demande, un
+refus nommé à la suppression d'un projet qu'un album désigne encore (c'était une erreur
+brute, sur une base retouchée seulement), et la fin des emplois écrite quand on détruit un
+album. Suite par défaut entière sur la copie : 1 643 passés.
+
+**Ce qui n'est pas fait.** Ni passe navigateur, ni suite dans l'image, ni recette, ni
+lecture de la base de production. Le second commit n'a pas été relu par une autre session
+que la session de pilotage. `CLAUDE.md` et la documentation d'usage ne disent rien de tout
+cela : ils suivront le portage.
 
 ### Les formes écartées
 
