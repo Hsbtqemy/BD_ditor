@@ -175,7 +175,12 @@ def test_le_refus_de_type_precede_la_lecture_du_personnage(client, region):
 def test_un_locuteur_herite_d_avant_se_lit_et_se_retire(client, planche, db_path):
     """Une bulle qui parle peut DEVENIR une case : `PUT /api/regions/{id}` change le type
     sans toucher au locuteur. La garde ne porte donc que sur l'attribution — ce qui existe
-    déjà se lit, se retire, et ne se REPOSE pas."""
+    déjà se lit et se retire, et la ROUTE ne le repose ni ne le change.
+
+    « Par la route » est la moitié qui compte : l'annulation, elle, le repose (cf.
+    `test_undo.test_l_annulation_repose_un_locuteur_sur_une_region_devenue_muette`). Ce
+    test a d'abord affirmé « ne se REPOSE pas » tout court, et la relecture croisée l'a
+    mesuré faux."""
     rid = _zone(client, planche, "bulle")
     pid = client.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
     assert client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": pid}).status_code == 200
@@ -183,7 +188,9 @@ def test_un_locuteur_herite_d_avant_se_lit_et_se_retire(client, planche, db_path
     assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]["id"] == pid   # se lit
     autre = client.post("/api/personnages", json={"nom": "Milou"}).json()["id"]
     assert client.put(f"/api/regions/{rid}/locuteur",
-                      json={"personnage_id": autre}).status_code == 422                 # ne se change pas
+                      json={"personnage_id": autre}).status_code == 422                 # ne se change pas…
+    assert client.put(f"/api/regions/{rid}/locuteur",
+                      json={"personnage_id": pid}).status_code == 422                   # …ni ne se repose
     assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]["id"] == pid
     assert client.delete(f"/api/regions/{rid}/locuteur").status_code == 204             # se retire
     assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"] is None

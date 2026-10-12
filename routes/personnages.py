@@ -259,6 +259,23 @@ def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection =
     Seule l'ATTRIBUTION est gardée. Lire et retirer restent ouverts à tout type, parce
     qu'une région change de type (`PUT /api/regions/{id}`) sans que son locuteur la quitte :
     une bulle devenue case le garde, et il faut pouvoir le lui retirer.
+
+    **L'ordre des deux contrôles compte, et il est tenu par un test.** L'accesseur gardé EN
+    ÉCRITURE passe d'abord : qui ne lit pas la région, ou la lit sans l'écrire, reçoit le
+    404 de toute région introuvable, sur une case comme sur une bulle — jamais le 422, qui
+    nomme un type. Posée avant l'accesseur, la garde dirait à un inconnu de quel type est
+    une région qu'il ne voit pas ; l'accesseur passé en lecture laisserait une lectrice
+    attribuer. Les deux fautes laissaient la suite entière verte (relecture du 2026-10-12)
+    jusqu'à `test_poser_un_locuteur_sans_ecrire_la_region_repond_introuvable`.
+
+    **Ce que cette garde NE tient PAS : l'annulation.** Elle garde une ROUTE. `undo.py`
+    rejoue un état passé par des mutations brutes, hors routes — c'est sa nature, sans quoi
+    chaque annulation se rejournaliserait. Une bulle dont on retire le locuteur, qui devient
+    une case, puis dont on annule le retrait, retrouve donc son locuteur EN TANT QUE CASE :
+    200, là où cette route répondrait 422 au même instant. Ce n'est pas fermé, c'est écrit,
+    et `test_l_annulation_repose_un_locuteur_sur_une_region_devenue_muette` le décrit tel
+    qu'il est. « Aucune case ne porte de locuteur » n'est donc PAS un invariant de la base :
+    c'en est un de l'attribution.
     """
     region = _get_region(conn, portee, region_id, ecriture=True)
     if region["type"] not in TYPES_LOCUTEUR:

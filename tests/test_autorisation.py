@@ -2271,6 +2271,92 @@ def test_un_personnage_suit_ses_apparitions(client, db_path, deux_albums, derrie
                       headers=h).status_code == 404
 
 
+# --------------------------------------------------------------------------- #
+# ANN-6 — attribuer un locuteur : l'accesseur EN ÉCRITURE passe avant la garde de type
+# --------------------------------------------------------------------------- #
+def _case_dans(client, planche):
+    from conftest import ADMIN
+    r = client.post(f"/api/planches/{planche['id']}/regions", headers=ADMIN,
+                    json={"type": "case", "x": 20, "y": 20, "w": 50, "h": 50})
+    assert r.status_code in (200, 201), r.text
+    return r.json()["id"]
+
+
+def _traces_de_locuteur(db_path):
+    """(lignes de `bulle_locuteur`, événements qui la visent) — ce qu'un refus doit laisser à zéro."""
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    try:
+        return (conn.execute("SELECT COUNT(*) FROM bulle_locuteur").fetchone()[0],
+                conn.execute("SELECT COUNT(*) FROM evenement "
+                             "WHERE cible_table = 'bulle_locuteur'").fetchone()[0])
+    finally:
+        conn.close()
+
+
+QUI_N_ECRIT_PAS = {
+    "lectrice": {"Remote-User": "lea"},      # lit la collection de l'album, sans y écrire
+    "etrangere": {"Remote-User": "zoe"},     # ÉCRIT dans l'autre collection, ne lit pas celle-ci
+    "anonyme": {},                           # derrière le proxy, sans identité : portée vide
+}
+
+
+@pytest.mark.parametrize("type_zone", ["bulle", "case"])
+@pytest.mark.parametrize("qui", list(QUI_N_ECRIT_PAS))
+def test_poser_un_locuteur_sans_ecrire_la_region_repond_introuvable(
+        client, db_path, deux_albums, derriere_proxy, qui, type_zone):
+    """404, sur une bulle COMME sur une case — jamais 422, jamais 200 — et rien d'écrit.
+
+    Deux fautes que la suite entière laissait passer, mesurées par la relecture croisée du
+    2026-10-12 (1 636 passés sous chacune) :
+
+    - la garde de type AVANT l'accesseur : une étrangère ou un anonyme reçoit un 422 qui
+      NOMME le type d'une région qu'il ne lit pas. « 404, jamais 403 » existe pour que
+      l'absence soit la seule réponse — un 422 la trahit autant qu'un 403 ;
+    - l'accesseur en LECTURE : une lectrice pose un locuteur, 200.
+
+    Le premier se voit sur la case, le second sur la bulle : d'où les deux types. Le corps
+    du refus est comparé à celui d'une région qui N'EXISTE PAS — c'est la seule façon de
+    dire qu'il ne fuit rien, plutôt que de lister les mots qu'il ne devrait pas contenir.
+    """
+    from conftest import ADMIN
+    _ouvrir(db_path, deux_albums["c1"], "lea")                       # lecture
+    _ouvrir(db_path, deux_albums["c2"], "zoe", niveau="ecriture")    # écrit AILLEURS
+    cible = {"bulle": deux_albums["r1"]["id"],
+             "case": _case_dans(client, deux_albums["pl1"])}[type_zone]
+    perso = client.post("/api/personnages", json={"nom": "Narrateur"}, headers=ADMIN).json()["id"]
+    assert _traces_de_locuteur(db_path) == (0, 0)
+
+    h = QUI_N_ECRIT_PAS[qui]
+    rep = client.put(f"/api/regions/{cible}/locuteur", json={"personnage_id": perso}, headers=h)
+    assert rep.status_code == 404, f"{qui}, région « {type_zone} » : {rep.status_code} {rep.text}"
+    absente = client.put("/api/regions/987654/locuteur", json={"personnage_id": perso}, headers=h)
+    assert absente.status_code == 404
+    assert rep.json()["detail"] == absente.json()["detail"].replace("987654", str(cible)), (
+        "le refus ne se lit pas comme celui d'une région absente : il dit quelque chose "
+        "de celle-ci")
+    assert _traces_de_locuteur(db_path) == (0, 0)
+
+
+def test_qui_ecrit_la_region_recoit_la_reponse_de_la_garde(client, db_path, deux_albums,
+                                                           derriere_proxy):
+    """Le témoin du test ci-dessus : dans le MÊME décor, qui écrit dans la collection reçoit
+    200 sur la bulle et le 422 nommé sur la case. Sans lui, les 404 d'à côté pourraient ne
+    tenir qu'à un décor qui refuse tout le monde."""
+    from conftest import ADMIN
+    _ouvrir(db_path, deux_albums["c1"], "eva", niveau="ecriture")
+    case = _case_dans(client, deux_albums["pl1"])
+    perso = client.post("/api/personnages", json={"nom": "Narrateur"}, headers=ADMIN).json()["id"]
+    h = {"Remote-User": "eva"}
+    refus = client.put(f"/api/regions/{case}/locuteur", json={"personnage_id": perso}, headers=h)
+    assert refus.status_code == 422 and "« case »" in refus.json()["detail"]
+    assert _traces_de_locuteur(db_path) == (0, 0)
+    pose = client.put(f"/api/regions/{deux_albums['r1']['id']}/locuteur",
+                      json={"personnage_id": perso}, headers=h)
+    assert pose.status_code == 200 and pose.json()["locuteur"]["id"] == perso
+    assert _traces_de_locuteur(db_path) == (1, 1)
+
+
 def test_un_personnage_sans_apparition_reste_visible(client, db_path, deux_albums,
                                                      derriere_proxy):
     """L'exception qui rend le geste possible : sans elle, le personnage qu'on vient de
