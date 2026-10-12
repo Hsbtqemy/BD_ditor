@@ -221,6 +221,16 @@ ROLES_PLANCHE = ("recit", "paratexte")
 # Types de régions autorisés
 TYPES_REGION = ("case", "bulle", "personnage", "texte", "cartouche")
 
+# Types de régions qui reçoivent un LOCUTEUR (ANN-6) : celles qui portent du texte — la
+# bulle, le cartouche (un récitatif a un narrateur) et la zone de texte. Ni la case, ni la
+# boîte personnage : la première reçoit une situation, la seconde une présence. C'est
+# aujourd'hui la même liste que les régions transcrites (`pipeline.ocr.TEXT_TYPES`,
+# `database._TYPES_TEXTE`, `TEXT_TYPES` dans `static/viewer.js`), et elle a pourtant son
+# nom : « porte du texte » et « quelqu'un y parle » sont deux questions, que rien n'oblige
+# à répondre pareil demain. La route la tient (`PUT /api/regions/{id}/locuteur`), l'écran
+# aussi, et `tests/test_e2e_atelier_annotation.py` mesure leur accord type par type.
+TYPES_LOCUTEUR = ("bulle", "cartouche", "texte")
+
 # Cibles d'un attribut facetté (ANN-2) : un axe émergent s'applique soit au profil
 # (socio)linguistique d'un PERSONNAGE, soit à la situation d'une CASE (scène).
 # Cf. docs/personnages-et-attribution.md (§13).

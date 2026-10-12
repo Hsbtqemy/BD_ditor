@@ -264,7 +264,8 @@ def version_outil(base_dir) -> dict:
 CIBLES_CORPUS = frozenset({
     "regions",             # géométrie et arbre de structure
     "annotations",         # note et tags d'une région
-    "bulle_locuteur",      # attribution d'une bulle à un personnage
+    "bulle_locuteur",      # attribution d'une zone de texte (bulle, cartouche, texte)
+                           # à un personnage — le nom de la table date d'avant ANN-6
     "personnage_presence", # présence d'un personnage dans une case
     "token_correction",    # correction grammaticale — le cœur de l'accord ANN-5
     "planches",            # statut et validation d'une planche

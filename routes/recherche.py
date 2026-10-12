@@ -133,7 +133,7 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
                          "WHERE te.region_id = r.id AND " + " AND ".join(tw) + ")")
             params.extend(tp)
 
-    # Facettes ANN-2 : locuteur de la bulle, et attribut (profil du locuteur OU situation
+    # Facettes ANN-2 : locuteur de la zone de texte, et attribut (profil du locuteur OU situation
     # de la case) — alignées sur /api/analyse/* pour que le drill Exploration→Recherche colle.
     if personnage is not None:
         where.append("EXISTS (SELECT 1 FROM bulle_locuteur bl "

@@ -227,7 +227,10 @@ CREATE TABLE IF NOT EXISTS personnages (
     date_creation  TEXT DEFAULT (datetime('now'))
 );
 
--- Lien LOCUTEUR : quelle entité parle dans cette bulle (au plus une → region_id PK).
+-- Lien LOCUTEUR : quelle entité parle dans cette zone de texte (au plus une → region_id
+-- PK). La table s'appelle `bulle_locuteur` parce qu'une bulle était seule à parler ;
+-- depuis ANN-6 un cartouche et une zone de texte reçoivent un locuteur aussi
+-- (`config.TYPES_LOCUTEUR`, tenu par la route — pas par une contrainte de schéma).
 -- ON DELETE CASCADE des DEUX côtés = on détache la liaison quand la région OU le
 -- personnage disparaît ; aucun des deux n'est supprimé par l'autre.
 CREATE TABLE IF NOT EXISTS bulle_locuteur (

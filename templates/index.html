@@ -202,13 +202,15 @@
 
         <!-- Mode annotation : tags + note -->
         <div id="panel-annotation" class="panel-section" hidden>
-          <!-- Locuteur (qui parle) — pour les bulles : attribution du personnage -->
+          <!-- Locuteur (qui parle) — pour les zones de texte : bulle, cartouche, texte
+               (ANN-6). Le nom accessible du champ est complété par `loadLocuteur`, qui
+               sait de quelle zone il s'agit ; celui-ci vaut tant qu'aucune n'est chargée. -->
           <div id="loc-section" hidden>
             <h3>Locuteur</h3>
             <div id="loc-current" class="loc-current"></div>
             <div class="tag-input-wrap">
               <input type="text" id="loc-input" placeholder="Attribuer un personnage…"
-                     autocomplete="off" aria-label="Attribuer un locuteur à la bulle">
+                     autocomplete="off" aria-label="Attribuer un locuteur">
               <div id="loc-suggest" class="tag-suggest" hidden></div>
             </div>
             <!-- Profil (socio)linguistique du personnage — s'applique à TOUT le corpus -->

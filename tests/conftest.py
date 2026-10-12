@@ -187,6 +187,30 @@ def region(client, planche):
     ).json()
 
 
+# ANN-6 — les types de région qui reçoivent un LOCUTEUR. Écrits ICI À LA MAIN, et non lus
+# dans `config.TYPES_LOCUTEUR` : un test qui tirerait son attendu de la constante qu'il
+# éprouve en serait le miroir, et la retirer du serveur ne ferait rien tomber.
+TYPES_PARLANTS = ("bulle", "cartouche", "texte")
+TYPES_MUETS = ("case", "personnage")
+
+
+@pytest.fixture(params=TYPES_PARLANTS)
+def zone_de_texte(request, client, planche):
+    """Une région qui PARLE — jouée une fois par type : bulle, cartouche, texte.
+
+    Six tests posaient leur locuteur sur la `region` ci-dessus, qui est une CASE (mesuré
+    le 2026-10-12 par une sonde dans la route : trois de `test_personnages`, trois de
+    `test_undo`). La route l'acceptait ; elle le refuse depuis ANN-6. Ils passent par ici,
+    et y gagnent ce que le chantier promet : tout ce qui marchait pour une bulle marche
+    pour un cartouche et pour une zone de texte, annulation comprise.
+    """
+    return client.post(
+        f"/api/planches/{planche['id']}/regions",
+        json={"type": request.param, "x": 20, "y": 20, "w": 60, "h": 40},
+        headers=ADMIN,
+    ).json()
+
+
 def direct_query(db_file: Path, sql: str, params=()):
     """Ouvre une connexion SQLite SÉPARÉE (vérif de persistance sur disque)."""
     conn = sqlite3.connect(db_file)

@@ -992,9 +992,17 @@ async function loadAnnotation(regionId) {
     renderTagChips();
     setSaveState("");
   }
-  loadLocuteur(regionId);   // panneau Locuteur (bulles) — indépendant de l'annotation
-  loadPerso(regionId);      // panneau Personnage (boîtes personnage) — identité + profil
-  loadSituation(regionId);  // panneau Situation (cases)
+  chargerBlocsDuType(regionId);   // indépendants de l'annotation
+}
+
+/* Les trois blocs que le TYPE de la région décide, et dont un seul s'affiche. Appelée au
+   chargement de l'annotation ET quand le type change sous les yeux (ANN-6) : sans le second
+   appel, une bulle passée en case gardait son bloc Locuteur jusqu'à la prochaine sélection —
+   et le serveur, qui tient désormais la règle, y refuserait l'attribution. */
+function chargerBlocsDuType(regionId) {
+  loadLocuteur(regionId);   // Locuteur — zones de texte : bulle, cartouche, texte
+  loadPerso(regionId);      // Personnage — boîtes personnage : identité + profil
+  loadSituation(regionId);  // Situation — cases
 }
 
 function renderTagChips() {
@@ -1652,13 +1660,25 @@ function setupTagInput() {
   });
 }
 
-/* --- Locuteur : qui parle dans la bulle (registre corpus + création à la volée) --- */
+/* --- Locuteur : qui parle dans la zone de texte (registre corpus + création à la volée).
+   ANN-6 — le bloc ne s'offrait qu'à la BULLE, alors qu'un cartouche a un narrateur et
+   qu'une zone de texte peut être une parole hors bulle. Il s'offre aux trois, et à elles
+   seules : les CLÉS de cette table sont la règle, la même que `config.TYPES_LOCUTEUR` côté
+   serveur, qui refuse désormais le reste (422). Les valeurs servent au nom accessible du
+   champ, qui disait « à la bulle » devant n'importe quoi. --- */
+const LOCUTEUR_DE = {
+  bulle: "à la bulle", cartouche: "au cartouche", texte: "à la zone de texte",
+};
+
 async function loadLocuteur(regionId) {
   const sec = $("#loc-section");
   const r = state.regionsById.get(regionId);
-  if (!r || r.type !== "bulle") { sec.hidden = true; state.locRegion = null; return; }
+  if (!r || !Object.hasOwn(LOCUTEUR_DE, r.type)) {
+    sec.hidden = true; state.locRegion = null; return;
+  }
   sec.hidden = false;
   state.locRegion = regionId;
+  $("#loc-input").setAttribute("aria-label", "Attribuer un locuteur " + LOCUTEUR_DE[r.type]);
   $("#loc-input").value = "";
   $("#loc-suggest").hidden = true;
   renderLocuteur(null);
@@ -1758,7 +1778,7 @@ async function clearPerso() {
 
 /* Autocomplétion « personnage » réutilisable : registre corpus + création à la volée
    (modèle mentions→entités). `onPick(personnageId)` applique le choix — locuteur d'une
-   bulle OU identité d'une boîte personnage (§14, brique (a)). Une seule logique pour les
+   zone de texte OU identité d'une boîte personnage (§14, brique (a)). Une seule logique pour les
    deux panneaux ; seule l'action finale (onPick) diffère. */
 function setupPersoInput(inputSel, sugSel, onPick) {
   const input = $(inputSel), sug = $(sugSel);
@@ -3171,8 +3191,14 @@ function setupControls() {
   $("#zoom-reset").onclick = () => { state.zoom = 1; applyTransform(); };
 
   // Panneau : type & coordonnées
-  $("#region-type").onchange = (e) => {
-    if (state.selectedId != null) patchRegion(state.selectedId, { type: e.target.value });
+  $("#region-type").onchange = async (e) => {
+    const id = state.selectedId;
+    if (id == null) return;
+    await patchRegion(id, { type: e.target.value });
+    // ANN-6 — les blocs d'annotation suivent le type qu'on vient de donner. Ils le relisent
+    // dans l'état, pas dans la liste déroulante : si l'écriture a échoué, la région a gardé
+    // son type, et donc ses blocs.
+    if (state.mode === "annotation" && state.selectedId === id) chargerBlocsDuType(id);
   };
   $("#region-parent").onchange = (e) => {
     if (state.selectedId == null) return;
@@ -3201,7 +3227,7 @@ function setupControls() {
   $("#note-input").addEventListener("input", noteModifiee);
 
   setupTagInput();
-  setupPersoInput("#loc-input", "#loc-suggest", setLocuteur);     // locuteur (bulle)
+  setupPersoInput("#loc-input", "#loc-suggest", setLocuteur);     // locuteur (zone de texte)
   setupPersoInput("#perso-input", "#perso-suggest", setPerso);    // identité (boîte personnage)
   setupAttributs();
   setupImport();

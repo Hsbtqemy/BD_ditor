@@ -104,7 +104,11 @@ def test_undo_suppression_annotation(client, region, db_path):
 # --------------------------------------------------------------------------- #
 # Locuteur / présence
 # --------------------------------------------------------------------------- #
-def test_undo_lien_locuteur(client, region, db_path):
+# ANN-6 — joués sur `zone_de_texte`, donc une fois par type qui parle : l'annulation suit
+# un cartouche et une zone de texte comme elle suivait une bulle. Ils posaient leur locuteur
+# sur `region`, une CASE, ce que la route refuse désormais.
+def test_undo_lien_locuteur(client, zone_de_texte, db_path):
+    region = zone_de_texte
     p = client.post("/api/personnages", json={"nom": "Tintin"}).json()
     client.put(f"/api/regions/{region['id']}/locuteur", json={"personnage_id": p["id"]})
     res = client.post("/api/undo").json()               # annule le lien → locuteur retiré
@@ -112,7 +116,8 @@ def test_undo_lien_locuteur(client, region, db_path):
     assert _un(db_path, "SELECT 1 FROM bulle_locuteur WHERE region_id = ?", (region["id"],)) is None
 
 
-def test_undo_delien_locuteur_retablit(client, region, db_path):
+def test_undo_delien_locuteur_retablit(client, zone_de_texte, db_path):
+    region = zone_de_texte
     p = client.post("/api/personnages", json={"nom": "Milou"}).json()
     client.put(f"/api/regions/{region['id']}/locuteur", json={"personnage_id": p["id"]})
     client.delete(f"/api/regions/{region['id']}/locuteur")
@@ -122,9 +127,10 @@ def test_undo_delien_locuteur_retablit(client, region, db_path):
                (region["id"],))["personnage_id"] == p["id"]
 
 
-def test_undo_lien_personnage_disparu_409(client, region, db_path):
+def test_undo_lien_personnage_disparu_409(client, zone_de_texte, db_path):
     """Rétablir un lien vers un personnage supprimé entre-temps → 409 explicite (pas 500),
     et aucun état partiel (transaction rollback)."""
+    region = zone_de_texte
     p = client.post("/api/personnages", json={"nom": "Fantome"}).json()
     client.put(f"/api/regions/{region['id']}/locuteur", json={"personnage_id": p["id"]})
     client.delete(f"/api/regions/{region['id']}/locuteur")   # délien = dernière action

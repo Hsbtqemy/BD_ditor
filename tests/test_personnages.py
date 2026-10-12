@@ -5,8 +5,11 @@ l'UI viennent dans les incréments suivants. Cf. docs/personnages-et-attribution
 """
 import sqlite3
 
+import pytest
+
+import config
 import database
-from conftest import direct_query
+from conftest import TYPES_MUETS, TYPES_PARLANTS, direct_query
 
 
 def test_schema_version(data_dir, db_path):
@@ -91,8 +94,10 @@ def test_nom_vide_rejete(client):
     assert client.post("/api/personnages", json={"nom": "   "}).status_code == 422
 
 
-def test_locuteur(client, region):
-    rid = region["id"]
+def test_locuteur(client, zone_de_texte):
+    """Attribuer, changer, retirer — pour une bulle, un cartouche et une zone de texte
+    (ANN-6). Le compteur du registre compte les trois : il compte des prises de parole."""
+    rid = zone_de_texte["id"]
     pid = client.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
     assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"] is None
     client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": pid})
@@ -106,20 +111,82 @@ def test_locuteur(client, region):
     assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"] is None
 
 
-def test_locuteur_personnage_inconnu(client, region):
-    assert client.put(f"/api/regions/{region['id']}/locuteur",
+def test_locuteur_personnage_inconnu(client, zone_de_texte):
+    assert client.put(f"/api/regions/{zone_de_texte['id']}/locuteur",
                       json={"personnage_id": 9999}).status_code == 404
 
 
-def test_fusion(client, region):
-    rid = region["id"]
+def test_fusion(client, zone_de_texte):
+    rid = zone_de_texte["id"]
     a = client.post("/api/personnages", json={"nom": "le capitaine"}).json()["id"]
     b = client.post("/api/personnages", json={"nom": "Capitaine Haddock"}).json()["id"]
     client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": a})
     client.post(f"/api/personnages/{a}/fusion", json={"cible_id": b})
     assert all(x["id"] != a for x in client.get("/api/personnages").json())            # doublon parti
-    assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]["id"] == b    # bulle réaffectée
+    assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]["id"] == b    # zone réaffectée
     assert client.post(f"/api/personnages/{b}/fusion", json={"cible_id": b}).status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# ANN-6 — le serveur tient la règle de l'écran : un locuteur ne se pose que sur une
+# zone de texte. Il ne la tenait pas (200 sur les cinq types, mesuré le 2026-10-12).
+# --------------------------------------------------------------------------- #
+def _zone(client, planche, type_zone):
+    return client.post(f"/api/planches/{planche['id']}/regions",
+                       json={"type": type_zone, "x": 5, "y": 5, "w": 30, "h": 30}).json()["id"]
+
+
+def test_les_types_parlants_sont_ceux_qu_on_a_decides():
+    """La liste, écrite à la main des deux côtés. `conftest.TYPES_PARLANTS` est l'attendu
+    de tous les tests ci-dessous ; si le serveur en change, c'est une décision, et elle
+    passe par ici au lieu de traverser la suite en silence."""
+    assert set(config.TYPES_LOCUTEUR) == set(TYPES_PARLANTS) == {"bulle", "cartouche", "texte"}
+    assert set(TYPES_PARLANTS) | set(TYPES_MUETS) == set(config.TYPES_REGION), (
+        "un type de région n'est rangé ni parmi ceux qui parlent ni parmi les muets : "
+        "les tests paramétrés ci-dessous ne le joueraient pas")
+
+
+@pytest.mark.parametrize("type_zone", TYPES_MUETS)
+def test_un_locuteur_ne_se_pose_pas_sur_une_region_muette(client, planche, db_path, type_zone):
+    """422, et rien n'est écrit — ni le lien, ni son événement au journal."""
+    rid = _zone(client, planche, type_zone)
+    pid = client.post("/api/personnages", json={"nom": "Narrateur"}).json()["id"]
+    rep = client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": pid})
+    assert rep.status_code == 422, rep.text
+    # Le refus se NOMME : il dit le type qu'il a trouvé et ceux qu'il attend.
+    detail = rep.json()["detail"]
+    assert f"« {type_zone} »" in detail
+    assert all(t in detail for t in TYPES_PARLANTS)
+    assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"] is None
+    assert direct_query(db_path, "SELECT COUNT(*) n FROM bulle_locuteur")[0]["n"] == 0
+    assert direct_query(db_path, "SELECT COUNT(*) n FROM evenement "
+                                 "WHERE cible_table = 'bulle_locuteur'")[0]["n"] == 0
+    # Le registre ne compte rien non plus.
+    assert [x for x in client.get("/api/personnages").json() if x["id"] == pid][0]["nb_bulles"] == 0
+
+
+def test_le_refus_de_type_precede_la_lecture_du_personnage(client, region):
+    """Sur une case, un personnage inconnu répond 422 comme un personnage connu : la
+    question posée est celle de la région."""
+    assert client.put(f"/api/regions/{region['id']}/locuteur",
+                      json={"personnage_id": 9999}).status_code == 422
+
+
+def test_un_locuteur_herite_d_avant_se_lit_et_se_retire(client, planche, db_path):
+    """Une bulle qui parle peut DEVENIR une case : `PUT /api/regions/{id}` change le type
+    sans toucher au locuteur. La garde ne porte donc que sur l'attribution — ce qui existe
+    déjà se lit, se retire, et ne se REPOSE pas."""
+    rid = _zone(client, planche, "bulle")
+    pid = client.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
+    assert client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": pid}).status_code == 200
+    assert client.put(f"/api/regions/{rid}", json={"type": "case"}).status_code == 200
+    assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]["id"] == pid   # se lit
+    autre = client.post("/api/personnages", json={"nom": "Milou"}).json()["id"]
+    assert client.put(f"/api/regions/{rid}/locuteur",
+                      json={"personnage_id": autre}).status_code == 422                 # ne se change pas
+    assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]["id"] == pid
+    assert client.delete(f"/api/regions/{rid}/locuteur").status_code == 204             # se retire
+    assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"] is None
 
 
 # --------------------------------------------------------------------------- #
@@ -290,6 +357,7 @@ def test_presence_et_locuteur_meme_entite(client, planche):
     assert client.get(f"/api/regions/{boite}/personnage").json()["personnage"]["id"] == pid
     assert client.get(f"/api/regions/{bulle}/locuteur").json()["locuteur"]["id"] == pid
     # profil posé une fois, partagé ; nb_bulles ne compte QUE la parole (1 bulle, 1 boîte)
+    # — toute la parole depuis ANN-6, cartouches et zones de texte compris (`test_locuteur`)
     did = client.post("/api/attributs/dimensions", json={"cible": "personnage", "nom": "role"}).json()["id"]
     vid = client.post(f"/api/attributs/dimensions/{did}/valeurs", json={"valeur": "savant"}).json()["id"]
     client.put(f"/api/personnages/{pid}/attributs", json={"valeur_id": vid})

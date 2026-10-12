@@ -103,7 +103,9 @@ def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags=No
                 f"       WHERE {cible} AND tg.label = ? AND {ou_tag})")
             params.append(label)
             params.extend(p_tag)
-    # Filtre par LOCUTEUR (ANN-2) : la bulle est attribuée à ce personnage.
+    # Filtre par LOCUTEUR (ANN-2) : la zone de texte — bulle, cartouche ou texte
+    # (ANN-6) — est attribuée à ce personnage. Aucun filtre de type : la jointure suit
+    # `region_id`, et c'est la route d'attribution qui dit quelles zones parlent.
     if personnage is not None:
         where.append("EXISTS (SELECT 1 FROM bulle_locuteur bl "
                      "WHERE bl.region_id = r.id AND bl.personnage_id = ?)")

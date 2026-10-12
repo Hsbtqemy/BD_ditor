@@ -1,9 +1,9 @@
 """Personnages, attribution et vocabulaire facetté (ANN-2, A5, piste B).
 
-Le registre des ENTITÉS — personnage, locuteur d'une bulle, présence dans une case —,
-ses alignements sur des référentiels externes (A5), et le vocabulaire FACETTÉ qui le
-décrit : domaines, dimensions, valeurs, et l'affectation de ces valeurs à un personnage
-ou à une région.
+Le registre des ENTITÉS — personnage, locuteur d'une zone de texte, présence dans une
+case —, ses alignements sur des référentiels externes (A5), et le vocabulaire FACETTÉ
+qui le décrit : domaines, dimensions, valeurs, et l'affectation de ces valeurs à un
+personnage ou à une région.
 
 L'affectation vivait ailleurs, après le lexique, par accrétion : elle est remontée ici
 avant l'extraction. C'est l'« attribution » du titre — la séparer du registre aurait
@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException
 import autorisation
 import conflit
 import journal
-from config import CIBLES_ATTRIBUT
+from config import CIBLES_ATTRIBUT, TYPES_LOCUTEUR
 
 from socle import (
     AlignementIn, AttributIn, DimensionDomaineIn, DimensionIn, DomaineIn, FusionIn,
@@ -44,7 +44,9 @@ router = APIRouter()
 
 
 def _locuteur_for(conn, region_id):
-    """Locuteur attribué à une bulle (ou None) → {locuteur: {id, nom, serie} | None}."""
+    """Locuteur attribué à une zone de texte — bulle, cartouche ou texte (ou None) →
+    {locuteur: {id, nom, serie} | None}. La table garde le nom qu'elle avait quand seule
+    une bulle parlait."""
     return {"locuteur": _row(conn.execute(
         "SELECT p.id, p.nom, p.serie FROM bulle_locuteur bl "
         "JOIN personnages p ON p.id = bl.personnage_id WHERE bl.region_id = ?", (region_id,)))}
@@ -61,11 +63,16 @@ def _personnage_for(conn, region_id):
 @router.get("/api/personnages")
 def list_personnages(q: Optional[str] = None, conn: sqlite3.Connection = Depends(db),
                      portee: autorisation.Portee = Depends(portee_courante)):
-    """Registre des personnages + nombre de bulles attribuées.
+    """Registre des personnages + nombre de zones de texte qui leur sont attribuées.
     `q` filtre par nom (autocomplétion à la saisie / canonicalisation à la volée).
 
+    **`nb_bulles` compte des PRISES DE PAROLE, pas des bulles** (ANN-6) : une ligne par
+    région dont le personnage est le locuteur, et un cartouche ou une zone de texte en
+    reçoivent un depuis ce chantier. La clé garde son nom parce que renommer une clé de
+    réponse est une décision, pas une retouche ; aucun écran ne la lit aujourd'hui.
+
     AUTH-2 — la portée d'un personnage se DÉRIVE de ses apparitions (cf.
-    `_clause_personnage`), et `nb_bulles` ne compte que les bulles lisibles : un compteur
+    `_clause_personnage`), et `nb_bulles` ne compte que les zones lisibles : un compteur
     global dirait le volume de travail des autres, et fausserait la lecture du registre."""
     ou, params = _clause_personnage(portee)
     ou_album, p_album = portee.clause_album("pl.album_id")
@@ -142,7 +149,7 @@ def fusionner_personnage(personnage_id: int, payload: FusionIn,
         raise HTTPException(422, "Un personnage ne peut être fusionné avec lui-même")
     _get_personnage(conn, portee, personnage_id, ecriture=True)
     _get_personnage(conn, portee, payload.cible_id, ecriture=True)
-    # locuteur : une bulle a au plus un locuteur (region_id PK) → réaffectation directe.
+    # locuteur : une zone a au plus un locuteur (region_id PK) → réaffectation directe.
     conn.execute("UPDATE bulle_locuteur SET personnage_id = ? WHERE personnage_id = ?",
                  (payload.cible_id, personnage_id))
     # attributs : éviter le doublon (personnage_id, valeur_id) → OR IGNORE ; le reste du
@@ -236,7 +243,28 @@ def get_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db),
 @router.put("/api/regions/{region_id}/locuteur")
 def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
-    _get_region(conn, portee, region_id, ecriture=True)
+    """Attribue un locuteur à une zone de TEXTE — bulle, cartouche ou texte (ANN-6).
+
+    Le serveur tient la règle de l'écran. Il ne la tenait pas : la cohérence de type était
+    « assurée côté UI », si bien que la route posait un locuteur sur une case ou sur une
+    boîte personnage (mesuré le 2026-10-12 : 200 sur les cinq types), et que l'écran, lui,
+    n'offrait le bloc qu'à la bulle. Les deux se rejoignent sur `config.TYPES_LOCUTEUR`.
+
+    Le refus est un **422 qui nomme le type**, comme `_affecter` refuse une valeur posée
+    sur la mauvaise cible : la région est lisible et modifiable par l'appelant — l'accesseur
+    gardé vient de le dire —, il n'y a donc rien à taire. Il vient avant la lecture du
+    personnage : la question porte sur la région, et sa réponse ne dépend pas de qui
+    l'on voulait y faire parler.
+
+    Seule l'ATTRIBUTION est gardée. Lire et retirer restent ouverts à tout type, parce
+    qu'une région change de type (`PUT /api/regions/{id}`) sans que son locuteur la quitte :
+    une bulle devenue case le garde, et il faut pouvoir le lui retirer.
+    """
+    region = _get_region(conn, portee, region_id, ecriture=True)
+    if region["type"] not in TYPES_LOCUTEUR:
+        raise HTTPException(422, f"Un locuteur ne s'attribue qu'à une zone de texte "
+                                 f"({', '.join(TYPES_LOCUTEUR)}) : cette région est de "
+                                 f"type « {region['type']} ».")
     _get_personnage(conn, portee, payload.personnage_id)
     ancien = conn.execute("SELECT personnage_id FROM bulle_locuteur WHERE region_id = ?",
                           (region_id,)).fetchone()
@@ -264,9 +292,10 @@ def clear_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db),
 
 
 # --- Présence : quelle entité est MONTRÉE dans une boîte personnage (§14, brique (a)).
-#     Strict miroir du locuteur, mais pour l'image — la boîte porte l'identité, et le
-#     profil de l'entité devient atteignable depuis l'image (muets compris). La cohérence
-#     de type (region.type = 'personnage') est assurée côté UI, comme pour le locuteur.
+#     Miroir du locuteur, mais pour l'image — la boîte porte l'identité, et le profil de
+#     l'entité devient atteignable depuis l'image (muets compris). La cohérence de type
+#     (region.type = 'personnage') n'est assurée ICI que côté UI ; le locuteur, lui, est
+#     gardé par sa route depuis ANN-6 (`config.TYPES_LOCUTEUR`).
 @router.get("/api/regions/{region_id}/personnage")
 def get_presence(region_id: int, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
