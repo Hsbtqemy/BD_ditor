@@ -37,6 +37,7 @@ rien d'autre : la saisie ne change pas. Elle se mesure donc comme une phrase —
   non rognée. La passe de l'image rend une autre police que le poste (DejaVu Sans contre
   Segoe UI), et c'est là qu'une phrase qui « tenait » ne tient plus.
 """
+import json
 import re
 
 import httpx
@@ -257,6 +258,140 @@ def test_le_bloc_suit_le_type_qu_on_change_sous_les_yeux(page, atelier):
     expect(bloc).to_be_visible(timeout=15000)
     expect(page.locator("#situation-section")).to_be_hidden()
     expect(page.locator("#loc-input")).to_have_accessible_name(re.compile("cartouche"))
+
+# --------------------------------------------------------------------------- #
+# Le changement de type, quand il ne se passe pas comme prévu
+# --------------------------------------------------------------------------- #
+# `$("#region-type").onchange` porte trois gardes, et le test ci-dessus n'en tenait
+# aucune : il joue le cas où l'écriture réussit, sur la région qu'on n'a pas quittée, en
+# mode Annotation. La relecture croisée les a retirées une à une sans rien faire tomber
+# (2026-10-12), puis a rejoué ce que l'écran devient :
+#
+#   - sans « resté sur la région » : l'écriture du type encore en vol, on sélectionne un
+#     cartouche, la réponse arrive — et c'est le bloc « Situation » de l'AUTRE région qui
+#     s'affiche sous le cartouche ;
+#   - les blocs relus dans la liste déroulante et non dans l'état : après une écriture
+#     refusée, « Situation » s'affiche sur une région restée bulle ;
+#   - sans la garde du mode : rien ne change à l'écran, des lectures partent pour un
+#     panneau qu'on ne voit pas.
+#
+# Les deux premiers s'éprouvent par la VISIBILITÉ des blocs, après un témoin qui dit que
+# l'écran a bien reçu la réponse — sans lui, « rien n'a bougé » passerait sur un écran qui
+# n'a encore rien traité.
+def _noeud(page, rid):
+    """Le nœud de l'arbre de structure qui porte cette région."""
+    return page.locator(".tnode", has=page.locator(".tn-id", has_text=re.compile(rf"^#{rid}$")))
+
+
+def _type_en_base(decor, rid):
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30) as c:
+        regions = c.get(f"/api/planches/{decor['planche']}/regions").json()
+    return next(r["type"] for r in regions if r["id"] == rid)
+
+
+def test_une_ecriture_du_type_en_vol_ne_derange_pas_la_region_ou_l_on_est_parti(page, atelier):
+    """On change le type d'une bulle, on part sur un cartouche AVANT la réponse : quand elle
+    arrive, le panneau montre toujours les blocs du cartouche."""
+    bulle, cartouche = atelier["bulle"], atelier["cartouche"]
+    _ouvrir(page, atelier, "bulle")
+    bloc, situation = page.locator("#loc-section"), page.locator("#situation-section")
+    liste = page.locator("#region-type")
+    expect(bloc).to_be_visible(timeout=15000)
+
+    # L'écriture du type est TENUE : le serveur « ne répond pas » tant qu'on ne la relâche pas.
+    tenues = []
+
+    def tenir(route):
+        if route.request.method == "PUT":
+            tenues.append(route)
+        else:
+            route.continue_()
+    page.route(re.compile(rf"/api/regions/{bulle}$"), tenir)
+    liste.select_option("case")
+    for _ in range(150):                 # les gestionnaires ne tournent que PENDANT un appel
+        if tenues:
+            break
+        page.wait_for_timeout(100)
+    assert len(tenues) == 1, "l'écriture du type n'est pas partie : rien à tenir en vol"
+
+    # On part sur le cartouche, la requête toujours en vol.
+    _noeud(page, cartouche).click()
+    expect(liste).to_have_value("cartouche", timeout=15000)
+    expect(bloc).to_be_visible(timeout=15000)
+    expect(page.locator("#loc-input")).to_have_accessible_name(re.compile("cartouche"))
+    expect(situation).to_be_hidden()
+
+    with page.expect_response(_est("PUT", f"/api/regions/{bulle}")) as reponse:
+        tenues[0].continue_()
+    assert reponse.value.status == 200, reponse.value.text()
+    # Le témoin : l'écran a REÇU la réponse — l'arbre range désormais la région en case.
+    expect(_noeud(page, bulle)).to_have_class(re.compile(r"\btnode-case\b"), timeout=15000)
+    assert _type_en_base(atelier, bulle) == "case"
+
+    # La région où l'on est garde SES blocs : ceux d'un cartouche, pas ceux de la case.
+    expect(liste).to_have_value("cartouche")
+    expect(bloc).to_be_visible()
+    expect(situation).to_be_hidden()
+
+
+def test_une_ecriture_du_type_refusee_laisse_a_la_region_les_blocs_de_son_type(page, atelier):
+    """Le serveur refuse le changement de type : la région est restée une bulle, et c'est le
+    bloc « Locuteur » qu'on lui offre — pas « Situation », que la liste déroulante annonce.
+
+    La liste, elle, reste sur le type demandé : c'est antérieur à ce chantier et ce test ne
+    l'affirme pas. Il affirme ce qui est neuf — les blocs se relisent dans l'état.
+    """
+    bulle = atelier["bulle"]
+    _ouvrir(page, atelier, "bulle")
+    bloc, situation = page.locator("#loc-section"), page.locator("#situation-section")
+    expect(bloc).to_be_visible(timeout=15000)
+
+    def refuser(route):
+        if route.request.method == "PUT":
+            route.fulfill(status=403, content_type="application/json",
+                          body=json.dumps({"detail": "Refusé pour le test."}))
+        else:
+            route.continue_()
+    page.route(re.compile(rf"/api/regions/{bulle}$"), refuser)
+    with page.expect_response(_est("PUT", f"/api/regions/{bulle}")) as reponse:
+        page.locator("#region-type").select_option("case")
+    assert reponse.value.status == 403
+    # Le témoin : l'écran a TRAITÉ le refus — il le dit.
+    expect(page.locator("#toasts .toast", has_text="Refusé pour le test")).to_be_visible(timeout=15000)
+    assert _type_en_base(atelier, bulle) == "bulle"
+
+    expect(bloc).to_be_visible()
+    expect(situation).to_be_hidden()
+    expect(page.locator("#loc-input")).to_have_accessible_name(re.compile("bulle"))
+
+
+def test_hors_du_mode_annotation_changer_le_type_ne_lit_aucun_bloc(page, atelier):
+    """La troisième garde ne se voit pas : en mode Édition le panneau d'annotation est
+    caché, donc relire ses blocs ne change rien à l'écran. Ce qu'on peut mesurer, c'est ce
+    qui PART — aucune lecture de locuteur, de présence ni de situation —, et que le bon bloc
+    attend quand on entre en Annotation."""
+    bulle = atelier["bulle"]
+    page.goto(f"{atelier['base']}/?album={atelier['album']}&planche={atelier['planche']}"
+              f"&region={bulle}", wait_until="networkidle")
+    expect(page.locator("#region-type")).to_have_value("bulle", timeout=15000)
+    page.locator('button[data-mode="edition"]').click()
+    expect(page.locator("#panel-edition")).to_be_visible(timeout=15000)
+    expect(page.locator("#panel-annotation")).to_be_hidden()
+
+    lues = []
+    motif = re.compile(r"/api/regions/\d+/(locuteur|personnage|attributs)$")
+    page.on("request", lambda r: lues.append(r.url) if r.method == "GET" and motif.search(r.url) else None)
+    with page.expect_response(_est("PUT", f"/api/regions/{bulle}")) as reponse:
+        page.locator("#region-type").select_option("cartouche")
+    assert reponse.value.status == 200, reponse.value.text()
+    expect(_noeud(page, bulle)).to_have_class(re.compile(r"\btnode-cartouche\b"), timeout=15000)
+    page.wait_for_timeout(300)
+    assert lues == [], f"des blocs d'annotation ont été lus hors du mode Annotation : {lues}"
+
+    page.locator('button[data-mode="annotation"]').click()
+    expect(page.locator("#loc-section")).to_be_visible(timeout=15000)
+    expect(page.locator("#loc-input")).to_have_accessible_name(re.compile("cartouche"))
+
 
 # --------------------------------------------------------------------------- #
 # La Situation d'une case : la phrase qui dit la syntaxe attendue
