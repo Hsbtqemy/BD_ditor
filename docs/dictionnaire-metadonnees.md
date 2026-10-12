@@ -347,7 +347,7 @@ Cf. `personnages-et-attribution.md`, `alignement-autorite.md`.
 | `personnages.nom` | identité récurrente | texte | humain | structuré | — | ouvert |
 | `personnages.serie` | désambiguïsation (homonymes) | texte | humain | structuré | — | ouvert |
 | `personnages.notes` | note libre sur l'entité | texte | humain | libre | — | ouvert |
-| `bulle_locuteur` | **qui parle** dans la bulle | lien région ↔ personnage | humain | structuré | — | ouvert |
+| `bulle_locuteur` | **qui parle** dans la zone de texte (bulle, cartouche, texte) | lien région ↔ personnage | humain | structuré | — | ouvert |
 | `personnage_presence` | **qui est montré** dans la boîte | lien région ↔ personnage | humain | structuré | — | ouvert |
 | `personnage_alignement` (source, uri) | **alignement d'autorité** : un personnage → 0..N URI de référentiel | table (source auto-détectée) | humain | **structuré (v18)** | SKOS `exactMatch` | ouvert |
 | `% aligné` | part des personnages alignés (qualité Collection) | agrégat | dérivé | **dérivé (v18)** | — | ouvert |

@@ -170,8 +170,9 @@ C'est le cœur du travail. Sélectionnez une région ; le panneau de droite prop
 type :
 
 - le **locuteur** d'une zone de texte — bulle, cartouche ou texte : quelle entité
-  personnage y parle. Pour un récitatif, créez le personnage qui tient la voix du récit
-  (« Narrateur », par exemple) : il se saisit comme n'importe quel autre ;
+  personnage y parle. Celui d'un cartouche se choisit dans le registre des personnages,
+  comme celui d'une bulle. On peut y créer une entrée pour un narrateur ; la façon de
+  le nommer n'est pas encore arrêtée ;
 - la **présence** dans une boîte personnage — quelle entité y est montrée ;
 - le **profil** du personnage (dimensions de cible `personnage`) ;
 - la **situation** d'une case (dimensions de cible `case`). Le champ attend la forme

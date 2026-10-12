@@ -47,7 +47,7 @@ Trois objets ne sont dans aucune boîte, et c'est voulu.
 - **Le personnage** est une entité de **corpus**, pas de planche : « Tintin » est le même
   d'un album à l'autre. Une zone de texte — bulle, cartouche ou texte — lui est reliée par
   un **locuteur** (qui parle), une boîte personnage par une **présence** (qui est montré).
-  Une case et une boîte personnage ne reçoivent pas de locuteur : le serveur le refuse.
+  Un locuteur ne s'attribue ni à une case ni à une boîte personnage : la route le refuse.
   L'entité est le moyeu où la parole et l'image se rejoignent.
 - **Le vocabulaire** (tags, domaines, dimensions, valeurs) vit au niveau du corpus, avec sa
   propre règle de portée — cf. §4.
