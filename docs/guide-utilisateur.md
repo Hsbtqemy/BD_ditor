@@ -169,10 +169,15 @@ qui avance tout seul à mesure que les mots sont relus, et qu'on peut forcer si 
 C'est le cœur du travail. Sélectionnez une région ; le panneau de droite propose, selon son
 type :
 
-- le **locuteur** d'une bulle — quelle entité personnage y parle ;
+- le **locuteur** d'une zone de texte — bulle, cartouche ou texte : quelle entité
+  personnage y parle. Pour un récitatif, créez le personnage qui tient la voix du récit
+  (« Narrateur », par exemple) : il se saisit comme n'importe quel autre ;
 - la **présence** dans une boîte personnage — quelle entité y est montrée ;
 - le **profil** du personnage (dimensions de cible `personnage`) ;
-- la **situation** d'une case (dimensions de cible `case`) ;
+- la **situation** d'une case (dimensions de cible `case`). Le champ attend la forme
+  « dimension : valeur », deux-points compris — `lieu : falaise` —, et la phrase sous le
+  champ le rappelle : un mot tapé seul, « falaise », ne crée ni axe ni valeur. Le profil
+  d'un personnage se saisit sous la même forme ;
 - les **tags** — vocabulaire libre, cumulatif, avec autocomplétion ;
 - une **note** en texte libre.
 
