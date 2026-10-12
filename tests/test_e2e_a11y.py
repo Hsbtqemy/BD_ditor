@@ -138,6 +138,33 @@ def test_a11y_visionneuse_modes(page, seeded, theme):
         assert not viol, f"Visionneuse/{label} [{theme}] :\n{_fmt(viol)}"
 
 
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_visionneuse_situation(page, seeded, theme):
+    """ANN-6 — une CASE en mode Annotation : le bloc « Situation » et sa phrase d'aide.
+
+    L'audit des modes, juste au-dessus, sélectionne la BULLE du décor : le bloc Situation y
+    reste caché, et axe ne juge que ce qui s'affiche. La phrase — du petit texte, donc le
+    seuil de 4.5:1 — et le lien `aria-describedby` qui la rattache au champ n'étaient donc
+    devant aucun audit. On attend qu'elle soit VISIBLE avant d'auditer : sur une section
+    encore cachée, axe rendrait zéro violation pour la même raison.
+    """
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ECRITURE)
+    try:
+        case = c.post(f"/api/planches/{seeded['planche']}/regions",
+                      json={"type": "case", "x": 150, "y": 150, "w": 200, "h": 200}).json()["id"]
+    finally:
+        c.close()
+    _theme(page, theme)
+    page.goto(seeded["base"] + SURFACES_AUDITEES["/"]({**seeded, "region": case}),
+              wait_until="networkidle")
+    page.wait_for_timeout(700)
+    page.click('.mode-btn[data-mode="annotation"]')
+    page.wait_for_selector("#sit-aide", state="visible", timeout=5000)
+    viol = _audit(page)
+    assert not viol, f"Visionneuse/situation [{theme}] :\n{_fmt(viol)}"
+
+
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # AUTH-1 : proxy déclaré
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_a11y_pastille_utilisateur(page, seeded, theme):

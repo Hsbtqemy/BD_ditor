@@ -1236,6 +1236,14 @@ button { font-family: inherit; }
 .tag-input-wrap { position: relative; }
 .loc-current { margin: .3077rem 0 .6154rem; min-height: 1.6923rem; }
 .attr-label { margin: .6154rem 0 .1538rem; }
+/* La phrase d'aide sous un champ « dimension : valeur » (ANN-6). Encre `--text-muted`, portée
+   par la classe `.muted` du gabarit : c'est l'encre des textes secondaires du panneau —
+   jamais un accent, qui ne tient pas le 4.5:1 en petit corps. L'audit axe la mesure en thème
+   sombre et en thème clair (`test_a11y_visionneuse_situation`). La marge du bas la sépare du
+   titre qui suit ; le champ n'en avait aucune. L'exemple ne se coupe pas : c'est ce qu'on
+   recopie. */
+.attr-aide { font-size: .9231rem; line-height: 1.4; margin: .3846rem 0 .7692rem; }
+.attr-exemple { white-space: nowrap; font-weight: 600; }
 .tag-suggest {
   position: absolute; left: 0; right: 0; top: 100%; z-index: 30;
   background: var(--bg-deep); border: 1px solid var(--border);

@@ -1,8 +1,8 @@
 """Le panneau d'annotation de l'Atelier, au plus près du geste (ANN-6).
 
-Un retour d'usage de la production, rapporté le 2026-10-12, que rien n'aurait fait tomber :
-la suite ne posait de locuteur que par l'API, et ne sélectionnait jamais autre chose qu'une
-bulle en mode Annotation.
+Deux retours d'usage de la production, rapportés le 2026-10-12, que rien n'aurait fait
+tomber : la suite ne posait de locuteur que par l'API, et ne sélectionnait jamais autre chose
+qu'une bulle en mode Annotation — donc jamais une case, ni son bloc « Situation ».
 
 **Le locuteur.** « Une fois une nouvelle zone de texte créée, on ne peut pas lui attribuer
 un locuteur (de même pour les cartouches). » Mesuré le même jour : le bloc « Locuteur » ne
@@ -22,6 +22,20 @@ Ce que ce fichier mesure, et pourquoi de cette façon :
   rendrait le même état final ;
 - **l'écran et le serveur disent la même chose, type par type** — sans quoi l'un des deux
   peut changer d'avis sans que rien ne le dise, ce qui est exactement l'état d'où l'on vient.
+
+**La situation.** « J'ai l'impression que je peux, au niveau de la case, ajouter une
+situation qui correspondrait au lieu. Mais finalement ça ne s'enregistre pas. » Rejoué le
+même jour : le champ attend « dimension : valeur » ; « falaise » tapé seul puis Entrée ne
+part pas, ne dit rien, et reste dans le champ. La décision est une PHRASE sous le champ, et
+rien d'autre : la saisie ne change pas. Elle se mesure donc comme une phrase —
+
+- **visible**, avant qu'on lise son texte : la section naît cachée, et lire le texte d'un
+  élément caché réussit ;
+- **reliée au champ**, par sa description accessible et non par la présence d'un attribut ;
+- **vraie** : son exemple, tapé tel qu'on le lit, s'enregistre ;
+- **logée** : dans le tiroir à 320 px sous une police de 24, entre ses marges, repliée et
+  non rognée. La passe de l'image rend une autre police que le poste (DejaVu Sans contre
+  Segoe UI), et c'est là qu'une phrase qui « tenait » ne tient plus.
 """
 import re
 
@@ -243,3 +257,132 @@ def test_le_bloc_suit_le_type_qu_on_change_sous_les_yeux(page, atelier):
     expect(bloc).to_be_visible(timeout=15000)
     expect(page.locator("#situation-section")).to_be_hidden()
     expect(page.locator("#loc-input")).to_have_accessible_name(re.compile("cartouche"))
+
+# --------------------------------------------------------------------------- #
+# La Situation d'une case : la phrase qui dit la syntaxe attendue
+# --------------------------------------------------------------------------- #
+# Ce que la sonde de reflow ne dit pas : elle demande si un élément SORT de la fenêtre.
+# La phrase doit tenir dans SON tiroir — entre les marges du panneau —, et ne pas être
+# rognée par sa propre boîte.
+_OU_EST_LA_PHRASE = """() => {
+  const aide = document.querySelector('#sit-aide');
+  const panneau = document.querySelector('#panel');
+  const st = getComputedStyle(panneau);
+  const a = aide.getBoundingClientRect(), p = panneau.getBoundingClientRect();
+  const champ = document.querySelector('#sit-input').getBoundingClientRect();
+  return {
+    fenetre: document.documentElement.clientWidth,
+    racine: getComputedStyle(document.documentElement).fontSize,
+    gauche: a.left, droite: a.right, haut: a.top, hauteur: a.height,
+    // La boîte de CONTENU du tiroir : sa bordure gauche (`clientLeft`) et ses marges
+    // intérieures retirées ; `clientWidth` a déjà retiré une éventuelle barre de défilement.
+    interieurGauche: p.left + panneau.clientLeft + parseFloat(st.paddingLeft),
+    interieurDroit: p.left + panneau.clientLeft + panneau.clientWidth - parseFloat(st.paddingRight),
+    rognee: aide.scrollWidth > aide.clientWidth + 1,
+    basDuChamp: champ.bottom,
+    lignes: Math.round(a.height / parseFloat(getComputedStyle(aide).lineHeight)),
+  };
+}"""
+
+
+def _attributs(decor, rid):
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30) as c:
+        return [(a["dimension"], a["valeur"]) for a in c.get(f"/api/regions/{rid}/attributs").json()]
+
+
+def test_la_phrase_de_situation_se_lit_sous_le_champ_d_une_case(page, atelier):
+    """Sur une case, en mode Annotation, la phrase est VISIBLE sous le champ « Situation »,
+    et un lecteur d'écran la reçoit comme la description du champ.
+
+    La visibilité s'éprouve AVANT le texte : `to_have_text()` et `to_contain_text()` lisent
+    aussi un élément caché, et la section entière naît `hidden` — un test du seul texte
+    passerait sur une phrase qu'on ne voit jamais.
+    """
+    _ouvrir(page, atelier, "case")
+    champ, aide = page.locator("#sit-input"), page.locator("#sit-aide")
+    expect(champ).to_be_visible(timeout=15000)
+    expect(aide).to_be_visible()
+    # Les deux moitiés de la consigne : la forme attendue, et un exemple qui la suit.
+    expect(aide).to_contain_text(re.compile(r"dimension\s:\svaleur"))
+    expect(aide.locator(".attr-exemple")).to_be_visible()
+    expect(aide.locator(".attr-exemple")).to_have_text(re.compile(r"^\S+\s:\s\S+$"))
+    # Reliée au champ : c'est ce qu'un lecteur d'écran annonce après son nom.
+    expect(champ).to_have_accessible_description(re.compile(r"dimension\s:\svaleur"))
+    m = page.evaluate(_OU_EST_LA_PHRASE)
+    assert m["haut"] >= m["basDuChamp"] - 1, f"la phrase n'est pas SOUS le champ : {m}"
+
+
+@pytest.mark.parametrize("type_zone", ["bulle", "personnage"])
+def test_la_phrase_de_situation_ne_se_montre_que_pour_une_case(page, atelier, type_zone):
+    """Elle appartient au bloc « Situation » : hors d'une case, elle disparaît avec lui —
+    et le témoin de chargement passe d'abord, comme pour le bloc Locuteur."""
+    _ouvrir(page, atelier, type_zone)
+    temoin = "#loc-section" if type_zone == "bulle" else TEMOIN[type_zone]
+    expect(page.locator(temoin)).to_be_visible(timeout=15000)
+    expect(page.locator("#sit-aide")).to_be_hidden()
+
+
+def test_l_exemple_de_la_phrase_tape_tel_quel_s_enregistre(page, atelier):
+    """La phrase ne vaut que si son exemple MARCHE. Il est lu à l'écran, tapé comme on le
+    lit, et le geste est attendu en tant que requête : créer l'axe, créer la valeur, la
+    poser sur la case."""
+    rid = atelier["case"]
+    _ouvrir(page, atelier, "case")
+    champ = page.locator("#sit-input")
+    expect(page.locator("#sit-aide")).to_be_visible(timeout=15000)
+    # Ce qu'on tape au clavier : l'exemple, avec des espaces ordinaires.
+    exemple = " ".join(page.locator("#sit-aide .attr-exemple").inner_text().split())
+    dimension, _, valeur = (morceau.strip() for morceau in exemple.partition(":"))
+    assert dimension and valeur, f"l'exemple « {exemple} » ne suit pas la syntaxe qu'il illustre"
+
+    champ.click()
+    champ.press_sequentially(exemple, delay=20)
+    expect(page.locator("#sit-suggest div", has_text=valeur)).to_be_visible(timeout=15000)
+    with page.expect_request(_est("POST", "/api/attributs/dimensions")) as axe, \
+            page.expect_request(_est("PUT", f"/api/regions/{rid}/attributs")), \
+            page.expect_response(_est("PUT", f"/api/regions/{rid}/attributs")) as reponse:
+        champ.press("Enter")
+    assert reponse.value.status == 200, reponse.value.text()
+    assert axe.value.post_data_json == {"cible": "case", "nom": dimension}
+    puce = page.locator("#sit-current .tag-chip")
+    expect(puce).to_be_visible(timeout=15000)
+    expect(puce).to_contain_text(valeur)
+    assert _attributs(atelier, rid) == [(dimension, valeur)]
+    # La phrase reste sous le champ une fois la valeur posée : elle sert à la suivante.
+    expect(page.locator("#sit-aide")).to_be_visible()
+
+
+def test_la_phrase_tient_dans_le_tiroir_a_320_px_sous_une_police_de_24(page, atelier):
+    """Le cas le plus étroit que le dépôt mesure : 320 px de large, police par défaut du
+    navigateur portée à 24. Le panneau est alors un tiroir, et la phrase doit s'y replier
+    sans en sortir ni être rognée.
+
+    Même garde d'amont que `test_e2e_police` : la racine doit avoir suivi la préférence,
+    sans quoi l'assertion du bas mesurerait la police ordinaire.
+    """
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Page.setFontSizes", {"fontSizes": {"standard": 24, "fixed": 24}})
+    page.set_viewport_size({"width": 320, "height": 900})
+    _ouvrir(page, atelier, "case")
+    bascule = page.locator("#btn-tiroir-panneau")
+    expect(bascule).to_be_visible(timeout=15000)       # sous le seuil : le panneau est un tiroir
+    if bascule.get_attribute("aria-expanded") != "true":
+        bascule.click()
+    expect(bascule).to_have_attribute("aria-expanded", "true")
+    aide = page.locator("#sit-aide")
+    aide.scroll_into_view_if_needed()
+    expect(aide).to_be_visible()
+    expect(aide).to_be_in_viewport(ratio=1)             # entière à l'écran, pas seulement posée
+    page.wait_for_timeout(400)                          # la glissière du tiroir a fini
+
+    m = page.evaluate(_OU_EST_LA_PHRASE)
+    assert m["fenetre"] == 320 and m["racine"] == "19.5px", (
+        f"fenêtre de {m['fenetre']} px, racine à {m['racine']} : la préférence de police "
+        "n'a pas été appliquée, et ce qui suit ne mesurerait pas le cas annoncé")
+    assert m["gauche"] >= m["interieurGauche"] - 1 and m["droite"] <= m["interieurDroit"] + 1, (
+        f"la phrase sort des marges du tiroir : elle va de {m['gauche']:.1f} à "
+        f"{m['droite']:.1f} px, le tiroir offre {m['interieurGauche']:.1f} à "
+        f"{m['interieurDroit']:.1f}")
+    assert not m["rognee"], f"la phrase est rognée par sa propre boîte : {m}"
+    # Elle s'est REPLIÉE : sur une seule ligne, c'est qu'elle n'a pas été mesurée à l'étroit.
+    assert m["lignes"] >= 2, f"la phrase tient en {m['lignes']} ligne à 320 px sous police 24 ?"

@@ -268,9 +268,17 @@
             <div id="sit-current" class="loc-current"></div>
             <div class="tag-input-wrap">
               <input type="text" id="sit-input" placeholder="dimension : valeur…"
-                     autocomplete="off" aria-label="Ajouter un attribut de situation à la case">
+                     autocomplete="off" aria-label="Ajouter un attribut de situation à la case"
+                     aria-describedby="sit-aide">
               <div id="sit-suggest" class="tag-suggest" hidden></div>
             </div>
+            <!-- ANN-6 — la syntaxe attendue, dite SOUS le champ. Sans les deux points, Entrée
+                 ne fait rien et ne dit rien : « falaise » tapé seul restait dans le champ,
+                 sans requête ni message (mesuré le 2026-10-12), et l'indication du champ
+                 disparaît à la première frappe. La saisie, elle, n'a pas changé. Les
+                 espaces insécables tiennent chaque deux-points à son mot quand la phrase
+                 se replie ; l'exemple, lui, ne se coupe pas. -->
+            <p id="sit-aide" class="attr-aide muted">Respectez la syntaxe «&nbsp;dimension&nbsp;: valeur&nbsp;». Exemple&nbsp;: <span class="attr-exemple">lieu&nbsp;: falaise</span></p>
           </div>
           <h3>Tags</h3>
           <div id="tag-chips" class="tag-chips"></div>
