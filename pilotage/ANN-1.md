@@ -25,6 +25,10 @@ aucune case n'est cochée : la séance n'a pas eu lieu, et c'est elle qui coche.
 - [ ] La vue Croisement de l'Exploration affiche un axe `dim:<id>` peuplé et non vide — ce qui demande de coder des cases DONT LES BULLES SONT TRANSCRITES : le croisement part de `tokens_effectifs`, et 26 des 45 cases du corpus local portent des bulles encore sans token
 - [ ] Si un axe `cible=personnage` doit servir (genre, âge, origine perçue, rôle narratif), des LOCUTEURS sont posés : le croisement joint ces axes par `bulle_locuteur`, une simple présence (`personnage_presence`) n'y suffit pas, et le corpus local compte 0 personnage
 
+### Ce que `ANN-6` ouvre ici — 2026-10-12
+
+- [ ] **La grille des linguistes est rapprochée de la proposition de vocabulaire d'étude** — attendu : dit, avant la séance. Hugo a transmis le 2026-10-12 une grille d'annotation en sept niveaux, tournée vers l'oralité et posée sur les BULLES et leurs mots ; `tools/vocabulaire-etude-propose.csv` propose des axes posés sur les cases et les personnages. Ce sont deux vocabulaires, ou deux moitiés du même : à trancher avec eux, pour que la séance ne parte pas de deux pages à la fois (cf. `ANN-6`)
+
 ## Contexte
 
 C'est **la finalité du projet**, et la seule fiche P1 qui ne dépende d'aucun code : tout

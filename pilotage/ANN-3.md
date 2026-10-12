@@ -16,6 +16,10 @@ noms dans le texte OCR reste entièrement manuelle.
 - [ ] La suggestion est modifiable et son refus n'est pas réappliqué au reindex suivant
 - [ ] Un test couvre le cas « nom présent au gazetteer mais absent du dialogue » (aucune suggestion) et « nom en capitales » (le lettrage BD est en majuscules)
 
+### Ce que `ANN-6` ouvre ici — 2026-10-12
+
+- [ ] **Une suggestion de locuteur suppose une entrée où la poser** — attendu : le gazetteer ne suggère que là où le bloc « Locuteur » existe. Retour d'usage du 2026-10-12 : un cartouche et une zone de texte n'en reçoivent pas, et la question a été posée de savoir si le gazetteer y remédierait. Non : il aide à remplir l'entrée, il ne la crée pas. La case qui l'ouvre vit chez `ANN-6`, zone « Retours d'usage du même jour »
+
 ## Contexte
 
 Voie « NER pas cher » pour un cast fermé — le fine-tuning a été écarté faute de données
