@@ -1,9 +1,16 @@
 ---
 chantier: ANN-6
-statut: à venir
+statut: interrompu
 ---
 
 # ANN-6 — le relevé : annoter des mots et des passages, pas seulement des bulles
+
+**Arrêté sur** — 2026-10-12, `14d4ead` : **deux retours d'usage sont corrigés, le relevé n'est pas
+commencé.** Un cartouche et une zone de texte reçoivent un locuteur, et le serveur tient la
+règle de l'écran (`7a21dc1`, tests ajoutés par `6271d56` et `14d4ead` après relecture
+croisée) ; le champ « Situation » dit la syntaxe qu'il attend (`35e9b62`). La relecture a
+reproduit, dans ce même champ, un défaut plus sérieux et antérieur : une valeur posée à la
+place d'une autre. Il attend la décision de Hugo, avec sept autres trouvailles.
 
 **Point de départ** — 2026-10-12. Hugo rapporte cinq retours d'usage de la production, puis
 transmet la grille d'annotation des linguistes (extrait d'un guide, treize pages : sept
@@ -14,6 +21,16 @@ qu'elle laisse à trancher. Les stagiaires doivent commencer à annoter « dans 
 semaines » (Hugo, le même jour).
 
 ## Reste
+
+### Tranché par Hugo — 2026-10-12
+
+- [x] **Le locuteur s'ouvre aux cartouches et aux zones de texte** — attendu : tranché. Hugo :
+  « oui pour l'ouverture du locuteur ». Fait le jour même, cf. « Retours d'usage »
+- [x] **« Situation » reçoit une phrase sous le champ, pas un changement de saisie** —
+  attendu : tranché. Hugo : « une phrase en dessous en mode : Respectez la syntaxe
+  "dimension : valeur", ex. : lieu : falaise ». Fait le jour même
+- [x] **Créer les tags d'avance attend la vue d'annotation** — attendu : tranché. Hugo : « on
+  en reparle plus tard, si on confectionne une vue d'annotation plus complète »
 
 ### À confirmer avec les linguistes
 
@@ -61,12 +78,14 @@ semaines » (Hugo, le même jour).
   « juron ou insulte » ; « indirecte standard », présente dans l'index seul, et
   l'interrogative indirecte rangée sous le titre « Exclamation » ; la ligne « intensifieur »,
   qui donne un tag dans une colonne et trois dans l'autre
+  **Hugo, le 2026-10-12** : ces écarts seront réglés, de son côté
 - [ ] **Les tags du guide existent avant le premier stagiaire** — attendu : chacun est créé
   d'avance, avec sa définition et son exemple, pour que personne ne le tape de mémoire ;
   l'autocomplétion fait le reste. Environ soixante-cinq tags simples, plus une centaine de
   combinaisons aux niveaux 6 et 7. Lu le 2026-10-12 : l'import de vocabulaire
   (`lexique_import.py`) ne charge que domaines, dimensions et valeurs — rien ne charge des
   tags en lot
+  **Reporté par Hugo le 2026-10-12**, avec la vue d'annotation : cf. « Tranché par Hugo »
 - [ ] **Une apostrophe ou un accent ne font pas deux tags** — attendu : « c’est pluriel »
   tapé avec l'apostrophe typographique ou avec la droite désigne le même tag. Lu le
   2026-10-12 : `socle._norm_tag` ne normalise que la casse et les espaces, et le libellé est
@@ -84,31 +103,94 @@ semaines » (Hugo, le même jour).
 
 ### Retours d'usage du même jour, indépendants du relevé
 
-- [ ] **Un cartouche et une zone de texte reçoivent un locuteur** — attendu : le bloc
-  « Locuteur » s'offre pour ces deux types, et la question de fond est tranchée. Retour
-  d'usage : « une fois une nouvelle zone de texte créée, on ne peut pas lui attribuer un
-  locuteur (de même pour les cartouches) ». Lu le 2026-10-12 : l'Atelier ne montre ce bloc
-  que pour une bulle, alors que la route accepte n'importe quelle zone. La grille des
-  linguistes range d'ailleurs le locuteur en quatre sortes — personnage identifié, non
-  identifié, collectif, narrateur — : à trancher, si le narrateur d'un récitatif est un
-  personnage du registre comme les autres, et si ces quatre sortes sont un attribut du
-  personnage. Le gazetteer d'`ANN-3` n'y change rien : il SUGGÈRE un locuteur là où l'entrée
-  existe
-- [ ] **Taper un lieu seul dans « Situation » dit ce qui manque** — attendu : sur une case,
-  « falaise » puis Entrée ne reste pas sans effet et sans message. Retour d'usage : « j'ai
-  l'impression que je peux, au niveau de la case, ajouter une situation qui correspondrait
-  au lieu. Mais finalement ça ne s'enregistre pas ». LU dans `static/viewer.js` le
-  2026-10-12, pas rejoué à l'écran : le champ attend « dimension : valeur » ; sans les deux
-  points, Entrée ne fait rien, sauf si une seule valeur existante correspond. HYPOTHÈSE sur
-  la cause du retour ; l'autre possible : « falaise » et « cabane » créés comme tags, ou sous
-  un axe prévu pour les personnages, donc non proposés sur une case. Ce qui trancherait :
-  taper « lieu : falaise » en production, et regarder dans le Lexique si un axe « lieu »
-  vise les cases
+- [x] **Un cartouche et une zone de texte reçoivent un locuteur** — attendu : le bloc
+  « Locuteur » s'offre pour ces deux types. Retour d'usage : « une fois une nouvelle zone de
+  texte créée, on ne peut pas lui attribuer un locuteur (de même pour les cartouches) ».
+  Mesuré avant : le bloc ne se montrait que pour une bulle, et la route acceptait un locuteur
+  sur les CINQ types, case comprise. **Fermée par `7a21dc1`** : le bloc s'offre à la bulle, au
+  cartouche et au texte, à eux seuls ; la route refuse le reste par un 422 qui nomme le type
+  (`config.TYPES_LOCUTEUR`). Relecture croisée : la garde est juste sous cinq types et huit
+  situations d'accès — qui n'écrit pas la région reçoit le 404 de toute région introuvable,
+  jamais le 422 — ; 522 sorties comparées avant et après, aucune ne change de forme, aucune
+  porte neuve, le cloisonnement tient. **Ce que les premiers tests valaient** : onze mutants
+  du relecteur leur survivaient, la suite entière verte — la garde posée avant l'accesseur,
+  l'accesseur en lecture seule, huit lecteurs ramenés aux seules bulles. Fermés par `6271d56`
+  (22 mutants serveur tombés, un par un) et, pour trois gardes de l'écran, par `14d4ead`.
+  Preuves : suite par défaut 1 664 passés ; passe navigateur entière sur le poste, 447 passés
+  et trois accrocs dus à une mise en veille (réseau suspendu, serveur de test hors délai),
+  rejoués seuls et verts ; dans l'image, sous l'autre police, les fichiers de l'Atelier verts
+- [ ] **Le narrateur d'un récitatif a sa place dans le registre, ou une place à lui** —
+  attendu : tranché avec les linguistes. Leur grille range le locuteur en quatre sortes —
+  personnage identifié, non identifié, collectif, narrateur. Aujourd'hui le locuteur d'un
+  cartouche se choisit dans le registre des personnages, où l'on peut créer une entrée pour
+  un narrateur ; rien ne dédoublonne, deux homonymes sont possibles, et sous cloisonnement
+  une étude ne voit pas celui de l'autre. Le gazetteer d'`ANN-3` n'y change rien : il
+  SUGGÈRE un locuteur là où l'entrée existe
+- [x] **Le champ « Situation » dit la syntaxe qu'il attend** — attendu : une phrase sous le
+  champ, lue aussi par un lecteur d'écran. Retour d'usage : « j'ai l'impression que je peux,
+  au niveau de la case, ajouter une situation qui correspondrait au lieu. Mais finalement ça
+  ne s'enregistre pas ». L'hypothèse de la fiche était exacte, mesurée : « falaise » puis
+  Entrée ne déclenche ni requête ni message. **Fermée par `35e9b62`** : « Respectez la
+  syntaxe « dimension : valeur ». Exemple : lieu : falaise ». La saisie n'a pas changé
+  (quatorze gestes rejoués avant et après par la relecture, mêmes requêtes) ; la phrase tient
+  à 320 px sous une préférence de 24, sur le poste et dans l'image ; contraste de 6,2 à 6,3
+- [ ] **Entrée ne reste plus sans effet et sans message** — attendu : sur une case, « falaise »
+  puis Entrée dit ce qui manque. La phrase de `35e9b62` prévient, elle ne répond pas : le
+  geste est toujours muet (mesuré par la relecture). À traiter avec la case « Entrée décide
+  d'après une liste périmée », qui touche la même fonction
 - [ ] **Le bouton de verrou dit ce qu'il protège** — attendu : son libellé ne laisse plus
   croire qu'il faut verrouiller avant d'annoter. Retour d'usage : « faut-il verrouiller la
   planche avant de l'annoter ? À quoi sert le verrouillage ? ». Il protège une planche des
   traitements automatiques et n'empêche aucune annotation humaine ; « Verrouiller la
   planche » se lit comme une réservation
+
+### Trouvé par la relecture croisée, antérieur aux deux correctifs — 2026-10-12
+
+- [ ] **Entrée décide d'après une liste périmée, et peut poser une AUTRE valeur** — attendu :
+  Entrée agit sur ce qui est tapé. Reproduit sur `33bc5ea` comme après : si une seule valeur
+  existe (« lieu : falaise »), « grotte » tapé vite puis Entrée pose « lieu : falaise », et
+  Entrée dans le champ VIDE la pose aussi ; « lieu : phare » tapé vite ne part pas, il faut
+  une seconde Entrée. Le même champ sert au profil d'un personnage, où « argot » peut poser
+  « registre : soutenu » — et ce profil vaut pour tout le corpus. Cause LUE : la liste est
+  calculée 200 ms après la frappe, Entrée la consulte telle qu'elle est. Correctif proposé,
+  dans la seule fonction qui sert les trois champs (`makeAttributsWidget`) : retenir pour
+  quelle saisie la liste vaut ; la forme complète crée et affecte sans la consulter ; « un
+  seul résultat, Entrée le prend » gardé seulement si la saisie n'est pas vide et que la
+  liste a été calculée pour elle ; un message court quand Entrée ne fait rien. Attend le mot
+  de Hugo
+- [ ] **Un nom existant tapé vite crée un second personnage homonyme** — attendu : Entrée
+  prend l'homonyme exact avant de créer. Reproduit avec quatorze personnages au registre :
+  « Zed » existant, tapé vite puis Entrée, crée un second « Zed » et l'attribue. Même cause
+  que la case du dessus, dans le champ du locuteur. L'unicité côté serveur est une autre
+  décision : la série distingue des homonymes légitimes
+- [ ] **La même phrase sous les deux champs de profil d'un personnage** — attendu : tranché
+  par Hugo, avec son exemple. Ils attendent la même syntaxe et ont le même défaut ; Hugo n'a
+  parlé que de « Situation ». Quelques lignes au gabarit, aucun script
+- [ ] **Un locuteur hérité sur une région devenue case se voit, ou part avec le type** —
+  attendu : tranché. Une bulle qui a un locuteur et devient case le garde : invisible à
+  l'écran, il compte encore au registre, dans la Recherche et les exports. L'annulation peut
+  aussi en reposer un sur une case, la garde ne tenant que la route — écrit dans son
+  commentaire et décrit par un test. « Aucune case ne porte de locuteur » n'est pas un
+  invariant de la base. Non su : si la production en porte déjà
+- [ ] **Annuler la suppression d'une région rend aussi son locuteur** — attendu : Ctrl+Z
+  d'une suppression rend ce qui a été supprimé. Reproduit, antérieur : une case avec une
+  situation, dessous un cartouche avec locuteur, note et tag ; supprimer la case, puis
+  Ctrl+Z : case, cartouche, note et tag reviennent, le locuteur du cartouche et la situation
+  de la case non. Cause LUE : l'instantané d'une région n'emporte que ses colonnes et son
+  annotation. À rapprocher d'`UX-5`
+- [ ] **Le premier Ctrl+Z ou la première note après un redémarrage ne gèle plus l'écran** —
+  attendu : dit, ou fermé. Mesuré : 9 à 17 secondes sans rien afficher, le temps de charger
+  le moteur de langue ; 0,01 s ensuite. Le préchauffage existe (`BD_NLP_PREWARM`) et il est
+  commenté dans `deploy/docker-compose.yml`. Annuler un lien de locuteur ne réindexe rien :
+  ce chargement y est payé pour rien
+- [ ] **Le contraste élevé est audité quelque part** — attendu : tranché. L'audit
+  d'accessibilité du dépôt ne pose que le thème, clair ou sombre ; un mutant qui cache la
+  phrase de « Situation » en contraste élevé passe toute la suite
+- [ ] **Le nom de la table du locuteur et la clé `nb_bulles` restent, ou changent** —
+  attendu : tranché par Hugo. La table s'appelle `bulle_locuteur` et la clé compte désormais
+  des prises de parole, cartouches compris. Proposition : laisser. Le nom de la table est une
+  DONNÉE du journal et des exports de provenance déjà produits ; la clé n'est lue par aucun
+  écran
 
 ### La maquette
 
@@ -121,6 +203,8 @@ semaines » (Hugo, le même jour).
   posé sur des mots ; une paire des niveaux 6 et 7 en deux choix liés ; le doute et son
   commentaire sur la ligne concernée ; les deux rendus de couleur. Une forme d'écran se
   tranche là, pas sur une description
+  **Ajouté par Hugo le 2026-10-12** : au lieu de tags à taper, des cases à cocher rangées
+  selon les niveaux de la grille, tags combinés compris — à établir dans ce nouvel espace
 
 ### Le modèle — à cadrer avant tout code
 
