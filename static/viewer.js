@@ -1707,8 +1707,7 @@ function renderLocuteur(loc) {
   if (locAlignWidget) locAlignWidget.load(loc ? loc.id : null);   // alignement d'autorité (A5)
 }
 
-async function setLocuteur(pid) {
-  const rid = state.locRegion;
+async function setLocuteur(pid, rid) {   // `rid` : la zone du GESTE, pas celle du moment
   if (rid == null) return;
   try {
     const { locuteur } = await apiSend("PUT", `/api/regions/${rid}/locuteur`, { personnage_id: pid });
@@ -1760,8 +1759,7 @@ function renderPerso(perso) {
   if (persoAlignWidget) persoAlignWidget.load(perso ? perso.id : null);   // alignement d'autorité (A5)
 }
 
-async function setPerso(pid) {
-  const rid = state.persoRegion;
+async function setPerso(pid, rid) {      // `rid` : la boîte du GESTE, pas celle du moment
   if (rid == null) return;
   try {
     const { personnage } = await apiSend("PUT", `/api/regions/${rid}/personnage`, { personnage_id: pid });
@@ -1779,20 +1777,57 @@ async function clearPerso() {
 /* Autocomplétion « personnage » réutilisable : registre corpus + création à la volée
    (modèle mentions→entités). `onPick(personnageId)` applique le choix — locuteur d'une
    zone de texte OU identité d'une boîte personnage (§14, brique (a)). Une seule logique pour les
-   deux panneaux ; seule l'action finale (onPick) diffère. */
-function setupPersoInput(inputSel, sugSel, onPick) {
+   deux panneaux ; seule l'action finale (onPick) diffère. `zone()` rend la région que le
+   panneau sert à cet instant.
+
+   ANN-6 — ENTRÉE NE CRÉE PAS UN HOMONYME FAUTE D'AVOIR REGARDÉ. Ici la liste dépend de la
+   saisie côté serveur (`?q=`), calculée 200 ms après la dernière frappe ; Entrée y
+   cherchait l'homonyme exact telle qu'elle était, et créait faute de l'y trouver. « Zed »
+   existant, tapé vite, devenait un SECOND « Zed », aussitôt attribué (mesuré le
+   2026-10-12, quatorze personnages au registre). Le serveur ne pose aucune unicité, et
+   c'est voulu — la série distingue des homonymes légitimes : la garde est donc ici.
+
+   - L'écran retient POUR QUELLE SAISIE sa liste vaut (`listePour`). Une réponse ne
+     s'affiche que si elle vaut encore : aucune lecture partie depuis, saisie inchangée.
+     Et dès qu'un geste part d'ici, elle ne vaut plus pour aucune : après avoir créé
+     « Zed » sur une bulle, le retaper vite sur la suivante relit le registre.
+   - Si la liste ne vaut pas pour ce qui est tapé au moment d'Entrée, le registre est RELU
+     pour cette saisie avant toute décision — par la lecture déjà en vol si elle porte la
+     même saisie, sinon par une lecture de plus. Le geste lent, lui, n'émet rien de neuf.
+   - L'homonyme exact se cherche dans TOUTE la réponse, pas dans les dix propositions
+     affichées : au-delà de la dixième, il n'était ni proposé ni trouvé, et Entrée créait
+     un doublon même tapé lentement (mesuré le 2026-10-13).
+   - Une lecture en ÉCHEC n'est pas un registre vide : rien n'est proposé — pas même de
+     créer —, et Entrée rend la saisie avec un message au lieu de créer à l'aveugle.
+
+   - Le geste vaut pour la zone où il est FAIT. Relire prend du temps, créer aussi : la
+     zone est retenue à l'Entrée (ou au clic), et le choix lui revient même si l'on en a
+     sélectionné une autre entre-temps — il partait sinon vers celle-là.
+
+   Gardé tel quel : s'il existe DÉJÀ plusieurs homonymes exacts, Entrée prend le premier
+   dans l'ordre du registre (nom, puis série), sans le dire. Les départager est une
+   décision d'écran, pas une retouche. */
+function setupPersoInput(inputSel, sugSel, onPick, zone) {
   const input = $(inputSel), sug = $(sugSel);
   let timer = null, activeIdx = -1, items = [];
+  let lecture = null;       // la dernière lecture PARTIE pour la liste : { q, promesse }
+  let listePour = null;     // la saisie pour laquelle `items` vaut — nul : pour aucune
+  let exact = null;         // l'homonyme exact de `listePour`, ou nul
   function close() { sug.hidden = true; activeIdx = -1; }
+  const lire = (q) => apiGet("/api/personnages?q=" + encodeURIComponent(q));
+  const homonyme = (persos, q) => persos.find((p) => p.nom.toLowerCase() === q.toLowerCase()) || null;
   async function fetchList() {
     const q = input.value.trim();
-    let persos = [];
-    try { persos = await apiGet("/api/personnages?q=" + encodeURIComponent(q)); }
-    catch (e) { persos = []; }
-    items = persos.slice(0, 10).map((p) => ({ create: false, id: p.id, nom: p.nom, serie: p.serie }));
+    const moi = lecture = { q, promesse: lire(q) };
+    let persos = null;
+    try { persos = await moi.promesse; } catch (e) { persos = null; }
+    // Elle ne vaut plus : une lecture est partie depuis, ou la saisie a changé.
+    if (lecture !== moi || input.value.trim() !== q) return;
+    listePour = persos ? q : null;
+    exact = persos ? homonyme(persos, q) : null;
+    items = (persos || []).slice(0, 10).map((p) => ({ create: false, id: p.id, nom: p.nom, serie: p.serie }));
     // proposer la CRÉATION si la saisie n'a pas de correspondance exacte (modèle mentions→entités)
-    if (q && !persos.some((p) => p.nom.toLowerCase() === q.toLowerCase()))
-      items.push({ create: true, nom: q });
+    if (persos && q && !exact) items.push({ create: true, nom: q });
     render();
   }
   function render() {
@@ -1809,14 +1844,40 @@ function setupPersoInput(inputSel, sugSel, onPick) {
     });
     sug.hidden = false;
   }
-  async function choose(it) {
-    input.value = ""; close();
+  async function appliquer(it, z) {
+    // Un geste part : ni la liste ni la lecture qui l'a faite ne font plus foi. Créer
+    // change le registre, et le même nom retapé aussitôt — ici ou sur la zone suivante —
+    // ne doit pas se décider d'après ce qu'on savait AVANT de créer.
+    listePour = null; lecture = null;
     if (it.create) {
       try {
         const p = await apiSend("POST", "/api/personnages", { nom: it.nom });
-        await onPick(p.id);
+        await onPick(p.id, z);
       } catch (e) { toast("Création : " + e.message, "error"); }
-    } else { await onPick(it.id); }
+    } else { await onPick(it.id, z); }
+  }
+  async function choose(it) {
+    input.value = ""; close();
+    await appliquer(it, zone());
+  }
+  /* Entrée sans sélection : l'homonyme exact de CE qui est tapé, sinon la création. */
+  async function valider(q) {
+    if (listePour === q) {                           // la liste vaut pour cette saisie
+      choose(exact || { create: true, nom: q });     // pas de doublon si le nom existe déjà
+      return;
+    }
+    // Elle ne vaut pas pour cette saisie : on relit avant de décider. Le champ se vide
+    // tout de suite — une seconde Entrée pendant la lecture ne part pas deux fois.
+    const z = zone();
+    input.value = ""; close();
+    let persos;
+    try { persos = await (lecture && lecture.q === q ? lecture.promesse : lire(q)); }
+    catch (e) {
+      if (!input.value) input.value = q;             // rien n'est fait : la saisie revient
+      toast("Registre des personnages : " + e.message, "error");
+      return;
+    }
+    appliquer(homonyme(persos, q) || { create: true, nom: q }, z);
   }
   input.addEventListener("input", () => { activeIdx = -1; clearTimeout(timer); timer = setTimeout(fetchList, 200); });
   input.addEventListener("focus", fetchList);
@@ -1829,10 +1890,7 @@ function setupPersoInput(inputSel, sugSel, onPick) {
       e.preventDefault();
       const q = input.value.trim();
       if (activeIdx >= 0 && items[activeIdx]) choose(items[activeIdx]);
-      else if (q) {
-        const exact = items.find((it) => !it.create && it.nom.toLowerCase() === q.toLowerCase());
-        choose(exact || { create: true, nom: q });   // pas de doublon si le nom existe déjà
-      }
+      else if (q) valider(q);
     } else if (e.key === "Escape") { close(); }
   });
 }
@@ -3291,8 +3349,8 @@ function setupControls() {
   $("#note-input").addEventListener("input", noteModifiee);
 
   setupTagInput();
-  setupPersoInput("#loc-input", "#loc-suggest", setLocuteur);     // locuteur (zone de texte)
-  setupPersoInput("#perso-input", "#perso-suggest", setPerso);    // identité (boîte personnage)
+  setupPersoInput("#loc-input", "#loc-suggest", setLocuteur, () => state.locRegion);     // locuteur (zone de texte)
+  setupPersoInput("#perso-input", "#perso-suggest", setPerso, () => state.persoRegion);  // identité (boîte personnage)
   setupAttributs();
   setupImport();
   setupMenus();

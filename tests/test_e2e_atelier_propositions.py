@@ -620,3 +620,303 @@ def test_l_attribut_va_a_la_cible_du_geste_meme_si_l_on_en_change(page, atelier)
     page.wait_for_timeout(300)
     assert not [v for v in vues if "null" in v], vues
     assert _poses(atelier, m) == [(m["dimension"], m["autre"])]
+
+
+# --------------------------------------------------------------------------- #
+# Le champ de personnage — Entrée prend l'homonyme exact avant de créer
+# --------------------------------------------------------------------------- #
+# Même cause, autre conséquence. Le locuteur d'une zone et l'identité d'une boîte se
+# choisissent dans le registre, dont la liste dépend de la saisie CÔTÉ SERVEUR (`?q=`).
+# Entrée y cherchait l'homonyme exact telle qu'elle était, et créait faute de l'y trouver :
+# « Zed » existant, tapé vite, devenait un SECOND « Zed », aussitôt attribué (reproduit le
+# 2026-10-12, quatorze personnages au registre). Le serveur ne pose aucune unicité — la
+# série distingue des homonymes légitimes —, donc rien ne rattrape l'écran.
+#
+# La lecture du registre est tenue en vol comme plus haut. Là où il faut qu'Entrée précède
+# jusqu'à la lecture différée elle-même, la frappe et Entrée sont émises dans la même
+# tâche du navigateur (`_taper_et_valider_d_un_trait`) : les 200 ms ne peuvent pas
+# s'écouler entre les deux.
+
+# Les deux montages du champ de personnage.
+CHAMPS_PERSONNAGE = {
+    "locuteur": {"zone": "bulle", "champ": "#loc-input", "liste": "#loc-suggest",
+                 "lien": "locuteur", "puce": "#loc-current .tag-chip"},
+    "boite-personnage": {"zone": "personnage", "champ": "#perso-input", "liste": "#perso-suggest",
+                         "lien": "personnage", "puce": "#perso-current .tag-chip"},
+}
+
+LECTURE_REGISTRE = re.compile(r"/api/personnages\?q=")
+
+
+def _registre(decor):
+    with _api(decor) as c:
+        return c.get("/api/personnages").json()
+
+
+def _lie(decor, rid, lien):
+    with _api(decor) as c:
+        return c.get(f"/api/regions/{rid}/{lien}").json()[lien]
+
+
+_D_UN_TRAIT = """([selecteur, texte]) => {
+  const champ = document.querySelector(selecteur);
+  champ.value = texte;
+  champ.dispatchEvent(new Event('input', { bubbles: true }));
+  champ.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+}"""
+
+
+def _taper_et_valider_d_un_trait(page, selecteur, texte):
+    """La frappe et Entrée dans la MÊME tâche du navigateur.
+
+    Le champ arme une lecture 200 ms après la frappe. Pour éprouver ce qu'Entrée décide
+    AVANT qu'elle parte, il ne suffit pas de taper vite : rien ne garantit qu'un poste
+    chargé enchaîne deux appels en moins de 200 ms. Ici les deux évènements que le champ
+    écoute (`input`, puis `keydown`) sont émis l'un derrière l'autre, sans rendre la main.
+    Le champ doit avoir le focus : on y a cliqué avant.
+    """
+    page.evaluate(_D_UN_TRAIT, [selecteur, texte])
+
+
+def _peupler(decor, *noms):
+    """Ajoute des personnages au registre ; rend {nom: id}."""
+    with _api(decor, ecriture=True) as c:
+        return {n: c.post("/api/personnages", json={"nom": n}).json()["id"] for n in noms}
+
+
+def _creations(parties):
+    return [p for p in parties if p.startswith("POST /api/personnages ")]
+
+
+FIGURANTS = [f"Figurant {k:02d}" for k in range(12)]
+
+
+@pytest.mark.parametrize("champ_de", list(CHAMPS_PERSONNAGE))
+@pytest.mark.parametrize("moment", ["lecture en vol", "avant la lecture"])
+def test_un_nom_existant_tape_avant_la_liste_prend_l_homonyme(page, atelier, champ_de, moment):
+    """Quatorze personnages au registre, « Zed » le dernier : la liste du champ vide en
+    montre dix, pas lui. On tape « Zed » et Entrée avant que SA liste ne revienne : c'est
+    le « Zed » existant qui est pris. Avant, un SECOND « Zed » était créé, puis attribué.
+
+    Deux moments, parce que l'écran ne fait pas la même chose : la lecture différée déjà
+    partie, Entrée attend CELLE-LÀ (aucune lecture de plus) ; Entrée avant elle, l'écran
+    relit lui-même le registre pour ce nom.
+    """
+    c = CHAMPS_PERSONNAGE[champ_de]
+    zed = _peupler(atelier, *FIGURANTS, "Zed")["Zed"]
+    rid = atelier[c["zone"]]
+    chemin = f"/api/regions/{rid}/{c['lien']}"
+    _ouvrir(page, atelier, c["zone"])
+    champ, liste = page.locator(c["champ"]), page.locator(f"{c['liste']} div")
+    parties = _ecritures(page)
+
+    champ.click()
+    expect(liste).to_have_count(10, timeout=15000)   # la liste du champ vide : dix, sans « Zed »
+    expect(liste.filter(has_text="Zed")).to_have_count(0)
+
+    lectures = Retenue(page, LECTURE_REGISTRE)
+    if moment == "lecture en vol":
+        champ.press_sequentially("Zed", delay=0)
+        lectures.attendre(1)                         # la lecture différée de « Zed », tenue
+        champ.press("Enter")
+    else:
+        _taper_et_valider_d_un_trait(page, c["champ"], "Zed")
+        lectures.attendre(1)                         # la relecture d'Entrée, tenue
+    page.wait_for_timeout(500)
+    # UNE lecture pour ce nom, pas deux. (Entrée pressée avant la lecture différée, celle-ci
+    # part ensuite pour le champ VIDÉ : `?q=`, comme avant ce correctif.)
+    pour_ce_nom = [r.request.url for r in lectures.tenues if r.request.url.endswith("?q=Zed")]
+    assert len(pour_ce_nom) == 1, [r.request.url for r in lectures.tenues]
+    assert parties == [], f"l'écran a écrit sans attendre de savoir : {parties}"
+    expect(champ).to_have_value("")                  # une seconde Entrée ne repartirait pas
+
+    with page.expect_request(_est("PUT", chemin)) as envoi, \
+            page.expect_response(_est("PUT", chemin)) as reponse:
+        lectures.relacher()
+    assert reponse.value.status == 200, reponse.value.text()
+    assert envoi.value.post_data_json == {"personnage_id": zed}
+    expect(page.locator(c["puce"])).to_contain_text("Zed", timeout=15000)
+    assert _creations(parties) == [], f"un homonyme a été créé : {parties}"
+    assert [p["nom"] for p in _registre(atelier)].count("Zed") == 1
+    assert _lie(atelier, rid, c["lien"])["id"] == zed
+    if moment == "lecture en vol":
+        # La liste de « Zed », revenue après le geste, ne se rouvre pas sur un champ vidé.
+        page.wait_for_timeout(300)
+        expect(page.locator(c["liste"])).to_be_hidden()
+
+
+def test_l_homonyme_au_dela_des_dix_propositions_est_pris_meme_tape_lentement(page, atelier):
+    """Douze personnages dont le nom contient « zed » : la liste en montre dix, et « Zed »,
+    le dernier dans l'ordre du registre, n'en est pas — ni lui, ni « Créer », puisqu'il
+    existe. Entrée, tapé LENTEMENT, le prend. Avant, l'homonyme se cherchait dans les dix
+    propositions affichées : Entrée en créait un second."""
+    c = CHAMPS_PERSONNAGE["locuteur"]
+    ids = _peupler(atelier, *[f"Azed {k:02d}" for k in range(11)], "Zed")
+    rid = atelier[c["zone"]]
+    chemin = f"/api/regions/{rid}/{c['lien']}"
+    _ouvrir(page, atelier, c["zone"])
+    champ, liste = page.locator(c["champ"]), page.locator(f"{c['liste']} div")
+    parties = _ecritures(page)
+
+    champ.click()
+    with page.expect_response(lambda r: r.url.endswith("/api/personnages?q=zed")):
+        champ.press_sequentially("zed", delay=20)
+    expect(liste).to_have_count(10, timeout=15000)
+    expect(liste.filter(has_text=re.compile(r"^Zed$"))).to_have_count(0)
+    expect(liste.filter(has_text="Créer")).to_have_count(0)
+
+    with page.expect_request(_est("PUT", chemin)) as envoi, \
+            page.expect_response(_est("PUT", chemin)) as reponse:
+        champ.press("Enter")
+    assert reponse.value.status == 200, reponse.value.text()
+    assert envoi.value.post_data_json == {"personnage_id": ids["Zed"]}
+    assert _creations(parties) == [], parties
+    assert len(_registre(atelier)) == 13             # Tintin, onze « Azed », « Zed »
+
+
+def test_une_lecture_du_registre_en_echec_ne_cree_personne(page, atelier):
+    """Le registre ne répond pas pour ce nom : l'écran ne sait pas s'il existe. Il ne
+    propose pas de le créer, et Entrée ne le crée pas — la saisie revient, avec un message.
+    Avant, une lecture en échec valait un registre vide : Entrée créait."""
+    c = CHAMPS_PERSONNAGE["locuteur"]
+    _peupler(atelier, "Zed")
+    _ouvrir(page, atelier, c["zone"])
+    champ = page.locator(c["champ"])
+    parties = _ecritures(page)
+
+    champ.click()
+    expect(page.locator(f"{c['liste']} div")).to_have_count(2, timeout=15000)   # Tintin, Zed
+
+    def en_panne(route):
+        route.fulfill(status=500, content_type="application/json",
+                      body=json.dumps({"detail": "Registre en panne pour le test."}))
+    page.route(re.compile(r"/api/personnages\?q=Zed$"), en_panne)
+    with page.expect_response(lambda r: r.url.endswith("/api/personnages?q=Zed")) as lecture:
+        champ.press_sequentially("Zed", delay=20)
+    assert lecture.value.status == 500
+    expect(page.locator(c["liste"])).to_be_hidden(timeout=15000)   # rien n'est proposé, pas même « Créer »
+
+    champ.press("Enter")
+    expect(page.locator("#toasts .toast.error", has_text="Registre en panne pour le test")
+           ).to_be_visible(timeout=15000)
+    expect(champ).to_have_value("Zed")
+    assert parties == [], f"l'écran a écrit sans avoir pu lire le registre : {parties}"
+    assert [p["nom"] for p in _registre(atelier)].count("Zed") == 1
+
+
+def test_une_lecture_du_registre_arrivee_en_retard_n_ecrase_pas_la_plus_recente(page, atelier):
+    """Deux lectures du registre en vol pour la MÊME saisie ; la seconde répond d'abord,
+    la première ensuite, avec un registre plus ANCIEN — où « Zed » n'existait pas encore.
+    La liste reste celle de la plus récente, et Entrée prend « Zed » au lieu d'en créer un.
+
+    La seconde lecture est celle du focus : on quitte le champ et on y revient, la saisie
+    intacte. Les deux réponses sont façonnées par le test à partir de la vraie.
+    """
+    c = CHAMPS_PERSONNAGE["locuteur"]
+    zed = _peupler(atelier, "Zed")["Zed"]
+    with _api(atelier) as client:
+        vrai = client.get("/api/personnages?q=Zed").json()
+    assert [p["id"] for p in vrai] == [zed]
+    rid = atelier[c["zone"]]
+    chemin = f"/api/regions/{rid}/{c['lien']}"
+    _ouvrir(page, atelier, c["zone"])
+    champ, liste = page.locator(c["champ"]), page.locator(f"{c['liste']} div")
+    parties = _ecritures(page)
+
+    champ.click()
+    expect(liste).to_have_count(2, timeout=15000)                  # Tintin, Zed
+    lectures = Retenue(page, LECTURE_REGISTRE)
+    champ.press_sequentially("Zed", delay=0)
+    lectures.attendre(1)                                           # la lecture différée
+    page.locator("#note-input").click()                            # on quitte le champ…
+    champ.click()                                                  # … et on y revient
+    premiere, seconde = lectures.attendre(2)
+    assert all(r.request.url.endswith("?q=Zed") for r in (premiere, seconde))
+    expect(champ).to_have_value("Zed")
+
+    _repondre(page, seconde, vrai)
+    expect(liste).to_have_count(1, timeout=15000)
+    expect(liste).to_have_text("Zed")
+    _repondre(page, premiere, [])                                  # la plus lente, plus ancienne
+    page.wait_for_timeout(400)                                     # l'écran a eu le temps de la traiter
+    expect(liste).to_have_count(1)
+    expect(liste).to_have_text("Zed")                              # pas « ➕ Créer « Zed » »
+
+    with page.expect_request(_est("PUT", chemin)) as envoi, \
+            page.expect_response(_est("PUT", chemin)):
+        champ.press("Enter")
+    assert envoi.value.post_data_json == {"personnage_id": zed}
+    assert _creations(parties) == [], parties
+
+
+def test_un_nom_qu_on_vient_de_creer_retape_aussitot_n_est_pas_cree_deux_fois(page, atelier):
+    """On crée « Zed » à la volée (geste lent : la liste propose « Créer »), puis on le
+    retape aussitôt, Entrée avant toute nouvelle lecture. Ce que l'écran savait de « Zed »
+    date d'AVANT sa création : il relit le registre, et prend celui qu'il vient de créer."""
+    c = CHAMPS_PERSONNAGE["locuteur"]
+    rid = atelier[c["zone"]]
+    chemin = f"/api/regions/{rid}/{c['lien']}"
+    _ouvrir(page, atelier, c["zone"])
+    champ, liste = page.locator(c["champ"]), page.locator(f"{c['liste']} div")
+    parties = _ecritures(page)
+
+    champ.click()
+    champ.press_sequentially("Zed", delay=20)
+    expect(liste.filter(has_text="Créer")).to_be_visible(timeout=15000)
+    with page.expect_request(_est("PUT", chemin)) as envoi, \
+            page.expect_response(_est("PUT", chemin)):
+        champ.press("Enter")
+    zed = envoi.value.post_data_json["personnage_id"]
+    expect(page.locator(c["puce"])).to_contain_text("Zed", timeout=15000)
+    assert len(_creations(parties)) == 1
+
+    lectures = Retenue(page, LECTURE_REGISTRE)
+    _taper_et_valider_d_un_trait(page, c["champ"], "Zed")
+    lectures.attendre(1)                             # l'écran RELIT : il ne se fie pas à l'ancien savoir
+    assert lectures.tenues[0].request.url.endswith("?q=Zed"), (
+        "l'écran n'a pas relu le registre pour « Zed » avant de décider — lectures tenues : "
+        f"{[r.request.url for r in lectures.tenues]}, écritures : {parties}")
+    with page.expect_request(_est("PUT", chemin)) as envoi, \
+            page.expect_response(_est("PUT", chemin)) as reponse:
+        lectures.relacher()
+    assert reponse.value.status == 200, reponse.value.text()
+    assert envoi.value.post_data_json == {"personnage_id": zed}
+    assert len(_creations(parties)) == 1, f"« Zed » a été créé deux fois : {parties}"
+    assert [p["nom"] for p in _registre(atelier)].count("Zed") == 1
+
+
+def test_le_locuteur_va_a_la_zone_du_geste_meme_si_l_on_en_change(page, atelier):
+    """Relire le registre prend du temps : si l'on sélectionne une autre zone entre-temps,
+    le locuteur revient à la bulle où Entrée a été pressée — pas au cartouche où l'on est
+    arrivé."""
+    c = CHAMPS_PERSONNAGE["locuteur"]
+    zed = _peupler(atelier, *FIGURANTS, "Zed")["Zed"]
+    bulle, cartouche = atelier["bulle"], atelier["cartouche"]
+    chemin = f"/api/regions/{bulle}/locuteur"
+    _ouvrir(page, atelier, "bulle")
+    champ = page.locator(c["champ"])
+    parties = _ecritures(page)
+
+    champ.click()
+    expect(page.locator(f"{c['liste']} div")).to_have_count(10, timeout=15000)
+    lectures = Retenue(page, LECTURE_REGISTRE)
+    champ.press_sequentially("Zed", delay=0)
+    lectures.attendre(1)
+    champ.press("Enter")
+
+    _noeud(page, cartouche).click()                  # on part sur le cartouche
+    expect(page.locator("#region-type")).to_have_value("cartouche", timeout=15000)
+    expect(champ).to_have_accessible_name(re.compile("cartouche"))
+
+    with page.expect_request(_est("PUT", chemin)) as envoi, \
+            page.expect_response(_est("PUT", chemin)) as reponse:
+        lectures.relacher()
+    assert reponse.value.status == 200, reponse.value.text()
+    assert envoi.value.post_data_json == {"personnage_id": zed}
+    page.wait_for_timeout(300)
+    assert [p for p in parties if p.startswith("PUT ")] == [
+        f"PUT {chemin} " + json.dumps({"personnage_id": zed}, separators=(",", ":"))], parties
+    assert _lie(atelier, bulle, "locuteur")["id"] == zed
+    assert _lie(atelier, cartouche, "locuteur") is None
+    # L'écran, lui, montre toujours le cartouche — sans locuteur.
+    expect(page.locator("#loc-current")).to_contain_text("Aucun locuteur")
