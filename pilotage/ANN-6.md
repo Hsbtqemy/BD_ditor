@@ -5,12 +5,13 @@ statut: interrompu
 
 # ANN-6 — le relevé : annoter des mots et des passages, pas seulement des bulles
 
-**Arrêté sur** — 2026-10-12, `14d4ead` : **deux retours d'usage sont corrigés, le relevé n'est pas
-commencé.** Un cartouche et une zone de texte reçoivent un locuteur, et le serveur tient la
-règle de l'écran (`7a21dc1`, tests ajoutés par `6271d56` et `14d4ead` après relecture
-croisée) ; le champ « Situation » dit la syntaxe qu'il attend (`35e9b62`). La relecture a
-reproduit, dans ce même champ, un défaut plus sérieux et antérieur : une valeur posée à la
-place d'une autre. Il attend la décision de Hugo, avec sept autres trouvailles.
+**Arrêté sur** — 2026-10-13, `2ab7911` : **deux retours d'usage sont corrigés, avec ce que leur
+relecture avait trouvé dans les mêmes champs ; le relevé n'est pas commencé.** Le 12 : un cartouche et une zone de texte reçoivent un locuteur (`7a21dc1`), le
+champ « Situation » dit sa syntaxe (`35e9b62`). Le 13, sur le mot de Hugo : dans les champs
+« dimension : valeur », Entrée agit sur ce qui est tapé et répond quand elle ne fait rien
+(`2a52e77`) ; un nom déjà au registre, tapé vite, ne crée plus d'homonyme (`d957a70`) ; les
+deux champs de profil portent la phrase d'aide (`2ab7911`). La passe navigateur entière
+n'est pas encore rejouée sur cet état : seuls les fichiers de l'Atelier le sont.
 
 **Point de départ** — 2026-10-12. Hugo rapporte cinq retours d'usage de la production, puis
 transmet la grille d'annotation des linguistes (extrait d'un guide, treize pages : sept
@@ -31,6 +32,16 @@ semaines » (Hugo, le même jour).
   "dimension : valeur", ex. : lieu : falaise ». Fait le jour même
 - [x] **Créer les tags d'avance attend la vue d'annotation** — attendu : tranché. Hugo : « on
   en reparle plus tard, si on confectionne une vue d'annotation plus complète »
+
+### Tranché par Hugo — 2026-10-13
+
+- [x] **Le champ « dimension : valeur » est corrigé** — attendu : tranché. Hugo : « on corrige
+  le champ dimension : valeur ». Fait le jour même, avec le doublon du champ du locuteur :
+  cf. « Trouvé par la relecture croisée »
+- [x] **Les deux champs de profil reçoivent la même phrase** — attendu : tranché, avec
+  l'exemple. Hugo : « oui », pour l'exemple proposé, « registre : familier »
+- [x] **`bulle_locuteur` et `nb_bulles` gardent leur nom** — attendu : tranché. Hugo : « ok »
+  à la proposition de les laisser
 
 ### À confirmer avec les linguistes
 
@@ -134,10 +145,14 @@ semaines » (Hugo, le même jour).
   syntaxe « dimension : valeur ». Exemple : lieu : falaise ». La saisie n'a pas changé
   (quatorze gestes rejoués avant et après par la relecture, mêmes requêtes) ; la phrase tient
   à 320 px sous une préférence de 24, sur le poste et dans l'image ; contraste de 6,2 à 6,3
-- [ ] **Entrée ne reste plus sans effet et sans message** — attendu : sur une case, « falaise »
-  puis Entrée dit ce qui manque. La phrase de `35e9b62` prévient, elle ne répond pas : le
-  geste est toujours muet (mesuré par la relecture). À traiter avec la case « Entrée décide
-  d'après une liste périmée », qui touche la même fonction
+- [x] **Entrée ne reste plus sans effet et sans message** — attendu : sur une case, « falaise »
+  puis Entrée dit ce qui manque. **Fermée par `2a52e77`** : champ rempli et rien à faire —
+  un mot seul qui ne désigne pas UNE proposition, ou « lieu : » sans valeur —, l'écran
+  répond « Rien n'est ajouté : écrivez « dimension : valeur », ou choisissez une
+  proposition. », dans la région d'annonce de la page, quatre secondes. Jamais dans le champ
+  vide. Preuve : `tests/test_e2e_atelier_propositions.py`, trois saisies sur deux montages ;
+  le mutant qui retire le message fait tomber le test. Ce qu'un lecteur d'écran PRONONCE
+  n'est pas mesuré : cf. « Laissé ouvert par le correctif des champs »
 - [ ] **Le bouton de verrou dit ce qu'il protège** — attendu : son libellé ne laisse plus
   croire qu'il faut verrouiller avant d'annoter. Retour d'usage : « faut-il verrouiller la
   planche avant de l'annoter ? À quoi sert le verrouillage ? ». Il protège une planche des
@@ -146,26 +161,47 @@ semaines » (Hugo, le même jour).
 
 ### Trouvé par la relecture croisée, antérieur aux deux correctifs — 2026-10-12
 
-- [ ] **Entrée décide d'après une liste périmée, et peut poser une AUTRE valeur** — attendu :
+- [x] **Entrée décide d'après une liste périmée, et peut poser une AUTRE valeur** — attendu :
   Entrée agit sur ce qui est tapé. Reproduit sur `33bc5ea` comme après : si une seule valeur
   existe (« lieu : falaise »), « grotte » tapé vite puis Entrée pose « lieu : falaise », et
   Entrée dans le champ VIDE la pose aussi ; « lieu : phare » tapé vite ne part pas, il faut
   une seconde Entrée. Le même champ sert au profil d'un personnage, où « argot » peut poser
   « registre : soutenu » — et ce profil vaut pour tout le corpus. Cause LUE : la liste est
-  calculée 200 ms après la frappe, Entrée la consulte telle qu'elle est. Correctif proposé,
-  dans la seule fonction qui sert les trois champs (`makeAttributsWidget`) : retenir pour
-  quelle saisie la liste vaut ; la forme complète crée et affecte sans la consulter ; « un
-  seul résultat, Entrée le prend » gardé seulement si la saisie n'est pas vide et que la
-  liste a été calculée pour elle ; un message court quand Entrée ne fait rien. Attend le mot
-  de Hugo
-- [ ] **Un nom existant tapé vite crée un second personnage homonyme** — attendu : Entrée
+  calculée 200 ms après la frappe, Entrée la consulte telle qu'elle est. **Fermée par
+  `2a52e77`**, dans la fonction qui sert les trois champs. La lecture rendait déjà TOUT le
+  vocabulaire : il est gardé, et la liste se recalcule à chaque frappe, sans attendre le
+  réseau ; la forme complète aboutit en UNE Entrée sans consulter la liste ; le champ vide
+  n'affecte rien ; une lecture arrivée après une plus récente est écartée. Trois défauts de
+  la même fonction corrigés avec : « lieu:falaise » sans espaces ne faisait rien quand la
+  valeur existait ; après un choix, ↓ rouvrait la liste de la saisie d'avant ; l'attribut
+  partait vers la région sélectionnée ENTRE-TEMPS et non vers celle du geste. Preuves : la
+  course est tenue par les tests — la lecture est retenue en vol, aucune vitesse de frappe
+  n'entre en jeu — et mesurée sur la requête partie ; rejoués sur le code d'avant, 30 des 34
+  premiers cas tombent, les quatre autres sont tenus par des mutants ; quinze mutants, tous
+  tombés, un par un ; suite par défaut 1 669 passés ; 244 tests navigateur de l'Atelier verts sur
+  le poste, 67 dans l'image sous l'autre police ; les quatorze gestes de la relecture
+  rejoués — aucun geste lent ne change d'écriture. Non fermé, écrit dans le code : avant le
+  retour de la toute première lecture, un mot seul reçoit le message là où, un instant plus
+  tard, Entrée aurait pris l'unique résultat ; rien de faux n'est posé
+- [x] **Un nom existant tapé vite crée un second personnage homonyme** — attendu : Entrée
   prend l'homonyme exact avant de créer. Reproduit avec quatorze personnages au registre :
   « Zed » existant, tapé vite puis Entrée, crée un second « Zed » et l'attribue. Même cause
-  que la case du dessus, dans le champ du locuteur. L'unicité côté serveur est une autre
-  décision : la série distingue des homonymes légitimes
-- [ ] **La même phrase sous les deux champs de profil d'un personnage** — attendu : tranché
-  par Hugo, avec son exemple. Ils attendent la même syntaxe et ont le même défaut ; Hugo n'a
-  parlé que de « Situation ». Quelques lignes au gabarit, aucun script
+  que la case du dessus, dans le champ du locuteur. **Fermée par `d957a70`**, pour le
+  locuteur et la boîte personnage : si la liste ne vaut pas pour ce qui est tapé, le
+  registre est RELU pour cette saisie avant de décider. Trois défauts de la même fonction
+  corrigés avec : l'homonyme au-delà de la dixième proposition n'était pas trouvé, et
+  Entrée créait un doublon même tapé lentement (mesuré sur le code d'avant) ; une lecture
+  en échec valait un registre vide, donc Entrée créait ; le choix partait vers la zone
+  sélectionnée entre-temps. Aucune unicité n'est posée côté serveur : la série distingue
+  des homonymes légitimes. Preuves : douze mutants, tous tombés, un par un ; les tests
+  jouent les deux champs, lecture en vol et avant la lecture
+- [x] **La même phrase sous les deux champs de profil d'un personnage** — attendu : tranché
+  par Hugo, avec son exemple. **Fermée par `2ab7911`** : « Respectez la syntaxe « dimension :
+  valeur ». Exemple : registre : familier », sous chacun des deux champs, reliée au sien
+  pour un lecteur d'écran. Mesuré à 320 px sous une préférence de 24 : trois lignes sur le
+  poste, quatre dans l'image, jamais rognée, l'exemple d'un seul tenant. L'audit
+  d'accessibilité voit désormais les deux blocs, sombre et clair — son décor n'avait ni
+  locuteur ni boîte personnage. Dix mutants, tous tombés
 - [ ] **Un locuteur hérité sur une région devenue case se voit, ou part avec le type** —
   attendu : tranché. Une bulle qui a un locuteur et devient case le garde : invisible à
   l'écran, il compte encore au registre, dans la Recherche et les exports. L'annulation peut
@@ -186,11 +222,42 @@ semaines » (Hugo, le même jour).
 - [ ] **Le contraste élevé est audité quelque part** — attendu : tranché. L'audit
   d'accessibilité du dépôt ne pose que le thème, clair ou sombre ; un mutant qui cache la
   phrase de « Situation » en contraste élevé passe toute la suite
-- [ ] **Le nom de la table du locuteur et la clé `nb_bulles` restent, ou changent** —
-  attendu : tranché par Hugo. La table s'appelle `bulle_locuteur` et la clé compte désormais
-  des prises de parole, cartouches compris. Proposition : laisser. Le nom de la table est une
-  DONNÉE du journal et des exports de provenance déjà produits ; la clé n'est lue par aucun
-  écran
+- [x] **Le nom de la table du locuteur et la clé `nb_bulles` restent, ou changent** —
+  attendu : tranché par Hugo. **Ils restent** (2026-10-13). La table s'appelle
+  `bulle_locuteur` et la clé compte désormais des prises de parole, cartouches compris. Le
+  nom de la table est une DONNÉE du journal et des exports de provenance déjà produits ; la
+  clé n'est lue par aucun écran
+
+### Laissé ouvert par le correctif des champs — 2026-10-13
+
+- [ ] **La région des messages existe avant son premier message, sur les cinq surfaces** —
+  attendu : le premier message d'une page est annoncé par un lecteur d'écran, mesuré avec
+  l'un d'eux. Aujourd'hui la région naît AVEC son premier message, et ce premier message
+  est désormais « Rien n'est ajouté… ». L'auteur du correctif l'avait posée d'avance dans le
+  gabarit de l'Atelier seul : non porté — rien n'est mesuré, et une surface sur cinq
+- [ ] **Pendant que la liste du registre se recharge, ↓ puis Entrée ne prend pas un nom de la
+  liste d'avant** — attendu : tranché. Entre une frappe et le retour de sa liste, ↓ puis
+  Entrée prend la proposition surlignée de la liste précédente : elle est à l'écran, le
+  geste est explicite. La fermer rend les flèches inertes le temps de la lecture
+- [ ] **Plusieurs personnages du même nom se départagent à l'écran** — attendu : tranché.
+  Quand plusieurs homonymes exacts existent déjà, Entrée prend le premier dans l'ordre du
+  registre — nom, puis série, celui sans série d'abord —, sans le dire (mesuré, inchangé).
+  Le guide le dit ; aucun test ne fige ce choix
+- [ ] **Les deux champs de personnage savent ce que l'autre vient de créer** — attendu : dit,
+  ou fermé. « Zed » créé par la boîte personnage, puis tapé vite dans le champ du locuteur,
+  se décide sur la liste de ce champ-là — périmée seulement si « Zed » y avait déjà été
+  cherché. Rapporté par l'auteur du correctif, non rejoué
+- [ ] **Après une validation, la première ↓ surligne une proposition** — attendu : une seule
+  flèche suffit. Antérieur, dans les champs à propositions : la première rouvre la liste
+  sans rien surligner, il en faut une seconde
+- [ ] **À 320 px sous une police de 24, le champ ne dépasse pas du tiroir dans l'image** —
+  attendu : aucun défilement en largeur du tiroir. Antérieur, mesuré dans l'image : le
+  champ « dimension : valeur » va jusqu'à 326,6 px et le tiroir défile ; sur le poste il
+  s'arrête à 318,6 px. Les phrases d'aide, elles, tiennent. À rapprocher d'`UX-7`
+- [ ] **La règle d'Entrée du champ « dimension : valeur » vit dans un module pur** —
+  attendu : tranché. Elle ne dépend plus de l'horloge : une table de vérité sous Node la
+  couvrirait en millisecondes, là où chaque variante coûte un test navigateur de cinq à dix
+  secondes. Recommandé par l'auteur du correctif, non fait : un script de plus au gabarit
 
 ### La maquette
 
