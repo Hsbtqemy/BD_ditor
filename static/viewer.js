@@ -1839,10 +1839,40 @@ function setupPersoInput(inputSel, sugSel, onPick) {
 
 /* --- Attributs FACETTÉS & ÉMERGENTS : widget réutilisable (cible 'personnage' ou
    'case'). Saisie « dimension : valeur » → find-or-create la dimension ET la valeur,
-   puis affecte. Le vocabulaire n'est pas figé : il émerge de la saisie. --- */
+   puis affecte. Le vocabulaire n'est pas figé : il émerge de la saisie.
+
+   ANN-6 — ENTRÉE AGIT SUR CE QUI EST TAPÉ. La liste se calculait 200 ms après la dernière
+   frappe, puis le temps d'une lecture, et Entrée la consultait telle qu'elle était : une
+   seule valeur au vocabulaire, « grotte » tapé vite, et c'est « lieu : falaise » qui
+   partait — depuis le champ vide aussi ; « lieu : phare » tapé vite ne partait pas du tout
+   (mesuré le 2026-10-12, sur les trois montages : sur un profil, l'erreur vaut pour tout
+   le corpus). Or la lecture rend TOUT le vocabulaire de la cible et c'est l'écran qui le
+   filtre : rien n'oblige la liste à attendre le réseau. Quatre règles tiennent le reste.
+
+   - Le vocabulaire lu est GARDÉ (`vocab`) et la liste se recalcule à chaque frappe, sur
+     place. Ce qui s'affiche vaut donc pour ce qui est tapé, et Entrée lit la même liste.
+     La lecture différée part toujours, aux mêmes moments : elle rafraîchit le
+     vocabulaire, elle ne décide plus de rien.
+   - Une lecture arrivée APRÈS une plus récente est écartée : la plus lente ne remet pas
+     un vocabulaire plus ancien sous une liste plus neuve.
+   - La forme complète « dimension : valeur » ne consulte PAS la liste. La valeur connue
+     est affectée ; sinon elle est créée — et « créée » veut dire trouvée-ou-créée, côté
+     serveur : tant qu'aucune lecture n'a abouti (`vocab` nul), c'est ce chemin qui prend
+     la valeur existante, au prix de deux requêtes de plus.
+   - Champ vide, Entrée n'affecte rien ; champ rempli et rien à faire, un message le dit.
+     Avant, « falaise » tapé seul restait dans le champ sans requête ni message.
+
+   Ce que cela NE ferme PAS : tant que la toute première lecture n'est pas revenue, un mot
+   sans deux-points ne peut désigner aucune proposition — Entrée répond par le message,
+   là où la même frappe, un instant plus tard, aurait pris l'unique résultat. Rien de faux
+   n'est posé ; la forme complète, elle, aboutit dès cet instant. --- */
+const RIEN_AJOUTE = "Rien n'est ajouté : écrivez « dimension : valeur », ou choisissez une proposition.";
+
 function makeAttributsWidget(ids, cible) {
   const sec = $(ids.section), cur = $(ids.current), input = $(ids.input), sug = $(ids.suggest);
   let target = null, timer = null, activeIdx = -1, items = [];
+  let vocab = null;               // le vocabulaire de la cible, tel que lu en dernier — nul tant qu'aucune lecture n'a abouti
+  let parties = 0, retenue = 0;   // rang de la dernière lecture partie, et de la dernière retenue
 
   async function refresh() {
     cur.innerHTML = "";
@@ -1862,34 +1892,59 @@ function makeAttributsWidget(ids, cible) {
     try { await apiSend("DELETE", `${target}/attributs/${vid}`); } catch (e) { return; }
     refresh();
   }
-  async function assign(vid) {
-    try { await apiSend("PUT", `${target}/attributs`, { valeur_id: vid }); refresh(); }
-    catch (e) { toast("Attribut : " + e.message, "error"); }
+  /* `vers` : la cible du GESTE. Créer la dimension puis la valeur prend deux écritures,
+     et `target` change dès qu'on sélectionne autre chose : l'affectation partait alors
+     vers cette autre cible — ou vers « null/attributs » si elle n'en a pas. */
+  async function assign(vid, vers = target) {
+    try {
+      await apiSend("PUT", `${vers}/attributs`, { valeur_id: vid });
+      if (vers === target) refresh();
+    } catch (e) { toast("Attribut : " + e.message, "error"); }
   }
   async function createAndAssign(dim, val) {
+    const vers = target;
     try {
       const d = await apiSend("POST", "/api/attributs/dimensions", { cible, nom: dim });
       const v = await apiSend("POST", `/api/attributs/dimensions/${d.id}/valeurs`, { valeur: val });
-      await assign(v.id);
+      await assign(v.id, vers);
     } catch (e) { toast("Attribut : " + e.message, "error"); }
   }
   function close() { sug.hidden = true; activeIdx = -1; }
-  async function fetchList() {
+  /* « dimension : valeur » → { dim, val } tels que tapés ; nul hors de la forme complète. */
+  function formeComplete(q) {
+    const i = q.indexOf(":");
+    if (i <= 0) return null;
+    const dim = q.slice(0, i).trim(), val = q.slice(i + 1).trim();
+    return dim && val ? { dim, val } : null;
+  }
+  /* La valeur du vocabulaire CONNU que cette forme désigne, sans égard à la casse. Elle se
+     cherche dans tout le vocabulaire, pas dans la liste : celle-ci est filtrée sur le
+     texte tapé, et « lieu:falaise », sans espaces, n'y retrouvait pas « lieu : falaise ». */
+  function connue(f) {
+    return (vocab || []).find((v) => v.dimension.toLowerCase() === f.dim.toLowerCase()
+                                  && v.valeur.toLowerCase() === f.val.toLowerCase());
+  }
+  /* La liste, pour la saisie telle qu'elle est MAINTENANT. Seul endroit où `items`
+     s'écrit : à chaque frappe, à chaque lecture retenue, et quand le script vide lui-même
+     le champ. Sans vocabulaire lu, aucune proposition. */
+  function calculer() {
     const q = input.value.trim();
-    let vals = [];
-    try { vals = await apiGet("/api/attributs/valeurs?cible=" + cible); } catch (e) { vals = []; }
-    items = vals
+    if (!vocab) { items = []; return; }
+    items = vocab
       .map((v) => ({ create: false, id: v.id, dim: v.dimension, val: v.valeur,
                      label: `${v.dimension} : ${v.valeur}` }))
       .filter((it) => !q || it.label.toLowerCase().includes(q.toLowerCase())).slice(0, 10);
-    const i = q.indexOf(":");   // « dimension : valeur » → proposition de création
-    if (i > 0) {
-      const dim = q.slice(0, i).trim(), val = q.slice(i + 1).trim();
-      if (dim && val && !vals.some((v) => v.dimension.toLowerCase() === dim.toLowerCase()
-                                       && v.valeur.toLowerCase() === val.toLowerCase()))
-        items.push({ create: true, dim, val, label: `➕ ${dim} : ${val}` });
-    }
-    render();
+    const f = formeComplete(q);   // « dimension : valeur » inconnue → proposition de création
+    if (f && !connue(f)) items.push({ create: true, dim: f.dim, val: f.val, label: `➕ ${f.dim} : ${f.val}` });
+  }
+  async function fetchList() {
+    const rang = ++parties;
+    let vals = [];
+    try { vals = await apiGet("/api/attributs/valeurs?cible=" + cible); } catch (e) { vals = []; }
+    if (rang < retenue) return;   // une lecture partie APRÈS celle-ci a déjà répondu : elle fait foi
+    retenue = rang;
+    vocab = vals;
+    calculer(); render();
   }
   function render() {
     sug.innerHTML = "";
@@ -1904,12 +1959,19 @@ function makeAttributsWidget(ids, cible) {
     });
     sug.hidden = false;
   }
+  /* Le script vide le champ lui-même — après un choix, en changeant de cible. Aucun
+     évènement `input` ne le dit : la liste se recalcule ici, sans quoi ↓ rouvrirait
+     celle de la saisie précédente, parfois sous un autre personnage. */
+  function vider() { input.value = ""; calculer(); close(); }
   async function choose(it) {
-    input.value = ""; close();
+    vider();
     if (it.create) await createAndAssign(it.dim, it.val);
     else await assign(it.id);
   }
-  input.addEventListener("input", () => { activeIdx = -1; clearTimeout(timer); timer = setTimeout(fetchList, 200); });
+  input.addEventListener("input", () => {
+    activeIdx = -1; calculer(); render();                  // la liste suit la frappe, sans attendre
+    clearTimeout(timer); timer = setTimeout(fetchList, 200);
+  });
   input.addEventListener("focus", fetchList);
   input.addEventListener("blur", () => setTimeout(close, 150));
   input.addEventListener("keydown", (e) => {
@@ -1919,13 +1981,15 @@ function makeAttributsWidget(ids, cible) {
     else if (e.key === "Enter") {
       e.preventDefault();
       if (activeIdx >= 0 && items[activeIdx]) { choose(items[activeIdx]); return; }
-      const q = input.value.trim(), i = q.indexOf(":");   // sans sélection : « dim : val »
-      if (i > 0) {
-        const dim = q.slice(0, i).trim().toLowerCase(), val = q.slice(i + 1).trim().toLowerCase();
-        const exact = items.find((it) => !it.create && it.dim.toLowerCase() === dim && it.val.toLowerCase() === val);
-        const create = items.find((it) => it.create);
-        if (exact) choose(exact); else if (create) choose(create);
-      } else if (items.length === 1) choose(items[0]);
+      const q = input.value.trim();                        // sans sélection : ce qui est tapé
+      if (!q) return;                                      // champ vide : Entrée n'affecte rien
+      const f = formeComplete(q);
+      if (f) {                                             // « dim : val » aboutit sans la liste
+        const v = connue(f);
+        vider();
+        if (v) assign(v.id); else createAndAssign(f.dim, f.val);
+      } else if (q.indexOf(":") <= 0 && items.length === 1) choose(items[0]);
+      else toast(RIEN_AJOUTE, "");                         // rien à faire : le dire
     } else if (e.key === "Escape") { close(); }
   });
 
@@ -1933,7 +1997,7 @@ function makeAttributsWidget(ids, cible) {
     load(path) {
       target = path;
       if (!path) { sec.hidden = true; return; }
-      sec.hidden = false; input.value = ""; close(); refresh();
+      sec.hidden = false; vider(); refresh();
     },
   };
 }
