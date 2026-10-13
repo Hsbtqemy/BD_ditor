@@ -36,6 +36,11 @@ rien d'autre : la saisie ne change pas. Elle se mesure donc comme une phrase —
 - **logée** : dans le tiroir à 320 px sous une police de 24, entre ses marges, repliée et
   non rognée. La passe de l'image rend une autre police que le poste (DejaVu Sans contre
   Segoe UI), et c'est là qu'une phrase qui « tenait » ne tient plus.
+
+**Le profil.** Les deux champs de profil d'un personnage — atteint par le locuteur d'une
+zone, ou par une boîte personnage — attendent la même syntaxe, et s'y tromper coûte plus
+cher : un profil vaut pour tout le corpus. Ils portent la même phrase, avec leur exemple,
+et elle se mesure de la même façon, sur chacun des deux : ce sont deux blocs du gabarit.
 """
 import json
 import re
@@ -399,12 +404,12 @@ def test_hors_du_mode_annotation_changer_le_type_ne_lit_aucun_bloc(page, atelier
 # Ce que la sonde de reflow ne dit pas : elle demande si un élément SORT de la fenêtre.
 # La phrase doit tenir dans SON tiroir — entre les marges du panneau —, et ne pas être
 # rognée par sa propre boîte.
-_OU_EST_LA_PHRASE = """() => {
-  const aide = document.querySelector('#sit-aide');
+_OU_EST_LA_PHRASE = """([selecteurAide, selecteurChamp]) => {
+  const aide = document.querySelector(selecteurAide);
   const panneau = document.querySelector('#panel');
   const st = getComputedStyle(panneau);
   const a = aide.getBoundingClientRect(), p = panneau.getBoundingClientRect();
-  const champ = document.querySelector('#sit-input').getBoundingClientRect();
+  const champ = document.querySelector(selecteurChamp).getBoundingClientRect();
   return {
     fenetre: document.documentElement.clientWidth,
     racine: getComputedStyle(document.documentElement).fontSize,
@@ -443,7 +448,7 @@ def test_la_phrase_de_situation_se_lit_sous_le_champ_d_une_case(page, atelier):
     expect(aide.locator(".attr-exemple")).to_have_text(re.compile(r"^\S+\s:\s\S+$"))
     # Reliée au champ : c'est ce qu'un lecteur d'écran annonce après son nom.
     expect(champ).to_have_accessible_description(re.compile(r"dimension\s:\svaleur"))
-    m = page.evaluate(_OU_EST_LA_PHRASE)
+    m = page.evaluate(_OU_EST_LA_PHRASE, ["#sit-aide", "#sit-input"])
     assert m["haut"] >= m["basDuChamp"] - 1, f"la phrase n'est pas SOUS le champ : {m}"
 
 
@@ -510,7 +515,7 @@ def test_la_phrase_tient_dans_le_tiroir_a_320_px_sous_une_police_de_24(page, ate
     expect(aide).to_be_in_viewport(ratio=1)             # entière à l'écran, pas seulement posée
     page.wait_for_timeout(400)                          # la glissière du tiroir a fini
 
-    m = page.evaluate(_OU_EST_LA_PHRASE)
+    m = page.evaluate(_OU_EST_LA_PHRASE, ["#sit-aide", "#sit-input"])
     assert m["fenetre"] == 320 and m["racine"] == "19.5px", (
         f"fenêtre de {m['fenetre']} px, racine à {m['racine']} : la préférence de police "
         "n'a pas été appliquée, et ce qui suit ne mesurerait pas le cas annoncé")
@@ -521,3 +526,145 @@ def test_la_phrase_tient_dans_le_tiroir_a_320_px_sous_une_police_de_24(page, ate
     assert not m["rognee"], f"la phrase est rognée par sa propre boîte : {m}"
     # Elle s'est REPLIÉE : sur une seule ligne, c'est qu'elle n'a pas été mesurée à l'étroit.
     assert m["lignes"] >= 2, f"la phrase tient en {m['lignes']} ligne à 320 px sous police 24 ?"
+
+
+# --------------------------------------------------------------------------- #
+# Le profil d'un personnage : la même phrase, sous ses deux champs
+# --------------------------------------------------------------------------- #
+# Deux blocs du gabarit pour un même profil : `#perso-attr-*` s'offre sous le locuteur
+# d'une zone de texte, `#perso-profil-*` sous l'identité d'une boîte personnage. Chacun a
+# SA phrase, sous un identifiant à lui — un identifiant partagé ne décrirait qu'un des
+# deux champs, et l'autre resterait muet pour un lecteur d'écran.
+PROFILS = {
+    "par-le-locuteur": {"zone": "bulle", "lien": "locuteur", "bloc": "#loc-section",
+                        "aide": "#perso-attr-aide", "champ": "#perso-attr-input",
+                        "liste": "#perso-attr-suggest", "courant": "#perso-attr-current"},
+    "par-la-boite": {"zone": "personnage", "lien": "personnage", "bloc": "#perso-section",
+                     "aide": "#perso-profil-aide", "champ": "#perso-profil-input",
+                     "liste": "#perso-profil-suggest", "courant": "#perso-profil-current"},
+}
+
+
+def _identifier(decor, p):
+    """Tintin parle dans la bulle, ou est montré dans la boîte : le champ de profil ne
+    s'offre qu'à un personnage désigné."""
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30,
+                      headers=ECRITURE) as c:
+        rep = c.put(f"/api/regions/{decor[p['zone']]}/{p['lien']}",
+                    json={"personnage_id": decor["tintin"]})
+    assert rep.status_code == 200, rep.text
+
+
+def _profil(decor):
+    with httpx.Client(base_url=decor["base"], trust_env=False, timeout=30) as c:
+        return [(a["dimension"], a["valeur"])
+                for a in c.get(f"/api/personnages/{decor['tintin']}/attributs").json()]
+
+
+@pytest.mark.parametrize("profil", list(PROFILS))
+def test_la_phrase_de_profil_se_lit_sous_le_champ(page, atelier, profil):
+    """Sous chacun des deux champs de profil, la phrase est VISIBLE, et un lecteur d'écran
+    la reçoit comme la description de CE champ. Visibilité avant texte, comme pour
+    « Situation » : le bloc naît caché."""
+    p = PROFILS[profil]
+    _identifier(atelier, p)
+    _ouvrir(page, atelier, p["zone"])
+    champ, aide = page.locator(p["champ"]), page.locator(p["aide"])
+    expect(champ).to_be_visible(timeout=15000)
+    expect(aide).to_be_visible()
+    expect(aide).to_contain_text(re.compile(r"dimension\s:\svaleur"))
+    expect(aide.locator(".attr-exemple")).to_be_visible()
+    expect(aide.locator(".attr-exemple")).to_have_text(re.compile(r"^\S+\s:\s\S+$"))
+    expect(champ).to_have_accessible_description(re.compile(r"dimension\s:\svaleur"))
+    # L'exemple est celui d'un PROFIL : la description du champ ne cite pas un lieu.
+    expect(champ).not_to_have_accessible_description(re.compile("falaise"))
+    m = page.evaluate(_OU_EST_LA_PHRASE, [p["aide"], p["champ"]])
+    assert m["haut"] >= m["basDuChamp"] - 1, f"la phrase n'est pas SOUS le champ : {m}"
+    # L'autre bloc de profil n'est pas à l'écran : sa phrase non plus.
+    autre = next(q for nom, q in PROFILS.items() if nom != profil)
+    expect(page.locator(autre["aide"])).to_be_hidden()
+
+
+@pytest.mark.parametrize("profil", list(PROFILS))
+def test_la_phrase_de_profil_ne_se_montre_qu_avec_son_champ(page, atelier, profil):
+    """Sans personnage désigné, pas de champ de profil — et pas de phrase. Le témoin de
+    chargement passe d'abord : le bloc qui porterait le profil est là, et il dit qu'il n'y
+    a personne."""
+    p = PROFILS[profil]
+    _ouvrir(page, atelier, p["zone"])
+    expect(page.locator(p["bloc"])).to_be_visible(timeout=15000)
+    expect(page.locator(p["bloc"])).to_contain_text(
+        "Aucun locuteur" if p["lien"] == "locuteur" else "Non identifié", timeout=15000)
+    expect(page.locator(p["champ"])).to_be_hidden()
+    expect(page.locator(p["aide"])).to_be_hidden()
+
+
+@pytest.mark.parametrize("profil", list(PROFILS))
+def test_l_exemple_de_la_phrase_de_profil_tape_tel_quel_s_enregistre(page, atelier, profil):
+    """L'exemple de la phrase, lu à l'écran et tapé comme on le lit, s'enregistre au
+    profil du personnage : créer l'axe (de cible « personnage »), créer la valeur, la poser."""
+    p = PROFILS[profil]
+    chemin = f"/api/personnages/{atelier['tintin']}/attributs"
+    _identifier(atelier, p)
+    _ouvrir(page, atelier, p["zone"])
+    champ = page.locator(p["champ"])
+    expect(page.locator(p["aide"])).to_be_visible(timeout=15000)
+    exemple = " ".join(page.locator(f"{p['aide']} .attr-exemple").inner_text().split())
+    dimension, _, valeur = (morceau.strip() for morceau in exemple.partition(":"))
+    assert dimension and valeur, f"l'exemple « {exemple} » ne suit pas la syntaxe qu'il illustre"
+
+    champ.click()
+    champ.press_sequentially(exemple, delay=20)
+    expect(page.locator(f"{p['liste']} div", has_text=valeur)).to_be_visible(timeout=15000)
+    with page.expect_request(_est("POST", "/api/attributs/dimensions")) as axe, \
+            page.expect_request(_est("PUT", chemin)), \
+            page.expect_response(_est("PUT", chemin)) as reponse:
+        champ.press("Enter")
+    assert reponse.value.status == 200, reponse.value.text()
+    assert axe.value.post_data_json == {"cible": "personnage", "nom": dimension}
+    puce = page.locator(f"{p['courant']} .tag-chip")
+    expect(puce).to_be_visible(timeout=15000)
+    expect(puce).to_contain_text(valeur)
+    assert _profil(atelier) == [(dimension, valeur)]
+    expect(page.locator(p["aide"])).to_be_visible()
+
+
+@pytest.mark.parametrize("profil", list(PROFILS))
+def test_la_phrase_de_profil_tient_dans_le_tiroir_a_320_px_sous_une_police_de_24(
+        page, atelier, profil):
+    """Le même cas étroit que pour « Situation », sur chacune des deux phrases : elles ne
+    sont pas dans le même bloc, et celle du locuteur est un cran plus bas dans le tiroir."""
+    p = PROFILS[profil]
+    _identifier(atelier, p)
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Page.setFontSizes", {"fontSizes": {"standard": 24, "fixed": 24}})
+    page.set_viewport_size({"width": 320, "height": 900})
+    _ouvrir(page, atelier, p["zone"])
+    bascule = page.locator("#btn-tiroir-panneau")
+    expect(bascule).to_be_visible(timeout=15000)
+    if bascule.get_attribute("aria-expanded") != "true":
+        bascule.click()
+    expect(bascule).to_have_attribute("aria-expanded", "true")
+    aide = page.locator(p["aide"])
+    aide.scroll_into_view_if_needed()
+    expect(aide).to_be_visible()
+    expect(aide).to_be_in_viewport(ratio=1)
+    page.wait_for_timeout(400)                          # la glissière du tiroir a fini
+
+    m = page.evaluate(_OU_EST_LA_PHRASE, [p["aide"], p["champ"]])
+    assert m["fenetre"] == 320 and m["racine"] == "19.5px", (
+        f"fenêtre de {m['fenetre']} px, racine à {m['racine']} : la préférence de police "
+        "n'a pas été appliquée, et ce qui suit ne mesurerait pas le cas annoncé")
+    assert m["gauche"] >= m["interieurGauche"] - 1 and m["droite"] <= m["interieurDroit"] + 1, (
+        f"la phrase sort des marges du tiroir : elle va de {m['gauche']:.1f} à "
+        f"{m['droite']:.1f} px, le tiroir offre {m['interieurGauche']:.1f} à "
+        f"{m['interieurDroit']:.1f}")
+    assert not m["rognee"], f"la phrase est rognée par sa propre boîte : {m}"
+    assert m["lignes"] >= 2, f"la phrase tient en {m['lignes']} ligne à 320 px sous police 24 ?"
+    # L'exemple ne se coupe pas : il tient sur UNE ligne, entre les mêmes marges.
+    e = page.evaluate("""(s) => { const b = document.querySelector(s).getBoundingClientRect();
+        return { gauche: b.left, droite: b.right, hauteur: b.height,
+                 ligne: parseFloat(getComputedStyle(document.querySelector(s)).lineHeight) }; }""",
+                      f"{p['aide']} .attr-exemple")
+    assert e["gauche"] >= m["interieurGauche"] - 1 and e["droite"] <= m["interieurDroit"] + 1, e
+    assert e["hauteur"] < 1.5 * e["ligne"], f"l'exemple « registre : familier » s'est coupé : {e}"

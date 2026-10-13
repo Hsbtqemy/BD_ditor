@@ -165,6 +165,39 @@ def test_a11y_visionneuse_situation(page, seeded, theme):
     assert not viol, f"Visionneuse/situation [{theme}] :\n{_fmt(viol)}"
 
 
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_visionneuse_profil(page, seeded, theme):
+    """ANN-6 — les deux champs de PROFIL d'un personnage et leur phrase d'aide.
+
+    Même angle mort que pour « Situation », un cran plus loin : la bulle du décor n'a pas
+    de locuteur, donc le bloc de profil reste caché pendant l'audit des modes ; et aucune
+    boîte personnage n'y est. Les deux phrases — du petit texte, chacune reliée à SON
+    champ par `aria-describedby` — n'étaient donc devant aucun audit. On désigne le
+    personnage des deux côtés, et on attend chaque phrase VISIBLE avant d'auditer.
+    """
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
+                     headers=ECRITURE)
+    try:
+        perso = c.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
+        boite = c.post(f"/api/planches/{seeded['planche']}/regions",
+                       json={"type": "personnage", "x": 150, "y": 150, "w": 200,
+                             "h": 200}).json()["id"]
+        for lien in (f"/api/regions/{seeded['region']}/locuteur",
+                     f"/api/regions/{boite}/personnage"):
+            assert c.put(lien, json={"personnage_id": perso}).status_code == 200
+    finally:
+        c.close()
+    _theme(page, theme)
+    for region, aide in ((seeded["region"], "#perso-attr-aide"), (boite, "#perso-profil-aide")):
+        page.goto(seeded["base"] + SURFACES_AUDITEES["/"]({**seeded, "region": region}),
+                  wait_until="networkidle")
+        page.wait_for_timeout(700)
+        page.click('.mode-btn[data-mode="annotation"]')
+        page.wait_for_selector(aide, state="visible", timeout=5000)
+        viol = _audit(page)
+        assert not viol, f"Visionneuse/profil {aide} [{theme}] :\n{_fmt(viol)}"
+
+
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # AUTH-1 : proxy déclaré
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_a11y_pastille_utilisateur(page, seeded, theme):

@@ -219,9 +219,14 @@
               <div id="perso-attr-current" class="loc-current"></div>
               <div class="tag-input-wrap">
                 <input type="text" id="perso-attr-input" placeholder="dimension : valeur…"
-                       autocomplete="off" aria-label="Ajouter un attribut de profil au personnage">
+                       autocomplete="off" aria-label="Ajouter un attribut de profil au personnage"
+                       aria-describedby="perso-attr-aide">
                 <div id="perso-attr-suggest" class="tag-suggest" hidden></div>
               </div>
+              <!-- ANN-6 — la même phrase que sous « Situation » (cf. `#sit-aide`, plus bas) :
+                   ce champ attend la même syntaxe, et son erreur coûte plus cher — le
+                   profil d'un personnage vaut pour tout le corpus. -->
+              <p id="perso-attr-aide" class="attr-aide muted">Respectez la syntaxe «&nbsp;dimension&nbsp;: valeur&nbsp;». Exemple&nbsp;: <span class="attr-exemple">registre&nbsp;: familier</span></p>
             </div>
             <!-- Alignement d'autorité (A5) — relie l'entité à un référentiel externe (skos:exactMatch) -->
             <div id="loc-align-section" hidden>
@@ -248,9 +253,13 @@
               <div id="perso-profil-current" class="loc-current"></div>
               <div class="tag-input-wrap">
                 <input type="text" id="perso-profil-input" placeholder="dimension : valeur…"
-                       autocomplete="off" aria-label="Ajouter un attribut de profil au personnage">
+                       autocomplete="off" aria-label="Ajouter un attribut de profil au personnage"
+                       aria-describedby="perso-profil-aide">
                 <div id="perso-profil-suggest" class="tag-suggest" hidden></div>
               </div>
+              <!-- ANN-6 — le même champ, atteint par la boîte personnage : la même phrase,
+                   sous un identifiant à elle (deux blocs peuvent être dans le document). -->
+              <p id="perso-profil-aide" class="attr-aide muted">Respectez la syntaxe «&nbsp;dimension&nbsp;: valeur&nbsp;». Exemple&nbsp;: <span class="attr-exemple">registre&nbsp;: familier</span></p>
             </div>
             <!-- Alignement d'autorité (A5) — même entité corpus, atteignable depuis la boîte -->
             <div id="perso-align-section" hidden>
