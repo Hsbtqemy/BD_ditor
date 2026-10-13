@@ -172,13 +172,20 @@ type :
 - le **locuteur** d'une zone de texte — bulle, cartouche ou texte : quelle entité
   personnage y parle. Celui d'un cartouche se choisit dans le registre des personnages,
   comme celui d'une bulle. On peut y créer une entrée pour un narrateur ; la façon de
-  le nommer n'est pas encore arrêtée ;
-- la **présence** dans une boîte personnage — quelle entité y est montrée ;
+  le nommer n'est pas encore arrêtée. Tapez le nom puis Entrée : s'il est déjà au
+  registre, c'est ce personnage qui est pris, même tapé vite ; il n'est créé que si aucun
+  ne porte exactement ce nom. Quand plusieurs le portent — un par série —, Entrée prend
+  le premier de la liste : choisissez le vôtre dans les propositions ;
+- la **présence** dans une boîte personnage — quelle entité y est montrée, choisie de la
+  même façon ;
 - le **profil** du personnage (dimensions de cible `personnage`) ;
 - la **situation** d'une case (dimensions de cible `case`). Le champ attend la forme
   « dimension : valeur », deux-points compris — `lieu : falaise` —, et la phrase sous le
-  champ le rappelle : un mot tapé seul, « falaise », ne crée ni axe ni valeur. Le profil
-  d'un personnage se saisit sous la même forme ;
+  champ le rappelle. Sous cette forme, Entrée suffit, sans attendre les propositions : la
+  valeur est reprise si elle existe, créée sinon. Un mot tapé seul, « falaise », ne crée
+  ni axe ni valeur : Entrée ne le prend que s'il désigne UNE seule proposition de la
+  liste, et répond sinon par un message. Le profil d'un personnage se saisit sous la même
+  forme — `registre : familier` —, avec la même phrase sous son champ ;
 - les **tags** — vocabulaire libre, cumulatif, avec autocomplétion ;
 - une **note** en texte libre.
 
