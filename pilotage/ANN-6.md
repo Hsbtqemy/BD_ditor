@@ -278,7 +278,7 @@ semaines » (Hugo, le même jour).
   de produire une page ; une planche du corpus aurait mieux servi qu'un dessin. La suite se
   fait dans une SESSION DÉDIÉE, qui commence par une série de questions pour calibrer
   l'outil d'annotation, avant toute maquette. L'essai et ses notes sont gardés hors du
-  dépôt, dans `C:	emp\maquette-ann6` (la grille y est, le dépôt étant public)
+  dépôt, dans `C:\temp\maquette-ann6` (la grille y est, le dépôt étant public)
 
 ### Le modèle — à cadrer avant tout code
 
