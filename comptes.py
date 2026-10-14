@@ -66,10 +66,12 @@ def traces(conn) -> tuple[dict, dict, dict]:
         # son propre compte. Les compter ferait passer un mariage pour du travail laissé.
         # `utilisateur_nature` aussi (AUTH-6), pour une autre raison : déclarer la nature
         # d'un tiers est bien un acte, mais il n'orpheline aucune annotation, et le verdict
-        # répond à « qu'est-ce qu'une suppression orphelinerait ? ».
+        # répond à « qu'est-ce qu'une suppression orphelinerait ? ». La trace d'un Ctrl+Z
+        # PASSÉ (`annulation`, AUTH-14) non plus : elle n'a rien produit, et un geste refusé
+        # ne doit pas faire passer un compte pour un compte qui a travaillé.
         "SELECT agent, COUNT(*) AS n FROM evenement "
         "WHERE agent_type = 'humain' AND agent IS NOT NULL "
-        "  AND cible_table NOT IN ('utilisateur', 'utilisateur_nature') "
+        "  AND cible_table NOT IN ('utilisateur', 'utilisateur_nature', 'annulation') "
         "GROUP BY agent")}
     acces = {r["principal"]: r["n"] for r in conn.execute(
         "SELECT principal, COUNT(*) AS n FROM collection_acces "

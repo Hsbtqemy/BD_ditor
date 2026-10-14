@@ -743,3 +743,27 @@ def test_une_region_emportee_par_la_suppression_de_son_parent_n_est_plus_la_meme
 
     _passe(client.post("/api/undo", headers=COLLEGUE), "modification d'une région")
     assert _texte(db_path, b) == "AUTRE OBJET"
+
+
+# --------------------------------------------------------------------------- #
+# Relecture croisée — la trace n'est pas du travail (S6)
+# --------------------------------------------------------------------------- #
+def test_la_trace_ne_compte_pas_comme_un_acte_laisse(client, db_path, decor):
+    """« Comptes et groupes » compte les actes d'un login pour dire ce qu'une suppression
+    du compte orphelinerait. Un Ctrl+Z passé n'a rien produit."""
+    import comptes
+
+    def actes():
+        c = sqlite3.connect(db_path)
+        c.row_factory = sqlite3.Row
+        try:
+            return comptes.traces(c)[0].get("collegue")
+        finally:
+            c.close()
+
+    _region(client, decor["pe"], COLLEGUE)
+    _ok(client.delete(f"/api/albums/{decor['e']}", headers=IMPORTEUSE), 204)
+    avant = actes()
+    _passe(client.post("/api/undo", headers=COLLEGUE), "création d'une région")
+    assert _marques(db_path, "collegue"), "le semis : aucune trace posée"
+    assert actes() == avant == 1
