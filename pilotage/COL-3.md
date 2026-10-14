@@ -7,9 +7,10 @@ statut: interrompu
 
 **Arrêté sur** — 2026-10-11, `9e1f768` : **le formulaire « Nouveau projet » tient à 320 px quelle
 que soit la police, et le test du responsable attend la liste redessinée** — deux des neuf
-échecs de la passe navigateur jouée dans l'image. Le premier commit de la tranche 2 est écrit
-et relu, sur une COPIE : il n'est pas sur `dev`, et n'y viendra qu'après la fusion de la
-tranche 1 (cf. « Tranche 2 — relevé par son premier commit »).
+échecs de la passe navigateur jouée dans l'image. La tranche 2 avance sur une COPIE, hors de
+`dev` : son premier commit est écrit et relu (2026-10-11) ; son deuxième, le serveur, est
+écrit, relu et corrigé (2026-10-14) ; son troisième, l'écran, est en cours. Rien n'en viendra
+sur `dev` avant la fusion de la tranche 1 (cf. « Tranche 2 — relevé par son deuxième commit »).
 
 **Plus tôt le 2026-10-11** — arrêté sur `79da8c4` : la tranche 1 est codée, et trois retouches de ses écrans aussi
 (`79da8c4`, décrites dans les cases qu'elles ferment). Ses trois commits de code sont sur
@@ -142,6 +143,58 @@ rien y changer, « le premier projet », où tout est partagé.
 - [ ] **L'Atelier crée ses albums dans la collection de repli : dès la v30, leur origine écrite est celle du projet de repli** — attendu : tranché AVANT le déploiement de la v30, et non en route. C'est le point « L'Atelier crée ses albums dans la collection de repli » de la zone du dessus, que le premier commit rend pressant : l'origine d'un document s'écrit une fois, à sa naissance, et renverser la décision plus tard ne corrige pas les origines déjà écrites
 - [ ] **Un import depuis ShareDocs dont l'écriture au journal échoue laisse ses images sur le disque** — attendu : dit, ou fermé. Provoqué artificiellement par la relecture : la route répond 500, la transaction est défaite, et les fichiers de l'album restent dans `corpus/` et `derivatives/` sans album. Aucun déclencheur réaliste trouvé, la transaction tenant déjà le verrou d'écriture à cet instant ; l'auteur suppose, sans l'avoir mesuré, qu'un `commit` qui lève au même endroit laisse le même état depuis toujours
 - [ ] **Le projet d'ORIGINE d'un document ne garde pas son nom** — attendu : posé par la migration de la tranche 3, avant le premier projet supprimé sous un document vivant. Une demande garde le nom de son projet ; l'origine d'un document, non, par décision écrite sur la colonne : dans la tranche 2 un document n'a qu'une copie, elle porte ce même projet, et un projet que des copies désignent ne se supprime pas — le document part donc avant lui. C'est un raisonnement, pas un test
+
+### Tranche 2 — relevé par son deuxième commit et sa relecture croisée, sur copie (2026-10-14)
+
+- [ ] **Qui lit le nom de qui demande une suppression** — attendu : tranché par Hugo. La
+  proposition « en route » disait « lu par tous ceux qui lisent la collection » ; le code le
+  rend à quiconque lit l'ALBUM, par n'importe laquelle de ses collections. Mesuré par la
+  relecture : une personne qui n'écrit que dans l'Incubateur, et y demande la suppression d'un
+  album partagé, est nommée aux lectrices du corpus principal — plus qu'« une autre collection,
+  jamais laquelle », seule révélation qu'`AUTH-10` acceptait. Proposition : tout lecteur voit
+  qu'une suppression est demandée ; seuls un administrateur et la personne elle-même voient
+  qui l'a demandée
+- [ ] **Un compte partagé ne supprime jamais définitivement seul** — attendu : tranché par Hugo.
+  Suivi « en route » dans le code, et c'est une doctrine écrite qui bouge : « la nature d'un
+  compte ne borde aucun droit, `autorisation.py` n'en sait rien ». Elle borde désormais un
+  GESTE, et toujours aucun accès : « celui qui l'a importé » ne désigne personne derrière un
+  compte partagé. Proposition : oui
+- [ ] **Qualifier une case compte comme « laisser des actes » au départ d'un compte** — attendu :
+  tranché par Hugo. La pose d'un attribut de case s'écrit désormais au journal, pour que la
+  règle de suppression la voie ; elle compte donc aussi dans « Comptes et groupes », et un
+  compte qui n'a fait que qualifier des cases passe de « rien à orpheliner » à « laisse des
+  actes ». Proposition : oui, c'est du travail
+- [ ] **Les identifiants des régions et des planches ne se réutilisent plus, dès la v30** —
+  attendu : tranché par Hugo. Sans `AUTOINCREMENT`, la région créée après la suppression de la
+  dernière reprend son identifiant, n'importe où : la règle de suppression, qui lit le journal
+  par identifiant, refusait alors à tort (un acte d'un ancien album attribué à une région
+  neuve), et Ctrl+Z traversait le cloisonnement (corrigé à part, sans attendre la v30).
+  Mesuré sur un prototype non commité : environ soixante lignes de migration, 0,30 s sur
+  80 000 régions, la suite entière verte sans un test modifié ; le compteur s'amorce sur le
+  plus grand identifiant que le journal ait jamais nommé, sans quoi les identifiants détruits
+  avant la migration seraient rendus une dernière fois. L'autre voie — ne compter que les
+  actes postérieurs à la création de la région — coûte à chaque affichage, garde un trou et ne
+  règle pas Ctrl+Z. Proposition : la v30, tant qu'elle n'est pas déployée
+- [ ] **Quatre choix de l'auteur sont vus par Hugo** — attendu : vus. Une demande en attente
+  vient en tête d'« À regarder » ; les réponses se nomment « acceptée » et « refusée » quel que
+  soit le genre de demande ; la liste des projets ne nomme pas qui a demandé ; « Importer au
+  fonds » est une option de la création d'album, pas une route à part
+- [ ] **Une copie sortie de sa dernière collection se reprend, ou se signale** — attendu : dit,
+  ou fermé. Conforme aux décisions : tout membre en écriture l'envoie au fonds, même s'il ne
+  l'a pas importée. Mais le propriétaire de la collection ne peut pas la reprendre (404), le
+  geste ne s'annule pas, et rien ne remonte dans « À regarder » ; seul un administrateur la
+  rend
+- [ ] **La liste des albums reste rapide avec un gros journal** — attendu : mesuré. La règle
+  de suppression directe descend dans le journal, région par région, pour chaque album de
+  `GET /api/albums` ; aucune mesure n'a été faite sur un corpus réel
+- [ ] **`CLAUDE.md` dit ce que la tranche renverse** — attendu : réécrit au commit de
+  documentation, chaque phrase avec sa date de renversement. Relevé par la relecture : sortir
+  un album de sa dernière collection n'est plus refusé ; un album peut exister hors
+  collection (au fonds) ; un album d'une seule collection ne se détruit plus par quiconque y
+  écrit ; la phrase du refus de destruction a changé ; `destructible` change de sens et trois
+  clés s'ajoutent ; « quatorze questions » devient seize ; le projet a un quatrième 409 et
+  `routes/` un dixième module ; la nature d'un compte borde un geste ; et le journal A3, couche
+  de provenance, devient une entrée d'autorisation
 
 ### Le projet
 
@@ -500,6 +553,46 @@ album. Suite par défaut entière sur la copie : 1 643 passés.
 lecture de la base de production. Le second commit n'a pas été relu par une autre session
 que la session de pilotage. `CLAUDE.md` et la documentation d'usage ne disent rien de tout
 cela : ils suivront le portage.
+
+### Le deuxième commit de la tranche 2, écrit, relu et corrigé sur une copie — 2026-10-14
+
+Sur la copie `fonds-c2` du scratchpad de la session de pilotage, partie de `5311ccc` : les
+deux commits du premier y sont repris (un seul conflit, dans le test des colonnes classées,
+où `AUTH-11` avait ajouté son contrôle ; les deux intentions sont gardées), puis le deuxième,
+et quatre correctifs. NON portés, pour la même raison que le premier ; ils ne se citent donc
+pas ici par leur identifiant.
+
+**Ce qu'il fait.** Supprimer a deux réponses. Supprimer définitivement sans rien demander
+suppose quatre conditions : écrire dans toutes les collections de l'album (la règle
+d'`AUTH-10`), l'avoir importé, ne pas être un compte partagé, et que personne d'autre n'y ait
+travaillé — lu dans le journal, sur ce qui vit encore : actes sur les régions, corrections
+de grammaire, validations, scans ajoutés ou retirés, attributs de case, notice, paternité,
+relecture forcée ; une passe automatique ne compte pas, un travail d'auteur inconnu compte
+comme celui d'un autre. Sinon, une demande, que l'administrateur accepte ou garde. Les albums
+d'avant la v30, d'importateur inconnu, se demandent tous. Une planche suit la règle du
+document. Sortir un album de sa dernière collection aboutit : la copie part au fonds avec son
+projet. Quatre routes neuves (le fonds, les demandes, en déposer, y répondre), réservées à la
+portée totale sauf le dépôt d'une demande. La garde, la destruction et la réponse se font
+sous le même verrou d'écriture.
+
+**Ce que la relecture croisée a trouvé** — verdict « à corriger avant de porter », les gardes
+posées tenant (32 de ses 33 mutants tombés). Un attribut de case posé par un autre ne comptait
+pas comme travail : l'importateur détruisait sans demander, seul chemin sans administrateur
+trouvé. La garde se lisait hors transaction : un travail validé entre elle et la destruction
+partait avec l'album. `partage` se publiait à toute lectrice. Un test manquait sur le nom du
+projet d'une demande. Tout cela est corrigé, chaque correctif tenu par un mutant tombé. Restent
+ouverts, dans la zone du `Reste` : le nom du demandeur lu à travers les collections, la
+réutilisation des identifiants, la copie au fonds que son propriétaire ne reprend pas. Elle a
+trouvé aussi un défaut ANTÉRIEUR, présent en production et rejoué sur `5311ccc` : Ctrl+Z, sur
+une région dont l'identifiant a été repris par une autre, efface un locuteur dans une
+collection qu'on ne lit pas, ou rend dans son refus le texte de cette région et le login de
+son auteur — sans qu'aucune destruction d'album soit nécessaire. Il est corrigé à part, dans
+le lot en cours.
+
+**Preuves.** Suite par défaut sur la copie : 1 759 passés. Mutants de l'auteur : 58 sur le
+commit (56 tombés, 2 équivalents, expliqués), 18 sur ses correctifs (17 tombés, 1 équivalent).
+Deux tests navigateur tombent, comme le cadrage l'annonçait : l'écran d'avant ment avec ce
+seul commit, et c'est pourquoi il ne partira pas sans le troisième.
 
 ### Les formes écartées
 
