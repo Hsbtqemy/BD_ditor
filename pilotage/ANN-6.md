@@ -272,6 +272,13 @@ semaines » (Hugo, le même jour).
   tranche là, pas sur une description
   **Ajouté par Hugo le 2026-10-12** : au lieu de tags à taper, des cases à cocher rangées
   selon les niveaux de la grille, tags combinés compris — à établir dans ce nouvel espace
+  **Un premier essai n'a pas convaincu Hugo (2026-10-14)**, fait depuis la session de
+  pilotage : trois dispositions jouables, la grille réelle, une planche dessinée. Ses
+  raisons : la maquette ne ressemble pas au site ; elle n'a pas suivi la façon habituelle
+  de produire une page ; une planche du corpus aurait mieux servi qu'un dessin. La suite se
+  fait dans une SESSION DÉDIÉE, qui commence par une série de questions pour calibrer
+  l'outil d'annotation, avant toute maquette. L'essai et ses notes sont gardés hors du
+  dépôt, dans `C:	emp\maquette-ann6` (la grille y est, le dépôt étant public)
 
 ### Le modèle — à cadrer avant tout code
 
