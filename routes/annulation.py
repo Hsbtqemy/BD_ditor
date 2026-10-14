@@ -26,7 +26,7 @@ import conflit
 import undo
 from pipeline import nlp
 
-from socle import _get_planche, _get_region, db, portee_courante
+from socle import _get_personnage, _get_planche, _get_region, db, portee_courante
 
 router = APIRouter()
 
@@ -44,6 +44,10 @@ def _ecrivable(conn: sqlite3.Connection, portee: autorisation.Portee):
                 _get_region(conn, portee, rid, ecriture=True)
             for pid in lieux["planches"]:
                 _get_planche(conn, portee, pid, ecriture=True)
+            # Un personnage n'a pas de collection : il se VOIT par ses apparitions, et
+            # l'écrire ne demande que d'écrire quelque part — le plancher de la route.
+            for pid in lieux.get("personnages", []):
+                _get_personnage(conn, portee, pid)
         except HTTPException as refus:
             if refus.status_code == 404:
                 return False

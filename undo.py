@@ -538,15 +538,39 @@ def _meme_objet(conn, e) -> bool:
     return True
 
 
+def _personnage_rendu(e) -> Optional[int]:
+    """Le personnage que l'inverse d'un lien REPOSERAIT (lien qui en remplaçait un, ou
+    retrait), ou None."""
+    if e["cible_table"] in _LIENS:
+        avant = _charge(e["avant"])
+        if avant and avant.get("personnage_id") is not None:
+            return avant["personnage_id"]
+    return None
+
+
+def _personnage_ne_apres(conn, personnage_id, e) -> bool:
+    """Le personnage a-t-il été créé APRÈS l'acte ? Alors il a repris l'identifiant de
+    celui que l'acte avait retiré (relecture croisée, S2). L'acte n'en garde que
+    l'identifiant, et le journal ne trace ni la création ni la suppression d'un
+    personnage : sa `date_creation`, que rien ne réécrit, est le seul témoin. Même limite
+    que l'album : dans la même seconde, rien n'est vu."""
+    row = conn.execute("SELECT date_creation FROM personnages WHERE id = ?",
+                       (personnage_id,)).fetchone()
+    return bool(row and row["date_creation"] and e["date"] and row["date_creation"] > e["date"])
+
+
 def lieux(conn, e) -> dict:
-    """Où l'inverse de `e` ÉCRIRAIT : `{"regions": [...], "planches": [...]}`.
+    """Où l'inverse de `e` ÉCRIRAIT : `{"regions": [...], "planches": [...],
+    "personnages": [...]}` — le dernier pour un personnage qu'il reposerait, que l'agent
+    doit VOIR (la règle des personnages : visibles par leurs apparitions).
 
     Une suppression se rétablit DANS une planche — la région n'existe pas encore ; tout
     autre acte s'inverse sur sa région. C'est ce que la route éprouve avec les accesseurs
     gardés, en écriture, sous la portée de la requête."""
     if e["type"] == "suppression" and e["cible_table"] == "regions":
-        return {"regions": [], "planches": _planches_instantane(_charge(e["avant"]) or {})}
-    return {"regions": [e["cible_id"]], "planches": []}
+        return {"regions": [], "planches": _planches_instantane(_charge(e["avant"]) or {}),
+                "personnages": []}
+    return {"regions": [e["cible_id"]], "planches": [], "personnages": []}
 
 
 def ecarter(conn: sqlite3.Connection, e) -> int:
@@ -589,6 +613,15 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
         return None
     if not _meme_objet(conn, e) or not ecrivable(lieux(conn, e)):
         raise NeSAnnulePlus(e)
+    # Le personnage qu'on reposerait : créé après l'acte, ou invisible pour l'agent, ce n'est
+    # plus celui de l'acte, ou pas un à lui montrer. Seconde phrase : elle ne dit pas s'il
+    # existe. Absent, c'est la clé étrangère qui le dira, pendant l'inversion.
+    perso = _personnage_rendu(e)
+    if perso is not None and conn.execute("SELECT 1 FROM personnages WHERE id = ?",
+                                          (perso,)).fetchone():
+        if _personnage_ne_apres(conn, perso, e) or not ecrivable(
+                {"regions": [], "planches": [], "personnages": [perso]}):
+            raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE)
     try:
         region_id = _inverser(conn, e)
     except Irretablissable:

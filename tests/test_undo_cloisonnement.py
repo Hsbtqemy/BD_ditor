@@ -827,3 +827,63 @@ def test_un_identifiant_deja_servi_puis_repris_s_annule_sur_le_nouvel_objet(
 
     rep = _ok(client.post("/api/undo", headers=COLLEGUE), 200)
     assert rep.json()["acte"] == "lien" and _locuteur(db_path, vieux) is None
+
+
+# --------------------------------------------------------------------------- #
+# Relecture croisée — un PERSONNAGE repris (S2). Ses identifiants se réattribuent
+# comme ceux des régions, et l'acte n'en garde que l'identifiant.
+# --------------------------------------------------------------------------- #
+def _personnage_repris(client, db_path, decor):
+    """La collègue change le locuteur de Haddock à Milou ; Haddock est supprimé, et
+    l'Incubateur crée un personnage qui reprend son identifiant."""
+    r = _region(client, decor["pe"], COLLEGUE)
+    milou = _perso(client, "Milou", COLLEGUE)
+    haddock = _perso(client, "Haddock", COLLEGUE)                 # identifiant le plus haut
+    _ok(client.put(f"/api/regions/{r}/locuteur", headers=COLLEGUE,
+                   json={"personnage_id": haddock}), 200)
+    _ok(client.put(f"/api/regions/{r}/locuteur", headers=COLLEGUE,
+                   json={"personnage_id": milou}), 200)
+    _ok(client.delete(f"/api/personnages/{haddock}", headers=IMPORTEUSE), 204)
+    py = _incub(client, decor)
+    secret = _perso(client, "PERSONNAGE SECRET", INCUB)
+    assert secret == haddock
+    _ok(client.put(f"/api/regions/{_region(client, py, INCUB)}/locuteur", headers=INCUB,
+                   json={"personnage_id": secret}), 200)
+    return r, milou, secret
+
+
+def _noms_vus(client, qui):
+    return {p["nom"] for p in client.get("/api/personnages", headers=qui).json()}
+
+
+def test_ctrl_z_ne_pose_pas_un_personnage_que_l_agent_ne_voit_pas(client, db_path, decor):
+    """Le personnage repris n'apparaît que dans l'Incubateur : la collègue ne le voit pas.
+    Le reposer l'attribuait à sa bulle — et le lui montrait du même coup (S2)."""
+    r, milou, secret = _personnage_repris(client, db_path, decor)
+    assert "PERSONNAGE SECRET" not in _noms_vus(client, COLLEGUE)
+
+    rep = client.post("/api/undo", headers=COLLEGUE)
+    assert rep.status_code == 409, rep.text
+    assert rep.json()["detail"]["message"] == \
+        f"Ne s'annule plus : attribution d'un locuteur — {IRRETABLISSABLE}"
+    assert "SECRET" not in rep.text
+    assert _locuteur(db_path, r) == milou
+    assert "PERSONNAGE SECRET" not in _noms_vus(client, COLLEGUE)
+
+
+def test_ctrl_z_ne_pose_pas_un_personnage_cree_apres_l_acte(client, db_path, decor):
+    """Visible cette fois (il apparaît aussi dans Principale) : seule sa date de création,
+    postérieure à l'acte, dit que ce n'est plus Haddock. Journal et albums sont vieillis
+    d'une minute ensemble : les dates sont à la seconde."""
+    r, milou, secret = _personnage_repris(client, db_path, decor)
+    _ok(client.put(f"/api/regions/{decor['rg']}/locuteur", headers=IMPORTEUSE,
+                   json={"personnage_id": secret}), 200)
+    assert "PERSONNAGE SECRET" in _noms_vus(client, COLLEGUE)
+    _sql(db_path, "UPDATE evenement SET date = datetime(date, '-1 minutes')")
+    _sql(db_path, "UPDATE albums SET date_import = datetime(date_import, '-1 minutes')")
+
+    rep = client.post("/api/undo", headers=COLLEGUE)
+    assert rep.status_code == 409, rep.text
+    assert rep.json()["detail"]["message"] == \
+        f"Ne s'annule plus : attribution d'un locuteur — {IRRETABLISSABLE}"
+    assert _locuteur(db_path, r) == milou
