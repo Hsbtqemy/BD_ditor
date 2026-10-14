@@ -342,9 +342,11 @@ def _retirer_lien(conn, table, region_id):
 def _inverser(conn, e) -> int:
     """Applique l'inverse de l'événement `e` et renvoie la région concernée (pour l'UI).
 
-    Toute violation de contrainte (FK d'un personnage supprimé entre-temps, id réattribué…)
-    devient un UndoImpossible → 409 explicite, jamais un 500. `_recreer_region_profond` capte
-    déjà `IntegrityError` en amont pour un message dédié (id réattribué)."""
+    Toute violation de contrainte (FK d'un personnage supprimé entre-temps…) rend l'acte
+    IRRÉTABLISSABLE : il est passé, jamais un 500 — et plus un 409 qui revenait à chaque
+    Ctrl+Z (AUTH-14, relecture croisée S5). Le texte de l'erreur SQL ne sort plus.
+    `_recreer_region_profond` capte `IntegrityError` en amont pour un message dédié (id
+    réattribué), que `_meme_objet` rend inatteignable en vérifiant les ids d'abord."""
     t, table, cid = e["type"], e["cible_table"], e["cible_id"]
     avant, apres = _charge(e["avant"]), _charge(e["apres"])
     try:
@@ -367,7 +369,7 @@ def _inverser(conn, e) -> int:
                 _poser_lien(conn, table, cid, avant["personnage_id"])
             return cid
     except sqlite3.IntegrityError as exc:  # entité référencée disparue, contrainte violée…
-        raise UndoImpossible(str(exc)) from exc
+        raise Irretablissable() from exc
     raise UndoImpossible(f"acte non inversible : {t}/{table}")
 
 

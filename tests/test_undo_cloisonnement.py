@@ -615,3 +615,44 @@ def test_ce_que_l_inversion_a_commence_d_ecrire_ne_part_pas_avec_la_trace(
         f"Ne s'annule plus : modification d'une région — {IRRETABLISSABLE}"
     assert _texte(db_path, decor["rg"]) == "DE LA COLLEGUE"
     assert len(_marques(db_path, "collegue")) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Relecture croisée — une contrainte violée ne bloque plus la pile (S5, S5b)
+# --------------------------------------------------------------------------- #
+def test_un_personnage_supprime_depuis_ne_bloque_plus_la_pile(client, db_path, decor):
+    """Rétablir le locuteur d'avant, que quelqu'un a supprimé depuis : la contrainte de clé
+    étrangère refusait, et le même 409 « FOREIGN KEY constraint failed » revenait à chaque
+    Ctrl+Z. L'acte est passé ; le suivant s'annule."""
+    haddock = _perso(client, "Haddock", COLLEGUE)
+    milou = _perso(client, "Milou", COLLEGUE)
+    _ok(client.put(f"/api/regions/{decor['rg']}/locuteur", headers=COLLEGUE,
+                   json={"personnage_id": haddock}), 200)
+    _ok(client.put(f"/api/regions/{decor['rg']}/locuteur", headers=COLLEGUE,
+                   json={"personnage_id": milou}), 200)
+    acte = _acte(db_path, "collegue", "lien", "bulle_locuteur", decor["rg"])
+    _ok(client.delete(f"/api/personnages/{haddock}", headers=IMPORTEUSE), 204)
+
+    rep = client.post("/api/undo", headers=COLLEGUE)
+    assert rep.status_code == 409, rep.text
+    assert rep.json()["detail"] == {
+        "message": f"Ne s'annule plus : attribution d'un locuteur — {IRRETABLISSABLE}",
+        "ecarte": {"evenement_id": acte, "description": "attribution d'un locuteur"}}
+    assert "FOREIGN" not in rep.text and _locuteur(db_path, decor["rg"]) == milou
+    assert _marques(db_path, "collegue") == [acte]
+    _ok(client.post("/api/undo", headers=COLLEGUE), 200)        # la pile a avancé
+
+
+def test_un_ancien_parent_supprime_depuis_ne_bloque_plus_la_pile(client, db_path, decor):
+    """Même chose pour le parent : rendre un parent supprimé depuis (sans reprise)."""
+    _geste_ancien(client, decor)
+    c1 = _region(client, decor["pe"], COLLEGUE, type="case")
+    b = _region(client, decor["pe"], COLLEGUE, parent_id=c1)
+    _ok(client.put(f"/api/regions/{b}", headers=COLLEGUE, json={"parent_id": None}), 200)
+    _region(client, decor["pe"], IMPORTEUSE)          # c1 n'est plus le plus haut : pas de reprise
+    _ok(client.delete(f"/api/regions/{c1}", headers=IMPORTEUSE), 204)
+
+    rep = client.post("/api/undo", headers=COLLEGUE)
+    assert rep.json()["detail"]["message"] == \
+        f"Ne s'annule plus : modification d'une région — {IRRETABLISSABLE}"
+    assert _parent(db_path, b) is None
