@@ -194,6 +194,10 @@ rien y changer, « le premier projet », où tout est partagé.
 - [ ] **`UX-18` dessine la Bibliothèque d'UN projet** — attendu : dit chez lui. Ses décisions tiennent ; s'y ajoutent le projet courant, l'entrée « piocher dans ce que le projet a admis », et les deux réponses à « supprimer »
 - [ ] **L'export garde son titre** — attendu : vérifié. La collection reste l'unité de dépôt et le titre d'un export (`AUTH-11`) ; le projet n'en est pas un
 
+### Ce que `ANN-7` ouvre ici — 2026-10-14
+
+- [ ] **Le fonds et le catalogue des grilles suivent les mêmes règles** — attendu : tranché ensemble. `ANN-7` donne au projet un rôle neuf : il ACTIVE des grilles d'annotation, prises dans un catalogue où chacune entre par une case « Partager ». C'est le patron du fonds — un pot commun, des projets qui y prennent, des droits pour voir et pour prendre — et les deux gestes gagnent à se comporter pareil, à l'écran comme dans les droits
+
 ## Contexte
 
 ### Ce qu'un essai a montré — 2026-10-09

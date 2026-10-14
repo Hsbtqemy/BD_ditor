@@ -29,6 +29,10 @@ aucune case n'est cochée : la séance n'a pas eu lieu, et c'est elle qui coche.
 
 - [ ] **La grille des linguistes est rapprochée de la proposition de vocabulaire d'étude** — attendu : dit, avant la séance. Hugo a transmis le 2026-10-12 une grille d'annotation en sept niveaux, tournée vers l'oralité et posée sur les BULLES et leurs mots ; `tools/vocabulaire-etude-propose.csv` propose des axes posés sur les cases et les personnages. Ce sont deux vocabulaires, ou deux moitiés du même : à trancher avec eux, pour que la séance ne parte pas de deux pages à la fois (cf. `ANN-6`)
 
+### Ce que `ANN-7` ouvre ici — 2026-10-14
+
+- [ ] **Le vocabulaire d'étude proposé devient une grille** — attendu : dit, avant la séance. Le 2026-10-14, Hugo a tranché un seul modèle de vocabulaire pour l'outil : des grilles, versionnées, rattachées à un projet. `tools/vocabulaire-etude-propose.csv` y entrerait comme une grille de plus, posée sur les cases et les personnages (cf. `ANN-7`)
+
 ## Contexte
 
 C'est **la finalité du projet**, et la seule fiche P1 qui ne dépende d'aucun code : tout

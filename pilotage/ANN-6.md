@@ -313,6 +313,10 @@ semaines » (Hugo, le même jour).
   taille de `COL-3`, à mener en tranches ; `COL-3` attend la fusion de sa tranche 1, et le
   premier des trois commits de sa tranche 2 est écrit, sur copie
 
+### Ce que `ANN-7` tranche ici — 2026-10-14
+
+- [ ] **Le relevé se pose avec une entrée de grille, au sens d'`ANN-7`** — attendu : le modèle du relevé cite celui des grilles. Hugo a tranché le 2026-10-14 un outil agnostique, à plusieurs grilles versionnées, partagées dans un catalogue, et un seul modèle où les tags et les attributs entrent aussi. Deux cases de cette fiche y trouvent leur réponse : « La grille entre dans le vocabulaire existant » — elle devient la première grille, et c'est le vocabulaire existant qui y entre — et « Ce qui aura été annoté en tags se convertit », dont la règle s'écrit chez `ANN-7`
+
 ## Contexte
 
 ### D'où cela vient
