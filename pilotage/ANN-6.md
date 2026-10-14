@@ -106,7 +106,10 @@ semaines » (Hugo, le même jour).
   tranché. Qui prépare et qui annote : « tout. Les mêmes personnes et des personnes
   différentes ». Deux publics, donc deux montages d'un même module (la convention de
   `static/lib/qui-entre.js`) : dans l'Atelier en vue agrandie, comme la Transcription, et
-  sur une page « Annotation » entre Atelier et Bibliothèque. La maquette montre les deux
+  sur une page « Annotation » entre Atelier et Bibliothèque. La maquette montrait les deux ;
+  Hugo, après les avoir vus : « il vaut mieux partir sur une page annotation ». La
+  maquette n'a plus que ce cadre ; le module reste montable dans l'Atelier si l'usage le
+  demande, comme second montage
 - [x] **La planche et la grille peuvent figurer dans la maquette publiée** — attendu :
   tranché. Hugo : « Planche et grille », sur une page privée
 
@@ -363,11 +366,15 @@ semaines » (Hugo, le même jour).
 
 ### À trancher sur la maquette, avec les linguistes
 
-- [ ] **Le rendu des relevés sur les mots est choisi** — attendu : tranché. La grille active
-  en couleur, une teinte par rubrique, les autres grilles en gris ; ou toutes les grilles
-  empilées, une teinte par grille. Les deux se règlent en tête de la maquette
-- [ ] **Un passage saute des mots, ou non** — attendu : tranché. « Ne … pas » : du premier au
-  dernier mot sans trou, ou avec des sauts (Ctrl+clic). Les deux se règlent dans la maquette
+- [x] **Le rendu des relevés sur les mots est choisi** — attendu : tranché. Hugo, le
+  2026-10-14 : « Rendu grille active en couleur » — une teinte par rubrique, les autres
+  grilles en gris. L'autre rendu (toutes les grilles empilées) quitte la maquette
+- [ ] **Un passage est continu ET peut sauter des mots** — attendu : confirmé par Hugo puis
+  par les linguistes. Hugo a demandé si les deux se combinaient : ils se combinent, et
+  c'est ce que la maquette fait désormais, sans réglage. Clic, glissé ou Maj+clic désignent
+  un passage continu ; Ctrl+clic, ou « Ajouter un mot » au doigt, ajoute ou retire un mot
+  isolé (« ne … pas »). Un passage à trou se trace sans trait sous les mots sautés, et se
+  lit « son … il » dans la liste
 - [ ] **Un relevé à qualificatifs compte UNE fois son phénomène** — attendu : confirmé par les
   linguistes. La maquette pose « emphase par typographie et ponctuation » comme un seul
   relevé : 1 emphase, 1 typographie, 1 ponctuation. Le guide en fait deux tags, donc deux
