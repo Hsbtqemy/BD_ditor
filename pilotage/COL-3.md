@@ -9,8 +9,8 @@ statut: interrompu
 que soit la police, et le test du responsable attend la liste redessinée** — deux des neuf
 échecs de la passe navigateur jouée dans l'image. La tranche 2 avance sur une COPIE, hors de
 `dev` : son premier commit est écrit et relu (2026-10-11) ; son deuxième, le serveur, est
-écrit, relu et corrigé (2026-10-14) ; son troisième, l'écran, est en cours. Rien n'en viendra
-sur `dev` avant la fusion de la tranche 1 (cf. « Tranche 2 — relevé par son deuxième commit »).
+écrit, relu et corrigé (2026-10-14) ; son troisième, l'écran, est écrit et corrigé d'après
+ses captures (nuit du 14 au 15). Rien n'en viendra sur `dev` avant la fusion de la tranche 1 (cf. « Tranche 2 — relevé par son deuxième commit »).
 
 **Plus tôt le 2026-10-11** — arrêté sur `79da8c4` : la tranche 1 est codée, et trois retouches de ses écrans aussi
 (`79da8c4`, décrites dans les cases qu'elles ferment). Ses trois commits de code sont sur
@@ -184,6 +184,11 @@ rien y changer, « le premier projet », où tout est partagé.
   l'a pas importée. Mais le propriétaire de la collection ne peut pas la reprendre (404), le
   geste ne s'annule pas, et rien ne remonte dans « À regarder » ; seul un administrateur la
   rend
+- [ ] **Le message d'un geste fait dans « Supprimer… » ne tombe pas sur la colonne d'actions** —
+  attendu : il se lit contre son contrôle, comme les autres messages de la tranche. Vu sur les
+  captures de l'écran : « Votre demande est partie… » part en message flottant en bas à droite,
+  et y couvre la colonne d'actions des planches. Le refus de la corbeille d'une planche, lui,
+  a été ramené contre son bouton
 - [ ] **La liste des albums reste rapide avec un gros journal** — attendu : mesuré. La règle
   de suppression directe descend dans le journal, région par région, pour chaque album de
   `GET /api/albums` ; aucune mesure n'a été faite sur un corpus réel
