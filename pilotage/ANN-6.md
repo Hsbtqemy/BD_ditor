@@ -96,7 +96,12 @@ semaines » (Hugo, le même jour).
   daté ; on le lève en gardant, en changeant ou en retirant le relevé ; une liste « À
   revoir » les réunit
 - [x] **Une zone se marque « faite » par grille, ou par rubrique** — attendu : tranché. C'est
-  ce qui permet de compter 0 plutôt que « pas regardé »
+  ce qui permet de compter 0 plutôt que « pas regardé ». Sur la maquette, « Faite pour
+  Oralité · Sauter les faites », sous les mots, ne se comprenait pas (Hugo). Le marquage
+  passe dans la colonne de la grille, que l'on applique : « Oralité appliquée à cette
+  zone », un ✓ sur l'onglet de chaque grille appliquée, et « Parcours : toutes les zones |
+  à faire seulement » pour « Suivante ». Le mot reste à trouver : Hugo hésite entre
+  « appliquée », « effectuée » ou autre
 - [x] **L'écran est un module, monté dans l'Atelier ET sur une page à part** — attendu :
   tranché. Qui prépare et qui annote : « tout. Les mêmes personnes et des personnes
   différentes ». Deux publics, donc deux montages d'un même module (la convention de
