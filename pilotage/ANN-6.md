@@ -92,6 +92,14 @@ semaines » (Hugo, le même jour).
 - [x] **Sur l'image, un relevé porte sur une région ou sur un détail tracé** — attendu :
   tranché. Par défaut une région déjà tracée (case, personnage, planche) ; un détail se
   trace dans la vue agrandie, comme un passage se désigne dans le texte
+- [x] **Un détail tracé est une zone à part entière, et le tracé peut faire un texte** —
+  attendu : tranché. Sur la maquette, un détail n'existait que sous la grille qui l'avait
+  tracé, et Hugo, voulant commenter un détail avec plusieurs grilles, s'est vu refuser le
+  tracé sous Oralité. Glisser dans la case crée désormais une zone, quelle que soit la
+  grille active : « Détail d'image », qui se nomme, se supprime, et que toute grille qui
+  vise un détail annote, Tags libres compris ; ou « Texte hors bulle », qui reçoit une
+  transcription puis s'annote avec Oralité. Les deux, choisis par Hugo le 2026-10-14.
+  Une zone tracée ici n'est pas une case : le découpage reste à l'Atelier
 - [x] **Le doute : un commentaire, des réponses, une levée** — attendu : tranché. Signé et
   daté ; on le lève en gardant, en changeant ou en retirant le relevé ; une liste « À
   revoir » les réunit
