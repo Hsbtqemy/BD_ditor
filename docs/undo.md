@@ -31,7 +31,7 @@ rollback en cas d'échec.
 |---|---|
 | `creation` région | supprimer la région (+ sous-arbre, désindexé) — **refusé** si quelqu'un d'autre l'a modifiée, annotée ou y a rattaché une région depuis |
 | `modification` région (géométrie / OCR / déplacement) | remettre les colonnes que l'acte a CHANGÉES à leur valeur `avant` — **refusé** si l'une d'elles a changé depuis (sauf par un moteur) |
-| `suppression` région | **recréer le sous-arbre** depuis l'instantané profond (région + annotation + enfants, **mêmes `id`**) — **passé** si un `id` a été repris, si la planche ou le parent n'est plus le même, ou si l'on n'écrit plus dans la planche |
+| `suppression` région | **recréer le sous-arbre** depuis l'instantané profond (région + annotation + enfants, **mêmes `id`**) — **passé** si un `id` a été repris, si une planche ou le parent n'est plus le même, ou si l'on n'écrit plus dans l'une des planches |
 | `creation` / `modification` / `suppression` annotation | défaire ce que l'acte a CHANGÉ, sur l'état actuel : la note revient à `avant` si l'acte l'a changée ; les tags qu'il a ajoutés partent, ceux qu'il a retirés reviennent ; vide, l'annotation est supprimée |
 | `lien` locuteur/présence (avant ∅) | retirer le lien |
 | `lien` (avant présent) / `delien` | rétablir l'ancien lien |
@@ -138,45 +138,86 @@ n'entre pas ; le 409 du conflit de version lui rendait le texte de la région et
 son auteur ; et un acte sur un identifiant repris revenait en 409 à chaque Ctrl+Z.
 
 Avant toute écriture, l'annulation vérifie donc que l'objet est le MÊME (`undo._meme_objet`),
-par trois témoins, dont aucun ne suffit seul :
+par quatre témoins, dont aucun ne suffit seul — chacun a son test, qui tombe quand on
+l'éteint :
 
-- **le journal** : aucune création de région sous cet identifiant depuis l'acte. Toute
-  création par une route ou par une passe ML est journalisée ; rétablir une suppression ne
-  l'est pas comme création — c'est le même objet qui revient ;
-- **la planche au moment de l'acte**, lue dans le dernier instantané qui la porte — pour
+- **le journal, côté création** : aucune création de région sous cet identifiant depuis
+  l'acte. Toute création par une route ou par une passe ML est journalisée ; rétablir une
+  suppression ne l'est pas comme création — c'est le même objet qui revient ;
+- **le journal, côté suppression** : aucune suppression de la région — directe, ou par
+  l'instantané d'un ancêtre — postérieure à l'acte et NON annulée. Une suppression annulée
+  ne compte pas : son annulation a rendu le même objet ;
+- **la planche au moment de l'acte**, lue dans le dernier instantané qui la porte, sans
+  remonter au-delà d'une suppression (avant elle, le journal parle d'un autre objet) — pour
   les régions nées sans événement de création (la segmentation lancée à l'import ShareDocs
   n'en écrit pas) ;
 - **l'album** de la planche, s'il a été importé APRÈS l'acte : seul témoin d'une planche
   reprise, que rien ne journalise.
 
-Pour rétablir une suppression : identifiants libres, planche présente et née avant l'acte,
-parent — s'il y en a un — dans la même planche et jamais recréé.
+Le **parent** est un objet lui aussi. L'inverse d'une modification le rend validé comme la
+route le valide (`socle._validate_parent` : présent, même planche, pas de cycle), et les
+témoins le jugent : repris ailleurs ou supprimé depuis, il n'est plus celui de l'acte. Sans
+quoi Ctrl+Z rattachait une bulle à une case d'une autre collection, que la suppression de
+cette case emportait ensuite et que son rétablissement recréait (relecture croisée,
+2026-10-15). Pour rétablir une suppression : identifiants libres, planches de TOUS les nœuds
+présentes et nées avant l'acte — un enfant peut vivre hors de la planche de son parent dans
+une base retouchée avant ce correctif —, parent dans la même planche, ni recréé ni supprimé
+depuis ; et la garde d'écriture porte sur chacune de ces planches.
+
+Le **personnage** qu'un lien reposerait aussi : ses identifiants se réattribuent, et l'acte
+n'en garde que l'identifiant — le journal ne trace ni la création ni la suppression d'un
+personnage. Deux témoins restent : il doit être VU de l'agent (ses apparitions, la règle des
+personnages), et ne pas avoir été créé après l'acte (`personnages.date_creation`).
 
 **Un acte qui ne s'annule plus est PASSÉ, pas bloquant.** Objet disparu, identifiant repris,
-collection qu'on n'écrit plus : l'annulation écrit une trace append-only (`type = 'abandon'`,
-`cible_table = 'annulation'`, `cible_id` = l'acte) qui le sort de la pile, et répond 409 avec
-une seule phrase — « Ne s'annule plus : *geste* — la région n'est plus à votre portée. » Le
-Ctrl+Z suivant défait le geste d'avant. La trace n'est pas une `annulation` : rien n'a été
-défait, et `conflit.auteur_du_champ` lit une annulation comme ayant reposé l'état `avant`.
-Elle est RETENUE hors du dépôt (`tools/_commun.CIBLES_RETENUES`) : elle n'a rien changé au
-corpus. Elle est validée malgré le refus — sans elle, le même 409 reviendrait.
+collection qu'on n'écrit plus, état d'avant qui n'a plus où se poser (parent disparu ou qui
+ferait un cycle, personnage supprimé — la clé étrangère qui échouait renvoyait le même 409 à
+chaque Ctrl+Z) : l'annulation défait ce qu'elle aurait commencé d'écrire, écrit une trace
+append-only (`type = 'abandon'`, `cible_table = 'annulation'`, `cible_id` = l'acte) qui le
+sort de la pile, et répond 409. Le Ctrl+Z suivant défait le geste d'avant. La trace n'est pas
+une `annulation` : rien n'a été défait, et `conflit.auteur_du_champ` lit une annulation comme
+ayant reposé l'état `avant`. Elle est RETENUE hors du dépôt (`tools/_commun.CIBLES_RETENUES`)
+et ne compte pas parmi les actes d'un compte (`comptes.traces`) : elle n'a rien produit. Elle
+est validée malgré le refus — sans elle, le même 409 reviendrait.
 
-**Une phrase pour tous les cas, et rien de l'objet présent.** Le refus ne porte ni valeur
-ni auteur : la région visée n'est peut-être plus lisible. Et il ne distingue pas « disparue »
-de « reprise » ni de « hors d'écriture » — deux phrases diraient à qui ne lit plus la planche
-ce qu'il est advenu d'elle, ce que le 404 garde partout ailleurs. Là où l'agent écrit la
-région, le conflit de version (409 nommé, valeur et auteur) est inchangé.
+**Deux phrases, et rien de l'objet présent.** Le refus ne porte ni valeur, ni auteur, ni
+texte d'erreur SQL.
+
+- « Ne s'annule plus : *geste* — la région n'est plus à votre portée. » quand la région, ou
+  sa place, n'est plus celle de l'acte ou plus à portée d'écriture. Elle ne distingue pas
+  « disparue » de « reprise » ni de « hors d'écriture » : deux phrases diraient à qui ne lit
+  plus la planche ce qu'il est advenu d'elle, ce que le 404 garde partout ailleurs.
+- « Ne s'annule plus : *geste* — l'état d'avant ne peut plus être rétabli. » quand la région
+  est bien à portée, mais que ce qu'elle retrouverait n'a plus où se poser — parent,
+  personnage. L'agent écrit la région : elle ne lui apprend rien qu'il ne puisse lire, et
+  elle ne dit pas si le personnage existe.
+
+Là où l'agent écrit la région, le conflit de version (409 nommé, valeur et auteur) est
+inchangé.
+
+**Un acte passé ne revient pas, même si l'objet revient.** C'est voulu, et la règle reste
+simple. Le scénario, relevé par la relecture croisée : la collègue modifie le texte d'une
+région ; l'importatrice supprime la région ; la collègue fait Ctrl+Z — la région n'est plus
+là, l'acte est passé ; l'importatrice rétablit sa suppression, la région revient, la même ;
+un nouveau Ctrl+Z de la collègue ne revient PAS sur sa modification, il remonte au geste
+d'avant. Le rendre annulable de nouveau supposerait qu'une trace s'efface ou se périme, donc
+une pile qui dépend d'états qu'on ne voit pas ; et ce que la collègue a perdu est un raccourci
+— elle peut toujours retaper son texte. Même chose si le droit d'écrire revient.
 
 **Ce qui n'est pas fermé.**
 
 - **La même seconde** : les dates sont à la seconde ; une planche reprise dans un album
-  importé dans la seconde même de l'acte n'est pas vue par le troisième témoin.
-- **Une planche reprise DANS LE MÊME album**, par une région née sans événement : aucun
-  témoin ne la voit. La garde d'écriture tient toujours — on n'écrit que là où l'on écrit —,
-  c'est l'identité qui manque.
+  importé dans la seconde même de l'acte, ou un personnage créé dans cette seconde, ne sont
+  pas vus.
+- **Une planche reprise dans un album importé AVANT l'acte** — n'importe lequel, de
+  n'importe quelle collection, et pas seulement le même album : quand on rétablit une
+  suppression, aucun témoin ne voit que la planche n'est plus celle de l'acte. La garde
+  d'écriture tient toujours — on n'écrit que là où l'on écrit —, c'est l'identité qui manque.
+- **Une région disparue SANS événement** (une re-passe ML remplace les régions machine sans
+  en journaliser la suppression) puis reprise sans événement, dans la même planche : aucun
+  témoin ne la voit.
 - **Fermé du côté sûr** : une région reprise puis supprimée, l'originale rétablie ensuite,
-  passe pour reprise — Ctrl+Z refuse là où il aurait pu agir. Et une trace est définitive :
-  un acte passé parce qu'on n'écrivait plus ne revient pas si le droit revient.
+  passe pour reprise — Ctrl+Z refuse là où il aurait pu agir.
 - Rendre les identifiants non réutilisables est une autre décision, attendue avec une
   migration ; cette garde tient sans elle.
 
