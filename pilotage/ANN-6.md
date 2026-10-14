@@ -11,7 +11,9 @@ champ « Situation » dit sa syntaxe (`35e9b62`). Le 13, sur le mot de Hugo : da
 « dimension : valeur », Entrée agit sur ce qui est tapé et répond quand elle ne fait rien
 (`2a52e77`) ; un nom déjà au registre, tapé vite, ne crée plus d'homonyme (`d957a70`) ; les
 deux champs de profil portent la phrase d'aide (`2ab7911`). La passe navigateur entière
-n'est pas encore rejouée sur cet état : seuls les fichiers de l'Atelier le sont.
+n'est pas encore rejouée sur cet état : seuls les fichiers de l'Atelier le sont. Le 14, sans
+code : l'outil d'annotation est calibré avec Hugo, et une seconde maquette est publiée (cf.
+« Tranché par Hugo — 2026-10-14 » et « La maquette »).
 
 **Point de départ** — 2026-10-12. Hugo rapporte cinq retours d'usage de la production, puis
 transmet la grille d'annotation des linguistes (extrait d'un guide, treize pages : sept
@@ -42,6 +44,41 @@ semaines » (Hugo, le même jour).
   l'exemple. Hugo : « oui », pour l'exemple proposé, « registre : familier »
 - [x] **`bulle_locuteur` et `nb_bulles` gardent leur nom** — attendu : tranché. Hugo : « ok »
   à la proposition de les laisser
+
+### Tranché par Hugo — 2026-10-14, le calibrage de l'outil d'annotation
+
+- [x] **Stagiaires et professeurs annotent à égalité** — attendu : tranché. L'écran sert
+  autant qui découvre la grille que qui la sait. Le matériel des stagiaires n'est pas
+  connu : l'écran tient sur un portable et profite d'un grand écran
+- [x] **Zone par zone, sans empêcher une passe par niveau** — attendu : tranché. Hugo : « le
+  zone par zone peut être plus judicieux, mais il ne faut pas que ça empêche la navigation
+  niveau par niveau ». Un sélecteur n'affiche qu'une rubrique, et « Suivante » enchaîne
+  les zones que la grille vise
+- [x] **Une grille, trois lectures** — attendu : tranché. Les entrées se cochent, rangées par
+  rubriques repliables ; un champ de frappe FILTRE la grille (accents, apostrophes et
+  exemples compris) et Entrée pose le premier résultat ; la ligne du guide de l'entrée
+  pointée s'affiche à un endroit fixe, piège compris ; le guide complet se déplie, produit
+  depuis la grille. Hugo : « il faut tout rendre possible »
+- [x] **Plusieurs grilles : une à la fois, par un sélecteur** — attendu : tranché. Les
+  relevés des autres grilles restent visibles, en lecture
+- [x] **La zone et son contexte** — attendu : tranché. En tête de la zone, modifiables sur
+  place : la situation de la case, le locuteur et sa sorte, la note. Hugo : « l'annotation
+  ne concerne pas que le texte »
+- [x] **Sur l'image, un relevé porte sur une région ou sur un détail tracé** — attendu :
+  tranché. Par défaut une région déjà tracée (case, personnage, planche) ; un détail se
+  trace dans la vue agrandie, comme un passage se désigne dans le texte
+- [x] **Le doute : un commentaire, des réponses, une levée** — attendu : tranché. Signé et
+  daté ; on le lève en gardant, en changeant ou en retirant le relevé ; une liste « À
+  revoir » les réunit
+- [x] **Une zone se marque « faite » par grille, ou par rubrique** — attendu : tranché. C'est
+  ce qui permet de compter 0 plutôt que « pas regardé »
+- [x] **L'écran est un module, monté dans l'Atelier ET sur une page à part** — attendu :
+  tranché. Qui prépare et qui annote : « tout. Les mêmes personnes et des personnes
+  différentes ». Deux publics, donc deux montages d'un même module (la convention de
+  `static/lib/qui-entre.js`) : dans l'Atelier en vue agrandie, comme la Transcription, et
+  sur une page « Annotation » entre Atelier et Bibliothèque. La maquette montre les deux
+- [x] **La planche et la grille peuvent figurer dans la maquette publiée** — attendu :
+  tranché. Hugo : « Planche et grille », sur une page privée
 
 ### À confirmer avec les linguistes
 
@@ -279,6 +316,36 @@ semaines » (Hugo, le même jour).
   fait dans une SESSION DÉDIÉE, qui commence par une série de questions pour calibrer
   l'outil d'annotation, avant toute maquette. L'essai et ses notes sont gardés hors du
   dépôt, dans `C:\temp\maquette-ann6` (la grille y est, le dépôt étant public)
+  **Seconde maquette publiée le 2026-10-14**, depuis la session dédiée, après calibrage
+  (cf. « Tranché par Hugo — 2026-10-14 ») : page privée
+  `https://claude.ai/artifact/97Xznyg2dqkQ7bX9EYwhkU`, à partager depuis la page. Elle
+  reprend les bandes et les jetons de l'Atelier, la planche 1 d'« esther v1 » et la
+  planche 24 d'« Eau-terre », quatre grilles (celle des linguistes, les tags libres en
+  grille ouverte, et deux grilles fictives qui portent sur l'image : émotions, couleur et
+  dessin). Source hors du dépôt : `C:\temp\maquette-ann6\v2\releve.html`. Dix-sept gestes
+  rejoués dans Chromium, sans erreur de console, à 1 440, 1 024 et 390 px, thèmes sombre et
+  clair ; non essayés : contraste élevé, lecteur d'écran, Firefox. La case reste ouverte :
+  elle se coche quand les linguistes l'ont vue
+
+### À trancher sur la maquette, avec les linguistes
+
+- [ ] **Le rendu des relevés sur les mots est choisi** — attendu : tranché. La grille active
+  en couleur, une teinte par rubrique, les autres grilles en gris ; ou toutes les grilles
+  empilées, une teinte par grille. Les deux se règlent en tête de la maquette
+- [ ] **Un passage saute des mots, ou non** — attendu : tranché. « Ne … pas » : du premier au
+  dernier mot sans trou, ou avec des sauts (Ctrl+clic). Les deux se règlent dans la maquette
+- [ ] **Un relevé à qualificatifs compte UNE fois son phénomène** — attendu : confirmé par les
+  linguistes. La maquette pose « emphase par typographie et ponctuation » comme un seul
+  relevé : 1 emphase, 1 typographie, 1 ponctuation. Le guide en fait deux tags, donc deux
+  emphases
+- [ ] **Le chevauchement désigne l'autre bulle d'un clic** — attendu : confirmé. Un lien que
+  l'outil tient remplace la référence écrite dans la Note, qui change quand l'ordre de
+  lecture change (cf. « Avant que les stagiaires commencent »)
+- [ ] **Le décompte dans la vue, l'aperçu de l'Exploration, ou les deux** — attendu : tranché.
+  Hugo, le 2026-10-14 : « à voir ce qui semble le plus utile » ; la maquette montre les deux
+- [ ] **Sur un téléphone, la grille n'est pas à huit écrans des mots** — attendu : tranché,
+  téléphone hors cible ou accès direct à la recherche. Vu à 390 px : après avoir désigné
+  des mots, il faut descendre sous les relevés pour atteindre la grille
 
 ### Le modèle — à cadrer avant tout code
 
