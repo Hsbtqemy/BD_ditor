@@ -530,3 +530,88 @@ def test_la_trace_du_passage_ne_part_pas_au_depot(client, db_path, decor):
     assert _marques(db_path, "collegue"), "le semis : aucune marque posée"
     assert publies() == avant
     assert "annulation" in _commun.CIBLES_RETENUES
+
+
+# --------------------------------------------------------------------------- #
+# Relecture croisée — le PARENT d'une région (S1, préexistant)
+# --------------------------------------------------------------------------- #
+INCUB = {"Remote-User": "incub"}   # écrit dans l'Incubateur SEULEMENT
+
+IRRETABLISSABLE = "l'état d'avant ne peut plus être rétabli."
+
+
+def _incub(client, decor):
+    _accorder(client, decor["i"], "incub", "ecriture")
+    return _planche(client, _album(client, "Y", decor["i"], INCUB), INCUB)
+
+
+def _parent(db_path, rid):
+    return _sql(db_path, "SELECT parent_id FROM regions WHERE id = ?", (rid,))[0]["parent_id"]
+
+
+def test_rendre_un_parent_repris_ailleurs_est_refuse(client, db_path, decor):
+    """L'inverse d'une modification remettait `parent_id` sans rien valider : la bulle de la
+    collègue devenait l'enfant d'une case de l'Incubateur — puis la suppression de cette
+    case l'emportait, et son rétablissement la recréait, à travers le cloisonnement."""
+    c2 = _region(client, decor["pe"], COLLEGUE, type="case")
+    b = _region(client, decor["pe"], COLLEGUE)
+    c1 = _region(client, decor["pe"], COLLEGUE, type="case")      # identifiant le plus haut
+    _ok(client.put(f"/api/regions/{b}", headers=COLLEGUE, json={"parent_id": c1}), 200)
+    _ok(client.put(f"/api/regions/{b}", headers=COLLEGUE, json={"parent_id": c2}), 200)
+    _ok(client.delete(f"/api/regions/{c1}", headers=IMPORTEUSE), 204)
+    assert _region(client, _incub(client, decor), INCUB, type="case") == c1
+
+    _passe(client.post("/api/undo", headers=COLLEGUE), "modification d'une région")
+    assert _parent(db_path, b) == c2
+
+
+def test_retablir_un_sous_arbre_juge_la_planche_de_chaque_noeud(client, db_path, decor):
+    """Un instantané dont un enfant vit dans une AUTRE planche (une base qu'une annulation
+    d'avant ce correctif a pu laisser ainsi) : la racine est chez incub, l'enfant dans
+    Principale. Juger la racine seule laissait incub recréer la bulle de la collègue."""
+    py = _incub(client, decor)
+    c = _region(client, py, INCUB, type="case")
+    b = _region(client, decor["pe"], COLLEGUE, ocr_texte="DE LA COLLEGUE")
+    _sql(db_path, "UPDATE regions SET parent_id = ? WHERE id = ?", (c, b))
+    _ok(client.delete(f"/api/regions/{c}", headers=INCUB), 204)
+    assert _sql(db_path, "SELECT id FROM regions WHERE id = ?", (b,)) == []   # emportée
+
+    _passe(client.post("/api/undo", headers=INCUB), "suppression d'une région")
+    assert _sql(db_path, "SELECT id FROM regions WHERE id IN (?, ?)", (b, c)) == []
+
+
+def test_rendre_un_parent_qui_ferait_un_cycle_est_refuse(client, db_path, decor):
+    """L'inverse valide le parent comme la route : même planche, et pas de cycle."""
+    c = _region(client, decor["pe"], COLLEGUE, type="case")
+    b = _region(client, decor["pe"], COLLEGUE, type="case", parent_id=c)
+    _ok(client.put(f"/api/regions/{b}", headers=COLLEGUE, json={"parent_id": None}), 200)
+    _ok(client.put(f"/api/regions/{c}", headers=IMPORTEUSE, json={"parent_id": b}), 200)
+
+    rep = client.post("/api/undo", headers=COLLEGUE)
+    assert rep.status_code == 409, rep.text
+    assert rep.json()["detail"]["message"] == \
+        f"Ne s'annule plus : modification d'une région — {IRRETABLISSABLE}"
+    assert (_parent(db_path, b), _parent(db_path, c)) == (None, b)
+
+
+def test_ce_que_l_inversion_a_commence_d_ecrire_ne_part_pas_avec_la_trace(
+        client, db_path, decor, monkeypatch):
+    """Le contrat de la route : la trace est VALIDÉE malgré le refus, donc ce que
+    l'inversion aurait déjà écrit doit être défait avant elle — sans quoi la trace
+    l'emporterait avec elle. Aucun chemin d'aujourd'hui n'écrit avant de lever (la
+    validation précède l'écriture) : on fait écrire l'inversion, puis lever."""
+    import undo
+    _ok(client.put(f"/api/regions/{decor['rg']}", headers=COLLEGUE,
+                   json={"ocr_texte": "DE LA COLLEGUE"}), 200)
+
+    def inversion_qui_ecrit_puis_leve(conn, e):
+        conn.execute("UPDATE regions SET ocr_texte = 'ECRIT PUIS DEFAIT' WHERE id = ?",
+                     (e["cible_id"],))
+        raise undo.Irretablissable()
+    monkeypatch.setattr(undo, "_inverser", inversion_qui_ecrit_puis_leve)
+
+    rep = client.post("/api/undo", headers=COLLEGUE)
+    assert rep.json()["detail"]["message"] == \
+        f"Ne s'annule plus : modification d'une région — {IRRETABLISSABLE}"
+    assert _texte(db_path, decor["rg"]) == "DE LA COLLEGUE"
+    assert len(_marques(db_path, "collegue")) == 1

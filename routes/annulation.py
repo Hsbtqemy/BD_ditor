@@ -94,6 +94,9 @@ def undo_dernier(conn: sqlite3.Connection = Depends(db),
         # pile, et le Ctrl+Z suivant défait le geste d'avant. La trace est validée MALGRÉ
         # le refus — sans elle, ce même 409 reviendrait à chaque Ctrl+Z. Le corps ne porte
         # que la phrase et l'acte passé : rien de l'objet présent, qu'on ne lit peut-être pas.
+        # Ce que l'inversion aurait commencé d'écrire est défait AVANT la trace : valider la
+        # trace validerait sinon le reste avec elle.
+        conn.rollback()
         undo.ecarter(conn, exc.evenement)
         conn.commit()
         raise HTTPException(409, {"message": str(exc),

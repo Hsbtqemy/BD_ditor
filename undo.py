@@ -55,6 +55,11 @@ class UndoImpossible(Exception):
 # deux phrases diraient à qui ne lit plus la planche si la région a été supprimée ou si
 # elle vit encore hors de sa portée — exactement ce que le 404 garde ailleurs.
 PHRASE_NE_S_ANNULE_PLUS = "Ne s'annule plus : {description} — la région n'est plus à votre portée."
+# La seconde, pour un acte dont l'objet est bien à portée, mais dont l'état d'avant n'a plus
+# où se poser : un parent disparu ou qui ferait un cycle, un personnage supprimé. L'agent
+# écrit la région : la phrase ne lui apprend rien qu'il ne puisse lire.
+PHRASE_IRRETABLISSABLE = ("Ne s'annule plus : {description} — "
+                          "l'état d'avant ne peut plus être rétabli.")
 
 
 class NeSAnnulePlus(Exception):
@@ -63,10 +68,15 @@ class NeSAnnulePlus(Exception):
     de bloquer la pile. Le message ne dit rien de l'objet présent, qu'on ne lit peut-être
     pas."""
 
-    def __init__(self, e):
+    def __init__(self, e, phrase: str = PHRASE_NE_S_ANNULE_PLUS):
         self.evenement = e
         self.description = _description(e)
-        super().__init__(PHRASE_NE_S_ANNULE_PLUS.format(description=self.description))
+        super().__init__(phrase.format(description=self.description))
+
+
+class Irretablissable(Exception):
+    """Levée PENDANT l'inversion : l'état d'avant n'a plus où se poser. `annuler` la change
+    en `NeSAnnulePlus` (seconde phrase) ; la route défait ce qui aurait été écrit."""
 
 
 def _description(e) -> str:
@@ -226,6 +236,12 @@ def _inverser_modification_region(conn, region_id, avant, apres):
     if actuel is None:
         raise UndoImpossible("la région n'existe plus")
     changees = [c for c in journal._REGION_COLS if not conflit.egal(avant.get(c), apres.get(c))]
+    # AUTH-14 — le parent qu'on rend se valide comme la route le valide (`_validate_parent`) :
+    # présent, dans la MÊME planche, sans cycle. Sans quoi Ctrl+Z rattachait une bulle à une
+    # case d'une autre collection (relecture croisée, S1).
+    if "parent_id" in changees and avant.get("parent_id") is not None \
+            and not _parent_valide(conn, region_id, avant["parent_id"], actuel["planche_id"]):
+        raise Irretablissable()
     for c in changees:
         if c not in _SANS_GARDE:
             conflit.verifier(conn, "regions", region_id, c, vu=apres.get(c),
@@ -378,12 +394,35 @@ def _planche_de(conn, region_id, e) -> Optional[int]:
 # même (`_meme_objet`, ici, sans portée) ; l'agent peut-il l'écrire MAINTENANT (`ecrivable`,
 # fourni par la route, qui tient les accesseurs gardés de `socle.py`).
 
+def _noeuds(snap: dict):
+    """Les nœuds d'un instantané profond : la région et tout son sous-arbre."""
+    if snap:
+        yield snap
+    for enfant in (snap or {}).get("enfants", []):
+        yield from _noeuds(enfant)
+
+
 def _ids_instantane(snap: dict):
     """Les identifiants d'un instantané profond : la région et tout son sous-arbre."""
-    if snap.get("id") is not None:
-        yield snap["id"]
-    for enfant in snap.get("enfants", []):
-        yield from _ids_instantane(enfant)
+    for n in _noeuds(snap):
+        if n.get("id") is not None:
+            yield n["id"]
+
+
+def _planches_instantane(snap: dict) -> list:
+    """Les planches de TOUS les nœuds, et pas seulement de la racine : une base retouchée
+    par une annulation d'avant ce correctif peut porter un enfant dans une autre planche
+    que son parent — le rétablir écrirait là aussi (relecture croisée, S1)."""
+    return sorted({n.get("planche_id") for n in _noeuds(snap)}, key=lambda x: (x is None, x))
+
+
+def _parent_valide(conn, region_id, parent_id, planche_id) -> bool:
+    """Ce que la route exige d'un parent (`socle._validate_parent`) : présent, dans la même
+    planche, ni la région elle-même ni l'un de ses descendants."""
+    r = conn.execute("SELECT planche_id FROM regions WHERE id = ?", (parent_id,)).fetchone()
+    if r is None or r["planche_id"] != planche_id or parent_id == region_id:
+        return False
+    return parent_id not in set(_descendants(conn, region_id))
 
 
 def _recreee_depuis(conn, region_id, e) -> bool:
@@ -437,11 +476,12 @@ def _meme_objet(conn, e) -> bool:
                 f"SELECT 1 FROM regions WHERE id IN ({','.join('?' * len(ids))}) LIMIT 1",
                 ids).fetchone():
             return False
+        for pl in _planches_instantane(snap):
+            if conn.execute("SELECT 1 FROM planches WHERE id = ?", (pl,)).fetchone() is None:
+                return False
+            if _album_ne_apres(conn, pl, e):
+                return False
         planche = snap.get("planche_id")
-        if conn.execute("SELECT 1 FROM planches WHERE id = ?", (planche,)).fetchone() is None:
-            return False
-        if _album_ne_apres(conn, planche, e):
-            return False
         parent = snap.get("parent_id")
         if parent is not None:
             r = conn.execute("SELECT planche_id FROM regions WHERE id = ?", (parent,)).fetchone()
@@ -455,7 +495,20 @@ def _meme_objet(conn, e) -> bool:
     alors = _planche_au_moment(conn, rid, e)
     if alors is not None and alors != r["planche_id"]:
         return False
-    return not _album_ne_apres(conn, r["planche_id"], e)
+    if _album_ne_apres(conn, r["planche_id"], e):
+        return False
+    # Le parent que l'inverse rendrait est un objet lui aussi : repris ailleurs, il n'est
+    # plus celui de l'acte. Absent, c'est l'inversion qui le dira (seconde phrase).
+    avant, apres = _charge(e["avant"]) or {}, _charge(e["apres"]) or {}
+    if e["cible_table"] == "regions" and e["type"] == "modification" \
+            and avant.get("parent_id") is not None \
+            and avant.get("parent_id") != apres.get("parent_id"):
+        p = conn.execute("SELECT planche_id FROM regions WHERE id = ?",
+                         (avant["parent_id"],)).fetchone()
+        if p is not None and (p["planche_id"] != r["planche_id"]
+                              or _recreee_depuis(conn, avant["parent_id"], e)):
+            return False
+    return True
 
 
 def lieux(conn, e) -> dict:
@@ -465,7 +518,7 @@ def lieux(conn, e) -> dict:
     autre acte s'inverse sur sa région. C'est ce que la route éprouve avec les accesseurs
     gardés, en écriture, sous la portée de la requête."""
     if e["type"] == "suppression" and e["cible_table"] == "regions":
-        return {"regions": [], "planches": [(_charge(e["avant"]) or {}).get("planche_id")]}
+        return {"regions": [], "planches": _planches_instantane(_charge(e["avant"]) or {})}
     return {"regions": [e["cible_id"]], "planches": []}
 
 
@@ -509,7 +562,10 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
         return None
     if not _meme_objet(conn, e) or not ecrivable(lieux(conn, e)):
         raise NeSAnnulePlus(e)
-    region_id = _inverser(conn, e)
+    try:
+        region_id = _inverser(conn, e)
+    except Irretablissable:
+        raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE)
     planche_id = _planche_de(conn, region_id, e)
     journal.journaliser(conn, "annulation", "evenement", e["id"],
                         avant={"acte": e["type"], "cible_table": e["cible_table"],
