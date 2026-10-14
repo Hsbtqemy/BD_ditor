@@ -181,8 +181,9 @@ ne dépend d'aucun relevé, et se retire. Le parcours « à faire seulement » d
   album sont celles de son projet.
 - **Voir le plan d'une grille** : quiconque lit un album du projet où elle est active — sans
   quoi un annotateur qui a un accès de collection sans être membre du projet ne verrait pas la
-  grille qu'il doit appliquer. **À trancher** (question ouverte d'`ANN-7` : le plan d'une grille
-  réservée peut révéler une étude en cours).
+  grille qu'il doit appliquer. **Tranché par Hugo le 2026-10-14** (§13), en connaissance du
+  risque que portait la question d'`ANN-7` : le plan d'une grille réservée peut révéler une
+  étude en cours, et il se voit ainsi hors du cercle des membres du projet.
 - **Poser, modifier, retirer un relevé** : écrire dans l'album (`clause_album(ecriture=True)`,
   par l'accesseur gardé de la région). Lire un relevé : lire l'album.
 - **Créer une zone `detail` ou `texte`** depuis la page Annotation : écrire dans l'album, comme
