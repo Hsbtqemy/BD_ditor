@@ -767,3 +767,63 @@ def test_la_trace_ne_compte_pas_comme_un_acte_laisse(client, db_path, decor):
     _passe(client.post("/api/undo", headers=COLLEGUE), "création d'une région")
     assert _marques(db_path, "collegue"), "le semis : aucune trace posée"
     assert actes() == avant == 1
+
+
+# --------------------------------------------------------------------------- #
+# Relecture croisée — un témoin chacun (S8, S9, S10). La disparition se fait SANS
+# événement, comme une re-passe ML qui remplace les régions machine : sinon le témoin
+# « supprimée depuis » répondrait à la place de celui qu'on éprouve.
+# --------------------------------------------------------------------------- #
+def _effacer_sans_evenement(db_path, rid):
+    _sql(db_path, "DELETE FROM regions WHERE id = ?", (rid,))
+
+
+def test_retablir_sous_un_parent_repris_dans_une_autre_planche_est_refuse(
+        client, db_path, decor):
+    """Seul le témoin « parent dans la même planche » voit ce cas (S8)."""
+    py = _incub(client, decor)
+    c = _region(client, decor["pe"], COLLEGUE, type="case")
+    b = _region(client, decor["pe"], COLLEGUE, parent_id=c, ocr_texte="BULLE")
+    _ok(client.delete(f"/api/regions/{b}", headers=COLLEGUE), 204)
+    _effacer_sans_evenement(db_path, c)
+    _inserer_sans_evenement(db_path, c, py)
+
+    _passe(client.post("/api/undo", headers=COLLEGUE), "suppression d'une région")
+    assert _sql(db_path, "SELECT id FROM regions WHERE id = ?", (b,)) == []
+
+
+def test_une_region_reprise_dans_un_album_ne_apres_l_acte_n_est_plus_la_meme(
+        client, db_path, decor):
+    """Seul le témoin « album né après l'acte » voit ce cas, pour un acte autre qu'une
+    suppression (S9)."""
+    rid = _sql(db_path, "SELECT COALESCE(MAX(id), 0) + 1 AS n FROM regions")[0]["n"]
+    _inserer_sans_evenement(db_path, rid, decor["pe"])
+    _ok(client.put(f"/api/regions/{rid}/locuteur", headers=IMPORTEUSE,
+                   json={"personnage_id": _perso(client, "Dupond", IMPORTEUSE)}), 200)
+    _effacer_sans_evenement(db_path, rid)
+    _sql(db_path, "UPDATE evenement SET date = datetime(date, '-1 minutes')")
+    py = _incub(client, decor)                                       # album né APRÈS l'acte
+    _inserer_sans_evenement(db_path, rid, py)
+    p2 = _perso(client, "Dupont", INCUB)
+    _ok(client.put(f"/api/regions/{rid}/locuteur", headers=INCUB, json={"personnage_id": p2}), 200)
+
+    _passe(client.post("/api/undo", headers=IMPORTEUSE), "attribution d'un locuteur")
+    assert _locuteur(db_path, rid) == p2
+
+
+def test_un_identifiant_deja_servi_puis_repris_s_annule_sur_le_nouvel_objet(
+        client, db_path, decor):
+    """Le témoin « planche au moment de l'acte » s'arrête à la dernière suppression : avant
+    elle, le journal parle d'un AUTRE objet. Sans cet arrêt, il comparait la planche de
+    l'ancien à celle du nouveau, et refusait un Ctrl+Z légitime (S10)."""
+    vieux = _region(client, decor["pg"], COLLEGUE)
+    _ok(client.delete(f"/api/regions/{vieux}", headers=COLLEGUE), 204)
+    _ok(client.post("/api/undo", headers=COLLEGUE), 200)            # rétablie…
+    _ok(client.delete(f"/api/regions/{vieux}", headers=IMPORTEUSE), 204)   # … puis supprimée
+    _inserer_sans_evenement(db_path, vieux, decor["pe"])
+    p = _perso(client, "Tournesol", COLLEGUE)
+    _ok(client.put(f"/api/regions/{vieux}/locuteur", headers=COLLEGUE,
+                   json={"personnage_id": p}), 200)
+
+    rep = _ok(client.post("/api/undo", headers=COLLEGUE), 200)
+    assert rep.json()["acte"] == "lien" and _locuteur(db_path, vieux) is None
