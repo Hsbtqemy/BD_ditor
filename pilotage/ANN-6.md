@@ -100,6 +100,12 @@ semaines » (Hugo, le même jour).
   vise un détail annote, Tags libres compris ; ou « Texte hors bulle », qui reçoit une
   transcription puis s'annote avec Oralité. Les deux, choisis par Hugo le 2026-10-14.
   Une zone tracée ici n'est pas une case : le découpage reste à l'Atelier
+- [x] **Le nom d'un personnage ou d'un détail s'écrit sur l'image, en petit** — attendu :
+  tranché. L'Atelier n'étiquette une région que par son rang (« c2 », « b1 », et « 3·p »
+  pour une boîte personnage, `regionLabel` dans `static/viewer.js`) ; la maquette y écrit
+  le nom. Hugo : « ça peut être intéressant. Peut-être pas en aussi grand ». Dans la
+  maquette, à taille d'écran constante (environ 12 px), quelle que soit la largeur de la
+  case
 - [x] **Le doute : un commentaire, des réponses, une levée** — attendu : tranché. Signé et
   daté ; on le lève en gardant, en changeant ou en retirant le relevé ; une liste « À
   revoir » les réunit
