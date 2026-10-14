@@ -259,10 +259,16 @@ def test_undo_ignore_actes_machine(client, db_path):
 # --------------------------------------------------------------------------- #
 def _vieillir(db_path, minutes):
     """Recule la date de TOUS les événements. Le journal ne se réécrit jamais en vrai ;
-    c'est la seule façon d'éprouver un délai sans attendre qu'il s'écoule."""
+    c'est la seule façon d'éprouver un délai sans attendre qu'il s'écoule.
+
+    Les albums reculent AVEC lui (AUTH-14) : vieillir le journal seul fabrique un monde
+    impossible, où l'on a agi sur une planche avant que son album soit importé — et
+    l'annulation lit justement cela comme un identifiant repris (`undo._album_ne_apres`)."""
     conn = sqlite3.connect(db_path)
     try:
         conn.execute("UPDATE evenement SET date = datetime(date, ?)", (f"-{minutes} minutes",))
+        conn.execute("UPDATE albums SET date_import = datetime(date_import, ?)",
+                     (f"-{minutes} minutes",))
         conn.commit()
     finally:
         conn.close()
@@ -322,9 +328,14 @@ def test_viser_un_vieil_acte_par_son_id_ne_contourne_pas_le_delai(client, planch
                        "AND cible_id = ?", (ancien["id"],))["id"]
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    # `ecrivable` est obligatoire depuis AUTH-14 ; ce test éprouve le délai, pas l'accès,
+    # et le second appel doit aboutir : on le dit d'un mot plutôt que de monter une portée.
+    tout_ecrivable = lambda lieux: True  # noqa: E731
     try:
-        assert undo.annuler(conn, evenement_id=eid, agent="decor") is None
-        assert undo.annuler(conn, evenement_id=eid, agent=undo.TOUS) is not None
+        assert undo.annuler(conn, evenement_id=eid, agent="decor",
+                            ecrivable=tout_ecrivable) is None
+        assert undo.annuler(conn, evenement_id=eid, agent=undo.TOUS,
+                            ecrivable=tout_ecrivable) is not None
     finally:
         conn.rollback()
         conn.close()

@@ -144,3 +144,51 @@ def test_quitter_la_transcription_par_echap(page, bulle_capitale):
     expect(page.locator("#transcription")).to_be_hidden(timeout=15000)
     # Rien n'a été écrit : le panneau de l'Atelier montre le texte d'origine.
     expect(page.locator("#ocr-text")).to_have_text(CAPITALES)
+
+
+def test_un_geste_qui_ne_s_annule_plus_le_dit_et_la_pile_passe(page, live_server):
+    """AUTH-14 — l'écran DIT pourquoi un geste ne s'annule plus, et Ctrl+Z passe au suivant.
+
+    Les tests serveur mesurent le 409 et la trace au journal ; aucun ne lit ce que le
+    toast affiche, ni que l'Atelier ne reste pas coincé. L'album où vivait la région est
+    détruit — l'acte ne désigne plus rien —, et l'écran reste ouvert sur un AUTRE album.
+    """
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
+    try:
+        garde = c.post("/api/albums", json={"titre": "E2E garde"}).json()["id"]
+        pg = c.post(f"/api/albums/{garde}/import",
+                    files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
+        cg = c.post(f"/api/planches/{pg}/regions",
+                    json={"type": "case", "x": 10, "y": 10, "w": 80, "h": 60}).json()["id"]
+        perdu = c.post("/api/albums", json={"titre": "E2E perdu"}).json()["id"]
+        pp = c.post(f"/api/albums/{perdu}/import",
+                    files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
+        rp = c.post(f"/api/planches/{pp}/regions",
+                    json={"type": "case", "x": 10, "y": 10, "w": 80, "h": 60}).json()["id"]
+        assert c.put(f"/api/regions/{rp}", json={"x": 20}).status_code == 200
+        assert c.delete(f"/api/albums/{perdu}").status_code == 204
+    finally:
+        c.close()
+
+    page.goto(f"{live_server}/?album={garde}&planche={pg}", wait_until="networkidle")
+    toasts = page.locator("#toasts")
+
+    def ctrl_z():
+        """Hors champ de saisie, et en attendant la RÉPONSE : sans elle, un toast absent ne
+        dirait pas si la touche est partie."""
+        with page.expect_response(lambda r: r.request.method == "POST"
+                                  and r.url.endswith("/api/undo"), timeout=60000) as rep:
+            page.locator("body").press("Control+z")
+        return rep.value.status
+
+    assert ctrl_z() == 409
+    expect(toasts).to_contain_text(
+        "Ne s'annule plus : modification d'une région — la région n'est plus à votre portée.",
+        timeout=15000)
+    assert ctrl_z() == 409
+    expect(toasts).to_contain_text("Ne s'annule plus : création d'une région", timeout=15000)
+    # La pile n'est pas restée coincée : le troisième Ctrl+Z défait le geste d'avant.
+    assert ctrl_z() == 200
+    expect(toasts).to_contain_text("Annulé : création d'une région", timeout=15000)
+    r = httpx.get(f"{live_server}/api/planches/{pg}/regions", trust_env=False, timeout=30)
+    assert cg not in {x["id"] for x in r.json()}

@@ -50,6 +50,25 @@ class UndoImpossible(Exception):
     """L'inverse ne peut pas s'appliquer (p. ex. identifiant réattribué, entité disparue)."""
 
 
+# AUTH-14 — la phrase que l'écran montre quand Ctrl+Z passe un acte. UNE pour tous les
+# cas (région disparue, identifiant repris ailleurs, collection qu'on n'écrit plus) :
+# deux phrases diraient à qui ne lit plus la planche si la région a été supprimée ou si
+# elle vit encore hors de sa portée — exactement ce que le 404 garde ailleurs.
+PHRASE_NE_S_ANNULE_PLUS = "Ne s'annule plus : {description} — la région n'est plus à votre portée."
+
+
+class NeSAnnulePlus(Exception):
+    """L'acte ne s'annule plus : ce qu'il a touché n'est plus l'objet sur lequel il a
+    porté, ou plus un objet que l'agent peut écrire. La route le PASSE (`ecarter`) au lieu
+    de bloquer la pile. Le message ne dit rien de l'objet présent, qu'on ne lit peut-être
+    pas."""
+
+    def __init__(self, e):
+        self.evenement = e
+        self.description = _description(e)
+        super().__init__(PHRASE_NE_S_ANNULE_PLUS.format(description=self.description))
+
+
 def _description(e) -> str:
     return _DESCRIPTIONS.get((e["type"], e["cible_table"]), f"{e['type']} {e['cible_table']}")
 
@@ -119,6 +138,8 @@ def derniere_action_annulable(conn: sqlite3.Connection, agent=TOUS):
     if borne is not None:
         ou += "  AND date >= ? "                # même format que la colonne : comparaison de chaînes
         params.append(borne)
+    # Hors de la pile : ce qui a été annulé, et ce que Ctrl+Z a PASSÉ (AUTH-14) — sans
+    # quoi un acte qui ne s'annule plus revenait à chaque Ctrl+Z, indéfiniment.
     return conn.execute(
         f"SELECT * FROM evenement "
         f"WHERE agent_type = 'humain' "
@@ -126,7 +147,8 @@ def derniere_action_annulable(conn: sqlite3.Connection, agent=TOUS):
         f"  AND cible_table IN ({','.join('?' * len(_TABLES))}) "
         f"{ou}"
         f"  AND id NOT IN (SELECT cible_id FROM evenement "
-        f"                 WHERE type = 'annulation' AND cible_table = 'evenement' "
+        f"                 WHERE ((type = 'annulation' AND cible_table = 'evenement') "
+        f"                     OR (type = 'abandon' AND cible_table = 'annulation')) "
         f"                   AND cible_id IS NOT NULL) "
         f"ORDER BY id DESC LIMIT 1",
         (*_TYPES, *_TABLES, *params)).fetchone()
@@ -343,12 +365,135 @@ def _planche_de(conn, region_id, e) -> Optional[int]:
     return snap.get("planche_id")
 
 
+# --------------------------------------------------------------------------- #
+# AUTH-14 — l'acte porte-t-il encore sur le même objet, et où l'inverse écrirait-il ?
+# --------------------------------------------------------------------------- #
+# Les identifiants de `regions` et de `planches` se RÉATTRIBUENT (pas d'`AUTOINCREMENT`) :
+# la région créée après la suppression de celle d'identifiant le plus haut reprend cet
+# identifiant, dans n'importe quelle collection. Le `cible_id` d'un acte peut donc désigner,
+# aujourd'hui, un objet que son auteur n'a jamais touché. Filtrer par agent ne dit rien de
+# l'objet : Ctrl+Z effaçait un locuteur de l'Incubateur au nom d'une collègue qui n'y entre
+# pas, et le 409 de CONC-3 lui rendait le texte de la région et le login de son auteur
+# (mesuré sur 5311ccc). Deux questions, posées AVANT toute écriture : l'objet est-il le
+# même (`_meme_objet`, ici, sans portée) ; l'agent peut-il l'écrire MAINTENANT (`ecrivable`,
+# fourni par la route, qui tient les accesseurs gardés de `socle.py`).
+
+def _ids_instantane(snap: dict):
+    """Les identifiants d'un instantané profond : la région et tout son sous-arbre."""
+    if snap.get("id") is not None:
+        yield snap["id"]
+    for enfant in snap.get("enfants", []):
+        yield from _ids_instantane(enfant)
+
+
+def _recreee_depuis(conn, region_id, e) -> bool:
+    """Une région a-t-elle été CRÉÉE sous cet identifiant après l'acte `e` ?
+
+    C'est le signe le plus sûr d'un identifiant repris : toute création par une route ou
+    par une passe ML est journalisée. Rétablir une suppression ne l'est pas comme création
+    — c'est le MÊME objet qui revient, sous le même identifiant, et il ne doit pas compter.
+    Cas limite, fermé du côté sûr : une région reprise puis supprimée, et l'originale
+    rétablie ensuite, passe pour reprise — Ctrl+Z refuse là où il aurait pu agir."""
+    return conn.execute(
+        "SELECT 1 FROM evenement WHERE cible_table = 'regions' AND type = 'creation' "
+        "AND cible_id = ? AND id > ? LIMIT 1", (region_id, e["id"])).fetchone() is not None
+
+
+def _planche_au_moment(conn, region_id, e) -> Optional[int]:
+    """La planche où vivait la région au moment de l'acte, lue au journal — None s'il n'en
+    dit rien. Un second témoin, pour les régions nées sans événement de création (la
+    segmentation lancée à l'import depuis ShareDocs n'en écrit pas)."""
+    for ev in conn.execute(
+            "SELECT type, avant, apres FROM evenement WHERE cible_table = 'regions' "
+            "AND cible_id = ? AND id <= ? ORDER BY id DESC", (region_id, e["id"])):
+        if ev["type"] == "suppression":
+            return None          # l'objet de l'acte est né après : le journal n'en sait rien
+        for etat in (_charge(ev["apres"]), _charge(ev["avant"])):
+            if etat and etat.get("planche_id") is not None:
+                return etat["planche_id"]
+    return None
+
+
+def _album_ne_apres(conn, planche_id, e) -> bool:
+    """La planche appartient-elle à un album importé APRÈS l'acte ? Alors elle n'est pas
+    celle de l'acte. Les dates sont à la seconde : dans la même seconde, rien n'est vu."""
+    row = conn.execute("SELECT a.date_import FROM planches p JOIN albums a "
+                       "ON a.id = p.album_id WHERE p.id = ?", (planche_id,)).fetchone()
+    return bool(row and row["date_import"] and e["date"] and row["date_import"] > e["date"])
+
+
+def _meme_objet(conn, e) -> bool:
+    """L'inverse de `e` porterait-il sur l'objet même que `e` a touché ?
+
+    Pour une SUPPRESSION, l'objet est la place où la région reviendrait : ses identifiants
+    libres, sa planche présente et née avant l'acte, son parent — s'il en a un — dans la
+    même planche et jamais recréé depuis. Pour tout autre acte, la région présente sous
+    `cible_id`, jamais recréée depuis, dans la planche où elle vivait. Une région absente
+    n'est pas « la même » : l'inverse n'aurait rien sur quoi s'appliquer."""
+    if e["type"] == "suppression" and e["cible_table"] == "regions":
+        snap = _charge(e["avant"]) or {}
+        ids = list(_ids_instantane(snap))
+        if not ids or conn.execute(
+                f"SELECT 1 FROM regions WHERE id IN ({','.join('?' * len(ids))}) LIMIT 1",
+                ids).fetchone():
+            return False
+        planche = snap.get("planche_id")
+        if conn.execute("SELECT 1 FROM planches WHERE id = ?", (planche,)).fetchone() is None:
+            return False
+        if _album_ne_apres(conn, planche, e):
+            return False
+        parent = snap.get("parent_id")
+        if parent is not None:
+            r = conn.execute("SELECT planche_id FROM regions WHERE id = ?", (parent,)).fetchone()
+            if r is None or r["planche_id"] != planche or _recreee_depuis(conn, parent, e):
+                return False
+        return True
+    rid = e["cible_id"]
+    r = conn.execute("SELECT planche_id FROM regions WHERE id = ?", (rid,)).fetchone()
+    if r is None or _recreee_depuis(conn, rid, e):
+        return False
+    alors = _planche_au_moment(conn, rid, e)
+    if alors is not None and alors != r["planche_id"]:
+        return False
+    return not _album_ne_apres(conn, r["planche_id"], e)
+
+
+def lieux(conn, e) -> dict:
+    """Où l'inverse de `e` ÉCRIRAIT : `{"regions": [...], "planches": [...]}`.
+
+    Une suppression se rétablit DANS une planche — la région n'existe pas encore ; tout
+    autre acte s'inverse sur sa région. C'est ce que la route éprouve avec les accesseurs
+    gardés, en écriture, sous la portée de la requête."""
+    if e["type"] == "suppression" and e["cible_table"] == "regions":
+        return {"regions": [], "planches": [(_charge(e["avant"]) or {}).get("planche_id")]}
+    return {"regions": [e["cible_id"]], "planches": []}
+
+
+def ecarter(conn: sqlite3.Connection, e) -> int:
+    """PASSE un acte qui ne s'annule plus : une trace au journal, append-only, qui le sort
+    de la pile (`derniere_action_annulable`). Rien d'autre n'est écrit. NE COMMITE PAS.
+
+    `abandon` et non `annulation` : rien n'a été défait, et `conflit.auteur_du_champ` lit
+    une annulation comme ayant reposé l'état `avant`. La `cible_table` « annulation »
+    n'est pas une table — comme `sharedocs` — mais la clé sous laquelle `tools/_commun.py`
+    RETIENT la trace hors du dépôt ; elle s'écrit en clair, parce que le cliquet du journal
+    ne relève que les littéraux (`test_journal_publie_par_decision`)."""
+    return journal.journaliser(conn, "abandon", "annulation", e["id"],
+                               avant={"acte": e["type"], "cible_table": e["cible_table"],
+                                      "cible_id": e["cible_id"]})
+
+
 def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
-            agent=TOUS) -> Optional[dict]:
+            agent=TOUS, *, ecrivable) -> Optional[dict]:
     """Annule la dernière action (ou l'événement `evenement_id`) : exécute l'inverse puis
     journalise un événement `annulation`. Renvoie un descripteur {description, planche_id,
     region_id, …} pour le rafraîchissement UI, ou None s'il n'y a rien à annuler. NE COMMITE
-    PAS (la route commite → inversion + journal atomiques ; rollback en cas d'échec)."""
+    PAS (la route commite → inversion + journal atomiques ; rollback en cas d'échec).
+
+    `ecrivable(lieux) -> bool` dit si l'agent peut écrire MAINTENANT là où l'inverse
+    écrirait (AUTH-14). Il est OBLIGATOIRE, sans défaut — comme la `Portee` des accesseurs
+    gardés : un défaut qui sauterait le contrôle rendrait l'oubli invisible. Lève
+    `NeSAnnulePlus` si l'objet n'est plus le même ou n'est plus à la portée de l'agent."""
     if evenement_id is None:
         e = derniere_action_annulable(conn, agent)
     else:
@@ -362,6 +507,8 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
             e = None
     if e is None:
         return None
+    if not _meme_objet(conn, e) or not ecrivable(lieux(conn, e)):
+        raise NeSAnnulePlus(e)
     region_id = _inverser(conn, e)
     planche_id = _planche_de(conn, region_id, e)
     journal.journaliser(conn, "annulation", "evenement", e["id"],

@@ -308,6 +308,11 @@ CIBLES_RETENUES = {
         "`principal` est un login ou un NOM DE GROUPE. Même famille que "
         "`collection_acces`, un étage plus haut : une pièce d'audit interne, due à "
         "l'équipe et non à l'entrepôt.",
+    "annulation":
+        "AUTH-14 — la trace qu'un Ctrl+Z a PASSÉ un acte qui ne s'annule plus (`abandon`). "
+        "Rien n'a été écrit dans le corpus : le dépôt n'a rien à en apprendre. Et la ligne "
+        "seule dirait qu'une région est sortie de la portée de quelqu'un — une pièce du "
+        "cloisonnement, pas de la provenance.",
 }
 
 
