@@ -50,36 +50,43 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
   état daté et figé, sa note de changement) ; la RUBRIQUE (range, s'imbrique, ordonnée ; on
   n'y pose rien) ; l'ENTRÉE (ce qu'on pose), avec un identifiant stable et invisible, un
   libellé, une définition, une structure, des exemples, une cible, un état
-- [ ] **Les trois formes d'entrée sont définies** — attendu : écrit, chacune avec son geste.
+  **Posés le 2026-10-14** dans `docs/grilles-et-releves.md` (§2), avec leur rôle : grille, version, rubrique, entrée, variante, liste de qualificatifs, activation, relevé, doute, passe. Leurs champs s'écrivent avec la migration de la tranche 1 : la case se coche là
+- [x] **Les trois formes d'entrée sont définies** — attendu : écrit, chacune avec son geste.
   Simple (posée ou non) ; à variantes (un phénomène, puis UNE variante des siennes) ; à
   qualificatifs (un phénomène, plus un ou plusieurs choix dans une liste PARTAGÉE entre
   plusieurs entrées). Une précision libre peut s'ajouter à une entrée. La grille des
   linguistes s'y range entière : à vérifier en l'important
-- [ ] **La cible d'une grille est une donnée** — attendu : écrit. Des mots d'une zone, une
+  **Écrit le 2026-10-14** dans `docs/grilles-et-releves.md` (§3), avec la précision libre et le lien vers une autre zone
+- [x] **La cible d'une grille est une donnée** — attendu : écrit. Des mots d'une zone, une
   zone entière, une case, un personnage, une planche : c'est ce qui laisse entrer dans le même
   modèle une grille d'oralité, des émotions de personnages et la situation d'une case
-- [ ] **Le doute n'est pas une entrée** — attendu : écrit. C'est une propriété de tout relevé,
+  **Écrit le 2026-10-14** dans `docs/grilles-et-releves.md` (§4) : une version déclare ce qu'elle vise, parmi huit sortes ; le détail devient un type de région
+- [x] **Le doute n'est pas une entrée** — attendu : écrit. C'est une propriété de tout relevé,
   fournie par l'outil quelle que soit la grille, avec son commentaire. Le guide des
   linguistes le range comme un tag transversal
-- [ ] **Ce qu'une grille ne redéfinit pas se déclare « pris dans l'outil »** — attendu :
+  **Écrit le 2026-10-14** dans `docs/grilles-et-releves.md` (§2, §8)
+- [x] **Ce qu'une grille ne redéfinit pas se déclare « pris dans l'outil »** — attendu :
   écrit. Le premier niveau de la grille des linguistes (type de zone, locuteur, lieu) existe
   déjà dans l'outil
+  **Écrit le 2026-10-14** dans `docs/grilles-et-releves.md` (§2)
 - [ ] **Un exemple peut désigner un relevé du corpus** — attendu : tranché. Un exemple est du
   texte, ou un renvoi à un vrai relevé, qui s'ouvre en un clic ; le guide laisse plusieurs
   « [exemple du corpus] » vides
-- [ ] **Une version en usage ne se modifie pas en place** — attendu : écrit. On prépare la
+- [x] **Une version en usage ne se modifie pas en place** — attendu : écrit. On prépare la
   suivante, on la publie ; un relevé dit dans quelle version il a été posé. Effet de chaque
   changement : ajouter, renommer (l'identifiant tient), retoucher une définition (le sens
   bouge, la note de version le dit) n'abîment aucun relevé ; déplacer une entrée change les
   comptes par rubrique, passé compris ; supprimer une entrée employée est interdit, elle
   devient « retirée » ; fusionner reporte les relevés, tracé ; scinder met les relevés « à
   revoir » ; changer de forme met les relevés incomplets « à compléter »
-- [ ] **Le tableur porte une colonne d'identifiants, et l'import rend un bilan** — attendu :
+  **Écrit le 2026-10-14** dans `docs/grilles-et-releves.md` (§6) : une version est un instantané complet, tranché par Hugo ; la montée de version d'un projet attend une tranche ultérieure
+- [x] **Le tableur porte une colonne d'identifiants, et l'import rend un bilan** — attendu :
   écrit, sur le format d'import existant (`lexique_import.py`, `tools/vocabulaire-modele.csv`).
   Sans identifiant, un libellé renommé se lit comme une suppression suivie d'un ajout.
   L'écran de bilan prend les décisions du tableau des changements avant de publier :
   ajouts, renommages, et pour chaque entrée disparue qui a des relevés, « retirer, ou fusionner
   dans… ». BD_ditor réexporte la grille vers le tableur, identifiants compris
+  **Écrit le 2026-10-14** dans `docs/grilles-et-releves.md` (§7) : les colonnes, le bilan avant publication, le réexport
 - [ ] **Une coquille se corrige à l'écran** — attendu : tranché. Seule exception au tableur
   envisagée : une définition ou un exemple, qui ne touchent aucun relevé
 - [ ] **Le guide des linguistes découle de la grille** — attendu : tranché. BD_ditor peut en
@@ -111,9 +118,10 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
   faite en v1 reste interprétable quand la grille en est à la v5 ; la grille sort dans un
   format standard (SKOS, comme le lexique aujourd'hui), et une grille venue d'ailleurs peut
   entrer au catalogue. Ce pan touche ce qui SORT : relecture croisée
-- [ ] **Qui voit le plan d'une grille réservée** — attendu : tranché. Une grille non partagée
+- [x] **Qui voit le plan d'une grille réservée** — attendu : tranché. Une grille non partagée
   est un travail de recherche, et son seul plan peut révéler une étude en cours : la même
   question qu'aux termes d'une collection, un étage plus haut (`clause_terme`)
+  **Tranché par Hugo le 2026-10-14** : quiconque lit un album du projet où la grille est active (`docs/grilles-et-releves.md`, §10). Être membre du projet n'est pas exigé, pas plus que pour annoter
 
 ### Un seul modèle : ce qui existe y entre
 
@@ -140,9 +148,10 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
 
 ### L'ordre
 
-- [ ] **Sa place face à `ANN-6` et `COL-3` est décidée** — attendu : tranché par Hugo. Le
+- [x] **Sa place face à `ANN-6` et `COL-3` est décidée** — attendu : tranché par Hugo. Le
   relevé d'`ANN-6` se pose avec une entrée de grille, donc après le modèle ; le catalogue
   et le fonds de `COL-3` partagent le patron du pot commun, et gagnent à être conçus ensemble
+  **Tranché par Hugo le 2026-10-14** : `COL-3` d'abord (fusion de sa tranche 1, puis sa tranche 2), puis le modèle des grilles, en quatre tranches (`docs/grilles-et-releves.md`, §1). Commits sur `dev`, sans push, chacun après revue
 
 ## Contexte
 

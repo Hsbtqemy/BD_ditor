@@ -13,7 +13,8 @@ champ « Situation » dit sa syntaxe (`35e9b62`). Le 13, sur le mot de Hugo : da
 deux champs de profil portent la phrase d'aide (`2ab7911`). La passe navigateur entière
 n'est pas encore rejouée sur cet état : seuls les fichiers de l'Atelier le sont. Le 14, sans
 code : l'outil d'annotation est calibré avec Hugo, et une seconde maquette est publiée (cf.
-« Tranché par Hugo — 2026-10-14 » et « La maquette »).
+« Tranché par Hugo — 2026-10-14 » et « La maquette »). Puis la note de cadrage du modèle est
+écrite et validée (`docs/grilles-et-releves.md`) ; la tranche 1 attend la fusion de `COL-3`.
 
 **Point de départ** — 2026-10-12. Hugo rapporte cinq retours d'usage de la production, puis
 transmet la grille d'annotation des linguistes (extrait d'un guide, treize pages : sept
@@ -407,17 +408,19 @@ semaines » (Hugo, le même jour).
 
 ### Le modèle — à cadrer avant tout code
 
-- [ ] **Le relevé est un objet à lui** — attendu : cadré. Une zone, une entrée de la grille,
+- [x] **Le relevé est un objet à lui** — attendu : cadré. Une zone, une entrée de la grille,
   le premier et le dernier mot concernés (facultatifs : un contour de bulle n'en vise
   aucun), un doute, un commentaire ; plusieurs par zone, le même deux fois. Ni un tag, qui
   est présent ou absent, ni une ligne de `region_attribut`, dont la clé est le couple zone
   et valeur
-- [ ] **L'ancrage suit le patron des corrections de grammaire** — attendu : quand la
+  **Cadré le 2026-10-14** dans `docs/grilles-et-releves.md` (§3, §4) : une entrée, une version, une cible — des mots, une région entière ou la planche —, une variante ou des qualificatifs, une précision, un lien
+- [x] **L'ancrage suit le patron des corrections de grammaire** — attendu : quand la
   transcription est corrigée, un relevé suit son mot s'il existe encore, sinon il est mis de
   côté et signalé à revoir — jamais perdu, jamais déplacé en silence. Le mécanisme existe
   pour `token_correction` (la forme visée, le drapeau d'obsolescence,
   `database._reancrer_corrections`). À dire aussi : ce que devient un relevé là où le moteur
   de langue est absent, donc sans mots à viser
+  **Cadré le 2026-10-14** dans `docs/grilles-et-releves.md` (§5) : le découpage des mots est celui de l'outil (tranché par Hugo), ce qui règle le cas du moteur de langue absent ; un mot disparu met le relevé « à revoir »
 - [ ] **La grille entre dans le vocabulaire existant, ou dit ce qui lui manque** — attendu :
   tranché, la grille posée dans le format d'import. Les variables à variantes du niveau 3
   ont la forme exacte d'un axe et de ses valeurs ; mais le niveau 3 a QUATRE étages (niveau,
@@ -434,13 +437,15 @@ semaines » (Hugo, le même jour).
   place dans les exports d'album et dans la voie du dépôt ; la portée du vocabulaire, qui
   suit le titre de l'export ; les cliquets des sorties. Tout ce pan passe par une relecture
   croisée
-- [ ] **Sa place dans l'ordre des chantiers est décidée** — attendu : tranché par Hugo. De la
+- [x] **Sa place dans l'ordre des chantiers est décidée** — attendu : tranché par Hugo. De la
   taille de `COL-3`, à mener en tranches ; `COL-3` attend la fusion de sa tranche 1, et le
   premier des trois commits de sa tranche 2 est écrit, sur copie
+  **Tranché par Hugo le 2026-10-14** : après `COL-3`, en quatre tranches, à partir de `docs/grilles-et-releves.md`
 
 ### Ce que `ANN-7` tranche ici — 2026-10-14
 
-- [ ] **Le relevé se pose avec une entrée de grille, au sens d'`ANN-7`** — attendu : le modèle du relevé cite celui des grilles. Hugo a tranché le 2026-10-14 un outil agnostique, à plusieurs grilles versionnées, partagées dans un catalogue, et un seul modèle où les tags et les attributs entrent aussi. Deux cases de cette fiche y trouvent leur réponse : « La grille entre dans le vocabulaire existant » — elle devient la première grille, et c'est le vocabulaire existant qui y entre — et « Ce qui aura été annoté en tags se convertit », dont la règle s'écrit chez `ANN-7`
+- [x] **Le relevé se pose avec une entrée de grille, au sens d'`ANN-7`** — attendu : le modèle du relevé cite celui des grilles. Hugo a tranché le 2026-10-14 un outil agnostique, à plusieurs grilles versionnées, partagées dans un catalogue, et un seul modèle où les tags et les attributs entrent aussi. Deux cases de cette fiche y trouvent leur réponse : « La grille entre dans le vocabulaire existant » — elle devient la première grille, et c'est le vocabulaire existant qui y entre — et « Ce qui aura été annoté en tags se convertit », dont la règle s'écrit chez `ANN-7`
+  **Écrit le 2026-10-14** dans `docs/grilles-et-releves.md`, note commune aux deux chantiers
 
 ## Contexte
 
