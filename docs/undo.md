@@ -31,7 +31,7 @@ rollback en cas d'échec.
 |---|---|
 | `creation` région | supprimer la région (+ sous-arbre, désindexé) — **refusé** si quelqu'un d'autre l'a modifiée, annotée ou y a rattaché une région depuis |
 | `modification` région (géométrie / OCR / déplacement) | remettre les colonnes que l'acte a CHANGÉES à leur valeur `avant` — **refusé** si l'une d'elles a changé depuis (sauf par un moteur) |
-| `suppression` région | **recréer le sous-arbre** depuis l'instantané profond (région + annotation + enfants, **mêmes `id`**) |
+| `suppression` région | **recréer le sous-arbre** depuis l'instantané profond (région + annotation + enfants, **mêmes `id`**) — **passé** si un `id` a été repris, si la planche ou le parent n'est plus le même, ou si l'on n'écrit plus dans la planche |
 | `creation` / `modification` / `suppression` annotation | défaire ce que l'acte a CHANGÉ, sur l'état actuel : la note revient à `avant` si l'acte l'a changée ; les tags qu'il a ajoutés partent, ceux qu'il a retirés reviennent ; vide, l'annotation est supprimée |
 | `lien` locuteur/présence (avant ∅) | retirer le lien |
 | `lien` (avant présent) / `delien` | rétablir l'ancien lien |
@@ -68,7 +68,8 @@ son travail, et l'annulation ne garde aucun instantané de ce qu'elle supprime.
 
 **Recréation à l'identique** : l'instantané profond porte les `id` d'origine → citations,
 deep-links et références restent valides. Si un `id` a été **réattribué** depuis (une nouvelle
-région a pris la place libérée), l'annulation échoue proprement en **409** plutôt que d'écraser.
+région a pris la place libérée), l'acte est **passé** (cf. ci-dessous) plutôt que d'écraser —
+il n'est plus un 409 qui revient à chaque Ctrl+Z.
 
 ## Ajustement A3 : les annotations ciblent `region_id`
 
@@ -107,18 +108,77 @@ l'inverse du service rendu.
 Viser un événement par son `id` ne contourne pas la règle : `undo.annuler` revérifie
 l'agent.
 
-**Un plancher d'écriture, et un résiduel assumé.** `POST /api/undo` exige en plus un droit
-d'écriture quelque part : annuler REJOUE une écriture, et le filtre par agent seul laissait
-quelqu'un rétrogradé en lecture seule défaire ses anciens actes.
+**Un plancher d'écriture, et une garde sur le lieu même** (AUTH-14, 2026-10-15).
+`POST /api/undo` exige toujours un droit d'écriture quelque part : annuler REJOUE une
+écriture. Mais ce plancher ne dit pas OÙ, et la décision du 2026-08-28 assumait le reste —
+« quelqu'un qui écrit dans B peut encore annuler son propre acte passé sur A ». Elle tenait
+que le fermer supposait de retrouver l'album d'une cible disparue, et qu'un contrôle d'accès
+dépendant de la forme d'un JSON journalisé serait plus fragile que le trou.
 
-Ce plancher ne dit pas SUR QUELLE collection portait l'acte. Quelqu'un qui écrit dans la
-collection B peut donc encore annuler son propre acte passé sur A, où il n'écrit plus.
-Décision du 2026-08-28 : **on l'assume plutôt que de le fermer.** Le fermer supposerait de
-retrouver l'album de la cible — impossible pour une suppression, dont la cible n'existe
-plus. On pourrait le lire dans l'instantané profond que porte l'événement, mais un contrôle
-d'accès qui dépend de la FORME d'un JSON journalisé est plus fragile que le trou qu'il
-bouche. Le scénario reste étroit : il faut avoir eu le droit, l'avoir perdu, et n'annuler
-que ses propres actes.
+Le trou était plus large qu'on ne le croyait, et c'est ce qui a rouvert la décision : les
+identifiants se réattribuent (cf. ci-dessous), si bien qu'un acte pouvait désigner une
+région d'une AUTRE collection, que son auteur n'avait jamais touchée. Et la garde se pose
+sans dépendre du JSON là où la cible existe : l'inverse d'un acte autre qu'une suppression
+écrit dans une région PRÉSENTE, que l'accesseur gardé juge en écriture, sous la portée de la
+requête. Pour rétablir une suppression, il juge la planche où la région reviendrait — lue,
+elle, dans l'instantané, mais c'est le même instantané que la recréation lit déjà : sans lui,
+il n'y a rien à rétablir. `undo.annuler` exige ce jugement (`ecrivable`, sans défaut, comme
+la `Portee` des accesseurs).
+
+Ce qui en résulte : une personne RETIRÉE d'une collection, ou rétrogradée en lecture,
+n'y annule plus rien.
+
+## Un identifiant repris n'est pas le même objet (AUTH-14)
+
+Sans `AUTOINCREMENT`, la région créée après la suppression de celle d'identifiant le plus
+haut reprend cet identifiant — dans n'importe quelle collection ; une planche aussi. Le
+`cible_id` d'un acte désignait alors un objet que son auteur n'avait jamais touché. Mesuré
+le 2026-10-14 : le Ctrl+Z d'une collègue effaçait un locuteur de l'Incubateur, où elle
+n'entre pas ; le 409 du conflit de version lui rendait le texte de la région et le login de
+son auteur ; et un acte sur un identifiant repris revenait en 409 à chaque Ctrl+Z.
+
+Avant toute écriture, l'annulation vérifie donc que l'objet est le MÊME (`undo._meme_objet`),
+par trois témoins, dont aucun ne suffit seul :
+
+- **le journal** : aucune création de région sous cet identifiant depuis l'acte. Toute
+  création par une route ou par une passe ML est journalisée ; rétablir une suppression ne
+  l'est pas comme création — c'est le même objet qui revient ;
+- **la planche au moment de l'acte**, lue dans le dernier instantané qui la porte — pour
+  les régions nées sans événement de création (la segmentation lancée à l'import ShareDocs
+  n'en écrit pas) ;
+- **l'album** de la planche, s'il a été importé APRÈS l'acte : seul témoin d'une planche
+  reprise, que rien ne journalise.
+
+Pour rétablir une suppression : identifiants libres, planche présente et née avant l'acte,
+parent — s'il y en a un — dans la même planche et jamais recréé.
+
+**Un acte qui ne s'annule plus est PASSÉ, pas bloquant.** Objet disparu, identifiant repris,
+collection qu'on n'écrit plus : l'annulation écrit une trace append-only (`type = 'abandon'`,
+`cible_table = 'annulation'`, `cible_id` = l'acte) qui le sort de la pile, et répond 409 avec
+une seule phrase — « Ne s'annule plus : *geste* — la région n'est plus à votre portée. » Le
+Ctrl+Z suivant défait le geste d'avant. La trace n'est pas une `annulation` : rien n'a été
+défait, et `conflit.auteur_du_champ` lit une annulation comme ayant reposé l'état `avant`.
+Elle est RETENUE hors du dépôt (`tools/_commun.CIBLES_RETENUES`) : elle n'a rien changé au
+corpus. Elle est validée malgré le refus — sans elle, le même 409 reviendrait.
+
+**Une phrase pour tous les cas, et rien de l'objet présent.** Le refus ne porte ni valeur
+ni auteur : la région visée n'est peut-être plus lisible. Et il ne distingue pas « disparue »
+de « reprise » ni de « hors d'écriture » — deux phrases diraient à qui ne lit plus la planche
+ce qu'il est advenu d'elle, ce que le 404 garde partout ailleurs. Là où l'agent écrit la
+région, le conflit de version (409 nommé, valeur et auteur) est inchangé.
+
+**Ce qui n'est pas fermé.**
+
+- **La même seconde** : les dates sont à la seconde ; une planche reprise dans un album
+  importé dans la seconde même de l'acte n'est pas vue par le troisième témoin.
+- **Une planche reprise DANS LE MÊME album**, par une région née sans événement : aucun
+  témoin ne la voit. La garde d'écriture tient toujours — on n'écrit que là où l'on écrit —,
+  c'est l'identité qui manque.
+- **Fermé du côté sûr** : une région reprise puis supprimée, l'originale rétablie ensuite,
+  passe pour reprise — Ctrl+Z refuse là où il aurait pu agir. Et une trace est définitive :
+  un acte passé parce qu'on n'écrivait plus ne revient pas si le droit revient.
+- Rendre les identifiants non réutilisables est une autre décision, attendue avec une
+  migration ; cette garde tient sans elle.
 
 ## Un compte COLLECTIF : un délai de cinq minutes (AUTH-6)
 
@@ -150,7 +210,8 @@ Le délai réduit la fenêtre, il ne sépare pas les personnes — rien ne le pe
 
 - **API** : `GET /api/undo/prochain` (aperçu : `{evenement_id, description}` ou `null`) ·
   `POST /api/undo` (exécute ; renvoie `{description, acte, cible_table, region_id, planche_id}` ;
-  **404** si rien à annuler, **409** si l'inverse est impossible).
+  **404** si rien à annuler, **409** si l'inverse est impossible — avec `detail.ecarte` quand
+  l'acte a été passé, et `detail.message` pour la phrase que l'Atelier affiche).
 - **UI** : **Ctrl/⌘+Z** dans la Visionneuse (hors champ de saisie — dans un champ, l'undo natif
   du navigateur s'applique) → toast « Annulé : … » + rafraîchissement de la planche/région
   touchée. Une sauvegarde d'annotation différée en attente est **annulée** (pas flushée) avant
