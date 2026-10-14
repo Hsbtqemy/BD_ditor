@@ -71,6 +71,19 @@ semaines » (Hugo, le même jour).
   plus qu'à choisir une case ; dans la case agrandie, le fond désigne la case, un clic une
   bulle, un texte ou un personnage, un glissé trace un détail ; les mots de la zone
   choisie s'affichent dessous
+- [x] **L'écran ne change ni de disposition ni de taille en cours de travail** — attendu :
+  tranché. Hugo : « moins on change la disposition et les tailles au cours de
+  l'annotation, mieux c'est, sinon on perd les utilisateurs ». Au centre, l'image de la
+  case vit dans une boîte de hauteur constante, et les mots de la zone choisie dessous,
+  toujours au même endroit, sans défiler. Une zone à la fois : afficher tous les textes de
+  la case gênerait un travail qui ne veut pas tout annoter. Image et texte côte à côte :
+  écarté, la lecture y perdrait
+- [x] **La synthèse du travail est un onglet de la colonne de gauche** — attendu : tranché.
+  Hugo : « Vue planche et vue synthèse du travail effectué ». « Planche » montre la planche
+  et le contexte ; « Synthèse », les relevés, les doutes à revoir et le décompte
+- [x] **Les phrases d'aide quittent l'écran** — attendu : tranché. Elles passent dans les
+  infobulles et le nom accessible de l'image ; une case sans zone de texte choisie montre
+  ses zones (b1, b2…) à la place des mots
 - [x] **La ligne du guide a une hauteur fixe** — attendu : tranché. Hugo : la grille est
   « assez lisible », mais le bas « change de taille ». La ligne défile en elle-même, la
   grille au-dessus ne bouge plus
@@ -336,7 +349,8 @@ semaines » (Hugo, le même jour).
   grille ouverte, et deux grilles fictives qui portent sur l'image : émotions, couleur et
   dessin). Source hors du dépôt : `C:\temp\maquette-ann6\v2\releve.html`. Republiée le même
   jour à la même adresse après les retours de Hugo : case au centre, contexte à gauche,
-  guide à hauteur fixe, gestes au doigt. Vingt-quatre gestes rejoués dans Chromium, sans
+  guide à hauteur fixe, gestes au doigt ; puis centre fixe et synthèse à gauche. Vingt-six
+  gestes rejoués dans Chromium, sans
   erreur de console : à 1 440 px en sombre et en clair, sur une tablette tactile de
   1 024 px, sur un téléphone de 390 px ; non essayés : contraste élevé, lecteur d'écran,
   Firefox, un vrai appareil. La case reste ouverte : elle se coche quand les linguistes
