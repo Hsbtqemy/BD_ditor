@@ -440,6 +440,28 @@ def _recreee_depuis(conn, region_id, e) -> bool:
         "AND cible_id = ? AND id > ? LIMIT 1", (region_id, e["id"])).fetchone() is not None
 
 
+def _supprimee_depuis(conn, region_id, e) -> bool:
+    """Une suppression JOURNALISÉE de cette région — directe, ou par celle d'un ancêtre —
+    est-elle postérieure à l'acte, sans avoir été annulée ? Alors l'objet de l'acte n'existe
+    plus, quoi que porte aujourd'hui l'identifiant : c'est le témoin qui voit une reprise
+    SANS événement de création dans un album plus ancien que l'acte (relecture croisée,
+    S3). Une suppression annulée ne compte pas : son annulation a rendu le même objet.
+
+    Le `LIKE` n'écarte que vite ; la décision se prend sur l'instantané relu, comme dans
+    `conflit.suppression_de_region`, pour qu'un `"id": 12` ne réponde pas pour la 123."""
+    for ev in conn.execute(
+            "SELECT s.id, s.cible_id, s.avant FROM evenement s "
+            "WHERE s.cible_table = 'regions' AND s.type = 'suppression' AND s.id > ? "
+            "  AND (s.cible_id = ? OR s.avant LIKE ?) "
+            "  AND NOT EXISTS (SELECT 1 FROM evenement a WHERE a.type = 'annulation' "
+            "                  AND a.cible_table = 'evenement' AND a.cible_id = s.id)",
+            (e["id"], region_id, f'%"id": {region_id}%')):
+        if (ev["cible_id"] == region_id
+                or region_id in set(_ids_instantane(_charge(ev["avant"]) or {}))):
+            return True
+    return False
+
+
 def _planche_au_moment(conn, region_id, e) -> Optional[int]:
     """La planche où vivait la région au moment de l'acte, lue au journal — None s'il n'en
     dit rien. Un second témoin, pour les régions nées sans événement de création (la
@@ -487,12 +509,14 @@ def _meme_objet(conn, e) -> bool:
         parent = snap.get("parent_id")
         if parent is not None:
             r = conn.execute("SELECT planche_id FROM regions WHERE id = ?", (parent,)).fetchone()
-            if r is None or r["planche_id"] != planche or _recreee_depuis(conn, parent, e):
+            if (r is None or r["planche_id"] != planche
+                    or _recreee_depuis(conn, parent, e)
+                    or _supprimee_depuis(conn, parent, e)):
                 return False
         return True
     rid = e["cible_id"]
     r = conn.execute("SELECT planche_id FROM regions WHERE id = ?", (rid,)).fetchone()
-    if r is None or _recreee_depuis(conn, rid, e):
+    if r is None or _recreee_depuis(conn, rid, e) or _supprimee_depuis(conn, rid, e):
         return False
     alors = _planche_au_moment(conn, rid, e)
     if alors is not None and alors != r["planche_id"]:
@@ -508,7 +532,8 @@ def _meme_objet(conn, e) -> bool:
         p = conn.execute("SELECT planche_id FROM regions WHERE id = ?",
                          (avant["parent_id"],)).fetchone()
         if p is not None and (p["planche_id"] != r["planche_id"]
-                              or _recreee_depuis(conn, avant["parent_id"], e)):
+                              or _recreee_depuis(conn, avant["parent_id"], e)
+                              or _supprimee_depuis(conn, avant["parent_id"], e)):
             return False
     return True
 

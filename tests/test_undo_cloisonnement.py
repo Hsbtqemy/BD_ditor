@@ -656,3 +656,90 @@ def test_un_ancien_parent_supprime_depuis_ne_bloque_plus_la_pile(client, db_path
     assert rep.json()["detail"]["message"] == \
         f"Ne s'annule plus : modification d'une région — {IRRETABLISSABLE}"
     assert _parent(db_path, b) is None
+
+
+# --------------------------------------------------------------------------- #
+# Relecture croisée — le témoin « supprimée depuis » (S3)
+# --------------------------------------------------------------------------- #
+def _inserer_sans_evenement(db_path, rid, planche):
+    """Ce que fait la segmentation lancée à l'import ShareDocs : une région, aucun acte."""
+    _sql(db_path, "INSERT INTO regions (id, planche_id, type, x, y, w, h) "
+                  "VALUES (?, ?, 'bulle', 0, 0, 9, 9)", (rid, planche))
+
+
+def test_une_suppression_journalisee_depuis_l_acte_prouve_que_l_objet_n_est_plus(
+        client, db_path, decor):
+    """Région née sans événement, reprise sans événement dans un album de l'Incubateur
+    PLUS ANCIEN que l'acte : aucun des trois témoins ne voyait rien. La suppression
+    journalisée entre-temps, elle, prouve que l'objet de l'acte n'existe plus."""
+    py = _incub(client, decor)
+    _sql(db_path, "UPDATE albums SET date_import = datetime(date_import, '-10 minutes')")
+    rid = _sql(db_path, "SELECT COALESCE(MAX(id), 0) + 1 AS n FROM regions")[0]["n"]
+    _inserer_sans_evenement(db_path, rid, decor["pe"])
+    _ok(client.put(f"/api/regions/{rid}/locuteur", headers=IMPORTEUSE,
+                   json={"personnage_id": _perso(client, "Dupond", IMPORTEUSE)}), 200)
+    _ok(client.delete(f"/api/regions/{rid}", headers=COLLEGUE), 204)
+    _inserer_sans_evenement(db_path, rid, py)
+    p2 = _perso(client, "Dupont", INCUB)
+    _ok(client.put(f"/api/regions/{rid}/locuteur", headers=INCUB, json={"personnage_id": p2}), 200)
+
+    _passe(client.post("/api/undo", headers=IMPORTEUSE), "attribution d'un locuteur")
+    assert _locuteur(db_path, rid) == p2
+
+
+def test_une_suppression_annulee_depuis_ne_compte_pas(client, db_path, decor):
+    """La région supprimée PUIS rétablie est la même : son rétablissement l'a rendue, sous
+    le même identifiant. Le témoin ne doit pas refuser l'annulation qui suit."""
+    _ok(client.put(f"/api/regions/{decor['rg']}", headers=COLLEGUE,
+                   json={"ocr_texte": "DE LA COLLEGUE"}), 200)
+    _ok(client.delete(f"/api/regions/{decor['rg']}", headers=IMPORTEUSE), 204)
+    _ok(client.post("/api/undo", headers=IMPORTEUSE), 200)            # rétablie
+
+    _ok(client.post("/api/undo", headers=COLLEGUE), 200)
+    assert _texte(db_path, decor["rg"]) == "AVANT"
+
+
+def test_un_parent_supprime_puis_repris_sans_evenement_n_est_plus_le_meme(
+        client, db_path, decor):
+    """Même planche, aucun événement de création : seul le témoin « supprimée depuis »
+    reconnaît que l'ancien parent n'est plus là — pour une modification…"""
+    c2 = _region(client, decor["pe"], COLLEGUE, type="case")
+    c1 = _region(client, decor["pe"], COLLEGUE, type="case")
+    b = _region(client, decor["pe"], COLLEGUE, parent_id=c1)
+    _ok(client.put(f"/api/regions/{b}", headers=COLLEGUE, json={"parent_id": c2}), 200)
+    _region(client, decor["pe"], IMPORTEUSE)
+    _ok(client.delete(f"/api/regions/{c1}", headers=IMPORTEUSE), 204)
+    _inserer_sans_evenement(db_path, c1, decor["pe"])
+
+    _passe(client.post("/api/undo", headers=COLLEGUE), "modification d'une région")
+    assert _parent(db_path, b) == c2
+
+
+def test_retablir_sous_un_parent_supprime_puis_repris_sans_evenement_est_refuse(
+        client, db_path, decor):
+    """… et pour le rétablissement d'une suppression."""
+    c = _region(client, decor["pe"], COLLEGUE, type="case")
+    b = _region(client, decor["pe"], COLLEGUE, parent_id=c)
+    _region(client, decor["pe"], IMPORTEUSE)
+    _ok(client.delete(f"/api/regions/{b}", headers=COLLEGUE), 204)
+    _ok(client.delete(f"/api/regions/{c}", headers=IMPORTEUSE), 204)
+    _inserer_sans_evenement(db_path, c, decor["pe"])
+
+    _passe(client.post("/api/undo", headers=COLLEGUE), "suppression d'une région")
+    assert _sql(db_path, "SELECT id FROM regions WHERE id = ?", (b,)) == []
+
+
+def test_une_region_emportee_par_la_suppression_de_son_parent_n_est_plus_la_meme(
+        client, db_path, decor):
+    """La suppression d'une case emporte ses bulles : le journal n'a d'événement que pour
+    la case, la bulle n'est que dans son instantané. Reprise sans événement dans la même
+    planche, la bulle n'est plus celle de l'acte."""
+    c = _region(client, decor["pe"], COLLEGUE, type="case")
+    b = _region(client, decor["pe"], COLLEGUE, parent_id=c)
+    _ok(client.put(f"/api/regions/{b}", headers=COLLEGUE, json={"ocr_texte": "BONJOUR"}), 200)
+    _ok(client.delete(f"/api/regions/{c}", headers=IMPORTEUSE), 204)       # emporte b
+    _inserer_sans_evenement(db_path, b, decor["pe"])
+    _sql(db_path, "UPDATE regions SET ocr_texte = 'AUTRE OBJET' WHERE id = ?", (b,))
+
+    _passe(client.post("/api/undo", headers=COLLEGUE), "modification d'une région")
+    assert _texte(db_path, b) == "AUTRE OBJET"
