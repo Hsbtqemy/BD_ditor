@@ -61,9 +61,21 @@ semaines » (Hugo, le même jour).
   depuis la grille. Hugo : « il faut tout rendre possible »
 - [x] **Plusieurs grilles : une à la fois, par un sélecteur** — attendu : tranché. Les
   relevés des autres grilles restent visibles, en lecture
-- [x] **La zone et son contexte** — attendu : tranché. En tête de la zone, modifiables sur
-  place : la situation de la case, le locuteur et sa sorte, la note. Hugo : « l'annotation
-  ne concerne pas que le texte »
+- [x] **La zone et son contexte** — attendu : tranché. Modifiables sur place : la situation
+  de la case, le locuteur et sa sorte, la note. Hugo : « l'annotation ne concerne pas que
+  le texte ». Placés d'abord en tête de la zone, puis, sur la première maquette, déplacés
+  par Hugo dans la colonne de gauche, sous la planche
+- [x] **La case au centre ; on choisit DANS la case où l'on annote** — attendu : tranché,
+  sur la première maquette. Hugo : « il faut davantage recentrer autour de la case, et
+  permettre de sélectionner à l'intérieur où on souhaite annoter ». La planche ne sert
+  plus qu'à choisir une case ; dans la case agrandie, le fond désigne la case, un clic une
+  bulle, un texte ou un personnage, un glissé trace un détail ; les mots de la zone
+  choisie s'affichent dessous
+- [x] **La ligne du guide a une hauteur fixe** — attendu : tranché. Hugo : la grille est
+  « assez lisible », mais le bas « change de taille ». La ligne défile en elle-même, la
+  grille au-dessus ne bouge plus
+- [x] **Tablette et téléphone annotent aussi, sans urgence** — attendu : tranché. Hugo :
+  « j'aimerais que les deux puissent annoter, mais on peut prendre notre temps »
 - [x] **Sur l'image, un relevé porte sur une région ou sur un détail tracé** — attendu :
   tranché. Par défaut une région déjà tracée (case, personnage, planche) ; un détail se
   trace dans la vue agrandie, comme un passage se désigne dans le texte
@@ -322,10 +334,13 @@ semaines » (Hugo, le même jour).
   reprend les bandes et les jetons de l'Atelier, la planche 1 d'« esther v1 » et la
   planche 24 d'« Eau-terre », quatre grilles (celle des linguistes, les tags libres en
   grille ouverte, et deux grilles fictives qui portent sur l'image : émotions, couleur et
-  dessin). Source hors du dépôt : `C:\temp\maquette-ann6\v2\releve.html`. Dix-sept gestes
-  rejoués dans Chromium, sans erreur de console, à 1 440, 1 024 et 390 px, thèmes sombre et
-  clair ; non essayés : contraste élevé, lecteur d'écran, Firefox. La case reste ouverte :
-  elle se coche quand les linguistes l'ont vue
+  dessin). Source hors du dépôt : `C:\temp\maquette-ann6\v2\releve.html`. Republiée le même
+  jour à la même adresse après les retours de Hugo : case au centre, contexte à gauche,
+  guide à hauteur fixe, gestes au doigt. Vingt-quatre gestes rejoués dans Chromium, sans
+  erreur de console : à 1 440 px en sombre et en clair, sur une tablette tactile de
+  1 024 px, sur un téléphone de 390 px ; non essayés : contraste élevé, lecteur d'écran,
+  Firefox, un vrai appareil. La case reste ouverte : elle se coche quand les linguistes
+  l'ont vue
 
 ### À trancher sur la maquette, avec les linguistes
 
@@ -343,9 +358,12 @@ semaines » (Hugo, le même jour).
   lecture change (cf. « Avant que les stagiaires commencent »)
 - [ ] **Le décompte dans la vue, l'aperçu de l'Exploration, ou les deux** — attendu : tranché.
   Hugo, le 2026-10-14 : « à voir ce qui semble le plus utile » ; la maquette montre les deux
-- [ ] **Sur un téléphone, la grille n'est pas à huit écrans des mots** — attendu : tranché,
-  téléphone hors cible ou accès direct à la recherche. Vu à 390 px : après avoir désigné
-  des mots, il faut descendre sous les relevés pour atteindre la grille
+- [ ] **Au doigt, la tablette et le téléphone se jouent sur un vrai appareil** — attendu : les
+  gestes de la maquette essayés sur une tablette et un téléphone, et ce qui gêne écrit. Ce
+  que la maquette propose : toucher un mot, puis « Étendre » et toucher le dernier pour un
+  passage ; « Un détail » à choisir avant de glisser, pour ne pas bloquer le défilement ;
+  sur téléphone, la grille monte du bas par « Poser… ». Simulé dans Chromium seulement.
+  Sans survol, la ligne du guide ne suit que le dernier geste
 
 ### Le modèle — à cadrer avant tout code
 
