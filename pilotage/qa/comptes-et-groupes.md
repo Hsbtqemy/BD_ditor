@@ -59,7 +59,7 @@ qu'il soit « une personne » au départ. Ne pas sauter la remise en état.
 ### Ce qu'un départ laisserait
 - [x] Axe *Comptes*, fiche de `stagiaire` : la partie *Départ* est REPLIÉE, et son titre porte une pastille « rien à orpheliner » ou « laisse … »
 - [x] Déplier *Départ* : trois étapes — retirer ses accès à son nom, le retirer de ses groupes dans l'annuaire, le supprimer dans l'annuaire — et la troisième dit ce qui resterait à ce login, ou « rien à orpheliner ». Aucune ne dit « recommandé », « possible » ni « archives »
-- [x] La première étape envoie au bon endroit : elle dit « dans « Qui entre » de chaque collection : sa fiche s'ouvre depuis « Collections », ci-dessus », et compte les accès à son nom (ou dit qu'il n'en a aucun) (décochée le 2026-10-10, `b5cfce7` : elle envoyait dans la Bibliothèque, pour un geste qui se fait désormais sur place)
+- [x] *Départ* déplié, la PREMIÈRE des trois étapes (« retirer ses accès à son nom ») dit OÙ se fait ce geste — « dans « Qui entre » de chaque collection : sa fiche s'ouvre depuis « Collections », ci-dessus », donc ici, dans l'Administration — et COMBIEN d'accès le compte a à son nom (ou qu'il n'en a aucun) *(reformulée le 2026-10-15 : elle ne disait pas quoi lire ; décochée le 2026-10-10, `b5cfce7` : elle envoyait dans la Bibliothèque, pour un geste qui se fait désormais sur place)*
 
 ### Déclarer un login partagé — et remettre en état
 - [x] Fiche de `collectif`, sélecteur *Nature* : le passer de « une personne » à « un login partagé ». Sous le sélecteur : « Nature enregistrée. », et le sélecteur garde le focus
