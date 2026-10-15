@@ -91,6 +91,14 @@ rien y changer, « le premier projet », où tout est partagé.
 - [ ] **La tranche 1 se voit et se fusionne AVANT que le code de la tranche 2 n'arrive sur `dev`** — attendu : les passes jouées par Hugo, la suite et la passe navigateur jouées dans l'image, la fusion vers `main` faite, PUIS le premier commit de code de la tranche 2. Proposé par la session et accepté par Hugo le 2026-10-11 (« ok »), pour deux raisons : le projet devait se voir « le plus tôt possible » — sur `dev`, personne ne le voit — ; et la tranche 2 change le schéma une seconde fois, deux migrations enchaînées en production sans qu'aucune ait été vue à l'écran étant le risque à éviter. Le CADRAGE de la tranche 2 et ses décisions n'attendent pas : ils se font pendant ce temps, en lecture seule
 - [ ] **Tranche 2 — le fonds** — attendu : un document a une identité distincte de ses copies de travail, son origine et ses emplois sont écrits à partir de ce jour, « supprimer » a ses deux réponses, et l'administrateur a l'écran du fonds avec les demandes en attente
 - [ ] **Tranche 3 — prendre un document** — attendu : rejoindre (consenti), en partir (amorcé jusqu'à un cran), partir de zéro ; dans un projet et entre deux
+- [ ] **Tranche 3 — les albums que montrent la Bibliothèque et l'Atelier sont ceux du projet
+  courant** — attendu : écrit dans le cadrage de la tranche 3, puis fait. Relevé par Hugo le
+  2026-10-15 en jouant `projet-visible` : dans un projet neuf, la Bibliothèque montre Esther v1,
+  qu'on ne peut pourtant ranger dans aucune de ses collections (le rangement ne traverse pas
+  les projets). Aucune tranche ne nommait ces deux listes : la tranche 4 borne la Recherche et
+  l'Exploration, pas elles. Placé en tranche 3 sur le mot de Hugo, parce que c'est elle qui
+  donne un sens à « les albums de ce projet » — avant elle, un projet neuf n'a presque rien à
+  montrer. À dire avec : le lot, qui ne connaît pas non plus le projet
 - [ ] **Tranche 4 — ce qui parasite encore** — attendu : le vocabulaire et les personnages ont leur étage de projet, et la Recherche comme l'Exploration sont bornées au projet courant et ne comptent pas deux fois deux copies sœurs
 
 ### Tranche 1 — ce qui se tranche avant le code (propositions de la session, 2026-10-10)
