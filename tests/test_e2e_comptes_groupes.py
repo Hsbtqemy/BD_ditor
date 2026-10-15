@@ -782,6 +782,46 @@ def test_le_bloc_entier_tient_dans_une_fenetre_courte(page, live_server):
             f"{cas} : la liste ne défile plus dans le cadre")
 
 
+def test_dans_une_fenetre_basse_le_bloc_se_compte_sur_la_fenetre(page, live_server):
+    """Sous 27em de haut, la PAGE défile entière (A11Y-2, 2026-10-15 — cf. « Quand les
+    bandes du haut mangent l'écran » dans `static/style.css`) : `#admin-body` prend la
+    hauteur de son contenu, et le `100%` sur lequel le bloc se comptait n'y désigne plus
+    rien. La zone qui défile est la fenêtre, et la règle s'y recompte : amené en tête de la
+    fenêtre, le bloc finit à un rembourrage de son bas. Sans cela, le cadre retombait à son
+    plancher de 16rem et laissait le bas de la fenêtre vide, la liste défilant plus à
+    l'étroit qu'il ne fallait.
+
+    Le bloc est amené en tête en faisant défiler la PAGE : c'est elle qui défile ici, et
+    non `#admin-body` — le test l'exige avant de mesurer."""
+    _ouvrir(page, live_server, decor())
+    for largeur, hauteur in ((1280, 380), (900, 360)):
+        page.set_viewport_size({"width": largeur, "height": hauteur})
+        m = page.evaluate("""() => {
+          window.scrollBy(0, document.querySelector('#cg-bloc').getBoundingClientRect().top);
+          const zone = document.querySelector('#admin-body');
+          return { page: scrollY, zone_defile: zone.scrollHeight > zone.clientHeight + 1,
+                   bloc: document.querySelector('#cg-bloc').getBoundingClientRect().top,
+                   bas: document.querySelector('#cg').getBoundingClientRect().bottom,
+                   rembourrage: parseFloat(getComputedStyle(zone).paddingTop),
+                   fenetre: window.innerHeight };
+        }""")
+        cas = f"{largeur} × {hauteur}"
+        assert m["page"] > 0 and not m["zone_defile"], (
+            f"{cas} : c'est la zone qui défile et non la page ({m}) — la fenêtre n'est pas "
+            "sous le seuil de hauteur, et la mesure n'a pas d'objet")
+        assert abs(m["bloc"]) < 1, f"{cas} : le bloc n'est pas en tête de la fenêtre ({m})"
+        assert m["bas"] <= m["fenetre"] + 0.5, (
+            f"{cas} : le cadre dépasse le bas de la fenêtre de "
+            f"{m['bas'] - m['fenetre']:.1f} px ({m})")
+        assert m["bas"] >= m["fenetre"] - m["rembourrage"] - 2, (
+            f"{cas} : le cadre finit à y={m['bas']:.1f}, {m['fenetre'] - m['bas']:.0f} px "
+            f"au-dessus du bas d'une fenêtre de {m['fenetre']} — il ne prend pas le reste "
+            f"de la fenêtre ({m})")
+        assert page.locator(".cg-liste").evaluate("e => e.scrollHeight > e.clientHeight"), (
+            f"{cas} : la liste ne défile plus dans le cadre")
+        page.evaluate("window.scrollTo(0, 0)")
+
+
 def test_au_large_la_fiche_met_ses_deux_sections_cote_a_cote(page, live_server):
     """La largeur ne sert que si la fiche s'en sert : ses deux sections côte à côte, et une
     section seule — la collection n'a que « Qui entre » — sur toute la largeur de la carte."""

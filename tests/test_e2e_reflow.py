@@ -803,9 +803,15 @@ def test_la_garde_sur_scrollwidth_serait_vacante(page, decor):
     naïve passe — pendant que la sonde, elle, le signale comme perdu. Sans ce test, la
     docstring ci-dessus serait une croyance, et le jour où quelqu'un « simplifierait » la
     sonde en revenant à `scrollWidth`, la suite resterait verte.
+
+    Sur l'Atelier, et non plus sur la Bibliothèque (2026-10-15) : sous 30em de large, les
+    quatre surfaces-documents laissent la PAGE défiler (cf. « Quand les bandes du haut
+    mangent l'écran » dans `static/style.css`), et la prémisse ci-dessous y est tombée,
+    comme elle le prévoyait. L'Atelier clippe à toutes les largeurs : c'est là que la
+    démonstration garde son objet.
     """
     page.set_viewport_size({"width": 320, "height": 900})
-    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
+    page.goto(decor["base"] + "/", wait_until="networkidle")
     page.evaluate("""() => {
       const d = document.createElement('div');
       d.id = 'temoin-large';

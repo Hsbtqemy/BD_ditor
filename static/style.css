@@ -1634,8 +1634,16 @@ h3.collapsible:hover { color: var(--text); }
   width: 100%; max-width: 84.6154rem; margin: 0 auto;
 }
 .search-bar { display: flex; gap: .7692rem; margin-bottom: .9231rem; flex-wrap: wrap; }
+/* `min-width: 0`, ici et sur les facettes plus bas : un champ garde sinon sa largeur de vingt
+   caractères, et à 320 px sous une préférence de 24 le champ de recherche sortait de la
+   fenêtre de 3 px, celui du lemme et celui des traits de 49 sous DejaVu Sans (64 pour le
+   champ de recherche). Personne ne le voyait : `#search-body` défilait de côté, et la
+   sonde de reflow tient un cadre qui défile pour une issue. Il a été trouvé le 2026-10-15,
+   le jour où ce cadre cesse de défiler sous le seuil étroit (cf. « Quand les bandes du haut
+   mangent l'écran »). Au large rien ne change : le champ part de sa base, plus large que
+   ses vingt caractères. */
 #q {
-  flex: 1 1 24.6154rem; padding: .7692rem .9231rem; font-size: 1.1538rem;
+  flex: 1 1 24.6154rem; min-width: 0; padding: .7692rem .9231rem; font-size: 1.1538rem;
   background: var(--bg-input); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px; font-family: inherit;
 }
@@ -1653,7 +1661,7 @@ h3.collapsible:hover { color: var(--text); }
   padding: .6154rem .7692rem; background: var(--bg-input); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px; font-family: inherit;
 }
-.facet-row input { flex: 1 1 13.8462rem; }
+.facet-row input { flex: 1 1 13.8462rem; min-width: 0; }   /* cf. `#q` */
 .results-head { display: flex; align-items: center; justify-content: space-between; gap: .7692rem; margin-bottom: .6154rem; }
 .back-link { border-color: var(--accent-blue); color: var(--accent-blue); font-weight: 600; }
 /* UX-14 — « ← Retour » réduit à son icône, à toutes les largeurs (cf. `buildBack` dans
@@ -1992,6 +2000,77 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 #corpus-app { display: flex; flex-direction: column; height: 100%; }
 #corpus-app #header { min-height: var(--header-h); flex: 0 0 auto; }
 #corpus-body { flex: 1; overflow-y: auto; padding: 1.2308rem 1.5385rem; }
+
+/* ---------- Quand les bandes du haut mangent l'écran, elles défilent avec la page (A11Y-2) ----------
+   Les quatre surfaces-documents (Recherche, Exploration, Administration, Bibliothèque) sont
+   bâties en bandes : la navigation, l'en-tête de page, puis un cadre qui défile SEUL. Au
+   large, c'est ce qu'on veut — les bandes restent sous la main. Mais elles ne sont bornées
+   par rien, et elles grandissent quand la place manque : la navigation s'enroule (UX-14),
+   l'en-tête de l'Administration replie sa longue phrase. Vu par Hugo le 2026-10-15 sous
+   Firefox, à 320 × 700 et une police portée à 24 : les deux bandes prenaient presque toute
+   la hauteur, et le contenu défilait dans une fente au bas de l'écran. Mesuré le même jour,
+   derrière le proxy (pastille, deux projets dont « CORPUS FRANCO-BELGE 2 ») : 716 px de
+   bandes pour 700 à l'Administration, 0 px de contenu visible ; 449 px ailleurs, 36 % de
+   la fenêtre. Les gardes de reflow et de police ne le voyaient pas : elles demandent si le
+   contenu est ATTEIGNABLE, et il l'était, dans la fente.
+
+   **Deux seuils, chacun lu sur la hauteur des bandes mesurée en em**, de 320 à 1200 px par
+   pas de 20, sous des préférences de 16, 20 et 24, et sous deux polices : Segoe UI, celle
+   de ce poste, et DejaVu Sans, celle d'un poste Linux et de l'image des tests navigateur.
+
+   - LARGEUR — sous un certain rapport fenêtre/police, la navigation passe à trois rangées
+     et plus : l'Administration prend alors de 15 à 30em de bandes, les trois autres de 9 à
+     19. Le saut tombe au même endroit en em sous les trois préférences, ce qui en fait UN
+     seuil — mais pas au même endroit sous les deux polices : à 30em sous Segoe UI (480,
+     600, 720 px), entre 31 et 32,5em sous DejaVu Sans, plus large. 32.9375em couvre le
+     second, avec 1,3 % de marge. Sous lui, les bandes défilent avec la page quelle que soit
+     la hauteur : c'est une largeur de téléphone, où une page qui défile entière est
+     l'ordinaire.
+   - HAUTEUR — au-dessus de ce seuil, la navigation tient en deux rangées, et les bandes ne
+     dépassent jamais 13,4em à l'Administration (DejaVu Sans ; 12,5 sous Segoe UI), 7
+     ailleurs. Une fenêtre de 27em leur en laisse donc toujours la moitié ; sous elle, elles
+     prendraient plus que le contenu. `.9375` et non un nombre rond, ici comme pour la
+     largeur, parce qu'une requête `max-` est INCLUSIVE.
+
+   Ce que le relèvement pour DejaVu Sans coûte : sous Segoe UI, de 30 à 33em de large, ou
+   de 25 à 27em de haut, la page défile entière alors que les bandes fixes y auraient laissé
+   la moitié de la fenêtre au contenu. Le seuil tient le pire des deux, et la page qui
+   défile n'y retire rien.
+
+   **Rien ne change au-dessus des deux seuils**, et rien ne change pour l'Atelier : son plan
+   de travail est une coque fixe, dont le canevas capte la molette et le toucher. Le même
+   défaut s'y lit (à 320 × 700 sous 24, il reste au canevas une douzaine de pixels), mais
+   faire défiler sa page demande un arbitrage à part — la molette, le toucher et le clavier
+   y ont déjà un sens —, qui n'est pas pris ici.
+
+   **C'est le DOCUMENT qui défile, pas la coque** — sur un téléphone, c'est ce qui replie la
+   barre d'adresse, et c'est ce que vise une touche « Page suivante ». `html, body` clippent
+   pour l'Atelier ; ils ne lâchent prise ici que là où une coque de surface-document est
+   présente, et `:has()` dit cette présence sans qu'un second propriétaire ait à la
+   recopier (le motif du bandeau de portée vide, cf. `#body:has(> .portee-vide)`). Le tout
+   est sous `@supports` : sans `:has()`, la coque cesserait d'être bornée sous un `html`
+   qui clippe encore, et le bas du contenu deviendrait INATTEIGNABLE — on garde alors les
+   bandes fixes d'avant, ce qui est le défaut, mais pas une perte.
+
+   Le cadre cesse de défiler (`overflow: visible`) au lieu de garder un défilement qu'il
+   n'exercerait plus. Un conteneur de défilement, même immobile, est l'ancêtre auquel se
+   cale `position: sticky` : l'aperçu de la Recherche (`.preview`) resterait en haut de la
+   liste, hors de vue dès qu'on a défilé. Ce que cela coûte : un contenu trop large ne
+   défilerait plus de côté dans le cadre mais avec la page. La règle est déjà qu'il ne doit
+   faire ni l'un ni l'autre — un contenu large défile dans SON conteneur —, et
+   `test_e2e_reflow` le vérifie à 320 px. Le premier jour, il a trouvé ce que le cadre
+   cachait : les champs de la Recherche (cf. `#q`).
+
+   Une conséquence à l'Administration : « Comptes et groupes » mesure sa hauteur sur la
+   zone qui défile (cf. `.cg-bloc`), et la zone est désormais la fenêtre. */
+@supports selector(html:has(body)) {
+  @media (max-width: 32.9375em), (max-height: 26.9375em) {
+    html:has(#admin-app, #corpus-app, #search-app, #explo-app),
+    html:has(#admin-app, #corpus-app, #search-app, #explo-app) > body { overflow: visible; }
+    #admin-app, #corpus-app, #search-app, #explo-app { height: auto; min-height: 100%; }
+    #admin-body, #corpus-body, #search-body, #explo-body { flex: 1 0 auto; overflow: visible; }
+  }
+}
 
 .corpus-toolbar {
   display: flex; align-items: center; gap: 1.2308rem; flex-wrap: wrap;
@@ -2524,6 +2603,19 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
                        min-height: calc(100% + var(--admin-rembourrage)); }
 /* `display: flex` ci-dessus l'emporterait sur la règle UA `[hidden]`, et le bloc naît caché. */
 .admin-bloc.cg-bloc[hidden] { display: none; }
+/* Dans une fenêtre BASSE, la page défile entière (cf. « Quand les bandes du haut mangent
+   l'écran », plus haut) : `#admin-body` prend la hauteur de son contenu, et `100%` n'y
+   désigne plus rien — le bloc retomberait au plancher du cadre, 16rem. La zone qui défile
+   est alors la fenêtre : la même règle, comptée sur elle. Amené en tête de la fenêtre, le
+   bloc finit à un rembourrage de son bas, comme il finissait à un rembourrage du bas de la
+   zone. Seule la HAUTEUR est nommée ici : sous 33em de large la page défile aussi, mais on
+   y est sous le seuil étroit de 40em plus bas, qui défait le cadre et l'emporte par
+   l'ordre — c'est voulu, et c'est pourquoi ce bloc-ci est AVANT lui. */
+@supports selector(html:has(body)) {
+  @media (max-height: 26.9375em) {
+    .admin-bloc.cg-bloc { min-height: calc(100vh - var(--admin-rembourrage)); }
+  }
+}
 .cg-bloc > h2 { margin-bottom: 0; }
 .cg-bloc > .col-note { margin: 0; }
 .cg { display: grid; grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);

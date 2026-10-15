@@ -107,8 +107,12 @@ def test_le_contenu_du_bas_est_vraiment_atteignable(page, corpus_dense):
     Une fenêtre courte force le débordement quel que soit le corpus. Sans ce test, une
     règle CSS qui déclare `overflow-y: auto` sur un conteneur de hauteur libre — donc qui
     ne défile jamais — passerait la garde précédente.
+
+    440 px de haut et non plus 400 (2026-10-15) : sous 27em, c'est la PAGE qui défile, et
+    ce test garde le CADRE (cf. `test_les_bandes_du_haut_ne_mangent_pas_l_ecran`). 440 px
+    font 27,5em, juste au-dessus du seuil de hauteur, et forcent encore le débordement.
     """
-    page.set_viewport_size({"width": 1100, "height": 400})
+    page.set_viewport_size({"width": 1100, "height": 440})
     page.goto(corpus_dense + "/exploration", wait_until="networkidle")
 
     r = page.evaluate("""() => {
@@ -118,7 +122,7 @@ def test_le_contenu_du_bas_est_vraiment_atteignable(page, corpus_dense):
       return { deborde: true, atteint: Math.round(e.scrollTop),
                attendu: Math.round(e.scrollHeight - e.clientHeight) };
     }""")
-    assert r["deborde"], "la fenêtre de 400 px devrait forcer un débordement"
+    assert r["deborde"], "la fenêtre de 440 px devrait forcer un débordement"
     assert r["atteint"] >= r["attendu"] - 2, (
         f"le bas du contenu reste hors de portée : {r['atteint']} sur {r['attendu']} px")
 
@@ -215,3 +219,168 @@ def test_le_coin_du_tableau_croise_passe_au_dessus_des_deux_bandes(page, live_se
         f"le coin du tableau croisé est RECOUVERT (z={r['z_coin']}, colonnes "
         f"{r['z_colonne']}, lignes {r['z_ligne']}) — au point où il devrait être, c'est "
         f"{r['intrus']} qu'on voit. Le libellé des deux axes disparaît dès qu'on défile.")
+
+
+# ── Les bandes du haut ne doivent pas MANGER l'écran (A11Y-2, 2026-10-15) ────────────────
+#
+# Vu par Hugo sous Firefox, à 320 × 700 et une police portée à 24 : la navigation, enroulée
+# sur plusieurs rangées, et l'en-tête de page prenaient presque toute la hauteur ; le cadre
+# défilait dans une fente au bas de l'écran. Rien ici ne le voyait : les gardes ci-dessus
+# demandent si le cadre EXISTE et si son bas s'ATTEINT, et il s'atteignait — dans la fente.
+# La garde suivante mesure donc ce que l'œil voit : après qu'une main a fait défiler la
+# page, quelle part de la fenêtre le contenu occupe.
+#
+# Le décor est celui de la production, où le défaut a été vu : derrière le proxy, la
+# pastille du compte et deux projets — la liste prend la largeur de son nom le plus long,
+# `CORPUS FRANCO-BELGE 2` (le nom ordinaire le plus large, cf. la passe de police).
+#
+# **Les deux navigateurs, et pas par symétrie** : c'est sous Firefox que le défaut a été
+# vu, et la police s'y règle par une préférence de LANCEMENT — le protocole CDP qui la règle
+# sous Chromium n'y existe pas. Le test lance donc lui-même chaque navigateur, une fois par
+# police. Firefox absent (l'image n'installe que Chromium), son cas est sauté en le disant.
+
+IDENTITE = {"Remote-User": "camille", "Remote-Name": "Camille Ferreira-Lopes",
+            "Remote-Groups": "bd-admins"}
+URL_DE = {"/recherche": "/recherche?q=pouvoir"}
+
+# (largeur, hauteur, police) — la fenêtre de Hugo, et une fenêtre BASSE assez large pour
+# que la navigation n'y prenne que deux rangées : c'est l'autre moitié du seuil, celle qu'on
+# atteint sans téléphone. À 720 × 380 sous 20 — 36em de large, au-dessus du seuil de largeur,
+# 19em de haut —, l'Administration n'y laissait que 38 % de la fenêtre au contenu.
+FENETRES_ETROITES = [(320, 700, 24), (720, 380, 20)]
+# Au large, RIEN ne change : les bandes restent sous la main, et c'est le cadre qui défile.
+# 450 px de haut et non 900 : il faut que le cadre ait de quoi défiler, et à 600 encore
+# l'Exploration du décor tient dans le sien. 28em de haut, 90em de large : au-dessus des
+# deux seuils, et assez près de celui de hauteur pour qu'un seuil relevé s'y voie.
+FENETRE_LARGE = (1440, 450, 16)
+
+_MESURE_BANDES = """(cadre) => {
+  const m = document.querySelector(cadre);
+  const nav = document.getElementById('site-nav');
+  if (!m || !nav) return null;
+  const b = m.getBoundingClientRect(), vh = window.innerHeight;
+  return {
+    visible: Math.max(0, Math.min(b.bottom, vh) - Math.max(b.top, 0)),
+    fenetre: vh,
+    contenu: m.scrollHeight,
+    haut_nav: nav.getBoundingClientRect().top,
+    page: Math.round(scrollY),
+    cadre: Math.round(m.scrollTop),
+    racine: getComputedStyle(document.documentElement).fontSize,
+    decor: !!document.querySelector('.user-chip') && !!document.querySelector('.projet-choix'),
+  };
+}"""
+
+
+@pytest.fixture
+def corpus_derriere_proxy(live_server):
+    """Assez de contenu pour remplir plusieurs fenêtres, et un SECOND projet : avec un seul,
+    la bande ne porte qu'un nom, et elle n'aurait pas la hauteur qu'elle a en production."""
+    c = httpx.Client(base_url=live_server, trust_env=False, timeout=180, headers=ECRITURE)
+    try:
+        for t in range(6):
+            aid = c.post("/api/albums", json={"titre": f"Bandes {t}"}).json()["id"]
+            pid = c.post(f"/api/albums/{aid}/import",
+                         files={"file": ("p.png", make_png(), "image/png")}).json()["id"]
+            for i in range(4):
+                rid = c.post(f"/api/planches/{pid}/regions",
+                             json={"type": "bulle", "x": 10 + 30 * i, "y": 10 + 30 * i,
+                                   "w": 40, "h": 30}).json()["id"]
+                c.put(f"/api/regions/{rid}", json={"ocr_texte": f"POUVOIR NUMERO {i}"})
+        assert c.post("/api/projets", json={"nom": "CORPUS FRANCO-BELGE 2"}).status_code == 201
+    finally:
+        c.close()
+    return live_server
+
+
+def _navigateur(playwright, nom, police):
+    """Le navigateur, la police par défaut déjà portée à `police` — le réglage du lecteur,
+    pas une feuille injectée (cf. `test_e2e_police`)."""
+    if nom == "firefox":
+        try:
+            b = playwright.firefox.launch(firefox_user_prefs={
+                "network.proxy.type": 0,       # le proxy du campus casserait le chargement
+                "general.smoothScroll": False,  # la molette agit d'un coup, sans animation
+                "font.size.variable.x-western": police,
+                "font.size.monospace.x-western": police})
+        except Exception as e:                 # pragma: no cover — dépend du poste
+            pytest.skip(f"Firefox de Playwright absent : {str(e).splitlines()[0]}")
+        return b, b.new_context(extra_http_headers=IDENTITE).new_page()
+    b = playwright.chromium.launch()
+    page = b.new_context(extra_http_headers=IDENTITE).new_page()
+    page.context.new_cdp_session(page).send(
+        "Page.setFontSizes", {"fontSizes": {"standard": police, "fixed": police}})
+    return b, page
+
+
+def _defiler_a_la_main(page, base, chemin, cadre, largeur, hauteur):
+    """La molette, posée au bas de la fenêtre, plusieurs crans : ce que fait une main. Pas
+    de `scrollIntoView` — sous Chromium il fait défiler `html` même en `overflow: hidden`,
+    un état qu'aucune main n'obtient (cf. `test_e2e_comptes_groupes`)."""
+    page.set_viewport_size({"width": largeur, "height": hauteur})
+    page.goto(base + URL_DE.get(chemin, chemin), wait_until="networkidle")
+    page.wait_for_timeout(300)
+    page.mouse.move(largeur / 2, hauteur - 20)
+    for _ in range(8):
+        page.mouse.wheel(0, 300)
+        page.wait_for_timeout(60)
+    page.wait_for_timeout(400)
+    return page.evaluate(_MESURE_BANDES, cadre)
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+@pytest.mark.parametrize("navigateur", ["chromium", "firefox"])
+def test_les_bandes_du_haut_ne_mangent_pas_l_ecran(playwright, corpus_derriere_proxy,
+                                                    navigateur):
+    """Fenêtre étroite ou basse : la page défilée, le contenu occupe au moins la MOITIÉ de
+    la fenêtre. La moitié n'est pas un goût : c'est ce que le seuil de hauteur promet (cf.
+    « Quand les bandes du haut mangent l'écran » dans `static/style.css`), et sous elle,
+    les bandes prennent plus de place que ce qu'on est venu lire.
+
+    Trois gardes d'amont avant le critère, pour qu'un rouge veuille dire « fente » et
+    jamais « rien mesuré » : la police a pris, le décor de production est là, et le contenu
+    est plus haut que la fenêtre — sans quoi un cadre court aurait le droit d'être court."""
+    base = corpus_derriere_proxy
+    echecs = []
+    for largeur, hauteur, police in FENETRES_ETROITES:
+        b, page = _navigateur(playwright, navigateur, police)
+        try:
+            for chemin, cadre in SURFACES_AUDITEES.items():
+                cas = f"{navigateur}, {chemin}, {largeur} × {hauteur}, police {police}"
+                m = _defiler_a_la_main(page, base, chemin, cadre, largeur, hauteur)
+                assert m is not None, f"{cas} : {cadre} ou la navigation est absent"
+                assert m["racine"] == f"{police * 0.8125:g}px", (
+                    f"{cas} : racine à {m['racine']} — la préférence de police n'a pas pris")
+                assert m["decor"], f"{cas} : pastille ou liste des projets absente"
+                assert m["contenu"] > m["fenetre"], (
+                    f"{cas} : {m['contenu']} px de contenu pour une fenêtre de "
+                    f"{m['fenetre']} — le décor ne remplit plus la page, rien n'est mesuré")
+                if m["visible"] < m["fenetre"] / 2:
+                    echecs.append(
+                        f"{cas} : le contenu n'occupe que {m['visible']:.0f} px sur "
+                        f"{m['fenetre']} une fois la page défilée (navigation à "
+                        f"y={m['haut_nav']:.0f}, page défilée de {m['page']} px)")
+        finally:
+            b.close()
+    assert not echecs, ("Les bandes du haut mangent l'écran :\n  " + "\n  ".join(echecs))
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_au_large_les_bandes_restent_et_le_cadre_defile(playwright, corpus_derriere_proxy):
+    """Le revers : au large, rien n'a changé. La molette fait défiler le CADRE, la page ne
+    bouge pas, et la navigation reste en haut de la fenêtre. Sans ce test, un seuil qui
+    basculerait partout passerait le précédent au vert."""
+    largeur, hauteur, police = FENETRE_LARGE
+    b, page = _navigateur(playwright, "chromium", police)
+    try:
+        for chemin, cadre in SURFACES_AUDITEES.items():
+            m = _defiler_a_la_main(page, corpus_derriere_proxy, chemin, cadre,
+                                   largeur, hauteur)
+            cas = f"{chemin}, {largeur} × {hauteur}, police {police}"
+            assert m["contenu"] > m["visible"] + 1, (
+                f"{cas} : le contenu tient dans son cadre ({m}) — rien n'aurait défilé")
+            assert m["page"] == 0 and m["haut_nav"] == 0, (
+                f"{cas} : la PAGE a défilé ({m}) — au large, les bandes restent")
+            assert m["cadre"] > 0, f"{cas} : le cadre n'a pas défilé sous la molette ({m})"
+    finally:
+        b.close()
