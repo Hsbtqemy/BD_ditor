@@ -99,6 +99,12 @@ rien y changer, « le premier projet », où tout est partagé.
   l'Exploration, pas elles. Placé en tranche 3 sur le mot de Hugo, parce que c'est elle qui
   donne un sens à « les albums de ce projet » — avant elle, un projet neuf n'a presque rien à
   montrer. À dire avec : le lot, qui ne connaît pas non plus le projet
+- [ ] **Tranche 3 — « repartir de zéro » sur un album** — attendu : cadré avec la tranche 3.
+  Hugo, le 2026-10-15 : on a pu poser des choses sur des planches « uniquement pour tester »,
+  et vouloir repartir de zéro. C'est le geste inverse de « partir de zéro » : revenir à un cran
+  de l'échelle des couches (images seules, découpage, transcription, annotations) en gardant
+  les images. Même protection que supprimer : directement si personne d'autre n'y a travaillé,
+  sinon une demande, avec la même certification
 - [ ] **Tranche 4 — ce qui parasite encore** — attendu : le vocabulaire et les personnages ont leur étage de projet, et la Recherche comme l'Exploration sont bornées au projet courant et ne comptent pas deux fois deux copies sœurs
 
 ### Tranche 1 — ce qui se tranche avant le code (propositions de la session, 2026-10-10)
