@@ -29,10 +29,11 @@ porté sur `dev` la nuit du 14 au 15 octobre ; ce qui reste ouvert est écrit da
   chantier : `regions`, `planches`, `albums` et `personnages` rendent l'identifiant d'un objet
   détruit au suivant, et tout identifiant gardé par le journal peut alors désigner un autre
   objet. Les témoins de ce correctif en rattrapent les effets connus ; ils ne la suppriment pas
-- [ ] **`CLAUDE.md` dit ce que l'annulation vérifie** — attendu : réécrit. « L'annulation se
-  filtre par AGENT et non par collection » ne suffit plus : elle n'écrit aussi que là où l'agent
-  écrit MAINTENANT, reconnaît une cible qui n'est plus celle de l'acte, et passe un acte
-  inannulable par une trace retenue de toute sortie, définitivement
+- [x] **`CLAUDE.md` dit ce que l'annulation vérifie** — attendu : réécrit. « L'annulation se
+  filtre par AGENT et non par collection » ne suffisait plus. **Fermée par `badffd5`** : la
+  puce « Deux portées dérivées » dit que filtrer par agent ne suffit pas et pourquoi, et le
+  § « Annulation » dit les deux questions posées avant d'écrire, l'acte passé et sa trace
+  retenue, les deux phrases de refus, les trous qui restent et le remède qui attend la v30
 
 ## Contexte
 
