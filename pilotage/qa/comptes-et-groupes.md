@@ -52,14 +52,14 @@ qu'il soit « une personne » au départ. Ne pas sauter la remise en état.
 - [x] Axe *Comptes* : le lien « + Dans l'annuaire ↗ » est en tête de liste ; axe *Collections* : il n'y est plus
 
 ### Lire une collection, et aller régler qui entre
-- [ ] Axe *Collections*, fiche de « Collection Test » : la section *Qui entre* est le panneau de la Bibliothèque, monté ici — `annotateurs` et `proprio`, chacun avec 👥 ou 👤 et ses cases cochées selon ses actes, la ligne « Faire entrer », un ✕ par ligne. Sous le panneau, le lien « Décrire dans la Bibliothèque ↗ », et une ligne dit que ce que la collection EST se règle dans la Bibliothèque (décochée le 2026-10-10, `b5cfce7` : la section listait les accès sans aucune case à cocher, et renvoyait à la Bibliothèque pour les régler)
+- [x] Axe *Collections*, fiche de « Collection Test » : la section *Qui entre* est le panneau de la Bibliothèque, monté ici — `annotateurs` et `proprio`, chacun avec 👥 ou 👤 et ses cases cochées selon ses actes, la ligne « Faire entrer », un ✕ par ligne. Sous le panneau, le lien « Décrire dans la Bibliothèque ↗ », et une ligne dit que ce que la collection EST se règle dans la Bibliothèque (décochée le 2026-10-10, `b5cfce7` : la section listait les accès sans aucune case à cocher, et renvoyait à la Bibliothèque pour les régler)
 - [x] Cliquer un nom de *Qui entre* : la fiche de ce groupe ou de ce compte s'ouvre
-- [ ] Revenir sur « Collection Test », cocher « exporter » sur la ligne d'`annotateurs`, puis recharger la page : la case est restée cochée — le geste s'est fait ici, sans passer par la Bibliothèque. La décocher. Puis « Décrire dans la Bibliothèque ↗ » : la Bibliothèque s'ouvre sur « Collection Test » dépliée. Revenir à l'Administration pour la suite (décochée le 2026-10-10, `b5cfce7` : *Régler qui entre* n'existe plus)
+- [x] Revenir sur « Collection Test », cocher « exporter » sur la ligne d'`annotateurs`, puis recharger la page : la case est restée cochée — le geste s'est fait ici, sans passer par la Bibliothèque. La décocher. Puis « Décrire dans la Bibliothèque ↗ » : la Bibliothèque s'ouvre sur « Collection Test » dépliée. Revenir à l'Administration pour la suite (décochée le 2026-10-10, `b5cfce7` : *Régler qui entre* n'existe plus)
 
 ### Ce qu'un départ laisserait
 - [x] Axe *Comptes*, fiche de `stagiaire` : la partie *Départ* est REPLIÉE, et son titre porte une pastille « rien à orpheliner » ou « laisse … »
 - [x] Déplier *Départ* : trois étapes — retirer ses accès à son nom, le retirer de ses groupes dans l'annuaire, le supprimer dans l'annuaire — et la troisième dit ce qui resterait à ce login, ou « rien à orpheliner ». Aucune ne dit « recommandé », « possible » ni « archives »
-- [ ] La première étape envoie au bon endroit : elle dit « dans « Qui entre » de chaque collection : sa fiche s'ouvre depuis « Collections », ci-dessus », et compte les accès à son nom (ou dit qu'il n'en a aucun) (décochée le 2026-10-10, `b5cfce7` : elle envoyait dans la Bibliothèque, pour un geste qui se fait désormais sur place)
+- [x] La première étape envoie au bon endroit : elle dit « dans « Qui entre » de chaque collection : sa fiche s'ouvre depuis « Collections », ci-dessus », et compte les accès à son nom (ou dit qu'il n'en a aucun) (décochée le 2026-10-10, `b5cfce7` : elle envoyait dans la Bibliothèque, pour un geste qui se fait désormais sur place)
 
 ### Déclarer un login partagé — et remettre en état
 - [x] Fiche de `collectif`, sélecteur *Nature* : le passer de « une personne » à « un login partagé ». Sous le sélecteur : « Nature enregistrée. », et le sélecteur garde le focus
@@ -83,7 +83,7 @@ courte — défaut trouvé par Hugo en jouant cette passe, le 2026-09-23.
 - [x] Au clavier seul : Tab jusqu'à la première ligne de la liste, `↓` passe à la suivante, `Fin` à la dernière, `Entrée` ouvre la fiche
 - [x] Outils de développement, mode appareil à 375 px de large : la liste occupe le bloc ; choisir un compte fait apparaître sa fiche SEULE, avec « ← Liste » en tête ; « ← Liste » ramène la liste, focus sur la ligne choisie ; rien ne dépasse à droite
 - [x] Fenêtre agrandie : passer de l'axe *Comptes* à l'axe *Collections*, qui compte moins de lignes — le cadre garde la même hauteur, et « Moteurs de reconnaissance », dessous, ne remonte pas
-- [ ] Mode appareil à 1280 × 500, la page amenée sur le titre « Comptes et groupes » : le bloc ENTIER tient dans la fenêtre — on voit le bas du cadre sans défiler davantage (décochée le 2026-10-11, `b579889` : mesurée fausse de 45 px sur le commit d'avant, dans les deux navigateurs — le bas du cadre passait sous la fenêtre ; corrigé, à rejouer)
+- [x] Mode appareil à 1280 × 500, la page amenée sur le titre « Comptes et groupes » : le bloc ENTIER tient dans la fenêtre — on voit le bas du cadre sans défiler davantage (décochée le 2026-10-11, `b579889` : mesurée fausse de 45 px sur le commit d'avant, dans les deux navigateurs — le bas du cadre passait sous la fenêtre ; corrigé, à rejouer)
 - [x] Dans cette même fenêtre, la liste des comptes porte sa propre barre de défilement, et le cadre ne s'allonge pas pour les montrer tous
 - [x] Fenêtre agrandie, la fiche de `lectrice` : *Groupes* et *Collections* côte à côte, sur une même ligne ; la fiche d'une collection : *Qui entre* sur toute la largeur de la fiche
 - [x] Thème clair (🌙 → ☀) : « ⚠ À regarder », les pastilles « aucune connexion » (ambre) et « absent de l'annuaire » (rouge, s'il y en a) restent lisibles
@@ -91,5 +91,5 @@ courte — défaut trouvé par Hugo en jouant cette passe, le 2026-09-23.
 
 ### Après `72f1f16` — la fiche d'une collection à l'étroit ; compte `admin-bd`, Administration, « 👥 Comptes et groupes », axe *Collections*, « Collection Test »
 
-- [ ] Fenêtre agrandie (1 280 px ou plus) : *Qui entre* est un TABLEAU, une ligne par accès. Réduire la fenêtre vers 1 000 px : il devient une CARTE par accès, avec les mêmes cases et le même ✕, et rien ne défile de côté — ni la page, ni la fiche
-- [ ] Fenêtre agrandie, « Faire entrer » → « Un compte, ou un groupe absent de la liste… », taper quelques lettres sans valider, puis réduire la fenêtre jusqu'à voir les cartes : ce qu'on a tapé est toujours là, le curseur aussi, et l'on peut continuer de taper
+- [x] Fenêtre agrandie (1 280 px ou plus) : *Qui entre* est un TABLEAU, une ligne par accès. Réduire la fenêtre vers 1 000 px : il devient une CARTE par accès, avec les mêmes cases et le même ✕, et rien ne défile de côté — ni la page, ni la fiche
+- [x] Fenêtre agrandie, « Faire entrer » → « Un compte, ou un groupe absent de la liste… », taper quelques lettres sans valider, puis réduire la fenêtre jusqu'à voir les cartes : ce qu'on a tapé est toujours là, le curseur aussi, et l'on peut continuer de taper
