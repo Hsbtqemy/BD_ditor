@@ -35,12 +35,28 @@
     return `${noms.slice(0, -1).join(", ")} et ${noms[noms.length - 1]}`;
   }
 
-  /* « 2026-10-14 18:20:00 » → « 14/10/2026 ». Ce que le serveur rend est une date SQLite ;
-     une valeur illisible se rend telle quelle plutôt que de disparaître. */
+  /* « 2026-10-14 22:58:00 » → « 15/10/2026 » à Paris. Ce que le serveur rend est une date
+     SQLite, `datetime('now')`, donc en UTC et sans le dire : la couper à dix caractères
+     donnait la veille à qui regarde entre minuit et deux heures (relevé sur capture). Une
+     date AVEC heure se lit donc comme de l'UTC et se rend dans le fuseau du navigateur —
+     la règle que `BDComptes.dateCourte` applique déjà aux dates ISO de « Comptes et
+     groupes », qui ne lit pas cette forme et coupe l'année. Une date SANS heure est un jour,
+     pas un instant : elle se rend telle quelle. Une valeur illisible aussi, plutôt que de
+     disparaître. */
   function dateLue(iso) {
     if (!iso) return "";
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso));
-    return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso);
+    const texte = String(iso);
+    const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(texte);
+    if (!m) return texte;
+    if (m[4] === undefined) return `${m[3]}/${m[2]}/${m[1]}`;
+    // Un décalage écrit (« Z », « +02:00 ») se respecte ; sans lui, c'est de l'UTC.
+    const t = /(Z|[+-]\d{2}:?\d{2})$/.test(texte)
+      ? Date.parse(texte.replace(" ", "T"))
+      : Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+    if (Number.isNaN(t)) return texte;
+    const d = new Date(t);
+    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`
+      + `/${d.getFullYear()}`;
   }
 
   /* Le nom de qui a demandé : le nom lisible, sinon le login, sinon rien — le serveur peut

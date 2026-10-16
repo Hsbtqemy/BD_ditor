@@ -83,7 +83,7 @@ test("retrait — n'invente jamais le nom d'une collection qu'on ne lit pas", ()
 /* ── Supprimer définitivement ───────────────────────────────────────────────────────── */
 
 const DEMANDE = { id: 9, demandeur: "sam", demandeur_nom: "Sam Diallo",
-                  date_creation: "2026-10-14 18:20:00" };
+                  date_creation: "2026-10-14 12:00:00" };
 
 const DEFINITIFS = [
   ["l'importateur seul efface", { destructible: true, demande: null, total: false },
@@ -100,7 +100,7 @@ const DEFINITIFS = [
    { destructible: false, demande: DEMANDE, total: false },
    "attente", "", ["déjà demandée par Sam Diallo, le 14/10/2026", "un administrateur y répondra"]],
   ["une demande attend, sans nom rendu : on ne suppose rien",
-   { destructible: false, demande: { id: 9, date_creation: "2026-10-14 18:20:00" } },
+   { destructible: false, demande: { id: 9, date_creation: "2026-10-14 12:00:00" } },
    "attente", "", ["Sa suppression est déjà demandée, le 14/10/2026"]],
   ["sa propre demande se dit « vous »",
    { destructible: false, demande: DEMANDE, moi: "sam" },
@@ -144,11 +144,11 @@ test("ce qu'on lit une fois le geste fait", () => {
 
 test("l'origine d'un document dit ce qui est écrit, et n'invente pas le reste", () => {
   assert.equal(S.origine({ importe_par: "lea", importe_par_nom: "Léa Roux",
-                           importe_le: "2026-10-14 09:00:00", projet_origine_nom: "Séminaire" }),
+                           importe_le: "2026-10-14 12:00:00", projet_origine_nom: "Séminaire" }),
                "Importé par Léa Roux (lea), le 14/10/2026, dans « Séminaire ».");
   assert.equal(S.origine({ importe_par: "lea", importe_le: "2026-10-14" }),
                "Importé par lea, le 14/10/2026.");
-  assert.equal(S.origine({ importe_par: null, importe_le: "2026-01-02 00:00:00",
+  assert.equal(S.origine({ importe_par: null, importe_le: "2026-01-02 12:00:00",
                            projet_origine_nom: "Principal" }),
                "Importé le 02/01/2026, dans « Principal » ; qui l'a importé n'est pas écrit.");
   assert.equal(S.origine({ importe_par: null, importe_le: null }),
@@ -195,4 +195,32 @@ test("« Rendre à… » ne propose que les collections du projet de la copie", 
 test("une date illisible se rend telle quelle", () => {
   assert.equal(S.dateLue("hier"), "hier");
   assert.equal(S.dateLue(null), "");
+});
+
+/* La base écrit `datetime('now')`, en UTC et sans le dire ; l'écran la rend dans le fuseau
+   du NAVIGATEUR. Le fuseau est imposé ici (Node relit `TZ` à chaud ; chaque fichier de
+   tests tourne dans son processus), et rendu ensuite. */
+test("une date de la base se lit dans le fuseau du navigateur, pas en UTC", () => {
+  const avant = process.env.TZ;
+  try {
+    process.env.TZ = "Europe/Paris";
+    assert.equal(S.dateLue("2026-10-14 22:58:00"), "15/10/2026");     // 0 h 58 à Paris
+    assert.equal(S.dateLue("2026-10-14 21:59:59"), "14/10/2026");     // 23 h 59 à Paris
+    assert.equal(S.dateLue("2026-10-14T22:58:00Z"), "15/10/2026");
+    assert.equal(S.dateLue("2026-10-14T22:58:00+00:00"), "15/10/2026");
+    assert.equal(S.dateLue("2026-10-14"), "14/10/2026");              // un jour, pas un instant
+    process.env.TZ = "America/New_York";
+    assert.equal(S.dateLue("2026-10-15 02:30:00"), "14/10/2026");     // 22 h 30 la veille
+    process.env.TZ = "UTC";
+    assert.equal(S.dateLue("2026-10-14 22:58:00"), "14/10/2026");
+    // Partout où l'écran en affiche une : la demande, l'origine d'un document.
+    process.env.TZ = "Europe/Paris";
+    assert.ok(S.definitif({ destructible: false, demande: { date_creation: "2026-10-14 22:58:00" } })
+      .texte.includes("le 15/10/2026"));
+    assert.ok(S.contexteDemande({ date_creation: "2026-10-14 22:58:00" }).startsWith("le 15/10/2026"));
+    assert.equal(S.origine({ importe_par: "lea", importe_le: "2026-10-14 22:58:00" }),
+                 "Importé par lea, le 15/10/2026.");
+  } finally {
+    if (avant === undefined) delete process.env.TZ; else process.env.TZ = avant;
+  }
 });
