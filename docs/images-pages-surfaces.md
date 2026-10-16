@@ -1,7 +1,8 @@
 # Images, pages, surfaces — ce que la « planche » confond
 
-> Note de conception ouverte le 2026-10-16, **à approfondir** avec Hugo avant tout code.
-> Fiche : `pilotage/IMG-2.md`. Rien de ce qui suit n'est décidé, sauf ce qui est dit tel.
+> Note de conception ouverte le 2026-10-16 et approfondie le même jour avec Hugo : le modèle
+> et ses quatorze questions sont tranchés (§ 5). Aucun code ; restent la maquette de
+> l'Atelier et la place du chantier dans la file. Fiche : `pilotage/IMG-2.md`.
 
 ## 1. D'où vient la question
 
@@ -110,10 +111,11 @@ facettes. L'essentiel :
 Ordre de grandeur : une vingtaine de fichiers par facette, une centaine de fonctions en tout,
 dont la moitié de simples jointures. Un chantier de fond, de la taille d'une tranche de COL-3.
 
-## 5. Questions à approfondir
+## 5. Les questions, et ce qui a été tranché
 
-Les questions 1 à 8 et 14 sont **tranchées par Hugo le 2026-10-16** ; les autres portent une
-proposition quand il y en a une.
+Les quatorze questions sont **tranchées par Hugo le 2026-10-16**. Ce qui reste avant de
+cadrer le code : la maquette de l'Atelier sur une surface de plusieurs images (une double
+page en deux cadres, un épisode de webtoon), et la place du chantier dans la file.
 
 1. **Une page appartient à une seule surface — tranché : oui.** Une surface porte une ou
    plusieurs pages ; une page n'est jamais partagée entre deux surfaces, sans quoi elle aurait
@@ -153,20 +155,32 @@ proposition quand il y en a une.
    surface, chaque page en `<zone type="page">` avec son numéro. Pour une page ordinaire, les
    deux exports restent ceux d'aujourd'hui, une *Range* par page en plus — que les
    visionneuses IIIF lisent comme une table des matières.
-9. **Le journal** : ses `planche_id` historiques désignent des surfaces — vrai pour tout ce
-   qui existe, à garder vrai. Les actes neufs (assembler, poser une pliure) sont à nommer.
-10. **Assembler après coup** : un geste « assembler en double page » réunit deux planches en
-    une surface, en décalant les régions de la page de droite de la largeur de la gauche — un
-    calcul exact. Les cases coupées en deux en attendant peuvent alors se réunir. C'est ce qui
+9. **Le journal — tranché.** Ses `planche_id` historiques désignent des surfaces, ce qu'ils
+   désignaient déjà, et cela reste vrai. Les actes neufs — assembler, poser une pliure — se
+   journalisent sous la planche ; ce sont des gestes d'ORGANISATION et non d'annotation :
+   Ctrl+Z ne les annule pas, un geste inverse explicite (« désassembler ») les défait.
+10. **Assembler après coup — tranché.** Dans la Bibliothèque, sur deux planches consécutives
+    du même album : celle qui commence la lecture (la gauche, ou la droite pour un manga)
+    garde son identifiant et DEVIENT la surface ; les régions de l'autre y passent, décalées
+    de la largeur de la première — un calcul exact ; l'autre cesse d'être une planche, son
+    image et sa page restent. Réunir les deux moitiés d'une case coupée en attendant est un
+    geste à la main, « fusionner deux régions ». Le prix : si l'album a déjà été publié en
+    IIIF, le Canvas de la page absorbée quitte le manifeste — d'où la règle **assembler
+    avant de publier**, que l'écran rappelle sur un album déjà exporté. C'est ce geste qui
     permet de commencer à annoter AVANT que le modèle existe.
-11. **Le webtoon** : un dérivé non réduit (un épisode fait ~800 px de large, et le dérivé à
-    25 % en ferait 200), un Atelier qui défile verticalement, une citation sans page
-    (épisode · case ?). La segmentation automatique sur un webtoon est une HYPOTHÈSE à
-    éprouver, pas un acquis.
-12. **ANN-7 (grilles d'annotation)** prévoit d'annoter « la planche » comme cible : avec ce
-    modèle, la page ou la surface ? À trancher AVANT que la tranche 1 d'ANN-7 fige la cible.
-13. **Ce que disent les métadonnées** : `nombre_pages` compterait des pages ; la taille
-    physique (`dimensions_cm`) serait celle d'une page, pas celle d'un scan.
+11. **Le webtoon — tranché : rien maintenant**, on le traite quand un corpus réel arrive. Ce
+    qui est déjà posé : un épisode est une surface SANS page, cité « ép. 3 · c12 » ; le
+    dérivé web se réduira vers une LARGEUR MINIMALE à garder et non d'un facteur fixe — un
+    épisode fait ~800 px de large, et le dérivé à 25 % en ferait 200 ; la règle vaut pour
+    toute petite image, pas pour le seul webtoon. Un Atelier qui défile verticalement reste à
+    dessiner ; la segmentation automatique sur un webtoon reste une HYPOTHÈSE à éprouver.
+12. **La cible « planche » d'ANN-7 est la SURFACE — tranché.** Annoter « la planche »
+    (composition, mise en page), c'est annoter ce qu'on voit d'un tenant : pour une double
+    page, la double page entière, que l'écran nomme « la planche (ou la double page) ». Une
+    cible « page » viendra si une grille en a besoin.
+13. **Les métadonnées — tranché.** `nombre_pages` compte des pages. Les dimensions physiques
+    se calculent PAR PAGE, de son emprise et de la résolution de son image : une double page
+    d'un seul cadre donne à chaque page sa taille, pas la largeur des deux.
 14. **Le sens de lecture est une propriété de l'ALBUM — tranché, 2026-10-16.** Trois
     valeurs : de gauche à droite (la BD franco-belge, par défaut), de droite à gauche (le
     manga), de haut en bas (le webtoon). Il se choisit à la création, dans « + Nouvel
