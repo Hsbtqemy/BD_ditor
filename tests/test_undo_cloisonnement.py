@@ -155,6 +155,15 @@ def decor(client, derriere_proxy, db_path):
     return {"p": p, "i": i, "garde": garde, "pg": pg, "rg": rg, "e": e, "pe": pe}
 
 
+def _detruire_erreur(client, decor):
+    """L'album « Erreur » est détruit, et ses identifiants rendus. Par un ADMINISTRATEUR :
+    la collègue y a travaillé, et depuis COL-3 l'importatrice n'efface plus seule un album
+    où quelqu'un d'autre a laissé un acte — elle le demande, et c'est l'administrateur qui
+    détruit. Qui détruit ne change rien à ce que ce fichier mesure : la pile de la collègue
+    et les identifiants repris."""
+    _ok(client.delete(f"/api/albums/{decor['e']}", headers=ADMIN), 204)
+
+
 def _geste_ancien(client, decor, qui=COLLEGUE):
     """Un geste de `qui`, plus ancien, sur une région qui ne bouge pas : c'est lui que le
     Ctrl+Z suivant doit annuler une fois l'acte inannulable passé."""
@@ -185,7 +194,7 @@ def test_a_un_locuteur_sur_un_identifiant_repris_ailleurs_n_est_pas_efface(
                    json={"personnage_id": _perso(client, "Haddock", COLLEGUE)}), 200)
     acte_lien = _acte(db_path, "collegue", "lien", "bulle_locuteur", r)
     acte_crea = _acte(db_path, "collegue", "creation", "regions", r)
-    _ok(client.delete(f"/api/albums/{decor['e']}", headers=IMPORTEUSE), 204)
+    _detruire_erreur(client, decor)
     _reprendre(client, decor, r)
     tintin = _perso(client, "Tintin", IMPORTEUSE)
     _ok(client.put(f"/api/regions/{r}/locuteur", headers=IMPORTEUSE,
@@ -215,7 +224,7 @@ def test_a_bis_annuler_une_creation_n_efface_pas_la_region_qui_a_repris_l_identi
     l'identifiant — celle de l'Incubateur, que la garde de CONC-3 ne retient pas tant que
     personne ne l'a annotée (la planche n'est pas un champ gardé)."""
     r = _region(client, decor["pe"], COLLEGUE)
-    _ok(client.delete(f"/api/albums/{decor['e']}", headers=IMPORTEUSE), 204)
+    _detruire_erreur(client, decor)
     py = _reprendre(client, decor, r)
 
     rep = client.post("/api/undo", headers=COLLEGUE)
@@ -232,7 +241,7 @@ def test_b_le_refus_ne_rend_ni_le_texte_ni_l_auteur_d_une_region_illisible(
     _geste_ancien(client, decor)
     r = _region(client, decor["pe"], COLLEGUE)
     _ok(client.put(f"/api/regions/{r}", headers=COLLEGUE, json={"ocr_texte": "BONJOUR"}), 200)
-    _ok(client.delete(f"/api/albums/{decor['e']}", headers=IMPORTEUSE), 204)
+    _detruire_erreur(client, decor)
     _reprendre(client, decor, r)
     _ok(client.put(f"/api/regions/{r}", headers=IMPORTEUSE, json={"ocr_texte": SECRET}), 200)
 
@@ -261,7 +270,7 @@ def test_une_region_disparue_se_dit_comme_une_region_reprise(client, db_path, de
     r = _region(client, decor["pe"], COLLEGUE)
     _ok(client.put(f"/api/regions/{r}/locuteur", headers=COLLEGUE,
                    json={"personnage_id": _perso(client, "Haddock", COLLEGUE)}), 200)
-    _ok(client.delete(f"/api/albums/{decor['e']}", headers=IMPORTEUSE), 204)
+    _detruire_erreur(client, decor)
     n = _sql(db_path, "SELECT COUNT(*) AS n FROM evenement")[0]["n"]
 
     _passe(client.post("/api/undo", headers=COLLEGUE), "attribution d'un locuteur")
@@ -376,7 +385,7 @@ def test_compte_collectif_meme_regle_et_borne_inchangee(client, db_path, decor):
     r = _region(client, decor["pe"], atelier)
     _ok(client.put(f"/api/regions/{r}/locuteur", headers=atelier,
                    json={"personnage_id": _perso(client, "Castafiore", atelier)}), 200)
-    _ok(client.delete(f"/api/albums/{decor['e']}", headers=IMPORTEUSE), 204)
+    _detruire_erreur(client, decor)
     _reprendre(client, decor, r)
     tintin = _perso(client, "Tintin", IMPORTEUSE)
     _ok(client.put(f"/api/regions/{r}/locuteur", headers=IMPORTEUSE,
@@ -397,7 +406,7 @@ def test_administrateur_n_annule_pas_sur_un_objet_qui_n_est_plus_le_sien(
     l'arrête est l'autre propriété — la région n'est plus celle sur laquelle il a agi."""
     r = _region(client, decor["pe"], ADMIN)
     _ok(client.put(f"/api/regions/{r}", headers=ADMIN, json={"ocr_texte": "DE L ADMIN"}), 200)
-    _ok(client.delete(f"/api/albums/{decor['e']}", headers=IMPORTEUSE), 204)
+    _detruire_erreur(client, decor)
     _reprendre(client, decor, r)
     _ok(client.put(f"/api/regions/{r}", headers=IMPORTEUSE, json={"ocr_texte": SECRET}), 200)
 
@@ -435,7 +444,7 @@ def test_retablir_dans_une_planche_qui_a_repris_l_identifiant_est_refuse(
     vite qu'une personne. Dans la même seconde, la garde ne voit rien (résiduel écrit)."""
     s = _region(client, decor["pe"], IMPORTEUSE)
     _ok(client.delete(f"/api/regions/{s}", headers=IMPORTEUSE), 204)
-    _ok(client.delete(f"/api/albums/{decor['e']}", headers=IMPORTEUSE), 204)
+    _detruire_erreur(client, decor)
     _sql(db_path, "UPDATE evenement SET date = datetime(date, '-1 minutes')")
     y = _album(client, "Y", decor["i"], IMPORTEUSE)
     assert _planche(client, y, IMPORTEUSE) == decor["pe"]     # l'identifiant est repris
@@ -523,7 +532,7 @@ def test_la_trace_du_passage_ne_part_pas_au_depot(client, db_path, decor):
 
     r = _region(client, decor["pe"], COLLEGUE)
     _ok(client.put(f"/api/regions/{r}", headers=COLLEGUE, json={"ocr_texte": "BONJOUR"}), 200)
-    _ok(client.delete(f"/api/albums/{decor['e']}", headers=IMPORTEUSE), 204)
+    _detruire_erreur(client, decor)
     _reprendre(client, decor, r)
     avant = publies()
     _passe(client.post("/api/undo", headers=COLLEGUE), "modification d'une région")
@@ -762,7 +771,7 @@ def test_la_trace_ne_compte_pas_comme_un_acte_laisse(client, db_path, decor):
             c.close()
 
     _region(client, decor["pe"], COLLEGUE)
-    _ok(client.delete(f"/api/albums/{decor['e']}", headers=IMPORTEUSE), 204)
+    _detruire_erreur(client, decor)
     avant = actes()
     _passe(client.post("/api/undo", headers=COLLEGUE), "création d'une région")
     assert _marques(db_path, "collegue"), "le semis : aucune trace posée"

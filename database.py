@@ -29,9 +29,10 @@ COLONNES_VU = ("modele_auto", "auto_lemme", "auto_pos", "auto_morph")
 # AUTH-6 (2026-09-09) — les deux natures d'un compte, et la SEULE liste qui fasse foi.
 # `nominatif` : une personne derrière un login, ce que suppose tout le raisonnement de
 # provenance. `collectif` : un login partagé, décidé le 2026-09-09 pour les groupes
-# d'étudiants, les stagiaires et les démos. La distinction ne borde AUCUN droit — un
+# d'étudiants, les stagiaires et les démos. La distinction ne borde AUCUN accès — un
 # compte collectif écrit partout où ses accès le portent —, elle borde ce que les MESURES
-# ont le droit d'affirmer.
+# ont le droit d'affirmer ; et, depuis le fonds (COL-3, tranche 2), un seul GESTE : un
+# compte collectif ne supprime jamais définitivement seul (`Portee.clause_suppression_directe`).
 NATURE_NOMINATIF = "nominatif"
 NATURE_COLLECTIF = "collectif"
 NATURES = (NATURE_NOMINATIF, NATURE_COLLECTIF)
@@ -1527,14 +1528,38 @@ def rangement_traverse(conn: sqlite3.Connection, album_id: int, collection_id: i
     existant reste sans effet, quoi qu'une base retouchée à la main ait laissé.
 
     La question vit ici parce qu'elle a deux appelants qui ne doivent pas diverger : la
-    route (`ranger_album`) et l'outil en ligne de commande (`gerer_collections.py`)."""
+    route (`ranger_album`) et l'outil en ligne de commande (`gerer_collections.py`).
+
+    COL-3, tranche 2 — une seconde moitié, et c'est elle qui garde une copie AU FONDS.
+    Sortie de sa dernière collection, une copie n'a plus aucune collection où lire son
+    projet ; la première moitié, qui ne lit que celles-là, la laisserait alors entrer dans
+    n'importe quel projet. Le projet ÉCRIT sur la copie (`albums.projet_id`) doit donc
+    être aussi celui de la collection d'arrivée. Une copie qui n'en a JAMAIS eu — importée
+    au fonds — entre où l'on veut, et y prend son projet (`poser_projet_de_copie`)."""
     if conn.execute("SELECT 1 FROM collection_album WHERE album_id = ? AND collection_id = ?",
                     (album_id, collection_id)).fetchone():
         return False
+    arrivee = projet_de_collection(conn, collection_id)
+    ecrit = conn.execute("SELECT projet_id FROM albums WHERE id = ?", (album_id,)).fetchone()
+    if ecrit is not None and ecrit[0] is not None and ecrit[0] != arrivee:
+        return True
     return conn.execute(
         "SELECT 1 FROM collection_album ca JOIN collection c ON c.id = ca.collection_id "
         f"WHERE ca.album_id = ? AND {sql_projet_de('c')} IS NOT ?",
-        (album_id, projet_de_collection(conn, collection_id))).fetchone() is not None
+        (album_id, arrivee)).fetchone() is not None
+
+
+def poser_projet_de_copie(conn: sqlite3.Connection, album_id: int) -> None:
+    """ÉCRIT sur la copie le projet qu'on lit pour elle (`sql_projet_d_album`), si la
+    colonne est encore vide. À appeler juste APRÈS l'avoir rangée — une copie importée au
+    fonds prend alors le projet de sa première collection — et juste AVANT de la sortir
+    d'une collection, tant qu'on lit encore le projet dans celle-ci : une copie qui part au
+    fonds doit l'emporter, sans quoi `rangement_traverse` la laisserait entrer ailleurs.
+
+    Ne remplace jamais un projet déjà écrit : une copie n'en change pas. Deux appelants,
+    la route et l'outil, pour la raison écrite sur `rangement_traverse`."""
+    conn.execute(f"UPDATE albums SET projet_id = ({sql_projet_d_album('albums')}) "
+                 "WHERE id = ? AND projet_id IS NULL", (album_id,))
 
 
 def collections_sans_projet(conn: sqlite3.Connection) -> list[int]:
@@ -1648,6 +1673,23 @@ def albums_hors_de_leur_projet(conn: sqlite3.Connection) -> list[int]:
         "JOIN collection c ON c.id = ca.collection_id "
         f"WHERE a.projet_id IS NOT NULL AND {sql_projet_de('c')} IS NOT a.projet_id "
         "ORDER BY a.id")]
+
+
+# Les DEMANDES (COL-3, tranche 2) — les listes vivent dans le code, pas dans un `CHECK` (la
+# raison est écrite sur la table). Un genre par usage du mécanisme ; la tranche 2 en ouvre
+# deux, la suivante y ajoutera l'entrée de documents dans un projet. Une réponse par
+# demande, dite comme un ÉTAT et non comme un geste : `acceptee` ou `refusee`, quel que
+# soit le genre — « détruire » et « garder » sont les mots de l'écran pour un document,
+# pas ceux d'une admission.
+DEMANDE_SUPPRESSION_DOCUMENT = "suppression_document"
+DEMANDE_SUPPRESSION_PROJET = "suppression_projet"
+GENRES_DEMANDE = (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET)
+REPONSE_ACCEPTEE = "acceptee"
+REPONSE_REFUSEE = "refusee"
+REPONSES_DEMANDE = (REPONSE_ACCEPTEE, REPONSE_REFUSEE)
+# Le « pourquoi » d'une demande est un texte libre ; borné pour qu'un champ de motif ne
+# devienne pas un dépôt de documents.
+LONGUEUR_MOTIF = 2000
 
 
 # Une date d'embargo est censée être en ISO (AAAA-MM-JJ) ; le champ est du TEXTE libre, et

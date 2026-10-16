@@ -11,9 +11,10 @@ Deux pouvoirs, et le second ne découle pas du premier — c'est la séparation 
 portée totale : l'administrateur, et le mono-poste. RÉGLER qui est d'un projet (faire
 entrer, faire sortir, nommer un autre responsable) revient à son responsable, et à
 l'administrateur qui passe outre. Quatre refus sont des 409 qui se NOMMENT : supprimer le
-projet de repli, supprimer un projet qui porte encore une collection ou qu'un album désigne
-encore comme le sien, retirer ou rétrograder son DERNIER responsable. Un projet peut en revanche naître sans responsable :
-seule une portée totale le règle alors.
+projet de repli, supprimer un projet qui porte encore une collection ou dont une copie est
+gardée au fonds, retirer ou rétrograder son DERNIER responsable. Un projet peut en revanche
+naître sans responsable : seule une portée totale le règle alors. Son responsable, qui ne
+le supprime pas, DEMANDE sa suppression (`routes/fonds.py`, COL-3, tranche 2).
 
 Ce module APPLIQUE ces règles ; `autorisation.py` les tranche (`clause_projet`,
 `peut_gerer_projet`, `peut_decider_des_projets`).
@@ -33,10 +34,11 @@ from fastapi.responses import Response
 
 import autorisation
 import journal
-from database import LONGUEUR_NOM_PROJET, sql_projet_de
+from database import DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET, sql_projet_de
 
 from socle import (
-    MembreIn, ProjetIn, ProjetUpdate, _get_projet, _rows, db, portee_courante,
+    MembreIn, ProjetIn, ProjetUpdate, _get_projet, _rows, _supprimer_projet, db,
+    portee_courante,
 )
 
 router = APIRouter()
@@ -84,6 +86,14 @@ def _vue(conn, portee: autorisation.Portee, p: dict) -> dict:
            "nb_collections": sum(1 for i in ids if portee.peut_lire(i))}
     if gerable:
         vue["justification"] = p["justification"]
+        # COL-3, tranche 2 — la demande de suppression qui attend, pour qui gère : sans
+        # elle, un second responsable redéposerait la même et recevrait un 409. Ni nom ni
+        # motif ici — la liste des projets ne nomme personne ; qui a demandé et pourquoi se
+        # lisent dans le fonds, par qui y répond.
+        d = conn.execute("SELECT id, date_creation FROM demande WHERE genre = ? "
+                         "AND projet_id = ? AND reponse IS NULL ORDER BY id LIMIT 1",
+                         (DEMANDE_SUPPRESSION_PROJET, p["id"])).fetchone()
+        vue["demande_suppression"] = None if d is None else dict(d)
     return vue
 
 
@@ -213,42 +223,13 @@ def delete_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
     """Supprime un projet VIDE. Ses membres en sortent avec lui (`ON DELETE CASCADE`).
 
-    Deux refus qui se nomment. Le projet de REPLI ne se supprime pas : c'est là que tombe
-    toute collection qui ne nomme pas le sien. Et un projet qui PORTE une collection non
-    plus : la reverser en silence dans le repli la ferait changer de projet sans que
-    personne l'ait décidé, et aucun geste ne déplace une collection dans cette tranche. La
-    clé étrangère, sans action, est la ceinture derrière ce refus.
-
-    Un troisième depuis la v30 : un projet qu'un ALBUM désigne encore comme le sien
-    (`albums.projet_id`). Le projet d'une copie de travail est écrit sur elle, pour tenir
-    quand elle n'est plus rangée nulle part ; supprimer ce projet la laisserait désigner
-    un projet qui n'existe plus — et dont l'identifiant, rendu au suivant, la ferait
-    passer dans un autre. Aucune route ne produit encore cet état, un album gardant
-    toujours une collection de son projet ; une base retouchée le porte, et la clé
-    étrangère répondait alors par une erreur brute."""
+    Réservé à qui DÉCIDE des projets. Les trois refus qui se nomment — le projet de repli,
+    un projet qui porte une collection, un projet dont une copie est gardée au fonds —
+    vivent dans `socle._supprimer_projet`, que la réponse à la demande d'un responsable
+    traverse aussi (`routes/fonds.py`) : deux chemins, une règle."""
     p = _get_projet(conn, portee, projet_id)
     _exiger_de_decider(portee)
-    if p["repli"]:
-        raise HTTPException(409, "C'est le projet de repli : les collections qui ne "
-                                 "nomment aucun projet y sont rangées. Il se renomme, il "
-                                 "ne se supprime pas.")
-    n = conn.execute(f"SELECT COUNT(*) FROM collection c WHERE {sql_projet_de('c')} = ?",
-                     (projet_id,)).fetchone()[0]
-    if n:
-        raise HTTPException(409, f"{n} collection(s) appartiennent à ce projet : un "
-                                 "projet ne se supprime que vide.")
-    # Lu dans la colonne ÉCRITE, pas par la règle de lecture : c'est elle que la clé
-    # étrangère garde. Un album qui ne tient son projet que de ses collections est déjà
-    # arrêté par le refus du dessus. Le compte ne dit rien de plus que ce que voit qui
-    # décide des projets — une portée totale, qui lit tout album.
-    n = conn.execute("SELECT COUNT(*) FROM albums WHERE projet_id = ?",
-                     (projet_id,)).fetchone()[0]
-    if n:
-        raise HTTPException(409, f"{n} album(s) désignent encore ce projet comme le leur, "
-                                 "sans y être rangés : un projet ne se supprime que "
-                                 "lorsque plus aucun album n'en est.")
-    conn.execute("DELETE FROM projet WHERE id = ?", (projet_id,))
-    journal.journaliser(conn, "suppression", "projet", projet_id, avant={"nom": p["nom"]})
+    _supprimer_projet(conn, portee, p)
     conn.commit()
     return Response(status_code=204)
 

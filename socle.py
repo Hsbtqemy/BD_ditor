@@ -35,7 +35,12 @@ from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 import autorisation
-from database import clause_appartenance, collection_row, get_connection
+import journal
+from database import (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
+                      REPONSE_ACCEPTEE, clause_appartenance, collection_row,
+                      get_connection, retirer_document_sans_copie, sql_projet_de,
+                      unindex_region)
+from pipeline.ingest import remove_album_files
 
 # --------------------------------------------------------------------------- #
 # Dépendance connexion
@@ -361,24 +366,151 @@ def _get_projet(conn, portee: autorisation.Portee, projet_id: int, *,
 
 
 # --------------------------------------------------------------------------- #
-# DÉTRUIRE n'est pas écrire (AUTH-10) — une garde sur ce qui ne se rattrape pas
+# DÉTRUIRE n'est pas écrire (AUTH-10), et « supprimer » a deux réponses (COL-3)
 # --------------------------------------------------------------------------- #
-# Comme pour l'export, ce helper ne tranche rien : `Portee.clause_destruction` dit qui peut
-# détruire quoi. Il dit comment REFUSER, et le refus est un 403 NOMMÉ — il ne s'appelle
-# qu'APRÈS l'accesseur gardé en écriture, donc sur un album que l'appelant lit et annote :
-# un « introuvable » lui mentirait. Ce que le message révèle est accepté par écrit (Hugo,
-# 2026-10-08) : qu'une AUTRE collection porte l'album, jamais laquelle.
-_MOTIF_DESTRUCTION = ("Cet album est aussi rangé dans une collection où vous n'écrivez "
-                      "pas : vous pouvez le sortir de la vôtre, pas le supprimer, ni "
-                      "supprimer ses planches.")
+# Comme pour l'export, ce helper ne tranche rien : `Portee.clause_suppression_directe` dit
+# qui peut supprimer quoi DÉFINITIVEMENT, sans rien demander. Il dit comment REFUSER, et le
+# refus est un 403 NOMMÉ — il ne s'appelle qu'APRÈS l'accesseur gardé en écriture, donc sur
+# un album que l'appelant lit et annote : un « introuvable » lui mentirait.
+#
+# Le refus ne dit PAS laquelle des conditions manque — une autre collection le porte, ce
+# n'est pas lui qui l'a importé, quelqu'un d'autre y a travaillé : la phrase de la maquette
+# les dit ensemble, et c'est la bonne (cadrage de la tranche 2). Ce qu'elle révèle reste ce
+# qu'AUTH-10 avait accepté par écrit le 2026-10-08 : qu'un AUTRE usage existe, jamais
+# lequel. Elle dit aussi les deux gestes qui restent : supprimer l'album de sa collection —
+# il est gardé au fonds —, ou demander. Une planche n'a ni l'un ni l'autre (décision B4) :
+# sa suppression se dit à un administrateur.
+_MOTIF_DESTRUCTION = ("D'autres s'en servent, ou ce n'est pas vous qui l'avez importé : "
+                      "supprimer définitivement cet album se demande à un administrateur. "
+                      "Vous pouvez le supprimer de votre collection, où il est gardé au "
+                      "fonds avec son travail.")
+_MOTIF_DESTRUCTION_PLANCHE = ("D'autres se servent de cet album, ou ce n'est pas vous qui "
+                              "l'avez importé : supprimer l'une de ses planches se demande "
+                              "à un administrateur de l'instance.")
 
 
-def _exiger_destruction(conn, portee: autorisation.Portee, album_id: int) -> None:
-    """403 si l'on écrit dans l'album sans écrire dans TOUTES ses collections."""
-    ou, params = portee.clause_destruction("albums.id")
-    if conn.execute(f"SELECT 1 FROM albums WHERE id = ? AND {ou}",
+def _exiger_destruction(conn, portee: autorisation.Portee, album_id: int, *,
+                        planche: bool = False) -> None:
+    """403 si l'on ne peut pas supprimer DÉFINITIVEMENT cet album — ou, `planche`, l'une
+    de ses planches : on supprime une planche là où l'on pourrait supprimer le document
+    (décision B4 de Hugo, 2026-10-11)."""
+    ou, params = portee.clause_suppression_directe("a.id")
+    if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                     (album_id, *params)).fetchone() is None:
-        raise HTTPException(403, _MOTIF_DESTRUCTION)
+        raise HTTPException(403, _MOTIF_DESTRUCTION_PLANCHE if planche
+                            else _MOTIF_DESTRUCTION)
+
+
+def _detruire_album(conn, portee: autorisation.Portee, album_id: int) -> None:
+    """DÉTRUIT un album — sa ligne, son travail, son document s'il n'a plus d'autre copie,
+    ses images —, garde comprise. Le seul chemin de la destruction d'un album : la route
+    `DELETE /api/albums/{id}` et la réponse « accepter » à une demande (`routes/fonds.py`)
+    y passent toutes deux, et la garde vit ICI pour qu'aucune des deux ne l'oublie.
+
+    Il COMMITE, puis efface les fichiers : à appeler en DERNIER, après tout ce qui doit
+    partir dans la même transaction. Les fichiers quittent le disque après le commit, et
+    pas avant : une base qui refuserait d'écrire laisserait sinon un album sans images.
+
+    Ce qu'il écrit au journal : la fin de chacun des emplois de la copie (la cascade défait
+    ses rangements sans rien dire), puis la destruction du document. Et il CLÔT toute
+    demande de suppression qui visait ce document : elle a reçu sa réponse, quel que soit
+    le geste qui l'a donnée — l'importateur qui détruit lui-même ce qu'un autre avait
+    demandé, ou l'administrateur."""
+    _exiger_destruction(conn, portee, album_id)
+    a = _row(conn.execute("SELECT * FROM albums WHERE id = ?", (album_id,)))
+    # Désindexe les régions du FTS (le CASCADE SQL ne touche pas la table FTS).
+    for r in conn.execute(
+        "SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
+        "WHERE p.album_id = ?", (album_id,)).fetchall():
+        unindex_region(conn, r["id"])
+    nb_planches = conn.execute("SELECT COUNT(*) FROM planches WHERE album_id = ?",
+                               (album_id,)).fetchone()[0]
+    # Détruire l'album met fin à chacun de ses emplois : la cascade défait les liens sans
+    # rien dire, comme quand on supprime une collection, et un journal où un rangement
+    # n'aurait jamais de fin laisserait croire le document encore employé. Écrits AVANT le
+    # `DELETE`, tant que l'album se lit encore.
+    for (collection_id,) in conn.execute(
+            "SELECT collection_id FROM collection_album WHERE album_id = ? "
+            "ORDER BY collection_id", (album_id,)).fetchall():
+        journal.journaliser_emploi(conn, "delien", album_id, collection_id)
+    conn.execute("DELETE FROM albums WHERE id = ?", (album_id,))   # CASCADE planches/regions
+    # Le document part avec sa dernière copie, et sa destruction s'écrit : le journal est
+    # tout ce qui reste de lui, ses images quittant le disque juste après. Un album SANS
+    # document — posé par `INSERT` — l'écrit aussi, sous une cible vide, comme ses scans et
+    # ses emplois : l'acte a eu lieu. Seul cas qui n'écrit pas de `suppression` : une autre
+    # copie porte encore le document, qui n'est donc pas détruit.
+    document_id = a["document_id"]
+    if retirer_document_sans_copie(conn, document_id) or document_id is None:
+        journal.journaliser(conn, "suppression", "document", document_id,
+                            avant={"album_id": album_id, "titre": a["titre"],
+                                   "planches": nb_planches})
+        _clore_demandes(conn, portee, [r[0] for r in conn.execute(
+            "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
+            "WHERE d.genre = ? AND dd.document_id = ? AND d.reponse IS NULL",
+            (DEMANDE_SUPPRESSION_DOCUMENT, document_id))], REPONSE_ACCEPTEE)
+    conn.commit()
+    remove_album_files(album_id)
+
+
+def _clore_demandes(conn, portee: autorisation.Portee, ids, reponse: str) -> None:
+    """Donne sa RÉPONSE à des demandes en attente — et à chacun de leurs documents —, et
+    l'écrit au journal. Ne commite pas. Une demande répondue RESTE : c'est ce qui permet de
+    dire qu'une même suppression a déjà été refusée, et le journal garde qui a répondu.
+
+    `repondu_par` est l'appelant : l'administrateur qui répond, ou celui dont le geste a
+    satisfait la demande — l'importateur qui détruit ce qu'un autre avait demandé."""
+    for demande_id in ids:
+        conn.execute("UPDATE demande SET reponse = ?, repondu_par = ?, "
+                     "date_reponse = datetime('now') WHERE id = ? AND reponse IS NULL",
+                     (reponse, portee.utilisateur, demande_id))
+        conn.execute("UPDATE demande_document SET reponse = ? "
+                     "WHERE demande_id = ? AND reponse IS NULL", (reponse, demande_id))
+        journal.journaliser(conn, "modification", "demande", demande_id,
+                            avant={"reponse": None}, apres={"reponse": reponse})
+
+
+def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
+    """Supprime un projet VIDE, ou refuse en se NOMMANT. Ne commite pas. Les deux chemins
+    de la suppression d'un projet y passent : la route (`DELETE /api/projets/{id}`) et la
+    réponse « accepter » à la demande de son responsable (`routes/fonds.py`). La question
+    du DROIT reste chez l'appelant : décider des projets, ou tenir le fonds.
+
+    Trois refus, tous des 409 : le projet de REPLI, où tombe toute collection qui ne nomme
+    pas le sien ; un projet qui PORTE une collection — la reverser en silence dans le repli
+    la ferait changer de projet sans que personne l'ait décidé ; et un projet dont des
+    copies sont GARDÉES AU FONDS (`albums.projet_id`) — supprimé, il les laisserait
+    désigner un projet qui n'existe plus, et dont l'identifiant, rendu au suivant, les
+    ferait passer dans un autre. Les détruire d'abord, depuis le fonds ; à la tranche
+    suivante, elles pourront aussi être confiées à un autre projet. La clé étrangère, sans
+    action, est la ceinture derrière ces refus.
+
+    Accepté, il clôt aussi toute demande de suppression qui le visait."""
+    projet_id = p["id"]
+    if p["repli"]:
+        raise HTTPException(409, "C'est le projet de repli : les collections qui ne "
+                                 "nomment aucun projet y sont rangées. Il se renomme, il "
+                                 "ne se supprime pas.")
+    n = conn.execute(f"SELECT COUNT(*) FROM collection c WHERE {sql_projet_de('c')} = ?",
+                     (projet_id,)).fetchone()[0]
+    if n:
+        raise HTTPException(409, f"{n} collection(s) appartiennent à ce projet : un "
+                                 "projet ne se supprime que vide.")
+    # Lu dans la colonne ÉCRITE, pas par la règle de lecture : c'est elle que la clé
+    # étrangère garde, et c'est elle qui porte le projet d'une copie au fonds. Un album
+    # encore rangé est déjà arrêté par le refus du dessus. Le compte ne dit rien de plus
+    # que ce que voit qui décide des projets — une portée totale, qui lit tout album.
+    n = conn.execute("SELECT COUNT(*) FROM albums WHERE projet_id = ?",
+                     (projet_id,)).fetchone()[0]
+    if n:
+        raise HTTPException(409, f"{n} album(s) de ce projet sont gardés au fonds, hors de "
+                                 "toute collection : un projet ne se supprime que lorsque "
+                                 "plus aucun album n'en est. Détruisez-les d'abord depuis "
+                                 "le fonds.")
+    _clore_demandes(conn, portee, [r[0] for r in conn.execute(
+        "SELECT id FROM demande WHERE genre = ? AND projet_id = ? AND reponse IS NULL",
+        (DEMANDE_SUPPRESSION_PROJET, projet_id))], REPONSE_ACCEPTEE)
+    conn.execute("DELETE FROM projet WHERE id = ?", (projet_id,))
+    journal.journaliser(conn, "suppression", "projet", projet_id, avant={"nom": p["nom"]})
 
 
 # --------------------------------------------------------------------------- #
@@ -442,8 +574,8 @@ def _collection_d_export(conn, portee: autorisation.Portee, album_id: int,
     mono-poste comme pour les autres. Une seule collection : rien à nommer, comme avant.
 
     **Cette fonction ne rend JAMAIS `None`.** Le dernier chemin qui y menait est un album
-    rangé dans AUCUNE collection — l'invariant d'AUTH-2 l'interdit, les routes le
-    tiennent, une base retouchée à la main peut le violer, et seule une portée totale lit
+    rangé dans AUCUNE collection — une copie gardée au FONDS depuis COL-3 (tranche 2),
+    supprimée de sa dernière collection ou importée au fonds ; seule une portée totale lit
     alors l'album. Il répond 409 en nommant l'état : un 403 « droit d'exporter » mentirait
     à qui a tous les droits, et le laisser sortir rouvrirait l'export sans titre."""
     rows = _rows(conn.execute(
@@ -1089,6 +1221,10 @@ class AlbumIn(BaseModel):
     # l'appartenance vit dans `collection_album` (N-N) et le champ est
     # retiré avant l'INSERT. Omis => collection de repli.
     collection_id: Optional[int] = None
+    # COL-3, tranche 2 — « Importer au fonds » (Hugo, 2026-10-11) : l'album naît SANS
+    # collection ni projet, « appelé par personne », pour être distribué ensuite. Réservé à
+    # qui tient le fonds. N'est PAS une colonne non plus : retiré avant l'INSERT.
+    au_fonds: bool = False
     titre: str
     auteur: Optional[str] = None                # legacy → voir contributions
     # Bornes larges à dessein : il ne s'agit pas de policer l'histoire de l'édition
@@ -1346,6 +1482,21 @@ class ProjetUpdate(BaseModel):
     nom: Optional[str] = None
     description: Optional[str] = None
     justification: Optional[str] = None
+
+
+class DemandeIn(BaseModel):
+    """Une demande (COL-3, tranche 2). `genre` dit ce qu'on demande ; `album_id` désigne
+    le document par l'une de ses copies, `projet_id` le projet ; `motif` dit pourquoi, et
+    il est obligatoire."""
+    genre: str
+    album_id: Optional[int] = None
+    projet_id: Optional[int] = None
+    motif: Optional[str] = None
+
+
+class ReponseIn(BaseModel):
+    """La réponse à une demande : `acceptee` ou `refusee`."""
+    reponse: str
 
 
 class MembreIn(BaseModel):

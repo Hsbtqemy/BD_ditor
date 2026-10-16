@@ -22,8 +22,9 @@ from fastapi.staticfiles import StaticFiles
 from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, COMMIT_SERVI,
                     DATA_DIR, IMG_EXTS, REFERENT_CONTACT, REFERENT_NOM, RELECTURE,
                     ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_REGION)
-from database import (citations_regions, collection_par_defaut, contributions_album,
-                      creer_document, dimensions_cm, document_d_album, init_db,
+from database import (DEMANDE_SUPPRESSION_DOCUMENT, citations_regions,
+                      collection_par_defaut, contributions_album, creer_document,
+                      dimensions_cm, document_d_album, init_db,
                       noms_lisibles, numeros_editoriaux, projet_de_collection,
                       relecture_planches, reindex_region, retirer_document_sans_copie,
                       unindex_region)
@@ -45,15 +46,15 @@ import sante as sante_moteurs
 # en a aucun, et l'outil de recalcul s'arrête s'il en apparaît un.
 from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     CHAMPS_VUS,
-    AccesIn, AlbumIn, AlbumUpdate, AlignementIn, AnnotationIn, AttributIn, CollectionIn,
+    AccesIn, AlbumIn, AlbumUpdate, DemandeIn, ReponseIn, AlignementIn, AnnotationIn, AttributIn, CollectionIn,
     CollectionUpdate, ContributionIn, ContributionRoleIn, DeposerExportIn, DeposerIn, DimensionDomaineIn,
     DimensionIn, DomaineIn, FigureIn, FusionIn, JobIn, LexiqueIn, LocuteurIn, MoveIn,
     MembreIn, NatureIn,
     PersonnageIn, PersonnageUpdate, PresenceIn, ProjetIn, ProjetUpdate, RegionIn, RegionUpdate, RelectureIn,
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
     ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
-    _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
-    _attributs_de, _auteur,
+    _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
+    _attributs_de, _auteur, _clore_demandes, _detruire_album, _supprimer_projet,
     _clause_lemme, _clause_personnage, _collection_d_export, _csv_response, _csv_safe, _descendre_portee,
     _disposition, _ensure_tags, _exiger_destruction, _exiger_export,
     _exiger_export_region,
@@ -72,6 +73,7 @@ from routes import annulation as _routes_annulation
 from routes import collections as _routes_collections
 from routes import depot as _routes_depot
 from routes import figures as _routes_figures
+from routes import fonds as _routes_fonds
 from routes import lexique as _routes_lexique
 from routes import personnages as _routes_personnages
 from routes import projets as _routes_projets
@@ -81,8 +83,7 @@ from pipeline.backup import make_backup
 from pipeline import jobs
 from pipeline import nlp
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
-from pipeline.ingest import (ingest_image, remove_album_files,
-                             remove_planche_files, store_upload)
+from pipeline.ingest import ingest_image, remove_planche_files, store_upload
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
 from pipeline.ordering import move_region, reorder_planche
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
@@ -135,6 +136,7 @@ app.include_router(_routes_collections.router)
 app.include_router(_routes_depot.router)
 app.include_router(_routes_lexique.router)
 app.include_router(_routes_projets.router)
+app.include_router(_routes_fonds.router)
 
 
 # --------------------------------------------------------------------------- #
@@ -342,28 +344,34 @@ async def _sqlite_operational_handler(request, exc: sqlite3.OperationalError):
 #   · `collection_album` — ses EMPLOIS : rangé dans une collection (`lien`), retiré
 #     (`delien`). Le premier rangement, celui de la naissance, en est un comme les autres ;
 #     et détruire l'album met fin à chacun de ceux qui restaient. Tous s'écrivent par
-#     `journal.journaliser_emploi`, ici comme dans `routes/collections.py` et dans l'outil.
+#     `journal.journaliser_emploi` — ici, dans `socle._detruire_album`, dans
+#     `routes/collections.py` et dans l'outil.
 #
 # Dans les deux cas `cible_id` est l'id du DOCUMENT, jamais celui de l'album : le journal
 # survit à sa cible, et un identifiant d'album se réattribue — le suivant hériterait de
 # l'histoire du précédent. L'album d'où part le geste est dans la charge.
 #
-# Aucune de ces écritures ne change une réponse : la règle de qui détruit, les demandes et
-# l'écran du fonds viennent ensuite.
+# La règle de qui détruit vit dans `autorisation.Portee.clause_suppression_directe`, la
+# destruction elle-même dans `socle._detruire_album`, les demandes et le fonds dans
+# `routes/fonds.py`.
 def _document_du_nouvel_album(conn, portee: autorisation.Portee, album_id: int,
-                              collection_id: int) -> int:
+                              collection_id: Optional[int]) -> int:
     """Fait naître le document de l'album qu'on vient de créer dans cette collection : QUI
     l'a importé — le login de la requête, `None` en mono-poste où personne ne s'annonce —
-    et dans QUEL projet d'abord, celui de la collection d'accueil."""
+    et dans QUEL projet d'abord, celui de la collection d'accueil. Importé au fonds
+    (`collection_id` None), il n'entre dans aucun projet : il en prendra un à son premier
+    rangement (`database.poser_projet_de_copie`)."""
     return creer_document(conn, album_id, importe_par=portee.utilisateur,
-                          projet_id=projet_de_collection(conn, collection_id))
+                          projet_id=(None if collection_id is None
+                                     else projet_de_collection(conn, collection_id)))
 
 
 def _journaliser_naissance(conn, document_id: int, album_id: int, titre: str,
-                           collection_id: int) -> None:
+                           collection_id: Optional[int]) -> None:
     journal.journaliser(conn, "creation", "document", document_id,
                         apres={"album_id": album_id, "titre": titre})
-    journal.journaliser_emploi(conn, "lien", album_id, collection_id)
+    if collection_id is not None:
+        journal.journaliser_emploi(conn, "lien", album_id, collection_id)
 
 
 def _journaliser_scan(conn, album_id: int, planche: dict, *, retire: bool = False) -> None:
@@ -388,12 +396,36 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
     # n'écrit pas partout, ou on n'écrit nulle part — et l'écran n'a un geste à offrir que
     # dans la première. Sans ce second champ, une lectrice se voyait proposer de « sortir »
     # tous les albums, et le geste lui répondait « introuvable » (relecture croisée).
-    detruire, p_detruire = portee.clause_destruction("a.id")
+    #
+    # COL-3, tranche 2 — `destructible` garde son nom et CHANGE DE SENS : il dit qu'on peut
+    # supprimer l'album DÉFINITIVEMENT sans rien demander (`clause_suppression_directe`).
+    # Trois champs s'y ajoutent, pour que l'écran dise ce que devient le travail :
+    #   · `partage` — l'album vit AUSSI dans une collection que l'appelant ne lit pas. Le
+    #     supprimer de ses collections à lui ne l'envoie donc pas au fonds. Ce que cela
+    #     révèle est ce qu'AUTH-10 avait accepté : qu'un autre usage existe, jamais lequel ;
+    #     faux pour une portée totale, qui lit tout ;
+    #   · `au_fonds` — l'album n'est rangé dans AUCUNE collection : une copie gardée, que
+    #     seule une portée totale voit ;
+    #   · `demande` — la demande de suppression qui l'attend, avec le NOM de qui l'a
+    #     déposée (proposition R2, suivie en route : on a besoin de savoir à qui parler),
+    #     jamais son motif, qui ne se lit que dans le fonds.
+    detruire, p_detruire = portee.clause_suppression_directe("a.id")
     ecrire, p_ecrire = portee.clause_album("a.id", ecriture=True)
+    if portee.tout:
+        ailleurs, p_ailleurs = "0", []
+    else:
+        lus = sorted(portee.lecture)
+        ailleurs = ("EXISTS (SELECT 1 FROM collection_album _pa WHERE _pa.album_id = a.id"
+                    + (f" AND _pa.collection_id NOT IN ({', '.join('?' * len(lus))})"
+                       if lus else "") + ")")
+        p_ailleurs = lus
     albums = _rows(conn.execute(
         f"""SELECT a.*,
                   ({detruire}) AS destructible,
                   ({ecrire}) AS ecrivable,
+                  ({ailleurs}) AS partage,
+                  NOT EXISTS (SELECT 1 FROM collection_album _fa
+                              WHERE _fa.album_id = a.id) AS au_fonds,
                   (SELECT COUNT(*) FROM planches p WHERE p.album_id = a.id)
                       AS nb_planches,
                   (SELECT COUNT(*) FROM regions r JOIN planches p ON p.id = r.planche_id
@@ -405,11 +437,27 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
                      WHERE p.album_id = a.id AND p.validee IS NOT NULL) AS nb_validees
            FROM albums a
            WHERE {ou}
-           ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre""", (*p_detruire, *p_ecrire, *params)
+           ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre""",
+        (*p_detruire, *p_ecrire, *p_ailleurs, *params)
     ))
+    attente = {}
+    documents = [a["document_id"] for a in albums if a["document_id"] is not None]
+    if documents:
+        for d in conn.execute(
+                "SELECT dd.document_id, d.id, d.demandeur, d.date_creation FROM demande d "
+                "JOIN demande_document dd ON dd.demande_id = d.id "
+                f"WHERE d.genre = ? AND d.reponse IS NULL "
+                f"AND dd.document_id IN ({', '.join('?' * len(documents))}) ORDER BY d.id",
+                (DEMANDE_SUPPRESSION_DOCUMENT, *documents)):
+            attente.setdefault(d["document_id"], dict(d))
+    noms = noms_lisibles(conn, [d["demandeur"] for d in attente.values()])
     for a in albums:
-        a["destructible"] = bool(a["destructible"])
-        a["ecrivable"] = bool(a["ecrivable"])
+        for champ in ("destructible", "ecrivable", "partage", "au_fonds"):
+            a[champ] = bool(a[champ])
+        d = attente.get(a["document_id"])
+        a["demande"] = None if d is None else {
+            "id": d["id"], "demandeur": d["demandeur"],
+            "demandeur_nom": noms.get(d["demandeur"]), "date_creation": d["date_creation"]}
     return albums
 
 
@@ -420,13 +468,24 @@ def create_album(album: AlbumIn, conn: sqlite3.Connection = Depends(db),
     data["titre"] = (data.get("titre") or "").strip()   # B9 : titre requis (comme un tag)
     if not data["titre"]:
         raise HTTPException(422, "Le titre de l'album est requis.")
-    # AUTH-2 — un album appartient TOUJOURS à une collection : c'est elle qui porte les
-    # droits. Un orphelin ne correspondrait à aucune règle, et il faudrait alors inventer
-    # une politique dans le code. Le champ est facultatif à l'API (32 appels existants
-    # l'ignorent, et une instance neuve n'a pas encore de collection) mais l'appartenance,
-    # elle, n'est jamais facultative : à défaut, la collection de repli.
+    # AUTH-2 — un album naît dans une collection : c'est elle qui porte les droits. Le
+    # champ est facultatif à l'API (32 appels existants l'ignorent, et une instance neuve
+    # n'a pas encore de collection) mais l'appartenance, elle, n'est pas facultative : à
+    # défaut, la collection de repli. Seule exception, décidée : l'import AU FONDS, plus bas.
     cid = data.pop("collection_id", None)
-    if cid is not None:
+    # COL-3, tranche 2 — « Importer au fonds » (Hugo, 2026-10-11) : la SEULE création d'un
+    # album sans collection, réservée à qui tient le fonds. L'album y est « appelé par
+    # personne » jusqu'à ce qu'on le range, et c'est à son premier rangement qu'il prend un
+    # projet. Les deux refus parlent de l'appel, pas du corpus : rien n'en fuit.
+    au_fonds = data.pop("au_fonds", False)
+    if au_fonds:
+        if not portee.peut_tenir_le_fonds():
+            raise HTTPException(403, "Importer au fonds, sans passer par une collection, est "
+                                     "réservé aux administrateurs de l'instance.")
+        if cid is not None:
+            raise HTTPException(422, "Un album importé au fonds n'entre dans aucune "
+                                     "collection : ne précisez pas `collection_id`.")
+    elif cid is not None:
         # Introuvable ET interdite donnent la MÊME réponse : dire « elle existe mais pas
         # pour vous » révélerait l'existence d'études voisines.
         if not portee.peut_ecrire(cid) or conn.execute(
@@ -444,8 +503,9 @@ def create_album(album: AlbumIn, conn: sqlite3.Connection = Depends(db),
         f"INSERT INTO albums ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
         tuple(data.values()),
     )
-    conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
-                 (cid, cur.lastrowid))
+    if cid is not None:
+        conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
+                     (cid, cur.lastrowid))
     # COL-3 — l'album naît copie d'un DOCUMENT, qui appartient à l'instance dès cet instant.
     _journaliser_naissance(
         conn, _document_du_nouvel_album(conn, portee, cur.lastrowid, cid),
@@ -475,36 +535,14 @@ def update_album(album_id: int, patch: AlbumUpdate,
 @app.delete("/api/albums/{album_id}", status_code=204)
 def delete_album(album_id: int, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
-    a = _get_album(conn, portee, album_id, ecriture=True)
-    _exiger_destruction(conn, portee, album_id)     # AUTH-10 : écrire quelque part n'y suffit pas
-    # Désindexe les régions du FTS (le CASCADE SQL ne touche pas la table FTS).
-    for r in conn.execute(
-        "SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
-        "WHERE p.album_id = ?", (album_id,)).fetchall():
-        unindex_region(conn, r["id"])
-    nb_planches = conn.execute("SELECT COUNT(*) FROM planches WHERE album_id = ?",
-                               (album_id,)).fetchone()[0]
-    # COL-3 — détruire l'album met fin à chacun de ses emplois : la cascade défait les liens
-    # sans rien dire, comme quand on supprime une collection, et un journal où un rangement
-    # n'aurait jamais de fin laisserait croire le document encore employé. Écrits AVANT le
-    # `DELETE`, tant que l'album se lit encore.
-    for (collection_id,) in conn.execute(
-            "SELECT collection_id FROM collection_album WHERE album_id = ? "
-            "ORDER BY collection_id", (album_id,)).fetchall():
-        journal.journaliser_emploi(conn, "delien", album_id, collection_id)
-    conn.execute("DELETE FROM albums WHERE id = ?", (album_id,))   # CASCADE planches/regions
-    # Le document part avec sa dernière copie, et sa destruction s'écrit : le journal est
-    # tout ce qui reste de lui, ses images quittant le disque juste après. Un album SANS
-    # document — posé par `INSERT` — l'écrit aussi, sous une cible vide, comme ses scans et
-    # ses emplois : l'acte a eu lieu. Seul cas qui n'écrit pas de `suppression` : une autre
-    # copie porte encore le document, qui n'est donc pas détruit.
-    document_id = a["document_id"]
-    if retirer_document_sans_copie(conn, document_id) or document_id is None:
-        journal.journaliser(conn, "suppression", "document", document_id,
-                            avant={"album_id": album_id, "titre": a["titre"],
-                                   "planches": nb_planches})
-    conn.commit()
-    remove_album_files(album_id)
+    """Supprime un album DÉFINITIVEMENT — la seconde des deux réponses à « supprimer »
+    (COL-3, tranche 2) ; la première, le supprimer de sa collection, est
+    `DELETE /api/albums/{id}/collections/{cid}`. 404 à qui n'écrit pas dans l'album ; 403
+    nommé à qui y écrit sans pouvoir le supprimer seul — il le demande alors
+    (`POST /api/demandes`). La règle, la garde et la destruction sont dans
+    `socle._detruire_album`."""
+    _get_album(conn, portee, album_id, ecriture=True)
+    _detruire_album(conn, portee, album_id)
     return Response(status_code=204)
 
 
@@ -514,7 +552,10 @@ def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
     p = _get_planche(conn, portee, planche_id, ecriture=True)
     # AUTH-10 — une planche n'a pas d'appartenance propre et ne peut pas « sortir » : sans
     # cette garde, elle restait le chemin par lequel on vide un album partagé, une à une.
-    _exiger_destruction(conn, portee, p["album_id"])
+    # COL-3 — la règle est celle du document (décision B4) : on supprime une planche là où
+    # l'on pourrait supprimer l'album sans rien demander, et ailleurs on s'adresse à un
+    # administrateur — une planche n'a pas de demande à elle.
+    _exiger_destruction(conn, portee, p["album_id"], planche=True)
     for r in conn.execute(
         "SELECT id FROM regions WHERE planche_id = ?", (planche_id,)).fetchall():
         unindex_region(conn, r["id"])

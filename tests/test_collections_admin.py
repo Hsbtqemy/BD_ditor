@@ -243,21 +243,28 @@ def test_ranger_ailleurs_demande_d_ecrire_des_DEUX_cotes(client, db_path,
                       headers={"Remote-User": "bob"}).status_code == 404
 
 
-def test_sortir_de_la_derniere_collection_est_refuse(client, collection_a_alice):
-    """L'invariant d'AUTH-2 : un album a TOUJOURS une règle d'accès. Le refus nomme la
-    contrainte plutôt que de replier silencieusement sur la collection par défaut —
-    déplacer, c'est ranger ailleurs PUIS sortir, et l'ordre inverse doit se voir refuser
-    au lieu de déverser le travail dans un seau commun."""
+def test_sortir_de_la_derniere_collection_garde_l_album_au_fonds(client,
+                                                                 collection_a_alice):
+    """C'était l'invariant d'AUTH-2 : un album a TOUJOURS une collection, et sortir de la
+    dernière répondait 409. Renversé par COL-3 (tranche 2, décision de Hugo) : l'album
+    est GARDÉ AU FONDS avec son travail. Rien ne se déverse dans un seau commun — il n'est
+    plus lu que par la portée totale, et garde son projet. Le geste qui déplace reste
+    ranger ailleurs PUIS sortir ; l'ordre inverse aboutit, et l'album quitte l'écran de
+    qui l'a fait. Les suites du fonds sont dans `tests/test_fonds.py`."""
     h = {"Remote-User": "alice"}
     c1 = collection_a_alice["id"]
     alb = client.post("/api/albums", json={"titre": "Seul", "collection_id": c1},
                       headers=h).json()
-    r = client.delete(f"/api/albums/{alb['id']}/collections/{c1}", headers=h)
-    assert r.status_code == 409 and "dernière collection" in r.json()["detail"]
     c2 = client.post("/api/collections", json={"nom": "Ailleurs"}, headers=h).json()["id"]
     client.put(f"/api/albums/{alb['id']}/collections/{c2}", headers=h)
     assert client.delete(f"/api/albums/{alb['id']}/collections/{c1}",
                          headers=h).status_code == 204
+    r = client.delete(f"/api/albums/{alb['id']}/collections/{c2}", headers=h)
+    assert r.status_code == 204, r.text
+    assert alb["id"] not in {a["id"] for a in client.get("/api/albums", headers=h).json()}
+    assert client.get(f"/api/albums/{alb['id']}/planches", headers=h).status_code == 404
+    gardes = {a["id"]: a for a in client.get("/api/albums", headers=ADMIN).json()}
+    assert gardes[alb["id"]]["au_fonds"] is True
 
 
 def test_supprimer_une_collection_ne_supprime_pas_ses_albums(client, collection_a_alice):
@@ -269,7 +276,11 @@ def test_supprimer_une_collection_ne_supprime_pas_ses_albums(client, collection_
     alb = client.post("/api/albums", json={"titre": "Le Lotus bleu", "collection_id": c1},
                       headers=h).json()
     r = client.delete(f"/api/collections/{c1}", headers=h)
-    assert r.status_code == 409 and "sans aucune règle d'accès" in r.json()["detail"]
+    # COL-3 — le refus reste ; sa phrase disait l'album « sans aucune règle d'accès », ce
+    # qu'il ne serait plus (il serait gardé au fonds). Elle dit maintenant ce qui reste à
+    # faire (proposition R6 du cadrage).
+    assert r.status_code == 409 and "n'appartiennent qu'à cette collection" in r.json()["detail"]
+    assert "gardés au fonds" in r.json()["detail"]
     c2 = client.post("/api/collections", json={"nom": "Refuge"}, headers=h).json()["id"]
     client.put(f"/api/albums/{alb['id']}/collections/{c2}", headers=h)
     assert client.delete(f"/api/collections/{c1}", headers=h).status_code == 204
@@ -950,11 +961,14 @@ def _evenements(db_path, cid):
         conn.close()
 
 
-def test_l_outil_refuse_de_laisser_un_album_sans_collection(client, db_path):
-    """AUTH-12 — `retirer` et `supprimer` défaisaient ce que les routes gardent : un album
-    sorti de sa SEULE collection ne correspond plus à aucune règle d'accès (AUTH-2), et la
-    Bibliothèque le refuse par un 409. Deux portes vers les mêmes lignes, dont une seule
-    gardée, ce n'était pas une garde. Refusé ici aussi, et la base n'a pas bougé."""
+def test_l_outil_suit_la_route_sur_la_derniere_collection(client, db_path):
+    """AUTH-12 — `retirer` et `supprimer` défaisaient ce que les routes gardent. Deux
+    portes vers les mêmes lignes, dont une seule gardée, ce n'était pas une garde.
+
+    COL-3 (tranche 2) a changé ce que la route garde, et l'outil la suit : `supprimer`
+    une collection qui est la dernière d'un album est toujours refusé, et la base ne bouge
+    pas ; `retirer` un album de sa dernière collection aboutit — il est gardé au fonds,
+    et emporte son projet."""
     album = client.post("/api/albums", json={"titre": "Seul ici"}).json()["id"]
     code, cid, err = _outil(db_path, "creer", "--nom", "Étude", "--albums", str(album))
     assert code == 0, err
@@ -968,16 +982,26 @@ def test_l_outil_refuse_de_laisser_un_album_sans_collection(client, db_path):
     finally:
         conn.close()
 
-    for geste in (("retirer", cid.strip(), "--albums", str(album)),
-                  ("supprimer", cid.strip())):
-        code, _, err = _outil(db_path, *geste)
-        assert code != 0 and "sans aucune règle d'accès" in err, (geste, code, err)
-
+    code, _, err = _outil(db_path, "supprimer", cid.strip())
+    assert code != 0 and "n'appartiennent qu'à cette collection" in err, (code, err)
     conn = sqlite3.connect(db_path)
     try:
         assert conn.execute("SELECT 1 FROM collection WHERE id = ?", (int(cid),)).fetchone()
         assert conn.execute("SELECT 1 FROM collection_album WHERE album_id = ?",
                             (album,)).fetchone(), "l'album a été sorti malgré le refus"
+        projet = conn.execute("SELECT projet_id FROM albums WHERE id = ?",
+                              (album,)).fetchone()[0]
+    finally:
+        conn.close()
+
+    code, _, err = _outil(db_path, "retirer", cid.strip(), "--albums", str(album))
+    assert code == 0, err
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute("SELECT 1 FROM collection_album WHERE album_id = ?",
+                            (album,)).fetchone() is None
+        assert conn.execute("SELECT projet_id FROM albums WHERE id = ?",
+                            (album,)).fetchone()[0] == projet is not None
     finally:
         conn.close()
 

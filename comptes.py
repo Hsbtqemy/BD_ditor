@@ -34,8 +34,11 @@ FENETRE_REPRISE_JOURS = 30
 
 # L'ordre de « À regarder » : les accès morts d'abord, parce qu'ils trompent en silence ; les
 # arrivants à la fin, parce qu'ils sont nombreux à la rentrée et ne trompent personne.
-ORDRE_SIGNAUX = ("groupe_absent", "compte_absent", "proprietaire_absent",
-                 "sans_proprietaire", "identite_changee", "jamais_venu")
+# COL-3, tranche 2 — les DEMANDES en tête : quelqu'un attend une réponse, et c'est le seul
+# signal qu'une personne a posé exprès. Le rang est un choix de la session, à confirmer.
+ORDRE_SIGNAUX = ("demande_en_attente", "groupe_absent", "compte_absent",
+                 "proprietaire_absent", "sans_proprietaire", "identite_changee",
+                 "jamais_venu")
 
 # Une phrase par état de la lecture : ce que la vue ne sait pas, dit par elle.
 LIMITES = {
@@ -75,10 +78,13 @@ def traces(conn) -> tuple[dict, dict, dict]:
         # les compter ferait passer de « rien à orpheliner » à « laisse des actes » un
         # compte qui n'a fait qu'importer, sans que personne l'ait décidé. Qui a importé
         # reste écrit, sur le document.
+        # `demande` (COL-3, tranche 2), pour la raison d'`utilisateur_nature` : déposer une
+        # demande ou y répondre est un acte, mais il n'orpheline aucune annotation. Qui a
+        # demandé reste écrit sur la demande.
         "SELECT agent, COUNT(*) AS n FROM evenement "
         "WHERE agent_type = 'humain' AND agent IS NOT NULL "
         "  AND cible_table NOT IN ('utilisateur', 'utilisateur_nature', 'annulation', "
-        "                          'document', 'collection_album') "
+        "                          'document', 'collection_album', 'demande') "
         "GROUP BY agent")}
     acces = {r["principal"]: r["n"] for r in conn.execute(
         "SELECT principal, COUNT(*) AS n FROM collection_acces "
@@ -290,15 +296,34 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
         "comptes": comptes,
         "groupes": groupes_sortie,
         "collections": collections_sortie,
-        "a_regarder": a_regarder(comptes, groupes_sortie, collections_sortie),
+        "a_regarder": a_regarder(comptes, groupes_sortie, collections_sortie,
+                                 _demandes_en_attente(conn)),
         "limite": LIMITES[lecture.etat],
     }
 
 
-def a_regarder(comptes: list, groupes: list, collections_sortie: list) -> list:
-    """« À regarder », ligne à ligne, ordonné : par code (`ORDRE_SIGNAUX`), puis par nom."""
+def _demandes_en_attente(conn) -> list:
+    """Les demandes qui attendent une réponse (COL-3, tranche 2), les plus anciennes
+    d'abord : `(id, genre)`. Ce que la demande dit — qui, quoi, pourquoi — se lit dans
+    `GET /api/demandes` ; « À regarder » ne porte que de quoi y mener."""
+    return [(r[0], r[1]) for r in conn.execute(
+        "SELECT id, genre FROM demande WHERE reponse IS NULL ORDER BY id")]
+
+
+def a_regarder(comptes: list, groupes: list, collections_sortie: list,
+               demandes: list = ()) -> list:
+    """« À regarder », ligne à ligne, ordonné : par code (`ORDRE_SIGNAUX`), puis par nom.
+
+    Une demande en attente y est une ligne `{"signal": "demande_en_attente", "demande": id,
+    "genre": …}`. Sa clé est `demande`, et pas `login` : l'écran mène par défaut tout
+    signal qui porte un `login` à la fiche d'un compte (`cibleSignal`), et une demande mène
+    au fonds, pas à la personne qui l'a déposée."""
     noms = {c["id"]: c["nom"] for c in collections_sortie}
     lignes = []
+    for demande_id, genre in demandes:
+        lignes.append(("demande_en_attente", f"{demande_id:09d}", "",
+                       {"signal": "demande_en_attente", "demande": demande_id,
+                        "genre": genre}))
     for g in groupes:
         if "groupe_absent" in g["signaux"]:
             for e in g["collections"]:

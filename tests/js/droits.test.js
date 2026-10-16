@@ -14,7 +14,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const D = require("../../static/lib/droits.js");
 
-const AVERTISSEMENT = "Supprimer un album efface ses images et ne se rattrape pas.";
+const AVERTISSEMENT = "Supprimer définitivement un album efface ses images et ne se rattrape pas.";
 // Ce que `avertissements` rend pour lui sur la description d'aujourd'hui : le texte, l'acte
 // qui le porte, et le cran qui l'accorde (correctif du 2026-09-18).
 const ATTENDU_STRUCTURER = {

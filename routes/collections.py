@@ -7,7 +7,9 @@ créer, partager, retirer un accès, ranger un album.
 Trois paliers qui s'empilent — lire · écrire · POSSÉDER — et le troisième ne découle pas du
 second : écrire c'est annoter, posséder c'est décider qui d'autre entrera. Deux gestes sont
 refusés par un 409 qui les NOMME : retirer ou rétrograder le DERNIER propriétaire d'une
-collection, et laisser un album sans collection. Une collection peut en revanche NAÎTRE sans
+collection, et supprimer une collection qui est la dernière d'un album. Supprimer un album de
+sa dernière collection, lui, aboutit depuis le fonds (COL-3, tranche 2) : la copie y est
+gardée avec son travail. Une collection peut en revanche NAÎTRE sans
 propriétaire — créée par un administrateur, en mono-poste, ou par l'outil en ligne de
 commande sans `--proprietaire` — et seule une portée totale l'administre alors (AUTH-12,
 option B tranchée le 2026-09-16).
@@ -34,8 +36,8 @@ import comptes
 import journal
 from config import STATUTS_DIFFUSION
 from database import (NATURES, collection_row, collections, etat_embargo,
-                      nom_reserve, projet_de_collection, projet_par_defaut,
-                      rangement_traverse, sql_projet_de)
+                      nom_reserve, poser_projet_de_copie, projet_de_collection,
+                      projet_par_defaut, rangement_traverse, sql_projet_de)
 
 from socle import (
     AccesIn, CollectionIn, CollectionUpdate, NatureIn, _get_album, _get_collection,
@@ -314,9 +316,11 @@ def delete_collection(collection_id: int, conn: sqlite3.Connection = Depends(db)
     défait, l'œuvre reste), et ses termes de vocabulaire sont PROMUS en global
     (`ON DELETE SET NULL`) plutôt que perdus.
 
-    Refus si un album n'appartiendrait alors plus à aucune collection : l'invariant d'AUTH-2
-    est qu'un album a toujours une règle d'accès. Le supprimer par ricochet fabriquerait
-    exactement l'orphelin que le chantier précédent a retiré du modèle.
+    Refus si un album n'appartiendrait alors plus à aucune collection. Ce n'est plus un
+    album sans règle — depuis le fonds (COL-3, tranche 2), il y serait gardé — mais
+    l'envoyer au fonds par ricochet, sans que personne l'ait décidé album par album,
+    n'est pas un geste de cette route : le refus est gardé, et sa phrase dit ce qui reste
+    à faire (proposition R6 du cadrage, suivie en route).
     """
     _get_collection(conn, portee, collection_id, administrer=True)
     isoles = [r[0] for r in conn.execute(
@@ -325,8 +329,9 @@ def delete_collection(collection_id: int, conn: sqlite3.Connection = Depends(db)
         "                AND x.collection_id <> ca.collection_id)", (collection_id,))]
     if isoles:
         raise HTTPException(
-            409, f"{len(isoles)} album(s) n'appartiennent qu'à cette collection et se "
-                 "retrouveraient sans aucune règle d'accès. Rangez-les ailleurs d'abord.")
+            409, f"{len(isoles)} album(s) n'appartiennent qu'à cette collection : "
+                 "rangez-les ailleurs, ou supprimez-les d'abord de la collection — ils "
+                 "sont alors gardés au fonds avec leur travail.")
     c = collection_row(conn, collection_id)
     # COL-3 — supprimer une collection en RETIRE ses albums, un par un : la cascade défait
     # les liens sans rien dire, et chacun est un emploi qui cesse. Relevés AVANT, puisque
@@ -387,9 +392,15 @@ def poser_nature(login: str, payload: NatureIn,
     accès le portent, décidé le 2026-09-09 ; ce qui change est ce que les MESURES ont le
     droit d'affirmer sur lui — et, depuis le 2026-09-11, jusqu'où Ctrl+Z remonte : cinq
     minutes (`undo.DELAI_COLLECTIF_MINUTES`), parce que le filtre par agent n'y désigne
-    plus une personne. C'est la portée d'une commodité, pas un droit : `autorisation.py`
-    n'en sait rien. Confondre les deux ferait de cette route une porte d'autorisation
-    déguisée, et `autorisation.py` cesserait d'être le seul endroit qui tranche.
+    plus une personne. C'est la portée d'une commodité, pas un droit. Confondre les deux
+    ferait de cette route une porte d'autorisation déguisée, et `autorisation.py`
+    cesserait d'être le seul endroit qui tranche.
+
+    Une exception, depuis le fonds (COL-3, tranche 2), et elle porte sur un GESTE, pas sur
+    un accès : un compte partagé ne supprime jamais définitivement seul — « celui qui l'a
+    importé » n'y désigne personne —, il le demande (proposition R7 du cadrage). C'est
+    `autorisation.Portee.clause_suppression_directe` qui lit la nature pour cela, et pour
+    cela seul : aucun accès n'en dépend.
 
     Le login doit avoir été VU : on ne déclare pas la nature d'un compte que l'application
     ne connaît pas. Ce n'est pas une restriction, c'est le périmètre de la table — un login
@@ -648,6 +659,11 @@ def ranger_album(album_id: int, collection_id: int,
     ne vient qu'après les deux droits — donc sur un album et une collection où l'on écrit,
     dont on lit déjà les deux projets. C'est ce qui garde à chaque album UN projet, et il
     n'y a rien à séparer tant que tout l'existant tient dans le premier.
+
+    C'est aussi le geste « Rendre à… » du fonds (tranche 2) : joué par une portée totale
+    sur une copie gardée, il la rend à une collection de SON projet — écrit sur elle, il
+    survit à sa sortie de toute collection. Une copie importée au fonds n'en a pas encore,
+    et prend celui de la collection où on la range.
     """
     _get_album(conn, portee, album_id, ecriture=True)
     if not portee.peut_ecrire(collection_id) or collection_row(conn, collection_id) is None:
@@ -659,6 +675,8 @@ def ranger_album(album_id: int, collection_id: int,
     if conn.execute("INSERT OR IGNORE INTO collection_album (collection_id, album_id) "
                     "VALUES (?, ?)", (collection_id, album_id)).rowcount:
         journal.journaliser_emploi(conn, "lien", album_id, collection_id)
+    # Une copie importée au fonds prend ici son projet, celui de sa première collection.
+    poser_projet_de_copie(conn, album_id)
     conn.commit()
     return list_collections_album(album_id, conn, portee)
 
@@ -667,12 +685,16 @@ def ranger_album(album_id: int, collection_id: int,
 def sortir_album(album_id: int, collection_id: int,
                  conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
-    """Sort un album d'une collection. Refus si c'était la DERNIÈRE : un album hors de
-    toute collection ne correspondrait à aucune règle d'accès (invariant AUTH-2).
+    """Supprime un album DE la collection — la première des deux réponses à « supprimer »
+    (COL-3, tranche 2). Elle ne détruit rien.
 
-    Le refus est un 409 qui NOMME la contrainte, plutôt qu'un repli silencieux vers la
-    collection par défaut : déplacer, c'est ranger ailleurs PUIS sortir, et l'ordre inverse
-    doit se voir refuser au lieu de déverser le travail dans un seau commun.
+    Ce n'était permis jusqu'à la tranche 2 que si l'album gardait une autre collection : un
+    album hors de toute collection ne correspondait à aucune règle (invariant AUTH-2), et
+    un 409 le refusait. C'est renversé, par décision de Hugo (2026-10-09, confirmée le
+    2026-10-11) : sorti de sa DERNIÈRE collection, l'album est GARDÉ AU FONDS avec son
+    travail, que seule une portée totale voit, et un administrateur peut le rendre. Rien ne
+    se déverse dans un seau commun : la copie garde son projet, écrit sur elle, et ne
+    pourra être rendue qu'à une collection de ce projet.
     """
     _get_album(conn, portee, album_id, ecriture=True)
     if not portee.peut_ecrire(collection_id):
@@ -684,11 +706,9 @@ def sortir_album(album_id: int, collection_id: int,
     if conn.execute("SELECT 1 FROM collection_album WHERE album_id = ? AND collection_id = ?",
                     (album_id, collection_id)).fetchone() is None:
         raise HTTPException(404, "Cet album n'appartient pas à cette collection.")
-    if conn.execute("SELECT COUNT(*) FROM collection_album WHERE album_id = ?",
-                    (album_id,)).fetchone()[0] <= 1:
-        raise HTTPException(409, "C'est la dernière collection de cet album : rangez-le "
-                                 "ailleurs d'abord, un album ne peut rester sans règle "
-                                 "d'accès.")
+    # Le projet AVANT de sortir, tant qu'on le lit encore dans cette collection : une copie
+    # qui part au fonds l'emporte, sans quoi rien ne refuserait de la rendre à un autre.
+    poser_projet_de_copie(conn, album_id)
     conn.execute("DELETE FROM collection_album WHERE collection_id = ? AND album_id = ?",
                  (collection_id, album_id))
     journal.journaliser_emploi(conn, "delien", album_id, collection_id)

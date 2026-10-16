@@ -36,10 +36,12 @@ pour l'autre.
 Trois principes.
 
 **La collection est l'unité de cloisonnement.** On n'autorise jamais un album directement :
-on autorise une collection, et l'album suit celle qui le contient. C'est aussi la raison
-pour laquelle aucun album ne peut rester hors collection (`database.collection_par_defaut`) :
-un orphelin ne correspondrait à aucune règle, et il faudrait alors inventer une politique
-dans le code, à un endroit qu'on oublierait de relire.
+on autorise une collection, et l'album suit celle qui le contient. Un album hors de toute
+collection n'est donc ouvert à personne — sauf à la portée totale. C'était un état interdit
+(`database.collection_par_defaut`) ; depuis le fonds (COL-3, tranche 2) c'est celui d'une
+copie GARDÉE : supprimée de sa dernière collection, ou importée au fonds par un
+administrateur. Aucune politique n'est à inventer pour elle : la règle est celle d'un
+album qu'aucune collection n'ouvre.
 
 **On répond 404, pas 403.** Dire « cet album existe, mais pas pour vous » révèle la
 composition du corpus — le nombre d'albums, l'existence d'une étude concurrente. L'absence
@@ -63,7 +65,7 @@ import sqlite3
 from typing import Optional
 
 from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
-from database import sql_projet_de
+from database import NATURE_COLLECTIF, sql_projet_de
 
 # Niveaux d'accès, du plus faible au plus fort. Chacun IMPLIQUE les précédents : on ne
 # modifie pas ce qu'on ne voit pas, et on n'administre pas ce qu'on ne peut pas modifier.
@@ -105,9 +107,12 @@ ACTES = (
      "avertissement": None},
     {"code": "structurer", "libelle": "organiser les albums", "niveau": ECRITURE,
      "lies": ECRITURE,
-     # Vrai tant que la suppression d'un album efface ses masters sans trace ni sursis
-     # (AUTH-10, remède C). Se retire le jour où elle se rattrape.
-     "avertissement": "Supprimer un album efface ses images et ne se rattrape pas."},
+     # Vrai de la suppression DÉFINITIVE seule depuis le fonds (COL-3, tranche 2) :
+     # supprimer un album de sa collection le garde au fonds, avec son travail. Le mot
+     # « définitivement » est le seul ajout à la phrase validée par Hugo le 2026-09-17
+     # (proposition R10 du cadrage, suivie en route).
+     "avertissement": "Supprimer définitivement un album efface ses images et ne se "
+                      "rattrape pas."},
     {"code": "vocabulaire", "libelle": "gérer le vocabulaire", "niveau": ECRITURE,
      "lies": ECRITURE, "avertissement": None},
     {"code": "lots", "libelle": "lancer la reconnaissance automatique", "niveau": ECRITURE,
@@ -420,6 +425,70 @@ class Portee:
                 f"WHERE ca.album_id = {alias} AND ca.collection_id NOT IN ({marques})))",
                 list(ids) * 2)
 
+    def clause_suppression_directe(self, alias: str = "a.id") -> tuple[str, list]:
+        """Fragment SQL restreignant `alias` (un id d'album) aux albums qu'on peut
+        SUPPRIMER DÉFINITIVEMENT sans rien demander — lui, ou l'une de ses planches.
+        COL-3, tranche 2 (Hugo, 2026-10-11).
+
+        « Supprimer » a deux réponses. Supprimer DE LA COLLECTION ne détruit rien : la
+        copie part au fonds avec son travail, et c'est le geste de qui écrit dans la
+        collection. Supprimer DÉFINITIVEMENT efface les images et le travail ; il existe
+        pour l'import par erreur, et ne doit alors attendre personne. Hors de ce cas, il se
+        DEMANDE à un administrateur.
+
+        La règle est la conjonction de quatre moitiés, toutes nécessaires :
+
+        - `clause_destruction`, INCHANGÉE (AUTH-10) : on écrit dans toutes les collections
+          où la copie vit. Elle reste nécessaire, et cesse d'être suffisante ;
+        - le document a été importé PAR CET APPELANT (`document.importe_par`). Jamais vrai
+          sans login, et jamais pour un document d'avant le fonds, dont l'importateur n'a
+          été écrit nulle part — ceux-là se demandent, seul un administrateur les détruit
+          (décision B3) ;
+        - l'appelant n'est pas un compte PARTAGÉ : « celui qui l'a importé » n'y désigne
+          personne (proposition R7, suivie en route). C'est le premier endroit où la nature
+          d'un compte borde un geste ; elle ne borde toujours aucun ACCÈS ;
+        - PERSONNE D'AUTRE n'y a travaillé (`_sql_travail_d_autrui`).
+
+        « Aucun autre projet ne l'emploie », les mots de Hugo, n'a pas de moitié à lui : en
+        tranche 2 un document n'a qu'une copie, et cette copie n'a qu'un projet. Le jour où
+        deux copies seront sœurs, il faudra l'écrire ici.
+
+        Ce que la réponse ne dit pas, et c'est voulu : LAQUELLE des moitiés manque. Le refus
+        est le même dans tous les cas (`socle._MOTIF_DESTRUCTION`) — dire « c'est Léa qui y
+        a travaillé » ou « une autre collection le porte » à qui ne lit pas cette collection
+        décrirait le corpus hors de sa portée.
+
+        La portée totale passe outre, et c'est écrit : l'administrateur et le mono-poste
+        détruisent tout, c'est le recours d'une demande."""
+        if self.tout:
+            return "1", []
+        if not self.utilisateur:
+            return "0", []
+        detruire, p_detruire = self.clause_destruction(alias)
+        if detruire == "0":
+            return "0", []
+        autrui, p_autrui = _sql_travail_d_autrui(alias, self.utilisateur)
+        return (f"({detruire} "
+                f"AND EXISTS (SELECT 1 FROM albums _sa JOIN document _sd "
+                f"ON _sd.id = _sa.document_id WHERE _sa.id = {alias} "
+                f"AND _sd.importe_par = ?) "
+                f"AND NOT EXISTS (SELECT 1 FROM utilisateur _su WHERE _su.login = ? "
+                f"AND _su.nature = ?) "
+                f"AND NOT {autrui})",
+                [*p_detruire, self.utilisateur, self.utilisateur, NATURE_COLLECTIF,
+                 *p_autrui])
+
+    def peut_tenir_le_fonds(self) -> bool:
+        """A-t-on le droit de tenir le FONDS — le voir, rendre une copie gardée, répondre
+        aux demandes, importer un document sans passer par une collection ?  COL-3.
+
+        Une portée TOTALE seulement : l'administrateur, et le mono-poste. Le fonds est tout
+        ce que l'instance détient, y compris ce qu'aucune collection n'appelle plus — le
+        montrer à quelqu'un d'autre décrirait des études hors de sa portée. Un responsable
+        de projet n'en lira, à la tranche suivante, que la NOTICE, par un geste à part. La
+        question ne prend pas d'identifiant : la forme de `peut_decider_des_projets`."""
+        return self.tout
+
     def clause_terme(self, alias: str) -> tuple[str, list]:
         """Fragment SQL restreignant un TERME du vocabulaire (tag, domaine, dimension,
         valeur) à ce qui est visible. `alias` désigne sa colonne `collection_id`.
@@ -472,6 +541,59 @@ class Portee:
 
 
 TOTALE = Portee(tout=True, admin=True)
+
+
+# --------------------------------------------------------------------------- #
+# « Personne d'autre n'y a travaillé » (COL-3, tranche 2)
+# --------------------------------------------------------------------------- #
+# Les cibles du journal qui portent un travail sur une RÉGION et la désignent par son id —
+# la région elle-même, sa note et ses tags, son locuteur, la présence d'un personnage. Les
+# deux premières sont écrites par `main.py`, les deux suivantes par
+# `routes/personnages.py`, la validation grammaticale (`regions`) par `routes/analyse.py`.
+_CIBLES_DE_REGION = ("regions", "annotations", "bulle_locuteur", "personnage_presence")
+
+
+def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
+    """Fragment SQL VRAI si un autre humain que `login` a travaillé sur l'album `alias`.
+
+    C'est la première fois qu'une décision d'accès dépend du CONTENU du journal, et la
+    lecture en a des limites, écrites plutôt que découvertes :
+
+    - le travail se lit par jointure sur ce qui VIT encore : une région supprimée depuis,
+      une correction effacée, n'ont plus de ligne, et le travail qu'un tiers y avait fait
+      ne compte plus (Hugo l'a accepté en tranchant : « un travail supprimé depuis ne
+      compte plus ») ;
+    - un acte SANS agent compte comme celui de quelqu'un d'autre — on ne sait pas qui l'a
+      posé, donc on ne sait pas que c'est l'appelant ;
+    - une passe automatique n'est attribuée qu'à son moteur (`agent_type = 'moteur'`) :
+      celle qu'un collègue a lancée ne compte pas, et c'est voulu par la même décision ;
+    - ranger l'album dans une collection n'est pas y travailler (`collection_album` n'est
+      pas lu) : c'est un emploi, et `clause_destruction` en répond déjà ;
+    - une demande déposée n'est pas un travail non plus (`demande` n'est pas lu).
+
+    Quatre sources : le journal des régions de l'album, les corrections grammaticales
+    vivantes (leur `auteur` — la correction est une couche à part, que le journal ne relie
+    à la région que par l'id de la correction), les validations de ses planches, et les
+    actes sur son DOCUMENT — un scan ajouté ou retiré par un autre. Chaque sous-requête part
+    de l'album et descend par les index (`idx_evenement_cible`) : la liste des albums la
+    pose album par album."""
+    cibles = ", ".join(f"'{c}'" for c in _CIBLES_DE_REGION)
+    sql = (
+        "(EXISTS (SELECT 1 FROM planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
+        f"JOIN evenement _te ON _te.cible_table IN ({cibles}) AND _te.cible_id = _tr.id "
+        f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain' "
+        "AND _te.agent IS NOT ?) "
+        "OR EXISTS (SELECT 1 FROM planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
+        "JOIN token_correction _tt ON _tt.region_id = _tr.id "
+        f"WHERE _tp.album_id = {alias} AND _tt.auteur IS NOT ?) "
+        "OR EXISTS (SELECT 1 FROM planches _tp JOIN evenement _te "
+        "ON _te.cible_table = 'planches' AND _te.cible_id = _tp.id "
+        f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain' "
+        "AND _te.agent IS NOT ?) "
+        "OR EXISTS (SELECT 1 FROM albums _ta JOIN evenement _te "
+        "ON _te.cible_table = 'document' AND _te.cible_id = _ta.document_id "
+        f"WHERE _ta.id = {alias} AND _te.agent_type = 'humain' AND _te.agent IS NOT ?))")
+    return sql, [login] * 4
 
 
 # --------------------------------------------------------------------------- #

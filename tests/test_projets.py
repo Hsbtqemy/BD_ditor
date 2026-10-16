@@ -226,7 +226,9 @@ def test_une_base_neuve_nait_avec_son_projet(client, db_path):
         "id": pid, "nom": database.NOM_PROJET_DEFAUT, "repli": True,
         "description": client.get("/api/projets").json()[0]["description"],
         "date_creation": client.get("/api/projets").json()[0]["date_creation"],
-        "mon_role": None, "gerable": True, "nb_collections": 0, "justification": None}]
+        "mon_role": None, "gerable": True, "nb_collections": 0, "justification": None,
+        # COL-3, tranche 2 — la demande de suppression qui attend, à qui gère.
+        "demande_suppression": None}]
 
 
 def test_le_repli_se_designe_par_son_drapeau_jamais_par_son_nom(client, db_path):

@@ -37,9 +37,11 @@ Une collection créée ici naît SANS PROPRIÉTAIRE — donc administrable par l
 veut : `--proprietaire LOGIN` (ou `--proprietaire-groupe NOM`) l'inscrit d'emblée, et évite
 d'avoir à ouvrir la base pour rendre la collection utilisable par quelqu'un.
 
-AUTH-12 — les deux portes ont maintenant les MÊMES gardes et le même journal. `retirer` et
-`supprimer` refusent de laisser un album sans aucune collection, comme la Bibliothèque le
-refuse (un album sans collection ne correspond à aucune règle d'accès). `creer`,
+AUTH-12 — les deux portes ont maintenant les MÊMES gardes et le même journal. `supprimer`
+refuse de laisser un album sans aucune collection, comme la Bibliothèque le refuse.
+`retirer` le refusait aussi jusqu'au fonds (COL-3, tranche 2) : retiré de sa dernière
+collection, un album y est désormais GARDÉ avec son travail, que seule une portée totale
+voit — la route l'accepte, l'outil la suit, et la copie emporte son projet. `creer`,
 `modifier` et `supprimer` écrivent au journal ce que les routes y écrivent. Ranger et
 retirer des albums n'y écrivaient rien, pas plus qu'à l'écran ; depuis la v30 (COL-3) les
 deux portes l'écrivent, sous la cible `collection_album` — un emploi qui commence, un
@@ -156,10 +158,10 @@ def _albums_existants(conn, ids) -> list[int]:
 
 
 def _albums_isoles(conn, collection_id, album_ids=None) -> list[int]:
-    """Les albums de la collection qui n'appartiennent à AUCUNE autre — ceux qu'un retrait
-    ou une suppression laisserait sans collection, donc sans règle d'accès (AUTH-2). Même
-    requête que la route `DELETE /api/collections/{id}` ; `album_ids` restreint aux albums
-    qu'on s'apprête à retirer."""
+    """Les albums de la collection qui n'appartiennent à AUCUNE autre — ceux qu'une
+    suppression de la collection enverrait au fonds sans que personne l'ait décidé album
+    par album. Même requête que la route `DELETE /api/collections/{id}` ; `album_ids`
+    restreint aux albums nommés."""
     sql = ("SELECT ca.album_id FROM collection_album ca WHERE ca.collection_id = ? "
            "AND NOT EXISTS (SELECT 1 FROM collection_album x WHERE x.album_id = ca.album_id "
            "                AND x.collection_id <> ca.collection_id)")
@@ -194,6 +196,8 @@ def _ranger(conn, collection_id, album_ids):
             "VALUES (?, ?, ?)", (collection_id, aid, depart + i))
         if cur.rowcount:                # déjà rangé : rien n'a changé, rien ne s'écrit
             journal.journaliser_emploi(conn, "lien", aid, collection_id)
+        # Comme la route : une copie importée au fonds prend ici son projet.
+        database.poser_projet_de_copie(conn, aid)
         n += cur.rowcount
     return n
 
@@ -336,12 +340,6 @@ def cmd_retirer(args) -> int:
     with database.connect() as conn:
         if database.collection_row(conn, args.id) is None:
             raise SystemExit(f"Collection {args.id} introuvable.")
-        isoles = _albums_isoles(conn, args.id, ids)
-        if isoles:
-            raise SystemExit(
-                f"Refusé : {len(isoles)} album(s) n'appartiennent qu'à cette collection "
-                f"({', '.join(map(str, isoles))}) et se retrouveraient sans aucune règle "
-                "d'accès. Rangez-les ailleurs d'abord (`ajouter`).")
         n = 0
         if ids:
             qm = ",".join("?" * len(ids))
@@ -350,6 +348,10 @@ def cmd_retirer(args) -> int:
             presents = [r[0] for r in conn.execute(
                 f"SELECT album_id FROM collection_album WHERE collection_id = ? "
                 f"AND album_id IN ({qm}) ORDER BY album_id", [args.id, *ids])]
+            # Comme la route : le projet AVANT de sortir, tant qu'on le lit encore ici —
+            # une copie qui part au fonds l'emporte.
+            for aid in presents:
+                database.poser_projet_de_copie(conn, aid)
             cur = conn.execute(
                 f"DELETE FROM collection_album WHERE collection_id = ? "
                 f"AND album_id IN ({qm})", [args.id, *ids])
@@ -370,8 +372,9 @@ def cmd_supprimer(args) -> int:
         if isoles:
             raise SystemExit(
                 f"Refusé : {len(isoles)} album(s) n'appartiennent qu'à cette collection "
-                f"({', '.join(map(str, isoles))}) et se retrouveraient sans aucune règle "
-                "d'accès. Rangez-les ailleurs d'abord (`ajouter`).")
+                f"({', '.join(map(str, isoles))}) : rangez-les ailleurs (`ajouter`), ou "
+                "retirez-les d'abord (`retirer`) — ils sont alors gardés au fonds avec "
+                "leur travail.")
         # Comme la route : la cascade défait les liens sans rien dire, on les écrit avant.
         for aid in database.collection_album_ids(conn, args.id):
             journal.journaliser_emploi(conn, "delien", aid, args.id)

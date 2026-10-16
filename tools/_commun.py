@@ -324,6 +324,11 @@ CIBLES_RETENUES = {
         "charge nomme une collection, donc une étude, y compris celles que l'artefact "
         "ne couvre pas ; et dire quelle étude a pris ou rendu quel document décrit "
         "l'organisation de l'instance, jamais la provenance du corpus.",
+    "demande":
+        "COL-3 — une demande déposée (supprimer un document, un projet) et la réponse qui "
+        "lui est faite. Sa charge nomme un document ou un projet, et la demande elle-même "
+        "porte le login de qui demande et son motif : une conversation interne entre un "
+        "membre et les administrateurs, que rien ne doit à l'entrepôt.",
 }
 
 
@@ -428,7 +433,11 @@ def evenements_publiables(conn, ordre: str = "ASC"):
 #: pseudonyme, et sortirait donc SOUS SON LOGIN — `pseudonymes(...).get(nom, nom)` laisse
 #: passer ce qu'il ne connaît pas. Publier ces actes un jour demandera de les retirer d'ici
 #: d'abord, en acceptant ce que cela renumérote.
-CIBLES_SANS_RANG = frozenset({"document", "collection_album"})
+#:
+#: `demande` (COL-3, tranche 2) les rejoint pour la même raison, et dès sa naissance aussi :
+#: qui n'aurait fait que déposer une demande prendrait sinon un rang, et décalerait celui
+#: de tous ceux qui annotent après lui.
+CIBLES_SANS_RANG = frozenset({"document", "collection_album", "demande"})
 
 
 def pseudonymes(conn) -> dict:

@@ -9,6 +9,13 @@ La règle (Hugo, 2026-10-08) : détruire un album, ou l'une de ses planches, dem
 dans TOUTES les collections où il vit ; sortir l'album de sa collection reste permis à qui y
 écrit. Ces tests jouent le geste sous CHAQUE identité, et regardent ensuite ce que voient
 les AUTRES — un code de retour seul ne dit pas si l'album a survécu.
+
+COL-3, tranche 2 (Hugo, 2026-10-11) : cette règle reste NÉCESSAIRE et cesse d'être
+suffisante. Supprimer définitivement demande en plus d'avoir importé le document, sans que
+personne d'autre y ait travaillé (`Portee.clause_suppression_directe`). Le décor fait donc
+importer chaque album par le compte qui le détruira — sans quoi plus rien ici ne mesurerait
+la moitié AUTH-10 de la règle, tout refus venant de l'autre. Les cas propres au fonds sont
+dans `tests/test_fonds.py`.
 """
 import ast
 import re
@@ -32,13 +39,14 @@ def _collection(client, nom):
     return client.post("/api/collections", json={"nom": nom}, headers=ADMIN).json()["id"]
 
 
-def _album(client, titre, cid):
-    return client.post("/api/albums", json={"titre": titre, "collection_id": cid},
-                       headers=ADMIN).json()["id"]
+def _album(client, titre, cid, qui=ADMIN):
+    r = client.post("/api/albums", json={"titre": titre, "collection_id": cid}, headers=qui)
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
 
 
-def _planche(client, album_id):
-    r = client.post(f"/api/albums/{album_id}/import", headers=ADMIN,
+def _planche(client, album_id, qui=ADMIN):
+    r = client.post(f"/api/albums/{album_id}/import", headers=qui,
                     files={"file": ("p.png", make_png(), "image/png")})
     assert r.status_code == 201, r.text
     return r.json()["id"]
@@ -59,6 +67,8 @@ def _accorder(client, cid, principal, niveau, genre="utilisateur"):
 def decor(client, derriere_proxy):
     """Deux collections, un album rangé dans les DEUX (une planche), un autre dans
     l'incubateur seul (une planche) — et quatre comptes qui n'y ont pas les mêmes droits.
+    L'album partagé est importé par `passeuse`, l'album seul par `stagiaire` : chacun est
+    l'importateur du seul album qu'il peut détruire (COL-3).
 
     Les identifiants sont DÉCROISÉS exprès, et c'est affirmé : la planche de l'album partagé
     porte l'id de l'album seul, et l'inverse. Alignés (album 1 ↔ planche 1), une garde de
@@ -66,12 +76,6 @@ def decor(client, derriere_proxy):
     passait toute la suite — trouvé par la relecture croisée, en faisant survivre le mutant.
     """
     principale, incubateur = _collection(client, "Principale"), _collection(client, "Incubateur")
-    seul = _album(client, "Seul", incubateur)
-    partage = _album(client, "Partagé", principale)
-    planche_partagee = _planche(client, partage)
-    planche_seule = _planche(client, seul)
-    assert (planche_partagee, planche_seule) == (seul, partage), "les ids doivent se croiser"
-    _ranger(client, partage, incubateur)
     for cid, qui, niveau in ((incubateur, "stagiaire", "ecriture"),
                              (incubateur, "passeuse", "ecriture"),
                              (principale, "passeuse", "ecriture"),
@@ -79,6 +83,12 @@ def decor(client, derriere_proxy):
                              (principale, "mixte", "lecture"),
                              (principale, "lectrice", "lecture")):
         _accorder(client, cid, qui, niveau)
+    seul = _album(client, "Seul", incubateur, STAGIAIRE)
+    partage = _album(client, "Partagé", principale, PASSEUSE)
+    planche_partagee = _planche(client, partage, PASSEUSE)
+    planche_seule = _planche(client, seul, STAGIAIRE)
+    assert (planche_partagee, planche_seule) == (seul, partage), "les ids doivent se croiser"
+    _ranger(client, partage, incubateur)
     return {"principale": principale, "incubateur": incubateur, "partage": partage,
             "seul": seul, "planche_partagee": planche_partagee,
             "planche_seule": planche_seule}
@@ -100,8 +110,10 @@ def test_ecrire_dans_une_collection_ne_detruit_pas_l_album_des_autres(client, de
     « voir partout » sans rien faire tomber."""
     r = client.delete(f"/api/albums/{decor['partage']}", headers=qui)
     assert r.status_code == 403, r.text
-    # Le refus dit quel geste reste, et ne NOMME pas l'autre collection.
-    assert "sortir" in r.json()["detail"] and "Principale" not in r.json()["detail"]
+    # Le refus dit quel geste reste — le supprimer de sa collection (COL-3 : c'était
+    # « sortir ») —, et ne NOMME pas l'autre collection.
+    assert "supprimer de votre collection" in r.json()["detail"]
+    assert "Principale" not in r.json()["detail"]
     assert decor["partage"] in _albums(client, LECTRICE)
     assert decor["partage"] in _albums(client, ADMIN)
     assert _planches(client, decor["partage"]) == [decor["planche_partagee"]]
@@ -142,7 +154,9 @@ def test_qui_ecrit_dans_toutes_ses_collections_detruit(client, decor):
 
 def test_un_album_d_une_seule_collection_se_detruit_comme_avant(client, decor):
     """La question du 2026-09-10 — qui écrit dans l'unique collection d'un album le détruit
-    — n'est pas rouverte par cette règle."""
+    — n'est pas rouverte par AUTH-10. Elle l'est par COL-3 : il faut aussi l'avoir importé.
+    `stagiaire` a importé « Seul » ; `passeuse`, qui y écrit autant qu'elle, ne l'a pas."""
+    assert client.delete(f"/api/albums/{decor['seul']}", headers=PASSEUSE).status_code == 403
     assert client.delete(f"/api/planches/{decor['planche_seule']}",
                          headers=STAGIAIRE).status_code == 204
     assert client.delete(f"/api/albums/{decor['seul']}", headers=STAGIAIRE).status_code == 204
@@ -176,9 +190,9 @@ def test_un_droit_recu_par_un_groupe_suit_la_meme_regle(client, derriere_proxy):
     les deux. Un groupe qui n'écrit que d'un côté ne détruit pas ; des deux, il détruit."""
     membre = {"Remote-User": "membre", "Remote-Groups": "equipe"}
     a, b = _collection(client, "A"), _collection(client, "B")
-    album = _album(client, "Partagé", a)
-    _ranger(client, album, b)
     _accorder(client, a, "equipe", "ecriture", genre="groupe")
+    album = _album(client, "Partagé", a, membre)      # importé PAR le login (COL-3)
+    _ranger(client, album, b)
     assert client.delete(f"/api/albums/{album}", headers=membre).status_code == 403
     _accorder(client, b, "equipe", "ecriture", genre="groupe")
     assert _albums(client, membre)[album]["destructible"] is True
@@ -189,11 +203,12 @@ def test_posseder_une_collection_ne_detruit_pas_l_album_des_autres(client, derri
     """Le sommet de l'échelle ne passe pas outre : posséder A, c'est décider de A. Seul
     l'administrateur écrit partout sans figurer nulle part."""
     a, b = _collection(client, "A"), _collection(client, "B")
-    album = _album(client, "Partagé", a)
-    planche = _planche(client, album)
-    _ranger(client, album, b)
     _accorder(client, a, "proprio", "proprietaire")
     qui = {"Remote-User": "proprio"}
+    # Importé par la propriétaire elle-même (COL-3) : le refus vient de la collection B.
+    album = _album(client, "Partagé", a, qui)
+    planche = _planche(client, album, qui)
+    _ranger(client, album, b)
     assert client.delete(f"/api/albums/{album}", headers=qui).status_code == 403
     assert client.delete(f"/api/planches/{planche}", headers=qui).status_code == 403
     lu = _albums(client, qui)[album]
@@ -205,14 +220,14 @@ def test_toutes_veut_dire_toutes_et_le_refus_ne_compte_pas(client, derriere_prox
     pour un album rangé dans deux — il révèle qu'une autre collection existe (accepté par
     écrit), pas COMBIEN : un message qui compterait dirait la composition du corpus."""
     a, b, c = (_collection(client, n) for n in ("A", "B", "C"))
-    a_trois = _album(client, "À trois", a)
-    _ranger(client, a_trois, b)
-    _ranger(client, a_trois, c)
-    a_deux = _album(client, "À deux", a)
-    _ranger(client, a_deux, c)
     _accorder(client, a, "deux", "ecriture")
     _accorder(client, b, "deux", "ecriture")
     qui = {"Remote-User": "deux"}
+    a_trois = _album(client, "À trois", a, qui)        # importés par `deux` (COL-3)
+    _ranger(client, a_trois, b)
+    _ranger(client, a_trois, c)
+    a_deux = _album(client, "À deux", a, qui)
+    _ranger(client, a_deux, c)
     refus_trois = client.delete(f"/api/albums/{a_trois}", headers=qui)
     refus_deux = client.delete(f"/api/albums/{a_deux}", headers=qui)
     assert refus_trois.status_code == refus_deux.status_code == 403
@@ -229,11 +244,14 @@ def test_la_liste_des_albums_dit_ce_qu_on_peut_y_faire(client, decor):
 
     Les deux champs vont ensemble : « non destructible » a deux causes, et l'écran n'a un
     geste à offrir — sortir — que si l'on écrit dans l'album. Une lectrice reçoit donc
-    (False, False), et sa ligne ne porte rien."""
+    (False, False), et sa ligne ne porte rien.
+
+    COL-3 — `destructible` dit « supprimable définitivement sans rien demander » : il faut
+    l'avoir importé. `passeuse` et `mixte` écrivent dans « Seul » sans l'avoir importé."""
     attendu = {  # (ecrivable, destructible)
         "stagiaire": (STAGIAIRE, {decor["partage"]: (True, False), decor["seul"]: (True, True)}),
-        "passeuse": (PASSEUSE, {decor["partage"]: (True, True), decor["seul"]: (True, True)}),
-        "mixte": (MIXTE, {decor["partage"]: (True, False), decor["seul"]: (True, True)}),
+        "passeuse": (PASSEUSE, {decor["partage"]: (True, True), decor["seul"]: (True, False)}),
+        "mixte": (MIXTE, {decor["partage"]: (True, False), decor["seul"]: (True, False)}),
         "lectrice": (LECTRICE, {decor["partage"]: (False, False)}),
         "admin": (ADMIN, {decor["partage"]: (True, True), decor["seul"]: (True, True)}),
     }
@@ -297,6 +315,11 @@ def test_un_album_range_nulle_part_n_est_destructible_par_personne(db_path, clie
 # des tests du dessus ne la connaîtrait. Celui-ci lit le SOURCE des routes : toute fonction
 # qui efface un album ou une planche, ou leurs fichiers, pose `_exiger_destruction` ou
 # figure ici avec sa raison.
+#
+# COL-3, tranche 2 — la destruction d'un album a DEUX portes (la route, et la réponse
+# « accepter » à une demande) et un seul chemin, `socle._detruire_album`, qui porte la
+# garde. Le socle est donc lu avec les routes : sans lui, le cliquet ne verrait plus la
+# fonction qui détruit, et son plancher tomberait.
 _DETRUIT = re.compile(r"DELETE\s+FROM\s+(albums|planches)\b|remove_album_files\(|remove_planche_files\(")
 HORS_GARDE = {
     "sharedocs_importer": "ne retire que l'album VIDE qu'elle vient de créer dans la même "
@@ -307,7 +330,8 @@ HORS_GARDE = {
 
 def _fonctions_qui_detruisent():
     trouvees = {}
-    for fichier in [RACINE / "main.py", *sorted((RACINE / "routes").glob("*.py"))]:
+    for fichier in [RACINE / "main.py", RACINE / "socle.py",
+                    *sorted((RACINE / "routes").glob("*.py"))]:
         source = fichier.read_text(encoding="utf-8")
         for noeud in ast.walk(ast.parse(source)):
             if isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -320,7 +344,8 @@ def _fonctions_qui_detruisent():
 def test_toute_route_qui_detruit_pose_la_garde_ou_dit_pourquoi_non():
     trouvees = _fonctions_qui_detruisent()
     # Le plancher d'abord : un motif qui ne trouverait plus rien approuverait tout.
-    assert {"delete_album", "delete_planche", "sharedocs_importer"} <= set(trouvees), trouvees
+    assert {"_detruire_album", "delete_planche", "sharedocs_importer"} <= set(trouvees), \
+        trouvees
     sans_garde = {nom for nom, gardee in trouvees.items() if not gardee}
     assert sans_garde == set(HORS_GARDE), (
         f"détruisent sans `_exiger_destruction` et sans raison écrite : "

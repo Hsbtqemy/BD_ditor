@@ -496,19 +496,22 @@ def test_importer_et_retirer_une_planche_s_ecrivent_sur_le_document(client, db_p
                                                                     png_bytes):
     """Un scan ajouté, un scan retiré : attribués à qui l'a fait — ici bob, qui n'a pas
     importé l'album —, sous l'identifiant du document. L'ajout porte son `apres`, le
-    retrait son `avant`."""
+    retrait son `avant`. Le retrait est fait par un administrateur : depuis que bob y a
+    ajouté un scan, alice ne supprime plus de planche de cet album sans le demander
+    (COL-3, tranche 2, décision B4)."""
     aid = _creer(client, "Le Lotus bleu", decor["emotions"])
     doc = _album_ligne(db_path, aid)["document_id"]
     r = client.post(f"/api/albums/{aid}/import", headers=BOB,
                     files={"file": ("p.png", png_bytes, "image/png")})
     assert r.status_code == 201, r.text
     pl = r.json()
-    assert client.delete(f"/api/planches/{pl['id']}", headers=ALICE).status_code == 204
+    assert client.delete(f"/api/planches/{pl['id']}", headers=ALICE).status_code == 403
+    assert client.delete(f"/api/planches/{pl['id']}", headers=ADMIN).status_code == 204
 
     charge = {"album_id": aid, "planche": {"id": pl["id"], "numero": pl["numero"]}}
     assert _actes(db_path, doc, "modification") == [
         ("document", "modification", "bob", doc, None, charge),
-        ("document", "modification", "alice", doc, charge, None)]
+        ("document", "modification", ADMIN["Remote-User"], doc, charge, None)]
     # L'importateur du DOCUMENT, lui, n'a pas changé.
     assert _sql(db_path, "SELECT importe_par FROM document WHERE id = ?", (doc,)) \
         == [{"importe_par": "alice"}]
@@ -524,8 +527,9 @@ def test_les_emplois_s_ecrivent_et_un_rangement_repose_ne_s_ecrit_pas(client, db
     assert client.put(f"{chemin}/{decor['voisine']}", headers=ALICE).status_code == 201
     assert client.put(f"{chemin}/{decor['voisine']}", headers=ALICE).status_code == 201
     assert client.delete(f"{chemin}/{decor['emotions']}", headers=ALICE).status_code == 204
-    # Deux refus : la dernière collection, et une collection d'un autre projet.
-    assert client.delete(f"{chemin}/{decor['voisine']}", headers=ALICE).status_code == 409
+    # Sortir de la dernière collection aboutit depuis le fonds (COL-3, tranche 2) et
+    # s'écrit ; ranger la copie gardée dans une collection d'un autre projet est refusé.
+    assert client.delete(f"{chemin}/{decor['voisine']}", headers=ALICE).status_code == 204
     ailleurs = client.post("/api/collections", json={"nom": "Du repli"},
                            headers=ADMIN).json()["id"]
     assert client.put(f"{chemin}/{ailleurs}", headers=ADMIN).status_code == 409
@@ -543,6 +547,9 @@ def test_les_emplois_s_ecrivent_et_un_rangement_repose_ne_s_ecrit_pas(client, db
          {"album_id": aid, "collection_id": decor["voisine"], "collection": "Voisine"}),
         ("collection_album", "delien", "alice", doc,
          {"album_id": aid, "collection_id": decor["emotions"], "collection": "Émotions"},
+         None),
+        ("collection_album", "delien", "alice", doc,
+         {"album_id": aid, "collection_id": decor["voisine"], "collection": "Voisine"},
          None)]
 
 
@@ -715,8 +722,8 @@ def test_l_outil_ecrit_les_memes_emplois_que_la_route(client, db_path, decor):
     # des deux n'en est retiré, et le journal ne l'invente pour aucun.
     assert _outil(db_path, "gerer_collections.py", "retirer", str(cid),
                   "--albums", f"{un},{trois},9999")[0] == 0
-    assert _outil(db_path, "gerer_collections.py", "retirer", str(ici),
-                  "--albums", str(un))[0] != 0                     # sa dernière : refusé
+    # Un refus n'écrit rien : supprimer « ici », dernière collection de « Trois ».
+    assert _outil(db_path, "gerer_collections.py", "supprimer", str(ici))[0] != 0
     assert _outil(db_path, "gerer_collections.py", "supprimer", str(cid))[0] == 0
 
     assert _evenements(db_path, "collection_album")[deja:] == [
@@ -794,10 +801,11 @@ def test_le_projet_d_une_copie_se_lit_sur_elle_puis_dans_ses_collections(client,
 
 def test_un_projet_qu_un_album_designe_encore_ne_se_supprime_pas(client, db_path, decor):
     """Le projet d'une copie est écrit sur elle, par une clé étrangère sans action. Un
-    projet VIDE de collections mais qu'un album désigne encore — état qu'aucune route ne
-    produit, et qu'une base retouchée porte — répondait une erreur brute de la base. C'est
-    un refus qui se NOMME, comme les deux autres ; il ne vient qu'après la question du
-    droit, et ne dit donc rien à qui ne décide pas des projets."""
+    projet VIDE de collections mais qu'un album désigne encore répondait une erreur brute
+    de la base. C'est un refus qui se NOMME, comme les deux autres ; il ne vient qu'après
+    la question du droit, et ne dit donc rien à qui ne décide pas des projets. L'état se
+    fabrique ici par une base retouchée ; depuis le fonds (tranche 2), c'est celui d'une
+    copie gardée — `tests/test_fonds.py` le produit par les routes."""
     designe = client.post("/api/projets", json={"nom": "Désigné"}, headers=ADMIN).json()["id"]
     assert client.put(f"/api/projets/{designe}/membres", headers=ADMIN,
                       json={"genre": "utilisateur", "principal": "alice",
@@ -811,7 +819,7 @@ def test_un_projet_qu_un_album_designe_encore_ne_se_supprime_pas(client, db_path
     assert r.status_code == 403 and "album" not in r.json()["detail"]
     r = client.delete(f"/api/projets/{designe}", headers=ADMIN)
     assert r.status_code == 409, r.text
-    assert "1 album(s) désignent encore ce projet" in r.json()["detail"]
+    assert "1 album(s) de ce projet sont gardés au fonds" in r.json()["detail"]
     assert _sql(db_path, "SELECT nom FROM projet WHERE id = ?", (designe,)) \
         == [{"nom": "Désigné"}]
     assert _sql(db_path, "SELECT 1 FROM evenement WHERE cible_table = 'projet' "
@@ -867,7 +875,7 @@ def test_une_cible_sans_rang_ne_peut_pas_etre_publiee():
     `pseudonymes(...).get(nom, nom)` laisse passer ce qu'il ne connaît pas."""
     import _commun
 
-    assert _commun.CIBLES_SANS_RANG == {"document", "collection_album"}
+    assert _commun.CIBLES_SANS_RANG == {"document", "collection_album", "demande"}
     assert _commun.CIBLES_SANS_RANG <= set(_commun.CIBLES_RETENUES)
     assert not _commun.CIBLES_SANS_RANG & _commun.CIBLES_CORPUS
 

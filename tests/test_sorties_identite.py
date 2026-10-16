@@ -162,6 +162,18 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
                      "(region_id, ordre, forme, lemme, pos, auteur) "
                      "VALUES (?, 0, 'OTAGE', 'otage', 'NOUN', ?)",
                      (r["id"], SENTINELLES["login"]))
+        # COL-3, tranche 2 — une DEMANDE de suppression déposée par le login sentinelle, en
+        # attente. Posée ici et non par l'API : la sentinelle est administratrice, et
+        # l'API lui répond 409 — elle peut supprimer elle-même, il n'y a rien à demander.
+        # Sans elle, `/api/demandes` rendrait une liste vide et `/api/albums` ne porterait
+        # aucun demandeur : deux surfaces qui nomment passeraient pour muettes.
+        doc = conn.execute("SELECT document_id FROM albums WHERE id = ?",
+                           (a["id"],)).fetchone()[0]
+        dem = conn.execute(
+            "INSERT INTO demande (genre, demandeur, motif) "
+            "VALUES ('suppression_document', ?, 'semis')", (SENTINELLES["login"],)).lastrowid
+        conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
+                     "VALUES (?, ?, ?, 'Cliquet')", (dem, doc, a["id"]))
         act = conn.execute(
             "INSERT INTO activite (type, agent, agent_type) VALUES ('session', ?, 'humain')",
             (SENTINELLES["login"],)).lastrowid
@@ -245,6 +257,27 @@ SORTIES_DECLAREES = {
         "`…/membres`, un état d'annuaire en plus. Les groupes proposés sont des NOMS de "
         "groupe, sans membres ni id — aucune des trois sortes. Réservée à qui gère le "
         "projet."),
+    ("route", "/api/albums"): (
+        {"login", "nom"},
+        "COL-3, tranche 2 — QUI a demandé la suppression d'un album, sur la ligne de cet "
+        "album (`demande.demandeur`, et son nom lisible par le miroir `utilisateur`). Lu par "
+        "tous ceux qui lisent l'album, et c'est décidé : on a besoin de savoir à qui parler "
+        "avant d'y travailler encore (proposition R2 du cadrage, suivie en route). Le MOTIF, "
+        "lui, n'y est pas — il ne se lit que dans le fonds. Le courriel ne sort pas : "
+        "`noms_lisibles` ne lit jamais cette colonne. Avant la tranche 2 la liste ne nommait "
+        "personne."),
+    ("route", "/api/fonds"): (
+        {"login", "nom"},
+        "COL-3, tranche 2 — l'écran du FONDS : qui a importé chaque document "
+        "(`document.importe_par`, et son nom lisible), et qui demande sa suppression. C'est "
+        "l'ORIGINE que la tranche existe pour écrire. Réservée à qui tient le fonds — une "
+        "portée totale (403 nommé sinon, avant toute lecture) ; aucun export ni dépôt n'en "
+        "sort (`document` et `demande` sont des cibles retenues)."),
+    ("route", "/api/demandes"): (
+        {"login", "nom"},
+        "COL-3, tranche 2 — les demandes : qui demande, qui a répondu, et leurs noms "
+        "lisibles. Une demande sans auteur ne se répond pas. Réservée à qui tient le fonds, "
+        "comme lui ; le motif y est, et ne sort par aucun artefact."),
     ("route", "/api/moi"): (
         {"login", "nom"},
         "L'identité de l'APPELANT, la sienne — c'est l'objet même de la route, et elle ne "
