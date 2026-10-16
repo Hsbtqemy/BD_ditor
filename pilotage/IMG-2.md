@@ -15,7 +15,7 @@ venir »), et un inventaire du code. Aucun code. À approfondir avec Hugo avant 
 
 - [ ] **Les trois notions sont confirmées ou écartées** — attendu : Hugo a tranché, sur la note, que la planche se sépare en IMAGE (un fichier), PAGE (une unité imprimée, numérotée, citée) et SURFACE (le repère où vivent les régions) ; ou il a dit pourquoi non
 - [ ] **La planche DEVIENT la surface** — attendu : confirmé ou écarté. La proposition qui rend la migration mécanique : `planches` garde son nom et sa forme, chaque planche existante reçoit une image en (0, 0) et une page qui la couvre entière ; aucune coordonnée de région ne bouge, et le journal reste vrai
-- [ ] **Les treize questions de la note ont leur réponse** — attendu : chacune tranchée ou renvoyée par écrit dans `docs/images-pages-surfaces.md` § 5 (une page sur une seule surface ; l'emprise d'une page ; une région à cheval, sa citation et son compte ; le rang de case par page ou par surface ; les statuts ; les moteurs par image ou par surface ; les fichiers nommés d'après l'image ; IIIF et TEI ; le journal ; assembler après coup ; le webtoon ; la cible « planche » d'ANN-7 ; les métadonnées)
+- [ ] **Les quatorze questions de la note ont leur réponse** — attendu : chacune tranchée ou renvoyée par écrit dans `docs/images-pages-surfaces.md` § 5 (une page sur une seule surface ; l'emprise d'une page ; une région à cheval, sa citation et son compte ; le rang de case par page ou par surface ; les statuts ; les moteurs par image ou par surface ; les fichiers nommés d'après l'image ; IIIF et TEI ; le journal ; assembler après coup ; le webtoon ; la cible « planche » d'ANN-7 ; les métadonnées ; le sens de lecture) **Tranchées par Hugo le 2026-10-16 : les questions 1 à 4 et 14** — une page sur une seule surface ; l'emprise d'une page est un rectangle, deux cadres recommandés et un cadre unique accepté avec sa ligne de pliure ; une case à cheval se cite par la page où elle commence dans l'ordre de lecture et compte pour elle seule ; le rang de case se compte par page ; le sens de lecture est une propriété de l'album
 - [ ] **La forme de l'Atelier sur une surface de plusieurs images se tranche sur une maquette interactive** — attendu : Hugo a manipulé une double page en deux cadres et un épisode de webtoon, en session dédiée, et dit ce qu'il garde
 - [ ] **L'ordre face aux autres chantiers est décidé** — attendu : la place d'IMG-2 face à l'Administration à l'échelle et à la tranche 3 de `COL-3`, et à `ANN-7`, écrite avec sa raison
 
@@ -28,8 +28,14 @@ venir »), et un inventaire du code. Aucun code. À approfondir avec Hugo avant 
 ### Les doubles pages — le premier usage
 
 - [ ] **Les doubles pages scannées en deux cadres s'assemblent sans ressaisie** — attendu : un geste réunit deux planches consécutives en une surface ; les régions de la page de droite sont décalées de la largeur de la gauche ; la numérotation et les citations sont celles d'avant l'assemblage
-- [ ] **Une case à cheval sur la pliure est UNE région, et se cite « 12-13 · c… »** — attendu : tracée sur la surface, elle se découpe pour la figure et l'OCR à travers les deux images
+- [ ] **Une case à cheval sur la pliure est UNE région, et se cite par la page où elle commence** — attendu : tracée sur la surface, elle se cite « 12 · c5 » (ou « 13 · … » pour un manga, qui commence à droite), compte pour cette page seule, et son débordement se lit à côté de la citation — dans l'Atelier, et dans les exports (« s'étend jusqu'à la page 13 ») ; elle se découpe pour la figure et l'OCR à travers les deux images
 - [ ] **Une double page en un seul cadre se coupe en deux pages** — attendu : la ligne de pliure posée, la numérotation compte deux pages
+
+### Le sens de lecture — peut précéder le reste
+
+- [ ] **Un album a un sens de lecture, choisi à sa création** — attendu : dans « + Nouvel album », trois valeurs — de gauche à droite (par défaut), de droite à gauche (manga), de haut en bas (webtoon) ; modifiable dans la fiche de l'album. Tranché par Hugo le 2026-10-16
+- [ ] **L'ordre de lecture des cases et des bulles suit le sens de l'album** — attendu : sur une planche de manga segmentée, la case du haut à DROITE est « c1 », et la transcription bulle à bulle suit le même sens. Aujourd'hui `pipeline/ordering.py` ne connaît que le sens occidental, et le dit en tête
+- [ ] **Changer le sens d'un album déjà segmenté se fait confirmer** — attendu : l'écran dit combien de planches seront recalculées, et que les réordonnancements faits à la main seront perdus ; sur un album vierge, rien n'est demandé
 
 ### Les supports continus — une réflexion, pas un engagement
 
