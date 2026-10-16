@@ -2451,7 +2451,7 @@ function updateStatus() {
 }
 
 /* ===================================================================
-   Actions : segmenter, importer, nouvel album, export
+   Actions : segmenter, importer, export
    =================================================================== */
 /* Verrou de planche : protège des passes automatiques (le backend refuse aussi en
    409, ceci évite juste le « en cours… » suivi d'une erreur). */
@@ -2546,7 +2546,7 @@ function setupImport() {
   // Deux déclencheurs (sidebar : accès rapide ; menu Import/Export : découvrable) →
   // même action : ouvrir le sélecteur de fichier sur l'album courant.
   const trigger = () => {
-    if (!state.albumId) { toast("Créez d'abord un album", "error"); return; }
+    if (!state.albumId) { toast(SANS_ALBUM, "error"); return; }
     $("#file-input").click();
   };
   $("#btn-import").onclick = trigger;
@@ -2569,20 +2569,13 @@ function setupImport() {
   };
 }
 
-async function newAlbum() {
-  const titre = prompt("Titre de l'album ?");
-  if (!titre) return;
-  const auteur = prompt("Auteur ? (optionnel)") || null;
-  const annee = parseInt(prompt("Année ? (optionnel)") || "", 10);
-  try {
-    const a = await apiSend("POST", "/api/albums", {
-      titre, auteur, annee: isNaN(annee) ? null : annee,
-    });
-    state.albumId = a.id;
-    await loadAlbums();
-    toast("Album créé", "success");
-  } catch (e) { toast("Création album : " + e.message, "error"); }
-}
+/* COL-3 (Hugo, 2026-10-15) — L'ATELIER NE CRÉE PLUS D'ALBUMS. Un album se crée dans la
+   Bibliothèque, qui demande sa collection — donc son projet, que le document garde comme
+   origine. Créé ici, il tombait dans la collection de repli, et l'origine écrite était
+   fausse pour qui travaille dans un second projet. L'Atelier importe des planches dans un
+   album qui EXISTE, et où l'on écrit. */
+const SANS_ALBUM = "Aucun album : un album se crée dans la Bibliothèque, puis ses planches "
+  + "s'importent ici.";
 
 /* En-tête : menus déroulants « Traitement » / « Données ». Un seul ouvert à la fois ;
    se ferment au clic extérieur, sur Échap, et après activation d'un item (qui bulle
@@ -2897,18 +2890,25 @@ function sdUpdateSel() {
   btn.textContent = tous ? "Tout désélectionner" : "Tout sélectionner";
 }
 
-/* Remplit le sélecteur d'album cible (option « nouvel album » + albums existants). */
+/* Remplit le sélecteur d'album cible : les albums EXISTANTS où l'on écrit (`ecrivable`,
+   que le serveur dit album par album). Plus d'album neuf ici (cf. `SANS_ALBUM`) : sans
+   album où l'on écrit, le formulaire le dit, mène à la Bibliothèque, et n'importe rien.
+   Rend le nombre d'albums proposés. */
 function sdFillAlbumSelect(selectedId) {
   const sel = $("#sd-album");
-  sel.innerHTML = '<option value="__new__">➕ Nouvel album…</option>';
-  for (const a of state.albums) {
+  const ouJEcris = state.albums.filter((a) => a.ecrivable);
+  sel.innerHTML = "";
+  for (const a of ouJEcris) {
     const o = document.createElement("option");
     o.value = String(a.id);
     o.textContent = `${a.serie ? a.serie + " · " : ""}${a.titre}`;
     sel.appendChild(o);
   }
-  sel.value = selectedId ? String(selectedId) : "__new__";
-  sdImportToggleNew();
+  sel.disabled = !ouJEcris.length;
+  $("#sd-import-go").disabled = !ouJEcris.length;
+  $("#sd-sans-album").hidden = ouJEcris.length > 0;
+  if (ouJEcris.some((a) => a.id === selectedId)) sel.value = String(selectedId);
+  return ouJEcris.length;
 }
 
 function sdOpenImport() {
@@ -2916,19 +2916,12 @@ function sdOpenImport() {
   const n = state.sd.selected.size;
   if (!n) return;
   $("#sd-import-title").textContent = `Importer ${n} fichier${n > 1 ? "s" : ""}`;
-  sdFillAlbumSelect(state.albumId || null);
-  $("#sd-newalbum").value = state.sd.cwd.split("/").filter(Boolean).pop() || "ShareDocs";
-  sdImportToggleNew();
   $("#sd-import-msg").textContent = "";
   sdProgressReset();
-  $("#sd-import-go").disabled = false;
+  sdFillAlbumSelect(state.albumId || null);
   $("#sd-import-cancel").textContent = "Annuler";
   $("#sd-browser").hidden = true;
   $("#sd-import-form").hidden = false;
-}
-
-function sdImportToggleNew() {
-  $("#sd-newalbum-wrap").hidden = $("#sd-album").value !== "__new__";
 }
 
 function sdCancelImport() {
@@ -2970,19 +2963,9 @@ async function sdDoImport() {
   if (!chemins.length) return;
   const segmenter = $("#sd-segmenter").checked;
 
-  // Résout l'album cible. Pour un nouvel album, on le crée explicitement d'abord
-  // (album_id stable) plutôt que de laisser chaque appel tenter de le créer.
-  let albumId, albumNeuf = false;
-  if ($("#sd-album").value === "__new__") {
-    const titre = $("#sd-newalbum").value.trim();
-    if (!titre) { $("#sd-import-msg").textContent = "Nom d'album requis."; return; }
-    try {
-      const a = await apiSend("POST", "/api/albums", { titre });
-      albumId = a.id; albumNeuf = true;
-    } catch (e) { $("#sd-import-msg").textContent = "✗ " + e.message; return; }
-  } else {
-    albumId = Number($("#sd-album").value);
-  }
+  // L'album cible EXISTE : l'Atelier n'en crée plus (cf. `SANS_ALBUM`).
+  const albumId = Number($("#sd-album").value);
+  if (!albumId) { $("#sd-import-msg").textContent = SANS_ALBUM; return; }
 
   // Passe en mode « import en cours » : progression + bouton Annuler → Arrêter.
   state.sd.importing = true;
@@ -3013,11 +2996,6 @@ async function sdDoImport() {
   }
   sdProgressUpdate(i, chemins.length, "", false, ok, ko);
 
-  // Album neuf resté vide (tout a échoué / annulé avant le moindre import) → on le retire.
-  if (albumNeuf && ok === 0) {
-    try { await apiSend("DELETE", "/api/albums/" + albumId); } catch (_) {}
-  }
-
   const arrete = state.sd.cancelImport;
   state.sd.importing = false;
   state.sd.cancelImport = false;
@@ -3035,11 +3013,9 @@ async function sdDoImport() {
     await loadAlbums();          // recharge albums → sélectionne la cible + ses planches
     if (!ko && !arrete) { sdClose(); return; }   // tout bon → on ferme
   }
-  // On reste sur le formulaire : repointe le sélecteur sur l'album réellement
-  // utilisé pour qu'un nouvel essai des échecs s'y ajoute (et ne crée pas un 2e
-  // album neuf). Si l'album neuf a été supprimé (0 import), on retombe sur « nouvel ».
-  const albumExiste = !(albumNeuf && ok === 0);
-  sdFillAlbumSelect(albumExiste ? albumId : null);
+  // On reste sur le formulaire : repointe le sélecteur sur l'album réellement utilisé,
+  // pour qu'un nouvel essai des échecs s'y ajoute.
+  sdFillAlbumSelect(albumId);
   $("#sd-import-msg").textContent =
     ko ? `${ko} échec(s) — voir le détail ci-dessous.` : (arrete ? "Import arrêté." : "");
 }
@@ -3072,7 +3048,6 @@ function setupSharedocs() {
   $("#sd-connect-perso").onclick = () => { $("#sd-pass").value = ""; sdShow("login"); };
   $("#sd-selectall").onclick = sdToggleSelectAll;
   $("#sd-import").onclick = sdOpenImport;
-  $("#sd-album").onchange = sdImportToggleNew;
   $("#sd-import-go").onclick = sdDoImport;
   $("#sd-import-cancel").onclick = sdCancelImport;
   $("#sharedocs").addEventListener("mousedown", (e) => {
@@ -3280,7 +3255,6 @@ function setupControls() {
   document.querySelectorAll(".mode-btn").forEach((b) =>
     b.onclick = () => setMode(b.dataset.mode));
   $("#album-select").onchange = (e) => selectAlbum(Number(e.target.value));
-  $("#btn-new-album").onclick = newAlbum;
   $("#btn-segmenter").onclick = segmenter;
   $("#btn-bulles").onclick = detecterBulles;
   $("#btn-ocr").onclick = lancerOCR;

@@ -84,7 +84,6 @@
     <aside id="sidebar">
       <div class="sidebar-head">
         <label for="album-select">Album</label>
-        <button id="btn-new-album" class="icon-btn" title="Nouvel album">＋</button>
       </div>
       <select id="album-select"></select>
       <div class="sidebar-head">
@@ -471,8 +470,9 @@
         <label>Destination
           <select id="sd-album"></select>
         </label>
-        <label id="sd-newalbum-wrap">Nom du nouvel album
-          <input type="text" id="sd-newalbum"></label>
+        <p id="sd-sans-album" class="muted small" hidden>Aucun album où vous écrivez : un
+          album se crée dans <a href="/corpus">la Bibliothèque</a>, avec sa collection, puis
+          ses planches s'importent ici.</p>
         <label class="sd-check">
           <input type="checkbox" id="sd-segmenter"> Segmenter après l'import (Kumiko)</label>
         <div class="sd-row">
