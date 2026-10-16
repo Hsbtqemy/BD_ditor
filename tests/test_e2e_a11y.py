@@ -937,7 +937,7 @@ def test_a11y_le_fonds_et_ses_demandes(page, live_server, theme):
     """COL-3, tranche 2 — le bloc « Le fonds » de l'Administration, PEUPLÉ : une demande de
     suppression en tête (motif, « Détruire », « Garder »), une copie gardée et son « Rendre
     à… », un document appelé par personne et sa pastille ; puis le responsable d'un projet
-    devant « Demander sa suppression ». L'audit générique de `/administration` ne voit le
+    devant « Demander sa suppression… », motif ouvert. L'audit générique de `/administration` ne voit le
     fonds que vide de tout cela."""
     with httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE) as c:
         cid = c.post("/api/collections", json={"nom": "Étude"}).json()["id"]
@@ -967,6 +967,7 @@ def test_a11y_le_fonds_et_ses_demandes(page, live_server, theme):
 
     page.set_extra_http_headers({"Remote-User": "rui"})
     page.goto(live_server + "/administration", wait_until="networkidle")
+    page.click("[data-pj-demander-ouvrir]")
     page.wait_for_selector("#pj-demander-motif", timeout=5000)
     viol = _audit(page)
     assert not viol, f"Demander la suppression d'un projet [{theme}] :\n{_fmt(viol)}"

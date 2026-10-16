@@ -962,6 +962,7 @@ const PJ = {
   decide: false,         // créer, renommer, supprimer
   groupesAdmin: [],
   sel: null,             // l'identifiant du projet dont la fiche est ouverte
+  demanderOuvert: null,  // le projet dont le motif de « Demander sa suppression… » est ouvert
   membres: null,         // la poignée du module monté dans la fiche
 };
 
@@ -1124,7 +1125,7 @@ function pjDecider(p) {
   if (!PJ.decide) {
     return `<p class="col-note pj-a-demander">Vous réglez qui entre dans ce projet. Le
       renommer, corriger sa description ou sa justification, ou le supprimer se demande à un
-      administrateur de l'instance.</p>${pjDemander(p)}`;
+      administrateur de l'instance.</p><div id="pj-demander-zone">${pjDemander(p)}</div>`;
   }
   return `<div class="pj-renommer">
       <label for="pj-renommer-nom">Nom</label>
@@ -1149,15 +1150,38 @@ function pjDecider(p) {
 function pjDemander(p) {
   if (p.repli) return "";
   if (p.demande_suppression) {
-    return `<p class="pj-demande-etat"><span class="pj-puce">suppression demandée le `
-      + `${esc(BDSuppression.dateLue(p.demande_suppression.date_creation))}</span></p>`;
+    return `<p class="pj-demande-etat" tabindex="-1"><span class="pj-puce">suppression `
+      + `demandée le ${esc(BDSuppression.dateLue(p.demande_suppression.date_creation))}</span>`
+      + `</p>${pjLigneDeGeste("demander", "p")}`;
+  }
+  // Un geste RARE : pas de champ à demeure dans la fiche (préférence de Hugo). Le bouton
+  // ouvre le motif à sa place, sans bascule — il disparaît, le champ prend le focus, et
+  // « Annuler » le rend.
+  if (PJ.demanderOuvert !== p.id) {
+    return `<p class="pj-demander-ouvrir"><button type="button" class="ghost small"
+        data-pj-demander-ouvrir="1">Demander sa suppression…</button></p>
+      ${pjLigneDeGeste("demander", "p")}`;
   }
   return `<div class="pj-demander">
       <label for="pj-demander-motif">Pourquoi le supprimer</label>
       <textarea id="pj-demander-motif" rows="2"></textarea>
       <div class="pj-decrire-pied"><button type="button" class="ghost small"
-        data-pj-demander="1">Demander sa suppression</button>${pjLigneDeGeste("demander", "span")}</div>
+        data-pj-demander="1">Envoyer la demande</button><button type="button" class="ghost small"
+        data-pj-demander-annuler="1">Annuler</button>${pjLigneDeGeste("demander", "span")}</div>
     </div>`;
+}
+
+/* Ouvre ou referme le motif SUR PLACE : seule la zone du geste se redessine, pas la fiche
+   (qui remonterait « Qui y entre » et effacerait son message). */
+function pjDemanderBasculer(ouvrir) {
+  const p = pjProjet(), zone = $("#pj-demander-zone");
+  if (!p || !zone) return;
+  PJ.demanderOuvert = ouvrir ? p.id : null;
+  pjTaireSauf(null);
+  zone.innerHTML = pjDemander(p);
+  const cible = ouvrir ? $("#pj-demander-motif")
+                       : zone.querySelector("[data-pj-demander-ouvrir]");
+  if (cible) cible.focus();
 }
 
 async function pjDemanderSuppression() {
@@ -1173,12 +1197,15 @@ async function pjDemanderSuppression() {
     await apiSend("POST", "/api/demandes",
                   { genre: BDSuppression.GENRE_PROJET, projet_id: p.id, motif });
   } catch (e) { pjMsg(ligne, e.message || "Échec", true); return; }
+  PJ.demanderOuvert = null;
   if (!await pjLire()) return;
   pjRendre();
-  pjMsg($("#pj-msg"), `La demande de supprimer « ${p.nom} » est partie à un administrateur. `
-    + "Rien n'est supprimé d'ici sa réponse.");
-  const titre = $("#pj-fiche-titre");
-  if (titre) titre.focus();
+  // Le message se lit CONTRE ce qui a changé — la puce qui remplace le geste —, pas en tête
+  // du bloc, où il poussait toute la page d'une ligne (relevé sur capture).
+  pjMsg($("#pj-demander-msg"), "Votre demande est partie à un administrateur. Rien n'est "
+    + "supprimé d'ici sa réponse.");
+  const etat = document.querySelector("#pj-fiche .pj-demande-etat");
+  if (etat) etat.focus();
 }
 
 function pjRendreFiche() {
@@ -1336,6 +1363,8 @@ function pjDemarrer() {
     else if (b.dataset.pjDecrire) pjDecrire();
     else if (b.dataset.pjSupprimer) pjSupprimer();
     else if (b.dataset.pjDemander) pjDemanderSuppression();
+    else if (b.dataset.pjDemanderOuvrir) pjDemanderBasculer(true);
+    else if (b.dataset.pjDemanderAnnuler) pjDemanderBasculer(false);
   });
   $("#pj").addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && ev.target.id === "pj-renommer-nom") {

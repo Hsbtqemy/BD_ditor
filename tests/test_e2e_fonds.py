@@ -233,22 +233,51 @@ def test_importer_au_fonds_puis_le_distribuer(page, live_server):
 
 
 def test_le_responsable_demande_la_suppression_de_son_projet(page, live_server):
-    """Rui règle « Séminaire » sans en décider : il en DEMANDE la suppression. Sans motif rien
-    ne part ; avec, la requête le porte, et la fiche dit que la demande attend. L'administrateur
-    y répond depuis le fonds : le projet, vide, est supprimé."""
+    """Rui règle « Séminaire » sans en décider : il en DEMANDE la suppression. Le motif ne
+    s'ouvre qu'au clic sur « Demander sa suppression… » — un geste rare n'a pas de champ à
+    demeure — et « Annuler » le referme. Sans motif rien ne part ; avec, la requête le porte,
+    la fiche dit que la demande attend, et le message se lit CONTRE ce qui a changé, sans
+    rien pousser au-dessus. L'administrateur y répond depuis le fonds : le projet, vide, est
+    supprimé."""
     d = _decor(live_server)
     parties = _requetes(page, "/api/demandes")
     _ouvrir_admin(page, live_server, _comme("rui"))
-    expect(page.locator("#pj-fiche-titre")).to_have_text("Séminaire", timeout=5000)
+    titre = page.locator("#pj-fiche-titre")
+    expect(titre).to_have_text("Séminaire", timeout=5000)
+    expect(page.locator("#pj-demander-motif")).to_have_count(0)
+    ouvrir = page.locator("[data-pj-demander-ouvrir]")
+    expect(ouvrir).to_have_text("Demander sa suppression…")
+    ouvrir.click()
+    expect(page.locator("#pj-demander-motif")).to_be_focused()
+    page.click("[data-pj-demander-annuler]")
+    expect(page.locator("#pj-demander-motif")).to_have_count(0)
+    expect(ouvrir).to_be_focused()
+    ouvrir.click()
+    # Où la fiche commence DANS son bloc : la page défile (le focus suit le geste), le bloc ne
+    # doit pas, lui, s'allonger au-dessus d'elle.
+    decalage = """() => document.querySelector('#pj-fiche-titre').getBoundingClientRect().top
+                       - document.querySelector('#projets-bloc').getBoundingClientRect().top"""
+    haut = page.evaluate(decalage)
     page.click("[data-pj-demander]")
-    expect(page.locator("#pj-demander-msg")).to_contain_text("Dites pourquoi")
+    message = page.locator("#pj-demander-msg")
+    expect(message).to_be_visible()
+    expect(message).to_contain_text("Dites pourquoi")
     assert not parties
     page.fill("#pj-demander-motif", "Le séminaire est annulé.")
     page.click("[data-pj-demander]")
-    expect(page.locator(".pj-demande-etat")).to_contain_text("suppression demandée le")
+    etat = page.locator(".pj-demande-etat")
+    expect(etat).to_contain_text("suppression demandée le")
     assert parties[-1].post_data_json == {"genre": "suppression_projet", "projet_id": d["projet"],
                                           "motif": "Le séminaire est annulé."}
-    expect(page.locator("[data-pj-demander]")).to_have_count(0)
+    expect(page.locator("[data-pj-demander], [data-pj-demander-ouvrir]")).to_have_count(0)
+    # Le message contre la puce qui remplace le geste ; rien ne s'est écrit en tête du bloc,
+    # et la fiche n'a pas bougé.
+    expect(message).to_be_visible()
+    expect(message).to_contain_text("Votre demande est partie à un administrateur")
+    e, m = etat.bounding_box(), message.bounding_box()
+    assert 0 <= m["y"] - (e["y"] + e["height"]) <= 16, (e, m)
+    expect(page.locator("#pj-msg")).to_have_text("")
+    assert abs(page.evaluate(decalage) - haut) < 1, (haut, page.evaluate(decalage))
 
     _ouvrir_admin(page, live_server)
     demande = page.locator(".fd-demande", has_text="rui demande la suppression du projet « Séminaire »")

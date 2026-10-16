@@ -2913,7 +2913,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .pj-demander textarea { width: 100%; min-width: 0; resize: vertical; background: var(--bg-input);
   color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: .35rem .55rem;
   font-size: 1rem; font-family: inherit; }
-.pj-demande-etat { margin: .5rem 0 0; }
+.pj-demande-etat, .pj-demander-ouvrir { margin: .5rem 0 .2rem; }
 
 /* ── Qui y entre (COL-3) — les membres d'un projet, module monté dans sa fiche ────────
    Le frère de « Qui entre », plus haut, et les mêmes précautions : une liste déroulante

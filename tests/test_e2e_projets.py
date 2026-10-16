@@ -1447,7 +1447,7 @@ def test_un_responsable_ne_recoit_aucun_champ_pour_decrire_son_projet(page, semi
     """Décrire un projet et dire pourquoi il existe se DÉCIDE : le responsable, qui règle qui
     entre, lit la justification et n'obtient aucun champ pour les écrire dans « Ce projet » —
     la phrase qui lui dit à qui s'adresser y est, et, depuis la tranche 2 (décision B5), le
-    seul geste qu'elle annonce : DEMANDER la suppression, un motif et un bouton. Ni nom, ni
+    seul geste qu'elle annonce : DEMANDER la suppression, un bouton qui ouvre son motif. Ni nom, ni
     description, ni « Supprimer le projet ». Le serveur refuserait le reste de toute façon,
     et c'est mesuré (`tests/test_projet_ecran.py`)."""
     d = seminaire
@@ -1460,9 +1460,8 @@ def test_un_responsable_ne_recoit_aucun_champ_pour_decrire_son_projet(page, semi
     expect(ce_projet).to_have_count(1)
     expect(ce_projet.locator(".pj-a-demander")).to_be_visible()
     assert ce_projet.locator("input, select").count() == 0
-    assert ce_projet.locator("textarea").evaluate_all("els => els.map((e) => e.id)") == [
-        "pj-demander-motif"]
-    assert ce_projet.locator("button").all_inner_texts() == ["Demander sa suppression"]
+    assert ce_projet.locator("textarea").count() == 0
+    assert ce_projet.locator("button").all_inner_texts() == ["Demander sa suppression…"]
     assert page.locator(".pj-decrire, [data-pj-decrire], #pj-decrire-description, "
                         "#pj-decrire-justification").count() == 0
     # Il LIT les deux textes, là où la fiche les montre.
