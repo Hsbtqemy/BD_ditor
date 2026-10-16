@@ -179,6 +179,33 @@
     </div>
   </div>
 
+  <!-- COL-3, tranche 2 — « Supprimer… » : les DEUX réponses, et la confirmation qu'elles
+       sont. Ce que chacune annonce se choisit dans `lib/suppression.js` ; ce qu'on peut
+       faire, le serveur le dit album par album. « Annuler » vient en premier : c'est lui qui
+       reçoit le focus, et Entrée ne supprime rien par mégarde. -->
+  <div id="suppr-modal" hidden>
+    <div class="modal-box sp-boite">
+      <div class="sp-tete">
+        <h3 id="sp-titre">Supprimer</h3>
+        <button id="sp-annuler" class="ghost small" type="button">Annuler</button>
+      </div>
+      <div class="sp-reponses">
+        <section class="sp-carte" aria-labelledby="sp-retrait-titre">
+          <h4 id="sp-retrait-titre">Supprimer de la collection</h4>
+          <div id="sp-retrait"></div>
+        </section>
+        <section class="sp-carte sp-carte-definitif" aria-labelledby="sp-def-titre">
+          <h4 id="sp-def-titre">Supprimer définitivement</h4>
+          <p id="sp-def-texte" class="sp-texte"></p>
+          <label id="sp-motif-wrap" hidden>Pourquoi ce document n'a pas sa place ici
+            <textarea id="sp-motif" rows="2"></textarea></label>
+          <button id="sp-def" class="danger" type="button" hidden></button>
+        </section>
+      </div>
+      <p id="sp-msg" class="muted small" role="status" aria-live="polite"></p>
+    </div>
+  </div>
+
 </div>
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
@@ -187,6 +214,7 @@
 <script src="/static/lib/depot.js"></script>
 <script src="/static/lib/droits.js"></script>
 <script src="/static/lib/qui-entre.js"></script>
+<script src="/static/lib/suppression.js"></script>
 <script src="/static/corpus.js"></script>
 </body>
 </html>

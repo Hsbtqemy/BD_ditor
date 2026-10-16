@@ -853,8 +853,10 @@ def test_corpus_appartenance_album(page, seeded):
     """L'appartenance N-N depuis l'UI — la case qu'AUTH-2 avait laissée ouverte, faute de
     propriétaire pour dire qui a le droit de déplacer quoi.
 
-    Le refus de sortir de la DERNIÈRE collection doit être RENDU : c'est un 409 qui nomme
-    un état interdit, pas un droit manquant, et l'avaler ferait croire à un bug.
+    COL-3, tranche 2 — supprimer un album de sa DERNIÈRE collection n'est plus refusé : la
+    copie est gardée au fonds. Le geste se CONFIRME, et la confirmation dit où va le travail ;
+    refusée, rien ne bouge. Rangé dans une seconde collection, l'album se supprime de l'une
+    sans rien demander : le travail reste dans l'autre.
     """
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
@@ -865,14 +867,20 @@ def test_corpus_appartenance_album(page, seeded):
     page.wait_for_timeout(400)
     page.locator('#albums-body tr [data-act="edit"]').first.click()
     page.wait_for_selector("#m-appartenance:not([hidden])", timeout=3000)
-    # Une seule collection au départ : la sortir doit être refusé, et le dire.
-    page.locator("#m-appartenance-liste [data-sortir]").first.click()
-    page.wait_for_function(
-        "() => document.querySelector('#m-appartenance-msg')"
-        "        .textContent.includes('dernière collection')", timeout=3000)
-    assert "erreur" in page.locator("#m-appartenance-msg").get_attribute("class")
+    # Une seule collection au départ : la quitter envoie la copie au fonds, et le dire.
+    dialogues = []
 
-    # Rangé ailleurs, l'album vit dans deux collections — et la sortie redevient possible.
+    def refuser(d):
+        dialogues.append(d.message)
+        d.dismiss()
+    page.once("dialog", refuser)
+    page.locator("#m-appartenance-liste [data-sortir]").first.click()
+    assert len(dialogues) == 1, dialogues
+    assert "gardée au fonds" in dialogues[0], dialogues
+    assert "pourrez la rendre depuis l'Administration" in dialogues[0], dialogues
+    assert page.locator("#m-appartenance-liste li").count() == 1
+
+    # Rangé ailleurs, l'album vit dans deux collections — et la sortie ne demande plus rien.
     page.select_option("#m-appartenance-cible", str(autre))
     page.click("#m-appartenance-add")
     page.wait_for_function(
@@ -884,6 +892,43 @@ def test_corpus_appartenance_album(page, seeded):
     finally:
         c.close()
     assert autre in {x["id"] for x in vues} and len(vues) == 2
+    page.locator(f'#m-appartenance-liste [data-sortir="{autre}"]').click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#m-appartenance-liste li').length === 1",
+        timeout=3000)
+    assert len(dialogues) == 1
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_supprimer_deux_reponses(page, live_server, theme):
+    """COL-3, tranche 2 — le panneau « Supprimer… » audité, dans les deux thèmes, sous un
+    compte qui n'a pas importé l'album : la seconde réponse y est une DEMANDE, donc le
+    champ du motif est là. Puis la ligne qui porte la pastille d'une demande, encre rouge
+    sur le fond de la table, auditée elle aussi."""
+    admin = {**ECRITURE}
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=admin) as c:
+        cid = c.post("/api/collections", json={"nom": "Étude"}).json()["id"]
+        aid = c.post("/api/albums", json={"titre": "Doublon", "collection_id": cid}).json()["id"]
+        r = c.put(f"/api/collections/{cid}/acces",
+                  json={"genre": "utilisateur", "principal": "sam", "niveau": "ecriture"})
+        assert r.status_code == 200, r.text
+    _theme(page, theme)
+    page.set_extra_http_headers({"Remote-User": "sam"})
+    page.goto(live_server + "/corpus", wait_until="networkidle")
+    page.locator('[data-act="supprimer"]').first.click()
+    page.wait_for_selector("#suppr-modal:not([hidden]) #sp-retrait button[data-retirer]",
+                           timeout=5000)
+    assert page.locator("#sp-motif").is_visible()
+    viol = _audit(page)
+    assert not viol, f"Supprimer… [{theme}] :\n{_fmt(viol)}"
+    page.fill("#sp-motif", "Importé par erreur.")
+    page.click("#sp-def")
+    page.wait_for_selector("#suppr-modal", state="hidden", timeout=5000)
+    page.wait_for_selector(".sp-pastille", timeout=5000)
+    viol = _audit(page)
+    assert not viol, f"Bibliothèque avec une demande [{theme}] :\n{_fmt(viol)}"
+    assert aid
 
 
 # --------------------------------------------------------------------------- #

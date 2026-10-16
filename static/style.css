@@ -2169,6 +2169,43 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
   display: flex; align-items: center; justify-content: center;
 }
 #album-modal[hidden] { display: none; }
+
+/* ── « Supprimer… » (COL-3, tranche 2) — deux réponses, côte à côte quand elles tiennent ──
+   La modale reprend la boîte de celle d'un album. Les deux cartes passent l'une sous
+   l'autre dès qu'elles ne tiennent plus à 16rem chacune — `min(100%, …)` : sans lui, une
+   piste de 16rem dépasserait la boîte à 320 px sous une grande police. Les boutons
+   passent à la ligne plutôt que de sortir : « Supprimer de « … » » porte un nom de
+   collection, d'une longueur que personne ne borne. */
+#suppr-modal {
+  position: fixed; inset: 0; z-index: 100; background: var(--scrim);
+  display: flex; align-items: center; justify-content: center;
+}
+#suppr-modal[hidden] { display: none; }
+.sp-tete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+           gap: .5rem; }
+.sp-tete h3 { min-width: 0; overflow-wrap: anywhere; }
+.sp-reponses { display: grid; gap: .8rem;
+               grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
+.sp-carte { border: 1px solid var(--border); border-radius: 8px; padding: .8rem;
+            display: flex; flex-direction: column; gap: .5rem; min-width: 0; margin: 0; }
+.sp-carte-definitif { border-color: var(--ink-red); }
+.sp-carte h4 { margin: 0; font-size: 1rem; }
+.sp-carte-definitif h4 { color: var(--ink-red); }
+.sp-texte { margin: 0; overflow-wrap: anywhere; color: var(--text); }
+.sp-option { display: flex; flex-direction: column; align-items: flex-start; gap: .4rem; }
+.sp-option + .sp-option { border-top: 1px solid var(--border); padding-top: .6rem; }
+.sp-carte button { max-width: 100%; white-space: normal; text-align: left; overflow-wrap: anywhere; }
+#sp-msg { margin: 0; }
+/* La demande de suppression qui attend, sur la ligne de l'album : une pastille. Le MOT porte
+   l'état ; l'encre rouge AA-sûre ne fait que l'accompagner. */
+.sp-pastille { display: inline-block; margin-left: .3rem; padding: .02rem .5rem;
+               border-radius: 999px; border: 1px solid var(--ink-red); color: var(--ink-red);
+               font-size: .82rem; font-weight: 400; }
+/* La corbeille d'une planche qu'on ne supprime pas d'ici : à sa place, éteinte, et qui dit
+   pourquoi quand on la touche. `aria-disabled` et non `disabled` : elle garde le focus et
+   son infobulle. */
+.icon-btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.icon-btn[aria-disabled="true"]:hover { background: var(--bg-input); color: var(--text); }
 .modal-box {
   width: min(43.0769rem, 92vw); background: var(--bg-panel);
   border: 1px solid var(--border); border-radius: 10px; padding: 1.3846rem;
@@ -2387,7 +2424,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    propriétaire, dernière collection), pas un droit manquant. Token d'encre AA-sûr, jamais
    l'accent brut, qui échoue le 4.5:1 en petit texte. */
 .col-msg.erreur, #m-appartenance-msg.erreur,
-#sante-msg.erreur { color: var(--ink-red); }
+#sante-msg.erreur, #sp-msg.erreur { color: var(--ink-red); }
 /* Ce qui a RÉUSSI mais doit se lire : un accès accordé à un nom que l'annuaire ne connaît
    pas (AUTH-12). L'ambre, assombri en thème clair pour le petit texte ; le MOT porte le
    sens. */

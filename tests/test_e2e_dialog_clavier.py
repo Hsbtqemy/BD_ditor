@@ -33,7 +33,7 @@ from conftest import ECRITURE, make_png         # noqa: E402
 pytestmark = pytest.mark.e2e
 
 # UX-10 — ce que `tests/test_surfaces.py` confronte au source. Les trois surfaces auditées
-# sont celles qui chargent `dialog.js` ; les sept modales s'y répartissent (cf. `MODALES`).
+# sont celles qui chargent `dialog.js` ; les huit modales s'y répartissent (cf. `MODALES`).
 SURFACES_AUDITEES = ("/", "/corpus", "/exploration")
 SURFACES_HORS_PERIMETRE = {
     "/recherche": "aucune modale : la page ne charge pas `dialog.js`, ses deux panneaux "
@@ -47,7 +47,7 @@ DOMAINES = ("alpha", "beta", "gamma")
 
 @pytest.fixture
 def decor(live_server):
-    """De quoi peupler les sept modales : un album et sa bulle annotée, trois domaines au
+    """De quoi peupler les huit modales : un album et sa bulle annotée, trois domaines au
     lexique, et une SECONDE collection portant l'album — sans elle, l'export part sans
     rien demander et sa modale ne s'ouvre jamais."""
     c = httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE)
@@ -68,7 +68,7 @@ def decor(live_server):
     return {"base": live_server, "album": aid, "planche": pid, "region": rid}
 
 
-# ── Les sept modales, chacune dans un état peuplé ───────────────────────────────────────
+# ── Les huit modales, chacune dans un état peuplé ───────────────────────────────────────
 #
 # Clé : l'élément que `BDDialog.register` reçoit. `boite` est ce que le piège enferme,
 # `ouvrir` le geste qui y mène — celui de l'écran, pas un `hidden = false` posé à la main,
@@ -105,6 +105,14 @@ def _album(page, d):
     page.wait_for_load_state("networkidle")
 
 
+def _supprimer(page, d):
+    """COL-3, tranche 2 — « Supprimer… » et ses deux réponses, collections lues."""
+    page.goto(d["base"] + "/corpus", wait_until="networkidle")
+    page.locator('[data-act="supprimer"]').first.click()
+    page.wait_for_selector("#suppr-modal:not([hidden]) #sp-retrait button[data-retirer]",
+                           timeout=5000)
+
+
 def _sharedocs(page, d):
     page.goto(d["base"] + _atelier(d), wait_until="networkidle")
     page.click("#btn-donnees")
@@ -133,6 +141,7 @@ MODALES = {
     "#accord-modal":       {"boite": "#accord-modal .modal-box", "ouvrir": _accord},
     "#accord-inter-modal": {"boite": "#accord-inter-modal .modal-box", "ouvrir": _accord_inter},
     "#album-modal":        {"boite": "#album-modal .modal-box", "ouvrir": _album},
+    "#suppr-modal":        {"boite": "#suppr-modal .modal-box", "ouvrir": _supprimer},
     "#sharedocs":          {"boite": "#sharedocs .sd-dialog", "ouvrir": _sharedocs},
     "#figure-modal":       {"boite": "#figure-modal .modal-box", "ouvrir": _figure},
     "#export-modal":       {"boite": "#export-modal .modal-box", "ouvrir": _export},
@@ -226,7 +235,7 @@ def _exiger_le_tour(page, quoi, boite, minimum=2):
 
 @pytest.mark.parametrize("modale", list(MODALES))
 def test_tab_dessert_tous_les_arrets_de_la_modale(page, decor, modale):
-    """Les sept modales, telles que l'écran les ouvre : aucune n'a d'arrêt que Tab ne
+    """Les huit modales, telles que l'écran les ouvre : aucune n'a d'arrêt que Tab ne
     dessert pas. Celle du lexique est la seule à avoir échoué — elle est la seule à
     porter des `<summary>` —, et les six autres sont là pour le jour où une autre en
     gagnera un."""
@@ -297,7 +306,7 @@ def test_un_focalisable_inconnu_n_est_pas_un_cul_de_sac(page, decor):
 
 # ── Un groupe de boutons radio n'est qu'UN arrêt (AUTH-11) ──────────────────────────────
 #
-# Le tour des sept modales ci-dessus ouvre celle de l'export telle qu'elle naît : la
+# Le tour des huit modales ci-dessus ouvre celle de l'export telle qu'elle naît : la
 # PREMIÈRE collection cochée. Dans cet état-là, le premier bouton radio de la liste du
 # piège est aussi le premier arrêt du navigateur, et le tour est juste par coïncidence.
 # Il suffit de choisir la seconde collection — le seul geste que la boîte propose — pour

@@ -19,6 +19,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
 from conftest import ECRITURE, make_png  # noqa: E402
+from playwright.sync_api import expect  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -643,28 +644,19 @@ def test_une_liste_vide_ne_promet_la_propriete_qu_a_qui_la_recevra(page, live_se
         assert "propriétaire" not in texte, texte
 
 
+# --------------------------------------------------------------------------- #
+# « Supprimer… » a deux réponses (COL-3, tranche 2)
+# --------------------------------------------------------------------------- #
+def _decor_suppression(live_server):
+    """Trois collections, quatre albums, cinq comptes. Tout est importé par l'administrateur
+    `decor` — donc par personne d'autre —, sauf « Erreur », que `sam` importe lui-même dans
+    « Incubateur » : c'est le seul album qu'un compte ordinaire supprime sans demander.
 
-
-@pytest.mark.parametrize("live_server", [True], indirect=True)
-def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
-    """AUTH-10 — un album rangé dans plusieurs collections ne se supprime plus depuis une
-    seule : le serveur le refuse, et l'écran ne doit offrir que ce qui aboutira. Quatre
-    identités, parce que « on ne peut pas le supprimer » a plusieurs visages.
-
-    - **Lia ne fait que LIRE** « Incubateur » : ni corbeille ni ✕, nulle part. La relecture
-      croisée a trouvé le ✕ offert à toute lectrice, pour un geste qui répondait
-      « introuvable » — le test ne jouait alors qu'une identité qui écrit.
-    - **Paz écrit dans « Incubateur » ET dans « Archives »** : sortir « Triple » de l'une ne
-      lui retire pas l'écriture — rien à confirmer, et elle le défait elle-même.
-    - **Noa écrit dans « Incubateur » et lit « Archives »**, où « Triple » est aussi rangé :
-      le ✕ mène au bouton de la collection où elle ÉCRIT, pas au premier à l'alphabet ;
-      sortir ne lui fait pas perdre l'album de vue, mais l'écriture — un aller simple aussi,
-      qui se confirme avec le texte de SON cas, et la fiche reste ouverte.
-    - **Sam n'écrit que dans « Incubateur »** et ne lit rien d'autre : sur « Partagé », ni
-      la corbeille de l'album ni celles de ses planches ; sortir est pour lui un aller
-      simple, qui se CONFIRME, ferme la fiche d'un album qu'il ne lit plus, et laisse
-      l'album entier aux autres. Sur l'album de sa seule collection, rien n'a bougé. Et
-      nulle part l'écran ne NOMME une collection qu'il ne lit pas."""
+    - lia LIT « Incubateur » ;
+    - noa ÉCRIT « Incubateur » et LIT « Archives » ;
+    - paz ÉCRIT « Incubateur » et « Archives » ;
+    - sam ÉCRIT « Incubateur », et ne lit rien d'autre.
+    """
     admin = {"Remote-User": "decor", "Remote-Groups": "bd-admins",
              **{k: v for k, v in ECRITURE.items() if k not in ("Remote-User", "Remote-Groups")}}
     with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
@@ -688,24 +680,69 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
             r = c.put(f"/api/collections/{ids[ou]}/acces",
                       json={"genre": "utilisateur", "principal": qui, "niveau": niveau})
             assert r.status_code == 200, r.text
+    sam = {"Remote-User": "sam", main_en_tete(): "1"}
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=sam) as c:
+        r = c.post("/api/albums", json={"titre": "Erreur", "collection_id": ids["Incubateur"]})
+        assert r.status_code == 201, r.text
+        albums["Erreur"] = r.json()["id"]
+        r = c.post(f"/api/albums/{albums['Erreur']}/import",
+                   files={"file": ("p.png", make_png(), "image/png")})
+        assert r.status_code == 201, r.text
+    return admin, ids, albums
 
-    def ligne(titre):
-        return page.locator(".album-row", has=page.locator(".c-titre", has_text=titre))
 
-    def gestes(titre):
-        return (ligne(titre).locator('[data-act="del"]').count(),
-                ligne(titre).locator('[data-act="sortir"]').count())
+def main_en_tete():
+    """L'en-tête anti-CSRF, lu dans `ECRITURE` plutôt que recopié."""
+    return next(k for k in ECRITURE if k not in ("Remote-User", "Remote-Groups"))
 
-    def ouvrir(titre):
-        """Le détail de CET album, et non celui du précédent resté affiché. L'attente est
-        une FONCTION : en expression, elle passe par `eval` dès qu'elle doit patienter, et
-        la CSP (`script-src 'self'`) la refuse — vert seul, rouge dans la passe entière."""
-        ligne(titre).locator(".c-titre").click()
-        page.wait_for_function(
-            "t => { const d = document.querySelector('#album-detail');"
-            "       return !d.hidden && d.textContent.includes(t) && !!d.querySelector('.pl-thumb'); }",
-            arg=titre, timeout=5000)
 
+def _ligne(page, titre):
+    return page.locator(".album-row", has=page.locator(".c-titre", has_text=titre))
+
+
+def _ouvrir_detail(page, titre):
+    """Le détail de CET album, et non celui du précédent resté affiché. L'attente est une
+    FONCTION : en expression, elle passe par `eval` dès qu'elle doit patienter, et la CSP
+    (`script-src 'self'`) la refuse — vert seul, rouge dans la passe entière."""
+    _ligne(page, titre).locator(".c-titre").click()
+    page.wait_for_function(
+        "t => { const d = document.querySelector('#album-detail');"
+        "       return !d.hidden && d.textContent.includes(t) && !!d.querySelector('.pl-thumb'); }",
+        arg=titre, timeout=5000)
+
+
+def _ouvrir_suppression(page, titre):
+    """« Supprimer… » sur la ligne de CET album, puis le panneau, ses collections lues."""
+    _ligne(page, titre).locator('[data-act="supprimer"]').click()
+    expect(page.locator("#suppr-modal")).to_be_visible(timeout=5000)
+    expect(page.locator("#sp-titre")).to_have_text(f"Supprimer « {titre} »")
+    page.wait_for_function(
+        "() => !document.querySelector('#sp-retrait').textContent.includes('Lecture')",
+        timeout=5000)
+
+
+def _comme(page, live_server, login):
+    page.set_extra_http_headers({"Remote-User": login})
+    page.goto(live_server + "/corpus", wait_until="networkidle")
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
+    """COL-3, tranche 2 — « Supprimer… » n'est offert qu'à qui ÉCRIT dans l'album, et ce que
+    le panneau annonce dépend de ce qu'on y perd. Trois identités, parce que « supprimer de
+    la collection » a plusieurs visages.
+
+    - **Lia ne fait que LIRE** « Incubateur » : ni « Supprimer… », ni corbeille de planche,
+      ni corbeille éteinte, nulle part. C'est le mutant 16 du cadrage : un bouton offert à
+      qui ne fait que lire mènerait à deux réponses dont aucune n'aboutit.
+    - **Paz écrit dans « Incubateur » ET dans « Archives »** : supprimer « Triple » de l'une
+      par le ✕ de sa fiche ne lui retire rien — rien à confirmer, et elle le défait elle-même.
+    - **Noa écrit dans « Incubateur » et lit « Archives »**, où « Triple » est aussi rangé :
+      le panneau ne propose QUE la collection où elle écrit, nomme celle où le travail
+      reste, et dit qu'elle continuera de lire sans plus écrire. Le ✕ de sa fiche dit la
+      même chose, et se confirme. Et nulle part l'écran ne NOMME une collection qu'elle ne
+      lit pas."""
+    admin, ids, albums = _decor_suppression(live_server)
     demandes = []
 
     def repondre(accepter):
@@ -715,22 +752,22 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
         return _
 
     # ── qui ne fait que lire : aucun geste qui n'aboutirait ──────────────────────────────
-    page.set_extra_http_headers({"Remote-User": "lia"})
-    page.goto(live_server + "/corpus", wait_until="networkidle")
-    ligne("Seul").wait_for(timeout=5000)
-    assert [gestes(t) for t in ("Partagé", "Triple", "Seul")] == [(0, 0)] * 3
-    ouvrir("Seul")
-    assert page.locator("#album-detail button[data-delp]").count() == 0
+    _comme(page, live_server, "lia")
+    _ligne(page, "Seul").wait_for(timeout=5000)
+    for titre in ("Partagé", "Triple", "Seul", "Erreur"):
+        expect(_ligne(page, titre)).to_be_visible()
+        assert _ligne(page, titre).locator('[data-act="supprimer"]').count() == 0, titre
+    _ouvrir_detail(page, "Seul")
+    assert page.locator("#album-detail [data-delp], #album-detail [data-delp-refus]").count() == 0
 
-    # ── qui écrit dans DEUX de ses collections : sortir se défait, rien à confirmer ──────
-    page.set_extra_http_headers({"Remote-User": "paz"})
-    page.goto(live_server + "/corpus", wait_until="networkidle")
-    ligne("Triple").wait_for(timeout=5000)
-    assert gestes("Triple") == (0, 1)          # elle n'écrit pas dans « Principale »
-    ligne("Triple").locator('[data-act="sortir"]').click()
+    # ── qui écrit dans DEUX de ses collections : le ✕ se défait, rien à confirmer ────────
+    _comme(page, live_server, "paz")
+    _ligne(page, "Triple").wait_for(timeout=5000)
+    expect(_ligne(page, "Triple").locator('[data-act="supprimer"]')).to_be_visible()
+    _ligne(page, "Triple").locator('[data-act="edit"]').click()
     page.locator("#album-modal:not([hidden])").wait_for(timeout=5000)
     # Aucun gestionnaire de dialogue : s'il en venait un, Playwright le refuserait et la
-    # sortie n'aurait pas lieu. Elle écrit encore dans l'album par « Incubateur ».
+    # suppression n'aurait pas lieu. Elle écrit encore dans l'album par « Incubateur ».
     page.locator(f'#m-appartenance-liste [data-sortir="{ids["Archives"]}"]').click()
     page.wait_for_function(
         "() => document.querySelectorAll('#m-appartenance-liste li').length === 1", timeout=5000)
@@ -742,31 +779,37 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
     page.click("#m-cancel")
 
     # ── qui écrit d'un côté et LIT de l'autre ────────────────────────────────────────────
-    page.set_extra_http_headers({"Remote-User": "noa"})
-    page.goto(live_server + "/corpus", wait_until="networkidle")
-    ligne("Triple").wait_for(timeout=5000)
-    assert gestes("Triple") == (0, 1)
-    ligne("Triple").locator('[data-act="sortir"]').click()
+    _comme(page, live_server, "noa")
+    _ligne(page, "Triple").wait_for(timeout=5000)
+    _ouvrir_suppression(page, "Triple")
+    boutons = page.locator("#sp-retrait button[data-retirer]")
+    expect(boutons).to_have_count(1)
+    expect(boutons).to_have_text("Supprimer de « Incubateur »")
+    texte = page.locator(f"#sp-r-{ids['Incubateur']}")
+    expect(texte).to_be_visible()
+    expect(texte).to_contain_text("Le travail reste dans « Archives », où rien ne change.")
+    expect(texte).to_contain_text("Vous continuerez de le lire, mais vous n'y écrirez plus")
+    # Importé par un autre : la seconde réponse est une DEMANDE, motif à l'appui.
+    expect(page.locator("#sp-def")).to_have_text("Envoyer la demande")
+    expect(page.locator("#sp-motif")).to_be_visible()
+    assert "Principale" not in page.inner_text("#suppr-modal")
+    page.click("#sp-annuler")
+    expect(page.locator("#suppr-modal")).to_be_hidden()
+
+    # Le ✕ de la fiche dit la même chose, et se confirme. Refusé, rien ne bouge.
+    _ligne(page, "Triple").locator('[data-act="edit"]').click()
     page.locator("#album-modal:not([hidden])").wait_for(timeout=5000)
-    rangs = [t.split()[0] for t in page.locator("#m-appartenance-liste li").all_inner_texts()]
-    assert rangs == ["Archives", "Incubateur"], rangs
-    assert page.evaluate("() => document.activeElement.dataset.sortir") == str(ids["Incubateur"])
-    # Elle continuera de LIRE l'album par « Archives », mais « Incubateur » est la seule
-    # collection où elle y écrit : sortie, elle ne l'y rangera pas de nouveau. C'est un aller
-    # simple aussi, et il se confirme — avec SON texte, pas celui de qui perd l'album de vue.
-    # Le premier critère ne regardait que l'album qui disparaît : elle perdait l'écriture
-    # sans un mot (relecture du delta).
     page.once("dialog", repondre(False))
-    page.keyboard.press("Enter")
+    page.locator(f'#m-appartenance-liste [data-sortir="{ids["Incubateur"]}"]').click()
     assert len(demandes) == 1, demandes
-    assert "continuerez de lire" in demandes[0] and "n'y écrirez plus" in demandes[0], demandes
+    assert "continuerez de le lire" in demandes[0] and "n'y écrirez plus" in demandes[0], demandes
     assert "ne le verrez plus" not in demandes[0] and "Principale" not in demandes[0]
-    assert page.locator("#m-appartenance-liste li").count() == 2      # refusé : rien ne bouge
+    assert page.locator("#m-appartenance-liste li").count() == 2
     # Le ✕ de la collection qu'elle ne fait que LIRE ne demande rien — il ne lui retirerait
     # aucune écriture —, et le serveur le refuse. Sans gestionnaire, un dialogue serait
     # écarté par Playwright et la requête ne partirait pas : c'est le refus affiché qui
     # prouve qu'aucune confirmation n'est venue. (Ce ✕ offert sur une collection seulement
-    # lue est un défaut antérieur, laissé à UX-18 : le jour où il disparaît, ces lignes aussi.)
+    # lue est un défaut antérieur, laissé à UX-18.)
     page.locator(f'#m-appartenance-liste [data-sortir="{ids["Archives"]}"]').click()
     page.locator("#m-appartenance-msg.erreur", has_text="introuvable").wait_for(timeout=5000)
     assert len(demandes) == 1
@@ -775,52 +818,114 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
     page.wait_for_function(
         "() => document.querySelectorAll('#m-appartenance-liste li').length === 1", timeout=5000)
     assert page.locator("#album-modal").is_visible() and len(demandes) == 2
-    assert gestes("Triple") == (0, 0)          # redevenue lectrice de cet album
-    # Sortir de la collection qu'on ne fait que LIRE ne lui coûterait rien de plus : ce ✕-là
-    # ne demande rien (et le serveur le lui refuse — défaut antérieur, laissé à UX-18).
+    # Redevenue lectrice de cet album : plus rien ne lui est offert dessus.
+    expect(_ligne(page, "Triple").locator('[data-act="supprimer"]')).to_have_count(0)
     page.click("#m-cancel")
-    del demandes[:]
 
-    # ── qui n'écrit que d'un côté, et ne lit rien d'autre ────────────────────────────────
-    page.set_extra_http_headers({"Remote-User": "sam"})
-    page.goto(live_server + "/corpus", wait_until="networkidle")
-    ligne("Seul").wait_for(timeout=5000)
-    assert gestes("Seul") == (1, 0)
-    assert gestes("Partagé") == (0, 1)
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
+        rangs = [x["nom"] for x in c.get(f"/api/albums/{albums['Triple']}/collections").json()]
+        assert rangs == ["Archives", "Principale"], rangs
 
-    # Les planches suivent leur album : une corbeille sous « Seul », aucune sous « Partagé ».
-    ouvrir("Seul")
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_server):
+    """COL-3, tranche 2 — sous Sam, qui n'écrit que dans « Incubateur ».
+
+    - « Erreur », qu'il a importé et où personne d'autre n'a travaillé : « Supprimer
+      définitivement » efface tout de suite, et la corbeille de sa planche est active.
+    - « Seul », importé par un autre et rangé là seulement : supprimer de la collection
+      l'enverrait AU FONDS — le panneau le dit ; supprimer définitivement se DEMANDE. Une
+      demande sans motif ne part pas ; avec, la requête PORTE le motif (mutant 17), la
+      pastille paraît sur la ligne, et le panneau ne propose plus d'envoyer la même. Sa
+      planche garde une corbeille ÉTEINTE, qui dit à qui s'adresser (décision B4).
+    - « Partagé », rangé aussi dans une collection qu'il ne lit pas : le travail y reste, et
+      l'écran le dit sans la nommer. Supprimé de « Incubateur », l'album quitte son écran
+      et reste entier chez les autres.
+    Puis Lia, qui lit « Incubateur », voit la pastille de la demande de Sam."""
+    admin, ids, albums = _decor_suppression(live_server)
+    _comme(page, live_server, "sam")
+    _ligne(page, "Erreur").wait_for(timeout=5000)
+
+    # Les planches suivent la règle du document.
+    _ouvrir_detail(page, "Erreur")
     assert page.locator("#album-detail button[data-delp]").count() == 1
-    ouvrir("Partagé")
+    _ouvrir_detail(page, "Seul")
     assert page.locator("#album-detail button[data-delp]").count() == 0
+    eteinte = page.locator("#album-detail button[data-delp-refus]")
+    expect(eteinte).to_have_count(1)
+    assert eteinte.get_attribute("aria-disabled") == "true"
+    # Éteinte mais atteignable : au clavier, elle dit à qui s'adresser. (Playwright tient un
+    # `aria-disabled` pour non cliquable ; le clavier, lui, l'atteint.)
+    eteinte.focus()
+    page.keyboard.press("Enter")
+    expect(page.locator(".toast", has_text="Adressez-vous à un administrateur")).to_be_visible()
 
-    # Le geste qui reste dit POURQUOI, et mène au bouton qui le fait.
-    ligne("Partagé").locator('[data-act="sortir"]').click()
-    page.locator("#album-modal:not([hidden])").wait_for(timeout=5000)
-    message = page.locator("#m-appartenance-msg").inner_text()
-    assert "sortir de la vôtre" in message, message
-    assert page.locator("#m-appartenance-liste li").all_inner_texts()[0].startswith("Incubateur")
-    assert page.evaluate("() => document.activeElement.dataset.sortir") == str(ids["Incubateur"])
+    # ── « Seul » : au fonds, ou par demande ──────────────────────────────────────────────
+    _ouvrir_suppression(page, "Seul")
+    texte = page.locator(f"#sp-r-{ids['Incubateur']}")
+    expect(texte).to_contain_text("C'est sa dernière collection : la copie de travail est "
+                                  "gardée au fonds")
+    expect(texte).to_contain_text("Un administrateur peut la rendre.")
+    expect(texte).to_contain_text("Vous ne le verrez plus")
+    expect(page.locator("#sp-def-texte")).to_contain_text("ce n'est pas vous qui l'avez importé")
+    envoyees = []
+    page.on("request", lambda r: envoyees.append(r) if r.url.endswith("/api/demandes")
+            and r.method == "POST" else None)
+    # Sans motif, rien ne part.
+    page.click("#sp-def")
+    expect(page.locator("#sp-msg.erreur")).to_contain_text("Dites pourquoi")
+    assert envoyees == []
+    assert page.evaluate("() => document.activeElement.id") == "sp-motif"
+    page.fill("#sp-motif", "Doublon de « Triple ».")
+    page.click("#sp-def")
+    expect(page.locator("#suppr-modal")).to_be_hidden(timeout=5000)
+    expect(page.locator(".toast", has_text="Votre demande est partie")).to_be_visible()
+    assert len(envoyees) == 1
+    corps = envoyees[0].post_data_json
+    assert corps == {"genre": "suppression_document", "album_id": albums["Seul"],
+                     "motif": "Doublon de « Triple »."}, corps
+    pastille = _ligne(page, "Seul").locator(".sp-pastille")
+    expect(pastille).to_be_visible()
+    expect(pastille).to_have_text("suppression demandée par vous")
+    # Rien n'est effacé, et la même demande ne se propose plus.
+    _ouvrir_suppression(page, "Seul")
+    expect(page.locator("#sp-def-texte")).to_contain_text("Sa suppression est déjà demandée par vous")
+    expect(page.locator("#sp-def")).to_be_hidden()
+    expect(page.locator("#sp-motif")).to_be_hidden()
+    page.keyboard.press("Escape")
+    expect(page.locator("#suppr-modal")).to_be_hidden()
+
+    # ── « Partagé » : le travail reste là où il ne lit pas ───────────────────────────────
+    _ouvrir_suppression(page, "Partagé")
+    texte = page.locator(f"#sp-r-{ids['Incubateur']}")
+    expect(texte).to_contain_text("Le travail reste dans une collection que vous ne lisez pas")
+    expect(texte).not_to_contain_text("fonds")
     assert "Principale" not in page.inner_text("body")
+    page.locator("#sp-retrait button[data-retirer]").click()
+    expect(page.locator("#suppr-modal")).to_be_hidden(timeout=5000)
+    expect(page.locator(".toast", has_text="« Partagé » n'est plus dans « Incubateur ». "
+                                           "Le travail continue ailleurs.")).to_be_visible()
+    _ligne(page, "Partagé").wait_for(state="detached", timeout=5000)
 
-    # Un aller simple se confirme. Refusé, rien ne bouge ; accepté, il le dit et aboutit.
-    page.once("dialog", repondre(False))
-    page.locator("#m-appartenance-liste [data-sortir]").click()
-    assert len(demandes) == 1 and "ne pourrez pas l'y ranger de nouveau" in demandes[0], demandes
-    assert "ne le verrez plus" in demandes[0] and "Principale" not in demandes[0]
-    assert page.locator("#album-modal").is_visible() and ligne("Partagé").count() == 1
+    # ── « Erreur » : il l'a importé, il l'efface ─────────────────────────────────────────
+    _ouvrir_suppression(page, "Erreur")
+    expect(page.locator("#sp-def-texte")).to_contain_text("vous l'avez importé")
+    expect(page.locator("#sp-motif")).to_be_hidden()
+    expect(page.locator("#sp-def")).to_have_text("Supprimer définitivement")
+    page.click("#sp-def")
+    expect(page.locator(".toast", has_text="« Erreur » est supprimé définitivement")).to_be_visible(
+        timeout=5000)
+    _ligne(page, "Erreur").wait_for(state="detached", timeout=5000)
 
-    page.once("dialog", repondre(True))
-    page.locator("#m-appartenance-liste [data-sortir]").click()
-    page.locator(".toast", has_text="Album sorti de « Incubateur »").wait_for(timeout=5000)
-    page.locator("#album-modal").wait_for(state="hidden", timeout=5000)
-    ligne("Partagé").wait_for(state="detached", timeout=5000)
-    assert ligne("Seul").count() == 1 and len(demandes) == 2
+    # ── Lia lit la pastille ──────────────────────────────────────────────────────────────
+    _comme(page, live_server, "lia")
+    expect(_ligne(page, "Seul").locator(".sp-pastille")).to_have_text(
+        "suppression demandée par sam")
 
     with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
         reste = {a["id"]: a for a in c.get("/api/albums").json()}
+        assert albums["Erreur"] not in reste
         assert reste[albums["Partagé"]]["nb_planches"] == 1
+        assert reste[albums["Seul"]]["nb_planches"] == 1          # demandé, pas effacé
         rangs = [x["nom"] for x in c.get(f"/api/albums/{albums['Partagé']}/collections").json()]
         assert rangs == ["Principale"], rangs
-        rangs = [x["nom"] for x in c.get(f"/api/albums/{albums['Triple']}/collections").json()]
-        assert rangs == ["Archives", "Principale"], rangs

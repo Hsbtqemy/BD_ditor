@@ -23,7 +23,7 @@
      d'un `<details>` l'est — d'où le sélecteur —, et le contenu d'un `<details>` fermé
      n'est pas rendu : `focusables()` l'écarte déjà par `getClientRects`.
      Cette liste n'a pas à être complète pour que le piège tienne (cf. `trapTarget`) ; elle
-     doit l'être pour que le focus d'OUVERTURE et les deux bords tombent juste. Les sept
+     doit l'être pour que le focus d'OUVERTURE et les deux bords tombent juste. Les huit
      modales de l'application ne portent aucun autre focalisable natif — ni
      `contenteditable`, ni `iframe`, ni média à commandes : on ne l'allonge pas pour des
      cas qui n'existent pas ici.
