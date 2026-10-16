@@ -49,8 +49,9 @@ jusqu'ici. Séparées, chaque situation s'écrit sans exception :
 
 **Ce que cela rend aux numéros et aux citations.** La numérotation compte des PAGES, jamais
 des surfaces : plus aucun décalage, nulle part. Une région trouve sa page par sa position sur
-la surface — une bulle de la page de droite se cite « 13 · … », et seule une case réellement
-à cheval se cite « 12-13 · … ». Les comptes par page restent justes, puisqu'une double page
+la surface — une bulle de la page de droite se cite « 13 · … » ; une case réellement à cheval
+se cite par la page où elle commence dans l'ordre de lecture, et son débordement se dit à côté
+de la citation (§ 5, question 3). Les comptes par page restent justes, puisqu'une double page
 est deux pages.
 
 **Ce que cela rend à IIIF.** Une surface est un *Canvas* ; IIIF Presentation 3 permet d'y
@@ -111,18 +112,29 @@ dont la moitié de simples jointures. Un chantier de fond, de la taille d'une tr
 
 ## 5. Questions à approfondir
 
-Aucune n'est tranchée. Chacune porte une proposition quand il y en a une.
+Les questions 1 à 4 et 14 sont **tranchées par Hugo le 2026-10-16** ; les autres portent une
+proposition quand il y en a une.
 
-1. **Une page appartient-elle à une seule surface ?** Proposition : oui. Une surface porte
-   une ou plusieurs pages ; une page n'est jamais coupée entre deux surfaces.
-2. **L'emprise d'une page sur sa surface** : un rectangle quelconque, ou une coupe simple
-   (verticale pour une double page) ? Un seul cadre étalé demande de poser la ligne de
-   pliure ; deux cadres la donnent d'office.
-3. **Une région à cheval sur deux pages** se cite « 12-13 · c… » — mais compte-t-elle pour
-   les deux pages dans les analyses par page, ou pour celle où elle commence ?
-4. **Le rang d'une case se compte par PAGE ou par SURFACE ?** Proposition : par page — la
-   citation reste alors la même qu'une double page soit assemblée ou non, et l'assemblage ne
-   renumérote rien.
+1. **Une page appartient à une seule surface — tranché : oui.** Une surface porte une ou
+   plusieurs pages ; une page n'est jamais partagée entre deux surfaces, sans quoi elle aurait
+   deux repères et une région ne saurait plus où elle vit.
+2. **L'emprise d'une page est un rectangle, en pixels de la surface — tranché.** Deux cadres
+   sont RECOMMANDÉS à la numérisation : chaque rectangle est alors l'emprise de son image, il
+   n'y a rien à poser. Un cadre unique reste ACCEPTÉ — un fichier d'éditeur, un PDF arrivent
+   souvent ainsi — et l'on y pose une fois la ligne de pliure, qui coupe la surface en deux
+   rectangles.
+3. **Une région à cheval sur deux pages se cite par la page où elle COMMENCE dans l'ordre de
+   lecture, et compte pour elle seule — tranché.** « 12 · c5 », pas « 12-13 · c5 » : une
+   troisième forme de citation que tous les exports et les outils qui les lisent devraient
+   reconnaître. « Où elle commence » et non « la page de gauche » : un manga commence à
+   droite (question 14). Elle compte pour cette page seule dans les analyses par page, pour
+   que la somme des pages fasse l'album. Ce qu'on perd — la chercher sous la page 13, livre
+   ouvert — se compense À CÔTÉ de la citation : l'Atelier montre qu'elle déborde, et les
+   exports portent « s'étend jusqu'à la page 13 ».
+4. **Le rang d'une case se compte par PAGE — tranché.** Une case de la page 13 reste
+   « 13 · c2 » qu'on ait assemblé la double page ou non : l'assemblage ne renumérote rien, et
+   une citation écrite dans un mémoire reste vraie. Par surface, chaque assemblage aurait
+   décalé les numéros de case de la page de droite.
 5. **Les statuts** (`statut` du pipeline, relecture, verrou, validation) : à la surface, ou à
    la page ? Proposition : à la surface pour ce qui décrit un travail sur des régions ; la
    validation est à trancher.
@@ -147,6 +159,22 @@ Aucune n'est tranchée. Chacune porte une proposition quand il y en a une.
     modèle, la page ou la surface ? À trancher AVANT que la tranche 1 d'ANN-7 fige la cible.
 13. **Ce que disent les métadonnées** : `nombre_pages` compterait des pages ; la taille
     physique (`dimensions_cm`) serait celle d'une page, pas celle d'un scan.
+14. **Le sens de lecture est une propriété de l'ALBUM — tranché, 2026-10-16.** Trois
+    valeurs : de gauche à droite (la BD franco-belge, par défaut), de droite à gauche (le
+    manga), de haut en bas (le webtoon). Il se choisit à la création, dans « + Nouvel
+    album », et se change dans la fiche de l'album ; sur un album déjà segmenté, le changer
+    recalcule l'ordre de lecture de ses planches, ce qui efface les réordonnancements faits à
+    la main — l'écran le dit et le fait confirmer, et sur un album vierge ne demande rien.
+    Il sert l'ordre des cases et des bulles, la page où commence une case à cheval (question
+    3), et l'ordre des deux images d'une double page. Aujourd'hui `pipeline/ordering.py` est
+    écrit pour le seul sens occidental (rangées haut → bas, puis gauche → droite), et le dit
+    en tête : sur un manga, tous les rangs de case d'une rangée — donc les citations — et
+    l'ordre de transcription seraient faux. Le manga n'a en revanche rien à numéroter à
+    l'envers : on le numérise dans l'ordre de lecture, et la première page lue devient la
+    page 1. Le sens de lecture ne dépend pas du découpage image / page / surface : c'est un
+    petit chantier qui peut le précéder. Un album qui mêlerait les deux sens (une
+    anthologie) ne se traite pas sans un exemple réel. L'OCR, réglé pour le français, lit un
+    manga traduit, pas un manga en japonais.
 
 ## 6. En attendant le modèle
 
