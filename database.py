@@ -1264,6 +1264,13 @@ def _max_des_charges(conn: sqlite3.Connection, charges: list, resultat: dict) ->
     return resultat
 
 
+def _copier_lignes(conn: sqlite3.Connection, table: str, colonnes: str) -> None:
+    """Copie les lignes de `table` dans `<table>__v30`, identifiants compris. À part pour
+    qu'un test puisse rendre la copie fautive, et mesurer que le contrôle des fautes de
+    clé défait alors tout (`tests/test_identifiants_v30.py`)."""
+    conn.execute(f'INSERT INTO "{table}__v30" ({colonnes}) SELECT {colonnes} FROM "{table}"')
+
+
 def _reconstruire_avec_autoincrement(conn: sqlite3.Connection) -> None:
     """Pose `AUTOINCREMENT` sur les tables de `_AUTOINCREMENT` qui ne l'ont pas, par la
     reconstruction que SQLite prescrit — on ne peut pas le poser par `ALTER TABLE` : table
@@ -1325,8 +1332,7 @@ def _reconstruire_avec_autoincrement(conn: sqlite3.Connection) -> None:
                 colonnes = ", ".join(f'"{c[1]}"' for c in
                                      conn.execute(f'PRAGMA table_info("{table}")'))
                 conn.execute(neuf)
-                conn.execute(f'INSERT INTO "{table}__v30" ({colonnes}) '
-                             f'SELECT {colonnes} FROM "{table}"')
+                _copier_lignes(conn, table, colonnes)
                 conn.execute(f'DROP TABLE "{table}"')
                 conn.execute(f'ALTER TABLE "{table}__v30" RENAME TO "{table}"')
                 for s in index:

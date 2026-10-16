@@ -15,6 +15,7 @@ reconstruction ne doit pas toucher — lignes, index, vues, recherche, tokens, c
 import json
 import re
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -275,6 +276,98 @@ def test_une_faute_de_cle_deja_la_ne_ferme_pas_l_instance(base_v29):
     database.init_db()
     assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] == 30
     assert _sql(base_v29, "PRAGMA foreign_key_check") == avant
+
+
+def test_une_copie_qui_perdrait_une_ligne_defait_tout(base_v29, monkeypatch):
+    """Le contrôle des fautes de clé NEUVES (relecture croisée, mutant M17 qui survivait) :
+    si la copie d'une table perdait une ligne — ici la planche 1, dont dépendent deux
+    régions —, la reconstruction lève et défait TOUT. La base reste en v29, sans
+    AUTOINCREMENT, ses lignes intactes ; aucune table intermédiaire ne reste."""
+    copier = database._copier_lignes
+
+    def copie_qui_perd(conn, table, colonnes):
+        copier(conn, table, colonnes)
+        if table == "planches":
+            conn.execute("DELETE FROM planches__v30 WHERE id = 1")
+    monkeypatch.setattr(database, "_copier_lignes", copie_qui_perd)
+    with pytest.raises(RuntimeError, match="orphelines"):
+        database.init_db()
+    assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] == 29
+    for t in TABLES:
+        assert "AUTOINCREMENT" not in _sql(
+            base_v29, "SELECT sql FROM sqlite_master WHERE name = ?", (t,))[0]["sql"].upper()
+    assert _sql(base_v29, "SELECT id FROM planches") == [{"id": 1}]
+    assert not _sql(base_v29, "SELECT name FROM sqlite_master WHERE name LIKE '%__v30'")
+
+
+# --------------------------------------------------------------------------- #
+# Une VRAIE base v29, faite par le code de 10a3a90 (relecture croisée)
+# --------------------------------------------------------------------------- #
+BASE_V29 = Path(__file__).resolve().parent / "bases" / "v29-10a3a90.sql"
+
+
+@pytest.fixture
+def vraie_v29(tmp_path, monkeypatch):
+    """`tests/bases/v29-10a3a90.sql` : trois comptes, quatre albums dont le dernier
+    détruit, des planches, des cases et des bulles, du texte et ses tokens, une
+    annotation, un locuteur, une présence, un attribut, une validation, un Ctrl+Z, une
+    passe automatique sans effet — et en haut de chaque table, une destruction. Chargée
+    dans une base du test, rouverte (la table plein texte se recrée à la lecture)."""
+    from pipeline import ingest
+    db = tmp_path / "vraie.sqlite"
+    c = sqlite3.connect(db)
+    c.executescript(BASE_V29.read_text(encoding="utf-8"))
+    c.close()
+    monkeypatch.setattr(database, "DB_PATH", db)
+    monkeypatch.setattr(ingest, "CORPUS_DIR", tmp_path / "corpus")
+    monkeypatch.setattr(ingest, "DERIVATIVES_DIR", tmp_path / "derivatives")
+    return db
+
+
+def _etat(db):
+    tables = [r["name"] for r in _sql(
+        db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
+            "AND name NOT LIKE 'recherche_%' ORDER BY name")]
+    return {
+        "comptes": {t: _sql(db, f'SELECT COUNT(*) AS n FROM "{t}"')[0]["n"] for t in tables},
+        "lignes": {t: _sql(db, f"SELECT * FROM {t} ORDER BY id") for t in TABLES},
+        "index": sorted(r["sql"] for r in _sql(
+            db, "SELECT sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL")),
+        "vues": sorted(r["name"] for r in _sql(
+            db, "SELECT name FROM sqlite_master WHERE type = 'view'")),
+        "recherche": sorted(r["region_id"] for r in _sql(
+            db, "SELECT region_id FROM recherche WHERE recherche MATCH 'otage'")),
+        "tokens": _sql(db, "SELECT COUNT(*) AS n FROM tokens_effectifs")[0]["n"],
+    }
+
+
+def test_une_vraie_base_v29_migre_sans_rien_perdre(vraie_v29, tmp_path):
+    """L'album 4 a été détruit en v29 ; son dossier d'images est laissé là (une
+    destruction dont le ménage a échoué). La planche 8 n'est nommée, en dehors des
+    instantanés, que par la portée d'une activité ; la région 16 et le personnage 3 par
+    le journal. Rien de ce qui vit ne bouge, et aucun de ces identifiants ne revient."""
+    assert _sql(vraie_v29, "PRAGMA user_version")[0]["user_version"] == 29
+    (tmp_path / "corpus" / "album_4").mkdir(parents=True)
+    (tmp_path / "corpus" / "album_4" / "planche_0001.png").write_bytes(b"ANCIEN")
+    avant = _etat(vraie_v29)
+    assert avant["recherche"] and avant["tokens"], "la base chargée n'a rien à comparer"
+    database.init_db()
+    apres = _etat(vraie_v29)
+    neuves = {"document", "demande", "demande_document"}
+    assert {t: n for t, n in apres["comptes"].items() if t not in neuves} == avant["comptes"]
+    assert apres["comptes"]["document"] == avant["comptes"]["albums"]
+    for t in TABLES:
+        retire = {"albums": ("document_id", "projet_id")}.get(t, ())
+        assert [{k: v for k, v in r.items() if k not in retire} for r in apres["lignes"][t]] \
+            == avant["lignes"][t], t
+    assert set(avant["index"]) <= set(apres["index"])
+    assert (apres["vues"], apres["recherche"], apres["tokens"]) == \
+        (avant["vues"], avant["recherche"], avant["tokens"])
+    assert _sql(vraie_v29, "PRAGMA foreign_key_check") == []
+    assert _sql(vraie_v29, "PRAGMA integrity_check")[0]["integrity_check"] == "ok"
+    assert _sql(vraie_v29, "PRAGMA user_version")[0]["user_version"] == 30
+    assert {t: _seq(vraie_v29)[t] for t in TABLES} == \
+        {"albums": 4, "planches": 8, "regions": 16, "personnages": 3}
 
 
 def test_une_table_de_forme_inattendue_arrete_tout_avant_de_toucher(base_v29):
