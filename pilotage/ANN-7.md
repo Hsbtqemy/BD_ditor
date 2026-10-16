@@ -152,6 +152,7 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
   relevé d'`ANN-6` se pose avec une entrée de grille, donc après le modèle ; le catalogue
   et le fonds de `COL-3` partagent le patron du pot commun, et gagnent à être conçus ensemble
   **Tranché par Hugo le 2026-10-14** : `COL-3` d'abord (fusion de sa tranche 1, puis sa tranche 2), puis le modèle des grilles, en quatre tranches (`docs/grilles-et-releves.md`, §1). Commits sur `dev`, sans push, chacun après revue
+- [ ] **La cible « planche » attend le modèle d'`IMG-2`, ou le tranche** — attendu : avant que la tranche 1 fige « la planche » comme cible d'une entrée, dit si c'est la PAGE (unité imprimée, numérotée, citée) ou la SURFACE (le repère où vivent les régions). Ouvert le 2026-10-16 : `docs/images-pages-surfaces.md` propose de séparer image, page et surface, que la planche confond aujourd'hui ; les régions changeraient alors de repère
 
 ## Contexte
 
