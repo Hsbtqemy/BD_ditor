@@ -186,6 +186,10 @@
      compte ou au groupe absent — c'est lui qu'on ira chercher dans l'annuaire. */
   function cibleSignal(s) {
     switch (s.signal) {
+      // COL-3, tranche 2 — une demande mène à la demande, dans le bloc du fonds : jamais à la
+      // fiche de qui l'a déposée. Sa clé est `demande` et non `login` pour cette raison (le
+      // `default` ci-dessous mènerait sinon tout signal porteur d'un login à un compte).
+      case "demande_en_attente": return { type: "demande", id: s.demande };
       case "groupe_absent": return { type: "groupe", id: s.groupe };
       case "compte_absent":
       case "identite_changee":
@@ -204,7 +208,8 @@
   /* Le texte d'un signal. Le serveur rend des CODES (contrat accordé) : les phrases vivent
      ici, à un seul endroit, dans le lexique de la décision 7. Un code inconnu se montre par
      son nom plutôt que de disparaître — un signal qu'on tait est pire qu'un signal mal dit.
-     `noms` : { collections: {id → nom}, comptes: {login → nom lisible} }. */
+     `noms` : { collections: {id → nom}, comptes: {login → nom lisible},
+     demandes: {id → {texte}} } — la dernière clé est facultative. */
   function texteSignal(s, noms) {
     const col = (id) => {
       const n = noms && noms.collections ? noms.collections[id] : undefined;
@@ -215,6 +220,13 @@
       return n ? `${n} (${login})` : String(login);
     };
     switch (s.signal) {
+      case "demande_en_attente": {
+        // Ce que la demande dit se lit dans le fonds ; ici, de quoi la reconnaître, si le
+        // bloc du fonds l'a déjà lue (`noms.demandes`). Sinon une phrase qui ne lit pas le
+        // genre : ses valeurs ne se recopient qu'une fois, dans `lib/suppression.js`.
+        const d = noms && noms.demandes ? noms.demandes[s.demande] : undefined;
+        return d && d.texte ? d.texte : "Une demande de suppression attend sa réponse";
+      }
       case "groupe_absent":
         return `Le groupe ${s.groupe} n'est pas dans l'annuaire (accès à ${col(s.collection)})`;
       case "compte_absent":
@@ -234,6 +246,7 @@
 
   function texteGroupeSignaux(code, n) {
     switch (code) {
+      case "demande_en_attente": return `${n} demandes de suppression en attente`;
       case "groupe_absent": return `${n} accès à des groupes absents de l'annuaire`;
       case "compte_absent": return `${n} accès à des comptes absents de l'annuaire`;
       case "proprietaire_absent": return `${n} collections sans propriétaire dans l'annuaire`;

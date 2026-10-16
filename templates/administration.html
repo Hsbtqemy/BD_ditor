@@ -25,8 +25,8 @@
     <h1>Administration</h1>
     <p class="muted small">Ce qui porte sur l'<b>instance</b> plutôt que sur un album :
       quelle version tourne ici, à qui s'adresser quand on est bloqué, quels projets
-      existent et qui y entre, quels comptes et quels groupes existent et à quoi ils ont
-      accès, et si les moteurs répondent encore.
+      existent et qui y entre, ce que l'instance détient, quels comptes et quels groupes
+      existent et à quoi ils ont accès, et si les moteurs répondent encore.
       Qui entre dans une collection se règle dans sa fiche, dans la
       <a href="/corpus">Bibliothèque</a>.</p>
   </header>
@@ -110,6 +110,38 @@
       <p id="projets-ferme-texte"></p>
     </section>
 
+    <!-- ───────── Le fonds (COL-3, tranche 2) — ce que l'instance détient ─────────────────
+         `hidden` par défaut, levé par le JS SEULEMENT si `GET /api/fonds` répond : la garde
+         est celle de la route (403 à qui ne tient pas le fonds), comme pour les comptes.
+         Les suppressions demandées en tête — quelqu'un attend une réponse —, puis
+         « Importer au fonds », puis les documents. Aucune phrase d'aide à demeure : ce que
+         chaque geste fait se dit dans sa confirmation. -->
+    <section class="admin-bloc fd-bloc" id="fonds-bloc" hidden aria-labelledby="fonds-titre">
+      <h2 id="fonds-titre" tabindex="-1">🗄️ Le fonds</h2>
+      <p id="fd-compte" class="muted small"></p>
+      <p id="fd-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
+      <section class="fd-demandes" id="fd-demandes" hidden aria-labelledby="fd-demandes-titre">
+        <h3 id="fd-demandes-titre">Suppressions demandées</h3>
+        <ul class="fd-liste" id="fd-demandes-liste"></ul>
+      </section>
+      <div class="fd-importer">
+        <h3 id="fd-importer-titre">Importer au fonds</h3>
+        <div class="fd-importer-ligne">
+          <label class="sr-only" for="fd-titre">Titre de l'album à importer au fonds</label>
+          <input id="fd-titre" placeholder="Titre de l'album" autocomplete="off">
+          <label class="sr-only" for="fd-fichiers">Planches à importer</label>
+          <input id="fd-fichiers" type="file" multiple
+                 accept=".tif,.tiff,.jpg,.jpeg,.jp2,.j2k,.jpf,.jpx,.jpc,.j2c,.png,.bmp,.gif,.webp">
+          <button id="fd-importer" class="ghost small" type="button"
+                  title="L'album naît appelé par personne ; « Rendre » le range ensuite dans une collection.">+ Importer au fonds</button>
+        </div>
+        <p id="fd-importer-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
+      </div>
+      <h3 id="fd-documents-titre">Documents</h3>
+      <ul class="fd-liste" id="fd-documents" aria-labelledby="fd-documents-titre"></ul>
+      <p id="fd-sans-document" class="col-note" hidden></p>
+    </section>
+
     <!-- ───────── Comptes et groupes (AUTH-12, étape 2) — une liste et une fiche ─────────
          Remplace « 👤 Comptes vus par l'application » (AUTH-7), dont rien ne se perd sans
          être dit : la nature d'un compte se déclare dans sa fiche, le verdict se lit dans
@@ -191,6 +223,7 @@
 <script src="/static/lib/droits.js"></script>
 <script src="/static/lib/qui-entre.js"></script>
 <script src="/static/lib/membres-projet.js"></script>
+<script src="/static/lib/suppression.js"></script>
 <script src="/static/administration.js"></script>
 </body>
 </html>

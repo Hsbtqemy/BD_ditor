@@ -931,6 +931,47 @@ def test_a11y_supprimer_deux_reponses(page, live_server, theme):
     assert aid
 
 
+@pytest.mark.parametrize("live_server", [True], indirect=True)
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_le_fonds_et_ses_demandes(page, live_server, theme):
+    """COL-3, tranche 2 — le bloc « Le fonds » de l'Administration, PEUPLÉ : une demande de
+    suppression en tête (motif, « Détruire », « Garder »), une copie gardée et son « Rendre
+    à… », un document appelé par personne et sa pastille ; puis le responsable d'un projet
+    devant « Demander sa suppression ». L'audit générique de `/administration` ne voit le
+    fonds que vide de tout cela."""
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=30, headers=ECRITURE) as c:
+        cid = c.post("/api/collections", json={"nom": "Étude"}).json()["id"]
+        a1 = c.post("/api/albums", json={"titre": "Doublon", "collection_id": cid}).json()["id"]
+        a2 = c.post("/api/albums", json={"titre": "Gardé", "collection_id": cid}).json()["id"]
+        assert c.delete(f"/api/albums/{a2}/collections/{cid}").status_code == 204
+        r = c.put(f"/api/collections/{cid}/acces",
+                  json={"genre": "utilisateur", "principal": "sam", "niveau": "ecriture"})
+        assert r.status_code == 200, r.text
+        pid = c.post("/api/projets", json={"nom": "Séminaire"}).json()["id"]
+        r = c.put(f"/api/projets/{pid}/membres",
+                  json={"genre": "utilisateur", "principal": "rui", "role": "responsable"})
+        assert r.status_code in (200, 201), r.text
+    entete = {k: v for k, v in ECRITURE.items() if k not in ("Remote-User", "Remote-Groups")}
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=30,
+                      headers={"Remote-User": "sam", **entete}) as c:
+        r = c.post("/api/demandes", json={"genre": "suppression_document", "album_id": a1,
+                                          "motif": "Importé deux fois."})
+        assert r.status_code == 201, r.text
+    _theme(page, theme)
+    page.set_extra_http_headers({"Remote-User": "decor", "Remote-Groups": "bd-admins"})
+    page.goto(live_server + "/administration", wait_until="networkidle")
+    page.wait_for_selector("#fonds-bloc:not([hidden]) .fd-demande", timeout=5000)
+    page.wait_for_selector(".fd-gardee select", timeout=5000)
+    viol = _audit(page)
+    assert not viol, f"Le fonds [{theme}] :\n{_fmt(viol)}"
+
+    page.set_extra_http_headers({"Remote-User": "rui"})
+    page.goto(live_server + "/administration", wait_until="networkidle")
+    page.wait_for_selector("#pj-demander-motif", timeout=5000)
+    viol = _audit(page)
+    assert not viol, f"Demander la suppression d'un projet [{theme}] :\n{_fmt(viol)}"
+
+
 # --------------------------------------------------------------------------- #
 # Figures citables (DROIT-1) — citer se décide sur la région
 # --------------------------------------------------------------------------- #

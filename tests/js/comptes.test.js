@@ -254,6 +254,12 @@ const CAS_SIGNAUX = [
    "« collection 99 » n'a pas de propriétaire"],
   // Un code que l'écran ne connaît pas encore se montre par son nom, et mène quelque part.
   [{ signal: "nouveau_code", login: "dora" }, { type: "compte", id: "dora" }, "nouveau_code"],
+  // COL-3, tranche 2 — une demande mène à la DEMANDE, jamais à la fiche d'un compte, même
+  // si le signal portait un jour un login : c'est au fonds qu'on y répond.
+  [{ signal: "demande_en_attente", demande: 4, genre: "suppression_document" },
+   { type: "demande", id: 4 }, "Une demande de suppression attend sa réponse"],
+  [{ signal: "demande_en_attente", demande: 4, genre: "suppression_document", login: "sam" },
+   { type: "demande", id: 4 }, "Une demande de suppression attend sa réponse"],
 ];
 for (const [s, cible, texte] of CAS_SIGNAUX) {
   test(`signal ${s.signal} → ${cible.type} ${cible.id}`, () => {
@@ -324,3 +330,12 @@ for (const [compte, texte] of CAS_DEPART) {
     assert.doesNotMatch(t, /possible|recommand|supprimable/i);
   });
 }
+
+test("une demande se nomme par ce que le fonds en a lu, quand il l'a lu", () => {
+  const noms = { ...NOMS, demandes: { 4: { texte: "Sam demande la suppression définitive de « T »" } } };
+  assert.equal(C.texteSignal({ signal: "demande_en_attente", demande: 4 }, noms),
+               "Sam demande la suppression définitive de « T »");
+  assert.equal(C.texteSignal({ signal: "demande_en_attente", demande: 5 }, noms),
+               "Une demande de suppression attend sa réponse");
+  assert.equal(C.texteGroupeSignaux("demande_en_attente", 7), "7 demandes de suppression en attente");
+});

@@ -1,9 +1,10 @@
 /* Administration (UX-10) — le lieu des gestes qui portent sur l'INSTANCE.
 
-   CINQ blocs, et aucun n'est une affaire de Bibliothèque : la version servie dit quel
+   SIX blocs, et aucun n'est une affaire de Bibliothèque : la version servie dit quel
    commit tourne ici (INFRA-10), le référent de l'instance dit à qui s'adresser quand on
    n'a accès à rien (AUTH-12, étape 4), les projets disent quel étage coiffe les collections
-   et qui y entre (COL-3), les comptes et groupes disent qui utilise l'instance
+   et qui y entre (COL-3), le fonds dit ce que l'instance détient et quelles suppressions
+   on lui demande (COL-3, tranche 2), les comptes et groupes disent qui utilise l'instance
    et par quoi il entre (AUTH-12, qui remplace la vue des comptes d'AUTH-7), les moteurs
    disent si l'instance sait encore reconnaître quelque chose. Les moteurs et les accès vivaient dans
    `/corpus` par ACCRÉTION — c'était le seul écran administratif, et tout ce qui y
@@ -382,6 +383,7 @@ function cgRendreSignaux() {
   const noms = {
     collections: Object.fromEntries(d.collections.map((c) => [c.id, c.nom])),
     comptes: Object.fromEntries(d.comptes.filter((c) => c.nom).map((c) => [c.login, c.nom])),
+    demandes: FD.textes,          // COL-3 : ce que le bloc du fonds a lu des demandes
   };
   const ligne = (s) => {
     const c = BDComptes.cibleSignal(s), texte = BDComptes.texteSignal(s, noms);
@@ -886,6 +888,8 @@ function cgInstaller() {
       return;
     }
     if (b.dataset.cgOuvrir !== undefined) { cgOuvrirA(b.dataset.cgOuvrir); return; }
+    // COL-3, tranche 2 — une demande mène au FONDS, où l'on y répond ; jamais à un axe.
+    if (b.dataset.type === "demande") { fdAllerDemande(Number(b.dataset.id)); return; }
     if (b.dataset.type && b.dataset.id !== undefined) {
       cgAller(b.dataset.type, b.dataset.id, b.classList.contains("cg-objet"));
     }
@@ -1120,7 +1124,7 @@ function pjDecider(p) {
   if (!PJ.decide) {
     return `<p class="col-note pj-a-demander">Vous réglez qui entre dans ce projet. Le
       renommer, corriger sa description ou sa justification, ou le supprimer se demande à un
-      administrateur de l'instance.</p>`;
+      administrateur de l'instance.</p>${pjDemander(p)}`;
   }
   return `<div class="pj-renommer">
       <label for="pj-renommer-nom">Nom</label>
@@ -1137,6 +1141,44 @@ function pjDecider(p) {
          ${pjLigneDeGeste("supprimer", "p")}
          <p class="col-note">Un projet ne se supprime que vide : tant qu'une collection lui
           appartient, le serveur le refuse.</p>`}`;
+}
+
+/* COL-3, tranche 2 (décision B5) — le responsable DEMANDE la suppression de son projet, motif
+   à l'appui ; un administrateur y répond dans le fonds. Une demande qui attend se dit, et
+   ne se redépose pas. Le projet de repli ne se supprime pas : rien à demander. */
+function pjDemander(p) {
+  if (p.repli) return "";
+  if (p.demande_suppression) {
+    return `<p class="pj-demande-etat"><span class="pj-puce">suppression demandée le `
+      + `${esc(BDSuppression.dateLue(p.demande_suppression.date_creation))}</span></p>`;
+  }
+  return `<div class="pj-demander">
+      <label for="pj-demander-motif">Pourquoi le supprimer</label>
+      <textarea id="pj-demander-motif" rows="2"></textarea>
+      <div class="pj-decrire-pied"><button type="button" class="ghost small"
+        data-pj-demander="1">Demander sa suppression</button>${pjLigneDeGeste("demander", "span")}</div>
+    </div>`;
+}
+
+async function pjDemanderSuppression() {
+  const p = pjProjet(), ligne = $("#pj-demander-msg");
+  if (!p) return;
+  const motif = $("#pj-demander-motif").value.trim();
+  if (!motif) {
+    pjMsg(ligne, "Dites pourquoi : c'est ce que l'administrateur lira pour décider.", true);
+    $("#pj-demander-motif").focus();
+    return;
+  }
+  try {
+    await apiSend("POST", "/api/demandes",
+                  { genre: BDSuppression.GENRE_PROJET, projet_id: p.id, motif });
+  } catch (e) { pjMsg(ligne, e.message || "Échec", true); return; }
+  if (!await pjLire()) return;
+  pjRendre();
+  pjMsg($("#pj-msg"), `La demande de supprimer « ${p.nom} » est partie à un administrateur. `
+    + "Rien n'est supprimé d'ici sa réponse.");
+  const titre = $("#pj-fiche-titre");
+  if (titre) titre.focus();
 }
 
 function pjRendreFiche() {
@@ -1159,7 +1201,8 @@ function pjRendreFiche() {
     <div class="pj-tete">
       <h3 id="pj-fiche-titre" tabindex="-1">${esc(p.nom)}</h3>
       <p class="pj-sous"><span>${esc(pjPluriel(p.nb_collections, "collection"))}</span>
-        ${p.repli ? `<span class="pj-puce">projet de repli</span>` : ""}</p>
+        ${p.repli ? `<span class="pj-puce">projet de repli</span>` : ""}
+        ${p.demande_suppression && PJ.decide ? `<span class="sp-pastille">suppression demandée</span>` : ""}</p>
     </div>
     ${p.description ? `<p class="pj-description">${esc(p.description)}</p>` : ""}
     ${justification}
@@ -1292,6 +1335,7 @@ function pjDemarrer() {
     } else if (b.dataset.pjRenommer) pjRenommer();
     else if (b.dataset.pjDecrire) pjDecrire();
     else if (b.dataset.pjSupprimer) pjSupprimer();
+    else if (b.dataset.pjDemander) pjDemanderSuppression();
   });
   $("#pj").addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && ev.target.id === "pj-renommer-nom") {
@@ -1300,6 +1344,308 @@ function pjDemarrer() {
     }
   });
   pjCharger();
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Le fonds (COL-3, tranche 2) — ce que l'instance détient, pour qui le TIENT
+
+   Tout album est la copie de travail d'un DOCUMENT, et le document appartient à l'instance.
+   Ce bloc montre les documents — d'où chacun vient, où il est employé, lesquels ne sont
+   appelés par personne —, les suppressions demandées, et les trois gestes de qui tient le
+   fonds : répondre à une demande (détruire ou garder), RENDRE une copie gardée à une
+   collection de son projet, DÉTRUIRE un document que personne n'appelle. Et un quatrième,
+   décidé par Hugo le 2026-10-11 : IMPORTER AU FONDS, sans passer par une collection — un
+   album qui naît « appelé par personne », que « Rendre à… » distribue ensuite.
+
+   LA GARDE EST CELLE DU SERVEUR. Le bloc est `hidden` par défaut et ne se lève que si
+   `GET /api/fonds` répond : un 403 le laisse fermé, sans un mot — c'est la réponse d'une
+   route réservée, comme celle de « Comptes et groupes ». Aucune autre panne ne le cache :
+   un administrateur devant un bloc qui disparaît chercherait un droit qu'il a déjà. Qui le
+   tient : l'administrateur, et l'usage sur un seul poste (`Portee.peut_tenir_le_fonds`).
+
+   « Rendre » et « Détruire » n'ont pas de route à eux : ce sont le rangement
+   (`PUT /api/albums/{id}/collections/{cid}`) et la destruction (`DELETE /api/albums/{id}`)
+   d'aujourd'hui, joués par une portée totale. Les mots — ce qu'une demande dit, d'où vient
+   un document — viennent de `lib/suppression.js`.
+
+   « À regarder » porte les demandes en attente (signal `demande_en_attente`) : il les NOMME
+   avec ce que ce bloc a lu (`FD.textes`), et y MÈNE (`fdAllerDemande`) — jamais à la fiche
+   de qui a demandé. Répondre change « À regarder » : « Comptes et groupes » se relit.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const FD = {
+  documents: [],
+  demandes: [],          // les demandes EN ATTENTE, telles que `GET /api/demandes` les rend
+  collections: null,     // pour « Rendre à… » ; null = illisible
+  textes: {},            // id de demande → { texte }, lu par « À regarder »
+  sansDocument: [],
+};
+
+/* UN message à la fois dans le bloc — la règle de « Projets », appliquée ici à SES lignes. */
+function fdTaireSauf(el) {
+  document.querySelectorAll("#fonds-bloc .col-msg").forEach((l) => {
+    if (l === el) return;
+    l.textContent = "";
+    l.classList.remove("erreur", "alerte");
+  });
+}
+
+function fdMsg(el, texte, erreur) {
+  fdTaireSauf(el);
+  el.textContent = texte || "";
+  el.classList.toggle("erreur", !!erreur);
+}
+
+async function fdCharger() {
+  let fonds;
+  try { fonds = await apiGet("/api/fonds"); }
+  catch (e) {
+    if (e.statut === 403) { $("#fonds-bloc").hidden = true; return false; }
+    $("#fonds-bloc").hidden = false;
+    fdMsg($("#fd-msg"), `Le fonds n'a pas pu être lu : ${e.message}`, true);
+    return false;
+  }
+  // Les demandes et les collections ne font tomber ni l'une ni l'autre le bloc : sans elles,
+  // il le DIT là où elles manquent.
+  const [demandes, collections] = await Promise.all([
+    apiGet("/api/demandes").catch(() => null),
+    apiGet("/api/collections").catch(() => null),
+  ]);
+  FD.documents = fonds.documents || [];
+  FD.sansDocument = fonds.copies_sans_document || [];
+  FD.demandes = demandes === null ? null : demandes.filter((d) => d.en_attente);
+  FD.collections = collections;
+  FD.textes = Object.fromEntries((FD.demandes || []).map((d) =>
+    [d.id, { texte: BDSuppression.texteDemande(d) }]));
+  $("#fonds-bloc").hidden = false;
+  fdRendre();
+  // « À regarder » se nomme avec ce que le fonds vient de lire.
+  if (CG.donnees) cgRendreSignaux();
+  return true;
+}
+
+function fdRendre() {
+  const docs = FD.documents;
+  const personne = docs.filter((d) => !d.appele).length;
+  const n = FD.demandes ? FD.demandes.length : 0;
+  $("#fd-compte").textContent = [
+    pjPluriel(docs.length, "document"),
+    `${personne} appelé${personne > 1 ? "s" : ""} par personne`,
+    FD.demandes === null ? "demandes illisibles"
+      : `${n} suppression${n > 1 ? "s" : ""} demandée${n > 1 ? "s" : ""}`,
+  ].join(" · ");
+  fdRendreDemandes();
+  fdRendreDocuments();
+}
+
+function fdRendreDemandes() {
+  const liste = $("#fd-demandes-liste");
+  if (FD.demandes === null) {
+    $("#fd-demandes").hidden = false;
+    liste.innerHTML = `<li class="col-note erreur">Les demandes n'ont pas pu être lues.</li>`;
+    return;
+  }
+  $("#fd-demandes").hidden = !FD.demandes.length;
+  liste.innerHTML = FD.demandes.map((d) => {
+    const projet = d.genre === BDSuppression.GENRE_PROJET;
+    return `<li class="fd-demande" id="fd-demande-${d.id}" tabindex="-1">
+      <p class="fd-demande-texte">${esc(BDSuppression.texteDemande(d))}</p>
+      <p class="muted small fd-demande-contexte">${esc(BDSuppression.contexteDemande(d))}</p>
+      ${d.motif ? `<p class="fd-motif">${esc(d.motif)}</p>` : ""}
+      <div class="fd-gestes">
+        <button type="button" class="danger" data-fd-accepter="${d.id}">${projet
+          ? "Supprimer le projet" : "Détruire"}</button>
+        <button type="button" class="ghost" data-fd-refuser="${d.id}">Garder</button>
+        <span id="fd-demande-msg-${d.id}" class="col-msg fd-ligne-msg muted small"
+              role="status" aria-live="polite"></span>
+      </div>
+    </li>`;
+  }).join("");
+}
+
+function fdRendreDocuments() {
+  const liste = $("#fd-documents");
+  if (!FD.documents.length) {
+    liste.innerHTML = `<li class="muted small">Aucun document.</li>`;
+  } else {
+    liste.innerHTML = FD.documents.map(fdDocument).join("");
+  }
+  $("#fd-sans-document").hidden = !FD.sansDocument.length;
+  $("#fd-sans-document").textContent = FD.sansDocument.length
+    ? `${pjPluriel(FD.sansDocument.length, "album")} sans document (base retouchée à la main) : `
+      + FD.sansDocument.map((id) => `n° ${id}`).join(", ") + "."
+    : "";
+}
+
+function fdDocument(d) {
+  const titre = BDSuppression.titreDocument(d);
+  const premiere = d.copies[0] || {};
+  const sous = [premiere.serie, premiere.auteur,
+                d.copies.length ? pjPluriel(premiere.nb_planches || 0, "planche") : ""]
+    .filter(Boolean).join(" · ");
+  const emplois = BDSuppression.emplois(d);
+  const gardees = d.copies.filter((c) => !c.collections.length);
+  const puces = [
+    d.appele ? "" : `<span class="pj-puce">appelé par personne</span>`,
+    d.demande ? `<span class="sp-pastille">${esc(BDSuppression.pastille(d.demande))}</span>` : "",
+  ].join("");
+  return `<li class="fd-doc" id="fd-doc-${d.id}">
+    <div class="fd-doc-tete">
+      <h4 id="fd-doc-titre-${d.id}">${esc(titre)}</h4>
+      ${sous ? `<span class="muted small">${esc(sous)}</span>` : ""}
+      ${puces}
+    </div>
+    <p class="small fd-origine">${esc(BDSuppression.origine(d))}</p>
+    ${emplois.length ? `<p class="small fd-emplois">Employé par ${esc(emplois.join(" ; "))}</p>` : ""}
+    ${gardees.map((c) => fdGardee(d, c)).join("")}
+    ${!d.appele && d.copies.length ? `<p class="fd-gestes"><button type="button" class="danger"
+        data-fd-detruire="${d.id}">Détruire</button></p>` : ""}
+    <p id="fd-doc-msg-${d.id}" class="col-msg fd-ligne-msg muted small" role="status"
+       aria-live="polite"></p>
+  </li>`;
+}
+
+/* Une copie GARDÉE — retirée de sa dernière collection, ou importée au fonds — et
+   « Rendre à… », vers une collection de SON projet : le serveur refuse toute autre. */
+function fdGardee(d, c) {
+  const projet = c.projet_nom ? `projet « ${c.projet_nom} »` : "sans projet";
+  const choix = FD.collections === null ? null : BDSuppression.rendreA(c, FD.collections);
+  let geste;
+  if (choix === null) {
+    geste = `<span class="col-note">Les collections n'ont pas pu être lues.</span>`;
+  } else if (!choix.length) {
+    geste = `<span class="col-note">Aucune collection de son projet où la rendre.</span>`;
+  } else {
+    geste = `<label class="sr-only" for="fd-rendre-${c.album_id}">Rendre « ${esc(c.titre)} » à
+        la collection</label>
+      <select id="fd-rendre-${c.album_id}">${choix.map((x) =>
+        `<option value="${x.id}">${esc(x.nom)}</option>`).join("")}</select>
+      <button type="button" class="ghost small" data-fd-rendre="${c.album_id}"
+              data-fd-doc="${d.id}">Rendre</button>`;
+  }
+  return `<div class="fd-gardee">
+    <span class="small">Copie gardée ici (${esc(projet)}).</span>
+    <span class="fd-rendre">${geste}</span>
+  </div>`;
+}
+
+/* ── Gestes ─────────────────────────────────────────────────────────────────────── */
+
+/* Après un geste : le fonds se relit, et ce qui en dépend ailleurs dans la page aussi —
+   « À regarder », et, si un projet a pu disparaître, le bloc des projets et la bande. */
+async function fdApres(el, texte, projetTouche) {
+  await fdCharger();
+  if (CG.donnees) cgCharger({ garderFiche: true });
+  if (projetTouche && await pjLire()) { pjRendre(); pjPrevenirLaBande(); }
+  fdMsg(el || $("#fd-msg"), texte);
+}
+
+async function fdRepondre(id, reponse) {
+  const d = (FD.demandes || []).find((x) => x.id === id);
+  if (!d) return;
+  const ligne = $(`#fd-demande-msg-${id}`);
+  const projet = d.genre === BDSuppression.GENRE_PROJET;
+  const objet = projet ? `le projet « ${d.projet_nom || d.projet_id} »`
+    : (d.documents || []).map((x) => `« ${x.titre} »`).join(", ");
+  if (reponse === BDSuppression.ACCEPTER && !confirm(projet
+      ? `Supprimer ${objet} ? Ses membres en sortent. Il ne se supprime que vide.`
+      : BDSuppression.confirmationDetruire((d.documents || []).map((x) => x.titre).join(", ")))) {
+    return;
+  }
+  try {
+    await apiSend("POST", `/api/demandes/${id}/reponse`, { reponse });
+  } catch (e) { fdMsg(ligne, e.message || "Échec", true); return; }
+  const qui = d.demandeur_nom || d.demandeur || "quelqu'un";
+  await fdApres($("#fd-msg"), reponse === BDSuppression.REFUSER
+    ? `${objet.charAt(0).toUpperCase()}${objet.slice(1)} : gardé. La demande de ${qui} est close.`
+    : projet ? `${objet.charAt(0).toUpperCase()}${objet.slice(1)} est supprimé.`
+             : `${objet} : détruit, avec ses images et tout le travail fait dessus.`,
+    projet && reponse === BDSuppression.ACCEPTER);
+  $("#fonds-titre").focus();
+}
+
+async function fdRendreCopie(albumId, docId) {
+  const sel = $(`#fd-rendre-${albumId}`), ligne = $(`#fd-doc-msg-${docId}`);
+  if (!sel) return;
+  const nom = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : "";
+  try {
+    await apiSend("PUT", `/api/albums/${albumId}/collections/${sel.value}`);
+  } catch (e) { fdMsg(ligne, e.message || "Échec", true); return; }
+  await fdApres($("#fd-msg"), `Copie rendue à « ${nom} », avec tout son travail.`);
+  $("#fonds-titre").focus();
+}
+
+async function fdDetruire(docId) {
+  const d = FD.documents.find((x) => x.id === docId);
+  if (!d) return;
+  const titre = BDSuppression.titreDocument(d), ligne = $(`#fd-doc-msg-${docId}`);
+  if (!confirm(BDSuppression.confirmationDetruire(titre))) return;
+  try {
+    for (const c of d.copies) await apiSend("DELETE", `/api/albums/${c.album_id}`);
+  } catch (e) { fdMsg(ligne, e.message || "Échec", true); return; }
+  await fdApres($("#fd-msg"), `« ${titre} » : détruit, avec ses images et tout le travail `
+    + "fait dessus.");
+  $("#fonds-titre").focus();
+}
+
+/* « Importer au fonds » : l'album naît sans collection ni projet (`au_fonds`), puis ses
+   planches entrent une à une — la route d'import d'un album, la même que l'Atelier. Un
+   fichier refusé n'arrête pas les suivants ; le bilan dit ce qui est entré. */
+async function fdImporter() {
+  const ligne = $("#fd-importer-msg"), bouton = $("#fd-importer");
+  const titre = $("#fd-titre").value.trim();
+  const fichiers = [...$("#fd-fichiers").files];
+  if (!titre) { fdMsg(ligne, "Donnez un titre à l'album.", true); $("#fd-titre").focus(); return; }
+  if (bouton.disabled) return;
+  bouton.disabled = true;
+  let album;
+  try { album = await apiSend("POST", "/api/albums", { titre, au_fonds: true }); }
+  catch (e) { fdMsg(ligne, e.message || "Échec", true); bouton.disabled = false; return; }
+  const refus = [];
+  for (const f of fichiers) {
+    const fd = new FormData();
+    fd.append("file", f);
+    try {
+      const r = await fetch(`/api/albums/${album.id}/import`,
+        { method: "POST", headers: { "X-BD-Requete": "1" }, body: fd });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+    } catch (e) { refus.push(`${f.name} (${e.message})`); }
+  }
+  bouton.disabled = false;
+  $("#fd-titre").value = "";
+  $("#fd-fichiers").value = "";
+  const entrees = fichiers.length - refus.length;
+  await fdApres(ligne, `« ${titre} » est au fonds, appelé par personne : `
+    + `${pjPluriel(entrees, "planche")} importée${entrees > 1 ? "s" : ""}.`
+    + (refus.length ? ` Refusé : ${refus.join(", ")}.` : ""));
+  if (refus.length) ligne.classList.add("alerte");
+}
+
+/* « À regarder » mène ICI : la demande, mise sous les yeux et sous le clavier. Une demande
+   qu'on ne trouve plus a reçu sa réponse entre-temps : on relit, puis on le dit. */
+async function fdAllerDemande(id) {
+  let el = $(`#fd-demande-${id}`);
+  if (!el) { await fdCharger(); el = $(`#fd-demande-${id}`); }
+  if (!el) {
+    fdMsg($("#fd-msg"), "Cette demande a déjà reçu sa réponse.");
+    $("#fonds-titre").focus();
+    return;
+  }
+  el.scrollIntoView({ block: "center" });
+  el.focus();
+}
+
+function fdDemarrer() {
+  $("#fd-importer").onclick = fdImporter;
+  $("#fonds-bloc").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button");
+    if (!b) return;
+    if (b.dataset.fdAccepter) fdRepondre(Number(b.dataset.fdAccepter), BDSuppression.ACCEPTER);
+    else if (b.dataset.fdRefuser) fdRepondre(Number(b.dataset.fdRefuser), BDSuppression.REFUSER);
+    else if (b.dataset.fdRendre) fdRendreCopie(Number(b.dataset.fdRendre), Number(b.dataset.fdDoc));
+    else if (b.dataset.fdDetruire) fdDetruire(Number(b.dataset.fdDetruire));
+  });
+  fdCharger();
 }
 
 
@@ -1398,6 +1744,11 @@ function setup() {
   // est fermé. Et le panneau « Qui entre » monté dans la fiche d'une collection lit ensuite
   // SES deux routes, à chaque fiche ouverte.
   //
+  // COL-3, tranche 2 — le FONDS en ajoute : `/api/fonds`, qui peut être refusé et ne masque
+  // alors que son bloc ; puis, s'il a répondu, `/api/demandes`, et `/api/collections` une
+  // TROISIÈME fois, pour « Rendre à… ». Trois blocs, trois lectures de la même route : aucun
+  // ne doit tomber parce qu'un autre est fermé.
+  //
   // Le compte est tenu à jour ICI parce que ce commentaire a déjà menti : il disait
   // « deux requêtes » depuis le premier jour, à trois lignes de la ligne qui le
   // contredisait (cf. plus bas). Un chiffre dans un commentaire est une affirmation
@@ -1429,6 +1780,7 @@ function setup() {
   cgInstaller();
   cgCharger();
   pjDemarrer();                    // COL-3 : le bloc des projets, à lui (cf. `PJ`)
+  fdDemarrer();                    // COL-3, tranche 2 : le fonds, réservé par sa route
   santeCharger();
   // SANTE-1 : éprouver reste un geste SÉPARÉ et volontaire — le contrôle profond importe
   // les moteurs pour de bon, quelques secondes et quelques centaines de mégaoctets.

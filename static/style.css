@@ -2857,6 +2857,52 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .pj-supprimer { margin-bottom: .2rem; }
 .pj-supprimer + .pj-geste-msg { margin-bottom: 1em; }
 
+/* ── Le fonds (COL-3, tranche 2) — le bloc de l'Administration ──────────────────────────
+   Des LISTES dont les lignes passent à la ligne, pas des tableaux : rien n'a à défiler de
+   côté, à aucune largeur. Les gestes d'une ligne s'enroulent sous son texte ; un nom de
+   document ou de collection, d'une longueur que personne ne borne, se coupe n'importe où
+   plutôt que d'élargir le bloc. */
+.admin-bloc.fd-bloc { max-width: none; }
+.fd-bloc h3 { margin: 1rem 0 .4rem; font-size: .8rem; text-transform: uppercase;
+              letter-spacing: .06em; color: var(--text-muted); font-weight: 600; }
+#fonds-titre:focus { outline: none; }
+#fonds-titre:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+#fd-compte, #fd-msg { margin: .2rem 0; }
+.fd-liste { list-style: none; margin: 0; padding: 0; max-width: 62rem; }
+.fd-demande, .fd-doc { padding: .6rem 0; border-bottom: 1px solid var(--border); min-width: 0;
+                       overflow-wrap: anywhere; }
+.fd-demande:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+.fd-demande p, .fd-doc p { margin: .2rem 0; }
+.fd-demande-texte { font-weight: 600; }
+/* Le motif est un texte libre, saisi sur plusieurs lignes : ses retours se lisent. */
+.fd-motif { white-space: pre-line; border-left: 2px solid var(--border); padding-left: .6rem; }
+.fd-gestes { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem;
+             margin-top: .4rem; }
+.fd-ligne-msg { margin: 0; min-width: 0; }
+.fd-doc-tete { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .7rem; }
+.fd-doc-tete h4 { margin: 0; font-size: 1.05rem; min-width: 0; }
+.fd-doc-tete .sp-pastille { margin-left: 0; }
+.fd-gardee { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .7rem;
+             margin: .3rem 0; }
+.fd-rendre { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .4rem;
+             min-width: 0; max-width: 100%; }
+.fd-rendre select { min-width: 0; max-width: 100%; background: var(--bg-input); color: var(--text);
+                    border: 1px solid var(--border); border-radius: 4px; padding: .2rem .35rem;
+                    font: inherit; }
+.fd-importer-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.fd-importer-ligne input { min-width: 0; max-width: 100%; }
+#fd-titre { flex: 1 1 12rem; max-width: 24rem; background: var(--bg-input); color: var(--text);
+            border: 1px solid var(--border); border-radius: 5px; padding: .35rem .55rem;
+            font-size: 1rem; font-family: inherit; }
+#fd-fichiers { flex: 1 1 14rem; color: var(--text); }
+/* La demande de suppression d'un projet, dans sa fiche : le motif et son bouton. */
+.pj-demander { display: grid; gap: .35rem; max-width: 46rem; margin-top: .5rem; }
+.pj-demander label { font-size: .92rem; color: var(--text-muted); }
+.pj-demander textarea { width: 100%; min-width: 0; resize: vertical; background: var(--bg-input);
+  color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: .35rem .55rem;
+  font-size: 1rem; font-family: inherit; }
+.pj-demande-etat { margin: .5rem 0 0; }
+
 /* ── Qui y entre (COL-3) — les membres d'un projet, module monté dans sa fiche ────────
    Le frère de « Qui entre », plus haut, et les mêmes précautions : une liste déroulante
    prend la largeur de sa plus longue option, donc elle rétrécit ; la saisie libre garde
