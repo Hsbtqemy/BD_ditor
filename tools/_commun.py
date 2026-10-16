@@ -313,6 +313,17 @@ CIBLES_RETENUES = {
         "Rien n'a été écrit dans le corpus : le dépôt n'a rien à en apprendre. Et la ligne "
         "seule dirait qu'une région est sortie de la portée de quelqu'un — une pièce du "
         "cloisonnement, pas de la provenance.",
+    "document":
+        "COL-3 — la naissance d'un document du fonds, chaque scan qu'on y ajoute ou qu'on "
+        "en retire, sa destruction. C'est l'histoire de ce que l'INSTANCE détient, et de "
+        "qui l'y a fait entrer : publier la date et l'auteur d'un import serait une "
+        "décision à part, que personne n'a prise. Ce que le dépôt doit savoir d'un "
+        "album part par ses records.",
+    "collection_album":
+        "COL-3 — les emplois d'un document : rangé dans une collection, retiré. La "
+        "charge nomme une collection, donc une étude, y compris celles que l'artefact "
+        "ne couvre pas ; et dire quelle étude a pris ou rendu quel document décrit "
+        "l'organisation de l'instance, jamais la provenance du corpus.",
 }
 
 
@@ -400,6 +411,26 @@ def evenements_publiables(conn, ordre: str = "ASC"):
         f"ORDER BY id {ordre}", cibles)
 
 
+#: Les cibles du journal qui ne donnent PAS de rang dans `pseudonymes()` (COL-3, v30).
+#:
+#: La numérotation porte sur le journal entier, retenues comprises — c'est écrit sous
+#: `evenements_publiables`, et cela reste vrai de tout ce qui s'y écrivait avant la v30.
+#: Ces deux cibles sont NEUVES : créer un album, y importer une planche, le ranger ne
+#: laissaient aucune trace. Les compter donnerait un rang à qui n'a fait qu'importer, et
+#: décalerait celui de tous ceux qui annoteront après lui — mesuré : l'administrateur qui
+#: monte un album prenait `annotateur-1`, et la première personne à annoter sortait sous
+#: `annotateur-2`. Un artefact déposé aurait changé de numéros sans qu'aucune annotation ait
+#: changé, et sans que personne l'ait décidé.
+#:
+#: Les écarter dès leur naissance ne renumérote rien : aucun dépôt n'a jamais vu ces
+#: actes. Le prix est une condition, et elle est tenue par un test : une cible d'ici ne
+#: peut pas entrer dans `CIBLES_CORPUS`. Qui n'aurait d'actes que sous elle n'aurait aucun
+#: pseudonyme, et sortirait donc SOUS SON LOGIN — `pseudonymes(...).get(nom, nom)` laisse
+#: passer ce qu'il ne connaît pas. Publier ces actes un jour demandera de les retirer d'ici
+#: d'abord, en acceptant ce que cela renumérote.
+CIBLES_SANS_RANG = frozenset({"document", "collection_album"})
+
+
 def pseudonymes(conn) -> dict:
     """login humain → « annotateur-N ». Partagé par TOUS les exports d'un même corpus.
 
@@ -455,10 +486,13 @@ def pseudonymes(conn) -> dict:
     correction d'un fait doit se voir, et un dépôt antérieur reste vrai à sa date.
     """
     vus: dict = {}
+    hors_rang = tuple(sorted(CIBLES_SANS_RANG))
     for sql in (
             # `date` du premier acte : les trois sources sont fondues dans un même ordre.
             "SELECT agent, MIN(date) AS d FROM evenement "
-            "WHERE agent_type = 'humain' AND agent IS NOT NULL GROUP BY agent",
+            "WHERE agent_type = 'humain' AND agent IS NOT NULL "
+            f"AND cible_table NOT IN ({', '.join(repr(c) for c in hors_rang)}) "
+            "GROUP BY agent",
             # `activite` n'a pas de colonne `date` mais un `date_debut` : un run a une
             # durée, un acte a un instant.
             "SELECT agent, MIN(date_debut) AS d FROM activite "

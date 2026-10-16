@@ -69,9 +69,16 @@ def traces(conn) -> tuple[dict, dict, dict]:
         # répond à « qu'est-ce qu'une suppression orphelinerait ? ». La trace d'un Ctrl+Z
         # PASSÉ (`annulation`, AUTH-14) non plus : elle n'a rien produit, et un geste refusé
         # ne doit pas faire passer un compte pour un compte qui a travaillé.
+        # `document` et `collection_album` (COL-3, v30) : importer un album, y ajouter un
+        # scan, le ranger ou le retirer s'écrivent désormais au journal, et ne comptent pas
+        # ici non plus. Ces gestes n'étaient pas comptés la veille, faute d'être écrits ;
+        # les compter ferait passer de « rien à orpheliner » à « laisse des actes » un
+        # compte qui n'a fait qu'importer, sans que personne l'ait décidé. Qui a importé
+        # reste écrit, sur le document.
         "SELECT agent, COUNT(*) AS n FROM evenement "
         "WHERE agent_type = 'humain' AND agent IS NOT NULL "
-        "  AND cible_table NOT IN ('utilisateur', 'utilisateur_nature', 'annulation') "
+        "  AND cible_table NOT IN ('utilisateur', 'utilisateur_nature', 'annulation', "
+        "                          'document', 'collection_album') "
         "GROUP BY agent")}
     acces = {r["principal"]: r["n"] for r in conn.execute(
         "SELECT principal, COUNT(*) AS n FROM collection_acces "
@@ -226,7 +233,8 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
     # ---- Collections ------------------------------------------------------ #
     modifiees = {r["cible_id"]: r["d"] for r in conn.execute(
         # Tranché par Hugo le 2026-09-17 : la description ET les accès. Ranger ou sortir un
-        # album ne compte pas — ce n'est pas journalisé, et rien n'y est ajouté.
+        # album ne compte pas. Ce n'était alors pas journalisé ; ça l'est depuis la v30,
+        # sous `collection_album`, que cette requête ne lit pas : la décision tient.
         "SELECT cible_id, MAX(date) AS d FROM evenement "
         "WHERE (cible_table = 'collection' AND type IN ('creation', 'modification')) "
         "   OR (cible_table = 'collection_acces' AND type IN ('lien', 'delien')) "

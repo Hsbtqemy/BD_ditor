@@ -832,29 +832,39 @@ def test_toute_colonne_exportable_est_classee(client, db_path):
     finally:
         conn.close()
 
+    # COL-3 (v30) — `albums` a désormais SES retenues : jusque-là toutes ses colonnes étaient
+    # descriptives, et la liste publiée suffisait à la classer.
+    retenues = {"albums": main._EXPORT_ALBUM_RETENUES,
+                "planches": main._EXPORT_PLANCHE_RETENUES}
     classees = {
-        "albums": set(main._EXPORT_ALBUM_COLS),
-        "planches": set(main._EXPORT_PLANCHE_COLS) | set(main._EXPORT_PLANCHE_RETENUES),
+        "albums": set(main._EXPORT_ALBUM_COLS) | set(retenues["albums"]),
+        "planches": set(main._EXPORT_PLANCHE_COLS) | set(retenues["planches"]),
     }
     for table, colonnes in reel.items():
         neuves = colonnes - classees[table]
         assert not neuves, (
             f"{table} : {sorted(neuves)} n'est ni publiée ni retenue. Ajoute la colonne à "
             f"_EXPORT_{table[:-1].upper()}_COLS si elle est descriptive, ou à "
-            f"_EXPORT_PLANCHE_RETENUES avec sa raison. Ne rien faire la publierait.")
+            f"_EXPORT_{table[:-1].upper()}_RETENUES avec sa raison. Ne rien faire la "
+            "publierait.")
         fantomes = classees[table] - colonnes
         assert not fantomes, (
             f"{table} : {sorted(fantomes)} est classée mais n'existe plus — "
             "une liste périmée rassure.")
 
-    for col, raison in main._EXPORT_PLANCHE_RETENUES.items():
-        assert raison and len(raison) > 20, f"{col} est retenue sans raison écrite"
+    for table, liste in retenues.items():
+        for col, raison in liste.items():
+            assert raison and len(raison) > 20, f"{table}.{col} est retenue sans raison écrite"
 
     # Publiée ET retenue : la colonne passait les deux contrôles ci-dessus — elle est
     # classée, deux fois — et partait au dépôt avec sa raison de ne pas partir.
     doubles = set(main._EXPORT_PLANCHE_COLS) & set(main._EXPORT_PLANCHE_RETENUES)
     assert not doubles, (
         f"planches : {sorted(doubles)} est à la fois publiée et retenue. Les deux listes "
+        "se contredisent, et c'est la liste publiée qui gagne à l'export.")
+    doubles = set(main._EXPORT_ALBUM_COLS) & set(main._EXPORT_ALBUM_RETENUES)
+    assert not doubles, (
+        f"albums : {sorted(doubles)} est à la fois publiée et retenue. Les deux listes "
         "se contredisent, et c'est la liste publiée qui gagne à l'export.")
 
 

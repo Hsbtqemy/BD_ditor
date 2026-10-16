@@ -18,7 +18,7 @@ from config import DB_PATH, STATUTS
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 29
+SCHEMA_VERSION = 30
 
 # NLP-2 (v28) — ce que l'annotateur a VU en corrigeant : le modèle, et sa proposition.
 # Une seule liste, lue par la migration ET par le ré-ancrage : celui-ci réinsère ses
@@ -88,7 +88,34 @@ CREATE TABLE IF NOT EXISTS albums (
     -- Matériel de numérisation (v19, A6, N1) : appareil / conditions de scan (PREMIS,
     -- humain). Album-level = une campagne de scan par album. Cf. docs/materiel-numerisation.md.
     source_numerisation TEXT,
-    date_import  TEXT DEFAULT (datetime('now'))
+    date_import  TEXT DEFAULT (datetime('now')),
+    document_id  INTEGER REFERENCES document(id),
+    projet_id    INTEGER REFERENCES projet(id)
+    -- v30 (COL-3, tranche 2) — la ligne `albums` EST une COPIE DE TRAVAIL : tout le travail
+    -- y pend par `planches`. Ces deux colonnes disent de QUOI elle est la copie, et OÙ.
+    --
+    -- `document_id` : le DOCUMENT dont elle est une copie (table `document`, plus bas) —
+    -- ce qui appartient à l'instance et survit à ses copies. Dans cette tranche un document
+    -- n'a qu'UNE copie ; en créer une seconde est la tranche suivante, et c'est par cette
+    -- clé que deux copies se sauront sœurs.
+    --
+    -- `projet_id` : le projet de la copie, ÉCRIT sur elle. Tant qu'elle est rangée, il se
+    -- lit aussi dans ses collections — un rangement ne traverse pas les projets. Mais une
+    -- copie retirée de toute collection n'aurait plus aucun projet à lire, et rien ne
+    -- refuserait alors de la ranger dans un autre : c'est ce que la colonne garde. NULL se
+    -- lit « celui de ses collections », à un seul endroit (`sql_projet_d_album`) ; NULL sans
+    -- collection veut dire que la copie n'a JAMAIS eu de projet, pas qu'elle est du repli.
+    --
+    -- Toutes deux NULLABLES et à clé SANS action, pour les deux raisons de
+    -- `collection.projet_id` : SQLite n'ajoute pas par ALTER une colonne NOT NULL qui porte
+    -- une clé étrangère, et seize INSERT de huit fichiers de test posent un album sans rien
+    -- nommer. Ni `SET NULL` — supprimer un projet détacherait ses copies gardées sans que
+    -- personne l'ait décidé —, ni `CASCADE`, qui effacerait du travail par ricochet.
+    --
+    -- Ces commentaires sont SOUS les deux colonnes, et aucun ne les sépare : pour retirer
+    -- la dernière colonne d'une table, SQLite remonte jusqu'à la première virgule qu'il
+    -- trouve, celles d'un commentaire comprises (cf. `collection.projet_id`). Un
+    -- commentaire posé ENTRE elles rend « incomplete input » au test qui défait la v30.
 );
 
 CREATE TABLE IF NOT EXISTS planches (
@@ -409,6 +436,72 @@ CREATE TABLE IF NOT EXISTS projet_acces (
 -- « De quels projets est CE principal » se demande à chaque requête, comme pour les accès.
 CREATE INDEX IF NOT EXISTS idx_projet_acces_principal ON projet_acces(genre, principal);
 
+-- DOCUMENT (v30, COL-3, tranche 2) — ce qui appartient à l'INSTANCE et survit à ses copies
+-- de travail : une identité, et une ORIGINE. Tout le reste vit ailleurs — la notice et le
+-- travail sur la copie (`albums`), les scans par elle (`planches`), les emplois dans
+-- `collection_album`. Le FONDS n'est pas une table : c'est l'ensemble de ces lignes, dont
+-- certaines ne sont appelées par aucune collection.
+--
+-- `AUTOINCREMENT`, et c'est la première table du dépôt à le porter : sans lui SQLite REND
+-- au suivant l'identifiant du dernier détruit (mesuré), et le journal, qui survit à sa
+-- cible, mêlerait alors l'histoire de deux documents. C'est déjà le cas d'`albums.id`, que
+-- le dossier d'images suit ; l'identité du document est faite pour ne pas en hériter.
+--
+-- `importe_par` : le LOGIN de qui a importé. NULL = on ne sait pas — tout album d'avant la
+-- v30, dont l'import n'a été écrit nulle part, et tout import en mono-poste, où personne ne
+-- s'annonce. La migration n'en invente aucun.
+-- `projet_origine_id` : le projet où le document est entré d'abord. Un FAIT d'origine, donc
+-- SANS clé étrangère, comme `evenement.cible_id` : il doit survivre au projet supprimé.
+-- NULL = entré sans projet.
+CREATE TABLE IF NOT EXISTS document (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    importe_par        TEXT,
+    importe_le         TEXT DEFAULT (datetime('now')),
+    projet_origine_id  INTEGER
+);
+
+-- DEMANDE (v30, COL-3, tranche 2) — UN mécanisme pour ce qui ne se fait pas seul : qui
+-- demande, quand, pourquoi ; puis qui répond, quand, quoi. Aucune messagerie. Les deux
+-- tables naissent avec le document pour que le schéma ne change qu'UNE fois dans la
+-- tranche ; AUCUNE ligne n'y est écrite tant que les routes de demande n'existent pas.
+--
+-- Pas de `CHECK` sur `genre` ni sur `reponse`, pour la raison écrite sur
+-- `utilisateur.nature` : les listes vivent dans le code. `reponse` NULL = en attente. Une
+-- demande répondue RESTE : c'est ce qui permet de dire qu'une demande a déjà été refusée.
+-- `demandeur` est un login ; il est nullable pour qu'une demande venue de quelqu'un qui
+-- n'a pas de compte puisse un jour s'y ranger sans reconstruire la table.
+-- `projet_id` : le projet concerné — celui de la copie, ou celui qu'on demande de
+-- supprimer. Sans clé étrangère : la demande survit à ce qu'elle a fait disparaître.
+CREATE TABLE IF NOT EXISTS demande (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    genre          TEXT NOT NULL,
+    demandeur      TEXT,
+    motif          TEXT,
+    projet_id      INTEGER,
+    date_creation  TEXT DEFAULT (datetime('now')),
+    reponse        TEXT,
+    repondu_par    TEXT,
+    date_reponse   TEXT
+);
+
+-- Les DOCUMENTS d'une demande — plusieurs dès maintenant, pour qu'une entrée de documents
+-- en porte autant qu'on en coche. `document_id` SANS clé étrangère : la demande survit au
+-- document détruit. `album_id` est la copie d'où le geste est parti et `titre` son titre
+-- ce jour-là — un identifiant d'album se réattribue, et sans le titre une demande répondue
+-- ne dirait plus de quoi elle parlait. `reponse` : la réponse document par document, pour
+-- une demande acceptée en partie.
+CREATE TABLE IF NOT EXISTS demande_document (
+    demande_id   INTEGER NOT NULL REFERENCES demande(id) ON DELETE CASCADE,
+    document_id  INTEGER NOT NULL,
+    album_id     INTEGER,
+    titre        TEXT,
+    reponse      TEXT,
+    PRIMARY KEY (demande_id, document_id)
+);
+-- « Ce document a-t-il une demande en attente » se pose album par album ; la clé primaire
+-- ne couvre que l'autre sens.
+CREATE INDEX IF NOT EXISTS idx_demande_document_document ON demande_document(document_id);
+
 -- Appartenance album ↔ collection (N-N, statique). `rang` = ordre citable stable dans la
 -- collection. CASCADE des deux côtés : on détache la liaison si l'album OU la collection
 -- disparaît. Un album peut vivre dans 0..N collections.
@@ -580,7 +673,8 @@ CREATE INDEX IF NOT EXISTS idx_domaine_collection ON domaine(collection_id);
 -- `_migrate` (après l'ALTER), PAS ici : un CREATE INDEX dans SCHEMA_SQL tournerait AVANT l'ALTER
 -- lors d'un upgrade → crash « no such column ». Cf. idx_regions_activite / idx_dim_collection /
 -- idx_val_collection / idx_tags_collection / idx_dim_domaine. Même règle pour
--- `collection.projet_id` (v29) : idx_collection_projet.
+-- `collection.projet_id` (v29) : idx_collection_projet ; et pour `albums.document_id` et
+-- `albums.projet_id` (v30) : idx_albums_document, idx_albums_projet.
 """
 
 # Index plein texte FTS5 — séparé du schéma pour pouvoir le RECRÉER en migration
@@ -974,6 +1068,55 @@ def _migrate(conn: sqlite3.Connection) -> None:
                     "INSERT OR IGNORE INTO projet_acces (projet_id, genre, principal, role) "
                     "SELECT DISTINCT ?, genre, principal, 'membre' FROM collection_acces",
                     (pid,))
+
+    # v29 → v30 : le DOCUMENT (COL-3, tranche 2). Tables `document`, `demande` et
+    # `demande_document` NOUVELLES (SCHEMA_SQL) ; `albums.document_id` et `albums.projet_id`
+    # posées par PRÉSENCE, nullables (cf. leur commentaire), dans l'ordre du schéma neuf.
+    # Garde de TABLES : neuf fichiers de test montent un `albums (id, titre)` minimal avant
+    # d'appeler `_migrate`, sans `document` ni `projet` autour.
+    _tables = {r["name"] for r in
+               conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if {"albums", "document", "projet"} <= _tables:
+        for colonne, cible in (("document_id", "document"), ("projet_id", "projet")):
+            if colonne not in _cols("albums"):
+                conn.execute(f"ALTER TABLE albums ADD COLUMN {colonne} INTEGER "
+                             f"REFERENCES {cible}(id)")
+        # Index créés ICI, après les ALTER (cf. le NB de SCHEMA_SQL).
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_albums_document ON albums(document_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_albums_projet ON albums(projet_id)")
+        # Migration de DONNÉES, donc gatée par la VERSION. Chaque album d'hier devient
+        # l'unique copie d'un document neuf. Rejouée à l'upgrade suivant, elle donnerait un
+        # document « d'avant le fonds » à un album né APRÈS sans le sien — c'est-à-dire
+        # qu'elle maquillerait en origine inconnue la faute d'un chemin d'écriture, que
+        # `albums_sans_document` est là pour dire.
+        #
+        # Elle est en plus IDEMPOTENTE, et il le faut : plusieurs tests ramènent
+        # `user_version` en arrière sur une base au schéma courant pour rejouer un upgrade
+        # réel, et l'étape repasse alors sur des albums qui ont déjà leur document. Elle ne
+        # touche donc que ce qui est NULL.
+        if version < 30:
+            # Le projet d'abord, lu dans les collections : il est exact, aucun rangement
+            # n'ayant pu traverser deux projets depuis la v29. Un album rangé nulle part —
+            # base retouchée à la main — garde NULL : on ne lui en invente pas.
+            if ("collection_album" in _tables
+                    and "projet_id" in _cols("collection")):
+                conn.execute(
+                    "UPDATE albums SET projet_id = "
+                    f"({_sql_projet_des_collections('albums')}) WHERE projet_id IS NULL")
+            # Puis l'origine, avec ce qu'on SAIT : la date d'import de l'album, et le projet
+            # où il vit. QUI a importé n'a jamais été écrit, donc ne s'écrit pas ici — ni
+            # deviné dans le journal, dont le premier acte sur une région est un indice et
+            # pas un fait. Une date d'import absente reste absente : la valeur est passée
+            # telle quelle, le défaut de la colonne ne la remplace pas.
+            date = "date_import" if "date_import" in _cols("albums") else "NULL"
+            for album_id, date_import, projet_id in conn.execute(
+                    f"SELECT id, {date}, projet_id FROM albums "
+                    "WHERE document_id IS NULL ORDER BY id").fetchall():
+                cur = conn.execute(
+                    "INSERT INTO document (importe_par, importe_le, projet_origine_id) "
+                    "VALUES (NULL, ?, ?)", (date_import, projet_id))
+                conn.execute("UPDATE albums SET document_id = ? WHERE id = ?",
+                             (cur.lastrowid, album_id))
 
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -1375,6 +1518,109 @@ def collections_sans_projet(conn: sqlite3.Connection) -> list[int]:
     règle de lecture la range au repli — mais dit qu'un chemin d'écriture l'a oubliée."""
     return [r[0] for r in conn.execute(
         "SELECT id FROM collection WHERE projet_id IS NULL ORDER BY id")]
+
+
+# --------------------------------------------------------------------------- #
+# Le fonds — documents et copies de travail (v30, COL-3, tranche 2)
+# --------------------------------------------------------------------------- #
+def _sql_projet_des_collections(alias: str) -> str:
+    """Sous-requête : le projet qu'on LIT dans les collections de l'album `alias` — celui
+    de sa collection de plus petit id, par la règle de `sql_projet_de` ; NULL s'il n'est
+    rangé nulle part. Les alias internes portent un tiret bas pour ne heurter aucun de
+    ceux du code appelant."""
+    return (f"SELECT {sql_projet_de('_c')} FROM collection_album _ca "
+            "JOIN collection _c ON _c.id = _ca.collection_id "
+            f"WHERE _ca.album_id = {alias}.id ORDER BY _c.id LIMIT 1")
+
+
+def sql_projet_d_album(alias: str = "a") -> str:
+    """Expression SQL du projet d'une COPIE DE TRAVAIL — la règle de LECTURE, écrite une
+    fois, pendant de `sql_projet_de` pour les collections.
+
+    Le projet ÉCRIT sur la copie d'abord (`albums.projet_id`) : c'est lui qui tient quand
+    elle n'est plus rangée nulle part. À défaut — un album posé par `INSERT`, ou qu'aucun
+    chemin d'écriture n'a nommé —, celui qu'on lit dans ses collections. Et NULL quand il
+    n'y a ni l'un ni l'autre : la copie n'a JAMAIS eu de projet. Ce NULL-là ne se lit PAS
+    « le projet de repli », à la différence d'une collection : un document entré au fonds
+    sans passer par un projet n'est d'aucun, jusqu'à ce qu'on le range.
+
+    `alias` est un morceau de SQL écrit par le code appelant, jamais une valeur du client."""
+    return f"COALESCE({alias}.projet_id, ({_sql_projet_des_collections(alias)}))"
+
+
+def projet_d_album(conn: sqlite3.Connection, album_id: int) -> int | None:
+    """Id du projet de cette copie, par la règle de `sql_projet_d_album`. None si elle
+    n'existe pas, ou n'a jamais eu de projet."""
+    r = conn.execute(f"SELECT {sql_projet_d_album('a')} FROM albums a WHERE a.id = ?",
+                     (album_id,)).fetchone()
+    return r[0] if r else None
+
+
+def document_d_album(conn: sqlite3.Connection, album_id: int) -> int | None:
+    """Id du document dont cet album est une copie. None s'il n'en a pas — un album posé
+    par `INSERT` — ou s'il n'existe pas."""
+    r = conn.execute("SELECT document_id FROM albums WHERE id = ?", (album_id,)).fetchone()
+    return r[0] if r else None
+
+
+def creer_document(conn: sqlite3.Connection, album_id: int, *,
+                   importe_par: str | None, projet_id: int | None) -> int:
+    """Fait naître le DOCUMENT d'un album qu'on vient de créer, et attache l'un à l'autre :
+    l'origine sur le document (qui, quand, dans quel projet d'abord), le document et le
+    projet sur la copie. Renvoie l'id du document.
+
+    Les deux arguments sont OBLIGATOIRES et sans défaut, comme `principal` pour ShareDocs :
+    un défaut à None ferait naître un document « d'origine inconnue » chez un appelant
+    distrait, ce qui marcherait parfaitement et se lirait ensuite comme un album d'avant le
+    fonds. `importe_par` vaut None quand personne ne s'annonce (mono-poste), `projet_id`
+    quand le document entre sans projet — et dans les deux cas l'appelant l'a ÉCRIT.
+
+    N'écrit rien au journal : c'est l'affaire de l'appelant, qui sait ce qu'il fait naître."""
+    cur = conn.execute(
+        "INSERT INTO document (importe_par, projet_origine_id) VALUES (?, ?)",
+        (importe_par, projet_id))
+    conn.execute("UPDATE albums SET document_id = ?, projet_id = ? WHERE id = ?",
+                 (cur.lastrowid, projet_id, album_id))
+    return cur.lastrowid
+
+
+def retirer_document_sans_copie(conn: sqlite3.Connection, document_id: int | None) -> bool:
+    """Efface la ligne d'un document qui n'a PLUS aucune copie de travail. Vrai si elle
+    est partie.
+
+    À appeler après avoir détruit un album : dans cette tranche un document n'a qu'une
+    copie, donc il part avec elle. La condition est écrite quand même — le jour où deux
+    copies seront sœurs, détruire l'une ne devra pas emporter l'identité de l'autre, et
+    c'est ici que cela se garde, pas chez chaque appelant."""
+    if document_id is None:
+        return False
+    return conn.execute(
+        "DELETE FROM document WHERE id = ? "
+        "AND NOT EXISTS (SELECT 1 FROM albums WHERE document_id = ?)",
+        (document_id, document_id)).rowcount == 1
+
+
+def albums_sans_document(conn: sqlite3.Connection) -> list[int]:
+    """Albums qui ne sont la copie d'AUCUN document. Les chemins d'écriture de
+    l'application le posent tous (créer un album, en créer un en important depuis
+    ShareDocs) et la migration v30 l'a posé sur l'existant : c'est la formulation
+    exécutable de « tout album appartient à l'instance », sur le modèle
+    d'`albums_orphelins`. Une ligne ici dit qu'un chemin d'écriture l'a oublié."""
+    return [r[0] for r in conn.execute(
+        "SELECT id FROM albums WHERE document_id IS NULL ORDER BY id")]
+
+
+def albums_hors_de_leur_projet(conn: sqlite3.Connection) -> list[int]:
+    """Albums rangés dans une collection d'un AUTRE projet que le leur. Doit rester vide :
+    le rangement ne traverse pas les projets, et une collection n'en change pas. C'est ce
+    qui permet de lire le projet d'une copie sur elle sans consulter ses collections —
+    une ligne ici dit que les deux lectures ne répondent plus pareil."""
+    return [r[0] for r in conn.execute(
+        "SELECT DISTINCT a.id FROM albums a "
+        "JOIN collection_album ca ON ca.album_id = a.id "
+        "JOIN collection c ON c.id = ca.collection_id "
+        f"WHERE a.projet_id IS NOT NULL AND {sql_projet_de('c')} IS NOT a.projet_id "
+        "ORDER BY a.id")]
 
 
 # Une date d'embargo est censée être en ISO (AAAA-MM-JJ) ; le champ est du TEXTE libre, et

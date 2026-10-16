@@ -23,8 +23,10 @@ from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, COMMIT_SERVI
                     DATA_DIR, IMG_EXTS, REFERENT_CONTACT, REFERENT_NOM, RELECTURE,
                     ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_REGION)
 from database import (citations_regions, collection_par_defaut, contributions_album,
-                      dimensions_cm, init_db, noms_lisibles, numeros_editoriaux,
-                      relecture_planches, reindex_region, unindex_region)
+                      creer_document, dimensions_cm, document_d_album, init_db,
+                      noms_lisibles, numeros_editoriaux, projet_de_collection,
+                      relecture_planches, reindex_region, retirer_document_sans_copie,
+                      unindex_region)
 import autorisation
 import conflit
 import journal
@@ -329,6 +331,51 @@ async def _sqlite_operational_handler(request, exc: sqlite3.OperationalError):
 # =========================================================================== #
 # Albums & planches
 # =========================================================================== #
+# COL-3, tranche 2 — ce qu'un album laisse d'ÉCRIT sur son document. Jusqu'à la v30, ni
+# créer un album, ni y importer une planche, ni le ranger, ni le détruire ne laissait la
+# moindre trace : qui avait importé quoi ne se reconstitue pas. Les gestes d'ici
+# écrivent désormais au journal, sous deux cibles RETENUES de toute sortie
+# (`tools/_commun.CIBLES_RETENUES`) et absentes de l'annulation (`undo._TABLES`) :
+#
+#   · `document` — sa naissance (`creation`), chaque scan ajouté ou retiré
+#     (`modification`), sa destruction (`suppression`) ;
+#   · `collection_album` — ses EMPLOIS : rangé dans une collection (`lien`), retiré
+#     (`delien`). Le premier rangement, celui de la naissance, en est un comme les autres.
+#
+# Dans les deux cas `cible_id` est l'id du DOCUMENT, jamais celui de l'album : le journal
+# survit à sa cible, et un identifiant d'album se réattribue — le suivant hériterait de
+# l'histoire du précédent. L'album d'où part le geste est dans la charge.
+#
+# Aucune de ces écritures ne change une réponse : la règle de qui détruit, les demandes et
+# l'écran du fonds viennent ensuite.
+def _document_du_nouvel_album(conn, portee: autorisation.Portee, album_id: int,
+                              collection_id: int) -> int:
+    """Fait naître le document de l'album qu'on vient de créer dans cette collection : QUI
+    l'a importé — le login de la requête, `None` en mono-poste où personne ne s'annonce —
+    et dans QUEL projet d'abord, celui de la collection d'accueil."""
+    return creer_document(conn, album_id, importe_par=portee.utilisateur,
+                          projet_id=projet_de_collection(conn, collection_id))
+
+
+def _journaliser_naissance(conn, document_id: int, album_id: int, titre: str,
+                           collection_id: int) -> None:
+    journal.journaliser(conn, "creation", "document", document_id,
+                        apres={"album_id": album_id, "titre": titre})
+    journal.journaliser(conn, "lien", "collection_album", document_id,
+                        apres={"album_id": album_id, "collection_id": collection_id})
+
+
+def _journaliser_scan(conn, album_id: int, planche: dict, *, retire: bool = False) -> None:
+    """Un scan AJOUTÉ au document (`apres` seul) ou RETIRÉ (`avant` seul). Un album sans
+    document — posé par `INSERT`, donc hors de tout chemin d'écriture — garde sa trace
+    quand même, sous une cible vide : l'acte a eu lieu."""
+    charge = {"album_id": album_id,
+              "planche": {"id": planche["id"], "numero": planche["numero"]}}
+    journal.journaliser(conn, "modification", "document",
+                        document_d_album(conn, album_id),
+                        **({"avant": charge} if retire else {"apres": charge}))
+
+
 @app.get("/api/albums")
 def list_albums(conn: sqlite3.Connection = Depends(db),
                 portee: autorisation.Portee = Depends(portee_courante)):
@@ -398,6 +445,10 @@ def create_album(album: AlbumIn, conn: sqlite3.Connection = Depends(db),
     )
     conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
                  (cid, cur.lastrowid))
+    # COL-3 — l'album naît copie d'un DOCUMENT, qui appartient à l'instance dès cet instant.
+    _journaliser_naissance(
+        conn, _document_du_nouvel_album(conn, portee, cur.lastrowid, cid),
+        cur.lastrowid, data["titre"], cid)
     conn.commit()
     return _row(conn.execute("SELECT * FROM albums WHERE id = ?", (cur.lastrowid,)))
 
@@ -423,14 +474,22 @@ def update_album(album_id: int, patch: AlbumUpdate,
 @app.delete("/api/albums/{album_id}", status_code=204)
 def delete_album(album_id: int, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
-    _get_album(conn, portee, album_id, ecriture=True)
+    a = _get_album(conn, portee, album_id, ecriture=True)
     _exiger_destruction(conn, portee, album_id)     # AUTH-10 : écrire quelque part n'y suffit pas
     # Désindexe les régions du FTS (le CASCADE SQL ne touche pas la table FTS).
     for r in conn.execute(
         "SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
         "WHERE p.album_id = ?", (album_id,)).fetchall():
         unindex_region(conn, r["id"])
+    nb_planches = conn.execute("SELECT COUNT(*) FROM planches WHERE album_id = ?",
+                               (album_id,)).fetchone()[0]
     conn.execute("DELETE FROM albums WHERE id = ?", (album_id,))   # CASCADE planches/regions
+    # COL-3 — le document part avec sa dernière copie, et sa destruction s'écrit : le
+    # journal est tout ce qui reste de lui, ses images quittant le disque juste après.
+    if retirer_document_sans_copie(conn, a["document_id"]):
+        journal.journaliser(conn, "suppression", "document", a["document_id"],
+                            avant={"album_id": album_id, "titre": a["titre"],
+                                   "planches": nb_planches})
     conn.commit()
     remove_album_files(album_id)
     return Response(status_code=204)
@@ -447,6 +506,7 @@ def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
         "SELECT id FROM regions WHERE planche_id = ?", (planche_id,)).fetchall():
         unindex_region(conn, r["id"])
     conn.execute("DELETE FROM planches WHERE id = ?", (planche_id,))   # CASCADE regions
+    _journaliser_scan(conn, p["album_id"], p, retire=True)
     conn.commit()
     remove_planche_files(p["chemin_tiff"], p["chemin_web"])
     return Response(status_code=204)
@@ -541,6 +601,7 @@ def import_planche(
         # Pas de master orphelin sur disque si l'ingestion échoue après écriture.
         master.unlink(missing_ok=True)
         raise HTTPException(400, f"Échec de l'ingestion : {exc}")
+    _journaliser_scan(conn, album_id, planche)
     conn.commit()
     planche["url_web"] = "/" + planche["chemin_web"]
     return planche
@@ -992,6 +1053,12 @@ def sharedocs_importer(payload: SharedocsImportIn,
         album_id = cur.lastrowid
         conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
                      (cid, album_id))
+        # COL-3 — le document naît avec l'album, mais sa naissance ne s'écrit au journal
+        # qu'une fois un fichier ENTRÉ (`naissance`, en fin de route) : si rien n'entre,
+        # l'album est retiré, et un journal en ajout seul garderait la trace d'un document
+        # que personne n'a jamais vu.
+        naissance = (_document_du_nouvel_album(conn, portee, album_id, cid), album_id,
+                     payload.nouvel_album.strip(), cid)
         created_album = True
     else:
         raise HTTPException(422, "Album cible manquant (album_id ou nouvel_album).")
@@ -1039,8 +1106,17 @@ def sharedocs_importer(payload: SharedocsImportIn,
                 master.unlink(missing_ok=True)
             erreurs.append({"chemin": chemin, "erreur": str(exc)})
     if created_album and not importes:
-        # rien d'importé : ne pas laisser un album vide orphelin
+        # rien d'importé : ne pas laisser un album vide orphelin — ni son document, dont
+        # la naissance n'a pas été écrite (cf. plus haut)
         conn.execute("DELETE FROM albums WHERE id = ?", (album_id,))
+        retirer_document_sans_copie(conn, naissance[0])
+    # Le journal du lot s'écrit ICI, hors de la boucle : dedans, une écriture qui lèverait
+    # tomberait dans le `except` d'un fichier et ferait retirer le master d'une planche
+    # déjà ingérée.
+    if created_album and importes:
+        _journaliser_naissance(conn, *naissance)
+    for planche in importes:
+        _journaliser_scan(conn, album_id, planche)
     conn.commit()
     return {"album_id": album_id, "importes": importes, "erreurs": erreurs}
 
@@ -1773,6 +1849,16 @@ _EXPORT_PLANCHE_COLS = (
 # Retenues, et pourquoi — le test `test_toute_colonne_exportable_est_classee` exige que
 # toute colonne de la table figure ici OU dans la liste publiée : une colonne neuve fait
 # échouer la suite au lieu de partir au dépôt.
+#
+# `albums` n'avait aucune retenue jusqu'à la v30 : toutes ses colonnes étaient
+# descriptives. Les deux qui arrivent ne décrivent pas l'œuvre, elles RANGENT la copie de
+# travail dans l'instance.
+_EXPORT_ALBUM_RETENUES = {
+    "document_id": "le document dont l'album est une copie de travail : un identifiant "
+                   "INTERNE au fonds de l'instance, sans sens hors d'elle",
+    "projet_id": "le projet de la copie : le projet n'est ni une unité de dépôt ni le "
+                 "titre d'un export (la collection l'est), et rien de lui ne sort",
+}
 _EXPORT_PLANCHE_RETENUES = {
     "chemin_tiff": "chemin de fichier sur le SERVEUR — interne, sans valeur descriptive",
     "chemin_web": "idem ; le dérivé se publie par IIIF, pas par un chemin de disque",
