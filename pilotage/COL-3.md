@@ -247,6 +247,7 @@ rien y changer, « le premier projet », où tout est partagé.
 - [x] **Sinon, c'est une DEMANDE, et une demande est un état** — attendu : le document porte qui demande, quand et pourquoi ; l'administrateur la voit dans le fonds et dans « À regarder », et répond par « détruire » ou « garder ». Aucune messagerie **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »**
 - [x] **Ce que devient le travail d'un projet qui retire un document** — attendu : tranché. Gardé au fonds (rattrapable, et l'instance grossit) ou détruit avec la copie ? **Confirmé par Hugo le 2026-10-09, sur la maquette : « Tout me semble bien. »** Retenu : gardé au fonds avec son travail, et un administrateur peut le rendre
 - [ ] **Une planche** — attendu : dit. Retirer une planche d'une copie de travail ne touche que ce projet ; le scan reste au fonds
+- [x] **La pastille « suppression demandée » reste un état à l'étroit** — attendu : sur la ligne d'un album, à 375 px, un cadre net sous le titre. Relevé par Hugo le 2026-10-16 pendant `supprimer-n-est-pas-sortir` : à côté du titre, dans une colonne étroite, elle se coupait sur trois lignes, et ses coins en gélule faisaient de sa bordure une ellipse — un trait de feutre, pas un état. **Fait par `bd5dff1`** : sous le titre, coins à peine arrondis ; vu en capture dans les deux thèmes, à l'étroit et au large
 
 ### Le fonds
 
