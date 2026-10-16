@@ -213,7 +213,7 @@ rien y changer, « le premier projet », où tout est partagé.
 - [ ] **La liste des albums reste rapide avec un gros journal** — attendu : mesuré. La règle
   de suppression directe descend dans le journal, région par région, pour chaque album de
   `GET /api/albums` ; aucune mesure n'a été faite sur un corpus réel
-- [ ] **`CLAUDE.md` dit ce que la tranche renverse** — attendu : réécrit au commit de
+- [x] **`CLAUDE.md` dit ce que la tranche renverse** — attendu : réécrit au commit de
   documentation, chaque phrase avec sa date de renversement. Relevé par la relecture : sortir
   un album de sa dernière collection n'est plus refusé ; un album peut exister hors
   collection (au fonds) ; un album d'une seule collection ne se détruit plus par quiconque y
@@ -221,6 +221,7 @@ rien y changer, « le premier projet », où tout est partagé.
   clés s'ajoutent ; « quatorze questions » devient seize ; le projet a un quatrième 409 et
   `routes/` un dixième module ; la nature d'un compte borde un geste ; et le journal A3, couche
   de provenance, devient une entrée d'autorisation
+  **Fait par `6f73675`** (2026-10-16) : chaque renversement porte sa date et la décision de Hugo qui le fonde ; les questions du serveur sont DIX-SEPT et non seize — la relecture en comptait une de moins que le code (`peut_nommer_le_demandeur`). S'y ajoute la règle de Hugo du 2026-10-16 : chaque migration se vérifie sur une vraie base de la version précédente, fabriquée par `tools/fabriquer_base_de_version.py` (`c1c0817`). Le reste de la documentation d'usage et d'exploitation suit dans `90b5835`
 
 ### Le projet
 
@@ -262,7 +263,8 @@ rien y changer, « le premier projet », où tout est partagé.
 - [ ] **Tranche 1 — la barre du haut est rejouée à l'étroit et à grande police** — attendu : `petites-largeurs` et `preference-de-police` rejouées sur leurs cases de barre, une fois le nom du projet (ou son sélecteur) posé sur les cinq surfaces. À 320 et 375 px, et à grande police, il ne fait sortir de la fenêtre ni la navigation, ni le menu « Aa », ni la pastille d'identité : c'est la bande où il reste le moins de place, et un nom de projet ne se coupe pas
 - [ ] **Tranche 1 — `projet-visible` est écrite, puis jouée par Hugo** — attendu : une passe neuve et courte, sur une recette qui porte `9eec56e` — le nom sur les cinq surfaces, créer un second projet et y faire entrer un compte et un groupe, ce que voient un responsable et un simple membre, la Bibliothèque bornée au projet choisi. Monter cette recette MIGRE sa base en v29, sans retour sous le code de `main` : à faire sur le mot de Hugo **La recette est montée le 2026-10-10, sur l'accord de Hugo, et sert `bd89fe4`** : la passe peut se jouer. Les comptes y sont comme elle les suppose, lu dans l'application : `proprio` possède « Collection Test » et « Étude B », `stagiaire` écrit dans la première, `lectrice` la lit par le groupe `annotateurs`, et l'annuaire a des groupes à proposer **REPORTÉE par Hugo le 2026-10-10, le soir même** : « On peut repousser les passes et poursuivre sur le code ? » La recette est arrêtée proprement, sa base en v29, prête à repartir sur `bd89fe4` ou plus récent. Ce que le report laisse : la tranche 1 est sur `dev` gardée par ses tests et NON vue à l'écran par un humain, et ce qui se code ensuite s'empile dessus. Ce qui rouvre, au plus tard : la fusion vers `main` — la passe se joue avant, ou Hugo décide par écrit qu'elle n'en est pas un préalable. Si un chantier suivant change un écran qu'elle décrit, ses cases sont réécrites avant d'être jouées, jamais après
 - [ ] **Tranche 1 — la carte d'accueil dit le projet, ou dit pourquoi non** — attendu : tranché, et `accueil-par-ou-commencer` rejouée si son texte change. Un arrivant entre désormais dans un projet avant d'entrer dans une collection
-- [ ] **Tranche 2 — `supprimer-n-est-pas-sortir` est RÉÉCRITE, pas rejouée** — attendu : une passe neuve pour les deux réponses à « supprimer ». La corbeille et le ✕ qu'elle vérifie aujourd'hui sont ce que la tranche remplace
+- [x] **Tranche 2 — `supprimer-n-est-pas-sortir` est RÉÉCRITE, pas rejouée** — attendu : une passe neuve pour les deux réponses à « supprimer ». La corbeille et le ✕ qu'elle vérifie aujourd'hui sont ce que la tranche remplace
+  **Réécrite par `c3eee63`** (2026-10-16) : 19 zones, 71 cases, environ une heure ; elle part de l'état de base de la recette, pose son décor dans ses premières cases, et remet la recette en état à sa dernière zone. À jouer par Hugo, non cochée ici
 - [ ] **Tranches 2 et 3 — `collections-bibliotheque` est rejouée sur ses gestes d'album** — attendu : rejouée. « Ranger ici » devient « prendre un document », et sortir un album de sa dernière collection cesse d'être refusé
 - [ ] **Tranche 3 — le projet a SA passe** — attendu : écrite, non cochée. Qui entre dans un projet, ce qu'il admet, ses trois réponses ; `qui-entre` et `comptes-et-groupes` restent vraies pour la collection, mais ne disent rien de l'étage au-dessus
 - [ ] **Tranche 4 — `import-bilan-refus` et `termes-illisibles` sont rejouées** — attendu : rejouées. Le menu « Portée » et « Importer dans » gagnent le projet, et « global » ne veut plus dire toute l'instance
