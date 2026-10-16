@@ -69,7 +69,8 @@ son travail, et l'annulation ne garde aucun instantané de ce qu'elle supprime.
 **Recréation à l'identique** : l'instantané profond porte les `id` d'origine → citations,
 deep-links et références restent valides. Si un `id` a été **réattribué** depuis (une nouvelle
 région a pris la place libérée), l'acte est **passé** (cf. ci-dessous) plutôt que d'écraser —
-il n'est plus un 409 qui revient à chaque Ctrl+Z.
+il n'est plus un 409 qui revient à chaque Ctrl+Z. Depuis la v30, un identifiant ne se
+réattribue plus ; le cas reste possible pour les actes d'avant elle (cf. ci-dessous).
 
 ## Ajustement A3 : les annotations ciblent `region_id`
 
@@ -116,7 +117,7 @@ que le fermer supposait de retrouver l'album d'une cible disparue, et qu'un cont
 dépendant de la forme d'un JSON journalisé serait plus fragile que le trou.
 
 Le trou était plus large qu'on ne le croyait, et c'est ce qui a rouvert la décision : les
-identifiants se réattribuent (cf. ci-dessous), si bien qu'un acte pouvait désigner une
+identifiants se réattribuaient (cf. ci-dessous), si bien qu'un acte pouvait désigner une
 région d'une AUTRE collection, que son auteur n'avait jamais touchée. Et la garde se pose
 sans dépendre du JSON là où la cible existe : l'inverse d'un acte autre qu'une suppression
 écrit dans une région PRÉSENTE, que l'accesseur gardé juge en écriture, sous la portée de la
@@ -136,6 +137,16 @@ haut reprend cet identifiant — dans n'importe quelle collection ; une planche 
 le 2026-10-14 : le Ctrl+Z d'une collègue effaçait un locuteur de l'Incubateur, où elle
 n'entre pas ; le 409 du conflit de version lui rendait le texte de la région et le login de
 son auteur ; et un acte sur un identifiant repris revenait en 409 à chaque Ctrl+Z.
+
+**Depuis la v30 (2026-10-16), les identifiants ne reviennent plus** : `albums`, `planches`,
+`regions` et `personnages` portent `AUTOINCREMENT`, et la migration a amorcé chaque compteur
+au-dessus du plus grand identifiant que le journal ait jamais nommé (cf. `CLAUDE.md`,
+§ Schéma & migrations). Les témoins qui suivent RESTENT pourtant, pour deux raisons : les
+actes d'avant la v30 désignent des identifiants qui ont pu être repris avant elle ; et un
+identifiant peut encore revenir hors de tout chemin ordinaire — rendu par une transaction
+défaite (SQLite défait aussi l'avance du compteur), ou posé à la main en base. Les tests de
+cette garde ramènent leur base à la numérotation d'avant pour la mesurer encore : une défense
+en profondeur que rien ne doit désarmer en silence.
 
 Avant toute écriture, l'annulation vérifie donc que l'objet est le MÊME (`undo._meme_objet`),
 par quatre témoins, dont aucun ne suffit seul — chacun a son test, qui tombe quand on
@@ -164,7 +175,8 @@ présentes et nées avant l'acte — un enfant peut vivre hors de la planche de 
 une base retouchée avant ce correctif —, parent dans la même planche, ni recréé ni supprimé
 depuis ; et la garde d'écriture porte sur chacune de ces planches.
 
-Le **personnage** qu'un lien reposerait aussi : ses identifiants se réattribuent, et l'acte
+Le **personnage** qu'un lien reposerait aussi : ses identifiants se réattribuaient avant la
+v30, et l'acte
 n'en garde que l'identifiant — le journal ne trace ni la création ni la suppression d'un
 personnage. Deux témoins restent : il doit être VU de l'agent (ses apparitions, la règle des
 personnages), et ne pas avoir été créé après l'acte (`personnages.date_creation`).
@@ -218,8 +230,10 @@ une pile qui dépend d'états qu'on ne voit pas ; et ce que la collègue a perdu
   témoin ne la voit.
 - **Fermé du côté sûr** : une région reprise puis supprimée, l'originale rétablie ensuite,
   passe pour reprise — Ctrl+Z refuse là où il aurait pu agir.
-- Rendre les identifiants non réutilisables est une autre décision, attendue avec une
-  migration ; cette garde tient sans elle.
+- Rendre les identifiants non réutilisables était une autre décision, attendue avec une
+  migration ; cette garde tenait sans elle. C'est fait par la v30 (2026-10-16), pour les
+  identifiants nés après elle : les trous ci-dessus ne concernent plus que les actes
+  d'avant, et un identifiant revenu hors des chemins ordinaires.
 
 ## Un compte COLLECTIF : un délai de cinq minutes (AUTH-6)
 

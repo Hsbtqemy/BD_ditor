@@ -204,7 +204,11 @@ appartenance — celle-ci reste chez Authelia et se relit à chaque requête.
 
 Corollaire : **aucun album ne peut être hors collection** (`database.collection_par_defaut`).
 Un orphelin ne correspondrait à aucune règle, et il faudrait inventer une politique dans le
-code, à un endroit qu'on oublierait de relire.
+code, à un endroit qu'on oublierait de relire. **Renversé le 2026-10-16** (COL-3, tranche 2,
+le fonds) : un album hors de toute collection est une copie GARDÉE AU FONDS — supprimée de
+sa dernière collection, ou importée au fonds par un administrateur. Aucune politique n'a
+été inventée pour elle : c'est celle d'un album qu'aucune collection n'ouvre, invisible de
+toute portée non totale, refusé à l'export.
 
 ### Le regarder fonctionner sans monter Authelia (2026-09-03)
 
@@ -365,7 +369,12 @@ un droit qui manque, c'est un état que le retrait fabriquerait.
   ailleurs PUIS sortir — l'ordre inverse se voit refuser plutôt que de déverser le travail
   dans un seau commun. « Ailleurs » s'entend **dans le même projet** depuis le 2026-10-10 :
   ranger un album dans une collection d'un autre projet est un troisième 409 nommé (cf.
-  « Le projet », ci-dessous).
+  « Le projet », ci-dessous). **La première moitié est renversée le 2026-10-16** (COL-3,
+  tranche 2) : sortir un album de sa dernière collection aboutit, et la copie est gardée au
+  fonds avec son travail et son projet, que seul un administrateur voit et rend — à une
+  collection de ce projet, jamais d'un autre. Supprimer une collection qui est la dernière
+  d'un album reste refusé, et sa phrase dit désormais de les ranger ailleurs ou de les
+  supprimer d'abord de la collection.
 
 **Retirer un accès ne détruit AUCUNE donnée.** Les annotations faites par la personne
 restent, et le journal A3 continue de les lui attribuer : le corpus perdrait sa provenance
@@ -447,6 +456,42 @@ le zip de figures ne sont pas dans son balayage.
 navigateur et ne borne que la liste des collections de la Bibliothèque : le serveur ne le
 connaît pas, et rend toujours tout ce que la portée permet de lire. Ne pas le prendre pour
 un cloisonnement entre projets — il n'y en a pas.
+
+### Le fonds et les demandes (COL-3, tranche 2, 2026-10-16)
+
+Tout album est la copie de travail d'un document qui appartient à l'instance (schéma v30).
+Ce que cela change à la sécurité tient en cinq points.
+
+**Le journal A3 devient une entrée d'autorisation.** Supprimer définitivement un album sans
+rien demander exige d'écrire dans toutes ses collections, de l'avoir importé, de ne pas
+être un compte partagé, et que personne d'autre n'y ait travaillé — ce dernier point se LIT
+dans le journal (`autorisation.Portee.clause_suppression_directe`). C'est la première
+décision d'accès qui dépend de son contenu ; un acte sans auteur y compte comme celui d'un
+autre, donc la lecture se trompe du côté qui demande. La garde se lit sous le verrou
+d'écriture, dans la même transaction que la destruction.
+
+**La nature d'un compte borde un geste, pas un accès.** Un compte déclaré partagé ne
+supprime jamais définitivement seul ; il demande. Aucune portée n'en dépend.
+
+**Le fonds et les demandes sont à la portée totale seule.** Leurs routes refusent sur le
+droit de l'appelant AVANT de chercher l'objet : le même 403 qu'un identifiant existe ou
+non. Une copie gardée au fonds, n'étant rangée dans aucune collection, répond 404 à toute
+autre portée. Déposer une demande passe par l'accesseur gardé en écriture : 404 à qui
+n'écrit pas dans l'album.
+
+**Qui a demandé ne se lit que par l'administrateur et la personne elle-même**
+(`Portee.peut_nommer_le_demandeur`). La ligne d'un album se lit par n'importe laquelle de
+ses collections : sans cette borne, quelqu'un qui n'écrit que dans l'une aurait été nommé
+aux lecteurs de l'autre. Le motif ne se lit que dans le fonds. Sous une demande,
+l'administrateur lit en revanche qui a travaillé sur le document et combien de gestes
+chacun y a laissés — une lecture de personnes que ceux qu'elle compte ne voient pas,
+décidée par Hugo le 2026-10-15 pour qu'il sache qui perdrait son travail.
+
+**Rien du fonds ne sort.** Le document et le projet d'une copie sont des colonnes retenues
+de l'export d'album ; les actes `document`, `collection_album`, `region_attribut` et
+`demande` sont retenus de toute sortie du journal et ne donnent aucun rang dans les
+pseudonymes. Les dossiers d'images qu'un album neuf met de côté (`album_N.ecarte-…`) ne
+s'affichent nulle part : ce sont des scans d'albums détruits, cf. `docs/exploitation.md`.
 
 ### Le vocabulaire suit sa propre règle, et sa hiérarchie avec
 

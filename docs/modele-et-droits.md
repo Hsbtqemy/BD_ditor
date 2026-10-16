@@ -19,10 +19,12 @@ PROJET          l'étage au-dessus : il se nomme en haut de chaque page, et l'on
     │            collection — cf. §2, « Au-dessus de la collection : le projet »)
     ▼
 COLLECTION      espace de travail ET unité de dépôt ; c'est elle qui PORTE LES ACCÈS
-    │           (lien N-N : un album peut vivre dans plusieurs collections,
-    │            aucun album ne vit hors collection)
+    │           (lien N-N : un album peut vivre dans plusieurs collections ; un album
+    │            supprimé de sa dernière collection est GARDÉ AU FONDS — cf. §2)
     ▼
-ALBUM           un ouvrage numérisé : titre, paternité, édition, source de numérisation
+ALBUM           un ouvrage numérisé : titre, paternité, édition, source de numérisation ;
+    │           c'est la COPIE DE TRAVAIL d'un DOCUMENT, qui appartient à l'instance
+    │           (le FONDS : qui l'a importé, quand, dans quel projet — cf. §2)
     │
     ▼
 PLANCHE         une image (master + dérivé web) : rôle récit/paratexte, statut,
@@ -53,7 +55,9 @@ Trois objets ne sont dans aucune boîte, et c'est voulu.
   propre règle de portée — cf. §4.
 - **Le journal de provenance** enregistre chaque acte (qui, quoi, avant/après) sans jamais
   être modifié. C'est lui que remonte l'annulation (Ctrl+Z), et il **survit à la suppression**
-  de ce qu'il décrit. Cf. [`provenance-audit.md`](provenance-audit.md) et [`undo.md`](undo.md).
+  de ce qu'il décrit. C'est aussi lui qu'on lit pour savoir si **quelqu'un d'autre** a
+  travaillé sur un album, avant de vous laisser le supprimer seul (§2, *Le fonds*). Cf.
+  [`provenance-audit.md`](provenance-audit.md) et [`undo.md`](undo.md).
 
 ### Ce qui est dérivé, jamais stocké
 
@@ -94,19 +98,23 @@ Trois règles en découlent, qu'il vaut mieux connaître avant de les rencontrer
 
 - **Un album peut vivre dans plusieurs collections** (lien N-N). Il suit alors les droits de
   chacune : y être admis par l'une suffit — pour le lire, et pour l'annoter si l'on y écrit.
-  Le **supprimer** est l'exception : effacer un album, ou l'une de ses planches, demande
-  d'écrire dans **toutes** les collections où il est rangé. Qui n'écrit que dans l'une peut
-  l'en **sortir** — l'album reste entier pour les autres. Le geste se défait par qui écrit
-  des deux côtés ou par un administrateur, pas par celui qui n'y écrivait que par cette
-  collection : ranger un album demande d'y écrire, et il n'y écrit plus — qu'il continue de
-  le lire par une autre collection ou non.
-- **Aucun album ne vit hors collection.** Un album créé sans collection explicite entre dans
-  la *Collection par défaut* — un album orphelin ne correspondrait à aucune règle, et il
-  faudrait en inventer une dans le code. Ce nom est **réservé** : personne ne peut le donner
-  à une collection neuve.
-- **Retirer le dernier lien est refusé**, avec un message qui nomme la contrainte : on ne
-  retire pas son dernier propriétaire à une collection, ni sa dernière collection à un
-  album.
+  Le **supprimer** est l'exception, et il a deux sens, décrits plus bas (*Le fonds*) :
+  le supprimer **de la collection** ne détruit rien — l'album reste entier pour les autres
+  collections, ou il est gardé au fonds —, le supprimer **définitivement** l'efface pour
+  tout le monde. Le premier geste se défait par qui écrit des deux côtés ou par un
+  administrateur, pas par celui qui n'y écrivait que par cette collection : ranger un album
+  demande d'y écrire, et il n'y écrit plus — qu'il continue de le lire par une autre
+  collection ou non.
+- **Un album naît dans une collection** — sauf quand un administrateur l'importe directement
+  au fonds (plus bas). Créé sans collection explicite, il entre dans la *Collection par
+  défaut*. Ce nom est **réservé** : personne ne peut le donner à une
+  collection neuve. Il peut en revanche **sortir de toutes** : il est alors gardé au fonds,
+  où aucune collection ne l'ouvre — seul un administrateur le voit.
+- **Retirer le dernier propriétaire d'une collection est refusé**, avec un message qui nomme
+  la contrainte. Retirer à un album sa dernière collection l'était aussi ; ce ne l'est plus :
+  il part au fonds. Reste refusé, en revanche, de **supprimer une collection** qui est la
+  dernière de certains de ses albums : le message dit combien, et qu'il faut les ranger
+  ailleurs ou les supprimer d'abord de la collection — ils sont alors gardés au fonds.
 - **Une collection créée par un administrateur n'a pas de propriétaire.** Elle naît ainsi,
   et les administrateurs la gèrent sans en être propriétaires ; ils peuvent lui en désigner
   un dans *Qui entre* — dans la Bibliothèque, ou dans la fiche de la collection, dans
@@ -167,6 +175,101 @@ police ; l'écran de création l'annonce sous le champ, et un nom trop long est 
 message qui donne le plafond et la longueur du nom proposé. Deux projets ne portent pas le
 même nom, sans égard aux majuscules.
 
+### Le fonds : sous la collection, ce que l'instance détient
+
+**Tout album est la copie de travail d'un document, et le document appartient à
+l'instance.** Ce qu'on importe ne vous appartient pas, ni à votre collection : c'est
+l'instance qui le détient. Les collections l'**emploient** ; une collection qui ne veut plus
+d'un album s'en défait, mais ne le détruit pas pour autant. L'ensemble de ces documents est
+le **fonds** — y compris ceux qu'aucune collection n'appelle plus.
+
+**Un document a une origine écrite** : qui l'a importé, quand, et dans quel projet d'abord.
+Cela s'écrit depuis la mise à jour qui a introduit le fonds. Pour un album créé avant, la
+date et le projet sont connus, **pas l'importateur** : rien ne l'avait noté, et l'application
+ne le devine pas. En usage sur un seul poste, sans portail d'identité, l'importateur n'est
+pas écrit non plus — il n'y a personne à nommer.
+
+**« Supprimer » a deux réponses, et elles ne font pas la même chose.**
+
+- **Supprimer de la collection** ne détruit rien. C'est le geste de quiconque écrit dans la
+  collection, qu'il ait importé l'album ou non. Le travail reste là où l'album vit encore.
+  Si c'était sa **dernière** collection, l'album est **gardé au fonds**, avec tout son
+  travail : plus personne ne le voit, sauf les administrateurs, qui peuvent le **rendre** à
+  une collection — de son projet seulement : un album garde le projet où il vivait, et ne
+  passe pas dans un autre en revenant. Le geste ne s'annule pas, et le propriétaire de la
+  collection ne peut pas reprendre l'album lui-même : il le demande à un administrateur.
+- **Supprimer définitivement** efface les images et tout le travail fait dessus, pour tout
+  le monde, dans tous les projets. Il efface **sans rien demander** à quatre conditions,
+  toutes nécessaires : écrire dans **toutes** les collections de l'album ; l'avoir
+  **importé** vous-même ; ne pas travailler sous un **compte partagé** (un login commun à
+  plusieurs personnes : « celui qui l'a importé » n'y désigne personne) ; et que **personne
+  d'autre n'y ait travaillé**. C'est le cas de l'import par erreur, qui n'a à attendre
+  personne. Hors de ce cas, la suppression **se demande** à un administrateur.
+
+**« Personne d'autre n'y a travaillé »** se lit dans le journal de l'instance, sur ce qui
+existe encore. Compte comme travail tout geste d'une autre personne sur l'album : dessiner
+ou modifier une case ou une bulle, transcrire, annoter (note, tags), poser un locuteur, une
+présence ou un attribut de case, corriger la grammaire, valider une planche, ajouter ou
+retirer une planche, modifier la notice ou la paternité, forcer le statut de relecture.
+Ne comptent pas : un travail supprimé depuis ; une passe automatique, même lancée par un
+collègue — elle est attribuée à son moteur, pas à une personne ; ranger l'album dans une
+collection ; déposer une demande. Un geste dont l'auteur n'est pas écrit compte comme celui
+d'un autre : on ne sait pas que c'est vous. Et un album d'avant le fonds, dont
+l'importateur n'est pas écrit, **se demande toujours** — seul un administrateur le détruit.
+
+**Une demande dit pourquoi, et se certifie.** On la dépose depuis un album où l'on écrit, par
+*Supprimer…* puis *Supprimer définitivement*. Le motif est obligatoire — c'est ce que
+l'administrateur lira pour décider. Et une case l'est aussi : supprimer définitivement
+détruit tout ce qui a été posé sur les planches — découpage, transcription, annotations,
+métadonnées —, que d'autres utilisent peut-être dans le projet ou dans ses collections ; on
+certifie que ces données ne sont pas importantes, et la date de cette certification est
+gardée. La même suppression ne se demande pas deux fois tant qu'elle attend, et ne se demande
+pas quand on peut la faire soi-même : les deux refus le disent.
+
+**L'administrateur répond** *Détruire* — l'album, ses images et son travail disparaissent —
+ou *Garder* : rien n'est effacé, la demande est close, et l'on peut la redéposer ;
+l'administrateur verra alors qu'elle a déjà été refusée. *Garder* répond à une demande : il
+ne protège pas l'album de qui l'a importé, si les quatre conditions tiennent toujours. Une
+demande ne se retire pas. Il n'y a pas de messagerie : la demande est un état, qui se lit
+sur la ligne de l'album et dans l'Administration.
+
+**Qui voit quoi d'une demande.**
+
+| Ce qu'on lit | qui lit l'album | qui a demandé | administrateur |
+|---|:---:|:---:|:---:|
+| qu'une suppression est demandée (*suppression demandée*, sur la ligne de l'album) | ✅ | ✅ | ✅ |
+| **qui** l'a demandée | — | ✅ (*par vous*) | ✅ |
+| le motif, la certification | — | — | ✅ |
+| qui a importé l'album, et ce que d'**autres** y ont fait | — | — | ✅ |
+
+Le nom de qui demande n'est pas montré aux autres lecteurs, et c'est une question de
+cloisonnement : un album peut vivre dans plusieurs collections, et quelqu'un qui n'écrit que
+dans l'une aurait sinon été nommé aux lecteurs de l'autre. Ce que l'administrateur lit du
+travail des autres, sous une demande, est ce que la règle a lu : qui, combien de gestes de
+chaque sorte, la date du dernier. Ce sont des **gestes** lus dans le journal — un geste défait
+depuis compte encore —, pas ce qui reste sur les planches ; et derrière un compte partagé,
+une ligne peut être le travail de plusieurs personnes, ce que l'écran rappelle.
+
+**Une planche suit la règle de l'album**, sans demande à elle : on la supprime là où l'on
+supprimerait l'album sans rien demander. Ailleurs, sa corbeille dit de s'adresser à un
+administrateur.
+
+**Un projet se demande aussi** : son responsable, qui ne le supprime pas lui-même, en demande
+la suppression avec un motif — sans certification, puisqu'un projet ne se supprime que vide.
+L'administrateur le supprime, si le projet est bien vide, ou le garde.
+
+**Ce que l'administrateur fait du fonds**, dans le bloc *🗄️ Le fonds* de l'Administration :
+répondre aux demandes ; **rendre** une copie gardée ; **détruire** un album qu'aucune
+collection n'appelle ; et **importer au fonds** — un album qui naît sans collection ni
+projet, « appelé par personne », pour être distribué ensuite : il prend le projet de la
+première collection où on le range.
+
+**Ce que le fonds ne fait pas encore.** Un document n'a qu'une copie : en prendre une
+seconde dans une autre collection ou un autre projet, en partant du travail existant ou de
+zéro, viendra plus tard. Et l'administrateur, comme l'usage sur un seul poste, lit encore
+dans la Recherche et l'Exploration le texte d'un album gardé au fonds : ces deux pages
+portent sur tout ce qu'il lit, et il lit tout.
+
 ---
 
 ## 3. Qui peut quoi
@@ -222,8 +325,10 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 | Transcrire, corriger le découpage, annoter, relire la grammaire | — | ✅ | ✅ | ✅ |
 | Lancer les passes automatiques (cases, bulles, OCR) | — | ✅ | ✅ | ✅ |
 | Créer et documenter du vocabulaire local à la collection | — | ✅ | ✅ | ✅ |
-| **Sortir** un album de la collection (s'il est rangé ailleurs aussi) | — | ✅ | ✅ | ✅ |
-| **Supprimer** un album ou une planche — à condition d'écrire dans *toutes* les collections où l'album est rangé | — | ✅ | ✅ | ✅ |
+| **Supprimer un album de la collection** — même la dernière : il est alors gardé au fonds | — | ✅ | ✅ | ✅ |
+| **Supprimer définitivement** un album ou une planche sans rien demander — à condition de l'avoir importé, que personne d'autre n'y ait travaillé, d'écrire dans *toutes* ses collections, et de ne pas être sous un compte partagé (§2, *Le fonds*) | — | ✅ | ✅ | ✅ |
+| **Demander** la suppression définitive d'un album, motif et certification à l'appui | — | ✅ | ✅ | — (il la fait) |
+| Tenir le **fonds** : le voir, répondre aux demandes, rendre une copie gardée, importer au fonds | — | — | — | ✅ |
 | Consulter le rapport d'accord **inter-annotateurs** (*👥 Inter*) | — | ✅ | ✅ | ✅ |
 | Accorder et retirer les accès de la collection | — | — | ✅ | ✅ |
 | Renommer, supprimer la collection, désigner son référent | — | — | ✅ | ✅ |
@@ -259,6 +364,15 @@ cite à la ligne près. La règle est que *ceux qui voient la mesure sont ceux q
 d'où le niveau écriture. Au dépôt, la fiche ne garde que le nombre d'auteurs et des paires
 sans identités : « relu à plusieurs, accord 0,87 » ne demande aucun nom.
 
+Une autre lecture porte sur des personnes, et **elle ne suit pas cette règle** — c'est une
+décision du 2026-10-15. Sous une demande de suppression, l'**administrateur** voit qui a
+travaillé sur l'album et combien de gestes chacun y a laissés, pour savoir qui perdrait son
+travail avant de détruire. Ceux qu'elle compte ne la voient pas ; elle ne sert qu'à répondre
+à la demande, et ne sort de l'instance par aucun export (§2, *Le fonds*).
+
+Les administrateurs suppriment définitivement **sans condition** : c'est le recours d'une
+demande, et c'est eux qui y répondent.
+
 **Un groupe peut posséder une collection**, et c'est souvent le bon choix : un espace de
 travail survit rarement au départ d'une personne.
 
@@ -287,6 +401,7 @@ Un projet (§2) a deux **rôles**, et l'instance deux **pouvoirs** qui ne se con
 | Voir **qui est** du projet | — | ✅ | ✅ |
 | **Faire entrer**, faire sortir, nommer un autre responsable | — | ✅ | ✅ |
 | Lire la **justification** du projet | — | ✅ | ✅ |
+| **Demander** la suppression du projet, avec un motif | — | ✅ | — (il la fait) |
 | **Créer**, **renommer**, **supprimer** un projet | — | — | ✅ |
 
 - **Membre ou responsable.** On fait entrer un **compte** ou un **groupe**, comme pour un
@@ -296,7 +411,9 @@ Un projet (§2) a deux **rôles**, et l'instance deux **pouvoirs** qui ne se con
 - **Régler n'est pas décider.** Le responsable règle **qui entre** dans son projet. Il ne
   décide ni de son nom ni de son existence : créer, renommer et supprimer un projet
   reviennent aux administrateurs de l'instance — le nom d'un projet se lit sur l'écran de
-  tous ceux qui y travaillent. En mono-poste, où l'on est seul, on fait tout.
+  tous ceux qui y travaillent. Le responsable en **demande** la suppression, dans la fiche
+  du projet, et un administrateur y répond (§2, *Le fonds*). En mono-poste, où l'on est
+  seul, on fait tout.
 - **La liste des membres n'est pas publique dans le projet.** C'est une donnée sur des
   personnes : un simple membre ne voit pas qui d'autre en est, ni qui en répond.
 - **Les administrateurs règlent tout projet sans figurer parmi ses membres**, et *Qui y
@@ -304,7 +421,7 @@ Un projet (§2) a deux **rôles**, et l'instance deux **pouvoirs** qui ne se con
 - **Faire sortir quelqu'un ne lui retire aucun accès de collection**, et ne détruit rien :
   ce qu'il lisait, il le lit encore, et son travail lui reste attribué.
 
-Trois refus se **nomment**, pour la raison qui vaut déjà pour les collections — ce n'est pas
+Quatre refus se **nomment**, pour la raison qui vaut déjà pour les collections — ce n'est pas
 un droit qui manque, c'est un état que le geste fabriquerait.
 
 - *Le dernier responsable d'un projet* ne se retire pas et ne se rétrograde pas : il faut
@@ -313,10 +430,15 @@ un droit qui manque, c'est un état que le geste fabriquerait.
 - *Le projet de repli* ne se supprime pas : c'est là qu'entre une collection qui ne nomme
   aucun projet.
 - *Un projet qui porte encore une collection* ne se supprime pas : un projet ne se supprime
-  que vide. Comme une collection ne change pas de projet, et qu'une collection ne se
-  supprime pas tant qu'un album n'a qu'elle (§2), **un projet où des albums sont entrés ne
-  se vide aujourd'hui qu'en supprimant ces albums**. À savoir avant d'en créer un pour
-  essayer.
+  que vide.
+- *Un projet dont des albums sont gardés au fonds* ne se supprime pas non plus : un album
+  gardé emporte son projet, et le supprimer le laisserait désigner un projet qui n'existe
+  plus. Il faut d'abord détruire ces albums, depuis le fonds.
+
+Comme une collection ne change pas de projet, qu'une collection ne se supprime pas tant
+qu'un album n'a qu'elle (§2), et qu'un album supprimé de ses collections reste au fonds avec
+son projet, **un projet où des albums sont entrés ne se vide aujourd'hui qu'en DÉTRUISANT
+ces albums**. À savoir avant d'en créer un pour essayer.
 
 ### L'administrateur, et pourquoi il est déclaré
 
@@ -381,6 +503,10 @@ La conséquence est visible et vaut d'être connue : sur une collection où vous
 lecture, les écrans ne se ferment pas. Le panneau d'annotation s'ouvre, les champs
 s'affichent, le bouton répond — et **c'est en enregistrant que le refus arrive**. Rien n'est
 cassé ; personne ne vous a menti ; l'interface ne savait simplement pas quoi masquer.
+
+Quelques gestes font exception, parce que le serveur les dit album par album : dans la
+Bibliothèque, *Supprimer…* n'est offert que sur un album où vous écrivez, et sa réponse
+*Supprimer définitivement* dit d'avance si elle effacera ou si elle enverra une demande.
 
 C'est un compromis assumé, et il tient parce que **la garde est du côté du serveur**. Un
 bouton visible n'accorde rien : l'acte est vérifié quand il est demandé, jamais quand il est
@@ -754,7 +880,25 @@ propriétaire vous donne accès à la sienne, dans *Qui entre* — ou que vous e
 **Je suis responsable d'un projet. Pourquoi ne puis-je pas le renommer ?**
 Parce que régler qui entre dans un projet n'est pas décider de son nom ni de son
 existence : cela revient aux administrateurs de l'instance (§3), et la fiche du projet
-vous le dit.
+vous le dit. Sa suppression, vous pouvez la **demander**, depuis la même fiche.
+
+**J'ai importé un album par erreur. Comment l'effacer ?**
+Dans la Bibliothèque, *Supprimer…* sur sa ligne, puis *Supprimer définitivement* : si vous
+l'avez importé vous-même et que personne d'autre n'y a travaillé, il est effacé tout de
+suite. Sinon, la même réponse envoie une demande à un administrateur (§2, *Le fonds*).
+
+**J'ai supprimé un album de ma collection. Est-il perdu ?**
+Non. S'il vit dans d'autres collections, il y reste entier. Si c'était sa dernière, il est
+gardé au fonds avec tout son travail, et un administrateur peut le rendre à une collection
+du même projet.
+
+**Pourquoi mon album d'avant le fonds se demande-t-il toujours ?**
+Parce que personne n'avait noté qui l'avait importé : l'application ne peut pas savoir que
+c'est vous. Dans le doute, la suppression définitive revient à un administrateur.
+
+**Qui sait que j'ai demandé une suppression ?**
+Tous ceux qui lisent l'album voient qu'une suppression est demandée ; seuls vous et les
+administrateurs voient que c'est vous. Le motif ne se lit que par les administrateurs.
 
 **Pourquoi un album que je sais exister me répond « introuvable » ?**
 Parce que répondre « interdit » révélerait sa présence, donc la composition du corpus. C'est

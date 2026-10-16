@@ -33,11 +33,11 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 
 | Surface | Adresse | Ce qu'on y fait |
 |---|---|---|
-| **Bibliothèque** | `/corpus` | créer et décrire les albums et les collections — celles du **projet** où vous travaillez —, régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, lancer les traitements par lot, suivre l'avancement planche par planche |
-| **Atelier** | `/` | tout ce qui se fait sur une planche : corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
+| **Bibliothèque** | `/corpus` | créer et décrire les albums et les collections — celles du **projet** où vous travaillez —, **supprimer** un album (de sa collection, ou définitivement), régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, lancer les traitements par lot, suivre l'avancement planche par planche |
+| **Atelier** | `/` | tout ce qui se fait sur une planche : importer les images d'un album qui existe, corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
 | **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
 | **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus ; documenter le vocabulaire |
-| **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : quels projets existent et qui y entre, quels comptes et quels groupes existent — et, pour un administrateur, qui entre dans quelle collection —, la version servie, l'état des moteurs |
+| **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : quels projets existent et qui y entre, ce que l'instance détient (**le fonds**, et les suppressions qu'on lui demande), quels comptes et quels groupes existent — et, pour un administrateur, qui entre dans quelle collection —, la version servie, l'état des moteurs |
 
 Une barre de navigation commune les relie, sur les cinq pages. Les réglages d'affichage —
 thème clair/sombre, contraste élevé, zoom de l'interface — y sont aussi, et suivent d'une
@@ -47,7 +47,8 @@ suivi de son nom — ou d'une liste déroulante dès que vous en voyez plusieurs
 
 > **L'Administration n'est pas réservée**, et ça surprend. La page s'ouvre à tout le monde :
 > c'est **chaque bloc** qui décide de ce qu'il montre — **👥 Comptes et groupes** n'apparaît
-> que si le serveur vous le sert, **🏷️ Version servie** de même, **🗂️ Projets** ne montre
+> que si le serveur vous le sert, **🏷️ Version servie** de même, **🗄️ Le fonds** aussi — il
+> n'apparaît qu'à un administrateur —, **🗂️ Projets** ne montre
 > que les projets que vous réglez, et l'état des moteurs est
 > ouvert à tous, parce que savoir si l'OCR fonctionne n'est un pouvoir pour personne. Fermer
 > la page entière aurait enfermé des choses qui n'ont rien à y faire.
@@ -71,10 +72,23 @@ pour chaque planche son statut, sa validation et son avancement de relecture.
 ### Étape 1 — Constituer le corpus
 **Bibliothèque · `+ Nouvel album` — puis Atelier, menu `⇅ Import / Export` pour les images**
 
-L'album se crée dans la Bibliothèque (ou par le `＋` de la barre latérale de l'Atelier).
-**L'import des images, lui, se fait depuis l'Atelier** : *⤓ Importer des images…* pour
-votre disque, *🖼 Depuis ShareDocs…* pour parcourir un dossier Huma-Num distant et importer une
-sélection entière. La Bibliothèque gère l'inventaire, pas l'entrée des fichiers.
+**L'album se crée dans la Bibliothèque, et seulement là.** C'est elle qui vous demande dans
+quelle collection il entre — donc dans quel projet —, et l'application retient qui l'a
+créé, quand et dans quel projet : c'est son **origine**, et c'est elle qui vous laissera le
+supprimer vous-même si vous l'avez importé par erreur (§4, *Bibliothèque*, « Supprimer un
+album »).
+L'Atelier ne crée plus d'albums : le bouton `＋` de sa barre latérale a disparu.
+
+**L'import des images, lui, se fait depuis l'Atelier, dans un album qui existe et où vous
+écrivez.** Choisissez l'album dans la liste *Album* de la barre latérale, puis, dans le
+menu *⇅ Import / Export* : *⤓ Importer des images…* pour votre disque — les images entrent
+dans l'album affiché —, ou *🖼 Depuis ShareDocs…* pour parcourir un dossier Huma-Num distant
+et importer une sélection entière. Le formulaire ShareDocs propose, sous *Destination*, les
+seuls albums où vous écrivez ; si vous n'en avez aucun, il le dit — *Aucun album où vous
+écrivez : un album se crée dans la Bibliothèque, avec sa collection, puis ses planches
+s'importent ici.* — et *Importer* reste éteint. Pour ajouter des planches à un album déjà
+rempli, c'est le même geste : elles s'ajoutent à la suite. La Bibliothèque gère
+l'inventaire, pas l'entrée des fichiers.
 
 **Sept formats sont acceptés, et rien d'autre** : TIFF et JPEG — les deux du corpus —, puis
 JPEG 2000, PNG, BMP, GIF et WebP. La liste est courte exprès : elle borne aussi ce que le
@@ -310,18 +324,50 @@ L'inventaire et le poste de commande.
   courant : *Cet album vit dans le projet « … » : seules les collections de ce projet sont
   proposées, un album ne se rangeant pas d'un projet à l'autre.* Ce qu'est un projet, et ce
   qu'il n'ouvre pas : [`modele-et-droits.md`](modele-et-droits.md) §2.
-- **Albums** : créer, éditer les métadonnées, supprimer. La fiche porte la description, les
-  contributions, les champs d'édition, la source de numérisation et l'appartenance aux
-  collections.
-- **Supprimer n'est pas sortir.** Un album rangé dans plusieurs collections ne se supprime
-  — lui ou l'une de ses planches — que par qui écrit dans **toutes**. Si vous n'écrivez que
-  dans l'une, la corbeille 🗑 laisse place à un ✕ : il ouvre la fiche de l'album, d'où vous
-  le **sortez** de votre collection. L'album reste entier pour les autres. Si c'était la
-  seule collection par laquelle vous y écriviez, vous n'y écrirez plus — et vous ne le verrez
-  plus du tout si vous ne le lisiez que par elle — : vous ne pourrez donc pas l'y ranger de
-  nouveau vous-même. L'écran vous le fait confirmer ; quelqu'un qui écrit des deux côtés, ou
-  un administrateur, peut le faire. Si vous ne faites que **lire** un album, sa ligne ne
-  porte ni corbeille ni ✕.
+- **Albums** : créer, éditer les métadonnées, supprimer (ci-dessous). La fiche porte la
+  description, les contributions, les champs d'édition, la source de numérisation et
+  l'appartenance aux collections.
+- **Supprimer un album : deux réponses.** Sur la ligne d'un album où vous **écrivez**, le
+  bouton *Supprimer…* ouvre un panneau qui propose deux gestes, et dit pour chacun ce qui
+  arrivera avant que vous le choisissiez — le panneau est la confirmation. *Annuler* le
+  referme sans rien faire. Si vous ne faites que **lire** un album, sa ligne n'a pas de
+  bouton *Supprimer…*.
+  - **Supprimer de la collection** ne détruit rien. Il y a un bouton par collection de
+    l'album où vous écrivez, *Supprimer de « … »*, et le texte au-dessus dit ce que devient
+    le travail : il **reste** dans les autres collections que vous lisez, nommées ; ou il
+    reste dans *une collection que vous ne lisez pas*, sans la nommer ; ou c'était la
+    **dernière** collection de l'album, et *la copie de travail est gardée au fonds, avec
+    tout son travail* — un administrateur peut la rendre (§4, *Administration*). Le texte
+    dit aussi ce que **vous** y perdez : si c'était la seule collection par laquelle vous y
+    écriviez, vous continuerez de le lire mais n'y écrirez plus, ou vous ne le verrez plus
+    du tout — et vous ne pourrez pas l'y ranger de nouveau vous-même. Le geste ne s'annule
+    pas : seul un administrateur, ou quelqu'un qui écrit des deux côtés, le défait. Le ✕
+    d'une collection, dans la fiche de l'album, fait le même geste et le fait confirmer
+    quand il coûte.
+  - **Supprimer définitivement** efface les images et tout le travail fait dessus, pour
+    tout le monde, dans tous les projets. Il efface **tout de suite** si vous avez importé
+    l'album vous-même et que personne d'autre n'y a travaillé — c'est l'import par erreur,
+    qui n'a à attendre personne ; le panneau le dit (*… vous l'avez importé, et personne
+    d'autre n'y a travaillé. Irréversible.*) et le bouton s'appelle *Supprimer
+    définitivement*. **Sinon, il se demande à un administrateur** : le panneau dit *D'autres
+    s'en servent, ou ce n'est pas vous qui l'avez importé : la demande part à un
+    administrateur, qui décide. Rien n'est effacé d'ici là.* Remplissez *Pourquoi ce
+    document n'a pas sa place ici*, lisez ce que la suppression détruirait, cochez *Je
+    certifie que ces données ne sont pas importantes.*, puis *Envoyer la demande*. Sans
+    motif ou sans la case, rien ne part, et le panneau le dit. Ce qui compte comme « avoir
+    travaillé », et pourquoi un album créé avant l'arrivée du fonds se demande toujours :
+    [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds*.
+  - **Une demande en attente se voit sur la ligne de l'album** : *suppression demandée par
+    vous*, ou *suppression demandée* sans nom — seuls un administrateur et la personne qui a
+    demandé lisent qui l'a fait. Tant qu'elle attend, *Supprimer définitivement* le dit,
+    sans bouton, et rien n'est effacé. L'administrateur répond *Détruire* — l'album disparaît
+    pour tous — ou *Garder* : la pastille disparaît, et l'on peut demander de nouveau.
+- **Supprimer une planche** suit la règle de l'album, sans demande à elle : sa corbeille 🗑
+  est active là où vous supprimeriez l'album définitivement sans rien demander. Ailleurs,
+  si vous écrivez dans l'album, elle est **grisée** et, quand on la touche, dit sous elle :
+  *Cette planche ne se supprime pas d'ici : vous n'avez pas importé l'album, ou d'autres y
+  ont travaillé. Adressez-vous à un administrateur de l'instance.* À qui ne fait que lire,
+  pas de corbeille.
 - **Planches** : ouvrir, supprimer, et trois marques indépendantes —
   **rôle** (`récit`, numéroté, ou `paratexte` : couverture, liminaire, publicité, écarté de la
   numérotation), **validation** (✔ relue et finalisée, décomptée par album) et
@@ -399,8 +445,9 @@ l'application ne contrôle pas l'audience.
 ### Administration (`/administration`)
 
 Ce qui porte sur l'instance : quelle version tourne ici, à qui s'adresser quand on est
-bloqué, quels projets existent et qui y entre, quels comptes et quels groupes existent, et
-si les moteurs répondent encore. Cinq blocs, chacun avec sa propre règle d'accès (cf. §2).
+bloqué, quels projets existent et qui y entre, ce que l'instance détient, quels comptes et
+quels groupes existent, et si les moteurs répondent encore. Six blocs, chacun avec sa propre
+règle d'accès (cf. §2).
 
 - **🏷️ Version servie** : le commit que cette instance fait tourner. N'apparaît que si le
   serveur vous le sert — c'est réservé aux administrateurs, parce que le dépôt est public
@@ -443,14 +490,51 @@ si les moteurs répondent encore. Cinq blocs, chacun avec sa propre règle d'acc
     Chaque réponse se lit à côté du bouton qu'on vient d'actionner.
     Un responsable n'y reçoit aucun champ, et y lit à la place : *Vous réglez qui entre dans
     ce projet. Le renommer, corriger sa description ou sa justification, ou le supprimer se
-    demande à un administrateur de l'instance.*
-  - **Trois refus, qui se disent.** Le *dernier responsable* d'un projet ne se retire pas
+    demande à un administrateur de l'instance.* Sous cette phrase, **il a le geste de le
+    demander** : *Demander sa suppression…* ouvre un champ, *Pourquoi le supprimer* — sans
+    motif, rien ne part —, puis *Envoyer la demande* (*Annuler* referme le champ). La fiche
+    dit ensuite *suppression demandée le …*, et la demande se lit dans le fonds, où un
+    administrateur y répond. Le projet de repli n'offre pas ce geste.
+  - **Quatre refus, qui se disent.** Le *dernier responsable* d'un projet ne se retire pas
     et ne se rétrograde pas : désignez-en un autre d'abord. Le *projet de repli* se
-    renomme, il ne se supprime pas — le bouton n'y est pas offert. Et *un projet ne se
+    renomme, il ne se supprime pas — le bouton n'y est pas offert. *Un projet ne se
     supprime que vide* : tant qu'une collection lui appartient, c'est refusé, en disant
-    combien.
+    combien. Et tant que des albums de ce projet sont **gardés au fonds**, aussi : il faut
+    d'abord les détruire depuis le fonds.
 
   Cf. [`modele-et-droits.md`](modele-et-droits.md) §2 et §3.
+- **🗄️ Le fonds** : ce que l'instance détient — tous les albums, y compris ceux qu'aucune
+  collection n'appelle plus. Réservé aux administrateurs, et ouvert en mono-poste : pour
+  tout autre compte, le bloc n'apparaît pas. Une ligne de compte, en tête, dit combien de
+  documents, combien sont *appelés par personne*, combien de suppressions sont demandées.
+  - **Suppressions demandées**, en tête quand il y en a : qui demande la suppression de quoi,
+    quand, depuis quel projet, si la même a *déjà été refusée*, le motif, et la
+    certification (*Certifié par … le … : ces données ne sont pas importantes.*). Sous la
+    demande d'un album : qui l'a importé — ou *Qui l'a importé n'est pas écrit (un album
+    d'avant le fonds)* —, puis ce que d'**autres** que le demandeur y ont fait, une ligne
+    par personne (*Nom (login) : 3 annotations, 1 locuteur — dernier le …*), ou *Personne
+    d'autre que le demandeur n'y a laissé de geste.* Ce sont des gestes lus dans le journal
+    — un geste défait depuis compte encore —, pas ce qui reste sur les planches ; et sous un
+    compte partagé, la ligne rappelle que plusieurs personnes ont pu travailler sous ce
+    login. **Détruire** efface l'album pour tous, après une confirmation qui dit ce qui
+    part ; **Garder** clôt la demande sans rien effacer. Une demande de suppression de
+    projet se répond de même, par *Supprimer le projet* ou *Garder* ; si le projet n'est
+    pas vide, le refus le dit et la demande reste en attente.
+  - **Importer au fonds** : un titre, des fichiers, puis *+ Importer au fonds*. L'album
+    naît **appelé par personne**, sans collection ni projet, et ses planches entrent une à
+    une ; le message dit combien sont entrées et lesquelles ont été refusées. C'est le
+    moyen de charger un corpus avant de le distribuer.
+  - **Documents** : pour chaque album, d'où il vient (*Importé par … le …, dans « … »*, ou
+    ce qui n'est pas écrit), où il est employé (*Employé par Projet : collections*), la
+    marque *appelé par personne* s'il n'est rangé nulle part, et la demande qui l'attend.
+    Une **copie gardée** — supprimée de sa dernière collection, ou importée au fonds — se
+    **rend** : choisissez une collection, puis *Rendre* ; elle y revient avec tout son
+    travail. Seules les collections de **son** projet sont proposées (une copie importée au
+    fonds, qui n'en a pas encore, peut aller partout, et prend le projet de cette
+    collection). Un album que personne n'appelle se **détruit** par *Détruire*, après
+    confirmation.
+  - **« À regarder »**, dans *👥 Comptes et groupes*, porte aussi les demandes en attente,
+    en tête ; un clic y mène à la demande, dans le fonds.
 - **👥 Comptes et groupes** : réservé aux administrateurs, parce qu'il porte sur des
   personnes et non sur le corpus. Il réunit trois sources qui ne se recouvrent pas — ce que
   l'**annuaire** rend (les comptes et les groupes qui EXISTENT, venus ou non), ce que
@@ -561,6 +645,26 @@ Elle est probablement d'un autre **projet** que celui choisi en haut de la page 
 des collections suit le projet. Changez-le dans la liste déroulante *Projet* — la ligne
 *Dans le projet « … »*, au-dessus des collections, dit lequel est affiché. Rien ne vous a
 été retiré : la Recherche et l'Exploration, qui ne suivent pas le projet, la lisent encore.
+
+**J'ai supprimé un album de ma collection : il a disparu de la Bibliothèque.**
+C'est attendu si c'était la seule collection par laquelle vous le lisiez. S'il n'était rangé
+nulle part ailleurs, il est **gardé au fonds** avec tout son travail : rien n'est perdu, et
+un administrateur peut le rendre à une collection du même projet. Écrivez-lui en lui
+donnant le titre.
+
+**« Supprimer définitivement » envoie une demande au lieu d'effacer.**
+L'album n'est effacé tout de suite que si vous l'avez importé vous-même, que personne d'autre
+n'y a travaillé, et que vous écrivez dans toutes ses collections. Un album créé avant
+l'arrivée du fonds n'a pas d'importateur écrit : sa suppression se demande toujours. Sous un
+compte partagé aussi. Cf. [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds*.
+
+**La corbeille d'une planche est grisée.**
+Une planche se supprime là où l'album se supprimerait sans rien demander, et nulle part
+ailleurs. Touchez-la : elle dit à qui s'adresser. Un administrateur peut la supprimer.
+
+**Le bouton `＋` de l'Atelier a disparu.**
+Un album se crée désormais dans la Bibliothèque (`+ Nouvel album`), qui demande sa
+collection. Ses images s'importent ensuite depuis l'Atelier (étape 1).
 
 **Je suis entré dans un projet et je n'y vois rien.**
 Entrer dans un projet n'ouvre aucune de ses collections : chacune garde son *Qui entre*.
