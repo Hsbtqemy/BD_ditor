@@ -820,9 +820,15 @@ def test_l_administrateur_voit_qui_d_autre_y_a_travaille(client, db_path, decor)
     _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
          (decor["region"], vid))
     demande = _demander(client, decor["erreur"], ATELIER).json()["id"]
-    # Le plus ANCIEN de ses gestes vieilli à la main : « le dernier » est le plus récent.
-    _sql(db_path, "UPDATE evenement SET date = '2020-01-01 00:00:00' WHERE agent = 'collegue' "
-                  "AND cible_table = 'annotations'")
+    # Les gestes de l'importatrice vieillis à la main, sauf son scan : « le dernier » est le
+    # plus récent de TOUS, y compris dans une sorte qui en compte deux (la naissance du
+    # document, vieillie, et son scan).
+    _sql(db_path, "UPDATE evenement SET date = '2020-01-01 00:00:00' WHERE agent = 'importeuse' "
+                  "AND (cible_table = 'regions' OR (cible_table = 'document' "
+                  "AND type = 'creation'))")
+    scan = _sql(db_path, "SELECT date FROM evenement WHERE agent = 'importeuse' AND "
+                         "cible_table = 'document' AND type = 'modification'")
+    assert len(scan) == 1 and scan[0]["date"] > "2020-01-01 00:00:00"
 
     x = _detail(client, demande)
     assert x["importe_par"] == "importeuse"
@@ -836,6 +842,7 @@ def test_l_administrateur_voit_qui_d_autre_y_a_travaille(client, db_path, decor)
     assert par["collegue"]["dernier"] == derniere
     # L'importatrice : sa région, la naissance du document et le scan qu'elle a ajouté.
     assert par["importeuse"]["gestes"] == {"regions": 1, "document": 2}  # naissance, scan
+    assert par["importeuse"]["dernier"] == scan[0]["date"]
     assert par[None] == {"agent": None, "agent_nom": None, "dernier": None,
                          "gestes": {"region_attribut": 1}}
     # Le plus récent d'abord, l'inconnu sans date en dernier.
