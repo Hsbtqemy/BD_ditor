@@ -252,6 +252,21 @@ def test_un_attribut_dont_on_ne_sait_pas_qui_l_a_pose_fait_demander(client, db_p
     assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
 
 
+def test_un_attribut_sans_auteur_le_reste_si_l_importatrice_en_a_retire_un_pareil(
+        client, db_path, decor):
+    """Un attribut que rien n'attribue — posé avant que le geste s'écrive, puis retiré par
+    l'importatrice, puis recopié par la fusion de deux valeurs — reste d'un auteur inconnu :
+    seul un `lien` écrit l'attribue, un `delien` ne dit pas qui l'avait posé."""
+    vid = _valeur_de_case(client)
+    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
+         (decor["region"], vid))
+    assert client.delete(f"/api/regions/{decor['region']}/attributs/{vid}",
+                         headers=IMPORTEUSE).status_code == 204
+    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
+         (decor["region"], vid))
+    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
+
+
 def test_un_attribut_pose_puis_retire_par_un_autre_compte_encore(client, db_path, decor):
     """Comme une annotation posée puis retirée : le journal garde l'acte d'un autre sur une
     région qui vit encore, et c'est lui qui compte — il ne reste plus d'attribut à lire."""
@@ -805,6 +820,9 @@ def test_l_administrateur_voit_qui_d_autre_y_a_travaille(client, db_path, decor)
     _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
          (decor["region"], vid))
     demande = _demander(client, decor["erreur"], ATELIER).json()["id"]
+    # Le plus ANCIEN de ses gestes vieilli à la main : « le dernier » est le plus récent.
+    _sql(db_path, "UPDATE evenement SET date = '2020-01-01 00:00:00' WHERE agent = 'collegue' "
+                  "AND cible_table = 'annotations'")
 
     x = _detail(client, demande)
     assert x["importe_par"] == "importeuse"
