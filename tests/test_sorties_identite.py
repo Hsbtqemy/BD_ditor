@@ -260,12 +260,14 @@ SORTIES_DECLAREES = {
     ("route", "/api/albums"): (
         {"login", "nom"},
         "COL-3, tranche 2 — QUI a demandé la suppression d'un album, sur la ligne de cet "
-        "album (`demande.demandeur`, et son nom lisible par le miroir `utilisateur`). Lu par "
-        "tous ceux qui lisent l'album, et c'est décidé : on a besoin de savoir à qui parler "
-        "avant d'y travailler encore (proposition R2 du cadrage, suivie en route). Le MOTIF, "
-        "lui, n'y est pas — il ne se lit que dans le fonds. Le courriel ne sort pas : "
-        "`noms_lisibles` ne lit jamais cette colonne. Avant la tranche 2 la liste ne nommait "
-        "personne."),
+        "album (`demande.demandeur`, et son nom lisible par le miroir `utilisateur`). Rendu "
+        "à une portée TOTALE — l'administrateur, qui y répond, ce que mesure ce balayage — "
+        "et à la personne elle-même, à PERSONNE d'autre : tout autre lecteur reçoit la "
+        "demande sans ces deux clés (Hugo, 2026-10-15, qui renverse la proposition R2 du "
+        "cadrage ; mesuré sous une lectrice par "
+        "`test_une_lectrice_lit_la_demande_sans_le_nom`). Le MOTIF n'y est pas — il ne se "
+        "lit que dans le fonds. Le courriel ne sort pas : `noms_lisibles` ne lit jamais "
+        "cette colonne. Avant la tranche 2 la liste ne nommait personne."),
     ("route", "/api/fonds"): (
         {"login", "nom"},
         "COL-3, tranche 2 — l'écran du FONDS : qui a importé chaque document "
@@ -808,6 +810,27 @@ def test_le_semis_est_visible(client, seme, tmp_path):
         f"balayage anormalement court : {len(vus)} surfaces vues pour {attendues} "
         "attendues. Une surface qui répond 4xx ou dont les paramètres ne se remplissent "
         "pas doit entrer dans NON_BALAYE avec sa raison, jamais disparaître du compte.")
+
+
+def test_une_lectrice_lit_la_demande_sans_le_nom(client, seme):
+    """Le balayage mesure l'exposition MAXIMALE — sa sentinelle est administratrice. Pour
+    `/api/albums`, la déclaration promet MOINS à tout autre lecteur : la demande de
+    suppression s'y lit, son auteur non (Hugo, 2026-10-15). Ce test joue la même liste,
+    sur le même semis, sous une lectrice de la collection, et exige que ni le login, ni le
+    nom, ni le courriel de la sentinelle n'en sortent — ET que la demande y soit, sans
+    quoi le silence viendrait d'une liste vide et non de la règle."""
+    r = client.put(f"/api/collections/{seme['collection_id']}/acces", headers=seme["ident"],
+                   json={"genre": "utilisateur", "principal": "zzlectrice7",
+                         "niveau": "lecture"})
+    assert r.status_code in (200, 201), r.text
+    rep = client.get("/api/albums", headers={"Remote-User": "zzlectrice7"})
+    assert rep.status_code == 200, rep.text
+    ligne = {a["id"]: a for a in rep.json()}[seme["album_id"]]
+    assert ligne["demande"] is not None, "le semis ne pose pas de demande sur cet album"
+    assert _sortes(rep.content) == frozenset(), _sortes(rep.content)
+    # Et l'envers, sur le même semis : la sentinelle se lit elle-même.
+    assert {"login", "nom"} <= _sortes(client.get("/api/albums",
+                                                  headers=seme["ident"]).content)
 
 
 def test_le_semis_ne_double_pas_le_token(seme):

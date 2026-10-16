@@ -81,12 +81,24 @@ def _en_attente(conn, *, document_id=None, projet_id=None):
         "ORDER BY id LIMIT 1", (DEMANDE_SUPPRESSION_PROJET, projet_id)).fetchone()
 
 
-def _deja_demandee(conn, ligne) -> HTTPException:
-    nom = noms_lisibles(conn, [ligne["demandeur"]]).get(ligne["demandeur"])
-    qui = nom or ligne["demandeur"] or "quelqu'un"
-    return HTTPException(409, f"Cette suppression est déjà demandée, par {qui} le "
-                              f"{(ligne['date_creation'] or '')[:10]} : un administrateur "
-                              "y répondra.")
+def _deja_demandee(conn, portee, ligne) -> HTTPException:
+    """Le refus du doublon. Il dit QUI a demandé à la seule personne qui le peut lire —
+    elle-même (« par vous ») ou une portée totale (`Portee.peut_nommer_le_demandeur`) ;
+    aux autres, qu'elle est demandée et depuis quand, sans nom. Une portée totale n'arrive
+    d'ailleurs jamais ici : elle reçoit d'abord « vous pouvez le faire vous-même »."""
+    quand = (ligne["date_creation"] or "")[:10]
+    qui = ""
+    if ligne["demandeur"] and portee.peut_nommer_le_demandeur(ligne["demandeur"]):
+        if ligne["demandeur"] == portee.utilisateur:
+            qui = "vous"
+        else:
+            qui = (noms_lisibles(conn, [ligne["demandeur"]]).get(ligne["demandeur"])
+                   or ligne["demandeur"])
+    if qui:
+        return HTTPException(409, f"Cette suppression est déjà demandée, par {qui} le "
+                                  f"{quand} : un administrateur y répondra.")
+    return HTTPException(409, f"Cette suppression est déjà demandée, depuis le {quand} : "
+                              "un administrateur y répondra.")
 
 
 # --------------------------------------------------------------------------- #
@@ -133,7 +145,7 @@ def _demander_un_document(conn, portee, album_id, motif):
                                  "administrateur.")
     attente = _en_attente(conn, document_id=a["document_id"])
     if attente is not None:
-        raise _deja_demandee(conn, attente)
+        raise _deja_demandee(conn, portee, attente)
     projet_id = projet_d_album(conn, album_id)
     projet = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
     cur = conn.execute(
@@ -166,7 +178,7 @@ def _demander_un_projet(conn, portee, projet_id, motif):
     conflit.verrouiller(conn)                 # le refus du doublon, sous le verrou
     attente = _en_attente(conn, projet_id=projet_id)
     if attente is not None:
-        raise _deja_demandee(conn, attente)
+        raise _deja_demandee(conn, portee, attente)
     cur = conn.execute(
         "INSERT INTO demande (genre, demandeur, motif, projet_id, projet_nom) "
         "VALUES (?, ?, ?, ?, ?)",

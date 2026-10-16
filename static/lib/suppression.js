@@ -59,8 +59,9 @@
       + `/${d.getFullYear()}`;
   }
 
-  /* Le nom de qui a demandé : le nom lisible, sinon le login, sinon rien — le serveur peut
-     un jour ne plus le rendre à tous, et l'écran n'a alors rien à supposer. `moi` : le
+  /* Le nom de qui a demandé : le nom lisible, sinon le login, sinon rien. Le serveur ne le
+     rend qu'à une portée totale et à la personne elle-même (Hugo, 2026-10-15) : à tout
+     autre lecteur la demande arrive sans nom, et l'écran n'a rien à supposer. `moi` : le
      login de qui regarde, pour dire « vous ». */
   function demandeur(demande, moi) {
     if (!demande) return "";

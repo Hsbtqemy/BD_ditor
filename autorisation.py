@@ -495,6 +495,24 @@ class Portee:
         question ne prend pas d'identifiant : la forme de `peut_decider_des_projets`."""
         return self.tout
 
+    def peut_nommer_le_demandeur(self, demandeur) -> bool:
+        """Peut-on lire QUI a demandé une suppression ?  COL-3, tranche 2 (Hugo,
+        2026-10-15).
+
+        Une portée totale — l'administrateur, qui y répond, et le mono-poste —, et la
+        personne elle-même. Tout autre lecteur de l'album voit QU'une suppression est
+        demandée, jamais par qui. C'est une question de cloisonnement : un album vit dans
+        plusieurs collections, et la ligne d'un album se lit par n'importe laquelle. Une
+        personne qui n'écrit que dans l'Incubateur, et y demande la suppression d'un album
+        partagé, aurait été nommée aux lectrices du corpus principal — plus qu'« une autre
+        collection, jamais laquelle », seule révélation qu'AUTH-10 accepte.
+
+        Le login seul en décide, jamais le nom lisible : deux personnes peuvent porter le
+        même nom d'affichage."""
+        if self.tout:
+            return True
+        return bool(self.utilisateur) and demandeur == self.utilisateur
+
     def clause_terme(self, alias: str) -> tuple[str, list]:
         """Fragment SQL restreignant un TERME du vocabulaire (tag, domaine, dimension,
         valeur) à ce qui est visible. `alias` désigne sa colonne `collection_id`.

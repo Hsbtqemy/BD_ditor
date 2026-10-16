@@ -615,8 +615,10 @@ def test_le_refus_dit_ou_sont_les_albums_qui_designent_encore_le_projet(client, 
 # La demande — un document
 # =========================================================================== #
 def test_deposer_une_demande_et_qui_la_voit(client, db_path, decor):
-    """R2 et R3 : le motif est obligatoire, et le nom de qui demande se lit sur l'album par
-    tous ceux qui le lisent — jamais le motif, qui ne se lit que dans le fonds."""
+    """R3 : le motif est obligatoire. Tous ceux qui lisent l'album voient QU'une suppression
+    est demandée — jamais le motif, qui ne se lit que dans le fonds ; et le nom de qui
+    demande, une lectrice ne le lit plus (Hugo, 2026-10-15 : la proposition R2 est
+    renversée, cf. les tests de « Qui lit le nom de qui demande »)."""
     aid = decor["erreur"]
     r = _demander(client, aid, COLLEGUE, motif="Doublon de « Erreur bis »")
     assert r.status_code == 201, r.text
@@ -630,7 +632,7 @@ def test_deposer_une_demande_et_qui_la_voit(client, db_path, decor):
     assert _sql(db_path, "SELECT projet_nom FROM demande") == [
         {"projet_nom": database.NOM_PROJET_DEFAUT}]
     vu = _albums(client, LECTRICE)[aid]["demande"]
-    assert vu["demandeur"] == "collegue" and "motif" not in vu
+    assert vu is not None and "demandeur" not in vu and "motif" not in vu
     assert "Doublon" not in client.get("/api/albums", headers=LECTRICE).text
     assert _sql(db_path, "SELECT agent FROM evenement WHERE cible_table = 'demande' "
                          "AND type = 'creation'") == [{"agent": "collegue"}]
@@ -650,7 +652,7 @@ def test_les_refus_d_une_demande_se_nomment(client, decor):
     r = _demander(client, aid, IMPORTEUSE)
     assert r.status_code == 409 and "vous-même" in r.json()["detail"]
     assert _demander(client, aid, COLLEGUE).status_code == 201
-    # La même suppression, déjà demandée — par qui le dit la ligne de l'album, déjà.
+    # La même suppression, déjà demandée — sans dire par qui (Hugo, 2026-10-15).
     r = _demander(client, aid, ATELIER)
     assert r.status_code == 409 and "déjà demandée" in r.json()["detail"]
     r = client.post("/api/demandes", headers=COLLEGUE,
@@ -659,6 +661,85 @@ def test_les_refus_d_une_demande_se_nomment(client, decor):
     # Qui ne fait que lire, et un album qui n'existe pas : la même absence.
     assert _demander(client, aid, LECTRICE).status_code == 404
     assert _demander(client, 99999, COLLEGUE).status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Qui lit le nom de qui demande (Hugo, 2026-10-15)
+# --------------------------------------------------------------------------- #
+# « Le nom de qui demande une suppression ne se lit que par une portée totale et par la
+# personne elle-même. » Une question de cloisonnement : la ligne d'un album se lit par
+# n'importe laquelle de ses collections, et le nom d'une personne de l'Incubateur ne doit
+# pas arriver aux lectrices du corpus principal. Chaque identité est jouée, et l'on cherche
+# le login ET le nom lisible dans la réponse ENTIÈRE, pas seulement sous la clé attendue.
+NOM_COLLEGUE = "Camille Zzcollegue"
+
+
+def _demande_de_la_collegue(client, decor):
+    client.get("/api/moi", headers={**COLLEGUE, "Remote-Name": NOM_COLLEGUE})
+    r = _demander(client, decor["erreur"], COLLEGUE)
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def test_l_administrateur_et_la_personne_lisent_le_nom(client, decor):
+    demande = _demande_de_la_collegue(client, decor)
+    vu = _albums(client, ADMIN)[decor["erreur"]]["demande"]
+    assert vu == {"id": demande, "date_creation": vu["date_creation"],
+                  "demandeur": "collegue", "demandeur_nom": NOM_COLLEGUE}
+    vu = _albums(client, COLLEGUE)[decor["erreur"]]["demande"]
+    assert (vu["demandeur"], vu["demandeur_nom"]) == ("collegue", NOM_COLLEGUE)
+
+
+@pytest.mark.parametrize("qui", [LECTRICE, ATELIER, IMPORTEUSE],
+                         ids=["lectrice", "une autre qui ecrit", "l importatrice"])
+def test_les_autres_lecteurs_voient_la_demande_sans_le_nom(client, decor, qui):
+    """Une lectrice, une autre personne qui écrit dans la collection, et l'importatrice
+    elle-même : chacune voit qu'une suppression est demandée, et rien de plus — ni la clé
+    `demandeur`, ni le nom, nulle part dans la liste."""
+    _demande_de_la_collegue(client, decor)
+    rep = client.get("/api/albums", headers=qui)
+    vu = {a["id"]: a for a in rep.json()}[decor["erreur"]]["demande"]
+    assert vu is not None and set(vu) == {"id", "date_creation"}, vu
+    assert "collegue" not in rep.text and "Zzcollegue" not in rep.text
+
+
+def test_en_mono_poste_le_nom_se_lit(client, db_path):
+    """Le mono-poste est une portée totale : rien à cloisonner, le nom se lit."""
+    aid = client.post("/api/albums", json={"titre": "Seul"}).json()["id"]
+    doc = _sql(db_path, "SELECT document_id FROM albums WHERE id = ?", (aid,))[0]["document_id"]
+    _sql(db_path, "INSERT INTO demande (genre, demandeur, motif) "
+                  "VALUES ('suppression_document', 'quelquun', 'x')")
+    _sql(db_path, "INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
+                  "VALUES (1, ?, ?, 'Seul')", (doc, aid))
+    vu = {a["id"]: a for a in client.get("/api/albums").json()}[aid]["demande"]
+    assert vu["demandeur"] == "quelquun"
+
+
+def test_le_refus_du_doublon_ne_nomme_que_soi(client, decor):
+    """Le 409 « déjà demandée » est une autre porte vers le même nom : il le dit à qui a
+    demandé (« par vous »), et à personne d'autre."""
+    _demande_de_la_collegue(client, decor)
+    r = _demander(client, decor["erreur"], ATELIER)
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"].startswith("Cette suppression est déjà demandée, depuis le ")
+    assert "collegue" not in r.text and "Zzcollegue" not in r.text
+    r = _demander(client, decor["erreur"], COLLEGUE)
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"].startswith("Cette suppression est déjà demandée, par vous le ")
+
+
+def test_peut_nommer_le_demandeur_aux_extremites():
+    """La question elle-même : une portée totale nomme tout le monde ; un compte se nomme
+    lui-même et personne d'autre ; sans login, personne — pas même une demande sans
+    demandeur, que `None == None` laisserait passer."""
+    total = autorisation.Portee(tout=True, admin=True)
+    moi = autorisation.Portee(utilisateur="sam", lecture=frozenset({1}))
+    anonyme = autorisation.Portee(lecture=frozenset({1}))
+    assert total.peut_nommer_le_demandeur("sam") and total.peut_nommer_le_demandeur(None)
+    assert moi.peut_nommer_le_demandeur("sam")
+    assert not moi.peut_nommer_le_demandeur("lia")
+    assert not moi.peut_nommer_le_demandeur(None)
+    assert not anonyme.peut_nommer_le_demandeur(None)
 
 
 def test_garder_clot_la_demande_qu_on_peut_redeposer(client, db_path, decor):
@@ -757,6 +838,21 @@ def test_le_responsable_demande_la_suppression_de_son_projet(client, db_path, pr
     assert _demander_projet(client, projet, IMPORTEUSE).status_code == 409
     r = _demander_projet(client, projet, ADMIN)
     assert r.status_code == 409 and "vous-même" in r.json()["detail"]
+
+
+def test_un_second_responsable_ne_lit_pas_qui_a_demande(client, projet):
+    """Le même refus du doublon, sur un projet : un second responsable apprend que la
+    suppression est demandée, pas par qui."""
+    r = client.put(f"/api/projets/{projet}/membres", headers=ADMIN,
+                   json={"genre": "utilisateur", "principal": "atelier",
+                         "role": "responsable"})
+    assert r.status_code == 200, r.text
+    assert _demander_projet(client, projet, IMPORTEUSE).status_code == 201
+    r = _demander_projet(client, projet, ATELIER)
+    assert r.status_code == 409, r.text
+    assert "depuis le" in r.json()["detail"] and "importeuse" not in r.text
+    r = _demander_projet(client, projet, IMPORTEUSE)
+    assert r.status_code == 409 and "par vous" in r.json()["detail"], r.text
 
 
 def test_le_projet_de_repli_ne_se_demande_pas(client, db_path, projet):

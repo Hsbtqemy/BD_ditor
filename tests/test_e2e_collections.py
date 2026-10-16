@@ -951,10 +951,10 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
         timeout=5000)
     _ligne(page, "Erreur").wait_for(state="detached", timeout=5000)
 
-    # ── Lia lit la pastille ──────────────────────────────────────────────────────────────
+    # ── Lia lit la pastille, sans le nom de qui a demandé (Hugo, 2026-10-15) ─────────────
     _comme(page, live_server, "lia")
-    expect(_ligne(page, "Seul").locator(".sp-pastille")).to_have_text(
-        "suppression demandée par sam")
+    expect(_ligne(page, "Seul").locator(".sp-pastille")).to_be_visible()
+    expect(_ligne(page, "Seul").locator(".sp-pastille")).to_have_text("suppression demandée")
 
     with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
         reste = {a["id"]: a for a in c.get("/api/albums").json()}

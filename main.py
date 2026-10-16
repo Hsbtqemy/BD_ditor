@@ -425,9 +425,12 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
     #     reçoit toujours faux. Faux aussi pour une portée totale, qui lit tout ;
     #   · `au_fonds` — l'album n'est rangé dans AUCUNE collection : une copie gardée, que
     #     seule une portée totale voit ;
-    #   · `demande` — la demande de suppression qui l'attend, avec le NOM de qui l'a
-    #     déposée (proposition R2, suivie en route : on a besoin de savoir à qui parler),
-    #     jamais son motif, qui ne se lit que dans le fonds.
+    #   · `demande` — la demande de suppression qui l'attend, jamais son motif, qui ne se
+    #     lit que dans le fonds. QUI l'a déposée (`demandeur`, `demandeur_nom`) ne s'y lit
+    #     que par une portée totale et par la personne elle-même
+    #     (`Portee.peut_nommer_le_demandeur`, Hugo, 2026-10-15) : les autres lecteurs
+    #     reçoivent la demande SANS ces deux clés. La proposition R2 du cadrage — le nom lu
+    #     par tous — nommait aux lectrices d'une collection quelqu'un qui n'y entre pas.
     detruire, p_detruire = portee.clause_suppression_directe("a.id")
     ecrire, p_ecrire = portee.clause_album("a.id", ecriture=True)
     if portee.tout:
@@ -470,14 +473,19 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
                 f"AND dd.document_id IN ({', '.join('?' * len(documents))}) ORDER BY d.id",
                 (DEMANDE_SUPPRESSION_DOCUMENT, *documents)):
             attente.setdefault(d["document_id"], dict(d))
-    noms = noms_lisibles(conn, [d["demandeur"] for d in attente.values()])
+    noms = noms_lisibles(conn, [d["demandeur"] for d in attente.values()
+                                if portee.peut_nommer_le_demandeur(d["demandeur"])])
     for a in albums:
         for champ in ("destructible", "ecrivable", "partage", "au_fonds"):
             a[champ] = bool(a[champ])
         d = attente.get(a["document_id"])
-        a["demande"] = None if d is None else {
-            "id": d["id"], "demandeur": d["demandeur"],
-            "demandeur_nom": noms.get(d["demandeur"]), "date_creation": d["date_creation"]}
+        if d is None:
+            a["demande"] = None
+            continue
+        a["demande"] = {"id": d["id"], "date_creation": d["date_creation"]}
+        if portee.peut_nommer_le_demandeur(d["demandeur"]):
+            a["demande"].update(demandeur=d["demandeur"],
+                                demandeur_nom=noms.get(d["demandeur"]))
     return albums
 
 
