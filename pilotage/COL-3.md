@@ -5,11 +5,12 @@ statut: interrompu
 
 # COL-3 — le fonds et les projets : un album appartient à l'instance, un travail à ceux qui le font
 
-**Arrêté sur** — 2026-10-11, `9e1f768` : **la tranche 1 est en production depuis le
-2026-10-15** (`main` à `b387080`, schéma 29). La tranche 2 est entière sur une COPIE, hors
-de `dev` : serveur, écran et décisions de Hugo du 15 écrits et relus, une dernière série de
-corrections en cours ; elle peut désormais arriver sur `dev` (cf. « Tranche 2 — relevé par son
-deuxième commit »).
+**Arrêté sur** — 2026-10-16, `99eae43` : **la tranche 2 est sur `dev`**, poussée — le fonds,
+supprimer à deux réponses, les demandes certifiées, des identifiants qui ne reviennent plus
+(schéma 30), l'Atelier qui ne crée plus d'albums ; écrite et relue sur copie, puis portée en
+31 commits, la suite par défaut verte (1 869). La tranche 1 est en production depuis le
+2026-10-15. Restent avant la production de la tranche 2 : sa documentation et ses passes de
+QA réécrites (en cours), la recette, les passes de Hugo, les passes dans l'image.
 
 **Plus tôt le 2026-10-11** — arrêté sur `79da8c4` : la tranche 1 est codée, et trois retouches de ses écrans aussi
 (`79da8c4`, décrites dans les cases qu'elles ferment). Ses trois commits de code sont sur
@@ -140,7 +141,8 @@ rien y changer, « le premier projet », où tout est partagé.
 - [ ] **Retirer sa propre demande** — proposition : pas dans cette tranche
 - [ ] **Supprimer une collection dont certains albums ne sont que là** — proposition : garder le refus d'aujourd'hui et corriger sa phrase, plutôt que d'envoyer ces albums au fonds d'un coup
 - [ ] **Un compte partagé qui importe** — proposition : il ne supprime jamais définitivement tout seul, « celui qui l'a importé » n'y désignant personne
-- [ ] **L'Atelier crée ses albums dans la collection de repli, pas dans le projet où l'on travaille** — proposition : il demande dans quelle collection, comme la Bibliothèque ; sans quoi l'origine écrite est fausse pour qui travaille dans un second projet
+- [x] **L'Atelier crée ses albums dans la collection de repli, pas dans le projet où l'on travaille** — proposition : il demande dans quelle collection, comme la Bibliothèque ; sans quoi l'origine écrite est fausse pour qui travaille dans un second projet
+  Fermée avec la case du même nom de la zone « relevé par son premier commit » : l'Atelier ne crée plus d'albums (`250799a`, `1c72ecd`)
 - [ ] **Importer compte-t-il comme du travail laissé quand un compte s'en va** — proposition : non pour l'instant ; l'importateur reste lisible dans le fonds
 - [ ] **La phrase d'avertissement de « Qui entre »** — « Supprimer un album efface ses images et ne se rattrape pas » n'est plus vraie que pour « Supprimer définitivement » : à reformuler
 - [ ] **L'administrateur et le mono-poste voient encore le texte d'un document retiré** dans la Recherche et l'Exploration, jusqu'à la tranche 4 — proposition : l'accepter, et l'écrire
@@ -152,14 +154,16 @@ rien y changer, « le premier projet », où tout est partagé.
 
 ### Tranche 2 — relevé par son premier commit et sa relecture croisée, sur copie (2026-10-11)
 
-- [ ] **La tranche 2 ne part en production qu'une fois son deuxième commit écrit** — attendu : tranché par Hugo. Le cadrage disait que le premier commit, qui porte la migration v30, pouvait partir seul : « plus tôt il est déployé, plus tôt les origines s'écrivent ». La relecture croisée objecte qu'il fige deux tables, celles des demandes, qu'aucun code n'a encore écrites : tout regret trouvé en écrivant leurs routes coûterait une seconde migration. Elle en a trouvé un tout de suite — une demande ne gardait pas le NOM de son projet, dont l'identifiant se réattribue —, corrigé sur la copie avant que le schéma ne parte. Proposition : attendre le deuxième commit
-- [ ] **L'Atelier crée ses albums dans la collection de repli : dès la v30, leur origine écrite est celle du projet de repli** — attendu : tranché AVANT le déploiement de la v30, et non en route. C'est le point « L'Atelier crée ses albums dans la collection de repli » de la zone du dessus, que le premier commit rend pressant : l'origine d'un document s'écrit une fois, à sa naissance, et renverser la décision plus tard ne corrige pas les origines déjà écrites
+- [x] **La tranche 2 ne part en production qu'une fois son deuxième commit écrit** — attendu : tranché par Hugo. Le cadrage disait que le premier commit, qui porte la migration v30, pouvait partir seul : « plus tôt il est déployé, plus tôt les origines s'écrivent ». La relecture croisée objecte qu'il fige deux tables, celles des demandes, qu'aucun code n'a encore écrites : tout regret trouvé en écrivant leurs routes coûterait une seconde migration. Elle en a trouvé un tout de suite — une demande ne gardait pas le NOM de son projet, dont l'identifiant se réattribue —, corrigé sur la copie avant que le schéma ne parte. Proposition : attendre le deuxième commit
+  Sans objet : la tranche entière, ses trois commits et les décisions du 15, est sur `dev` depuis le 2026-10-16 (`99eae43`), et partira d'un bloc
+- [x] **L'Atelier crée ses albums dans la collection de repli : dès la v30, leur origine écrite est celle du projet de repli** — attendu : tranché AVANT le déploiement de la v30, et non en route. C'est le point « L'Atelier crée ses albums dans la collection de repli » de la zone du dessus, que le premier commit rend pressant : l'origine d'un document s'écrit une fois, à sa naissance, et renverser la décision plus tard ne corrige pas les origines déjà écrites
+  **Tranché par Hugo le 2026-10-15 : l'Atelier ne crée plus d'albums.** Un album se crée dans la Bibliothèque, avec sa collection ; l'Atelier y importe ses planches (`250799a`), et le serveur refuse toute création par l'import ShareDocs (`1c72ecd`)
 - [ ] **Un import depuis ShareDocs dont l'écriture au journal échoue laisse ses images sur le disque** — attendu : dit, ou fermé. Provoqué artificiellement par la relecture : la route répond 500, la transaction est défaite, et les fichiers de l'album restent dans `corpus/` et `derivatives/` sans album. Aucun déclencheur réaliste trouvé, la transaction tenant déjà le verrou d'écriture à cet instant ; l'auteur suppose, sans l'avoir mesuré, qu'un `commit` qui lève au même endroit laisse le même état depuis toujours
 - [ ] **Le projet d'ORIGINE d'un document ne garde pas son nom** — attendu : posé par la migration de la tranche 3, avant le premier projet supprimé sous un document vivant. Une demande garde le nom de son projet ; l'origine d'un document, non, par décision écrite sur la colonne : dans la tranche 2 un document n'a qu'une copie, elle porte ce même projet, et un projet que des copies désignent ne se supprime pas — le document part donc avant lui. C'est un raisonnement, pas un test
 
 ### Tranche 2 — relevé par son deuxième commit et sa relecture croisée, sur copie (2026-10-14)
 
-- [ ] **Qui lit le nom de qui demande une suppression** — attendu : tranché par Hugo. La
+- [x] **Qui lit le nom de qui demande une suppression** — attendu : tranché par Hugo. La
   proposition « en route » disait « lu par tous ceux qui lisent la collection » ; le code le
   rend à quiconque lit l'ALBUM, par n'importe laquelle de ses collections. Mesuré par la
   relecture : une personne qui n'écrit que dans l'Incubateur, et y demande la suppression d'un
@@ -167,17 +171,20 @@ rien y changer, « le premier projet », où tout est partagé.
   jamais laquelle », seule révélation qu'`AUTH-10` acceptait. Proposition : tout lecteur voit
   qu'une suppression est demandée ; seuls un administrateur et la personne elle-même voient
   qui l'a demandée
-- [ ] **Un compte partagé ne supprime jamais définitivement seul** — attendu : tranché par Hugo.
+  **Tranché par Hugo le 2026-10-15 : la troisième voie** — tout lecteur voit qu'une suppression est demandée, seuls un administrateur et la personne elle-même voient qui. **Fait par `5bbb65f`** (`Portee.peut_nommer_le_demandeur`, comparaison sur le login), vérifié par la relecture sur toutes les routes GET et sept identités
+- [x] **Un compte partagé ne supprime jamais définitivement seul** — attendu : tranché par Hugo.
   Suivi « en route » dans le code, et c'est une doctrine écrite qui bouge : « la nature d'un
   compte ne borde aucun droit, `autorisation.py` n'en sait rien ». Elle borde désormais un
   GESTE, et toujours aucun accès : « celui qui l'a importé » ne désigne personne derrière un
   compte partagé. Proposition : oui
-- [ ] **Qualifier une case compte comme « laisser des actes » au départ d'un compte** — attendu :
+  **Tranché par Hugo le 2026-10-15 : oui.** Déjà dans le code ; derrière un compte partagé, le détail montré à l'administrateur le dit (`46c9cee`)
+- [x] **Qualifier une case compte comme « laisser des actes » au départ d'un compte** — attendu :
   tranché par Hugo. La pose d'un attribut de case s'écrit désormais au journal, pour que la
   règle de suppression la voie ; elle compte donc aussi dans « Comptes et groupes », et un
   compte qui n'a fait que qualifier des cases passe de « rien à orpheliner » à « laisse des
   actes ». Proposition : oui, c'est du travail
-- [ ] **Les identifiants des régions et des planches ne se réutilisent plus, dès la v30** —
+  **Tranché par Hugo le 2026-10-15 : oui**, avec en plus ce que les autres ont fait, montré à l'administrateur sous chaque demande, et une certification obligatoire de qui demande (`03c075b`)
+- [x] **Les identifiants des régions et des planches ne se réutilisent plus, dès la v30** —
   attendu : tranché par Hugo. Sans `AUTOINCREMENT`, la région créée après la suppression de la
   dernière reprend son identifiant, n'importe où : la règle de suppression, qui lit le journal
   par identifiant, refusait alors à tort (un acte d'un ancien album attribué à une région
@@ -188,6 +195,7 @@ rien y changer, « le premier projet », où tout est partagé.
   avant la migration seraient rendus une dernière fois. L'autre voie — ne compter que les
   actes postérieurs à la création de la région — coûte à chaque affichage, garde un trou et ne
   règle pas Ctrl+Z. Proposition : la v30, tant qu'elle n'est pas déployée
+  **Tranché par Hugo le 2026-10-15 : oui**, étendu aux albums et aux personnages. **Fait par `c56c4f4`**, le compteur amorcé sur `evenement` ET `activite`, et pour les albums sur les dossiers d'images du disque (`f54626f`, décision de Hugo du 2026-10-16) ; un dossier trouvé au numéro d'un album neuf est mis de côté (`0630486`), ou fait sauter le numéro (`99eae43`). Mesuré sur une vraie base v29 : 1,2 s sur 80 000 régions
 - [ ] **Quatre choix de l'auteur sont vus par Hugo** — attendu : vus. Une demande en attente
   vient en tête d'« À regarder » ; les réponses se nomment « acceptée » et « refusée » quel que
   soit le genre de demande ; la liste des projets ne nomme pas qui a demandé ; « Importer au
