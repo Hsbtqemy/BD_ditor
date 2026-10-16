@@ -1219,6 +1219,27 @@ def _jamais_nommes(conn: sqlite3.Connection) -> dict:
     return _max_des_charges(conn, charges, resultat)
 
 
+def _plus_grand_dossier_d_album() -> int:
+    """Le plus grand N d'un dossier `album_N` présent dans `corpus/` ou `derivatives/`, 0
+    sans dossier (relecture croisée de la tranche 2). Une base v29 ne nomme AUCUN album
+    dans son journal : sans cette lecture, l'album détruit en haut revenait à la migration,
+    et l'album neuf retrouvait son dossier d'images. Seul un dossier nommé exactement
+    `album_<nombre>` compte.
+
+    Les chemins sont ceux qu'écrit l'import (`pipeline.ingest`), lus à l'appel et non au
+    chargement : `database` n'importe pas le pipeline, et les tests les redirigent là."""
+    from pipeline import ingest
+    plus_grand = 0
+    for racine in (ingest.CORPUS_DIR, ingest.DERIVATIVES_DIR):
+        if not racine.is_dir():
+            continue
+        for d in racine.iterdir():
+            m = re.fullmatch(r"album_(\d+)", d.name)
+            if m and d.is_dir():
+                plus_grand = max(plus_grand, int(m.group(1)))
+    return plus_grand
+
+
 def _max_des_charges(conn: sqlite3.Connection, charges: list, resultat: dict) -> dict:
     """Le plus grand identifiant que nomment des charges JSON, table par table, porté
     dans `resultat`. `charges` : (table du journal, expression de sa cible — NULL pour une
@@ -1256,8 +1277,11 @@ def _reconstruire_avec_autoincrement(conn: sqlite3.Connection) -> None:
     Le compteur de chaque table repart AU-DESSUS du plus grand identifiant que le journal
     ait jamais nommé (`_jamais_nommes`), pas seulement du plus grand qui survit : sans cela,
     les identifiants détruits avant la migration, au-dessus du dernier survivant, seraient
-    rendus une dernière fois — et c'est précisément le mélange que la v30 ferme. Un
-    identifiant détruit que le journal n'a JAMAIS nommé peut revenir : rien ne le désigne.
+    rendus une dernière fois — et c'est précisément le mélange que la v30 ferme. Celui
+    des albums part en plus au-dessus du plus grand dossier `album_N` présent sur le
+    disque (`_plus_grand_dossier_d_album`) : le journal d'une base v29 n'en nomme aucun, et
+    un album détruit laisse peut-être ses images. Un identifiant détruit que rien ne nomme
+    plus — ni le journal, ni un dossier — peut revenir : rien ne le désigne.
 
     La transaction en cours est validée d'abord : `PRAGMA foreign_keys` ne change pas à
     l'intérieur d'une transaction. Ce qui précède dans `_migrate` est idempotent, et la
@@ -1282,6 +1306,9 @@ def _reconstruire_avec_autoincrement(conn: sqlite3.Connection) -> None:
     if not a_faire:
         return
     jamais = _jamais_nommes(conn)
+    # Un album détruit laisse peut-être ses DOSSIERS d'images, et le journal d'une base v29
+    # ne nomme aucun album : le compteur passe aussi au-dessus d'eux.
+    jamais["albums"] = max(jamais["albums"], _plus_grand_dossier_d_album())
     conn.commit()
     conn.execute("PRAGMA foreign_keys = OFF")
     try:

@@ -76,9 +76,16 @@ def _sans_autoincrement(db, version=29):
 def base_v29(tmp_path, monkeypatch):
     """Une base v29 qui a vécu un peu : un album, une planche, une case et sa bulle, un
     personnage, un token et sa ligne de recherche. Rien au journal : chaque test y pose
-    ce qu'il mesure."""
+    ce qu'il mesure.
+
+    Les dossiers d'images sont ceux du test, VIDES : la migration lit `album_N` sur le
+    disque, et ceux du dépôt — où l'on a peut-être importé pour de vrai — ne sont pas les
+    siens."""
+    from pipeline import ingest
     db = tmp_path / "v29.sqlite"
     monkeypatch.setattr(database, "DB_PATH", db)
+    monkeypatch.setattr(ingest, "CORPUS_DIR", tmp_path / "corpus")
+    monkeypatch.setattr(ingest, "DERIVATIVES_DIR", tmp_path / "derivatives")
     database.init_db()
     _sans_autoincrement(db)
     for q in ("INSERT INTO albums (id, titre) VALUES (1, 'Un')",
@@ -151,6 +158,27 @@ def test_le_compteur_part_au_dessus_de_ce_que_nomme_une_activite(base_v29, sourc
                    "VALUES ('ocr', 'easyocr', 'moteur', ?)", (json.dumps(charge),))
     database.init_db()
     assert _seq(base_v29)[table] == haut, _seq(base_v29)
+
+
+def test_le_compteur_des_albums_part_au_dessus_de_leurs_dossiers(base_v29, tmp_path):
+    """Relecture croisée : une base v29 ne nomme aucun album dans son journal, et l'album
+    détruit en haut revenait — dans `corpus/album_N` qu'il avait laissé. Le compteur part
+    donc AU-DESSUS du plus grand `album_N` présent dans les deux dossiers d'images ; un nom
+    qui n'est pas exactement `album_<nombre>`, ou un fichier, n'y compte pas."""
+    (tmp_path / "corpus" / "album_9").mkdir(parents=True)
+    (tmp_path / "derivatives" / "album_12").mkdir(parents=True)
+    (tmp_path / "corpus" / "album_40.zip").write_bytes(b"x")
+    (tmp_path / "corpus" / "album_50.ancien").mkdir()
+    (tmp_path / "corpus" / "album_x").mkdir()
+    database.init_db()
+    assert _seq(base_v29)["albums"] == 12, _seq(base_v29)
+
+
+def test_sans_dossier_d_images_la_migration_passe(base_v29, tmp_path):
+    """Une instance qui n'a encore rien importé n'a pas de `corpus/` : rien à lire."""
+    assert not (tmp_path / "corpus").exists()
+    database.init_db()
+    assert _seq(base_v29)["albums"] == 1
 
 
 def test_une_activite_illisible_ne_fait_pas_echouer_la_migration(base_v29):
