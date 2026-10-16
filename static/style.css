@@ -2211,8 +2211,14 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 /* La demande de suppression qui attend, sur la ligne de l'album : une pastille. Le MOT porte
    l'état ; l'encre rouge AA-sûre ne fait que l'accompagner. */
 .sp-pastille { display: inline-block; margin-left: .3rem; padding: .02rem .5rem;
-               border-radius: 999px; border: 1px solid var(--ink-red); color: var(--ink-red);
+               border-radius: .4rem; border: 1px solid var(--ink-red); color: var(--ink-red);
                font-size: .82rem; font-weight: 400; }
+/* Sur la ligne d'un album, SOUS le titre. À côté de lui, dans une colonne étroite (375 px),
+   elle se coupait sur trois lignes, et ses coins en gélule (999px) faisaient de sa bordure
+   une ellipse autour d'un bloc de texte — un trait de feutre, pas un état (relevé par Hugo
+   le 2026-10-16). Des coins à peine arrondis restent un cadre net quand elle se coupe. */
+.c-titre .sp-pastille { display: block; width: fit-content; max-width: 100%;
+                        margin: .25rem 0 0; }
 /* La corbeille d'une planche qu'on ne supprime pas d'ici : à sa place, éteinte, et qui dit
    pourquoi quand on la touche. `aria-disabled` et non `disabled` : elle garde le focus et
    son infobulle.
