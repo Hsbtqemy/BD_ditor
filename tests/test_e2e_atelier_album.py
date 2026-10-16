@@ -14,9 +14,9 @@ Ce que ce fichier mesure, sous des identités derrière le proxy :
 - sans album où l'on écrit, le formulaire le dit, mène à la Bibliothèque, et n'importe
   rien.
 
-Le formulaire s'ouvre par la fonction de l'écran (`sdOpenImport`), une sélection posée à
-la main : parcourir ShareDocs demanderait une session WebDAV, et ce n'est pas ce qu'on
-mesure. La requête d'import est interceptée, pour la même raison.
+Le formulaire s'ouvre par la fonction de l'écran (`sdOpenImport`), le panneau montré et une
+sélection posée à la main : parcourir ShareDocs demanderait une session WebDAV, et ce n'est
+pas ce qu'on mesure. La requête d'import est interceptée, pour la même raison.
 """
 import httpx
 import pytest
@@ -64,7 +64,9 @@ def _decor(base):
 def _ouvrir_import(page, base, qui):
     page.set_extra_http_headers({"Remote-User": qui})
     page.goto(base + "/", wait_until="networkidle")
-    page.evaluate("() => { state.sd.selected.add('BD/p1.png'); sdOpenImport(); }")
+    # Le panneau ShareDocs se montre comme `sdOpen` le montre, sans sa session.
+    page.evaluate("() => { document.getElementById('sharedocs').hidden = false; "
+                  "state.sd.selected.add('BD/p1.png'); sdOpenImport(); }")
     expect(page.locator("#sd-import-form")).to_be_visible()
 
 
