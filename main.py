@@ -418,8 +418,11 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
     # Trois champs s'y ajoutent, pour que l'écran dise ce que devient le travail :
     #   · `partage` — l'album vit AUSSI dans une collection que l'appelant ne lit pas. Le
     #     supprimer de ses collections à lui ne l'envoie donc pas au fonds. Ce que cela
-    #     révèle est ce qu'AUTH-10 avait accepté : qu'un autre usage existe, jamais lequel ;
-    #     faux pour une portée totale, qui lit tout ;
+    #     révèle est ce qu'AUTH-10 avait accepté : qu'un autre usage existe, jamais lequel —
+    #     et AUTH-10 ne le révélait qu'à qui ÉCRIT dans l'album, par un refus. Le champ suit
+    #     cette borne (relecture croisée de la tranche 2) : il ne vaut vrai que pour qui
+    #     écrit dans l'album, seul à avoir un geste dont il change le sens ; une lectrice
+    #     reçoit toujours faux. Faux aussi pour une portée totale, qui lit tout ;
     #   · `au_fonds` — l'album n'est rangé dans AUCUNE collection : une copie gardée, que
     #     seule une portée totale voit ;
     #   · `demande` — la demande de suppression qui l'attend, avec le NOM de qui l'a
@@ -431,10 +434,11 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
         ailleurs, p_ailleurs = "0", []
     else:
         lus = sorted(portee.lecture)
-        ailleurs = ("EXISTS (SELECT 1 FROM collection_album _pa WHERE _pa.album_id = a.id"
+        ailleurs = (f"({ecrire}) AND "
+                    "EXISTS (SELECT 1 FROM collection_album _pa WHERE _pa.album_id = a.id"
                     + (f" AND _pa.collection_id NOT IN ({', '.join('?' * len(lus))})"
                        if lus else "") + ")")
-        p_ailleurs = lus
+        p_ailleurs = [*p_ecrire, *lus]
     albums = _rows(conn.execute(
         f"""SELECT a.*,
                   ({detruire}) AS destructible,

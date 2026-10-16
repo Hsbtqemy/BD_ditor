@@ -423,8 +423,9 @@ def test_une_planche_suit_la_regle_du_document(client, decor):
 def test_la_liste_dit_ce_que_devient_le_travail(client, decor):
     """`partage` : l'album vit AUSSI dans une collection que l'appelant ne lit pas — le
     supprimer de ses collections à lui ne l'enverrait donc pas au fonds. Ce que cela
-    révèle est ce qu'AUTH-10 a accepté : qu'un autre usage existe, jamais lequel. Faux pour
-    la portée totale, qui lit tout ; `au_fonds` est l'autre moitié."""
+    révèle est ce qu'AUTH-10 a accepté, et à qui : qu'un autre usage existe, jamais
+    lequel, à qui ÉCRIT dans l'album. Une lectrice ne l'apprend pas (relecture croisée).
+    Faux pour la portée totale, qui lit tout ; `au_fonds` est l'autre moitié."""
     aid = decor["erreur"]
     vus = {nom: _albums(client, qui)[aid] for nom, qui in
            (("importeuse", IMPORTEUSE), ("lectrice", LECTRICE), ("admin", ADMIN))}
@@ -432,8 +433,11 @@ def test_la_liste_dit_ce_que_devient_le_travail(client, decor):
         "importeuse": (False, False), "lectrice": (False, False), "admin": (False, False)}
     assert client.put(f"/api/albums/{aid}/collections/{decor['incubateur']}",
                       headers=ADMIN).status_code == 201
-    # La lectrice ne lit pas l'Incubateur ; l'importatrice y écrit.
-    assert _albums(client, LECTRICE)[aid]["partage"] is True
+    # Le collègue écrit dans Principale et ne lit pas l'Incubateur : il l'apprend. La
+    # lectrice ne lit pas l'Incubateur non plus, mais n'écrit nulle part : elle ne
+    # l'apprend pas. L'importatrice écrit dans les deux : rien à apprendre.
+    assert _albums(client, COLLEGUE)[aid]["partage"] is True
+    assert _albums(client, LECTRICE)[aid]["partage"] is False
     assert _albums(client, IMPORTEUSE)[aid]["partage"] is False
     assert _albums(client, ADMIN)[aid]["partage"] is False
     for a in _albums(client, ADMIN).values():
