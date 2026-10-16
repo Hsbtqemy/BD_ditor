@@ -53,7 +53,10 @@ async function loadCorpus() {
 /* ---------------- Filtres : albums + nuage de tags ---------------- */
 async function loadAlbums() {
   try {
-    state.albums = await apiGet("/api/albums");
+    // COL-3, tranche 2 — une copie gardée au fonds n'est plus un album de travail : seule
+    // une portée totale la reçoit, et elle se règle dans l'Administration. Un filtre
+    // d'écran, pas une garde.
+    state.albums = (await apiGet("/api/albums")).filter((a) => !a.au_fonds);
     const sel = $("#f-album");
     for (const a of state.albums) {
       const o = document.createElement("option");

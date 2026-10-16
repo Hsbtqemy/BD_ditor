@@ -31,7 +31,10 @@ async function loadCorpus() {
 
 async function loadAlbums() {
   try {
-    const albums = await apiGet("/api/albums");
+    // COL-3, tranche 2 — une copie gardée au fonds n'est plus un album de travail : seule
+    // une portée totale la reçoit, et elle se règle dans l'Administration. Un filtre
+    // d'écran, pas une garde.
+    const albums = (await apiGet("/api/albums")).filter((a) => !a.au_fonds);
     for (const id of ["#f-album", "#b-album"]) {
       const sel = $(id);
       for (const a of albums) {
