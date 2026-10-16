@@ -206,6 +206,11 @@ def test_importer_au_fonds_puis_le_distribuer(page, live_server):
     page.fill("#fd-titre", "Corpus à venir")
     page.set_input_files("#fd-fichiers", files=[
         {"name": "p1.png", "mimeType": "image/png", "buffer": make_png()}])
+    # À 1 440 px, le bouton reste près de son champ : la ligne est bornée comme les listes
+    # du bloc (relevé sur capture : il partait au bord droit de la page).
+    page.set_viewport_size({"width": 1440, "height": 900})
+    champ, bouton = page.locator("#fd-fichiers").bounding_box(), page.locator("#fd-importer").bounding_box()
+    assert 0 <= bouton["x"] - (champ["x"] + champ["width"]) <= 24, (champ, bouton)
     page.click("#fd-importer")
     expect(page.locator("#fd-importer-msg")).to_have_text(
         "« Corpus à venir » est au fonds, appelé par personne : 1 planche importée.", timeout=10000)
