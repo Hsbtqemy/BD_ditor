@@ -74,7 +74,7 @@ cette machine — un dépôt à la fois par port, c'est le modèle de l'outil.
 
 ## Vue d'ensemble
 
-Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut. **L'application n'authentifie personne** : elle fait confiance aux en-têtes d'identité posés par un proxy d'auth (Authelia), et seulement si `BD_AUTH_PROXY` déclare qu'il est bien devant — sans quoi tout acte reste anonyme (AUTH-1). Aucun secret en base : `utilisateur` (v22) n'est qu'un miroir d'affichage, et les groupes ne sont jamais stockés, relus dans `Remote-Groups` à chaque requête. **Elle LIT l'annuaire** (AUTH-6), pour composer la vue « 👥 Comptes et groupes » — et, depuis AUTH-12 puis COL-3, pour proposer des groupes et vérifier un nom à qui règle les accès d'une collection ou les membres d'un projet — et rien d'autre : lire pour COMPOSER n'est ni authentifier ni autoriser — `autorisation.py` n'atteint pas `annuaire.py` (un test le verrouille), aucune portée ne change selon ce qu'il rend, rien n'en est stocké, et le compte de service ne fait que lire. **Elle AUTORISE en revanche** (AUTH-2, v23) : le cloisonnement par collection est à elle, Authelia ne dit que « qui ». **Au-dessus des collections, un étage PROJET** (COL-3, v29) se nomme et se règle, et ne cloisonne rien : en être n'ouvre aucune collection. Voir `docs/hebergement-securite.md`.
+Outil de recherche pour annoter des bandes dessinées numérisées (corpus franco-belge). Aucune IA dans la boucle d'annotation : le travail interprétatif est 100 % humain ; les moteurs ML ne font que du **pré-remplissage éditable**. Auto-hébergé, traitement local, mono-utilisateur par défaut. **L'application n'authentifie personne** : elle fait confiance aux en-têtes d'identité posés par un proxy d'auth (Authelia), et seulement si `BD_AUTH_PROXY` déclare qu'il est bien devant — sans quoi tout acte reste anonyme (AUTH-1). Aucun secret en base : `utilisateur` (v22) n'est qu'un miroir d'affichage, et les groupes ne sont jamais stockés, relus dans `Remote-Groups` à chaque requête. **Elle LIT l'annuaire** (AUTH-6), pour composer la vue « 👥 Comptes et groupes » — et, depuis AUTH-12 puis COL-3, pour proposer des groupes et vérifier un nom à qui règle les accès d'une collection ou les membres d'un projet — et rien d'autre : lire pour COMPOSER n'est ni authentifier ni autoriser — `autorisation.py` n'atteint pas `annuaire.py` (un test le verrouille), aucune portée ne change selon ce qu'il rend, rien n'en est stocké, et le compte de service ne fait que lire. **Elle AUTORISE en revanche** (AUTH-2, v23) : le cloisonnement par collection est à elle, Authelia ne dit que « qui ». **Au-dessus des collections, un étage PROJET** (COL-3, v29) se nomme et se règle, et ne cloisonne rien : en être n'ouvre aucune collection. **Sous elles, un FONDS** (COL-3, v30) : tout album est la COPIE DE TRAVAIL d'un document qui appartient à l'instance, et une copie supprimée de sa dernière collection y est gardée, avec son travail. Voir `docs/hebergement-securite.md`.
 
 Backend **Python 3.12 / FastAPI** — la couche API se découpe en `main.py` (montage, middlewares, export, et les blocs que les tests ÉPINGLENT), `socle.py` (le socle partagé) et `routes/` (un module par domaine, ARCH-1 ; cf. § Découpage) ; frontend **JavaScript/HTML/CSS vanilla** — aucun framework, **aucune étape de build**. On édite `static/*.js` et `templates/*.html` directement.
 
@@ -139,11 +139,11 @@ Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, 
 
 | Route | Template | JS | Rôle |
 |---|---|---|---|
-| `/` | `index.html` | `viewer.js` | **Atelier** : modes Édition / Annotation / Transcription / Navigation, arbre de structure, ShareDocs, deep-link |
+| `/` | `index.html` | `viewer.js` | **Atelier** : modes Édition / Annotation / Transcription / Navigation, arbre de structure, ShareDocs, deep-link. **Il ne crée plus d'albums** (COL-3, décision de Hugo du 2026-10-15) : un album se crée dans la Bibliothèque, qui demande sa collection — donc son projet, que le document garde comme origine ; créé ici, il tombait dans la collection de repli. L'Atelier importe des planches dans un album qui EXISTE et où l'on écrit (`ecrivable`) ; sans album où l'on écrit, le formulaire ShareDocs le dit et mène à la Bibliothèque. Le serveur le tient aussi : `POST /api/sharedocs/importer` refuse `nouvel_album` par un 422 nommé |
 | `/recherche` | `recherche.html` | `recherche.js` | **Recherche** FTS5 + nuage de tags |
-| `/corpus` | `corpus.html` | `corpus.js` | **Bibliothèque** : CRUD albums/planches + lancement de lots, et **📚 Collections** (COL-2) : ce que la collection EST — la créer, la décrire, régler sa diffusion, désigner son référent, l'exporter — et, en tête de chaque collection dépliée, **Qui entre** (AUTH-12, étape 3) : les accès réglés en ACTES lus dans `GET /api/droits` (tableau, cartes sous 48em), la liste des groupes de l'annuaire et la vérification d'un nom tapé — c'est UN des deux montages du module `static/lib/qui-entre.js`, celui du propriétaire ; l'Administration porte l'autre (cf. sous le tableau). Adressable par `?collection=<id>` (`&groupe=<nom>` présélectionne un groupe : l'adresse vaut toujours, mais plus aucun lien de l'application n'y mène depuis UX-16). Des gardes posées acte par acte : créer demande une identité, décrire et régler les accès la propriété, lire la seule portée. **La liste des collections est celle du PROJET COURANT** (COL-3), nommé par une ligne au-dessus du bloc, et « + Créer » crée dans ce projet-là ; « Collection », dans « + Nouvel album », ne propose que les siennes où l'on écrit, et dit le projet où l'on n'écrit nulle part au lieu d'une liste vide. « + Ranger ici », dans la fiche d'un album, suit le projet de l'ALBUM et non le courant (`BDProjet.pourRanger`) ; la liste des albums et le lot ne connaissent pas le projet. Des filtres d'ÉCRAN, pas des gardes : le serveur rend toujours tout ce qu'on lit, et refuse seul un rangement qui traverse deux projets |
+| `/corpus` | `corpus.html` | `corpus.js` | **Bibliothèque** : CRUD albums/planches + lancement de lots, et **📚 Collections** (COL-2) : ce que la collection EST — la créer, la décrire, régler sa diffusion, désigner son référent, l'exporter — et, en tête de chaque collection dépliée, **Qui entre** (AUTH-12, étape 3) : les accès réglés en ACTES lus dans `GET /api/droits` (tableau, cartes sous 48em), la liste des groupes de l'annuaire et la vérification d'un nom tapé — c'est UN des deux montages du module `static/lib/qui-entre.js`, celui du propriétaire ; l'Administration porte l'autre (cf. sous le tableau). Adressable par `?collection=<id>` (`&groupe=<nom>` présélectionne un groupe : l'adresse vaut toujours, mais plus aucun lien de l'application n'y mène depuis UX-16). Des gardes posées acte par acte : créer demande une identité, décrire et régler les accès la propriété, lire la seule portée. **La liste des collections est celle du PROJET COURANT** (COL-3), nommé par une ligne au-dessus du bloc, et « + Créer » crée dans ce projet-là ; « Collection », dans « + Nouvel album », ne propose que les siennes où l'on écrit, et dit le projet où l'on n'écrit nulle part au lieu d'une liste vide. « + Ranger ici », dans la fiche d'un album, suit le projet de l'ALBUM et non le courant (`BDProjet.pourRanger`) ; la liste des albums et le lot ne connaissent pas le projet. Des filtres d'ÉCRAN, pas des gardes : le serveur rend toujours tout ce qu'on lit, et refuse seul un rangement qui traverse deux projets. **« Supprimer… »** (COL-3, tranche 2, 2026-10-16) remplace la corbeille et le ✕ d'une ligne d'album : UN bouton, offert à qui écrit dans l'album, qui ouvre un panneau à DEUX réponses — supprimer de la collection (un bouton par collection où l'on écrit ; c'était la dernière, la copie part au fonds), ou supprimer définitivement (tout de suite si le serveur le dit, `destructible` ; sinon une DEMANDE à un administrateur, motif et certification obligatoires) ; le panneau EST la confirmation, ses mots viennent de `static/lib/suppression.js`. Une demande en attente se lit sur la ligne (« suppression demandée par … », le nom seulement pour qui le serveur le rend). La corbeille d'une planche suit la règle du document : active là où l'album se supprime sans demande, éteinte ailleurs pour qui écrit, et elle dit alors de s'adresser à un administrateur. Une copie gardée au fonds ne s'y liste plus (`au_fonds`, filtre d'écran, comme dans l'Atelier, la Recherche et l'Exploration) |
 | `/exploration` | `exploration.html` | `exploration.js` | **Exploration** linguistique du corpus — 4 vues : distribution (fréquences), **concordance KWIC** (aligné/liste, deep-link Atelier), **croisement 2D** (tableau de contingence facette×facette, heatmap, cellule→concordance), comparaison A/B ; + panneaux **📖 Lexique**, **🎯 Accord** (modèle↔humain) et **👥 Inter** (inter-annotateurs) |
-| `/administration` | `administration.html` | `administration.js` | **Administration** (UX-10) : ce qui porte sur l'INSTANCE et non sur un album — panneaux **🏷️ Version servie** (INFRA-10, réservé aux administrateurs), **👥 Comptes et groupes** (AUTH-12, qui remplace la vue des comptes d'AUTH-7 : une liste et une fiche, axes Comptes · Groupes · Collections, « À regarder » en tête ; il LIT l'annuaire par `GET /api/comptes-et-groupes`, et ne modifie que deux choses : la nature d'un compte, et — dans la fiche d'une collection — **Qui entre**, le module de la Bibliothèque MONTÉ une seconde fois (UX-16), où l'administrateur règle les accès sur place ; ce qu'il peut y régler se demande au serveur collection par collection (`administrable`, dans `GET /api/collections`), jamais parce que la vue est réservée. « Décrire dans la Bibliothèque ↗ » y mène pour ce que la collection EST. Le panneau « 👥 Accès aux collections » d'AUTH-3, lui, n'est pas revenu : il avait déménagé dans la Bibliothèque avec l'étape 3), **🗂️ Projets** (COL-3 : une liste et une fiche des projets qu'on RÈGLE — pourquoi le projet existe, « Qui y entre », celles de ses collections qu'on lit ; créer, renommer, décrire et justifier, supprimer s'y offrent à qui DÉCIDE des projets ; à qui n'en règle aucun, une phrase dit pourquoi rien ne lui est montré) et **🩺 Moteurs** (SANTE-1). Aucune garde d'écran : chaque bloc pose sa propre question d'autorisation, jamais le contenant (leçon AUTH-4) |
+| `/administration` | `administration.html` | `administration.js` | **Administration** (UX-10) : ce qui porte sur l'INSTANCE et non sur un album — panneaux **🏷️ Version servie** (INFRA-10, réservé aux administrateurs), **👥 Comptes et groupes** (AUTH-12, qui remplace la vue des comptes d'AUTH-7 : une liste et une fiche, axes Comptes · Groupes · Collections, « À regarder » en tête ; il LIT l'annuaire par `GET /api/comptes-et-groupes`, et ne modifie que deux choses : la nature d'un compte, et — dans la fiche d'une collection — **Qui entre**, le module de la Bibliothèque MONTÉ une seconde fois (UX-16), où l'administrateur règle les accès sur place ; ce qu'il peut y régler se demande au serveur collection par collection (`administrable`, dans `GET /api/collections`), jamais parce que la vue est réservée. « Décrire dans la Bibliothèque ↗ » y mène pour ce que la collection EST. Le panneau « 👥 Accès aux collections » d'AUTH-3, lui, n'est pas revenu : il avait déménagé dans la Bibliothèque avec l'étape 3), **🗂️ Projets** (COL-3 : une liste et une fiche des projets qu'on RÈGLE — pourquoi le projet existe, « Qui y entre », celles de ses collections qu'on lit ; créer, renommer, décrire et justifier, supprimer s'y offrent à qui DÉCIDE des projets ; à qui n'en règle aucun, une phrase dit pourquoi rien ne lui est montré ; depuis le 2026-10-16, le responsable y DEMANDE la suppression de son projet, motif à l'appui), **🗄️ Le fonds** (COL-3, tranche 2, 2026-10-16 : ce que l'instance détient — les suppressions demandées en tête, avec « Détruire » ou « Garder », et sous une demande de document ce que d'autres y ont fait ; « Importer au fonds », un album qui naît appelé par personne ; les documents, d'où chacun vient, où il est employé, « Rendre » une copie gardée à une collection de son projet, « Détruire » un document que personne n'appelle. Le bloc ne se lève que si `GET /api/fonds` répond : la portée totale seule. « À regarder » porte les demandes en attente et MÈNE au fonds, jamais à la fiche de qui a demandé) et **🩺 Moteurs** (SANTE-1). Aucune garde d'écran : chaque bloc pose sa propre question d'autorisation, jamais le contenant (leçon AUTH-4) |
 
 **Un panneau va là où la question se pose** (UX-16, tranché par Hugo le 2026-09-23, monté
 deux fois le 2026-10-10). « Qui entre » a DEUX publics, et c'est pourquoi il a déménagé deux
@@ -188,7 +188,7 @@ ni ellipse, ni passage à la ligne : il est borné à la SOURCE
 (`database.LONGUEUR_NOM_PROJET`, fixé par la mesure de cette bande à 320 px et à grande
 police).
 
-`static/lib/` contient des modules **UMD réutilisables et testés sous Node** (pas d'accès DOM au chargement) : `common.js` (helpers partagés par les CINQ surfaces — `$`, `apiGet`, `apiSend`, `escapeHtml`/`esc`, `toast` — exposés en globals pour que les appels nus restent inchangés, et require()-ables par les tests), `nav.js` (navigation/round-trip entre surfaces), `dialog.js` (modale accessible : piège à focus, Échap, retour du focus), `sante.js` (état affiché des moteurs, SANTE-1 : le croisement présent/éprouvé × absent/en panne, et le bilan d'une épreuve) et `projet.js` (le projet COURANT, COL-3 : lequel choisir parmi ceux qu'on peut nommer — celui qu'on avait retenu s'il est encore visible, sinon le repli —, le stockage local qui peut manquer, les collections d'un projet ; chargé par les cinq gabarits, lu par la bande du haut ET par la Bibliothèque pour que les deux désignent le même). Un module y entre pour une PROPRIÉTÉ — logique pure, donc vérifiable par table de vérité — et non parce qu'il serait partagé : `sante.js` ne sert qu'à la page d'Administration, et il est là parce qu'un test lisant le source de la surface déclarait sa règle couverte sans l'être (mesuré). Leur logique pure est verrouillée par `tests/js/*.test.js`. **Ne pas redupliquer ces helpers dans un fichier de surface** : c'était le constat « duplication frontend » de l'audit de juin, et `common.js` est ce qui l'a fermé.
+`static/lib/` contient des modules **UMD réutilisables et testés sous Node** (pas d'accès DOM au chargement) : `common.js` (helpers partagés par les CINQ surfaces — `$`, `apiGet`, `apiSend`, `escapeHtml`/`esc`, `toast` — exposés en globals pour que les appels nus restent inchangés, et require()-ables par les tests), `nav.js` (navigation/round-trip entre surfaces), `dialog.js` (modale accessible : piège à focus, Échap, retour du focus), `sante.js` (état affiché des moteurs, SANTE-1 : le croisement présent/éprouvé × absent/en panne, et le bilan d'une épreuve) et `projet.js` (le projet COURANT, COL-3 : lequel choisir parmi ceux qu'on peut nommer — celui qu'on avait retenu s'il est encore visible, sinon le repli —, le stockage local qui peut manquer, les collections d'un projet ; chargé par les cinq gabarits, lu par la bande du haut ET par la Bibliothèque pour que les deux désignent le même) et `suppression.js` (COL-3, tranche 2 : les MOTS des deux réponses à « Supprimer… » et du fonds — ce que devient le travail, effacer ou demander, la certification, ce que d'autres ont fait sous une demande, les dates SQLite lues comme de l'UTC ; chargé par la Bibliothèque et l'Administration. Il ne déduit aucun droit : il dit ce que le serveur a décidé album par album). Un module y entre pour une PROPRIÉTÉ — logique pure, donc vérifiable par table de vérité — et non parce qu'il serait partagé : `sante.js` ne sert qu'à la page d'Administration, et il est là parce qu'un test lisant le source de la surface déclarait sa règle couverte sans l'être (mesuré). Leur logique pure est verrouillée par `tests/js/*.test.js`. **Ne pas redupliquer ces helpers dans un fichier de surface** : c'était le constat « duplication frontend » de l'audit de juin, et `common.js` est ce qui l'a fermé.
 
 **Un module MONTABLE est la seconde sorte de module de `static/lib/`** (UX-16, 2026-10-07). `qui-entre.js` est le premier, et la convention s'écrit ici pour que le suivant s'y range au lieu d'en inventer une (`SHARE-2`, `UX-17`). Il y entre pour une autre PROPRIÉTÉ que la logique pure : un même panneau a deux publics, et un second public se sert par un second montage, pas par un déménagement — ce panneau-là en avait subi deux en treize jours. Cinq règles, chacune née d'une couture mesurée :
 
@@ -212,7 +212,8 @@ déclaré dans `pilotage/journal.config.mjs`. Le découpage s'est fait **par dom
 `main.py` fait **1 811 lignes**. Sept modules : `recherche`, `analyse`, `figures`,
 `personnages`, `annulation`, `collections`, `lexique`. Deux s'y sont ajoutés depuis, nés
 dans `routes/` sans avoir été des blocs de `main.py` : `depot` (EXP-1), puis `projets`
-(COL-3, 2026-10-10) — neuf aujourd'hui. **Un module de `routes/` n'est pas toujours tout
+(COL-3, 2026-10-10) — neuf le 2026-10-10 —, puis `fonds` (COL-3, tranche 2, 2026-10-16 : le
+fonds et les demandes) — dix aujourd'hui. **Un module de `routes/` n'est pas toujours tout
 son domaine** : `GET /api/projets/{id}/membres/choix` vit dans `collections` et non dans
 `projets`, parce qu'elle lit l'annuaire et que `tests/test_annuaire.py` exige PAR ÉGALITÉ
 que les lecteurs de l'annuaire tiennent dans ce module-là. La ranger avec les siennes
@@ -323,6 +324,8 @@ DÉCLARE par `# noqa: F401`, que le test lit au lieu de connaître le cas par c�
 
 Deux paliers de métadonnées descriptives (FAIR/dépôt, cf. `docs/dictionnaire-metadonnees.md`) : la **collection** (`collection` ↔ `collection_album` N-N, unité de dépôt, v14) regroupe des albums pour une étude ; la **paternité** N0 des albums vit dans `contribution` ↔ `contribution_role` (Zotero-like, rôle contrôlé-ouvert, v15), plus des colonnes d'édition (`date_edition`, `isbn`…). `albums.auteur`/`annee` restent *legacy*.
 
+**La ligne `albums` est une COPIE DE TRAVAIL d'un DOCUMENT** (COL-3, tranche 2, v30, 2026-10-16). `document` porte ce qui appartient à l'instance et survit à ses copies : une identité, et une ORIGINE — qui a importé (`importe_par`, un login ; NULL pour tout album d'avant la v30, dont l'import n'a été écrit nulle part, et en mono-poste), quand, dans quel projet d'abord (`projet_origine_id`, un fait sans clé étrangère). La copie porte deux attaches, `albums.document_id` et `albums.projet_id`, nullables et à clé sans action ; le projet est ÉCRIT sur elle parce qu'une copie retirée de toute collection n'en aurait plus aucun à lire, et NULL se lit « le projet de ses collections » à un seul endroit, `database.sql_projet_d_album` — NULL sans collection veut dire que la copie n'a JAMAIS eu de projet (importée au fonds), pas qu'elle est du repli. La notice, les planches et le travail restent sur la copie. Le FONDS n'est pas une table : c'est l'ensemble des documents, dont certains ne sont appelés par aucune collection. Dans cette tranche un document n'a qu'UNE copie ; en créer une seconde est la tranche 3. Deux tables de demande (`demande`, `demande_document`) portent les demandes de suppression (cf. § Autorisation). Rien de cela ne sort au dépôt : les deux colonnes d'`albums` sont RETENUES de l'export (`main._EXPORT_ALBUM_RETENUES`, la première retenue de cette table), aucun outil de sortie ne lit `document` ni `demande`, et les actes du journal qui les concernent sont dans `tools/_commun.CIBLES_RETENUES`.
+
 Le master TIFF va dans `corpus/`, un dérivé web JPEG à 25 % (`WEB_SCALE` dans `config.py`) dans `derivatives/` ; les deux dossiers sont gitignore.
 
 ### Autorisation par collection (AUTH-2, v23)
@@ -358,14 +361,22 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   **`peut_administrer()` est distinct de `peut_ecrire()`** : écrire c'est annoter,
   posséder c'est décider qui d'autre entrera — un membre en écriture n'hérite pas du droit
   d'élargir le cercle. `bd-admins` passe outre, et c'est écrit : sans ce recours, le départ
-  d'un propriétaire fabriquerait une collection définitivement bloquée. Deux retraits sont
-  refusés par un **409 qui les nomme** : retirer ou rétrograder le DERNIER propriétaire
-  d'une collection, et sortir un album de sa dernière collection. **Une collection peut en
+  d'un propriétaire fabriquerait une collection définitivement bloquée. Deux retraits
+  étaient refusés par un **409 qui les nomme** : retirer ou rétrograder le DERNIER
+  propriétaire d'une collection, et sortir un album de sa dernière collection. **Le second
+  est renversé le 2026-10-16** (COL-3, tranche 2, décision de Hugo du 2026-10-09 confirmée
+  le 2026-10-11) : supprimé de sa dernière collection, l'album est GARDÉ AU FONDS avec son
+  travail (cf. plus bas). Reste refusé par un 409 qui le nomme, en revanche : supprimer une
+  COLLECTION qui est la dernière d'un album — l'envoyer au fonds par ricochet, sans que
+  personne l'ait décidé album par album, n'est pas un geste de cette route ; sa phrase disait
+  ces albums « sans aucune règle d'accès », elle dit maintenant de les ranger ailleurs ou de
+  les supprimer d'abord de la collection. **Une collection peut en
   revanche NAÎTRE sans propriétaire** — créée par un administrateur, en mono-poste, ou par
   `gerer_collections.py` sans `--proprietaire` — et seule une portée TOTALE l'administre
   alors, `bd-admins` ou le mono-poste (option B d'AUTH-12, 2026-09-16 ; « zéro
   propriétaire interdit en base », écrit ici jusque-là, était faux). Un album, lui,
-  n'existe jamais hors collection. **Créer une collection exige une IDENTITÉ, pas
+  n'existait jamais hors collection — vrai jusqu'au fonds (2026-10-16), où une copie gardée
+  n'en a plus aucune. **Créer une collection exige une IDENTITÉ, pas
   un droit** (403 nommant la panne derrière le proxy) ; le nom `Collection par défaut` est
   **réservé** (se l'attribuer capturerait les albums créés sans collection explicite) ; et
   les changements d'accès sont **tracés au journal A3** (`lien`/`delien`, non annulables).
@@ -403,20 +414,73 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   une autre collection ou non), que défait qui écrit des deux côtés ou un administrateur ;
   l'écran le fait confirmer, et dit lequel des deux il perd. Le refus est un **403 nommé** — il ne vient qu'APRÈS l'accesseur gardé
   en écriture, donc sur un album qu'on lit et annote — et il révèle qu'une AUTRE collection
-  porte l'album, jamais laquelle : accepté par écrit, l'éviter demandait une corbeille.
-  `GET /api/albums` publie `destructible` album par album et l'écran n'offre la corbeille
+  porte l'album, jamais laquelle : accepté par écrit, l'éviter demandait une corbeille (la
+  phrase a changé le 2026-10-16, cf. le point suivant ; ce qu'elle révèle, non).
+  `GET /api/albums` publie `destructible` album par album et l'écran n'offrait la corbeille
   que là ; il ne peut pas le déduire, la liste des collections d'un album qu'il reçoit
   étant PARTIELLE. `ecrivable` l'accompagne, parce que « non destructible » a deux causes
   et que l'écran n'a un geste à offrir que dans une : à qui écrit sans écrire partout, un ✕
   qui mène à « sortir » ; à qui ne fait que lire, RIEN — la relecture croisée a trouvé le ✕
   offert à toute lectrice, sur tous les albums, pour un geste qui lui répondait
-  « introuvable ». Une planche n'ayant pas d'appartenance propre, elle n'a pas de
+  « introuvable ». (Corbeille et ✕ ont laissé la place le 2026-10-16 à UN bouton,
+  « Supprimer… », offert sur la même borne : `ecrivable`.) Une planche n'ayant pas d'appartenance propre, elle n'a pas de
   « sortir » : sans la même garde, elle restait le chemin par lequel on vide un album
-  partagé. **Un album d'une seule collection se détruit toujours par quiconque y écrit** :
-  la question d'origine d'AUTH-10 n'est pas rouverte ici.
+  partagé. **Un album d'une seule collection se détruisait toujours par quiconque y
+  écrit** : la question d'origine d'AUTH-10 n'était pas rouverte ici. COL-3 l'a rouverte, et
+  la phrase est RENVERSÉE le 2026-10-16 : la règle du 2026-10-08 n'est plus que la première
+  des quatre conditions du point suivant — nécessaire, plus suffisante.
+- **« Supprimer » a deux réponses, et la seconde se DEMANDE** (COL-3, tranche 2 ; décisions
+  de Hugo du 2026-10-09 et du 2026-10-11, sur `dev` le 2026-10-16). Supprimer DE LA
+  COLLECTION ne détruit rien (`DELETE /api/albums/{id}/collections/{cid}`) : le travail reste
+  là où l'album vit encore, et si c'était sa dernière collection la copie est GARDÉE AU FONDS
+  — elle emporte son projet, écrit sur elle avant de sortir (`database.poser_projet_de_copie`),
+  et ne se range ensuite que dans une collection de ce projet (`rangement_traverse` gagne
+  cette seconde moitié). C'est le geste de quiconque écrit dans la collection, importateur
+  ou non ; il ne s'annule pas, et seul un administrateur rend la copie. Supprimer
+  DÉFINITIVEMENT (`DELETE /api/albums/{id}`) efface images et travail, et sans rien demander
+  à QUATRE conditions, toutes nécessaires (`Portee.clause_suppression_directe`) : écrire dans
+  toutes les collections de l'album (`clause_destruction`, inchangée) ; avoir IMPORTÉ le
+  document (`document.importe_par` — jamais vrai pour un album d'avant la v30, ni sans
+  login) ; ne pas être un compte PARTAGÉ ; que PERSONNE D'AUTRE n'y ait travaillé. Hors de
+  là, il se DEMANDE (`POST /api/demandes`, `routes/fonds.py`) : motif obligatoire, et une
+  CERTIFICATION exigée par le serveur (`certifie`, 422 nommé sans elle ; sa date est écrite,
+  `demande.certifie_le`) — « Pouvez-vous certifier que ces données ne sont pas
+  importantes ? » (décision de Hugo du 2026-10-15). La même suppression ne se demande pas
+  deux fois tant qu'elle attend, et ne se demande pas quand on peut la faire soi-même (deux
+  409 nommés). Un administrateur l'accepte — le document est détruit, ses images avec — ou la
+  refuse : la demande reste, close, et peut être redéposée ; « garder » ne lie pas
+  l'importatrice, la règle ne lisant pas les demandes. Toute destruction faite par un autre
+  chemin clôt les demandes qui la visaient. **Une planche suit la règle du document**, sans
+  demande à elle (décision B4) : le 403 lui dit de s'adresser à un administrateur. Le refus
+  de l'album est un 403 nommé qui ne dit pas LAQUELLE des conditions manque (« D'autres s'en
+  servent, ou ce n'est pas vous qui l'avez importé… »). La portée totale passe outre : c'est
+  le recours d'une demande. **La garde se lit sous le verrou d'écriture**
+  (`conflit.verrouiller`, dans `socle._detruire_album`, seul chemin de la destruction d'un
+  album — la route et la réponse « accepter » y passent toutes deux) : lue hors transaction,
+  elle laissait partir un travail validé entre elle et le `DELETE`. Deux conséquences qui
+  déplacent des doctrines écrites ailleurs. **La nature d'un compte borde désormais un
+  GESTE** : elle ne bordait aucun droit, et elle ne borde toujours aucun ACCÈS — mais un
+  compte partagé ne supprime jamais définitivement seul, « celui qui l'a importé » n'y
+  désignant personne ; c'est le seul endroit où `autorisation.py` lit `utilisateur.nature`.
+  **Le journal A3 devient une ENTRÉE d'autorisation** — la première décision d'accès qui
+  dépend du CONTENU du journal (cf. § Journal de provenance). `GET /api/albums` publie
+  `destructible` sous son nom et dans ce sens neuf, plus `partage` (l'album vit aussi dans
+  une collection qu'on ne lit pas — vrai seulement pour qui ÉCRIT dans l'album, la borne
+  d'AUTH-10), `au_fonds` et `demande` (la demande qui attend ; QUI l'a déposée ne s'y lit que
+  par une portée totale et par la personne elle-même, `Portee.peut_nommer_le_demandeur`,
+  décision de Hugo du 2026-10-15 : une personne qui n'écrit que dans l'Incubateur aurait
+  sinon été nommée aux lectrices du corpus principal). Le fonds et les demandes sont à la
+  seule portée totale (`peut_tenir_le_fonds`) : leurs routes refusent sur le DROIT, avant de
+  chercher l'objet, le même 403 que l'objet existe ou non. Cf. `docs/modele-et-droits.md`.
 - **Aucun album hors collection** (`database.collection_par_defaut`) : un orphelin ne
   correspondrait à aucune règle, et il faudrait inventer une politique dans le code. La
   création d'album accepte `collection_id` et retombe sinon sur la collection de repli.
+  **Renversé le 2026-10-16** (COL-3, tranche 2) : un album hors de toute collection est une
+  copie GARDÉE AU FONDS — supprimée de sa dernière collection, ou importée au fonds par un
+  administrateur (`POST /api/albums` avec `au_fonds`, réservé à la portée totale, la seule
+  création sans collection). Aucune politique n'est à inventer pour elle : c'est celle d'un
+  album qu'aucune collection n'ouvre — invisible de toute portée non totale, refusé à
+  l'export (409 nommé). La création ordinaire retombe toujours sur la collection de repli.
 - **404, jamais 403** : « existe mais pas pour vous » révèle la composition du corpus.
   Corollaire d'ergonomie : une portée vide rend l'app indistinguable d'un corpus vide, d'où
   le bloc `acces` de `GET /api/moi` et le bandeau `.portee-vide` injecté par `theme.js`.
@@ -497,7 +561,15 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   sens. Un responsable ne renomme donc pas le sien : ce nom se lit sur l'écran de tous.
   Trois **409 qui se nomment** : supprimer le projet de repli, supprimer un projet qui
   porte encore une collection, retirer ou rétrograder son DERNIER responsable — mais un
-  projet peut NAÎTRE sans responsable, comme une collection sans propriétaire.
+  projet peut NAÎTRE sans responsable, comme une collection sans propriétaire. **Un
+  quatrième depuis le 2026-10-16** (COL-3, tranche 2) : supprimer un projet qu'un album
+  désigne encore (`albums.projet_id`) — une copie gardée au fonds, à détruire d'abord depuis
+  le fonds, ou, sur une base retouchée, un album rangé dans la collection d'un autre projet ;
+  le refus compte les deux cas à part. Les refus de la suppression vivent dans
+  `socle._supprimer_projet`, que traverse aussi la réponse à la demande d'un responsable :
+  **le responsable, qui ne supprime pas son projet, en DEMANDE la suppression** (décision
+  B5, motif obligatoire, sans certification — un projet ne se supprime que vide), et un
+  administrateur y répond dans le fonds.
   `socle._get_projet` est le jumeau de `_get_collection` : 404 sur un projet qu'on ne
   voit pas, 403 NOMMÉ sur un projet qu'on voit sans le gérer. **Le projet de repli se
   désigne par un DRAPEAU (`projet.repli`), jamais par son nom** : il est fait pour être
@@ -522,15 +594,22 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   migration fait de l'instance d'hier le premier projet : toutes les collections y
   entrent, quiconque tenait un accès de collection en devient membre — une photographie
   du jour, sans aucun responsable désigné. Ce qui vient ensuite (le fonds, les demandes,
-  prendre un document, la Recherche et l'Exploration bornées au projet) n'existe pas :
-  cf. `pilotage/COL-3.md`.
+  prendre un document, la Recherche et l'Exploration bornées au projet) n'existait pas le
+  2026-10-10 ; le fonds et les demandes sont arrivés le 2026-10-16 (tranche 2, points
+  ci-dessus) — prendre un document, et la Recherche comme l'Exploration bornées au projet,
+  n'existent pas : cf. `pilotage/COL-3.md`. D'ici la tranche 4, l'administrateur et le
+  mono-poste lisent encore dans la Recherche et l'Exploration le texte d'une copie gardée
+  au fonds : leur portée totale la lit.
 - **Une garde d'interface se pose sur l'ACTE, jamais sur l'écran qui le contient.** Le
-  serveur distingue quatorze questions — dix jusqu'au 2026-10-10 (`peut_lire` /
+  serveur distingue dix-sept questions — dix jusqu'au 2026-10-10 (`peut_lire` /
   `peut_ecrire` / `peut_administrer` / `peut_exporter`, `clause_album` /
   `clause_destruction` / `clause_terme` / `peut_ecrire_terme` / `peut_ecrire_quelque_part`
-  / `peut_exporter_quelque_part`), et les quatre du projet (`est_du_projet` /
-  `peut_gerer_projet` / `peut_decider_des_projets` / `clause_projet`, COL-3) ; le client
-  n'en reçoit que six. Une projet par projet, dans `GET /api/projets` : `gerable`
+  / `peut_exporter_quelque_part`), quatorze jusqu'au 2026-10-16 avec les quatre du projet
+  (`est_du_projet` / `peut_gerer_projet` / `peut_decider_des_projets` / `clause_projet`,
+  COL-3), et les trois du fonds (`clause_suppression_directe` / `peut_tenir_le_fonds` /
+  `peut_nommer_le_demandeur`, COL-3, tranche 2) ; le client en reçoit sept par une clé —
+  six jusqu'au 2026-10-16 —, et deux par la FORME d'une réponse (ci-dessous). Une projet
+  par projet, dans `GET /api/projets` : `gerable`
   (`mon_role` l'accompagne comme `mon_niveau` accompagne une collection : il dit sous quel
   rôle on y figure, et vaut `null` pour une portée totale, qui règle tout sans figurer
   nulle part). « Décider des projets » ne traverse par AUCUNE clé à lui : l'écran le lit
@@ -541,7 +620,13 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   album, et `ecrivable` dans `GET /api/collections` seule (AUTH-12, 2026-09-16 — la modale
   d'album et « ranger dans une collection » proposaient toutes les collections LUES, et
   choisir l'une d'elles répondait « introuvable »). Deux album par album, dans `GET /api/albums` (AUTH-10) :
-  `destructible` et `ecrivable`. Partout ailleurs, `peut_ecrire` ne traverse pas : l'UI découvre un refus
+  `destructible` et `ecrivable` — trois depuis le 2026-10-16, avec `partage` (COL-3) ; et
+  `destructible` y a changé de sens ce jour-là : il répond `clause_suppression_directe`,
+  « supprimer définitivement sans rien demander », et non plus `clause_destruction`. Les
+  deux réponses qui passent par la forme : « tenir le fonds » se lit au statut de
+  `GET /api/fonds` (200 ou 403), comme la version servie ; « nommer le demandeur », à la
+  PRÉSENCE de `demandeur` et `demandeur_nom` dans la demande d'un album — absentes, elles
+  ne valent pas `null`. Partout ailleurs, `peut_ecrire` ne traverse pas : l'UI découvre un refus
   d'écriture en recevant son 403. Tant que cette asymétrie tient, tout ce
   qu'on ajoute dans un panneau gardé hérite de sa garde **par défaut et non par décision** :
   c'est ainsi que le référent d'AUTH-4, une simple ADRESSE, s'est retrouvé derrière la
@@ -691,10 +776,13 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
 
 ### Schéma & migrations
 
-`database.py` : `SCHEMA_VERSION` (actuellement 29). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+`database.py` : `SCHEMA_VERSION` (actuellement 30). À tout changement structurel : incrémenter et ajouter une étape dans `_migrate()` (gaté par `user_version` ; refus de rétrograder). Conventions :
+- **Chaque migration se vérifie sur une VRAIE base de la version précédente** — règle posée par Hugo le 2026-10-16. Une base « défaite » à la main (une base neuve dont on retire colonnes et tables, puis qu'on ramène en arrière par `user_version`) n'a ni destructions, ni journal, ni dossiers d'images : la v30 passait toute sa suite sur de telles bases, et la relecture croisée l'a prise en défaut deux fois sur une base faite par le code v29 — une planche détruite que seule une activité nommait, un album détruit dont seul le dossier d'images restait, deux identifiants rendus après migration. La vraie base se fabrique par `tools/fabriquer_base_de_version.py <commit> tests/bases/v<N>-<commit>.sql`, qui fait tourner le code du commit lui-même — ses routes, sous trois comptes, avec des destructions en haut de chaque table — et vide la base en SQL ; le test de la migration suivante la charge et migre (`tests/test_identifiants_v30.py` lit `tests/bases/v29-10a3a90.sql`). Le commit est le dernier état de la version précédente — la tête de `main` avant la migration.
+- **Des identifiants qui ne reviennent jamais** (v30, décision de Hugo du 2026-10-15) : `albums`, `planches`, `regions`, `personnages` portent `AUTOINCREMENT`, comme les tables neuves `document` et `demande`. Sans lui SQLite rend au suivant l'identifiant du dernier détruit, et le journal, qui désigne ses cibles par identifiant et leur survit, mêlait deux objets. `collection` et `projet` n'en portent PAS : leurs identifiants se réattribuent encore (mesuré), d'où le NOM gardé à côté de l'identifiant dans une demande (`demande.projet_nom`, `demande_document.titre`) et dans la charge d'un emploi (`journal.journaliser_emploi`).
+- **La v30 RECONSTRUIT des tables** (`_reconstruire_avec_autoincrement`) : on ne pose pas `AUTOINCREMENT` par `ALTER`. Table neuve, lignes copiées avec leurs identifiants, ancienne détruite, neuve renommée, index et vues recréés, dans une transaction, **clés étrangères SUSPENDUES** pendant qu'elle tourne — actives, détruire `albums` effacerait par cascade toutes les planches ; la moindre référence orpheline NEUVE défait tout (celles qu'une base portait déjà ne ferment pas l'instance). Le compteur de chaque table repart au-dessus du plus grand identifiant que le journal ait jamais nommé — `evenement` ET `activite` (cible, clés des charges, portée d'une passe automatique sans effet) —, et celui des albums en plus au-dessus du plus grand dossier `album_N` présent dans `corpus/` ou `derivatives/` : le journal d'une base v29 ne nomme aucun album. Un identifiant détruit que rien ne nomme plus peut revenir une fois. Gardée par la version et idempotente (une table qui porte déjà `AUTOINCREMENT` n'est pas touchée) ; une table d'une autre forme arrête tout avant la première reconstruction. Elle valide la transaction en cours avant de commencer (`PRAGMA foreign_keys` ne change pas dans une transaction) : une reconstruction qui échoue laisse la base en v29, prête à rejouer.
 - La table FTS est **séparée** du schéma (`_FTS_SQL`) pour pouvoir la **recréer en migration** (le tokenizer est figé à la création).
 - Les **vues** (`_VIEWS_SQL`) sont **toujours DROP+CREATE** au démarrage : sans données, leur définition évolue gratuitement, sans migration.
-- **Le commentaire de la DERNIÈRE colonne d'une table s'écrit SOUS elle, jamais au-dessus** (v29, mesuré sur SQLite 3.49). Pour retirer la dernière colonne, `ALTER TABLE … DROP COLUMN` remonte jusqu'à la première virgule qu'il trouve — celles d'un commentaire `--` comprises — et rend un schéma tronqué : « incomplete input ». `_migrate()` ne retire aucune colonne, mais quatre fichiers de test DÉFONT ainsi une version pour rejouer un upgrade réel (`_ramener_en_v28`, dans `tests/test_projets.py`, en est le dernier) : l'erreur tombe dans le test, loin de la faute. Le commentaire de `collection.projet_id` le dit sur place.
+- **Le commentaire de la DERNIÈRE colonne d'une table s'écrit SOUS elle, jamais au-dessus** (v29, mesuré sur SQLite 3.49). Pour retirer la dernière colonne, `ALTER TABLE … DROP COLUMN` remonte jusqu'à la première virgule qu'il trouve — celles d'un commentaire `--` comprises — et rend un schéma tronqué : « incomplete input ». `_migrate()` ne retire aucune colonne, mais quatre fichiers de test DÉFONT ainsi une version pour rejouer un upgrade réel (`_ramener_en_v28`, dans `tests/test_projets.py`, en est le dernier) : l'erreur tombe dans le test, loin de la faute. Le commentaire de `collection.projet_id` le dit sur place. Cinq fichiers depuis la v30 (`_ramener_en_v29`, dans `tests/test_document.py`) — et ces bases défaites ne remplacent pas une vraie base de la version précédente (premier point).
 
 ### Couche NLP (spaCy) — OPTIONNELLE, deux paliers
 
@@ -726,6 +814,17 @@ La table virtuelle FTS5 `recherche` est **dénormalisée** (agrège OCR + note +
   que `nb_auteurs` et des paires sans identités : la valeur FAIR (« relu à plusieurs,
   accord 0,87 ») ne demande aucun nom, et un entrepôt garde ses versions. L'outil CLI, lui,
   nomme toujours — sans les noms on ne peut pas réunir deux personnes pour arbitrer.
+  **À côté de cette règle, une décision qui ne la suit pas** (Hugo, 2026-10-15, COL-3) :
+  sous une demande de suppression d'un document, l'ADMINISTRATEUR voit ce que d'autres que
+  le demandeur y ont fait — qui, combien de gestes de chaque sorte, la date du dernier, et
+  qui l'a importé — pour savoir qui perdrait son travail. Ceux qu'il compte ne voient pas
+  cette mesure ; elle ne sort que par `GET /api/demandes`, réservée à la portée totale, et
+  jamais dans la réponse rendue à qui dépose. Elle est lue au journal au moment de la
+  lecture, par la SOURCE même de la règle de suppression (`autorisation._sources_du_travail`
+  → `sql_actes_sur_album`) : ce que l'administrateur lit est ce que la règle a lu. Ce sont
+  des GESTES, défaits compris, pas ce qui reste sur les planches — l'écran le dit —, et
+  derrière un compte partagé la ligne dit que plusieurs personnes ont pu travailler sous ce
+  login (`collectif`, `demandeur_collectif`).
 - **Accord INTER-annotateurs (ANN-5)** : cœur `accord_inter.py` — le modèle ne gardant qu'une correction/token, la donnée multi-auteurs vit dans le **journal A3** (`cible_id` stable = chaîne de révisions). Mesure l'**accord de révision** (un auteur re-touche le token d'un autre → garde/change), par champ + par paire + points de divergence cités. Route `GET /api/analyse/accord-inter`, outil `tools/rapport_accord_inter.py`, panneau **👥 Inter**. Rare avant le multi-utilisateur (piste C). Cf. `docs/accord-inter.md`.
 
 ### Pipeline de reconnaissance — 3 passes, moteurs OPTIONNELS
@@ -741,11 +840,13 @@ Invariants :
 
 `journal.py` : couche **append-only** qui qualifie *qui a produit quoi* sans inverser la base. `activite` = un **run** (passe ML, ou session) ; `evenement` = un **acte** atomique immuable (avant/après JSON). Les passes ML sont enveloppées par `journal.passe_ml` (diff des régions → `regions.activite_id` = wasGeneratedBy + événements, **sans coupler** le code pipeline) ; les routes humaines journalisent leurs actes (l'**agent** vient de l'auth via le contextvar `agent_courant`, alimenté par une dépendance FastAPI globale — pas de `request` à threader). `evenement.cible_id` **n'est pas une FK** : le journal **survit à la suppression** de sa cible (substrat de l'undo **D1**) ; les actes d'annotation ciblent le `region_id` (stable), pas l'id d'annotation. **Un run qui ÉCHOUE ou qu'on INTERROMPT laisse une trace lui aussi** : `passe_ml` défait la transaction LUI-MÊME puis réinscrit une activité close (`{echec}` / `{interrompu}`) et la valide seule — sinon le `rollback` de l'appelant emportait la ligne qu'on venait d'écrire, et le journal ne gardait que ce qui avait marché (mesuré le 2026-09-08 : zéro activité après une passe ratée, en lot COMME en route directe). Le bilan reste **minimal** par contrainte et non par économie : `comptes` SORT de l'instance, y verser le message de l'exception enverrait des chemins serveur au dépôt. Et la tenue du journal ne doit jamais changer l'erreur que l'appelant voit — un `commit()` qui lève « database is locked » transformerait un 500 moteur en 409 « réessayer ». **`database.reindex_all` a la même maladie et un autre remède** (2026-09-09) : ses lots étant validés au fur et à mesure, une panne tardive laisse une activité déjà persistée, et réinscrire en produirait une SECONDE — elle commite donc sa trace d'ouverture tout de suite, puis la CLÔTURE sur échec. Elle rattrape `BaseException` là où `passe_ml` s'en tient à `Exception`, et l'asymétrie est justifiée : `tools/reindex_nlp.py` est une CLI qui tourne des minutes sur le fil principal, donc Ctrl+C y est l'interruption réaliste — `passe_ml` vit dans un fil de travail, où il n'arrive jamais. Indicateurs dérivés (`indicateurs_provenance`) dans les exports ; sérialisation **PROV-O / TEI** par `tools/provenance_export.py`. Cf. `docs/provenance-audit.md`.
 
+**Depuis la v30 (2026-10-16), le journal est aussi une ENTRÉE d'autorisation** (COL-3, tranche 2). Couche de provenance jusque-là, il décide désormais d'un geste : « supprimer définitivement sans rien demander » exige que PERSONNE D'AUTRE n'ait travaillé sur l'album, et cela se lit dans le journal (`autorisation._sql_travail_d_autrui`), par jointure sur ce qui VIT encore — les actes humains sur ses régions (région, annotation, locuteur, présence, attribut de case), les attributs de case dont aucun `lien` humain n'est écrit (auteur inconnu, donc un autre), les corrections grammaticales vivantes (`token_correction.auteur`), les validations de ses planches, les gestes sur son document. Un travail supprimé depuis ne compte plus ; une passe automatique n'est attribuée qu'à son moteur ; un acte sans agent compte comme celui d'un autre. Ce qui n'était écrit nulle part l'est donc depuis : sous la cible **`document`** (cible_id = le document, jamais l'album) la naissance d'un album, chaque scan ajouté ou retiré, la notice modifiée, une contribution ajoutée ou retirée, la relecture d'une planche forcée, la destruction ; sous **`collection_album`** ses EMPLOIS — rangé (`lien`), retiré (`delien`), par `journal.journaliser_emploi`, routes et outil ; sous **`region_attribut`** un attribut de case posé ou retiré ; sous **`demande`** une demande déposée et sa réponse. Les quatre sont RETENUES de toute sortie (`tools/_commun.CIBLES_RETENUES`), ne donnent aucun rang dans les pseudonymes (`CIBLES_SANS_RANG` : les compter aurait renuméroté tous ceux qui annotent après un import), et ne s'annulent pas. Dans ce qu'un compte laisse en partant (`comptes.traces`), `document`, `collection_album` et `demande` ne comptent pas ; `region_attribut` compte — qualifier une case est du travail.
+
 ### Annulation (undo, D1)
 
 `undo.py` : **remonte le journal A3** pour rejouer l'INVERSE de la dernière action d'annotation. Le journal EST l'historique (pas de pile ; append-only préservé) : annuler = exécuter l'inverse + ajouter un événement `annulation` (`cible_table='evenement'`, `cible_id`=l'acte annulé) ; la « dernière action annulable » = l'événement **humain** le plus récent, d'un type annulable, non déjà référencé par une annulation → `Ctrl+Z` répété remonte la pile. Inversions en mutations **brutes** (+ réindex FTS), **hors routes** (sinon rejournalisation) ; un seul `annulation` par undo ; atomique (rollback si échec). Périmètre : région (créer/modifier/supprimer+**cascade** recréée depuis l'instantané profond, mêmes `id`), annotation (note+tags), locuteur, présence ; actes **machine non annulables**. `GET /api/undo/prochain` + `POST /api/undo` (404 si rien, 409 si l'acte ne s'annule pas) ; **UI Ctrl+Z** dans l'Atelier. Dormant : grammaire/validation, **redo**. Cf. `docs/undo.md`.
 
-**Avant d'écrire, deux questions, et un acte qui échoue à l'une est PASSÉ** (AUTH-14, 2026-10-15). `regions`, `planches`, `albums` et `personnages` n'ont pas d'`AUTOINCREMENT` : l'identifiant d'un objet détruit revient au suivant, et tout identifiant que le journal garde — `cible_id`, instantanés — peut désigner un AUTRE objet, dans une autre collection. (1) **Peut-on écrire maintenant à chaque endroit que l'inverse touche** — la région, la planche de CHAQUE nœud d'une suppression rétablie, le parent rendu, le personnage reposé ? `undo.annuler` prend `ecrivable` en argument OBLIGATOIRE, que la route tire des accesseurs gardés sous la portée de la requête (`undo.lieux`). Le résiduel du 2026-08-28, « un droit d'écriture ailleurs suffit », est fermé. (2) **L'objet est-il encore celui de l'acte ?** Quatre témoins, sans changement de schéma : aucune création journalisée sous cet identifiant depuis l'acte ; la planche au moment de l'acte ; l'album importé après l'acte ; une suppression journalisée depuis l'acte et non annulée. Un personnage doit être vu de l'agent et né avant l'acte ; un parent rendu se valide comme la route (`_validate_parent`). Si l'une répond non, ou si une contrainte de la base refuse l'inverse, l'acte est **passé** : une trace append-only (`type='abandon'`, `cible_table='annulation'`) le sort de la pile — retenue de toute sortie (`tools/_commun.CIBLES_RETENUES`), hors du compte des actes d'un compte —, et le Ctrl+Z suivant défait le geste d'avant. **Définitivement** : l'acte ne revient pas si l'objet est rétabli plus tard, c'est voulu. Le refus dit deux phrases et rien de l'objet — « Ne s'annule plus : *geste* — la région n'est plus à votre portée », ou « … — l'état d'avant ne peut plus être rétabli » ; une seule pour tout ce qui est hors de portée, sans quoi la différence entre « supprimée » et « reprise ailleurs » fuirait. Là où l'agent lit et écrit, le conflit de version (CONC-3) est inchangé. Les trous qui restent (une planche reprise dans un album importé avant l'acte, une région disparue et reprise sans événement, une reprise dans la même seconde) sont écrits dans `docs/undo.md` et dans la fiche ; la garde d'écriture les tient tous, c'est l'identité qui manque. Le remède de fond, des identifiants qui ne reviennent plus, attend la migration v30 (`COL-3`).
+**Avant d'écrire, deux questions, et un acte qui échoue à l'une est PASSÉ** (AUTH-14, 2026-10-15). `regions`, `planches`, `albums` et `personnages` n'avaient pas d'`AUTOINCREMENT` : l'identifiant d'un objet détruit revenait au suivant, et tout identifiant que le journal garde — `cible_id`, instantanés — pouvait désigner un AUTRE objet, dans une autre collection. **Depuis la v30 (2026-10-16) ils ne reviennent plus** (§ Schéma & migrations) ; les témoins ci-dessous RESTENT, pour les actes d'avant la v30 — leurs identifiants ont pu être repris avant elle — et comme défense en profondeur : un identifiant rendu par une transaction défaite, une ligne posée à la main. Les tests du cloisonnement de Ctrl+Z ramènent leur base à la numérotation d'avant pour les mesurer encore. (1) **Peut-on écrire maintenant à chaque endroit que l'inverse touche** — la région, la planche de CHAQUE nœud d'une suppression rétablie, le parent rendu, le personnage reposé ? `undo.annuler` prend `ecrivable` en argument OBLIGATOIRE, que la route tire des accesseurs gardés sous la portée de la requête (`undo.lieux`). Le résiduel du 2026-08-28, « un droit d'écriture ailleurs suffit », est fermé. (2) **L'objet est-il encore celui de l'acte ?** Quatre témoins, sans changement de schéma : aucune création journalisée sous cet identifiant depuis l'acte ; la planche au moment de l'acte ; l'album importé après l'acte ; une suppression journalisée depuis l'acte et non annulée. Un personnage doit être vu de l'agent et né avant l'acte ; un parent rendu se valide comme la route (`_validate_parent`). Si l'une répond non, ou si une contrainte de la base refuse l'inverse, l'acte est **passé** : une trace append-only (`type='abandon'`, `cible_table='annulation'`) le sort de la pile — retenue de toute sortie (`tools/_commun.CIBLES_RETENUES`), hors du compte des actes d'un compte —, et le Ctrl+Z suivant défait le geste d'avant. **Définitivement** : l'acte ne revient pas si l'objet est rétabli plus tard, c'est voulu. Le refus dit deux phrases et rien de l'objet — « Ne s'annule plus : *geste* — la région n'est plus à votre portée », ou « … — l'état d'avant ne peut plus être rétabli » ; une seule pour tout ce qui est hors de portée, sans quoi la différence entre « supprimée » et « reprise ailleurs » fuirait. Là où l'agent lit et écrit, le conflit de version (CONC-3) est inchangé. Les trous qui restent (une planche reprise dans un album importé avant l'acte, une région disparue et reprise sans événement, une reprise dans la même seconde) sont écrits dans `docs/undo.md` et dans la fiche ; la garde d'écriture les tient tous, c'est l'identité qui manque. Le remède de fond, des identifiants qui ne reviennent plus, attendait la migration v30 (`COL-3`) ; il est arrivé avec elle le 2026-10-16, et ne vaut que pour les identifiants nés après elle.
 
 ### Lexique situé (A4, v17)
 
@@ -774,6 +875,8 @@ Les chemins de **code** (`static/`, `templates/`, `lib/kumiko`) sont relatifs au
 - `BD_DB_PATH` : chemin explicite de la base SQLite.
 
 Ces variables servent à isoler les tests (`tests/conftest.py` les patche ou lance un serveur isolé) et à déployer les données ailleurs que dans le dépôt.
+
+Les images d'un album vivent dans `corpus/album_<id>/` (masters) et `derivatives/album_<id>/` (dérivés web), nommés d'après l'identifiant de la ligne `albums` (`pipeline/ingest.py`). Détruire l'album les efface ; ce ménage peut échouer (`ignore_errors`), et avant la v30 l'identifiant revenait au suivant, qui retrouvait alors les images d'un autre. **Un album neuf ne reprend jamais un dossier qui existe déjà** (COL-3, 2026-10-16) : `ingest.ecarter_dossiers_d_album` le renomme `album_<id>.ecarte-<AAAAMMJJ-HHMMSS>` à côté de lui (suffixe `-2`, `-3`… si le nom est pris), n'efface rien, et le journal du serveur (`bd_annotator`, avertissement) dit quel dossier est parti où. Si le renommage échoue (fichier verrouillé, droits), le numéro est SAUTÉ — la ligne est retirée, l'avance du compteur validée tout de suite — et l'album naît au suivant, dans un dossier vide ; après vingt numéros d'affilée refusés, la création répond 503. Ces dossiers mis de côté ne s'affichent nulle part dans l'application (décision de Hugo du 2026-10-16) : ce sont des scans d'albums détruits, et `docs/exploitation.md` dit comment les lister sur le serveur et quand les effacer.
 
 ### Numérotation éditoriale & citation
 
