@@ -449,6 +449,12 @@ class Portee:
           d'un compte borde un geste ; elle ne borde toujours aucun ACCÈS ;
         - PERSONNE D'AUTRE n'y a travaillé (`_sql_travail_d_autrui`).
 
+        Ce que la règle ne lit PAS, et c'est cohérent avec elle : une demande REFUSÉE. Qu'un
+        administrateur ait répondu « garder » à la demande d'un collègue ne retire rien à
+        l'importatrice : si les quatre moitiés tiennent — le collègue n'a donc pas travaillé
+        dans l'album —, elle le supprime encore elle-même (relecture croisée, constat 7).
+        « Garder » répond à une demande ; il ne protège pas le document de qui l'a importé.
+
         « Aucun autre projet ne l'emploie », les mots de Hugo, n'a pas de moitié à lui : en
         tranche 2 un document n'a qu'une copie, et cette copie n'a qu'un projet. Le jour où
         deux copies seront sœurs, il faudra l'écrire ici.

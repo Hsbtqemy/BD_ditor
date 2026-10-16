@@ -514,13 +514,27 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
     # étrangère garde, et c'est elle qui porte le projet d'une copie au fonds. Un album
     # encore rangé est déjà arrêté par le refus du dessus. Le compte ne dit rien de plus
     # que ce que voit qui décide des projets — une portée totale, qui lit tout album.
-    n = conn.execute("SELECT COUNT(*) FROM albums WHERE projet_id = ?",
-                     (projet_id,)).fetchone()[0]
-    if n:
-        raise HTTPException(409, f"{n} album(s) de ce projet sont gardés au fonds, hors de "
-                                 "toute collection : un projet ne se supprime que lorsque "
-                                 "plus aucun album n'en est. Détruisez-les d'abord depuis "
-                                 "le fonds.")
+    #
+    # Deux cas, comptés à part : la phrase « gardés au fonds » était fausse pour un album
+    # encore rangé dans une collection d'un AUTRE projet (relecture croisée) — un état
+    # interdit, qu'une base retouchée porte, et que `albums_hors_de_leur_projet` nomme.
+    au_fonds, ailleurs = conn.execute(
+        "SELECT COALESCE(SUM(NOT EXISTS (SELECT 1 FROM collection_album ca "
+        "                                WHERE ca.album_id = a.id)), 0), "
+        "       COALESCE(SUM(EXISTS (SELECT 1 FROM collection_album ca "
+        "                            WHERE ca.album_id = a.id)), 0) "
+        "FROM albums a WHERE a.projet_id = ?", (projet_id,)).fetchone()
+    if au_fonds or ailleurs:
+        raisons = []
+        if au_fonds:
+            raisons.append(f"{au_fonds} album(s) de ce projet sont gardés au fonds, hors de "
+                           "toute collection — détruisez-les d'abord depuis le fonds")
+        if ailleurs:
+            raisons.append(f"{ailleurs} album(s) désignent ce projet en étant rangés dans "
+                           "la collection d'un autre — un état qu'une base retouchée "
+                           "produit, à réparer à la main")
+        raise HTTPException(409, " ; ".join(raisons) + ". Un projet ne se supprime que "
+                                 "lorsque plus aucun album n'en est.")
     _clore_demandes(conn, portee, [r[0] for r in conn.execute(
         "SELECT id FROM demande WHERE genre = ? AND projet_id = ? AND reponse IS NULL",
         (DEMANDE_SUPPRESSION_PROJET, projet_id))], REPONSE_ACCEPTEE)

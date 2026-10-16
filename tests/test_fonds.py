@@ -593,9 +593,22 @@ def test_supprimer_un_projet_dont_une_copie_est_gardee_au_fonds(client, db_path,
                          headers=ADMIN).status_code == 204
     assert client.delete(f"/api/collections/{cid}", headers=ADMIN).status_code == 204
     r = client.delete(f"/api/projets/{pid}", headers=ADMIN)
-    assert r.status_code == 409 and "gardés au fonds" in r.json()["detail"], r.text
+    assert r.status_code == 409 and "1 album(s) de ce projet sont gardés au fonds"         in r.json()["detail"], r.text
+    assert "rangé" not in r.json()["detail"]
     assert client.delete(f"/api/albums/{aid}", headers=ADMIN).status_code == 204
     assert client.delete(f"/api/projets/{pid}", headers=ADMIN).status_code == 204
+
+
+def test_le_refus_dit_ou_sont_les_albums_qui_designent_encore_le_projet(client, db_path,
+                                                                        decor):
+    """Une copie qui désigne un projet sans être rangée dans l'une de ses collections est au
+    fonds — ou, par une base retouchée, rangée dans la collection d'un AUTRE projet. Le
+    refus disait « gardés au fonds » pour les deux : il les compte à part."""
+    pid = client.post("/api/projets", json={"nom": "Éphémère"}, headers=ADMIN).json()["id"]
+    _sql(db_path, "UPDATE albums SET projet_id = ? WHERE id = ?", (pid, decor["erreur"]))
+    r = client.delete(f"/api/projets/{pid}", headers=ADMIN)
+    assert r.status_code == 409, r.text
+    assert "1 album(s) désignent ce projet en étant rangés dans la collection d'un autre"         in r.json()["detail"] and "fonds" not in r.json()["detail"]
 
 
 # =========================================================================== #
@@ -611,6 +624,11 @@ def test_deposer_une_demande_et_qui_la_voit(client, db_path, decor):
     assert (d["genre"], d["demandeur"], d["en_attente"]) == \
         ("suppression_document", "collegue", True)
     assert d["documents"][0]["album_id"] == aid and d["documents"][0]["titre"] == "Erreur"
+    # Le projet de la copie, et son NOM au jour de la demande : l'identifiant d'un projet
+    # se réattribue, et une demande répondue reste (relecture croisée, mutant M25).
+    assert (d["projet_id"], d["projet_nom"]) == (_repli(db_path), database.NOM_PROJET_DEFAUT)
+    assert _sql(db_path, "SELECT projet_nom FROM demande") == [
+        {"projet_nom": database.NOM_PROJET_DEFAUT}]
     vu = _albums(client, LECTRICE)[aid]["demande"]
     assert vu["demandeur"] == "collegue" and "motif" not in vu
     assert "Doublon" not in client.get("/api/albums", headers=LECTRICE).text

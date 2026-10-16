@@ -819,7 +819,7 @@ def test_un_projet_qu_un_album_designe_encore_ne_se_supprime_pas(client, db_path
     assert r.status_code == 403 and "album" not in r.json()["detail"]
     r = client.delete(f"/api/projets/{designe}", headers=ADMIN)
     assert r.status_code == 409, r.text
-    assert "1 album(s) de ce projet sont gardés au fonds" in r.json()["detail"]
+    assert "1 album(s) désignent ce projet en étant rangés dans la collection d'un "         "autre" in r.json()["detail"]
     assert _sql(db_path, "SELECT nom FROM projet WHERE id = ?", (designe,)) \
         == [{"nom": "Désigné"}]
     assert _sql(db_path, "SELECT 1 FROM evenement WHERE cible_table = 'projet' "
