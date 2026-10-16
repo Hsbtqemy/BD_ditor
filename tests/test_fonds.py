@@ -844,7 +844,7 @@ def test_l_administrateur_voit_qui_d_autre_y_a_travaille(client, db_path, decor)
     assert par["importeuse"]["gestes"] == {"regions": 1, "document": 2}  # naissance, scan
     assert par["importeuse"]["dernier"] == scan[0]["date"]
     assert par[None] == {"agent": None, "agent_nom": None, "dernier": None,
-                         "gestes": {"region_attribut": 1}}
+                         "collectif": False, "gestes": {"region_attribut": 1}}
     # Le plus récent d'abord, l'inconnu sans date en dernier.
     assert [e["agent"] for e in x["travail_des_autres"]][-1] is None
 
@@ -888,6 +888,23 @@ def test_personne_d_autre(client, decor):
     assert r.status_code == 201, r.text
     x = _detail(client, r.json()["id"])
     assert (x["importe_par"], x["travail_des_autres"]) == ("atelier", [])
+    # … mais « personne d'autre » ne veut rien dire derrière un compte partagé : le détail
+    # le dit, pour que l'écran le dise (relecture croisée). La règle, elle, ne change pas.
+    assert x["demandeur_collectif"] is True
+
+
+def test_le_detail_dit_quels_comptes_sont_partages(client, decor):
+    """Un compte partagé parmi ceux qui ont travaillé se dit aussi, ligne par ligne ; un
+    compte nominatif, non. Le demandeur nominatif n'est pas marqué."""
+    _region(client, decor["planche"], COLLEGUE)
+    client.get("/api/moi", headers=COLLEGUE)                    # → miroir `utilisateur`
+    assert client.patch("/api/comptes/collegue/nature", headers=ADMIN,
+                        json={"nature": "collectif"}).status_code == 200
+    demande = _demander(client, decor["erreur"], ATELIER).json()["id"]
+    x = _detail(client, demande)
+    assert x["demandeur_collectif"] is False
+    par = {e["agent"]: e["collectif"] for e in x["travail_des_autres"]}
+    assert par == {"collegue": True, "importeuse": False}, par
 
 
 @pytest.mark.parametrize("travail", sorted(TRAVAUX))

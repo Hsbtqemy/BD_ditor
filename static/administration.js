@@ -1504,7 +1504,7 @@ function fdTravailDesAutres(doc) {
   return `<div class="fd-autres">
     <p class="muted small">${esc(t.origine)}</p>
     ${t.vide ? `<p class="small">${esc(t.texteVide)}</p>`
-      : `<p class="small fd-autres-titre">Ce que d'autres y ont fait :</p>
+      : `<p class="small fd-autres-titre">${esc(t.titre)}</p>
          <ul class="fd-autres-liste small">${t.lignes.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>`}
   </div>`;
 }

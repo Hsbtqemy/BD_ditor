@@ -142,6 +142,9 @@ def test_une_demande_mene_au_fonds_et_s_y_repond(page, live_server):
     autres = demande.locator(".fd-autres")
     expect(autres).to_be_visible()
     expect(autres).to_contain_text("Importé par decor.")
+    expect(autres).to_contain_text("Gestes d'autres personnes, lus au journal — un geste "
+                                   "défait depuis compte encore :")
+    expect(autres).not_to_contain_text("compte partagé")
     expect(autres.locator("li")).to_have_count(1)
     expect(autres.locator("li")).to_contain_text(
         "decor : 2 gestes sur le document (import, scans, notice) — dernier le ")

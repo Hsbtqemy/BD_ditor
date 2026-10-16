@@ -230,9 +230,16 @@
   function certifiee(d) {
     if (!d || !d.certifie_le) return "";
     const qui = d.demandeur_nom || d.demandeur || "le demandeur";
-    return `Certifié par ${qui} le ${dateLue(d.certifie_le)} : ces données ne sont pas `
-      + "importantes.";
+    return `Certifié par ${qui}`
+      + (d.demandeur_collectif ? ` (${COMPTE_PARTAGE})` : "")
+      + ` le ${dateLue(d.certifie_le)} : ces données ne sont pas importantes.`;
   }
+
+  /* Derrière un compte partagé, un login n'est pas une personne (relecture croisée de la
+     tranche 2) : « personne d'autre » et « certifié par » se disent avec cette réserve.
+     Le serveur dit quels comptes sont partagés (`collectif`, `demandeur_collectif`). */
+  const COMPTE_PARTAGE = "compte partagé : plusieurs personnes peuvent avoir travaillé "
+    + "sous ce login";
 
   /* Les sortes de gestes que la règle de suppression lit, dites pour un humain. La clé est
      la `sorte` que rend le serveur (`autorisation.sql_actes_sur_album`) : la cible d'un
@@ -277,11 +284,16 @@
         ? (e.agent_nom && e.agent_nom !== e.agent ? `${e.agent_nom} (${e.agent})` : e.agent)
         : "Auteur non écrit";
       const quand = e.dernier ? ` — dernier le ${dateLue(e.dernier)}` : "";
-      return `${qui} : ${gestes(e.gestes)}${quand}`;
+      return `${qui} : ${gestes(e.gestes)}${quand}`
+        + (e.collectif ? ` (${COMPTE_PARTAGE})` : "");
     });
     return {
       origine, lignes, vide: !lignes.length,
-      texteVide: "Personne d'autre que le demandeur n'y a laissé de geste.",
+      // Ce sont des GESTES lus au journal, pas ce qui reste sur les planches.
+      titre: "Gestes d'autres personnes, lus au journal — un geste défait depuis compte "
+        + "encore :",
+      texteVide: "Personne d'autre que le demandeur n'y a laissé de geste"
+        + (doc.demandeur_collectif ? ` — mais c'est un ${COMPTE_PARTAGE}.` : "."),
     };
   }
 

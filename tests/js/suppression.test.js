@@ -298,3 +298,25 @@ test("chaque sorte que la règle lit a ses mots ; une sorte inconnue se dit tell
   assert.equal(S.gestes({ planches: 1, document: 1 }),
                "1 geste sur le document (import, scan, notice), 1 validation de planche");
 });
+
+/* Derrière un compte partagé, « personne d'autre » et « certifié par » ne désignent pas une
+   personne (relecture croisée) ; et le détail compte des GESTES, défaits compris. */
+test("un compte partagé se dit, et le détail dit qu'il compte des gestes", () => {
+  const PARTAGE = "compte partagé : plusieurs personnes peuvent avoir travaillé sous ce login";
+  const vide = S.travailDesAutres({ importe_par: "atelier", demandeur_collectif: true,
+                                    travail_des_autres: [] });
+  assert.ok(vide.texteVide.includes(PARTAGE), vide.texteVide);
+  const seul = S.travailDesAutres({ importe_par: "lea", demandeur_collectif: false,
+                                    travail_des_autres: [] });
+  assert.ok(!seul.texteVide.includes("partagé"), seul.texteVide);
+  const t = S.travailDesAutres({ importe_par: "lea", travail_des_autres: [
+    { agent: "atelier", agent_nom: null, dernier: null, collectif: true, gestes: { regions: 2 } },
+    { agent: "sam", agent_nom: null, dernier: null, collectif: false, gestes: { regions: 1 } }] });
+  assert.ok(t.lignes[0].endsWith(`(${PARTAGE})`), t.lignes[0]);
+  assert.ok(!t.lignes[1].includes("partagé"), t.lignes[1]);
+  assert.ok(t.titre.toLowerCase().includes("gestes") && t.titre.includes("défait"), t.titre);
+  assert.ok(S.certifiee({ demandeur: "atelier", certifie_le: "2026-10-14",
+                          demandeur_collectif: true }).includes(PARTAGE));
+  assert.ok(!S.certifiee({ demandeur: "sam", certifie_le: "2026-10-14",
+                           demandeur_collectif: false }).includes("partagé"));
+});

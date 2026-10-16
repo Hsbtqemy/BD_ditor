@@ -34,8 +34,9 @@ import autorisation
 import conflit
 import journal
 from database import (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
-                      GENRES_DEMANDE, LONGUEUR_MOTIF, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
-                      REPONSES_DEMANDE, noms_lisibles, projet_d_album, sql_projet_d_album)
+                      GENRES_DEMANDE, LONGUEUR_MOTIF, NATURE_COLLECTIF, REPONSE_ACCEPTEE,
+                      REPONSE_REFUSEE, REPONSES_DEMANDE, noms_lisibles, projet_d_album,
+                      sql_projet_d_album)
 
 from socle import (
     DemandeIn, ReponseIn, _clore_demandes, _detruire_album, _get_album, _get_projet,
@@ -256,12 +257,24 @@ def _vues_demandes(conn, ids=None, *, detail: bool = False) -> list[dict]:
         d["refus_anterieurs"] = len({i for c in cles for i in refus.get(c, ())
                                      if i < d["id"]})
         if detail and d["en_attente"] and d["genre"] == DEMANDE_SUPPRESSION_DOCUMENT:
+            collectifs = _comptes_partages(conn)
+            # Derrière un compte partagé, « personne d'autre » et « certifié par » ne
+            # désignent pas une personne : le détail le dit, pour que l'écran le dise
+            # (relecture croisée). La règle de suppression, elle, n'en change pas.
+            d["demandeur_collectif"] = d["demandeur"] in collectifs
             for x in d["documents"]:
-                x.update(_travail_des_autres(conn, x["document_id"], d["demandeur"]))
+                x.update(_travail_des_autres(conn, x["document_id"], d["demandeur"],
+                                             collectifs))
     return demandes
 
 
-def _travail_des_autres(conn, document_id: int, demandeur) -> dict:
+def _comptes_partages(conn) -> set:
+    """Les logins déclarés COLLECTIFS (AUTH-6) : plusieurs personnes derrière un login."""
+    return {r[0] for r in conn.execute("SELECT login FROM utilisateur WHERE nature = ?",
+                                       (NATURE_COLLECTIF,))}
+
+
+def _travail_des_autres(conn, document_id: int, demandeur, collectifs: set) -> dict:
     """Ce que les AUTRES que `demandeur` ont fait sur ce document, lu au journal au moment
     de la lecture, par la source même de la règle de suppression
     (`autorisation.sql_actes_sur_album`) — Hugo, 2026-10-15 : l'administrateur doit voir,
@@ -273,7 +286,12 @@ def _travail_des_autres(conn, document_id: int, demandeur) -> dict:
     agent, un attribut de case posé avant que le geste s'écrive), avec le nombre de gestes
     de chaque sorte et la date du dernier, le plus récent d'abord. Ce que la règle ne lit
     pas n'y est pas non plus : un travail sur une région supprimée depuis, une passe
-    automatique."""
+    automatique. Ce sont des GESTES écrits au journal, pas ce qui reste sur les planches :
+    une annotation posée puis retirée en compte deux.
+
+    Chaque entrée dit si son compte est PARTAGÉ (`collectif`), et `demandeur_collectif`
+    celui du demandeur : sous un login partagé, une seule entrée peut être le travail de
+    plusieurs personnes."""
     doc = conn.execute("SELECT importe_par FROM document WHERE id = ?",
                        (document_id,)).fetchone()
     par_agent: dict = {}
@@ -296,8 +314,10 @@ def _travail_des_autres(conn, document_id: int, demandeur) -> dict:
     autres = sorted(par_agent.values(), key=lambda e: e["dernier"] or "", reverse=True)
     for e in autres:
         e["agent_nom"] = noms.get(e["agent"]) if e["agent"] else None
+        e["collectif"] = e["agent"] in collectifs
     return {"importe_par": importe_par,
             "importe_par_nom": noms.get(importe_par) if importe_par else None,
+            "demandeur_collectif": demandeur in collectifs,
             "travail_des_autres": autres}
 
 
