@@ -70,12 +70,20 @@ def _album_ligne(db_path, album_id):
 
 
 def _decaler_les_identifiants(client, headers=ADMIN):
-    """Crée puis détruit un album, pour que l'id du prochain DOCUMENT ne soit plus celui
-    du prochain ALBUM : l'un se réattribue, l'autre non. Sans ce décalage, un journal qui
-    écrirait l'album à la place du document passerait tous les contrôles de ce fichier."""
+    """Fait que l'id du prochain DOCUMENT ne soit plus celui du prochain ALBUM. Sans ce
+    décalage, un journal qui écrirait l'album à la place du document passerait tous les
+    contrôles de ce fichier.
+
+    Un album créé puis détruit y suffisait tant que l'identifiant d'album se réattribuait.
+    Depuis la v30 aucun des deux ne revient (AUTOINCREMENT) : les deux compteurs avancent
+    ensemble, et c'est un document SEUL, né et retiré par SQL, qui les décale. L'album
+    créé puis détruit reste, pour les actes qu'il laisse à `headers`."""
     r = client.post("/api/albums", json={"titre": "Décalage"}, headers=headers)
     assert r.status_code == 201, r.text
     assert client.delete(f"/api/albums/{r.json()['id']}", headers=headers).status_code == 204
+    with database.connect() as c:
+        seul = c.execute("INSERT INTO document (importe_par) VALUES (NULL)").lastrowid
+        c.execute("DELETE FROM document WHERE id = ?", (seul,))
 
 
 @pytest.fixture
@@ -356,17 +364,18 @@ def test_une_base_migree_porte_le_schema_d_une_base_neuve(base_v29, tmp_path, mo
 
 def test_un_identifiant_de_document_ne_se_reattribue_pas(client, db_path):
     """Le journal survit à sa cible : un identifiant rendu au suivant mêlerait l'histoire
-    de deux documents. C'est ce qui arrive à `albums.id` — le dernier album détruit rend
-    son numéro, donc son dossier d'images — et c'est pourquoi le document ne s'identifie
-    pas par sa copie. Même garantie pour une demande, qui survit à ce qu'elle a fait
-    disparaître."""
+    de deux documents. Jusqu'à la v30 c'était le cas d'`albums.id` — le dernier album
+    détruit rendait son numéro, donc son dossier d'images — et c'est pourquoi le document
+    ne s'identifie pas par sa copie ; depuis la v30, l'album ne le rend plus non plus
+    (`tests/test_identifiants_v30.py`). Même garantie pour une demande, qui survit à ce
+    qu'elle a fait disparaître."""
     premier = _creer(client, "Premier", headers={})
     second = _creer(client, "Second", headers={})
     doc_second = _album_ligne(db_path, second)["document_id"]
     assert client.delete(f"/api/albums/{second}").status_code == 204
     troisieme = _creer(client, "Troisième", headers={})
 
-    assert troisieme == second, "le décor ne montre plus la réattribution d'un id d'album"
+    assert troisieme > second
     doc_troisieme = _album_ligne(db_path, troisieme)["document_id"]
     assert doc_troisieme > doc_second
     assert _album_ligne(db_path, premier)["document_id"] < doc_second

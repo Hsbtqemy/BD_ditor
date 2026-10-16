@@ -348,8 +348,9 @@ async def _sqlite_operational_handler(request, exc: sqlite3.OperationalError):
 #     `routes/collections.py` et dans l'outil.
 #
 # Dans les deux cas `cible_id` est l'id du DOCUMENT, jamais celui de l'album : le journal
-# survit à sa cible, et un identifiant d'album se réattribue — le suivant hériterait de
-# l'histoire du précédent. L'album d'où part le geste est dans la charge.
+# survit à sa cible, et l'acte concerne le document, dont l'album n'est qu'une copie — un
+# identifiant d'album se réattribuait d'ailleurs jusqu'à la v30, et le suivant aurait
+# hérité de l'histoire du précédent. L'album d'où part le geste est dans la charge.
 #
 # La règle de qui détruit vit dans `autorisation.Portee.clause_suppression_directe`, la
 # destruction elle-même dans `socle._detruire_album`, les demandes et le fonds dans

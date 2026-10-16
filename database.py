@@ -69,8 +69,16 @@ def connect() -> Iterator[sqlite3.Connection]:
 # Schéma
 # --------------------------------------------------------------------------- #
 SCHEMA_SQL = """
+-- Des identifiants qui ne reviennent jamais (v30, COL-3 ; Hugo, 2026-10-15). `albums`,
+-- `planches`, `regions` et `personnages` portent `AUTOINCREMENT` : sans lui SQLite REND
+-- au suivant l'identifiant du dernier détruit, n'importe où dans le corpus. Le journal,
+-- qui survit à sa cible et la désigne par son identifiant, mêlait alors deux objets : la
+-- règle de suppression lisait l'acte d'un ancien album comme un travail sur une région
+-- neuve, et Ctrl+Z écrivait à travers le cloisonnement (AUTH-14 l'a fermé à part). Une
+-- base d'avant la v30 est reconstruite par `_reconstruire_avec_autoincrement`, compteur
+-- amorcé au-dessus de tout identifiant que le journal a jamais nommé.
 CREATE TABLE IF NOT EXISTS albums (
-    id           INTEGER PRIMARY KEY,
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
     titre        TEXT NOT NULL,
     auteur       TEXT,                       -- legacy (responsabilité à plat) → voir `contribution`
     annee        INTEGER,                    -- legacy (ambigu) → précisé par date_edition/date_originale
@@ -120,7 +128,7 @@ CREATE TABLE IF NOT EXISTS albums (
 );
 
 CREATE TABLE IF NOT EXISTS planches (
-    id                 INTEGER PRIMARY KEY,
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     album_id           INTEGER REFERENCES albums(id) ON DELETE CASCADE,
     numero             INTEGER NOT NULL,             -- ordre d'import (clé de tri, peut avoir des trous)
     role               TEXT NOT NULL DEFAULT 'recit', -- 'recit' = narratif (numéroté) ; autre = paratexte (écarté)
@@ -146,7 +154,7 @@ CREATE TABLE IF NOT EXISTS planches (
 );
 
 CREATE TABLE IF NOT EXISTS regions (
-    id             INTEGER PRIMARY KEY,
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
     planche_id     INTEGER REFERENCES planches(id) ON DELETE CASCADE,
     parent_id      INTEGER REFERENCES regions(id) ON DELETE CASCADE,
     type           TEXT NOT NULL,
@@ -248,7 +256,7 @@ CREATE TABLE IF NOT EXISTS meta (
 -- Entité personnage RÉCURRENTE au niveau corpus (≠ type de région 'personnage', qui
 -- n'est qu'une boîte dessinée). `serie` facultative → désambiguïse les homonymes.
 CREATE TABLE IF NOT EXISTS personnages (
-    id             INTEGER PRIMARY KEY,
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
     nom            TEXT NOT NULL,
     serie          TEXT,
     notes          TEXT,
@@ -443,10 +451,10 @@ CREATE INDEX IF NOT EXISTS idx_projet_acces_principal ON projet_acces(genre, pri
 -- `collection_album`. Le FONDS n'est pas une table : c'est l'ensemble de ces lignes, dont
 -- certaines ne sont appelées par aucune collection.
 --
--- `AUTOINCREMENT`, et c'est la première table du dépôt à le porter : sans lui SQLite REND
--- au suivant l'identifiant du dernier détruit (mesuré), et le journal, qui survit à sa
--- cible, mêlerait alors l'histoire de deux documents. C'est déjà le cas d'`albums.id`, que
--- le dossier d'images suit ; l'identité du document est faite pour ne pas en hériter.
+-- `AUTOINCREMENT`, comme les copies, leurs planches, leurs régions et les personnages
+-- (cf. la tête de ce schéma) : sans lui SQLite REND au suivant l'identifiant du dernier
+-- détruit (mesuré), et le journal, qui survit à sa cible, mêlerait alors l'histoire de
+-- deux documents.
 --
 -- `importe_par` : le LOGIN de qui a importé. NULL = on ne sait pas — tout album d'avant la
 -- v30, dont l'import n'a été écrit nulle part, et tout import en mono-poste, où personne ne
@@ -505,8 +513,8 @@ CREATE TABLE IF NOT EXISTS demande (
 -- Les DOCUMENTS d'une demande — plusieurs dès maintenant, pour qu'une entrée de documents
 -- en porte autant qu'on en coche. `document_id` SANS clé étrangère : la demande survit au
 -- document détruit. `album_id` est la copie d'où le geste est parti et `titre` son titre
--- ce jour-là — un identifiant d'album se réattribue, et sans le titre une demande répondue
--- ne dirait plus de quoi elle parlait. `reponse` : la réponse document par document, pour
+-- ce jour-là — l'album détruit ne se lit plus (et son identifiant se réattribuait avant la
+-- v30) : sans le titre, une demande répondue ne dirait plus de quoi elle parlait. `reponse` : la réponse document par document, pour
 -- une demande acceptée en partie.
 CREATE TABLE IF NOT EXISTS demande_document (
     demande_id   INTEGER NOT NULL REFERENCES demande(id) ON DELETE CASCADE,
@@ -1146,7 +1154,157 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 conn.execute("UPDATE albums SET document_id = ? WHERE id = ?",
                              (cur.lastrowid, album_id))
 
+    # v29 → v30, suite : des identifiants qui ne reviennent jamais (Hugo, 2026-10-15). Gardée
+    # par la VERSION — une reconstruction de table n'est pas une étape qu'on rejoue à chaque
+    # démarrage — et IDEMPOTENTE, parce que des tests ramènent `user_version` en arrière sur
+    # une base déjà au schéma courant : une table qui porte déjà `AUTOINCREMENT` n'est pas
+    # touchée, et une base neuve, née du schéma courant, n'a donc rien à faire ici.
+    if version < 30:
+        _reconstruire_avec_autoincrement(conn)
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+
+# Les tables dont l'identifiant ne doit jamais revenir (v30), et, pour chacune, ce qui la
+# désigne dans le JOURNAL : les `cible_table` dont `cible_id` est l'une de ses lignes, et
+# les clés de charge (`avant`, `apres`) qui portent l'un de ses identifiants. Deux formes
+# de plus, lues par `_jamais_nommes` : la clé `id` d'un instantané de région (une région
+# supprimée, et ses enfants, sous `enfants`), et la clé `id` de l'objet `planche` d'un
+# scan ajouté ou retiré (`main._journaliser_scan`).
+#
+# Le recensement est fait sur les écritures du journal au 2026-10-15. En dire TROP ne
+# coûte qu'un saut dans la numérotation ; en dire trop peu rendrait une dernière fois un
+# identifiant que le journal nomme encore. D'où `region_id` et `parent_id` lus dans
+# TOUTES les charges, quelle que soit leur cible.
+_AUTOINCREMENT = {
+    "albums": ((), ("album_id",)),
+    "planches": (("planches",), ("planche_id",)),
+    "regions": (("regions", "annotations", "bulle_locuteur", "personnage_presence",
+                 "region_attribut"), ("region_id", "parent_id")),
+    "personnages": ((), ("personnage_id",)),
+}
+
+
+def _jamais_nommes(conn: sqlite3.Connection) -> dict:
+    """{table: le plus grand identifiant de cette table que le journal ait jamais nommé},
+    0 sans journal ou sans mention. Une lecture de tout `evenement`, une fois, à la
+    migration : les charges sont du JSON, lu par `json_tree`, et une charge ILLISIBLE est
+    sautée plutôt que de faire échouer la migration."""
+    resultat = {t: 0 for t in _AUTOINCREMENT}
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                        "AND name = 'evenement'").fetchone():
+        return resultat
+    for table, (cibles, _cles) in _AUTOINCREMENT.items():
+        if cibles:
+            m = conn.execute(
+                f"SELECT MAX(cible_id) FROM evenement WHERE cible_table IN "
+                f"({', '.join('?' * len(cibles))})", cibles).fetchone()[0]
+            resultat[table] = max(resultat[table], m or 0)
+    colonnes = []
+    params = []
+    for table, (_cibles, cles) in _AUTOINCREMENT.items():
+        cas = f"j.key IN ({', '.join('?' * len(cles))})"
+        params.extend(cles)
+        if table == "regions":
+            cas = f"({cas} OR (j.key = 'id' AND e.cible_table = 'regions'))"
+        elif table == "planches":
+            cas = f"({cas} OR (j.key = 'id' AND j.path LIKE '%.planche'))"
+        colonnes.append(f"MAX(CASE WHEN {cas} THEN CAST(j.atom AS INTEGER) END)")
+    for charge in ("avant", "apres"):
+        ligne = conn.execute(
+            f"SELECT {', '.join(colonnes)} FROM evenement e, json_tree("
+            f"CASE WHEN json_valid(e.{charge}) THEN e.{charge} ELSE '{{}}' END) j "
+            f"WHERE e.{charge} IS NOT NULL AND j.type = 'integer'", params).fetchone()
+        for table, m in zip(_AUTOINCREMENT, ligne):
+            resultat[table] = max(resultat[table], m or 0)
+    return resultat
+
+
+def _reconstruire_avec_autoincrement(conn: sqlite3.Connection) -> None:
+    """Pose `AUTOINCREMENT` sur les tables de `_AUTOINCREMENT` qui ne l'ont pas, par la
+    reconstruction que SQLite prescrit — on ne peut pas le poser par `ALTER TABLE` : table
+    neuve, copie des lignes avec leurs identifiants, ancienne détruite, neuve renommée,
+    index recréés, vues recréées. Les clés étrangères sont SUSPENDUES le temps de la
+    reconstruction : actives, détruire `albums` effacerait par cascade toutes les planches.
+    Elles sont vérifiées à la fin (`PRAGMA foreign_key_check`), et la moindre faute NEUVE
+    défait tout. La table FTS `recherche` et `tokens` ne sont pas reconstruites, et ne perdent rien :
+    une table détruite sous des clés étrangères suspendues n'emporte pas ses dépendants.
+
+    Le compteur de chaque table repart AU-DESSUS du plus grand identifiant que le journal
+    ait jamais nommé (`_jamais_nommes`), pas seulement du plus grand qui survit : sans cela,
+    les identifiants détruits avant la migration, au-dessus du dernier survivant, seraient
+    rendus une dernière fois — et c'est précisément le mélange que la v30 ferme. Un
+    identifiant détruit que le journal n'a JAMAIS nommé peut revenir : rien ne le désigne.
+
+    La transaction en cours est validée d'abord : `PRAGMA foreign_keys` ne change pas à
+    l'intérieur d'une transaction. Ce qui précède dans `_migrate` est idempotent, et la
+    version n'est écrite qu'après : une reconstruction qui échoue laisse la base en v29,
+    prête à rejouer l'étape au démarrage suivant."""
+    a_faire = []
+    for table in _AUTOINCREMENT:
+        r = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+                         (table,)).fetchone()
+        if r is None or "AUTOINCREMENT" in r[0].upper():
+            continue
+        neuf, n = re.subn(r"^CREATE TABLE\s+(?:IF NOT EXISTS\s+)?\"?" + table + r"\"?\s*\(",
+                          f"CREATE TABLE {table}__v30 (", r[0], count=1)
+        neuf, m = re.subn(r"\bid\s+INTEGER\s+PRIMARY\s+KEY\b",
+                          "id INTEGER PRIMARY KEY AUTOINCREMENT", neuf, count=1)
+        if n != 1 or m != 1:
+            raise RuntimeError(
+                f"Migration v30 : la table `{table}` n'a pas la forme attendue "
+                f"(« id INTEGER PRIMARY KEY ») ; elle ne peut pas recevoir AUTOINCREMENT. "
+                "Aucune table n'a été modifiée.")
+        a_faire.append((table, neuf))
+    if not a_faire:
+        return
+    jamais = _jamais_nommes(conn)
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            fautes_avant = {tuple(f) for f in conn.execute("PRAGMA foreign_key_check")}
+            for (vue,) in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'view'").fetchall():
+                conn.execute(f'DROP VIEW "{vue}"')
+            for table, neuf in a_faire:
+                index = [s for (s,) in conn.execute(
+                    "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? "
+                    "AND sql IS NOT NULL", (table,))]
+                colonnes = ", ".join(f'"{c[1]}"' for c in
+                                     conn.execute(f'PRAGMA table_info("{table}")'))
+                conn.execute(neuf)
+                conn.execute(f'INSERT INTO "{table}__v30" ({colonnes}) '
+                             f'SELECT {colonnes} FROM "{table}"')
+                conn.execute(f'DROP TABLE "{table}"')
+                conn.execute(f'ALTER TABLE "{table}__v30" RENAME TO "{table}"')
+                for s in index:
+                    conn.execute(s)
+                # La copie a posé le compteur au plus grand identifiant survivant ; le
+                # journal peut en nommer de plus grands.
+                conn.execute("INSERT INTO sqlite_sequence (name, seq) "
+                             "SELECT ?, 0 WHERE NOT EXISTS "
+                             "(SELECT 1 FROM sqlite_sequence WHERE name = ?)", (table, table))
+                conn.execute("UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = ?",
+                             (jamais[table], table))
+            # La reconstruction ne doit créer AUCUNE référence orpheline. Celles qu'une
+            # base portait déjà (une ligne écrite clés étrangères coupées) ne sont pas les
+            # siennes : refuser de démarrer pour elles fermerait l'instance sur une faute
+            # que la migration n'a pas faite, et qu'elle ne saurait pas réparer.
+            fautes = [f for f in map(tuple, conn.execute("PRAGMA foreign_key_check"))
+                      if f not in fautes_avant]
+            if fautes:
+                raise RuntimeError(
+                    "Migration v30 : la reconstruction laisse des clés étrangères "
+                    f"orphelines ({fautes[:5]}) ; rien n'est modifié.")
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+    conn.executescript(_VIEWS_SQL)
 
 
 def _dedup_numeros_planches(conn: sqlite3.Connection) -> None:

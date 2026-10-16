@@ -124,9 +124,9 @@ def journaliser_emploi(conn: sqlite3.Connection, type: str, album_id: int,
     plus dire pareil.
 
     `cible_id` est le DOCUMENT dont l'album est la copie, pas l'album : le journal survit à
-    sa cible, et un identifiant d'album se réattribue. Un album sans document — posé par
-    `INSERT` — garde sa trace sous une cible vide, l'album restant dans la charge. La
-    charge porte le NOM de la collection à côté de son identifiant, pour la même raison :
+    sa cible, et un identifiant d'album se réattribuait jusqu'à la v30. Un album sans
+    document — posé par `INSERT` — garde sa trace sous une cible vide, l'album restant dans
+    la charge. La charge porte le NOM de la collection à côté de son identifiant, pour la même raison :
     l'identifiant d'une collection supprimée est rendu à la suivante (mesuré), et l'acte
     désignerait alors une autre étude que celle où il a eu lieu.
 

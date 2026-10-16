@@ -137,6 +137,18 @@ def _passe(rep, description, *, interdits=()):
     return detail["ecarte"]["evenement_id"]
 
 
+@pytest.fixture(autouse=True)
+def _numerotation_d_avant_la_v30(db_path):
+    """Depuis la v30 (COL-3), un identifiant ne revient plus : `regions`, `planches`,
+    `albums` et `personnages` portent AUTOINCREMENT. Ce fichier mesure pourtant ce que
+    Ctrl+Z fait d'un identifiant REPRIS, et la garde d'AUTH-14 reste — défense en
+    profondeur, que rien ne doit désarmer en silence. La base de chaque test est donc
+    ramenée à la numérotation d'avant, la seule qui reproduise une reprise par les routes
+    (`test_identifiants_v30._sans_autoincrement`, sans toucher la version)."""
+    from test_identifiants_v30 import _sans_autoincrement
+    _sans_autoincrement(db_path, version=None)
+
+
 # --------------------------------------------------------------------------- #
 # Le décor : deux collections, et un geste ANNULABLE de la collègue dans « Garde »,
 # pour prouver que la pile passe au geste d'avant au lieu de rester bloquée.
