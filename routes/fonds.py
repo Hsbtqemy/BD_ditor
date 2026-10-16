@@ -31,6 +31,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 
 import autorisation
+import conflit
 import journal
 from database import (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
                       GENRES_DEMANDE, LONGUEUR_MOTIF, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
@@ -116,6 +117,9 @@ def _demander_un_document(conn, portee, album_id, motif):
     if album_id is None:
         raise HTTPException(422, "Quel album ? (`album_id`)")
     a = _get_album(conn, portee, album_id, ecriture=True)
+    # Ce qui suit se lit sous le verrou d'écriture : deux demandes simultanées sur le même
+    # document passaient sinon toutes deux le refus du doublon.
+    conflit.verrouiller(conn)
     ou, params = portee.clause_suppression_directe("a.id")
     if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
                     (album_id, *params)).fetchone():
@@ -159,6 +163,7 @@ def _demander_un_projet(conn, portee, projet_id, motif):
     if portee.peut_decider_des_projets():
         raise HTTPException(409, "Vous pouvez supprimer ce projet vous-même : il n'y a rien "
                                  "à demander.")
+    conflit.verrouiller(conn)                 # le refus du doublon, sous le verrou
     attente = _en_attente(conn, projet_id=projet_id)
     if attente is not None:
         raise _deja_demandee(conn, attente)
@@ -252,6 +257,10 @@ def repondre_demande(demande_id: int, payload: ReponseIn,
     if payload.reponse not in REPONSES_DEMANDE:
         raise HTTPException(422, f"Réponse inconnue : {payload.reponse} "
                                  f"({' | '.join(REPONSES_DEMANDE)}).")
+    # La demande se lit SOUS LE VERROU d'écriture, et la réponse suit dans la même
+    # transaction : deux administrateurs qui répondent ensemble ne passent plus tous deux
+    # le 409 « déjà répondue » (relecture croisée de la tranche 2).
+    conflit.verrouiller(conn)
     d = conn.execute("SELECT * FROM demande WHERE id = ?", (demande_id,)).fetchone()
     if d is None:
         raise HTTPException(404, f"Demande {demande_id} introuvable")

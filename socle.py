@@ -35,6 +35,7 @@ from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 import autorisation
+import conflit
 import journal
 from database import (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
                       REPONSE_ACCEPTEE, clause_appartenance, collection_row,
@@ -415,7 +416,13 @@ def _detruire_album(conn, portee: autorisation.Portee, album_id: int) -> None:
     ses rangements sans rien dire), puis la destruction du document. Et il CLÔT toute
     demande de suppression qui visait ce document : elle a reçu sa réponse, quel que soit
     le geste qui l'a donnée — l'importateur qui détruit lui-même ce qu'un autre avait
-    demandé, ou l'administrateur."""
+    demandé, ou l'administrateur.
+
+    La garde se lit SOUS LE VERROU D'ÉCRITURE (`conflit.verrouiller`, le remède de CONC-3),
+    et la destruction suit dans la même transaction. Lue hors transaction, elle laissait
+    passer un travail validé entre la garde et le `DELETE` : il partait avec l'album, sans
+    que personne l'ait demandé (relecture croisée de la tranche 2, sonde S9)."""
+    conflit.verrouiller(conn)
     _exiger_destruction(conn, portee, album_id)
     a = _row(conn.execute("SELECT * FROM albums WHERE id = ?", (album_id,)))
     # Désindexe les régions du FTS (le CASCADE SQL ne touche pas la table FTS).
@@ -458,11 +465,16 @@ def _clore_demandes(conn, portee: autorisation.Portee, ids, reponse: str) -> Non
     dire qu'une même suppression a déjà été refusée, et le journal garde qui a répondu.
 
     `repondu_par` est l'appelant : l'administrateur qui répond, ou celui dont le geste a
-    satisfait la demande — l'importateur qui détruit ce qu'un autre avait demandé."""
+    satisfait la demande — l'importateur qui détruit ce qu'un autre avait demandé.
+
+    Une demande qui a DÉJÀ sa réponse n'en reçoit pas d'autre, et rien ne s'écrit au
+    journal pour elle : la ligne disait jusqu'ici une réponse qu'aucun `UPDATE` n'avait
+    posée (relecture croisée de la tranche 2)."""
     for demande_id in ids:
-        conn.execute("UPDATE demande SET reponse = ?, repondu_par = ?, "
-                     "date_reponse = datetime('now') WHERE id = ? AND reponse IS NULL",
-                     (reponse, portee.utilisateur, demande_id))
+        if not conn.execute("UPDATE demande SET reponse = ?, repondu_par = ?, "
+                            "date_reponse = datetime('now') WHERE id = ? AND reponse IS NULL",
+                            (reponse, portee.utilisateur, demande_id)).rowcount:
+            continue
         conn.execute("UPDATE demande_document SET reponse = ? "
                      "WHERE demande_id = ? AND reponse IS NULL", (reponse, demande_id))
         journal.journaliser(conn, "modification", "demande", demande_id,
@@ -484,7 +496,10 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
     suivante, elles pourront aussi être confiées à un autre projet. La clé étrangère, sans
     action, est la ceinture derrière ces refus.
 
-    Accepté, il clôt aussi toute demande de suppression qui le visait."""
+    Accepté, il clôt aussi toute demande de suppression qui le visait. Ses refus se lisent
+    sous le verrou d'écriture, pour la raison écrite sur `_detruire_album` : une collection
+    créée entre le compte et le `DELETE` ferait sinon tomber la clé étrangère en 500."""
+    conflit.verrouiller(conn)
     projet_id = p["id"]
     if p["repli"]:
         raise HTTPException(409, "C'est le projet de repli : les collections qui ne "

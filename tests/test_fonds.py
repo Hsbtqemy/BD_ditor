@@ -27,6 +27,9 @@ import pytest
 
 import autorisation
 import comptes
+import database
+import main
+import socle
 from conftest import ADMIN, make_png
 from test_projets import _fouillable, _outil, _repli, _sql
 
@@ -861,3 +864,95 @@ def test_l_outil_retire_un_album_de_sa_derniere_collection(client, db_path, deco
     assert _sql(db_path, "SELECT projet_id FROM albums WHERE id = ?", (aid,))         == [{"projet_id": _repli(db_path)}]
     assert _sql(db_path, "SELECT type FROM evenement WHERE cible_table = 'collection_album' "
                          "ORDER BY id DESC LIMIT 1") == [{"type": "delien"}]
+
+
+# =========================================================================== #
+# La garde se lit sous le verrou d'écriture (relecture croisée, sonde S9)
+# =========================================================================== #
+# Chaque test glisse une écriture CONCURRENTE — une seconde connexion, comme une seconde
+# requête — entre la garde et le geste qu'elle autorise. Sous le verrou (`BEGIN IMMEDIATE`)
+# elle ne peut pas passer : la base répond « verrouillée ». Sans lui, elle passait, et un
+# travail validé après la garde partait avec l'album, ou une seconde réponse s'ajoutait.
+def _ecrire_a_cote(db_path, sql, params=()):
+    autre = sqlite3.connect(db_path, timeout=0.2)
+    try:
+        autre.execute(sql, params)
+        autre.commit()
+        return "écrite"
+    except sqlite3.OperationalError as e:
+        return "verrouillée" if "locked" in str(e) else str(e)
+    finally:
+        autre.close()
+
+
+def _au_milieu(monkeypatch, module, nom, db_path, sql, params, vu):
+    vraie = getattr(module, nom)
+
+    def entre(*args, **kwargs):
+        if not vu:
+            vu.append(_ecrire_a_cote(db_path, sql, params))
+        return vraie(*args, **kwargs)
+
+    monkeypatch.setattr(module, nom, entre)
+
+
+def test_un_travail_ne_se_glisse_pas_entre_la_garde_et_la_destruction(client, db_path, decor,
+                                                                       monkeypatch):
+    vu = []
+    _au_milieu(monkeypatch, socle, "unindex_region", db_path,
+               "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id) "
+               "VALUES ('creation', 'collegue', 'humain', 'annotations', ?)",
+               (decor["region"],), vu)
+    assert client.delete(f"/api/albums/{decor['erreur']}", headers=IMPORTEUSE).status_code == 204
+    assert vu == ["verrouillée"]
+
+
+def test_ni_entre_la_garde_et_la_suppression_d_une_planche(client, db_path, decor,
+                                                           monkeypatch):
+    vu = []
+    _au_milieu(monkeypatch, main, "unindex_region", db_path,
+               "INSERT INTO evenement (type, agent, agent_type, cible_table, cible_id) "
+               "VALUES ('creation', 'collegue', 'humain', 'annotations', ?)",
+               (decor["region"],), vu)
+    assert client.delete(f"/api/planches/{decor['planche']}", headers=IMPORTEUSE).status_code == 204
+    assert vu == ["verrouillée"]
+
+
+def test_deux_reponses_a_la_meme_demande_ne_passent_pas_ensemble(client, db_path, decor,
+                                                                monkeypatch):
+    from routes import fonds
+    demande = _demander(client, decor["erreur"], COLLEGUE).json()["id"]
+    vu = []
+    _au_milieu(monkeypatch, fonds, "_clore_demandes", db_path,
+               "UPDATE demande SET reponse = 'acceptee', repondu_par = 'autre' WHERE id = ?",
+               (demande,), vu)
+    assert _repondre(client, demande, "refusee").status_code == 200
+    assert vu == ["verrouillée"]
+    assert _sql(db_path, "SELECT reponse, repondu_par FROM demande WHERE id = ?",
+                (demande,)) == [{"reponse": "refusee", "repondu_par": "decor"}]
+
+
+def test_deux_demandes_du_meme_document_ne_passent_pas_ensemble(client, db_path, decor,
+                                                                monkeypatch):
+    from routes import fonds
+    vu = []
+    _au_milieu(monkeypatch, fonds, "_en_attente", db_path,
+               "INSERT INTO demande (genre, demandeur, motif) "
+               "VALUES ('suppression_document', 'autre', 'x')", (), vu)
+    assert _demander(client, decor["erreur"], COLLEGUE).status_code == 201
+    assert vu == ["verrouillée"]
+
+
+def test_une_reponse_deja_donnee_ne_s_ecrit_pas_une_seconde_fois(client, db_path, decor):
+    """La ligne de journal suivait l'`UPDATE` même quand il ne changeait rien."""
+    demande = _demander(client, decor["erreur"], COLLEGUE).json()["id"]
+    assert _repondre(client, demande, "refusee").status_code == 200
+    avant = _sql(db_path, "SELECT COUNT(*) n FROM evenement WHERE cible_table = 'demande'")
+    conn = database.get_connection()
+    try:
+        socle._clore_demandes(conn, autorisation.TOTALE, [demande], "acceptee")
+        conn.commit()
+    finally:
+        conn.close()
+    assert _sql(db_path, "SELECT COUNT(*) n FROM evenement WHERE cible_table = 'demande'")         == avant
+    assert _sql(db_path, "SELECT reponse FROM demande WHERE id = ?", (demande,))         == [{"reponse": "refusee"}]

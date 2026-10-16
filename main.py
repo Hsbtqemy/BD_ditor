@@ -575,7 +575,10 @@ def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
     # cette garde, elle restait le chemin par lequel on vide un album partagé, une à une.
     # COL-3 — la règle est celle du document (décision B4) : on supprime une planche là où
     # l'on pourrait supprimer l'album sans rien demander, et ailleurs on s'adresse à un
-    # administrateur — une planche n'a pas de demande à elle.
+    # administrateur — une planche n'a pas de demande à elle. Lue sous le verrou d'écriture,
+    # comme pour l'album (`socle._detruire_album`) : sinon un travail validé entre la garde
+    # et le `DELETE` partirait avec la planche.
+    conflit.verrouiller(conn)
     _exiger_destruction(conn, portee, p["album_id"], planche=True)
     for r in conn.execute(
         "SELECT id FROM regions WHERE planche_id = ?", (planche_id,)).fetchall():
