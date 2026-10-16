@@ -283,6 +283,39 @@ def _get_album(conn, portee: autorisation.Portee, album_id: int, *,
     return a
 
 
+def _collections_lues_d_albums(conn, portee: autorisation.Portee,
+                               album_ids) -> dict[int, list[dict]]:
+    """Les collections où chacun de ces albums est rangé — celles que l'appelant LIT, et
+    elles seules : `{album_id: [{id, nom, projet_id}, …]}`, par nom. UX-18.
+
+    C'est la règle de `GET /api/albums/{id}/collections`, écrite ICI pour les deux routes
+    qui la servent — celle d'un album et la liste de tous (`GET /api/albums`) —, et non
+    recopiée dans la seconde : deux écritures du filtre finiraient par ne plus répondre
+    pareil. Une collection qu'on ne lit pas n'y laisse RIEN, ni nom, ni identifiant, ni
+    trace dans le nombre (« 404, jamais 403 », AUTH-2) : un album partagé avec une étude à
+    laquelle on ne participe pas a une liste PARTIELLE, et c'est voulu.
+
+    Le filtre est `Portee.peut_lire`, la question telle qu'`autorisation.py` la tranche,
+    et non une clause recopiée. Une seule requête, quel que soit le nombre d'albums.
+
+    Elle ne vérifie PAS qu'on lit les albums eux-mêmes : l'appelant les a déjà passés par
+    un accesseur gardé ou par `clause_album`. Un album absent du résultat n'est rangé dans
+    aucune collection qu'on lit."""
+    ids = sorted({int(i) for i in album_ids})
+    par_album: dict[int, list[dict]] = {i: [] for i in ids}
+    if not ids:
+        return par_album
+    for ligne in conn.execute(
+            f"SELECT ca.album_id, c.id, c.nom, {sql_projet_de('c')} AS projet_id "
+            "FROM collection_album ca JOIN collection c ON c.id = ca.collection_id "
+            f"WHERE ca.album_id IN ({', '.join('?' * len(ids))}) "
+            "ORDER BY c.nom, c.id", ids):
+        if portee.peut_lire(ligne["id"]):
+            par_album[ligne["album_id"]].append(
+                {"id": ligne["id"], "nom": ligne["nom"], "projet_id": ligne["projet_id"]})
+    return par_album
+
+
 def _get_planche(conn, portee: autorisation.Portee, planche_id: int, *,
                  ecriture: bool = False) -> dict:
     ou, params = portee.clause_album("planches.album_id", ecriture=ecriture)

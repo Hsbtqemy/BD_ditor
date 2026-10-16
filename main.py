@@ -55,7 +55,8 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
     _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
     _attributs_de, _auteur, _clore_demandes, _detruire_album, _supprimer_projet,
-    _clause_lemme, _clause_personnage, _collection_d_export, _csv_response, _csv_safe, _descendre_portee,
+    _clause_lemme, _clause_personnage, _collection_d_export, _collections_lues_d_albums,
+    _csv_response, _csv_safe, _descendre_portee,
     _disposition, _ensure_tags, _exiger_destruction, _exiger_export,
     _exiger_export_region,
     _get_album, _get_collection, _get_dimension, _get_personnage, _get_planche,
@@ -477,9 +478,17 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
             attente.setdefault(d["document_id"], dict(d))
     noms = noms_lisibles(conn, [d["demandeur"] for d in attente.values()
                                 if portee.peut_nommer_le_demandeur(d["demandeur"])])
+    # UX-18 — l'appartenance de CHAQUE album, en une lecture, pour que la Bibliothèque
+    # filtre le corpus par collection sans un appel par album. Les seules collections LUES
+    # (`_collections_lues_d_albums`, la règle de `GET /api/albums/{id}/collections` écrite
+    # à un seul endroit) : une collection hors de portée n'y laisse ni nom, ni identifiant,
+    # ni trace dans le nombre. `id` et `nom` seulement — ce que l'appelant peut y faire se
+    # lit dans `GET /api/collections`, collection par collection.
+    rangements = _collections_lues_d_albums(conn, portee, [a["id"] for a in albums])
     for a in albums:
         for champ in ("destructible", "ecrivable", "partage", "au_fonds"):
             a[champ] = bool(a[champ])
+        a["collections"] = [{"id": c["id"], "nom": c["nom"]} for c in rangements[a["id"]]]
         d = attente.get(a["document_id"])
         if d is None:
             a["demande"] = None

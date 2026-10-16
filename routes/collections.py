@@ -37,11 +37,11 @@ import journal
 from config import STATUTS_DIFFUSION
 from database import (NATURES, collection_row, collections, etat_embargo,
                       nom_reserve, poser_projet_de_copie, projet_de_collection,
-                      projet_par_defaut, rangement_traverse, sql_projet_de)
+                      projet_par_defaut, rangement_traverse)
 
 from socle import (
-    AccesIn, CollectionIn, CollectionUpdate, NatureIn, _get_album, _get_collection,
-    _get_projet, _rows, db, portee_courante,
+    AccesIn, CollectionIn, CollectionUpdate, NatureIn, _collections_lues_d_albums,
+    _get_album, _get_collection, _get_projet, _rows, db, portee_courante,
 )
 
 router = APIRouter()
@@ -631,16 +631,16 @@ def list_collections_album(album_id: int, conn: sqlite3.Connection = Depends(db)
     étude à laquelle on ne participe pas — même compromis que les attributs d'un objet
     partagé (cf. `_attributs_de`) : mieux vaut ne pas montrer que révéler l'existence
     d'une étude voisine.
+
+    UX-18 — le filtre vit dans `socle._collections_lues_d_albums`, que `GET /api/albums`
+    lit aussi pour rendre l'appartenance de tous les albums en une lecture.
     """
     _get_album(conn, portee, album_id)
-    rows = _rows(conn.execute(
-        f"SELECT c.id, c.nom, {sql_projet_de('c')} AS projet_id FROM collection_album ca "
-        "JOIN collection c ON c.id = ca.collection_id "
-        "WHERE ca.album_id = ? ORDER BY c.nom", (album_id,)))
+    lues = _collections_lues_d_albums(conn, portee, [album_id])[album_id]
     return [{**c, "mon_niveau": _niveau_dans(portee, c["id"]),
              "administrable": portee.peut_administrer(c["id"]),
              "exportable": portee.peut_exporter(c["id"])}
-            for c in rows if portee.peut_lire(c["id"])]
+            for c in lues]
 
 
 @router.put("/api/albums/{album_id}/collections/{collection_id}", status_code=201)
