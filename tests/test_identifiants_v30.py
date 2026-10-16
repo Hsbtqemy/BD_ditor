@@ -239,6 +239,53 @@ def test_une_table_de_forme_inattendue_arrete_tout_avant_de_toucher(base_v29):
 
 
 # --------------------------------------------------------------------------- #
+# Un dossier d'images déjà là n'est jamais repris par un album neuf (relecture croisée)
+# --------------------------------------------------------------------------- #
+def test_un_album_neuf_ne_reprend_jamais_le_dossier_d_un_autre(client, data_dir, db_path,
+                                                                png_bytes, caplog):
+    """Un identifiant d'album pouvait revenir — d'avant la v30, ou rendu par une
+    transaction défaite — et retrouver `corpus/album_N` et `derivatives/album_N` laissés par
+    l'album détruit : ses planches se mêlaient aux images d'un autre. À la naissance d'un
+    album, un tel dossier est MIS DE CÔTÉ — renommé, daté, à côté, jamais effacé — et le
+    journal du serveur le dit."""
+    suivant = (_sql(db_path, "SELECT seq FROM sqlite_sequence WHERE name = 'albums'")
+               or [{"seq": 0}])[0]["seq"] + 1
+    for racine in ("corpus", "derivatives"):
+        d = data_dir / racine / f"album_{suivant}"
+        d.mkdir(parents=True)
+        (d / "planche_0001.png").write_bytes(b"IMAGE D'UN AUTRE ALBUM")
+    with caplog.at_level("WARNING", logger="bd_annotator"):
+        aid = client.post("/api/albums", json={"titre": "Neuf"}).json()["id"]
+    assert aid == suivant
+    for racine in ("corpus", "derivatives"):
+        assert not (data_dir / racine / f"album_{aid}").exists(), racine
+        ecartes = sorted((data_dir / racine).glob(f"album_{aid}.ecarte-*"))
+        assert len(ecartes) == 1, (racine, ecartes)
+        assert (ecartes[0] / "planche_0001.png").read_bytes() == b"IMAGE D'UN AUTRE ALBUM"
+    assert sum(f"album_{aid}" in r.getMessage() and "mis de côté" in r.getMessage()
+               for r in caplog.records) == 2
+    # L'album neuf écrit dans un dossier neuf.
+    r = client.post(f"/api/albums/{aid}/import",
+                    files={"file": ("p.png", png_bytes, "image/png")})
+    assert r.status_code == 201, r.text
+    assert [f.name for f in (data_dir / "corpus" / f"album_{aid}").iterdir()] \
+        == ["planche_0001.png"]
+    assert (data_dir / "corpus" / f"album_{aid}" / "planche_0001.png").read_bytes() \
+        != b"IMAGE D'UN AUTRE ALBUM"
+
+
+def test_un_dossier_deja_mis_de_cote_ne_l_est_pas_par_dessus(data_dir, monkeypatch):
+    """Deux mises de côté la même seconde ne s'écrasent pas : la seconde prend un suffixe."""
+    from pipeline import ingest
+    for _ in range(2):
+        d = data_dir / "corpus" / "album_7"
+        d.mkdir(parents=True)
+        (d / "x").write_text("x")
+        ingest.ecarter_dossiers_d_album(7)
+    assert len(list((data_dir / "corpus").glob("album_7.ecarte-*"))) == 2
+
+
+# --------------------------------------------------------------------------- #
 # Sur une base neuve, par les routes : un identifiant détruit ne revient pas
 # --------------------------------------------------------------------------- #
 def test_une_base_neuve_ne_rend_aucun_identifiant(client, png_bytes):

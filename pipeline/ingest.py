@@ -236,6 +236,36 @@ def remove_album_files(album_id: int) -> None:
     shutil.rmtree(DERIVATIVES_DIR / f"album_{album_id}", ignore_errors=True)
 
 
+def ecarter_dossiers_d_album(album_id: int) -> list[Path]:
+    """Met de côté les dossiers `album_<id>` qui existent DÉJÀ, à la naissance d'un album
+    (COL-3, relecture croisée de la tranche 2). Rend les chemins où ils sont partis.
+
+    Un identifiant d'album pouvait revenir — d'avant la v30, ou rendu par une transaction
+    défaite — et l'album neuf retrouvait alors les images de l'album détruit : ses
+    planches se seraient rangées parmi elles, numéros compris. Un tel dossier n'est donc
+    JAMAIS réutilisé tel quel : il est renommé `album_<id>.ecarte-<date>` à côté de lui,
+    jamais effacé — ce qu'il contient n'est peut-être à personne, mais on ne le sait pas —,
+    et le journal du serveur le dit."""
+    import datetime
+    import logging
+    marque = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    ecartes = []
+    for racine in (CORPUS_DIR, DERIVATIVES_DIR):
+        dossier = racine / f"album_{album_id}"
+        if not dossier.exists():
+            continue
+        cible, n = racine / f"album_{album_id}.ecarte-{marque}", 1
+        while cible.exists():
+            n += 1
+            cible = racine / f"album_{album_id}.ecarte-{marque}-{n}"
+        dossier.rename(cible)
+        logging.getLogger("bd_annotator").warning(
+            "Album %s : le dossier %s existait déjà à sa création ; il est mis de côté sous "
+            "%s, rien n'est effacé.", album_id, dossier, cible)
+        ecartes.append(cible)
+    return ecartes
+
+
 def remove_planche_files(chemin_tiff: str | None, chemin_web: str | None) -> None:
     """Supprime le master et le dérivé web d'une planche (best-effort)."""
     for rel in (chemin_tiff, chemin_web):

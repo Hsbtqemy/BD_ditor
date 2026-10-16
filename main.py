@@ -83,7 +83,8 @@ from pipeline.backup import make_backup
 from pipeline import jobs
 from pipeline import nlp
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
-from pipeline.ingest import ingest_image, remove_planche_files, store_upload
+from pipeline.ingest import (ecarter_dossiers_d_album, ingest_image, remove_planche_files,
+                             store_upload)
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
 from pipeline.ordering import move_region, reorder_planche
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
@@ -535,6 +536,9 @@ def create_album(album: AlbumIn, conn: sqlite3.Connection = Depends(db),
     if cid is not None:
         conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
                      (cid, cur.lastrowid))
+    # COL-3, relecture croisée — un dossier `album_<id>` déjà sur le disque n'est jamais
+    # repris par l'album neuf : il est mis de côté, jamais effacé (`ecarter_dossiers_d_album`).
+    ecarter_dossiers_d_album(cur.lastrowid)
     # COL-3 — l'album naît copie d'un DOCUMENT, qui appartient à l'instance dès cet instant.
     _journaliser_naissance(
         conn, _document_du_nouvel_album(conn, portee, cur.lastrowid, cid),
