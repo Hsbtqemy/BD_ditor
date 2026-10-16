@@ -112,6 +112,24 @@ SURFACES_AUDITEES = {
 SURFACES_HORS_PERIMETRE = {}
 
 
+# COL-3 — l'Administration est UNE surface à cinq vues adressables : le chargement générique
+# n'en audite qu'une, celle sur laquelle la page s'ouvre. Chacune l'est donc aussi.
+VUES_ADMINISTRATION = ("afaire", "fonds", "projets", "comptes", "instance")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+@pytest.mark.parametrize("vue", VUES_ADMINISTRATION)
+def test_a11y_chaque_vue_de_l_administration(page, seeded, vue, theme):
+    """Chaque vue de l'Administration, ouverte par son adresse : elle est bien la vue
+    courante, et aucune violation sérieuse/critique."""
+    _theme(page, theme)
+    page.goto(seeded["base"] + f"/administration?vue={vue}", wait_until="networkidle")
+    page.wait_for_timeout(600)
+    assert page.locator(f"#vue-lien-{vue}").get_attribute("aria-current") == "page"
+    viol = _audit(page)
+    assert not viol, f"/administration?vue={vue} [{theme}] :\n{_fmt(viol)}"
+
+
 @pytest.mark.parametrize("theme", ["dark", "light"])
 @pytest.mark.parametrize("surface", list(SURFACES_AUDITEES))
 def test_a11y_chargement(page, seeded, surface, theme):
@@ -259,7 +277,7 @@ def test_a11y_administration_sante(page, seeded, theme):
         body=json.dumps(SANTE_PROFOND if "profond=1" in r.request.url
                         else SANTE_RAPIDE)))
     _theme(page, theme)
-    page.goto(seeded["base"] + "/administration", wait_until="networkidle")
+    page.goto(seeded["base"] + "/administration?vue=instance", wait_until="networkidle")
     page.wait_for_selector("#sante-body .sante-ligne", timeout=3000)
     viol = _audit(page)
     assert not viol, f"Administration/moteurs [{theme}] :\n{_fmt(viol)}"
@@ -960,14 +978,23 @@ def test_a11y_le_fonds_et_ses_demandes(page, live_server, theme):
         assert r.status_code == 201, r.text
     _theme(page, theme)
     page.set_extra_http_headers({"Remote-User": "decor", "Remote-Groups": "bd-admins"})
+    # COL-3 — la demande se répond dans « À faire », où la page s'ouvre : dépliée, elle
+    # montre son motif, « Détruire » et « Garder ».
     page.goto(live_server + "/administration", wait_until="networkidle")
-    page.wait_for_selector("#fonds-bloc:not([hidden]) .fd-demande", timeout=5000)
+    page.wait_for_selector("#afaire-bloc:not([hidden]) .fd-demande", timeout=5000)
+    page.click(".fd-demande [data-af-deplier]")
+    page.wait_for_selector(".fd-demande [data-fd-accepter]", timeout=5000)
+    viol = _audit(page)
+    assert not viol, f"À faire, une demande dépliée [{theme}] :\n{_fmt(viol)}"
+    # Puis la liste du fonds et la fiche de la copie gardée, avec son « Rendre à… ».
+    page.goto(live_server + "/administration?vue=fonds", wait_until="networkidle")
+    page.locator("#fd-objets .fd-objet", has_text="Gardé").click()
     page.wait_for_selector(".fd-gardee select", timeout=5000)
     viol = _audit(page)
     assert not viol, f"Le fonds [{theme}] :\n{_fmt(viol)}"
 
     page.set_extra_http_headers({"Remote-User": "rui"})
-    page.goto(live_server + "/administration", wait_until="networkidle")
+    page.goto(live_server + "/administration?vue=projets", wait_until="networkidle")
     page.click("[data-pj-demander-ouvrir]")
     page.wait_for_selector("#pj-demander-motif", timeout=5000)
     viol = _audit(page)

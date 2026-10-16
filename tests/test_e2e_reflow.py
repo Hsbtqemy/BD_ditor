@@ -530,10 +530,13 @@ def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, larg
 
     _preference_police(page, police)
     page.set_viewport_size({"width": largeur, "height": 900})
-    page.goto(decor["base"] + "/administration", wait_until="networkidle")
-    page.wait_for_timeout(400)
-    _exiger_pas_de_defilement(
-        page, f"/administration à {largeur} px (police par défaut {police} px)")
+    # COL-3 — l'Administration a cinq vues adressables : chacune est mesurée, pas seulement
+    # celle sur laquelle la page s'ouvre.
+    for vue in ("afaire", "fonds", "projets", "comptes", "instance"):
+        page.goto(decor["base"] + f"/administration?vue={vue}", wait_until="networkidle")
+        page.wait_for_timeout(400)
+        _exiger_pas_de_defilement(
+            page, f"/administration?vue={vue} à {largeur} px (police par défaut {police} px)")
 
     page.goto(decor["base"] + f"/corpus?collection={cid}", wait_until="networkidle")
     lignes = page.locator(f'#col-body .col-item[data-id="{cid}"] :is(.qe-table tbody tr, .qe-carte)')
@@ -718,14 +721,14 @@ def test_comptes_et_groupes_ne_perdent_pas_de_contenu(page, live_server, police)
             f"« Comptes et groupes » perd du contenu à 320 px, {etat} (1.4.10) :\n"
             + _decrire(perdus))
         encadres = [x for x in r["coupables"]
-                    if x["cadre"] and str(x["cadre"]).startswith((".cg", "#cg"))]
+                    if x["cadre"] and str(x["cadre"]).startswith((".cg", "#cg", ".lf"))]
         assert not encadres, (
             f"« Comptes et groupes », {etat} : du contenu ne tient que par un cadre qui "
             "défile dans le bloc :\n" + _decrire(encadres))
         _exiger_pas_de_defilement(
             page, f"/administration à 320 px, {etat} (police par défaut {police} px)")
 
-    page.goto(live_server + "/administration", wait_until="networkidle")
+    page.goto(live_server + "/administration?vue=comptes", wait_until="networkidle")
     # On attend la LISTE et non le bloc : le bloc existe `hidden` dans le gabarit, la liste
     # n'est rendue que si la route a répondu. C'est elle qu'on vient mesurer.
     page.wait_for_selector("#cg-objets .cg-objet", timeout=5000)

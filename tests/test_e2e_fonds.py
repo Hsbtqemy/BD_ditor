@@ -4,15 +4,17 @@ Le serveur est mesuré par `tests/test_fonds.py` : qui voit le fonds, qui répon
 réponse détruit. Ce fichier mesure ce que l'ÉCRAN en fait, et que rien d'autre ne verrait :
 
 - le bloc « Le fonds » se lève pour qui le tient, et reste fermé — sans un mot — aux autres ;
-- une demande en attente est en tête d'« À regarder », NOMMÉE, et son signal mène à la
-  demande dans le fonds, jamais à la fiche d'un compte (mutant 18 du cadrage) ;
+- la page s'ouvre sur « À faire » quand une demande attend, la plus ancienne en tête ; une
+  demande est aussi dans « À regarder », NOMMÉE, et son signal mène à la demande dans
+  « À faire », jamais à la fiche d'un compte (mutant 18 du cadrage) ;
+- la liste du fonds se cherche par titre, série ou auteur, par état, projet et importateur ;
 - « Garder » et « Détruire » partent avec la bonne réponse, et « À regarder » se relit ;
 - une copie gardée se REND à une collection de son projet, et un document que personne
   n'appelle se détruit ;
 - « Importer au fonds » fait naître un album appelé par personne, ses planches avec lui, et
   l'Atelier, la Recherche et l'Exploration ne le proposent pas tant qu'il n'est pas rendu ;
 - le responsable d'un projet en DEMANDE la suppression, motif à l'appui (décision B5) ;
-- le bloc tient à 320 px sous une grande police, demandes et copie gardée comprises.
+- « À faire » et la fiche du fonds tiennent à 320 px sous une grande police.
 
 Chaque geste est mesuré sur la requête PARTIE, pas sur l'état final seul : le serveur
 répondrait juste à un écran qui enverrait autre chose.
@@ -84,9 +86,9 @@ def _decor(base):
             "projet": projet}
 
 
-def _ouvrir_admin(page, base, entetes=None):
+def _ouvrir_admin(page, base, entetes=None, chemin="/administration"):
     page.set_extra_http_headers({k: v for k, v in (entetes or ADMIN).items() if k != EN_TETE})
-    page.goto(base + "/administration", wait_until="networkidle")
+    page.goto(base + chemin, wait_until="networkidle")
 
 
 def _requetes(page, chemin):
@@ -96,41 +98,72 @@ def _requetes(page, chemin):
     return parties
 
 
+def _document_de(base, album_id):
+    with _client(base) as c:
+        return next(d["id"] for d in c.get("/api/fonds").json()["documents"]
+                    if any(x["album_id"] == album_id for x in d["copies"]))
+
+
+def _choisir(page, titre):
+    """Ouvre la fiche d'un document depuis la liste du fonds."""
+    page.locator("#fd-objets .fd-objet", has_text=titre).first.click()
+    expect(page.locator("#fd-fiche-titre")).to_have_text(titre)
+
+
 def test_le_fonds_ne_se_montre_qu_a_qui_le_tient(page, live_server):
     """Sam écrit dans « Étude » et a déposé deux demandes : le fonds ne lui est pas montré,
-    ni ses demandes, ni « À regarder ». L'administrateur voit les trois."""
+    ni ses demandes, ni « À regarder », ni « À faire » — ni leurs liens de vue, même quand
+    l'adresse nomme la vue. L'administrateur voit les trois."""
     _decor(live_server)
-    _ouvrir_admin(page, live_server, _comme("sam"))
+    _ouvrir_admin(page, live_server, _comme("sam"), "/administration?vue=fonds")
     page.wait_for_timeout(300)
     expect(page.locator("#fonds-bloc")).to_be_hidden()
     expect(page.locator("#cg-bloc")).to_be_hidden()
+    expect(page.locator("#afaire-bloc")).to_be_hidden()
+    for vue in ("afaire", "fonds", "comptes"):
+        expect(page.locator(f"#vue-lien-{vue}")).to_be_hidden()
     assert "Importé dans la mauvaise étude" not in page.inner_text("body")
 
-    _ouvrir_admin(page, live_server)
+    _ouvrir_admin(page, live_server, chemin="/administration?vue=fonds")
     expect(page.locator("#fonds-bloc")).to_be_visible()
+    expect(page.locator("#vue-lien-fonds")).to_have_attribute("aria-current", "page")
     expect(page.locator("#fd-compte")).to_have_text(
         "3 documents · 1 appelé par personne · 2 suppressions demandées")
 
 
-def test_une_demande_mene_au_fonds_et_s_y_repond(page, live_server):
-    """« À regarder » nomme la demande et y MÈNE ; « Garder » la clôt, « Détruire » efface le
-    document — chacun parti avec SA réponse — et « À regarder » se relit."""
+def test_une_demande_se_repond_sur_place_dans_a_faire(page, live_server):
+    """Deux demandes attendent : la page s'OUVRE sur « À faire », la plus ancienne en tête.
+    « À regarder » nomme la demande et y MÈNE — dépliée, jamais la fiche du compte qui l'a
+    déposée. On répond sur place : « Garder » la clôt, « Détruire » efface le document —
+    chacun parti avec SA réponse — et « À regarder » se relit."""
     d = _decor(live_server)
     parties = _requetes(page, "/api/demandes/")
     _ouvrir_admin(page, live_server)
+    # L'ouverture : quelque chose attend, donc « À faire » (Hugo, 2026-10-16).
+    expect(page.locator("#vue-lien-afaire")).to_have_attribute("aria-current", "page")
+    expect(page.locator("#afaire-bloc")).to_be_visible()
+    expect(page.locator("#fonds-bloc")).to_be_hidden()
+    lignes = page.locator("#af-demandes-liste > li")
+    expect(lignes).to_have_count(2)
+    # La plus ancienne d'abord : « Seul » a été demandé avant « Doublon ».
+    expect(lignes.nth(0)).to_contain_text("« Seul »")
+    expect(lignes.nth(1)).to_contain_text("« Doublon »")
+
+    # « À regarder », dans « Comptes et groupes », mène à la demande dans « À faire ».
+    page.click("#vue-lien-comptes")
     signaux = page.locator("#cg-signaux")
     lien = signaux.locator("button.cg-lien",
                            has_text="sam demande la suppression définitive de « Seul »")
     expect(lien).to_be_visible(timeout=5000)
-    adresse = page.url
     lien.click()
     # Mutant 18 : le signal mène à la DEMANDE, pas à la fiche du compte qui l'a déposée.
     cible = f"fd-demande-{d['demandes']['Seul']}"
     page.wait_for_function("id => document.activeElement && document.activeElement.id === id",
                            arg=cible, timeout=5000)
-    assert page.url == adresse, page.url
+    assert "vue=afaire" in page.url, page.url
     expect(page.locator("#cg-fiche")).not_to_contain_text("sam")
     demande = page.locator(f"#{cible}")
+    expect(demande.locator("[data-af-deplier]")).to_have_attribute("aria-expanded", "true")
     expect(demande).to_contain_text("Importé dans la mauvaise étude.")
     expect(demande).to_contain_text("depuis « Projet principal »")
     # La certification, et ce que d'autres que sam y ont fait (Hugo, 2026-10-15) : ici
@@ -151,49 +184,88 @@ def test_une_demande_mene_au_fonds_et_s_y_repond(page, live_server):
 
     # Garder : la demande se clôt, rien n'est effacé.
     titre_regarder = page.locator("#cg-regarder-titre")
-    avant = int(titre_regarder.inner_text().split("(")[1].rstrip(")"))
+    avant = int(titre_regarder.text_content().split("(")[1].rstrip(")"))
     demande.locator("[data-fd-refuser]").click()
-    expect(page.locator("#fd-msg")).to_have_text("« Seul » : gardé. La demande de sam est close.")
+    expect(page.locator("#af-msg")).to_have_text("« Seul » : gardé. La demande de sam est close.")
     expect(page.locator(f"#{cible}")).to_have_count(0)
     assert parties[-1].post_data_json == {"reponse": "refusee"}
     expect(lien).to_have_count(0)
     # « À regarder » s'est relu : une ligne de moins, celle de la demande close.
     expect(titre_regarder).to_contain_text(f"À regarder ({avant - 1})")
 
-    # Détruire : confirmé, puis le document quitte le fonds et toutes les listes.
+    # Détruire : la ligne se déplie, confirmé, puis le document quitte le fonds.
+    doublon = page.locator(f"#fd-demande-{d['demandes']['Doublon']}")
+    expect(doublon.locator("[data-fd-accepter]")).to_have_count(0)
+    doublon.locator("[data-af-deplier]").click()
     confirmations = []
     page.once("dialog", lambda dl: (confirmations.append(dl.message), dl.accept()))
-    page.locator(f"#fd-demande-{d['demandes']['Doublon']} [data-fd-accepter]").click()
-    expect(page.locator("#fd-msg")).to_contain_text("« Doublon » : détruit")
+    doublon.locator("[data-fd-accepter]").click()
+    expect(page.locator("#af-msg")).to_contain_text("« Doublon » : détruit")
     assert "Irréversible" in confirmations[0], confirmations
     assert parties[-1].post_data_json == {"reponse": "acceptee"}
-    expect(page.locator("#fd-demandes")).to_be_hidden()
+    expect(page.locator("#af-demandes")).to_be_hidden()
     expect(titre_regarder).to_contain_text(f"À regarder ({avant - 2})")
     expect(signaux).not_to_contain_text("demande la suppression")
-    expect(page.locator("#fd-documents")).not_to_contain_text("Doublon")
+    expect(page.locator("#fd-objets")).not_to_contain_text("Doublon")
     with _client(live_server) as c:
         titres = {a["titre"] for a in c.get("/api/albums").json()}
     assert "Doublon" not in titres and "Seul" in titres
 
 
+def test_le_fonds_se_cherche_par_titre_projet_importateur_et_etat(page, live_server):
+    """La liste du fonds se filtre par les quatre entrées nommées par Hugo : le texte (titre,
+    série, auteur), l'état, le projet, qui l'a importé. La fiche d'un document demandé MÈNE à
+    « À faire », et l'adresse nomme le document ouvert."""
+    d = _decor(live_server)
+    _ouvrir_admin(page, live_server, chemin="/administration?vue=fonds")
+    objets = page.locator("#fd-objets .fd-objet")
+    expect(objets).to_have_count(3)
+    page.fill("#fd-filtre", "doub")
+    expect(objets).to_have_count(1)
+    expect(objets.first).to_contain_text("Doublon")
+    page.fill("#fd-filtre", "")
+    page.click("[data-fd-etat='demande']")
+    expect(objets).to_have_count(2)
+    page.click("[data-fd-etat='gardee']")
+    expect(objets).to_have_count(1)
+    expect(objets.first).to_contain_text("Gardé")
+    page.click("[data-fd-etat='tous']")
+    page.select_option("#fd-importeur", "decor")
+    expect(objets).to_have_count(3)
+    # Tous trois sont du projet de repli : « Sans projet » n'est pas proposé, faute de document.
+    assert page.locator("#fd-projet option").all_inner_texts() == ["Tous", "Projet principal"]
+    page.select_option("#fd-projet", label="Projet principal")
+    expect(objets).to_have_count(3)
+    page.fill("#fd-filtre", "introuvable")
+    expect(objets).to_have_count(0)
+    expect(page.locator("#fd-objets")).to_contain_text("Aucun document ne répond à ces filtres.")
+    page.fill("#fd-filtre", "")
+    _choisir(page, "Seul")
+    assert f"document={_document_de(live_server, d['albums']['Seul'])}" in page.url, page.url
+    page.click("[data-fd-repondre]")
+    expect(page.locator("#vue-lien-afaire")).to_have_attribute("aria-current", "page")
+    expect(page.locator(f"#fd-demande-{d['demandes']['Seul']}")).to_be_focused()
+
+
 def test_rendre_une_copie_gardee_et_detruire_ce_que_personne_n_appelle(page, live_server):
-    """« Gardé » a quitté sa dernière collection : le fonds le dit, propose de le rendre à une
+    """« Gardé » a quitté sa dernière collection : sa fiche le dit, propose de le rendre à une
     collection de son projet, et le rend avec sa planche. Puis, retiré de nouveau, il se
     détruit d'ici."""
     d = _decor(live_server)
     parties = _requetes(page, "/api/albums/")
-    _ouvrir_admin(page, live_server)
-    carte = page.locator(".fd-doc", has=page.locator("h4", has_text="Gardé"))
-    expect(carte).to_be_visible(timeout=5000)
-    expect(carte).to_contain_text("appelé par personne")
+    _ouvrir_admin(page, live_server, chemin="/administration?vue=fonds")
+    _choisir(page, "Gardé")
+    carte = page.locator("#fd-fiche")
+    expect(carte).to_contain_text("copie gardée")
     expect(carte).to_contain_text("Copie gardée ici (projet « Projet principal »).")
-    choix = carte.locator("select")
+    choix = carte.locator(".fd-gardee select")
     expect(choix.locator("option")).to_have_count(2)
     # Les collections de SON projet, dans l'ordre où le serveur les rend.
     assert sorted(choix.locator("option").all_inner_texts()) == ["Archives", "Étude"]
     choix.select_option(str(d["archives"]))
     carte.locator("[data-fd-rendre]").click()
-    expect(page.locator("#fd-msg")).to_have_text("Copie rendue à « Archives », avec tout son travail.")
+    expect(carte.locator(".fd-ligne-msg")).to_have_text(
+        "Copie rendue à « Archives », avec tout son travail.")
     assert parties[-1].method == "PUT"
     assert parties[-1].url.endswith(f"/api/albums/{d['albums']['Gardé']}/collections/{d['archives']}")
     expect(carte).to_contain_text("Employé par Projet principal : Archives")
@@ -202,7 +274,9 @@ def test_rendre_une_copie_gardee_et_detruire_ce_que_personne_n_appelle(page, liv
     with _client(live_server) as c:
         r = c.delete(f"/api/albums/{d['albums']['Gardé']}/collections/{d['archives']}")
         assert r.status_code == 204, r.text
+    # L'adresse nomme le document : recharger rouvre sa fiche.
     page.reload(wait_until="networkidle")
+    expect(page.locator("#fd-fiche-titre")).to_have_text("Gardé")
     confirmations = []
     page.once("dialog", lambda dl: (confirmations.append(dl.message), dl.accept()))
     carte.locator("[data-fd-detruire]").click()
@@ -210,7 +284,7 @@ def test_rendre_une_copie_gardee_et_detruire_ce_que_personne_n_appelle(page, liv
     assert "Détruire « Gardé »" in confirmations[0], confirmations
     assert parties[-1].method == "DELETE"
     assert parties[-1].url.endswith(f"/api/albums/{d['albums']['Gardé']}")
-    expect(page.locator(".fd-doc", has=page.locator("h4", has_text="Gardé"))).to_have_count(0)
+    expect(page.locator("#fd-objets .fd-objet", has_text="Gardé")).to_have_count(0)
 
 
 def test_importer_au_fonds_puis_le_distribuer(page, live_server):
@@ -218,21 +292,24 @@ def test_importer_au_fonds_puis_le_distribuer(page, live_server):
     la Recherche et l'Exploration ne le proposent pas. Rendu à une collection, il y entre."""
     d = _decor(live_server)
     parties = _requetes(page, "/api/albums")
-    _ouvrir_admin(page, live_server)
+    _ouvrir_admin(page, live_server, chemin="/administration?vue=fonds")
+    page.click("#fd-importer-ouvrir")
+    expect(page.locator("#fd-titre")).to_be_focused()
     page.fill("#fd-titre", "Corpus à venir")
     page.set_input_files("#fd-fichiers", files=[
         {"name": "p1.png", "mimeType": "image/png", "buffer": make_png()}])
-    # À 1 440 px, le bouton reste près de son champ : la ligne est bornée comme les listes
-    # du bloc (relevé sur capture : il partait au bord droit de la page).
+    # À 1 440 px, le bouton reste près de son champ (relevé sur capture : il partait au bord
+    # droit de la page).
     page.set_viewport_size({"width": 1440, "height": 900})
     champ, bouton = page.locator("#fd-fichiers").bounding_box(), page.locator("#fd-importer").bounding_box()
     assert 0 <= bouton["x"] - (champ["x"] + champ["width"]) <= 24, (champ, bouton)
     page.click("#fd-importer")
-    expect(page.locator("#fd-importer-msg")).to_have_text(
+    carte = page.locator("#fd-fiche")
+    expect(carte.locator(".fd-ligne-msg")).to_have_text(
         "« Corpus à venir » est au fonds, appelé par personne : 1 planche importée.", timeout=10000)
     creation = [r for r in parties if r.method == "POST" and r.url.endswith("/api/albums")]
     assert creation and creation[0].post_data_json == {"titre": "Corpus à venir", "au_fonds": True}
-    carte = page.locator(".fd-doc", has=page.locator("h4", has_text="Corpus à venir"))
+    expect(page.locator("#fd-fiche-titre")).to_have_text("Corpus à venir")
     expect(carte).to_contain_text("appelé par personne")
     expect(carte).to_contain_text("1 planche")
     expect(carte).to_contain_text("Copie gardée ici (sans projet).")
@@ -245,10 +322,12 @@ def test_importer_au_fonds_puis_le_distribuer(page, live_server):
         options = page.locator(f"{selecteur} option").all_inner_texts()
         assert options and not any("Corpus à venir" in o for o in options), (chemin, options)
 
-    page.goto(live_server + "/administration", wait_until="networkidle")
-    carte.locator("select").select_option(str(d["collection"]))
+    page.goto(live_server + "/administration?vue=fonds", wait_until="networkidle")
+    _choisir(page, "Corpus à venir")
+    carte.locator(".fd-gardee select").select_option(str(d["collection"]))
     carte.locator("[data-fd-rendre]").click()
-    expect(page.locator("#fd-msg")).to_have_text("Copie rendue à « Étude », avec tout son travail.")
+    expect(carte.locator(".fd-ligne-msg")).to_have_text(
+        "Copie rendue à « Étude », avec tout son travail.")
     page.goto(live_server + "/recherche", wait_until="networkidle")
     assert any("Corpus à venir" in o for o in page.locator("#f-album option").all_inner_texts())
 
@@ -258,11 +337,13 @@ def test_le_responsable_demande_la_suppression_de_son_projet(page, live_server):
     s'ouvre qu'au clic sur « Demander sa suppression… » — un geste rare n'a pas de champ à
     demeure — et « Annuler » le referme. Sans motif rien ne part ; avec, la requête le porte,
     la fiche dit que la demande attend, et le message se lit CONTRE ce qui a changé, sans
-    rien pousser au-dessus. L'administrateur y répond depuis le fonds : le projet, vide, est
-    supprimé."""
+    rien pousser au-dessus. L'administrateur y répond depuis « À faire » : le projet, vide,
+    est supprimé."""
     d = _decor(live_server)
     parties = _requetes(page, "/api/demandes")
     _ouvrir_admin(page, live_server, _comme("rui"))
+    # Rui ne tient ni le fonds ni les comptes : la page s'ouvre sur les projets.
+    expect(page.locator("#vue-lien-projets")).to_have_attribute("aria-current", "page")
     titre = page.locator("#pj-fiche-titre")
     expect(titre).to_have_text("Séminaire", timeout=5000)
     expect(page.locator("#pj-demander-motif")).to_have_count(0)
@@ -303,19 +384,20 @@ def test_le_responsable_demande_la_suppression_de_son_projet(page, live_server):
     _ouvrir_admin(page, live_server)
     demande = page.locator(".fd-demande", has_text="rui demande la suppression du projet « Séminaire »")
     expect(demande).to_be_visible(timeout=5000)
+    demande.locator("[data-af-deplier]").click()
     expect(demande).to_contain_text("Le séminaire est annulé.")
     page.once("dialog", lambda dl: dl.accept())
     demande.locator("[data-fd-accepter]").click()
-    expect(page.locator("#fd-msg")).to_have_text("Le projet « Séminaire » est supprimé.")
+    expect(page.locator("#af-msg")).to_have_text("Le projet « Séminaire » est supprimé.")
     with _client(live_server) as c:
         assert "Séminaire" not in {p["nom"] for p in c.get("/api/projets").json()}
 
 
 @pytest.mark.parametrize("police", [16, 24])
 def test_le_fonds_ne_fait_pas_defiler_la_page_de_cote(page, live_server, police):
-    """À 320 px, le bloc du fonds — demandes, copie gardée, import — tient dans la page : le
-    corps ne défile pas de côté (règle de CLAUDE.md), sous la police par défaut et sous une
-    préférence de 24. Le titre d'un document est long et sans espace."""
+    """À 320 px, « À faire » — une demande dépliée — et la fiche d'une copie gardée tiennent
+    dans la page : le corps ne défile pas de côté (règle de CLAUDE.md), sous la police par
+    défaut et sous une préférence de 24. Le titre d'un document est long et sans espace."""
     d = _decor(live_server)
     with _client(live_server) as c:
         r = c.put(f"/api/albums/{d['albums']['Gardé']}",
@@ -324,11 +406,20 @@ def test_le_fonds_ne_fait_pas_defiler_la_page_de_cote(page, live_server, police)
     cdp = page.context.new_cdp_session(page)
     cdp.send("Page.setFontSizes", {"fontSizes": {"standard": police, "fixed": police}})
     page.set_viewport_size({"width": 320, "height": 900})
+    sonde = """() => [document.documentElement, document.body,
+        ...document.querySelectorAll('main, #header, #afaire-bloc, #fonds-bloc')].filter(Boolean)
+        .filter((el) => el.scrollWidth > el.clientWidth + 1)
+        .map((el) => `${el.tagName}#${el.id} ${el.clientWidth}/${el.scrollWidth}`)"""
     _ouvrir_admin(page, live_server)
     expect(page.locator(".fd-demande").first).to_be_visible(timeout=5000)
+    page.locator(".fd-demande [data-af-deplier]").first.click()
+    expect(page.locator(".fd-demande .fd-autres").first).to_be_visible()
+    assert not page.evaluate(sonde), page.evaluate(sonde)
+    doc = _document_de(live_server, d["albums"]["Gardé"])
+    _ouvrir_admin(page, live_server, chemin=f"/administration?vue=fonds&document={doc}")
     expect(page.locator(".fd-gardee select").first).to_be_visible()
-    debordants = page.evaluate("""() => [document.documentElement, document.body,
-        ...document.querySelectorAll('main, #fonds-bloc')].filter(Boolean)
-        .filter((el) => el.scrollWidth > el.clientWidth + 1)
-        .map((el) => `${el.tagName}#${el.id} ${el.clientWidth}/${el.scrollWidth}`)""")
-    assert not debordants, debordants
+    assert not page.evaluate(sonde), page.evaluate(sonde)
+    # Sous le seuil étroit, la fiche REMPLACE la liste, et « ← Liste » y ramène.
+    page.click("[data-fd-retour]")
+    expect(page.locator("#fd-objets .fd-objet").first).to_be_visible()
+    assert not page.evaluate(sonde), page.evaluate(sonde)

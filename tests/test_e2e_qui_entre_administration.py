@@ -390,7 +390,8 @@ def test_un_message_de_qui_entre_ne_touche_pas_la_fiche_du_projet_voisin(page, e
     par bloc : « Projets » a la sienne, « Comptes et groupes » la sienne. Le module écrit sa
     ligne et prévient ; c'est l'hôte qui décide ce qu'il fait taire, et il s'arrête à son
     bloc. Un message affiché dans la fiche d'un projet survit donc à un refus puis à un geste
-    abouti de « Qui entre » — et l'inverse.
+    abouti de « Qui entre » — et l'inverse. Depuis COL-3 les deux blocs sont dans deux VUES :
+    on passe de l'une à l'autre par le menu, et le message de la vue quittée reste écrit.
 
     Au passage, ce qui a remplacé « Personne : seuls les administrateurs de l'instance la
     voient. » : la phrase du panneau, et sa note qui NOMME les groupes d'administration lus
@@ -404,11 +405,14 @@ def test_un_message_de_qui_entre_ne_touche_pas_la_fiche_du_projet_voisin(page, e
     expect(qui.locator(".col-note-admin")).to_contain_text(
         "Les administrateurs de l'instance (bd-admins) lisent et écrivent toute collection")
 
-    # Un message dans la fiche du projet, à côté : « Renommer » sans rien changer.
+    # Un message dans la fiche du projet, dans la vue voisine : « Renommer » sans rien changer.
+    page.locator("#vue-lien-projets").click()
     voisin = page.locator("#pj-renommer-msg")
     page.locator("#pj-fiche [data-pj-renommer]").click()
     expect(voisin).to_be_visible()
     expect(voisin).to_have_text("Rien n'a changé.")
+    page.locator("#vue-lien-comptes").click()
+    expect(qui.locator(".qe-faire-entrer")).to_be_visible()
 
     qui.locator(".qe-faire-entrer").click()                    # un refus d'écran
     expect(qui.locator(".qe-msg.erreur")).to_be_visible()
@@ -424,6 +428,7 @@ def test_un_message_de_qui_entre_ne_touche_pas_la_fiche_du_projet_voisin(page, e
     expect(voisin).to_have_text("Rien n'a changé.")
 
     # Et dans l'autre sens : un geste du bloc voisin ne fait pas taire « Qui entre ».
+    page.locator("#vue-lien-projets").click()
     page.locator("#pj-nom").fill("")
     page.locator("#pj-ajouter").click()
     expect(page.locator("#pj-msg.erreur")).to_be_visible()

@@ -180,7 +180,7 @@ def _servir(page, donnees, statut=200):
         body=json.dumps(donnees if statut == 200 else {"detail": "refusé pour le test"})))
 
 
-def _ouvrir(page, base, donnees, chemin="/administration"):
+def _ouvrir(page, base, donnees, chemin="/administration?vue=comptes"):
     _servir(page, donnees)
     page.goto(base + chemin, wait_until="networkidle")
     expect(page.locator("#cg-bloc")).to_be_visible()
@@ -442,12 +442,12 @@ def test_chaque_etat_de_l_annuaire_se_dit_et_ne_bloque_rien(page, live_server, e
 
 def test_un_refus_cache_le_bloc_une_panne_le_dit(page, live_server):
     _servir(page, decor(), statut=403)
-    page.goto(live_server + "/administration", wait_until="networkidle")
+    page.goto(live_server + "/administration?vue=comptes", wait_until="networkidle")
     expect(page.locator("#cg-bloc")).to_be_hidden()
 
     page.unroute(ROUTE)
     _servir(page, decor(), statut=500)
-    page.goto(live_server + "/administration", wait_until="networkidle")
+    page.goto(live_server + "/administration?vue=comptes", wait_until="networkidle")
     expect(page.locator("#cg-bloc")).to_be_visible()
     expect(page.locator("#cg-annuaire")).to_contain_text("n'a pas pu être lue")
 
@@ -669,7 +669,7 @@ def test_sur_la_vraie_route_un_acces_mort_se_signale_et_mene_a_ses_fiches(page, 
         assert r.status_code in (200, 201, 204), r.text
 
     page.set_extra_http_headers(ADMIN)
-    page.goto(live_server + "/administration", wait_until="networkidle")
+    page.goto(live_server + "/administration?vue=comptes", wait_until="networkidle")
     expect(page.locator("#cg-annuaire")).to_contain_text("Annuaire lu")
     # Une doublure qui ne se dirait pas passerait pour l'annuaire de l'instance.
     expect(page.locator("#cg-annuaire")).to_contain_text("Doublure de test")

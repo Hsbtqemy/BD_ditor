@@ -20,18 +20,52 @@
     <button class="ghost btn-theme" title="Changer de thème">🌙</button>
   </div>
 
-  <!-- ───────────── Bande 2 — Outils de la page ───────────── -->
+  <!-- ───────────── Bande 2 — Outils de la page : les VUES (COL-3) ─────────────
+       Une page, cinq vues adressables (`?vue=…`), et non cinq pages : décision de Hugo du
+       2026-10-16, sur maquette. Chaque lien naît `hidden` et ne se lève que si SA vue a
+       répondu — la garde est celle des routes de ses blocs, jamais celle de ce menu. Seule
+       « Instance » est ouverte à tous : les moteurs le sont. -->
   <header id="header">
     <h1>Administration</h1>
-    <p class="muted small">Ce qui porte sur l'<b>instance</b> plutôt que sur un album :
-      quelle version tourne ici, à qui s'adresser quand on est bloqué, quels projets
-      existent et qui y entre, ce que l'instance détient, quels comptes et quels groupes
-      existent et à quoi ils ont accès, et si les moteurs répondent encore.
-      Qui entre dans une collection se règle dans sa fiche, dans la
-      <a href="/corpus">Bibliothèque</a>.</p>
+    <nav class="admin-vues" id="admin-vues" aria-label="Vues de l'administration">
+      <a id="vue-lien-afaire" href="/administration?vue=afaire" data-vue="afaire" hidden>À faire<span class="admin-vue-compte" id="vue-compte-afaire"></span></a>
+      <a id="vue-lien-fonds" href="/administration?vue=fonds" data-vue="fonds" hidden>Fonds<span class="admin-vue-compte" id="vue-compte-fonds"></span></a>
+      <a id="vue-lien-projets" href="/administration?vue=projets" data-vue="projets" hidden>Projets</a>
+      <a id="vue-lien-comptes" href="/administration?vue=comptes" data-vue="comptes" hidden>Comptes et groupes</a>
+      <a id="vue-lien-instance" href="/administration?vue=instance" data-vue="instance">Instance</a>
+    </nav>
   </header>
 
   <main id="admin-body">
+
+    <!-- ───────── À faire (COL-3) — ce qui attend un geste, le plus ancien d'abord ─────────
+         L'ouverture de la page quand quelque chose attend (décision de Hugo du 2026-10-16) :
+         les demandes, puis les accès à régler, puis l'instance. On répond à une demande SUR
+         PLACE — la ligne se déplie —, sans passer par la fiche du fonds. Le bloc n'a pas de
+         route à lui : il se lève si l'un des blocs qui le nourrissent a répondu (le fonds,
+         les comptes et groupes, le référent), chacun gardé par SA route. -->
+    <section class="admin-bloc af-bloc" id="afaire-bloc" data-dans-vue="afaire" hidden
+             aria-labelledby="afaire-titre">
+      <h2 id="afaire-titre" tabindex="-1">À faire</h2>
+      <p id="af-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
+      <section class="af-groupe" id="af-demandes" hidden aria-labelledby="af-demandes-titre">
+        <h3 id="af-demandes-titre">Demandes</h3>
+        <ul class="af-liste" id="af-demandes-liste"></ul>
+      </section>
+      <section class="af-groupe" id="af-acces" hidden aria-labelledby="af-acces-titre">
+        <h3 id="af-acces-titre">Accès à régler</h3>
+        <ul class="af-liste" id="af-acces-liste"></ul>
+      </section>
+      <section class="af-groupe" id="af-instance" hidden aria-labelledby="af-instance-titre">
+        <h3 id="af-instance-titre">Instance</h3>
+        <ul class="af-liste" id="af-instance-liste"></ul>
+      </section>
+      <p class="af-rien" id="af-rien" hidden>Rien n'attend de geste.</p>
+      <details class="af-info" id="af-info" hidden>
+        <summary id="af-info-titre"></summary>
+        <ul class="lf-lignes" id="af-info-liste"></ul>
+      </details>
+    </section>
 
     <!-- ───────── Version servie (INFRA-10) — ce que cette instance fait tourner ─────────
          `hidden` par défaut, levé par le JS SEULEMENT si `GET /api/version` répond. La
@@ -44,7 +78,7 @@
          `deployer.sh`, qui ne la calcule qu'au cours d'un déploiement — au seul instant
          où quelqu'un regarde déjà. Le 2026-09-07, l'instance a servi six commits de
          retard, dont une fonctionnalité livrée et annoncée, sans que rien ne le dise. -->
-    <section class="admin-bloc" id="version-bloc" hidden aria-labelledby="version-titre">
+    <section class="admin-bloc" id="version-bloc" data-dans-vue="instance" hidden aria-labelledby="version-titre">
       <h2 id="version-titre">🏷️ Version servie</h2>
       <p id="version-corps" class="muted small"></p>
     </section>
@@ -61,7 +95,7 @@
          qu'à qui ne voit RIEN — le bandeau de portée vide. Personne ne remarquait donc
          qu'il manque ou qu'il a vieilli, et un `.env` recréé repartirait sans lui. Ce bloc
          est là pour les DEUX états muets, pas pour le cas qui va bien. -->
-    <section class="admin-bloc" id="referent-bloc" hidden aria-labelledby="referent-titre">
+    <section class="admin-bloc" id="referent-bloc" data-dans-vue="instance" hidden aria-labelledby="referent-titre">
       <h2 id="referent-titre">📇 Référent de l'instance</h2>
       <p class="muted small">À qui s'adresser quand on n'a accès à rien. C'est la
         <b>seule</b> adresse que voit une personne sans aucun accès : le bandeau qui
@@ -81,7 +115,7 @@
 
          Le squelette est écrit ici ; la liste et la fiche se dessinent, et qui entre dans un
          projet est un module monté dans la fiche (`static/lib/membres-projet.js`). -->
-    <section class="admin-bloc pj-bloc" id="projets-bloc" hidden aria-labelledby="projets-titre">
+    <section class="admin-bloc pj-bloc" id="projets-bloc" data-dans-vue="projets" hidden aria-labelledby="projets-titre">
       <h2 id="projets-titre">🗂️ Projets</h2>
       <p class="muted small">Un <b>projet</b> est l'étage au-dessus des collections : chaque
         collection appartient à un projet, et l'on y fait entrer des comptes ou des groupes.
@@ -105,7 +139,7 @@
         <div class="pj-fiche" id="pj-fiche"></div>
       </div>
     </section>
-    <section class="admin-bloc" id="projets-ferme" hidden aria-labelledby="projets-ferme-titre">
+    <section class="admin-bloc" id="projets-ferme" data-dans-vue="projets" hidden aria-labelledby="projets-ferme-titre">
       <h2 id="projets-ferme-titre">🗂️ Projets</h2>
       <p id="projets-ferme-texte"></p>
     </section>
@@ -113,32 +147,51 @@
     <!-- ───────── Le fonds (COL-3, tranche 2) — ce que l'instance détient ─────────────────
          `hidden` par défaut, levé par le JS SEULEMENT si `GET /api/fonds` répond : la garde
          est celle de la route (403 à qui ne tient pas le fonds), comme pour les comptes.
-         Les suppressions demandées en tête — quelqu'un attend une réponse —, puis
-         « Importer au fonds », puis les documents. Aucune phrase d'aide à demeure : ce que
-         chaque geste fait se dit dans sa confirmation. -->
-    <section class="admin-bloc fd-bloc" id="fonds-bloc" hidden aria-labelledby="fonds-titre">
+
+         Une LISTE et une FICHE (le gabarit `lf-`, celui de « Comptes et groupes ») : un
+         millier de documents ne s'empilent pas en entier l'un sous l'autre (relevé par Hugo
+         le 2026-10-16). On cherche par titre, série ou auteur, par projet, par qui l'a
+         importé et par état — les quatre entrées qu'il a nommées. Les suppressions demandées
+         se répondent dans « À faire » ; la fiche d'un document qui en porte une y mène.
+
+         Le squelette est ÉCRIT ici : le champ de filtre garde son focus pendant qu'on tape,
+         seule la liste se redessine. -->
+    <section class="admin-bloc lf-bloc fd-bloc" id="fonds-bloc" data-dans-vue="fonds" hidden
+             aria-labelledby="fonds-titre">
       <h2 id="fonds-titre" tabindex="-1">🗄️ Le fonds</h2>
       <p id="fd-compte" class="muted small"></p>
       <p id="fd-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
-      <section class="fd-demandes" id="fd-demandes" hidden aria-labelledby="fd-demandes-titre">
-        <h3 id="fd-demandes-titre">Suppressions demandées</h3>
-        <ul class="fd-liste" id="fd-demandes-liste"></ul>
-      </section>
-      <div class="fd-importer">
-        <h3 id="fd-importer-titre">Importer au fonds</h3>
-        <div class="fd-importer-ligne">
-          <label class="sr-only" for="fd-titre">Titre de l'album à importer au fonds</label>
-          <input id="fd-titre" placeholder="Titre de l'album" autocomplete="off">
-          <label class="sr-only" for="fd-fichiers">Planches à importer</label>
-          <input id="fd-fichiers" type="file" multiple
-                 accept=".tif,.tiff,.jpg,.jpeg,.jp2,.j2k,.jpf,.jpx,.jpc,.j2c,.png,.bmp,.gif,.webp">
-          <button id="fd-importer" class="ghost small" type="button"
-                  title="L'album naît appelé par personne ; « Rendre » le range ensuite dans une collection.">+ Importer au fonds</button>
+      <div class="lf fd" id="fd">
+        <div class="lf-liste">
+          <div class="lf-tete-liste">
+            <span class="muted small" id="fd-liste-compte"></span>
+            <button type="button" class="ghost small" id="fd-importer-ouvrir">+ Importer au fonds</button>
+          </div>
+          <label class="sr-only" for="fd-filtre">Filtrer les documents par titre, série ou auteur</label>
+          <input type="search" id="fd-filtre" class="lf-filtre" placeholder="Titre, série, auteur…"
+                 autocomplete="off">
+          <div class="lf-tri" id="fd-etats" role="group" aria-label="État des documents">
+            <button type="button" data-fd-etat="tous" aria-pressed="true">Tous</button>
+            <button type="button" data-fd-etat="demande" aria-pressed="false">Demandés</button>
+            <button type="button" data-fd-etat="personne" aria-pressed="false">Appelés par personne</button>
+            <button type="button" data-fd-etat="gardee" aria-pressed="false">Copies gardées</button>
+          </div>
+          <div class="lf-filtres">
+            <label for="fd-projet">Projet</label>
+            <select id="fd-projet"></select>
+            <label for="fd-importeur">Importé par</label>
+            <select id="fd-importeur"></select>
+          </div>
+          <div class="lf-tri" role="group" aria-label="Trier les documents">
+            <span class="muted small" aria-hidden="true">Trier</span>
+            <button type="button" data-fd-tri="recents" aria-pressed="true">Récents d'abord</button>
+            <button type="button" data-fd-tri="alpha" aria-pressed="false">A → Z</button>
+            <button type="button" data-fd-tri="projet" aria-pressed="false">Par projet</button>
+          </div>
+          <ul class="lf-objets" id="fd-objets" aria-label="Documents du fonds"></ul>
         </div>
-        <p id="fd-importer-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
+        <div class="lf-fiche" id="fd-fiche"></div>
       </div>
-      <h3 id="fd-documents-titre">Documents</h3>
-      <ul class="fd-liste" id="fd-documents" aria-labelledby="fd-documents-titre"></ul>
       <p id="fd-sans-document" class="col-note" hidden></p>
     </section>
 
@@ -154,48 +207,48 @@
 
          Le squelette est ÉCRIT ici et non fabriqué par le JS : le champ de filtre garde
          ainsi son focus pendant qu'on tape, puisque seule la liste se redessine. -->
-    <section class="admin-bloc cg-bloc" id="cg-bloc" hidden aria-labelledby="cg-titre">
+    <section class="admin-bloc lf-bloc cg-bloc" id="cg-bloc" data-dans-vue="comptes" hidden aria-labelledby="cg-titre">
       <h2 id="cg-titre">👥 Comptes et groupes</h2>
       <p class="muted small">Qui utilise l'instance, dans quels groupes, et qui entre dans
         quelle collection. Les comptes et les groupes se créent et se modifient dans
         l'<b>annuaire</b> : cet écran les lit, il ne les modifie pas. <b>Qui entre dans une
         collection se règle aussi ici</b>, dans sa fiche — axe <i>Collections</i>.</p>
       <p class="col-note" id="cg-annuaire"></p>
-      <div class="cg" id="cg">
-        <div class="cg-liste">
-          <div class="cg-axes" role="group" aria-label="Afficher la liste des">
+      <div class="lf cg" id="cg">
+        <div class="lf-liste cg-liste">
+          <div class="lf-axes cg-axes" role="group" aria-label="Afficher la liste des">
             <button type="button" data-axe="comptes" aria-pressed="true">Comptes</button>
             <button type="button" data-axe="groupes" aria-pressed="false">Groupes</button>
             <button type="button" data-axe="collections" aria-pressed="false">Collections</button>
           </div>
           <label class="sr-only" for="cg-filtre">Filtrer la liste</label>
-          <input type="search" id="cg-filtre" placeholder="Filtrer…" autocomplete="off">
-          <div class="cg-tri" role="group" aria-label="Trier la liste">
+          <input type="search" id="cg-filtre" class="lf-filtre" placeholder="Filtrer…" autocomplete="off">
+          <div class="lf-tri cg-tri" role="group" aria-label="Trier la liste">
             <span class="muted small" aria-hidden="true">Trier</span>
             <button type="button" data-tri="alpha" aria-pressed="true">A → Z</button>
             <button type="button" data-tri="recents" aria-pressed="false">Récents d'abord</button>
           </div>
-          <a class="cg-ext" id="cg-annuaire-lien" hidden target="_blank" rel="noopener">+ Dans
+          <a class="lf-ext cg-ext" id="cg-annuaire-lien" hidden target="_blank" rel="noopener">+ Dans
             l'annuaire<span aria-hidden="true"> ↗</span><span class="sr-only"> (nouvel
             onglet)</span></a>
           <!-- Ni `open` ni ⚠ ici : c'est le RENDU qui décide, et seulement s'il y a quelque
                chose à regarder. Allumée en permanence, la seule alerte de la page apprend à
                ne plus être lue (cf. `cgRendreSignaux`). -->
-          <details class="cg-regarder est-vide" id="cg-regarder">
+          <details class="lf-regarder cg-regarder est-vide" id="cg-regarder">
             <summary id="cg-regarder-titre">À regarder</summary>
             <ul id="cg-signaux"></ul>
           </details>
-          <ul class="cg-objets" id="cg-objets" aria-labelledby="cg-objets-titre"></ul>
+          <ul class="lf-objets cg-objets" id="cg-objets" aria-labelledby="cg-objets-titre"></ul>
           <span class="sr-only" id="cg-objets-titre"></span>
         </div>
-        <div class="cg-fiche" id="cg-fiche"></div>
+        <div class="lf-fiche cg-fiche" id="cg-fiche"></div>
       </div>
     </section>
 
     <!-- ───────── Moteurs (SANTE-1) — la présence n'est pas le fonctionnement ─────────
          Ouvert à tous, délibérément : savoir si l'OCR fonctionne n'est pas un pouvoir,
          et c'est la question que se pose quiconque voit une passe ne rien produire. -->
-    <section class="admin-bloc" aria-labelledby="sante-title">
+    <section class="admin-bloc" id="sante-bloc" data-dans-vue="instance" aria-labelledby="sante-title">
       <h2 id="sante-title">🩺 Moteurs de reconnaissance</h2>
       <p class="muted small">Les moteurs sont <b>optionnels</b> : absent, un moteur ne casse
         rien — sa passe répond 503 et le reste de l'outil vit sa vie. Le cas grave est

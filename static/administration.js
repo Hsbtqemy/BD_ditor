@@ -1,5 +1,9 @@
 /* Administration (UX-10) — le lieu des gestes qui portent sur l'INSTANCE.
 
+   CINQ VUES adressables depuis COL-3 (2026-10-16) — À faire · Fonds · Projets · Comptes et
+   groupes · Instance —, cf. « Les VUES » plus bas. Elles rangent les blocs sans en changer
+   aucune garde.
+
    SIX blocs, et aucun n'est une affaire de Bibliothèque : la version servie dit quel
    commit tourne ici (INFRA-10), le référent de l'instance dit à qui s'adresser quand on
    n'a accès à rien (AUTH-12, étape 4), les projets disent quel étage coiffe les collections
@@ -70,6 +74,8 @@ async function loadReferent() {
   try { d = await apiGet("/api/referent"); }
   catch (e) { bloc.hidden = true; return; }
   bloc.hidden = false;
+  AF.referent = d.etat;
+  afRendre();
 
   const corps = $("#referent-corps");
   const note = $("#referent-note");
@@ -197,20 +203,20 @@ const CG_MOTIFS = {
 };
 
 function cgPuce(texte, genre) {
-  return `<span class="cg-puce${genre ? " " + genre : ""}">${esc(texte)}</span>`;
+  return `<span class="lf-puce cg-puce${genre ? " " + genre : ""}">${esc(texte)}</span>`;
 }
 
 /* Un lien qui ouvre un objet du bloc. Un BOUTON et non un <a> : il ne quitte pas la page,
    et `data-type`/`data-id` suffisent à la délégation d'événements. */
 function cgLien(type, id, texte) {
-  return `<button type="button" class="cg-lien" data-type="${type}" `
+  return `<button type="button" class="lf-lien cg-lien" data-type="${type}" `
     + `data-id="${esc(String(id))}">${esc(texte)}</button>`;
 }
 
 function cgLienAnnuaire(texte) {
   const href = BDComptes.lienAnnuaire(CG.donnees.annuaire.lien);
   if (!href) return "";
-  return `<a class="cg-ext" href="${esc(href)}" target="_blank" rel="noopener">${esc(texte)}`
+  return `<a class="lf-ext cg-ext" href="${esc(href)}" target="_blank" rel="noopener">${esc(texte)}`
     + `<span aria-hidden="true"> ↗</span><span class="sr-only"> (nouvel onglet)</span></a>`;
 }
 
@@ -275,6 +281,7 @@ async function cgCharger(opts = {}) {
     collections: new Map(d.collections.map((c) => [c.id, c])),
   };
   cgRendre(opts.garderFiche);
+  afRendre();                      // « À faire » porte les accès à régler
   // Le focus rendu APRÈS le rechargement qui suit un geste : le contrôle actionné a été
   // détruit par le rendu, et le clavier perdrait sa place. Seulement à qui ne l'a pas repris.
   if (opts.focus && document.activeElement === document.body) {
@@ -355,7 +362,7 @@ function cgRendreControles() {
   // qui se crée dans la Bibliothèque.
   lien.hidden = !href || CG.axe === "collections";
   if (href) lien.href = href;
-  $("#cg").classList.toggle("cg--fiche", CG.vueFiche && CG.sel !== null);
+  $("#cg").classList.toggle("lf--fiche", CG.vueFiche && CG.sel !== null);
 }
 
 /* « À regarder » : l'ordre est celui du serveur. Redessiné au CHARGEMENT seulement, pas à
@@ -380,11 +387,7 @@ function cgRendreSignaux() {
   bloc.classList.toggle("est-vide", vide);
   bloc.dataset.rendu = "1";
   $("#cg-regarder-titre").textContent = `${vide ? "" : "⚠ "}À regarder (${liste.length})`;
-  const noms = {
-    collections: Object.fromEntries(d.collections.map((c) => [c.id, c.nom])),
-    comptes: Object.fromEntries(d.comptes.filter((c) => c.nom).map((c) => [c.login, c.nom])),
-    demandes: FD.textes,          // COL-3 : ce que le bloc du fonds a lu des demandes
-  };
+  const noms = cgNomsSignaux();
   const ligne = (s) => {
     const c = BDComptes.cibleSignal(s), texte = BDComptes.texteSignal(s, noms);
     return `<li>${c ? cgLien(c.type, c.id, texte) : esc(texte)}</li>`;
@@ -399,6 +402,17 @@ function cgRendreSignaux() {
         + `<ul>${x.signaux.map(ligne).join("")}</ul></details></li>`
       : ligne(x))).join("")
     : `<li class="muted small">Rien à regarder.</li>`;
+}
+
+/* Les noms avec lesquels un signal se dit — partagés par « À regarder » et « À faire ». */
+function cgNomsSignaux() {
+  const d = CG.donnees;
+  if (!d) return {};
+  return {
+    collections: Object.fromEntries(d.collections.map((c) => [c.id, c.nom])),
+    comptes: Object.fromEntries(d.comptes.filter((c) => c.nom).map((c) => [c.login, c.nom])),
+    demandes: FD.textes,          // COL-3 : ce que le bloc du fonds a lu des demandes
+  };
 }
 
 const CG_NOMS_AXE = { comptes: ["compte", "comptes"], groupes: ["groupe", "groupes"],
@@ -428,10 +442,10 @@ function cgRendreListe() {
     const id = BDComptes.identifiant(o, CG.axe);
     const e = BDComptes.etatCourt(o, CG.axe, CG.tri, d.annuaire.etat);
     const courant = CG.sel !== null && String(CG.sel) === String(id);
-    return `<li><button type="button" class="cg-objet" data-type="${type}" `
+    return `<li><button type="button" class="lf-objet cg-objet" data-type="${type}" `
       + `data-id="${esc(String(id))}"${courant ? ' aria-current="true"' : ""}>`
-      + `<span class="cg-nom">${esc(BDComptes.nomLu(o, CG.axe))}</span>`
-      + `<span class="cg-etat${e.alerte ? " alerte" : ""}">${esc(e.texte)}</span></button></li>`;
+      + `<span class="lf-nom cg-nom">${esc(BDComptes.nomLu(o, CG.axe))}</span>`
+      + `<span class="lf-etat cg-etat${e.alerte ? " alerte" : ""}">${esc(e.texte)}</span></button></li>`;
   };
   const [un, plusieurs] = CG_NOMS_AXE[CG.axe];
   const ordinaires = objets.filter((o) => !cgAParte(o));
@@ -446,7 +460,7 @@ function cgRendreListe() {
       + `<summary>${esc(titre)}</summary><ul>${aParte.map(ligne).join("")}</ul></details></li>`;
   }
   if (!objets.length) {
-    html = `<li class="cg-vide muted small">${CG.filtre.trim()
+    html = `<li class="lf-vide cg-vide muted small">${CG.filtre.trim()
       ? `Aucun ${un} ne correspond à « ${esc(CG.filtre.trim())} ».` : `Aucun ${un}.`}</li>`;
   }
   $("#cg-objets").innerHTML = html;
@@ -471,10 +485,10 @@ function cgRendreFiche() {
   // garde sa position — c'est là qu'on était en train de lire.
   const cle = `${CG.axe}:${CG.sel}`;
   if (box.dataset.cle !== cle) { box.scrollTop = 0; box.dataset.cle = cle; }
-  const retour = `<button type="button" class="ghost small cg-retour" data-cg-retour="1">← Liste</button>`;
+  const retour = `<button type="button" class="ghost small lf-retour cg-retour" data-cg-retour="1">← Liste</button>`;
   if (CG.sel === null) {
     const [un] = CG_NOMS_AXE[CG.axe];
-    box.innerHTML = `<p class="muted cg-accueil">Choisissez un ${un} dans la liste pour ouvrir
+    box.innerHTML = `<p class="muted lf-accueil cg-accueil">Choisissez un ${un} dans la liste pour ouvrir
       sa fiche.</p>`;
     return;
   }
@@ -533,7 +547,7 @@ function cgFicheCompte(c) {
   if (c.groupes === null || c.groupes === undefined) {
     groupes = `<p class="muted small">${esc(cgInconnu("ses groupes"))}</p>`;
   } else {
-    groupes = `<div class="cg-pastilles">${c.groupes.length
+    groupes = `<div class="lf-pastilles cg-pastilles">${c.groupes.length
       ? c.groupes.map((g) => cgLien("groupe", g, g)).join("")
       : `<span class="muted small">Aucun groupe.</span>`}
       ${c.dans_annuaire === true ? cgLienAnnuaire("Modifier dans l'annuaire") : ""}</div>`;
@@ -548,9 +562,9 @@ function cgFicheCompte(c) {
       écrit toute collection, sans figurer dans les accès.</p>`;
   }
   if (lignes.length) {
-    collections += `<ul class="cg-lignes">${lignes.join("")}</ul>`;
+    collections += `<ul class="lf-lignes cg-lignes">${lignes.join("")}</ul>`;
   } else if (c.collections_completes && c.administrateur !== true) {
-    collections += `<p class="cg-explique">Aucune collection ne lui est ouverte :
+    collections += `<p class="lf-explique cg-explique">Aucune collection ne lui est ouverte :
       l'application lui montre un corpus vide.</p>`;
   } else if (!c.collections_completes) {
     collections += `<p class="muted small">Aucun accès à son nom.</p>`;
@@ -579,19 +593,19 @@ function cgFicheCompte(c) {
       </ol></details>`;
   }
 
-  return `<article class="cg-carte" aria-labelledby="cg-fiche-titre">
-    <div class="cg-tete">
+  return `<article class="lf-carte cg-carte" aria-labelledby="cg-fiche-titre">
+    <div class="lf-tete cg-tete">
       <div>
         <h3 id="cg-fiche-titre" tabindex="-1">${esc(c.nom || c.login)}</h3>
-        <p class="cg-sous"><span class="cg-login">${esc(c.login)}</span>
+        <p class="lf-sous cg-sous"><span class="cg-login">${esc(c.login)}</span>
           ${vu ? `<span>vu le ${esc(vu)}</span>`
                : cgPuce("aucune connexion", c.usage === "annuaire" ? "" : "alerte")}
           ${puces.join("")}</p>
       </div>
       ${nature}
     </div>
-    <section class="cg-section"><h4>Groupes</h4>${groupes}</section>
-    <section class="cg-section"><h4>Collections</h4>${collections}</section>
+    <section class="lf-section cg-section"><h4>Groupes</h4>${groupes}</section>
+    <section class="lf-section cg-section"><h4>Collections</h4>${collections}</section>
     ${depart}
   </article>`;
 }
@@ -607,7 +621,7 @@ function cgFicheGroupe(g) {
   let collections = g.administrateur === true
     ? `<p class="col-note col-note-admin">Ses membres lisent et écrivent toute collection,
         sans figurer dans les accès.</p>` : "";
-  collections += ouvertes.length ? `<ul class="cg-lignes">${ouvertes.join("")}</ul>`
+  collections += ouvertes.length ? `<ul class="lf-lignes cg-lignes">${ouvertes.join("")}</ul>`
                                  : `<p class="muted small">Aucune.</p>`;
   // Arrivé avec l'étape 3 (AUTH-12), où la collection choisie s'ouvrait dans la Bibliothèque.
   // Depuis UX-16, c'est SA FICHE qui s'ouvre, ici, ce groupe déjà choisi dans la ligne
@@ -625,7 +639,7 @@ function cgFicheGroupe(g) {
 
   let membres, titreMembres = "Membres";
   if (g.dans_annuaire === false) {
-    membres = `<p class="cg-explique">Ce groupe n'est pas dans l'annuaire : aucun compte n'en
+    membres = `<p class="lf-explique cg-explique">Ce groupe n'est pas dans l'annuaire : aucun compte n'en
       est membre, et ses accès n'ouvrent rien à personne.</p>`;
   } else if (g.membres === null || g.membres === undefined) {
     membres = `<p class="muted small">${esc(cgInconnu("ses membres"))}</p>`;
@@ -635,7 +649,7 @@ function cgFicheGroupe(g) {
     const comptes = g.membres.map((l) => CG.index.comptes.get(l) || { login: l, nom: null });
     const jamais = comptes.filter((c) => !c.derniere_vue && c.usage !== "annuaire").length;
     if (jamais) titreMembres += ` — ${jamais} jamais ${jamais > 1 ? "venus" : "venu"}`;
-    membres = `<ul class="cg-lignes">${BDComptes.trier(comptes, "comptes", "alpha").map((c) => {
+    membres = `<ul class="lf-lignes cg-lignes">${BDComptes.trier(comptes, "comptes", "alpha").map((c) => {
       const vu = BDComptes.dateCourte(c.derniere_vue);
       return `<li>${cgLien("compte", c.login, c.nom || c.login)}${vu
         ? `<span class="muted small">vu le ${esc(vu)}</span>`
@@ -643,18 +657,18 @@ function cgFicheGroupe(g) {
     }).join("")}</ul>`;
   }
 
-  return `<article class="cg-carte" aria-labelledby="cg-fiche-titre">
-    <div class="cg-tete">
+  return `<article class="lf-carte cg-carte" aria-labelledby="cg-fiche-titre">
+    <div class="lf-tete cg-tete">
       <div>
         <h3 id="cg-fiche-titre" tabindex="-1">${esc(g.nom)}</h3>
-        <p class="cg-sous">${g.nb_comptes !== null && g.nb_comptes !== undefined
+        <p class="lf-sous cg-sous">${g.nb_comptes !== null && g.nb_comptes !== undefined
           ? `<span>${g.nb_comptes} ${g.nb_comptes > 1 ? "comptes" : "compte"}</span>` : ""}
           ${puces.join("")}
           ${g.dans_annuaire === true ? cgLienAnnuaire("Défini dans l'annuaire") : ""}</p>
       </div>
     </div>
-    <section class="cg-section"><h4>Collections ouvertes</h4>${collections}</section>
-    <section class="cg-section"><h4>${esc(titreMembres)}</h4>${membres}</section>
+    <section class="lf-section cg-section"><h4>Collections ouvertes</h4>${collections}</section>
+    <section class="lf-section cg-section"><h4>${esc(titreMembres)}</h4>${membres}</section>
   </article>`;
 }
 
@@ -683,14 +697,14 @@ function cgSousCollection(c) {
    mène VOIR, pas le geste — ce que la collection EST se règle dans la Bibliothèque, et y
    reste (décision B). */
 function cgFicheCollection(c) {
-  return `<article class="cg-carte" aria-labelledby="cg-fiche-titre">
-    <div class="cg-tete">
+  return `<article class="lf-carte cg-carte" aria-labelledby="cg-fiche-titre">
+    <div class="lf-tete cg-tete">
       <div>
         <h3 id="cg-fiche-titre" tabindex="-1">${esc(c.nom)}</h3>
-        <p class="cg-sous">${cgSousCollection(c)}</p>
+        <p class="lf-sous cg-sous">${cgSousCollection(c)}</p>
       </div>
     </div>
-    <section class="cg-section" data-qui-entre></section>
+    <section class="lf-section cg-section" data-qui-entre></section>
     <p class="cg-ailleurs"><a class="cg-decrire" href="/corpus?collection=${c.id}">Décrire
       dans la Bibliothèque<span aria-hidden="true"> ↗</span></a></p>
     <p class="col-note">Ce que la collection est — sa description, sa diffusion, son
@@ -888,8 +902,8 @@ function cgInstaller() {
       return;
     }
     if (b.dataset.cgOuvrir !== undefined) { cgOuvrirA(b.dataset.cgOuvrir); return; }
-    // COL-3, tranche 2 — une demande mène au FONDS, où l'on y répond ; jamais à un axe.
-    if (b.dataset.type === "demande") { fdAllerDemande(Number(b.dataset.id)); return; }
+    // COL-3 — une demande mène à « À faire », où l'on y répond ; jamais à un axe.
+    if (b.dataset.type === "demande") { afAllerDemande(Number(b.dataset.id)); return; }
     if (b.dataset.type && b.dataset.id !== undefined) {
       cgAller(b.dataset.type, b.dataset.id, b.classList.contains("cg-objet"));
     }
@@ -1047,7 +1061,9 @@ function pjDireAuxAutres(projets) {
 }
 
 async function pjCharger() {
-  if (!await pjLire()) return;
+  const lu = await pjLire();
+  vueMajLiens();
+  if (!lu) return;
   $("#pj-creer").hidden = !PJ.decide;
   $("#pj-nom-aide").textContent = `${BDProjet.LONGUEUR_NOM} caractères au plus : le nom `
     + "se lit en haut de chaque page, où il ne se coupe pas.";
@@ -1372,7 +1388,7 @@ function pjDemarrer() {
       pjRenommer();
     }
   });
-  pjCharger();
+  return pjCharger();
 }
 
 
@@ -1381,11 +1397,18 @@ function pjDemarrer() {
 
    Tout album est la copie de travail d'un DOCUMENT, et le document appartient à l'instance.
    Ce bloc montre les documents — d'où chacun vient, où il est employé, lesquels ne sont
-   appelés par personne —, les suppressions demandées, et les trois gestes de qui tient le
-   fonds : répondre à une demande (détruire ou garder), RENDRE une copie gardée à une
-   collection de son projet, DÉTRUIRE un document que personne n'appelle. Et un quatrième,
-   décidé par Hugo le 2026-10-11 : IMPORTER AU FONDS, sans passer par une collection — un
-   album qui naît « appelé par personne », que « Rendre à… » distribue ensuite.
+   appelés par personne — et les gestes de qui tient le fonds : RENDRE une copie gardée à une
+   collection de son projet, DÉTRUIRE un document que personne n'appelle, et IMPORTER AU
+   FONDS (Hugo, 2026-10-11), un album qui naît « appelé par personne ». Répondre à une
+   demande de suppression se fait dans « À faire » (Hugo, 2026-10-16) : la fiche d'un
+   document qui en porte une y MÈNE, elle ne la double pas.
+
+   UNE LISTE ET UNE FICHE (le gabarit `lf-` de « Comptes et groupes ») : un millier de
+   documents rendus en entier l'un sous l'autre, sans filtre ni regroupement, ne se lisaient
+   plus (relevé par Hugo le 2026-10-16). On cherche par titre, série ou auteur, par projet,
+   par qui l'a importé, par état — les quatre entrées nommées par Hugo sur la maquette. La
+   liste ne dessine que `FD_MAX` lignes à la fois et dit combien restent : le serveur rend
+   tout d'un coup, c'est le DOM qui ne suivrait pas.
 
    LA GARDE EST CELLE DU SERVEUR. Le bloc est `hidden` par défaut et ne se lève que si
    `GET /api/fonds` répond : un 403 le laisse fermé, sans un mot — c'est la réponse d'une
@@ -1398,9 +1421,8 @@ function pjDemarrer() {
    d'aujourd'hui, joués par une portée totale. Les mots — ce qu'une demande dit, d'où vient
    un document — viennent de `lib/suppression.js`.
 
-   « À regarder » porte les demandes en attente (signal `demande_en_attente`) : il les NOMME
-   avec ce que ce bloc a lu (`FD.textes`), et y MÈNE (`fdAllerDemande`) — jamais à la fiche
-   de qui a demandé. Répondre change « À regarder » : « Comptes et groupes » se relit.
+   LA SÉLECTION VIT DANS L'ADRESSE (`?vue=fonds&document=…`), pour qu'on puisse envoyer une
+   fiche ; les filtres n'y sont pas : ce sont des saisies, pas des endroits.
    ═══════════════════════════════════════════════════════════════════════════ */
 const FD = {
   documents: [],
@@ -1408,7 +1430,13 @@ const FD = {
   collections: null,     // pour « Rendre à… » ; null = illisible
   textes: {},            // id de demande → { texte }, lu par « À regarder »
   sansDocument: [],
+  lu: false,             // le fonds a répondu
+  filtre: "", etat: "tous", projet: "", importeur: "", tri: "recents",
+  sel: null,             // l'identifiant du document dont la fiche est ouverte
+  importer: false,       // la fiche montre le formulaire « Importer au fonds »
+  vueFiche: false,       // sous le seuil étroit, la fiche REMPLACE la liste
 };
+const FD_MAX = 400;
 
 /* UN message à la fois dans le bloc — la règle de « Projets », appliquée ici à SES lignes. */
 function fdTaireSauf(el) {
@@ -1429,6 +1457,7 @@ async function fdCharger() {
   let fonds;
   try { fonds = await apiGet("/api/fonds"); }
   catch (e) {
+    FD.lu = false;
     if (e.statut === 403) { $("#fonds-bloc").hidden = true; return false; }
     $("#fonds-bloc").hidden = false;
     fdMsg($("#fd-msg"), `Le fonds n'a pas pu être lu : ${e.message}`, true);
@@ -1440,6 +1469,7 @@ async function fdCharger() {
     apiGet("/api/demandes").catch(() => null),
     apiGet("/api/collections").catch(() => null),
   ]);
+  FD.lu = true;
   FD.documents = fonds.documents || [];
   FD.sansDocument = fonds.copies_sans_document || [];
   FD.demandes = demandes === null ? null : demandes.filter((d) => d.en_attente);
@@ -1448,10 +1478,59 @@ async function fdCharger() {
     [d.id, { texte: BDSuppression.texteDemande(d) }]));
   $("#fonds-bloc").hidden = false;
   fdRendre();
-  // « À regarder » se nomme avec ce que le fonds vient de lire.
+  // « À regarder » se nomme avec ce que le fonds vient de lire, et « À faire » s'en nourrit.
   if (CG.donnees) cgRendreSignaux();
+  afRendre();
   return true;
 }
+
+/* --- Lecture d'un document ----------------------------------------------------------- */
+
+function fdPremiere(d) { return d.copies[0] || {}; }
+function fdGardees(d) { return d.copies.filter((c) => !c.collections.length); }
+/* Une copie GARDÉE est une copie sans collection qui garde son projet ; celle qu'on importe
+   au fonds n'en a jamais eu, et n'est qu'« appelée par personne ». */
+function fdAUneCopieGardee(d) { return fdGardees(d).some((c) => c.projet_id != null); }
+function fdProjetNom(d) { return fdPremiere(d).projet_nom || ""; }
+
+/* Ce que la ligne dit de l'état, en un mot — l'alerte d'abord : quelqu'un attend. */
+function fdEtatCourt(d) {
+  if (d.demande) return { texte: "⚠ suppression demandée", alerte: true };
+  if (!d.appele) return { texte: fdAUneCopieGardee(d) ? "copie gardée" : "appelé par personne",
+                          alerte: false };
+  const n = d.copies.reduce((s, c) => s + c.collections.length, 0);
+  return { texte: pjPluriel(n, "collection"), alerte: false };
+}
+
+function fdFiltres() {
+  const f = BDComptes.normaliser(FD.filtre.trim());
+  let l = FD.documents.filter((d) => {
+    if (FD.etat === "demande" && !d.demande) return false;
+    if (FD.etat === "personne" && d.appele) return false;
+    if (FD.etat === "gardee" && !fdAUneCopieGardee(d)) return false;
+    if (FD.projet === "-" ? fdPremiere(d).projet_id != null
+        : FD.projet && String(fdPremiere(d).projet_id) !== FD.projet) return false;
+    if (FD.importeur === "-" ? !!d.importe_par
+        : FD.importeur && d.importe_par !== FD.importeur) return false;
+    if (!f) return true;
+    const p = fdPremiere(d);
+    return [p.titre, p.serie, p.auteur].some((x) => x && BDComptes.normaliser(x).includes(f));
+  });
+  const titre = (d) => BDSuppression.titreDocument(d);
+  const parTitre = (a, b) => titre(a).localeCompare(titre(b), "fr");
+  if (FD.tri === "alpha") l = l.sort(parTitre);
+  else if (FD.tri === "projet") {
+    l = l.sort((a, b) => (fdProjetNom(a) || "￿").localeCompare(fdProjetNom(b) || "￿", "fr")
+                         || parTitre(a, b));
+  } else {
+    // Récents d'abord ; un import dont la date n'est pas écrite (avant le fonds) après.
+    l = l.sort((a, b) => String(b.importe_le || "").localeCompare(String(a.importe_le || ""))
+                         || b.id - a.id);
+  }
+  return l;
+}
+
+/* --- Rendu ------------------------------------------------------------------------- */
 
 function fdRendre() {
   const docs = FD.documents;
@@ -1463,59 +1542,11 @@ function fdRendre() {
     FD.demandes === null ? "demandes illisibles"
       : `${n} suppression${n > 1 ? "s" : ""} demandée${n > 1 ? "s" : ""}`,
   ].join(" · ");
-  fdRendreDemandes();
-  fdRendreDocuments();
-}
-
-function fdRendreDemandes() {
-  const liste = $("#fd-demandes-liste");
-  if (FD.demandes === null) {
-    $("#fd-demandes").hidden = false;
-    liste.innerHTML = `<li class="col-note erreur">Les demandes n'ont pas pu être lues.</li>`;
-    return;
-  }
-  $("#fd-demandes").hidden = !FD.demandes.length;
-  liste.innerHTML = FD.demandes.map((d) => {
-    const projet = d.genre === BDSuppression.GENRE_PROJET;
-    return `<li class="fd-demande" id="fd-demande-${d.id}" tabindex="-1">
-      <p class="fd-demande-texte">${esc(BDSuppression.texteDemande(d))}</p>
-      <p class="muted small fd-demande-contexte">${esc(BDSuppression.contexteDemande(d))}</p>
-      ${d.motif ? `<p class="fd-motif">${esc(d.motif)}</p>` : ""}
-      ${d.certifie_le ? `<p class="small fd-certif">${esc(BDSuppression.certifiee(d))}</p>` : ""}
-      ${projet ? "" : (d.documents || []).map(fdTravailDesAutres).join("")}
-      <div class="fd-gestes">
-        <button type="button" class="danger" data-fd-accepter="${d.id}">${projet
-          ? "Supprimer le projet" : "Détruire"}</button>
-        <button type="button" class="ghost" data-fd-refuser="${d.id}">Garder</button>
-        <span id="fd-demande-msg-${d.id}" class="col-msg fd-ligne-msg muted small"
-              role="status" aria-live="polite"></span>
-      </div>
-    </li>`;
-  }).join("");
-}
-
-/* Sous une demande de suppression d'un document : ce que les AUTRES y ont fait (Hugo,
-   2026-10-15) — qui, combien de gestes de chaque sorte, le dernier —, lu par le serveur à
-   la source même de la règle de suppression, au moment de la lecture. Une demande dont le
-   serveur n'a rien rendu (illisible) ne dit rien plutôt que de dire « personne ». */
-function fdTravailDesAutres(doc) {
-  const t = BDSuppression.travailDesAutres(doc);
-  if (!t) return "";
-  return `<div class="fd-autres">
-    <p class="muted small">${esc(t.origine)}</p>
-    ${t.vide ? `<p class="small">${esc(t.texteVide)}</p>`
-      : `<p class="small fd-autres-titre">${esc(t.titre)}</p>
-         <ul class="fd-autres-liste small">${t.lignes.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>`}
-  </div>`;
-}
-
-function fdRendreDocuments() {
-  const liste = $("#fd-documents");
-  if (!FD.documents.length) {
-    liste.innerHTML = `<li class="muted small">Aucun document.</li>`;
-  } else {
-    liste.innerHTML = FD.documents.map(fdDocument).join("");
-  }
+  $("#vue-compte-fonds").textContent = ` ${docs.length}`;
+  fdRendreChoix();
+  fdRendreControles();
+  fdRendreListe();
+  fdRendreFiche();
   $("#fd-sans-document").hidden = !FD.sansDocument.length;
   $("#fd-sans-document").textContent = FD.sansDocument.length
     ? `${pjPluriel(FD.sansDocument.length, "album")} sans document (base retouchée à la main) : `
@@ -1523,32 +1554,160 @@ function fdRendreDocuments() {
     : "";
 }
 
-function fdDocument(d) {
-  const titre = BDSuppression.titreDocument(d);
-  const premiere = d.copies[0] || {};
-  const sous = [premiere.serie, premiere.auteur,
-                d.copies.length ? pjPluriel(premiere.nb_planches || 0, "planche") : ""]
-    .filter(Boolean).join(" · ");
-  const emplois = BDSuppression.emplois(d);
-  const gardees = d.copies.filter((c) => !c.collections.length);
-  const puces = [
-    d.appele ? "" : `<span class="pj-puce">appelé par personne</span>`,
-    d.demande ? `<span class="sp-pastille">${esc(BDSuppression.pastille(d.demande))}</span>` : "",
-  ].join("");
-  return `<li class="fd-doc" id="fd-doc-${d.id}">
-    <div class="fd-doc-tete">
-      <h4 id="fd-doc-titre-${d.id}">${esc(titre)}</h4>
-      ${sous ? `<span class="muted small">${esc(sous)}</span>` : ""}
-      ${puces}
+/* Les deux listes de choix se composent avec ce que le fonds a rendu : aucun projet ni
+   aucun importateur n'y figure sans document derrière. La valeur choisie survit au rendu. */
+function fdRendreChoix() {
+  const projets = new Map(), importeurs = new Map();
+  let sansProjet = false, sansImporteur = false;
+  FD.documents.forEach((d) => {
+    const p = fdPremiere(d);
+    if (p.projet_id != null) projets.set(String(p.projet_id), p.projet_nom || `projet ${p.projet_id}`);
+    else sansProjet = true;
+    if (d.importe_par) importeurs.set(d.importe_par, d.importe_par_nom || d.importe_par);
+    else sansImporteur = true;
+  });
+  const options = (m, vide, sans, sansLib) => `<option value="">${vide}</option>`
+    + (sans ? `<option value="-">${sansLib}</option>` : "")
+    + [...m].sort((a, b) => a[1].localeCompare(b[1], "fr"))
+      .map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+  const sp = $("#fd-projet"), si = $("#fd-importeur");
+  sp.innerHTML = options(projets, "Tous", sansProjet, "Sans projet");
+  si.innerHTML = options(importeurs, "Tous", sansImporteur, "Non écrit (avant le fonds)");
+  if (![...sp.options].some((o) => o.value === FD.projet)) FD.projet = "";
+  if (![...si.options].some((o) => o.value === FD.importeur)) FD.importeur = "";
+  sp.value = FD.projet;
+  si.value = FD.importeur;
+}
+
+function fdRendreControles() {
+  const docs = FD.documents;
+  const nombres = {
+    tous: docs.length,
+    demande: docs.filter((d) => d.demande).length,
+    personne: docs.filter((d) => !d.appele).length,
+    gardee: docs.filter(fdAUneCopieGardee).length,
+  };
+  document.querySelectorAll("#fd [data-fd-etat]").forEach((b) => {
+    b.setAttribute("aria-pressed", String(b.dataset.fdEtat === FD.etat));
+    if (!b.dataset.libelle) b.dataset.libelle = b.textContent;
+    b.textContent = `${b.dataset.libelle} ${nombres[b.dataset.fdEtat]}`;
+  });
+  document.querySelectorAll("#fd [data-fd-tri]").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.fdTri === FD.tri)));
+  $("#fd").classList.toggle("lf--fiche", FD.vueFiche && (FD.sel !== null || FD.importer));
+}
+
+function fdRendreListe() {
+  const l = fdFiltres();
+  const actif = document.activeElement;
+  const garde = actif && actif.closest && actif.closest("#fd-objets") && actif.dataset.fdDoc
+    ? actif.dataset.fdDoc : null;
+  $("#fd-liste-compte").textContent = l.length === FD.documents.length
+    ? pjPluriel(l.length, "document") : `${l.length} sur ${FD.documents.length}`;
+  let html = "", groupe = null;
+  l.slice(0, FD_MAX).forEach((d) => {
+    if (FD.tri === "projet") {
+      const g = fdProjetNom(d) || "Sans projet";
+      if (g !== groupe) { groupe = g; html += `<li class="lf-groupe">${esc(g)}</li>`; }
+    }
+    const e = fdEtatCourt(d);
+    const detail = [fdProjetNom(d) || "sans projet",
+                    d.importe_par ? (d.importe_par_nom || d.importe_par) : "importateur non écrit",
+                    BDSuppression.dateLue(d.importe_le)].filter(Boolean).join(" · ");
+    html += `<li><button type="button" class="lf-objet fd-objet" data-fd-doc="${d.id}"`
+      + `${FD.sel === d.id ? ' aria-current="true"' : ""}>`
+      + `<span class="lf-nom">${esc(BDSuppression.titreDocument(d))}</span>`
+      + `<span class="lf-etat${e.alerte ? " alerte" : ""}">${esc(e.texte)}</span>`
+      + `<span class="lf-detail">${esc(detail)}</span></button></li>`;
+  });
+  if (l.length > FD_MAX) {
+    html += `<li class="lf-vide muted small">… et ${l.length - FD_MAX} de plus : affinez le
+      filtre.</li>`;
+  }
+  if (!l.length) {
+    html = `<li class="lf-vide muted small">${FD.documents.length
+      ? "Aucun document ne répond à ces filtres." : "Aucun document."}</li>`;
+  }
+  $("#fd-objets").innerHTML = html;
+  if (garde !== null) {
+    const b = document.querySelector(`#fd-objets [data-fd-doc="${CSS.escape(garde)}"]`);
+    if (b) b.focus();
+  }
+}
+
+function fdRendreFiche() {
+  const box = $("#fd-fiche");
+  const retour = `<button type="button" class="ghost small lf-retour" data-fd-retour="1">← Liste</button>`;
+  if (FD.importer) { box.innerHTML = retour + fdFicheImporter(); return; }
+  const d = FD.sel === null ? null : FD.documents.find((x) => x.id === FD.sel);
+  if (!d) {
+    box.innerHTML = FD.sel === null
+      ? `<p class="muted lf-accueil">Choisissez un document dans la liste pour ouvrir sa fiche.</p>`
+      : `${retour}<p class="col-note">Ce document n'est plus au fonds.</p>`;
+    return;
+  }
+  box.innerHTML = retour + fdFicheDocument(d);
+}
+
+function fdFicheImporter() {
+  return `<article class="lf-carte" aria-labelledby="fd-importer-titre">
+    <div class="lf-tete"><h3 id="fd-importer-titre" tabindex="-1">Importer au fonds</h3></div>
+    <p class="muted small">L'album naît appelé par personne, sans projet ; « Rendre » le range
+      ensuite dans une collection.</p>
+    <div class="fd-importer-ligne">
+      <label class="sr-only" for="fd-titre">Titre de l'album à importer au fonds</label>
+      <input id="fd-titre" placeholder="Titre de l'album" autocomplete="off">
+      <label class="sr-only" for="fd-fichiers">Planches à importer</label>
+      <input id="fd-fichiers" type="file" multiple
+             accept=".tif,.tiff,.jpg,.jpeg,.jp2,.j2k,.jpf,.jpx,.jpc,.j2c,.png,.bmp,.gif,.webp">
+      <button id="fd-importer" class="primary small" type="button">+ Importer au fonds</button>
+      <button class="ghost small" type="button" data-fd-importer-annuler="1">Annuler</button>
     </div>
-    <p class="small fd-origine">${esc(BDSuppression.origine(d))}</p>
-    ${emplois.length ? `<p class="small fd-emplois">Employé par ${esc(emplois.join(" ; "))}</p>` : ""}
-    ${gardees.map((c) => fdGardee(d, c)).join("")}
-    ${!d.appele && d.copies.length ? `<p class="fd-gestes"><button type="button" class="danger"
-        data-fd-detruire="${d.id}">Détruire</button></p>` : ""}
+    <p id="fd-importer-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
+  </article>`;
+}
+
+function fdFicheDocument(d) {
+  const titre = BDSuppression.titreDocument(d);
+  const p = fdPremiere(d);
+  const sous = [p.serie, p.auteur, d.copies.length ? pjPluriel(p.nb_planches || 0, "planche") : ""]
+    .filter(Boolean).map((x) => `<span>${esc(x)}</span>`).join("");
+  const e = fdEtatCourt(d);
+  const emplois = BDSuppression.emplois(d);
+  const gardees = fdGardees(d);
+  const demande = d.demande ? `<section class="lf-section lf-large fd-demande-fiche">
+      <h4>Suppression demandée</h4>
+      <p class="small">${esc(BDSuppression.pastille(d.demande))}${d.demande.date_creation
+        ? ` le ${esc(BDSuppression.dateLue(d.demande.date_creation))}` : ""}.</p>
+      ${d.demande.motif ? `<p class="fd-motif">${esc(d.demande.motif)}</p>` : ""}
+      <p><button type="button" class="ghost small" data-fd-repondre="${d.demande.id}">Répondre
+        dans « À faire » →</button></p>
+    </section>` : "";
+  const atelier = p.album_id
+    ? `<a class="ghost small" href="/?album=${p.album_id}">Ouvrir dans l'Atelier</a>` : "";
+  return `<article class="lf-carte fd-doc" id="fd-doc-${d.id}" aria-labelledby="fd-fiche-titre">
+    <div class="lf-tete">
+      <div>
+        <h3 id="fd-fiche-titre" tabindex="-1">${esc(titre)}</h3>
+        <p class="lf-sous">${sous}<span class="lf-puce${e.alerte ? " alerte" : ""}">${esc(
+          e.texte.replace(/^⚠ /, ""))}</span></p>
+      </div>
+      ${atelier ? `<div class="lf-gestes-tete">${atelier}</div>` : ""}
+    </div>
+    ${demande}
+    <section class="lf-section"><h4>Origine</h4>
+      <p class="small fd-origine">${esc(BDSuppression.origine(d))}</p></section>
+    <section class="lf-section"><h4>Employé dans</h4>
+      ${emplois.length ? `<p class="small fd-emplois">Employé par ${esc(emplois.join(" ; "))}</p>`
+        : `<p class="small">Aucune collection.</p>`}
+      ${gardees.map((c) => fdGardee(d, c)).join("")}
+    </section>
+    ${!d.appele && d.copies.length ? `<div class="fd-zone-danger"><button type="button"
+        class="danger" data-fd-detruire="${d.id}">Détruire</button><span class="muted small">Personne
+        ne l'appelle : il peut être détruit.</span></div>` : ""}
     <p id="fd-doc-msg-${d.id}" class="col-msg fd-ligne-msg muted small" role="status"
        aria-live="polite"></p>
-  </li>`;
+  </article>`;
 }
 
 /* Une copie GARDÉE — retirée de sa dernière collection, ou importée au fonds — et
@@ -1567,12 +1726,47 @@ function fdGardee(d, c) {
       <select id="fd-rendre-${c.album_id}">${choix.map((x) =>
         `<option value="${x.id}">${esc(x.nom)}</option>`).join("")}</select>
       <button type="button" class="ghost small" data-fd-rendre="${c.album_id}"
-              data-fd-doc="${d.id}">Rendre</button>`;
+              data-fd-doc-de="${d.id}">Rendre</button>`;
   }
   return `<div class="fd-gardee">
     <span class="small">Copie gardée ici (${esc(projet)}).</span>
     <span class="fd-rendre">${geste}</span>
   </div>`;
+}
+
+/* --- Navigation ---------------------------------------------------------------------- */
+
+function fdLireAdresse() {
+  const brut = new URLSearchParams(location.search).get("document");
+  FD.sel = brut && /^[1-9]\d*$/.test(brut) ? Number(brut) : null;
+  FD.vueFiche = FD.sel !== null;
+  FD.importer = false;
+}
+
+function fdEcrireAdresse(pousser) {
+  const p = new URLSearchParams(location.search);
+  if (FD.sel === null) p.delete("document"); else p.set("document", String(FD.sel));
+  const s = p.toString(), url = location.pathname + (s ? "?" + s : "") + location.hash;
+  if (url === location.pathname + location.search + location.hash) return;
+  history[pousser ? "pushState" : "replaceState"](null, "", url);
+}
+
+/* Ouvrir un document : depuis la liste, ou depuis un autre bloc. Au large, un choix dans la
+   liste y laisse le clavier, pour parcourir la suivante ; sinon le focus suit la fiche. */
+function fdOuvrir(id, depuisListe) {
+  FD.sel = id;
+  FD.importer = false;
+  FD.vueFiche = true;
+  fdTaireSauf(null);
+  fdEcrireAdresse(true);
+  fdRendreControles();
+  fdRendreListe();
+  fdRendreFiche();
+  $("#fd-fiche").scrollTop = 0;
+  if (!depuisListe || CG_ETROIT.matches) {
+    const t = $("#fd-fiche-titre");
+    if (t) t.focus();
+  }
 }
 
 /* ── Gestes ─────────────────────────────────────────────────────────────────────── */
@@ -1581,11 +1775,16 @@ function fdGardee(d, c) {
    « À regarder », et, si un projet a pu disparaître, le bloc des projets et la bande. */
 async function fdApres(el, texte, projetTouche) {
   await fdCharger();
-  if (CG.donnees) cgCharger({ garderFiche: true });
+  if (CG.donnees) await cgCharger({ garderFiche: true });
   if (projetTouche && await pjLire()) { pjRendre(); pjPrevenirLaBande(); }
-  fdMsg(el || $("#fd-msg"), texte);
+  const lu = typeof el === "string" ? $(el) : el;
+  const cible = lu && document.contains(lu) ? lu : $("#fd-msg");
+  if (cible.closest("#afaire-bloc")) afTaireSauf(cible);
+  fdMsg(cible, texte);
 }
 
+/* Répondre à une demande — depuis « À faire », où la ligne s'est dépliée. Le message se lit
+   en tête de « À faire » : la ligne, répondue, disparaît avec la demande. */
 async function fdRepondre(id, reponse) {
   const d = (FD.demandes || []).find((x) => x.id === id);
   if (!d) return;
@@ -1600,14 +1799,15 @@ async function fdRepondre(id, reponse) {
   }
   try {
     await apiSend("POST", `/api/demandes/${id}/reponse`, { reponse });
-  } catch (e) { fdMsg(ligne, e.message || "Échec", true); return; }
+  } catch (e) { afMsg(ligne, e.message || "Échec", true); return; }
+  AF.ouverts.delete(id);
   const qui = d.demandeur_nom || d.demandeur || "quelqu'un";
-  await fdApres($("#fd-msg"), reponse === BDSuppression.REFUSER
+  await fdApres($("#af-msg"), reponse === BDSuppression.REFUSER
     ? `${objet.charAt(0).toUpperCase()}${objet.slice(1)} : gardé. La demande de ${qui} est close.`
     : projet ? `${objet.charAt(0).toUpperCase()}${objet.slice(1)} est supprimé.`
              : `${objet} : détruit, avec ses images et tout le travail fait dessus.`,
     projet && reponse === BDSuppression.ACCEPTER);
-  $("#fonds-titre").focus();
+  $("#afaire-titre").focus();
 }
 
 async function fdRendreCopie(albumId, docId) {
@@ -1617,8 +1817,9 @@ async function fdRendreCopie(albumId, docId) {
   try {
     await apiSend("PUT", `/api/albums/${albumId}/collections/${sel.value}`);
   } catch (e) { fdMsg(ligne, e.message || "Échec", true); return; }
-  await fdApres($("#fd-msg"), `Copie rendue à « ${nom} », avec tout son travail.`);
-  $("#fonds-titre").focus();
+  await fdApres(`#fd-doc-msg-${docId}`, `Copie rendue à « ${nom} », avec tout son travail.`);
+  const t = $("#fd-fiche-titre");
+  if (t) t.focus();
 }
 
 async function fdDetruire(docId) {
@@ -1629,14 +1830,28 @@ async function fdDetruire(docId) {
   try {
     for (const c of d.copies) await apiSend("DELETE", `/api/albums/${c.album_id}`);
   } catch (e) { fdMsg(ligne, e.message || "Échec", true); return; }
+  FD.sel = null;
+  FD.vueFiche = false;
+  fdEcrireAdresse(false);
   await fdApres($("#fd-msg"), `« ${titre} » : détruit, avec ses images et tout le travail `
     + "fait dessus.");
   $("#fonds-titre").focus();
 }
 
+function fdOuvrirImporter(ouvrir) {
+  FD.importer = ouvrir;
+  FD.vueFiche = ouvrir || FD.sel !== null;
+  fdTaireSauf(null);
+  fdRendreControles();
+  fdRendreFiche();
+  const cible = ouvrir ? $("#fd-titre") : $("#fd-importer-ouvrir");
+  if (cible) cible.focus();
+}
+
 /* « Importer au fonds » : l'album naît sans collection ni projet (`au_fonds`), puis ses
    planches entrent une à une — la route d'import d'un album, la même que l'Atelier. Un
-   fichier refusé n'arrête pas les suivants ; le bilan dit ce qui est entré. */
+   fichier refusé n'arrête pas les suivants ; le bilan dit ce qui est entré, et la fiche du
+   document qui vient de naître s'ouvre. */
 async function fdImporter() {
   const ligne = $("#fd-importer-msg"), bouton = $("#fd-importer");
   const titre = $("#fd-titre").value.trim();
@@ -1658,40 +1873,405 @@ async function fdImporter() {
     } catch (e) { refus.push(`${f.name} (${e.message})`); }
   }
   bouton.disabled = false;
-  $("#fd-titre").value = "";
-  $("#fd-fichiers").value = "";
   const entrees = fichiers.length - refus.length;
-  await fdApres(ligne, `« ${titre} » est au fonds, appelé par personne : `
+  await fdCharger();
+  const doc = FD.documents.find((d) => d.copies.some((c) => c.album_id === album.id));
+  FD.importer = false;
+  if (doc) { FD.sel = doc.id; FD.vueFiche = true; fdEcrireAdresse(true); }
+  fdRendreControles();
+  fdRendreListe();
+  fdRendreFiche();
+  const msg = doc ? $(`#fd-doc-msg-${doc.id}`) : $("#fd-msg");
+  fdMsg(msg, `« ${titre} » est au fonds, appelé par personne : `
     + `${pjPluriel(entrees, "planche")} importée${entrees > 1 ? "s" : ""}.`
     + (refus.length ? ` Refusé : ${refus.join(", ")}.` : ""));
-  if (refus.length) ligne.classList.add("alerte");
+  if (refus.length) msg.classList.add("alerte");
+  const t = $("#fd-fiche-titre");
+  if (t) t.focus();
 }
 
-/* « À regarder » mène ICI : la demande, mise sous les yeux et sous le clavier. Une demande
-   qu'on ne trouve plus a reçu sa réponse entre-temps : on relit, puis on le dit. */
-async function fdAllerDemande(id) {
-  let el = $(`#fd-demande-${id}`);
-  if (!el) { await fdCharger(); el = $(`#fd-demande-${id}`); }
-  if (!el) {
-    fdMsg($("#fd-msg"), "Cette demande a déjà reçu sa réponse.");
-    $("#fonds-titre").focus();
+function fdDemarrer() {
+  fdLireAdresse();
+  const racine = $("#fd");
+  racine.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button");
+    if (!b || !racine.contains(b)) return;
+    if (b.dataset.fdDoc) { fdOuvrir(Number(b.dataset.fdDoc), true); return; }
+    if (b.dataset.fdEtat) { FD.etat = b.dataset.fdEtat; fdRendreControles(); fdRendreListe(); return; }
+    if (b.dataset.fdTri) { FD.tri = b.dataset.fdTri; fdRendreControles(); fdRendreListe(); return; }
+    if (b.dataset.fdRetour) {
+      FD.vueFiche = false;
+      fdRendreControles();
+      const courant = document.querySelector('#fd-objets [aria-current="true"]');
+      (courant || $("#fd-filtre")).focus();
+      return;
+    }
+    if (b.id === "fd-importer-ouvrir") { fdOuvrirImporter(true); return; }
+    if (b.dataset.fdImporterAnnuler) { fdOuvrirImporter(false); return; }
+    if (b.id === "fd-importer") { fdImporter(); return; }
+    if (b.dataset.fdRepondre) { afAllerDemande(Number(b.dataset.fdRepondre)); return; }
+    if (b.dataset.fdRendre) fdRendreCopie(Number(b.dataset.fdRendre), Number(b.dataset.fdDocDe));
+    else if (b.dataset.fdDetruire) fdDetruire(Number(b.dataset.fdDetruire));
+  });
+  $("#fd-filtre").addEventListener("input", (ev) => { FD.filtre = ev.target.value; fdRendreListe(); });
+  $("#fd-projet").addEventListener("change", (ev) => { FD.projet = ev.target.value; fdRendreListe(); });
+  $("#fd-importeur").addEventListener("change", (ev) => { FD.importeur = ev.target.value; fdRendreListe(); });
+  // La liste se parcourt aux FLÈCHES, comme celle de « Comptes et groupes » : un millier de
+  // documents ne se parcourent pas à la tabulation.
+  $("#fd-objets").addEventListener("keydown", (ev) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(ev.key)) return;
+    const lignes = [...document.querySelectorAll("#fd-objets .fd-objet")];
+    const i = lignes.indexOf(document.activeElement);
+    if (i < 0 || !lignes.length) return;
+    ev.preventDefault();
+    const j = ev.key === "Home" ? 0 : ev.key === "End" ? lignes.length - 1
+      : Math.max(0, Math.min(lignes.length - 1, i + (ev.key === "ArrowDown" ? 1 : -1)));
+    lignes[j].focus();
+  });
+  return fdCharger();
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   À faire (COL-3) — ce qui attend un geste, dans l'ordre où on l'attend
+
+   L'ouverture de la page dès que quelque chose attend (décision de Hugo du 2026-10-16, sur
+   maquette : « Tout ce qui est nécessaire. Là, tout est partout et c'est illisible »). Trois
+   groupes, dans cet ordre : les DEMANDES — quelqu'un attend une réponse —, les ACCÈS à
+   régler — les signaux d'« À regarder », hors les demandes —, l'INSTANCE. Le plus ancien
+   d'abord : les demandes par leur date de dépôt ; les signaux n'en ont pas, et gardent
+   l'ordre du serveur.
+
+   ON RÉPOND À UNE DEMANDE SUR PLACE : la ligne se déplie — motif, certification, ce que
+   d'autres y ont fait —, et « Détruire » ou « Garder » (« Supprimer le projet » pour un
+   projet) partent d'ici. Les mots viennent de `lib/suppression.js`.
+
+   CE BLOC NE POSE AUCUNE QUESTION À LUI : il lit ce que les blocs qui le nourrissent ont
+   déjà lu, chacun gardé par SA route — le fonds (`GET /api/fonds`, puis `/api/demandes`),
+   les comptes et groupes, le référent. Il se lève si l'un d'eux a répondu.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const AF = {
+  ouverts: new Set(),    // les demandes dépliées
+  referent: null,        // l'état du référent, s'il a été lu (`absent`, `injoignable`, …)
+};
+
+function afTaireSauf(el) {
+  document.querySelectorAll("#afaire-bloc .col-msg").forEach((l) => {
+    if (l === el) return;
+    l.textContent = "";
+    l.classList.remove("erreur", "alerte");
+  });
+}
+
+function afMsg(el, texte, erreur) {
+  afTaireSauf(el);
+  el.textContent = texte || "";
+  el.classList.toggle("erreur", !!erreur);
+}
+
+/* Les demandes en attente, la plus ANCIENNE d'abord : quelqu'un attend depuis plus longtemps. */
+function afDemandes() {
+  return (FD.demandes || []).slice().sort((a, b) =>
+    String(a.date_creation || "").localeCompare(String(b.date_creation || "")) || a.id - b.id);
+}
+
+/* Les signaux d'« À regarder » qui demandent de régler un accès : tous, sauf les demandes,
+   qui ont leur groupe en tête, et les comptes JAMAIS VENUS — une information, pas un geste
+   (maquette) : une quarantaine de comptes qui n'ont pas encore ouvert l'application
+   rempliraient « À faire » pour toujours, et la page ne s'ouvrirait plus jamais ailleurs. */
+const AF_INFORMATION = ["jamais_venu"];
+function afSignaux() {
+  return CG.donnees ? CG.donnees.a_regarder.filter((s) => s.signal !== "demande_en_attente"
+    && !AF_INFORMATION.includes(s.signal)) : [];
+}
+function afInformations() {
+  return CG.donnees ? CG.donnees.a_regarder.filter((s) => AF_INFORMATION.includes(s.signal)) : [];
+}
+
+/* Ce qui, de l'instance, attend un geste : un référent absent ou injoignable — l'adresse que
+   lit une personne sans aucun accès. */
+function afInstance() {
+  if (AF.referent === "absent") return [{ texte: "Personne n'est désigné comme référent de l'instance" }];
+  if (AF.referent === "injoignable") return [{ texte: "Le référent de l'instance n'a aucun contact déclaré" }];
+  return [];
+}
+
+function afNombre() {
+  return afDemandes().length + afSignaux().length + afInstance().length;
+}
+
+/* Le bloc se lève dès qu'un de ceux qui le nourrissent a répondu. */
+function afDisponible() {
+  return FD.lu || !!CG.donnees || AF.referent !== null;
+}
+
+function afRendre() {
+  $("#afaire-bloc").hidden = !afDisponible();
+  const n = afNombre();
+  $("#vue-compte-afaire").textContent = n ? ` ${n}` : "";
+  $("#vue-lien-afaire").classList.toggle("a-faire", n > 0);
+  afRendreDemandes();
+  afRendreAcces();
+  afRendreInstance();
+  $("#af-rien").hidden = n > 0 || FD.demandes === null;
+  vueMajLiens();
+}
+
+function afRendreDemandes() {
+  const liste = $("#af-demandes-liste");
+  if (FD.lu && FD.demandes === null) {
+    $("#af-demandes").hidden = false;
+    liste.innerHTML = `<li class="col-note erreur">Les demandes n'ont pas pu être lues.</li>`;
     return;
   }
+  const demandes = afDemandes();
+  $("#af-demandes").hidden = !demandes.length;
+  const actif = document.activeElement;
+  const garde = actif && actif.dataset && actif.dataset.afDeplier ? actif.dataset.afDeplier : null;
+  liste.innerHTML = demandes.map(afLigneDemande).join("");
+  if (garde !== null) {
+    const b = document.querySelector(`#af-demandes-liste [data-af-deplier="${CSS.escape(garde)}"]`);
+    if (b) b.focus();
+  }
+}
+
+function afLigneDemande(d) {
+  const projet = d.genre === BDSuppression.GENRE_PROJET;
+  const ouvert = AF.ouverts.has(d.id);
+  const detail = !ouvert ? "" : `<div class="af-detail" id="af-detail-${d.id}">
+      ${d.motif ? `<p class="fd-motif">${esc(d.motif)}</p>` : ""}
+      ${d.certifie_le ? `<p class="small fd-certif">${esc(BDSuppression.certifiee(d))}</p>` : ""}
+      ${projet ? "" : (d.documents || []).map(fdTravailDesAutres).join("")}
+      <div class="fd-gestes">
+        <button type="button" class="danger" data-fd-accepter="${d.id}">${projet
+          ? "Supprimer le projet" : "Détruire"}</button>
+        <button type="button" class="ghost" data-fd-refuser="${d.id}">Garder</button>
+        <span id="fd-demande-msg-${d.id}" class="col-msg fd-ligne-msg muted small"
+              role="status" aria-live="polite"></span>
+      </div>
+    </div>`;
+  return `<li class="af-ligne fd-demande" id="fd-demande-${d.id}" tabindex="-1">
+    <div class="af-quoi">
+      <span class="muted small">${projet ? "Supprimer un projet" : "Supprimer un document"}</span>
+      <p class="fd-demande-texte">${esc(BDSuppression.texteDemande(d))}</p>
+      <p class="muted small fd-demande-contexte">${esc(BDSuppression.contexteDemande(d))}</p>
+    </div>
+    <button type="button" class="ghost small" data-af-deplier="${d.id}" aria-expanded="${ouvert}"
+      ${ouvert ? `aria-controls="af-detail-${d.id}"` : ""}>${ouvert ? "Replier" : "Répondre"}</button>
+    ${detail}
+  </li>`;
+}
+
+/* Sous une demande de suppression d'un document : ce que les AUTRES y ont fait (Hugo,
+   2026-10-15) — qui, combien de gestes de chaque sorte, le dernier —, lu par le serveur à
+   la source même de la règle de suppression, au moment de la lecture. Une demande dont le
+   serveur n'a rien rendu (illisible) ne dit rien plutôt que de dire « personne ». */
+function fdTravailDesAutres(doc) {
+  const t = BDSuppression.travailDesAutres(doc);
+  if (!t) return "";
+  return `<div class="fd-autres">
+    <p class="muted small">${esc(t.origine)}</p>
+    ${t.vide ? `<p class="small">${esc(t.texteVide)}</p>`
+      : `<p class="small fd-autres-titre">${esc(t.titre)}</p>
+         <ul class="fd-autres-liste small">${t.lignes.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>`}
+  </div>`;
+}
+
+function afRendreAcces() {
+  const signaux = afSignaux();
+  $("#af-acces").hidden = !signaux.length;
+  const noms = cgNomsSignaux();
+  $("#af-acces-liste").innerHTML = signaux.map((s, i) => {
+    const c = BDComptes.cibleSignal(s);
+    return `<li class="af-ligne"><div class="af-quoi"><p>${esc(BDComptes.texteSignal(s, noms))}</p></div>
+      ${c ? `<button type="button" class="ghost small" data-af-signal="${i}">Régler →</button>` : ""}</li>`;
+  }).join("");
+  // Les comptes jamais venus, à titre d'information : repliés, hors du compte de la vue.
+  const infos = afInformations();
+  $("#af-info").hidden = !infos.length;
+  $("#af-info-titre").textContent = infos.length
+    ? BDComptes.texteGroupeSignaux(infos[0].signal, infos.length) + " — à titre d'information"
+    : "";
+  $("#af-info-liste").innerHTML = infos.map((s, i) =>
+    `<li>${BDComptes.cibleSignal(s) ? `<button type="button" class="lf-lien" data-af-info="${i}">${esc(
+      BDComptes.texteSignal(s, noms))}</button>` : esc(BDComptes.texteSignal(s, noms))}</li>`).join("");
+}
+
+function afRendreInstance() {
+  const lignes = afInstance();
+  $("#af-instance").hidden = !lignes.length;
+  $("#af-instance-liste").innerHTML = lignes.map((l) => `<li class="af-ligne"><div class="af-quoi">
+      <p>${esc(l.texte)}</p></div>
+      <button type="button" class="ghost small" data-af-instance="1">Voir →</button></li>`).join("");
+}
+
+/* Mène à la demande dans « À faire », dépliée, sous les yeux et sous le clavier — depuis
+   « À regarder » ou la fiche d'un document. Une demande qu'on ne trouve plus a reçu sa
+   réponse entre-temps : on relit, puis on le dit. */
+async function afAllerDemande(id) {
+  vueAller("afaire");
+  if (!(FD.demandes || []).some((d) => d.id === id)) await fdCharger();
+  if (!(FD.demandes || []).some((d) => d.id === id)) {
+    afMsg($("#af-msg"), "Cette demande a déjà reçu sa réponse.");
+    $("#afaire-titre").focus();
+    return;
+  }
+  AF.ouverts.add(id);
+  afRendreDemandes();
+  const el = $(`#fd-demande-${id}`);
   el.scrollIntoView({ block: "center" });
   el.focus();
 }
 
-function fdDemarrer() {
-  $("#fd-importer").onclick = fdImporter;
-  $("#fonds-bloc").addEventListener("click", (ev) => {
+function afDemarrer() {
+  $("#afaire-bloc").addEventListener("click", (ev) => {
     const b = ev.target.closest("button");
     if (!b) return;
-    if (b.dataset.fdAccepter) fdRepondre(Number(b.dataset.fdAccepter), BDSuppression.ACCEPTER);
+    if (b.dataset.afDeplier) {
+      const id = Number(b.dataset.afDeplier);
+      if (AF.ouverts.has(id)) AF.ouverts.delete(id); else AF.ouverts.add(id);
+      afRendreDemandes();
+    } else if (b.dataset.fdAccepter) fdRepondre(Number(b.dataset.fdAccepter), BDSuppression.ACCEPTER);
     else if (b.dataset.fdRefuser) fdRepondre(Number(b.dataset.fdRefuser), BDSuppression.REFUSER);
-    else if (b.dataset.fdRendre) fdRendreCopie(Number(b.dataset.fdRendre), Number(b.dataset.fdDoc));
-    else if (b.dataset.fdDetruire) fdDetruire(Number(b.dataset.fdDetruire));
+    else if (b.dataset.afSignal !== undefined || b.dataset.afInfo !== undefined) {
+      const c = BDComptes.cibleSignal(b.dataset.afSignal !== undefined
+        ? afSignaux()[Number(b.dataset.afSignal)] : afInformations()[Number(b.dataset.afInfo)]);
+      if (!c) return;
+      vueAller("comptes");
+      cgAller(c.type, c.id, false);
+    } else if (b.dataset.afInstance) {
+      vueAller("instance");
+      $("#referent-titre").focus();
+    }
   });
-  fdCharger();
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Les VUES (COL-3) — une page, cinq vues adressables
+
+   Décision de Hugo du 2026-10-16, sur maquette : UNE page `/administration` dont la vue
+   change selon son adresse (`?vue=…`) — À faire · Fonds · Projets · Comptes et groupes ·
+   Instance —, et non cinq pages. Six blocs empilés ne tenaient plus : « Comptes et groupes »,
+   le plus servi, descendait sous un fonds qui grossit.
+
+   CHAQUE VUE POSE SA QUESTION À TRAVERS SES BLOCS. Un lien de vue ne se lève que si l'un de
+   ses blocs a répondu (`hidden` levé par son propre chargement) : la garde reste celle des
+   routes, jamais celle de ce menu. Seule « Instance » est là pour tous — les moteurs sont
+   ouverts à tous. Une vue masque ses blocs par une CLASSE (`hors-vue`), jamais par `hidden`,
+   que chaque bloc garde pour dire s'il a le droit de paraître.
+
+   L'OUVERTURE : l'adresse si elle nomme une vue — ou un objet de « Comptes et groupes »
+   (`?compte=…`, `?axe=…`), ou un document du fonds (`?document=…`) ; sinon « À faire » dès
+   que quelque chose attend ; sinon la DERNIÈRE vue consultée, retenue par le navigateur
+   (stockage local, lu sous try/catch) ; sinon « Comptes et groupes », la plus servie, ou ce
+   qui reste. L'Administration TRAVERSE les projets : elle ne lit pas le projet courant.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const VUES = ["afaire", "fonds", "projets", "comptes", "instance"];
+const VUE_CLE = "bd-admin-vue";
+const VUE = { courante: null, initiale: null, decidee: false };
+const VUE_CLES_CG = ["axe", "tri", "compte", "groupe", "collection"];
+
+function vueDeLAdresse() {
+  const p = new URLSearchParams(location.search);
+  if (VUES.includes(p.get("vue"))) return p.get("vue");
+  if (VUE_CLES_CG.some((k) => p.has(k))) return "comptes";
+  if (p.has("document")) return "fonds";
+  return null;
+}
+
+function vueDisponibles() {
+  return {
+    afaire: !$("#afaire-bloc").hidden,
+    fonds: !$("#fonds-bloc").hidden,
+    projets: !$("#projets-bloc").hidden || !$("#projets-ferme").hidden,
+    comptes: !$("#cg-bloc").hidden,
+    instance: true,
+  };
+}
+
+function vueRetenue() {
+  try { return localStorage.getItem(VUE_CLE); } catch (e) { return null; }
+}
+
+function vueRetenir(v) {
+  if (!v || v === "afaire") return;
+  try { localStorage.setItem(VUE_CLE, v); } catch (e) { /* stockage indisponible */ }
+}
+
+function vueOuverture() {
+  const dispo = vueDisponibles();
+  if (dispo.afaire && afNombre() > 0) return "afaire";
+  const retenue = vueRetenue();
+  if (VUES.includes(retenue) && dispo[retenue]) return retenue;
+  return ["comptes", "projets", "afaire", "instance"].find((v) => dispo[v]);
+}
+
+/* Les liens de vue suivent ce que les blocs ont rendu ; une vue courante qui cesse d'être
+   disponible cède la place à l'ouverture. */
+function vueMajLiens() {
+  const dispo = vueDisponibles();
+  $("#vue-lien-afaire").hidden = !dispo.afaire;
+  $("#vue-lien-fonds").hidden = !dispo.fonds;
+  $("#vue-lien-projets").hidden = !dispo.projets;
+  $("#vue-lien-comptes").hidden = !dispo.comptes;
+  if (VUE.decidee && VUE.courante && !dispo[VUE.courante]) vueAfficher(vueOuverture());
+}
+
+function vueAfficher(v) {
+  VUE.courante = v;
+  document.querySelectorAll("#admin-body [data-dans-vue]").forEach((s) =>
+    s.classList.toggle("hors-vue", s.dataset.dansVue !== v));
+  document.querySelectorAll("#admin-vues [data-vue]").forEach((a) => {
+    if (a.dataset.vue === v) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  });
+  $("#admin-body").scrollTop = 0;
+  vueRetenir(v);
+}
+
+/* Changer de vue par le menu, ou depuis un autre bloc : l'adresse dit la vue et ce qu'elle
+   montre — la fiche ouverte de « Comptes et groupes » ou du fonds —, et rien d'autre. */
+function vueAller(v) {
+  if (v === VUE.courante) return;
+  const p = new URLSearchParams();
+  p.set("vue", v);
+  if (v === "comptes") {
+    new URLSearchParams(BDComptes.ecrireAdresse({ axe: CG.axe, tri: CG.tri, sel: CG.sel }, ""))
+      .forEach((val, k) => p.set(k, val));
+  }
+  if (v === "fonds" && FD.sel !== null) p.set("document", String(FD.sel));
+  history.pushState(null, "", `${location.pathname}?${p}${location.hash}`);
+  vueAfficher(v);
+}
+
+function vueDemarrer(chargements) {
+  const nommee = vueDeLAdresse();
+  VUE.initiale = nommee;
+  // Avant la décision, aucun bloc ne paraît : la page ne s'ouvre pas sur une vue pour sauter
+  // sur une autre une fois les blocs chargés. Une vue NOMMÉE s'affiche tout de suite.
+  vueAfficher(nommee || "");
+  $("#admin-vues").addEventListener("click", (ev) => {
+    const a = ev.target.closest("a[data-vue]");
+    if (!a || ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button) return;
+    ev.preventDefault();
+    vueAller(a.dataset.vue);
+  });
+  window.addEventListener("popstate", () => {
+    const v = vueDeLAdresse() || VUE.initiale;
+    fdLireAdresse();
+    if (FD.lu) { fdRendreControles(); fdRendreListe(); fdRendreFiche(); }
+    if (v && v !== VUE.courante && vueDisponibles()[v]) vueAfficher(v);
+  });
+  Promise.allSettled(chargements).then(() => {
+    VUE.decidee = true;
+    const dispo = vueDisponibles();
+    if (!nommee || !dispo[nommee]) {
+      VUE.initiale = vueOuverture();
+      vueAfficher(VUE.initiale);
+    }
+    vueMajLiens();
+  });
 }
 
 
@@ -1817,17 +2397,24 @@ function setup() {
   // décrivait l'intention et se lisait comme une description du fait. Qui cherchait dans
   // `setup()` si les comptes se chargeaient d'emblée y trouvait « oui », à trois lignes de
   // la ligne qui disait le contraire.
-  loadVersion();
-  // AUTH-12 étape 4 : cinquième requête, qui peut elle aussi être légitimement refusée et
-  // ne masque que son propre bloc.
-  loadReferent();
+  //
+  // COL-3 — les VUES n'ajoutent aucune requête : « À faire » lit ce que les autres blocs ont
+  // lu, et la vue d'ouverture se décide quand tous ont répondu (`vueDemarrer`).
+  afDemarrer();
   // L'adresse d'abord : le premier rendu ouvre directement l'axe et la fiche qu'elle nomme.
   cgLireAdresse();
   cgInstaller();
-  cgCharger();
-  pjDemarrer();                    // COL-3 : le bloc des projets, à lui (cf. `PJ`)
-  fdDemarrer();                    // COL-3, tranche 2 : le fonds, réservé par sa route
-  santeCharger();
+  const chargements = [
+    loadVersion(),
+    // AUTH-12 étape 4 : cinquième requête, qui peut elle aussi être légitimement refusée et
+    // ne masque que son propre bloc.
+    loadReferent(),
+    cgCharger(),
+    pjDemarrer(),                  // COL-3 : le bloc des projets, à lui (cf. `PJ`)
+    fdDemarrer(),                  // COL-3, tranche 2 : le fonds, réservé par sa route
+    santeCharger(),
+  ];
+  vueDemarrer(chargements);
   // SANTE-1 : éprouver reste un geste SÉPARÉ et volontaire — le contrôle profond importe
   // les moteurs pour de bon, quelques secondes et quelques centaines de mégaoctets.
   $("#sante-eprouver").onclick = santeEprouver;

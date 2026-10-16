@@ -71,7 +71,7 @@ def test_le_panneau_montre_la_panne_sans_confondre_avec_l_absence(page, moteurs)
     pendant que les moteurs simplement ABSENTS se taisent. Confondre les deux derniers
     n'échoue nulle part — ça apprend seulement à ne plus lire le panneau.
     """
-    page.goto(moteurs["base"] + "/administration", wait_until="networkidle")
+    page.goto(moteurs["base"] + "/administration?vue=instance", wait_until="networkidle")
     corps = page.locator("#sante-body")
     corps.wait_for(state="visible")
 
@@ -166,7 +166,7 @@ def test_la_page_d_administration_ne_sonde_QUE_le_rapide(page, moteurs):
     jamais partir avec lui : c'est la seule chose qui empêche « puisque c'est déjà
     branché » de devenir quinze secondes d'import à chaque ouverture de la page.
     """
-    page.goto(moteurs["base"] + "/administration", wait_until="networkidle")
+    page.goto(moteurs["base"] + "/administration?vue=instance", wait_until="networkidle")
     page.locator("#sante-body").wait_for(state="visible")
     assert moteurs["tous"], "la page n'a même pas fait le contrôle rapide"
     assert moteurs["profonds"] == [], (
@@ -217,7 +217,7 @@ def test_le_focus_ne_quitte_pas_le_bouton_pendant_une_epreuve(page, moteurs_lent
     l'épreuve. Aucune exception, et l'audit axe n'y voit rien : il photographie un écran,
     il n'appuie sur aucune touche.
     """
-    page.goto(moteurs_lents + "/administration", wait_until="networkidle")
+    page.goto(moteurs_lents + "/administration?vue=instance", wait_until="networkidle")
     page.wait_for_selector("#sante-body .sante-ligne", timeout=3000)
     page.click("#sante-eprouver")
     occupe = page.locator('#sante-eprouver[aria-disabled="true"]')

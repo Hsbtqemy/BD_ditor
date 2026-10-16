@@ -990,7 +990,7 @@ def test_sans_liste_de_projets_les_deux_listes_d_un_album_restent_celles_d_avant
 
 def _ouvrir_les_projets(page, base, identite):
     page.set_extra_http_headers(identite)
-    page.goto(base + "/administration", wait_until="networkidle")
+    page.goto(base + "/administration?vue=projets", wait_until="networkidle")
 
 
 def _fiche(page):
@@ -1626,7 +1626,7 @@ def test_le_bloc_dit_ce_qu_il_n_a_pas_pu_lire(page, seminaire):
     page.unroute("**/api/collections")
 
     page.route("**/api/projets", panne)
-    page.goto(d["base"] + "/administration", wait_until="networkidle")
+    page.goto(d["base"] + "/administration?vue=projets", wait_until="networkidle")
     expect(page.locator("#projets-ferme-texte")).to_be_visible()
     expect(page.locator("#projets-ferme-texte")).to_have_text(
         "La liste des projets n'a pas pu être lue : panne jouée")
@@ -1682,7 +1682,7 @@ def test_le_module_tient_son_contrat_de_montage(page, live_server):
     et une cible hors du document lève au lieu de se taire."""
     repli = _repli(live_server)
     projet = {"id": repli, "nom": "Le projet", "gerable": True}
-    page.goto(live_server + "/administration", wait_until="networkidle")
+    page.goto(live_server + "/administration?vue=projets", wait_until="networkidle")
     page.locator("#pj-fiche .mp-choix").wait_for(timeout=5000)
     r = page.evaluate(_MONTER, projet)
     # La fiche de l'hôte tient le suffixe nu : le premier montage vivant du projet.
@@ -1710,7 +1710,7 @@ def test_sans_le_droit_de_regler_le_module_le_dit_et_ne_lit_rien(page, live_serv
     DIT — et ne demande pas la liste des membres, que le serveur lui refuserait. Aucun hôte
     ne le monte ainsi aujourd'hui ; le prochain le pourra, et c'est le module qui répond."""
     repli = _repli(live_server)
-    page.goto(live_server + "/administration", wait_until="networkidle")
+    page.goto(live_server + "/administration?vue=projets", wait_until="networkidle")
     page.locator("#pj-fiche .mp-titre").wait_for(timeout=5000)
     demandes = []
     page.on("request", lambda q: demandes.append(q.url))
@@ -1936,7 +1936,7 @@ def test_le_bloc_des_projets_tient_a_320_px(page, seminaire):
     for police in _polices(page):
         _preference_police(page, police)
         page.set_viewport_size({"width": 320, "height": 900})
-        page.goto(d["base"] + "/administration", wait_until="networkidle")
+        page.goto(d["base"] + "/administration?vue=projets", wait_until="networkidle")
         page.locator(f'#pj-objets .pj-objet[data-pj="{d["projet"]}"]').click()
         partie = _fiche(page).locator("section.mp")
         partie.locator(".mp-ligne").nth(2).wait_for(timeout=5000)
