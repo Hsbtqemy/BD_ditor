@@ -374,6 +374,22 @@ def _journaliser_naissance(conn, document_id: int, album_id: int, titre: str,
         journal.journaliser_emploi(conn, "lien", album_id, collection_id)
 
 
+def _journaliser_sur_le_document(conn, album_id: int, charge: dict, *,
+                                 avant: Optional[dict] = None) -> None:
+    """Un geste sur l'album qui n'a pas de cible à lui au journal — sa notice, sa
+    paternité, la relecture forcée d'une planche —, écrit sous le DOCUMENT dont l'album est
+    la copie (`modification`, cible `document`, l'album dans la charge). COL-3, tranche 2 :
+    « supprimer définitivement » demande de savoir si quelqu'un d'autre a travaillé sur
+    l'album, et ces trois gestes n'étaient écrits nulle part.
+
+    Sous `document` et non sous une cible neuve, pour ne rien changer à ce qui SORT :
+    `document` est retenue de toute sortie, ne donne pas de rang dans les pseudonymes, ne
+    compte pas dans ce qu'un compte laisse en partant, et n'est pas annulable — comme ces
+    gestes, qui ne l'étaient pas la veille."""
+    journal.journaliser(conn, "modification", "document", document_d_album(conn, album_id),
+                        avant=avant, apres={"album_id": album_id, **charge})
+
+
 def _journaliser_scan(conn, album_id: int, planche: dict, *, retire: bool = False) -> None:
     """Un scan AJOUTÉ au document (`apres` seul) ou RETIRÉ (`avant` seul). Un album sans
     document — posé par `INSERT`, donc hors de tout chemin d'écriture — garde sa trace
@@ -524,10 +540,15 @@ def update_album(album_id: int, patch: AlbumUpdate,
         fields["titre"] = (fields["titre"] or "").strip()
         if not fields["titre"]:
             raise HTTPException(422, "Le titre de l'album est requis.")
+    avant = _row(conn.execute("SELECT * FROM albums WHERE id = ?", (album_id,)))
+    # Ce qui CHANGE, et rien d'autre : renvoyer la notice telle quelle n'est pas un travail.
+    fields = {k: v for k, v in fields.items() if avant[k] != v}
     if fields:
         cols = ", ".join(f"{k} = ?" for k in fields)
         conn.execute(f"UPDATE albums SET {cols} WHERE id = ?",
                      (*fields.values(), album_id))
+        _journaliser_sur_le_document(conn, album_id, {"notice": fields},
+                                     avant={"notice": {k: avant[k] for k in fields}})
         conn.commit()
     return _row(conn.execute("SELECT * FROM albums WHERE id = ?", (album_id,)))
 
@@ -1348,12 +1369,18 @@ def update_relecture(planche_id: int, payload: RelectureIn,
     """Force (ou libère) le statut de RELECTURE grammaticale d'une planche (ANN-4).
     `relecture=null` → revient au DÉRIVÉ (provenances de tokens) ; sinon override contrôlé.
     Cf. database.relecture_planches / docs/relecture.md."""
-    _get_planche(conn, portee, planche_id, ecriture=True)
+    p = _get_planche(conn, portee, planche_id, ecriture=True)
     if payload.relecture is not None and payload.relecture not in RELECTURE:
         raise HTTPException(422, f"Statut de relecture invalide : {payload.relecture} "
                                  f"({' | '.join(RELECTURE)} | null).")
-    conn.execute("UPDATE planches SET relecture = ? WHERE id = ?",
-                 (payload.relecture, planche_id))
+    if p["relecture"] != payload.relecture:
+        conn.execute("UPDATE planches SET relecture = ? WHERE id = ?",
+                     (payload.relecture, planche_id))
+        # COL-3 — sous le document et non sous `planches`, qui SORT au dépôt : écrire ce
+        # geste là-bas publierait un acte neuf et décalerait les pseudonymes.
+        _journaliser_sur_le_document(
+            conn, p["album_id"], {"planche": planche_id, "relecture": payload.relecture},
+            avant={"planche": planche_id, "relecture": p["relecture"]})
     conn.commit()
     return {"id": planche_id, "relecture": payload.relecture,
             "relecture_statut": relecture_planches(conn, [planche_id])[planche_id]}
@@ -1711,6 +1738,8 @@ def add_contribution(album_id: int, contrib: ContributionIn,
     cur = conn.execute(
         "INSERT INTO contribution (album_id, nom, role_id, rang) VALUES (?, ?, ?, ?)",
         (album_id, nom, role_id, rang))
+    _journaliser_sur_le_document(conn, album_id, {"contribution": {
+        "id": cur.lastrowid, "nom": nom, "role_id": role_id}})
     conn.commit()
     return _row(conn.execute(_CONTRIB_SQL, (cur.lastrowid,)))
 
@@ -1721,10 +1750,13 @@ def delete_contribution(contribution_id: int, conn: sqlite3.Connection = Depends
     """AUTH-2 — une contribution est la paternité d'un ALBUM : elle s'autorise par lui.
     La route ne recevant que l'id de la contribution, on remonte à son album."""
     ou, params = portee.clause_album("c.album_id", ecriture=True)
-    if conn.execute(f"SELECT 1 FROM contribution c WHERE c.id = ? AND {ou}",
-                    (contribution_id, *params)).fetchone() is None:
+    c = conn.execute(f"SELECT c.album_id, c.nom FROM contribution c WHERE c.id = ? AND {ou}",
+                     (contribution_id, *params)).fetchone()
+    if c is None:
         raise HTTPException(404, f"Contribution {contribution_id} introuvable")
     conn.execute("DELETE FROM contribution WHERE id = ?", (contribution_id,))
+    _journaliser_sur_le_document(conn, c["album_id"], {}, avant={
+        "contribution": {"id": contribution_id, "nom": c["nom"]}})
     conn.commit()
     return Response(status_code=204)
 

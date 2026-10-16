@@ -324,6 +324,11 @@ CIBLES_RETENUES = {
         "charge nomme une collection, donc une étude, y compris celles que l'artefact "
         "ne couvre pas ; et dire quelle étude a pris ou rendu quel document décrit "
         "l'organisation de l'instance, jamais la provenance du corpus.",
+    "region_attribut":
+        "COL-3 — un attribut de case posé ou retiré, écrit pour que la règle de "
+        "suppression sache qui a travaillé sur un album. Publier qui a qualifié quelle "
+        "scène serait une décision à part, que personne n'a prise : l'attribut lui-même "
+        "part par les records, son auteur non.",
     "demande":
         "COL-3 — une demande déposée (supprimer un document, un projet) et la réponse qui "
         "lui est faite. Sa charge nomme un document ou un projet, et la demande elle-même "
@@ -437,7 +442,10 @@ def evenements_publiables(conn, ordre: str = "ASC"):
 #: `demande` (COL-3, tranche 2) les rejoint pour la même raison, et dès sa naissance aussi :
 #: qui n'aurait fait que déposer une demande prendrait sinon un rang, et décalerait celui
 #: de tous ceux qui annotent après lui.
-CIBLES_SANS_RANG = frozenset({"document", "collection_album", "demande"})
+#:
+#: `region_attribut` aussi (relecture croisée de la tranche 2) : écrit depuis peu, il
+#: donnerait sinon un rang à qui n'a fait que qualifier des cases, et décalerait les autres.
+CIBLES_SANS_RANG = frozenset({"document", "collection_album", "demande", "region_attribut"})
 
 
 def pseudonymes(conn) -> dict:

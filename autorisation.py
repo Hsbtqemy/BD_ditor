@@ -547,10 +547,13 @@ TOTALE = Portee(tout=True, admin=True)
 # « Personne d'autre n'y a travaillé » (COL-3, tranche 2)
 # --------------------------------------------------------------------------- #
 # Les cibles du journal qui portent un travail sur une RÉGION et la désignent par son id —
-# la région elle-même, sa note et ses tags, son locuteur, la présence d'un personnage. Les
-# deux premières sont écrites par `main.py`, les deux suivantes par
+# la région elle-même, sa note et ses tags, son locuteur, la présence d'un personnage, un
+# attribut de case. Les deux premières sont écrites par `main.py`, les trois suivantes par
 # `routes/personnages.py`, la validation grammaticale (`regions`) par `routes/analyse.py`.
-_CIBLES_DE_REGION = ("regions", "annotations", "bulle_locuteur", "personnage_presence")
+# `region_attribut` n'est écrit que depuis la relecture croisée de la tranche 2 : un
+# attribut posé par un autre ne comptait pas, et l'importatrice détruisait sans demander.
+_CIBLES_DE_REGION = ("regions", "annotations", "bulle_locuteur", "personnage_presence",
+                     "region_attribut")
 
 
 def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
@@ -569,20 +572,31 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
       celle qu'un collègue a lancée ne compte pas, et c'est voulu par la même décision ;
     - ranger l'album dans une collection n'est pas y travailler (`collection_album` n'est
       pas lu) : c'est un emploi, et `clause_destruction` en répond déjà ;
-    - une demande déposée n'est pas un travail non plus (`demande` n'est pas lu).
+    - une demande déposée n'est pas un travail non plus (`demande` n'est pas lu) ;
+    - un attribut de case dont on ne sait pas qui l'a posé — aucun `lien` de l'appelant ne
+      l'a écrit au journal : posé avant que le geste s'y écrive, ou recopié par la fusion
+      de deux valeurs — compte comme le travail d'un autre, la prudence de la décision B3
+      (« inconnu veut dire demander ») appliquée à l'auteur au lieu de l'importateur.
 
-    Quatre sources : le journal des régions de l'album, les corrections grammaticales
-    vivantes (leur `auteur` — la correction est une couche à part, que le journal ne relie
-    à la région que par l'id de la correction), les validations de ses planches, et les
-    actes sur son DOCUMENT — un scan ajouté ou retiré par un autre. Chaque sous-requête part
-    de l'album et descend par les index (`idx_evenement_cible`) : la liste des albums la
-    pose album par album."""
+    Cinq sources : le journal des régions de l'album, les attributs de ses cases que
+    l'appelant n'a pas posés, les corrections grammaticales vivantes (leur `auteur` — la
+    correction est une couche à part, que le journal ne relie à la région que par l'id de
+    la correction), les validations de ses planches, et les actes sur son DOCUMENT — un
+    scan ajouté ou retiré, la notice ou la paternité modifiée, la relecture d'une planche
+    forcée, par un autre. Chaque sous-requête part de l'album et descend par les index
+    (`idx_evenement_cible`) : la liste des albums la pose album par album."""
     cibles = ", ".join(f"'{c}'" for c in _CIBLES_DE_REGION)
     sql = (
         "(EXISTS (SELECT 1 FROM planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
         f"JOIN evenement _te ON _te.cible_table IN ({cibles}) AND _te.cible_id = _tr.id "
         f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain' "
         "AND _te.agent IS NOT ?) "
+        "OR EXISTS (SELECT 1 FROM planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
+        "JOIN region_attribut _tra ON _tra.region_id = _tr.id "
+        f"WHERE _tp.album_id = {alias} AND NOT EXISTS (SELECT 1 FROM evenement _tre "
+        "WHERE _tre.cible_table = 'region_attribut' AND _tre.cible_id = _tra.region_id "
+        "AND _tre.type = 'lien' AND _tre.agent_type = 'humain' AND _tre.agent = ? "
+        "AND json_extract(_tre.apres, '$.valeur_id') = _tra.valeur_id)) "
         "OR EXISTS (SELECT 1 FROM planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
         "JOIN token_correction _tt ON _tt.region_id = _tr.id "
         f"WHERE _tp.album_id = {alias} AND _tt.auteur IS NOT ?) "
@@ -593,7 +607,7 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
         "OR EXISTS (SELECT 1 FROM albums _ta JOIN evenement _te "
         "ON _te.cible_table = 'document' AND _te.cible_id = _ta.document_id "
         f"WHERE _ta.id = {alias} AND _te.agent_type = 'humain' AND _te.agent IS NOT ?))")
-    return sql, [login] * 4
+    return sql, [login] * 5
 
 
 # --------------------------------------------------------------------------- #

@@ -153,8 +153,48 @@ def _presence(client, decor):
     assert r.status_code == 200, r.text
 
 
+def _valeur_de_case(client):
+    r = client.post("/api/attributs/dimensions", headers=ADMIN,
+                    json={"cible": "case", "nom": "émotion"})
+    assert r.status_code == 201, r.text
+    v = client.post(f"/api/attributs/dimensions/{r.json()['id']}/valeurs", headers=ADMIN,
+                    json={"valeur": "colère"})
+    assert v.status_code == 201, v.text
+    return v.json()["id"]
+
+
+def _attribut(client, decor, qui=COLLEGUE):
+    r = client.put(f"/api/regions/{decor['region']}/attributs", headers=qui,
+                   json={"valeur_id": _valeur_de_case(client)})
+    assert r.status_code == 200, r.text
+
+
+def _notice(client, decor):
+    r = client.put(f"/api/albums/{decor['erreur']}", headers=COLLEGUE,
+                   json={"isbn": "978-2-203-00101-0"})
+    assert r.status_code == 200, r.text
+
+
+def _contribution(client, decor):
+    r = client.post(f"/api/albums/{decor['erreur']}/contributions", headers=COLLEGUE,
+                    json={"nom": "Hergé", "role": "scénariste"})
+    assert r.status_code == 201, r.text
+
+
+def _relecture(client, decor):
+    r = client.patch(f"/api/planches/{decor['planche']}/relecture", headers=COLLEGUE,
+                     json={"relecture": "faite"})
+    assert r.status_code == 200, r.text
+
+
 TRAVAUX = {
     "une région posée": lambda c, d: _region(c, d["planche"], COLLEGUE),
+    # Relecture croisée de la tranche 2 (sondes S1 à S3) : ces quatre gestes n'étaient
+    # écrits nulle part, et l'importatrice détruisait sans demander.
+    "un attribut de case": _attribut,
+    "la notice": _notice,
+    "une contribution": _contribution,
+    "une relecture forcée": _relecture,
     "un locuteur": _locuteur,
     "une présence": _presence,
     "une annotation": lambda c, d: c.put(
@@ -182,6 +222,99 @@ def test_le_travail_d_un_autre_fait_demander(client, decor, travail):
     assert aid in _albums(client, LECTRICE)
     assert decor["planche"] in [p["id"] for p in client.get(
         f"/api/albums/{aid}/planches", headers=ADMIN).json()]
+
+
+def test_ses_propres_gestes_ne_font_pas_demander(client, decor):
+    """L'envers des travaux d'autrui : les mêmes gestes, faits par l'importatrice, ne lui
+    retirent rien — sans quoi « personne d'autre » se réduirait à « personne »."""
+    _attribut(client, decor, IMPORTEUSE)
+    for chemin, charge in ((f"/api/albums/{decor['erreur']}", {"isbn": "978-2"}),):
+        assert client.put(chemin, headers=IMPORTEUSE, json=charge).status_code == 200
+    assert client.post(f"/api/albums/{decor['erreur']}/contributions", headers=IMPORTEUSE,
+                       json={"nom": "Hergé"}).status_code == 201
+    assert client.patch(f"/api/planches/{decor['planche']}/relecture", headers=IMPORTEUSE,
+                        json={"relecture": "faite"}).status_code == 200
+    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is True
+
+
+def test_un_attribut_dont_on_ne_sait_pas_qui_l_a_pose_fait_demander(client, db_path, decor):
+    """La prudence de B3, appliquée à l'auteur : un attribut de case que rien n'attribue à
+    l'importatrice — posé avant que le geste s'écrive, recopié par une fusion de valeurs —
+    compte comme le travail d'un autre."""
+    vid = _valeur_de_case(client)
+    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
+         (decor["region"], vid))
+    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
+
+
+def test_un_attribut_pose_puis_retire_par_un_autre_compte_encore(client, db_path, decor):
+    """Comme une annotation posée puis retirée : le journal garde l'acte d'un autre sur une
+    région qui vit encore, et c'est lui qui compte — il ne reste plus d'attribut à lire."""
+    _attribut(client, decor)
+    vid = _sql(db_path, "SELECT valeur_id FROM region_attribut")[0]["valeur_id"]
+    assert client.delete(f"/api/regions/{decor['region']}/attributs/{vid}",
+                         headers=COLLEGUE).status_code == 204
+    assert _sql(db_path, "SELECT 1 FROM region_attribut") == []
+    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
+
+
+def test_un_attribut_de_case_s_ecrit_sans_rang_ni_annulation(client, db_path, decor):
+    """Écrire un geste neuf au journal change ce qu'on compte. Ce qui change est voulu : le
+    collègue qui n'a fait que qualifier une case « laisse des actes » en partant — c'est du
+    travail. Ce qui ne change pas est tenu ici : aucun pseudonyme de sortie ne bouge (la
+    cible est sans rang), et Ctrl+Z ne défait pas l'attribut — il ne le défaisait pas la
+    veille."""
+    import _commun
+
+    def conn():
+        c = sqlite3.connect(db_path)
+        c.row_factory = sqlite3.Row
+        return c
+
+    rangs = _commun.pseudonymes(conn())
+    actes = comptes.traces(conn())[0]
+    _attribut(client, decor)
+    assert _sql(db_path, "SELECT type, agent, cible_id FROM evenement "
+                         "WHERE cible_table = 'region_attribut'") == [
+        {"type": "lien", "agent": "collegue", "cible_id": decor["region"]}]
+    assert _commun.pseudonymes(conn()) == rangs and "collegue" not in rangs
+    assert comptes.traces(conn())[0] == {**actes, "collegue": actes.get("collegue", 0) + 1}
+    assert client.get("/api/undo/prochain", headers=COLLEGUE).json() is None
+    # Retirer s'écrit aussi ; re-retirer ce qui n'est plus là, non.
+    vid = _sql(db_path, "SELECT valeur_id FROM region_attribut")[0]["valeur_id"]
+    for _ in range(2):
+        client.delete(f"/api/regions/{decor['region']}/attributs/{vid}", headers=COLLEGUE)
+    assert [e["type"] for e in _sql(db_path, "SELECT type FROM evenement "
+                                              "WHERE cible_table = 'region_attribut'")]         == ["lien", "delien"]
+
+
+def test_la_notice_la_paternite_et_la_relecture_s_ecrivent_sous_le_document(
+        client, db_path, decor):
+    """Sous le DOCUMENT, cible retenue, sans rang, hors du travail laissé et hors de
+    l'annulation : ces gestes s'écrivent sans rien changer à ce qui sort, ni aux comptes.
+    Une notice renvoyée telle quelle n'écrit rien."""
+    import _commun
+
+    def conn():
+        c = sqlite3.connect(db_path)
+        c.row_factory = sqlite3.Row
+        return c
+
+    rangs, actes = _commun.pseudonymes(conn()), comptes.traces(conn())[0]
+    avant = len(_sql(db_path, "SELECT 1 FROM evenement WHERE cible_table = 'document'"))
+    assert client.put(f"/api/albums/{decor['erreur']}", headers=COLLEGUE,
+                      json={"titre": "Erreur"}).status_code == 200      # inchangé
+    _notice(client, decor)
+    _contribution(client, decor)
+    _relecture(client, decor)
+    lignes = _sql(db_path, "SELECT agent, apres FROM evenement WHERE cible_table = 'document' "
+                           "ORDER BY id")[avant:]
+    assert [(l["agent"], sorted(json.loads(l["apres"]))) for l in lignes] == [
+        ("collegue", ["album_id", "notice"]), ("collegue", ["album_id", "contribution"]),
+        ("collegue", ["album_id", "planche", "relecture"])]
+    assert _commun.pseudonymes(conn()) == rangs
+    assert comptes.traces(conn())[0] == actes
+    assert client.get("/api/undo/prochain", headers=COLLEGUE).json() is None
 
 
 def test_une_correction_grammaticale_d_un_autre_compte(client, db_path, decor):
@@ -321,7 +454,7 @@ def test_la_clause_aux_extremites_et_ses_parametres_lies():
     sql, params = autorisation.Portee(ecriture=frozenset({3}),
                                       utilisateur="o'brien").clause_suppression_directe("z.id")
     assert "o'brien" not in sql and "3" not in sql.replace("_t", "")
-    assert sql.count("?") == len(params) and params.count("o'brien") == 6
+    assert sql.count("?") == len(params) and params.count("o'brien") == 7
     assert autorisation.TOTALE.peut_tenir_le_fonds() is True
     assert autorisation.Portee(admin=True, utilisateur="x").peut_tenir_le_fonds() is False
 

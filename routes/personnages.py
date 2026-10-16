@@ -780,11 +780,22 @@ def fusionner_valeur(val_id: int, payload: FusionIn, conn: sqlite3.Connection = 
 
 
 def _affecter(conn, portee, table, col, oid, valeur_id, cible_attendue):
-    """Affecte une valeur à une cible, après contrôle de cohérence de la dimension."""
+    """Affecte une valeur à une cible, après contrôle de cohérence de la dimension.
+
+    COL-3, tranche 2 — l'attribut d'une CASE s'écrit au journal (`lien`, cible
+    `region_attribut`, `cible_id` = la région, la valeur dans la charge) : c'est du travail
+    sur l'album, et « supprimer définitivement » demande de savoir si quelqu'un d'autre y a
+    travaillé (`autorisation._sql_travail_d_autrui`). `region_attribut` n'a pas d'auteur ;
+    le journal en tient lieu. Un attribut de PERSONNAGE ne s'écrit pas : il ne tient à
+    aucun album. Re-poser un attribut déjà là n'écrit rien."""
     v = _get_valeur(conn, portee, valeur_id)
     if _get_dimension(conn, portee, v["dimension_id"])["cible"] != cible_attendue:
         raise HTTPException(422, f"Cette valeur n'appartient pas à une dimension de {cible_attendue}.")
-    conn.execute(f"INSERT OR IGNORE INTO {table} ({col}, valeur_id) VALUES (?, ?)", (oid, valeur_id))
+    pose = conn.execute(f"INSERT OR IGNORE INTO {table} ({col}, valeur_id) VALUES (?, ?)",
+                        (oid, valeur_id)).rowcount
+    if pose and table == "region_attribut":
+        journal.journaliser(conn, "lien", "region_attribut", oid,
+                            apres={"valeur_id": valeur_id})
     conn.commit()
 
 
@@ -835,6 +846,8 @@ def remove_region_attribut(region_id: int, valeur_id: int,
                            conn: sqlite3.Connection = Depends(db),
                            portee: autorisation.Portee = Depends(portee_courante)):
     _get_region(conn, portee, region_id, ecriture=True)
-    conn.execute("DELETE FROM region_attribut WHERE region_id = ? AND valeur_id = ?",
-                 (region_id, valeur_id))
+    if conn.execute("DELETE FROM region_attribut WHERE region_id = ? AND valeur_id = ?",
+                    (region_id, valeur_id)).rowcount:
+        journal.journaliser(conn, "delien", "region_attribut", region_id,
+                            avant={"valeur_id": valeur_id})
     conn.commit()
