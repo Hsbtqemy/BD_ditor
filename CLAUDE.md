@@ -622,7 +622,16 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   choisir l'une d'elles répondait « introuvable »). Deux album par album, dans `GET /api/albums` (AUTH-10) :
   `destructible` et `ecrivable` — trois depuis le 2026-10-16, avec `partage` (COL-3) ; et
   `destructible` y a changé de sens ce jour-là : il répond `clause_suppression_directe`,
-  « supprimer définitivement sans rien demander », et non plus `clause_destruction`. Les
+  « supprimer définitivement sans rien demander », et non plus `clause_destruction`. Le
+  même jour, une DONNÉE de plus par album, qui n'est pas une question : `collections`, les
+  collections où il est rangé (`id`, `nom`), pour que la Bibliothèque en calque filtre le
+  corpus sans un appel par album (UX-18). Elle est bornée par `peut_lire` — la règle de
+  `GET /api/albums/{id}/collections`, écrite UNE fois dans
+  `socle._collections_lues_d_albums` et lue par les deux routes, en une requête quel que
+  soit le nombre d'albums. Une collection qu'on ne lit pas n'y laisse ni nom, ni
+  identifiant, ni place dans le nombre : la liste est PARTIELLE, comme celle d'un album, et
+  ce qu'on peut faire dans chacune se croise avec `GET /api/collections`
+  (`tests/test_appartenance_albums.py`, joué sous six identités et sur le JSON brut). Les
   deux réponses qui passent par la forme : « tenir le fonds » se lit au statut de
   `GET /api/fonds` (200 ou 403), comme la version servie ; « nommer le demandeur », à la
   PRÉSENCE de `demandeur` et `demandeur_nom` dans la demande d'un album — absentes, elles
