@@ -1193,32 +1193,49 @@ _AUTOINCREMENT = {
 
 def _jamais_nommes(conn: sqlite3.Connection) -> dict:
     """{table: le plus grand identifiant de cette table que le journal ait jamais nommé},
-    0 sans journal ou sans mention. Une lecture de tout `evenement`, une fois, à la
+    0 sans journal ou sans mention. Une lecture de tout le journal, une fois, à la
     migration : les charges sont du JSON, lu par `json_tree`, et une charge ILLISIBLE est
-    sautée plutôt que de faire échouer la migration."""
+    sautée plutôt que de faire échouer la migration.
+
+    Le journal A3, c'est `evenement` ET `activite` (relecture croisée de la tranche 2) :
+    une passe automatique qui n'a rien changé — un OCR sans texte à poser — n'écrit aucun
+    événement, et sa planche n'est nommée que par la PORTÉE de son activité. `portee` est
+    lue, et `params` par prudence, avec les mêmes clés ; une activité n'a pas de cible."""
     resultat = {t: 0 for t in _AUTOINCREMENT}
-    if not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' "
-                        "AND name = 'evenement'").fetchone():
-        return resultat
+    # Les colonnes PRÉSENTES, table par table : des tests de migration montent un journal
+    # minimal — `activite (id)` seule — avant d'appeler `_migrate`.
+    cols = {t: {r[1] for r in conn.execute(f"PRAGMA table_info({t})")}
+            for t in ("evenement", "activite")}
+    charges = [("evenement", "e.cible_table" if "cible_table" in cols["evenement"]
+                else "NULL", c) for c in ("avant", "apres") if c in cols["evenement"]]
+    charges += [("activite", "NULL", c) for c in ("portee", "params")
+                if c in cols["activite"]]
     for table, (cibles, _cles) in _AUTOINCREMENT.items():
-        if cibles:
+        if cibles and {"cible_table", "cible_id"} <= cols["evenement"]:
             m = conn.execute(
                 f"SELECT MAX(cible_id) FROM evenement WHERE cible_table IN "
                 f"({', '.join('?' * len(cibles))})", cibles).fetchone()[0]
             resultat[table] = max(resultat[table], m or 0)
-    colonnes = []
-    params = []
-    for table, (_cibles, cles) in _AUTOINCREMENT.items():
-        cas = f"j.key IN ({', '.join('?' * len(cles))})"
-        params.extend(cles)
-        if table == "regions":
-            cas = f"({cas} OR (j.key = 'id' AND e.cible_table = 'regions'))"
-        elif table == "planches":
-            cas = f"({cas} OR (j.key = 'id' AND j.path LIKE '%.planche'))"
-        colonnes.append(f"MAX(CASE WHEN {cas} THEN CAST(j.atom AS INTEGER) END)")
-    for charge in ("avant", "apres"):
+    return _max_des_charges(conn, charges, resultat)
+
+
+def _max_des_charges(conn: sqlite3.Connection, charges: list, resultat: dict) -> dict:
+    """Le plus grand identifiant que nomment des charges JSON, table par table, porté
+    dans `resultat`. `charges` : (table du journal, expression de sa cible — NULL pour une
+    activité —, colonne)."""
+    for source, cible, charge in charges:
+        colonnes = []
+        params = []
+        for table, (_cibles, cles) in _AUTOINCREMENT.items():
+            cas = f"j.key IN ({', '.join('?' * len(cles))})"
+            params.extend(cles)
+            if table == "regions":
+                cas = f"({cas} OR (j.key = 'id' AND {cible} = 'regions'))"
+            elif table == "planches":
+                cas = f"({cas} OR (j.key = 'id' AND j.path LIKE '%.planche'))"
+            colonnes.append(f"MAX(CASE WHEN {cas} THEN CAST(j.atom AS INTEGER) END)")
         ligne = conn.execute(
-            f"SELECT {', '.join(colonnes)} FROM evenement e, json_tree("
+            f"SELECT {', '.join(colonnes)} FROM {source} e, json_tree("
             f"CASE WHEN json_valid(e.{charge}) THEN e.{charge} ELSE '{{}}' END) j "
             f"WHERE e.{charge} IS NOT NULL AND j.type = 'integer'", params).fetchone()
         for table, m in zip(_AUTOINCREMENT, ligne):

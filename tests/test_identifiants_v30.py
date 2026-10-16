@@ -131,6 +131,35 @@ SOURCES = {
 }
 
 
+# Le journal A3, c'est `activite` ET `evenement` (relecture croisée) : une passe
+# automatique dont rien n'a changé — un OCR sans texte à poser — ne laisse aucun événement,
+# et sa planche n'est nommée que par la PORTÉE de son activité. Les paramètres sont lus
+# aussi, par prudence.
+SOURCES_ACTIVITE = {
+    "planche_id dans la portée d'une activité": ("planches", 52, "portee",
+                                                 {"planche_id": 52}),
+    "album_id dans la portée d'une activité": ("albums", 33, "portee", {"album_id": 33}),
+    "region_id dans les paramètres d'une activité": ("regions", 85, "params",
+                                                     {"region_id": 85}),
+}
+
+
+@pytest.mark.parametrize("source", sorted(SOURCES_ACTIVITE))
+def test_le_compteur_part_au_dessus_de_ce_que_nomme_une_activite(base_v29, source):
+    table, haut, colonne, charge = SOURCES_ACTIVITE[source]
+    _sql(base_v29, f"INSERT INTO activite (type, agent, agent_type, {colonne}) "
+                   "VALUES ('ocr', 'easyocr', 'moteur', ?)", (json.dumps(charge),))
+    database.init_db()
+    assert _seq(base_v29)[table] == haut, _seq(base_v29)
+
+
+def test_une_activite_illisible_ne_fait_pas_echouer_la_migration(base_v29):
+    _sql(base_v29, "INSERT INTO activite (type, agent_type, portee, params) "
+                   "VALUES ('ocr', 'moteur', '{pas du json', 'non plus')")
+    database.init_db()
+    assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] == 30
+
+
 @pytest.mark.parametrize("source", sorted(SOURCES))
 def test_le_compteur_part_au_dessus_de_ce_que_le_journal_nomme(base_v29, source):
     table, haut, acte = SOURCES[source]
