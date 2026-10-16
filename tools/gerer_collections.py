@@ -43,8 +43,8 @@ refuse (un album sans collection ne correspond à aucune règle d'accès). `cree
 `modifier` et `supprimer` écrivent au journal ce que les routes y écrivent. Ranger et
 retirer des albums n'y écrivaient rien, pas plus qu'à l'écran ; depuis la v30 (COL-3) les
 deux portes l'écrivent, sous la cible `collection_album` — un emploi qui commence, un
-emploi qui cesse (`_journaliser_emploi`). Un shell n'ayant pas d'identité, l'agent de ces
-actes est vide, comme en mono-poste.
+emploi qui cesse, par `journal.journaliser_emploi`, la fonction même des routes. Un shell
+n'ayant pas d'identité, l'agent de ces actes est vide, comme en mono-poste.
 
 La base suit la config du projet (BD_DB_PATH / BD_DATA_DIR).
 """
@@ -172,17 +172,6 @@ def _albums_isoles(conn, collection_id, album_ids=None) -> list[int]:
     return [r[0] for r in conn.execute(sql + " ORDER BY ca.album_id", params)]
 
 
-def _journaliser_emploi(conn, type, album_id, collection_id):
-    """Un album rangé dans une collection (`lien`) ou retiré (`delien`) — la même ligne que
-    la route écrit (`routes/collections._journaliser_emploi`), pour la même raison : deux
-    portes vers les mêmes liens, un seul journal. `cible_id` est le DOCUMENT dont l'album
-    est la copie, l'album restant dans la charge."""
-    charge = {"album_id": album_id, "collection_id": collection_id}
-    journal.journaliser(conn, type, "collection_album",
-                        database.document_d_album(conn, album_id),
-                        **({"apres": charge} if type == "lien" else {"avant": charge}))
-
-
 def _ranger(conn, collection_id, album_ids):
     """Ajoute des albums à une collection (INSERT OR IGNORE), `rang` en fin de liste.
     Renvoie le nombre effectivement ajoutés."""
@@ -204,7 +193,7 @@ def _ranger(conn, collection_id, album_ids):
             "INSERT OR IGNORE INTO collection_album (collection_id, album_id, rang) "
             "VALUES (?, ?, ?)", (collection_id, aid, depart + i))
         if cur.rowcount:                # déjà rangé : rien n'a changé, rien ne s'écrit
-            _journaliser_emploi(conn, "lien", aid, collection_id)
+            journal.journaliser_emploi(conn, "lien", aid, collection_id)
         n += cur.rowcount
     return n
 
@@ -366,7 +355,7 @@ def cmd_retirer(args) -> int:
                 f"AND album_id IN ({qm})", [args.id, *ids])
             n = cur.rowcount
             for aid in presents:
-                _journaliser_emploi(conn, "delien", aid, args.id)
+                journal.journaliser_emploi(conn, "delien", aid, args.id)
     _checkpoint()
     _err(f"{n} album(s) retiré(s) de la collection {args.id}.")
     return 0
@@ -385,7 +374,7 @@ def cmd_supprimer(args) -> int:
                 "d'accès. Rangez-les ailleurs d'abord (`ajouter`).")
         # Comme la route : la cascade défait les liens sans rien dire, on les écrit avant.
         for aid in database.collection_album_ids(conn, args.id):
-            _journaliser_emploi(conn, "delien", aid, args.id)
+            journal.journaliser_emploi(conn, "delien", aid, args.id)
         conn.execute("DELETE FROM collection WHERE id = ?", (args.id,))
         journal.journaliser(conn, "suppression", "collection", args.id,
                             avant={"nom": c["nom"]})

@@ -33,8 +33,8 @@ import autorisation
 import comptes
 import journal
 from config import STATUTS_DIFFUSION
-from database import (NATURES, collection_row, collections, document_d_album,
-                      etat_embargo, nom_reserve, projet_de_collection, projet_par_defaut,
+from database import (NATURES, collection_row, collections, etat_embargo,
+                      nom_reserve, projet_de_collection, projet_par_defaut,
                       rangement_traverse, sql_projet_de)
 
 from socle import (
@@ -158,24 +158,6 @@ def _journaliser_acces(conn, collection_id: int, type: str, *, avant=None, apres
     """
     journal.journaliser(conn, type, "collection_acces", collection_id,
                         avant=avant, apres=apres)
-
-
-def _journaliser_emploi(conn, type: str, album_id: int, collection_id: int) -> None:
-    """Trace un EMPLOI dans le journal A3 : un album rangé dans une collection (`lien`), ou
-    retiré (`delien`). COL-3, tranche 2 — jusqu'à la v30, ni l'un ni l'autre ne laissait de
-    trace : `collection_album` n'a ni date ni auteur, et l'on ne savait plus qui avait fait
-    entrer un document dans une étude, ni quand il en était sorti.
-
-    `cible_id` est le DOCUMENT dont l'album est la copie, pas l'album : le journal survit à
-    sa cible, et un identifiant d'album se réattribue. Un album sans document — posé par
-    `INSERT` — garde sa trace sous une cible vide, l'album restant dans la charge.
-
-    Pas plus annulables que les accès (`undo._TABLES` est une liste blanche), et RETENUS
-    de toute sortie (`tools/_commun.CIBLES_RETENUES`). `tools/gerer_collections.py` écrit
-    les mêmes lignes : deux portes, un seul journal."""
-    charge = {"album_id": album_id, "collection_id": collection_id}
-    journal.journaliser(conn, type, "collection_album", document_d_album(conn, album_id),
-                        **({"apres": charge} if type == "lien" else {"avant": charge}))
 
 
 @router.get("/api/collections")
@@ -348,11 +330,11 @@ def delete_collection(collection_id: int, conn: sqlite3.Connection = Depends(db)
     c = collection_row(conn, collection_id)
     # COL-3 — supprimer une collection en RETIRE ses albums, un par un : la cascade défait
     # les liens sans rien dire, et chacun est un emploi qui cesse. Relevés AVANT, puisque
-    # la cascade les emporte ; écrits avant, pour que le document se lise encore.
+    # la cascade les emporte ; écrits avant, tant que la collection porte encore son nom.
     for (album_id,) in conn.execute(
             "SELECT album_id FROM collection_album WHERE collection_id = ? "
             "ORDER BY album_id", (collection_id,)).fetchall():
-        _journaliser_emploi(conn, "delien", album_id, collection_id)
+        journal.journaliser_emploi(conn, "delien", album_id, collection_id)
     conn.execute("DELETE FROM collection WHERE id = ?", (collection_id,))
     journal.journaliser(conn, "suppression", "collection", collection_id,
                         avant={"nom": c["nom"]})
@@ -676,7 +658,7 @@ def ranger_album(album_id: int, collection_id: int,
     # Re-poser un rangement existant ne s'écrit pas au journal : rien n'a changé.
     if conn.execute("INSERT OR IGNORE INTO collection_album (collection_id, album_id) "
                     "VALUES (?, ?)", (collection_id, album_id)).rowcount:
-        _journaliser_emploi(conn, "lien", album_id, collection_id)
+        journal.journaliser_emploi(conn, "lien", album_id, collection_id)
     conn.commit()
     return list_collections_album(album_id, conn, portee)
 
@@ -709,6 +691,6 @@ def sortir_album(album_id: int, collection_id: int,
                                  "d'accès.")
     conn.execute("DELETE FROM collection_album WHERE collection_id = ? AND album_id = ?",
                  (collection_id, album_id))
-    _journaliser_emploi(conn, "delien", album_id, collection_id)
+    journal.journaliser_emploi(conn, "delien", album_id, collection_id)
     conn.commit()
     return Response(status_code=204)

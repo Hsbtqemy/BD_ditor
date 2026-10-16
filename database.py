@@ -453,6 +453,17 @@ CREATE INDEX IF NOT EXISTS idx_projet_acces_principal ON projet_acces(genre, pri
 -- `projet_origine_id` : le projet où le document est entré d'abord. Un FAIT d'origine, donc
 -- SANS clé étrangère, comme `evenement.cible_id` : il doit survivre au projet supprimé.
 -- NULL = entré sans projet.
+--
+-- Le NOM de ce projet n'est PAS gardé à côté, à la différence de `demande.projet_nom`, et
+-- c'est pesé. `projet.id` se réattribue, donc cette colonne désignerait un autre projet le
+-- jour où celui d'origine serait supprimé puis son identifiant repris. Dans cette tranche
+-- cela ne peut pas arriver : un document n'a qu'une copie, elle porte ce même projet, et un
+-- projet que des copies désignent encore ne se supprime pas (`routes/projets.py`) — le
+-- document part donc avant son projet d'origine. Cela devient possible le jour où une copie
+-- naît dans un AUTRE projet que celui d'origine : c'est la migration de ce jour-là qui devra
+-- poser le nom, avant le premier projet supprimé sous un document vivant. Le poser dès
+-- maintenant obligerait à choisir sans cas d'usage entre le nom à l'import et le dernier
+-- nom connu, pour un projet fait pour être renommé.
 CREATE TABLE IF NOT EXISTS document (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     importe_par        TEXT,
@@ -472,12 +483,18 @@ CREATE TABLE IF NOT EXISTS document (
 -- n'a pas de compte puisse un jour s'y ranger sans reconstruire la table.
 -- `projet_id` : le projet concerné — celui de la copie, ou celui qu'on demande de
 -- supprimer. Sans clé étrangère : la demande survit à ce qu'elle a fait disparaître.
+-- `projet_nom` : son NOM au jour de la demande. Il le faut, parce que `projet.id` se
+-- réattribue (mesuré : un projet supprimé rend son identifiant au suivant) et qu'une
+-- demande répondue reste : accepter la suppression d'un projet ferait désigner à sa propre
+-- demande le projet créé ensuite. C'est la raison de `demande_document.titre`, un étage
+-- plus haut. L'identifiant sert tant que le projet vit, le nom dit de quoi l'on parlait.
 CREATE TABLE IF NOT EXISTS demande (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     genre          TEXT NOT NULL,
     demandeur      TEXT,
     motif          TEXT,
     projet_id      INTEGER,
+    projet_nom     TEXT,
     date_creation  TEXT DEFAULT (datetime('now')),
     reponse        TEXT,
     repondu_par    TEXT,
@@ -1095,9 +1112,19 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # réel, et l'étape repasse alors sur des albums qui ont déjà leur document. Elle ne
         # touche donc que ce qui est NULL.
         if version < 30:
-            # Le projet d'abord, lu dans les collections : il est exact, aucun rangement
-            # n'ayant pu traverser deux projets depuis la v29. Un album rangé nulle part —
-            # base retouchée à la main — garde NULL : on ne lui en invente pas.
+            # Le projet d'abord, lu dans les collections. Il est exact pour un album dont
+            # toutes les collections sont du même projet — ce que les routes garantissent
+            # depuis la v29, aucun rangement ne traversant deux projets. Un album rangé nulle
+            # part — base retouchée à la main — garde NULL : on ne lui en invente pas.
+            #
+            # Ce que la migration ne sait PAS trancher : un album rangé dans DEUX projets,
+            # état interdit mais qu'une base retouchée peut porter. Elle lui écrit le projet
+            # de sa collection de plus petit id, ce qui est un CHOIX et non un fait. L'écrire
+            # vaut mieux que se taire : c'est cette écriture qui rend l'écart visible —
+            # `albums_hors_de_leur_projet` le nomme dès le premier démarrage, là où un NULL
+            # l'aurait laissé se lire « du projet de ses collections » sans dire lequel. À
+            # contrôler après migration : la liste doit être vide, et sinon chaque album
+            # nommé est à sortir à la main des collections qui ne sont pas de son projet.
             if ("collection_album" in _tables
                     and "projet_id" in _cols("collection")):
                 conn.execute(

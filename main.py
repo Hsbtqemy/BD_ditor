@@ -340,7 +340,9 @@ async def _sqlite_operational_handler(request, exc: sqlite3.OperationalError):
 #   · `document` — sa naissance (`creation`), chaque scan ajouté ou retiré
 #     (`modification`), sa destruction (`suppression`) ;
 #   · `collection_album` — ses EMPLOIS : rangé dans une collection (`lien`), retiré
-#     (`delien`). Le premier rangement, celui de la naissance, en est un comme les autres.
+#     (`delien`). Le premier rangement, celui de la naissance, en est un comme les autres ;
+#     et détruire l'album met fin à chacun de ceux qui restaient. Tous s'écrivent par
+#     `journal.journaliser_emploi`, ici comme dans `routes/collections.py` et dans l'outil.
 #
 # Dans les deux cas `cible_id` est l'id du DOCUMENT, jamais celui de l'album : le journal
 # survit à sa cible, et un identifiant d'album se réattribue — le suivant hériterait de
@@ -361,8 +363,7 @@ def _journaliser_naissance(conn, document_id: int, album_id: int, titre: str,
                            collection_id: int) -> None:
     journal.journaliser(conn, "creation", "document", document_id,
                         apres={"album_id": album_id, "titre": titre})
-    journal.journaliser(conn, "lien", "collection_album", document_id,
-                        apres={"album_id": album_id, "collection_id": collection_id})
+    journal.journaliser_emploi(conn, "lien", album_id, collection_id)
 
 
 def _journaliser_scan(conn, album_id: int, planche: dict, *, retire: bool = False) -> None:
@@ -483,11 +484,23 @@ def delete_album(album_id: int, conn: sqlite3.Connection = Depends(db),
         unindex_region(conn, r["id"])
     nb_planches = conn.execute("SELECT COUNT(*) FROM planches WHERE album_id = ?",
                                (album_id,)).fetchone()[0]
+    # COL-3 — détruire l'album met fin à chacun de ses emplois : la cascade défait les liens
+    # sans rien dire, comme quand on supprime une collection, et un journal où un rangement
+    # n'aurait jamais de fin laisserait croire le document encore employé. Écrits AVANT le
+    # `DELETE`, tant que l'album se lit encore.
+    for (collection_id,) in conn.execute(
+            "SELECT collection_id FROM collection_album WHERE album_id = ? "
+            "ORDER BY collection_id", (album_id,)).fetchall():
+        journal.journaliser_emploi(conn, "delien", album_id, collection_id)
     conn.execute("DELETE FROM albums WHERE id = ?", (album_id,))   # CASCADE planches/regions
-    # COL-3 — le document part avec sa dernière copie, et sa destruction s'écrit : le
-    # journal est tout ce qui reste de lui, ses images quittant le disque juste après.
-    if retirer_document_sans_copie(conn, a["document_id"]):
-        journal.journaliser(conn, "suppression", "document", a["document_id"],
+    # Le document part avec sa dernière copie, et sa destruction s'écrit : le journal est
+    # tout ce qui reste de lui, ses images quittant le disque juste après. Un album SANS
+    # document — posé par `INSERT` — l'écrit aussi, sous une cible vide, comme ses scans et
+    # ses emplois : l'acte a eu lieu. Seul cas qui n'écrit pas de `suppression` : une autre
+    # copie porte encore le document, qui n'est donc pas détruit.
+    document_id = a["document_id"]
+    if retirer_document_sans_copie(conn, document_id) or document_id is None:
+        journal.journaliser(conn, "suppression", "document", document_id,
                             avant={"album_id": album_id, "titre": a["titre"],
                                    "planches": nb_planches})
     conn.commit()

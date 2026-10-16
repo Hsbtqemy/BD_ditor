@@ -25,6 +25,7 @@ import pytest
 
 import comptes
 import database
+import journal
 import pipeline.sharedocs as sd
 from conftest import ADMIN, make_png
 from test_projets import _fouillable, _outil, _repli, _sql
@@ -133,12 +134,16 @@ def _ramener_en_v29(db):
 def base_v29(tmp_path, monkeypatch):
     """Une base au schéma v29 qui a VÉCU. Deux projets — le repli (1) et « Séminaire » (2).
 
-    Cinq albums, chacun un cas :
+    Six albums, chacun un cas :
       1  rangé dans une collection du repli, annoté par alice (trois actes au journal) ;
       2  rangé dans DEUX collections du repli ;
       3  rangé dans la collection du Séminaire ;
       4  rangé nulle part — une base retouchée à la main ;
-      5  rangé dans une collection SANS projet nommé, et sans date d'import.
+      5  rangé dans une collection SANS projet nommé, et sans date d'import ;
+      6  rangé dans DEUX PROJETS — l'état que la v29 interdit et qu'une base retouchée peut
+         porter : la collection 3 (Séminaire) et la collection 5 (repli). Les identifiants
+         sont choisis pour que « la collection de plus petit id » (3, donc le Séminaire) ne
+         se confonde ni avec la plus grande, ni avec le projet de plus petit id.
     """
     db = tmp_path / "v29.sqlite"
     monkeypatch.setattr(database, "DB_PATH", db)
@@ -147,17 +152,19 @@ def base_v29(tmp_path, monkeypatch):
     assert "document_id" not in {c["name"] for c in _sql(db, "PRAGMA table_info(albums)")}
     _sql(db, "INSERT INTO projet (id, nom, repli) VALUES (2, 'Séminaire', 0)")
     for cid, nom, projet in ((1, "Corpus colonial", 1), (2, "Incubateur", 1),
-                             (3, "Émotions", 2), (4, "Posée à la main", None)):
+                             (3, "Émotions", 2), (4, "Posée à la main", None),
+                             (5, "Du repli, créée plus tard", 1)):
         _sql(db, "INSERT INTO collection (id, nom, projet_id) VALUES (?, ?, ?)",
              (cid, nom, projet))
     for aid, titre, date in ((1, "Le Lotus bleu", "2026-07-20 09:00:00"),
                              (2, "Tintin au Tibet", "2026-08-02 10:30:00"),
                              (3, "L'Affaire Tournesol", "2026-09-14 16:45:00"),
                              (4, "Rangé nulle part", "2026-09-30 08:00:00"),
-                             (5, "Sans date", None)):
-        _sql(db, "INSERT INTO albums (id, titre, date_import) VALUES (?, ?, ?)",
-             (aid, titre, date))
-    for cid, aid in ((1, 1), (1, 2), (2, 2), (3, 3), (4, 5)):
+                             (5, "Sans date", None),
+                             (6, "Dans deux projets", "2026-10-01 12:00:00")):
+        _sql(db, "INSERT INTO albums (id, titre, auteur, serie, annee, date_import) "
+                 "VALUES (?, ?, 'Hergé', 'Tintin', 1936, ?)", (aid, titre, date))
+    for cid, aid in ((1, 1), (1, 2), (2, 2), (3, 3), (4, 5), (3, 6), (5, 6)):
         _sql(db, "INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
              (cid, aid))
     _sql(db, "INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
@@ -171,10 +178,17 @@ def base_v29(tmp_path, monkeypatch):
 
 
 def _photographie(db):
-    """Ce que la migration ne doit pas toucher : le travail, les rangements, le journal."""
-    return {t: _sql(db, f"SELECT * FROM {t} ORDER BY 1, 2")
-            for t in ("planches", "regions", "collection", "collection_album",
-                      "collection_acces", "projet", "projet_acces", "evenement")}
+    """Ce que la migration ne doit pas toucher : le travail, les rangements, le journal —
+    et la NOTICE de chaque album, c'est-à-dire toutes ses colonnes sauf les deux qu'elle
+    ajoute. Sans `albums` ici, une migration qui réécrirait le titre de chaque album
+    passait la suite entière (mutant de la relecture croisée)."""
+    photo = {t: _sql(db, f"SELECT * FROM {t} ORDER BY 1, 2")
+             for t in ("planches", "regions", "collection", "collection_album",
+                       "collection_acces", "projet", "projet_acces", "evenement")}
+    photo["albums"] = [{k: v for k, v in a.items() if k not in ("document_id", "projet_id")}
+                       for a in _sql(db, "SELECT * FROM albums ORDER BY id")]
+    assert all(len(a) >= 17 for a in photo["albums"]), "la notice n'est plus photographiée"
+    return photo
 
 
 def test_la_migration_fait_de_chaque_album_la_copie_d_un_document(base_v29):
@@ -187,20 +201,25 @@ def test_la_migration_fait_de_chaque_album_la_copie_d_un_document(base_v29):
 
     albums = _sql(base_v29, "SELECT id, document_id, projet_id FROM albums ORDER BY id")
     documents = {d["id"]: d for d in _sql(base_v29, "SELECT * FROM document")}
-    assert len(documents) == 5 and len({a["document_id"] for a in albums}) == 5
+    assert len(documents) == 6 and len({a["document_id"] for a in albums}) == 6
     assert database.albums_sans_document(_conn(base_v29)) == []
-    assert database.albums_hors_de_leur_projet(_conn(base_v29)) == []
 
     # Le projet de chaque copie, ÉCRIT : lu dans ses collections, y compris par la règle
     # du repli pour une collection sans projet nommé. Rangé nulle part : aucun, et pas le
-    # repli — la migration ne lui en invente pas.
+    # repli — la migration ne lui en invente pas. Rangé dans DEUX projets : celui de sa
+    # collection de plus petit id (la 3, donc le Séminaire), ce qui est un choix et pas un
+    # fait…
     assert [(a["id"], a["projet_id"]) for a in albums] \
-        == [(1, 1), (2, 1), (3, 2), (4, None), (5, 1)]
+        == [(1, 1), (2, 1), (3, 2), (4, None), (5, 1), (6, 2)]
+    # …et c'est d'avoir ÉCRIT ce choix qui rend l'écart visible : la migration ne le
+    # tait pas, la formulation exécutable le nomme dès le premier démarrage.
+    assert database.albums_hors_de_leur_projet(_conn(base_v29)) == [6]
     origine = {a["id"]: documents[a["document_id"]] for a in albums}
     assert {aid: (d["importe_le"], d["projet_origine_id"]) for aid, d in origine.items()} == {
         1: ("2026-07-20 09:00:00", 1), 2: ("2026-08-02 10:30:00", 1),
         3: ("2026-09-14 16:45:00", 2), 4: ("2026-09-30 08:00:00", None),
-        5: (None, 1)}                # une date absente reste absente, pas « aujourd'hui »
+        5: (None, 1),                # une date absente reste absente, pas « aujourd'hui »
+        6: ("2026-10-01 12:00:00", 2)}
 
     index = {r["name"] for r in _sql(base_v29, "SELECT name FROM sqlite_master "
                                                "WHERE type = 'index'")}
@@ -236,7 +255,7 @@ def test_la_migration_ne_se_rejoue_pas(base_v29, monkeypatch):
         return (_sql(base_v29, "SELECT id, importe_par FROM document ORDER BY id"),
                 _sql(base_v29, "SELECT document_id, projet_id FROM albums WHERE id = 60"))
     attendu = ([{"id": 1, "importe_par": "alice"}]
-               + [{"id": i, "importe_par": None} for i in (2, 3, 4, 5)],
+               + [{"id": i, "importe_par": None} for i in (2, 3, 4, 5, 6)],
                [{"document_id": None, "projet_id": None}])
 
     database.init_db()                                   # redémarrage : rien ne bouge
@@ -316,7 +335,10 @@ def test_une_base_migree_porte_le_schema_d_une_base_neuve(base_v29, tmp_path, mo
                        for f in _sql(db, "PRAGMA foreign_key_list(albums)")),
                 sorted(i["name"] for i in _sql(db, "PRAGMA index_list(albums)")),
                 {t: _sql(db, f"PRAGMA table_info({t})")
-                 for t in ("document", "demande", "demande_document")})
+                 for t in ("document", "demande", "demande_document")},
+                {i["name"]: [c["name"] for c in _sql(db, f"PRAGMA index_info({i['name']})")]
+                 for t in ("albums", "demande_document")
+                 for i in _sql(db, f"PRAGMA index_list({t})") if i["origin"] == "c"})
     migree = forme(base_v29)
     neuve = tmp_path / "neuve.sqlite"
     monkeypatch.setattr(database, "DB_PATH", neuve)
@@ -325,6 +347,11 @@ def test_une_base_migree_porte_le_schema_d_une_base_neuve(base_v29, tmp_path, mo
     assert migree[1] == [("document_id", "document", "id", "NO ACTION"),
                          ("projet_id", "projet", "id", "NO ACTION")]
     assert [c["name"] for c in migree[0]][-2:] == ["document_id", "projet_id"]
+    # Les index NOMMÉS, colonne comprise : comparer deux bases qui l'auraient toutes deux
+    # perdu ne dirait rien. Celui de `demande_document` n'était tenu par aucun test.
+    assert migree[4] == {"idx_albums_document": ["document_id"],
+                         "idx_albums_projet": ["projet_id"],
+                         "idx_demande_document_document": ["document_id"]}
 
 
 def test_un_identifiant_de_document_ne_se_reattribue_pas(client, db_path):
@@ -353,6 +380,28 @@ def test_un_identifiant_de_document_ne_se_reattribue_pas(client, db_path):
         conn.close()                                     # rien n'est validé
 
 
+def test_un_projet_et_une_collection_rendent_leur_identifiant(client):
+    """Pourquoi une demande garde le NOM de son projet (`demande.projet_nom`) et un emploi
+    celui de sa collection, à côté de l'identifiant : supprimés, l'un et l'autre rendent
+    leur numéro au suivant. Une demande répondue reste en base, le journal survit à sa
+    cible — sans le nom, ils désigneraient le projet ou l'étude créés ensuite.
+
+    Si ce test tombe parce qu'un identifiant a cessé de se réattribuer, les deux noms
+    gardés n'ont plus cette raison-là d'exister : c'est à relire, pas à réparer."""
+    projets = []
+    for nom in ("Éphémère", "Tout autre"):
+        projets.append(client.post("/api/projets", json={"nom": nom}).json()["id"])
+        if nom == "Éphémère":
+            assert client.delete(f"/api/projets/{projets[0]}").status_code == 204
+    assert projets[0] == projets[1]
+    collections = []
+    for nom in ("Une étude", "Une autre"):
+        collections.append(client.post("/api/collections", json={"nom": nom}).json()["id"])
+        if nom == "Une étude":
+            assert client.delete(f"/api/collections/{collections[0]}").status_code == 204
+    assert collections[0] == collections[1]
+
+
 def test_les_tables_de_demande_naissent_vides_et_rien_ne_les_ecrit(client, db_path, decor,
                                                                     png_bytes):
     """Elles arrivent avec le document pour que le schéma ne change qu'une fois dans la
@@ -362,8 +411,8 @@ def test_les_tables_de_demande_naissent_vides_et_rien_ne_les_ecrit(client, db_pa
                 for t in ("document", "demande", "demande_document")}
     assert colonnes == {
         "document": ["id", "importe_par", "importe_le", "projet_origine_id"],
-        "demande": ["id", "genre", "demandeur", "motif", "projet_id", "date_creation",
-                    "reponse", "repondu_par", "date_reponse"],
+        "demande": ["id", "genre", "demandeur", "motif", "projet_id", "projet_nom",
+                    "date_creation", "reponse", "repondu_par", "date_reponse"],
         "demande_document": ["demande_id", "document_id", "album_id", "titre", "reponse"]}
 
     aid = _creer(client, "Parcours", decor["emotions"])
@@ -398,7 +447,7 @@ def test_creer_un_album_fait_naitre_son_document(client, db_path, decor):
         ("document", "creation", "alice", doc, None,
          {"album_id": aid, "titre": "Le Lotus bleu"}),
         ("collection_album", "lien", "alice", doc, None,
-         {"album_id": aid, "collection_id": decor["emotions"]})]
+         {"album_id": aid, "collection_id": decor["emotions"], "collection": "Émotions"})]
 
 
 def test_un_album_cree_sans_collection_est_du_projet_de_repli(client, db_path, decor):
@@ -480,54 +529,98 @@ def test_les_emplois_s_ecrivent_et_un_rangement_repose_ne_s_ecrit_pas(client, db
     ailleurs = client.post("/api/collections", json={"nom": "Du repli"},
                            headers=ADMIN).json()["id"]
     assert client.put(f"{chemin}/{ailleurs}", headers=ADMIN).status_code == 409
+    # Et la fonction unique n'écrit que des emplois : tout autre type est une faute
+    # d'appelant, qui lève au lieu d'entrer au journal sous la cible des emplois.
+    with pytest.raises(ValueError):
+        journal.journaliser_emploi(_conn(db_path), "creation", aid, decor["voisine"])
 
+    # La charge porte le NOM de la collection à côté de son identifiant, qui se
+    # réattribue : sans lui, l'acte désignerait un jour une autre étude.
     assert _actes(db_path, doc)[1:] == [
         ("collection_album", "lien", "alice", doc, None,
-         {"album_id": aid, "collection_id": decor["emotions"]}),
+         {"album_id": aid, "collection_id": decor["emotions"], "collection": "Émotions"}),
         ("collection_album", "lien", "alice", doc, None,
-         {"album_id": aid, "collection_id": decor["voisine"]}),
+         {"album_id": aid, "collection_id": decor["voisine"], "collection": "Voisine"}),
         ("collection_album", "delien", "alice", doc,
-         {"album_id": aid, "collection_id": decor["emotions"]}, None)]
+         {"album_id": aid, "collection_id": decor["emotions"], "collection": "Émotions"},
+         None)]
 
 
 def test_supprimer_une_collection_ecrit_le_retrait_de_chacun_de_ses_albums(client, db_path,
                                                                            decor):
     """La cascade défait les liens sans rien dire : chacun est un emploi qui cesse, et
-    s'écrit comme si on avait retiré l'album à la main."""
+    s'écrit comme si on avait retiré l'album à la main. Et RIEN pour un album qui n'était
+    pas de la collection : « Ailleurs » n'a jamais été rangé dans Voisine, et le journal
+    ne lui invente pas un retrait."""
     albums = [_creer(client, t, decor["emotions"]) for t in ("Un", "Deux")]
+    ailleurs = _creer(client, "Ailleurs", decor["emotions"])
     for aid in albums:
         assert client.put(f"/api/albums/{aid}/collections/{decor['voisine']}",
                           headers=ALICE).status_code == 201
     assert client.delete(f"/api/collections/{decor['voisine']}",
                          headers=ALICE).status_code == 204
     docs = [_album_ligne(db_path, aid)["document_id"] for aid in albums]
-    assert [a for a in _evenements(db_path, "collection_album") if a[1] == "delien"] == [
+    # Tous les retraits écrits au nom de Voisine, quel que soit le document : deux, pas un
+    # de plus. (Le décor en a écrit un autre, celui de son album détruit, ailleurs.)
+    assert [a for a in _evenements(db_path, "collection_album")
+            if a[1] == "delien" and a[4]["collection_id"] == decor["voisine"]] == [
         ("collection_album", "delien", "alice", doc,
-         {"album_id": aid, "collection_id": decor["voisine"]}, None)
+         {"album_id": aid, "collection_id": decor["voisine"], "collection": "Voisine"}, None)
         for aid, doc in zip(albums, docs)]
+    assert _actes(db_path, _album_ligne(db_path, ailleurs)["document_id"], "delien") == []
 
 
 def test_detruire_un_album_emporte_son_document_et_l_ecrit(client, db_path, decor,
                                                            png_bytes):
-    """Un document n'a qu'une copie dans cette tranche : il part avec elle, et sa
-    destruction est la seule trace qui reste de lui. Un refus de détruire, lui, ne retire
-    ni n'écrit rien."""
+    """Un document n'a qu'une copie dans cette tranche : il part avec elle, et le journal
+    est tout ce qui reste de lui. Détruire met aussi fin à chacun de ses emplois — la
+    cascade défait les liens sans rien dire, et un rangement sans fin laisserait croire le
+    document encore employé. Un refus de détruire, lui, ne retire ni n'écrit rien."""
     aid = _creer(client, "Importé par erreur", decor["emotions"])
     doc = _album_ligne(db_path, aid)["document_id"]
     client.post(f"/api/albums/{aid}/import", headers=ALICE,
                 files={"file": ("p.png", png_bytes, "image/png")})
     client.put(f"/api/albums/{aid}/collections/{decor['voisine']}", headers=ALICE)
+    # Une TROISIÈME collection porte un autre album : sans elle, « les collections de cet
+    # album » et « toutes les collections qui ont un album » se confondent, et un retrait
+    # écrit au nom d'une étude où l'album n'a jamais été passerait (mutant survivant).
+    _creer(client, "D'une autre étude", headers=ADMIN)
 
     # bob n'écrit que dans l'une des deux collections : refusé, comme avant ce commit.
     assert client.delete(f"/api/albums/{aid}", headers=BOB).status_code == 403
     assert _sql(db_path, "SELECT 1 FROM document WHERE id = ?", (doc,)) != []
-    assert _actes(db_path, doc, "suppression") == []
+    assert _actes(db_path, doc, "suppression") == [] and _actes(db_path, doc, "delien") == []
 
     assert client.delete(f"/api/albums/{aid}", headers=ALICE).status_code == 204
     assert _sql(db_path, "SELECT 1 FROM document WHERE id = ?", (doc,)) == []
-    assert _actes(db_path, doc, "suppression") == [
+    # Les deux retraits d'abord, dans l'ordre des collections, puis la destruction — et
+    # pas un retrait de plus : l'album n'a jamais été de la collection de repli du décor.
+    assert [a for a in _actes(db_path, doc) if a[1] in ("delien", "suppression")] == [
+        ("collection_album", "delien", "alice", doc,
+         {"album_id": aid, "collection_id": decor["emotions"], "collection": "Émotions"},
+         None),
+        ("collection_album", "delien", "alice", doc,
+         {"album_id": aid, "collection_id": decor["voisine"], "collection": "Voisine"},
+         None),
         ("document", "suppression", "alice", doc,
          {"album_id": aid, "titre": "Importé par erreur", "planches": 1}, None)]
+
+
+def test_detruire_un_album_sans_document_s_ecrit_aussi(client, db_path):
+    """Un album posé par `INSERT` n'a pas de document. Y importer et le ranger s'écrivent
+    déjà sous une cible vide ; le détruire aussi — la fin de son emploi, puis la
+    destruction, l'album restant lisible dans la charge. Sans quoi le journal garderait
+    le début d'une histoire dont il tairait la fin."""
+    cid = client.post("/api/collections", json={"nom": "Étude"}).json()["id"]
+    _sql(db_path, "INSERT INTO albums (id, titre) VALUES (90, 'Posé à la main')")
+    _sql(db_path, "INSERT INTO collection_album (collection_id, album_id) VALUES (?, 90)",
+         (cid,))
+    assert client.delete("/api/albums/90").status_code == 204
+    assert _evenements(db_path, "document", "collection_album") == [
+        ("collection_album", "delien", None, None,
+         {"album_id": 90, "collection_id": cid, "collection": "Étude"}, None),
+        ("document", "suppression", None, None,
+         {"album_id": 90, "titre": "Posé à la main", "planches": 0}, None)]
 
 
 def test_un_document_ne_part_qu_avec_sa_derniere_copie(client, db_path):
@@ -542,6 +635,10 @@ def test_un_document_ne_part_qu_avec_sa_derniere_copie(client, db_path):
 
     assert client.delete(f"/api/albums/{un}").status_code == 204
     assert _sql(db_path, "SELECT 1 FROM document WHERE id = ?", (doc,)) != []
+    # La copie détruite cesse d'être employée — cela s'écrit ; le document, lui, n'est
+    # pas détruit, et aucune `suppression` ne le prétend.
+    assert [(a[1], a[4]["album_id"]) for a in _actes(db_path, doc, "delien")] \
+        == [("delien", un)]
     assert [a for a in _evenements(db_path, "document") if a[1] == "suppression"] == []
     assert client.delete(f"/api/albums/{deux}").status_code == 204
     assert _sql(db_path, "SELECT 1 FROM document") == []
@@ -603,7 +700,8 @@ def test_l_outil_ecrit_les_memes_emplois_que_la_route(client, db_path, decor):
     d'identité, donc l'agent est vide ; un refus n'écrit rien."""
     ici = client.post("/api/collections", json={"nom": "Du repli"},
                       headers=ADMIN).json()["id"]
-    un, deux = (_creer(client, t, ici, headers=ADMIN) for t in ("Un", "Deux"))
+    un, deux, trois = (_creer(client, t, ici, headers=ADMIN)
+                       for t in ("Un", "Deux", "Trois"))
     docs = {aid: _album_ligne(db_path, aid)["document_id"] for aid in (un, deux)}
     deja = len(_evenements(db_path, "collection_album"))
 
@@ -613,21 +711,23 @@ def test_l_outil_ecrit_les_memes_emplois_que_la_route(client, db_path, decor):
     cid = int(sortie.strip())
     assert _outil(db_path, "gerer_collections.py", "ajouter", str(cid),
                   "--albums", str(un))[0] == 0                     # déjà rangé : rien
+    # « Trois » EXISTE et n'a jamais été de cette collection ; 9999 n'existe pas. Aucun
+    # des deux n'en est retiré, et le journal ne l'invente pour aucun.
     assert _outil(db_path, "gerer_collections.py", "retirer", str(cid),
-                  "--albums", f"{un},9999")[0] == 0
+                  "--albums", f"{un},{trois},9999")[0] == 0
     assert _outil(db_path, "gerer_collections.py", "retirer", str(ici),
                   "--albums", str(un))[0] != 0                     # sa dernière : refusé
     assert _outil(db_path, "gerer_collections.py", "supprimer", str(cid))[0] == 0
 
     assert _evenements(db_path, "collection_album")[deja:] == [
         ("collection_album", "lien", None, docs[un], None,
-         {"album_id": un, "collection_id": cid}),
+         {"album_id": un, "collection_id": cid, "collection": "Par l'outil"}),
         ("collection_album", "lien", None, docs[deux], None,
-         {"album_id": deux, "collection_id": cid}),
+         {"album_id": deux, "collection_id": cid, "collection": "Par l'outil"}),
         ("collection_album", "delien", None, docs[un],
-         {"album_id": un, "collection_id": cid}, None),
+         {"album_id": un, "collection_id": cid, "collection": "Par l'outil"}, None),
         ("collection_album", "delien", None, docs[deux],
-         {"album_id": deux, "collection_id": cid}, None)]
+         {"album_id": deux, "collection_id": cid, "collection": "Par l'outil"}, None)]
 
 
 def test_les_chemins_d_ecriture_posent_tous_le_document(client, db_path, monkeypatch):
@@ -664,25 +764,62 @@ def test_le_projet_d_une_copie_se_lit_sur_elle_puis_dans_ses_collections(client,
                                (82, "Non écrit, rangé au Séminaire", None),
                                (83, "Non écrit, collection sans projet", None),
                                (84, "Ni l'un ni l'autre", None),
-                               (85, "Écrit ici, rangé ailleurs", decor["repli"])):
+                               (85, "Écrit ici, rangé ailleurs", decor["repli"]),
+                               (86, "Non écrit, rangé dans deux projets", None)):
         _sql(db_path, "INSERT INTO albums (id, titre, projet_id) VALUES (?, ?, ?)",
              (aid, titre, projet))
-    for cid, aid in ((decor["emotions"], 82), (70, 83), (decor["emotions"], 85)):
+    assert decor["emotions"] < 70, "le décor ne distingue plus la plus petite collection"
+    for cid, aid in ((decor["emotions"], 82), (70, 83), (decor["emotions"], 85),
+                     (70, 86), (decor["emotions"], 86)):
         _sql(db_path, "INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
              (cid, aid))
 
     conn = _conn(db_path)
-    assert {aid: database.projet_d_album(conn, aid) for aid in (81, 82, 83, 84, 85, 9999)} \
+    # 86 : deux projets à lire, et la règle en choisit un — celui de la collection de plus
+    # petit id (Émotions, donc le Séminaire). C'est un choix, tenu ici pour qu'il ne
+    # change pas en silence : la migration écrit ce qu'il rend.
+    assert {aid: database.projet_d_album(conn, aid)
+            for aid in (81, 82, 83, 84, 85, 86, 9999)} \
         == {81: decor["projet"], 82: decor["projet"], 83: decor["repli"], 84: None,
-            85: decor["repli"], 9999: None}
+            85: decor["repli"], 86: decor["projet"], 9999: None}
     # La lecture en liste rend la même chose que la lecture à l'unité.
     assert {r[0]: r[1] for r in conn.execute(
         f"SELECT x.id, {database.sql_projet_d_album('x')} FROM albums x WHERE x.id > 80")} \
         == {81: decor["projet"], 82: decor["projet"], 83: decor["repli"], 84: None,
-            85: decor["repli"]}
+            85: decor["repli"], 86: decor["projet"]}
     # Et l'écart entre les deux lectures se DIT : seul l'album 85 porte un projet écrit
     # que ses collections démentent.
     assert database.albums_hors_de_leur_projet(conn) == [85]
+
+
+def test_un_projet_qu_un_album_designe_encore_ne_se_supprime_pas(client, db_path, decor):
+    """Le projet d'une copie est écrit sur elle, par une clé étrangère sans action. Un
+    projet VIDE de collections mais qu'un album désigne encore — état qu'aucune route ne
+    produit, et qu'une base retouchée porte — répondait une erreur brute de la base. C'est
+    un refus qui se NOMME, comme les deux autres ; il ne vient qu'après la question du
+    droit, et ne dit donc rien à qui ne décide pas des projets."""
+    designe = client.post("/api/projets", json={"nom": "Désigné"}, headers=ADMIN).json()["id"]
+    assert client.put(f"/api/projets/{designe}/membres", headers=ADMIN,
+                      json={"genre": "utilisateur", "principal": "alice",
+                            "role": "responsable"}).status_code == 200
+    aid = _creer(client, "Copie retouchée", decor["emotions"])
+    _sql(db_path, "UPDATE albums SET projet_id = ? WHERE id = ?", (designe, aid))
+    assert database.albums_hors_de_leur_projet(_conn(db_path)) == [aid]
+
+    # La responsable ne décide pas des projets : son refus est celui d'avant, sans compte.
+    r = client.delete(f"/api/projets/{designe}", headers=ALICE)
+    assert r.status_code == 403 and "album" not in r.json()["detail"]
+    r = client.delete(f"/api/projets/{designe}", headers=ADMIN)
+    assert r.status_code == 409, r.text
+    assert "1 album(s) désignent encore ce projet" in r.json()["detail"]
+    assert _sql(db_path, "SELECT nom FROM projet WHERE id = ?", (designe,)) \
+        == [{"nom": "Désigné"}]
+    assert _sql(db_path, "SELECT 1 FROM evenement WHERE cible_table = 'projet' "
+                         "AND type = 'suppression'") == []
+
+    # L'écart réparé, le projet part.
+    _sql(db_path, "UPDATE albums SET projet_id = ? WHERE id = ?", (decor["projet"], aid))
+    assert client.delete(f"/api/projets/{designe}", headers=ADMIN).status_code == 204
 
 
 # --------------------------------------------------------------------------- #
@@ -757,21 +894,41 @@ def test_rien_du_fonds_ne_sort_d_aucun_artefact(client, db_path, tmp_path, png_b
     partent par les exports d'album, la voie du dépôt ou les outils. Publier la date et
     l'auteur d'un import serait une décision à part ; d'ici là, rien. Le semis est son
     propre témoin : ce qu'on cherche par son absence est d'abord vu là où il doit être."""
-    qui = {"Remote-User": "zzimport7", "Remote-Groups": "bd-admins"}
+    import _commun
+
+    # DEUX comptes, et c'est le point. `zzpur7` n'a fait qu'IMPORTER et RANGER : aucun de
+    # ses actes ne lui donne de rang, donc aucun pseudonyme — si un seul de ces actes
+    # partait, son login sortirait EN CLAIR. `zzannot7` annote : elle a un pseudonyme, et
+    # c'est par lui seul qu'elle sort. Avec une sentinelle unique qui annote aussi, le
+    # contrôle ne mesurait pas l'importateur pur (relecture croisée).
+    qui = {"Remote-User": "zzpur7", "Remote-Groups": "bd-admins"}
+    annote = {"Remote-User": "zzannot7", "Remote-Groups": "bd-admins"}
     _decaler_les_identifiants(client, qui)
     cid = client.post("/api/collections", json={"nom": "Étude déposée"},
-                      headers=qui).json()["id"]
-    client.patch(f"/api/collections/{cid}", json={"statut_diffusion": "public"}, headers=qui)
+                      headers=annote).json()["id"]
+    autre = client.post("/api/collections", json={"nom": "Seconde étude"},
+                        headers=annote).json()["id"]
+    client.patch(f"/api/collections/{cid}", json={"statut_diffusion": "public"},
+                 headers=annote)
     aid = _creer(client, "Album", cid, headers=qui)
     pl = client.post(f"/api/albums/{aid}/import", headers=qui,
                      files={"file": ("p.png", png_bytes, "image/png")}).json()
-    client.post(f"/api/planches/{pl['id']}/regions", headers=qui,
+    assert client.put(f"/api/albums/{aid}/collections/{autre}", headers=qui).status_code == 201
+    assert client.delete(f"/api/albums/{aid}/collections/{autre}",
+                         headers=qui).status_code == 204
+    client.post(f"/api/planches/{pl['id']}/regions", headers=annote,
                 json={"type": "bulle", "x": 0, "y": 0, "w": 9, "h": 9})
 
-    assert _sql(db_path, "SELECT importe_par FROM document") == [{"importe_par": "zzimport7"}]
-    assert {(a[0], a[2]) for a in _evenements(db_path, "document", "collection_album")} \
-        == {("document", "zzimport7"), ("collection_album", "zzimport7")}, \
+    assert _sql(db_path, "SELECT importe_par FROM document") == [{"importe_par": "zzpur7"}]
+    assert {(a[0], a[1], a[2]) for a in _evenements(db_path, "document", "collection_album")
+            if a[2] == "zzpur7"} >= {
+        ("document", "creation", "zzpur7"), ("document", "modification", "zzpur7"),
+        ("collection_album", "lien", "zzpur7"), ("collection_album", "delien", "zzpur7")}, \
         "le semis ne pose pas ce qu'on cherche"
+    rangs = _commun.pseudonymes(_conn(db_path))
+    assert "zzpur7" not in rangs and "zzannot7" in rangs, (
+        "le décor ne sépare plus l'importateur pur de celle qui annote")
+    qui = annote                    # les sorties se demandent sous un compte qui exporte
 
     sorties = {}
     for chemin in (f"/api/export/json?album_id={aid}", f"/api/export/csv?album_id={aid}",
@@ -802,6 +959,6 @@ def test_rien_du_fonds_ne_sort_d_aucun_artefact(client, db_path, tmp_path, png_b
 
     for surface, texte in sorties.items():
         assert len(texte) > 40, f"{surface} : sortie vide, le contrôle ne mesure rien"
-        for interdit in ("zzimport7", "document_id", "importe_par", "importe_le",
-                         "projet_origine"):
+        for interdit in ("zzpur7", "zzannot7", "document_id", "importe_par", "importe_le",
+                         "projet_origine", "Seconde étude"):
             assert interdit not in texte, f"{surface} laisse sortir « {interdit} »"

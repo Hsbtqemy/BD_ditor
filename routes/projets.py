@@ -10,9 +10,9 @@ Deux pouvoirs, et le second ne découle pas du premier — c'est la séparation 
 étage plus haut. DÉCIDER quels projets existent (créer, renommer, supprimer) revient à une
 portée totale : l'administrateur, et le mono-poste. RÉGLER qui est d'un projet (faire
 entrer, faire sortir, nommer un autre responsable) revient à son responsable, et à
-l'administrateur qui passe outre. Trois refus sont des 409 qui se NOMMENT : supprimer le
-projet de repli, supprimer un projet qui porte encore une collection, retirer ou
-rétrograder son DERNIER responsable. Un projet peut en revanche naître sans responsable :
+l'administrateur qui passe outre. Quatre refus sont des 409 qui se NOMMENT : supprimer le
+projet de repli, supprimer un projet qui porte encore une collection ou qu'un album désigne
+encore comme le sien, retirer ou rétrograder son DERNIER responsable. Un projet peut en revanche naître sans responsable :
 seule une portée totale le règle alors.
 
 Ce module APPLIQUE ces règles ; `autorisation.py` les tranche (`clause_projet`,
@@ -217,7 +217,15 @@ def delete_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
     toute collection qui ne nomme pas le sien. Et un projet qui PORTE une collection non
     plus : la reverser en silence dans le repli la ferait changer de projet sans que
     personne l'ait décidé, et aucun geste ne déplace une collection dans cette tranche. La
-    clé étrangère, sans action, est la ceinture derrière ce refus."""
+    clé étrangère, sans action, est la ceinture derrière ce refus.
+
+    Un troisième depuis la v30 : un projet qu'un ALBUM désigne encore comme le sien
+    (`albums.projet_id`). Le projet d'une copie de travail est écrit sur elle, pour tenir
+    quand elle n'est plus rangée nulle part ; supprimer ce projet la laisserait désigner
+    un projet qui n'existe plus — et dont l'identifiant, rendu au suivant, la ferait
+    passer dans un autre. Aucune route ne produit encore cet état, un album gardant
+    toujours une collection de son projet ; une base retouchée le porte, et la clé
+    étrangère répondait alors par une erreur brute."""
     p = _get_projet(conn, portee, projet_id)
     _exiger_de_decider(portee)
     if p["repli"]:
@@ -229,6 +237,16 @@ def delete_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
     if n:
         raise HTTPException(409, f"{n} collection(s) appartiennent à ce projet : un "
                                  "projet ne se supprime que vide.")
+    # Lu dans la colonne ÉCRITE, pas par la règle de lecture : c'est elle que la clé
+    # étrangère garde. Un album qui ne tient son projet que de ses collections est déjà
+    # arrêté par le refus du dessus. Le compte ne dit rien de plus que ce que voit qui
+    # décide des projets — une portée totale, qui lit tout album.
+    n = conn.execute("SELECT COUNT(*) FROM albums WHERE projet_id = ?",
+                     (projet_id,)).fetchone()[0]
+    if n:
+        raise HTTPException(409, f"{n} album(s) désignent encore ce projet comme le leur, "
+                                 "sans y être rangés : un projet ne se supprime que "
+                                 "lorsque plus aucun album n'en est.")
     conn.execute("DELETE FROM projet WHERE id = ?", (projet_id,))
     journal.journaliser(conn, "suppression", "projet", projet_id, avant={"nom": p["nom"]})
     conn.commit()

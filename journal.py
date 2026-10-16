@@ -111,6 +111,42 @@ def journaliser(conn: sqlite3.Connection, type: str, cible_table: str,
     return cur.lastrowid
 
 
+def journaliser_emploi(conn: sqlite3.Connection, type: str, album_id: int,
+                       collection_id: int) -> int:
+    """Trace un EMPLOI : un album rangé dans une collection (`lien`), ou qui cesse d'y être
+    (`delien`). COL-3, tranche 2 — jusqu'à la v30 ni l'un ni l'autre ne laissait de trace :
+    `collection_album` n'a ni date ni auteur, et l'on ne savait plus qui avait fait entrer
+    un document dans une étude, ni quand il en était sorti.
+
+    UNE fonction pour toutes les portes — créer un album, le ranger, le retirer, supprimer
+    sa collection, le détruire, par les routes comme par `tools/gerer_collections.py`. La
+    charge s'écrivait à trois endroits ; trois écritures de la même ligne finissent par ne
+    plus dire pareil.
+
+    `cible_id` est le DOCUMENT dont l'album est la copie, pas l'album : le journal survit à
+    sa cible, et un identifiant d'album se réattribue. Un album sans document — posé par
+    `INSERT` — garde sa trace sous une cible vide, l'album restant dans la charge. La
+    charge porte le NOM de la collection à côté de son identifiant, pour la même raison :
+    l'identifiant d'une collection supprimée est rendu à la suivante (mesuré), et l'acte
+    désignerait alors une autre étude que celle où il a eu lieu.
+
+    À appeler tant que l'album ET la collection existent encore : avant un `DELETE` qui les
+    emporte, pas après. Le rangement se pose en `apres`, le retrait en `avant`.
+
+    Pas plus annulable qu'un accès (`undo._TABLES` est une liste blanche), et RETENU de
+    toute sortie (`tools/_commun.CIBLES_RETENUES`)."""
+    if type not in ("lien", "delien"):
+        raise ValueError(f"emploi : lien ou delien, pas {type!r}")
+    document = conn.execute("SELECT document_id FROM albums WHERE id = ?",
+                            (album_id,)).fetchone()
+    collection = conn.execute("SELECT nom FROM collection WHERE id = ?",
+                              (collection_id,)).fetchone()
+    charge = {"album_id": album_id, "collection_id": collection_id,
+              "collection": collection[0] if collection else None}
+    return journaliser(conn, type, "collection_album", document[0] if document else None,
+                       **({"apres": charge} if type == "lien" else {"avant": charge}))
+
+
 def marquer_touche(conn: sqlite3.Connection, region_id: int) -> None:
     """Surface DÉNORMALISÉE : marque une région comme RETOUCHÉE par un humain (le
     pré-remplissage machine a été corrigé) + horodate. Lu à moindre coût par les
