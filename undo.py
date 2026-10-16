@@ -386,12 +386,15 @@ def _planche_de(conn, region_id, e) -> Optional[int]:
 # --------------------------------------------------------------------------- #
 # AUTH-14 — l'acte porte-t-il encore sur le même objet, et où l'inverse écrirait-il ?
 # --------------------------------------------------------------------------- #
-# Les identifiants de `regions` et de `planches` se RÉATTRIBUENT (pas d'`AUTOINCREMENT`) :
-# la région créée après la suppression de celle d'identifiant le plus haut reprend cet
-# identifiant, dans n'importe quelle collection. Le `cible_id` d'un acte peut donc désigner,
-# aujourd'hui, un objet que son auteur n'a jamais touché. Filtrer par agent ne dit rien de
-# l'objet : Ctrl+Z effaçait un locuteur de l'Incubateur au nom d'une collègue qui n'y entre
-# pas, et le 409 de CONC-3 lui rendait le texte de la région et le login de son auteur
+# Les identifiants de `regions` et de `planches` se RÉATTRIBUAIENT jusqu'à la v30 (pas
+# d'`AUTOINCREMENT`) : la région créée après la suppression de celle d'identifiant le plus
+# haut reprenait cet identifiant, dans n'importe quelle collection. Depuis la v30 ils ne
+# reviennent plus (COL-3), compteur amorcé au-dessus de ce que le journal nommait ; la garde
+# reste, pour les actes d'avant la v30 et comme défense en profondeur — un identifiant
+# rendu par une transaction défaite, une ligne posée à la main. Le `cible_id` d'un acte
+# pouvait donc désigner un objet que son auteur n'a jamais touché. Filtrer par agent ne
+# dit rien de l'objet : Ctrl+Z effaçait un locuteur de l'Incubateur au nom d'une collègue
+# qui n'y entre pas, et le 409 de CONC-3 lui rendait le texte de la région et le login de son auteur
 # (mesuré sur 5311ccc). Deux questions, posées AVANT toute écriture : l'objet est-il le
 # même (`_meme_objet`, ici, sans portée) ; l'agent peut-il l'écrire MAINTENANT (`ecrivable`,
 # fourni par la route, qui tient les accesseurs gardés de `socle.py`).
