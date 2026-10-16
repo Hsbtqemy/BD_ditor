@@ -1516,11 +1516,13 @@ class ProjetUpdate(BaseModel):
 class DemandeIn(BaseModel):
     """Une demande (COL-3, tranche 2). `genre` dit ce qu'on demande ; `album_id` désigne
     le document par l'une de ses copies, `projet_id` le projet ; `motif` dit pourquoi, et
-    il est obligatoire."""
+    il est obligatoire. `certifie` : la case « ces données ne sont pas importantes »,
+    exigée pour un document (Hugo, 2026-10-15)."""
     genre: str
     album_id: Optional[int] = None
     projet_id: Optional[int] = None
     motif: Optional[str] = None
+    certifie: bool = False
 
 
 class ReponseIn(BaseModel):

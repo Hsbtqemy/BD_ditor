@@ -420,7 +420,8 @@ def test_les_tables_de_demande_naissent_vides_et_rien_ne_les_ecrit(client, db_pa
                 for t in ("document", "demande", "demande_document")}
     assert colonnes == {
         "document": ["id", "importe_par", "importe_le", "projet_origine_id"],
-        "demande": ["id", "genre", "demandeur", "motif", "projet_id", "projet_nom",
+        "demande": ["id", "genre", "demandeur", "motif", "certifie_le", "projet_id",
+                    "projet_nom",
                     "date_creation", "reponse", "repondu_par", "date_reponse"],
         "demande_document": ["demande_id", "document_id", "album_id", "titre", "reponse"]}
 

@@ -161,6 +161,18 @@
     };
   }
 
+  /* La CERTIFICATION qui accompagne une demande de suppression définitive (Hugo,
+     2026-10-15) : ce que la suppression détruit, la question, et la case. Le serveur exige
+     la case (`certifie`) ; il n'en garde que la date. Les mots vivent ici, une fois. */
+  const CERTIFICATION = {
+    texte: "Supprimer définitivement détruit tout ce qui a été posé sur les planches — "
+      + "découpage, transcription, annotations, métadonnées —, que d'autres utilisent "
+      + "peut-être dans le projet ou dans ses collections. Pouvez-vous certifier que ces "
+      + "données ne sont pas importantes ?",
+    caseACocher: "Je certifie que ces données ne sont pas importantes.",
+    manque: "Cochez la certification : la demande ne part pas sans elle.",
+  };
+
   /* Ce qu'on lit une fois le geste fait. */
   function apresRetrait(titre, collection, reste) {
     return `${g(titre)} n'est plus dans ${g(collection)}. `
@@ -213,6 +225,66 @@
     return `${qui} demande la suppression définitive de ${et(titres) || "un document"}`;
   }
 
+  /* « Certifié par … le … » : la certification d'une demande, pour qui y répond. Rien pour
+     une demande qui n'en porte pas (un projet). */
+  function certifiee(d) {
+    if (!d || !d.certifie_le) return "";
+    const qui = d.demandeur_nom || d.demandeur || "le demandeur";
+    return `Certifié par ${qui} le ${dateLue(d.certifie_le)} : ces données ne sont pas `
+      + "importantes.";
+  }
+
+  /* Les sortes de gestes que la règle de suppression lit, dites pour un humain. La clé est
+     la `sorte` que rend le serveur (`autorisation.sql_actes_sur_album`) : la cible d'un
+     acte au journal, ou la table lue. Une sorte inconnue se dit telle quelle plutôt que de
+     disparaître. */
+  const SORTES = {
+    regions: ["geste sur une case ou une bulle", "gestes sur des cases ou des bulles"],
+    annotations: ["annotation", "annotations"],
+    bulle_locuteur: ["locuteur", "locuteurs"],
+    personnage_presence: ["présence de personnage", "présences de personnage"],
+    region_attribut: ["attribut de case", "attributs de case"],
+    token_correction: ["correction grammaticale", "corrections grammaticales"],
+    planches: ["validation de planche", "validations de planche"],
+    document: ["geste sur le document (import, scan, notice)",
+               "gestes sur le document (import, scans, notice)"],
+  };
+
+  function gestes(compte) {
+    return Object.entries(compte || {})
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([sorte, n]) => {
+        const mots = SORTES[sorte] || [sorte, sorte];
+        return `${n} ${n > 1 ? mots[1] : mots[0]}`;
+      }).join(", ");
+  }
+
+  /* Ce que les AUTRES ont fait sur le document d'une demande, pour l'administrateur qui y
+     répond (Hugo, 2026-10-15). `doc` : une entrée de `documents` dans `GET /api/demandes`.
+     Rend { origine, lignes, vide } — `origine` dit qui a importé, ou que ce n'est pas écrit ;
+     une ligne par personne, « Nom (login) : n gestes … — dernier le … », et une pour les
+     gestes dont l'auteur n'est pas écrit ; `vide` dit qu'il n'y a personne d'autre.
+     `undefined` si le serveur n'a rien rendu (une demande répondue). */
+  function travailDesAutres(doc) {
+    if (!doc || !Array.isArray(doc.travail_des_autres)) return undefined;
+    const origine = doc.importe_par
+      ? `Importé par ${doc.importe_par_nom && doc.importe_par_nom !== doc.importe_par
+          ? `${doc.importe_par_nom} (${doc.importe_par})` : doc.importe_par}.`
+      : "Qui l'a importé n'est pas écrit (un album d'avant le fonds) : tout geste compte "
+        + "comme celui d'un autre.";
+    const lignes = doc.travail_des_autres.map((e) => {
+      const qui = e.agent
+        ? (e.agent_nom && e.agent_nom !== e.agent ? `${e.agent_nom} (${e.agent})` : e.agent)
+        : "Auteur non écrit";
+      const quand = e.dernier ? ` — dernier le ${dateLue(e.dernier)}` : "";
+      return `${qui} : ${gestes(e.gestes)}${quand}`;
+    });
+    return {
+      origine, lignes, vide: !lignes.length,
+      texteVide: "Personne d'autre que le demandeur n'y a laissé de geste.",
+    };
+  }
+
   /* La ligne sous une demande : quand, et si la même a déjà été refusée. */
   function contexteDemande(d) {
     const parts = [];
@@ -240,9 +312,9 @@
   }
 
   return {
-    GENRE_DOCUMENT, GENRE_PROJET, ACCEPTER, REFUSER,
+    GENRE_DOCUMENT, GENRE_PROJET, ACCEPTER, REFUSER, CERTIFICATION, SORTES,
     dateLue, demandeur, pastille, offrir, retrait, definitif, apresRetrait, apresDefinitif,
     origine, emplois, titreDocument, texteDemande, contexteDemande, confirmationDetruire,
-    rendreA,
+    rendreA, certifiee, gestes, travailDesAutres,
   };
 });

@@ -224,3 +224,77 @@ test("une date de la base se lit dans le fuseau du navigateur, pas en UTC", () =
     if (avant === undefined) delete process.env.TZ; else process.env.TZ = avant;
   }
 });
+
+/* La certification d'une demande (Hugo, 2026-10-15) : ses mots, puis ce que l'administrateur
+   en lit. */
+test("la certification dit ce que la suppression détruit, et pose la question", () => {
+  const c = S.CERTIFICATION;
+  for (const mot of ["découpage", "transcription", "annotations", "métadonnées",
+                     "projet", "collections", "certifier", "pas importantes ?"]) {
+    assert.ok(c.texte.includes(mot), mot);
+  }
+  assert.equal(c.caseACocher, "Je certifie que ces données ne sont pas importantes.");
+  assert.ok(c.manque.startsWith("Cochez la certification"));
+});
+
+test("« certifié par … le … » se lit pour une demande certifiée, et rien sinon", () => {
+  const avant = process.env.TZ;
+  try {
+    process.env.TZ = "Europe/Paris";
+    assert.equal(S.certifiee({ demandeur: "sam", demandeur_nom: "Sam Diallo",
+                               certifie_le: "2026-10-14 22:58:00" }),
+                 "Certifié par Sam Diallo le 15/10/2026 : ces données ne sont pas importantes.");
+    assert.equal(S.certifiee({ demandeur: "sam", certifie_le: "2026-10-14" }),
+                 "Certifié par sam le 14/10/2026 : ces données ne sont pas importantes.");
+    assert.equal(S.certifiee({ demandeur: "sam", certifie_le: null }), "");
+    assert.equal(S.certifiee(null), "");
+  } finally {
+    if (avant === undefined) delete process.env.TZ; else process.env.TZ = avant;
+  }
+});
+
+test("le travail des autres : qui, combien de chaque sorte, le dernier", () => {
+  const avant = process.env.TZ;
+  try {
+    process.env.TZ = "Europe/Paris";
+    const t = S.travailDesAutres({
+      importe_par: "lea", importe_par_nom: "Léa Martin",
+      travail_des_autres: [
+        { agent: "sam", agent_nom: "Sam Diallo", dernier: "2026-10-14 22:58:00",
+          gestes: { annotations: 1, regions: 3 } },
+        { agent: "rui", agent_nom: "rui", dernier: "2026-10-01 08:00:00",
+          gestes: { token_correction: 2 } },
+        { agent: null, agent_nom: null, dernier: null, gestes: { region_attribut: 1 } },
+      ] });
+    assert.equal(t.origine, "Importé par Léa Martin (lea).");
+    assert.deepEqual(t.lignes, [
+      "Sam Diallo (sam) : 3 gestes sur des cases ou des bulles, 1 annotation — dernier le 15/10/2026",
+      "rui : 2 corrections grammaticales — dernier le 01/10/2026",
+      "Auteur non écrit : 1 attribut de case",
+    ]);
+    assert.equal(t.vide, false);
+  } finally {
+    if (avant === undefined) delete process.env.TZ; else process.env.TZ = avant;
+  }
+});
+
+test("un document d'avant le fonds dit ce qu'on sait ; personne d'autre se dit ; rien rendu, rien dit", () => {
+  const t = S.travailDesAutres({ importe_par: null, travail_des_autres: [] });
+  assert.ok(t.origine.startsWith("Qui l'a importé n'est pas écrit"));
+  assert.equal(t.vide, true);
+  assert.equal(t.texteVide, "Personne d'autre que le demandeur n'y a laissé de geste.");
+  assert.equal(S.travailDesAutres({ importe_par: "lea" }), undefined);
+  assert.equal(S.travailDesAutres(null), undefined);
+});
+
+test("chaque sorte que la règle lit a ses mots ; une sorte inconnue se dit telle quelle", () => {
+  for (const sorte of ["regions", "annotations", "bulle_locuteur", "personnage_presence",
+                       "region_attribut", "token_correction", "planches", "document"]) {
+    assert.ok(S.SORTES[sorte], sorte);
+    assert.equal(S.gestes({ [sorte]: 2 }), `2 ${S.SORTES[sorte][1]}`, sorte);
+    assert.equal(S.gestes({ [sorte]: 1 }), `1 ${S.SORTES[sorte][0]}`, sorte);
+  }
+  assert.equal(S.gestes({ neuve: 2 }), "2 neuve");
+  assert.equal(S.gestes({ planches: 1, document: 1 }),
+               "1 geste sur le document (import, scan, notice), 1 validation de planche");
+});

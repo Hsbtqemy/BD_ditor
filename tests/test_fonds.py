@@ -79,10 +79,12 @@ def _albums(client, qui):
     return {a["id"]: a for a in client.get("/api/albums", headers=qui).json()}
 
 
-def _demander(client, album_id, qui, motif="Importé par erreur"):
+def _demander(client, album_id, qui, motif="Importé par erreur", certifie=True):
+    """Déposer une demande de suppression, CERTIFIÉE par défaut (Hugo, 2026-10-15) : la
+    case est exigée, et les tests qui ne la mesurent pas la cochent comme l'écran."""
     return client.post("/api/demandes", headers=qui,
                        json={"genre": "suppression_document", "album_id": album_id,
-                             "motif": motif})
+                             "motif": motif, "certifie": certifie})
 
 
 def _repondre(client, demande_id, reponse, qui=ADMIN):
@@ -740,6 +742,135 @@ def test_peut_nommer_le_demandeur_aux_extremites():
     assert not moi.peut_nommer_le_demandeur("lia")
     assert not moi.peut_nommer_le_demandeur(None)
     assert not anonyme.peut_nommer_le_demandeur(None)
+
+
+# --------------------------------------------------------------------------- #
+# La certification (Hugo, 2026-10-15)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("certifie", [False, None, "non"])
+def test_une_demande_sans_certification_est_refusee(client, db_path, decor, certifie):
+    """La case est exigée par le SERVEUR aussi : un écran qui l'oublierait, ou un appel
+    sans écran, ne la contourne pas. Rien n'est écrit."""
+    corps = {"genre": "suppression_document", "album_id": decor["erreur"],
+             "motif": "Doublon"}
+    if certifie is not None:
+        corps["certifie"] = certifie
+    r = client.post("/api/demandes", headers=COLLEGUE, json=corps)
+    assert r.status_code == 422, r.text
+    if certifie != "non":                    # « non » n'est pas un booléen : 422 de forme
+        assert r.json()["detail"].startswith("Cochez la certification"), r.text
+    assert _sql(db_path, "SELECT 1 FROM demande") == []
+    assert _sql(db_path, "SELECT 1 FROM evenement WHERE cible_table = 'demande'") == []
+
+
+def test_la_certification_est_ecrite_et_lue_par_l_administrateur(client, db_path, decor):
+    r = _demander(client, decor["erreur"], COLLEGUE)
+    assert r.status_code == 201, r.text
+    ligne = _sql(db_path, "SELECT certifie_le, date_creation FROM demande")[0]
+    assert ligne["certifie_le"] and ligne["certifie_le"] == ligne["date_creation"]
+    vue = client.get("/api/demandes", headers=ADMIN).json()[0]
+    assert (vue["demandeur"], vue["certifie_le"]) == ("collegue", ligne["certifie_le"])
+    fonds = {d["id"]: d for d in client.get("/api/fonds", headers=ADMIN).json()["documents"]}
+    doc = _sql(db_path, "SELECT document_id FROM albums WHERE id = ?",
+               (decor["erreur"],))[0]["document_id"]
+    assert fonds[doc]["demande"]["certifie_le"] == ligne["certifie_le"]
+
+
+def test_un_projet_se_demande_sans_certification(client, db_path, projet):
+    """Un projet ne se supprime que vide : il n'y a pas de données à certifier."""
+    r = _demander_projet(client, projet, IMPORTEUSE)
+    assert r.status_code == 201, r.text
+    assert r.json()["certifie_le"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Ce que les autres ont fait, sous la demande (Hugo, 2026-10-15)
+# --------------------------------------------------------------------------- #
+def _detail(client, demande_id):
+    vues = {d["id"]: d for d in client.get("/api/demandes", headers=ADMIN).json()}
+    return vues[demande_id]["documents"][0]
+
+
+def test_l_administrateur_voit_qui_d_autre_y_a_travaille(client, db_path, decor):
+    """Qui (login, nom), combien de gestes de chaque sorte, et la date du dernier. Le
+    demandeur n'y est pas, même s'il a travaillé ; l'importatrice y est, comme tout autre ;
+    un attribut dont l'auteur n'est pas écrit y est sous un agent inconnu."""
+    client.get("/api/moi", headers={**COLLEGUE, "Remote-Name": "Camille Zzcollegue"})
+    r2 = _region(client, decor["planche"], COLLEGUE)
+    assert client.put(f"/api/regions/{r2}/annotation", headers=COLLEGUE,
+                      json={"note": "vu", "tags": []}).status_code == 200
+    _locuteur(client, decor)
+    _region(client, decor["planche"], ATELIER)               # le demandeur aussi travaille
+    vid = _valeur_de_case(client)
+    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
+         (decor["region"], vid))
+    demande = _demander(client, decor["erreur"], ATELIER).json()["id"]
+
+    x = _detail(client, demande)
+    assert x["importe_par"] == "importeuse"
+    par = {e["agent"]: e for e in x["travail_des_autres"]}
+    assert set(par) == {"collegue", "importeuse", None}, par
+    assert par["collegue"]["agent_nom"] == "Camille Zzcollegue"
+    assert par["collegue"]["gestes"] == {"regions": 1, "annotations": 1, "bulle_locuteur": 1}
+    derniere = _sql(db_path, "SELECT MAX(date) AS d FROM evenement WHERE agent = 'collegue' "
+                             "AND agent_type = 'humain' AND cible_table IN "
+                             "('regions', 'annotations', 'bulle_locuteur')")[0]["d"]
+    assert par["collegue"]["dernier"] == derniere
+    # L'importatrice : sa région, la naissance du document et le scan qu'elle a ajouté.
+    assert par["importeuse"]["gestes"] == {"regions": 1, "document": 2}  # naissance, scan
+    assert par[None] == {"agent": None, "agent_nom": None, "dernier": None,
+                         "gestes": {"region_attribut": 1}}
+    # Le plus récent d'abord, l'inconnu sans date en dernier.
+    assert [e["agent"] for e in x["travail_des_autres"]][-1] is None
+
+
+def test_un_document_d_avant_le_fonds_dit_ce_qu_on_sait(client, db_path, decor):
+    """L'importateur n'est écrit nulle part : `importe_par` est vide, et le travail de
+    tous, l'ancienne importatrice comprise, est celui d'« autres »."""
+    _sql(db_path, "UPDATE document SET importe_par = NULL")
+    demande = _demander(client, decor["erreur"], COLLEGUE).json()["id"]
+    x = _detail(client, demande)
+    assert x["importe_par"] is None and x["importe_par_nom"] is None
+    assert [e["agent"] for e in x["travail_des_autres"]] == ["importeuse"]
+
+
+def test_personne_d_autre(client, decor):
+    """Le demandeur seul — un compte partagé, qui a importé, ne supprime jamais seul : la
+    liste est vide. Son propre import n'y compte pas."""
+    client.get("/api/moi", headers=ATELIER)
+    aid = _album(client, "Par l'atelier", decor["principale"], ATELIER)
+    _region(client, _planche(client, aid, ATELIER), ATELIER)
+    assert client.patch("/api/comptes/atelier/nature", headers=ADMIN,
+                        json={"nature": "collectif"}).status_code == 200
+    r = _demander(client, aid, ATELIER)
+    assert r.status_code == 201, r.text
+    x = _detail(client, r.json()["id"])
+    assert (x["importe_par"], x["travail_des_autres"]) == ("atelier", [])
+
+
+@pytest.mark.parametrize("travail", sorted(TRAVAUX))
+def test_le_detail_lit_ce_que_la_regle_lit(client, decor, travail):
+    """La règle et le détail partagent leurs sources (`autorisation._sources_du_travail`) :
+    chaque travail d'un autre qui fait DEMANDER l'importatrice apparaît sous sa demande,
+    au nom de qui l'a fait ou d'un auteur inconnu."""
+    TRAVAUX[travail](client, decor)
+    assert _albums(client, IMPORTEUSE)[decor["erreur"]]["destructible"] is False
+    demande = _demander(client, decor["erreur"], IMPORTEUSE)
+    assert demande.status_code == 201, demande.text
+    agents = {e["agent"] for e in _detail(client, demande.json()["id"])["travail_des_autres"]}
+    assert agents and agents <= {"collegue", None}, agents
+
+
+def test_le_detail_ne_sort_que_vers_qui_tient_le_fonds(client, decor):
+    """Il nomme des comptes : la réponse rendue à qui dépose n'en porte rien, et une
+    demande répondue ne le recalcule plus."""
+    _region(client, decor["planche"], COLLEGUE)
+    r = _demander(client, decor["erreur"], ATELIER)
+    assert r.status_code == 201, r.text
+    assert "travail_des_autres" not in r.json()["documents"][0]
+    assert "collegue" not in r.text and "importeuse" not in r.text
+    _repondre(client, r.json()["id"], "refusee")
+    assert "travail_des_autres" not in _detail(client, r.json()["id"])
 
 
 def test_garder_clot_la_demande_qu_on_peut_redeposer(client, db_path, decor):

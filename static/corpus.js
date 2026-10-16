@@ -533,7 +533,9 @@ async function saveAlbum() {
    détruit rien — le travail reste là où l'album vit encore, ou, si c'était sa dernière
    collection, la copie est GARDÉE AU FONDS avec tout son travail ; SUPPRIMER
    DÉFINITIVEMENT efface tout de suite quand on a importé l'album et que personne d'autre
-   n'y a travaillé, et sinon DEMANDE à un administrateur, motif à l'appui.
+   n'y a travaillé, et sinon DEMANDE à un administrateur, motif à l'appui — et, depuis le
+   2026-10-15, une certification : que les données posées sur les planches ne sont pas
+   importantes.
 
    Le panneau EST la confirmation : chaque réponse dit ce qui arrivera avant qu'on la
    choisisse. Les mots se choisissent dans `lib/suppression.js`, sous table de vérité ; QUI
@@ -558,6 +560,7 @@ async function ouvrirSuppression(a) {
   $("#sp-titre").textContent = `Supprimer « ${a.titre} »`;
   spMsg("");
   $("#sp-motif").value = "";
+  $("#sp-certif").checked = false;
   const retrait = $("#sp-retrait");
   retrait.innerHTML = `<p class="muted small">Lecture des collections…</p>`;
   const moi = await Promise.resolve(window.BDMoi).catch(() => null);
@@ -568,6 +571,11 @@ async function ouvrirSuppression(a) {
   SUPPR.definitif = d;
   $("#sp-def-texte").textContent = d.texte;
   $("#sp-motif-wrap").hidden = d.mode !== "demande";
+  // La certification accompagne la demande (Hugo, 2026-10-15) : ses mots sont ceux de
+  // `lib/suppression.js`, et le serveur l'exige aussi.
+  $("#sp-certif-wrap").hidden = d.mode !== "demande";
+  $("#sp-certif-texte").textContent = BDSuppression.CERTIFICATION.texte;
+  $("#sp-certif-libelle").textContent = BDSuppression.CERTIFICATION.caseACocher;
   $("#sp-def").hidden = !d.bouton;
   $("#sp-def").textContent = d.bouton;
   $("#suppr-modal").hidden = false;
@@ -628,12 +636,18 @@ async function spDefinitif() {
       $("#sp-motif").focus();
       return;
     }
+    if (!$("#sp-certif").checked) {
+      spMsg(BDSuppression.CERTIFICATION.manque, true);
+      $("#sp-certif").focus();
+      return;
+    }
   }
   bouton.disabled = true;
   try {
     if (d.mode === "direct") await apiSend("DELETE", `/api/albums/${a.id}`);
     else await apiSend("POST", "/api/demandes",
-                       { genre: BDSuppression.GENRE_DOCUMENT, album_id: a.id, motif });
+                       { genre: BDSuppression.GENRE_DOCUMENT, album_id: a.id, motif,
+                         certifie: true });
   } catch (e) {
     spMsg(e.message, true);
     bouton.disabled = false;

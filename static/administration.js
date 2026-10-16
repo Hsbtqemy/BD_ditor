@@ -1481,6 +1481,8 @@ function fdRendreDemandes() {
       <p class="fd-demande-texte">${esc(BDSuppression.texteDemande(d))}</p>
       <p class="muted small fd-demande-contexte">${esc(BDSuppression.contexteDemande(d))}</p>
       ${d.motif ? `<p class="fd-motif">${esc(d.motif)}</p>` : ""}
+      ${d.certifie_le ? `<p class="small fd-certif">${esc(BDSuppression.certifiee(d))}</p>` : ""}
+      ${projet ? "" : (d.documents || []).map(fdTravailDesAutres).join("")}
       <div class="fd-gestes">
         <button type="button" class="danger" data-fd-accepter="${d.id}">${projet
           ? "Supprimer le projet" : "Détruire"}</button>
@@ -1490,6 +1492,21 @@ function fdRendreDemandes() {
       </div>
     </li>`;
   }).join("");
+}
+
+/* Sous une demande de suppression d'un document : ce que les AUTRES y ont fait (Hugo,
+   2026-10-15) — qui, combien de gestes de chaque sorte, le dernier —, lu par le serveur à
+   la source même de la règle de suppression, au moment de la lecture. Une demande dont le
+   serveur n'a rien rendu (illisible) ne dit rien plutôt que de dire « personne ». */
+function fdTravailDesAutres(doc) {
+  const t = BDSuppression.travailDesAutres(doc);
+  if (!t) return "";
+  return `<div class="fd-autres">
+    <p class="muted small">${esc(t.origine)}</p>
+    ${t.vide ? `<p class="small">${esc(t.texteVide)}</p>`
+      : `<p class="small fd-autres-titre">Ce que d'autres y ont fait :</p>
+         <ul class="fd-autres-liste small">${t.lignes.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>`}
+  </div>`;
 }
 
 function fdRendreDocuments() {

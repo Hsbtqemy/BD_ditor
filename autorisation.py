@@ -608,30 +608,61 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
     la correction), les validations de ses planches, et les actes sur son DOCUMENT — un
     scan ajouté ou retiré, la notice ou la paternité modifiée, la relecture d'une planche
     forcée, par un autre. Chaque sous-requête part de l'album et descend par les index
-    (`idx_evenement_cible`) : la liste des albums la pose album par album."""
+    (`idx_evenement_cible`) : la liste des albums la pose album par album.
+
+    Les cinq sources sont écrites UNE fois (`_sources_du_travail`), et lues aussi par
+    `sql_actes_sur_album` : ce que l'administrateur voit du travail des autres, sous une
+    demande, est ce que cette règle a lu — deux écritures finiraient par ne plus dire
+    pareil. Un attribut de case dont un `lien` humain a été écrit est compté par son acte
+    (première source) ; la deuxième ne garde que ceux dont AUCUN `lien` humain n'est écrit,
+    et l'auteur y est inconnu."""
+    sources = _sources_du_travail(alias)
+    sql = "(" + " OR ".join(f"EXISTS (SELECT 1 FROM {depuis} AND {agent} IS NOT ?)"
+                            for agent, _sorte, _quand, depuis in sources) + ")"
+    return sql, [login] * len(sources)
+
+
+def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str]]:
+    """Les cinq sources du travail fait sur l'album `alias`, chacune en (qui, quelle sorte,
+    quand, `FROM … WHERE …`) — la sorte est la `cible_table` de l'acte, ou le nom de la
+    table lue. Qui vaut NULL quand l'auteur n'est pas écrit."""
     cibles = ", ".join(f"'{c}'" for c in _CIBLES_DE_REGION)
-    sql = (
-        "(EXISTS (SELECT 1 FROM planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
-        f"JOIN evenement _te ON _te.cible_table IN ({cibles}) AND _te.cible_id = _tr.id "
-        f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain' "
-        "AND _te.agent IS NOT ?) "
-        "OR EXISTS (SELECT 1 FROM planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
-        "JOIN region_attribut _tra ON _tra.region_id = _tr.id "
-        f"WHERE _tp.album_id = {alias} AND NOT EXISTS (SELECT 1 FROM evenement _tre "
-        "WHERE _tre.cible_table = 'region_attribut' AND _tre.cible_id = _tra.region_id "
-        "AND _tre.type = 'lien' AND _tre.agent_type = 'humain' AND _tre.agent = ? "
-        "AND json_extract(_tre.apres, '$.valeur_id') = _tra.valeur_id)) "
-        "OR EXISTS (SELECT 1 FROM planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
-        "JOIN token_correction _tt ON _tt.region_id = _tr.id "
-        f"WHERE _tp.album_id = {alias} AND _tt.auteur IS NOT ?) "
-        "OR EXISTS (SELECT 1 FROM planches _tp JOIN evenement _te "
-        "ON _te.cible_table = 'planches' AND _te.cible_id = _tp.id "
-        f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain' "
-        "AND _te.agent IS NOT ?) "
-        "OR EXISTS (SELECT 1 FROM albums _ta JOIN evenement _te "
-        "ON _te.cible_table = 'document' AND _te.cible_id = _ta.document_id "
-        f"WHERE _ta.id = {alias} AND _te.agent_type = 'humain' AND _te.agent IS NOT ?))")
-    return sql, [login] * 5
+    return [
+        ("_te.agent", "_te.cible_table", "_te.date",
+         "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
+         f"JOIN evenement _te ON _te.cible_table IN ({cibles}) AND _te.cible_id = _tr.id "
+         f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain'"),
+        ("NULL", "'region_attribut'", "NULL",
+         "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
+         "JOIN region_attribut _tra ON _tra.region_id = _tr.id "
+         f"WHERE _tp.album_id = {alias} AND NOT EXISTS (SELECT 1 FROM evenement _tre "
+         "WHERE _tre.cible_table = 'region_attribut' AND _tre.cible_id = _tra.region_id "
+         "AND _tre.type = 'lien' AND _tre.agent_type = 'humain' "
+         "AND json_extract(_tre.apres, '$.valeur_id') = _tra.valeur_id)"),
+        ("_tt.auteur", "'token_correction'", "_tt.date_modif",
+         "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
+         "JOIN token_correction _tt ON _tt.region_id = _tr.id "
+         f"WHERE _tp.album_id = {alias}"),
+        ("_te.agent", "'planches'", "_te.date",
+         "planches _tp JOIN evenement _te "
+         "ON _te.cible_table = 'planches' AND _te.cible_id = _tp.id "
+         f"WHERE _tp.album_id = {alias} AND _te.agent_type = 'humain'"),
+        ("_te.agent", "'document'", "_te.date",
+         "albums _ta JOIN evenement _te "
+         "ON _te.cible_table = 'document' AND _te.cible_id = _ta.document_id "
+         f"WHERE _ta.id = {alias} AND _te.agent_type = 'humain'"),
+    ]
+
+
+def sql_actes_sur_album(alias: str) -> str:
+    """`SELECT agent, sorte, quand` — chaque geste humain que la règle de suppression lit
+    sur l'album `alias`, un par ligne, l'appelant compris (COL-3 ; Hugo, 2026-10-15 :
+    l'administrateur voit, sous une demande, ce que les autres ont fait sur le document).
+    Lu à la source même de la règle, au moment de la lecture. Ce n'est pas une question
+    d'accès : la route qui le rend porte sa propre garde (`peut_tenir_le_fonds`)."""
+    return " UNION ALL ".join(f"SELECT {agent} AS agent, {sorte} AS sorte, {quand} AS quand "
+                              f"FROM {depuis}"
+                              for agent, sorte, quand, depuis in _sources_du_travail(alias))
 
 
 # --------------------------------------------------------------------------- #

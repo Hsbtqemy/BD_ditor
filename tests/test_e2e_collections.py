@@ -911,13 +911,25 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
     assert envoyees == []
     assert page.evaluate("() => document.activeElement.id") == "sp-motif"
     page.fill("#sp-motif", "Doublon de « Triple ».")
+    # Sans la certification, rien ne part non plus (Hugo, 2026-10-15) — et la case se lit.
+    expect(page.locator("#sp-certif-texte")).to_be_visible()
+    expect(page.locator("#sp-certif-texte")).to_contain_text(
+        "Pouvez-vous certifier que ces données ne sont pas importantes ?")
+    expect(page.locator("#sp-certif-wrap label")).to_have_text(
+        "Je certifie que ces données ne sont pas importantes.")
+    page.click("#sp-def")
+    expect(page.locator("#sp-msg.erreur")).to_have_text(
+        "Cochez la certification : la demande ne part pas sans elle.")
+    assert envoyees == []
+    assert page.evaluate("() => document.activeElement.id") == "sp-certif"
+    page.check("#sp-certif")
     page.click("#sp-def")
     expect(page.locator("#suppr-modal")).to_be_hidden(timeout=5000)
     expect(page.locator(".toast", has_text="Votre demande est partie")).to_be_visible()
     assert len(envoyees) == 1
     corps = envoyees[0].post_data_json
     assert corps == {"genre": "suppression_document", "album_id": albums["Seul"],
-                     "motif": "Doublon de « Triple »."}, corps
+                     "motif": "Doublon de « Triple ».", "certifie": True}, corps
     pastille = _ligne(page, "Seul").locator(".sp-pastille")
     expect(pastille).to_be_visible()
     expect(pastille).to_have_text("suppression demandée par vous")
@@ -926,6 +938,7 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
     expect(page.locator("#sp-def-texte")).to_contain_text("Sa suppression est déjà demandée par vous")
     expect(page.locator("#sp-def")).to_be_hidden()
     expect(page.locator("#sp-motif")).to_be_hidden()
+    expect(page.locator("#sp-certif")).to_be_hidden()
     page.keyboard.press("Escape")
     expect(page.locator("#suppr-modal")).to_be_hidden()
 
@@ -945,6 +958,7 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
     _ouvrir_suppression(page, "Erreur")
     expect(page.locator("#sp-def-texte")).to_contain_text("vous l'avez importé")
     expect(page.locator("#sp-motif")).to_be_hidden()
+    expect(page.locator("#sp-certif")).to_be_hidden()
     expect(page.locator("#sp-def")).to_have_text("Supprimer définitivement")
     page.click("#sp-def")
     expect(page.locator(".toast", has_text="« Erreur » est supprimé définitivement")).to_be_visible(

@@ -76,7 +76,8 @@ def _decor(base):
         for titre, motif in (("Seul", "Importé dans la mauvaise étude."),
                              ("Doublon", "Doublon de « Seul ».")):
             r = c.post("/api/demandes", json={"genre": "suppression_document",
-                                              "album_id": albums[titre], "motif": motif})
+                                              "album_id": albums[titre], "motif": motif,
+                                              "certifie": True})
             assert r.status_code == 201, r.text
             demandes[titre] = r.json()["id"]
     return {"collection": cid, "archives": autre, "albums": albums, "demandes": demandes,
@@ -132,6 +133,18 @@ def test_une_demande_mene_au_fonds_et_s_y_repond(page, live_server):
     demande = page.locator(f"#{cible}")
     expect(demande).to_contain_text("Importé dans la mauvaise étude.")
     expect(demande).to_contain_text("depuis « Projet principal »")
+    # La certification, et ce que d'autres que sam y ont fait (Hugo, 2026-10-15) : ici
+    # l'administrateur qui a importé — la naissance du document et son scan.
+    certif = demande.locator(".fd-certif")
+    expect(certif).to_be_visible()
+    expect(certif).to_contain_text("Certifié par sam le ")
+    expect(certif).to_contain_text(" : ces données ne sont pas importantes.")
+    autres = demande.locator(".fd-autres")
+    expect(autres).to_be_visible()
+    expect(autres).to_contain_text("Importé par decor.")
+    expect(autres.locator("li")).to_have_count(1)
+    expect(autres.locator("li")).to_contain_text(
+        "decor : 2 gestes sur le document (import, scans, notice) — dernier le ")
 
     # Garder : la demande se clôt, rien n'est effacé.
     titre_regarder = page.locator("#cg-regarder-titre")

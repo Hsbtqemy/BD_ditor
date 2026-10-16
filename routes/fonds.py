@@ -56,6 +56,11 @@ def _exiger_le_fonds(portee: autorisation.Portee) -> None:
         raise HTTPException(403, _MOTIF_FONDS)
 
 
+_MOTIF_CERTIFIER = ("Cochez la certification : supprimer définitivement détruit tout ce qui a "
+                    "été posé sur les planches, et la demande ne part pas sans que vous "
+                    "certifiiez que ces données ne sont pas importantes.")
+
+
 def _motif(texte) -> str:
     """Le « pourquoi » d'une demande, OBLIGATOIRE : c'est la moitié de ce que
     l'administrateur doit lire. Borné, pour qu'un champ libre ne devienne pas un dépôt."""
@@ -115,12 +120,21 @@ def deposer_demande(payload: DemandeIn, conn: sqlite3.Connection = Depends(db),
     demande par qui le gère : 404 à qui ne le voit pas, 403 nommé à qui le voit sans le
     gérer. Deux refus 409 qui se nomment, dans les deux cas : la même suppression est déjà
     demandée ; et l'appelant peut la faire lui-même — demander ce qu'on a le droit de faire
-    enverrait à un administrateur un geste qui ne lui revient pas."""
+    enverrait à un administrateur un geste qui ne lui revient pas.
+
+    Un document demande en plus une CERTIFICATION (Hugo, 2026-10-15) : que les données
+    posées sur ses planches — découpage, transcription, annotations, métadonnées — ne
+    sont pas importantes. 422 nommé sans elle ; sa date est écrite sur la demande
+    (`certifie_le`), et l'administrateur la lit."""
     if payload.genre not in GENRES_DEMANDE:
         raise HTTPException(422, f"Genre de demande inconnu : {payload.genre} "
                                  f"({' | '.join(GENRES_DEMANDE)}).")
     motif = _motif(payload.motif)
     if payload.genre == DEMANDE_SUPPRESSION_DOCUMENT:
+        # La certification (Hugo, 2026-10-15) : une case du formulaire, exigée ICI aussi —
+        # un écran qui l'oublierait, ou un appel sans écran, ne doit pas la contourner.
+        if payload.certifie is not True:
+            raise HTTPException(422, _MOTIF_CERTIFIER)
         return _demander_un_document(conn, portee, payload.album_id, motif)
     return _demander_un_projet(conn, portee, payload.projet_id, motif)
 
@@ -149,8 +163,8 @@ def _demander_un_document(conn, portee, album_id, motif):
     projet_id = projet_d_album(conn, album_id)
     projet = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
     cur = conn.execute(
-        "INSERT INTO demande (genre, demandeur, motif, projet_id, projet_nom) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO demande (genre, demandeur, motif, certifie_le, projet_id, projet_nom) "
+        "VALUES (?, ?, ?, datetime('now'), ?, ?)",
         (DEMANDE_SUPPRESSION_DOCUMENT, portee.utilisateur, motif, projet_id,
          projet[0] if projet else None))
     conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
@@ -192,9 +206,14 @@ def _demander_un_projet(conn, portee, projet_id, motif):
 # --------------------------------------------------------------------------- #
 # Lire les demandes, y répondre
 # --------------------------------------------------------------------------- #
-def _vues_demandes(conn, ids=None) -> list[dict]:
+def _vues_demandes(conn, ids=None, *, detail: bool = False) -> list[dict]:
     """Les demandes telles qu'une route les REND, les plus récentes d'abord. Quatre
-    requêtes, aucune par demande."""
+    requêtes, aucune par demande.
+
+    `detail` : pour chaque document d'une demande EN ATTENTE, ce que les AUTRES que le
+    demandeur y ont fait (`_travail_des_autres`) et qui l'a importé — une requête de plus
+    par document en attente. Il nomme des comptes : seules les routes réservées à qui tient
+    le fonds le demandent, jamais la réponse rendue à qui dépose."""
     where, params = "", []
     if ids is not None:
         where = f"WHERE id IN ({', '.join('?' * len(ids))})"
@@ -236,7 +255,47 @@ def _vues_demandes(conn, ids=None) -> list[dict]:
             cles = [(d["genre"], d["projet_id"])]
         d["refus_anterieurs"] = len({i for c in cles for i in refus.get(c, ())
                                      if i < d["id"]})
+        if detail and d["en_attente"] and d["genre"] == DEMANDE_SUPPRESSION_DOCUMENT:
+            for x in d["documents"]:
+                x.update(_travail_des_autres(conn, x["document_id"], d["demandeur"]))
     return demandes
+
+
+def _travail_des_autres(conn, document_id: int, demandeur) -> dict:
+    """Ce que les AUTRES que `demandeur` ont fait sur ce document, lu au journal au moment
+    de la lecture, par la source même de la règle de suppression
+    (`autorisation.sql_actes_sur_album`) — Hugo, 2026-10-15 : l'administrateur doit voir,
+    sous la demande, qui d'autre perdrait son travail.
+
+    Rend `importe_par` (et son nom lisible) — NULL pour un document d'avant le fonds, dont
+    l'importateur n'est écrit nulle part — et `travail_des_autres` : une entrée par
+    personne, `agent` NULL pour les gestes dont l'auteur n'est pas écrit (un acte sans
+    agent, un attribut de case posé avant que le geste s'écrive), avec le nombre de gestes
+    de chaque sorte et la date du dernier, le plus récent d'abord. Ce que la règle ne lit
+    pas n'y est pas non plus : un travail sur une région supprimée depuis, une passe
+    automatique."""
+    doc = conn.execute("SELECT importe_par FROM document WHERE id = ?",
+                       (document_id,)).fetchone()
+    par_agent: dict = {}
+    for (album_id,) in conn.execute("SELECT id FROM albums WHERE document_id = ? ORDER BY id",
+                                    (document_id,)).fetchall():
+        for agent, sorte, n, dernier in conn.execute(
+                "SELECT agent, sorte, COUNT(*), MAX(quand) FROM ("
+                f"{autorisation.sql_actes_sur_album(str(int(album_id)))}"
+                ") WHERE agent IS NOT ? GROUP BY agent, sorte", (demandeur,)):
+            e = par_agent.setdefault(agent, {"agent": agent, "gestes": {}, "dernier": None})
+            e["gestes"][sorte] = e["gestes"].get(sorte, 0) + n
+            if dernier and (e["dernier"] is None or dernier > e["dernier"]):
+                e["dernier"] = dernier
+    importe_par = doc["importe_par"] if doc else None
+    noms = noms_lisibles(conn, [a for a in (*par_agent, importe_par) if a])
+    # Le plus récent d'abord ; les gestes sans date (un attribut sans auteur) en dernier.
+    autres = sorted(par_agent.values(), key=lambda e: e["dernier"] or "", reverse=True)
+    for e in autres:
+        e["agent_nom"] = noms.get(e["agent"]) if e["agent"] else None
+    return {"importe_par": importe_par,
+            "importe_par_nom": noms.get(importe_par) if importe_par else None,
+            "travail_des_autres": autres}
 
 
 def _vue_demande(conn, demande_id: int) -> dict:
@@ -250,7 +309,7 @@ def list_demandes(conn: sqlite3.Connection = Depends(db),
     ce qui permet de dire qu'une même suppression a déjà été refusée. Réservée à qui tient
     le fonds : elle nomme qui demande, et dit pourquoi."""
     _exiger_le_fonds(portee)
-    return _vues_demandes(conn)
+    return _vues_demandes(conn, detail=True)
 
 
 @router.post("/api/demandes/{demande_id}/reponse")
@@ -357,7 +416,7 @@ def lire_le_fonds(conn: sqlite3.Connection = Depends(db),
         d["appele"] = any(a["collections"] for a in d["copies"])
         dem = attente.get(d["id"])
         d["demande"] = None if dem is None else {
-            k: dem[k] for k in ("id", "demandeur", "demandeur_nom", "motif",
+            k: dem[k] for k in ("id", "demandeur", "demandeur_nom", "motif", "certifie_le",
                                 "date_creation", "refus_anterieurs")}
     sans = [r[0] for r in conn.execute(
         "SELECT id FROM albums WHERE document_id IS NULL ORDER BY id")]

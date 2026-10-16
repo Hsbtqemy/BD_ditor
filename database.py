@@ -488,6 +488,11 @@ CREATE TABLE IF NOT EXISTS document (
 -- Pas de `CHECK` sur `genre` ni sur `reponse`, pour la raison écrite sur
 -- `utilisateur.nature` : les listes vivent dans le code. `reponse` NULL = en attente. Une
 -- demande répondue RESTE : c'est ce qui permet de dire qu'une demande a déjà été refusée.
+-- `certifie_le` : quand le demandeur a certifié que les données posées sur le document ne
+-- sont pas importantes — une case du formulaire, exigée par la route pour une suppression
+-- de document (Hugo, 2026-10-15). NULL pour une demande qui ne la demande pas (un projet,
+-- qui ne se supprime que vide). Qui a certifié est le demandeur : la colonne ne le recopie
+-- pas.
 -- `demandeur` est un login ; il est nullable pour qu'une demande venue de quelqu'un qui
 -- n'a pas de compte puisse un jour s'y ranger sans reconstruire la table.
 -- `projet_id` : le projet concerné — celui de la copie, ou celui qu'on demande de
@@ -502,6 +507,7 @@ CREATE TABLE IF NOT EXISTS demande (
     genre          TEXT NOT NULL,
     demandeur      TEXT,
     motif          TEXT,
+    certifie_le    TEXT,
     projet_id      INTEGER,
     projet_nom     TEXT,
     date_creation  TEXT DEFAULT (datetime('now')),

@@ -2196,6 +2196,13 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .sp-option + .sp-option { border-top: 1px solid var(--border); padding-top: .6rem; }
 .sp-carte button { max-width: 100%; white-space: normal; text-align: left; overflow-wrap: anywhere; }
 #sp-msg { margin: 0; }
+/* La certification d'une demande (2026-10-15) : ce que la suppression détruit, puis la case.
+   `display: grid` l'emporterait sur l'attribut [hidden] : la garde le lui rend. */
+.sp-certif { display: grid; gap: .3rem; min-width: 0; }
+.sp-certif[hidden] { display: none; }
+.sp-certif-case { display: flex; align-items: flex-start; gap: .4rem; min-width: 0;
+                  overflow-wrap: anywhere; font-weight: 600; }
+.sp-certif-case input { flex: none; margin: .2rem 0 0; }
 /* La demande de suppression qui attend, sur la ligne de l'album : une pastille. Le MOT porte
    l'état ; l'encre rouge AA-sûre ne fait que l'accompagner. */
 .sp-pastille { display: inline-block; margin-left: .3rem; padding: .02rem .5rem;
@@ -2888,6 +2895,11 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .fd-demande-texte { font-weight: 600; }
 /* Le motif est un texte libre, saisi sur plusieurs lignes : ses retours se lisent. */
 .fd-motif { white-space: pre-line; border-left: 2px solid var(--border); padding-left: .6rem; }
+/* La certification, et ce que d'autres ont fait sur le document (2026-10-15). */
+.fd-certif { margin: .2rem 0; overflow-wrap: anywhere; }
+.fd-autres { margin: .3rem 0; min-width: 0; overflow-wrap: anywhere; }
+.fd-autres-titre { margin: .2rem 0 0; font-weight: 600; }
+.fd-autres-liste { margin: .1rem 0 0; padding-left: 1.2rem; }
 .fd-gestes { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem;
              margin-top: .4rem; }
 .fd-ligne-msg { margin: 0; min-width: 0; }

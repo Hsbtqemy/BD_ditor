@@ -923,6 +923,7 @@ def test_a11y_supprimer_deux_reponses(page, live_server, theme):
     viol = _audit(page)
     assert not viol, f"Supprimer… [{theme}] :\n{_fmt(viol)}"
     page.fill("#sp-motif", "Importé par erreur.")
+    page.check("#sp-certif")
     page.click("#sp-def")
     page.wait_for_selector("#suppr-modal", state="hidden", timeout=5000)
     page.wait_for_selector(".sp-pastille", timeout=5000)
@@ -955,7 +956,7 @@ def test_a11y_le_fonds_et_ses_demandes(page, live_server, theme):
     with httpx.Client(base_url=live_server, trust_env=False, timeout=30,
                       headers={"Remote-User": "sam", **entete}) as c:
         r = c.post("/api/demandes", json={"genre": "suppression_document", "album_id": a1,
-                                          "motif": "Importé deux fois."})
+                                          "motif": "Importé deux fois.", "certifie": True})
         assert r.status_code == 201, r.text
     _theme(page, theme)
     page.set_extra_http_headers({"Remote-User": "decor", "Remote-Groups": "bd-admins"})
