@@ -112,7 +112,7 @@ dont la moitié de simples jointures. Un chantier de fond, de la taille d'une tr
 
 ## 5. Questions à approfondir
 
-Les questions 1 à 4 et 14 sont **tranchées par Hugo le 2026-10-16** ; les autres portent une
+Les questions 1 à 8 et 14 sont **tranchées par Hugo le 2026-10-16** ; les autres portent une
 proposition quand il y en a une.
 
 1. **Une page appartient à une seule surface — tranché : oui.** Une surface porte une ou
@@ -135,16 +135,24 @@ proposition quand il y en a une.
    « 13 · c2 » qu'on ait assemblé la double page ou non : l'assemblage ne renumérote rien, et
    une citation écrite dans un mémoire reste vraie. Par surface, chaque assemblage aurait
    décalé les numéros de case de la page de droite.
-5. **Les statuts** (`statut` du pipeline, relecture, verrou, validation) : à la surface, ou à
-   la page ? Proposition : à la surface pour ce qui décrit un travail sur des régions ; la
-   validation est à trancher.
-6. **Les moteurs travaillent-ils par image ou par surface ?** La segmentation d'une double
-   page voit mieux la composition sur la surface entière ; l'OCR peut rester par image.
-   Chaque image porte alors sa transformation vers la surface.
-7. **Les fichiers ne se nomment plus d'après `numero`**, mais d'après l'identifiant de
-   l'image : le numéro d'une page ne doit plus rien décider sur le disque.
-8. **IIIF et TEI** : Canvas = surface, plusieurs images peintes ; les pages en `structures`
-   ou en `Range` ? L'identifiant de Canvas reste celui de la planche.
+5. **Les statuts vont à la SURFACE — tranché.** Le statut du pipeline, la relecture et le
+   verrou décrivent un travail sur des régions ou le passage d'un moteur ; la validation les
+   suit, pour rester simple : une double page se valide d'un bloc. Sur une page ordinaire,
+   surface et page coïncident, et rien ne change.
+6. **Les moteurs travaillent sur la SURFACE — tranché.** Une image de la surface entière se
+   compose à la volée, en cache, et la segmentation, les bulles et l'OCR la lisent comme un
+   scan aujourd'hui : Kumiko voit toute la double page, et la découpe d'une case à cheval
+   traverse les deux images sans code à part. Pour une surface d'une seule image, l'image
+   composée EST le scan.
+7. **Les fichiers neufs se nomment d'après l'identifiant de l'IMAGE — tranché.** Les fichiers
+   existants gardent leur nom, sans renommage sur le disque ; le numéro d'une page ne décide
+   plus rien sur le disque.
+8. **IIIF et TEI — tranché.** IIIF : un Canvas par surface, à l'identifiant d'aujourd'hui,
+   une image peinte par image à sa place (`xywh`), et les pages en *Ranges* dans
+   `structures`, chacune avec son numéro et sa portion du Canvas. TEI : une `<surface>` par
+   surface, chaque page en `<zone type="page">` avec son numéro. Pour une page ordinaire, les
+   deux exports restent ceux d'aujourd'hui, une *Range* par page en plus — que les
+   visionneuses IIIF lisent comme une table des matières.
 9. **Le journal** : ses `planche_id` historiques désignent des surfaces — vrai pour tout ce
    qui existe, à garder vrai. Les actes neufs (assembler, poser une pliure) sont à nommer.
 10. **Assembler après coup** : un geste « assembler en double page » réunit deux planches en
