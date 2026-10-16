@@ -282,7 +282,10 @@ def _travail_des_autres(conn, document_id: int, demandeur) -> dict:
         for agent, sorte, n, dernier in conn.execute(
                 "SELECT agent, sorte, COUNT(*), MAX(quand) FROM ("
                 f"{autorisation.sql_actes_sur_album(str(int(album_id)))}"
-                ") WHERE agent IS NOT ? GROUP BY agent, sorte", (demandeur,)):
+                # Un geste sans auteur écrit n'est jamais celui du demandeur — même d'une
+                # demande sans demandeur, que `IS NOT NULL` seul aurait vidée.
+                ") WHERE agent IS NULL OR agent IS NOT ? GROUP BY agent, sorte",
+                (demandeur,)):
             e = par_agent.setdefault(agent, {"agent": agent, "gestes": {}, "dernier": None})
             e["gestes"][sorte] = e["gestes"].get(sorte, 0) + n
             if dernier and (e["dernier"] is None or dernier > e["dernier"]):

@@ -859,6 +859,23 @@ def test_un_document_d_avant_le_fonds_dit_ce_qu_on_sait(client, db_path, decor):
     assert [e["agent"] for e in x["travail_des_autres"]] == ["importeuse"]
 
 
+def test_une_demande_sans_demandeur_garde_les_gestes_sans_auteur(client, db_path, decor):
+    """`demande.demandeur` est nullable — une demande venue un jour de quelqu'un sans
+    compte. Un geste dont l'auteur n'est pas écrit n'est pas le sien pour autant : il reste
+    dans le détail, avec ceux de l'importatrice."""
+    vid = _valeur_de_case(client)
+    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)",
+         (decor["region"], vid))
+    doc = _sql(db_path, "SELECT document_id FROM albums WHERE id = ?",
+               (decor["erreur"],))[0]["document_id"]
+    _sql(db_path, "INSERT INTO demande (genre, demandeur, motif) "
+                  "VALUES ('suppression_document', NULL, 'x')")
+    _sql(db_path, "INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
+                  "VALUES (1, ?, ?, 'Erreur')", (doc, decor["erreur"]))
+    agents = {e["agent"] for e in _detail(client, 1)["travail_des_autres"]}
+    assert agents == {"importeuse", None}, agents
+
+
 def test_personne_d_autre(client, decor):
     """Le demandeur seul — un compte partagé, qui a importé, ne supprime jamais seul : la
     liste est vide. Son propre import n'y compte pas."""
