@@ -26,7 +26,7 @@ from database import (DEMANDE_SUPPRESSION_DOCUMENT, citations_regions,
                       collection_par_defaut, contributions_album, creer_document,
                       dimensions_cm, document_d_album, init_db,
                       noms_lisibles, numeros_editoriaux, projet_de_collection,
-                      relecture_planches, reindex_region, retirer_document_sans_copie,
+                      relecture_planches, reindex_region,
                       unindex_region)
 import autorisation
 import conflit
@@ -1116,43 +1116,29 @@ def sharedocs_importer(payload: SharedocsImportIn,
                        portee: autorisation.Portee = Depends(portee_courante)):
     """Télécharge des fichiers ShareDocs et les ingère comme planches.
 
-    Album cible : `album_id` (existant) OU `nouvel_album` (créé). Les fichiers
+    Album cible : `album_id`, un album qui EXISTE et où l'on écrit. Les fichiers
     non-image sont ignorés (collectés dans `erreurs`) ; un échec sur un fichier
     n'interrompt pas le lot.
+
+    COL-3 (Hugo, 2026-10-15) — la route ne crée plus d'album : `nouvel_album` est refusé.
+    Un album se crée dans la Bibliothèque, qui demande sa collection — donc son projet,
+    que le document garde comme origine. Créé ici, il tombait dans la collection de repli.
     """
     if not payload.chemins:
         raise HTTPException(422, "Aucun fichier sélectionné.")
-    # Avant de créer quoi que ce soit : un compte inconnu échouerait sinon FICHIER PAR
+    if payload.nouvel_album is not None:
+        raise HTTPException(422, "L'import ne crée plus d'album (`nouvel_album`) : un album "
+                                 "se crée dans la Bibliothèque, avec sa collection, puis "
+                                 "ses planches s'importent dedans (`album_id`).")
+    # Avant d'importer quoi que ce soit : un compte inconnu échouerait sinon FICHIER PAR
     # FICHIER, en autant d'erreurs de téléchargement qu'il y a de chemins — et la vraie
     # cause, un mot mal orthographié, ne paraîtrait nulle part.
     _compte_demande(payload.compte)
-    created_album = False
-    if payload.album_id is not None:
-        # AUTH-2 : importer des planches, c'est écrire dans l'album.
-        _get_album(conn, portee, payload.album_id, ecriture=True)
-        album_id = payload.album_id
-    elif payload.nouvel_album and payload.nouvel_album.strip():
-        # Même invariant qu'à la création d'album : jamais d'orphelin, et il faut le droit
-        # d'écrire dans la collection qui l'accueille.
-        cid = collection_par_defaut(conn)
-        if not portee.peut_ecrire(cid):
-            raise HTTPException(
-                403, "Aucune collection ouverte en écriture : créez l'album depuis la "
-                     "Bibliothèque en précisant sa collection, puis importez dedans.")
-        cur = conn.execute("INSERT INTO albums (titre) VALUES (?)",
-                           (payload.nouvel_album.strip(),))
-        album_id = cur.lastrowid
-        conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
-                     (cid, album_id))
-        # COL-3 — le document naît avec l'album, mais sa naissance ne s'écrit au journal
-        # qu'une fois un fichier ENTRÉ (`naissance`, en fin de route) : si rien n'entre,
-        # l'album est retiré, et un journal en ajout seul garderait la trace d'un document
-        # que personne n'a jamais vu.
-        naissance = (_document_du_nouvel_album(conn, portee, album_id, cid), album_id,
-                     payload.nouvel_album.strip(), cid)
-        created_album = True
-    else:
-        raise HTTPException(422, "Album cible manquant (album_id ou nouvel_album).")
+    if payload.album_id is None:
+        raise HTTPException(422, "Album cible manquant (`album_id`).")
+    # AUTH-2 : importer des planches, c'est écrire dans l'album.
+    _get_album(conn, portee, payload.album_id, ecriture=True)
+    album_id = payload.album_id
 
     importes, erreurs = [], []
     for chemin in payload.chemins:
@@ -1196,16 +1182,9 @@ def sharedocs_importer(payload: SharedocsImportIn,
             if master is not None:
                 master.unlink(missing_ok=True)
             erreurs.append({"chemin": chemin, "erreur": str(exc)})
-    if created_album and not importes:
-        # rien d'importé : ne pas laisser un album vide orphelin — ni son document, dont
-        # la naissance n'a pas été écrite (cf. plus haut)
-        conn.execute("DELETE FROM albums WHERE id = ?", (album_id,))
-        retirer_document_sans_copie(conn, naissance[0])
     # Le journal du lot s'écrit ICI, hors de la boucle : dedans, une écriture qui lèverait
     # tomberait dans le `except` d'un fichier et ferait retirer le master d'une planche
     # déjà ingérée.
-    if created_album and importes:
-        _journaliser_naissance(conn, *naissance)
     for planche in importes:
         _journaliser_scan(conn, album_id, planche)
     conn.commit()

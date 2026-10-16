@@ -663,51 +663,34 @@ def test_un_document_ne_part_qu_avec_sa_derniere_copie(client, db_path):
             if a[1] == "suppression"] == [("suppression", doc)]
 
 
-def test_importer_depuis_sharedocs_fait_naitre_le_document(client, db_path, decor,
-                                                           monkeypatch):
-    """Le second chemin qui crée un album : même origine écrite, et les scans du lot à la
-    suite de la naissance. L'album tombe dans la collection de repli, donc dans le projet
-    de repli."""
+def test_importer_depuis_sharedocs_ecrit_ses_scans_sous_le_document(client, db_path, decor,
+                                                                     monkeypatch):
+    """L'import ShareDocs ne crée plus d'album (COL-3, Hugo, 2026-10-15) : un album naît
+    dans la Bibliothèque, avec sa collection, et son origine s'y écrit. L'import y AJOUTE
+    des scans, écrits sous le document à la suite de sa naissance — jamais une seconde
+    naissance."""
     monkeypatch.setattr(sd, "download", lambda path, *, principal, compte=None: make_png())
-    r = client.post("/api/sharedocs/importer", headers=ADMIN, json={
-        "chemins": ["BD/p1.png", "BD/p2.png", "BD/notes.txt"], "nouvel_album": "Astérix"})
+    aid = _creer(client, "Astérix", decor["emotions"])
+    doc = _album_ligne(db_path, aid)["document_id"]
+    r = client.post("/api/sharedocs/importer", headers=ALICE, json={
+        "chemins": ["BD/p1.png", "BD/p2.png", "BD/notes.txt"], "album_id": aid})
     assert r.status_code == 200 and len(r.json()["importes"]) == 2, r.text
-    aid = r.json()["album_id"]
-    ligne = _album_ligne(db_path, aid)
-    doc = ligne["document_id"]
-    assert doc is not None and doc != aid and ligne["projet_id"] == decor["repli"]
-    assert _sql(db_path, "SELECT importe_par, projet_origine_id FROM document WHERE id = ?",
-                (doc,)) == [{"importe_par": "decor", "projet_origine_id": decor["repli"]}]
     actes = _actes(db_path, doc)
     assert [(a[0], a[1], a[2]) for a in actes] == [
-        ("document", "creation", "decor"), ("collection_album", "lien", "decor"),
-        ("document", "modification", "decor"), ("document", "modification", "decor")]
-    assert actes[0][5] == {"album_id": aid, "titre": "Astérix"}
+        ("document", "creation", "alice"), ("collection_album", "lien", "alice"),
+        ("document", "modification", "alice"), ("document", "modification", "alice")]
     assert [a[5]["planche"]["numero"] for a in actes[2:]] == [1, 2]
 
-    # …et dans un album EXISTANT : des scans de plus, pas de seconde naissance.
-    r = client.post("/api/sharedocs/importer", headers=ADMIN,
-                    json={"chemins": ["BD/p3.png"], "album_id": aid})
-    assert r.status_code == 200 and len(r.json()["importes"]) == 1
-    assert [a[1] for a in _actes(db_path, doc)] == [
-        "creation", "lien", "modification", "modification", "modification"]
 
-
-def test_un_import_sharedocs_ou_rien_n_entre_ne_laisse_ni_document_ni_trace(
-        client, db_path, decor, monkeypatch):
-    """L'album créé pour le lot est retiré quand aucun fichier n'a pu entrer. Son document
-    part avec lui, et sa naissance n'a jamais été écrite : un journal en ajout seul
-    garderait sinon la trace d'un document que personne n'a vu."""
-    def boom(path, *, principal, compte=None):
-        raise sd.ShareDocsError("indisponible")
-    monkeypatch.setattr(sd, "download", boom)
-    avant = (_sql(db_path, "SELECT id FROM document"),
+def test_l_import_sharedocs_ne_fait_naitre_aucun_album(client, db_path, decor, monkeypatch):
+    """`nouvel_album` est refusé, et rien ne s'écrit : ni album, ni document, ni trace."""
+    monkeypatch.setattr(sd, "download", lambda path, *, principal, compte=None: make_png())
+    avant = (_sql(db_path, "SELECT id FROM albums"), _sql(db_path, "SELECT id FROM document"),
              _evenements(db_path, "document", "collection_album"))
     r = client.post("/api/sharedocs/importer", headers=ADMIN,
                     json={"chemins": ["a.png"], "nouvel_album": "Rien"})
-    assert r.status_code == 200 and r.json()["importes"] == []
-    assert _sql(db_path, "SELECT 1 FROM albums WHERE titre = 'Rien'") == []
-    assert (_sql(db_path, "SELECT id FROM document"),
+    assert r.status_code == 422, r.text
+    assert (_sql(db_path, "SELECT id FROM albums"), _sql(db_path, "SELECT id FROM document"),
             _evenements(db_path, "document", "collection_album")) == avant
 
 
@@ -748,16 +731,14 @@ def test_l_outil_ecrit_les_memes_emplois_que_la_route(client, db_path, decor):
 
 
 def test_les_chemins_d_ecriture_posent_tous_le_document(client, db_path, monkeypatch):
-    """« Tout album appartient à l'instance », en formulation exécutable : la création, la
-    création dans une collection nommée et l'import ShareDocs posent tous le document et
-    le projet de la copie. Et la formulation MORD : un album posé par `INSERT` s'y lit."""
-    monkeypatch.setattr(sd, "download", lambda path, *, principal, compte=None: make_png())
+    """« Tout album appartient à l'instance », en formulation exécutable : la création et
+    la création dans une collection nommée posent toutes deux le document et le projet de
+    la copie — l'import ShareDocs n'en crée plus (COL-3, 2026-10-15). Et la formulation
+    MORD : un album posé par `INSERT` s'y lit."""
     _creer(client, "Sans collection", headers={})
     cid = client.post("/api/collections", json={"nom": "Étude"}).json()["id"]
     _creer(client, "Dans une collection", cid, headers={})
-    assert client.post("/api/sharedocs/importer", json={
-        "chemins": ["p.png"], "nouvel_album": "Depuis ShareDocs"}).status_code == 200
-    assert len(_sql(db_path, "SELECT 1 FROM albums")) == 3
+    assert len(_sql(db_path, "SELECT 1 FROM albums")) == 2
     assert database.albums_sans_document(_conn(db_path)) == []
     assert database.albums_hors_de_leur_projet(_conn(db_path)) == []
     assert {a["projet_id"] for a in _sql(db_path, "SELECT projet_id FROM albums")} \

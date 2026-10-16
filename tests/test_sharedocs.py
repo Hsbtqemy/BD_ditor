@@ -292,12 +292,28 @@ def test_route_liste_non_connecte(client):
     assert client.get("/api/sharedocs/liste").status_code == 400
 
 
-def test_route_importer_nouvel_album(client, monkeypatch):
+def test_route_importer_refuse_un_nouvel_album(client, monkeypatch):
+    """COL-3 (Hugo, 2026-10-15) — un album se crée dans la Bibliothèque, avec sa
+    collection ; l'import ShareDocs n'en crée plus. `nouvel_album` est refusé par un 422
+    qui le dit, AVANT tout téléchargement, et aucun album ne naît."""
+    telecharges = []
+    monkeypatch.setattr(sd, "download", lambda path, *, principal, compte=None:
+                        (telecharges.append(path), _png())[1])
+    avant = len(client.get("/api/albums").json())
+    r = client.post("/api/sharedocs/importer", json={
+        "chemins": ["BD/planche01.tif"], "nouvel_album": "Astérix"})
+    assert r.status_code == 422, r.text
+    assert "Bibliothèque" in r.json()["detail"] and "nouvel_album" in r.json()["detail"]
+    assert telecharges == []
+    assert len(client.get("/api/albums").json()) == avant
+
+
+def test_route_importer_plusieurs_fichiers(client, album, monkeypatch):
     monkeypatch.setattr(sd, "download",
                         lambda path, *, principal, compte=None: _png())
     r = client.post("/api/sharedocs/importer", json={
         "chemins": ["BD/planche01.tif", "BD/planche02.tif", "BD/notes.txt"],
-        "nouvel_album": "Astérix"})
+        "album_id": album["id"]})
     assert r.status_code == 200
     body = r.json()
     assert len(body["importes"]) == 2          # 2 images ingérées
@@ -316,7 +332,7 @@ def test_route_importer_album_existant(client, album, monkeypatch):
 
 def test_route_importer_sans_fichier(client):
     r = client.post("/api/sharedocs/importer",
-                    json={"chemins": [], "nouvel_album": "X"})
+                    json={"chemins": [], "album_id": 1})
     assert r.status_code == 422
 
 
@@ -333,27 +349,25 @@ def test_route_importer_album_introuvable(client, monkeypatch):
     assert r.status_code == 404
 
 
-def test_route_importer_fichier_vide(client, monkeypatch):
+def test_route_importer_fichier_vide(client, album, monkeypatch):
     monkeypatch.setattr(sd, "download", lambda p: b"")
     r = client.post("/api/sharedocs/importer",
-                    json={"chemins": ["a.png"], "nouvel_album": "Vide"})
+                    json={"chemins": ["a.png"], "album_id": album["id"]})
     assert r.status_code == 200 and len(r.json()["erreurs"]) == 1
 
 
-def test_route_importer_download_echoue(client, monkeypatch):
+def test_route_importer_download_echoue(client, album, monkeypatch):
     def boom(path):
         raise sd.ShareDocsError("indisponible")
     monkeypatch.setattr(sd, "download", boom)
-    avant = len(client.get("/api/albums").json())
     r = client.post("/api/sharedocs/importer",
-                    json={"chemins": ["a.png"], "nouvel_album": "Z"})
+                    json={"chemins": ["a.png"], "album_id": album["id"]})
     assert r.status_code == 200
     assert r.json()["importes"] == [] and len(r.json()["erreurs"]) == 1
-    # l'album nouvellement créé mais resté vide a été nettoyé (pas d'orphelin)
-    assert len(client.get("/api/albums").json()) == avant
+    assert client.get(f"/api/albums/{album['id']}/planches").json() == []
 
 
-def test_route_importer_avec_segmentation(client, monkeypatch):
+def test_route_importer_avec_segmentation(client, album, monkeypatch):
     monkeypatch.setattr(sd, "download", lambda p, *, principal, compte=None: _png())
     monkeypatch.setattr(main, "kumiko_available", lambda: True)
     appels = []
@@ -363,12 +377,12 @@ def test_route_importer_avec_segmentation(client, monkeypatch):
     monkeypatch.setattr(main, "segment_planche",
                         lambda conn, pid: (appels.append(pid), {"statut": "segmentee"})[1])
     r = client.post("/api/sharedocs/importer", json={
-        "chemins": ["a.png"], "nouvel_album": "Seg", "segmenter": True})
+        "chemins": ["a.png"], "album_id": album["id"], "segmenter": True})
     assert r.status_code == 200
     assert appels and r.json()["importes"][0]["statut"] == "segmentee"
 
 
-def test_route_importer_segmentation_echoue(client, monkeypatch):
+def test_route_importer_segmentation_echoue(client, album, monkeypatch):
     monkeypatch.setattr(sd, "download", lambda p, *, principal, compte=None: _png())
     monkeypatch.setattr(main, "kumiko_available", lambda: True)
 
@@ -376,7 +390,7 @@ def test_route_importer_segmentation_echoue(client, monkeypatch):
         raise RuntimeError("erreur inattendue")   # PAS un KumikoError : ne doit pas perdre l'import
     monkeypatch.setattr(main, "segment_planche", boom)
     r = client.post("/api/sharedocs/importer", json={
-        "chemins": ["a.png"], "nouvel_album": "Seg2", "segmenter": True})
+        "chemins": ["a.png"], "album_id": album["id"], "segmenter": True})
     assert r.status_code == 200          # import OK malgré l'échec de segmentation
     assert len(r.json()["importes"]) == 1
     assert r.json()["importes"][0]["statut"] == "importee"   # planche conservée, non segmentée
@@ -769,17 +783,16 @@ def test_le_compte_valide_reste_accepte(client, monkeypatch, derriere_proxy):
                        headers={"Remote-User": "alice"}).status_code == 200
 
 
-def test_un_compte_inconnu_echoue_avant_de_creer_l_album(client, monkeypatch):
+def test_un_compte_inconnu_echoue_avant_d_importer(client, album, monkeypatch):
     """Même faute, même refus, partout. Sans ce contrôle en tête de route, un compte mal
     orthographié échouait FICHIER PAR FICHIER — autant d'erreurs de téléchargement qu'il y
-    a de chemins — et la vraie cause ne paraissait nulle part. Un album vide était même
-    créé au passage."""
-    avant = len(client.get("/api/albums").json())
+    a de chemins — et la vraie cause ne paraissait nulle part. (Un album vide était même
+    créé au passage, tant que la route en créait : COL-3 l'a retiré.)"""
     r = client.post("/api/sharedocs/importer", json={
-        "chemins": ["a.png", "b.png"], "nouvel_album": "Fantome",
+        "chemins": ["a.png", "b.png"], "album_id": album["id"],
         "compte": "instanc"})
     assert r.status_code == 422 and "inconnu" in r.json()["detail"]
-    assert len(client.get("/api/albums").json()) == avant, "aucun album ne doit naître"
+    assert client.get(f"/api/albums/{album['id']}/planches").json() == []
 
 
 def test_liste_refuse_le_compte_inconnu_du_meme_code(client, monkeypatch):

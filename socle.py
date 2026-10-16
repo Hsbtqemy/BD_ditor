@@ -1379,6 +1379,8 @@ class SharedocsConnIn(BaseModel):
 class SharedocsImportIn(BaseModel):
     chemins: list[str] = Field(default_factory=list)
     album_id: Optional[int] = None
+    # Gardé pour être REFUSÉ par son nom (COL-3, 2026-10-15) : sans lui, un appel qui
+    # l'enverrait encore perdrait le champ en silence et recevrait « album cible manquant ».
     nouvel_album: Optional[str] = None
     segmenter: bool = False
     compte: Optional[str] = None            # SHARE-1 : 'perso' | 'instance' | None (auto)

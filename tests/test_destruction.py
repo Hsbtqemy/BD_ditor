@@ -321,11 +321,9 @@ def test_un_album_range_nulle_part_n_est_destructible_par_personne(db_path, clie
 # garde. Le socle est donc lu avec les routes : sans lui, le cliquet ne verrait plus la
 # fonction qui détruit, et son plancher tomberait.
 _DETRUIT = re.compile(r"DELETE\s+FROM\s+(albums|planches)\b|remove_album_files\(|remove_planche_files\(")
-HORS_GARDE = {
-    "sharedocs_importer": "ne retire que l'album VIDE qu'elle vient de créer dans la même "
-                          "requête, quand aucun fichier n'a pu être importé : il n'a ni "
-                          "planche ni seconde collection, et personne ne l'a encore vu",
-}
+# `sharedocs_importer` y figurait : elle retirait l'album vide qu'elle venait de créer. Elle
+# n'en crée plus depuis COL-3 (2026-10-15), et ne détruit donc plus rien.
+HORS_GARDE = {}
 
 
 def _fonctions_qui_detruisent():
@@ -344,8 +342,7 @@ def _fonctions_qui_detruisent():
 def test_toute_route_qui_detruit_pose_la_garde_ou_dit_pourquoi_non():
     trouvees = _fonctions_qui_detruisent()
     # Le plancher d'abord : un motif qui ne trouverait plus rien approuverait tout.
-    assert {"_detruire_album", "delete_planche", "sharedocs_importer"} <= set(trouvees), \
-        trouvees
+    assert {"_detruire_album", "delete_planche"} <= set(trouvees), trouvees
     sans_garde = {nom for nom, gardee in trouvees.items() if not gardee}
     assert sans_garde == set(HORS_GARDE), (
         f"détruisent sans `_exiger_destruction` et sans raison écrite : "
