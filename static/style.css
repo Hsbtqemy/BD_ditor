@@ -606,6 +606,11 @@ button { font-family: inherit; }
   border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
 }
 .icon-btn:hover { background: var(--accent-blue); color: var(--bg-deep); }
+/* Un LIEN qui prend la forme d'un bouton-icône (↗ « Ouvrir dans l'Atelier », sur la ligne
+   d'une planche de la Bibliothèque) : un `<a>` est en ligne, il ignore largeur et hauteur,
+   et tombait en glyphe souligné à côté de ses voisins (relevé par Hugo le 2026-10-16). */
+a.icon-btn { display: inline-flex; align-items: center; justify-content: center;
+             vertical-align: bottom; text-decoration: none; }
 .danger {
   background: var(--danger); color: #fff; border: none;
   border-radius: 5px; padding: .4615rem .7692rem; cursor: pointer;
