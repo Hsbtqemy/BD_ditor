@@ -721,6 +721,24 @@ def _ouvrir_suppression(page, titre):
         timeout=5000)
 
 
+# Le contraste du CONTOUR d'un élément sur le premier fond opaque qui le porte (WCAG 1.4.11).
+_CONTRASTE_CONTOUR = r"""(el) => {
+  const rgb = (c) => (c.match(/[\d.]+/g) || []).map(Number);
+  const lum = ([r, g, b]) => {
+    const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  let fond = el.parentElement;
+  while (fond && (rgb(getComputedStyle(fond).backgroundColor)[3] === 0
+                  || getComputedStyle(fond).backgroundColor === "transparent")) {
+    fond = fond.parentElement;
+  }
+  const a = lum(rgb(getComputedStyle(el).borderTopColor));
+  const b = lum(rgb(getComputedStyle(fond || document.body).backgroundColor));
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}"""
+
+
 def _comme(page, live_server, login):
     page.set_extra_http_headers({"Remote-User": login})
     page.goto(live_server + "/corpus", wait_until="networkidle")
@@ -858,7 +876,23 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
     # `aria-disabled` pour non cliquable ; le clavier, lui, l'atteint.)
     eteinte.focus()
     page.keyboard.press("Enter")
-    expect(page.locator(".toast", has_text="Adressez-vous à un administrateur")).to_be_visible()
+    # Le message se lit CONTRE elle, dans la ligne de sa planche — pas dans un toast, qui
+    # tombait sur la colonne d'actions et couvrait le bouton touché.
+    message = page.locator("#album-detail .pl-refus-msg")
+    expect(message).to_be_visible()
+    expect(message).to_contain_text("Adressez-vous à un administrateur")
+    expect(page.locator(".toast", has_text="Adressez-vous")).to_have_count(0)
+    b, m = eteinte.bounding_box(), message.bounding_box()
+    assert 0 <= m["y"] - (b["y"] + b["height"]) <= 12, (b, m)
+    assert m["x"] < b["x"] + b["width"] and m["x"] + m["width"] > b["x"], (b, m)
+    # Éteinte, elle se distingue d'un bouton ABSENT : son contour tient 3:1 sur le fond où
+    # elle repose, dans les deux thèmes.
+    for theme in ("light", "dark"):
+        page.evaluate("t => localStorage.setItem('bd-theme', t)", theme)
+        page.reload(wait_until="networkidle")
+        _ouvrir_detail(page, "Seul")
+        rapport = page.locator("#album-detail button[data-delp-refus]").evaluate(_CONTRASTE_CONTOUR)
+        assert rapport >= 3, f"contour de la corbeille éteinte, thème {theme} : {rapport:.2f}:1"
 
     # ── « Seul » : au fonds, ou par demande ──────────────────────────────────────────────
     _ouvrir_suppression(page, "Seul")

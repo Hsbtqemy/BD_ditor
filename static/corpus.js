@@ -249,7 +249,7 @@ function renderDetail() {
     btn.onclick = () => deletePlanche(Number(btn.dataset.delp));
   });
   box.querySelectorAll("button[data-delp-refus]").forEach((btn) => {
-    btn.onclick = () => toast(PLANCHE_A_DEMANDER);
+    btn.onclick = () => direPlancheADemander(btn);
   });
 }
 
@@ -257,7 +257,14 @@ function renderDetail() {
    elle : on la supprime là où l'on pourrait supprimer l'album sans rien demander
    (`destructible`). Ailleurs, à qui écrit dans l'album, la corbeille reste à sa place mais
    ÉTEINTE, et dit à qui s'adresser — un bouton qui manquerait sans un mot ferait chercher
-   un droit. À qui ne fait que lire : rien. */
+   un droit. À qui ne fait que lire : rien.
+
+   Ce qu'elle dit se lit CONTRE elle, dans la ligne de sa planche — l'idiome de « Ce
+   projet » (« le message d'un geste se lit contre son contrôle ») : un toast, en bas à
+   droite, tombait sur la colonne d'actions et couvrait le bouton qu'on venait de toucher.
+   La ligne est rendue vide avec la table (une zone d'annonce dit ce qui CHANGE en elle) ;
+   vide, elle n'a pas de hauteur, et rien ne bouge tant qu'elle ne parle pas. Une seule
+   parle à la fois. */
 const PLANCHE_A_DEMANDER = "Cette planche ne se supprime pas d'ici : vous n'avez pas importé "
   + "l'album, ou d'autres y ont travaillé. Adressez-vous à un administrateur de l'instance.";
 
@@ -266,9 +273,20 @@ function corbeillePlanche(a, p) {
     return `<button class="icon-btn danger" data-delp="${p.id}" title="Supprimer la planche">🗑</button>`;
   }
   if (!a.ecrivable) return "";
-  return `<button class="icon-btn" data-delp-refus="${p.id}" aria-disabled="true" `
+  return `<button class="icon-btn corbeille-eteinte" data-delp-refus="${p.id}" aria-disabled="true" `
     + `title="${esc(PLANCHE_A_DEMANDER)}" aria-label="Supprimer la planche : `
-    + `à demander à un administrateur">🗑</button>`;
+    + `à demander à un administrateur" aria-describedby="pl-refus-msg-${p.id}">`
+    + `<span aria-hidden="true">🗑</span></button>`
+    + `<span class="col-msg pl-refus-msg muted small" id="pl-refus-msg-${p.id}" `
+    + `role="status" aria-live="polite"></span>`;
+}
+
+function direPlancheADemander(bouton) {
+  const ligne = $(`#pl-refus-msg-${bouton.dataset.delpRefus}`);
+  document.querySelectorAll("#album-detail .pl-refus-msg").forEach((l) => {
+    if (l !== ligne) l.textContent = "";
+  });
+  ligne.textContent = PLANCHE_A_DEMANDER;
 }
 
 /* La demande de suppression qui attend, sur la ligne de l'album — un état marqué là où
