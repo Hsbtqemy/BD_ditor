@@ -5,12 +5,18 @@ statut: interrompu
 
 # COL-3 — le fonds et les projets : un album appartient à l'instance, un travail à ceux qui le font
 
-**Arrêté sur** — 2026-10-16, `99eae43` : **la tranche 2 est sur `dev`**, poussée — le fonds,
-supprimer à deux réponses, les demandes certifiées, des identifiants qui ne reviennent plus
-(schéma 30), l'Atelier qui ne crée plus d'albums ; écrite et relue sur copie, puis portée en
-31 commits, la suite par défaut verte (1 869). La tranche 1 est en production depuis le
-2026-10-15. Restent avant la production de la tranche 2 : sa documentation et ses passes de
-QA réécrites (en cours), la recette, les passes de Hugo, les passes dans l'image.
+**Arrêté sur** — 2026-10-16, `bd5dff1` : **la tranche 2 est en production depuis le
+2026-10-16** (`main` avancé de `b387080` à `5e7f56b`, déployé par Hugo) : schéma 30, cinq
+albums et cinq documents, aucun album sans document, `AUTOINCREMENT` sur les quatre tables ;
+le timer relancé répond « rien à faire ». Avant : les passes `supprimer-n-est-pas-sortir`
+(71/71) et `collections-bibliotheque` (32/32) jouées par Hugo sur la recette, la suite (1 780)
+et la passe navigateur (517) vertes dans l'image sur `5e7f56b`. Deux retouches d'écran
+relevées pendant la passe sont parties avec (↗ sous `UX-3`, la pastille `bd5dff1`). Ce qui
+vient ensuite : l'Administration à l'échelle, sur maquette, AVANT la tranche 3.
+
+**Plus tôt le 2026-10-16** — arrêté sur `99eae43` : la tranche 2 sur `dev`, poussée, la
+suite par défaut verte (1 869) ; restaient sa documentation, ses passes réécrites, la
+recette, les passes de Hugo et les passes dans l'image.
 
 **Plus tôt le 2026-10-11** — arrêté sur `79da8c4` : la tranche 1 est codée, et trois retouches de ses écrans aussi
 (`79da8c4`, décrites dans les cases qu'elles ferment). Ses trois commits de code sont sur
