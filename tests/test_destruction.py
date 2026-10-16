@@ -321,9 +321,13 @@ def test_un_album_range_nulle_part_n_est_destructible_par_personne(db_path, clie
 # garde. Le socle est donc lu avec les routes : sans lui, le cliquet ne verrait plus la
 # fonction qui détruit, et son plancher tomberait.
 _DETRUIT = re.compile(r"DELETE\s+FROM\s+(albums|planches)\b|remove_album_files\(|remove_planche_files\(")
-# `sharedocs_importer` y figurait : elle retirait l'album vide qu'elle venait de créer. Elle
-# n'en crée plus depuis COL-3 (2026-10-15), et ne détruit donc plus rien.
-HORS_GARDE = {}
+# `sharedocs_importer` y figurait pour l'album vide qu'elle retirait ; elle n'en crée plus
+# depuis COL-3 (2026-10-15). Elle y revient pour une autre raison.
+HORS_GARDE = {
+    "sharedocs_importer": "ne retire que les FICHIERS que la même requête vient d'écrire, "
+                          "quand sa transaction échoue : leurs planches ont été défaites, "
+                          "aucune ligne ne les désigne plus, et personne ne les a vus",
+}
 
 
 def _fonctions_qui_detruisent():

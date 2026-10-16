@@ -1185,9 +1185,20 @@ def sharedocs_importer(payload: SharedocsImportIn,
     # Le journal du lot s'écrit ICI, hors de la boucle : dedans, une écriture qui lèverait
     # tomberait dans le `except` d'un fichier et ferait retirer le master d'une planche
     # déjà ingérée.
-    for planche in importes:
-        _journaliser_scan(conn, album_id, planche)
-    conn.commit()
+    #
+    # COL-3, relecture croisée — si la fin de la requête échoue, la transaction est défaite
+    # et ses planches n'existent plus ; leurs fichiers, eux, étaient déjà sur le disque, et
+    # la planche qui reprenait ensuite le même numéro les retrouvait. Ils sont retirés :
+    # ceux de CETTE requête seulement, qu'aucune ligne ne désigne plus.
+    try:
+        for planche in importes:
+            _journaliser_scan(conn, album_id, planche)
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        for planche in importes:
+            remove_planche_files(planche.get("chemin_tiff"), planche.get("chemin_web"))
+        raise
     return {"album_id": album_id, "importes": importes, "erreurs": erreurs}
 
 

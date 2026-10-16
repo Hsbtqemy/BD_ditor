@@ -367,6 +367,34 @@ def test_route_importer_download_echoue(client, album, monkeypatch):
     assert client.get(f"/api/albums/{album['id']}/planches").json() == []
 
 
+def test_un_import_qui_echoue_apres_ecriture_retire_ses_fichiers(client, album, data_dir,
+                                                                monkeypatch):
+    """COL-3, relecture croisée : la transaction défaite, la route laissait sur le disque
+    les fichiers qu'elle venait d'écrire — et l'album, ou la planche, qui reprenait ensuite
+    le même numéro les retrouvait. Une panne APRÈS l'écriture (ici au journal) retire les
+    fichiers de CETTE requête, et rien d'autre : la planche d'avant garde les siens."""
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(sd, "download", lambda path, *, principal, compte=None: _png())
+    r = client.post("/api/sharedocs/importer",
+                    json={"chemins": ["BD/p1.png"], "album_id": album["id"]})
+    assert r.status_code == 200, r.text
+    avant = r.json()["importes"][0]
+
+    def panne(*a, **k):
+        raise RuntimeError("panne après l'écriture des fichiers")
+    monkeypatch.setattr(main, "_journaliser_scan", panne)
+    c = TestClient(main.app, headers={main.EN_TETE_REQUETE: "1", **ADMIN},
+                   raise_server_exceptions=False)
+    r = c.post("/api/sharedocs/importer",
+               json={"chemins": ["BD/p2.png", "BD/p3.png"], "album_id": album["id"]})
+    assert r.status_code == 500
+    planches = client.get(f"/api/albums/{album['id']}/planches").json()
+    assert [p["id"] for p in planches] == [avant["id"]]
+    for dossier in ("corpus", "derivatives"):
+        fichiers = sorted(f.name for f in (data_dir / dossier / f"album_{album['id']}").iterdir())
+        assert [f.split(".")[0] for f in fichiers] == ["planche_0001"], (dossier, fichiers)
+
+
 def test_route_importer_avec_segmentation(client, album, monkeypatch):
     monkeypatch.setattr(sd, "download", lambda p, *, principal, compte=None: _png())
     monkeypatch.setattr(main, "kumiko_available", lambda: True)
