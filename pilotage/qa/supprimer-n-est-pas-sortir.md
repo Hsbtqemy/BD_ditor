@@ -1,90 +1,180 @@
 ---
-passe: Supprimer n'est pas sortir, à l'écran
-chantier: AUTH-10
-duree: 30 min
+passe: Supprimer a deux réponses, et le fonds garde ce qu'on retire
+chantier: COL-3
+duree: 60 min
 derniere: —
 ---
 
-# QA — un album partagé ne se supprime plus depuis une seule de ses collections
+# QA — « Supprimer… » : de la collection, ou définitivement ; la demande, et le fonds de l'administrateur
 
-**Reportée le 2026-10-09, décision de Hugo** : cette passe n'a pas été jouée avant la fusion `dev` → `main`,
-et la tranche 2 de `COL-3` la réécrira au lieu de la rejouer. Elle reste jouable telle quelle si un album partagé
-entre deux collections apparaît en production d'ici là — cf. sa case dans `pilotage/AUTH-10.md`.
+**Réécrite le 2026-10-16 pour la tranche 2 de `COL-3`, et non rejouée.** La version d'avant
+(`AUTH-10` : une corbeille, un ✕ qui menait à « sortir ») n'a jamais été jouée, et l'écran
+qu'elle décrivait n'existe plus ; elle vit dans l'historique de ce fichier.
 
-La suite verrouille le serveur : dix-neuf tests jouent la suppression sous plusieurs
-identités et regardent ce que voient les AUTRES ensuite, un cliquet exige que toute route
-qui détruit pose la garde, un test navigateur joue l'écran sous quatre identités. Ce qu'elle
-ne voit pas, c'est **si l'écran se comprend** : une corbeille qui laisse place à un ✕, une
-infobulle qui dit pourquoi, une confirmation qui annonce un aller simple, un album qui
-quitte la liste. C'est ce que cette passe regarde.
+La tranche fait de chaque album la copie de travail d'un DOCUMENT qui appartient à
+l'instance. « Supprimer » y a deux réponses : **de la collection** — rien n'est détruit, et la
+copie part au fonds si c'était sa dernière collection — ou **définitivement** — tout de suite
+quand on a importé l'album et que personne d'autre n'y a travaillé, sinon une DEMANDE motivée
+et certifiée à un administrateur, qui la tranche dans un bloc « 🗄️ Le fonds ».
 
-**Elle se joue sur la pile locale complète**, à l'adresse `https://bd.127-0-0-1.sslip.io/`
-(Chrome lancé avec `--no-proxy-server`, le certificat de Caddy accepté), derrière le proxy :
-en mono-poste et sous un administrateur, tout album se supprime et rien de ce qui suit
-n'apparaît. Une fenêtre de navigation PRIVÉE par identité.
+**Ce que les tests couvrent déjà — ne pas le refaire ici** : la règle sous chaque identité
+(importateur, travail d'un autre, compte partagé, album d'avant le fonds, mono-poste), les
+requêtes parties de chaque geste, les refus et leurs codes, qui lit le nom du demandeur, la
+garde sous le verrou d'écriture, la migration v30, le bloc du fonds à 320 px sous deux polices.
 
-| Identité | Ce qu'elle doit être pendant la passe |
-|---|---|
-| `admin-bd` | groupe `bd-admins` : monte le décor, puis constate |
-| `stagiaire` | écrit dans « Incubateur QA », et ne VOIT pas l'album partagé avant la passe |
-| `lectrice` | lit au moins un album, et n'écrit dans aucune de ses collections |
+**Ce qui se regarde ici** : ce que l'écran DIT, à qui, et si on le comprend avant d'agir —
+le panneau est la confirmation. Et ce que voient les AUTRES après un geste.
 
-« L'album partagé » désigne ci-dessous un album de la base, au choix, qui a des planches et
-que `stagiaire` **ne voit pas** au départ — la première case le vérifie. S'il le voyait par
-une autre collection, la fin de la passe décrirait un autre écran : sorti de l'incubateur,
-l'album resterait dans sa liste.
+**Ce que la passe ne juge pas** : la Recherche et l'Exploration de l'administrateur, qui
+lisent encore le texte d'une copie gardée au fonds (tranche 4) ; la rapidité de la liste des
+albums sur un gros journal ; le formulaire d'import ShareDocs, qui ne propose plus que les
+albums où l'on écrit — il demande une session Huma-Num que la recette n'a pas d'office, et
+`tests/test_e2e_atelier_album.py` le joue ; et le message qui suit une demande, qui s'affiche en bas à
+droite sur la colonne d'actions — défaut connu, ouvert dans la fiche `COL-3`, à ne pas
+re-signaler ici.
 
-### Le décor
+**Où** — la pile de recette, `https://bd.127-0-0-1.sslip.io`, **reconstruite sur un HEAD qui
+contient `99eae43`** (cf. `C:\temp\bd-recette\LISEZ-MOI.md`, « Reconstruire l'application »).
+Une fenêtre de navigation PRIVÉE par identité. Comptes : `admin-bd` (administrateur),
+`proprio` (possède « Collection Test » et « Étude B »), `stagiaire` (écrit dans « Collection
+Test »), `lectrice` (lit « Collection Test » par le groupe `annotateurs`), `collectif` (compte
+partagé, écrit dans « Collection Test » par le groupe `etudiants`), `arrivant` (aucun accès).
+Deux images JPEG ou PNG du poste, n'importe lesquelles, pour les imports.
 
-- [ ] Sous `stagiaire`, Bibliothèque : repérer un album ABSENT de sa liste, que `admin-bd` voit. C'est « l'album partagé ». Sous `admin-bd`, noter son titre, son nombre de planches et son nombre de régions
-- [ ] Sous `admin-bd`, Bibliothèque → **📚 Collections** : créer « Incubateur QA ». Elle apparaît dans la liste, avec 0 album
-- [ ] « Incubateur QA » dépliée, *Qui entre* : faire entrer le compte `stagiaire` (**+ Faire entrer**). Sa ligne apparaît au tableau, seule la case « lire » cochée
-- [ ] Sur cette ligne, cocher la case des actes d'écriture — « annoter » et les trois qui lui sont liés, une seule case. Elle reste cochée après F5
-- [ ] Ligne de l'album partagé → ✎ → bloc *Collections* → choisir « Incubateur QA » → **+ Ranger ici**. Le bloc montre l'album dans une collection de plus
-- [ ] **+ Nouvel album**, titre « Seul QA », collection « Incubateur QA ». Sa ligne apparaît, et **📚 Collections** compte 2 albums dans « Incubateur QA »
-- [ ] Toujours sous `admin-bd` : la ligne de l'album partagé porte la corbeille 🗑, et ses planches aussi (cliquer la ligne) — un administrateur écrit partout
+**Avant de commencer : `C:\temp\bd-recette\etat-de-base.ps1 restaurer`.** L'état `base` est
+en schéma 29 : il migre en v30 au redémarrage, et ses albums deviennent des documents dont
+l'importateur n'est pas écrit — c'est le décor « album d'avant le fonds ». **La passe ABÎME
+le décor** : elle crée et détruit des albums, en envoie un au fonds, dépose des demandes,
+crée puis supprime un projet. Sa dernière zone le rend. **Ne jamais détruire « esther v1 »
+ni la supprimer d'une collection** : d'autres passes en dépendent, et une seule case la
+touche, pour lire.
 
-### Sous `lectrice` — qui ne fait que lire ne se voit rien offrir
+Les zones se jouent DANS L'ORDRE : chacune s'appuie sur ce que la précédente a laissé.
 
-- [ ] Bibliothèque : sur un album qu'elle lit sans y écrire, la ligne porte ✎ et **ni 🗑 ni ✕**
-- [ ] Cliquer cette ligne : ses planches s'affichent **sans** corbeille 🗑
+### Le décor — comptes `admin-bd`, `proprio`, `stagiaire`, `collectif`
 
-### Sous `stagiaire` — ce qui n'est plus offert
+- [ ] Sous `admin-bd`, Administration, bloc « 🏷️ Version servie » : le commit affiché est `99eae43` ou plus récent — sur un serveur plus ancien, aucune case de cette passe ne mesure rien
+- [ ] Sous `admin-bd`, Administration, « 👥 Comptes et groupes », fiche du compte `collectif` : sa *Nature* est « un login partagé » ; sinon, la régler ainsi et l'enregistrer — la fiche le redit après F5
+- [ ] Sous `proprio`, Bibliothèque, **+ Nouvel album** : titre « Album de Proprio QA », *Collection* = « Collection Test », *Enregistrer*. Puis, dans sa fiche (✎), bloc *Collections* : « Étude B » → **+ Ranger ici**. La fiche liste les deux collections
+- [ ] Sous `proprio`, Bibliothèque, **+ Nouvel album** « Travail partagé QA » puis « Retrait QA », chacun dans « Collection Test » seule. Les deux lignes apparaissent, 0 planche
+- [ ] Sous `proprio`, Atelier : choisir « Travail partagé QA » dans la liste *Album*, puis *⇅ Import / Export* → *⤓ Importer des images…* → une image. La planche apparaît dans la barre latérale. Même geste pour « Retrait QA »
+- [ ] Sous `stagiaire`, Atelier, album « Travail partagé QA », mode Édition (`E`) : dessiner une région au cliquer-glisser. Elle apparaît dans l'arbre de structure, et y est encore après F5
+- [ ] Sous `stagiaire`, Bibliothèque, **+ Nouvel album** : le champ *Collection* propose « Collection Test ». Créer « Import par erreur QA » dedans, puis, dans l'Atelier, lui importer une image : la planche apparaît
+- [ ] Sous `collectif`, Bibliothèque, **+ Nouvel album** « Import collectif QA » dans « Collection Test », puis une image importée depuis l'Atelier : la planche apparaît
 
-- [ ] Bibliothèque : la ligne de « Seul QA » porte ✎ et 🗑 ; celle de l'album partagé porte ✎ et ✕, sans 🗑
-- [ ] À 375 px de large : la ligne de l'album partagé n'est ni plus large ni plus haute que celle de « Seul QA » — ✕ tient la place de 🗑. Revenir ensuite à la largeur ordinaire
-- [ ] Survoler le ✕ : l'infobulle dit que l'album est aussi rangé dans une collection où l'on n'écrit pas, et qu'on peut le sortir de la sienne. Elle ne NOMME aucune collection
-- [ ] Cliquer la ligne de l'album partagé : ses planches s'affichent avec leur rôle, leur verrou et ↗, **sans** corbeille 🗑
-- [ ] Sur une de ces planches, poser le verrou 🔒 puis le retirer : les deux aboutissent — ce qui n'est pas détruire reste permis
-- [ ] Le nom de l'autre collection de l'album partagé n'apparaît nulle part sur la page : ni dans la liste, ni dans **📚 Collections**
+### L'Atelier ne crée plus d'albums — comptes `stagiaire` et `arrivant`, Atelier
 
-### Sous `stagiaire` — le geste qui reste
+- [ ] Sous `stagiaire` : la barre latérale n'a pas de bouton `＋` à côté de la liste *Album* — on ne crée plus un album ici
+- [ ] Sous `arrivant`, qui ne lit aucun album : *⇅ Import / Export* → *⤓ Importer des images…* affiche « Aucun album : un album se crée dans la Bibliothèque, puis ses planches s'importent ici. », et aucun sélecteur de fichiers ne s'ouvre
 
-- [ ] Cliquer le ✕ de la ligne : la fiche de l'album s'ouvre ; sous *Collections*, « Incubateur QA » est la seule collection listée, une phrase redit pourquoi l'album ne se supprime pas d'ici, et le focus est sur le ✕ de « Incubateur QA » (son anneau se voit)
-- [ ] **Annuler**, puis rouvrir la fiche par ✎ : la phrase n'y est plus
-- [ ] Rouvrir par le ✕ de la ligne, actionner le ✕ de « Incubateur QA » : une confirmation demande si l'on veut sortir l'album, et prévient qu'on ne le verra plus et qu'on ne pourra pas l'y ranger de nouveau soi-même. Elle ne nomme aucune autre collection
-- [ ] Refuser la confirmation : rien ne bouge, la fiche reste ouverte, la ligne est toujours dans la liste
-- [ ] Actionner de nouveau le ✕ et accepter : la fiche se ferme, « Album sorti de « Incubateur QA ». » s'affiche, la ligne de l'album a quitté la liste, celle de « Seul QA » y est toujours
-- [ ] **📚 Collections** : « Incubateur QA » compte 1 album
+### Qui ne fait que lire ne se voit rien offrir — compte `lectrice`, Bibliothèque
 
-### L'album a survécu
+- [ ] Les lignes de « esther v1 », « Travail partagé QA » et « Retrait QA » portent ✎ et **pas** de bouton *Supprimer…*
+- [ ] Cliquer la ligne de « Travail partagé QA » : sa planche s'affiche sans corbeille 🗑, ni active ni grisée
 
-- [ ] Sous `admin-bd` : l'album partagé est dans la liste, avec les nombres de planches et de régions notés au départ
-- [ ] Sa fiche (✎) ne le montre plus dans « Incubateur QA »
+### « Supprimer… » ouvre deux réponses — compte `stagiaire`, Bibliothèque
 
-### Le même geste, quand on continue de lire l'album
+- [ ] Les lignes des albums de « Collection Test » portent chacune un bouton *Supprimer…*, à la place de l'ancienne corbeille
+- [ ] *Supprimer…* sur « Import par erreur QA » : un panneau titré « Supprimer « Import par erreur QA » » s'ouvre, le focus est sur *Annuler* (anneau visible), et il montre deux cartes, « Supprimer de la collection » et « Supprimer définitivement »
+- [ ] Dans ce panneau, la première carte dit « C'est sa dernière collection : la copie de travail est gardée au fonds, avec tout son travail. Un administrateur peut la rendre. », puis « Vous ne le verrez plus, et ne pourrez pas l'y ranger de nouveau vous-même. », au-dessus d'un bouton « Supprimer de « Collection Test » »
+- [ ] Dans ce panneau, la seconde carte dit « Efface tout de suite ses images et le travail fait dessus : vous l'avez importé, et personne d'autre n'y a travaillé. Irréversible. », avec un bouton rouge « Supprimer définitivement » et **aucun** champ de motif. *Annuler* referme sans rien faire
+- [ ] *Supprimer…* sur « Travail partagé QA », seconde carte : « D'autres s'en servent, ou ce n'est pas vous qui l'avez importé : la demande part à un administrateur, qui décide. Rien n'est effacé d'ici là. », un champ « Pourquoi ce document n'a pas sa place ici », le texte de la certification (« Supprimer définitivement détruit tout ce qui a été posé sur les planches — découpage, transcription, annotations, métadonnées —, … Pouvez-vous certifier que ces données ne sont pas importantes ? »), une case « Je certifie que ces données ne sont pas importantes. » non cochée, et un bouton « Envoyer la demande ». Échap referme
+- [ ] *Supprimer…* sur « Album de Proprio QA », première carte : « Le travail reste dans une collection que vous ne lisez pas, où rien ne change. » puis « Vous ne le verrez plus, et ne pourrez pas l'y ranger de nouveau vous-même. » — et le nom « Étude B » n'apparaît nulle part sur la page. *Annuler*
+- [ ] *Supprimer…* sur « esther v1 » — l'album d'avant le fonds —, seconde carte : c'est la demande (« D'autres s'en servent, ou ce n'est pas vous qui l'avez importé… »), pas l'effacement. *Annuler* — ne rien envoyer
 
-Sortir un album de la seule collection où l'on y ÉCRIVAIT est un aller simple même si on le
-lit encore par une autre : on y perd l'écriture, pas la vue, et la confirmation doit dire
-lequel des deux. Aucun compte de la recette n'est dans ce cas au départ ; la zone le monte.
+### Une planche suit l'album — compte `stagiaire`, Bibliothèque
 
-- [ ] Sous `admin-bd` : ranger de nouveau l'album partagé dans « Incubateur QA » (✎ → *Collections* → **+ Ranger ici**), puis, dans la collection d'ORIGINE de l'album, *Qui entre* : faire entrer le compte `stagiaire`, « lire » seul
-- [ ] Sous `stagiaire`, Bibliothèque rechargée : la ligne de l'album partagé porte ✎ et ✕. Cliquer le ✕ : la fiche liste DEUX collections, et le focus est sur le ✕ de « Incubateur QA », pas sur celui de l'autre
-- [ ] Actionner ce ✕ : la confirmation dit qu'on continuera de lire l'album mais qu'on n'y écrira plus, et qu'on ne pourra pas l'y ranger de nouveau soi-même. Elle ne dit PAS « vous ne le verrez plus »
-- [ ] Accepter : la fiche reste ouverte et ne liste plus que la collection d'origine. La fermer : la ligne de l'album est toujours dans la liste, avec ✎ et **ni 🗑 ni ✕**
-- [ ] Sous `admin-bd` : retirer l'accès de `stagiaire` à la collection d'origine. Sa ligne quitte le tableau
+- [ ] Cliquer la ligne de « Import par erreur QA » : la corbeille 🗑 de sa planche est active, rouge
+- [ ] Cliquer la ligne de « Travail partagé QA » : la corbeille de sa planche est grisée, au contour pointillé ; la toucher affiche, juste sous elle, « Cette planche ne se supprime pas d'ici : vous n'avez pas importé l'album, ou d'autres y ont travaillé. Adressez-vous à un administrateur de l'instance. » — et aucun message ne s'affiche en bas à droite
+- [ ] Menu « Aa » → thème clair : la corbeille grisée se distingue encore d'un emplacement vide (son contour se voit). Revenir au thème d'avant
 
-### Ce qui n'a pas bougé
+### Son import par erreur s'efface tout de suite — compte `stagiaire`, Bibliothèque
 
-- [ ] Sous `stagiaire` : 🗑 sur « Seul QA », confirmer. L'album disparaît — un album d'une seule collection se supprime comme avant
-- [ ] Sous `admin-bd` : supprimer « Incubateur QA », désormais vide. La base est rendue comme on l'a trouvée
+- [ ] *Supprimer…* sur « Import par erreur QA » → *Supprimer définitivement* : le panneau se ferme, « « Import par erreur QA » est supprimé définitivement, avec ses images et le travail fait dessus. » s'affiche, et la ligne a quitté la liste
+- [ ] Sous `admin-bd`, Administration, « 🗄️ Le fonds », liste *Documents* : « Import par erreur QA » n'y est pas — rien n'a été gardé
+
+### Le travail d'un autre fait demander, même à qui a importé — compte `proprio`, Bibliothèque
+
+- [ ] *Supprimer…* sur « Travail partagé QA » — qu'elle a importé, mais où `stagiaire` a dessiné une région : la seconde carte propose la demande (« D'autres s'en servent… », motif, certification), pas l'effacement. *Annuler*
+- [ ] *Supprimer…* sur « Album de Proprio QA » — importé par elle, rangé dans deux de ses collections, où personne d'autre n'a rien fait : la première carte a deux boutons, et au-dessus de « Supprimer de « Collection Test » » on lit « Le travail reste dans « Étude B », où rien ne change. », sans phrase sur ce qu'elle perdrait ; la seconde carte dit « Efface tout de suite… vous l'avez importé, et personne d'autre n'y a travaillé. Irréversible. »
+- [ ] Dans ce panneau, *Supprimer définitivement* : « « Album de Proprio QA » est supprimé définitivement… » s'affiche, la ligne quitte la liste, et « 📚 Collections » ne le compte plus ni dans « Collection Test » ni dans « Étude B »
+
+### L'album d'un autre part en demande — compte `stagiaire`, Bibliothèque
+
+- [ ] *Supprimer…* sur « Travail partagé QA », motif vide, *Envoyer la demande* : « Dites pourquoi : c'est ce que l'administrateur lira pour décider. » s'affiche en rouge dans le panneau, le focus va au champ, et rien ne part (le panneau reste ouvert)
+- [ ] Taper un motif, laisser la case vide, *Envoyer la demande* : « Cochez la certification : la demande ne part pas sans elle. » s'affiche, le focus va à la case, et rien ne part
+- [ ] Cocher la case, *Envoyer la demande* : le panneau se ferme, « Votre demande est partie à un administrateur. Rien n'est effacé d'ici sa réponse. » s'affiche, et la ligne de « Travail partagé QA » porte la pastille « suppression demandée par vous »
+- [ ] L'album est intact : sa ligne compte toujours 1 planche, et dans l'Atelier la région de `stagiaire` est encore là
+- [ ] Rouvrir *Supprimer…* sur lui : la seconde carte dit « Sa suppression est déjà demandée par vous, le JJ/MM/AAAA : un administrateur y répondra. Rien n'est effacé d'ici là. », à la date du jour, sans bouton ni champ
+- [ ] Sous `proprio`, Bibliothèque : la ligne de « Travail partagé QA » porte la pastille « suppression demandée », **sans nom** ; *Supprimer…* → la seconde carte dit « Sa suppression est déjà demandée, le … » sans nommer personne, et sans bouton
+
+### Supprimer de la collection, et l'album quitte l'écran — compte `stagiaire`, Bibliothèque
+
+- [ ] ✎ sur « esther v1 », bloc *Collections*, ✕ de « Collection Test » : une confirmation demande « Supprimer « esther v1 » de « Collection Test » ? », dit que le travail reste ailleurs (« Le travail reste dans …, où rien ne change. ») et ce que `stagiaire` y perdrait — et ne nomme pas « Étude B ». **Refuser** : rien ne bouge, la fiche reste ouverte. La fermer
+- [ ] *Supprimer…* sur « Retrait QA » → « Supprimer de « Collection Test » » : le panneau se ferme, « « Retrait QA » n'est plus dans « Collection Test ». Sa copie de travail est gardée au fonds. » s'affiche, et la ligne a quitté la liste
+- [ ] Sous `proprio`, Bibliothèque rechargée : « Retrait QA » n'est plus dans sa liste non plus, et « 📚 Collections » compte un album de moins dans « Collection Test »
+
+### Un compte partagé demande toujours — compte `collectif`, Bibliothèque
+
+- [ ] *Supprimer…* sur « Import collectif QA » — qu'il a importé, où personne d'autre n'a rien fait : la seconde carte propose la demande, pas l'effacement
+- [ ] Motif, case cochée, *Envoyer la demande* : la ligne porte « suppression demandée par vous »
+
+### « À regarder » et les demandes — compte `admin-bd`, Administration
+
+- [ ] « 👥 Comptes et groupes », « ⚠ À regarder » : ses premières lignes sont les demandes, chacune nommée (« … demande la suppression définitive de « Travail partagé QA » », de même pour « Import collectif QA »), avant tout autre signal
+- [ ] Cliquer la ligne de « Travail partagé QA » : la page descend jusqu'à cette demande, dans « 🗄️ Le fonds », qui prend le focus — aucune fiche de compte ne s'ouvre
+- [ ] « 🗄️ Le fonds » : sa ligne de compte dit « … · 2 suppressions demandées », et la section « Suppressions demandées » vient en tête du bloc, avant « Importer au fonds »
+- [ ] Demande de « Travail partagé QA » : le nom de `stagiaire`, la date du jour et « depuis « Projet principal » » (ou le nom du projet de repli), le motif tapé, puis « Certifié par … le JJ/MM/AAAA : ces données ne sont pas importantes. »
+- [ ] Sous cette demande : « Importé par … (proprio). », puis « Gestes d'autres personnes, lus au journal — un geste défait depuis compte encore : » et une ligne pour `proprio` qui compte ses gestes sur le document (« … gestes sur le document (import, scans, notice) — dernier le … ») ; aucune ligne pour `stagiaire`, la demandeuse
+- [ ] Demande de « Import collectif QA » : la certification se lit « Certifié par … (compte partagé : plusieurs personnes peuvent avoir travaillé sous ce login) le … », et dessous « Personne d'autre que le demandeur n'y a laissé de geste — mais c'est un compte partagé : plusieurs personnes peuvent avoir travaillé sous ce login. »
+- [ ] *Supprimer…* sur « esther v1 » dans la Bibliothèque, seconde carte : « Efface tout de suite ses images et tout le travail fait dessus, dans tous les projets. Irréversible. » — l'administrateur n'a rien à demander. **Annuler**, ne rien cliquer d'autre
+
+### Garder, puis redemander — comptes `admin-bd` et `stagiaire`
+
+- [ ] Sous `admin-bd`, demande de « Travail partagé QA » → *Garder* : « « Travail partagé QA » : gardé. La demande de … est close. » s'affiche, la demande quitte la liste, et « À regarder » ne la porte plus
+- [ ] Sous `stagiaire`, Bibliothèque rechargée : la pastille de « Travail partagé QA » a disparu, et *Supprimer…* repropose la demande, champ et case vides
+- [ ] Redéposer la demande (motif, case cochée). Sous `admin-bd`, « 🗄️ Le fonds » rechargé : sa ligne de contexte dit « … · déjà refusée une fois »
+
+### Détruire une demande — compte `admin-bd`, Le fonds
+
+- [ ] Demande de « Import collectif QA » → *Détruire* : une confirmation dit « Détruire « Import collectif QA » ? Ses images et tout le travail fait dessus sont effacés, dans tous les projets. Irréversible. » ; l'accepter : « « Import collectif QA » : détruit, avec ses images et tout le travail fait dessus. » s'affiche, et la demande a quitté la liste
+- [ ] Sous `collectif`, Bibliothèque rechargée : « Import collectif QA » n'y est plus
+
+### Le fonds : d'où vient chaque document, et rendre la copie gardée — compte `admin-bd`, Administration
+
+- [ ] « 🗄️ Le fonds », *Documents*, « esther v1 » : « Importé le JJ/MM/AAAA, dans « … » ; qui l'a importé n'est pas écrit. », et « Employé par … : » suivi de ses collections
+- [ ] *Documents*, « Retrait QA » : la puce « appelé par personne », « Importé par … (proprio), le …, dans « … ». », et « Copie gardée ici (projet « … »). » suivie d'une liste de collections et d'un bouton *Rendre* — la liste ne propose que des collections de ce projet
+- [ ] Choisir « Collection Test » → *Rendre* : « Copie rendue à « Collection Test », avec tout son travail. » s'affiche, la puce « appelé par personne » a disparu, et « Employé par … : Collection Test » s'affiche
+- [ ] Sous `proprio`, Bibliothèque rechargée : « Retrait QA » est revenu dans sa liste, avec 1 planche, et l'Atelier l'ouvre sur cette planche
+
+### Importer au fonds, puis détruire — compte `admin-bd`, Administration puis Bibliothèque
+
+- [ ] « 🗄️ Le fonds », *Importer au fonds*, titre vide, *+ Importer au fonds* : « Donnez un titre à l'album. » s'affiche, et rien n'est créé
+- [ ] Titre « Fonds QA », une image, *+ Importer au fonds* : « « Fonds QA » est au fonds, appelé par personne : 1 planche importée. » s'affiche, et « Fonds QA » apparaît dans *Documents* avec « appelé par personne » et « Copie gardée ici (sans projet). »
+- [ ] Bibliothèque : « Fonds QA » n'est pas dans la liste des albums ; Atelier : la liste *Album* ne le propose pas — une copie gardée n'est pas un album de travail
+- [ ] Retour au fonds, « Fonds QA » → *Détruire* : la confirmation dit ce qui part ; l'accepter : « « Fonds QA » : détruit, avec ses images et tout le travail fait dessus. », et il a quitté *Documents*
+
+### Le fonds ne leur est pas montré — comptes `proprio` et `arrivant`, Administration
+
+- [ ] Sous `proprio` : la page n'a pas de bloc « 🗄️ Le fonds », ni de bloc « 👥 Comptes et groupes », et aucun message d'erreur ne le remplace
+- [ ] Sous `arrivant` : pas de bloc « 🗄️ Le fonds » non plus
+
+### Un responsable demande la suppression de son projet — comptes `admin-bd` et `proprio`, Administration
+
+- [ ] Sous `admin-bd`, « 🗂️ Projets » : créer « Projet QA » (*Nouveau projet*, *+ Créer le projet*), puis dans sa fiche, *Qui y entre* : faire entrer le compte `proprio`, et passer sa ligne à « responsable du projet ». Le rôle est encore là après F5
+- [ ] Sous `proprio`, « 🗂️ Projets », fiche de « Projet QA », partie *Ce projet* : sous la phrase « Vous réglez qui entre dans ce projet… se demande à un administrateur de l'instance. », un bouton « Demander sa suppression… » et aucun champ
+- [ ] Cliquer ce bouton : il laisse place à un champ « Pourquoi le supprimer » qui prend le focus, avec « Envoyer la demande » et « Annuler » ; *Annuler* referme et rend le focus au bouton
+- [ ] Rouvrir, *Envoyer la demande* sans motif : « Dites pourquoi : c'est ce que l'administrateur lira pour décider. » s'affiche sur la rangée du bouton, et rien ne part
+- [ ] Avec un motif, *Envoyer la demande* : la puce « suppression demandée le JJ/MM/AAAA » remplace le bouton, et juste dessous « Votre demande est partie à un administrateur. Rien n'est supprimé d'ici sa réponse. » ; la fiche n'a pas bougé dans la page
+- [ ] Sous `admin-bd`, « 🗄️ Le fonds » rechargé : « … demande la suppression du projet « Projet QA » », avec le motif et sans certification ; *Supprimer le projet* → la confirmation dit « Supprimer le projet « Projet QA » ? Ses membres en sortent. Il ne se supprime que vide. » ; l'accepter : « Le projet « Projet QA » est supprimé. », et « 🗂️ Projets » ne le liste plus
+
+### À l'étroit — comptes `stagiaire` et `admin-bd`, fenêtre à 375 puis 320 px
+
+- [ ] Sous `stagiaire`, Bibliothèque à 375 px : la page ne défile pas de côté, et le bouton *Supprimer…* d'une ligne reste entier et lisible
+- [ ] À 320 px, *Supprimer…* sur « Travail partagé QA » : le panneau tient dans la fenêtre sans défiler de côté, ses deux cartes passent l'une sous l'autre, et la case de certification et son libellé se lisent en entier
+- [ ] Sous `admin-bd`, Administration à 320 px : le bloc « 🗄️ Le fonds » ne fait pas défiler la page de côté, et les boutons *Détruire* / *Garder* d'une demande restent entiers. Revenir à la largeur ordinaire
+
+### Rendre la recette — `C:\temp\bd-recette\etat-de-base.ps1`
+
+- [ ] `C:\temp\bd-recette\etat-de-base.ps1 restaurer` : il répond « bd-app : healthy » (ou « running »)
+- [ ] Sous `stagiaire`, Bibliothèque : « esther v1 » est là, et aucun album « … QA » ne subsiste

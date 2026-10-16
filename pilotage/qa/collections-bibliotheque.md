@@ -95,8 +95,14 @@ pas un incident de la passe — COL-2 en décidera.
 collection de `proprio`. Pour la seconde moitié de la dernière case, sous `proprio` et APRÈS
 avoir supprimé « Collection Test » : créer « Collection isolée » ; *+ Nouvel album*
 « Album isolé », Collection = « Collection isolée », sans planche ; supprimer « Collection
-isolée » — c'est elle que le refus doit compter. Puis supprimer l'album (🗑), et la
-collection, qui part alors sans refus. **Le refus s'affiche dans « Collection isolée »,
+isolée » — c'est elle que le refus doit compter. Puis supprimer l'album — *Supprimer…* sur
+sa ligne, puis *Supprimer définitivement*, qui l'efface tout de suite : `proprio` l'a importé
+et personne d'autre n'y a travaillé —, et la collection, qui part alors sans refus.
+*(Réécrit le 2026-10-16 pour la tranche 2 de `COL-3` : la corbeille 🗑 d'une ligne d'album a
+laissé la place au bouton « Supprimer… » et à ses deux réponses. Ne pas choisir « Supprimer
+de « Collection isolée » » : l'album n'y serait pas effacé, il partirait au fonds, et le
+décor garderait une copie que seul un administrateur voit. Les deux réponses ont leur passe,
+`supprimer-n-est-pas-sortir`.)* **Le refus s'affiche dans « Collection isolée »,
 sous ses boutons.** Joué le 2026-09-16, il tombait en bas du bloc, sous toutes les
 collections ; COL-2 l'a ramené près du geste le jour même. S'il retombe en bas, c'est une
 régression à signaler, pas un détour à faire.
@@ -104,7 +110,7 @@ régression à signaler, pas un détour à faire.
 - [x] Sous `arrivant` : le bouton de création est là ; créer « Carnet d'arrivant » ouvre aussitôt SON formulaire, dont il est propriétaire
 - [x] Le message qui suit la création dit où faire entrer quelqu'un : « Qui entre », dans la collection ouverte juste dessous — sans lien vers l'Administration (décochée le 2026-10-10, `b5cfce7` : même péremption que la case de la collection dépliée)
 - [x] Sous `arrivant`, supprimer « Carnet d'arrivant » (vide) réussit
-- [x] Sous `proprio`, supprimer « Collection Test », dont l'album esther v1 vit aussi ailleurs, puis une collection dont un album ne vit QUE là : le second refus compte les albums qui resteraient sans collection, et la collection survit au refus
+- [ ] Sous `proprio`, supprimer « Collection Test », dont l'album esther v1 vit aussi ailleurs, puis une collection dont un album ne vit QUE là : le second refus, rouge, sous les boutons de cette collection, dit combien d'albums n'appartiennent qu'à elle et qu'il faut les ranger ailleurs ou les supprimer d'abord de la collection — ils sont alors gardés au fonds avec leur travail ; et la collection survit au refus *(décochée le 2026-10-16 : la phrase du refus a changé avec le fonds, tranche 2 de `COL-3` — elle disait ces albums « sans aucune règle d'accès »)*
 
 ### L'Administration règle qui entre, et rien d'autre de la collection
 
