@@ -327,6 +327,10 @@ HORS_GARDE = {
     "sharedocs_importer": "ne retire que les FICHIERS que la même requête vient d'écrire, "
                           "quand sa transaction échoue : leurs planches ont été défaites, "
                           "aucune ligne ne les désigne plus, et personne ne les a vus",
+    "_inserer_album_dans_un_dossier_libre": "ne retire que la ligne d'album qu'elle vient "
+                                            "d'insérer dans la même requête, quand son "
+                                            "dossier d'images ne peut pas être mis de côté : "
+                                            "le numéro est sauté, rien n'y pend encore",
 }
 
 

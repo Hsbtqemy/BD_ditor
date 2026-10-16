@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 import database
+import main
 
 TABLES = ("albums", "planches", "regions", "personnages")
 
@@ -422,6 +423,84 @@ def test_un_album_neuf_ne_reprend_jamais_le_dossier_d_un_autre(client, data_dir,
         == ["planche_0001.png"]
     assert (data_dir / "corpus" / f"album_{aid}" / "planche_0001.png").read_bytes() \
         != b"IMAGE D'UN AUTRE ALBUM"
+
+
+def test_un_dossier_qui_ne_se_met_pas_de_cote_fait_sauter_le_numero(client, data_dir, db_path,
+                                                                    png_bytes, monkeypatch,
+                                                                    caplog):
+    """Vérification de la relecture : si le dossier trouvé ne peut PAS être mis de côté —
+    un fichier verrouillé sous Windows, des droits sur `corpus/` —, la création répondait
+    500, le compteur revenait en arrière, et chaque essai retombait sur le même numéro :
+    plus aucun album ne naissait. Le numéro est désormais SAUTÉ : l'album naît au suivant,
+    dans un dossier vide, le dossier resté n'est pas touché, et le journal du serveur le dit
+    avec son chemin. Le compteur a avancé pour de bon : la création suivante ne retombe pas
+    dessus."""
+    import pathlib
+    suivant = (_sql(db_path, "SELECT seq FROM sqlite_sequence WHERE name = 'albums'")
+               or [{"seq": 0}])[0]["seq"] + 1
+    reste = data_dir / "corpus" / f"album_{suivant}"
+    reste.mkdir(parents=True)
+    (reste / "planche_0001.png").write_bytes(b"IMAGE D'UN AUTRE ALBUM")
+    renommer = pathlib.Path.rename
+
+    def rename_verrouille(self, cible):
+        if self.name == f"album_{suivant}":
+            raise PermissionError(13, "Le fichier est utilisé par un autre processus",
+                                  str(self))
+        return renommer(self, cible)
+    monkeypatch.setattr(pathlib.Path, "rename", rename_verrouille)
+
+    with caplog.at_level("WARNING", logger="bd_annotator"):
+        r = client.post("/api/albums", json={"titre": "Neuf"})
+    assert r.status_code == 201, r.text
+    aid = r.json()["id"]
+    assert aid == suivant + 1
+    assert _sql(db_path, "SELECT 1 FROM albums WHERE id = ?", (suivant,)) == []
+    assert (reste / "planche_0001.png").read_bytes() == b"IMAGE D'UN AUTRE ALBUM"
+    assert not (data_dir / "corpus" / f"album_{aid}").exists()
+    messages = [x.getMessage() for x in caplog.records if x.levelname == "WARNING"]
+    assert any(str(reste) in m and "sauté" in m for m in messages), messages
+    # L'album neuf écrit dans un dossier à lui ; la création suivante passe au-delà.
+    r = client.post(f"/api/albums/{aid}/import",
+                    files={"file": ("p.png", png_bytes, "image/png")})
+    assert r.status_code == 201, r.text
+    assert [f.name for f in (data_dir / "corpus" / f"album_{aid}").iterdir()] \
+        == ["planche_0001.png"]
+    assert client.post("/api/albums", json={"titre": "Encore"}).json()["id"] == aid + 1
+
+
+def test_le_numero_saute_le_reste_meme_si_la_creation_echoue_ensuite(client, data_dir,
+                                                                     db_path, monkeypatch):
+    """L'avance du compteur est validée AVANT la suite de la requête : une création qui
+    échoue plus loin (ici en écrivant la naissance du document) ne la défait pas, et l'essai
+    suivant ne retente pas le dossier verrouillé — il n'est essayé qu'une fois."""
+    import pathlib
+
+    from fastapi.testclient import TestClient
+    suivant = (_sql(db_path, "SELECT seq FROM sqlite_sequence WHERE name = 'albums'")
+               or [{"seq": 0}])[0]["seq"] + 1
+    (data_dir / "corpus" / f"album_{suivant}").mkdir(parents=True)
+    renommer, essais = pathlib.Path.rename, []
+
+    def rename_verrouille(self, cible):
+        if self.name == f"album_{suivant}":
+            essais.append(self)
+            raise PermissionError(13, "verrouillé", str(self))
+        return renommer(self, cible)
+    monkeypatch.setattr(pathlib.Path, "rename", rename_verrouille)
+    naissance = main._journaliser_naissance
+
+    def panne(*a, **k):
+        raise RuntimeError("panne après le saut")
+    monkeypatch.setattr(main, "_journaliser_naissance", panne)
+    sans_relance = TestClient(main.app, headers={main.EN_TETE_REQUETE: "1"},
+                              raise_server_exceptions=False)
+    assert sans_relance.post("/api/albums", json={"titre": "Raté"}).status_code == 500
+    monkeypatch.setattr(main, "_journaliser_naissance", naissance)
+    r = client.post("/api/albums", json={"titre": "Neuf"})
+    assert r.status_code == 201, r.text
+    assert r.json()["id"] == suivant + 1
+    assert len(essais) == 1, essais
 
 
 def test_un_dossier_deja_mis_de_cote_ne_l_est_pas_par_dessus(data_dir, monkeypatch):

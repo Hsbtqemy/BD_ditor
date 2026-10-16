@@ -528,23 +528,55 @@ def create_album(album: AlbumIn, conn: sqlite3.Connection = Depends(db),
             raise HTTPException(
                 403, "Aucune collection ouverte en écriture : précisez `collection_id`, "
                      "ou demandez un accès en écriture.")
-    cols = list(data)
-    cur = conn.execute(
-        f"INSERT INTO albums ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
-        tuple(data.values()),
-    )
+    album_id = _inserer_album_dans_un_dossier_libre(conn, data)
     if cid is not None:
         conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
-                     (cid, cur.lastrowid))
-    # COL-3, relecture croisée — un dossier `album_<id>` déjà sur le disque n'est jamais
-    # repris par l'album neuf : il est mis de côté, jamais effacé (`ecarter_dossiers_d_album`).
-    ecarter_dossiers_d_album(cur.lastrowid)
+                     (cid, album_id))
     # COL-3 — l'album naît copie d'un DOCUMENT, qui appartient à l'instance dès cet instant.
     _journaliser_naissance(
-        conn, _document_du_nouvel_album(conn, portee, cur.lastrowid, cid),
-        cur.lastrowid, data["titre"], cid)
+        conn, _document_du_nouvel_album(conn, portee, album_id, cid),
+        album_id, data["titre"], cid)
     conn.commit()
-    return _row(conn.execute("SELECT * FROM albums WHERE id = ?", (cur.lastrowid,)))
+    return _row(conn.execute("SELECT * FROM albums WHERE id = ?", (album_id,)))
+
+
+# Combien de numéros d'album sauter, d'affilée, avant de renoncer (cf. ci-dessous). Au-delà,
+# ce n'est plus un dossier verrouillé, c'est `corpus/` entier qui refuse d'être écrit.
+_NUMEROS_A_SAUTER = 20
+
+
+def _inserer_album_dans_un_dossier_libre(conn: sqlite3.Connection, data: dict) -> int:
+    """Insère l'album et rend son identifiant, dont les dossiers `album_<id>` sont LIBRES.
+
+    COL-3, relecture croisée — un dossier `album_<id>` déjà sur le disque n'est jamais
+    repris par l'album neuf : il est mis de côté, jamais effacé
+    (`ecarter_dossiers_d_album`). Et s'il ne PEUT pas l'être — un fichier verrouillé sous
+    Windows, des droits sur `corpus/` —, le numéro est SAUTÉ : la ligne est retirée, le
+    compteur d'`albums` a avancé, et cette avance est VALIDÉE tout de suite, pour survivre
+    à un échec plus loin dans la requête ; puis l'album naît au numéro suivant. Sans cela,
+    la création répondait 500, le compteur revenait en arrière, et chaque essai retombait
+    sur le même numéro : plus aucun album ne naissait. Le dossier resté n'est pas touché,
+    et le journal du serveur dit lequel. Ce qui précède dans la transaction et se trouve
+    ainsi validé ne compte que la collection de repli, que `collection_par_defaut` crée au
+    besoin et qui ne dépend pas de cet album."""
+    cols = list(data)
+    for _ in range(_NUMEROS_A_SAUTER):
+        album_id = conn.execute(
+            f"INSERT INTO albums ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+            tuple(data.values())).lastrowid
+        try:
+            ecarter_dossiers_d_album(album_id)
+            return album_id
+        except OSError as exc:
+            conn.execute("DELETE FROM albums WHERE id = ?", (album_id,))
+            conn.commit()
+            logging.getLogger("bd_annotator").warning(
+                "Album %s : le dossier %s n'a pas pu être mis de côté (%s) ; il reste en "
+                "place, le numéro %s est sauté et l'album naît au suivant.",
+                album_id, exc.filename, exc.strerror or exc, album_id)
+    raise HTTPException(503, f"Les dossiers d'images de {_NUMEROS_A_SAUTER} numéros "
+                             "d'album d'affilée refusent d'être mis de côté : vérifiez les "
+                             "droits sur le dossier des images de l'instance.")
 
 
 @app.put("/api/albums/{album_id}")
