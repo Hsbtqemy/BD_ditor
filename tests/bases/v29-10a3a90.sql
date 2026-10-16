@@ -1,8 +1,7 @@
 -- Base v29 faite par le code de 10a3a90 (ses routes, sous trois comptes), vidée par
--- `sqlite3.Connection.iterdump` (la table plein texte recréée par son CREATE),
--- par un outil hors dépôt rangé avec les journaux de la tranche 2 de COL-3
--- (`fabriquer_v29.py`) ; lue par
--- `tests/test_identifiants_v30.py`. Ce qu'elle contient :
+-- `sqlite3.Connection.iterdump` (la table plein texte recréée par son CREATE).
+-- Refaite par : python tools/fabriquer_base_de_version.py 10a3a90 tests/bases/v29-10a3a90.sql
+-- Ce qu'elle contient :
 --   albums_vivants : [1, 2, 3]
 --   album_detruit : 4
 --   planche_detruite : 8

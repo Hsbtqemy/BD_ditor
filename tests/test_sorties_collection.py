@@ -566,6 +566,10 @@ OUTILS_HORS = {
     "regenerer_exemples.py":
         "Écrit `docs/exemples/` depuis un corpus JETABLE qu'il sème lui-même, jamais "
         "depuis la base réelle. Le jouer réécrirait le dépôt versionné pendant la suite.",
+    "fabriquer_base_de_version.py":
+        "Fabrique une base de TEST avec le code d'un commit passé, dans un dossier "
+        "temporaire qu'il sème lui-même, et la vide en SQL : il n'ouvre jamais la base "
+        "de l'instance. Le jouer extrairait et ferait tourner une autre version du code.",
 }
 
 
@@ -593,6 +597,7 @@ ENTREES_HORS = {
     "normaliser_casse.py": {"--album", "--dry-run", "--planche"},
     "semer_demo.py": set(),
     "regenerer_exemples.py": set(),
+    "fabriquer_base_de_version.py": {"commit", "sortie", "--copie"},
 }
 
 

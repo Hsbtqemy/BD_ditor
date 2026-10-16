@@ -449,6 +449,12 @@ NON_BALAYE = {
         "sortie majeure s'il lisait la base réelle. Il ne le fait jamais : il sème un "
         "corpus jetable (`semer_demo.py`) dans un dossier temporaire, et n'exporte que "
         "celui-là. Le balayer réécrirait `docs/exemples/` pendant la suite."),
+    ("outil", "fabriquer_base_de_version.py"): (
+        "Écrit une base de TEST dans le fichier qu'on lui nomme (`tests/bases/`), donc "
+        "dans le dépôt versionné. Il ne lit jamais la base réelle : il extrait le code "
+        "d'un commit dans un dossier temporaire et y joue un parcours sous trois comptes "
+        "FICTIFS (hugo, lea, sam), codés en dur dans le fichier. Le balayer ferait "
+        "tourner une autre version de l'application pendant la suite."),
 }
 
 

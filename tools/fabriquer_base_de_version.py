@@ -1,0 +1,274 @@
+r"""Fabrique une VRAIE base d'une version passée, avec le code de cette version lui-même.
+
+Pourquoi. Une migration se vérifie sur une base de la version PRÉCÉDENTE qui a vécu, pas sur
+une base neuve qu'on aurait ramenée en arrière à la main (règle posée par Hugo le
+2026-10-16, après la v30 de COL-3) : les bases « défaites » des tests n'avaient ni
+destructions, ni journal, ni dossiers d'images, et c'est là que la v30 s'est trompée trois
+fois. Cet outil extrait le code d'un commit (`git archive`, dans un dossier temporaire), le
+fait tourner — ses routes, derrière le proxy, sous trois comptes —, puis vide la base
+obtenue en SQL dans le fichier demandé. Le test de la migration suivante charge ce fichier
+et migre.
+
+Usage :
+    python tools/fabriquer_base_de_version.py <commit> <fichier .sql>
+    python tools/fabriquer_base_de_version.py 10a3a90 tests/bases/v29-10a3a90.sql
+
+Le commit est celui du DERNIER état de la version à fabriquer (la tête de `main` avant la
+migration, par exemple). Le fichier se nomme `tests/bases/v<version>-<commit>.sql` ; son
+en-tête dit la version, le commit, la commande qui le refait et ce que la base contient.
+Refaire le fichier change ses dates (créations, actes du journal) et rien d'autre : les
+identifiants, les comptes et le contenu sont les mêmes à chaque fabrication, à moteur NLP
+égal — sans spaCy, aucun token n'est écrit.
+
+Ce que le parcours pose, et pourquoi :
+- deux collections, trois comptes (un administrateur, deux qui écrivent) ;
+- quatre albums, des planches importées, des cases et des bulles, du texte, une
+  annotation, un locuteur, une présence, un attribut de case, une planche validée, un
+  Ctrl+Z ;
+- des destructions EN HAUT de chaque table : la dernière région, le dernier album, le
+  dernier personnage — et la dernière planche, que seule la PORTÉE d'une activité nomme
+  (une passe sans effet, par `journal.passe_ml` du code joué). Ce sont les identifiants
+  qu'une migration ne doit pas rendre.
+
+Le parcours n'emploie que des routes stables depuis la v29. Si une version les change, il
+gagne une branche sur `database.SCHEMA_VERSION` plutôt que de perdre l'ancienne forme :
+chaque fichier de `tests/bases/` doit rester refabricable. Une réponse inattendue arrête
+tout en disant laquelle.
+
+Ce que l'outil ne fait pas : il ne lit ni n'écrit la base de l'instance, ni ses dossiers
+d'images. Tout vit dans le dossier temporaire, effacé à la fin. Les moteurs ML ne sont pas
+requis (Kumiko n'est pas copié). L'option `--copie` est interne : c'est la seconde moitié
+de l'outil, lancée par la première dans le code extrait.
+"""
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import os
+import shutil
+import sqlite3
+import subprocess
+import sys
+import tarfile
+import tempfile
+from pathlib import Path
+
+RACINE = Path(__file__).resolve().parent.parent
+
+
+# --------------------------------------------------------------------------- #
+# Première moitié : extraire le code du commit, et y lancer la seconde
+# --------------------------------------------------------------------------- #
+def _extraire_puis_fabriquer(commit: str, sortie: Path) -> int:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _commun import forcer_utf8
+    forcer_utf8()
+    sha = subprocess.run(["git", "rev-parse", "--verify", f"{commit}^{{commit}}"],
+                         cwd=RACINE, capture_output=True, text=True)
+    if sha.returncode:
+        print(f"Commit introuvable dans {RACINE} : {commit}\n{sha.stderr}", file=sys.stderr)
+        return 2
+    sha = sha.stdout.strip()
+    sortie = sortie.resolve()
+    sortie.parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(prefix="bd-base-de-version-"))
+    try:
+        archive = subprocess.run(["git", "archive", "--format=tar", sha], cwd=RACINE,
+                                 capture_output=True, check=True).stdout
+        code = tmp / "code"
+        with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+            tar.extractall(code, filter="data")
+        # La seconde moitié tourne DANS le code extrait : ses modules sont ceux du commit.
+        return subprocess.run([sys.executable, str(Path(__file__).resolve()), sha, str(sortie),
+                               "--copie", str(code)], cwd=code).returncode
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# --------------------------------------------------------------------------- #
+# Seconde moitié : jouer le parcours avec le code du commit
+# --------------------------------------------------------------------------- #
+ADMIN = {"Remote-User": "hugo", "Remote-Name": "Hugo", "Remote-Groups": "bd-admins"}
+LEA = {"Remote-User": "lea", "Remote-Name": "Lea"}
+SAM = {"Remote-User": "sam", "Remote-Name": "Sam"}
+
+
+def _ok(r, *codes):
+    assert r.status_code in codes, (r.request.method, str(r.request.url), r.status_code,
+                                    r.text[:300])
+    return r.json() if r.content else None
+
+
+def _png() -> bytes:
+    from PIL import Image
+    b = io.BytesIO()
+    Image.new("RGB", (40, 50), "white").save(b, "PNG")
+    return b.getvalue()
+
+
+def _jouer_le_parcours(main, database, journal) -> dict:
+    """Le parcours, par les routes du code joué. Rend ce qu'il faut savoir de la base."""
+    from fastapi.testclient import TestClient
+    with TestClient(main.app, headers={main.EN_TETE_REQUETE: "1"}) as c:
+        for qui in (ADMIN, LEA, SAM):
+            c.get("/api/moi", headers=qui)
+        principal = _ok(c.post("/api/collections", json={"nom": "Corpus principal"},
+                               headers=ADMIN), 201)["id"]
+        incub = _ok(c.post("/api/collections", json={"nom": "Incubateur"},
+                           headers=ADMIN), 201)["id"]
+        for cid, qui in ((principal, "lea"), (incub, "lea"), (principal, "sam")):
+            _ok(c.put(f"/api/collections/{cid}/acces", headers=ADMIN,
+                      json={"genre": "utilisateur", "principal": qui, "niveau": "ecriture"}),
+                200)
+        dim = _ok(c.post("/api/attributs/dimensions", headers=LEA,
+                         json={"cible": "case", "nom": "cadrage"}), 201)["id"]
+        valeur = _ok(c.post(f"/api/attributs/dimensions/{dim}/valeurs", headers=LEA,
+                            json={"valeur": "gros plan"}), 201)["id"]
+        persos = [_ok(c.post("/api/personnages", json={"nom": n}, headers=LEA), 200, 201)["id"]
+                  for n in ("Tintin", "Haddock")]
+        albums, planches, regions = [], [], []
+        for i, (qui, cid) in enumerate(((LEA, principal), (SAM, principal), (LEA, incub),
+                                        (LEA, principal))):
+            a = _ok(c.post("/api/albums", headers=qui,
+                           json={"titre": f"Album {i + 1}", "collection_id": cid}), 201)["id"]
+            albums.append(a)
+            for p in range(2):
+                pl = _ok(c.post(f"/api/albums/{a}/import", headers=qui,
+                                files={"file": ("p.png", _png(), "image/png")}), 201)["id"]
+                planches.append(pl)
+                case = _ok(c.post(f"/api/planches/{pl}/regions", headers=qui,
+                                  json={"type": "case", "x": 0, "y": 0, "w": 30, "h": 20}),
+                           201)["id"]
+                bulle = _ok(c.post(f"/api/planches/{pl}/regions", headers=qui,
+                                   json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                                         "parent_id": case}), 201)["id"]
+                regions += [case, bulle]
+                _ok(c.put(f"/api/regions/{bulle}", headers=qui,
+                          json={"ocr_texte": f"TINTIN ET LE OTAGE {i} {p}"}), 200)
+                if p == 0:
+                    _ok(c.put(f"/api/regions/{bulle}/annotation", headers=qui,
+                              json={"note": "vu", "tags": ["dialogue"]}), 200)
+                    _ok(c.put(f"/api/regions/{bulle}/locuteur", headers=qui,
+                              json={"personnage_id": persos[0]}), 200)
+                    _ok(c.put(f"/api/regions/{case}/personnage", headers=qui,
+                              json={"personnage_id": persos[1]}), 200)
+                    _ok(c.put(f"/api/regions/{case}/attributs", headers=qui,
+                              json={"valeur_id": valeur}), 200)
+                    _ok(c.patch(f"/api/planches/{pl}/validation", headers=qui,
+                                json={"validee": True}), 200)
+        # Un Ctrl+Z, pour que le journal porte une annulation.
+        _ok(c.put(f"/api/regions/{regions[1]}", headers=LEA,
+                  json={"ocr_texte": "AVANT ANNULER"}), 200)
+        _ok(c.post("/api/undo", headers=LEA), 200)
+        # La dernière région détruite (instantané profond).
+        _ok(c.delete(f"/api/regions/{regions[-1]}", headers=LEA), 204)
+        # Une passe automatique sans effet sur la dernière planche, puis cette planche
+        # détruite : seule la portée de l'activité la nomme.
+        derniere_planche = planches[-1]
+        with database.connect() as conn:
+            with journal.passe_ml(conn, "ocr", derniere_planche, agent="easyocr"):
+                pass
+        _ok(c.delete(f"/api/planches/{derniere_planche}", headers=ADMIN), 204)
+        # Le dernier album détruit, son dossier d'images avec lui (par l'application).
+        _ok(c.delete(f"/api/albums/{albums[-1]}", headers=ADMIN), 204)
+        # Le dernier personnage : un locuteur le nomme, puis il est détruit.
+        mort = _ok(c.post("/api/personnages", json={"nom": "Rastapopoulos"}, headers=LEA),
+                   200, 201)["id"]
+        _ok(c.put(f"/api/regions/{regions[1]}/locuteur", headers=LEA,
+                  json={"personnage_id": mort}), 200)
+        _ok(c.put(f"/api/regions/{regions[1]}/locuteur", headers=LEA,
+                  json={"personnage_id": persos[0]}), 200)
+        _ok(c.delete(f"/api/personnages/{mort}", headers=LEA), 204)
+    return {"album_detruit": albums[-1], "planche_detruite": derniere_planche,
+            "region_detruite": regions[-1], "personnage_detruit": mort}
+
+
+def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict) -> None:
+    conn = sqlite3.connect(base)
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == version
+    assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    faits = {
+        "albums_vivants": [r[0] for r in conn.execute("SELECT id FROM albums ORDER BY id")],
+        **faits,
+        "max": {t: conn.execute(f"SELECT MAX(id) FROM {t}").fetchone()[0]
+                for t in ("albums", "planches", "regions", "personnages")},
+        "comptes": {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                    for t in ("albums", "planches", "regions", "personnages", "evenement",
+                              "activite", "tokens", "annotations", "recherche")},
+        "activites": [tuple(r) for r in conn.execute("SELECT type, portee FROM activite")],
+    }
+    try:
+        relatif = sortie.relative_to(RACINE).as_posix()
+    except ValueError:
+        relatif = sortie.name
+    with open(sortie, "w", encoding="utf-8", newline="\n") as f:
+        f.write(f"-- Base v{version} faite par le code de {sha[:7]} (ses routes, sous trois "
+                "comptes), vidée par\n"
+                "-- `sqlite3.Connection.iterdump` (la table plein texte recréée par son "
+                "CREATE).\n"
+                f"-- Refaite par : python tools/fabriquer_base_de_version.py {sha[:7]} "
+                f"{relatif}\n"
+                "-- Ce qu'elle contient :\n")
+        for cle, val in faits.items():
+            f.write(f"--   {cle} : {json.dumps(val, ensure_ascii=False)}\n")
+        # `iterdump` rend une table virtuelle par une écriture dans `sqlite_master`, que
+        # SQLite refuse en silence au rechargement, et ses tables internes à part. La table
+        # plein texte est donc recréée par son CREATE, et remplie par ses lignes : FTS5
+        # refait ses tables internes lui-même.
+        virtuelles = {n: s for n, s in conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE sql LIKE 'CREATE VIRTUAL TABLE%'")}
+        internes = tuple(f"'{n}_" for n in virtuelles) + tuple(f'"{n}_' for n in virtuelles)
+        for ligne in conn.iterdump():
+            if ligne.startswith("PRAGMA writable_schema"):
+                continue
+            if ligne.startswith("INSERT INTO sqlite_master"):
+                nom = next(n for n in virtuelles if f"'{n}'" in ligne)
+                f.write(virtuelles[nom] + ";\n")
+                continue
+            if ligne.startswith(tuple(f"CREATE TABLE {p}" for p in internes)) or \
+                    ligne.startswith(tuple(f"INSERT INTO {p}" for p in internes)):
+                continue
+            f.write(ligne + "\n")
+        f.write(f"PRAGMA user_version = {version};\n")
+    conn.close()
+    print(json.dumps(faits, ensure_ascii=False))
+
+
+def _fabriquer_dans(copie: Path, sha: str, sortie: Path) -> int:
+    # Le dossier de l'outil (celui du dépôt courant) sort du chemin d'import : seuls les
+    # modules du commit doivent répondre à `import database`.
+    ici = str(Path(__file__).resolve().parent)
+    sys.path[:] = [p for p in sys.path if Path(p or ".").resolve() != Path(ici)]
+    sys.path.insert(0, str(copie))
+    os.chdir(copie)
+    travail = copie / "_donnees"
+    travail.mkdir()
+    base = travail / "base.sqlite"
+    os.environ.update(BD_DB_PATH=str(base), BD_DATA_DIR=str(travail), BD_AUTH_PROXY="1")
+    import database
+    import journal
+    import main
+    faits = _jouer_le_parcours(main, database, journal)
+    _vider_en_sql(base, sortie, database.SCHEMA_VERSION, sha, faits)
+    print(f"v{database.SCHEMA_VERSION}, {sortie} ({sortie.stat().st_size} octets)")
+    return 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(
+        description="Fabrique une vraie base d'une version passée, avec le code de cette "
+                    "version, et la vide en SQL (tests de migration).")
+    ap.add_argument("commit", help="le commit dont le code fabrique la base (ex. 10a3a90)")
+    ap.add_argument("sortie", help="le fichier .sql à écrire (ex. tests/bases/v29-10a3a90.sql)")
+    ap.add_argument("--copie", help=argparse.SUPPRESS)
+    args = ap.parse_args(argv)
+    if args.copie:
+        return _fabriquer_dans(Path(args.copie), args.commit, Path(args.sortie))
+    return _extraire_puis_fabriquer(args.commit, Path(args.sortie))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
