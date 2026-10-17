@@ -688,29 +688,6 @@ def _retour_en_attente(conn, album_id: int):
         (DEMANDE_RENDRE, album_id)).fetchone()
 
 
-def _clore_retours_d_une_copie_rangee(conn, portee: autorisation.Portee,
-                                      album_id: int) -> None:
-    """La copie a quitté le fonds par un autre chemin que la réponse à sa demande — un
-    administrateur l'a rendue depuis la fiche du document, ou reprise par la prise : la
-    demande de la rendre a reçu ce qu'elle demandait, et se clôt ACCEPTÉE, sous le nom de
-    qui l'a fait. Elle dit sa copie (`copie_id`) comme une réponse « Rendre ».
-
-    Sans cela, « À faire » montrerait encore « Rendre à … » sur une copie déjà rendue, et y
-    répondre buterait sur un refus. Ne fait rien si la copie est encore gardée (aucune
-    collection). Ne commite pas."""
-    if conn.execute("SELECT 1 FROM collection_album WHERE album_id = ?",
-                    (album_id,)).fetchone() is None:
-        return
-    ids = [r[0] for r in conn.execute(
-        "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
-        "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL ORDER BY d.id",
-        (DEMANDE_RENDRE, album_id))]
-    for demande_id in ids:
-        conn.execute("UPDATE demande_document SET copie_id = ? WHERE demande_id = ?",
-                     (album_id, demande_id))
-    _clore_demandes(conn, portee, ids, REPONSE_ACCEPTEE)
-
-
 def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
     """Supprime un projet VIDE, ou refuse en se NOMMANT. Ne commite pas. Les deux chemins
     de la suppression d'un projet y passent : la route (`DELETE /api/projets/{id}`) et la

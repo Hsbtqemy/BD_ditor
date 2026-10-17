@@ -339,3 +339,14 @@ test("une demande se nomme par ce que le fonds en a lu, quand il l'a lu", () => 
                "Une demande attend sa réponse");
   assert.equal(C.texteGroupeSignaux("demande_en_attente", 7), "7 demandes en attente");
 });
+
+/* COL-3, écran de la 3a (relecture croisée) — les entrées de projet d'un compte. */
+test("une entrée de projet reste au login, et un compte absent qui n'a qu'elle se dit", () => {
+  assert.equal(C.consequenceSuppression({ actes: 0, acces_explicites: 0, entrees_projet: 1 }),
+               "1 entrée de projet resterait à ce login ; un compte recréé sous ce nom en hériterait");
+  assert.equal(C.consequenceSuppression({ actes: 2, acces_explicites: 1, entrees_projet: 1 }),
+               "2 actes, 1 accès et 1 entrée de projet resteraient à ce login ; un compte "
+               + "recréé sous ce nom en hériterait");
+  assert.equal(C.texteSignal({ signal: "compte_absent", login: "eve" }, {}),
+               "Le compte eve n'est pas dans l'annuaire (entrée de projet)");
+});

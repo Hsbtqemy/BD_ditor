@@ -233,6 +233,10 @@
       case "groupe_absent":
         return `Le groupe ${s.groupe} n'est pas dans l'annuaire (accès à ${col(s.collection)})`;
       case "compte_absent":
+        // Sans collection : une entrée de projet qui n'ouvre rien (COL-3, écran de la 3a).
+        if (s.collection === undefined || s.collection === null) {
+          return `Le compte ${s.login} n'est pas dans l'annuaire (entrée de projet)`;
+        }
         return `Le compte ${s.login} n'est pas dans l'annuaire (accès à ${col(s.collection)})`;
       case "proprietaire_absent":
         return `${col(s.collection)} n'a plus de propriétaire dans l'annuaire`;
@@ -298,12 +302,17 @@
      clé sur lui. Ce qui se perd, c'est que ce login ne désigne plus personne. */
   function consequenceSuppression(compte) {
     const actes = compte.actes || 0, acces = compte.acces_explicites || 0;
-    if (!actes && !acces) return "rien à orpheliner";
+    // COL-3, écran de la 3a — ses entrées de projet restent aussi à ce login.
+    const projets = compte.entrees_projet || 0;
+    if (!actes && !acces && !projets) return "rien à orpheliner";
     const parts = [];
     if (actes) parts.push(pluriel(actes, "acte", "actes"));
     if (acces) parts.push(pluriel(acces, "accès", "accès"));
-    const seul = parts.length === 1 && (actes || acces) === 1;
-    return `${parts.join(" et ")} ${seul ? "resterait" : "resteraient"} à ce login ; un compte `
+    if (projets) parts.push(pluriel(projets, "entrée de projet", "entrées de projet"));
+    const seul = parts.length === 1 && (actes || acces || projets) === 1;
+    const liste = parts.length > 1
+      ? `${parts.slice(0, -1).join(", ")} et ${parts[parts.length - 1]}` : parts[0];
+    return `${liste} ${seul ? "resterait" : "resteraient"} à ce login ; un compte `
       + "recréé sous ce nom en hériterait";
   }
 

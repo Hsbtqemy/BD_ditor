@@ -598,6 +598,10 @@ function cgFicheCompte(c) {
         <li>Retirer ses accès à son nom${n ? ` (${n})` : " — il n'en a aucun"}, dans
           « Qui entre » de chaque collection : sa fiche s'ouvre depuis « Collections »,
           ci-dessus.</li>
+        ${c.entrees_projet ? `<li>Le retirer des projets dont il est
+          (${c.entrees_projet}), dans « Qui y entre » de la fiche de chacun — vue
+          « Projets ». Responsable seul d'un projet, nommez-en d'abord un autre : il est
+          propriétaire de sa collection de base.</li>` : ""}
         ${suite}
       </ol></details>`;
   }
@@ -2339,8 +2343,15 @@ async function fdRepondre(id, reponse, documentId) {
   if (accepter && d.genre === G.GENRE_PROJET
       && !confirm(`Supprimer le projet « ${d.projet_nom || d.projet_id} » ? Ses membres en `
                   + "sortent. Il ne se supprime que vide.")) return;
+  // Une autre copie du document l'emploie-t-elle ? Le fonds le sait : ses images restent
+  // alors (D6), et la confirmation le dit — sans dire où vit l'autre copie.
+  const soeur = (d.documents || []).some((x) => {
+    const doc = FD.documents.find((y) => y.id === x.document_id);
+    return !!doc && doc.copies.length > 1;
+  });
   if (accepter && d.genre === G.GENRE_DOCUMENT
-      && !confirm(G.confirmationDetruire((d.documents || []).map((x) => x.titre).join(", ")))) {
+      && !confirm(G.confirmationDetruire((d.documents || []).map((x) => x.titre).join(", "),
+                                         soeur))) {
     return;
   }
   const corps = { reponse };

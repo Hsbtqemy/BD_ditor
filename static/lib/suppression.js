@@ -347,9 +347,17 @@
         + "partagé entre ces collections, et ce qui s'y fait d'un côté se voit de l'autre.";
     }
     if (d.genre === GENRE_RENDRE) {
-      return `Copie de ${g(d.projet_nom || "son projet")}, gardée au fonds avec son travail. `
-        + `« Rendre » la range dans ${nomArrivee(d)}, la collection que le responsable a `
-        + "nommée ; « Garder au fonds » la laisse où elle est.";
+      // D'où elle était sortie, quand le serveur le sait (`sortie_de`, lu au journal) : un
+      // travail fait dans une collection fermée ne se rend pas, sans le savoir, dans une
+      // base ouverte à tout le projet.
+      const sortie = d.sortie_de
+        ? ` Elle était sortie de ${g(d.sortie_de)}`
+          + (d.sortie_de !== d.collection_nom ? " : la rendre ailleurs ouvre son travail à "
+            + `ceux qui entrent dans ${nomArrivee(d)}.` : ".")
+        : "";
+      return `Copie de ${g(d.projet_nom || "son projet")}, gardée au fonds avec son travail.`
+        + `${sortie} « Rendre » la range dans ${nomArrivee(d)}, la collection que le `
+        + "responsable a nommée ; « Garder au fonds » la laisse où elle est.";
     }
     return "";
   }

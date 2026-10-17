@@ -36,14 +36,14 @@ import comptes
 import conflit
 import journal
 from config import STATUTS_DIFFUSION
-from database import (DEMANDE_REJOINDRE, NATURES, collection_row, collections,
+from database import (DEMANDE_REJOINDRE, NATURES, clore_rejoindre_d_une_copie_au_fonds,
+                      collection_row, collections,
                       etat_embargo, nom_reserve, poser_projet_de_copie, projet_de_collection,
                       projet_par_defaut, ranger_copie, un_proprietaire_tient_toute_la_copie)
 
 from socle import (
     DEMANDE, REFUSE, AccesIn, CollectionIn, CollectionUpdate, NatureIn,
-    _clore_demandes_vers, _clore_retours_d_une_copie_rangee, _collections_lues_d_albums,
-    _deposer, _en_attente_vers,
+    _clore_demandes_vers, _collections_lues_d_albums, _deposer, _en_attente_vers,
     _get_album, _get_collection, _get_projet, _plan_rejoindre, _rows, db, portee_courante,
 )
 
@@ -761,10 +761,9 @@ def ranger_album(album_id: int, collection_id: int,
                             content={"etat": DEMANDE, "demande_id": demande_id,
                                      "repondra": ("proprietaire" if qui == "son propriétaire"
                                                   else "administrateur")})
+    # « Rendre à… » joué depuis la fiche du document : `ranger_copie` clôt aussi le retour
+    # que le responsable avait demandé pour cette copie (COL-3, écran de la 3a).
     ranger_copie(conn, album_id, collection_id)
-    # « Rendre à… » joué depuis la fiche du document : un retour demandé par le responsable
-    # pour cette copie a reçu ce qu'il demandait (COL-3, écran de la 3a).
-    _clore_retours_d_une_copie_rangee(conn, portee, album_id)
     conn.commit()
     return list_collections_album(album_id, conn, portee)
 
@@ -800,5 +799,8 @@ def sortir_album(album_id: int, collection_id: int,
     conn.execute("DELETE FROM collection_album WHERE collection_id = ? AND album_id = ?",
                  (collection_id, album_id))
     journal.journaliser_emploi(conn, "delien", album_id, collection_id)
+    # Partie au fonds : les `rejoindre` qui la visaient se closent — la reprendre relève du
+    # retour, que demande son responsable (COL-3, écran de la 3a).
+    clore_rejoindre_d_une_copie_au_fonds(conn, album_id)
     conn.commit()
     return Response(status_code=204)

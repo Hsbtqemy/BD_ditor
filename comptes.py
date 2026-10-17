@@ -58,10 +58,14 @@ LIMITES = {
 # --------------------------------------------------------------------------- #
 # Ce qu'un compte a LAISSÉ — la règle d'AUTH-7, comptée à un seul endroit
 # --------------------------------------------------------------------------- #
-def traces(conn) -> tuple[dict, dict, dict]:
-    """Les actes, les accès nominatifs et les reprises d'identité, par login.
+def traces(conn) -> tuple[dict, dict, dict, dict]:
+    """Les actes, les accès nominatifs, les reprises d'identité et les entrées de projet,
+    par login.
 
-    Rend `(actes, acces, reprises)` ; `reprises[login] = (nombre, date la plus récente)`.
+    Rend `(actes, acces, reprises, projets)` ; `reprises[login] = (nombre, date la plus
+    récente)` ; `projets[login]` : ses lignes à son nom dans `projet_acces` (COL-3, écran
+    de la 3a — relecture croisée, défaut 4 : un compte retiré de l'annuaire laissait aussi
+    ses entrées de projet, et le verdict ne les comptait pas).
     Sorti de `routes/collections._comptes` pour que les deux vues comptent la même chose."""
     actes = {r["agent"]: r["n"] for r in conn.execute(
         # Les traces de REPRISE D'IDENTITÉ sont exclues du compte : elles portent bien
@@ -99,14 +103,28 @@ def traces(conn) -> tuple[dict, dict, dict]:
         if login:
             n, derniere = reprises.get(login, (0, None))
             reprises[login] = (n + 1, max(filter(None, (derniere, r["date"])), default=None))
-    return actes, acces, reprises
+    projets = {r["principal"]: r["n"] for r in conn.execute(
+        "SELECT principal, COUNT(*) AS n FROM projet_acces "
+        "WHERE genre = ? GROUP BY principal", (autorisation.UTILISATEUR,))}
+    return actes, acces, reprises, projets
 
 
-def verdict(n_actes: int, n_acces: int) -> str:
+def verdict(n_actes: int, n_acces: int, n_projets: int = 0, n_bases: int = 0) -> str:
     """Le verdict de départ NOMME tout ce qui serait orphelin, jamais le premier motif trouvé,
-    et parle d'une conséquence, jamais d'une recommandation (règle du 2026-09-06)."""
-    motifs = [m for m, n in (("des actes", n_actes), ("des accès", n_acces)) if n]
-    return ("laisse " + " et ".join(motifs)) if motifs else "rien à orpheliner"
+    et parle d'une conséquence, jamais d'une recommandation (règle du 2026-09-06).
+
+    COL-3, écran de la 3a — deux motifs de plus : ses entrées de PROJET, et les collections de
+    BASE dont il est le SEUL propriétaire, par le projet (seul responsable, aucune ligne
+    explicite) — partir les laisserait sans personne pour décider qui y entre."""
+    motifs = [m for m, n in (("des actes", n_actes), ("des accès", n_acces),
+                             ("des entrées de projet", n_projets)) if n]
+    if n_bases:
+        motifs.append("une collection de base sans autre propriétaire" if n_bases == 1
+                      else f"{n_bases} collections de base sans autre propriétaire")
+    if not motifs:
+        return "rien à orpheliner"
+    return "laisse " + (motifs[0] if len(motifs) == 1
+                        else ", ".join(motifs[:-1]) + " et " + motifs[-1])
 
 
 # --------------------------------------------------------------------------- #
@@ -175,7 +193,21 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
     for a in derives:
         cible = derives_compte if a["genre"] == autorisation.UTILISATEUR else derives_groupe
         cible.setdefault(a["principal"], []).append(a)
-    actes, n_acces, reprises = traces(conn)
+    actes, n_acces, reprises, n_projets = traces(conn)
+    # Les bases dont un compte est le SEUL propriétaire, par le projet : aucune ligne
+    # explicite de propriétaire, et un seul responsable, nommé (pas un groupe).
+    bases_seules: dict[str, int] = {}
+    for c in cols.values():
+        if not c.get("base"):
+            continue
+        explicites = [a for a in acces if a["collection_id"] == c["id"]
+                      and a["niveau"] == autorisation.PROPRIETAIRE]
+        responsables = [a for a in derives if a["collection_id"] == c["id"]
+                        and a["niveau"] == autorisation.PROPRIETAIRE]
+        if (not explicites and len(responsables) == 1
+                and responsables[0]["genre"] == autorisation.UTILISATEUR):
+            login = responsables[0]["principal"]
+            bases_seules[login] = bases_seules.get(login, 0) + 1
 
     def entree(a, par, groupe=None):
         e = {"id": a["collection_id"], "nom": cols[a["collection_id"]]["nom"],
@@ -207,7 +239,10 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
                                    _cle(e["groupe"])))
         n_rep, derniere_reprise = reprises.get(login, (0, None))
         signaux = []
-        if lu and ac is None and par_compte.get(login):
+        # Un compte absent de l'annuaire qui garde un accès À SON NOM — dans une collection,
+        # ou une entrée dans un projet (COL-3, écran de la 3a) : la ligne ne s'en va pas avec
+        # le compte, et un compte recréé sous ce nom en hériterait.
+        if lu and ac is None and (par_compte.get(login) or n_projets.get(login)):
             signaux.append("compte_absent")
         if _recente(derniere_reprise, maintenant):
             signaux.append("identite_changee")
@@ -229,7 +264,9 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
             "collections_completes": lu,
             "actes": actes.get(login, 0),
             "acces_explicites": n_acces.get(login, 0),
-            "verdict": verdict(actes.get(login, 0), n_acces.get(login, 0)),
+            "entrees_projet": n_projets.get(login, 0),
+            "verdict": verdict(actes.get(login, 0), n_acces.get(login, 0),
+                               n_projets.get(login, 0), bases_seules.get(login, 0)),
             "reprises": n_rep,
             "derniere_reprise": _iso(derniere_reprise),
             "signaux": _ordonner(signaux),
@@ -384,11 +421,19 @@ def a_regarder(comptes: list, groupes: list, collections_sortie: list,
                                 "collection": e["id"]}))
     for c in comptes:
         if "compte_absent" in c["signaux"]:
+            avant = len(lignes)
             for e in c["collections"]:
-                if e["par"] == "compte":
+                # À son nom : un accès de collection, ou l'entrée dans une base que son
+                # projet lui ouvre (`par: "projet"` sans groupe — COL-3, écran de la 3a).
+                if e["par"] == "compte" or (e["par"] == "projet" and not e.get("groupe")):
                     lignes.append(("compte_absent", c["login"], e["nom"],
                                    {"signal": "compte_absent", "login": c["login"],
                                     "collection": e["id"]}))
+            if len(lignes) == avant:
+                # Une entrée de projet qui n'ouvre rien (base protégée) : la ligne dit le
+                # compte, sans collection.
+                lignes.append(("compte_absent", c["login"], "",
+                               {"signal": "compte_absent", "login": c["login"]}))
         for code in ("identite_changee", "jamais_venu"):
             if code in c["signaux"]:
                 lignes.append((code, c["login"], "", {"signal": code, "login": c["login"]}))

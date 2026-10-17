@@ -2168,8 +2168,88 @@ def ranger_copie(conn: sqlite3.Connection, album_id: int, collection_id: int, *,
                         "VALUES (?, ?, ?)", (collection_id, album_id, rang)).rowcount == 1
     if neuf:
         journal.journaliser_emploi(conn, "lien", album_id, collection_id)
+        # Une copie qui quitte le fonds, PAR QUELQUE CHEMIN QUE CE SOIT — la réponse à son
+        # retour, « Rendre » de la fiche du document, la reprise directe, l'acceptation d'un
+        # `rejoindre` ou d'une entrée, l'outil en ligne de commande : le retour qui
+        # l'attendait a reçu ce qu'il demandait (relecture croisée de l'écran de la 3a,
+        # défaut 1 — la clôture vivait chez deux appelants sur cinq).
+        clore_retours_d_une_copie_rangee(conn, album_id, collection_id)
     poser_projet_de_copie(conn, album_id)
     return neuf
+
+
+def clore_retours_d_une_copie_rangee(conn: sqlite3.Connection, album_id: int,
+                                     collection_id: int) -> list[int]:
+    """Clôt ACCEPTÉ le retour (`DEMANDE_RENDRE`) qui attendait sur une copie qu'on vient de
+    ranger, et rend les identifiants clos. COL-3, écran de la 3a.
+
+    La demande dit ensuite la collection où la copie est RÉELLEMENT revenue : ses colonnes
+    `collection_id` / `collection_nom` sont réécrites (relecture croisée, défaut 2 — la fiche
+    du projet lisait « Rendre … à « base » — acceptée » quand l'administrateur l'avait rangée
+    ailleurs). Sur la demande et non sur sa ligne, parce qu'un retour n'a qu'UNE ligne et que
+    sa collection est celle que la fiche lit ; sans changement de schéma, la ligne n'en a
+    pas. La collection DEMANDÉE n'est pas perdue : l'événement du journal qui clôt la demande
+    la porte en `avant`. Celle-ci dit aussi sa copie (`copie_id`).
+
+    `repondu_par` est l'agent de la requête (`journal.agent_courant`) : qui a rangé ; NULL
+    pour un geste sans agent (l'outil en ligne de commande). Ne commite pas ; ne décide
+    rien — qui peut ranger est réglé avant."""
+    import journal
+    ligne = conn.execute("SELECT nom FROM collection WHERE id = ?", (collection_id,)).fetchone()
+    nom = ligne[0] if ligne else None
+    qui = journal.agent_courant.get()
+    clos = []
+    for demande_id, demandee, demandee_nom in conn.execute(
+            "SELECT d.id, d.collection_id, d.collection_nom FROM demande d "
+            "JOIN demande_document dd ON dd.demande_id = d.id "
+            "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL ORDER BY d.id",
+            (DEMANDE_RENDRE, album_id)).fetchall():
+        conn.execute("UPDATE demande_document SET reponse = ?, copie_id = ? "
+                     "WHERE demande_id = ? AND reponse IS NULL",
+                     (REPONSE_ACCEPTEE, album_id, demande_id))
+        conn.execute("UPDATE demande SET reponse = ?, repondu_par = ?, "
+                     "date_reponse = datetime('now'), collection_id = ?, collection_nom = ? "
+                     "WHERE id = ? AND reponse IS NULL",
+                     (REPONSE_ACCEPTEE, qui, collection_id, nom, demande_id))
+        journal.journaliser(conn, "modification", "demande", demande_id,
+                            avant={"reponse": None, "collection_id": demandee,
+                                   "collection": demandee_nom},
+                            apres={"reponse": REPONSE_ACCEPTEE, "collection_id": collection_id,
+                                   "collection": nom, "copie_id": album_id})
+        clos.append(demande_id)
+    return clos
+
+
+def clore_rejoindre_d_une_copie_au_fonds(conn: sqlite3.Connection, album_id: int) -> list[int]:
+    """Une copie vient de partir AU FONDS (sortie de sa dernière collection) : les
+    `rejoindre` qui la visaient se closent REFUSÉS, et l'on rend leurs identifiants. COL-3,
+    écran de la 3a (relecture croisée, défaut 3 ; option fermée).
+
+    Accepter un `rejoindre` sur une copie gardée la RENDRAIT — sans que son responsable l'ait
+    demandé, et sous les mots « ranger aussi », qui supposent une copie déjà rangée. Reprendre
+    une copie gardée relève du RETOUR (`DEMANDE_RENDRE`), comme une destruction clôt les
+    demandes qui la visaient. `repondu_par` est qui l'a retirée (`journal.agent_courant`).
+    Ne fait rien si la copie est encore rangée quelque part. Ne commite pas."""
+    import journal
+    if conn.execute("SELECT 1 FROM collection_album WHERE album_id = ?",
+                    (album_id,)).fetchone() is not None:
+        return []
+    qui = journal.agent_courant.get()
+    clos = []
+    for (demande_id,) in conn.execute(
+            "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
+            "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL ORDER BY d.id",
+            (DEMANDE_REJOINDRE, album_id)).fetchall():
+        conn.execute("UPDATE demande_document SET reponse = ? WHERE demande_id = ? "
+                     "AND reponse IS NULL", (REPONSE_REFUSEE, demande_id))
+        conn.execute("UPDATE demande SET reponse = ?, repondu_par = ?, "
+                     "date_reponse = datetime('now') WHERE id = ? AND reponse IS NULL",
+                     (REPONSE_REFUSEE, qui, demande_id))
+        journal.journaliser(conn, "modification", "demande", demande_id,
+                            avant={"reponse": None},
+                            apres={"reponse": REPONSE_REFUSEE, "copie_au_fonds": album_id})
+        clos.append(demande_id)
+    return clos
 
 
 def retirer_document_sans_copie(conn: sqlite3.Connection, document_id: int | None) -> bool:

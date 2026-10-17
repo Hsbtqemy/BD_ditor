@@ -56,7 +56,7 @@ from database import (DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDR
 
 from socle import (
     DEMANDE, FAIT, REFUSE, DemandeIn, PriseIn, ReponseIn, _clore_demandes,
-    _clore_retours_d_une_copie_rangee, _deposer, _detruire_album, _en_attente_vers,
+    _deposer, _detruire_album, _en_attente_vers,
     _get_album, _get_collection, _get_projet, _nouvelle_copie, _plan_rejoindre,
     _retour_en_attente, _rows, _sans_accents, _supprimer_projet, db, portee_courante,
 )
@@ -301,6 +301,20 @@ def _vues_demandes(conn, ids=None, *, detail: bool = False) -> list[dict]:
             for x in d["documents"]:
                 x.update(_travail_des_autres(conn, x["document_id"], x["copie"],
                                              d["demandeur"], collectifs))
+        if detail and d["en_attente"] and d["genre"] == DEMANDE_RENDRE:
+            # De quelle collection la copie était SORTIE, si le journal le sait (la fin de son
+            # dernier emploi) — pour qu'un administrateur ne rende pas dans une base ouverte,
+            # sans le savoir, un travail fait dans une collection fermée (relecture croisée de
+            # l'écran de la 3a). Le nom écrit ce jour-là ; `None` quand rien n'est écrit.
+            d["sortie_de"] = None
+            for x in d["documents"]:
+                r = conn.execute(
+                    "SELECT json_extract(avant, '$.collection') FROM evenement "
+                    "WHERE cible_table = 'collection_album' AND type = 'delien' "
+                    "AND json_extract(avant, '$.album_id') = ? ORDER BY id DESC LIMIT 1",
+                    (x["album_id"],)).fetchone()
+                if r and r[0]:
+                    d["sortie_de"] = r[0]
     return demandes
 
 
@@ -939,11 +953,10 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
             p["copie_id"] = _nouvelle_copie(conn, portee, p["document_id"], collection_id,
                                             p["source"])
         else:                                   # rejoindre, reprendre : un rangement
+            # Reprise directe (portée totale) : `ranger_copie` clôt aussi le retour demandé
+            # pour cette copie.
             ranger_copie(conn, p["album_id"], collection_id)
             p["copie_id"] = p["album_id"]
-            # Reprise directe (portée totale) : un retour demandé pour cette copie a reçu
-            # ce qu'il demandait.
-            _clore_retours_d_une_copie_rangee(conn, portee, p["album_id"])
     # Les demandes : UNE entrée pour tous les documents qui en demandent une (case « Une
     # entrée de documents porte PLUSIEURS albums à la fois ») ; un `rejoindre` par copie —
     # chacun s'adresse aux propriétaires de SES collections, qui ne sont pas les mêmes.

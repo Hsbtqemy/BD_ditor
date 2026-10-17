@@ -130,6 +130,14 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
     client.put(f"/api/projets/{projet['id']}/membres", headers=ident,
                json={"genre": "utilisateur", "principal": SENTINELLES["login"],
                      "role": "membre"})
+    # COL-3, écran de la 3a — sa collection de BASE, OUVERTE à ses membres : le login
+    # sentinelle y entre par le projet, et `…/acces-du-projet` le rend. La base du repli
+    # naît protégée (rien ne s'ouvre au déploiement), et sur une collection ordinaire la
+    # route rend une liste vide : sans ces deux gestes, elle passait pour muette.
+    client.put(f"/api/projets/{projet['id']}/acces-membres", headers=ident,
+               json={"acces_membres": "ecriture"})
+    base = next(c for c in client.get("/api/collections", headers=ident).json()
+                if c["base"] and c["projet_id"] == projet["id"])
 
     # Ce que l'API ne produit pas d'elle-même hors multi-utilisateur.
     conn = sqlite3.connect(db_path)
@@ -214,6 +222,7 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
             "collection_id": col["id"], "personnage_id": perso["id"],
             "dim_id": dim["id"],
             "projet_id": projet["id"],
+            "base_id": base["id"],
             # `chemin_web` vaut « derivatives/xxx.jpg » ; la route monte déjà sur
             # /derivatives, on ne garde donc que la partie qui suit.
             "chemin": (pl.get("chemin_web") or "").split("derivatives/")[-1]}
@@ -302,6 +311,13 @@ SORTIES_DECLAREES = {
         "pas à partager un travail avec quelqu'un dont on ignore le nom, ce que le cadrage a "
         "accepté par écrit. Le nom passe par `Portee.peut_nommer_le_demandeur(consentement=…)`. "
         "Aucun artefact n'en sort (`demande` est une cible retenue)."),
+    ("route", "/api/collections/{collection_id}/acces-du-projet"): (
+        {"login"},
+        "COL-3, écran de la 3a — les accès que le PROJET tient sur sa collection de base : "
+        "le principal de chaque responsable et de chaque membre, un login ou un nom de "
+        "groupe, comme `…/acces`. Mêmes bornes que lui, et pour la même raison — une donnée "
+        "sur des PERSONNES : à qui ADMINISTRE la collection. Balayée sur la BASE du semis "
+        "(`SUR_LA_BASE`), où elle parle ; aucun artefact n'en sort."),
     ("route", "/api/projets/{projet_id}/demandes"): (
         {"login", "nom"},
         "COL-3, tranche 3 — les ENTRÉES de documents demandées pour ce projet, lues par son "
@@ -545,11 +561,17 @@ QUETES = {
 }
 
 
+# Les routes qui ne parlent que sur une collection de BASE : balayées sur elle, et non sur
+# la collection de l'album, où elles rendraient une liste vide (COL-3, écran de la 3a).
+SUR_LA_BASE = {"/api/collections/{collection_id}/acces-du-projet"}
+
+
 def _balayer_routes(client, seme) -> dict:
     vus = {}
     for r in _routes_get():
         cle = ("route", r.path)
-        chemin = _chemin_concret(r.path, seme)
+        decor = {**seme, "collection_id": seme["base_id"]} if r.path in SUR_LA_BASE else seme
+        chemin = _chemin_concret(r.path, decor)
         if chemin is None:
             continue                                    # → exigé dans NON_BALAYE
         if r.path in QUETES:

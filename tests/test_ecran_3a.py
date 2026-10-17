@@ -152,8 +152,12 @@ def test_l_administrateur_reprend_et_clot_le_retour(client, prise, db_path):
     demande = _rendre(client, prise, cx, prise["base"]).json()["documents"][0]["demande_id"]
     r = _rendre(client, prise, cx, prise["y"], ADMIN)
     assert r.json()["documents"][0]["etat"] == "fait"
-    assert _sql(db_path, "SELECT reponse FROM demande WHERE id = ?", (demande,)) \
-        == [{"reponse": "acceptee"}]
+    # Close acceptée, et la demande dit où la copie est RÉELLEMENT revenue — Y, pas la base
+    # demandée (relecture croisée, défaut 2) ; qui l'a rangée y répond.
+    assert _sql(db_path, "SELECT reponse, collection_id, collection_nom, repondu_par "
+                         "FROM demande WHERE id = ?", (demande,)) \
+        == [{"reponse": "acceptee", "collection_id": prise["y"],
+             "collection_nom": "Collection Y", "repondu_par": "decor"}]
 
 
 # =========================================================================== #
@@ -305,3 +309,94 @@ def test_a_regarder_porte_toute_demande_avec_son_genre(client, prise):
     signaux = client.get("/api/comptes-et-groupes", headers=ADMIN).json()["a_regarder"]
     assert {"signal": "demande_en_attente", "demande": demande, "genre": "rendre_copie"} \
         in signaux
+
+
+# =========================================================================== #
+# Les corrections de la relecture croisée (2026-10-17)
+# =========================================================================== #
+def test_un_rejoindre_se_clot_quand_sa_copie_part_au_fonds(client, prise, db_path):
+    """Accepter un `rejoindre` sur une copie gardée la rendrait sans son responsable, sous
+    les mots « ranger aussi » : partie au fonds, la copie clôt les `rejoindre` qui la
+    visaient — refusés, au nom de qui l'a retirée. La reprendre relève du retour."""
+    cx = _copie_dans(client, prise, "d3", prise["x"])
+    r = _prendre(client, prise["y"], [{"document_id": prise["docs"]["d3"],
+                                       "reponse": "rejoindre", "album_id": cx}], ECRIVAIN)
+    rejoindre = r.json()["documents"][0]["demande_id"]
+    assert client.delete(f"/api/albums/{cx}/collections/{prise['x']}",
+                         headers=PROPRIO).status_code == 204
+    assert _sql(db_path, "SELECT reponse, repondu_par FROM demande WHERE id = ?",
+                (rejoindre,)) == [{"reponse": "refusee", "repondu_par": "proprio"}]
+    assert _repondre(client, rejoindre, "acceptee").status_code == 409
+    assert _collections_de(db_path, cx) == set()
+
+
+def test_un_rejoindre_ne_se_clot_pas_quand_la_copie_reste_rangee(client, prise, db_path):
+    """Sortir la copie d'UNE collection sans qu'elle parte au fonds ne clôt rien."""
+    cx = _copie_dans(client, prise, "d3", prise["x"])
+    assert client.put(f"/api/albums/{cx}/collections/{prise['base']}",
+                      headers=ADMIN).status_code == 201
+    autre = _collection(client, "Collection W", projet_id=prise["projet"])
+    _accorder(client, autre, "ecrivain", "ecriture")
+    r = _prendre(client, autre, [{"document_id": prise["docs"]["d3"],
+                                  "reponse": "rejoindre", "album_id": cx}], ECRIVAIN)
+    rejoindre = r.json()["documents"][0]["demande_id"]
+    assert client.delete(f"/api/albums/{cx}/collections/{prise['x']}",
+                         headers=ADMIN).status_code == 204
+    assert _sql(db_path, "SELECT reponse FROM demande WHERE id = ?", (rejoindre,)) \
+        == [{"reponse": None}]
+
+
+def test_l_outil_qui_retire_au_fonds_clot_aussi_les_rejoindre(client, prise, db_path):
+    from test_projets import _outil
+    cx = _copie_dans(client, prise, "d3", prise["x"])
+    r = _prendre(client, prise["y"], [{"document_id": prise["docs"]["d3"],
+                                       "reponse": "rejoindre", "album_id": cx}], ECRIVAIN)
+    rejoindre = r.json()["documents"][0]["demande_id"]
+    code, _, err = _outil(db_path, "gerer_collections.py", "retirer", str(prise["x"]),
+                          "--albums", str(cx))
+    assert code == 0, err
+    assert _sql(db_path, "SELECT reponse FROM demande WHERE id = ?", (rejoindre,)) \
+        == [{"reponse": "refusee"}]
+
+
+def test_rendre_une_copie_qui_n_est_plus_gardee_se_refuse_en_le_disant(client, prise, db_path):
+    """La garde de « Rendre à … » : une copie rangée entre-temps hors de tout chemin
+    d'écriture (base retouchée à la main) n'est plus gardée — 409 nommé, la demande reste."""
+    cx = _gardee(client, prise)
+    demande = _rendre(client, prise, cx, prise["base"]).json()["documents"][0]["demande_id"]
+    _sql(db_path, "INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
+         (prise["y"], cx))
+    r = _repondre(client, demande, "acceptee")
+    assert r.status_code == 409 and "plus gardé au fonds" in r.json()["detail"], r.text
+    assert _sql(db_path, "SELECT reponse FROM demande WHERE id = ?", (demande,)) \
+        == [{"reponse": None}]
+
+
+def test_le_retour_dit_a_l_administrateur_d_ou_la_copie_etait_sortie(client, prise):
+    cx = _gardee(client, prise)                    # sortie de « Collection X »
+    demande = _rendre(client, prise, cx, prise["base"]).json()["documents"][0]["demande_id"]
+    vue = {d["id"]: d for d in client.get("/api/demandes", headers=ADMIN).json()}[demande]
+    assert vue["sortie_de"] == "Collection X"
+
+
+def test_le_depart_d_un_compte_compte_ses_entrees_de_projet(client, prise):
+    vue = client.get("/api/comptes-et-groupes", headers=ADMIN).json()
+    membre = next(c for c in vue["comptes"] if c["login"] == "membre")
+    assert (membre["entrees_projet"], membre["verdict"]) == (1, "laisse des entrées de projet")
+    resp = next(c for c in vue["comptes"] if c["login"] == "resp")
+    assert resp["verdict"] == ("laisse des entrées de projet et une collection de base sans "
+                               "autre propriétaire")
+
+
+def test_un_compte_absent_qui_n_a_qu_une_entree_de_projet_est_signale(
+        client, prise, monkeypatch):
+    """Avec l'annuaire de la doublure, où ni `membre` ni `resp` n'existent : leur seule
+    trace est une entrée de projet, et le signal « compte absent » le dit."""
+    import config
+    monkeypatch.setattr(config, "ANNUAIRE_ADRESSE", "doublure:")
+    vue = client.get("/api/comptes-et-groupes", headers=ADMIN).json()
+    assert vue["annuaire"]["etat"] == "lu", vue["annuaire"]
+    membre = next(c for c in vue["comptes"] if c["login"] == "membre")
+    assert "compte_absent" in membre["signaux"]
+    assert {"signal": "compte_absent", "login": "membre", "collection": prise["base"]} \
+        in vue["a_regarder"]

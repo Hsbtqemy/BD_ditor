@@ -415,3 +415,12 @@ test("le travail des autres dit qui a créé CETTE copie", () => {
                                  travail_des_autres: [] });
   assert.equal(t.origine, "Copie créée par Sam (sam) ; document importé par lea.");
 });
+
+test("un retour dit d'où la copie était sortie, quand le serveur le sait", () => {
+  const avec = S.explicationDemande(DEM(S.GENRE_RENDRE, { sortie_de: "Lot fermé" }));
+  assert.ok(avec.includes("Elle était sortie de « Lot fermé »"), avec);
+  assert.ok(avec.includes("ouvre son travail"), avec);
+  const meme = S.explicationDemande(DEM(S.GENRE_RENDRE, { sortie_de: "Base P" }));
+  assert.ok(!meme.includes("ouvre son travail"), meme);
+  assert.ok(!S.explicationDemande(DEM(S.GENRE_RENDRE)).includes("sortie"));
+});

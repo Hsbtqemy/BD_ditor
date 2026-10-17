@@ -37,7 +37,18 @@ def test_un_retour_se_clot_quand_un_rejoindre_accepte_sort_la_copie_du_fonds(
                          headers=PROPRIO).status_code == 204
     retour = _rendre(client, prise, cx, prise["base"]).json()["documents"][0]
     assert retour["etat"] == "demande", retour
-    assert _repondre(client, rejoindre["demande_id"], "acceptee").status_code == 200
+    # Correctif (défaut 3 de la relecture, option fermée) : partie au fonds, la copie a
+    # CLOS le `rejoindre` qui la visait — l'accepter l'aurait rendue sans son responsable.
+    # Le chemin de ce test n'existe donc plus ; la sortie du fonds par un autre chemin que
+    # la réponse au retour se joue ici par l'outil en ligne de commande, qui range par
+    # `database.ranger_copie` comme toutes les portes.
+    assert _sql(db_path, "SELECT reponse FROM demande WHERE id = ?",
+                (rejoindre["demande_id"],))[0]["reponse"] == "refusee"
+    assert _repondre(client, rejoindre["demande_id"], "acceptee").status_code == 409
+    from test_projets import _outil
+    code, _, err = _outil(db_path, "gerer_collections.py", "ajouter", str(prise["y"]),
+                          "--albums", str(cx))
+    assert code == 0, err
     assert _collections_de(db_path, cx) == {prise["y"]}, "la copie a quitté le fonds"
     etat = _sql(db_path, "SELECT reponse FROM demande WHERE id = ?",
                 (retour["demande_id"],))[0]["reponse"]

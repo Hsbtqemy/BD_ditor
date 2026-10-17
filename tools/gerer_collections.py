@@ -359,6 +359,9 @@ def cmd_retirer(args) -> int:
             n = cur.rowcount
             for aid in presents:
                 journal.journaliser_emploi(conn, "delien", aid, args.id)
+                # Comme la route (COL-3, écran de la 3a) : partie au fonds, la copie clôt les
+                # `rejoindre` qui la visaient ; la reprendre relève du retour.
+                database.clore_rejoindre_d_une_copie_au_fonds(conn, aid)
     _checkpoint()
     _err(f"{n} album(s) retiré(s) de la collection {args.id}.")
     return 0
