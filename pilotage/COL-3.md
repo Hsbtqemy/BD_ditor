@@ -5,12 +5,12 @@ statut: interrompu
 
 # COL-3 — le fonds et les projets : un album appartient à l'instance, un travail à ceux qui le font
 
-**Arrêté sur** — 2026-10-17, `ec56a73` : **l'Administration à l'échelle est écrite en partie**
-sur `dev` (non poussée) — cinq vues adressables, « À faire » où l'on répond sur place, le fonds
-en liste et fiche, puis la vue Projets ; restent Instance et le retour, et la
-validation de Hugo sur la recette. Le cadrage de la tranche 3 est écrit (douze décisions pour Hugo) ; son premier commit,
-les albums du projet courant, s'écrit sur une copie et attend l'accord de Hugo sur le
-découpage avant d'arriver sur `dev`. La tranche 2 est en production depuis le 2026-10-16.
+**Arrêté sur** — 2026-10-17, `2e9db0b` : **la tranche 3 a commencé**. Son cadrage est écrit
+(`docs/col3-tranche3-cadrage.md`) et Hugo en a tranché D1, D2 et D12 ; son premier commit, les
+albums du projet courant dans la Bibliothèque, le lot et l'Atelier, est sur `dev` (`2d80473`).
+L'Administration à l'échelle y est aussi (`73241cc`, `ec56a73`), sa passe de QA écrite et à
+jouer par Hugo ; D3 à D11 restent à trancher avant le serveur de la 3a. Rien n'est poussé
+depuis `aea8de1`.
 
 **Plus tôt le 2026-10-16** — `bd5dff1` : **la tranche 2 est en production depuis le
 2026-10-16** (`main` avancé de `b387080` à `5e7f56b`, déployé par Hugo) : schéma 30, cinq
@@ -104,7 +104,7 @@ rien y changer, « le premier projet », où tout est partagé.
 - [x] **La tranche 1 se voit et se fusionne AVANT que le code de la tranche 2 n'arrive sur `dev`** — attendu : les passes jouées par Hugo, la suite et la passe navigateur jouées dans l'image, la fusion vers `main` faite, PUIS le premier commit de code de la tranche 2. Proposé par la session et accepté par Hugo le 2026-10-11 (« ok »), pour deux raisons : le projet devait se voir « le plus tôt possible » — sur `dev`, personne ne le voit — ; et la tranche 2 change le schéma une seconde fois, deux migrations enchaînées en production sans qu'aucune ait été vue à l'écran étant le risque à éviter. Le CADRAGE de la tranche 2 et ses décisions n'attendent pas : ils se font pendant ce temps, en lecture seule — **Fait le 2026-10-15** : les passes jouées par Hugo (`projet-visible` 33/33, et cinq autres du lot), la suite et la passe navigateur dans l'image vertes sur `b387080` (1 616 et 502 passés), `main` avancé de `68edccd` à `b387080`, déployé par Hugo : schéma 29, un projet, aucune collection sans projet, cinq membres. Le code de la tranche 2 peut maintenant arriver sur `dev`
 - [ ] **Tranche 2 — le fonds** — attendu : un document a une identité distincte de ses copies de travail, son origine et ses emplois sont écrits à partir de ce jour, « supprimer » a ses deux réponses, et l'administrateur a l'écran du fonds avec les demandes en attente
 - [ ] **Tranche 3 — prendre un document** — attendu : rejoindre (consenti), en partir (amorcé jusqu'à un cran), partir de zéro ; dans un projet et entre deux
-- [ ] **Tranche 3 — les albums que montrent la Bibliothèque et l'Atelier sont ceux du projet
+- [x] **Tranche 3 — les albums que montrent la Bibliothèque et l'Atelier sont ceux du projet
   courant** — attendu : écrit dans le cadrage de la tranche 3, puis fait. Relevé par Hugo le
   2026-10-15 en jouant `projet-visible` : dans un projet neuf, la Bibliothèque montre Esther v1,
   qu'on ne peut pourtant ranger dans aucune de ses collections (le rangement ne traverse pas
@@ -112,6 +112,7 @@ rien y changer, « le premier projet », où tout est partagé.
   l'Exploration, pas elles. Placé en tranche 3 sur le mot de Hugo, parce que c'est elle qui
   donne un sens à « les albums de ce projet » — avant elle, un projet neuf n'a presque rien à
   montrer. À dire avec : le lot, qui ne connaît pas non plus le projet
+  **Écrit dans le cadrage** (`docs/col3-tranche3-cadrage.md`, commit « 0 ») **puis fait par `2d80473`** (2026-10-17, sur copie, relu et vérifié par-dessus `dev`) : `GET /api/albums` publie le projet LU de chaque album (`sql_projet_d_album`) ; la Bibliothèque, son lot et l'Atelier ne montrent que les albums du projet courant, par une fonction pure de `static/lib/projet.js` sous table de vérité ; un lien de l'Atelier vers un album d'un autre projet qu'on lit fait basculer le projet courant, comme `/corpus?collection=`. Filtre d'écran, pas garde. Onze mutants tués ; une course dans un test existant de l'autre onglet, rendue plus probable, corrigée par `2e9db0b`
 - [ ] **Tranche 3 — « repartir de zéro » sur un album** — attendu : cadré avec la tranche 3.
   Hugo, le 2026-10-15 : on a pu poser des choses sur des planches « uniquement pour tester »,
   et vouloir repartir de zéro. C'est le geste inverse de « partir de zéro » : revenir à un cran
@@ -235,6 +236,17 @@ rien y changer, « le premier projet », où tout est partagé.
   `routes/` un dixième module ; la nature d'un compte borde un geste ; et le journal A3, couche
   de provenance, devient une entrée d'autorisation
   **Fait par `6f73675`** (2026-10-16) : chaque renversement porte sa date et la décision de Hugo qui le fonde ; les questions du serveur sont DIX-SEPT et non seize — la relecture en comptait une de moins que le code (`peut_nommer_le_demandeur`). S'y ajoute la règle de Hugo du 2026-10-16 : chaque migration se vérifie sur une vraie base de la version précédente, fabriquée par `tools/fabriquer_base_de_version.py` (`c1c0817`). Le reste de la documentation d'usage et d'exploitation suit dans `90b5835`
+
+### Tranche 3 — les décisions du cadrage (`docs/col3-tranche3-cadrage.md`, 2026-10-17)
+
+- [x] **D1 — La tranche en deux temps : 3a (prendre, rejoindre, les albums du projet), puis 3b (en partir jusqu'à un cran, repartir de zéro)** — attendu : tranché par Hugo. **Tranché par Hugo le 2026-10-17 : oui.** La 3a ne copie aucun travail (une copie VIERGE, un rangement consenti) ; la 3b copie huit tables, le vocabulaire et le journal, sur une v32
+- [x] **D2 — Être admis dans un projet n'est pas un état : un document entre dans un projet quand une de ses collections le prend** — attendu : tranché par Hugo. **Tranché par Hugo le 2026-10-17 : oui.** Pas de table « admis » ; la demande d'entrée nomme sa collection d'arrivée ; « le projet a ce document » se lit à l'existence d'une copie. Un projet vide doit donc avoir une collection avant de recevoir un document (D10)
+- [x] **D12 — L'ordre** — attendu : tranché. **Laissé par Hugo à la session de pilotage le 2026-10-17 (« c'est toi qui sais le mieux »), qui retient la proposition du cadrage** : les albums du projet courant d'abord (faits, `2d80473`) ; le serveur de la 3a ensuite, la refonte de l'Administration étant sur `dev` ; son écran après la Bibliothèque en calque (`UX-18`) ; la 3a part en production sans attendre la tranche 4, le double compte de la Recherche et de l'Exploration écrit dans le guide
+- [ ] **D3 — Qui puise au fonds : le responsable par les notices, l'écrivain par ce qu'il lit déjà** — attendu : tranché par Hugo. Proposition et raisons dans `docs/col3-tranche3-cadrage.md` ; la maquette v8, non commentée, montrait « + Prendre du fonds… » à tout écrivain d'une collection, ce qui contredirait la décision du 2026-10-09
+- [ ] **D4 — Rejoindre : immédiat pour qui administre toutes les collections de la copie, sinon le propriétaire consent, dans tous les projets** — attendu : tranché par Hugo (cadrage)
+- [ ] **D5 — « Supprimer définitivement » détruit la COPIE ; le document part avec sa dernière** — attendu : tranché par Hugo (cadrage). Aujourd'hui, accepter une demande détruit toutes les copies d'un document (`repondre_demande`) : à réécrire avant la première sœur
+- [ ] **D6 — Les images appartiennent au DOCUMENT, les copies partagent les fichiers, et la 3a passe avant `IMG-2`** — attendu : tranché par Hugo (cadrage). Risque irréversible — une image effacée sous une sœur — : garde dans les mutants obligatoires
+- [ ] **D7 — La notice reste sur la copie** · **D8 — Le projet d'origine garde son nom, et `projet` reçoit `AUTOINCREMENT`** · **D9 — Répondre document par document, « tout accepter », un état « acceptée en partie »** · **D10 — Le responsable dépose ses demandes d'entrée une fois le projet créé** · **D11 — Les consentements se répondent là où vit qui les donne** — attendu : chacune tranchée par Hugo (cadrage, propositions et raisons)
 
 ### Le projet
 
