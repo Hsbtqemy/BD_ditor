@@ -164,6 +164,49 @@
     return String(role);
   }
 
-  return { CLE, EVENEMENT, LONGUEUR_NOM, ROLES, courant, lire, retenir, choisir, duProjet,
-           albumsDuProjet, basculeVers, pourRanger, libelleRole };
+  /* CE QUE LA BASE OUVRE AUX MEMBRES (COL-3, D10 ; écran de la 3a, tranché par Hugo sur
+     maquette le 2026-10-17) : trois positions, une phrase chacune, à la création d'un projet
+     (« ouverte » présélectionnée) et dans sa fiche. `valeur` est ce que le serveur accepte
+     pour `acces_membres` — `autorisation.ACCES_MEMBRES`, puis `null` pour la base protégée ;
+     une troisième valeur recopiée, mesurée comme les deux autres par
+     `tests/test_projet_ecran.py`, ordre compris. */
+  const POSITIONS = [
+    { valeur: "ecriture", libelle: "ouverte",
+      phrase: "Les membres du projet y annotent et y organisent les albums, comme ses responsables." },
+    { valeur: "lecture", libelle: "en lecture",
+      phrase: "Les membres voient ses albums sans y écrire ; ils travaillent dans leurs propres collections." },
+    { valeur: null, libelle: "protégée",
+      phrase: "Personne d'autre que ses responsables — et ceux qu'ils font entrer par « Qui entre »." },
+  ];
+
+  function position(valeur) {
+    return POSITIONS.find((p) => p.valeur === (valeur === undefined ? null : valeur))
+      || POSITIONS[POSITIONS.length - 1];
+  }
+
+  /* La phrase dite AVANT d'appliquer un changement de position (Hugo, sur maquette) :
+     resserrer n'efface rien ; ouvrir dit à combien d'entrées du projet cela s'ouvre.
+     `avant`, `apres` : deux valeurs de `POSITIONS` ; `nMembres` : les entrées qui ne sont pas
+     responsables ; `base` : le nom de la collection de base. Chaîne vide si rien ne change. */
+  function phraseChangement(avant, apres, nMembres, base) {
+    const rang = (v) => (v === "ecriture" ? 2 : v === "lecture" ? 1 : 0);
+    const a = avant === undefined ? null : avant, b = apres === undefined ? null : apres;
+    if (a === b) return "";
+    const nom = `« ${base} »`;
+    if (rang(b) < rang(a)) {
+      return `Resserrer n'efface aucun travail : ce que les membres ont fait dans ${nom} y `
+        + "reste. " + (b === null
+          ? "Ils ne la verront plus, sauf à y être entrés par « Qui entre »."
+          : "Ils la liront encore, sans plus y écrire.");
+    }
+    const n = nMembres || 0;
+    const entrees = n === 0 ? "aucune entrée du projet pour l'instant"
+      : `${n} entrée${n > 1 ? "s" : ""} du projet`;
+    return `Ouvrir donne à ${entrees} le droit ${b === "ecriture"
+      ? "d'annoter et d'organiser les albums" : "de lire"} dans ${nom}, dès maintenant.`;
+  }
+
+  return { CLE, EVENEMENT, LONGUEUR_NOM, ROLES, POSITIONS, courant, lire, retenir, choisir,
+           duProjet, albumsDuProjet, basculeVers, pourRanger, libelleRole, position,
+           phraseChangement };
 });

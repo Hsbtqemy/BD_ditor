@@ -206,3 +206,27 @@ test("le premier rôle est celui qu'on reçoit en entrant", () => {
   assert.equal(ROLES[0], "membre");
   assert.ok(Number.isInteger(LONGUEUR_NOM) && LONGUEUR_NOM > 0);
 });
+
+/* COL-3, écran de la 3a — ce que la base ouvre aux membres. */
+test("trois positions, « ouverte » d'abord, la protégée vaut null", () => {
+  const P = require("../../static/lib/projet.js");
+  assert.deepEqual(P.POSITIONS.map((p) => [p.valeur, p.libelle]),
+                   [["ecriture", "ouverte"], ["lecture", "en lecture"], [null, "protégée"]]);
+  for (const p of P.POSITIONS) assert.ok(p.phrase.length > 20, p.libelle);
+  assert.equal(P.position("lecture").libelle, "en lecture");
+  assert.equal(P.position(null).libelle, "protégée");
+  assert.equal(P.position(undefined).libelle, "protégée");
+});
+
+test("la phrase dite avant d'appliquer : resserrer n'efface rien, ouvrir compte les entrées", () => {
+  const P = require("../../static/lib/projet.js");
+  assert.equal(P.phraseChangement("lecture", "lecture", 3, "Base"), "");
+  const resserre = P.phraseChangement("ecriture", null, 3, "Base");
+  assert.ok(resserre.startsWith("Resserrer n'efface aucun travail"), resserre);
+  assert.ok(resserre.includes("ne la verront plus"), resserre);
+  assert.ok(P.phraseChangement("ecriture", "lecture", 3, "Base").includes("sans plus y écrire"));
+  const ouvre = P.phraseChangement(null, "ecriture", 3, "Base");
+  assert.ok(ouvre.includes("3 entrées du projet") && ouvre.includes("d'annoter"), ouvre);
+  assert.ok(P.phraseChangement(null, "lecture", 1, "Base").includes("1 entrée du projet le droit de lire"));
+  assert.ok(P.phraseChangement(null, "lecture", 0, "Base").includes("aucune entrée"));
+});

@@ -41,3 +41,15 @@ def test_aucune_surface_ne_les_recopie():
         source = (RACINE / "static" / script).read_text(encoding="utf-8")
         recopies = [v for v in valeurs if f'"{v}"' in source or f"'{v}'" in source]
         assert not recopies, f"{script} écrit en clair {recopies} : passer par BDSuppression"
+
+
+def test_les_genres_de_la_prise_et_l_etat_partiel_sont_ceux_du_serveur():
+    """COL-3, écran de la 3a : les trois genres qui ne sont pas des suppressions, et l'état
+    d'une demande acceptée en partie, recopiés une fois et mesurés de même."""
+    assert _constante("GENRE_ENTREE") == database.DEMANDE_ENTREE_DOCUMENTS
+    assert _constante("GENRE_REJOINDRE") == database.DEMANDE_REJOINDRE
+    assert _constante("GENRE_RENDRE") == database.DEMANDE_RENDRE
+    assert _constante("PARTIELLE") == database.REPONSE_PARTIELLE
+    assert set(database.GENRES_DEMANDE) == {
+        _constante(n) for n in ("GENRE_DOCUMENT", "GENRE_PROJET", "GENRE_ENTREE",
+                                "GENRE_REJOINDRE", "GENRE_RENDRE")}

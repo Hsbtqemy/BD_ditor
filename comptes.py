@@ -25,8 +25,7 @@ from typing import Optional
 
 import autorisation
 from annuaire import GROUPES_DE_ROLE, Lecture
-from database import (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
-                      NOM_COLLECTION_DEFAUT, collections)
+from database import NOM_COLLECTION_DEFAUT, collections
 
 # Tranché par Hugo le 2026-09-17 : une reprise d'identité ne s'efface jamais du journal, et un
 # mariage laisse la même trace. Sans fenêtre, le signal ne s'éteindrait jamais, et une liste
@@ -160,16 +159,36 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
     for a in acces:
         cible = par_compte if a["genre"] == autorisation.UTILISATEUR else par_groupe
         cible.setdefault(a["principal"], []).append(a)
+    # COL-3, écran de la 3a — les accès que le PROJET tient sur sa collection de BASE (D10) :
+    # ses responsables propriétaires, ses membres au niveau choisi, DÉRIVÉS par
+    # `autorisation.Portee` sans aucune ligne d'accès. La vue les montre comme des accès,
+    # marqués « par le projet » (`par_projet`, le nom du projet) : sans eux, la fiche d'un
+    # compte disait « aucune collection ne lui est ouverte » à un membre qui écrit dans la
+    # base. La règle est `autorisation.acces_derives`, lue ici sans rien décider.
+    derives = []
+    for c in cols.values():
+        if not c.get("base"):
+            continue
+        for d in autorisation.acces_derives(conn, c["id"]):
+            derives.append({"collection_id": c["id"], **d, "par_projet": c.get("projet_nom")})
+    derives_compte, derives_groupe = {}, {}
+    for a in derives:
+        cible = derives_compte if a["genre"] == autorisation.UTILISATEUR else derives_groupe
+        cible.setdefault(a["principal"], []).append(a)
     actes, n_acces, reprises = traces(conn)
 
     def entree(a, par, groupe=None):
-        return {"id": a["collection_id"], "nom": cols[a["collection_id"]]["nom"],
-                "niveau": a["niveau"], "exporter": a["exporter"], "par": par,
-                "groupe": groupe}
+        e = {"id": a["collection_id"], "nom": cols[a["collection_id"]]["nom"],
+             "niveau": a["niveau"], "exporter": a["exporter"], "par": par,
+             "groupe": groupe}
+        if a.get("par_projet") is not None or par == "projet":
+            e["par_projet"] = a.get("par_projet")
+        return e
 
     # ---- Comptes ---------------------------------------------------------- #
     comptes = []
-    for login in sorted(set(annu_comptes) | set(utilisateurs) | set(par_compte),
+    for login in sorted(set(annu_comptes) | set(utilisateurs) | set(par_compte)
+                        | set(derives_compte),
                         key=lambda x: (_cle(x), x)):
         ac, u = annu_comptes.get(login), utilisateurs.get(login)
         groupes = list(ac.groupes) if ac else ([] if lu else None)
@@ -181,6 +200,9 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
         lignes = [entree(a, "compte") for a in par_compte.get(login, [])]
         for g in (groupes or ()):
             lignes += [entree(a, "groupe", g) for a in par_groupe.get(g, [])]
+        lignes += [entree(a, "projet") for a in derives_compte.get(login, [])]
+        for g in (groupes or ()):
+            lignes += [entree(a, "projet", g) for a in derives_groupe.get(g, [])]
         lignes.sort(key=lambda e: (_cle(e["nom"]), e["id"], e["par"] != "compte",
                                    _cle(e["groupe"])))
         n_rep, derniere_reprise = reprises.get(login, (0, None))
@@ -215,15 +237,20 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
 
     # ---- Groupes ---------------------------------------------------------- #
     groupes_sortie = []
-    for nom in sorted(set(annu_groupes) | set(par_groupe), key=lambda x: (_cle(x), x)):
+    for nom in sorted(set(annu_groupes) | set(par_groupe) | set(derives_groupe),
+                      key=lambda x: (_cle(x), x)):
         ag = annu_groupes.get(nom)
         membres = list(ag.membres) if ag else ([] if lu else None)
         venues = [utilisateurs[m]["derniere_vue"] for m in (membres or ())
                   if m in utilisateurs and utilisateurs[m]["derniere_vue"]]
-        lignes = sorted(({"id": a["collection_id"], "nom": cols[a["collection_id"]]["nom"],
-                          "niveau": a["niveau"], "exporter": a["exporter"]}
-                         for a in par_groupe.get(nom, [])),
-                        key=lambda e: (_cle(e["nom"]), e["id"]))
+        lignes = sorted(([{"id": a["collection_id"], "nom": cols[a["collection_id"]]["nom"],
+                           "niveau": a["niveau"], "exporter": a["exporter"]}
+                          for a in par_groupe.get(nom, [])]
+                         + [{"id": a["collection_id"], "nom": cols[a["collection_id"]]["nom"],
+                             "niveau": a["niveau"], "exporter": a["exporter"],
+                             "par_projet": a["par_projet"]}
+                            for a in derives_groupe.get(nom, [])]),
+                        key=lambda e: (_cle(e["nom"]), e["id"], "par_projet" in e))
         groupes_sortie.append({
             "id": ag.id if ag else None,
             "nom": nom,
@@ -278,8 +305,14 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
                     "login": a["principal"] if compte else None,
                     "groupe": None if compte else a["principal"], **plus}
 
+        les_derives = sorted((a for a in derives if a["collection_id"] == c["id"]),
+                             key=cle_acces)
         proprietaires = [forme(a, vivant=vivant(a)) for a in les_acces
                          if a["niveau"] == autorisation.PROPRIETAIRE]
+        # Les responsables du projet, propriétaires de sa base par dérivation : ils comptent
+        # pour « propriétaire absent » comme les autres, et la vue les dit « par le projet ».
+        proprietaires += [forme(a, vivant=vivant(a), par_projet=a["par_projet"])
+                          for a in les_derives if a["niveau"] == autorisation.PROPRIETAIRE]
         repli = c["nom"] == NOM_COLLECTION_DEFAUT
         signaux = []
         if lu and proprietaires and not any(p["vivant"] for p in proprietaires):
@@ -296,7 +329,9 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
             "derniere_modification": _iso(modifiees.get(c["id"])),
             "proprietaires": proprietaires,
             "nb_acces": len(les_acces),
-            "acces": [forme(a, niveau=a["niveau"], exporter=a["exporter"]) for a in les_acces],
+            "acces": [forme(a, niveau=a["niveau"], exporter=a["exporter"]) for a in les_acces]
+                     + [forme(a, niveau=a["niveau"], exporter=a["exporter"],
+                              par_projet=a["par_projet"]) for a in les_derives],
             "signaux": _ordonner(signaux),
         })
 
@@ -317,11 +352,14 @@ def _demandes_en_attente(conn) -> list:
     """Les demandes qui attendent une réponse (COL-3, tranche 2), les plus anciennes
     d'abord : `(id, genre)`. Ce que la demande dit — qui, quoi, pourquoi — se lit dans
     `GET /api/demandes` ; « À regarder » ne porte que de quoi y mener."""
-    # Les SUPPRESSIONS seules (COL-3, tranche 3a) : « À regarder » mène à « À faire », qui
-    # ne sait lire qu'elles — une entrée ou un rejoindre y mènerait à une ligne absente.
+    # TOUS les genres (COL-3, écran de la 3a) : « À faire », où mène la ligne, rend chacun
+    # avec SES mots et SES boutons — l'entrée de documents, le rejoindre, le retour d'une
+    # copie gardée comme les deux suppressions. Le filtre posé par la relecture croisée du
+    # serveur de la prise (qui ne laissait passer que les suppressions, faute d'écran pour
+    # les autres) est levé avec cet écran. Le genre voyage avec la ligne : l'écran ne dit
+    # « suppression » que d'une suppression.
     return [(r[0], r[1]) for r in conn.execute(
-        "SELECT id, genre FROM demande WHERE reponse IS NULL AND genre IN (?, ?) "
-        "ORDER BY id", (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET))]
+        "SELECT id, genre FROM demande WHERE reponse IS NULL ORDER BY id")]
 
 
 def a_regarder(comptes: list, groupes: list, collections_sortie: list,

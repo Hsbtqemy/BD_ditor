@@ -540,7 +540,10 @@ def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, larg
             page, f"/administration?vue={vue} à {largeur} px (police par défaut {police} px)")
 
     page.goto(decor["base"] + f"/corpus?collection={cid}", wait_until="networkidle")
-    lignes = page.locator(f'#col-fiche[data-id="{cid}"] :is(.qe-table tbody tr, .qe-carte)')
+    # Les lignes d'ACCÈS, et non les titres de groupe : la première collection est la base
+    # du projet de repli (v31), dont « Qui entre » se lit en deux groupes (COL-3, 3a).
+    lignes = page.locator(f'#col-fiche[data-id="{cid}"] '
+                          ':is(.qe-table tbody tr[data-principal], .qe-carte[data-principal])')
     lignes.first.wait_for(timeout=5000)
     assert lignes.count() == 3, "« Qui entre » ne montre pas ses trois accès : rien à mesurer"
     page.wait_for_timeout(600)
@@ -555,7 +558,8 @@ def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, larg
     # prendrait sinon la largeur du tableau, qui resterait et emporterait la fiche.
     page.goto(decor["base"] + f"/administration?axe=collections&collection={cid}",
               wait_until="networkidle")
-    lignes = page.locator("#cg-fiche section[data-qui-entre] :is(.qe-table tbody tr, .qe-carte)")
+    lignes = page.locator("#cg-fiche section[data-qui-entre] "
+                          ":is(.qe-table tbody tr[data-principal], .qe-carte[data-principal])")
     lignes.first.wait_for(timeout=5000)
     assert lignes.count() == 3, (
         "« Qui entre » de la fiche de collection ne montre pas ses trois accès : rien à mesurer")

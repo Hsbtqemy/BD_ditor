@@ -118,3 +118,21 @@ test("un suffixe rendu par celui qui le tient redevient libre", () => {
   _suffixes.rendre("107", m);
   assert.equal(b.prendre(107, b.naitre()), "107");
 });
+
+/* COL-3, écran de la 3a — « Qui entre » d'une collection de BASE en deux groupes (Hugo, sur
+   maquette, 2026-10-17) ; hors d'une base, un seul groupe, le rendu d'avant. */
+test("une base se lit en deux groupes, toute autre collection en un seul", () => {
+  const Q = require("../../static/lib/qui-entre.js");
+  const lignes = [{ genre: "utilisateur", principal: "resp", niveau: "proprietaire",
+                    role: "responsable" }];
+  const ici = [{ genre: "groupe", principal: "equipe", niveau: "lecture" }];
+  const base = Q.parGroupes({ base: true, lignes }, ici);
+  assert.deepEqual([base.enDeux, base.derives, base.explicites], [true, lignes, ici]);
+  // Une collection ordinaire : rien de dérivé, même si la route en rendait par erreur.
+  const autre = Q.parGroupes({ base: false, lignes }, ici);
+  assert.deepEqual([autre.enDeux, autre.derives, autre.explicites], [false, [], ici]);
+  // La route illisible : le panneau garde ses lignes, sans groupe.
+  const illisible = Q.parGroupes(null, ici);
+  assert.deepEqual([illisible.enDeux, illisible.derives], [false, []]);
+  assert.deepEqual(Q.parGroupes({ base: true }, null), { enDeux: true, derives: [], explicites: [] });
+});

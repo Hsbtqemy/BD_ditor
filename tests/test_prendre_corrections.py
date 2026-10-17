@@ -33,22 +33,24 @@ def _sortir(client, cid, album_id):
 # La destruction d'une copie clôt les demandes qui la visaient
 # --------------------------------------------------------------------------- #
 def test_une_reprise_se_clot_avec_sa_copie_sans_clore_l_entree(client, prise, db_path):
-    """Une entrée de deux documents : reprendre la copie gardée de d3, partir de zéro sur
-    d2. La copie gardée est détruite : sa ligne est refusée, la demande ATTEND encore d2 ;
-    d2 accepté, elle se clôt `partielle`."""
+    """Une prise de deux documents : reprendre la copie gardée de d3, partir de zéro sur d2.
+    Depuis l'écran de la 3a, la reprise est un RETOUR à part (`rendre_copie`), et l'entrée ne
+    porte que d2. La copie gardée est détruite : le retour se clôt refusé, l'entrée ATTEND
+    toujours d2 ; d2 accepté, elle se clôt `acceptee`."""
     cx = _copie_dans(client, prise, "d3", prise["x"])
     _sortir(client, prise["x"], cx)
     r = _prendre(client, None, [{"document_id": prise["docs"]["d3"], "reponse": "reprendre"},
                                 _zero(prise["docs"]["d2"])],
                  RESP, motif="Pour le séminaire", projet=prise["projet"])
-    demande = r.json()["documents"][0]["demande_id"]
+    retour, entree = (x["demande_id"] for x in r.json()["documents"])
+    assert retour != entree, "le retour et l'entrée sont deux demandes"
     assert client.delete(f"/api/albums/{cx}", headers=ADMIN).status_code == 204
-    vue = {d["id"]: d for d in client.get("/api/demandes", headers=ADMIN).json()}[demande]
-    lignes = {x["document_id"]: x["reponse"] for x in vue["documents"]}
-    assert vue["en_attente"] is True
-    assert lignes == {prise["docs"]["d3"]: "refusee", prise["docs"]["d2"]: None}
-    r = _repondre(client, demande, "acceptee", document_id=prise["docs"]["d2"])
-    assert (r.json()["en_attente"], r.json()["reponse"]) == (False, "partielle"), r.text
+    vues = {d["id"]: d for d in client.get("/api/demandes", headers=ADMIN).json()}
+    assert (vues[retour]["genre"], vues[retour]["en_attente"], vues[retour]["reponse"])         == ("rendre_copie", False, "refusee")
+    assert vues[entree]["en_attente"] is True
+    assert [x["document_id"] for x in vues[entree]["documents"]] == [prise["docs"]["d2"]]
+    r = _repondre(client, entree, "acceptee", document_id=prise["docs"]["d2"])
+    assert (r.json()["en_attente"], r.json()["reponse"]) == (False, "acceptee"), r.text
 
 
 # --------------------------------------------------------------------------- #

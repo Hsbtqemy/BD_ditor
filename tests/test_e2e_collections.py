@@ -934,7 +934,7 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
                                   "gardée au fonds")
     expect(texte).to_contain_text("Un administrateur peut la rendre.")
     expect(texte).to_contain_text("Vous ne le verrez plus")
-    expect(page.locator("#sp-def-texte")).to_contain_text("ce n'est pas vous qui l'avez importé")
+    expect(page.locator("#sp-def-texte")).to_contain_text("ce n'est pas vous qui avez créé cette copie")
     envoyees = []
     page.on("request", lambda r: envoyees.append(r) if r.url.endswith("/api/demandes")
             and r.method == "POST" else None)
@@ -989,7 +989,7 @@ def test_supprimer_a_deux_reponses_et_chacune_dit_ce_qu_elle_fait(page, live_ser
 
     # ── « Erreur » : il l'a importé, il l'efface ─────────────────────────────────────────
     _ouvrir_suppression(page, "Erreur")
-    expect(page.locator("#sp-def-texte")).to_contain_text("vous l'avez importé")
+    expect(page.locator("#sp-def-texte")).to_contain_text("vous l'avez créée")
     expect(page.locator("#sp-motif")).to_be_hidden()
     expect(page.locator("#sp-certif")).to_be_hidden()
     expect(page.locator("#sp-def")).to_have_text("Supprimer définitivement")

@@ -171,3 +171,17 @@ def test_toute_collection_lue_a_son_projet_parmi_ceux_qu_on_peut_nommer(client, 
             f"{entetes.get('Remote-User')} lit des collections dont le projet ne lui est pas "
             f"nommé : {hors} — la Bibliothèque ne les montrerait sous aucun projet")
     assert [x["nom"] for x in client.get("/api/collections", headers=carol).json()] == ["Étude"]
+
+
+def test_les_positions_de_la_base_sont_celles_du_serveur_et_dans_le_meme_ordre():
+    """COL-3, écran de la 3a : « Ce que la base ouvre aux membres » propose les niveaux que
+    le serveur accepte pour `acces_membres` (`autorisation.ACCES_MEMBRES`), puis la base
+    protégée (`null`). « + Nouveau projet » présélectionne la PREMIÈRE — « ouverte », la
+    valeur par défaut de `ProjetIn` : la même des deux côtés."""
+    m = re.search(r"const POSITIONS = \[(.*?)\];", _source(), re.S)
+    assert m, "POSITIONS introuvable dans static/lib/projet.js"
+    valeurs = [None if v == "null" else v.strip('"')
+               for v in re.findall(r'valeur: ("[^"]*"|null)', m.group(1))]
+    assert valeurs == [*autorisation.ACCES_MEMBRES, None], valeurs
+    import socle
+    assert socle.ProjetIn(nom="x").acces_membres == valeurs[0]

@@ -3196,3 +3196,83 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .af-info { margin: .8rem 0 0; }
 .af-info > summary { cursor: pointer; color: var(--text-muted); }
 .af-info ul { margin-top: .4rem; }
+
+/* ── COL-3, écran de la 3a — les demandes de cinq genres, et ce qu'elles disent ──────────
+   « À faire » : une COULEUR DE TRANCHE par genre (tranché par Hugo sur maquette, le
+   2026-10-17), posée sur le filet gauche — un trait, pas un texte : le seuil graphique de
+   3:1 suffit, et le genre se lit aussi en clair en tête de ligne. */
+.af-ligne.af-genre-document { border-left-color: var(--accent-red); }
+.af-ligne.af-genre-projet { border-left-color: var(--accent-amber); }
+.af-ligne.af-genre-entree { border-left-color: var(--accent-blue); }
+.af-ligne.af-genre-rejoindre { border-left-color: var(--accent-cyan); }
+.af-ligne.af-genre-rendre { border-left-color: var(--accent-violet); }
+.af-ligne.af-genre-autre { border-left-color: var(--border); }
+.af-genre-nom { text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+.af-explique { overflow-wrap: anywhere; }
+.af-documents { margin: .3rem 0 0; }
+.af-documents li { align-items: center; }
+.af-doc-titre { min-width: 0; overflow-wrap: anywhere; flex: 1 1 10rem; }
+.af-doc-gestes { display: inline-flex; flex-wrap: wrap; gap: .3rem; }
+/* L'état d'une demande ou d'une ligne : le libellé porte le sens, la bordure le renforce ;
+   l'encre reste celle du texte, AA-sûre dans les deux thèmes. */
+.af-etat { display: inline-block; padding: .02rem .5rem; border-radius: 4px; font-size: .86rem;
+           border: 1px solid var(--border); color: var(--text); white-space: nowrap; }
+.af-etat-attente { border-color: var(--accent-amber); }
+.af-etat-acceptee { border-color: var(--accent-green); }
+.af-etat-refusee { border-color: var(--ink-red); }
+.af-etat-partielle { border-color: var(--accent-blue); }
+
+/* Fiche d'un projet — ce que la base ouvre aux membres : trois radios, une phrase chacune. */
+.pj-positions { display: grid; gap: .3rem; margin: .3rem 0; padding: 0; border: 0;
+                max-width: 46rem; min-width: 0; }
+.pj-positions legend { font-size: .92rem; color: var(--text-muted); padding: 0;
+                       margin-bottom: .2rem; overflow-wrap: anywhere; }
+.pj-position { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .1rem .55rem;
+               align-items: baseline; padding: .4rem .6rem; border: 1px solid var(--border);
+               border-radius: 7px; cursor: pointer; }
+.pj-position:has(input:checked) { border-color: var(--accent-blue);
+  background: color-mix(in srgb, var(--accent-blue) 9%, transparent); }
+.pj-position-nom { font-weight: 600; }
+.pj-position-phrase { grid-column: 2; overflow-wrap: anywhere; }
+.pj-position-confirme { border: 1px solid var(--border); border-radius: 7px; padding: .5rem .7rem;
+                        margin: .3rem 0; max-width: 46rem; display: grid; gap: .3rem; }
+.pj-position-confirme p { margin: 0; overflow-wrap: anywhere; }
+/* Au fonds : les demandes du projet et ses copies gardées. */
+.pj-fonds > h4 { margin: 0 0 .4rem; font-size: .8rem; text-transform: uppercase;
+                 letter-spacing: .06em; color: var(--text-muted); font-weight: 600; }
+.pj-fonds > h4.pj-gardees-titre { margin-top: .9rem; }
+.pj-demande-quoi { display: grid; gap: .05rem; min-width: 0; flex: 1 1 14rem;
+                   overflow-wrap: anywhere; }
+.pj-demande-etat-ligne, .pj-gardee-geste { display: inline-flex; flex-wrap: wrap; gap: .3rem;
+                                          align-items: center; }
+.pj-demande-docs { flex: 1 1 100%; padding-left: .6rem; }
+.pj-gardee > span:first-child { min-width: 0; overflow-wrap: anywhere; flex: 1 1 14rem; }
+.pj-rendre { display: inline-flex; flex-wrap: wrap; gap: .4rem; align-items: center;
+             min-width: 0; max-width: 100%; }
+
+/* Fiche d'un document du fonds — ses copies de travail, et « Prendre dans… ». */
+.fd-copies { margin: 0; }
+.fd-copie > span:first-child { display: grid; gap: .05rem; min-width: 0; flex: 1 1 14rem;
+                               overflow-wrap: anywhere; }
+.fd-prendre { display: flex; flex-wrap: wrap; gap: .4rem .6rem; align-items: center;
+              max-width: 46rem; }
+/* Une liste déroulante prend la largeur de sa plus longue option, et un élément de grille
+   ne descend pas sous sa largeur minimale : à 320 px sous une police de 24, le nom d'une
+   collection emportait le bloc du fonds. Une largeur de base et `min-width: 0` l'en
+   empêchent (mesuré par `test_e2e_ecran_3a`). */
+.fd-prendre, .pj-rendre { min-width: 0; }
+.fd-prendre select, .pj-rendre select { flex: 1 1 10rem; width: 10rem; min-width: 0;
+                                        max-width: 100%; }
+
+/* « Qui entre » d'une collection de BASE : deux groupes, « Par le projet » puis « Entrés
+   ici », SANS teinte (Hugo, sur maquette) — la règle se lit à la structure : un titre de
+   groupe, et des lignes dérivées qui n'ont ni case ni ✕. */
+.qe-table tr.qe-groupe-ligne th { text-align: left; font-size: .8rem; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--text-muted); font-weight: 600; padding-top: .7rem; }
+.qe-table td.qe-derive-actes { font-size: .9rem; color: var(--text-muted); }
+.qe-raison { display: block; font-weight: 400; }
+.qe-groupe-titre { margin: .6rem 0 .3rem; font-size: .8rem; text-transform: uppercase;
+                   letter-spacing: .06em; color: var(--text-muted); font-weight: 600; }
+.qe-cartes-projet { margin-bottom: .2rem; }
+.qe-carte.qe-derive p { margin: .3rem 0 0; overflow-wrap: anywhere; }
+.qe-regler { color: var(--accent-blue); overflow-wrap: anywhere; }

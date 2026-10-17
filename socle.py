@@ -39,7 +39,7 @@ import autorisation
 import conflit
 import journal
 from database import (CRAN_IMAGES, DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE,
-                      DEMANDE_SUPPRESSION_DOCUMENT,
+                      DEMANDE_RENDRE, DEMANDE_SUPPRESSION_DOCUMENT,
                       DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
                       clause_appartenance, collection_row, creer_copie,
                       demandes_vers_collection, etat_des_reponses, get_connection,
@@ -519,8 +519,8 @@ def _detruire_album(conn, portee: autorisation.Portee, album_id: int) -> None:
 def _clore_lignes_d_une_copie_detruite(conn, portee: autorisation.Portee,
                                        album_id: int) -> None:
     """Les demandes qui visaient CETTE copie et qu'elle ne peut plus satisfaire — un
-    `rejoindre` (la ranger ailleurs), la ligne d'une entrée qui la REPREND du fonds — se
-    closent avec elle : leur ligne est refusée, et l'état de la demande se recalcule
+    `rejoindre` (la ranger ailleurs), la ligne d'une entrée qui la REPREND du fonds, la
+    demande de la RENDRE (`DEMANDE_RENDRE`, COL-3, écran de la 3a) — se closent avec elle : leur ligne est refusée, et l'état de la demande se recalcule
     (`database.etat_des_reponses` — une entrée de plusieurs documents reste en attente si
     d'autres lignes attendent, `partielle` si d'autres ont été acceptées). Sans cela elles
     attendaient pour toujours, invisibles de qui doit consentir (relecture croisée de la
@@ -529,8 +529,8 @@ def _clore_lignes_d_une_copie_detruite(conn, portee: autorisation.Portee,
         "SELECT dd.demande_id, dd.document_id FROM demande_document dd "
         "JOIN demande d ON d.id = dd.demande_id "
         "WHERE dd.album_id = ? AND dd.reponse IS NULL AND d.reponse IS NULL "
-        "AND d.genre IN (?, ?) ORDER BY dd.demande_id",
-        (album_id, DEMANDE_REJOINDRE, DEMANDE_ENTREE_DOCUMENTS)).fetchall()
+        "AND d.genre IN (?, ?, ?) ORDER BY dd.demande_id",
+        (album_id, DEMANDE_REJOINDRE, DEMANDE_ENTREE_DOCUMENTS, DEMANDE_RENDRE)).fetchall()
     for demande_id, document_id in lignes:
         conn.execute("UPDATE demande_document SET reponse = ? WHERE demande_id = ? "
                      "AND document_id = ?", (REPONSE_REFUSEE, demande_id, document_id))
@@ -672,6 +672,43 @@ def _clore_demandes_vers(conn, portee: autorisation.Portee, collection_id: int) 
     collection créée ensuite, une autre étude (COL-3, tranche 3). Ne commite pas."""
     _clore_demandes(conn, portee, demandes_vers_collection(conn, collection_id),
                     REPONSE_REFUSEE)
+
+
+def _retour_en_attente(conn, album_id: int):
+    """La demande de RENDRE cette copie qui attend sa réponse (`DEMANDE_RENDRE`), ou None.
+
+    Par COPIE, et non par collection d'arrivée comme `_en_attente_vers` : rendre la même
+    copie à deux collections à la fois n'aurait pas de sens — la seconde demande, acceptée,
+    trouverait la copie déjà rendue. Un retour ne s'attend donc qu'une fois par copie (écran
+    de la 3a, COL-3) ; refusé, il se redemande."""
+    return conn.execute(
+        "SELECT d.id, d.date_creation, d.collection_id, d.collection_nom FROM demande d "
+        "JOIN demande_document dd ON dd.demande_id = d.id "
+        "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL ORDER BY d.id LIMIT 1",
+        (DEMANDE_RENDRE, album_id)).fetchone()
+
+
+def _clore_retours_d_une_copie_rangee(conn, portee: autorisation.Portee,
+                                      album_id: int) -> None:
+    """La copie a quitté le fonds par un autre chemin que la réponse à sa demande — un
+    administrateur l'a rendue depuis la fiche du document, ou reprise par la prise : la
+    demande de la rendre a reçu ce qu'elle demandait, et se clôt ACCEPTÉE, sous le nom de
+    qui l'a fait. Elle dit sa copie (`copie_id`) comme une réponse « Rendre ».
+
+    Sans cela, « À faire » montrerait encore « Rendre à … » sur une copie déjà rendue, et y
+    répondre buterait sur un refus. Ne fait rien si la copie est encore gardée (aucune
+    collection). Ne commite pas."""
+    if conn.execute("SELECT 1 FROM collection_album WHERE album_id = ?",
+                    (album_id,)).fetchone() is None:
+        return
+    ids = [r[0] for r in conn.execute(
+        "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
+        "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL ORDER BY d.id",
+        (DEMANDE_RENDRE, album_id))]
+    for demande_id in ids:
+        conn.execute("UPDATE demande_document SET copie_id = ? WHERE demande_id = ?",
+                     (album_id, demande_id))
+    _clore_demandes(conn, portee, ids, REPONSE_ACCEPTEE)
 
 
 def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:

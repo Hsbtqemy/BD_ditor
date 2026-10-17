@@ -2238,8 +2238,17 @@ DEMANDE_SUPPRESSION_PROJET = "suppression_projet"
 # d'ARRIVÉE (`demande.collection_id` et son nom).
 DEMANDE_ENTREE_DOCUMENTS = "entree_documents"
 DEMANDE_REJOINDRE = "rejoindre"
+# COL-3, tranche 3a (écran tranché par Hugo sur maquette, 2026-10-17) — RENDRE une copie
+# gardée au fonds : le responsable du projet de la copie demande qu'elle revienne dans une
+# collection de ce projet, et un administrateur répond (« Rendre à … » / « Garder au
+# fonds »). Un genre à lui, et non une ligne d'entrée de documents comme le serveur de la
+# prise l'écrivait d'abord : une entrée fait NAÎTRE une copie vierge, un retour rend une
+# copie qui existe avec tout son travail — l'écran leur donne deux mots et deux boutons, et
+# un retour ne s'attend qu'une fois par COPIE, quelle que soit la collection nommée. Une
+# demande par copie, qui nomme sa collection d'arrivée (`demande.collection_id`).
+DEMANDE_RENDRE = "rendre_copie"
 GENRES_DEMANDE = (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
-                  DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE)
+                  DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE)
 REPONSE_ACCEPTEE = "acceptee"
 REPONSE_REFUSEE = "refusee"
 REPONSES_DEMANDE = (REPONSE_ACCEPTEE, REPONSE_REFUSEE)
@@ -2289,7 +2298,7 @@ def un_proprietaire_tient_toute_la_copie(conn: sqlite3.Connection, album_id: int
 
 def demandes_vers_collection(conn: sqlite3.Connection, collection_id: int) -> list[int]:
     """Les demandes EN ATTENTE qui nomment cette collection comme ARRIVÉE — une entrée de
-    documents, un rejoindre. À clore quand la collection disparaît : son identifiant se
+    documents, un rejoindre, un retour (`DEMANDE_RENDRE`). À clore quand la collection disparaît : son identifiant se
     réattribue (`collection` n'a pas d'`AUTOINCREMENT`), et une demande acceptée plus tard
     rangerait sinon dans la collection créée ensuite, une autre étude."""
     return [r[0] for r in conn.execute(

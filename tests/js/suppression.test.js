@@ -87,12 +87,12 @@ const DEMANDE = { id: 9, demandeur: "sam", demandeur_nom: "Sam Diallo",
 
 const DEFINITIFS = [
   ["l'importateur seul efface", { destructible: true, demande: null, total: false },
-   "direct", "Supprimer définitivement", ["vous l'avez importé", "Irréversible"]],
+   "direct", "Supprimer définitivement", ["cette copie, ses images", "vous l'avez créée", "Irréversible"]],
   ["la portée totale efface partout", { destructible: true, demande: null, total: true },
-   "direct", "Supprimer définitivement", ["dans tous les projets", "Irréversible"]],
+   "direct", "Supprimer définitivement", ["cette copie, ses images et tout le travail", "Irréversible"]],
   ["la portée totale efface même si une demande attend",
    { destructible: true, demande: DEMANDE, total: true },
-   "direct", "Supprimer définitivement", ["dans tous les projets"]],
+   "direct", "Supprimer définitivement", ["Efface tout de suite cette copie"]],
   ["sinon on demande", { destructible: false, demande: null, total: false },
    "demande", "Envoyer la demande", ["la demande part à un administrateur",
                                      "Rien n'est effacé d'ici là"]],
@@ -189,7 +189,7 @@ test("une entrée de documents ou un rejoindre ne se dit jamais suppression (COL
   const rejoindre = { genre: "rejoindre", demandeur: "eva", collection_nom: "Y",
                       documents: [{ document_id: 2, titre: "Oreille" }] };
   assert.equal(S.texteDemande(entree), "resp demande l'entrée de « Lotus » dans « Base »");
-  assert.equal(S.texteDemande(rejoindre), "eva demande à ranger « Oreille » dans « Y »");
+  assert.equal(S.texteDemande(rejoindre), "eva demande à ranger aussi « Oreille » dans « Y »");
   assert.ok(!S.texteDemande({ genre: "inconnu" }).includes("suppression"));
   assert.equal(S.estUneSuppression(entree), false);
   assert.equal(S.estUneSuppression(rejoindre), false);
@@ -295,7 +295,7 @@ test("le travail des autres : qui, combien de chaque sorte, le dernier", () => {
 
 test("un document d'avant le fonds dit ce qu'on sait ; personne d'autre se dit ; rien rendu, rien dit", () => {
   const t = S.travailDesAutres({ importe_par: null, travail_des_autres: [] });
-  assert.ok(t.origine.startsWith("Qui l'a importé n'est pas écrit"));
+  assert.ok(t.origine.startsWith("Qui a créé cette copie n'est pas écrit"));
   assert.equal(t.vide, true);
   assert.equal(t.texteVide, "Personne d'autre que le demandeur n'y a laissé de geste.");
   assert.equal(S.travailDesAutres({ importe_par: "lea" }), undefined);
@@ -334,4 +334,84 @@ test("un compte partagé se dit, et le détail dit qu'il compte des gestes", () 
                           demandeur_collectif: true }).includes(PARTAGE));
   assert.ok(!S.certifiee({ demandeur: "sam", certifie_le: "2026-10-14",
                            demandeur_collectif: false }).includes("partagé"));
+});
+
+
+/* ── COL-3, écran de la 3a — cinq genres, chacun ses mots ─────────────────────────── */
+
+const DEM = (genre, plus) => ({ id: 3, genre, demandeur: "resp", demandeur_nom: "Rémi",
+  collection_nom: "Base P", collection_id: 7, projet_nom: "Étude P",
+  documents: [{ document_id: 1, titre: "Lotus", reponse: null },
+              { document_id: 2, titre: "Oreille", reponse: "acceptee" }], ...plus });
+
+test("chaque genre a son nom, sa classe et ses deux réponses — Détruire n'est qu'à un document", () => {
+  const cas = [
+    [S.GENRE_DOCUMENT, "Supprimer un document", "document", "Détruire", "Garder"],
+    [S.GENRE_PROJET, "Supprimer un projet", "projet", "Supprimer le projet", "Garder"],
+    [S.GENRE_ENTREE, "Entrée de documents", "entree", "Accepter", "Refuser"],
+    [S.GENRE_REJOINDRE, "Rejoindre un travail", "rejoindre",
+     "Accepter : ranger aussi dans « Base P »", "Refuser"],
+    [S.GENRE_RENDRE, "Rendre une copie gardée", "rendre", "Rendre à « Base P »",
+     "Garder au fonds"],
+  ];
+  const classes = new Set();
+  for (const [genre, libelle, classe, accepter, refuser] of cas) {
+    const g = S.genreDemande(DEM(genre));
+    assert.deepEqual([g.connu, g.libelle, g.classe, g.accepter, g.refuser],
+                     [true, libelle, classe, accepter, refuser], genre);
+    classes.add(g.classe);
+    if (genre !== S.GENRE_DOCUMENT) {
+      assert.ok(!/Détruire/.test(g.accepter + g.refuser), genre);
+      if (genre !== S.GENRE_PROJET) assert.notEqual(g.refuser, "Garder", genre);
+    }
+  }
+  assert.equal(classes.size, cas.length, "une couleur de tranche par genre");
+});
+
+test("un genre inconnu se lit « Demande », sans aucun bouton", () => {
+  const g = S.genreDemande({ genre: "nouveau" });
+  assert.deepEqual([g.connu, g.libelle, g.accepter, g.refuser], [false, "Demande", "", ""]);
+  assert.equal(S.genreDemande(null).connu, false);
+});
+
+test("les réponses globales d'une entrée comptent ce qui attend encore", () => {
+  assert.equal(S.toutAccepter(DEM(S.GENRE_ENTREE)), "Tout accepter (1)");
+  assert.equal(S.REFUSER_LE_RESTE, "Refuser le reste");
+});
+
+test("l'état d'une demande, et celui d'une ligne, pour qui l'a déposée", () => {
+  assert.deepEqual(S.etatDemande({ reponse: null }), { code: "attente", libelle: "en attente" });
+  assert.equal(S.etatDemande({ reponse: "acceptee" }).libelle, "acceptée");
+  assert.equal(S.etatDemande({ reponse: "refusee" }).libelle, "refusée");
+  assert.equal(S.etatDemande({ reponse: "partielle" }).libelle, "acceptée en partie");
+  const d = DEM(S.GENRE_ENTREE);
+  assert.equal(S.etatLigne(d.documents[1], d).libelle, "entré dans « Base P »");
+  assert.equal(S.etatLigne({ reponse: "refusee" }, d).libelle, "refusé");
+  assert.equal(S.etatLigne(d.documents[0], d).libelle, "en attente");
+});
+
+test("la phrase d'un retour nomme la copie et sa collection d'arrivée, jamais une suppression", () => {
+  const t = S.texteDemande(DEM(S.GENRE_RENDRE, { documents: [{ document_id: 1, titre: "Lotus" }] }));
+  assert.equal(t, "Rémi demande à rendre « Lotus » à « Base P »");
+  for (const genre of [S.GENRE_ENTREE, S.GENRE_REJOINDRE, S.GENRE_RENDRE]) {
+    assert.ok(!/suppression/.test(S.texteDemande(DEM(genre))), genre);
+    assert.ok(S.explicationDemande(DEM(genre)).length > 0, genre);
+  }
+  assert.equal(S.explicationDemande(DEM(S.GENRE_DOCUMENT)), "");
+});
+
+test("une copie qui a une sœur : ses images restent, sans dire où", () => {
+  const r = S.definitif({ destructible: true, total: false, soeur: true });
+  assert.ok(r.texte.includes(S.IMAGES_RESTENT), r.texte);
+  assert.ok(!r.texte.includes("ses images et"), r.texte);
+  assert.equal(S.IMAGES_RESTENT, "Ses images restent : une autre copie de ce document les emploie.");
+  assert.ok(S.confirmationDetruire("Lotus", true).includes(S.IMAGES_RESTENT));
+  assert.ok(S.confirmationDetruire("Lotus").includes("cette copie"));
+  assert.ok(!S.confirmationDetruire("Lotus").includes("tous les projets"));
+});
+
+test("le travail des autres dit qui a créé CETTE copie", () => {
+  const t = S.travailDesAutres({ creee_par: "sam", creee_par_nom: "Sam", importe_par: "lea",
+                                 travail_des_autres: [] });
+  assert.equal(t.origine, "Copie créée par Sam (sam) ; document importé par lea.");
 });

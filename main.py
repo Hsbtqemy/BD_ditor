@@ -59,7 +59,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _attributs_de, _auteur, _chemins_employes, _clore_demandes, _detruire_album,
     _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet,
     _clore_demandes_vers, _clore_lignes_d_une_copie_detruite, _deposer, _en_attente_vers,
-    _nouvelle_copie, _plan_rejoindre,
+    _nouvelle_copie, _plan_rejoindre, _clore_retours_d_une_copie_rangee, _retour_en_attente,
     _clause_lemme, _clause_personnage, _collection_d_export, _collections_lues_d_albums,
     _csv_response, _csv_safe, _descendre_portee,
     _disposition, _ensure_tags, _exiger_destruction, _exiger_export,

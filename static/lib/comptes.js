@@ -223,9 +223,12 @@
       case "demande_en_attente": {
         // Ce que la demande dit se lit dans le fonds ; ici, de quoi la reconnaître, si le
         // bloc du fonds l'a déjà lue (`noms.demandes`). Sinon une phrase qui ne lit pas le
-        // genre : ses valeurs ne se recopient qu'une fois, dans `lib/suppression.js`.
+        // genre : ses valeurs ne se recopient qu'une fois, dans `lib/suppression.js`. Elle
+        // ne dit donc pas « suppression » : depuis l'écran de la 3a (COL-3), une demande peut
+        // être une entrée de documents, un rejoindre ou un retour, et seule une suppression
+        // se dit suppression.
         const d = noms && noms.demandes ? noms.demandes[s.demande] : undefined;
-        return d && d.texte ? d.texte : "Une demande de suppression attend sa réponse";
+        return d && d.texte ? d.texte : "Une demande attend sa réponse";
       }
       case "groupe_absent":
         return `Le groupe ${s.groupe} n'est pas dans l'annuaire (accès à ${col(s.collection)})`;
@@ -246,7 +249,7 @@
 
   function texteGroupeSignaux(code, n) {
     switch (code) {
-      case "demande_en_attente": return `${n} demandes de suppression en attente`;
+      case "demande_en_attente": return `${n} demandes en attente`;
       case "groupe_absent": return `${n} accès à des groupes absents de l'annuaire`;
       case "compte_absent": return `${n} accès à des comptes absents de l'annuaire`;
       case "proprietaire_absent": return `${n} collections sans propriétaire dans l'annuaire`;

@@ -25,8 +25,17 @@
      leur accord avec `database`. */
   const GENRE_DOCUMENT = "suppression_document";
   const GENRE_PROJET = "suppression_projet";
+  /* COL-3, tranche 3a — les trois genres qui ne sont PAS des suppressions : faire entrer
+     des documents du fonds, rejoindre un travail, rendre une copie gardée au fonds. Recopiés
+     ici pour la même raison que les deux premiers, et mesurés de même. */
+  const GENRE_ENTREE = "entree_documents";
+  const GENRE_REJOINDRE = "rejoindre";
+  const GENRE_RENDRE = "rendre_copie";
   const ACCEPTER = "acceptee";
   const REFUSER = "refusee";
+  /* L'état d'une demande dont les documents ont reçu des réponses mêlées (D9) : jamais une
+     réponse qu'on envoie, seulement ce qu'on lit. */
+  const PARTIELLE = "partielle";
 
   const g = (texte) => `« ${texte} »`;
 
@@ -134,15 +143,25 @@
   /* Supprimer DÉFINITIVEMENT : effacer tout de suite, ou demander, ou attendre une demande
      déjà partie. `destructible` est la réponse du serveur — l'écran ne la recalcule pas.
      Rend { mode: "direct" | "demande" | "attente", texte, bouton }. */
-  function definitif({ destructible, demande, total, moi }) {
+  /* Ce que dit la suppression d'une copie dont le document a une SŒUR (COL-3, tranche 3a,
+     D5-D6) : les images appartiennent au document, et elles restent tant qu'une copie les
+     emploie. La phrase ne dit pas OÙ vit l'autre copie — qui ne lit qu'un projet n'a pas à
+     apprendre qu'un autre l'emploie (cadrage, « Les écrans touchés »). Préparée ici ; le
+     panneau « Supprimer… » de la Bibliothèque l'affichera quand le serveur dira, album par
+     album, qu'une sœur existe. */
+  const IMAGES_RESTENT = "Ses images restent : une autre copie de ce document les emploie.";
+
+  /* `soeur` : le document a une autre copie — les images restent, et la phrase le dit. */
+  function definitif({ destructible, demande, total, moi, soeur }) {
     if (destructible) {
+      const efface = soeur ? "cette copie et" : "cette copie, ses images et";
+      const reste = soeur ? ` ${IMAGES_RESTENT}` : "";
       return {
         mode: "direct", bouton: "Supprimer définitivement",
         texte: total
-          ? "Efface tout de suite ses images et tout le travail fait dessus, dans tous les "
-            + "projets. Irréversible."
-          : "Efface tout de suite ses images et le travail fait dessus : vous l'avez importé, "
-            + "et personne d'autre n'y a travaillé. Irréversible.",
+          ? `Efface tout de suite ${efface} tout le travail fait dessus.${reste} Irréversible.`
+          : `Efface tout de suite ${efface} le travail fait dessus : vous l'avez créée, et `
+            + `personne d'autre n'y a travaillé.${reste} Irréversible.`,
       };
     }
     if (demande) {
@@ -156,8 +175,8 @@
     }
     return {
       mode: "demande", bouton: "Envoyer la demande",
-      texte: "D'autres s'en servent, ou ce n'est pas vous qui l'avez importé : la demande "
-        + "part à un administrateur, qui décide. Rien n'est effacé d'ici là.",
+      texte: "D'autres s'en servent, ou ce n'est pas vous qui avez créé cette copie : la "
+        + "demande part à un administrateur, qui décide. Rien n'est effacé d'ici là.",
     };
   }
 
@@ -215,14 +234,76 @@
     return c ? c.titre : `Document ${doc.id}, sans copie`;
   }
 
-  /* Les genres de demande que les écrans de SUPPRESSION savent lire et répondre — « À
-     faire », la fiche d'un document, le compte du fonds. COL-3, tranche 3a : le serveur dépose
-     désormais deux autres genres (`entree_documents`, `rejoindre`), dont l'écran propre est à
-     venir ; d'ici là ils n'y figurent pas — sous les mots d'une suppression, « Détruire » les
-     aurait ACCEPTÉS (relecture croisée, défaut 1). */
+  /* Les genres de demande qui sont des SUPPRESSIONS. Les seuls auxquels « Détruire »
+     (ou « Supprimer le projet ») répond : la relecture croisée du serveur de la prise avait
+     trouvé une entrée de documents présentée en suppression, et ACCEPTÉE par « Détruire »
+     (défaut 1). */
   const GENRES_SUPPRESSION = [GENRE_DOCUMENT, GENRE_PROJET];
   function estUneSuppression(d) {
     return !!d && GENRES_SUPPRESSION.includes(d.genre);
+  }
+
+  /* CHAQUE GENRE A SES MOTS (COL-3, écran de la 3a, tranché par Hugo sur maquette le
+     2026-10-17) : son nom sur la ligne de « À faire », sa CLASSE (la couleur de tranche — une
+     par genre, posée par la feuille de style), et les libellés de ses deux réponses. Jamais
+     « Détruire / Garder » hors d'une suppression de document. Un genre que l'écran ne connaît
+     pas se dit « Demande », sans aucun bouton : un geste qu'on ne sait pas nommer ne
+     s'offre pas. `accepter` et `refuser` sont des fonctions de la demande : un rejoindre et
+     un retour nomment leur collection d'arrivée. Pour une entrée, ce sont les réponses d'UN
+     document ; « Tout accepter (n) » et « Refuser le reste » valent pour celles qui
+     attendent (`toutAccepter`, `refuserLeReste`). */
+  const nomArrivee = (d) => g(d.collection_nom || `collection ${d.collection_id}`);
+  const GENRES = {
+    [GENRE_DOCUMENT]: { libelle: "Supprimer un document", classe: "document",
+                        accepter: () => "Détruire", refuser: () => "Garder" },
+    [GENRE_PROJET]: { libelle: "Supprimer un projet", classe: "projet",
+                      accepter: () => "Supprimer le projet", refuser: () => "Garder" },
+    [GENRE_ENTREE]: { libelle: "Entrée de documents", classe: "entree",
+                      accepter: () => "Accepter", refuser: () => "Refuser" },
+    [GENRE_REJOINDRE]: { libelle: "Rejoindre un travail", classe: "rejoindre",
+                         accepter: (d) => `Accepter : ranger aussi dans ${nomArrivee(d)}`,
+                         refuser: () => "Refuser" },
+    [GENRE_RENDRE]: { libelle: "Rendre une copie gardée", classe: "rendre",
+                      accepter: (d) => `Rendre à ${nomArrivee(d)}`,
+                      refuser: () => "Garder au fonds" },
+  };
+
+  /* Ce qu'un écran sait d'un genre : { connu, libelle, classe, accepter, refuser } —
+     `accepter` et `refuser` déjà évalués pour CETTE demande, chaîne vide pour un genre
+     inconnu. */
+  function genreDemande(d) {
+    const e = d && GENRES[d.genre];
+    if (!e) return { connu: false, libelle: "Demande", classe: "autre", accepter: "", refuser: "" };
+    return { connu: true, libelle: e.libelle, classe: e.classe,
+             accepter: e.accepter(d), refuser: e.refuser(d) };
+  }
+
+  /* Les réponses globales d'une entrée de documents, avec le nombre de documents qui
+     attendent encore leur réponse. */
+  function attente(d) {
+    return (d.documents || []).filter((x) => !x.reponse).length;
+  }
+  function toutAccepter(d) { return `Tout accepter (${attente(d)})`; }
+  const REFUSER_LE_RESTE = "Refuser le reste";
+
+  /* L'ÉTAT d'une demande, pour qui l'a déposée (fiche du projet, D9) : en attente, acceptée,
+     refusée, acceptée en partie. `code` sert de classe ; `libelle` se lit. */
+  function etatDemande(d) {
+    if (!d || d.reponse === null || d.reponse === undefined) {
+      return { code: "attente", libelle: "en attente" };
+    }
+    if (d.reponse === ACCEPTER) return { code: "acceptee", libelle: "acceptée" };
+    if (d.reponse === REFUSER) return { code: "refusee", libelle: "refusée" };
+    if (d.reponse === PARTIELLE) return { code: "partielle", libelle: "acceptée en partie" };
+    return { code: "autre", libelle: String(d.reponse) };
+  }
+
+  /* La réponse d'UN document d'une entrée, pour la fiche du projet : « entré dans … »,
+     « refusé », « en attente ». */
+  function etatLigne(x, d) {
+    if (x.reponse === ACCEPTER) return { code: "acceptee", libelle: `entré dans ${nomArrivee(d)}` };
+    if (x.reponse === REFUSER) return { code: "refusee", libelle: "refusé" };
+    return { code: "attente", libelle: "en attente" };
   }
 
   /* La phrase d'une demande, pour qui y répond. Une suppression se dit suppression ; un autre
@@ -237,13 +318,40 @@
       return `${qui} demande la suppression définitive de ${et(titres) || "un document"}`;
     }
     const ou = d.collection_nom ? ` dans ${g(d.collection_nom)}` : "";
-    if (d.genre === "entree_documents") {
-      return `${qui} demande l'entrée de ${et(titres) || "documents"}${ou}`;
+    if (d.genre === GENRE_ENTREE) {
+      const n = (d.documents || []).length;
+      return `${qui} demande l'entrée de ${n > 2 ? `${n} documents` : et(titres) || "documents"}${ou}`;
     }
-    if (d.genre === "rejoindre") {
-      return `${qui} demande à ranger ${et(titres) || "une copie"}${ou}`;
+    if (d.genre === GENRE_REJOINDRE) {
+      return `${qui} demande à ranger aussi ${et(titres) || "une copie"}${ou}`;
+    }
+    if (d.genre === GENRE_RENDRE) {
+      return `${qui} demande à rendre ${et(titres) || "une copie gardée"} à `
+        + `${d.collection_nom ? g(d.collection_nom) : "une collection"}`;
     }
     return `${qui} a déposé une demande`;
+  }
+
+  /* Ce que la réponse FERA, dit sous la demande dépliée — pour les trois genres qui ne sont
+     pas des suppressions. Rien pour une suppression : son détail est ailleurs (le motif, la
+     certification, le travail des autres). */
+  function explicationDemande(d) {
+    const qui = d.demandeur_nom || d.demandeur || "le demandeur";
+    if (d.genre === GENRE_ENTREE) {
+      return `Chaque document accepté entre dans ${nomArrivee(d)} avec une copie de travail `
+        + `vierge, créée au nom de ${qui}. Un document déjà dans le projet y reçoit une `
+        + "seconde copie.";
+    }
+    if (d.genre === GENRE_REJOINDRE) {
+      return `Accepter range aussi cette copie dans ${nomArrivee(d)} : le travail est alors `
+        + "partagé entre ces collections, et ce qui s'y fait d'un côté se voit de l'autre.";
+    }
+    if (d.genre === GENRE_RENDRE) {
+      return `Copie de ${g(d.projet_nom || "son projet")}, gardée au fonds avec son travail. `
+        + `« Rendre » la range dans ${nomArrivee(d)}, la collection que le responsable a `
+        + "nommée ; « Garder au fonds » la laisse où elle est.";
+    }
+    return "";
   }
 
   /* « Certifié par … le … » : la certification d'une demande, pour qui y répond. Rien pour
@@ -295,11 +403,20 @@
      `undefined` si le serveur n'a rien rendu (une demande répondue). */
   function travailDesAutres(doc) {
     if (!doc || !Array.isArray(doc.travail_des_autres)) return undefined;
-    const origine = doc.importe_par
-      ? `Importé par ${doc.importe_par_nom && doc.importe_par_nom !== doc.importe_par
-          ? `${doc.importe_par_nom} (${doc.importe_par})` : doc.importe_par}.`
-      : "Qui l'a importé n'est pas écrit (un album d'avant le fonds) : tout geste compte "
-        + "comme celui d'un autre.";
+    const nomme = (login, nom) => (nom && nom !== login ? `${nom} (${login})` : login);
+    // « Créée » et non « importé » (COL-3, tranche 3a) : la règle lit qui a créé CETTE copie
+    // (`creee_par`), qui n'est l'importateur du document que pour sa copie d'origine.
+    let origine;
+    if (doc.creee_par) {
+      origine = `Copie créée par ${nomme(doc.creee_par, doc.creee_par_nom)}`
+        + (doc.importe_par && doc.importe_par !== doc.creee_par
+          ? ` ; document importé par ${nomme(doc.importe_par, doc.importe_par_nom)}.` : ".");
+    } else if (doc.importe_par) {
+      origine = `Importé par ${nomme(doc.importe_par, doc.importe_par_nom)}.`;
+    } else {
+      origine = "Qui a créé cette copie n'est pas écrit (un album d'avant le fonds) : tout "
+        + "geste compte comme celui d'un autre.";
+    }
     const lignes = doc.travail_des_autres.map((e) => {
       const qui = e.agent
         ? (e.agent_nom && e.agent_nom !== e.agent ? `${e.agent_nom} (${e.agent})` : e.agent)
@@ -323,6 +440,7 @@
     const parts = [];
     if (d.date_creation) parts.push(`le ${dateLue(d.date_creation)}`);
     if (d.genre === GENRE_DOCUMENT && d.projet_nom) parts.push(`depuis ${g(d.projet_nom)}`);
+    else if (d.genre !== GENRE_PROJET && d.projet_nom) parts.push(`projet ${g(d.projet_nom)}`);
     if (d.refus_anterieurs) {
       parts.push(d.refus_anterieurs === 1 ? "déjà refusée une fois"
                                           : `déjà refusée ${d.refus_anterieurs} fois`);
@@ -330,10 +448,20 @@
     return parts.join(" · ");
   }
 
-  /* Ce que coûte « Détruire », dit avant de le faire. */
-  function confirmationDetruire(titre) {
-    return `Détruire ${g(titre)} ? Ses images et tout le travail fait dessus sont effacés, `
-      + "dans tous les projets. Irréversible.";
+  /* Ce que coûte « Détruire », dit avant de le faire. Accepter une demande ne détruit que la
+     COPIE demandée (D5) : ses images partent avec elle, sauf si une autre copie du document
+     les emploie (`soeur`, D6) — et la phrase ne dit pas où vit cette autre copie. */
+  function confirmationDetruire(titre, soeur) {
+    return `Détruire cette copie de ${g(titre)} ? Tout le travail fait dessus est effacé`
+      + (soeur ? `. ${IMAGES_RESTENT}` : ", ses images aussi.") + " Irréversible.";
+  }
+
+  /* Détruire un DOCUMENT que personne n'appelle, depuis le fonds : toutes ses copies partent,
+     et ses images avec. */
+  function confirmationDetruireDocument(titre, nCopies) {
+    const n = nCopies || 1;
+    return `Détruire ${g(titre)} ? Ses images et le travail de `
+      + (n > 1 ? `ses ${n} copies` : "sa copie") + " sont effacés. Irréversible.";
   }
 
   /* Les collections où « Rendre à… » peut ranger une copie gardée : celles de SON projet —
@@ -345,10 +473,12 @@
   }
 
   return {
-    GENRE_DOCUMENT, GENRE_PROJET, GENRES_SUPPRESSION, estUneSuppression,
-    ACCEPTER, REFUSER, CERTIFICATION, SORTES,
+    GENRE_DOCUMENT, GENRE_PROJET, GENRE_ENTREE, GENRE_REJOINDRE, GENRE_RENDRE,
+    GENRES_SUPPRESSION, estUneSuppression, genreDemande, etatDemande, etatLigne,
+    toutAccepter, REFUSER_LE_RESTE, explicationDemande, IMAGES_RESTENT,
+    ACCEPTER, REFUSER, PARTIELLE, CERTIFICATION, SORTES,
     dateLue, demandeur, pastille, offrir, retrait, definitif, apresRetrait, apresDefinitif,
     origine, emplois, titreDocument, texteDemande, contexteDemande, confirmationDetruire,
-    rendreA, certifiee, gestes, travailDesAutres,
+    confirmationDetruireDocument, rendreA, certifiee, gestes, travailDesAutres,
   };
 });

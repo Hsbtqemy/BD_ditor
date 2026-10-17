@@ -42,7 +42,8 @@ from database import (DEMANDE_REJOINDRE, NATURES, collection_row, collections,
 
 from socle import (
     DEMANDE, REFUSE, AccesIn, CollectionIn, CollectionUpdate, NatureIn,
-    _clore_demandes_vers, _collections_lues_d_albums, _deposer, _en_attente_vers,
+    _clore_demandes_vers, _clore_retours_d_une_copie_rangee, _collections_lues_d_albums,
+    _deposer, _en_attente_vers,
     _get_album, _get_collection, _get_projet, _plan_rejoindre, _rows, db, portee_courante,
 )
 
@@ -135,9 +136,18 @@ def _ligne(conn, collection_id: int) -> dict:
 
 
 def _compte_proprietaires(conn, collection_id: int) -> int:
-    return conn.execute(
+    """Combien de propriétaires tiennent cette collection — les lignes de `collection_acces`
+    ET, pour une collection de BASE, les responsables de son projet, qui en sont
+    propriétaires par dérivation (D10 ; `autorisation.acces_derives`, la règle de
+    `Portee`). C'est ce que compte le 409 « dernier propriétaire » : retirer la dernière
+    ligne explicite d'une base dont le projet a un responsable ne la laisse pas sans
+    propriétaire (COL-3, écran de la 3a)."""
+    explicites = conn.execute(
         "SELECT COUNT(*) FROM collection_acces WHERE collection_id = ? AND niveau = ?",
         (collection_id, autorisation.PROPRIETAIRE)).fetchone()[0]
+    derives = sum(1 for a in autorisation.acces_derives(conn, collection_id)
+                  if a["niveau"] == autorisation.PROPRIETAIRE)
+    return explicites + derives
 
 
 def _refuser_nom_reserve(nom: str) -> None:
@@ -466,6 +476,37 @@ def list_acces(collection_id: int, conn: sqlite3.Connection = Depends(db),
     return _acces_de(conn, collection_id)
 
 
+@router.get("/api/collections/{collection_id}/acces-du-projet")
+def list_acces_du_projet(collection_id: int, conn: sqlite3.Connection = Depends(db),
+                         portee: autorisation.Portee = Depends(portee_courante)):
+    """Qui entre dans cette collection PAR LE PROJET — pour une collection de BASE, ses
+    responsables (propriétaires) et ses membres (au niveau que le projet a choisi), que
+    `autorisation.Portee` dérive de `projet_acces` sans aucune ligne dans `collection_acces`
+    (D10). COL-3, écran de la 3a (case « L'accès tenu par le projet se lit là où l'on regarde
+    qui entre ») : sans cette lecture, un propriétaire de la base croyait son cercle
+    restreint alors que tous les membres y écrivaient — la relecture croisée l'a relevé, et
+    c'est l'esprit d'AUTH-4, « inévitable, mais pas invisible ».
+
+    Les mêmes bornes que `…/acces`, parce que c'est la même donnée sur des PERSONNES : à qui
+    ADMINISTRE la collection — 404 à qui ne la lit pas, 403 nommé à qui la lit sans la
+    posséder. SÉPARÉE de `…/acces` plutôt qu'ajoutée à sa liste : celle-ci est aussi la
+    réponse du `PUT` et du `DELETE` d'un accès, et une ligne dérivée qui s'y glisserait
+    serait offerte au geste qui ne peut pas la changer.
+
+    Rend `base` (la collection est-elle la base de son projet), le projet (`projet_id`,
+    `projet_nom`), la position de ses membres (`acces_membres`), `gerable` — l'appelant
+    peut-il régler ces accès, c'est-à-dire gérer le projet (`peut_gerer_projet`) — et les
+    `lignes` (`autorisation.acces_derives`). Hors d'une base, `lignes` est vide."""
+    c = _get_collection(conn, portee, collection_id, administrer=True)
+    projet_id = projet_de_collection(conn, collection_id)
+    p = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
+    base = bool(c["base"])
+    return {"base": base, "projet_id": projet_id, "projet_nom": p["nom"] if p else None,
+            "acces_membres": c["acces_membres"] if base else None,
+            "gerable": portee.peut_gerer_projet(projet_id),
+            "lignes": autorisation.acces_derives(conn, collection_id)}
+
+
 @router.get("/api/collections/{collection_id}/annuaire")
 def annuaire_de_la_collection(collection_id: int, conn: sqlite3.Connection = Depends(db),
                               portee: autorisation.Portee = Depends(portee_courante)):
@@ -721,6 +762,9 @@ def ranger_album(album_id: int, collection_id: int,
                                      "repondra": ("proprietaire" if qui == "son propriétaire"
                                                   else "administrateur")})
     ranger_copie(conn, album_id, collection_id)
+    # « Rendre à… » joué depuis la fiche du document : un retour demandé par le responsable
+    # pour cette copie a reçu ce qu'il demandait (COL-3, écran de la 3a).
+    _clore_retours_d_une_copie_rangee(conn, portee, album_id)
     conn.commit()
     return list_collections_album(album_id, conn, portee)
 

@@ -47,8 +47,10 @@
    ailleurs : « un seul message à la fois » est une règle d'ÉCRAN, que l'hôte applique s'il
    la veut, prévenu par `surMessage`. Il ne lit ni `location` ni l'historique : la
    présélection lui est passée. Il ne charge ni la description des droits ni l'identité :
-   l'hôte les a déjà. En revanche il LIT ses propres données — `…/acces` et `…/annuaire` —,
-   sans quoi le contrat du serveur vivrait dans deux écrans.
+   l'hôte les a déjà. En revanche il LIT ses propres données — `…/acces`, `…/annuaire` et,
+   depuis l'écran de la 3a de COL-3, `…/acces-du-projet` (ce que le projet tient sur une
+   collection de BASE, montré en tête dans un groupe à lui, « Par le projet ») —, sans quoi
+   le contrat du serveur vivrait dans deux écrans.
 
    EN ACTES, JAMAIS EN NIVEAUX. Le tableau lit la description des droits et n'écrit ni acte,
    ni libellé, ni niveau : toute la logique est dans `static/lib/droits.js`, éprouvée sur la
@@ -186,6 +188,48 @@
     return esc((a.date_creation || "").slice(0, 10));
   }
 
+  /* DEUX GROUPES pour une collection de BASE (COL-3, écran de la 3a, tranché par Hugo sur
+     maquette le 2026-10-17) : « Par le projet » — ses responsables, propriétaires, et ses
+     membres au niveau que le projet a choisi, que le serveur DÉRIVE sans aucune ligne
+     d'accès —, puis « Entrés ici », les lignes de la collection. Sans teinte : la règle se
+     lit à la structure. Hors d'une base, un seul groupe, sans titre — le rendu d'avant, à
+     l'identique. Pure : `projet` est ce que rend `…/acces-du-projet` (ou null s'il n'a pas
+     pu être lu), `acces` la liste de `…/acces`. */
+  function parGroupes(projet, acces) {
+    const enDeux = !!(projet && projet.base);
+    return { enDeux, derives: enDeux ? (projet.lignes || []) : [], explicites: acces || [] };
+  }
+
+  /* Ce qu'une ligne dérivée est dans le projet, en clair. */
+  function raison(a) {
+    return a.role === "responsable" ? "responsable du projet" : "membre du projet";
+  }
+
+  /* Le geste d'une ligne dérivée : elle ne se règle pas ici, ligne à ligne — ni sélecteur, ni
+     case, ni « Retirer » —, mais dans le projet. Un LIEN vers sa fiche quand l'appelant gère
+     le projet (`gerable`, servi par la route), le fait seul sinon. */
+  function regler(m) {
+    const p = m.etat.projet;
+    if (p && p.gerable && p.projet_id != null) {
+      return `<a class="qe-regler" href="/administration?vue=projets&amp;projet=${esc(p.projet_id)}"`
+        + ` title="Cet accès se règle dans le projet, pas ligne par ligne">Régler dans le projet`
+        + `<span aria-hidden="true"> ↗</span></a>`;
+    }
+    return `<span class="muted small">se règle dans le projet</span>`;
+  }
+
+  function titreGroupe(texte, n) {
+    return `${esc(texte)} · ${n}`;
+  }
+
+  /* Ce qu'une ligne dérivée permet, dit en actes (la phrase de « Comptes et groupes ») : elle
+     n'a aucune case à cocher. */
+  function actesDerives(m, a) {
+    if (!m.droits) return esc(a.niveau);
+    const vals = Object.fromEntries(m.droits.hors_rang.map((h) => [h.champ, !!a[h.champ]]));
+    return esc(droitsLib().actesLus(m.droits, a.niveau, vals));
+  }
+
   /* L'identifiant de l'avertissement affiché : celui de son PREMIER acte, qui suffit à le
      distinguer — un texte n'est rendu qu'une fois, quel que soit le nombre d'actes qui le
      portent. */
@@ -281,13 +325,37 @@
       <td><button class="ghost small qe-retirer" type="button" ${cle(a)}
                   aria-label="Retirer l'accès de ${esc(a.principal)}">✕</button></td></tr>`;
     }).join("");
+    const tete = `<thead><tr><th scope="col"${rang2}>Qui</th>${tetes}<th scope="col"${rang2}>Depuis le</th>
+        <th scope="col"${rang2}>Signal</th>
+        <th scope="col"${rang2}><span class="sr-only">Retirer</span></th></tr>${sousTetes}</thead>`;
+    const gr = parGroupes(etat.projet, etat.acces);
+    let corps = `<tbody>${lignes}</tbody>`;
+    if (gr.enDeux) {
+      // Une colonne par acte d'un cran (au moins une), une par case hors rang : la largeur
+      // de la cellule qui dit, en clair, ce qu'une ligne dérivée permet.
+      const nActes = cols.reduce((s, col) => s + (col.type === "cran"
+        ? Math.max(1, col.actes.length) : 1), 0);
+      const nCols = nActes + 4;
+      const derives = gr.derives.map((a, i) => {
+        const ligne = `qe-${id}-d${i}`;
+        return `<tr class="qe-derive"><th scope="row" id="${ligne}">${qui(m, a)}
+          <span class="qe-raison muted small">${esc(raison(a))}</span></th>
+        <td class="qe-derive-actes" colspan="${nActes}">${actesDerives(m, a)}</td>
+        <td class="qe-depuis"></td><td class="qe-signal"></td>
+        <td class="qe-derive-geste">${regler(m)}</td></tr>`;
+      }).join("");
+      const vide = gr.explicites.length ? "" : `<tr><td class="col-note" colspan="${nCols}">
+        Personne encore : « Faire entrer » ajoute ici, hors du projet.</td></tr>`;
+      corps = `<tbody class="qe-groupe-projet"><tr class="qe-groupe-ligne"><th scope="rowgroup"
+          colspan="${nCols}">${titreGroupe("Par le projet", gr.derives.length)}</th></tr>${derives}</tbody>
+        <tbody class="qe-groupe-ici"><tr class="qe-groupe-ligne"><th scope="rowgroup"
+          colspan="${nCols}">${titreGroupe("Entrés ici", gr.explicites.length)}</th></tr>${lignes}${vide}</tbody>`;
+    }
     return `<div class="table-cadre qe-cadre" tabindex="0" role="region"
                aria-label="Qui entre dans ${esc(m.c.nom)}">
     <table class="corpus-table qe-table">
-      <thead><tr><th scope="col"${rang2}>Qui</th>${tetes}<th scope="col"${rang2}>Depuis le</th>
-        <th scope="col"${rang2}>Signal</th>
-        <th scope="col"${rang2}><span class="sr-only">Retirer</span></th></tr>${sousTetes}</thead>
-      <tbody>${lignes}</tbody>
+      ${tete}
+      ${corps}
     </table></div>`;
   }
 
@@ -298,7 +366,20 @@
     const id = m.sfx;
     const crans = BDDroits.crans(DROITS);
     const decrit = descriptions(m);
-    return `<ul class="qe-cartes">${etat.acces.map((a, i) => {
+    const gr = parGroupes(etat.projet, etat.acces);
+    // La base : les cartes dérivées d'abord, sans case ni ✕, sous leur titre de groupe.
+    const avant = !gr.enDeux ? "" : `<p class="qe-groupe-titre">${titreGroupe("Par le projet",
+        gr.derives.length)}</p>
+      <ul class="qe-cartes qe-cartes-projet">${gr.derives.map((a, i) => `<li class="qe-carte qe-derive">
+        <div class="qe-carte-tete"><span class="qe-qui" id="qe-${id}-d${i}">${qui(m, a)}</span>
+          <span class="qe-raison muted small">${esc(raison(a))}</span></div>
+        <p class="small qe-derive-actes">${actesDerives(m, a)}</p>
+        <p class="small qe-derive-geste">${regler(m)}</p></li>`).join("")}</ul>
+      <p class="qe-groupe-titre">${titreGroupe("Entrés ici", gr.explicites.length)}</p>
+      ${gr.explicites.length ? "" : `<p class="col-note">Personne encore : « Faire entrer »
+        ajoute ici, hors du projet.</p>`}`;
+    if (gr.enDeux && !gr.explicites.length) return avant;
+    return `${avant}<ul class="qe-cartes">${etat.acces.map((a, i) => {
       const ligne = `qe-${id}-r${i}`;
       const vals = valeurs(m, a);
       const cases = crans.map((cr) => {
@@ -331,13 +412,15 @@
     const etat = m.etat;
     if (etat.erreur) return `<p class="col-note">${esc(etat.erreur)}</p>`;
     if (!etat.acces) return `<p class="col-note">Chargement…</p>`;
+    const gr = parGroupes(etat.projet, etat.acces);
     if (!m.droits) {
       return `<p class="col-note">La description des droits n'a pas pu être lue : les accès ne
       se règlent pas d'ici tant qu'elle manque.</p>
-      <ul class="qe-noms">${etat.acces.map((a) =>
+      <ul class="qe-noms">${gr.derives.map((a) =>
+        `<li>${qui(m, a)} — ${esc(a.niveau)} (${esc(raison(a))})</li>`).join("")}${etat.acces.map((a) =>
         `<li>${qui(m, a)} — ${esc(a.niveau)}</li>`).join("")}</ul>`;
     }
-    if (!etat.acces.length) {
+    if (!etat.acces.length && !gr.enDeux) {
       return `<p class="col-note">Aucun accès n'est accordé sur cette collection.</p>`;
     }
     return (m.etroit.matches || m.sansPlace) ? cartes(m) : table(m);
@@ -493,6 +576,17 @@
           + `${esc(av.texte)}</p>`);
       }
     }
+    if (etat.projet && etat.projet.base) {
+      // Ce que « Par le projet » veut dire, une fois : la base n'ouvre qu'elle-même.
+      notes.push(`<p class="col-note qe-note-projet">C'est la collection de base du projet
+      ${etat.projet.projet_nom ? `« ${esc(etat.projet.projet_nom)} »` : ""} : ses responsables
+      en sont propriétaires, et ses membres y entrent selon ce que le projet a choisi. Ces
+      accès se règlent dans le projet ; « Faire entrer » ajoute quelqu'un ici seulement.</p>`);
+    } else if (etat.projetErreur) {
+      notes.push(`<p class="col-note">Les accès tenus par le projet n'ont pas pu être lus
+      (${esc(etat.projetErreur)}) : s'il s'agit de la collection de base d'un projet, ses
+      responsables et ses membres y entrent sans figurer ci-dessus.</p>`);
+    }
     const an = etat.annuaire && etat.annuaire.annuaire;
     if (an && an.etat === "non_verifie") {
       // Le texte retenu par Hugo le 2026-09-17, sans « et ses comptes » : le propriétaire
@@ -572,6 +666,20 @@
     } catch (e) { m.etat.erreur = e.message || "Les accès n'ont pas pu être lus."; }
   }
 
+  /* Les accès que le PROJET tient sur la collection (COL-3, écran de la 3a) : une troisième
+     lecture, à lui comme les deux autres. Elle ne change pas sur un geste du panneau — on y
+     règle la collection, pas le projet —, donc elle se lit à l'ouverture et au
+     rafraîchissement, pas après chaque case. Illisible, le panneau le DIT sous le tableau. */
+  async function lireProjet(m) {
+    try {
+      m.etat.projet = await env.apiGet(`/api/collections/${m.c.id}/acces-du-projet`);
+      m.etat.projetErreur = null;
+    } catch (e) {
+      m.etat.projet = null;
+      m.etat.projetErreur = e.message || "échec";
+    }
+  }
+
   async function lireAnnuaire(m) {
     try { m.etat.annuaire = await env.apiGet(`/api/collections/${m.c.id}/annuaire`); }
     catch (e) {
@@ -587,7 +695,7 @@
     // Une valeur ou une promesse ; une promesse REJETÉE vaut une description illisible, et
     // se dit comme telle — sans cela le panneau resterait sur « Chargement… » sans un mot.
     try { m.droits = (await m.options.droits) || null; } catch (e) { m.droits = null; }
-    await lireAcces(m);
+    await Promise.all([lireAcces(m), lireProjet(m)]);
     rendre(m);
     await lireAnnuaire(m);
     rendre(m);
@@ -831,12 +939,13 @@
                 etroit: null, auSeuil: null, ecouteurs: [],
                 sansPlace: false, besoin: 0, observateur: null,
                 preselection: o.preselection || null,
-                etat: { acces: null, erreur: null, annuaire: null } };
+                etat: { acces: null, erreur: null, annuaire: null, projet: null,
+                        projetErreur: null } };
     OCCUPANTS.set(cible, m);
     const poignee = {
       rafraichir: async () => {
         if (!vivant(m)) return;
-        await lireAcces(m);
+        await Promise.all([lireAcces(m), lireProjet(m)]);
         rendre(m);
         await lireAnnuaire(m);
         rendre(m);
@@ -868,5 +977,6 @@
     return poignee;
   }
 
-  return { monter, noteAdmin, SEUIL_ETROIT, _suffixes: { prendre: prendreSuffixe, rendre: rendreSuffixe } };
+  return { monter, noteAdmin, parGroupes, SEUIL_ETROIT,
+           _suffixes: { prendre: prendreSuffixe, rendre: rendreSuffixe } };
 });

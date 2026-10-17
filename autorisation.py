@@ -607,8 +607,9 @@ class Portee:
         `collections`, les collections où vit AUJOURD'HUI la copie qu'il vise — un fait que
         l'appelant relève en base, sous le verrou, au moment de répondre ; la règle est ici.
 
-        Par genre. Une suppression (document ou projet) et une entrée de documents : qui
-        tient le fonds (`peut_tenir_le_fonds`), comme jusqu'ici. Un `rejoindre` : qui
+        Par genre. Une suppression (document ou projet), une entrée de documents et le
+        retour d'une copie gardée au fonds (`DEMANDE_RENDRE`) : qui tient le fonds
+        (`peut_tenir_le_fonds`), comme jusqu'ici — une copie gardée ne se lit que par lui. Un `rejoindre` : qui
         ADMINISTRE CHACUNE des collections où vit la copie (D4 stricte — le propriétaire de
         chacune consent ; le même test que `clause_rejoindre_directe`, posé sur qui répond),
         ou la portée totale, en recours. C'est la première demande à laquelle répond
@@ -902,6 +903,45 @@ def bases_des_projets(conn: sqlite3.Connection, projets) -> tuple:
         f"SELECT {sql_projet_de('c')}, c.id, c.acces_membres FROM collection c "
         f"WHERE c.base = 1 AND {sql_projet_de('c')} IN ({', '.join('?' * len(ids))})",
         ids))
+
+
+def acces_derives(conn: sqlite3.Connection, collection_id: int) -> list[dict]:
+    """Les accès que le PROJET tient sur cette collection — ceux que `Portee.__init__` dérive
+    de `projet_acces` pour une collection de BASE (D10), dits ligne par ligne pour qui
+    regarde QUI ENTRE (COL-3, tranche 3a : « inévitable, mais pas invisible », l'esprit
+    d'AUTH-4). Vide pour toute autre collection.
+
+    La règle est CELLE de `Portee.__init__`, écrite ici à côté d'elle pour ne pas en vivre
+    une seconde ailleurs : un responsable du projet est propriétaire de la base, quelle que
+    soit la position ; un membre y entre au niveau `acces_membres` — `None`, la base
+    protégée, ne lui ouvre rien, et un niveau inconnu se dégrade en lecture. Le droit
+    d'exporter suit les niveaux : d'office pour le propriétaire, jamais pour un membre (la
+    dérivation ne pose aucune case).
+
+    Une lecture et non une décision : ce que la personne qui frappe peut faire reste à
+    `Portee`. Chaque ligne : `genre`, `principal`, `niveau`, `exporter`, `role` (le rôle
+    dans le projet), dans l'ordre responsables d'abord."""
+    r = conn.execute(f"SELECT {sql_projet_de('c')} AS projet_id, c.base, c.acces_membres "
+                     "FROM collection c WHERE c.id = ?", (collection_id,)).fetchone()
+    if r is None or not r["base"]:
+        return []
+    niveau_membre = (None if r["acces_membres"] is None
+                     else ECRITURE if r["acces_membres"] == ECRITURE else LECTURE)
+    lignes = []
+    for m in conn.execute(
+            "SELECT genre, principal, role FROM projet_acces WHERE projet_id = ? "
+            "ORDER BY CASE role WHEN ? THEN 0 ELSE 1 END, genre, principal",
+            (r["projet_id"], RESPONSABLE)):
+        if m["role"] == RESPONSABLE:
+            niveau = PROPRIETAIRE
+        elif niveau_membre is None:
+            continue
+        else:
+            niveau = niveau_membre
+        lignes.append({"genre": m["genre"], "principal": m["principal"], "niveau": niveau,
+                       "exporter": niveau == PROPRIETAIRE,
+                       "role": RESPONSABLE if m["role"] == RESPONSABLE else MEMBRE})
+    return lignes
 
 
 def resoudre(conn: sqlite3.Connection, request) -> Portee:

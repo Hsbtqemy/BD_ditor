@@ -1247,8 +1247,11 @@ def test_un_administrateur_cree_un_projet_avec_sa_justification(page, live_serve
     with page.expect_request(lambda r: r.method == "POST"
                              and r.url.endswith("/api/projets")) as partie:
         page.locator("#pj-ajouter").click()
+    # COL-3, écran de la 3a — la position des membres dans la base part TOUJOURS : la
+    # question est posée, « ouverte » présélectionnée.
     assert partie.value.post_data_json == {
-        "nom": "Séminaire 2026", "justification": "Comparer le lettrage de deux éditions."}
+        "nom": "Séminaire 2026", "justification": "Comparer le lettrage de deux éditions.",
+        "acces_membres": "ecriture"}
 
     expect(page.locator("#pj-msg")).to_contain_text("« Séminaire 2026 » créé")
     expect(page.locator("#pj-fiche-titre")).to_have_text("Séminaire 2026")
@@ -1308,7 +1311,8 @@ def test_faire_entrer_un_groupe_part_avec_le_role_de_membre(page, seminaire):
     expect(partie.locator(".mp-titre")).to_have_text("Qui y entre")
     expect(partie.locator(".mp-membres")).to_contain_text("Personne n'est encore entré")
     expect(partie.locator(".mp-n-ouvre-rien")).to_contain_text(
-        "Entrer dans le projet n'ouvre pas ses collections : chacune garde son « Qui entre ».")
+        "Entrer dans le projet n'ouvre que sa collection de base, selon ce que le projet a "
+        "choisi : chaque autre collection garde son « Qui entre ».")
     expect(partie.locator(".mp-libre")).to_be_hidden()
 
     partie.locator(".mp-choix").select_option("groupe:annotateurs")

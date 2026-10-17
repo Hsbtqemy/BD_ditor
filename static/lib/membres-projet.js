@@ -220,8 +220,11 @@
   /* Ce qui vaut TOUJOURS, sous la ligne de message : ce qu'entrer ne fait pas, l'état de
      l'annuaire, le pouvoir des administrateurs. */
   function notesHtml(m) {
-    const notes = [`<p class="col-note mp-n-ouvre-rien">Entrer dans le projet n'ouvre pas ses
-      collections : chacune garde son « Qui entre ».</p>`];
+    // COL-3, D10 — le projet a sa collection de BASE, et c'est la seule qu'entrer y ouvre,
+    // selon la position que le projet a choisie (« Ce que la base ouvre aux membres »).
+    const notes = [`<p class="col-note mp-n-ouvre-rien">Entrer dans le projet n'ouvre que sa
+      collection de base, selon ce que le projet a choisi : chaque autre collection garde son
+      « Qui entre ».</p>`];
     const an = m.etat.annuaire && m.etat.annuaire.annuaire;
     if (an && an.etat === "non_verifie") {
       notes.push(`<p class="col-note mp-annuaire-note">L'annuaire ne répond pas : impossible de

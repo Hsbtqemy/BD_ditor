@@ -233,7 +233,12 @@ def test_une_base_neuve_nait_avec_son_projet(client, db_path):
         # COL-3, tranche 2 — la demande de suppression qui attend, à qui gère.
         "demande_suppression": None,
         # COL-3 — l'Administration dit « sans responsable » sans lire les membres un à un.
-        "sans_responsable": True}]
+        "sans_responsable": True,
+        # COL-3, écran de la 3a — « Ce que la base ouvre aux membres », à qui gère : la base
+        # du repli naît PROTÉGÉE (rien ne s'ouvre au déploiement), et nul n'est membre.
+        "base": {"id": _sql(db_path, "SELECT id FROM collection WHERE base = 1")[0]["id"],
+                 "nom": database.NOM_PROJET_DEFAUT, "acces_membres": None},
+        "nb_membres": 0}]
 
 
 def test_le_repli_se_designe_par_son_drapeau_jamais_par_son_nom(client, db_path):

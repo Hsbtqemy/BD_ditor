@@ -553,9 +553,18 @@ function cgFicheCompte(c) {
       ${c.dans_annuaire === true ? cgLienAnnuaire("Modifier dans l'annuaire") : ""}</div>`;
   }
 
+  // « par le projet » (COL-3, écran de la 3a) : l'entrée dans une collection de BASE, que le
+  // serveur dérive de la place du compte — ou d'un de ses groupes — dans le projet.
+  const parQui = (x) => {
+    if (x.par === "projet") {
+      return `par le projet « ${esc(x.par_projet || "")} »${x.groupe
+        ? `, comme membre du groupe ${cgLien("groupe", x.groupe, x.groupe)}` : ""}`;
+    }
+    return x.par === "groupe" ? `par le groupe ${cgLien("groupe", x.groupe, x.groupe)}`
+                              : "à son nom";
+  };
   const lignes = c.collections.map((x) => `<li>${cgLien("collection", x.id, x.nom)}
-    <span class="muted small">${esc(cgAccesLu(x))} — ${x.par === "groupe"
-      ? `par le groupe ${cgLien("groupe", x.groupe, x.groupe)}` : "à son nom"}</span></li>`);
+    <span class="muted small">${esc(cgAccesLu(x))} — ${parQui(x)}</span></li>`);
   let collections = "";
   if (c.administrateur === true) {
     collections += `<p class="col-note col-note-admin">Administrateur de l'instance : lit et
@@ -617,7 +626,8 @@ function cgFicheGroupe(g) {
   if (g.role_annuaire === true) puces.push(cgPuce("rôle de l'annuaire"));
 
   const ouvertes = g.collections.map((x) => `<li>${cgLien("collection", x.id, x.nom)}
-    <span class="muted small">${esc(cgAccesLu(x))}</span></li>`);
+    <span class="muted small">${esc(cgAccesLu(x))}${x.par_projet !== undefined
+      ? ` — par le projet « ${esc(x.par_projet || "")} »` : ""}</span></li>`);
   let collections = g.administrateur === true
     ? `<p class="col-note col-note-admin">Ses membres lisent et écrivent toute collection,
         sans figurer dans les accès.</p>` : "";
@@ -993,6 +1003,10 @@ const PJ = {
   vueFiche: false,       // sous le seuil étroit, la fiche REMPLACE la liste
   demanderOuvert: null,  // le projet dont le motif de « Demander sa suppression… » est ouvert
   membres: null,         // la poignée du module monté dans la fiche
+  position: undefined,   // la position choisie dans la fiche, pas encore appliquée
+  fonds: null,           // { projet, demandes, gardees, erreur } — « Au fonds », lu par fiche
+  rendreOuvert: null,    // la copie gardée dont « Demander à la rendre… » est ouvert
+  details: new Set(),    // les demandes d'entrée dépliées (document par document)
 };
 
 /* UN message à la fois dans le bloc : celui de la création, celui d'un geste de la fiche,
@@ -1149,9 +1163,12 @@ function pjCollections(p) {
   if (PJ.collections === null) {
     return `<p class="muted small">Les collections n'ont pas pu être lues.</p>`;
   }
-  const siennes = PJ.collections.filter((c) => c.projet_id === p.id);
+  // La base en tête, marquée : c'est elle que règle « Ce que la base ouvre aux membres ».
+  const siennes = PJ.collections.filter((c) => c.projet_id === p.id)
+    .sort((a, b) => (b.base ? 1 : 0) - (a.base ? 1 : 0));
   const liens = siennes.map((c) =>
-    `<li><a href="/corpus?collection=${c.id}">${esc(c.nom)}</a></li>`).join("");
+    `<li><a href="/corpus?collection=${c.id}">${esc(c.nom)}</a>${c.base
+      ? ` <span class="pj-puce">base</span>` : ""}</li>`).join("");
   return (siennes.length ? `<ul class="pj-collections">${liens}</ul>`
                          : `<p class="muted small">Aucune.</p>`)
     + `<p class="col-note">${PJ.decide ? "" : "Seules les collections que vous lisez sont "
@@ -1308,10 +1325,221 @@ function pjFicheCreer() {
       justification, scientifique d'abord. Elle se lit dans sa fiche, par ses responsables et
       les administrateurs.</span></label>
     <textarea id="pj-justification" rows="3"></textarea>
+    ${pjRadiosPosition("pj-creer-position", "ecriture",
+      "Ce que sa collection de base ouvre aux membres")}
+    <p class="col-note">Le projet naît avec sa collection de base, de son nom : ce qu'il prend
+      au fonds y arrive. La position se change ensuite dans sa fiche.</p>
     <div class="pj-decrire-pied"><button id="pj-ajouter" class="primary small"
       type="button">+ Créer le projet</button><button type="button" class="ghost small"
       data-pj-creer-annuler="1">Annuler</button>${pjLigneDeGeste("creer", "span")}</div>
   </article>`;
+}
+
+/* --- Ce que la base ouvre aux membres (COL-3, D10 ; écran de la 3a) ------------------- */
+
+/* Trois boutons radio, une phrase chacun — les mots de `BDProjet.POSITIONS`. `valeur` :
+   celle qui est cochée (`null` = protégée). La base protégée porte la valeur vide dans le
+   formulaire, et `pjPositionChoisie` la rend à `null`. */
+function pjRadiosPosition(nom, valeur, legende) {
+  return `<fieldset class="pj-positions" id="${nom}">
+    <legend>${esc(legende)}</legend>
+    ${BDProjet.POSITIONS.map((p, i) => `<label class="pj-position">
+      <input type="radio" name="${nom}" value="${p.valeur || ""}" id="${nom}-${i}"
+        aria-describedby="${nom}-${i}-phrase"${(valeur === undefined ? null : valeur) === p.valeur
+          ? " checked" : ""}>
+      <span class="pj-position-nom">${esc(p.libelle)}</span>
+      <span class="pj-position-phrase muted small" id="${nom}-${i}-phrase">${esc(p.phrase)}</span>
+    </label>`).join("")}
+  </fieldset>`;
+}
+
+function pjPositionChoisie(nom) {
+  const r = document.querySelector(`input[name="${nom}"]:checked`);
+  return r && r.value ? r.value : null;
+}
+
+/* Le bloc de la fiche. Changer de radio n'applique RIEN : une phrase dit d'abord ce que le
+   changement fait — resserrer n'efface aucun travail ; ouvrir dit à combien d'entrées cela
+   s'ouvre (`BDProjet.phraseChangement`) —, et « Appliquer » le fait. */
+function pjBase(p) {
+  if (!p.base) {
+    return `<p class="col-note">Ce projet n'a pas de collection de base : signalez-le à un
+      administrateur.</p>`;
+  }
+  const avant = p.base.acces_membres;
+  const choix = PJ.position === undefined ? avant : PJ.position;
+  const phrase = BDProjet.phraseChangement(avant, choix, p.nb_membres, p.base.nom);
+  return `${pjRadiosPosition(`pj-position-${p.id}`, choix,
+      `Position des membres dans « ${p.base.nom} »`)}
+    ${phrase ? `<div class="pj-position-confirme">
+      <p class="small">${esc(phrase)}</p>
+      <div class="pj-decrire-pied"><button type="button" class="primary small"
+        data-pj-position-ok="1">Appliquer : base ${esc(BDProjet.position(choix).libelle)}</button>
+        <button type="button" class="ghost small" data-pj-position-annuler="1">Annuler</button>
+      </div></div>` : ""}
+    <p class="col-note">La base n'ouvre qu'elle-même : aucune autre collection du projet ne
+      suit. Ses responsables en sont propriétaires, quelle que soit la position.</p>
+    ${pjLigneDeGeste("position", "p")}`;
+}
+
+/* Redessine le bloc SUR PLACE — remonter la fiche remonterait « Qui y entre » et effacerait
+   son message. Le focus reste sur la radio qu'on vient de cocher. */
+function pjBaseRedessiner(focus) {
+  const p = pjProjet(), zone = $("#pj-base-zone");
+  if (!p || !zone) return;
+  zone.innerHTML = pjBase(p);
+  if (focus) {
+    const el = zone.querySelector(focus);
+    if (el) el.focus();
+  }
+}
+
+async function pjBaseAppliquer() {
+  const p = pjProjet();
+  if (!p || !p.base || PJ.position === undefined) return;
+  const valeur = PJ.position;
+  try {
+    await apiSend("PUT", `/api/projets/${p.id}/acces-membres`, { acces_membres: valeur });
+  } catch (e) { pjMsg($("#pj-position-msg"), e.message || "Échec", true); return; }
+  PJ.position = undefined;
+  if (!await pjLire()) return;
+  pjRendreListe();
+  pjBaseRedessiner(`input[name="pj-position-${p.id}"]:checked`);
+  pjMsg($("#pj-position-msg"), `La base « ${p.base.nom} » est désormais `
+    + `${BDProjet.position(valeur).libelle} aux membres du projet.`);
+}
+
+/* --- Au fonds : les demandes du projet et ses copies gardées (écran de la 3a) ---------- */
+
+/* Lu à part, après la fiche : deux routes réservées à qui GÈRE le projet. Une panne le DIT
+   dans le bloc, sans rien cacher d'autre. */
+async function pjChargerFonds(p) {
+  const id = p.id;
+  let demandes, gardees, erreur = null;
+  try {
+    [demandes, gardees] = await Promise.all([
+      apiGet(`/api/projets/${id}/demandes`), apiGet(`/api/projets/${id}/copies-gardees`)]);
+  } catch (e) { erreur = e.message || "échec"; }
+  if (PJ.sel !== id) return;                 // la fiche a changé pendant la lecture
+  PJ.fonds = { projet: id, demandes: demandes || [], gardees: gardees || [], erreur };
+  pjFondsRedessiner();
+}
+
+function pjFondsRedessiner(focus) {
+  const zone = $("#pj-fonds-zone"), p = pjProjet();
+  if (!zone || !p) return;
+  zone.innerHTML = pjFonds(p);
+  if (focus) {
+    const el = zone.querySelector(focus);
+    if (el) el.focus();
+  }
+}
+
+/* Les collections du projet où l'on écrit, la base en tête : là où une copie gardée peut
+   revenir. Ce que `GET /api/collections` rend, filtré à l'écran ; la garde est celle du
+   serveur. */
+function pjDestinations(p) {
+  return (PJ.collections || []).filter((c) => c.projet_id === p.id && c.ecrivable)
+    .sort((a, b) => (b.base ? 1 : 0) - (a.base ? 1 : 0) || a.nom.localeCompare(b.nom, "fr"));
+}
+
+function pjFonds(p) {
+  const f = PJ.fonds;
+  if (!f || f.projet !== p.id) return `<p class="col-note">Chargement…</p>`;
+  if (f.erreur) return `<p class="col-note erreur">Ce que le projet attend du fonds n'a pas pu
+    être lu : ${esc(f.erreur)}</p>`;
+  const G = BDSuppression;
+  const demandes = f.demandes.map((d) => {
+    const e = G.etatDemande(d);
+    const titres = (d.documents || []).map((x) => `« ${x.titre} »`).join(", ");
+    const arrivee = `« ${d.collection_nom || "une collection supprimée"} »`;
+    const quoi = d.genre === G.GENRE_RENDRE ? `Rendre ${titres} à ${arrivee}`
+      : `${pjPluriel((d.documents || []).length, "document")} pour ${arrivee}`;
+    const ouvert = PJ.details.has(d.id);
+    const quand = [`demandée le ${G.dateLue(d.date_creation)}`,
+                   d.date_reponse ? `répondue le ${G.dateLue(d.date_reponse)}` : ""]
+      .filter(Boolean).join(" · ");
+    return `<li class="pj-demande" data-genre="${esc(d.genre)}">
+      <span class="pj-demande-quoi"><b>${esc(quoi)}</b>
+        <span class="muted small">${esc(quand)}</span></span>
+      <span class="pj-demande-etat-ligne"><span class="af-etat af-etat-${esc(e.code)}">${esc(
+        e.libelle)}</span>${d.genre === G.GENRE_ENTREE ? `<button type="button"
+        class="ghost small" data-pj-detail="${d.id}" aria-expanded="${ouvert}">${ouvert
+          ? "Replier" : "Détail"}</button>` : ""}</span>
+      ${ouvert ? `<ul class="lf-lignes pj-demande-docs">${(d.documents || []).map((x) => {
+        const l = G.etatLigne(x, d);
+        return `<li><span>${esc(x.titre || `document ${x.document_id}`)}</span>
+          <span class="af-etat af-etat-${esc(l.code)}">${esc(l.libelle)}</span></li>`;
+      }).join("")}</ul>` : ""}
+    </li>`;
+  }).join("");
+  const dest = pjDestinations(p);
+  const gardees = f.gardees.map((c) => {
+    const notice = [c.serie, c.auteur].filter(Boolean).join(" · ");
+    const depuis = c.garde_depuis ? `gardée depuis le ${G.dateLue(c.garde_depuis)}` : "";
+    let geste;
+    if (c.retour) {
+      geste = `<span class="af-etat af-etat-attente">retour demandé le ${esc(
+        G.dateLue(c.retour.date_creation))}</span>`;
+    } else if (PJ.rendreOuvert === c.album_id) {
+      geste = dest.length ? `<span class="pj-rendre">
+          <label class="sr-only" for="pj-rendre-${c.album_id}">Rendre « ${esc(c.titre)} » à la
+            collection</label>
+          <select id="pj-rendre-${c.album_id}">${dest.map((x) => `<option value="${x.id}">${esc(
+            x.nom)}${x.base ? " (base)" : ""}</option>`).join("")}</select>
+          <button type="button" class="primary small" data-pj-rendre-ok="${c.album_id}">${PJ.decide
+            ? "Rendre" : "Demander"}</button>
+          <button type="button" class="ghost small" data-pj-rendre-annuler="1">Annuler</button>
+        </span>`
+        : `<span class="col-note">Aucune collection de ce projet où vous écrivez.</span>`;
+    } else {
+      geste = `<button type="button" class="ghost small" data-pj-rendre="${c.album_id}">${PJ.decide
+        ? "Rendre à…" : "Demander à la rendre…"}</button>`;
+    }
+    return `<li class="pj-gardee"><span><b>${esc(c.titre)}</b>${notice || depuis
+      ? ` <span class="muted small">${esc([notice, depuis].filter(Boolean).join(" · "))}</span>`
+      : ""}</span><span class="pj-gardee-geste">${geste}</span></li>`;
+  }).join("");
+  return `<h4>Au fonds · ${pjPluriel(f.demandes.length, "demande")}</h4>
+    ${f.demandes.length ? `<ul class="lf-lignes pj-demandes">${demandes}</ul>`
+      : `<p class="muted small">Aucune demande. « + Prendre du fonds… », dans la Bibliothèque,
+          en dépose une.</p>`}
+    <h4 class="pj-gardees-titre">Copies gardées au fonds · ${f.gardees.length}</h4>
+    ${f.gardees.length ? `<ul class="lf-lignes pj-gardees">${gardees}</ul>`
+      : `<p class="muted small">Aucune.</p>`}
+    <p class="col-note">Une copie gardée au fonds a été retirée de sa dernière collection, avec
+      son travail. ${PJ.decide ? "Vous la rendez directement." : "La rendre se demande à un "
+      + "administrateur, qui répond « Rendre » ou « Garder au fonds »."}</p>
+    ${pjLigneDeGeste("fonds", "p")}`;
+}
+
+/* « Demander à la rendre » : la prise du projet avec la réponse `reprendre` — un RETOUR
+   que l'administrateur accepte ou refuse ; une portée totale la rend tout de suite. */
+async function pjRendreCopie(albumId) {
+  const p = pjProjet(), f = PJ.fonds;
+  const c = f && f.gardees.find((x) => x.album_id === albumId);
+  const sel = $(`#pj-rendre-${albumId}`);
+  if (!p || !c || !sel) return;
+  const nom = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : "";
+  let r;
+  try {
+    r = await apiSend("POST", `/api/collections/${sel.value}/prendre`, {
+      documents: [{ document_id: c.document_id, reponse: "reprendre", album_id: albumId }] });
+  } catch (e) { pjMsg($("#pj-fonds-msg"), e.message || "Échec", true); return; }
+  const ligne = (r && r.documents && r.documents[0]) || {};
+  PJ.rendreOuvert = null;
+  await pjChargerFonds(p);
+  const msg = $("#pj-fonds-msg");
+  if (ligne.etat === "fait") {
+    pjMsg(msg, `« ${c.titre} » est rendu à « ${nom.replace(/ \(base\)$/, "")} », avec son travail.`);
+  } else if (ligne.etat === "demande") {
+    pjMsg(msg, `Votre demande est partie à un administrateur : il répondra « Rendre » ou « Garder `
+      + "au fonds ».");
+  } else {
+    pjMsg(msg, ligne.motif || "Refusé.", true);
+  }
+  const t = $("#pj-fonds-zone .pj-gardees-titre");
+  if (t) { t.setAttribute("tabindex", "-1"); t.focus(); }
 }
 
 function pjRendreFiche() {
@@ -1344,8 +1572,14 @@ function pjRendreFiche() {
     ${justification}
     <section class="pj-section" data-membres-projet></section>
     <section class="pj-section"><h4>Collections</h4>${pjCollections(p)}</section>
+    <section class="pj-section pj-base" aria-labelledby="pj-base-titre">
+      <h4 id="pj-base-titre">Ce que la base ouvre aux membres${p.base
+        ? ` · ${esc(p.base.nom)}` : ""}</h4>
+      <div id="pj-base-zone">${pjBase(p)}</div></section>
+    <section class="pj-section pj-fonds" id="pj-fonds-zone">${pjFonds(p)}</section>
     <section class="pj-section"><h4>Ce projet</h4>${pjDecider(p)}</section>
   </article>`;
+  if (!PJ.fonds || PJ.fonds.projet !== p.id) pjChargerFonds(p);
   PJ.membres = BDMembresProjet.monter(box.querySelector("[data-membres-projet]"), {
     projet: { id: p.id, nom: p.nom, gerable: !!p.gerable },
     groupesAdmin: PJ.groupesAdmin,
@@ -1396,6 +1630,9 @@ function pjOuvrir(id, depuisListe) {
   PJ.vueFiche = true;
   pjEcrireAdresse(true);
   if (!meme) {
+    PJ.position = undefined;
+    PJ.rendreOuvert = null;
+    PJ.details.clear();
     pjTaireSauf(null);
     pjRendreListe();
     pjRendreFiche();
@@ -1431,10 +1668,13 @@ async function pjCreer() {
   const nom = $("#pj-nom").value.trim();
   if (!nom) { pjMsg(ligne, "Donnez un nom au projet.", true); $("#pj-nom").focus(); return; }
   const justification = $("#pj-justification").value.trim();
+  // La position des membres dans la base (D10) : la question est POSÉE, « ouverte »
+  // présélectionnée, et la réponse part toujours — le serveur ne devine rien.
+  const corps = { nom, acces_membres: pjPositionChoisie("pj-creer-position") };
+  if (justification) corps.justification = justification;
   let cree;
   try {
-    cree = await apiSend("POST", "/api/projets",
-                         justification ? { nom, justification } : { nom });
+    cree = await apiSend("POST", "/api/projets", corps);
   } catch (e) { pjMsg(ligne, e.message || "Échec", true); return; }
   PJ.creer = false;
   PJ.sel = cree.id;
@@ -1444,8 +1684,8 @@ async function pjCreer() {
   if (!await pjLire()) return;
   pjRendre();
   pjPrevenirLaBande();
-  pjMsg($("#pj-msg"), `« ${cree.nom} » créé. Il est vide : faites-y entrer quelqu'un dans sa `
-    + "fiche, puis créez-y une collection depuis la Bibliothèque.");
+  pjMsg($("#pj-msg"), `« ${cree.nom} » créé, avec sa collection de base : faites-y entrer `
+    + "quelqu'un dans sa fiche ; il prend ensuite au fonds depuis la Bibliothèque.");
   const titre = $("#pj-fiche-titre");
   if (titre) titre.focus();
 }
@@ -1549,6 +1789,35 @@ function pjDemarrer() {
     else if (b.dataset.pjDemander) pjDemanderSuppression();
     else if (b.dataset.pjDemanderOuvrir) pjDemanderBasculer(true);
     else if (b.dataset.pjDemanderAnnuler) pjDemanderBasculer(false);
+    else if (b.dataset.pjPositionOk) pjBaseAppliquer();
+    else if (b.dataset.pjPositionAnnuler) {
+      PJ.position = undefined;
+      pjTaireSauf(null);
+      const p = pjProjet();
+      pjBaseRedessiner(p ? `input[name="pj-position-${p.id}"]:checked` : null);
+    } else if (b.dataset.pjDetail) {
+      const id = Number(b.dataset.pjDetail);
+      if (PJ.details.has(id)) PJ.details.delete(id); else PJ.details.add(id);
+      pjFondsRedessiner(`[data-pj-detail="${id}"]`);
+    } else if (b.dataset.pjRendre) {
+      PJ.rendreOuvert = Number(b.dataset.pjRendre);
+      pjTaireSauf(null);
+      pjFondsRedessiner(`#pj-rendre-${PJ.rendreOuvert}`);
+    } else if (b.dataset.pjRendreAnnuler) {
+      const id = PJ.rendreOuvert;
+      PJ.rendreOuvert = null;
+      pjFondsRedessiner(`[data-pj-rendre="${id}"]`);
+    } else if (b.dataset.pjRendreOk) pjRendreCopie(Number(b.dataset.pjRendreOk));
+  });
+  // Une radio de « Ce que la base ouvre aux membres » : rien ne s'applique, la phrase et
+  // « Appliquer » paraissent sous elles. Celles du formulaire de création ne font rien ici.
+  $("#pj").addEventListener("change", (ev) => {
+    const t = ev.target, p = pjProjet();
+    if (!p || !t.matches || !t.matches(`input[name="pj-position-${p.id}"]`)) return;
+    PJ.position = t.value || null;
+    if (p.base && PJ.position === p.base.acces_membres) PJ.position = undefined;
+    pjTaireSauf(null);
+    pjBaseRedessiner(`input[name="pj-position-${p.id}"]:checked`);
   });
   $("#pj").addEventListener("keydown", (ev) => {
     if (ev.key !== "Enter") return;
@@ -1602,6 +1871,7 @@ const FD = {
   sel: null,             // l'identifiant du document dont la fiche est ouverte
   importer: false,       // la fiche montre le formulaire « Importer au fonds »
   vueFiche: false,       // sous le seuil étroit, la fiche REMPLACE la liste
+  prendre: null,         // le document dont « Prendre dans… » est ouvert
 };
 const FD_MAX = 400;
 
@@ -1639,12 +1909,12 @@ async function fdCharger() {
   FD.lu = true;
   FD.documents = fonds.documents || [];
   FD.sansDocument = fonds.copies_sans_document || [];
-  // Les SUPPRESSIONS seules (COL-3, tranche 3a) : « À faire », la fiche d'un document et le
-  // compte du fonds n'ont de mots et de gestes que pour elles — une entrée de documents ou un
-  // rejoindre, présentés en suppression, étaient ACCEPTÉS par « Détruire ». Leur écran est à
-  // venir ; d'ici là, ils ne s'y lisent pas.
-  FD.demandes = demandes === null ? null
-    : demandes.filter((d) => d.en_attente && BDSuppression.estUneSuppression(d));
+  // TOUS les genres qui attendent (COL-3, écran de la 3a) : « À faire » rend chacun avec SES
+  // mots et SES boutons (`BDSuppression.genreDemande`) — l'entrée de documents, le rejoindre,
+  // le retour d'une copie gardée comme les deux suppressions. Le filtre posé par la relecture
+  // croisée du serveur de la prise, faute de cet écran, est levé : « Détruire » ne répond
+  // qu'à une suppression de document.
+  FD.demandes = demandes === null ? null : demandes.filter((d) => d.en_attente);
   FD.collections = collections;
   FD.textes = Object.fromEntries((FD.demandes || []).map((d) =>
     [d.id, { texte: BDSuppression.texteDemande(d) }]));
@@ -1670,8 +1940,18 @@ function fdEtatCourt(d) {
   if (d.demande) return { texte: "⚠ suppression demandée", alerte: true };
   if (!d.appele) return { texte: fdAUneCopieGardee(d) ? "copie gardée" : "appelé par personne",
                           alerte: false };
+  // Plusieurs copies (COL-3, tranche 3a) : le nombre de copies d'abord, c'est ce qui distingue
+  // ce document des autres.
+  if (d.copies.length > 1) return { texte: pjPluriel(d.copies.length, "copie"), alerte: false };
   const n = d.copies.reduce((s, c) => s + c.collections.length, 0);
   return { texte: pjPluriel(n, "collection"), alerte: false };
+}
+
+/* Deux copies du même document disent-elles deux titres ? La notice reste sur chaque copie
+   (D7), libre de diverger ; le fonds montre celle de la plus ancienne, et dit l'écart. */
+function fdNoticeDivergente(d, c) {
+  const p = fdPremiere(d);
+  return d.copies.length > 1 && c.album_id !== p.album_id && (c.titre || "") !== (p.titre || "");
 }
 
 function fdFiltres() {
@@ -1680,6 +1960,7 @@ function fdFiltres() {
     if (FD.etat === "demande" && !d.demande) return false;
     if (FD.etat === "personne" && d.appele) return false;
     if (FD.etat === "gardee" && !fdAUneCopieGardee(d)) return false;
+    if (FD.etat === "soeurs" && d.copies.length < 2) return false;
     if (FD.projet === "-" ? fdPremiere(d).projet_id != null
         : FD.projet && String(fdPremiere(d).projet_id) !== FD.projet) return false;
     if (FD.importeur === "-" ? !!d.importe_par
@@ -1707,7 +1988,9 @@ function fdFiltres() {
 function fdRendre() {
   const docs = FD.documents;
   const personne = docs.filter((d) => !d.appele).length;
-  const n = FD.demandes ? FD.demandes.length : 0;
+  // Le compte du fonds parle de SUPPRESSIONS : les autres demandes ne visent pas un document
+  // qu'on détruirait, elles se lisent dans « À faire ».
+  const n = FD.demandes ? FD.demandes.filter(BDSuppression.estUneSuppression).length : 0;
   $("#fd-compte").textContent = [
     pjPluriel(docs.length, "document"),
     `${personne} appelé${personne > 1 ? "s" : ""} par personne`,
@@ -1758,6 +2041,7 @@ function fdRendreControles() {
     demande: docs.filter((d) => d.demande).length,
     personne: docs.filter((d) => !d.appele).length,
     gardee: docs.filter(fdAUneCopieGardee).length,
+    soeurs: docs.filter((d) => d.copies.length > 1).length,
   };
   document.querySelectorAll("#fd [data-fd-etat]").forEach((b) => {
     b.setAttribute("aria-pressed", String(b.dataset.fdEtat === FD.etat));
@@ -1872,14 +2156,93 @@ function fdFicheDocument(d) {
     <section class="lf-section"><h4>Employé dans</h4>
       ${emplois.length ? `<p class="small fd-emplois">Employé par ${esc(emplois.join(" ; "))}</p>`
         : `<p class="small">Aucune collection.</p>`}
-      ${gardees.map((c) => fdGardee(d, c)).join("")}
     </section>
+    <section class="lf-section fd-copies-section"><h4>Copies de travail · ${d.copies.length}</h4>
+      <ul class="lf-lignes fd-copies">${d.copies.map((c) => fdCopie(d, c)).join("")}</ul>
+      ${gardees.map((c) => fdGardee(d, c)).join("")}
+      ${d.copies.length > 1 ? `<p class="col-note">Les copies d'un même document partagent ses
+        images ; chacune garde sa notice et son travail.</p>` : ""}
+    </section>
+    <section class="lf-section fd-prendre-section"><h4>Prendre dans…</h4>${fdPrendre(d)}</section>
     ${!d.appele && d.copies.length ? `<div class="fd-zone-danger"><button type="button"
         class="danger" data-fd-detruire="${d.id}">Détruire</button><span class="muted small">Personne
         ne l'appelle : il peut être détruit.</span></div>` : ""}
     <p id="fd-doc-msg-${d.id}" class="col-msg fd-ligne-msg muted small" role="status"
        aria-live="polite"></p>
   </article>`;
+}
+
+/* Une COPIE DE TRAVAIL du document (COL-3, tranche 3a) : sa notice — marquée « notice
+   divergente » quand elle dit un autre titre que la première (D7) —, son projet, ses
+   collections ou « copie gardée », qui l'a créée, et si c'est une copie vierge. Un retour qui
+   l'attend se dit, et mène à « À faire ». */
+function fdCopie(d, c) {
+  const G = BDSuppression;
+  const ou = c.collections.length ? c.collections.map((x) => x.nom).join(", ")
+    : c.projet_id != null ? "copie gardée au fonds" : "appelée par personne";
+  const parts = [c.projet_nom || "sans projet", ou,
+                 c.creee_par ? `créée par ${c.creee_par_nom || c.creee_par}`
+                   : "qui l'a créée n'est pas écrit",
+                 c.cran === "images" ? "copie vierge, images partagées" : ""].filter(Boolean);
+  return `<li class="fd-copie"><span><b>${esc(c.titre)}</b>${fdNoticeDivergente(d, c)
+      ? ` <span class="lf-puce alerte" title="La notice reste sur chaque copie : celle-ci dit un autre titre">notice divergente</span>`
+      : ""}
+      <span class="muted small fd-copie-detail">${esc(parts.join(" · "))}</span></span>
+    ${c.retour ? `<button type="button" class="ghost small" data-fd-repondre="${c.retour.id}">Retour
+      demandé le ${esc(G.dateLue(c.retour.date_creation))} →</button>` : ""}
+  </li>`;
+}
+
+/* « Prendre dans… » (COL-3, tranche 3a, D3) : l'administrateur prend DIRECTEMENT ce document
+   pour une collection — une copie vierge, à son nom. Les collections groupées par projet, la
+   base de chacun en tête (D10). Le résultat est « fait », jamais « demandé ». */
+function fdPrendre(d) {
+  if (FD.collections === null) {
+    return `<p class="col-note">Les collections n'ont pas pu être lues.</p>`;
+  }
+  if (FD.prendre !== d.id) {
+    return `<p><button type="button" class="ghost small" data-fd-prendre="${d.id}">Prendre
+      dans…</button></p>
+      <p class="col-note">Une copie de travail vierge entre dans la collection choisie ; les
+        images sont celles du document, et ses autres copies ne bougent pas.</p>`;
+  }
+  const projets = new Map();
+  FD.collections.filter((c) => c.ecrivable !== false).forEach((c) => {
+    const cle = c.projet_id == null ? "" : String(c.projet_id);
+    if (!projets.has(cle)) projets.set(cle, { nom: c.projet_nom || "Sans projet", cols: [] });
+    projets.get(cle).cols.push(c);
+  });
+  const groupes = [...projets.values()].sort((a, b) => a.nom.localeCompare(b.nom, "fr"))
+    .map((p) => `<optgroup label="${esc(p.nom)}">${p.cols
+      .sort((a, b) => (b.base ? 1 : 0) - (a.base ? 1 : 0) || a.nom.localeCompare(b.nom, "fr"))
+      .map((c) => `<option value="${c.id}">${esc(c.nom)}${c.base ? " (base)" : ""}</option>`)
+      .join("")}</optgroup>`).join("");
+  return `<div class="fd-prendre">
+    <label for="fd-prendre-dest">Collection d'arrivée</label>
+    <select id="fd-prendre-dest">${groupes}</select>
+    <button type="button" class="primary small" data-fd-prendre-ok="${d.id}">Prendre</button>
+    <button type="button" class="ghost small" data-fd-prendre-annuler="1">Annuler</button>
+  </div>`;
+}
+
+async function fdPrendreDans(docId) {
+  const d = FD.documents.find((x) => x.id === docId), sel = $("#fd-prendre-dest");
+  const ligne = $(`#fd-doc-msg-${docId}`);
+  if (!d || !sel) return;
+  const nom = (sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : "")
+    .replace(/ \(base\)$/, "");
+  let r;
+  try {
+    r = await apiSend("POST", `/api/collections/${sel.value}/prendre`,
+                      { documents: [{ document_id: d.id, reponse: "zero" }] });
+  } catch (e) { fdMsg(ligne, e.message || "Échec", true); return; }
+  const l = (r && r.documents && r.documents[0]) || {};
+  if (l.etat !== "fait") { fdMsg(ligne, l.motif || "La prise n'a pas abouti.", true); return; }
+  FD.prendre = null;
+  await fdApres(`#fd-doc-msg-${docId}`, `Fait : une copie vierge de « ${
+    BDSuppression.titreDocument(d)} » est entrée dans « ${nom} ».`);
+  const t = $("#fd-fiche-titre");
+  if (t) t.focus();
 }
 
 /* Une copie GARDÉE — retirée de sa dernière collection, ou importée au fonds — et
@@ -1926,6 +2289,7 @@ function fdEcrireAdresse(pousser) {
 /* Ouvrir un document : depuis la liste, ou depuis un autre bloc. Au large, un choix dans la
    liste y laisse le clavier, pour parcourir la suivante ; sinon le focus suit la fiche. */
 function fdOuvrir(id, depuisListe) {
+  if (FD.sel !== id) FD.prendre = null;
   FD.sel = id;
   FD.importer = false;
   FD.vueFiche = true;
@@ -1957,29 +2321,72 @@ async function fdApres(el, texte, projetTouche) {
 
 /* Répondre à une demande — depuis « À faire », où la ligne s'est dépliée. Le message se lit
    en tête de « À faire » : la ligne, répondue, disparaît avec la demande. */
-async function fdRepondre(id, reponse) {
+/* Répondre à une demande, quel qu'en soit le genre. `documentId` : pour une entrée de
+   documents, la ligne à laquelle on répond ; absent, la réponse vaut pour toutes celles qui
+   attendent (« Tout accepter (n) », « Refuser le reste »). Seules les deux suppressions se
+   confirment : ce sont les seules réponses qui effacent quelque chose. Une entrée encore en
+   attente après la réponse reste dépliée, et le message se lit sur SA ligne ; une demande
+   close disparaît, et le message se lit en tête de « À faire ». */
+async function fdRepondre(id, reponse, documentId) {
   const d = (FD.demandes || []).find((x) => x.id === id);
   if (!d) return;
   const ligne = $(`#fd-demande-msg-${id}`);
-  const projet = d.genre === BDSuppression.GENRE_PROJET;
-  const objet = projet ? `le projet « ${d.projet_nom || d.projet_id} »`
-    : (d.documents || []).map((x) => `« ${x.titre} »`).join(", ");
-  if (reponse === BDSuppression.ACCEPTER && !confirm(projet
-      ? `Supprimer ${objet} ? Ses membres en sortent. Il ne se supprime que vide.`
-      : BDSuppression.confirmationDetruire((d.documents || []).map((x) => x.titre).join(", ")))) {
+  const G = BDSuppression;
+  const accepter = reponse === G.ACCEPTER;
+  const qui = d.demandeur_nom || d.demandeur || "quelqu'un";
+  const titres = (d.documents || []).map((x) => `« ${x.titre} »`).join(", ");
+  const arrivee = `« ${d.collection_nom || "la collection demandée"} »`;
+  if (accepter && d.genre === G.GENRE_PROJET
+      && !confirm(`Supprimer le projet « ${d.projet_nom || d.projet_id} » ? Ses membres en `
+                  + "sortent. Il ne se supprime que vide.")) return;
+  if (accepter && d.genre === G.GENRE_DOCUMENT
+      && !confirm(G.confirmationDetruire((d.documents || []).map((x) => x.titre).join(", ")))) {
     return;
   }
+  const corps = { reponse };
+  if (documentId !== undefined) corps.document_id = documentId;
+  let vue;
   try {
-    await apiSend("POST", `/api/demandes/${id}/reponse`, { reponse });
+    vue = await apiSend("POST", `/api/demandes/${id}/reponse`, corps);
   } catch (e) { afMsg(ligne, e.message || "Échec", true); return; }
-  AF.ouverts.delete(id);
-  const qui = d.demandeur_nom || d.demandeur || "quelqu'un";
-  await fdApres($("#af-msg"), reponse === BDSuppression.REFUSER
-    ? `${objet.charAt(0).toUpperCase()}${objet.slice(1)} : gardé. La demande de ${qui} est close.`
-    : projet ? `${objet.charAt(0).toUpperCase()}${objet.slice(1)} est supprimé.`
-             : `${objet} : détruit, avec ses images et tout le travail fait dessus.`,
-    projet && reponse === BDSuppression.ACCEPTER);
-  $("#afaire-titre").focus();
+  const enAttente = !!(vue && vue.en_attente);
+  const doc = documentId === undefined ? null
+    : (d.documents || []).find((x) => x.document_id === documentId);
+  let texte;
+  switch (d.genre) {
+    case G.GENRE_PROJET:
+      texte = accepter ? `Le projet « ${d.projet_nom || d.projet_id} » est supprimé.`
+        : `Le projet « ${d.projet_nom || d.projet_id} » : gardé. La demande de ${qui} est close.`;
+      break;
+    case G.GENRE_DOCUMENT:
+      texte = accepter ? `${titres} : détruit — cette copie, et le travail fait dessus.`
+        : `${titres} : gardé. La demande de ${qui} est close.`;
+      break;
+    case G.GENRE_ENTREE:
+      if (doc) {
+        texte = accepter ? `« ${doc.titre} » entre dans ${arrivee}, en copie vierge.`
+          : `« ${doc.titre} » : refusé.`;
+      } else {
+        texte = accepter ? `Les documents qui attendaient entrent dans ${arrivee}.`
+          : `Les documents qui attendaient sont refusés. La demande de ${qui} est close.`;
+      }
+      break;
+    case G.GENRE_REJOINDRE:
+      texte = accepter ? `${titres} est aussi rangé dans ${arrivee}.`
+        : `La demande de ${qui} est refusée : rien n'est rangé.`;
+      break;
+    case G.GENRE_RENDRE:
+      texte = accepter ? `${titres} est rendu à ${arrivee}, avec tout son travail.`
+        : `${titres} reste au fonds. La demande de ${qui} est close.`;
+      break;
+    default:
+      texte = "Réponse enregistrée.";
+  }
+  if (!enAttente) AF.ouverts.delete(id);
+  await fdApres(enAttente ? `#fd-demande-msg-${id}` : $("#af-msg"), texte,
+                d.genre === G.GENRE_PROJET && accepter);
+  const cible = enAttente ? $(`#fd-demande-${id}`) : $("#afaire-titre");
+  if (cible) cible.focus();
 }
 
 async function fdRendreCopie(albumId, docId) {
@@ -1998,7 +2405,7 @@ async function fdDetruire(docId) {
   const d = FD.documents.find((x) => x.id === docId);
   if (!d) return;
   const titre = BDSuppression.titreDocument(d), ligne = $(`#fd-doc-msg-${docId}`);
-  if (!confirm(BDSuppression.confirmationDetruire(titre))) return;
+  if (!confirm(BDSuppression.confirmationDetruireDocument(titre, d.copies.length))) return;
   try {
     for (const c of d.copies) await apiSend("DELETE", `/api/albums/${c.album_id}`);
   } catch (e) { fdMsg(ligne, e.message || "Échec", true); return; }
@@ -2082,6 +2489,23 @@ function fdDemarrer() {
     if (b.dataset.fdImporterAnnuler) { fdOuvrirImporter(false); return; }
     if (b.id === "fd-importer") { fdImporter(); return; }
     if (b.dataset.fdRepondre) { afAllerDemande(Number(b.dataset.fdRepondre)); return; }
+    if (b.dataset.fdPrendre) {
+      FD.prendre = Number(b.dataset.fdPrendre);
+      fdTaireSauf(null);
+      fdRendreFiche();
+      const s = $("#fd-prendre-dest");
+      if (s) s.focus();
+      return;
+    }
+    if (b.dataset.fdPrendreAnnuler) {
+      const id = FD.prendre;
+      FD.prendre = null;
+      fdRendreFiche();
+      const r = document.querySelector(`#fd-fiche [data-fd-prendre="${id}"]`);
+      if (r) r.focus();
+      return;
+    }
+    if (b.dataset.fdPrendreOk) { fdPrendreDans(Number(b.dataset.fdPrendreOk)); return; }
     if (b.dataset.fdRendre) fdRendreCopie(Number(b.dataset.fdRendre), Number(b.dataset.fdDocDe));
     else if (b.dataset.fdDetruire) fdDetruire(Number(b.dataset.fdDetruire));
   });
@@ -2207,26 +2631,65 @@ function afRendreDemandes() {
   }
 }
 
+/* UNE ligne par demande, quel qu'en soit le genre (COL-3, écran de la 3a, tranché par Hugo sur
+   maquette le 2026-10-17) : son genre en tête, une couleur de tranche par genre (la classe
+   `af-genre-…`), et, dépliée, SES mots et SES boutons — `BDSuppression.genreDemande` les
+   donne. « Détruire / Garder » n'appartient qu'à la suppression d'un document ; un genre que
+   l'écran ne connaît pas se lit, sans aucun bouton. */
 function afLigneDemande(d) {
-  const projet = d.genre === BDSuppression.GENRE_PROJET;
+  const G = BDSuppression, genre = G.genreDemande(d);
   const ouvert = AF.ouverts.has(d.id);
+  const msg = `<span id="fd-demande-msg-${d.id}" class="col-msg fd-ligne-msg muted small"
+              role="status" aria-live="polite"></span>`;
+  let gestes = "";
+  if (d.genre === G.GENRE_DOCUMENT || d.genre === G.GENRE_PROJET) {
+    gestes = `<div class="fd-gestes">
+        <button type="button" class="danger" data-fd-accepter="${d.id}">${esc(genre.accepter)}</button>
+        <button type="button" class="ghost" data-fd-refuser="${d.id}">${esc(genre.refuser)}</button>
+        ${msg}</div>`;
+  } else if (d.genre === G.GENRE_ENTREE) {
+    const attente = (d.documents || []).filter((x) => !x.reponse).length;
+    gestes = `<ul class="lf-lignes af-documents">${(d.documents || []).map((x) => {
+      const e = G.etatLigne(x, d);
+      return `<li><span class="af-doc-titre">${esc(x.titre || `document ${x.document_id}`)}</span>
+        <span class="af-doc-gestes">${x.reponse
+          ? `<span class="af-etat af-etat-${esc(e.code)}">${esc(e.libelle)}</span>`
+          : `<button type="button" class="ghost small" data-fd-accepter="${d.id}"
+               data-fd-document="${x.document_id}"
+               aria-label="${esc(genre.accepter)} « ${esc(x.titre || "")} »">${esc(genre.accepter)}</button>
+             <button type="button" class="ghost small" data-fd-refuser="${d.id}"
+               data-fd-document="${x.document_id}"
+               aria-label="${esc(genre.refuser)} « ${esc(x.titre || "")} »">${esc(genre.refuser)}</button>`}
+        </span></li>`;
+    }).join("")}</ul>
+      <div class="fd-gestes">${attente ? `
+        <button type="button" class="primary small" data-fd-accepter="${d.id}">${esc(
+          G.toutAccepter(d))}</button>
+        <button type="button" class="ghost small" data-fd-refuser="${d.id}">${esc(
+          G.REFUSER_LE_RESTE)}</button>` : ""}
+        ${msg}</div>`;
+  } else if (genre.connu) {
+    gestes = `<div class="fd-gestes">
+        <button type="button" class="primary small" data-fd-accepter="${d.id}">${esc(genre.accepter)}</button>
+        <button type="button" class="ghost small" data-fd-refuser="${d.id}">${esc(genre.refuser)}</button>
+        ${msg}</div>`;
+  } else {
+    gestes = `<p class="col-note">L'écran ne sait pas répondre à ce genre de demande.</p>${msg}`;
+  }
+  const explication = G.explicationDemande(d);
   const detail = !ouvert ? "" : `<div class="af-detail" id="af-detail-${d.id}">
       ${d.motif ? `<p class="fd-motif">${esc(d.motif)}</p>` : ""}
-      ${d.certifie_le ? `<p class="small fd-certif">${esc(BDSuppression.certifiee(d))}</p>` : ""}
-      ${projet ? "" : (d.documents || []).map(fdTravailDesAutres).join("")}
-      <div class="fd-gestes">
-        <button type="button" class="danger" data-fd-accepter="${d.id}">${projet
-          ? "Supprimer le projet" : "Détruire"}</button>
-        <button type="button" class="ghost" data-fd-refuser="${d.id}">Garder</button>
-        <span id="fd-demande-msg-${d.id}" class="col-msg fd-ligne-msg muted small"
-              role="status" aria-live="polite"></span>
-      </div>
+      ${d.certifie_le ? `<p class="small fd-certif">${esc(G.certifiee(d))}</p>` : ""}
+      ${explication ? `<p class="muted small af-explique">${esc(explication)}</p>` : ""}
+      ${d.genre === G.GENRE_DOCUMENT ? (d.documents || []).map(fdTravailDesAutres).join("") : ""}
+      ${gestes}
     </div>`;
-  return `<li class="af-ligne fd-demande" id="fd-demande-${d.id}" tabindex="-1">
+  return `<li class="af-ligne fd-demande af-genre-${esc(genre.classe)}" id="fd-demande-${d.id}"
+      tabindex="-1" data-genre="${esc(d.genre)}">
     <div class="af-quoi">
-      <span class="muted small">${projet ? "Supprimer un projet" : "Supprimer un document"}</span>
-      <p class="fd-demande-texte">${esc(BDSuppression.texteDemande(d))}</p>
-      <p class="muted small fd-demande-contexte">${esc(BDSuppression.contexteDemande(d))}</p>
+      <span class="af-genre-nom muted small">${esc(genre.libelle)}</span>
+      <p class="fd-demande-texte">${esc(G.texteDemande(d))}</p>
+      <p class="muted small fd-demande-contexte">${esc(G.contexteDemande(d))}</p>
     </div>
     <button type="button" class="ghost small" data-af-deplier="${d.id}" aria-expanded="${ouvert}"
       ${ouvert ? `aria-controls="af-detail-${d.id}"` : ""}>${ouvert ? "Replier" : "Répondre"}</button>
@@ -2303,8 +2766,11 @@ function afDemarrer() {
       const id = Number(b.dataset.afDeplier);
       if (AF.ouverts.has(id)) AF.ouverts.delete(id); else AF.ouverts.add(id);
       afRendreDemandes();
-    } else if (b.dataset.fdAccepter) fdRepondre(Number(b.dataset.fdAccepter), BDSuppression.ACCEPTER);
-    else if (b.dataset.fdRefuser) fdRepondre(Number(b.dataset.fdRefuser), BDSuppression.REFUSER);
+    } else if (b.dataset.fdAccepter || b.dataset.fdRefuser) {
+      const doc = b.dataset.fdDocument ? Number(b.dataset.fdDocument) : undefined;
+      fdRepondre(Number(b.dataset.fdAccepter || b.dataset.fdRefuser),
+                 b.dataset.fdAccepter ? BDSuppression.ACCEPTER : BDSuppression.REFUSER, doc);
+    }
     else if (b.dataset.afSignal !== undefined || b.dataset.afInfo !== undefined) {
       const c = BDComptes.cibleSignal(b.dataset.afSignal !== undefined
         ? afSignaux()[Number(b.dataset.afSignal)] : afInformations()[Number(b.dataset.afInfo)]);

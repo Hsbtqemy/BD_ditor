@@ -175,7 +175,7 @@ def test_une_demande_se_repond_sur_place_dans_a_faire(page, live_server):
     expect(certif).to_contain_text(" : ces données ne sont pas importantes.")
     autres = demande.locator(".fd-autres")
     expect(autres).to_be_visible()
-    expect(autres).to_contain_text("Importé par decor.")
+    expect(autres).to_contain_text("Copie créée par decor.")
     expect(autres).to_contain_text("Gestes d'autres personnes, lus au journal — un geste "
                                    "défait depuis compte encore :")
     expect(autres).not_to_contain_text("compte partagé")
@@ -431,11 +431,13 @@ def test_le_fonds_ne_fait_pas_defiler_la_page_de_cote(page, live_server, police)
     assert not page.evaluate(sonde), page.evaluate(sonde)
 
 
-def test_a_faire_ne_lit_que_les_suppressions(page, live_server):
-    """COL-3, tranche 3a (relecture croisée, défaut 1) — une ENTRÉE de documents et un
-    REJOINDRE attendent, à côté des deux suppressions du décor. « À faire », le compte du
-    fonds et « À regarder » ne lisent que les suppressions : présentés en suppression, les
-    deux autres étaient ACCEPTÉS par « Détruire ». Leur écran est à venir."""
+def test_a_faire_ne_dit_suppression_que_d_une_suppression(page, live_server):
+    """COL-3, tranche 3a — une ENTRÉE de documents et un REJOINDRE attendent, à côté des deux
+    suppressions du décor. La relecture croisée du serveur de la prise avait trouvé ces deux
+    genres présentés en suppression, et ACCEPTÉS par « Détruire » (défaut 1) ; l'écran de la
+    3a les rend avec leurs mots : « À faire » les montre, ne les dit jamais « suppression »,
+    ne leur offre jamais « Détruire », et le compte du fonds ne compte que les
+    suppressions."""
     d = _decor(live_server)
     with _client(live_server, _comme("rui")) as c:
         r = c.post(f"/api/projets/{d['projet']}/prendre",
@@ -451,21 +453,22 @@ def test_a_faire_ne_lit_que_les_suppressions(page, live_server):
     with _client(live_server, _comme("sam")) as c:
         r = c.put(f"/api/albums/{d['albums']['Doublon']}/collections/{d['archives']}")
         assert r.status_code == 202, r.text
-    with _client(live_server) as c:
-        genres = {x["genre"] for x in c.get("/api/demandes").json() if x["en_attente"]}
-    assert genres == {"suppression_document", "entree_documents", "rejoindre"}
     _ouvrir_admin(page, live_server)
     lignes = page.locator("#af-demandes-liste > li")
-    expect(lignes).to_have_count(2)
-    for i in range(2):
-        expect(lignes.nth(i)).to_contain_text("suppression définitive")
+    expect(lignes).to_have_count(4)
+    suppressions = page.locator("#af-demandes-liste > li[data-genre=suppression_document]")
+    expect(suppressions).to_have_count(2)
+    for genre in ("entree_documents", "rejoindre"):
+        ligne = page.locator(f"#af-demandes-liste > li[data-genre={genre}]")
+        expect(ligne).not_to_contain_text("suppression")
+        ligne.locator("[data-af-deplier]").click()
+        expect(ligne.locator(".af-detail")).to_be_visible()
+        expect(ligne.locator(".af-detail")).not_to_contain_text("Détruire")
+        expect(ligne.locator(".af-detail button.danger")).to_have_count(0)
     page.click("#vue-lien-fonds")
     expect(page.locator("#fd-compte")).to_contain_text("2 suppressions demandées")
     page.click("#vue-lien-comptes")
     expect(page.locator("#cg-signaux button.cg-lien",
                         has_text="suppression définitive")).to_have_count(2, timeout=5000)
-    # Une demande que l'écran ne sait pas lire s'y dirait « Une demande de suppression
-    # attend sa réponse » : « À regarder » ne doit pas la recevoir du serveur.
     signaux = page.inner_text("#cg-signaux")
-    assert "attend sa réponse" not in signaux and "entrée" not in signaux, signaux
-    assert "4 demandes" not in signaux and "3 demandes" not in signaux, signaux
+    assert signaux.count("suppression") == 2, signaux

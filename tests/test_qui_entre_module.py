@@ -49,7 +49,11 @@ SUIVENT_LEUR_PLACE = {"administration.js", "corpus.js"}
 # `qe-…` ; la classe `qe` nue dans un sélecteur (`.qe`, mais pas la propriété `x.qe`) ; et
 # `class="… qe …"`. Les routes : les deux lectures et les deux écritures d'un accès.
 BALISAGE = re.compile(r"""(?<![\w-])qe-[a-z]|(?<![\w.-])\.qe(?![\w-])|class=["'][^"']*\bqe\b""")
-ROUTES = re.compile(r"/acces\b|/annuaire\b")
+# `…/acces-du-projet` (COL-3, écran de la 3a) est au module, et `\b` le prend avec `/acces`.
+# `…/acces-membres`, lui, est une route du PROJET (la position des membres dans sa base) que
+# la fiche d'un projet appelle : le seul nom exclu, et nommé, pour que la garde ne
+# desserre rien d'autre.
+ROUTES = re.compile(r"/acces(?!-membres)\b|/annuaire\b")
 
 
 def _sans_commentaires(source: str) -> str:

@@ -46,7 +46,7 @@ from fastapi import APIRouter, Depends, HTTPException
 import autorisation
 import conflit
 import journal
-from database import (DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE,
+from database import (DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE,
                       DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
                       GENRES_DEMANDE, LONGUEUR_MOTIF, NATURE_COLLECTIF, REPONSE_ACCEPTEE,
                       REPONSE_REFUSEE, REPONSES_DEMANDE, collection_de_base, collection_row,
@@ -55,10 +55,10 @@ from database import (DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE,
                       un_proprietaire_tient_toute_la_copie)
 
 from socle import (
-    DEMANDE, FAIT, REFUSE, DemandeIn, PriseIn, ReponseIn, _clore_demandes, _deposer,
-    _detruire_album, _en_attente_vers, _get_album, _get_collection, _get_projet,
-    _nouvelle_copie, _plan_rejoindre, _rows, _sans_accents, _supprimer_projet, db,
-    portee_courante,
+    DEMANDE, FAIT, REFUSE, DemandeIn, PriseIn, ReponseIn, _clore_demandes,
+    _clore_retours_d_une_copie_rangee, _deposer, _detruire_album, _en_attente_vers,
+    _get_album, _get_collection, _get_projet, _nouvelle_copie, _plan_rejoindre,
+    _retour_en_attente, _rows, _sans_accents, _supprimer_projet, db, portee_courante,
 )
 
 router = APIRouter()
@@ -153,10 +153,11 @@ def deposer_demande(payload: DemandeIn, conn: sqlite3.Connection = Depends(db),
     if payload.genre not in GENRES_DEMANDE:
         raise HTTPException(422, f"Genre de demande inconnu : {payload.genre} "
                                  f"({' | '.join(GENRES_DEMANDE)}).")
-    if payload.genre in (DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE):
-        # COL-3, tranche 3 — ces deux genres naissent d'un GESTE, qui décide s'il se fait ou
-        # se demande : la prise (`…/prendre`) et « + Ranger ici ». Les déposer ici
-        # contournerait ce tri — on demanderait ce qu'on peut faire, ou l'inverse.
+    if payload.genre in (DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE):
+        # COL-3, tranche 3 — ces trois genres naissent d'un GESTE, qui décide s'il se fait ou
+        # se demande : la prise (`…/prendre`, dont la réponse `reprendre` dépose un retour)
+        # et « + Ranger ici ». Les déposer ici contournerait ce tri — on demanderait ce
+        # qu'on peut faire, ou l'inverse.
         raise HTTPException(422, f"Une demande « {payload.genre} » se dépose en prenant le "
                                  "document : `POST /api/collections/{id}/prendre`, ou en le "
                                  "rangeant dans la collection.")
@@ -403,7 +404,9 @@ def repondre_demande(demande_id: int, payload: ReponseIn,
     `DELETE /api/projets/{id}`, qui se nomment. Une entrée de documents : chaque document
     accepté entre dans la collection demandée, en copie VIERGE — ou, pour une copie gardée
     au fonds qu'on reprend, cette copie elle-même —, et la ligne dit laquelle (`copie_id`).
-    Un `rejoindre` : la copie est rangée dans la collection d'arrivée.
+    Un `rejoindre` : la copie est rangée dans la collection d'arrivée. Un retour
+    (`DEMANDE_RENDRE`) : la copie gardée au fonds revient, avec son travail, dans la
+    collection que le responsable a nommée ; refusé, elle reste au fonds.
 
     DOCUMENT PAR DOCUMENT pour une entrée (D9) : `document_id` désigne la ligne à laquelle
     on répond ; sans lui, la réponse vaut pour toutes les lignes qui attendent — « tout
@@ -458,6 +461,11 @@ def repondre_demande(demande_id: int, payload: ReponseIn,
 
     if d["genre"] == DEMANDE_REJOINDRE:
         _accepter_un_rejoindre(conn, portee, dict(d), copie)
+        conn.commit()
+        return _vue_demande(conn, demande_id)
+
+    if d["genre"] == DEMANDE_RENDRE:
+        _accepter_un_retour(conn, portee, dict(d))
         conn.commit()
         return _vue_demande(conn, demande_id)
 
@@ -573,6 +581,36 @@ def _accepter_un_rejoindre(conn, portee, d: dict, copie) -> None:
     _clore_demandes(conn, portee, [d["id"]], REPONSE_ACCEPTEE)
 
 
+def _accepter_un_retour(conn, portee, d: dict) -> None:
+    """« Rendre à … » : la copie gardée au fonds revient dans la collection que le
+    responsable a nommée, avec tout son travail — c'est le geste « Rendre » de la fiche du
+    document, fait sur demande. Ses refus se NOMMENT (409) et la demande reste en attente,
+    comme pour un `rejoindre` : la copie détruite depuis (la destruction clôt d'ailleurs la
+    demande), la collection supprimée (sa suppression aussi), une copie qui n'est plus
+    gardée, un rangement qui traverserait les projets."""
+    ligne = conn.execute("SELECT album_id, titre FROM demande_document WHERE demande_id = ? "
+                         "ORDER BY document_id LIMIT 1", (d["id"],)).fetchone()
+    copie = ligne["album_id"] if ligne else None
+    collection_id = d["collection_id"]
+    if copie is None or conn.execute("SELECT 1 FROM albums WHERE id = ?",
+                                     (copie,)).fetchone() is None:
+        raise HTTPException(409, "Cette copie n'existe plus : refusez cette demande.")
+    if collection_id is None or collection_row(conn, collection_id) is None:
+        raise HTTPException(409, "La collection demandée n'existe plus : refusez cette "
+                                 "demande.")
+    if conn.execute("SELECT 1 FROM collection_album WHERE album_id = ?",
+                    (copie,)).fetchone() is not None:
+        raise HTTPException(409, f"« {ligne['titre']} » n'est plus gardé au fonds : "
+                                 "refusez cette demande.")
+    if rangement_traverse(conn, copie, collection_id):
+        raise HTTPException(409, "Cette copie appartient à un autre projet que la collection "
+                                 "demandée : le rangement ne traverse pas les projets.")
+    ranger_copie(conn, copie, collection_id)
+    conn.execute("UPDATE demande_document SET copie_id = ? WHERE demande_id = ?",
+                 (copie, d["id"]))
+    _clore_demandes(conn, portee, [d["id"]], REPONSE_ACCEPTEE)
+
+
 # --------------------------------------------------------------------------- #
 # Le fonds
 # --------------------------------------------------------------------------- #
@@ -612,6 +650,22 @@ def lire_le_fonds(conn: sqlite3.Connection = Depends(db),
     projets = {r["id"]: r["nom"] for r in conn.execute("SELECT id, nom FROM projet")}
     for a in par_album.values():
         a["projet_nom"] = projets.get(a["projet_id"])
+        a["cran"] = a["creee_par"] = a["creee_le"] = a["retour"] = None
+    # COL-3, écran de la 3a — la PROVENANCE de chaque copie (« Copies de travail · n » de la
+    # fiche) : qui l'a créée, quand, et si c'est une copie vierge née d'une autre (`cran`).
+    for r in conn.execute("SELECT album_id, creee_par, creee_le, cran FROM copie"):
+        if r["album_id"] in par_album:
+            par_album[r["album_id"]].update(creee_par=r["creee_par"], creee_le=r["creee_le"],
+                                            cran=r["cran"])
+    # Et le RETOUR qui attend sur une copie gardée : la fiche le dit, et mène à « À faire ».
+    for r in conn.execute(
+            "SELECT dd.album_id, d.id, d.date_creation, d.collection_nom FROM demande d "
+            "JOIN demande_document dd ON dd.demande_id = d.id "
+            "WHERE d.genre = ? AND d.reponse IS NULL ORDER BY d.id", (DEMANDE_RENDRE,)):
+        a = par_album.get(r["album_id"])
+        if a is not None and a["retour"] is None:
+            a["retour"] = {"id": r["id"], "date_creation": r["date_creation"],
+                           "collection_nom": r["collection_nom"]}
     # La demande se rattache à SA COPIE (COL-3, tranche 3) — `copie` dans la vue d'une
     # demande, la copie d'où le geste est parti et qui vit encore —, et non au document : une
     # demande déposée sur la copie d'un projet ne vise pas la copie sœur d'un autre. Chaque
@@ -623,7 +677,10 @@ def lire_le_fonds(conn: sqlite3.Connection = Depends(db),
             for x in d["documents"]:
                 if x["copie"] is not None:
                     attente.setdefault(x["copie"], d)
-    noms = noms_lisibles(conn, [d["importe_par"] for d in documents if d["importe_par"]])
+    noms = noms_lisibles(conn, [d["importe_par"] for d in documents if d["importe_par"]]
+                         + [a["creee_par"] for a in par_album.values() if a["creee_par"]])
+    for a in par_album.values():
+        a["creee_par_nom"] = noms.get(a["creee_par"]) if a["creee_par"] else None
     for d in documents:
         d["importe_par_nom"] = noms.get(d["importe_par"])
         d["copies"] = copies.get(d["id"], [])
@@ -822,7 +879,10 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
     if portee.tout:
         plan["etat"] = FAIT
     else:
-        plan["etat"], plan["genre"] = DEMANDE, DEMANDE_ENTREE_DOCUMENTS
+        # Un RETOUR, et non une ligne d'entrée (écran de la 3a, Hugo, 2026-10-17) : la copie
+        # existe avec son travail, l'administrateur répond « Rendre à … » ou « Garder au
+        # fonds », et la demande s'attend une fois par copie.
+        plan["etat"], plan["genre"] = DEMANDE, DEMANDE_RENDRE
     return plan
 
 
@@ -852,8 +912,15 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
     plans = [_plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, x)
              for x in lignes]
     for p in plans:
-        if p["etat"] == DEMANDE and _en_attente_vers(conn, p["genre"], collection_id,
-                                                     p["document_id"], p.get("album_id")):
+        if p["etat"] != DEMANDE:
+            continue
+        if p["genre"] == DEMANDE_RENDRE:
+            # Un retour s'attend une fois par COPIE, quelle que soit la collection nommée.
+            if _retour_en_attente(conn, p["album_id"]) is not None:
+                p.update(etat=REFUSE, motif="Le retour de cette copie est déjà demandé : la "
+                                            "demande attend sa réponse.")
+        elif _en_attente_vers(conn, p["genre"], collection_id, p["document_id"],
+                              p.get("album_id")):
             p.update(etat=REFUSE, motif="Déjà demandé pour cette collection : la demande "
                                         "attend sa réponse.")
     entrees = [p for p in plans if p["etat"] == DEMANDE
@@ -874,6 +941,9 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
         else:                                   # rejoindre, reprendre : un rangement
             ranger_copie(conn, p["album_id"], collection_id)
             p["copie_id"] = p["album_id"]
+            # Reprise directe (portée totale) : un retour demandé pour cette copie a reçu
+            # ce qu'il demandait.
+            _clore_retours_d_une_copie_rangee(conn, portee, p["album_id"])
     # Les demandes : UNE entrée pour tous les documents qui en demandent une (case « Une
     # entrée de documents porte PLUSIEURS albums à la fois ») ; un `rejoindre` par copie —
     # chacun s'adresse aux propriétaires de SES collections, qui ne sont pas les mêmes.
@@ -882,6 +952,12 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
                        entrees)
         for p in entrees:
             p["demande_id"] = did
+    # Un RETOUR par copie gardée (écran de la 3a) : chacun se répond à part, « Rendre à … »
+    # ou « Garder au fonds ».
+    for p in plans:
+        if p["etat"] == DEMANDE and p["genre"] == DEMANDE_RENDRE:
+            p["demande_id"] = _deposer(conn, portee, DEMANDE_RENDRE, collection, projet_id,
+                                       motif, [p])
     for p in plans:
         if p["etat"] == DEMANDE and p["genre"] == DEMANDE_REJOINDRE:
             p["demande_id"] = _deposer(conn, portee, DEMANDE_REJOINDRE, collection,
@@ -958,9 +1034,10 @@ def prendre_pour_projet(projet_id: int, payload: PriseIn,
 @router.get("/api/projets/{projet_id}/demandes")
 def demandes_du_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
                        portee: autorisation.Portee = Depends(portee_courante)):
-    """Les ENTRÉES de documents demandées pour ce projet, et leur état — ce que lit son
-    responsable dans la fiche du projet (D9 : « le dit à qui l'a déposée »). Les plus
-    récentes d'abord ; une demande répondue reste.
+    """Les ENTRÉES de documents demandées pour ce projet, et les RETOURS de ses copies
+    gardées au fonds (`genre` les distingue), avec leur état — ce que lit son responsable
+    dans la fiche du projet (D9 : « le dit à qui l'a déposée »). Les plus récentes d'abord ;
+    une demande répondue reste.
 
     Réservée à qui GÈRE le projet : 404 à qui ne le voit pas, 403 nommé à qui le voit sans
     le gérer. Chaque document dit sa réponse et, accepté, la copie où il est entré. Ce que
@@ -971,8 +1048,8 @@ def demandes_du_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
                 motif="Les demandes d'un projet se lisent par son responsable.")
     demandes = _rows(conn.execute(
         "SELECT id, genre, demandeur, motif, date_creation, reponse, date_reponse, "
-        "collection_id, collection_nom FROM demande WHERE genre = ? AND projet_id = ? "
-        "ORDER BY id DESC", (DEMANDE_ENTREE_DOCUMENTS, projet_id)))
+        "collection_id, collection_nom FROM demande WHERE genre IN (?, ?) AND projet_id = ? "
+        "ORDER BY id DESC", (DEMANDE_ENTREE_DOCUMENTS, DEMANDE_RENDRE, projet_id)))
     lignes: dict[int, list] = {}
     if demandes:
         marques = ", ".join("?" * len(demandes))
@@ -992,6 +1069,43 @@ def demandes_du_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
         d["en_attente"] = d["reponse"] is None
         d["documents"] = lignes.get(d["id"], [])
     return demandes
+
+
+@router.get("/api/projets/{projet_id}/copies-gardees")
+def copies_gardees_du_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
+                             portee: autorisation.Portee = Depends(portee_courante)):
+    """Les copies de ce projet GARDÉES AU FONDS — sorties de leur dernière collection, avec
+    leur travail —, ce que la fiche du projet montre à son responsable pour qu'il demande à
+    les RENDRE (écran de la 3a, Hugo, 2026-10-17 : « Copies gardées au fonds · n », «
+    Demander à la rendre… »).
+
+    Réservée à qui GÈRE le projet, comme ses demandes : 404 à qui ne le voit pas, 403 nommé à
+    qui le voit sans le gérer. Ce que le responsable en savait déjà : les notices du fonds
+    lui disent, document par document, que son projet en a une copie gardée
+    (`garde_au_fonds`), et une demande de retour lui rend le titre de la copie. Ce que la vue
+    ajoute : la copie à nommer (`album_id`), sa notice, depuis quand elle est gardée (la fin
+    de son dernier emploi, lue au journal ; `None` quand elle n'est pas écrite), et la
+    demande de retour qui l'attend. Ni qui l'a retirée, ni de quelle collection, ni son
+    travail : être responsable n'ouvre aucune collection du projet."""
+    _get_projet(conn, portee, projet_id, gerer=True,
+                motif="Les copies gardées d'un projet se lisent par son responsable.")
+    copies = _rows(conn.execute(
+        "SELECT a.id AS album_id, a.document_id, a.titre, a.serie, a.auteur FROM albums a "
+        "WHERE a.projet_id = ? AND a.document_id IS NOT NULL AND NOT EXISTS "
+        "(SELECT 1 FROM collection_album ca WHERE ca.album_id = a.id) "
+        "ORDER BY a.titre COLLATE NOCASE, a.id", (projet_id,)))
+    for c in copies:
+        r = conn.execute(
+            "SELECT MAX(date) FROM evenement WHERE cible_table = 'collection_album' "
+            "AND type = 'delien' AND json_extract(avant, '$.album_id') = ?",
+            (c["album_id"],)).fetchone()
+        c["garde_depuis"] = r[0] if r else None
+        retour = _retour_en_attente(conn, c["album_id"])
+        c["retour"] = None if retour is None else {
+            "id": retour["id"], "date_creation": retour["date_creation"],
+            "collection_id": retour["collection_id"],
+            "collection_nom": retour["collection_nom"]}
+    return copies
 
 
 @router.get("/api/collections/{collection_id}/demandes")
