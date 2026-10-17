@@ -431,7 +431,10 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
   d'annoter, un propriétaire l'accorde accès par accès, et il l'a lui-même d'office. Le bloc
   déclare aussi quels groupes d'administration lisent et écrivent tout le corpus sans figurer
   dans aucune liste d'accès. Seul un propriétaire, ou un administrateur, y règle quelque
-  chose ; les autres lisent.
+  chose ; les autres lisent. Pour la **collection de base** d'un projet, la liste a deux
+  groupes : *Par le projet* — ses responsables, propriétaires, et ses membres selon ce que
+  le projet a choisi —, sans case ni ✕, avec *Régler dans le projet ↗* ; puis *Entrés ici*,
+  ceux qu'on y fait entrer à la main.
   **Le même panneau se trouve à un second endroit**, pour un second public : un
   administrateur, qui part d'une personne ou d'un groupe plutôt que d'un corpus, le retrouve
   dans l'Administration, dans la fiche de chaque collection de *👥 Comptes et groupes*
@@ -499,13 +502,26 @@ règle d'accès (cf. §2).
   - **Créer un projet** (administrateurs) : un nom dans *Nouveau projet*, puis *+ Créer le
     projet*. Le nom est court — le plafond est annoncé sous le champ, parce qu'il se lit
     en haut de chaque page, où il ne se coupe pas. *Pourquoi ce projet existe* reçoit sa
-    justification, scientifique d'abord. Le projet naît **vide** — ni membre, ni
-    responsable, ni collection — et le message vous donne la suite : y faire entrer
-    quelqu'un dans sa fiche, puis y créer une collection depuis la Bibliothèque.
+    justification, scientifique d'abord. *Ce que sa collection de base ouvre aux membres*
+    pose une question, trois réponses — *ouverte* (présélectionnée : les membres y
+    annotent), *en lecture*, *protégée* (ses responsables seuls) —, une phrase sous
+    chacune. Le projet naît sans membre ni responsable, avec sa **collection de base**, de
+    son nom ; le message vous donne la suite : y faire entrer quelqu'un dans sa fiche.
   - **La fiche** : le nom, le nombre de collections que vous y lisez, la mention *projet
     de repli* s'il l'est ; puis *Pourquoi ce projet existe*, *Qui y entre*, *Collections*
-    — celles que vous lisez, chacune menant à sa fiche dans la Bibliothèque — et *Ce
-    projet*.
+    — celles que vous lisez, la base marquée *base*, chacune menant à sa fiche dans la
+    Bibliothèque —, *Ce que la base ouvre aux membres*, *Au fonds* et *Ce projet*.
+  - **Ce que la base ouvre aux membres** : les trois réponses de la création. En cocher une
+    autre n'applique rien : une phrase dit d'abord ce que le changement fait — *Resserrer
+    n'efface aucun travail…*, ou *Ouvrir donne à 3 entrées du projet le droit…* —, puis
+    *Appliquer : base …* (ou *Annuler*). La base n'ouvre qu'elle-même.
+  - **Au fonds** : *Au fonds · n demandes* — les documents demandés pour le projet et leur
+    état (*en attente*, *acceptée*, *refusée*, *acceptée en partie* ; *Détail* les dit
+    document par document) ; puis *Copies gardées au fonds · n*, les copies du projet
+    retirées de leur dernière collection. *Demander à la rendre…* ouvre le choix d'une
+    collection du projet où vous écrivez — la base d'abord —, puis *Demander* : un
+    administrateur répondra *Rendre* ou *Garder au fonds*, et la ligne dit *retour demandé
+    le …* d'ici là. Un administrateur, lui, lit *Rendre à…* et rend tout de suite.
   - **Qui y entre** : dans *Faire entrer*, choisissez un groupe sous *Groupes de
     l'annuaire*, ou *Un compte, ou un groupe absent de la liste…* — il faut alors taper son
     *nom exact* et répondre à *Compte ou groupe ?*, sans valeur par défaut : un groupe
@@ -514,8 +530,8 @@ règle d'accès (cf. §2).
     / *responsable du projet*). Le ✕ de la ligne fait sortir. Les marques sont celles de
     *Qui entre* : *inconnu de l'annuaire*, *non vérifié*, *n'a pas encore ouvert
     l'application* — elles avertissent, elles ne bloquent pas. Et la partie le rappelle à
-    chaque fois : *Entrer dans le projet n'ouvre pas ses collections : chacune garde son
-    « Qui entre ».*
+    chaque fois : *Entrer dans le projet n'ouvre que sa collection de base, selon ce que le
+    projet a choisi : chaque autre collection garde son « Qui entre ».*
   - **Ce projet** (administrateurs) : *Renommer* ; deux champs, *Description* et *Pourquoi
     ce projet existe*, avec leur bouton *Enregistrer* — seul ce que vous avez changé est
     enregistré, un champ vidé efface son texte, et la fiche répond *Description
@@ -554,6 +570,16 @@ règle d'accès (cf. §2).
     part ; **Garder** clôt la demande sans rien effacer. Une demande de suppression de
     projet se répond de même, par *Supprimer le projet* ou *Garder* ; si le projet n'est
     pas vide, le refus le dit et la demande reste en attente.
+  - **Les autres demandes**, dans *À faire* avec elles, chacune nommée en tête de sa ligne
+    et marquée de sa couleur : une **entrée de documents** (un responsable demande des
+    documents du fonds pour une collection de son projet) se répond document par document
+    — *Accepter*, *Refuser* —, ou d'un coup, *Tout accepter (n)* et *Refuser le reste* ;
+    chaque document accepté entre en copie vierge, au nom du demandeur. Un **rejoindre** (un
+    écrivain demande à ranger aussi une copie dans sa collection) : *Accepter : ranger aussi
+    dans « … »* ou *Refuser* — c'est d'abord au propriétaire de répondre, l'administrateur
+    est le recours. Un **retour** (le responsable demande à rendre une copie gardée) :
+    *Rendre à « … »* ou *Garder au fonds*. Aucune de ces trois-là ne se répond par
+    *Détruire*.
   - **Importer au fonds** : un titre, des fichiers, puis *+ Importer au fonds*. L'album
     naît **appelé par personne**, sans collection ni projet, et ses planches entrent une à
     une ; le message dit combien sont entrées et lesquelles ont été refusées. C'est le
@@ -561,6 +587,12 @@ règle d'accès (cf. §2).
   - **Documents** : pour chaque album, d'où il vient (*Importé par … le …, dans « … »*, ou
     ce qui n'est pas écrit), où il est employé (*Employé par Projet : collections*), la
     marque *appelé par personne* s'il n'est rangé nulle part, et la demande qui l'attend.
+    *Copies de travail · n* liste ses copies — une par projet qui l'a pris, parfois deux :
+    leur projet et leurs collections, qui a créé chacune, *copie vierge, images partagées*,
+    et *notice divergente* quand une copie dit un autre titre que la première. Le filtre
+    *Plusieurs copies* les retrouve. *Prendre dans…* : choisissez une collection — groupées
+    par projet, la base de chacun en tête —, puis *Prendre* ; une copie vierge y entre, à
+    votre nom, les images du document avec elle.
     Une **copie gardée** — supprimée de sa dernière collection, ou importée au fonds — se
     **rend** : choisissez une collection, puis *Rendre* ; elle y revient avec tout son
     travail. Seules les collections de **son** projet sont proposées (une copie importée au
@@ -701,8 +733,9 @@ Un album se crée désormais dans la Bibliothèque (`+ Nouvel album`), qui deman
 collection. Ses images s'importent ensuite depuis l'Atelier (étape 1).
 
 **Je suis entré dans un projet et je n'y vois rien.**
-Entrer dans un projet n'ouvre aucune de ses collections : chacune garde son *Qui entre*.
-Demandez l'accès au propriétaire de la collection voulue, ou créez la vôtre. Cf.
+Entrer dans un projet n'ouvre que sa collection de base, et seulement si le projet l'a
+ouverte à ses membres ; toute autre collection garde son *Qui entre*. Demandez l'accès au
+propriétaire de la collection voulue, ou créez la vôtre. Cf.
 [`modele-et-droits.md`](modele-et-droits.md) §2.
 
 **Mon image est refusée à l'import.**

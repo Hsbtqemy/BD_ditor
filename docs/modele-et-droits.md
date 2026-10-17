@@ -172,6 +172,13 @@ pas, et ne change pas de projet : elle part avec lui, s'il est supprimé vide.
   seuls, et qui ils font entrer par *Qui entre*). Ce choix se fait à la création du projet
   et se change ensuite par qui règle le projet ; le resserrer n'efface aucun travail —
   ceux qui ne la voient plus ne voient plus ce qu'ils y ont fait, qui reste.
+- **Ces accès se voient là où l'on regarde qui entre.** *Qui entre* d'une collection de
+  base se lit en deux groupes : *Par le projet* — ses responsables, propriétaires, et ses
+  membres selon le choix du projet —, puis *Entrés ici*, ceux qu'on y a fait entrer à la
+  main. Les premiers ne se règlent pas ligne à ligne : *Régler dans le projet ↗* mène à la
+  fiche du projet. Ils comptent comme propriétaires : la dernière personne entrée ici comme
+  propriétaire peut sortir tant que le projet a un responsable. *Comptes et groupes* les
+  montre aussi, « par le projet ».
 - **Qui sort du projet sort de sa base** — qu'il soit un compte ou un groupe —, et ne
   perd rien d'autre : un accès donné dans *Qui entre*, sur la base comme sur toute autre
   collection, reste.
@@ -237,7 +244,8 @@ pas écrit non plus — il n'y a personne à nommer.
   travail : plus personne ne le voit, sauf les administrateurs, qui peuvent le **rendre** à
   une collection — de son projet seulement : un album garde le projet où il vivait, et ne
   passe pas dans un autre en revenant. Le geste ne s'annule pas, et le propriétaire de la
-  collection ne peut pas reprendre l'album lui-même : il le demande à un administrateur.
+  collection ne peut pas reprendre l'album lui-même : le responsable du projet le demande à
+  un administrateur, depuis la fiche du projet (cf. plus bas, *se reprend*).
 - **Supprimer définitivement** efface les images et tout le travail fait dessus, pour tout
   le monde, dans tous les projets. Il efface **sans rien demander** à quatre conditions,
   toutes nécessaires : écrire dans **toutes** les collections de l'album ; l'avoir
@@ -306,13 +314,15 @@ collection n'appelle ; et **importer au fonds** — un album qui naît sans coll
 projet, « appelé par personne », pour être distribué ensuite : il prend le projet de la
 première collection où on le range.
 
-**Prendre un document — ce que le serveur sait déjà, et que l'écran ne montre pas encore.**
-Les règles ci-dessous existent côté serveur ; l'écran qui les offre (« + Prendre du
-fonds… » dans la Bibliothèque, les demandes reçues dans la fiche d'une collection, les
-entrées dans la fiche d'un projet) est à venir. D'ici là, la seule trace à l'écran est le
-message de la fiche d'un album quand « + Ranger ici » se demande au lieu de ranger, et
-aucune page de l'Administration ne montre une entrée de documents ni une demande de
-rejoindre : « À faire » ne lit que les suppressions.
+**Prendre un document.** Les règles ci-dessous existent côté serveur. L'Administration
+les montre depuis l'écran de la 3a : « À faire » rend toutes les demandes, chacune avec ses
+mots et ses boutons — une entrée se répond document par document, un rejoindre par
+« Accepter : ranger aussi dans … », un retour par « Rendre à … » ou « Garder au fonds » ;
+seule une suppression de document se répond par « Détruire » —, et la fiche d'un projet
+dit ses demandes au fonds et leur état. L'écran de la Bibliothèque qui les offre
+(« + Prendre du fonds… », les demandes reçues dans la fiche d'une collection) est à venir ;
+d'ici là, la seule trace à l'écran est le message de la fiche d'un album quand « + Ranger
+ici » se demande au lieu de ranger.
 
 Un document du fonds peut entrer dans une collection, de deux façons, et dans plusieurs
 projets à la fois : chaque projet qui le prend en a sa COPIE de travail, une *sœur* des
@@ -340,8 +350,12 @@ autres.
   qui répond, et la réponse à votre geste le dit. Rejoindre ne traverse jamais deux projets.
   Une demande qui visait une copie détruite depuis se clôt avec elle.
 
-Une copie gardée au fonds se **reprend** de la même façon : le responsable la demande, un
-administrateur la rend à une collection du projet. Une copie qui a une sœur se supprime
+Une copie gardée au fonds se **reprend** : son responsable la voit dans la fiche du projet
+(*Copies gardées au fonds*) et *Demande à la rendre* à une collection du projet où il écrit
+— la base, d'abord. C'est une demande à part, une par copie, à laquelle un administrateur
+répond *Rendre à …* (la copie revient, avec tout son travail) ou *Garder au fonds* ; elle
+ne s'attend qu'une fois par copie, et se clôt d'elle-même si la copie est détruite ou
+rendue autrement. Une copie qui a une sœur se supprime
 seule : ses images restent tant qu'une sœur les emploie, et le document part avec sa
 dernière copie.
 

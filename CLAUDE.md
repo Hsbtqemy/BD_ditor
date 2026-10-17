@@ -143,7 +143,7 @@ Routes HTML servies par `main.py`, chacune avec son fichier JS et son template, 
 | `/recherche` | `recherche.html` | `recherche.js` | **Recherche** FTS5 + nuage de tags |
 | `/corpus` | `corpus.html` | `corpus.js` | **Bibliothèque** — depuis UX-18 (2026-10-17), **une liste et une fiche** côte à côte, le gabarit `lf-` de l'Administration. La liste porte les deux usages tranchés par Hugo le 2026-10-16 : en tête le bloc **Collections** (celles du PROJET COURANT qu'on lit, la base d'abord, tri A → Z ou récentes — le contrôle `.cg-tri`), où la **case FILTRE** les albums — la collection est un CALQUE posé sur le corpus ; deux cases ouvrent une **comparaison**, « dans l'une » ou « dans toutes » — et le **nom OUVRE la fiche** ; puis les **albums du projet courant** (`BDProjet.albumsDuProjet`, sans les copies au fonds), chacun nommant ses collections lues (`collections` de `GET /api/albums`), et une recherche. « + Créer une collection » ouvre son champ au geste, dans le projet courant. La **fiche d'une collection** dit les droits en ACTES (`ecrivable`, `exportable`, `administrable`) et a **quatre onglets** — *Albums* (ses albums, « Aussi dans », le **lot au-dessus de la sélection**), *Qui entre* (le module `static/lib/qui-entre.js` MONTÉ, avec `ajusterALaPlace` : il vit dans une colonne), *Description* et *Diffusion et dépôt* (lecture d'abord, « Modifier » au geste ; « Supprimer la collection… » à part). Aucun onglet ne porte de garde : chaque BLOC pose sa question (« Exporter : droit manquant »). La **fiche d'un album** s'ouvre à la place, avec le retour vers la collection d'où l'on vient : *Rangé dans* (sorti de la modale, ✕ et « + Ranger ici » sur les seules collections `ecrivable`, « + Ranger ici » suivant le projet de l'ALBUM, `BDProjet.pourRanger`), les planches — leurs gestes en émojis APRÈS le nom, la validation en UN bouton qui porte son état (`aria-pressed`) —, le lot sur les planches cochées. Les droits d'un album sont l'**union** de ceux de ses collections (`BDBiblio.droitsAlbum`), jamais ceux de la collection d'où l'on vient. La modale `#album-modal` reste, pour les métadonnées et les contributions. Sous une fiche étroite, les tableaux passent en **cartes** (requête de conteneur `lf-fiche`) ; sous 40em, une colonne à la fois et « ← Liste ». **L'objet ouvert est dans l'adresse** : `?collection=<id>` (sur « Qui entre » si rien d'autre n'est nommé, comme le nom), `&onglet=`, `?album=<id>`, et `&groupe=<nom>` présélectionne toujours un groupe ; une collection ou un album d'un autre projet fait basculer (`BDProjet.basculeVers`). La logique pure — calque, tri, droits, actes, comparaison, adresse — vit dans `static/lib/bibliotheque.js`. Les libellés disent « que vous lisez » : le total du projet ne se dit qu'à une portée totale (« 404, jamais 403 »). Des filtres d'ÉCRAN, pas des gardes. **« Supprimer… »** (COL-3, tranche 2) : UN bouton, offert à qui écrit dans l'album (fiche de l'album, onglet Albums), qui ouvre le panneau à DEUX réponses — supprimer de la collection (un bouton par collection où l'on écrit ; c'était la dernière, la copie part au fonds), ou définitivement (tout de suite si `destructible`, sinon une DEMANDE, motif et certification obligatoires) ; ses mots viennent de `static/lib/suppression.js`. Une demande en attente se lit sur l'album (« suppression demandée par … », le nom seulement pour qui le serveur le rend). La corbeille d'une planche suit la règle du document : active où l'album se supprime sans demande, éteinte ailleurs pour qui écrit. La place des gestes de la tranche 3a de COL-3 (« + Prendre du fonds… », « + Prendre dans le projet… », le bloc ⚑ des demandes reçues, « Sur les collections ») est réservée dans l'onglet Albums, en tête du corpus et dans la fiche d'un album |
 | `/exploration` | `exploration.html` | `exploration.js` | **Exploration** linguistique du corpus — 4 vues : distribution (fréquences), **concordance KWIC** (aligné/liste, deep-link Atelier), **croisement 2D** (tableau de contingence facette×facette, heatmap, cellule→concordance), comparaison A/B ; + panneaux **📖 Lexique**, **🎯 Accord** (modèle↔humain) et **👥 Inter** (inter-annotateurs) |
-| `/administration` | `administration.html` | `administration.js` | **Administration** (UX-10) : ce qui porte sur l'INSTANCE et non sur un album. **UNE page à cinq VUES adressables** (`?vue=afaire|fonds|projets|comptes|instance`, COL-3, décision de Hugo du 2026-10-16 sur maquette) et non cinq pages : un menu de vues dans la bande d'outils, chaque lien levé seulement si SA vue a répondu ; une vue masque les blocs des autres par la classe `hors-vue`, jamais par `hidden`, que chaque bloc garde pour son autorisation. **L'ouverture** : la vue que nomme l'adresse — `?compte=…`/`?axe=…` ouvrent « Comptes et groupes », `?document=…` le fonds — ; sinon **À faire** dès que quelque chose attend ; sinon la DERNIÈRE vue consultée (stockage local `bd-admin-vue`, sous try/catch) ; sinon « Comptes et groupes ». Elle TRAVERSE les projets : elle ne lit pas le projet courant. **À faire** : les demandes de suppression (document, projet), la plus ancienne d'abord, auxquelles on RÉPOND SUR PLACE — la ligne se déplie, « Détruire » / « Garder » (« Supprimer le projet »), mots de `static/lib/suppression.js` — ; puis les accès à régler (les signaux d'« À regarder », hors les comptes jamais venus, repliés « à titre d'information ») ; puis l'instance (un référent absent ou injoignable). Elle n'a aucune route : elle lit ce que les blocs qui la nourrissent ont lu, et se lève si l'un d'eux a répondu. **Fonds** (🗄️, COL-3, tranche 2) : une LISTE et une FICHE — on cherche par titre, série ou auteur, par état (demandé, appelé par personne, copie gardée), par projet et par qui l'a importé, la liste n'en dessinant que 400 à la fois ; la fiche dit d'où vient le document, où il est employé, « Rendre » une copie gardée à une collection de son projet, « Détruire » ce que personne n'appelle, et MÈNE à « À faire » pour une demande ; « + Importer au fonds » s'ouvre dans la fiche. Le bloc ne se lève que si `GET /api/fonds` répond : la portée totale seule. **Projets** (🗂️, COL-3 : une LISTE et une FICHE des projets qu'on RÈGLE — la liste se filtre par nom, et chaque ligne dit son nombre de collections et ce qui attend : « sans responsable » (`sans_responsable`, rendu à qui gère ; jamais pour le projet de repli) ou « suppression demandée » ; la fiche ouverte vit dans l'adresse, `?projet=…` ; la fiche dit pourquoi le projet existe, « Qui y entre », celles de ses collections qu'on lit ; créer (« + Nouveau projet », qui s'ouvre dans la fiche), renommer, décrire et justifier, supprimer s'y offrent à qui DÉCIDE des projets ; à qui n'en règle aucun, une phrase dit pourquoi rien ne lui est montré ; le responsable y DEMANDE la suppression de son projet, motif à l'appui). **Comptes et groupes** (👥, AUTH-12, qui remplace la vue des comptes d'AUTH-7 : une liste et une fiche, axes Comptes · Groupes · Collections, « À regarder » en tête ; il LIT l'annuaire par `GET /api/comptes-et-groupes`, et ne modifie que deux choses : la nature d'un compte, et — dans la fiche d'une collection — **Qui entre**, le module de la Bibliothèque MONTÉ une seconde fois (UX-16) ; ce qu'il peut y régler se demande au serveur collection par collection (`administrable`, dans `GET /api/collections`), jamais parce que la vue est réservée. « Décrire dans la Bibliothèque ↗ » y mène pour ce que la collection EST ; une demande de suppression y figure aussi, et son signal mène à « À faire »). **Instance** : 🏷️ Version servie (INFRA-10, réservé aux administrateurs), 📇 Référent de l'instance, 🩺 Moteurs (SANTE-1, ouverts à tous). **Le gabarit liste-et-fiche est UN** (`UX-18`) : les règles `lf-` de `static/style.css`, nées des règles `cg-` de « Comptes et groupes » et généralisées le 2026-10-16 — le fonds les reprend, la Bibliothèque les reprendra ; les classes `cg-` restent dans le balisage comme prises du code et des tests. Aucune garde d'écran : chaque bloc pose sa propre question d'autorisation, jamais le contenant (leçon AUTH-4) |
+| `/administration` | `administration.html` | `administration.js` | **Administration** (UX-10) : ce qui porte sur l'INSTANCE et non sur un album. **UNE page à cinq VUES adressables** (`?vue=afaire|fonds|projets|comptes|instance`, COL-3, décision de Hugo du 2026-10-16 sur maquette) et non cinq pages : un menu de vues dans la bande d'outils, chaque lien levé seulement si SA vue a répondu ; une vue masque les blocs des autres par la classe `hors-vue`, jamais par `hidden`, que chaque bloc garde pour son autorisation. **L'ouverture** : la vue que nomme l'adresse — `?compte=…`/`?axe=…` ouvrent « Comptes et groupes », `?document=…` le fonds — ; sinon **À faire** dès que quelque chose attend ; sinon la DERNIÈRE vue consultée (stockage local `bd-admin-vue`, sous try/catch) ; sinon « Comptes et groupes ». Elle TRAVERSE les projets : elle ne lit pas le projet courant. **À faire** : les demandes de CINQ genres (COL-3, écran de la 3a) — supprimer un document, supprimer un projet, l'entrée de documents, rejoindre un travail, rendre une copie gardée —, la plus ancienne d'abord, une couleur de tranche par genre, auxquelles on RÉPOND SUR PLACE — la ligne se déplie, chaque genre avec SES boutons (« Détruire » / « Garder » pour un document seulement ; « Tout accepter (n) » / « Refuser le reste » et document par document pour une entrée ; « Accepter : ranger aussi dans … » / « Refuser » ; « Rendre à … » / « Garder au fonds »), mots de `static/lib/suppression.js` — ; puis les accès à régler (les signaux d'« À regarder », hors les comptes jamais venus, repliés « à titre d'information ») ; puis l'instance (un référent absent ou injoignable). Elle n'a aucune route : elle lit ce que les blocs qui la nourrissent ont lu, et se lève si l'un d'eux a répondu. **Fonds** (🗄️, COL-3, tranche 2) : une LISTE et une FICHE — on cherche par titre, série ou auteur, par état (demandé, appelé par personne, copie gardée), par projet et par qui l'a importé, la liste n'en dessinant que 400 à la fois ; la fiche dit d'où vient le document, où il est employé, ses « Copies de travail · n » (qui a créé chacune, « notice divergente » quand deux disent deux titres — D7 —, le retour qui attend ; filtre « Plusieurs copies »), « Prendre dans… » (l'administrateur prend une copie vierge pour une collection, groupées par projet, la base en tête), « Rendre » une copie gardée à une collection de son projet, « Détruire » ce que personne n'appelle, et MÈNE à « À faire » pour une demande ; « + Importer au fonds » s'ouvre dans la fiche. Le bloc ne se lève que si `GET /api/fonds` répond : la portée totale seule. **Projets** (🗂️, COL-3 : une LISTE et une FICHE des projets qu'on RÈGLE — la liste se filtre par nom, et chaque ligne dit son nombre de collections et ce qui attend : « sans responsable » (`sans_responsable`, rendu à qui gère ; jamais pour le projet de repli) ou « suppression demandée » ; la fiche ouverte vit dans l'adresse, `?projet=…` ; la fiche dit pourquoi le projet existe, « Qui y entre », celles de ses collections qu'on lit ; créer (« + Nouveau projet », qui s'ouvre dans la fiche), renommer, décrire et justifier, supprimer s'y offrent à qui DÉCIDE des projets ; à qui n'en règle aucun, une phrase dit pourquoi rien ne lui est montré ; le responsable y DEMANDE la suppression de son projet, motif à l'appui ; et, depuis l'écran de la 3a, « Ce que la base ouvre aux membres », « Au fonds · n demandes » et « Copies gardées au fonds · n » avec « Demander à la rendre… »). **Comptes et groupes** (👥, AUTH-12, qui remplace la vue des comptes d'AUTH-7 : une liste et une fiche, axes Comptes · Groupes · Collections, « À regarder » en tête ; il LIT l'annuaire par `GET /api/comptes-et-groupes`, et ne modifie que deux choses : la nature d'un compte, et — dans la fiche d'une collection — **Qui entre**, le module de la Bibliothèque MONTÉ une seconde fois (UX-16) ; ce qu'il peut y régler se demande au serveur collection par collection (`administrable`, dans `GET /api/collections`), jamais parce que la vue est réservée. « Décrire dans la Bibliothèque ↗ » y mène pour ce que la collection EST ; une demande de suppression y figure aussi, et son signal mène à « À faire »). **Instance** : 🏷️ Version servie (INFRA-10, réservé aux administrateurs), 📇 Référent de l'instance, 🩺 Moteurs (SANTE-1, ouverts à tous). **Le gabarit liste-et-fiche est UN** (`UX-18`) : les règles `lf-` de `static/style.css`, nées des règles `cg-` de « Comptes et groupes » et généralisées le 2026-10-16 — le fonds les reprend, la Bibliothèque les reprendra ; les classes `cg-` restent dans le balisage comme prises du code et des tests. Aucune garde d'écran : chaque bloc pose sa propre question d'autorisation, jamais le contenant (leçon AUTH-4) |
 
 **Un panneau va là où la question se pose** (UX-16, tranché par Hugo le 2026-09-23, monté
 deux fois le 2026-10-10). « Qui entre » a DEUX publics, et c'est pourquoi il a déménagé deux
@@ -499,17 +499,33 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   (`GET /api/collections/{id}/demandes`, avec qui demande et pour quelle collection
   d'arrivée, accepté par écrit), et il y répond (`Portee.peut_repondre_a` : la première
   demande à laquelle répond qui ne tient pas le fonds) ; l'ÉCRAN de la fiche de sa
-  collection qui les montrera est à venir (commit d'écran de la tranche). D'ici là, une
-  entrée et un rejoindre ne paraissent dans AUCUN écran de l'Administration : « À faire »,
-  la fiche d'un document, le compte du fonds et « À regarder » ne lisent que les
-  suppressions (`BDSuppression.estUneSuppression`, et `comptes._demandes_en_attente`) —
-  présentés en suppression, « Détruire » les acceptait (relecture croisée). **« + Ranger ici »
+  collection qui les montrera vient avec la Bibliothèque. **L'Administration les rend
+  TOUS** (écran de la 3a, tranché par Hugo sur maquette le 2026-10-17) : « À faire » montre
+  les cinq genres — les deux suppressions, l'entrée, le rejoindre, le retour —, chacun avec
+  SES mots et SES boutons (`BDSuppression.genreDemande`) et une couleur de tranche par
+  genre ; l'entrée se répond document par document, « Tout accepter (n) », « Refuser le
+  reste », le rejoindre « Accepter : ranger aussi dans … » / « Refuser », le retour « Rendre
+  à … » / « Garder au fonds ». « Détruire / Garder » n'appartient qu'à la suppression d'un
+  document : la relecture croisée du serveur avait trouvé une entrée présentée en
+  suppression et ACCEPTÉE par « Détruire », d'où le filtre qui ne laissait passer que les
+  suppressions, levé avec cet écran. « À regarder » porte toute demande avec son genre, et
+  ne dit « suppression » que d'une suppression. **« + Ranger ici »
   est ce geste** : `PUT /api/albums/{id}/collections/{cid}` demande désormais de LIRE la
   copie (et non d'y écrire) et répond 202 avec la demande quand il ne range pas — l'écran
   d'aujourd'hui ne le dit que par une ligne de message dans la fiche, en attendant l'écran
   de la prise (commit d'écran de la tranche). *Reprendre* une copie
-  du projet gardée au fonds se demande, même par le responsable (une entrée dont la ligne
-  nomme la copie gardée), et l'administrateur la reprend directement. Qui NOMME quoi : la
+  du projet gardée au fonds se demande, même par le responsable : un RETOUR, un genre à lui
+  (`database.DEMANDE_RENDRE`, `rendre_copie` — l'écran de la 3a ; le serveur de la prise
+  en faisait une ligne d'entrée), déposé par la réponse `reprendre` de la prise, que la
+  fiche du projet joue par « Demander à la rendre… ». Une demande par COPIE, et une seule en
+  attente par copie, quelle que soit la collection nommée (`socle._retour_en_attente`) ; un
+  administrateur répond « Rendre à … » (la copie revient, avec son travail) ou « Garder au
+  fonds ». Il se clôt refusé quand la copie est détruite, accepté quand elle est rendue par
+  un autre chemin (`socle._clore_retours_d_une_copie_rangee` : « Rendre » de la fiche du
+  document, la reprise directe de l'administrateur). La fiche du projet lit ses copies
+  gardées par `GET /api/projets/{id}/copies-gardees` — à qui GÈRE le projet : la notice de
+  la copie, depuis quand elle est gardée (le journal), le retour qui l'attend ; ni qui l'a
+  retirée, ni d'où. L'administrateur reprend directement. Qui NOMME quoi : la
   portée totale et le responsable du projet d'arrivée nomment tout document du fonds — ils
   en lisent les NOTICES (`GET /api/fonds/notices`, `Portee.peut_lire_les_notices` : titre,
   série, auteur, et aucune autre clé ; cherchées sans égard aux accents, par pages ; pour
@@ -521,17 +537,43 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   responsable. Reprendre se refuse de la même phrase, qu'une copie soit gardée ou non, à
   qui n'est ni responsable ni administrateur. La ROUTE des entrées d'un projet existe pour
   son responsable (`GET /api/projets/{id}/demandes`, le demandeur nommé à lui-même et à la
-  portée totale seulement) ; l'écran de la fiche du projet est à venir. `copie.creee_par`
+  portée totale seulement), retours compris (`genre`) ; la fiche du projet les montre — « Au
+  fonds · n demandes », leur état (en attente, acceptée, refusée, acceptée en partie) et
+  leur détail document par document. `copie.creee_par`
   d'une copie née d'une ENTRÉE acceptée est le DEMANDEUR, pas l'administrateur qui
   accepte, et la naissance de cette copie, journalisée par l'administrateur, n'est pas un
   travail d'autrui (`autorisation._SQL_NAISSANCE_D_UNE_COPIE`, borné à cet acte) : le
   demandeur la supprime seul (Hugo, 2026-10-17). Une prise directe reste créée par qui la
   fait. Supprimer une collection refuse les demandes qui la nomment comme arrivée (son
-  identifiant se réattribue) ; détruire une copie clôt les `rejoindre` et les lignes de
-  reprise qui la visaient — la ligne seule, l'état de l'entrée recalculé. Un ménage
+  identifiant se réattribue) ; détruire une copie clôt les `rejoindre`, les retours et les
+  lignes de reprise qui la visaient — la ligne seule, l'état de l'entrée recalculé. Un ménage
   d'images qui n'obtient pas le verrou laisse les fichiers et le dit au journal du serveur :
-  la destruction validée répond son succès. Deux genres naissent d'un geste et
-  ne se déposent pas par `POST /api/demandes` (422 nommé).
+  la destruction validée répond son succès. Trois genres naissent d'un geste — l'entrée,
+  le rejoindre, le retour — et ne se déposent pas par `POST /api/demandes` (422 nommé).
+- **L'accès que le PROJET tient sur sa base se LIT là où l'on regarde qui entre** (COL-3,
+  écran de la 3a ; forme tranchée par Hugo sur maquette le 2026-10-17 — l'esprit d'AUTH-4,
+  « inévitable, mais pas invisible »). La relecture croisée de la v31 l'avait relevé : un
+  propriétaire de la base croyait son cercle restreint alors que tous les membres y
+  écrivaient, rien n'étant écrit dans `collection_acces`. `autorisation.acces_derives`
+  dit ces accès ligne par ligne — les responsables propriétaires, les membres au niveau
+  `acces_membres` —, la règle de `Portee.__init__` écrite à côté d'elle, une LECTURE et non
+  une question ; `GET /api/collections/{id}/acces-du-projet` les rend aux mêmes bornes que
+  `…/acces` (à qui ADMINISTRE la collection : 404 à qui ne la lit pas, 403 nommé sinon),
+  séparée de `…/acces` parce que celle-ci est aussi la réponse du `PUT` et du `DELETE`
+  d'un accès, avec `gerable` (`peut_gerer_projet`). « Qui entre » d'une base se lit en DEUX
+  GROUPES, « Par le projet · n » puis « Entrés ici · n », sans teinte, dans ses deux
+  montages ; les lignes dérivées n'ont ni case, ni ✕, mais « Régler dans le projet ↗ ». Le
+  409 « dernier propriétaire » compte les responsables du projet (`_compte_proprietaires`) :
+  la dernière ligne explicite d'une base dont le projet a un responsable se retire. Et « 👥
+  Comptes et groupes » montre ces accès, marqués `par_projet` (`par: "projet"` dans la fiche
+  d'un compte, propriétaires dérivés d'une collection compris). La fiche d'un projet règle
+  sa position (« Ce que la base ouvre aux membres », trois radios, une phrase dite AVANT
+  d'appliquer : resserrer n'efface rien, ouvrir dit à combien d'entrées), et « + Nouveau
+  projet » pose la question, « ouverte » présélectionnée (`POST /api/projets` reçoit
+  toujours `acces_membres`) ; `GET /api/projets` rend à qui gère la base (`base`, sa
+  position) et le nombre de membres non responsables (`nb_membres`) ; les trois positions et
+  leurs phrases vivent dans `lib/projet.js` (`POSITIONS`), mesurées contre
+  `autorisation.ACCES_MEMBRES` par `tests/test_projet_ecran.py`.
 - **Aucun album hors collection** (`database.collection_par_defaut`) : un orphelin ne
   correspondrait à aucune règle, et il faudrait inventer une politique dans le code. La
   création d'album accepte `collection_id` et retombe sinon sur la collection de repli.
@@ -733,7 +775,11 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   PRÉSENCE de `demandeur` et `demandeur_nom` dans la demande d'un album — absentes, elles
   ne valent pas `null` ; « lire les notices », au statut de `GET /api/fonds/notices`. La
   huitième clé (COL-3, tranche 3a) : `repondable`, demande par demande dans
-  `GET /api/collections/{id}/demandes` — `peut_repondre_a`, posée sur la copie visée.
+  `GET /api/collections/{id}/demandes` — `peut_repondre_a`, posée sur la copie visée. Et
+  `gerable` revient, collection par collection, dans `GET /api/collections/{id}/acces-du-projet`
+  (écran de la 3a) : la même question que dans `GET /api/projets`, `peut_gerer_projet`,
+  posée sur le projet de la collection — pour qu'une ligne dérivée ne mène à « Régler dans
+  le projet » que qui le règle.
   Partout ailleurs, `peut_ecrire` ne traverse pas : l'UI découvre un refus
   d'écriture en recevant son 403. Tant que cette asymétrie tient, tout ce
   qu'on ajoute dans un panneau gardé hérite de sa garde **par défaut et non par décision** :
