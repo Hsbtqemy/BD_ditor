@@ -85,15 +85,52 @@ const overlay = $("#overlay");
 /* ===================================================================
    Chargement albums / planches
    =================================================================== */
+/* COL-3, tranche 3 — LE PROJET COURANT BORNE LA LISTE *Album*, comme il borne celle de la
+   Bibliothèque : la règle du projet courant et celle du filtre sont dans `lib/projet.js`,
+   pour que les deux écrans désignent le même projet et les mêmes albums. Sans projet à
+   nommer, `PROJET` reste nul et rien ne disparaît. Une copie gardée au fonds n'est jamais
+   un album de travail (tranche 2). Des filtres d'écran, pas des gardes : le serveur rend
+   toujours tout ce qu'on lit.
+
+   LE LIEN PROFOND GAGNE. `/?album=<id>…` — depuis la Recherche, l'Exploration ou la
+   Bibliothèque — peut viser un album d'un AUTRE projet que le courant : on bascule dans le
+   sien (`BDProjet.basculeVers`, la règle de `/corpus?collection=…`), sans quoi l'album ne
+   serait pas dans la liste et le lien finirait sur « introuvable ». Lu au premier
+   chargement seulement : l'adresse d'ORIGINE ne revote pas à chaque relecture. */
+let PROJET = null;                // l'identifiant du projet courant
+let PROJETS = [];                 // ceux qu'on peut nommer
+let LIEN_LU = false;              // la bascule par l'adresse a eu sa chance
+
+async function lireProjetCourant() {
+  const projets = await Promise.resolve(window.BDProjets).catch(() => null);
+  PROJETS = Array.isArray(projets) ? projets : [];
+  PROJET = BDProjet.courant(PROJETS, PROJET === null ? BDProjet.lire() : PROJET);
+}
+
 async function loadAlbums() {
-  // COL-3, tranche 2 — une copie gardée au fonds n'est plus un album de travail : seule
-  // une portée totale la reçoit, et elle se règle dans l'Administration. Un filtre
-  // d'écran, pas une garde.
-  state.albums = (await apiGet("/api/albums")).filter((a) => !a.au_fonds);
+  const lus = await apiGet("/api/albums");
+  await lireProjetCourant();
+  if (!LIEN_LU) {
+    LIEN_LU = true;
+    const brut = new URLSearchParams(INITIAL_QS).get("album");
+    const vise = lus.find((a) => String(a.id) === brut && !a.au_fonds);
+    const vers = BDProjet.basculeVers(PROJETS, PROJET, vise ? vise.projet_id : null);
+    if (vers !== null) { PROJET = vers; BDProjet.choisir(vers); }
+  }
+  state.albums = BDProjet.albumsDuProjet(lus, PROJET);
   const sel = $("#album-select");
   sel.innerHTML = "";
   if (!state.albums.length) {
     sel.innerHTML = '<option value="">— aucun album —</option>';
+    // Un projet sans album : l'album du projet d'avant ne reste pas à l'écran.
+    if (state.albumId != null) {
+      flushSave();
+      state.albumId = null;
+      state.planches = [];
+      state.planche = null;
+      renderPlancheList();
+      clearStage();
+    }
     return;
   }
   for (const a of state.albums) {
@@ -102,7 +139,9 @@ async function loadAlbums() {
     opt.textContent = `${a.serie ? a.serie + " · " : ""}${a.titre} (${a.nb_planches})`;
     sel.appendChild(opt);
   }
-  const first = state.albumId || state.albums[0].id;
+  // L'album ouvert le reste s'il est du projet ; sinon le premier de la liste.
+  const first = state.albums.some((a) => a.id === state.albumId)
+    ? state.albumId : state.albums[0].id;
   sel.value = first;
   await selectAlbum(Number(first));
 }
@@ -3569,6 +3608,15 @@ async function init() {
   setupBack();
   setMode("navigation");
   window.addEventListener("resize", () => { if (state.planche) applyTransform(); });
+  // COL-3, tranche 3 — on a changé de projet, par la bande ou dans un autre onglet : la
+  // liste *Album* est celle du nouveau. Un choix venu de cette page (la bascule par
+  // l'adresse) est reconnu et ne recharge pas une seconde fois.
+  document.addEventListener(BDProjet.EVENEMENT, (e) => {
+    const id = e.detail ? e.detail.id : null;
+    if (id == null || id === PROJET) return;
+    PROJET = id;
+    loadAlbums().catch((err) => toast("Erreur de chargement : " + err.message, "error"));
+  });
   try {
     await refreshTagVocab();
     await loadAlbums();

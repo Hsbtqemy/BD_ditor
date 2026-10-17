@@ -877,6 +877,40 @@ def test_l_outil_refuse_aussi_un_rangement_qui_traverse(client, db_path, decor):
 
 
 # --------------------------------------------------------------------------- #
+# La liste des albums dit le projet de chacun (COL-3, tranche 3)
+# --------------------------------------------------------------------------- #
+def test_la_liste_des_albums_publie_le_projet_lu_et_non_la_colonne(client, db_path, decor):
+    """`GET /api/albums` publie le projet EFFECTIF de chaque album (`sql_projet_d_album`) :
+    l'écran borne ses listes au projet courant en le comparant au `projet_id` des
+    collections, lu de la même façon. La colonne brute à NULL — un album posé avant qu'un
+    chemin d'écriture l'ait nommé — se lit dans ses collections ; une copie gardée au fonds
+    garde le projet qu'elle a emporté. Sous une identité qui LIT les deux projets, rien
+    n'est filtré par le serveur : c'est un filtre d'écran."""
+    ici = _collection(client, "Du repli")
+    du_repli = _album(client, "Tintin au Tibet", ici)
+    garde = _album(client, "Gardé au fonds", _collection(client, "Une étude",
+                                                         projet_id=decor["projet"]))
+    _sql(db_path, "UPDATE albums SET projet_id = NULL WHERE id IN (?, ?)",
+         (decor["album"], du_repli))
+    sortie = client.get(f"/api/albums/{garde}/collections", headers=ADMIN).json()
+    assert client.delete(f"/api/albums/{garde}/collections/{sortie[0]['id']}",
+                         headers=ADMIN).status_code in (200, 204)
+    for cid in (decor["collection"], ici):
+        _acces(client, cid, "alice")
+
+    projets = {a["id"]: (a["projet_id"], a["au_fonds"])
+               for a in client.get("/api/albums", headers=ADMIN).json()}
+    assert projets == {decor["album"]: (decor["projet"], False),
+                       du_repli: (decor["repli"], False),
+                       garde: (decor["projet"], True)}
+    vus = {a["id"]: a["projet_id"] for a in client.get("/api/albums", headers=ALICE).json()}
+    assert vus == {decor["album"]: decor["projet"], du_repli: decor["repli"]}
+    # La colonne n'a pas été écrite par la lecture.
+    assert _sql(db_path, "SELECT projet_id FROM albums WHERE id = ?", (du_repli,)) \
+        == [{"projet_id": None}]
+
+
+# --------------------------------------------------------------------------- #
 # Le projet ne sort de l'instance par aucun artefact
 # --------------------------------------------------------------------------- #
 def _outil(db_path, outil, *args):

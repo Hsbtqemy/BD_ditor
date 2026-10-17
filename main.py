@@ -26,7 +26,7 @@ from database import (DEMANDE_SUPPRESSION_DOCUMENT, citations_regions,
                       collection_par_defaut, contributions_album, creer_document,
                       dimensions_cm, document_d_album, init_db,
                       noms_lisibles, numeros_editoriaux, projet_de_collection,
-                      relecture_planches, reindex_region,
+                      relecture_planches, reindex_region, sql_projet_d_album,
                       unindex_region)
 import autorisation
 import conflit
@@ -447,6 +447,7 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
         p_ailleurs = [*p_ecrire, *lus]
     albums = _rows(conn.execute(
         f"""SELECT a.*,
+                  {sql_projet_d_album('a')} AS projet_effectif,
                   ({detruire}) AS destructible,
                   ({ecrire}) AS ecrivable,
                   ({ailleurs}) AS partage,
@@ -486,6 +487,11 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
     # lit dans `GET /api/collections`, collection par collection.
     rangements = _collections_lues_d_albums(conn, portee, [a["id"] for a in albums])
     for a in albums:
+        # COL-3, tranche 3 — `projet_id` est le projet LU (`sql_projet_d_album`), jamais la
+        # colonne brute, que NULL laisse « le projet de ses collections » : l'écran borne
+        # la liste au projet courant, et il le compare au `projet_id` des collections, lu
+        # de la même façon. NULL : une copie qui n'a jamais eu de projet (importée au fonds).
+        a["projet_id"] = a.pop("projet_effectif")
         for champ in ("destructible", "ecrivable", "partage", "au_fonds"):
             a[champ] = bool(a[champ])
         a["collections"] = [{"id": c["id"], "nom": c["nom"]} for c in rangements[a["id"]]]

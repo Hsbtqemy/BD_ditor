@@ -18,6 +18,7 @@ La préférence de police se règle par CDP, donc sous Chromium seulement : sous
 navigateur, les tests qui la font varier jouent celle avec laquelle il a été lancé (cf.
 `_polices`), et c'est à qui le lance de la faire varier.
 """
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -31,7 +32,7 @@ from playwright.sync_api import expect  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import database  # noqa: E402
-from conftest import ECRITURE  # noqa: E402
+from conftest import ECRITURE, make_png  # noqa: E402
 from tools.mesurer_reflow import ECRASEMENT, SONDE, decrire_ecrasement  # noqa: E402
 
 pytestmark = pytest.mark.e2e
@@ -493,9 +494,11 @@ def test_un_decompte_qui_bouge_ne_redessine_pas_la_liste_du_projet(page, deux_pr
 # ── La Bibliothèque : les deux listes d'un album suivent le projet ─────────────────────
 #
 # « Collection », quand on CRÉE un album : les collections du projet COURANT. « + Ranger
-# ici », dans la fiche d'un album : celles du projet où l'ALBUM vit — qui peut ne pas être le
-# courant, la liste des albums n'étant pas bornée par le projet. Aucune des deux n'est une
-# garde : le serveur refuse lui-même un rangement qui traverse deux projets.
+# ici », dans la fiche d'un album : celles du projet où l'ALBUM vit. Depuis la tranche 3, la
+# liste des albums est bornée au projet courant, si bien qu'une fiche ouverte d'elle est
+# celle d'un album du courant ; la règle reste celle de l'album (`BDProjet.pourRanger`).
+# Aucune des deux n'est une garde : le serveur refuse lui-même un rangement qui traverse
+# deux projets.
 
 NOTE_FILTRE = ("Seules les collections du projet « {} » sont proposées : pour créer l'album "
                "dans un autre projet, choisissez-le en haut de la page.")
@@ -664,10 +667,10 @@ def test_la_collection_de_repli_dit_dans_quel_projet_elle_naitra(page, live_serv
 
 
 def test_ranger_ici_ne_propose_que_les_collections_du_projet_de_l_album(page, deux_projets):
-    """« + Ranger ici » suit le projet de l'ALBUM, pas le projet courant. Un album du
-    séminaire ouvert depuis le projet de repli ne se voit proposer que les collections du
-    séminaire ; un album du repli ouvert depuis le séminaire, que celles du repli. Une ligne
-    dit ce qui n'est pas proposé, et la requête partie range dans le projet de l'album."""
+    """« + Ranger ici » suit le projet de l'ALBUM. Un album du séminaire ne se voit proposer
+    que les collections du séminaire ; un album du repli, que celles du repli. Une ligne dit
+    ce qui n'est pas proposé, et la requête partie range dans le projet de l'album. (Chaque
+    fiche s'ouvre depuis la liste de son projet : elle est bornée au courant, tranche 3.)"""
     d = deux_projets
     b2 = _collection(d["base"], "Atelier lettrage", d["second"])
     seminaire = _album(d["base"], "Album du séminaire", d["b1"])
@@ -678,6 +681,7 @@ def test_ranger_ici_ne_propose_que_les_collections_du_projet_de_l_album(page, de
     expect(page.locator("#m-collection-note")).to_be_visible()
     page.locator("#m-cancel").click()
 
+    _changer_de_projet(page, d["second"], "Séminaire 2026")
     _fiche_de_l_album(page, "Album du séminaire")
     # … et ne suit pas dans la fiche d'un album : la liste qu'elle décrit n'y est pas.
     expect(page.locator("#m-collection-note")).to_be_hidden()
@@ -698,8 +702,8 @@ def test_ranger_ici_ne_propose_que_les_collections_du_projet_de_l_album(page, de
     expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format("Séminaire 2026"))
     page.locator("#m-cancel").click()
 
-    # Dans l'autre sens : le projet courant est le séminaire, l'album vit dans le repli.
-    _changer_de_projet(page, d["second"], "Séminaire 2026")
+    # Dans l'autre sens : un album du repli.
+    _changer_de_projet(page, d["repli"], database.NOM_PROJET_DEFAUT)
     _fiche_de_l_album(page, "Album du repli")
     assert _proposees(page, "#m-appartenance-cible") == ["Incubateur"]
     expect(ligne).to_be_visible()
@@ -715,10 +719,12 @@ def test_ce_qu_on_disait_d_un_album_ne_suit_pas_dans_la_fiche_du_suivant(page, d
     _album(d["base"], "Album du séminaire", d["b1"])
     _album(d["base"], "Album illisible", d["a1"])
     _bibliotheque(page, d["base"])
+    _changer_de_projet(page, d["second"], "Séminaire 2026")
     _fiche_de_l_album(page, "Album du séminaire")
     ligne = page.locator("#m-appartenance-projet")
     expect(ligne).to_be_visible()
     page.locator("#m-cancel").click()
+    _changer_de_projet(page, d["repli"], database.NOM_PROJET_DEFAUT)
 
     page.route("**/api/albums/*/collections", lambda route: route.fulfill(
         status=500, content_type="application/json", body='{"detail": "panne jouée"}'))
@@ -794,6 +800,135 @@ def test_une_fiche_d_album_illisible_n_offre_aucun_geste_sur_le_precedent(page, 
     expect(page.locator("#m-appartenance-msg")).to_have_text("")
 
 
+# ── Les albums du projet courant (COL-3, tranche 3) ────────────────────────────────────
+#
+# La Bibliothèque (donc le lot) et l'Atelier ne montrent que les albums du projet courant.
+# Mesuré sous une identité qui LIT les deux projets sans portée totale — la lectrice, une
+# collection de chaque côté — : le serveur lui rend les deux albums, et c'est l'écran qui
+# borne. Une adresse qui vise un album ou une collection d'un autre projet fait basculer.
+
+def _planche(base, album_id):
+    with httpx.Client(base_url=base, trust_env=False, timeout=30, headers=ECRITURE) as c:
+        r = c.post(f"/api/albums/{album_id}/import",
+                   files={"file": ("p.png", make_png(), "image/png")})
+        assert r.status_code < 300, r.text
+        return r.json()["id"]
+
+
+@pytest.fixture
+def lectrice_des_deux(live_server):
+    """Derrière le proxy. Un album dans le projet de repli, un dans « Séminaire 2026 » ; la
+    lectrice lit une collection de chacun, et rien d'autre."""
+    repli = _repli(live_server)
+    second = _projet(live_server, "Séminaire 2026")
+    a = _collection(live_server, "Corpus de départ")
+    b = _collection(live_server, "Étude des émotions", second)
+    du_repli = _album(live_server, "Album du repli", a)
+    seminaire = _album(live_server, "Album du séminaire", b)
+    for cid in (a, b):
+        _acces(live_server, cid, "lectrice")
+    lus = {x["id"]: x["projet_id"] for x in _api(live_server, "GET", "/api/albums",
+                                                 entetes={"Remote-User": "lectrice"})}
+    assert lus == {du_repli: repli, seminaire: second}, "le serveur doit rendre les deux"
+    return {"base": live_server, "repli": repli, "second": second, "a": a, "b": b,
+            "du_repli": du_repli, "seminaire": seminaire}
+
+
+def _albums_bibliotheque(page):
+    return page.locator("#albums-body tr.album-row .c-titre").all_inner_texts()
+
+
+def _albums_atelier(page):
+    return page.locator("#album-select option").all_inner_texts()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_la_bibliotheque_ne_liste_que_les_albums_du_projet_courant(page, lectrice_des_deux):
+    """La liste des albums est celle du projet courant, et le lot avec elle : un album coché
+    dans un projet n'est plus de la sélection une fois qu'on en a changé — le lot ne
+    partirait pas sur un album qu'on ne voit plus."""
+    d = lectrice_des_deux
+    page.set_extra_http_headers(LECTRICE)
+    _bibliotheque(page, d["base"])
+    expect(page.locator("#projet-choix")).to_have_value(str(d["repli"]))
+    expect(page.locator("#albums-body tr.album-row")).to_have_count(1)
+    assert _albums_bibliotheque(page) == ["Album du repli"]
+    page.locator("#albums-body tr.album-row input[type=checkbox]").check()
+    assert page.evaluate("() => [...state.checkedAlbums]") == [d["du_repli"]]
+
+    _changer_de_projet(page, d["second"], "Séminaire 2026")
+    expect(page.locator("#albums-body tr.album-row .c-titre")).to_have_text(
+        ["Album du séminaire"])
+    assert page.evaluate("() => [...state.checkedAlbums]") == []
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_une_collection_d_un_autre_projet_par_l_adresse_bascule_aussi_les_albums(
+        page, lectrice_des_deux):
+    """`/corpus?collection=<id>` d'un autre projet fait basculer le projet courant
+    (tranche 1) : la liste des albums suit, et ne reste pas celle du projet d'avant."""
+    d = lectrice_des_deux
+    page.set_extra_http_headers(LECTRICE)
+    page.goto(f"{d['base']}/corpus?collection={d['b']}", wait_until="networkidle")
+    expect(page.locator("#projet-choix")).to_have_value(str(d["second"]))
+    expect(page.locator("#albums-body tr.album-row .c-titre")).to_have_text(
+        ["Album du séminaire"])
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_l_atelier_ne_liste_que_les_albums_du_projet_courant(page, lectrice_des_deux):
+    """La liste *Album* de l'Atelier suit le projet courant, et le suit quand il change."""
+    d = lectrice_des_deux
+    page.set_extra_http_headers(LECTRICE)
+    page.goto(d["base"] + "/", wait_until="networkidle")
+    expect(page.locator("#projet-choix")).to_have_value(str(d["repli"]))
+    expect(page.locator("#album-select option")).to_have_count(1)
+    assert _albums_atelier(page) == ["Album du repli (0)"]
+
+    page.locator("#projet-choix").select_option(str(d["second"]))
+    expect(page.locator("#album-select option")).to_have_text(["Album du séminaire (0)"])
+    expect(page.locator("#album-select")).to_have_value(str(d["seminaire"]))
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_un_lien_de_l_atelier_vers_un_autre_projet_fait_basculer(page, lectrice_des_deux):
+    """`/?album=<id>&planche=<id>` vers un album d'un autre projet que le courant : on
+    bascule dans le sien — la bande le dit, la liste est la sienne, et la planche du lien
+    s'ouvre. Le choix est RETENU : la page suivante est dans ce projet."""
+    d = lectrice_des_deux
+    pl = _planche(d["base"], d["seminaire"])
+    page.set_extra_http_headers(LECTRICE)
+    page.goto(d["base"] + "/recherche", wait_until="networkidle")
+    expect(page.locator("#projet-choix")).to_have_value(str(d["repli"]))   # le courant : le repli
+
+    page.goto(f"{d['base']}/?album={d['seminaire']}&planche={pl}", wait_until="networkidle")
+    expect(page.locator("#projet-choix")).to_have_value(str(d["second"]))
+    expect(page.locator("#album-select option")).to_have_text(["Album du séminaire (1)"])
+    expect(page.locator("#album-select")).to_have_value(str(d["seminaire"]))
+    expect(page.locator(f"#planche-list li[data-id='{pl}']")).to_have_class(re.compile("active"))
+
+    page.goto(d["base"] + "/corpus", wait_until="networkidle")
+    expect(page.locator("#projet-choix")).to_have_value(str(d["second"]))
+    expect(page.locator("#albums-body tr.album-row .c-titre")).to_have_text(
+        ["Album du séminaire"])
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_un_lien_vers_un_album_qu_on_ne_lit_pas_ne_bascule_pas(page, lectrice_des_deux):
+    """Le lien vise un album du séminaire que la lectrice ne LIT pas : rien ne bascule — on
+    ne change pas de projet pour un album que la liste ne contiendra pas, et un lien ne
+    révèle pas le projet d'un album fermé. Le projet courant reste celui d'avant."""
+    d = lectrice_des_deux
+    ferme = _album(d["base"], "Album fermé", _collection(d["base"], "Fermée", d["second"]))
+    pl = _planche(d["base"], ferme)
+    page.set_extra_http_headers(LECTRICE)
+    page.goto(f"{d['base']}/?album={ferme}&planche={pl}", wait_until="networkidle")
+    expect(page.locator("#album-select option")).to_have_text(["Album du repli (0)"])
+    expect(page.locator("#projet-choix")).to_have_value(str(d["repli"]))
+    page.goto(d["base"] + "/corpus", wait_until="networkidle")
+    expect(page.locator("#projet-choix")).to_have_value(str(d["repli"]))
+
+
 _MODALE_ALBUM = """() => {
   const boite = document.querySelector('#album-modal .modal-box');
   const b = boite.getBoundingClientRect();
@@ -861,6 +996,7 @@ def test_les_listes_d_un_album_n_attendent_pas_le_bloc_des_collections(page, deu
     d = deux_projets
     _collection(d["base"], "Atelier lettrage", d["second"])
     _album(d["base"], "Album du séminaire", d["b1"])
+    _album(d["base"], "Album du repli", d["a1"])      # la liste des albums suit le courant
     tenues = []
     page.route("**/api/sharedocs/etat", lambda route: tenues.append(route))
     page.goto(d["base"] + "/corpus", wait_until="domcontentloaded")
@@ -886,6 +1022,7 @@ def test_ranger_ici_n_attend_pas_le_bloc_des_collections(page, deux_projets):
     d = deux_projets
     _collection(d["base"], "Atelier lettrage", d["second"])
     _album(d["base"], "Album du séminaire", d["b1"])
+    page.add_init_script(f"localStorage.setItem('bd-projet', '{d['second']}')")
     tenues = []
     page.route("**/api/sharedocs/etat", lambda route: tenues.append(route))
     page.goto(d["base"] + "/corpus", wait_until="domcontentloaded")
@@ -940,6 +1077,7 @@ def test_un_album_range_dans_deux_projets_se_dit_et_se_repare(page, deux_projets
             assert r.status_code == 409 and "traverse pas les projets" in r.text, r.text
 
     _bibliotheque(page, d["base"])
+    _changer_de_projet(page, d["second"], "Séminaire 2026")   # son projet, écrit sur lui
     _fiche_de_l_album(page, "Album à cheval")
     expect(page.locator("#m-appartenance-liste [data-sortir]")).to_have_count(2)
     assert _proposees(page, "#m-appartenance-cible") == []
@@ -2218,6 +2356,7 @@ def test_a11y_les_listes_d_un_album_et_ce_qu_elles_disent(page, deux_projets, tm
         violations = page.evaluate(_AXE_RUN)
         assert not violations, f"/corpus, {etat} [{theme}] :\n" + "\n".join(violations)
 
+    _changer_de_projet(page, d["second"], "Séminaire 2026")   # son projet, écrit sur lui
     _fiche_de_l_album(page, "Album à cheval")
     expect(page.locator("#m-appartenance-projet.alerte")).to_be_visible()
     auditer("la fiche d'un album de deux projets")

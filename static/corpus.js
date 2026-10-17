@@ -36,11 +36,19 @@ async function loadCorpus() {
 }
 
 /* ---------------- Albums ---------------- */
-async function loadAlbums() {
-  // COL-3, tranche 2 — une copie GARDÉE AU FONDS (retirée de sa dernière collection) n'est
-  // plus un album de travail : seule une portée totale la reçoit, et elle se règle dans
-  // l'Administration, bloc « Le fonds ». Un filtre d'écran, pas une garde.
-  state.albums = (await apiGet("/api/albums")).filter((a) => !a.au_fonds);
+async function loadAlbums(compter = true) {
+  // COL-3 — les albums de TRAVAIL du projet courant, et eux seuls : la liste, donc le lot
+  // qui part de sa sélection. Une copie GARDÉE AU FONDS (tranche 2) n'en est jamais une —
+  // elle se règle dans l'Administration, bloc « Le fonds » — et un album d'un autre projet
+  // ne se montre pas ici (tranche 3) : dans un projet neuf, la liste est vide. La règle est
+  // dans `lib/projet.js`, avec celle du projet courant. Des filtres d'écran, pas des gardes :
+  // le serveur rend toujours tout ce qu'on lit. Le projet est lu APRÈS la liste, pour filtrer
+  // sur sa valeur au moment où la liste arrive — l'adresse a pu le faire basculer entre-temps.
+  // Il est lu SANS la ligne « Dans le projet … », qui appartient au bloc des collections : elle
+  // se dessine avec la liste qu'elle nomme, pas avant elle.
+  const lus = await apiGet("/api/albums");
+  await lireProjet();
+  state.albums = BDProjet.albumsDuProjet(lus, PROJET);
   // purge les sélections d'albums disparus
   const ids = new Set(state.albums.map((a) => a.id));
   state.checkedAlbums.forEach((id) => { if (!ids.has(id)) state.checkedAlbums.delete(id); });
@@ -49,7 +57,10 @@ async function loadAlbums() {
   else { state.openId = null; state.checkedPlanches.clear(); $("#album-detail").hidden = true; }
   updateSelInfo();
   loadSynthese();
-  rafraichirCollections();   // COL-2 : le décompte d'albums bouge
+  // COL-2 : le décompte d'albums bouge. Pas quand le projet vient de changer (`compter`
+  // faux) : le bloc des collections se redessine déjà, et le comparer à mi-chemin le ferait
+  // redessiner une seconde fois.
+  if (compter) rafraichirCollections();
 }
 
 /* Badge « validées / total » avec mini-barre (vert si tout est validé). */
@@ -1107,10 +1118,10 @@ const COL_GROUPES = [
 
 /* COL-3 — LE PROJET COURANT BORNE CE BLOC — la liste des collections, et le projet où
    « + Créer » crée — et, plus haut, les collections proposées à un album qu'on CRÉE
-   (`remplirCollections`). La liste des albums et le lot ne le connaissent pas, et la fiche
-   d'un album existant suit le projet de l'ALBUM, pas le courant (`loadAppartenance`) ;
-   l'Atelier, la Recherche et l'Exploration en affichent seulement le nom dans la bande du
-   haut.
+   (`remplirCollections`), et la liste des albums, donc le lot (`loadAlbums`, tranche 3). La
+   fiche d'un album existant suit le projet de l'ALBUM, pas le courant (`loadAppartenance`) ;
+   l'Atelier borne sa liste d'albums de même, la Recherche et l'Exploration en affichent
+   seulement le nom dans la bande du haut.
 
    Il se lit comme la bande le lit — la règle est dans `lib/projet.js`, pour que les deux
    désignent le même projet —, sur la même liste (`window.BDProjets`, demandée une fois par
@@ -1123,12 +1134,16 @@ const COL_GROUPES = [
 let PROJET = null;                // l'identifiant du projet courant
 let PROJETS = [];                 // ceux qu'on peut nommer
 
-async function lireProjetCourant() {
+async function lireProjet() {
   const projets = await Promise.resolve(window.BDProjets).catch(() => null);
   PROJETS = Array.isArray(projets) ? projets : [];
   // Ce que la PAGE a retenu prime sur le stockage, une fois qu'elle a choisi : quand il
   // refuse d'écrire, le choix vaut encore pour elle.
   PROJET = BDProjet.courant(PROJETS, PROJET === null ? BDProjet.lire() : PROJET);
+}
+
+async function lireProjetCourant() {
+  await lireProjet();
   colDireProjet();
 }
 
@@ -1770,12 +1785,14 @@ async function chargerCollections(ouvrir, parAdresse) {
   // dans la liste filtrée, et l'écran dirait « elle ne vous est pas ouverte, ou elle
   // n'existe pas » d'une collection ouverte. `PROJET` est posé AVANT de prévenir : l'écoute
   // de cette page reconnaît son propre choix et ne recharge pas une seconde fois.
+  // La liste des albums suit : l'écoute ne la recharge pas, ce choix venant de la page.
   const visee = parAdresse ? toutes.find((c) => c.id === ouvrir) : null;
-  if (visee && visee.projet_id != null && visee.projet_id !== PROJET
-      && PROJETS.some((p) => p.id === visee.projet_id)) {
-    PROJET = visee.projet_id;
+  const vers = BDProjet.basculeVers(PROJETS, PROJET, visee ? visee.projet_id : null);
+  if (vers !== null) {
+    PROJET = vers;
     colDireProjet();
     BDProjet.choisir(PROJET);
+    loadAlbums(false).catch(() => {});
   }
   const cols = BDProjet.duProjet(toutes, PROJET);
   // Les collections dépliées le restent, et gardent ce qu'elles disaient : recharger après
@@ -1925,6 +1942,7 @@ function setup() {
     PROJET = id;
     colTaireSauf(null);
     chargerCollections();
+    loadAlbums(false).catch(() => {});   // tranche 3 : la liste des albums, et le lot, suivent
     // Une modale « Nouvel album » restée ouverte propose les collections du projet d'AVANT
     // (un autre onglet vient d'en changer) : sa liste suit. La fiche d'un album existant,
     // non — ce qu'elle propose tient au projet de l'album, pas au courant.

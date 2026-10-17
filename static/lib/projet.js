@@ -5,9 +5,10 @@
 
    CE QUE C'EST. Une collection appartient à un projet, et l'on peut en voir plusieurs. Le
    projet COURANT est celui dans lequel on travaille : il se lit dans la bande du haut de
-   chaque page (`theme.js`), et dans cette tranche il borne la BIBLIOTHÈQUE seule — la liste
-   des collections, le projet où « créer une collection » crée, et les collections proposées
-   à un album qu'on crée. L'Atelier, la Recherche et l'Exploration affichent son nom et
+   chaque page (`theme.js`). Il borne la BIBLIOTHÈQUE — la liste des collections, le projet
+   où « créer une collection » crée, les collections proposées à un album qu'on crée, et
+   depuis la tranche 3 la liste des albums, donc le lot — et la liste des albums de
+   l'ATELIER (`albumsDuProjet`). La Recherche et l'Exploration affichent son nom et
    traversent encore les projets. (Un album qu'on RANGE suit une autre règle : son projet à
    lui, pas le courant — `pourRanger`.)
 
@@ -84,7 +85,7 @@
 
   /* CHOISIR : retenir, puis prévenir. Le seul geste qui touche le document, et à l'appel.
      Passe par ici tout ce qui change de projet — le sélecteur de la bande, et l'adresse
-     `/corpus?collection=…` quand elle nomme une collection d'un autre projet. */
+     quand elle vise un objet d'un autre projet (`basculeVers`). */
   function choisir(id) {
     retenir(id);
     if (root.document && typeof root.CustomEvent === "function") {
@@ -101,10 +102,38 @@
     return liste.filter((c) => c.projet_id === projetId);
   }
 
+  /* Les albums de TRAVAIL d'un projet, parmi ceux qu'on lit (`GET /api/albums`) : la liste
+     de la Bibliothèque — donc du lot, qui part de sa sélection — et celle de l'Atelier
+     (COL-3, tranche 3). Deux filtres, réunis ici pour que les deux écrans ne les écrivent
+     pas chacun :
+       · une copie GARDÉE AU FONDS (`au_fonds`) n'est jamais un album de travail, projet
+         courant ou non : elle se règle dans l'Administration ;
+       · les autres sont celles du projet, lu par le serveur (`projet_id`, le projet
+         EFFECTIF — celui de ses collections quand la copie n'en porte pas d'écrit).
+     Sans projet courant — aucun projet à nommer, ou une liste illisible — rien d'autre ne
+     disparaît : la règle de `duProjet`. Un album sans projet hors du fonds ne devrait pas
+     exister ; sous un projet, il n'en est pas, et ne s'y montre pas. */
+  function albumsDuProjet(albums, projetId) {
+    const deTravail = (Array.isArray(albums) ? albums : []).filter((a) => !a.au_fonds);
+    if (projetId === null || projetId === undefined) return deTravail;
+    return deTravail.filter((a) => a.projet_id === projetId);
+  }
+
+  /* LA BASCULE PAR L'ADRESSE. Une adresse qui vise un objet d'un AUTRE projet que le
+     courant — `/corpus?collection=<id>`, `/?album=<id>…` — fait passer dans le sien, sans
+     quoi la liste filtrée ne le contiendrait pas et l'écran dirait « introuvable » d'un
+     objet ouvert. Rend le projet où basculer, ou `null` : rien de visé, le projet visé est
+     déjà le courant, ou il n'est pas parmi ceux qu'on peut NOMMER — on ne bascule pas vers
+     un projet que la bande ne saurait afficher. L'appelant fait le geste (`choisir`). */
+  function basculeVers(projets, courantId, viseId) {
+    if (viseId === null || viseId === undefined || viseId === courantId) return null;
+    return (Array.isArray(projets) ? projets : []).some((p) => p.id === viseId) ? viseId : null;
+  }
+
   /* Où un ALBUM peut se ranger, parmi les collections candidates : celles du projet où il
      VIT déjà. Ce projet se lit dans SES collections (`siennes`, celles qu'on lit de lui),
-     jamais dans le projet courant — la liste des albums n'est pas bornée par le projet, et
-     l'on peut ouvrir la fiche d'un album d'un autre. Le serveur refuse un rangement qui
+     jamais dans le projet courant — une fiche d'album peut s'ouvrir d'ailleurs que de la
+     liste bornée au projet courant. Le serveur refuse un rangement qui
      traverse deux projets ; l'écran cesse de le proposer, et le serveur reste seul à trancher.
 
      Rend `{ projets, collections, ecartees }` : les projets où l'album vit, ce qu'on peut
@@ -136,5 +165,5 @@
   }
 
   return { CLE, EVENEMENT, LONGUEUR_NOM, ROLES, courant, lire, retenir, choisir, duProjet,
-           pourRanger, libelleRole };
+           albumsDuProjet, basculeVers, pourRanger, libelleRole };
 });

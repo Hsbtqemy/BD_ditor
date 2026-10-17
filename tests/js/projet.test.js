@@ -22,7 +22,7 @@ test("le module se charge sans document, sans fenêtre, sans adresse et sans sto
 });
 
 const { CLE, EVENEMENT, LONGUEUR_NOM, ROLES, courant, lire, retenir, choisir, duProjet,
-        pourRanger, libelleRole } = require("../../static/lib/projet.js");
+        albumsDuProjet, basculeVers, pourRanger, libelleRole } = require("../../static/lib/projet.js");
 
 const REPLI = { id: 1, nom: "Projet principal", repli: true };
 const SECOND = { id: 4, nom: "Séminaire 2026", repli: false };
@@ -111,6 +111,60 @@ test("sans projet courant, la liste est rendue ENTIÈRE et non vidée", () => {
   assert.deepEqual(duProjet(cols, undefined), cols);
   assert.deepEqual(duProjet(null, 1), []);
 });
+
+/* Les albums de travail d'un projet (COL-3, tranche 3) : la liste de la Bibliothèque, du lot
+   et de l'Atelier. Par table : [les albums, le projet courant, les identifiants montrés].
+   `projet_id` est le projet EFFECTIF publié par `GET /api/albums`. */
+const AL1 = { id: 1, projet_id: 1, au_fonds: false },
+      AL2 = { id: 2, projet_id: 4, au_fonds: false },
+      AL3 = { id: 3, projet_id: 1, au_fonds: false },
+      FONDS_P1 = { id: 4, projet_id: 1, au_fonds: true },     // gardée au fonds, emporte son projet
+      FONDS_SANS = { id: 5, projet_id: null, au_fonds: true }, // importée au fonds, d'aucun projet
+      ORPHELIN = { id: 6, projet_id: null, au_fonds: false };  // ne devrait pas exister
+const ALBUMS = [
+  ["le projet 1 : ses albums, dans l'ordre reçu", [AL1, AL2, AL3], 1, [1, 3]],
+  ["le projet 4 : l'album de l'autre projet seul", [AL1, AL2, AL3], 4, [2]],
+  ["un projet sans album : une liste vide", [AL1, AL2], 7, []],
+  ["sans projet courant : tous les albums de travail", [AL1, AL2, AL3], null, [1, 2, 3]],
+  ["sans projet courant (indéfini) : de même", [AL1, AL2], undefined, [1, 2]],
+  ["une copie gardée au fonds ne se montre pas, même dans son projet", [AL1, FONDS_P1], 1, [1]],
+  ["ni sans projet courant", [AL1, FONDS_P1, FONDS_SANS], null, [1]],
+  ["une copie importée au fonds, sous un projet", [AL2, FONDS_SANS], 4, [2]],
+  ["un album sans projet hors du fonds : d'aucun projet, montré sans projet courant",
+   [AL1, ORPHELIN], null, [1, 6]],
+  ["…et pas sous un projet", [AL1, ORPHELIN], 1, [1]],
+  ["une liste illisible", null, 1, []],
+  ["une liste illisible, sans projet", undefined, null, []],
+];
+
+for (const [nom, albums, projet, attendu] of ALBUMS) {
+  test(`albums du projet courant — ${nom}`, () => {
+    assert.deepEqual(albumsDuProjet(albums, projet).map((a) => a.id), attendu);
+  });
+}
+
+test("le projet d'un album se compare en NOMBRE, jamais en chaîne", () => {
+  assert.deepEqual(albumsDuProjet([AL1, AL2], "1").map((a) => a.id), []);
+});
+
+/* La bascule par l'adresse. Par table : [les projets nommables, le courant, le visé, le résultat]. */
+const BASCULE = [
+  ["un objet d'un autre projet nommable : on bascule", [REPLI, SECOND], 1, 4, 4],
+  ["dans l'autre sens", [REPLI, SECOND], 4, 1, 1],
+  ["le projet visé est déjà le courant : rien", [REPLI, SECOND], 4, 4, null],
+  ["le projet visé n'est pas nommable : rien", [REPLI, SECOND], 1, 7, null],
+  ["rien de visé (objet introuvable, ou sans projet) : rien", [REPLI, SECOND], 1, null, null],
+  ["rien de visé (indéfini) : rien", [REPLI, SECOND], 1, undefined, null],
+  ["sans projet courant, un visé nommable : on bascule", [REPLI, SECOND], null, 4, 4],
+  ["aucun projet nommable : rien", [], null, 4, null],
+  ["une liste illisible : rien", null, 1, 4, null],
+];
+
+for (const [nom, projets, courantId, vise, attendu] of BASCULE) {
+  test(`bascule par l'adresse — ${nom}`, () => {
+    assert.equal(basculeVers(projets, courantId, vise), attendu);
+  });
+}
 
 /* Où un album peut se ranger : dans SON projet, lu dans ses collections — jamais dans le
    projet courant, que cette fonction ne reçoit même pas. Par table :
