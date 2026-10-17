@@ -520,12 +520,23 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   fiche du projet joue par « Demander à la rendre… ». Une demande par COPIE, et une seule en
   attente par copie, quelle que soit la collection nommée (`socle._retour_en_attente`) ; un
   administrateur répond « Rendre à … » (la copie revient, avec son travail) ou « Garder au
-  fonds ». Il se clôt refusé quand la copie est détruite, accepté quand elle est rendue par
-  un autre chemin (`socle._clore_retours_d_une_copie_rangee` : « Rendre » de la fiche du
-  document, la reprise directe de l'administrateur). La fiche du projet lit ses copies
-  gardées par `GET /api/projets/{id}/copies-gardees` — à qui GÈRE le projet : la notice de
-  la copie, depuis quand elle est gardée (le journal), le retour qui l'attend ; ni qui l'a
-  retirée, ni d'où. L'administrateur reprend directement. Qui NOMME quoi : la
+  fonds ». Il se clôt refusé quand la copie est détruite, accepté quand elle quitte le
+  fonds par n'importe quel autre chemin : la clôture vit dans `database.ranger_copie`
+  (`clore_retours_d_une_copie_rangee`), la porte de TOUT rangement — « Rendre » de la fiche
+  du document, la reprise directe, l'acceptation d'un `rejoindre` ou d'une entrée, l'outil
+  en ligne de commande (relecture croisée : elle vivait chez deux appelants sur cinq). La
+  demande close dit alors la collection où la copie est RÉELLEMENT revenue (ses colonnes
+  `collection_id` / `collection_nom` réécrites — un retour n'a qu'une ligne, et la demandée
+  reste dans l'`avant` de l'événement qui la clôt). L'administrateur lit sous un retour de
+  quelle collection la copie était sortie (`sortie_de`, la fin de son dernier emploi au
+  journal, dans `GET /api/demandes`) : il ne rend pas dans une base ouverte, sans le savoir,
+  un travail fait dans une collection fermée. Et une copie qui PART au fonds clôt les
+  `rejoindre` qui la visaient (`database.clore_rejoindre_d_une_copie_au_fonds`, refusés au
+  nom de qui l'a retirée, par la route comme par l'outil) : accepter l'un d'eux l'aurait
+  rendue sans son responsable — la reprendre relève du retour. La fiche du projet lit ses
+  copies gardées par `GET /api/projets/{id}/copies-gardees` — à qui GÈRE le projet : la
+  notice de la copie, depuis quand elle est gardée (le journal), le retour qui l'attend ; ni
+  qui l'a retirée, ni d'où. L'administrateur reprend directement. Qui NOMME quoi : la
   portée totale et le responsable du projet d'arrivée nomment tout document du fonds — ils
   en lisent les NOTICES (`GET /api/fonds/notices`, `Portee.peut_lire_les_notices` : titre,
   série, auteur, et aucune autre clé ; cherchées sans égard aux accents, par pages ; pour
@@ -566,7 +577,10 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   409 « dernier propriétaire » compte les responsables du projet (`_compte_proprietaires`) :
   la dernière ligne explicite d'une base dont le projet a un responsable se retire. Et « 👥
   Comptes et groupes » montre ces accès, marqués `par_projet` (`par: "projet"` dans la fiche
-  d'un compte, propriétaires dérivés d'une collection compris). La fiche d'un projet règle
+  d'un compte, propriétaires dérivés d'une collection compris) ; le verdict de départ d'un
+  compte compte ses entrées de projet (`entrees_projet`, `comptes.traces`) et les bases dont
+  il est le SEUL propriétaire par le projet, « Départ » dit de le retirer du projet, et
+  « compte absent » vaut aussi pour un compte qui n'a qu'une entrée de projet. La fiche d'un projet règle
   sa position (« Ce que la base ouvre aux membres », trois radios, une phrase dite AVANT
   d'appliquer : resserrer n'efface rien, ouvrir dit à combien d'entrées), et « + Nouveau
   projet » pose la question, « ouverte » présélectionnée (`POST /api/projets` reçoit

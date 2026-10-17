@@ -353,9 +353,11 @@ autres.
 Une copie gardée au fonds se **reprend** : son responsable la voit dans la fiche du projet
 (*Copies gardées au fonds*) et *Demande à la rendre* à une collection du projet où il écrit
 — la base, d'abord. C'est une demande à part, une par copie, à laquelle un administrateur
-répond *Rendre à …* (la copie revient, avec tout son travail) ou *Garder au fonds* ; elle
-ne s'attend qu'une fois par copie, et se clôt d'elle-même si la copie est détruite ou
-rendue autrement. Une copie qui a une sœur se supprime
+répond *Rendre à …* (la copie revient, avec tout son travail) ou *Garder au fonds* — en
+lisant de quelle collection elle était sortie, quand c'est écrit. Elle ne s'attend qu'une
+fois par copie, et se clôt d'elle-même si la copie est détruite, ou rendue autrement : elle
+dit alors où la copie est réellement revenue. Une demande de **rejoindre** qui visait une
+copie partie ensuite au fonds se clôt, refusée : la reprendre passe par le responsable. Une copie qui a une sœur se supprime
 seule : ses images restent tant qu'une sœur les emploie, et le document part avec sa
 dernière copie.
 
