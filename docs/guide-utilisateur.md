@@ -33,7 +33,7 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 
 | Surface | Adresse | Ce qu'on y fait |
 |---|---|---|
-| **Bibliothèque** | `/corpus` | créer et décrire les albums et les collections — celles du **projet** où vous travaillez —, **supprimer** un album (de sa collection, ou définitivement), régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, lancer les traitements par lot, suivre l'avancement planche par planche |
+| **Bibliothèque** | `/corpus` | une **liste** et une **fiche** : à gauche les collections du **projet** où vous travaillez — la case d'une collection filtre les albums, son nom ouvre sa fiche — puis ses albums ; à droite la fiche ouverte. Créer et décrire les albums et les collections, **supprimer** un album (de sa collection, ou définitivement), régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, lancer les traitements par lot, suivre l'avancement planche par planche |
 | **Atelier** | `/` | tout ce qui se fait sur une planche : importer les images d'un album qui existe, corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
 | **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
 | **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus ; documenter le vocabulaire |
@@ -104,22 +104,26 @@ Un album créé sans collection explicite entre dans la *Collection par défaut*
 déjà à quelle étude il appartient, choisissez sa collection au moment de le créer.
 
 ### Étape 2 — Décrire l'album
-**Bibliothèque · fiche de l'album**
+**Bibliothèque · fiche de l'album, puis `✎ Modifier l'album`**
 
-C'est ici que se saisissent la **paternité** (contributions : un nom, un rôle — scénariste,
-dessinateur, coloriste…), les champs d'**édition** (date, éditeur, lieu, ISBN, format), la
-**source de numérisation** (l'appareil et les conditions du scan) et l'appartenance aux
-collections.
+La fiche s'ouvre à droite quand on choisit l'album dans la liste. *✎ Modifier l'album* ouvre
+le formulaire où se saisissent la **paternité** (contributions : un nom, un rôle —
+scénariste, dessinateur, coloriste…), les champs d'**édition** (date, éditeur, lieu, ISBN,
+format) et la **source de numérisation** (l'appareil et les conditions du scan).
+L'appartenance aux collections se lit et se règle dans la fiche même, sous *Rangé dans*.
 
 Ce n'est pas de la paperasse : c'est ce qui rendra le corpus citable et déposable. Le faire
 maintenant coûte cinq minutes ; le faire deux ans plus tard suppose de retrouver l'exemplaire.
 
 ### Étape 3 — Pré-remplir *(optionnel)*
-**Bibliothèque · cases à cocher `Segmenter` / `Bulles` / `OCR`, puis `▶ Lancer`**
+**Bibliothèque · cocher des albums ou des planches, puis `Segmenter` / `Bulles` / `OCR` et `▶ Lancer`**
 
 Trois passes, dans cet ordre : les **cases**, puis les **bulles** à l'intérieur des cases, puis
-le **texte** des bulles. Elles se lancent par lot sur une sélection d'albums et de planches, en
-tâche de fond, avec une barre de progression et un bouton d'annulation. On peut aussi les
+le **texte** des bulles. Elles se lancent par lot, en tâche de fond, avec une barre de
+progression et un bouton d'annulation. Le lot apparaît **au-dessus de sa sélection** : cochez
+des albums dans l'onglet *Albums* d'une collection, ou des planches dans la fiche d'un album —
+un lot porte sur l'un ou l'autre, jamais sur un mélange. Les erreurs d'un lot se lisent sous
+sa barre, *Voir les erreurs*. On peut aussi les
 lancer planche par planche depuis l'Atelier (menu *⚙ Traitement*).
 
 L'ordre de lecture — rangées de haut en bas, gauche à droite, bulles groupées par case — est
@@ -289,7 +293,7 @@ légende (référence de citation, responsabilité, édition, licence) et sa not
 
 Les exports de **dépôt** — fiche de description, enregistrements, manifestes IIIF — se
 prennent ailleurs, parce qu'ils portent sur une **collection** et non sur un album :
-*Bibliothèque → 📚 Collections*, en dépliant la collection voulue (§4). Les **notices**
+*Bibliothèque*, dans la fiche de la collection, onglet *Diffusion et dépôt* (§4). Les **notices**
 Dublin Core / DataCite et la **provenance** restent, elles, en ligne de commande (§5).
 
 ---
@@ -298,7 +302,32 @@ Dublin Core / DataCite et la **provenance** restent, elles, en ligne de commande
 
 ### Bibliothèque (`/corpus`)
 
-L'inventaire et le poste de commande.
+L'inventaire et le poste de commande, en **une liste et une fiche** côte à côte.
+
+- **La liste, à gauche.** En tête, le bloc *Collections* : les collections du projet que
+  vous lisez, la collection de base d'abord, puis par nom ou *Récentes d'abord*. **La case**
+  d'une collection **filtre** les albums sur les siens — c'est un calque posé sur le corpus :
+  une collection cochée ouvre sa fiche sur ses albums, deux cochées ouvrent leur
+  **comparaison** (albums, planches, validées, et ce qu'elles ont en commun), et *Dans l'une* /
+  *Dans toutes* choisit l'union ou l'intersection ; *Tout ce que vous lisez* défait le calque.
+  **Le nom** d'une collection **ouvre sa fiche**, sans rien filtrer. Dessous, les albums du
+  projet — ceux que vous lisez —, chacun nommant ses collections, et un champ pour chercher
+  par titre, série ou auteur. *+ Créer une collection* ouvre son champ au geste. Le compte
+  ne dit le total du projet qu'à un administrateur : pour les autres, c'est *… albums que
+  vous lisez*. Sous une largeur de téléphone, la liste et la fiche se montrent l'une après
+  l'autre, et *← Liste* ramène à la liste.
+- **La fiche d'une collection** dit vos droits **en actes** — *lire*, *annoter et
+  organiser*, *exporter*, *décider qui entre*, chacun coché ou barré — et a **quatre
+  onglets** : *Albums* (ses albums, et dans quelles autres collections ils sont aussi
+  rangés), *Qui entre*, *Description* (lue d'abord ; *Modifier* ouvre le formulaire) et
+  *Diffusion et dépôt* (le régime, puis les exports et ShareDocs). Tous s'ouvrent à tous :
+  ce que vous ne pouvez pas faire, le bloc concerné le dit — *Exporter : droit manquant*.
+  *Supprimer la collection…* est à part, en bas de *Description*. L'adresse de la page dit
+  la fiche et l'onglet ouverts : un lien les rouvre.
+- **La fiche d'un album** s'ouvre à la place de celle de la collection, avec *← la
+  collection* pour y revenir ; elle dit où l'album est **rangé**, et ce que vous pouvez y
+  faire vaut pour l'album entier : il suffit d'écrire dans **une** de ses collections, quelle
+  que soit celle par laquelle vous l'avez ouvert.
 
 - **Le projet, en haut de la page.** La bande du haut porte le mot *Projet* et le nom de
   celui où vous travaillez ; si vous en voyez plusieurs, c'est une liste déroulante, et
@@ -309,29 +338,29 @@ L'inventaire et le poste de commande.
   projet, et *+ Créer* y crée. Ouvrir un lien vers une collection d'un autre projet vous y
   fait basculer. Un projet où rien ne vous est ouvert le dit — *Aucune collection ouverte
   pour vous dans le projet « … »* —, ce qui n'est pas avoir tout perdu : changez de projet.
-  **Le projet ne borne presque rien d'autre pour l'instant** : la liste des albums, les
-  planches et les lots de cette page ne le suivent pas, ni l'Atelier, la Recherche et
-  l'Exploration, qui affichent son nom et portent toujours sur tout ce que vous lisez. Deux
-  listes de cette page suivent le projet, chacune le sien. *Collection*, dans *+ Nouvel
+  **La liste des albums le suit aussi**, et donc les lots ; la Recherche et l'Exploration
+  affichent son nom et portent toujours sur tout ce que vous lisez. Deux listes de cette
+  page suivent le projet, chacune le sien. *Collection*, dans *+ Nouvel
   album*, ne propose que les collections du projet **courant** où vous écrivez, et le dit
   dès qu'elle en écarte une : *Seules les collections du projet « … » sont proposées : pour
   créer l'album dans un autre projet, choisissez-le en haut de la page.* Si vous n'écrivez
   dans aucune collection de ce projet, il n'y a pas de liste vide mais une phrase — *Vous
   n'écrivez dans aucune collection du projet « … » : l'album ne peut pas y être créé.
   Créez-y d'abord une collection, ou choisissez un autre projet en haut de la page.* —, et
-  *Enregistrer* n'enregistre rien. *+ Ranger ici*, dans la fiche d'un album, ne propose que
+  *Enregistrer* n'enregistre rien. *+ Ranger ici*, sous *Rangé dans* dans la fiche d'un album, ne propose que
   les collections du projet où **l'album** vit déjà, qui n'est pas forcément le projet
   courant : *Cet album vit dans le projet « … » : seules les collections de ce projet sont
   proposées, un album ne se rangeant pas d'un projet à l'autre.* Ce qu'est un projet, et ce
   qu'il n'ouvre pas : [`modele-et-droits.md`](modele-et-droits.md) §2.
-- **Albums** : créer, éditer les métadonnées, supprimer (ci-dessous). La fiche porte la
-  description, les contributions, les champs d'édition, la source de numérisation et
-  l'appartenance aux collections.
-- **Supprimer un album : deux réponses.** Sur la ligne d'un album où vous **écrivez**, le
-  bouton *Supprimer…* ouvre un panneau qui propose deux gestes, et dit pour chacun ce qui
-  arrivera avant que vous le choisissiez — le panneau est la confirmation. *Annuler* le
-  referme sans rien faire. Si vous ne faites que **lire** un album, sa ligne n'a pas de
-  bouton *Supprimer…*.
+- **Albums** : créer (*+ Nouvel album*, en haut de la page), éditer les métadonnées (*✎
+  Modifier l'album*, dans sa fiche), supprimer (ci-dessous). La fiche porte la description,
+  les contributions, les champs d'édition, la source de numérisation et *Rangé dans* : ses
+  collections, avec un ✕ sur celles où vous écrivez, et *+ Ranger ici*.
+- **Supprimer un album : deux réponses.** Dans la fiche d'un album où vous **écrivez** — et
+  sur sa ligne, dans l'onglet *Albums* d'une collection —, le bouton *Supprimer…* ouvre un
+  panneau qui propose deux gestes, et dit pour chacun ce qui arrivera avant que vous le
+  choisissiez — le panneau est la confirmation. *Annuler* le referme sans rien faire. Si
+  vous ne faites que **lire** un album, il n'a pas de bouton *Supprimer…*.
   - **Supprimer de la collection** ne détruit rien. Il y a un bouton par collection de
     l'album où vous écrivez, *Supprimer de « … »*, et le texte au-dessus dit ce que devient
     le travail : il **reste** dans les autres collections que vous lisez, nommées ; ou il
@@ -342,8 +371,8 @@ L'inventaire et le poste de commande.
     écriviez, vous continuerez de le lire mais n'y écrirez plus, ou vous ne le verrez plus
     du tout — et vous ne pourrez pas l'y ranger de nouveau vous-même. Le geste ne s'annule
     pas : seul un administrateur, ou quelqu'un qui écrit des deux côtés, le défait. Le ✕
-    d'une collection, dans la fiche de l'album, fait le même geste et le fait confirmer
-    quand il coûte.
+    d'une collection, sous *Rangé dans* dans la fiche de l'album, fait le même geste et le
+    fait confirmer quand il coûte ; il n'est offert que sur les collections où vous écrivez.
   - **Supprimer définitivement** efface les images et tout le travail fait dessus, pour
     tout le monde, dans tous les projets. Il efface **tout de suite** si vous avez importé
     l'album vous-même et que personne d'autre n'y a travaillé — c'est l'import par erreur,
@@ -357,7 +386,7 @@ L'inventaire et le poste de commande.
     motif ou sans la case, rien ne part, et le panneau le dit. Ce qui compte comme « avoir
     travaillé », et pourquoi un album créé avant l'arrivée du fonds se demande toujours :
     [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds*.
-  - **Une demande en attente se voit sur la ligne de l'album** : *suppression demandée par
+  - **Une demande en attente se voit sur l'album**, dans la liste et dans sa fiche : *suppression demandée par
     vous*, ou *suppression demandée* sans nom — seuls un administrateur et la personne qui a
     demandé lisent qui l'a fait. Tant qu'elle attend, *Supprimer définitivement* le dit,
     sans bouton, et rien n'est effacé. L'administrateur répond *Détruire* — l'album disparaît
@@ -370,23 +399,28 @@ L'inventaire et le poste de commande.
   pas de corbeille.
 - **Planches** : ouvrir, supprimer, et trois marques indépendantes —
   **rôle** (`récit`, numéroté, ou `paratexte` : couverture, liminaire, publicité, écarté de la
-  numérotation), **validation** (✔ relue et finalisée, décomptée par album) et
-  **verrou** (🔒 protège des passes automatiques).
+  numérotation), **validation** et **verrou** (🔒 protège des passes automatiques). Les gestes
+  d'une planche (rôle, verrou, ↗ ouvrir dans l'Atelier, 🗑) suivent son nom. **Valider** est
+  un seul bouton qui porte son état : ✔ gris tant que la planche ne l'est pas, ✔ vert enfoncé
+  quand elle l'est, le même clic dans les deux sens. *✔ Tout valider* dit où il en est, et un
+  échec au milieu dit combien de planches étaient déjà validées.
 - **Relecture** : une pastille par planche, et un filtre pour n'afficher que les planches à
   faire, en cours ou faites.
-- **Traitements par lot** : cocher les passes voulues, sélectionner des albums ou des planches,
-  lancer. Progression et annulation en direct.
-- **📚 Collections** : créer une collection — elle naît dans le projet choisi en haut de la
+- **Traitements par lot** : cocher des albums (onglet *Albums* d'une collection) ou des
+  planches (fiche d'un album) ; le lot paraît au-dessus de la sélection — cochez les passes,
+  lancez. Progression, annulation et erreurs en direct, au-dessus de la liste.
+- **Collections** : créer une collection (*+ Créer une collection*) — elle naît dans le projet choisi en haut de la
   page ; il suffit d'être connecté dans le projet de repli, et d'être membre du projet
   dans un autre ; l'on en devient
   propriétaire, sauf un administrateur, qui l'administre sans la posséder et peut lui
   désigner un propriétaire dans *Qui entre* —, la décrire (description, dates), régler
   sa diffusion (régime, embargo, licence, base légale), désigner son référent, la renommer,
-  la supprimer, et l'exporter pour un dépôt (ci-dessous). Seuls un propriétaire et un
+  la supprimer, et l'exporter pour un dépôt (ci-dessous) — chaque chose dans son onglet de
+  la fiche. Seuls un propriétaire et un
   administrateur modifient ; un participant lit la description et sait à qui écrire. La date d'embargo **retient** : tant qu'elle court, les
   scans ne sortent pas, même d'une collection « public » — et elle ne publie jamais rien
   d'elle-même.
-- **Qui entre** : en tête de chaque collection dépliée, qui entre dans cette collection et ce
+- **Qui entre** : l'onglet de la fiche d'une collection — celui qu'ouvre son nom —, qui entre dans cette collection et ce
   qu'il peut y faire. Les accès s'y règlent en **actes** — *lire*, *annoter*, *décider qui
   entre* — plutôt qu'en niveaux à deviner : *Faire entrer* admet en lecture, puis on coche.
   On désigne un **compte** ou un **groupe**, la question étant posée explicitement parce
@@ -406,8 +440,8 @@ L'inventaire et le poste de commande.
 
 #### Exporter une collection pour un dépôt
 
-Dans **Bibliothèque → 📚 Collections**, dépliez une collection : le bloc **Export de
-dépôt** produit, sans passer par la ligne de commande, les trois artefacts qu'un entrepôt
+Dans la **Bibliothèque**, ouvrez la fiche d'une collection, onglet **Diffusion et dépôt** :
+le bloc **Export de dépôt** produit, sans passer par la ligne de commande, les trois artefacts qu'un entrepôt
 attend.
 
 | Ce que vous obtenez | À quoi ça sert | Formats |

@@ -91,8 +91,8 @@ de la plupart des malentendus.
 
 | Rôle | Ce que ça veut dire | Où ça se voit |
 |---|---|---|
-| **Espace de travail** | c'est elle qui porte les accès : donner un droit sur une collection le donne sur tous ses albums | *Qui entre*, en tête de la collection dépliée, dans la Bibliothèque ; et, pour un administrateur, dans la fiche de la collection, *👥 Comptes et groupes* de l'Administration — le même panneau, à deux endroits (cf. *Où vit quoi*, plus bas) |
-| **Unité de dépôt** | 1 collection = 1 dépôt Nakala/HAL = 1 DOI ; elle porte licence, base légale, régime de diffusion, responsables scientifiques | bloc *📚 Collections* de la Bibliothèque ; les responsables scientifiques par `tools/gerer_collections.py`, cf. [`export-metadonnees.md`](export-metadonnees.md) |
+| **Espace de travail** | c'est elle qui porte les accès : donner un droit sur une collection le donne sur tous ses albums | *Qui entre*, onglet de la fiche de la collection, dans la Bibliothèque ; et, pour un administrateur, dans la fiche de la collection, *👥 Comptes et groupes* de l'Administration — le même panneau, à deux endroits (cf. *Où vit quoi*, plus bas) |
+| **Unité de dépôt** | 1 collection = 1 dépôt Nakala/HAL = 1 DOI ; elle porte licence, base légale, régime de diffusion, responsables scientifiques | fiche de la collection dans la Bibliothèque, onglets *Description* et *Diffusion et dépôt* ; les responsables scientifiques par `tools/gerer_collections.py`, cf. [`export-metadonnees.md`](export-metadonnees.md) |
 | **Portée d'appartenance du vocabulaire** | un terme peut être *global* ou *local à une collection* | panneau *📖 Lexique* de l'Exploration |
 
 Trois règles en découlent, qu'il vaut mieux connaître avant de les rencontrer.
@@ -551,9 +551,16 @@ lecture, les écrans ne se ferment pas. Le panneau d'annotation s'ouvre, les cha
 s'affichent, le bouton répond — et **c'est en enregistrant que le refus arrive**. Rien n'est
 cassé ; personne ne vous a menti ; l'interface ne savait simplement pas quoi masquer.
 
-Quelques gestes font exception, parce que le serveur les dit album par album : dans la
-Bibliothèque, *Supprimer…* n'est offert que sur un album où vous écrivez, et sa réponse
-*Supprimer définitivement* dit d'avance si elle effacera ou si elle enverra une demande.
+Quelques gestes font exception, parce que le serveur les dit album par album et
+collection par collection : dans la Bibliothèque, *Supprimer…* n'est offert que sur un album
+où vous écrivez, et sa réponse *Supprimer définitivement* dit d'avance si elle effacera ou si
+elle enverra une demande ; la fiche d'une collection dit vos droits **en actes** (*lire*,
+*annoter et organiser*, *exporter*, *décider qui entre*). **Ce que vous pouvez faire d'un
+album est l'union de ce que vous pouvez faire dans ses collections** : écrire dans une seule
+suffit à l'annoter, quelle que soit la collection par laquelle vous l'avez ouvert — la fiche
+d'un album ne le réduit pas aux droits de la collection d'où vous venez. Les onglets d'une
+fiche ne sont jamais fermés : c'est le bloc qui dit ce qui manque (*Exporter : droit
+manquant*).
 
 C'est un compromis assumé, et il tient parce que **la garde est du côté du serveur**. Un
 bouton visible n'accorde rien : l'acte est vérifié quand il est demandé, jamais quand il est
@@ -796,8 +803,8 @@ Trois choses valent d'être sues :
   autrement indistinguables.
 - **Une échéance passée ne rend rien publiable toute seule.** L'outil ignore *pourquoi*
   l'embargo existe : un délai qu'on s'est donné se lève seul, un délai imposé par un ayant
-  droit non. Une échéance dépassée est **signalée** — dans la Bibliothèque, sur la ligne de la
-  collection, dans le manifeste, dans l'outil en ligne de commande — pour qu'un corpus ne
+  droit non. Une échéance dépassée est **signalée** — dans la Bibliothèque, dans la fiche de la
+  collection et son onglet *Diffusion et dépôt*, dans le manifeste, dans l'outil en ligne de commande — pour qu'un corpus ne
   reste pas fermé par inertie. La décision, elle, reste humaine.
 - **Une date illisible retient aussi.** Une faute de frappe ne doit ni ouvrir la porte, ni
   passer pour une décision.
@@ -809,7 +816,7 @@ notice. Le cloisonnement des accès s'y applique entièrement : on ne cite que c
 Cf. [`figure-citable.md`](figure-citable.md) et [`hebergement-securite.md`](hebergement-securite.md).
 
 Régime, licence, base légale et embargo **se règlent à l'écran** depuis le 2026-09-11 :
-bloc *📚 Collections* de la **Bibliothèque**, par qui possède la collection. L'embargo s'y
+onglet *Diffusion et dépôt* de la fiche d'une collection, dans la **Bibliothèque**, par qui la possède. L'embargo s'y
 saisit en texte `AAAA-MM-JJ` et non dans un sélecteur de date, qui afficherait vide une
 date illisible — et l'effacerait au premier enregistrement. Seuls les **responsables
 scientifiques** n'ont pas de formulaire : ils s'écrivent par `tools/gerer_collections.py`
@@ -833,14 +840,14 @@ scientifiques** n'ont pas de formulaire : ils s'écrivent par `tools/gerer_colle
 
 | | Comptes et groupes | Qui entre dans une collection |
 |---|---|---|
-| Où | l'annuaire LLDAP, par son interface web (le fichier `deploy/authelia/users_database.yml` n'est plus que le repli) | dans l'application, *Qui entre* : en tête de la collection dépliée (Bibliothèque), et dans la fiche de la collection, *👥 Comptes et groupes*, axe *Collections* (Administration) |
+| Où | l'annuaire LLDAP, par son interface web (le fichier `deploy/authelia/users_database.yml` n'est plus que le repli) | dans l'application, *Qui entre* : onglet de la fiche de la collection (Bibliothèque), et dans la fiche de la collection, *👥 Comptes et groupes*, axe *Collections* (Administration) |
 | Qui | un administrateur (`bd-admins`), sans accès shell | tout **propriétaire** de la collection, dans la Bibliothèque ; un administrateur, à l'un ou l'autre endroit |
 | Effet | qui peut **entrer** | qui voit **quoi** |
 | Prise d'effet | sans redémarrer Authelia — c'était le cas du fichier, et c'est ce que la bascule a supprimé | immédiate |
 
 **Pourquoi deux endroits pour *Qui entre*, et un seul panneau.** La question se pose à deux
-personnes qui ne partent pas du même point. Le propriétaire part de son corpus : il déplie sa
-collection, dans la Bibliothèque, et fait entrer quelqu'un dans la foulée — il n'a jamais à
+personnes qui ne partent pas du même point. Le propriétaire part de son corpus : il ouvre la
+fiche de sa collection, dans la Bibliothèque, et fait entrer quelqu'un dans la foulée — il n'a jamais à
 ouvrir l'Administration. L'administrateur part d'une personne ou d'un groupe : dans
 *👥 Comptes et groupes*, la fiche d'un compte nomme ses collections, chacune mène à sa fiche,
 et *Qui entre* s'y règle sur place ; depuis la fiche d'un groupe, *Ouvrir une collection à ce
@@ -932,7 +939,7 @@ existence : cela revient aux administrateurs de l'instance (§3), et la fiche du
 vous le dit. Sa suppression, vous pouvez la **demander**, depuis la même fiche.
 
 **J'ai importé un album par erreur. Comment l'effacer ?**
-Dans la Bibliothèque, *Supprimer…* sur sa ligne, puis *Supprimer définitivement* : si vous
+Dans la Bibliothèque, *Supprimer…* dans la fiche de l'album, puis *Supprimer définitivement* : si vous
 l'avez importé vous-même et que personne d'autre n'y a travaillé, il est effacé tout de
 suite. Sinon, la même réponse envoie une demande à un administrateur (§2, *Le fonds*).
 
