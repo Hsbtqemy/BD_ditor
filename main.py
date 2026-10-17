@@ -46,7 +46,8 @@ import sante as sante_moteurs
 # en a aucun, et l'outil de recalcul s'arrête s'il en apparaît un.
 from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     CHAMPS_VUS,
-    AccesIn, AccesMembresIn, AlbumIn, AlbumUpdate, DemandeIn, ReponseIn, AlignementIn,
+    AccesIn, AccesMembresIn, AlbumIn, AlbumUpdate, DemandeIn, DocumentPrisIn, PriseIn,
+    ReponseIn, AlignementIn, DEMANDE, FAIT, REFUSE,
     AnnotationIn, AttributIn, CollectionIn,
     CollectionUpdate, ContributionIn, ContributionRoleIn, DeposerExportIn, DeposerIn, DimensionDomaineIn,
     DimensionIn, DomaineIn, FigureIn, FusionIn, JobIn, LexiqueIn, LocuteurIn, MoveIn,
@@ -57,6 +58,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
     _attributs_de, _auteur, _chemins_employes, _clore_demandes, _detruire_album,
     _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet,
+    _clore_demandes_vers, _deposer, _en_attente_vers, _nouvelle_copie, _plan_rejoindre,
     _clause_lemme, _clause_personnage, _collection_d_export, _collections_lues_d_albums,
     _csv_response, _csv_safe, _descendre_portee,
     _disposition, _ensure_tags, _exiger_destruction, _exiger_export,

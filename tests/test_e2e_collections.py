@@ -782,8 +782,10 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
       ni corbeille éteinte, nulle part. C'est le mutant 16 du cadrage : un bouton offert à
       qui ne fait que lire mènerait à deux réponses dont aucune n'aboutit.
     - **Paz écrit dans « Incubateur » ET dans « Archives »** : supprimer « Triple » de l'une
-      par le ✕ de « Rangé dans » ne lui retire rien — rien à confirmer, et elle le défait
-      elle-même.
+      par le ✕ de « Rangé dans » ne lui retire rien — rien à confirmer. Elle ne le défait
+      plus elle-même (COL-3, tranche 3a, D4 stricte) : ranger est REJOINDRE, elle ne possède
+      pas les collections de l'album, et la fiche dit que la demande est partie ; un
+      administrateur le range de nouveau.
     - **Noa écrit dans « Incubateur » et lit « Archives »**, où « Triple » est aussi rangé :
       le panneau ne propose QUE la collection où elle écrit, nomme celle où le travail
       reste, et dit qu'elle continuera de lire sans plus écrire. Le ✕ de « Rangé dans » dit
@@ -824,9 +826,13 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
         "() => document.querySelectorAll('#album-range-liste li').length === 1", timeout=5000)
     page.select_option("#album-range-cible", str(ids["Archives"]))
     page.click("#album-range-add")
-    page.wait_for_function(
-        "() => document.querySelectorAll('#album-range-liste li').length === 2", timeout=5000)
+    expect(page.locator("#album-range-msg")).to_contain_text("La demande est partie",
+                                                             timeout=5000)
+    assert page.locator("#album-range-liste li").count() == 1
     assert demandes == []
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
+        r = c.put(f"/api/albums/{albums['Triple']}/collections/{ids['Archives']}")
+        assert r.status_code == 201, r.text
 
     # ── qui écrit d'un côté et LIT de l'autre ────────────────────────────────────────────
     _comme(page, live_server, "noa")

@@ -28,20 +28,22 @@ from __future__ import annotations
 import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
 import annuaire
 import autorisation
 import comptes
+import conflit
 import journal
 from config import STATUTS_DIFFUSION
-from database import (NATURES, collection_row, collections, etat_embargo,
-                      nom_reserve, poser_projet_de_copie, projet_de_collection,
-                      projet_par_defaut, rangement_traverse)
+from database import (DEMANDE_REJOINDRE, NATURES, collection_row, collections,
+                      etat_embargo, nom_reserve, poser_projet_de_copie, projet_de_collection,
+                      projet_par_defaut, ranger_copie)
 
 from socle import (
-    AccesIn, CollectionIn, CollectionUpdate, NatureIn, _collections_lues_d_albums,
-    _get_album, _get_collection, _get_projet, _rows, db, portee_courante,
+    DEMANDE, REFUSE, AccesIn, CollectionIn, CollectionUpdate, NatureIn,
+    _clore_demandes_vers, _collections_lues_d_albums, _deposer, _en_attente_vers,
+    _get_album, _get_collection, _get_projet, _plan_rejoindre, _rows, db, portee_courante,
 )
 
 router = APIRouter()
@@ -357,6 +359,9 @@ def delete_collection(collection_id: int, conn: sqlite3.Connection = Depends(db)
             "SELECT album_id FROM collection_album WHERE collection_id = ? "
             "ORDER BY album_id", (collection_id,)).fetchall():
         journal.journaliser_emploi(conn, "delien", album_id, collection_id)
+    # COL-3, tranche 3 — les demandes qui la nomment comme ARRIVÉE sont refusées : son
+    # identifiant se réattribue, et une demande acceptée plus tard rangerait ailleurs.
+    _clore_demandes_vers(conn, portee, collection_id)
     conn.execute("DELETE FROM collection WHERE id = ?", (collection_id,))
     journal.journaliser(conn, "suppression", "collection", collection_id,
                         avant={"nom": c["nom"]})
@@ -664,36 +669,52 @@ def list_collections_album(album_id: int, conn: sqlite3.Connection = Depends(db)
 def ranger_album(album_id: int, collection_id: int,
                  conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
-    """Range un album DANS une collection. Idempotent.
+    """Range un album DANS une collection — « + Ranger ici ». C'est REJOINDRE un travail
+    (COL-3, tranche 3, D4 sous sa forme stricte, Hugo, 2026-10-17). Idempotent.
 
-    Deux droits, pas un : écrire sur l'album (donc sur une collection qui le contient déjà)
-    ET écrire sur la collection d'arrivée. Sans le second, on déposerait son travail dans
-    l'étude de quelqu'un d'autre ; sans le premier, on s'approprierait le travail d'un
-    autre en le rangeant chez soi.
-
-    COL-3 — et le rangement ne TRAVERSE pas les projets : un album qui vit dans un projet
-    ne se range pas dans une collection d'un autre. Le refus est un 409 qui le nomme, et il
-    ne vient qu'après les deux droits — donc sur un album et une collection où l'on écrit,
-    dont on lit déjà les deux projets. C'est ce qui garde à chaque album UN projet, et il
-    n'y a rien à séparer tant que tout l'existant tient dans le premier.
+    Deux droits d'abord : LIRE la copie (on ne rejoint que ce qu'on voit — 404 sinon) et
+    ÉCRIRE dans la collection d'arrivée (404 sinon : on ne dépose pas son travail chez
+    quelqu'un d'autre). Puis la règle : le rangement ne TRAVERSE pas les projets (409 qui le
+    nomme) ; il est IMMÉDIAT si l'on administre chacune des collections où la copie vit
+    (`Portee.clause_rejoindre_directe`) — 201 et la liste de ses collections ; sinon il se
+    DEMANDE au propriétaire (`database.DEMANDE_REJOINDRE`), et la route répond 202 avec la
+    demande, sans rien ranger. Écrire des deux côtés suffisait jusqu'à la tranche 3 :
+    ranger chez soi retirait aux autres la suppression directe (`AUTH-10`) sans qu'ils
+    l'aient décidé, et partager un travail est la décision de qui le tient.
 
     C'est aussi le geste « Rendre à… » du fonds (tranche 2) : joué par une portée totale
     sur une copie gardée, il la rend à une collection de SON projet — écrit sur elle, il
     survit à sa sortie de toute collection. Une copie importée au fonds n'en a pas encore,
     et prend celui de la collection où on la range.
     """
-    _get_album(conn, portee, album_id, ecriture=True)
-    if not portee.peut_ecrire(collection_id) or collection_row(conn, collection_id) is None:
+    _get_album(conn, portee, album_id)
+    collection = collection_row(conn, collection_id)
+    if collection is None or not portee.peut_ecrire(collection_id):
         raise HTTPException(404, f"Collection {collection_id} introuvable")
-    if rangement_traverse(conn, album_id, collection_id):
+    conflit.verrouiller(conn)
+    plan = _plan_rejoindre(conn, portee, album_id, collection_id)
+    if plan["etat"] == REFUSE:
         raise HTTPException(409, "Cet album vit dans un autre projet que cette collection : "
                                  "le rangement ne traverse pas les projets.")
-    # Re-poser un rangement existant ne s'écrit pas au journal : rien n'a changé.
-    if conn.execute("INSERT OR IGNORE INTO collection_album (collection_id, album_id) "
-                    "VALUES (?, ?)", (collection_id, album_id)).rowcount:
-        journal.journaliser_emploi(conn, "lien", album_id, collection_id)
-    # Une copie importée au fonds prend ici son projet, celui de sa première collection.
-    poser_projet_de_copie(conn, album_id)
+    if plan["etat"] == DEMANDE:
+        a = conn.execute("SELECT document_id, titre FROM albums WHERE id = ?",
+                         (album_id,)).fetchone()
+        if a["document_id"] is None:
+            raise HTTPException(409, "Cet album n'est la copie d'aucun document : le rejoindre "
+                                     "ne peut pas se demander. Signalez-le à un "
+                                     "administrateur.")
+        if _en_attente_vers(conn, DEMANDE_REJOINDRE, collection_id, a["document_id"],
+                            album_id):
+            raise HTTPException(409, "Rejoindre ce travail depuis cette collection est déjà "
+                                     "demandé : son propriétaire y répondra.")
+        demande_id = _deposer(conn, portee, DEMANDE_REJOINDRE, collection,
+                              projet_de_collection(conn, collection_id), None,
+                              [{"document_id": a["document_id"], "album_id": album_id,
+                                "titre": a["titre"]}])
+        conn.commit()
+        return JSONResponse(status_code=202,
+                            content={"etat": DEMANDE, "demande_id": demande_id})
+    ranger_copie(conn, album_id, collection_id)
     conn.commit()
     return list_collections_album(album_id, conn, portee)
 

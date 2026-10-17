@@ -179,6 +179,12 @@ def _ranger(conn, collection_id, album_ids):
     Renvoie le nombre effectivement ajoutés."""
     # COL-3 — même garde que la route : un rangement ne traverse pas les projets. Tout ou
     # rien, comme les autres refus de cet outil.
+    #
+    # Tranche 3 (D4) — à l'écran, ranger est REJOINDRE, et il se demande au propriétaire
+    # quand on ne tient pas toutes les collections de la copie. Un shell n'a pas d'identité
+    # et tient la portée TOTALE (il crée des collections sans propriétaire, comme un
+    # administrateur) : la règle de rejoindre lui répond « immédiat », et seul le refus de
+    # traverser deux projets s'applique.
     ailleurs = [a for a in album_ids
                 if database.rangement_traverse(conn, a, collection_id)]
     if ailleurs:
@@ -191,14 +197,9 @@ def _ranger(conn, collection_id, album_ids):
         (collection_id,)).fetchone()[0]
     n = 0
     for i, aid in enumerate(album_ids, start=1):
-        cur = conn.execute(
-            "INSERT OR IGNORE INTO collection_album (collection_id, album_id, rang) "
-            "VALUES (?, ?, ?)", (collection_id, aid, depart + i))
-        if cur.rowcount:                # déjà rangé : rien n'a changé, rien ne s'écrit
-            journal.journaliser_emploi(conn, "lien", aid, collection_id)
-        # Comme la route : une copie importée au fonds prend ici son projet.
-        database.poser_projet_de_copie(conn, aid)
-        n += cur.rowcount
+        # Le rangement même de la route (`database.ranger_copie`) : l'emploi au journal s'il
+        # est neuf, et le projet d'une copie importée au fonds.
+        n += database.ranger_copie(conn, aid, collection_id, rang=depart + i)
     return n
 
 
@@ -383,6 +384,18 @@ def cmd_supprimer(args) -> int:
         # Comme la route : la cascade défait les liens sans rien dire, on les écrit avant.
         for aid in database.collection_album_ids(conn, args.id):
             journal.journaliser_emploi(conn, "delien", aid, args.id)
+        # Comme la route (COL-3, tranche 3) : les demandes qui la nomment comme ARRIVÉE sont
+        # refusées — son identifiant se réattribue. Un shell n'a personne pour répondre.
+        for demande_id in database.demandes_vers_collection(conn, args.id):
+            conn.execute("UPDATE demande_document SET reponse = ? WHERE demande_id = ? "
+                         "AND reponse IS NULL", (database.REPONSE_REFUSEE, demande_id))
+            etat = database.etat_des_reponses(r[0] for r in conn.execute(
+                "SELECT reponse FROM demande_document WHERE demande_id = ?", (demande_id,)))
+            etat = etat or database.REPONSE_REFUSEE
+            conn.execute("UPDATE demande SET reponse = ?, date_reponse = datetime('now') "
+                         "WHERE id = ?", (etat, demande_id))
+            journal.journaliser(conn, "modification", "demande", demande_id,
+                                avant={"reponse": None}, apres={"reponse": etat})
         conn.execute("DELETE FROM collection WHERE id = ?", (args.id,))
         journal.journaliser(conn, "suppression", "collection", args.id,
                             avant={"nom": c["nom"]})

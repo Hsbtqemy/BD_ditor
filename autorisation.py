@@ -630,7 +630,7 @@ class Portee:
             return bool(collections) and all(self.peut_administrer(c) for c in collections)
         return self.peut_tenir_le_fonds()
 
-    def peut_nommer_le_demandeur(self, demandeur) -> bool:
+    def peut_nommer_le_demandeur(self, demandeur, *, consentement=None) -> bool:
         """Peut-on lire QUI a demandé une suppression ?  COL-3, tranche 2 (Hugo,
         2026-10-15).
 
@@ -643,8 +643,18 @@ class Portee:
         collection, jamais laquelle », seule révélation qu'AUTH-10 accepte.
 
         Le login seul en décide, jamais le nom lisible : deux personnes peuvent porter le
-        même nom d'affichage."""
+        même nom d'affichage.
+
+        COL-3, tranche 3 — `consentement` : une demande qui attend le CONSENTEMENT de
+        l'appelant, un `rejoindre` (`genre`, et `collections` où vit la copie visée, comme
+        pour `peut_repondre_a`). Celui qui administre l'une de ces collections lit qui
+        demande : on ne consent pas à partager un travail avec quelqu'un dont on ignore le
+        nom — ce que le cadrage de la tranche a accepté par écrit, dans le même projet, le
+        rangement ne traversant pas les projets."""
         if self.tout:
+            return True
+        if (consentement is not None and consentement["genre"] == DEMANDE_REJOINDRE
+                and any(self.peut_administrer(c) for c in consentement["collections"] or ())):
             return True
         return bool(self.utilisateur) and demandeur == self.utilisateur
 

@@ -131,8 +131,11 @@ def test_ni_ses_planches_une_a_une(client, decor, qui):
 def test_sortir_reste_permis_et_ne_detruit_rien(client, decor):
     """Le geste qui reste à qui n'écrit que d'un côté. Il ne détruit rien — et pour LUI
     c'est un aller simple : ne voyant plus l'album, il ne peut pas l'y ranger de nouveau.
-    Qui écrit des deux côtés le peut. Les documents disaient « le geste se défait » sans
-    dire par qui ; ce test tient les deux moitiés de la phrase corrigée."""
+    Les documents disaient « le geste se défait » sans dire par qui ; ce test tient les deux
+    moitiés de la phrase corrigée. COL-3, tranche 3 (D4 stricte, Hugo, 2026-10-17) : écrire
+    des deux côtés ne suffit plus à le défaire — ranger est REJOINDRE, et `passeuse`, qui
+    n'administre pas la collection où l'album vit encore, le DEMANDE (202, rien n'est rangé) ;
+    le propriétaire ou un administrateur le défait."""
     lien = f"/api/albums/{decor['partage']}/collections/{decor['incubateur']}"
     r = client.delete(lien, headers=STAGIAIRE)
     assert r.status_code == 204, r.text
@@ -140,7 +143,10 @@ def test_sortir_reste_permis_et_ne_detruit_rien(client, decor):
     assert decor["partage"] in _albums(client, LECTRICE)
     assert _planches(client, decor["partage"]) == [decor["planche_partagee"]]
     assert client.put(lien, headers=STAGIAIRE).status_code == 404
-    assert client.put(lien, headers=PASSEUSE).status_code == 201
+    r = client.put(lien, headers=PASSEUSE)
+    assert r.status_code == 202 and r.json()["etat"] == "demande", r.text
+    assert decor["partage"] not in _albums(client, STAGIAIRE)
+    assert client.put(lien, headers=ADMIN).status_code == 201
     assert decor["partage"] in _albums(client, STAGIAIRE)
 
 

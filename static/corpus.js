@@ -1446,10 +1446,19 @@ function direProjetDeLAlbum(tri) {
 async function rangerAlbum() {
   const id = state.openId, cible = $("#album-range-cible").value;
   if (!id || !cible) return;
+  let rep;
   try {
-    await apiSend("PUT", `/api/albums/${id}/collections/${cible}`);
+    rep = await apiSend("PUT", `/api/albums/${id}/collections/${cible}`);
   } catch (e) { rangeMsg(e.message, true); return; }
-  apresRangement(id, "");
+  await apresRangement(id, "");
+  // COL-3, tranche 3a (D4) — ranger est REJOINDRE : sans tenir chacune des collections de
+  // l'album, le serveur ne range pas, il DEMANDE au propriétaire (202). Le dire, plutôt que
+  // de laisser croire que le geste a échoué sans raison. L'écran de la prise remplacera ce
+  // geste (commit d'écran de la tranche).
+  if (rep && rep.etat === "demande") {
+    rangeMsg("Pas rangé : rejoindre ce travail se demande au propriétaire de ses collections. "
+             + "La demande est partie.");
+  }
 }
 
 /* Ranger ou sortir change ce que la LISTE dit de l'album — où il vit, donc s'il se supprime

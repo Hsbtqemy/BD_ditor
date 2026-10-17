@@ -176,6 +176,18 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
             "VALUES ('suppression_document', ?, 'semis')", (SENTINELLES["login"],)).lastrowid
         conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
                      "VALUES (?, ?, ?, 'Cliquet')", (dem, doc, a["id"]))
+        # COL-3, tranche 3 — une demande de REJOINDRE l'album depuis sa collection, et une
+        # ENTRÉE de documents pour le projet, déposées par le login sentinelle et en attente.
+        # Sans elles, `…/collections/{id}/demandes` et `…/projets/{id}/demandes` rendraient
+        # des listes vides et passeraient pour muettes alors qu'elles nomment qui demande.
+        for genre in ("rejoindre", "entree_documents"):
+            dem = conn.execute(
+                "INSERT INTO demande (genre, demandeur, motif, projet_id, collection_id, "
+                "collection_nom) VALUES (?, ?, 'semis', ?, ?, 'Arrivée')",
+                (genre, SENTINELLES["login"], projet["id"], col["id"])).lastrowid
+            conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, "
+                         "titre) VALUES (?, ?, ?, 'Cliquet')",
+                         (dem, doc, a["id"] if genre == "rejoindre" else None))
         act = conn.execute(
             "INSERT INTO activite (type, agent, agent_type) VALUES ('session', ?, 'humain')",
             (SENTINELLES["login"],)).lastrowid
@@ -282,6 +294,20 @@ SORTIES_DECLAREES = {
         "COL-3, tranche 2 — les demandes : qui demande, qui a répondu, et leurs noms "
         "lisibles. Une demande sans auteur ne se répond pas. Réservée à qui tient le fonds, "
         "comme lui ; le motif y est, et ne sort par aucun artefact."),
+    ("route", "/api/collections/{collection_id}/demandes"): (
+        {"login", "nom"},
+        "COL-3, tranche 3 — les demandes de REJOINDRE qui attendent sur une copie de cette "
+        "collection : QUI demande (`demande.demandeur`, et son nom lisible). Réservée à qui "
+        "ADMINISTRE la collection — son propriétaire, qui consent (D4, D11) ; on ne consent "
+        "pas à partager un travail avec quelqu'un dont on ignore le nom, ce que le cadrage a "
+        "accepté par écrit. Le nom passe par `Portee.peut_nommer_le_demandeur(consentement=…)`. "
+        "Aucun artefact n'en sort (`demande` est une cible retenue)."),
+    ("route", "/api/projets/{projet_id}/demandes"): (
+        {"login", "nom"},
+        "COL-3, tranche 3 — les ENTRÉES de documents demandées pour ce projet, lues par son "
+        "responsable. Qui a déposé ne s'y nomme que pour soi-même et pour une portée totale "
+        "(`Portee.peut_nommer_le_demandeur`) — ce que mesure ce balayage, la sentinelle étant "
+        "administratrice. Qui a répondu n'y est pas. Réservée à qui gère le projet."),
     ("route", "/api/moi"): (
         {"login", "nom"},
         "L'identité de l'APPELANT, la sienne — c'est l'objet même de la route, et elle ne "

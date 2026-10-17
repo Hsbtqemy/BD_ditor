@@ -38,9 +38,11 @@ from pydantic import BaseModel, Field
 import autorisation
 import conflit
 import journal
-from database import (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
-                      REPONSE_ACCEPTEE, clause_appartenance, collection_row,
-                      get_connection, retirer_document_sans_copie, sql_projet_de,
+from database import (CRAN_IMAGES, DEMANDE_REJOINDRE, DEMANDE_SUPPRESSION_DOCUMENT,
+                      DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
+                      clause_appartenance, collection_row, creer_copie,
+                      demandes_vers_collection, etat_des_reponses, get_connection,
+                      rangement_traverse, retirer_document_sans_copie, sql_projet_de,
                       unindex_region)
 from pipeline.ingest import (chemin_d_image_sur, dossiers_d_album, elaguer_dossier_d_album,
                              remove_album_files, remove_planche_files)
@@ -590,25 +592,45 @@ def _effacer_les_images_d_une_copie(conn, album_id: int, chemins) -> None:
 
 
 def _clore_demandes(conn, portee: autorisation.Portee, ids, reponse: str) -> None:
-    """Donne sa RÉPONSE à des demandes en attente — et à chacun de leurs documents —, et
-    l'écrit au journal. Ne commite pas. Une demande répondue RESTE : c'est ce qui permet de
-    dire qu'une même suppression a déjà été refusée, et le journal garde qui a répondu.
+    """Donne sa RÉPONSE à des demandes en attente — et à chacun de leurs documents qui
+    attend encore —, et l'écrit au journal. Ne commite pas. Une demande répondue RESTE :
+    c'est ce qui permet de dire qu'une même suppression a déjà été refusée, et le journal
+    garde qui a répondu.
 
     `repondu_par` est l'appelant : l'administrateur qui répond, ou celui dont le geste a
     satisfait la demande — l'importateur qui détruit ce qu'un autre avait demandé.
+
+    L'ÉTAT de la demande se lit sur ses documents (`database.etat_des_reponses`, COL-3,
+    tranche 3) : une entrée dont l'administrateur avait déjà accepté une ligne, close
+    ensuite par un refus, est `partielle` et non `refusee`. Une demande sans document (un
+    projet) prend la réponse telle quelle.
 
     Une demande qui a DÉJÀ sa réponse n'en reçoit pas d'autre, et rien ne s'écrit au
     journal pour elle : la ligne disait jusqu'ici une réponse qu'aucun `UPDATE` n'avait
     posée (relecture croisée de la tranche 2)."""
     for demande_id in ids:
-        if not conn.execute("UPDATE demande SET reponse = ?, repondu_par = ?, "
-                            "date_reponse = datetime('now') WHERE id = ? AND reponse IS NULL",
-                            (reponse, portee.utilisateur, demande_id)).rowcount:
+        if conn.execute("SELECT 1 FROM demande WHERE id = ? AND reponse IS NULL",
+                        (demande_id,)).fetchone() is None:
             continue
         conn.execute("UPDATE demande_document SET reponse = ? "
                      "WHERE demande_id = ? AND reponse IS NULL", (reponse, demande_id))
+        etat = etat_des_reponses(r[0] for r in conn.execute(
+            "SELECT reponse FROM demande_document WHERE demande_id = ?", (demande_id,)))
+        etat = etat or reponse
+        conn.execute("UPDATE demande SET reponse = ?, repondu_par = ?, "
+                     "date_reponse = datetime('now') WHERE id = ? AND reponse IS NULL",
+                     (etat, portee.utilisateur, demande_id))
         journal.journaliser(conn, "modification", "demande", demande_id,
-                            avant={"reponse": None}, apres={"reponse": reponse})
+                            avant={"reponse": None}, apres={"reponse": etat})
+
+
+def _clore_demandes_vers(conn, portee: autorisation.Portee, collection_id: int) -> None:
+    """Refuse les demandes qui attendent encore et nomment cette collection comme ARRIVÉE
+    — une entrée de documents, un rejoindre —, au moment où elle disparaît. Son
+    identifiant se réattribue : acceptée plus tard, une telle demande rangerait dans la
+    collection créée ensuite, une autre étude (COL-3, tranche 3). Ne commite pas."""
+    _clore_demandes(conn, portee, demandes_vers_collection(conn, collection_id),
+                    REPONSE_REFUSEE)
 
 
 def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
@@ -701,11 +723,88 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
     # Sa base VIDE — ni album ni vocabulaire à elle, refusés plus haut — part avec lui ;
     # ses accès posés partent par cascade.
     for b in bases:
+        _clore_demandes_vers(conn, portee, b["id"])
         conn.execute("DELETE FROM collection WHERE id = ?", (b["id"],))
         journal.journaliser(conn, "suppression", "collection", b["id"],
                             avant={"nom": b["nom"], "base": True})
     conn.execute("DELETE FROM projet WHERE id = ?", (projet_id,))
     journal.journaliser(conn, "suppression", "projet", projet_id, avant={"nom": p["nom"]})
+
+
+
+# --------------------------------------------------------------------------- #
+# Prendre et rejoindre (COL-3, tranche 3a) — ce que partagent la prise et « + Ranger ici »
+# --------------------------------------------------------------------------- #
+# Ce que devient une ligne d'une prise, ou un rangement demandé : fait tout de suite,
+# demandé (une demande à qui consent), ou refusé (avec son motif).
+FAIT, DEMANDE, REFUSE = "fait", "demande", "refuse"
+
+
+def _nouvelle_copie(conn, portee: autorisation.Portee, document_id: int, collection_id: int,
+                    depuis: int) -> int:
+    """Une copie VIERGE du document dans cette collection, créée par l'APPELANT — la seule
+    réponse de la 3a qui crée une copie (`database.creer_copie`, cran `images`). C'est le
+    login de qui fait le geste qui est écrit (`copie.creee_par`) : celui qui part de zéro,
+    ou l'administrateur qui accepte une entrée — la forme la plus fermée de la question, que
+    le rapport du commit signale."""
+    return creer_copie(conn, document_id, collection_id, par=portee.utilisateur,
+                       depuis=depuis, cran=CRAN_IMAGES)
+
+
+def _plan_rejoindre(conn, portee: autorisation.Portee, album_id: int,
+                    collection_id: int) -> dict:
+    """Rejoindre une copie qu'on LIT depuis une collection où l'on ÉCRIT — les deux droits
+    sont vérifiés par l'appelant. Rend `{etat: fait, deja: True}` (elle y est déjà), `refuse`
+    (le rangement ne traverse pas les projets), `fait` (on administre chacune des
+    collections où elle vit, `Portee.clause_rejoindre_directe`), ou `demande` (D4 stricte :
+    le propriétaire consent). N'écrit rien ; à lire sous le verrou d'écriture."""
+    if conn.execute("SELECT 1 FROM collection_album WHERE album_id = ? AND collection_id = ?",
+                    (album_id, collection_id)).fetchone():
+        return {"etat": FAIT, "deja": True}
+    if rangement_traverse(conn, album_id, collection_id):
+        return {"etat": REFUSE, "motif": "Cette copie vit dans un autre projet que cette "
+                                         "collection : le rangement ne traverse pas les "
+                                         "projets."}
+    ou, params = portee.clause_rejoindre_directe("a.id")
+    if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
+                    (album_id, *params)).fetchone():
+        return {"etat": FAIT}
+    return {"etat": DEMANDE, "genre": DEMANDE_REJOINDRE}
+
+
+def _en_attente_vers(conn, genre: str, collection_id: int, document_id: int,
+                     album_id) -> bool:
+    """La même demande attend-elle déjà — même genre, même document (et même copie), même
+    collection d'arrivée ? Elle ne se dépose pas deux fois tant qu'elle attend ; refusée,
+    elle se redépose."""
+    return conn.execute(
+        "SELECT 1 FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
+        "WHERE d.genre = ? AND d.collection_id = ? AND dd.document_id = ? "
+        "AND dd.album_id IS ? AND dd.reponse IS NULL AND d.reponse IS NULL",
+        (genre, collection_id, document_id, album_id)).fetchone() is not None
+
+
+def _deposer(conn, portee: autorisation.Portee, genre: str, collection: dict,
+             projet_id, motif, lignes) -> int:
+    """Écrit une demande d'ENTRÉE ou de REJOINDRE, ses documents — `document_id`, `album_id`
+    (la copie visée : celle qu'on rejoint, ou la copie gardée qu'on reprend ; NULL pour une
+    copie vierge), `titre` —, et sa trace au journal. Rend son id. Ne commite pas. La
+    collection d'arrivée est écrite avec son NOM, son identifiant pouvant se réattribuer."""
+    projet = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
+    cur = conn.execute(
+        "INSERT INTO demande (genre, demandeur, motif, projet_id, projet_nom, collection_id, "
+        "collection_nom) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (genre, portee.utilisateur, motif, projet_id, projet[0] if projet else None,
+         collection["id"], collection["nom"]))
+    for ligne in lignes:
+        conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
+                     "VALUES (?, ?, ?, ?)",
+                     (cur.lastrowid, ligne["document_id"], ligne.get("album_id"),
+                      ligne.get("titre")))
+    journal.journaliser(conn, "creation", "demande", cur.lastrowid,
+                        apres={"genre": genre, "collection_id": collection["id"],
+                               "documents": [ligne["document_id"] for ligne in lignes]})
+    return cur.lastrowid
 
 
 # --------------------------------------------------------------------------- #
@@ -1708,8 +1807,28 @@ class DemandeIn(BaseModel):
 
 
 class ReponseIn(BaseModel):
-    """La réponse à une demande : `acceptee` ou `refusee`."""
+    """La réponse à une demande : `acceptee` ou `refusee`. `document_id` (COL-3, tranche
+    3, D9) : pour une entrée de documents, la ligne à laquelle on répond ; absent, la
+    réponse vaut pour toutes celles qui attendent — « tout accepter »."""
     reponse: str
+    document_id: Optional[int] = None
+
+
+class DocumentPrisIn(BaseModel):
+    """Une ligne d'une prise (COL-3, tranche 3a) : le DOCUMENT, et ce qu'on en fait —
+    `zero` (une copie vierge), `rejoindre` (ranger ici une copie qu'on lit), `reprendre`
+    (une copie du projet gardée au fonds). `album_id` : la copie qu'on rejoint ; pour
+    `zero`, celle d'où partent les images (facultatif) ; pour `reprendre`, la copie gardée
+    (facultatif)."""
+    document_id: int
+    reponse: str
+    album_id: Optional[int] = None
+
+
+class PriseIn(BaseModel):
+    """Une prise : ses documents, et le motif — exigé dès qu'une entrée se demande."""
+    documents: list[DocumentPrisIn] = Field(default_factory=list)
+    motif: Optional[str] = None
 
 
 class MembreIn(BaseModel):

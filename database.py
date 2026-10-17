@@ -104,9 +104,9 @@ CREATE TABLE IF NOT EXISTS albums (
     -- y pend par `planches`. Ces deux colonnes disent de QUOI elle est la copie, et OÙ.
     --
     -- `document_id` : le DOCUMENT dont elle est une copie (table `document`, plus bas) —
-    -- ce qui appartient à l'instance et survit à ses copies. Dans cette tranche un document
-    -- n'a qu'UNE copie ; en créer une seconde est la tranche suivante, et c'est par cette
-    -- clé que deux copies se sauront sœurs.
+    -- ce qui appartient à l'instance et survit à ses copies. Depuis la tranche 3 un document
+    -- peut avoir plusieurs copies SŒURS (`creer_copie`), et c'est par cette clé qu'elles se
+    -- savent sœurs.
     --
     -- `projet_id` : le projet de la copie, ÉCRIT sur elle. Tant qu'elle est rangée, il se
     -- lit aussi dans ses collections — un rangement ne traverse pas les projets. Mais une
@@ -1874,8 +1874,11 @@ def rangement_traverse(conn: sqlite3.Connection, album_id: int, collection_id: i
     d'arrivée. Un album déjà rangé là ne traverse rien de plus : re-poser un rangement
     existant reste sans effet, quoi qu'une base retouchée à la main ait laissé.
 
-    La question vit ici parce qu'elle a deux appelants qui ne doivent pas diverger : la
-    route (`ranger_album`) et l'outil en ligne de commande (`gerer_collections.py`).
+    La question vit ici parce que ses appelants ne doivent pas diverger : ranger
+    (`ranger_album`, « + Ranger ici »), la prise (`routes/fonds.py`), l'acceptation d'un
+    `rejoindre` ou d'une reprise, et l'outil en ligne de commande (`gerer_collections.py`).
+    Depuis la tranche 3 (D4) ranger est REJOINDRE : ce refus est la première question de
+    `socle._plan_rejoindre`, avant celle de qui consent (`Portee.clause_rejoindre_directe`).
 
     COL-3, tranche 2 — une seconde moitié, et c'est elle qui garde une copie AU FONDS.
     Sortie de sa dernière collection, une copie n'a plus aucune collection où lire son
