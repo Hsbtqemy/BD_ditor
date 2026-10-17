@@ -1456,8 +1456,11 @@ async function rangerAlbum() {
   // de laisser croire que le geste a échoué sans raison. L'écran de la prise remplacera ce
   // geste (commit d'écran de la tranche).
   if (rep && rep.etat === "demande") {
-    rangeMsg("Pas rangé : rejoindre ce travail se demande au propriétaire de ses collections. "
-             + "La demande est partie.");
+    rangeMsg(rep.repondra === "administrateur"
+      ? "Pas rangé : rejoindre ce travail se demande, et aucun propriétaire ne tient toutes "
+        + "ses collections — un administrateur y répondra. La demande est partie."
+      : "Pas rangé : rejoindre ce travail se demande au propriétaire de ses collections. "
+        + "La demande est partie.");
   }
 }
 

@@ -1639,7 +1639,12 @@ async function fdCharger() {
   FD.lu = true;
   FD.documents = fonds.documents || [];
   FD.sansDocument = fonds.copies_sans_document || [];
-  FD.demandes = demandes === null ? null : demandes.filter((d) => d.en_attente);
+  // Les SUPPRESSIONS seules (COL-3, tranche 3a) : « À faire », la fiche d'un document et le
+  // compte du fonds n'ont de mots et de gestes que pour elles — une entrée de documents ou un
+  // rejoindre, présentés en suppression, étaient ACCEPTÉS par « Détruire ». Leur écran est à
+  // venir ; d'ici là, ils ne s'y lisent pas.
+  FD.demandes = demandes === null ? null
+    : demandes.filter((d) => d.en_attente && BDSuppression.estUneSuppression(d));
   FD.collections = collections;
   FD.textes = Object.fromEntries((FD.demandes || []).map((d) =>
     [d.id, { texte: BDSuppression.texteDemande(d) }]));

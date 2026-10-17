@@ -38,7 +38,8 @@ from pydantic import BaseModel, Field
 import autorisation
 import conflit
 import journal
-from database import (CRAN_IMAGES, DEMANDE_REJOINDRE, DEMANDE_SUPPRESSION_DOCUMENT,
+from database import (CRAN_IMAGES, DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE,
+                      DEMANDE_SUPPRESSION_DOCUMENT,
                       DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
                       clause_appartenance, collection_row, creer_copie,
                       demandes_vers_collection, etat_des_reponses, get_connection,
@@ -510,8 +511,38 @@ def _detruire_album(conn, portee: autorisation.Portee, album_id: int) -> None:
         "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
         "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL",
         (DEMANDE_SUPPRESSION_DOCUMENT, album_id))], REPONSE_ACCEPTEE)
+    _clore_lignes_d_une_copie_detruite(conn, portee, album_id)
     conn.commit()
     _sous_le_verrou(conn, _effacer_les_images_d_une_copie, conn, album_id, chemins)
+
+
+def _clore_lignes_d_une_copie_detruite(conn, portee: autorisation.Portee,
+                                       album_id: int) -> None:
+    """Les demandes qui visaient CETTE copie et qu'elle ne peut plus satisfaire — un
+    `rejoindre` (la ranger ailleurs), la ligne d'une entrée qui la REPREND du fonds — se
+    closent avec elle : leur ligne est refusée, et l'état de la demande se recalcule
+    (`database.etat_des_reponses` — une entrée de plusieurs documents reste en attente si
+    d'autres lignes attendent, `partielle` si d'autres ont été acceptées). Sans cela elles
+    attendaient pour toujours, invisibles de qui doit consentir (relecture croisée de la
+    tranche 3a, défaut 2). Ne commite pas ; l'appelant est `_detruire_album`."""
+    lignes = conn.execute(
+        "SELECT dd.demande_id, dd.document_id FROM demande_document dd "
+        "JOIN demande d ON d.id = dd.demande_id "
+        "WHERE dd.album_id = ? AND dd.reponse IS NULL AND d.reponse IS NULL "
+        "AND d.genre IN (?, ?) ORDER BY dd.demande_id",
+        (album_id, DEMANDE_REJOINDRE, DEMANDE_ENTREE_DOCUMENTS)).fetchall()
+    for demande_id, document_id in lignes:
+        conn.execute("UPDATE demande_document SET reponse = ? WHERE demande_id = ? "
+                     "AND document_id = ?", (REPONSE_REFUSEE, demande_id, document_id))
+        etat = etat_des_reponses(r[0] for r in conn.execute(
+            "SELECT reponse FROM demande_document WHERE demande_id = ?", (demande_id,)))
+        if etat is not None:
+            conn.execute("UPDATE demande SET reponse = ?, repondu_par = ?, "
+                         "date_reponse = datetime('now') WHERE id = ? AND reponse IS NULL",
+                         (etat, portee.utilisateur, demande_id))
+        journal.journaliser(conn, "modification", "demande", demande_id,
+                            apres={"documents": {str(document_id): REPONSE_REFUSEE},
+                                   "copie_detruite": album_id, "reponse": etat})
 
 
 def _sous_le_verrou(conn, effacer, *args) -> None:
@@ -529,7 +560,17 @@ def _sous_le_verrou(conn, effacer, *args) -> None:
     AVANT son commit, et une base qui refuserait de valider laisserait un album sans images.
     Deux temps donc — la destruction validée, puis le ménage gardé —, et une sœur qui naît
     entre les deux désigne ses fichiers AVANT qu'on lise ce qu'il faut garder : ils restent."""
-    conflit.verrouiller(conn)
+    try:
+        conflit.verrouiller(conn)
+    except sqlite3.OperationalError as exc:
+        # La destruction est VALIDÉE : elle doit répondre son succès. Sans le verrou on ne
+        # sait pas ce qu'une sœur née à l'instant désigne — on n'efface donc rien, et le
+        # journal du serveur dit ce qui reste (relecture croisée de la tranche 3a). Un
+        # fichier laissé se rattrape ; une image effacée sous une sœur, non.
+        logging.getLogger("bd_annotator").warning(
+            "Ménage d'images différé : le verrou d'écriture n'a pas été obtenu (%s) ; les "
+            "fichiers de %s restent sur le disque.", exc, args[1:2] or args)
+        return
     try:
         effacer(*args)
     finally:
@@ -741,13 +782,18 @@ FAIT, DEMANDE, REFUSE = "fait", "demande", "refuse"
 
 
 def _nouvelle_copie(conn, portee: autorisation.Portee, document_id: int, collection_id: int,
-                    depuis: int) -> int:
+                    depuis: int, *, pour: str | None = None) -> int:
     """Une copie VIERGE du document dans cette collection, créée par l'APPELANT — la seule
-    réponse de la 3a qui crée une copie (`database.creer_copie`, cran `images`). C'est le
-    login de qui fait le geste qui est écrit (`copie.creee_par`) : celui qui part de zéro,
-    ou l'administrateur qui accepte une entrée — la forme la plus fermée de la question, que
-    le rapport du commit signale."""
-    return creer_copie(conn, document_id, collection_id, par=portee.utilisateur,
+    réponse de la 3a qui crée une copie (`database.creer_copie`, cran `images`).
+
+    QUI l'a créée (`copie.creee_par`, ce que lit la suppression directe) : l'appelant, qui
+    part de zéro ou prend directement — l'administrateur compris ; et pour une ENTRÉE
+    acceptée, le DEMANDEUR (`pour`), pas l'administrateur qui accepte (Hugo, 2026-10-17) :
+    c'est lui qui a pris le document, et il le supprime seul si les autres conditions
+    tiennent. La naissance reste journalisée sous l'agent qui l'a faite ; la règle ne la
+    compte pas comme un travail (`autorisation._sources_du_travail`)."""
+    return creer_copie(conn, document_id, collection_id,
+                       par=pour if pour is not None else portee.utilisateur,
                        depuis=depuis, cran=CRAN_IMAGES)
 
 

@@ -183,6 +183,21 @@ test("la phrase d'une demande, pour un document et pour un projet", () => {
                "le 14/10/2026 · déjà refusée une fois");
 });
 
+test("une entrée de documents ou un rejoindre ne se dit jamais suppression (COL-3, 3a)", () => {
+  const entree = { genre: "entree_documents", demandeur: "resp", collection_nom: "Base",
+                   documents: [{ document_id: 1, titre: "Lotus" }] };
+  const rejoindre = { genre: "rejoindre", demandeur: "eva", collection_nom: "Y",
+                      documents: [{ document_id: 2, titre: "Oreille" }] };
+  assert.equal(S.texteDemande(entree), "resp demande l'entrée de « Lotus » dans « Base »");
+  assert.equal(S.texteDemande(rejoindre), "eva demande à ranger « Oreille » dans « Y »");
+  assert.ok(!S.texteDemande({ genre: "inconnu" }).includes("suppression"));
+  assert.equal(S.estUneSuppression(entree), false);
+  assert.equal(S.estUneSuppression(rejoindre), false);
+  assert.equal(S.estUneSuppression({ genre: S.GENRE_DOCUMENT }), true);
+  assert.equal(S.estUneSuppression({ genre: S.GENRE_PROJET }), true);
+  assert.equal(S.estUneSuppression(null), false);
+});
+
 test("« Rendre à… » ne propose que les collections du projet de la copie", () => {
   const cols = [{ id: 1, nom: "A", projet_id: 1 }, { id: 2, nom: "B", projet_id: 2 },
                 { id: 3, nom: "C", projet_id: 1, ecrivable: false }];

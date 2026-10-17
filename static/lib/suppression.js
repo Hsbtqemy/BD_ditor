@@ -215,14 +215,35 @@
     return c ? c.titre : `Document ${doc.id}, sans copie`;
   }
 
-  /* La phrase d'une demande, pour qui y répond. */
+  /* Les genres de demande que les écrans de SUPPRESSION savent lire et répondre — « À
+     faire », la fiche d'un document, le compte du fonds. COL-3, tranche 3a : le serveur dépose
+     désormais deux autres genres (`entree_documents`, `rejoindre`), dont l'écran propre est à
+     venir ; d'ici là ils n'y figurent pas — sous les mots d'une suppression, « Détruire » les
+     aurait ACCEPTÉS (relecture croisée, défaut 1). */
+  const GENRES_SUPPRESSION = [GENRE_DOCUMENT, GENRE_PROJET];
+  function estUneSuppression(d) {
+    return !!d && GENRES_SUPPRESSION.includes(d.genre);
+  }
+
+  /* La phrase d'une demande, pour qui y répond. Une suppression se dit suppression ; un autre
+     genre ne l'est JAMAIS, même mal connu de l'écran. */
   function texteDemande(d) {
     const qui = d.demandeur_nom || d.demandeur || "Quelqu'un";
+    const titres = (d.documents || []).map((x) => g(x.titre || "document " + x.document_id));
     if (d.genre === GENRE_PROJET) {
       return `${qui} demande la suppression du projet ${g(d.projet_nom || "projet " + d.projet_id)}`;
     }
-    const titres = (d.documents || []).map((x) => g(x.titre || "document " + x.document_id));
-    return `${qui} demande la suppression définitive de ${et(titres) || "un document"}`;
+    if (d.genre === GENRE_DOCUMENT) {
+      return `${qui} demande la suppression définitive de ${et(titres) || "un document"}`;
+    }
+    const ou = d.collection_nom ? ` dans ${g(d.collection_nom)}` : "";
+    if (d.genre === "entree_documents") {
+      return `${qui} demande l'entrée de ${et(titres) || "documents"}${ou}`;
+    }
+    if (d.genre === "rejoindre") {
+      return `${qui} demande à ranger ${et(titres) || "une copie"}${ou}`;
+    }
+    return `${qui} a déposé une demande`;
   }
 
   /* « Certifié par … le … » : la certification d'une demande, pour qui y répond. Rien pour
@@ -324,7 +345,8 @@
   }
 
   return {
-    GENRE_DOCUMENT, GENRE_PROJET, ACCEPTER, REFUSER, CERTIFICATION, SORTES,
+    GENRE_DOCUMENT, GENRE_PROJET, GENRES_SUPPRESSION, estUneSuppression,
+    ACCEPTER, REFUSER, CERTIFICATION, SORTES,
     dateLue, demandeur, pastille, offrir, retrait, definitif, apresRetrait, apresDefinitif,
     origine, emplois, titreDocument, texteDemande, contexteDemande, confirmationDetruire,
     rendreA, certifiee, gestes, travailDesAutres,

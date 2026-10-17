@@ -800,7 +800,7 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str]]:
          "albums _ta JOIN evenement _te "
          "ON _te.cible_table = 'document' AND _te.cible_id = _ta.document_id "
          f"WHERE _ta.id = {alias} AND _te.agent_type = 'humain' "
-         f"AND {_SQL_ALBUM_DE_LA_CHARGE} = _ta.id"),
+         f"AND {_SQL_ALBUM_DE_LA_CHARGE} = _ta.id AND NOT {_SQL_NAISSANCE_D_UNE_COPIE}"),
     ]
 
 
@@ -811,6 +811,17 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str]]:
 _SQL_ALBUM_DE_LA_CHARGE = (
     "COALESCE(CASE WHEN json_valid(_te.apres) THEN json_extract(_te.apres, '$.album_id') END, "
     "CASE WHEN json_valid(_te.avant) THEN json_extract(_te.avant, '$.album_id') END)")
+
+
+# La NAISSANCE d'une copie sœur (`database.creer_copie`) : `apres` seul, sa charge nomme la
+# copie source (`copie.depuis_album_id`). Ce n'est pas un travail sur la copie — elle naît
+# vierge —, et pour une entrée acceptée l'agent en est l'ADMINISTRATEUR qui accepte, quand
+# la copie est créée pour le DEMANDEUR (Hugo, 2026-10-17) : la compter interdirait à celui-ci
+# de la supprimer seul. Borné à cet acte seul — tout autre acte de l'administrateur sur le
+# document (notice, scans, relecture) reste le travail d'un autre.
+_SQL_NAISSANCE_D_UNE_COPIE = (
+    "(_te.avant IS NULL AND json_valid(_te.apres) "
+    "AND json_extract(_te.apres, '$.copie.depuis_album_id') IS NOT NULL)")
 
 
 def sql_actes_sur_album(alias: str) -> str:

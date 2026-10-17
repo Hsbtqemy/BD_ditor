@@ -38,7 +38,7 @@ import journal
 from config import STATUTS_DIFFUSION
 from database import (DEMANDE_REJOINDRE, NATURES, collection_row, collections,
                       etat_embargo, nom_reserve, poser_projet_de_copie, projet_de_collection,
-                      projet_par_defaut, ranger_copie)
+                      projet_par_defaut, ranger_copie, un_proprietaire_tient_toute_la_copie)
 
 from socle import (
     DEMANDE, REFUSE, AccesIn, CollectionIn, CollectionUpdate, NatureIn,
@@ -703,17 +703,23 @@ def ranger_album(album_id: int, collection_id: int,
             raise HTTPException(409, "Cet album n'est la copie d'aucun document : le rejoindre "
                                      "ne peut pas se demander. Signalez-le à un "
                                      "administrateur.")
+        qui = ("son propriétaire" if un_proprietaire_tient_toute_la_copie(conn, album_id)
+               else "un administrateur")
         if _en_attente_vers(conn, DEMANDE_REJOINDRE, collection_id, a["document_id"],
                             album_id):
             raise HTTPException(409, "Rejoindre ce travail depuis cette collection est déjà "
-                                     "demandé : son propriétaire y répondra.")
+                                     f"demandé : {qui} y répondra.")
         demande_id = _deposer(conn, portee, DEMANDE_REJOINDRE, collection,
                               projet_de_collection(conn, collection_id), None,
                               [{"document_id": a["document_id"], "album_id": album_id,
                                 "titre": a["titre"]}])
         conn.commit()
+        # `repondra` : qui y répondra — un propriétaire qui tient toutes les collections de
+        # la copie, sinon un administrateur seul (Hugo, 2026-10-17 : le message ne ment pas).
         return JSONResponse(status_code=202,
-                            content={"etat": DEMANDE, "demande_id": demande_id})
+                            content={"etat": DEMANDE, "demande_id": demande_id,
+                                     "repondra": ("proprietaire" if qui == "son propriétaire"
+                                                  else "administrateur")})
     ranger_copie(conn, album_id, collection_id)
     conn.commit()
     return list_collections_album(album_id, conn, portee)

@@ -25,7 +25,8 @@ from typing import Optional
 
 import autorisation
 from annuaire import GROUPES_DE_ROLE, Lecture
-from database import NOM_COLLECTION_DEFAUT, collections
+from database import (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
+                      NOM_COLLECTION_DEFAUT, collections)
 
 # Tranché par Hugo le 2026-09-17 : une reprise d'identité ne s'efface jamais du journal, et un
 # mariage laisse la même trace. Sans fenêtre, le signal ne s'éteindrait jamais, et une liste
@@ -316,8 +317,11 @@ def _demandes_en_attente(conn) -> list:
     """Les demandes qui attendent une réponse (COL-3, tranche 2), les plus anciennes
     d'abord : `(id, genre)`. Ce que la demande dit — qui, quoi, pourquoi — se lit dans
     `GET /api/demandes` ; « À regarder » ne porte que de quoi y mener."""
+    # Les SUPPRESSIONS seules (COL-3, tranche 3a) : « À regarder » mène à « À faire », qui
+    # ne sait lire qu'elles — une entrée ou un rejoindre y mènerait à une ligne absente.
     return [(r[0], r[1]) for r in conn.execute(
-        "SELECT id, genre FROM demande WHERE reponse IS NULL ORDER BY id")]
+        "SELECT id, genre FROM demande WHERE reponse IS NULL AND genre IN (?, ?) "
+        "ORDER BY id", (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET))]
 
 
 def a_regarder(comptes: list, groupes: list, collections_sortie: list,

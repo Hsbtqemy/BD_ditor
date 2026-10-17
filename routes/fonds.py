@@ -51,7 +51,8 @@ from database import (DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE,
                       GENRES_DEMANDE, LONGUEUR_MOTIF, NATURE_COLLECTIF, REPONSE_ACCEPTEE,
                       REPONSE_REFUSEE, REPONSES_DEMANDE, collection_de_base, collection_row,
                       etat_des_reponses, noms_lisibles, projet_d_album, projet_de_collection,
-                      ranger_copie, rangement_traverse, sql_projet_d_album)
+                      ranger_copie, rangement_traverse, sql_projet_d_album,
+                      un_proprietaire_tient_toute_la_copie)
 
 from socle import (
     DEMANDE, FAIT, REFUSE, DemandeIn, PriseIn, ReponseIn, _clore_demandes, _deposer,
@@ -547,7 +548,8 @@ def _faire_entrer(conn, portee, d: dict, ligne: dict) -> int:
     if source is None:
         raise HTTPException(409, f"« {ligne['titre']} » n'est plus au fonds — détruit depuis "
                                  "la demande : refusez cette ligne.")
-    return _nouvelle_copie(conn, portee, ligne["document_id"], collection_id, source)
+    return _nouvelle_copie(conn, portee, ligne["document_id"], collection_id, source,
+                           pour=d["demandeur"])
 
 
 def _accepter_un_rejoindre(conn, portee, d: dict, copie) -> None:
@@ -768,6 +770,15 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
                            and (portee.tout or c["id"] in lues)), None)
             if source is None:
                 raise HTTPException(404, f"Album {ligne.album_id} introuvable")
+            # La source d'une copie vierge est une copie de CE projet (relecture croisée) :
+            # nommer une copie d'un autre projet ferait entrer sa notice et ses scans ici
+            # sans que personne y consente — entre deux projets, c'est le responsable qui
+            # demande au fonds, et un administrateur qui accepte (D3).
+            if not portee.tout and source["projet_id"] != projet_id:
+                return {**plan, "etat": REFUSE,
+                        "motif": "Cette copie vit dans un autre projet : faire entrer ce "
+                                 "document dans celui-ci se demande par son responsable, "
+                                 "depuis les notices du fonds."}
         else:
             source = (du_projet_lues or copies)[0]
         plan["source"], plan["titre"] = source["id"], source["titre"]
@@ -795,6 +806,13 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
     # REPRENDRE une copie gardée au fonds de CE projet (geste 6) — le « Rendre » de
     # l'administrateur, qu'un responsable DEMANDE : la copie porte un travail fait dans une
     # collection qu'il ne lit peut-être pas.
+    # Le droit AVANT l'objet (relecture croisée) : à qui n'est ni responsable du projet ni
+    # administrateur, le même refus, qu'une copie y soit gardée ou non — sinon la réponse
+    # disait l'existence d'une copie gardée au fonds, que seul le fonds montre.
+    if not (portee.tout or gere):
+        return {**plan, "etat": REFUSE,
+                "motif": "Reprendre une copie gardée au fonds se demande par un responsable "
+                         "du projet."}
     gardees = [c for c in copies if not c["range"] and c["projet_id"] == projet_id
                and (ligne.album_id is None or c["id"] == ligne.album_id)]
     if not gardees:
@@ -803,12 +821,8 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
     plan["album_id"], plan["titre"] = gardees[0]["id"], gardees[0]["titre"]
     if portee.tout:
         plan["etat"] = FAIT
-    elif gere:
-        plan["etat"], plan["genre"] = DEMANDE, DEMANDE_ENTREE_DOCUMENTS
     else:
-        plan["etat"] = REFUSE
-        plan["motif"] = ("Reprendre une copie gardée au fonds se demande par un responsable "
-                         "du projet.")
+        plan["etat"], plan["genre"] = DEMANDE, DEMANDE_ENTREE_DOCUMENTS
     return plan
 
 
@@ -872,10 +886,15 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
         if p["etat"] == DEMANDE and p["genre"] == DEMANDE_REJOINDRE:
             p["demande_id"] = _deposer(conn, portee, DEMANDE_REJOINDRE, collection,
                                        projet_id, motif, [p])
+            # Qui y répondra (Hugo, 2026-10-17 : le message ne ment pas) — un propriétaire
+            # qui tient toutes les collections de la copie, sinon un administrateur seul.
+            p["repondra"] = ("proprietaire"
+                             if un_proprietaire_tient_toute_la_copie(conn, p["album_id"])
+                             else "administrateur")
     conn.commit()
     return {"collection_id": collection_id,
             "documents": [{k: p[k] for k in ("document_id", "reponse", "etat", "copie_id",
-                                             "demande_id", "motif") if k in p}
+                                             "demande_id", "repondra", "motif") if k in p}
                           for p in plans]}
 
 
