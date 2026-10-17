@@ -326,7 +326,7 @@ DÉCLARE par `# noqa: F401`, que le test lit au lieu de connaître le cas par c�
 
 Deux paliers de métadonnées descriptives (FAIR/dépôt, cf. `docs/dictionnaire-metadonnees.md`) : la **collection** (`collection` ↔ `collection_album` N-N, unité de dépôt, v14) regroupe des albums pour une étude ; la **paternité** N0 des albums vit dans `contribution` ↔ `contribution_role` (Zotero-like, rôle contrôlé-ouvert, v15), plus des colonnes d'édition (`date_edition`, `isbn`…). `albums.auteur`/`annee` restent *legacy*.
 
-**La ligne `albums` est une COPIE DE TRAVAIL d'un DOCUMENT** (COL-3, tranche 2, v30, 2026-10-16). `document` porte ce qui appartient à l'instance et survit à ses copies : une identité, et une ORIGINE — qui a importé (`importe_par`, un login ; NULL pour tout album d'avant la v30, dont l'import n'a été écrit nulle part, et en mono-poste), quand, dans quel projet d'abord (`projet_origine_id`, un fait sans clé étrangère). La copie porte deux attaches, `albums.document_id` et `albums.projet_id`, nullables et à clé sans action ; le projet est ÉCRIT sur elle parce qu'une copie retirée de toute collection n'en aurait plus aucun à lire, et NULL se lit « le projet de ses collections » à un seul endroit, `database.sql_projet_d_album` — NULL sans collection veut dire que la copie n'a JAMAIS eu de projet (importée au fonds), pas qu'elle est du repli. La notice, les planches et le travail restent sur la copie. Le FONDS n'est pas une table : c'est l'ensemble des documents, dont certains ne sont appelés par aucune collection. **La provenance de chaque copie vit dans `copie`** (v31, COL-3, tranche 3), une ligne par album, hors d'`albums` que trois routes rendent par `a.*` : qui l'a créée (`creee_par`, un login — l'importateur pour la copie d'origine, NULL pour l'avant-fonds et le mono-poste), quand, d'où (`depuis_album_id`, sans clé) et jusqu'à quel cran (`cran` : `origine`, `images`). `document.projet_origine_nom` garde le nom du projet d'origine, écrit à l'import — photographié le jour de la migration pour l'existant —, et c'est par lui que le fonds dit l'origine. Un document n'a encore qu'UNE copie : la route qui fait naître une sœur est la suite de la tranche 3. Les sites qui ne l'auraient pas supportée sont déjà écrits pour deux : une demande se cherche par COPIE (`demande_document.album_id`), accepter ne détruit que la copie demandée, « l'avoir importé » se lit sur la copie, et les images s'effacent par référence (§ Chemins). Deux tables de demande (`demande`, `demande_document`) portent les demandes de suppression (cf. § Autorisation). Rien de cela ne sort au dépôt : les deux colonnes d'`albums` sont RETENUES de l'export (`main._EXPORT_ALBUM_RETENUES`, la première retenue de cette table), aucun outil de sortie ne lit `document` ni `demande`, et les actes du journal qui les concernent sont dans `tools/_commun.CIBLES_RETENUES`.
+**La ligne `albums` est une COPIE DE TRAVAIL d'un DOCUMENT** (COL-3, tranche 2, v30, 2026-10-16). `document` porte ce qui appartient à l'instance et survit à ses copies : une identité, et une ORIGINE — qui a importé (`importe_par`, un login ; NULL pour tout album d'avant la v30, dont l'import n'a été écrit nulle part, et en mono-poste), quand, dans quel projet d'abord (`projet_origine_id`, un fait sans clé étrangère). La copie porte deux attaches, `albums.document_id` et `albums.projet_id`, nullables et à clé sans action ; le projet est ÉCRIT sur elle parce qu'une copie retirée de toute collection n'en aurait plus aucun à lire, et NULL se lit « le projet de ses collections » à un seul endroit, `database.sql_projet_d_album` — NULL sans collection veut dire que la copie n'a JAMAIS eu de projet (importée au fonds), pas qu'elle est du repli. La notice, les planches et le travail restent sur la copie. Le FONDS n'est pas une table : c'est l'ensemble des documents, dont certains ne sont appelés par aucune collection. **La provenance de chaque copie vit dans `copie`** (v31, COL-3, tranche 3), une ligne par album, hors d'`albums` que trois routes rendent par `a.*` : qui l'a créée (`creee_par`, un login — l'importateur pour la copie d'origine, NULL pour l'avant-fonds et le mono-poste), quand, d'où (`depuis_album_id`, sans clé) et jusqu'à quel cran (`cran` : `origine`, `images`). `document.projet_origine_nom` garde le nom du projet d'origine, écrit à l'import — photographié le jour de la migration pour l'existant —, et c'est par lui que le fonds dit l'origine. **Un document peut avoir plusieurs copies SŒURS** depuis la tranche 3a (`database.creer_copie`, cran `images` : une copie VIERGE, sa notice et ses contributions recopiées — D7 —, ses planches désignant les MÊMES fichiers — D6 —, née dans le projet de la collection qui la prend, jamais celui de sa source, et sa naissance écrite sous le document) ; les images ne quittent le disque que lorsque plus aucune planche ne les désigne, effacées SOUS LE VERROU d'écriture repris après le commit (`socle._sous_le_verrou`), et le document part avec sa dernière copie (D5) — la destruction d'une sœur s'écrit sous le document, `avant` seul. Les sites qui ne l'auraient pas supportée sont déjà écrits pour deux : une demande se cherche par COPIE (`demande_document.album_id`), accepter ne détruit que la copie demandée, « l'avoir importé » se lit sur la copie, et les images s'effacent par référence (§ Chemins). Deux tables de demande (`demande`, `demande_document`) portent les demandes de suppression (cf. § Autorisation). Rien de cela ne sort au dépôt : les deux colonnes d'`albums` sont RETENUES de l'export (`main._EXPORT_ALBUM_RETENUES`, la première retenue de cette table), aucun outil de sortie ne lit `document` ni `demande`, et les actes du journal qui les concernent sont dans `tools/_commun.CIBLES_RETENUES`.
 
 Le master TIFF va dans `corpus/`, un dérivé web JPEG à 25 % (`WEB_SCALE` dans `config.py`) dans `derivatives/` ; les deux dossiers sont gitignore.
 
@@ -413,7 +413,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   (reproduit). Qui n'écrit que d'un côté garde un geste, qui ne détruit rien : SORTIR
   l'album de sa collection — un aller simple pour lui si c'était la seule où il y ÉCRIVAIT
   (ranger demande d'écrire dans l'album : il n'y écrit plus, qu'il continue de le lire par
-  une autre collection ou non), que défait qui écrit des deux côtés ou un administrateur ;
+  une autre collection ou non), que défait le propriétaire de chacune des collections où
+  l'album vit encore, ou un administrateur — ranger est REJOINDRE depuis la tranche 3a, et
+  écrire des deux côtés ne suffit plus (cf. « Prendre un document », plus bas) ;
   l'écran le fait confirmer, et dit lequel des deux il perd. Le refus est un **403 nommé** — il ne vient qu'APRÈS l'accesseur gardé
   en écriture, donc sur un album qu'on lit et annote — et il révèle qu'une AUTRE collection
   porte l'album, jamais laquelle : accepté par écrit, l'éviter demandait une corbeille (la
@@ -476,6 +478,42 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   sinon été nommée aux lectrices du corpus principal). Le fonds et les demandes sont à la
   seule portée totale (`peut_tenir_le_fonds`) : leurs routes refusent sur le DROIT, avant de
   chercher l'objet, le même 403 que l'objet existe ou non. Cf. `docs/modele-et-droits.md`.
+- **Prendre un document, REJOINDRE un travail** (COL-3, tranche 3a ; D3, D4 stricte, D9,
+  D10, D11, Hugo, 2026-10-17). Une collection PREND des documents
+  (`POST /api/collections/{id}/prendre`, une liste, le résultat document par document :
+  `fait`, `demande`, `refuse`) ; `POST /api/projets/{id}/prendre` fait la même prise pour la
+  collection de BASE du projet, que le client n'a pas à connaître. Trois réponses par
+  document. *Partir de zéro* — une copie vierge — se fait sans rien demander à qui LIT déjà
+  une copie du document dans le projet, et à la portée totale ; sinon le RESPONSABLE du
+  projet le DEMANDE (genre `entree_documents`, motif obligatoire, une demande pour tous les
+  documents d'une prise), et un administrateur répond DOCUMENT PAR DOCUMENT ou « tout
+  accepter » (`ReponseIn.document_id`) — la demande se clôt à la dernière réponse,
+  `acceptee`, `refusee` ou `partielle`, et chaque ligne acceptée dit sa copie (`copie_id`).
+  *Rejoindre* une copie qu'on LIT — la ranger ici — est immédiat pour qui ADMINISTRE
+  chacune des collections où elle vit (`Portee.clause_rejoindre_directe` ; une collection
+  sans propriétaire n'est tenue que par la portée totale ; la base, par ses propriétaires
+  dérivés) ; sinon il se DEMANDE (genre `rejoindre`) au propriétaire, qui le lit dans la
+  fiche de SA collection (`GET /api/collections/{id}/demandes`, avec qui demande et pour
+  quelle collection d'arrivée, accepté par écrit) et y répond (`Portee.peut_repondre_a` :
+  la première demande à laquelle répond qui ne tient pas le fonds). **« + Ranger ici »
+  est ce geste** : `PUT /api/albums/{id}/collections/{cid}` demande désormais de LIRE la
+  copie (et non d'y écrire) et répond 202 avec la demande quand il ne range pas — l'écran
+  d'aujourd'hui ne le dit que par une ligne de message dans la fiche, en attendant l'écran
+  de la prise (commit d'écran de la tranche). *Reprendre* une copie
+  du projet gardée au fonds se demande, même par le responsable (une entrée dont la ligne
+  nomme la copie gardée), et l'administrateur la reprend directement. Qui NOMME quoi : la
+  portée totale et le responsable du projet d'arrivée nomment tout document du fonds — ils
+  en lisent les NOTICES (`GET /api/fonds/notices`, `Portee.peut_lire_les_notices` : titre,
+  série, auteur, et aucune autre clé ; cherchées sans égard aux accents, par pages ; pour
+  un projet qu'on gère, `dans_le_projet` et `garde_au_fonds`, jamais dans quelle
+  collection) ; tout autre écrivain ne nomme qu'un document dont il lit une copie dans le
+  projet, et un autre lui est INTROUVABLE (404, le même qu'un identifiant qui n'existe pas,
+  et la prise entière s'arrête). Le responsable lit ses entrées dans la fiche de son projet
+  (`GET /api/projets/{id}/demandes`). `copie.creee_par` est le login de qui FAIT le geste —
+  l'administrateur qui accepte une entrée, pas le responsable qui l'a demandée : la forme
+  la plus fermée, à confirmer par Hugo. Supprimer une collection refuse les demandes qui la
+  nomment comme arrivée (son identifiant se réattribue). Deux genres naissent d'un geste et
+  ne se déposent pas par `POST /api/demandes` (422 nommé).
 - **Aucun album hors collection** (`database.collection_par_defaut`) : un orphelin ne
   correspondrait à aucune règle, et il faudrait inventer une politique dans le code. La
   création d'album accepte `collection_id` et retombe sinon sur la collection de repli.
@@ -638,14 +676,17 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   mono-poste lisent encore dans la Recherche et l'Exploration le texte d'une copie gardée
   au fonds : leur portée totale la lit.
 - **Une garde d'interface se pose sur l'ACTE, jamais sur l'écran qui le contient.** Le
-  serveur distingue dix-sept questions — dix jusqu'au 2026-10-10 (`peut_lire` /
+  serveur distingue vingt questions — dix jusqu'au 2026-10-10 (`peut_lire` /
   `peut_ecrire` / `peut_administrer` / `peut_exporter`, `clause_album` /
   `clause_destruction` / `clause_terme` / `peut_ecrire_terme` / `peut_ecrire_quelque_part`
   / `peut_exporter_quelque_part`), quatorze jusqu'au 2026-10-16 avec les quatre du projet
   (`est_du_projet` / `peut_gerer_projet` / `peut_decider_des_projets` / `clause_projet`,
-  COL-3), et les trois du fonds (`clause_suppression_directe` / `peut_tenir_le_fonds` /
-  `peut_nommer_le_demandeur`, COL-3, tranche 2) ; le client en reçoit sept par une clé —
-  six jusqu'au 2026-10-16 —, et deux par la FORME d'une réponse (ci-dessous). Une projet
+  COL-3), les trois du fonds (`clause_suppression_directe` / `peut_tenir_le_fonds` /
+  `peut_nommer_le_demandeur`, COL-3, tranche 2 — la dernière nomme aussi qui demande à qui
+  doit CONSENTIR à un `rejoindre`), dix-sept jusqu'au 2026-10-17, et les trois de la prise
+  (`peut_lire_les_notices` / `clause_rejoindre_directe` / `peut_repondre_a`, COL-3,
+  tranche 3a) ; le client en reçoit huit par une clé — six jusqu'au 2026-10-16, sept
+  jusqu'au 2026-10-17 —, et trois par la FORME d'une réponse (ci-dessous). Une projet
   par projet, dans `GET /api/projets` : `gerable`
   (`mon_role` l'accompagne comme `mon_niveau` accompagne une collection : il dit sous quel
   rôle on y figure, et vaut `null` pour une portée totale, qui règle tout sans figurer
@@ -669,10 +710,13 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   identifiant, ni place dans le nombre : la liste est PARTIELLE, comme celle d'un album, et
   ce qu'on peut faire dans chacune se croise avec `GET /api/collections`
   (`tests/test_appartenance_albums.py`, joué sous six identités et sur le JSON brut). Les
-  deux réponses qui passent par la forme : « tenir le fonds » se lit au statut de
+  trois réponses qui passent par la forme : « tenir le fonds » se lit au statut de
   `GET /api/fonds` (200 ou 403), comme la version servie ; « nommer le demandeur », à la
   PRÉSENCE de `demandeur` et `demandeur_nom` dans la demande d'un album — absentes, elles
-  ne valent pas `null`. Partout ailleurs, `peut_ecrire` ne traverse pas : l'UI découvre un refus
+  ne valent pas `null` ; « lire les notices », au statut de `GET /api/fonds/notices`. La
+  huitième clé (COL-3, tranche 3a) : `repondable`, demande par demande dans
+  `GET /api/collections/{id}/demandes` — `peut_repondre_a`, posée sur la copie visée.
+  Partout ailleurs, `peut_ecrire` ne traverse pas : l'UI découvre un refus
   d'écriture en recevant son 403. Tant que cette asymétrie tient, tout ce
   qu'on ajoute dans un panneau gardé hérite de sa garde **par défaut et non par décision** :
   c'est ainsi que le référent d'AUTH-4, une simple ADRESSE, s'est retrouvé derrière la

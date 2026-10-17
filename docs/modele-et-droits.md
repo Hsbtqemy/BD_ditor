@@ -102,10 +102,11 @@ Trois règles en découlent, qu'il vaut mieux connaître avant de les rencontrer
   Le **supprimer** est l'exception, et il a deux sens, décrits plus bas (*Le fonds*) :
   le supprimer **de la collection** ne détruit rien — l'album reste entier pour les autres
   collections, ou il est gardé au fonds —, le supprimer **définitivement** l'efface pour
-  tout le monde. Le premier geste se défait par qui écrit des deux côtés ou par un
-  administrateur, pas par celui qui n'y écrivait que par cette collection : ranger un album
-  demande d'y écrire, et il n'y écrit plus — qu'il continue de le lire par une autre
-  collection ou non.
+  tout le monde. Le premier geste se défait par le propriétaire de chacune des collections
+  où l'album vit encore, ou par un administrateur : ranger un album, c'est *rejoindre* son
+  travail, et cela se consent (§2, *Le fonds*, « Prendre un document »). Qui écrit des deux
+  côtés sans posséder le demande ; celui qui n'y écrivait que par cette collection ne le
+  voit plus, et ne peut plus rien demander.
 - **Un album naît dans une collection** — sauf quand un administrateur l'importe directement
   au fonds (plus bas). Créé sans collection explicite, il entre dans la *Collection par
   défaut*. Ce nom est **réservé** : personne ne peut le donner à une
@@ -305,10 +306,37 @@ collection n'appelle ; et **importer au fonds** — un album qui naît sans coll
 projet, « appelé par personne », pour être distribué ensuite : il prend le projet de la
 première collection où on le range.
 
-**Ce que le fonds ne fait pas encore.** Un document n'a qu'une copie : en prendre une
-seconde dans une autre collection ou un autre projet, en partant du travail existant ou de
-zéro, viendra plus tard. Et l'administrateur, comme l'usage sur un seul poste, lit encore
-dans la Recherche et l'Exploration le texte d'un album gardé au fonds : ces deux pages
+**Prendre un document.** Un document du fonds peut entrer dans une collection, de deux
+façons, et dans plusieurs projets à la fois : chaque projet qui le prend en a sa COPIE de
+travail, une *sœur* des autres.
+
+- **Partir de zéro** : une copie vierge — la notice et la paternité recopiées, puis libres
+  de diverger ; les mêmes images, sans rien dupliquer ; aucun travail. Elle naît dans le
+  projet de la collection qui la prend. Qui lit déjà une copie du document dans le projet
+  la prend sans rien demander. Sinon, c'est au **responsable** du projet de la demander : il
+  parcourt les *notices* du fonds — titre, série, auteur, et rien d'autre : ni qui l'a
+  importé, ni qui l'emploie —, coche plusieurs documents et les demande pour une collection
+  de son projet, motif à l'appui ; sans nommer de collection, ils arrivent dans la
+  collection de base. Un administrateur répond document par document, ou accepte tout ; la
+  demande dit ensuite *acceptée*, *refusée* ou *acceptée en partie*, et le responsable le
+  lit dans la fiche de son projet. Un administrateur prend directement.
+- **Rejoindre** le travail d'une autre collection du projet — ranger ici une copie qu'on
+  lit, c'est l'ancien « + Ranger ici ». C'est partager ce travail : la décision de qui le
+  tient. Immédiat si vous possédez chacune des collections où la copie vit ; sinon une
+  demande à leur propriétaire, qui la lit dans la fiche de sa collection — avec votre nom et
+  celui de la collection d'arrivée — et l'accepte ou la refuse. Une collection sans
+  propriétaire ne se rejoint que par un administrateur. Rejoindre ne traverse jamais deux
+  projets.
+
+Une copie gardée au fonds se **reprend** de la même façon : le responsable la demande, un
+administrateur la rend à une collection du projet. Une copie qui a une sœur se supprime
+seule : ses images restent tant qu'une sœur les emploie, et le document part avec sa
+dernière copie.
+
+**Ce que le fonds ne fait pas encore.** Partir du travail d'une autre copie — son découpage,
+sa transcription, ses annotations — viendra plus tard. Et l'administrateur, comme l'usage
+sur un seul poste, lit encore dans la Recherche et l'Exploration le texte d'un album gardé
+au fonds — et deux fois le texte d'un document dont il lit deux copies : ces deux pages
 portent sur tout ce qu'il lit, et il lit tout.
 
 ---
@@ -369,6 +397,8 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 | **Supprimer un album de la collection** — même la dernière : il est alors gardé au fonds | — | ✅ | ✅ | ✅ |
 | **Supprimer définitivement** un album ou une planche sans rien demander — à condition de l'avoir importé, que personne d'autre n'y ait travaillé, d'écrire dans *toutes* ses collections, et de ne pas être sous un compte partagé (§2, *Le fonds*) | — | ✅ | ✅ | ✅ |
 | **Demander** la suppression définitive d'un album, motif et certification à l'appui | — | ✅ | ✅ | — (il la fait) |
+| **Rejoindre** le travail d'une autre collection du projet (« + Ranger ici ») sans rien demander — à condition de posséder *chacune* des collections où il vit ; sinon le demander | — | demander | ✅ (les siennes) | ✅ |
+| **Répondre** à une demande de rejoindre une copie de sa collection | — | — | ✅ (s'il possède toutes les collections de la copie) | ✅ |
 | Tenir le **fonds** : le voir, répondre aux demandes, rendre une copie gardée, importer au fonds | — | — | — | ✅ |
 | Consulter le rapport d'accord **inter-annotateurs** (*👥 Inter*) | — | ✅ | ✅ | ✅ |
 | Accorder et retirer les accès de la collection | — | — | ✅ | ✅ |
