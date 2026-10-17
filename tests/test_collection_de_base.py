@@ -296,35 +296,59 @@ def test_l_outil_ne_supprime_pas_la_base(client, projet, db_path):
 
 
 # --------------------------------------------------------------------------- #
-# Le projet de repli : sa base est la collection de repli
+# Le projet de repli : une base NEUVE, comme tout projet (Hugo, 2026-10-17)
 # --------------------------------------------------------------------------- #
-def test_la_collection_de_repli_est_la_base_du_repli(client, derriere_proxy, db_path):
-    """Née d'un album créé sans collection, PROTÉGÉE : les membres du projet de repli — tous
-    ceux qui tenaient un accès à la migration v29 — n'y entrent pas sans qu'on l'ait décidé.
-    Renommée, elle reste la destination d'un album sans collection : désignée par son
-    drapeau, plus par son nom."""
-    assert client.post("/api/albums", json={"titre": "Sans collection"},
-                       headers=ADMIN).status_code == 201
+def test_le_projet_de_repli_nait_avec_une_base_neuve_et_protegee(client, derriere_proxy,
+                                                                  db_path):
+    """Sur une base neuve, le projet de repli naît avec sa base : de son nom, vide, PROTÉGÉE
+    — ses membres, tous ceux qui tenaient un accès à la migration v29, n'y entrent pas sans
+    qu'on l'ait décidé. La « Collection par défaut », qui naît d'un album créé sans
+    collection, n'en est PAS une : elle reste la collection de repli, désignée par son nom
+    réservé, et renommée, un nouveau seau renaît sous ce nom, comme avant la v31."""
     repli = _repli(db_path)
     base = _base(db_path, repli)
-    assert (base["nom"], base["acces_membres"]) == (database.NOM_COLLECTION_DEFAUT, None)
+    assert (base["nom"], base["acces_membres"]) == (database.NOM_PROJET_DEFAUT, None)
+    assert _sql(db_path, "SELECT 1 FROM collection_album WHERE collection_id = ?",
+                (base["id"],)) == []
     assert _membre(client, repli, "marc").status_code == 200
     assert _vues(client, MARC) == {}
-    assert client.patch(f"/api/collections/{base['id']}", json={"nom": "Le seau"},
+    assert client.post("/api/albums", json={"titre": "Sans collection"},
+                       headers=ADMIN).status_code == 201
+    defaut = _sql(db_path, "SELECT id, base FROM collection WHERE nom = ?",
+                  (database.NOM_COLLECTION_DEFAUT,))
+    assert [d["base"] for d in defaut] == [0]
+    assert _base(db_path, repli)["id"] == base["id"]
+    assert client.patch(f"/api/collections/{defaut[0]['id']}", json={"nom": "Le seau"},
                         headers=ADMIN).status_code == 200
     aid = client.post("/api/albums", json={"titre": "Encore"}, headers=ADMIN).json()["id"]
+    nouveau = _sql(db_path, "SELECT id FROM collection WHERE nom = ?",
+                   (database.NOM_COLLECTION_DEFAUT,))[0]["id"]
+    assert nouveau not in (defaut[0]["id"], base["id"])
     assert _sql(db_path, "SELECT collection_id FROM collection_album WHERE album_id = ?",
-                (aid,)) == [{"collection_id": base["id"]}]
-    assert _sql(db_path, "SELECT COUNT(*) AS n FROM collection WHERE base = 1 "
-                         "AND projet_id = ?", (repli,)) == [{"n": 1}]
+                (aid,)) == [{"collection_id": nouveau}]
 
 
-def test_la_position_du_repli_fait_naitre_sa_base(client, derriere_proxy, db_path):
-    """Régler la position du repli avant qu'aucun album sans collection ne l'ait fait naître
-    la crée : elle existe dès qu'on en décide."""
+def test_un_projet_de_repli_qui_renait_renait_avec_sa_base(client, derriere_proxy, db_path):
+    """Retiré à la main, le projet de repli renaît au premier besoin
+    (`database.projet_par_defaut`) — et, comme à la naissance de l'instance, avec sa base
+    neuve et protégée : la migration n'est plus là pour la lui donner."""
+    ancien = _repli(db_path)
+    _sql(db_path, "DELETE FROM collection WHERE projet_id = ?", (ancien,))
+    _sql(db_path, "DELETE FROM projet WHERE id = ?", (ancien,))
+    assert client.post("/api/collections", json={"nom": "Fait renaître le repli"},
+                       headers=ADMIN).status_code == 201
+    repli = _repli(db_path)
+    assert repli != ancien
+    assert (_base(db_path, repli)["nom"], _base(db_path, repli)["acces_membres"])         == (database.NOM_PROJET_DEFAUT, None)
+
+
+def test_la_position_du_repli_se_regle_sans_faire_naitre_la_collection_de_repli(
+        client, derriere_proxy, db_path):
     repli = _repli(db_path)
     assert _position(client, repli, "lecture").status_code == 200
     assert _base(db_path, repli)["acces_membres"] == "lecture"
+    assert _sql(db_path, "SELECT 1 FROM collection WHERE nom = ?",
+                (database.NOM_COLLECTION_DEFAUT,)) == []
 
 
 # --------------------------------------------------------------------------- #
@@ -372,17 +396,32 @@ def vraie_v30(tmp_path, monkeypatch):
     return db
 
 
-QUI = (("lea", ""), ("sam", ""), ("eve", "etudiants"), ("hugo", ""))
+# Les identités du décor v30 : les responsables du projet de repli (un compte, un groupe),
+# la responsable d'« Étude B », un membre des deux projets, une membre par son groupe, et
+# l'administrateur sans son groupe.
+QUI = (("lea", ""), ("sam", ""), ("eve", "etudiants"), ("hugo", ""), ("rita", ""),
+       ("ugo", "chefs"))
+RESPONSABLES = {"lea": "Étude B", "rita": database.NOM_PROJET_DEFAUT,
+                "ugo": database.NOM_PROJET_DEFAUT}
 
 
 def test_la_migration_designe_les_bases_protegees(vraie_v30):
+    """Chaque projet existant reçoit une base NEUVE, vide, PROTÉGÉE — le projet de repli
+    compris : la « Collection par défaut », habitée, n'en devient pas une (Hugo,
+    2026-10-17)."""
+    defaut = _sql(vraie_v30, "SELECT id FROM collection WHERE nom = ?",
+                  (database.NOM_COLLECTION_DEFAUT,))[0]["id"]
     database.init_db()
     bases = _sql(vraie_v30, "SELECT c.id, c.nom, c.projet_id, c.acces_membres, p.repli "
                             "FROM collection c JOIN projet p ON p.id = c.projet_id "
                             "WHERE c.base = 1 ORDER BY p.id")
     assert [(b["nom"], b["repli"], b["acces_membres"]) for b in bases] == [
-        (database.NOM_COLLECTION_DEFAUT, 1, None), ("Étude B", 0, None)]
-    assert _sql(vraie_v30, "SELECT COUNT(*) AS n FROM collection WHERE base = 1")[0]["n"] == 2
+        (database.NOM_PROJET_DEFAUT, 1, None), ("Étude B", 0, None)]
+    assert all(b["id"] > 4 for b in bases), "une collection existante est devenue une base"
+    assert _sql(vraie_v30, "SELECT base FROM collection WHERE id = ?", (defaut,)) \
+        == [{"base": 0}]
+    assert _sql(vraie_v30, "SELECT COUNT(*) AS n FROM collection_album WHERE collection_id "
+                           "IN (SELECT id FROM collection WHERE base = 1)")[0]["n"] == 0
     # Rejouée, elle n'en crée pas d'autre.
     _sql(vraie_v30, "PRAGMA user_version = 30")
     database.init_db()
@@ -391,29 +430,63 @@ def test_la_migration_designe_les_bases_protegees(vraie_v30):
 
 def test_aucune_portee_ne_grandit_a_la_migration(vraie_v30):
     """Avant : ce que `collection_acces` ouvre à chacun (la règle de la v30). Après : la
-    portée entière. Seule s'ajoute, aux responsables d'un projet, la base NEUVE de ce projet
-    — vide, et à eux, comme D10 le veut ; aucune collection existante ne s'ouvre, et aucun
-    simple membre ne reçoit rien."""
+    portée entière. Seule s'ajoute, aux responsables d'un projet — comptes et groupes —, la
+    base NEUVE et vide de ce projet, à eux en propriété comme D10 le veut ; aucune
+    collection existante ne s'ouvre, et aucun simple membre ne reçoit rien. Le décor porte
+    des responsables du projet de repli (un compte, un groupe) : sans eux, le test ne voyait
+    pas la collection de repli s'ouvrir (relecture croisée, constat 1)."""
     conn = sqlite3.connect(vraie_v30)
     avant = {login: autorisation.collections_du_principal(
         conn, login, [g for g in groupes.split(",") if g])[0:3] for login, groupes in QUI}
+    existantes = {r[0] for r in conn.execute("SELECT id FROM collection")}
     conn.close()
     database.init_db()
-    neuves = {r["id"] for r in _sql(vraie_v30, "SELECT id FROM collection WHERE base = 1 "
-                                               "AND id > 4")}
+    base_de = {r["nom"]: r["id"] for r in _sql(
+        vraie_v30, "SELECT c.id, p.nom FROM collection c JOIN projet p ON p.id = c.projet_id "
+                   "WHERE c.base = 1")}
     conn = database.get_connection()
     try:
         for login, groupes in QUI:
             p = autorisation.resoudre(conn, _Requete(login, groupes))
-            lecture_avant = frozenset().union(*avant[login])
-            ajout = p.lecture - lecture_avant
-            if login == "lea":                       # responsable d'« Étude B »
-                assert ajout == neuves and ajout <= p.propriete, (login, ajout)
-            else:
-                assert ajout == frozenset(), (login, ajout)
-            assert p.ecriture - frozenset().union(*avant[login][1:]) <= neuves
+            ajout = p.lecture - frozenset().union(*avant[login])
+            attendu = ({base_de[RESPONSABLES[login]]} if login in RESPONSABLES
+                       else set())
+            assert ajout == attendu and ajout <= p.propriete, (login, ajout, attendu)
+            # Et ce qui s'ajoute est NEUF : aucune collection d'avant ne s'ouvre, fût-elle
+            # devenue la base d'un projet (mutant : la « Collection par défaut »).
+            assert not ajout & existantes, (login, ajout & existantes)
+            assert p.ecriture - frozenset().union(*avant[login][1:]) <= attendu
     finally:
         conn.close()
+
+
+def test_la_migration_n_ouvre_pas_la_collection_de_repli_a_ses_responsables(vraie_v30):
+    """Recopié de la relecture croisée (`tests/test_relecture_t3a.py`, branche `relecture`,
+    `e6473a5`), le login changé (`rose` au lieu de `rita`, que le décor v30 nomme déjà
+    responsable du repli). La « Collection par défaut », habitée, désignée base du projet de
+    repli, s'ouvrait en propriété à tout responsable de ce projet — un nom qui n'ouvrait rien
+    en v30. Elle ne devient pas une base."""
+    c = sqlite3.connect(vraie_v30)
+    c.execute("INSERT INTO projet_acces (projet_id, genre, principal, role) "
+              "VALUES (1, 'utilisateur', 'rose', 'responsable')")
+    c.commit()
+    avant = autorisation.collections_du_principal(c, "rose", [])
+    c.close()
+    assert avant[:3] == (frozenset(), frozenset(), frozenset())
+    database.init_db()
+    conn = database.get_connection()
+    try:
+        p = autorisation.resoudre(conn, _Requete("rose"))
+        repli = conn.execute("SELECT id FROM collection WHERE nom = ?",
+                             (database.NOM_COLLECTION_DEFAUT,)).fetchone()[0]
+        habitee = conn.execute("SELECT COUNT(*) FROM collection_album WHERE collection_id = ?",
+                               (repli,)).fetchone()[0]
+    finally:
+        conn.close()
+    assert habitee > 0, "prémisse : la collection de repli porte des albums"
+    assert repli not in p.lecture, (
+        f"la migration a ouvert la collection de repli ({habitee} album(s)) à un "
+        f"responsable du projet de repli : {p!r}")
 
 
 # --------------------------------------------------------------------------- #

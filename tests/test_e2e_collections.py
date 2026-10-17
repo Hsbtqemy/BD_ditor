@@ -233,7 +233,8 @@ def test_supprimer_laisse_sa_confirmation_a_la_place_de_la_collection(page, deco
     rendues = page.locator("#col-body .col-item")
     rendues.first.wait_for(timeout=3000)
     ordre = [int(rendues.nth(i).get_attribute("data-id")) for i in range(rendues.count())]
-    assert len(ordre) == 4, ordre
+    # Les trois créées, la collection de repli du décor, et la base du projet de repli (D10).
+    assert len(ordre) == 5, ordre
     # Une collection vide, qu'on peut donc supprimer, et qui a une voisine de chaque côté.
     rang = next(k for k in range(1, len(ordre) - 1) if ordre[k] in crees)
     avant, cid, apres = ordre[rang - 1], ordre[rang], ordre[rang + 1]
@@ -280,11 +281,12 @@ def test_prendre_le_nom_du_repli_est_refuse_la_ou_l_on_a_agi(page, decor):
     rendues = page.locator("#col-body .col-item")
     rendues.first.wait_for(timeout=3000)
     ordre = [int(rendues.nth(i).get_attribute("data-id")) for i in range(rendues.count())]
-    assert len(ordre) == 3, ordre
+    # Les deux créées, la collection de repli du décor, et la base du projet de repli (D10).
+    assert len(ordre) == 4, ordre
     # La PREMIÈRE créée dans l'ordre d'affichage : quel que soit l'ordre que le serveur
     # donne à la liste, il en reste une dessous.
     cid = next(x for x in ordre if x in crees)
-    assert ordre.index(cid) < 2, ordre
+    assert ordre.index(cid) < len(ordre) - 1, ordre
 
     item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
     item.locator("summary").click()
@@ -630,10 +632,19 @@ def test_une_liste_vide_ne_promet_la_propriete_qu_a_qui_la_recevra(page, live_se
     une collection ne pose aucun propriétaire. Le serveur de test est neuf, donc SANS aucune
     collection : en mono-poste, aucune promesse ; derrière le proxy, une personne sans accès
     la reçoit, et c'est alors vrai. L'Administration avait la même liste ; elle l'a perdue
-    avec le panneau des accès (AUTH-12, étape 3)."""
+    avec le panneau des accès (AUTH-12, étape 3).
+
+    Depuis la tranche 3 (D10 ; Hugo, 2026-10-17), le projet de repli naît avec sa base : un
+    serveur neuf porte UNE collection, que le mono-poste lit. La liste n'y est plus vide, et
+    la note n'a rien à promettre ; elle se joue toujours derrière le proxy."""
     derriere_proxy = request.node.callspec.params["live_server"]
-    if derriere_proxy:
-        page.set_extra_http_headers({"Remote-User": "nadia"})
+    if not derriere_proxy:
+        page.goto(live_server + "/corpus", wait_until="networkidle")
+        page.locator("#col-body details.col-item").first.wait_for(timeout=5000)
+        assert page.locator("#col-body .col-note", has_text="Aucune collection ouverte") \
+            .count() == 0
+        return
+    page.set_extra_http_headers({"Remote-User": "nadia"})
     page.goto(live_server + "/corpus", wait_until="networkidle")
     note = page.locator("#col-body .col-note", has_text="Aucune collection ouverte")
     note.wait_for(timeout=5000)

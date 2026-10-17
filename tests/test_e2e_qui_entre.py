@@ -19,6 +19,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 from playwright.sync_api import expect  # noqa: E402
 
+import database  # noqa: E402
 from conftest import ECRITURE  # noqa: E402
 
 pytestmark = pytest.mark.e2e
@@ -396,6 +397,9 @@ def test_aucun_texte_d_ecran_ne_dit_principal_genre_ni_utilisateur(page, collect
     item.locator(".qe-msg.erreur").wait_for(timeout=3000)
     texte = page.evaluate(_TEXTES_D_UN_BLOC, "#collections-bloc")
     assert texte and "Qui entre" in texte
+    # Le NOM de la base du projet de repli (D10), « Projet principal », est une donnée et
+    # non un mot de l'écran : il s'efface avant le relevé.
+    texte = texte.replace(database.NOM_PROJET_DEFAUT, "")
     trouves = sorted({m.group(0) for m in _MOTS_DU_MODELE.finditer(texte)})
     assert not trouves, f"la Bibliothèque dit {trouves}"
 
@@ -403,7 +407,8 @@ def test_aucun_texte_d_ecran_ne_dit_principal_genre_ni_utilisateur(page, collect
                   f"?axe=collections&collection={cid}"):
         page.goto(base + "/administration" + suite, wait_until="networkidle")
         page.locator("#cg-fiche-titre").wait_for(timeout=5000)
-        texte = page.evaluate(_TEXTES_D_UN_BLOC, "#cg-bloc")
+        texte = page.evaluate(_TEXTES_D_UN_BLOC, "#cg-bloc").replace(
+            database.NOM_PROJET_DEFAUT, "")             # une donnée, cf. ci-dessus
         trouves = sorted({m.group(0) for m in _MOTS_DU_MODELE.finditer(texte)})
         assert not trouves, f"« Comptes et groupes » ({suite}) dit {trouves}"
 

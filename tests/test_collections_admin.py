@@ -334,8 +334,10 @@ def test_creer_sans_identite_est_refuse(client, derriere_proxy):
     """
     r = client.post("/api/collections", json={"nom": "créée par personne"})
     assert r.status_code == 403 and "identité" in r.json()["detail"]
-    # …et l'écriture n'a pas eu lieu, pour l'administrateur qui, lui, voit tout.
-    assert client.get("/api/collections", headers=ADMIN).json() == []
+    # …et l'écriture n'a pas eu lieu, pour l'administrateur qui, lui, voit tout : rien
+    # que la base du projet de repli, née avec lui (D10).
+    assert [c["base"] for c in client.get("/api/collections", headers=ADMIN).json()] \
+        == [True]
 
 
 def test_creer_sans_droit_mais_avec_identite_reste_permis(client, derriere_proxy):

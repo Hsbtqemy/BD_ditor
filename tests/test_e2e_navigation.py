@@ -675,16 +675,18 @@ def test_deux_bandes_navigation_au_dessus_des_outils(page, live_server, path):
 def test_creation_album_demande_sa_collection(page, seeded):
     """AUTH-2 — la collection est l'unité de cloisonnement : l'UI la demande à la création.
 
-    `seeded` a déjà créé un album, donc la collection de repli existe : il y en a
-    exactement une, et elle doit être PRÉSÉLECTIONNÉE — poser une question dont la
-    réponse est unique serait de la cérémonie, pas de l'explicite.
+    `seeded` a déjà créé un album, donc la collection de repli existe ; le projet de repli
+    porte aussi sa collection de base, née avec lui (D10). Deux collections : la question
+    se pose, rien n'est choisi d'office, et l'album entre dans celle qu'on choisit. (Une
+    collection SEULE est choisie d'office : `tests/test_e2e_projets.py`.)
     """
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.locator("#btn-new").click()
     expect(page.locator("#album-modal")).to_be_visible(timeout=15000)
     sel = page.locator("#m-collection")
     expect(page.locator("#m-collection-wrap")).to_be_visible()
-    expect(sel).not_to_have_value("")                       # présélectionnée
+    expect(sel).to_have_value("")                           # rien d'office : deux
+    sel.select_option(label="Collection par défaut")
     choisie = sel.input_value()
 
     page.fill("#m-titre", "Album rangé")

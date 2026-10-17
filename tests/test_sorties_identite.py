@@ -110,7 +110,9 @@ def seme(client, db_path, data_dir, png_bytes, derriere_proxy):
     perso = client.post("/api/personnages", json={"nom": "P"}, headers=ident).json()
     dim = client.post("/api/attributs/dimensions",
                       json={"cible": "case", "nom": "cadrage"}, headers=ident).json()
-    col = client.get("/api/collections", headers=ident).json()[0]
+    # La collection de l'album — pas « la première », qui est depuis la v31 la base du
+    # projet de repli, née avec lui et où l'album n'est pas.
+    col = client.get(f"/api/albums/{a['id']}/collections", headers=ident).json()[0]
     # AUTH-12, étape 3 — un accès NOMINATIF au login sentinelle. Sans lui, `…/acces` et
     # `…/annuaire` rendaient des listes vides et passaient pour muettes alors qu'elles portent
     # des logins : le trou relevé par UX-4 le 2026-09-13, fermé ici pour qu'une colonne

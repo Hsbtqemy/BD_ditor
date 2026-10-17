@@ -114,6 +114,8 @@ def _ramener_en_v28(db):
     `test_domaines.test_upgrade_reel_recree_les_index_de_migration`). Clés étrangères
     coupées par défaut sur une connexion brute : la chirurgie ne déclenche rien."""
     conn = sqlite3.connect(db)
+    # La base du projet de repli, née avec la base neuve (v31, D10), n'existait pas en v28.
+    conn.execute("DELETE FROM collection WHERE base = 1")
     conn.execute("DROP INDEX IF EXISTS idx_collection_projet")
     conn.execute("ALTER TABLE collection DROP COLUMN projet_id")
     conn.execute("DROP TABLE projet_acces")
@@ -226,7 +228,8 @@ def test_une_base_neuve_nait_avec_son_projet(client, db_path):
         "id": pid, "nom": database.NOM_PROJET_DEFAUT, "repli": True,
         "description": client.get("/api/projets").json()[0]["description"],
         "date_creation": client.get("/api/projets").json()[0]["date_creation"],
-        "mon_role": None, "gerable": True, "nb_collections": 0, "justification": None,
+        # COL-3, tranche 3 (D10) — sa collection de base, née avec lui.
+        "mon_role": None, "gerable": True, "nb_collections": 1, "justification": None,
         # COL-3, tranche 2 — la demande de suppression qui attend, à qui gère.
         "demande_suppression": None,
         # COL-3 — l'Administration dit « sans responsable » sans lire les membres un à un.
@@ -276,7 +279,9 @@ def test_les_chemins_d_ecriture_posent_tous_le_projet(client, db_path):
     code, _, err = _outil(db_path, "gerer_collections.py", "creer", "--nom", "Par l'outil")
     assert code == 0, err
     noms = {c["nom"] for c in _sql(db_path, "SELECT nom FROM collection")}
-    assert noms == {"Par la route", database.NOM_COLLECTION_DEFAUT, "Par l'outil"}
+    # La base du projet de repli (D10) est née avec lui, et pose son projet aussi.
+    assert noms == {"Par la route", database.NOM_COLLECTION_DEFAUT, "Par l'outil",
+                    database.NOM_PROJET_DEFAUT}
     assert database.collections_sans_projet(sqlite3.connect(db_path)) == []
     assert {c["projet_id"] for c in _sql(db_path, "SELECT projet_id FROM collection")} \
         == {_repli(db_path)}
@@ -565,7 +570,8 @@ def test_le_repli_ne_se_supprime_pas_meme_vide(client, db_path):
     """Le refus du repli tient à son DRAPEAU, pas aux collections qu'il porte : vide — une
     instance neuve —, il se refuse encore."""
     pid = _repli(db_path)
-    assert _sql(db_path, "SELECT 1 FROM collection") == []
+    # Vide : rien que sa collection de base, née avec lui (D10), qui ne le retient pas.
+    assert _sql(db_path, "SELECT 1 FROM collection WHERE base = 0") == []
     assert client.delete(f"/api/projets/{pid}").status_code == 409
     assert _repli(db_path) == pid
 

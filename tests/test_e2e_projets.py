@@ -314,7 +314,8 @@ def test_sans_stockage_le_choix_vaut_pour_la_page_et_rien_ne_leve(page, live_ser
     page.goto(live_server + "/corpus", wait_until="networkidle")
     page.locator("#col-body details.col-item").first.wait_for(timeout=5000)
     expect(page.locator("#projet-choix")).to_have_value(str(repli))
-    assert _collections_listees(page) == ["Corpus de départ"]
+    # La base du projet de repli d'abord, née avec lui (D10).
+    assert _collections_listees(page) == [database.NOM_PROJET_DEFAUT, "Corpus de départ"]
 
     page.locator("#projet-choix").select_option(str(second))
     expect(page.locator("#collections-projet")).to_have_text(
@@ -351,7 +352,8 @@ def test_la_bibliotheque_ne_liste_que_les_collections_du_projet_courant(page, de
     d = deux_projets
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
     page.locator("#col-body details.col-item").first.wait_for(timeout=5000)
-    assert _collections_listees(page) == ["Corpus de départ", "Incubateur"]
+    # La base du projet de repli d'abord, née avec lui (D10).
+    assert _collections_listees(page) == [database.NOM_PROJET_DEFAUT, "Corpus de départ", "Incubateur"]
     expect(page.locator("#collections-projet")).to_be_visible()
     expect(page.locator("#collections-projet")).to_have_text(
         f"Dans le projet « {database.NOM_PROJET_DEFAUT} »")
@@ -484,7 +486,7 @@ def test_sans_liste_de_projets_la_bibliotheque_reste_celle_d_avant(page, deux_pr
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
     page.locator("#col-body details.col-item").first.wait_for(timeout=5000)
     assert page.evaluate("() => window.BDProjets") is None
-    assert _collections_listees(page) == ["Séminaire 2026", "Projet sans rien",
+    assert _collections_listees(page) == [database.NOM_PROJET_DEFAUT, "Séminaire 2026", "Projet sans rien",
                                           "Corpus de départ", "Incubateur",
                                           "Étude des émotions"]
     expect(page.locator("#collections-projet")).to_be_hidden()
@@ -495,7 +497,7 @@ def test_sans_liste_de_projets_la_bibliotheque_reste_celle_d_avant(page, deux_pr
                              and r.url.endswith("/api/collections")) as partie:
         page.locator("#col-add").click()
     assert partie.value.post_data_json == {"nom": "Sans projet nommé"}
-    expect(page.locator("#col-body details.col-item")).to_have_count(6)
+    expect(page.locator("#col-body details.col-item")).to_have_count(7)
     assert not erreurs, erreurs
 
 
@@ -594,7 +596,8 @@ def test_un_nouvel_album_ne_se_voit_proposer_que_les_collections_du_projet_coura
     _bibliotheque(page, d["base"])
     _nouvel_album(page)
     expect(page.locator("#m-collection-wrap")).to_be_visible()
-    assert _proposees(page, "#m-collection") == ["— choisir —", "Corpus de départ", "Incubateur"]
+    assert _proposees(page, "#m-collection") == ["— choisir —", database.NOM_PROJET_DEFAUT, "Corpus de départ",
+                                                 "Incubateur"]
     expect(page.locator("#m-collection-note")).to_be_visible()
     expect(page.locator("#m-collection-note")).to_have_text(
         NOTE_FILTRE.format(database.NOM_PROJET_DEFAUT))
@@ -625,7 +628,8 @@ def test_la_liste_d_un_nouvel_album_suit_un_changement_de_projet(page, deux_proj
     d = deux_projets
     _bibliotheque(page, d["base"])
     _nouvel_album(page)
-    assert _proposees(page, "#m-collection") == ["— choisir —", "Corpus de départ", "Incubateur"]
+    assert _proposees(page, "#m-collection") == ["— choisir —", database.NOM_PROJET_DEFAUT, "Corpus de départ",
+                                                 "Incubateur"]
     page.evaluate("(id) => BDProjet.choisir(id)", d["second"])
     expect(page.locator("#m-collection option")).to_have_text(
         ["— choisir —", "Séminaire 2026", "Étude des émotions"])
@@ -694,37 +698,30 @@ def test_sans_collection_ou_ecrire_dans_le_projet_l_ecran_le_dit_et_rien_ne_part
     assert reponse.value.status == 201
 
 
-def test_la_collection_de_repli_dit_dans_quel_projet_elle_naitra(page, live_server):
-    """Aucune collection nulle part, et l'on écrit partout : l'album entrera dans la
-    collection par défaut, qui naît dans le projet de REPLI — dont elle est la collection de
-    base (D10). Et c'est bien là que le serveur le range.
-
-    Ce test nommait aussi le projet de repli quand l'on travaillait dans un AUTRE projet
-    sans aucune collection nulle part. Depuis la tranche 3 cet état n'existe plus : tout
-    projet naît avec sa base, où l'on écrit sous une portée totale. Il le constate : dans un
-    second projet, c'est sa base qui est proposée, et la note ne parle plus du repli."""
+def test_une_instance_neuve_propose_la_base_du_projet_de_repli(page, live_server):
+    """Une instance neuve n'est plus vide : le projet de repli y naît avec sa collection de
+    base (D10 ; Hugo, 2026-10-17), et c'est elle que « + Nouvel album » propose, choisie
+    d'office puisqu'elle est seule. La note « l'album entrera dans une collection par
+    défaut, créée à cette occasion » n'a plus d'état qui l'affiche à qui écrit partout —
+    à retirer avec l'écran (commit 3 de la tranche). La collection de repli, elle, ne naît
+    plus que d'un album créé SANS collection, par l'API : elle n'est pas la base."""
     repli = _repli(live_server)
     _bibliotheque(page, live_server)
     _nouvel_album(page)
-    expect(page.locator("#m-collection-note")).to_be_visible()
-    expect(page.locator("#m-collection-note")).to_have_text(NOTE_REPLI + ".")
+    expect(page.locator("#m-collection option")).to_have_text([database.NOM_PROJET_DEFAUT])
+    expect(page.locator("#m-collection-note")).to_be_hidden()
+    base = next(c["id"] for c in _api(live_server, "GET", "/api/collections") if c["base"])
     page.locator("#m-titre").fill("Premier album")
     with page.expect_request(lambda r: r.method == "POST"
                              and r.url.endswith("/api/albums")) as partie:
         page.locator("#m-save").click()
-    assert "collection_id" not in partie.value.post_data_json
+    assert partie.value.post_data_json["collection_id"] == base
     expect(page.locator("#album-modal")).to_be_hidden()
+    _api(live_server, "POST", "/api/albums", {"titre": "Sans collection"})
     assert [(c["nom"], c["projet_id"], c["base"])
             for c in _api(live_server, "GET", "/api/collections")] == [
-        (database.NOM_COLLECTION_DEFAUT, repli, True)]
-
-    second = _projet(live_server, "Séminaire 2026")
-    page.reload(wait_until="networkidle")
-    page.locator("#projet-choix").select_option(str(second))
-    expect(page.locator("#projet-choix")).to_have_value(str(second))
-    _nouvel_album(page)
-    expect(page.locator("#m-collection option")).to_have_text(["Séminaire 2026"])
-    expect(page.locator("#m-collection-note")).not_to_contain_text("collection par défaut")
+        (database.NOM_PROJET_DEFAUT, repli, True),
+        (database.NOM_COLLECTION_DEFAUT, repli, False)]
 
 
 def test_ranger_ici_ne_propose_que_les_collections_du_projet_de_l_album(page, deux_projets):
@@ -773,7 +770,7 @@ def test_ranger_ici_ne_propose_que_les_collections_du_projet_de_l_album(page, de
     # Dans l'autre sens : un album du repli.
     _changer_de_projet(page, d["repli"], database.NOM_PROJET_DEFAUT)
     _fiche_de_l_album(page, "Album du repli")
-    assert _proposees(page, "#m-appartenance-cible") == ["Incubateur"]
+    assert _proposees(page, "#m-appartenance-cible") == [database.NOM_PROJET_DEFAUT, "Incubateur"]
     expect(ligne).to_be_visible()
     expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format(database.NOM_PROJET_DEFAUT))
     assert "alerte" not in (ligne.get_attribute("class") or "")
@@ -818,7 +815,7 @@ def test_une_fiche_d_album_illisible_n_offre_aucun_geste_sur_le_precedent(page, 
     _bibliotheque(page, d["base"])
     _fiche_de_l_album(page, "Album précédent")
     expect(page.locator("#m-appartenance-liste li")).to_have_count(1)
-    assert _proposees(page, "#m-appartenance-cible") == ["Incubateur"]
+    assert _proposees(page, "#m-appartenance-cible") == [database.NOM_PROJET_DEFAUT, "Incubateur"]
     page.locator("#m-cancel").click()
 
     parties = []
@@ -1076,7 +1073,8 @@ def test_les_listes_d_un_album_n_attendent_pas_le_bloc_des_collections(page, deu
     expect(page.locator("#collections-projet")).to_be_hidden()     # le bloc n'a rien lu encore
 
     _nouvel_album(page)
-    assert _proposees(page, "#m-collection") == ["— choisir —", "Corpus de départ", "Incubateur"]
+    assert _proposees(page, "#m-collection") == ["— choisir —", database.NOM_PROJET_DEFAUT, "Corpus de départ",
+                                                 "Incubateur"]
     page.locator("#m-cancel").click()
     assert page.locator("#col-body details.col-item").count() == 0
     for route in tenues:
@@ -1114,12 +1112,13 @@ def test_avec_un_seul_projet_la_fiche_d_un_album_est_celle_d_avant(page, live_se
     _album(live_server, "Seul album", a1)
     _bibliotheque(page, live_server)
     _nouvel_album(page)
-    assert _proposees(page, "#m-collection") == ["— choisir —", "Corpus de départ", "Incubateur"]
+    assert _proposees(page, "#m-collection") == ["— choisir —", database.NOM_PROJET_DEFAUT, "Corpus de départ",
+                                                 "Incubateur"]
     expect(page.locator("#m-collection-note")).to_be_hidden()
     assert page.locator("#m-collection-note").text_content() == ""
     page.locator("#m-cancel").click()
     _fiche_de_l_album(page, "Seul album")
-    assert _proposees(page, "#m-appartenance-cible") == ["Incubateur"]
+    assert _proposees(page, "#m-appartenance-cible") == [database.NOM_PROJET_DEFAUT, "Incubateur"]
     expect(page.locator("#m-appartenance-projet")).to_be_hidden()
     assert page.locator("#m-appartenance-projet").text_content() == ""
 
@@ -1182,14 +1181,15 @@ def test_sans_liste_de_projets_les_deux_listes_d_un_album_restent_celles_d_avant
     assert page.evaluate("() => window.BDProjets") is None
     _nouvel_album(page)
     assert _proposees(page, "#m-collection") == [
-        "— choisir —", "Séminaire 2026", "Projet sans rien", "Corpus de départ",
-        "Incubateur", "Étude des émotions"]
+        "— choisir —", database.NOM_PROJET_DEFAUT, "Séminaire 2026", "Projet sans rien",
+        "Corpus de départ", "Incubateur", "Étude des émotions"]
     expect(page.locator("#m-collection-note")).to_be_hidden()
     page.locator("#m-cancel").click()
 
     _fiche_de_l_album(page, "Album du séminaire")
     assert _proposees(page, "#m-appartenance-cible") == [
-        "Séminaire 2026", "Projet sans rien", "Corpus de départ", "Incubateur"]
+        database.NOM_PROJET_DEFAUT, "Séminaire 2026", "Projet sans rien", "Corpus de départ",
+        "Incubateur"]
     expect(page.locator("#m-appartenance-projet")).to_be_hidden()
     assert not erreurs, erreurs
 

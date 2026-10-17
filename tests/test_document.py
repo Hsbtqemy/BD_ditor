@@ -126,6 +126,8 @@ def _ramener_en_v29(db):
     `test_projets._ramener_en_v28`). Les index d'abord : SQLite refuse de retirer une
     colonne qu'un index nomme. Puis la dernière colonne avant l'avant-dernière."""
     conn = sqlite3.connect(db)
+    # La base du projet de repli, née avec la base neuve (v31, D10), n'existait pas en v29.
+    conn.execute("DELETE FROM collection WHERE base = 1")
     conn.execute("DROP INDEX IF EXISTS idx_albums_projet")
     conn.execute("DROP INDEX IF EXISTS idx_albums_document")
     conn.execute("ALTER TABLE albums DROP COLUMN projet_id")

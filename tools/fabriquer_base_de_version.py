@@ -29,8 +29,9 @@ Ce que le parcours pose, et pourquoi :
   dernier personnage — et la dernière planche, que seule la PORTÉE d'une activité nomme
   (une passe sans effet, par `journal.passe_ml` du code joué). Ce sont les identifiants
   qu'une migration ne doit pas rendre ;
-- à partir de la v30 (`_parcours_v30`, COL-3, tranche 3) : un second projet, son
-  responsable, un membre et un groupe membres ; la collection de repli ; une copie gardée
+- à partir de la v30 (`_parcours_v30`, COL-3, tranche 3) : deux responsables du projet de
+  repli (un compte, un groupe) ; un second projet, son responsable, un membre et un groupe
+  membres ; la collection de repli ; une copie gardée
   au fonds ; un album importé au fonds puis rendu ; des demandes de suppression en attente,
   refusée, acceptée ; une demande de suppression de projet ; deux projets supprimés vides,
   le plus grand identifiant de projet n'étant plus nommé que par le journal et une demande.
@@ -223,6 +224,11 @@ def _parcours_v30(c, principal: int, album_de_lea: int) -> dict:
     sans_collection = _ok(c.post("/api/albums", headers=ADMIN,
                                  json={"titre": "Album sans collection"}), 201)["id"]
     membre(repli, "sam", "membre")
+    # Des RESPONSABLES du projet de repli, un compte et un groupe : la v31 donne à chaque
+    # projet une base dont ses responsables sont propriétaires — rien d'existant ne doit
+    # s'ouvrir à eux (relecture croisée de la v31, constat 1).
+    membre(repli, "rita", "responsable")
+    membre(repli, "chefs", "responsable", genre="groupe")
     etude = _ok(c.post("/api/projets", headers=ADMIN, json={"nom": "Étude B"}), 201)["id"]
     membre(etude, "lea", "responsable")
     membre(etude, "sam", "membre")

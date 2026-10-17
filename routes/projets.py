@@ -37,7 +37,7 @@ from fastapi.responses import Response
 import autorisation
 import journal
 from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET, collection_de_base,
-                      collection_par_defaut, creer_collection_de_base, sql_projet_de)
+                      creer_collection_de_base, sql_projet_de)
 
 from socle import (
     AccesMembresIn, MembreIn, ProjetIn, ProjetUpdate, _get_projet, _rows, _supprimer_projet,
@@ -276,17 +276,12 @@ def regler_acces_membres(projet_id: int, payload: AccesMembresIn,
     Resserrer n'efface aucun travail : ce que les membres ont posé reste, ils cessent de le
     voir. C'est un changement d'ACCÈS, écrit au journal comme les autres (`lien` sous
     `collection_acces`, la base pour cible — non annulable, retenu de toute sortie) ; rien
-    ne s'écrit si rien ne change.
-
-    Le projet de repli n'a sa base qu'une fois sa collection de repli née : la régler la
-    fait naître (`database.collection_par_defaut`)."""
-    p = _get_projet(conn, portee, projet_id, gerer=True,
-                    motif="Régler ce que les membres d'un projet peuvent dans sa collection "
-                          "de base revient à son responsable.")
+    ne s'écrit si rien ne change."""
+    _get_projet(conn, portee, projet_id, gerer=True,
+                motif="Régler ce que les membres d'un projet peuvent dans sa collection "
+                      "de base revient à son responsable.")
     position = _position_valide(payload.acces_membres)
     base = collection_de_base(conn, projet_id)
-    if base is None and p["repli"]:
-        base = collection_par_defaut(conn)
     if base is None:
         # Un projet sans base : une base retouchée à la main. On ne la refait pas ici.
         raise HTTPException(409, "Ce projet n'a pas de collection de base : signalez-le à un "

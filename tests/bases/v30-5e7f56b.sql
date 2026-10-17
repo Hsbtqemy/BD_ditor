@@ -17,7 +17,7 @@
 --   demandes : {"en_attente": 1, "refusee": 2, "acceptee": 3, "projet_en_attente": 4, "projet_acceptee": 5}
 --   projets_supprimes : [3]
 --   max : {"albums": 8, "planches": 9, "regions": 12, "personnages": 2, "projet": 2, "collection": 4, "document": 8, "demande": 5}
---   comptes : {"albums": 7, "planches": 7, "regions": 12, "personnages": 2, "evenement": 107, "activite": 1, "tokens": 36, "annotations": 3, "recherche": 6, "projet": 2, "projet_acces": 4, "collection": 4, "document": 7, "demande": 5, "demande_document": 3}
+--   comptes : {"albums": 7, "planches": 7, "regions": 12, "personnages": 2, "evenement": 109, "activite": 1, "tokens": 36, "annotations": 3, "recherche": 6, "projet": 2, "projet_acces": 6, "collection": 4, "document": 7, "demande": 5, "demande_document": 3}
 --   activites : [["ocr", "{\"planche_id\": 8}"]]
 BEGIN TRANSACTION;
 CREATE TABLE activite (
@@ -32,7 +32,7 @@ CREATE TABLE activite (
     date_debut  TEXT DEFAULT (datetime('now')),
     date_fin    TEXT
 );
-INSERT INTO "activite" VALUES(1,'ocr','easyocr','moteur',NULL,NULL,'{"planche_id": 8}','{"crees": 0, "modifies": 0, "remplaces": 0}','2026-10-17 08:38:18','2026-10-17 08:38:18');
+INSERT INTO "activite" VALUES(1,'ocr','easyocr','moteur',NULL,NULL,'{"planche_id": 8}','{"crees": 0, "modifies": 0, "remplaces": 0}','2026-10-17 10:50:48','2026-10-17 10:50:48');
 CREATE TABLE albums (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     titre        TEXT NOT NULL,
@@ -82,13 +82,13 @@ CREATE TABLE albums (
     -- trouve, celles d'un commentaire comprises (cf. `collection.projet_id`). Un
     -- commentaire posé ENTRE elles rend « incomplete input » au test qui défait la v30.
 );
-INSERT INTO "albums" VALUES(1,'Album 1',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 08:38:11',1,1);
-INSERT INTO "albums" VALUES(2,'Album 2',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 08:38:17',2,1);
-INSERT INTO "albums" VALUES(3,'Album 3',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 08:38:17',3,1);
-INSERT INTO "albums" VALUES(5,'Album sans collection',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 08:38:19',5,1);
-INSERT INTO "albums" VALUES(6,'Gardée au fonds',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 08:38:19',6,2);
-INSERT INTO "albums" VALUES(7,'Importé au fonds',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 08:38:19',7,1);
-INSERT INTO "albums" VALUES(8,'Demande refusée',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 08:38:19',8,1);
+INSERT INTO "albums" VALUES(1,'Album 1',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 10:50:42',1,1);
+INSERT INTO "albums" VALUES(2,'Album 2',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 10:50:48',2,1);
+INSERT INTO "albums" VALUES(3,'Album 3',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 10:50:48',3,1);
+INSERT INTO "albums" VALUES(5,'Album sans collection',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 10:50:49',5,1);
+INSERT INTO "albums" VALUES(6,'Gardée au fonds',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 10:50:49',6,2);
+INSERT INTO "albums" VALUES(7,'Importé au fonds',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 10:50:49',7,1);
+INSERT INTO "albums" VALUES(8,'Demande refusée',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 10:50:49',8,1);
 CREATE TABLE annotation_tags (
     annotation_id  INTEGER REFERENCES annotations(id) ON DELETE CASCADE,
     tag_id         INTEGER REFERENCES tags(id) ON DELETE CASCADE,
@@ -104,9 +104,9 @@ CREATE TABLE annotations (
     date_creation      TEXT DEFAULT (datetime('now')),
     date_modification  TEXT DEFAULT (datetime('now'))
 );
-INSERT INTO "annotations" VALUES(1,2,'vu','2026-10-17 08:38:17','2026-10-17 08:38:17');
-INSERT INTO "annotations" VALUES(2,6,'vu','2026-10-17 08:38:17','2026-10-17 08:38:17');
-INSERT INTO "annotations" VALUES(3,10,'vu','2026-10-17 08:38:17','2026-10-17 08:38:17');
+INSERT INTO "annotations" VALUES(1,2,'vu','2026-10-17 10:50:48','2026-10-17 10:50:48');
+INSERT INTO "annotations" VALUES(2,6,'vu','2026-10-17 10:50:48','2026-10-17 10:50:48');
+INSERT INTO "annotations" VALUES(3,10,'vu','2026-10-17 10:50:48','2026-10-17 10:50:48');
 CREATE TABLE attribut_dimension (
     id             INTEGER PRIMARY KEY,
     cible          TEXT NOT NULL,              -- 'personnage' | 'case'
@@ -122,7 +122,7 @@ CREATE TABLE attribut_dimension (
     date_creation  TEXT DEFAULT (datetime('now')),
     UNIQUE(cible, nom)
 );
-INSERT INTO "attribut_dimension" VALUES(1,'case','cadrage',NULL,NULL,NULL,'provisoire',NULL,'2026-10-17 08:38:11');
+INSERT INTO "attribut_dimension" VALUES(1,'case','cadrage',NULL,NULL,NULL,'provisoire',NULL,'2026-10-17 10:50:42');
 CREATE TABLE attribut_valeur (
     id             INTEGER PRIMARY KEY,
     dimension_id   INTEGER NOT NULL REFERENCES attribut_dimension(id) ON DELETE CASCADE,
@@ -136,15 +136,15 @@ CREATE TABLE attribut_valeur (
     date_creation  TEXT DEFAULT (datetime('now')),
     UNIQUE(dimension_id, valeur)
 );
-INSERT INTO "attribut_valeur" VALUES(1,1,'gros plan',NULL,NULL,'provisoire',NULL,'2026-10-17 08:38:11');
+INSERT INTO "attribut_valeur" VALUES(1,1,'gros plan',NULL,NULL,'provisoire',NULL,'2026-10-17 10:50:42');
 CREATE TABLE bulle_locuteur (
     region_id      INTEGER PRIMARY KEY REFERENCES regions(id) ON DELETE CASCADE,
     personnage_id  INTEGER NOT NULL REFERENCES personnages(id) ON DELETE CASCADE,
     date_creation  TEXT DEFAULT (datetime('now'))
 );
-INSERT INTO "bulle_locuteur" VALUES(2,1,'2026-10-17 08:38:17');
-INSERT INTO "bulle_locuteur" VALUES(6,1,'2026-10-17 08:38:17');
-INSERT INTO "bulle_locuteur" VALUES(10,1,'2026-10-17 08:38:17');
+INSERT INTO "bulle_locuteur" VALUES(2,1,'2026-10-17 10:50:48');
+INSERT INTO "bulle_locuteur" VALUES(6,1,'2026-10-17 10:50:48');
+INSERT INTO "bulle_locuteur" VALUES(10,1,'2026-10-17 10:50:48');
 CREATE TABLE collection (
     id                INTEGER PRIMARY KEY,
     nom               TEXT NOT NULL,
@@ -180,10 +180,10 @@ CREATE TABLE collection (
     -- d'un commentaire comprises — et rend alors un schéma tronqué (« incomplete input »,
     -- mesuré sur 3.49 par le test de migration, qui défait la v29 de cette façon).
 );
-INSERT INTO "collection" VALUES(1,'Corpus principal',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 08:38:11',1);
-INSERT INTO "collection" VALUES(2,'Incubateur',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 08:38:11',1);
-INSERT INTO "collection" VALUES(3,'Collection par défaut','Créée automatiquement : tout album doit appartenir à une collection, qui est l''unité de cloisonnement des accès. Renommez-la et décrivez-la, ou déplacez ses albums vers des collections d''étude.',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 08:38:19',1);
-INSERT INTO "collection" VALUES(4,'Collection B',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 08:38:19',2);
+INSERT INTO "collection" VALUES(1,'Corpus principal',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 10:50:42',1);
+INSERT INTO "collection" VALUES(2,'Incubateur',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 10:50:42',1);
+INSERT INTO "collection" VALUES(3,'Collection par défaut','Créée automatiquement : tout album doit appartenir à une collection, qui est l''unité de cloisonnement des accès. Renommez-la et décrivez-la, ou déplacez ses albums vers des collections d''étude.',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 10:50:49',1);
+INSERT INTO "collection" VALUES(4,'Collection B',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-10-17 10:50:49',2);
 CREATE TABLE collection_acces (
     collection_id  INTEGER NOT NULL REFERENCES collection(id) ON DELETE CASCADE,
     genre          TEXT NOT NULL,       -- 'utilisateur' | 'groupe'
@@ -196,10 +196,10 @@ CREATE TABLE collection_acces (
     date_creation  TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (collection_id, genre, principal)
 );
-INSERT INTO "collection_acces" VALUES(1,'utilisateur','lea','ecriture',0,'2026-10-17 08:38:11');
-INSERT INTO "collection_acces" VALUES(2,'utilisateur','lea','ecriture',0,'2026-10-17 08:38:11');
-INSERT INTO "collection_acces" VALUES(1,'utilisateur','sam','ecriture',0,'2026-10-17 08:38:11');
-INSERT INTO "collection_acces" VALUES(4,'utilisateur','lea','proprietaire',0,'2026-10-17 08:38:19');
+INSERT INTO "collection_acces" VALUES(1,'utilisateur','lea','ecriture',0,'2026-10-17 10:50:42');
+INSERT INTO "collection_acces" VALUES(2,'utilisateur','lea','ecriture',0,'2026-10-17 10:50:42');
+INSERT INTO "collection_acces" VALUES(1,'utilisateur','sam','ecriture',0,'2026-10-17 10:50:42');
+INSERT INTO "collection_acces" VALUES(4,'utilisateur','lea','proprietaire',0,'2026-10-17 10:50:49');
 CREATE TABLE collection_album (
     collection_id  INTEGER NOT NULL REFERENCES collection(id) ON DELETE CASCADE,
     album_id       INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
@@ -227,13 +227,13 @@ CREATE TABLE contribution_role (
     marc           TEXT,                          -- code MARC Relators (ex. 'aut', 'art'), optionnel
     date_creation  TEXT DEFAULT (datetime('now'))
 );
-INSERT INTO "contribution_role" VALUES(1,'scénariste','creator','aut','2026-10-17 08:38:11');
-INSERT INTO "contribution_role" VALUES(2,'dessinateur','creator','art','2026-10-17 08:38:11');
-INSERT INTO "contribution_role" VALUES(3,'coloriste','contributor','clr','2026-10-17 08:38:11');
-INSERT INTO "contribution_role" VALUES(4,'encreur','contributor',NULL,'2026-10-17 08:38:11');
-INSERT INTO "contribution_role" VALUES(5,'lettreur','contributor',NULL,'2026-10-17 08:38:11');
-INSERT INTO "contribution_role" VALUES(6,'traducteur','contributor','trl','2026-10-17 08:38:11');
-INSERT INTO "contribution_role" VALUES(7,'préfacier','contributor','aui','2026-10-17 08:38:11');
+INSERT INTO "contribution_role" VALUES(1,'scénariste','creator','aut','2026-10-17 10:50:42');
+INSERT INTO "contribution_role" VALUES(2,'dessinateur','creator','art','2026-10-17 10:50:42');
+INSERT INTO "contribution_role" VALUES(3,'coloriste','contributor','clr','2026-10-17 10:50:42');
+INSERT INTO "contribution_role" VALUES(4,'encreur','contributor',NULL,'2026-10-17 10:50:42');
+INSERT INTO "contribution_role" VALUES(5,'lettreur','contributor',NULL,'2026-10-17 10:50:42');
+INSERT INTO "contribution_role" VALUES(6,'traducteur','contributor','trl','2026-10-17 10:50:42');
+INSERT INTO "contribution_role" VALUES(7,'préfacier','contributor','aui','2026-10-17 10:50:42');
 CREATE TABLE demande (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     genre          TEXT NOT NULL,
@@ -247,11 +247,11 @@ CREATE TABLE demande (
     repondu_par    TEXT,
     date_reponse   TEXT
 );
-INSERT INTO "demande" VALUES(1,'suppression_document','sam','Importé par erreur.','2026-10-17 08:38:19',1,'Projet principal','2026-10-17 08:38:19',NULL,NULL,NULL);
-INSERT INTO "demande" VALUES(2,'suppression_document','sam','Importé par erreur.','2026-10-17 08:38:19',1,'Projet principal','2026-10-17 08:38:19','refusee','hugo','2026-10-17 08:38:19');
-INSERT INTO "demande" VALUES(3,'suppression_document','sam','Importé par erreur.','2026-10-17 08:38:19',1,'Projet principal','2026-10-17 08:38:19','acceptee','hugo','2026-10-17 08:38:19');
-INSERT INTO "demande" VALUES(4,'suppression_projet','lea','Étude terminée.',NULL,2,'Étude B','2026-10-17 08:38:19',NULL,NULL,NULL);
-INSERT INTO "demande" VALUES(5,'suppression_projet','sam','Créé par erreur.',NULL,3,'Éphémère 2','2026-10-17 08:38:20','acceptee','hugo','2026-10-17 08:38:20');
+INSERT INTO "demande" VALUES(1,'suppression_document','sam','Importé par erreur.','2026-10-17 10:50:49',1,'Projet principal','2026-10-17 10:50:49',NULL,NULL,NULL);
+INSERT INTO "demande" VALUES(2,'suppression_document','sam','Importé par erreur.','2026-10-17 10:50:49',1,'Projet principal','2026-10-17 10:50:49','refusee','hugo','2026-10-17 10:50:49');
+INSERT INTO "demande" VALUES(3,'suppression_document','sam','Importé par erreur.','2026-10-17 10:50:49',1,'Projet principal','2026-10-17 10:50:49','acceptee','hugo','2026-10-17 10:50:49');
+INSERT INTO "demande" VALUES(4,'suppression_projet','lea','Étude terminée.',NULL,2,'Étude B','2026-10-17 10:50:49',NULL,NULL,NULL);
+INSERT INTO "demande" VALUES(5,'suppression_projet','sam','Créé par erreur.',NULL,3,'Éphémère 2','2026-10-17 10:50:49','acceptee','hugo','2026-10-17 10:50:49');
 CREATE TABLE demande_document (
     demande_id   INTEGER NOT NULL REFERENCES demande(id) ON DELETE CASCADE,
     document_id  INTEGER NOT NULL,
@@ -269,13 +269,13 @@ CREATE TABLE document (
     importe_le         TEXT DEFAULT (datetime('now')),
     projet_origine_id  INTEGER
 );
-INSERT INTO "document" VALUES(1,'lea','2026-10-17 08:38:11',1);
-INSERT INTO "document" VALUES(2,'sam','2026-10-17 08:38:17',1);
-INSERT INTO "document" VALUES(3,'lea','2026-10-17 08:38:17',1);
-INSERT INTO "document" VALUES(5,'hugo','2026-10-17 08:38:19',1);
-INSERT INTO "document" VALUES(6,'lea','2026-10-17 08:38:19',2);
-INSERT INTO "document" VALUES(7,'hugo','2026-10-17 08:38:19',NULL);
-INSERT INTO "document" VALUES(8,'lea','2026-10-17 08:38:19',1);
+INSERT INTO "document" VALUES(1,'lea','2026-10-17 10:50:42',1);
+INSERT INTO "document" VALUES(2,'sam','2026-10-17 10:50:48',1);
+INSERT INTO "document" VALUES(3,'lea','2026-10-17 10:50:48',1);
+INSERT INTO "document" VALUES(5,'hugo','2026-10-17 10:50:49',1);
+INSERT INTO "document" VALUES(6,'lea','2026-10-17 10:50:49',2);
+INSERT INTO "document" VALUES(7,'hugo','2026-10-17 10:50:49',NULL);
+INSERT INTO "document" VALUES(8,'lea','2026-10-17 10:50:49',1);
 CREATE TABLE domaine (
     id             INTEGER PRIMARY KEY,
     nom            TEXT NOT NULL UNIQUE,
@@ -298,113 +298,115 @@ CREATE TABLE evenement (
     apres        TEXT,                               -- JSON état après (NULL si suppression)
     date         TEXT DEFAULT (datetime('now'))
 );
-INSERT INTO "evenement" VALUES(1,NULL,'creation','hugo','humain','collection',1,NULL,'{"nom": "Corpus principal", "proprietaire": "hugo"}','2026-10-17 08:38:11');
-INSERT INTO "evenement" VALUES(2,NULL,'creation','hugo','humain','collection',2,NULL,'{"nom": "Incubateur", "proprietaire": "hugo"}','2026-10-17 08:38:11');
-INSERT INTO "evenement" VALUES(3,NULL,'lien','hugo','humain','collection_acces',1,NULL,'{"exporter": false, "genre": "utilisateur", "niveau": "ecriture", "principal": "lea"}','2026-10-17 08:38:11');
-INSERT INTO "evenement" VALUES(4,NULL,'lien','hugo','humain','collection_acces',2,NULL,'{"exporter": false, "genre": "utilisateur", "niveau": "ecriture", "principal": "lea"}','2026-10-17 08:38:11');
-INSERT INTO "evenement" VALUES(5,NULL,'lien','hugo','humain','collection_acces',1,NULL,'{"exporter": false, "genre": "utilisateur", "niveau": "ecriture", "principal": "sam"}','2026-10-17 08:38:11');
-INSERT INTO "evenement" VALUES(6,NULL,'creation','lea','humain','document',1,NULL,'{"album_id": 1, "titre": "Album 1"}','2026-10-17 08:38:11');
-INSERT INTO "evenement" VALUES(7,NULL,'lien','lea','humain','collection_album',1,NULL,'{"album_id": 1, "collection": "Corpus principal", "collection_id": 1}','2026-10-17 08:38:11');
-INSERT INTO "evenement" VALUES(8,NULL,'modification','lea','humain','document',1,NULL,'{"album_id": 1, "planche": {"id": 1, "numero": 1}}','2026-10-17 08:38:11');
-INSERT INTO "evenement" VALUES(9,NULL,'creation','lea','humain','regions',1,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 1, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 08:38:11');
-INSERT INTO "evenement" VALUES(10,NULL,'creation','lea','humain','regions',2,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 1, "planche_id": 1, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:11');
-INSERT INTO "evenement" VALUES(11,NULL,'modification','lea','humain','regions',2,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 1, "planche_id": 1, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 0 0", "ordre": 1, "parent_id": 1, "planche_id": 1, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:16');
-INSERT INTO "evenement" VALUES(12,NULL,'creation','lea','humain','annotations',2,NULL,'{"note": "vu", "tags": ["dialogue"]}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(13,NULL,'lien','lea','humain','bulle_locuteur',2,NULL,'{"personnage_id": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(14,NULL,'lien','lea','humain','personnage_presence',1,NULL,'{"personnage_id": 2}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(15,NULL,'lien','lea','humain','region_attribut',1,NULL,'{"valeur_id": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(16,NULL,'validation','lea','humain','planches',1,NULL,'{"validee": true}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(17,NULL,'modification','lea','humain','document',1,NULL,'{"album_id": 1, "planche": {"id": 2, "numero": 2}}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(18,NULL,'creation','lea','humain','regions',3,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 2, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(19,NULL,'creation','lea','humain','regions',4,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 3, "planche_id": 2, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(20,NULL,'modification','lea','humain','regions',4,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 3, "planche_id": 2, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 0 1", "ordre": 1, "parent_id": 3, "planche_id": 2, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(21,NULL,'creation','sam','humain','document',2,NULL,'{"album_id": 2, "titre": "Album 2"}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(22,NULL,'lien','sam','humain','collection_album',2,NULL,'{"album_id": 2, "collection": "Corpus principal", "collection_id": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(23,NULL,'modification','sam','humain','document',2,NULL,'{"album_id": 2, "planche": {"id": 3, "numero": 1}}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(24,NULL,'creation','sam','humain','regions',5,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 3, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(25,NULL,'creation','sam','humain','regions',6,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 5, "planche_id": 3, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(26,NULL,'modification','sam','humain','regions',6,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 5, "planche_id": 3, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 1 0", "ordre": 1, "parent_id": 5, "planche_id": 3, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(27,NULL,'creation','sam','humain','annotations',6,NULL,'{"note": "vu", "tags": ["dialogue"]}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(28,NULL,'lien','sam','humain','bulle_locuteur',6,NULL,'{"personnage_id": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(29,NULL,'lien','sam','humain','personnage_presence',5,NULL,'{"personnage_id": 2}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(30,NULL,'lien','sam','humain','region_attribut',5,NULL,'{"valeur_id": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(31,NULL,'validation','sam','humain','planches',3,NULL,'{"validee": true}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(32,NULL,'modification','sam','humain','document',2,NULL,'{"album_id": 2, "planche": {"id": 4, "numero": 2}}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(33,NULL,'creation','sam','humain','regions',7,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 4, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(34,NULL,'creation','sam','humain','regions',8,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 7, "planche_id": 4, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(35,NULL,'modification','sam','humain','regions',8,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 7, "planche_id": 4, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 1 1", "ordre": 1, "parent_id": 7, "planche_id": 4, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(36,NULL,'creation','lea','humain','document',3,NULL,'{"album_id": 3, "titre": "Album 3"}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(37,NULL,'lien','lea','humain','collection_album',3,NULL,'{"album_id": 3, "collection": "Incubateur", "collection_id": 2}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(38,NULL,'modification','lea','humain','document',3,NULL,'{"album_id": 3, "planche": {"id": 5, "numero": 1}}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(39,NULL,'creation','lea','humain','regions',9,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 5, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(40,NULL,'creation','lea','humain','regions',10,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 9, "planche_id": 5, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(41,NULL,'modification','lea','humain','regions',10,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 9, "planche_id": 5, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 2 0", "ordre": 1, "parent_id": 9, "planche_id": 5, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(42,NULL,'creation','lea','humain','annotations',10,NULL,'{"note": "vu", "tags": ["dialogue"]}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(43,NULL,'lien','lea','humain','bulle_locuteur',10,NULL,'{"personnage_id": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(44,NULL,'lien','lea','humain','personnage_presence',9,NULL,'{"personnage_id": 2}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(45,NULL,'lien','lea','humain','region_attribut',9,NULL,'{"valeur_id": 1}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(46,NULL,'validation','lea','humain','planches',5,NULL,'{"validee": true}','2026-10-17 08:38:17');
-INSERT INTO "evenement" VALUES(47,NULL,'modification','lea','humain','document',3,NULL,'{"album_id": 3, "planche": {"id": 6, "numero": 2}}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(48,NULL,'creation','lea','humain','regions',11,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 6, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(49,NULL,'creation','lea','humain','regions',12,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 11, "planche_id": 6, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(50,NULL,'modification','lea','humain','regions',12,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 11, "planche_id": 6, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 2 1", "ordre": 1, "parent_id": 11, "planche_id": 6, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(51,NULL,'creation','lea','humain','document',4,NULL,'{"album_id": 4, "titre": "Album 4"}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(52,NULL,'lien','lea','humain','collection_album',4,NULL,'{"album_id": 4, "collection": "Corpus principal", "collection_id": 1}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(53,NULL,'modification','lea','humain','document',4,NULL,'{"album_id": 4, "planche": {"id": 7, "numero": 1}}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(54,NULL,'creation','lea','humain','regions',13,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 7, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(55,NULL,'creation','lea','humain','regions',14,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 13, "planche_id": 7, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(56,NULL,'modification','lea','humain','regions',14,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 13, "planche_id": 7, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 3 0", "ordre": 1, "parent_id": 13, "planche_id": 7, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(57,NULL,'creation','lea','humain','annotations',14,NULL,'{"note": "vu", "tags": ["dialogue"]}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(58,NULL,'lien','lea','humain','bulle_locuteur',14,NULL,'{"personnage_id": 1}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(59,NULL,'lien','lea','humain','personnage_presence',13,NULL,'{"personnage_id": 2}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(60,NULL,'lien','lea','humain','region_attribut',13,NULL,'{"valeur_id": 1}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(61,NULL,'validation','lea','humain','planches',7,NULL,'{"validee": true}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(62,NULL,'modification','lea','humain','document',4,NULL,'{"album_id": 4, "planche": {"id": 8, "numero": 2}}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(63,NULL,'creation','lea','humain','regions',15,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 8, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(64,NULL,'creation','lea','humain','regions',16,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 15, "planche_id": 8, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(65,NULL,'modification','lea','humain','regions',16,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 15, "planche_id": 8, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 3 1", "ordre": 1, "parent_id": 15, "planche_id": 8, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(66,NULL,'modification','lea','humain','regions',2,'{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 0 0", "ordre": 1, "parent_id": 1, "planche_id": 1, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "AVANT ANNULER", "ordre": 1, "parent_id": 1, "planche_id": 1, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(67,NULL,'annulation','lea','humain','evenement',66,'{"acte": "modification", "cible_id": 2, "cible_table": "regions"}',NULL,'2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(68,NULL,'suppression','lea','humain','regions',16,'{"h": 9, "id": 16, "ocr_texte": "TINTIN ET LE OTAGE 3 1", "ordre": 1, "parent_id": 15, "planche_id": 8, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}',NULL,'2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(69,NULL,'modification','hugo','humain','document',4,'{"album_id": 4, "planche": {"id": 8, "numero": 2}}',NULL,'2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(70,NULL,'delien','hugo','humain','collection_album',4,'{"album_id": 4, "collection": "Corpus principal", "collection_id": 1}',NULL,'2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(71,NULL,'suppression','hugo','humain','document',4,'{"album_id": 4, "planches": 1, "titre": "Album 4"}',NULL,'2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(72,NULL,'lien','lea','humain','bulle_locuteur',2,'{"personnage_id": 1}','{"personnage_id": 3}','2026-10-17 08:38:18');
-INSERT INTO "evenement" VALUES(73,NULL,'lien','lea','humain','bulle_locuteur',2,'{"personnage_id": 3}','{"personnage_id": 1}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(74,NULL,'creation','hugo','humain','document',5,NULL,'{"album_id": 5, "titre": "Album sans collection"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(75,NULL,'lien','hugo','humain','collection_album',5,NULL,'{"album_id": 5, "collection": "Collection par défaut", "collection_id": 3}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(76,NULL,'lien','hugo','humain','projet_acces',1,NULL,'{"genre": "utilisateur", "principal": "sam", "role": "membre"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(77,NULL,'creation','hugo','humain','projet',2,NULL,'{"nom": "Étude B"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(78,NULL,'lien','hugo','humain','projet_acces',2,NULL,'{"genre": "utilisateur", "principal": "lea", "role": "responsable"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(79,NULL,'lien','hugo','humain','projet_acces',2,NULL,'{"genre": "utilisateur", "principal": "sam", "role": "membre"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(80,NULL,'lien','hugo','humain','projet_acces',2,NULL,'{"genre": "groupe", "principal": "etudiants", "role": "membre"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(81,NULL,'creation','lea','humain','collection',4,NULL,'{"nom": "Collection B", "proprietaire": "lea"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(82,NULL,'creation','lea','humain','document',6,NULL,'{"album_id": 6, "titre": "Gardée au fonds"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(83,NULL,'lien','lea','humain','collection_album',6,NULL,'{"album_id": 6, "collection": "Collection B", "collection_id": 4}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(84,NULL,'modification','lea','humain','document',6,NULL,'{"album_id": 6, "planche": {"id": 9, "numero": 1}}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(85,NULL,'delien','lea','humain','collection_album',6,'{"album_id": 6, "collection": "Collection B", "collection_id": 4}',NULL,'2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(86,NULL,'creation','hugo','humain','document',7,NULL,'{"album_id": 7, "titre": "Importé au fonds"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(87,NULL,'lien','hugo','humain','collection_album',7,NULL,'{"album_id": 7, "collection": "Corpus principal", "collection_id": 1}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(88,NULL,'creation','sam','humain','demande',1,NULL,'{"album_id": 1, "document_id": 1, "genre": "suppression_document"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(89,NULL,'creation','lea','humain','document',8,NULL,'{"album_id": 8, "titre": "Demande refusée"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(90,NULL,'lien','lea','humain','collection_album',8,NULL,'{"album_id": 8, "collection": "Corpus principal", "collection_id": 1}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(91,NULL,'creation','sam','humain','demande',2,NULL,'{"album_id": 8, "document_id": 8, "genre": "suppression_document"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(92,NULL,'modification','hugo','humain','demande',2,'{"reponse": null}','{"reponse": "refusee"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(93,NULL,'creation','lea','humain','document',9,NULL,'{"album_id": 9, "titre": "Demande acceptée"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(94,NULL,'lien','lea','humain','collection_album',9,NULL,'{"album_id": 9, "collection": "Corpus principal", "collection_id": 1}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(95,NULL,'modification','lea','humain','document',9,NULL,'{"album_id": 9, "planche": {"id": 10, "numero": 1}}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(96,NULL,'creation','sam','humain','demande',3,NULL,'{"album_id": 9, "document_id": 9, "genre": "suppression_document"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(97,NULL,'delien','hugo','humain','collection_album',9,'{"album_id": 9, "collection": "Corpus principal", "collection_id": 1}',NULL,'2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(98,NULL,'suppression','hugo','humain','document',9,'{"album_id": 9, "planches": 1, "titre": "Demande acceptée"}',NULL,'2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(99,NULL,'modification','hugo','humain','demande',3,'{"reponse": null}','{"reponse": "acceptee"}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(100,NULL,'creation','lea','humain','demande',4,NULL,'{"genre": "suppression_projet", "projet_id": 2}','2026-10-17 08:38:19');
-INSERT INTO "evenement" VALUES(101,NULL,'creation','hugo','humain','projet',3,NULL,'{"nom": "Éphémère"}','2026-10-17 08:38:20');
-INSERT INTO "evenement" VALUES(102,NULL,'suppression','hugo','humain','projet',3,'{"nom": "Éphémère"}',NULL,'2026-10-17 08:38:20');
-INSERT INTO "evenement" VALUES(103,NULL,'creation','hugo','humain','projet',3,NULL,'{"nom": "Éphémère 2"}','2026-10-17 08:38:20');
-INSERT INTO "evenement" VALUES(104,NULL,'lien','hugo','humain','projet_acces',3,NULL,'{"genre": "utilisateur", "principal": "sam", "role": "responsable"}','2026-10-17 08:38:20');
-INSERT INTO "evenement" VALUES(105,NULL,'creation','sam','humain','demande',5,NULL,'{"genre": "suppression_projet", "projet_id": 3}','2026-10-17 08:38:20');
-INSERT INTO "evenement" VALUES(106,NULL,'modification','hugo','humain','demande',5,'{"reponse": null}','{"reponse": "acceptee"}','2026-10-17 08:38:20');
-INSERT INTO "evenement" VALUES(107,NULL,'suppression','hugo','humain','projet',3,'{"nom": "Éphémère 2"}',NULL,'2026-10-17 08:38:20');
+INSERT INTO "evenement" VALUES(1,NULL,'creation','hugo','humain','collection',1,NULL,'{"nom": "Corpus principal", "proprietaire": "hugo"}','2026-10-17 10:50:42');
+INSERT INTO "evenement" VALUES(2,NULL,'creation','hugo','humain','collection',2,NULL,'{"nom": "Incubateur", "proprietaire": "hugo"}','2026-10-17 10:50:42');
+INSERT INTO "evenement" VALUES(3,NULL,'lien','hugo','humain','collection_acces',1,NULL,'{"exporter": false, "genre": "utilisateur", "niveau": "ecriture", "principal": "lea"}','2026-10-17 10:50:42');
+INSERT INTO "evenement" VALUES(4,NULL,'lien','hugo','humain','collection_acces',2,NULL,'{"exporter": false, "genre": "utilisateur", "niveau": "ecriture", "principal": "lea"}','2026-10-17 10:50:42');
+INSERT INTO "evenement" VALUES(5,NULL,'lien','hugo','humain','collection_acces',1,NULL,'{"exporter": false, "genre": "utilisateur", "niveau": "ecriture", "principal": "sam"}','2026-10-17 10:50:42');
+INSERT INTO "evenement" VALUES(6,NULL,'creation','lea','humain','document',1,NULL,'{"album_id": 1, "titre": "Album 1"}','2026-10-17 10:50:42');
+INSERT INTO "evenement" VALUES(7,NULL,'lien','lea','humain','collection_album',1,NULL,'{"album_id": 1, "collection": "Corpus principal", "collection_id": 1}','2026-10-17 10:50:42');
+INSERT INTO "evenement" VALUES(8,NULL,'modification','lea','humain','document',1,NULL,'{"album_id": 1, "planche": {"id": 1, "numero": 1}}','2026-10-17 10:50:42');
+INSERT INTO "evenement" VALUES(9,NULL,'creation','lea','humain','regions',1,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 1, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 10:50:42');
+INSERT INTO "evenement" VALUES(10,NULL,'creation','lea','humain','regions',2,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 1, "planche_id": 1, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:42');
+INSERT INTO "evenement" VALUES(11,NULL,'modification','lea','humain','regions',2,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 1, "planche_id": 1, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 0 0", "ordre": 1, "parent_id": 1, "planche_id": 1, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(12,NULL,'creation','lea','humain','annotations',2,NULL,'{"note": "vu", "tags": ["dialogue"]}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(13,NULL,'lien','lea','humain','bulle_locuteur',2,NULL,'{"personnage_id": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(14,NULL,'lien','lea','humain','personnage_presence',1,NULL,'{"personnage_id": 2}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(15,NULL,'lien','lea','humain','region_attribut',1,NULL,'{"valeur_id": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(16,NULL,'validation','lea','humain','planches',1,NULL,'{"validee": true}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(17,NULL,'modification','lea','humain','document',1,NULL,'{"album_id": 1, "planche": {"id": 2, "numero": 2}}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(18,NULL,'creation','lea','humain','regions',3,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 2, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(19,NULL,'creation','lea','humain','regions',4,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 3, "planche_id": 2, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(20,NULL,'modification','lea','humain','regions',4,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 3, "planche_id": 2, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 0 1", "ordre": 1, "parent_id": 3, "planche_id": 2, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(21,NULL,'creation','sam','humain','document',2,NULL,'{"album_id": 2, "titre": "Album 2"}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(22,NULL,'lien','sam','humain','collection_album',2,NULL,'{"album_id": 2, "collection": "Corpus principal", "collection_id": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(23,NULL,'modification','sam','humain','document',2,NULL,'{"album_id": 2, "planche": {"id": 3, "numero": 1}}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(24,NULL,'creation','sam','humain','regions',5,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 3, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(25,NULL,'creation','sam','humain','regions',6,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 5, "planche_id": 3, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(26,NULL,'modification','sam','humain','regions',6,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 5, "planche_id": 3, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 1 0", "ordre": 1, "parent_id": 5, "planche_id": 3, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(27,NULL,'creation','sam','humain','annotations',6,NULL,'{"note": "vu", "tags": ["dialogue"]}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(28,NULL,'lien','sam','humain','bulle_locuteur',6,NULL,'{"personnage_id": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(29,NULL,'lien','sam','humain','personnage_presence',5,NULL,'{"personnage_id": 2}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(30,NULL,'lien','sam','humain','region_attribut',5,NULL,'{"valeur_id": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(31,NULL,'validation','sam','humain','planches',3,NULL,'{"validee": true}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(32,NULL,'modification','sam','humain','document',2,NULL,'{"album_id": 2, "planche": {"id": 4, "numero": 2}}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(33,NULL,'creation','sam','humain','regions',7,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 4, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(34,NULL,'creation','sam','humain','regions',8,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 7, "planche_id": 4, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(35,NULL,'modification','sam','humain','regions',8,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 7, "planche_id": 4, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 1 1", "ordre": 1, "parent_id": 7, "planche_id": 4, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(36,NULL,'creation','lea','humain','document',3,NULL,'{"album_id": 3, "titre": "Album 3"}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(37,NULL,'lien','lea','humain','collection_album',3,NULL,'{"album_id": 3, "collection": "Incubateur", "collection_id": 2}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(38,NULL,'modification','lea','humain','document',3,NULL,'{"album_id": 3, "planche": {"id": 5, "numero": 1}}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(39,NULL,'creation','lea','humain','regions',9,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 5, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(40,NULL,'creation','lea','humain','regions',10,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 9, "planche_id": 5, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(41,NULL,'modification','lea','humain','regions',10,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 9, "planche_id": 5, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 2 0", "ordre": 1, "parent_id": 9, "planche_id": 5, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(42,NULL,'creation','lea','humain','annotations',10,NULL,'{"note": "vu", "tags": ["dialogue"]}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(43,NULL,'lien','lea','humain','bulle_locuteur',10,NULL,'{"personnage_id": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(44,NULL,'lien','lea','humain','personnage_presence',9,NULL,'{"personnage_id": 2}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(45,NULL,'lien','lea','humain','region_attribut',9,NULL,'{"valeur_id": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(46,NULL,'validation','lea','humain','planches',5,NULL,'{"validee": true}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(47,NULL,'modification','lea','humain','document',3,NULL,'{"album_id": 3, "planche": {"id": 6, "numero": 2}}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(48,NULL,'creation','lea','humain','regions',11,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 6, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(49,NULL,'creation','lea','humain','regions',12,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 11, "planche_id": 6, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(50,NULL,'modification','lea','humain','regions',12,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 11, "planche_id": 6, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 2 1", "ordre": 1, "parent_id": 11, "planche_id": 6, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(51,NULL,'creation','lea','humain','document',4,NULL,'{"album_id": 4, "titre": "Album 4"}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(52,NULL,'lien','lea','humain','collection_album',4,NULL,'{"album_id": 4, "collection": "Corpus principal", "collection_id": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(53,NULL,'modification','lea','humain','document',4,NULL,'{"album_id": 4, "planche": {"id": 7, "numero": 1}}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(54,NULL,'creation','lea','humain','regions',13,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 7, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(55,NULL,'creation','lea','humain','regions',14,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 13, "planche_id": 7, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(56,NULL,'modification','lea','humain','regions',14,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 13, "planche_id": 7, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 3 0", "ordre": 1, "parent_id": 13, "planche_id": 7, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(57,NULL,'creation','lea','humain','annotations',14,NULL,'{"note": "vu", "tags": ["dialogue"]}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(58,NULL,'lien','lea','humain','bulle_locuteur',14,NULL,'{"personnage_id": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(59,NULL,'lien','lea','humain','personnage_presence',13,NULL,'{"personnage_id": 2}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(60,NULL,'lien','lea','humain','region_attribut',13,NULL,'{"valeur_id": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(61,NULL,'validation','lea','humain','planches',7,NULL,'{"validee": true}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(62,NULL,'modification','lea','humain','document',4,NULL,'{"album_id": 4, "planche": {"id": 8, "numero": 2}}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(63,NULL,'creation','lea','humain','regions',15,NULL,'{"h": 20, "ocr_texte": null, "ordre": 1, "parent_id": null, "planche_id": 8, "source": "manuel", "type": "case", "w": 30, "x": 0, "y": 0}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(64,NULL,'creation','lea','humain','regions',16,NULL,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 15, "planche_id": 8, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(65,NULL,'modification','lea','humain','regions',16,'{"h": 9, "ocr_texte": null, "ordre": 1, "parent_id": 15, "planche_id": 8, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 3 1", "ordre": 1, "parent_id": 15, "planche_id": 8, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(66,NULL,'modification','lea','humain','regions',2,'{"h": 9, "ocr_texte": "TINTIN ET LE OTAGE 0 0", "ordre": 1, "parent_id": 1, "planche_id": 1, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','{"h": 9, "ocr_texte": "AVANT ANNULER", "ordre": 1, "parent_id": 1, "planche_id": 1, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}','2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(67,NULL,'annulation','lea','humain','evenement',66,'{"acte": "modification", "cible_id": 2, "cible_table": "regions"}',NULL,'2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(68,NULL,'suppression','lea','humain','regions',16,'{"h": 9, "id": 16, "ocr_texte": "TINTIN ET LE OTAGE 3 1", "ordre": 1, "parent_id": 15, "planche_id": 8, "source": "manuel", "type": "bulle", "w": 9, "x": 1, "y": 1}',NULL,'2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(69,NULL,'modification','hugo','humain','document',4,'{"album_id": 4, "planche": {"id": 8, "numero": 2}}',NULL,'2026-10-17 10:50:48');
+INSERT INTO "evenement" VALUES(70,NULL,'delien','hugo','humain','collection_album',4,'{"album_id": 4, "collection": "Corpus principal", "collection_id": 1}',NULL,'2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(71,NULL,'suppression','hugo','humain','document',4,'{"album_id": 4, "planches": 1, "titre": "Album 4"}',NULL,'2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(72,NULL,'lien','lea','humain','bulle_locuteur',2,'{"personnage_id": 1}','{"personnage_id": 3}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(73,NULL,'lien','lea','humain','bulle_locuteur',2,'{"personnage_id": 3}','{"personnage_id": 1}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(74,NULL,'creation','hugo','humain','document',5,NULL,'{"album_id": 5, "titre": "Album sans collection"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(75,NULL,'lien','hugo','humain','collection_album',5,NULL,'{"album_id": 5, "collection": "Collection par défaut", "collection_id": 3}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(76,NULL,'lien','hugo','humain','projet_acces',1,NULL,'{"genre": "utilisateur", "principal": "sam", "role": "membre"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(77,NULL,'lien','hugo','humain','projet_acces',1,NULL,'{"genre": "utilisateur", "principal": "rita", "role": "responsable"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(78,NULL,'lien','hugo','humain','projet_acces',1,NULL,'{"genre": "groupe", "principal": "chefs", "role": "responsable"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(79,NULL,'creation','hugo','humain','projet',2,NULL,'{"nom": "Étude B"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(80,NULL,'lien','hugo','humain','projet_acces',2,NULL,'{"genre": "utilisateur", "principal": "lea", "role": "responsable"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(81,NULL,'lien','hugo','humain','projet_acces',2,NULL,'{"genre": "utilisateur", "principal": "sam", "role": "membre"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(82,NULL,'lien','hugo','humain','projet_acces',2,NULL,'{"genre": "groupe", "principal": "etudiants", "role": "membre"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(83,NULL,'creation','lea','humain','collection',4,NULL,'{"nom": "Collection B", "proprietaire": "lea"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(84,NULL,'creation','lea','humain','document',6,NULL,'{"album_id": 6, "titre": "Gardée au fonds"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(85,NULL,'lien','lea','humain','collection_album',6,NULL,'{"album_id": 6, "collection": "Collection B", "collection_id": 4}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(86,NULL,'modification','lea','humain','document',6,NULL,'{"album_id": 6, "planche": {"id": 9, "numero": 1}}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(87,NULL,'delien','lea','humain','collection_album',6,'{"album_id": 6, "collection": "Collection B", "collection_id": 4}',NULL,'2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(88,NULL,'creation','hugo','humain','document',7,NULL,'{"album_id": 7, "titre": "Importé au fonds"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(89,NULL,'lien','hugo','humain','collection_album',7,NULL,'{"album_id": 7, "collection": "Corpus principal", "collection_id": 1}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(90,NULL,'creation','sam','humain','demande',1,NULL,'{"album_id": 1, "document_id": 1, "genre": "suppression_document"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(91,NULL,'creation','lea','humain','document',8,NULL,'{"album_id": 8, "titre": "Demande refusée"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(92,NULL,'lien','lea','humain','collection_album',8,NULL,'{"album_id": 8, "collection": "Corpus principal", "collection_id": 1}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(93,NULL,'creation','sam','humain','demande',2,NULL,'{"album_id": 8, "document_id": 8, "genre": "suppression_document"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(94,NULL,'modification','hugo','humain','demande',2,'{"reponse": null}','{"reponse": "refusee"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(95,NULL,'creation','lea','humain','document',9,NULL,'{"album_id": 9, "titre": "Demande acceptée"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(96,NULL,'lien','lea','humain','collection_album',9,NULL,'{"album_id": 9, "collection": "Corpus principal", "collection_id": 1}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(97,NULL,'modification','lea','humain','document',9,NULL,'{"album_id": 9, "planche": {"id": 10, "numero": 1}}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(98,NULL,'creation','sam','humain','demande',3,NULL,'{"album_id": 9, "document_id": 9, "genre": "suppression_document"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(99,NULL,'delien','hugo','humain','collection_album',9,'{"album_id": 9, "collection": "Corpus principal", "collection_id": 1}',NULL,'2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(100,NULL,'suppression','hugo','humain','document',9,'{"album_id": 9, "planches": 1, "titre": "Demande acceptée"}',NULL,'2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(101,NULL,'modification','hugo','humain','demande',3,'{"reponse": null}','{"reponse": "acceptee"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(102,NULL,'creation','lea','humain','demande',4,NULL,'{"genre": "suppression_projet", "projet_id": 2}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(103,NULL,'creation','hugo','humain','projet',3,NULL,'{"nom": "Éphémère"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(104,NULL,'suppression','hugo','humain','projet',3,'{"nom": "Éphémère"}',NULL,'2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(105,NULL,'creation','hugo','humain','projet',3,NULL,'{"nom": "Éphémère 2"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(106,NULL,'lien','hugo','humain','projet_acces',3,NULL,'{"genre": "utilisateur", "principal": "sam", "role": "responsable"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(107,NULL,'creation','sam','humain','demande',5,NULL,'{"genre": "suppression_projet", "projet_id": 3}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(108,NULL,'modification','hugo','humain','demande',5,'{"reponse": null}','{"reponse": "acceptee"}','2026-10-17 10:50:49');
+INSERT INTO "evenement" VALUES(109,NULL,'suppression','hugo','humain','projet',3,'{"nom": "Éphémère 2"}',NULL,'2026-10-17 10:50:49');
 CREATE TABLE meta (
     cle      TEXT PRIMARY KEY,
     valeur   TEXT
@@ -427,9 +429,9 @@ CREATE TABLE personnage_presence (
     personnage_id  INTEGER NOT NULL REFERENCES personnages(id) ON DELETE CASCADE,
     date_creation  TEXT DEFAULT (datetime('now'))
 );
-INSERT INTO "personnage_presence" VALUES(1,2,'2026-10-17 08:38:17');
-INSERT INTO "personnage_presence" VALUES(5,2,'2026-10-17 08:38:17');
-INSERT INTO "personnage_presence" VALUES(9,2,'2026-10-17 08:38:17');
+INSERT INTO "personnage_presence" VALUES(1,2,'2026-10-17 10:50:48');
+INSERT INTO "personnage_presence" VALUES(5,2,'2026-10-17 10:50:48');
+INSERT INTO "personnage_presence" VALUES(9,2,'2026-10-17 10:50:48');
 CREATE TABLE personnages (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     nom            TEXT NOT NULL,
@@ -437,8 +439,8 @@ CREATE TABLE personnages (
     notes          TEXT,
     date_creation  TEXT DEFAULT (datetime('now'))
 );
-INSERT INTO "personnages" VALUES(1,'Tintin',NULL,NULL,'2026-10-17 08:38:11');
-INSERT INTO "personnages" VALUES(2,'Haddock',NULL,NULL,'2026-10-17 08:38:11');
+INSERT INTO "personnages" VALUES(1,'Tintin',NULL,NULL,'2026-10-17 10:50:42');
+INSERT INTO "personnages" VALUES(2,'Haddock',NULL,NULL,'2026-10-17 10:50:42');
 CREATE TABLE planches (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     album_id           INTEGER REFERENCES albums(id) ON DELETE CASCADE,
@@ -464,11 +466,11 @@ CREATE TABLE planches (
     -- ('a_faire'|'en_cours'|'faite') ; NULL = suivre le dérivé.
     relecture          TEXT
 );
-INSERT INTO "planches" VALUES(1,1,1,'recit','corpus/album_1/planche_0001.png','derivatives/album_1/planche_0001.jpg',40,50,NULL,NULL,'RGB','importee',NULL,'2026-10-17 08:38:17',NULL,NULL,NULL);
+INSERT INTO "planches" VALUES(1,1,1,'recit','corpus/album_1/planche_0001.png','derivatives/album_1/planche_0001.jpg',40,50,NULL,NULL,'RGB','importee',NULL,'2026-10-17 10:50:48',NULL,NULL,NULL);
 INSERT INTO "planches" VALUES(2,1,2,'recit','corpus/album_1/planche_0002.png','derivatives/album_1/planche_0002.jpg',40,50,NULL,NULL,'RGB','importee',NULL,NULL,NULL,NULL,NULL);
-INSERT INTO "planches" VALUES(3,2,1,'recit','corpus/album_2/planche_0001.png','derivatives/album_2/planche_0001.jpg',40,50,NULL,NULL,'RGB','importee',NULL,'2026-10-17 08:38:17',NULL,NULL,NULL);
+INSERT INTO "planches" VALUES(3,2,1,'recit','corpus/album_2/planche_0001.png','derivatives/album_2/planche_0001.jpg',40,50,NULL,NULL,'RGB','importee',NULL,'2026-10-17 10:50:48',NULL,NULL,NULL);
 INSERT INTO "planches" VALUES(4,2,2,'recit','corpus/album_2/planche_0002.png','derivatives/album_2/planche_0002.jpg',40,50,NULL,NULL,'RGB','importee',NULL,NULL,NULL,NULL,NULL);
-INSERT INTO "planches" VALUES(5,3,1,'recit','corpus/album_3/planche_0001.png','derivatives/album_3/planche_0001.jpg',40,50,NULL,NULL,'RGB','importee',NULL,'2026-10-17 08:38:17',NULL,NULL,NULL);
+INSERT INTO "planches" VALUES(5,3,1,'recit','corpus/album_3/planche_0001.png','derivatives/album_3/planche_0001.jpg',40,50,NULL,NULL,'RGB','importee',NULL,'2026-10-17 10:50:48',NULL,NULL,NULL);
 INSERT INTO "planches" VALUES(6,3,2,'recit','corpus/album_3/planche_0002.png','derivatives/album_3/planche_0002.jpg',40,50,NULL,NULL,'RGB','importee',NULL,NULL,NULL,NULL,NULL);
 INSERT INTO "planches" VALUES(9,6,1,'recit','corpus/album_6/planche_0001.png','derivatives/album_6/planche_0001.jpg',40,50,NULL,NULL,'RGB','importee',NULL,NULL,NULL,NULL,NULL);
 CREATE TABLE projet (
@@ -479,8 +481,8 @@ CREATE TABLE projet (
     repli          INTEGER NOT NULL DEFAULT 0,     -- 1 = le projet de repli
     date_creation  TEXT DEFAULT (datetime('now'))
 );
-INSERT INTO "projet" VALUES(1,'Projet principal','Créé automatiquement : toute collection appartient à un projet. Renommez-le, et décrivez-le.',NULL,1,'2026-10-17 08:38:11');
-INSERT INTO "projet" VALUES(2,'Étude B',NULL,NULL,0,'2026-10-17 08:38:19');
+INSERT INTO "projet" VALUES(1,'Projet principal','Créé automatiquement : toute collection appartient à un projet. Renommez-le, et décrivez-le.',NULL,1,'2026-10-17 10:50:42');
+INSERT INTO "projet" VALUES(2,'Étude B',NULL,NULL,0,'2026-10-17 10:50:49');
 CREATE TABLE projet_acces (
     projet_id      INTEGER NOT NULL REFERENCES projet(id) ON DELETE CASCADE,
     genre          TEXT NOT NULL,       -- 'utilisateur' | 'groupe'
@@ -489,10 +491,12 @@ CREATE TABLE projet_acces (
     date_creation  TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (projet_id, genre, principal)
 );
-INSERT INTO "projet_acces" VALUES(1,'utilisateur','sam','membre','2026-10-17 08:38:19');
-INSERT INTO "projet_acces" VALUES(2,'utilisateur','lea','responsable','2026-10-17 08:38:19');
-INSERT INTO "projet_acces" VALUES(2,'utilisateur','sam','membre','2026-10-17 08:38:19');
-INSERT INTO "projet_acces" VALUES(2,'groupe','etudiants','membre','2026-10-17 08:38:19');
+INSERT INTO "projet_acces" VALUES(1,'utilisateur','sam','membre','2026-10-17 10:50:49');
+INSERT INTO "projet_acces" VALUES(1,'utilisateur','rita','responsable','2026-10-17 10:50:49');
+INSERT INTO "projet_acces" VALUES(1,'groupe','chefs','responsable','2026-10-17 10:50:49');
+INSERT INTO "projet_acces" VALUES(2,'utilisateur','lea','responsable','2026-10-17 10:50:49');
+INSERT INTO "projet_acces" VALUES(2,'utilisateur','sam','membre','2026-10-17 10:50:49');
+INSERT INTO "projet_acces" VALUES(2,'groupe','etudiants','membre','2026-10-17 10:50:49');
 CREATE VIRTUAL TABLE recherche USING fts5(
     region_id UNINDEXED,
     ocr_texte,
@@ -532,18 +536,18 @@ CREATE TABLE regions (
     touche            INTEGER NOT NULL DEFAULT 0,     -- pré-remplissage machine retouché par un humain
     date_modification TEXT                            -- horodatage de la dernière retouche humaine
 );
-INSERT INTO "regions" VALUES(1,1,NULL,'case',0,0,30,20,1,NULL,'manuel','2026-10-17 08:38:11',NULL,0,NULL);
-INSERT INTO "regions" VALUES(2,1,1,'bulle',1,1,9,9,1,'TINTIN ET LE OTAGE 0 0','manuel','2026-10-17 08:38:11',NULL,1,'2026-10-17 08:38:18');
-INSERT INTO "regions" VALUES(3,2,NULL,'case',0,0,30,20,1,NULL,'manuel','2026-10-17 08:38:17',NULL,0,NULL);
-INSERT INTO "regions" VALUES(4,2,3,'bulle',1,1,9,9,1,'TINTIN ET LE OTAGE 0 1','manuel','2026-10-17 08:38:17',NULL,1,'2026-10-17 08:38:17');
-INSERT INTO "regions" VALUES(5,3,NULL,'case',0,0,30,20,1,NULL,'manuel','2026-10-17 08:38:17',NULL,0,NULL);
-INSERT INTO "regions" VALUES(6,3,5,'bulle',1,1,9,9,1,'TINTIN ET LE OTAGE 1 0','manuel','2026-10-17 08:38:17',NULL,1,'2026-10-17 08:38:17');
-INSERT INTO "regions" VALUES(7,4,NULL,'case',0,0,30,20,1,NULL,'manuel','2026-10-17 08:38:17',NULL,0,NULL);
-INSERT INTO "regions" VALUES(8,4,7,'bulle',1,1,9,9,1,'TINTIN ET LE OTAGE 1 1','manuel','2026-10-17 08:38:17',NULL,1,'2026-10-17 08:38:17');
-INSERT INTO "regions" VALUES(9,5,NULL,'case',0,0,30,20,1,NULL,'manuel','2026-10-17 08:38:17',NULL,0,NULL);
-INSERT INTO "regions" VALUES(10,5,9,'bulle',1,1,9,9,1,'TINTIN ET LE OTAGE 2 0','manuel','2026-10-17 08:38:17',NULL,1,'2026-10-17 08:38:17');
-INSERT INTO "regions" VALUES(11,6,NULL,'case',0,0,30,20,1,NULL,'manuel','2026-10-17 08:38:18',NULL,0,NULL);
-INSERT INTO "regions" VALUES(12,6,11,'bulle',1,1,9,9,1,'TINTIN ET LE OTAGE 2 1','manuel','2026-10-17 08:38:18',NULL,1,'2026-10-17 08:38:18');
+INSERT INTO "regions" VALUES(1,1,NULL,'case',0,0,30,20,1,NULL,'manuel','2026-10-17 10:50:42',NULL,0,NULL);
+INSERT INTO "regions" VALUES(2,1,1,'bulle',1,1,9,9,1,'TINTIN ET LE OTAGE 0 0','manuel','2026-10-17 10:50:42',NULL,1,'2026-10-17 10:50:48');
+INSERT INTO "regions" VALUES(3,2,NULL,'case',0,0,30,20,1,NULL,'manuel','2026-10-17 10:50:48',NULL,0,NULL);
+INSERT INTO "regions" VALUES(4,2,3,'bulle',1,1,9,9,1,'TINTIN ET LE OTAGE 0 1','manuel','2026-10-17 10:50:48',NULL,1,'2026-10-17 10:50:48');
+INSERT INTO "regions" VALUES(5,3,NULL,'case',0,0,30,20,1,NULL,'manuel','2026-10-17 10:50:48',NULL,0,NULL);
+INSERT INTO "regions" VALUES(6,3,5,'bulle',1,1,9,9,1,'TINTIN ET LE OTAGE 1 0','manuel','2026-10-17 10:50:48',NULL,1,'2026-10-17 10:50:48');
+INSERT INTO "regions" VALUES(7,4,NULL,'case',0,0,30,20,1,NULL,'manuel','2026-10-17 10:50:48',NULL,0,NULL);
+INSERT INTO "regions" VALUES(8,4,7,'bulle',1,1,9,9,1,'TINTIN ET LE OTAGE 1 1','manuel','2026-10-17 10:50:48',NULL,1,'2026-10-17 10:50:48');
+INSERT INTO "regions" VALUES(9,5,NULL,'case',0,0,30,20,1,NULL,'manuel','2026-10-17 10:50:48',NULL,0,NULL);
+INSERT INTO "regions" VALUES(10,5,9,'bulle',1,1,9,9,1,'TINTIN ET LE OTAGE 2 0','manuel','2026-10-17 10:50:48',NULL,1,'2026-10-17 10:50:48');
+INSERT INTO "regions" VALUES(11,6,NULL,'case',0,0,30,20,1,NULL,'manuel','2026-10-17 10:50:48',NULL,0,NULL);
+INSERT INTO "regions" VALUES(12,6,11,'bulle',1,1,9,9,1,'TINTIN ET LE OTAGE 2 1','manuel','2026-10-17 10:50:48',NULL,1,'2026-10-17 10:50:48');
 CREATE TABLE tags (
     id             INTEGER PRIMARY KEY,
     label          TEXT UNIQUE NOT NULL,
@@ -558,7 +562,7 @@ CREATE TABLE tags (
     collection_id  INTEGER REFERENCES collection(id) ON DELETE SET NULL,
     date_creation  TEXT DEFAULT (datetime('now'))
 );
-INSERT INTO "tags" VALUES(1,'dialogue','#1a4a8a',NULL,NULL,'provisoire',NULL,'2026-10-17 08:38:17');
+INSERT INTO "tags" VALUES(1,'dialogue','#1a4a8a',NULL,NULL,'provisoire',NULL,'2026-10-17 10:50:48');
 CREATE TABLE token_correction (
     id          INTEGER PRIMARY KEY,
     region_id   INTEGER NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
@@ -654,9 +658,9 @@ CREATE TABLE utilisateur (
     -- `database.NATURES`, lu par la route ET par le test.
     nature         TEXT NOT NULL DEFAULT 'nominatif'
 );
-INSERT INTO "utilisateur" VALUES('hugo','Hugo',NULL,'2026-10-17 08:38:11','2026-10-17 08:38:11','nominatif');
-INSERT INTO "utilisateur" VALUES('lea','Lea',NULL,'2026-10-17 08:38:11','2026-10-17 08:38:11','nominatif');
-INSERT INTO "utilisateur" VALUES('sam','Sam',NULL,'2026-10-17 08:38:11','2026-10-17 08:38:11','nominatif');
+INSERT INTO "utilisateur" VALUES('hugo','Hugo',NULL,'2026-10-17 10:50:42','2026-10-17 10:50:42','nominatif');
+INSERT INTO "utilisateur" VALUES('lea','Lea',NULL,'2026-10-17 10:50:42','2026-10-17 10:50:42','nominatif');
+INSERT INTO "utilisateur" VALUES('sam','Sam',NULL,'2026-10-17 10:50:42','2026-10-17 10:50:42','nominatif');
 CREATE INDEX idx_projet_acces_principal ON projet_acces(genre, principal);
 CREATE INDEX idx_demande_document_document ON demande_document(document_id);
 CREATE INDEX idx_acces_principal ON collection_acces(genre, principal);

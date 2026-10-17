@@ -26,6 +26,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 
 from playwright.sync_api import expect  # noqa: E402
 
+import database  # noqa: E402
 from conftest import ECRITURE, make_png  # noqa: E402
 
 pytestmark = [pytest.mark.e2e, pytest.mark.parametrize("live_server", [True], indirect=True)]
@@ -259,9 +260,11 @@ def test_rendre_une_copie_gardee_et_detruire_ce_que_personne_n_appelle(page, liv
     expect(carte).to_contain_text("copie gardée")
     expect(carte).to_contain_text("Copie gardée ici (projet « Projet principal »).")
     choix = carte.locator(".fd-gardee select")
-    expect(choix.locator("option")).to_have_count(2)
-    # Les collections de SON projet, dans l'ordre où le serveur les rend.
-    assert sorted(choix.locator("option").all_inner_texts()) == ["Archives", "Étude"]
+    expect(choix.locator("option")).to_have_count(3)
+    # Les collections de SON projet, dans l'ordre où le serveur les rend — sa collection de
+    # base comprise, née avec le projet de repli (D10).
+    assert sorted(choix.locator("option").all_inner_texts()) == [
+        "Archives", database.NOM_PROJET_DEFAUT, "Étude"]
     choix.select_option(str(d["archives"]))
     carte.locator("[data-fd-rendre]").click()
     expect(carte.locator(".fd-ligne-msg")).to_have_text(

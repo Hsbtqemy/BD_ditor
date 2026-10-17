@@ -360,7 +360,11 @@ def test_une_vraie_base_v29_migre_sans_rien_perdre(vraie_v29, tmp_path):
     apres = _etat(vraie_v29)
     # La v31 (COL-3, tranche 3) passe aussi, et pose la provenance de chaque copie.
     neuves = {"document", "demande", "demande_document", "copie"}
-    assert {t: n for t, n in apres["comptes"].items() if t not in neuves} == avant["comptes"]
+    # Et la base NEUVE du projet de repli (D10 ; Hugo, 2026-10-17) : une collection de plus.
+    assert apres["comptes"]["collection"] == avant["comptes"]["collection"] + 1
+    neuves |= {"collection"}
+    assert {t: n for t, n in apres["comptes"].items() if t not in neuves} \
+        == {t: n for t, n in avant["comptes"].items() if t not in neuves}
     assert apres["comptes"]["document"] == avant["comptes"]["albums"]
     for t in TABLES:
         retire = {"albums": ("document_id", "projet_id")}.get(t, ())
