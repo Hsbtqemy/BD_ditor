@@ -233,3 +233,145 @@ def test_le_travail_sur_une_soeur_ne_retient_pas_la_copie(client, soeurs):
     assert client.put(f"/api/albums/{b}", json={"titre": "Retouchée par Léa"},
                       headers=LEA).status_code == 200
     assert _albums(client, SAM)[b]["destructible"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Un import n'écrit jamais sur l'image d'une sœur (relecture croisée de la v31)
+# --------------------------------------------------------------------------- #
+def _autre_png():
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 48), (200, 10, 10)).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _images(data, chemins):
+    return [((data / t).read_bytes(), (data / w).read_bytes()) for t, w in chemins]
+
+
+def _planche_de_a_supprimee(client, db_path, soeurs):
+    """La planche de A supprimée : ses fichiers RESTENT, la sœur B les désigne — et le
+    numéro 1 est de nouveau libre dans A. Rend ce que B emploie, et ses octets."""
+    chemins = _chemins(db_path, soeurs["b"])
+    avant = _images(soeurs["data"], chemins)
+    assert client.delete(f"/api/planches/{soeurs['pa']}", headers=ADMIN).status_code == 204
+    assert _images(soeurs["data"], chemins) == avant, "prémisse : les fichiers sont gardés"
+    return chemins, avant
+
+
+def test_reimporter_dans_la_copie_source_n_ecrase_pas_l_image_d_une_soeur(client, db_path,
+                                                                         soeurs):
+    """Recopié de la relecture croisée (`tests/test_relecture_t3a.py`, branche `relecture`,
+    `e6473a5`). Le numéro « libre sans écraser » (DB-1) ne regardait que les planches de
+    l'album qui importe : le dérivé et le master du nouvel import étaient écrits À LA PLACE
+    de ceux de B. Le numéro saute désormais au premier dont les fichiers ne sont pas pris."""
+    chemins, avant = _planche_de_a_supprimee(client, db_path, soeurs)
+    r = client.post(f"/api/albums/{soeurs['a']}/import", headers=ADMIN,
+                    files={"file": ("p.png", _autre_png(), "image/png")})
+    assert r.status_code == 201, r.text
+    assert _images(soeurs["data"], chemins) == avant, \
+        "l'image de la copie sœur a été remplacée par celle d'un autre import"
+    assert r.json()["numero"] == 2 and r.json()["chemin_web"] not in {w for _t, w in chemins}
+
+
+def test_un_import_qui_echoue_n_efface_pas_l_image_d_une_soeur(client, db_path, soeurs):
+    """L'ingestion échoue (un contenu qui n'est pas une image) : le master écrit par CET
+    import est retiré — et c'était, avant, le fichier de B, d'abord écrasé, puis effacé."""
+    chemins, avant = _planche_de_a_supprimee(client, db_path, soeurs)
+    r = client.post(f"/api/albums/{soeurs['a']}/import", headers=ADMIN,
+                    files={"file": ("p.png", b"pas une image", "image/png")})
+    assert r.status_code == 400, r.text
+    assert _images(soeurs["data"], chemins) == avant
+
+
+def test_un_numero_explicite_dont_les_images_servent_est_refuse(client, db_path, soeurs):
+    chemins, avant = _planche_de_a_supprimee(client, db_path, soeurs)
+    r = client.post(f"/api/albums/{soeurs['a']}/import", headers=ADMIN,
+                    data={"numero": "1"},
+                    files={"file": ("p.png", _autre_png(), "image/png")})
+    assert r.status_code == 409 and "numéro 1" in r.json()["detail"], r.text
+    assert _images(soeurs["data"], chemins) == avant
+
+
+def test_un_lot_defait_n_efface_pas_l_image_d_une_soeur(client, db_path, soeurs,
+                                                        monkeypatch):
+    """Un import ShareDocs dont la fin échoue est défait, et il retire les fichiers qu'il a
+    écrits : ceux de SES planches, qu'aucune ligne ne désigne plus — avant, ceux de B."""
+    import main
+    import pipeline.sharedocs as sd
+    from fastapi.testclient import TestClient
+    chemins, avant = _planche_de_a_supprimee(client, db_path, soeurs)
+    monkeypatch.setattr(sd, "download",
+                        lambda path, *, principal, compte=None: _autre_png())
+
+    def panne(*a, **k):
+        raise RuntimeError("panne après l'ingestion")
+    monkeypatch.setattr(main, "_journaliser_scan", panne)
+    sans_relance = TestClient(main.app, headers={main.EN_TETE_REQUETE: "1"},
+                              raise_server_exceptions=False)
+    r = sans_relance.post("/api/sharedocs/importer", headers=ADMIN,
+                          json={"chemins": ["BD/p1.png"], "album_id": soeurs["a"]})
+    assert r.status_code == 500, r.text
+    assert _images(soeurs["data"], chemins) == avant
+
+
+def test_un_fichier_laisse_sur_le_disque_fait_sauter_le_numero(client, soeurs):
+    """Le disque seul : un master que plus aucune planche ne désigne — un ménage qui a
+    échoué — n'est pas réécrit ; le numéro passe au suivant."""
+    orphelin = soeurs["data"] / "corpus" / f"album_{soeurs['a']}" / "planche_0002.png"
+    orphelin.write_bytes(b"ORPHELIN")
+    r = client.post(f"/api/albums/{soeurs['a']}/import", headers=ADMIN,
+                    files={"file": ("p.png", _autre_png(), "image/png")})
+    assert r.status_code == 201 and r.json()["numero"] == 3, r.text
+    assert orphelin.read_bytes() == b"ORPHELIN"
+
+
+def test_un_chemin_designe_fait_sauter_le_numero_meme_sans_fichier(client, db_path, soeurs):
+    """La base seule : B désigne encore des chemins dont les fichiers ont disparu du disque.
+    Un import ne vient pas les recréer sous une autre image."""
+    chemins, _avant = _planche_de_a_supprimee(client, db_path, soeurs)
+    for t, w in chemins:
+        (soeurs["data"] / t).unlink()
+        (soeurs["data"] / w).unlink()
+    r = client.post(f"/api/albums/{soeurs['a']}/import", headers=ADMIN,
+                    files={"file": ("p.png", _autre_png(), "image/png")})
+    assert r.status_code == 201 and r.json()["numero"] == 2, r.text
+    assert not any((soeurs["data"] / t).exists() for t, _w in chemins)
+
+
+# --------------------------------------------------------------------------- #
+# Ce qu'une destruction efface d'après la base : des images d'album, et rien d'autre
+# --------------------------------------------------------------------------- #
+def test_un_chemin_retouche_ne_fait_rien_effacer_hors_des_images(client, db_path, soeurs):
+    """Les fichiers qu'une copie emploie ailleurs que dans ses dossiers s'effacent d'après
+    la base. Un chemin retouché à la main — qui remonte par `..`, ou absolu — ne fait rien
+    effacer : seul passe `corpus|derivatives/album_<N>/<fichier>`, résolu sous ces dossiers."""
+    data = soeurs["data"]
+    remonte, absolu = data / "sentinelle.txt", data / "hors" / "absolu.txt"
+    absolu.parent.mkdir()
+    for f in (remonte, absolu):
+        f.write_bytes(b"A GARDER")
+    _sql(db_path, "UPDATE planches SET chemin_tiff = ?, chemin_web = ? WHERE id = ?",
+         ("corpus/../sentinelle.txt", str(absolu), soeurs["pb"]))
+    assert client.delete(f"/api/albums/{soeurs['a']}", headers=ADMIN).status_code == 204
+    assert client.delete(f"/api/albums/{soeurs['b']}", headers=ADMIN).status_code == 204
+    assert remonte.read_bytes() == b"A GARDER" and absolu.read_bytes() == b"A GARDER"
+
+
+def test_sans_forme_relative_rien_n_est_efface(client, db_path, soeurs, monkeypatch, caplog):
+    """Les dossiers d'un album sans forme relative à la racine de données ne se recoupent
+    pas avec la base : on ne sait pas ce qu'une sœur emploie. Rien n'est effacé — le
+    dossier entier partait — et le journal du serveur le dit."""
+    import socle
+
+    def hors_racine(album_id):
+        raise ValueError("hors de la racine")
+    monkeypatch.setattr(socle, "dossiers_d_album", hors_racine)
+    chemins = _chemins(db_path, soeurs["b"])
+    avant = _images(soeurs["data"], chemins)
+    with caplog.at_level("WARNING", logger="bd_annotator"):
+        assert client.delete(f"/api/albums/{soeurs['a']}", headers=ADMIN).status_code == 204
+    assert _images(soeurs["data"], chemins) == avant
+    assert _fichiers(soeurs["data"], soeurs["a"]), "le dossier de A a été effacé"
+    assert any("restent sur le disque" in r.getMessage() for r in caplog.records)

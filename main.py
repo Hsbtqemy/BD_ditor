@@ -86,8 +86,8 @@ from pipeline.backup import make_backup
 from pipeline import jobs
 from pipeline import nlp
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
-from pipeline.ingest import (ecarter_dossiers_d_album, ingest_image, remove_planche_files,
-                             store_upload)
+from pipeline.ingest import (ecarter_dossiers_d_album, ingest_image, numero_occupe,
+                             prochain_numero_libre, remove_planche_files, store_upload)
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
 from pipeline.ordering import move_region, reorder_planche
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
@@ -708,14 +708,23 @@ def _allouer_numero(conn, album_id: int, numero: Optional[int]) -> int:
     Les fichiers master/dérivé sont nommés d'après le numéro : on vérifie donc l'unicité
     en amont, sinon l'écriture écraserait SILENCIEUSEMENT la planche existante de même
     numéro. `numero` explicite déjà pris → 409 ; absent → MAX+1 de l'album. L'index unique
-    (album_id, numero) reste le filet en cas de course concurrente résiduelle."""
+    (album_id, numero) reste le filet en cas de course concurrente résiduelle.
+
+    COL-3, tranche 3 (D6, relecture croisée) — libre DANS L'ALBUM ne suffit plus : une
+    copie sœur peut désigner les fichiers d'une planche supprimée de cet album, et un
+    fichier peut rester sur le disque. Absent, le numéro saute au premier dont les fichiers
+    ne sont pas pris (`ingest.prochain_numero_libre`) ; explicite et pris ainsi, 409 qui le
+    dit — un import n'écrit jamais sur un fichier qui existe ou qu'une planche désigne."""
     if numero is None:
-        return conn.execute(
-            "SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM planches WHERE album_id = ?",
-            (album_id,)).fetchone()["n"]
+        return prochain_numero_libre(conn, album_id)
     if conn.execute("SELECT 1 FROM planches WHERE album_id = ? AND numero = ?",
                     (album_id, numero)).fetchone():
         raise HTTPException(409, f"Le numéro {numero} est déjà pris dans cet album.")
+    if numero_occupe(conn, album_id, numero):
+        raise HTTPException(409, f"Les images du numéro {numero} sont encore sur le disque, "
+                                 "employées par une autre copie ou laissées par une planche "
+                                 "supprimée : choisissez un autre numéro, ou laissez-le "
+                                 "libre.")
     return numero
 
 

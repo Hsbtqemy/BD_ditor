@@ -25,6 +25,7 @@ la fiche ARCH-1 posait comme condition du découpage.
 """
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 import unicodedata
@@ -41,8 +42,8 @@ from database import (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
                       REPONSE_ACCEPTEE, clause_appartenance, collection_row,
                       get_connection, retirer_document_sans_copie, sql_projet_de,
                       unindex_region)
-from pipeline.ingest import (dossiers_d_album, elaguer_dossier_d_album, remove_album_files,
-                             remove_planche_files)
+from pipeline.ingest import (chemin_d_image_sur, dossiers_d_album, elaguer_dossier_d_album,
+                             remove_album_files, remove_planche_files)
 
 # --------------------------------------------------------------------------- #
 # Dépendance connexion
@@ -525,10 +526,16 @@ def _effacer_les_images_d_une_copie(conn, album_id: int, chemins) -> None:
     elle : partis s'ils ne sont plus désignés, et leur dossier élagué s'il est vide. Un
     identifiant d'album ne revenant plus depuis la v30, un dossier qui survit ainsi à sa
     copie n'est jamais repris par un album neuf."""
+    # Relecture croisée de la v31 : sans forme RELATIVE des dossiers, rien ne se recoupe
+    # avec les chemins de la base — on ne saurait pas ce qu'une sœur emploie. Rien n'est
+    # effacé, et le journal du serveur le dit : un dossier laissé se rattrape, une image
+    # effacée sous une sœur, non.
     try:
         dossiers = dossiers_d_album(album_id)
-    except ValueError:              # images hors de la racine de données : rien à recouper
-        remove_album_files(album_id)
+    except ValueError:
+        logging.getLogger("bd_annotator").warning(
+            "Album %s détruit : ses images sont hors de la racine de données, elles ne "
+            "se recoupent pas avec la base et restent sur le disque.", album_id)
         return
     longueurs = [x for d in dossiers for x in (len(d), d)]
     garder = {c for r in conn.execute(
@@ -537,7 +544,10 @@ def _effacer_les_images_d_une_copie(conn, album_id: int, chemins) -> None:
         "OR substr(chemin_web, 1, ?) = ? OR substr(chemin_web, 1, ?) = ?",
         longueurs * 2) for c in r if c}
     remove_album_files(album_id, garder=garder)
-    ailleurs = [c for paire in chemins for c in paire if c and not c.startswith(dossiers)]
+    # Ailleurs que dans ses dossiers, seulement ce qui a bien la forme d'une image d'album
+    # (`ingest.chemin_d_image_sur`) : une ligne retouchée ne fait rien effacer d'autre.
+    ailleurs = [c for paire in chemins for c in paire
+                if c and not c.startswith(dossiers) and chemin_d_image_sur(c)]
     employes = _chemins_employes(conn, ailleurs)
     for c in ailleurs:
         if c not in employes:

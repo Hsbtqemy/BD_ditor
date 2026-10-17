@@ -57,6 +57,49 @@ def _next_numero(conn: sqlite3.Connection, album_id: int) -> int:
     return int(row["n"])
 
 
+def numero_occupe(conn: sqlite3.Connection, album_id: int, numero: int) -> bool:
+    """Les fichiers d'une planche de ce numéro, dans cet album, sont-ils DÉJÀ pris ?
+    COL-3, tranche 3 (D6, relecture croisée).
+
+    Master et dérivé sont nommés d'après le numéro (`store_upload`, `ingest_image`), et
+    l'import écrit sur ces chemins sans regarder s'ils existent. Tant qu'un album avait ses
+    propres fichiers, le numéro libre DANS L'ALBUM suffisait. Plus depuis qu'une copie sœur
+    désigne les fichiers de la copie dont elle a été tirée : la planche de A supprimée, ses
+    fichiers restent pour B, et le numéro est de nouveau libre dans A — un import y aurait
+    réécrit l'image de B, puis, sur un échec, l'aurait effacée.
+
+    La règle : on n'écrit JAMAIS sur un chemin qui existe déjà sur le disque, ni sur un
+    chemin qu'une planche — de n'importe quel album — désigne. Un numéro est pris si l'un
+    des deux est vrai, pour le master (quelle que soit son extension) ou pour le dérivé.
+    D'où une garantie de plus : un fichier qu'un import efface sur un échec est forcément
+    le sien."""
+    souche = f"planche_{numero:04d}"
+    corpus = CORPUS_DIR / f"album_{album_id}"
+    derive = DERIVATIVES_DIR / f"album_{album_id}" / f"{souche}.jpg"
+    if derive.exists() or (corpus.is_dir() and any(corpus.glob(f"{souche}.*"))):
+        return True
+    try:
+        master_rel = _rel_posix(corpus) + f"/{souche}."
+        derive_rel = _rel_posix(derive)
+    except ValueError:                  # images hors de la racine de données : le disque seul
+        return False
+    return conn.execute(
+        "SELECT 1 FROM planches WHERE chemin_web = ? OR substr(chemin_tiff, 1, ?) = ? "
+        "OR substr(chemin_web, 1, ?) = ? LIMIT 1",
+        (derive_rel, len(master_rel), master_rel, len(master_rel), master_rel)).fetchone() \
+        is not None
+
+
+def prochain_numero_libre(conn: sqlite3.Connection, album_id: int) -> int:
+    """Le numéro d'une nouvelle planche : le premier après le plus grand de l'album dont
+    les fichiers ne sont pas déjà pris (`numero_occupe`). Un numéro dont les images servent
+    encore à une copie sœur est SAUTÉ — la numérotation garde un trou, l'image reste."""
+    numero = _next_numero(conn, album_id)
+    while numero_occupe(conn, album_id, numero):
+        numero += 1
+    return numero
+
+
 def read_metadata(source: Path) -> dict:
     """Lit dimensions, mode couleur et DPI d'une image sans la convertir.
 
@@ -189,7 +232,7 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source: Path,
         raise ValueError(f"Album {album_id} inexistant")
 
     if numero is None:
-        numero = _next_numero(conn, album_id)
+        numero = prochain_numero_libre(conn, album_id)
 
     meta = read_metadata(source)
 
@@ -267,6 +310,24 @@ def remove_album_files(album_id: int, garder=frozenset()) -> None:
                     f.rmdir()                       # seulement s'il est vide
             except OSError:  # pragma: no cover - garde défensive (non vide, permissions…)
                 pass
+
+
+_CHEMIN_D_IMAGE = re.compile(r"(corpus|derivatives)/album_\d+/[^/]+")
+
+
+def chemin_d_image_sur(chemin: str | None) -> bool:
+    """Ce chemin, lu en base, désigne-t-il bien une image d'album — et RIEN d'autre ? COL-3,
+    tranche 3 (relecture croisée). Un ménage qui efface d'après la base efface ce qu'elle
+    désigne : une ligne retouchée à la main, un chemin absolu, un `..`, et l'effacement
+    sortirait des dossiers d'images. Ne passe qu'un chemin RELATIF de la forme
+    `corpus|derivatives/album_<N>/<fichier>`, qui se résout bien sous ces dossiers."""
+    if not chemin or not _CHEMIN_D_IMAGE.fullmatch(chemin):
+        return False
+    try:
+        racine = (DATA_DIR / chemin).resolve().parent.parent
+    except (OSError, ValueError):       # pragma: no cover - garde défensive
+        return False
+    return racine in (CORPUS_DIR.resolve(), DERIVATIVES_DIR.resolve())
 
 
 def elaguer_dossier_d_album(chemin: str | None) -> None:
