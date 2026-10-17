@@ -999,19 +999,25 @@ def _fiche(page):
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
 def test_un_administrateur_cree_un_projet_avec_sa_justification(page, live_server):
-    """L'administrateur crée un projet et dit POURQUOI. La requête partie porte le nom et la
-    justification ; le projet créé s'ouvre en fiche, où elle se lit ; et la bande du haut —
-    sur la même page — gagne son sélecteur sans attendre un rechargement."""
+    """L'administrateur crée un projet et dit POURQUOI. Le formulaire n'est pas à demeure :
+    « + Nouveau projet » l'ouvre dans la fiche, le nom prend le focus, et un refus se lit
+    contre le bouton. La requête partie porte le nom et la justification ; le projet créé
+    s'ouvre en fiche, où elle se lit, et l'adresse le nomme ; et la bande du haut — sur la
+    même page — gagne son sélecteur sans attendre un rechargement."""
     _ouvrir_les_projets(page, live_server, ADMIN_BD)
     page.locator("#pj-objets .pj-objet").first.wait_for(timeout=5000)
     expect(page.locator("#projets-bloc")).to_be_visible()
     expect(page.locator("#projets-ferme")).to_be_hidden()
+    assert page.locator("#projet-choix").count() == 0          # un seul projet : le nom seul
+    expect(page.locator("#pj-nom")).to_have_count(0)           # aucun champ à demeure
+    page.locator("#pj-creer-ouvrir").click()
+    expect(page.locator("#pj-nom")).to_be_focused()
     expect(page.locator("#pj-nom-aide")).to_contain_text(
         f"{database.LONGUEUR_NOM_PROJET} caractères au plus")
-    assert page.locator("#projet-choix").count() == 0          # un seul projet : le nom seul
 
     page.locator("#pj-ajouter").click()                        # sans nom : rien ne part
-    expect(page.locator("#pj-msg.erreur")).to_have_text("Donnez un nom au projet.")
+    expect(page.locator("#pj-creer-msg.erreur")).to_have_text("Donnez un nom au projet.")
+    expect(page.locator("#pj-msg")).to_have_text("")
 
     page.locator("#pj-nom").fill("Séminaire 2026")
     page.locator("#pj-justification").fill("Comparer le lettrage de deux éditions.")
@@ -1028,14 +1034,25 @@ def test_un_administrateur_cree_un_projet_avec_sa_justification(page, live_serve
         "Comparer le lettrage de deux éditions.")
     assert page.locator("#pj-objets .pj-objet .pj-nom").all_inner_texts() == [
         database.NOM_PROJET_DEFAUT, "Séminaire 2026"]
+    expect(page.locator("#pj-objets .pj-objet[aria-current=true] .pj-nom")).to_have_text(
+        "Séminaire 2026")
     expect(page.locator("#projet-choix option")).to_have_count(2)
-    assert page.locator("#pj-nom").input_value() == ""
+    expect(page.locator("#pj-nom")).to_have_count(0)           # le formulaire s'est refermé
+    cree = next(p["id"] for p in _api(live_server, "GET", "/api/projets")
+                if p["nom"] == "Séminaire 2026")
+    assert f"projet={cree}" in page.url, page.url
 
     # Un nom trop long : le refus est celui du SERVEUR, rendu tel quel sous le champ.
+    page.locator("#pj-creer-ouvrir").click()
     page.locator("#pj-nom").fill("x" * (database.LONGUEUR_NOM_PROJET + 1))
     page.locator("#pj-ajouter").click()
-    expect(page.locator("#pj-msg.erreur")).to_contain_text(
+    expect(page.locator("#pj-creer-msg.erreur")).to_contain_text(
         f"tient en {database.LONGUEUR_NOM_PROJET} caractères au plus")
+    # « Annuler » referme le formulaire et rend la fiche ouverte avant lui.
+    page.locator("[data-pj-creer-annuler]").click()
+    expect(page.locator("#pj-nom")).to_have_count(0)
+    expect(page.locator("#pj-creer-ouvrir")).to_be_focused()
+    expect(page.locator("#pj-fiche-titre")).to_have_text("Séminaire 2026")
 
 
 @pytest.fixture
@@ -1230,6 +1247,8 @@ def test_renommer_et_supprimer_un_projet(page, seminaire):
     expect(page.locator("#pj-msg")).to_contain_text("« Projet sans rien » supprimé")
     expect(page.locator("#pj-objets .pj-objet")).to_have_count(2)
     expect(page.locator("#projet-choix")).not_to_contain_text("Projet sans rien")
+    expect(page.locator("#projets-titre")).to_be_focused()
+    assert "projet=" not in page.url, page.url
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
@@ -1247,7 +1266,8 @@ def test_un_responsable_regle_son_projet_et_lui_seul(page, seminaire):
 
     expect(page.locator("#projet-choix option")).to_have_count(2)
     assert page.locator("#pj-objets .pj-objet .pj-nom").all_inner_texts() == ["Séminaire 2026"]
-    expect(page.locator("#pj-creer")).to_be_hidden()
+    expect(page.locator("#pj-creer-ouvrir")).to_have_count(1)
+    expect(page.locator("#pj-creer-ouvrir")).to_be_hidden()
     assert page.locator("[data-pj-renommer], [data-pj-supprimer], #pj-renommer-nom").count() == 0
     expect(_fiche(page).locator(".pj-a-demander")).to_have_text(
         "Vous réglez qui entre dans ce projet. Le renommer, corriger sa description ou sa "
@@ -1958,6 +1978,182 @@ def test_le_bloc_des_projets_tient_a_320_px(page, seminaire):
     assert not echecs, "Le bloc des projets, à 320 px :\n" + "\n".join(echecs)
 
 
+@pytest.fixture
+def quatre_projets(seminaire):
+    """Le séminaire (avec sa responsable), plus deux projets : « Sans tête », qui n'a aucun
+    responsable, et « Atelier lettrage », dont la responsable a demandé la suppression."""
+    d = dict(seminaire)
+    _membre(d["base"], d["projet"], "proprio", "responsable")
+    d["sans_tete"] = _projet(d["base"], "Sans tête")
+    d["atelier"] = _projet(d["base"], "Atelier lettrage")
+    _membre(d["base"], d["atelier"], "proprio", "responsable")
+    _api(d["base"], "POST", "/api/demandes",
+         {"genre": "suppression_projet", "projet_id": d["atelier"], "motif": "Fini."},
+         entetes={**ECRITURE, "Remote-User": "proprio", "Remote-Groups": "annotateurs"})
+    return d
+
+
+def _ligne(page, pid):
+    return page.locator(f'#pj-objets .pj-objet[data-pj="{pid}"]')
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_la_liste_des_projets_dit_ce_qui_attend_et_se_filtre_par_nom(page, quatre_projets):
+    """La liste de l'Administration (COL-3, à l'échelle) : chaque ligne dit son nombre de
+    collections, et ce qui attend — « sans responsable », « suppression demandée » —, jamais
+    pour le projet de repli, né sans responsable. Le filtre porte sur le NOM, sans égard aux
+    accents ni à la casse ; il garde son focus pendant qu'on tape, dit combien de lignes
+    restent, et le dit aussi quand il n'en reste aucune."""
+    d = quatre_projets
+    _ouvrir_les_projets(page, d["base"], ADMIN_BD)
+    _ligne(page, d["projet"]).wait_for(timeout=5000)
+    assert page.locator("#pj-objets .pj-nom").all_inner_texts() == [
+        database.NOM_PROJET_DEFAUT, "Atelier lettrage", "Sans tête", "Séminaire 2026"]
+    expect(page.locator("#pj-liste-compte")).to_have_text("4 projets")
+    expect(_ligne(page, d["projet"]).locator(".pj-etat")).to_have_text("1 collection")
+    expect(_ligne(page, d["projet"]).locator(".pj-alerte")).to_have_count(0)
+    expect(_ligne(page, d["sans_tete"]).locator(".pj-etat")).to_have_text("0 collection")
+    expect(_ligne(page, d["sans_tete"]).locator(".pj-alerte")).to_have_text("⚠ sans responsable")
+    expect(_ligne(page, d["atelier"]).locator(".pj-alerte")).to_have_text(
+        "⚠ suppression demandée")
+    expect(_ligne(page, d["repli"]).locator(".pj-alerte")).to_have_count(0)
+
+    filtre = page.locator("#pj-filtre")
+    filtre.fill("SEMIN")                                       # ni accent ni casse
+    assert page.locator("#pj-objets .pj-nom").all_inner_texts() == ["Séminaire 2026"]
+    expect(page.locator("#pj-liste-compte")).to_have_text("1 sur 4")
+    expect(filtre).to_be_focused()
+    filtre.fill("lettrage")
+    assert page.locator("#pj-objets .pj-nom").all_inner_texts() == ["Atelier lettrage"]
+    filtre.fill("rien de tel")
+    expect(page.locator("#pj-objets .pj-objet")).to_have_count(0)
+    expect(page.locator("#pj-objets")).to_have_text("Aucun projet ne répond à ce filtre.")
+    expect(page.locator("#pj-liste-compte")).to_have_text("0 sur 4")
+    filtre.fill("")
+    expect(page.locator("#pj-objets .pj-objet")).to_have_count(4)
+
+    # Le filtre ne referme pas la fiche ouverte, même s'il en cache la ligne.
+    _ligne(page, d["sans_tete"]).click()
+    expect(page.locator("#pj-fiche-titre")).to_have_text("Sans tête")
+    expect(page.locator("#pj-fiche .pj-sans-responsable")).to_have_text("sans responsable")
+    filtre.fill("atelier")
+    expect(page.locator("#pj-fiche-titre")).to_have_text("Sans tête")
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_nommer_un_responsable_eteint_l_alerte_sans_remonter_la_fiche(page, quatre_projets):
+    """« Sans responsable » suit les membres : nommé par le module, le premier responsable
+    éteint l'alerte de la ligne ET la puce de la fiche — la tête seule est redessinée : le
+    module n'est pas remonté (sa section est la même), et le focus qu'il vient de rendre à
+    la liste des rôles y reste."""
+    d = quatre_projets
+    _membre(d["base"], d["sans_tete"], "lectrice")
+    _ouvrir_les_projets(page, d["base"], ADMIN_BD)
+    _ligne(page, d["sans_tete"]).click()
+    partie = _fiche(page).locator("section.mp")
+    ligne = partie.locator('.mp-ligne[data-principal="lectrice"]')
+    ligne.wait_for(timeout=5000)
+    expect(page.locator("#pj-fiche .pj-sans-responsable")).to_be_visible()
+    page.evaluate("() => { window.__module = document.querySelector('#pj-fiche section.mp'); }")
+    ligne.locator(".mp-role").focus()                          # au clavier, comme on le règle
+    with page.expect_response(lambda r: r.request.method == "PUT"
+                              and r.url.endswith("/membres")) as reponse:
+        ligne.locator(".mp-role").select_option("responsable")
+    assert reponse.value.status == 200
+    expect(_ligne(page, d["sans_tete"]).locator(".pj-alerte")).to_have_count(0)
+    expect(page.locator("#pj-fiche .pj-sans-responsable")).to_have_count(0)
+    expect(page.locator("#pj-fiche-titre")).to_have_text("Sans tête")
+    assert page.evaluate(
+        "() => window.__module === document.querySelector('#pj-fiche section.mp')"),         "la fiche a été remontée"
+    expect(partie.locator('.mp-ligne[data-principal="lectrice"] .mp-role')).to_be_focused()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_la_fiche_d_un_projet_vit_dans_l_adresse(page, quatre_projets):
+    """Choisir un projet le NOMME dans l'adresse, et l'adresse rouvre sa fiche — dans la vue
+    des projets, même sans `vue=` —, l'historique ramène la précédente, et un numéro qu'on
+    ne règle pas se dit d'une seule phrase, sans dire s'il existe. La vue quittée puis
+    reprise par le menu retrouve sa fiche."""
+    d = quatre_projets
+    _ouvrir_les_projets(page, d["base"], ADMIN_BD)
+    _ligne(page, d["projet"]).wait_for(timeout=5000)
+    assert "projet=" not in page.url                           # le premier, ouvert d'office
+    _ligne(page, d["sans_tete"]).click()
+    assert f"projet={d['sans_tete']}" in page.url, page.url
+    expect(_ligne(page, d["sans_tete"])).to_be_focused()       # au large, le clavier reste
+    _ligne(page, d["atelier"]).click()
+    expect(page.locator("#pj-fiche-titre")).to_have_text("Atelier lettrage")
+    page.go_back()
+    expect(page.locator("#pj-fiche-titre")).to_have_text("Sans tête")
+    expect(_ligne(page, d["sans_tete"])).to_have_attribute("aria-current", "true")
+
+    page.goto(f"{d['base']}/administration?projet={d['projet']}", wait_until="networkidle")
+    expect(page.locator("#vue-lien-projets")).to_have_attribute("aria-current", "page")
+    expect(page.locator("#pj-fiche-titre")).to_have_text("Séminaire 2026")
+    page.locator("#vue-lien-comptes").click()
+    page.locator("#vue-lien-projets").click()
+    assert f"projet={d['projet']}" in page.url, page.url
+    expect(page.locator("#pj-fiche-titre")).to_have_text("Séminaire 2026")
+
+    for inconnu in (d["atelier"] + 1000, "abc"):
+        page.goto(f"{d['base']}/administration?vue=projets&projet={inconnu}",
+                  wait_until="networkidle")
+        _ligne(page, d["projet"]).wait_for(timeout=5000)
+        if inconnu == "abc":                                   # illisible : le premier, d'office
+            expect(page.locator("#pj-fiche-titre")).to_have_text(database.NOM_PROJET_DEFAUT)
+        else:
+            expect(page.locator("#pj-fiche")).to_contain_text(
+                "Ce projet n'est pas parmi ceux que vous réglez.")
+            expect(page.locator("#pj-fiche-titre")).to_have_count(0)
+
+    # Le responsable ne règle que les siens : le numéro d'un autre projet reçoit la même
+    # phrase que celui d'un projet qui n'existe pas.
+    _ouvrir_les_projets(page, d["base"], PROPRIO)
+    page.goto(f"{d['base']}/administration?vue=projets&projet={d['sans_tete']}",
+              wait_until="networkidle")
+    expect(page.locator("#pj-fiche")).to_contain_text(
+        "Ce projet n'est pas parmi ceux que vous réglez.")
+    assert "Sans tête" not in page.locator("#projets-bloc").inner_text()
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_a_l_etroit_une_colonne_a_la_fois(page, quatre_projets):
+    """Sous 40em, la liste OU la fiche, comme le fonds : choisir une ligne montre sa fiche et
+    y porte le focus — même la ligne déjà choisie d'office —, « ← Liste » rend la liste et
+    la ligne ; « + Nouveau projet » montre son formulaire seul, et « Annuler » rend la liste.
+    Une adresse qui nomme un projet ouvre directement sa fiche."""
+    d = quatre_projets
+    page.set_viewport_size({"width": 360, "height": 800})
+    _ouvrir_les_projets(page, d["base"], ADMIN_BD)
+    liste, fiche = page.locator("#pj .lf-liste"), page.locator("#pj-fiche")
+    _ligne(page, d["repli"]).wait_for(timeout=5000)
+    expect(liste).to_be_visible()
+    expect(fiche).to_be_hidden()
+    expect(_ligne(page, d["repli"])).to_have_attribute("aria-current", "true")
+    _ligne(page, d["repli"]).click()                           # la ligne choisie d'office
+    expect(fiche).to_be_visible()
+    expect(liste).to_be_hidden()
+    expect(page.locator("#pj-fiche-titre")).to_be_focused()
+    page.locator("#pj-fiche [data-pj-retour]").click()
+    expect(liste).to_be_visible()
+    expect(_ligne(page, d["repli"])).to_be_focused()
+    _ligne(page, d["sans_tete"]).click()
+    expect(page.locator("#pj-fiche-titre")).to_have_text("Sans tête")
+    expect(page.locator("#pj-fiche-titre")).to_be_focused()
+    page.locator("#pj-fiche [data-pj-retour]").click()
+
+    page.locator("#pj-creer-ouvrir").click()
+    expect(liste).to_be_hidden()
+    expect(page.locator("#pj-nom")).to_be_focused()
+    page.locator("[data-pj-creer-annuler]").click()
+    expect(page.locator("#pj-nom")).to_have_count(0)
+
+    page.goto(f"{d['base']}/administration?vue=projets&projet={d['atelier']}",
+              wait_until="networkidle")
+    expect(page.locator("#pj-fiche-titre")).to_have_text("Atelier lettrage")
+    expect(liste).to_be_hidden()
+
+
 # ── Accessibilité : ce que les audits des surfaces ne rendent pas ───────────────────────
 
 _AXE = Path(__file__).parent / "js" / "vendor" / "axe.min.js"
@@ -1979,8 +2175,10 @@ def test_a11y_le_selecteur_et_le_bloc_peuple(page, seminaire, theme):
     d = seminaire
     _membre(d["base"], d["projet"], "proprio", "responsable")
     _membre(d["base"], d["projet"], "ancien-cours", genre="groupe")
+    _projet(d["base"], "Sans tête")                            # une ligne en alerte dans la liste
     page.add_init_script(f"localStorage.setItem('bd-theme','{theme}')")
     partie = _ouvrir_la_fiche(page, d)
+    expect(page.locator("#pj-objets .pj-alerte")).to_have_text("⚠ sans responsable")
     page.locator("#projet-choix").wait_for(timeout=5000)
     partie.locator(".mp-marque").first.wait_for(timeout=5000)
     partie.locator(".mp-choix").select_option("autre")

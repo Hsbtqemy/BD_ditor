@@ -94,6 +94,11 @@ def _vue(conn, portee: autorisation.Portee, p: dict) -> dict:
                          "AND projet_id = ? AND reponse IS NULL ORDER BY id LIMIT 1",
                          (DEMANDE_SUPPRESSION_PROJET, p["id"])).fetchone()
         vue["demande_suppression"] = None if d is None else dict(d)
+        # COL-3 — un FAIT, pour qui gère, et seulement lui : le projet n'a aucun responsable.
+        # La liste de l'Administration l'affiche ; sans lui, elle aurait dû lire les membres
+        # de chaque projet, une requête par ligne. Un booléen ne nomme personne, et un
+        # simple membre ne le reçoit pas plus que la justification.
+        vue["sans_responsable"] = _compte_responsables(conn, p["id"]) == 0
     return vue
 
 

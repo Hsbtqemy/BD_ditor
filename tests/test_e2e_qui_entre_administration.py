@@ -429,10 +429,11 @@ def test_un_message_de_qui_entre_ne_touche_pas_la_fiche_du_projet_voisin(page, e
 
     # Et dans l'autre sens : un geste du bloc voisin ne fait pas taire « Qui entre ».
     page.locator("#vue-lien-projets").click()
+    page.locator("#pj-creer-ouvrir").click()
     page.locator("#pj-nom").fill("")
     page.locator("#pj-ajouter").click()
-    expect(page.locator("#pj-msg.erreur")).to_be_visible()
-    expect(page.locator("#pj-msg.erreur")).to_have_text("Donnez un nom au projet.")
+    expect(page.locator("#pj-creer-msg.erreur")).to_be_visible()
+    expect(page.locator("#pj-creer-msg.erreur")).to_have_text("Donnez un nom au projet.")
     expect(message).to_contain_text("Le groupe annotateurs entre dans « Étude réglée ici »")
 
 

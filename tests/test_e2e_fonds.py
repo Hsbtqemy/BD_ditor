@@ -356,8 +356,11 @@ def test_le_responsable_demande_la_suppression_de_son_projet(page, live_server):
     expect(ouvrir).to_be_focused()
     ouvrir.click()
     # Où la fiche commence DANS son bloc : la page défile (le focus suit le geste), le bloc ne
-    # doit pas, lui, s'allonger au-dessus d'elle.
+    # doit pas, lui, s'allonger au-dessus d'elle. La fiche défile seule dans son cadre (le
+    # gabarit liste-et-fiche) : ce défilement-là, dû au focus, se rajoute — il ne déplace
+    # rien DANS le bloc.
     decalage = """() => document.querySelector('#pj-fiche-titre').getBoundingClientRect().top
+                       + document.querySelector('#pj-fiche').scrollTop
                        - document.querySelector('#projets-bloc').getBoundingClientRect().top"""
     haut = page.evaluate(decalage)
     page.click("[data-pj-demander]")

@@ -967,15 +967,30 @@ function cgInstaller() {
    écrit SES routes, et ce fichier n'en appelle aucune — un cliquet le vérifie
    (`tests/test_membres_projet_module.py`).
 
-   La sélection ne vit PAS dans l'adresse, à la différence de « Comptes et groupes » : la
-   liste est courte, et l'adresse de cette page désigne déjà une fiche de l'autre bloc.
+   UNE LISTE ET UNE FICHE, le gabarit `lf-` du fonds (COL-3, l'Administration à l'échelle) :
+   une vingtaine de projets ne se règlent pas dans une liste plate. La liste se filtre par
+   NOM, et chaque ligne dit son nombre de collections et ce qui attend — « sans
+   responsable » (`sans_responsable`, rendu à qui gère ; jamais pour le projet de repli, que
+   la migration a fait naître sans responsable et qu'une alerte permanente n'aiderait pas),
+   « suppression demandée ». « + Nouveau projet » ouvre son formulaire DANS la fiche, comme
+   « Importer au fonds ». Sous 40em, une colonne à la fois, avec « ← Liste ».
+
+   LA FICHE OUVERTE VIT DANS L'ADRESSE (`?vue=projets&projet=…`), comme celle du fonds, pour
+   qu'on puisse l'envoyer ; le filtre n'y est pas. Sans projet nommé, la fiche du premier
+   s'ouvre, comme avant — une adresse qui nomme un projet qu'on ne règle pas le dit, sans
+   dire s'il existe.
    ═══════════════════════════════════════════════════════════════════════════ */
 const PJ = {
   projets: [],           // ceux qu'on RÈGLE, dans l'ordre du serveur
   collections: [],       // celles qu'on lit, pour nommer celles de chaque projet
   decide: false,         // créer, renommer, supprimer
   groupesAdmin: [],
+  lu: false,             // la liste a été lue au moins une fois
+  filtre: "",
   sel: null,             // l'identifiant du projet dont la fiche est ouverte
+  nomme: false,          // `sel` vient de l'adresse ou d'un choix, pas du repli sur le premier
+  creer: false,          // la fiche montre le formulaire « Nouveau projet »
+  vueFiche: false,       // sous le seuil étroit, la fiche REMPLACE la liste
   demanderOuvert: null,  // le projet dont le motif de « Demander sa suppression… » est ouvert
   membres: null,         // la poignée du module monté dans la fiche
 };
@@ -1064,9 +1079,8 @@ async function pjCharger() {
   const lu = await pjLire();
   vueMajLiens();
   if (!lu) return;
-  $("#pj-creer").hidden = !PJ.decide;
-  $("#pj-nom-aide").textContent = `${BDProjet.LONGUEUR_NOM} caractères au plus : le nom `
-    + "se lit en haut de chaque page, où il ne se coupe pas.";
+  PJ.lu = true;
+  $("#pj-creer-ouvrir").hidden = !PJ.decide;
   pjRendre();
 }
 
@@ -1075,20 +1089,58 @@ function pjProjet() {
 }
 
 function pjRendre() {
-  // La fiche ouverte reste ouverte si son projet est encore là ; sinon la première.
-  if (!pjProjet()) PJ.sel = PJ.projets.length ? PJ.projets[0].id : null;
+  // La fiche ouverte reste ouverte si son projet est encore là ; sinon la première — sauf si
+  // l'adresse en nommait un autre : la fiche dit alors qu'on ne le règle pas.
+  if (!pjProjet() && !PJ.nomme) PJ.sel = PJ.projets.length ? PJ.projets[0].id : null;
   pjRendreListe();
   pjRendreFiche();
+  pjRendreDisposition();
+}
+
+/* Sous le seuil étroit, la fiche remplace la liste dès qu'on en a choisi une. */
+function pjRendreDisposition() {
+  $("#pj").classList.toggle("lf--fiche", PJ.vueFiche && (PJ.sel !== null || PJ.creer));
+}
+
+/* Ce qui attend sur un projet, en un mot, ou rien. « Sans responsable » ne se dit pas du
+   projet de repli : la migration l'a fait naître ainsi, et une alerte qui ne s'éteint
+   jamais apprend à ne plus être lue. */
+function pjAlerte(p) {
+  if (p.demande_suppression) return "suppression demandée";
+  if (p.sans_responsable && !p.repli) return "sans responsable";
+  return "";
+}
+
+function pjFiltres() {
+  const f = BDComptes.normaliser(PJ.filtre.trim());
+  return f ? PJ.projets.filter((p) => BDComptes.normaliser(p.nom).includes(f)) : PJ.projets;
 }
 
 function pjRendreListe() {
-  $("#pj-objets").innerHTML = PJ.projets.length
-    ? PJ.projets.map((p) => `<li><button type="button" class="pj-objet" data-pj="${p.id}"`
-        + `${p.id === PJ.sel ? ' aria-current="true"' : ""}>`
-        + `<span class="pj-nom">${esc(p.nom)}</span>`
-        + `<span class="pj-etat">${esc(pjPluriel(p.nb_collections, "collection"))}</span>`
-        + `</button></li>`).join("")
-    : `<li class="muted small">Aucun projet.</li>`;
+  const l = pjFiltres();
+  // Redessinée après un geste ailleurs (le module, un renommage) : une ligne qui avait le
+  // focus le retrouve, au lieu de le rendre à la page.
+  const actif = document.activeElement;
+  const garde = actif && actif.closest && actif.closest("#pj-objets") && actif.dataset.pj
+    ? actif.dataset.pj : null;
+  $("#pj-liste-compte").textContent = l.length === PJ.projets.length
+    ? pjPluriel(l.length, "projet") : `${l.length} sur ${PJ.projets.length}`;
+  $("#pj-objets").innerHTML = l.length
+    ? l.map((p) => {
+      const alerte = pjAlerte(p);
+      return `<li><button type="button" class="lf-objet pj-objet" data-pj="${p.id}"`
+        + `${p.id === PJ.sel && !PJ.creer ? ' aria-current="true"' : ""}>`
+        + `<span class="lf-nom pj-nom">${esc(p.nom)}</span>`
+        + `<span class="lf-etat pj-etat">${esc(pjPluriel(p.nb_collections, "collection"))}</span>`
+        + (alerte ? `<span class="lf-detail pj-alerte">⚠ ${esc(alerte)}</span>` : "")
+        + `</button></li>`;
+    }).join("")
+    : `<li class="lf-vide muted small">${PJ.projets.length
+      ? "Aucun projet ne répond à ce filtre." : "Aucun projet."}</li>`;
+  if (garde !== null) {
+    const b = document.querySelector(`#pj-objets [data-pj="${CSS.escape(garde)}"]`);
+    if (b) b.focus();
+  }
 }
 
 /* Les collections d'un projet QU'ON LIT : la liste vient de `GET /api/collections`, qui ne
@@ -1224,13 +1276,56 @@ async function pjDemanderSuppression() {
   if (etat) etat.focus();
 }
 
+/* La ligne sous le nom : le nombre de collections, et les états. Écrite à part, parce
+   qu'après un geste du module sur les membres elle se REDESSINE seule (« sans responsable »
+   peut s'y allumer ou s'y éteindre) : remonter la fiche effacerait le message du module. */
+function pjSous(p) {
+  return `<span>${esc(pjPluriel(p.nb_collections, "collection"))}</span>`
+    + (p.repli ? `<span class="pj-puce">projet de repli</span>` : "")
+    + (p.sans_responsable && !p.repli
+      ? `<span class="lf-puce alerte pj-sans-responsable">sans responsable</span>` : "")
+    + (p.demande_suppression && PJ.decide
+      ? `<span class="sp-pastille">suppression demandée</span>` : "");
+}
+
+function pjRafraichirTete() {
+  const p = pjProjet(), sous = document.querySelector("#pj-fiche .pj-sous");
+  if (p && sous) sous.innerHTML = pjSous(p);
+}
+
+/* « Nouveau projet », dans la fiche. Le nom est BORNÉ par le serveur
+   (`database.LONGUEUR_NOM_PROJET`, recopiée une fois dans `lib/projet.js`). */
+function pjFicheCreer() {
+  return `<article class="pj-carte pj-creer" id="pj-creer" aria-labelledby="pj-creer-titre">
+    <div class="pj-tete"><h3 id="pj-creer-titre" tabindex="-1">Nouveau projet</h3></div>
+    <div class="pj-creer-ligne">
+      <label for="pj-nom">Nom</label>
+      <input id="pj-nom" autocomplete="off" aria-describedby="pj-nom-aide">
+    </div>
+    <p class="muted small" id="pj-nom-aide">${BDProjet.LONGUEUR_NOM} caractères au plus : le
+      nom se lit en haut de chaque page, où il ne se coupe pas.</p>
+    <label for="pj-justification">Pourquoi ce projet existe <span class="muted small">— sa
+      justification, scientifique d'abord. Elle se lit dans sa fiche, par ses responsables et
+      les administrateurs.</span></label>
+    <textarea id="pj-justification" rows="3"></textarea>
+    <div class="pj-decrire-pied"><button id="pj-ajouter" class="primary small"
+      type="button">+ Créer le projet</button><button type="button" class="ghost small"
+      data-pj-creer-annuler="1">Annuler</button>${pjLigneDeGeste("creer", "span")}</div>
+  </article>`;
+}
+
 function pjRendreFiche() {
   const box = $("#pj-fiche");
   if (PJ.membres) { PJ.membres.demonter(); PJ.membres = null; }
+  const retour = `<button type="button" class="ghost small lf-retour" data-pj-retour="1">← Liste</button>`;
+  if (PJ.creer) { box.innerHTML = retour + pjFicheCreer(); return; }
   const p = pjProjet();
   if (!p) {
-    box.innerHTML = PJ.decide
-      ? `<p class="muted">Aucun projet : créez-en un ci-dessus.</p>` : "";
+    // Un numéro qu'on ne règle pas : la même phrase, qu'il existe ou non.
+    box.innerHTML = PJ.sel !== null && PJ.projets.length
+      ? `${retour}<p class="col-note">Ce projet n'est pas parmi ceux que vous réglez.</p>`
+      : PJ.decide ? `<p class="muted lf-accueil">Aucun projet : créez-en un avec « + Nouveau
+          projet ».</p>` : "";
     return;
   }
   // La justification n'est rendue par le serveur qu'à qui gère le projet : la clé ABSENTE
@@ -1240,12 +1335,10 @@ function pjRendreFiche() {
         ${p.justification
           ? `<p class="pj-justification">${esc(p.justification)}</p>`
           : `<p class="muted small">Aucune justification n'a été saisie.</p>`}</section>`;
-  box.innerHTML = `<article class="pj-carte" aria-labelledby="pj-fiche-titre">
+  box.innerHTML = `${retour}<article class="pj-carte" aria-labelledby="pj-fiche-titre">
     <div class="pj-tete">
       <h3 id="pj-fiche-titre" tabindex="-1">${esc(p.nom)}</h3>
-      <p class="pj-sous"><span>${esc(pjPluriel(p.nb_collections, "collection"))}</span>
-        ${p.repli ? `<span class="pj-puce">projet de repli</span>` : ""}
-        ${p.demande_suppression && PJ.decide ? `<span class="sp-pastille">suppression demandée</span>` : ""}</p>
+      <p class="pj-sous">${pjSous(p)}</p>
     </div>
     ${p.description ? `<p class="pj-description">${esc(p.description)}</p>` : ""}
     ${justification}
@@ -1262,33 +1355,96 @@ function pjRendreFiche() {
 }
 
 /* Après un geste du module sur les membres : la LISTE des projets peut avoir changé — un
-   responsable qui se fait sortir ne règle plus le sien. La fiche, elle, n'est redessinée que
-   si son projet a disparu : la remonter effacerait le message que le module vient d'écrire. */
+   responsable qui se fait sortir ne règle plus le sien, et « sans responsable » s'allume ou
+   s'éteint. La fiche, elle, n'est redessinée que si son projet a disparu : la remonter
+   effacerait le message que le module vient d'écrire. Sa tête seule suit. */
 async function pjApresMembres() {
   const avant = PJ.sel;
   if (!await pjLire()) return;
-  if (pjProjet() && PJ.sel === avant) { pjRendreListe(); return; }
+  if (pjProjet() && PJ.sel === avant) { pjRendreListe(); pjRafraichirTete(); return; }
+  PJ.nomme = false;
   pjRendre();
   pjPrevenirLaBande();
 }
 
+/* --- Navigation ---------------------------------------------------------------------- */
+
+function pjLireAdresse() {
+  const brut = new URLSearchParams(location.search).get("projet");
+  PJ.sel = brut && /^[1-9]\d*$/.test(brut) ? Number(brut) : null;
+  PJ.nomme = PJ.sel !== null;
+  PJ.vueFiche = PJ.sel !== null;
+  PJ.creer = false;
+}
+
+function pjEcrireAdresse(pousser) {
+  const p = new URLSearchParams(location.search);
+  if (PJ.sel === null || !PJ.nomme) p.delete("projet"); else p.set("projet", String(PJ.sel));
+  const s = p.toString(), url = location.pathname + (s ? "?" + s : "") + location.hash;
+  if (url === location.pathname + location.search + location.hash) return;
+  history[pousser ? "pushState" : "replaceState"](null, "", url);
+}
+
+/* Ouvrir un projet depuis la liste. Au large, le clavier reste sur la ligne choisie, pour
+   parcourir la suivante ; sous le seuil étroit, où la fiche remplace la liste, il la suit.
+   La fiche déjà ouverte n'est pas remontée : son module garderait sinon son message perdu. */
+function pjOuvrir(id, depuisListe) {
+  const meme = id === PJ.sel && !PJ.creer && !!pjProjet();
+  PJ.sel = id;
+  PJ.nomme = true;
+  PJ.creer = false;
+  PJ.vueFiche = true;
+  pjEcrireAdresse(true);
+  if (!meme) {
+    pjTaireSauf(null);
+    pjRendreListe();
+    pjRendreFiche();
+    $("#pj-fiche").scrollTop = 0;
+  }
+  pjRendreDisposition();
+  if (!depuisListe || CG_ETROIT.matches) {
+    const t = $("#pj-fiche-titre");
+    if (t) t.focus();
+  } else {
+    const courant = document.querySelector('#pj-objets .pj-objet[aria-current="true"]');
+    if (courant) courant.focus();
+  }
+}
+
+/* « + Nouveau projet » est dans la LISTE : sous le seuil étroit, « Annuler » y ramène, là où
+   le clavier retrouve le bouton qui l'avait ouvert. */
+function pjOuvrirCreer(ouvrir) {
+  PJ.creer = ouvrir;
+  PJ.vueFiche = ouvrir;
+  pjTaireSauf(null);
+  pjRendreListe();
+  pjRendreFiche();
+  pjRendreDisposition();
+  const cible = ouvrir ? $("#pj-nom") : $("#pj-creer-ouvrir");
+  if (cible) cible.focus();
+}
+
+/* --- Gestes -------------------------------------------------------------------------- */
+
 async function pjCreer() {
-  const ligne = $("#pj-msg");
+  const ligne = $("#pj-creer-msg");
   const nom = $("#pj-nom").value.trim();
-  if (!nom) { pjMsg(ligne, "Donnez un nom au projet.", true); return; }
+  if (!nom) { pjMsg(ligne, "Donnez un nom au projet.", true); $("#pj-nom").focus(); return; }
   const justification = $("#pj-justification").value.trim();
   let cree;
   try {
     cree = await apiSend("POST", "/api/projets",
                          justification ? { nom, justification } : { nom });
   } catch (e) { pjMsg(ligne, e.message || "Échec", true); return; }
-  $("#pj-nom").value = "";
-  $("#pj-justification").value = "";
+  PJ.creer = false;
   PJ.sel = cree.id;
+  PJ.nomme = true;
+  PJ.vueFiche = true;
+  pjEcrireAdresse(true);
   if (!await pjLire()) return;
   pjRendre();
   pjPrevenirLaBande();
-  pjMsg(ligne, `« ${cree.nom} » créé. Il est vide : faites-y entrer quelqu'un dans sa `
+  pjMsg($("#pj-msg"), `« ${cree.nom} » créé. Il est vide : faites-y entrer quelqu'un dans sa `
     + "fiche, puis créez-y une collection depuis la Bibliothèque.");
   const titre = $("#pj-fiche-titre");
   if (titre) titre.focus();
@@ -1351,30 +1507,42 @@ async function pjSupprimer() {
   try { await apiSend("DELETE", `/api/projets/${p.id}`); }
   catch (e) { pjMsg(ligne, e.message || "Échec", true); return; }
   PJ.sel = null;
+  PJ.nomme = false;
+  PJ.vueFiche = false;
+  pjEcrireAdresse(false);
   if (!await pjLire()) return;
   pjRendre();
   pjPrevenirLaBande();
   pjMsg($("#pj-msg"), `« ${p.nom} » supprimé.`);
-  $("#pj-nom").focus();
+  $("#projets-titre").focus();
 }
 
 function pjDemarrer() {
-  $("#pj-ajouter").onclick = pjCreer;
-  $("#pj-nom").addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") { ev.preventDefault(); pjCreer(); }
+  pjLireAdresse();
+  $("#pj-filtre").addEventListener("input", (ev) => { PJ.filtre = ev.target.value; pjRendreListe(); });
+  // La liste se parcourt aux FLÈCHES, comme celles du fonds et de « Comptes et groupes ».
+  $("#pj-objets").addEventListener("keydown", (ev) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(ev.key)) return;
+    const lignes = [...document.querySelectorAll("#pj-objets .pj-objet")];
+    const i = lignes.indexOf(document.activeElement);
+    if (i < 0 || !lignes.length) return;
+    ev.preventDefault();
+    const j = ev.key === "Home" ? 0 : ev.key === "End" ? lignes.length - 1
+      : Math.max(0, Math.min(lignes.length - 1, i + (ev.key === "ArrowDown" ? 1 : -1)));
+    lignes[j].focus();
   });
   $("#pj").addEventListener("click", (ev) => {
     const b = ev.target.closest("button");
     if (!b) return;
-    if (b.dataset.pj) {
-      const id = Number(b.dataset.pj);
-      if (id === PJ.sel) return;
-      PJ.sel = id;
-      pjTaireSauf(null);
-      pjRendre();
-      // La liste est redessinée : le clavier retrouve la ligne qu'il vient de choisir.
+    if (b.dataset.pj) pjOuvrir(Number(b.dataset.pj), true);
+    else if (b.id === "pj-creer-ouvrir") pjOuvrirCreer(true);
+    else if (b.dataset.pjCreerAnnuler) pjOuvrirCreer(false);
+    else if (b.id === "pj-ajouter") pjCreer();
+    else if (b.dataset.pjRetour) {
+      PJ.vueFiche = false;
+      pjRendreDisposition();
       const courant = document.querySelector('#pj-objets .pj-objet[aria-current="true"]');
-      if (courant) courant.focus();
+      (courant || $("#pj-filtre")).focus();
     } else if (b.dataset.pjRenommer) pjRenommer();
     else if (b.dataset.pjDecrire) pjDecrire();
     else if (b.dataset.pjSupprimer) pjSupprimer();
@@ -1383,10 +1551,9 @@ function pjDemarrer() {
     else if (b.dataset.pjDemanderAnnuler) pjDemanderBasculer(false);
   });
   $("#pj").addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && ev.target.id === "pj-renommer-nom") {
-      ev.preventDefault();
-      pjRenommer();
-    }
+    if (ev.key !== "Enter") return;
+    if (ev.target.id === "pj-renommer-nom") { ev.preventDefault(); pjRenommer(); }
+    else if (ev.target.id === "pj-nom") { ev.preventDefault(); pjCreer(); }
   });
   return pjCharger();
 }
@@ -2162,7 +2329,7 @@ function afDemarrer() {
    que chaque bloc garde pour dire s'il a le droit de paraître.
 
    L'OUVERTURE : l'adresse si elle nomme une vue — ou un objet de « Comptes et groupes »
-   (`?compte=…`, `?axe=…`), ou un document du fonds (`?document=…`) ; sinon « À faire » dès
+   (`?compte=…`, `?axe=…`), un document du fonds (`?document=…`), un projet (`?projet=…`) ; sinon « À faire » dès
    que quelque chose attend ; sinon la DERNIÈRE vue consultée, retenue par le navigateur
    (stockage local, lu sous try/catch) ; sinon « Comptes et groupes », la plus servie, ou ce
    qui reste. L'Administration TRAVERSE les projets : elle ne lit pas le projet courant.
@@ -2177,6 +2344,7 @@ function vueDeLAdresse() {
   if (VUES.includes(p.get("vue"))) return p.get("vue");
   if (VUE_CLES_CG.some((k) => p.has(k))) return "comptes";
   if (p.has("document")) return "fonds";
+  if (p.has("projet")) return "projets";
   return null;
 }
 
@@ -2231,7 +2399,8 @@ function vueAfficher(v) {
 }
 
 /* Changer de vue par le menu, ou depuis un autre bloc : l'adresse dit la vue et ce qu'elle
-   montre — la fiche ouverte de « Comptes et groupes » ou du fonds —, et rien d'autre. */
+   montre — la fiche ouverte de « Comptes et groupes », du fonds ou des projets —, et rien
+   d'autre. */
 function vueAller(v) {
   if (v === VUE.courante) return;
   const p = new URLSearchParams();
@@ -2241,6 +2410,7 @@ function vueAller(v) {
       .forEach((val, k) => p.set(k, val));
   }
   if (v === "fonds" && FD.sel !== null) p.set("document", String(FD.sel));
+  if (v === "projets" && PJ.sel !== null && PJ.nomme) p.set("projet", String(PJ.sel));
   history.pushState(null, "", `${location.pathname}?${p}${location.hash}`);
   vueAfficher(v);
 }
@@ -2261,6 +2431,8 @@ function vueDemarrer(chargements) {
     const v = vueDeLAdresse() || VUE.initiale;
     fdLireAdresse();
     if (FD.lu) { fdRendreControles(); fdRendreListe(); fdRendreFiche(); }
+    pjLireAdresse();
+    if (PJ.lu) pjRendre();
     if (v && v !== VUE.courante && vueDisponibles()[v]) vueAfficher(v);
   });
   Promise.allSettled(chargements).then(() => {

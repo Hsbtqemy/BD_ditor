@@ -228,7 +228,9 @@ def test_une_base_neuve_nait_avec_son_projet(client, db_path):
         "date_creation": client.get("/api/projets").json()[0]["date_creation"],
         "mon_role": None, "gerable": True, "nb_collections": 0, "justification": None,
         # COL-3, tranche 2 — la demande de suppression qui attend, à qui gère.
-        "demande_suppression": None}]
+        "demande_suppression": None,
+        # COL-3 — l'Administration dit « sans responsable » sans lire les membres un à un.
+        "sans_responsable": True}]
 
 
 def test_le_repli_se_designe_par_son_drapeau_jamais_par_son_nom(client, db_path):
@@ -580,6 +582,38 @@ def test_la_justification_ne_se_rend_qu_a_qui_gere(client, decor):
         for chemin in ("/api/projets", "/api/collections", "/api/moi",
                        f"/api/albums/{decor['album']}/collections"):
             assert "ZZJUSTIF7" not in client.get(chemin, headers=headers).text, chemin
+
+
+def test_sans_responsable_se_dit_a_qui_gere_et_suit_les_membres(client, decor):
+    """Un FAIT pour la liste de l'Administration (COL-3) : le projet n'a aucun responsable.
+    Il suit les membres — vrai à la naissance, faux dès qu'un responsable est nommé, que ce
+    soit un compte ou un groupe, et faux encore quand l'un des deux sort. Comme
+    la justification, il ne se rend qu'à qui gère : un simple membre et qui ne voit le
+    projet que par une collection ne reçoivent pas la clé."""
+    pid = decor["projet"]
+
+    def lu_par(headers):
+        (p,) = [p for p in client.get("/api/projets", headers=headers).json()
+                if p["id"] == pid]
+        return p.get("sans_responsable", "clé absente")
+
+    assert lu_par(ADMIN) is True                               # né sans responsable
+    assert _membre(client, pid, "bob").status_code == 200
+    assert lu_par(ADMIN) is True                               # un membre n'y change rien
+    assert _membre(client, pid, "equipe", role="responsable",
+                   genre="groupe").status_code == 200
+    assert lu_par(ADMIN) is False                              # un groupe responsable compte
+    assert _membre(client, pid, "alice", role="responsable").status_code == 200
+    assert client.delete(f"/api/projets/{pid}/membres/groupe/equipe",
+                         headers=ADMIN).status_code == 204
+    assert lu_par(ADMIN) is False and lu_par(ALICE) is False
+    _acces(client, decor["collection"], "carol")
+    assert lu_par(BOB) == "clé absente"
+    assert lu_par(CAROL) == "clé absente"
+    # Le repli de la base de test n'a aucun responsable : le fait vaut pour lui aussi, et
+    # c'est l'écran qui décide de ne pas l'en alerter.
+    (repli,) = [p for p in client.get("/api/projets", headers=ADMIN).json() if p["repli"]]
+    assert repli["sans_responsable"] is True
 
 
 # --------------------------------------------------------------------------- #

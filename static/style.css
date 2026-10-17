@@ -2872,15 +2872,26 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
   .lf.lf--fiche .lf-liste { display: none; }
   .lf-retour { display: inline-block; margin-bottom: .6rem; }
 }
-/* ── Projets (COL-3, tranche 1) — le bloc de l'Administration ───────────────────────
-   Une liste courte et une fiche. Ni cadre à hauteur fixe ni liste qui défile seule, à la
-   différence de « Comptes et groupes » : on règle quelques projets, pas trois cents comptes,
-   et le bloc prend la hauteur de ce qu'il contient. Là où les deux ne tiennent plus côte à
-   côte, la fiche passe SOUS la liste — `flex-wrap`, sans seuil à tenir d'accord avec un
-   script. Les couleurs sont celles de la feuille, et chaque petit texte coloré prend une
-   encre AA-sûre (cf. le bloc ci-dessus). */
+/* ── Projets (COL-3) — le bloc de l'Administration ───────────────────────────────────
+   Une liste et une fiche, le gabarit `lf-` (cf. « Comptes et groupes » et le fonds) : la
+   liste plate d'avant ne tenait plus une vingtaine de projets (relevé par Hugo le
+   2026-10-16). Ce qui suit n'est que ce que la FICHE ajoute au gabarit — le formulaire de
+   création, « Ce projet » et ses lignes de message. Les couleurs sont celles de la feuille,
+   et chaque petit texte coloré prend une encre AA-sûre (cf. le bloc ci-dessus). */
 .admin-bloc.pj-bloc { max-width: none; }
 .pj-bloc > p { max-width: 62rem; }
+#projets-titre:focus { outline: none; }
+#projets-titre:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Ce qui attend sur un projet, sous son nom dans la liste. Sur la ligne choisie, l'encre
+   pleine du gabarit (`.lf-objet[aria-current] .lf-detail`) l'emporte. */
+.pj-alerte { color: var(--accent-amber); }
+/* Sous le seuil étroit, la fiche d'un projet rend au champ « Nom » le demi-centimètre que le
+   cadre lui prend : à 320 px sous une préférence de 24, le nom le plus long qu'un projet
+   puisse porter (`database.LONGUEUR_NOM_PROJET`) débordait son champ de 5 px avec le
+   rembourrage du gabarit (mesuré par `test_le_bloc_des_projets_tient_a_320_px`). */
+@media (max-width: 40em) {
+  .pj .lf-fiche { padding-left: .6rem; padding-right: .6rem; }
+}
 /* `minmax(0, 1fr)` : la piste implicite d'une grille (`auto`) ne descend pas sous la largeur
    PROPRE de ce qu'elle porte, et un champ de texte garde ses vingt caractères — 244 px sous
    Segoe UI à une préférence de 24, 268 sous DejaVu Sans dans l'image (306 sous la même
@@ -2888,8 +2899,6 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    plus bas, ne pouvait rien tant que sa piste ne rétrécissait pas. */
 .pj-creer { display: grid; grid-template-columns: minmax(0, 1fr); gap: .35rem; max-width: 46rem;
             margin: .7rem 0 .2rem; }
-/* `display: grid` ci-dessus l'emporterait sur la règle UA `[hidden]`. */
-.pj-creer[hidden] { display: none; }
 .pj-creer-ligne, .pj-renommer { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .pj-creer label, .pj-renommer label { font-size: .92rem; color: var(--text-muted); }
 .pj-creer input, .pj-creer textarea, .pj-renommer input, .pj-decrire textarea {
@@ -2900,24 +2909,9 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .pj-creer input, .pj-renommer input { flex: 1 1 12rem; min-width: 0; max-width: 24rem; }
 .pj-creer textarea { width: 100%; resize: vertical; }
 #pj-nom-aide { margin: 0; }
-.pj { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .8rem 1.6rem;
-      margin-top: .6rem; }
-.pj-objets { list-style: none; margin: 0; padding: 0; flex: 1 1 14rem; max-width: 20rem;
-             min-width: 0; }
-.pj-objet { width: 100%; display: flex; flex-wrap: wrap; justify-content: space-between;
-            gap: .1rem .5rem; align-items: baseline; text-align: left; background: none;
-            border: 0; border-radius: 6px; padding: .38rem .5rem; color: var(--text);
-            cursor: pointer; font-size: 1rem; }
-.pj-objet:hover { background: var(--hover); }
-.pj-objet[aria-current="true"] {
-  background: color-mix(in srgb, var(--accent-blue) 14%, transparent); font-weight: 600; }
-.pj-nom { min-width: 0; overflow-wrap: anywhere; }
-.pj-etat { color: var(--text-muted); font-size: .88rem; font-weight: 400; }
-/* Sur la ligne choisie, l'encre pleine : l'encre atténuée ne tient plus le 4.5:1 sur le fond
-   teinté quand le bloc repose sur le fond de la PAGE et non sur un panneau (thème clair,
-   relevé par axe). */
-.pj-objet[aria-current="true"] .pj-etat { color: var(--text); }
-.pj-fiche { flex: 999 1 26rem; min-width: 0; }
+.pj-creer h3 { margin: 0; }
+.pj-creer h3:focus { outline: none; }
+.pj-creer h3:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .pj-carte { max-width: 62rem; }
 .pj-tete h3 { margin: 0; font-size: 1.2rem; overflow-wrap: anywhere; }
 .pj-sous { margin: .2rem 0 0; color: var(--text-muted); display: flex; flex-wrap: wrap;

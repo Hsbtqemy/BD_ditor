@@ -113,30 +113,35 @@
          projet par projet, pas celle de cet écran. La seconde dit à qui n'en règle aucun
          POURQUOI il ne voit rien ici : une page qui se tairait ferait chercher un droit.
 
+         Une LISTE et une FICHE, le gabarit `lf-` du fonds et de « Comptes et groupes » : une
+         vingtaine de projets ne se règlent pas dans une liste plate (relevé par Hugo le
+         2026-10-16). La liste se filtre par nom et dit, ligne par ligne, le nombre de
+         collections et ce qui attend (sans responsable, suppression demandée). « + Nouveau
+         projet » ouvre son formulaire DANS la fiche, comme « Importer au fonds » : créer est
+         un geste rare, il n'a pas de champ à demeure. La fiche ouverte vit dans l'adresse
+         (`?vue=projets&projet=…`).
+
          Le squelette est écrit ici ; la liste et la fiche se dessinent, et qui entre dans un
          projet est un module monté dans la fiche (`static/lib/membres-projet.js`). -->
-    <section class="admin-bloc pj-bloc" id="projets-bloc" data-dans-vue="projets" hidden aria-labelledby="projets-titre">
-      <h2 id="projets-titre">🗂️ Projets</h2>
+    <section class="admin-bloc lf-bloc pj-bloc" id="projets-bloc" data-dans-vue="projets" hidden aria-labelledby="projets-titre">
+      <h2 id="projets-titre" tabindex="-1">🗂️ Projets</h2>
       <p class="muted small">Un <b>projet</b> est l'étage au-dessus des collections : chaque
         collection appartient à un projet, et l'on y fait entrer des comptes ou des groupes.
         <b>Entrer dans un projet n'ouvre aucune de ses collections</b> : chacune garde son
         « Qui entre », dans la <a href="/corpus">Bibliothèque</a>.</p>
-      <div class="pj-creer" id="pj-creer" hidden>
-        <div class="pj-creer-ligne">
-          <label for="pj-nom">Nouveau projet</label>
-          <input id="pj-nom" autocomplete="off" aria-describedby="pj-nom-aide">
-          <button id="pj-ajouter" class="primary small" type="button">+ Créer le projet</button>
-        </div>
-        <p class="muted small" id="pj-nom-aide"></p>
-        <label for="pj-justification">Pourquoi ce projet existe <span class="muted small">—
-          sa justification, scientifique d'abord. Elle se lit dans sa fiche, par ses
-          responsables et les administrateurs.</span></label>
-        <textarea id="pj-justification" rows="2"></textarea>
-      </div>
       <p id="pj-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
-      <div class="pj" id="pj">
-        <ul class="pj-objets" id="pj-objets" aria-label="Projets que vous réglez"></ul>
-        <div class="pj-fiche" id="pj-fiche"></div>
+      <div class="lf pj" id="pj">
+        <div class="lf-liste">
+          <div class="lf-tete-liste">
+            <span class="muted small" id="pj-liste-compte"></span>
+            <button type="button" class="ghost small" id="pj-creer-ouvrir" hidden>+ Nouveau projet</button>
+          </div>
+          <label class="sr-only" for="pj-filtre">Filtrer les projets par nom</label>
+          <input type="search" id="pj-filtre" class="lf-filtre" placeholder="Nom du projet…"
+                 autocomplete="off">
+          <ul class="lf-objets pj-objets" id="pj-objets" aria-label="Projets que vous réglez"></ul>
+        </div>
+        <div class="lf-fiche pj-fiche" id="pj-fiche"></div>
       </div>
     </section>
     <section class="admin-bloc" id="projets-ferme" data-dans-vue="projets" hidden aria-labelledby="projets-ferme-titre">
