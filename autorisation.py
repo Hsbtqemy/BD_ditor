@@ -67,7 +67,7 @@ import sqlite3
 from typing import Optional
 
 from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
-from database import NATURE_COLLECTIF, sql_projet_de
+from database import DEMANDE_REJOINDRE, NATURE_COLLECTIF, sql_projet_de
 
 # Niveaux d'accès, du plus faible au plus fort. Chacun IMPLIQUE les précédents : on ne
 # modifie pas ce qu'on ne voit pas, et on n'administre pas ce qu'on ne peut pas modifier.
@@ -526,9 +526,109 @@ class Portee:
         Une portée TOTALE seulement : l'administrateur, et le mono-poste. Le fonds est tout
         ce que l'instance détient, y compris ce qu'aucune collection n'appelle plus — le
         montrer à quelqu'un d'autre décrirait des études hors de sa portée. Un responsable
-        de projet n'en lira, à la tranche suivante, que la NOTICE, par un geste à part. La
-        question ne prend pas d'identifiant : la forme de `peut_decider_des_projets`."""
+        de projet n'en lit que la NOTICE, par une question à part
+        (`peut_lire_les_notices`, tranche 3). La question ne prend pas d'identifiant : la
+        forme de `peut_decider_des_projets`. Elle répond aussi des demandes, à une
+        exception près : un `rejoindre` se consent par le propriétaire
+        (`peut_repondre_a`)."""
         return self.tout
+
+    # -- le fonds et les copies (COL-3, tranche 3) ---------------------------- #
+    def peut_lire_les_notices(self) -> bool:
+        """Peut-on parcourir les NOTICES du fonds — titre, série, auteur, et rien d'autre ?
+        COL-3, tranche 3 (case « La consultation du fonds est tranchée contre le
+        cloisonnement », Hugo, 2026-10-09 ; D3, 2026-10-17).
+
+        Une portée totale, et quiconque est RESPONSABLE d'un projet : c'est lui qui demande
+        les documents qu'il veut faire entrer dans son projet, et il ne peut pas les demander
+        sans les voir. La question ne prend pas d'identifiant : une notice appartient à
+        l'instance dès l'import, pas à un projet. Un écrivain qui n'est responsable de rien
+        ne lit pas les notices — il ne puise que dans ce qu'il LIT déjà (D3) : ouvrir les
+        notices de toute l'instance à chaque annotateur serait plus large que ce qui a été
+        confirmé.
+
+        Ce que la question n'ouvre PAS, et que la route doit tenir par une requête à elle
+        (`GET /api/fonds/notices`, colonnes nommées) : ni images, ni travail, ni qui a
+        importé, ni les copies, leurs projets ou leurs collections, ni la demande qui
+        attend, ni le nombre de planches. Le fonds entier reste à `peut_tenir_le_fonds`."""
+        return self.tout or bool(self.projets_geres)
+
+    def clause_rejoindre_directe(self, alias: str = "a.id") -> tuple[str, list]:
+        """Fragment SQL restreignant `alias` (un id d'album) aux copies qu'on peut REJOINDRE
+        sans rien demander — les ranger dans une collection de plus. COL-3, tranche 3 (D4,
+        Hugo, 2026-10-17, sous sa forme STRICTE).
+
+        Rejoindre un travail, c'est le PARTAGER : la collection d'arrivée verra la copie, et
+        tout ce qu'on y fera se verra des deux côtés. C'est la décision de qui tient le
+        travail, pas de qui l'annote — la séparation d'AUTH-3, « administrer n'est pas
+        écrire ». D'où deux moitiés, toutes deux nécessaires :
+
+        - on LIT la copie (`clause_album`) : rejoindre ne s'offre que sur un travail qu'on
+          voit ;
+        - on ADMINISTRE CHACUNE des collections où elle vit — la forme de
+          `clause_destruction` (« toutes ses collections »), un palier plus haut. Le
+          propriétaire, y compris par la dérivation de la collection de BASE (un responsable
+          du projet en est propriétaire) ; `bd-admins` par `peut_administrer`. Une
+          collection SANS propriétaire n'est donc tenue que par la portée totale : personne
+          d'autre n'y consent.
+
+        Écrire dans la collection d'ARRIVÉE est la troisième condition, et elle reste à la
+        route (`peut_ecrire`), qui la vérifie avant tout : sans elle on déposerait son
+        travail chez quelqu'un d'autre. Le rangement ne TRAVERSE pas les projets
+        (`database.rangement_traverse`) — rejoindre ne se fait que DANS un projet.
+
+        Hors de là, rejoindre se DEMANDE (`database.DEMANDE_REJOINDRE`), et c'est
+        `peut_repondre_a` qui dit qui y consent. Plus strict qu'avant la tranche 3, où
+        écrire des deux côtés suffisait, et c'est voulu : ranger chez soi retirait aux autres
+        la suppression directe (`AUTH-10`) sans qu'ils l'aient décidé.
+
+        La moitié « toutes » seule serait vraie d'une copie rangée nulle part — gardée au
+        fonds — et l'ouvrirait à quiconque ; la moitié « lire » la referme, puisqu'une copie
+        gardée n'est lue que par la portée totale."""
+        if self.tout:
+            return "1", []
+        lire, p_lire = self.clause_album(alias)
+        if lire == "0":
+            return "0", []
+        if self.admin:
+            return lire, p_lire
+        ids = sorted(self.propriete)
+        if not ids:
+            return "0", []
+        marques = ", ".join("?" * len(ids))
+        return (f"({lire} AND NOT EXISTS (SELECT 1 FROM collection_album _rj "
+                f"WHERE _rj.album_id = {alias} AND _rj.collection_id NOT IN ({marques})))",
+                [*p_lire, *ids])
+
+    def peut_repondre_a(self, demande) -> bool:
+        """Peut-on RÉPONDRE à cette demande — l'accepter, ou la refuser ?  COL-3, tranche 3.
+
+        `demande` : un dict (ou une ligne) qui porte `genre`, et pour un `rejoindre`
+        `collections`, les collections où vit AUJOURD'HUI la copie qu'il vise — un fait que
+        l'appelant relève en base, sous le verrou, au moment de répondre ; la règle est ici.
+
+        Par genre. Une suppression (document ou projet) et une entrée de documents : qui
+        tient le fonds (`peut_tenir_le_fonds`), comme jusqu'ici. Un `rejoindre` : qui
+        ADMINISTRE CHACUNE des collections où vit la copie (D4 stricte — le propriétaire de
+        chacune consent ; le même test que `clause_rejoindre_directe`, posé sur qui répond),
+        ou la portée totale, en recours. C'est la première demande à laquelle répond
+        quelqu'un qui ne tient pas le fonds (D11 : là où vit qui consent).
+
+        Une copie qui n'est plus rangée nulle part — sortie au fonds depuis la demande — n'a
+        plus de propriétaire pour consentir : seule la portée totale y répond. Une copie
+        partagée entre deux collections de deux propriétaires différents ne se rejoint que
+        par qui possède les deux, ou par un administrateur : la forme stricte de D4 lue
+        comme le consentement de CHAQUE collection, tenu par une seule réponse.
+
+        Ce que la question ne dit pas, et c'est à la route : quoi répondre à qui ne peut pas
+        répondre — un 403 nommé sur le droit, avant l'objet, à qui n'administre rien ; un
+        404 à qui ne lit pas la copie visée."""
+        if demande["genre"] == DEMANDE_REJOINDRE:
+            if self.tout:
+                return True
+            collections = list(demande["collections"] or ())
+            return bool(collections) and all(self.peut_administrer(c) for c in collections)
+        return self.peut_tenir_le_fonds()
 
     def peut_nommer_le_demandeur(self, demandeur) -> bool:
         """Peut-on lire QUI a demandé une suppression ?  COL-3, tranche 2 (Hugo,

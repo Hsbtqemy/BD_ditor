@@ -2055,14 +2055,128 @@ def creer_document(conn: sqlite3.Connection, album_id: int, *,
     return document_id
 
 
+# Les colonnes d'`albums` qui ne sont PAS la notice, et ne se recopient pas d'une copie à sa
+# sœur : son identité, sa date d'import, et ses deux attaches, que `creer_copie` pose
+# elle-même. Toute autre colonne EST la notice (D7, Hugo, 2026-10-17) et se recopie — une
+# colonne descriptive ajoutée demain suit par défaut, ce qui est le bon défaut pour une
+# notice ; une colonne qui ne serait PAS descriptive doit entrer ici, et
+# `tests/test_prendre.py` exige que la liste soit relue à chaque colonne neuve.
+ALBUM_HORS_NOTICE = frozenset({"id", "date_import", "document_id", "projet_id"})
+
+# Ce qu'une planche d'une copie VIERGE reprend de la planche source : ce que le SCAN est —
+# son rang, son rôle, ses fichiers (D6 : les MÊMES, aucune image n'est copiée), ses
+# dimensions et son matériel. Le reste est le travail de la copie source — l'avancée de la
+# reconnaissance (`statut`, `date_segmentation`), la validation, le verrou et qui l'a posé,
+# la relecture forcée — et une copie vierge n'en hérite pas : elle repart `importee`.
+PLANCHE_SCAN = ("numero", "role", "chemin_tiff", "chemin_web", "largeur_px", "hauteur_px",
+                "dpi_x", "dpi_y", "mode")
+
+
+def creer_copie(conn: sqlite3.Connection, document_id: int, collection_id: int, *,
+                par: str | None, depuis: int, cran: str) -> int:
+    """Fait naître une COPIE de travail d'un document qui EXISTE déjà, rangée dans
+    `collection_id`, et rend son id. COL-3, tranche 3 — la seconde voie de naissance d'un
+    album, à côté de `creer_document` (un document qui naît avec sa seule copie).
+
+    Les trois arguments nommés sont OBLIGATOIRES et sans défaut, le patron de
+    `creer_document` : `par` (le login de qui la crée, None en mono-poste — et il l'a
+    écrit), `depuis` (la copie dont elle est tirée, du même document), `cran` (jusqu'où la
+    copie reprend le travail de sa source). Dans la tranche 3a, un seul cran :
+    `CRAN_IMAGES` — une copie VIERGE. La 3b ajoutera les autres ; un cran inconnu lève,
+    plutôt que de faire une copie vierge sous un nom qui en promet davantage.
+
+    Ce que la copie reçoit :
+    - la NOTICE de sa source — toutes les colonnes d'`albums` hors `ALBUM_HORS_NOTICE` — et
+      ses CONTRIBUTIONS, recopiées puis libres de diverger (D7) ;
+    - une planche par planche de la source, `PLANCHE_SCAN` seulement : les mêmes FICHIERS
+      (D6 — les images appartiennent au document, et un fichier ne quitte le disque que
+      lorsque plus aucune planche ne le désigne, `socle._effacer_les_images_d_une_copie`) ;
+    - le PROJET de la collection d'arrivée, écrit sur elle — jamais celui de sa source :
+      une copie prise entre deux projets naît dans le projet qui la prend, et
+      `albums_hors_de_leur_projet` reste vide ;
+    - sa ligne `copie` : créée par `par`, au cran dit, depuis la source et le nom du projet
+      de celle-ci ce jour-là ;
+    - son rangement dans `collection_id`, et dans elle seule.
+
+    Et elle S'ÉCRIT au journal, dans la même transaction et ici plutôt que chez chaque
+    appelant — trois appelants (la prise directe, l'acceptation d'une entrée, et la 3b)
+    finiraient par l'oublier : sous la cible `document` (retenue de toute sortie, sans rang,
+    non annulable), `apres` seul comme un scan ajouté, la copie neuve dans la charge avec sa
+    collection, son cran et sa source ; puis son EMPLOI (`journal.journaliser_emploi`).
+
+    Les FICHIERS ne sont pas touchés, et aucun dossier n'est créé : la copie n'en écrit
+    qu'à son premier import, sous un numéro dont les fichiers sont libres
+    (`ingest.prochain_numero_libre`). Ne commite pas. Lève `ValueError` sur une source qui
+    n'est pas une copie de ce document, une collection qui n'existe pas, un cran inconnu :
+    des erreurs de l'appelant, que la route a refusées avant."""
+    import journal                          # la naissance s'écrit ici (cf. ci-dessus)
+    if cran != CRAN_IMAGES:
+        raise ValueError(f"cran inconnu dans cette tranche : {cran!r}")
+    source = conn.execute("SELECT document_id FROM albums WHERE id = ?", (depuis,)).fetchone()
+    if source is None or source[0] != document_id:
+        raise ValueError(f"l'album {depuis} n'est pas une copie du document {document_id}")
+    projet = projet_de_collection(conn, collection_id)
+    if projet is None:
+        raise ValueError(f"collection {collection_id} introuvable")
+    notice = [c[1] for c in conn.execute("PRAGMA table_info(albums)")
+              if c[1] not in ALBUM_HORS_NOTICE]
+    album_id = conn.execute(
+        f"INSERT INTO albums ({', '.join(notice)}, document_id, projet_id) "
+        f"SELECT {', '.join(notice)}, ?, ? FROM albums WHERE id = ?",
+        (document_id, projet, depuis)).lastrowid
+    conn.execute(
+        f"INSERT INTO planches (album_id, {', '.join(PLANCHE_SCAN)}) "
+        f"SELECT ?, {', '.join(PLANCHE_SCAN)} FROM planches WHERE album_id = ? "
+        "ORDER BY numero", (album_id, depuis))
+    conn.execute("INSERT INTO contribution (album_id, nom, role_id, rang) "
+                 "SELECT ?, nom, role_id, rang FROM contribution WHERE album_id = ? "
+                 "ORDER BY rang, id", (album_id, depuis))
+    conn.execute(
+        "INSERT INTO copie (album_id, creee_par, cran, depuis_album_id, depuis_projet_nom) "
+        f"VALUES (?, ?, ?, ?, (SELECT p.nom FROM albums a JOIN projet p "
+        f"                     ON p.id = {sql_projet_d_album('a')} WHERE a.id = ?))",
+        (album_id, par, cran, depuis, depuis))
+    conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
+                 (collection_id, album_id))
+    journal.journaliser(conn, "modification", "document", document_id,
+                        apres={"album_id": album_id,
+                               "copie": {"cran": cran, "depuis_album_id": depuis,
+                                         "collection_id": collection_id}})
+    journal.journaliser_emploi(conn, "lien", album_id, collection_id)
+    return album_id
+
+def ranger_copie(conn: sqlite3.Connection, album_id: int, collection_id: int, *,
+                 rang: int | None = None) -> bool:
+    """RANGE une copie dans une collection, et rend vrai si elle n'y était pas. COL-3,
+    tranche 3 — un seul geste pour toutes les portes qui rangent : rejoindre (la route, la
+    prise, l'acceptation d'un `rejoindre`), reprendre une copie gardée au fonds, et l'outil
+    en ligne de commande. Trois écritures du même rangement finissaient par ne plus dire
+    pareil.
+
+    Il ne DÉCIDE rien : qui peut ranger quoi est à `autorisation.Portee`
+    (`clause_rejoindre_directe`), le refus de traverser deux projets à
+    `rangement_traverse`, et c'est à l'appelant de les avoir posés. Il écrit le
+    rangement, son EMPLOI au journal (`journal.journaliser_emploi`) quand il est neuf — re-poser
+    un rangement existant ne s'écrit pas, rien n'a changé —, et le projet de la copie si elle
+    n'en avait pas encore (une copie importée au fonds prend celui de sa première
+    collection, `poser_projet_de_copie`). Ne commite pas."""
+    import journal                          # l'emploi s'écrit avec le rangement
+    neuf = conn.execute("INSERT OR IGNORE INTO collection_album (collection_id, album_id, rang) "
+                        "VALUES (?, ?, ?)", (collection_id, album_id, rang)).rowcount == 1
+    if neuf:
+        journal.journaliser_emploi(conn, "lien", album_id, collection_id)
+    poser_projet_de_copie(conn, album_id)
+    return neuf
+
+
 def retirer_document_sans_copie(conn: sqlite3.Connection, document_id: int | None) -> bool:
     """Efface la ligne d'un document qui n'a PLUS aucune copie de travail. Vrai si elle
     est partie.
 
-    À appeler après avoir détruit un album : dans cette tranche un document n'a qu'une
-    copie, donc il part avec elle. La condition est écrite quand même — le jour où deux
-    copies seront sœurs, détruire l'une ne devra pas emporter l'identité de l'autre, et
-    c'est ici que cela se garde, pas chez chaque appelant."""
+    À appeler après avoir détruit un album. Depuis la tranche 3 un document peut avoir
+    plusieurs copies SŒURS (`creer_copie`) : détruire l'une n'emporte pas l'identité des
+    autres, et le document part avec sa DERNIÈRE copie (D5). C'est ici que cela se garde,
+    pas chez chaque appelant."""
     if document_id is None:
         return False
     return conn.execute(
@@ -2113,10 +2227,48 @@ def albums_hors_de_leur_projet(conn: sqlite3.Connection) -> list[int]:
 # pas ceux d'une admission.
 DEMANDE_SUPPRESSION_DOCUMENT = "suppression_document"
 DEMANDE_SUPPRESSION_PROJET = "suppression_projet"
-GENRES_DEMANDE = (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET)
+# COL-3, tranche 3 — deux genres de plus. Une ENTRÉE de documents : un responsable demande
+# qu'un ou plusieurs documents du fonds entrent dans une collection de son projet, et un
+# administrateur répond document par document (D9). Un REJOINDRE : un écrivain demande à
+# ranger dans sa collection une copie qu'il lit sans tenir toutes ses collections, et le
+# propriétaire de celles-ci consent (D4 stricte, D11). Tous deux nomment leur collection
+# d'ARRIVÉE (`demande.collection_id` et son nom).
+DEMANDE_ENTREE_DOCUMENTS = "entree_documents"
+DEMANDE_REJOINDRE = "rejoindre"
+GENRES_DEMANDE = (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
+                  DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE)
 REPONSE_ACCEPTEE = "acceptee"
 REPONSE_REFUSEE = "refusee"
 REPONSES_DEMANDE = (REPONSE_ACCEPTEE, REPONSE_REFUSEE)
+# L'ÉTAT d'une demande de plusieurs documents dont les réponses sont mêlées (D9) — jamais
+# une réponse qu'on envoie : on répond à chaque document `acceptee` ou `refusee`, et la
+# demande se clôt sur cet état quand le dernier a la sienne.
+REPONSE_PARTIELLE = "partielle"
+
+
+def etat_des_reponses(reponses) -> str | None:
+    """L'état d'une demande d'après les réponses de ses documents : `acceptee` ou `refusee`
+    quand elles le sont toutes, `partielle` quand elles sont mêlées, None tant qu'un document
+    attend (ou qu'il n'y en a aucun). La demande se clôt à la DERNIÈRE réponse, pas à la
+    première."""
+    reponses = list(reponses)
+    if not reponses or None in reponses:
+        return None
+    if set(reponses) == {REPONSE_ACCEPTEE}:
+        return REPONSE_ACCEPTEE
+    if set(reponses) == {REPONSE_REFUSEE}:
+        return REPONSE_REFUSEE
+    return REPONSE_PARTIELLE
+
+
+def demandes_vers_collection(conn: sqlite3.Connection, collection_id: int) -> list[int]:
+    """Les demandes EN ATTENTE qui nomment cette collection comme ARRIVÉE — une entrée de
+    documents, un rejoindre. À clore quand la collection disparaît : son identifiant se
+    réattribue (`collection` n'a pas d'`AUTOINCREMENT`), et une demande acceptée plus tard
+    rangerait sinon dans la collection créée ensuite, une autre étude."""
+    return [r[0] for r in conn.execute(
+        "SELECT id FROM demande WHERE collection_id = ? AND reponse IS NULL ORDER BY id",
+        (collection_id,))]
 # Le « pourquoi » d'une demande est un texte libre ; borné pour qu'un champ de motif ne
 # devienne pas un dépôt de documents.
 LONGUEUR_MOTIF = 2000
