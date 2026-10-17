@@ -292,7 +292,8 @@ def _travail_des_autres(conn, document_id: int, copie, demandeur, collectifs: se
     perdre (`copie` None).
 
     Rend `importe_par` (et son nom lisible) — NULL pour un document d'avant le fonds, dont
-    l'importateur n'est écrit nulle part — et `travail_des_autres` : une entrée par
+    l'importateur n'est écrit nulle part —, `creee_par` (et son nom) : qui a créé la COPIE
+    demandée, ce que lit la règle — et `travail_des_autres` : une entrée par
     personne, `agent` NULL pour les gestes dont l'auteur n'est pas écrit (un acte sans
     agent, un attribut de case posé avant que le geste s'écrive), avec le nombre de gestes
     de chaque sorte et la date du dernier, le plus récent d'abord. Ce que la règle ne lit
@@ -319,7 +320,14 @@ def _travail_des_autres(conn, document_id: int, copie, demandeur, collectifs: se
             if dernier and (e["dernier"] is None or dernier > e["dernier"]):
                 e["dernier"] = dernier
     importe_par = doc["importe_par"] if doc else None
-    noms = noms_lisibles(conn, [a for a in (*par_agent, importe_par) if a])
+    # Qui a créé CETTE copie (COL-3, tranche 3) — c'est elle que lit la règle de suppression
+    # directe (`copie.creee_par`), et non l'importateur du document : les deux ne disent la
+    # même chose que pour la copie d'origine. None quand on ne le sait pas, ou que la copie
+    # n'existe plus.
+    ligne = None if copie is None else conn.execute(
+        "SELECT creee_par FROM copie WHERE album_id = ?", (copie,)).fetchone()
+    creee_par = ligne["creee_par"] if ligne else None
+    noms = noms_lisibles(conn, [a for a in (*par_agent, importe_par, creee_par) if a])
     # Le plus récent d'abord ; les gestes sans date (un attribut sans auteur) en dernier.
     autres = sorted(par_agent.values(), key=lambda e: e["dernier"] or "", reverse=True)
     for e in autres:
@@ -327,6 +335,8 @@ def _travail_des_autres(conn, document_id: int, copie, demandeur, collectifs: se
         e["collectif"] = e["agent"] in collectifs
     return {"importe_par": importe_par,
             "importe_par_nom": noms.get(importe_par) if importe_par else None,
+            "creee_par": creee_par,
+            "creee_par_nom": noms.get(creee_par) if creee_par else None,
             "demandeur_collectif": demandeur in collectifs,
             "travail_des_autres": autres}
 
@@ -442,20 +452,30 @@ def lire_le_fonds(conn: sqlite3.Connection = Depends(db),
     projets = {r["id"]: r["nom"] for r in conn.execute("SELECT id, nom FROM projet")}
     for a in par_album.values():
         a["projet_nom"] = projets.get(a["projet_id"])
+    # La demande se rattache à SA COPIE (COL-3, tranche 3) — `copie` dans la vue d'une
+    # demande, la copie d'où le geste est parti et qui vit encore —, et non au document : une
+    # demande déposée sur la copie d'un projet ne vise pas la copie sœur d'un autre. Chaque
+    # copie dit la sienne ; le document dit la plus ancienne de celles de ses copies, avec la
+    # copie qu'elle vise (`album_id`), pour la pastille de sa ligne.
     attente = {}
-    for d in _vues_demandes(conn):
+    for d in sorted(_vues_demandes(conn), key=lambda d: d["id"]):
         if d["en_attente"] and d["genre"] == DEMANDE_SUPPRESSION_DOCUMENT:
             for x in d["documents"]:
-                attente.setdefault(x["document_id"], d)
+                if x["copie"] is not None:
+                    attente.setdefault(x["copie"], d)
     noms = noms_lisibles(conn, [d["importe_par"] for d in documents if d["importe_par"]])
     for d in documents:
         d["importe_par_nom"] = noms.get(d["importe_par"])
         d["copies"] = copies.get(d["id"], [])
         d["appele"] = any(a["collections"] for a in d["copies"])
-        dem = attente.get(d["id"])
-        d["demande"] = None if dem is None else {
-            k: dem[k] for k in ("id", "demandeur", "demandeur_nom", "motif", "certifie_le",
-                                "date_creation", "refus_anterieurs")}
+        d["demande"] = None
+        for a in d["copies"]:
+            dem = attente.get(a["album_id"])
+            a["demande"] = None if dem is None else {
+                k: dem[k] for k in ("id", "demandeur", "demandeur_nom", "motif", "certifie_le",
+                                    "date_creation", "refus_anterieurs")}
+            if a["demande"] and (d["demande"] is None or a["demande"]["id"] < d["demande"]["id"]):
+                d["demande"] = {**a["demande"], "album_id": a["album_id"]}
     sans = [r[0] for r in conn.execute(
         "SELECT id FROM albums WHERE document_id IS NULL ORDER BY id")]
     return {"documents": documents, "copies_sans_document": sans}

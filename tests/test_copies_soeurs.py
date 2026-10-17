@@ -375,3 +375,147 @@ def test_sans_forme_relative_rien_n_est_efface(client, db_path, soeurs, monkeypa
     assert _images(soeurs["data"], chemins) == avant
     assert _fichiers(soeurs["data"], soeurs["a"]), "le dossier de A a été effacé"
     assert any("restent sur le disque" in r.getMessage() for r in caplog.records)
+
+
+# --------------------------------------------------------------------------- #
+# Les images s'effacent SOUS LE VERROU (relecture croisée de la v31, constat 4)
+# --------------------------------------------------------------------------- #
+def _naitre_pendant_le_menage(db_path, chemins, nees):
+    """Ce qu'une copie sœur ferait en naissant pendant le ménage : une ligne `albums` et une
+    planche qui désigne `chemins`, par une AUTRE connexion. Sous le verrou d'écriture, elle
+    attend et renonce (« database is locked ») ; hors verrou, elle passe — entre la lecture
+    de ce qu'il faut garder et l'effacement."""
+    autre = sqlite3.connect(db_path, timeout=0.2)
+    try:
+        b = autre.execute("INSERT INTO albums (titre) VALUES ('Née pendant le ménage')").lastrowid
+        autre.execute("INSERT INTO planches (album_id, numero, chemin_tiff, chemin_web) "
+                      "VALUES (?, 1, ?, ?)", (b, *chemins))
+        autre.commit()
+        nees.append(b)
+    except sqlite3.OperationalError as exc:
+        assert "locked" in str(exc), exc
+    finally:
+        autre.close()
+
+
+def _toute_planche_a_ses_fichiers(db_path, data):
+    return [(t, w) for t, w in (
+        (r["chemin_tiff"], r["chemin_web"]) for r in _sql(
+            db_path, "SELECT chemin_tiff, chemin_web FROM planches"))
+        if not ((data / t).exists() and (data / w).exists())]
+
+
+def test_detruire_un_album_efface_ses_images_sous_le_verrou(client, db_path, soeurs,
+                                                           monkeypatch):
+    """Une sœur qui naît pendant le ménage — après la lecture de ce qu'il faut garder, avant
+    l'effacement — ne perd pas ses fichiers : elle attend le verrou, que le ménage tient.
+    Hors verrou (le ménage d'avant), elle naissait, et ses fichiers partaient."""
+    import socle
+    c = _album(client, "Seul", soeurs["principale"], LEA)
+    _planche(client, c, LEA)
+    chemins = _chemins(db_path, c)[0]
+    vrai, nees = socle.remove_album_files, []
+
+    def menage(album_id, garder=frozenset()):
+        _naitre_pendant_le_menage(db_path, chemins, nees)
+        return vrai(album_id, garder=garder)
+    monkeypatch.setattr(socle, "remove_album_files", menage)
+    assert client.delete(f"/api/albums/{c}", headers=ADMIN).status_code == 204
+    assert _toute_planche_a_ses_fichiers(db_path, soeurs["data"]) == [], \
+        f"une planche née pendant le ménage a perdu ses fichiers (nées : {nees})"
+
+
+def test_supprimer_une_planche_efface_ses_images_sous_le_verrou(client, db_path, soeurs,
+                                                               monkeypatch):
+    import main
+    c = _album(client, "Seul", soeurs["principale"], LEA)
+    p = _planche(client, c, LEA)
+    chemins = _chemins(db_path, c)[0]
+    vrai, nees = main.remove_planche_files, []
+
+    def menage(tiff, web, garder=frozenset()):
+        _naitre_pendant_le_menage(db_path, chemins, nees)
+        return vrai(tiff, web, garder=garder)
+    monkeypatch.setattr(main, "remove_planche_files", menage)
+    assert client.delete(f"/api/planches/{p}", headers=ADMIN).status_code == 204
+    assert _toute_planche_a_ses_fichiers(db_path, soeurs["data"]) == [], \
+        f"une planche née pendant le ménage a perdu ses fichiers (nées : {nees})"
+
+
+def test_le_verrou_est_rendu_apres_le_menage(db_path):
+    """Le ménage reprend le verrou et le REND, même quand il échoue : la connexion sort sans
+    transaction ouverte, et une autre connexion écrit tout de suite. (La route ferme sa
+    connexion juste après, ce qui le rendrait de toute façon ; un appelant qui la garde —
+    une réponse qui détruit plusieurs copies de suite — ne doit pas en dépendre.)"""
+    import socle
+    conn = database.get_connection()
+    try:
+        vus = []
+        socle._sous_le_verrou(conn, lambda: vus.append(conn.in_transaction))
+        assert vus == [True] and not conn.in_transaction
+
+        def panne():
+            raise OSError("disque")
+        with pytest.raises(OSError):
+            socle._sous_le_verrou(conn, panne)
+        assert not conn.in_transaction
+        autre = sqlite3.connect(db_path, timeout=0.2)
+        try:
+            autre.execute("INSERT INTO albums (titre) VALUES ('Après')")
+            autre.commit()
+        finally:
+            autre.close()
+    finally:
+        conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# La destruction d'une copie sœur s'écrit au journal
+# --------------------------------------------------------------------------- #
+def test_detruire_une_soeur_s_ecrit_sous_le_document(client, db_path, soeurs):
+    """Le document vit encore (B le porte) : pas de `suppression` du document, mais la copie
+    qu'il perd, `avant` seul, l'album dans la charge — après la fin de ses emplois."""
+    a = soeurs["a"]
+    doc = _sql(db_path, "SELECT document_id FROM albums WHERE id = ?", (a,))[0]["document_id"]
+    assert client.delete(f"/api/albums/{a}", headers=ADMIN).status_code == 204
+    actes = _sql(db_path, "SELECT type, cible_table, avant, apres FROM evenement "
+                          "WHERE cible_id = ? AND cible_table IN ('document', 'collection_album') "
+                          "ORDER BY id", (doc,))
+    import json
+    derniers = [(e["type"], e["cible_table"]) for e in actes][-2:]
+    assert derniers == [("delien", "collection_album"), ("modification", "document")]
+    assert json.loads(actes[-1]["avant"]) == {"album_id": a,
+                                              "copie": {"titre": "Le Lotus bleu",
+                                                        "planches": 1}}
+    assert actes[-1]["apres"] is None
+    assert not [e for e in actes if e["type"] == "suppression"]
+    # La dernière copie, elle, emporte le document : `suppression`, comme avant.
+    assert client.delete(f"/api/albums/{soeurs['b']}", headers=ADMIN).status_code == 204
+    assert _sql(db_path, "SELECT type FROM evenement WHERE cible_table = 'document' "
+                         "AND cible_id = ? ORDER BY id DESC LIMIT 1", (doc,)) \
+        == [{"type": "suppression"}]
+
+
+# --------------------------------------------------------------------------- #
+# Une demande montre qui a créé SA copie ; le fonds la rattache à sa copie
+# --------------------------------------------------------------------------- #
+def test_la_demande_dit_qui_a_cree_sa_copie(client, soeurs):
+    """Sous une demande sur B, l'administrateur lit qui a créé B (`sam`) — ce que la règle
+    lit —, à côté de qui a importé le document (`lea`)."""
+    _accorder(client, soeurs["etude"], "lea", "ecriture")
+    demande = _demander(client, soeurs["b"], LEA).json()["id"]
+    vue = [d for d in client.get("/api/demandes", headers=ADMIN).json()
+           if d["id"] == demande][0]
+    x = vue["documents"][0]
+    assert (x["creee_par"], x["importe_par"]) == ("sam", "lea")
+
+
+def test_le_fonds_rattache_la_demande_a_sa_copie(client, soeurs):
+    a, b = soeurs["a"], soeurs["b"]
+    _accorder(client, soeurs["etude"], "lea", "ecriture")
+    demande = _demander(client, b, LEA).json()["id"]
+    fonds = client.get("/api/fonds", headers=ADMIN).json()
+    doc = [d for d in fonds["documents"] if {c["album_id"] for c in d["copies"]} == {a, b}][0]
+    par_copie = {c["album_id"]: c["demande"] for c in doc["copies"]}
+    assert par_copie[a] is None and par_copie[b]["id"] == demande
+    assert (doc["demande"]["id"], doc["demande"]["album_id"]) == (demande, b)

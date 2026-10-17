@@ -56,7 +56,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
     _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
     _attributs_de, _auteur, _chemins_employes, _clore_demandes, _detruire_album,
-    _effacer_les_images_d_une_copie, _supprimer_projet,
+    _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet,
     _clause_lemme, _clause_personnage, _collection_d_export, _collections_lues_d_albums,
     _csv_response, _csv_safe, _descendre_portee,
     _disposition, _ensure_tags, _exiger_destruction, _exiger_export,
@@ -659,10 +659,19 @@ def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
     _journaliser_scan(conn, p["album_id"], p, retire=True)
     conn.commit()
     # Par RÉFÉRENCE (COL-3, tranche 3, D6) : la planche d'une copie sœur peut désigner les
-    # mêmes fichiers, qui restent alors pour elle.
-    remove_planche_files(p["chemin_tiff"], p["chemin_web"],
-                         garder=_chemins_employes(conn, [p["chemin_tiff"], p["chemin_web"]]))
+    # mêmes fichiers, qui restent alors pour elle. Lu et effacé SOUS LE VERROU, repris après
+    # le commit (`socle._sous_le_verrou`) : une sœur née entre la lecture et l'effacement
+    # perdrait sinon ses fichiers.
+    _sous_le_verrou(conn, _effacer_les_images_d_une_planche, conn, p)
     return Response(status_code=204)
+
+
+def _effacer_les_images_d_une_planche(conn, planche: dict) -> None:
+    """Le master et le dérivé d'une planche détruite, sauf ceux qu'une autre planche
+    désigne encore. N'est appelée que par `delete_planche`, après sa garde et son commit, et
+    sous le verrou d'écriture."""
+    chemins = [planche["chemin_tiff"], planche["chemin_web"]]
+    remove_planche_files(*chemins, garder=_chemins_employes(conn, chemins))
 
 
 @app.get("/api/albums/{album_id}/planches")

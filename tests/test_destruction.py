@@ -338,6 +338,12 @@ HORS_GARDE = {
                                        "garde et son commit : elle n'efface que les "
                                        "fichiers de l'album qui vient d'être détruit, et "
                                        "garde ceux qu'une autre planche désigne encore",
+    # Le pendant pour une planche, sorti de `delete_planche` quand le ménage est passé sous
+    # le verrou d'écriture repris après le commit (`socle._sous_le_verrou`).
+    "_effacer_les_images_d_une_planche": "n'est appelée que par `delete_planche`, APRÈS sa "
+                                         "garde et son commit : elle n'efface que les deux "
+                                         "fichiers de la planche qui vient d'être détruite, "
+                                         "et garde ceux qu'une autre planche désigne encore",
 }
 
 

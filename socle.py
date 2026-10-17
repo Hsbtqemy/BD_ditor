@@ -445,10 +445,13 @@ def _detruire_album(conn, portee: autorisation.Portee, album_id: int) -> None:
 
     Il COMMITE, puis efface les fichiers : à appeler en DERNIER, après tout ce qui doit
     partir dans la même transaction. Les fichiers quittent le disque après le commit, et
-    pas avant : une base qui refuserait d'écrire laisserait sinon un album sans images.
+    pas avant : une base qui refuserait d'écrire laisserait sinon un album sans images. Ils
+    le quittent SOUS LE VERROU d'écriture, repris pour cela (`_sous_le_verrou`) : une copie
+    sœur qui naîtrait pendant le ménage garde ses fichiers.
 
     Ce qu'il écrit au journal : la fin de chacun des emplois de la copie (la cascade défait
-    ses rangements sans rien dire), puis la destruction du document. Et il CLÔT toute
+    ses rangements sans rien dire), puis la destruction du document — ou, quand une copie
+    sœur le porte encore, la copie qu'il perd. Et il CLÔT toute
     demande de suppression qui visait ce document : elle a reçu sa réponse, quel que soit
     le geste qui l'a donnée — l'importateur qui détruit lui-même ce qu'un autre avait
     demandé, ou l'administrateur.
@@ -489,6 +492,15 @@ def _detruire_album(conn, portee: autorisation.Portee, album_id: int) -> None:
         journal.journaliser(conn, "suppression", "document", document_id,
                             avant={"album_id": album_id, "titre": a["titre"],
                                    "planches": nb_planches})
+    else:
+        # Une copie SŒUR porte encore le document (COL-3, tranche 3, D5) : il n'est pas
+        # détruit, mais il PERD une copie, son travail et ses planches — et cela s'écrit,
+        # sous le document, comme un scan retiré : `avant` seul, l'album dans la charge.
+        # Seule la fin de ses emplois s'écrivait jusqu'ici : le journal laissait croire la
+        # copie sortie de ses collections, jamais détruite.
+        journal.journaliser(conn, "modification", "document", document_id,
+                            avant={"album_id": album_id,
+                                   "copie": {"titre": a["titre"], "planches": nb_planches}})
     # Les demandes qui visaient CETTE copie ont leur réponse (COL-3, tranche 3) : une
     # demande se dépose sur une copie (`demande_document.album_id`), et celle d'une sœur,
     # dans un autre projet, attend toujours la sienne.
@@ -497,7 +509,29 @@ def _detruire_album(conn, portee: autorisation.Portee, album_id: int) -> None:
         "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL",
         (DEMANDE_SUPPRESSION_DOCUMENT, album_id))], REPONSE_ACCEPTEE)
     conn.commit()
-    _effacer_les_images_d_une_copie(conn, album_id, chemins)
+    _sous_le_verrou(conn, _effacer_les_images_d_une_copie, conn, album_id, chemins)
+
+
+def _sous_le_verrou(conn, effacer, *args) -> None:
+    """Efface des images SOUS LE VERROU D'ÉCRITURE, après le commit de la destruction
+    (COL-3, tranche 3 ; relecture croisée de la v31, constat 4).
+
+    Ce qu'il faut garder se LIT dans la base — les chemins qu'une autre planche désigne
+    encore —, puis les fichiers partent. Hors verrou, une copie SŒUR née entre la lecture et
+    l'effacement (`database.creer_copie`, qui écrit ses planches sous ce même verrou)
+    perdait les fichiers qu'elle venait de désigner : une image effacée sous une sœur, ce
+    qui ne se rattrape pas. Le verrou est donc REPRIS, la lecture et l'effacement se font
+    dessous, puis il est rendu sans rien avoir écrit.
+
+    Pourquoi pas dans la transaction de la destruction elle-même : les fichiers partiraient
+    AVANT son commit, et une base qui refuserait de valider laisserait un album sans images.
+    Deux temps donc — la destruction validée, puis le ménage gardé —, et une sœur qui naît
+    entre les deux désigne ses fichiers AVANT qu'on lise ce qu'il faut garder : ils restent."""
+    conflit.verrouiller(conn)
+    try:
+        effacer(*args)
+    finally:
+        conn.rollback()                     # rien n'a été écrit : le verrou est rendu
 
 
 def _chemins_employes(conn, chemins) -> set:
