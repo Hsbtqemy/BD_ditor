@@ -440,7 +440,12 @@ def test_un_autre_onglet_qui_change_de_projet_previent_celui_ci(page, deux_proje
     expect(page.locator("#projet-choix")).to_have_value(str(d["second"]), timeout=5000)
     expect(page.locator("#collections-projet")).to_have_text(
         "Dans le projet « Séminaire 2026 »")
-    assert _collections_listees(page) == ["Étude des émotions"]
+    # La liste se redessine APRÈS la ligne « Dans le projet » : une lecture immédiate la
+    # trouvait parfois encore à l'ancien projet, sous la charge d'une passe entière (vu le
+    # 2026-10-17, quatre essais seuls sur quatre verts). `expect` réessaie ; la liste
+    # attendue reste exactement la même.
+    expect(page.locator("#col-body details.col-item > summary .col-nom")).to_have_text(
+        ["Étude des émotions"])
     autre.close()
 
 
