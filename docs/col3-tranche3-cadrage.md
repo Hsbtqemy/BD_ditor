@@ -6,11 +6,12 @@ code à ce commit ; ce qui est marqué **supposé** ne l'a pas été, ou reste �
 décisions qu'il suppose sont numérotées D1 à D12 plus bas ; chacune cite la case de
 `pilotage/COL-3.md` qu'elle ferme au lieu d'en ouvrir une parallèle.
 
-> **Tranché par Hugo le 2026-10-17 : D1 (la tranche en deux temps, 3a puis 3b), D2 (pas
-> d'état « admis » : un document entre dans un projet quand une de ses collections le
-> prend), D12 (l'ordre — laissé par Hugo à la session de pilotage, qui a retenu la
-> proposition).** D3 à D11 restent ouvertes, comme cases de `pilotage/COL-3.md`. Le commit
-> « 0 — les albums du projet courant » est écrit et sur `dev` (`2d80473`).
+> **Toutes les décisions sont tranchées par Hugo le 2026-10-17.** D1 à D9, D11 et D12 retiennent
+> la proposition écrite plus bas (D12 laissée par Hugo à la session de pilotage, qui a retenu la
+> proposition ; D4 sous sa forme stricte). **D10 est tranchée CONTRE la proposition d'abord
+> écrite** : un projet naît avec sa collection de base — la section D10 dit ce qui est retenu,
+> et ce qu'elle change aux gestes 4 et 9, à la v31, aux règles et au découpage. Le commit « 0 —
+> les albums du projet courant » est sur `dev` (`2d80473`).
 
 ---
 
@@ -39,8 +40,9 @@ le journal derrière elle. D'où la proposition D1 : deux temps, **3a** puis **3
    demandée avec une copie de travail VIERGE — « partir de zéro », la seule des trois réponses
    qui ne suppose le travail de personne.
 4. **L'administrateur prend un document du fonds pour une collection**, directement, depuis la
-   fiche du document (« Prendre dans… » de la maquette, qui nomme un PROJET : il faut nommer une
-   collection, sinon la copie naîtrait gardée au fonds — cf. D2).
+   fiche du document (« Prendre dans… » de la maquette, qui nomme un PROJET : la copie entre
+   alors dans sa collection de base, ou dans une collection qu'on nomme — D10 ; écrit d'abord
+   « il faut nommer une collection », avant que Hugo tranche D10).
 5. **Dans un projet, une collection prend un document que le projet a déjà** : *partir de zéro*
    (une seconde copie vierge, sans rien demander à personne), ou *rejoindre* le travail d'une
    collection du projet — c'est le « + Ranger ici » d'aujourd'hui, qui devient un geste
@@ -54,6 +56,9 @@ le journal derrière elle. D'où la proposition D1 : deux temps, **3a** puis **3
    (D5).
 8. **Le projet d'origine d'un document garde son nom** (case « Le projet d'ORIGINE d'un document
    ne garde pas son nom ») — nécessaire dès qu'une copie vit hors de son projet d'origine.
+9. **Tout projet naît avec sa collection de base** (D10) : ce qu'il prend au fonds y arrive, ce
+   qu'on importe la présélectionne, et ses membres y entrent selon ce que le projet a choisi —
+   écriture, lecture, ou rien.
 
 ### 3b — l'échelle des couches
 
@@ -452,16 +457,40 @@ la collection demandée (`demande_document.copie_id`) ; qui l'a déposée lit l'
 de son projet. L'autre réponse — accepter ou refuser en bloc — oblige à redemander ce qui a été
 refusé avec le reste.
 
-**D10 — Qui dépose la demande de départ d'un projet : le responsable, une fois le projet
-créé.** *Case « Qui dépose la demande de départ d'un projet ».* Proposition : dans la 3a, le
-responsable dépose ses demandes d'entrée quand il veut ; un projet vide le lui dit (« créez une
-collection, puis prenez au fonds »), et un membre peut déjà créer une collection dans son projet
-(lu : `est_du_projet`, « ce que cela permet en tranche 1 : y créer une collection ») ;
-l'administrateur qui crée un projet peut y prendre lui-même. La demande « d'un seul coup, projet
-et documents » venue de l'extérieur est `AUTH-13`. Ce qui est laissé : la lecture (b) de Hugo
-(le projet ET ses documents dans une même demande) attend `AUTH-13` ; dans l'intervalle,
-l'administrateur crée le projet et le responsable demande ensuite — c'est la lecture (a), que
-la case disait déjà « redevenir la seconde moitié du geste ».
+**D10 — Un projet naît avec sa collection de base, et ses documents y entrent avant qu'on ait
+pensé ses collections.** *Case « Qui dépose la demande de départ d'un projet ».* **Tranché par
+Hugo le 2026-10-17, CONTRE la proposition d'abord écrite ici** (le responsable dépose ses
+demandes une fois une collection créée ; un projet vide le lui dit). Ses raisons : « le fonds
+commence avec le projet », la collection peut advenir après ; penser collection avant d'avoir
+eu accès aux œuvres est difficile à concevoir pour un nouvel utilisateur — on n'aurait que des
+collections « Test » ; et un utilisateur peut ne jamais puiser au fonds, seulement importer ses
+planches. Ce qui est retenu, piste de Hugo mise en forme avec la session de pilotage :
+
+- **Tout projet naît avec UNE collection de base**, désignée par un drapeau
+  (`collection.base`) et jamais par son nom, comme le projet de repli : elle se renomme, ne se
+  supprime pas, ne change pas de projet. Ce que le projet prend au fonds y arrive par défaut
+  (geste 4), et l'import la présélectionne. D2 tient : un document entre par une collection.
+- **Ses responsables en sont propriétaires**, par DÉRIVATION de `projet_acces` et non par une
+  ligne recopiée dans `collection_acces` : un responsable remplacé cesse de l'être.
+- **Ses membres y entrent selon une position choisie pour le projet**, trois au choix :
+  *écriture* (« ouverte »), *lecture* (les membres voient le corpus et travaillent dans leurs
+  propres collections — annoter ne demande d'écrire que dans UNE collection de l'album), *aucun*
+  (« protégée » : le propriétaire seul, plus qui il fait entrer par « Qui entre »). Stockée comme
+  un NIVEAU (`collection.acces_membres`, NULL = protégée), dérivée elle aussi : qui sort du projet
+  sort de la collection. Posée à la création du projet — « ouverte » présélectionnée, c'est le
+  cas du débutant, et c'est un administrateur qui crée et voit la question —, modifiable ensuite
+  par qui GÈRE le projet (`peut_gerer_projet`) ; la resserrer n'efface aucun travail, et le geste
+  le dit avant de s'appliquer.
+- **Rien ne s'ouvre au déploiement** : la migration désigne la « Collection par défaut » comme
+  base du projet de repli, réglée comme aujourd'hui (protégée), et crée pour chaque autre projet
+  une base PROTÉGÉE. Une mise à jour ne donne de droit à personne sans qu'on l'ait décidé.
+- **Le coût est un changement de principe** : c'est la première fois qu'être d'un projet ouvre
+  une collection — celle-là seule, et seulement si on l'a choisi. `collections_du_principal`
+  lit `projet_acces` pour les bases ; la phrase « être d'un projet n'ouvre ni ne ferme AUCUNE
+  collection » (`CLAUDE.md`, `docs/modele-et-droits.md`) devient fausse pour elles et se
+  réécrit. Le cumul se fait dans `Portee.__init__`, avec les niveaux ; garde à mutants et
+  relecture croisée obligatoires (cf. plus bas).
+- La demande « d'un seul coup, projet et documents » venue de l'extérieur reste `AUTH-13`.
 
 **D11 — Les consentements qui ne vont pas à l'administrateur se répondent là où vit qui les
 donne.** Proposition : un « rejoindre » s'adresse au propriétaire dans la fiche de SA
@@ -536,6 +565,13 @@ sites du tableau « ce qui casse à deux » réécrits — demande cherchée par
 par album, suppression directe lue sur `copie.creee_par`, fichiers effacés par référence. Leur
 preuve d'innocuité est la suite inchangée ; leur preuve d'utilité arrive au commit suivant.
 
+**1b — La collection de base** (D10). `collection.base` et `collection.acces_membres` dans la
+v31 ; la base créée avec tout projet (route et repli), désignée pour l'existant (protégée) ; la
+dérivation dans `Portee.__init__` — responsables propriétaires, membres au niveau choisi — ; le
+réglage par qui gère le projet ; les refus nommés (supprimer la base, la sortir de son projet) ;
+la présélection à l'import. Tests de comportement sous les trois positions, et un membre sorti du
+projet qui n'y lit plus rien.
+
 **2 — Le serveur : sœurs, prise, demandes.** `database.creer_copie(conn, document_id,
 collection_id, *, par, depuis, cran)` (arguments obligatoires sans défaut, le patron de
 `creer_document`) ; les trois questions neuves de la `Portee` ; `GET /api/fonds/notices`
@@ -592,6 +628,15 @@ doit tomber :
   à la première ;
 - **la migration** : compteur de `projet` au-dessus du plus grand identifiant nommé ; mutant :
   amorcé sur `MAX(projet.id)`.
+- **la collection de base n'ouvre qu'elle-même** (D10) : un membre d'un projet à base ouverte
+  ne lit aucune AUTRE collection du projet ; mutant : la dérivation appliquée à toute collection
+  du projet ;
+- **la position est respectée** : protégée, un membre n'y lit rien ; en lecture, il n'y écrit
+  pas ; mutants : NULL lu comme `lecture`, `lecture` lu comme `ecriture` ;
+- **la dérivation suit le projet** : un membre retiré du projet n'y lit plus rien, un responsable
+  rétrogradé n'en est plus propriétaire ; mutant : une ligne recopiée dans `collection_acces` ;
+- **rien ne s'ouvre à la migration** : sur la vraie base v30, aucune portée ne grandit ; mutant :
+  la base de l'existant créée ouverte.
 
 ### La relecture croisée
 
