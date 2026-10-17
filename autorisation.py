@@ -25,13 +25,15 @@ arrêterait pas. `exporter` est donc une case posée À CÔTÉ du niveau, accord
 collection, d'office pour les propriétaires — et `peut_exporter()` une question de
 plus, pas un palier de plus.
 
-**Et un étage AU-DESSUS, qui ne borde rien de ce qui précède : le projet** (COL-3). Une
-collection appartient à un projet, et l'on EST d'un projet — membre, ou responsable. Ce
-module dit de quels projets on est et lesquels on gère (`est_du_projet`,
-`peut_gerer_projet`, `peut_decider_des_projets`, `clause_projet`) ; il ne s'en sert pour
-ouvrir ni fermer aucune collection. Entrer dans un projet n'ouvre pas ses collections, et un
-accès de collection se passe d'être du projet : les deux tables ne se lisent jamais l'une
-pour l'autre.
+**Et un étage AU-DESSUS : le projet** (COL-3). Une collection appartient à un projet, et
+l'on EST d'un projet — membre, ou responsable. Ce module dit de quels projets on est et
+lesquels on gère (`est_du_projet`, `peut_gerer_projet`, `peut_decider_des_projets`,
+`clause_projet`). Il ne s'en sert pour ouvrir qu'UNE collection par projet, sa collection de
+BASE (D10, Hugo, 2026-10-17) : ses responsables en sont propriétaires, ses membres y entrent
+au niveau que le projet a choisi (écriture, lecture, ou rien) — une dérivation faite dans
+`Portee.__init__`, jamais recopiée dans `collection_acces`. Toute autre collection du projet
+garde son « Qui entre » seul : entrer dans un projet n'ouvre aucune d'elles, et un accès de
+collection se passe d'être du projet.
 
 Trois principes.
 
@@ -137,14 +139,23 @@ def description_des_droits() -> dict:
 # Rôles dans un PROJET (COL-3), du plus faible au plus fort. Le responsable est membre :
 # le cumul se fait dans `Portee.__init__`, une fois, pour la raison écrite sur les niveaux.
 #
-# CE QUE CES RÔLES NE SONT PAS : des niveaux d'accès. Être d'un projet n'ouvre ni ne ferme
-# AUCUNE collection — `collections_du_principal` ne lit pas `projet_acces`, et aucune des
-# clauses qui filtrent les données (`clause_album`, `clause_destruction`, `clause_terme`) ne
-# connaît les projets. Chaque collection garde son « Qui entre ». Le projet est le périmètre
-# où un travail POURRA se partager ; en tranche 1 il se nomme, il se règle, et c'est tout.
+# CE QUE CES RÔLES NE SONT PAS : des niveaux d'accès sur les collections du projet. Une
+# seule exception, et elle est voulue (D10, Hugo, 2026-10-17) : la collection de BASE du
+# projet, dont le responsable est propriétaire et où le membre entre au niveau
+# `acces_membres` — dérivée dans `Portee.__init__`, à partir de `bases_des_projets`. Aucune
+# des clauses qui filtrent les données (`clause_album`, `clause_destruction`,
+# `clause_terme`) ne connaît les projets : elles lisent les ensembles que la dérivation a
+# remplis. Toute autre collection garde son « Qui entre ».
 MEMBRE = "membre"
 RESPONSABLE = "responsable"
 ROLES_PROJET = (MEMBRE, RESPONSABLE)
+
+# Ce qu'un projet peut ouvrir à ses MEMBRES dans sa collection de base (D10) : un niveau de
+# `collection_acces`, parmi ces deux — `None` veut dire « protégée », les membres n'y entrent
+# pas. `proprietaire` n'y est pas : en faire profiter chaque membre lui donnerait de décider
+# qui d'autre entre, ce qu'AUTH-3 sépare d'écrire. Le premier est la valeur d'une création
+# qui ne la précise pas — celle que l'écran présélectionnera.
+ACCES_MEMBRES = (ECRITURE, LECTURE)
 
 # Genres de principal. EXPLICITE plutôt que déduit : un login et un nom de groupe peuvent
 # être la même chaîne, et une ambiguïté silencieuse sur un contrôle d'accès n'est pas une
@@ -238,9 +249,34 @@ class Portee:
                  lecture: frozenset = frozenset(), ecriture: frozenset = frozenset(),
                  propriete: frozenset = frozenset(), export: frozenset = frozenset(),
                  projets: frozenset = frozenset(), projets_geres: frozenset = frozenset(),
+                 bases: tuple = (),
                  utilisateur: Optional[str] = None, groupes: tuple = ()):
         self.tout = tout
         self.admin = admin
+        # COL-3 — les projets dont on EST, et ceux qu'on GÈRE. Le responsable est membre :
+        # cumulé ici pour la même raison que les niveaux, plus bas.
+        self.projets_geres = frozenset(projets_geres)
+        self.projets = frozenset(projets) | self.projets_geres
+        # D10 (COL-3, tranche 3, Hugo, 2026-10-17) — la collection de BASE de chaque projet
+        # dont on est, `bases` : des triplets (projet, collection, `acces_membres`) lus par
+        # `bases_des_projets`. C'est la PREMIÈRE fois qu'être d'un projet ouvre une
+        # collection — celle-là seule. DÉRIVÉE ici, avec les niveaux, et jamais recopiée
+        # dans `collection_acces` : qui sort du projet sort de la collection, un responsable
+        # rétrogradé cesse d'en être propriétaire, sans qu'aucune ligne soit à retirer.
+        # Le responsable en est propriétaire, quelle que soit la position ; le membre y entre
+        # au niveau choisi — `None`, la base protégée, ne lui ouvre RIEN, et un niveau
+        # inconnu (base retouchée à la main) se dégrade en lecture, la seule erreur qui ne
+        # s'aggrave pas. `pour_export` ne repasse pas `bases` : il réduit des ensembles déjà
+        # dérivés, et les redériver rouvrirait à l'export ce que la case refuse.
+        propriete, ecriture, lecture = set(propriete), set(ecriture), set(lecture)
+        for projet_id, collection_id, niveau in bases:
+            if projet_id in self.projets_geres:
+                propriete.add(collection_id)
+            elif projet_id in self.projets:
+                if niveau == ECRITURE:
+                    ecriture.add(collection_id)
+                elif niveau is not None:
+                    lecture.add(collection_id)
         self.propriete = frozenset(propriete)
         # Les niveaux s'empilent : posséder implique écrire, écrire implique lire. On le
         # fait ICI, une fois, plutôt que dans chaque appelant — un `in self.ecriture` qui
@@ -253,11 +289,6 @@ class Portee:
         # la lecture, par ceinture : on ne sort pas ce qu'on ne voit pas, quoi que dise
         # une ligne en base.
         self.export = (frozenset(export) | self.propriete) & self.lecture
-        # COL-3 — les projets dont on EST, et ceux qu'on GÈRE. Le responsable est membre :
-        # cumulé ici pour la même raison que les niveaux. Ces deux ensembles ne touchent à
-        # aucun des quatre ci-dessus, et aucun de ceux-là ne les lit.
-        self.projets_geres = frozenset(projets_geres)
-        self.projets = frozenset(projets) | self.projets_geres
         self.utilisateur = utilisateur
         self.groupes = tuple(groupes)
 
@@ -319,9 +350,10 @@ class Portee:
 
     # -- les projets (COL-3) -------------------------------------------------- #
     def est_du_projet(self, projet_id: int) -> bool:
-        """Est-on MEMBRE de ce projet ? Ce que cela permet en tranche 1 : y créer une
-        collection. Ce que cela ne permet pas : lire quoi que ce soit — entrer dans un
-        projet n'ouvre aucune de ses collections."""
+        """Est-on MEMBRE de ce projet ? Ce que cela permet : y créer une collection, et
+        entrer dans sa collection de BASE au niveau que le projet a choisi (D10, dérivé
+        dans `__init__`). Ce que cela ne permet pas : lire aucune AUTRE de ses
+        collections."""
         return self.tout or projet_id in self.projets
 
     def peut_gerer_projet(self, projet_id: int) -> bool:
@@ -733,6 +765,24 @@ def projets_du_principal(conn: sqlite3.Connection, login: str,
     return frozenset(par_role[MEMBRE]), frozenset(par_role[RESPONSABLE])
 
 
+def bases_des_projets(conn: sqlite3.Connection, projets) -> tuple:
+    """((projet, collection, acces_membres), …) — la collection de BASE de chacun de ces
+    projets (D10), et la position que le projet a choisie pour ses membres. Une requête, sur
+    le patron des deux du dessus, et pour la même raison. `Portee.__init__` en tire les
+    droits ; cette fonction n'en décide aucun.
+
+    Le drapeau `base` est la seule désignation : une collection du projet qui ne le porte
+    pas n'est jamais lue ici, et c'est ce qui borne la dérivation à UNE collection par
+    projet."""
+    if not projets:
+        return ()
+    ids = sorted(projets)
+    return tuple((r[0], r[1], r[2]) for r in conn.execute(
+        f"SELECT {sql_projet_de('c')}, c.id, c.acces_membres FROM collection c "
+        f"WHERE c.base = 1 AND {sql_projet_de('c')} IN ({', '.join('?' * len(ids))})",
+        ids))
+
+
 def resoudre(conn: sqlite3.Connection, request) -> Portee:
     """La portée de CETTE requête. Le seul point d'entrée du module."""
     if not AUTH_PROXY:
@@ -751,4 +801,5 @@ def resoudre(conn: sqlite3.Connection, request) -> Portee:
     projets, projets_geres = projets_du_principal(conn, login, noms_groupes)
     return Portee(lecture=lecture, ecriture=ecriture, propriete=propriete, export=export,
                   projets=projets, projets_geres=projets_geres,
+                  bases=bases_des_projets(conn, projets | projets_geres),
                   utilisateur=login, groupes=tuple(noms_groupes))

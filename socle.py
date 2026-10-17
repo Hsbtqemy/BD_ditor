@@ -591,11 +591,25 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
         raise HTTPException(409, "C'est le projet de repli : les collections qui ne "
                                  "nomment aucun projet y sont rangées. Il se renomme, il "
                                  "ne se supprime pas.")
-    n = conn.execute(f"SELECT COUNT(*) FROM collection c WHERE {sql_projet_de('c')} = ?",
-                     (projet_id,)).fetchone()[0]
+    # La collection de BASE (D10) ne compte pas comme une collection du projet tant qu'elle
+    # est VIDE : née avec lui, elle part avec lui. Elle ne se supprime pas seule, si bien que
+    # la compter rendrait tout projet insupprimable. Portant un album, elle le retient — la
+    # supprimer enverrait l'album au fonds par ricochet, le refus de `delete_collection`.
+    n = conn.execute(f"SELECT COUNT(*) FROM collection c WHERE {sql_projet_de('c')} = ? "
+                     "AND c.base = 0", (projet_id,)).fetchone()[0]
     if n:
         raise HTTPException(409, f"{n} collection(s) appartiennent à ce projet : un "
                                  "projet ne se supprime que vide.")
+    bases = conn.execute(
+        "SELECT c.id, c.nom, (SELECT COUNT(*) FROM collection_album ca "
+        "                     WHERE ca.collection_id = c.id) AS n "
+        f"FROM collection c WHERE {sql_projet_de('c')} = ? AND c.base = 1",
+        (projet_id,)).fetchall()
+    habitees = sum(b["n"] for b in bases)
+    if habitees:
+        raise HTTPException(409, f"Sa collection de base porte encore {habitees} album(s) : "
+                                 "rangez-les ailleurs, ou supprimez-les d'abord de la "
+                                 "collection. Un projet ne se supprime que vide.")
     # Lu dans la colonne ÉCRITE, pas par la règle de lecture : c'est elle que la clé
     # étrangère garde, et c'est elle qui porte le projet d'une copie au fonds. Un album
     # encore rangé est déjà arrêté par le refus du dessus. Le compte ne dit rien de plus
@@ -624,6 +638,12 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
     _clore_demandes(conn, portee, [r[0] for r in conn.execute(
         "SELECT id FROM demande WHERE genre = ? AND projet_id = ? AND reponse IS NULL",
         (DEMANDE_SUPPRESSION_PROJET, projet_id))], REPONSE_ACCEPTEE)
+    # Sa base vide part avec lui — ses accès posés par cascade, ses termes de vocabulaire
+    # promus en global (`ON DELETE SET NULL`), comme pour `delete_collection`.
+    for b in bases:
+        conn.execute("DELETE FROM collection WHERE id = ?", (b["id"],))
+        journal.journaliser(conn, "suppression", "collection", b["id"],
+                            avant={"nom": b["nom"], "base": True})
     conn.execute("DELETE FROM projet WHERE id = ?", (projet_id,))
     journal.journaliser(conn, "suppression", "projet", projet_id, avant={"nom": p["nom"]})
 
@@ -1587,10 +1607,24 @@ class CollectionIn(BaseModel):
 
 class ProjetIn(BaseModel):
     """Création d'un projet (COL-3). `justification` dit POURQUOI il existe — texte libre,
-    scientifique d'abord ; elle ne se rend qu'à qui gère le projet."""
+    scientifique d'abord ; elle ne se rend qu'à qui gère le projet.
+
+    `acces_membres` (COL-3, tranche 3, D10) : ce que les MEMBRES du projet peuvent dans sa
+    collection de base — `ecriture`, `lecture`, ou `null` (protégée). Omis, il vaut
+    `ecriture` : la position que l'écran présélectionne (« ouverte », le cas du débutant),
+    et le même défaut des deux côtés. Rien ne s'ouvre pour autant à la création : un projet
+    naît sans membre, et en faire entrer un est la décision qui ouvre."""
     nom: str
     description: Optional[str] = None
     justification: Optional[str] = None
+    acces_membres: Optional[str] = autorisation.ECRITURE
+
+
+class AccesMembresIn(BaseModel):
+    """La position des membres d'un projet dans sa collection de base (D10) : `ecriture`,
+    `lecture`, ou `null` (protégée). OBLIGATOIRE — `null` est une valeur, pas une
+    absence."""
+    acces_membres: Optional[str]
 
 
 class ProjetUpdate(BaseModel):

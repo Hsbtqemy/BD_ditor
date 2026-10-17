@@ -112,9 +112,17 @@ def test_une_vraie_base_v30_migre_sans_rien_perdre(vraie_v30):
     database.init_db()
     apres = _etat(vraie_v30)
     assert _sql(vraie_v30, "PRAGMA user_version")[0]["user_version"] == 31
-    assert {t: n for t, n in apres["comptes"].items() if t not in TABLES_NEUVES} \
-        == avant["comptes"]
-    assert apres["lignes"] == avant["lignes"]
+    # Une seule collection naît : la base d'« Étude B » (D10) ; la collection de repli
+    # devient celle du projet de repli sans changer, hors son drapeau.
+    assert apres["comptes"]["collection"] == avant["comptes"]["collection"] + 1
+    assert {t: n for t, n in apres["comptes"].items()
+            if t not in TABLES_NEUVES | {"collection"}} \
+        == {t: n for t, n in avant["comptes"].items() if t != "collection"}
+    nees = sorted(set(apres["lignes"]["collection"]) - set(avant["lignes"]["collection"]))
+    assert set(avant["lignes"]["collection"]) <= set(apres["lignes"]["collection"])
+    assert len(nees) == 1 and '"nom": "Étude B"' in nees[0], nees
+    assert {t: v for t, v in apres["lignes"].items() if t != "collection"} \
+        == {t: v for t, v in avant["lignes"].items() if t != "collection"}
     assert set(avant["index"]) <= set(apres["index"])
     assert apres["recherche"] == avant["recherche"]
     assert _sql(vraie_v30, "PRAGMA foreign_key_check") == []

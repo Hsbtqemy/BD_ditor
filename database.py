@@ -427,9 +427,10 @@ CREATE TABLE IF NOT EXISTS collection (
 );
 
 -- PROJET (v29, COL-3) — l'étage AU-DESSUS des collections : le périmètre à l'intérieur
--- duquel un travail PEUT se partager. Une collection appartient à UN projet. En tranche 1
--- le projet existe et se voit, et rien d'autre ne change : il n'ouvre ni ne ferme aucune
--- collection, que seule `collection_acces` continue de régler.
+-- duquel un travail PEUT se partager. Une collection appartient à UN projet. Il n'ouvre ni
+-- ne ferme aucune collection, que seule `collection_acces` règle — à une exception près
+-- depuis la v31 (D10) : sa collection de BASE (`collection.base`), dont ses responsables
+-- sont propriétaires et où ses membres entrent au niveau `collection.acces_membres`.
 --
 -- `repli` désigne LE projet où tombe une collection qui n'en nomme aucun — tout l'existant
 -- au jour de la migration. Un drapeau et non un nom : ce projet-là est fait pour être
@@ -1264,6 +1265,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 "LEFT JOIN document d ON d.id = a.document_id "
                 "WHERE NOT EXISTS (SELECT 1 FROM copie c WHERE c.album_id = a.id)",
                 (CRAN_ORIGINE,))
+        # La collection de BASE de chaque projet (D10), PROTÉGÉE : rien ne s'ouvre au
+        # déploiement — une mise à jour ne donne de droit à personne sans qu'on l'ait décidé.
+        if {"collection", "projet"} <= _tables and "base" in _cols("collection"):
+            _designer_les_bases(conn)
         # Et des identifiants de PROJET qui ne reviennent plus (D8) : la machinerie de la
         # v30, qui ne touche que les tables à qui `AUTOINCREMENT` manque encore — une base
         # migrée depuis la v29 l'a déjà reçu par l'étape du dessus.
@@ -1904,6 +1909,76 @@ def collections_sans_projet(conn: sqlite3.Connection) -> list[int]:
 
 
 # --------------------------------------------------------------------------- #
+# La collection de BASE d'un projet (v31, COL-3, tranche 3, D10 — Hugo, 2026-10-17)
+# --------------------------------------------------------------------------- #
+# « Le fonds commence avec le projet » : tout projet naît avec UNE collection de base, où
+# arrive ce qu'il prend au fonds et que l'import présélectionne. Désignée par un DRAPEAU
+# (`collection.base`), jamais par son nom. Ce qu'elle ouvre — ses responsables
+# propriétaires, ses membres au niveau `acces_membres` — est DÉRIVÉ par
+# `autorisation.Portee`, et rien ici n'écrit dans `collection_acces`.
+#
+# Le nom qu'elle prend quand celui du projet est réservé à la collection de repli (« Collection
+# par défaut » tient dans les 21 caractères d'un nom de projet).
+NOM_BASE_DE_SECOURS = "Collection de base"
+DESCRIPTION_BASE = ("Collection de base du projet : ce que le projet prend au fonds y arrive, "
+                    "et l'import la propose d'abord. Ses responsables en sont propriétaires ; "
+                    "elle se renomme, elle ne se supprime pas.")
+
+
+def collection_de_base(conn: sqlite3.Connection, projet_id: int) -> int | None:
+    """Id de la collection de base de ce projet, None s'il n'en a pas — le projet de repli
+    tant que sa collection de repli n'est pas née (`collection_par_defaut` la désigne à sa
+    naissance). La plus petite si une base retouchée à la main en portait deux : l'unicité
+    est tenue par le code, pas par un index (la raison est écrite sur la colonne)."""
+    r = conn.execute(f"SELECT c.id FROM collection c WHERE c.base = 1 "
+                     f"AND {sql_projet_de('c')} = ? ORDER BY c.id LIMIT 1",
+                     (projet_id,)).fetchone()
+    return r[0] if r else None
+
+
+def creer_collection_de_base(conn: sqlite3.Connection, projet_id: int, *, nom: str,
+                             acces_membres: str | None) -> int:
+    """Fait naître la collection de base d'un projet qui n'en a pas, et rend son id.
+    `acces_membres` est OBLIGATOIRE et sans défaut, comme les arguments de
+    `creer_document` : la position est une décision, et un défaut la prendrait pour
+    l'appelant distrait. N'écrit rien au journal : c'est l'affaire de l'appelant."""
+    if collection_de_base(conn, projet_id) is not None:
+        raise ValueError(f"le projet {projet_id} a déjà sa collection de base")
+    nom = (nom or "").strip()
+    if not nom or nom_reserve(nom):
+        nom = NOM_BASE_DE_SECOURS
+    return conn.execute(
+        "INSERT INTO collection (nom, description, projet_id, base, acces_membres) "
+        "VALUES (?, ?, ?, 1, ?)", (nom, DESCRIPTION_BASE, projet_id, acces_membres)).lastrowid
+
+
+def _designer_les_bases(conn: sqlite3.Connection) -> None:
+    """Migration v31 : donne sa collection de base à chaque projet existant, PROTÉGÉE (D10 :
+    « rien ne s'ouvre au déploiement »). Le projet de repli reçoit sa collection de repli,
+    si elle existe — sinon elle sera désignée à sa naissance ; tout autre projet en reçoit
+    une neuve, de son nom. Idempotente : un projet qui a déjà sa base n'est pas touché."""
+    repli = conn.execute("SELECT id FROM projet WHERE repli = 1 ORDER BY id LIMIT 1").fetchone()
+    if repli is not None:
+        _designer_la_base_du_repli(conn, repli[0])
+    for projet_id, nom in conn.execute(
+            "SELECT id, nom FROM projet WHERE repli = 0 ORDER BY id").fetchall():
+        if collection_de_base(conn, projet_id) is None:
+            creer_collection_de_base(conn, projet_id, nom=nom, acces_membres=None)
+
+
+def _designer_la_base_du_repli(conn: sqlite3.Connection, repli: int) -> None:
+    """Pose le drapeau sur la collection de repli (`NOM_COLLECTION_DEFAUT`), si elle est du
+    projet de repli et que celui-ci n'a pas encore de base. Elle reste réglée comme avant :
+    PROTÉGÉE, aucun membre n'y entre sans qu'on l'ait décidé."""
+    if collection_de_base(conn, repli) is not None:
+        return
+    conn.execute(
+        "UPDATE collection SET base = 1, acces_membres = NULL WHERE id = "
+        f"(SELECT c.id FROM collection c WHERE c.nom = ? AND {sql_projet_de('c')} = ? "
+        " ORDER BY c.id LIMIT 1)", (NOM_COLLECTION_DEFAUT, repli))
+
+
+# --------------------------------------------------------------------------- #
 # Le fonds — documents et copies de travail (v30, COL-3, tranche 2)
 # --------------------------------------------------------------------------- #
 def _sql_projet_des_collections(alias: str) -> str:
@@ -2109,17 +2184,33 @@ def collection_par_defaut(conn: sqlite3.Connection) -> int:
     correspondrait à AUCUNE règle d'accès — il faudrait alors inventer une politique
     dans le code, à un endroit qu'on oublierait de relire. Ici, la question ne se pose
     jamais : il y a toujours une règle, quitte à ce qu'elle n'ouvre à personne.
+
+    v31 (COL-3, tranche 3, D10) — elle est la collection de BASE du projet de repli, et se
+    désigne d'abord par ce DRAPEAU : renommée, elle reste la destination d'un album créé sans
+    collection, et aucun second seau ne renaît sous l'ancien nom. Le nom ne sert plus qu'à
+    la retrouver tant que le drapeau n'est pas posé (une base d'avant la v31, qu'il désigne
+    alors), et à la nommer à sa naissance. Elle naît PROTÉGÉE.
     """
-    r = conn.execute("SELECT id FROM collection WHERE nom = ?",
-                     (NOM_COLLECTION_DEFAUT,)).fetchone()
-    if r:
-        return r[0]
-    # v29 — elle naît dans le projet de repli, comme toute collection qui n'en nomme aucun.
     # La garde de table vaut pour la migration v23 rejouée sur un schéma minimal, où
     # `collection` existe sans `projet` autour (tests de migration).
     a_projet = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'projet'").fetchone()
-    a_colonne = "projet_id" in {r[1] for r in conn.execute("PRAGMA table_info(collection)")}
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(collection)")}
+    a_colonne = "projet_id" in colonnes
+    a_base = a_projet is not None and a_colonne and "base" in colonnes
+    repli = None
+    if a_base:
+        repli = projet_par_defaut(conn)
+        base = collection_de_base(conn, repli)
+        if base is not None:
+            return base
+    r = conn.execute("SELECT id FROM collection WHERE nom = ?",
+                     (NOM_COLLECTION_DEFAUT,)).fetchone()
+    if r:
+        if a_base:
+            _designer_la_base_du_repli(conn, repli)
+        return r[0]
+    # v29 — elle naît dans le projet de repli, comme toute collection qui n'en nomme aucun.
     cur = conn.execute(
         "INSERT INTO collection (nom, description) VALUES (?, ?)",
         (NOM_COLLECTION_DEFAUT,
@@ -2129,6 +2220,9 @@ def collection_par_defaut(conn: sqlite3.Connection) -> int:
     if a_projet and a_colonne:
         conn.execute("UPDATE collection SET projet_id = ? WHERE id = ?",
                      (projet_par_defaut(conn), cur.lastrowid))
+    if a_base:
+        conn.execute("UPDATE collection SET base = 1, acces_membres = NULL WHERE id = ?",
+                     (cur.lastrowid,))
     return cur.lastrowid
 
 

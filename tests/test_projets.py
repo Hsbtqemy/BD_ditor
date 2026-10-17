@@ -371,13 +371,21 @@ def test_la_portee_lit_les_projets_par_login_et_par_groupe(client, db_path, deco
 # LE test de la tranche — dans les deux sens
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("role", ["membre", "responsable"])
-def test_etre_du_projet_n_ouvre_aucune_de_ses_collections(client, decor, role):
-    """Entrer dans un projet n'ouvre RIEN. Membre ou responsable de « Séminaire », sans
-    aucun accès de collection, alice ne liste ni la collection ni l'album, et l'album
-    comme ses planches lui répondent « introuvable ». Elle voit le NOM du projet, et le
-    compte de ses collections lui dit zéro — celles qu'elle lit, pas celles qui existent."""
+def test_etre_du_projet_n_ouvre_que_sa_collection_de_base(client, decor, db_path, role):
+    """Entrer dans un projet n'ouvre AUCUNE de ses collections, hors sa collection de BASE
+    (COL-3, tranche 3, D10 — elle s'appelait « …n'ouvre aucune de ses collections » avant
+    que Hugo ne tranche, et se lisait vraie de toutes). Membre ou responsable de
+    « Séminaire », sans aucun accès de collection, alice ne liste que la base — ouverte en
+    écriture par défaut, à elle en propriété si elle est responsable — ; ni la collection
+    d'étude ni son album, qui lui répondent « introuvable ». Elle voit le NOM du projet, et
+    le compte de ses collections lui dit un — celles qu'elle lit, pas celles qui
+    existent."""
     assert _membre(client, decor["projet"], "alice", role=role).status_code == 200
-    assert client.get("/api/collections", headers=ALICE).json() == []
+    base = _sql(db_path, "SELECT id FROM collection WHERE base = 1 AND projet_id = ?",
+                (decor["projet"],))[0]["id"]
+    assert [(c["id"], c["mon_niveau"]) for c in client.get(
+        "/api/collections", headers=ALICE).json()] \
+        == [(base, "proprietaire" if role == "responsable" else "ecriture")]
     assert client.get("/api/albums", headers=ALICE).json() == []
     assert client.get(f"/api/albums/{decor['album']}/planches",
                       headers=ALICE).status_code == 404
@@ -389,7 +397,7 @@ def test_etre_du_projet_n_ouvre_aucune_de_ses_collections(client, decor, role):
                     json={"titre": "Glissé", "collection_id": decor["collection"]})
     assert r.status_code == 404
     projets = client.get("/api/projets", headers=ALICE).json()
-    assert [(p["id"], p["nb_collections"]) for p in projets] == [(decor["projet"], 0)]
+    assert [(p["id"], p["nb_collections"]) for p in projets] == [(decor["projet"], 1)]
 
 
 def test_un_acces_de_collection_se_passe_d_etre_du_projet(client, decor):
@@ -418,7 +426,7 @@ def test_un_acces_de_collection_se_passe_d_etre_du_projet(client, decor):
             "gerable": False, "nb_collections": 1}      # 1 lue, sur 2 qui existent
     admin = {p["id"]: p["nb_collections"]
              for p in client.get("/api/projets", headers=ADMIN).json()}
-    assert admin[decor["projet"]] == 2
+    assert admin[decor["projet"]] == 3          # sa base (D10), l'étude, « Fermée à bob »
 
     # 403 NOMMÉ sur le projet qu'il voit, 404 sur celui qu'il ne voit pas.
     r = client.get(f"/api/projets/{decor['projet']}/membres", headers=BOB)
@@ -429,11 +437,13 @@ def test_un_acces_de_collection_se_passe_d_etre_du_projet(client, decor):
 
 def test_moi_ne_dit_rien_des_projets(client, decor):
     """`GET /api/moi` ne gagne rien : l'écran lit les projets par leur route. Un test y
-    compare déjà la réponse entière en mono-poste ; celui-ci le dit d'un responsable."""
+    compare déjà la réponse entière en mono-poste ; celui-ci le dit d'un responsable. Le
+    compte de ses collections dit la base du projet, qu'il possède (D10) : c'est un accès
+    de collection, et la portée vide ne doit pas s'afficher pour lui."""
     assert _membre(client, decor["projet"], "alice", role="responsable").status_code == 200
     moi = client.get("/api/moi", headers=ALICE).json()
     assert "projet" not in json.dumps(moi).lower()
-    assert moi["acces"]["collections"] == 0
+    assert moi["acces"]["collections"] == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -442,7 +452,8 @@ def test_moi_ne_dit_rien_des_projets(client, decor):
 def test_creer_un_projet_revient_a_une_portee_totale(client, db_path, derriere_proxy):
     """L'administrateur crée ; un compte ordinaire, même responsable d'un autre projet, et
     une requête sans identité reçoivent un 403 qui dit à qui c'est réservé. Le projet naît
-    VIDE : qui le crée n'y entre pas."""
+    sans membre : qui le crée n'y entre pas. Il naît avec sa collection de base, et elle
+    seule (D10)."""
     r = client.post("/api/projets", headers=ADMIN,
                     json={"nom": "  Séminaire  ", "description": "d", "justification": "j"})
     assert r.status_code == 201
@@ -450,7 +461,7 @@ def test_creer_un_projet_revient_a_une_portee_totale(client, db_path, derriere_p
     assert {k: p[k] for k in ("nom", "description", "justification", "repli",
                               "mon_role", "gerable", "nb_collections")} \
         == {"nom": "Séminaire", "description": "d", "justification": "j", "repli": False,
-            "mon_role": None, "gerable": True, "nb_collections": 0}
+            "mon_role": None, "gerable": True, "nb_collections": 1}
     assert _sql(db_path, "SELECT 1 FROM projet_acces WHERE projet_id = ?", (p["id"],)) == []
 
     assert _membre(client, p["id"], "alice", role="responsable").status_code == 200
@@ -809,7 +820,9 @@ def test_creer_une_collection_dans_un_autre_projet_demande_d_en_etre(client, db_
     assert _sql(db_path, "SELECT projet_id FROM collection WHERE nom = 'La mienne'") \
         == [{"projet_id": pid}]
     vue = client.get("/api/collections", headers=ALICE).json()
-    assert [(c["nom"], c["projet_nom"]) for c in vue] == [("La mienne", "Séminaire")]
+    # La base du projet d'abord, où la membre entre par le projet (D10), puis la sienne.
+    assert [(c["nom"], c["projet_nom"], c["base"]) for c in vue] \
+        == [("Séminaire", "Séminaire", True), ("La mienne", "Séminaire", False)]
 
 
 def test_aucune_route_ne_deplace_une_collection(client, db_path, decor):

@@ -1,10 +1,12 @@
 """Projets — l'étage au-dessus des collections (COL-3, tranche 1).
 
 Un PROJET est le périmètre à l'intérieur duquel un travail pourra se partager ; une
-collection appartient à UN projet. Dans cette tranche le projet EXISTE et se RÈGLE, et rien
-d'autre ne change : ce module ne lit ni n'écrit aucune donnée du corpus, et n'ouvre aucune
-collection à personne. Entrer dans un projet n'ouvre pas ses collections — chacune garde son
-« Qui entre », dans `routes/collections.py`.
+collection appartient à UN projet. Le projet EXISTE et se RÈGLE ; ce module ne lit ni
+n'écrit aucune donnée du corpus. Entrer dans un projet n'ouvre aucune de ses collections —
+chacune garde son « Qui entre », dans `routes/collections.py` —, à une exception près depuis
+la tranche 3 (D10, Hugo, 2026-10-17) : sa collection de BASE, née avec lui, dont ses
+responsables sont propriétaires et où ses membres entrent au niveau que le projet a choisi.
+Ce module la crée et en règle la position ; `autorisation.Portee` en dérive les droits.
 
 Deux pouvoirs, et le second ne découle pas du premier — c'est la séparation d'AUTH-3, un
 étage plus haut. DÉCIDER quels projets existent (créer, renommer, supprimer) revient à une
@@ -34,11 +36,12 @@ from fastapi.responses import Response
 
 import autorisation
 import journal
-from database import DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET, sql_projet_de
+from database import (DEMANDE_SUPPRESSION_PROJET, LONGUEUR_NOM_PROJET, collection_de_base,
+                      collection_par_defaut, creer_collection_de_base, sql_projet_de)
 
 from socle import (
-    MembreIn, ProjetIn, ProjetUpdate, _get_projet, _rows, _supprimer_projet, db,
-    portee_courante,
+    AccesMembresIn, MembreIn, ProjetIn, ProjetUpdate, _get_projet, _rows, _supprimer_projet,
+    db, portee_courante,
 )
 
 router = APIRouter()
@@ -153,6 +156,16 @@ def _compte_responsables(conn, projet_id: int) -> int:
         (projet_id, autorisation.RESPONSABLE)).fetchone()[0]
 
 
+def _position_valide(niveau) -> str | None:
+    """La position des membres dans la collection de base, ou le refus qui dit laquelle
+    est possible. `None` est une valeur : la base protégée."""
+    if niveau is not None and niveau not in autorisation.ACCES_MEMBRES:
+        raise HTTPException(
+            422, f"Position invalide pour `acces_membres` : {niveau} "
+                 f"({' | '.join(autorisation.ACCES_MEMBRES)}, ou null pour la protéger).")
+    return niveau
+
+
 # --------------------------------------------------------------------------- #
 # Les projets
 # --------------------------------------------------------------------------- #
@@ -175,19 +188,29 @@ def list_projets(conn: sqlite3.Connection = Depends(db),
 @router.post("/api/projets", status_code=201)
 def create_projet(payload: ProjetIn, conn: sqlite3.Connection = Depends(db),
                   portee: autorisation.Portee = Depends(portee_courante)):
-    """Crée un projet, VIDE : ni collection, ni membre, ni responsable. Qui le crée n'y
-    entre pas pour autant — un administrateur règle tout projet sans en être, et lui
-    inventer un rôle fausserait la liste de ceux qui y travaillent (la raison écrite sur
-    `create_collection`).
+    """Crée un projet, sans membre ni responsable, avec sa collection de BASE (D10) — la
+    seule qu'il ait en naissant, vide, de son nom. Qui le crée n'y entre pas pour autant —
+    un administrateur règle tout projet sans en être, et lui inventer un rôle fausserait la
+    liste de ceux qui y travaillent (la raison écrite sur `create_collection`).
 
-    `justification` se saisit ici : pourquoi ce projet existe."""
+    `justification` se saisit ici : pourquoi ce projet existe. `acces_membres` aussi : ce
+    que ses membres pourront dans sa base (`ProjetIn` dit sa valeur par défaut, et
+    pourquoi). La base n'a aucune ligne d'accès : ses propriétaires sont les responsables
+    du projet, par dérivation (`autorisation.Portee`)."""
     _exiger_de_decider(portee)
     nom = _nom_valide(conn, payload.nom)
+    position = _position_valide(payload.acces_membres)
     cur = conn.execute(
         "INSERT INTO projet (nom, description, justification) VALUES (?, ?, ?)",
         (nom, payload.description, payload.justification))
     pid = cur.lastrowid
     journal.journaliser(conn, "creation", "projet", pid, apres={"nom": nom})
+    base = creer_collection_de_base(conn, pid, nom=nom, acces_membres=position)
+    journal.journaliser(conn, "creation", "collection", base,
+                        apres={"nom": conn.execute("SELECT nom FROM collection WHERE id = ?",
+                                                   (base,)).fetchone()[0],
+                               "proprietaire": None, "base": True, "projet_id": pid,
+                               "acces_membres": position})
     conn.commit()
     return _vue(conn, portee, _get_projet(conn, portee, pid))
 
@@ -239,6 +262,46 @@ def delete_projet(projet_id: int, conn: sqlite3.Connection = Depends(db),
     return Response(status_code=204)
 
 
+@router.put("/api/projets/{projet_id}/acces-membres")
+def regler_acces_membres(projet_id: int, payload: AccesMembresIn,
+                         conn: sqlite3.Connection = Depends(db),
+                         portee: autorisation.Portee = Depends(portee_courante)):
+    """Règle ce que les MEMBRES du projet peuvent dans sa collection de base (D10) :
+    `ecriture`, `lecture`, ou `null` — protégée, le propriétaire seul et qui il fait entrer.
+
+    Réservé à qui GÈRE le projet (`peut_gerer_projet`) : son responsable, et
+    l'administrateur qui passe outre. 404 sur un projet qu'on ne voit pas, 403 nommé sur un
+    projet qu'on voit sans le gérer.
+
+    Resserrer n'efface aucun travail : ce que les membres ont posé reste, ils cessent de le
+    voir. C'est un changement d'ACCÈS, écrit au journal comme les autres (`lien` sous
+    `collection_acces`, la base pour cible — non annulable, retenu de toute sortie) ; rien
+    ne s'écrit si rien ne change.
+
+    Le projet de repli n'a sa base qu'une fois sa collection de repli née : la régler la
+    fait naître (`database.collection_par_defaut`)."""
+    p = _get_projet(conn, portee, projet_id, gerer=True,
+                    motif="Régler ce que les membres d'un projet peuvent dans sa collection "
+                          "de base revient à son responsable.")
+    position = _position_valide(payload.acces_membres)
+    base = collection_de_base(conn, projet_id)
+    if base is None and p["repli"]:
+        base = collection_par_defaut(conn)
+    if base is None:
+        # Un projet sans base : une base retouchée à la main. On ne la refait pas ici.
+        raise HTTPException(409, "Ce projet n'a pas de collection de base : signalez-le à un "
+                                 "administrateur.")
+    avant = conn.execute("SELECT acces_membres FROM collection WHERE id = ?",
+                         (base,)).fetchone()[0]
+    if avant != position:
+        conn.execute("UPDATE collection SET acces_membres = ? WHERE id = ?", (position, base))
+        journal.journaliser(conn, "lien", "collection_acces", base,
+                            avant={"membres_du_projet": projet_id, "niveau": avant},
+                            apres={"membres_du_projet": projet_id, "niveau": position})
+    conn.commit()
+    return {"projet_id": projet_id, "collection_id": base, "acces_membres": position}
+
+
 # --------------------------------------------------------------------------- #
 # Qui est d'un projet
 # --------------------------------------------------------------------------- #
@@ -263,8 +326,10 @@ def poser_membre(projet_id: int, payload: MembreIn,
     route NE LIT PAS l'annuaire : un nom mal orthographié n'ouvre simplement rien, et c'est
     la relecture par `…/membres/choix` qui le signale, jamais un refus ici.
 
-    ELLE N'OUVRE AUCUNE COLLECTION. Être du projet permet d'y créer une collection, et
-    c'est tout ; lire l'une des siennes se règle dans son « Qui entre »."""
+    ELLE N'OUVRE QU'UNE COLLECTION : la base du projet (D10), où le membre entre au niveau
+    que le projet a choisi, et dont le responsable est propriétaire — par dérivation, sans
+    ligne d'accès écrite. Être du projet permet aussi d'y créer une collection ; lire l'une
+    des autres se règle dans son « Qui entre »."""
     _get_projet(conn, portee, projet_id, gerer=True)
     if payload.genre not in autorisation.GENRES:
         raise HTTPException(422, f"Genre invalide : {payload.genre} (utilisateur | groupe).")
@@ -304,9 +369,10 @@ def poser_membre(projet_id: int, payload: MembreIn,
 def retirer_membre(projet_id: int, genre: str, principal: str,
                    conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
-    """Fait sortir quelqu'un du projet. Ne retire AUCUN accès de collection, et ne détruit
-    rien : ce qu'il lisait, il le lit encore, et le journal lui attribue toujours son
-    travail. Refus sur le dernier responsable."""
+    """Fait sortir quelqu'un du projet. Il sort de la collection de base, où il n'entrait
+    que par le projet (D10) ; il ne perd aucun accès de collection posé dans un « Qui
+    entre », et rien n'est détruit : le journal lui attribue toujours son travail. Refus
+    sur le dernier responsable."""
     _get_projet(conn, portee, projet_id, gerer=True)
     ligne = conn.execute(
         "SELECT role FROM projet_acces WHERE projet_id = ? AND genre = ? AND principal = ?",

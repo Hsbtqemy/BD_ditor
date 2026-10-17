@@ -128,6 +128,7 @@ def _ligne(conn, collection_id: int) -> dict:
     liste, pour qu'une collection ne change pas de projet selon la route qui la montre."""
     c = collection_row(conn, collection_id)
     c["projet_id"] = projet_de_collection(conn, collection_id)
+    c["base"] = bool(c["base"])
     return c
 
 
@@ -198,6 +199,15 @@ def list_collections(conn: sqlite3.Connection = Depends(db),
         # tout seul (une date qui passe ne dit pas que les droits sont acquis), mais il
         # cesse de se taire.
         c["embargo"] = etat_embargo(c)
+        # D10 (COL-3, tranche 3) — la collection de BASE de son projet, et la position de
+        # ses membres (`acces_membres` : `ecriture`, `lecture`, `null` = protégée), à qui la
+        # lit : c'est elle que l'import présélectionne, et ce que le projet a choisi n'est
+        # pas un secret pour qui y entre. Qui peut la RÉGLER se lit dans `gerable`, sur le
+        # projet (`GET /api/projets`) : la question est celle du projet, pas de la
+        # collection. Hors d'une base, la position ne veut rien dire et vaut `null`.
+        c["base"] = bool(c["base"])
+        if not c["base"]:
+            c["acces_membres"] = None
     return vues
 
 
@@ -322,7 +332,14 @@ def delete_collection(collection_id: int, conn: sqlite3.Connection = Depends(db)
     n'est pas un geste de cette route : le refus est gardé, et sa phrase dit ce qui reste
     à faire (proposition R6 du cadrage, suivie en route).
     """
-    _get_collection(conn, portee, collection_id, administrer=True)
+    c = _get_collection(conn, portee, collection_id, administrer=True)
+    # D10 (COL-3, tranche 3) — la collection de BASE d'un projet ne se supprime pas : née
+    # avec lui, elle part avec lui (`socle._supprimer_projet`). Le refus vient après la garde
+    # d'administration : il ne parle qu'à qui pourrait supprimer une autre collection.
+    if c["base"]:
+        raise HTTPException(409, "C'est la collection de base de son projet : elle se "
+                                 "renomme, elle ne se supprime pas — elle part avec le "
+                                 "projet.")
     isoles = [r[0] for r in conn.execute(
         "SELECT ca.album_id FROM collection_album ca WHERE ca.collection_id = ? "
         "AND NOT EXISTS (SELECT 1 FROM collection_album x WHERE x.album_id = ca.album_id "

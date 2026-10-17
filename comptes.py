@@ -257,6 +257,16 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
     def cle_acces(a):
         return (a["genre"] != autorisation.UTILISATEUR, _cle(a["principal"]), a["principal"])
 
+    # D10 (COL-3, tranche 3) — une collection de BASE a pour propriétaires les responsables
+    # de son projet, par DÉRIVATION (`autorisation.Portee`) et sans ligne d'accès : la dire
+    # « sans propriétaire » parce qu'aucune ligne ne le dit serait faux dès que le projet a
+    # un responsable, et quand il n'en a pas, c'est le PROJET qui est « sans responsable » —
+    # la liste des projets le dit déjà (`sans_responsable`). Le signal ne la vise donc
+    # jamais, comme il épargne la collection de repli : sinon chaque projet créé ferait
+    # apparaître un « accès à régler » dans « À faire » avant même qu'on ait nommé qui en
+    # répond.
+    bases = {c["id"] for c in cols.values() if c.get("base")}
+
     collections_sortie = []
     for c in sorted(cols.values(), key=lambda c: (_cle(c["nom"]), c["id"])):
         les_acces = sorted((a for a in acces if a["collection_id"] == c["id"]), key=cle_acces)
@@ -275,7 +285,7 @@ def composer(conn, lecture: Lecture, *, maintenant: Optional[datetime] = None) -
             signaux.append("proprietaire_absent")
         # La collection de repli n'a souvent personne à sa tête, et c'est normal : un signal
         # qui ne s'éteint jamais apprend à ignorer la liste (accordé le 2026-09-17).
-        if not proprietaires and not repli:
+        if not proprietaires and not repli and c["id"] not in bases:
             signaux.append("sans_proprietaire")
         collections_sortie.append({
             "id": c["id"], "nom": c["nom"],

@@ -368,6 +368,11 @@ def cmd_supprimer(args) -> int:
         c = database.collection_row(conn, args.id)
         if c is None:
             raise SystemExit(f"Collection {args.id} introuvable.")
+        # D10 (COL-3, tranche 3) — comme la route : la collection de base d'un projet part
+        # avec lui, elle ne se supprime pas seule.
+        if c.get("base"):
+            raise SystemExit("Refusé : c'est la collection de base de son projet — elle se "
+                             "renomme, elle ne se supprime pas ; elle part avec le projet.")
         isoles = _albums_isoles(conn, args.id)
         if isoles:
             raise SystemExit(

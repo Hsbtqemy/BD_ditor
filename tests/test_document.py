@@ -191,8 +191,11 @@ def _photographie(db):
     ajoute. Sans `albums` ici, une migration qui réécrirait le titre de chaque album
     passait la suite entière (mutant de la relecture croisée)."""
     photo = {t: _sql(db, f"SELECT * FROM {t} ORDER BY 1, 2")
-             for t in ("planches", "regions", "collection", "collection_album",
+             for t in ("planches", "regions", "collection_album",
                        "collection_acces", "projet", "projet_acces", "evenement")}
+    # La v31 passe aussi (COL-3, tranche 3, D10) : elle donne sa collection de BASE à tout
+    # projet qui n'en a pas — ici le Séminaire. La photographie ne compte que les autres.
+    photo["collection"] = _sql(db, "SELECT * FROM collection WHERE base = 0 ORDER BY 1, 2")
     photo["albums"] = [{k: v for k, v in a.items() if k not in ("document_id", "projet_id")}
                        for a in _sql(db, "SELECT * FROM albums ORDER BY id")]
     assert all(len(a) >= 17 for a in photo["albums"]), "la notice n'est plus photographiée"
