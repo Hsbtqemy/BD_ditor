@@ -15,8 +15,9 @@ conception (`docs/*.md`) sont là pour qui veut le pourquoi, jamais pour complé
 
 ```
 PROJET          l'étage au-dessus : il se nomme en haut de chaque page, et l'on en EST
-    │           (une collection appartient à UN projet ; en être n'ouvre aucune
-    │            collection — cf. §2, « Au-dessus de la collection : le projet »)
+    │           (une collection appartient à UN projet ; en être n'ouvre que sa
+    │            collection de BASE, et selon ce que le projet a choisi — cf. §2,
+    │            « Au-dessus de la collection : le projet »)
     ▼
 COLLECTION      espace de travail ET unité de dépôt ; c'est elle qui PORTE LES ACCÈS
     │           (lien N-N : un album peut vivre dans plusieurs collections ; un album
@@ -127,14 +128,16 @@ est l'étage au-dessus : le cadre à l'intérieur duquel plusieurs études se c�
 se lit **en haut de chaque page**, et la Bibliothèque montre les collections du projet où
 vous travaillez.
 
-**Aujourd'hui, un projet fait trois choses, et pas une de plus.** Il se **nomme** ; on y
-**fait entrer** des comptes ou des groupes, comme *membres* ou comme *responsables* ; et
-l'on y **crée des collections**. Ce qu'il ne fait pas se rencontre plus vite que ce qu'il
-fait, et vaut d'être su d'avance.
+**Aujourd'hui, un projet fait quatre choses, et pas une de plus.** Il se **nomme** ; on y
+**fait entrer** des comptes ou des groupes, comme *membres* ou comme *responsables* ; l'on
+y **crée des collections** ; et il a sa **collection de base**, qu'il ouvre à ses membres
+s'il l'a choisi. Ce qu'il ne fait pas se rencontre plus vite que ce qu'il fait, et vaut
+d'être su d'avance.
 
-- **Entrer dans un projet n'ouvre aucune de ses collections.** Chacune garde son *Qui
-  entre*. Être membre d'un projet et n'y voir aucun album est un état normal : il manque un
-  accès de collection, pas une réparation.
+- **Entrer dans un projet n'ouvre aucune de ses collections, hors sa collection de base**
+  (ci-dessous). Chacune des autres garde son *Qui entre*. Être membre d'un projet et n'y
+  voir aucun album est un état normal : sa base est vide, ou fermée à ses membres, et il
+  manque un accès de collection, pas une réparation.
 - **Un accès de collection se passe d'être du projet.** Qui lit une collection sans être
   membre de son projet continue de la lire exactement comme avant. Il voit le **nom** du
   projet — sans quoi sa collection ne serait rangée nulle part à l'écran — et rien d'autre :
@@ -151,6 +154,31 @@ fait, et vaut d'être su d'avance.
 - **Le projet ne sort dans aucun export.** La collection reste l'unité de dépôt et le titre
   d'un export ; ni le nom d'un projet, ni ses membres, ni sa justification ne quittent
   l'instance.
+
+**La collection de base** (depuis le 2026-10-17). Tout projet naît avec **une**
+collection, qui porte d'abord son nom : sa collection de base. C'est là qu'arrivera ce que
+le projet prend au fonds, et c'est elle que l'import proposera d'abord — on peut travailler
+dans un projet avant d'avoir pensé ses collections. Elle se renomme ; elle ne se supprime
+pas, et ne change pas de projet : elle part avec lui, s'il est supprimé vide.
+
+- **Ses responsables en sont propriétaires**, du seul fait d'être responsables du projet :
+  nommer un autre responsable lui en donne la propriété, rétrograder quelqu'un la lui
+  retire. Aucune ligne de *Qui entre* n'est écrite pour cela.
+- **Ses membres y entrent selon ce que le projet a choisi** : en **écriture** (« ouverte »,
+  le choix par défaut à la création), en **lecture** — les membres voient le corpus et
+  travaillent dans leurs propres collections, puisqu'annoter un album ne demande d'écrire
+  que dans l'une de ses collections —, ou **pas du tout** (« protégée » : ses propriétaires
+  seuls, et qui ils font entrer par *Qui entre*). Ce choix se fait à la création du projet
+  et se change ensuite par qui règle le projet ; le resserrer n'efface aucun travail —
+  ceux qui ne la voient plus ne voient plus ce qu'ils y ont fait, qui reste.
+- **Qui sort du projet sort de sa base** — qu'il soit un compte ou un groupe —, et ne
+  perd rien d'autre : un accès donné dans *Qui entre*, sur la base comme sur toute autre
+  collection, reste.
+- **Le jour où une instance reçoit la collection de base, rien ne s'ouvre** : chaque projet
+  existant reçoit la sienne **protégée**, et celle du projet de repli est sa collection par
+  défaut, réglée comme avant. Une mise à jour ne donne d'accès à personne sans qu'on l'ait
+  décidé ; seuls les responsables d'un projet deviennent propriétaires de sa base neuve,
+  vide.
 
 **Le projet de repli.** Tout ce qui existait avant cette date a été rangé, sans rien y
 changer, dans un premier projet. Il est né sous le nom « Projet principal » et il est fait
@@ -183,7 +211,10 @@ l'instance qui le détient. Les collections l'**emploient** ; une collection qui
 d'un album s'en défait, mais ne le détruit pas pour autant. L'ensemble de ces documents est
 le **fonds** — y compris ceux qu'aucune collection n'appelle plus.
 
-**Un document a une origine écrite** : qui l'a importé, quand, et dans quel projet d'abord.
+**Un document a une origine écrite** : qui l'a importé, quand, et dans quel projet d'abord
+— dont le **nom** est gardé tel qu'il était à l'import, pour qu'il se lise encore si le
+projet est un jour supprimé ou renommé (pour un album d'avant le 2026-10-17, c'est le nom
+que le projet portait ce jour-là).
 Cela s'écrit depuis la mise à jour qui a introduit le fonds. Pour un album créé avant, la
 date et le projet sont connus, **pas l'importateur** : rien ne l'avait noté, et l'application
 ne le devine pas. En usage sur un seul poste, sans portail d'identité, l'importateur n'est
@@ -201,7 +232,9 @@ pas écrit non plus — il n'y a personne à nommer.
 - **Supprimer définitivement** efface les images et tout le travail fait dessus, pour tout
   le monde, dans tous les projets. Il efface **sans rien demander** à quatre conditions,
   toutes nécessaires : écrire dans **toutes** les collections de l'album ; l'avoir
-  **importé** vous-même ; ne pas travailler sous un **compte partagé** (un login commun à
+  **importé** vous-même — plus exactement, avoir créé cette copie de travail, ce qui
+  revient au même tant qu'un document n'en a qu'une ; ne pas travailler sous un **compte
+  partagé** (un login commun à
   plusieurs personnes : « celui qui l'a importé » n'y désigne personne) ; et que **personne
   d'autre n'y ait travaillé**. C'est le cas de l'import par erreur, qui n'a à attendre
   personne. Hors de ce cas, la suppression **se demande** à un administrateur.
@@ -397,7 +430,9 @@ Un projet (§2) a deux **rôles**, et l'instance deux **pouvoirs** qui ne se con
 |---|:---:|:---:|:---:|
 | Lire le nom du projet, en haut de chaque page | ✅ | ✅ | ✅ |
 | **Créer une collection** dans le projet | ✅ | ✅ | ✅ |
-| Lire ou annoter une collection du projet | par un accès de collection | par un accès de collection | ✅ |
+| Lire ou annoter la **collection de base** du projet | selon le choix du projet (écriture, lecture, ou rien) | ✅ (propriétaire) | ✅ |
+| Lire ou annoter une **autre** collection du projet | par un accès de collection | par un accès de collection | ✅ |
+| **Régler** ce que les membres peuvent dans la collection de base | — | ✅ | ✅ |
 | Voir **qui est** du projet | — | ✅ | ✅ |
 | **Faire entrer**, faire sortir, nommer un autre responsable | — | ✅ | ✅ |
 | Lire la **justification** du projet | — | ✅ | ✅ |
@@ -418,10 +453,11 @@ Un projet (§2) a deux **rôles**, et l'instance deux **pouvoirs** qui ne se con
   personnes : un simple membre ne voit pas qui d'autre en est, ni qui en répond.
 - **Les administrateurs règlent tout projet sans figurer parmi ses membres**, et *Qui y
   entre* le déclare sous la liste, comme *Qui entre* le fait pour une collection.
-- **Faire sortir quelqu'un ne lui retire aucun accès de collection**, et ne détruit rien :
-  ce qu'il lisait, il le lit encore, et son travail lui reste attribué.
+- **Faire sortir quelqu'un ne lui retire aucun accès de collection donné dans *Qui
+  entre***, et ne détruit rien : son travail lui reste attribué. Il ne sort que de la
+  collection de base, où il n'entrait que par le projet.
 
-Quatre refus se **nomment**, pour la raison qui vaut déjà pour les collections — ce n'est pas
+Cinq refus se **nomment**, pour la raison qui vaut déjà pour les collections — ce n'est pas
 un droit qui manque, c'est un état que le geste fabriquerait.
 
 - *Le dernier responsable d'un projet* ne se retire pas et ne se rétrograde pas : il faut
@@ -430,7 +466,9 @@ un droit qui manque, c'est un état que le geste fabriquerait.
 - *Le projet de repli* ne se supprime pas : c'est là qu'entre une collection qui ne nomme
   aucun projet.
 - *Un projet qui porte encore une collection* ne se supprime pas : un projet ne se supprime
-  que vide.
+  que vide. Sa collection de base ne compte pas tant qu'elle est vide — elle part avec lui ;
+  si elle porte un album, le refus le dit.
+- *La collection de base* ne se supprime pas seule : elle part avec son projet.
 - *Un projet dont des albums sont gardés au fonds* ne se supprime pas non plus : un album
   gardé emporte son projet, et le supprimer le laisserait désigner un projet qui n'existe
   plus. Il faut d'abord détruire ces albums, depuis le fonds.
@@ -806,12 +844,13 @@ Les deux sont nécessaires, et dans cet ordre. **Un compte créé sans accès ou
 application vide** — la personne se connectera parfaitement et ne verra rien, sans qu'aucun
 message ne l'explique autrement que par le bandeau de portée vide.
 
-**Faire entrer ce compte dans un projet n'y change rien** (depuis le 2026-10-10). Le bloc
-*🗂️ Projets* de l'Administration règle qui est d'un projet ; il n'ouvre aucune collection.
-Un arrivant qu'on a seulement fait entrer dans un projet lira le nom du projet en haut de
-la page — et, comme avant, le bandeau de portée vide. Il pourra y créer une collection ; il
-ne lira aucune de celles des autres. L'accès se donne toujours collection par collection,
-dans *Qui entre*.
+**Faire entrer ce compte dans un projet ne lui ouvre que la collection de base de ce
+projet**, et seulement si le projet l'a ouverte à ses membres (depuis le 2026-10-17 ;
+auparavant, rien du tout). Le bloc *🗂️ Projets* de l'Administration règle qui est d'un
+projet. Un arrivant qu'on a seulement fait entrer dans un projet à base protégée lira le nom
+du projet en haut de la page — et, comme avant, le bandeau de portée vide. Il pourra y créer
+une collection ; il ne lira aucune de celles des autres. Tout autre accès se donne toujours
+collection par collection, dans *Qui entre*.
 
 ### Ajouter quelqu'un — la forme
 
@@ -874,8 +913,9 @@ Vérifiez aussi qu'il a été déclaré **compte** ou **groupe** selon ce qu'il 
 donné à un compte ne s'applique pas à un groupe du même nom.
 
 **Je suis membre d'un projet et je n'y vois aucune collection.**
-C'est normal : entrer dans un projet n'ouvre aucune de ses collections (§2). Il faut qu'un
-propriétaire vous donne accès à la sienne, dans *Qui entre* — ou que vous en créiez une.
+C'est normal si sa collection de base est fermée à ses membres : entrer dans un projet
+n'ouvre que celle-là, et seulement si le projet l'a choisi (§2). Pour une autre, il faut
+qu'un propriétaire vous y donne accès, dans *Qui entre* — ou que vous en créiez une.
 
 **Je suis responsable d'un projet. Pourquoi ne puis-je pas le renommer ?**
 Parce que régler qui entre dans un projet n'est pas décider de son nom ni de son
