@@ -749,12 +749,20 @@ async function setRelecture(pid, value) {
   } catch (e) { toast("Relecture : " + e.message, "error"); }
 }
 
-/* Badge ✔ + bouton bascule de validation pour une planche. */
+/* Valider une planche : UN bouton qui porte son état (UX-18, tranché par Hugo le 2026-10-17
+   sur la maquette de la tranche 3a). ✔ gris quand elle ne l'est pas, ✔ vert et ENFONCÉ quand
+   elle l'est (`aria-pressed`), et le même clic dans les deux sens — le verrou parle déjà
+   ainsi. Le badge ✔ à côté d'un ↺ disait l'état et l'acte inverse avec deux signes, et le
+   ↺ se lisait « annuler » plutôt que « retirer la validation ». Le nom accessible reste le
+   même dans les deux états : c'est `aria-pressed` qui dit lequel, et la date, quand le
+   serveur la rend, passe dans l'infobulle. */
 function validToggle(p) {
-  return (p.validee ? `<span class="val-badge" title="Validée le ${esc(p.validee)}">✔</span> ` : "")
-    + `<button class="icon-btn" data-val="${p.id}" data-on="${p.validee ? 0 : 1}" `
-    + `title="${p.validee ? "Retirer la validation" : "Marquer comme validée"}">`
-    + `${p.validee ? "↺" : "✔"}</button>`;
+  const on = !!p.validee;
+  return `<button type="button" class="icon-btn val-btn" data-val="${p.id}" `
+    + `data-on="${on ? 0 : 1}" aria-pressed="${on}" `
+    + `aria-label="Validée : ${esc(plancheNomLu(p))}" `
+    + `title="${on ? "Validée le " + esc(p.validee) + " — cliquer pour retirer la validation"
+                   : "Marquer comme validée"}">✔</button>`;
 }
 
 async function validatePlanche(pid, on) {

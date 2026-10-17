@@ -60,7 +60,7 @@
   --accent-red:  #d11f45;
   --accent-blue: #2059bd;   /* assombri : AA sur le lien de nav actif (fond légèrement teinté) */
   --accent-amber:#855200;   /* assombri : AA en petit texte sur fond clair (cf. mark, prov-corrige) */
-  --accent-green:#12733d;   /* assombri : AA en petit texte (val-badge, prov-valide, save-state) */
+  --accent-green:#12733d;   /* assombri : AA en petit texte (val-btn, prov-valide, save-state) */
   --accent-violet:#7c39c7;
   --accent-cyan: #0a6880;   /* assombri : AA en petit texte (.r-type) */
   --accent-pink: #bd3580;
@@ -1024,7 +1024,14 @@ a.icon-btn { display: inline-flex; align-items: center; justify-content: center;
 .seg-annotee   { background: var(--accent-green); }
 
 /* Validation des planches (drapeau humain « terminé ») */
-.val-badge { color: var(--accent-green); font-weight: 700; }
+/* Le bouton qui porte l'état (UX-18, 2026-10-17) : gris quand la planche n'est pas validée,
+   vert et ENFONCÉ quand elle l'est. Le vert est l'encre AA-sûre (assombrie en thème clair),
+   et l'état ne repose pas sur la couleur seule : la bordure et le fond changent aussi, et
+   `aria-pressed` le dit à qui ne voit pas (WCAG 1.4.1). */
+.icon-btn.val-btn { color: var(--text-muted); }
+.icon-btn.val-btn[aria-pressed="true"] {
+  color: var(--accent-green); border-color: var(--accent-green); font-weight: 700;
+  background: color-mix(in srgb, var(--accent-green) 22%, var(--bg-input)); }
 .val-album { display: inline-flex; align-items: center; gap: .3846rem; white-space: nowrap; }
 .val-album.all { color: var(--accent-green); font-weight: 600; }
 .val-mini { display: inline-block; width: 34px; height: 6px; border-radius: 3px; background: var(--bg-input); overflow: hidden; }
