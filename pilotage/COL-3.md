@@ -5,12 +5,11 @@ statut: interrompu
 
 # COL-3 — le fonds et les projets : un album appartient à l'instance, un travail à ceux qui le font
 
-**Arrêté sur** — 2026-10-17, `2e9db0b` : **la tranche 3 a commencé**. Son cadrage est écrit
-(`docs/col3-tranche3-cadrage.md`) et Hugo en a tranché D1, D2 et D12 ; son premier commit, les
-albums du projet courant dans la Bibliothèque, le lot et l'Atelier, est sur `dev` (`2d80473`).
-L'Administration à l'échelle y est aussi (`73241cc`, `ec56a73`), sa passe de QA écrite et à
-jouer par Hugo ; D3 à D11 restent à trancher avant le serveur de la 3a. Rien n'est poussé
-depuis `aea8de1`.
+**Arrêté sur** — 2026-10-17, `3205426` : **le cadrage de la tranche 3 est entièrement tranché**
+(D1 à D12 ; D10 contre la proposition d'abord écrite : la collection de base), et le serveur de la
+3a a commencé — la v31 et la collection de base sont sur `dev`, relues et corrigées. Reste le
+commit 2 (prendre au fonds, les demandes d'entrée, rejoindre consenti), puis l'écran, sans lequel
+la 3a ne part pas en production. La passe `administration-a-l-echelle` attend Hugo.
 
 **Plus tôt le 2026-10-16** — `bd5dff1` : **la tranche 2 est en production depuis le
 2026-10-16** (`main` avancé de `b387080` à `5e7f56b`, déployé par Hugo) : schéma 30, cinq
@@ -251,6 +250,15 @@ rien y changer, « le premier projet », où tout est partagé.
 - [x] **D9 — Répondre document par document, « tout accepter », un état « acceptée en partie »** — attendu : tranché par Hugo (cadrage). **Tranché par Hugo le 2026-10-17 : oui.**
 - [x] **D10 — Un projet naît avec sa collection de base, et ses documents y entrent avant qu'on ait pensé ses collections** — attendu : tranché par Hugo. **Tranché par Hugo le 2026-10-17, contre la proposition du cadrage** (« le responsable dépose ses demandes une fois une collection créée ») : « le fonds commence avec le projet », la collection peut advenir après — penser collection avant d'avoir eu accès aux œuvres est difficile à concevoir pour un nouvel utilisateur, on n'aurait que des collections « Test » ; et un utilisateur peut ne jamais puiser au fonds. **Retenu** : une collection de base par projet (drapeau, renommable, non supprimable) ; ses responsables en sont propriétaires et ses membres y entrent selon une position choisie à la création — écriture (présélectionnée), lecture, ou aucun (« protégée ») —, les deux DÉRIVÉS de `projet_acces`, modifiables par qui gère le projet ; rien ne s'ouvre au déploiement (bases de l'existant protégées). Premier cas où être d'un projet ouvre une collection : mutants et relecture croisée. Détail dans `docs/col3-tranche3-cadrage.md`, section D10
 - [x] **D11 — Les consentements se répondent là où vit qui les donne** — attendu : tranché par Hugo (cadrage). **Tranché par Hugo le 2026-10-17 : oui.** L'emplacement exact se tranche sur maquette
+
+### Tranche 3a — relevé par ses commits 1 et 1b et leur relecture croisée, sur copie (2026-10-17)
+
+- [x] **La v31 et la collection de base sont sur `dev`** — attendu : suite par défaut entière verte, mutants du cadrage tombés, relecture croisée faite. Écrits sur copie par un agent neuf (`4af3fbd` la v31 sans comportement — table `copie`, `projet_origine_nom`, `AUTOINCREMENT` sur `projet`, les sites qui supposaient une copie réécrits, images effacées par référence ; `593b296` la collection de base, D10), relus par une autre session, qui a prouvé deux défauts par des tests rouges : la « Collection par défaut », habitée, donnée aux responsables du repli au déploiement, et un réimport qui écrasait l'image d'une copie sœur. Corrigés par `aeefec2` (un import n'écrit jamais sur un fichier pris, une destruction n'efface que des images), `dab89e5` (une base qui porte du vocabulaire retient son projet) et `3205426` (aucune collection existante ne devient une base, décision de Hugo) ; les deux tests de la relecture passent sur l'état final, rejoués par la session de pilotage
+- [ ] **« + Nouveau projet » pose la question de la position des membres, et la fiche du projet la règle** — attendu : écran du commit 3. Le serveur crée une base OUVERTE quand la création ne dit rien (la présélection de D10) et l'écran d'aujourd'hui n'envoie pas la question : **la 3a ne part pas en production sans elle**
+- [ ] **L'accès tenu par le projet se lit là où l'on regarde qui entre** — attendu : « Qui entre » de la base et « Comptes et groupes » montrent la propriété des responsables et l'entrée des membres ; le 409 « dernier propriétaire » en tient compte. Aujourd'hui ils ne montrent que les lignes explicites : un propriétaire de la base croit son cercle restreint alors que tous les membres y écrivent (relecture, constat 6 ; l'esprit d'`AUTH-4`, « inévitable, mais pas invisible »)
+- [ ] **Les images s'effacent sous le verrou d'écriture** — attendu : avant `creer_copie` (commit 2). L'effacement se fait après la validation, hors verrou : une sœur née entre la lecture de ce qu'il faut garder et l'effacement perdrait ses fichiers (relecture, constat 4)
+- [ ] **Une demande montre qui a créé SA copie, et le fonds la rattache à sa copie** — attendu : commit 2. La vue d'une demande montre `importe_par` du document quand la règle lit `copie.creee_par`, et `lire_le_fonds` rattache la demande au document (la première trouvée) : identiques tant qu'il n'y a qu'une copie
+- [ ] **L'import présélectionne la base, et la note morte de « + Nouvel album » part** — attendu : écran du commit 3. La note « l'album entrera dans une collection par défaut » ne peut plus s'afficher depuis que le repli naît avec sa base
 
 ### Le projet
 
