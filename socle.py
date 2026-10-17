@@ -620,6 +620,22 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
         raise HTTPException(409, f"Sa collection de base porte encore {habitees} album(s) : "
                                  "rangez-les ailleurs, ou supprimez-les d'abord de la "
                                  "collection. Un projet ne se supprime que vide.")
+    # Une base qui porte du VOCABULAIRE local n'est pas vide non plus (relecture croisée) :
+    # supprimée, ses termes deviendraient GLOBAUX (`ON DELETE SET NULL`), donc visibles de
+    # toute l'instance — une grille d'analyse qui fuit, ce qu'AUTH-2 (v24) ferme ailleurs.
+    # Le refus le nomme ; c'est à qui le tient de le promouvoir ou de le supprimer, en le
+    # sachant.
+    ids = [b["id"] for b in bases]
+    termes = sum(conn.execute(
+        f"SELECT COUNT(*) FROM {t} WHERE collection_id IN ({', '.join('?' * len(ids))})",
+        ids).fetchone()[0] for t in ("domaine", "attribut_dimension", "attribut_valeur",
+                                     "tags")) if ids else 0
+    if termes:
+        raise HTTPException(409, f"Sa collection de base porte {termes} terme(s) de "
+                                 "vocabulaire qui lui sont propres : supprimés avec elle, "
+                                 "ils deviendraient visibles de toute l'instance. Rendez-les "
+                                 "globaux, ou supprimez-les, d'abord. Un projet ne se "
+                                 "supprime que vide.")
     # Lu dans la colonne ÉCRITE, pas par la règle de lecture : c'est elle que la clé
     # étrangère garde, et c'est elle qui porte le projet d'une copie au fonds. Un album
     # encore rangé est déjà arrêté par le refus du dessus. Le compte ne dit rien de plus
@@ -648,8 +664,8 @@ def _supprimer_projet(conn, portee: autorisation.Portee, p: dict) -> None:
     _clore_demandes(conn, portee, [r[0] for r in conn.execute(
         "SELECT id FROM demande WHERE genre = ? AND projet_id = ? AND reponse IS NULL",
         (DEMANDE_SUPPRESSION_PROJET, projet_id))], REPONSE_ACCEPTEE)
-    # Sa base vide part avec lui — ses accès posés par cascade, ses termes de vocabulaire
-    # promus en global (`ON DELETE SET NULL`), comme pour `delete_collection`.
+    # Sa base VIDE — ni album ni vocabulaire à elle, refusés plus haut — part avec lui ;
+    # ses accès posés partent par cascade.
     for b in bases:
         conn.execute("DELETE FROM collection WHERE id = ?", (b["id"],))
         journal.journaliser(conn, "suppression", "collection", b["id"],
