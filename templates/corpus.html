@@ -20,113 +20,104 @@
     <button class="ghost btn-theme" title="Changer de thème">🌙</button>
   </div>
 
-  <!-- ───────────── Bande 2 — Outils de la page ───────────── -->
+  <!-- ───────────── Bande 2 — Outils de la page ─────────────
+       UX-18 : les chiffres du corpus, puis « + Nouvel album ». Le lot n'y est plus : il vit
+       AU-DESSUS de sa sélection (l'onglet Albums d'une collection, la fiche d'un album). La
+       place à droite des chiffres attend aussi le rappel des demandes de la tranche 3a de
+       COL-3 (« demandes au fonds en attente », un compteur de demandes reçues). -->
   <header id="header">
+    <h1 class="sr-only">Bibliothèque</h1>
     <div id="corpus-stats" class="corpus-stats"></div>
+    <span class="nav-spacer"></span>
+    <button id="btn-new" class="primary small" type="button">+ Nouvel album</button>
   </header>
 
   <main id="corpus-body">
 
-    <!-- Barre d'actions + traitement par lot -->
-    <div class="corpus-toolbar">
-      <button id="btn-new" class="primary">+ Nouvel album</button>
-      <span class="muted small">Les comptes, les groupes et les moteurs ont leur page :
-        <a href="/administration">Administration</a>.</span>
-      <div class="batch">
-        <span class="muted small">Lot sur la sélection :</span>
-        <label class="pass"><input type="checkbox" id="pass-segmenter"> Segmenter</label>
-        <label class="pass"><input type="checkbox" id="pass-bulles"> Bulles</label>
-        <label class="pass"><input type="checkbox" id="pass-ocr"> OCR</label>
-        <button id="btn-run" class="primary" disabled>▶ Lancer</button>
-        <span id="sel-info" class="muted small"></span>
-      </div>
-    </div>
-
-    <!-- Jobs en cours / récents -->
-    <div id="jobs"></div>
-
-    <!-- Synthèse d'avancement du corpus -->
-    <section id="corpus-synthese" class="corpus-synthese" hidden></section>
-
-    <!-- Collections (COL-2) — ce que chaque collection EST, déménagé de l'Administration le
-         2026-09-11 ; et QUI Y ENTRE, qui l'a rejoint le 2026-09-17 (AUTH-12, étape 3), en
-         tête de chaque collection dépliée. Aucune garde d'écran : créer demande une
-         identité, éditer et régler les accès la propriété, lire la seule portée — des
-         questions que le serveur tranche, chacune pour son geste.
-
-         COL-3 — la liste est celle du PROJET COURANT, et la ligne qui le nomme vit juste
-         AU-DESSUS du bloc, pas sous son titre : le premier projet naît « Projet principal »,
-         et un audit du bloc y interdit ce mot, qui est aussi un terme du modèle
+    <!-- COL-3 — de quel projet sont ces albums et ces collections. AU-DESSUS du cadre, et non
+         dans sa liste : le premier projet naît « Projet principal », et un audit interdit ce
+         mot dans le bloc des collections, où il est aussi un terme du modèle
          (`test_aucun_texte_d_ecran_ne_dit_principal_genre_ni_utilisateur`). -->
     <p id="collections-projet" class="collections-projet muted small" hidden></p>
-    <section id="collections-bloc" aria-labelledby="collections-titre">
-      <h2 id="collections-titre">📚 Collections</h2>
-      <p class="muted small">Une <b>collection</b> regroupe des albums pour une étude, et
-        c'est l'unité qu'on décrit et qu'on dépose : qui y entre, sa description, son
-        régime de diffusion, son référent, ses exports. Chaque collection dépliée commence
-        par « Qui entre ».</p>
-      <div class="contrib-add">
-        <input id="col-nom" placeholder="Nom d'une nouvelle collection" autocomplete="off"
-               aria-label="Nom de la nouvelle collection">
-        <button id="col-add" class="primary small" type="button">+ Créer</button>
+
+    <!-- Les lots en cours ou récents, visibles quel que soit l'objet ouvert (UX-18). -->
+    <div id="jobs"></div>
+
+    <!-- UX-18 — LA LISTE ET LA FICHE, le gabarit `lf-` de l'Administration (et non un second).
+         La collection est un CALQUE posé sur le corpus du projet (Hugo, 2026-10-16) : la case
+         d'une collection FILTRE les albums, son nom OUVRE sa fiche. La fiche d'un album
+         s'ouvre À LA PLACE de celle d'une collection, avec le retour vers elle. Sous 40em,
+         une colonne à la fois : la liste, ou la fiche avec « ← Liste ».
+
+         Aucune garde d'écran : créer une collection demande une identité, la décrire et
+         régler ses accès la propriété, exporter la case d'export, lire la seule portée — des
+         questions que le serveur tranche, et que chaque BLOC de la fiche pose pour son geste,
+         jamais l'onglet qui le contient (leçon d'AUTH-4). -->
+    <div class="lf bi" id="biblio">
+      <div class="lf-liste bi-liste">
+        <div class="lf-tete-liste">
+          <span class="lf-compte" id="bi-compte" role="status" aria-live="polite"></span>
+          <!-- Le champ n'apparaît qu'au geste (UX-18) : un champ permanent en pleine largeur
+               disait « créer » plus fort que tout le reste. -->
+          <button id="col-creer" class="ghost small" type="button" aria-expanded="false"
+                  aria-controls="col-creer-zone">+ Créer une collection</button>
+        </div>
+        <div id="col-creer-zone" class="contrib-add col-creer-zone" hidden>
+          <input id="col-nom" placeholder="Nom de la collection" autocomplete="off"
+                 aria-label="Nom de la nouvelle collection">
+          <button id="col-add" class="primary small" type="button">Créer</button>
+        </div>
+        <!-- Sous le champ, et non sous la liste : le message se lit là où l'on a agi
+             (COL-2, 2026-09-16). Vide, il n'a aucune hauteur. -->
+        <p id="col-creer-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
+
+        <section id="collections-bloc" class="bi-calques" aria-labelledby="collections-titre">
+          <div class="bi-calques-tete">
+            <h2 id="collections-titre" class="lf-groupe">Collections</h2>
+            <button id="calques-tout" class="lf-lien small" type="button" hidden>Tout ce que vous lisez</button>
+          </div>
+          <div class="lf-tri cg-tri" role="group" aria-label="Trier les collections">
+            <span class="muted small" aria-hidden="true">Trier</span>
+            <button type="button" data-tri="alpha" aria-pressed="true">A → Z</button>
+            <button type="button" data-tri="recents" aria-pressed="false">Récentes d'abord</button>
+          </div>
+          <ul id="col-body" class="bi-collections"></ul>
+          <!-- Deux calques ou plus : montrer ce qui est dans L'UNE, ou dans TOUTES. -->
+          <div id="calques-mode" class="lf-tri" role="group" aria-label="Albums montrés" hidden>
+            <span class="muted small" aria-hidden="true">Montrer</span>
+            <button type="button" data-mode="une" aria-pressed="true">Dans l'une</button>
+            <button type="button" data-mode="toutes" aria-pressed="false">Dans toutes</button>
+          </div>
+        </section>
+
+        <h2 id="albums-titre" class="lf-groupe bi-albums-titre">Albums</h2>
+        <label class="sr-only" for="albums-filtre">Chercher un album</label>
+        <input type="search" id="albums-filtre" class="lf-filtre" placeholder="Titre, série, auteur…"
+               autocomplete="off">
+        <ul id="albums-body" class="lf-objets bi-albums" aria-labelledby="albums-titre"></ul>
       </div>
-      <!-- Sous le champ, et non sous la liste : chaque collection dépliée a sa propre ligne,
-           sous ses boutons (COL-2, 2026-09-16). Une ligne commune tombait loin du geste. -->
-      <p id="col-creer-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
-      <div id="col-body"></div>
-    </section>
 
-    <!-- Table des albums -->
-    <!-- Cadre de défilement horizontal (UX-7) : la table fait 693 px et sortait de
-         l'écran d'un téléphone. `tabindex` + `role`/`aria-label` parce qu'une zone
-         défilante sans eux ne s'atteint pas au clavier (règle axe
-         `scrollable-region-focusable`). -->
-    <div class="table-cadre" tabindex="0" role="region" aria-label="Albums du corpus">
-      <table class="corpus-table">
-        <thead><tr>
-          <th class="c-chk" aria-label="Sélection"></th><th>Titre</th><th>Série</th><th>Auteur</th>
-          <th class="c-num">Année</th><th class="c-num">Planches</th>
-          <th class="c-num">Régions</th><th class="c-num">Transcrites</th>
-          <th class="c-num">Validées</th><th aria-label="Actions"></th>
-        </tr></thead>
-        <tbody id="albums-body"></tbody>
-      </table>
+      <!-- La fiche : le projet, une collection, une comparaison, ou un album. -->
+      <div class="lf-fiche bi-fiche" id="biblio-fiche"></div>
     </div>
-
-    <!-- Détail de l'album ouvert (planches + métadonnées) -->
-    <section id="album-detail" hidden></section>
   </main>
 
-  <!-- Modale création / édition d'album -->
+  <!-- Modale création / édition d'album. UX-18 : elle reste — elle porte les métadonnées,
+       l'édition et les contributions, dont la lecture vit dans la fiche de l'album. Ce qui
+       en est SORTI, c'est l'appartenance : « Rangé dans » se lit et se règle dans la fiche,
+       là où l'on regarde où vit l'album. -->
   <div id="album-modal" hidden>
     <div class="modal-box">
       <h3 id="modal-title">Nouvel album</h3>
       <label>Titre <input id="m-titre" autocomplete="off"></label>
       <!-- AUTH-2 : la collection est l'unité de cloisonnement. Le champ n'apparaît qu'à la
-           CRÉATION (déplacer un album entre collections est un geste d'AUTH-3), et se
-           remplace par une note quand il n'existe encore aucune collection. -->
+           CRÉATION, et se remplace par une note quand il n'y a rien à choisir. -->
       <label id="m-collection-wrap" hidden>Collection
         <select id="m-collection" aria-describedby="m-collection-note"></select>
       </label>
       <!-- COL-3 : la note dit aussi ce que la liste ne propose pas — les collections des
            autres projets que le courant —, d'où son lien avec le sélecteur. -->
       <p id="m-collection-note" class="muted small" hidden></p>
-      <!-- AUTH-3 : à l'ÉDITION, l'appartenance devient N-N et se gère. Le champ ci-dessus
-           reste réservé à la création (une collection à choisir), celui-ci montre TOUTES
-           celles qu'on voit et permet d'en ajouter ou d'en retirer. -->
-      <div id="m-appartenance" hidden>
-        <p class="muted small" style="margin:.2rem 0 .1rem">Collections</p>
-        <ul id="m-appartenance-liste" class="acces-liste"></ul>
-        <div class="contrib-add">
-          <select id="m-appartenance-cible" aria-label="Collection où ranger l'album"
-                  aria-describedby="m-appartenance-projet"></select>
-          <button id="m-appartenance-add" class="ghost small" type="button">+ Ranger ici</button>
-        </div>
-        <!-- COL-3 : ce que la liste ci-dessus ne propose pas, et pourquoi — à demeure, hors
-             de la ligne des gestes qui suit, qui s'efface à chaque geste. -->
-        <p id="m-appartenance-projet" class="muted small" hidden></p>
-        <p id="m-appartenance-msg" class="muted small" role="status" aria-live="polite"></p>
-      </div>
       <div class="modal-grid">
         <label>Série <input id="m-serie" autocomplete="off"></label>
         <label>Auteur <input id="m-auteur" autocomplete="off"></label>
@@ -220,6 +211,7 @@
 <script src="/static/lib/droits.js"></script>
 <script src="/static/lib/qui-entre.js"></script>
 <script src="/static/lib/suppression.js"></script>
+<script src="/static/lib/bibliotheque.js"></script>
 <script src="/static/corpus.js"></script>
 </body>
 </html>

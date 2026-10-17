@@ -138,7 +138,7 @@ def test_corpus_marquer_paratexte_renumerote(page, seeded_corpus):
     """Sur la Bibliothèque : ouvrir un album, marquer la 1re planche « paratexte »
     → elle sort de la numérotation (Lot 0, corpus.js)."""
     page.goto(f"{seeded_corpus['base']}/corpus", wait_until="networkidle")
-    page.locator("#albums-body tr td.c-titre").first.click()   # ouvrir l'album
+    page.locator("#albums-body .album-row").first.click()      # ouvrir l'album
     detail = page.locator("#album-detail")
     expect(detail).to_contain_text("planche 1", timeout=15000)
     expect(detail).to_contain_text("planche 2")                # 2 planches récit au départ
@@ -155,7 +155,7 @@ def test_corpus_le_detail_dit_ce_que_l_ecran_montre(page, seeded_corpus):
     paratexte. La ligne d'infos finissait par un « · » quand l'éditeur manquait. Et l'écran
     nommait « visionneuse » la page qui s'appelle partout Atelier."""
     page.goto(f"{seeded_corpus['base']}/corpus", wait_until="networkidle")
-    page.locator("#albums-body tr td.c-titre").first.click()
+    page.locator("#albums-body .album-row").first.click()
     detail = page.locator("#album-detail")
     expect(detail).to_contain_text("planche 2", timeout=15000)
     detail.locator("button[data-role]").first.click()          # 1re planche → paratexte
@@ -624,16 +624,21 @@ def test_filtres_exploration_distinguent_les_sous_corpus(page, live_server):
 def test_nettoyage_libelles_accessibles(page, live_server):
     """Nettoyage a11y : le raccourci <kbd> des boutons de mode est masqué aux lecteurs
     d'écran → nom accessible « Navigation » (et non « Navigation N ») ; les en-têtes de
-    colonnes sans texte (sélection / actions) de la Bibliothèque portent un aria-label."""
+    colonnes sans texte visible (sélection / gestes) de la Bibliothèque portent un nom pour
+    qui les entend — depuis UX-18 un texte réservé aux lecteurs d'écran, dans les tableaux
+    des fiches."""
     page.goto(f"{live_server}/", wait_until="networkidle")
     expect(page.locator('.mode-btn[data-mode="navigation"] kbd')).to_have_attribute(
         "aria-hidden", "true", timeout=15000)
     expect(page.get_by_role("button", name="Navigation", exact=True)).to_be_visible()
 
-    page.goto(f"{live_server}/corpus", wait_until="networkidle")
-    head = page.locator(".corpus-table thead")
-    expect(head.locator("th.c-chk")).to_have_attribute("aria-label", "Sélection", timeout=15000)
-    expect(head.locator('th[aria-label="Actions"]')).to_have_count(1)
+    with httpx.Client(base_url=live_server, trust_env=False, timeout=30,
+                      headers=ECRITURE) as c:
+        aid = c.post("/api/albums", json={"titre": "Libellés"}).json()["id"]
+    page.goto(f"{live_server}/corpus?album={aid}", wait_until="networkidle")
+    head = page.locator("#album-detail .corpus-table thead")
+    expect(head.locator("th.c-chk")).to_have_accessible_name("Sélection", timeout=15000)
+    expect(head.locator("th.c-act")).to_have_accessible_name("Gestes")
 
 
 def test_confort_de_lecture(page, live_server):
@@ -709,7 +714,8 @@ def test_le_champ_collection_disparait_a_l_edition(page, seeded):
     qui appartient à AUTH-3. Le champ ne doit donc pas apparaître à l'édition, où il
     laisserait croire à un déplacement possible."""
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
-    page.locator('.album-row [data-act="edit"]').first.click()
+    page.locator("#albums-body .album-row").first.click()      # la fiche de l'album
+    page.locator("#detail-edit").click()                      # « Modifier l'album »
     expect(page.locator("#album-modal")).to_be_visible(timeout=15000)
     expect(page.locator("#m-collection-wrap")).to_be_hidden()
     expect(page.locator("#m-collection-note")).to_be_hidden()

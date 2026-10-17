@@ -2059,6 +2059,147 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 #corpus-app #header { min-height: var(--header-h); flex: 0 0 auto; }
 #corpus-body { flex: 1; overflow-y: auto; padding: 1.2308rem 1.5385rem; }
 
+/* ── La Bibliothèque en calque (UX-18) — la liste et la fiche ──────────────────────────
+   Le gabarit `lf-` de « Comptes et groupes » et du fonds, et non un second : ce bloc ne
+   dit que ce que la Bibliothèque AJOUTE — le bloc « Collections » posé sur les albums, les
+   onglets de la fiche d'une collection, le lot au-dessus de sa sélection, les cartes. Les
+   couleurs sont celles de la feuille ; chaque petit texte coloré prend une encre AA-sûre.
+
+   Le cadre a la hauteur de la zone qui défile (`main`), comme le bloc de « Comptes et
+   groupes » : amené en tête de la zone, il y tient entier, la ligne du projet et les lots
+   défilés au-dessus — et liste et fiche défilent chacune SEULE. Sous 40em il n'y a plus
+   qu'une colonne, sans hauteur fixe. */
+.lf.bi { height: 100%; min-height: 22rem; margin-top: 0; }
+/* Fenêtre BASSE : la page défile entière (cf. plus bas), `100%` n'y désigne plus rien. Le
+   cadre se compte alors sur la fenêtre, comme le bloc de « Comptes et groupes ». */
+@supports selector(html:has(body)) {
+  @media (max-height: 26.9375em) {
+    .lf.bi { height: calc(100vh - 2.5rem); }
+  }
+}
+@media (max-width: 40em) {
+  .lf.bi { height: auto; min-height: 0; }
+  /* Rien de choisi : la fiche du projet (ou la comparaison) se lit sous la liste. */
+  .lf.bi.lf--empile .lf-fiche { display: block; border-top: 1px solid var(--border); }
+  .lf.bi.lf--empile .lf-retour { display: none; }
+}
+.bi-calques { display: grid; gap: .3rem; border-bottom: 1px solid var(--border);
+              padding-bottom: .45rem; min-width: 0; }
+.bi-calques-tete { display: flex; justify-content: space-between; align-items: baseline;
+                   gap: .5rem; flex-wrap: wrap; }
+.bi-calques-tete .lf-groupe, .bi-albums-titre { margin: .2rem 0; }
+.bi-collections { list-style: none; margin: 0; padding: 0; }
+/* `display: flex` (`.lf-tri`) l'emporterait sur la règle UA `[hidden]` : le choix « dans
+   l'une / dans toutes » naît caché. */
+#calques-mode[hidden] { display: none; }
+/* Au large, la liste des collections défile dans SA boîte : trente collections ne repoussent
+   pas les albums sous l'écran. Elle porte des boutons, donc son défilement s'atteint au
+   clavier. Sous 40em, la page défile, et rien d'autre. */
+@media (min-width: 40.0625em) {
+  .bi-collections { max-height: 16rem; overflow-y: auto; }
+}
+.bi-collections .col-item { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .4rem;
+                            padding: .1rem .35rem; border-radius: 5px; }
+.bi-collections .col-item.courante { background: color-mix(in srgb, var(--accent-blue) 14%, transparent); }
+.bi-collections .col-calque { flex: none; margin: 0; }
+/* Le NOM ouvre la fiche : un bouton souligné, de l'encre du texte — sa couleur seule ne le
+   distinguerait pas de ses voisins (WCAG 1.4.1). */
+.col-ouvrir { flex: 1 1 6rem; min-width: 0; background: none; border: 0; color: var(--text);
+              text-align: left; padding: .2rem 0; cursor: pointer; font: inherit;
+              text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere;
+              text-decoration-color: color-mix(in srgb, var(--text-muted) 60%, transparent); }
+.col-ouvrir:hover, .col-ouvrir[aria-current] { color: var(--accent-blue); }
+.col-ouvrir[aria-current] { font-weight: 600; }
+.col-base { font-size: .75rem; color: var(--accent-blue); border: 1px solid var(--accent-blue);
+            border-radius: 3px; padding: 0 .25rem; }
+.col-nb { color: var(--text-muted); font-size: .88rem; font-variant-numeric: tabular-nums; }
+/* Sur une ligne d'album, la collection COCHÉE ressort : elle dit pourquoi l'album est là. Le
+   gras porte le sens, la couleur le renforce. */
+.sur-actif { color: var(--accent-blue); font-weight: 600; }
+.lf-objet[aria-current="true"] .sur-actif { color: var(--text); }
+/* La pastille d'une demande, sur une ligne de la liste : le MOT porte l'état, la bordure rouge
+   l'accompagne ; l'encre est celle du texte, parce que la ligne choisie a un fond teinté où
+   l'encre rouge ne tient plus le 4.5:1 (mesuré par axe, dans les deux thèmes). */
+.album-row .sp-pastille { margin: .15rem 0 0; color: var(--text); }
+/* Le lot, AU-DESSUS de sa sélection. */
+.bi-lot-aide { margin: .2rem 0 .6rem; }
+.lot { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: center;
+       padding: .5rem .7rem; margin: .6rem 0; border: 1px solid var(--accent-blue);
+       border-radius: 7px; background: color-mix(in srgb, var(--accent-blue) 8%, transparent); }
+.lot .pass { display: inline-flex; align-items: center; gap: .3rem; }
+.job-erreurs { margin-top: .4rem; font-size: .9rem; }
+.job-erreurs summary { cursor: pointer; color: var(--text-muted); }
+.job-erreurs ul { margin: .3rem 0 0; padding-left: 1.2rem; overflow-wrap: anywhere; }
+/* « Vos droits ici », en ACTES : un acte absent se BARRE et se marque d'un tiret — pas la
+   seule couleur (WCAG 1.4.1). */
+.droits { display: flex; flex-wrap: wrap; gap: .3rem .8rem; margin: .5rem 0 0; padding: 0;
+          list-style: none; font-size: .92rem; }
+.droits li::before { content: "✓ "; color: var(--accent-green); font-weight: 700; }
+.droits li.non { color: var(--text-muted); text-decoration: line-through; }
+.droits li.non::before { content: "— "; color: var(--text-muted); }
+/* Les quatre onglets de la fiche d'une collection. */
+.onglets { display: flex; flex-wrap: wrap; gap: 0 .2rem; border-bottom: 1px solid var(--border);
+           margin-top: .9rem; }
+.onglets [role="tab"] { background: none; border: 0; border-bottom: 2px solid transparent;
+                        color: var(--text); padding: .45rem .7rem; cursor: pointer;
+                        font-size: 1rem; margin-bottom: -1px; }
+.onglets [role="tab"]:hover { background: var(--hover); }
+.onglets [role="tab"][aria-selected="true"] { border-bottom-color: var(--accent-blue);
+                                              color: var(--accent-blue); font-weight: 600; }
+.bi-panneau { padding-top: .8rem; min-width: 0; }
+.bi-lecture { display: grid; grid-template-columns: max-content minmax(0, 1fr);
+              gap: .3rem 1rem; margin: 0; }
+.bi-lecture dt { color: var(--text-muted); }
+.bi-lecture dd { margin: 0; overflow-wrap: anywhere; }
+.bi-texte { white-space: pre-line; }
+.bi-gestes { margin: .7rem 0 0; }
+/* « Supprimer la collection » quitte le voisinage d'« Enregistrer » : une zone à part. */
+.bi-zone-danger { margin-top: 1.4rem; padding-top: .8rem; border-top: 1px dashed var(--border); }
+.bi-supprimer-col { color: var(--ink-red); }
+.col-export-manque { margin: .2rem 0; }
+.bi-projet-description { margin: .5rem 0 0; max-width: 70ch; overflow-wrap: anywhere; }
+.bi-parts li { align-items: center; }
+.bi-part { display: inline-flex; gap: .6rem; align-items: center; font-variant-numeric: tabular-nums; }
+.bi-part-barre { width: 70px; }
+.bi-part-barre > i { background: var(--accent-blue); }
+/* La fiche d'un album. */
+.bi-retour-collection { margin: 0 0 .3rem; }
+.album-range { margin-top: .9rem; }
+.album-range h4 { margin: 0; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em;
+                  color: var(--text-muted); font-weight: 600; }
+.bi-relfiltre { margin: .4rem 0; }
+.bi-perdues { margin: .2rem 0; }
+.val-lu { color: var(--accent-green); font-weight: 700; }
+/* Les gestes d'une planche suivent son NOM (Hugo, 2026-10-16) : deux par deux quand la
+   place manque, jamais hors du cadre — la corbeille, dernière d'un tableau qui défile,
+   tombait hors champ dès que la fenêtre n'était pas très large. */
+table.bi-table td.c-gestes { white-space: normal; text-align: left; min-width: 4.6rem; }
+.bi-table td.c-gestes .icon-btn { margin: 1px 0; }
+table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
+@media (max-width: 40em) {
+  .bi-lecture { grid-template-columns: minmax(0, 1fr); gap: 0 1rem; }
+  .bi-lecture dd { margin-bottom: .35rem; }
+}
+/* DES CARTES quand la fiche est étroite (tranché par Hugo le 2026-10-16) : la seule forme
+   mesurée sur la maquette où la corbeille reste visible à 375 et 320 px en grande police.
+   Mesuré sur la largeur de la FICHE, liste ôtée, et non sur celle de la fenêtre : à 768 px
+   la fiche n'a déjà plus la place du tableau. Chaque cellule dit son intitulé. */
+@container lf-fiche (max-width: 44em) {
+  table.bi-table thead { display: none; }
+  table.bi-table, table.bi-table tbody { display: block; }
+  table.bi-table tr { display: flex; flex-wrap: wrap; gap: .3rem .8rem; align-items: flex-start;
+                      padding: .55rem .2rem; border-bottom: 1px solid var(--border); }
+  table.bi-table td { display: block; border: 0; padding: 0; }
+  table.bi-table td.c-titre, table.bi-table td.c-pl { flex: 1 1 8rem; min-width: 0; }
+  table.bi-table td.c-act { flex: 1 1 100%; order: 3; white-space: normal; }
+  table.bi-table td[data-l] { flex: 0 0 auto; order: 4; text-align: left; font-size: .9rem;
+                              color: var(--text-muted); }
+  table.bi-table td[data-l]::before { content: attr(data-l) " : "; }
+  table.bi-table td.vide-carte { display: none; }
+  table.bi-table td.empty-cell { flex: 1 1 100%; }
+  .pl-refus-msg { max-width: none; }
+}
+
 /* ---------- Quand les bandes du haut mangent l'écran, elles défilent avec la page (A11Y-2) ----------
    Les quatre surfaces-documents (Recherche, Exploration, Administration, Bibliothèque) sont
    bâties en bandes : la navigation, l'en-tête de page, puis un cadre qui défile SEUL. Au
@@ -2130,19 +2271,10 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
   }
 }
 
-.corpus-toolbar {
-  display: flex; align-items: center; gap: 1.2308rem; flex-wrap: wrap;
-  margin-bottom: 1.0769rem;
-}
-.corpus-toolbar .batch {
-  display: flex; align-items: center; gap: .9231rem; flex-wrap: wrap;
-  margin-left: auto; padding: .4615rem .9231rem;
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
-}
-.corpus-toolbar .pass { display: inline-flex; align-items: center; gap: .3846rem; }
 
 /* Jobs */
-#jobs { display: flex; flex-direction: column; gap: .6154rem; margin-bottom: 1.0769rem; }
+#jobs { display: flex; flex-direction: column; gap: .6154rem; margin-bottom: .6rem; }
+#jobs:empty { display: none; }
 .job {
   background: var(--bg-panel); border: 1px solid var(--border);
   border-left: 3px solid var(--accent-blue); border-radius: 6px; padding: .6154rem .9231rem;
@@ -2187,21 +2319,13 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .corpus-table .c-chk { width: 28px; }
 .corpus-table .c-act { white-space: nowrap; text-align: right; }
 .corpus-table .c-titre { font-weight: 600; }
-.album-row { cursor: pointer; }
-.album-row:hover { background: var(--bg-input); }
-.album-row.open { background: color-mix(in srgb, var(--accent-blue) 12%, transparent); outline: 1px solid var(--accent-blue); }
 .empty-cell { padding: 2.1538rem; text-align: center; color: var(--text-muted); }
 .icon-btn.danger { background: transparent; border-color: transparent; }
 .icon-btn.danger:hover { background: var(--danger); color: #fff; }
 
-/* Détail album */
-#album-detail {
-  margin-top: 1.3846rem; padding: 1.0769rem; border-radius: 8px;
-  background: var(--bg-panel); border: 1px solid var(--border);
-}
+/* Détail album — la fiche de l'album, dans la colonne de droite (UX-18) */
 .detail-head h3 { margin: 0 0 .3077rem; }
 .detail-desc { margin: .6154rem 0; color: var(--text); white-space: pre-wrap; }
-#detail-edit { margin-top: .6154rem; }
 .planches-table { margin-top: .9231rem; }
 .pl-thumb {
   width: 44px; height: 60px; object-fit: cover; border-radius: 3px;
@@ -2287,8 +2411,8 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .icon-btn.corbeille-eteinte > span { filter: grayscale(1); opacity: .6; }
 /* Ce que dit la corbeille éteinte, sous elle, dans la cellule d'actions : la cellule ne
    passe pas à la ligne (`white-space: nowrap`), le message si. */
-.pl-refus-msg { display: block; white-space: normal; text-align: right; max-width: 18rem;
-                margin: .2rem 0 0 auto; overflow-wrap: anywhere; }
+.pl-refus-msg { display: block; white-space: normal; text-align: left; max-width: 18rem;
+                min-width: 10rem; margin: .2rem 0 0; overflow-wrap: anywhere; }
 .modal-box {
   width: min(43.0769rem, 92vw); background: var(--bg-panel);
   border: 1px solid var(--border); border-radius: 10px; padding: 1.3846rem;
@@ -2319,6 +2443,10 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    qu'aucun contenu n'est inatteignable, pas qu'on n'a pas à défiler de côté. C'est le
    critère Reflow (WCAG 1.4.10) qui le refuse, et il ne s'audite pas tout seul. */
 .contrib-add { display: flex; flex-wrap: wrap; gap: .6154rem; align-items: center; }
+/* `display: flex` l'emporterait sur la règle UA `[hidden]` : une ligne d'ajout cachée — le
+   champ de création d'une collection, « + Ranger ici » à qui ne fait que lire (UX-18) —
+   doit l'être vraiment. */
+.contrib-add[hidden] { display: none; }
 /* `min-width` plutôt que `flex: 1` seul : à 320 px, un champ qui accepte de rétrécir
    indéfiniment garde la ligne sur un seul rang et repousse le bouton hors du cadre. */
 .contrib-add input { flex: 1; min-width: 8rem; }
@@ -2479,12 +2607,8 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
    qu'une fois dépliées, c'est-à-dire rarement. */
 .portee-vide p { margin: 0; color: var(--text-muted); font-size: 1rem; }
 
-/* ── Collections (AUTH-3) — écran d'administration des espaces de travail ─────────── */
-.col-item { border-top: 1px solid var(--border); padding: .55rem 0; }
-.col-item > summary { cursor: pointer; display: flex; align-items: center; gap: .5rem;
-                      flex-wrap: wrap; }
-.col-item > summary::marker { color: var(--text-muted); }
-.col-nom { font-weight: 600; }
+/* ── Collections (AUTH-3) — les noms et les pastilles d'une collection ─────────────── */
+.acces-liste .col-nom { font-weight: 600; }
 /* La pastille de niveau porte son SENS dans le libellé, jamais dans la seule couleur
    (WCAG 1.4.1) — et le fond reste un accent de fill, pas de texte. */
 .col-niveau { font-size: .78rem; padding: .05rem .4rem; border-radius: 3px;
@@ -2501,21 +2625,20 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
                   font-size: .9rem; flex-wrap: wrap; }
 /* COL-3 — de quel PROJET sont les collections listées : la ligne posée juste au-dessus du
    bloc (cf. `colDireProjet` dans corpus.js, et le gabarit pour la raison de sa place). */
-.collections-projet { margin: .9rem 0 -.5rem; }
+.collections-projet { margin: 0 0 .4rem; }
 .col-note { color: var(--text-muted); font-size: .82rem; margin: .3rem 0 .1rem; }
 /* Le refus du serveur se LIT : les 409 d'AUTH-3 nomment un état interdit (dernier
    propriétaire, dernière collection), pas un droit manquant. Token d'encre AA-sûr, jamais
    l'accent brut, qui échoue le 4.5:1 en petit texte. */
-.col-msg.erreur, #m-appartenance-msg.erreur,
-#sante-msg.erreur, #sp-msg.erreur { color: var(--ink-red); }
+.col-msg.erreur, #sante-msg.erreur, #sp-msg.erreur { color: var(--ink-red); }
 /* Ce qui a RÉUSSI mais doit se lire : un accès accordé à un nom que l'annuaire ne connaît
    pas (AUTH-12). L'ambre, assombri en thème clair pour le petit texte ; le MOT porte le
    sens. */
 .col-msg.alerte { color: var(--accent-amber); }
 /* COL-3 — ce que « + Ranger ici » ne propose pas : une ligne à demeure. En alerte quand
    l'album vit dans plusieurs projets, un état qui ne devrait pas exister. */
-#m-appartenance-projet { margin: .2rem 0 0; }
-#m-appartenance-projet.alerte { color: var(--accent-amber); }
+#album-range-projet { margin: .2rem 0 0; }
+#album-range-projet.alerte { color: var(--accent-amber); }
 
 /* ── Qui entre (AUTH-12, étape 3) — les accès d'une collection, dans sa fiche ─────────
    Déménagés de l'Administration, en tête de la collection dépliée. Un tableau au-dessus de

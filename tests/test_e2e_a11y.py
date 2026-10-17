@@ -20,6 +20,7 @@ pytest.importorskip("playwright.sync_api", reason="pytest-playwright non install
 # AUTH-2 : `ADMIN` monte le décor avec les droits qu'il faut (sans effet hors proxy).
 from conftest import (ADMIN, ECRITURE, SANTE_PROFOND, SANTE_RAPIDE,  # noqa: E402
                       make_png, requires_kumiko)
+from playwright.sync_api import expect  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -242,11 +243,29 @@ def test_a11y_pastille_utilisateur(page, seeded, theme):
     assert not viol, f"Menu du compte ouvert [{theme}] :\n{_fmt(viol)}"
 
 
+def _ouvrir_album(page, titre="A11y"):
+    """La fiche d'un album, depuis la liste de gauche (UX-18)."""
+    page.locator("#albums-body .album-row", has_text=titre).click()
+    page.wait_for_selector("#album-detail .planches-table", timeout=3000)
+
+
+def _ouvrir_collection(page, cid, onglet):
+    """La fiche d'une collection par son nom, puis l'onglet voulu (UX-18)."""
+    page.locator(f'#col-body .col-item[data-id="{cid}"] .col-ouvrir').click()
+    fiche = page.locator(f'#col-fiche[data-id="{cid}"]')
+    fiche.wait_for(timeout=3000)
+    fiche.locator(f'[role="tab"][data-onglet="{onglet}"]').click()
+    page.wait_for_selector(f"#col-fiche #panneau-{onglet}:not([hidden])", timeout=3000)
+    return fiche
+
+
 def test_a11y_corpus_modale(page, seeded):
-    """Modale d'édition d'album (piège à focus + labels de formulaire)."""
+    """Modale d'édition d'album (piège à focus + labels de formulaire), ouverte depuis la
+    fiche de l'album (UX-18)."""
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(500)
-    page.click('[data-act="edit"]')
+    _ouvrir_album(page)
+    page.click("#detail-edit")
     page.wait_for_timeout(300)
     viol = _audit(page)
     assert not viol, f"Corpus/modale :\n{_fmt(viol)}"
@@ -296,8 +315,7 @@ def test_a11y_corpus_materiel(page, seeded):
     persistée)."""
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(500)
-    page.click(".album-row .c-titre")                        # ouvre le détail de l'album
-    page.wait_for_selector("#album-detail:not([hidden]) .planches-table", timeout=3000)
+    _ouvrir_album(page)                                      # la fiche de l'album
     viol = _audit(page)
     assert not viol, f"Corpus/détail matériel :\n{_fmt(viol)}"
     # Round-trip : renseigner la source de numérisation via la modale → persistée.
@@ -320,8 +338,8 @@ def test_a11y_corpus_relecture(page, seeded):
     (pastille de statut + sélecteur d'override), puis forcer « faite » → override persisté."""
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(500)
-    page.click(".album-row .c-titre")                        # ouvre le détail
-    page.wait_for_selector("#album-detail:not([hidden]) .rel-sel", timeout=3000)
+    _ouvrir_album(page)                                      # la fiche de l'album
+    page.wait_for_selector("#album-detail .rel-sel", timeout=3000)
     viol = _audit(page)
     assert not viol, f"Corpus/relecture :\n{_fmt(viol)}"
     # Round-trip : forcer le statut via le sélecteur → override persisté.
@@ -790,9 +808,9 @@ def test_a11y_qui_entre(page, seeded, theme):
     # défilant repousse (A11Y-3), et la collection dépliée est longue.
     page.set_viewport_size({"width": 1280, "height": 2400})
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
-    item.locator("summary").click()
-    item.locator(".qe-table th[scope=row]", has_text="annotateurs").wait_for(timeout=5000)
+    item = _ouvrir_collection(page, cid, "qui")
+    item.locator(".qe-qui, .qe-table th[scope=row]", has_text="annotateurs").first.wait_for(
+        timeout=5000)
     item.locator(".qe-choix optgroup").wait_for(state="attached", timeout=5000)
     viol = _audit(page)
     assert not viol, f"Qui entre [{theme}] :\n{_fmt(viol)}"
@@ -833,9 +851,10 @@ def test_a11y_bibliotheque_collections(page, seeded, theme):
     """COL-2 — créer une collection et la décrire, dans la Bibliothèque, audité à chaque
     étape.
 
-    L'état qui compte est le FORMULAIRE déplié : trois groupes de champs et des notes en
-    petit texte, c'est-à-dire la catégorie qui échoue le 4.5:1. Le bloc replié n'en montre
-    rien, et un audit qui s'arrêterait là approuverait sans avoir vu.
+    L'état qui compte est le FORMULAIRE ouvert : des groupes de champs et des notes en petit
+    texte, c'est-à-dire la catégorie qui échoue le 4.5:1. La lecture n'en montre rien, et un
+    audit qui s'arrêterait là approuverait sans avoir vu. UX-18 : le formulaire s'ouvre au
+    geste (« Modifier »), onglet par onglet — les deux sont audités.
     """
     _theme(page, theme)
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
@@ -844,27 +863,83 @@ def test_a11y_bibliotheque_collections(page, seeded, theme):
     viol = _audit(page)
     assert not viol, f"Bibliothèque/collections [{theme}] :\n{_fmt(viol)}"
 
+    page.click("#col-creer")
     page.fill("#col-nom", "Corpus colonial")
     page.click("#col-add")
-    # La collection créée s'ouvre sur son formulaire : c'est le geste suivant de qui crée.
-    item = page.locator("#col-body .col-item", has_text="Corpus colonial")
-    item.locator('[data-champ="statut_diffusion"]').wait_for(timeout=3000)
-    # Le message dit où faire entrer quelqu'un : « Qui entre », dans la collection qui vient
-    # de s'ouvrir (AUTH-12, étape 3). Sous le champ de création, et non sous la liste (COL-2).
+    # La collection créée s'ouvre sur « Qui entre » : c'est le geste suivant de qui crée.
+    item = page.locator("#col-fiche", has_text="Corpus colonial")
+    item.locator(".qe-titre").wait_for(timeout=3000)
+    # Le message dit où faire entrer quelqu'un : « Qui entre », dans la fiche qui vient de
+    # s'ouvrir (AUTH-12, étape 3). Sous le geste de création, et non sous la liste (COL-2).
     assert "Qui entre" in page.locator("#col-creer-msg").inner_text(), (
         page.locator("#col-creer-msg").inner_text())
-    item.locator(".qe-titre").wait_for(timeout=3000)
     viol = _audit(page)
-    assert not viol, f"Bibliothèque/formulaire [{theme}] :\n{_fmt(viol)}"
+    assert not viol, f"Bibliothèque/fiche, Qui entre [{theme}] :\n{_fmt(viol)}"
+    item.locator('[role="tab"][data-onglet="diffusion"]').click()
+    item.locator('[data-modifier="diffusion"]').click()
+    item.locator('[data-champ="statut_diffusion"]').wait_for(timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Bibliothèque/formulaire de diffusion [{theme}] :\n{_fmt(viol)}"
+    item.locator("[data-annuler-edition]").click()
+    item.locator('[role="tab"][data-onglet="description"]').click()
+    item.locator('[data-modifier="description"]').click()
 
-    # Un refus AFFICHÉ, dans la collection dépliée. Il vivait sous la liste jusqu'à COL-2 ;
-    # son encre rouge est du petit texte, la catégorie qui échoue le 4.5:1, et aucun audit
-    # ne l'avait jamais photographiée allumée — ni avant le déménagement, ni après.
+    # Un refus AFFICHÉ, dans la fiche. Il vivait sous la liste jusqu'à COL-2 ; son encre
+    # rouge est du petit texte, la catégorie qui échoue le 4.5:1, et aucun audit ne l'avait
+    # jamais photographiée allumée — ni avant le déménagement, ni après.
     item.locator('[data-champ="nom"]').fill("Collection par défaut")
     item.locator("[data-enregistrer]").click()
     item.locator(".col-msg.erreur").wait_for(timeout=3000)
     viol = _audit(page)
     assert not viol, f"Bibliothèque/refus affiché [{theme}] :\n{_fmt(viol)}"
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_bibliotheque_en_calque(page, seeded, theme):
+    """UX-18 — chaque état que la refonte donne à la Bibliothèque, audité dans les deux
+    thèmes : une collection cochée (sa fiche, onglet Albums, la barre du lot allumée par un
+    album coché), deux collections comparées, la fiche d'un album (une planche cochée, son
+    lot), et, à 375 px, les CARTES sous la fiche étroite. L'audit générique ne voit que la
+    fiche du projet, au chargement : il approuverait des onglets, des actes et des cartes
+    qu'il n'a jamais rendus."""
+    c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
+    try:
+        cid = c.get(f"/api/albums/{seeded['album']}/collections").json()[0]["id"]
+        autre = c.post("/api/collections", json={"nom": "Étude B"}).json()["id"]
+        r = c.put(f"/api/albums/{seeded['album']}/collections/{autre}")
+        assert r.status_code == 201, r.text
+    finally:
+        c.close()
+    _theme(page, theme)
+    page.set_viewport_size({"width": 1280, "height": 1400})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_selector("#col-body .col-item", timeout=3000)
+
+    page.locator(f'#col-body [data-calque="{cid}"]').check()
+    fiche = page.locator(f'#col-fiche[data-id="{cid}"]')
+    fiche.locator(f'[data-coche-album="{seeded["album"]}"]').check()
+    page.wait_for_selector("#panneau-albums .bi-lot", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Bibliothèque/collection cochée, lot [{theme}] :\n{_fmt(viol)}"
+
+    page.locator(f'#col-body [data-calque="{autre}"]').check()
+    page.wait_for_selector(".bi-comparaison", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Bibliothèque/comparaison [{theme}] :\n{_fmt(viol)}"
+
+    _ouvrir_album(page)
+    page.locator(f'#album-detail input[data-pid="{seeded["planche"]}"]').check()
+    page.wait_for_selector("#album-detail .bi-lot", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"Bibliothèque/fiche d'album, lot [{theme}] :\n{_fmt(viol)}"
+
+    page.set_viewport_size({"width": 375, "height": 1400})
+    page.goto(seeded["base"] + f"/corpus?album={seeded['album']}", wait_until="networkidle")
+    page.wait_for_selector("#album-detail .planches-table", timeout=3000)
+    assert page.locator("#album-detail .planches-table thead").is_hidden(), (
+        "à 375 px, la fiche d'album n'est pas passée en cartes")
+    viol = _audit(page)
+    assert not viol, f"Bibliothèque/fiche d'album en cartes, 375 px [{theme}] :\n{_fmt(viol)}"
 
 
 def test_corpus_appartenance_album(page, seeded):
@@ -883,8 +958,8 @@ def test_corpus_appartenance_album(page, seeded):
         c.close()
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(400)
-    page.locator('#albums-body tr [data-act="edit"]').first.click()
-    page.wait_for_selector("#m-appartenance:not([hidden])", timeout=3000)
+    _ouvrir_album(page)                    # « Rangé dans », dans la fiche (UX-18)
+    page.wait_for_selector("#album-range[data-pret]", timeout=3000)
     # Une seule collection au départ : la quitter envoie la copie au fonds, et le dire.
     dialogues = []
 
@@ -892,17 +967,17 @@ def test_corpus_appartenance_album(page, seeded):
         dialogues.append(d.message)
         d.dismiss()
     page.once("dialog", refuser)
-    page.locator("#m-appartenance-liste [data-sortir]").first.click()
+    page.locator("#album-range-liste [data-sortir]").first.click()
     assert len(dialogues) == 1, dialogues
     assert "gardée au fonds" in dialogues[0], dialogues
     assert "pourrez la rendre depuis l'Administration" in dialogues[0], dialogues
-    assert page.locator("#m-appartenance-liste li").count() == 1
+    assert page.locator("#album-range-liste li").count() == 1
 
     # Rangé ailleurs, l'album vit dans deux collections — et la sortie ne demande plus rien.
-    page.select_option("#m-appartenance-cible", str(autre))
-    page.click("#m-appartenance-add")
+    page.select_option("#album-range-cible", str(autre))
+    page.click("#album-range-add")
     page.wait_for_function(
-        "() => document.querySelectorAll('#m-appartenance-liste li').length === 2",
+        "() => document.querySelectorAll('#album-range-liste li').length === 2",
         timeout=3000)
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
@@ -910,9 +985,9 @@ def test_corpus_appartenance_album(page, seeded):
     finally:
         c.close()
     assert autre in {x["id"] for x in vues} and len(vues) == 2
-    page.locator(f'#m-appartenance-liste [data-sortir="{autre}"]').click()
+    page.locator(f'#album-range-liste [data-sortir="{autre}"]').click()
     page.wait_for_function(
-        "() => document.querySelectorAll('#m-appartenance-liste li').length === 1",
+        "() => document.querySelectorAll('#album-range-liste li').length === 1",
         timeout=3000)
     assert len(dialogues) == 1
 
@@ -934,7 +1009,8 @@ def test_a11y_supprimer_deux_reponses(page, live_server, theme):
     _theme(page, theme)
     page.set_extra_http_headers({"Remote-User": "sam"})
     page.goto(live_server + "/corpus", wait_until="networkidle")
-    page.locator('[data-act="supprimer"]').first.click()
+    _ouvrir_album(page, "Doublon")
+    page.locator('#album-detail [data-act="supprimer"]').click()
     page.wait_for_selector("#suppr-modal:not([hidden]) #sp-retrait button[data-retirer]",
                            timeout=5000)
     assert page.locator("#sp-motif").is_visible()
@@ -1075,7 +1151,8 @@ def test_a11y_collections_embargo_echu(page, seeded, theme):
     catégorie qui échoue le 4.5:1 quand on y met un accent brut au lieu d'un token d'encre.
 
     COL-2 — la pastille a suivi la date dans la Bibliothèque : l'échéance se signale là où
-    elle se modifie.
+    elle se modifie. UX-18 — dans l'en-tête de la fiche de la collection ET dans l'onglet
+    Diffusion et dépôt, dérivée au même endroit (`colEmbargo`).
     """
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
@@ -1090,12 +1167,14 @@ def test_a11y_collections_embargo_echu(page, seeded, theme):
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(400)
     page.wait_for_selector("#col-body .col-item", timeout=3000)
+    fiche = _ouvrir_collection(page, cid, "diffusion")
     # La pastille est RENDUE, et son libellé porte le sens — pas la seule couleur.
-    pastille = page.locator("#col-body .col-item", has_text="Fonds sous embargo").locator(
-        ".col-embargo")
+    pastille = fiche.locator(".lf-sous .col-embargo")
     pastille.wait_for(timeout=3000)
     assert "échu" in pastille.inner_text().lower()
     assert "2020-01-01" in (pastille.get_attribute("title") or "")
+    # Et l'onglet de la diffusion le dit en clair, sous le régime.
+    expect(fiche.locator("#panneau-diffusion .col-embargo-note")).to_contain_text("échu depuis")
 
     viol = _audit(page)
     assert not viol, f"Collections/embargo [{theme}] :\n{_fmt(viol)}"
@@ -1306,7 +1385,7 @@ def test_qui_entre_declare_les_administrateurs(page, seeded):
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(400)
     page.wait_for_selector("#col-body .col-item", timeout=3000)
-    page.locator("#col-body .col-item").first.locator("summary").click()
+    page.locator("#col-body .col-item .col-ouvrir").first.click()    # sur « Qui entre »
     note = page.locator(".col-note-admin")
     # Plus tard qu'avant : la note vit sous « Qui entre », qui attend la description des
     # droits, les accès, puis l'annuaire.
@@ -1326,12 +1405,14 @@ def test_le_referent_d_une_collection_s_enregistre(page, seeded):
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(400)
     page.wait_for_selector("#col-body .col-item", timeout=3000)
-    page.locator("#col-body .col-item").first.locator("summary").click()
-    page.wait_for_selector('#col-body [data-champ="referent_nom"]', timeout=3000)
-    page.locator('#col-body [data-champ="referent_nom"]').first.fill("Ana Ruiz")
-    page.locator('#col-body [data-champ="referent_contact"]').first.fill("ana@labo.fr")
-    page.locator("#col-body [data-enregistrer]").first.click()
-    page.locator("#col-body .col-msg", has_text="enregistrée").wait_for(timeout=3000)
+    page.locator("#col-body .col-item .col-ouvrir").first.click()
+    page.locator('#col-fiche [role="tab"][data-onglet="description"]').click()
+    page.locator('#col-fiche [data-modifier="description"]').click()
+    page.wait_for_selector('#col-fiche [data-champ="referent_nom"]', timeout=3000)
+    page.locator('#col-fiche [data-champ="referent_nom"]').fill("Ana Ruiz")
+    page.locator('#col-fiche [data-champ="referent_contact"]').fill("ana@labo.fr")
+    page.locator("#col-fiche [data-enregistrer]").click()
+    page.locator("#col-fiche .col-msg", has_text="enregistrée").wait_for(timeout=3000)
 
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30,
                      headers={"Remote-User": "alice", "Remote-Groups": "bd-admins"})
@@ -1353,10 +1434,11 @@ def test_le_participant_non_proprietaire_voit_le_referent(page, seeded, niveau):
     engage la collection et reste au propriétaire ; lire est le geste de quelqu'un qui a
     une question.
 
-    COL-2 puis AUTH-12 (étape 3) — les deux vivent dans la Bibliothèque, dans la collection
-    dépliée : le référent avec la description, la déclaration avec « Qui entre », que le
+    COL-2 puis AUTH-12 (étape 3) — les deux vivent dans la Bibliothèque, dans la fiche de la
+    collection : le référent avec la description, la déclaration avec « Qui entre », que le
     participant ne voit pas. Et le formulaire reste invisible en ÉCRITURE comme en lecture :
-    annoter n'est pas décrire."""
+    annoter n'est pas décrire. UX-18 — chacun dans son onglet, que le participant OUVRE :
+    aucun onglet ne porte de garde, chaque bloc pose sa question."""
     admin = {"Remote-User": "alice", "Remote-Groups": "bd-admins",
              "X-BD-Requete": "1"}
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=admin)
@@ -1376,18 +1458,21 @@ def test_le_participant_non_proprietaire_voit_le_referent(page, seeded, niveau):
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(400)
     page.wait_for_selector("#col-body .col-item", timeout=3000)
-    page.locator("#col-body .col-item").first.locator("summary").click()
+    page.locator(f'#col-body .col-item[data-id="{cid}"] .col-ouvrir').click()
+    page.locator('#col-fiche [role="tab"][data-onglet="description"]').click()
     page.wait_for_selector(".col-note-referent", timeout=3000)
     assert "Ana Ruiz" in page.locator(".col-note-referent").inner_text()
     # Il LIT la description ; il ne la modifie pas, et ne désigne personne.
-    assert page.locator("#col-body [data-champ]").count() == 0, "il ne doit pas pouvoir DÉSIGNER"
-    assert page.locator("#col-body [data-enregistrer]").count() == 0
+    assert page.locator("#biblio-fiche [data-champ]").count() == 0, "il ne doit pas pouvoir DÉSIGNER"
+    assert page.locator("#biblio-fiche [data-enregistrer]").count() == 0
+    assert page.locator("#biblio-fiche [data-modifier]").count() == 0
 
-    # Il apprend, au même endroit, qu'un administrateur lit sans figurer dans les accès — sans
-    # voir « Qui entre », dont la liste est une donnée sur des personnes.
+    # Il apprend, dans « Qui entre », qu'un administrateur lit sans figurer dans les accès —
+    # sans voir la liste, qui est une donnée sur des personnes.
+    page.locator('#col-fiche [role="tab"][data-onglet="qui"]').click()
     page.locator(".col-note-admin").wait_for(timeout=3000)
-    assert page.locator("#col-body .qe").count() == 0, "il ne doit pas voir qui entre"
-    assert page.locator("#col-body .qe-case").count() == 0
+    assert page.locator("#biblio-fiche .qe").count() == 0, "il ne doit pas voir qui entre"
+    assert page.locator("#biblio-fiche .qe-case").count() == 0
     assert "bd-admins" in page.locator(".col-note-admin").inner_text()
 
 

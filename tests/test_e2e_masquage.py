@@ -84,6 +84,13 @@ NON_RESOLUS = {
         "identifiant, donc `getElementById` ne l'atteint pas. Vérifié à la main le "
         "2026-09-04 — `.sub-title` ne pose aucun `display`, l'attribut agit. Le jour où "
         "le balayage saura viser un sélecteur, cette entrée disparaît."),
+    ("corpus.js", "partie"): (
+        "Les quatre panneaux de la fiche d'une collection (UX-18) — Albums, Qui entre, "
+        "Description, Diffusion et dépôt —, parcourus par `querySelectorAll('[role=tabpanel]')` "
+        "quand on change d'onglet : la cible est un RÔLE, pas un identifiant écrit dans un "
+        "`$(\"#…\")`. `.bi-panneau` ne pose aucun `display`, l'attribut agit ; vérifié le "
+        "2026-10-17 par `test_e2e_bibliotheque.test_la_fiche_d_une_collection_a_quatre_onglets`, "
+        "qui exige un seul panneau VISIBLE à la fois."),
     ("lib/qui-entre.js", "libre"): (
         "La saisie libre de « Qui entre » (AUTH-12, étape 3), une par panneau monté : "
         "la cible est la CLASSE `.qe-libre`, cherchée dans sa section, pas un identifiant. "

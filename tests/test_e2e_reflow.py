@@ -503,9 +503,10 @@ def test_la_bande_1_de_production_ne_perd_pas_de_contenu(page, live_server):
 def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, largeur, police):
     """Le corps de la page ne défile jamais horizontalement (règle de CLAUDE.md).
 
-    Sur `/administration`, puis sur la Bibliothèque avec une collection DÉPLIÉE : le
-    formulaire d'accès qui débordait de 89 px à 375 vit dans « Qui entre » depuis l'étape 3
-    d'AUTH-12, et une page repliée ne montre pas ce qu'on cherche. La collection porte TROIS
+    Sur `/administration`, puis sur la Bibliothèque avec la fiche d'une collection ouverte
+    sur « Qui entre » : le formulaire d'accès qui débordait de 89 px à 375 y vit depuis
+    l'étape 3 d'AUTH-12 (et, depuis UX-18, dans l'onglet d'une fiche), et une page qui ne
+    l'ouvre pas ne montre pas ce qu'on cherche. La collection porte TROIS
     accès — un groupe, un compte, un groupe inconnu de l'annuaire — pour que le tableau (ou
     les cartes, sous 48em) ait des lignes, des marques et des cases à mesurer. Puis sur
     `/administration` à nouveau, la fiche de cette collection ouverte : le même panneau y
@@ -539,12 +540,12 @@ def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, larg
             page, f"/administration?vue={vue} à {largeur} px (police par défaut {police} px)")
 
     page.goto(decor["base"] + f"/corpus?collection={cid}", wait_until="networkidle")
-    lignes = page.locator(f'#col-body .col-item[data-id="{cid}"] :is(.qe-table tbody tr, .qe-carte)')
+    lignes = page.locator(f'#col-fiche[data-id="{cid}"] :is(.qe-table tbody tr, .qe-carte)')
     lignes.first.wait_for(timeout=5000)
     assert lignes.count() == 3, "« Qui entre » ne montre pas ses trois accès : rien à mesurer"
     page.wait_for_timeout(600)
     _exiger_pas_de_defilement(
-        page, f"/corpus, « Qui entre » déplié, à {largeur} px (police par défaut {police} px)")
+        page, f"/corpus, « Qui entre » ouvert, à {largeur} px (police par défaut {police} px)")
 
     # UX-16 — le MÊME panneau, monté dans la fiche d'une collection de l'Administration. Il
     # y est plus à l'étroit qu'ailleurs : à 768 px la fiche partage la largeur avec la liste,
@@ -579,8 +580,9 @@ def test_l_administration_et_qui_entre_ne_defilent_pas_de_cote(page, decor, larg
 # reflow. Le même défaut avait été fermé dans le module frère (les membres d'un projet) ;
 # ici, ce qui est replié n'existait pas pour l'instrument.
 #
-# Les DEUX hôtes du module : la Bibliothèque est son témoin, la fiche d'une collection dans
-# l'Administration le loge plus à l'étroit. Une règle sur `.qe-…` vaut pour les deux.
+# Les DEUX hôtes du module : l'onglet « Qui entre » de la fiche d'une collection, dans la
+# Bibliothèque comme dans l'Administration (UX-18 : les deux le logent dans une colonne).
+# Une règle sur `.qe-…` vaut pour les deux.
 @pytest.mark.parametrize("police", POLICES)
 def test_la_saisie_libre_de_qui_entre_tient_dans_son_bloc(page, decor, police):
     """À 320 px, la saisie libre ouverte, rien ne dépasse de sa boîte dans « Qui entre »,
@@ -593,7 +595,7 @@ def test_la_saisie_libre_de_qui_entre_tient_dans_son_bloc(page, decor, police):
         c.close()
     hotes = {
         "la Bibliothèque": (f"/corpus?collection={cid}",
-                            f'#col-body .col-item[data-id="{cid}"] section.qe'),
+                            f'#col-fiche[data-id="{cid}"] section.qe'),
         "la fiche d'une collection, dans l'Administration": (
             f"/administration?axe=collections&collection={cid}",
             "#cg-fiche section[data-qui-entre]"),
@@ -623,27 +625,39 @@ def test_la_saisie_libre_de_qui_entre_tient_dans_son_bloc(page, decor, police):
         "« Qui entre », saisie libre ouverte, à 320 px :\n" + "\n".join(echecs))
 
 
-# ── COL-2 : le formulaire d'une collection a déménagé dans la Bibliothèque ─────────────
-# Même question que pour l'Administration, sur le contenu NEUF de `/corpus` : trois groupes
-# de champs, leurs notes et le bloc d'export, déplié — une page repliée ne montre pas ce
-# qu'on cherche. La mesure porte sur la page entière, parce que c'est la règle ; si elle
-# tombe ailleurs que dans ce bloc, le message nomme l'élément fautif.
+# ── COL-2 puis UX-18 : la fiche d'une collection, et celle d'un album ─────────────────
+# Même question que pour l'Administration, sur le contenu de `/corpus` que la page ne montre
+# qu'au geste : les deux formulaires d'une collection ouverts — Description, puis Diffusion et
+# dépôt avec ses notes et son bloc d'export —, son onglet Albums, et la fiche d'un album
+# (cartes sous la fiche étroite). La mesure porte sur la page entière, parce que c'est la
+# règle ; si elle tombe ailleurs que dans ce bloc, le message nomme l'élément fautif.
 @pytest.mark.parametrize("police", POLICES)
 @pytest.mark.parametrize("largeur", LARGEURS)
 def test_le_formulaire_de_collection_ne_defile_pas_de_cote(page, decor, largeur, police):
-    """Le corps de la Bibliothèque ne défile pas de côté, collection dépliée sur son
-    formulaire (règle de CLAUDE.md, critère Reflow WCAG 1.4.10)."""
+    """Le corps de la Bibliothèque ne défile pas de côté, fiche d'une collection ouverte sur
+    ses formulaires et son onglet Albums, puis fiche d'un album (règle de CLAUDE.md, critère
+    Reflow WCAG 1.4.10)."""
+    c = httpx.Client(base_url=decor["base"], trust_env=False, timeout=30, headers=ECRITURE)
+    try:
+        cid = c.get(f"/api/albums/{decor['album']}/collections").json()[0]["id"]
+    finally:
+        c.close()
     _preference_police(page, police)
     page.set_viewport_size({"width": largeur, "height": 900})
-    page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    page.wait_for_timeout(400)
-    som = page.query_selector("#col-body .col-item summary")
-    assert som, "aucune collection à déplier : le contrôle ne mesurerait rien"
-    som.click()
-    page.wait_for_selector("#col-body [data-enregistrer]", timeout=3000)
-
-    _exiger_pas_de_defilement(
-        page, f"/corpus, collection dépliée, à {largeur} px (police par défaut {police} px)")
+    cas = f"à {largeur} px (police par défaut {police} px)"
+    for onglet in ("description", "diffusion"):
+        page.goto(decor["base"] + f"/corpus?collection={cid}&onglet={onglet}",
+                  wait_until="networkidle")
+        page.locator(f'#col-fiche [data-modifier="{onglet}"]').click()
+        page.wait_for_selector(f"#panneau-{onglet} [data-enregistrer]", timeout=3000)
+        _exiger_pas_de_defilement(page, f"/corpus, formulaire « {onglet} » ouvert, {cas}")
+    page.goto(decor["base"] + f"/corpus?collection={cid}&onglet=albums", wait_until="networkidle")
+    page.locator(f'#panneau-albums [data-coche-album="{decor["album"]}"]').check()
+    page.wait_for_selector("#panneau-albums .bi-lot", timeout=3000)
+    _exiger_pas_de_defilement(page, f"/corpus, onglet Albums et son lot, {cas}")
+    page.goto(decor["base"] + f"/corpus?album={decor['album']}", wait_until="networkidle")
+    page.wait_for_selector("#album-detail .planches-table", timeout=3000)
+    _exiger_pas_de_defilement(page, f"/corpus, fiche d'un album, {cas}")
 
 
 # ── Le bloc que la page ne RENDAIT pas, donc que rien ne mesurait (UX-10, 2026-09-07) ──

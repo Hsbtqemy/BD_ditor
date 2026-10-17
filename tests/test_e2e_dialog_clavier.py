@@ -99,8 +99,10 @@ def _accord_inter(page, d):
 
 
 def _album(page, d):
+    """La modale d'édition, par « Modifier l'album » dans la fiche de l'album (UX-18)."""
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
-    page.locator('[data-act="edit"]').first.click()
+    page.locator("#albums-body .album-row").first.click()
+    page.locator("#detail-edit").click()
     page.wait_for_selector("#album-modal:not([hidden])", timeout=5000)
     page.wait_for_load_state("networkidle")
 
@@ -108,7 +110,8 @@ def _album(page, d):
 def _supprimer(page, d):
     """COL-3, tranche 2 — « Supprimer… » et ses deux réponses, collections lues."""
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
-    page.locator('[data-act="supprimer"]').first.click()
+    page.locator("#albums-body .album-row").first.click()      # la fiche de l'album (UX-18)
+    page.locator('#album-detail [data-act="supprimer"]').click()
     page.wait_for_selector("#suppr-modal:not([hidden]) #sp-retrait button[data-retirer]",
                            timeout=5000)
 

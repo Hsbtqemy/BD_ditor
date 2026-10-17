@@ -38,9 +38,12 @@ OUVRENT_UNE_FICHE = {"administration.js"}
 
 # Les hôtes qui logent le panneau dans une COLONNE plus étroite que leur page, et passent
 # donc `ajusterALaPlace` : le tableau y cède la place aux cartes dès qu'il ne tient plus dans
-# sa section. La Bibliothèque n'en est pas — le panneau y dispose de la page, et son rendu
-# est le témoin de l'extraction : même seuil de fenêtre, à toutes les largeurs.
-SUIVENT_LEUR_PLACE = {"administration.js"}
+# sa section. La Bibliothèque en est depuis UX-18 (2026-10-17) : le panneau y vit dans
+# l'onglet « Qui entre » de la fiche d'une collection, la colonne de droite d'une liste et
+# d'une fiche — la même place que dans l'Administration. Elle était jusque-là le témoin de
+# l'extraction (UX-16), parce que le panneau y disposait de la page ; ce témoin a servi, et
+# la refonte qui le retire était annoncée par la fiche d'UX-18.
+SUIVENT_LEUR_PLACE = {"administration.js", "corpus.js"}
 
 # Ce qui appartient au module et à lui seul. Le balisage : toute classe ou tout identifiant
 # `qe-…` ; la classe `qe` nue dans un sélecteur (`.qe`, mais pas la propriété `x.qe`) ; et
@@ -153,10 +156,11 @@ def test_le_module_ne_fait_un_lien_d_un_nom_que_sur_demande():
 def test_seul_un_hote_loge_a_l_etroit_fait_suivre_la_place_au_panneau(script):
     """`ajusterALaPlace` change QUAND le panneau passe du tableau aux cartes.
 
-    Passée par la Bibliothèque « pour faire pareil », elle ferait basculer en cartes un
-    tableau qui y défile dans son cadre depuis toujours à 768 px — et le témoin ne serait
-    plus le témoin. Le navigateur le mesure, largeur par largeur
-    (`test_e2e_qui_entre_administration`) ; ici, c'est la déclaration qui est tenue.
+    Passée par un hôte qui donne la page au panneau, elle ferait basculer en cartes un
+    tableau qui y défilerait dans son cadre ; oubliée par un hôte qui le loge dans une
+    colonne, le tableau y resterait à moitié hors champ. Le navigateur le mesure, largeur
+    par largeur, là où le panneau est monté (`test_e2e_qui_entre_administration`,
+    `test_e2e_qui_entre`) ; ici, c'est la déclaration qui est tenue.
     """
     code = _sans_commentaires((STATIC / script).read_text(encoding="utf-8"))
     assert ("ajusterALaPlace" in code) == (script in SUIVENT_LEUR_PLACE), (

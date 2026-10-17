@@ -548,9 +548,12 @@ def test_la_fiche_d_une_collection_regle_qui_entre_et_ne_lit_plus_ses_acces_dans
         "se règle dans sa fiche, dans la Bibliothèque.")
     lien.click()
     page.wait_for_url(f"**/corpus?collection={cid}")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
-    expect(item).to_have_attribute("open", "")
-    expect(item.locator("[data-enregistrer]")).to_be_visible()
+    # UX-18 — la fiche de la collection s'ouvre, sur « Qui entre » comme toute adresse qui
+    # ne nomme pas d'onglet ; ce que la collection EST se règle à un onglet de là.
+    item = page.locator(f'#col-fiche[data-id="{cid}"]')
+    expect(item).to_be_visible()
+    item.locator('[role="tab"][data-onglet="description"]').click()
+    expect(item.locator('[data-modifier="description"]')).to_be_visible()
 
 
 def test_ouvrir_une_collection_a_ce_groupe_le_preselectionne(page, live_server):

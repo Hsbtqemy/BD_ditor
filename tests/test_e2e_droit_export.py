@@ -19,6 +19,7 @@ import pytest
 pytest.importorskip("playwright.sync_api", reason="pytest-playwright non installé")
 
 from conftest import ECRITURE, make_png  # noqa: E402
+from playwright.sync_api import expect  # noqa: E402
 
 pytestmark = [pytest.mark.e2e,
               pytest.mark.parametrize("live_server", [True], indirect=True)]
@@ -66,6 +67,16 @@ def _deux_collections_exportables(decor):
     return c2
 
 
+def _fiche(page, cid, onglet):
+    """La fiche d'une collection par son NOM dans la liste, puis l'onglet voulu (UX-18)."""
+    page.locator(f'#col-body .col-item[data-id="{cid}"] .col-ouvrir').click()
+    item = page.locator(f'#col-fiche[data-id="{cid}"]')
+    item.wait_for(timeout=3000)
+    item.locator(f'[role="tab"][data-onglet="{onglet}"]').click()
+    expect(item.locator(f"#panneau-{onglet}")).to_be_visible()
+    return item
+
+
 def _cache(page, selecteur):
     """L'attribut `hidden` POSÉ, et non la simple invisibilité : un bouton rangé dans un
     panneau replié est invisible sans que le code l'ait caché, et l'assertion serait vide."""
@@ -79,11 +90,16 @@ def test_sans_la_case_aucune_surface_ne_propose_d_exporter(page, decor):
     base = decor["base"]
 
     page.goto(base + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{decor["collection"]}"]')
-    item.locator("summary").click()
+    # UX-18 — l'onglet Diffusion et dépôt s'OUVRE à qui n'exporte pas : aucun onglet ne porte
+    # de garde. Il y lit le régime, et le bloc d'export lui dit ce qui manque.
+    item = _fiche(page, decor["collection"], "diffusion")
     item.locator(".col-export").wait_for(timeout=3000)
+    expect(item.locator("#panneau-diffusion .col-regime")).to_be_visible()
     assert item.locator("[data-dep]").count() == 0, "le bloc d'export est offert sans le droit"
     assert "droit d'exporter" in item.locator(".col-export").inner_text()
+    expect(item.locator(".col-export-manque")).to_have_text("Exporter : droit manquant.")
+    expect(item.locator('.droits [data-acte="exporter"]')).to_have_class("non")
+    expect(item.locator('.droits [data-acte="ecrire"]')).to_have_class("oui")
 
     page.goto(base + f"/?album={decor['album']}", wait_until="networkidle")
     page.wait_for_function("() => !document.querySelector('#export-pourquoi').hidden",
@@ -114,8 +130,7 @@ def test_la_case_cochee_dans_les_acces_rend_l_export_a_l_ecran(page, decor):
     base = decor["base"]
     page.set_extra_http_headers(ADMIN)
     page.goto(base + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{decor["collection"]}"]')
-    item.locator("summary").click()
+    item = _fiche(page, decor["collection"], "qui")
     case = item.locator('input.qe-case[data-hors-rang="exporter"][data-principal="bob"]')
     case.wait_for(timeout=3000)
     assert not case.is_checked()
@@ -127,9 +142,9 @@ def test_la_case_cochee_dans_les_acces_rend_l_export_a_l_ecran(page, decor):
 
     page.set_extra_http_headers(BOB)
     page.goto(base + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{decor["collection"]}"]')
-    item.locator("summary").click()
+    item = _fiche(page, decor["collection"], "diffusion")
     item.locator("[data-dep]").first.wait_for(timeout=3000)
+    expect(item.locator('.droits [data-acte="exporter"]')).to_have_class("oui")
     page.goto(base + "/recherche", wait_until="networkidle")
     page.wait_for_timeout(300)
     assert not _cache(page, "#btn-export")
@@ -137,7 +152,8 @@ def test_la_case_cochee_dans_les_acces_rend_l_export_a_l_ecran(page, decor):
 
 
 def test_le_depliant_reste_ouvert_et_le_focus_avec_lui(page, decor):
-    """AUTH-3 — régler un accès ne doit pas replier la collection sous la main.
+    """AUTH-3 — régler un accès ne doit pas replier la collection sous la main (UX-18 : ne
+    doit pas faire quitter à la fiche l'onglet « Qui entre »).
 
     Un geste de « Qui entre » recharge les accès, et c'est voulu : l'écran doit montrer ce que
     le serveur a enregistré, pas ce qu'on a cliqué. Le tableau est donc redessiné, et la case
@@ -152,8 +168,7 @@ def test_le_depliant_reste_ouvert_et_le_focus_avec_lui(page, decor):
     """
     page.set_extra_http_headers(ADMIN)
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{decor["collection"]}"]')
-    item.locator("summary").click()
+    item = _fiche(page, decor["collection"], "qui")
     case = item.locator('input.qe-case[data-hors-rang="exporter"][data-principal="bob"]')
     case.wait_for(timeout=3000)
     assert not case.is_checked(), "prémisse fausse : Bob a déjà la case"
@@ -162,8 +177,9 @@ def test_le_depliant_reste_ouvert_et_le_focus_avec_lui(page, decor):
     case.check()
     page.wait_for_function("el => !el.isConnected", arg=ancienne, timeout=10000)
 
-    assert item.evaluate("el => el.open"), (
-        "la collection s'est repliée après le réglage — le rechargement perd l'état d'ouverture")
+    assert item.locator('[role="tab"][data-onglet="qui"]').get_attribute("aria-selected") \
+        == "true" and item.locator("#panneau-qui").is_visible(), (
+        "la fiche a quitté « Qui entre » après le réglage — le rechargement perd l'onglet")
     assert item.locator('input.qe-case[data-hors-rang="exporter"][data-principal="bob"]').is_checked(), (
         "la case n'est pas revenue cochée : le serveur n'a pas enregistré le réglage, ou "
         "l'écran affiche autre chose que ce qu'il a répondu")
@@ -202,8 +218,7 @@ def test_a11y_la_case_et_le_choix_d_export(page, decor):
     _deux_collections_exportables(decor)
     page.set_extra_http_headers(ADMIN)
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{decor["collection"]}"]')
-    item.locator("summary").click()
+    item = _fiche(page, decor["collection"], "qui")
     item.locator('input.qe-case[data-hors-rang="exporter"][data-principal="bob"]').wait_for(timeout=3000)
     viol = _audit(page)
     assert not viol, f"Qui entre et case d'export :\n{_fmt(viol)}"

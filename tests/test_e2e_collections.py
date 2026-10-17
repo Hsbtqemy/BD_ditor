@@ -9,6 +9,11 @@ dépendre d'un outil d'audit.
 Chaque test vise un défaut qui ne casse aucun test d'API : le serveur répond juste, et
 c'est l'écran qui aurait menti, masqué, effacé ou avalé un refus — ou l'aurait affiché
 LOIN du geste, là où personne ne le voit (cf. `_message_du_geste`).
+
+UX-18 (2026-10-17) — la collection n'est plus une section dépliée dans une liste : son NOM,
+dans le bloc « Collections », ouvre sa FICHE à droite, en quatre onglets (Albums · Qui entre
+· Description · Diffusion et dépôt), et le formulaire s'ouvre au geste (« Modifier »). Les
+gestes sont les mêmes ; « dans la collection dépliée » se lit désormais « dans sa fiche ».
 """
 import io
 import zipfile
@@ -66,6 +71,41 @@ def _collection_du_decor(base, album):
         return c.get(f"/api/albums/{album}/collections").json()[0]
 
 
+def _fiche(page, cid):
+    """La fiche de la collection `cid` — un locator, qui se résout dans la fiche REDESSINÉE
+    après un enregistrement."""
+    return page.locator(f'#col-fiche[data-id="{cid}"]')
+
+
+def _ouvrir(page, cid, onglet="qui"):
+    """Ouvre la fiche d'une collection par son NOM dans la liste, puis l'onglet voulu."""
+    page.locator(f'#col-body .col-item[data-id="{cid}"] .col-ouvrir').click()
+    fiche = _fiche(page, cid)
+    fiche.wait_for(timeout=5000)
+    if onglet != "qui":
+        fiche.locator(f'[role="tab"][data-onglet="{onglet}"]').click()
+    expect(fiche.locator(f"#panneau-{onglet}")).to_be_visible()
+    return fiche
+
+
+def _modifier(page, cid, onglet):
+    """Ouvre la collection sur `onglet` et son formulaire (« Modifier »)."""
+    fiche = _ouvrir(page, cid, onglet)
+    fiche.locator(f'[data-modifier="{onglet}"]').click()
+    fiche.locator(f"#panneau-{onglet} [data-enregistrer]").wait_for(timeout=3000)
+    return fiche
+
+
+def _creer(page, nom=None):
+    """« + Créer une collection » : le champ n'apparaît qu'au geste (UX-18)."""
+    if page.locator("#col-creer-zone").is_hidden():
+        page.click("#col-creer")
+    expect(page.locator("#col-nom")).to_be_visible()
+    if nom is not None:
+        page.fill("#col-nom", nom)
+    page.click("#col-add")
+
+
 def _message_du_geste(page, item, motif):
     """Le message qui suit un geste, trouvé par son TEXTE puis SITUÉ à l'écran.
 
@@ -75,10 +115,10 @@ def _message_du_geste(page, item, motif):
     lisible, sous TOUTE la liste — et n'a pas été vu. La suite ne pouvait pas le dire :
     elle lisait le texte et la classe de `#col-msg`, jamais sa place.
 
-    Deux propriétés, qui sont l'attendu de la fiche : le message est DANS la collection
-    dépliée (sa boîte est contenue dans celle du `<details>`), et il se VOIT sans défiler,
-    telle que le clic a laissé l'écran. `item` est un locator : après un enregistrement la
-    collection est redessinée, et il se résout dans la nouvelle.
+    Deux propriétés, qui sont l'attendu de la fiche : le message est DANS la fiche de la
+    collection (sa boîte est contenue dans celle de `#col-fiche`), et il se VOIT sans
+    défiler, telle que le clic a laissé l'écran. `item` est un locator : après un
+    enregistrement la fiche est redessinée, et il se résout dans la nouvelle.
 
     « Se voit » ne veut pas dire « tombe dans les 720 px du viewport », et la première
     version de ce test confondait les deux. La page défile dans `main`, SOUS un en-tête :
@@ -90,8 +130,8 @@ def _message_du_geste(page, item, motif):
     m, i = message.bounding_box(), item.bounding_box()
     assert m and i, "le message ou la collection n'est pas rendu"
     assert i["y"] <= m["y"] and m["y"] + m["height"] <= i["y"] + i["height"], (
-        f"le message « {message.inner_text()} » s'affiche HORS de la collection dépliée "
-        f"(message {m}, collection {i}) : loin du geste, là où la recette ne l'a pas vu")
+        f"le message « {message.inner_text()} » s'affiche HORS de la fiche de la collection "
+        f"(message {m}, fiche {i}) : loin du geste, là où la recette ne l'a pas vu")
     assert _se_voit(message), (
         f"le message n'est pas visible à l'écran ({m}) : hors de la fenêtre, rogné par la "
         "zone qui défile ou recouvert — il faut défiler pour le lire")
@@ -111,19 +151,19 @@ def _se_voit(locator):
 
 
 def _enregistrer(page, cid):
-    """Clique *Enregistrer*, et rend la collection REDESSINÉE qui s'ensuit.
+    """Clique *Enregistrer*, et rend la fiche REDESSINÉE qui s'ensuit.
 
-    Un enregistrement réussi recharge la liste : la collection est détruite, puis
-    redessinée, et son message doit passer de l'une à l'autre. Le chercher sans attendre
-    le second rendu le trouverait dans la version d'AVANT — et le test approuverait un
-    report qui n'a peut-être pas lieu, selon qui, du navigateur ou du test, va le plus
-    vite. On marque donc l'ancienne avant de cliquer, et on attend une collection du même
-    id qui ne porte pas la marque, formulaire rendu."""
-    sel = f'#col-body .col-item[data-id="{cid}"]'
+    Un enregistrement réussi recharge la liste et redessine la fiche, revenue en lecture :
+    son message doit passer de l'une à l'autre. Le chercher sans attendre le second rendu le
+    trouverait dans la version d'AVANT — et le test approuverait un report qui n'a peut-être
+    pas lieu, selon qui, du navigateur ou du test, va le plus vite. On marque donc
+    l'ancienne avant de cliquer, et on attend une fiche du même id qui ne porte pas la
+    marque, onglets rendus."""
+    sel = f'#col-fiche[data-id="{cid}"]'
     page.locator(sel).evaluate("d => { d.dataset.avant = '1'; }")
     page.locator(sel).locator("[data-enregistrer]").click()
     nouvelle = page.locator(f"{sel}:not([data-avant])")
-    nouvelle.locator("[data-enregistrer]").wait_for(timeout=5000)
+    nouvelle.locator('[role="tab"]').first.wait_for(timeout=5000)
     return nouvelle
 
 
@@ -133,7 +173,8 @@ def test_nouvel_album_ne_masque_pas_la_creation_de_collection(page, decor):
     création de collection, au-dessus de la table : caché à chaque « Nouvel album », et
     rien ne le rendait ensuite. Aucune erreur, aucun test d'API ; un bouton disparu."""
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    page.wait_for_selector("#col-add", timeout=3000)
+    page.click("#col-creer")                     # le champ n'apparaît qu'au geste (UX-18)
+    page.wait_for_selector("#col-add", state="visible", timeout=3000)
     page.click("#btn-new")
     page.wait_for_selector("#album-modal:not([hidden])", timeout=3000)
     # La ligne visée existe bien, et c'est ELLE qui se masque pour un album neuf.
@@ -155,8 +196,10 @@ def test_le_formulaire_n_envoie_que_ce_qui_a_change(page, decor):
         assert r.status_code == 200, r.text
 
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
-    item.locator("summary").click()
+    item = _ouvrir(page, cid, "diffusion")
+    # En lecture d'abord : la date illisible s'y lit telle quelle.
+    expect(item.locator("#panneau-diffusion .bi-lecture")).to_contain_text("31/12/2027")
+    item.locator('[data-modifier="diffusion"]').click()
     champ = item.locator('[data-champ="date_embargo"]')
     champ.wait_for(timeout=3000)
     assert champ.input_value() == "31/12/2027", "la date illisible n'est pas réaffichée"
@@ -183,10 +226,11 @@ def test_passer_public_a_l_ecran_libere_le_manifeste(page, decor):
         "le décor devait partir d'une collection NON publique")
 
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
-    item.locator("summary").click()
+    item = _modifier(page, cid, "diffusion")
     item.locator('[data-champ="statut_diffusion"]').select_option("public")
     _message_du_geste(page, _enregistrer(page, cid), "enregistrée")
+    # Revenue en lecture, la fiche dit le régime enregistré, dans l'en-tête et dans l'onglet.
+    expect(_fiche(page, cid).locator(".lf-sous .col-regime")).to_have_text("public")
 
     with _client(decor["base"]) as c:
         apres = c.get(f"/api/collections/{cid}/depot/iiif", params={"base_url": BASE_IMAGES})
@@ -208,8 +252,7 @@ def test_supprimer_rend_le_409_et_son_compte_d_albums(page, decor):
     cid = _collection_du_decor(decor["base"], decor["album"])["id"]
     page.on("dialog", lambda d: d.accept())      # le confirm() de la suppression
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
-    item.locator("summary").click()
+    item = _ouvrir(page, cid, "description")
     item.locator("[data-supprimer]").click()
     message = _message_du_geste(page, item, "n'appartiennent qu'à cette collection")
     assert "1 album(s) n'appartiennent qu'à cette collection" in message, message
@@ -219,42 +262,24 @@ def test_supprimer_rend_le_409_et_son_compte_d_albums(page, decor):
             "la collection a disparu malgré le refus")
 
 
-def test_supprimer_laisse_sa_confirmation_a_la_place_de_la_collection(page, decor):
-    """Une suppression RÉUSSIE ne peut pas parler dans la collection : elle disparaît, et sa
-    ligne de message avec elle. Sa confirmation prend donc la PLACE qu'occupait la
-    collection dans la liste, entre sa voisine d'avant et celle d'après — là où l'œil est
-    resté. La fiche et le code l'affirmaient ; aucun test ne le vérifiait avant la passe de
-    revue du 2026-09-16."""
+def test_supprimer_laisse_sa_confirmation_a_la_place_de_la_fiche(page, decor):
+    """Une suppression RÉUSSIE ne peut pas parler dans la collection : sa fiche disparaît, et
+    sa ligne de message avec elle. Sa confirmation prend donc la PLACE de la fiche — en tête
+    de celle du projet, qui la remplace —, là où l'œil est resté ; et la collection quitte
+    la liste. Gardé depuis la passe de revue du 2026-09-16, qui avait vu la confirmation
+    affirmée et jamais vérifiée ; la place a suivi la refonte (UX-18)."""
     with _client(decor["base"]) as c:
-        crees = {c.post("/api/collections", json={"nom": n}).json()["id"]
-                 for n in ("Espace A", "Espace B", "Espace C")}
+        cid = c.post("/api/collections", json={"nom": "Espace B"}).json()["id"]
     page.on("dialog", lambda d: d.accept())      # le confirm() de la suppression
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    rendues = page.locator("#col-body .col-item")
-    rendues.first.wait_for(timeout=3000)
-    ordre = [int(rendues.nth(i).get_attribute("data-id")) for i in range(rendues.count())]
-    # Les trois créées, la collection de repli du décor, et la base du projet de repli (D10).
-    assert len(ordre) == 5, ordre
-    # Une collection vide, qu'on peut donc supprimer, et qui a une voisine de chaque côté.
-    rang = next(k for k in range(1, len(ordre) - 1) if ordre[k] in crees)
-    avant, cid, apres = ordre[rang - 1], ordre[rang], ordre[rang + 1]
-
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
-    item.locator("summary").click()
+    item = _ouvrir(page, cid, "description")
     item.locator("[data-supprimer]").click()
     item.wait_for(state="detached", timeout=5000)
-    trace = page.locator("#col-body p", has_text="supprimée")
+    trace = page.locator("#biblio-fiche [role=status]", has_text="« Espace B » supprimée.")
     trace.wait_for(timeout=5000)
-    places = page.evaluate("""([avant, apres]) => {
-      const k = [...document.querySelector('#col-body').children];
-      return [k.findIndex((e) => e.dataset.id === String(avant)),
-              k.findIndex((e) => e.tagName === 'P' && e.textContent.includes('supprimée')),
-              k.findIndex((e) => e.dataset.id === String(apres))];
-    }""", [avant, apres])
-    assert places[0] + 1 == places[1] and places[1] + 1 == places[2], (
-        f"la confirmation n'est pas à la place de la collection supprimée : {places} "
-        "(rangs de la voisine d'avant, de la confirmation, de la voisine d'après)")
     assert _se_voit(trace), "la confirmation de suppression n'est pas visible à l'écran"
+    expect(page.locator("#bi-accueil-titre")).to_be_visible()
+    expect(page.locator(f'#col-body .col-item[data-id="{cid}"]')).to_have_count(0)
     with _client(decor["base"]) as c:
         assert cid not in {x["id"] for x in c.get("/api/collections").json()}
 
@@ -266,35 +291,20 @@ def test_prendre_le_nom_du_repli_est_refuse_la_ou_l_on_a_agi(page, decor):
     copie finirait par dire autre chose que la première.
 
     Et il le rend LÀ OÙ L'ON A AGI. C'est ce refus-là que la passe de recette du 2026-09-16
-    a manqué : lisible, mais sous toute la liste. Le décor est celui de la fiche — trois
-    collections, et celle qu'on renomme en a une autre dessous —, parce que c'est la
-    situation où la recette l'a manqué. Il n'est pas ce qui fait mordre le test : la boîte
-    du message doit tenir dans celle de la collection, ce qu'un message posé sous la liste
-    ne fait pas, même sous une seule collection (le mutant l'a montré sur le 409, dont le
-    décor n'en a qu'une)."""
+    a manqué : lisible, mais sous toute la liste. La boîte du message doit tenir dans celle
+    de la fiche de la collection, ce qu'un message posé sous la liste ne fait pas."""
     repli = _collection_du_decor(decor["base"], decor["album"])["nom"]
     with _client(decor["base"]) as c:
-        crees = {c.post("/api/collections", json={"nom": n}).json()["id"]
-                 for n in ("Un espace", "Un autre espace")}
+        cid = c.post("/api/collections", json={"nom": "Un espace"}).json()["id"]
+        c.post("/api/collections", json={"nom": "Un autre espace"})
 
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    rendues = page.locator("#col-body .col-item")
-    rendues.first.wait_for(timeout=3000)
-    ordre = [int(rendues.nth(i).get_attribute("data-id")) for i in range(rendues.count())]
-    # Les deux créées, la collection de repli du décor, et la base du projet de repli (D10).
-    assert len(ordre) == 4, ordre
-    # La PREMIÈRE créée dans l'ordre d'affichage : quel que soit l'ordre que le serveur
-    # donne à la liste, il en reste une dessous.
-    cid = next(x for x in ordre if x in crees)
-    assert ordre.index(cid) < len(ordre) - 1, ordre
-
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
-    item.locator("summary").click()
+    item = _modifier(page, cid, "description")
     item.locator('[data-champ="nom"]').fill(repli)
     item.locator("[data-enregistrer]").click()
     message = _message_du_geste(page, item, "réservé")
     assert "réserv" in message.lower(), message
-    assert page.locator("#col-body .col-msg.erreur").count() == 1, (
+    assert page.locator("#biblio .col-msg.erreur").count() == 1, (
         "le refus se lit, mais pas comme un refus : la classe `erreur` manque")
 
     with _client(decor["base"]) as c:
@@ -309,7 +319,8 @@ def test_creer_ne_demande_aucun_droit_mais_decrire_si(page, decor):
     Carole n'a accès à RIEN. Elle ne voit donc pas la collection du décor — mais elle voit
     le bouton de création, et créer lui réussit : une identité suffit, refuser la création
     à qui n'a encore rien rendrait l'outil inutilisable au premier jour. Elle devient
-    propriétaire de ce qu'elle a créé, et c'est son FORMULAIRE qui s'ouvre, pas un résumé.
+    propriétaire de ce qu'elle a créé : sa fiche s'ouvre, dit « décider qui entre » parmi
+    ses droits, et lui offre de MODIFIER la description, pas seulement de la lire.
 
     Une garde unique posée sur le bloc lui aurait masqué le bouton : l'erreur qui échoue
     en se FERMANT, sans casser aucun test d'API — mot pour mot AUTH-4."""
@@ -318,12 +329,14 @@ def test_creer_ne_demande_aucun_droit_mais_decrire_si(page, decor):
     page.wait_for_selector("#col-body .col-note", timeout=3000)   # la liste est rendue… vide
     assert page.locator("#col-body .col-item").count() == 0, (
         "une collection qu'elle ne lit pas ne doit pas lui apparaître")
-    assert page.locator("#col-add").is_visible(), "le bouton de création lui est masqué"
+    assert page.locator("#col-creer").is_visible(), "le bouton de création lui est masqué"
 
-    page.fill("#col-nom", "Espace de Carole")
-    page.click("#col-add")
-    item = page.locator("#col-body .col-item", has_text="Espace de Carole")
-    item.locator("[data-enregistrer]").wait_for(timeout=5000)
+    _creer(page, "Espace de Carole")
+    fiche = page.locator("#col-fiche", has_text="Espace de Carole")
+    fiche.wait_for(timeout=5000)
+    expect(fiche.locator('.droits [data-acte="administrer"]')).to_have_class("oui")
+    fiche.locator('[role="tab"][data-onglet="description"]').click()
+    expect(fiche.locator('[data-modifier="description"]')).to_be_visible()
     assert page.locator("#col-body .col-item").count() == 1
 
 
@@ -345,8 +358,7 @@ def test_un_refus_d_acces_survit_au_rechargement_de_la_collection(page, decor):
         assert r.status_code == 200, r.text
 
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
-    item.locator("summary").click()
+    item = _ouvrir(page, cid, "qui")
     decider = item.locator('.qe-case[data-cran="proprietaire"][data-principal="pilote"]')
     decider.uncheck()
     # Attendre la version REDESSINÉE : la case y revient cochée, ce que le serveur a gardé.
@@ -354,7 +366,7 @@ def test_un_refus_d_acces_survit_au_rechargement_de_la_collection(page, decor):
     # report qui n'a pas eu lieu.
     page.wait_for_function(
         """(cid) => {
-          const s = document.querySelector(`#col-body .col-item[data-id="${cid}"] `
+          const s = document.querySelector(`#col-fiche[data-id="${cid}"] `
             + `.qe-case[data-cran="proprietaire"][data-principal="pilote"]`);
           return s && s.checked;
         }""", arg=cid, timeout=5000)
@@ -378,8 +390,7 @@ def test_faire_entrer_demande_de_dire_compte_ou_groupe(page, decor):
         cid = c.post("/api/collections", json={"nom": "Un espace"}).json()["id"]
 
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
-    item.locator("summary").click()
+    item = _ouvrir(page, cid, "qui")
     # Ce qui prouve la garde est qu'AUCUNE requête ne part, pas qu'aucun accès n'est créé : le
     # serveur refuse lui-même un genre vide (422), donc « rien de créé » serait vrai sans elle.
     envois = []
@@ -411,23 +422,26 @@ def test_faire_entrer_demande_de_dire_compte_ou_groupe(page, decor):
 
 
 def _message_sous_le_champ(page, motif):
-    """Le message de création, trouvé par son texte puis situé : entre le champ de création
-    et la liste des collections, et visible."""
-    message = page.locator("#collections-bloc [role=status]", has_text=motif)
+    """Le message de création, trouvé par son texte puis situé : sous le geste de création
+    — le bouton « + Créer une collection », et son champ quand il est ouvert — et au-dessus
+    de la liste des collections, et visible. Le champ se referme une fois la collection
+    créée (UX-18) : c'est le bouton qui reste le lieu du geste."""
+    message = page.locator("#biblio [role=status]", has_text=motif)
     message.wait_for(timeout=5000)
-    champ = page.locator("#col-nom").bounding_box()
+    zone = page.locator("#col-creer-zone")
+    champ = (zone if zone.is_visible() else page.locator("#col-creer")).bounding_box()
     liste = page.locator("#col-body").bounding_box()
     m = message.bounding_box()
     assert champ["y"] + champ["height"] <= m["y"] and m["y"] + m["height"] <= liste["y"], (
-        f"le message « {message.inner_text()} » n'est pas entre le champ de création "
+        f"le message « {message.inner_text()} » n'est pas entre le geste de création "
         f"({champ}) et la liste ({liste}) : {m}")
     assert _se_voit(message), f"le message de création n'est pas visible ({m})"
     return message.inner_text()
 
 
 def test_la_creation_parle_sous_son_champ(page, decor):
-    """Le message de création — refus comme succès — s'affiche sous le champ, en haut du
-    bloc, et non sous la liste. Situé à l'écran et plus seulement cherché à son adresse :
+    """Le message de création — refus comme succès — s'affiche sous le geste, en haut de la
+    liste, et non sous elle. Situé à l'écran et plus seulement cherché à son adresse :
     `#col-creer-msg` déplacé sous la liste garderait `test_a11y_bibliotheque_collections`
     vert, qui ne lit que l'adresse — relevé par la passe de revue du 2026-09-16."""
     with _client(decor["base"]) as c:
@@ -435,55 +449,50 @@ def test_la_creation_parle_sous_son_champ(page, decor):
             c.post("/api/collections", json={"nom": n})
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
     page.locator("#col-body .col-item").first.wait_for(timeout=3000)
-    page.click("#col-add")                       # sans nom
+    _creer(page)                                 # sans nom
     assert "Donnez un nom" in _message_sous_le_champ(page, "Donnez un nom")
-    page.fill("#col-nom", "Espace neuf")
-    page.click("#col-add")
+    _creer(page, "Espace neuf")
     assert "Espace neuf" in _message_sous_le_champ(page, "créée")
 
 
 def test_un_geste_efface_le_message_d_une_autre_collection(page, decor):
     """UN message à la fois, comme au temps de la ligne unique. Les lignes vivent chacune
-    dans leur collection : sans cette règle, un refus restait affiché — et reposé à chaque
+    près de leur geste : sans cette règle, un refus restait affiché — et reposé à chaque
     rechargement — après un geste réussi ailleurs, à côté d'un formulaire qui ne contenait
-    plus le nom refusé ; et « créée » restait en tête du bloc après la suppression de la
-    collection créée. Trouvé par la passe de revue du 2026-09-16."""
+    plus le nom refusé ; et « créée » restait en tête de la liste après un geste dans une
+    autre collection. Trouvé par la passe de revue du 2026-09-16."""
     repli = _collection_du_decor(decor["base"], decor["album"])["nom"]
     with _client(decor["base"]) as c:
         a = c.post("/api/collections", json={"nom": "Espace A"}).json()["id"]
         b = c.post("/api/collections", json={"nom": "Espace B"}).json()["id"]
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    page.fill("#col-nom", "Espace C")
-    page.click("#col-add")
+    _creer(page, "Espace C")
     _message_sous_le_champ(page, "créée")
 
-    item_a = page.locator(f'#col-body .col-item[data-id="{a}"]')
-    item_a.locator("summary").click()
+    item_a = _modifier(page, a, "description")
     item_a.locator('[data-champ="nom"]').fill(repli)
     item_a.locator("[data-enregistrer]").click()
     _message_du_geste(page, item_a, "réservé")
-    assert page.locator("#collections-bloc .col-msg", has_text="créée").count() == 0, (
+    assert page.locator("#biblio .col-msg", has_text="créée").count() == 0, (
         "« créée » reste affiché après un geste dans une autre collection")
 
-    item_b = page.locator(f'#col-body .col-item[data-id="{b}"]')
-    item_b.locator("summary").click()
+    item_b = _modifier(page, b, "diffusion")
     item_b.locator('[data-champ="licence_defaut"]').fill("CC-BY-4.0")
     _message_du_geste(page, _enregistrer(page, b), "enregistrée")
-    assert page.locator("#collections-bloc .col-msg", has_text="réservé").count() == 0, (
+    assert page.locator("#biblio .col-msg", has_text="réservé").count() == 0, (
         "le refus d'« Espace A » est reposé après l'enregistrement d'« Espace B » : il "
         "parle d'un nom que le formulaire redessiné ne contient plus")
 
 
 def test_une_relecture_ratee_ne_cache_pas_l_enregistrement(page, decor):
     """Enregistrer réussit, puis la relecture de la liste échoue : l'erreur remplace la
-    liste, et la confirmation — qui vivait dans la collection — partait avec. On croyait
-    raté un enregistrement qui avait eu lieu. La ligne unique d'avant COL-2, hors de la
-    liste, y survivait ; trouvé par la passe de revue du 2026-09-16."""
+    liste, et la confirmation partait avec. On croyait raté un enregistrement qui avait eu
+    lieu. La ligne unique d'avant COL-2, hors de la liste, y survivait ; trouvé par la passe
+    de revue du 2026-09-16. Depuis UX-18, la fiche reste telle qu'elle est, message compris."""
     with _client(decor["base"]) as c:
         cid = c.post("/api/collections", json={"nom": "Un espace"}).json()["id"]
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
-    item.locator("summary").click()
+    item = _modifier(page, cid, "diffusion")
     item.locator('[data-champ="licence_defaut"]').fill("CC-BY-4.0")
 
     def panne(route):
@@ -495,7 +504,7 @@ def test_une_relecture_ratee_ne_cache_pas_l_enregistrement(page, decor):
     page.route("**/api/collections", panne)
     item.locator("[data-enregistrer]").click()
     page.get_by_text("Relecture impossible").wait_for(timeout=5000)
-    confirmation = page.locator("#col-body .col-msg", has_text="enregistrée")
+    confirmation = page.locator("#biblio .col-msg", has_text="enregistrée")
     confirmation.wait_for(timeout=3000)
     assert _se_voit(confirmation), "la confirmation survit, mais ne se voit pas"
     with _client(decor["base"]) as c:
@@ -511,20 +520,19 @@ def test_un_geste_d_acces_efface_le_refus_d_une_autre_collection(page, decor):
         a = c.post("/api/collections", json={"nom": "Espace A"}).json()["id"]
         b = c.post("/api/collections", json={"nom": "Espace B"}).json()["id"]
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    item_a = page.locator(f'#col-body .col-item[data-id="{a}"]')
-    item_a.locator("summary").click()
+    item_a = _ouvrir(page, a, "qui")
     item_a.locator(".qe-choix").select_option("autre")
     item_a.locator(".qe-nom").fill("annotateurs")
     item_a.locator(".qe-faire-entrer").click()
     _message_du_geste(page, item_a, "compte ou un groupe")
 
-    item_b = page.locator(f'#col-body .col-item[data-id="{b}"]')
-    item_b.locator("summary").click()
+    item_b = _ouvrir(page, b, "qui")
     item_b.locator(".qe-choix").select_option("groupe:annotateurs")
     item_b.locator(".qe-faire-entrer").click()
-    item_b.locator(".qe-table th[scope=row]", has_text="annotateurs").wait_for(timeout=5000)
+    item_b.locator(".qe-qui, .qe-table th[scope=row]", has_text="annotateurs").first.wait_for(
+        timeout=5000)
     item_b.locator(".qe-msg", has_text="entre dans").wait_for(timeout=5000)
-    assert page.locator("#col-body .col-msg", has_text="compte ou un groupe").count() == 0, (
+    assert page.locator("#biblio .col-msg", has_text="compte ou un groupe").count() == 0, (
         "le refus d'« Espace A » est resté affiché après un accès accordé dans « Espace B »")
 
 
@@ -541,8 +549,7 @@ def test_un_refus_d_acces_survit_a_une_relecture_ratee(page, decor):
         assert r.status_code == 200, r.text
 
     page.goto(decor["base"] + "/corpus", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
-    item.locator("summary").click()
+    item = _ouvrir(page, cid, "qui")
     decider = item.locator('.qe-case[data-cran="proprietaire"][data-principal="pilote"]')
     decider.wait_for(timeout=5000)
 
@@ -554,8 +561,8 @@ def test_un_refus_d_acces_survit_a_une_relecture_ratee(page, decor):
             route.continue_()
     page.route("**/api/collections/*/acces", panne)   # armé APRÈS l'ouverture, qui doit réussir
     decider.uncheck()
-    page.locator("#col-body", has_text="Relecture impossible").wait_for(timeout=5000)
-    refus = page.locator("#col-body .col-msg", has_text="dernier propriétaire")
+    page.locator("#col-fiche", has_text="Relecture impossible").wait_for(timeout=5000)
+    refus = page.locator("#col-fiche .col-msg", has_text="dernier propriétaire")
     refus.wait_for(timeout=3000)
     assert _se_voit(refus), "le refus survit à la relecture ratée, mais ne se voit pas"
 
@@ -589,11 +596,10 @@ def test_la_modale_d_album_ne_propose_que_ou_l_on_ecrit(page, live_server):
     assert "Lue" not in proposees and {"Écrite", "Autre écrite"} <= set(proposees), proposees
     page.click("#m-cancel")
 
-    page.locator('.album-row [data-act="edit"]').first.click()
-    page.locator("#m-appartenance:not([hidden])").wait_for(timeout=5000)
-    cibles = page.locator("#m-appartenance-cible option").all_inner_texts()
-    assert cibles == ["Autre écrite"], cibles
-    page.click("#m-cancel")
+    # « Rangé dans », dans la fiche de l'album (UX-18) : là aussi, seulement où l'on écrit.
+    page.locator(".album-row", has_text="Rangé dans Écrite").click()
+    expect(page.locator("#album-range-cible option")).to_have_text(["Autre écrite"],
+                                                                   timeout=5000)
 
     page.set_extra_http_headers({"Remote-User": "yann"})
     page.goto(live_server + "/corpus", wait_until="networkidle")
@@ -611,16 +617,14 @@ def test_la_creation_ne_dit_proprietaire_qu_a_qui_l_est(page, live_server):
     sans posséder et où désigner un propriétaire ; à une personne, qu'elle possède."""
     page.set_extra_http_headers({"Remote-User": "chef", "Remote-Groups": "bd-admins"})
     page.goto(live_server + "/corpus", wait_until="networkidle")
-    page.fill("#col-nom", "Espace de l'administrateur")
-    page.click("#col-add")
+    _creer(page, "Espace de l'administrateur")
     message = _message_sous_le_champ(page, "créée")
     assert "sans en être propriétaire" in message, message
     assert "vous en êtes propriétaire" not in message, message
 
     page.set_extra_http_headers({"Remote-User": "ines"})
     page.goto(live_server + "/corpus", wait_until="networkidle")
-    page.fill("#col-nom", "Espace d'Inès")
-    page.click("#col-add")
+    _creer(page, "Espace d'Inès")
     message = _message_sous_le_champ(page, "créée")
     assert "vous en êtes propriétaire" in message, message
 
@@ -636,23 +640,26 @@ def test_une_liste_vide_ne_promet_la_propriete_qu_a_qui_la_recevra(page, live_se
 
     Depuis la tranche 3 (D10 ; Hugo, 2026-10-17), le projet de repli naît avec sa base : un
     serveur neuf porte UNE collection, que le mono-poste lit. La liste n'y est plus vide, et
-    la note n'a rien à promettre ; elle se joue toujours derrière le proxy."""
+    la note n'a rien à promettre ; elle se joue toujours derrière le proxy.
+
+    UX-18 — Nadia n'a aucune collection : c'est une portée VIDE, que le bandeau de
+    `theme.js` dit déjà (« Aucune collection ne vous est ouverte »). La liste ne le double
+    pas d'un second « rien » ; elle dit seulement ce qu'on peut faire, et la promesse."""
     derriere_proxy = request.node.callspec.params["live_server"]
     if not derriere_proxy:
         page.goto(live_server + "/corpus", wait_until="networkidle")
-        page.locator("#col-body details.col-item").first.wait_for(timeout=5000)
-        assert page.locator("#col-body .col-note", has_text="Aucune collection ouverte") \
-            .count() == 0
+        page.locator("#col-body .col-item").first.wait_for(timeout=5000)
+        assert page.locator("#col-body .col-note").count() == 0
         return
     page.set_extra_http_headers({"Remote-User": "nadia"})
     page.goto(live_server + "/corpus", wait_until="networkidle")
-    note = page.locator("#col-body .col-note", has_text="Aucune collection ouverte")
+    note = page.locator("#col-body .col-note")
     note.wait_for(timeout=5000)
     texte = note.inner_text()
-    if derriere_proxy:
-        assert "vous en serez propriétaire" in texte, texte
-    else:
-        assert "propriétaire" not in texte, texte
+    assert "vous en serez propriétaire" in texte, texte
+    assert "Aucune collection" not in texte, (
+        f"la liste double le bandeau de portée vide : {texte!r}")
+    expect(page.locator(".portee-vide")).to_be_visible()
 
 
 # --------------------------------------------------------------------------- #
@@ -712,19 +719,29 @@ def _ligne(page, titre):
 
 
 def _ouvrir_detail(page, titre):
-    """Le détail de CET album, et non celui du précédent resté affiché. L'attente est une
+    """La fiche de CET album, et non celle du précédent restée affichée. L'attente est une
     FONCTION : en expression, elle passe par `eval` dès qu'elle doit patienter, et la CSP
     (`script-src 'self'`) la refuse — vert seul, rouge dans la passe entière."""
     _ligne(page, titre).locator(".c-titre").click()
     page.wait_for_function(
         "t => { const d = document.querySelector('#album-detail');"
-        "       return !d.hidden && d.textContent.includes(t) && !!d.querySelector('.pl-thumb'); }",
+        "       return !!d && d.querySelector('#album-titre').textContent.includes(t)"
+        "              && !!d.querySelector('.pl-thumb'); }",
         arg=titre, timeout=5000)
 
 
+def _gestes_de_l_album(page, titre):
+    """« Supprimer… » et ✎, dans la fiche de CET album (UX-18 : la liste de gauche ne porte
+    que des boutons qui ouvrent ; les gestes vivent dans la fiche et dans l'onglet Albums
+    d'une collection)."""
+    _ouvrir_detail(page, titre)
+    return page.locator('#album-detail [data-act="supprimer"], #album-detail #detail-edit')
+
+
 def _ouvrir_suppression(page, titre):
-    """« Supprimer… » sur la ligne de CET album, puis le panneau, ses collections lues."""
-    _ligne(page, titre).locator('[data-act="supprimer"]').click()
+    """« Supprimer… » dans la fiche de CET album, puis le panneau, ses collections lues."""
+    _ouvrir_detail(page, titre)
+    page.locator('#album-detail [data-act="supprimer"]').click()
     expect(page.locator("#suppr-modal")).to_be_visible(timeout=5000)
     expect(page.locator("#sp-titre")).to_have_text(f"Supprimer « {titre} »")
     page.wait_for_function(
@@ -765,12 +782,14 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
       ni corbeille éteinte, nulle part. C'est le mutant 16 du cadrage : un bouton offert à
       qui ne fait que lire mènerait à deux réponses dont aucune n'aboutit.
     - **Paz écrit dans « Incubateur » ET dans « Archives »** : supprimer « Triple » de l'une
-      par le ✕ de sa fiche ne lui retire rien — rien à confirmer, et elle le défait elle-même.
+      par le ✕ de « Rangé dans » ne lui retire rien — rien à confirmer, et elle le défait
+      elle-même.
     - **Noa écrit dans « Incubateur » et lit « Archives »**, où « Triple » est aussi rangé :
       le panneau ne propose QUE la collection où elle écrit, nomme celle où le travail
-      reste, et dit qu'elle continuera de lire sans plus écrire. Le ✕ de sa fiche dit la
-      même chose, et se confirme. Et nulle part l'écran ne NOMME une collection qu'elle ne
-      lit pas."""
+      reste, et dit qu'elle continuera de lire sans plus écrire. Le ✕ de « Rangé dans » dit
+      la même chose, et se confirme ; il n'est offert que sur la collection où elle écrit
+      (UX-18 a corrigé le ✕ offert sur une collection qu'on ne fait que lire). Et nulle part
+      l'écran ne NOMME une collection qu'elle ne lit pas."""
     admin, ids, albums = _decor_suppression(live_server)
     demandes = []
 
@@ -785,27 +804,29 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
     _ligne(page, "Seul").wait_for(timeout=5000)
     for titre in ("Partagé", "Triple", "Seul", "Erreur"):
         expect(_ligne(page, titre)).to_be_visible()
-        assert _ligne(page, titre).locator('[data-act="supprimer"]').count() == 0, titre
-    _ouvrir_detail(page, "Seul")
+        assert _gestes_de_l_album(page, titre).count() == 0, titre
+        # Ni ✕ ni « + Ranger ici » dans « Rangé dans » : elle n'écrit nulle part.
+        expect(page.locator("#album-range-liste li").first).to_be_visible()
+        assert page.locator("#album-range-liste [data-sortir]").count() == 0, titre
+        expect(page.locator("#album-range-ligne")).to_be_hidden()
     assert page.locator("#album-detail [data-delp], #album-detail [data-delp-refus]").count() == 0
+    assert page.locator("#album-detail button[data-val]").count() == 0, (
+        "un bouton de validation offert à qui ne fait que lire")
 
     # ── qui écrit dans DEUX de ses collections : le ✕ se défait, rien à confirmer ────────
     _comme(page, live_server, "paz")
     _ligne(page, "Triple").wait_for(timeout=5000)
-    expect(_ligne(page, "Triple").locator('[data-act="supprimer"]')).to_be_visible()
-    _ligne(page, "Triple").locator('[data-act="edit"]').click()
-    page.locator("#album-modal:not([hidden])").wait_for(timeout=5000)
+    expect(_gestes_de_l_album(page, "Triple").first).to_be_visible()
     # Aucun gestionnaire de dialogue : s'il en venait un, Playwright le refuserait et la
     # suppression n'aurait pas lieu. Elle écrit encore dans l'album par « Incubateur ».
-    page.locator(f'#m-appartenance-liste [data-sortir="{ids["Archives"]}"]').click()
+    page.locator(f'#album-range-liste [data-sortir="{ids["Archives"]}"]').click()
     page.wait_for_function(
-        "() => document.querySelectorAll('#m-appartenance-liste li').length === 1", timeout=5000)
-    page.select_option("#m-appartenance-cible", str(ids["Archives"]))
-    page.click("#m-appartenance-add")
+        "() => document.querySelectorAll('#album-range-liste li').length === 1", timeout=5000)
+    page.select_option("#album-range-cible", str(ids["Archives"]))
+    page.click("#album-range-add")
     page.wait_for_function(
-        "() => document.querySelectorAll('#m-appartenance-liste li').length === 2", timeout=5000)
+        "() => document.querySelectorAll('#album-range-liste li').length === 2", timeout=5000)
     assert demandes == []
-    page.click("#m-cancel")
 
     # ── qui écrit d'un côté et LIT de l'autre ────────────────────────────────────────────
     _comme(page, live_server, "noa")
@@ -825,31 +846,26 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
     page.click("#sp-annuler")
     expect(page.locator("#suppr-modal")).to_be_hidden()
 
-    # Le ✕ de la fiche dit la même chose, et se confirme. Refusé, rien ne bouge.
-    _ligne(page, "Triple").locator('[data-act="edit"]').click()
-    page.locator("#album-modal:not([hidden])").wait_for(timeout=5000)
+    # Le ✕ de « Rangé dans » dit la même chose, et se confirme. Refusé, rien ne bouge.
     page.once("dialog", repondre(False))
-    page.locator(f'#m-appartenance-liste [data-sortir="{ids["Incubateur"]}"]').click()
+    page.locator(f'#album-range-liste [data-sortir="{ids["Incubateur"]}"]').click()
     assert len(demandes) == 1, demandes
     assert "continuerez de le lire" in demandes[0] and "n'y écrirez plus" in demandes[0], demandes
     assert "ne le verrez plus" not in demandes[0] and "Principale" not in demandes[0]
-    assert page.locator("#m-appartenance-liste li").count() == 2
-    # Le ✕ de la collection qu'elle ne fait que LIRE ne demande rien — il ne lui retirerait
-    # aucune écriture —, et le serveur le refuse. Sans gestionnaire, un dialogue serait
-    # écarté par Playwright et la requête ne partirait pas : c'est le refus affiché qui
-    # prouve qu'aucune confirmation n'est venue. (Ce ✕ offert sur une collection seulement
-    # lue est un défaut antérieur, laissé à UX-18.)
-    page.locator(f'#m-appartenance-liste [data-sortir="{ids["Archives"]}"]').click()
-    page.locator("#m-appartenance-msg.erreur", has_text="introuvable").wait_for(timeout=5000)
-    assert len(demandes) == 1
+    assert page.locator("#album-range-liste li").count() == 2
+    # Sur la collection qu'elle ne fait que LIRE, aucun ✕ : il n'aboutirait pas (le serveur
+    # répondait « introuvable »). Ce défaut antérieur, laissé à UX-18, est corrigé ; la ligne
+    # nomme toujours la collection, qu'elle lit.
+    expect(page.locator("#album-range-liste li", has_text="Archives")).to_be_visible()
+    assert page.locator(f'#album-range-liste [data-sortir="{ids["Archives"]}"]').count() == 0
     page.once("dialog", repondre(True))
-    page.locator(f'#m-appartenance-liste [data-sortir="{ids["Incubateur"]}"]').click()
+    page.locator(f'#album-range-liste [data-sortir="{ids["Incubateur"]}"]').click()
     page.wait_for_function(
-        "() => document.querySelectorAll('#m-appartenance-liste li').length === 1", timeout=5000)
-    assert page.locator("#album-modal").is_visible() and len(demandes) == 2
+        "() => document.querySelectorAll('#album-range-liste li').length === 1", timeout=5000)
+    assert len(demandes) == 2
     # Redevenue lectrice de cet album : plus rien ne lui est offert dessus.
-    expect(_ligne(page, "Triple").locator('[data-act="supprimer"]')).to_have_count(0)
-    page.click("#m-cancel")
+    expect(page.locator('#album-detail [data-act="supprimer"]')).to_have_count(0)
+    expect(page.locator("#album-range-ligne")).to_be_hidden()
 
     with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
         rangs = [x["nom"] for x in c.get(f"/api/albums/{albums['Triple']}/collections").json()]

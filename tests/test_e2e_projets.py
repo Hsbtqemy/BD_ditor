@@ -145,7 +145,7 @@ def _exceptions(page):
 
 
 def _collections_listees(page):
-    return page.locator("#col-body details.col-item > summary .col-nom").all_inner_texts()
+    return page.locator("#col-body .col-item .col-nom").all_inner_texts()
 
 
 # Ce que la bande contient, et dans quel ordre.
@@ -312,7 +312,7 @@ def test_sans_stockage_le_choix_vaut_pour_la_page_et_rien_ne_leve(page, live_ser
       Storage.prototype.setItem = () => { throw new Error('stockage refusé'); };
     """)
     page.goto(live_server + "/corpus", wait_until="networkidle")
-    page.locator("#col-body details.col-item").first.wait_for(timeout=5000)
+    page.locator("#col-body .col-item").first.wait_for(timeout=5000)
     expect(page.locator("#projet-choix")).to_have_value(str(repli))
     # La base du projet de repli d'abord, née avec lui (D10).
     assert _collections_listees(page) == [database.NOM_PROJET_DEFAUT, "Corpus de départ"]
@@ -321,7 +321,7 @@ def test_sans_stockage_le_choix_vaut_pour_la_page_et_rien_ne_leve(page, live_ser
     expect(page.locator("#collections-projet")).to_have_text(
         "Dans le projet « Séminaire 2026 »")
     # Sa collection de base d'abord, née avec lui (COL-3, tranche 3, D10).
-    expect(page.locator("#col-body details.col-item > summary .col-nom")).to_have_text(
+    expect(page.locator("#col-body .col-item .col-nom")).to_have_text(
         ["Séminaire 2026", "Étude des émotions"])
 
     page.reload(wait_until="networkidle")
@@ -351,7 +351,7 @@ def test_la_bibliotheque_ne_liste_que_les_collections_du_projet_courant(page, de
     ailleurs n'a pas à s'y perdre."""
     d = deux_projets
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
-    page.locator("#col-body details.col-item").first.wait_for(timeout=5000)
+    page.locator("#col-body .col-item").first.wait_for(timeout=5000)
     # La base du projet de repli d'abord, née avec lui (D10).
     assert _collections_listees(page) == [database.NOM_PROJET_DEFAUT, "Corpus de départ", "Incubateur"]
     expect(page.locator("#collections-projet")).to_be_visible()
@@ -364,7 +364,7 @@ def test_la_bibliotheque_ne_liste_que_les_collections_du_projet_courant(page, de
         "Dans le projet « Séminaire 2026 »")
     # Une attente sur les NOMS, pas sur le nombre : le projet de repli en liste deux aussi,
     # et un décompte lu avant le redessin passerait sur l'ancienne liste.
-    expect(page.locator("#col-body details.col-item > summary .col-nom")).to_have_text(
+    expect(page.locator("#col-body .col-item .col-nom")).to_have_text(
         ["Séminaire 2026", "Étude des émotions"])
     assert page.evaluate("() => window.__temoin") == "même page", "la page a été rechargée"
 
@@ -372,7 +372,7 @@ def test_la_bibliotheque_ne_liste_que_les_collections_du_projet_courant(page, de
     # ne LIT rien ne se rencontre plus sous une portée totale — il se joue derrière le
     # proxy (`test_un_projet_ou_l_on_ne_lit_rien_le_dit`).
     page.locator("#projet-choix").select_option(str(d["vide"]))
-    expect(page.locator("#col-body details.col-item > summary .col-nom")).to_have_text(
+    expect(page.locator("#col-body .col-item .col-nom")).to_have_text(
         ["Projet sans rien"])
 
 
@@ -382,9 +382,11 @@ def test_creer_une_collection_la_range_dans_le_projet_courant(page, deux_projets
     relire la liste d'un projet de repli courant ne verrait rien."""
     d = deux_projets
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
-    page.locator("#col-body details.col-item").first.wait_for(timeout=5000)
+    page.locator("#col-body .col-item").first.wait_for(timeout=5000)
 
     def creer(nom):
+        if page.locator("#col-creer-zone").is_hidden():   # le champ, au geste (UX-18)
+            page.locator("#col-creer").click()
         page.locator("#col-nom").fill(nom)
         with page.expect_request(lambda r: r.method == "POST"
                                  and r.url.endswith("/api/collections")) as partie:
@@ -395,9 +397,9 @@ def test_creer_une_collection_la_range_dans_le_projet_courant(page, deux_projets
     assert creer("Née dans le repli") == {"nom": "Née dans le repli", "projet_id": d["repli"]}
 
     page.locator("#projet-choix").select_option(str(d["second"]))
-    expect(page.locator("#col-body details.col-item")).to_have_count(2)   # sa base, l'étude
+    expect(page.locator("#col-body .col-item")).to_have_count(2)   # sa base, l'étude
     assert creer("Née au séminaire") == {"nom": "Née au séminaire", "projet_id": d["second"]}
-    expect(page.locator("#col-body details.col-item")).to_have_count(3)
+    expect(page.locator("#col-body .col-item")).to_have_count(3)
     assert _collections_listees(page) == ["Séminaire 2026", "Étude des émotions",
                                           "Née au séminaire"]
 
@@ -414,25 +416,26 @@ def test_l_adresse_d_une_collection_fait_basculer_le_projet(page, deux_projets):
     ouverte."""
     d = deux_projets
     page.goto(d["base"] + f"/corpus?collection={d['b1']}", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{d["b1"]}"]')
+    item = page.locator(f'#col-fiche[data-id="{d["b1"]}"]')
     item.wait_for(timeout=5000)
-    expect(item).to_have_attribute("open", "")
+    expect(page.locator(f'#col-body .col-item[data-id="{d["b1"]}"].courante')).to_be_visible()
     expect(page.locator("#projet-choix")).to_have_value(str(d["second"]))
     expect(page.locator("#collections-projet")).to_have_text(
         "Dans le projet « Séminaire 2026 »")
     assert page.evaluate("() => localStorage.getItem('bd-projet')") == str(d["second"])
     assert _collections_listees(page) == ["Séminaire 2026", "Étude des émotions"]
-    assert page.locator("#col-body .col-msg.erreur").count() == 0
+    assert page.locator("#biblio .col-msg.erreur").count() == 0
 
     # Dans l'autre sens, et le choix retenu ne résiste pas à l'adresse non plus.
     page.goto(d["base"] + f"/corpus?collection={d['a2']}", wait_until="networkidle")
-    page.locator(f'#col-body .col-item[data-id="{d["a2"]}"][open]').wait_for(timeout=5000)
+    page.locator(f'#col-fiche[data-id="{d["a2"]}"]').wait_for(timeout=5000)
     expect(page.locator("#projet-choix")).to_have_value(str(d["repli"]))
     assert page.evaluate("() => localStorage.getItem('bd-projet')") == str(d["repli"])
 
     # Une collection qui n'existe pas ne fait basculer rien, et la ligne le dit comme avant.
     page.goto(d["base"] + "/corpus?collection=987654", wait_until="networkidle")
-    expect(page.locator("#col-body .col-msg.erreur")).to_contain_text("n'est pas dans la liste")
+    expect(page.locator("#biblio-fiche .col-msg.erreur")).to_contain_text(
+        "n'est pas dans la liste")
     expect(page.locator("#projet-choix")).to_have_value(str(d["repli"]))
 
 
@@ -450,7 +453,7 @@ def test_un_projet_ou_l_on_ne_lit_rien_le_dit(page, membre_sans_ecriture):
                                  "« Projet fermé »")
     assert _collections_listees(page) == []
     _changer_de_projet(page, d["lecture"], "Projet sans rien")
-    expect(page.locator("#col-body details.col-item > summary .col-nom")).to_have_text(
+    expect(page.locator("#col-body .col-item .col-nom")).to_have_text(
         ["Projet sans rien"])
 
 
@@ -459,7 +462,7 @@ def test_un_autre_onglet_qui_change_de_projet_previent_celui_ci(page, deux_proje
     Choisir dans l'un redessine la liste de l'autre, sans rechargement."""
     d = deux_projets
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
-    page.locator("#col-body details.col-item").first.wait_for(timeout=5000)
+    page.locator("#col-body .col-item").first.wait_for(timeout=5000)
     autre = page.context.new_page()
     autre.goto(d["base"] + "/recherche", wait_until="networkidle")
     autre.locator("#projet-choix").select_option(str(d["second"]))
@@ -470,7 +473,7 @@ def test_un_autre_onglet_qui_change_de_projet_previent_celui_ci(page, deux_proje
     # trouvait parfois encore à l'ancien projet, sous la charge d'une passe entière (vu le
     # 2026-10-17, quatre essais seuls sur quatre verts). `expect` réessaie ; la liste
     # attendue reste exactement la même.
-    expect(page.locator("#col-body details.col-item > summary .col-nom")).to_have_text(
+    expect(page.locator("#col-body .col-item .col-nom")).to_have_text(
         ["Séminaire 2026", "Étude des émotions"])
     autre.close()
 
@@ -484,32 +487,36 @@ def test_sans_liste_de_projets_la_bibliotheque_reste_celle_d_avant(page, deux_pr
     page.route("**/api/projets", lambda route: route.fulfill(
         status=500, content_type="application/json", body='{"detail": "panne jouée"}'))
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
-    page.locator("#col-body details.col-item").first.wait_for(timeout=5000)
+    page.locator("#col-body .col-item").first.wait_for(timeout=5000)
     assert page.evaluate("() => window.BDProjets") is None
-    assert _collections_listees(page) == [database.NOM_PROJET_DEFAUT, "Séminaire 2026", "Projet sans rien",
-                                          "Corpus de départ", "Incubateur",
-                                          "Étude des émotions"]
+    # Toutes, rangées comme la liste les range (UX-18) : les bases d'abord, puis par nom.
+    assert _collections_listees(page) == [database.NOM_PROJET_DEFAUT, "Projet sans rien",
+                                          "Séminaire 2026", "Corpus de départ",
+                                          "Étude des émotions", "Incubateur"]
     expect(page.locator("#collections-projet")).to_be_hidden()
     assert page.locator(".projet-courant").count() == 0
 
+    page.locator("#col-creer").click()
     page.locator("#col-nom").fill("Sans projet nommé")
     with page.expect_request(lambda r: r.method == "POST"
                              and r.url.endswith("/api/collections")) as partie:
         page.locator("#col-add").click()
     assert partie.value.post_data_json == {"nom": "Sans projet nommé"}
-    expect(page.locator("#col-body details.col-item")).to_have_count(7)
+    expect(page.locator("#col-body .col-item")).to_have_count(7)
     assert not erreurs, erreurs
 
 
 def test_un_decompte_qui_bouge_ne_redessine_pas_la_liste_du_projet(page, deux_projets):
-    """Après un geste sur les albums, seul le décompte d'une collection change : la liste
-    n'est pas redessinée, et ce qu'on tapait dans une collection dépliée reste. Avec DEUX
-    projets, la liste affichée n'est plus celle du serveur : comparée à elle sans le filtre
-    du projet courant, elle paraîtrait toujours changée — et chaque album créé effacerait
-    une saisie en cours."""
+    """Après un geste sur les albums, seul le décompte d'une collection change : la fiche
+    n'est pas redessinée, et ce qu'on tapait dans son formulaire reste. Avec DEUX projets, la
+    liste affichée n'est plus celle du serveur : comparée à elle sans le filtre du projet
+    courant, elle paraîtrait toujours changée — et chaque album créé effacerait une saisie
+    en cours."""
     d = deux_projets
-    page.goto(d["base"] + f"/corpus?collection={d['a1']}", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{d["a1"]}"]')
+    page.goto(d["base"] + f"/corpus?collection={d['a1']}&onglet=description",
+              wait_until="networkidle")
+    item = page.locator(f'#col-fiche[data-id="{d["a1"]}"]')
+    item.locator('[data-modifier="description"]').click()
     champ = item.locator('[data-champ="description"]')
     champ.wait_for(timeout=5000)
     champ.fill("une saisie en cours")
@@ -518,10 +525,12 @@ def test_un_decompte_qui_bouge_ne_redessine_pas_la_liste_du_projet(page, deux_pr
     _api(d["base"], "POST", "/api/albums", {"titre": "Arrivé entre-temps",
                                             "collection_id": d["a1"]})
     page.evaluate("() => loadAlbums()")
-    expect(item.locator(".col-nb")).to_have_text("1 album(s)", timeout=5000)
+    expect(item.locator(".col-fiche-nb")).to_have_text("1 album", timeout=5000)
+    # « 1 » à l'écran, « 1 album » pour qui l'entend : c'est la seconde qu'on lit.
+    expect(page.locator(f'#col-body .col-item[data-id="{d["a1"]}"] .col-nb .sr-only'))         .to_have_text("1 album")
     page.wait_for_timeout(300)                     # le temps qu'un redessin fautif ait lieu
     assert champ.input_value() == "une saisie en cours"
-    assert champ.get_attribute("data-temoin") == "1", "la collection dépliée a été redessinée"
+    assert champ.get_attribute("data-temoin") == "1", "le formulaire de la fiche a été redessiné"
 
 
 # ── La Bibliothèque : les deux listes d'un album suivent le projet ─────────────────────
@@ -564,7 +573,7 @@ def _un_album(base):
 
 def _bibliotheque(page, base):
     page.goto(base + "/corpus", wait_until="networkidle")
-    page.locator("#col-body details.col-item, #col-body .col-note").first.wait_for(timeout=5000)
+    page.locator("#col-body .col-item, #col-body .col-note").first.wait_for(timeout=5000)
 
 
 def _nouvel_album(page):
@@ -573,8 +582,18 @@ def _nouvel_album(page):
 
 
 def _fiche_de_l_album(page, titre):
-    page.locator("#albums-body tr.album-row", has_text=titre).locator('[data-act="edit"]').click()
-    expect(page.locator("#m-appartenance")).to_be_visible()
+    """La fiche de l'album (UX-18 : elle s'ouvre à droite, et « Rangé dans » y vit — il a
+    quitté la modale d'édition). Attend que « Rangé dans » ait tout lu : `data-pret`."""
+    page.locator("#albums-body .album-row", has_text=titre).click()
+    expect(page.locator("#album-titre")).to_contain_text(titre)
+    page.locator("#album-range[data-pret]").wait_for(timeout=5000)
+
+
+def _modale_de_l_album(page, titre):
+    """La modale d'édition de l'album, par « Modifier l'album » dans sa fiche."""
+    page.locator("#albums-body .album-row", has_text=titre).click()
+    page.locator("#detail-edit").click()
+    expect(page.locator("#album-modal")).to_be_visible()
 
 
 def _proposees(page, selecteur):
@@ -741,36 +760,33 @@ def test_ranger_ici_ne_propose_que_les_collections_du_projet_de_l_album(page, de
 
     _changer_de_projet(page, d["second"], "Séminaire 2026")
     _fiche_de_l_album(page, "Album du séminaire")
-    # … et ne suit pas dans la fiche d'un album : la liste qu'elle décrit n'y est pas.
-    expect(page.locator("#m-collection-note")).to_be_hidden()
-    assert page.locator("#m-collection-note").text_content() == ""
-    # La base du séminaire (D10), puis l'atelier.
-    assert _proposees(page, "#m-appartenance-cible") == ["Séminaire 2026", "Atelier lettrage"]
-    ligne = page.locator("#m-appartenance-projet")
+    # (La fiche d'un album n'est plus la modale : la note de la création ne peut pas l'y
+    # suivre — UX-18.) La base du séminaire (D10), puis l'atelier.
+    assert _proposees(page, "#album-range-cible") == ["Séminaire 2026", "Atelier lettrage"]
+    ligne = page.locator("#album-range-projet")
     expect(ligne).to_be_visible()
     expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format("Séminaire 2026"))
-    page.locator("#m-appartenance-cible").select_option(str(b2))
+    page.locator("#album-range-cible").select_option(str(b2))
     with page.expect_response(lambda r: r.request.method == "PUT") as reponse:
-        page.locator("#m-appartenance-add").click()
+        page.locator("#album-range-add").click()
     assert reponse.value.url.endswith(f"/api/albums/{seminaire}/collections/{b2}")
     assert reponse.value.status == 201
-    expect(page.locator("#m-appartenance-liste li")).to_have_count(2)
-    expect(page.locator("#m-appartenance-cible option")).to_have_text(["Séminaire 2026"])
+    expect(page.locator("#album-range-liste li")).to_have_count(2)
+    expect(page.locator("#album-range-cible option")).to_have_text(["Séminaire 2026"])
     with page.expect_response(lambda r: r.request.method == "PUT") as reponse:
-        page.locator("#m-appartenance-add").click()
+        page.locator("#album-range-add").click()
     assert reponse.value.status == 201
-    expect(page.locator("#m-appartenance-liste li")).to_have_count(3)
+    expect(page.locator("#album-range-liste li")).to_have_count(3)
     # Plus rien à proposer dans son projet : la liste est vide, et la ligne dit toujours pourquoi.
-    expect(page.locator("#m-appartenance-cible")).to_be_disabled()
-    expect(page.locator("#m-appartenance-add")).to_be_disabled()
+    expect(page.locator("#album-range-cible")).to_be_disabled()
+    expect(page.locator("#album-range-add")).to_be_disabled()
     expect(ligne).to_be_visible()
     expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format("Séminaire 2026"))
-    page.locator("#m-cancel").click()
 
     # Dans l'autre sens : un album du repli.
     _changer_de_projet(page, d["repli"], database.NOM_PROJET_DEFAUT)
     _fiche_de_l_album(page, "Album du repli")
-    assert _proposees(page, "#m-appartenance-cible") == [database.NOM_PROJET_DEFAUT, "Incubateur"]
+    assert _proposees(page, "#album-range-cible") == [database.NOM_PROJET_DEFAUT, "Incubateur"]
     expect(ligne).to_be_visible()
     expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format(database.NOM_PROJET_DEFAUT))
     assert "alerte" not in (ligne.get_attribute("class") or "")
@@ -786,15 +802,14 @@ def test_ce_qu_on_disait_d_un_album_ne_suit_pas_dans_la_fiche_du_suivant(page, d
     _bibliotheque(page, d["base"])
     _changer_de_projet(page, d["second"], "Séminaire 2026")
     _fiche_de_l_album(page, "Album du séminaire")
-    ligne = page.locator("#m-appartenance-projet")
+    ligne = page.locator("#album-range-projet")
     expect(ligne).to_be_visible()
-    page.locator("#m-cancel").click()
     _changer_de_projet(page, d["repli"], database.NOM_PROJET_DEFAUT)
 
     page.route("**/api/albums/*/collections", lambda route: route.fulfill(
         status=500, content_type="application/json", body='{"detail": "panne jouée"}'))
     _fiche_de_l_album(page, "Album illisible")
-    expect(page.locator("#m-appartenance-msg.erreur")).to_have_text(ILLISIBLE.format("panne jouée"))
+    expect(page.locator("#album-range-msg.erreur")).to_have_text(ILLISIBLE.format("panne jouée"))
     expect(ligne).to_be_hidden()
     assert ligne.text_content() == ""
 
@@ -814,9 +829,8 @@ def test_une_fiche_d_album_illisible_n_offre_aucun_geste_sur_le_precedent(page, 
     _api(d["base"], "PUT", f"/api/albums/{illisible}/collections/{d['a2']}")
     _bibliotheque(page, d["base"])
     _fiche_de_l_album(page, "Album précédent")
-    expect(page.locator("#m-appartenance-liste li")).to_have_count(1)
-    assert _proposees(page, "#m-appartenance-cible") == [database.NOM_PROJET_DEFAUT, "Incubateur"]
-    page.locator("#m-cancel").click()
+    expect(page.locator("#album-range-liste li")).to_have_count(1)
+    assert _proposees(page, "#album-range-cible") == [database.NOM_PROJET_DEFAUT, "Incubateur"]
 
     parties = []
 
@@ -834,16 +848,14 @@ def test_une_fiche_d_album_illisible_n_offre_aucun_geste_sur_le_precedent(page, 
 
     page.route("**/api/albums/*/collections**", jouer)
     _fiche_de_l_album(page, "Album illisible")
-    expect(page.locator("#modal-title")).to_have_text("Éditer l'album")
-    expect(page.locator("#m-titre")).to_have_value("Album illisible")
-    expect(page.locator("#m-appartenance-msg.erreur")).to_contain_text("panne jouée")
+    expect(page.locator("#album-range-msg.erreur")).to_contain_text("panne jouée")
 
-    restes = page.locator("#m-appartenance-liste li .col-nom").all_inner_texts()
-    croix = page.locator("#m-appartenance-liste [data-sortir]")
+    restes = page.locator("#album-range-liste li .col-nom").all_inner_texts()
+    croix = page.locator("#album-range-liste [data-sortir]")
     if croix.count():
         croix.first.click()
-    ranger = page.locator("#m-appartenance-add")
-    proposees = _proposees(page, "#m-appartenance-cible")
+    ranger = page.locator("#album-range-add")
+    proposees = _proposees(page, "#album-range-cible")
     if ranger.is_enabled():
         ranger.click()
     page.wait_for_timeout(300)
@@ -853,16 +865,15 @@ def test_une_fiche_d_album_illisible_n_offre_aucun_geste_sur_le_precedent(page, 
         "« + Ranger ici » propose %s. Requêtes parties par ces gestes : %s"
         % (illisible, precedent, restes, proposees, parties or "aucune"))
     expect(ranger).to_be_disabled()
-    expect(page.locator("#m-appartenance-cible")).to_be_disabled()
+    expect(page.locator("#album-range-cible")).to_be_disabled()
     # Et la fiche dit CE QU'ELLE n'a pas pu lire, pas seulement le mot du serveur.
-    expect(page.locator("#m-appartenance-msg.erreur")).to_have_text(ILLISIBLE.format("panne jouée"))
+    expect(page.locator("#album-range-msg.erreur")).to_have_text(ILLISIBLE.format("panne jouée"))
 
     # La panne passée, la même fiche rouverte montre SES collections et ses gestes.
-    page.locator("#m-cancel").click()
     page.unroute("**/api/albums/*/collections**")
     _fiche_de_l_album(page, "Album illisible")
-    expect(page.locator("#m-appartenance-liste li")).to_have_count(2)
-    expect(page.locator("#m-appartenance-msg")).to_have_text("")
+    expect(page.locator("#album-range-liste li")).to_have_count(2)
+    expect(page.locator("#album-range-msg")).to_have_text("")
 
 
 # ── Les albums du projet courant (COL-3, tranche 3) ────────────────────────────────────
@@ -900,7 +911,7 @@ def lectrice_des_deux(live_server):
 
 
 def _albums_bibliotheque(page):
-    return page.locator("#albums-body tr.album-row .c-titre").all_inner_texts()
+    return page.locator("#albums-body .album-row .c-titre").all_inner_texts()
 
 
 def _albums_atelier(page):
@@ -916,13 +927,16 @@ def test_la_bibliotheque_ne_liste_que_les_albums_du_projet_courant(page, lectric
     page.set_extra_http_headers(LECTRICE)
     _bibliotheque(page, d["base"])
     expect(page.locator("#projet-choix")).to_have_value(str(d["repli"]))
-    expect(page.locator("#albums-body tr.album-row")).to_have_count(1)
+    expect(page.locator("#albums-body .album-row")).to_have_count(1)
     assert _albums_bibliotheque(page) == ["Album du repli"]
-    page.locator("#albums-body tr.album-row input[type=checkbox]").check()
+    # La sélection d'albums vit dans l'onglet Albums d'une collection (UX-18) : la case du
+    # calque l'ouvre.
+    page.locator(f'#col-body [data-calque="{d["a"]}"]').check()
+    page.locator(f'#col-fiche [data-coche-album="{d["du_repli"]}"]').check()
     assert page.evaluate("() => [...state.checkedAlbums]") == [d["du_repli"]]
 
     _changer_de_projet(page, d["second"], "Séminaire 2026")
-    expect(page.locator("#albums-body tr.album-row .c-titre")).to_have_text(
+    expect(page.locator("#albums-body .album-row .c-titre")).to_have_text(
         ["Album du séminaire"])
     assert page.evaluate("() => [...state.checkedAlbums]") == []
 
@@ -936,7 +950,7 @@ def test_une_collection_d_un_autre_projet_par_l_adresse_bascule_aussi_les_albums
     page.set_extra_http_headers(LECTRICE)
     page.goto(f"{d['base']}/corpus?collection={d['b']}", wait_until="networkidle")
     expect(page.locator("#projet-choix")).to_have_value(str(d["second"]))
-    expect(page.locator("#albums-body tr.album-row .c-titre")).to_have_text(
+    expect(page.locator("#albums-body .album-row .c-titre")).to_have_text(
         ["Album du séminaire"])
 
 
@@ -974,7 +988,7 @@ def test_un_lien_de_l_atelier_vers_un_autre_projet_fait_basculer(page, lectrice_
 
     page.goto(d["base"] + "/corpus", wait_until="networkidle")
     expect(page.locator("#projet-choix")).to_have_value(str(d["second"]))
-    expect(page.locator("#albums-body tr.album-row .c-titre")).to_have_text(
+    expect(page.locator("#albums-body .album-row .c-titre")).to_have_text(
         ["Album du séminaire"])
 
 
@@ -1028,7 +1042,7 @@ def test_la_fiche_d_un_album_tient_dans_sa_boite_a_320_px(page, deux_projets):
         cas = f"police {police or 'du lancement'}"
         page.set_viewport_size({"width": 320, "height": 900})
         _bibliotheque(page, d["base"])
-        _fiche_de_l_album(page, "Album mesuré")
+        _modale_de_l_album(page, "Album mesuré")
         m = page.evaluate(_MODALE_ALBUM)
         echecs += [f"320 px, {cas} : {x}" for x in m["sortis"]]
         if m["scrollW"] > m["clientW"] + 1:
@@ -1041,7 +1055,7 @@ def test_la_fiche_d_un_album_tient_dans_sa_boite_a_320_px(page, deux_projets):
 
         page.set_viewport_size({"width": 1280, "height": 900})
         _bibliotheque(page, d["base"])
-        _fiche_de_l_album(page, "Album mesuré")
+        _modale_de_l_album(page, "Album mesuré")
         m = page.evaluate(_MODALE_ALBUM)
         if not (m["serie"] == m["auteur"] < m["annee"]):
             echecs.append(f"1280 px, {cas} : la grille n'est plus à deux colonnes — « Série » "
@@ -1066,9 +1080,9 @@ def test_les_listes_d_un_album_n_attendent_pas_le_bloc_des_collections(page, deu
     page.route("**/api/sharedocs/etat", lambda route: tenues.append(route))
     page.goto(d["base"] + "/corpus", wait_until="domcontentloaded")
     page.locator("#projet-choix").wait_for(timeout=5000)           # la liste des projets est lue
-    page.locator("#albums-body tr.album-row").first.wait_for(timeout=5000)
+    page.locator("#albums-body .album-row").first.wait_for(timeout=5000)
     assert tenues, "l'état ShareDocs n'a pas été retenu : le test ne mesure rien"
-    assert page.locator("#col-body details.col-item").count() == 0, (
+    assert page.locator("#col-body .col-item").count() == 0, (
         "le bloc des collections est déjà dessiné")
     expect(page.locator("#collections-projet")).to_be_hidden()     # le bloc n'a rien lu encore
 
@@ -1076,10 +1090,10 @@ def test_les_listes_d_un_album_n_attendent_pas_le_bloc_des_collections(page, deu
     assert _proposees(page, "#m-collection") == ["— choisir —", database.NOM_PROJET_DEFAUT, "Corpus de départ",
                                                  "Incubateur"]
     page.locator("#m-cancel").click()
-    assert page.locator("#col-body details.col-item").count() == 0
+    assert page.locator("#col-body .col-item").count() == 0
     for route in tenues:
         route.continue_()
-    page.locator("#col-body details.col-item").first.wait_for(timeout=5000)
+    page.locator("#col-body .col-item").first.wait_for(timeout=5000)
 
 
 def test_ranger_ici_n_attend_pas_le_bloc_des_collections(page, deux_projets):
@@ -1093,13 +1107,13 @@ def test_ranger_ici_n_attend_pas_le_bloc_des_collections(page, deux_projets):
     page.route("**/api/sharedocs/etat", lambda route: tenues.append(route))
     page.goto(d["base"] + "/corpus", wait_until="domcontentloaded")
     page.locator("#projet-choix").wait_for(timeout=5000)
-    page.locator("#albums-body tr.album-row").first.wait_for(timeout=5000)
+    page.locator("#albums-body .album-row").first.wait_for(timeout=5000)
     assert tenues, "l'état ShareDocs n'a pas été retenu : le test ne mesure rien"
     expect(page.locator("#collections-projet")).to_be_hidden()
 
     _fiche_de_l_album(page, "Album du séminaire")
-    assert _proposees(page, "#m-appartenance-cible") == ["Séminaire 2026", "Atelier lettrage"]
-    expect(page.locator("#m-appartenance-projet")).to_be_visible()
+    assert _proposees(page, "#album-range-cible") == ["Séminaire 2026", "Atelier lettrage"]
+    expect(page.locator("#album-range-projet")).to_be_visible()
     for route in tenues:
         route.continue_()
 
@@ -1118,9 +1132,9 @@ def test_avec_un_seul_projet_la_fiche_d_un_album_est_celle_d_avant(page, live_se
     assert page.locator("#m-collection-note").text_content() == ""
     page.locator("#m-cancel").click()
     _fiche_de_l_album(page, "Seul album")
-    assert _proposees(page, "#m-appartenance-cible") == [database.NOM_PROJET_DEFAUT, "Incubateur"]
-    expect(page.locator("#m-appartenance-projet")).to_be_hidden()
-    assert page.locator("#m-appartenance-projet").text_content() == ""
+    assert _proposees(page, "#album-range-cible") == [database.NOM_PROJET_DEFAUT, "Incubateur"]
+    expect(page.locator("#album-range-projet")).to_be_hidden()
+    assert page.locator("#album-range-projet").text_content() == ""
 
 
 def test_un_album_range_dans_deux_projets_se_dit_et_se_repare(page, deux_projets, tmp_path):
@@ -1146,21 +1160,21 @@ def test_un_album_range_dans_deux_projets_se_dit_et_se_repare(page, deux_projets
     _bibliotheque(page, d["base"])
     _changer_de_projet(page, d["second"], "Séminaire 2026")   # son projet, écrit sur lui
     _fiche_de_l_album(page, "Album à cheval")
-    expect(page.locator("#m-appartenance-liste [data-sortir]")).to_have_count(2)
-    assert _proposees(page, "#m-appartenance-cible") == []
-    expect(page.locator("#m-appartenance-cible")).to_be_disabled()
-    expect(page.locator("#m-appartenance-add")).to_be_disabled()
-    ligne = page.locator("#m-appartenance-projet")
+    expect(page.locator("#album-range-liste [data-sortir]")).to_have_count(2)
+    assert _proposees(page, "#album-range-cible") == []
+    expect(page.locator("#album-range-cible")).to_be_disabled()
+    expect(page.locator("#album-range-add")).to_be_disabled()
+    ligne = page.locator("#album-range-projet")
     expect(ligne).to_be_visible()
     expect(ligne).to_have_text(LIGNE_PLUSIEURS_PROJETS.format(
         f"« {database.NOM_PROJET_DEFAUT} », « Séminaire 2026 »"))
     assert "alerte" in ligne.get_attribute("class")
 
     with page.expect_response(lambda r: r.request.method == "DELETE") as reponse:
-        page.locator(f'#m-appartenance-liste [data-sortir="{d["a1"]}"]').click()
+        page.locator(f'#album-range-liste [data-sortir="{d["a1"]}"]').click()
     assert reponse.value.status == 204
-    expect(page.locator("#m-appartenance-liste li")).to_have_count(1)
-    expect(page.locator("#m-appartenance-cible option")).to_have_text(
+    expect(page.locator("#album-range-liste li")).to_have_count(1)
+    expect(page.locator("#album-range-cible option")).to_have_text(
         ["Séminaire 2026", "Atelier lettrage"])
     expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format("Séminaire 2026"))
     assert "alerte" not in (ligne.get_attribute("class") or "")
@@ -1187,10 +1201,10 @@ def test_sans_liste_de_projets_les_deux_listes_d_un_album_restent_celles_d_avant
     page.locator("#m-cancel").click()
 
     _fiche_de_l_album(page, "Album du séminaire")
-    assert _proposees(page, "#m-appartenance-cible") == [
+    assert _proposees(page, "#album-range-cible") == [
         database.NOM_PROJET_DEFAUT, "Séminaire 2026", "Projet sans rien", "Corpus de départ",
         "Incubateur"]
-    expect(page.locator("#m-appartenance-projet")).to_be_hidden()
+    expect(page.locator("#album-range-projet")).to_be_hidden()
     assert not erreurs, erreurs
 
 
@@ -2433,9 +2447,8 @@ def test_a11y_les_listes_d_un_album_et_ce_qu_elles_disent(page, deux_projets, tm
 
     _changer_de_projet(page, d["second"], "Séminaire 2026")   # son projet, écrit sur lui
     _fiche_de_l_album(page, "Album à cheval")
-    expect(page.locator("#m-appartenance-projet.alerte")).to_be_visible()
+    expect(page.locator("#album-range-projet.alerte")).to_be_visible()
     auditer("la fiche d'un album de deux projets")
-    page.locator("#m-cancel").click()
 
     _nouvel_album(page)
     expect(page.locator("#m-collection-note")).to_be_visible()

@@ -1,7 +1,8 @@
 """AUTH-12, étape 3 — « Qui entre » : les accès d'une collection, dans SA fiche.
 
-Les accès vivaient dans l'Administration, panneau « 👥 Accès aux collections ». Ils vivent en
-tête de la collection dépliée, dans la Bibliothèque, et se règlent en ACTES lus dans
+Les accès vivaient dans l'Administration, panneau « 👥 Accès aux collections ». Ils vivent dans
+la Bibliothèque — depuis UX-18 (2026-10-17), dans l'onglet « Qui entre » de la fiche d'une
+collection, celui qu'ouvrent son nom et son adresse — et se règlent en ACTES lus dans
 `GET /api/droits`. Ce module joue les gestes du propriétaire sur la vraie route, avec la
 doublure de l'annuaire que charge `live_server` (`annotateurs` y est ; `ancien-cours` non).
 
@@ -64,8 +65,17 @@ def _droits(base):
 
 
 def _ouvrir(page, base, cid, suite=""):
+    """La fiche de la collection par son adresse : elle s'ouvre sur « Qui entre »."""
     page.goto(base + f"/corpus?collection={cid}{suite}", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+    item = page.locator(f'#col-fiche[data-id="{cid}"]')
+    item.locator(".qe-choix").wait_for(timeout=5000)
+    return item
+
+
+def _ouvrir_par_le_nom(page, cid):
+    """La fiche d'une collection par son NOM dans la liste — l'onglet « Qui entre »."""
+    page.locator(f'#col-body .col-item[data-id="{cid}"] .col-ouvrir').click()
+    item = page.locator(f'#col-fiche[data-id="{cid}"]')
     item.locator(".qe-choix").wait_for(timeout=5000)
     return item
 
@@ -78,17 +88,21 @@ def _ligne(item, principal):
 
 
 def test_l_adresse_ouvre_la_collection_sur_qui_entre(page, collection):
-    """`/corpus?collection=<id>` est la cible de « Régler qui entre » : la collection s'ouvre,
-    « Qui entre » EN PREMIER, le focus sur son titre. Une collection qu'on ne lit pas n'ouvre
-    rien, et une ligne le dit sans dire si elle existe (règle du 404, AUTH-2)."""
+    """`/corpus?collection=<id>` est la cible des liens de l'Administration : la fiche de la
+    collection s'ouvre sur l'onglet « Qui entre » — celui qu'ouvre son nom dans la liste —,
+    le focus sur le titre du panneau, qui est le premier contenu de l'onglet. Une collection
+    qu'on ne lit pas n'ouvre rien, et une ligne le dit sans dire si elle existe (règle du
+    404, AUTH-2)."""
     item = _ouvrir(page, collection["base"], collection["id"])
-    expect(item).to_have_attribute("open", "")
+    expect(item.locator('[role="tab"][data-onglet="qui"]')).to_have_attribute(
+        "aria-selected", "true")
+    expect(item.locator("#panneau-qui")).to_be_visible()
     expect(item.locator(".qe-titre")).to_be_focused()
-    premiere = item.locator(".col-detail > *").first
+    premiere = item.locator("#panneau-qui > *").first
     expect(premiere).to_have_class(re.compile(r"\bqe\b"))
 
     page.goto(collection["base"] + "/corpus?collection=987654", wait_until="networkidle")
-    expect(page.locator("#col-body .col-msg.erreur")).to_contain_text(
+    expect(page.locator("#biblio-fiche .col-msg.erreur")).to_contain_text(
         "n'est pas dans la liste")
 
 
@@ -395,7 +409,7 @@ def test_aucun_texte_d_ecran_ne_dit_principal_genre_ni_utilisateur(page, collect
     item.locator(".qe-choix").select_option("autre")
     item.locator(".qe-faire-entrer").click()          # un refus affiché, lui aussi relu
     item.locator(".qe-msg.erreur").wait_for(timeout=3000)
-    texte = page.evaluate(_TEXTES_D_UN_BLOC, "#collections-bloc")
+    texte = page.evaluate(_TEXTES_D_UN_BLOC, "#biblio")
     assert texte and "Qui entre" in texte
     # Le NOM de la base du projet de repli (D10), « Projet principal », est une donnée et
     # non un mot de l'écran : il s'efface avant le relevé.
@@ -418,10 +432,10 @@ def test_aucun_texte_d_ecran_ne_dit_principal_genre_ni_utilisateur(page, collect
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
 def test_le_resume_dit_proprietaire_ou_administrateur(page, live_server):
-    """La pastille qui vivait dans l'Administration a suivi les accès : le résumé d'une
-    collection dit « propriétaire » à qui l'est, « administrateur » à qui l'administre sans
-    figurer dans les accès — un pouvoir qu'on déclare (AUTH-4) —, et rien à qui ne fait que
-    participer."""
+    """La pastille qui vivait dans l'Administration a suivi les accès : la ligne d'une
+    collection, dans la liste, dit « propriétaire » à qui l'est, « administrateur » à qui
+    l'administre sans figurer dans les accès — un pouvoir qu'on déclare (AUTH-4) —, et rien
+    à qui ne fait que participer."""
     admin = {"Remote-User": "decor", "Remote-Groups": "bd-admins"}
     with httpx.Client(base_url=live_server, trust_env=False, timeout=30,
                       headers={**ECRITURE, **admin}) as c:
@@ -436,7 +450,7 @@ def test_le_resume_dit_proprietaire_ou_administrateur(page, live_server):
     for entetes, pastille in attendus:
         page.set_extra_http_headers(entetes)
         page.goto(live_server + "/corpus", wait_until="networkidle")
-        resume = page.locator(f'#col-body .col-item[data-id="{cid}"] summary')
+        resume = page.locator(f'#col-body .col-item[data-id="{cid}"]')
         resume.wait_for(timeout=5000)
         if pastille:
             expect(resume.locator(".col-niveau")).to_have_text(pastille)
@@ -450,7 +464,7 @@ def test_le_resume_ne_dit_rien_en_mono_poste(page, collection):
     donc aucune pastille — le mutant qui l'affichait à quiconque administre survivait au
     test voisin, joué derrière le proxy seulement."""
     page.goto(collection["base"] + "/corpus", wait_until="networkidle")
-    resume = page.locator(f'#col-body .col-item[data-id="{collection["id"]}"] summary')
+    resume = page.locator(f'#col-body .col-item[data-id="{collection["id"]}"]')
     resume.wait_for(timeout=5000)
     expect(resume.locator(".col-niveau")).to_have_count(0)
 
@@ -464,12 +478,17 @@ _DOUBLONS = """() => {
 }"""
 
 
-def test_deux_collections_depliees_ne_se_marchent_pas_dessus(page, live_server):
+def test_deux_montages_vivants_ne_se_marchent_pas_dessus(page, live_server):
     """Deux montages vivants sur la même page : aucun identifiant en double, et un geste dans
     l'un part vers SA collection. Mesuré sur la requête PARTIE et non sur l'état final — deux
     panneaux qui se croiseraient laisseraient un état plausible dans les deux collections
     (leçon « deux moitiés, vert mutuel »). Et la règle « un seul message à la fois » reste
-    celle de l'écran : le message du second fait taire celui du premier."""
+    celle de l'écran : le message du second fait taire celui du premier.
+
+    Depuis UX-18, la Bibliothèque ne montre plus qu'UNE fiche à la fois : le second montage
+    est posé à côté de celui de la fiche, dans la fiche, avec la règle de message de l'hôte
+    (`colTaireSauf`). Ce que le test garde est une propriété du MODULE, que ses deux hôtes
+    peuvent rencontrer (l'Administration redessine ses fiches)."""
     with _client(live_server) as c:
         a = c.post("/api/collections", json={"nom": "Étude A montée"}).json()["id"]
         b = c.post("/api/collections", json={"nom": "Étude B montée"}).json()["id"]
@@ -477,10 +496,18 @@ def test_deux_collections_depliees_ne_se_marchent_pas_dessus(page, live_server):
         _accorder(live_server, cid, "groupe", "annotateurs", "lecture")
 
     item_a = _ouvrir(page, live_server, a)
-    item_b = page.locator(f'#col-body .col-item[data-id="{b}"]')
-    item_b.locator("summary").click()
+    page.evaluate("""(id) => {
+      const sec = document.createElement('section');
+      sec.id = 'second-montage';
+      document.querySelector('#col-fiche #panneau-qui').appendChild(sec);
+      BDQuiEntre.monter(sec, { collection: { id, nom: 'Étude B montée', administrable: true },
+                               droits: DROITS, groupesAdmin: [], surMessage: colTaireSauf,
+                               ajusterALaPlace: true });
+    }""", b)
+    item_b = page.locator("#second-montage")
     item_b.locator(".qe-choix").wait_for(timeout=5000)
-    expect(item_a.locator(".qe-choix")).to_be_visible()
+    expect(item_a.locator(".qe-choix").first).to_be_visible()
+    item_a = page.locator(f'#col-fiche[data-id="{a}"] section.qe:not(#second-montage)')
 
     assert page.evaluate(_DOUBLONS) == [], "deux panneaux partagent un identifiant"
     # Chaque `label for=` désigne le champ de SON panneau.
@@ -504,21 +531,22 @@ def test_deux_collections_depliees_ne_se_marchent_pas_dessus(page, live_server):
     expect(item_a.locator(".qe-msg")).not_to_have_class(re.compile(r"\berreur\b"))
 
 
-def test_replier_puis_deplier_ne_fait_pas_deriver_les_identifiants(page, collection):
-    """Une collection repliée puis dépliée est REDESSINÉE : son panneau est remonté. Le
-    nouveau montage reprend les identifiants du premier — `qe-titre-<id>`, et non
-    `qe-titre-<id>m2` — parce que l'ancien est démonté, et qu'un montage mort ne retient
-    rien. Sans cela la page marcherait toujours, et l'adresse `#qe-titre-…` d'hier ne
-    désignerait plus rien demain."""
+def test_rouvrir_une_fiche_ne_fait_pas_deriver_les_identifiants(page, collection):
+    """Une fiche quittée puis rouverte est REDESSINÉE : son panneau est remonté. Le nouveau
+    montage reprend les identifiants du premier — `qe-titre-<id>`, et non `qe-titre-<id>m2` —
+    parce que l'ancien est démonté, et qu'un montage mort ne retient rien. Sans cela la page
+    marcherait toujours, et l'adresse `#qe-titre-…` d'hier ne désignerait plus rien demain.
+    (Avant UX-18 : une collection repliée puis dépliée ; c'est désormais une fiche quittée
+    pour une autre, puis retrouvée par son nom.)"""
     cid = collection["id"]
     item = _ouvrir(page, collection["base"], cid)
+    autre = page.locator(f'#col-body .col-item:not([data-id="{cid}"])').first
     titre = f"qe-titre-{cid}"
     expect(item.locator(".qe-titre")).to_have_attribute("id", titre)
     for _ in range(3):
-        item.locator("summary").click()
-        expect(item).not_to_have_attribute("open", "")
-        item.locator("summary").click()
-        item.locator(".qe-choix").wait_for(timeout=5000)
+        autre.locator(".col-ouvrir").click()
+        expect(item).to_have_count(0)
+        item = _ouvrir_par_le_nom(page, cid)
         expect(item.locator(".qe-titre")).to_have_attribute("id", titre)
         expect(item.locator(".qe")).to_have_attribute("aria-labelledby", titre)
     assert page.evaluate(_DOUBLONS) == []
@@ -533,7 +561,7 @@ def test_replier_puis_deplier_ne_fait_pas_deriver_les_identifiants(page, collect
 
 
 def test_un_panneau_demonte_pendant_un_geste_ne_leve_rien(page, collection):
-    """L'hôte redessine sa liste PENDANT qu'un « + Faire entrer » est en route : le panneau
+    """L'hôte redessine sa fiche PENDANT qu'un « + Faire entrer » est en route : le panneau
     qui a envoyé la requête est démonté avant qu'elle ne revienne. L'accès est accordé — le
     serveur l'a reçu —, et rien ne lève dans la page.
 
@@ -559,20 +587,22 @@ def test_un_panneau_demonte_pendant_un_geste_ne_leve_rien(page, collection):
         page.wait_for_timeout(50)
     assert len(retenues) == 1, "prémisse : le PUT est parti, et il est retenu"
 
-    # Créer une collection redessine TOUTE la liste : le panneau qui attend est démonté.
+    # Créer une collection ouvre SA fiche : le panneau qui attend est démonté. On revient
+    # ensuite à la collection d'avant, dont le panneau est remonté.
     avant = page.locator("#col-body .col-item").count()
+    page.locator("#col-creer").click()
     page.locator("#col-nom").fill("Étude née entre-temps")
     page.locator("#col-add").click()
     expect(page.locator("#col-body .col-item")).to_have_count(avant + 1)
     expect(page.locator("#col-creer-msg")).to_contain_text("créée")
-    page.locator(f'#col-body .col-item[data-id="{cid}"] .qe-choix').wait_for(timeout=5000)
+    expect(page.locator(f'#col-fiche[data-id="{cid}"]')).to_have_count(0)
+    remonte = _ouvrir_par_le_nom(page, cid)
 
     retenues[0].continue_()
     page.wait_for_timeout(800)
     assert erreurs == [], erreurs
     assert _acces(base, cid)[("groupe", "annotateurs")]["niveau"] == "lecture"
     # Le panneau REMONTÉ, lui, est vivant et répond.
-    remonte = page.locator(f'#col-body .col-item[data-id="{cid}"]')
     remonte.locator(".qe-faire-entrer").click()
     expect(remonte.locator(".qe-msg.erreur")).to_contain_text("Choisissez un groupe")
 

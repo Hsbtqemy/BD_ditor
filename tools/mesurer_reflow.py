@@ -235,6 +235,11 @@ DEPLIES = {
         "nom": "tiroir des planches", "panneau": "#sidebar", "surfaces": ["/"]},
     "#btn-tiroir-panneau": {
         "nom": "tiroir d'annotation", "panneau": "#panel", "surfaces": ["/"]},
+    # « + Créer une collection » (UX-18) : le champ de création n'apparaît qu'au geste, en
+    # tête de la liste de la Bibliothèque. Replié, il n'a pas de rectangle.
+    "#col-creer": {
+        "nom": "création d'une collection", "panneau": "#col-creer-zone",
+        "surfaces": ["/corpus"]},
     # Le menu du compte (UX-14) : « Déconnexion » y a quitté la bande. `theme.js` ne le
     # construit que s'il a au moins une entrée, donc derrière le proxy.
     ".user-chip button.user-who": {

@@ -474,13 +474,13 @@ def test_un_nom_ouvre_sa_fiche_ici_et_reste_du_texte_dans_la_bibliotheque(page, 
     expect(page.locator("#cg-fiche-titre")).to_have_text("annotateurs")
     assert page.evaluate(_DOUBLONS) == []
 
-    # Le témoin : la Bibliothèque, même collection.
+    # Le témoin : la Bibliothèque, même collection — tableau ou cartes selon la place.
     page.goto(base + f"/corpus?collection={cid}", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+    item = page.locator(f'#col-fiche[data-id="{cid}"]')
     item.locator(".qe-choix").wait_for(timeout=5000)
-    lignes = item.locator(".qe-table tbody th[scope=row]")
-    expect(lignes).to_have_count(2)
-    expect(item.locator(".qe-table tbody th[scope=row] button")).to_have_count(0)
+    noms = ":is(.qe-table tbody th[scope=row], .qe-carte .qe-qui)"
+    expect(item.locator(noms)).to_have_count(2)
+    expect(item.locator(f"{noms} button")).to_have_count(0)
     assert item.locator("button.qe-ouvrir").count() == 0
     # Et son titre est resté au rang qu'il avait : l'option de rang est à l'Administration.
     assert item.locator(".qe-titre").evaluate("el => el.tagName") == "H3"
@@ -541,13 +541,14 @@ def test_l_adresse_de_la_bibliotheque_preselectionne_toujours_un_groupe(page, et
     page.on("request", lambda r: envois.append((r.method, r.url)) if r.method != "GET" else None)
 
     page.goto(base + f"/corpus?collection={cid}&groupe=annotateurs", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
-    expect(item).to_have_attribute("open", "")
+    item = page.locator(f'#col-fiche[data-id="{cid}"]')
+    expect(item.locator('[role="tab"][data-onglet="qui"]')).to_have_attribute(
+        "aria-selected", "true")
     expect(item.locator(".qe-choix")).to_have_value("groupe:annotateurs")
     expect(item.locator(".qe-libre")).to_be_hidden()
 
     page.goto(base + f"/corpus?collection={cid}&groupe=cours-inconnu", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+    item = page.locator(f'#col-fiche[data-id="{cid}"]')
     expect(item.locator(".qe-choix")).to_have_value("autre")
     expect(item.locator(".qe-libre")).to_be_visible()
     expect(item.locator(".qe-nom")).to_have_value("cours-inconnu")
@@ -799,26 +800,25 @@ def test_redimensionner_en_cours_de_saisie_ne_perd_ni_la_saisie_ni_le_focus(page
     assert exceptions == [] and console == [], (exceptions, console)
 
 
-def test_la_bibliotheque_garde_son_seuil_de_fenetre(page, trois_acces):
-    """Le témoin. Dans la Bibliothèque le panneau ne suit PAS sa place : à 768 px de fenêtre
-    il montre le tableau, qui défile dans son cadre comme il l'a toujours fait, et ne passe
-    en cartes que sous le seuil de fenêtre du module. Si l'option de l'Administration lui
-    était passée « pour faire pareil », ce tableau-là deviendrait des cartes — et l'écran du
-    propriétaire aurait changé sans que personne l'ait décidé."""
+def test_la_bibliotheque_suit_sa_place_comme_l_administration(page, trois_acces):
+    """Le témoin a changé de camp (UX-18, 2026-10-17). La Bibliothèque logeait le panneau
+    dans la page, et il ne passait en cartes que sous le seuil de fenêtre du module ; il vit
+    désormais dans l'onglet « Qui entre » d'une FICHE, la colonne de droite d'une liste et
+    d'une fiche — la place qu'il a dans l'Administration. Il la suit donc : à 768 px de
+    fenêtre, au-dessus du seuil, la fiche n'a pas la place du tableau et le panneau montre
+    des cartes ; au large, le tableau revient. Sans `ajusterALaPlace`, le tableau resterait
+    à 768 px, à moitié hors champ dans la colonne."""
     base, cid = trois_acces["base"], trois_acces["id"]
     page.set_viewport_size({"width": 768, "height": 900})
     page.goto(base + f"/corpus?collection={cid}", wait_until="networkidle")
-    item = page.locator(f'#col-body .col-item[data-id="{cid}"]')
+    item = page.locator(f'#col-fiche[data-id="{cid}"]')
     item.locator(".qe-marque").first.wait_for(timeout=5000)
     assert not page.evaluate("() => matchMedia(BDQuiEntre.SEUIL_ETROIT).matches"), (
         "prémisse : 768 px est au-dessus du seuil de fenêtre")
-    expect(item.locator(".qe-table tbody tr")).to_have_count(3)
-    cadre = item.locator(".qe-cadre")
-    assert cadre.evaluate("e => e.scrollWidth > e.clientWidth"), (
-        "prémisse : à 768 px le tableau de la Bibliothèque dépasse son cadre — sans quoi ce "
-        "test ne distinguerait pas un panneau qui suit sa place d'un panneau qui ne la suit pas")
-
-    page.set_viewport_size({"width": 767, "height": 900})
     expect(item.locator(".qe-carte")).to_have_count(3)
-    page.set_viewport_size({"width": 768, "height": 900})
+    expect(item.locator(".qe-table")).to_have_count(0)
+
+    page.set_viewport_size({"width": 1400, "height": 900})
     expect(item.locator(".qe-table tbody tr")).to_have_count(3)
+    page.set_viewport_size({"width": 768, "height": 900})
+    expect(item.locator(".qe-carte")).to_have_count(3)
