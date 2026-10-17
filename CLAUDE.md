@@ -553,8 +553,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   tranché par Hugo le 2026-10-17, v31 ; ce paragraphe disait jusque-là « être d'un projet
   n'ouvre ni ne ferme AUCUNE collection »). Tout projet naît avec elle (`collection.base`,
   un DRAPEAU : elle se renomme, ne se supprime pas — 409 nommé, route et outil —, ne change
-  pas de projet ; le projet de repli a la sienne, la collection de repli, désignée à sa
-  naissance). Ses responsables en sont PROPRIÉTAIRES ; ses membres y entrent au niveau
+  pas de projet ; elle naît NEUVE et vide, le projet de repli compris — aucune collection
+  existante ne devient une base, ni la « Collection par défaut », décision de Hugo du
+  2026-10-17 sur le constat 1 de la relecture croisée). Ses responsables en sont PROPRIÉTAIRES ; ses membres y entrent au niveau
   `collection.acces_membres` (`ecriture`, `lecture`, ou NULL — protégée) ; les deux sont
   DÉRIVÉS dans `Portee.__init__` à partir de `autorisation.bases_des_projets`, jamais
   recopiés dans `collection_acces` : qui sort du projet sort de la base, un responsable
@@ -563,8 +564,18 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   `POST /api/projets`, `ecriture` si omis — la valeur que l'écran présélectionnera ; un
   projet naît sans membre, donc rien ne s'ouvre à ce moment-là) et se règle par qui gère le
   projet (`PUT /api/projets/{id}/acces-membres`), écrite au journal comme un accès (`lien`
-  sous `collection_acces`, la base pour cible). La migration désigne les bases de
-  l'existant PROTÉGÉES : rien ne s'ouvre au déploiement. Ce qu'il NE fait PAS reste la
+  sous `collection_acces`, la base pour cible). La migration donne à chaque projet
+  existant une base NEUVE, vide et PROTÉGÉE : rien ne s'ouvre au déploiement — ses
+  responsables ne reçoivent qu'une collection vide. **Ce que la dérivation emporte**
+  (constaté par la relecture croisée du 2026-10-17, sans être jugé faux) : ce sont des
+  niveaux de collection ORDINAIRES, et tout ce qui se lit sur eux suit. Un membre d'une base
+  OUVERTE « écrit quelque part » (`peut_ecrire_quelque_part`) : il gagne l'édition du
+  vocabulaire GLOBAL (`peut_ecrire_terme(None)`) et l'accès à `GET /api/analyse/accord-inter`
+  sur les albums de la base — des conséquences d'AUTH-2 et d'AUTH-1, neuves pour un simple
+  membre de projet, qui n'ouvrait rien jusque-là. Et la propriété DÉRIVÉE du responsable
+  donne tout ce que donne une propriété : décrire la collection, régler sa diffusion, son
+  référent, ses accès dans « Qui entre », l'exporter d'office (DROIT-2), la déposer sur
+  ShareDocs, lire les groupes de l'annuaire proposés pour elle. Ce qu'il NE fait PAS reste la
   moitié qui compte : aucune AUTRE collection du projet ne s'ouvre à qui en est (ni
   `clause_album`, ni `clause_destruction`, ni `clause_terme` ne connaissent les projets —
   elles lisent les ensembles que la dérivation a remplis) ; un accès de collection se passe
@@ -580,7 +591,8 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   sens. Un responsable ne renomme donc pas le sien : ce nom se lit sur l'écran de tous.
   Trois **409 qui se nomment** : supprimer le projet de repli, supprimer un projet qui
   porte encore une collection — sa base ne compte pas tant qu'elle est vide : elle part avec
-  lui ; portant un album, elle le retient par un refus qui la nomme —, retirer ou
+  lui ; portant un album, ou du vocabulaire qui lui est propre (que sa suppression rendrait
+  GLOBAL par `ON DELETE SET NULL`), elle le retient par un refus qui la nomme —, retirer ou
   rétrograder son DERNIER responsable — mais un
   projet peut NAÎTRE sans responsable, comme une collection sans propriétaire. **Un
   quatrième depuis le 2026-10-16** (COL-3, tranche 2) : supprimer un projet qu'un album
@@ -594,10 +606,10 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   `socle._get_projet` est le jumeau de `_get_collection` : 404 sur un projet qu'on ne
   voit pas, 403 NOMMÉ sur un projet qu'on voit sans le gérer. **Le projet de repli se
   désigne par un DRAPEAU (`projet.repli`), jamais par son nom** : il est fait pour être
-  renommé. La collection de repli se désignait par un nom réservé ; depuis la v31 elle est
-  la BASE du projet de repli, et `collection_par_defaut` la retrouve d'abord par ce drapeau
-  — renommée, elle reste la destination d'un album créé sans collection — ; le nom ne sert
-  plus qu'à la reconnaître avant que le drapeau soit posé, et reste réservé ;
+  renommé, là où la collection de repli des albums créés sans collection se désigne par un
+  nom réservé (`collection_par_defaut`) — elle n'est PAS la base du projet de repli, qui a
+  la sienne, neuve, créée par `projet_par_defaut` sur une base neuve et par la migration
+  v31 sur l'existant ;
   `database.NOM_PROJET_DEFAUT` n'est que le nom sous lequel il naît. `collection.projet_id`
   est NULLABLE — SQLite n'ajoute pas par `ALTER` une colonne `NOT NULL` qui porte une clé
   étrangère, et des tests posent une collection par `INSERT` brut — et NULL se lit « le
@@ -909,7 +921,14 @@ Les chemins de **code** (`static/`, `templates/`, `lib/kumiko`) sont relatifs au
 
 Ces variables servent à isoler les tests (`tests/conftest.py` les patche ou lance un serveur isolé) et à déployer les données ailleurs que dans le dépôt.
 
-Les images d'un album vivent dans `corpus/album_<id>/` (masters) et `derivatives/album_<id>/` (dérivés web), nommés d'après l'identifiant de la ligne `albums` (`pipeline/ingest.py`). Détruire l'album les efface **par référence** (COL-3, tranche 3, D6 : les images appartiennent au document, et une copie sœur pointe vers les fichiers de celle dont elle a été tirée) — un fichier ne quitte le disque que lorsque plus aucune planche ne le désigne, un dossier qui ne contient rien d'employé part en entier comme avant, et le dossier vide d'une copie détruite avant sa sœur est élagué avec la dernière (`socle._effacer_les_images_d_une_copie`) ; ce ménage peut échouer (`ignore_errors`), et avant la v30 l'identifiant revenait au suivant, qui retrouvait alors les images d'un autre. **Un album neuf ne reprend jamais un dossier qui existe déjà** (COL-3, 2026-10-16) : `ingest.ecarter_dossiers_d_album` le renomme `album_<id>.ecarte-<AAAAMMJJ-HHMMSS>` à côté de lui (suffixe `-2`, `-3`… si le nom est pris), n'efface rien, et le journal du serveur (`bd_annotator`, avertissement) dit quel dossier est parti où. Si le renommage échoue (fichier verrouillé, droits), le numéro est SAUTÉ — la ligne est retirée, l'avance du compteur validée tout de suite — et l'album naît au suivant, dans un dossier vide ; après vingt numéros d'affilée refusés, la création répond 503. Ces dossiers mis de côté ne s'affichent nulle part dans l'application (décision de Hugo du 2026-10-16) : ce sont des scans d'albums détruits, et `docs/exploitation.md` dit comment les lister sur le serveur et quand les effacer.
+Les images d'un album vivent dans `corpus/album_<id>/` (masters) et `derivatives/album_<id>/` (dérivés web), nommés d'après l'identifiant de la ligne `albums` (`pipeline/ingest.py`). Détruire l'album les efface **par référence** (COL-3, tranche 3, D6 : les images appartiennent au document, et une copie sœur pointe vers les fichiers de celle dont elle a été tirée) — un fichier ne quitte le disque que lorsque plus aucune planche ne le désigne, un dossier qui ne contient rien d'employé part en entier comme avant, et le dossier vide d'une copie détruite avant sa sœur est élagué avec la dernière (`socle._effacer_les_images_d_une_copie`, qui n'efface ailleurs que dans les dossiers de
+la copie que des chemins `corpus|derivatives/album_<N>/<fichier>` résolus sous eux, et rien
+du tout sans forme relative de ses dossiers). Symétriquement, **un import n'écrit jamais sur
+un chemin qui existe déjà sur le disque, ni sur un chemin qu'une planche désigne**
+(`ingest.numero_occupe`, relecture croisée de la v31) : le numéro d'une nouvelle planche
+saute au premier dont les fichiers sont libres, un numéro explicite pris ainsi est un 409,
+et un fichier qu'un import efface sur un échec est forcément le sien ; ce ménage peut
+échouer (`ignore_errors`), et avant la v30 l'identifiant revenait au suivant, qui retrouvait alors les images d'un autre. **Un album neuf ne reprend jamais un dossier qui existe déjà** (COL-3, 2026-10-16) : `ingest.ecarter_dossiers_d_album` le renomme `album_<id>.ecarte-<AAAAMMJJ-HHMMSS>` à côté de lui (suffixe `-2`, `-3`… si le nom est pris), n'efface rien, et le journal du serveur (`bd_annotator`, avertissement) dit quel dossier est parti où. Si le renommage échoue (fichier verrouillé, droits), le numéro est SAUTÉ — la ligne est retirée, l'avance du compteur validée tout de suite — et l'album naît au suivant, dans un dossier vide ; après vingt numéros d'affilée refusés, la création répond 503. Ces dossiers mis de côté ne s'affichent nulle part dans l'application (décision de Hugo du 2026-10-16) : ce sont des scans d'albums détruits, et `docs/exploitation.md` dit comment les lister sur le serveur et quand les effacer.
 
 ### Numérotation éditoriale & citation
 

@@ -175,10 +175,18 @@ pas, et ne change pas de projet : elle part avec lui, s'il est supprimé vide.
   perd rien d'autre : un accès donné dans *Qui entre*, sur la base comme sur toute autre
   collection, reste.
 - **Le jour où une instance reçoit la collection de base, rien ne s'ouvre** : chaque projet
-  existant reçoit la sienne **protégée**, et celle du projet de repli est sa collection par
-  défaut, réglée comme avant. Une mise à jour ne donne d'accès à personne sans qu'on l'ait
-  décidé ; seuls les responsables d'un projet deviennent propriétaires de sa base neuve,
-  vide.
+  existant — le projet de repli compris — en reçoit une **neuve, vide et protégée**. Aucune
+  collection existante ne devient une base : la « Collection par défaut », où tombent les
+  albums créés sans collection, reste ce qu'elle était. Une mise à jour ne donne d'accès à
+  personne sans qu'on l'ait décidé ; seuls les responsables d'un projet deviennent
+  propriétaires de sa base neuve, vide.
+- **Ce qu'on reçoit par la base est un accès comme un autre**, avec tout ce qui s'y lit.
+  Un membre d'une base **ouverte en écriture** écrit quelque part : il peut donc enrichir
+  le vocabulaire commun à toute l'instance, et ouvrir la mesure de l'accord entre
+  annotateurs sur les albums de la base — ce que, jusque-là, être membre d'un projet ne
+  donnait pas. Et un responsable, propriétaire de la base, y peut tout ce que peut un
+  propriétaire : la décrire, régler sa diffusion et son référent, faire entrer d'autres
+  personnes, l'exporter, la déposer sur ShareDocs.
 
 **Le projet de repli.** Tout ce qui existait avant cette date a été rangé, sans rien y
 changer, dans un premier projet. Il est né sous le nom « Projet principal » et il est fait
@@ -467,7 +475,8 @@ un droit qui manque, c'est un état que le geste fabriquerait.
   aucun projet.
 - *Un projet qui porte encore une collection* ne se supprime pas : un projet ne se supprime
   que vide. Sa collection de base ne compte pas tant qu'elle est vide — elle part avec lui ;
-  si elle porte un album, le refus le dit.
+  si elle porte un album, ou du vocabulaire qui lui est propre — que sa suppression rendrait
+  visible de toute l'instance —, le refus le dit.
 - *La collection de base* ne se supprime pas seule : elle part avec son projet.
 - *Un projet dont des albums sont gardés au fonds* ne se supprime pas non plus : un album
   gardé emporte son projet, et le supprimer le laisserait désigner un projet qui n'existe
