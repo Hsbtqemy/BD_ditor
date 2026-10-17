@@ -481,9 +481,16 @@ planches. Ce qui est retenu, piste de Hugo mise en forme avec la session de pilo
   cas du débutant, et c'est un administrateur qui crée et voit la question —, modifiable ensuite
   par qui GÈRE le projet (`peut_gerer_projet`) ; la resserrer n'efface aucun travail, et le geste
   le dit avant de s'appliquer.
-- **Rien ne s'ouvre au déploiement** : la migration désigne la « Collection par défaut » comme
-  base du projet de repli, réglée comme aujourd'hui (protégée), et crée pour chaque autre projet
-  une base PROTÉGÉE. Une mise à jour ne donne de droit à personne sans qu'on l'ait décidé.
+- **Rien ne s'ouvre au déploiement, et AUCUNE collection existante ne devient une base** : la
+  migration crée pour chaque projet existant, le repli compris, une base NEUVE, VIDE et
+  PROTÉGÉE. Une mise à jour ne donne de droit à personne sans qu'on l'ait décidé. *Écrit
+  d'abord : « la migration désigne la « Collection par défaut » comme base du projet de
+  repli ». La relecture croisée l'a pris en défaut le 2026-10-17 : la Collection par défaut est
+  HABITÉE, et les responsables du repli — qu'une route v30 pouvait nommer sans que cela ouvre
+  rien — en devenaient propriétaires au déploiement (prouvé sur la vraie base v30) ; en nommer
+  un plus tard la lui aurait donnée entière. Hugo a tranché le jour même pour la base neuve.* La
+  Collection par défaut reste la collection de repli des albums sans collection, désignée par
+  son nom réservé ; le projet de repli porte donc deux collections.
 - **Le coût est un changement de principe** : c'est la première fois qu'être d'un projet ouvre
   une collection — celle-là seule, et seulement si on l'a choisi. `collections_du_principal`
   lit `projet_acces` pour les bases ; la phrase « être d'un projet n'ouvre ni ne ferme AUCUNE
