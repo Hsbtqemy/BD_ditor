@@ -391,18 +391,22 @@ def test_un_identifiant_de_document_ne_se_reattribue_pas(client, db_path):
 
 def test_un_projet_et_une_collection_rendent_leur_identifiant(client):
     """Pourquoi une demande garde le NOM de son projet (`demande.projet_nom`) et un emploi
-    celui de sa collection, à côté de l'identifiant : supprimés, l'un et l'autre rendent
-    leur numéro au suivant. Une demande répondue reste en base, le journal survit à sa
-    cible — sans le nom, ils désigneraient le projet ou l'étude créés ensuite.
+    celui de sa collection, à côté de l'identifiant : supprimée, une collection rend son
+    numéro au suivant. Une demande répondue reste en base, le journal survit à sa cible —
+    sans le nom, il désignerait l'étude créée ensuite.
 
-    Si ce test tombe parce qu'un identifiant a cessé de se réattribuer, les deux noms
-    gardés n'ont plus cette raison-là d'exister : c'est à relire, pas à réparer."""
+    Si ce test tombe parce qu'un identifiant a cessé de se réattribuer, le nom gardé n'a
+    plus cette raison-là d'exister : c'est à relire, pas à réparer. C'est arrivé au PROJET
+    (v31, COL-3, tranche 3, D8) : son identifiant ne revient plus, et cette moitié du test a
+    été relue. `demande.projet_nom` garde une raison, moindre : un projet supprimé ne se lit
+    plus, et son nom est alors tout ce qui dit de quoi parlait la demande — comme
+    `document.projet_origine_nom` pour l'origine d'un document."""
     projets = []
     for nom in ("Éphémère", "Tout autre"):
         projets.append(client.post("/api/projets", json={"nom": nom}).json()["id"])
         if nom == "Éphémère":
             assert client.delete(f"/api/projets/{projets[0]}").status_code == 204
-    assert projets[0] == projets[1]
+    assert projets[1] > projets[0]
     collections = []
     for nom in ("Une étude", "Une autre"):
         collections.append(client.post("/api/collections", json={"nom": nom}).json()["id"])
@@ -418,12 +422,17 @@ def test_les_tables_de_demande_naissent_vides_et_rien_ne_les_ecrit(client, db_pa
     seront bâties — ; et un parcours entier n'y écrit aucune ligne."""
     colonnes = {t: [c["name"] for c in _sql(db_path, f"PRAGMA table_info({t})")]
                 for t in ("document", "demande", "demande_document")}
+    # La v31 (COL-3, tranche 3) ajoute le nom du projet d'origine, la collection d'arrivée
+    # d'une demande et la copie née d'une acceptation.
     assert colonnes == {
-        "document": ["id", "importe_par", "importe_le", "projet_origine_id"],
+        "document": ["id", "importe_par", "importe_le", "projet_origine_id",
+                     "projet_origine_nom"],
         "demande": ["id", "genre", "demandeur", "motif", "certifie_le", "projet_id",
                     "projet_nom",
-                    "date_creation", "reponse", "repondu_par", "date_reponse"],
-        "demande_document": ["demande_id", "document_id", "album_id", "titre", "reponse"]}
+                    "date_creation", "reponse", "repondu_par", "date_reponse",
+                    "collection_id", "collection_nom"],
+        "demande_document": ["demande_id", "document_id", "album_id", "titre", "reponse",
+                             "copie_id"]}
 
     aid = _creer(client, "Parcours", decor["emotions"])
     pl = client.post(f"/api/albums/{aid}/import", headers=ALICE,

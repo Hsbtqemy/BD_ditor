@@ -28,7 +28,12 @@ Ce que le parcours pose, et pourquoi :
 - des destructions EN HAUT de chaque table : la dernière région, le dernier album, le
   dernier personnage — et la dernière planche, que seule la PORTÉE d'une activité nomme
   (une passe sans effet, par `journal.passe_ml` du code joué). Ce sont les identifiants
-  qu'une migration ne doit pas rendre.
+  qu'une migration ne doit pas rendre ;
+- à partir de la v30 (`_parcours_v30`, COL-3, tranche 3) : un second projet, son
+  responsable, un membre et un groupe membres ; la collection de repli ; une copie gardée
+  au fonds ; un album importé au fonds puis rendu ; des demandes de suppression en attente,
+  refusée, acceptée ; une demande de suppression de projet ; deux projets supprimés vides,
+  le plus grand identifiant de projet n'étant plus nommé que par le journal et une demande.
 
 Le parcours n'emploie que des routes stables depuis la v29. Si une version les change, il
 gagne une branche sur `database.SCHEMA_VERSION` plutôt que de perdre l'ancienne forme :
@@ -180,8 +185,93 @@ def _jouer_le_parcours(main, database, journal) -> dict:
         _ok(c.put(f"/api/regions/{regions[1]}/locuteur", headers=LEA,
                   json={"personnage_id": persos[0]}), 200)
         _ok(c.delete(f"/api/personnages/{mort}", headers=LEA), 204)
-    return {"album_detruit": albums[-1], "planche_detruite": derniere_planche,
-            "region_detruite": regions[-1], "personnage_detruit": mort}
+        faits = {"album_detruit": albums[-1], "planche_detruite": derniere_planche,
+                 "region_detruite": regions[-1], "personnage_detruit": mort}
+        if database.SCHEMA_VERSION >= 30:
+            faits.update(_parcours_v30(c, principal, albums[0]))
+    return faits
+
+
+def _parcours_v30(c, principal: int, album_de_lea: int) -> dict:
+    """Ce qu'une base v30 doit porter pour que la migration suivante ait de quoi se tromper
+    (COL-3, tranche 3) : un second projet, son responsable, un membre et un groupe membres ;
+    la collection de repli ; une copie gardée au fonds ; un album importé au fonds puis
+    rendu ; des demandes de suppression en attente, refusée, acceptée ; une demande de
+    suppression de projet ; et un projet supprimé VIDE, dont l'identifiant n'est plus nommé
+    que par le journal et par une demande. Par les routes du code v30, sous les trois
+    comptes du parcours."""
+    def album(qui, cid, titre, planche=False):
+        a = _ok(c.post("/api/albums", headers=qui,
+                       json={"titre": titre, "collection_id": cid}), 201)["id"]
+        if planche:
+            _ok(c.post(f"/api/albums/{a}/import", headers=qui,
+                       files={"file": ("p.png", _png(), "image/png")}), 201)
+        return a
+
+    def demander(qui, album_id):
+        return _ok(c.post("/api/demandes", headers=qui,
+                          json={"genre": "suppression_document", "album_id": album_id,
+                                "motif": "Importé par erreur.", "certifie": True}), 201)["id"]
+
+    def membre(projet, principal_, role, genre="utilisateur"):
+        _ok(c.put(f"/api/projets/{projet}/membres", headers=ADMIN,
+                  json={"genre": genre, "principal": principal_, "role": role}), 200)
+
+    repli = next(p["id"] for p in _ok(c.get("/api/projets", headers=ADMIN), 200)
+                 if p["repli"])
+    # La collection de repli naît d'un album créé sans collection.
+    sans_collection = _ok(c.post("/api/albums", headers=ADMIN,
+                                 json={"titre": "Album sans collection"}), 201)["id"]
+    membre(repli, "sam", "membre")
+    etude = _ok(c.post("/api/projets", headers=ADMIN, json={"nom": "Étude B"}), 201)["id"]
+    membre(etude, "lea", "responsable")
+    membre(etude, "sam", "membre")
+    membre(etude, "etudiants", "membre", genre="groupe")
+    collection_b = _ok(c.post("/api/collections", headers=LEA,
+                              json={"nom": "Collection B", "projet_id": etude}), 201)["id"]
+    # Une copie gardée au fonds : supprimée de sa dernière collection, son projet écrit.
+    gardee = album(LEA, collection_b, "Gardée au fonds", planche=True)
+    _ok(c.delete(f"/api/albums/{gardee}/collections/{collection_b}", headers=LEA), 204)
+    # Un album importé au fonds par l'administrateur, puis rendu à une collection.
+    rendu = _ok(c.post("/api/albums", headers=ADMIN,
+                       json={"titre": "Importé au fonds", "au_fonds": True}), 201)["id"]
+    _ok(c.put(f"/api/albums/{rendu}/collections/{principal}", headers=ADMIN), 201)
+    # Trois demandes de suppression : en attente, refusée, acceptée.
+    en_attente = demander(SAM, album_de_lea)
+    refusee_album = album(LEA, principal, "Demande refusée")
+    refusee = demander(SAM, refusee_album)
+    _ok(c.post(f"/api/demandes/{refusee}/reponse", headers=ADMIN,
+               json={"reponse": "refusee"}), 200)
+    acceptee_album = album(LEA, principal, "Demande acceptée", planche=True)
+    acceptee = demander(SAM, acceptee_album)
+    _ok(c.post(f"/api/demandes/{acceptee}/reponse", headers=ADMIN,
+               json={"reponse": "acceptee"}), 200)
+    # La suppression d'un projet demandée par son responsable : elle attend (il porte une
+    # collection).
+    demande_projet = _ok(c.post("/api/demandes", headers=LEA,
+                                json={"genre": "suppression_projet", "projet_id": etude,
+                                      "motif": "Étude terminée."}), 201)["id"]
+    # Un projet supprimé vide par l'administrateur, puis un second — l'identifiant rendu par
+    # SQLite en v30 — supprimé sur la demande de son responsable : le plus grand identifiant
+    # de projet n'est plus nommé que par le journal et par `demande.projet_id`.
+    ephemere = _ok(c.post("/api/projets", headers=ADMIN, json={"nom": "Éphémère"}), 201)["id"]
+    _ok(c.delete(f"/api/projets/{ephemere}", headers=ADMIN), 204)
+    ephemere_2 = _ok(c.post("/api/projets", headers=ADMIN,
+                            json={"nom": "Éphémère 2"}), 201)["id"]
+    membre(ephemere_2, "sam", "responsable")
+    demande_ephemere = _ok(c.post("/api/demandes", headers=SAM,
+                                  json={"genre": "suppression_projet",
+                                        "projet_id": ephemere_2,
+                                        "motif": "Créé par erreur."}), 201)["id"]
+    _ok(c.post(f"/api/demandes/{demande_ephemere}/reponse", headers=ADMIN,
+               json={"reponse": "acceptee"}), 200)
+    return {"projet_repli": repli, "projet_etude": etude, "collection_b": collection_b,
+            "album_sans_collection": sans_collection, "album_garde_au_fonds": gardee,
+            "album_rendu": rendu, "album_detruit_sur_demande": acceptee_album,
+            "demandes": {"en_attente": en_attente, "refusee": refusee, "acceptee": acceptee,
+                         "projet_en_attente": demande_projet,
+                         "projet_acceptee": demande_ephemere},
+            "projets_supprimes": sorted({ephemere, ephemere_2})}
 
 
 def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict) -> None:
@@ -200,6 +290,13 @@ def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict)
                               "activite", "tokens", "annotations", "recherche")},
         "activites": [tuple(r) for r in conn.execute("SELECT type, portee FROM activite")],
     }
+    if version >= 30:
+        # Ce que la v30 a ajouté, compté à part : un fichier v29 refait reste identique.
+        faits["max"].update({t: conn.execute(f"SELECT MAX(id) FROM {t}").fetchone()[0]
+                             for t in ("projet", "collection", "document", "demande")})
+        faits["comptes"].update({t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                                 for t in ("projet", "projet_acces", "collection",
+                                           "document", "demande", "demande_document")})
     try:
         relatif = sortie.relative_to(RACINE).as_posix()
     except ValueError:

@@ -18,7 +18,7 @@ from config import DB_PATH, STATUTS
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 30
+SCHEMA_VERSION = 31
 
 # NLP-2 (v28) — ce que l'annotateur a VU en corrigeant : le modèle, et sa proposition.
 # Une seule liste, lue par la migration ET par le ré-ancrage : celui-ci réinsère ses
@@ -390,8 +390,10 @@ CREATE TABLE IF NOT EXISTS collection (
     date_debut        TEXT,                          -- période de constitution / couverture
     date_fin          TEXT,
     date_creation     TEXT DEFAULT (datetime('now')),
-    projet_id         INTEGER REFERENCES projet(id)
-    -- v29 (COL-3) : le PROJET auquel la collection appartient. NULLABLE, et NULL se lit
+    projet_id         INTEGER REFERENCES projet(id),
+    base              INTEGER NOT NULL DEFAULT 0,
+    acces_membres     TEXT
+    -- v29 (COL-3) : `projet_id`, le PROJET auquel la collection appartient. NULLABLE, et NULL se lit
     -- « le projet de repli » — à un seul endroit, `sql_projet_de`. Deux raisons, mesurées :
     -- SQLite refuse d'AJOUTER une colonne `NOT NULL` qui porte une clé étrangère (un défaut
     -- non nul est exigé par l'un, interdit par l'autre), si bien qu'une base migrée ne
@@ -401,10 +403,27 @@ CREATE TABLE IF NOT EXISTS collection (
     -- reverserait ses collections dans le repli sans que personne l'ait décidé —, ni
     -- `CASCADE`, qui laisserait des albums hors de toute collection.
     --
-    -- Ce commentaire est SOUS la colonne, et il doit y rester : pour retirer la dernière
-    -- colonne d'une table, SQLite remonte jusqu'à la première virgule qu'il trouve — celles
-    -- d'un commentaire comprises — et rend alors un schéma tronqué (« incomplete input »,
-    -- mesuré sur 3.49 par le test de migration, qui défait la v29 de cette façon).
+    -- v31 (COL-3, tranche 3, D10 — Hugo, 2026-10-17) : la COLLECTION DE BASE d'un projet.
+    -- `base` = 1 désigne la seule collection de base de son projet : un DRAPEAU et jamais un
+    -- nom, comme le projet de repli — elle se renomme, ne se supprime pas, ne change pas de
+    -- projet, et aucune route ne pose ni n'ôte le drapeau. Tout projet naît avec elle (la
+    -- route ; pour le projet de repli, la « Collection par défaut », désignée à sa
+    -- naissance). Les RESPONSABLES du projet en sont propriétaires, et ses MEMBRES y entrent
+    -- au niveau `acces_membres` — les deux DÉRIVÉS de `projet_acces` par
+    -- `autorisation.Portee`, jamais recopiés dans `collection_acces`.
+    -- `acces_membres` : un NIVEAU parmi ceux de `collection_acces` — 'ecriture' ou
+    -- 'lecture' —, NULL = protégée (les membres n'y entrent pas). Sans `CHECK`, pour la
+    -- raison écrite sur `utilisateur.nature` : la liste vit dans
+    -- `autorisation.ACCES_MEMBRES`. Sans effet hors d'une base.
+    -- Une seule base par projet : tenu par le code (`collection_de_base`) et non par un
+    -- index partiel, qui nommerait `projet_id` et empêcherait de retirer la colonne — ce que
+    -- des tests font pour rejouer la v29.
+    --
+    -- Ces commentaires sont SOUS la dernière colonne, et aucun ne s'intercale entre les
+    -- trois dernières : pour retirer la dernière colonne d'une table, SQLite remonte jusqu'à
+    -- la première virgule qu'il trouve — celles d'un commentaire comprises — et rend alors un
+    -- schéma tronqué (« incomplete input », mesuré sur 3.49 par les tests de migration, qui
+    -- défont des versions de cette façon).
 );
 
 -- PROJET (v29, COL-3) — l'étage AU-DESSUS des collections : le périmètre à l'intérieur
@@ -420,8 +439,13 @@ CREATE TABLE IF NOT EXISTS collection (
 --
 -- `justification` : pourquoi ce projet existe, en texte libre — scientifique d'abord. Elle
 -- ne se rend qu'à qui gère le projet (`routes/projets.py`), jamais à ses simples membres.
+--
+-- `AUTOINCREMENT` depuis la v31 (COL-3, tranche 3, D8) : un projet d'origine pourra être
+-- supprimé sous un document vivant, et un identifiant rendu au projet suivant ferait
+-- désigner à `demande.projet_id`, à `document.projet_origine_id` et au journal un autre
+-- projet que le leur. Une base v30 est reconstruite par `_reconstruire_avec_autoincrement`.
 CREATE TABLE IF NOT EXISTS projet (
-    id             INTEGER PRIMARY KEY,
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
     nom            TEXT NOT NULL,
     description    TEXT,
     justification  TEXT,
@@ -463,21 +487,43 @@ CREATE INDEX IF NOT EXISTS idx_projet_acces_principal ON projet_acces(genre, pri
 -- SANS clé étrangère, comme `evenement.cible_id` : il doit survivre au projet supprimé.
 -- NULL = entré sans projet.
 --
--- Le NOM de ce projet n'est PAS gardé à côté, à la différence de `demande.projet_nom`, et
--- c'est pesé. `projet.id` se réattribue, donc cette colonne désignerait un autre projet le
--- jour où celui d'origine serait supprimé puis son identifiant repris. Dans cette tranche
--- cela ne peut pas arriver : un document n'a qu'une copie, elle porte ce même projet, et un
--- projet que des copies désignent encore ne se supprime pas (`routes/projets.py`) — le
--- document part donc avant son projet d'origine. Cela devient possible le jour où une copie
--- naît dans un AUTRE projet que celui d'origine : c'est la migration de ce jour-là qui devra
--- poser le nom, avant le premier projet supprimé sous un document vivant. Le poser dès
--- maintenant obligerait à choisir sans cas d'usage entre le nom à l'import et le dernier
--- nom connu, pour un projet fait pour être renommé.
+-- `projet_origine_nom` (v31, COL-3, tranche 3, D8) : le NOM de ce projet, écrit À
+-- L'IMPORT. La tranche 3 fait naître des copies dans d'autres projets que celui d'origine,
+-- qui pourra donc être supprimé sous un document vivant ; et `projet.id` se réattribuait
+-- jusqu'à la v31. Le fonds dit l'origine par ce nom, plus par une jointure. Pour tout
+-- document d'avant la v31, c'est le nom que portait le projet LE JOUR DE LA MIGRATION, pas
+-- celui du jour de l'import, que rien n'avait gardé ; NULL si le projet n'existait plus.
 CREATE TABLE IF NOT EXISTS document (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     importe_par        TEXT,
     importe_le         TEXT DEFAULT (datetime('now')),
-    projet_origine_id  INTEGER
+    projet_origine_id  INTEGER,
+    projet_origine_nom TEXT
+);
+
+-- COPIE (v31, COL-3, tranche 3) — la PROVENANCE de chaque copie de travail : qui l'a créée,
+-- quand, d'où, et jusqu'à quel cran. Une ligne par album. Hors d'`albums`, et pas par
+-- confort : trois réponses de l'API rendent `a.*` (`list_albums`, `create_album`,
+-- `update_album`), et un login posé sur `albums` partirait à toute lectrice. Aucune route ne
+-- la rend en entier.
+--
+-- `creee_par` : le LOGIN de qui a créé CETTE copie — c'est elle que lit la règle de
+-- suppression directe (`autorisation.Portee.clause_suppression_directe`). NULL = on ne sait
+-- pas : la copie d'origine d'un document d'avant la v30, et tout ce que crée le mono-poste.
+-- Pour une copie d'ORIGINE, c'est l'importateur du document.
+-- `cran` : 'origine' (la copie née avec son document), 'images' (une copie vierge, née d'un
+-- document qui existait déjà) ; la 3b ajoutera les crans suivants. Pas de `CHECK`, pour la
+-- raison écrite sur `utilisateur.nature`.
+-- `depuis_album_id` : la copie dont celle-ci a été tirée — SANS clé étrangère, la source
+-- peut mourir avant elle, comme `evenement.cible_id`. `depuis_projet_nom` : le nom de son
+-- projet ce jour-là, pour la raison de `demande.projet_nom`.
+CREATE TABLE IF NOT EXISTS copie (
+    album_id           INTEGER PRIMARY KEY REFERENCES albums(id) ON DELETE CASCADE,
+    creee_par          TEXT,
+    creee_le           TEXT DEFAULT (datetime('now')),
+    depuis_album_id    INTEGER,
+    cran               TEXT NOT NULL DEFAULT 'origine',
+    depuis_projet_nom  TEXT
 );
 
 -- DEMANDE (v30, COL-3, tranche 2) — UN mécanisme pour ce qui ne se fait pas seul : qui
@@ -502,6 +548,9 @@ CREATE TABLE IF NOT EXISTS document (
 -- demande répondue reste : accepter la suppression d'un projet ferait désigner à sa propre
 -- demande le projet créé ensuite. C'est la raison de `demande_document.titre`, un étage
 -- plus haut. L'identifiant sert tant que le projet vit, le nom dit de quoi l'on parlait.
+-- `collection_id`, `collection_nom` (v31, COL-3, tranche 3) : la collection d'ARRIVÉE d'une
+-- entrée de documents ou d'un « rejoindre », sans clé étrangère ; le nom pour la raison de
+-- `projet_nom` — l'identifiant d'une collection se réattribue (mesuré en tranche 2).
 CREATE TABLE IF NOT EXISTS demande (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     genre          TEXT NOT NULL,
@@ -513,7 +562,9 @@ CREATE TABLE IF NOT EXISTS demande (
     date_creation  TEXT DEFAULT (datetime('now')),
     reponse        TEXT,
     repondu_par    TEXT,
-    date_reponse   TEXT
+    date_reponse   TEXT,
+    collection_id  INTEGER,
+    collection_nom TEXT
 );
 
 -- Les DOCUMENTS d'une demande — plusieurs dès maintenant, pour qu'une entrée de documents
@@ -521,13 +572,16 @@ CREATE TABLE IF NOT EXISTS demande (
 -- document détruit. `album_id` est la copie d'où le geste est parti et `titre` son titre
 -- ce jour-là — l'album détruit ne se lit plus (et son identifiant se réattribuait avant la
 -- v30) : sans le titre, une demande répondue ne dirait plus de quoi elle parlait. `reponse` : la réponse document par document, pour
--- une demande acceptée en partie.
+-- une demande acceptée en partie. `copie_id` (v31) : la copie NÉE de l'acceptation d'une
+-- entrée de documents, sans clé étrangère — ce qui dit, une fois la demande répondue, où le
+-- document est entré.
 CREATE TABLE IF NOT EXISTS demande_document (
     demande_id   INTEGER NOT NULL REFERENCES demande(id) ON DELETE CASCADE,
     document_id  INTEGER NOT NULL,
     album_id     INTEGER,
     titre        TEXT,
     reponse      TEXT,
+    copie_id     INTEGER,
     PRIMARY KEY (demande_id, document_id)
 );
 -- « Ce document a-t-il une demande en attente » se pose album par album ; la clé primaire
@@ -1168,6 +1222,53 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if version < 30:
         _reconstruire_avec_autoincrement(conn)
 
+    # v30 → v31 : prendre un document (COL-3, tranche 3). Table `copie` NOUVELLE
+    # (SCHEMA_SQL) ; des colonnes posées par PRÉSENCE, dans l'ordre du schéma neuf, chacune
+    # gardée par sa TABLE — des tests montent des schémas minimaux sans elles. Sans
+    # comportement par elles-mêmes : `demande.collection_id`/`collection_nom` et
+    # `demande_document.copie_id` attendent les demandes d'entrée et de « rejoindre », et
+    # `collection.base`/`acces_membres` la collection de base (D10).
+    _tables = {r["name"] for r in
+               conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    for table, colonnes in (
+            ("collection", (("base", "INTEGER NOT NULL DEFAULT 0"), ("acces_membres", "TEXT"))),
+            ("document", (("projet_origine_nom", "TEXT"),)),
+            ("demande", (("collection_id", "INTEGER"), ("collection_nom", "TEXT"))),
+            ("demande_document", (("copie_id", "INTEGER"),))):
+        if table not in _tables or (table == "collection" and "projet" not in _tables):
+            continue
+        for colonne, sorte in colonnes:
+            if colonne not in _cols(table):
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {colonne} {sorte}")
+    if version < 31:
+        # Migrations de DONNÉES, donc gatées par la VERSION, et IDEMPOTENTES (des tests
+        # ramènent `user_version` en arrière sur une base courante) : elles ne touchent que
+        # ce qui manque.
+        #
+        # Le nom du projet d'origine : une PHOTOGRAPHIE du jour de la migration — le nom à
+        # l'import n'a été gardé nulle part. NULL si le projet n'existe plus.
+        if ({"document", "projet"} <= _tables
+                and "projet_origine_id" in _cols("document")):
+            conn.execute(
+                "UPDATE document SET projet_origine_nom = "
+                "(SELECT p.nom FROM projet p WHERE p.id = document.projet_origine_id) "
+                "WHERE projet_origine_nom IS NULL AND projet_origine_id IS NOT NULL")
+        # Chaque album d'hier est la copie d'ORIGINE de son document : créée par qui l'a
+        # importé, quand il l'a importé. NULL quand on ne le sait pas (tout l'existant
+        # d'avant la v30) — et « inconnu veut dire demander » (décision B3) tient pour lui.
+        if ({"copie", "albums", "document"} <= _tables
+                and "document_id" in _cols("albums")):
+            conn.execute(
+                "INSERT INTO copie (album_id, creee_par, creee_le, cran) "
+                "SELECT a.id, d.importe_par, d.importe_le, ? FROM albums a "
+                "LEFT JOIN document d ON d.id = a.document_id "
+                "WHERE NOT EXISTS (SELECT 1 FROM copie c WHERE c.album_id = a.id)",
+                (CRAN_ORIGINE,))
+        # Et des identifiants de PROJET qui ne reviennent plus (D8) : la machinerie de la
+        # v30, qui ne touche que les tables à qui `AUTOINCREMENT` manque encore — une base
+        # migrée depuis la v29 l'a déjà reçu par l'étape du dessus.
+        _reconstruire_avec_autoincrement(conn)
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -1182,12 +1283,23 @@ def _migrate(conn: sqlite3.Connection) -> None:
 # coûte qu'un saut dans la numérotation ; en dire trop peu rendrait une dernière fois un
 # identifiant que le journal nomme encore. D'où `region_id` et `parent_id` lus dans
 # TOUTES les charges, quelle que soit leur cible.
+#
+# v31 (COL-3, tranche 3, D8) : `projet` aussi. Le journal le nomme par deux cibles et par la
+# clé `projet_id` des charges ; et deux colonnes HORS du journal, sans clé étrangère, le
+# nomment encore après sa suppression — une demande, et l'origine d'un document
+# (`_HORS_JOURNAL`).
 _AUTOINCREMENT = {
     "albums": ((), ("album_id",)),
     "planches": (("planches",), ("planche_id",)),
     "regions": (("regions", "annotations", "bulle_locuteur", "personnage_presence",
                  "region_attribut"), ("region_id", "parent_id")),
     "personnages": ((), ("personnage_id",)),
+    "projet": (("projet", "projet_acces"), ("projet_id",)),
+}
+# Ce qui nomme une ligne de ces tables HORS du journal, et lui survit faute de clé
+# étrangère : (table, colonne). Lu par `_jamais_nommes` quand la colonne existe.
+_HORS_JOURNAL = {
+    "projet": (("demande", "projet_id"), ("document", "projet_origine_id")),
 }
 
 
@@ -1216,6 +1328,11 @@ def _jamais_nommes(conn: sqlite3.Connection) -> dict:
                 f"SELECT MAX(cible_id) FROM evenement WHERE cible_table IN "
                 f"({', '.join('?' * len(cibles))})", cibles).fetchone()[0]
             resultat[table] = max(resultat[table], m or 0)
+    for table, sources in _HORS_JOURNAL.items():
+        for source, colonne in sources:
+            if colonne in {r[1] for r in conn.execute(f"PRAGMA table_info({source})")}:
+                m = conn.execute(f"SELECT MAX({colonne}) FROM {source}").fetchone()[0]
+                resultat[table] = max(resultat[table], m or 0)
     return _max_des_charges(conn, charges, resultat)
 
 
@@ -1829,11 +1946,17 @@ def document_d_album(conn: sqlite3.Connection, album_id: int) -> int | None:
     return r[0] if r else None
 
 
+# Les crans d'une copie (`copie.cran`, v31). La 3b ajoutera ceux de l'échelle des couches.
+CRAN_ORIGINE = "origine"        # la copie née avec son document
+CRAN_IMAGES = "images"          # une copie vierge, née d'un document qui existait déjà
+
+
 def creer_document(conn: sqlite3.Connection, album_id: int, *,
                    importe_par: str | None, projet_id: int | None) -> int:
     """Fait naître le DOCUMENT d'un album qu'on vient de créer, et attache l'un à l'autre :
-    l'origine sur le document (qui, quand, dans quel projet d'abord), le document et le
-    projet sur la copie. Renvoie l'id du document.
+    l'origine sur le document (qui, quand, dans quel projet d'abord, et le NOM de ce projet
+    ce jour-là), le document et le projet sur la copie, et la provenance de la copie — sa
+    ligne `copie`, cran `origine`, créée par qui a importé (v31). Renvoie l'id du document.
 
     Les deux arguments sont OBLIGATOIRES et sans défaut, comme `principal` pour ShareDocs :
     un défaut à None ferait naître un document « d'origine inconnue » chez un appelant
@@ -1842,12 +1965,20 @@ def creer_document(conn: sqlite3.Connection, album_id: int, *,
     quand le document entre sans projet — et dans les deux cas l'appelant l'a ÉCRIT.
 
     N'écrit rien au journal : c'est l'affaire de l'appelant, qui sait ce qu'il fait naître."""
+    nom = None
+    if projet_id is not None:
+        r = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
+        nom = r[0] if r else None
     cur = conn.execute(
-        "INSERT INTO document (importe_par, projet_origine_id) VALUES (?, ?)",
-        (importe_par, projet_id))
+        "INSERT INTO document (importe_par, projet_origine_id, projet_origine_nom) "
+        "VALUES (?, ?, ?)", (importe_par, projet_id, nom))
+    document_id = cur.lastrowid
     conn.execute("UPDATE albums SET document_id = ?, projet_id = ? WHERE id = ?",
-                 (cur.lastrowid, projet_id, album_id))
-    return cur.lastrowid
+                 (document_id, projet_id, album_id))
+    conn.execute("INSERT INTO copie (album_id, creee_par, creee_le, cran) "
+                 "SELECT ?, ?, importe_le, ? FROM document WHERE id = ?",
+                 (album_id, importe_par, CRAN_ORIGINE, document_id))
+    return document_id
 
 
 def retirer_document_sans_copie(conn: sqlite3.Connection, document_id: int | None) -> bool:
@@ -1874,6 +2005,17 @@ def albums_sans_document(conn: sqlite3.Connection) -> list[int]:
     d'`albums_orphelins`. Une ligne ici dit qu'un chemin d'écriture l'a oublié."""
     return [r[0] for r in conn.execute(
         "SELECT id FROM albums WHERE document_id IS NULL ORDER BY id")]
+
+
+def albums_sans_copie(conn: sqlite3.Connection) -> list[int]:
+    """Albums sans ligne `copie` (v31) — la provenance de la copie manque. Le chemin
+    d'écriture la pose (`creer_document`) et la migration v31 l'a posée sur l'existant : une
+    ligne ici dit qu'un chemin d'écriture l'a oubliée, ou qu'un album a été posé par
+    `INSERT`. La règle de suppression directe y lit « a créé cette copie » : sans ligne,
+    personne ne l'a créée, et elle se demande."""
+    return [r[0] for r in conn.execute(
+        "SELECT id FROM albums a WHERE NOT EXISTS "
+        "(SELECT 1 FROM copie c WHERE c.album_id = a.id) ORDER BY id")]
 
 
 def albums_hors_de_leur_projet(conn: sqlite3.Connection) -> list[int]:

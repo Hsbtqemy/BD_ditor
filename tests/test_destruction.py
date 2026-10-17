@@ -331,6 +331,13 @@ HORS_GARDE = {
                                             "d'insérer dans la même requête, quand son "
                                             "dossier d'images ne peut pas être mis de côté : "
                                             "le numéro est sauté, rien n'y pend encore",
+    # COL-3, tranche 3 (D6) — les images s'effacent par RÉFÉRENCE, une copie sœur pouvant
+    # désigner les fichiers d'une autre : le ménage sort de `_detruire_album` dans sa
+    # propre fonction, qui n'a qu'un appelant.
+    "_effacer_les_images_d_une_copie": "n'est appelée que par `_detruire_album`, APRÈS sa "
+                                       "garde et son commit : elle n'efface que les "
+                                       "fichiers de l'album qui vient d'être détruit, et "
+                                       "garde ceux qu'une autre planche désigne encore",
 }
 
 

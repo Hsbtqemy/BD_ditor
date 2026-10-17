@@ -387,8 +387,13 @@ def test_ranger_ailleurs_n_est_pas_y_travailler_mais_ecrire_partout_reste_exige(
 
 def test_un_album_d_avant_le_fonds_se_demande(client, db_path, decor):
     """B3 — l'importateur d'un album d'avant la v30 n'a été écrit nulle part. Inconnu veut
-    dire « demander » : seul un administrateur le détruit."""
+    dire « demander » : seul un administrateur le détruit.
+
+    Le décor rend l'album tel que la migration le laisse : depuis la v31, la règle lit QUI
+    A CRÉÉ LA COPIE (`copie.creee_par`), que la migration recopie de l'importateur — NULL
+    des deux côtés pour un album d'avant le fonds."""
     _sql(db_path, "UPDATE document SET importe_par = NULL")
+    _sql(db_path, "UPDATE copie SET creee_par = NULL")
     aid = decor["erreur"]
     assert _albums(client, IMPORTEUSE)[aid]["destructible"] is False
     assert client.delete(f"/api/albums/{aid}", headers=IMPORTEUSE).status_code == 403

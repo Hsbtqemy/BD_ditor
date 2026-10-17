@@ -54,7 +54,8 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     RoleIn, SharedocsConnIn, SharedocsImportIn, StatutIn, TagIn, TokenCorrectionIn,
     ValeurIn, ValidationIn, VerrouIn, _BOM, _ETATS_LEXIQUE, _LIBELLE, _NOM_TERME,
     _MOTIF_ADMIN, _MOTIF_DESTRUCTION, _MOTIF_DESTRUCTION_PLANCHE, _MOTIF_EXPORT, _MOTIF_PROJET, _PARENT_TERME, _ancetres_terme, _annotation_for_region, _annotation_selon,
-    _attributs_de, _auteur, _clore_demandes, _detruire_album, _supprimer_projet,
+    _attributs_de, _auteur, _chemins_employes, _clore_demandes, _detruire_album,
+    _effacer_les_images_d_une_copie, _supprimer_projet,
     _clause_lemme, _clause_personnage, _collection_d_export, _collections_lues_d_albums,
     _csv_response, _csv_safe, _descendre_portee,
     _disposition, _ensure_tags, _exiger_destruction, _exiger_export,
@@ -467,16 +468,22 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
            ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre""",
         (*p_detruire, *p_ecrire, *p_ailleurs, *params)
     ))
+    # La demande se cherche par COPIE (`demande_document.album_id`), pas par document (COL-3,
+    # tranche 3) : la copie sœur d'un autre projet afficherait sinon « suppression
+    # demandée » pour un geste fait ailleurs — une fuite entre projets, et un faux. Le
+    # document est recoupé, par ceinture.
     attente = {}
-    documents = [a["document_id"] for a in albums if a["document_id"] is not None]
-    if documents:
+    ids = [a["id"] for a in albums]
+    if ids:
         for d in conn.execute(
-                "SELECT dd.document_id, d.id, d.demandeur, d.date_creation FROM demande d "
+                "SELECT dd.album_id, d.id, d.demandeur, d.date_creation FROM demande d "
                 "JOIN demande_document dd ON dd.demande_id = d.id "
+                "JOIN albums _da ON _da.id = dd.album_id "
+                "AND _da.document_id = dd.document_id "
                 f"WHERE d.genre = ? AND d.reponse IS NULL "
-                f"AND dd.document_id IN ({', '.join('?' * len(documents))}) ORDER BY d.id",
-                (DEMANDE_SUPPRESSION_DOCUMENT, *documents)):
-            attente.setdefault(d["document_id"], dict(d))
+                f"AND dd.album_id IN ({', '.join('?' * len(ids))}) ORDER BY d.id",
+                (DEMANDE_SUPPRESSION_DOCUMENT, *ids)):
+            attente.setdefault(d["album_id"], dict(d))
     noms = noms_lisibles(conn, [d["demandeur"] for d in attente.values()
                                 if portee.peut_nommer_le_demandeur(d["demandeur"])])
     # UX-18 — l'appartenance de CHAQUE album, en une lecture, pour que la Bibliothèque
@@ -495,7 +502,7 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
         for champ in ("destructible", "ecrivable", "partage", "au_fonds"):
             a[champ] = bool(a[champ])
         a["collections"] = [{"id": c["id"], "nom": c["nom"]} for c in rangements[a["id"]]]
-        d = attente.get(a["document_id"])
+        d = attente.get(a["id"])
         if d is None:
             a["demande"] = None
             continue
@@ -650,7 +657,10 @@ def delete_planche(planche_id: int, conn: sqlite3.Connection = Depends(db),
     conn.execute("DELETE FROM planches WHERE id = ?", (planche_id,))   # CASCADE regions
     _journaliser_scan(conn, p["album_id"], p, retire=True)
     conn.commit()
-    remove_planche_files(p["chemin_tiff"], p["chemin_web"])
+    # Par RÉFÉRENCE (COL-3, tranche 3, D6) : la planche d'une copie sœur peut désigner les
+    # mêmes fichiers, qui restent alors pour elle.
+    remove_planche_files(p["chemin_tiff"], p["chemin_web"],
+                         garder=_chemins_employes(conn, [p["chemin_tiff"], p["chemin_web"]]))
     return Response(status_code=204)
 
 

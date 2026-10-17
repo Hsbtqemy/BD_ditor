@@ -440,10 +440,13 @@ class Portee:
 
         - `clause_destruction`, INCHANGÉE (AUTH-10) : on écrit dans toutes les collections
           où la copie vit. Elle reste nécessaire, et cesse d'être suffisante ;
-        - le document a été importé PAR CET APPELANT (`document.importe_par`). Jamais vrai
-          sans login, et jamais pour un document d'avant le fonds, dont l'importateur n'a
-          été écrit nulle part — ceux-là se demandent, seul un administrateur les détruit
-          (décision B3) ;
+        - CETTE COPIE a été créée PAR CET APPELANT (`copie.creee_par`, v31). Pour la copie
+          d'origine d'un document, c'est son importateur ; pour une copie sœur, qui l'a
+          prise (COL-3, tranche 3, D5) — l'importatrice d'origine ne supprime pas seule la
+          copie d'un autre, et qui a pris une copie n'attend pas l'importatrice pour la
+          sienne. Jamais vrai sans login, ni sans ligne `copie`, ni pour la copie d'un
+          document d'avant le fonds, dont l'importateur n'a été écrit nulle part — celles-là
+          se demandent, seul un administrateur les détruit (décision B3) ;
         - l'appelant n'est pas un compte PARTAGÉ : « celui qui l'a importé » n'y désigne
           personne (proposition R7, suivie en route). C'est le premier endroit où la nature
           d'un compte borde un geste ; elle ne borde toujours aucun ACCÈS ;
@@ -455,9 +458,10 @@ class Portee:
         dans l'album —, elle le supprime encore elle-même (relecture croisée, constat 7).
         « Garder » répond à une demande ; il ne protège pas le document de qui l'a importé.
 
-        « Aucun autre projet ne l'emploie », les mots de Hugo, n'a pas de moitié à lui : en
-        tranche 2 un document n'a qu'une copie, et cette copie n'a qu'un projet. Le jour où
-        deux copies seront sœurs, il faudra l'écrire ici.
+        « Aucun autre projet ne l'emploie », les mots de Hugo, n'a pas de moitié à lui, et
+        n'en aura pas : la règle porte sur CETTE copie, et détruire une copie ne retire rien
+        à sa sœur — ni son travail, ni les images qu'elle emploie (`socle._detruire_album`),
+        ni le document, qui part avec sa DERNIÈRE copie (D5, Hugo, 2026-10-17).
 
         Ce que la réponse ne dit pas, et c'est voulu : LAQUELLE des moitiés manque. Le refus
         est le même dans tous les cas (`socle._MOTIF_DESTRUCTION`) — dire « c'est Léa qui y
@@ -475,9 +479,8 @@ class Portee:
             return "0", []
         autrui, p_autrui = _sql_travail_d_autrui(alias, self.utilisateur)
         return (f"({detruire} "
-                f"AND EXISTS (SELECT 1 FROM albums _sa JOIN document _sd "
-                f"ON _sd.id = _sa.document_id WHERE _sa.id = {alias} "
-                f"AND _sd.importe_par = ?) "
+                f"AND EXISTS (SELECT 1 FROM copie _sc WHERE _sc.album_id = {alias} "
+                f"AND _sc.creee_par = ?) "
                 f"AND NOT EXISTS (SELECT 1 FROM utilisateur _su WHERE _su.login = ? "
                 f"AND _su.nature = ?) "
                 f"AND NOT {autrui})",
@@ -607,7 +610,11 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
     correction est une couche à part, que le journal ne relie à la région que par l'id de
     la correction), les validations de ses planches, et les actes sur son DOCUMENT — un
     scan ajouté ou retiré, la notice ou la paternité modifiée, la relecture d'une planche
-    forcée, par un autre. Chaque sous-requête part de l'album et descend par les index
+    forcée, par un autre. Ces derniers sont écrits sous le document, qu'une copie SŒUR
+    partage (COL-3, tranche 3) : seuls comptent ceux dont la charge nomme CET album — la
+    notice retouchée sur une autre copie n'est pas un travail sur celle-ci, et interdirait
+    sinon à la créatrice d'une copie de la supprimer seule. Chaque sous-requête part de
+    l'album et descend par les index
     (`idx_evenement_cible`) : la liste des albums la pose album par album.
 
     Les cinq sources sont écrites UNE fois (`_sources_du_travail`), et lues aussi par
@@ -650,8 +657,18 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str]]:
         ("_te.agent", "'document'", "_te.date",
          "albums _ta JOIN evenement _te "
          "ON _te.cible_table = 'document' AND _te.cible_id = _ta.document_id "
-         f"WHERE _ta.id = {alias} AND _te.agent_type = 'humain'"),
+         f"WHERE _ta.id = {alias} AND _te.agent_type = 'humain' "
+         f"AND {_SQL_ALBUM_DE_LA_CHARGE} = _ta.id"),
     ]
+
+
+# L'album que nomme la charge d'un acte sous la cible `document` — `apres` d'abord (une
+# naissance, une notice, un scan ajouté), `avant` sinon (un scan retiré, une destruction).
+# Une charge illisible ne nomme rien : `json_extract` lèverait sur elle et ferait tomber
+# toute la liste des albums.
+_SQL_ALBUM_DE_LA_CHARGE = (
+    "COALESCE(CASE WHEN json_valid(_te.apres) THEN json_extract(_te.apres, '$.album_id') END, "
+    "CASE WHEN json_valid(_te.avant) THEN json_extract(_te.avant, '$.album_id') END)")
 
 
 def sql_actes_sur_album(alias: str) -> str:

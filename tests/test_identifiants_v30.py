@@ -187,7 +187,8 @@ def test_une_activite_illisible_ne_fait_pas_echouer_la_migration(base_v29):
     _sql(base_v29, "INSERT INTO activite (type, agent_type, portee, params) "
                    "VALUES ('ocr', 'moteur', '{pas du json', 'non plus')")
     database.init_db()
-    assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] == 30
+    assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] \
+        == database.SCHEMA_VERSION
 
 
 @pytest.mark.parametrize("source", sorted(SOURCES))
@@ -195,7 +196,8 @@ def test_le_compteur_part_au_dessus_de_ce_que_le_journal_nomme(base_v29, source)
     table, haut, acte = SOURCES[source]
     _acte(base_v29, *acte)
     database.init_db()                                    # upgrade réel v29 → v30
-    assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] == 30
+    assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] \
+        == database.SCHEMA_VERSION
     assert _seq(base_v29)[table] == haut, _seq(base_v29)
     # Et l'identifiant suivant le dépasse : rendu par SQLite, pas par le test.
     c = sqlite3.connect(base_v29)
@@ -265,7 +267,8 @@ def test_rejouee_elle_ne_change_rien(base_v29):
     database.init_db()
     assert _sql(base_v29, "SELECT type, name, sql FROM sqlite_master ORDER BY name") == schema
     assert _seq(base_v29) == seq
-    assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] == 30
+    assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] \
+        == database.SCHEMA_VERSION
 
 
 def test_une_faute_de_cle_deja_la_ne_ferme_pas_l_instance(base_v29):
@@ -275,7 +278,8 @@ def test_une_faute_de_cle_deja_la_ne_ferme_pas_l_instance(base_v29):
     avant = _sql(base_v29, "PRAGMA foreign_key_check")
     assert avant
     database.init_db()
-    assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] == 30
+    assert _sql(base_v29, "PRAGMA user_version")[0]["user_version"] \
+        == database.SCHEMA_VERSION
     assert _sql(base_v29, "PRAGMA foreign_key_check") == avant
 
 
@@ -354,7 +358,8 @@ def test_une_vraie_base_v29_migre_sans_rien_perdre(vraie_v29, tmp_path):
     assert avant["recherche"] and avant["tokens"], "la base chargée n'a rien à comparer"
     database.init_db()
     apres = _etat(vraie_v29)
-    neuves = {"document", "demande", "demande_document"}
+    # La v31 (COL-3, tranche 3) passe aussi, et pose la provenance de chaque copie.
+    neuves = {"document", "demande", "demande_document", "copie"}
     assert {t: n for t, n in apres["comptes"].items() if t not in neuves} == avant["comptes"]
     assert apres["comptes"]["document"] == avant["comptes"]["albums"]
     for t in TABLES:
@@ -366,7 +371,8 @@ def test_une_vraie_base_v29_migre_sans_rien_perdre(vraie_v29, tmp_path):
         (avant["vues"], avant["recherche"], avant["tokens"])
     assert _sql(vraie_v29, "PRAGMA foreign_key_check") == []
     assert _sql(vraie_v29, "PRAGMA integrity_check")[0]["integrity_check"] == "ok"
-    assert _sql(vraie_v29, "PRAGMA user_version")[0]["user_version"] == 30
+    assert _sql(vraie_v29, "PRAGMA user_version")[0]["user_version"] \
+        == database.SCHEMA_VERSION
     assert {t: _seq(vraie_v29)[t] for t in TABLES} == \
         {"albums": 4, "planches": 8, "regions": 16, "personnages": 3}
 

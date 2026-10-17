@@ -13,6 +13,7 @@ largeur naturelle de l'image web chargée.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 
@@ -229,11 +230,61 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source: Path,
     }
 
 
-def remove_album_files(album_id: int) -> None:
-    """Supprime les dossiers corpus/derivatives d'un album (best-effort)."""
+def dossiers_d_album(album_id: int) -> tuple[str, str]:
+    """Les deux dossiers d'images d'un album, sous la forme des chemins stockés en base
+    (`planches.chemin_*` : relatifs à DATA_DIR, POSIX), barre finale comprise — de quoi
+    reconnaître, par un préfixe exact, un fichier qui vit dans l'un d'eux."""
+    return tuple(_rel_posix(racine / f"album_{album_id}") + "/"
+                 for racine in (CORPUS_DIR, DERIVATIVES_DIR))
+
+
+def remove_album_files(album_id: int, garder=frozenset()) -> None:
+    """Supprime les dossiers corpus/derivatives d'un album (best-effort).
+
+    `garder` (COL-3, tranche 3, D6) : les chemins — sous la forme de `planches.chemin_*` —
+    qu'une AUTRE planche emploie encore. Une copie SŒUR pointe vers les fichiers de la copie
+    dont elle a été tirée : les images appartiennent au document, et un fichier ne quitte le
+    disque que lorsque plus aucune planche ne le désigne. Un dossier qui ne contient aucun
+    fichier gardé part en entier, comme avant (y compris ce qu'aucune planche ne désigne, un
+    master orphelin d'un import raté) ; sinon seuls ses autres fichiers partent, et il reste
+    pour la sœur. C'est le risque irréversible de la tranche : une image effacée sous une
+    sœur ne se rattrape pas."""
     import shutil
-    shutil.rmtree(CORPUS_DIR / f"album_{album_id}", ignore_errors=True)
-    shutil.rmtree(DERIVATIVES_DIR / f"album_{album_id}", ignore_errors=True)
+    garder = {(DATA_DIR / g).resolve() for g in garder if g}
+    for racine in (CORPUS_DIR, DERIVATIVES_DIR):
+        dossier = racine / f"album_{album_id}"
+        if not dossier.is_dir():
+            continue
+        dedans = dossier.resolve()
+        if not any(dedans in g.parents for g in garder):
+            shutil.rmtree(dossier, ignore_errors=True)
+            continue
+        for f in sorted(dossier.rglob("*"), reverse=True):
+            try:
+                if f.is_file() and f.resolve() not in garder:
+                    f.unlink()
+                elif f.is_dir():
+                    f.rmdir()                       # seulement s'il est vide
+            except OSError:  # pragma: no cover - garde défensive (non vide, permissions…)
+                pass
+
+
+def elaguer_dossier_d_album(chemin: str | None) -> None:
+    """Retire le dossier `album_<N>` qui contenait ce fichier s'il est désormais VIDE —
+    celui d'une copie détruite avant la sœur qui employait ses images (D6, « les dossiers
+    vides sont élagués à la destruction du document »). Ne touche qu'un dossier
+    `album_<nombre>` posé directement sous `corpus/` ou `derivatives/` ; best-effort."""
+    if not chemin:
+        return
+    dossier = (DATA_DIR / chemin).parent
+    if not re.fullmatch(r"album_\d+", dossier.name):
+        return
+    if dossier.parent.resolve() not in (CORPUS_DIR.resolve(), DERIVATIVES_DIR.resolve()):
+        return
+    try:
+        dossier.rmdir()                             # seulement s'il est vide
+    except OSError:
+        pass
 
 
 def ecarter_dossiers_d_album(album_id: int) -> list[Path]:
@@ -266,10 +317,13 @@ def ecarter_dossiers_d_album(album_id: int) -> list[Path]:
     return ecartes
 
 
-def remove_planche_files(chemin_tiff: str | None, chemin_web: str | None) -> None:
-    """Supprime le master et le dérivé web d'une planche (best-effort)."""
+def remove_planche_files(chemin_tiff: str | None, chemin_web: str | None,
+                         garder=frozenset()) -> None:
+    """Supprime le master et le dérivé web d'une planche (best-effort). `garder` : ceux
+    des deux chemins qu'une AUTRE planche emploie encore — une copie sœur (D6) —, qui
+    restent."""
     for rel in (chemin_tiff, chemin_web):
-        if rel:
+        if rel and rel not in garder:
             try:
                 (DATA_DIR / rel).unlink(missing_ok=True)
             except OSError:  # pragma: no cover - garde défensive (permissions…)

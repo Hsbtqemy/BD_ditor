@@ -41,7 +41,8 @@ from database import (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
                       REPONSE_ACCEPTEE, clause_appartenance, collection_row,
                       get_connection, retirer_document_sans_copie, sql_projet_de,
                       unindex_region)
-from pipeline.ingest import remove_album_files
+from pipeline.ingest import (dossiers_d_album, elaguer_dossier_d_album, remove_album_files,
+                             remove_planche_files)
 
 # --------------------------------------------------------------------------- #
 # Dépendance connexion
@@ -463,8 +464,11 @@ def _detruire_album(conn, portee: autorisation.Portee, album_id: int) -> None:
         "SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
         "WHERE p.album_id = ?", (album_id,)).fetchall():
         unindex_region(conn, r["id"])
-    nb_planches = conn.execute("SELECT COUNT(*) FROM planches WHERE album_id = ?",
-                               (album_id,)).fetchone()[0]
+    # Les chemins de ses images, relevés AVANT le `DELETE` qui emporte les planches : ceux
+    # qu'aucune autre planche n'emploie quitteront le disque après le commit.
+    chemins = [(r[0], r[1]) for r in conn.execute(
+        "SELECT chemin_tiff, chemin_web FROM planches WHERE album_id = ?", (album_id,))]
+    nb_planches = len(chemins)
     # Détruire l'album met fin à chacun de ses emplois : la cascade défait les liens sans
     # rien dire, comme quand on supprime une collection, et un journal où un rangement
     # n'aurait jamais de fin laisserait croire le document encore employé. Écrits AVANT le
@@ -484,12 +488,61 @@ def _detruire_album(conn, portee: autorisation.Portee, album_id: int) -> None:
         journal.journaliser(conn, "suppression", "document", document_id,
                             avant={"album_id": album_id, "titre": a["titre"],
                                    "planches": nb_planches})
-        _clore_demandes(conn, portee, [r[0] for r in conn.execute(
-            "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
-            "WHERE d.genre = ? AND dd.document_id = ? AND d.reponse IS NULL",
-            (DEMANDE_SUPPRESSION_DOCUMENT, document_id))], REPONSE_ACCEPTEE)
+    # Les demandes qui visaient CETTE copie ont leur réponse (COL-3, tranche 3) : une
+    # demande se dépose sur une copie (`demande_document.album_id`), et celle d'une sœur,
+    # dans un autre projet, attend toujours la sienne.
+    _clore_demandes(conn, portee, [r[0] for r in conn.execute(
+        "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
+        "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL",
+        (DEMANDE_SUPPRESSION_DOCUMENT, album_id))], REPONSE_ACCEPTEE)
     conn.commit()
-    remove_album_files(album_id)
+    _effacer_les_images_d_une_copie(conn, album_id, chemins)
+
+
+def _chemins_employes(conn, chemins) -> set:
+    """Ceux de ces chemins d'image (la forme de `planches.chemin_*`) qu'une planche désigne
+    ENCORE — celle d'une copie sœur, qui emploie les fichiers de la copie dont elle a été
+    tirée (COL-3, tranche 3, D6). Une requête, quel que soit le nombre de chemins."""
+    voulus = sorted({c for c in chemins if c})
+    if not voulus:
+        return set()
+    marques = ", ".join("?" * len(voulus))
+    return {c for r in conn.execute(
+        f"SELECT chemin_tiff, chemin_web FROM planches WHERE chemin_tiff IN ({marques}) "
+        f"OR chemin_web IN ({marques})", voulus * 2) for c in r if c in voulus}
+
+
+def _effacer_les_images_d_une_copie(conn, album_id: int, chemins) -> None:
+    """Après le commit d'une destruction : efface les images d'une copie PAR RÉFÉRENCE
+    (COL-3, tranche 3, D6). Les images appartiennent au document, et une copie sœur pointe
+    vers les fichiers de celle dont elle a été tirée — un fichier ne quitte donc le disque
+    que lorsque plus aucune planche ne le désigne. C'est le risque irréversible de la
+    tranche : une image effacée sous une sœur ne se rattrape pas.
+
+    Deux moitiés. Les dossiers `album_<id>` de la copie : ce qu'une autre planche y emploie
+    reste, le reste part — et en entier, comme avant, quand rien n'y est employé. Puis les
+    fichiers que la copie employait AILLEURS — dans le dossier d'une copie détruite avant
+    elle : partis s'ils ne sont plus désignés, et leur dossier élagué s'il est vide. Un
+    identifiant d'album ne revenant plus depuis la v30, un dossier qui survit ainsi à sa
+    copie n'est jamais repris par un album neuf."""
+    try:
+        dossiers = dossiers_d_album(album_id)
+    except ValueError:              # images hors de la racine de données : rien à recouper
+        remove_album_files(album_id)
+        return
+    longueurs = [x for d in dossiers for x in (len(d), d)]
+    garder = {c for r in conn.execute(
+        "SELECT chemin_tiff, chemin_web FROM planches "
+        "WHERE substr(chemin_tiff, 1, ?) = ? OR substr(chemin_tiff, 1, ?) = ? "
+        "OR substr(chemin_web, 1, ?) = ? OR substr(chemin_web, 1, ?) = ?",
+        longueurs * 2) for c in r if c}
+    remove_album_files(album_id, garder=garder)
+    ailleurs = [c for paire in chemins for c in paire if c and not c.startswith(dossiers)]
+    employes = _chemins_employes(conn, ailleurs)
+    for c in ailleurs:
+        if c not in employes:
+            remove_planche_files(c, None)
+            elaguer_dossier_d_album(c)
 
 
 def _clore_demandes(conn, portee: autorisation.Portee, ids, reponse: str) -> None:

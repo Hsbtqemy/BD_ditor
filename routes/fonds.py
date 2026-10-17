@@ -74,14 +74,19 @@ def _motif(texte) -> str:
     return motif
 
 
-def _en_attente(conn, *, document_id=None, projet_id=None):
-    """La demande EN ATTENTE sur ce document, ou sur ce projet ; None s'il n'y en a pas."""
-    if document_id is not None:
+def _en_attente(conn, *, album_id=None, projet_id=None):
+    """La demande EN ATTENTE sur cette copie, ou sur ce projet ; None s'il n'y en a pas.
+
+    Par COPIE et non par document (COL-3, tranche 3, D5) : « supprimer définitivement »
+    détruit une copie, et la même demande sur la copie SŒUR, dans un autre projet, est une
+    autre demande — la chercher par document y aurait répondu « déjà demandée » pour un geste
+    fait ailleurs, en nommant au passage qui l'avait fait."""
+    if album_id is not None:
         return conn.execute(
             "SELECT d.* FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
-            "WHERE d.genre = ? AND dd.document_id = ? AND d.reponse IS NULL "
+            "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL "
             "ORDER BY d.id LIMIT 1",
-            (DEMANDE_SUPPRESSION_DOCUMENT, document_id)).fetchone()
+            (DEMANDE_SUPPRESSION_DOCUMENT, album_id)).fetchone()
     return conn.execute(
         "SELECT * FROM demande WHERE genre = ? AND projet_id = ? AND reponse IS NULL "
         "ORDER BY id LIMIT 1", (DEMANDE_SUPPRESSION_PROJET, projet_id)).fetchone()
@@ -158,7 +163,7 @@ def _demander_un_document(conn, portee, album_id, motif):
         raise HTTPException(409, "Cet album n'est la copie d'aucun document : sa "
                                  "suppression ne peut pas se demander. Signalez-le à un "
                                  "administrateur.")
-    attente = _en_attente(conn, document_id=a["document_id"])
+    attente = _en_attente(conn, album_id=album_id)
     if attente is not None:
         raise _deja_demandee(conn, portee, attente)
     projet_id = projet_d_album(conn, album_id)
@@ -224,9 +229,12 @@ def _vues_demandes(conn, ids=None, *, detail: bool = False) -> list[dict]:
         return []
     marques = ", ".join("?" * len(demandes))
     docs: dict[int, list] = {}
+    # `copie` : la copie d'où le geste est parti, si elle vit encore — `album_id`, et non
+    # « le plus petit album du document », qui désigne une copie au hasard dès que le
+    # document a une sœur (COL-3, tranche 3). Le document recoupé, par ceinture.
     for dd in _rows(conn.execute(
-            "SELECT dd.*, (SELECT a.id FROM albums a WHERE a.document_id = dd.document_id "
-            "              ORDER BY a.id LIMIT 1) AS copie "
+            "SELECT dd.*, (SELECT a.id FROM albums a WHERE a.id = dd.album_id "
+            "              AND a.document_id = dd.document_id) AS copie "
             f"FROM demande_document dd WHERE dd.demande_id IN ({marques}) "
             "ORDER BY dd.document_id", [d["id"] for d in demandes])):
         docs.setdefault(dd.pop("demande_id"), []).append(dd)
@@ -263,8 +271,8 @@ def _vues_demandes(conn, ids=None, *, detail: bool = False) -> list[dict]:
             # (relecture croisée). La règle de suppression, elle, n'en change pas.
             d["demandeur_collectif"] = d["demandeur"] in collectifs
             for x in d["documents"]:
-                x.update(_travail_des_autres(conn, x["document_id"], d["demandeur"],
-                                             collectifs))
+                x.update(_travail_des_autres(conn, x["document_id"], x["copie"],
+                                             d["demandeur"], collectifs))
     return demandes
 
 
@@ -274,11 +282,14 @@ def _comptes_partages(conn) -> set:
                                        (NATURE_COLLECTIF,))}
 
 
-def _travail_des_autres(conn, document_id: int, demandeur, collectifs: set) -> dict:
-    """Ce que les AUTRES que `demandeur` ont fait sur ce document, lu au journal au moment
-    de la lecture, par la source même de la règle de suppression
+def _travail_des_autres(conn, document_id: int, copie, demandeur, collectifs: set) -> dict:
+    """Ce que les AUTRES que `demandeur` ont fait sur la COPIE demandée, lu au journal au
+    moment de la lecture, par la source même de la règle de suppression
     (`autorisation.sql_actes_sur_album`) — Hugo, 2026-10-15 : l'administrateur doit voir,
-    sous la demande, qui d'autre perdrait son travail.
+    sous la demande, qui d'autre perdrait son travail. Sur cette copie seule (COL-3, tranche
+    3, D5) : c'est elle seule qu'accepter détruit, et le travail d'une copie sœur, dans un
+    autre projet, n'est pas en jeu. Une copie qui n'existe plus n'a plus de travail à
+    perdre (`copie` None).
 
     Rend `importe_par` (et son nom lisible) — NULL pour un document d'avant le fonds, dont
     l'importateur n'est écrit nulle part — et `travail_des_autres` : une entrée par
@@ -295,8 +306,7 @@ def _travail_des_autres(conn, document_id: int, demandeur, collectifs: set) -> d
     doc = conn.execute("SELECT importe_par FROM document WHERE id = ?",
                        (document_id,)).fetchone()
     par_agent: dict = {}
-    for (album_id,) in conn.execute("SELECT id FROM albums WHERE document_id = ? ORDER BY id",
-                                    (document_id,)).fetchall():
+    for album_id in ([] if copie is None else [copie]):
         for agent, sorte, n, dernier in conn.execute(
                 "SELECT agent, sorte, COUNT(*), MAX(quand) FROM ("
                 f"{autorisation.sql_actes_sur_album(str(int(album_id)))}"
@@ -376,11 +386,14 @@ def repondre_demande(demande_id: int, payload: ReponseIn,
         conn.commit()
         return _vue_demande(conn, demande_id)
 
-    # Un document : chacune de ses copies est détruite, et la destruction clôt d'elle-même
-    # toute demande qui la visait — celle-ci comprise. Un document déjà parti n'a plus
-    # rien à détruire : la demande se clôt seule.
+    # Un document : la COPIE demandée est détruite, et elle seule (COL-3, tranche 3, D5) —
+    # la demande d'un membre d'un projet ne détruit pas, acceptée, la copie d'un autre
+    # projet et son travail. Le document part avec sa dernière copie. La destruction clôt
+    # d'elle-même toute demande qui visait cette copie — celle-ci comprise ; une copie déjà
+    # partie n'a plus rien à détruire : la demande se clôt seule.
     copies = [r[0] for r in conn.execute(
-        "SELECT a.id FROM albums a JOIN demande_document dd ON dd.document_id = a.document_id "
+        "SELECT a.id FROM albums a JOIN demande_document dd "
+        "ON dd.album_id = a.id AND dd.document_id = a.document_id "
         "WHERE dd.demande_id = ? ORDER BY a.id", (demande_id,))]
     if not copies:
         _clore_demandes(conn, portee, [demande_id], REPONSE_ACCEPTEE)
@@ -405,11 +418,13 @@ def lire_le_fonds(conn: sqlite3.Connection = Depends(db),
     un document »), par une lecture à part. Un nombre FIXE de requêtes — une dizaine,
     demandes comprises —, aucune par document : rien n'en a été mesuré sur un gros fonds."""
     _exiger_le_fonds(portee)
+    # L'origine se dit par le NOM écrit à l'import (v31, D8), plus par une jointure sur
+    # `projet` : un projet d'origine peut être supprimé sous un document vivant, et son
+    # identifiant se réattribuait jusqu'à la v31 — la jointure aurait nommé le suivant.
     documents = _rows(conn.execute(
         "SELECT d.id, d.importe_par, d.importe_le, d.projet_origine_id, "
-        "       p.nom AS projet_origine_nom "
-        "FROM document d LEFT JOIN projet p ON p.id = d.projet_origine_id "
-        "ORDER BY d.id"))
+        "       d.projet_origine_nom "
+        "FROM document d ORDER BY d.id"))
     copies: dict[int, list] = {}
     for a in _rows(conn.execute(
             f"SELECT a.id AS album_id, a.document_id, a.titre, a.serie, a.auteur, "
