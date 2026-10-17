@@ -492,10 +492,18 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   *Rejoindre* une copie qu'on LIT — la ranger ici — est immédiat pour qui ADMINISTRE
   chacune des collections où elle vit (`Portee.clause_rejoindre_directe` ; une collection
   sans propriétaire n'est tenue que par la portée totale ; la base, par ses propriétaires
-  dérivés) ; sinon il se DEMANDE (genre `rejoindre`) au propriétaire, qui le lit dans la
-  fiche de SA collection (`GET /api/collections/{id}/demandes`, avec qui demande et pour
-  quelle collection d'arrivée, accepté par écrit) et y répond (`Portee.peut_repondre_a` :
-  la première demande à laquelle répond qui ne tient pas le fonds). **« + Ranger ici »
+  dérivés) ; sinon il se DEMANDE (genre `rejoindre`) au propriétaire — à un administrateur
+  seul quand aucun propriétaire ne tient toutes les collections de la copie, ce que la
+  réponse dit (`repondra`, `database.un_proprietaire_tient_toute_la_copie` ; pas de
+  consentements multiples dans la 3a, Hugo, 2026-10-17). La ROUTE qui les lui donne existe
+  (`GET /api/collections/{id}/demandes`, avec qui demande et pour quelle collection
+  d'arrivée, accepté par écrit), et il y répond (`Portee.peut_repondre_a` : la première
+  demande à laquelle répond qui ne tient pas le fonds) ; l'ÉCRAN de la fiche de sa
+  collection qui les montrera est à venir (commit d'écran de la tranche). D'ici là, une
+  entrée et un rejoindre ne paraissent dans AUCUN écran de l'Administration : « À faire »,
+  la fiche d'un document, le compte du fonds et « À regarder » ne lisent que les
+  suppressions (`BDSuppression.estUneSuppression`, et `comptes._demandes_en_attente`) —
+  présentés en suppression, « Détruire » les acceptait (relecture croisée). **« + Ranger ici »
   est ce geste** : `PUT /api/albums/{id}/collections/{cid}` demande désormais de LIRE la
   copie (et non d'y écrire) et répond 202 avec la demande quand il ne range pas — l'écran
   d'aujourd'hui ne le dit que par une ligne de message dans la fiche, en attendant l'écran
@@ -508,11 +516,21 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   un projet qu'on gère, `dans_le_projet` et `garde_au_fonds`, jamais dans quelle
   collection) ; tout autre écrivain ne nomme qu'un document dont il lit une copie dans le
   projet, et un autre lui est INTROUVABLE (404, le même qu'un identifiant qui n'existe pas,
-  et la prise entière s'arrête). Le responsable lit ses entrées dans la fiche de son projet
-  (`GET /api/projets/{id}/demandes`). `copie.creee_par` est le login de qui FAIT le geste —
-  l'administrateur qui accepte une entrée, pas le responsable qui l'a demandée : la forme
-  la plus fermée, à confirmer par Hugo. Supprimer une collection refuse les demandes qui la
-  nomment comme arrivée (son identifiant se réattribue). Deux genres naissent d'un geste et
+  et la prise entière s'arrête). La source nommée d'une copie vierge est une copie du
+  projet d'ARRIVÉE, sauf portée totale : sinon refus nommé, qui renvoie à la demande du
+  responsable. Reprendre se refuse de la même phrase, qu'une copie soit gardée ou non, à
+  qui n'est ni responsable ni administrateur. La ROUTE des entrées d'un projet existe pour
+  son responsable (`GET /api/projets/{id}/demandes`, le demandeur nommé à lui-même et à la
+  portée totale seulement) ; l'écran de la fiche du projet est à venir. `copie.creee_par`
+  d'une copie née d'une ENTRÉE acceptée est le DEMANDEUR, pas l'administrateur qui
+  accepte, et la naissance de cette copie, journalisée par l'administrateur, n'est pas un
+  travail d'autrui (`autorisation._SQL_NAISSANCE_D_UNE_COPIE`, borné à cet acte) : le
+  demandeur la supprime seul (Hugo, 2026-10-17). Une prise directe reste créée par qui la
+  fait. Supprimer une collection refuse les demandes qui la nomment comme arrivée (son
+  identifiant se réattribue) ; détruire une copie clôt les `rejoindre` et les lignes de
+  reprise qui la visaient — la ligne seule, l'état de l'entrée recalculé. Un ménage
+  d'images qui n'obtient pas le verrou laisse les fichiers et le dit au journal du serveur :
+  la destruction validée répond son succès. Deux genres naissent d'un geste et
   ne se déposent pas par `POST /api/demandes` (422 nommé).
 - **Aucun album hors collection** (`database.collection_par_defaut`) : un orphelin ne
   correspondrait à aucune règle, et il faudrait inventer une politique dans le code. La

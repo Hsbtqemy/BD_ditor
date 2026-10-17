@@ -306,9 +306,17 @@ collection n'appelle ; et **importer au fonds** — un album qui naît sans coll
 projet, « appelé par personne », pour être distribué ensuite : il prend le projet de la
 première collection où on le range.
 
-**Prendre un document.** Un document du fonds peut entrer dans une collection, de deux
-façons, et dans plusieurs projets à la fois : chaque projet qui le prend en a sa COPIE de
-travail, une *sœur* des autres.
+**Prendre un document — ce que le serveur sait déjà, et que l'écran ne montre pas encore.**
+Les règles ci-dessous existent côté serveur ; l'écran qui les offre (« + Prendre du
+fonds… » dans la Bibliothèque, les demandes reçues dans la fiche d'une collection, les
+entrées dans la fiche d'un projet) est à venir. D'ici là, la seule trace à l'écran est le
+message de la fiche d'un album quand « + Ranger ici » se demande au lieu de ranger, et
+aucune page de l'Administration ne montre une entrée de documents ni une demande de
+rejoindre : « À faire » ne lit que les suppressions.
+
+Un document du fonds peut entrer dans une collection, de deux façons, et dans plusieurs
+projets à la fois : chaque projet qui le prend en a sa COPIE de travail, une *sœur* des
+autres.
 
 - **Partir de zéro** : une copie vierge — la notice et la paternité recopiées, puis libres
   de diverger ; les mêmes images, sans rien dupliquer ; aucun travail. Elle naît dans le
@@ -318,20 +326,33 @@ travail, une *sœur* des autres.
   importé, ni qui l'emploie —, coche plusieurs documents et les demande pour une collection
   de son projet, motif à l'appui ; sans nommer de collection, ils arrivent dans la
   collection de base. Un administrateur répond document par document, ou accepte tout ; la
-  demande dit ensuite *acceptée*, *refusée* ou *acceptée en partie*, et le responsable le
-  lit dans la fiche de son projet. Un administrateur prend directement.
+  demande dit ensuite *acceptée*, *refusée* ou *acceptée en partie*, ce que le serveur rend
+  à son responsable. La copie accordée est alors celle de qui l'a demandée : il la supprime
+  lui-même s'il en a besoin, comme une copie qu'il aurait prise. On ne part de zéro que
+  depuis une copie du même projet : qui en lit une ailleurs passe par la demande du
+  responsable. Un administrateur prend directement.
 - **Rejoindre** le travail d'une autre collection du projet — ranger ici une copie qu'on
   lit, c'est l'ancien « + Ranger ici ». C'est partager ce travail : la décision de qui le
   tient. Immédiat si vous possédez chacune des collections où la copie vit ; sinon une
-  demande à leur propriétaire, qui la lit dans la fiche de sa collection — avec votre nom et
-  celui de la collection d'arrivée — et l'accepte ou la refuse. Une collection sans
-  propriétaire ne se rejoint que par un administrateur. Rejoindre ne traverse jamais deux
-  projets.
+  demande à leur propriétaire, qui la reçoit avec votre nom et celui de la collection
+  d'arrivée, et l'accepte ou la refuse. Quand aucun propriétaire ne tient toutes ces
+  collections — l'une n'en a pas, ou elles en ont de différents —, c'est un administrateur
+  qui répond, et la réponse à votre geste le dit. Rejoindre ne traverse jamais deux projets.
+  Une demande qui visait une copie détruite depuis se clôt avec elle.
 
 Une copie gardée au fonds se **reprend** de la même façon : le responsable la demande, un
 administrateur la rend à une collection du projet. Une copie qui a une sœur se supprime
 seule : ses images restent tant qu'une sœur les emploie, et le document part avec sa
 dernière copie.
+
+**Accepté : l'adresse d'une image dit d'où vient la copie.** Une copie sœur ne duplique pas
+les images : ses planches désignent les fichiers de la copie dont elle a été tirée, rangés
+dans le dossier de celle-ci. L'adresse d'une image (`chemin_web`, `chemin_tiff` dans
+`GET /api/albums/{id}/planches`, de la forme `corpus/album_<source>/…`) porte donc
+l'identifiant de dossier de la copie SOURCE : qui lit la sœur apprend que le document a ou a
+eu une copie ailleurs, et son identifiant — jamais son projet, sa collection, ni ce qu'on y
+a fait. C'est le prix des fichiers partagés (décision D6), accepté jusqu'à `IMG-2`, qui
+nommera les fichiers par image et non plus par album.
 
 **Ce que le fonds ne fait pas encore.** Partir du travail d'une autre copie — son découpage,
 sa transcription, ses annotations — viendra plus tard. Et l'administrateur, comme l'usage
