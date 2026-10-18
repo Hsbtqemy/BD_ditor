@@ -603,8 +603,9 @@ règle d'accès (cf. §2).
   - **Quatre refus, qui se disent.** Le *dernier responsable* d'un projet ne se retire pas
     et ne se rétrograde pas : désignez-en un autre d'abord. Le *projet de repli* se
     renomme, il ne se supprime pas — le bouton n'y est pas offert. *Un projet ne se
-    supprime que vide* : tant qu'une collection lui appartient, c'est refusé, en disant
-    combien. Et tant que des albums de ce projet sont **gardés au fonds**, aussi : il faut
+    supprime que vide* : tant qu'une autre collection que sa base lui appartient, c'est
+    refusé, en disant combien, et sa base doit être sans album ni vocabulaire propre — vide,
+    elle part avec lui, et la confirmation le dit. Et tant que des albums de ce projet sont **gardés au fonds**, aussi : il faut
     d'abord les détruire depuis le fonds.
 
   Cf. [`modele-et-droits.md`](modele-et-droits.md) §2 et §3.
