@@ -5,11 +5,13 @@ statut: interrompu
 
 # COL-3 — le fonds et les projets : un album appartient à l'instance, un travail à ceux qui le font
 
-**Arrêté sur** — 2026-10-18, `bcb6c87` : **la tranche 3a est écrite et sur `dev`** — la v31, la
-collection de base, prendre au fonds, rejoindre consenti, les demandes d'entrée, de rejoindre et de
-retour, l'écran de l'Administration et les gestes de la Bibliothèque en calque (`UX-18`). Trois
-relectures croisées, toutes corrigées ; suite entière verte (2093). Avant `main` : les passes de QA
-(rédigées pour Hugo), la passe navigateur entière et la passe dans l'image. Puis la 3b.
+**Arrêté sur** — 2026-10-18, `69a1557` : **la tranche 3a est écrite, sur `dev`, et ses passes
+longues sont faites.** Dans l'image : la suite verte (2003) ; la passe navigateur entière, 586
+verts et 2 rouges — la fiche d'un projet débordait à 320 px sous DejaVu Sans —, corrigés par
+`69a1557` et rejoués dans l'image (172 e2e de largeur verts). `origin/dev` est à `191a61b` ; la
+recette le sert. À la reprise : reconstruire la recette sur le dernier commit, puis Hugo joue
+`bibliotheque-en-calque`, `prendre-un-document` et `administration-a-l-echelle` (dans cet ordre),
+puis la fusion vers `main`.
 
 **Plus tôt le 2026-10-16** — `bd5dff1` : **la tranche 2 est en production depuis le
 2026-10-16** (`main` avancé de `b387080` à `5e7f56b`, déployé par Hugo) : schéma 30, cinq
