@@ -384,19 +384,23 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
     tout son travail* — un administrateur peut la rendre (§4, *Administration*). Le texte
     dit aussi ce que **vous** y perdez : si c'était la seule collection par laquelle vous y
     écriviez, vous continuerez de le lire mais n'y écrirez plus, ou vous ne le verrez plus
-    du tout — et vous ne pourrez pas l'y ranger de nouveau vous-même. Le geste ne s'annule
-    pas : le ranger de nouveau, c'est le rejoindre, et un administrateur rend une copie
-    gardée au fonds. Décocher une collection, sous *Sur les collections* dans la fiche de
-    l'album, fait le même geste et le fait confirmer quand il coûte ; la case ne s'offre que
-    sur les collections où vous écrivez.
+    du tout — et vous ne pourrez pas l'y ranger de nouveau vous-même. **Même si vous gardez
+    la vue et l'écriture**, le ranger de nouveau, c'est le **rejoindre** : vous ne le
+    referez seul que si vous possédez chacune des collections où il reste ; sinon le texte
+    le dit — *Vous ne pourrez l'y ranger de nouveau que sur demande, à son propriétaire ou à
+    un administrateur.* — et le geste se fait confirmer. Le geste ne s'annule pas autrement,
+    et un administrateur rend une copie gardée au fonds. Décocher une collection, sous *Sur
+    les collections* dans la fiche de l'album, fait le même geste, avec les mêmes mots, et
+    le fait confirmer quand il coûte ; la case ne s'offre que sur les collections où vous
+    écrivez.
   - **Supprimer définitivement** efface les images et tout le travail fait dessus, pour
-    tout le monde, dans tous les projets. Il efface **tout de suite** si vous avez importé
-    l'album vous-même et que personne d'autre n'y a travaillé — c'est l'import par erreur,
-    qui n'a à attendre personne ; le panneau le dit (*… vous l'avez importé, et personne
-    d'autre n'y a travaillé. Irréversible.*) et le bouton s'appelle *Supprimer
-    définitivement*. **Sinon, il se demande à un administrateur** : le panneau dit *D'autres
-    s'en servent, ou ce n'est pas vous qui l'avez importé : la demande part à un
-    administrateur, qui décide. Rien n'est effacé d'ici là.* Remplissez *Pourquoi ce
+    tout le monde, dans tous les projets. Il efface **tout de suite** si vous avez créé
+    cette copie vous-même — importée, ou prise du fonds — et que personne d'autre n'y a
+    travaillé : c'est l'erreur, qui n'a à attendre personne ; le panneau le dit (*… vous
+    l'avez créée, et personne d'autre n'y a travaillé. Irréversible.*) et le bouton
+    s'appelle *Supprimer définitivement*. **Sinon, il se demande à un administrateur** : le
+    panneau dit *D'autres s'en servent, ou ce n'est pas vous qui avez créé cette copie : la
+    demande part à un administrateur, qui décide. Rien n'est effacé d'ici là.* Remplissez *Pourquoi ce
     document n'a pas sa place ici*, lisez ce que la suppression détruirait, cochez *Je
     certifie que ces données ne sont pas importantes.*, puis *Envoyer la demande*. Sans
     motif ou sans la case, rien ne part, et le panneau le dit. Ce qui compte comme « avoir
@@ -421,14 +425,18 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
     réponse sur sa ligne — *fait* quand le projet a déjà une copie que vous lisez (une copie
     vierge entre tout de suite), *demandé à un administrateur* sinon, ou *refusé* et pourquoi.
     *Déjà dans ce projet* signale un document qu'une collection du projet a déjà, sans dire
-    laquelle ; il reste cochable, pour une seconde copie. Un administrateur *Prend* : tout
+    laquelle ; il reste cochable, pour une seconde copie. *Une copie de ce projet est gardée
+    au fonds — la demander à rendre ↗* signale qu'une copie du projet, avec son travail, a
+    quitté sa dernière collection, et mène à la fiche du projet, dans l'Administration, où
+    l'on demande à la rendre. Le motif est obligatoire. Un administrateur *Prend* : tout
     entre tout de suite, sans motif.
   - **+ Prendre dans le projet…** est offert à qui **écrit** dans la collection : les albums du
     projet que vous lisez et qui n'y sont pas encore. Sur chaque ligne, *Rejoindre* — le même
     travail, partagé avec ses collections : immédiat si vous les possédez toutes, sinon
     *demandé à son propriétaire* (ou *à un administrateur*) — ou *Copie vierge* — une seconde
     copie, images seules, sans le travail de l'autre, à votre nom, tout de suite. L'infobulle
-    de chaque bouton le redit, et la réponse s'écrit à la place des boutons.
+    de chaque bouton le redit, et la réponse s'écrit à la place des boutons. Un album dont
+    le rejoindre vers cette collection attend déjà dit *rejoindre demandé* au lieu du bouton.
 - **Les demandes de rejoindre que vous recevez**, comme propriétaire d'une collection : une
   marque **⚑ n** sur la collection, dans le bloc *Collections* ; dans la bande d'outils, *n
   demandes à répondre*, qui mène à la première ; et en tête de l'onglet *Albums*, dont
@@ -774,8 +782,9 @@ un administrateur peut le rendre à une collection du même projet. Écrivez-lui
 donnant le titre.
 
 **« Supprimer définitivement » envoie une demande au lieu d'effacer.**
-L'album n'est effacé tout de suite que si vous l'avez importé vous-même, que personne d'autre
-n'y a travaillé, et que vous écrivez dans toutes ses collections. Un album créé avant
+L'album n'est effacé tout de suite que si vous avez créé cette copie vous-même — importée, ou
+prise du fonds —, que personne d'autre n'y a travaillé, et que vous écrivez dans toutes ses
+collections. Un album créé avant
 l'arrivée du fonds n'a pas d'importateur écrit : sa suppression se demande toujours. Sous un
 compte partagé aussi. Cf. [`modele-et-droits.md`](modele-et-droits.md) §2, *Le fonds*.
 

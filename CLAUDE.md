@@ -496,11 +496,15 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   dérivés) ; sinon il se DEMANDE (genre `rejoindre`) au propriétaire — à un administrateur
   seul quand aucun propriétaire ne tient toutes les collections de la copie, ce que la
   réponse dit (`repondra`, `database.un_proprietaire_tient_toute_la_copie` ; pas de
-  consentements multiples dans la 3a, Hugo, 2026-10-17). La ROUTE qui les lui donne existe
+  consentements multiples dans la 3a, Hugo, 2026-10-17). Il les lit
   (`GET /api/collections/{id}/demandes`, avec qui demande et pour quelle collection
-  d'arrivée, accepté par écrit), et il y répond (`Portee.peut_repondre_a` : la première
-  demande à laquelle répond qui ne tient pas le fonds) ; l'ÉCRAN de la fiche de sa
-  collection qui les montrera vient avec la Bibliothèque. **L'Administration les rend
+  d'arrivée, accepté par écrit) et y répond (`Portee.peut_repondre_a` : la première
+  demande à laquelle répond qui ne tient pas le fonds) dans l'onglet *Albums* de SA
+  collection, dans la Bibliothèque — le bloc ⚑, « Accepter / Refuser », pour les seules
+  demandes `repondable` (cf. le tableau des surfaces). Ranger la copie dans la collection
+  d'arrivée par un autre chemin — une portée totale qui coche la case — y répond : la
+  demande se clôt acceptée (`database.clore_rejoindre_d_un_rangement`, appelé par
+  `ranger_copie`). **L'Administration les rend
   TOUS** (écran de la 3a, tranché par Hugo sur maquette le 2026-10-17) : « À faire » montre
   les cinq genres — les deux suppressions, l'entrée, le rejoindre, le retour —, chacun avec
   SES mots et SES boutons (`BDSuppression.genreDemande`) et une couleur de tranche par
@@ -747,8 +751,9 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   du jour, sans aucun responsable désigné. Ce qui vient ensuite (le fonds, les demandes,
   prendre un document, la Recherche et l'Exploration bornées au projet) n'existait pas le
   2026-10-10 ; le fonds et les demandes sont arrivés le 2026-10-16 (tranche 2, points
-  ci-dessus) — prendre un document, et la Recherche comme l'Exploration bornées au projet,
-  n'existent pas : cf. `pilotage/COL-3.md`. D'ici la tranche 4, l'administrateur et le
+  ci-dessus) — prendre un document et rejoindre un travail sont arrivés avec la tranche 3a ;
+  la Recherche comme l'Exploration bornées au projet n'existent pas : cf.
+  `pilotage/COL-3.md`. D'ici la tranche 4, l'administrateur et le
   mono-poste lisent encore dans la Recherche et l'Exploration le texte d'une copie gardée
   au fonds : leur portée totale la lit.
 - **Une garde d'interface se pose sur l'ACTE, jamais sur l'écran qui le contient.** Le
@@ -757,12 +762,13 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   `clause_destruction` / `clause_terme` / `peut_ecrire_terme` / `peut_ecrire_quelque_part`
   / `peut_exporter_quelque_part`), quatorze jusqu'au 2026-10-16 avec les quatre du projet
   (`est_du_projet` / `peut_gerer_projet` / `peut_decider_des_projets` / `clause_projet`,
-  COL-3), les trois du fonds (`clause_suppression_directe` / `peut_tenir_le_fonds` /
-  `peut_nommer_le_demandeur`, COL-3, tranche 2 — la dernière nomme aussi qui demande à qui
-  doit CONSENTIR à un `rejoindre`), dix-sept jusqu'au 2026-10-17, et les trois de la prise
-  (`peut_lire_les_notices` / `clause_rejoindre_directe` / `peut_repondre_a`, COL-3,
-  tranche 3a) ; le client en reçoit huit par une clé — six jusqu'au 2026-10-16, sept
-  jusqu'au 2026-10-17 —, et trois par la FORME d'une réponse (ci-dessous). Une projet
+  COL-3), dix-sept jusqu'au 2026-10-17 avec les trois du fonds
+  (`clause_suppression_directe` / `peut_tenir_le_fonds` / `peut_nommer_le_demandeur`,
+  COL-3, tranche 2), et les trois de la prise (`peut_lire_les_notices` /
+  `clause_rejoindre_directe` / `peut_repondre_a`, COL-3, tranche 3a) ; la 3a donne aussi à
+  `peut_nommer_le_demandeur` un second usage, nommer qui demande à qui doit CONSENTIR à un
+  `rejoindre` (`consentement`). Le client en reçoit huit par une clé — six jusqu'au
+  2026-10-16, sept jusqu'au 2026-10-17 —, et trois par la FORME d'une réponse (ci-dessous). Une projet
   par projet, dans `GET /api/projets` : `gerable`
   (`mon_role` l'accompagne comme `mon_niveau` accompagne une collection : il dit sous quel
   rôle on y figure, et vaut `null` pour une portée totale, qui règle tout sans figurer
@@ -785,7 +791,12 @@ et n'y gagne que des lignes d'appel ; le découpage du fichier (ARCH-1) reste en
   soit le nombre d'albums. Une collection qu'on ne lit pas n'y laisse ni nom, ni
   identifiant, ni place dans le nombre : la liste est PARTIELLE, comme celle d'un album, et
   ce qu'on peut faire dans chacune se croise avec `GET /api/collections`
-  (`tests/test_appartenance_albums.py`, joué sous six identités et sur le JSON brut). Les
+  (`tests/test_appartenance_albums.py`, joué sous six identités et sur le JSON brut).
+  Depuis la tranche 3a, deux DONNÉES de plus par album, qui ne sont pas des questions :
+  `soeur` (le document a une autre copie vivante — un booléen, sans dire où ni laquelle,
+  vrai seulement pour qui écrit dans la copie, la borne de `partage`) et
+  `rejoindre_demande` (les collections d'arrivée d'un rejoindre qui attend, parmi celles où
+  l'appelant écrit). Les
   trois réponses qui passent par la forme : « tenir le fonds » se lit au statut de
   `GET /api/fonds` (200 ou 403), comme la version servie ; « nommer le demandeur », à la
   PRÉSENCE de `demandeur` et `demandeur_nom` dans la demande d'un album — absentes, elles
