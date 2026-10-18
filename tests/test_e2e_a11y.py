@@ -1258,7 +1258,9 @@ def test_a11y_comptes_et_groupes(page, seeded, theme):
     # Le panneau est RENDU, avec ses marques : le tableau, puis l'annuaire qui les pose.
     panneau = page.locator("#cg-fiche section[data-qui-entre]")
     panneau.locator(".qe-marque").wait_for(timeout=5000)
-    assert panneau.locator(".qe-table tbody tr").count() == 3
+    # Les lignes d'ACCÈS, et non les titres de groupe : la collection 1 est la base du projet
+    # de repli (v31), dont « Qui entre » se lit en deux groupes (COL-3, écran de la 3a).
+    assert panneau.locator(".qe-table tbody tr[data-principal]").count() == 3
     assert panneau.locator(".acces-jamais-vu").count() == 1
     assert panneau.locator(".col-note-admin").count() == 1
     viol = _audit(page)

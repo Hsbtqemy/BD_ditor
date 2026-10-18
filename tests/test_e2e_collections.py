@@ -828,7 +828,9 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
     page.click("#album-range-add")
     expect(page.locator("#album-range-msg")).to_contain_text("La demande est partie",
                                                              timeout=5000)
-    assert page.locator("#album-range-liste li").count() == 1
+    # La fiche se relit après le geste : on attend la liste redessinée, pas un instant de
+    # l'entre-deux où elle est encore vide.
+    expect(page.locator("#album-range-liste li")).to_have_count(1)
     assert demandes == []
     with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
         r = c.put(f"/api/albums/{albums['Triple']}/collections/{ids['Archives']}")

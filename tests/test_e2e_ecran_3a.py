@@ -377,14 +377,15 @@ def test_qui_entre_dans_la_base_en_deux_groupes_dans_l_administration(page, deco
 def test_qui_entre_dans_la_base_en_deux_groupes_dans_la_bibliotheque(page, decor):
     d = decor
     _ouvrir(page, d["base"], _comme("rui"), f"/corpus?collection={d['base_id']}")
-    item = page.locator(f'#col-body .col-item[data-id="{d["base_id"]}"]')
+    # UX-18 — « Qui entre » vit dans la fiche de la collection, onglet que l'adresse ouvre.
+    item = page.locator(f'#col-fiche[data-id="{d["base_id"]}"]')
     item.locator(".qe-choix").wait_for(timeout=5000)
     expect(item.locator("tr.qe-groupe-ligne th")).to_have_text(
         ["Par le projet · 2", "Entrés ici · 0"])
     expect(item.locator("tr.qe-derive input")).to_have_count(0)
     # Une collection ordinaire : un seul groupe, sans titre — le rendu d'avant.
     _ouvrir(page, d["base"], _comme("ana"), f"/corpus?collection={d['lot_a']}")
-    item = page.locator(f'#col-body .col-item[data-id="{d["lot_a"]}"]')
+    item = page.locator(f'#col-fiche[data-id="{d["lot_a"]}"]')
     item.locator(".qe-choix").wait_for(timeout=5000)
     expect(item.locator("tr.qe-groupe-ligne")).to_have_count(0)
 
