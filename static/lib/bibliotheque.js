@@ -185,6 +185,15 @@
     return { lignes: lignes.map(({ ids: _, ...r }) => r), recoupement };
   }
 
+  /* Le bouton du recoupement, qui passe le corpus en mode « toutes » : accordé au nombre
+     (« les 1 en commun » se lisait). Aucun album en commun : pas de bouton, il mènerait à
+     une liste vide — la pastille « dans les deux : 0 » le dit déjà. */
+  function libelleCommuns(n) {
+    const k = Number(n) || 0;
+    if (k <= 0) return "";
+    return k === 1 ? "Ne montrer que le seul en commun" : `Ne montrer que les ${k} en commun`;
+  }
+
   function entier(v) {
     return typeof v === "string" && /^[1-9]\d*$/.test(v) ? Number(v) : null;
   }
@@ -333,7 +342,7 @@
   }
 
   return { ONGLETS, CLES_ONGLETS, ONGLET_PAR_LE_NOM, TRIS, MODES, plier, filtrerAlbums, trierCollections,
-           droitsAlbum, actesCollection, aussiDans, libelleAlbums, comparer, lireAdresse,
+           droitsAlbum, actesCollection, aussiDans, libelleAlbums, comparer, libelleCommuns, lireAdresse,
            ecrireAdresse, offrirPrendreDuFonds, destinationsPrise, destinationParDefaut,
            quiRepondra, reponsePrise, messageRejoindre, demandesARepondre, quiRecocherait };
 });

@@ -323,3 +323,10 @@ test("recocher après un retrait : soi seulement si l'on tient tout ce qui reste
   assert.equal(B.quiRecocherait({}, [], cols, false), "demande");
   assert.equal(B.quiRecocherait({ partage: true }, [{ id: 2 }], cols, true), "soi");
 });
+
+test("comparaison — le bouton du recoupement s'accorde, et se tait sans rien en commun", () => {
+  assert.equal(B.libelleCommuns(1), "Ne montrer que le seul en commun");
+  assert.equal(B.libelleCommuns(2), "Ne montrer que les 2 en commun");
+  assert.equal(B.libelleCommuns(12), "Ne montrer que les 12 en commun");
+  for (const rien of [0, undefined, null, -1]) assert.equal(B.libelleCommuns(rien), "");
+});

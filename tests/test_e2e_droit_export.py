@@ -212,6 +212,31 @@ def test_un_album_exportable_au_titre_de_deux_collections_fait_choisir(page, dec
     assert _cache(page, "#export-modal")
 
 
+def test_le_retour_de_sharedocs_rouvre_la_collection_sur_diffusion_et_depot(page, decor):
+    """« Se connecter à ShareDocs… » emmène à l'Atelier, et « ← Retour » ramène à la
+    collection d'où l'on partait déposer, sur son onglet *Diffusion et dépôt* — il ramenait
+    sur la Bibliothèque nue, donc sur la fiche du PROJET (passe `export-depot`)."""
+    page.set_extra_http_headers(ADMIN)
+    base, cid = decor["base"], decor["collection"]
+    page.goto(base + "/corpus", wait_until="networkidle")
+    item = _fiche(page, cid, "diffusion")
+    lien = item.locator("a.dep-connexion")
+    expect(lien).to_have_text("Se connecter à ShareDocs…", timeout=5000)
+    lien.click()
+    page.wait_for_url("**/?sharedocs=1&retour=*")
+    retour = page.locator("#back-link")
+    expect(retour).to_have_attribute("href", f"/corpus?collection={cid}&onglet=diffusion")
+    expect(page.locator("#sharedocs")).to_be_visible()  # la modale de session, ouverte d'office
+    page.locator("#sd-close").click()
+    expect(page.locator("#sharedocs")).to_be_hidden()
+    retour.click()
+    page.wait_for_url(f"**/corpus?collection={cid}&onglet=diffusion")
+    fiche = page.locator(f'#col-fiche[data-id="{cid}"]')
+    expect(fiche.locator('[role="tab"][data-onglet="diffusion"]')).to_have_attribute(
+        "aria-selected", "true", timeout=5000)
+    expect(fiche.locator("#panneau-diffusion")).to_be_visible()
+
+
 def test_a11y_la_case_et_le_choix_d_export(page, decor):
     """Les deux contrôles neufs, audités : la case d'un accès, et la fenêtre de choix."""
     from test_e2e_a11y import _audit, _fmt       # se saute seul si axe-core manque

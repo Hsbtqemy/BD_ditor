@@ -73,9 +73,16 @@
 
      La connexion vit là-bas parce qu'elle est arrivée par l'import d'images ; le dépôt
      d'exports vit ici. Plutôt que d'indiquer un chemin à suivre — une réponse de
-     documentation à un problème d'interface —, on emmène et on ramène. */
-  function lienConnexionSharedocs() {
-    return "/?sharedocs=1&retour=" + encodeURIComponent(RETOUR_BIBLIOTHEQUE);
+     documentation à un problème d'interface —, on emmène et on ramène.
+
+     `adresse` : ce que la Bibliothèque doit rouvrir au retour, sous la forme que rend
+     `BDBiblio.ecrireAdresse` (« ?collection=5&onglet=diffusion ») — la collection d'où l'on
+     part et son onglet, et non la fiche du projet. Absente ou illisible, le retour est la
+     Bibliothèque nue. Le chemin reste `RETOUR_BIBLIOTHEQUE` : l'adresse n'y ajoute qu'une
+     requête, et ne peut donc pas faire sortir le retour de la page. */
+  function lienConnexionSharedocs(adresse) {
+    const requete = typeof adresse === "string" && /^\?[^#]+$/.test(adresse) ? adresse : "";
+    return "/?sharedocs=1&retour=" + encodeURIComponent(RETOUR_BIBLIOTHEQUE + requete);
   }
 
   /* Rend `{ url }` ou `{ refus }`. Jamais les deux, jamais ni l'un ni l'autre : un

@@ -139,6 +139,9 @@ def test_cocher_une_collection_filtre_les_albums_sur_les_siens(page, calques):
     expect(page.locator("#albums-body .album-row")).to_have_count(3)
     expect(page.locator(".bi-comparaison")).to_be_visible()
     expect(page.locator(".lf-puce", has_text="dans les deux")).to_have_text("dans les deux : 1")
+    # Accordé au nombre : « les 1 en commun » se lisait.
+    expect(page.locator('#biblio-fiche [data-mode-fiche="toutes"]')).to_have_text(
+        "Ne montrer que le seul en commun")
     page.locator('#calques-mode [data-mode="toutes"]').click()
     expect(page.locator("#albums-body .album-row")).to_have_count(1)
     assert _albums(page) == ["Île"]

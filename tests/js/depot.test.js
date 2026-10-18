@@ -133,3 +133,22 @@ test("le lien de connexion ShareDocs REVIENT bien ici", () => {
   assert.equal(Nav.safeRetour(p.get("retour")), RETOUR_BIBLIOTHEQUE,
                "`retour` est rejeté par nav.js : le ← Retour disparaîtrait en silence");
 });
+
+test("le retour de ShareDocs rouvre la collection d'où l'on part, sur son onglet", () => {
+  // Il ramenait sur la Bibliothèque nue, donc sur la fiche du PROJET : la collection et son
+  // onglet « Diffusion et dépôt », d'où l'on était parti déposer, étaient perdus.
+  const Nav = require("../../static/lib/nav.js");
+  const B = require("../../static/lib/bibliotheque.js");
+  const href = lienConnexionSharedocs(B.ecrireAdresse({ collection: 7, onglet: "diffusion" }, ""));
+  const retour = Nav.safeRetour(params(href).get("retour"));
+  assert.equal(retour, "/corpus?collection=7&onglet=diffusion");
+  // Et la Bibliothèque, au retour, rouvre bien ce que l'adresse dit.
+  const lu = B.lireAdresse(retour.slice("/corpus".length));
+  assert.equal(lu.collection, 7);
+  assert.equal(lu.onglet, "diffusion");
+  // Une adresse illisible ne fait pas sortir le retour de la Bibliothèque.
+  for (const mauvaise of ["//ailleurs", "corpus", "?a=1#x", 42, null]) {
+    assert.equal(params(lienConnexionSharedocs(mauvaise)).get("retour"), RETOUR_BIBLIOTHEQUE,
+                 String(mauvaise));
+  }
+});

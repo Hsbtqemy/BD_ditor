@@ -537,7 +537,7 @@ function rendreComparaison() {
         <span class="lf-puce">seulement ${esc(r.lignes[0].nom)} : ${rec.seulA}</span>
         <span class="lf-puce ok">dans les deux : ${rec.communs}</span>
         <span class="lf-puce">seulement ${esc(r.lignes[1].nom)} : ${rec.seulB}</span></p>
-      ${B.mode !== "toutes" ? `<p><button type="button" class="ghost small" data-mode-fiche="toutes">Ne montrer que les ${rec.communs} en commun</button></p>` : ""}
+      ${B.mode !== "toutes" && BDBiblio.libelleCommuns(rec.communs) ? `<p><button type="button" class="ghost small" data-mode-fiche="toutes">${esc(BDBiblio.libelleCommuns(rec.communs))}</button></p>` : ""}
     </section>` : ""}`;
 }
 
@@ -1084,7 +1084,8 @@ function colExport(c) {
                aria-label="Dossier ShareDocs de destination, chemin relatif à la racine WebDAV">
         <button class="ghost small" ${b} data-depot="1">Déposer</button>`
         : `<a class="ghost small dep-connexion"
-              href="${BDDepot.lienConnexionSharedocs()}">Se connecter à ShareDocs…</a>`}
+              href="${esc(BDDepot.lienConnexionSharedocs(
+                BDBiblio.ecrireAdresse({ collection: c.id, onglet: "diffusion" }, "")))}">Se connecter à ShareDocs…</a>`}
       </div>
       ${SD.connecte
         ? `<p class="muted small dep-aide">Compte employé :
