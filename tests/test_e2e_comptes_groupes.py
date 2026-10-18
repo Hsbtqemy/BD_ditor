@@ -542,17 +542,18 @@ def test_la_fiche_d_une_collection_regle_qui_entre_et_ne_lit_plus_ses_acces_dans
     lien = fiche.locator("a.cg-decrire")
     expect(lien).to_be_visible()
     expect(lien).to_have_text("Décrire dans la Bibliothèque ↗")
-    expect(lien).to_have_attribute("href", f"/corpus?collection={cid}")
+    expect(lien).to_have_attribute("href", f"/corpus?collection={cid}&onglet=description")
     expect(fiche).to_contain_text(
         "Ce que la collection est — sa description, sa diffusion, son référent, ses exports — "
         "se règle dans sa fiche, dans la Bibliothèque.")
     lien.click()
-    page.wait_for_url(f"**/corpus?collection={cid}")
-    # UX-18 — la fiche de la collection s'ouvre, sur « Qui entre » comme toute adresse qui
-    # ne nomme pas d'onglet ; ce que la collection EST se règle à un onglet de là.
+    page.wait_for_url(f"**/corpus?collection={cid}&onglet=description")
+    # COL-3, tranche 3a — le lien nomme l'onglet : la fiche s'ouvre sur « Description », et
+    # non plus sur « Qui entre », que l'adresse ouvre quand elle n'en nomme aucun.
     item = page.locator(f'#col-fiche[data-id="{cid}"]')
     expect(item).to_be_visible()
-    item.locator('[role="tab"][data-onglet="description"]').click()
+    expect(item.locator('[role="tab"][data-onglet="description"]')).to_have_attribute(
+        "aria-selected", "true")
     expect(item.locator('[data-modifier="description"]')).to_be_visible()
 
 

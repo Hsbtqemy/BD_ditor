@@ -146,9 +146,9 @@
   /* Ce que dit la suppression d'une copie dont le document a une SŒUR (COL-3, tranche 3a,
      D5-D6) : les images appartiennent au document, et elles restent tant qu'une copie les
      emploie. La phrase ne dit pas OÙ vit l'autre copie — qui ne lit qu'un projet n'a pas à
-     apprendre qu'un autre l'emploie (cadrage, « Les écrans touchés »). Préparée ici ; le
-     panneau « Supprimer… » de la Bibliothèque l'affichera quand le serveur dira, album par
-     album, qu'une sœur existe. */
+     apprendre qu'un autre l'emploie (cadrage, « Les écrans touchés »). Le panneau
+     « Supprimer… » de la Bibliothèque l'affiche quand le serveur dit qu'une sœur existe
+     (`soeur`, dans `GET /api/albums`, rendu à qui écrit dans la copie). */
   const IMAGES_RESTENT = "Ses images restent : une autre copie de ce document les emploie.";
 
   /* `soeur` : le document a une autre copie — les images restent, et la phrase le dit. */
@@ -176,7 +176,8 @@
     return {
       mode: "demande", bouton: "Envoyer la demande",
       texte: "D'autres s'en servent, ou ce n'est pas vous qui avez créé cette copie : la "
-        + "demande part à un administrateur, qui décide. Rien n'est effacé d'ici là.",
+        + `demande part à un administrateur, qui décide.${soeur ? ` ${IMAGES_RESTENT}` : ""} `
+        + "Rien n'est effacé d'ici là.",
     };
   }
 

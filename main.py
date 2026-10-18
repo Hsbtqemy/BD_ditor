@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, COMMIT_SERVI,
                     DATA_DIR, IMG_EXTS, REFERENT_CONTACT, REFERENT_NOM, RELECTURE,
                     ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_REGION)
-from database import (DEMANDE_SUPPRESSION_DOCUMENT, citations_regions,
+from database import (DEMANDE_REJOINDRE, DEMANDE_SUPPRESSION_DOCUMENT, citations_regions,
                       collection_par_defaut, contributions_album, creer_document,
                       dimensions_cm, document_d_album, init_db,
                       noms_lisibles, numeros_editoriaux, projet_de_collection,
@@ -439,6 +439,19 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
     #     (`Portee.peut_nommer_le_demandeur`, Hugo, 2026-10-15) : les autres lecteurs
     #     reçoivent la demande SANS ces deux clés. La proposition R2 du cadrage — le nom lu
     #     par tous — nommait aux lectrices d'une collection quelqu'un qui n'y entre pas.
+    #
+    # COL-3, tranche 3a — deux champs de plus, pour les gestes de la Bibliothèque :
+    #   · `soeur` — le DOCUMENT de cette copie a une autre copie vivante : la supprimer
+    #     laisse ses images (D5, D6), et « Supprimer… » le dit. Un booléen, et rien d'autre :
+    #     ni où vit la sœur, ni laquelle, ni dans quel projet — qui ne lit qu'un projet n'a
+    #     pas à apprendre qu'un autre emploie le document. Il suit la borne de `partage` : il
+    #     ne vaut vrai que pour qui ÉCRIT dans la copie, seul à avoir le geste dont il change
+    #     les mots ; une lectrice reçoit toujours faux ;
+    #   · `rejoindre_demande` — les collections d'ARRIVÉE où un « rejoindre » de cette copie
+    #     attend sa réponse, parmi celles où l'appelant ÉCRIT (toutes, pour une portée
+    #     totale) : la case « Sur les collections » se dessine « demandée » au lieu d'offrir
+    #     un geste que le serveur refuserait par un 409. Ni qui a demandé, ni pour quelle
+    #     collection hors de son écriture.
     detruire, p_detruire = portee.clause_suppression_directe("a.id")
     ecrire, p_ecrire = portee.clause_album("a.id", ecriture=True)
     if portee.tout:
@@ -456,6 +469,10 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
                   ({detruire}) AS destructible,
                   ({ecrire}) AS ecrivable,
                   ({ailleurs}) AS partage,
+                  (({ecrire}) AND a.document_id IS NOT NULL
+                   AND EXISTS (SELECT 1 FROM albums _sa
+                               WHERE _sa.document_id = a.document_id
+                                 AND _sa.id <> a.id)) AS soeur,
                   NOT EXISTS (SELECT 1 FROM collection_album _fa
                               WHERE _fa.album_id = a.id) AS au_fonds,
                   (SELECT COUNT(*) FROM planches p WHERE p.album_id = a.id)
@@ -470,7 +487,7 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
            FROM albums a
            WHERE {ou}
            ORDER BY a.serie IS NULL, a.serie, a.annee, a.titre""",
-        (*p_detruire, *p_ecrire, *p_ailleurs, *params)
+        (*p_detruire, *p_ecrire, *p_ailleurs, *p_ecrire, *params)
     ))
     # La demande se cherche par COPIE (`demande_document.album_id`), pas par document (COL-3,
     # tranche 3) : la copie sœur d'un autre projet afficherait sinon « suppression
@@ -488,6 +505,16 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
                 f"AND dd.album_id IN ({', '.join('?' * len(ids))}) ORDER BY d.id",
                 (DEMANDE_SUPPRESSION_DOCUMENT, *ids)):
             attente.setdefault(d["album_id"], dict(d))
+    rejoindre: dict[int, list] = {}
+    if ids:
+        for r in conn.execute(
+                "SELECT dd.album_id, d.collection_id FROM demande d "
+                "JOIN demande_document dd ON dd.demande_id = d.id "
+                "WHERE d.genre = ? AND d.reponse IS NULL "
+                f"AND dd.album_id IN ({', '.join('?' * len(ids))}) ORDER BY d.id",
+                (DEMANDE_REJOINDRE, *ids)):
+            if r["collection_id"] is not None and portee.peut_ecrire(r["collection_id"]):
+                rejoindre.setdefault(r["album_id"], []).append(r["collection_id"])
     noms = noms_lisibles(conn, [d["demandeur"] for d in attente.values()
                                 if portee.peut_nommer_le_demandeur(d["demandeur"])])
     # UX-18 — l'appartenance de CHAQUE album, en une lecture, pour que la Bibliothèque
@@ -503,8 +530,9 @@ def list_albums(conn: sqlite3.Connection = Depends(db),
         # la liste au projet courant, et il le compare au `projet_id` des collections, lu
         # de la même façon. NULL : une copie qui n'a jamais eu de projet (importée au fonds).
         a["projet_id"] = a.pop("projet_effectif")
-        for champ in ("destructible", "ecrivable", "partage", "au_fonds"):
+        for champ in ("destructible", "ecrivable", "partage", "au_fonds", "soeur"):
             a[champ] = bool(a[champ])
+        a["rejoindre_demande"] = sorted(set(rejoindre.get(a["id"], [])))
         a["collections"] = [{"id": c["id"], "nom": c["nom"]} for c in rangements[a["id"]]]
         d = attente.get(a["id"])
         if d is None:

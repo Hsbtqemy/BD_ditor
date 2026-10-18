@@ -958,7 +958,7 @@ def test_corpus_appartenance_album(page, seeded):
         c.close()
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.wait_for_timeout(400)
-    _ouvrir_album(page)                    # « Rangé dans », dans la fiche (UX-18)
+    _ouvrir_album(page)                    # « Sur les collections », dans la fiche
     page.wait_for_selector("#album-range[data-pret]", timeout=3000)
     # Une seule collection au départ : la quitter envoie la copie au fonds, et le dire.
     dialogues = []
@@ -967,28 +967,29 @@ def test_corpus_appartenance_album(page, seeded):
         dialogues.append(d.message)
         d.dismiss()
     page.once("dialog", refuser)
-    page.locator("#album-range-liste [data-sortir]").first.click()
+    page.locator("#album-range-cases input[data-ranger]:checked").first.click()
+    page.wait_for_function("() => document.querySelectorAll("
+                           "'#album-range-cases input[data-ranger]:checked').length === 1",
+                           timeout=3000)
     assert len(dialogues) == 1, dialogues
     assert "gardée au fonds" in dialogues[0], dialogues
     assert "pourrez la rendre depuis l'Administration" in dialogues[0], dialogues
-    assert page.locator("#album-range-liste li").count() == 1
 
     # Rangé ailleurs, l'album vit dans deux collections — et la sortie ne demande plus rien.
-    page.select_option("#album-range-cible", str(autre))
-    page.click("#album-range-add")
-    page.wait_for_function(
-        "() => document.querySelectorAll('#album-range-liste li').length === 2",
-        timeout=3000)
+    page.locator(f'#album-range-cases input[data-ranger="{autre}"]').click()
+    page.wait_for_function("() => document.querySelectorAll("
+                           "'#album-range-cases input[data-ranger]:checked').length === 2",
+                           timeout=3000)
     c = httpx.Client(base_url=seeded["base"], trust_env=False, timeout=30, headers=ECRITURE)
     try:
         vues = c.get(f"/api/albums/{seeded['album']}/collections").json()
     finally:
         c.close()
     assert autre in {x["id"] for x in vues} and len(vues) == 2
-    page.locator(f'#album-range-liste [data-sortir="{autre}"]').click()
-    page.wait_for_function(
-        "() => document.querySelectorAll('#album-range-liste li').length === 1",
-        timeout=3000)
+    page.locator(f'#album-range-cases input[data-ranger="{autre}"]').click()
+    page.wait_for_function("() => document.querySelectorAll("
+                           "'#album-range-cases input[data-ranger]:checked').length === 1",
+                           timeout=3000)
     assert len(dialogues) == 1
 
 

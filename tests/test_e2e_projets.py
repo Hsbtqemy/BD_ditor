@@ -547,15 +547,13 @@ NOTE_FILTRE = ("Seules les collections du projet « {} » sont proposées : pour
 NOTE_AUCUNE_ICI = ("Vous n'écrivez dans aucune collection du projet « {} » : l'album ne peut "
                    "pas y être créé. Créez-y d'abord une collection, ou choisissez un autre "
                    "projet en haut de la page.")
-NOTE_REPLI = ("Aucune collection : l'album entrera dans une collection par défaut, créée à "
-              "cette occasion")
 LIGNE_PROJET_DE_L_ALBUM = ("Cet album vit dans le projet « {} » : seules les collections de ce "
                            "projet sont proposées, un album ne se rangeant pas d'un projet à "
                            "l'autre.")
 LIGNE_PLUSIEURS_PROJETS = (
     "Cet album est rangé dans des collections de plusieurs projets ({}), ce qui ne devrait pas "
-    "arriver : il ne se range nulle part ailleurs tant que c'est le cas. Sortez-le d'abord, "
-    "par leur ✕, des collections qui ne sont pas de son projet.")
+    "arriver : il ne se range nulle part ailleurs tant que c'est le cas. Décochez d'abord "
+    "les collections qui ne sont pas de son projet.")
 
 
 ILLISIBLE = "Les collections de cet album n'ont pas pu être lues : {}"
@@ -582,8 +580,8 @@ def _nouvel_album(page):
 
 
 def _fiche_de_l_album(page, titre):
-    """La fiche de l'album (UX-18 : elle s'ouvre à droite, et « Rangé dans » y vit — il a
-    quitté la modale d'édition). Attend que « Rangé dans » ait tout lu : `data-pret`."""
+    """La fiche de l'album (UX-18 : elle s'ouvre à droite, et « Sur les collections » y vit
+    — l'appartenance a quitté la modale d'édition). Attend qu'elle ait tout lu : `data-pret`."""
     page.locator("#albums-body .album-row", has_text=titre).click()
     expect(page.locator("#album-titre")).to_contain_text(titre)
     page.locator("#album-range[data-pret]").wait_for(timeout=5000)
@@ -598,6 +596,20 @@ def _modale_de_l_album(page, titre):
 
 def _proposees(page, selecteur):
     return page.locator(f"{selecteur} option").all_inner_texts()
+
+
+# « Sur les collections » (COL-3, tranche 3a) — une case par collection : cochées, celles
+# où l'album est rangé ; OFFERTES, celles où l'on peut le ranger (non cochées, actives).
+OFFERTES = "#album-range-cases label:has(input[data-ranger]:not(:checked):enabled) .col-nom"
+COCHEES = "#album-range-cases input[data-ranger]:checked"
+
+
+def _offertes(page):
+    return page.locator(OFFERTES).all_inner_texts()
+
+
+def _case(page, cid):
+    return page.locator(f'#album-range-cases input[data-ranger="{cid}"]')
 
 
 def _changer_de_projet(page, projet_id, nom):
@@ -762,31 +774,30 @@ def test_ranger_ici_ne_propose_que_les_collections_du_projet_de_l_album(page, de
     _fiche_de_l_album(page, "Album du séminaire")
     # (La fiche d'un album n'est plus la modale : la note de la création ne peut pas l'y
     # suivre — UX-18.) La base du séminaire (D10), puis l'atelier.
-    assert _proposees(page, "#album-range-cible") == ["Séminaire 2026", "Atelier lettrage"]
+    assert _offertes(page) == ["Séminaire 2026", "Atelier lettrage"]
     ligne = page.locator("#album-range-projet")
     expect(ligne).to_be_visible()
     expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format("Séminaire 2026"))
-    page.locator("#album-range-cible").select_option(str(b2))
     with page.expect_response(lambda r: r.request.method == "PUT") as reponse:
-        page.locator("#album-range-add").click()
+        _case(page, b2).click()
     assert reponse.value.url.endswith(f"/api/albums/{seminaire}/collections/{b2}")
     assert reponse.value.status == 201
-    expect(page.locator("#album-range-liste li")).to_have_count(2)
-    expect(page.locator("#album-range-cible option")).to_have_text(["Séminaire 2026"])
+    expect(page.locator(COCHEES)).to_have_count(2)
+    expect(page.locator(OFFERTES)).to_have_text(["Séminaire 2026"])
     with page.expect_response(lambda r: r.request.method == "PUT") as reponse:
-        page.locator("#album-range-add").click()
+        page.locator("#album-range-cases label", has_text="Séminaire 2026").locator("input").click()
     assert reponse.value.status == 201
-    expect(page.locator("#album-range-liste li")).to_have_count(3)
-    # Plus rien à proposer dans son projet : la liste est vide, et la ligne dit toujours pourquoi.
-    expect(page.locator("#album-range-cible")).to_be_disabled()
-    expect(page.locator("#album-range-add")).to_be_disabled()
+    expect(page.locator(COCHEES)).to_have_count(3)
+    # Plus rien à proposer dans son projet : aucune case ne s'offre, et la ligne dit toujours
+    # pourquoi.
+    expect(page.locator(OFFERTES)).to_have_count(0)
     expect(ligne).to_be_visible()
     expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format("Séminaire 2026"))
 
     # Dans l'autre sens : un album du repli.
     _changer_de_projet(page, d["repli"], database.NOM_PROJET_DEFAUT)
     _fiche_de_l_album(page, "Album du repli")
-    assert _proposees(page, "#album-range-cible") == [database.NOM_PROJET_DEFAUT, "Incubateur"]
+    assert _offertes(page) == [database.NOM_PROJET_DEFAUT, "Incubateur"]
     expect(ligne).to_be_visible()
     expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format(database.NOM_PROJET_DEFAUT))
     assert "alerte" not in (ligne.get_attribute("class") or "")
@@ -816,12 +827,13 @@ def test_ce_qu_on_disait_d_un_album_ne_suit_pas_dans_la_fiche_du_suivant(page, d
 
 def test_une_fiche_d_album_illisible_n_offre_aucun_geste_sur_le_precedent(page, deux_projets):
     """La fiche d'un album dont les collections ne peuvent pas être lues ne garde RIEN de la
-    fiche ouverte avant elle : ni la liste, ni ses ✕, ni ce que « + Ranger ici » proposait.
+    fiche ouverte avant elle : aucune de ses cases, cochée ou non.
 
-    Ces ✕ sont câblés sur l'album pour lequel ils ont été dessinés. Restés sous le titre du
-    suivant, ils sortaient le PRÉCÉDENT de ses collections ; et « + Ranger ici » rangeait
-    le suivant dans une collection choisie pour l'autre. Le test joue les deux gestes s'ils
-    sont offerts, et dit quelle requête est partie : c'est sa reproduction du défaut.
+    Ces cases sont câblées sur l'album pour lequel elles ont été dessinées. Restées sous le
+    titre du suivant, décocher sortait le PRÉCÉDENT de ses collections, et cocher rangeait le
+    suivant dans une collection choisie pour l'autre (reproduit le 2026-10-11, du temps du ✕
+    et de « + Ranger ici »). Le test joue les deux gestes s'ils sont offerts, et dit quelle
+    requête est partie : c'est sa reproduction du défaut.
     """
     d = deux_projets
     precedent = _album(d["base"], "Album précédent", d["a1"])
@@ -829,8 +841,8 @@ def test_une_fiche_d_album_illisible_n_offre_aucun_geste_sur_le_precedent(page, 
     _api(d["base"], "PUT", f"/api/albums/{illisible}/collections/{d['a2']}")
     _bibliotheque(page, d["base"])
     _fiche_de_l_album(page, "Album précédent")
-    expect(page.locator("#album-range-liste li")).to_have_count(1)
-    assert _proposees(page, "#album-range-cible") == [database.NOM_PROJET_DEFAUT, "Incubateur"]
+    expect(page.locator(COCHEES)).to_have_count(1)
+    assert _offertes(page) == [database.NOM_PROJET_DEFAUT, "Incubateur"]
 
     parties = []
 
@@ -850,29 +862,25 @@ def test_une_fiche_d_album_illisible_n_offre_aucun_geste_sur_le_precedent(page, 
     _fiche_de_l_album(page, "Album illisible")
     expect(page.locator("#album-range-msg.erreur")).to_contain_text("panne jouée")
 
-    restes = page.locator("#album-range-liste li .col-nom").all_inner_texts()
-    croix = page.locator("#album-range-liste [data-sortir]")
-    if croix.count():
-        croix.first.click()
-    ranger = page.locator("#album-range-add")
-    proposees = _proposees(page, "#album-range-cible")
-    if ranger.is_enabled():
-        ranger.click()
+    restes = page.locator("#album-range-cases label:has(input:checked) .col-nom").all_inner_texts()
+    proposees = _offertes(page)
+    cases = page.locator("#album-range-cases input[data-ranger]:enabled")
+    for i in range(cases.count()):
+        cases.nth(i).click()
     page.wait_for_timeout(300)
     assert not restes and not proposees and not parties, (
         "la fiche de « Album illisible » (album n° %d), dont les collections n'ont pas pu être "
-        "lues, montre encore celles de « Album précédent » (album n° %d) : liste %s, "
-        "« + Ranger ici » propose %s. Requêtes parties par ces gestes : %s"
+        "lues, montre encore celles de « Album précédent » (album n° %d) : cochées %s, "
+        "offertes %s. Requêtes parties par ces gestes : %s"
         % (illisible, precedent, restes, proposees, parties or "aucune"))
-    expect(ranger).to_be_disabled()
-    expect(page.locator("#album-range-cible")).to_be_disabled()
+    expect(page.locator("#album-range-cases input[data-ranger]")).to_have_count(0)
     # Et la fiche dit CE QU'ELLE n'a pas pu lire, pas seulement le mot du serveur.
     expect(page.locator("#album-range-msg.erreur")).to_have_text(ILLISIBLE.format("panne jouée"))
 
     # La panne passée, la même fiche rouverte montre SES collections et ses gestes.
     page.unroute("**/api/albums/*/collections**")
     _fiche_de_l_album(page, "Album illisible")
-    expect(page.locator("#album-range-liste li")).to_have_count(2)
+    expect(page.locator(COCHEES)).to_have_count(2)
     expect(page.locator("#album-range-msg")).to_have_text("")
 
 
@@ -1097,8 +1105,8 @@ def test_les_listes_d_un_album_n_attendent_pas_le_bloc_des_collections(page, deu
 
 
 def test_ranger_ici_n_attend_pas_le_bloc_des_collections(page, deux_projets):
-    """Le même défaut, pour « + Ranger ici » : la fiche d'un album ouverte avant que le bloc
-    des collections ait lu le projet ne propose pas pour autant les collections de tous."""
+    """Le même défaut, pour « Sur les collections » : la fiche d'un album ouverte avant que le
+    bloc des collections ait lu le projet ne propose pas pour autant les collections de tous."""
     d = deux_projets
     _collection(d["base"], "Atelier lettrage", d["second"])
     _album(d["base"], "Album du séminaire", d["b1"])
@@ -1112,7 +1120,7 @@ def test_ranger_ici_n_attend_pas_le_bloc_des_collections(page, deux_projets):
     expect(page.locator("#collections-projet")).to_be_hidden()
 
     _fiche_de_l_album(page, "Album du séminaire")
-    assert _proposees(page, "#album-range-cible") == ["Séminaire 2026", "Atelier lettrage"]
+    assert _offertes(page) == ["Séminaire 2026", "Atelier lettrage"]
     expect(page.locator("#album-range-projet")).to_be_visible()
     for route in tenues:
         route.continue_()
@@ -1132,7 +1140,7 @@ def test_avec_un_seul_projet_la_fiche_d_un_album_est_celle_d_avant(page, live_se
     assert page.locator("#m-collection-note").text_content() == ""
     page.locator("#m-cancel").click()
     _fiche_de_l_album(page, "Seul album")
-    assert _proposees(page, "#album-range-cible") == [database.NOM_PROJET_DEFAUT, "Incubateur"]
+    assert _offertes(page) == [database.NOM_PROJET_DEFAUT, "Incubateur"]
     expect(page.locator("#album-range-projet")).to_be_hidden()
     assert page.locator("#album-range-projet").text_content() == ""
 
@@ -1141,8 +1149,8 @@ def test_un_album_range_dans_deux_projets_se_dit_et_se_repare(page, deux_projets
     """Un état que l'application ne produit pas — la base est retouchée à la main : un album
     rangé dans des collections de DEUX projets. Le serveur refuse alors tout rangement, où
     que ce soit ; l'écran n'en propose aucun, et le DIT au lieu de montrer une liste vide —
-    en nommant les deux projets, et le geste qui en sort. Les ✕ restent : sorti des
-    collections d'un projet, l'album retrouve sa liste."""
+    en nommant les deux projets, et le geste qui en sort. Les cases cochées restent : décoché
+    des collections d'un projet, l'album retrouve ses propositions."""
     d = deux_projets
     b2 = _collection(d["base"], "Atelier lettrage", d["second"])
     album = _album(d["base"], "Album à cheval", d["b1"])
@@ -1160,10 +1168,8 @@ def test_un_album_range_dans_deux_projets_se_dit_et_se_repare(page, deux_projets
     _bibliotheque(page, d["base"])
     _changer_de_projet(page, d["second"], "Séminaire 2026")   # son projet, écrit sur lui
     _fiche_de_l_album(page, "Album à cheval")
-    expect(page.locator("#album-range-liste [data-sortir]")).to_have_count(2)
-    assert _proposees(page, "#album-range-cible") == []
-    expect(page.locator("#album-range-cible")).to_be_disabled()
-    expect(page.locator("#album-range-add")).to_be_disabled()
+    expect(page.locator(f"{COCHEES}:enabled")).to_have_count(2)
+    assert _offertes(page) == []
     ligne = page.locator("#album-range-projet")
     expect(ligne).to_be_visible()
     expect(ligne).to_have_text(LIGNE_PLUSIEURS_PROJETS.format(
@@ -1171,11 +1177,10 @@ def test_un_album_range_dans_deux_projets_se_dit_et_se_repare(page, deux_projets
     assert "alerte" in ligne.get_attribute("class")
 
     with page.expect_response(lambda r: r.request.method == "DELETE") as reponse:
-        page.locator(f'#album-range-liste [data-sortir="{d["a1"]}"]').click()
+        _case(page, d["a1"]).click()
     assert reponse.value.status == 204
-    expect(page.locator("#album-range-liste li")).to_have_count(1)
-    expect(page.locator("#album-range-cible option")).to_have_text(
-        ["Séminaire 2026", "Atelier lettrage"])
+    expect(page.locator(COCHEES)).to_have_count(1)
+    expect(page.locator(OFFERTES)).to_have_text(["Séminaire 2026", "Atelier lettrage"])
     expect(ligne).to_have_text(LIGNE_PROJET_DE_L_ALBUM.format("Séminaire 2026"))
     assert "alerte" not in (ligne.get_attribute("class") or "")
 
@@ -1184,8 +1189,8 @@ def test_sans_liste_de_projets_les_deux_listes_d_un_album_restent_celles_d_avant
         page, deux_projets):
     """`GET /api/projets` en panne : aucune des deux listes n'est filtrée, et aucune ligne ne
     parle d'un projet qu'on ne sait pas nommer. « Nouvel album » propose toutes les
-    collections où l'on écrit, « + Ranger ici » toutes celles où l'album n'est pas — une
-    panne de cette route-là ne vide pas des listes qui ne lui doivent rien."""
+    collections où l'on écrit, « Sur les collections » toutes celles où l'album n'est pas —
+    une panne de cette route-là ne vide pas des listes qui ne lui doivent rien."""
     d = deux_projets
     _album(d["base"], "Album du séminaire", d["b1"])
     erreurs = _exceptions(page)
@@ -1201,7 +1206,7 @@ def test_sans_liste_de_projets_les_deux_listes_d_un_album_restent_celles_d_avant
     page.locator("#m-cancel").click()
 
     _fiche_de_l_album(page, "Album du séminaire")
-    assert _proposees(page, "#album-range-cible") == [
+    assert _offertes(page) == [
         database.NOM_PROJET_DEFAUT, "Séminaire 2026", "Projet sans rien", "Corpus de départ",
         "Incubateur"]
     expect(page.locator("#album-range-projet")).to_be_hidden()

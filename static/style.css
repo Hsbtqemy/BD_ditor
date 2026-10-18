@@ -2165,8 +2165,62 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 /* La fiche d'un album. */
 .bi-retour-collection { margin: 0 0 .3rem; }
 .album-range { margin-top: .9rem; }
-.album-range h4 { margin: 0; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em;
-                  color: var(--text-muted); font-weight: 600; }
+/* « Sur les collections » (COL-3, tranche 3a) : une case par collection du projet de
+   l'album ; cocher = rejoindre, décocher = supprimer de la collection. */
+.album-cases { display: flex; flex-wrap: wrap; gap: .2rem 1rem; margin: 0; min-width: 0;
+               padding: .3rem .7rem .45rem; border: 1px solid var(--border); border-radius: 6px; }
+.album-cases legend { padding: 0 .3rem; color: var(--text-muted); font-size: .88rem; }
+.album-case { display: inline-flex; gap: .35rem; align-items: center; min-width: 0;
+              overflow-wrap: anywhere; }
+.album-case input:disabled + .col-nom { color: var(--text-muted); }
+/* COL-3, tranche 3a — la prise. Le compteur et le rappel de la bande d'outils : le MOT porte
+   l'état, la bordure ambre l'accompagne. */
+.bi-rappels { display: inline-flex; flex-wrap: wrap; gap: .3rem .5rem; align-items: center; min-width: 0; }
+.bi-rappels[hidden] { display: none; }
+.rappel { display: inline-flex; align-items: center; background: none; font: inherit; font-size: .9231rem;
+          border: 1px solid var(--accent-amber); color: var(--text); border-radius: 999px;
+          padding: .1rem .7rem; font-weight: 600; cursor: pointer; text-decoration: none; }
+.rappel.calme { border-color: var(--border); color: var(--text-muted); font-weight: 400; }
+.rappel:hover { background: var(--hover); }
+.col-marque { color: var(--text); border: 1px solid var(--accent-amber); border-radius: 4px;
+              padding: 0 .3rem; font-size: .85rem; font-weight: 700; white-space: nowrap; }
+.bi-onglet-pastille { display: inline-block; min-width: 1.4em; margin-left: .3em; padding: 0 .35em;
+                      border: 1px solid var(--accent-amber); border-radius: 999px; text-align: center;
+                      font-size: .82rem; font-weight: 700; color: var(--text); }
+.bi-onglet-pastille[hidden] { display: none; }
+.recues { display: grid; gap: .4rem; margin: .2rem 0 .8rem; padding: .5rem .8rem;
+          border: 1px solid var(--accent-amber); border-left-width: 4px; border-radius: 7px; }
+.recues h4 { margin: 0; font-size: .95rem; }
+.recues li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .3rem .8rem;
+             align-items: center; }
+.bi-gestes-albums { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; margin: 0 0 .4rem; }
+.bi-boutons { display: inline-flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.bi-prise { display: grid; gap: .5rem; margin: .5rem 0 .8rem; padding: .6rem .8rem; min-width: 0;
+            border: 1px solid var(--accent-blue); border-radius: 7px; }
+.bi-prise h4 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.bi-prise-ligne { display: flex; flex-wrap: wrap; gap: .4rem .6rem; align-items: center; min-width: 0; }
+.bi-prise-ligne input[type="search"] { flex: 1 1 12rem; min-width: 0; }
+.bi-prise-dest { display: inline-flex; gap: .4rem; align-items: center; min-width: 0; max-width: 100%; }
+.bi-prise-dest select { min-width: 0; max-width: 100%; }
+.bi-prise-motif { display: grid; gap: .2rem; }
+.bi-prise-motif textarea { width: 100%; box-sizing: border-box; }
+.bi-notices, .bi-dp-liste { list-style: none; margin: 0; padding: 0; max-height: 18rem; overflow-y: auto;
+                            border: 1px solid var(--border); border-radius: 6px; }
+.bi-notices li, .bi-dp-liste li { display: flex; flex-wrap: wrap; gap: .2rem .6rem; align-items: baseline;
+                                  justify-content: space-between; padding: .3rem .6rem;
+                                  border-bottom: 1px solid var(--border); }
+.bi-notices li:last-child, .bi-dp-liste li:last-child { border-bottom: 0; }
+.bi-notices label { display: flex; gap: .5rem; align-items: baseline; flex: 1 1 12rem; min-width: 0;
+                    overflow-wrap: anywhere; cursor: pointer; }
+.bi-notice-titre { font-weight: 600; }
+.bi-deja { color: var(--text-muted); font-size: .85rem; }
+.bi-pagin { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; justify-content: space-between; }
+.bi-prise-actions .muted { flex: 1 1 14rem; }
+/* La réponse d'une ligne, écrite sur place : le mot porte l'état. */
+.reponse { font-size: .88rem; font-weight: 600; }
+.reponse.fait { color: var(--accent-green); }
+.reponse.demande { color: var(--accent-amber); }
+.reponse.refuse { color: var(--ink-red); }
 .bi-relfiltre { margin: .4rem 0; }
 .bi-perdues { margin: .2rem 0; }
 .val-lu { color: var(--accent-green); font-weight: 700; }

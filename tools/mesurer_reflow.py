@@ -240,6 +240,11 @@ DEPLIES = {
     "#col-creer": {
         "nom": "création d'une collection", "panneau": "#col-creer-zone",
         "surfaces": ["/corpus"]},
+    # « + Prendre du fonds… » (COL-3, tranche 3a), en tête de la fiche du projet : offert au
+    # responsable et à l'administrateur — donc à la portée totale du mono-poste où se fait la
+    # mesure. Replié, le panneau des notices n'existe pas.
+    "#bi-prendre-fonds": {
+        "nom": "prendre du fonds", "panneau": "#bi-prise", "surfaces": ["/corpus"]},
     # Le menu du compte (UX-14) : « Déconnexion » y a quitté la bande. `theme.js` ne le
     # construit que s'il a au moins une entrée, donc derrière le proxy.
     ".user-chip button.user-who": {

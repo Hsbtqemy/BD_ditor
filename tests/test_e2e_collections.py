@@ -596,10 +596,11 @@ def test_la_modale_d_album_ne_propose_que_ou_l_on_ecrit(page, live_server):
     assert "Lue" not in proposees and {"Écrite", "Autre écrite"} <= set(proposees), proposees
     page.click("#m-cancel")
 
-    # « Rangé dans », dans la fiche de l'album (UX-18) : là aussi, seulement où l'on écrit.
+    # « Sur les collections », dans la fiche de l'album (COL-3, tranche 3a) : là aussi, une
+    # case ne s'offre que là où l'on écrit ; « Lue » se lit, éteinte.
     page.locator(".album-row", has_text="Rangé dans Écrite").click()
-    expect(page.locator("#album-range-cible option")).to_have_text(["Autre écrite"],
-                                                                   timeout=5000)
+    expect(page.locator(OFFERTES)).to_have_text(["Autre écrite"], timeout=5000)
+    expect(page.locator(f'#album-range-cases input[data-ranger="{ids['Lue']}"]')).to_be_disabled()
 
     page.set_extra_http_headers({"Remote-User": "yann"})
     page.goto(live_server + "/corpus", wait_until="networkidle")
@@ -714,6 +715,11 @@ def main_en_tete():
     return next(k for k in ECRITURE if k not in ("Remote-User", "Remote-Groups"))
 
 
+# « Sur les collections » (COL-3, tranche 3a) : les cases cochées, et celles qui s'offrent.
+COCHEES = "#album-range-cases input[data-ranger]:checked"
+OFFERTES = "#album-range-cases label:has(input[data-ranger]:not(:checked):enabled) .col-nom"
+
+
 def _ligne(page, titre):
     return page.locator(".album-row", has=page.locator(".c-titre", has_text=titre))
 
@@ -807,10 +813,9 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
     for titre in ("Partagé", "Triple", "Seul", "Erreur"):
         expect(_ligne(page, titre)).to_be_visible()
         assert _gestes_de_l_album(page, titre).count() == 0, titre
-        # Ni ✕ ni « + Ranger ici » dans « Rangé dans » : elle n'écrit nulle part.
-        expect(page.locator("#album-range-liste li").first).to_be_visible()
-        assert page.locator("#album-range-liste [data-sortir]").count() == 0, titre
-        expect(page.locator("#album-range-ligne")).to_be_hidden()
+        # « Sur les collections » se lit, et aucune case ne s'offre : elle n'écrit nulle part.
+        expect(page.locator("#album-range-cases input[data-ranger]").first).to_be_visible()
+        assert page.locator("#album-range-cases input[data-ranger]:enabled").count() == 0, titre
     assert page.locator("#album-detail [data-delp], #album-detail [data-delp-refus]").count() == 0
     assert page.locator("#album-detail button[data-val]").count() == 0, (
         "un bouton de validation offert à qui ne fait que lire")
@@ -821,16 +826,16 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
     expect(_gestes_de_l_album(page, "Triple").first).to_be_visible()
     # Aucun gestionnaire de dialogue : s'il en venait un, Playwright le refuserait et la
     # suppression n'aurait pas lieu. Elle écrit encore dans l'album par « Incubateur ».
-    page.locator(f'#album-range-liste [data-sortir="{ids["Archives"]}"]').click()
-    page.wait_for_function(
-        "() => document.querySelectorAll('#album-range-liste li').length === 1", timeout=5000)
-    page.select_option("#album-range-cible", str(ids["Archives"]))
-    page.click("#album-range-add")
+    page.locator(f'#album-range-cases input[data-ranger="{ids["Archives"]}"]').click()
+    expect(page.locator(COCHEES)).to_have_count(1, timeout=5000)
+    page.locator(f'#album-range-cases input[data-ranger="{ids["Archives"]}"]').click()
     expect(page.locator("#album-range-msg")).to_contain_text("La demande est partie",
                                                              timeout=5000)
-    # La fiche se relit après le geste : on attend la liste redessinée, pas un instant de
-    # l'entre-deux où elle est encore vide.
-    expect(page.locator("#album-range-liste li")).to_have_count(1)
+    # La fiche se relit après le geste : on attend les cases redessinées, pas un instant de
+    # l'entre-deux où elles sont encore à lire.
+    expect(page.locator(COCHEES)).to_have_count(1)
+    expect(page.locator(f'#album-range-cases input[data-ranger="{ids["Archives"]}"]')
+           ).to_be_disabled()
     assert demandes == []
     with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
         r = c.put(f"/api/albums/{albums['Triple']}/collections/{ids['Archives']}")
@@ -854,26 +859,30 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
     page.click("#sp-annuler")
     expect(page.locator("#suppr-modal")).to_be_hidden()
 
-    # Le ✕ de « Rangé dans » dit la même chose, et se confirme. Refusé, rien ne bouge.
+    # Décocher dans « Sur les collections » dit la même chose, et se confirme. Refusé, rien
+    # ne bouge, et la case se recoche.
     page.once("dialog", repondre(False))
-    page.locator(f'#album-range-liste [data-sortir="{ids["Incubateur"]}"]').click()
+    page.locator(f'#album-range-cases input[data-ranger="{ids["Incubateur"]}"]').click()
+    page.wait_for_function("() => document.querySelectorAll("
+                           "'#album-range-cases input[data-ranger]:checked').length === 2",
+                           timeout=5000)
     assert len(demandes) == 1, demandes
     assert "continuerez de le lire" in demandes[0] and "n'y écrirez plus" in demandes[0], demandes
     assert "ne le verrez plus" not in demandes[0] and "Principale" not in demandes[0]
-    assert page.locator("#album-range-liste li").count() == 2
-    # Sur la collection qu'elle ne fait que LIRE, aucun ✕ : il n'aboutirait pas (le serveur
-    # répondait « introuvable »). Ce défaut antérieur, laissé à UX-18, est corrigé ; la ligne
-    # nomme toujours la collection, qu'elle lit.
-    expect(page.locator("#album-range-liste li", has_text="Archives")).to_be_visible()
-    assert page.locator(f'#album-range-liste [data-sortir="{ids["Archives"]}"]').count() == 0
+    # Sur la collection qu'elle ne fait que LIRE, la case est éteinte : décocher n'aboutirait
+    # pas (le serveur répondait « introuvable »). La collection se nomme toujours.
+    archives = page.locator(f'#album-range-cases input[data-ranger="{ids["Archives"]}"]')
+    expect(archives).to_be_checked()
+    expect(archives).to_be_disabled()
     page.once("dialog", repondre(True))
-    page.locator(f'#album-range-liste [data-sortir="{ids["Incubateur"]}"]').click()
-    page.wait_for_function(
-        "() => document.querySelectorAll('#album-range-liste li').length === 1", timeout=5000)
+    page.locator(f'#album-range-cases input[data-ranger="{ids["Incubateur"]}"]').click()
+    page.wait_for_function("() => document.querySelectorAll("
+                           "'#album-range-cases input[data-ranger]:checked').length === 1",
+                           timeout=5000)
     assert len(demandes) == 2
     # Redevenue lectrice de cet album : plus rien ne lui est offert dessus.
     expect(page.locator('#album-detail [data-act="supprimer"]')).to_have_count(0)
-    expect(page.locator("#album-range-ligne")).to_be_hidden()
+    assert page.locator("#album-range-cases input[data-ranger]:enabled").count() == 0
 
     with httpx.Client(base_url=live_server, trust_env=False, timeout=60, headers=admin) as c:
         rangs = [x["nom"] for x in c.get(f"/api/albums/{albums['Triple']}/collections").json()]

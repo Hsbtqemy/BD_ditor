@@ -202,7 +202,8 @@ def test_l_album_ouvert_vit_dans_l_adresse_et_le_retour_le_defait(page, calques)
     expect(page.locator("#album-titre")).to_contain_text("Gaston")
     expect(page.locator("#col-fiche")).to_have_count(0)
     expect(page.locator("[data-retour-album]")).to_have_text("← Étude B")
-    expect(page.locator("#album-range-liste li .col-nom")).to_have_text(["Étude B"])
+    expect(page.locator("#album-range-cases label:has(input[data-ranger]:checked) .col-nom")
+           ).to_have_text(["Étude B"])
     assert f"album={d['albums']['Gaston']}" in page.url, page.url
     expect(page.locator(f'#albums-body .album-row[data-id="{d["albums"]["Gaston"]}"]')) \
         .to_have_attribute("aria-current", "true")
@@ -244,10 +245,10 @@ def test_les_droits_d_un_album_sont_l_union_de_ses_collections(page, live_server
     expect(page.locator('#album-detail [data-act="supprimer"]')).to_be_visible()
     expect(page.locator("#detail-edit")).to_be_visible()
     expect(page.locator("#album-detail button[data-val]")).to_have_count(1)
-    # « Rangé dans » : le ✕ sur la collection où elle écrit, pas sur l'autre.
+    # « Sur les collections » : la case de la collection où elle écrit s'offre, pas l'autre.
     page.locator("#album-range[data-pret]").wait_for(timeout=5000)
-    expect(page.locator(f'#album-range-liste [data-sortir="{ecrite}"]')).to_have_count(1)
-    expect(page.locator(f'#album-range-liste [data-sortir="{lue}"]')).to_have_count(0)
+    expect(page.locator(f'#album-range-cases input[data-ranger="{ecrite}"]')).to_be_enabled()
+    expect(page.locator(f'#album-range-cases input[data-ranger="{lue}"]')).to_be_disabled()
 
 
 # ── Le lot, au-dessus de sa sélection ──────────────────────────────────────────────────

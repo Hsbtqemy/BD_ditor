@@ -270,6 +270,7 @@ function rendreListeCollections() {
               ${courante ? 'aria-current="true"' : ""} title="Ouvrir la fiche de la collection">${esc(c.nom)}</button>
       ${c.base ? `<span class="col-base" title="La collection de base du projet">base</span>` : ""}
       ${colBadge(c)}
+      ${marqueRecues(c)}
       <span class="col-nb">${nbAlbumsCourt(c.nb_albums)}</span>
     </li>`;
   }).join("");
@@ -324,6 +325,9 @@ async function chargerCollections(opts = {}) {
   COLS_RENDUES = true;
   rendreListeCollections();
   rendreListeAlbums();
+  // COL-3, tranche 3a — ce qui attend une réponse : non bloquant, et redessiné à l'arrivée.
+  chargerDemandesRecues();
+  chargerMesDemandes();
   return true;
 }
 
@@ -445,12 +449,20 @@ function rendreAccueil() {
       <span class="muted small bi-part"><span>${k} / ${n}</span>
         <i class="val-mini bi-part-barre" aria-hidden="true"><i style="width:${pct}%"></i></i></span></li>`;
   }).join("");
+  // COL-3, tranche 3a — « + Prendre du fonds… » EN TÊTE DU CORPUS, vers la base (D10), au
+  // responsable du projet et à l'administrateur seulement (D3).
+  const fonds = BDBiblio.offrirPrendreDuFonds(p);
   fiche.innerHTML = `${RETOUR_LISTE}
     <div class="lf-tete"><div>
       <h3 id="bi-accueil-titre" tabindex="-1">${esc(p ? p.nom : "Bibliothèque")}</h3>
       <p class="lf-sous"><span>${esc(BDBiblio.libelleAlbums(n, { total: B.total }))}</span>
         <span>${pluriel(cols.length, "collection")}${B.total ? "" : " que vous lisez"}</span></p>
-    </div></div>
+    </div>
+    ${fonds ? `<div class="lf-gestes-tete">
+      <button type="button" class="primary small" id="bi-prendre-fonds" data-prendre-fonds="tete"
+              aria-expanded="${!!(P3A.prise && P3A.prise.ou === "tete")}" aria-controls="bi-prise-zone">+ Prendre du fonds…</button>
+    </div>` : ""}</div>
+    <div id="bi-prise-zone" class="bi-prise-zone"></div>
     ${p && p.description ? `<p class="bi-projet-description">${esc(p.description)}</p>` : ""}
     <section id="corpus-synthese" class="corpus-synthese" hidden></section>
     ${cols.length ? `<section class="lf-section">
@@ -459,8 +471,9 @@ function rendreAccueil() {
       <p class="col-note">${pluriel(plusieurs, "album")} sur plusieurs collections.
         Cochez une collection pour filtrer les albums ; son nom ouvre sa fiche.</p>
     </section>` : ""}`;
-  // La place que la tranche 3a de COL-3 donne à « + Prendre du fonds… », en tête du corpus,
-  // est dans `.lf-tete` : un geste du responsable et de l'administrateur, à venir.
+  if (!fonds || (P3A.prise && P3A.prise.ou !== "tete")) P3A.prise = null;
+  P3A.dansProjet = null;
+  rendreZonePrise();
   loadSynthese();
 }
 
@@ -545,7 +558,7 @@ function rendreFicheCollection(c, msg) {
   const emb = colEmbargo(c);
   const onglets = BDBiblio.ONGLETS.map((o) => `<button type="button" role="tab"
       id="onglet-${o.cle}" aria-controls="panneau-${o.cle}" data-onglet="${o.cle}"
-      aria-selected="${o.cle === B.onglet}" tabindex="${o.cle === B.onglet ? "0" : "-1"}">${esc(o.libelle)}</button>`).join("");
+      aria-selected="${o.cle === B.onglet}" tabindex="${o.cle === B.onglet ? "0" : "-1"}">${esc(o.libelle)}${o.cle === "albums" ? pastilleOngletAlbums(c) : ""}</button>`).join("");
   const panneaux = BDBiblio.ONGLETS.map((o) => `<div class="bi-panneau" role="tabpanel"
       id="panneau-${o.cle}" aria-labelledby="onglet-${o.cle}" tabindex="0"
       ${o.cle === B.onglet ? "" : "hidden"}></div>`).join("");
@@ -621,10 +634,25 @@ function rendreAlbumsDeLaCollection(panneau, c) {
       <td class="c-aussi${aussi.length ? "" : " vide-carte"}" data-l="Aussi dans">${aussi.length ? aussi.map(esc).join(", ") : `<span class="muted">—</span>`}</td>
     </tr>`;
   }).join("");
-  // La place des gestes de la tranche 3a de COL-3 — « + Prendre du fonds… » et « + Prendre
-  // dans le projet… », à droite au-dessus du tableau, et le bloc ⚑ des demandes reçues en
-  // tête de l'onglet — est ici, avant le lot : rien de cela n'existe encore.
-  panneau.innerHTML = `${barreLot("albums", coches.length)}
+  // COL-3, tranche 3a — le bloc ⚑ des demandes reçues en tête de l'onglet (D11), puis les
+  // deux gestes de la prise, à droite au-dessus du tableau, avant le lot. « + Prendre du
+  // fonds… » au responsable et à l'administrateur (D3) ; « + Prendre dans le projet… » à
+  // qui écrit dans la collection.
+  const projet = PROJETS.find((x) => x.id === c.projet_id) || null;
+  const fonds = BDBiblio.offrirPrendreDuFonds(projet, c);
+  const ecrit = !!c.ecrivable;
+  if (P3A.prise && (P3A.prise.ou !== "collection" || P3A.prise.depuis !== c.id || !fonds)) P3A.prise = null;
+  if (P3A.dansProjet && (P3A.dansProjet.collection !== c.id || !ecrit)) P3A.dansProjet = null;
+  panneau.innerHTML = `<div id="bi-recues-zone"></div>
+    ${ecrit ? `<div class="bi-gestes-albums">
+      ${fonds ? `<button type="button" class="ghost small" id="bi-prendre-fonds" data-prendre-fonds="collection"
+          aria-expanded="${!!P3A.prise}" aria-controls="bi-prise-zone">+ Prendre du fonds…</button>` : ""}
+      <button type="button" class="ghost small" id="bi-dans-projet" aria-expanded="${!!P3A.dansProjet}"
+          aria-controls="bi-prise-zone"
+          title="Ranger ici un album que le projet a déjà : rejoindre son travail, ou en prendre une copie vierge">+ Prendre dans le projet…</button>
+    </div>
+    <div id="bi-prise-zone" class="bi-prise-zone"></div>` : ""}
+    ${barreLot("albums", coches.length)}
     <div class="table-cadre bi-cadre" tabindex="0" role="region" aria-label="Albums de « ${esc(c.nom)} »">
       <table class="corpus-table bi-table bi-table-albums">
         <thead><tr><th class="c-chk"><span class="sr-only">Sélection</span></th><th>Titre</th>
@@ -633,6 +661,8 @@ function rendreAlbumsDeLaCollection(panneau, c) {
         <tbody>${lignes || `<tr><td colspan="6" class="empty-cell">Aucun album dans cette collection${c.base ? " : ce que le projet prendra au fonds arrivera ici" : ""}.</td></tr>`}</tbody>
       </table>
     </div>`;
+  rendreBlocRecues(c);
+  rendreZonePrise();
 }
 
 /* ── Onglet DESCRIPTION : la LECTURE d'abord, le formulaire au geste ──────────────────── */
@@ -1250,9 +1280,7 @@ function renderDetail() {
       </div>` : ""}
       </div>
       <p id="detail-valider-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
-      ${htmlRangement(ecrire)}
-      <!-- La place de « Sur les collections » (COL-3, tranche 3a) : cocher = rejoindre,
-           décocher = supprimer de la collection. À venir ; « Rangé dans » la tient d'ici là. -->
+      ${htmlRangement()}
       ${barreLot("planches", coches)}
       ${B.perdues ? `<p class="muted small bi-perdues">La sélection de ${pluriel(B.perdues.n, "planche")} de « ${esc(B.perdues.titre)} » a été vidée en changeant d'album.</p>` : ""}
       <div class="bi-relfiltre">
@@ -1318,22 +1346,22 @@ function direPlancheADemander(bouton) {
   colMsg(ligne, PLANCHE_A_DEMANDER);
 }
 
-/* ── « Rangé dans » : où l'album est rangé, parmi les collections qu'on lit ───────────────
+/* ── « Sur les collections » : où l'album est rangé, et le geste qui le range ─────────────
    AUTH-2 posait le choix de la collection à la création ; l'appartenance est N-N depuis la
-   v14, et un même album peut nourrir deux études. UX-18 la sort de la modale d'édition :
-   elle se lit dans la fiche, là où l'on regarde où vit l'album, et se règle sur les SEULES
-   collections où l'on écrit — le ✕ s'offrait aussi sur une collection qu'on ne faisait que
-   lire, et « + Ranger ici » à qui ne faisait que lire l'album : deux gestes qui répondaient
-   « introuvable » (relevés par AUTH-10, laissés à cette refonte). */
-function htmlRangement(ecrire) {
-  return `<section id="album-range" class="album-range" aria-labelledby="album-range-titre">
-    <h4 id="album-range-titre">Rangé dans</h4>
-    <ul id="album-range-liste" class="acces-liste"></ul>
-    <div class="contrib-add" id="album-range-ligne" ${ecrire ? "" : "hidden"}>
-      <select id="album-range-cible" aria-label="Collection où ranger l'album"
-              aria-describedby="album-range-projet"></select>
-      <button id="album-range-add" class="ghost small" type="button">+ Ranger ici</button>
-    </div>
+   v14, et un même album peut nourrir deux études. UX-18 l'a sortie de la modale d'édition
+   (« Rangé dans », un ✕ et « + Ranger ici ») ; COL-3, tranche 3a (Hugo, sur maquette,
+   2026-10-17) en fait UNE seule façon de faire : une case par collection du projet de
+   l'ALBUM qu'on lit. COCHER, c'est REJOINDRE le travail (D4 stricte) — fait tout de suite si
+   l'on tient chacune de ses collections, sinon DEMANDÉ à qui les tient, et la case passe
+   « demandée », indéterminée, sans rien ranger ; DÉCOCHER, c'est supprimer de la
+   collection, la première des deux réponses de « Supprimer… », avec ses mots. Une case ne
+   s'offre que sur une collection où l'on écrit ; les autres se lisent, éteintes. */
+function htmlRangement() {
+  return `<section id="album-range" class="album-range">
+    <fieldset id="album-range-cases" class="album-cases" aria-describedby="album-range-projet">
+      <legend id="album-range-titre">Sur les collections</legend>
+      <span class="muted small">Lecture des collections…</span>
+    </fieldset>
     <p id="album-range-projet" class="muted small" hidden></p>
     <p id="album-range-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
   </section>`;
@@ -1343,80 +1371,71 @@ function rangeMsg(texte, erreur) {
   colMsg($("#album-range-msg"), texte, erreur);
 }
 
-/* La liste des collections de l'album et ce qu'on peut y faire. Lues dans la route de
-   l'album, qui dit leur PROJET (le rangement ne traverse pas les projets, COL-3). Une
-   lecture ratée ne laisse AUCUN geste : un ✕ ou un « + Ranger ici » dessinés pour l'album
-   d'avant agiraient sur lui (reproduit le 2026-10-11). */
+const LEGENDE_RANGE = `<legend id="album-range-titre">Sur les collections</legend>`;
+/* Ce que les cases ont lu, pour que décocher se confirme AU GESTE, sans relire : `confirm`
+   suit le clic, et une relecture glissée entre eux laisserait la case décochée sans réponse. */
+let RANGE_LU = { albumId: null, siennes: [], ecrites: [] };
+
+/* Les collections de l'album et ce qu'on peut y faire. Lues dans la route de l'album, qui
+   dit leur PROJET (le rangement ne traverse pas les projets, COL-3). Une lecture ratée ne
+   laisse AUCUN geste : une case dessinée pour l'album d'avant agirait sur lui (reproduit le
+   2026-10-11). */
 async function rangementDeLAlbum(albumId, ecrire) {
-  const liste = $("#album-range-liste"), cible = $("#album-range-cible");
+  const cases = $("#album-range-cases");
   direProjetDeLAlbum({ projets: [], collections: [], ecartees: 0 });
   let siennes = [], toutes = [];
   try {
     siennes = await apiGet(`/api/albums/${albumId}/collections`);
     toutes = await apiGet("/api/collections");
   } catch (e) {
-    if (state.openId !== albumId || cible !== $("#album-range-cible")) return;
-    liste.innerHTML = "";
-    cible.innerHTML = "";
-    cible.disabled = true;
-    $("#album-range-add").disabled = true;
+    if (state.openId !== albumId || cases !== $("#album-range-cases")) return;
+    cases.innerHTML = LEGENDE_RANGE;
     rangeMsg(`Les collections de cet album n'ont pas pu être lues : ${e.message}`, true);
     $("#album-range").dataset.pret = "1";
     return;
   }
-  if (state.openId !== albumId || cible !== $("#album-range-cible")) return;  // une autre fiche s'est ouverte
+  if (state.openId !== albumId || cases !== $("#album-range-cases")) return;  // une autre fiche s'est ouverte
   const dedans = new Set(siennes.map((c) => c.id));
   const ecrites = new Set(toutes.filter((c) => c.ecrivable).map((c) => c.id));
-  liste.innerHTML = siennes.length ? siennes.map((c) => `
-    <li><span class="col-nom">${esc(c.nom)}</span>
-        ${ecrites.has(c.id) ? `<button class="ghost small" data-sortir="${c.id}" data-nom="${esc(c.nom)}" type="button"
-                title="Supprimer de « ${esc(c.nom)} »"
-                aria-label="Supprimer de « ${esc(c.nom)} »">✕</button>` : ""}</li>`).join("")
-    : `<li class="muted small">Dans aucune collection que vous lisez.</li>`;
-  const album = state.albums.find((a) => a.id === albumId);
-  const moi = await Promise.resolve(window.BDMoi).catch(() => null);
-  const total = !!(moi && moi.acces && moi.acces.total);
-  // COL-3, tranche 2 — ce ✕ est « supprimer de la collection », la première des deux
-  // réponses de « Supprimer… », et il dit la MÊME chose que le panneau (`lib/suppression.js`).
-  // Il se confirme quand le geste coûte — la copie part au fonds, on perd l'écriture (le geste
-  // est alors un aller simple, AUTH-10), ou on perd l'album de vue. Qui écrit des deux côtés
-  // le défait lui-même : rien à confirmer.
-  liste.querySelectorAll("[data-sortir]").forEach((b) => {
-    b.onclick = async () => {
-      const titre = album ? album.titre : "";
-      const r = BDSuppression.retrait({ siennes, ecrites: [...ecrites],
-                                        collectionId: Number(b.dataset.sortir),
-                                        partage: !!(album && album.partage), total });
-      if (r.confirmer && !confirm(`Supprimer « ${titre} » de « ${b.dataset.nom} » ?\n\n`
-          + r.texte)) return;
-      try {
-        await apiSend("DELETE", `/api/albums/${albumId}/collections/${b.dataset.sortir}`);
-      } catch (e) { rangeMsg(e.message, true); return; }
-      apresRangement(albumId, BDSuppression.apresRetrait(titre, b.dataset.nom, r.reste));
-    };
-  });
-  cible.innerHTML = "";
-  // AUTH-12 — ranger exige d'écrire dans la collection cible : n'offrir que celles-là.
-  const candidates = toutes.filter((c) => !dedans.has(c.id) && c.ecrivable);
-  // COL-3 — et un rangement ne traverse pas les projets : n'offrir que celles du projet où
-  // l'ALBUM vit déjà, lu dans ses collections. La règle est dans `lib/projet.js` ; le projet
-  // est lu ici parce que la fiche peut s'ouvrir avant que la liste des collections l'ait lu.
+  RANGE_LU = { albumId, siennes, ecrites: [...ecrites] };
+  // COL-3 — un rangement ne traverse pas les projets : seules les collections du projet où
+  // l'ALBUM vit déjà se proposent, lu dans ses collections. La règle est dans
+  // `lib/projet.js` ; le projet est lu ici parce que la fiche peut s'ouvrir avant que la
+  // liste des collections l'ait lu.
   await lireProjetCourant();
-  if (state.openId !== albumId || cible !== $("#album-range-cible")) return;
+  if (state.openId !== albumId || cases !== $("#album-range-cases")) return;
+  const candidates = toutes.filter((c) => !dedans.has(c.id));
   const tri = PROJET === null
     ? { projets: [], collections: candidates, ecartees: 0 }     // sans projets lisibles : l'écran d'avant
     : BDProjet.pourRanger(siennes, candidates);
-  for (const c of tri.collections) cible.appendChild(new Option(c.nom, String(c.id)));
-  cible.disabled = !tri.collections.length;
-  $("#album-range-add").disabled = !tri.collections.length;
+  const album = state.albums.find((a) => a.id === albumId);
+  const demandees = new Set((album && album.rejoindre_demande) || []);
+  // Celles où il est rangé d'abord, puis celles où l'on peut le ranger, dans l'ordre du serveur.
+  const liste = [...siennes, ...tri.collections];
+  cases.innerHTML = LEGENDE_RANGE + (liste.length ? liste.map((c) => {
+    const sur = dedans.has(c.id);
+    const demande = !sur && demandees.has(c.id);
+    const peut = ecrites.has(c.id) && !demande;
+    const titre = !ecrites.has(c.id) ? "Vous lisez cette collection sans y écrire"
+      : demande ? "Rejoindre ce travail est demandé : la case attend la réponse"
+      : sur ? "Décocher : supprimer de cette collection (le travail reste ailleurs, ou la "
+              + "copie est gardée au fonds)"
+      : "Cocher : ranger aussi ici — tout de suite si vous tenez toutes ses collections, "
+        + "sinon une demande à qui les tient";
+    return `<label class="album-case" title="${esc(titre)}">
+      <input type="checkbox" data-ranger="${c.id}" data-nom="${esc(c.nom)}" ${sur ? "checked" : ""}
+             ${peut ? "" : "disabled"} ${demande ? 'data-demande="1"' : ""}>
+      <span class="col-nom">${esc(c.nom)}</span>${demande ? ` <span class="reponse demande">demandé</span>` : ""}</label>`;
+  }).join("") : `<span class="muted small">Dans aucune collection que vous lisez.</span>`);
+  cases.querySelectorAll("input[data-demande]").forEach((x) => { x.indeterminate = true; });
   if (ecrire) direProjetDeLAlbum(tri);
-  // Lu jusqu'au bout : la liste, les ✕ et ce que « + Ranger ici » propose sont posés.
+  // Lu jusqu'au bout : les cases et ce qu'elles proposent sont posées.
   $("#album-range").dataset.pret = "1";
 }
 
-/* Ce que « + Ranger ici » ne propose PAS, et pourquoi (COL-3). Une ligne à demeure sous la
-   liste, distincte de celle des gestes (`#album-range-msg`). Rien tant que rien n'est
-   écarté : avec un seul projet, la fiche est celle d'avant. */
+/* Ce que les cases ne proposent PAS, et pourquoi (COL-3). Une ligne à demeure sous elles,
+   distincte de celle des gestes (`#album-range-msg`). Rien tant que rien n'est écarté :
+   avec un seul projet, la fiche est celle d'avant. */
 function direProjetDeLAlbum(tri) {
   const ligne = $("#album-range-projet");
   if (!ligne) return;
@@ -1427,12 +1446,12 @@ function direProjetDeLAlbum(tri) {
   ligne.classList.toggle("alerte", tri.projets.length > 1);
   if (tri.projets.length > 1) {
     // Une base retouchée à la main : l'album vit dans plusieurs projets, et le serveur
-    // refusera TOUT nouveau rangement tant que c'est le cas. Les ✕ restent : c'est par eux
-    // qu'on en sort.
+    // refusera TOUT nouveau rangement tant que c'est le cas. Les cases cochées restent :
+    // c'est en les décochant qu'on en sort.
     ligne.textContent = `Cet album est rangé dans des collections de plusieurs projets `
       + `(${tri.projets.map(nommer).join(", ")}), ce qui ne devrait pas arriver : il ne se `
-      + "range nulle part ailleurs tant que c'est le cas. Sortez-le d'abord, par leur ✕, "
-      + "des collections qui ne sont pas de son projet.";
+      + "range nulle part ailleurs tant que c'est le cas. Décochez d'abord les collections "
+      + "qui ne sont pas de son projet.";
   } else if (tri.ecartees) {
     ligne.textContent = `Cet album vit dans le projet ${nommer(tri.projets[0])} : seules les `
       + "collections de ce projet sont proposées, un album ne se rangeant pas d'un projet à "
@@ -1443,25 +1462,54 @@ function direProjetDeLAlbum(tri) {
   ligne.hidden = !ligne.textContent;
 }
 
-async function rangerAlbum() {
-  const id = state.openId, cible = $("#album-range-cible").value;
+/* Cocher = rejoindre. Le serveur dit si c'est fait (201) ou demandé (202) : la phrase et la
+   case suivent sa réponse, jamais l'intention. */
+async function rangerAlbum(caseACocher) {
+  const id = state.openId, cible = caseACocher.dataset.ranger, nom = caseACocher.dataset.nom;
+  const album = state.albums.find((a) => a.id === id);
   if (!id || !cible) return;
+  caseACocher.disabled = true;
   let rep;
   try {
     rep = await apiSend("PUT", `/api/albums/${id}/collections/${cible}`);
-  } catch (e) { rangeMsg(e.message, true); return; }
-  await apresRangement(id, "");
-  // COL-3, tranche 3a (D4) — ranger est REJOINDRE : sans tenir chacune des collections de
-  // l'album, le serveur ne range pas, il DEMANDE au propriétaire (202). Le dire, plutôt que
-  // de laisser croire que le geste a échoué sans raison. L'écran de la prise remplacera ce
-  // geste (commit d'écran de la tranche).
-  if (rep && rep.etat === "demande") {
-    rangeMsg(rep.repondra === "administrateur"
-      ? "Pas rangé : rejoindre ce travail se demande, et aucun propriétaire ne tient toutes "
-        + "ses collections — un administrateur y répondra. La demande est partie."
-      : "Pas rangé : rejoindre ce travail se demande au propriétaire de ses collections. "
-        + "La demande est partie.");
+  } catch (e) {
+    caseACocher.checked = false;
+    caseACocher.disabled = false;
+    rangeMsg(e.message, true);
+    return;
   }
+  const m = BDBiblio.messageRejoindre(album ? album.titre : "", nom, rep);
+  await apresRangement(id, "");
+  rangeMsg(m.texte);
+}
+
+/* Décocher = supprimer de la collection. Les mots sont ceux de « Supprimer… »
+   (`lib/suppression.js`) ; le geste se confirme quand il coûte — la copie part au fonds, on
+   perd l'écriture (un aller simple, AUTH-10), ou on perd l'album de vue. Qui écrit des deux
+   côtés le défait lui-même : rien à confirmer. */
+async function sortirAlbum(caseADecocher) {
+  const albumId = state.openId, cid = Number(caseADecocher.dataset.ranger);
+  const nom = caseADecocher.dataset.nom;
+  const album = state.albums.find((a) => a.id === albumId);
+  const titre = album ? album.titre : "";
+  if (RANGE_LU.albumId !== albumId) { caseADecocher.checked = true; return; }
+  const r = BDSuppression.retrait({ siennes: RANGE_LU.siennes, ecrites: RANGE_LU.ecrites,
+                                    collectionId: cid, partage: !!(album && album.partage),
+                                    total: B.total });
+  if (r.confirmer && !confirm(`Supprimer « ${titre} » de « ${nom} » ?\n\n${r.texte}`)) {
+    caseADecocher.checked = true;
+    return;
+  }
+  caseADecocher.disabled = true;
+  try {
+    await apiSend("DELETE", `/api/albums/${albumId}/collections/${cid}`);
+  } catch (e) {
+    caseADecocher.checked = true;
+    caseADecocher.disabled = false;
+    rangeMsg(e.message, true);
+    return;
+  }
+  apresRangement(albumId, BDSuppression.apresRetrait(titre, nom, r.reste));
 }
 
 /* Ranger ou sortir change ce que la LISTE dit de l'album — où il vit, donc s'il se supprime
@@ -1607,9 +1655,13 @@ function renderJobs(list) {
    L'UI demande donc explicitement — sauf quand il n'y a rien à demander.
 
    Trois cas, et le troisième est celui qui empêche l'impasse :
-     · plusieurs collections → aucune présélection, le choix est fait à la main ;
+     · plusieurs collections → la collection de BASE présélectionnée (COL-3, tranche 3a,
+       maquette, écran 9), sauf si l'on vient d'une collection ouverte, qui l'est alors ;
+       sans base où l'on écrit, aucune présélection, le choix est fait à la main ;
      · une seule            → présélectionnée (la question n'a qu'une réponse) ;
-     · aucune               → pas de sélecteur, une note dit que l'API en créera une.
+     · aucune               → pas de sélecteur. La note « l'album entrera dans une collection
+       par défaut, créée à cette occasion » est partie avec la tranche 3a : tout projet naît
+       avec sa base, et elle ne pouvait plus s'afficher.
    À l'ÉDITION, le champ disparaît : déplacer un album d'une collection à l'autre est un
    geste d'espace de travail, qui appartient à AUTH-3.
 
@@ -1628,7 +1680,7 @@ function renderJobs(list) {
    de n'importe quel projet où l'on écrit, l'écran range ce qu'il propose. */
 let SANS_COLLECTION_ICI = "";     // pourquoi l'album ne peut pas naître ici, ou vide
 
-async function remplirCollections(edition) {
+async function remplirCollections(edition, depuis = null) {
   const wrap = $("#m-collection-wrap"), sel = $("#m-collection"), note = $("#m-collection-note");
   wrap.hidden = true; note.hidden = true; note.textContent = ""; sel.innerHTML = "";
   SANS_COLLECTION_ICI = "";
@@ -1654,26 +1706,22 @@ async function remplirCollections(edition) {
     return;
   }
   if (!cols.length) {
-    // Sans collection où écrire, deux cas que la note ne doit pas confondre : qui écrit
-    // PARTOUT (administrateur, mono-poste) verra naître la collection de repli ; les
-    // autres seront refusés, et le savoir avant de remplir le formulaire vaut mieux.
+    // Sans collection où écrire : qui écrit PARTOUT (administrateur, mono-poste) n'a rien à
+    // lire ici — le serveur range l'album dans la collection de repli ; les autres seront
+    // refusés, et le savoir avant de remplir le formulaire vaut mieux.
     const moi = await Promise.resolve(window.BDMoi).catch(() => null);
-    // COL-3 — la collection de repli naît dans le projet de REPLI. Quand ce n'est pas celui
-    // où l'on travaille, la note le nomme : l'album ne sera pas là où l'on regarde.
-    const repli = PROJETS.find((p) => p.repli);
-    const ou = repli && PROJET !== null && repli.id !== PROJET
-      ? `, dans le projet « ${repli.nom} »` : "";
-    note.textContent = moi && moi.acces && moi.acces.total
-      ? "Aucune collection : l'album entrera dans une collection par défaut, créée à "
-        + `cette occasion${ou}.`
-      : "Vous n'écrivez dans aucune collection : l'album ne pourra pas être créé. "
-        + "Demandez un accès en écriture au propriétaire d'une collection.";
+    if (moi && moi.acces && moi.acces.total) return;
+    note.textContent = "Vous n'écrivez dans aucune collection : l'album ne pourra pas être "
+      + "créé. Demandez un accès en écriture au propriétaire d'une collection.";
     note.hidden = false;
     return;
   }
+  // La base présélectionnée, sauf si l'on vient d'une collection ouverte
+  // (`lib/bibliotheque.js`). L'ordre reste celui du serveur.
+  const pre = BDBiblio.destinationParDefaut(cols, depuis);
   if (cols.length > 1) sel.appendChild(new Option("— choisir —", ""));
   for (const c of cols) sel.appendChild(new Option(c.nom, String(c.id)));
-  sel.value = cols.length === 1 ? String(cols[0].id) : "";
+  sel.value = pre === null ? "" : String(pre);
   wrap.hidden = false;
   if (cols.length < ecrites.length) {
     note.textContent = `Seules les collections du projet « ${projet} » sont proposées : pour `
@@ -1682,7 +1730,7 @@ async function remplirCollections(edition) {
   }
 }
 
-async function openModal(album) {
+async function openModal(album, depuis = null) {
   state.editingId = album ? album.id : null;
   $("#modal-title").textContent = album ? "Éditer l'album" : "Nouvel album";
   const g = (k) => (album && album[k]) || "";
@@ -1717,7 +1765,7 @@ async function openModal(album) {
   // AWAIT avant d'ouvrir : sans cela, une sauvegarde plus rapide que la requête verrait
   // le sélecteur encore caché et retomberait EN SILENCE sur la collection de repli —
   // exactement ce que ce champ existe pour empêcher.
-  await remplirCollections(exist);
+  await remplirCollections(exist, depuis);
   $("#album-modal").hidden = false;
   $("#m-titre").focus();
 }
@@ -1858,7 +1906,7 @@ async function ouvrirSuppression(a) {
   const total = !!(moi && moi.acces && moi.acces.total);
   // La seconde réponse ne dépend que de la ligne : elle se dit tout de suite.
   const d = BDSuppression.definitif({ destructible: a.destructible, demande: a.demande,
-                                      total, moi: MOI.login });
+                                      total, moi: MOI.login, soeur: !!a.soeur });
   SUPPR.definitif = d;
   $("#sp-def-texte").textContent = d.texte;
   $("#sp-motif-wrap").hidden = d.mode !== "demande";
@@ -2172,6 +2220,425 @@ function monterQuiEntre(panneau, c) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   COL-3, tranche 3a — prendre un document, rejoindre un travail, répondre
+   ═══════════════════════════════════════════════════════════════════════════
+   Tranché par Hugo sur maquette le 2026-10-17. On prend au fonds DANS la Bibliothèque :
+   « + Prendre du fonds… », au responsable du projet et à l'administrateur seulement (D3),
+   en tête du corpus (vers la base) et dans l'onglet Albums d'une collection (vers elle) ;
+   « + Prendre dans le projet… », à qui écrit dans la collection, sur les albums du projet
+   qu'il lit. Une demande de rejoindre se répond là où vit qui consent (D11) : le bloc ⚑ en
+   tête de l'onglet Albums de SA collection, la marque ⚑ sur elle dans le bloc
+   « Collections », un compteur dans la bande d'outils — rien dans la bande du haut. Le
+   responsable suit ses demandes au fonds dans la fiche du projet (Administration) ; un
+   rappel court y mène depuis la bande d'outils.
+
+   Rien ici n'est une garde : ce que l'écran offre se lit dans ce que le serveur a dit
+   (`gerable`, `ecrivable`, `administrable`, `repondable`), et chaque geste est tranché par
+   lui — un refus se dit sur place, dans ses mots. */
+const P3A = {
+  recues: new Map(),        // collection → demandes de rejoindre auxquelles on peut répondre
+  mesDemandes: 0,           // mes demandes au fonds qui attendent, dans le projet courant
+  prise: null,              // le panneau « Prendre du fonds… » ouvert
+  dansProjet: null,         // le panneau « Prendre dans le projet… » ouvert
+  minuterie: null,
+};
+const NOTICES_PAR_PAGE = 25;
+
+function projetCourant() {
+  return PROJETS.find((x) => x.id === PROJET) || null;
+}
+
+/* ── Ce qui attend une réponse ─────────────────────────────────────────────────────────── */
+
+/* Les demandes de rejoindre REÇUES, collection par collection, pour celles qu'on administre
+   dans le projet courant. Une portée totale n'en lit aucune ici : l'administrateur y répond
+   dans « À faire », en recours (maquette, écran 3). Une lecture ratée ne compte rien. */
+async function chargerDemandesRecues() {
+  const recues = new Map();
+  if (!B.total) {
+    const miennes = COLS.projet.filter((c) => c.administrable);
+    await Promise.all(miennes.map(async (c) => {
+      const l = await apiGet(`/api/collections/${c.id}/demandes`).catch(() => []);
+      const a = BDBiblio.demandesARepondre(l, B.total);
+      if (a.length) recues.set(c.id, a);
+    }));
+  }
+  P3A.recues = recues;
+  rendreRappels();
+  rendreListeCollections();
+  majPastilleOnglet();
+  const f = $("#col-fiche");
+  if (f && collection(f.dataset.id)) rendreBlocRecues(collection(f.dataset.id));
+}
+
+/* Les demandes au fonds du RESPONSABLE, en attente, dans le projet courant : le rappel de
+   la bande d'outils. Celles qu'il a déposées lui-même ; une portée totale n'en dépose
+   aucune qui attende (elle prend). */
+async function chargerMesDemandes() {
+  const p = projetCourant();
+  let n = 0;
+  if (p && p.gerable && !B.total && MOI.login) {
+    const l = await apiGet(`/api/projets/${p.id}/demandes`).catch(() => []);
+    n = l.filter((d) => d.en_attente && d.demandeur === MOI.login).length;
+  }
+  P3A.mesDemandes = n;
+  rendreRappels();
+}
+
+function nbRecues() {
+  const ids = new Set();
+  P3A.recues.forEach((l) => l.forEach((d) => ids.add(d.id)));
+  return ids.size;
+}
+
+/* La bande d'outils : le compteur des demandes à répondre, et le rappel des siennes. */
+function rendreRappels() {
+  const zone = $("#bi-rappels");
+  if (!zone) return;
+  const n = nbRecues();
+  const p = projetCourant();
+  zone.innerHTML = (n ? `<button type="button" class="rappel" id="bi-recues-compteur"
+        title="Des demandes de rejoindre attendent votre réponse">${pluriel(n, "demande")} à répondre</button>` : "")
+    + (P3A.mesDemandes && p ? `<a class="rappel calme" id="bi-mes-demandes"
+        href="/administration?vue=projets&projet=${p.id}"
+        title="Vos demandes au fonds, en attente d'un administrateur : suivez-les dans la fiche du projet">${pluriel(P3A.mesDemandes, "demande")} au fonds, en attente</a>` : "");
+  zone.hidden = !zone.innerHTML;
+}
+
+/* La marque ⚑ d'une collection du bloc « Collections ». */
+function marqueRecues(c) {
+  const n = (P3A.recues.get(c.id) || []).length;
+  if (!n) return "";
+  return `<span class="col-marque" title="${pluriel(n, "demande")} de rejoindre à répondre"><span aria-hidden="true">⚑ ${n}</span><span class="sr-only">${pluriel(n, "demande")} de rejoindre à répondre</span></span>`;
+}
+
+/* La pastille de l'onglet Albums d'une collection. */
+function pastilleOngletAlbums(c) {
+  const n = (P3A.recues.get(c.id) || []).length;
+  return `<span class="bi-onglet-pastille" data-pastille-albums ${n ? "" : "hidden"}>${n ? `<span aria-hidden="true">${n}</span><span class="sr-only"> (${pluriel(n, "demande")} à répondre)</span>` : ""}</span>`;
+}
+
+function majPastilleOnglet() {
+  const f = $("#col-fiche");
+  const el = f && f.querySelector("[data-pastille-albums]");
+  const c = f && collection(f.dataset.id);
+  if (el && c) el.outerHTML = pastilleOngletAlbums(c);
+}
+
+/* Le bloc ⚑ en tête de l'onglet Albums : chaque demande, qui la fait, pour quelle
+   collection d'arrivée, et « Accepter / Refuser ». */
+function rendreBlocRecues(c, msg) {
+  const zone = $("#bi-recues-zone");
+  if (!zone) return;
+  const l = P3A.recues.get(c.id) || [];
+  if (!l.length) {
+    zone.innerHTML = msg ? `<p id="bi-recues-msg" class="col-msg muted small" role="status">${esc(msg)}</p>` : "";
+    return;
+  }
+  zone.innerHTML = `<section id="bi-recues-bloc" class="recues" aria-labelledby="bi-recues-titre">
+    <h4 id="bi-recues-titre">⚑ ${pluriel(l.length, "demande")} de rejoindre un album de « ${esc(c.nom)} »</h4>
+    <ul class="lf-lignes">${l.map((d) => `<li data-demande="${d.id}">
+      <span><b>${esc(d.demandeur_nom || d.demandeur || "Quelqu'un")}</b> demande que
+        « ${esc(d.titre || "")} » soit aussi rangé dans « ${esc(d.collection_nom || "")} »
+        <span class="muted small">· ${esc(BDSuppression.dateLue(d.date_creation))}</span></span>
+      <span class="bi-boutons">
+        <button type="button" class="primary small" data-repondre="${d.id}" data-reponse="${BDSuppression.ACCEPTER}"
+                title="Ranger aussi dans « ${esc(d.collection_nom || "")} » : le travail est partagé">Accepter</button>
+        <button type="button" class="ghost small" data-repondre="${d.id}" data-reponse="${BDSuppression.REFUSER}">Refuser</button>
+      </span></li>`).join("")}</ul>
+    <p id="bi-recues-msg" class="col-msg muted small" role="status" aria-live="polite">${msg ? esc(msg) : ""}</p>
+  </section>`;
+}
+
+async function repondreDemande(bouton) {
+  const id = Number(bouton.dataset.repondre), reponse = bouton.dataset.reponse;
+  const f = $("#col-fiche");
+  const c = f ? collection(f.dataset.id) : null;
+  const d = c ? (P3A.recues.get(c.id) || []).find((x) => x.id === id) : null;
+  bouton.disabled = true;
+  try {
+    await apiSend("POST", `/api/demandes/${id}/reponse`, { reponse });
+  } catch (e) {
+    bouton.disabled = false;
+    colMsg($("#bi-recues-msg"), e.message, true);
+    return;
+  }
+  const titre = d ? d.titre : "", arrivee = d ? d.collection_nom : "";
+  const texte = reponse === BDSuppression.ACCEPTER
+    ? `« ${titre} » est aussi rangé dans « ${arrivee} » : le travail est partagé.`
+    : `Refusé : « ${titre} » reste où il est. La demande peut être redéposée.`;
+  P3A.recues.forEach((l, cid) => {
+    const reste = l.filter((x) => x.id !== id);
+    if (reste.length) P3A.recues.set(cid, reste); else P3A.recues.delete(cid);
+  });
+  rendreRappels();
+  rendreListeCollections();
+  majPastilleOnglet();
+  if (c) rendreBlocRecues(c, texte);
+  if (reponse === BDSuppression.ACCEPTER) {
+    await loadAlbums().catch(() => {});
+    if (c && $("#col-fiche")) rendreBlocRecues(c, texte);
+  }
+}
+
+/* ── Les deux panneaux de la prise ────────────────────────────────────────────────────── */
+
+function rendreZonePrise() {
+  const zone = $("#bi-prise-zone");
+  if (!zone) return;
+  if (P3A.prise) { zone.innerHTML = htmlPrise(); rendreNotices(); return; }
+  if (P3A.dansProjet) { zone.innerHTML = htmlDansProjet(); rendreDansProjet(); return; }
+  zone.innerHTML = "";
+}
+
+/* Ouvrir « + Prendre du fonds… » : en tête du corpus (vers la base) ou depuis l'onglet
+   Albums d'une collection (vers elle). Le même bouton le referme. */
+function basculerPrise(ou) {
+  const depuis = ou === "collection" && $("#col-fiche") ? Number($("#col-fiche").dataset.id) : null;
+  if (P3A.prise && P3A.prise.ou === ou) { P3A.prise = null; majBoutonsPrise(); rendreZonePrise(); return; }
+  const dests = BDBiblio.destinationsPrise(COLS.toutes, PROJET);
+  P3A.dansProjet = null;
+  P3A.prise = { ou, depuis, dest: BDBiblio.destinationParDefaut(dests, depuis), q: "", offset: 0,
+                total: 0, notices: null, coches: new Set(), reponses: new Map(), motif: "",
+                msg: null, erreur: false };
+  majBoutonsPrise();
+  rendreZonePrise();
+  chargerNotices();
+  const q = $("#bi-prise-q");
+  if (q) q.focus();
+}
+
+function majBoutonsPrise() {
+  const fonds = $("#bi-prendre-fonds");
+  if (fonds) fonds.setAttribute("aria-expanded", String(!!P3A.prise));
+  const dp = $("#bi-dans-projet");
+  if (dp) dp.setAttribute("aria-expanded", String(!!P3A.dansProjet));
+}
+
+function htmlPrise() {
+  const pr = P3A.prise;
+  const dests = BDBiblio.destinationsPrise(COLS.toutes, PROJET);
+  const dest = dests.find((c) => c.id === pr.dest);
+  return `<section id="bi-prise" class="bi-prise" aria-labelledby="bi-prise-titre">
+    <h4 id="bi-prise-titre" tabindex="-1">Prendre du fonds${dest ? ` pour « ${esc(dest.nom)} »` : ""}</h4>
+    <div class="bi-prise-ligne">
+      <label class="sr-only" for="bi-prise-q">Chercher au fonds</label>
+      <input type="search" id="bi-prise-q" placeholder="Titre, série, auteur…" autocomplete="off"
+             value="${esc(pr.q)}">
+      <label class="bi-prise-dest muted small">Dans
+        <select id="bi-prise-dest">${dests.length ? "" : `<option value="">—</option>`}${dests.map((c) =>
+          `<option value="${c.id}" ${c.id === pr.dest ? "selected" : ""}>${esc(c.nom)}${c.base ? " (base)" : ""}</option>`).join("")}</select></label>
+    </div>
+    <ul id="bi-prise-notices" class="bi-notices" aria-label="Notices du fonds"></ul>
+    <div class="bi-pagin">
+      <span id="bi-prise-compte" class="muted small"></span>
+      <span class="bi-boutons">
+        <button type="button" class="ghost small" data-prise-page="-1" aria-label="Page précédente">‹</button>
+        <button type="button" class="ghost small" data-prise-page="1" aria-label="Page suivante">›</button>
+      </span>
+    </div>
+    ${B.total ? "" : `<label class="bi-prise-motif">Pourquoi ces documents ? <span class="muted small">(l'administrateur le lira)</span>
+      <textarea id="bi-prise-motif" rows="2">${esc(pr.motif)}</textarea></label>`}
+    <div class="bi-boutons bi-prise-actions">
+      <button type="button" class="primary small" id="bi-prise-ok"></button>
+      <button type="button" class="ghost small" id="bi-prise-fermer">Fermer</button>
+      <span class="muted small">${B.total ? "Chaque document entre tout de suite, en copie vierge."
+        : "Une seule demande part à un administrateur ; ce que le projet a déjà entre tout de suite."}</span>
+    </div>
+    <p id="bi-prise-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
+  </section>`;
+}
+
+async function chargerNotices() {
+  const pr = P3A.prise;
+  if (!pr) return;
+  const q = new URLSearchParams({ q: pr.q, offset: String(pr.offset), limit: String(NOTICES_PAR_PAGE) });
+  if (PROJET !== null) q.set("projet_id", String(PROJET));
+  let r;
+  try { r = await apiGet(`/api/fonds/notices?${q}`); }
+  catch (e) {
+    if (P3A.prise !== pr) return;
+    pr.notices = [];
+    pr.total = 0;
+    pr.msg = e.message; pr.erreur = true;
+    rendreNotices();
+    return;
+  }
+  if (P3A.prise !== pr) return;                     // refermé, ou rouvert entre-temps
+  pr.notices = r.notices || [];
+  pr.total = r.total || 0;
+  rendreNotices();
+}
+
+/* La liste seule se redessine : le champ de recherche garde sa saisie et son focus. */
+function rendreNotices() {
+  const pr = P3A.prise, ul = $("#bi-prise-notices");
+  if (!pr || !ul) return;
+  if (pr.notices === null) {
+    ul.innerHTML = `<li class="muted small">Lecture des notices…</li>`;
+  } else {
+    ul.innerHTML = pr.notices.length ? pr.notices.map((n) => {
+      const rep = pr.reponses.get(n.document_id);
+      const id = `bi-notice-${n.document_id}`;
+      return `<li data-notice="${n.document_id}">
+        <label for="${id}"><input type="checkbox" id="${id}" data-notice-coche="${n.document_id}"
+            ${pr.coches.has(n.document_id) ? "checked" : ""}>
+          <span><span class="bi-notice-titre">${esc(n.titre || "")}</span>
+            <span class="muted small">${[n.serie, n.auteur].filter(Boolean).map((x) => `· ${esc(x)}`).join(" ")}</span></span></label>
+        ${n.dans_le_projet ? `<span class="bi-deja" title="Une collection de ce projet l'a déjà ; cocher demande une seconde copie">déjà dans ce projet</span>` : ""}
+        ${rep ? `<span class="reponse ${rep.classe}">${esc(rep.texte)}</span>` : ""}
+      </li>`;
+    }).join("") : `<li class="muted small">Aucune notice ne répond.</li>`;
+  }
+  const pages = Math.max(1, Math.ceil(pr.total / NOTICES_PAR_PAGE));
+  const page = Math.floor(pr.offset / NOTICES_PAR_PAGE);
+  $("#bi-prise-compte").textContent = pr.notices === null ? ""
+    : `${pluriel(pr.total, "notice")} · page ${page + 1} / ${pages}`;
+  const prec = document.querySelector('[data-prise-page="-1"]');
+  const suiv = document.querySelector('[data-prise-page="1"]');
+  if (prec) prec.disabled = page === 0;
+  if (suiv) suiv.disabled = page >= pages - 1;
+  const ok = $("#bi-prise-ok");
+  const n = pr.coches.size;
+  ok.textContent = `${B.total ? "Prendre" : "Demander"} ${n ? pluriel(n, "document") : "la sélection"}`;
+  ok.disabled = !n || !pr.dest;
+  if (pr.msg !== null) colMsg($("#bi-prise-msg"), pr.msg, pr.erreur);
+}
+
+async function envoyerPrise() {
+  const pr = P3A.prise, ok = $("#bi-prise-ok");
+  if (!pr || !pr.coches.size || !pr.dest || ok.disabled) return;
+  const motifEl = $("#bi-prise-motif");
+  if (motifEl) pr.motif = motifEl.value;
+  const documents = [...pr.coches].map((d) => ({ document_id: d, reponse: "zero" }));
+  const corps = { documents };
+  if (pr.motif.trim()) corps.motif = pr.motif.trim();
+  ok.disabled = true;
+  let r;
+  try { r = await apiSend("POST", `/api/collections/${pr.dest}/prendre`, corps); }
+  catch (e) {
+    pr.msg = e.message; pr.erreur = true;
+    rendreNotices();
+    return;
+  }
+  const lignes = r.documents || [];
+  lignes.forEach((l) => pr.reponses.set(l.document_id, BDBiblio.reponsePrise(l)));
+  pr.coches.clear();
+  const faits = lignes.filter((l) => l.etat === "fait").length;
+  const demandes = lignes.filter((l) => l.etat === "demande").length;
+  const refus = lignes.length - faits - demandes;
+  const dest = collection(pr.dest);
+  const ou = dest ? ` dans « ${dest.nom} »` : "";
+  pr.msg = [
+    faits ? `Fait : ${pluriel(faits, "document")} ${faits > 1 ? "ont" : "a"} désormais une copie de travail vierge${ou}.` : "",
+    demandes ? `${pluriel(demandes, "document")} ${demandes > 1 ? "sont demandés" : "est demandé"} à un administrateur : vous en suivrez la réponse dans la fiche du projet.` : "",
+    refus ? `${pluriel(refus, "document")} refusé${refus > 1 ? "s" : ""} : la raison est sur sa ligne.` : "",
+  ].filter(Boolean).join(" ");
+  pr.erreur = false;
+  if (demandes) { pr.motif = ""; chargerMesDemandes(); }
+  if (faits) { await loadAlbums().catch(() => {}); chargerNotices(); }
+  else rendreNotices();
+  const t = $("#bi-prise-titre");
+  if (t) t.focus();
+}
+
+/* « + Prendre dans le projet… » : les albums du projet que l'on LIT, hors cette collection.
+   Deux boutons par ligne (Hugo, 2026-10-17), l'explication en infobulle, la réponse écrite
+   sur place. Rejoindre partage le travail — tout de suite si l'on tient toutes ses
+   collections, sinon demandé à qui les tient (D4) ; une copie vierge, images seules, est
+   toujours immédiate, à son nom. */
+function basculerDansProjet() {
+  const f = $("#col-fiche");
+  if (!f) return;
+  const id = Number(f.dataset.id);
+  if (P3A.dansProjet) { P3A.dansProjet = null; majBoutonsPrise(); rendreZonePrise(); return; }
+  P3A.prise = null;
+  P3A.dansProjet = { collection: id, q: "", reponses: new Map(), msg: null, erreur: false };
+  majBoutonsPrise();
+  rendreZonePrise();
+  const q = $("#bi-dp-q");
+  if (q) q.focus();
+}
+
+function htmlDansProjet() {
+  const dp = P3A.dansProjet;
+  const c = collection(dp.collection);
+  const p = projetCourant();
+  return `<section id="bi-dans-projet-panneau" class="bi-prise" aria-labelledby="bi-dp-titre">
+    <h4 id="bi-dp-titre" tabindex="-1">Prendre dans ${p ? `« ${esc(p.nom)} »` : "le projet"} pour « ${esc(c ? c.nom : "")} »</h4>
+    <div class="bi-prise-ligne">
+      <label class="sr-only" for="bi-dp-q">Chercher un album du projet</label>
+      <input type="search" id="bi-dp-q" placeholder="Titre, série…" autocomplete="off" value="${esc(dp.q)}">
+      <span id="bi-dp-compte" class="muted small"></span>
+    </div>
+    <ul id="bi-dp-liste" class="lf-lignes bi-dp-liste"></ul>
+    <div class="bi-boutons"><button type="button" class="ghost small" id="bi-dp-fermer">Fermer</button></div>
+    <p id="bi-dp-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
+  </section>`;
+}
+
+function rendreDansProjet() {
+  const dp = P3A.dansProjet, ul = $("#bi-dp-liste");
+  if (!dp || !ul) return;
+  const c = collection(dp.collection);
+  const dedans = (a) => (a.collections || []).some((x) => x.id === dp.collection);
+  const candidats = BDBiblio.filtrerAlbums(state.albums, { texte: dp.q }).filter((a) =>
+    (a.collections || []).length && (!dedans(a) || dp.reponses.has(a.id)));
+  $("#bi-dp-compte").textContent = `${pluriel(candidats.filter((a) => !dedans(a)).length, "album")} du projet `
+    + `que vous lisez, hors « ${c ? c.nom : ""} »`;
+  const admin = new Set(COLS.toutes.filter((x) => x.administrable).map((x) => x.id));
+  ul.innerHTML = candidats.slice(0, 60).map((a) => {
+    const rep = dp.reponses.get(a.id);
+    const ou = (a.collections || []).map((x) => `« ${esc(x.nom)} »`).join(", ")
+      + (a.partage ? " et une collection que vous ne lisez pas" : "");
+    const direct = B.total || (!a.partage && (a.collections || []).every((x) => admin.has(x.id)));
+    const titreRej = direct
+      ? "Ranger aussi ici cette copie : vous tenez toutes ses collections, c'est immédiat. Le travail est partagé."
+      : "Ranger aussi ici cette copie : qui tient toutes ses collections doit l'accepter. Le travail sera partagé.";
+    return `<li data-dp-album="${a.id}"><span><b>${esc(a.titre)}</b> <span class="muted small">· dans ${ou}</span></span>
+      <span class="bi-boutons">${rep ? `<span class="reponse ${rep.classe}">${esc(rep.texte)}</span>`
+        : `<button type="button" class="ghost small" data-dp="rejoindre" data-id="${a.id}" title="${esc(titreRej)}">Rejoindre</button>
+           <button type="button" class="ghost small" data-dp="zero" data-id="${a.id}"
+                   title="Une seconde copie, images seules, sans le travail de l'autre ; à votre nom, tout de suite. Ce qui se corrigera dans l'une n'arrivera pas dans l'autre.">Copie vierge</button>`}</span></li>`;
+  }).join("") || `<li class="muted small">Rien à prendre : tout ce que vous lisez du projet est déjà ici.</li>`;
+  if (dp.msg !== null) colMsg($("#bi-dp-msg"), dp.msg, dp.erreur);
+}
+
+async function prendreDansProjet(bouton) {
+  const dp = P3A.dansProjet;
+  if (!dp) return;
+  const a = state.albums.find((x) => x.id === Number(bouton.dataset.id));
+  if (!a) return;
+  const reponse = bouton.dataset.dp;
+  bouton.disabled = true;
+  let r;
+  try {
+    r = await apiSend("POST", `/api/collections/${dp.collection}/prendre`, {
+      documents: [{ document_id: a.document_id, reponse, album_id: a.id }] });
+  } catch (e) {
+    bouton.disabled = false;
+    dp.msg = e.message; dp.erreur = true;
+    rendreDansProjet();
+    return;
+  }
+  const l = (r.documents || [])[0] || {};
+  dp.reponses.set(a.id, BDBiblio.reponsePrise(l));
+  const c = collection(dp.collection);
+  dp.erreur = false;
+  dp.msg = l.etat === "fait"
+    ? (reponse === "zero"
+      ? `Fait : « ${a.titre} » a une seconde copie, vierge, dans « ${c ? c.nom : ""} », à votre nom. Ce qui se fera dans l'une n'arrivera pas dans l'autre.`
+      : `Fait : « ${a.titre} » est aussi rangé dans « ${c ? c.nom : ""} ». Le travail est partagé.`)
+    : l.etat === "demande"
+      ? `Demandé à ${BDBiblio.quiRepondra(l.repondra)} : « ${a.titre} » rejoindra « ${c ? c.nom : ""} » si la réponse est oui. Rien ne change d'ici là.`
+      : (l.motif || "Refusé.");
+  if (l.etat === "fait") await loadAlbums().catch(() => {});
+  else rendreDansProjet();
+  const t = $("#bi-dp-titre");
+  if (t) t.focus();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    Ouvrir, revenir — les gestes de la liste
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -2465,6 +2932,31 @@ function brancherFiche() {
     if (t.closest("[data-bi-retour]")) { revenirALaListe(); return; }
     const onglet = t.closest('[role="tab"][data-onglet]');
     if (onglet) { choisirOnglet(onglet.dataset.onglet, false); return; }
+    // COL-3, tranche 3a — la prise, le rejoindre, les réponses.
+    const pf = t.closest("[data-prendre-fonds]");
+    if (pf) { basculerPrise(pf.dataset.prendreFonds); return; }
+    if (t.closest("#bi-dans-projet")) { basculerDansProjet(); return; }
+    if (t.closest("#bi-prise-fermer")) {
+      P3A.prise = null; majBoutonsPrise(); rendreZonePrise();
+      const b = $("#bi-prendre-fonds"); if (b) b.focus();
+      return;
+    }
+    if (t.closest("#bi-dp-fermer")) {
+      P3A.dansProjet = null; majBoutonsPrise(); rendreZonePrise();
+      const b = $("#bi-dans-projet"); if (b) b.focus();
+      return;
+    }
+    const page = t.closest("[data-prise-page]");
+    if (page && P3A.prise) {
+      P3A.prise.offset = Math.max(0, P3A.prise.offset + Number(page.dataset.prisePage) * NOTICES_PAR_PAGE);
+      chargerNotices();
+      return;
+    }
+    if (t.closest("#bi-prise-ok")) { envoyerPrise(); return; }
+    const dpb = t.closest("button[data-dp]");
+    if (dpb) { prendreDansProjet(dpb); return; }
+    const rp = t.closest("button[data-repondre]");
+    if (rp) { repondreDemande(rp); return; }
     const oc = t.closest("[data-ouvrir-col]");
     if (oc) { ouvrirCollection(Number(oc.dataset.ouvrirCol), "albums", false); return; }
     const oa = t.closest("[data-ouvrir-album]");
@@ -2513,7 +3005,6 @@ function brancherFiche() {
       return;
     }
     if (t.closest("#detail-validate-all")) { validateAllAlbum(); return; }
-    if (t.closest("#album-range-add")) { rangerAlbum(); return; }
     const lancer = t.closest("[data-lancer]");
     if (lancer) { runBatch(lancer.dataset.lancer); return; }
     const vider = t.closest("[data-vider]");
@@ -2560,8 +3051,40 @@ function brancherFiche() {
       if (l) l.disabled = !state.passes.size;
       return;
     }
+    if (t.matches("[data-notice-coche]") && P3A.prise) {
+      const d = Number(t.dataset.noticeCoche);
+      if (t.checked) P3A.prise.coches.add(d); else P3A.prise.coches.delete(d);
+      rendreNotices();
+      const el = document.getElementById(`bi-notice-${d}`);
+      if (el) el.focus();
+      return;
+    }
+    if (t.matches("#bi-prise-dest") && P3A.prise) {
+      P3A.prise.dest = t.value ? Number(t.value) : null;
+      const d = collection(P3A.prise.dest);
+      $("#bi-prise-titre").textContent = `Prendre du fonds${d ? ` pour « ${d.nom} »` : ""}`;
+      rendreNotices();
+      return;
+    }
+    if (t.matches("input[data-ranger]")) {
+      if (t.checked) rangerAlbum(t); else sortirAlbum(t);
+      return;
+    }
     if (t.matches("#rel-filter")) { state.relFilter = t.value; renderDetail(); return; }
     if (t.matches("select[data-rel]")) setRelecture(Number(t.dataset.rel), t.value);
+  });
+  // La recherche des deux panneaux de la prise : seule la liste se redessine.
+  fiche.addEventListener("input", (e) => {
+    const t = e.target;
+    if (t.matches("#bi-prise-q") && P3A.prise) {
+      P3A.prise.q = t.value;
+      P3A.prise.offset = 0;
+      clearTimeout(P3A.minuterie);
+      P3A.minuterie = setTimeout(chargerNotices, 250);
+      return;
+    }
+    if (t.matches("#bi-prise-motif") && P3A.prise) { P3A.prise.motif = t.value; return; }
+    if (t.matches("#bi-dp-q") && P3A.dansProjet) { P3A.dansProjet.q = t.value; rendreDansProjet(); }
   });
   // Le motif ARIA des onglets : les flèches passent d'un onglet à l'autre, Début et Fin vont
   // au premier et au dernier.
@@ -2579,7 +3102,11 @@ function brancherFiche() {
 
 function setup() {
   setupBack();
-  $("#btn-new").onclick = () => openModal(null);
+  // COL-3, tranche 3a — la base présélectionnée, sauf si l'on vient d'une collection ouverte.
+  $("#btn-new").onclick = () => {
+    const f = ficheCourante();
+    openModal(null, f.genre === "collection" ? f.id : null);
+  };
   $("#m-save").onclick = saveAlbum;
   $("#m-cancel").onclick = closeModal;
   $("#m-contrib-add").onclick = addContribution;
@@ -2609,6 +3136,13 @@ function setup() {
       { box: ".modal-box", labelledby: "sp-titre", onClose: fermerSuppression });
   brancherListe();
   brancherFiche();
+  // COL-3, tranche 3a — le compteur des demandes reçues mène à la première collection qui
+  // en attend, sur son onglet Albums, où se trouve le bloc ⚑.
+  $("#bi-rappels").addEventListener("click", (e) => {
+    if (!e.target.closest("#bi-recues-compteur")) return;
+    const premiere = COLS.projet.find((c) => P3A.recues.has(c.id));
+    if (premiere) ouvrirCollection(premiere.id, "albums", false);
+  });
   // COL-3 — on a changé de projet, par le sélecteur de la bande ou dans un autre onglet :
   // la liste est celle du nouveau, et ce qui était ouvert dans l'ancien se referme.
   document.addEventListener(BDProjet.EVENEMENT, async (e) => {
@@ -2616,6 +3150,7 @@ function setup() {
     if (id == null || id === PROJET) return;
     PROJET = id;
     colTaireSauf(null);
+    P3A.prise = null; P3A.dansProjet = null;
     B.calques.clear(); B.mode = "une"; B.ouverte = null; B.edition = null; B.depuis = null;
     state.openId = null; state.planches = []; state.checkedPlanches.clear();
     state.checkedAlbums.clear();
@@ -2627,7 +3162,7 @@ function setup() {
     ecrireAdresse(false);
     // Une modale « Nouvel album » restée ouverte propose les collections du projet d'AVANT
     // (un autre onglet vient d'en changer) : sa liste suit.
-    if (!$("#album-modal").hidden && !state.editingId) remplirCollections(false);
+    if (!$("#album-modal").hidden && !state.editingId) remplirCollections(false, null);
   });
   window.addEventListener("popstate", () => { ouvrirDepuisAdresse(true); });
   ETROIT.addEventListener("change", rendreVue);

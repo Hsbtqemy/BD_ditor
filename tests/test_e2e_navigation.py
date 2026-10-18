@@ -682,15 +682,17 @@ def test_creation_album_demande_sa_collection(page, seeded):
 
     `seeded` a déjà créé un album, donc la collection de repli existe ; le projet de repli
     porte aussi sa collection de base, née avec lui (D10). Deux collections : la question
-    se pose, rien n'est choisi d'office, et l'album entre dans celle qu'on choisit. (Une
-    collection SEULE est choisie d'office : `tests/test_e2e_projets.py`.)
+    se pose, la BASE est présélectionnée (COL-3, tranche 3a, maquette, écran 9), et l'album
+    entre dans celle qu'on choisit. (Une collection SEULE est choisie d'office :
+    `tests/test_e2e_projets.py` ; la présélection depuis une collection ouverte :
+    `tests/test_e2e_bibliotheque_3a.py`.)
     """
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     page.locator("#btn-new").click()
     expect(page.locator("#album-modal")).to_be_visible(timeout=15000)
     sel = page.locator("#m-collection")
     expect(page.locator("#m-collection-wrap")).to_be_visible()
-    expect(sel).to_have_value("")                           # rien d'office : deux
+    expect(sel.locator("option:checked")).to_have_text("Projet principal")   # la base du repli
     sel.select_option(label="Collection par défaut")
     choisie = sel.input_value()
 

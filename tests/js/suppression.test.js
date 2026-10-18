@@ -424,3 +424,12 @@ test("un retour dit d'où la copie était sortie, quand le serveur le sait", () 
   assert.ok(!meme.includes("ouvre son travail"), meme);
   assert.ok(!S.explicationDemande(DEM(S.GENRE_RENDRE)).includes("sortie"));
 });
+
+test("une copie qui a une sœur : la demande le dit aussi, sans dire où", () => {
+  const r = S.definitif({ destructible: false, demande: null, total: false, soeur: true });
+  assert.equal(r.mode, "demande");
+  assert.ok(r.texte.includes(S.IMAGES_RESTENT), r.texte);
+  assert.ok(r.texte.endsWith("Rien n'est effacé d'ici là."), r.texte);
+  const sans = S.definitif({ destructible: false, demande: null, total: false });
+  assert.ok(!sans.texte.includes(S.IMAGES_RESTENT), sans.texte);
+});

@@ -22,12 +22,14 @@
 
   <!-- ───────────── Bande 2 — Outils de la page ─────────────
        UX-18 : les chiffres du corpus, puis « + Nouvel album ». Le lot n'y est plus : il vit
-       AU-DESSUS de sa sélection (l'onglet Albums d'une collection, la fiche d'un album). La
-       place à droite des chiffres attend aussi le rappel des demandes de la tranche 3a de
-       COL-3 (« demandes au fonds en attente », un compteur de demandes reçues). -->
+       AU-DESSUS de sa sélection (l'onglet Albums d'une collection, la fiche d'un album).
+       COL-3, tranche 3a : à droite des chiffres, le compteur des demandes de rejoindre à
+       répondre (propriétaire) et le rappel de ses demandes au fonds en attente
+       (responsable) — rien de cela dans la bande du haut (Hugo, 2026-10-17). -->
   <header id="header">
     <h1 class="sr-only">Bibliothèque</h1>
     <div id="corpus-stats" class="corpus-stats"></div>
+    <span id="bi-rappels" class="bi-rappels" hidden></span>
     <span class="nav-spacer"></span>
     <button id="btn-new" class="primary small" type="button">+ Nouvel album</button>
   </header>
@@ -104,8 +106,8 @@
 
   <!-- Modale création / édition d'album. UX-18 : elle reste — elle porte les métadonnées,
        l'édition et les contributions, dont la lecture vit dans la fiche de l'album. Ce qui
-       en est SORTI, c'est l'appartenance : « Rangé dans » se lit et se règle dans la fiche,
-       là où l'on regarde où vit l'album. -->
+       en est SORTI, c'est l'appartenance : « Sur les collections » se lit et se règle dans
+       la fiche, là où l'on regarde où vit l'album (COL-3, tranche 3a). -->
   <div id="album-modal" hidden>
     <div class="modal-box">
       <h3 id="modal-title">Nouvel album</h3>

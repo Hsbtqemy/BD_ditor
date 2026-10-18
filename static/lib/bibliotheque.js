@@ -230,7 +230,93 @@
     return s ? `?${s}` : "";
   }
 
+  /* ═══ COL-3, tranche 3a — les gestes de la prise (Hugo, sur maquette, 2026-10-17) ═══
+     Ce qui suit choisit ce que l'écran OFFRE et ce qu'il DIT d'une réponse ; le serveur
+     reste seul à trancher chaque geste (`POST …/prendre`, `PUT …/collections/{cid}`), et il
+     refuse en le disant si l'écran s'est trompé. */
+
+  /* « + Prendre du fonds… » s'offre au RESPONSABLE du projet et à l'administrateur, et à
+     eux seuls (D3) : le serveur le dit projet par projet (`gerable`, `GET /api/projets`).
+     Un écrivain d'une collection ne puise que dans ce qu'il lit déjà — « + Prendre dans le
+     projet… ». `collection`, quand on offre le geste DANS une collection : il faut aussi y
+     écrire, puisque c'est elle qui recevra. */
+  function offrirPrendreDuFonds(projet, collection) {
+    if (!projet || projet.gerable !== true) return false;
+    return collection === undefined || collection === null || collection.ecrivable === true;
+  }
+
+  /* Où une prise peut arriver : les collections du projet où l'on écrit, la BASE en tête
+     (D10 : ce que le projet prend au fonds y arrive), puis par nom. */
+  function destinationsPrise(collections, projetId) {
+    const l = (Array.isArray(collections) ? collections : [])
+      .filter((c) => c && c.ecrivable === true
+                     && (projetId === null || projetId === undefined || c.projet_id === projetId));
+    return trierCollections(l, "alpha");
+  }
+
+  /* La destination présélectionnée : celle d'où l'on vient, si elle peut recevoir ; sinon
+     la base ; sinon la seule ; sinon aucune (on choisit). C'est aussi la règle de « + Nouvel
+     album » (la base, sauf si l'on vient d'une collection ouverte). */
+  function destinationParDefaut(destinations, depuis) {
+    const l = Array.isArray(destinations) ? destinations : [];
+    if (depuis !== null && depuis !== undefined) {
+      const ici = l.find((c) => Number(c.id) === Number(depuis));
+      if (ici) return ici.id;
+    }
+    const base = l.find((c) => c.base);
+    if (base) return base.id;
+    return l.length === 1 ? l[0].id : null;
+  }
+
+  /* Qui répondra à un « rejoindre » : le serveur le dit (`repondra`, Hugo, 2026-10-17 : le
+     message ne ment pas) — un propriétaire qui tient toutes les collections de la copie,
+     sinon un administrateur. */
+  function quiRepondra(repondra) {
+    return repondra === "administrateur" ? "un administrateur" : "son propriétaire";
+  }
+
+  /* La réponse à UNE ligne d'une prise, écrite sur place : « fait », « demandé à … », ou le
+     refus et sa raison. Une entrée de documents et un retour se répondent par un
+     administrateur ; un rejoindre, par qui `repondra`. Jamais « fait » sans que le serveur
+     l'ait dit. */
+  function reponsePrise(ligne) {
+    const l = ligne || {};
+    if (l.etat === "fait") return { classe: "fait", texte: "fait" };
+    if (l.etat === "demande") {
+      return { classe: "demande",
+               texte: `demandé à ${l.repondra ? quiRepondra(l.repondra) : "un administrateur"}` };
+    }
+    return { classe: "refuse", texte: l.motif ? `refusé : ${l.motif}` : "refusé" };
+  }
+
+  /* Ce que dit une case cochée de « Sur les collections » (cocher = rejoindre). `rep` : la
+     réponse du serveur — la liste des collections (201, fait), ou `{etat: "demande",
+     repondra}` (202). Un 202 ne range RIEN : la case passe « demandée », et la phrase le
+     dit. */
+  function messageRejoindre(titre, collection, rep) {
+    if (rep && rep.etat === "demande") {
+      return { fait: false,
+               texte: rep.repondra === "administrateur"
+                 ? "Pas rangé : rejoindre ce travail se demande, et aucun propriétaire ne tient "
+                   + "toutes ses collections — un administrateur y répondra. La demande est partie."
+                 : "Pas rangé : rejoindre ce travail se demande au propriétaire de ses "
+                   + "collections. La demande est partie." };
+    }
+    return { fait: true,
+             texte: `Fait : « ${titre} » est aussi rangé dans « ${collection} ». Le travail est partagé.` };
+  }
+
+  /* Les demandes de rejoindre REÇUES, comptées pour la marque ⚑ d'une collection, la
+     pastille de son onglet Albums et le compteur de la bande d'outils : celles auxquelles
+     on peut répondre (`repondable`), en propriétaire. Une portée totale n'en compte aucune
+     ici — l'administrateur les lit dans « À faire », en recours (maquette, écran 3). */
+  function demandesARepondre(demandes, total) {
+    if (total) return [];
+    return (Array.isArray(demandes) ? demandes : []).filter((d) => d && d.repondable === true);
+  }
+
   return { ONGLETS, CLES_ONGLETS, ONGLET_PAR_LE_NOM, TRIS, MODES, plier, filtrerAlbums, trierCollections,
            droitsAlbum, actesCollection, aussiDans, libelleAlbums, comparer, lireAdresse,
-           ecrireAdresse };
+           ecrireAdresse, offrirPrendreDuFonds, destinationsPrise, destinationParDefaut,
+           quiRepondra, reponsePrise, messageRejoindre, demandesARepondre };
 });

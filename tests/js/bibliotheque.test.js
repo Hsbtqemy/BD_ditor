@@ -241,3 +241,74 @@ test("onglets — quatre, dans l'ordre tranché ; le nom ouvre « Qui entre »",
                    ["Albums", "Qui entre", "Description", "Diffusion et dépôt"]);
   assert.equal(B.ONGLET_PAR_LE_NOM, "qui");
 });
+
+/* ═══ COL-3, tranche 3a — les gestes de la prise ═══ */
+
+test("« + Prendre du fonds… » au responsable et à l'administrateur seulement (D3)", () => {
+  assert.equal(B.offrirPrendreDuFonds({ gerable: true }), true);
+  assert.equal(B.offrirPrendreDuFonds({ gerable: false }), false, "un membre, un écrivain");
+  assert.equal(B.offrirPrendreDuFonds({}), false, "sans la clé, on n'offre rien");
+  assert.equal(B.offrirPrendreDuFonds(null), false);
+  // Dans une collection, il faut aussi pouvoir y recevoir.
+  assert.equal(B.offrirPrendreDuFonds({ gerable: true }, { ecrivable: true }), true);
+  assert.equal(B.offrirPrendreDuFonds({ gerable: true }, { ecrivable: false }), false);
+  assert.equal(B.offrirPrendreDuFonds({ gerable: false }, { ecrivable: true }), false);
+});
+
+test("les destinations d'une prise : celles du projet où l'on écrit, la base en tête", () => {
+  const cols = [
+    { id: 1, nom: "Zeta", projet_id: 7, ecrivable: true },
+    { id: 2, nom: "Base P", projet_id: 7, ecrivable: true, base: true },
+    { id: 3, nom: "Alpha", projet_id: 7, ecrivable: false },
+    { id: 4, nom: "Ailleurs", projet_id: 8, ecrivable: true },
+    { id: 5, nom: "Beta", projet_id: 7, ecrivable: true },
+  ];
+  assert.deepEqual(B.destinationsPrise(cols, 7).map((c) => c.id), [2, 5, 1]);
+  assert.deepEqual(B.destinationsPrise(cols, null).map((c) => c.id), [2, 4, 5, 1]);
+  assert.deepEqual(B.destinationsPrise(null, 7), []);
+});
+
+test("la destination par défaut : d'où l'on vient, sinon la base, sinon la seule", () => {
+  const base = { id: 2, nom: "Base", base: true }, x = { id: 5, nom: "X" };
+  assert.equal(B.destinationParDefaut([base, x], null), 2, "la base présélectionnée");
+  assert.equal(B.destinationParDefaut([base, x], 5), 5, "sauf si l'on vient d'une collection");
+  assert.equal(B.destinationParDefaut([base, x], "5"), 5);
+  assert.equal(B.destinationParDefaut([base, x], 9), 2, "une collection qui ne reçoit pas");
+  assert.equal(B.destinationParDefaut([x], null), 5);
+  assert.equal(B.destinationParDefaut([x, { id: 6 }], null), null, "on choisit");
+  assert.equal(B.destinationParDefaut([], null), null);
+});
+
+test("la réponse d'une ligne de prise : jamais « fait » sans que le serveur l'ait dit", () => {
+  assert.deepEqual(B.reponsePrise({ etat: "fait" }), { classe: "fait", texte: "fait" });
+  assert.deepEqual(B.reponsePrise({ etat: "demande" }),
+                   { classe: "demande", texte: "demandé à un administrateur" });
+  assert.deepEqual(B.reponsePrise({ etat: "demande", repondra: "proprietaire" }),
+                   { classe: "demande", texte: "demandé à son propriétaire" });
+  assert.deepEqual(B.reponsePrise({ etat: "demande", repondra: "administrateur" }),
+                   { classe: "demande", texte: "demandé à un administrateur" });
+  assert.deepEqual(B.reponsePrise({ etat: "refuse", motif: "Déjà demandé." }),
+                   { classe: "refuse", texte: "refusé : Déjà demandé." });
+  assert.equal(B.reponsePrise(undefined).classe, "refuse");
+});
+
+test("cocher « Sur les collections » : un 202 ne range rien, et la phrase le dit", () => {
+  const fait = B.messageRejoindre("Lotus", "Lot B", [{ id: 1 }]);
+  assert.equal(fait.fait, true);
+  assert.ok(fait.texte.startsWith("Fait : « Lotus » est aussi rangé dans « Lot B »"));
+  const dem = B.messageRejoindre("Lotus", "Lot B", { etat: "demande", repondra: "proprietaire" });
+  assert.equal(dem.fait, false);
+  assert.ok(!/^Fait/.test(dem.texte), dem.texte);
+  assert.ok(dem.texte.includes("La demande est partie"));
+  assert.ok(dem.texte.includes("propriétaire"));
+  const adm = B.messageRejoindre("Lotus", "Lot B", { etat: "demande", repondra: "administrateur" });
+  assert.equal(adm.fait, false);
+  assert.ok(adm.texte.includes("un administrateur y répondra"));
+});
+
+test("les demandes reçues se comptent pour qui peut y répondre, jamais pour une portée totale", () => {
+  const l = [{ id: 1, repondable: true }, { id: 2, repondable: false }, { id: 3 }];
+  assert.deepEqual(B.demandesARepondre(l, false).map((d) => d.id), [1]);
+  assert.deepEqual(B.demandesARepondre(l, true), [], "l'administrateur répond dans « À faire »");
+  assert.deepEqual(B.demandesARepondre(null, false), []);
+});
