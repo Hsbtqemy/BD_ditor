@@ -230,3 +230,25 @@ test("la phrase dite avant d'appliquer : resserrer n'efface rien, ouvrir compte 
   assert.ok(P.phraseChangement(null, "lecture", 1, "Base").includes("1 entrée du projet le droit de lire"));
   assert.ok(P.phraseChangement(null, "lecture", 0, "Base").includes("aucune entrée"));
 });
+
+test("+ Faire entrer dit ce que la base ouvre à l'arrivant, selon sa position (D10)", () => {
+  // « Aucune collection ne lui est ouverte » était faux depuis la collection de base : le
+  // membre y entre au niveau que le projet a choisi, et n'entre nulle part ailleurs.
+  const P = require("../../static/lib/projet.js");
+  assert.equal(P.phraseEntree({ nom: "Base S", acces_membres: "ecriture" }),
+    "Il entre dans la collection de base « Base S », pour y annoter ; aucune autre "
+    + "collection ne lui est ouverte pour autant.");
+  assert.equal(P.phraseEntree({ nom: "Base S", acces_membres: "lecture" }),
+    "Il entre dans la collection de base « Base S », en lecture ; aucune autre collection "
+    + "ne lui est ouverte pour autant.");
+  for (const protegee of [null, undefined]) {
+    assert.equal(P.phraseEntree({ nom: "Base S", acces_membres: protegee }),
+      "La collection de base « Base S » est protégée : aucune collection ne lui est ouverte "
+      + "pour autant.");
+  }
+  // Un projet sans base : rien ne s'ouvre, et c'est alors vrai.
+  assert.equal(P.phraseEntree(null), "Aucune collection ne lui est ouverte pour autant.");
+  // Sans rien savoir de la base, la phrase dit la règle — jamais « aucune collection ».
+  const regle = P.phraseEntree();
+  assert.ok(regle.startsWith("Sa collection de base lui est ouverte selon ce que le projet"), regle);
+});

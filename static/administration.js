@@ -1229,8 +1229,8 @@ function pjDecider(p) {
       : `<p class="pj-supprimer"><button type="button" class="danger"
           data-pj-supprimer="1">Supprimer le projet</button></p>
          ${pjLigneDeGeste("supprimer", "p")}
-         <p class="col-note">Un projet ne se supprime que vide : tant qu'une collection lui
-          appartient, le serveur le refuse.</p>`}`;
+         <p class="col-note">Un projet ne se supprime que vide : tant qu'une autre collection
+          que sa base lui appartient, ou que sa base porte un album, le serveur le refuse.</p>`}`;
 }
 
 /* COL-3, tranche 2 (décision B5) — le responsable DEMANDE la suppression de son projet, motif
@@ -1589,6 +1589,9 @@ function pjRendreFiche() {
     groupesAdmin: PJ.groupesAdmin,
     surMessage: pjTaireSauf,
     surChangement: pjApresMembres,
+    // Lue au moment du message de « + Faire entrer » : la position se règle plus bas dans la
+    // fiche sans remonter la partie, et `pjLire` remplace l'objet du projet.
+    base: () => { const q = pjProjet(); return q && q.base ? q.base : null; },
   });
 }
 
@@ -1743,11 +1746,19 @@ async function pjDecrire() {
   if (bouton) bouton.focus();
 }
 
+/* La collection de BASE part avec le projet (D10) : vide, elle ne le retient pas, et le
+   serveur la supprime avec lui. « Aucune collection n'est touchée » était faux depuis elle. */
+function pjConfirmationSupprimer(p) {
+  const base = p.base ? `, et sa collection de base, « ${p.base.nom} », part avec lui` : "";
+  return `Supprimer le projet « ${p.nom} » ? Ses membres en sortent${base}. Un projet ne se `
+    + "supprime que vide : aucune autre collection, aucun album gardé au fonds"
+    + (p.base ? ", et une base sans album ni vocabulaire propre." : ".");
+}
+
 async function pjSupprimer() {
   const p = pjProjet(), ligne = $("#pj-supprimer-msg");
   if (!p) return;
-  if (!confirm(`Supprimer le projet « ${p.nom} » ? Ses membres en sortent. Aucune collection `
-               + "n'est touchée : un projet ne se supprime que s'il n'en porte aucune.")) return;
+  if (!confirm(pjConfirmationSupprimer(p))) return;
   try { await apiSend("DELETE", `/api/projets/${p.id}`); }
   catch (e) { pjMsg(ligne, e.message || "Échec", true); return; }
   PJ.sel = null;

@@ -206,7 +206,30 @@
       ? "d'annoter et d'organiser les albums" : "de lire"} dans ${nom}, dès maintenant.`;
   }
 
+  /* Ce qu'ENTRER dans le projet vient d'ouvrir à qui y entre comme membre (« + Faire
+     entrer ») : sa collection de base, selon la position — et elle seule (D10). Dire
+     « aucune collection ne lui est ouverte » était faux depuis la base. `base` :
+       - absent (`undefined`) : l'hôte ne dit rien de la base, la phrase ne dit que la règle ;
+       - `null` : le projet n'a pas de base, rien ne s'ouvre ;
+       - `{ nom, acces_membres }` : la base et sa position. */
+  function phraseEntree(base) {
+    if (base === undefined) {
+      return "Sa collection de base lui est ouverte selon ce que le projet a choisi ; "
+        + "aucune autre collection ne lui est ouverte pour autant.";
+    }
+    if (base === null) return "Aucune collection ne lui est ouverte pour autant.";
+    const nom = `« ${base.nom} »`;
+    const v = base.acces_membres === undefined ? null : base.acces_membres;
+    if (v === null) {
+      return `La collection de base ${nom} est protégée : aucune collection ne lui est `
+        + "ouverte pour autant.";
+    }
+    return `Il entre dans la collection de base ${nom}, ${v === "ecriture"
+      ? "pour y annoter" : "en lecture"} ; aucune autre collection ne lui est ouverte pour `
+      + "autant.";
+  }
+
   return { CLE, EVENEMENT, LONGUEUR_NOM, ROLES, POSITIONS, courant, lire, retenir, choisir,
            duProjet, albumsDuProjet, basculeVers, pourRanger, libelleRole, position,
-           phraseChangement };
+           phraseChangement, phraseEntree };
 });

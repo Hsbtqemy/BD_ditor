@@ -2012,7 +2012,7 @@ async function spDefinitif() {
   fermerSuppression();
   if (d.mode === "direct") state.checkedAlbums.delete(a.id);
   await loadAlbums();
-  toast(BDSuppression.apresDefinitif(a.titre, d.mode), "success");
+  toast(BDSuppression.apresDefinitif(a.titre, d.mode, !!a.soeur), "success");
 }
 
 

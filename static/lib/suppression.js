@@ -213,10 +213,16 @@
                            : "Le travail continue ailleurs.");
   }
 
-  function apresDefinitif(titre, mode) {
-    return mode === "direct"
-      ? `${g(titre)} est supprimé définitivement, avec ses images et le travail fait dessus.`
-      : "Votre demande est partie à un administrateur. Rien n'est effacé d'ici sa réponse.";
+  /* `soeur` : comme pour `definitif` — une autre copie du document emploie ses images, qui
+     restent. Le panneau venait de le dire ; le message de fin ne le contredit pas. */
+  function apresDefinitif(titre, mode, soeur) {
+    if (mode !== "direct") {
+      return "Votre demande est partie à un administrateur. Rien n'est effacé d'ici sa réponse.";
+    }
+    return soeur
+      ? `${g(titre)} : cette copie est supprimée définitivement, avec le travail fait dessus. `
+        + IMAGES_RESTENT
+      : `${g(titre)} est supprimé définitivement, avec ses images et le travail fait dessus.`;
   }
 
   /* ── Le fonds, vu par qui le tient ─────────────────────────────────────────────────── */

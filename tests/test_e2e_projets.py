@@ -1328,7 +1328,8 @@ def test_faire_entrer_un_groupe_part_avec_le_role_de_membre(page, seminaire):
         "genre": "groupe", "principal": "annotateurs", "role": "membre"}
     expect(partie.locator(".mp-msg")).to_contain_text(
         "Le groupe annotateurs entre dans le projet « Séminaire 2026 », comme membre. "
-        "Aucune collection ne lui est ouverte pour autant.")
+        "Il entre dans la collection de base « Séminaire 2026 », pour y annoter ; aucune "
+        "autre collection ne lui est ouverte pour autant.")
     assert _membres(d["base"], d["projet"]) == {("groupe", "annotateurs"): "membre"}
     expect(partie.locator(".mp-ligne")).to_have_count(1)
     expect(partie.locator(".mp-role")).to_have_value("membre")
@@ -1374,6 +1375,37 @@ def test_faire_entrer_un_compte_demande_de_dire_ce_qu_il_est(page, seminaire):
         "inconnu de l'annuaire")
     assert _membres(d["base"], d["projet"]) == {
         ("utilisateur", "lectrice"): "membre", ("groupe", "ancien-cours"): "membre"}
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_faire_entrer_dit_ce_que_la_base_ouvre_apres_un_changement_de_position(page, seminaire):
+    """COL-3, D10 — le message de « + Faire entrer » suit la position de la base AU MOMENT
+    du geste : réglée plus bas dans la fiche, elle change sans remonter « Qui y entre », et
+    le module la relit chez l'hôte au lieu de garder celle du montage. « Aucune collection ne
+    lui est ouverte » n'est vrai que pour une base protégée."""
+    d = seminaire
+    partie = _ouvrir_la_fiche(page, d)
+    page.locator(f"#pj-position-{d['projet']}-2").check()          # protégée
+    page.locator("[data-pj-position-ok]").click()
+    expect(page.locator("#pj-position-msg")).to_contain_text("est désormais protégée")
+    partie.locator(".mp-choix").select_option("autre")
+    partie.locator(".mp-nom").fill("lectrice")
+    partie.locator(".mp-genre").select_option("utilisateur")
+    partie.locator(".mp-faire-entrer").click()
+    expect(partie.locator(".mp-msg")).to_have_text(
+        "Le compte lectrice entre dans le projet « Séminaire 2026 », comme membre. La "
+        "collection de base « Séminaire 2026 » est protégée : aucune collection ne lui est "
+        "ouverte pour autant.")
+
+    page.locator(f"#pj-position-{d['projet']}-1").check()          # en lecture
+    page.locator("[data-pj-position-ok]").click()
+    expect(page.locator("#pj-position-msg")).to_contain_text("est désormais en lecture")
+    partie.locator(".mp-choix").select_option("groupe:annotateurs")
+    partie.locator(".mp-faire-entrer").click()
+    expect(partie.locator(".mp-msg")).to_have_text(
+        "Le groupe annotateurs entre dans le projet « Séminaire 2026 », comme membre. Il "
+        "entre dans la collection de base « Séminaire 2026 », en lecture ; aucune autre "
+        "collection ne lui est ouverte pour autant.")
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
@@ -1458,7 +1490,8 @@ def test_renommer_et_supprimer_un_projet(page, seminaire):
     expect(page.locator("#projet-choix")).to_contain_text("Séminaire d'hiver")
     expect(page.locator("#projet-choix")).not_to_contain_text("Séminaire 2026")
 
-    page.on("dialog", lambda dlg: dlg.accept())
+    accepter = lambda dlg: dlg.accept()                           # noqa: E731
+    page.on("dialog", accepter)
     page.locator("[data-pj-supprimer]").click()
     expect(page.locator("#pj-supprimer-msg.erreur")).to_contain_text(
         "1 collection(s) appartiennent à ce projet")
@@ -1470,12 +1503,21 @@ def test_renommer_et_supprimer_un_projet(page, seminaire):
     expect(_fiche(page)).to_contain_text("Il se renomme, il ne se supprime pas.")
 
     vide = _projet(d["base"], "Projet sans rien")
+    page.remove_listener("dialog", accepter)
+    dits = []
+    page.on("dialog", lambda dlg: (dits.append(dlg.message), dlg.accept()))
     page.reload(wait_until="networkidle")
     page.locator(f'#pj-objets .pj-objet[data-pj="{vide}"]').click()
     expect(page.locator("#pj-fiche-titre")).to_have_text("Projet sans rien")
     with page.expect_request(lambda r: r.method == "DELETE") as partie:
         page.locator("[data-pj-supprimer]").click()
     assert partie.value.url.endswith(f"/api/projets/{vide}")
+    # La confirmation dit que sa collection de BASE part avec lui (D10) : « aucune collection
+    # n'est touchée » était faux.
+    assert dits == ["Supprimer le projet « Projet sans rien » ? Ses membres en sortent, et sa "
+                    "collection de base, « Projet sans rien », part avec lui. Un projet ne se "
+                    "supprime que vide : aucune autre collection, aucun album gardé au fonds, "
+                    "et une base sans album ni vocabulaire propre."], dits
     expect(page.locator("#pj-msg")).to_contain_text("« Projet sans rien » supprimé")
     expect(page.locator("#pj-objets .pj-objet")).to_have_count(2)
     expect(page.locator("#projet-choix")).not_to_contain_text("Projet sans rien")

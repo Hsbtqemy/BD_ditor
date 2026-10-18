@@ -382,7 +382,12 @@ def test_supprimer_une_copie_qui_a_une_soeur_dit_que_ses_images_restent(page, de
     expect(texte).to_contain_text("Ses images restent : une autre copie de ce document les emploie.",
                                   timeout=5000)
     assert "Lot A" not in texte.inner_text()
-    page.locator("#sp-annuler").click()
+    # Le message de fin ne contredit pas le panneau : la copie part, ses images restent.
+    expect(page.locator("#sp-def")).to_have_text("Supprimer définitivement")
+    page.locator("#sp-def").click()
+    expect(page.locator(".toast", has_text="cette copie est supprimée définitivement"))         .to_have_text("« Lotus » : cette copie est supprimée définitivement, avec le travail "
+                      "fait dessus. Ses images restent : une autre copie de ce document les "
+                      "emploie.", timeout=5000)
     # Oreille n'a pas de sœur : la phrase ne s'y dit pas.
     _ouvrir(page, decor["base"], chemin=f"/corpus?album={decor['albums']['Oreille']}")
     page.locator('#album-detail [data-act="supprimer"]').click()

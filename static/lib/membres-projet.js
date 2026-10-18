@@ -11,7 +11,8 @@
    rien d'autre. Les fondre aurait fait porter à l'un les conditions de l'autre.
 
    CE QU'ÊTRE D'UN PROJET NE FAIT PAS, et le module le DIT à chaque montage : entrer dans un
-   projet n'ouvre aucune de ses collections. Chacune garde son « Qui entre ».
+   projet n'ouvre que sa collection de BASE, selon la position que le projet a choisie (D10) ;
+   chacune des autres garde son « Qui entre ».
 
    LE CONTRAT.
 
@@ -27,6 +28,12 @@
    `options.groupesAdmin` `acces.groupes_admin` de `GET /api/moi`.
    `options.surMessage(ligne)`  appelé chaque fois que le module écrit sa ligne de message.
    `options.surChangement()`    appelé après un geste que le serveur a accepté.
+   `options.base()`      FACULTATIF : rend la collection de base du projet,
+                         `{ nom, acces_membres }`, ou `null` s'il n'en a pas. Lue au moment
+                         du message de « + Faire entrer », qui dit alors ce que la base ouvre
+                         à l'arrivant (D10). Une FONCTION, parce que la position se règle
+                         dans la fiche sans que la partie soit remontée. Absente, le message
+                         ne dit que la règle.
 
    CE QUE LE MODULE NE FAIT PAS. Il ne cherche rien dans la page : il travaille dans SA
    section. Il n'efface aucun message ailleurs. Il ne lit ni l'adresse ni l'identité. En
@@ -411,10 +418,16 @@
            + "l'annuaire ne répondait pas.", "alerte");
     } else {
       dire(m, `${nomme} ${principal} entre dans le projet « ${p.nom} », comme `
-           + `${projetLib().libelleRole(premier)}. Aucune collection ne lui est ouverte `
-           + "pour autant.");
+           + `${projetLib().libelleRole(premier)}. ${projetLib().phraseEntree(baseLue(m))}`);
     }
     changement(m, true);
+  }
+
+  /* La collection de base du projet, telle que l'HÔTE la connaît AU MOMENT du message —
+     `options.base()` ; sa position peut avoir changé depuis le montage sans que la partie
+     soit remontée. Sans l'option, `undefined` : la phrase ne dit que la règle. */
+  function baseLue(m) {
+    return typeof m.options.base === "function" ? m.options.base() : undefined;
   }
 
   /* LE MODULE INVESTIT LA CIBLE, il n'y loge pas une section de plus : elle DEVIENT la partie

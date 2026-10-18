@@ -451,3 +451,17 @@ test("retrait — on écrit des deux côtés sans les tenir : un aller simple, q
                             total: false, recocher: "demande" });
   assert.ok(!fonds.texte.includes("sur demande"), fonds.texte);
 });
+
+test("après « Supprimer définitivement » d'une copie qui a une sœur : ses images restent", () => {
+  // Le panneau venait de dire « Ses images restent » ; le message de fin disait « avec ses
+  // images ». Il suit maintenant la même sœur que le panneau.
+  const S = require("../../static/lib/suppression.js");
+  assert.equal(S.apresDefinitif("Lotus", "direct", true),
+    "« Lotus » : cette copie est supprimée définitivement, avec le travail fait dessus. "
+    + S.IMAGES_RESTENT);
+  assert.ok(!S.apresDefinitif("Lotus", "direct", true).includes("avec ses images"));
+  assert.equal(S.apresDefinitif("Lotus", "direct", false),
+    "« Lotus » est supprimé définitivement, avec ses images et le travail fait dessus.");
+  assert.equal(S.apresDefinitif("Lotus", "direct"), S.apresDefinitif("Lotus", "direct", false));
+  assert.ok(S.apresDefinitif("Lotus", "demande", true).startsWith("Votre demande est partie"));
+});
