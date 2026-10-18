@@ -390,6 +390,65 @@ def test_supprimer_une_copie_qui_a_une_soeur_dit_que_ses_images_restent(page, de
 
 
 # =========================================================================== #
+# Relecture croisée de t3a-c4 — ce que l'écran disait de trop, ou pas assez
+# =========================================================================== #
+def test_une_copie_gardee_au_fonds_se_dit_sur_sa_notice(page, decor):
+    """`garde_au_fonds`, publié par les notices, se lit : la ligne dit qu'une copie du projet
+    est gardée au fonds, et mène à la fiche du projet où son responsable demande à la
+    rendre. Le motif est marqué obligatoire AVANT le clic."""
+    with _client(decor["base"]) as c:
+        _ok(c.delete(f"/api/albums/{decor['albums']['Oreille']}/collections/{decor['lot_a']}"), 204)
+    _choisir_projet(page, decor)
+    _ouvrir(page, decor["base"], _comme("rui"))
+    page.locator("#bi-prendre-fonds").click()
+    expect(page.locator("#bi-prise-motif")).to_have_attribute("aria-required", "true")
+    expect(page.locator("#bi-prise-motif")).to_have_attribute("required", "")
+    page.locator("#bi-prise-q").fill("Oreille")
+    ligne = page.locator(f'#bi-prise-notices li[data-notice="{decor["docs"]["Oreille"]}"]')
+    garde = ligne.locator("a.bi-garde")
+    expect(garde).to_have_text("une copie de ce projet est gardée au fonds — la demander à rendre ↗",
+                               timeout=5000)
+    expect(garde).to_have_attribute("href", f"/administration?vue=projets&projet={decor['projet']}")
+    expect(ligne.locator(".bi-deja")).to_have_count(0)
+    # Le pied ne promet rien que le serveur ne tiendrait pas.
+    assert "ce que le projet a déjà" not in page.locator(".bi-prise-actions").inner_text()
+
+
+def test_un_rejoindre_deja_demande_ne_se_redemande_pas(page, decor):
+    """Dans « + Prendre dans le projet… », un album dont le rejoindre vers CETTE collection
+    attend dit « rejoindre demandé » au lieu d'offrir un geste que le serveur refuserait."""
+    with _client(decor["base"], _comme("sam")) as c:
+        _ok(c.put(f"/api/albums/{decor['albums']['Lotus']}/collections/{decor['lot_b']}"), 202)
+    _choisir_projet(page, decor)
+    _ouvrir(page, decor["base"], _comme("sam"), f"/corpus?collection={decor['lot_b']}&onglet=albums")
+    page.locator("#bi-dans-projet").click()
+    lotus = page.locator(f'#bi-dans-projet-panneau li[data-dp-album="{decor["albums"]["Lotus"]}"]')
+    expect(lotus.locator(".reponse.demande")).to_have_text("rejoindre demandé", timeout=5000)
+    expect(lotus.locator('[data-dp="rejoindre"]')).to_have_count(0)
+    expect(lotus.locator('[data-dp="zero"]')).to_be_visible()
+
+
+def test_sous_une_portee_totale_la_case_demandee_reste_un_geste(page, decor):
+    """Un rejoindre attend ; l'administrateur coche lui-même : c'est fait, et la demande est
+    close au serveur — elle ne reste pas offerte au propriétaire."""
+    with _client(decor["base"], _comme("sam")) as c:
+        demande = _ok(c.put(f"/api/albums/{decor['albums']['Lotus']}/collections/{decor['lot_b']}"),
+                      202)["demande_id"]
+    _choisir_projet(page, decor)
+    _ouvrir(page, decor["base"], chemin=f"/corpus?album={decor['albums']['Lotus']}")
+    page.locator("#album-range[data-pret]").wait_for(timeout=5000)
+    case = page.locator(f'#album-range-cases input[data-ranger="{decor["lot_b"]}"]')
+    expect(case).to_be_enabled()
+    case.click()
+    expect(page.locator("#album-range-msg")).to_contain_text("Fait :", timeout=5000)
+    with _client(decor["base"]) as c:
+        d = {x["id"]: x for x in c.get("/api/demandes").json()}[demande]
+        assert (d["en_attente"], d["reponse"]) == (False, "acceptee"), d
+    with _client(decor["base"], _comme("ana")) as c:
+        assert c.get(f"/api/collections/{decor['lot_a']}/demandes").json() == []
+
+
+# =========================================================================== #
 # 320 px, grande police
 # =========================================================================== #
 _CORPS_QUI_DEFILE = """() => {

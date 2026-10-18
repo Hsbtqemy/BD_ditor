@@ -66,3 +66,25 @@ def test_un_rejoindre_en_attente_se_lit_par_qui_ecrit_a_l_arrivee(client, prise)
                     headers=PROPRIO)
     assert r.status_code == 200, r.text
     assert _albums_vus(client, ECRIVAIN)[cx]["rejoindre_demande"] == []
+
+
+def test_une_portee_totale_qui_range_clot_le_rejoindre_qui_l_attendait(client, prise):
+    """Relecture croisée de t3a-c4 : sous une portée totale, la case d'un rejoindre qui attend
+    reste un geste. Ranger directement y RÉPOND — accepté —, sans quoi la demande resterait
+    offerte au propriétaire pour un rangement déjà fait. Un rejoindre vers une AUTRE
+    collection n'est pas touché."""
+    cx = _copie_dans(client, prise, "d3", prise["x"])
+    r = client.put(f"/api/albums/{cx}/collections/{prise['y']}", headers=ECRIVAIN)
+    assert r.status_code == 202, r.text
+    demande = r.json()["demande_id"]
+    r = client.put(f"/api/albums/{cx}/collections/{prise['base']}", headers=ADMIN)
+    assert r.status_code == 201, r.text
+    assert [d["id"] for d in client.get(f"/api/collections/{prise['x']}/demandes",
+                                        headers=PROPRIO).json()] == [demande], \
+        "ranger ailleurs ne répond pas à la demande"
+    r = client.put(f"/api/albums/{cx}/collections/{prise['y']}", headers=ADMIN)
+    assert r.status_code == 201, r.text
+    assert client.get(f"/api/collections/{prise['x']}/demandes", headers=PROPRIO).json() == []
+    d = {x["id"]: x for x in client.get("/api/demandes", headers=ADMIN).json()}[demande]
+    assert (d["en_attente"], d["reponse"]) == (False, "acceptee"), d
+    assert _albums_vus(client, ECRIVAIN)[cx]["rejoindre_demande"] == []

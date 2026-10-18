@@ -1374,7 +1374,7 @@ function rangeMsg(texte, erreur) {
 const LEGENDE_RANGE = `<legend id="album-range-titre">Sur les collections</legend>`;
 /* Ce que les cases ont lu, pour que décocher se confirme AU GESTE, sans relire : `confirm`
    suit le clic, et une relecture glissée entre eux laisserait la case décochée sans réponse. */
-let RANGE_LU = { albumId: null, siennes: [], ecrites: [] };
+let RANGE_LU = { albumId: null, siennes: [], ecrites: [], toutes: [], total: false };
 
 /* Les collections de l'album et ce qu'on peut y faire. Lues dans la route de l'album, qui
    dit leur PROJET (le rangement ne traverse pas les projets, COL-3). Une lecture ratée ne
@@ -1397,7 +1397,11 @@ async function rangementDeLAlbum(albumId, ecrire) {
   if (state.openId !== albumId || cases !== $("#album-range-cases")) return;  // une autre fiche s'est ouverte
   const dedans = new Set(siennes.map((c) => c.id));
   const ecrites = new Set(toutes.filter((c) => c.ecrivable).map((c) => c.id));
-  RANGE_LU = { albumId, siennes, ecrites: [...ecrites] };
+  // La portée totale se lit ICI, avant de dessiner : décocher en dépend, et il se confirme
+  // au geste, sans rien attendre (relecture croisée de t3a-c4).
+  const moi = await Promise.resolve(window.BDMoi).catch(() => null);
+  const total = !!(moi && moi.acces && moi.acces.total);
+  RANGE_LU = { albumId, siennes, ecrites: [...ecrites], toutes, total };
   // COL-3 — un rangement ne traverse pas les projets : seules les collections du projet où
   // l'ALBUM vit déjà se proposent, lu dans ses collections. La règle est dans
   // `lib/projet.js` ; le projet est lu ici parce que la fiche peut s'ouvrir avant que la
@@ -1414,7 +1418,9 @@ async function rangementDeLAlbum(albumId, ecrire) {
   const liste = [...siennes, ...tri.collections];
   cases.innerHTML = LEGENDE_RANGE + (liste.length ? liste.map((c) => {
     const sur = dedans.has(c.id);
-    const demande = !sur && demandees.has(c.id);
+    // Une portée totale range directement, ce qui clôt la demande qui attendait : sa case
+    // reste un geste (relecture croisée de t3a-c4).
+    const demande = !sur && demandees.has(c.id) && !total;
     const peut = ecrites.has(c.id) && !demande;
     const titre = !ecrites.has(c.id) ? "Vous lisez cette collection sans y écrire"
       : demande ? "Rejoindre ce travail est demandé : la case attend la réponse"
@@ -1485,17 +1491,22 @@ async function rangerAlbum(caseACocher) {
 
 /* Décocher = supprimer de la collection. Les mots sont ceux de « Supprimer… »
    (`lib/suppression.js`) ; le geste se confirme quand il coûte — la copie part au fonds, on
-   perd l'écriture (un aller simple, AUTH-10), ou on perd l'album de vue. Qui écrit des deux
-   côtés le défait lui-même : rien à confirmer. */
+   perd l'écriture (un aller simple, AUTH-10), on perd l'album de vue — ou on ne pourra pas
+   l'y ranger de nouveau soi-même : depuis D4 stricte, écrire des deux côtés ne suffit plus,
+   recocher est un rejoindre, qui ne se fait sans demande que si l'on tient toutes les
+   collections où il vit encore (`BDBiblio.quiRecocherait`). Seule une portée totale, ou qui
+   les tient toutes, n'a rien à confirmer. */
 async function sortirAlbum(caseADecocher) {
   const albumId = state.openId, cid = Number(caseADecocher.dataset.ranger);
   const nom = caseADecocher.dataset.nom;
   const album = state.albums.find((a) => a.id === albumId);
   const titre = album ? album.titre : "";
   if (RANGE_LU.albumId !== albumId) { caseADecocher.checked = true; return; }
-  const r = BDSuppression.retrait({ siennes: RANGE_LU.siennes, ecrites: RANGE_LU.ecrites,
-                                    collectionId: cid, partage: !!(album && album.partage),
-                                    total: B.total });
+  const restantes = RANGE_LU.siennes.filter((c) => c.id !== cid);
+  const r = BDSuppression.retrait({
+    siennes: RANGE_LU.siennes, ecrites: RANGE_LU.ecrites, collectionId: cid,
+    partage: !!(album && album.partage), total: RANGE_LU.total,
+    recocher: BDBiblio.quiRecocherait(album, restantes, RANGE_LU.toutes, RANGE_LU.total) });
   if (r.confirmer && !confirm(`Supprimer « ${titre} » de « ${nom} » ?\n\n${r.texte}`)) {
     caseADecocher.checked = true;
     return;
@@ -1935,8 +1946,10 @@ async function ouvrirSuppression(a) {
   const ouJEcris = siennes.filter((c) => ecrites.includes(c.id));
   retrait.innerHTML = ouJEcris.length
     ? ouJEcris.map((c) => {
+        const restantes = siennes.filter((x) => x.id !== c.id);
         const r = BDSuppression.retrait({ siennes, ecrites, collectionId: c.id,
-                                          partage: a.partage, total });
+                                          partage: a.partage, total,
+                                          recocher: BDBiblio.quiRecocherait(a, restantes, toutes, total) });
         return `<div class="sp-option">
           <p class="sp-texte" id="sp-r-${c.id}">${esc(r.texte)}</p>
           <button type="button" class="ghost" data-retirer="${c.id}" data-nom="${esc(c.nom)}"
@@ -2437,13 +2450,13 @@ function htmlPrise() {
         <button type="button" class="ghost small" data-prise-page="1" aria-label="Page suivante">›</button>
       </span>
     </div>
-    ${B.total ? "" : `<label class="bi-prise-motif">Pourquoi ces documents ? <span class="muted small">(l'administrateur le lira)</span>
-      <textarea id="bi-prise-motif" rows="2">${esc(pr.motif)}</textarea></label>`}
+    ${B.total ? "" : `<label class="bi-prise-motif">Pourquoi ces documents ? <span class="muted small">(obligatoire : l'administrateur le lira)</span>
+      <textarea id="bi-prise-motif" rows="2" required aria-required="true">${esc(pr.motif)}</textarea></label>`}
     <div class="bi-boutons bi-prise-actions">
       <button type="button" class="primary small" id="bi-prise-ok"></button>
       <button type="button" class="ghost small" id="bi-prise-fermer">Fermer</button>
       <span class="muted small">${B.total ? "Chaque document entre tout de suite, en copie vierge."
-        : "Une seule demande part à un administrateur ; ce que le projet a déjà entre tout de suite."}</span>
+        : "Une seule demande part à un administrateur ; un document dont vous lisez déjà une copie dans le projet vous est donné sans attendre, en copie vierge."}</span>
     </div>
     <p id="bi-prise-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
   </section>`;
@@ -2485,7 +2498,9 @@ function rendreNotices() {
             ${pr.coches.has(n.document_id) ? "checked" : ""}>
           <span><span class="bi-notice-titre">${esc(n.titre || "")}</span>
             <span class="muted small">${[n.serie, n.auteur].filter(Boolean).map((x) => `· ${esc(x)}`).join(" ")}</span></span></label>
-        ${n.dans_le_projet ? `<span class="bi-deja" title="Une collection de ce projet l'a déjà ; cocher demande une seconde copie">déjà dans ce projet</span>` : ""}
+        ${n.dans_le_projet ? `<span class="bi-deja" title="Une collection de ce projet l'a déjà ; cocher en prend une seconde copie, vierge — demandée, sauf si vous lisez déjà la première">déjà dans ce projet</span>` : ""}
+        ${n.garde_au_fonds ? `<a class="bi-garde" href="/administration?vue=projets&amp;projet=${PROJET}"
+            title="Une copie de ce document, avec son travail, a été retirée de sa dernière collection du projet : son responsable peut demander à la rendre, dans la fiche du projet">une copie de ce projet est gardée au fonds — la demander à rendre ↗</a>` : ""}
         ${rep ? `<span class="reponse ${rep.classe}">${esc(rep.texte)}</span>` : ""}
       </li>`;
     }).join("") : `<li class="muted small">Aucune notice ne répond.</li>`;
@@ -2592,12 +2607,16 @@ function rendreDansProjet() {
     const ou = (a.collections || []).map((x) => `« ${esc(x.nom)} »`).join(", ")
       + (a.partage ? " et une collection que vous ne lisez pas" : "");
     const direct = B.total || (!a.partage && (a.collections || []).every((x) => admin.has(x.id)));
+    // Un rejoindre vers CETTE collection attend déjà (`rejoindre_demande`) : le redemander
+    // répondrait 409. Une portée totale range directement, ce qui clôt la demande.
+    const dejaDemande = !B.total && (a.rejoindre_demande || []).includes(dp.collection);
     const titreRej = direct
       ? "Ranger aussi ici cette copie : vous tenez toutes ses collections, c'est immédiat. Le travail est partagé."
       : "Ranger aussi ici cette copie : qui tient toutes ses collections doit l'accepter. Le travail sera partagé.";
     return `<li data-dp-album="${a.id}"><span><b>${esc(a.titre)}</b> <span class="muted small">· dans ${ou}</span></span>
       <span class="bi-boutons">${rep ? `<span class="reponse ${rep.classe}">${esc(rep.texte)}</span>`
-        : `<button type="button" class="ghost small" data-dp="rejoindre" data-id="${a.id}" title="${esc(titreRej)}">Rejoindre</button>
+        : `${dejaDemande ? `<span class="reponse demande" title="Rejoindre ce travail depuis cette collection est déjà demandé : la demande attend sa réponse">rejoindre demandé</span>`
+          : `<button type="button" class="ghost small" data-dp="rejoindre" data-id="${a.id}" title="${esc(titreRej)}">Rejoindre</button>`}
            <button type="button" class="ghost small" data-dp="zero" data-id="${a.id}"
                    title="Une seconde copie, images seules, sans le travail de l'autre ; à votre nom, tout de suite. Ce qui se corrigera dans l'une n'arrivera pas dans l'autre.">Copie vierge</button>`}</span></li>`;
   }).join("") || `<li class="muted small">Rien à prendre : tout ce que vous lisez du projet est déjà ici.</li>`;

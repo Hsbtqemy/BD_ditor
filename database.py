@@ -2174,8 +2174,40 @@ def ranger_copie(conn: sqlite3.Connection, album_id: int, collection_id: int, *,
         # l'attendait a reçu ce qu'il demandait (relecture croisée de l'écran de la 3a,
         # défaut 1 — la clôture vivait chez deux appelants sur cinq).
         clore_retours_d_une_copie_rangee(conn, album_id, collection_id)
+        # Et le `rejoindre` qui demandait CE rangement-là : une portée totale qui range
+        # directement y a répondu (relecture croisée de t3a-c4) — sans quoi la demande
+        # resterait offerte au propriétaire, pour un geste déjà fait.
+        clore_rejoindre_d_un_rangement(conn, album_id, collection_id)
     poser_projet_de_copie(conn, album_id)
     return neuf
+
+
+def clore_rejoindre_d_un_rangement(conn: sqlite3.Connection, album_id: int,
+                                   collection_id: int) -> list[int]:
+    """Clôt ACCEPTÉS les `rejoindre` qui attendaient le rangement de cette copie dans CETTE
+    collection, qu'on vient de faire, et rend leurs identifiants. COL-3, tranche 3a.
+
+    Le rangement a été fait par un autre chemin que la réponse — une portée totale qui coche
+    la case, la prise —, ou par la réponse elle-même, que `_clore_demandes` trouve alors déjà
+    close et ne réécrit pas. `repondu_par` est l'agent de la requête. Ne commite pas."""
+    import journal
+    qui = journal.agent_courant.get()
+    clos = []
+    for (demande_id,) in conn.execute(
+            "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
+            "WHERE d.genre = ? AND dd.album_id = ? AND d.collection_id = ? "
+            "AND d.reponse IS NULL ORDER BY d.id",
+            (DEMANDE_REJOINDRE, album_id, collection_id)).fetchall():
+        conn.execute("UPDATE demande_document SET reponse = ?, copie_id = ? "
+                     "WHERE demande_id = ? AND reponse IS NULL",
+                     (REPONSE_ACCEPTEE, album_id, demande_id))
+        conn.execute("UPDATE demande SET reponse = ?, repondu_par = ?, "
+                     "date_reponse = datetime('now') WHERE id = ? AND reponse IS NULL",
+                     (REPONSE_ACCEPTEE, qui, demande_id))
+        journal.journaliser(conn, "modification", "demande", demande_id,
+                            avant={"reponse": None}, apres={"reponse": REPONSE_ACCEPTEE})
+        clos.append(demande_id)
+    return clos
 
 
 def clore_retours_d_une_copie_rangee(conn: sqlite3.Connection, album_id: int,

@@ -787,10 +787,11 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
     - **Lia ne fait que LIRE** « Incubateur » : ni « Supprimer… », ni corbeille de planche,
       ni corbeille éteinte, nulle part. C'est le mutant 16 du cadrage : un bouton offert à
       qui ne fait que lire mènerait à deux réponses dont aucune n'aboutit.
-    - **Paz écrit dans « Incubateur » ET dans « Archives »** : supprimer « Triple » de l'une
-      par le ✕ de « Rangé dans » ne lui retire rien — rien à confirmer. Elle ne le défait
+    - **Paz écrit dans « Incubateur » ET dans « Archives »** : décocher « Archives » dans
+      « Sur les collections » ne lui retire ni la vue ni l'écriture — mais elle ne le défait
       plus elle-même (COL-3, tranche 3a, D4 stricte) : ranger est REJOINDRE, elle ne possède
-      pas les collections de l'album, et la fiche dit que la demande est partie ; un
+      pas les collections de l'album. Le geste est donc un aller simple, qui se CONFIRME et
+      le dit (relecture croisée de t3a-c4) ; recocher dit que la demande est partie, et un
       administrateur le range de nouveau.
     - **Noa écrit dans « Incubateur » et lit « Archives »**, où « Triple » est aussi rangé :
       le panneau ne propose QUE la collection où elle écrit, nomme celle où le travail
@@ -820,14 +821,19 @@ def test_supprimer_n_est_offert_que_la_ou_il_aboutira(page, live_server):
     assert page.locator("#album-detail button[data-val]").count() == 0, (
         "un bouton de validation offert à qui ne fait que lire")
 
-    # ── qui écrit dans DEUX de ses collections : le ✕ se défait, rien à confirmer ────────
+    # ── qui écrit dans DEUX de ses collections sans les tenir : un aller simple ──────────
     _comme(page, live_server, "paz")
     _ligne(page, "Triple").wait_for(timeout=5000)
     expect(_gestes_de_l_album(page, "Triple").first).to_be_visible()
-    # Aucun gestionnaire de dialogue : s'il en venait un, Playwright le refuserait et la
-    # suppression n'aurait pas lieu. Elle écrit encore dans l'album par « Incubateur ».
+    # Elle écrit encore dans l'album par « Incubateur », et le voit : seul le retour lui
+    # échappe, et la confirmation le dit.
+    page.once("dialog", repondre(True))
     page.locator(f'#album-range-cases input[data-ranger="{ids["Archives"]}"]').click()
     expect(page.locator(COCHEES)).to_have_count(1, timeout=5000)
+    assert len(demandes) == 1, demandes
+    assert "que sur demande" in demandes[0], demandes
+    assert "n'y écrirez plus" not in demandes[0] and "ne le verrez plus" not in demandes[0]
+    demandes.clear()
     page.locator(f'#album-range-cases input[data-ranger="{ids["Archives"]}"]').click()
     expect(page.locator("#album-range-msg")).to_contain_text("La demande est partie",
                                                              timeout=5000)

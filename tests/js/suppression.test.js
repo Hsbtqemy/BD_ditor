@@ -433,3 +433,21 @@ test("une copie qui a une sœur : la demande le dit aussi, sans dire où", () =>
   const sans = S.definitif({ destructible: false, demande: null, total: false });
   assert.ok(!sans.texte.includes(S.IMAGES_RESTENT), sans.texte);
 });
+
+test("retrait — on écrit des deux côtés sans les tenir : un aller simple, qui se confirme", () => {
+  // Relecture croisée de t3a-c4, défaut 1 : D4 stricte — recocher est une DEMANDE.
+  const base = { siennes: [ARC, INC], ecrites: [2, 3], collectionId: 3, partage: false,
+                 total: false };
+  const dem = S.retrait({ ...base, recocher: "demande" });
+  assert.equal(dem.confirmer, true);
+  assert.ok(dem.texte.includes(S.RECOCHER_SUR_DEMANDE), dem.texte);
+  const soi = S.retrait({ ...base, recocher: "soi" });
+  assert.equal(soi.confirmer, false, "qui tient tout le refait seul : rien à confirmer");
+  assert.ok(!soi.texte.includes("sur demande"), soi.texte);
+  const tout = S.retrait({ ...base, total: true, recocher: "demande" });
+  assert.equal(tout.confirmer, false, "la portée totale range directement");
+  // La dernière collection : la phrase du fonds, pas celle de la demande.
+  const fonds = S.retrait({ siennes: [INC], ecrites: [2], collectionId: 2, partage: false,
+                            total: false, recocher: "demande" });
+  assert.ok(!fonds.texte.includes("sur demande"), fonds.texte);
+});

@@ -312,3 +312,14 @@ test("les demandes reçues se comptent pour qui peut y répondre, jamais pour un
   assert.deepEqual(B.demandesARepondre(l, true), [], "l'administrateur répond dans « À faire »");
   assert.deepEqual(B.demandesARepondre(null, false), []);
 });
+
+test("recocher après un retrait : soi seulement si l'on tient tout ce qui reste (D4 stricte)", () => {
+  const cols = [{ id: 1, administrable: true }, { id: 2, administrable: false },
+                { id: 3, administrable: true }];
+  assert.equal(B.quiRecocherait({}, [{ id: 1 }, { id: 3 }], cols, false), "soi");
+  assert.equal(B.quiRecocherait({}, [{ id: 1 }, { id: 2 }], cols, false), "demande");
+  assert.equal(B.quiRecocherait({ partage: true }, [{ id: 1 }], cols, false), "demande",
+               "une collection qu'on ne lit pas : on ne la tient pas");
+  assert.equal(B.quiRecocherait({}, [], cols, false), "demande");
+  assert.equal(B.quiRecocherait({ partage: true }, [{ id: 2 }], cols, true), "soi");
+});

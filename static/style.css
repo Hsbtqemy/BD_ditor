@@ -2214,6 +2214,7 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
                     overflow-wrap: anywhere; cursor: pointer; }
 .bi-notice-titre { font-weight: 600; }
 .bi-deja { color: var(--text-muted); font-size: .85rem; }
+.bi-garde { font-size: .85rem; overflow-wrap: anywhere; }
 .bi-pagin { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; justify-content: space-between; }
 .bi-prise-actions .muted { flex: 1 1 14rem; }
 /* La réponse d'une ligne, écrite sur place : le mot porte l'état. */

@@ -98,6 +98,10 @@
      c'est tout ce qu'on peut nommer. `ecrites` : les identifiants de celles où l'on écrit.
      `partage` : l'album vit aussi dans une collection qu'on ne lit pas (le serveur le dit).
      `total` : une portée totale — l'administrateur, ou l'usage sur un seul poste.
+     `recocher` (COL-3, tranche 3a, D4 stricte) : ce que dira, si l'on veut l'y ranger de
+     nouveau, la règle du rejoindre — `"soi"` (on tient toutes les collections qui
+     restent : on le refait seul) ou `"demande"` (`BDBiblio.quiRecocherait`). Absent, rien
+     n'en est dit : l'écran d'avant.
 
      Rend :
        reste       — "lu" (il reste dans des collections qu'on lit, nommées), "cache" (il
@@ -107,7 +111,9 @@
        perdVue     — on ne le verra plus ;
        confirmer   — le geste mérite une confirmation : il part au fonds, ou on y perd ;
        texte       — ce qui arrive, en une ou deux phrases. */
-  function retrait({ siennes, ecrites, collectionId, partage, total }) {
+  const RECOCHER_SUR_DEMANDE = "Vous ne pourrez l'y ranger de nouveau que sur demande, à son "
+    + "propriétaire ou à un administrateur.";
+  function retrait({ siennes, ecrites, collectionId, partage, total, recocher }) {
     const lues = (siennes || []).filter((c) => c.id !== collectionId);
     const ecr = new Set(ecrites || []);
     const reste = lues.length ? "lu" : partage ? "cache" : "fonds";
@@ -133,9 +139,16 @@
     } else if (perdVue) {
       phrases.push("Vous ne le verrez plus.");
     }
+    // Depuis D4 stricte, écrire des deux côtés ne suffit plus pour le défaire : le ranger de
+    // nouveau, c'est REJOINDRE, et ce n'est un geste à soi que si l'on tient toutes les
+    // collections où il vit encore. Sinon le retrait est un aller simple — il se confirme,
+    // et le dit (relecture croisée de t3a-c4, défaut 1).
+    const surDemande = !total && reste !== "fonds" && !perdEcriture && !perdVue
+      && recocher === "demande";
+    if (surDemande) phrases.push(RECOCHER_SUR_DEMANDE);
     return {
       reste, autres: lues.map((c) => c.nom), perdEcriture, perdVue,
-      confirmer: reste === "fonds" || perdEcriture || perdVue,
+      confirmer: reste === "fonds" || perdEcriture || perdVue || surDemande,
       texte: phrases.join(" "),
     };
   }
@@ -486,7 +499,7 @@
     GENRES_SUPPRESSION, estUneSuppression, genreDemande, etatDemande, etatLigne,
     toutAccepter, REFUSER_LE_RESTE, explicationDemande, IMAGES_RESTENT,
     ACCEPTER, REFUSER, PARTIELLE, CERTIFICATION, SORTES,
-    dateLue, demandeur, pastille, offrir, retrait, definitif, apresRetrait, apresDefinitif,
+    RECOCHER_SUR_DEMANDE, dateLue, demandeur, pastille, offrir, retrait, definitif, apresRetrait, apresDefinitif,
     origine, emplois, titreDocument, texteDemande, contexteDemande, confirmationDetruire,
     confirmationDetruireDocument, rendreA, certifiee, gestes, travailDesAutres,
   };

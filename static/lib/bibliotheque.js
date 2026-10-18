@@ -315,8 +315,25 @@
     return (Array.isArray(demandes) ? demandes : []).filter((d) => d && d.repondable === true);
   }
 
+  /* Si l'on pourrait RANGER de nouveau un album dans une collection qu'on vient de lui
+     retirer — la règle de `clause_rejoindre_directe` côté serveur (D4 stricte), lue dans ce
+     que l'écran sait : `"soi"` pour une portée totale, ou si l'on ADMINISTRE chacune des
+     collections où il vit encore et qu'il ne vit nulle part ailleurs (`partage` faux) ;
+     sinon `"demande"`. À qui irait la demande — un propriétaire qui les tient toutes, ou un
+     administrateur — ne se lit pas d'ici (les propriétaires des autres collections ne sont
+     pas publiés) : la phrase nomme les deux. `restantes` : ses collections qu'on lit, hors
+     celle qu'on retire ; `collections` : `GET /api/collections`. */
+  function quiRecocherait(album, restantes, collections, total) {
+    if (total) return "soi";
+    const admin = new Set((Array.isArray(collections) ? collections : [])
+      .filter((c) => c && c.administrable).map((c) => Number(c.id)));
+    const r = Array.isArray(restantes) ? restantes : [];
+    return !(album && album.partage) && r.length && r.every((c) => admin.has(Number(c.id)))
+      ? "soi" : "demande";
+  }
+
   return { ONGLETS, CLES_ONGLETS, ONGLET_PAR_LE_NOM, TRIS, MODES, plier, filtrerAlbums, trierCollections,
            droitsAlbum, actesCollection, aussiDans, libelleAlbums, comparer, lireAdresse,
            ecrireAdresse, offrirPrendreDuFonds, destinationsPrise, destinationParDefaut,
-           quiRepondra, reponsePrise, messageRejoindre, demandesARepondre };
+           quiRepondra, reponsePrise, messageRejoindre, demandesARepondre, quiRecocherait };
 });
