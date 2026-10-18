@@ -100,8 +100,14 @@ résolution, jamais modifié) et un **dérivé web** allégé, qui est ce que vo
 La résolution et le mode colorimétrique sont lus dans le fichier au passage, ce qui permettra
 d'afficher les dimensions physiques en centimètres.
 
-Un album créé sans collection explicite entre dans la *Collection par défaut* ; si vous savez
-déjà à quelle étude il appartient, choisissez sa collection au moment de le créer.
+*+ Nouvel album* propose les collections du projet où vous écrivez, et présélectionne sa
+**collection de base** — celle qui reçoit aussi ce que le projet prend au fonds —, sauf si
+vous venez d'ouvrir une collection : c'est alors elle qui est choisie. Si vous savez déjà à
+quelle étude l'album appartient, choisissez sa collection au moment de le créer.
+
+**Un document peut aussi venir du fonds** plutôt que d'un import : le responsable du projet
+le prend parmi les notices du fonds, et quiconque écrit dans une collection peut y ranger un
+album que le projet a déjà (§4, *Bibliothèque*, « Prendre un document »).
 
 ### Étape 2 — Décrire l'album
 **Bibliothèque · fiche de l'album, puis `✎ Modifier l'album`**
@@ -110,7 +116,8 @@ La fiche s'ouvre à droite quand on choisit l'album dans la liste. *✎ Modifier
 le formulaire où se saisissent la **paternité** (contributions : un nom, un rôle —
 scénariste, dessinateur, coloriste…), les champs d'**édition** (date, éditeur, lieu, ISBN,
 format) et la **source de numérisation** (l'appareil et les conditions du scan).
-L'appartenance aux collections se lit et se règle dans la fiche même, sous *Rangé dans*.
+L'appartenance aux collections se lit et se règle dans la fiche même, sous *Sur les
+collections*.
 
 Ce n'est pas de la paperasse : c'est ce qui rendra le corpus citable et déposable. Le faire
 maintenant coûte cinq minutes ; le faire deux ans plus tard suppose de retrouver l'exemplaire.
@@ -347,15 +354,23 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
   dans aucune collection de ce projet, il n'y a pas de liste vide mais une phrase — *Vous
   n'écrivez dans aucune collection du projet « … » : l'album ne peut pas y être créé.
   Créez-y d'abord une collection, ou choisissez un autre projet en haut de la page.* —, et
-  *Enregistrer* n'enregistre rien. *+ Ranger ici*, sous *Rangé dans* dans la fiche d'un album, ne propose que
-  les collections du projet où **l'album** vit déjà, qui n'est pas forcément le projet
-  courant : *Cet album vit dans le projet « … » : seules les collections de ce projet sont
-  proposées, un album ne se rangeant pas d'un projet à l'autre.* Ce qu'est un projet, et ce
-  qu'il n'ouvre pas : [`modele-et-droits.md`](modele-et-droits.md) §2.
+  *Enregistrer* n'enregistre rien. *Sur les collections*, dans la fiche d'un album, ne
+  propose que les collections du projet où **l'album** vit déjà, qui n'est pas forcément le
+  projet courant : *Cet album vit dans le projet « … » : seules les collections de ce projet
+  sont proposées, un album ne se rangeant pas d'un projet à l'autre.* Ce qu'est un projet,
+  et ce qu'il n'ouvre pas : [`modele-et-droits.md`](modele-et-droits.md) §2.
 - **Albums** : créer (*+ Nouvel album*, en haut de la page), éditer les métadonnées (*✎
   Modifier l'album*, dans sa fiche), supprimer (ci-dessous). La fiche porte la description,
-  les contributions, les champs d'édition, la source de numérisation et *Rangé dans* : ses
-  collections, avec un ✕ sur celles où vous écrivez, et *+ Ranger ici*.
+  les contributions, les champs d'édition, la source de numérisation et *Sur les
+  collections* : une case par collection du projet de l'album que vous lisez, cochée là où
+  il est rangé. Seules les cases des collections où vous **écrivez** s'offrent ; les autres
+  se lisent, éteintes. **Cocher, c'est rejoindre** le travail de l'album depuis cette
+  collection : c'est fait tout de suite si vous possédez chacune des collections où il vit
+  (*Fait : « … » est aussi rangé dans « … ». Le travail est partagé.*) ; sinon la demande part
+  à leur propriétaire — ou à un administrateur quand aucun propriétaire ne les tient toutes —,
+  la phrase le dit (*Pas rangé : … La demande est partie.*), et la case reste **indéterminée**,
+  marquée *demandé*, jusqu'à la réponse. **Décocher, c'est supprimer de la collection**
+  (ci-dessous).
 - **Supprimer un album : deux réponses.** Dans la fiche d'un album où vous **écrivez** — et
   sur sa ligne, dans l'onglet *Albums* d'une collection —, le bouton *Supprimer…* ouvre un
   panneau qui propose deux gestes, et dit pour chacun ce qui arrivera avant que vous le
@@ -370,9 +385,10 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
     dit aussi ce que **vous** y perdez : si c'était la seule collection par laquelle vous y
     écriviez, vous continuerez de le lire mais n'y écrirez plus, ou vous ne le verrez plus
     du tout — et vous ne pourrez pas l'y ranger de nouveau vous-même. Le geste ne s'annule
-    pas : seul un administrateur, ou quelqu'un qui écrit des deux côtés, le défait. Le ✕
-    d'une collection, sous *Rangé dans* dans la fiche de l'album, fait le même geste et le
-    fait confirmer quand il coûte ; il n'est offert que sur les collections où vous écrivez.
+    pas : le ranger de nouveau, c'est le rejoindre, et un administrateur rend une copie
+    gardée au fonds. Décocher une collection, sous *Sur les collections* dans la fiche de
+    l'album, fait le même geste et le fait confirmer quand il coûte ; la case ne s'offre que
+    sur les collections où vous écrivez.
   - **Supprimer définitivement** efface les images et tout le travail fait dessus, pour
     tout le monde, dans tous les projets. Il efface **tout de suite** si vous avez importé
     l'album vous-même et que personne d'autre n'y a travaillé — c'est l'import par erreur,
@@ -391,6 +407,37 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
     demandé lisent qui l'a fait. Tant qu'elle attend, *Supprimer définitivement* le dit,
     sans bouton, et rien n'est effacé. L'administrateur répond *Détruire* — l'album disparaît
     pour tous — ou *Garder* : la pastille disparaît, et l'on peut demander de nouveau.
+  - **Une copie qui a une sœur** — le même document, pris ailleurs en copie vierge — se
+    supprime seule : le panneau ajoute *Ses images restent : une autre copie de ce document
+    les emploie.*, sans dire où vit l'autre copie.
+- **Prendre un document** (tranche 3a). Deux gestes, au-dessus du tableau de l'onglet
+  *Albums* d'une collection, et le premier aussi en tête de la fiche du projet :
+  - **+ Prendre du fonds…** n'est offert qu'au **responsable** du projet et à un
+    administrateur. Il ouvre la liste des **notices** du fonds — titre, série, auteur, et rien
+    d'autre —, cherchées au serveur, 25 par page. Cochez un ou plusieurs documents, choisissez
+    *Dans* quelle collection ils arrivent — la base est en tête, et présélectionnée en tête du
+    corpus ; dans une collection, c'est elle —, écrivez *Pourquoi ces documents ?* et
+    *Demander* : une seule demande part à un administrateur, et chaque document dit sa
+    réponse sur sa ligne — *fait* quand le projet a déjà une copie que vous lisez (une copie
+    vierge entre tout de suite), *demandé à un administrateur* sinon, ou *refusé* et pourquoi.
+    *Déjà dans ce projet* signale un document qu'une collection du projet a déjà, sans dire
+    laquelle ; il reste cochable, pour une seconde copie. Un administrateur *Prend* : tout
+    entre tout de suite, sans motif.
+  - **+ Prendre dans le projet…** est offert à qui **écrit** dans la collection : les albums du
+    projet que vous lisez et qui n'y sont pas encore. Sur chaque ligne, *Rejoindre* — le même
+    travail, partagé avec ses collections : immédiat si vous les possédez toutes, sinon
+    *demandé à son propriétaire* (ou *à un administrateur*) — ou *Copie vierge* — une seconde
+    copie, images seules, sans le travail de l'autre, à votre nom, tout de suite. L'infobulle
+    de chaque bouton le redit, et la réponse s'écrit à la place des boutons.
+- **Les demandes de rejoindre que vous recevez**, comme propriétaire d'une collection : une
+  marque **⚑ n** sur la collection, dans le bloc *Collections* ; dans la bande d'outils, *n
+  demandes à répondre*, qui mène à la première ; et en tête de l'onglet *Albums*, dont
+  l'onglet porte une pastille, un bloc ⚑ qui dit qui demande que quel album soit aussi rangé
+  dans quelle collection — *Accepter* (le travail est partagé) ou *Refuser* (l'album reste où
+  il est, et la demande peut être redéposée). Rien n'apparaît dans la bande du haut. Un
+  administrateur les lit dans *À faire*, en recours. **Responsable**, vos demandes au fonds
+  qui attendent se rappellent dans la bande d'outils — *n demandes au fonds, en attente* —, et
+  mènent à la fiche du projet, dans l'Administration, où se lit leur état.
 - **Supprimer une planche** suit la règle de l'album, sans demande à elle : sa corbeille 🗑
   est active là où vous supprimeriez l'album définitivement sans rien demander. Ailleurs,
   si vous écrivez dans l'album, elle est **grisée** et, quand on la touche, dit sous elle :
@@ -656,6 +703,11 @@ CSV. La recherche porte sur les dialogues, les notes et les tags — plus les le
 l'analyse linguistique est installée ; sans elle, elle retombe proprement sur la recherche par
 préfixe, toujours insensible aux accents.
 
+**Un document dont vous lisez deux copies compte deux fois** — une copie vierge prise dans le
+même projet, ou deux projets que vous lisez : la Recherche porte sur tout ce que vous lisez,
+et chaque copie a son texte. Ce double compte tient jusqu'à ce que la Recherche et
+l'Exploration soient bornées au projet (tranche 4 de COL-3).
+
 Elle porte sur les tags **sans distinguer leur portée** : un mot peut faire sortir une de vos
 régions parce qu'elle porte un tag local à une collection que vous ne lisez pas — le tag ne
 vous est pas montré pour autant, et rien ne sort d'une région hors de votre portée. Limite
@@ -666,6 +718,9 @@ connue et mesurée, décrite dans `docs/modele-et-droits.md` § *Le vocabulaire*
 Les quatre vues du tableau de l'étape 7, avec des filtres communs : album, type de région,
 catégorie grammaticale, **provenance** (auto / corrigé / validé), tag, locuteur. Le filtre de
 provenance est celui qui permet de ne mesurer que sur ce qui a été relu par un humain.
+
+Comme la Recherche, elle porte sur tout ce que vous lisez : **un document dont vous lisez deux
+copies y compte deux fois**, jusqu'à la tranche 4 de COL-3.
 
 Le panneau **📖 Lexique** liste tout le vocabulaire — domaines, dimensions, valeurs, tags —
 avec pour chacun sa définition, sa note de portée, son état et sa portée d'appartenance, plus

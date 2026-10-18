@@ -319,10 +319,11 @@ les montre depuis l'écran de la 3a : « À faire » rend toutes les demandes, c
 mots et ses boutons — une entrée se répond document par document, un rejoindre par
 « Accepter : ranger aussi dans … », un retour par « Rendre à … » ou « Garder au fonds » ;
 seule une suppression de document se répond par « Détruire » —, et la fiche d'un projet
-dit ses demandes au fonds et leur état. L'écran de la Bibliothèque qui les offre
-(« + Prendre du fonds… », les demandes reçues dans la fiche d'une collection) est à venir ;
-d'ici là, la seule trace à l'écran est le message de la fiche d'un album quand « + Ranger
-ici » se demande au lieu de ranger.
+dit ses demandes au fonds et leur état. La Bibliothèque les offre : « + Prendre du
+fonds… » au responsable et à l'administrateur, « + Prendre dans le projet… » à qui écrit
+dans la collection, les cases de « Sur les collections » dans la fiche d'un album, et les
+demandes de rejoindre reçues dans l'onglet *Albums* de la collection de leur propriétaire
+(cf. [`guide-utilisateur.md`](guide-utilisateur.md) §4, *Bibliothèque*).
 
 Un document du fonds peut entrer dans une collection, de deux façons, et dans plusieurs
 projets à la fois : chaque projet qui le prend en a sa COPIE de travail, une *sœur* des
@@ -342,7 +343,7 @@ autres.
   depuis une copie du même projet : qui en lit une ailleurs passe par la demande du
   responsable. Un administrateur prend directement.
 - **Rejoindre** le travail d'une autre collection du projet — ranger ici une copie qu'on
-  lit, c'est l'ancien « + Ranger ici ». C'est partager ce travail : la décision de qui le
+  lit : cocher sa collection dans « Sur les collections ». C'est partager ce travail : la décision de qui le
   tient. Immédiat si vous possédez chacune des collections où la copie vit ; sinon une
   demande à leur propriétaire, qui la reçoit avec votre nom et celui de la collection
   d'arrivée, et l'accepte ou la refuse. Quand aucun propriétaire ne tient toutes ces
@@ -359,7 +360,9 @@ fois par copie, et se clôt d'elle-même si la copie est détruite, ou rendue au
 dit alors où la copie est réellement revenue. Une demande de **rejoindre** qui visait une
 copie partie ensuite au fonds se clôt, refusée : la reprendre passe par le responsable. Une copie qui a une sœur se supprime
 seule : ses images restent tant qu'une sœur les emploie, et le document part avec sa
-dernière copie.
+dernière copie. « Supprimer… » le dit à qui écrit dans la copie — *Ses images restent* —,
+sans dire où vit la sœur ni laquelle : la liste des albums ne porte qu'un oui ou non
+(`soeur`), et une lectrice ne le reçoit jamais.
 
 **Accepté : l'adresse d'une image dit d'où vient la copie.** Une copie sœur ne duplique pas
 les images : ses planches désignent les fichiers de la copie dont elle a été tirée, rangés
@@ -374,7 +377,9 @@ nommera les fichiers par image et non plus par album.
 sa transcription, ses annotations — viendra plus tard. Et l'administrateur, comme l'usage
 sur un seul poste, lit encore dans la Recherche et l'Exploration le texte d'un album gardé
 au fonds — et deux fois le texte d'un document dont il lit deux copies : ces deux pages
-portent sur tout ce qu'il lit, et il lit tout.
+portent sur tout ce qu'il lit, et il lit tout. Ce double compte vaut pour quiconque lit deux
+copies d'un même document — une copie vierge prise dans le même projet, par exemple —, jusqu'à
+la tranche 4.
 
 ---
 
@@ -434,7 +439,7 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 | **Supprimer un album de la collection** — même la dernière : il est alors gardé au fonds | — | ✅ | ✅ | ✅ |
 | **Supprimer définitivement** un album ou une planche sans rien demander — à condition de l'avoir importé, que personne d'autre n'y ait travaillé, d'écrire dans *toutes* ses collections, et de ne pas être sous un compte partagé (§2, *Le fonds*) | — | ✅ | ✅ | ✅ |
 | **Demander** la suppression définitive d'un album, motif et certification à l'appui | — | ✅ | ✅ | — (il la fait) |
-| **Rejoindre** le travail d'une autre collection du projet (« + Ranger ici ») sans rien demander — à condition de posséder *chacune* des collections où il vit ; sinon le demander | — | demander | ✅ (les siennes) | ✅ |
+| **Rejoindre** le travail d'une autre collection du projet (cocher dans « Sur les collections ») sans rien demander — à condition de posséder *chacune* des collections où il vit ; sinon le demander | — | demander | ✅ (les siennes) | ✅ |
 | **Répondre** à une demande de rejoindre une copie de sa collection | — | — | ✅ (s'il possède toutes les collections de la copie) | ✅ |
 | Tenir le **fonds** : le voir, répondre aux demandes, rendre une copie gardée, importer au fonds | — | — | — | ✅ |
 | Consulter le rapport d'accord **inter-annotateurs** (*👥 Inter*) | — | ✅ | ✅ | ✅ |
