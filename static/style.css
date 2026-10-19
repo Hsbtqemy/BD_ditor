@@ -2384,7 +2384,10 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .corpus-table .c-act { white-space: nowrap; text-align: right; }
 .corpus-table .c-titre { font-weight: 600; }
 .empty-cell { padding: 2.1538rem; text-align: center; color: var(--text-muted); }
-.icon-btn.danger { background: transparent; border-color: transparent; }
+/* La couleur du TEXTE au repos, et non le blanc de `.danger` : 🗑 se dessine sous Windows en
+   glyphe d'une seule couleur, celle du texte, et sur fond transparent le blanc disparaissait en
+   thème clair — la corbeille ne se voyait qu'au survol (relevé par Hugo le 2026-10-19). */
+.icon-btn.danger { background: transparent; border-color: transparent; color: var(--text); }
 .icon-btn.danger:hover { background: var(--danger); color: #fff; }
 
 /* Détail album — la fiche de l'album, dans la colonne de droite (UX-18) */

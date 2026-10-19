@@ -317,3 +317,37 @@ def test_la_corbeille_d_une_planche_reste_dans_le_champ(page, calques, largeur, 
     assert vu, f"la corbeille d'une planche est hors champ à {largeur} px, police {police}"
     assert page.locator("#album-detail .planches-table thead").is_hidden(), (
         "la fiche étroite n'est pas passée en cartes")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_la_corbeille_d_une_planche_se_voit_au_repos(page, calques, theme):
+    """Relevé par Hugo le 2026-10-19, en passe de QA : en thème clair, la corbeille ne se
+    voyait qu'au survol. Elle héritait du blanc de `.danger` sur un fond transparent, et 🗑
+    se dessine sous Windows en glyphe d'une couleur, celle du texte : blanc sur blanc.
+    Au REPOS, la couleur de son glyphe doit trancher sur le fond qu'elle laisse voir (3:1, le
+    seuil d'un élément graphique) — une mesure, pas la règle CSS, qu'un autre sélecteur
+    pourrait battre."""
+    page.add_init_script(f"localStorage.setItem('bd-theme','{theme}')")
+    aid = calques["albums"]["Tintin"]
+    page.goto(calques["base"] + f"/corpus?album={aid}", wait_until="networkidle")
+    corbeille = page.locator("#album-detail button[data-delp]").first
+    corbeille.wait_for(timeout=5000)
+    page.mouse.move(0, 0)
+    contraste = corbeille.evaluate("""el => {
+      const rgb = s => (s.match(/[\\d.]+/g) || []).map(Number);
+      const lum = ([r, g, b]) => {
+        const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+        return .2126 * f(r) + .7152 * f(g) + .0722 * f(b);
+      };
+      let fond = el, c;
+      while (fond) {
+        c = rgb(getComputedStyle(fond).backgroundColor);
+        if (c.length >= 3 && (c.length < 4 || c[3] > 0)) break;
+        fond = fond.parentElement;
+      }
+      const a = lum(rgb(getComputedStyle(el).color)), b = lum(c);
+      return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+    }""")
+    assert contraste >= 3, (
+        f"thème {theme} : la corbeille au repos ne tranche pas sur son fond "
+        f"({contraste:.2f}:1) — elle ne se voit qu'au survol")
