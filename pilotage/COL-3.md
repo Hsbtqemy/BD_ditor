@@ -5,9 +5,9 @@ statut: interrompu
 
 # COL-3 — le fonds et les projets : un album appartient à l'instance, un travail à ceux qui le font
 
-**Le 2026-10-20** — la 3a est sur `main` (`16c6127`), ses trois passes jouées par Hugo. **La 3b est cadrée** (`docs/col3-tranche3b-cadrage.md`) : dix décisions E1 à E10, zone « Tranche 3b » ; rien n'est codé. À la reprise : Hugo tranche E1 à E10, puis le commit 0 (la v32 sur une vraie base v31).
+**Arrêté sur** — 2026-10-20, `b3221ed` : **la 3b est cadrée et tranchée, et son commit 0 est fait.** Le cadrage (`docs/col3-tranche3b-cadrage.md`) pose E1 à E10, retenues par Hugo le jour même ; `b3221ed` écrit la v32 (`region_origine`, `demande.cran`), vérifiée sur une vraie base v31 fabriquée par le code de `16c6127`. Suite par défaut verte hors huit tests qui échouent aussi sur `main` dans ce conteneur (sans spaCy ni moteurs ML complets). À la reprise : le commit 1, amorcer dans le projet (E1, E3, E4, E5, E6, E9).
 
-**Arrêté sur** — 2026-10-18, `69a1557` : **la tranche 3a est écrite, sur `dev`, et ses passes
+**Plus tôt le 2026-10-18** — arrêté sur `69a1557` : **la tranche 3a est écrite, sur `dev`, et ses passes
 longues sont faites.** Dans l'image : la suite verte (2003) ; la passe navigateur entière, 586
 verts et 2 rouges — la fiche d'un projet débordait à 320 px sous DejaVu Sans —, corrigés par
 `69a1557` et rejoués dans l'image (172 e2e de largeur verts). `origin/dev` est à `191a61b` ; la
@@ -284,17 +284,17 @@ Maquette : https://claude.ai/artifact/1uqg9Wax8NtikPZzn5NVRd (version 3 ; nouvel
 
 ### Tranche 3b — les décisions du cadrage (`docs/col3-tranche3b-cadrage.md`, 2026-10-20)
 
-Cadrage rendu le 2026-10-20 sur `main` à `16c6127`, lu dans le code et non éprouvé. Aucune n'est tranchée : chaque case attend le mot de Hugo, puis le premier commit (la v32 et sa vraie base v31).
+Cadrage rendu le 2026-10-20 sur `main` à `16c6127`, lu dans le code et non éprouvé. **Toutes les propositions retenues par Hugo le 2026-10-20 (« Oui à tout »)** — E6 sous sa forme (a). Restent ouvertes les deux cases dont l'attendu n'est pas une décision : E9 (une mesure) et E10 (une maquette).
 
-- [ ] **E1 — L'échelle, table par table** — attendu : tranché par Hugo. Proposé : `images` · `decoupage` (régions, ordre, `statut`) · `transcription` (texte, tokens recopiés) · `grammaire` (corrections, `relecture`) · `annotations` (notes, tags, attributs de case, locuteurs, présences) ; la validation (`validee`, `verrouillee`, `verrou_par`) ne suit à aucun cran
-- [ ] **E2 — `region_origine` sur une v32** — attendu : tranché. Une ligne par région copiée vers sa source directe, sans clé vers la source ; `demande.cran` à côté ; vérifiée sur une vraie base v31 fabriquée
-- [ ] **E3 — Aucun événement recopié** — attendu : tranché. La copie est UN acte sous `document` ; la règle de suppression lit le travail copié par la chaîne de `region_origine` (sixième source, et la source 2 qui suit la chaîne) ; Ctrl+Z, pseudonymes et `comptes.traces` inchangés ; l'accord inter ne suit pas une correction recopiée, d'ici la tranche 4
-- [ ] **E4 — Dans un projet, en partir suit la règle de `rejoindre`** — attendu : tranché. Immédiat pour qui administre chaque collection de la source, sinon une demande `amorcer` au propriétaire ; l'alternative (personne ne consent) fait d'« en partir » le contournement de D4
-- [ ] **E5 — Seuls les termes visibles depuis l'arrivée suivent, et ce qui reste est COMPTÉ** — attendu : tranché. Un aperçu avant de copier dit combien de tags et d'attributs restent, sans les nommer ; la charge de l'acte garde les comptes
-- [ ] **E6 — Les personnages suivent, même entre deux projets** — attendu : tranché par Hugo entre (a) ils suivent, la fuite écrite et dite dans l'aperçu au responsable qui consent, et (b) ils ne suivent qu'à l'intérieur d'un projet. Proposé : (a)
-- [ ] **E7 — Entre deux projets, la demande ne nomme pas la source** — attendu : tranché. Le responsable demande un document et un cran ; le serveur adresse la demande aux responsables des projets qui tiennent ce travail, à un administrateur sinon ; le demandeur ne lit que « demandé » (aucun bit ne fuit)
-- [ ] **E8 — Repartir de zéro suit la règle de la suppression** — attendu : tranché. Direct sous les quatre conditions, sinon une demande `repartir` motivée et certifiée ; UN acte sous `document`, non annulable ; `validee` part, `verrouillee` reste
-- [ ] **E9 — La copie se fait dans la requête, sans spaCy** — attendu : mesuré au premier commit sur le plus gros album de la recette, sous la seconde ; sinon un lot de fond
+- [x] **E1 — L'échelle, table par table** — attendu : tranché par Hugo. Proposé : `images` · `decoupage` (régions, ordre, `statut`) · `transcription` (texte, tokens recopiés) · `grammaire` (corrections, `relecture`) · `annotations` (notes, tags, attributs de case, locuteurs, présences) ; la validation (`validee`, `verrouillee`, `verrou_par`) ne suit à aucun cran **Tranché par Hugo le 2026-10-20 : oui.**
+- [x] **E2 — `region_origine` sur une v32** — attendu : tranché. Une ligne par région copiée vers sa source directe, sans clé vers la source ; `demande.cran` à côté ; vérifiée sur une vraie base v31 fabriquée **Tranché par Hugo le 2026-10-20 : oui.** **Fait par `b3221ed`** : `region_origine` et `demande.cran`, sans comportement ; vérifiée sur `tests/bases/v31-16c6127.sql`, faite par le code de `16c6127`
+- [x] **E3 — Aucun événement recopié** — attendu : tranché. La copie est UN acte sous `document` ; la règle de suppression lit le travail copié par la chaîne de `region_origine` (sixième source, et la source 2 qui suit la chaîne) ; Ctrl+Z, pseudonymes et `comptes.traces` inchangés ; l'accord inter ne suit pas une correction recopiée, d'ici la tranche 4 **Tranché par Hugo le 2026-10-20 : oui.**
+- [x] **E4 — Dans un projet, en partir suit la règle de `rejoindre`** — attendu : tranché. Immédiat pour qui administre chaque collection de la source, sinon une demande `amorcer` au propriétaire ; l'alternative (personne ne consent) fait d'« en partir » le contournement de D4 **Tranché par Hugo le 2026-10-20 : oui.**
+- [x] **E5 — Seuls les termes visibles depuis l'arrivée suivent, et ce qui reste est COMPTÉ** — attendu : tranché. Un aperçu avant de copier dit combien de tags et d'attributs restent, sans les nommer ; la charge de l'acte garde les comptes **Tranché par Hugo le 2026-10-20 : oui.**
+- [x] **E6 — Les personnages suivent, même entre deux projets** — attendu : tranché par Hugo entre (a) ils suivent, la fuite écrite et dite dans l'aperçu au responsable qui consent, et (b) ils ne suivent qu'à l'intérieur d'un projet. Proposé : (a) **Tranché par Hugo le 2026-10-20 : (a).**
+- [x] **E7 — Entre deux projets, la demande ne nomme pas la source** — attendu : tranché. Le responsable demande un document et un cran ; le serveur adresse la demande aux responsables des projets qui tiennent ce travail, à un administrateur sinon ; le demandeur ne lit que « demandé » (aucun bit ne fuit) **Tranché par Hugo le 2026-10-20 : oui.**
+- [x] **E8 — Repartir de zéro suit la règle de la suppression** — attendu : tranché. Direct sous les quatre conditions, sinon une demande `repartir` motivée et certifiée ; UN acte sous `document`, non annulable ; `validee` part, `verrouillee` reste **Tranché par Hugo le 2026-10-20 : oui.**
+- [ ] **E9 — La copie se fait dans la requête, sans spaCy** — attendu : mesuré au premier commit sur le plus gros album de la recette, sous la seconde ; sinon un lot de fond — la forme retenue par Hugo le 2026-10-20 ; la mesure reste à faire
 - [ ] **E10 — L'écran de la 3b se tranche sur maquette** — attendu : une maquette en session dédiée — où se choisit le cran, l'aperçu, « Repartir de zéro… », où répond le responsable source, les deux genres neufs dans « À faire »
 
 ### Le projet
