@@ -5,7 +5,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { escapeHtml, messageErreur, identite } = require("../../static/lib/common.js");
+const { escapeHtml, messageErreur, identite, serieTome } = require("../../static/lib/common.js");
 
 test("escapeHtml échappe les métacaractères HTML", () => {
   assert.equal(escapeHtml("<b>&\"'"), "&lt;b&gt;&amp;&quot;&#39;");
@@ -153,4 +153,17 @@ test("noteExport ne parle que d'un export partiel ou impossible", () => {
   assert.match(noteExport("partiel"), /n'emporte que/);
   assert.match(noteExport("rien"), /aucune/);
   assert.equal(noteExport("constructor"), "");
+});
+
+
+test("serieTome : la série et son rang, tels qu'on les lit devant le titre", () => {
+  assert.equal(serieTome({ serie: "Tintin", tome: "3" }), "Tintin · T3");
+  assert.equal(serieTome({ serie: "Tintin", tome: "HS" }), "Tintin · HS");        // texte libre : tel quel
+  assert.equal(serieTome({ serie: "Tintin", tome: "Intégrale" }), "Tintin · Intégrale");
+  assert.equal(serieTome({ serie: "Tintin", tome: null }), "Tintin");
+  assert.equal(serieTome({ serie: null, tome: "3" }), "T3");                      // le tome reste seul
+  assert.equal(serieTome({ serie: " Tintin ", tome: " 3 " }), "Tintin · T3");     // espaces ignorés
+  assert.equal(serieTome({ serie: "", tome: "" }), "");
+  assert.equal(serieTome({}), "");
+  assert.equal(serieTome(null), "");
 });

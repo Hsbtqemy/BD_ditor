@@ -17,6 +17,7 @@
     root.esc = api.escapeHtml;            // alias historique (corpus / exploration)
     root.toast = api.toast;
     root.identite = api.identite;
+    root.serieTome = api.serieTome;
     root.etatExport = api.etatExport;
     root.noteExport = api.noteExport;
   }
@@ -188,6 +189,17 @@
   }
   function noteExport(etat) { return aLaCle(etat) ? NOTES_EXPORT[etat] : ""; }
 
+  /* La série d'un album et son rang, tels qu'on les lit devant le titre : « Tintin · T3 ».
+     Le tome est un texte libre (« 3 », « HS », « Intégrale ») : un nombre seul prend le « T »,
+     le reste se lit tel qu'il a été écrit. Sans série, le tome reste seul (« T3 ») ; sans
+     l'un ni l'autre, "" — l'appelant ne pose alors aucun séparateur. */
+  function serieTome(album) {
+    const a = album || {};
+    const serie = String(a.serie ?? "").trim();
+    const tome = String(a.tome ?? "").trim();
+    return [serie, /^\d+$/.test(tome) ? "T" + tome : tome].filter(Boolean).join(" · ");
+  }
+
   return { $, apiGet, apiSend, escapeHtml, toast, messageErreur, identite,
-           etatExport, noteExport };
+           etatExport, noteExport, serieTome };
 });

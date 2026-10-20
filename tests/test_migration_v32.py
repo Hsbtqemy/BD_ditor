@@ -25,7 +25,7 @@ import database
 
 BASE_V31 = Path(__file__).resolve().parent / "bases" / "v31-16c6127.sql"
 TABLES_NEUVES = {"region_origine"}
-COLONNES_NEUVES = {"demande": ("cran",)}
+COLONNES_NEUVES = {"demande": ("cran",), "albums": ("tome",)}
 LIGNES = ("albums", "planches", "regions", "annotations", "personnages", "projet",
           "projet_acces", "collection", "collection_acces", "collection_album", "document",
           "copie", "demande", "demande_document", "evenement", "activite")
@@ -103,7 +103,7 @@ def test_une_vraie_base_v31_migre_sans_rien_perdre(vraie_v31):
     avant = _etat(vraie_v31)
     database.init_db()
     apres = _etat(vraie_v31)
-    assert _sql(vraie_v31, "PRAGMA user_version")[0]["user_version"] == 32
+    assert _sql(vraie_v31, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
     assert {t: n for t, n in apres["comptes"].items() if t not in TABLES_NEUVES} \
         == avant["comptes"]
     assert apres["comptes"]["region_origine"] == 0

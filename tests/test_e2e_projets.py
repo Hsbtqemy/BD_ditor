@@ -1029,7 +1029,8 @@ _MODALE_ALBUM = """() => {
                  + x.e.textContent.trim().slice(0, 20) + ' »')
                 + ' dépasse de ' + Math.round(x.d.right - bord) + ' px');
   return { sortis, clientW: boite.clientWidth, scrollW: boite.scrollWidth,
-           serie: haut('#m-serie'), auteur: haut('#m-auteur'), annee: haut('#m-annee'),
+           serie: haut('#m-serie'), tome: haut('#m-tome'), auteur: haut('#m-auteur'),
+           annee: haut('#m-annee'),
            largeurSerie: Math.round(document.querySelector('#m-serie').getBoundingClientRect().width) };
 }"""
 
@@ -1065,10 +1066,10 @@ def test_la_fiche_d_un_album_tient_dans_sa_boite_a_320_px(page, deux_projets):
         _bibliotheque(page, d["base"])
         _modale_de_l_album(page, "Album mesuré")
         m = page.evaluate(_MODALE_ALBUM)
-        if not (m["serie"] == m["auteur"] < m["annee"]):
+        if not (m["serie"] == m["tome"] < m["auteur"] == m["annee"]):
             echecs.append(f"1280 px, {cas} : la grille n'est plus à deux colonnes — « Série » "
-                          f"à y={m['serie']}, « Auteur » à y={m['auteur']}, « Année » à "
-                          f"y={m['annee']}")
+                          f"à y={m['serie']}, « Tome » à y={m['tome']}, « Auteur » à "
+                          f"y={m['auteur']}, « Année » à y={m['annee']}")
         echecs += [f"1280 px, {cas} : {x}" for x in m["sortis"]]
         page.locator("#m-cancel").click()
     assert not echecs, "La fiche d'un album :\n" + "\n".join(echecs)

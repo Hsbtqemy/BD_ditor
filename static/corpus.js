@@ -133,6 +133,7 @@ function rendreListeAlbums() {
     const pastille = BDSuppression.pastille(a.demande, MOI.login);
     return `<li><button type="button" class="lf-objet album-row" data-id="${a.id}"
         ${a.id === state.openId ? 'aria-current="true"' : ""}>
+      ${serieTome(a) ? `<span class="lf-serie">${esc(serieTome(a))}</span>` : ""}
       <span class="lf-nom c-titre">${esc(a.titre)}</span>
       <span class="lf-etat${a.demande ? " alerte" : ""}">${a.demande ? "⚠ " : ""}${pluriel(a.nb_planches, "pl.", "pl.")}</span>
       ${cols ? `<span class="lf-detail">${cols}</span>` : ""}
@@ -1246,6 +1247,7 @@ function renderDetail() {
   // concaténés un à un, ils laissaient « Auteur : X · » quand l'éditeur manquait.
   const idParts = [
     a.serie && "Série : " + esc(a.serie),
+    a.tome && "Tome : " + esc(a.tome),
     a.auteur && "Auteur : " + esc(a.auteur),
     a.editeur && "Éditeur : " + esc(a.editeur),
   ].filter(Boolean).join(" · ");
@@ -1266,6 +1268,7 @@ function renderDetail() {
     <section id="album-detail" aria-labelledby="album-titre">
       <p class="bi-retour-collection"><button type="button" class="lf-lien small" data-retour-album="1">${retour}</button></p>
       <div class="lf-tete detail-head"><div>
+        ${serieTome(a) ? `<p class="lf-serie">${esc(serieTome(a))}</p>` : ""}
         <h3 id="album-titre" tabindex="-1">${esc(a.titre)} ${a.annee ? `<span class="muted">(${a.annee})</span>` : ""}</h3>
         ${idParts ? `<div class="detail-meta muted small">${idParts}</div>` : ""}
         ${edParts ? `<div class="detail-meta muted small">${edParts}</div>` : ""}
@@ -1748,6 +1751,7 @@ async function openModal(album, depuis = null) {
   const g = (k) => (album && album[k]) || "";
   $("#m-titre").value = album ? album.titre : "";
   $("#m-serie").value = g("serie");
+  $("#m-tome").value = g("tome");
   $("#m-auteur").value = g("auteur");
   $("#m-annee").value = g("annee");
   $("#m-editeur").value = g("editeur");
@@ -1854,6 +1858,7 @@ async function saveAlbum() {
   const body = {
     titre,
     serie: val("#m-serie"),
+    tome: val("#m-tome"),
     auteur: val("#m-auteur"),
     annee: isNaN(annee) ? null : annee,
     editeur: val("#m-editeur"),

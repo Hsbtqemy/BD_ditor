@@ -136,7 +136,7 @@ async function loadAlbums() {
   for (const a of state.albums) {
     const opt = document.createElement("option");
     opt.value = a.id;
-    opt.textContent = `${a.serie ? a.serie + " · " : ""}${a.titre} (${a.nb_planches})`;
+    opt.textContent = `${serieTome(a) ? serieTome(a) + " · " : ""}${a.titre} (${a.nb_planches})`;
     sel.appendChild(opt);
   }
   // L'album ouvert le reste s'il est du projet ; sinon le premier de la liste.
@@ -2940,7 +2940,7 @@ function sdFillAlbumSelect(selectedId) {
   for (const a of ouJEcris) {
     const o = document.createElement("option");
     o.value = String(a.id);
-    o.textContent = `${a.serie ? a.serie + " · " : ""}${a.titre}`;
+    o.textContent = `${serieTome(a) ? serieTome(a) + " · " : ""}${a.titre}`;
     sel.appendChild(o);
   }
   sel.disabled = !ouJEcris.length;

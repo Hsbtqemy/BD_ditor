@@ -2043,7 +2043,7 @@ def _region_tree(regions: list[dict], conn: sqlite3.Connection,
 #
 # `regions` n'y figure pas : `_region_tree` nomme déjà ses champs un à un.
 _EXPORT_ALBUM_COLS = (
-    "id", "titre", "auteur", "annee", "editeur", "serie", "description", "date_edition",
+    "id", "titre", "auteur", "annee", "editeur", "serie", "tome", "description", "date_edition",
     "date_originale", "langue", "type_oeuvre", "lieu_edition", "edition_tirage", "isbn",
     "format_physique", "source_numerisation", "date_import")
 _EXPORT_PLANCHE_COLS = (

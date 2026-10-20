@@ -3000,6 +3000,11 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
             cursor: pointer; font-size: 1rem; }
 .lf-objet:hover { background: var(--hover); }
 .lf-nom { min-width: 0; overflow-wrap: anywhere; }
+/* La série et le rang de l'album, AU-DESSUS de son titre : dans la liste (toute la largeur,
+   avant le titre) comme dans la fiche. */
+.lf-serie { flex-basis: 100%; order: -1; margin: 0; color: var(--text-muted); font-size: .85rem;
+            overflow-wrap: anywhere; }
+.lf-objet[aria-current="true"] .lf-serie { color: var(--text); }
 .lf-etat { color: var(--text-muted); font-size: .88rem; }
 .lf-etat.alerte { color: var(--accent-amber); }
 .lf-vide { padding: .4rem .5rem; }

@@ -337,3 +337,17 @@ def test_annuler_interrompt_une_passe_longue_en_cours(client, planche, monkeypat
     assert snap["status"] == "annule", snap
     assert snap["errors"] == [], "une interruption DEMANDÉE n'est pas une erreur"
     assert snap["done"] == 0, "la planche interrompue ne compte pas comme faite"
+
+
+def test_album_tome(client, album):
+    """Le tome est le rang de l'album dans sa SÉRIE : un texte libre (« 1 », « HS »), à part
+    du titre — on n'écrit plus « Tome 1 » dans ce dernier. Il se pose à la création et par
+    édition, se vide par `null`, et part avec la notice dans l'export JSON."""
+    c = client.post("/api/albums", json={"titre": "Le Lotus bleu", "serie": "Tintin",
+                                         "tome": "5"}).json()
+    assert c["serie"] == "Tintin" and c["tome"] == "5" and c["titre"] == "Le Lotus bleu"
+    u = client.put(f"/api/albums/{album['id']}", json={"tome": "HS"}).json()
+    assert u["tome"] == "HS" and u["titre"] == album["titre"]
+    assert client.put(f"/api/albums/{album['id']}", json={"tome": None}).json()["tome"] is None
+    j = client.get("/api/export/json", params={"album_id": c["id"]}).json()
+    assert j["tome"] == "5"

@@ -18,7 +18,7 @@ from config import DB_PATH, STATUTS
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 32
+SCHEMA_VERSION = 33
 
 # NLP-2 (v28) — ce que l'annotateur a VU en corrigeant : le modèle, et sa proposition.
 # Une seule liste, lue par la migration ET par le ré-ancrage : celui-ci réinsère ses
@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS albums (
     annee        INTEGER,                    -- legacy (ambigu) → précisé par date_edition/date_originale
     editeur      TEXT,
     serie        TEXT,
+    tome         TEXT,                       -- v33 : rang dans la série (« 1 », « HS », « Intégrale »), texte libre
     description  TEXT,
     -- Enrichissement descriptif N0 (v15) : édition détenue. Cf. docs/dictionnaire-metadonnees.md.
     date_edition     TEXT,                   -- publication de l'édition détenue (l'ANCRE)
@@ -1253,6 +1254,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for table, colonnes in (
             ("collection", (("base", "INTEGER NOT NULL DEFAULT 0"), ("acces_membres", "TEXT"))),
             ("document", (("projet_origine_nom", "TEXT"),)),
+            # v32 → v33 : `albums.tome`, le rang de l'album dans sa série. Texte libre (« 1 »,
+            # « HS », « Intégrale ») ; NULL pour tout l'existant, aucune donnée à migrer.
+            ("albums", (("tome", "TEXT"),)),
             # v31 → v32 (COL-3, tranche 3b) : `demande.cran`, le cran d'une copie amorcée
             # ou d'une remise à zéro demandée. Table `region_origine` NOUVELLE (SCHEMA_SQL) ;
             # aucune migration de données — aucune copie d'avant la v32 n'a recopié de région.

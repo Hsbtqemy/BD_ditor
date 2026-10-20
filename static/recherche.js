@@ -61,7 +61,7 @@ async function loadAlbums() {
     for (const a of state.albums) {
       const o = document.createElement("option");
       o.value = String(a.id);
-      o.textContent = `${a.serie ? a.serie + " · " : ""}${a.titre}`;
+      o.textContent = `${serieTome(a) ? serieTome(a) + " · " : ""}${a.titre}`;
       sel.appendChild(o);
     }
   } catch (e) { /* ignore */ }

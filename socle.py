@@ -1587,6 +1587,7 @@ class AlbumIn(BaseModel):
     annee: Optional[int] = Field(None, ge=1400, le=2200)   # legacy → cf. date_edition
     editeur: Optional[str] = None
     serie: Optional[str] = None
+    tome: Optional[str] = None                  # rang dans la série, texte libre
     description: Optional[str] = None
     # Enrichissement descriptif N0 (v15) — édition détenue.
     date_edition: Optional[str] = None
@@ -1606,6 +1607,7 @@ class AlbumUpdate(BaseModel):
     annee: Optional[int] = Field(None, ge=1400, le=2200)   # mêmes bornes qu'à la création
     editeur: Optional[str] = None
     serie: Optional[str] = None
+    tome: Optional[str] = None
     description: Optional[str] = None
     date_edition: Optional[str] = None
     date_originale: Optional[str] = None
