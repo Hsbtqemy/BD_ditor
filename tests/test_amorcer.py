@@ -81,6 +81,10 @@ def source(client, derriere_proxy, data_dir, db_path):
          (principale, locale))
     # Une correction grammaticale, posée en base : sans spaCy, aucun token n'existe sur
     # lequel la route l'accepterait. Ce que la copie doit en faire ne dépend pas du moteur.
+    # Les tokens que l'écriture du texte a produits sont retirés d'abord : AVEC spaCy, la
+    # route en pose un par mot, et la source en portait cinq au lieu d'un — ATTENDU, mesuré
+    # dans un environnement sans spaCy, échouait dans le .venv et dans l'image.
+    _sql(db_path, "DELETE FROM tokens WHERE region_id = ?", (bulle,))
     _sql(db_path, "INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
                   "VALUES (?, 0, 'TINTIN', 'tintin', 'PROPN', '')", (bulle,))
     _sql(db_path, "INSERT INTO token_correction (region_id, ordre, forme, lemme, pos, etat, "
