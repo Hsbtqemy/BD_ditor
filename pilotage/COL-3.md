@@ -5,7 +5,7 @@ statut: interrompu
 
 # COL-3 — le fonds et les projets : un album appartient à l'instance, un travail à ceux qui le font
 
-**Arrêté sur** — 2026-10-20, `b3221ed` : **la 3b est cadrée et tranchée, et son commit 0 est fait.** Le cadrage (`docs/col3-tranche3b-cadrage.md`) pose E1 à E10, retenues par Hugo le jour même ; `b3221ed` écrit la v32 (`region_origine`, `demande.cran`), vérifiée sur une vraie base v31 fabriquée par le code de `16c6127`. Suite par défaut verte hors huit tests qui échouent aussi sur `main` dans ce conteneur (sans spaCy ni moteurs ML complets). À la reprise : le commit 1, amorcer dans le projet (E1, E3, E4, E5, E6, E9).
+**Arrêté sur** — 2026-10-20, `e190977` : **la 3b a son moteur.** Le cadrage (`docs/col3-tranche3b-cadrage.md`) pose E1 à E10, retenues par Hugo le jour même ; `b3221ed` écrit la v32 (`region_origine`, `demande.cran`), vérifiée sur une vraie base v31 fabriquée par le code de `16c6127` ; `e190977` copie le travail jusqu'à un cran (E1, E5, E6) et fait lire le travail copié par la règle de suppression (E3), neuf mutants tombés. Suite par défaut verte (2102), hors huit tests qui échouent aussi sur `main` dans ce conteneur (sans spaCy ni moteurs ML complets). À la reprise : le commit 1b — la réponse « en partir » de la prise, la demande `amorcer` au propriétaire (E4), l'aperçu de ce qui suit et de ce qui reste ; puis la mesure d'E9 et celle de `GET /api/albums` au volume de la maquette.
 
 **Plus tôt le 2026-10-18** — arrêté sur `69a1557` : **la tranche 3a est écrite, sur `dev`, et ses passes
 longues sont faites.** Dans l'image : la suite verte (2003) ; la passe navigateur entière, 586
