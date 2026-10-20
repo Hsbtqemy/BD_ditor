@@ -34,7 +34,10 @@ Ce que le parcours pose, et pourquoi :
   membres ; la collection de repli ; une copie gardée
   au fonds ; un album importé au fonds puis rendu ; des demandes de suppression en attente,
   refusée, acceptée ; une demande de suppression de projet ; deux projets supprimés vides,
-  le plus grand identifiant de projet n'étant plus nommé que par le journal et une demande.
+  le plus grand identifiant de projet n'étant plus nommé que par le journal et une demande ;
+- à partir de la v31 (`_parcours_v31`, COL-3, tranche 3b) : la base d'un projet ouverte ;
+  deux copies sœurs d'un document ; un « rejoindre » accepté, un refusé ; un retour qui
+  attend.
 
 Le parcours n'emploie que des routes stables depuis la v29. Si une version les change, il
 gagne une branche sur `database.SCHEMA_VERSION` plutôt que de perdre l'ancienne forme :
@@ -190,6 +193,8 @@ def _jouer_le_parcours(main, database, journal) -> dict:
                  "region_detruite": regions[-1], "personnage_detruit": mort}
         if database.SCHEMA_VERSION >= 30:
             faits.update(_parcours_v30(c, principal, albums[0]))
+        if database.SCHEMA_VERSION >= 31:
+            faits.update(_parcours_v31(c, principal, albums[1], faits))
     return faits
 
 
@@ -280,6 +285,76 @@ def _parcours_v30(c, principal: int, album_de_lea: int) -> dict:
             "projets_supprimes": sorted({ephemere, ephemere_2})}
 
 
+def _parcours_v31(c, principal: int, album_de_sam: int, faits: dict) -> dict:
+    """Ce qu'une base v31 doit porter pour que la v32 ait de quoi se tromper (COL-3,
+    tranche 3b) : la base d'un projet OUVERTE à ses membres ; deux copies SŒURS d'un même
+    document, la seconde vierge, prise dans une autre collection du projet ; un
+    « rejoindre » demandé puis accepté, un autre refusé ; un retour d'une copie gardée au
+    fonds, qui attend. Par les routes du code v31.
+
+    Ce qu'il ne pose pas : des corrections grammaticales. Elles demandent spaCy, que la
+    fabrication ne requiert pas (« sans spaCy, aucun token n'est écrit ») ; la v32 n'en
+    touche aucune."""
+    etude = faits["projet_etude"]
+    projets = {p["id"]: p for p in _ok(c.get("/api/projets", headers=LEA), 200)}
+    base_etude = projets[etude]["base"]["id"]
+    _ok(c.put(f"/api/projets/{etude}/acces-membres", headers=LEA,
+              json={"acces_membres": "ecriture"}), 200)
+    collection_c = _ok(c.post("/api/collections", headers=LEA,
+                              json={"nom": "Collection C", "projet_id": etude}), 201)["id"]
+    # La source des sœurs : un album travaillé dans la Collection B.
+    source = _ok(c.post("/api/albums", headers=LEA,
+                        json={"titre": "Source des sœurs",
+                              "collection_id": faits["collection_b"]}), 201)["id"]
+    pl = _ok(c.post(f"/api/albums/{source}/import", headers=LEA,
+                    files={"file": ("p.png", _png(), "image/png")}), 201)["id"]
+    case = _ok(c.post(f"/api/planches/{pl}/regions", headers=LEA,
+                      json={"type": "case", "x": 0, "y": 0, "w": 30, "h": 20}), 201)["id"]
+    bulle = _ok(c.post(f"/api/planches/{pl}/regions", headers=LEA,
+                       json={"type": "bulle", "x": 1, "y": 1, "w": 9, "h": 9,
+                             "parent_id": case}), 201)["id"]
+    _ok(c.put(f"/api/regions/{bulle}", headers=LEA, json={"ocr_texte": "LE OTAGE SOEUR"}),
+        200)
+    _ok(c.put(f"/api/regions/{bulle}/annotation", headers=LEA,
+              json={"note": "source", "tags": ["dialogue"]}), 200)
+    document = next(a["document_id"] for a in _ok(c.get("/api/albums", headers=ADMIN), 200)
+                    if a["id"] == source)
+    # La sœur vierge, prise par la responsable pour une autre collection de son projet.
+    prise = _ok(c.post(f"/api/collections/{collection_c}/prendre", headers=LEA,
+                       json={"documents": [{"document_id": document, "reponse": "zero",
+                                            "album_id": source}]}), 200)
+    soeur = prise["documents"][0]["copie_id"]
+    assert soeur, prise
+    # Deux « rejoindre » : Léa range dans sa collection un album de Sam qu'elle lit ; le
+    # Corpus principal n'a pas de propriétaire, donc un administrateur répond.
+    lea_seule = _ok(c.post("/api/collections", headers=LEA,
+                           json={"nom": "Collection de Léa"}), 201)["id"]
+    rejoint = _ok(c.put(f"/api/albums/{album_de_sam}/collections/{lea_seule}",
+                        headers=LEA), 202)["demande_id"]
+    _ok(c.post(f"/api/demandes/{rejoint}/reponse", headers=ADMIN,
+               json={"reponse": "acceptee"}), 200)
+    autre = _ok(c.post("/api/albums", headers=SAM,
+                       json={"titre": "Rejoindre refusé", "collection_id": principal}),
+                201)["id"]
+    refuse = _ok(c.put(f"/api/albums/{autre}/collections/{lea_seule}", headers=LEA),
+                 202)["demande_id"]
+    _ok(c.post(f"/api/demandes/{refuse}/reponse", headers=ADMIN,
+               json={"reponse": "refusee"}), 200)
+    # Un retour qui attend : la responsable demande à reprendre sa copie gardée au fonds.
+    gardee = faits["album_garde_au_fonds"]
+    doc_garde = next(a["document_id"] for a in _ok(c.get("/api/albums", headers=ADMIN), 200)
+                     if a["id"] == gardee)
+    retour = _ok(c.post(f"/api/projets/{etude}/prendre", headers=LEA,
+                        json={"documents": [{"document_id": doc_garde,
+                                             "reponse": "reprendre", "album_id": gardee}],
+                              "motif": "On y retravaille."}), 200)["documents"][0]["demande_id"]
+    return {"base_etude": base_etude, "collection_c": collection_c,
+            "album_source_des_soeurs": source, "album_soeur": soeur,
+            "collection_de_lea": lea_seule,
+            "demandes_v31": {"rejoindre_acceptee": rejoint, "rejoindre_refusee": refuse,
+                             "retour": retour}}
+
+
 def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict) -> None:
     conn = sqlite3.connect(base)
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -303,6 +378,11 @@ def _vider_en_sql(base: Path, sortie: Path, version: int, sha: str, faits: dict)
         faits["comptes"].update({t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
                                  for t in ("projet", "projet_acces", "collection",
                                            "document", "demande", "demande_document")})
+    if version >= 31:
+        faits["comptes"].update({t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                                 for t in ("copie",)})
+        faits["demandes_par_genre"] = dict(conn.execute(
+            "SELECT genre, COUNT(*) FROM demande GROUP BY genre ORDER BY genre").fetchall())
     try:
         relatif = sortie.relative_to(RACINE).as_posix()
     except ValueError:

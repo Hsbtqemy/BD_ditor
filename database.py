@@ -18,7 +18,7 @@ from config import DB_PATH, STATUTS
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 31
+SCHEMA_VERSION = 32
 
 # NLP-2 (v28) — ce que l'annotateur a VU en corrigeant : le modèle, et sa proposition.
 # Une seule liste, lue par la migration ET par le ré-ancrage : celui-ci réinsère ses
@@ -527,6 +527,20 @@ CREATE TABLE IF NOT EXISTS copie (
     depuis_projet_nom  TEXT
 );
 
+-- REGION_ORIGINE (v32, COL-3, tranche 3b, E2) — ce qu'une région COPIÉE doit à une région
+-- source : une copie amorcée jusqu'à un cran (« en partir ») recopie les régions de sa
+-- source sous des identifiants neufs, et aucun événement du journal ne les nomme (E3 :
+-- recopier les actes les ferait remonter par Ctrl+Z et compter deux fois). C'est par cette
+-- table que le travail copié reste celui de ses auteurs. `region_source_id` est la source
+-- DIRECTE, SANS clé étrangère — elle peut mourir avant la copie, et le journal qui la nomme
+-- lui survit ; une copie de copie remonte la chaîne. Elle ne tient que parce que les
+-- identifiants de région ne reviennent plus (v30). Aucune route ne la rend, rien ne la sort.
+CREATE TABLE IF NOT EXISTS region_origine (
+    region_id         INTEGER PRIMARY KEY REFERENCES regions(id) ON DELETE CASCADE,
+    region_source_id  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_region_origine_source ON region_origine(region_source_id);
+
 -- DEMANDE (v30, COL-3, tranche 2) — UN mécanisme pour ce qui ne se fait pas seul : qui
 -- demande, quand, pourquoi ; puis qui répond, quand, quoi. Aucune messagerie. Les deux
 -- tables naissent avec le document pour que le schéma ne change qu'UNE fois dans la
@@ -565,7 +579,12 @@ CREATE TABLE IF NOT EXISTS demande (
     repondu_par    TEXT,
     date_reponse   TEXT,
     collection_id  INTEGER,
-    collection_nom TEXT
+    collection_nom TEXT,
+    cran           TEXT
+    -- `cran` (v32, COL-3, tranche 3b) : le cran demandé d'une copie AMORCÉE (« en partir »)
+    -- ou d'une remise à zéro (« repartir »), parmi ceux de `copie.cran` ; NULL pour tout
+    -- autre genre. Commentaire SOUS la colonne : c'est la dernière de la table (cf. celui
+    -- de `collection.projet_id`).
 );
 
 -- Les DOCUMENTS d'une demande — plusieurs dès maintenant, pour qu'une entrée de documents
@@ -1234,7 +1253,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for table, colonnes in (
             ("collection", (("base", "INTEGER NOT NULL DEFAULT 0"), ("acces_membres", "TEXT"))),
             ("document", (("projet_origine_nom", "TEXT"),)),
-            ("demande", (("collection_id", "INTEGER"), ("collection_nom", "TEXT"))),
+            # v31 → v32 (COL-3, tranche 3b) : `demande.cran`, le cran d'une copie amorcée
+            # ou d'une remise à zéro demandée. Table `region_origine` NOUVELLE (SCHEMA_SQL) ;
+            # aucune migration de données — aucune copie d'avant la v32 n'a recopié de région.
+            ("demande", (("collection_id", "INTEGER"), ("collection_nom", "TEXT"),
+                         ("cran", "TEXT"))),
             ("demande_document", (("copie_id", "INTEGER"),))):
         if table not in _tables or (table == "collection" and "projet" not in _tables):
             continue

@@ -29,7 +29,8 @@ import pytest
 import database
 
 BASE_V30 = Path(__file__).resolve().parent / "bases" / "v30-5e7f56b.sql"
-TABLES_NEUVES = {"copie"}
+# `region_origine` est celle de la v32 (COL-3, tranche 3b), que la migration traverse aussi.
+TABLES_NEUVES = {"copie", "region_origine"}
 
 
 def _sql(db, q, p=()):
@@ -66,7 +67,7 @@ def vraie_v30(tmp_path, monkeypatch):
 # comparer à celles d'avant.
 COLONNES_NEUVES = {"collection": ("base", "acces_membres"),
                    "document": ("projet_origine_nom",),
-                   "demande": ("collection_id", "collection_nom"),
+                   "demande": ("collection_id", "collection_nom", "cran"),
                    "demande_document": ("copie_id",)}
 LIGNES = ("albums", "planches", "regions", "personnages", "projet", "projet_acces",
           "collection", "collection_acces", "collection_album", "document", "demande",
@@ -111,7 +112,8 @@ def test_une_vraie_base_v30_migre_sans_rien_perdre(vraie_v30):
     avant = _etat(vraie_v30)
     database.init_db()
     apres = _etat(vraie_v30)
-    assert _sql(vraie_v30, "PRAGMA user_version")[0]["user_version"] == 31
+    assert _sql(vraie_v30, "PRAGMA user_version")[0]["user_version"] \
+        == database.SCHEMA_VERSION
     # Deux collections naissent, une base NEUVE par projet (D10) — le projet de repli
     # compris ; aucune collection existante ne change (Hugo, 2026-10-17).
     assert apres["comptes"]["collection"] == avant["comptes"]["collection"] + 2
@@ -255,7 +257,8 @@ def test_le_compteur_des_projets_part_au_dessus_de_chaque_source(base_v30, sourc
     haut, insertion = SOURCES_PROJET[source]
     _sql(base_v30, insertion)
     database.init_db()
-    assert _sql(base_v30, "PRAGMA user_version")[0]["user_version"] == 31
+    assert _sql(base_v30, "PRAGMA user_version")[0]["user_version"] \
+        == database.SCHEMA_VERSION
     assert _seq(base_v30)["projet"] == haut, _seq(base_v30)
 
 

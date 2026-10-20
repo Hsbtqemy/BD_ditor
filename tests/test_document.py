@@ -428,14 +428,15 @@ def test_les_tables_de_demande_naissent_vides_et_rien_ne_les_ecrit(client, db_pa
     colonnes = {t: [c["name"] for c in _sql(db_path, f"PRAGMA table_info({t})")]
                 for t in ("document", "demande", "demande_document")}
     # La v31 (COL-3, tranche 3) ajoute le nom du projet d'origine, la collection d'arrivée
-    # d'une demande et la copie née d'une acceptation.
+    # d'une demande et la copie née d'une acceptation ; la v32 (tranche 3b), le cran d'une
+    # copie amorcée ou d'une remise à zéro demandée.
     assert colonnes == {
         "document": ["id", "importe_par", "importe_le", "projet_origine_id",
                      "projet_origine_nom"],
         "demande": ["id", "genre", "demandeur", "motif", "certifie_le", "projet_id",
                     "projet_nom",
                     "date_creation", "reponse", "repondu_par", "date_reponse",
-                    "collection_id", "collection_nom"],
+                    "collection_id", "collection_nom", "cran"],
         "demande_document": ["demande_id", "document_id", "album_id", "titre", "reponse",
                              "copie_id"]}
 
