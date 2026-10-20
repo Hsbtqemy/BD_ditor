@@ -7,6 +7,11 @@ statut: interrompu
 
 **Arrêté sur** — 2026-10-20, `e190977` : **la 3b a son moteur.** Le cadrage (`docs/col3-tranche3b-cadrage.md`) pose E1 à E10, retenues par Hugo le jour même ; `b3221ed` écrit la v32 (`region_origine`, `demande.cran`), vérifiée sur une vraie base v31 fabriquée par le code de `16c6127` ; `e190977` copie le travail jusqu'à un cran (E1, E5, E6) et fait lire le travail copié par la règle de suppression (E3), neuf mutants tombés. Suite par défaut verte (2102), hors huit tests qui échouent aussi sur `main` dans ce conteneur (sans spaCy ni moteurs ML complets). À la reprise : le commit 1b — la réponse « en partir » de la prise, la demande `amorcer` au propriétaire (E4), l'aperçu de ce qui suit et de ce qui reste ; puis la mesure d'E9 et celle de `GET /api/albums` au volume de la maquette.
 
+**Plus tôt le 2026-10-20** — arrêté sur `69a1557` : **la tranche 3a est en production** (`main` à `16c6127`,
+déployé par Hugo le 2026-10-20). Ses trois passes de QA jouées et cochées entières
+(`bibliotheque-en-calque`, `prendre-un-document`, `administration-a-l-echelle`) ; la v31 migrée
+sur la base de production — un projet, sa base neuve, vide et protégée, aucune base ouverte.
+
 **Plus tôt le 2026-10-18** — arrêté sur `69a1557` : **la tranche 3a est écrite, sur `dev`, et ses passes
 longues sont faites.** Dans l'image : la suite verte (2003) ; la passe navigateur entière, 586
 verts et 2 rouges — la fiche d'un projet débordait à 320 px sous DejaVu Sans —, corrigés par
