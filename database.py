@@ -2367,20 +2367,110 @@ def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran
             "VALUES (?, ?, ?)")
 
     if texte:
+        lemmes = _lemmes_indexes(conn, list(regions))
         for s, c in regions.items():
-            _indexer_une_region_copiee(conn, s, c, grammaire=grammaire,
+            _indexer_une_region_copiee(conn, s, c, lemmes.get(s, ""), grammaire=grammaire,
                                        annotations=annotations)
     return {"copies": copies, "laisses": laisses}
 
 
-def _indexer_une_region_copiee(conn, source: int, copie: int, *, grammaire: bool,
-                               annotations: bool) -> None:
+# Combien d'identifiants une lecture de l'index accepte à la fois : sous la limite de
+# variables de SQLite, et assez pour qu'un album entier ne coûte qu'une poignée de lectures.
+_LOT_INDEX = 500
+
+
+def _lemmes_indexes(conn: sqlite3.Connection, region_ids: list) -> dict:
+    """Les lemmes de l'index plein texte de ces régions, `{region_id: lemmes}`, par LOTS.
+
+    `recherche.region_id` est `UNINDEXED` : la retrouver ligne par ligne parcourt l'index
+    entier à chaque région, et copier un album de 2 400 régions prenait alors plusieurs
+    secondes sur un index qui n'en portait que quelques milliers (E9, mesuré le
+    2026-10-20). Par lots, un parcours par lot."""
+    lemmes = {}
+    for i in range(0, len(region_ids), _LOT_INDEX):
+        lot = region_ids[i:i + _LOT_INDEX]
+        for rid, l in conn.execute(
+                f"SELECT region_id, lemmes FROM recherche "
+                f"WHERE region_id IN ({', '.join('?' * len(lot))})", lot):
+            lemmes[int(rid)] = l or ""
+    return lemmes
+
+
+def compter_le_travail(conn: sqlite3.Connection, depuis: int, cran: str,
+                       collection_id: int) -> dict:
+    """Ce que `copier_le_travail` copierait de la copie `depuis` vers une copie rangée dans
+    `collection_id`, jusqu'au `cran` dit — et ce qu'il LAISSERAIT —, sans rien écrire.
+    L'APERÇU d'« en partir » (E5, COL-3, tranche 3b) : la même forme que la charge de la
+    naissance, `{"copies": {…}, "laisses": {…}}`, plus `personnages`, le nombre de fiches de
+    personnage que les locuteurs et présences copiés rendent lisibles depuis la copie (E6).
+
+    Des NOMBRES, jamais des libellés : un tag ou un attribut laissé l'est parce que la
+    collection d'arrivée ne le voit pas, et le nommer ferait lire à qui ne le lit pas le nom
+    d'un axe privé — la fuite de la v24. Les deux fonctions comptent pareil, et
+    `tests/test_amorcer.py` exige que l'aperçu soit la charge, cran par cran."""
+    rang = rang_du_cran(cran)
+    if rang < 1:
+        raise ValueError(f"cran sans travail à copier : {cran!r}")
+    regions = [r[0] for r in conn.execute(
+        "SELECT r.id FROM regions r JOIN planches p ON p.id = r.planche_id "
+        "WHERE p.album_id = ? ORDER BY r.id", (depuis,))]
+    copies = {"regions": len(regions)}
+    laisses = {}
+    personnages = 0
+    # Sans région, chaque compte vaut 0 et aucune requête ne part : `IN ()` ne s'écrit pas.
+    dans = f"IN ({', '.join('?' * len(regions))})"
+
+    def n(sql, *params):
+        return conn.execute(sql, (*regions, *params)).fetchone()[0] if regions else 0
+    if rang >= rang_du_cran(CRAN_TRANSCRIPTION):
+        copies["textes"] = n(f"SELECT COUNT(*) FROM regions WHERE id {dans} "
+                             "AND ocr_texte IS NOT NULL AND ocr_texte <> ''")
+    if rang >= rang_du_cran(CRAN_GRAMMAIRE):
+        copies["corrections"] = n(f"SELECT COUNT(*) FROM token_correction WHERE region_id {dans}")
+    if rang >= rang_du_cran(CRAN_ANNOTATIONS):
+        tag_vu, tag_p = clause_appartenance(collection_id, "t.collection_id")
+        dim_vu, dim_p = clause_appartenance(collection_id, "d.collection_id")
+        val_vu, val_p = clause_appartenance(collection_id, "v.collection_id")
+        n_annot = n_tags = n_tags_laisses = 0
+        annotations = conn.execute(f"SELECT id, note FROM annotations WHERE region_id {dans}",
+                                   regions).fetchall() if regions else []
+        for a in annotations:
+            total = conn.execute("SELECT COUNT(*) FROM annotation_tags "
+                                 "WHERE annotation_id = ?", (a["id"],)).fetchone()[0]
+            vus = conn.execute(
+                "SELECT COUNT(*) FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
+                f"WHERE at.annotation_id = ? AND {tag_vu}", (a["id"], *tag_p)).fetchone()[0]
+            n_tags_laisses += total - vus
+            # Une annotation dont tous les tags restent et qui n'a pas de note ne naît pas.
+            if vus or (a["note"] or "").strip():
+                n_annot += 1
+                n_tags += vus
+        copies.update(annotations=n_annot, tags=n_tags)
+        laisses["tags"] = n_tags_laisses
+        total = n(f"SELECT COUNT(*) FROM region_attribut WHERE region_id {dans}")
+        copies["attributs"] = n(
+            "SELECT COUNT(*) FROM region_attribut ra "
+            "JOIN attribut_valeur v ON v.id = ra.valeur_id "
+            "JOIN attribut_dimension d ON d.id = v.dimension_id "
+            f"WHERE ra.region_id {dans} AND {val_vu} AND {dim_vu}", *val_p, *dim_p)
+        laisses["attributs"] = total - copies["attributs"]
+        copies["locuteurs"] = n(f"SELECT COUNT(*) FROM bulle_locuteur WHERE region_id {dans}")
+        copies["presences"] = n(
+            f"SELECT COUNT(*) FROM personnage_presence WHERE region_id {dans}")
+        personnages = n(
+            f"SELECT COUNT(*) FROM (SELECT personnage_id FROM bulle_locuteur "
+            f"WHERE region_id {dans} UNION SELECT personnage_id FROM personnage_presence "
+            f"WHERE region_id {dans})", *regions)
+    return {"copies": copies, "laisses": laisses, "personnages": personnages}
+
+
+def _indexer_une_region_copiee(conn, source: int, copie: int, lemmes_source: str, *,
+                               grammaire: bool, annotations: bool) -> None:
     """L'index plein texte et les tokens d'une région copiée (cf. `copier_le_travail`) :
     recopiés de la source quand la copie dit tout ce que la source disait, réindexés
     sinon. Les tags laissés (E5) ne changent pas les lemmes — l'index les porte à part,
-    dans `tags_concat`, que `_region_index_payload` relit sur la copie."""
-    ligne = conn.execute("SELECT lemmes FROM recherche WHERE region_id = ?",
-                         (source,)).fetchone()
+    dans `tags_concat`, que `_region_index_payload` relit sur la copie. `lemmes_source` :
+    ceux que l'index porte pour la source, lus par lots (`_lemmes_indexes`)."""
     note = conn.execute("SELECT note FROM annotations WHERE region_id = ?",
                         (source,)).fetchone()
     a_une_note = note is not None and (note[0] or "").strip() != ""
@@ -2394,7 +2484,7 @@ def _indexer_une_region_copiee(conn, source: int, copie: int, *, grammaire: bool
         "ORDER BY ordre", (source,))]
     payload = _region_index_payload(conn, copie)
     if fidele:
-        lemmes = ligne["lemmes"] if ligne else ""
+        lemmes = lemmes_source
     else:
         # Les lemmes de l'index mêlent ceux du texte, de la note et des corrections ; une
         # couche n'a pas suivi, ils se recalculent sur ce que la copie porte. Sans moteur,
@@ -2402,7 +2492,7 @@ def _indexer_une_region_copiee(conn, source: int, copie: int, *, grammaire: bool
         from pipeline.nlp import analyse, lemmatise   # import paresseux (évite tout cycle)
         lemmes = (analyse(payload[0])[0] + " " + lemmatise(payload[1])).strip()
         lemmes = _appliquer_corrections(conn, copie, tokens, lemmes, reancrer=False)
-    _index_region(conn, copie, payload, lemmes, tokens)
+    _index_region(conn, copie, payload, lemmes, tokens, neuve=True)
 
 def ranger_copie(conn: sqlite3.Connection, album_id: int, collection_id: int, *,
                  rang: int | None = None) -> bool:
@@ -2511,7 +2601,10 @@ def clore_retours_d_une_copie_rangee(conn: sqlite3.Connection, album_id: int,
 def clore_rejoindre_d_une_copie_au_fonds(conn: sqlite3.Connection, album_id: int) -> list[int]:
     """Une copie vient de partir AU FONDS (sortie de sa dernière collection) : les
     `rejoindre` qui la visaient se closent REFUSÉS, et l'on rend leurs identifiants. COL-3,
-    écran de la 3a (relecture croisée, défaut 3 ; option fermée).
+    écran de la 3a (relecture croisée, défaut 3 ; option fermée). Les demandes d'EN PARTIR
+    (`DEMANDE_AMORCER`, tranche 3b) aussi : leur consentement était celui des propriétaires
+    des collections que la copie vient de quitter, et une copie gardée ne se lit plus que
+    par qui tient le fonds.
 
     Accepter un `rejoindre` sur une copie gardée la RENDRAIT — sans que son responsable l'ait
     demandé, et sous les mots « ranger aussi », qui supposent une copie déjà rangée. Reprendre
@@ -2526,8 +2619,8 @@ def clore_rejoindre_d_une_copie_au_fonds(conn: sqlite3.Connection, album_id: int
     clos = []
     for (demande_id,) in conn.execute(
             "SELECT d.id FROM demande d JOIN demande_document dd ON dd.demande_id = d.id "
-            "WHERE d.genre = ? AND dd.album_id = ? AND d.reponse IS NULL ORDER BY d.id",
-            (DEMANDE_REJOINDRE, album_id)).fetchall():
+            "WHERE d.genre IN (?, ?) AND dd.album_id = ? AND d.reponse IS NULL ORDER BY d.id",
+            (*GENRES_CONSENTIS, album_id)).fetchall():
         conn.execute("UPDATE demande_document SET reponse = ? WHERE demande_id = ? "
                      "AND reponse IS NULL", (REPONSE_REFUSEE, demande_id))
         conn.execute("UPDATE demande SET reponse = ?, repondu_par = ?, "
@@ -2615,8 +2708,20 @@ DEMANDE_REJOINDRE = "rejoindre"
 # un retour ne s'attend qu'une fois par COPIE, quelle que soit la collection nommée. Une
 # demande par copie, qui nomme sa collection d'arrivée (`demande.collection_id`).
 DEMANDE_RENDRE = "rendre_copie"
+# COL-3, tranche 3b (E4, Hugo, 2026-10-20) — EN PARTIR d'un travail du projet : un écrivain
+# demande une copie à lui, amorcée avec le travail d'une copie qu'il lit jusqu'au cran dit
+# (`demande.cran`), sans tenir toutes les collections où ce travail vit. La règle de
+# `rejoindre`, telle quelle — le propriétaire de chacune consent, ou un administrateur :
+# copier un travail dans une autre collection le fait lire par d'autres, comme le partager.
+# Une demande par copie SOURCE (`demande_document.album_id`), qui nomme sa collection
+# d'arrivée ; acceptée, la copie neuve est dite par `copie_id`.
+DEMANDE_AMORCER = "amorcer"
 GENRES_DEMANDE = (DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
-                  DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE)
+                  DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE,
+                  DEMANDE_AMORCER)
+# Les genres qui attendent le CONSENTEMENT des propriétaires des collections où vit la
+# copie visée — et non la réponse de qui tient le fonds (`Portee.peut_repondre_a`).
+GENRES_CONSENTIS = (DEMANDE_REJOINDRE, DEMANDE_AMORCER)
 REPONSE_ACCEPTEE = "acceptee"
 REPONSE_REFUSEE = "refusee"
 REPONSES_DEMANDE = (REPONSE_ACCEPTEE, REPONSE_REFUSEE)
@@ -2888,13 +2993,19 @@ def _region_index_payload(conn: sqlite3.Connection, region_id: int):
 
 
 def _index_region(conn: sqlite3.Connection, region_id: int, payload,
-                  lemmes: str, tokens: list) -> None:
+                  lemmes: str, tokens: list, *, neuve: bool = False) -> None:
     """Persistance partagée : écrit la ligne FTS (ocr/note/tags + `lemmes` fournis)
     et les `tokens` fournis. `lemmes=""` / `tokens=[]` ⇒ indexation STRUCTURELLE
     (sans NLP). Utilisé par `reindex_region` (unitaire), `reindex_all` (lot) et la
-    migration (structurelle)."""
-    conn.execute("DELETE FROM recherche WHERE region_id = ?", (region_id,))
-    conn.execute("DELETE FROM tokens WHERE region_id = ?", (region_id,))
+    migration (structurelle).
+
+    `neuve` : la région vient de naître dans cette transaction (une région copiée, COL-3,
+    tranche 3b) et l'index ne porte rien d'elle — ses identifiants ne reviennent jamais
+    (v30). L'effacement préalable est alors sauté : `region_id` étant `UNINDEXED`, il
+    parcourait l'index entier pour chaque région."""
+    if not neuve:
+        conn.execute("DELETE FROM recherche WHERE region_id = ?", (region_id,))
+        conn.execute("DELETE FROM tokens WHERE region_id = ?", (region_id,))
     if payload is None:
         return
     ocr_texte, note, tags_concat = payload

@@ -38,7 +38,7 @@ from pydantic import BaseModel, Field
 import autorisation
 import conflit
 import journal
-from database import (CRAN_IMAGES, DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE,
+from database import (CRAN_IMAGES, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE,
                       DEMANDE_RENDRE, DEMANDE_SUPPRESSION_DOCUMENT,
                       DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
                       clause_appartenance, collection_row, creer_copie,
@@ -520,7 +520,8 @@ def _clore_lignes_d_une_copie_detruite(conn, portee: autorisation.Portee,
                                        album_id: int) -> None:
     """Les demandes qui visaient CETTE copie et qu'elle ne peut plus satisfaire — un
     `rejoindre` (la ranger ailleurs), la ligne d'une entrée qui la REPREND du fonds, la
-    demande de la RENDRE (`DEMANDE_RENDRE`, COL-3, écran de la 3a) — se closent avec elle : leur ligne est refusée, et l'état de la demande se recalcule
+    demande de la RENDRE (`DEMANDE_RENDRE`, COL-3, écran de la 3a), celle d'EN PARTIR
+    (`DEMANDE_AMORCER`, tranche 3b : elle en est la source) — se closent avec elle : leur ligne est refusée, et l'état de la demande se recalcule
     (`database.etat_des_reponses` — une entrée de plusieurs documents reste en attente si
     d'autres lignes attendent, `partielle` si d'autres ont été acceptées). Sans cela elles
     attendaient pour toujours, invisibles de qui doit consentir (relecture croisée de la
@@ -529,8 +530,9 @@ def _clore_lignes_d_une_copie_detruite(conn, portee: autorisation.Portee,
         "SELECT dd.demande_id, dd.document_id FROM demande_document dd "
         "JOIN demande d ON d.id = dd.demande_id "
         "WHERE dd.album_id = ? AND dd.reponse IS NULL AND d.reponse IS NULL "
-        "AND d.genre IN (?, ?, ?) ORDER BY dd.demande_id",
-        (album_id, DEMANDE_REJOINDRE, DEMANDE_ENTREE_DOCUMENTS, DEMANDE_RENDRE)).fetchall()
+        "AND d.genre IN (?, ?, ?, ?) ORDER BY dd.demande_id",
+        (album_id, DEMANDE_REJOINDRE, DEMANDE_ENTREE_DOCUMENTS, DEMANDE_RENDRE,
+         DEMANDE_AMORCER)).fetchall()
     for demande_id, document_id in lignes:
         conn.execute("UPDATE demande_document SET reponse = ? WHERE demande_id = ? "
                      "AND document_id = ?", (REPONSE_REFUSEE, demande_id, document_id))
@@ -796,19 +798,21 @@ FAIT, DEMANDE, REFUSE = "fait", "demande", "refuse"
 
 
 def _nouvelle_copie(conn, portee: autorisation.Portee, document_id: int, collection_id: int,
-                    depuis: int, *, pour: str | None = None) -> int:
-    """Une copie VIERGE du document dans cette collection, créée par l'APPELANT — la seule
-    réponse de la 3a qui crée une copie (`database.creer_copie`, cran `images`).
+                    depuis: int, *, pour: str | None = None, cran: str = CRAN_IMAGES) -> int:
+    """Une copie du document dans cette collection, créée par l'APPELANT : VIERGE (cran
+    `images`, la seule réponse de la 3a qui crée une copie), ou — tranche 3b, « en partir »
+    — amorcée avec le travail de `depuis` jusqu'au `cran` dit (`database.creer_copie`).
 
     QUI l'a créée (`copie.creee_par`, ce que lit la suppression directe) : l'appelant, qui
     part de zéro ou prend directement — l'administrateur compris ; et pour une ENTRÉE
     acceptée, le DEMANDEUR (`pour`), pas l'administrateur qui accepte (Hugo, 2026-10-17) :
     c'est lui qui a pris le document, et il le supprime seul si les autres conditions
     tiennent. La naissance reste journalisée sous l'agent qui l'a faite ; la règle ne la
-    compte pas comme un travail (`autorisation._sources_du_travail`)."""
+    compte pas comme un travail (`autorisation._sources_du_travail`). Une demande d'en
+    partir acceptée suit la même règle : la copie est au demandeur."""
     return creer_copie(conn, document_id, collection_id,
                        par=pour if pour is not None else portee.utilisateur,
-                       depuis=depuis, cran=CRAN_IMAGES)
+                       depuis=depuis, cran=cran)
 
 
 def _plan_rejoindre(conn, portee: autorisation.Portee, album_id: int,
@@ -845,25 +849,28 @@ def _en_attente_vers(conn, genre: str, collection_id: int, document_id: int,
 
 
 def _deposer(conn, portee: autorisation.Portee, genre: str, collection: dict,
-             projet_id, motif, lignes) -> int:
+             projet_id, motif, lignes, *, cran: str | None = None) -> int:
     """Écrit une demande d'ENTRÉE ou de REJOINDRE, ses documents — `document_id`, `album_id`
     (la copie visée : celle qu'on rejoint, ou la copie gardée qu'on reprend ; NULL pour une
     copie vierge), `titre` —, et sa trace au journal. Rend son id. Ne commite pas. La
-    collection d'arrivée est écrite avec son NOM, son identifiant pouvant se réattribuer."""
+    collection d'arrivée est écrite avec son NOM, son identifiant pouvant se réattribuer.
+    `cran` : celui d'une demande d'EN PARTIR (tranche 3b, `demande.cran`) ; None sinon."""
     projet = conn.execute("SELECT nom FROM projet WHERE id = ?", (projet_id,)).fetchone()
     cur = conn.execute(
         "INSERT INTO demande (genre, demandeur, motif, projet_id, projet_nom, collection_id, "
-        "collection_nom) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "collection_nom, cran) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (genre, portee.utilisateur, motif, projet_id, projet[0] if projet else None,
-         collection["id"], collection["nom"]))
+         collection["id"], collection["nom"], cran))
     for ligne in lignes:
         conn.execute("INSERT INTO demande_document (demande_id, document_id, album_id, titre) "
                      "VALUES (?, ?, ?, ?)",
                      (cur.lastrowid, ligne["document_id"], ligne.get("album_id"),
                       ligne.get("titre")))
-    journal.journaliser(conn, "creation", "demande", cur.lastrowid,
-                        apres={"genre": genre, "collection_id": collection["id"],
-                               "documents": [ligne["document_id"] for ligne in lignes]})
+    apres = {"genre": genre, "collection_id": collection["id"],
+             "documents": [ligne["document_id"] for ligne in lignes]}
+    if cran is not None:
+        apres["cran"] = cran
+    journal.journaliser(conn, "creation", "demande", cur.lastrowid, apres=apres)
     return cur.lastrowid
 
 
@@ -1881,10 +1888,13 @@ class DocumentPrisIn(BaseModel):
     `zero` (une copie vierge), `rejoindre` (ranger ici une copie qu'on lit), `reprendre`
     (une copie du projet gardée au fonds). `album_id` : la copie qu'on rejoint ; pour
     `zero`, celle d'où partent les images (facultatif) ; pour `reprendre`, la copie gardée
-    (facultatif)."""
+    (facultatif). Tranche 3b — `amorcer` (en partir d'un travail qu'on lit : une copie à
+    soi, amorcée jusqu'au `cran` dit, depuis la copie `album_id`, l'un et l'autre
+    obligatoires)."""
     document_id: int
     reponse: str
     album_id: Optional[int] = None
+    cran: Optional[str] = None
 
 
 class PriseIn(BaseModel):

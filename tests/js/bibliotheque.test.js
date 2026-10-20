@@ -311,6 +311,9 @@ test("les demandes reçues se comptent pour qui peut y répondre, jamais pour un
   assert.deepEqual(B.demandesARepondre(l, false).map((d) => d.id), [1]);
   assert.deepEqual(B.demandesARepondre(l, true), [], "l'administrateur répond dans « À faire »");
   assert.deepEqual(B.demandesARepondre(null, false), []);
+  assert.deepEqual(B.demandesARepondre([{ id: 4, repondable: true, genre: "rejoindre" },
+                                        { id: 5, repondable: true, genre: "amorcer" }], false)
+    .map((d) => d.id), [4], "en partir n'a pas encore son écran (E10) : pas sous les mots d'un rejoindre");
 });
 
 test("recocher après un retrait : soi seulement si l'on tient tout ce qui reste (D4 stricte)", () => {

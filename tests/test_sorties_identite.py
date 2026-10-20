@@ -558,6 +558,10 @@ QUETES = {
     # qui publie les métadonnées d'album, et la SEULE destinée à sortir de l'instance.
     "/api/collections/{collection_id}/depot/iiif":
         "base_url=https://images.example.org/iiif",
+    # COL-3, tranche 3b — l'aperçu d'« en partir » exige sa collection d'arrivée et son
+    # cran, sans défaut : sans eux, 422, et la route quitterait le balayage. Au cran le
+    # plus haut, elle compte tout ce qu'une copie emporterait.
+    "/api/albums/{album_id}/amorcer/apercu": "collection={collection_id}&cran=annotations",
 }
 
 

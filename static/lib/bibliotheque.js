@@ -318,10 +318,14 @@
   /* Les demandes de rejoindre REÇUES, comptées pour la marque ⚑ d'une collection, la
      pastille de son onglet Albums et le compteur de la bande d'outils : celles auxquelles
      on peut répondre (`repondable`), en propriétaire. Une portée totale n'en compte aucune
-     ici — l'administrateur les lit dans « À faire », en recours (maquette, écran 3). */
+     ici — l'administrateur les lit dans « À faire », en recours (maquette, écran 3). La
+     route rend aussi, depuis la tranche 3b, les demandes d'EN PARTIR (`genre: "amorcer"`) :
+     leur écran attend sa maquette (E10), et le bloc ⚑ ne les montre pas sous les mots d'un
+     rejoindre — une demande sans `genre` est un rejoindre, la forme d'avant la 3b. */
   function demandesARepondre(demandes, total) {
     if (total) return [];
-    return (Array.isArray(demandes) ? demandes : []).filter((d) => d && d.repondable === true);
+    return (Array.isArray(demandes) ? demandes : []).filter(
+      (d) => d && d.repondable === true && (d.genre === undefined || d.genre === "rejoindre"));
   }
 
   /* Si l'on pourrait RANGER de nouveau un album dans une collection qu'on vient de lui

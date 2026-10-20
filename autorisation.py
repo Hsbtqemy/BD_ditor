@@ -67,7 +67,7 @@ import sqlite3
 from typing import Optional
 
 from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
-from database import (CRAN_ANNOTATIONS, DEMANDE_REJOINDRE, NATURE_COLLECTIF, rang_du_cran,
+from database import (CRAN_ANNOTATIONS, GENRES_CONSENTIS, NATURE_COLLECTIF, rang_du_cran,
                       sql_projet_de, sql_rang_du_cran)
 
 # Niveaux d'accès, du plus faible au plus fort. Chacun IMPLIQUE les précédents : on ne
@@ -614,7 +614,10 @@ class Portee:
         ADMINISTRE CHACUNE des collections où vit la copie (D4 stricte — le propriétaire de
         chacune consent ; le même test que `clause_rejoindre_directe`, posé sur qui répond),
         ou la portée totale, en recours. C'est la première demande à laquelle répond
-        quelqu'un qui ne tient pas le fonds (D11 : là où vit qui consent).
+        quelqu'un qui ne tient pas le fonds (D11 : là où vit qui consent). Une demande d'EN
+        PARTIR (`DEMANDE_AMORCER`, tranche 3b, E4) suit la même règle, sur les collections
+        où vit la copie SOURCE : copier son travail ailleurs le fait lire par d'autres,
+        comme le partager (`GENRES_CONSENTIS`).
 
         Une copie qui n'est plus rangée nulle part — sortie au fonds depuis la demande — n'a
         plus de propriétaire pour consentir : seule la portée totale y répond. Une copie
@@ -625,7 +628,7 @@ class Portee:
         Ce que la question ne dit pas, et c'est à la route : quoi répondre à qui ne peut pas
         répondre — un 403 nommé sur le droit, avant l'objet, à qui n'administre rien ; un
         404 à qui ne lit pas la copie visée."""
-        if demande["genre"] == DEMANDE_REJOINDRE:
+        if demande["genre"] in GENRES_CONSENTIS:
             if self.tout:
                 return True
             collections = list(demande["collections"] or ())
@@ -652,10 +655,11 @@ class Portee:
         pour `peut_repondre_a`). Celui qui administre l'une de ces collections lit qui
         demande : on ne consent pas à partager un travail avec quelqu'un dont on ignore le
         nom — ce que le cadrage de la tranche a accepté par écrit, dans le même projet, le
-        rangement ne traversant pas les projets."""
+        rangement ne traversant pas les projets. De même pour une demande d'en partir
+        (tranche 3b), dans le projet."""
         if self.tout:
             return True
-        if (consentement is not None and consentement["genre"] == DEMANDE_REJOINDRE
+        if (consentement is not None and consentement["genre"] in GENRES_CONSENTIS
                 and any(self.peut_administrer(c) for c in consentement["collections"] or ())):
             return True
         return bool(self.utilisateur) and demandeur == self.utilisateur

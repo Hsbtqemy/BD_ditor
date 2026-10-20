@@ -31,6 +31,10 @@
   const GENRE_ENTREE = "entree_documents";
   const GENRE_REJOINDRE = "rejoindre";
   const GENRE_RENDRE = "rendre_copie";
+  /* COL-3, tranche 3b — EN PARTIR d'un travail du projet (E4). Recopié pour que l'accord
+     avec `database` reste mesuré ; sans entrée dans `GENRES` tant que son écran attend sa
+     maquette (E10) : « À faire » le dit « Demande », sans bouton. */
+  const GENRE_AMORCER = "amorcer";
   const ACCEPTER = "acceptee";
   const REFUSER = "refusee";
   /* L'état d'une demande dont les documents ont reçu des réponses mêlées (D9) : jamais une
@@ -501,7 +505,7 @@
   }
 
   return {
-    GENRE_DOCUMENT, GENRE_PROJET, GENRE_ENTREE, GENRE_REJOINDRE, GENRE_RENDRE,
+    GENRE_DOCUMENT, GENRE_PROJET, GENRE_ENTREE, GENRE_REJOINDRE, GENRE_RENDRE, GENRE_AMORCER,
     GENRES_SUPPRESSION, estUneSuppression, genreDemande, etatDemande, etatLigne,
     toutAccepter, REFUSER_LE_RESTE, explicationDemande, IMAGES_RESTENT,
     ACCEPTER, REFUSER, PARTIELLE, CERTIFICATION, SORTES,

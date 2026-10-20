@@ -46,11 +46,13 @@ from fastapi import APIRouter, Depends, HTTPException
 import autorisation
 import conflit
 import journal
-from database import (DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE,
+from pipeline import nlp
+from database import (CRAN_IMAGES, CRANS, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUMENTS,
+                      DEMANDE_REJOINDRE, DEMANDE_RENDRE,
                       DEMANDE_SUPPRESSION_DOCUMENT, DEMANDE_SUPPRESSION_PROJET,
-                      GENRES_DEMANDE, LONGUEUR_MOTIF, NATURE_COLLECTIF, REPONSE_ACCEPTEE,
+                      GENRES_CONSENTIS, GENRES_DEMANDE, LONGUEUR_MOTIF, NATURE_COLLECTIF, REPONSE_ACCEPTEE,
                       REPONSE_REFUSEE, REPONSES_DEMANDE, collection_de_base, collection_row,
-                      etat_des_reponses, noms_lisibles, projet_d_album, projet_de_collection,
+                      compter_le_travail, etat_des_reponses, noms_lisibles, projet_d_album, projet_de_collection,
                       ranger_copie, rangement_traverse, sql_projet_d_album,
                       un_proprietaire_tient_toute_la_copie)
 
@@ -153,10 +155,11 @@ def deposer_demande(payload: DemandeIn, conn: sqlite3.Connection = Depends(db),
     if payload.genre not in GENRES_DEMANDE:
         raise HTTPException(422, f"Genre de demande inconnu : {payload.genre} "
                                  f"({' | '.join(GENRES_DEMANDE)}).")
-    if payload.genre in (DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE):
-        # COL-3, tranche 3 — ces trois genres naissent d'un GESTE, qui décide s'il se fait ou
-        # se demande : la prise (`…/prendre`, dont la réponse `reprendre` dépose un retour)
-        # et « + Ranger ici ». Les déposer ici contournerait ce tri — on demanderait ce
+    if payload.genre in (DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE, DEMANDE_RENDRE,
+                         DEMANDE_AMORCER):
+        # COL-3, tranche 3 — ces genres naissent d'un GESTE, qui décide s'il se fait ou se
+        # demande : la prise (`…/prendre`, dont la réponse `reprendre` dépose un retour, et
+        # `amorcer` — tranche 3b — une demande d'en partir) et « + Ranger ici ». Les déposer ici contournerait ce tri — on demanderait ce
         # qu'on peut faire, ou l'inverse.
         raise HTTPException(422, f"Une demande « {payload.genre} » se dépose en prenant le "
                                  "document : `POST /api/collections/{id}/prendre`, ou en le "
@@ -432,6 +435,13 @@ def repondre_demande(demande_id: int, payload: ReponseIn,
     if payload.reponse not in REPONSES_DEMANDE:
         raise HTTPException(422, f"Réponse inconnue : {payload.reponse} "
                                  f"({' | '.join(REPONSES_DEMANDE)}).")
+    # Accepter une demande d'en partir recopie l'index de ses régions, et peut en recalculer
+    # les lemmes : spaCy se charge HORS de la transaction d'écriture (CLAUDE.md
+    # § Concurrence). Lu avant le verrou, le genre ne décide rien d'autre.
+    if payload.reponse == REPONSE_ACCEPTEE and conn.execute(
+            "SELECT 1 FROM demande WHERE id = ? AND genre = ?",
+            (demande_id, DEMANDE_AMORCER)).fetchone():
+        nlp.ensure_loaded()
     # La demande se lit SOUS LE VERROU d'écriture, et la réponse suit dans la même
     # transaction : deux administrateurs qui répondent ensemble ne passent plus tous deux
     # le 409 « déjà répondue » (relecture croisée de la tranche 2).
@@ -441,7 +451,7 @@ def repondre_demande(demande_id: int, payload: ReponseIn,
     if d is None:
         raise introuvable
     copie = collections_de_la_copie = None
-    if d["genre"] == DEMANDE_REJOINDRE:
+    if d["genre"] in GENRES_CONSENTIS:
         ligne = conn.execute("SELECT album_id FROM demande_document WHERE demande_id = ? "
                              "ORDER BY document_id LIMIT 1", (demande_id,)).fetchone()
         copie = ligne["album_id"] if ligne else None
@@ -449,12 +459,15 @@ def repondre_demande(demande_id: int, payload: ReponseIn,
             "SELECT collection_id FROM collection_album WHERE album_id = ? "
             "ORDER BY collection_id", (copie,))]
     if not portee.tout:
-        # Qui n'a pas le fonds ne connaît que les `rejoindre` sur une copie qu'il LIT.
-        if d["genre"] != DEMANDE_REJOINDRE or not _lues(conn, portee, [copie] if copie else []):
+        # Qui n'a pas le fonds ne connaît que les demandes consenties (`rejoindre`, en
+        # partir) sur une copie qu'il LIT.
+        if (d["genre"] not in GENRES_CONSENTIS
+                or not _lues(conn, portee, [copie] if copie else [])):
             raise introuvable
     if not portee.peut_repondre_a({"genre": d["genre"],
                                    "collections": collections_de_la_copie}):
-        raise HTTPException(403, "Rejoindre ce travail se consent par le propriétaire de "
+        geste = "Rejoindre" if d["genre"] == DEMANDE_REJOINDRE else "En partir de"
+        raise HTTPException(403, f"{geste} ce travail se consent par le propriétaire de "
                                  "chacune des collections où il vit : vous ne les tenez pas "
                                  "toutes. Un administrateur peut y répondre.")
     if d["reponse"] is not None:
@@ -475,6 +488,11 @@ def repondre_demande(demande_id: int, payload: ReponseIn,
 
     if d["genre"] == DEMANDE_REJOINDRE:
         _accepter_un_rejoindre(conn, portee, dict(d), copie)
+        conn.commit()
+        return _vue_demande(conn, demande_id)
+
+    if d["genre"] == DEMANDE_AMORCER:
+        _accepter_un_amorcer(conn, portee, dict(d), copie)
         conn.commit()
         return _vue_demande(conn, demande_id)
 
@@ -592,6 +610,43 @@ def _accepter_un_rejoindre(conn, portee, d: dict, copie) -> None:
     ranger_copie(conn, copie, collection_id)
     conn.execute("UPDATE demande_document SET copie_id = ? WHERE demande_id = ?",
                  (copie, d["id"]))
+    _clore_demandes(conn, portee, [d["id"]], REPONSE_ACCEPTEE)
+
+
+def _accepter_un_amorcer(conn, portee, d: dict, source) -> None:
+    """Une demande d'EN PARTIR acceptée (tranche 3b, E4) : la copie neuve naît dans la
+    collection d'arrivée, amorcée avec le travail de la copie SOURCE jusqu'au cran demandé,
+    et elle est au DEMANDEUR (`copie.creee_par`, comme une entrée acceptée) — c'est lui qui
+    a voulu en partir. Le travail copié est celui de la source AU MOMENT de l'acceptation :
+    ce qui s'y est fait depuis la demande suit, et c'est ce que le propriétaire a sous les
+    yeux quand il consent. Ses refus se nomment (409), et la demande reste en attente : la
+    source détruite ou gardée au fonds depuis (la destruction et la sortie au fonds closent
+    d'ailleurs la demande), la collection supprimée, une source passée dans un autre
+    projet."""
+    collection_id = d["collection_id"]
+    if source is None or conn.execute("SELECT 1 FROM albums WHERE id = ?",
+                                      (source,)).fetchone() is None:
+        raise HTTPException(409, "Le travail d'où partir n'existe plus : refusez cette "
+                                 "demande.")
+    if collection_id is None or collection_row(conn, collection_id) is None:
+        raise HTTPException(409, "La collection demandée n'existe plus : refusez cette "
+                                 "demande.")
+    if conn.execute("SELECT 1 FROM collection_album WHERE album_id = ?",
+                    (source,)).fetchone() is None:
+        raise HTTPException(409, "Le travail d'où partir est gardé au fonds : refusez cette "
+                                 "demande.")
+    if projet_d_album(conn, source) != projet_de_collection(conn, collection_id):
+        raise HTTPException(409, "Le travail d'où partir vit dans un autre projet que la "
+                                 "collection demandée : refusez cette demande.")
+    if d["cran"] not in CRANS or d["cran"] == CRAN_IMAGES:
+        raise HTTPException(409, f"Cran illisible sur cette demande ({d['cran']}) : "
+                                 "refusez-la.")
+    ligne = conn.execute("SELECT document_id FROM demande_document WHERE demande_id = ? "
+                         "ORDER BY document_id LIMIT 1", (d["id"],)).fetchone()
+    nouvelle = _nouvelle_copie(conn, portee, ligne["document_id"], collection_id, source,
+                               pour=d["demandeur"], cran=d["cran"])
+    conn.execute("UPDATE demande_document SET copie_id = ? WHERE demande_id = ?",
+                 (nouvelle, d["id"]))
     _clore_demandes(conn, portee, [d["id"]], REPONSE_ACCEPTEE)
 
 
@@ -785,7 +840,9 @@ def lire_les_notices(q: str = "", offset: int = 0, limit: int = _NOTICES_PAR_PAG
 # Prendre des documents pour une collection (COL-3, tranche 3a)
 # --------------------------------------------------------------------------- #
 REPONSE_ZERO, REPONSE_REJOINDRE, REPONSE_REPRENDRE = "zero", "rejoindre", "reprendre"
-REPONSES_PRISE = (REPONSE_ZERO, REPONSE_REJOINDRE, REPONSE_REPRENDRE)
+# Tranche 3b — EN PARTIR d'un travail qu'on lit, jusqu'à un cran (E1, E4).
+REPONSE_AMORCER = "amorcer"
+REPONSES_PRISE = (REPONSE_ZERO, REPONSE_REJOINDRE, REPONSE_REPRENDRE, REPONSE_AMORCER)
 _DOCUMENTS_PAR_PRISE = 100
 
 
@@ -864,6 +921,9 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
             plan["album_id"] = None
         return plan
 
+    if ligne.reponse == REPONSE_AMORCER:
+        return {**plan, **_plan_amorcer(conn, portee, copies, lues, projet_id, ligne)}
+
     if ligne.reponse == REPONSE_REJOINDRE:
         if ligne.album_id is None:
             raise HTTPException(422, "Rejoindre : quelle copie ? (`album_id`)")
@@ -900,6 +960,52 @@ def _plan_d_une_ligne(conn, portee, collection_id, projet_id, gere, ligne) -> di
     return plan
 
 
+def _cran_d_amorce(cran) -> str:
+    """Le cran d'une copie amorcée : un cran de l'échelle AU-DESSUS d'`images` — une copie
+    vierge est la réponse `zero`. 422 nommé sinon."""
+    if cran not in CRANS or cran == CRAN_IMAGES:
+        haut = " | ".join(c for c in CRANS if c != CRAN_IMAGES)
+        raise HTTPException(422, f"En partir : jusqu'à quel cran ? ({haut} ; une copie "
+                                 "vierge est la réponse « zero »).")
+    return cran
+
+
+def _source_d_amorce(conn, portee, copies, lues, projet_id, album_id):
+    """La copie d'où l'on part, qu'on doit LIRE — 404 sinon, le même qu'elle existe ou
+    non — et ce qu'on peut en faire : `None` si elle est du projet d'arrivée (ou pour une
+    portée totale), sinon le motif du refus. Entre deux projets, en partir se demande par
+    le responsable, sans nommer la source (E7) : ce n'est pas ce geste-ci."""
+    if album_id is None:
+        raise HTTPException(422, "En partir : de quelle copie ? (`album_id`)")
+    source = next((c for c in copies if c["id"] == album_id and c["id"] in lues), None)
+    if source is None:
+        raise HTTPException(404, f"Album {album_id} introuvable")
+    if not portee.tout and source["projet_id"] != projet_id:
+        return source, ("Cette copie vit dans un autre projet : en partir pour celui-ci se "
+                        "demande par son responsable, depuis les notices du fonds.")
+    return source, None
+
+
+def _plan_amorcer(conn, portee, copies, lues, projet_id, ligne) -> dict:
+    """EN PARTIR d'une copie qu'on lit dans le projet (tranche 3b, E4) : une copie à soi,
+    amorcée avec son travail jusqu'au cran dit. La règle de `rejoindre`, telle quelle —
+    immédiat pour qui administre chacune des collections où vit la source
+    (`Portee.clause_rejoindre_directe`) et pour la portée totale ; sinon une DEMANDE
+    (`DEMANDE_AMORCER`) au propriétaire. Copier un travail dans une autre collection le fait
+    lire par ses lecteurs : c'est élargir le cercle, ce que D4 réserve au propriétaire — sans
+    cette règle, qui se voit refuser `rejoindre` copierait le travail à la place."""
+    cran = _cran_d_amorce(ligne.cran)
+    source, refus = _source_d_amorce(conn, portee, copies, lues, projet_id, ligne.album_id)
+    plan = {"album_id": source["id"], "titre": source["titre"], "cran": cran}
+    if refus:
+        return {**plan, "etat": REFUSE, "motif": refus}
+    ou, params = portee.clause_rejoindre_directe("a.id")
+    if conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
+                    (source["id"], *params)).fetchone():
+        return {**plan, "etat": FAIT}
+    return {**plan, "etat": DEMANDE, "genre": DEMANDE_AMORCER}
+
+
 def prendre(conn, portee, collection_id: int, payload) -> dict:
     """Le cœur de la prise, pour les deux routes qui la servent. Cf. `prendre_pour_collection`."""
     collection = collection_row(conn, collection_id)
@@ -919,6 +1025,10 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
                                      f"({' | '.join(REPONSES_PRISE)}).")
     projet_id = projet_de_collection(conn, collection_id)
     gere = portee.peut_gerer_projet(projet_id)
+    # En partir recopie l'index des régions, et peut en recalculer les lemmes : spaCy se
+    # charge HORS de la transaction d'écriture (CLAUDE.md § Concurrence).
+    if any(x.reponse == REPONSE_AMORCER for x in lignes):
+        nlp.ensure_loaded()
     # Tout se lit et s'écrit sous le verrou d'écriture : deux prises simultanées passaient
     # sinon toutes deux le refus du doublon, et une copie lue « gardée au fonds » pouvait
     # être rendue entre-temps.
@@ -952,6 +1062,9 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
         elif p["reponse"] == REPONSE_ZERO:
             p["copie_id"] = _nouvelle_copie(conn, portee, p["document_id"], collection_id,
                                             p["source"])
+        elif p["reponse"] == REPONSE_AMORCER:
+            p["copie_id"] = _nouvelle_copie(conn, portee, p["document_id"], collection_id,
+                                            p["album_id"], cran=p["cran"])
         else:                                   # rejoindre, reprendre : un rangement
             # Reprise directe (portée totale) : `ranger_copie` clôt aussi le retour demandé
             # pour cette copie.
@@ -972,9 +1085,11 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
             p["demande_id"] = _deposer(conn, portee, DEMANDE_RENDRE, collection, projet_id,
                                        motif, [p])
     for p in plans:
-        if p["etat"] == DEMANDE and p["genre"] == DEMANDE_REJOINDRE:
-            p["demande_id"] = _deposer(conn, portee, DEMANDE_REJOINDRE, collection,
-                                       projet_id, motif, [p])
+        if p["etat"] == DEMANDE and p["genre"] in GENRES_CONSENTIS:
+            # Une demande par copie (un rejoindre, ou en partir) : chacune s'adresse aux
+            # propriétaires des collections de SA copie.
+            p["demande_id"] = _deposer(conn, portee, p["genre"], collection,
+                                       projet_id, motif, [p], cran=p.get("cran"))
             # Qui y répondra (Hugo, 2026-10-17 : le message ne ment pas) — un propriétaire
             # qui tient toutes les collections de la copie, sinon un administrateur seul.
             p["repondra"] = ("proprietaire"
@@ -982,8 +1097,9 @@ def prendre(conn, portee, collection_id: int, payload) -> dict:
                              else "administrateur")
     conn.commit()
     return {"collection_id": collection_id,
-            "documents": [{k: p[k] for k in ("document_id", "reponse", "etat", "copie_id",
-                                             "demande_id", "repondra", "motif") if k in p}
+            "documents": [{k: p[k] for k in ("document_id", "reponse", "cran", "etat",
+                                             "copie_id", "demande_id", "repondra", "motif")
+                           if k in p}
                           for p in plans]}
 
 
@@ -1125,7 +1241,9 @@ def copies_gardees_du_projet(projet_id: int, conn: sqlite3.Connection = Depends(
 def demandes_recues(collection_id: int, conn: sqlite3.Connection = Depends(db),
                     portee: autorisation.Portee = Depends(portee_courante)):
     """Les demandes de REJOINDRE qui attendent sur une copie rangée dans cette collection
-    — ce que son propriétaire lit dans la fiche de SA collection, là où il vit (D11).
+    — ce que son propriétaire lit dans la fiche de SA collection, là où il vit (D11). Et,
+    depuis la tranche 3b, celles d'EN PARTIR (E4) : `genre` les distingue, et une demande
+    d'en partir dit son `cran`.
 
     Réservée à qui ADMINISTRE la collection : 404 à qui ne la lit pas, 403 nommé à qui la
     lit sans la posséder. Chaque demande dit QUI demande et pour quelle collection
@@ -1139,14 +1257,14 @@ def demandes_recues(collection_id: int, conn: sqlite3.Connection = Depends(db),
                     motif="Les demandes reçues par une collection se lisent par son "
                           "propriétaire.")
     demandes = _rows(conn.execute(
-        "SELECT d.id, d.demandeur, d.motif, d.date_creation, d.collection_id, "
+        "SELECT d.id, d.genre, d.cran, d.demandeur, d.motif, d.date_creation, d.collection_id, "
         "d.collection_nom, dd.document_id, dd.album_id, dd.titre FROM demande d "
         "JOIN demande_document dd ON dd.demande_id = d.id "
         "JOIN collection_album ca ON ca.album_id = dd.album_id AND ca.collection_id = ? "
-        "WHERE d.genre = ? AND d.reponse IS NULL ORDER BY d.id",
-        (collection_id, DEMANDE_REJOINDRE)))
+        "WHERE d.genre IN (?, ?) AND d.reponse IS NULL ORDER BY d.id",
+        (collection_id, *GENRES_CONSENTIS)))
     for d in demandes:
-        consentement = {"genre": DEMANDE_REJOINDRE, "collections": [r[0] for r in conn.execute(
+        consentement = {"genre": d["genre"], "collections": [r[0] for r in conn.execute(
             "SELECT collection_id FROM collection_album WHERE album_id = ?",
             (d["album_id"],))]}
         if not portee.peut_nommer_le_demandeur(d["demandeur"], consentement=consentement):
@@ -1156,3 +1274,48 @@ def demandes_recues(collection_id: int, conn: sqlite3.Connection = Depends(db),
     for d in demandes:
         d["demandeur_nom"] = noms.get(d["demandeur"]) if d["demandeur"] else None
     return demandes
+
+
+# --------------------------------------------------------------------------- #
+# L'aperçu d'« en partir » (tranche 3b, E5, E6)
+# --------------------------------------------------------------------------- #
+@router.get("/api/albums/{album_id}/amorcer/apercu")
+def apercu_d_amorce(album_id: int, collection: int, cran: str,
+                    conn: sqlite3.Connection = Depends(db),
+                    portee: autorisation.Portee = Depends(portee_courante)):
+    """Ce qu'« en partir » de cette copie ferait, AVANT de le faire : une copie amorcée
+    jusqu'au `cran` dit, rangée dans `collection` (E5, Hugo, 2026-10-20).
+
+    `copies` : ce qui partirait, table par table — la même forme que la charge de la
+    naissance (`database.compter_le_travail`, qui compte comme `copier_le_travail` copie).
+    `laisses` : les tags et attributs qui RESTENT, parce que la collection d'arrivée ne les
+    voit pas — leur NOMBRE seul, jamais leurs libellés, que l'appelant ne lit peut-être pas.
+    `personnages` : les fiches de personnage que la copie rendrait lisibles depuis la
+    collection d'arrivée (E6, une fuite écrite). Et ce que la prise répondrait : `fait`, ou
+    `demande` avec `repondra` — sans rien écrire.
+
+    Les gardes de la prise : 404 sur une copie qu'on ne lit pas et sur une collection où
+    l'on n'écrit pas ; 422 nommé sur un cran hors de l'échelle ; 409 nommé sur une copie
+    d'un autre projet, hors portée totale (entre deux projets, en partir se demande par le
+    responsable, sans nommer la source — E7)."""
+    cran = _cran_d_amorce(cran)
+    a = _get_album(conn, portee, album_id)
+    arrivee = collection_row(conn, collection)
+    if arrivee is None or not portee.peut_ecrire(collection):
+        raise HTTPException(404, f"Collection {collection} introuvable")
+    projet_id = projet_de_collection(conn, collection)
+    copies = _copies_du_document(conn, a["document_id"])
+    source, refus = _source_d_amorce(conn, portee, copies, {album_id}, projet_id, album_id)
+    if refus:
+        raise HTTPException(409, refus)
+    ou, params = portee.clause_rejoindre_directe("a.id")
+    directe = conn.execute(f"SELECT 1 FROM albums a WHERE a.id = ? AND {ou}",
+                           (album_id, *params)).fetchone() is not None
+    rendu = {"album_id": album_id, "collection_id": collection, "cran": cran,
+             **compter_le_travail(conn, album_id, cran, collection),
+             "etat": FAIT if directe else DEMANDE}
+    if not directe:
+        rendu["repondra"] = ("proprietaire"
+                             if un_proprietaire_tient_toute_la_copie(conn, album_id)
+                             else "administrateur")
+    return rendu
