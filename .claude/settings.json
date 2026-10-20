@@ -33,6 +33,7 @@
       "Bash(git merge-base *)",
       "Bash(npm run verifier *)",
       "PowerShell(npm run verifier *)"
+      "Bash(git push origin HEAD:dev)"
     ]
   }
 }
