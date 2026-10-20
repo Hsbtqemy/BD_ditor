@@ -482,8 +482,13 @@ def test_la_clause_aux_extremites_et_ses_parametres_lies():
                                utilisateur="x").clause_suppression_directe() == ("0", [])
     sql, params = autorisation.Portee(ecriture=frozenset({3}),
                                       utilisateur="o'brien").clause_suppression_directe("z.id")
-    assert "o'brien" not in sql and "3" not in sql.replace("_t", "")
-    assert sql.count("?") == len(params) and params.count("o'brien") == 7
+    # Les RANGS de l'échelle des crans (v32, COL-3, tranche 3b) sont des constantes écrites
+    # dans le SQL, pas des identifiants : retirés avant de chercher une collection en clair.
+    sans_rangs = sql.replace(database.sql_rang_du_cran("_tco.cran"), "") \
+        .replace(database.sql_rang_du_cran("_tco2.cran"), "")
+    assert "o'brien" not in sql and "3" not in sans_rangs.replace("_t", "")
+    # Six sources du travail d'autrui depuis la v32, plus le créateur et le compte partagé.
+    assert sql.count("?") == len(params) and params.count("o'brien") == 8
     assert autorisation.TOTALE.peut_tenir_le_fonds() is True
     assert autorisation.Portee(admin=True, utilisateur="x").peut_tenir_le_fonds() is False
 

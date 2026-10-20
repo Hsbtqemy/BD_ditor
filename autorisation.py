@@ -67,7 +67,8 @@ import sqlite3
 from typing import Optional
 
 from config import AUTH_ADMIN_GROUPS, AUTH_PROXY
-from database import DEMANDE_REJOINDRE, NATURE_COLLECTIF, sql_projet_de
+from database import (CRAN_ANNOTATIONS, DEMANDE_REJOINDRE, NATURE_COLLECTIF, rang_du_cran,
+                      sql_projet_de, sql_rang_du_cran)
 
 # Niveaux d'accès, du plus faible au plus fort. Chacun IMPLIQUE les précédents : on ne
 # modifie pas ce qu'on ne voit pas, et on n'administre pas ce qu'on ne peut pas modifier.
@@ -760,7 +761,21 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
     l'album et descend par les index
     (`idx_evenement_cible`) : la liste des albums la pose album par album.
 
-    Les cinq sources sont écrites UNE fois (`_sources_du_travail`), et lues aussi par
+    Une sixième depuis la v32 (COL-3, tranche 3b, E3) : le travail RECOPIÉ. Une copie
+    amorcée jusqu'à un cran reprend les régions de sa source sous des identifiants neufs, et
+    aucun événement n'est recopié — Ctrl+Z les remonterait, et chaque révision compterait
+    deux fois. Ce qui a été fait sur les régions SOURCES compte donc comme le travail de
+    ses auteurs, par la chaîne de `region_origine`, copie de copie comprise, et deux bornes :
+    un acte ne compte que s'il est ANTÉRIEUR à la copie qui l'a emporté (le travail fait
+    ensuite sur la source n'est pas dans la copie), et une couche d'annotation (note,
+    locuteur, présence, attribut) ne compte que si chaque maillon de la chaîne l'a emportée
+    (cran `annotations`). C'est un écart ÉCRIT avec « on lit ce qui vit encore » : la
+    région source peut être supprimée depuis, et le journal qui la nomme lui survit ; le
+    travail copié, lui, vit. La lecture penche vers la demande : tout acte humain sur une
+    région source avant la copie compte — un texte modifié puis copié au seul cran du
+    découpage aussi, la cible `regions` ne distinguant pas la géométrie du texte.
+
+    Les six sources sont écrites UNE fois (`_sources_du_travail`), et lues aussi par
     `sql_actes_sur_album` : ce que l'administrateur voit du travail des autres, sous une
     demande, est ce que cette règle a lu — deux écritures finiraient par ne plus dire
     pareil. Un attribut de case dont un `lien` humain a été écrit est compté par son acte
@@ -772,11 +787,44 @@ def _sql_travail_d_autrui(alias: str, login: str) -> tuple[str, list]:
     return sql, [login] * len(sources)
 
 
+# Les cibles d'une couche d'ANNOTATION — tout ce qui, dans `_CIBLES_DE_REGION`, ne suit
+# une copie qu'au cran `annotations` (E1). La cible `regions` suit dès le découpage.
+_CIBLES_D_ANNOTATION = tuple(c for c in _CIBLES_DE_REGION if c != "regions")
+
+
+def _sql_chaine_des_sources(depart: str) -> str:
+    """`WITH RECURSIVE …` qui rend, pour les régions que `depart` sélectionne (une requête
+    `SELECT region_id`), chacune de leurs régions SOURCES en remontant `region_origine` —
+    en `(s, borne, rang)` : la région source, la date de la copie qui l'a emportée (un acte
+    ne compte qu'avant elle), et le plus petit cran de la chaîne jusque-là (une couche ne
+    suit que si chaque maillon l'a prise). Le premier maillon est la copie de `depart` ; le
+    suivant, la copie qui portait la source ; une région source supprimée arrête la chaîne
+    (sa ligne `region_origine` est partie avec elle)."""
+    rang = sql_rang_du_cran
+    return (
+        "WITH RECURSIVE _tch(s, borne, rang) AS ("
+        "SELECT _tro.region_source_id, _tco.creee_le, " + rang("_tco.cran") + " "
+        "FROM region_origine _tro JOIN regions _trr ON _trr.id = _tro.region_id "
+        "JOIN planches _tpp ON _tpp.id = _trr.planche_id "
+        "JOIN copie _tco ON _tco.album_id = _tpp.album_id "
+        f"WHERE _tro.region_id IN ({depart}) "
+        "UNION "
+        "SELECT _tro2.region_source_id, MIN(_tch.borne, _tco2.creee_le), "
+        "MIN(_tch.rang, " + rang("_tco2.cran") + ") "
+        "FROM _tch JOIN region_origine _tro2 ON _tro2.region_id = _tch.s "
+        "JOIN regions _trr2 ON _trr2.id = _tch.s "
+        "JOIN planches _tpp2 ON _tpp2.id = _trr2.planche_id "
+        "JOIN copie _tco2 ON _tco2.album_id = _tpp2.album_id) ")
+
+
 def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str]]:
-    """Les cinq sources du travail fait sur l'album `alias`, chacune en (qui, quelle sorte,
+    """Les six sources du travail fait sur l'album `alias`, chacune en (qui, quelle sorte,
     quand, `FROM … WHERE …`) — la sorte est la `cible_table` de l'acte, ou le nom de la
     table lue. Qui vaut NULL quand l'auteur n'est pas écrit."""
     cibles = ", ".join(f"'{c}'" for c in _CIBLES_DE_REGION)
+    annotation = ", ".join(f"'{c}'" for c in _CIBLES_D_ANNOTATION)
+    regions_de_l_album = ("SELECT _tr0.id FROM regions _tr0 JOIN planches _tp0 "
+                          f"ON _tp0.id = _tr0.planche_id WHERE _tp0.album_id = {alias}")
     return [
         ("_te.agent", "_te.cible_table", "_te.date",
          "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
@@ -786,7 +834,9 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str]]:
          "planches _tp JOIN regions _tr ON _tr.planche_id = _tp.id "
          "JOIN region_attribut _tra ON _tra.region_id = _tr.id "
          f"WHERE _tp.album_id = {alias} AND NOT EXISTS (SELECT 1 FROM evenement _tre "
-         "WHERE _tre.cible_table = 'region_attribut' AND _tre.cible_id = _tra.region_id "
+         "WHERE _tre.cible_table = 'region_attribut' "
+         "AND (_tre.cible_id = _tra.region_id OR _tre.cible_id IN ("
+         + _sql_chaine_des_sources("SELECT _tra.region_id") + "SELECT s FROM _tch)) "
          "AND _tre.type = 'lien' AND _tre.agent_type = 'humain' "
          "AND json_extract(_tre.apres, '$.valeur_id') = _tra.valeur_id)"),
         ("_tt.auteur", "'token_correction'", "_tt.date_modif",
@@ -802,6 +852,14 @@ def _sources_du_travail(alias: str) -> list[tuple[str, str, str, str]]:
          "ON _te.cible_table = 'document' AND _te.cible_id = _ta.document_id "
          f"WHERE _ta.id = {alias} AND _te.agent_type = 'humain' "
          f"AND {_SQL_ALBUM_DE_LA_CHARGE} = _ta.id AND NOT {_SQL_NAISSANCE_D_UNE_COPIE}"),
+        ("_te.agent", "_te.cible_table", "_te.date",
+         "evenement _te JOIN ("
+         + _sql_chaine_des_sources(regions_de_l_album) + "SELECT s, borne, rang FROM _tch"
+         f") _tsrc ON _te.cible_id = _tsrc.s "
+         f"WHERE _te.cible_table IN ({cibles}) AND _te.agent_type = 'humain' "
+         "AND _te.date <= _tsrc.borne "
+         f"AND (_te.cible_table NOT IN ({annotation}) "
+         f"OR _tsrc.rang >= {rang_du_cran(CRAN_ANNOTATIONS)})"),
     ]
 
 

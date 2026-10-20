@@ -2046,9 +2046,37 @@ def document_d_album(conn: sqlite3.Connection, album_id: int) -> int | None:
     return r[0] if r else None
 
 
-# Les crans d'une copie (`copie.cran`, v31). La 3b ajoutera ceux de l'échelle des couches.
-CRAN_ORIGINE = "origine"        # la copie née avec son document
-CRAN_IMAGES = "images"          # une copie vierge, née d'un document qui existait déjà
+# Les crans d'une copie (`copie.cran`, v31). `origine` : la copie née avec son document ;
+# les autres sont l'ÉCHELLE des couches (COL-3, tranche 3b, E1, Hugo, 2026-10-20), dans
+# l'ordre où elles s'empilent — chaque cran emporte ceux d'en dessous :
+#   images         la notice, les contributions, les planches (`PLANCHE_SCAN`) — vierge ;
+#   decoupage      + les régions (cases, bulles, ordre de lecture), sans texte, et
+#                    l'avancée de la reconnaissance des planches ;
+#   transcription  + le texte des régions, et leurs tokens ;
+#   grammaire      + les corrections grammaticales, et la relecture forcée des planches ;
+#   annotations    + notes et tags, attributs de case, locuteurs, présences.
+# La VALIDATION ne suit à aucun cran (`validee`, `verrouillee`, `verrou_par`) : valider est
+# le jugement de qui relit, dans SA copie.
+CRAN_ORIGINE = "origine"
+CRAN_IMAGES = "images"
+CRAN_DECOUPAGE = "decoupage"
+CRAN_TRANSCRIPTION = "transcription"
+CRAN_GRAMMAIRE = "grammaire"
+CRAN_ANNOTATIONS = "annotations"
+CRANS = (CRAN_IMAGES, CRAN_DECOUPAGE, CRAN_TRANSCRIPTION, CRAN_GRAMMAIRE, CRAN_ANNOTATIONS)
+
+
+def rang_du_cran(cran: str) -> int:
+    """Le rang d'un cran sur l'échelle, `images` valant 0 ; -1 pour ce qui n'en est pas un
+    (`origine` compris : la copie d'origine n'est tirée de rien)."""
+    return CRANS.index(cran) if cran in CRANS else -1
+
+
+def sql_rang_du_cran(expr: str) -> str:
+    """`rang_du_cran`, écrit en SQL sur l'expression `expr` — la même liste, pour que la
+    règle de suppression (`autorisation`) lise l'échelle sans la recopier."""
+    cas = " ".join(f"WHEN '{c}' THEN {i}" for i, c in enumerate(CRANS))
+    return f"(CASE {expr} {cas} ELSE -1 END)"
 
 
 def creer_document(conn: sqlite3.Connection, album_id: int, *,
@@ -2107,9 +2135,10 @@ def creer_copie(conn: sqlite3.Connection, document_id: int, collection_id: int, 
     Les trois arguments nommés sont OBLIGATOIRES et sans défaut, le patron de
     `creer_document` : `par` (le login de qui la crée, None en mono-poste — et il l'a
     écrit), `depuis` (la copie dont elle est tirée, du même document), `cran` (jusqu'où la
-    copie reprend le travail de sa source). Dans la tranche 3a, un seul cran :
-    `CRAN_IMAGES` — une copie VIERGE. La 3b ajoutera les autres ; un cran inconnu lève,
-    plutôt que de faire une copie vierge sous un nom qui en promet davantage.
+    copie reprend le travail de sa source) — `CRAN_IMAGES`, une copie VIERGE (tranche 3a),
+    ou un cran plus haut de l'échelle (`CRANS`, tranche 3b), dont le travail est recopié par
+    `copier_le_travail`. Un cran inconnu lève, plutôt que de faire une copie sous un nom
+    qui promet autre chose que ce qu'elle porte.
 
     Ce que la copie reçoit :
     - la NOTICE de sa source — toutes les colonnes d'`albums` hors `ALBUM_HORS_NOTICE` — et
@@ -2122,7 +2151,9 @@ def creer_copie(conn: sqlite3.Connection, document_id: int, collection_id: int, 
       `albums_hors_de_leur_projet` reste vide ;
     - sa ligne `copie` : créée par `par`, au cran dit, depuis la source et le nom du projet
       de celle-ci ce jour-là ;
-    - son rangement dans `collection_id`, et dans elle seule.
+    - son rangement dans `collection_id`, et dans elle seule ;
+    - au-dessus du cran `images`, le TRAVAIL de sa source jusqu'au cran dit, et ce qui en
+      est laissé (`copier_le_travail`), écrits dans la charge de la naissance.
 
     Et elle S'ÉCRIT au journal, dans la même transaction et ici plutôt que chez chaque
     appelant — trois appelants (la prise directe, l'acceptation d'une entrée, et la 3b)
@@ -2136,8 +2167,8 @@ def creer_copie(conn: sqlite3.Connection, document_id: int, collection_id: int, 
     n'est pas une copie de ce document, une collection qui n'existe pas, un cran inconnu :
     des erreurs de l'appelant, que la route a refusées avant."""
     import journal                          # la naissance s'écrit ici (cf. ci-dessus)
-    if cran != CRAN_IMAGES:
-        raise ValueError(f"cran inconnu dans cette tranche : {cran!r}")
+    if cran not in CRANS:
+        raise ValueError(f"cran inconnu : {cran!r}")
     source = conn.execute("SELECT document_id FROM albums WHERE id = ?", (depuis,)).fetchone()
     if source is None or source[0] != document_id:
         raise ValueError(f"l'album {depuis} n'est pas une copie du document {document_id}")
@@ -2164,12 +2195,210 @@ def creer_copie(conn: sqlite3.Connection, document_id: int, collection_id: int, 
         (album_id, par, cran, depuis, depuis))
     conn.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
                  (collection_id, album_id))
+    charge = {"cran": cran, "depuis_album_id": depuis, "collection_id": collection_id}
+    if cran != CRAN_IMAGES:
+        charge.update(copier_le_travail(conn, depuis, album_id, cran, collection_id))
     journal.journaliser(conn, "modification", "document", document_id,
-                        apres={"album_id": album_id,
-                               "copie": {"cran": cran, "depuis_album_id": depuis,
-                                         "collection_id": collection_id}})
+                        apres={"album_id": album_id, "copie": charge})
     journal.journaliser_emploi(conn, "lien", album_id, collection_id)
     return album_id
+
+
+# Les colonnes d'une région qui portent son TEXTE (cran `transcription`) : sous ce cran, la
+# région copiée n'a que sa géométrie. Toute autre colonne de `regions` suit dès le
+# découpage — une colonne ajoutée demain suit par défaut, comme la notice.
+REGION_TEXTE = {"ocr_texte": None, "touche": 0}
+_REGION_HORS_COPIE = frozenset({"id", "planche_id", "parent_id"})
+
+
+def copier_le_travail(conn: sqlite3.Connection, depuis: int, album_id: int, cran: str,
+                      collection_id: int) -> dict:
+    """Recopie le travail de la copie `depuis` dans la copie `album_id`, qui vient de
+    naître avec les mêmes planches (même `numero`), jusqu'au `cran` dit (E1, COL-3, tranche
+    3b). Rend ce qui est copié et ce qui est LAISSÉ, que `creer_copie` écrit dans la charge
+    de la naissance : `{"copies": {…}, "laisses": {…}}`.
+
+    Trois règles, chacune tranchée par Hugo le 2026-10-20 :
+
+    - **Aucun événement n'est recopié** (E3). Chaque région copiée dit sa source dans
+      `region_origine` ; c'est par elle que le travail reste celui de ses auteurs — la
+      règle de suppression remonte la chaîne (`autorisation._sources_du_travail`) —, et ni
+      Ctrl+Z, ni les pseudonymes, ni le départ d'un compte ne voient une copie. Les dates
+      de création et de modification d'une région, son `activite_id` (le moteur qui l'a
+      produite) et l'`auteur` d'une correction suivent avec elles : ils disent quand et
+      par qui ce travail a été FAIT, pas copié.
+    - **Seul le vocabulaire visible depuis la collection d'arrivée suit** (E5) : un tag, une
+      valeur d'attribut et sa dimension globaux ou locaux à `collection_id`
+      (`clause_appartenance`, la règle d'une collection et non d'une personne). Un terme
+      local à une autre collection serait posé sur la copie et invisible de ses lecteurs ;
+      il reste, et se COMPTE. Une annotation dont tous les tags restent et qui n'a pas de
+      note ne naît pas.
+    - **Les personnages suivent** (E6, forme (a)) : un locuteur, une présence, même entre
+      deux projets — le personnage EST le travail. C'est un chemin par lequel une fiche de
+      personnage devient visible d'un autre projet, écrit et accepté.
+
+    L'index plein texte et les tokens se recopient SANS spaCy (E9) quand la copie dit ce
+    que la source disait — cran `annotations`, ou une source sans note et, au cran
+    `transcription`, sans correction. Sinon (une note ou des corrections qui ne suivent pas,
+    et dont les lemmes sont mêlés à ceux du texte dans l'index), les LEMMES se recalculent
+    par spaCy, les tokens suivant toujours tels quels : l'appelant charge spaCy AVANT sa
+    transaction d'écriture (CLAUDE.md § Concurrence). Sans moteur, ces lemmes sont vides,
+    comme ceux de la source.
+
+    La validation ne suit pas (E1). Ne commite pas, n'écrit rien au journal."""
+    rang = rang_du_cran(cran)
+    if rang < 1:
+        raise ValueError(f"cran sans travail à copier : {cran!r}")
+    texte = rang >= rang_du_cran(CRAN_TRANSCRIPTION)
+    grammaire = rang >= rang_du_cran(CRAN_GRAMMAIRE)
+    annotations = rang >= rang_du_cran(CRAN_ANNOTATIONS)
+    copies = {"regions": 0}
+    laisses = {}
+
+    planches = dict(conn.execute(
+        "SELECT s.id, n.id FROM planches s JOIN planches n "
+        "ON n.album_id = ? AND n.numero = s.numero WHERE s.album_id = ?",
+        (album_id, depuis)).fetchall())
+    for source, cible in planches.items():
+        conn.execute(
+            "UPDATE planches SET statut = (SELECT statut FROM planches WHERE id = :s), "
+            "date_segmentation = (SELECT date_segmentation FROM planches WHERE id = :s)"
+            + (", relecture = (SELECT relecture FROM planches WHERE id = :s)"
+               if grammaire else "") + " WHERE id = :c", {"s": source, "c": cible})
+
+    # Les régions : toutes d'abord sans parent, puis les parents recollés — un parent peut
+    # porter un identifiant plus grand que son enfant (une région re-parentée).
+    colonnes = [c[1] for c in conn.execute("PRAGMA table_info(regions)")
+                if c[1] not in _REGION_HORS_COPIE]
+    valeurs = [c if texte or c not in REGION_TEXTE else "?" for c in colonnes]
+    params_texte = [] if texte else [REGION_TEXTE[c] for c in colonnes if c in REGION_TEXTE]
+    regions = {}
+    sources = conn.execute(
+        "SELECT r.id, r.planche_id, r.parent_id FROM regions r "
+        "JOIN planches p ON p.id = r.planche_id WHERE p.album_id = ? ORDER BY r.id",
+        (depuis,)).fetchall()
+    for r in sources:
+        regions[r["id"]] = conn.execute(
+            f"INSERT INTO regions (planche_id, {', '.join(colonnes)}) "
+            f"SELECT ?, {', '.join(valeurs)} FROM regions WHERE id = ?",
+            (planches[r["planche_id"]], *params_texte, r["id"])).lastrowid
+    for r in sources:
+        if r["parent_id"] is not None:
+            conn.execute("UPDATE regions SET parent_id = ? WHERE id = ?",
+                         (regions.get(r["parent_id"]), regions[r["id"]]))
+    conn.executemany("INSERT INTO region_origine (region_id, region_source_id) VALUES (?, ?)",
+                     [(n, s) for s, n in regions.items()])
+    copies["regions"] = len(regions)
+
+    def _par_region(sql_select, sql_insert):
+        """Recopie, région par région, les lignes que `sql_select` lit sous la source."""
+        n = 0
+        for s, c in regions.items():
+            lignes = conn.execute(sql_select, (s,)).fetchall()
+            conn.executemany(sql_insert, [(c, *tuple(l)) for l in lignes])
+            n += len(lignes)
+        return n
+
+    if texte:
+        copies["textes"] = conn.execute(
+            f"SELECT COUNT(*) FROM regions WHERE id IN ({','.join('?' * len(regions))}) "
+            "AND ocr_texte IS NOT NULL AND ocr_texte <> ''",
+            list(regions.values())).fetchone()[0] if regions else 0
+    if grammaire:
+        cols = [c[1] for c in conn.execute("PRAGMA table_info(token_correction)")
+                if c[1] not in ("id", "region_id")]
+        copies["corrections"] = _par_region(
+            f"SELECT {', '.join(cols)} FROM token_correction WHERE region_id = ? ORDER BY id",
+            f"INSERT INTO token_correction (region_id, {', '.join(cols)}) "
+            f"VALUES (?, {', '.join('?' * len(cols))})")
+    if annotations:
+        tag_vu, tag_p = clause_appartenance(collection_id, "t.collection_id")
+        dim_vu, dim_p = clause_appartenance(collection_id, "d.collection_id")
+        val_vu, val_p = clause_appartenance(collection_id, "v.collection_id")
+        n_annot = n_tags = n_tags_laisses = 0
+        for s, c in regions.items():
+            a = conn.execute("SELECT id, note, date_creation, date_modification "
+                             "FROM annotations WHERE region_id = ?", (s,)).fetchone()
+            if a is None:
+                continue
+            tags = [t[0] for t in conn.execute(
+                f"SELECT at.tag_id FROM annotation_tags at JOIN tags t ON t.id = at.tag_id "
+                f"WHERE at.annotation_id = ? AND {tag_vu} ORDER BY at.tag_id",
+                (a["id"], *tag_p))]
+            total = conn.execute("SELECT COUNT(*) FROM annotation_tags "
+                                 "WHERE annotation_id = ?", (a["id"],)).fetchone()[0]
+            n_tags_laisses += total - len(tags)
+            if not tags and not (a["note"] or "").strip():
+                continue
+            nid = conn.execute(
+                "INSERT INTO annotations (region_id, note, date_creation, date_modification) "
+                "VALUES (?, ?, ?, ?)",
+                (c, a["note"], a["date_creation"], a["date_modification"])).lastrowid
+            conn.executemany("INSERT INTO annotation_tags (annotation_id, tag_id) "
+                             "VALUES (?, ?)", [(nid, t) for t in tags])
+            n_annot += 1
+            n_tags += len(tags)
+        copies.update(annotations=n_annot, tags=n_tags)
+        laisses["tags"] = n_tags_laisses
+        n_attr = n_attr_total = 0
+        for s, c in regions.items():
+            n_attr_total += conn.execute("SELECT COUNT(*) FROM region_attribut "
+                                         "WHERE region_id = ?", (s,)).fetchone()[0]
+            n_attr += conn.execute(
+                "INSERT INTO region_attribut (region_id, valeur_id) "
+                "SELECT ?, ra.valeur_id FROM region_attribut ra "
+                "JOIN attribut_valeur v ON v.id = ra.valeur_id "
+                "JOIN attribut_dimension d ON d.id = v.dimension_id "
+                f"WHERE ra.region_id = ? AND {val_vu} AND {dim_vu}",
+                (c, s, *val_p, *dim_p)).rowcount
+        copies["attributs"] = n_attr
+        laisses["attributs"] = n_attr_total - n_attr
+        copies["locuteurs"] = _par_region(
+            "SELECT personnage_id, date_creation FROM bulle_locuteur WHERE region_id = ?",
+            "INSERT INTO bulle_locuteur (region_id, personnage_id, date_creation) "
+            "VALUES (?, ?, ?)")
+        copies["presences"] = _par_region(
+            "SELECT personnage_id, date_creation FROM personnage_presence WHERE region_id = ?",
+            "INSERT INTO personnage_presence (region_id, personnage_id, date_creation) "
+            "VALUES (?, ?, ?)")
+
+    if texte:
+        for s, c in regions.items():
+            _indexer_une_region_copiee(conn, s, c, grammaire=grammaire,
+                                       annotations=annotations)
+    return {"copies": copies, "laisses": laisses}
+
+
+def _indexer_une_region_copiee(conn, source: int, copie: int, *, grammaire: bool,
+                               annotations: bool) -> None:
+    """L'index plein texte et les tokens d'une région copiée (cf. `copier_le_travail`) :
+    recopiés de la source quand la copie dit tout ce que la source disait, réindexés
+    sinon. Les tags laissés (E5) ne changent pas les lemmes — l'index les porte à part,
+    dans `tags_concat`, que `_region_index_payload` relit sur la copie."""
+    ligne = conn.execute("SELECT lemmes FROM recherche WHERE region_id = ?",
+                         (source,)).fetchone()
+    note = conn.execute("SELECT note FROM annotations WHERE region_id = ?",
+                        (source,)).fetchone()
+    a_une_note = note is not None and (note[0] or "").strip() != ""
+    a_des_lemmes_corriges = conn.execute(
+        "SELECT 1 FROM token_correction WHERE region_id = ? AND obsolete = 0 "
+        "AND lemme IS NOT NULL AND lemme <> '' LIMIT 1", (source,)).fetchone() is not None
+    fidele = annotations or (not a_une_note and (grammaire or not a_des_lemmes_corriges))
+    # Les tokens sont l'analyse du TEXTE seul : ils suivent toujours tels quels.
+    tokens = [dict(t) for t in conn.execute(
+        "SELECT ordre, texte, lemme, pos, morph FROM tokens WHERE region_id = ? "
+        "ORDER BY ordre", (source,))]
+    payload = _region_index_payload(conn, copie)
+    if fidele:
+        lemmes = ligne["lemmes"] if ligne else ""
+    else:
+        # Les lemmes de l'index mêlent ceux du texte, de la note et des corrections ; une
+        # couche n'a pas suivi, ils se recalculent sur ce que la copie porte. Sans moteur,
+        # ceux du texte et de la note sont vides, comme sur la source.
+        from pipeline.nlp import analyse, lemmatise   # import paresseux (évite tout cycle)
+        lemmes = (analyse(payload[0])[0] + " " + lemmatise(payload[1])).strip()
+        lemmes = _appliquer_corrections(conn, copie, tokens, lemmes, reancrer=False)
+    _index_region(conn, copie, payload, lemmes, tokens)
 
 def ranger_copie(conn: sqlite3.Connection, album_id: int, collection_id: int, *,
                  rang: int | None = None) -> bool:

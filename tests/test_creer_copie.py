@@ -147,7 +147,10 @@ def test_les_erreurs_de_l_appelant_levent(db_path, source, erreur):
         kw = {"par": "sam", "depuis": source["a"], "cran": database.CRAN_IMAGES}
         cid = source["etude"]
         if erreur == "cran":
-            kw["cran"] = "annotations"
+            # `origine` n'est pas un cran de l'échelle : la copie d'origine naît avec son
+            # document (`creer_document`), jamais tirée d'une autre. Les crans de l'échelle
+            # sont joués dans `tests/test_amorcer.py` (COL-3, tranche 3b).
+            kw["cran"] = database.CRAN_ORIGINE
         elif erreur == "source":
             kw["depuis"] = autre
         else:
