@@ -11,6 +11,16 @@ venir »), un inventaire du code, puis le modèle et ses quatorze questions tran
 le même jour. Aucun code. Restent la maquette de l'Atelier et la place du chantier dans la
 file.
 
+**2026-10-21 — la pratique de numérisation est tranchée, avant le code.** Rien n'est encore
+scanné en double page : l'équipe attendait de savoir ce que l'outil en ferait pour choisir
+comment scanner. Hugo retient **une page par image**, y compris pour l'avenir : une double page
+se scanne en deux fichiers, chacun une planche dès aujourd'hui, réunis ensuite par le geste
+d'assemblage. La pliure lui importe peu ; le vrai souci est de **caler** les deux pages l'une
+contre l'autre, qui peuvent présenter un léger décalage de hauteur — d'où la case « Les deux
+pages se calent l'une contre l'autre », zone des doubles pages. « Couper une double page en
+un seul cadre » perd donc son usage premier, sans être retiré : un fonds déjà scanné ainsi
+peut encore se présenter.
+
 ## Reste
 
 ### Le modèle — à approfondir avant tout code
@@ -30,6 +40,7 @@ file.
 ### Les doubles pages — le premier usage
 
 - [ ] **Les doubles pages scannées en deux cadres s'assemblent sans ressaisie** — attendu : un geste réunit deux planches consécutives en une surface ; les régions de la page de droite sont décalées de la largeur de la gauche ; la numérotation et les citations sont celles d'avant l'assemblage
+- [ ] **Les deux pages se calent l'une contre l'autre** — attendu : à l'assemblage, la page de droite se déplace au pixel près, au moins en hauteur, jusqu'à ce que les deux pages se raccordent à l'œil ; le calage est la POSITION de l'image sur la surface, jamais une retouche du master (les coordonnées restent en pixels master) ; les régions de la page de droite suivent le même déplacement, et le calage se reprend plus tard sans rien ressaisir. Dit par Hugo le 2026-10-21 : c'est LE souci de l'assemblage, plus que la pliure. Une légère rotation ou une différence d'échelle entre les deux scans se tranche sur la maquette
 - [ ] **Une case à cheval sur la pliure est UNE région, et se cite par la page où elle commence** — attendu : tracée sur la surface, elle se cite « 12 · c5 » (ou « 13 · … » pour un manga, qui commence à droite), compte pour cette page seule, et son débordement se lit à côté de la citation — dans l'Atelier, et dans les exports (« s'étend jusqu'à la page 13 ») ; elle se découpe pour la figure et l'OCR à travers les deux images
 - [ ] **Une double page en un seul cadre se coupe en deux pages** — attendu : la ligne de pliure posée, la numérotation compte deux pages
 
