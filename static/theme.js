@@ -254,6 +254,20 @@
       skip.addEventListener("click", function () { setTimeout(function () { main.focus(); }, 0); });
       document.body.insertBefore(skip, document.body.firstChild);
     }
+
+    // ANN-8 — la région des messages existe AVANT son premier message, sur les cinq
+    // surfaces. `toast()` (lib/common.js) la créait avec son premier message : une région
+    // live qui NAÎT avec son contenu n'est pas annoncée de façon fiable par les lecteurs
+    // d'écran, et ce premier message est désormais « Rien n'est ajouté… » (ANN-6). Posée
+    // ici, vide, au chargement — `toast()` la retrouve par son identifiant, avec les mêmes
+    // attributs.
+    if (!document.getElementById("toasts")) {
+      var toasts = el("div");
+      toasts.id = "toasts";
+      toasts.setAttribute("role", "status");
+      toasts.setAttribute("aria-live", "polite");
+      document.body.appendChild(toasts);
+    }
   }
 
   /* ---- Portée vide : dire POURQUOI l'application paraît vide (AUTH-2) ----

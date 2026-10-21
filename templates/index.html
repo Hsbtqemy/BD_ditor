@@ -510,6 +510,10 @@
     <span id="stat-coords" class="mono">—</span>
   </footer>
 </div>
+<!-- ANN-8 — l'annonce d'un conflit (CONC-3, `annoncer` dans viewer.js) a sa région dès le
+     chargement : une région live qui naît avec son message n'est pas annoncée de façon
+     fiable. Celle des messages (`#toasts`) est posée par theme.js, sur les cinq surfaces. -->
+<div id="conflit-annonce" class="sr-only" aria-live="polite"></div>
 
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
