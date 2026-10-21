@@ -250,6 +250,8 @@ principe, à coder avec la 3b).
   toujours plusieurs. *Recommandé : déclarée dans le tableur.*
 - Q7 — La passe à plusieurs : une par personne, ou commune et signée. *Recommandé : commune*,
   avec le 409 sur les valeurs uniques dès la tranche 1 (la réponse à `CONC-4`).
+  *Renvoi posé le 2026-10-21 : `CONC-4` a RENVOYÉ ici les attributs de case à plusieurs —
+  le refus sur valeur périmée des attributs se fait avec les grilles, pas avant.*
 - Q8 — Le catalogue : « partager = publier, activation libre », ou activer se demande.
   *Recommandé : libre*, le fonds prêtant son patron d'écran et la demande pour la seule
   suppression.
