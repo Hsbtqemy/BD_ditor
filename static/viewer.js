@@ -3502,12 +3502,19 @@ function setupControls() {
 /* Annulation (undo, D1) — Ctrl+Z rejoue côté serveur l'INVERSE de la dernière action
    d'annotation (depuis le journal A3), puis rafraîchit la vue touchée. Le serveur porte la
    pile (Ctrl+Z répété remonte l'historique) ; ici on ne fait qu'appeler et rafraîchir. */
+const ANNULATION_LENTE = "Annulation en cours — le premier appel charge le moteur de langue.";
+const ANNULATION_LENTE_MS = 1500;
+
 async function undoLast() {
   if (conflitBloque()) return;
   // Ne pas laisser une sauvegarde différée re-appliquer un buffer périmé APRÈS l'annulation.
   clearTimeout(state.saveTimer);
   state.saveTimer = null;
   let res;
+  // ANN-8 — le premier Ctrl+Z après un redémarrage peut attendre le moteur de langue (9 à
+  // 17 s mesurés) sans rien afficher. Passé un instant, l'écran le dit ; l'attente ordinaire
+  // (quelques centièmes) ne montre rien.
+  const lent = setTimeout(() => toast(ANNULATION_LENTE), ANNULATION_LENTE_MS);
   try {
     res = await apiSend("POST", "/api/undo");
   } catch (e) {
@@ -3518,8 +3525,13 @@ async function undoLast() {
     }
     toast(e.message, /rien à annuler/i.test(e.message) ? "" : "error");
     return;
-  }
-  toast("Annulé : " + res.description);
+  } finally { clearTimeout(lent); }
+  // ANN-8 — une suppression rend ses liens (locuteur, personnage montré, situation), sauf
+  // ceux dont l'objet n'est plus là ou plus visible : le dire, sans rien nommer.
+  const manque = res.liens_non_rendus || 0;
+  toast("Annulé : " + res.description + (manque
+    ? ` — ${manque} lien${manque > 1 ? "s" : ""} non rendu${manque > 1 ? "s" : ""} (personnage ou valeur disparus)`
+    : ""), "", manque ? 8000 : 4000);
   if (res.planche_id && state.planche && res.planche_id === state.planche.id) {
     await loadRegions(state.planche.id);
     if (res.region_id != null && state.regionsById.has(res.region_id)) {

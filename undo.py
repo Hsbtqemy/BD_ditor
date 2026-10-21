@@ -164,6 +164,16 @@ def derniere_action_annulable(conn: sqlite3.Connection, agent=TOUS):
         (*_TYPES, *_TABLES, *params)).fetchone()
 
 
+def reindexe(e) -> bool:
+    """L'inverse de `e` réindexe-t-il une région — donc demande-t-il le moteur de langue ?
+    Non pour un lien (locuteur, présence : `_poser_lien` / `_retirer_lien` n'indexent rien),
+    ni pour l'annulation d'une création (`_supprimer_region` ne fait que DÉSINDEXER). La
+    route s'en sert pour ne charger spaCy que lorsqu'il servira (ANN-8)."""
+    if e["cible_table"] in _LIENS:
+        return False
+    return not (e["cible_table"] == "regions" and e["type"] == "creation")
+
+
 def apercu(conn: sqlite3.Connection, agent=TOUS) -> Optional[dict]:
     """Ce que ferait la prochaine annulation (sans l'exécuter) : {evenement_id, description}."""
     e = derniere_action_annulable(conn, agent)
@@ -308,7 +318,8 @@ def _inverser_annotation(conn, region_id, avant, apres):
 def _recreer_region_profond(conn, snap):
     """Inverse d'une SUPPRESSION : recrée la région, son annotation et son sous-arbre depuis
     l'instantané PROFOND. Réutilise les `id` d'origine (préserve citations / deep-links) ;
-    parent créé avant enfants (FK). Lève UndoImpossible si un id a été réattribué depuis."""
+    parent créé avant enfants (FK). Lève UndoImpossible si un id a été réattribué depuis.
+    Les LIENS des régions rétablies reviennent ensuite, par `_rendre_liens` (ANN-8)."""
     cols = ["id", *journal._REGION_COLS]
     try:
         conn.execute(
@@ -324,6 +335,80 @@ def _recreer_region_profond(conn, snap):
         reindex_region(conn, snap["id"])
     for enfant in snap.get("enfants", []):
         _recreer_region_profond(conn, enfant)
+
+
+def _rendre_liens(conn, snap, rendables):
+    """ANN-8 — repose les liens des régions qu'une annulation de suppression vient de
+    rétablir : le locuteur, le personnage montré, les attributs de case. Seulement ceux qui
+    sont RENDABLES (`_liens_rendables`, calculé avant toute écriture) : le personnage ou la
+    valeur existe encore, est celui de l'acte, et l'agent le voit. Un lien qui ne l'est pas
+    ne revient pas, et la région revient quand même — elle est l'objet de l'acte, et le lien
+    serait parti de toute façon avec ce qu'il désignait."""
+    for n in _noeuds(snap):
+        for cle, table in _LIENS_INSTANTANE:
+            if n.get(cle) is not None and n[cle] in rendables["personnages"]:
+                _poser_lien(conn, table, n["id"], n[cle])
+        for vid in n.get("attributs", []):
+            if vid in rendables["valeurs"]:
+                conn.execute("INSERT OR IGNORE INTO region_attribut (region_id, valeur_id) "
+                             "VALUES (?, ?)", (n["id"], vid))
+
+
+# Les liens d'un nœud d'instantané profond vers un personnage : (clé, table).
+_LIENS_INSTANTANE = (("locuteur", "bulle_locuteur"), ("presence", "personnage_presence"))
+
+
+def _liens_de_l_instantane(snap: dict) -> tuple[set, set]:
+    """Les personnages et les valeurs d'attribut que l'instantané reposerait."""
+    personnages, valeurs = set(), set()
+    for n in _noeuds(snap):
+        for cle, _ in _LIENS_INSTANTANE:
+            if n.get(cle) is not None:
+                personnages.add(n[cle])
+        valeurs.update(n.get("attributs", []))
+    return personnages, valeurs
+
+
+def _valeur_nee_apres(conn, valeur_id, e) -> bool:
+    """La valeur d'attribut a-t-elle été créée APRÈS l'acte ? Alors elle a repris
+    l'identifiant de celle que la case portait — `attribut_valeur` n'a pas
+    d'`AUTOINCREMENT`. Le témoin de `_personnage_ne_apres`, et sa limite : dans la même
+    seconde, rien n'est vu."""
+    row = conn.execute("SELECT date_creation FROM attribut_valeur WHERE id = ?",
+                       (valeur_id,)).fetchone()
+    return bool(row and row["date_creation"] and e["date"] and row["date_creation"] > e["date"])
+
+
+def _liens_rendables(conn, e, ecrivable) -> dict:
+    """Ce que l'annulation d'une suppression peut reposer de ses LIENS (ANN-8).
+
+    Les trois questions d'AUTH-14, posées lien par lien et AVANT toute écriture : l'objet
+    désigné existe-t-il encore ; est-il celui de l'acte (né avant lui) ; l'agent le voit-il
+    MAINTENANT (`ecrivable`, la question de la route : un personnage par ses apparitions,
+    une valeur par la portée des termes). Ce qui échoue n'est pas reposé, en silence pour
+    l'objet — l'écran apprend seulement COMBIEN de liens ne sont pas revenus."""
+    personnages, valeurs = _liens_de_l_instantane(_charge(e["avant"]) or {})
+    ok_p = {p for p in personnages
+            if conn.execute("SELECT 1 FROM personnages WHERE id = ?", (p,)).fetchone()
+            and not _personnage_ne_apres(conn, p, e)
+            and ecrivable({"regions": [], "planches": [], "personnages": [p]})}
+    ok_v = {v for v in valeurs
+            if conn.execute("SELECT 1 FROM attribut_valeur WHERE id = ?", (v,)).fetchone()
+            and not _valeur_nee_apres(conn, v, e)
+            and ecrivable({"regions": [], "planches": [], "personnages": [], "valeurs": [v]})}
+    return {"personnages": ok_p, "valeurs": ok_v}
+
+
+def _liens_non_rendus(e, rendables) -> int:
+    """Combien de liens de l'instantané ne reviennent pas — compté par NŒUD, deux bulles
+    du même locuteur font deux liens."""
+    n = 0
+    for noeud in _noeuds(_charge(e["avant"]) or {}):
+        for cle, _ in _LIENS_INSTANTANE:
+            if noeud.get(cle) is not None and noeud[cle] not in rendables["personnages"]:
+                n += 1
+        n += sum(1 for v in noeud.get("attributs", []) if v not in rendables["valeurs"])
+    return n
 
 
 def _poser_lien(conn, table, region_id, personnage_id):
@@ -625,13 +710,24 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
         if _personnage_ne_apres(conn, perso, e) or not ecrivable(
                 {"regions": [], "planches": [], "personnages": [perso]}):
             raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE)
+    # ANN-8 — une suppression rend aussi les liens de ses régions, ceux qui sont rendables.
+    rendables = (_liens_rendables(conn, e, ecrivable)
+                 if e["type"] == "suppression" and e["cible_table"] == "regions" else None)
     try:
         region_id = _inverser(conn, e)
+        if rendables is not None:
+            try:
+                _rendre_liens(conn, _charge(e["avant"]) or {}, rendables)
+            except sqlite3.IntegrityError as exc:
+                raise Irretablissable() from exc
     except Irretablissable:
         raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE)
     planche_id = _planche_de(conn, region_id, e)
     journal.journaliser(conn, "annulation", "evenement", e["id"],
                         avant={"acte": e["type"], "cible_table": e["cible_table"],
                                "cible_id": e["cible_id"]})
-    return {"evenement_id": e["id"], "acte": e["type"], "cible_table": e["cible_table"],
-            "region_id": region_id, "planche_id": planche_id, "description": _description(e)}
+    res = {"evenement_id": e["id"], "acte": e["type"], "cible_table": e["cible_table"],
+           "region_id": region_id, "planche_id": planche_id, "description": _description(e)}
+    if rendables is not None:
+        res["liens_non_rendus"] = _liens_non_rendus(e, rendables)
+    return res

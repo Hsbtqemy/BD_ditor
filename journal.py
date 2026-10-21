@@ -179,7 +179,7 @@ def snapshot_annotation(conn: sqlite3.Connection, region_id: int) -> Optional[di
 
 def snapshot_region_profond(conn: sqlite3.Connection, region_id: int) -> Optional[dict]:
     """Instantané RÉCURSIF d'une région : ses colonnes métier + son annotation (note+tags)
-    + ses enfants (mêmes règles). C'est l'état AVANT capturé à la suppression : le CASCADE
+    + ses liens (locuteur, présence, attributs de case) + ses enfants (mêmes règles). C'est l'état AVANT capturé à la suppression : le CASCADE
     SQL détruit tout le sous-arbre, mais le journal en garde la trace → substrat de l'undo
     (D1). L'`id` est inclus ici (indispensable pour restaurer la hiérarchie)."""
     base = snapshot_region(conn, region_id)
@@ -189,6 +189,23 @@ def snapshot_region_profond(conn: sqlite3.Connection, region_id: int) -> Optiona
     annot = snapshot_annotation(conn, region_id)
     if annot is not None:
         base["annotation"] = annot
+    # ANN-8 — ce que le CASCADE emporte aussi, et que Ctrl+Z ne rendait pas : le locuteur
+    # d'une zone de texte, le personnage montré dans une boîte, la situation d'une case.
+    # Des IDENTIFIANTS seulement : l'annulation éprouve chacun avant de le reposer (le
+    # personnage, la valeur existent-ils encore, sont-ils ceux d'alors, l'agent les
+    # voit-il), et aucun nom, aucun mot du vocabulaire n'entre au journal par ici. Les clés
+    # n'apparaissent que si elles portent quelque chose : un instantané sans lien garde la
+    # forme qu'il avait.
+    for cle, table in (("locuteur", "bulle_locuteur"), ("presence", "personnage_presence")):
+        lien = conn.execute(f"SELECT personnage_id FROM {table} WHERE region_id = ?",
+                            (region_id,)).fetchone()
+        if lien is not None:
+            base[cle] = lien["personnage_id"]
+    attributs = [row["valeur_id"] for row in conn.execute(
+        "SELECT valeur_id FROM region_attribut WHERE region_id = ? ORDER BY valeur_id",
+        (region_id,))]
+    if attributs:
+        base["attributs"] = attributs
     enfants = [row["id"] for row in conn.execute(
         "SELECT id FROM regions WHERE parent_id = ? ORDER BY ordre, id", (region_id,))]
     if enfants:

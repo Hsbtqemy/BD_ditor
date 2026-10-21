@@ -26,7 +26,8 @@ import conflit
 import undo
 from pipeline import nlp
 
-from socle import _get_personnage, _get_planche, _get_region, db, portee_courante
+from socle import (_get_personnage, _get_planche, _get_region, _get_valeur, db,
+                   portee_courante)
 
 router = APIRouter()
 
@@ -48,6 +49,11 @@ def _ecrivable(conn: sqlite3.Connection, portee: autorisation.Portee):
             # l'écrire ne demande que d'écrire quelque part — le plancher de la route.
             for pid in lieux.get("personnages", []):
                 _get_personnage(conn, portee, pid)
+            # ANN-8 — la valeur d'un attribut de case que rendrait l'annulation d'une
+            # suppression : un terme, qui se VOIT par la portée des termes. La route qui la
+            # pose ne demande que de la voir (`_affecter`) : la même question ici.
+            for vid in lieux.get("valeurs", []):
+                _get_valeur(conn, portee, vid)
         except HTTPException as refus:
             if refus.status_code == 404:
                 return False
@@ -88,7 +94,14 @@ def undo_dernier(conn: sqlite3.Connection = Depends(db),
     if not portee.peut_ecrire_quelque_part():
         raise HTTPException(403, "Annuler demande un droit d'écriture.")
     agent = _agent_undo(portee)
-    nlp.ensure_loaded()            # spaCy HORS transaction : l'inversion réindexe, verrou tenu
+    # spaCy HORS transaction : l'inversion réindexe, verrou tenu. Mais pas toujours — défaire
+    # un locuteur ou une présence ne réindexe rien, et le premier Ctrl+Z après un redémarrage
+    # payait pour rien les 9 à 17 s du chargement à froid (ANN-8, mesuré). L'acte se regarde
+    # ici hors verrou ; si un autre le remplace d'ici l'inversion, celle-ci chargera le moteur
+    # elle-même, verrou tenu — plus lent, jamais faux.
+    prochain = undo.derniere_action_annulable(conn, agent)
+    if prochain is not None and undo.reindexe(prochain):
+        nlp.ensure_loaded()
     conflit.verrouiller(conn)      # l'état que l'annulation garde se lit sous le verrou (Q4)
     try:
         res = undo.annuler(conn, agent=agent, ecrivable=_ecrivable(conn, portee))
