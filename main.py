@@ -1251,13 +1251,24 @@ def sharedocs_importer(payload: SharedocsImportIn,
     _get_album(conn, portee, payload.album_id, ecriture=True)
     album_id = payload.album_id
 
+    # UX-11 (Hugo, 2026-10-21) — UNE TRANSACTION PAR PLANCHE, validée dès qu'elle est entrée.
+    # Le lot entier tenait jusque-là dans une seule, validée à la fin : la première planche
+    # posée, le verrou d'écriture de SQLite restait pris pendant tous les téléchargements et
+    # tous les dérivés suivants — ~5,7 s par JPEG 2000 sans perte dans l'image (mesuré le
+    # 2026-10-21), soit ~5 min pour cinquante, pendant lesquelles toute autre écriture
+    # attendait 5 s puis recevait un 409. Désormais une planche n'ouvre sa transaction qu'à
+    # son `INSERT` — `ingest_image` fait le dérivé AVANT — et la ferme avec sa trace au
+    # journal (`_journaliser_scan`, inchangé : un événement par scan, comme avant). Un échec
+    # se nomme dans `erreurs` et ne défait que SA planche : les précédentes sont en base.
+    # spaCy n'est pas en jeu ici : les régions qu'une segmentation pose n'ont pas de texte,
+    # et `reindex_region` ne l'appelle que sur un texte.
     importes, erreurs = [], []
     for chemin in payload.chemins:
         nom = chemin.rsplit("/", 1)[-1]
         if os.path.splitext(nom)[1].lower() not in IMG_EXTS:
             erreurs.append({"chemin": chemin, "erreur": "type non géré (image attendue)"})
             continue
-        master = None
+        master = planche = None
         try:
             data = sharedocs.download(
                 chemin, principal=_principal_sharedocs(portee), compte=payload.compte)
@@ -1267,49 +1278,44 @@ def sharedocs_importer(payload: SharedocsImportIn,
             master = store_upload(album_id, nom, data, numero)
             planche = ingest_image(conn, album_id, master, numero=numero)
             planche["url_web"] = "/" + planche["chemin_web"]
-            importes.append(planche)
-            # Segmentation best-effort : un échec ici ne doit JAMAIS invalider
-            # un import déjà réussi (la planche est déjà ingérée et comptée).
-            if payload.segmenter and kumiko_available():
-                try:
-                    with jobs.ML_LOCK:               # cohérent : pas de ML concurrent
-                        res_seg = segment_planche(conn, planche["id"])
-                    # L'EFFECTIF, pas « segmentee » en dur : depuis B6 la segmentation ne
-                    # fait plus reculer le statut, si bien qu'écrire la constante ferait
-                    # mentir la réponse d'import sur une planche déjà avancée. Le mensonge
-                    # serait invisible — la base, elle, aurait raison.
-                    planche["statut"] = res_seg["statut"]
-                except Exception as exc:
-                    # Best-effort, mais PAS muet. Ce `pass` a avalé, le 2026-08-31, un
-                    # `TypeError` introduit par ce commit même : la seule trace était un
-                    # statut resté `importee`, qu'on attribue naturellement à la
-                    # segmentation plutôt qu'à un bug. Un import qui perd sa segmentation
-                    # sans rien dire est la même faute que le lot qui s'annonçait terminé
-                    # (CONC-2) — se taire n'est pas être robuste.
-                    print(f"[import] segmentation ignorée pour {nom} : "
-                          f"{type(exc).__name__}: {exc}")
-        except Exception as exc:   # un fichier en échec ne stoppe pas le lot
-            # Pas de master orphelin sur disque si l'ingestion a échoué après écriture.
-            if master is not None:
-                master.unlink(missing_ok=True)
-            erreurs.append({"chemin": chemin, "erreur": str(exc)})
-    # Le journal du lot s'écrit ICI, hors de la boucle : dedans, une écriture qui lèverait
-    # tomberait dans le `except` d'un fichier et ferait retirer le master d'une planche
-    # déjà ingérée.
-    #
-    # COL-3, relecture croisée — si la fin de la requête échoue, la transaction est défaite
-    # et ses planches n'existent plus ; leurs fichiers, eux, étaient déjà sur le disque, et
-    # la planche qui reprenait ensuite le même numéro les retrouvait. Ils sont retirés :
-    # ceux de CETTE requête seulement, qu'aucune ligne ne désigne plus.
-    try:
-        for planche in importes:
             _journaliser_scan(conn, album_id, planche)
-        conn.commit()
-    except BaseException:
-        conn.rollback()
-        for planche in importes:
-            remove_planche_files(planche.get("chemin_tiff"), planche.get("chemin_web"))
-        raise
+            conn.commit()
+        except BaseException as exc:
+            # La transaction de CETTE planche est défaite ; ses fichiers, déjà sur le disque,
+            # ne sont plus désignés par aucune ligne et partent avec elle (COL-3, relecture
+            # croisée : la planche qui reprenait le même numéro les retrouvait).
+            conn.rollback()
+            if planche is not None:
+                remove_planche_files(planche.get("chemin_tiff"), planche.get("chemin_web"))
+            elif master is not None:
+                master.unlink(missing_ok=True)
+            if not isinstance(exc, Exception):
+                raise                        # une interruption n'est pas l'échec d'un fichier
+            erreurs.append({"chemin": chemin, "erreur": str(exc)})
+            continue
+        importes.append(planche)
+        # Segmentation best-effort : un échec ici ne doit JAMAIS invalider
+        # un import déjà réussi (la planche est déjà ingérée, validée et comptée).
+        if payload.segmenter and kumiko_available():
+            try:
+                with jobs.ML_LOCK:               # cohérent : pas de ML concurrent
+                    res_seg = segment_planche(conn, planche["id"])
+                conn.commit()
+                # L'EFFECTIF, pas « segmentee » en dur : depuis B6 la segmentation ne
+                # fait plus reculer le statut, si bien qu'écrire la constante ferait
+                # mentir la réponse d'import sur une planche déjà avancée. Le mensonge
+                # serait invisible — la base, elle, aurait raison.
+                planche["statut"] = res_seg["statut"]
+            except Exception as exc:
+                conn.rollback()                  # ses écritures partielles, pas la planche
+                # Best-effort, mais PAS muet. Ce `pass` a avalé, le 2026-08-31, un
+                # `TypeError` introduit par ce commit même : la seule trace était un
+                # statut resté `importee`, qu'on attribue naturellement à la
+                # segmentation plutôt qu'à un bug. Un import qui perd sa segmentation
+                # sans rien dire est la même faute que le lot qui s'annonçait terminé
+                # (CONC-2) — se taire n'est pas être robuste.
+                print(f"[import] segmentation ignorée pour {nom} : "
+                      f"{type(exc).__name__}: {exc}")
     return {"album_id": album_id, "importes": importes, "erreurs": erreurs}
 
 

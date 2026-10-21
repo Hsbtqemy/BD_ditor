@@ -372,7 +372,11 @@ def test_un_import_qui_echoue_apres_ecriture_retire_ses_fichiers(client, album, 
     """COL-3, relecture croisée : la transaction défaite, la route laissait sur le disque
     les fichiers qu'elle venait d'écrire — et l'album, ou la planche, qui reprenait ensuite
     le même numéro les retrouvait. Une panne APRÈS l'écriture (ici au journal) retire les
-    fichiers de CETTE requête, et rien d'autre : la planche d'avant garde les siens."""
+    fichiers de la planche qu'elle défait, et rien d'autre : la planche d'avant garde les
+    siens.
+
+    UX-11 (2026-10-21) — une planche par transaction : la panne ne défait plus la requête
+    entière, mais SA planche, et se NOMME dans `erreurs` ; la requête répond 200."""
     from fastapi.testclient import TestClient
     monkeypatch.setattr(sd, "download", lambda path, *, principal, compte=None: _png())
     r = client.post("/api/sharedocs/importer",
@@ -387,12 +391,68 @@ def test_un_import_qui_echoue_apres_ecriture_retire_ses_fichiers(client, album, 
                    raise_server_exceptions=False)
     r = c.post("/api/sharedocs/importer",
                json={"chemins": ["BD/p2.png", "BD/p3.png"], "album_id": album["id"]})
-    assert r.status_code == 500
+    assert r.status_code == 200, r.text
+    assert r.json()["importes"] == []
+    assert [e["chemin"] for e in r.json()["erreurs"]] == ["BD/p2.png", "BD/p3.png"]
     planches = client.get(f"/api/albums/{album['id']}/planches").json()
     assert [p["id"] for p in planches] == [avant["id"]]
     for dossier in ("corpus", "derivatives"):
         fichiers = sorted(f.name for f in (data_dir / dossier / f"album_{album['id']}").iterdir())
         assert [f.split(".")[0] for f in fichiers] == ["planche_0001"], (dossier, fichiers)
+
+
+def test_l_import_valide_planche_par_planche(client, album, db_path, monkeypatch):
+    """UX-11 (Hugo, 2026-10-21) — le lot entier tenait dans UNE transaction validée à la
+    fin : la première planche posée, le verrou d'écriture restait pris pendant tous les
+    téléchargements et tous les dérivés suivants (~5,7 s par JPEG 2000 sans perte, ~5 min
+    pour cinquante), et toute autre écriture recevait un 409.
+
+    Le téléchargement passe par la doublure WebDAV (`MockTransport`) : pendant celui du
+    DEUXIÈME fichier, une autre connexion écrit, sans attendre (`timeout=0`). Elle passe —
+    la planche 1 est déjà validée, et visible d'une connexion à part. Le troisième fichier
+    n'est pas une image : il se nomme dans `erreurs`, et les deux planches d'avant restent.
+    Le journal garde sa forme : un événement de scan par planche."""
+    import sqlite3
+    vu = {}
+
+    def handler(request):
+        if request.method == "GET" and request.url.path.endswith("/p2.png"):
+            autre = sqlite3.connect(db_path, timeout=0)
+            try:
+                vu["planches"] = autre.execute(
+                    "SELECT numero FROM planches WHERE album_id = ?", (album["id"],)).fetchall()
+                autre.execute("UPDATE albums SET description = 'écrit pendant l''import' "
+                              "WHERE id = ?", (album["id"],))
+                autre.commit()
+                vu["ecriture"] = "passée"
+            except sqlite3.OperationalError as exc:
+                vu["ecriture"] = str(exc)
+            finally:
+                autre.close()
+        if request.method == "GET" and request.url.path.endswith("/casse.png"):
+            return httpx.Response(200, content=b"pas une image")
+        return _handler(request)
+
+    _use(monkeypatch, handler)
+    assert client.post("/api/sharedocs/connexion",
+                       json={"url": BASE, "user": "u", "password": "p"}).status_code == 200
+    r = client.post("/api/sharedocs/importer", json={
+        "chemins": ["BD/p1.png", "BD/p2.png", "BD/casse.png"], "album_id": album["id"]})
+    assert r.status_code == 200, r.text
+    assert vu["ecriture"] == "passée", (
+        f"une écriture concurrente est refusée pendant l'import : {vu['ecriture']}")
+    assert vu["planches"] == [(1,)], "la planche 1 n'était pas validée au 2e fichier"
+    body = r.json()
+    assert [p["numero"] for p in body["importes"]] == [1, 2]
+    assert [e["chemin"] for e in body["erreurs"]] == ["BD/casse.png"]
+    assert [p["numero"] for p in client.get(f"/api/albums/{album['id']}/planches").json()] \
+        == [1, 2]
+    assert direct_query(db_path, "SELECT description FROM albums WHERE id = ?",
+                        (album["id"],))[0]["description"] == "écrit pendant l'import"
+    charges = [json.loads(e["apres"]) for e in direct_query(
+        db_path, "SELECT apres FROM evenement WHERE cible_table = 'document' "
+                 "AND apres IS NOT NULL ORDER BY id")]
+    assert [c["planche"]["numero"] for c in charges if "planche" in c] == [1, 2]
 
 
 def test_route_importer_avec_segmentation(client, album, monkeypatch):

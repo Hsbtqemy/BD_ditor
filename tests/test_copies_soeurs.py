@@ -297,7 +297,10 @@ def test_un_numero_explicite_dont_les_images_servent_est_refuse(client, db_path,
 def test_un_lot_defait_n_efface_pas_l_image_d_une_soeur(client, db_path, soeurs,
                                                         monkeypatch):
     """Un import ShareDocs dont la fin échoue est défait, et il retire les fichiers qu'il a
-    écrits : ceux de SES planches, qu'aucune ligne ne désigne plus — avant, ceux de B."""
+    écrits : ceux de SES planches, qu'aucune ligne ne désigne plus — avant, ceux de B.
+
+    UX-11 (2026-10-21) — une planche par transaction : la panne défait SA planche et se
+    nomme dans `erreurs`, la requête répond 200 ; ce qu'elle retire ne change pas."""
     import main
     import pipeline.sharedocs as sd
     from fastapi.testclient import TestClient
@@ -312,7 +315,9 @@ def test_un_lot_defait_n_efface_pas_l_image_d_une_soeur(client, db_path, soeurs,
                               raise_server_exceptions=False)
     r = sans_relance.post("/api/sharedocs/importer", headers=ADMIN,
                           json={"chemins": ["BD/p1.png"], "album_id": soeurs["a"]})
-    assert r.status_code == 500, r.text
+    assert r.status_code == 200, r.text
+    assert r.json()["importes"] == []
+    assert [e["chemin"] for e in r.json()["erreurs"]] == ["BD/p1.png"]
     assert _images(soeurs["data"], chemins) == avant
 
 
