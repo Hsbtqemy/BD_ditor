@@ -62,6 +62,10 @@ seule mention est une note de backlog, `9756074` —, d'où `à venir` et ce `Po
       n'importe qui — reprend le plus grand numéro s'il vient d'être libéré. L'attendu est le
       refus nommé qui existe déjà pour l'annulation d'une suppression (409, identifiant
       « réattribué »), jamais un écrasement
+      *Relu le 2026-10-21 — prémisse dépassée par la v30* (`COL-3`, `c56c4f4`) : `regions` porte
+      désormais `AUTOINCREMENT`, et un numéro libéré ne revient plus. La reprise ne reste possible
+      que pour un identifiant d'avant la v30, ou rendu par une transaction défaite (`AUTH-14`,
+      ses témoins) : l'attendu tient pour ce cas résiduel, qui devient rare
 - [ ] Ce qu'un rétablissement REFAIT suit l'arbitrage de granularité de la première zone :
       tant que Ctrl+Z défait un enregistrement de 500 ms, rétablir en referait un, états
       intermédiaires compris. Les deux se tranchent ensemble, ou le second attend le premier

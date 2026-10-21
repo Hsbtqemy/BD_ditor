@@ -23,6 +23,7 @@ CE QUI a été corrigé : le modèle spaCy dont la sortie a été reprise n'est 
 
 ### Déploiement
 - [ ] La production est en v28 AVANT tout passage à `lg` — attendu : `PRAGMA user_version` rend 28 sur la base de production pendant que `meta.nlp_model` y nomme encore `fr_core_news_sm`. Dans l'autre ordre, les relectures faites entre les deux n'auraient rien gardé, alors que c'est la raison d'être de la fiche. Passe par le déploiement MANUEL de `dev` sur `main` : la veille de déploiement refuse une mise à jour qui migre
+  *Relu le 2026-10-21 — à moitié* : la production a dépassé la v28 — elle est en v31 depuis le 2026-10-20 (`main` à `16c6127`, migrée par Hugo, cf. `pilotage/COL-3.md`). Ce que nomme `meta.nlp_model` sur sa base n'a pas été constaté : la case reste ouverte jusqu'à ce constat en production
 
 ### À trancher
 - [ ] Un token validé sous un modèle, dont le suivant propose autre chose, ne s'affiche plus « validé » avec une valeur que personne n'a vue — `tokens_effectifs` lit toujours un champ vide contre l'auto d'aujourd'hui. Le relevé de la v28 rend l'écart DÉTECTABLE (`auto_*` ≠ `tokens`) ; reste à décider ce qu'on en fait (le signaler à revoir, ou afficher la valeur relue). Attendu une fois tranché : après un passage de modèle et une réindexation, un tel token n'a plus `provenance = 'valide'` avec la valeur du nouveau modèle sans que rien ne le signale. À trancher avant le passage à `lg`, pas après

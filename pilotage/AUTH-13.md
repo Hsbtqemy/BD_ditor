@@ -17,6 +17,7 @@ présentation. Mais on garde ça pour quand tout sera à peu près construit et 
 
 - [x] **Le chantier attend que le reste soit construit** — décision de Hugo, phrase ci-dessus. Rien n'est conçu au-delà de cette fiche, et rien ne se code
 - [ ] **Ce qui le rouvre est constaté** — attendu : la tranche 2 de `COL-3` est livrée, donc le mécanisme de demande existe (qui demande, quand, pourquoi ; la place dans « À regarder » ; « accepter » ou « refuser ») et n'est pas à écrire deux fois ; et Hugo juge l'outil assez abouti pour le présenter. Le renvoi est posé chez `COL-3`, case « La demande venue de l'extérieur »
+  *Relu le 2026-10-21 — la première moitié est constatée* : la tranche 2 de `COL-3` est en production depuis le 2026-10-16 (`main` à `5e7f56b`), puis la 3a le 2026-10-20 (`16c6127`) ; le mécanisme de demande existe (`demande`, six genres aujourd'hui, réponse dans « À faire »). Reste le jugement de Hugo sur un outil « assez abouti »
 
 ### La forme — à trancher à la réouverture
 
@@ -27,6 +28,7 @@ présentation. Mais on garde ça pour quand tout sera à peu près construit et 
 - [ ] **Comment on répond au demandeur** — attendu : tranché. L'application n'envoie aucun courriel, et `COL-3` a écarté toute messagerie : l'administrateur répond de sa boîte, ou l'application apprend à écrire
 - [ ] **Qui crée le compte** — attendu : dit. L'application LIT l'annuaire et n'y écrit pas (`AUTH-6`, compte de service en lecture seule) : accepter une demande, c'est aujourd'hui un administrateur qui crée le compte dans l'annuaire, puis le projet. `AUTH-7` a déjà pesé l'inscription par invitation, et ce qu'elle demanderait
 - [ ] **Les albums ne se cochent pas de l'extérieur** — attendu : confirmé. Qui n'a pas de compte ne voit pas le fonds ; sa demande dit en clair sur quel corpus il veut travailler, et la demande groupée de documents se dépose une fois le projet accepté (`COL-3`, case « Qui dépose la demande de départ d'un projet »)
+  *Relu le 2026-10-21* : la seconde moitié a pris forme dans `COL-3` (D3, D10) — le projet accepté naît avec sa collection de base, et son responsable y prend au fonds par les notices (« + Prendre du fonds… »)
 
 ## Contexte
 

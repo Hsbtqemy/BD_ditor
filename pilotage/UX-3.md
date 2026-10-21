@@ -1,9 +1,16 @@
 ---
 chantier: UX-3
-statut: à venir
+statut: interrompu
 ---
 
 # UX-3 — hiérarchie et découvrabilité des actions
+
+**Arrêté sur** — 2026-10-16, `8ca053e` : ↗ « Ouvrir dans l'Atelier » a la boîte de ses voisins,
+sur la ligne d'une planche de la Bibliothèque (relevé par Hugo pendant une passe de COL-3). C'est
+le SEUL commit de code du chantier, et il ne touche aucune des quatre cases d'origine. Le statut
+passe d'`à venir` à `interrompu` le 2026-10-21 pour cette raison seule — l'outil dément un
+`à venir` qui porte un commit de code —, comme UX-12 avant lui : la hiérarchie à l'intérieur des
+surfaces n'est toujours pas reprise.
 
 **Point de départ** — UX-1 (nav transverse) et UX-2 (en-tête en deux bandes) sont livrés ;
 la hiérarchie **à l'intérieur** d'une surface n'a jamais été reprise.
