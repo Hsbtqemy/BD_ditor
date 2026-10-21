@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as _dt
 import re
 import sqlite3
+import unicodedata
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -39,6 +40,35 @@ NATURES = (NATURE_NOMINATIF, NATURE_COLLECTIF)
 
 
 # --------------------------------------------------------------------------- #
+# La clé d'un libellé de tag (ANN-8)
+# --------------------------------------------------------------------------- #
+# Le guide des linguistes écrit ses tags avec l'apostrophe TYPOGRAPHIQUE (« c’est
+# pluriel »), un clavier tape la DROITE, et un accent peut arriver composé (é) ou décomposé
+# (e + ◌́) selon le système qui l'a produit. Le libellé était unique à l'octet : chaque
+# variante faisait un tag de plus, donc un compteur de plus. La CLÉ les confond — forme
+# composée (NFC), apostrophes ramenées à la droite, minuscules, espaces compactés — et
+# c'est elle qu'on compare partout où un libellé SAISI cherche un tag. Un tag neuf est
+# stocké sous sa clé ; un tag d'avant garde sa graphie, et il est retrouvé par la sienne.
+# La droite et non la typographique : c'est ce que tape un clavier, donc ce que la plupart
+# des libellés existants portent déjà. Le jumeau navigateur vit dans
+# `static/lib/propositions.js` (`cleTag`), et leur accord se mesure sur `tests/cas-tags.json`.
+_APOSTROPHES = str.maketrans({
+    "\u2019": "'",   # ’ apostrophe typographique (guillemet simple fermant)
+    "\u2018": "'",   # ‘ guillemet simple ouvrant, pris pour une apostrophe
+    "\u02bc": "'",   # ʼ lettre modificative apostrophe
+    "\u201b": "'",   # ‛ guillemet simple renversé
+    "\u2032": "'",   # ′ prime
+})
+
+
+def cle_tag(label) -> str:
+    """La clé de comparaison d'un libellé de tag : NFC, apostrophes droites, minuscules,
+    espaces compactés. `""` pour un libellé vide ou nul."""
+    s = unicodedata.normalize("NFC", str(label or "")).translate(_APOSTROPHES)
+    return unicodedata.normalize("NFC", " ".join(s.lower().split()))
+
+
+# --------------------------------------------------------------------------- #
 # Connexion
 # --------------------------------------------------------------------------- #
 def get_connection() -> sqlite3.Connection:
@@ -48,6 +78,9 @@ def get_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")   # job de fond + requêtes : écritures concurrentes
+    # ANN-8 — la clé d'un libellé de tag, appelable en SQL : les libellés posés AVANT elle
+    # gardent leur graphie en base, et c'est leur clé qu'on compare (cf. `cle_tag`).
+    conn.create_function("cle_tag", 1, cle_tag, deterministic=True)
     return conn
 
 

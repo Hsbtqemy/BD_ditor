@@ -1,0 +1,97 @@
+[
+  {
+    "nom": "l'apostrophe typographique devient la droite",
+    "entree": "c\u2019est pluriel",
+    "attendu": "c'est pluriel"
+  },
+  {
+    "nom": "l'apostrophe droite reste",
+    "entree": "c'est pluriel",
+    "attendu": "c'est pluriel"
+  },
+  {
+    "nom": "le guillemet simple ouvrant pris pour une apostrophe",
+    "entree": "c\u2018est pluriel",
+    "attendu": "c'est pluriel"
+  },
+  {
+    "nom": "la lettre modificative apostrophe",
+    "entree": "c\u02bcest pluriel",
+    "attendu": "c'est pluriel"
+  },
+  {
+    "nom": "le guillemet simple renvers\u00e9",
+    "entree": "c\u201best pluriel",
+    "attendu": "c'est pluriel"
+  },
+  {
+    "nom": "le prime",
+    "entree": "c\u2032est pluriel",
+    "attendu": "c'est pluriel"
+  },
+  {
+    "nom": "un accent d\u00e9compos\u00e9 se compose",
+    "entree": "re\u0301cit",
+    "attendu": "r\u00e9cit"
+  },
+  {
+    "nom": "un accent compos\u00e9 reste",
+    "entree": "r\u00e9cit",
+    "attendu": "r\u00e9cit"
+  },
+  {
+    "nom": "une capitale accentu\u00e9e d\u00e9compos\u00e9e",
+    "entree": "E\u0301LISION",
+    "attendu": "\u00e9lision"
+  },
+  {
+    "nom": "un tr\u00e9ma d\u00e9compos\u00e9",
+    "entree": "noe\u0308l",
+    "attendu": "no\u00ebl"
+  },
+  {
+    "nom": "la casse s'efface",
+    "entree": "Juron OU Insulte",
+    "attendu": "juron ou insulte"
+  },
+  {
+    "nom": "les espaces se compactent et se rognent",
+    "entree": "  n\u00e9gation   courte  ",
+    "attendu": "n\u00e9gation courte"
+  },
+  {
+    "nom": "une espace ins\u00e9cable compte pour une espace",
+    "entree": "c'est\u00a0pluriel",
+    "attendu": "c'est pluriel"
+  },
+  {
+    "nom": "une espace fine ins\u00e9cable aussi",
+    "entree": "c'est\u202fpluriel",
+    "attendu": "c'est pluriel"
+  },
+  {
+    "nom": "tout \u00e0 la fois",
+    "entree": "  C\u2019EST  Ple\u0301riel ",
+    "attendu": "c'est pl\u00e9riel"
+  },
+  {
+    "nom": "le guillemet double n'est pas une apostrophe",
+    "entree": "\u00ab dit \u00bb",
+    "attendu": "\u00ab dit \u00bb"
+  },
+  {
+    "nom": "l'accent grave isol\u00e9 n'est pas une apostrophe",
+    "entree": "a` b",
+    "attendu": "a` b"
+  },
+  {
+    "nom": "vide",
+    "entree": "",
+    "attendu": ""
+  },
+  {
+    "nom": "rien que des espaces",
+    "entree": "   ",
+    "attendu": ""
+  }
+]

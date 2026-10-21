@@ -61,7 +61,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _effacer_les_images_d_une_copie, _sous_le_verrou, _supprimer_projet,
     _clore_demandes_vers, _clore_lignes_d_une_copie_detruite, _deposer, _en_attente_vers,
     _nouvelle_copie, _plan_rejoindre, _retour_en_attente,
-    _clause_lemme, _clause_personnage, _collection_d_export, _collections_lues_d_albums,
+    _clause_lemme, _clause_personnage, _cle_tag, _collection_d_export, _collections_lues_d_albums,
     _csv_response, _csv_safe, _descendre_portee,
     _disposition, _ensure_tags, _exiger_destruction, _exiger_export,
     _exiger_export_region,
@@ -1644,9 +1644,12 @@ def put_annotation(region_id: int, payload: AnnotationIn,
             "SELECT at.tag_id FROM annotation_tags at JOIN annotations an "
             "ON an.id = at.annotation_id WHERE an.region_id = ?", (region_id,))
             if r["tag_id"] not in caches]
+        # ANN-8 — par la CLÉ : retirer « c'est pluriel » retire aussi le tag d'avant écrit
+        # « c’est pluriel » — le même mot pour quiconque le lit.
         retires = {t["id"] for t in _rows(conn.execute(
-            f"SELECT id FROM tags WHERE label IN ({','.join('?' * len(payload.tags_retires))})",
-            [_norm_tag(l) for l in payload.tags_retires]))} if payload.tags_retires else set()
+            f"SELECT id FROM tags WHERE cle_tag(label) IN "
+            f"({','.join('?' * len(payload.tags_retires))})",
+            [_cle_tag(l) for l in payload.tags_retires]))} if payload.tags_retires else set()
         tag_ids = [i for i in tag_ids if i not in retires]
         tag_ids += [t["id"] for t in _ensure_tags(conn, payload.tags_ajoutes, portee)
                     if t["id"] not in tag_ids]
@@ -1756,13 +1759,17 @@ def create_tag(tag: TagIn, conn: sqlite3.Connection = Depends(db),
     if not portee.peut_ecrire_quelque_part():
         raise HTTPException(403, "Créer un terme du vocabulaire demande un droit "
                                  "d'écriture sur au moins une collection.")
-    label = _norm_tag(tag.label)
+    label = _cle_tag(tag.label)
     if not label:
         raise HTTPException(422, "Label de tag vide")
     conflit.verrouiller(conn)      # l'existant se lit sous le verrou d'écriture
-    existant = _row(conn.execute("SELECT id, collection_id FROM tags WHERE label = ?",
-                                 (label,)))
+    # ANN-8 — l'existant se cherche par la CLÉ du libellé : un tag d'avant écrit « c’est
+    # pluriel » est celui que désigne « c'est pluriel », et c'est SA ligne qu'on écrit.
+    existant = _row(conn.execute(
+        "SELECT id, collection_id, label FROM tags WHERE cle_tag(label) = ? "
+        "ORDER BY (label = ?) DESC, id LIMIT 1", (label, label)))
     if existant is not None:
+        label = existant["label"]
         ou, params = portee.clause_terme("t.collection_id")
         if conn.execute(f"SELECT 1 FROM tags t WHERE t.id = ? AND {ou}",
                         (existant["id"], *params)).fetchone() is None:

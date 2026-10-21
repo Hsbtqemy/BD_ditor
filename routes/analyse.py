@@ -26,7 +26,7 @@ from vraisemblance import log_vraisemblance
 
 from socle import (
     TokenCorrectionIn, _auteur, _clause_lemme, _csv_response, _csv_safe, _get_dimension,
-    _get_personnage, _get_region, _get_valeur, _norm_tag, _portee_d_export, _rows, db,
+    _cle_tag, _get_personnage, _get_region, _get_valeur, _portee_d_export, _rows, db,
     portee_courante,
 )
 
@@ -93,14 +93,14 @@ def _analyse_filtres(portee, album, type, pos, lemme, morph, provenance, tags=No
         # Un tag qu'on ne lit pas ne filtre rien — la même règle que `_joindre_tags`, qui
         # ne l'affiche pas : sinon son nom resterait un critère opérant sans être visible.
         ou_tag, p_tag = portee.clause_terme("tg.collection_id")
-        for label in (_norm_tag(t) for t in tags):
+        for label in (_cle_tag(t) for t in tags):   # ANN-8 : par la clé du libellé
             if not label:
                 continue
             where.append(
                 "EXISTS (SELECT 1 FROM annotation_tags at2 "
                 "        JOIN tags tg ON tg.id = at2.tag_id "
                 "        JOIN annotations a2 ON a2.id = at2.annotation_id "
-                f"       WHERE {cible} AND tg.label = ? AND {ou_tag})")
+                f"       WHERE {cible} AND cle_tag(tg.label) = ? AND {ou_tag})")
             params.append(label)
             params.extend(p_tag)
     # Filtre par LOCUTEUR (ANN-2) : la zone de texte — bulle, cartouche ou texte

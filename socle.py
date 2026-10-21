@@ -41,7 +41,7 @@ import journal
 from database import (CRAN_IMAGES, DEMANDE_AMORCER, DEMANDE_ENTREE_DOCUMENTS, DEMANDE_REJOINDRE,
                       DEMANDE_RENDRE, DEMANDE_SUPPRESSION_DOCUMENT,
                       DEMANDE_SUPPRESSION_PROJET, REPONSE_ACCEPTEE, REPONSE_REFUSEE,
-                      clause_appartenance, collection_row, creer_copie,
+                      clause_appartenance, cle_tag, collection_row, creer_copie,
                       demandes_vers_collection, etat_des_reponses, get_connection,
                       rangement_traverse, retirer_document_sans_copie, sql_projet_de,
                       unindex_region)
@@ -98,6 +98,12 @@ def _norm_tag(label: str) -> str:
     return " ".join(label.strip().lower().split())
 
 
+# ANN-8 — la clé d'un libellé de TAG (apostrophes, accents composés, casse, espaces) : un
+# libellé saisi se compare par elle. `_norm_tag` reste ce qu'il était pour les noms de
+# domaine, de dimension et de valeur, que rien ne cherche encore par clé.
+_cle_tag = cle_tag
+
+
 def _sans_accents(s: str) -> str:
     """Minuscule sans diacritiques — pour une autocomplétion insensible aux accents
     (« etienne » trouve « Étienne »)."""
@@ -144,19 +150,31 @@ def _ensure_tags(conn: sqlite3.Connection, labels: list[str], portee) -> list[di
     poser la même garde ferait de Ctrl+Z l'outil qui efface ce que `_tags_caches`
     protège. Restaurer n'est pas saisir — on ne devine pas un libellé qu'on est en train
     de remettre là où il était.
+
+    **Un libellé se cherche par sa CLÉ** (ANN-8, `database.cle_tag`) : « c’est pluriel » et
+    « c'est pluriel », un accent composé ou décomposé, désignent le même tag. Un tag neuf
+    naît sous sa clé ; un tag d'avant est retrouvé par la sienne, sous sa graphie. Si deux
+    tags d'avant partagent une clé, on en prend UN — celui dont le libellé EST la clé, sinon
+    le plus ancien — : attacher les deux poserait deux fois le même mot.
     """
-    normalized = sorted({_norm_tag(l) for l in labels if _norm_tag(l)})
+    normalized = sorted({_cle_tag(l) for l in labels if _cle_tag(l)})
     if not normalized:
         return []
     marques = ",".join("?" * len(normalized))
     ou_tag, p_tag = portee.clause_terme("t.collection_id")
     # Deux lectures, et l'écart entre elles EST la garde : tout ce que le libellé désigne
     # déjà dans l'instance, puis ce qu'on en lit. La différence se tait.
-    pris = {r["label"] for r in conn.execute(
-        f"SELECT label FROM tags WHERE label IN ({marques})", normalized)}
-    lisibles = _rows(conn.execute(
-        f"SELECT t.id, t.label, t.couleur FROM tags t "
-        f"WHERE t.label IN ({marques}) AND {ou_tag}", (*normalized, *p_tag)))
+    pris = {r["cle"] for r in conn.execute(
+        f"SELECT cle_tag(label) AS cle FROM tags WHERE cle_tag(label) IN ({marques})",
+        normalized)}
+    lisibles = {}
+    for r in _rows(conn.execute(
+            f"SELECT t.id, t.label, t.couleur, cle_tag(t.label) AS cle FROM tags t "
+            f"WHERE cle_tag(t.label) IN ({marques}) AND {ou_tag} "
+            f"ORDER BY (t.label = cle_tag(t.label)) DESC, t.id", (*normalized, *p_tag))):
+        cle = r.pop("cle")
+        lisibles.setdefault(cle, r)
+    lisibles = list(lisibles.values())
     # Un libellé LIBRE se crée (global, comme avant) ; un libellé pris par un terme qu'on
     # ne lit pas ne se crée pas — l'unicité l'en empêche — et ne s'attache pas.
     neufs = [l for l in normalized if l not in pris]

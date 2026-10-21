@@ -32,7 +32,7 @@ from config import STATUTS
 from database import citations_regions
 from pipeline import nlp
 
-from socle import (_clause_lemme, _csv_response, _csv_safe, _norm_tag, _portee_d_export,
+from socle import (_clause_lemme, _cle_tag, _csv_response, _csv_safe, _portee_d_export,
                    _rows, _sql_a_montrer, db, portee_courante)
 
 router = APIRouter()
@@ -101,13 +101,13 @@ def _recherche_rows(conn, portee, q, album, type, tags, pos, lemme, morph, prove
         # Un tag qu'on ne lit pas ne filtre rien : sans la portée des termes, chercher son
         # nom dirait quelles régions le portent, sans jamais l'afficher.
         ou_tag, p_tag = portee.clause_terme("tg.collection_id")
-        wanted = [_norm_tag(t) for t in tags if _norm_tag(t)]
+        wanted = [_cle_tag(t) for t in tags if _cle_tag(t)]   # ANN-8 : par la clé du libellé
         for label in wanted:
             where.append(
                 "EXISTS (SELECT 1 FROM annotation_tags at "
                 "        JOIN tags tg ON tg.id = at.tag_id "
                 "        JOIN annotations a2 ON a2.id = at.annotation_id "
-                f"       WHERE {cible} AND tg.label = ? AND {ou_tag})"
+                f"       WHERE {cible} AND cle_tag(tg.label) = ? AND {ou_tag})"
             )
             params.append(label)
             params.extend(p_tag)
