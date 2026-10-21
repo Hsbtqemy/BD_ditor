@@ -353,3 +353,159 @@ def test_la_regle_de_reduction():
     assert ingest.facteur_de_travail((400, 300)) == 1.0      # aucun axe sous 300
     assert ingest.taille_de_travail(3748, 4710, (400, 400)) == (2811, 3532)
     assert ingest.taille_de_travail(3748, 4710, None) == (3748, 4710)
+
+
+# --------------------------------------------------------------------------- #
+# Relecture croisée : ce qu'un import efface sur un échec est forcément le sien
+# --------------------------------------------------------------------------- #
+def _fichiers(data_dir) -> dict:
+    return {f.relative_to(data_dir).as_posix(): f.read_bytes()
+            for racine in ("corpus", "derivatives") if (data_dir / racine).is_dir()
+            for f in sorted((data_dir / racine).rglob("*")) if f.is_file()}
+
+
+def test_un_second_import_au_meme_numero_ne_touche_pas_aux_fichiers_du_premier(
+        client, album, data_dir, db_path):
+    """Reproduit par la relecture croisée : le second import d'un même numéro écrivait sur
+    les fichiers du premier, puis, refusé par l'index unique, les EFFAÇAIT en partant — la
+    planche validée n'avait plus d'image. Il est refusé avant d'écrire quoi que ce soit."""
+    c1, c2 = database.get_connection(), database.get_connection()
+    try:
+        p1 = ingest.ingest_image(c1, album["id"], _scan(dpi=(400, 400))[0], numero=1,
+                                 origine="a.tif")
+        c1.commit()
+        avant = _fichiers(data_dir)
+        with pytest.raises(ingest.NumeroPris):
+            ingest.ingest_image(c2, album["id"], _scan(dpi=None)[0], numero=1,
+                                origine="b.tif")
+        c2.rollback()
+    finally:
+        c1.close()
+        c2.close()
+    assert _fichiers(data_dir) == avant
+    assert set(avant) == {p1["chemin_tiff"], p1["chemin_web"]}
+
+
+def test_deux_imports_simultanes_recoivent_deux_numeros(client, album, data_dir,
+                                                        monkeypatch):
+    """Deux imports lisent le MÊME numéro libre avant que l'un ou l'autre ait réservé quoi
+    que ce soit (une barrière les y force) : la réservation exclusive fait passer le second
+    au suivant, et chacune des deux planches garde SES fichiers."""
+    import threading
+    vrai = ingest.prochain_numero_libre
+    barriere = threading.Barrier(2, timeout=20)
+    premiers = set()
+
+    def lent(conn, album_id):
+        n = vrai(conn, album_id)
+        if threading.get_ident() not in premiers:     # le premier appel de chaque fil
+            premiers.add(threading.get_ident())
+            barriere.wait()
+        return n
+
+    monkeypatch.setattr(ingest, "prochain_numero_libre", lent)
+    rendus, erreurs = {}, []
+
+    def importer(couleur):
+        conn = database.get_connection()
+        try:
+            img = Image.new("RGB", (400, 500), couleur)
+            buf = io.BytesIO()
+            img.save(buf, "TIFF")
+            rendus[couleur] = ingest.ingest_image(conn, album["id"], buf.getvalue(),
+                                                  origine=f"{couleur}.tif")
+            conn.commit()
+        except Exception as exc:                     # pragma: no cover - dit par l'assert
+            erreurs.append(exc)
+        finally:
+            conn.close()
+
+    fils = [threading.Thread(target=importer, args=(c,)) for c in ("red", "blue")]
+    for f in fils:
+        f.start()
+    for f in fils:
+        f.join(30)
+    assert erreurs == []
+    assert sorted(p["numero"] for p in rendus.values()) == [1, 2]
+    for couleur, p in rendus.items():
+        for chemin in (p["chemin_tiff"], p["chemin_web"]):
+            with Image.open(data_dir / chemin) as im:
+                r, g, b = im.convert("RGB").getpixel((10, 10))
+            assert (r > 200 and b < 60) if couleur == "red" else (b > 200 and r < 60), (
+                couleur, chemin, (r, g, b))
+
+
+def test_un_echec_apres_l_ecriture_de_la_copie_ne_laisse_aucun_fichier(
+        client, album, data_dir, monkeypatch):
+    """Le dérivé échoue APRÈS que la copie de travail est écrite : la copie part aussi, et
+    les témoins de réservation avec elle."""
+    def panne(*a, **k):
+        raise OSError("disque plein")
+    monkeypatch.setattr(ingest, "_ecrire_derive", panne)
+    conn = database.get_connection()
+    try:
+        with pytest.raises(OSError, match="disque plein"):
+            ingest.ingest_image(conn, album["id"], _scan()[0], origine="s.tif")
+    finally:
+        conn.close()
+    assert _fichiers(data_dir) == {}
+
+
+def test_un_insert_refuse_ne_laisse_aucun_fichier(client, album, data_dir, db_path):
+    """L'index unique refuse l'`INSERT` — une planche de ce numéro existe dans l'album, ses
+    fichiers ailleurs (une copie sœur désigne ceux de sa source) : les fichiers écrits pour
+    rien partent, et seulement eux."""
+    c = sqlite3.connect(db_path)
+    c.execute("INSERT INTO planches (album_id, numero, chemin_web) VALUES (?, 5, ?)",
+              (album["id"], "derivatives/album_999/planche_0001.jpg"))
+    c.commit()
+    c.close()
+    conn = database.get_connection()
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            ingest.ingest_image(conn, album["id"], _scan()[0], numero=5, origine="s.tif")
+        conn.rollback()
+    finally:
+        conn.close()
+    assert _fichiers(data_dir) == {}
+
+
+def test_un_fichier_source_au_chemin_vise_n_est_ni_reecrit_ni_efface(client, album,
+                                                                      data_dir):
+    """`source` est un chemin qui appartient à l'appelant : posé là où l'ingest écrirait la
+    copie de la planche 1, il n'est pas touché — le numéro 1 est sauté."""
+    source = data_dir / "corpus" / f"album_{album['id']}" / "planche_0001.jpg"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    _, img = _scan(dpi=None)
+    img.save(source, "JPEG", quality=95)
+    octets = source.read_bytes()
+    conn = database.get_connection()
+    try:
+        p = ingest.ingest_image(conn, album["id"], source)
+        conn.commit()
+    finally:
+        conn.close()
+    assert p["numero"] == 2 and p["master_origine"] == "planche_0001.jpg"
+    assert source.read_bytes() == octets
+
+
+def test_master_origine_ne_sort_d_aucune_lecture_de_planche(client, album, db_path):
+    """Un chemin ShareDocs — parfois personnel — ou un nom de fichier, recopié sur les
+    planches d'une copie sœur d'un autre projet : aucune route ne le rend, hors la réponse
+    de l'import à qui vient de donner le fichier."""
+    p = _importer(client, album["id"], _scan()[0], nom="Mon Scan Perso.tif")
+    assert p["master_origine"] == "Mon Scan Perso.tif"
+    lectures = {
+        "liste": client.get(f"/api/albums/{album['id']}/planches"),
+        "statut": client.patch(f"/api/planches/{p['id']}/statut",
+                               json={"statut": "importee"}),
+        "validation": client.patch(f"/api/planches/{p['id']}/validation",
+                                   json={"validee": True}),
+        "verrou": client.patch(f"/api/planches/{p['id']}/verrou",
+                               json={"verrouillee": True}),
+    }
+    for nom, r in lectures.items():
+        assert r.status_code == 200, (nom, r.text)
+        assert "master_origine" not in r.text and "Mon Scan Perso" not in r.text, nom
+    # Le semis a bien pris : la valeur est en base.
+    assert database_ligne(db_path, p["id"])["master_origine"] == "Mon Scan Perso.tif"

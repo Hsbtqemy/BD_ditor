@@ -2186,8 +2186,8 @@ def creer_copie(conn: sqlite3.Connection, document_id: int, collection_id: int, 
     collection, son cran et sa source ; puis son EMPLOI (`journal.journaliser_emploi`).
 
     Les FICHIERS ne sont pas touchés, et aucun dossier n'est créé : la copie n'en écrit
-    qu'à son premier import, sous un numéro dont les fichiers sont libres
-    (`ingest.prochain_numero_libre`). Ne commite pas. Lève `ValueError` sur une source qui
+    qu'à son premier import, sous un numéro dont les fichiers sont libres et qu'il réserve
+    (`ingest.prochain_numero_libre`, `ingest._reserver`). Ne commite pas. Lève `ValueError` sur une source qui
     n'est pas une copie de ce document, une collection qui n'existe pas, un cran inconnu :
     des erreurs de l'appelant, que la route a refusées avant."""
     import journal                          # la naissance s'écrit ici (cf. ci-dessus)

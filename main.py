@@ -89,8 +89,8 @@ from pipeline.backup import make_backup
 from pipeline import jobs
 from pipeline import nlp
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
-from pipeline.ingest import (ORIGINE_SHAREDOCS, ecarter_dossiers_d_album, ingest_image,
-                             numero_occupe, prochain_numero_libre, remove_planche_files)
+from pipeline.ingest import (ORIGINE_SHAREDOCS, NumeroPris, ecarter_dossiers_d_album,
+                             ingest_image, numero_occupe, remove_planche_files)
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
 from pipeline.ordering import move_region, reorder_planche
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
@@ -705,6 +705,22 @@ def _effacer_les_images_d_une_planche(conn, planche: dict) -> None:
     remove_planche_files(*chemins, garder=_chemins_employes(conn, chemins))
 
 
+# Les colonnes de `planches` que les routes qui rendent une planche ENTIÈRE (`SELECT *`)
+# taisent (IMG-1, relecture croisée). `master_origine` dit où vit le master d'archive : un
+# chemin ShareDocs — parfois celui d'un espace PERSONNEL — ou un nom de fichier. Les
+# planches d'une copie sœur la recopient (D6), si bien qu'un lecteur d'un autre projet la
+# recevait ; et rien à l'écran ne la lit. Seule la réponse de l'import la rend, à qui vient
+# de donner le fichier.
+_PLANCHE_TUE = ("master_origine",)
+
+
+def _planche_rendue(p: dict) -> dict:
+    """Une planche lue par `SELECT *`, sans ce que l'API tait (`_PLANCHE_TUE`)."""
+    for col in _PLANCHE_TUE:
+        p.pop(col, None)
+    return p
+
+
 @app.get("/api/albums/{album_id}/planches")
 def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
@@ -730,6 +746,7 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db),
     # la charge utile : il est stable, et lui seul permet à l'écran de dire « par vous ».
     noms = noms_lisibles(conn, [p["verrou_par"] for p in planches])
     for p in planches:
+        _planche_rendue(p)
         p["verrou_par_nom"] = noms.get(p["verrou_par"])
         p["url_web"] = "/" + p["chemin_web"] if p["chemin_web"] else None
         p["numero_editorial"] = nums.get(p["id"])   # None si paratexte (cf. role)
@@ -743,20 +760,20 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db),
 # Route synchrone (def) : FastAPI l'exécute dans un threadpool, ce qui évite
 # de bloquer la boucle d'événements pendant le redimensionnement PIL (lourd
 # sur un TIFF 400 dpi). On lit donc l'upload via file.file (API synchrone).
-def _allouer_numero(conn, album_id: int, numero: Optional[int]) -> int:
-    """Alloue le numéro d'une nouvelle planche AVANT toute écriture de fichier (DB-1).
-    Les fichiers master/dérivé sont nommés d'après le numéro : on vérifie donc l'unicité
-    en amont, sinon l'écriture écraserait SILENCIEUSEMENT la planche existante de même
-    numéro. `numero` explicite déjà pris → 409 ; absent → MAX+1 de l'album. L'index unique
-    (album_id, numero) reste le filet en cas de course concurrente résiduelle.
+def _allouer_numero(conn, album_id: int, numero: int) -> int:
+    """Vérifie un numéro IMPOSÉ avant toute écriture de fichier (DB-1), pour le refuser par
+    un 409 qui dit pourquoi. Les fichiers sont nommés d'après le numéro : sans ce contrôle,
+    l'écriture écraserait SILENCIEUSEMENT la planche existante de même numéro.
 
     COL-3, tranche 3 (D6, relecture croisée) — libre DANS L'ALBUM ne suffit plus : une
     copie sœur peut désigner les fichiers d'une planche supprimée de cet album, et un
-    fichier peut rester sur le disque. Absent, le numéro saute au premier dont les fichiers
-    ne sont pas pris (`ingest.prochain_numero_libre`) ; explicite et pris ainsi, 409 qui le
-    dit — un import n'écrit jamais sur un fichier qui existe ou qu'une planche désigne."""
-    if numero is None:
-        return prochain_numero_libre(conn, album_id)
+    fichier peut rester sur le disque ; pris ainsi, 409 qui le dit — un import n'écrit
+    jamais sur un fichier qui existe ou qu'une planche désigne.
+
+    Le numéro LIBRE ne passe plus par ici (IMG-1, relecture croisée) : il est choisi et
+    réservé sur le disque d'un seul geste par l'ingest (`ingest._reserver`), sans quoi deux
+    imports simultanés en recevaient le même. La réservation tient aussi pour un numéro
+    imposé : entre ce contrôle et elle, un concurrent qui l'a pris fait lever `NumeroPris`."""
     if conn.execute("SELECT 1 FROM planches WHERE album_id = ? AND numero = ?",
                     (album_id, numero)).fetchone():
         raise HTTPException(409, f"Le numéro {numero} est déjà pris dans cet album.")
@@ -790,15 +807,19 @@ def import_planche(
     data = file.file.read()
     if not data:
         raise HTTPException(400, "Fichier vide")
-    # Numéro alloué AVANT écriture (DB-1) : un numéro explicite déjà pris → 409, sans
-    # écraser les fichiers (master/dérivé nommés d'après lui) de la planche existante.
-    numero = _allouer_numero(conn, album_id, numero)
+    # Un numéro explicite déjà pris → 409 (DB-1), sans écraser les fichiers de la planche
+    # existante. Le numéro libre, lui, est choisi ET RÉSERVÉ sur le disque par l'ingest
+    # (IMG-1, relecture croisée) : deux imports simultanés n'en reçoivent plus le même.
+    if numero is not None:
+        _allouer_numero(conn, album_id, numero)
     # IMG-1 (Hugo, 2026-10-21) — le fichier reçu n'est PAS écrit sur le disque : l'ingest le
     # décode depuis ses octets et ne garde que sa COPIE DE TRAVAIL (300 dpi effectifs) ; le
     # master d'archive vit où le projet le met, et la planche note le nom du fichier reçu.
     # Sur un échec, l'ingest retire lui-même ce qu'il a écrit.
     try:
         planche = ingest_image(conn, album_id, data, numero=numero, origine=nom)
+    except NumeroPris as exc:            # course : un import concurrent l'a réservé
+        raise HTTPException(409, f"Numéro {numero} déjà pris (course d'import) — {exc}")
     except sqlite3.IntegrityError:       # course rare : un concurrent a pris ce numéro
         raise HTTPException(409, f"Numéro {numero} déjà pris (course d'import) — réessayez.")
     except Exception as exc:
@@ -963,7 +984,8 @@ def create_region(planche_id: int, region: RegionIn,
 def region_crop(region_id: int, taille: int = 1600,
                 conn: sqlite3.Connection = Depends(db),
                 portee: autorisation.Portee = Depends(portee_courante)):
-    """PNG net de la région recadré dans le master.
+    """PNG net de la région recadrée dans la copie de travail (IMG-1 ; le master d'une
+    planche d'avant la v34), à ses coordonnées en pixels du scan (`ocr._open_image`).
 
     `taille` borne la largeur (vignettes de recherche : ~240 ; transcription :
     1600 par défaut). Bornée à [40, 2000].
@@ -1274,10 +1296,10 @@ def sharedocs_importer(payload: SharedocsImportIn,
                 chemin, principal=_principal_sharedocs(portee), compte=payload.compte)
             if not data:
                 raise ShareDocsError("fichier vide")
-            numero = _allouer_numero(conn, album_id, None)   # auto (MAX+1) ; index unique = filet
             # IMG-1 — la copie de travail, comme l'import de fichiers ; la planche note le
-            # chemin DISTANT, là où vit le master d'archive (`sharedocs:<chemin>`).
-            planche = ingest_image(conn, album_id, data, numero=numero,
+            # chemin DISTANT, là où vit le master d'archive (`sharedocs:<chemin>`). Le numéro
+            # est choisi et réservé sur le disque par l'ingest ; l'index unique reste le filet.
+            planche = ingest_image(conn, album_id, data,
                                    origine=f"{ORIGINE_SHAREDOCS}{chemin}")
             planche["url_web"] = "/" + planche["chemin_web"]
             _journaliser_scan(conn, album_id, planche)
@@ -1483,7 +1505,7 @@ def update_statut(planche_id: int, payload: StatutIn,
     conn.execute("UPDATE planches SET statut = ? WHERE id = ?",
                  (payload.statut, planche_id))
     conn.commit()
-    return _get_planche(conn, portee, planche_id, ecriture=True)
+    return _planche_rendue(_get_planche(conn, portee, planche_id, ecriture=True))
 
 
 @app.patch("/api/planches/{planche_id}/relecture")
@@ -1525,7 +1547,7 @@ def update_validation(planche_id: int, payload: ValidationIn,
     journal.journaliser(conn, "validation", "planches", planche_id,
                         apres={"validee": bool(payload.validee)})
     conn.commit()
-    return _get_planche(conn, portee, planche_id, ecriture=True)
+    return _planche_rendue(_get_planche(conn, portee, planche_id, ecriture=True))
 
 
 @app.patch("/api/planches/{planche_id}/verrou")
@@ -1546,7 +1568,7 @@ def update_verrou(planche_id: int, payload: VerrouIn, request: Request,
         conn.execute("UPDATE planches SET verrouillee = NULL, verrou_par = NULL "
                      "WHERE id = ?", (planche_id,))
     conn.commit()
-    p = _get_planche(conn, portee, planche_id, ecriture=True)
+    p = _planche_rendue(_get_planche(conn, portee, planche_id, ecriture=True))
     # Le nom accompagne le retour, sinon l'écran qui vient de poser le verrou afficherait
     # un login jusqu'au prochain rechargement — une incohérence d'une seconde, mais qui
     # ferait douter du reste.

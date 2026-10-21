@@ -1063,6 +1063,19 @@ def _jetons_retenus() -> dict:
             for i, col in enumerate(sorted(main._EXPORT_PLANCHE_RETENUES))}
 
 
+def _jetons_album_retenus(conn) -> dict:
+    """{colonne retenue d'`albums`: jeton} — DÉRIVÉ de `main._EXPORT_ALBUM_RETENUES`, pour
+    les colonnes de TEXTE (IMG-1, relecture croisée : `lieu_masters` n'était semé nulle
+    part). Les deux autres, `document_id` et `projet_id`, sont des clés étrangères entières :
+    un jeton n'y tiendrait pas sans casser ce qui les lit, et un entier qui fuirait ne se
+    distinguerait d'aucun autre nombre de l'export — leur garde est la liste publiée,
+    nommée colonne par colonne."""
+    types = {r[1]: (r[2] or "").upper() for r in conn.execute("PRAGMA table_info(albums)")}
+    return {col: f"zzalbumretenue{i}jeton7"
+            for i, col in enumerate(sorted(main._EXPORT_ALBUM_RETENUES))
+            if types.get(col) == "TEXT"}
+
+
 def _retenues_dans(texte: str) -> set:
     """Les colonnes retenues dont un jeton se lit dans ce texte, casse ignorée."""
     t = texte.lower()
@@ -1201,12 +1214,20 @@ def test_aucune_colonne_retenue_ne_sort_d_un_export_d_album(client, db_path, dat
         for col, (dossier, fichier) in jetons.items():
             conn.execute(f"UPDATE planches SET {col} = ? WHERE album_id = ?",
                          (f"{dossier}/{fichier}.jpg", a["id"]))
+        # … et chaque colonne retenue d'`albums` qui peut porter un jeton (IMG-1).
+        jetons_album = _jetons_album_retenus(conn)
+        for col, jeton in jetons_album.items():
+            conn.execute(f"UPDATE albums SET {col} = ? WHERE id = ?", (jeton, a["id"]))
         conn.commit()
         en_base = {pid: dict(zip(jetons, conn.execute(
             f"SELECT {', '.join(jetons)} FROM planches WHERE id = ?", (pid,)).fetchone()))
             for pid in ids}
+        album_en_base = {col: conn.execute(f"SELECT {col} FROM albums WHERE id = ?",
+                                           (a["id"],)).fetchone()[0] for col in jetons_album}
     finally:
         conn.close()
+    assert "lieu_masters" in jetons_album and album_en_base == jetons_album, (
+        f"le semis des retenues d'album n'a pas pris : {album_en_base}")
     # Le mode d'échec d'un cliquet est son SEMIS : une colonne restée vide ne peut pas fuir.
     for pid, ligne in en_base.items():
         assert {c: _retenues_dans(v or "") for c, v in ligne.items()} == {c: {c} for c in jetons}, (
@@ -1278,6 +1299,12 @@ def test_aucune_colonne_retenue_ne_sort_d_un_export_d_album(client, db_path, dat
         assert not nommees, (
             f"{chemin} NOMME {sorted(nommees)}, que `main._EXPORT_PLANCHE_RETENUES` retient : "
             "une colonne dite sans sa valeur sort quand même.")
+        fuites_album = {col for col, jeton in jetons_album.items()
+                        if jeton in texte.lower() or col in texte.lower()}
+        assert not fuites_album, (
+            f"{chemin} publie ou nomme {sorted(fuites_album)}, que "
+            "`main._EXPORT_ALBUM_RETENUES` retient : "
+            + " ; ".join(f"{c} — {main._EXPORT_ALBUM_RETENUES[c]}" for c in sorted(fuites_album)))
 
         # (b) Ce qui PORTE une planche est déclaré, et (c) le décor exerce ses branches.
         if chemin == "/api/export/json":

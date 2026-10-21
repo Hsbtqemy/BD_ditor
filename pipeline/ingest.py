@@ -314,6 +314,44 @@ def ecrire_copie_de_travail(img8: Image.Image, dest: Path, largeur: int, hauteur
     return w, h
 
 
+class NumeroPris(ValueError):
+    """Les fichiers du numéro DEMANDÉ sont déjà pris — sur le disque, ou par une planche
+    (IMG-1, relecture croisée). Un numéro laissé au choix de l'ingest n'en lève jamais : il
+    passe au suivant."""
+
+
+# Combien de numéros l'ingest essaie d'affilée quand un import concurrent prend, entre sa
+# lecture et sa réservation, celui qu'il visait. Au-delà, quelque chose d'autre écrit dans
+# le dossier de l'album.
+_ESSAIS_DE_RESERVATION = 50
+
+
+def _reserver(chemins) -> list[Path]:
+    """Réserve des chemins SUR LE DISQUE, par une création EXCLUSIVE (`open(…, "xb")`) d'un
+    fichier vide à chacun, et rend ceux qu'elle a créés. Si l'un existe déjà, elle retire
+    ceux qu'elle venait de créer et lève `FileExistsError`.
+
+    C'est ce qui rend vraie la règle de `numero_occupe` — « un fichier qu'un import efface
+    sur un échec est forcément le sien » — depuis que l'import n'écrit plus rien avant la
+    fin du décodage (IMG-1, relecture croisée, reproduit) : deux imports simultanés du même
+    album lisaient le même numéro libre, écrivaient sur les mêmes chemins, et le perdant,
+    refusé par l'index unique, effaçait en partant la copie et le dérivé du GAGNANT, dont la
+    planche validée n'avait plus d'image. Le témoin vide est vu par `numero_occupe` (le
+    dérivé existe, `planche_<n>.*` existe) : un import concurrent passe au numéro suivant."""
+    crees: list[Path] = []
+    try:
+        for p in chemins:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "xb"):
+                pass
+            crees.append(p)
+    except BaseException:
+        for p in crees:
+            p.unlink(missing_ok=True)
+        raise
+    return crees
+
+
 # Le préfixe de `planches.master_origine` quand le scan vient de ShareDocs : la suite est le
 # chemin DISTANT, là où vit le master d'archive. Sans préfixe, c'est le NOM du fichier reçu
 # par l'import de fichiers — le seul fait que l'outil sache alors de son master.
@@ -330,6 +368,13 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source,
     quel sur le disque), ou un chemin. Ce fichier n'est NI gardé NI effacé par l'ingest :
     seule sa copie de travail est gardée (IMG-1), et un chemin passé appartient à
     l'appelant.
+
+    `numero` : imposé, ou None pour le premier libre. Les chemins de la planche sont
+    RÉSERVÉS sur le disque avant le décodage (`_reserver`) : un numéro imposé déjà pris lève
+    `NumeroPris` sans rien toucher ; un numéro libre pris entre-temps par un import
+    concurrent fait passer au suivant. L'ingest n'écrit donc jamais sur un fichier qui
+    existe — un chemin passé en `source`, s'il est au chemin visé, n'est ni réécrit ni
+    effacé : son numéro est sauté.
 
     `keep_master` : faux, aucune copie de travail n'est écrite (`chemin_tiff` NULL, le
     dérivé seul). `origine` : ce que l'outil sait du master d'archive, gardé dans
@@ -354,13 +399,28 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source,
     if album is None:
         raise ValueError(f"Album {album_id} inexistant")
 
-    if numero is None:
-        numero = prochain_numero_libre(conn, album_id)
-
-    souche = f"planche_{numero:04d}"
-    web_path = DERIVATIVES_DIR / f"album_{album_id}" / f"{souche}.jpg"
-    travail = CORPUS_DIR / f"album_{album_id}" / f"{souche}.jpg" if keep_master else None
-    ecrits: list[Path] = []
+    impose = numero is not None
+    for _ in range(_ESSAIS_DE_RESERVATION):
+        n = numero if impose else prochain_numero_libre(conn, album_id)
+        if impose and numero_occupe(conn, album_id, n):
+            raise NumeroPris(f"Les images du numéro {n} sont déjà sur le disque ou "
+                             "désignées par une planche.")
+        souche = f"planche_{n:04d}"
+        web_path = DERIVATIVES_DIR / f"album_{album_id}" / f"{souche}.jpg"
+        travail = CORPUS_DIR / f"album_{album_id}" / f"{souche}.jpg" if keep_master else None
+        try:
+            # Les fichiers réservés sont À CET APPEL : il les remplit, et sur un échec il
+            # les retire — eux, et rien d'autre.
+            ecrits = _reserver([p for p in (travail, web_path) if p is not None])
+            break
+        except FileExistsError:
+            if impose:
+                raise NumeroPris(f"Les images du numéro {n} viennent d'être prises par un "
+                                 "autre import.") from None
+    else:
+        raise RuntimeError(f"Album {album_id} : aucun numéro de planche n'a pu être réservé "
+                           f"en {_ESSAIS_DE_RESERVATION} essais.")
+    numero = n
     try:
         with Image.open(flux, formats=PILLOW_FORMATS) as img:   # SEC-3, cf. read_metadata
             meta = _metadonnees(img)
@@ -370,9 +430,7 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source,
                 ecrire_copie_de_travail(img8, travail, meta["largeur"], meta["hauteur"],
                                         meta["dpi"],
                                         icc=icc if img8.mode == meta["mode"] else None)
-                ecrits.append(travail)
             _ecrire_derive(img8, web_path, (meta["largeur"], meta["hauteur"]))
-            ecrits.append(web_path)
 
         chemin_tiff = _rel_posix(travail) if travail is not None else None
         chemin_web = _rel_posix(web_path)
