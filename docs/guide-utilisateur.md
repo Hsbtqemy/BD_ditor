@@ -260,7 +260,12 @@ type :
   liste, et répond sinon par un message. Le profil d'un personnage se saisit sous la même
   forme — `registre : familier` —, avec la même phrase sous son champ ;
 - les **tags** — vocabulaire libre, cumulatif, avec autocomplétion ;
-- une **note** en texte libre.
+- une **note** en texte libre. Pour y renvoyer à une autre région — l'autre bulle d'un
+  chevauchement de paroles, par exemple —, écrivez son **identifiant**, « #123 » : le
+  panneau l'affiche à la ligne *Région* quand elle est sélectionnée, et l'arbre de
+  structure à côté de son type. Il ne change jamais. N'écrivez pas sa *Citation*
+  (`pl·c·b`) : elle se dérive de l'ordre de lecture, et la même citation désigne une autre
+  bulle dès qu'une case est ajoutée ou réordonnée.
 
 Les personnages sont des entités de corpus : le même personnage traverse les albums, et peut
 être **aligné** sur un référentiel externe (Wikidata, VIAF, IdRef) depuis son panneau.

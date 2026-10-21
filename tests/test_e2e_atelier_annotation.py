@@ -765,3 +765,23 @@ def test_aucun_champ_ne_depasse_du_tiroir_a_320_px_sous_une_police_de_24(
     assert not trop, (f"champ(s) hors du tiroir ({chasse}) : {trop}, le tiroir s'arrête à "
                       f"{m['interieurDroit']:.1f} px")
     assert not m["defile"], f"le tiroir défile en largeur ({chasse}) : {m}"
+
+
+# --------------------------------------------------------------------------- #
+# ANN-8 (Hugo, 2026-10-21) — la référence d'une autre bulle, dans la Note
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("type_zone", ["bulle", "cartouche", "texte"])
+def test_l_identifiant_stable_d_une_zone_de_texte_se_lit_en_mode_annotation(page, atelier, type_zone):
+    """Le guide fait écrire dans la Note l'identifiant « #123 » d'une autre bulle, et non sa
+    citation, qui se dérive de l'ordre de lecture. Il dit où le lire : la ligne « Région » du
+    panneau, et l'arbre de structure. Ce test tient la promesse du guide là où l'on écrit la
+    Note — en mode Annotation, une zone de texte sélectionnée."""
+    rid = atelier[type_zone]
+    _ouvrir(page, atelier, type_zone)
+    ligne = page.locator(".panel-row", has=page.locator("#region-id"))
+    expect(ligne).to_be_visible()
+    expect(ligne).to_contain_text("Région")
+    expect(page.locator("#region-id")).to_have_text(f"#{rid}")
+    expect(page.locator("#note-input")).to_be_visible()     # la Note est là, sous le même panneau
+    expect(_noeud(page, rid)).to_be_visible()
+    expect(_noeud(page, rid).locator(".tn-id")).to_have_text(f"#{rid}")
