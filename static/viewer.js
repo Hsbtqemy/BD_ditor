@@ -47,7 +47,11 @@ if (window.BDMoi) {
 }
 
 const state = {
-  albums: [],
+  albums: [],              // la liste *Album* : ceux de la collection choisie (UX-19)
+  albumsProjet: [],        // UX-19 : ceux du projet courant — « Toutes les collections »
+  collections: [],         // UX-19 : les collections du projet qu'on lit, base en tête
+  collection: null,        // UX-19 : la collection choisie, ou BDAtelier.TOUTES
+  collectionProjet: null,  // UX-19 : le projet pour lequel ce choix a été fait
   albumId: null,
   planches: [],
   planche: null,           // planche courante (objet de la liste)
@@ -107,22 +111,93 @@ async function lireProjetCourant() {
   PROJET = BDProjet.courant(PROJETS, PROJET === null ? BDProjet.lire() : PROJET);
 }
 
+/* UX-19 — L'ATELIER CHOISIT SA COLLECTION AVANT SON ALBUM (Hugo, 2026-10-21). La liste
+   *Collection* propose les collections du projet courant qu'on lit, la base en tête puis
+   A → Z (l'ordre de la Bibliothèque, `BDBiblio.trierCollections`), et « Toutes les
+   collections du projet » ; la liste *Album* ne montre que les albums rangés dans la
+   collection choisie. La règle — le défaut sur la base, ce qui est retenu projet par projet,
+   l'adresse qui l'emporte, l'album d'un lien qui fait changer de collection — est dans
+   `lib/atelier.js`. Un filtre de l'Atelier seul : la Bibliothèque ne le lit pas.
+
+   Deux choses que l'adresse peut poser, lues au premier chargement seulement :
+   `?collection=<id>` (les liens de la fiche d'un album, dans la Bibliothèque, quand on vient
+   d'une collection) et l'album du lien, qui doit être DANS la liste — jamais un album ouvert
+   hors d'elle. Plus tard, l'album qui doit être dans la liste est celui qu'on vient
+   d'importer (`state.albumId`, posé par l'import avant de recharger). */
 async function loadAlbums() {
-  const lus = await apiGet("/api/albums");
+  const [lus, cols] = await Promise.all([
+    apiGet("/api/albums"),
+    // Une liste illisible ne vide pas l'Atelier : sans collections, rien n'est filtré.
+    apiGet("/api/collections").catch(() => []),
+  ]);
   await lireProjetCourant();
-  if (!LIEN_LU) {
+  const qs = new URLSearchParams(INITIAL_QS);
+  const premier = !LIEN_LU;
+  let lien = null, adresse = null;
+  if (premier) {
     LIEN_LU = true;
-    const brut = new URLSearchParams(INITIAL_QS).get("album");
-    const vise = lus.find((a) => String(a.id) === brut && !a.au_fonds);
-    const vers = BDProjet.basculeVers(PROJETS, PROJET, vise ? vise.projet_id : null);
+    const brut = qs.get("album");
+    lien = lus.find((a) => String(a.id) === brut && !a.au_fonds) || null;
+    adresse = BDAtelier.collectionDeLAdresse(INITIAL_QS);
+    // Le projet où basculer : celui de l'album du lien, sinon celui de la collection posée.
+    const posee = adresse === null ? null : (cols || []).find((c) => c.id === adresse);
+    const vise = lien ? lien.projet_id : (posee ? posee.projet_id : null);
+    const vers = BDProjet.basculeVers(PROJETS, PROJET, vise);
     if (vers !== null) { PROJET = vers; BDProjet.choisir(vers); }
   }
-  state.albums = BDProjet.albumsDuProjet(lus, PROJET);
+  state.albumsProjet = BDProjet.albumsDuProjet(lus, PROJET);
+  state.collections = BDBiblio.trierCollections(BDProjet.duProjet(cols || [], PROJET), "alpha");
+  // Ce qui est retenu : le choix de la page s'il est de CE projet, sinon celui du stockage.
+  const retenu = state.collectionProjet === PROJET && state.collection !== null
+    ? state.collection : BDAtelier.lire(PROJET);
+  const voulu = premier ? (lien ? lien.id : null) : state.albumId;
+  const { choix, raison } = BDAtelier.resoudre({
+    collections: state.collections, albums: state.albumsProjet,
+    adresse, retenu, albumVise: voulu,
+  });
+  state.collection = choix;
+  state.collectionProjet = PROJET;
+  if (raison === "adresse" || raison === "album") BDAtelier.retenir(PROJET, choix);
+  rendreCollections();
+  // Un lien qui nomme une planche ou une région : l'album s'ouvre sans sa première planche,
+  // que `applyDeepLink` remplace aussitôt (F5).
+  const precis = premier && lien && (qs.get("planche") || qs.get("region"));
+  await afficherAlbums(voulu, !precis);
+}
+
+/* La liste *Collection*, telle que `state` la dit. */
+function rendreCollections() {
+  const sel = $("#collection-select");
+  sel.innerHTML = "";
+  for (const c of state.collections) {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = c.nom;
+    sel.appendChild(opt);
+  }
+  const toutes = document.createElement("option");
+  toutes.value = BDAtelier.TOUTES;
+  toutes.textContent = BDAtelier.LIBELLE_TOUTES;
+  sel.appendChild(toutes);
+  sel.value = String(state.collection);
+}
+
+/* La liste *Album* sous la collection choisie, puis l'album qu'elle ouvre : `voulu` s'il y
+   est, sinon celui qui est ouvert s'il y est encore, sinon le premier. `ouvrir` l'ouvre :
+   `selectAlbum`, qui pose les gardes d'un changement d'album (conflit, enregistrement en
+   cours), sauf quand l'appelant les a déjà posées (`changerCollection` passe `ouvrirAlbum`),
+   ou rien quand l'album ouvert reste dans la liste. */
+async function afficherAlbums(voulu, autoSelect = true, ouvrir = selectAlbum) {
+  state.albums = BDAtelier.filtrer(state.albumsProjet, state.collection);
   const sel = $("#album-select");
   sel.innerHTML = "";
-  if (!state.albums.length) {
-    sel.innerHTML = '<option value="">— aucun album —</option>';
-    // Un projet sans album : l'album du projet d'avant ne reste pas à l'écran.
+  const cible = BDAtelier.albumAOuvrir(state.albums, voulu, state.albumId);
+  if (cible === null) {
+    const vide = document.createElement("option");
+    vide.value = "";
+    vide.textContent = BDAtelier.libelleVide(state.collection);
+    sel.appendChild(vide);
+    // Une collection ou un projet sans album : l'album d'avant ne reste pas à l'écran.
     if (state.albumId != null) {
       flushSave();
       state.albumId = null;
@@ -139,17 +214,43 @@ async function loadAlbums() {
     opt.textContent = `${serieTome(a) ? serieTome(a) + " · " : ""}${a.titre} (${a.nb_planches})`;
     sel.appendChild(opt);
   }
-  // L'album ouvert le reste s'il est du projet ; sinon le premier de la liste.
-  const first = state.albums.some((a) => a.id === state.albumId)
-    ? state.albumId : state.albums[0].id;
-  sel.value = first;
-  await selectAlbum(Number(first));
+  sel.value = cible;
+  if (ouvrir) await ouvrir(cible, autoSelect);
+}
+
+/* Un autre choix dans la liste *Collection*. S'il change d'album — celui qui est ouvert n'y
+   est pas —, il passe par les MÊMES gardes que le changement d'album (CONC-3) : un conflit
+   ouvert le bloque, un enregistrement pas encore revenu le retient et le rejoue. On les
+   pose ICI, avant de toucher à la liste, et l'album s'ouvre ensuite sans les reposer : le
+   laissez-passer d'une attente vaine (`partirQuandMeme`) ne vaut qu'une fois, et le second
+   passage aurait retenu le geste derrière une liste déjà changée. */
+async function changerCollection(valeur) {
+  const sel = $("#collection-select");
+  const choix = BDAtelier.valide(valeur, state.collections);
+  if (choix === null) { sel.value = String(state.collection); return; }
+  const restera = BDAtelier.filtrer(state.albumsProjet, choix)
+    .some((a) => a.id === state.albumId);
+  if (!restera && state.albumId != null) {
+    if (conflitBloque()) { sel.value = String(state.collection); return; }
+    const rejouer = () => { sel.value = String(choix); changerCollection(choix); };
+    if (!partirApresEnregistrement(rejouer)) { sel.value = String(state.collection); return; }
+  }
+  state.collection = choix;
+  state.collectionProjet = PROJET;
+  BDAtelier.retenir(PROJET, choix);
+  sel.value = String(choix);
+  await afficherAlbums(null, true, restera ? null : ouvrirAlbum);
 }
 
 async function selectAlbum(id, autoSelect = true) {
   if (conflitBloque()) { $("#album-select").value = state.albumId; return; }
   const rejouer = () => { $("#album-select").value = id; selectAlbum(id, autoSelect); };
   if (!partirApresEnregistrement(rejouer)) { $("#album-select").value = state.albumId; return; }
+  await ouvrirAlbum(id, autoSelect);
+}
+
+/* Ouvre un album SANS reposer les gardes : l'appelant les a posées. */
+async function ouvrirAlbum(id, autoSelect = true) {
   state.albumId = id;
   state.exportCols = null;        // DROIT-2 : à redemander pour cet album
   chargerExportables();
@@ -2935,7 +3036,10 @@ function sdUpdateSel() {
    Rend le nombre d'albums proposés. */
 function sdFillAlbumSelect(selectedId) {
   const sel = $("#sd-album");
-  const ouJEcris = state.albums.filter((a) => a.ecrivable);
+  // Tout le projet, et non la seule collection choisie (UX-19) : on importe dans un album qui
+  // existe et où l'on écrit, quel que soit le filtre ; au retour, `loadAlbums` change de
+  // collection si l'album importé n'est pas dans la sienne.
+  const ouJEcris = state.albumsProjet.filter((a) => a.ecrivable);
   sel.innerHTML = "";
   for (const a of ouJEcris) {
     const o = document.createElement("option");
@@ -3294,6 +3398,7 @@ function setupControls() {
   document.querySelectorAll(".mode-btn").forEach((b) =>
     b.onclick = () => setMode(b.dataset.mode));
   $("#album-select").onchange = (e) => selectAlbum(Number(e.target.value));
+  $("#collection-select").onchange = (e) => changerCollection(e.target.value);
   $("#btn-segmenter").onclick = segmenter;
   $("#btn-bulles").onclick = detecterBulles;
   $("#btn-ocr").onclick = lancerOCR;
@@ -3478,6 +3583,13 @@ async function applyDeepLink() {
   if (!planche && !region) return;
   try {
     if (album && Number(album) !== state.albumId) {
+      // UX-19 — jamais un album ouvert hors de la liste. `loadAlbums` a déjà changé de
+      // collection pour un album du lien qu'on lit ; s'il n'est toujours pas dans la liste,
+      // on ne le lit pas dans ce projet, et on ne l'ouvre pas.
+      if (!state.albums.some((a) => a.id === Number(album))) {
+        toast("Album du lien introuvable.", "error");
+        return;
+      }
       $("#album-select").value = album;
       await selectAlbum(Number(album), false);   // la planche du lien sera choisie ci-dessous
     }

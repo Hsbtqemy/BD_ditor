@@ -976,7 +976,7 @@ a.icon-btn { display: inline-flex; align-items: center; justify-content: center;
   text-transform: uppercase; letter-spacing: .0385rem;
 }
 .sidebar-head label, .sidebar-head span:first-child { margin-right: auto; }
-#album-select {
+#collection-select, #album-select {
   width: 100%; padding: .4615rem; background: var(--bg-input);
   color: var(--text); border: 1px solid var(--border); border-radius: 5px;
 }

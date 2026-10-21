@@ -93,7 +93,8 @@ Réimportez les fichiers refusés une fois corrigés : ils s'ajoutent à la suit
 que lire l'album ne voit pas le bouton.
 
 **L'Atelier garde l'import à l'unité**, pour la page oubliée pendant qu'on annote : choisissez
-l'album dans la liste *Album* de la barre latérale, puis, dans le menu *⇅ Import / Export* :
+la collection dans la liste *Collection* de la barre latérale, puis
+l'album dans la liste *Album* qui la suit, puis, dans le menu *⇅ Import / Export* :
 *⤓ Importer des images…* pour votre disque — l'image entre dans l'album affiché —, ou
 *🖼 Depuis ShareDocs…* pour parcourir un dossier Huma-Num distant et importer une sélection
 entière. Le formulaire ShareDocs propose, sous *Destination*, les
@@ -101,6 +102,22 @@ seuls albums où vous écrivez ; si vous n'en avez aucun, il le dit — *Aucun a
 écrivez : un album se crée dans la Bibliothèque, avec sa collection, puis ses planches
 s'importent ici.* — et *Importer* reste éteint. Pour ajouter des planches à un album déjà
 rempli, c'est le même geste : elles s'ajoutent à la suite.
+
+**Dans l'Atelier, la collection se choisit avant l'album.** La liste *Collection* propose
+les collections du projet où vous travaillez que vous lisez — sa collection de **base** en
+tête, puis les autres dans l'ordre alphabétique — et, en dernier, *Toutes les collections
+du projet*. La liste *Album* ne montre que les albums rangés dans la collection choisie ; un
+album rangé dans deux collections paraît dans chacune, et *Toutes les collections du
+projet* rend la liste entière du projet. Une collection où vous ne lisez aucun album le dit
+dans la liste *Album* — *— aucun album dans cette collection —*. Quand vous n'avez rien
+choisi, l'Atelier s'ouvre sur la base du projet ; si elle ne contient encore aucun
+album que vous lisez, sur *Toutes les collections du projet* ; si vous ne la lisez pas,
+sur la première collection de la liste. Votre choix est retenu par votre navigateur, **projet par
+projet** et pour l'Atelier seulement : la Bibliothèque n'en est pas changée. Un lien vers un
+album qui n'est pas dans la collection choisie passe à une collection qui le contient ; et
+le lien *↗ Ouvrir dans l'Atelier* d'une planche, dans la fiche d'un album ouverte depuis une
+collection de la Bibliothèque, ouvre l'Atelier sur cette collection. Le formulaire
+ShareDocs, lui, propose toujours tous les albums du projet où vous écrivez.
 
 **Sept formats sont acceptés, et rien d'autre** : TIFF et JPEG — les deux du corpus —, puis
 JPEG 2000, PNG, BMP, GIF et WebP. La liste est courte exprès : elle borne aussi ce que le

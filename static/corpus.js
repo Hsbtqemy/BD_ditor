@@ -1229,13 +1229,16 @@ function renderDetail() {
     ? "Aucune planche pour ce filtre de relecture."
     : (a.ecrivable ? "Aucune planche : « ⤓ Importer des planches… » les fait entrer."
                    : "Aucune planche.");
+  // UX-19 — l'Atelier s'ouvre sur la collection d'où l'on a ouvert l'album (son retour),
+  // même si l'album vit aussi ailleurs : l'Atelier la pose par l'adresse, et la retient.
+  const versAtelier = B.depuis !== null ? `&collection=${B.depuis}` : "";
   const planchesRows = planches.length
     ? planches.map((p) => `
         <tr>
           <td class="c-chk"><input type="checkbox" aria-label="Sélectionner ${esc(plancheNomLu(p))}" data-pid="${p.id}" ${state.checkedPlanches.has(p.id) ? "checked" : ""}></td>
           <td class="c-vig"><img class="pl-thumb" loading="lazy" src="${esc(p.url_web || "")}" alt=""></td>
           <td class="c-pl">${plancheNum(p)}${materielInfo(p)}</td>
-          <td class="c-act c-gestes">${roleToggle(p)} ${lockToggle(p)} <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}" title="Ouvrir dans l'Atelier" aria-label="Ouvrir ${esc(plancheNomLu(p))} dans l'Atelier">↗</a> ${corbeillePlanche(a, p, droits)}</td>
+          <td class="c-act c-gestes">${roleToggle(p)} ${lockToggle(p)} <a class="icon-btn" href="/?album=${a.id}&planche=${p.id}${versAtelier}" title="Ouvrir dans l'Atelier" aria-label="Ouvrir ${esc(plancheNomLu(p))} dans l'Atelier">↗</a> ${corbeillePlanche(a, p, droits)}</td>
           <td data-l="Statut"><span class="statut-pill statut-${esc(p.statut)}"></span> ${esc(p.statut)}</td>
           <td class="c-num" data-l="Régions">${p.nb_regions} rég.</td>
           <td class="c-num" data-l="Annotées">${p.nb_annotees} ann.</td>

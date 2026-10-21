@@ -82,6 +82,12 @@
 
     <!-- Sidebar : navigation planches -->
     <aside id="sidebar">
+      <!-- UX-19 : la collection d'abord, puis l'album — la liste *Album* ne montre que les
+           albums rangés dans la collection choisie (lib/atelier.js). -->
+      <div class="sidebar-head">
+        <label for="collection-select">Collection</label>
+      </div>
+      <select id="collection-select"></select>
       <div class="sidebar-head">
         <label for="album-select">Album</label>
       </div>
@@ -508,6 +514,8 @@
 <script src="/static/lib/common.js"></script>
 <script src="/static/lib/nav.js"></script>
 <script src="/static/lib/projet.js"></script>
+<script src="/static/lib/bibliotheque.js"></script>
+<script src="/static/lib/atelier.js"></script>
 <script src="/static/lib/dialog.js"></script>
 <script src="/static/lib/casse.js"></script>
 <script src="/static/lib/conflit.js"></script>
