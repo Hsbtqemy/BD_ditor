@@ -558,6 +558,9 @@ OUTILS_HORS = {
     "reindex_nlp.py": "Maintenance : régénère tokens et index. Compte rendu = décompte.",
     "reindex_materiel.py": "Maintenance : relit les masters. Compte rendu = décompte.",
     "regenerer_derives.py": "Maintenance : réécrit les dérivés. Compte rendu = décompte.",
+    "convertir_en_copies_de_travail.py":
+        "Maintenance (IMG-1) : remplace les masters par des copies de travail. Compte "
+        "rendu = décompte, chemins de fichier et tailles ; jamais un terme ni une charge.",
     "normaliser_casse.py":
         "Maintenance (NLP-3) : son aperçu recopie des RÉPLIQUES, du texte de bulle — "
         "jamais un terme de vocabulaire ni une charge du journal.",
@@ -594,6 +597,7 @@ ENTREES_HORS = {
     "reindex_nlp.py": set(),
     "reindex_materiel.py": {"--dry-run", "--force"},
     "regenerer_derives.py": {"--album", "--dry-run", "--mode", "--planche", "--toutes"},
+    "convertir_en_copies_de_travail.py": {"--album", "--appliquer"},
     "normaliser_casse.py": {"--album", "--dry-run", "--planche"},
     "semer_demo.py": set(),
     "regenerer_exemples.py": set(),

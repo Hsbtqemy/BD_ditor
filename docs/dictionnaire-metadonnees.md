@@ -243,6 +243,7 @@ libre** — principal chantier pour une qualité bibliographique.
 | `isbn` | ISBN / dépôt légal (édition détenue) | code | descriptif | structuré (v15) | DC:identifier | ouvert |
 | `format_physique` | dimensions du support (cm), reliure de l'œuvre | mesures | matériel | structuré (v15) | DC:format | ouvert |
 | `source_numerisation` | appareil / conditions de scan (campagne = album) | texte | matériel | **structuré (v19)** | PREMIS | ouvert |
+| `lieu_masters` | où vivent les masters d'archive (v34, IMG-1 : le serveur ne garde qu'une copie de travail) | texte libre | humain | structuré (v34) | — | **retenu** (interne) |
 | *`PID`* | identifiant pérenne (DOI/ARK) | URI résoluble | système | *absent — à prévoir* | DataCite | ouvert |
 | *`droits (surcharge)`* | `statut_diffusion` / `base_legale` propres à l'album (défaut = Collection) | idem Collection | descriptif | *absent — à prévoir* | DC:rights | ouvert |
 
@@ -257,7 +258,8 @@ Source : table `planches`. Couche **éditoriale + technique + matérielle + cycl
 | `numero` | ordre d'import (page **physique**) | entier (unique/album) | système | structuré | — | ouvert |
 | `role` | statut éditorial | contrôlé : `recit` \| paratexte | humain | structuré | — | ouvert |
 | `numero_editorial` | rang cité parmi les planches `recit` | entier \| ∅ (paratexte) | dérivé | dérivé | — | ouvert |
-| `chemin_tiff` | pointeur vers le master | chemin relatif POSIX | système | structuré | — | **restreint** |
+| `chemin_tiff` | pointeur vers la copie de travail (le master avant la v34, IMG-1) | chemin relatif POSIX | système | structuré | — | **restreint** |
+| `master_origine` | ce que l'outil sait du master d'archive (v34, IMG-1) | `sharedocs:<chemin>` ou nom du fichier reçu | système | structuré | — | **retenu** (interne) |
 | `chemin_web` | pointeur vers le dérivé web | chemin relatif POSIX | système | structuré | IIIF (image) | **restreint** |
 | `largeur_px` / `hauteur_px` | dimensions **master** | entiers (px) | matériel | structuré | TEI `surface @lrx/@lry` | ouvert |
 | `statut` | avancement de traitement | `importee` \| `segmentee` | système | structuré | — | ouvert |

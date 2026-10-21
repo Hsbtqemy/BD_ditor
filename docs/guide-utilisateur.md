@@ -124,10 +124,20 @@ JPEG 2000, PNG, BMP, GIF et WebP. La liste est courte exprès : elle borne aussi
 décodeur d'images a le droit d'ouvrir, ce qui ferme une classe de fichiers piégés. Un
 fichier hors liste est refusé sans rien enregistrer ; §6 dit à quoi ressemble le refus.
 
-Chaque image importée est rangée en deux exemplaires : le **master** (le scan haute
-résolution, jamais modifié) et un **dérivé web** allégé, qui est ce que vous voyez à l'écran.
-La résolution et le mode colorimétrique sont lus dans le fichier au passage, ce qui permettra
-d'afficher les dimensions physiques en centimètres.
+**Le serveur ne garde pas votre fichier** : il en garde deux images. Une **copie de
+travail**, en JPEG à 300 dpi — un scan plus fin est réduit jusque-là (un scan à 400 dpi passe
+aux trois quarts), un scan à 300 dpi ou moins est gardé à sa taille, comme un scan qui
+n'écrit pas sa résolution (c'est le cas des JPEG 2000 du scanner de l'équipe). C'est d'elle
+que partent la lecture automatique du texte, les vues de la Transcription et les figures. Et
+un **dérivé web** allégé, qui est ce que vous voyez à l'écran. La résolution et le mode
+colorimétrique du scan sont lus dans le fichier au passage, ce qui permettra d'afficher les
+dimensions physiques en centimètres — ceux du scan, que la réduction ne change pas.
+
+**Le master, lui, reste chez vous** — sur ShareDocs, un disque, des disques durs, selon le
+projet. Gardez-le : c'est l'objet scientifique, et le serveur n'en a plus d'exemplaire.
+L'outil note ce qu'il en sait pour chaque planche (le chemin ShareDocs d'un import depuis
+ShareDocs, sinon le nom du fichier importé), et la fiche de l'album a un champ pour dire où
+vivent ses masters (Étape 2).
 
 *+ Nouvel album* propose les collections du projet où vous écrivez, et présélectionne sa
 **collection de base** — celle qui reçoit aussi ce que le projet prend au fonds —, sauf si
@@ -144,7 +154,9 @@ album que le projet a déjà (§4, *Bibliothèque*, « Prendre un document »).
 La fiche s'ouvre à droite quand on choisit l'album dans la liste. *✎ Modifier l'album* ouvre
 le formulaire où se saisissent la **paternité** (contributions : un nom, un rôle —
 scénariste, dessinateur, coloriste…), les champs d'**édition** (date, éditeur, lieu, ISBN,
-format) et la **source de numérisation** (l'appareil et les conditions du scan).
+format), la **source de numérisation** (l'appareil et les conditions du scan) et **où
+vivent les masters** (un dossier ShareDocs, un disque — facultatif, mais c'est le seul endroit
+où l'outil le dira : le serveur ne garde qu'une copie de travail).
 L'appartenance aux collections se lit et se règle dans la fiche même, sous *Sur les
 collections*.
 
@@ -179,8 +191,8 @@ dessinez les régions manquantes au cliquer-glisser, supprimez les fausses (`Sup
 région porte un **type** : case, bulle, personnage, texte, cartouche.
 
 **Cette étape conditionne la suivante, et c'est la raison de sa place ici.** Le crop
-plein écran du mode Transcription est découpé dans le master **à partir du cadre de la
-région** : une bulle mal détourée est illisible, donc intranscriptible. Elle reste taggable,
+plein écran du mode Transcription est découpé dans la copie de travail **à partir du cadre
+de la région** : une bulle mal détourée est illisible, donc intranscriptible. Elle reste taggable,
 en revanche — la géométrie contraint le texte, pas l'interprétation.
 
 ### Étape 5 — Transcrire et relire
@@ -790,6 +802,7 @@ Elles sont documentées ; elles ne sont simplement pas dans l'interface.
 | Rapports d'accord (modèle↔humain, inter-annotateurs) en CSV/JSON | `tools/` | [`rapport-accord.md`](rapport-accord.md), [`accord-inter.md`](accord-inter.md) |
 | Réindexer tout le corpus après un changement de modèle linguistique | `tools/reindex_nlp.py` | [`correction-grammaticale.md`](correction-grammaticale.md) |
 | Relire la résolution des planches importées avant cette fonctionnalité | `tools/reindex_materiel.py` | [`materiel-numerisation.md`](materiel-numerisation.md) |
+| Remplacer par des copies de travail les masters gardés avant la v34 — **efface les masters du serveur** | `tools/convertir_en_copies_de_travail.py` | [`materiel-numerisation.md`](materiel-numerisation.md), « La copie de travail » |
 | Créer un compte, un groupe | l'annuaire LLDAP, par son interface web (le fichier des comptes du portail n'est plus que le repli) | [`exploitation.md`](exploitation.md), « Basculer vers l'annuaire LLDAP » |
 
 L'**import PDF** est annoncé dans le menu mais désactivé : il n'est pas encore implémenté.

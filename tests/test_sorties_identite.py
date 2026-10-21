@@ -444,6 +444,11 @@ NON_BALAYE = {
         "en base. Son compte rendu est un décompte, des identifiants de planche et, en "
         "cas d'échec, le message de l'exception — un chemin de fichier au plus, jamais "
         "une colonne d'identité."),
+    ("outil", "convertir_en_copies_de_travail.py"): (
+        "Maintenance (IMG-1) : remplace les masters gardés par des copies de travail et "
+        "écrit `planches.chemin_tiff`/`master_origine`. Son compte rendu est un décompte, "
+        "des chemins de fichier, des identifiants de planche, des tailles et, en cas "
+        "d'échec, le message de l'exception — jamais une colonne d'identité."),
     ("outil", "reindex_nlp.py"): (
         "Maintenance : régénère les tokens et l'index FTS. Son compte rendu est un "
         "décompte de régions."),
