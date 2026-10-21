@@ -5,7 +5,9 @@ statut: différé
 
 # IMG-1 — accepter un format n'est pas savoir le convertir
 
-**Arrêté sur** — la relecture du chantier, commit `7087fca`, 16 septembre, juste après le
+**Arrêté sur** — 2026-10-21, `91743c6` : une résolution sous 50 dpi compte comme absente (un
+TIFF sans balise sortait de Pillow à 1 dpi, soit ~9 000 cm), fait avec la mission d'`UX-11`.
+Avant lui, la relecture du chantier, commit `7087fca`, 16 septembre, juste après le
 cache des dérivés (`e9811c7` : `no-cache` et 304, mesuré dans Chromium avant et après). Avant
 eux : le gris 16 bits (`fb53e67`), l'outil de régénération (`fd7cd38`, déclaré au cliquet par
 `944f071`), le filtre d'extension (`cfbf85d`), le dialogue d'import (`654562f`). Poussé sur
