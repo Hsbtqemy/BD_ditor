@@ -920,3 +920,128 @@ def test_le_locuteur_va_a_la_zone_du_geste_meme_si_l_on_en_change(page, atelier)
     assert _lie(atelier, cartouche, "locuteur") is None
     # L'écran, lui, montre toujours le cartouche — sans locuteur.
     expect(page.locator("#loc-current")).to_contain_text("Aucun locuteur")
+
+
+# --------------------------------------------------------------------------- #
+# ANN-8 — après une validation, UNE flèche surligne une proposition
+# --------------------------------------------------------------------------- #
+# La première ↓ rouvrait la liste sans rien surligner, et il en fallait une seconde : la
+# flèche comptait les lignes restées dans le DOM de la liste PRÉCÉDENTE — vide quand elle
+# n'avait rien proposé. Chaque test valide d'abord une saisie qui ne laissait AUCUNE ligne,
+# puis presse ↓ une seule fois.
+def test_apres_une_forme_complete_sans_espaces_une_fleche_surligne(page, atelier):
+    m = MONTAGES["situation"]
+    _semer(atelier, m, m["connue"], m["autre"])
+    _ouvrir(page, atelier, m["zone"])
+    champ, liste = page.locator(m["champ"]), page.locator(f"{m['liste']} div")
+    chemin = _chemin_des_attributs(atelier, m)
+
+    champ.click()
+    expect(liste).to_have_count(2, timeout=15000)
+    # « lieu:falaise » : la liste filtrée sur le texte n'a rien, la forme complète aboutit.
+    champ.press_sequentially(f"{m['dimension']}:{m['connue']}", delay=20)
+    expect(page.locator(m["liste"])).to_be_hidden()
+    with page.expect_response(_est("PUT", chemin)) as reponse:
+        champ.press("Enter")
+    assert reponse.value.status == 200, reponse.value.text()
+    expect(champ).to_have_value("")
+
+    champ.press("ArrowDown")
+    expect(page.locator(m["liste"])).to_be_visible()
+    expect(page.locator(f"{m['liste']} div.active")).to_have_count(1)
+    expect(page.locator(f"{m['liste']} div.active")).to_contain_text(m["connue"])
+
+
+def test_apres_un_tag_neuf_une_fleche_surligne(page, atelier):
+    with _api(atelier, ecriture=True) as c:
+        rep = c.put(f"/api/regions/{atelier['cartouche']}/annotation",
+                    json={"tags": ["emotion", "colere"]})
+        assert rep.status_code == 200, rep.text
+    _ouvrir(page, atelier, "bulle")
+    champ, liste = page.locator("#tag-input"), page.locator("#tag-suggest div")
+    champ.click()
+    expect(liste).to_have_count(2, timeout=15000)
+    champ.press_sequentially("inedit", delay=20)       # aucune proposition : la liste se vide
+    expect(page.locator("#tag-suggest")).to_be_hidden()
+    champ.press("Enter")
+    expect(page.locator("#tag-chips .tag-chip", has_text="inedit")).to_be_visible()
+    expect(champ).to_have_value("")
+
+    champ.press("ArrowDown")
+    expect(page.locator("#tag-suggest")).to_be_visible()
+    expect(page.locator("#tag-suggest div.active")).to_have_count(1)
+
+
+def test_apres_une_creation_de_personnage_une_fleche_surligne_le_registre(page, atelier):
+    """Le champ du locuteur vient de créer « Zed » : la première ↓ relit le registre pour
+    le champ vide et en surligne la première entrée — jamais « Créer « Zed » », la ligne
+    restée de la liste d'avant, qui aurait créé un second « Zed »."""
+    c = CHAMPS_PERSONNAGE["locuteur"]
+    rid = atelier[c["zone"]]
+    chemin = f"/api/regions/{rid}/{c['lien']}"
+    _ouvrir(page, atelier, c["zone"])
+    champ, liste = page.locator(c["champ"]), page.locator(f"{c['liste']} div")
+    parties = _ecritures(page)
+
+    champ.click()
+    champ.press_sequentially("Zed", delay=20)
+    expect(liste.filter(has_text="Créer")).to_be_visible(timeout=15000)
+    with page.expect_response(_est("PUT", chemin)):
+        champ.press("Enter")
+    expect(champ).to_have_value("")
+
+    champ.press("ArrowDown")
+    actif = page.locator(f"{c['liste']} div.active")
+    expect(actif).to_have_count(1, timeout=15000)
+    expect(actif).not_to_contain_text("Créer")
+    expect(liste).to_have_count(2)                   # Tintin, Zed : le registre du champ vide
+    assert len(_creations(parties)) == 1, parties
+
+
+# --------------------------------------------------------------------------- #
+# ANN-8 — les deux champs de personnage savent ce que l'autre vient de créer
+# --------------------------------------------------------------------------- #
+def test_un_nom_cree_par_l_autre_champ_n_est_pas_cree_deux_fois(page, atelier):
+    """Rapporté par l'auteur du correctif du 2026-10-13, rejoué ici : « Zed » est cherché
+    dans le champ du locuteur (sa liste dit « Créer »), puis créé par la boîte personnage ;
+    de retour sur la bulle, « Zed » tapé d'un trait se décidait sur la liste du locuteur —
+    celle d'AVANT la création — et en créait un second. Le registre est tenu en vol au
+    retour sur la bulle : rien d'autre que ce que le champ savait ne peut décider."""
+    loc, boite = CHAMPS_PERSONNAGE["locuteur"], CHAMPS_PERSONNAGE["boite-personnage"]
+    bulle = atelier["bulle"]
+    chemin = f"/api/regions/{bulle}/locuteur"
+    _ouvrir(page, atelier, "bulle")
+    parties = _ecritures(page)
+
+    champ = page.locator(loc["champ"])
+    champ.click()
+    champ.press_sequentially("Zed", delay=20)
+    expect(page.locator(f"{loc['liste']} div").filter(has_text="Créer")).to_be_visible(timeout=15000)
+
+    # La boîte personnage crée « Zed ».
+    _noeud(page, atelier["personnage"]).click()
+    expect(page.locator("#region-type")).to_have_value("personnage", timeout=15000)
+    autre = page.locator(boite["champ"])
+    autre.click()
+    autre.press_sequentially("Zed", delay=20)
+    expect(page.locator(f"{boite['liste']} div").filter(has_text="Créer")).to_be_visible(timeout=15000)
+    with page.expect_response(_est("PUT", f"/api/regions/{atelier['personnage']}/personnage")):
+        autre.press("Enter")
+    assert len(_creations(parties)) == 1, parties
+    zed = [p for p in _registre(atelier) if p["nom"] == "Zed"][0]["id"]
+
+    # Retour sur la bulle : le registre ne répond plus tant que le test ne le relâche pas.
+    _noeud(page, bulle).click()
+    expect(page.locator("#region-type")).to_have_value("bulle", timeout=15000)
+    lectures = Retenue(page, LECTURE_REGISTRE)
+    champ.click()
+    _taper_et_valider_d_un_trait(page, loc["champ"], "Zed")
+    page.wait_for_timeout(500)
+    assert len(_creations(parties)) == 1, f"« Zed » recréé d'après la liste d'avant : {parties}"
+    with page.expect_request(_est("PUT", chemin)) as envoi, \
+            page.expect_response(_est("PUT", chemin)) as reponse:
+        lectures.relacher()
+    assert reponse.value.status == 200, reponse.value.text()
+    assert envoi.value.post_data_json == {"personnage_id": zed}
+    assert len(_creations(parties)) == 1, parties
+    assert [p["nom"] for p in _registre(atelier)].count("Zed") == 1

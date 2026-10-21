@@ -1178,9 +1178,15 @@ function annotPropre() {
   return { note: false, ajoutes: new Set(), retires: new Set() };
 }
 
-function addTag(label) {
-  label = label.trim().toLowerCase().replace(/\s+/g, " ");
-  if (!label || state.currentTags.includes(label)) return;
+/* ANN-8 — un libellé se compare par sa CLÉ (`BDPropositions.cleTag`, jumelle de
+   `database.cle_tag`) : « c’est pluriel » et « c'est pluriel » sont le même tag. Le libellé
+   posé est celui du vocabulaire s'il y est — un tag d'avant garde sa graphie —, sinon la
+   clé, celle sous laquelle le serveur le créera. */
+function addTag(saisi) {
+  const cle = BDPropositions.cleTag(saisi);
+  if (!cle || state.currentTags.some((t) => BDPropositions.cleTag(t) === cle)) return;
+  const connu = state.tagVocab.find((t) => BDPropositions.cleTag(t.label) === cle);
+  const label = connu ? connu.label : cle;
   state.currentTags.push(label);
   if (!state.annotSale.retires.delete(label)) state.annotSale.ajoutes.add(label);
   renderTagChips();
@@ -1774,12 +1780,16 @@ function setupTagInput() {
   let activeIdx = -1;
 
   function close() { sug.hidden = true; activeIdx = -1; }
-  function render() {
-    const q = input.value.trim().toLowerCase();
-    const items = state.tagVocab
-      .filter((t) => !state.currentTags.includes(t.label) &&
-        (!q || t.label.includes(q)))
+  /* La liste pour ce qui est tapé, comparée par la CLÉ des libellés (ANN-8). */
+  function liste() {
+    const q = BDPropositions.cleTag(input.value);
+    const poses = new Set(state.currentTags.map(BDPropositions.cleTag));
+    return state.tagVocab
+      .filter((t) => { const c = BDPropositions.cleTag(t.label); return !poses.has(c) && (!q || c.includes(q)); })
       .slice(0, 12);
+  }
+  function render() {
+    const items = liste();
     sug.innerHTML = "";
     if (!items.length) { close(); return; }
     items.forEach((t, i) => {
@@ -1798,8 +1808,11 @@ function setupTagInput() {
   input.addEventListener("blur", () => setTimeout(close, 150));
   input.addEventListener("keydown", (e) => {
     const items = sug.querySelectorAll("div");
-    if (e.key === "ArrowDown") { activeIdx = Math.min(items.length - 1, activeIdx + 1); render(); e.preventDefault(); }
-    else if (e.key === "ArrowUp") { activeIdx = Math.max(0, activeIdx - 1); render(); e.preventDefault(); }
+    // ANN-8 — la flèche compte la liste qui VA s'afficher, pas les lignes restées de la
+    // précédente : après un tag tapé sans proposition, la liste était vide, et la première
+    // ↓ la rouvrait sans rien surligner.
+    if (e.key === "ArrowDown") { activeIdx = BDPropositions.fleche(activeIdx, liste().length, "bas"); render(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { activeIdx = BDPropositions.fleche(activeIdx, liste().length, "haut"); render(); e.preventDefault(); }
     else if (e.key === "Enter") {
       e.preventDefault();
       if (activeIdx >= 0 && items[activeIdx]) addTag(items[activeIdx].dataset.label);
@@ -1957,28 +1970,48 @@ async function clearPerso() {
 
    Gardé tel quel : s'il existe DÉJÀ plusieurs homonymes exacts, Entrée prend le premier
    dans l'ordre du registre (nom, puis série), sans le dire. Les départager est une
-   décision d'écran, pas une retouche. */
+   décision d'écran, pas une retouche.
+
+   ANN-8 — LES DEUX CHAMPS SAVENT CE QUE L'AUTRE VIENT DE CRÉER. Chaque montage tient sa
+   liste ; « Zed » créé par la boîte personnage, puis tapé vite dans le champ du locuteur,
+   se décidait sur la liste de CE champ — et si « Zed » y avait déjà été cherché, elle
+   disait encore « Créer » : un second « Zed ». Une création, d'où qu'elle parte, avance
+   `registreModifie` ; une liste lue AVANT ne vaut plus pour décider, et « Créer » choisi
+   dans une telle liste relit d'abord le registre.
+
+   ANN-8 — APRÈS UNE VALIDATION, UNE SEULE ↓ SURLIGNE. Le champ vient d'être vidé et la
+   liste ne vaut pour aucune saisie : la première ↓ la relit pour le champ vide, et surligne
+   la première proposition à son retour. */
+let registreModifie = 0;   // avance à chaque personnage créé depuis l'un des deux champs
+
 function setupPersoInput(inputSel, sugSel, onPick, zone) {
   const input = $(inputSel), sug = $(sugSel);
   let timer = null, activeIdx = -1, items = [];
   let lecture = null;       // la dernière lecture PARTIE pour la liste : { q, promesse }
   let listePour = null;     // la saisie pour laquelle `items` vaut — nul : pour aucune
+  let listeDuRegistre = -1; // l'état du registre (`registreModifie`) quand la liste a été LUE
   let exact = null;         // l'homonyme exact de `listePour`, ou nul
+  let surlignerAuRetour = false;   // une ↓ a demandé la liste : surligner la première
   function close() { sug.hidden = true; activeIdx = -1; }
   const lire = (q) => apiGet("/api/personnages?q=" + encodeURIComponent(q));
   const homonyme = (persos, q) => persos.find((p) => p.nom.toLowerCase() === q.toLowerCase()) || null;
+  /* La liste vaut-elle pour décider de `q` ? Lue pour cette saisie, et depuis aucune création. */
+  const vaut = (q) => listePour === q && listeDuRegistre === registreModifie;
   async function fetchList() {
     const q = input.value.trim();
-    const moi = lecture = { q, promesse: lire(q) };
+    const etat = registreModifie;
+    const moi = lecture = { q, promesse: lire(q), etat };
     let persos = null;
     try { persos = await moi.promesse; } catch (e) { persos = null; }
     // Elle ne vaut plus : une lecture est partie depuis, ou la saisie a changé.
     if (lecture !== moi || input.value.trim() !== q) return;
     listePour = persos ? q : null;
+    listeDuRegistre = etat;
     exact = persos ? homonyme(persos, q) : null;
     items = (persos || []).slice(0, 10).map((p) => ({ create: false, id: p.id, nom: p.nom, serie: p.serie }));
     // proposer la CRÉATION si la saisie n'a pas de correspondance exacte (modèle mentions→entités)
     if (persos && q && !exact) items.push({ create: true, nom: q });
+    if (surlignerAuRetour) { surlignerAuRetour = false; activeIdx = BDPropositions.fleche(-1, items.length, "bas"); }
     render();
   }
   function render() {
@@ -1999,30 +2032,38 @@ function setupPersoInput(inputSel, sugSel, onPick, zone) {
     // Un geste part : ni la liste ni la lecture qui l'a faite ne font plus foi. Créer
     // change le registre, et le même nom retapé aussitôt — ici ou sur la zone suivante —
     // ne doit pas se décider d'après ce qu'on savait AVANT de créer.
-    listePour = null; lecture = null;
+    listePour = null; lecture = null; items = [];
     if (it.create) {
       try {
         const p = await apiSend("POST", "/api/personnages", { nom: it.nom });
+        registreModifie++;                           // ANN-8 : l'autre champ le saura aussi
         await onPick(p.id, z);
       } catch (e) { toast("Création : " + e.message, "error"); }
     } else { await onPick(it.id, z); }
   }
   async function choose(it) {
+    // ANN-8 — « Créer » pris dans une liste lue avant une création (ici ou dans l'autre
+    // champ) : le nom existe peut-être déjà. On relit avant de créer.
+    if (it.create && listeDuRegistre !== registreModifie) { valider(it.nom); return; }
     input.value = ""; close();
     await appliquer(it, zone());
   }
   /* Entrée sans sélection : l'homonyme exact de CE qui est tapé, sinon la création. */
   async function valider(q) {
-    if (listePour === q) {                           // la liste vaut pour cette saisie
+    if (vaut(q)) {                                   // la liste vaut pour cette saisie
       choose(exact || { create: true, nom: q });     // pas de doublon si le nom existe déjà
       return;
     }
     // Elle ne vaut pas pour cette saisie : on relit avant de décider. Le champ se vide
-    // tout de suite — une seconde Entrée pendant la lecture ne part pas deux fois.
+    // tout de suite — une seconde Entrée pendant la lecture ne part pas deux fois. Une
+    // lecture déjà en vol ne sert que si elle est partie APRÈS la dernière création.
     const z = zone();
     input.value = ""; close();
     let persos;
-    try { persos = await (lecture && lecture.q === q ? lecture.promesse : lire(q)); }
+    try {
+      persos = await (lecture && lecture.q === q && lecture.etat === registreModifie
+        ? lecture.promesse : lire(q));
+    }
     catch (e) {
       if (!input.value) input.value = q;             // rien n'est fait : la saisie revient
       toast("Registre des personnages : " + e.message, "error");
@@ -2030,13 +2071,21 @@ function setupPersoInput(inputSel, sugSel, onPick, zone) {
     }
     appliquer(homonyme(persos, q) || { create: true, nom: q }, z);
   }
-  input.addEventListener("input", () => { activeIdx = -1; clearTimeout(timer); timer = setTimeout(fetchList, 200); });
+  input.addEventListener("input", () => {
+    activeIdx = -1; surlignerAuRetour = false;
+    clearTimeout(timer); timer = setTimeout(fetchList, 200);
+  });
   input.addEventListener("focus", fetchList);
   input.addEventListener("blur", () => setTimeout(close, 150));
   input.addEventListener("keydown", (e) => {
-    const n = sug.querySelectorAll("div").length;
-    if (e.key === "ArrowDown") { activeIdx = Math.min(n - 1, activeIdx + 1); render(); e.preventDefault(); }
-    else if (e.key === "ArrowUp") { activeIdx = Math.max(0, activeIdx - 1); render(); e.preventDefault(); }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      // ANN-8 — liste fermée qui ne vaut pas pour ce qui est tapé (le champ vient d'être vidé par
+      // une validation) : la relire, et surligner la première à son retour.
+      if (sug.hidden && !vaut(input.value.trim())) { surlignerAuRetour = true; fetchList(); return; }
+      activeIdx = BDPropositions.fleche(activeIdx, items.length, "bas"); render();
+    }
+    else if (e.key === "ArrowUp") { activeIdx = BDPropositions.fleche(activeIdx, items.length, "haut"); render(); e.preventDefault(); }
     else if (e.key === "Enter") {
       e.preventDefault();
       const q = input.value.trim();
@@ -2119,33 +2168,11 @@ function makeAttributsWidget(ids, cible) {
     } catch (e) { toast("Attribut : " + e.message, "error"); }
   }
   function close() { sug.hidden = true; activeIdx = -1; }
-  /* « dimension : valeur » → { dim, val } tels que tapés ; nul hors de la forme complète. */
-  function formeComplete(q) {
-    const i = q.indexOf(":");
-    if (i <= 0) return null;
-    const dim = q.slice(0, i).trim(), val = q.slice(i + 1).trim();
-    return dim && val ? { dim, val } : null;
-  }
-  /* La valeur du vocabulaire CONNU que cette forme désigne, sans égard à la casse. Elle se
-     cherche dans tout le vocabulaire, pas dans la liste : celle-ci est filtrée sur le
-     texte tapé, et « lieu:falaise », sans espaces, n'y retrouvait pas « lieu : falaise ». */
-  function connue(f) {
-    return (vocab || []).find((v) => v.dimension.toLowerCase() === f.dim.toLowerCase()
-                                  && v.valeur.toLowerCase() === f.val.toLowerCase());
-  }
   /* La liste, pour la saisie telle qu'elle est MAINTENANT. Seul endroit où `items`
      s'écrit : à chaque frappe, à chaque lecture retenue, et quand le script vide lui-même
-     le champ. Sans vocabulaire lu, aucune proposition. */
-  function calculer() {
-    const q = input.value.trim();
-    if (!vocab) { items = []; return; }
-    items = vocab
-      .map((v) => ({ create: false, id: v.id, dim: v.dimension, val: v.valeur,
-                     label: `${v.dimension} : ${v.valeur}` }))
-      .filter((it) => !q || it.label.toLowerCase().includes(q.toLowerCase())).slice(0, 10);
-    const f = formeComplete(q);   // « dimension : valeur » inconnue → proposition de création
-    if (f && !connue(f)) items.push({ create: true, dim: f.dim, val: f.val, label: `➕ ${f.dim} : ${f.val}` });
-  }
+     le champ. Sans vocabulaire lu, aucune proposition. La règle est celle de
+     `BDPropositions.propositionsAttributs` (ANN-8 : module pur, testé sous Node). */
+  function calculer() { items = BDPropositions.propositionsAttributs(vocab, input.value); }
   async function fetchList() {
     const rang = ++parties;
     let vals = [];
@@ -2184,21 +2211,21 @@ function makeAttributsWidget(ids, cible) {
   input.addEventListener("focus", fetchList);
   input.addEventListener("blur", () => setTimeout(close, 150));
   input.addEventListener("keydown", (e) => {
-    const n = sug.querySelectorAll("div").length;
-    if (e.key === "ArrowDown") { activeIdx = Math.min(n - 1, activeIdx + 1); render(); e.preventDefault(); }
-    else if (e.key === "ArrowUp") { activeIdx = Math.max(0, activeIdx - 1); render(); e.preventDefault(); }
+    // ANN-8 — la flèche compte `items`, la liste pour ce qui est tapé — jamais les lignes
+    // restées dans le DOM de la précédente, vides quand elle n'avait rien proposé : après
+    // une validation, la première ↓ rouvrait alors la liste sans rien surligner.
+    if (e.key === "ArrowDown") { activeIdx = BDPropositions.fleche(activeIdx, items.length, "bas"); render(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { activeIdx = BDPropositions.fleche(activeIdx, items.length, "haut"); render(); e.preventDefault(); }
     else if (e.key === "Enter") {
       e.preventDefault();
-      if (activeIdx >= 0 && items[activeIdx]) { choose(items[activeIdx]); return; }
-      const q = input.value.trim();                        // sans sélection : ce qui est tapé
-      if (!q) return;                                      // champ vide : Entrée n'affecte rien
-      const f = formeComplete(q);
-      if (f) {                                             // « dim : val » aboutit sans la liste
-        const v = connue(f);
-        vider();
-        if (v) assign(v.id); else createAndAssign(f.dim, f.val);
-      } else if (q.indexOf(":") <= 0 && items.length === 1) choose(items[0]);
-      else toast(RIEN_AJOUTE, "");                         // rien à faire : le dire
+      // ANN-8 — la règle d'Entrée vit dans `BDPropositions.decisionEntree`, testée par table
+      // sous Node ; l'écran l'applique.
+      const d = BDPropositions.decisionEntree({ q: input.value, actif: activeIdx, items, vocab });
+      if (d.geste === "choisir") choose(d.item);
+      else if (d.geste === "affecter") { vider(); assign(d.id); }      // « dim : val » aboutit sans la liste
+      else if (d.geste === "creer") { vider(); createAndAssign(d.dim, d.val); }
+      else if (d.geste === "dire") toast(RIEN_AJOUTE, "");             // rien à faire : le dire
+      // « rien » : champ vide, Entrée n'affecte rien
     } else if (e.key === "Escape") { close(); }
   });
 
