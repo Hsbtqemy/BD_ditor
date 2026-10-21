@@ -1,11 +1,20 @@
 ---
 chantier: IMG-1
-statut: différé
+statut: interrompu
 ---
 
 # IMG-1 — accepter un format n'est pas savoir le convertir
 
-**Arrêté sur** — 2026-10-21, `91743c6` : une résolution sous 50 dpi compte comme absente (un
+**Arrêté sur** — 2026-10-21, `a118461` : **la copie de travail est faite**, dans le lot 1, sur
+`dev` en local — la v34 (`e86aadc`), l'import qui écrit un JPEG à 300 dpi effectifs et des
+lecteurs qui prennent l'échelle (`f3d821f`), l'outil de rattrapage (`ae2fd1f`), puis ce que la
+relecture croisée et sa contre-relecture ont trouvé (`036b693`, `0f4b612`, `a118461`) — dont une
+vraie perte : deux imports simultanés dans le même album effaçaient les fichiers du gagnant.
+Restent : la passe de QA du lot, le push, et le rattrapage sur le VPS, sur le mot de Hugo. Le
+différé est levé : la décision qu'il attendait est prise. Les cases du JPEG 2000 attendent
+toujours un JP2 et un TIFF de la même page.
+
+**Jusqu'au 2026-10-21** — `91743c6` : une résolution sous 50 dpi compte comme absente (un
 TIFF sans balise sortait de Pillow à 1 dpi, soit ~9 000 cm), fait avec la mission d'`UX-11`.
 Avant lui, la relecture du chantier, commit `7087fca`, 16 septembre, juste après le
 cache des dérivés (`e9811c7` : `no-cache` et 304, mesuré dans Chromium avant et après). Avant
@@ -49,8 +58,8 @@ mais sur cette seule décision de Hugo.
 
 ### La copie de travail — le master d'archive hors du VPS
 - [x] La règle des copies de travail est décidée par Hugo et écrite ici — attendu : la résolution effective visée (200 ou 300 dpi, mesurés le 2026-10-21, chiffres au Contexte), la valeur retenue pour un fichier sans résolution écrite, et où vit le master d'archive (ShareDocs, ou ailleurs) ; ou, à la place, un stockage plus grand pour le VPS. Posé à Hugo le 2026-10-21, qui veut en parler avant de trancher. Le VPS a 26 Go libres (56 % occupés) : environ 500 planches en TIFF brut **Décidé par Hugo le 2026-10-21** : (1) **300 dpi effectifs** — un scan au-dessus est réduit jusqu'à 300 dpi (75 % pour un scan à 400), un scan à 300 ou moins est gardé à sa taille ; JPEG qualité 80 ; même géométrie que le scan. (2) **Sans résolution écrite, gardé à 100 %** : on ne réduit pas ce qu'on ne sait pas mesurer, et rien n'est inventé (pas de centimètres). (3) **Le master d'archive vit où le projet le met** — ShareDocs, un disque local, des disques durs — « selon les projets et les personnes » : l'outil n'en impose aucun ; il note ce qu'il sait (le chemin ShareDocs d'un import ShareDocs, sinon le nom du fichier d'origine) et l'album porte un champ libre, facultatif, qui dit où vivent ses masters. (4) Les albums déjà en production sont rattrapés par un OUTIL, lancé sur le VPS seulement sur le mot de Hugo, après qu'il a confirmé que chaque master existe hors du VPS : convertir efface le master du serveur
-- [ ] L'import écrit la copie de travail selon cette règle, à la même géométrie que le scan (les coordonnées restent en pixels master), la planche garde ce que l'outil sait de son master d'archive, l'album porte le champ libre — attendu : un import d'un TIFF à 400 dpi n'écrit plus le TIFF sur le VPS mais un JPEG à 300 dpi ; un JP2 sans résolution donne un JPEG à sa taille ; un import ShareDocs note son chemin distant ; `largeur_px`/`hauteur_px` restent celles du scan
-- [ ] Un outil rattrape les albums déjà importés — attendu : sur une copie de la base de production, il convertit, garde chaque région au même endroit (mesuré), dit ce qu'il libère, et ne touche à rien sans `--appliquer` ; lancé sur le VPS sur le seul mot de Hugo. *Précisé par Hugo le 2026-10-21* : le corpus en production est un corpus de TEST, pas le corpus final — le convertir n'exige pas l'inventaire des archives album par album ; la lecture seule par défaut reste, pour le jour où le vrai corpus y sera
+- [x] L'import écrit la copie de travail selon cette règle, à la même géométrie que le scan (les coordonnées restent en pixels master), la planche garde ce que l'outil sait de son master d'archive, l'album porte le champ libre — attendu : un import d'un TIFF à 400 dpi n'écrit plus le TIFF sur le VPS mais un JPEG à 300 dpi ; un JP2 sans résolution donne un JPEG à sa taille ; un import ShareDocs note son chemin distant ; `largeur_px`/`hauteur_px` restent celles du scan **Fait le 2026-10-21, `e86aadc` et `f3d821f`, durci par `036b693` et `a118461`** : `planches.master_origine` (`sharedocs:<chemin>` ou le nom du fichier reçu) et `albums.lieu_masters`, tous deux RETENUS de toute sortie — `master_origine` tue à la source, dans `socle._get_planche`, et un test balaie l'inventaire des routes. Les lecteurs (OCR, crop de la Transcription, figures) prennent l'échelle `largeur ouverte / largeur_px`. L'import réserve ses chemins par une création exclusive avant de décoder ; un numéro imposé déjà pris est un 409
+- [ ] Un outil rattrape les albums déjà importés — attendu : sur une copie de la base de production, il convertit, garde chaque région au même endroit (mesuré), dit ce qu'il libère, et ne touche à rien sans `--appliquer` ; lancé sur le VPS sur le seul mot de Hugo. *Précisé par Hugo le 2026-10-21* : le corpus en production est un corpus de TEST, pas le corpus final — le convertir n'exige pas l'inventaire des archives album par album ; la lecture seule par défaut reste, pour le jour où le vrai corpus y sera *Outil fait le 2026-10-21, `ae2fd1f`, durci par `0f4b612`* : `tools/convertir_en_copies_de_travail.py`, à blanc par défaut (base ouverte en lecture seule, version du schéma vérifiée), `--appliquer` sous un verrou à lui, `--album` ; il liste sans les effacer les fichiers orphelins de `corpus/` et `derivatives/`. Mesuré sur des bases de test, pas sur une copie de la base de production. Reste le lancement sur le VPS, sur le mot de Hugo, après le déploiement du lot
 
 ### TIFF multipage
 - [ ] Un TIFF de deux pages importé depuis l'Atelier est REFUSÉ avec un message qui dit « plusieurs pages », et rien n'est enregistré. Arbitrage rendu par Hugo le 2026-09-16 : refuser, et NON prioritaire — le code attendra que le cas se présente. Aujourd'hui seule la première page est lue et la seconde disparaît sans avertissement (mesuré : `n_frames` = 2, taille et pixel de la page 1)
