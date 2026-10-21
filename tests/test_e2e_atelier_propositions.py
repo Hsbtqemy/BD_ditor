@@ -1140,6 +1140,8 @@ def test_des_homonymes_entree_ne_decide_pas_la_liste_se_reduit_a_eux(page, ateli
 
     champ.click()
     expect(liste).to_have_count(3, timeout=15000)          # Tintin, Zed, Zed
+    lues = []                                              # les lectures du registre, dès ici
+    page.on("request", lambda r: lues.append(r.url) if LECTURE_REGISTRE.search(r.url) else None)
     if moment == "liste revenue":
         with page.expect_response(lambda r: r.url.endswith("/api/personnages?q=Zed")):
             champ.press_sequentially("Zed", delay=20)
@@ -1157,6 +1159,11 @@ def test_des_homonymes_entree_ne_decide_pas_la_liste_se_reduit_a_eux(page, ateli
     expect(champ).to_have_value("Zed")
     page.wait_for_timeout(400)
     assert parties == [], f"Entrée a décidé entre deux homonymes : {parties}"
+    # Et la liste réduite RESTE : aucune lecture de plus ne la recouvre de la liste entière.
+    # Entrée d'un trait, la lecture différée de la frappe était encore armée — partie après
+    # Entrée, elle rouvrait toute la liste par-dessus celle des homonymes.
+    assert len(lues) == 1 and lues[0].endswith("?q=Zed"), lues
+    expect(liste.nth(0)).to_have_text(re.compile(r"^Zed\s*sans série$"))
 
     # Une seconde Entrée sans rien surligner ne décide pas davantage.
     champ.press("Enter")
