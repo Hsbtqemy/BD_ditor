@@ -24,6 +24,16 @@ RÉÉVALUÉS avant d'être mesurés.
 - [ ] Une région créée ou supprimée ailleurs (autre personne, passe automatique) apparaît ou disparaît sur une planche déjà ouverte sans rechargement — ou la fiche écrit pourquoi on s'en passe
   *Réécrit par Hugo le 2026-10-21 : ni temps réel ni rien — un SIGNAL. L'attendu devient : l'Atelier vérifie de temps en temps, et au retour sur l'onglet, si la planche ouverte a changé ailleurs (une version légère de la planche, sans recharger ses régions), et propose « Actualiser » sans rien recharger d'office ; une saisie en cours n'est jamais perdue ; mesuré à deux navigateurs*
 
+### L'annulation qui écrase le lien d'un autre — trouvé le 2026-10-21, antérieur
+- [ ] **Annuler un `lien` ou un `delien` de locuteur n'écrase pas le locuteur qu'un autre a posé
+  depuis** — attendu : 409 nommé, rien d'écrit, comme les autres conflits de l'annulation
+  (CONC-3). Reproduit par la relecture croisée d'`ANN-8` (`test_h4_…`, dans sa copie) : l'inverse
+  écrit sans garde, et le locuteur de l'autre disparaît
+- [ ] **Annuler la création d'une bulle n'emporte pas le locuteur, la présence ni les attributs
+  qu'un autre lui a donnés** — attendu : 409 nommé. Reproduit de même (`test_h5_…`) :
+  `undo._garder_creation` ne regarde que l'annotation et les enfants, et la suppression emporte
+  ces liens par cascade
+
 ## Contexte
 
 **D'où viennent ces points.** `CONC-3` (livré) a mesuré ce qui se perdait quand deux

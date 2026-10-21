@@ -74,6 +74,11 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   un outil à blanc. Relevé par l'agent qui a codé le locuteur
 
 ### Les champs à propositions — laissé ouvert par le correctif du 2026-10-13
+- [ ] **Un nom tapé sans ses accents trouve l'homonyme accentué** — attendu : tranché par Hugo.
+  « etienne » tapé quand seul « Étienne » existe : la liste le montre (le serveur filtre sans
+  les accents), mais Entrée sans surlignage propose « Créer « etienne » », un quasi-doublon
+  (`BDPropositions.homonymes` compare en minuscules, AVEC les accents). La question : l'accent
+  distingue-t-il deux personnages ? Relevé par la relecture croisée du 2026-10-21, non joué
 - [ ] **La région des messages existe avant son premier message, sur les cinq surfaces** —
   attendu : le premier message d'une page est annoncé par un lecteur d'écran, mesuré avec
   l'un d'eux. Aujourd'hui la région naît AVEC son premier message, et ce premier message
