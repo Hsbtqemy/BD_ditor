@@ -264,6 +264,36 @@ def test_le_bloc_suit_le_type_qu_on_change_sous_les_yeux(page, atelier):
     expect(page.locator("#situation-section")).to_be_hidden()
     expect(page.locator("#loc-input")).to_have_accessible_name(re.compile("cartouche"))
 
+
+def test_une_bulle_devenue_case_perd_son_locuteur_et_un_ctrl_z_rend_les_deux(page, atelier):
+    """ANN-8 (Hugo, 2026-10-21) — la bulle de Tintin passe en case : l'écran DIT que le
+    locuteur part, le serveur l'a retiré, et UN Ctrl+Z rend la bulle avec Tintin — sans
+    bulle muette entre les deux."""
+    rid = atelier["bulle"]
+    with httpx.Client(base_url=atelier["base"], trust_env=False, timeout=30,
+                      headers=ECRITURE) as c:
+        rep = c.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": atelier["tintin"]})
+        assert rep.status_code == 200, rep.text
+    _ouvrir(page, atelier, "bulle")
+    expect(page.locator("#loc-current")).to_contain_text("Tintin", timeout=15000)
+
+    with page.expect_response(_est("PUT", f"/api/regions/{rid}")) as reponse:
+        page.locator("#region-type").select_option("case")
+    assert reponse.value.status == 200, reponse.value.text()
+    expect(page.locator("#toasts .toast", has_text=re.compile(r"Locuteur « Tintin » retiré"))
+           ).to_be_visible(timeout=15000)
+    expect(page.locator("#situation-section")).to_be_visible(timeout=15000)
+    assert _locuteur(atelier, rid) is None
+
+    with page.expect_response(lambda r: r.url.endswith("/api/undo")
+                              and r.request.method == "POST") as annulation:
+        page.locator("body").press("Control+z")
+    assert annulation.value.status == 200, annulation.value.text()
+    expect(page.locator("#region-type")).to_have_value("bulle", timeout=15000)
+    expect(page.locator("#loc-section")).to_be_visible(timeout=15000)
+    expect(page.locator("#loc-current")).to_contain_text("Tintin", timeout=15000)
+    assert _locuteur(atelier, rid)["id"] == atelier["tintin"]
+
 # --------------------------------------------------------------------------- #
 # Le changement de type, quand il ne se passe pas comme prévu
 # --------------------------------------------------------------------------- #

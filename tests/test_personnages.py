@@ -173,18 +173,18 @@ def test_le_refus_de_type_precede_la_lecture_du_personnage(client, region):
 
 
 def test_un_locuteur_herite_d_avant_se_lit_et_se_retire(client, planche, db_path):
-    """Une bulle qui parle peut DEVENIR une case : `PUT /api/regions/{id}` change le type
-    sans toucher au locuteur. La garde ne porte donc que sur l'attribution — ce qui existe
-    déjà se lit et se retire, et la ROUTE ne le repose ni ne le change.
-
-    « Par la route » est la moitié qui compte : l'annulation, elle, le repose (cf.
-    `test_undo.test_l_annulation_repose_un_locuteur_sur_une_region_devenue_muette`). Ce
-    test a d'abord affirmé « ne se REPOSE pas » tout court, et la relecture croisée l'a
-    mesuré faux."""
-    rid = _zone(client, planche, "bulle")
+    """Une base d'avant ANN-8 porte des cases qui ont gardé le locuteur de la bulle qu'elles
+    étaient : le changement de type ne l'emportait pas. La garde ne porte que sur
+    l'attribution — ce qui existe déjà se lit et se retire, et la route ne le repose ni ne
+    le change. (Depuis ANN-8, le changement de type l'emporte — cf. `test_undo.
+    test_un_locuteur_part_avec_le_type` — et l'annulation ne le repose plus : le cas ne naît
+    plus, d'où le locuteur posé ici à la main, comme une base d'avant le porte.)"""
+    rid = _zone(client, planche, "case")
     pid = client.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
-    assert client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": pid}).status_code == 200
-    assert client.put(f"/api/regions/{rid}", json={"type": "case"}).status_code == 200
+    c = sqlite3.connect(db_path)
+    c.execute("INSERT INTO bulle_locuteur (region_id, personnage_id) VALUES (?, ?)", (rid, pid))
+    c.commit()
+    c.close()
     assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]["id"] == pid   # se lit
     autre = client.post("/api/personnages", json={"nom": "Milou"}).json()["id"]
     assert client.put(f"/api/regions/{rid}/locuteur",

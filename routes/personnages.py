@@ -256,9 +256,11 @@ def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection =
     personnage : la question porte sur la région, et sa réponse ne dépend pas de qui
     l'on voulait y faire parler.
 
-    Seule l'ATTRIBUTION est gardée. Lire et retirer restent ouverts à tout type, parce
-    qu'une région change de type (`PUT /api/regions/{id}`) sans que son locuteur la quitte :
-    une bulle devenue case le garde, et il faut pouvoir le lui retirer.
+    Seule l'ATTRIBUTION est gardée ici. Lire et retirer restent ouverts à tout type : une
+    base d'avant ANN-8 porte des cases qui ont gardé le locuteur de la bulle qu'elles
+    étaient, et il faut pouvoir le leur retirer. Depuis ANN-8 (Hugo, 2026-10-21), le
+    changement de type l'emporte (`PUT /api/regions/{id}`, `database.retirer_locuteur_muet`)
+    et `tools/retirer_locuteurs_muets.py` rattrape ce que la base portait déjà.
 
     **L'ordre des deux contrôles compte, et il est tenu par un test.** L'accesseur gardé EN
     ÉCRITURE passe d'abord : qui ne lit pas la région, ou la lit sans l'écrire, reçoit le
@@ -268,14 +270,15 @@ def set_locuteur(region_id: int, payload: LocuteurIn, conn: sqlite3.Connection =
     attribuer. Les deux fautes laissaient la suite entière verte (relecture du 2026-10-12)
     jusqu'à `test_poser_un_locuteur_sans_ecrire_la_region_repond_introuvable`.
 
-    **Ce que cette garde NE tient PAS : l'annulation.** Elle garde une ROUTE. `undo.py`
-    rejoue un état passé par des mutations brutes, hors routes — c'est sa nature, sans quoi
-    chaque annulation se rejournaliserait. Une bulle dont on retire le locuteur, qui devient
-    une case, puis dont on annule le retrait, retrouve donc son locuteur EN TANT QUE CASE :
-    200, là où cette route répondrait 422 au même instant. Ce n'est pas fermé, c'est écrit,
-    et `test_l_annulation_repose_un_locuteur_sur_une_region_devenue_muette` le décrit tel
-    qu'il est. « Aucune case ne porte de locuteur » n'est donc PAS un invariant de la base :
-    c'en est un de l'attribution.
+    **L'annulation tient la même règle, par son propre chemin.** Cette garde-ci ne vaut que
+    pour la ROUTE, et `undo.py` rejoue un état passé par des mutations brutes, hors routes — c'est sa nature,
+    sans quoi chaque annulation se rejournaliserait. Une bulle dont on avait retiré le
+    locuteur, passée en case par une collègue, le retrouvait EN TANT QUE CASE au Ctrl+Z
+    suivant. Depuis ANN-8 (Hugo, 2026-10-21), `undo._poser_lien` refuse un locuteur sur un
+    type qui n'en porte pas : l'acte est passé (`test_l_annulation_ne_repose_pas_un_
+    locuteur_sur_une_region_devenue_muette`). « Aucune case ne porte de locuteur » reste
+    pourtant hors du schéma : c'est la route, le changement de type et l'annulation qui le
+    tiennent, et une base d'avant peut encore en porter.
     """
     region = _get_region(conn, portee, region_id, ecriture=True)
     if region["type"] not in TYPES_LOCUTEUR:

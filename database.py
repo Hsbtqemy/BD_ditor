@@ -15,7 +15,7 @@ import unicodedata
 from contextlib import contextmanager
 from typing import Iterator
 
-from config import DB_PATH, STATUTS
+from config import DB_PATH, STATUTS, TYPES_LOCUTEUR
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
@@ -314,7 +314,8 @@ CREATE TABLE IF NOT EXISTS personnages (
 -- Lien LOCUTEUR : quelle entité parle dans cette zone de texte (au plus une → region_id
 -- PK). La table s'appelle `bulle_locuteur` parce qu'une bulle était seule à parler ;
 -- depuis ANN-6 un cartouche et une zone de texte reçoivent un locuteur aussi
--- (`config.TYPES_LOCUTEUR`, tenu par la route — pas par une contrainte de schéma).
+-- (`config.TYPES_LOCUTEUR` — pas une contrainte de schéma : la route qui l'attribue, le
+-- changement de type qui le retire, et l'annulation qui refuse de le reposer, ANN-8).
 -- ON DELETE CASCADE des DEUX côtés = on détache la liaison quand la région OU le
 -- personnage disparaît ; aucun des deux n'est supprimé par l'autre.
 CREATE TABLE IF NOT EXISTS bulle_locuteur (
@@ -1732,6 +1733,46 @@ def relecture_planches(conn: sqlite3.Connection, planche_ids) -> dict:
         out[pid] = {"statut": force or derive, "derive": derive,
                     "force": force is not None, "tokens": tokens, "relus": relus}
     return out
+
+
+# ANN-8 — une région d'un type qui ne porte pas de locuteur n'en a pas. La route qui
+# l'attribue le refuse (`PUT /api/regions/{id}/locuteur`), mais une bulle qui parle
+# DEVENAIT case en le gardant : invisible à l'écran, il comptait encore au registre, dans la
+# Recherche et les exports. Tranché par Hugo le 2026-10-21 : il part avec le type. La
+# requête est écrite UNE fois, lue par le changement de type et par
+# `tools/retirer_locuteurs_muets.py`, qui rattrape ce que la base portait déjà.
+_SQL_LOCUTEURS_MUETS = (
+    "SELECT r.id AS region_id, r.type, r.planche_id, pl.album_id, bl.personnage_id, "
+    "       p.nom AS personnage_nom "
+    "FROM bulle_locuteur bl "
+    "JOIN regions r ON r.id = bl.region_id "
+    "JOIN planches pl ON pl.id = r.planche_id "
+    "JOIN personnages p ON p.id = bl.personnage_id "
+    "WHERE r.type NOT IN ({types})")
+
+
+def locuteurs_muets(conn: sqlite3.Connection, region_id: int | None = None) -> list:
+    """Les locuteurs que portent des régions d'un type qui n'en porte pas (case, boîte
+    personnage) : `region_id`, `type`, `planche_id`, `album_id`, `personnage_id`,
+    `personnage_nom` — d'une seule région si `region_id` est donné. Rangés par album,
+    planche, région."""
+    sql = _SQL_LOCUTEURS_MUETS.format(types=", ".join("?" * len(TYPES_LOCUTEUR)))
+    params: list = list(TYPES_LOCUTEUR)
+    if region_id is not None:
+        sql += " AND r.id = ?"
+        params.append(region_id)
+    return conn.execute(sql + " ORDER BY pl.album_id, r.planche_id, r.id", params).fetchall()
+
+
+def retirer_locuteur_muet(conn: sqlite3.Connection, region_id: int) -> int | None:
+    """Retire le locuteur d'une région si son type n'en porte pas ; rend le personnage
+    retiré, ou None. NE JOURNALISE PAS et NE COMMITE PAS : le changement de type le range
+    dans SON acte, l'outil de rattrapage dans une passe à lui."""
+    rows = locuteurs_muets(conn, region_id)
+    if not rows:
+        return None
+    conn.execute("DELETE FROM bulle_locuteur WHERE region_id = ?", (region_id,))
+    return rows[0]["personnage_id"]
 
 
 # Régions de texte (citées au niveau bulle « pl·c·b ») — cf. ordre de lecture.

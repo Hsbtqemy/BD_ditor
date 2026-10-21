@@ -31,10 +31,30 @@ rollback en cas d'échec.
 |---|---|
 | `creation` région | supprimer la région (+ sous-arbre, désindexé) — **refusé** si quelqu'un d'autre l'a modifiée, annotée ou y a rattaché une région depuis |
 | `modification` région (géométrie / OCR / déplacement) | remettre les colonnes que l'acte a CHANGÉES à leur valeur `avant` — **refusé** si l'une d'elles a changé depuis (sauf par un moteur) |
+| `modification` région qui a changé le type d'une zone de texte en case ou en boîte personnage | remettre le type, puis **reposer le locuteur** que le changement avait retiré (ANN-8), s'il est rendable — sinon le type revient seul, et la réponse le compte (`liens_non_rendus`) |
 | `suppression` région | **recréer le sous-arbre** depuis l'instantané profond (région + annotation + enfants, **mêmes `id`**) — **passé** si un `id` a été repris, si une planche ou le parent n'est plus le même, ou si l'on n'écrit plus dans l'une des planches |
 | `creation` / `modification` / `suppression` annotation | défaire ce que l'acte a CHANGÉ, sur l'état actuel : la note revient à `avant` si l'acte l'a changée ; les tags qu'il a ajoutés partent, ceux qu'il a retirés reviennent ; vide, l'annotation est supprimée |
 | `lien` locuteur/présence (avant ∅) | retirer le lien |
-| `lien` (avant présent) / `delien` | rétablir l'ancien lien |
+| `lien` (avant présent) / `delien` | rétablir l'ancien lien — **passé** si c'est un locuteur et que la région n'est plus d'un type qui en porte un (ANN-8) |
+
+**Un locuteur part avec le type, et revient avec lui** (ANN-8, tranché par Hugo le
+2026-10-21). Une bulle, un cartouche ou une zone de texte qui devient case ou boîte
+personnage perd son locuteur : il restait, invisible à l'écran, et comptait encore au
+registre, dans la Recherche et les exports. Le retrait entre dans l'acte du changement de
+type — son `avant` porte `locuteur`, la clé d'un nœud d'instantané profond —, et non dans un
+`delien` à part : UN Ctrl+Z rend le type ET le locuteur. Deux actes en auraient demandé deux,
+et le premier aurait rendu une bulle muette que personne n'a voulue. Le locuteur revient par
+la même porte que les liens d'une suppression, sous les mêmes questions : le personnage existe
+encore, n'est pas né après l'acte, l'agent le voit.
+
+**Un locuteur ne se repose que sur une zone qui en porte un.** La route d'attribution le
+refusait seule (422), et l'annulation, qui rejoue hors routes, le reposait : une bulle dont
+on avait retiré le locuteur, passée en case par une collègue, le retrouvait EN TANT QUE CASE
+au Ctrl+Z suivant. L'annulation d'un tel `delien` est désormais **passée** (seconde phrase,
+« l'état d'avant ne peut plus être rétabli ») ; dans une suppression rétablie, le lien ne
+revient pas et compte parmi les `liens_non_rendus`. Ce que la base portait avant cette règle,
+`tools/retirer_locuteurs_muets.py` le montre, et le retire avec `--appliquer` — en acte
+MACHINE, donc hors Ctrl+Z.
 
 **Une annotation se défait par différence, et non par instantané** (CONC-3, 2026-09-16).
 Restaurer `avant` entier défaisait aussi ce qu'une autre personne avait fait sur l'AUTRE

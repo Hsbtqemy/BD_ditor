@@ -191,6 +191,26 @@ def test_un_personnage_que_l_agent_ne_voit_plus_ne_revient_pas(client, planche, 
     assert "Tintin" not in str(res)
 
 
+def test_un_locuteur_d_avant_sur_une_case_ne_revient_pas_avec_elle(client, planche, db_path):
+    """Une base d'avant ANN-8 porte une case qui a gardé le locuteur de la bulle qu'elle
+    était. Supprimée puis rétablie, la case revient — sans ce locuteur, compté parmi les
+    liens non rendus : l'annulation ne repose pas un locuteur sur un type qui n'en porte
+    pas, même depuis un instantané qui le porte."""
+    case = _region(client, planche["id"])
+    tintin = _perso(client, "Tintin")
+    _sql(db_path, "INSERT INTO bulle_locuteur (region_id, personnage_id) VALUES (?, ?)",
+         (case, tintin))
+    _ok(client.delete(f"/api/regions/{case}", headers=ADMIN), 204)
+    snap = _sql(db_path, "SELECT avant FROM evenement WHERE type = 'suppression' "
+                         "AND cible_id = ?", (case,))[0]["avant"]
+    assert f'"locuteur": {tintin}' in snap, "le décor suppose l'instantané porteur du lien"
+
+    res = _ok(client.post("/api/undo", headers=ADMIN), 200).json()
+    assert res["acte"] == "suppression" and res["liens_non_rendus"] == 1
+    assert _sql(db_path, "SELECT type FROM regions WHERE id = ?", (case,)) == [{"type": "case"}]
+    assert _liens(db_path, case)["locuteur"] is None
+
+
 # --------------------------------------------------------------------------- #
 # ANN-8 — le premier Ctrl+Z après un redémarrage ne paie le moteur de langue que s'il sert
 # --------------------------------------------------------------------------- #

@@ -24,6 +24,7 @@ from typing import Optional
 
 import conflit
 import journal
+from config import TYPES_LOCUTEUR
 from database import NATURE_COLLECTIF, reindex_region, unindex_region
 
 # Types d'événements et tables que l'undo sait inverser (le reste est ignoré : ni annulé,
@@ -80,7 +81,16 @@ class Irretablissable(Exception):
 
 
 def _description(e) -> str:
+    if _retire_un_locuteur(e):
+        return "modification d'une région et retrait de son locuteur"
     return _DESCRIPTIONS.get((e["type"], e["cible_table"]), f"{e['type']} {e['cible_table']}")
+
+
+def _retire_un_locuteur(e) -> bool:
+    """La modification d'une région a-t-elle retiré son locuteur avec son type ? (ANN-8 :
+    `PUT /api/regions/{id}` le range sous `locuteur` dans son `avant`.)"""
+    return (e["type"] == "modification" and e["cible_table"] == "regions"
+            and (_charge(e["avant"]) or {}).get("locuteur") is not None)
 
 
 def _charge(champ) -> Optional[dict]:
@@ -337,21 +347,33 @@ def _recreer_region_profond(conn, snap):
         _recreer_region_profond(conn, enfant)
 
 
-def _rendre_liens(conn, snap, rendables):
-    """ANN-8 — repose les liens des régions qu'une annulation de suppression vient de
-    rétablir : le locuteur, le personnage montré, les attributs de case. Seulement ceux qui
+def _rendre_liens(conn, snap, rendables) -> int:
+    """ANN-8 — repose les liens des régions qu'une annulation vient de rétablir — par une
+    suppression défaite, ou par un changement de type défait qui avait emporté le
+    locuteur : le locuteur, le personnage montré, les attributs de case. Seulement ceux qui
     sont RENDABLES (`_liens_rendables`, calculé avant toute écriture) : le personnage ou la
-    valeur existe encore, est celui de l'acte, et l'agent le voit. Un lien qui ne l'est pas
-    ne revient pas, et la région revient quand même — elle est l'objet de l'acte, et le lien
-    serait parti de toute façon avec ce qu'il désignait."""
+    valeur existe encore, est celui de l'acte, et l'agent le voit — et un locuteur, sur une
+    région dont le type en porte un (`_porte_un_locuteur`). Un lien qui ne l'est pas ne
+    revient pas, et la région revient quand même — elle est l'objet de l'acte, et le lien
+    serait parti de toute façon avec ce qu'il désignait. Rend combien de liens ne reviennent
+    pas, compté par NŒUD : deux bulles du même locuteur font deux liens."""
+    manque = 0
     for n in _noeuds(snap):
         for cle, table in _LIENS_INSTANTANE:
-            if n.get(cle) is not None and n[cle] in rendables["personnages"]:
-                _poser_lien(conn, table, n["id"], n[cle])
+            if n.get(cle) is None:
+                continue
+            if n[cle] not in rendables["personnages"] or (
+                    table == "bulle_locuteur" and not _porte_un_locuteur(conn, n["id"])):
+                manque += 1
+                continue
+            _poser_lien(conn, table, n["id"], n[cle])
         for vid in n.get("attributs", []):
-            if vid in rendables["valeurs"]:
-                conn.execute("INSERT OR IGNORE INTO region_attribut (region_id, valeur_id) "
-                             "VALUES (?, ?)", (n["id"], vid))
+            if vid not in rendables["valeurs"]:
+                manque += 1
+                continue
+            conn.execute("INSERT OR IGNORE INTO region_attribut (region_id, valeur_id) "
+                         "VALUES (?, ?)", (n["id"], vid))
+    return manque
 
 
 # Les liens d'un nœud d'instantané profond vers un personnage : (clé, table).
@@ -379,15 +401,36 @@ def _valeur_nee_apres(conn, valeur_id, e) -> bool:
     return bool(row and row["date_creation"] and e["date"] and row["date_creation"] > e["date"])
 
 
-def _liens_rendables(conn, e, ecrivable) -> dict:
-    """Ce que l'annulation d'une suppression peut reposer de ses LIENS (ANN-8).
+def _liens_a_rendre(e) -> Optional[dict]:
+    """Les liens que l'annulation de `e` reposerait, sous la forme d'un instantané profond
+    (`_noeuds`), ou None si elle n'en repose aucun.
+
+    Deux actes en portent. La SUPPRESSION d'une région : son instantané profond, tel quel.
+    La MODIFICATION qui a changé le type d'une zone de texte en case ou en boîte personnage
+    et lui a retiré son locuteur (ANN-8, Hugo, 2026-10-21) : un nœud seul, la région de
+    l'acte et ce locuteur. Un acte et non deux — pas de `delien` à part — pour que UN Ctrl+Z
+    rende le type et le locuteur : deux actes en auraient demandé deux, et le premier aurait
+    rendu une bulle muette que personne n'a voulue (le défaut qu'`UX-5` relève déjà pour
+    les retouches). Et le lien revient par la même porte que ceux d'une suppression, sous
+    les mêmes questions."""
+    if e["cible_table"] != "regions":
+        return None
+    if e["type"] == "suppression":
+        return _charge(e["avant"]) or {}
+    if _retire_un_locuteur(e):
+        return {"id": e["cible_id"], "locuteur": _charge(e["avant"])["locuteur"]}
+    return None
+
+
+def _liens_rendables(conn, e, snap, ecrivable) -> dict:
+    """Ce que l'annulation de `e` peut reposer des LIENS de `snap` (ANN-8).
 
     Les trois questions d'AUTH-14, posées lien par lien et AVANT toute écriture : l'objet
     désigné existe-t-il encore ; est-il celui de l'acte (né avant lui) ; l'agent le voit-il
     MAINTENANT (`ecrivable`, la question de la route : un personnage par ses apparitions,
     une valeur par la portée des termes). Ce qui échoue n'est pas reposé, en silence pour
     l'objet — l'écran apprend seulement COMBIEN de liens ne sont pas revenus."""
-    personnages, valeurs = _liens_de_l_instantane(_charge(e["avant"]) or {})
+    personnages, valeurs = _liens_de_l_instantane(snap)
     ok_p = {p for p in personnages
             if conn.execute("SELECT 1 FROM personnages WHERE id = ?", (p,)).fetchone()
             and not _personnage_ne_apres(conn, p, e)
@@ -399,19 +442,20 @@ def _liens_rendables(conn, e, ecrivable) -> dict:
     return {"personnages": ok_p, "valeurs": ok_v}
 
 
-def _liens_non_rendus(e, rendables) -> int:
-    """Combien de liens de l'instantané ne reviennent pas — compté par NŒUD, deux bulles
-    du même locuteur font deux liens."""
-    n = 0
-    for noeud in _noeuds(_charge(e["avant"]) or {}):
-        for cle, _ in _LIENS_INSTANTANE:
-            if noeud.get(cle) is not None and noeud[cle] not in rendables["personnages"]:
-                n += 1
-        n += sum(1 for v in noeud.get("attributs", []) if v not in rendables["valeurs"])
-    return n
+def _porte_un_locuteur(conn, region_id) -> bool:
+    """La région existe-t-elle, d'un type qui reçoit un locuteur (`config.TYPES_LOCUTEUR`) ?"""
+    r = conn.execute("SELECT type FROM regions WHERE id = ?", (region_id,)).fetchone()
+    return r is not None and r["type"] in TYPES_LOCUTEUR
 
 
 def _poser_lien(conn, table, region_id, personnage_id):
+    """Repose un lien région→personnage. ANN-8 (Hugo, 2026-10-21) — un locuteur ne se repose
+    que sur une région dont le type en porte un. La route d'attribution le refusait seule
+    (422) : une bulle dont on avait retiré le locuteur, passée en case par une collègue,
+    le retrouvait EN TANT QUE CASE au Ctrl+Z suivant. L'état d'avant n'a plus où se poser :
+    l'acte est irrétablissable, donc passé (`annuler`)."""
+    if table == "bulle_locuteur" and not _porte_un_locuteur(conn, region_id):
+        raise Irretablissable()
     conn.execute(f"INSERT INTO {table} (region_id, personnage_id) VALUES (?, ?) "
                  f"ON CONFLICT(region_id) DO UPDATE SET personnage_id = excluded.personnage_id",
                  (region_id, personnage_id))
@@ -710,14 +754,17 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
         if _personnage_ne_apres(conn, perso, e) or not ecrivable(
                 {"regions": [], "planches": [], "personnages": [perso]}):
             raise NeSAnnulePlus(e, PHRASE_IRRETABLISSABLE)
-    # ANN-8 — une suppression rend aussi les liens de ses régions, ceux qui sont rendables.
-    rendables = (_liens_rendables(conn, e, ecrivable)
-                 if e["type"] == "suppression" and e["cible_table"] == "regions" else None)
+    # ANN-8 — une suppression rend aussi les liens de ses régions, et un changement de type
+    # le locuteur qu'il avait emporté : ceux qui sont rendables.
+    a_rendre = _liens_a_rendre(e)
+    rendables = (_liens_rendables(conn, e, a_rendre, ecrivable)
+                 if a_rendre is not None else None)
+    non_rendus = 0
     try:
         region_id = _inverser(conn, e)
         if rendables is not None:
             try:
-                _rendre_liens(conn, _charge(e["avant"]) or {}, rendables)
+                non_rendus = _rendre_liens(conn, a_rendre, rendables)
             except sqlite3.IntegrityError as exc:
                 raise Irretablissable() from exc
     except Irretablissable:
@@ -729,5 +776,5 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
     res = {"evenement_id": e["id"], "acte": e["type"], "cible_table": e["cible_table"],
            "region_id": region_id, "planche_id": planche_id, "description": _description(e)}
     if rendables is not None:
-        res["liens_non_rendus"] = _liens_non_rendus(e, rendables)
+        res["liens_non_rendus"] = non_rendus
     return res

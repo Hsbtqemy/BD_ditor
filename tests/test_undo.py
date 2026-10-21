@@ -5,6 +5,7 @@ supprimer+cascade, annotation note+tags, locuteur, présence), la PILE (Ctrl+Z r
 l'historique), l'intégrité APPEND-ONLY (un événement `annulation` est ajouté, rien n'est retiré
 du journal), et le fait que les actes MACHINE ne sont pas annulables par l'utilisateur.
 """
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -141,19 +142,13 @@ def test_undo_lien_personnage_disparu_409(client, zone_de_texte, db_path):
 
 
 # --------------------------------------------------------------------------- #
-# ANN-6 — l'annulation REPOSE un locuteur là où la route le refuse. Ces deux tests
-# DÉCRIVENT ce que le code fait ; ils ne disent pas que c'est souhaitable.
+# ANN-8 (Hugo, 2026-10-21) — un locuteur part avec le type, revient avec lui, et ne se
+# repose jamais sur une région dont le type n'en porte pas.
 #
-# La garde de type vit dans `PUT /api/regions/{id}/locuteur`. L'annulation rejoue un état
-# passé par des mutations brutes, hors routes (sinon elle se rejournaliserait) : elle ne
-# passe donc par aucune garde de route, celle-ci comprise. Une région qui a changé de type
-# entre l'acte et son annulation retrouve son lien sous son NOUVEAU type.
-#
-# Pourquoi l'écrire plutôt que le taire : un test du chantier affirmait qu'un locuteur
-# hérité « ne se repose pas », et c'était faux par cette voie (mesuré par la relecture
-# croisée). Et pourquoi ne pas le fermer ici : refuser l'annulation changerait ce que
-# Ctrl+Z promet — rendre l'état d'avant —, et c'est une décision, pas une retouche. Le
-# jour où elle est prise, ces deux tests tombent, et c'est leur rôle.
+# Ces tests DÉCRIVAIENT, jusqu'au 2026-10-21, l'inverse : une bulle devenue case gardait son
+# locuteur, et l'annulation en reposait un sur une case là où la route répondait 422. Ils
+# étaient écrits pour tomber le jour où la décision serait prise ; elle l'est, et ils ont
+# changé de sens.
 # --------------------------------------------------------------------------- #
 def _type_et_locuteur(db_path, region_id):
     r = _un(db_path, "SELECT r.type, bl.personnage_id FROM regions r "
@@ -162,33 +157,100 @@ def _type_et_locuteur(db_path, region_id):
     return r["type"], r["personnage_id"]
 
 
-def test_l_annulation_repose_un_locuteur_sur_une_region_devenue_muette(client, planche, db_path):
-    """Seul à son poste : la bulle parle, devient une case, on lui retire son locuteur —
-    retirer reste ouvert à tout type —, puis Ctrl+Z."""
+def _annulations(db_path):
+    return direct_query(db_path, "SELECT COUNT(*) n FROM evenement WHERE type = 'annulation'")[0]["n"]
+
+
+def test_un_locuteur_part_avec_le_type(client, planche, db_path):
+    """Une bulle qui parle devient case : son locuteur part, le registre ne le compte plus,
+    et le retrait est écrit DANS l'acte du changement de type — pas dans un `delien` à part."""
     rid = _creer_region(client, planche["id"], type="bulle")["id"]
     p = client.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
     assert client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": p}).status_code == 200
-    assert client.put(f"/api/regions/{rid}", json={"type": "case"}).status_code == 200
-    assert client.delete(f"/api/regions/{rid}/locuteur").status_code == 204
+
+    rep = client.put(f"/api/regions/{rid}", json={"type": "case"})
+    assert rep.status_code == 200, rep.text
+    assert rep.json()["type"] == "case"
+    assert rep.json()["locuteur_retire"] == {"id": p, "nom": "Tintin", "serie": None}
     assert _type_et_locuteur(db_path, rid) == ("case", None)
-    # La route, à cet instant, refuse de reposer ce même locuteur…
-    assert client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": p}).status_code == 422
+    assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"] is None
+    assert [x for x in client.get("/api/personnages").json() if x["id"] == p][0]["nb_bulles"] == 0
+
+    ev = direct_query(db_path, "SELECT * FROM evenement WHERE cible_table IN "
+                               "('regions', 'bulle_locuteur') ORDER BY id DESC LIMIT 1")[0]
+    assert (ev["type"], ev["cible_table"], ev["agent_type"]) == ("modification", "regions", "humain")
+    assert json.loads(ev["avant"])["locuteur"] == p
+    assert "locuteur" not in json.loads(ev["apres"])
+    assert direct_query(db_path, "SELECT COUNT(*) n FROM evenement WHERE type = 'delien'")[0]["n"] == 0
+
+
+def test_un_changement_de_type_entre_zones_de_texte_garde_le_locuteur(client, planche, db_path):
+    """Une bulle qui devient cartouche parle toujours : rien ne part, la réponse ne dit rien."""
+    rid = _creer_region(client, planche["id"], type="bulle")["id"]
+    p = client.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": p})
+    rep = client.put(f"/api/regions/{rid}", json={"type": "cartouche"})
+    assert rep.status_code == 200 and "locuteur_retire" not in rep.json()
+    assert _type_et_locuteur(db_path, rid) == ("cartouche", p)
+
+
+def test_bouger_une_case_qui_porte_un_locuteur_d_avant_ne_le_retire_pas(client, planche, db_path):
+    """Seul un changement de TYPE retire : un geste de géométrie sur une case d'avant ANN-8
+    ne fait pas, en passant, le travail de l'outil de rattrapage."""
+    rid = _creer_region(client, planche["id"], type="case")["id"]
+    p = client.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
+    c = sqlite3.connect(db_path)
+    c.execute("INSERT INTO bulle_locuteur (region_id, personnage_id) VALUES (?, ?)", (rid, p))
+    c.commit()
+    c.close()
+    rep = client.put(f"/api/regions/{rid}", json={"x": 7})
+    assert rep.status_code == 200 and "locuteur_retire" not in rep.json()
+    assert _type_et_locuteur(db_path, rid) == ("case", p)
+
+
+def test_un_ctrl_z_rend_le_type_et_le_locuteur(client, planche, db_path):
+    """UN geste, UN Ctrl+Z : le type revient ET le locuteur — pas une bulle muette d'abord."""
+    rid = _creer_region(client, planche["id"], type="bulle")["id"]
+    p = client.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": p})
+    client.put(f"/api/regions/{rid}", json={"type": "personnage"})
+    assert _type_et_locuteur(db_path, rid) == ("personnage", None)
+    assert client.get("/api/undo/prochain").json()["description"] == \
+        "modification d'une région et retrait de son locuteur"
+
+    n = _annulations(db_path)
+    res = client.post("/api/undo")
+    assert res.status_code == 200, res.text
+    assert (res.json()["acte"], res.json()["cible_table"]) == ("modification", "regions")
+    assert res.json()["liens_non_rendus"] == 0
+    assert _type_et_locuteur(db_path, rid) == ("bulle", p)
+    assert _annulations(db_path) == n + 1                 # un seul acte d'annulation
+    # Le Ctrl+Z suivant défait l'attribution du locuteur : le changement de type n'a pas
+    # laissé de second acte derrière lui.
+    assert client.get("/api/undo/prochain").json()["description"] == "attribution d'un locuteur"
+
+
+def test_un_locuteur_disparu_ne_revient_pas_mais_le_type_si(client, planche, db_path):
+    """Le personnage a été supprimé depuis : le type revient, le locuteur non, et la réponse
+    le compte — comme un lien d'une suppression défaite."""
+    rid = _creer_region(client, planche["id"], type="bulle")["id"]
+    p = client.post("/api/personnages", json={"nom": "Fantome"}).json()["id"]
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": p})
+    client.put(f"/api/regions/{rid}", json={"type": "case"})
+    assert client.delete(f"/api/personnages/{p}").status_code == 204
 
     res = client.post("/api/undo")
     assert res.status_code == 200, res.text
-    assert (res.json()["acte"], res.json()["cible_table"]) == ("delien", "bulle_locuteur")
-    # …et l'annulation le repose : une CASE porte un locuteur.
-    assert _type_et_locuteur(db_path, rid) == ("case", p)
-    assert client.get(f"/api/regions/{rid}/locuteur").json()["locuteur"]["id"] == p
-    # La route refuse toujours : les deux disent des choses différentes de la même région.
-    assert client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": p}).status_code == 422
+    assert res.json()["liens_non_rendus"] == 1
+    assert _type_et_locuteur(db_path, rid) == ("bulle", None)
 
 
-def test_a_deux_l_annulation_de_l_un_repose_sur_la_case_de_l_autre(client, planche, db_path,
-                                                                   derriere_proxy):
-    """Le scénario mesuré par la relecture : A pose puis retire, B passe la région en case,
-    A annule. Aucun des deux n'a rien fait que l'écran lui interdise — l'annulation se
-    filtre par AGENT, donc celle de A ne voit pas le changement de type de B."""
+def test_l_annulation_ne_repose_pas_un_locuteur_sur_une_region_devenue_muette(
+        client, planche, db_path, derriere_proxy):
+    """Le scénario mesuré par la relecture du 2026-10-12 : A pose puis retire, B passe la
+    région en case, A annule. L'annulation se filtre par AGENT : celle de A ne voit pas le
+    changement de type de B. Elle reposait le locuteur SUR LA CASE ; elle passe désormais
+    l'acte, avec la seconde phrase, et le Ctrl+Z suivant de A défait son geste d'avant."""
     alice = {"Remote-User": "alice", "Remote-Groups": "bd-admins"}
     bob = {"Remote-User": "bob", "Remote-Groups": "bd-admins"}
     rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
@@ -202,9 +264,18 @@ def test_a_deux_l_annulation_de_l_un_repose_sur_la_case_de_l_autre(client, planc
                       headers=alice).status_code == 422       # ce que la route répond à A
 
     res = client.post("/api/undo", headers=alice)
-    assert res.status_code == 200, res.text
-    assert (res.json()["acte"], res.json()["cible_table"]) == ("delien", "bulle_locuteur")
-    assert _type_et_locuteur(db_path, rid) == ("case", p)
+    assert res.status_code == 409, res.text
+    corps = res.json()["detail"]
+    assert corps["message"] == undo.PHRASE_IRRETABLISSABLE.format(
+        description="retrait d'un locuteur")
+    assert corps["ecarte"]["description"] == "retrait d'un locuteur"
+    assert _type_et_locuteur(db_path, rid) == ("case", None)   # rien n'est reposé
+    assert _annulations(db_path) == 0
+    assert direct_query(db_path, "SELECT COUNT(*) n FROM evenement WHERE type = 'abandon' "
+                                 "AND cible_table = 'annulation'")[0]["n"] == 1
+    # L'acte est passé : le Ctrl+Z suivant de A défait son attribution d'avant.
+    assert client.get("/api/undo/prochain", headers=alice).json()["description"] == \
+        "attribution d'un locuteur"
 
 
 def test_undo_presence(client, region, db_path):

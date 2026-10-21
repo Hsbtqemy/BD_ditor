@@ -242,7 +242,9 @@ type :
   le nommer n'est pas encore arrêtée. Tapez le nom puis Entrée : s'il est déjà au
   registre, c'est ce personnage qui est pris, même tapé vite ; il n'est créé que si aucun
   ne porte exactement ce nom. Quand plusieurs le portent — un par série —, Entrée prend
-  le premier de la liste : choisissez le vôtre dans les propositions ;
+  le premier de la liste : choisissez le vôtre dans les propositions. Une zone de texte
+  qu'on passe en case ou en boîte personnage **perd son locuteur** — un message le dit —,
+  et un seul Ctrl+Z rend le type et le locuteur ;
 - la **présence** dans une boîte personnage — quelle entité y est montrée, choisie de la
   même façon ;
 - le **profil** du personnage (dimensions de cible `personnage`) ;

@@ -460,6 +460,13 @@ NON_BALAYE = {
         "casse sur un chiffre. La passe se journalise en `agent_type='moteur'` sous le nom "
         "du LOGICIEL (`normalisation-casse`), jamais sous celui de qui la lance — la règle "
         "d'AUTH-1, « les moteurs gardent leur nom »."),
+    ("outil", "retirer_locuteurs_muets.py"): (
+        "Maintenance (ANN-8) : dit, et retire avec `--appliquer`, les locuteurs que portent "
+        "des cases et des boîtes personnage. Son compte rendu est un décompte, des "
+        "identifiants de région, de planche et d'album, et le NOM d'un personnage du "
+        "registre — une entité de corpus, jamais une colonne d'identité. Le retrait se "
+        "journalise en `agent_type='moteur'` sous le nom du LOGICIEL "
+        "(`retrait-locuteurs-muets`), jamais sous celui de qui le lance."),
     ("outil", "semer_demo.py"): (
         "Sème un corpus de démonstration. Il écrit `albums.auteur` — l'AUTEUR DE LA BD, "
         "pas un annotateur : dans ce projet le mot désigne les deux, et c'est le seul "

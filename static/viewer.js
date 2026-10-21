@@ -2325,11 +2325,14 @@ async function patchRegion(id, fields, vuExplicite = null) {
     fields.source = "corrige";
   }
   try {
-    const updated = await apiSend("PUT", `/api/regions/${id}`,
-                                  Object.keys(vu).length ? { ...fields, vu } : fields);
+    const { locuteur_retire: retire, ...updated } = await apiSend(
+      "PUT", `/api/regions/${id}`, Object.keys(vu).length ? { ...fields, vu } : fields);
     Object.assign(state.regionsById.get(id), updated);
     renderOverlay();
     renderPanel();
+    // ANN-8 — une zone de texte devenue case ou boîte personnage perd son locuteur : le dire,
+    // sans quoi on ne le découvrirait qu'en la repassant en bulle. Ctrl+Z rend les deux.
+    if (retire) toast(`Locuteur « ${retire.nom} » retiré : ce type de région n'en porte pas. Ctrl+Z le rend.`, "", 6000);
   } catch (e) {
     if (regionDisparue(e, id)) return;
     if (e.statut === 409 && e.detail && e.detail.conflit) {

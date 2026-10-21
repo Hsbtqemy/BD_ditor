@@ -564,6 +564,11 @@ OUTILS_HORS = {
     "normaliser_casse.py":
         "Maintenance (NLP-3) : son aperçu recopie des RÉPLIQUES, du texte de bulle — "
         "jamais un terme de vocabulaire ni une charge du journal.",
+    "retirer_locuteurs_muets.py":
+        "Maintenance (ANN-8) : son compte rendu nomme des régions, des planches, des albums "
+        "par identifiant et le NOM d'un personnage du registre — jamais un terme de "
+        "vocabulaire ni une charge du journal. Sans périmètre de collection : il porte sur "
+        "la base entière.",
     "semer_demo.py": "SÈME un corpus de démonstration par l'API : il écrit, il ne "
                      "sort rien.",
     "regenerer_exemples.py":
@@ -599,6 +604,7 @@ ENTREES_HORS = {
     "regenerer_derives.py": {"--album", "--dry-run", "--mode", "--planche", "--toutes"},
     "convertir_en_copies_de_travail.py": {"--album", "--appliquer"},
     "normaliser_casse.py": {"--album", "--dry-run", "--planche"},
+    "retirer_locuteurs_muets.py": {"--appliquer"},
     "semer_demo.py": set(),
     "regenerer_exemples.py": set(),
     "fabriquer_base_de_version.py": {"commit", "sortie", "--copie"},
