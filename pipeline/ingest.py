@@ -88,7 +88,9 @@ def numero_occupe(conn: sqlite3.Connection, album_id: int, numero: int) -> bool:
     souche = f"planche_{numero:04d}"
     corpus = CORPUS_DIR / f"album_{album_id}"
     derive = DERIVATIVES_DIR / f"album_{album_id}" / f"{souche}.jpg"
-    if derive.exists() or (corpus.is_dir() and any(corpus.glob(f"{souche}.*"))):
+    # `lexists` et non `exists` : un lien cassé au chemin du dérivé occupe ce chemin —
+    # `open(…, "xb")` le refuse — sans qu'`exists` le voie (relecture croisée IMG-1).
+    if os.path.lexists(derive) or (corpus.is_dir() and any(corpus.glob(f"{souche}.*"))):
         return True
     try:
         master_rel = _rel_posix(corpus) + f"/{souche}."
@@ -320,6 +322,13 @@ class NumeroPris(ValueError):
     passe au suivant."""
 
 
+# Ce que dit un refus de numéro imposé : un import tué après sa réservation laisse ses deux
+# fichiers VIDES, que rien ne retire (on n'efface pas automatiquement : rien ne distingue
+# un import interrompu d'un import en cours).
+RESERVATION = ("peut-être la réservation laissée par un import interrompu (deux fichiers "
+               "VIDES, que `tools/convertir_en_copies_de_travail.py` liste)")
+
+
 # Combien de numéros l'ingest essaie d'affilée quand un import concurrent prend, entre sa
 # lecture et sa réservation, celui qu'il visait. Au-delà, quelque chose d'autre écrit dans
 # le dossier de l'album.
@@ -341,8 +350,16 @@ def _reserver(chemins) -> list[Path]:
     crees: list[Path] = []
     try:
         for p in chemins:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            with open(p, "xb"):
+            try:
+                p.parent.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                # PAS une course : un fichier occupe le chemin du dossier, ou les droits
+                # manquent. Une `FileExistsError` remontée telle quelle aurait fait essayer
+                # le numéro suivant, cinquante fois, pour la même cause (relecture croisée).
+                raise OSError(
+                    f"le dossier {p.parent} ne peut pas être créé ({exc.strerror or exc}) : "
+                    "un fichier occupe-t-il son chemin ? Les droits manquent-ils ?") from exc
+            with open(p, "xb"):                 # FileExistsError : la seule course
                 pass
             crees.append(p)
     except BaseException:
@@ -400,11 +417,18 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source,
         raise ValueError(f"Album {album_id} inexistant")
 
     impose = numero is not None
+    precedent = None
     for _ in range(_ESSAIS_DE_RESERVATION):
         n = numero if impose else prochain_numero_libre(conn, album_id)
         if impose and numero_occupe(conn, album_id, n):
             raise NumeroPris(f"Les images du numéro {n} sont déjà sur le disque ou "
-                             "désignées par une planche.")
+                             f"désignées par une planche — {RESERVATION}.")
+        if n == precedent:
+            # Le numéro refusé revient : ce qui l'occupe, `numero_occupe` ne le voit pas.
+            # Essayer encore ne ferait que le reprendre ; on s'arrête en le nommant.
+            raise RuntimeError(f"Album {album_id} : le numéro {n} est refusé à la réservation "
+                               f"({bloque}) sans être vu comme pris ; rien n'a été écrit.")
+        precedent = n
         souche = f"planche_{n:04d}"
         web_path = DERIVATIVES_DIR / f"album_{album_id}" / f"{souche}.jpg"
         travail = CORPUS_DIR / f"album_{album_id}" / f"{souche}.jpg" if keep_master else None
@@ -413,10 +437,11 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source,
             # les retire — eux, et rien d'autre.
             ecrits = _reserver([p for p in (travail, web_path) if p is not None])
             break
-        except FileExistsError:
+        except FileExistsError as exc:
             if impose:
                 raise NumeroPris(f"Les images du numéro {n} viennent d'être prises par un "
                                  "autre import.") from None
+            bloque = exc.filename or "un chemin de la planche"
     else:
         raise RuntimeError(f"Album {album_id} : aucun numéro de planche n'a pu être réservé "
                            f"en {_ESSAIS_DE_RESERVATION} essais.")

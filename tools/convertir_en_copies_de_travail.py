@@ -195,23 +195,25 @@ def _verrou_de_l_outil():
 
 
 def orphelins(conn) -> list[tuple[str, int]]:
-    """Les fichiers des dossiers `corpus/album_<N>/` qu'AUCUNE planche ne désigne — un master
-    resté après une conversion interrompue, ou dont l'effacement a été refusé. Listés, jamais
-    effacés : un import EN COURS y a aussi ses fichiers, réservés avant d'être désignés
-    (`ingest._reserver`), et rien ne les distingue d'un reste."""
-    racine = DATA_DIR / "corpus"
-    if not racine.is_dir():
-        return []
+    """Les fichiers des dossiers `corpus/album_<N>/` et `derivatives/album_<N>/` qu'AUCUNE
+    planche ne désigne : un master resté après une conversion interrompue ou dont
+    l'effacement a été refusé ; et, VIDES, les deux fichiers d'une réservation laissée par un
+    import tué en cours de route (`ingest._reserver`). Listés, jamais effacés : un import EN
+    COURS a aussi ses fichiers réservés, et rien ne les distingue d'un reste."""
     designes = {c for r in conn.execute("SELECT chemin_tiff, chemin_web FROM planches")
                 for c in r if c}
     trouves = []
-    for dossier in sorted(racine.iterdir()):
-        if not (dossier.is_dir() and re.fullmatch(r"album_\d+", dossier.name)):
+    for nom in ("corpus", "derivatives"):
+        racine = DATA_DIR / nom
+        if not racine.is_dir():
             continue
-        for f in sorted(dossier.iterdir()):
-            rel = f.relative_to(DATA_DIR).as_posix()
-            if f.is_file() and rel not in designes:
-                trouves.append((rel, f.stat().st_size))
+        for dossier in sorted(racine.iterdir()):
+            if not (dossier.is_dir() and re.fullmatch(r"album_\d+", dossier.name)):
+                continue
+            for f in sorted(dossier.iterdir()):
+                rel = f.relative_to(DATA_DIR).as_posix()
+                if f.is_file() and rel not in designes:
+                    trouves.append((rel, f.stat().st_size))
     return trouves
 
 
@@ -430,11 +432,13 @@ def main(argv=None) -> int:
         print(f"  {len(bilan['echecs'])} fichier(s) en échec.")
     if bilan["orphelins"]:
         total = sum(t for _, t in bilan["orphelins"])
-        print(f"  {len(bilan['orphelins'])} fichier(s) de corpus/ qu'aucune planche ne "
+        print(f"  {len(bilan['orphelins'])} fichier(s) d'images qu'aucune planche ne "
               f"désigne ({_octets(total)}) — listés, jamais effacés ; un import en cours y "
               "a aussi les siens :")
         for chemin, taille in bilan["orphelins"]:
-            print(f"    {chemin} ({_octets(taille)})")
+            nature = ("vide : réservation d'un import interrompu, ou d'un import en cours"
+                      if taille == 0 else _octets(taille))
+            print(f"    {chemin} ({nature})")
     if bilan["interrompu"]:
         print("  Arrêté avant la fin : relancez pour traiter le reste.")
         return 130

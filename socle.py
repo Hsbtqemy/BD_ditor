@@ -321,6 +321,27 @@ def _collections_lues_d_albums(conn, portee: autorisation.Portee,
     return par_album
 
 
+# Les colonnes de `planches` qu'AUCUNE route ne rend (IMG-1, relecture croisée).
+# `master_origine` dit où vit le master d'archive : un chemin ShareDocs — parfois celui d'un
+# espace PERSONNEL — ou un nom de fichier. Les planches d'une copie sœur la recopient (D6),
+# si bien qu'un lecteur d'un autre projet la recevait ; et rien à l'écran ne la lit. Seule
+# la réponse de l'import la rend, à qui vient de donner le fichier.
+#
+# Taire À LA SOURCE : `_get_planche` est la seule façon d'atteindre une planche, donc toute
+# route qui en rend une passe par ici ; la liste d'un album (`album_planches`), qui lit ses
+# planches par `SELECT p.*`, appelle `_planche_rendue` elle-même. Une liste écrite route par
+# route en avait oublié une (`PATCH …/role`). `tests/test_master_origine_tue.py` balaie
+# l'inventaire des routes.
+_PLANCHE_TUE = ("master_origine",)
+
+
+def _planche_rendue(p: dict) -> dict:
+    """Une planche lue par `SELECT *`, sans ce que l'API tait (`_PLANCHE_TUE`)."""
+    for col in _PLANCHE_TUE:
+        p.pop(col, None)
+    return p
+
+
 def _get_planche(conn, portee: autorisation.Portee, planche_id: int, *,
                  ecriture: bool = False) -> dict:
     ou, params = portee.clause_album("planches.album_id", ecriture=ecriture)
@@ -328,7 +349,7 @@ def _get_planche(conn, portee: autorisation.Portee, planche_id: int, *,
                           (planche_id, *params)))
     if p is None:
         raise HTTPException(404, f"Planche {planche_id} introuvable")
-    return p
+    return _planche_rendue(p)
 
 
 def _get_region(conn, portee: autorisation.Portee, region_id: int, *,

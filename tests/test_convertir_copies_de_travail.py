@@ -433,3 +433,20 @@ def test_une_planche_sans_dimensions_est_sautee(client, album, db_path, data_dir
     ((chemin, ids, raison),) = bilan["sautes"]
     assert chemin == p["chemin_tiff"] and "sans dimensions" in raison
     assert bilan["convertis"] == [] and _empreinte(data_dir) == avant
+
+
+def test_la_reservation_d_un_import_interrompu_est_listee_dans_les_deux_dossiers(
+        client, album, db_path, data_dir):
+    """Un import tué après `ingest._reserver` laisse deux fichiers VIDES, l'un dans
+    `corpus/`, l'autre dans `derivatives/` : listés tous deux, vides, jamais effacés."""
+    from pipeline import ingest
+    reserves = ingest._reserver([
+        data_dir / "corpus" / f"album_{album['id']}" / "planche_0007.jpg",
+        data_dir / "derivatives" / f"album_{album['id']}" / "planche_0007.jpg"])
+    bilan = _convertir(appliquer=False)
+    assert sorted(bilan["orphelins"]) == [
+        (f"corpus/album_{album['id']}/planche_0007.jpg", 0),
+        (f"derivatives/album_{album['id']}/planche_0007.jpg", 0)]
+    assert all(f.is_file() for f in reserves)
+    r = _lancer(db_path, data_dir)
+    assert "réservation d'un import interrompu" in r.stdout, r.stdout

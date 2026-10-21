@@ -489,23 +489,67 @@ def test_un_fichier_source_au_chemin_vise_n_est_ni_reecrit_ni_efface(client, alb
     assert source.read_bytes() == octets
 
 
-def test_master_origine_ne_sort_d_aucune_lecture_de_planche(client, album, db_path):
-    """Un chemin ShareDocs — parfois personnel — ou un nom de fichier, recopié sur les
-    planches d'une copie sœur d'un autre projet : aucune route ne le rend, hors la réponse
-    de l'import à qui vient de donner le fichier."""
-    p = _importer(client, album["id"], _scan()[0], nom="Mon Scan Perso.tif")
-    assert p["master_origine"] == "Mon Scan Perso.tif"
-    lectures = {
-        "liste": client.get(f"/api/albums/{album['id']}/planches"),
-        "statut": client.patch(f"/api/planches/{p['id']}/statut",
-                               json={"statut": "importee"}),
-        "validation": client.patch(f"/api/planches/{p['id']}/validation",
-                                   json={"validee": True}),
-        "verrou": client.patch(f"/api/planches/{p['id']}/verrou",
-                               json={"verrouillee": True}),
-    }
-    for nom, r in lectures.items():
-        assert r.status_code == 200, (nom, r.text)
-        assert "master_origine" not in r.text and "Mon Scan Perso" not in r.text, nom
-    # Le semis a bien pris : la valeur est en base.
-    assert database_ligne(db_path, p["id"])["master_origine"] == "Mon Scan Perso.tif"
+# `master_origine` ne sort d'aucune route : `tests/test_master_origine_tue.py` le BALAIE sur
+# l'inventaire (la liste écrite ici à la main en avait oublié une, `PATCH …/role`).
+
+
+# --------------------------------------------------------------------------- #
+# Contre-relecture : un import tué, un dossier occupé par un fichier
+# --------------------------------------------------------------------------- #
+def test_un_numero_reserve_par_un_import_interrompu_est_dit_par_le_409(client, album,
+                                                                       data_dir):
+    """Un import tué après sa réservation laisse deux fichiers VIDES, que rien ne retire :
+    le numéro est sauté par les imports suivants, et un import qui l'impose reçoit un 409
+    qui nomme cette cause possible — rien n'est effacé."""
+    ingest._reserver([data_dir / "corpus" / f"album_{album['id']}" / "planche_0001.jpg",
+                      data_dir / "derivatives" / f"album_{album['id']}" / "planche_0001.jpg"])
+    assert _importer(client, album["id"], _scan()[0])["numero"] == 2
+    r = client.post(f"/api/albums/{album['id']}/import", data={"numero": "1"},
+                    files={"file": ("s.tif", _scan()[0], "image/tiff")})
+    assert r.status_code == 409, r.text
+    assert "import interrompu" in r.json()["detail"]
+    vides = [k for k, v in _fichiers(data_dir).items() if not v]
+    assert sorted(vides) == [f"corpus/album_{album['id']}/planche_0001.jpg",
+                             f"derivatives/album_{album['id']}/planche_0001.jpg"]
+
+
+def test_un_fichier_a_la_place_du_dossier_de_l_album_est_nomme_sans_cinquante_essais(
+        client, album, data_dir, monkeypatch):
+    """Un FICHIER occupe `corpus/album_N` : ce n'est pas une course, et l'erreur le dit au
+    premier essai au lieu d'essayer cinquante numéros pour la même cause."""
+    (data_dir / "corpus").mkdir(exist_ok=True)
+    (data_dir / "corpus" / f"album_{album['id']}").write_bytes(b"")
+    vrai, appels = ingest.prochain_numero_libre, []
+    monkeypatch.setattr(ingest, "prochain_numero_libre",
+                        lambda c, a: appels.append(1) or vrai(c, a))
+    conn = database.get_connection()
+    try:
+        with pytest.raises(OSError, match=r"album_\d+ ne peut pas être créé") as exc:
+            ingest.ingest_image(conn, album["id"], _scan()[0])
+    finally:
+        conn.close()
+    assert not isinstance(exc.value, FileExistsError)
+    assert len(appels) == 1
+
+
+def test_un_numero_qui_revient_refuse_arrete_la_boucle_en_le_nommant(client, album,
+                                                                     data_dir, monkeypatch):
+    """Ce qui occupe un chemin sans que `numero_occupe` le voie (un lien cassé, par exemple)
+    faisait rendre le même numéro cinquante fois : au second retour, l'ingest s'arrête et
+    nomme le chemin."""
+    bloque = data_dir / "derivatives" / f"album_{album['id']}" / "planche_0001.jpg"
+    bloque.parent.mkdir(parents=True)
+    bloque.write_bytes(b"x")
+    monkeypatch.setattr(ingest, "numero_occupe", lambda conn, a, n: False)
+    appels = []
+    vrai = ingest.prochain_numero_libre
+    monkeypatch.setattr(ingest, "prochain_numero_libre",
+                        lambda c, a: appels.append(1) or vrai(c, a))
+    conn = database.get_connection()
+    try:
+        with pytest.raises(RuntimeError, match="numéro 1 est refusé") as exc:
+            ingest.ingest_image(conn, album["id"], _scan()[0])
+    finally:
+        conn.close()
+    assert "planche_0001.jpg" in str(exc.value) and len(appels) == 2
+    assert bloque.read_bytes() == b"x"

@@ -65,6 +65,7 @@ from socle import (  # noqa: F401  (ré-export : `main.X` reste un nom valide)
     _disposition, _ensure_tags, _exiger_destruction, _exiger_export,
     _exiger_export_region,
     _get_album, _get_collection, _get_dimension, _get_personnage, _get_planche,
+    _PLANCHE_TUE, _planche_rendue,
     _get_projet, _get_region, _get_valeur,
     _groupes, _norm_tag, _patch_lexique, _portee_d_export, _refuser_si_verrouillee, _row, _rows,
     _sans_accents, _sql_a_montrer, _tags_caches, _validate_parent, _vocabulaire_d_export,
@@ -89,6 +90,7 @@ from pipeline.backup import make_backup
 from pipeline import jobs
 from pipeline import nlp
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
+from pipeline.ingest import RESERVATION as RESERVATION_INTERROMPUE
 from pipeline.ingest import (ORIGINE_SHAREDOCS, NumeroPris, ecarter_dossiers_d_album,
                              ingest_image, numero_occupe, remove_planche_files)
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
@@ -705,22 +707,6 @@ def _effacer_les_images_d_une_planche(conn, planche: dict) -> None:
     remove_planche_files(*chemins, garder=_chemins_employes(conn, chemins))
 
 
-# Les colonnes de `planches` que les routes qui rendent une planche ENTIÈRE (`SELECT *`)
-# taisent (IMG-1, relecture croisée). `master_origine` dit où vit le master d'archive : un
-# chemin ShareDocs — parfois celui d'un espace PERSONNEL — ou un nom de fichier. Les
-# planches d'une copie sœur la recopient (D6), si bien qu'un lecteur d'un autre projet la
-# recevait ; et rien à l'écran ne la lit. Seule la réponse de l'import la rend, à qui vient
-# de donner le fichier.
-_PLANCHE_TUE = ("master_origine",)
-
-
-def _planche_rendue(p: dict) -> dict:
-    """Une planche lue par `SELECT *`, sans ce que l'API tait (`_PLANCHE_TUE`)."""
-    for col in _PLANCHE_TUE:
-        p.pop(col, None)
-    return p
-
-
 @app.get("/api/albums/{album_id}/planches")
 def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db),
                    portee: autorisation.Portee = Depends(portee_courante)):
@@ -746,7 +732,7 @@ def album_planches(album_id: int, conn: sqlite3.Connection = Depends(db),
     # la charge utile : il est stable, et lui seul permet à l'écran de dire « par vous ».
     noms = noms_lisibles(conn, [p["verrou_par"] for p in planches])
     for p in planches:
-        _planche_rendue(p)
+        _planche_rendue(p)                  # IMG-1 : `SELECT p.*` ne passe pas par `_get_planche`
         p["verrou_par_nom"] = noms.get(p["verrou_par"])
         p["url_web"] = "/" + p["chemin_web"] if p["chemin_web"] else None
         p["numero_editorial"] = nums.get(p["id"])   # None si paratexte (cf. role)
@@ -779,9 +765,9 @@ def _allouer_numero(conn, album_id: int, numero: int) -> int:
         raise HTTPException(409, f"Le numéro {numero} est déjà pris dans cet album.")
     if numero_occupe(conn, album_id, numero):
         raise HTTPException(409, f"Les images du numéro {numero} sont encore sur le disque, "
-                                 "employées par une autre copie ou laissées par une planche "
-                                 "supprimée : choisissez un autre numéro, ou laissez-le "
-                                 "libre.")
+                                 "employées par une autre copie, laissées par une planche "
+                                 f"supprimée, ou {RESERVATION_INTERROMPUE} : choisissez un "
+                                 "autre numéro, ou laissez-le libre.")
     return numero
 
 
@@ -1505,7 +1491,7 @@ def update_statut(planche_id: int, payload: StatutIn,
     conn.execute("UPDATE planches SET statut = ? WHERE id = ?",
                  (payload.statut, planche_id))
     conn.commit()
-    return _planche_rendue(_get_planche(conn, portee, planche_id, ecriture=True))
+    return _get_planche(conn, portee, planche_id, ecriture=True)
 
 
 @app.patch("/api/planches/{planche_id}/relecture")
@@ -1547,7 +1533,7 @@ def update_validation(planche_id: int, payload: ValidationIn,
     journal.journaliser(conn, "validation", "planches", planche_id,
                         apres={"validee": bool(payload.validee)})
     conn.commit()
-    return _planche_rendue(_get_planche(conn, portee, planche_id, ecriture=True))
+    return _get_planche(conn, portee, planche_id, ecriture=True)
 
 
 @app.patch("/api/planches/{planche_id}/verrou")
@@ -1568,7 +1554,7 @@ def update_verrou(planche_id: int, payload: VerrouIn, request: Request,
         conn.execute("UPDATE planches SET verrouillee = NULL, verrou_par = NULL "
                      "WHERE id = ?", (planche_id,))
     conn.commit()
-    p = _planche_rendue(_get_planche(conn, portee, planche_id, ecriture=True))
+    p = _get_planche(conn, portee, planche_id, ecriture=True)
     # Le nom accompagne le retour, sinon l'écran qui vient de poser le verrou afficherait
     # un login jusqu'au prochain rechargement — une incohérence d'une seconde, mais qui
     # ferait douter du reste.
