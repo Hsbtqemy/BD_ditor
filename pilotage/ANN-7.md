@@ -156,6 +156,121 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
 
 ## Contexte
 
+### Préparer la séance de conception — relu le 2026-10-21
+
+Relecture faite avant la première séance de conception avec Hugo (1 h 30), sur la fiche,
+`docs/grilles-et-releves.md` et les fiches voisines, avec des vérifications dans le code de
+`dev` (v33). Rien n'est tranché ici : ce sont les questions, et ce qui a vieilli.
+
+**Vérifié dans le code** : aucun objet grille ni relevé n'existe ; `detail` n'est pas dans
+`config.TYPES_REGION` ; `tags.label` est UNIQUE sur toute l'instance ; le vocabulaire ne porte
+qu'un `collection_id`, aucun `projet_id` ; `personnages` n'a aucune portée ;
+`database.creer_copie` recopie déjà tags, attributs de case, locuteurs et présences au cran
+`annotations` ; `undo._ensure_tag` recrée un tag par son libellé. Lecteurs de code (et de
+tests) par table à réécrire au basculement : `annotation_tags` 10 (21), `region_attribut` 10
+dont `autorisation.py` (23), `attribut_valeur` 10 (33), `personnage_attribut` 7 (10).
+
+**Ce qui a vieilli depuis le 2026-10-14**
+- *L'activation sur le projet* : le projet ouvre désormais sa collection de base (D10, v31)
+  et l'Atelier choisit une collection avant l'album (`UX-19`) ;
+  `docs/collections-niveau-ou-calque.md` rouvre l'activation par collection. Il faut dire ce
+  qui STOCKE (le projet) et ce qui FILTRE (la collection), et qu'un relevé ne porte aucun
+  `collection_id`.
+- *`COL-3`, tranche 4, et cette fiche répondent à la même question* — le vocabulaire au niveau
+  du projet — sans se citer. Et ni l'une ni l'autre ne dit ce que deviennent au basculement
+  les termes GLOBAUX et ceux LOCAUX à une collection : convertir un terme local en grille de
+  projet élargit sa visibilité, décision d'`AUTH-11` et non détail de migration.
+- *Le personnage* : « un seul modèle » vise l'ENTITÉ (`personnage_attribut`), la note §4 la
+  BOÎTE (ce personnage dans cette case) — deux cibles sous un mot. L'entité n'a ni album ni
+  portée, et suit les copies entre projets (E6 de la 3b).
+- *Les copies sœurs* (`COL-3`, 3b, E1 à E8) ignorent les relevés : leur cran (et la zone
+  `detail`, une région, donc partie avec le cran `decoupage`), l'équivalent d'E5 pour une
+  grille non active à l'arrivée, l'effacement d'E8, et surtout la règle « travail d'autrui » :
+  des actes sur les relevés journalisés hors de `_CIBLES_DE_REGION` laisseraient supprimer
+  seul un album annoté par d'autres — un défaut qui échoue OUVERT. `region_origine` permettra
+  en revanche de comparer les relevés de deux sœurs.
+- *La cible « planche » et l'assemblage* (`IMG-2`, une page par image depuis le 2026-10-21) :
+  assemblée, une planche « cesse d'être une planche » ; son relevé changerait de sens ou
+  disparaîtrait par `CASCADE`. Fusionner deux régions doit fusionner leurs relevés.
+- *Le catalogue face au fonds* : le fonds de la 3a se DEMANDE, le catalogue se publie et
+  s'active librement ; l'asymétrie est à vouloir et à écrire (case ouverte de `COL-3`).
+- *La portée des termes* : le basculement est la « prochaine migration FTS forcée » qu'attend
+  `AUTH-11` pour retirer `tags_concat`, à décider dans la même migration ; il peut fermer
+  « taper un tag caché l'attache » (`AUTH-11`) et l'unicité de `COL-1`. Et depuis D10, un
+  membre d'une base OUVERTE « écrit quelque part » et édite le vocabulaire global : une grille
+  fermée ne doit pas en hériter.
+- *Les migrations* : la note §1 dit « la suivante » après la v30 ; v31 à v33 sont prises, et
+  la v34 l'est par `IMG-1`. Deux règles nées depuis s'appliquent : `AUTOINCREMENT` sur toute
+  table que le journal nomme, et la vraie base de la version précédente.
+- *Qui publie en production* : « les responsables du projet » — or la migration du premier
+  projet n'en a désigné AUCUN : seul un administrateur pourrait importer la grille des
+  linguistes (question ouverte n°7 de la note).
+- *Plusieurs personnes sur une planche* (`CONC-4`) : les relevés commutent comme des tags, mais
+  une variante choisie, une passe, la levée d'un doute sont des valeurs uniques — le patron du
+  409 de `CONC-3` ; une colonne de version ne coûte rien dès la tranche 1.
+- *Mineur* : « une coquille se corrige à l'écran » est ouverte ici et acquise dans la note §6.
+
+**À trancher AVANT de maquetter l'onglet Annotation (`ANN-6`, `UX-17`)** : la liste des cibles
+(boîte ou entité pour le personnage ; planche ou page) ; les champs d'un relevé ; la
+cardinalité ; la passe, commune ou par personne ; le doute ; l'activation et le filtre par
+collection ; ce que l'écran fait des tags d'avant le basculement ; où vivent la synthèse et le
+compte. **Peut attendre** : catalogue, partage, dérivation, montée de version, guide produit
+depuis la grille, SKOS et exports, Recherche et Exploration, crans des copies (à écrire en
+principe, à coder avec la 3b).
+
+**Les questions pour Hugo, avec la recommandation de la relecture**
+- Q1 — Où vit une grille : le projet seul ; le projet stocke et une collection RESTREINT
+  l'affichage ; ou une activation par collection. *Recommandé : la deuxième*, le relevé sans
+  collection.
+- Q2 — Les grilles sont-elles « le vocabulaire au niveau du projet » de la tranche 4 de
+  `COL-3` ? *Recommandé : oui*, la tranche 4 ne garde que personnages, Recherche et
+  Exploration — sinon le vocabulaire migre deux fois.
+- Q3 — Le sort des termes existants : une grille par projet pour les termes globaux qu'il
+  emploie, dérivées d'une origine commune ; une grille d'instance unique ; les termes locaux
+  en grille distincte. *Recommandé : la première et la troisième*, en acceptant par écrit que
+  les termes locaux deviennent visibles du projet entier (ou en les comptant d'abord).
+- Q4 — Le personnage : deux cibles (la boîte et l'entité) ou la boîte seule. *Recommandé :
+  deux*, l'entité rattachée au projet de la grille, séquencé avec la tranche 4.
+- Q5 — Une cible « planche » face à l'assemblage : la cible « page » dès la tranche 1 ; la
+  planche reste la surface et l'assemblage reporte les relevés avec une trace ; interdire
+  d'assembler une planche qui en porte. *Recommandé : la deuxième*, avec un refus nommé tant
+  qu'`IMG-2` n'existe pas.
+- Q6 — La cardinalité : chaque entrée déclare « une fois par cible » ou « plusieurs », ou
+  toujours plusieurs. *Recommandé : déclarée dans le tableur.*
+- Q7 — La passe à plusieurs : une par personne, ou commune et signée. *Recommandé : commune*,
+  avec le 409 sur les valeurs uniques dès la tranche 1 (la réponse à `CONC-4`).
+- Q8 — Le catalogue : « partager = publier, activation libre », ou activer se demande.
+  *Recommandé : libre*, le fonds prêtant son patron d'écran et la demande pour la seule
+  suppression.
+- Q9 — L'ordre : nommer un responsable du projet existant pour publier la grille des
+  linguistes ; les stagiaires commencent par découpage, transcription et locuteurs (option (c)
+  d'`ANN-6`) ; les tags basculent avec la page Annotation, pas avant.
+
+**Aux linguistes** : occurrences ou bulles ; un relevé à qualificatifs compte-t-il une fois ;
+un passage peut-il sauter des mots ; le narrateur au registre des personnages ; compter par
+niveau et par famille ; la grille tient-elle dans les trois formes ; une ou deux grilles avec
+`tools/vocabulaire-etude-propose.csv` (`ANN-1`). **À mesurer sans Hugo** : en production, le
+nombre de tags, d'attributs, de termes locaux, et les responsables des projets ; la durée
+d'une réindexation FTS complète sur la recette ; l'import de la vraie grille (hors dépôt) dans
+les trois formes ; la cible des actes sur les relevés au journal.
+
+**Ordre du jour proposé** : 10 min de rappel et un schéma des étages (fonds, projet, base et
+collections, copies sœurs ; image, page, surface ; grille, version, relevé) ; 25 min « où vit
+une grille » (Q1, Q2, Q3, Q8) ; 25 min « ce qu'est un relevé » (Q4 à Q7) ; 15 min copies et
+assemblage, en principe ; 10 min l'ordre et les stagiaires (Q9) ; 5 min la suite. À montrer :
+la seconde maquette d'`ANN-6` (`https://claude.ai/artifact/97Xznyg2dqkQ7bX9EYwhkU`), trois
+scénarios — un stagiaire et un professeur sur la même bulle ; une copie sœur partie au cran
+annotations dans un projet où la grille n'est pas active ; une double page assemblée qui porte
+un relevé « planche » —, et un extrait de grille FICTIVE au format du tableur (note §7).
+
+**Ce qui coûterait cher à défaire** : une table de relevé sans `AUTOINCREMENT`, avec un
+`collection_id`, ou en `CASCADE` sur la planche (une reconstruction de table, données posées) ;
+payer la réindexation FTS deux fois ; la conversion du vocabulaire, irréversible pour la
+portée, et les Ctrl+Z d'avant le basculement qui réécriraient dans les anciennes tables
+(`undo._ensure_tag`) ; des relevés oubliés par la règle « travail d'autrui », les crans de
+copie ou « repartir de zéro » (gardes qui échouent OUVERT) ; des `cle` absentes à la première
+importation de la grille des linguistes — chaque renommage se lirait comme une suppression.
+
 ### D'où cela vient
 
 Le 2026-10-13, une maquette du mode d'annotation faite depuis la session de pilotage n'a
