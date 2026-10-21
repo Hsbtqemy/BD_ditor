@@ -106,7 +106,20 @@ la copie de travail (zone du `Reste`). Mesuré le même jour sur 7 planches (88 
 Le moteur est le goulot, pas la résolution : même sur le master, une bulle sur 20 sort juste
 et ~15 % des mots sont faux — surtout sur le lettrage manuscrit, que la Transcription reprend
 de toute façon (Hugo). Ce sont les FIGURES qui départagent. Recommandé à Hugo : 200 dpi
-effectifs, le master d'archive sur ShareDocs, une figure à imprimer faite depuis lui.
+effectifs, le master d'archive sur ShareDocs, une figure à imprimer faite depuis lui. Hugo a
+retenu 300 dpi (zone du `Reste`).
+
+**Le disque du VPS, relevé par Hugo le 2026-10-21** (lecture seule : `df -h /`, `du` dans le
+conteneur, `docker system df`) : 58 Go, 32 occupés, 26 libres. Dans `/data` : **`corpus/`
+15 Go** — les masters déjà en production —, `derivatives/` 129 Mo, la base 1,6 Mo, les caches
+de modèles ~150 Mo. Docker : images 4,1 Go (0,3 récupérable), cache de construction 3,7 Go
+(0,1 récupérable) ; le reste, ~8 Go, est le système. Le nettoyage de Docker ne rapporte donc
+rien qui compte, et `deployer.sh` n'a pas à changer ; une reconstruction d'image consomme
+plusieurs gigaoctets le temps qu'elle tourne, d'où une marge à garder d'environ 8 Go. **Le
+levier est le rattrapage** : à 300 dpi, ~14 Go des 15 du corpus se libèrent. Sans lui, 150
+albums (13 à 23 Go, dérivés compris) laisseraient 3 à 13 Go, sous la marge ; avec lui, 17 à
+27 Go. Le rattrapage fait donc partie du plan, et il dépend de savoir, album par album, où
+vivent les masters qu'il effacera.
 
 **Point de départ** — 2026-09-14, en répondant à deux questions : « comment sont stockés
 les dérivés ? » et « quels formats sont ingérés ? ». Tout ce qui suit a été MESURÉ, sur des
