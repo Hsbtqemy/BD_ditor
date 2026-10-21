@@ -73,6 +73,21 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   type, dans le même acte, et un seul Ctrl+Z les rend ; ce que la base porte déjà se dit par
   un outil à blanc. Relevé par l'agent qui a codé le locuteur
 
+- [ ] **Sur une base d'avant ANN-8, Ctrl+Z d'un passage case → bulle n'est pas refusé à tort**
+  — attendu : une personne seule, une case qui portait déjà le locuteur de la bulle qu'elle
+  était, repassée en bulle puis Ctrl+Z : l'annulation passe. Aujourd'hui 409, et sa phrase est
+  fausse (« modifié ailleurs », ou « depuis un autre écran » avec une date ANTÉRIEURE à l'acte).
+  Reproduit par la contre-relecture du 2026-10-21 (`test_c3_…`, `test_c5_…`, dans sa copie). La
+  garde compare le locuteur actuel à « aucun » : le changement de type ne photographie pas le
+  locuteur vu. Remède : le photographier sous une clé à lui, et comparer à elle — à faire avec
+  le miroir ci-dessus, qui touche le même instantané. **D'ici là, écarté par la session de
+  pilotage** : le cas disparaît une fois `tools/retirer_locuteurs_muets.py --appliquer` passé,
+  à lancer au déploiement du lot 1
+- [ ] **Un 409 d'annulation dit comment s'en sortir** — attendu : écrit dans `docs/undo.md`, ou
+  tranché autrement. Après un refus, retirer à la main le locuteur de l'autre pour pouvoir
+  annuler : le Ctrl+Z suivant défait d'abord ce retrait, et le même 409 revient. Vrai de tout
+  conflit de CONC-3 sur une annulation (l'acte reste en tête de pile), direct pour le locuteur
+
 ### Les champs à propositions — laissé ouvert par le correctif du 2026-10-13
 - [ ] **Un nom tapé sans ses accents trouve l'homonyme accentué** — attendu : tranché par Hugo.
   « etienne » tapé quand seul « Étienne » existe : la liste le montre (le serveur filtre sans
