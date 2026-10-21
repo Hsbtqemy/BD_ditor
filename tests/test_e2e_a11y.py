@@ -344,7 +344,7 @@ _RAISONS_BRUTES = """async (sel) => {
   return {violation: ou(r.violations).length > 0, incomplete: ou(r.incomplete)}; }"""
 
 # La couleur de FOND sous un élément : la première non transparente en remontant.
-_POSER_COULEUR_DU_FOND = """(sel) => {
+_POSER_COULEUR_DU_FOND = r"""(sel) => {
   const e = document.querySelector(sel);
   let a = e;
   while (a) {
@@ -421,7 +421,7 @@ def test_a11y3_un_fond_que_axe_ne_sait_pas_mesurer_ne_fait_pas_echouer(page, see
 
 # Un texte que son conteneur défilant repousse hors de la zone visible reçoit une encre
 # à ~2:1 de son fond : de quoi échouer partout, petit texte comme grand.
-_ABIMER_UN_TEXTE_HORS_CHAMP = """async () => {
+_ABIMER_UN_TEXTE_HORS_CHAMP = r"""async () => {
   const r = await axe.run(document, {runOnly: {type: 'rule', values: ['color-contrast']},
                                      elementRef: true});
   const raisons = (n) => [].concat(n.any || [], n.all || [], n.none || [])
