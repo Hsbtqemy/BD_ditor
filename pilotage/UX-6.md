@@ -9,6 +9,11 @@ statut: interrompu
 fichiers et non un — `docs/guide-utilisateur.md` (les gestes) et `docs/modele-et-droits.md`
 (les objets et les règles). Reste l'écran.
 
+**2026-10-21 — l'écran est décalé à plus tard** (Hugo, au tri des chantiers). Il passe après
+l'import en lot (`UX-11`), les formats de scan (`IMG-1`), le sélecteur de collection de
+l'Atelier (`UX-19`) et l'annotation (`ANN-7`, puis l'onglet d'`ANN-6`). La passe
+`accueil-par-ou-commencer` est gardée telle quelle pour lui.
+
 **Et l'étape 1 n'est PAS à corriger — cette phrase disait l'inverse jusqu'au 2026-09-07.**
 Elle annonçait « l'étape 1 à corriger avant de le câbler : elle nomme la Bibliothèque pour
 un import qui vit dans l'Atelier ». La décision a été RETOURNÉE le lendemain (`aa930c9`),
