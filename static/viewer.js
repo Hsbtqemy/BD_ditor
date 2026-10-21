@@ -2632,7 +2632,7 @@ function updateStatus() {
    409, ceci évite juste le « en cours… » suivi d'une erreur). */
 function plancheVerrouillee() {
   if (state.planche && state.planche.verrouillee) {
-    toast("Planche verrouillée 🔒 — déverrouillez-la pour relancer un traitement.", "error");
+    toast("Planche protégée des passes auto 🔒 — levez la protection pour relancer un traitement.", "error");
     return true;
   }
   return false;
@@ -2652,12 +2652,19 @@ function renderPlancheLock() {
     ? (VIEWER_MOI && p.verrou_par === VIEWER_MOI
         ? " par vous" : " par " + (p.verrou_par_nom || p.verrou_par))
     : "";
+  // ANN-8 — le libellé dit CE QU'IL PROTÈGE. « Verrouiller la planche » se lisait comme une
+  // réservation : « faut-il verrouiller avant d'annoter ? » (retour d'usage). Le verrou ne
+  // tient que les traitements automatiques, et n'empêche aucune annotation. Libellé court
+  // (écran stable, sans phrases) ; l'explication est dans l'infobulle.
   box.innerHTML =
     `<button id="lock-toggle" class="lock-btn${on ? " locked" : ""}" ` +
-    `title="${on ? "Verrouillée" + esc(par)
-                   + " — protège des passes OCR/segmentation/bulles (en lot ou directes)"
-                 : "Verrouiller la planche : la protéger des traitements automatiques"}">` +
-    `${on ? "🔒 Verrouillée" + esc(par) : "🔓 Verrouiller la planche"}</button>`;
+    `title="${on ? "Protégée des traitements automatiques" + esc(par)
+                   + " : segmentation, bulles et OCR la sautent, en lot ou directs. "
+                   + "L'annotation reste ouverte à tous. Cliquer pour lever la protection."
+                 : "Protéger la planche des traitements automatiques : segmentation, "
+                   + "bulles et OCR la sauteront, en lot ou directs. N'empêche aucune "
+                   + "annotation : inutile avant d'annoter."}">` +
+    `${on ? "🔒 Protégée" + esc(par) : "🔓 Protéger des passes auto"}</button>`;
   $("#lock-toggle").onclick = toggleLock;
 }
 
@@ -2669,7 +2676,7 @@ async function toggleLock() {
     const upd = await apiSend("PATCH", `/api/planches/${p.id}/verrou`, { verrouillee: on });
     p.verrouillee = upd.verrouillee;     // p est la réf. partagée avec state.planches
     renderPlancheLock();
-    toast(on ? "Planche verrouillée 🔒" : "Planche déverrouillée 🔓");
+    toast(on ? "Planche protégée des passes auto 🔒" : "Protection levée 🔓");
   } catch (e) { toast("Verrou : " + e.message, "error"); }
 }
 
