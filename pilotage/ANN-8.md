@@ -65,6 +65,14 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   revient pas, la région revient, et la réponse dit combien (`liens_non_rendus`), sans rien
   nommer ; l'Atelier l'affiche
 
+- [ ] **Une case ou une boîte personnage qui devient zone de texte perd ce que son nouveau type
+  ne montre pas** — attendu : le miroir de la décision du locuteur, demandé par Hugo le
+  2026-10-21 (« c'est utile »). Une case devenue bulle gardait sa situation
+  (`region_attribut`), une boîte personnage devenue bulle son personnage montré
+  (`personnage_presence`) : ni l'un ni l'autre ne se voit sur une bulle. Ils partent avec le
+  type, dans le même acte, et un seul Ctrl+Z les rend ; ce que la base porte déjà se dit par
+  un outil à blanc. Relevé par l'agent qui a codé le locuteur
+
 ### Les champs à propositions — laissé ouvert par le correctif du 2026-10-13
 - [ ] **La région des messages existe avant son premier message, sur les cinq surfaces** —
   attendu : le premier message d'une page est annoncé par un lecteur d'écran, mesuré avec
@@ -113,6 +121,14 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   table Node ; l'écran garde ce qui dépend du temps
 
 ### Les tags et la Note, tant que les grilles n'existent pas
+- [ ] **L'infobulle de la ligne « Citation » de l'Atelier ne pousse plus à citer une bulle par sa
+  citation** — attendu : elle dit que la citation se dérive de l'ordre de lecture et change
+  quand une case bouge, et renvoie à l'identifiant de la ligne « Région » pour désigner une
+  bulle. Aujourd'hui : « Repère stable à l'échelle de l'album » (`templates/index.html`). Hugo,
+  2026-10-21 : « pourquoi pas »
+- [ ] **Le guide d'annotation des linguistes fait écrire « #123 »** — attendu : corrigé de leur
+  côté. La phrase « la référence de l'autre bulle telle que le logiciel l'affiche » vient de
+  ce guide, qui n'est pas dans le dépôt ; le guide d'usage du dépôt le dit depuis `72447d8`
 - [x] **Une apostrophe ou un accent ne font pas deux tags** — attendu : « c’est pluriel »
   tapé avec l'apostrophe typographique ou avec la droite désigne le même tag. Lu le
   2026-10-12 : `socle._norm_tag` ne normalise que la casse et les espaces, et le libellé est
