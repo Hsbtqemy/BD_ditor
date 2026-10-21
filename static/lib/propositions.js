@@ -13,9 +13,9 @@
 
    Les règles qui y vivent :
    - `decisionEntree` : ce qu'Entrée fait dans un champ « dimension : valeur » ;
-   - `entreePersonnage` : ce qu'Entrée fait dans un champ de personnage (le locuteur, la
-     boîte personnage) — la proposition surlignée ne part que si elle répond encore à la
-     saisie (ANN-8, Hugo, 2026-10-21) ;
+   - `entreePersonnage` et `decisionNom` : ce qu'Entrée fait dans un champ de personnage
+     (le locuteur, la boîte personnage) — la proposition surlignée ne part que si elle répond
+     encore à la saisie, et des homonymes se départagent à l'écran (ANN-8, Hugo, 2026-10-21) ;
    - `fleche` : où la flèche mène dans une liste, ouverte OU fermée — la première ↓ après
      une validation surligne une proposition (ANN-8 : elle rouvrait la liste sans rien
      surligner, quand le DOM de la liste précédente était vide) ;
@@ -133,6 +133,13 @@
     return !s || sansAccents(it.nom).includes(sansAccents(s));
   }
 
+  /* Les personnages qui portent EXACTEMENT le nom tapé, sans égard à la casse — ceux que la
+     série départage. Saisie vide : aucun. */
+  function homonymes(persos, q) {
+    const s = String(q ?? "").trim().toLowerCase();
+    return s ? (persos || []).filter((p) => String(p.nom ?? "").toLowerCase() === s) : [];
+  }
+
   /* Ce qu'Entrée fait dans un champ de personnage, sur la liste À L'ÉCRAN. Rend l'un de :
      - { geste: "choisir", item } — la proposition surlignée, si elle répond encore à ce qui
                                     est tapé ;
@@ -140,7 +147,8 @@
                                     d'une saisie d'AVANT, la nouvelle n'est pas revenue
                                     (ANN-8, Hugo, 2026-10-21). Rien n'est pris ; la liste se
                                     relit pour ce qui est tapé, et l'on choisit dedans ;
-     - { geste: "valider" }       — rien de surligné, une saisie : le registre décide ;
+     - { geste: "valider" }       — rien de surligné, une saisie : le registre décide
+                                    (`decisionNom`) ;
      - { geste: "rien" }          — rien de surligné, champ vide.
      La surlignée qui répond encore part, même d'une liste d'avant : elle est à l'écran, elle
      correspond à ce qui est tapé, et le geste est explicite — fermer la liste pendant la
@@ -152,6 +160,21 @@
     return s ? { geste: "valider" } : { geste: "rien" };
   }
 
+  /* Ce que décide le registre LU pour la saisie `q`, quand Entrée n'a rien de surligné :
+     - un seul personnage porte ce nom → { geste: "choisir", item } ;
+     - plusieurs → { geste: "departager", homonymes } : Entrée ne décide pas — prendre le
+       premier dans l'ordre du registre, c'était choisir à la place de la personne, sans le
+       lui dire (ANN-8, Hugo, 2026-10-21). La liste se réduit aux homonymes, chacun avec sa
+       série, et l'on choisit ;
+     - aucun → { geste: "creer", nom }. */
+  function decisionNom(persos, q) {
+    const s = String(q ?? "").trim();
+    const h = homonymes(persos, s);
+    if (h.length === 1) return { geste: "choisir", item: h[0] };
+    if (h.length > 1) return { geste: "departager", homonymes: h };
+    return { geste: "creer", nom: s };
+  }
+
   return { MAX_PROPOSITIONS, formeComplete, connue, propositionsAttributs, decisionEntree,
-           fleche, cleTag, sansAccents, repond, entreePersonnage };
+           fleche, cleTag, sansAccents, repond, homonymes, entreePersonnage, decisionNom };
 });

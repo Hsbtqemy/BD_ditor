@@ -1968,9 +1968,12 @@ async function clearPerso() {
      zone est retenue à l'Entrée (ou au clic), et le choix lui revient même si l'on en a
      sélectionné une autre entre-temps — il partait sinon vers celle-là.
 
-   Gardé tel quel : s'il existe DÉJÀ plusieurs homonymes exacts, Entrée prend le premier
-   dans l'ordre du registre (nom, puis série), sans le dire. Les départager est une
-   décision d'écran, pas une retouche.
+   ANN-8 — PLUSIEURS PERSONNAGES DU MÊME NOM SE DÉPARTAGENT À L'ÉCRAN (Hugo, 2026-10-21).
+   Entrée prenait le premier homonyme exact dans l'ordre du registre (nom, puis série),
+   sans le dire. Elle ne décide plus : la liste se réduit aux homonymes, chacun avec sa
+   série (« sans série » quand il n'en a pas), et l'on choisit — flèches et Entrée, ou clic.
+   Un seul personnage de ce nom : il est pris, comme avant. La règle vit dans
+   `BDPropositions.decisionNom`.
 
    ANN-8 — ↓ PUIS ENTRÉE PENDANT QUE LA LISTE SE RECHARGE (Hugo, 2026-10-21). Entre une
    frappe et le retour de sa liste, la liste à l'écran est celle de la saisie d'AVANT ; ↓
@@ -1998,11 +2001,10 @@ function setupPersoInput(inputSel, sugSel, onPick, zone) {
   let lecture = null;       // la dernière lecture PARTIE pour la liste : { q, promesse }
   let listePour = null;     // la saisie pour laquelle `items` vaut — nul : pour aucune
   let listeDuRegistre = -1; // l'état du registre (`registreModifie`) quand la liste a été LUE
-  let exact = null;         // l'homonyme exact de `listePour`, ou nul
+  let lus = [];             // la réponse ENTIÈRE du registre pour `listePour`, pas les dix affichés
   let surlignerAuRetour = false;   // une ↓ a demandé la liste : surligner la première
   function close() { sug.hidden = true; activeIdx = -1; }
   const lire = (q) => apiGet("/api/personnages?q=" + encodeURIComponent(q));
-  const homonyme = (persos, q) => persos.find((p) => p.nom.toLowerCase() === q.toLowerCase()) || null;
   /* La liste vaut-elle pour décider de `q` ? Lue pour cette saisie, et depuis aucune création. */
   const vaut = (q) => listePour === q && listeDuRegistre === registreModifie;
   async function fetchList() {
@@ -2015,10 +2017,10 @@ function setupPersoInput(inputSel, sugSel, onPick, zone) {
     if (lecture !== moi || input.value.trim() !== q) return;
     listePour = persos ? q : null;
     listeDuRegistre = etat;
-    exact = persos ? homonyme(persos, q) : null;
-    items = (persos || []).slice(0, 10).map((p) => ({ create: false, id: p.id, nom: p.nom, serie: p.serie }));
+    lus = persos || [];
+    items = lus.slice(0, 10).map((p) => ({ create: false, id: p.id, nom: p.nom, serie: p.serie }));
     // proposer la CRÉATION si la saisie n'a pas de correspondance exacte (modèle mentions→entités)
-    if (persos && q && !exact) items.push({ create: true, nom: q });
+    if (persos && q && !BDPropositions.homonymes(persos, q).length) items.push({ create: true, nom: q });
     if (surlignerAuRetour) { surlignerAuRetour = false; activeIdx = BDPropositions.fleche(-1, items.length, "bas"); }
     render();
   }
@@ -2028,9 +2030,11 @@ function setupPersoInput(inputSel, sugSel, onPick, zone) {
     items.forEach((it, i) => {
       const d = document.createElement("div");
       if (i === activeIdx) d.classList.add("active");
+      // Un homonyme à départager dit TOUJOURS sa série : sans elle, deux lignes identiques.
+      const serie = it.serie ? escapeHtml(it.serie) : it.homonyme ? "sans série" : "";
       d.innerHTML = it.create
         ? `➕ Créer « ${escapeHtml(it.nom)} »`
-        : `${escapeHtml(it.nom)}${it.serie ? `<span class="freq">${escapeHtml(it.serie)}</span>` : ""}`;
+        : `${escapeHtml(it.nom)}${serie ? `<span class="freq">${serie}</span>` : ""}`;
       d.onmousedown = (e) => { e.preventDefault(); choose(it); };
       sug.appendChild(d);
     });
@@ -2056,16 +2060,32 @@ function setupPersoInput(inputSel, sugSel, onPick, zone) {
     input.value = ""; close();
     await appliquer(it, zone());
   }
-  /* Entrée sans sélection : l'homonyme exact de CE qui est tapé, sinon la création. */
+  /* Plusieurs personnages portent le nom tapé : la liste se réduit à eux, chacun avec sa
+     série, rien de surligné — Entrée n'a rien pris, l'on choisit. */
+  function departager(homos, q, etat) {
+    listePour = q; listeDuRegistre = etat; lus = homos;
+    items = homos.map((p) => ({ create: false, id: p.id, nom: p.nom, serie: p.serie, homonyme: true }));
+    activeIdx = -1;
+    render();
+  }
+  /* Entrée sans sélection : l'homonyme exact de CE qui est tapé s'il est seul, la liste des
+     homonymes s'ils sont plusieurs, sinon la création. */
   async function valider(q) {
+    // La lecture différée de la frappe n'a plus d'objet : Entrée décide, sur la liste qui
+    // vaut ou sur sa propre lecture. Partie après, elle rouvrirait la liste ENTIÈRE par-dessus
+    // celle des homonymes.
+    clearTimeout(timer);
     if (vaut(q)) {                                   // la liste vaut pour cette saisie
-      choose(exact || { create: true, nom: q });     // pas de doublon si le nom existe déjà
+      const d = BDPropositions.decisionNom(lus, q);
+      if (d.geste === "departager") departager(d.homonymes, q, listeDuRegistre);
+      else choose(d.geste === "choisir" ? d.item : { create: true, nom: d.nom });   // pas de doublon
       return;
     }
     // Elle ne vaut pas pour cette saisie : on relit avant de décider. Le champ se vide
     // tout de suite — une seconde Entrée pendant la lecture ne part pas deux fois. Une
     // lecture déjà en vol ne sert que si elle est partie APRÈS la dernière création.
     const z = zone();
+    const etat = registreModifie;
     input.value = ""; close();
     let persos;
     try {
@@ -2077,7 +2097,14 @@ function setupPersoInput(inputSel, sugSel, onPick, zone) {
       toast("Registre des personnages : " + e.message, "error");
       return;
     }
-    appliquer(homonyme(persos, q) || { create: true, nom: q }, z);
+    const d = BDPropositions.decisionNom(persos, q);
+    if (d.geste === "departager") {
+      // Rien n'est fait : la saisie revient, avec les homonymes — si l'on est resté sur la
+      // zone du geste et qu'on n'a rien tapé depuis. Sinon on est passé à autre chose.
+      if (zone() === z && !input.value) { input.value = q; departager(d.homonymes, q, etat); }
+      return;
+    }
+    appliquer(d.geste === "choisir" ? d.item : { create: true, nom: d.nom }, z);
   }
   input.addEventListener("input", () => {
     activeIdx = -1; surlignerAuRetour = false;

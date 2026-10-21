@@ -724,7 +724,8 @@ def test_un_nom_existant_tape_avant_la_liste_prend_l_homonyme(page, atelier, cha
         lectures.attendre(1)                         # la relecture d'Entrée, tenue
     page.wait_for_timeout(500)
     # UNE lecture pour ce nom, pas deux. (Entrée pressée avant la lecture différée, celle-ci
-    # part ensuite pour le champ VIDÉ : `?q=`, comme avant ce correctif.)
+    # ne part plus du tout depuis ANN-8 : Entrée décide sur sa propre lecture, et la liste
+    # différée aurait rouvert par-dessus celle des homonymes.)
     pour_ce_nom = [r.request.url for r in lectures.tenues if r.request.url.endswith("?q=Zed")]
     assert len(pour_ce_nom) == 1, [r.request.url for r in lectures.tenues]
     assert parties == [], f"l'écran a écrit sans attendre de savoir : {parties}"
@@ -1110,3 +1111,85 @@ def test_pendant_le_rechargement_entree_reverifie_la_surlignee(page, atelier, fl
         champ.press("Enter")
     assert envoi.value.post_data_json == {"personnage_id": ids["Zed"]}
     assert _creations(parties) == [], parties
+
+
+# --------------------------------------------------------------------------- #
+# ANN-8 (Hugo, 2026-10-21) — plusieurs personnages du même nom se départagent à l'écran
+# --------------------------------------------------------------------------- #
+def _deux_zed(decor):
+    """Deux « Zed » au registre : l'un sans série, l'autre d'une série. Rend {série: id}."""
+    with _api(decor, ecriture=True) as c:
+        return {serie: c.post("/api/personnages", json={"nom": "Zed", "serie": serie}).json()["id"]
+                for serie in (None, "Les Aventures")}
+
+
+@pytest.mark.parametrize("champ_de", list(CHAMPS_PERSONNAGE))
+@pytest.mark.parametrize("moment", ["liste revenue", "avant la liste"])
+def test_des_homonymes_entree_ne_decide_pas_la_liste_se_reduit_a_eux(page, atelier, champ_de, moment):
+    """Deux « Zed » : Entrée ne prend plus le premier dans l'ordre du registre. Rien ne part ;
+    la liste se réduit aux deux, chacun avec sa série, et l'on choisit — ici le second, aux
+    flèches. Deux moments, deux chemins de l'écran : la liste de « Zed » déjà revenue, ou
+    Entrée pressée avant elle (l'écran relit le registre lui-même)."""
+    c = CHAMPS_PERSONNAGE[champ_de]
+    zed = _deux_zed(atelier)
+    rid = atelier[c["zone"]]
+    chemin = f"/api/regions/{rid}/{c['lien']}"
+    _ouvrir(page, atelier, c["zone"])
+    champ, liste = page.locator(c["champ"]), page.locator(f"{c['liste']} div")
+    parties = _ecritures(page)
+
+    champ.click()
+    expect(liste).to_have_count(3, timeout=15000)          # Tintin, Zed, Zed
+    if moment == "liste revenue":
+        with page.expect_response(lambda r: r.url.endswith("/api/personnages?q=Zed")):
+            champ.press_sequentially("Zed", delay=20)
+        expect(liste).to_have_count(2, timeout=15000)
+        champ.press("Enter")
+    else:
+        with page.expect_response(lambda r: r.url.endswith("/api/personnages?q=Zed")):
+            _taper_et_valider_d_un_trait(page, c["champ"], "Zed")
+
+    # Le témoin : la liste réduite, chaque ligne avec sa série — « sans série » comprise.
+    expect(liste).to_have_count(2, timeout=15000)
+    expect(liste.nth(0)).to_have_text(re.compile(r"^Zed\s*sans série$"))
+    expect(liste.nth(1)).to_have_text(re.compile(r"^Zed\s*Les Aventures$"))
+    expect(page.locator(f"{c['liste']} div.active")).to_have_count(0)
+    expect(champ).to_have_value("Zed")
+    page.wait_for_timeout(400)
+    assert parties == [], f"Entrée a décidé entre deux homonymes : {parties}"
+
+    # Une seconde Entrée sans rien surligner ne décide pas davantage.
+    champ.press("Enter")
+    page.wait_for_timeout(300)
+    assert parties == [], parties
+    expect(liste).to_have_count(2)
+
+    champ.press("ArrowDown")
+    champ.press("ArrowDown")
+    with page.expect_request(_est("PUT", chemin)) as envoi, \
+            page.expect_response(_est("PUT", chemin)) as reponse:
+        champ.press("Enter")
+    assert reponse.value.status == 200, reponse.value.text()
+    assert envoi.value.post_data_json == {"personnage_id": zed["Les Aventures"]}
+    expect(page.locator(c["puce"])).to_contain_text("Les Aventures", timeout=15000)
+    assert _creations(parties) == [], parties
+
+
+def test_un_homonyme_se_choisit_aussi_d_un_clic(page, atelier):
+    c = CHAMPS_PERSONNAGE["locuteur"]
+    zed = _deux_zed(atelier)
+    rid = atelier[c["zone"]]
+    chemin = f"/api/regions/{rid}/{c['lien']}"
+    _ouvrir(page, atelier, c["zone"])
+    champ, liste = page.locator(c["champ"]), page.locator(f"{c['liste']} div")
+
+    champ.click()
+    with page.expect_response(lambda r: r.url.endswith("/api/personnages?q=Zed")):
+        champ.press_sequentially("Zed", delay=20)
+    expect(liste).to_have_count(2, timeout=15000)
+    champ.press("Enter")
+    expect(liste.nth(0)).to_have_text(re.compile(r"sans série$"), timeout=15000)
+    with page.expect_request(_est("PUT", chemin)) as envoi, \
+            page.expect_response(_est("PUT", chemin)):
+        liste.nth(0).click()
+    assert envoi.value.post_data_json == {"personnage_id": zed[None]}

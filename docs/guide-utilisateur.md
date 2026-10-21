@@ -241,8 +241,9 @@ type :
   comme celui d'une bulle. On peut y créer une entrée pour un narrateur ; la façon de
   le nommer n'est pas encore arrêtée. Tapez le nom puis Entrée : s'il est déjà au
   registre, c'est ce personnage qui est pris, même tapé vite ; il n'est créé que si aucun
-  ne porte exactement ce nom. Quand plusieurs le portent — un par série —, Entrée prend
-  le premier de la liste : choisissez le vôtre dans les propositions. Une proposition
+  ne porte exactement ce nom. Quand plusieurs le portent — un par série —, **Entrée ne
+  choisit pas** : la liste se réduit à eux, chacun avec sa série (« sans série » s'il n'en
+  a pas), et vous prenez le vôtre aux flèches puis Entrée, ou d'un clic. Une proposition
   surlignée aux flèches n'est prise que si elle correspond encore à ce qui est tapé : si
   la liste n'a pas encore suivi votre frappe, Entrée ne prend rien et la liste se met à
   jour — choisissez dans celle-ci. Une zone de texte qu'on passe en case ou en boîte

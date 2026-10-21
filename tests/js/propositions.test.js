@@ -167,6 +167,15 @@ test("repond : ce que le serveur aurait rendu pour la saisie, et la création ex
   }
 });
 
+test("homonymes : le nom exact, sans égard à la casse — les accents, eux, distinguent", () => {
+  assert.deepEqual(P.homonymes(PERSOS, "zed").map((p) => p.id), [1, 2]);
+  assert.deepEqual(P.homonymes(PERSOS, " Zed ").map((p) => p.id), [1, 2]);
+  assert.deepEqual(P.homonymes(PERSOS, "Zeld").map((p) => p.id), []);   // contenir n'est pas porter
+  assert.deepEqual(P.homonymes(PERSOS, "etienne").map((p) => p.id), []); // l'accent distingue
+  assert.deepEqual(P.homonymes(PERSOS, "").map((p) => p.id), []);
+  assert.deepEqual(P.homonymes(null, "Zed"), []);
+});
+
 /* LA table d'Entrée d'un champ de personnage (ANN-8, Hugo, 2026-10-21). Chaque ligne : ce
    qui est tapé MAINTENANT, la liste à l'écran (peut-être celle d'une saisie d'avant), le
    rang surligné → le geste. */
@@ -200,4 +209,14 @@ test("entreePersonnage : la proposition surlignée ne part que si elle répond e
       : d.item.create ? { geste: d.geste, create: d.item.nom } : { geste: d.geste, id: d.item.id };
     assert.deepEqual(lu, attendu, `« ${q} », surligné ${actif} sur ${items.length}`);
   }
+});
+
+test("decisionNom : un homonyme est pris, plusieurs se départagent, aucun se crée", () => {
+  assert.deepEqual(P.decisionNom(PERSOS, "Tintin"), { geste: "choisir", item: PERSOS[4] });
+  assert.deepEqual(P.decisionNom(PERSOS, "tintin "), { geste: "choisir", item: PERSOS[4] });
+  const d = P.decisionNom(PERSOS, "Zed");
+  assert.equal(d.geste, "departager");
+  assert.deepEqual(d.homonymes.map((p) => [p.id, p.serie]), [[1, null], [2, "Les Aventures"]]);
+  assert.deepEqual(P.decisionNom(PERSOS, "Zeld"), { geste: "creer", nom: "Zeld" });
+  assert.deepEqual(P.decisionNom([], " Milou "), { geste: "creer", nom: "Milou" });
 });
