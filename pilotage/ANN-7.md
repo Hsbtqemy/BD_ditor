@@ -254,6 +254,16 @@ nombre de tags, d'attributs, de termes locaux, et les responsables des projets ;
 d'une réindexation FTS complète sur la recette ; l'import de la vraie grille (hors dépôt) dans
 les trois formes ; la cible des actes sur les relevés au journal.
 
+**Mesuré en production le 2026-10-21** (Hugo, lecture seule, `mode=ro`) : 13 tags dont 6
+locaux à une collection, posés 31 fois ; 4 dimensions (2 locales) et 10 valeurs (8 locales),
+aucun domaine ; 11 attributs posés sur des cases, 3 sur des personnages ; 5 personnages,
+16 locuteurs, aucune présence ; 3 projets, 2 responsables, 7 membres ; 14 albums, 866
+planches, 330 régions. Le basculement ne coûte donc presque rien en DONNÉES — le coût est dans
+les lecteurs de code — ; Q3 porte sur 16 termes locaux, qu'on peut relire un par un au lieu de
+trancher par principe ; et l'annotation n'a presque pas commencé : chaque semaine d'attente
+ajoute à convertir. Q9 est à moitié réglée : des responsables existent, reste à vérifier que
+le projet de la grille des linguistes en a un.
+
 **Ordre du jour proposé** : 10 min de rappel et un schéma des étages (fonds, projet, base et
 collections, copies sœurs ; image, page, surface ; grille, version, relevé) ; 25 min « où vit
 une grille » (Q1, Q2, Q3, Q8) ; 25 min « ce qu'est un relevé » (Q4 à Q7) ; 15 min copies et
