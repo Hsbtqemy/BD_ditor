@@ -225,7 +225,11 @@ principe, à coder avec la 3b).
 - Q2 — Les grilles sont-elles « le vocabulaire au niveau du projet » de la tranche 4 de
   `COL-3` ? *Recommandé : oui*, la tranche 4 ne garde que personnages, Recherche et
   Exploration — sinon le vocabulaire migre deux fois.
-- Q3 — Le sort des termes existants : une grille par projet pour les termes globaux qu'il
+- Q3 — *Simplifiée par Hugo le 2026-10-21 : le corpus annoté en production est un corpus de
+  TEST, et rien de ce qu'on y supprime ou modifie n'a de conséquence. Le basculement peut donc
+  partir d'un vocabulaire neuf, sans conversion, et couper les Ctrl+Z d'avant lui ; la
+  question ci-dessous ne vaut plus que si l'on VEUT garder ces termes.*
+  Le sort des termes existants : une grille par projet pour les termes globaux qu'il
   emploie, dérivées d'une origine commune ; une grille d'instance unique ; les termes locaux
   en grille distincte. *Recommandé : la première et la troisième*, en acceptant par écrit que
   les termes locaux deviennent visibles du projet entier (ou en les comptant d'abord).
