@@ -447,8 +447,12 @@ _ABIMER_UN_TEXTE_HORS_CHAMP = """async () => {
 # les vues de l'Administration qui en ont une (`#admin-body`, la liste et la fiche). Les
 # autres n'y repoussaient rien : la Recherche et l'Exploration défilent avec la PAGE, ce
 # qu'axe juge seul, et l'Atelier du décor n'a pas assez de contenu pour déborder.
-SURFACES_DEFILANTES = ("/corpus", "/administration?vue=comptes",
-                       "/administration?vue=projets", "/administration?vue=fonds")
+# DÉRIVÉE de la déclaration et des vues, jamais énumérée à côté d'elles
+# (`tests/test_surfaces.py`, « aucune seconde liste de surfaces »).
+_VUES_DEFILANTES = ("comptes", "projets", "fonds")
+SURFACES_DEFILANTES = tuple(
+    [s for s in SURFACES_AUDITEES if s == "/corpus"]
+    + [f"/administration?vue={v}" for v in VUES_ADMINISTRATION if v in _VUES_DEFILANTES])
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
