@@ -28,7 +28,7 @@ DB_PATH = (Path(os.environ["BD_DB_PATH"]).resolve()
            if os.environ.get("BD_DB_PATH")
            else DATA_DIR / "bd_annotator.sqlite")
 
-CORPUS_DIR = DATA_DIR / "corpus"            # masters TIFF (gitignore)
+CORPUS_DIR = DATA_DIR / "corpus"            # copies de travail JPEG (IMG-1), masters d'avant (gitignore)
 DERIVATIVES_DIR = DATA_DIR / "derivatives"  # dérivés web, toujours JPEG (gitignore)
 
 # Chemins de code (toujours relatifs au dépôt).
@@ -37,8 +37,17 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 KUMIKO_DIR = BASE_DIR / "lib" / "kumiko"
 
 # Paramètres de dérivation web
-WEB_SCALE = 0.25          # le dérivé fait 25 % de la taille du master
+WEB_SCALE = 0.25          # le dérivé fait 25 % de la taille du SCAN (`largeur_px`)
 WEB_JPEG_QUALITY = 82
+
+# La COPIE DE TRAVAIL (IMG-1, décidé par Hugo le 2026-10-21). Le serveur ne garde plus le
+# fichier reçu — le master d'archive vit où le projet le met (ShareDocs, un disque, des
+# disques durs) — mais une copie JPEG à 300 dpi EFFECTIFS : un scan au-dessus est réduit
+# jusque-là, un scan à 300 ou moins, ou sans résolution écrite, est gardé à sa taille. Ce
+# que la copie sert, mesuré le même jour sur sept planches : l'OCR intact, une figure à la
+# taille d'origine. Les coordonnées restent en pixels du SCAN (`largeur_px`).
+TRAVAIL_DPI = 300
+TRAVAIL_JPEG_QUALITY = 80
 
 # Déconnexion (INFRA-1). Derrière le proxy d'authentification (Authelia), l'URL de
 # logout vit sur le sous-domaine du PORTAIL, cible comprise :

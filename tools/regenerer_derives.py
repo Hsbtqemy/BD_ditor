@@ -10,6 +10,12 @@ gris 16 bits donnait un dérivé presque blanc, sans erreur à l'import.
 régions : le navigateur recalcule l'échelle depuis l'image chargée, si bien que les cases
 restent à leur place même si `WEB_SCALE` a changé entre-temps.
 
+**La source est la copie de travail** depuis IMG-1 (`chemin_tiff`, 300 dpi effectifs) : le
+serveur ne garde plus le scan. Le dérivé fait donc 25 % des dimensions du SCAN
+(`largeur_px`), et non 25 % de la copie — sans quoi un scan à 400 dpi recevrait un dérivé
+réduit deux fois. Une planche d'avant la v34 a encore son master, à la taille du scan : le
+même calcul lui rend le dérivé d'avant.
+
 **Ce que régénérer ne répare pas** : les passes de reconnaissance ont travaillé sur l'ancien
 dérivé (bulles toujours, Kumiko par défaut). Sur une planche dont le master est un gris de
 plus de 8 bits, celles d'avant le correctif ont été produites sur du blanc ; l'outil les
@@ -58,7 +64,8 @@ SOURCES_MOTEUR = ("kumiko", "auto")
 
 def planches_selectionnees(conn, *, planche=None, album=None, modes=()):
     """Planches visées, dans l'ordre de lecture du corpus."""
-    sql = "SELECT id, album_id, numero, chemin_tiff, chemin_web, mode FROM planches WHERE 1 = 1"
+    sql = ("SELECT id, album_id, numero, chemin_tiff, chemin_web, mode, largeur_px, hauteur_px "
+           "FROM planches WHERE 1 = 1")
     params: list = []
     if planche is not None:
         sql += " AND id = ?"
@@ -84,7 +91,9 @@ def regenerer(conn, planches, *, dry_run: bool = False) -> dict:
             dest = DATA_DIR / p["chemin_web"]
             provisoire = dest.with_name(dest.name + ".regeneration")
             try:
-                make_web_derivative(master, provisoire)
+                taille_scan = ((p["largeur_px"], p["hauteur_px"])
+                               if p["largeur_px"] and p["hauteur_px"] else None)
+                make_web_derivative(master, provisoire, taille_scan=taille_scan)
                 os.replace(provisoire, dest)
             except Exception as exc:               # master illisible, mode refusé…
                 provisoire.unlink(missing_ok=True)

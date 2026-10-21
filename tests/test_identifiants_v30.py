@@ -433,8 +433,8 @@ def test_un_album_neuf_ne_reprend_jamais_le_dossier_d_un_autre(client, data_dir,
                     files={"file": ("p.png", png_bytes, "image/png")})
     assert r.status_code == 201, r.text
     assert [f.name for f in (data_dir / "corpus" / f"album_{aid}").iterdir()] \
-        == ["planche_0001.png"]
-    assert (data_dir / "corpus" / f"album_{aid}" / "planche_0001.png").read_bytes() \
+        == ["planche_0001.jpg"]                 # la copie de travail (IMG-1)
+    assert (data_dir / "corpus" / f"album_{aid}" / "planche_0001.jpg").read_bytes() \
         != b"IMAGE D'UN AUTRE ALBUM"
 
 
@@ -478,7 +478,7 @@ def test_un_dossier_qui_ne_se_met_pas_de_cote_fait_sauter_le_numero(client, data
                     files={"file": ("p.png", png_bytes, "image/png")})
     assert r.status_code == 201, r.text
     assert [f.name for f in (data_dir / "corpus" / f"album_{aid}").iterdir()] \
-        == ["planche_0001.png"]
+        == ["planche_0001.jpg"]                 # la copie de travail (IMG-1)
     assert client.post("/api/albums", json={"titre": "Encore"}).json()["id"] == aid + 1
 
 

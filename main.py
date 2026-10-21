@@ -89,8 +89,8 @@ from pipeline.backup import make_backup
 from pipeline import jobs
 from pipeline import nlp
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
-from pipeline.ingest import (ecarter_dossiers_d_album, ingest_image, numero_occupe,
-                             prochain_numero_libre, remove_planche_files, store_upload)
+from pipeline.ingest import (ORIGINE_SHAREDOCS, ecarter_dossiers_d_album, ingest_image,
+                             numero_occupe, prochain_numero_libre, remove_planche_files)
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
 from pipeline.ordering import move_region, reorder_planche
 from pipeline.segmentation import KumikoError, kumiko_available, segment_planche
@@ -778,10 +778,10 @@ def import_planche(
 ):
     _get_album(conn, portee, album_id, ecriture=True)
     nom = file.filename or "planche.tif"
-    # IMG-1 — le NOM est filtré comme depuis ShareDocs. Sans ce contrôle, `store_upload`
-    # rangeait le master sous le suffixe reçu : un `planche_0001.dat` entrait dans `corpus/`.
-    # Le contenu reste jugé par le décodeur borné (`PILLOW_FORMATS`), et les deux contrôles
-    # ne se remplacent pas : l'un refuse un nom qui ment, l'autre un contenu qui ment.
+    # IMG-1 — le NOM est filtré comme depuis ShareDocs. Sans ce contrôle, l'import rangeait
+    # le master sous le suffixe reçu : un `planche_0001.dat` entrait dans `corpus/`. Le
+    # contenu reste jugé par le décodeur borné (`PILLOW_FORMATS`), et les deux contrôles ne
+    # se remplacent pas : l'un refuse un nom qui ment, l'autre un contenu qui ment.
     extension = os.path.splitext(nom)[1].lower()
     if extension not in IMG_EXTS:
         raise HTTPException(
@@ -793,15 +793,15 @@ def import_planche(
     # Numéro alloué AVANT écriture (DB-1) : un numéro explicite déjà pris → 409, sans
     # écraser les fichiers (master/dérivé nommés d'après lui) de la planche existante.
     numero = _allouer_numero(conn, album_id, numero)
-    master = store_upload(album_id, nom, data, numero)
+    # IMG-1 (Hugo, 2026-10-21) — le fichier reçu n'est PAS écrit sur le disque : l'ingest le
+    # décode depuis ses octets et ne garde que sa COPIE DE TRAVAIL (300 dpi effectifs) ; le
+    # master d'archive vit où le projet le met, et la planche note le nom du fichier reçu.
+    # Sur un échec, l'ingest retire lui-même ce qu'il a écrit.
     try:
-        planche = ingest_image(conn, album_id, master, numero=numero)
-    except sqlite3.IntegrityError:
-        master.unlink(missing_ok=True)   # course rare : un concurrent a pris ce numéro
+        planche = ingest_image(conn, album_id, data, numero=numero, origine=nom)
+    except sqlite3.IntegrityError:       # course rare : un concurrent a pris ce numéro
         raise HTTPException(409, f"Numéro {numero} déjà pris (course d'import) — réessayez.")
     except Exception as exc:
-        # Pas de master orphelin sur disque si l'ingestion échoue après écriture.
-        master.unlink(missing_ok=True)
         raise HTTPException(400, f"Échec de l'ingestion : {exc}")
     _journaliser_scan(conn, album_id, planche)
     conn.commit()
@@ -1268,27 +1268,28 @@ def sharedocs_importer(payload: SharedocsImportIn,
         if os.path.splitext(nom)[1].lower() not in IMG_EXTS:
             erreurs.append({"chemin": chemin, "erreur": "type non géré (image attendue)"})
             continue
-        master = planche = None
+        planche = None
         try:
             data = sharedocs.download(
                 chemin, principal=_principal_sharedocs(portee), compte=payload.compte)
             if not data:
                 raise ShareDocsError("fichier vide")
             numero = _allouer_numero(conn, album_id, None)   # auto (MAX+1) ; index unique = filet
-            master = store_upload(album_id, nom, data, numero)
-            planche = ingest_image(conn, album_id, master, numero=numero)
+            # IMG-1 — la copie de travail, comme l'import de fichiers ; la planche note le
+            # chemin DISTANT, là où vit le master d'archive (`sharedocs:<chemin>`).
+            planche = ingest_image(conn, album_id, data, numero=numero,
+                                   origine=f"{ORIGINE_SHAREDOCS}{chemin}")
             planche["url_web"] = "/" + planche["chemin_web"]
             _journaliser_scan(conn, album_id, planche)
             conn.commit()
         except BaseException as exc:
             # La transaction de CETTE planche est défaite ; ses fichiers, déjà sur le disque,
             # ne sont plus désignés par aucune ligne et partent avec elle (COL-3, relecture
-            # croisée : la planche qui reprenait le même numéro les retrouvait).
+            # croisée : la planche qui reprenait le même numéro les retrouvait). Un échec
+            # DANS l'ingest a déjà retiré ce qu'il avait écrit.
             conn.rollback()
             if planche is not None:
                 remove_planche_files(planche.get("chemin_tiff"), planche.get("chemin_web"))
-            elif master is not None:
-                master.unlink(missing_ok=True)
             if not isinstance(exc, Exception):
                 raise                        # une interruption n'est pas l'échec d'un fichier
             erreurs.append({"chemin": chemin, "erreur": str(exc)})

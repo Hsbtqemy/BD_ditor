@@ -30,11 +30,14 @@ def test_metadonnees_master(client, album):
 
 
 def test_noms_master_et_web_alignes(client, album, png_bytes):
-    """Sans numéro fourni, master et dérivé portent le même numéro (régression)."""
+    """Sans numéro fourni, copie de travail et dérivé portent le même numéro (régression).
+    La copie de travail est un JPEG quel que soit le fichier reçu (IMG-1), dont le NOM est
+    noté sur la planche — c'est tout ce que l'outil sait alors du master d'archive."""
     p = client.post(f"/api/albums/{album['id']}/import",
                     files={"file": ("nom_original.png", png_bytes, "image/png")}).json()
-    assert p["chemin_tiff"].endswith("planche_0001.png")
-    assert p["chemin_web"].endswith("planche_0001.jpg")
+    assert p["chemin_tiff"] == f"corpus/album_{album['id']}/planche_0001.jpg"
+    assert p["chemin_web"] == f"derivatives/album_{album['id']}/planche_0001.jpg"
+    assert p["master_origine"] == "nom_original.png"
 
 
 def test_numero_auto_increment(client, album, png_bytes):

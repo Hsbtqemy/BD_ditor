@@ -485,7 +485,7 @@ CATALOGUE = [
     ("planche", "numero", "ordre d'import (page physique)", "système", "structuré", "—", "ouvert"),
     ("planche", "role", "statut éditorial", "humain", "structuré", "—", "ouvert"),
     ("planche", "numero_editorial", "rang parmi les récits", "dérivé", "dérivé", "—", "ouvert"),
-    ("planche", "chemin_tiff", "pointeur master", "système", "structuré", "—", "restreint"),
+    ("planche", "chemin_tiff", "pointeur copie de travail (master avant v34)", "système", "structuré", "—", "restreint"),
     ("planche", "chemin_web", "pointeur dérivé", "système", "structuré", "IIIF", "restreint"),
     ("planche", "largeur_px/hauteur_px", "dimensions master", "matériel", "structuré", "TEI surface", "ouvert"),
     ("planche", "statut", "avancement", "système", "structuré", "—", "ouvert"),

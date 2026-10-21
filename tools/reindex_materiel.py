@@ -8,6 +8,12 @@ dont le master est absent (dérivé seul) ou illisible.
 
 Les dimensions physiques (cm) restent DÉRIVÉES à la lecture (px÷dpi) — rien à stocker.
 
+**Seules les planches dont le fichier EST le scan** (IMG-1) : une planche importée depuis la
+v34, ou convertie par `tools/convertir_en_copies_de_travail.py`, n'a sur le serveur que sa
+copie de travail (`master_origine` renseigné) — réduite à 300 dpi, ramenée en 8 bits. Sa
+résolution et son mode ne sont pas ceux du scan, et `--force` les aurait écrits par-dessus :
+une planche de 400 dpi aurait perdu un quart de ses centimètres. Elles sont sautées.
+
 Usage :
     python tools/reindex_materiel.py            # planches sans matériel connu
     python tools/reindex_materiel.py --force    # re-lit TOUTES les planches à master présent
@@ -33,7 +39,8 @@ from pipeline.ingest import read_metadata           # noqa: E402
 
 def _planches_a_traiter(conn, force: bool):
     """Planches à (re)lire : à master présent, dont le matériel manque (ou toutes si `force`)."""
-    sql = "SELECT id, numero, chemin_tiff, dpi_x, dpi_y, mode FROM planches WHERE chemin_tiff IS NOT NULL"
+    sql = ("SELECT id, numero, chemin_tiff, dpi_x, dpi_y, mode FROM planches "
+           "WHERE chemin_tiff IS NOT NULL AND master_origine IS NULL")
     if not force:
         sql += " AND dpi_x IS NULL AND dpi_y IS NULL AND mode IS NULL"
     return conn.execute(sql + " ORDER BY album_id, numero, id").fetchall()

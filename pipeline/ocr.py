@@ -1,7 +1,8 @@
 """Passe 3 — OCR par région de texte (pré-remplissage de `ocr_texte`).
 
 Pour chaque région porteuse de texte (bulle / cartouche / texte), on recadre la
-zone dans l'image MASTER (meilleure résolution) et on l'OCR avec EasyOCR. Le
+zone dans la COPIE DE TRAVAIL (IMG-1 : 300 dpi effectifs, la meilleure image que le
+serveur garde ; le master d'une planche d'avant la v34) et on l'OCR avec EasyOCR. Le
 texte reconnu n'est qu'un PRÉ-REMPLISSAGE éditable : l'humain le corrige dans le
 mode Annotation. Par défaut on ne traite que les régions encore vides
 (`only_empty=True`) pour ne JAMAIS écraser une correction humaine.
@@ -65,8 +66,16 @@ def liberer() -> bool:
 
 
 def _open_image(planche):
-    """Ouvre le master si possible (sinon le dérivé web) ; renvoie (img, scale)
-    où scale convertit des pixels MASTER vers les pixels de l'image ouverte."""
+    """Ouvre la copie de travail si possible (sinon le dérivé web) ; renvoie (img, scale)
+    où scale convertit des pixels MASTER (ceux du scan, `largeur_px`) vers les pixels de
+    l'image ouverte.
+
+    IMG-1 — l'échelle se calcule pour les DEUX images, et c'est la correction : `chemin_tiff`
+    désignait le master, à la taille du scan, d'où une échelle de 1 en dur. Il désigne
+    désormais la copie de travail, réduite à 300 dpi effectifs (75 % d'un scan à 400) :
+    garder 1 aurait recadré chaque bulle à 4/3 de sa place, sans erreur, dans l'OCR comme
+    dans le crop de la Transcription et des figures. Une planche d'avant la v34, dont le
+    fichier est encore le master, reçoit 1 par le même calcul."""
     from PIL import Image
     from pipeline.ingest import ModeImageRefuse, image_8_bits
     Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS   # garde anti-bombe (jamais None)
@@ -76,10 +85,9 @@ def _open_image(planche):
         # franchi l'ingest serait redécodé à chaque passe OCR. Borner aux deux endroits
         # coûte un paramètre ; n'en borner qu'un laisse le second faire le travail.
         img = Image.open(DATA_DIR / planche["chemin_tiff"], formats=PILLOW_FORMATS)
-        scale = 1.0
     else:
         img = Image.open(DATA_DIR / planche["chemin_web"], formats=PILLOW_FORMATS)
-        scale = img.width / planche["largeur_px"] if planche["largeur_px"] else 1.0
+    scale = img.width / planche["largeur_px"] if planche["largeur_px"] else 1.0
     # IMG-1 — la MÊME conversion que le dérivé : un `convert("RGB")` nu écrêtait le gris
     # 16 bits, et l'OCR lisait une page blanche même quand le dérivé était juste. Un master
     # refusé (antérieur au refus à l'import) échoue ici en nommant son mode.
@@ -231,7 +239,8 @@ def _armer_echeance(delai: float | None = None) -> None:
 
 def region_crop_png(conn: sqlite3.Connection, region_id: int,
                     max_dim: int = 1600) -> bytes | None:
-    """PNG net de la région recadrée dans le MASTER (sinon le dérivé web).
+    """PNG net de la région recadrée dans la copie de travail (sinon le dérivé web) —
+    ses coordonnées, en pixels master, ramenées à l'image ouverte (`_open_image`).
 
     Renvoie None si la région est introuvable. Réduit à `max_dim` de large pour
     borner la charge. Cache le master de la planche courante.

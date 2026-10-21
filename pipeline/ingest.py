@@ -1,18 +1,30 @@
-"""Ingestion d'une planche : master (TIFF) → dérivé web + métadonnées en base.
+"""Ingestion d'une planche : scan reçu → copie de travail + dérivé web + métadonnées en base.
 
 Étapes :
-  1. Ouvrir le master avec Pillow, lire métadonnées (DPI, dimensions, mode).
-  2. Générer le dérivé web : resize à WEB_SCALE (25 %), JPEG qualité 82.
-  3. Stocker chemins (relatifs, en POSIX) et dimensions MASTER en base.
-  4. Retourner la ligne `planches` créée.
+  1. Ouvrir le scan reçu avec Pillow, lire métadonnées (DPI, dimensions, mode), le décoder
+     UNE fois — hors de toute transaction d'écriture (un JPEG 2000 sans perte y met ~5 s).
+  2. Écrire la COPIE DE TRAVAIL (IMG-1) : JPEG qualité 80 à 300 dpi effectifs — réduite si
+     le scan est plus fin, gardée à sa taille sinon ou sans résolution écrite.
+  3. Générer le dérivé web : 25 % (WEB_SCALE) des dimensions du scan, JPEG qualité 82.
+  4. Stocker chemins (relatifs, en POSIX), dimensions et matériel du SCAN en base, et ce
+     que l'outil sait du master d'archive (`master_origine`).
+  5. Retourner la ligne `planches` créée.
 
-Les coordonnées des régions sont toujours stockées en pixels MASTER ; c'est
-pourquoi `planches.largeur_px / hauteur_px` contiennent les dimensions du
-master, pas du dérivé. Le frontend recalcule `web_scale` à partir de la
-largeur naturelle de l'image web chargée.
+Le fichier reçu n'est PAS gardé sur le serveur (IMG-1, décidé par Hugo le 2026-10-21) : le
+master d'archive vit où le projet le met. `chemin_tiff` désigne désormais la copie de
+travail ; la colonne garde son nom d'avant, et les planches importées avant la v34 y
+désignent encore leur master, jusqu'au rattrapage (`tools/convertir_en_copies_de_travail.py`).
+
+Les coordonnées des régions sont toujours stockées en pixels du SCAN (« pixels master ») ;
+c'est pourquoi `planches.largeur_px / hauteur_px` contiennent les dimensions du scan, ni
+celles de la copie de travail ni celles du dérivé. Quiconque ouvre l'une des deux et la
+croise avec des coordonnées applique l'échelle `largeur de l'image ouverte / largeur_px`
+(le navigateur pour le dérivé, `ocr._open_image` pour la copie de travail).
 """
 from __future__ import annotations
 
+import io
+import os
 import re
 import sqlite3
 from pathlib import Path
@@ -20,7 +32,7 @@ from pathlib import Path
 from PIL import Image
 
 from config import (CORPUS_DIR, DATA_DIR, DERIVATIVES_DIR, MAX_IMAGE_PIXELS,
-                    PILLOW_FORMATS,
+                    PILLOW_FORMATS, TRAVAIL_DPI, TRAVAIL_JPEG_QUALITY,
                     WEB_JPEG_QUALITY, WEB_SCALE)
 
 # Garde anti-bombe de décompression : on relève la limite Pillow à une valeur
@@ -61,7 +73,7 @@ def numero_occupe(conn: sqlite3.Connection, album_id: int, numero: int) -> bool:
     """Les fichiers d'une planche de ce numéro, dans cet album, sont-ils DÉJÀ pris ?
     COL-3, tranche 3 (D6, relecture croisée).
 
-    Master et dérivé sont nommés d'après le numéro (`store_upload`, `ingest_image`), et
+    Copie de travail et dérivé sont nommés d'après le numéro (`ingest_image`), et
     l'import écrit sur ces chemins sans regarder s'ils existent. Tant qu'un album avait ses
     propres fichiers, le numéro libre DANS L'ALBUM suffisait. Plus depuis qu'une copie sœur
     désigne les fichiers de la copie dont elle a été tirée : la planche de A supprimée, ses
@@ -122,27 +134,32 @@ def read_metadata(source: Path) -> dict:
     plafond que nous impose `iiif-prezi3`.
     """
     with Image.open(source, formats=PILLOW_FORMATS) as img:
-        dpi = img.info.get("dpi")
-        # dpi peut être scalaire (300) ou non numérique selon l'encodeur :
-        # normalise en paire d'entiers, ou None si illisible (image valide quand même).
-        if dpi is not None and not isinstance(dpi, (tuple, list)):
-            dpi = (dpi, dpi)
-        try:
-            dpi = tuple(round(d) for d in dpi) if dpi else None
-        except (TypeError, ValueError):
-            dpi = None
-        # Une résolution EXPLOITABLE est une paire de valeurs d'au moins `DPI_MINIMUM`.
-        # Toute autre forme (longueur ≠ 2, zéro/négatif d'un scanner aux métadonnées
-        # cassées, le (1, 1) que Pillow pose sur un TIFF sans balise) est traitée comme
-        # absente : dépaquetage sûr en aval + indicateur « avec résolution » exact.
-        if dpi and (len(dpi) != 2 or not all(d >= DPI_MINIMUM for d in dpi)):
-            dpi = None
-        return {
-            "largeur": img.width,
-            "hauteur": img.height,
-            "mode": img.mode,
-            "dpi": dpi,
-        }
+        return _metadonnees(img)
+
+
+def _metadonnees(img: Image.Image) -> dict:
+    """Ce que `read_metadata` lit, sur une image déjà ouverte (l'ingest n'ouvre qu'une fois)."""
+    dpi = img.info.get("dpi")
+    # dpi peut être scalaire (300) ou non numérique selon l'encodeur :
+    # normalise en paire d'entiers, ou None si illisible (image valide quand même).
+    if dpi is not None and not isinstance(dpi, (tuple, list)):
+        dpi = (dpi, dpi)
+    try:
+        dpi = tuple(round(d) for d in dpi) if dpi else None
+    except (TypeError, ValueError):
+        dpi = None
+    # Une résolution EXPLOITABLE est une paire de valeurs d'au moins `DPI_MINIMUM`.
+    # Toute autre forme (longueur ≠ 2, zéro/négatif d'un scanner aux métadonnées
+    # cassées, le (1, 1) que Pillow pose sur un TIFF sans balise) est traitée comme
+    # absente : dépaquetage sûr en aval + indicateur « avec résolution » exact.
+    if dpi and (len(dpi) != 2 or not all(d >= DPI_MINIMUM for d in dpi)):
+        dpi = None
+    return {
+        "largeur": img.width,
+        "hauteur": img.height,
+        "mode": img.mode,
+        "dpi": dpi,
+    }
 
 
 # Gris de plus de 8 bits que Pillow range en `I;16*` et que la conversion sait réduire (IMG-1).
@@ -209,35 +226,129 @@ def image_8_bits(img: Image.Image) -> Image.Image:
 
 def make_web_derivative(source: Path, dest: Path,
                         scale: float = WEB_SCALE,
-                        quality: int = WEB_JPEG_QUALITY) -> tuple[int, int]:
+                        quality: int = WEB_JPEG_QUALITY,
+                        taille_scan: tuple[int, int] | None = None) -> tuple[int, int]:
     """Génère le dérivé web JPEG et retourne ses dimensions (largeur, hauteur).
 
-    Lève `ModeImageRefuse` AVANT d'écrire le dérivé si le master n'a pas de réduction juste
-    en 8 bits — seul le dossier de l'album a pu être créé : l'import le rend en 400 et retire
-    le master.
+    `taille_scan` : les dimensions du SCAN (`largeur_px`, `hauteur_px`), à passer quand la
+    source n'est plus le scan mais sa copie de travail (IMG-1, `tools/regenerer_derives.py`) :
+    le dérivé fait 25 % du scan, pas 25 % d'une copie déjà réduite. Omis, la source est le
+    scan lui-même.
+
+    Lève `ModeImageRefuse` AVANT d'écrire le dérivé si l'image n'a pas de réduction juste
+    en 8 bits.
     """
-    dest.parent.mkdir(parents=True, exist_ok=True)
     with Image.open(source, formats=PILLOW_FORMATS) as img:   # SEC-3, cf. read_metadata
         img = image_8_bits(img)
-        w = max(1, round(img.width * scale))
-        h = max(1, round(img.height * scale))
-        web = img.resize((w, h), Image.LANCZOS)
-        web.save(dest, "JPEG", quality=quality, optimize=True)
-        return w, h
+        return _ecrire_derive(img, dest, taille_scan or img.size, scale, quality)
 
 
-def ingest_image(conn: sqlite3.Connection, album_id: int, source: Path,
+def _ecrire_derive(img8: Image.Image, dest: Path, taille_scan: tuple[int, int],
+                   scale: float = WEB_SCALE,
+                   quality: int = WEB_JPEG_QUALITY) -> tuple[int, int]:
+    """Le dérivé web d'une image déjà ramenée en 8 bits : `scale` des dimensions du scan."""
+    w = max(1, round(taille_scan[0] * scale))
+    h = max(1, round(taille_scan[1] * scale))
+    web = img8.resize((w, h), Image.LANCZOS)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    web.save(dest, "JPEG", quality=quality, optimize=True)
+    return w, h
+
+
+# --------------------------------------------------------------------------- #
+# La copie de travail (IMG-1, décidé par Hugo le 2026-10-21)
+# --------------------------------------------------------------------------- #
+def facteur_de_travail(dpi) -> float:
+    """Le facteur qui ramène un scan à `TRAVAIL_DPI` (300) dpi effectifs.
+
+    Sous 1 pour un scan plus fin (0,75 pour un 400 dpi) ; 1 pour un scan à 300 dpi ou moins
+    — on n'agrandit jamais ; et 1 SANS résolution écrite (les JPEG 2000 de l'équipe) : on ne
+    réduit pas ce qu'on ne sait pas mesurer, et rien n'est inventé.
+
+    UN facteur pour les deux axes, tiré de la PLUS BASSE des deux résolutions : aucun axe ne
+    descend sous 300 dpi, l'image garde ses proportions, et quiconque croise la copie avec
+    des coordonnées n'a qu'une échelle à appliquer (`largeur ouverte / largeur_px`). Un scan
+    aux deux résolutions différentes est rare ; c'est le seul cas où un axe reste au-dessus
+    de 300."""
+    if not dpi:
+        return 1.0
+    return min(1.0, TRAVAIL_DPI / min(dpi))
+
+
+def taille_de_travail(largeur: int, hauteur: int, dpi) -> tuple[int, int]:
+    """Les dimensions de la copie de travail d'un scan de `largeur` × `hauteur` pixels."""
+    f = facteur_de_travail(dpi)
+    if f >= 1:
+        return largeur, hauteur
+    return max(1, round(largeur * f)), max(1, round(hauteur * f))
+
+
+def ecrire_copie_de_travail(img8: Image.Image, dest: Path, largeur: int, hauteur: int,
+                            dpi, *, icc: bytes | None = None) -> tuple[int, int]:
+    """Écrit la copie de travail d'un scan déjà décodé en 8 bits (`image_8_bits`) et rend ses
+    dimensions. JPEG qualité `TRAVAIL_JPEG_QUALITY` (80), à `taille_de_travail`.
+
+    `largeur`, `hauteur`, `dpi` sont ceux du SCAN — ce qui est écrit en base. La copie
+    porte la résolution qu'elle a EFFECTIVEMENT (300 pour un 400 réduit) : un fichier qui
+    dirait 400 à 75 % de sa taille mentirait à qui l'ouvre ailleurs ; aucune quand le scan
+    n'en écrivait pas. Le profil ICC suit s'il décrit encore l'image (`icc`, que l'appelant
+    ne passe que si le mode n'a pas changé).
+
+    Écrite à côté puis substituée d'un coup : un échec ne laisse ni fichier tronqué à `dest`
+    ni fichier provisoire."""
+    w, h = taille_de_travail(largeur, hauteur, dpi)
+    copie = img8 if (w, h) == img8.size else img8.resize((w, h), Image.LANCZOS)
+    options: dict = {"quality": TRAVAIL_JPEG_QUALITY}
+    if dpi:
+        options["dpi"] = (round(dpi[0] * w / largeur), round(dpi[1] * h / hauteur))
+    if icc:
+        options["icc_profile"] = icc
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    provisoire = dest.with_name(dest.name + ".provisoire")
+    try:
+        copie.save(provisoire, "JPEG", **options)
+        os.replace(provisoire, dest)
+    except BaseException:
+        provisoire.unlink(missing_ok=True)
+        raise
+    return w, h
+
+
+# Le préfixe de `planches.master_origine` quand le scan vient de ShareDocs : la suite est le
+# chemin DISTANT, là où vit le master d'archive. Sans préfixe, c'est le NOM du fichier reçu
+# par l'import de fichiers — le seul fait que l'outil sache alors de son master.
+ORIGINE_SHAREDOCS = "sharedocs:"
+
+
+def ingest_image(conn: sqlite3.Connection, album_id: int, source,
                  numero: int | None = None,
-                 keep_master: bool = True) -> dict:
-    """Ingère un fichier image (master) et crée la planche associée.
+                 keep_master: bool = True,
+                 origine: str | None = None) -> dict:
+    """Ingère un scan reçu et crée la planche associée ; rend la ligne `planches` créée.
 
-    `source` doit être un fichier déjà présent sur le disque (typiquement
-    déposé dans corpus/ par la route d'import). Retourne un dict représentant
-    la ligne `planches` créée.
-    """
-    source = Path(source)
-    if not source.is_file():
-        raise FileNotFoundError(f"Master introuvable : {source}")
+    `source` : le scan reçu — ses OCTETS (les routes d'import : il n'est jamais écrit tel
+    quel sur le disque), ou un chemin. Ce fichier n'est NI gardé NI effacé par l'ingest :
+    seule sa copie de travail est gardée (IMG-1), et un chemin passé appartient à
+    l'appelant.
+
+    `keep_master` : faux, aucune copie de travail n'est écrite (`chemin_tiff` NULL, le
+    dérivé seul). `origine` : ce que l'outil sait du master d'archive, gardé dans
+    `planches.master_origine` — le chemin distant d'un import ShareDocs, sinon le nom du
+    fichier reçu ; à défaut, le nom d'un chemin passé.
+
+    Le scan est décodé UNE fois, avant toute écriture en base : aucune transaction n'est
+    ouverte par l'ingest pendant le décodage (un JPEG 2000 sans perte y met ~5 s, mesuré le
+    2026-10-21) — la sienne ne commence qu'à l'`INSERT`. Tout échec retire les fichiers que
+    l'ingest a écrits, et seulement eux : leurs chemins étaient libres (`numero_occupe`)."""
+    if isinstance(source, (bytes, bytearray)):
+        flux = io.BytesIO(source)
+    else:
+        source = Path(source)
+        if not source.is_file():
+            raise FileNotFoundError(f"Scan introuvable : {source}")
+        flux = source
+        if origine is None:
+            origine = source.name
 
     album = conn.execute("SELECT id FROM albums WHERE id = ?", (album_id,)).fetchone()
     if album is None:
@@ -246,29 +357,43 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source: Path,
     if numero is None:
         numero = prochain_numero_libre(conn, album_id)
 
-    meta = read_metadata(source)
+    souche = f"planche_{numero:04d}"
+    web_path = DERIVATIVES_DIR / f"album_{album_id}" / f"{souche}.jpg"
+    travail = CORPUS_DIR / f"album_{album_id}" / f"{souche}.jpg" if keep_master else None
+    ecrits: list[Path] = []
+    try:
+        with Image.open(flux, formats=PILLOW_FORMATS) as img:   # SEC-3, cf. read_metadata
+            meta = _metadonnees(img)
+            icc = img.info.get("icc_profile")
+            img8 = image_8_bits(img)        # ModeImageRefuse AVANT d'écrire quoi que ce soit
+            if travail is not None:
+                ecrire_copie_de_travail(img8, travail, meta["largeur"], meta["hauteur"],
+                                        meta["dpi"],
+                                        icc=icc if img8.mode == meta["mode"] else None)
+                ecrits.append(travail)
+            _ecrire_derive(img8, web_path, (meta["largeur"], meta["hauteur"]))
+            ecrits.append(web_path)
 
-    # Dérivé web : derivatives/album_<id>/planche_<numero>.jpg
-    web_path = DERIVATIVES_DIR / f"album_{album_id}" / f"planche_{numero:04d}.jpg"
-    make_web_derivative(source, web_path)
+        chemin_tiff = _rel_posix(travail) if travail is not None else None
+        chemin_web = _rel_posix(web_path)
 
-    # Master : conservé tel quel (déjà dans corpus/) ou référencé.
-    chemin_tiff = _rel_posix(source) if keep_master else None
-    chemin_web = _rel_posix(web_path)
-
-    # Matériel de numérisation (A6) : on PERSISTE désormais résolution + mode (lus par
-    # read_metadata, jetés jusqu'ici). `dpi` est une paire (x, y) ou None → on éclate.
-    dpi_x, dpi_y = meta["dpi"] if meta["dpi"] else (None, None)
-    cur = conn.execute(
-        """
-        INSERT INTO planches
+        # Matériel de numérisation (A6) : résolution + mode du SCAN, pas de la copie de
+        # travail (IMG-1) — un fait du fichier numérisé. `dpi` est une paire ou None.
+        dpi_x, dpi_y = meta["dpi"] if meta["dpi"] else (None, None)
+        cur = conn.execute(
+            """
+            INSERT INTO planches
+                (album_id, numero, chemin_tiff, chemin_web,
+                 largeur_px, hauteur_px, dpi_x, dpi_y, mode, statut, master_origine)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'importee', ?)
+            """,
             (album_id, numero, chemin_tiff, chemin_web,
-             largeur_px, hauteur_px, dpi_x, dpi_y, mode, statut)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'importee')
-        """,
-        (album_id, numero, chemin_tiff, chemin_web,
-         meta["largeur"], meta["hauteur"], dpi_x, dpi_y, meta["mode"]),
-    )
+             meta["largeur"], meta["hauteur"], dpi_x, dpi_y, meta["mode"], origine),
+        )
+    except BaseException:
+        for f in ecrits:
+            f.unlink(missing_ok=True)
+        raise
     planche_id = cur.lastrowid
 
     return {
@@ -282,6 +407,7 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source: Path,
         "statut": "importee",
         "dpi": meta["dpi"],
         "mode": meta["mode"],
+        "master_origine": origine,
     }
 
 
@@ -392,24 +518,13 @@ def ecarter_dossiers_d_album(album_id: int) -> list[Path]:
 
 def remove_planche_files(chemin_tiff: str | None, chemin_web: str | None,
                          garder=frozenset()) -> None:
-    """Supprime le master et le dérivé web d'une planche (best-effort). `garder` : ceux
-    des deux chemins qu'une AUTRE planche emploie encore — une copie sœur (D6) —, qui
-    restent."""
+    """Supprime l'image de travail (`chemin_tiff` : la copie de travail depuis IMG-1, le
+    master d'une planche d'avant la v34) et le dérivé web d'une planche (best-effort).
+    `garder` : ceux des deux chemins qu'une AUTRE planche emploie encore — une copie sœur
+    (D6) —, qui restent."""
     for rel in (chemin_tiff, chemin_web):
         if rel and rel not in garder:
             try:
                 (DATA_DIR / rel).unlink(missing_ok=True)
             except OSError:  # pragma: no cover - garde défensive (permissions…)
                 pass
-
-
-def store_upload(album_id: int, filename: str, data: bytes,
-                 numero: int | None = None) -> Path:
-    """Écrit un fichier importé dans corpus/album_<id>/ et retourne son chemin."""
-    suffix = Path(filename).suffix or ".tif"
-    folder = CORPUS_DIR / f"album_{album_id}"
-    folder.mkdir(parents=True, exist_ok=True)
-    stem = f"planche_{numero:04d}" if numero is not None else Path(filename).stem
-    dest = folder / f"{stem}{suffix}"
-    dest.write_bytes(data)
-    return dest

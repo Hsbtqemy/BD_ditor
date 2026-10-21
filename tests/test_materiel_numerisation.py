@@ -171,10 +171,11 @@ def test_source_numerisation_album(client, album, db_path):
 # --------------------------------------------------------------------------- #
 def test_backfill_relit_les_masters(client, album, db_path, data_dir):
     pl = _importer(client, album["id"], _png_dpi(dpi=(300, 300), size=(600, 900)))
-    # Simule une planche importée AVANT la v19 : matériel non renseigné en base.
+    # Simule une planche importée AVANT la v19 : matériel non renseigné en base — et donc
+    # avant la v34, son fichier est le scan lui-même (`master_origine` NULL, IMG-1).
     conn = sqlite3.connect(db_path)
-    conn.execute("UPDATE planches SET dpi_x = NULL, dpi_y = NULL, mode = NULL WHERE id = ?",
-                 (pl["id"],))
+    conn.execute("UPDATE planches SET dpi_x = NULL, dpi_y = NULL, mode = NULL, "
+                 "master_origine = NULL WHERE id = ?", (pl["id"],))
     conn.commit()
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")   # visible par le sous-processus
     conn.close()
@@ -183,6 +184,19 @@ def test_backfill_relit_les_masters(client, album, db_path, data_dir):
     row = direct_query(db_path, "SELECT dpi_x, dpi_y, mode FROM planches WHERE id = ?",
                        (pl["id"],))
     assert row[0]["dpi_x"] == 300 and row[0]["dpi_y"] == 300 and row[0]["mode"] == "RGB"
+
+
+def test_le_backfill_ne_relit_pas_une_copie_de_travail(client, album, db_path, data_dir):
+    """IMG-1 — le fichier d'une planche importée depuis la v34 est sa copie de travail,
+    réduite à 300 dpi : sa résolution n'est pas celle du scan. Même `--force` ne l'écrit pas
+    par-dessus, sans quoi un scan à 400 dpi perdrait un quart de ses centimètres."""
+    pl = _importer(client, album["id"], _png_dpi(dpi=(400, 400), size=(800, 1200)))
+    assert pl["master_origine"]
+    r = _run("reindex_materiel.py", db_path, data_dir, "--force")
+    assert r.returncode == 0, r.stderr
+    row = direct_query(db_path, "SELECT dpi_x, dpi_y, mode FROM planches WHERE id = ?",
+                       (pl["id"],))
+    assert (row[0]["dpi_x"], row[0]["dpi_y"], row[0]["mode"]) == (400, 400, "RGB")
 
 
 # --------------------------------------------------------------------------- #

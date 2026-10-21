@@ -273,6 +273,10 @@ def segment_planche(conn: sqlite3.Connection, planche_id: int,
     master_w = planche["largeur_px"]
     master_h = planche["hauteur_px"]
 
+    # `use_master` lit `chemin_tiff` : la COPIE DE TRAVAIL depuis IMG-1, réduite à 300 dpi
+    # effectifs, et non plus le scan. Rien d'autre à changer : Kumiko rend la taille de
+    # l'image qu'il a LUE (`size`), et l'échelle ci-dessous ramène ses cases aux pixels du
+    # scan (`largeur_px`) — comme elle le fait déjà pour le dérivé web.
     if use_master and planche["chemin_tiff"]:
         image_path = DATA_DIR / planche["chemin_tiff"]
     else:
