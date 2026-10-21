@@ -280,3 +280,156 @@ def test_sur_une_vraie_base_v33_tout_se_convertit_et_les_soeurs_suivent(tmp_path
     assert _sql(db, "SELECT id, largeur_px, hauteur_px, dpi_x, dpi_y, mode, chemin_web "
                     "FROM planches ORDER BY id") == geometrie
     assert _convertir(appliquer=True)["convertis"] == []
+
+
+# --------------------------------------------------------------------------- #
+# Relecture croisée
+# --------------------------------------------------------------------------- #
+def _lancer(db_path, data_dir, *args):
+    env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(data_dir)}
+    return subprocess.run([sys.executable, str(REPO_ROOT / "tools" / cv.__name__) + ".py",
+                           *args], cwd=str(REPO_ROOT), env=env, capture_output=True,
+                          text=True, encoding="utf-8")
+
+
+def _figer(db_path):
+    """La base posée sur le disque, journal WAL replié : ce qu'un octet changé trahirait."""
+    c = sqlite3.connect(db_path)
+    c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    c.close()
+    return (hashlib.sha256(Path(db_path).read_bytes()).hexdigest(),
+            _sql(db_path, "SELECT type, name, sql FROM sqlite_master ORDER BY name"),
+            _sql(db_path, "PRAGMA user_version"))
+
+
+def test_a_blanc_ni_la_base_ni_son_schema_ne_bougent(client, album, db_path, data_dir):
+    """À blanc, l'outil ouvre la base en lecture seule et sans `init_db`, qui referait les
+    vues : pas un octet de la base ne change."""
+    _planche_d_avant(client, album["id"], db_path, data_dir)
+    avant = (_figer(db_path), _empreinte(data_dir))
+    r = _lancer(db_path, data_dir)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "À blanc : 1 fichier(s)" in r.stdout
+    assert (_figer(db_path), _empreinte(data_dir)) == avant
+
+
+def test_une_base_d_une_autre_version_est_refusee_par_son_nom(client, album, db_path,
+                                                                data_dir):
+    _planche_d_avant(client, album["id"], db_path, data_dir)
+    _sql(db_path, f"PRAGMA user_version = {database.SCHEMA_VERSION - 1}")
+    avant = _figer(db_path)
+    for args in ((), ("--appliquer",)):
+        r = _lancer(db_path, data_dir, *args)
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert f"v{database.SCHEMA_VERSION - 1}" in r.stdout and "démarrez l'application" \
+            in r.stdout
+    assert _figer(db_path) == avant
+
+
+def test_deux_passages_appliques_ne_se_chevauchent_pas(client, album, db_path, data_dir):
+    """Le verrou de l'outil pris par un autre passage : refus nommé, rien ne bouge, et le
+    verrou de l'autre reste."""
+    _planche_d_avant(client, album["id"], db_path, data_dir)
+    verrou = data_dir / cv.NOM_DU_VERROU
+    verrou.write_text("pid 4242, depuis tout à l'heure", encoding="utf-8")
+    avant = (_empreinte(data_dir), _sql(db_path, "SELECT * FROM planches"))
+    with pytest.raises(cv.PassageEnCours, match="pid 4242"):
+        _convertir(appliquer=True)
+    assert (_empreinte(data_dir), _sql(db_path, "SELECT * FROM planches")) == avant
+    assert verrou.is_file()
+    verrou.unlink()
+    _convertir(appliquer=True)
+    assert not verrou.exists()                       # rendu à la sortie
+
+
+def test_une_bascule_qui_ne_touche_aucune_planche_reprend_sa_copie(client, album, db_path,
+                                                                     data_dir, monkeypatch):
+    """Converti entre l'écriture de la copie et la bascule (un autre chemin) : l'`UPDATE` ne
+    touche rien, la copie écrite repart, le fichier compte comme sauté — pas « converti »."""
+    p = _planche_d_avant(client, album["id"], db_path, data_dir)
+    vrai = cv._basculer
+
+    def entre_temps(conn, *a, **k):
+        conn.execute("UPDATE planches SET master_origine = 'converti ailleurs'")
+        conn.commit()
+        return vrai(conn, *a, **k)
+
+    monkeypatch.setattr(cv, "_basculer", entre_temps)
+    bilan = _convertir(appliquer=True)
+    assert bilan["convertis"] == []
+    assert [s[:2] for s in bilan["sautes"]] == [(p["chemin_tiff"], [p["id"]])]
+    assert sorted(f.name for f in (data_dir / "corpus").rglob("*") if f.is_file()) == [
+        "planche_0001.tif"]
+    assert bilan["orphelins"] == []
+
+
+def test_un_effacement_refuse_est_dit_et_le_master_reste_liste(client, album, db_path,
+                                                                 data_dir, monkeypatch):
+    """Un fichier ouvert sous Windows refuse de partir : la conversion est validée, l'outil
+    ne tombe pas, il dit le master resté, et le liste parmi les fichiers qu'aucune planche ne
+    désigne."""
+    p = _planche_d_avant(client, album["id"], db_path, data_dir)
+    vrai = Path.unlink
+
+    def refuse(self, missing_ok=False):
+        if self.suffix == ".tif":
+            raise PermissionError(13, "Le fichier est utilisé par un autre processus")
+        return vrai(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", refuse)
+    bilan = _convertir(appliquer=True)
+    assert [c[:2] for c in bilan["convertis"]] == [(p["chemin_tiff"], [p["id"]])]
+    ((chemin, raison),) = bilan["laisses"]
+    assert chemin == p["chemin_tiff"] and "effacement refusé" in raison
+    assert [o[0] for o in bilan["orphelins"]] == [p["chemin_tiff"]]
+    assert _sql(db_path, "SELECT master_origine FROM planches")[0]["master_origine"] == \
+        "planche_0001.tif"
+
+
+def test_a_blanc_les_fichiers_que_rien_ne_designe_sont_listes_jamais_effaces(
+        client, album, db_path, data_dir):
+    _planche_d_avant(client, album["id"], db_path, data_dir)
+    reste = data_dir / "corpus" / f"album_{album['id']}" / "vieux_master.tif"
+    reste.write_bytes(b"RESTE")
+    for appliquer in (False, True):
+        bilan = _convertir(appliquer=appliquer)
+        assert [o[0] for o in bilan["orphelins"]] == [
+            f"corpus/album_{album['id']}/vieux_master.tif"]
+    assert reste.read_bytes() == b"RESTE"
+
+
+def test_un_fichier_deja_au_nom_de_la_copie_n_est_pas_ecrase(client, album, db_path,
+                                                              data_dir):
+    """`planche_0001.jpg` existe déjà à côté du master `.tif` sans qu'aucune planche le
+    désigne : la copie prend un autre nom, et ce fichier n'est pas touché."""
+    p = _planche_d_avant(client, album["id"], db_path, data_dir)
+    intrus = data_dir / "corpus" / f"album_{album['id']}" / "planche_0001.jpg"
+    intrus.write_bytes(b"PAS A MOI")
+    _convertir(appliquer=True)
+    assert intrus.read_bytes() == b"PAS A MOI"
+    assert _sql(db_path, "SELECT chemin_tiff FROM planches WHERE id = ?", (p["id"],))[0][
+        "chemin_tiff"] == f"corpus/album_{album['id']}/planche_0001.travail.jpg"
+
+
+def test_un_master_aux_dimensions_d_une_autre_planche_est_saute(client, album, db_path,
+                                                               data_dir):
+    p = _planche_d_avant(client, album["id"], db_path, data_dir)
+    master = data_dir / p["chemin_tiff"]
+    Image.new("RGB", (640, 800), "white").save(master, "TIFF", dpi=(400, 400))
+    avant = (_empreinte(data_dir), _sql(db_path, "SELECT * FROM planches"))
+    bilan = _convertir(appliquer=True)
+    ((chemin, ids, raison),) = bilan["sautes"]
+    assert (chemin, ids) == (p["chemin_tiff"], [p["id"]]) and "640 × 800" in raison
+    assert (_empreinte(data_dir), _sql(db_path, "SELECT * FROM planches")) == avant
+
+
+def test_une_planche_sans_dimensions_est_sautee(client, album, db_path, data_dir):
+    """Sans `largeur_px`, la copie réduite s'ouvrirait à l'échelle 1 et ses régions se
+    décaleraient : la planche est sautée, et le dit."""
+    p = _planche_d_avant(client, album["id"], db_path, data_dir)
+    _sql(db_path, "UPDATE planches SET largeur_px = NULL, hauteur_px = NULL")
+    avant = _empreinte(data_dir)
+    bilan = _convertir(appliquer=True)
+    ((chemin, ids, raison),) = bilan["sautes"]
+    assert chemin == p["chemin_tiff"] and "sans dimensions" in raison
+    assert bilan["convertis"] == [] and _empreinte(data_dir) == avant

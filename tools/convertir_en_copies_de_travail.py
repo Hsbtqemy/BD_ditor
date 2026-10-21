@@ -12,11 +12,15 @@ planches importées AVANT : celles dont `master_origine` est encore NULL.
     le mot de Hugo.
 
 Par défaut l'outil ne fait que DIRE : les fichiers et les planches concernés, et ce que la
-conversion libérerait — mesuré, la copie étant réellement encodée (en mémoire temporaire,
-puis jetée), ce qui prend le temps d'une conversion. Rien n'est écrit, ni en base ni sur le
-disque des images.
+conversion libérerait — mesuré, la copie étant réellement encodée (dans un dossier
+temporaire, puis jetée), ce qui prend le temps d'une conversion. Rien n'est écrit, ni en
+base — ouverte en LECTURE SEULE, sans `database.init_db()`, qui referait les vues —, ni sur
+le disque des images. Une base qui n'est pas à la version du code est refusée : c'est
+l'application qui migre.
 
-Avec `--appliquer`, fichier par fichier :
+Avec `--appliquer`, sous un verrou propre à l'outil (`convertir_en_copies_de_travail.verrou`
+à la racine des données, créé en exclusif, retiré à la sortie : deux passages ne se
+chevauchent pas), fichier par fichier :
   1. la copie de travail est écrite à côté du master (`planche_0001.jpg`, ou
      `planche_0001.travail.jpg` si ce nom est pris — un master déjà en JPEG, par exemple) ;
   2. sous le verrou d'écriture de la base, TOUTES les planches qui désignent ce master
@@ -25,7 +29,14 @@ Avec `--appliquer`, fichier par fichier :
      (`master_origine`) ; une résolution ou un mode absents de la base y sont recopiés du
      master, qui va partir ;
   3. après le commit, sous le verrou, le master est effacé si plus aucune planche ne le
-     désigne.
+     désigne. Un effacement refusé (un fichier ouvert) est dit au bilan, sans faire tomber
+     l'outil ; si aucune planche n'a basculé, la copie écrite repart et le fichier compte
+     comme sauté.
+
+À blanc comme appliqué, l'outil LISTE enfin les fichiers de `corpus/album_<N>/` qu'aucune
+planche ne désigne — un master laissé par un effacement refusé ou un arrêt brutal. Il ne
+les efface jamais : un import en cours y a aussi ses fichiers, réservés avant d'être
+désignés.
 
 Ce qui ne change PAS : `largeur_px` / `hauteur_px` (les dimensions du scan, sur lesquelles
 reposent les coordonnées des régions), `dpi_x` / `dpi_y` / `mode` (ceux du scan, A6 : les
@@ -37,8 +48,9 @@ passage ne fait rien. S'arrête PROPREMENT sur Ctrl+C ou un arrêt du conteneur 
 le fichier en cours est mené au bout, les suivants ne sont pas touchés.
 
 Ce qui est sauté, et dit : un master absent du disque ; un chemin qui n'a pas la forme d'une
-image d'album (`corpus/album_<N>/<fichier>`) ; un fichier dont les dimensions ne sont pas
-celles de sa planche ; des planches qui désignent le même fichier sans s'accorder sur ses
+image d'album (`corpus/album_<N>/<fichier>`) ; une planche sans dimensions (`largeur_px`,
+`hauteur_px`), dont les régions ne se ramèneraient à aucune échelle ; un fichier dont les
+dimensions ne sont pas celles de sa planche ; des planches qui désignent le même fichier sans s'accorder sur ses
 dimensions ou sa résolution ; un fichier illisible ou d'un mode refusé (`I`, `F`).
 
 Usage :
@@ -57,9 +69,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import signal
+import sqlite3
 import sys
 import tempfile
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -143,9 +159,74 @@ def _accord(planches) -> tuple | None:
     return vus.pop() if len(vus) == 1 else None
 
 
+class PassageEnCours(RuntimeError):
+    """Un autre passage `--appliquer` tient le verrou de l'outil."""
+
+
+# Le verrou de l'outil, à la racine des données : deux passages `--appliquer` qui se
+# chevauchent écrivaient chacun leur copie du même master, et le second laissait un orphelin
+# en annonçant deux fois « converti » (relecture croisée, reproduit). Un fichier créé en
+# EXCLUSIF, retiré à la sortie ; le mode à blanc n'en prend pas, il n'écrit rien.
+NOM_DU_VERROU = "convertir_en_copies_de_travail.verrou"
+
+
+@contextmanager
+def _verrou_de_l_outil():
+    chemin = DATA_DIR / NOM_DU_VERROU
+    try:
+        fd = os.open(chemin, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        try:
+            qui = chemin.read_text(encoding="utf-8").strip()
+        except OSError:
+            qui = "illisible"
+        raise PassageEnCours(
+            f"Un autre passage --appliquer tient le verrou {chemin} ({qui}). S'il ne tourne "
+            "plus — arrêté brutalement —, effacez ce fichier, puis relancez.") from None
+    try:
+        os.write(fd, f"pid {os.getpid()}, depuis {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                 .encode("utf-8"))
+    finally:
+        os.close(fd)
+    try:
+        yield
+    finally:
+        chemin.unlink(missing_ok=True)
+
+
+def orphelins(conn) -> list[tuple[str, int]]:
+    """Les fichiers des dossiers `corpus/album_<N>/` qu'AUCUNE planche ne désigne — un master
+    resté après une conversion interrompue, ou dont l'effacement a été refusé. Listés, jamais
+    effacés : un import EN COURS y a aussi ses fichiers, réservés avant d'être désignés
+    (`ingest._reserver`), et rien ne les distingue d'un reste."""
+    racine = DATA_DIR / "corpus"
+    if not racine.is_dir():
+        return []
+    designes = {c for r in conn.execute("SELECT chemin_tiff, chemin_web FROM planches")
+                for c in r if c}
+    trouves = []
+    for dossier in sorted(racine.iterdir()):
+        if not (dossier.is_dir() and re.fullmatch(r"album_\d+", dossier.name)):
+            continue
+        for f in sorted(dossier.iterdir()):
+            rel = f.relative_to(DATA_DIR).as_posix()
+            if f.is_file() and rel not in designes:
+                trouves.append((rel, f.stat().st_size))
+    return trouves
+
+
 def convertir(conn, *, albums=(), appliquer: bool = False, arret=None) -> dict:
-    """Parcourt les masters gardés ; avec `appliquer`, les convertit. Rend le bilan."""
-    bilan = {"convertis": [], "sautes": [], "echecs": [], "planches": 0,
+    """Parcourt les masters gardés ; avec `appliquer`, les convertit. Rend le bilan.
+
+    Avec `appliquer`, sous le verrou de l'outil (`PassageEnCours` s'il est pris)."""
+    if appliquer:
+        with _verrou_de_l_outil():
+            return _convertir(conn, albums=albums, appliquer=True, arret=arret)
+    return _convertir(conn, albums=albums, appliquer=False, arret=arret)
+
+
+def _convertir(conn, *, albums, appliquer, arret) -> dict:
+    bilan = {"convertis": [], "sautes": [], "echecs": [], "laisses": [], "planches": 0,
              "avant": 0, "apres": 0, "interrompu": False}
     for chemin, planches in fichiers_a_convertir(conn, albums):
         if arret is not None and arret.demande:
@@ -166,12 +247,17 @@ def convertir(conn, *, albums=(), appliquer: bool = False, arret=None) -> dict:
                                                  "ou la résolution du fichier"))
             continue
         largeur, hauteur, dpi_x, dpi_y = accord
+        if not (largeur and hauteur):
+            # Sans les dimensions du scan, rien ne ramènerait les régions de la copie réduite
+            # à leur place (`ocr._open_image` retomberait sur une échelle de 1).
+            bilan["sautes"].append((chemin, ids, "planche sans dimensions (largeur_px, "
+                                                 "hauteur_px) : ses régions se décaleraient"))
+            continue
         avant = ancien.stat().st_size
         try:
             with Image.open(ancien, formats=PILLOW_FORMATS) as img:
                 meta = _metadonnees(img)
-                if largeur and hauteur and (meta["largeur"], meta["hauteur"]) != (largeur,
-                                                                                  hauteur):
+                if (meta["largeur"], meta["hauteur"]) != (largeur, hauteur):
                     bilan["sautes"].append((chemin, ids, (
                         f"le fichier fait {meta['largeur']} × {meta['hauteur']} px, la planche "
                         f"{largeur} × {hauteur}")))
@@ -197,21 +283,33 @@ def convertir(conn, *, albums=(), appliquer: bool = False, arret=None) -> dict:
         if appliquer:
             apres = nouveau.stat().st_size
             try:
-                _basculer(conn, chemin, nouveau, ancien.name, meta)
+                basculees = _basculer(conn, chemin, nouveau, ancien.name, meta)
             except BaseException:
                 conn.rollback()
                 nouveau.unlink(missing_ok=True)     # la base n'a pas changé : la copie part
                 raise
-            _effacer_si_libre(conn, chemin)
+            if not basculees:
+                # Plus aucune planche ne désignait ce master SOUS le verrou : converti
+                # entre-temps par un autre chemin. La copie qu'on vient d'écrire n'est à
+                # personne : elle part, et le fichier compte comme sauté.
+                nouveau.unlink(missing_ok=True)
+                bilan["sautes"].append((chemin, ids, "plus aucune planche ne le désignait "
+                                                     "au moment de basculer"))
+                continue
+            refus = _effacer_si_libre(conn, chemin)
+            if refus:
+                bilan["laisses"].append((chemin, refus))
         bilan["convertis"].append((chemin, ids, avant, apres))
         bilan["planches"] += len(ids)
         bilan["avant"] += avant
         bilan["apres"] += apres
+    bilan["orphelins"] = orphelins(conn)
     return bilan
 
 
-def _basculer(conn, ancien_rel: str, nouveau: Path, nom_origine: str, meta: dict) -> None:
+def _basculer(conn, ancien_rel: str, nouveau: Path, nom_origine: str, meta: dict) -> int:
     """Sous le verrou d'écriture : les planches qui désignent le master désignent la copie.
+    Rend le nombre de planches basculées — 0 si plus aucune ne le désignait.
 
     La clause `master_origine IS NULL` est relue SOUS le verrou : une planche convertie entre
     la lecture et l'écriture n'est pas réécrite. Et une copie sœur née entre-temps
@@ -219,35 +317,62 @@ def _basculer(conn, ancien_rel: str, nouveau: Path, nom_origine: str, meta: dict
     suit, puisque la clause porte sur le chemin et non sur une liste d'identifiants."""
     conflit.verrouiller(conn)
     dpi_x, dpi_y = meta["dpi"] if meta["dpi"] else (None, None)
-    conn.execute(
+    cur = conn.execute(
         "UPDATE planches SET chemin_tiff = ?, master_origine = ?, "
         "dpi_x = COALESCE(dpi_x, ?), dpi_y = COALESCE(dpi_y, ?), mode = COALESCE(mode, ?) "
         "WHERE chemin_tiff = ? AND master_origine IS NULL",
         (nouveau.relative_to(DATA_DIR).as_posix(), nom_origine, dpi_x, dpi_y, meta["mode"],
          ancien_rel))
     conn.commit()
+    return cur.rowcount
 
 
-def _effacer_si_libre(conn, rel: str) -> None:
+def _effacer_si_libre(conn, rel: str) -> str | None:
     """Après le commit, sous le verrou repris : efface le master si plus aucune planche ne
     le désigne — la règle de `socle._sous_le_verrou`. Sans le verrou, ne rien effacer : un
-    fichier laissé se rattrape, une image effacée sous une planche, non."""
+    fichier laissé se rattrape, une image effacée sous une planche, non. Rend None si le
+    master est parti, sinon la raison pour laquelle il reste — un effacement refusé (un
+    fichier ouvert sous Windows) ne fait pas tomber l'outil APRÈS le commit : il est dit au
+    bilan, et le fichier se retrouve dans la liste des orphelins."""
     try:
         conflit.verrouiller(conn)
-    except Exception as exc:                         # base occupée au-delà du délai
-        print(f"  ⚠ {rel} : le verrou n'a pas été obtenu ({exc}) ; le master reste sur le "
-              "disque.")
-        return
+    except sqlite3.Error as exc:                     # base occupée au-delà du délai
+        return f"le verrou d'écriture n'a pas été obtenu ({exc})"
     try:
         employe = conn.execute(
             "SELECT 1 FROM planches WHERE chemin_tiff = ? OR chemin_web = ? LIMIT 1",
             (rel, rel)).fetchone()
-        if employe is None:
+        if employe is not None:
+            return "une planche le désigne encore"
+        try:
             (DATA_DIR / rel).unlink(missing_ok=True)
-        else:
-            print(f"  ⚠ {rel} : une planche le désigne encore ; il reste sur le disque.")
+        except OSError as exc:
+            return f"effacement refusé ({exc.strerror or exc})"
+        return None
     finally:
         conn.rollback()                              # rien n'a été écrit : verrou rendu
+
+
+def _ouvrir_la_base(appliquer: bool):
+    """La base, SANS `database.init_db()` : à blanc, l'outil n'écrit rien, schéma compris —
+    `init_db` refait les vues et migrerait une base plus ancienne. Une base qui n'est pas à
+    la version du code est refusée par son nom : c'est l'application qui migre, à son
+    démarrage. À blanc, la connexion est en LECTURE SEULE."""
+    if not Path(database.DB_PATH).is_file():
+        raise SystemExit(f"Base introuvable : {database.DB_PATH}")
+    lecture = sqlite3.connect(Path(database.DB_PATH).resolve().as_uri() + "?mode=ro",
+                              uri=True)
+    version = lecture.execute("PRAGMA user_version").fetchone()[0]
+    if version != database.SCHEMA_VERSION:
+        lecture.close()
+        raise SystemExit(
+            f"Base au schéma v{version}, ce code attend la v{database.SCHEMA_VERSION} : "
+            "démarrez l'application une fois (elle migre la base), puis relancez l'outil.")
+    if not appliquer:
+        lecture.row_factory = sqlite3.Row
+        return lecture
+    lecture.close()
+    return database.get_connection()
 
 
 def main(argv=None) -> int:
@@ -267,11 +392,17 @@ def main(argv=None) -> int:
         if sig is not None:
             signal.signal(sig, arret)
 
-    database.init_db()
-    conn = database.get_connection()
+    try:
+        conn = _ouvrir_la_base(args.appliquer)
+    except SystemExit as exc:
+        print(f"✗ {exc}")
+        return 2
     try:
         bilan = convertir(conn, albums=tuple(args.album), appliquer=args.appliquer,
                           arret=arret)
+    except PassageEnCours as exc:
+        print(f"✗ {exc}")
+        return 2
     finally:
         conn.close()
 
@@ -283,6 +414,8 @@ def main(argv=None) -> int:
         print(f"  – {chemin} (sauté) — planche(s) {', '.join(map(str, ids))} : {raison}")
     for chemin, ids, erreur in bilan["echecs"]:
         print(f"  ✗ {chemin} — planche(s) {', '.join(map(str, ids))} : {erreur}")
+    for chemin, raison in bilan["laisses"]:
+        print(f"  ⚠ {chemin} : converti, mais le master reste sur le disque — {raison}.")
     libere = bilan["avant"] - bilan["apres"]
     if args.appliquer:
         print(f"✓ {len(bilan['convertis'])} fichier(s) converti(s), {bilan['planches']} "
@@ -295,10 +428,17 @@ def main(argv=None) -> int:
         print(f"  {len(bilan['sautes'])} fichier(s) sauté(s).")
     if bilan["echecs"]:
         print(f"  {len(bilan['echecs'])} fichier(s) en échec.")
+    if bilan["orphelins"]:
+        total = sum(t for _, t in bilan["orphelins"])
+        print(f"  {len(bilan['orphelins'])} fichier(s) de corpus/ qu'aucune planche ne "
+              f"désigne ({_octets(total)}) — listés, jamais effacés ; un import en cours y "
+              "a aussi les siens :")
+        for chemin, taille in bilan["orphelins"]:
+            print(f"    {chemin} ({_octets(taille)})")
     if bilan["interrompu"]:
         print("  Arrêté avant la fin : relancez pour traiter le reste.")
         return 130
-    return 1 if bilan["echecs"] else 0
+    return 1 if bilan["echecs"] or bilan["laisses"] else 0
 
 
 if __name__ == "__main__":

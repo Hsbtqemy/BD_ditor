@@ -104,7 +104,13 @@ planches qui le désignent (une copie sœur suit, un fichier partagé ne se conv
 fois), note le nom du fichier d'origine, recopie en base une résolution ou un mode qui y
 manquaient, puis efface le master s'il n'est plus désigné. Idempotent, il s'arrête proprement
 sur Ctrl+C ou un arrêt du conteneur, et sa première ligne dit que **convertir efface le
-master du serveur**. En production, seulement sur le mot de Hugo, une fois chaque master
+master du serveur**. À blanc, il ouvre la base en lecture seule et refuse une base qui n'est
+pas à la version du code. Avec `--appliquer`, il tient un verrou à lui (deux passages ne se
+chevauchent pas) ; un effacement refusé est dit, sans le faire tomber ; une planche sans
+dimensions est sautée (ses régions n'auraient plus d'échelle). Dans les deux modes, il liste
+les fichiers de `corpus/` qu'aucune planche ne désigne, sans jamais les effacer — un import en
+cours y a aussi les siens. **Une sauvegarde de la base prise avant `--appliquer` désigne des
+masters effacés** : en prendre une neuve après. En production, seulement sur le mot de Hugo, une fois chaque master
 retrouvé hors du serveur :
 
     cd ~/BD_ditor/deploy
