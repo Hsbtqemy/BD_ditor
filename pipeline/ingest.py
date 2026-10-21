@@ -100,6 +100,17 @@ def prochain_numero_libre(conn: sqlite3.Connection, album_id: int) -> int:
     return numero
 
 
+# Sous ce seuil, une résolution lue dans le fichier n'est pas celle d'un scan (IMG-1,
+# 2026-10-21). Mesuré sur Pillow 12.0.0 : un TIFF qui ne porte AUCUNE balise de résolution
+# sort avec `dpi = (1, 1)` — la valeur par défaut de Pillow, pas celle du fichier —, et la
+# planche recevait ~9 000 cm en comptant « avec résolution ». Aucun scanner ne capte sous
+# 50 dpi : les plus bas réglages vont de 75 à 100, et une page A4 à 50 dpi ne fait que
+# 413 × 585 pixels, illisible pour annoter. Le seuil laisse passer 72 et 96, valeurs
+# d'écran qu'écrivent certains logiciels : fausses peut-être, mais pas manifestement, et
+# les trancher n'est pas l'objet de cette garde.
+DPI_MINIMUM = 50
+
+
 def read_metadata(source: Path) -> dict:
     """Lit dimensions, mode couleur et DPI d'une image sans la convertir.
 
@@ -120,10 +131,11 @@ def read_metadata(source: Path) -> dict:
             dpi = tuple(round(d) for d in dpi) if dpi else None
         except (TypeError, ValueError):
             dpi = None
-        # Une résolution EXPLOITABLE est une paire de valeurs > 0. Toute autre forme
-        # (longueur ≠ 2, zéro/négatif d'un scanner aux métadonnées cassées) est traitée
-        # comme absente : dépaquetage sûr en aval + indicateur « avec résolution » exact.
-        if dpi and (len(dpi) != 2 or not all(d > 0 for d in dpi)):
+        # Une résolution EXPLOITABLE est une paire de valeurs d'au moins `DPI_MINIMUM`.
+        # Toute autre forme (longueur ≠ 2, zéro/négatif d'un scanner aux métadonnées
+        # cassées, le (1, 1) que Pillow pose sur un TIFF sans balise) est traitée comme
+        # absente : dépaquetage sûr en aval + indicateur « avec résolution » exact.
+        if dpi and (len(dpi) != 2 or not all(d >= DPI_MINIMUM for d in dpi)):
             dpi = None
         return {
             "largeur": img.width,

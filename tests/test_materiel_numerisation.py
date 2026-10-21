@@ -120,6 +120,40 @@ def test_read_metadata_normalise_resolution_cassee():
     assert read_metadata(buf)["dpi"] is None
 
 
+def _tiff(dpi=None, size=(600, 900)) -> bytes:
+    """TIFF en mémoire ; sans `dpi`, AUCUNE balise de résolution n'est écrite (282, 283,
+    296 absentes) — le cas d'un logiciel de scan qui ne la note pas."""
+    buf = io.BytesIO()
+    Image.new("RGB", size, "white").save(buf, "TIFF", **({"dpi": dpi} if dpi else {}))
+    return buf.getvalue()
+
+
+def test_tiff_sans_resolution_n_a_pas_de_dpi(client, album):
+    """IMG-1 (2026-10-21) — Pillow rend `dpi = (1, 1)` pour un TIFF sans balise de
+    résolution, et la planche recevait ~9 000 cm en comptant « avec résolution ». Une
+    résolution manifestement fausse est ABSENTE, à la lecture comme en base."""
+    from pipeline.ingest import read_metadata
+    data = _tiff()
+    lu = Image.open(io.BytesIO(data))
+    assert 282 not in lu.tag_v2 and lu.info.get("dpi") == (1, 1)   # le piège est bien là
+    assert read_metadata(io.BytesIO(data))["dpi"] is None
+    _importer(client, album["id"], data, nom="scan.tif")
+    p = _planches(client, album["id"])[0]
+    assert p["dpi_x"] is None and p["dpi_y"] is None and p["dimensions_cm"] is None
+
+
+def test_le_seuil_de_resolution_garde_les_vraies_valeurs():
+    """Le seuil (`DPI_MINIMUM`) écarte ce qui n'est pas un scan, et rien d'autre : 50 et
+    72 passent, 49 non ; une seule des deux valeurs sous le seuil suffit à écarter."""
+    from pipeline.ingest import DPI_MINIMUM, read_metadata
+    assert DPI_MINIMUM == 50
+    assert read_metadata(io.BytesIO(_tiff(dpi=(400, 400))))["dpi"] == (400, 400)
+    assert read_metadata(io.BytesIO(_tiff(dpi=(72, 72))))["dpi"] == (72, 72)
+    assert read_metadata(io.BytesIO(_tiff(dpi=(50, 50))))["dpi"] == (50, 50)
+    assert read_metadata(io.BytesIO(_tiff(dpi=(49, 49))))["dpi"] is None
+    assert read_metadata(io.BytesIO(_tiff(dpi=(400, 1))))["dpi"] is None
+
+
 # --------------------------------------------------------------------------- #
 # Source de numérisation (album)
 # --------------------------------------------------------------------------- #
