@@ -24,7 +24,8 @@ Hors de ce temps, la zone Q9 reste ouverte exprès.
 commit de code (`6952f37`) vit sur `origin/main` depuis la fusion du 2026-10-10. Le `Reste`
 ne portait plus que les quatre points de Q9, « écartés exprès le 2026-09-17, à rouvrir
 ailleurs » : ils sortent du `Reste` vers la section « Écarté exprès (Q9) » du Contexte,
-tels quels. Aucune fiche ne les accueille encore ; les rouvrir demande d'en ouvrir une.
+tels quels. Ils sont repris le même jour par `CONC-4`, à réévaluer avant d'être mesurés
+(Hugo, 2026-10-21).
 
 **Point de départ** — 2026-09-16, une question de Hugo en tranchant le cache des dérivés
 d'IMG-1 : « ça ne servirait pas d'avoir quelque part (niveau album ou collection) un moyen
