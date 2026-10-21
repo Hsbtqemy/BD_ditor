@@ -13,6 +13,11 @@ eux : le gris 16 bits (`fb53e67`), l'outil de régénération (`fd7cd38`, décla
 et les décisions de Hugo sur le stockage des masters et le coût d'import du JP2 ; la passe de
 QA `derives-et-import-jp2` est à jouer.
 
+**2026-10-21 — les vrais fichiers sont arrivés**, mesurés le jour même (Contexte, « Les vrais
+fichiers »). Ils tranchent une case, en éclairent trois, et ouvrent une question plus large
+que le format : où vit le master quand le VPS n'a que 26 Go libres. Le différé tient encore,
+mais sur cette seule décision de Hugo.
+
 ## Reste
 
 ### Le gris 16 bits devient blanc
@@ -34,11 +39,15 @@ QA `derives-et-import-jp2` est à jouer.
 - [ ] Le format de stockage des masters est décidé par Hugo et écrit ici — TIFF brut, TIFF compressé sans perte, JP2 sans perte, ou un mélange —, avec le coût d'import qu'il accepte. La comparaison mesurée sur deux vrais scans est au Contexte ; l'application porte déjà les deux formats de master
 - [ ] Un JP2 produit par CE scanner, réglé sans perte, accompagné du TIFF de la MÊME page, est relevé, et la fiche note : le modèle du scanner et son réglage ; les boîtes de résolution présentes (`resc`, `resd`, les deux, aucune) et le `dpi` que l'import en tire ; la précision en bits et gris ou couleur (le mode Pillow à l'import) ; le poids du JP2 face au TIFF ; le temps d'import de chacun dans l'image. Ce seul couple de fichiers tranche le modèle, la profondeur et la case `resd` ci-dessous
 - [ ] Un JP2 gris en 12 bits RÉEL, importé, donne un dérivé qui suit ses tons. `image_8_bits` le traite comme du 16 bits parce que le décodeur de Pillow étend toute précision à 16 (`shift = 16 - prec` dans `Jpeg2KDecode.c`, LU au tag 12.0.0) ; non mesuré, Pillow n'écrivant pas de JP2 12 bits. Si c'était faux, le dérivé sortirait presque NOIR
-- [ ] Un JP2 RÉEL du corpus visé est inspecté, et la fiche dit s'il porte une boîte `resc`, `resd`, les deux, ou aucune. La case suivante ne se tranche pas sur un fichier fabriqué. Le JP2 du scanner de la case précédente EST ce fichier
+- [x] Un JP2 RÉEL du corpus visé est inspecté, et la fiche dit s'il porte une boîte `resc`, `resd`, les deux, ou aucune. La case suivante ne se tranche pas sur un fichier fabriqué. Le JP2 du scanner de la case précédente EST ce fichier **AUCUNE, mesuré le 2026-10-21 sur neuf JP2 réels de l'équipe** (même scanner que les TIFF, i2S CopiBook, d'après Hugo) : boîtes `jP`, `ftyp`, `jp2h` (`ihdr`, `colr` sRGB), `jp2c`, et rien d'autre — ni `res `, ni XML, ni XMP ; écrits par « JasPer Version 1.900.1 » (marqueur COM). L'import en tire `dpi = None`. Cf. le Contexte, « Les vrais fichiers »
 - [ ] Un JP2 dont la résolution n'est écrite que dans `resd` reçoit un `dpi` à l'import — ou la fiche écrit pourquoi on s'y refuse. Aujourd'hui Pillow ne lit que `resc` : mesuré sur quatre fichiers forgés, `resc` → (300, 300), `resd` seule → `None`, `resd` puis `resc` → (300, 300). Sans dpi, pas de centimètres et la planche ne compte pas « avec résolution ». L'arbitrage est réel : `resc` dit ce que le scanner a capté, `resd` ce qu'on recommande d'afficher, et A6 décrit le MATÉRIEL
 - [x] Sous Windows, dans Chrome, le dialogue ouvert par ⤓ Importer des images… (Atelier) montre un fichier `.jp2` sans qu'on change le filtre. L'`accept` de `#file-input` ne citait que `image/*,.tif,.tiff` ; depuis `654562f` il énumère les quatorze extensions de `IMG_EXTS`, `.jp2` compris, sans `image/*`. Que le dialogue le MONTRE reste à jouer à la main : passe `pilotage/qa/derives-et-import-jp2.md`, zone « Le dialogue d'import propose les JP2, et seulement des images » — **joué le 2026-09-23 par Hugo** : dans le dialogue Windows, sans toucher à la liste des types, `rectangle.jp2` et `rectangle.tif` sont listés et `notes.txt` ne l'est pas ; et le `.txt` choisi en forçant la liste est refusé par « Extension « .txt » non gérée : image attendue »
 - [x] Un test compare à `config.IMG_EXTS` les deux copies de la liste d'extensions que porte le front : l'`accept` de `#file-input` dans `templates/index.html`, et la regex `SD_IMG` de l'explorateur ShareDocs dans `static/viewer.js`. `SD_IMG` coïncide avec la liste aujourd'hui, et rien ne l'y oblige
 - [ ] Le temps d'import d'un JP2 SANS PERTE est mesuré sur un VRAI scan dans l'image, et une décision est écrite s'il dépasse ce qu'un annotateur attend devant le toast « Import en cours… ». Le cas fabriqué — A4 à 300 dpi rempli de bruit, le pire cas pour la compression — prend 19,2 s pour le seul dérivé dans `bd-recette-app`, contre 2,6 s en avec perte, et la requête d'import attend pendant ce temps. MESURÉ sur deux VRAIS scans le 2026-09-16 (chiffres au Contexte) : la requête d'import passe de 0,4 s en TIFF à 7 à 11 s en JP2 sans perte. La décision est posée à Hugo, non prise. Hugo (2026-09-16) : elle ATTEND un TIFF et un JP2 réels sortis du scanner, qu'il va chercher dans les prochains jours ; ni le décodage réduit ni la tâche de fond ne se codent d'ici là
+
+### La copie de travail — le master d'archive hors du VPS
+- [ ] La règle des copies de travail est décidée par Hugo et écrite ici — attendu : la résolution effective visée (200 ou 300 dpi, mesurés le 2026-10-21, chiffres au Contexte), la valeur retenue pour un fichier sans résolution écrite, et où vit le master d'archive (ShareDocs, ou ailleurs) ; ou, à la place, un stockage plus grand pour le VPS. Posé à Hugo le 2026-10-21, qui veut en parler avant de trancher. Le VPS a 26 Go libres (56 % occupés) : environ 500 planches en TIFF brut
+- [ ] Si une copie de travail est retenue, l'import l'écrit à la même géométrie que le scan (les coordonnées restent en pixels master), la planche dit où vit son master d'archive, et les albums déjà importés sont rattrapés par un outil — attendu : un import de TIFF n'écrit plus le TIFF sur le VPS ; une région tracée avant le rattrapage reste au même endroit après
 
 ### TIFF multipage
 - [ ] Un TIFF de deux pages importé depuis l'Atelier est REFUSÉ avec un message qui dit « plusieurs pages », et rien n'est enregistré. Arbitrage rendu par Hugo le 2026-09-16 : refuser, et NON prioritaire — le code attendra que le cas se présente. Aujourd'hui seule la première page est lue et la seconde disparaît sans avertissement (mesuré : `n_frames` = 2, taille et pixel de la page 1)
@@ -50,6 +59,51 @@ QA `derives-et-import-jp2` est à jouer.
 - [x] Le commentaire de `DERIVATIVES_DIR` dans `config.py` ne dit plus « PNG/JPEG » : le dérivé est toujours un JPEG
 
 ## Contexte
+
+### Les vrais fichiers — mesurés le 2026-10-21
+
+Une étudiante importe d'ici deux semaines ; Hugo a déposé des scans de l'équipe hors du dépôt
+(œuvres sous droits, rien n'en entre dans git). Ce ne sont PAS les mêmes pages en deux formats
+— l'équipe ne scanne pas deux fois la même chose —, mais c'est le même scanner (i2S DigiBook
+« CopiBook », logiciel 3.4.1), dont on choisit le format d'enregistrement. Mesures dans le
+`.venv` et dans l'image Docker (`bdediteur:suite`, Pillow 12.0.0, OpenJPEG 2.5.4), par
+`read_metadata` et `make_web_derivative` d'`ingest.py`.
+
+| | TIFF (5 fichiers) | JP2 (9 fichiers) | JPG (11 fichiers) |
+|---|---|---|---|
+| Forme | RVB 8 bits, NON compressé, une page, sans ICC | RVB 8 bits, SANS PERTE (5-3 réversible, prouvé par réencodage identique), écrit par JasPer 1.900.1 | gris ou couleur 8 bits, avec perte (qualité élevée) |
+| Résolution lue | 400 dpi | **aucune** (ni `resc` ni `resd`) — probablement 300 dpi, déduit des dimensions | 300 ou 400 dpi (JFIF) |
+| Poids | ~52 Mo (3 octets/px) | ~12 Mo (1,24 octet/px) | ~1,8 Mo |
+| Lecture + dérivé, dans l'image | ~0,5 s | **~5,7 s** (4,4 à 7,7) | — |
+| Dérivé fidèle | oui | oui | — |
+
+Ce qui en sort : les deux formats s'importent tels quels, et les cas que la fiche redoutait
+(12 bits, multipage) ne se présentent pas dans ces fichiers. Le logiciel du scanner écrit la
+résolution en TIFF et en JPG, PAS en JP2 : le JP2 est le seul qui perd les centimètres, et le
+seul lent à l'import (~5 min pour 50 planches). `reduce=2` échoue sur 7 JP2 sur 9 — ceux dont
+une dimension vaut 1 modulo 4 —, ce que la fiche supposait. **Correction des chiffres du
+2026-09-16** : un JP2 sans perte écrit par Pillow pèse 39 % du TIFF brut avec `mct=1` (la
+transformée de couleur, désactivée par défaut), et non 44 à 49 %. Mesuré en marge : un TIFF
+sans balise de résolution sort de Pillow avec `dpi = (1, 1)`, que `read_metadata` acceptait —
+corrigé sous ce code par la mission d'`UX-11` du même jour.
+
+**Le stockage, découvert en route** (Hugo croyait que l'import convertissait) : l'import garde
+le fichier reçu octet pour octet dans `corpus/` (`ingest.store_upload`), et le VPS n'a que
+26 Go libres. Hugo veut garder le MASTER — c'est l'objet scientifique —, d'où la question de
+la copie de travail (zone du `Reste`). Mesuré le même jour sur 7 planches (88 bulles passées
+à l'OCR, 20 jugées une à une sans transcrire, 5 cases en figure) :
+
+| Copie de travail | OCR | Figure d'une case de 9 cm à 300 dpi | Poids pour 7 500 planches (TIFF / JP2) |
+|---|---|---|---|
+| 25 % (le dérivé actuel, ~100 dpi effectifs) | s'effondre : 15 bulles sur 20 fausses | 3 cm, pâteuse | déjà stocké (2,3 / 1,2 Go) |
+| ~200 dpi effectifs (50 % d'un scan à 400 dpi) | rien d'utile ne se perd (29 fautes contre 31 pour le master) | 6 cm, lisible, pour l'écran | ~7,4 / 3,9 Go |
+| ~300 dpi effectifs (75 % à 400 dpi, 100 % q80 à 300 dpi) | intact | taille d'origine | ~11 à 21 Go selon le mélange |
+| 100 % q90 | intact | identique au master | 31 / 16 Go — ne tient pas |
+
+Le moteur est le goulot, pas la résolution : même sur le master, une bulle sur 20 sort juste
+et ~15 % des mots sont faux — surtout sur le lettrage manuscrit, que la Transcription reprend
+de toute façon (Hugo). Ce sont les FIGURES qui départagent. Recommandé à Hugo : 200 dpi
+effectifs, le master d'archive sur ShareDocs, une figure à imprimer faite depuis lui.
 
 **Point de départ** — 2026-09-14, en répondant à deux questions : « comment sont stockés
 les dérivés ? » et « quels formats sont ingérés ? ». Tout ce qui suit a été MESURÉ, sur des
