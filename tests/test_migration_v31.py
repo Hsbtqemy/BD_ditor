@@ -65,7 +65,7 @@ def vraie_v30(tmp_path, monkeypatch):
 
 # Les colonnes que la v31 ajoute, table par table : retirées des lignes d'APRÈS pour les
 # comparer à celles d'avant.
-COLONNES_NEUVES = {"albums": ("tome",),
+COLONNES_NEUVES = {"albums": ("tome", "lieu_masters"), "planches": ("master_origine",),
                    "collection": ("base", "acces_membres"),
                    "document": ("projet_origine_nom",),
                    "demande": ("collection_id", "collection_nom", "cran"),

@@ -95,7 +95,7 @@ def test_toute_colonne_d_album_est_notice_ou_declaree_hors(db_path, source):
     descriptives = {"titre", "auteur", "annee", "editeur", "serie", "description",
                     "date_edition", "date_originale", "langue", "type_oeuvre",
                     "lieu_edition", "edition_tirage", "isbn", "format_physique",
-                    "source_numerisation", "tome"}
+                    "source_numerisation", "tome", "lieu_masters"}
     assert colonnes - database.ALBUM_HORS_NOTICE == descriptives
     assert database.ALBUM_HORS_NOTICE <= colonnes
 

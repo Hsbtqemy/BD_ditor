@@ -1277,6 +1277,7 @@ function renderDetail() {
         ${idParts ? `<div class="detail-meta muted small">${idParts}</div>` : ""}
         ${edParts ? `<div class="detail-meta muted small">${edParts}</div>` : ""}
         ${a.source_numerisation ? `<div class="detail-meta muted small">Numérisation : ${esc(a.source_numerisation)}</div>` : ""}
+        ${a.lieu_masters ? `<div class="detail-meta muted small">Masters : ${esc(a.lieu_masters)}</div>` : ""}
         <div id="detail-contribs" class="detail-meta small"></div>
         ${a.description ? `<p class="detail-desc">${esc(a.description)}</p>` : ""}
         ${pastilleDemande(a)}
@@ -1876,6 +1877,7 @@ async function openModal(album, depuis = null) {
   $("#m-isbn").value = g("isbn");
   $("#m-format").value = g("format_physique");
   $("#m-source-num").value = g("source_numerisation");   // matériel (A6)
+  $("#m-lieu-masters").value = g("lieu_masters");         // IMG-1 : où vivent les masters
   $("#m-msg").textContent = "";
   // Contributions : éditables seulement sur un album EXISTANT (elles ont besoin de son id).
   $("#m-contrib-nom").value = "";
@@ -1983,6 +1985,7 @@ async function saveAlbum() {
     isbn: val("#m-isbn"),
     format_physique: val("#m-format"),
     source_numerisation: val("#m-source-num"),   // matériel (A6)
+    lieu_masters: val("#m-lieu-masters"),        // IMG-1 : le serveur ne garde qu'une copie de travail
   };
   if (collectionId) body.collection_id = parseInt(collectionId, 10);   // AUTH-2
   try {

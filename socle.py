@@ -1606,6 +1606,7 @@ class AlbumIn(BaseModel):
     isbn: Optional[str] = None
     format_physique: Optional[str] = None
     source_numerisation: Optional[str] = None   # matériel N1 (A6) : appareil / conditions de scan
+    lieu_masters: Optional[str] = None          # IMG-1 (v34) : où vivent les masters d'archive
 
 
 class AlbumUpdate(BaseModel):
@@ -1625,6 +1626,7 @@ class AlbumUpdate(BaseModel):
     isbn: Optional[str] = None
     format_physique: Optional[str] = None
     source_numerisation: Optional[str] = None   # matériel N1 (A6)
+    lieu_masters: Optional[str] = None          # IMG-1 (v34)
 
 
 class ContributionIn(BaseModel):

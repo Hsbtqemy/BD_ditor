@@ -25,7 +25,7 @@ import pytest
 import database
 
 BASE_V32 = Path(__file__).resolve().parent / "bases" / "v32-0b4f1ef.sql"
-COLONNES_NEUVES = {"albums": ("tome",)}
+COLONNES_NEUVES = {"albums": ("tome", "lieu_masters"), "planches": ("master_origine",)}
 LIGNES = ("albums", "planches", "regions", "annotations", "personnages", "projet",
           "projet_acces", "collection", "collection_acces", "collection_album", "document",
           "copie", "demande", "demande_document", "region_origine", "contribution",
@@ -130,7 +130,7 @@ def test_une_vraie_base_v32_migre_sans_rien_perdre(vraie_v32):
     avant = _etat(vraie_v32)
     database.init_db()
     apres = _etat(vraie_v32)
-    assert _sql(vraie_v32, "PRAGMA user_version")[0]["user_version"] == 33
+    assert _sql(vraie_v32, "PRAGMA user_version")[0]["user_version"] == database.SCHEMA_VERSION
     # Aucune table de plus ni de moins, aucune ligne de plus ni de moins.
     assert apres["tables"] == avant["tables"]
     assert apres["comptes"] == avant["comptes"]

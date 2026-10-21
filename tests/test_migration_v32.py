@@ -25,7 +25,8 @@ import database
 
 BASE_V31 = Path(__file__).resolve().parent / "bases" / "v31-16c6127.sql"
 TABLES_NEUVES = {"region_origine"}
-COLONNES_NEUVES = {"demande": ("cran",), "albums": ("tome",)}
+COLONNES_NEUVES = {"demande": ("cran",), "albums": ("tome", "lieu_masters"),
+                   "planches": ("master_origine",)}
 LIGNES = ("albums", "planches", "regions", "annotations", "personnages", "projet",
           "projet_acces", "collection", "collection_acces", "collection_album", "document",
           "copie", "demande", "demande_document", "evenement", "activite")

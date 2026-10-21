@@ -18,7 +18,7 @@ from config import DB_PATH, STATUTS
 
 # Version du schéma — incrémenter et ajouter une étape dans `_migrate()` à
 # chaque changement structurel.
-SCHEMA_VERSION = 33
+SCHEMA_VERSION = 34
 
 # NLP-2 (v28) — ce que l'annotateur a VU en corrigeant : le modèle, et sa proposition.
 # Une seule liste, lue par la migration ET par le ré-ancrage : celui-ci réinsère ses
@@ -98,6 +98,11 @@ CREATE TABLE IF NOT EXISTS albums (
     -- Matériel de numérisation (v19, A6, N1) : appareil / conditions de scan (PREMIS,
     -- humain). Album-level = une campagne de scan par album. Cf. docs/materiel-numerisation.md.
     source_numerisation TEXT,
+    -- v34 (IMG-1, Hugo, 2026-10-21) : OÙ vivent les masters d'archive de l'album — ShareDocs,
+    -- un disque local, des disques durs, « selon les projets et les personnes ». Champ libre,
+    -- facultatif, humain : le serveur ne garde plus le scan reçu, seulement sa copie de
+    -- travail, et n'impose aucun lieu. RETENU de toute sortie (`main._EXPORT_ALBUM_RETENUES`).
+    lieu_masters TEXT,
     date_import  TEXT DEFAULT (datetime('now')),
     document_id  INTEGER REFERENCES document(id),
     projet_id    INTEGER REFERENCES projet(id)
@@ -133,6 +138,10 @@ CREATE TABLE IF NOT EXISTS planches (
     album_id           INTEGER REFERENCES albums(id) ON DELETE CASCADE,
     numero             INTEGER NOT NULL,             -- ordre d'import (clé de tri, peut avoir des trous)
     role               TEXT NOT NULL DEFAULT 'recit', -- 'recit' = narratif (numéroté) ; autre = paratexte (écarté)
+    -- `chemin_tiff` : la COPIE DE TRAVAIL depuis la v34 (IMG-1) — un JPEG à 300 dpi
+    -- effectifs, à la géométrie du scan ; le nom de la colonne date d'avant, quand le
+    -- serveur gardait le fichier reçu. Une planche importée avant la v34 et pas encore
+    -- rattrapée (`tools/convertir_en_copies_de_travail.py`) y désigne encore son master.
     chemin_tiff        TEXT,
     chemin_web         TEXT NOT NULL,
     largeur_px         INTEGER,
@@ -143,6 +152,11 @@ CREATE TABLE IF NOT EXISTS planches (
     dpi_x              INTEGER,       -- résolution horizontale (points/pouce)
     dpi_y              INTEGER,       -- résolution verticale
     mode               TEXT,          -- espace colorimétrique Pillow : 'RGB' | 'CMYK' | 'L' | …
+    -- v34 (IMG-1) : ce que l'outil sait du master d'archive, qui ne vit plus sur le serveur
+    -- — `sharedocs:<chemin distant>` pour un import ShareDocs, sinon le nom du fichier reçu.
+    -- NON NULL veut aussi dire que `chemin_tiff` est une copie de travail et non le scan :
+    -- NULL, la planche date d'avant la v34 et n'a pas été convertie. RETENU de toute sortie.
+    master_origine     TEXT,
     statut             TEXT DEFAULT 'importee',
     date_segmentation  TEXT,
     validee            TEXT,          -- horodatage de validation humaine (NULL = non validée)
@@ -1256,7 +1270,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
             ("document", (("projet_origine_nom", "TEXT"),)),
             # v32 → v33 : `albums.tome`, le rang de l'album dans sa série. Texte libre (« 1 »,
             # « HS », « Intégrale ») ; NULL pour tout l'existant, aucune donnée à migrer.
-            ("albums", (("tome", "TEXT"),)),
+            # v33 → v34 (IMG-1) : `albums.lieu_masters`, où vivent les masters d'archive
+            # (libre, facultatif) ; `planches.master_origine`, ce que l'outil sait du master
+            # d'une planche. NULL pour tout l'existant : rien n'est déduit, et une planche
+            # d'avant garde son master jusqu'au rattrapage, qui écrit la colonne.
+            ("albums", (("tome", "TEXT"), ("lieu_masters", "TEXT"))),
+            ("planches", (("master_origine", "TEXT"),)),
             # v31 → v32 (COL-3, tranche 3b) : `demande.cran`, le cran d'une copie amorcée
             # ou d'une remise à zéro demandée. Table `region_origine` NOUVELLE (SCHEMA_SQL) ;
             # aucune migration de données — aucune copie d'avant la v32 n'a recopié de région.
@@ -2123,11 +2142,12 @@ ALBUM_HORS_NOTICE = frozenset({"id", "date_import", "document_id", "projet_id"})
 
 # Ce qu'une planche d'une copie VIERGE reprend de la planche source : ce que le SCAN est —
 # son rang, son rôle, ses fichiers (D6 : les MÊMES, aucune image n'est copiée), ses
-# dimensions et son matériel. Le reste est le travail de la copie source — l'avancée de la
+# dimensions et son matériel, et ce qu'on sait de son master d'archive (`master_origine`,
+# IMG-1 : les mêmes fichiers viennent du même master). Le reste est le travail de la copie source — l'avancée de la
 # reconnaissance (`statut`, `date_segmentation`), la validation, le verrou et qui l'a posé,
 # la relecture forcée — et une copie vierge n'en hérite pas : elle repart `importee`.
 PLANCHE_SCAN = ("numero", "role", "chemin_tiff", "chemin_web", "largeur_px", "hauteur_px",
-                "dpi_x", "dpi_y", "mode")
+                "dpi_x", "dpi_y", "mode", "master_origine")
 
 
 def creer_copie(conn: sqlite3.Connection, document_id: int, collection_id: int, *,

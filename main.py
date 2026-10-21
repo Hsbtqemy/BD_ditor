@@ -2067,10 +2067,17 @@ _EXPORT_ALBUM_RETENUES = {
                    "INTERNE au fonds de l'instance, sans sens hors d'elle",
     "projet_id": "le projet de la copie : le projet n'est ni une unité de dépôt ni le "
                  "titre d'un export (la collection l'est), et rien de lui ne sort",
+    "lieu_masters": "OÙ vivent les masters d'archive (IMG-1, v34) — un lieu INTERNE au "
+                    "projet (un dossier ShareDocs, un disque, des disques durs), écrit "
+                    "pour l'équipe, sans valeur descriptive de l'œuvre ni sens hors d'elle",
 }
 _EXPORT_PLANCHE_RETENUES = {
-    "chemin_tiff": "chemin de fichier sur le SERVEUR — interne, sans valeur descriptive",
+    "chemin_tiff": "chemin de fichier sur le SERVEUR (la copie de travail depuis IMG-1) — "
+                   "interne, sans valeur descriptive",
     "chemin_web": "idem ; le dérivé se publie par IIIF, pas par un chemin de disque",
+    "master_origine": "ce que l'outil sait du master d'archive (IMG-1, v34) : un chemin "
+                      "ShareDocs ou le nom du fichier reçu — un lieu INTERNE, sans valeur "
+                      "descriptive",
     "verrouillee": "état de travail TRANSITOIRE, faux dès la seconde suivante",
     "verrou_par": "qui tient le verrou : une identité, et transitoire de surcroît",
 }
