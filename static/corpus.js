@@ -1741,10 +1741,11 @@ async function pollJobs() {
 }
 
 /* Les lots récents. Leurs erreurs se LISENT, sur place : la route les rend (`errors`), et
-   « 3 erreur(s) » sans le détail ne disait pas quoi reprendre (relevé le 2026-10-08). Ce
-   qu'un lot ne dit pas encore, c'est SUR QUOI il travaille : la route ne rend ni ses albums
-   ni ses planches, et le dire ici demande au serveur de les garder — sans jamais citer un
-   album qu'on ne lit pas (`GET /api/jobs` filtre déjà les lots). */
+   « 3 erreur(s) » sans le détail ne disait pas quoi reprendre (relevé le 2026-10-08). Et
+   chaque lot dit SUR QUOI il travaille — ses albums, ou « N planches de « Titre » » —, lu
+   dans `albums`, que `GET /api/jobs` rend lot par lot et borne à ce qu'on lit : un lot dont
+   une planche nous échappe n'est pas listé du tout (`_job_visible`). La phrase vient de
+   `BDBiblio.sujetDuLot`. */
 function renderJobs(list) {
   const box = $("#jobs");
   const recents = list.slice(0, 4);   // les plus récents (all_jobs trie décroissant)
@@ -1757,12 +1758,14 @@ function renderJobs(list) {
     const detail = j.errors.length ? `<details class="job-erreurs"><summary>Voir les erreurs</summary>
       <ul>${j.errors.map((e) => `<li>${esc(e.planche_id ? `Planche ${e.planche_id}` : "Lot")}${
         e.passe ? ` · ${esc(e.passe)}` : ""} : ${esc(e.erreur || e.message || "")}</li>`).join("")}</ul></details>` : "";
+    const sujet = BDBiblio.sujetDuLot(j.albums);
     return `<div class="job job-${j.status}">
       <div class="job-line">
         <b>Lot #${j.id}</b> <span class="muted small">${j.passes.join(" → ")}</span>
         <span class="job-state">${label} — ${j.done}/${j.total}${err}</span>
         ${j.status === "en_cours" ? `<button class="ghost small" type="button" data-cancel="${j.id}">Annuler</button>` : ""}
       </div>
+      ${sujet ? `<div class="job-sujet small">${esc(sujet)}</div>` : ""}
       <div class="job-bar"><div class="job-fill" style="width:${pct}%"></div></div>
       ${detail}
     </div>`;
@@ -2273,30 +2276,30 @@ async function lockPlanche(pid, on) {
   } catch (e) { toast("Verrou : " + e.message, "error"); }
 }
 
-/* « Tout valider » : une requête par planche, l'une après l'autre — il n'existe pas de route
-   qui valide un album d'un coup —, mais l'écran DIT où il en est, et un échec au milieu dit
-   combien ont été validées avant lui (relevé le 2026-10-08 : 122 requêtes sans un mot entre
-   la confirmation et la fin, et une erreur qui ne disait pas ce qui avait été fait). */
+/* « Tout valider » : UN geste, UNE requête (`POST /api/albums/{id}/valider`, UX-18). Elle
+   partait en une requête par planche, l'une après l'autre — 122 pour le plus gros album de
+   la capture du 2026-10-08 —, et un échec au milieu laissait l'album à moitié validé. Le
+   serveur valide désormais tout dans une transaction : un échec n'a RIEN validé, et le
+   message le dit. Le nombre annoncé vient de la RÉPONSE et non de la liste affichée, que
+   quelqu'un d'autre a pu changer entre-temps. */
 async function validateAllAlbum() {
   const todo = state.planches.filter((p) => !p.validee);
   const ligne = $("#detail-valider-msg");
   if (!todo.length) { colMsg(ligne, "Toutes les planches sont déjà validées."); return; }
   if (!confirm(`Valider ${todo.length} planche(s) de cet album ?`)) return;
-  let faites = 0;
+  const albumId = state.openId;
+  colMsg(ligne, `Validation de ${todo.length} planche(s)…`);
+  let r;
   try {
-    for (const p of todo) {
-      colMsg(ligne, `Validation… ${faites}/${todo.length}`);
-      await apiSend("PATCH", `/api/planches/${p.id}/validation`, { validee: true });
-      faites += 1;
-    }
+    r = await apiSend("POST", `/api/albums/${albumId}/valider`);
   } catch (e) {
     await loadAlbums().catch(() => {});
-    colMsg($("#detail-valider-msg"), `${faites} planche(s) validée(s) sur ${todo.length} — `
-      + `les premières de la liste — avant l'échec : ${e.message}`, true);
+    colMsg($("#detail-valider-msg"), `Aucune planche validée : ${e.message}`, true);
     return;
   }
   await loadAlbums();
-  colMsg($("#detail-valider-msg"), `${faites} planche(s) validée(s).`);
+  const n = r.validees.length;
+  colMsg($("#detail-valider-msg"), `${n} planche${n > 1 ? "s" : ""} validée${n > 1 ? "s" : ""}.`);
 }
 
 async function deletePlanche(pid) {

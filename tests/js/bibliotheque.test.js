@@ -333,3 +333,26 @@ test("comparaison — le bouton du recoupement s'accorde, et se tait sans rien e
   assert.equal(B.libelleCommuns(12), "Ne montrer que les 12 en commun");
   for (const rien of [0, undefined, null, -1]) assert.equal(B.libelleCommuns(rien), "");
 });
+
+/* ── Ce sur quoi un lot travaille (UX-18) ───────────────────────────────────────────── */
+
+test("un lot nomme son album, ou ses albums, et le nombre de planches qu'il porte", () => {
+  const B = require("../../static/lib/bibliotheque.js");
+  const cas = [
+    [[{ id: 1, titre: "Eau-terre", nb_planches: 1 }], "1 planche de « Eau-terre »"],
+    [[{ id: 1, titre: "Eau-terre", nb_planches: 12 }], "12 planches de « Eau-terre »"],
+    [[{ id: 1, titre: "A", nb_planches: 2 }, { id: 2, titre: "B", nb_planches: 3 }],
+     "« A » et « B » — 5 planches"],
+    [[{ id: 1, titre: "A", nb_planches: 1 }, { id: 2, titre: "B", nb_planches: 1 },
+      { id: 3, titre: "C", nb_planches: 1 }], "« A », « B » et « C » — 3 planches"],
+    [[{ id: 1, titre: "A", nb_planches: 1 }, { id: 2, titre: "B", nb_planches: 1 },
+      { id: 3, titre: "C", nb_planches: 1 }, { id: 4, titre: "D", nb_planches: 1 }],
+     "« A », « B », « C » et 1 autre album — 4 planches"],
+    [[1, 2, 3, 4, 5].map((i) => ({ id: i, titre: `T${i}`, nb_planches: 2 })),
+     "« T1 », « T2 », « T3 » et 2 autres albums — 10 planches"],
+    // Ses planches détruites depuis : le lot ne nomme plus rien, et l'écran n'invente pas.
+    [[], ""],
+    [undefined, ""],
+  ];
+  for (const [albums, attendu] of cas) assert.equal(B.sujetDuLot(albums), attendu, JSON.stringify(albums));
+});

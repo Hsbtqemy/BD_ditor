@@ -170,8 +170,9 @@ Trois passes, dans cet ordre : les **cases**, puis les **bulles** à l'intérieu
 le **texte** des bulles. Elles se lancent par lot, en tâche de fond, avec une barre de
 progression et un bouton d'annulation. Le lot apparaît **au-dessus de sa sélection** : cochez
 des albums dans l'onglet *Albums* d'une collection, ou des planches dans la fiche d'un album —
-un lot porte sur l'un ou l'autre, jamais sur un mélange. Les erreurs d'un lot se lisent sous
-sa barre, *Voir les erreurs*. On peut aussi les
+un lot porte sur l'un ou l'autre, jamais sur un mélange. Chaque lot dit sur quoi il travaille —
+ses albums, ou « 3 planches de *Titre* » —, et ses erreurs se lisent sous sa barre, *Voir les
+erreurs*. On peut aussi les
 lancer planche par planche depuis l'Atelier (menu *⚙ Traitement*).
 
 L'ordre de lecture — rangées de haut en bas, gauche à droite, bulles groupées par case — est
@@ -498,8 +499,9 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
   numérotation), **validation** et **verrou** (🔒 protège des passes automatiques). Les gestes
   d'une planche (rôle, verrou, ↗ ouvrir dans l'Atelier, 🗑) suivent son nom. **Valider** est
   un seul bouton qui porte son état : ✔ gris tant que la planche ne l'est pas, ✔ vert enfoncé
-  quand elle l'est, le même clic dans les deux sens. *✔ Tout valider* dit où il en est, et un
-  échec au milieu dit combien de planches étaient déjà validées.
+  quand elle l'est, le même clic dans les deux sens. *✔ Tout valider* valide d'un seul geste
+  toutes les planches qui ne le sont pas : tout passe, ou rien — un échec ne laisse pas
+  l'album à moitié validé, et le message le dit.
 - **Importer des planches en lot** : *⤓ Importer des planches…*, dans la fiche d'un album où
   vous écrivez. Autant de fichiers qu'on veut, envoyés un par un dans l'ordre de leurs noms ;
   la ligne à côté du bouton dit *n sur N* et le fichier en cours, puis le bilan, et nomme

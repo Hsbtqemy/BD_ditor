@@ -6,6 +6,9 @@ dans `test_e2e_qui_entre.py`. À part de l'audit d'accessibilité pour la raison
 tête de `test_e2e_collections.py` : un module e2e finit par acquérir sa propre condition
 de saut, et des tests de COMPORTEMENT n'ont pas à dépendre d'un outil d'audit.
 """
+import json
+import re
+
 import httpx
 import pytest
 
@@ -83,6 +86,86 @@ def test_valider_est_un_bouton_qui_porte_son_etat(page, decor):
     expect(bouton).to_have_attribute("aria-pressed", "false", timeout=5000)
     assert not _validee(decor["base"], decor["album"], decor["planche"]), (
         "le second clic n'a pas retiré la validation : le bouton ne bascule pas")
+
+
+@pytest.fixture
+def trois_planches(live_server):
+    """Un album de trois planches, la première déjà validée."""
+    with _client(live_server) as c:
+        aid = c.post("/api/albums", json={"titre": "Trois"}).json()["id"]
+        pids = [c.post(f"/api/albums/{aid}/import",
+                       files={"file": (f"p{i}.png", make_png(), "image/png")}).json()["id"]
+                for i in range(3)]
+        assert c.patch(f"/api/planches/{pids[0]}/validation",
+                       json={"validee": True}).status_code == 200
+    return {"base": live_server, "album": aid, "planches": pids}
+
+
+def test_tout_valider_part_en_une_seule_requete(page, trois_planches):
+    """« Tout valider » est UN geste (UX-18) : une requête `POST …/valider`, aucun `PATCH`
+    par planche, et le nombre annoncé est celui que le serveur a validé. Les requêtes
+    PARTIES sont comptées, pas seulement l'état final : une rafale de `PATCH` arriverait au
+    même album validé."""
+    d = trois_planches
+    parties = []
+    page.on("request", lambda r: parties.append((r.method, r.url))
+            if "/valid" in r.url or r.url.endswith("/valider") else None)
+    page.on("dialog", lambda dlg: dlg.accept())
+    page.goto(d["base"] + "/corpus", wait_until="networkidle")
+    _ouvrir_album(page, "Trois")
+    page.locator("#detail-validate-all").click()
+    msg = page.locator("#detail-valider-msg")
+    expect(msg).to_have_text("2 planches validées.", timeout=5000)
+    assert parties == [("POST", d["base"] + f"/api/albums/{d['album']}/valider")], parties
+    assert all(_validee(d["base"], d["album"], p) for p in d["planches"])
+    for p in d["planches"]:
+        expect(page.locator(f'button[data-val="{p}"]')).to_have_attribute("aria-pressed", "true")
+
+
+def test_tout_valider_qui_echoue_dit_qu_il_n_a_rien_valide(page, trois_planches):
+    """Le serveur valide tout ou rien : un échec ne se lit plus « N validées avant
+    l'échec », mais « aucune », et l'écran le dit là où l'on a agi."""
+    d = trois_planches
+    page.route(f"**/api/albums/{d['album']}/valider", lambda route: route.fulfill(
+        status=409, content_type="application/json",
+        body='{"detail": "base occupée (joué)"}'))
+    page.on("dialog", lambda dlg: dlg.accept())
+    page.goto(d["base"] + "/corpus", wait_until="networkidle")
+    _ouvrir_album(page, "Trois")
+    page.locator("#detail-validate-all").click()
+    msg = page.locator("#detail-valider-msg")
+    expect(msg).to_have_text("Aucune planche validée : base occupée (joué)", timeout=5000)
+    expect(msg).to_have_class(re.compile(r"\berreur\b"))
+
+
+def test_un_lot_nomme_ses_albums_et_ses_erreurs_se_lisent(page, calques):
+    """Chaque lot dit SUR QUOI il travaille — ses albums, ou « N planches de « Titre » » —,
+    lu dans `albums` que `GET /api/jobs` rend ; et ses erreurs s'ouvrent sur place. Le
+    serveur est remplacé : ce test garde ce que l'écran fait de la réponse ; ce que la
+    route rend, et à qui, se garde dans `tests/test_validation_lot.py`."""
+    d = calques
+    lots = [
+        {"id": 7, "passes": ["segmenter", "bulles"], "total": 2, "done": 2, "current": None,
+         "status": "termine", "errors": [{"planche_id": 31, "passe": "bulles",
+                                          "erreur": "moteur en panne (joué)"}],
+         "albums": [{"id": 1, "titre": "Tintin", "nb_planches": 2}]},
+        {"id": 6, "passes": ["ocr"], "total": 3, "done": 3, "current": None,
+         "status": "termine", "errors": [],
+         "albums": [{"id": 1, "titre": "Tintin", "nb_planches": 1},
+                    {"id": 2, "titre": "Île", "nb_planches": 2}]},
+    ]
+    page.route("**/api/jobs", lambda route: route.fulfill(
+        status=200, content_type="application/json", body=json.dumps(lots))
+        if route.request.method == "GET" else route.continue_())
+    page.goto(d["base"] + "/corpus", wait_until="networkidle")
+    jobs = page.locator("#jobs .job")
+    expect(jobs).to_have_count(2)
+    expect(jobs.nth(0).locator(".job-sujet")).to_have_text("2 planches de « Tintin »")
+    expect(jobs.nth(1).locator(".job-sujet")).to_have_text("« Tintin » et « Île » — 3 planches")
+    erreurs = jobs.nth(0).locator("details.job-erreurs")
+    expect(erreurs).to_be_visible()
+    erreurs.locator("summary").click()
+    expect(erreurs.locator("li")).to_have_text("Planche 31 · bulles : moteur en panne (joué)")
 
 
 # ── La collection en CALQUE (Hugo, 2026-10-16) ─────────────────────────────────────────

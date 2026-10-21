@@ -345,8 +345,29 @@
       ? "soi" : "demande";
   }
 
+  /* Ce sur quoi un lot travaille, en une ligne (UX-18) — lu dans `albums`, que
+     `GET /api/jobs` rend lot par lot ({id, titre, nb_planches}) et borne déjà à ce qu'on
+     lit. Un album : « 3 planches de « Titre » » ; plusieurs : leurs titres, trois au plus,
+     et le total des planches. Rien quand le lot ne nomme plus rien (ses planches ont été
+     détruites depuis) : l'écran garde alors « Lot #12 », sans inventer de sujet. */
+  const MAX_ALBUMS_NOMMES = 3;
+  function sujetDuLot(albums) {
+    const liste = (albums || []).filter((a) => a && a.titre);
+    if (!liste.length) return "";
+    const planches = (n) => `${n} planche${n > 1 ? "s" : ""}`;
+    const total = liste.reduce((s, a) => s + (a.nb_planches || 0), 0);
+    if (liste.length === 1) return `${planches(total)} de « ${liste[0].titre} »`;
+    const noms = liste.slice(0, MAX_ALBUMS_NOMMES).map((a) => `« ${a.titre} »`);
+    const reste = liste.length - noms.length;
+    const enumeres = reste
+      ? `${noms.join(", ")} et ${reste} autre${reste > 1 ? "s" : ""} album${reste > 1 ? "s" : ""}`
+      : `${noms.slice(0, -1).join(", ")} et ${noms[noms.length - 1]}`;
+    return `${enumeres} — ${planches(total)}`;
+  }
+
   return { ONGLETS, CLES_ONGLETS, ONGLET_PAR_LE_NOM, TRIS, MODES, plier, filtrerAlbums, trierCollections,
            droitsAlbum, actesCollection, aussiDans, libelleAlbums, comparer, libelleCommuns, lireAdresse,
            ecrireAdresse, offrirPrendreDuFonds, destinationsPrise, destinationParDefaut,
-           quiRepondra, reponsePrise, messageRejoindre, demandesARepondre, quiRecocherait };
+           quiRepondra, reponsePrise, messageRejoindre, demandesARepondre, quiRecocherait,
+           sujetDuLot };
 });

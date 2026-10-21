@@ -2363,6 +2363,10 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
 .job-echec .job-fill { background: var(--accent-red); }
 .job-line { display: flex; align-items: center; gap: .7692rem; }
 .job-state { margin-left: auto; color: var(--text-muted); font-size: .9231rem; }
+/* Ce sur quoi le lot travaille (UX-18), sur SA ligne : des titres d'album n'ont pas de
+   longueur bornée, et dans la ligne flexible du dessus ils pousseraient « Annuler » hors
+   du cadre à 320 px. */
+.job-sujet { margin-top: .3077rem; overflow-wrap: anywhere; }
 .job-err { color: var(--ink-red); }
 .job-bar { height: 5px; background: var(--bg-input); border-radius: 3px; margin-top: .4615rem; overflow: hidden; }
 .job-fill { height: 100%; background: var(--accent-blue); transition: width .3s; }

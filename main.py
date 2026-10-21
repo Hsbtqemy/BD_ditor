@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import logging
 import os
 import sqlite3
@@ -1894,6 +1895,44 @@ def delete_contribution(contribution_id: int, conn: sqlite3.Connection = Depends
 
 
 # =========================================================================== #
+# « Tout valider » : les planches d'un album validées en UN geste (UX-18)
+# =========================================================================== #
+@app.post("/api/albums/{album_id}/valider")
+def valider_album(album_id: int, conn: sqlite3.Connection = Depends(db),
+                  portee: autorisation.Portee = Depends(portee_courante)):
+    """Valide d'un coup toutes les planches de l'album qui ne le sont pas encore.
+
+    La Bibliothèque envoyait un `PATCH …/validation` par planche, l'un après l'autre —
+    122 pour le plus gros album de la capture du 2026-10-08 —, et un échec au milieu
+    laissait l'album à moitié validé. Ici, une transaction : tout, ou rien.
+
+    **Gardée et journalisée COMME la route unitaire**, dont elle n'est que la somme :
+    écrire dans l'album (`_get_album(ecriture=True)` pose la même `clause_album` que
+    `_get_planche(ecriture=True)` sur chacune de ses planches) ; un événement
+    `validation` sous `planches` PAR PLANCHE, et non un seul pour l'album — le journal
+    se lit planche par planche (le travail d'autrui d'une suppression, l'accord
+    inter-annotateurs), et un acte d'album n'y serait vu par personne. Le verrou n'y
+    change rien, pas plus qu'à la route unitaire : verrouiller protège des passes
+    automatiques, valider est un geste humain.
+
+    Une planche déjà validée n'est pas touchée : son horodatage reste celui de sa
+    validation, et elle ne laisse pas un second acte au journal. `UPDATE … RETURNING`
+    dit lesquelles ont changé, sans relire entre deux écritures concurrentes."""
+    _get_album(conn, portee, album_id, ecriture=True)
+    validees = [dict(r) for r in conn.execute(
+        "UPDATE planches SET validee = datetime('now') "
+        "WHERE album_id = ? AND validee IS NULL RETURNING id, validee", (album_id,))]
+    validees.sort(key=lambda v: v["id"])
+    for v in validees:
+        journal.journaliser(conn, "validation", "planches", v["id"],
+                            apres={"validee": True})
+    deja = conn.execute("SELECT COUNT(*) FROM planches WHERE album_id = ? "
+                        "AND validee IS NOT NULL", (album_id,)).fetchone()[0] - len(validees)
+    conn.commit()
+    return {"album_id": album_id, "validees": validees, "deja_validees": deja}
+
+
+# =========================================================================== #
 # Jobs : traitement par lot en arrière-plan (segmentation / bulles / OCR)
 # =========================================================================== #
 @app.post("/api/jobs", status_code=201)
@@ -1980,12 +2019,38 @@ def _job_visible(conn, portee: autorisation.Portee, job_id: int,
     return set(planches) <= autorisees
 
 
+def _lot_nomme(conn, portee: autorisation.Portee, snap: dict) -> dict:
+    """L'instantané d'un lot VISIBLE, augmenté de ce sur quoi il travaille (UX-18) :
+    `albums`, `[{id, titre, nb_planches}]` — chaque album touché, avec le nombre de SES
+    planches que le lot porte —, dans l'ordre où le lot les traite.
+
+    La Bibliothèque écrivait « Lot #12 · segmenter → bulles » sans rien de plus : un lot
+    lancé il y a une minute ne se reconnaissait plus. Nommer ses albums ne révèle rien
+    qu'on ne lise déjà — `_job_visible`, que l'appelant a consulté, exige que TOUTES ses
+    planches soient lisibles ; la lecture passe pourtant ENCORE par `clause_album`, pour
+    que ce nom ne dépende pas de l'ordre des vérifications chez l'appelant (la leçon de
+    `_job_visible` elle-même, CONC-1). Une planche détruite depuis ne nomme plus rien.
+
+    Hors de `pipeline.jobs` à dessein : le registre ne connaît que des identifiants, et
+    `planches_du_job` est une donnée d'autorisation qu'il ne publie pas. Les titres se
+    lisent au moment de la lecture — un album renommé se lit sous son nouveau nom."""
+    planches = jobs.planches_du_job(snap["id"]) or []
+    ou, params = portee.clause_album("p.album_id")
+    rows = conn.execute(
+        "SELECT a.id, a.titre, COUNT(*) AS nb_planches FROM planches p "
+        "JOIN albums a ON a.id = p.album_id "
+        f"WHERE p.id IN (SELECT value FROM json_each(?)) AND {ou} "
+        "GROUP BY a.id ORDER BY a.id", (json.dumps(planches), *params)).fetchall()
+    return {**snap, "albums": [dict(r) for r in rows]}
+
+
 @app.get("/api/jobs")
 def lister_jobs(conn: sqlite3.Connection = Depends(db),
                 portee: autorisation.Portee = Depends(portee_courante)):
     """Les lots en cours — filtrés : la progression d'un lot cite des planches, donc
     des albums, donc l'existence d'études qu'on ne devrait pas connaître."""
-    return [s for s in jobs.all_jobs() if _job_visible(conn, portee, s["id"])]
+    return [_lot_nomme(conn, portee, s) for s in jobs.all_jobs()
+            if _job_visible(conn, portee, s["id"])]
 
 
 @app.get("/api/jobs/{job_id}")
@@ -1994,7 +2059,7 @@ def etat_job(job_id: int, conn: sqlite3.Connection = Depends(db),
     snap = jobs.snapshot(job_id)
     if snap is None or not _job_visible(conn, portee, job_id):
         raise HTTPException(404, f"Job {job_id} introuvable")
-    return snap
+    return _lot_nomme(conn, portee, snap)
 
 
 @app.post("/api/jobs/{job_id}/annuler")
