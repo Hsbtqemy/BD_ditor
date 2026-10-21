@@ -94,6 +94,10 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   les accents), mais Entrée sans surlignage propose « Créer « etienne » », un quasi-doublon
   (`BDPropositions.homonymes` compare en minuscules, AVEC les accents). La question : l'accent
   distingue-t-il deux personnages ? Relevé par la relecture croisée du 2026-10-21, non joué
+  **Tranché par Hugo le 2026-10-21 : non, dans un même album l'accent ne distingue pas deux
+  personnages.** Le registre se range par SÉRIE et non par album : la règle à coder compare le
+  nom sans casse ni accents, dans la même série, et Entrée propose l'existant au lieu de créer.
+  Pour le push qui suit le lot 1
 - [ ] **La région des messages existe avant son premier message, sur les cinq surfaces** —
   attendu : le premier message d'une page est annoncé par un lecteur d'écran, mesuré avec
   l'un d'eux. Aujourd'hui la région naît AVEC son premier message, et ce premier message
