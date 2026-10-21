@@ -92,14 +92,18 @@
   const EN_TETE_REQUETE = "X-BD-Requete";
 
   /* POST/PUT/DELETE JSON. `opts.signal` : AbortController optionnel (annulation).
-     204 → null (pas de corps à parser). */
+     204 → null (pas de corps à parser).
+     UX-11 — un corps `FormData` part TEL QUEL, en multipart : le navigateur pose alors
+     lui-même le `Content-Type` et sa frontière. C'est le chemin d'un fichier téléversé,
+     pour que l'import n'écrive pas un `fetch` de plus, avec son en-tête à ne pas oublier. */
   async function apiSend(method, path, body, opts = {}) {
     const headers = { [EN_TETE_REQUETE]: "1" };
-    if (body) headers["Content-Type"] = "application/json";
+    const multipart = typeof FormData !== "undefined" && body instanceof FormData;
+    if (body && !multipart) headers["Content-Type"] = "application/json";
     const r = await fetch(path, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body: body ? (multipart ? body : JSON.stringify(body)) : undefined,
       signal: opts.signal,
     });
     if (!r.ok) throw erreurApi(r, await r.json().catch(() => ({})));

@@ -155,6 +155,23 @@ def test_le_dialogue_d_import_propose_exactement_la_liste_du_serveur():
         f"le dialogue propose {jetons}, le serveur accepte {list(IMG_EXTS)}")
 
 
+def test_l_import_en_lot_de_la_bibliotheque_propose_exactement_la_liste_du_serveur():
+    """UX-11 — la TROISIÈME copie de la liste : le sélecteur de l'import en lot, dans
+    `templates/corpus.html`. Même règle que celui de l'Atelier, et il doit porter
+    `multiple` — sans lui, le dialogue ne laisse choisir qu'un fichier, et le lot n'en est
+    plus un."""
+    source = (RACINE / "templates" / "corpus.html").read_text(encoding="utf-8")
+    balise = re.search(r'<input[^>]*id="bi-import-fichiers"[^>]*>', source)
+    assert balise, "`#bi-import-fichiers` introuvable dans templates/corpus.html"
+    assert re.search(r"\smultiple[\s>]", balise.group(0)), (
+        "`#bi-import-fichiers` ne porte pas `multiple`")
+    accept = re.search(r'accept="([^"]*)"', balise.group(0))
+    assert accept, "`#bi-import-fichiers` n'a pas d'attribut `accept`"
+    jetons = [j.strip() for j in accept.group(1).split(",") if j.strip()]
+    assert sorted(jetons) == sorted(IMG_EXTS), (
+        f"le dialogue propose {jetons}, le serveur accepte {list(IMG_EXTS)}")
+
+
 def test_le_PSD_n_est_ni_accepte_ni_decodable():
     """Nommément, parce que c'est le format de l'avis. Un contrôle qui ne cite personne
     ne dit pas ce qu'il protège."""

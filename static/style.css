@@ -2232,6 +2232,15 @@ mark { background: var(--accent-amber); color: var(--bg-deep); border-radius: 2p
 .reponse.demande { color: var(--accent-amber); }
 .reponse.refuse { color: var(--ink-red); }
 .bi-relfiltre { margin: .4rem 0; }
+/* UX-11 — l'import en lot de la fiche d'un album : le bouton, puis, à sa droite, l'état là
+   où l'on a agi — « n sur N » et sa barre pendant l'import, le bilan ensuite, et sous eux
+   les fichiers refusés, chacun nommé. Vide, la ligne d'état n'a aucune largeur. */
+.bi-import { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; margin: .4rem 0; }
+.bi-import-etat { overflow-wrap: anywhere; }
+.bi-import-etat.ton-erreur { color: var(--ink-red); }
+.bi-import progress { width: 10rem; max-width: 100%; }
+.bi-import-echecs { flex-basis: 100%; margin: 0; padding-left: 1.2rem; font-size: .85rem;
+  overflow-wrap: anywhere; }
 .bi-perdues { margin: .2rem 0; }
 .val-lu { color: var(--accent-green); font-weight: 700; }
 /* Les gestes d'une planche suivent son NOM (Hugo, 2026-10-16) : deux par deux quand la

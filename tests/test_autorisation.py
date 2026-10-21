@@ -372,6 +372,37 @@ def test_lecture_seule_ne_permet_pas_d_ecrire(client, db_path, deux_albums, derr
                         json={"statut": "annotee"}, headers=h).status_code == 404
 
 
+def test_importer_une_planche_en_lecture_seule_est_refuse_par_le_serveur(
+        client, db_path, data_dir, deux_albums, derriere_proxy, png_bytes):
+    """UX-11 — la route d'import appelée DIRECTEMENT, sans l'écran, par un compte qui ne
+    fait que LIRE la collection de l'album. La Bibliothèque ne lui offre pas le bouton
+    (`ecrivable` faux), et ce n'est pas ce qui le protège : la garde est sur l'acte. C'est
+    le seul test de ce chantier qui ne peut pas échouer en se fermant — une route ouverte
+    se voit, un bouton masqué à tort non.
+
+    404 et non 403 : l'album est lisible, mais une DONNÉE qu'on ne peut écrire répond
+    « introuvable » (AUTH-2) — l'accesseur gardé en écriture ne distingue pas. Rien n'entre :
+    ni planche en base, ni fichier dans `corpus/` ou `derivatives/`."""
+    _ouvrir(db_path, deux_albums["c1"], "bob", niveau="lecture")
+    h = {"Remote-User": "bob"}
+    aid = deux_albums["a1"]["id"]
+    assert client.get(f"/api/albums/{aid}/planches", headers=h).status_code == 200
+    avant = sorted(p.as_posix() for p in data_dir.rglob("*") if p.is_file())
+    r = client.post(f"/api/albums/{aid}/import", headers=h,
+                    files={"file": ("p2.png", png_bytes, "image/png")})
+    assert r.status_code == 404, r.text
+    assert [p["id"] for p in client.get(f"/api/albums/{aid}/planches", headers=h).json()] \
+        == [deux_albums["pl1"]["id"]]
+    apres = sorted(p.as_posix() for p in data_dir.rglob("*") if p.is_file())
+    assert [p for p in apres if "/corpus/" in p or "/derivatives/" in p] == \
+        [p for p in avant if "/corpus/" in p or "/derivatives/" in p]
+    # Le même geste, une fois l'écriture accordée, passe : le refus venait du niveau.
+    _ouvrir(db_path, deux_albums["c1"], "bob", niveau="ecriture")
+    r = client.post(f"/api/albums/{aid}/import", headers=h,
+                    files={"file": ("p2.png", png_bytes, "image/png")})
+    assert r.status_code == 201, r.text
+
+
 def test_ecriture_permet_d_ecrire(client, db_path, deux_albums, derriere_proxy):
     _ouvrir(db_path, deux_albums["c1"], "bob", niveau="ecriture")
     r = client.patch(f"/api/planches/{deux_albums['pl1']['id']}/statut",

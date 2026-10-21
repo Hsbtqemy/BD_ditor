@@ -1227,7 +1227,8 @@ function renderDetail() {
     : state.planches;
   const videMsg = state.planches.length
     ? "Aucune planche pour ce filtre de relecture."
-    : "Aucune planche. Importez-en depuis l'Atelier, d'un fichier ou de ShareDocs.";
+    : (a.ecrivable ? "Aucune planche : « ⤓ Importer des planches… » les fait entrer."
+                   : "Aucune planche.");
   const planchesRows = planches.length
     ? planches.map((p) => `
         <tr>
@@ -1285,6 +1286,7 @@ function renderDetail() {
       </div>
       <p id="detail-valider-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
       ${htmlRangement()}
+      ${htmlImport(a)}
       ${barreLot("planches", coches)}
       ${B.perdues ? `<p class="muted small bi-perdues">La sélection de ${pluriel(B.perdues.n, "planche")} de « ${esc(B.perdues.titre)} » a été vidée en changeant d'album.</p>` : ""}
       <div class="bi-relfiltre">
@@ -1308,9 +1310,115 @@ function renderDetail() {
       </div>
     </section>`;
   $("#rel-filter").value = state.relFilter;                       // reflète l'état courant
+  if (IMPORT.focus) { IMPORT.focus = false; const b = $("#bi-importer"); if (b) b.focus(); }
   loadDetailContribs(a.id);
   rangementDeLAlbum(a.id, ecrire);
 }
+
+/* ── Importer des planches, EN LOT (UX-11) ─────────────────────────────────────────────
+   Le geste qui CONSTITUE un corpus vit ici, à côté du lot qui le traite : l'Atelier garde
+   son import à l'unité, pour la page oubliée pendant qu'on annote. Les deux passent par la
+   même route, `POST /api/albums/{id}/import`, un fichier par requête (`lib/import-planches.js`
+   dit pourquoi, et range les fichiers dans l'ordre de leurs noms).
+
+   Le bouton n'est offert que si le serveur dit l'album `ecrivable` — la question exacte de
+   la route (`_get_album(…, ecriture=True)`) —, et ce n'est pas une garde : la route refuse
+   d'elle-même. Un import dure des minutes ; son état vit donc HORS de la fiche (`IMPORT`),
+   que chaque geste redessine, et la fiche le relit en se dessinant. Un seul à la fois. */
+const IMPORT = { albumId: null, titre: "", enCours: false, arreter: false, etat: null,
+                 bilan: null, focus: false };
+
+function htmlImport(a) {
+  if (!a.ecrivable) return "";
+  const ici = IMPORT.albumId === a.id;
+  const ailleurs = IMPORT.enCours && !ici;
+  const titre = ailleurs ? `Un import est en cours dans « ${IMPORT.titre} »`
+    : "Choisir des images : elles entrent dans l'ordre de leurs noms, à la suite des planches";
+  let etat = "", suite = "";
+  if (ici && IMPORT.enCours && IMPORT.etat) {
+    etat = esc("Import : " + BDImport.libelleProgression(IMPORT.etat));
+    suite = `<progress id="bi-import-barre" max="${IMPORT.etat.total}" value="${IMPORT.etat.fait}"
+        aria-label="Avancement de l'import"></progress>
+      <button class="lf-lien small" type="button" id="bi-import-arreter"
+        title="L'envoi en cours va jusqu'au bout ; les suivants ne partent pas"
+        ${IMPORT.arreter ? "disabled" : ""}>${IMPORT.arreter ? "Arrêt…" : "Arrêter"}</button>`;
+  } else if (ici && IMPORT.bilan) {
+    etat = esc(BDImport.libelleBilan(IMPORT.bilan));
+    if (IMPORT.bilan.echecs.length) {
+      suite = `<ul class="bi-import-echecs" aria-label="Fichiers refusés">${IMPORT.bilan.echecs.map((e) =>
+        `<li><b>${esc(e.nom)}</b> : ${esc(e.message)}</li>`).join("")}</ul>`;
+    }
+  }
+  const ton = ici && !IMPORT.enCours && IMPORT.bilan ? ` ton-${BDImport.tonBilan(IMPORT.bilan)}` : "";
+  return `<div class="bi-import" id="bi-import">
+    <button class="ghost small" type="button" id="bi-importer" title="${esc(titre)}"
+      ${IMPORT.enCours ? "disabled" : ""}>⤓ Importer des planches…</button>
+    <span id="bi-import-etat" class="bi-import-etat small${ton}" role="status" aria-live="polite">${etat}</span>
+    ${suite}
+  </div>`;
+}
+
+/* Ce qui change pendant l'import, sans redessiner la fiche : la barre et la ligne d'état. */
+function majImport() {
+  if (state.openId !== IMPORT.albumId || !IMPORT.etat) return;
+  const barre = $("#bi-import-barre"), ligne = $("#bi-import-etat");
+  if (!barre || !ligne) { renderDetail(); return; }
+  barre.max = IMPORT.etat.total;
+  barre.value = IMPORT.etat.fait;
+  // L'état final (aucun nom) ne se dit pas : le bilan le remplace aussitôt.
+  if (IMPORT.etat.nom) ligne.textContent = "Import : " + BDImport.libelleProgression(IMPORT.etat);
+}
+
+async function importerPlanches(albumId, fichiers) {
+  const a = state.albums.find((x) => x.id === albumId);
+  if (!a || IMPORT.enCours || !fichiers.length) return;
+  Object.assign(IMPORT, { albumId, titre: a.titre, enCours: true, arreter: false,
+                          etat: { fait: 0, total: fichiers.length,
+                                  nom: BDImport.ordonner(fichiers)[0].name, echecs: 0 },
+                          bilan: null, focus: false });
+  if (state.openId === albumId) {
+    // Le bouton se grise pendant l'import : le focus qu'il portait passe à « Arrêter ».
+    const actif = document.activeElement;
+    const dedans = !!(actif && actif.closest && actif.closest("#bi-import"));
+    renderDetail();
+    const arreter = $("#bi-import-arreter");
+    if (dedans && arreter) arreter.focus();
+  }
+  const envoyer = (f) => {
+    const fd = new FormData();
+    fd.append("file", f, f.name);
+    return apiSend("POST", `/api/albums/${albumId}/import`, fd);
+  };
+  let bilan;
+  try {
+    bilan = await BDImport.importerEnLot(fichiers, envoyer, {
+      surProgres: (etat) => { IMPORT.etat = etat; majImport(); },
+      doitArreter: () => IMPORT.arreter,
+    });
+  } finally {
+    // Le focus revient au bouton s'il était dans le bloc : la fiche va se redessiner.
+    const actif = document.activeElement;
+    IMPORT.focus = state.openId === albumId && !!(actif && actif.closest && actif.closest("#bi-import"));
+    IMPORT.enCours = false;
+    IMPORT.bilan = bilan || null;
+  }
+  // La liste (le compte de planches) et la fiche, sans recharger la page. Une fiche
+  // ouverte sur un autre album n'est pas déplacée : le bilan s'y dit par un toast.
+  await loadAlbums();
+  loadCorpus();                          // les chiffres de la bande d'outils
+  if (state.openId !== albumId) {
+    const texte = `« ${a.titre} » : ${BDImport.libelleBilan(bilan)}`;
+    const ton = BDImport.tonBilan(bilan);
+    if (ton === "succes") toast(texte, "success");
+    else if (ton === "erreur") toast(texte, "error");
+    else toast(texte);
+  }
+}
+
+/* Un import qui part avec la page s'interrompt au fichier en cours : le navigateur le dit. */
+window.addEventListener("beforeunload", (e) => {
+  if (IMPORT.enCours) { e.preventDefault(); e.returnValue = ""; }
+});
 
 /* La validation, en LECTURE, pour qui ne fait que lire l'album : l'état, sans geste. */
 function validLu(p) {
@@ -3030,6 +3138,18 @@ function brancherFiche() {
       return;
     }
     if (t.closest("#detail-validate-all")) { validateAllAlbum(); return; }
+    if (t.closest("#bi-importer")) {
+      const champ = $("#bi-import-fichiers");
+      champ.dataset.album = String(state.openId);
+      champ.click();
+      return;
+    }
+    if (t.closest("#bi-import-arreter")) {
+      IMPORT.arreter = true;
+      const b = $("#bi-import-arreter");
+      if (b) { b.disabled = true; b.textContent = "Arrêt…"; }
+      return;
+    }
     const lancer = t.closest("[data-lancer]");
     if (lancer) { runBatch(lancer.dataset.lancer); return; }
     const vider = t.closest("[data-vider]");
@@ -3127,6 +3247,16 @@ function brancherFiche() {
 
 function setup() {
   setupBack();
+  // UX-11 — le champ vit HORS de la fiche, que chaque geste redessine : une sélection en
+  // cours ne doit pas perdre son champ. L'album est celui dont la fiche a ouvert le
+  // sélecteur.
+  $("#bi-import-fichiers").addEventListener("change", (e) => {
+    const champ = e.target;
+    const fichiers = Array.from(champ.files || []);
+    const albumId = Number(champ.dataset.album || state.openId);
+    champ.value = "";
+    importerPlanches(albumId, fichiers);
+  });
   // COL-3, tranche 3a — la base présélectionnée, sauf si l'on vient d'une collection ouverte.
   $("#btn-new").onclick = () => {
     const f = ficheCourante();

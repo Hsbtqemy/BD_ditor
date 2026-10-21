@@ -942,6 +942,42 @@ def test_a11y_bibliotheque_en_calque(page, seeded, theme):
     assert not viol, f"Bibliothèque/fiche d'album en cartes, 375 px [{theme}] :\n{_fmt(viol)}"
 
 
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y_import_en_lot(page, seeded, theme):
+    """UX-11 — l'import en lot de la fiche d'un album, audité dans ses deux états : PENDANT
+    (la barre, « n sur N », « Arrêter ») et APRÈS (le bilan au ton d'un import partiel, et
+    la liste des fichiers refusés). La requête d'import du second fichier est tenue tant que
+    l'audit de l'état « pendant » n'est pas fini."""
+    _theme(page, theme)
+    page.set_viewport_size({"width": 1280, "height": 1400})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    _ouvrir_album(page)
+    vues = []
+
+    def tenir_la_seconde(route):
+        vues.append(route)
+        if len(vues) != 2:
+            route.continue_()
+    page.route("**/api/albums/*/import", tenir_la_seconde)
+    with page.expect_file_chooser() as choix:
+        page.click("#bi-importer")
+    choix.value.set_files([
+        {"name": "b.png", "mimeType": "image/png", "buffer": make_png(300, 300)},
+        {"name": "a.png", "mimeType": "image/png", "buffer": b"pas une image"},
+    ])
+    page.wait_for_selector("#bi-import-barre", timeout=5000)
+    expect(page.locator("#bi-import-etat")).to_have_text("Import : 2 sur 2 — b.png · 1 échec",
+                                                         timeout=5000)
+    viol = _audit(page)
+    assert not viol, f"Bibliothèque/import en cours [{theme}] :\n{_fmt(viol)}"
+    vues[1].continue_()
+    expect(page.locator("#bi-import-etat")).to_have_text("1 planche importée, 1 échec",
+                                                         timeout=15000)
+    expect(page.locator(".bi-import-echecs li")).to_have_count(1)
+    viol = _audit(page)
+    assert not viol, f"Bibliothèque/bilan d'import [{theme}] :\n{_fmt(viol)}"
+
+
 def test_corpus_appartenance_album(page, seeded):
     """L'appartenance N-N depuis l'UI — la case qu'AUTH-2 avait laissée ouverte, faute de
     propriétaire pour dire qui a le droit de déplacer quoi.

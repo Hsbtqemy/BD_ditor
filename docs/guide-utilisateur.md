@@ -33,8 +33,8 @@ pour de bon**, parce qu'un moteur présent sur le disque peut très bien refuser
 
 | Surface | Adresse | Ce qu'on y fait |
 |---|---|---|
-| **Bibliothèque** | `/corpus` | une **liste** et une **fiche** : à gauche les collections du **projet** où vous travaillez — la case d'une collection filtre les albums, son nom ouvre sa fiche — puis ses albums ; à droite la fiche ouverte. Créer et décrire les albums et les collections, **supprimer** un album (de sa collection, ou définitivement), régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, lancer les traitements par lot, suivre l'avancement planche par planche |
-| **Atelier** | `/` | tout ce qui se fait sur une planche : importer les images d'un album qui existe, corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
+| **Bibliothèque** | `/corpus` | une **liste** et une **fiche** : à gauche les collections du **projet** où vous travaillez — la case d'une collection filtre les albums, son nom ouvre sa fiche — puis ses albums ; à droite la fiche ouverte. Créer et décrire les albums et les collections, **supprimer** un album (de sa collection, ou définitivement), régler **qui entre** dans une collection et ce qu'il peut y faire, régler sa diffusion et l'exporter, **importer les planches d'un album en lot**, lancer les traitements par lot, suivre l'avancement planche par planche |
+| **Atelier** | `/` | tout ce qui se fait sur une planche : ajouter une image à l'album affiché, corriger le découpage, transcrire, annoter, relire la grammaire, exporter |
 | **Recherche** | `/recherche` | interroger les dialogues, les notes et les tags ; chaque résultat rouvre l'Atelier pile sur la région |
 | **Exploration** | `/exploration` | mesurer : distributions, concordance, croisements, comparaison de deux sous-corpus ; documenter le vocabulaire |
 | **Administration** | `/administration` | ce qui porte sur l'**instance** et non sur un album : quels projets existent et qui y entre, ce que l'instance détient (**le fonds**, et les suppressions qu'on lui demande), quels comptes et quels groupes existent — et, pour un administrateur, qui entre dans quelle collection —, la version servie, l'état des moteurs |
@@ -70,7 +70,7 @@ entre directement à l'étape 4, 5 ou 6 selon ce qui reste à faire : la Bibliot
 pour chaque planche son statut, sa validation et son avancement de relecture.
 
 ### Étape 1 — Constituer le corpus
-**Bibliothèque · `+ Nouvel album` — puis Atelier, menu `⇅ Import / Export` pour les images**
+**Bibliothèque · `+ Nouvel album`, puis `⤓ Importer des planches…` dans la fiche de l'album**
 
 **L'album se crée dans la Bibliothèque, et seulement là.** C'est elle qui vous demande dans
 quelle collection il entre — donc dans quel projet —, et l'application retient qui l'a
@@ -79,16 +79,28 @@ supprimer vous-même si vous l'avez importé par erreur (§4, *Bibliothèque*, �
 album »).
 L'Atelier ne crée plus d'albums : le bouton `＋` de sa barre latérale a disparu.
 
-**L'import des images, lui, se fait depuis l'Atelier, dans un album qui existe et où vous
-écrivez.** Choisissez l'album dans la liste *Album* de la barre latérale, puis, dans le
-menu *⇅ Import / Export* : *⤓ Importer des images…* pour votre disque — les images entrent
-dans l'album affiché —, ou *🖼 Depuis ShareDocs…* pour parcourir un dossier Huma-Num distant
-et importer une sélection entière. Le formulaire ShareDocs propose, sous *Destination*, les
+**Les images d'un album entrent EN LOT depuis sa fiche, dans la Bibliothèque**, si vous
+écrivez dans l'album : *⤓ Importer des planches…* ouvre un sélecteur où l'on choisit autant
+de fichiers qu'on veut. Ils partent **un par un, dans l'ordre de leurs noms** — pas dans
+celui que montre le sélecteur ; les nombres s'y lisent comme des nombres, `p2` avant
+`p10` —, et chacun devient la planche suivante de l'album. À côté du bouton, l'import dit
+où il en est (*Import : 3 sur 50 — p003.tif*) ; un scan lourd prend plusieurs secondes,
+un album entier plusieurs minutes, et la page doit rester ouverte jusqu'au bout.
+*Arrêter* laisse finir le fichier en cours et n'envoie pas les suivants. À la fin, un
+bilan — *48 planches importées, 2 échecs* — et, sous lui, chaque fichier refusé avec sa
+raison : un refus ne défait pas les planches déjà entrées et n'empêche pas les suivantes.
+Réimportez les fichiers refusés une fois corrigés : ils s'ajoutent à la suite. Qui ne fait
+que lire l'album ne voit pas le bouton.
+
+**L'Atelier garde l'import à l'unité**, pour la page oubliée pendant qu'on annote : choisissez
+l'album dans la liste *Album* de la barre latérale, puis, dans le menu *⇅ Import / Export* :
+*⤓ Importer des images…* pour votre disque — l'image entre dans l'album affiché —, ou
+*🖼 Depuis ShareDocs…* pour parcourir un dossier Huma-Num distant et importer une sélection
+entière. Le formulaire ShareDocs propose, sous *Destination*, les
 seuls albums où vous écrivez ; si vous n'en avez aucun, il le dit — *Aucun album où vous
 écrivez : un album se crée dans la Bibliothèque, avec sa collection, puis ses planches
 s'importent ici.* — et *Importer* reste éteint. Pour ajouter des planches à un album déjà
-rempli, c'est le même geste : elles s'ajoutent à la suite. La Bibliothèque gère
-l'inventaire, pas l'entrée des fichiers.
+rempli, c'est le même geste : elles s'ajoutent à la suite.
 
 **Sept formats sont acceptés, et rien d'autre** : TIFF et JPEG — les deux du corpus —, puis
 JPEG 2000, PNG, BMP, GIF et WebP. La liste est courte exprès : elle borne aussi ce que le
@@ -459,6 +471,10 @@ L'inventaire et le poste de commande, en **une liste et une fiche** côte à cô
   un seul bouton qui porte son état : ✔ gris tant que la planche ne l'est pas, ✔ vert enfoncé
   quand elle l'est, le même clic dans les deux sens. *✔ Tout valider* dit où il en est, et un
   échec au milieu dit combien de planches étaient déjà validées.
+- **Importer des planches en lot** : *⤓ Importer des planches…*, dans la fiche d'un album où
+  vous écrivez. Autant de fichiers qu'on veut, envoyés un par un dans l'ordre de leurs noms ;
+  la ligne à côté du bouton dit *n sur N* et le fichier en cours, puis le bilan, et nomme
+  chaque fichier refusé. Cf. étape 1.
 - **Relecture** : une pastille par planche, et un filtre pour n'afficher que les planches à
   faire, en cours ou faites.
 - **Traitements par lot** : cocher des albums (onglet *Albums* d'une collection) ou des
@@ -795,7 +811,8 @@ ailleurs. Touchez-la : elle dit à qui s'adresser. Un administrateur peut la sup
 
 **Le bouton `＋` de l'Atelier a disparu.**
 Un album se crée désormais dans la Bibliothèque (`+ Nouvel album`), qui demande sa
-collection. Ses images s'importent ensuite depuis l'Atelier (étape 1).
+collection. Ses images s'importent ensuite depuis sa fiche, dans la Bibliothèque
+(étape 1).
 
 **Je suis entré dans un projet et je n'y vois rien.**
 Entrer dans un projet n'ouvre que sa collection de base, et seulement si le projet l'a

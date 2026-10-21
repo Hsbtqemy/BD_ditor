@@ -102,6 +102,12 @@
       <!-- La fiche : le projet, une collection, une comparaison, ou un album. -->
       <div class="lf-fiche bi-fiche" id="biblio-fiche"></div>
     </div>
+    <!-- UX-11 — le sélecteur de l'import en lot, ouvert par « ⤓ Importer des planches… » de
+         la fiche d'un album. HORS de la fiche, que chaque geste redessine. `accept` est la
+         liste du serveur (`config.IMG_EXTS`), confrontée par tests/test_formats_image.py. -->
+    <input type="file" id="bi-import-fichiers" multiple hidden
+           accept=".tif,.tiff,.jpg,.jpeg,.jp2,.j2k,.jpf,.jpx,.jpc,.j2c,.png,.bmp,.gif,.webp"
+           aria-label="Images des planches à importer">
   </main>
 
   <!-- Modale création / édition d'album. UX-18 : elle reste — elle porte les métadonnées,
@@ -215,6 +221,7 @@
 <script src="/static/lib/qui-entre.js"></script>
 <script src="/static/lib/suppression.js"></script>
 <script src="/static/lib/bibliotheque.js"></script>
+<script src="/static/lib/import-planches.js"></script>
 <script src="/static/corpus.js"></script>
 </body>
 </html>
