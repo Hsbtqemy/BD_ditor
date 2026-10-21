@@ -17,7 +17,11 @@ const state = {
   searchGen: 0,   // jeton de fraîcheur : ignore les réponses de recherche périmées
 };
 
-const INITIAL_QS = location.search;   // état de départ (avant que search() ne réécrive l'URL)
+// INFRA-5 — l'état de départ (avant que search() ne réécrive l'URL) : celui de l'adresse
+// s'il y en a un, sinon — on arrive par le menu — la dernière recherche de cet onglet,
+// gardée en stockage de SESSION. L'adresse l'emporte toujours ; cf. static/lib/nav.js.
+const STOCKAGE = Nav.stockageDeSession(window);
+const INITIAL_QS = Nav.etatDeDepart(location.search, STOCKAGE, "recherche").qs;
 // `retour` n'est suivi que s'il vise une page interne (cf. static/lib/nav.js → anti
 // open-redirect/XSS).
 const RETOUR = Nav.safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));   // d'où l'on vient (drill Exploration)
@@ -143,6 +147,7 @@ function search() {
   const display = new URLSearchParams(p);
   if (RETOUR) display.set("retour", RETOUR);
   history.replaceState(null, "", [...display].length ? "?" + display.toString() : location.pathname);
+  Nav.memoriser(STOCKAGE, "recherche", display.toString());   // INFRA-5 : vide compris
   if (vide) {
     $("#results").innerHTML =
       '<div class="search-hint">Tapez un mot-clé, ou choisissez un album / type / tag / facette grammaticale.</div>';

@@ -8,7 +8,11 @@
 "use strict";
 
 // $, apiGet, esc : lib/common.js (chargé avant ce script).
-const INITIAL_QS = location.search;
+// INFRA-5 — l'état de départ : celui de l'adresse s'il y en a un, sinon — on arrive par
+// le menu — la dernière vue de cet onglet, gardée en stockage de SESSION. L'adresse
+// l'emporte toujours (un deep-link de concordance reste prévisible) ; cf. static/lib/nav.js.
+const STOCKAGE = Nav.stockageDeSession(window);
+const INITIAL_QS = Nav.etatDeDepart(location.search, STOCKAGE, "exploration").qs;
 // `retour` validé : page interne seulement (cf. static/lib/nav.js → anti open-redirect/XSS).
 const RETOUR = Nav.safeRetour(new URLSearchParams(INITIAL_QS).get("retour"));   // d'où l'on vient (si inbound)
 const UPOS = ["ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM",
@@ -286,7 +290,9 @@ function exporterAnalyse() {
 
 /* ---------------- Exécution ---------------- */
 function run() {
-  history.replaceState(null, "", "?" + stateParams().toString());
+  const etat = stateParams().toString();
+  history.replaceState(null, "", "?" + etat);
+  Nav.memoriser(STOCKAGE, "exploration", etat);   // INFRA-5
   const v = vue();
   $("#dist").hidden = v !== "distribution";
   $("#comparaison").hidden = v !== "comparaison";

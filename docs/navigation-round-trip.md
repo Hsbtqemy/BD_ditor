@@ -15,7 +15,8 @@ rouvre exactement au même endroit.
 
 Chaque surface **encode son état dans la query string** et le **restaure au
 chargement**. Conséquence : un reload, un partage de lien ou un retour navigateur
-retombent sur le même état. Aucune session serveur, aucun `localStorage` requis.
+retombent sur le même état. Aucune session serveur, aucun `localStorage` requis (la
+mémoire de session de l'invariant 3 n'est qu'un confort, jamais une condition).
 
 | Surface | Paramètres encodés | Écrit l'URL | Restaure au chargement |
 |---|---|---|---|
@@ -33,6 +34,18 @@ d'origine. Toute lecture du deep-link passe par `INITIAL_QS`, jamais par
 fonctions d'écriture reconstruisent l'URL à partir de zéro ; elles **doivent
 re-poser `retour`** (sinon le bouton « ← Retour » meurt au premier rendu). C'est
 le cas de `syncUrl()` (Visionneuse) et `stateParams()` (Exploration).
+
+**Invariant 3 — la mémoire de session ne complète qu'une adresse NUE** (INFRA-5,
+2026-10-21). L'URL couvre le rechargement et le partage ; revenir sur la Recherche ou
+l'Exploration **par le menu** repartait d'un état vide. Chacune des deux mémorise donc
+son dernier état dans `sessionStorage` (clé `bd-etat:<page>`, propre à l'onglet) à
+chaque écriture d'URL, et `INITIAL_QS` devient `Nav.etatDeDepart(location.search, …)` :
+une adresse qui porte un état est servie telle quelle — **l'URL reste la source de
+vérité**, et un deep-link de concordance reste prévisible —, seule une adresse sans
+paramètre (ou avec `retour` seul, qui est un contexte et non un état) reprend la
+mémoire. `retour` ne se mémorise jamais. Le stockage peut manquer (navigation privée,
+site bloqué, quota) : toute lecture et toute écriture sont sous `try/catch`, et la page
+retombe sur l'état vide. La logique est dans `static/lib/nav.js`, sous `node --test`.
 
 ## 3. La chaîne `retour`
 

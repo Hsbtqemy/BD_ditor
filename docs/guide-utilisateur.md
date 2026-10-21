@@ -764,6 +764,11 @@ même projet, ou deux projets que vous lisez : la Recherche porte sur tout ce qu
 et chaque copie a son texte. Ce double compte tient jusqu'à ce que la Recherche et
 l'Exploration soient bornées au projet (tranche 4 de COL-3).
 
+**Revenir par le menu reprend la dernière recherche** de l'onglet, filtres compris ; un lien
+qui porte sa propre recherche — partagé, ou venu de l'Exploration — l'emporte toujours. Rien
+n'est retenu d'un onglet à l'autre, ni après sa fermeture (et rien du tout en navigation
+privée, où la page repart simplement vide).
+
 Elle porte sur les tags **sans distinguer leur portée** : un mot peut faire sortir une de vos
 régions parce qu'elle porte un tag local à une collection que vous ne lisez pas — le tag ne
 vous est pas montré pour autant, et rien ne sort d'une région hors de votre portée. Limite
@@ -776,7 +781,9 @@ catégorie grammaticale, **provenance** (auto / corrigé / validé), tag, locute
 provenance est celui qui permet de ne mesurer que sur ce qui a été relu par un humain.
 
 Comme la Recherche, elle porte sur tout ce que vous lisez : **un document dont vous lisez deux
-copies y compte deux fois**, jusqu'à la tranche 4 de COL-3.
+copies y compte deux fois**, jusqu'à la tranche 4 de COL-3. Et comme elle, revenue par le
+menu, elle reprend la dernière vue de l'onglet et ses filtres ; un lien qui porte sa vue
+l'emporte.
 
 Le panneau **📖 Lexique** liste tout le vocabulaire — domaines, dimensions, valeurs, tags —
 avec pour chacun sa définition, sa note de portée, son état et sa portée d'appartenance, plus

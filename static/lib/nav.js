@@ -16,5 +16,64 @@
   const safeRetour = (v) =>
     (typeof v === "string" && /^\/(?![/\\])/.test(v)) ? v : null;
 
-  return { safeRetour };
+  /* ── Reprise d'état par la session (INFRA-5) ──────────────────────────────────────
+     L'adresse couvre le rechargement et le partage ; revenir sur la Recherche ou
+     l'Exploration PAR LE MENU, lui, repartait d'un état vide. La page mémorise donc son
+     dernier état dans le stockage de SESSION — propre à l'onglet, perdu à sa fermeture :
+     deux onglets ne se volent pas leur recherche — et le reprend quand on arrive sans
+     rien dire.
+
+     L'ADRESSE L'EMPORTE TOUJOURS. Une adresse qui porte un état — un lien partagé, le
+     rechargement, un deep-link de concordance (B2) — est servie telle quelle ; la
+     mémoire ne sert qu'à une adresse NUE. Sans cette règle, un lien envoyé s'ouvrirait
+     sur la dernière recherche de qui le reçoit.
+
+     `retour` n'est pas un état mais un CONTEXTE d'arrivée (d'où l'on vient) : il ne
+     rend pas une adresse explicite, ne se mémorise pas — revenu par le menu, un
+     « ← Retour » d'une visite passée ne mènerait nulle part de voulu — et celui de
+     l'adresse est gardé quand la mémoire la complète.
+
+     Le stockage peut MANQUER : navigation privée, données de site bloquées, quota. Son
+     accès même peut lever (`window.sessionStorage` jette une SecurityError quand le site
+     est bloqué). Toute lecture et toute écriture passent donc sous try/catch, et la page
+     dégrade vers ce qu'elle faisait avant : l'état vide. */
+  const CLE_ETAT = "bd-etat:";
+  const CONTEXTE = ["retour"];
+
+  function stockageDeSession(fenetre) {
+    try { return (fenetre && fenetre.sessionStorage) || null; } catch (e) { return null; }
+  }
+
+  function sansContexte(qs) {
+    const p = new URLSearchParams(qs || "");
+    for (const k of CONTEXTE) p.delete(k);
+    return p.toString();
+  }
+
+  function adresseExplicite(qs) {
+    return [...new URLSearchParams(qs || "").keys()].some((k) => !CONTEXTE.includes(k));
+  }
+
+  /* L'état de départ d'une page : `{ qs, source }`, `source` ∈ adresse | memoire | vide.
+     `qs` se lit comme `location.search` (avec son « ? », ou vide). */
+  function etatDeDepart(qs, stockage, page) {
+    const adresse = qs || "";
+    if (adresseExplicite(adresse)) return { qs: adresse, source: "adresse" };
+    let memo = null;
+    try { memo = stockage ? stockage.getItem(CLE_ETAT + page) : null; } catch (e) { memo = null; }
+    const m = new URLSearchParams(typeof memo === "string" ? sansContexte(memo) : "");
+    if (![...m.keys()].length) return { qs: adresse, source: "vide" };
+    const venu = new URLSearchParams(adresse);
+    for (const k of CONTEXTE) if (venu.has(k)) m.set(k, venu.get(k));
+    return { qs: "?" + m.toString(), source: "memoire" };
+  }
+
+  /* Retient l'état COURANT de la page (sans son contexte). Rien ne lève : un stockage
+     plein ou refusé laisse simplement la page sans mémoire. */
+  function memoriser(stockage, page, qs) {
+    if (!stockage) return;
+    try { stockage.setItem(CLE_ETAT + page, sansContexte(qs)); } catch (e) { /* sans mémoire */ }
+  }
+
+  return { safeRetour, CLE_ETAT, stockageDeSession, adresseExplicite, etatDeDepart, memoriser };
 });

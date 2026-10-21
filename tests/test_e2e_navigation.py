@@ -109,6 +109,80 @@ def test_chaine_retour_deux_niveaux(page, seeded):
 
 
 # --------------------------------------------------------------------------- #
+# Reprise d'état par la session (INFRA-5) : revenir PAR LE MENU, sans état dans l'adresse
+# --------------------------------------------------------------------------- #
+def _par_le_menu(page, chemin):
+    """Suit le lien de la nav transverse — une adresse NUE, comme un clic de l'usager."""
+    page.locator(f'.surf-nav a.surf-link[href="{chemin}"]').first.click()
+    page.wait_for_url(re.compile(re.escape(chemin) + r"(\?|$)"))
+    page.wait_for_load_state("networkidle")
+
+
+def _recherche_posee(page, base):
+    page.goto(f"{base}/recherche", wait_until="networkidle")
+    expect(page.locator("#q")).to_have_value("")
+    page.locator("#q").fill("bonjour")
+    page.locator("#f-type").select_option("bulle")
+    page.wait_for_url(re.compile(r"q=bonjour.*type=bulle|type=bulle.*q=bonjour"))
+
+
+def test_revenir_sur_la_recherche_par_le_menu_reprend_la_derniere(page, seeded):
+    """La dernière recherche — texte ET filtres — revient quand on y retourne par la nav
+    transverse, et l'adresse la redit (elle reste partageable)."""
+    _recherche_posee(page, seeded["base"])
+    _par_le_menu(page, "/exploration")
+    _par_le_menu(page, "/recherche")
+    expect(page.locator("#q")).to_have_value("bonjour", timeout=15000)
+    expect(page.locator("#f-type")).to_have_value("bulle")
+    assert "q=bonjour" in page.url and "type=bulle" in page.url, page.url
+
+
+def test_revenir_sur_l_exploration_par_le_menu_reprend_la_derniere_vue(page, seeded):
+    """La dernière vue d'Exploration et son filtre reviennent par le menu."""
+    page.goto(f"{seeded['base']}/exploration", wait_until="networkidle")
+    page.locator("#f-vue").select_option("concordance")
+    page.locator("#f-lemme").fill("pouvoir")
+    page.wait_for_url(re.compile(r"lemme=pouvoir"))
+    _par_le_menu(page, "/recherche")
+    _par_le_menu(page, "/exploration")
+    expect(page.locator("#f-vue")).to_have_value("concordance", timeout=15000)
+    expect(page.locator("#f-lemme")).to_have_value("pouvoir")
+    assert "vue=concordance" in page.url, page.url
+
+
+def test_une_adresse_qui_porte_un_etat_l_emporte_sur_la_memoire(page, seeded):
+    """Un lien explicite — partagé, ou un deep-link — s'ouvre sur SON état, jamais sur la
+    recherche mémorisée de l'onglet ; et il devient à son tour la dernière."""
+    _recherche_posee(page, seeded["base"])
+    page.goto(f"{seeded['base']}/recherche?q=pouvoir", wait_until="networkidle")
+    expect(page.locator("#q")).to_have_value("pouvoir", timeout=15000)
+    expect(page.locator("#f-type")).to_have_value("")
+    _par_le_menu(page, "/exploration")
+    _par_le_menu(page, "/recherche")
+    expect(page.locator("#q")).to_have_value("pouvoir", timeout=15000)
+
+
+def test_sans_stockage_de_session_la_page_repart_vide_sans_erreur(page, seeded):
+    """Navigation privée, site bloqué : l'accès même à `sessionStorage` lève. Les deux
+    pages s'ouvrent, cherchent, et reviennent à l'état vide par le menu — sans une erreur
+    de script."""
+    erreurs = []
+    page.on("pageerror", lambda e: erreurs.append(str(e)))
+    page.add_init_script("""Object.defineProperty(window, "sessionStorage", {
+        configurable: true,
+        get() { throw new DOMException("bloqué pour le test", "SecurityError"); } });""")
+    _recherche_posee(page, seeded["base"])
+    # La recherche a bien tourné jusqu'au bout : le corpus du décor n'a aucun texte.
+    expect(page.locator("#results .search-hint")).to_have_text("Aucun résultat.", timeout=15000)
+    _par_le_menu(page, "/exploration")
+    expect(page.locator("#f-vue")).to_have_value("distribution", timeout=15000)
+    _par_le_menu(page, "/recherche")
+    expect(page.locator("#q")).to_have_value("")
+    expect(page.locator("#results .search-hint")).to_be_visible()
+    assert erreurs == [], erreurs
+
+
+# --------------------------------------------------------------------------- #
 # Autres surfaces : citation (Visionneuse), rôle (Corpus), recherche → aperçu
 # --------------------------------------------------------------------------- #
 def test_visionneuse_affiche_la_citation(page, seeded):
