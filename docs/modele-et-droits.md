@@ -926,7 +926,7 @@ et *Qui entre* s'y règle sur place ; depuis la fiche d'un groupe, *Ouvrir une c
 groupe* y mène avec le groupe déjà choisi. C'est le MÊME panneau, monté deux fois : mêmes
 gestes, mêmes refus, et ce qu'on règle d'un côté se lit aussitôt de l'autre. Ce que la
 collection **est** — description, diffusion, référent, exports — ne vit qu'à un endroit, la
-Bibliothèque, où *Décrire dans la Bibliothèque ↗* ramène depuis l'Administration.
+Bibliothèque, où *Décrire dans la Bibliothèque* ramène depuis l'Administration.
 
 Les deux sont nécessaires, et dans cet ordre. **Un compte créé sans accès ouvre une
 application vide** — la personne se connectera parfaitement et ne verra rien, sans qu'aucun

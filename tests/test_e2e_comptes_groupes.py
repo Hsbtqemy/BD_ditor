@@ -506,7 +506,9 @@ def test_la_fiche_d_une_collection_regle_qui_entre_et_ne_lit_plus_ses_acces_dans
         page, live_server):
     """La fiche d'une collection MONTE « Qui entre » (UX-16, décision A) : la liste en
     lecture et le renvoi « Régler qui entre » ont disparu, on règle sur place. Le lien qui
-    reste nomme ce qu'il mène voir — « Décrire dans la Bibliothèque ↗ » —, et y mène.
+    reste nomme ce qu'il mène voir — « Décrire dans la Bibliothèque » —, et y mène DANS LE
+    MÊME ONGLET : la flèche ↗, qui promettait un nouvel onglet, a quitté le libellé (UX-16,
+    décision de Hugo du 2026-10-21) ; le retour se fait par Précédent.
 
     **Deux lectures, et le test dit laquelle l'écran montre.** La vue interceptée annonce
     TROIS accès ; le serveur n'en porte que DEUX. Le panneau en montre deux : il lit ses
@@ -541,7 +543,11 @@ def test_la_fiche_d_une_collection_regle_qui_entre_et_ne_lit_plus_ses_acces_dans
     # Ce que la collection EST reste dans la Bibliothèque (décision B), et le lien le dit.
     lien = fiche.locator("a.cg-decrire")
     expect(lien).to_be_visible()
-    expect(lien).to_have_text("Décrire dans la Bibliothèque ↗")
+    # Le texte ENTIER, et non un « contient » : une flèche revenue, même masquée au lecteur
+    # d'écran, se lirait encore à l'écran comme la promesse d'un nouvel onglet.
+    expect(lien).to_have_text("Décrire dans la Bibliothèque")
+    assert "↗" not in lien.inner_text()
+    assert lien.get_attribute("target") is None, "le lien s'ouvre dans le même onglet"
     expect(lien).to_have_attribute("href", f"/corpus?collection={cid}&onglet=description")
     expect(fiche).to_contain_text(
         "Ce que la collection est — sa description, sa diffusion, son référent, ses exports — "

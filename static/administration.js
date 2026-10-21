@@ -720,7 +720,7 @@ function cgFicheCollection(c) {
     </div>
     <section class="lf-section cg-section" data-qui-entre></section>
     <p class="cg-ailleurs"><a class="cg-decrire" href="/corpus?collection=${c.id}&amp;onglet=description">Décrire
-      dans la Bibliothèque<span aria-hidden="true"> ↗</span></a></p>
+      dans la Bibliothèque</a></p>
     <p class="col-note">Ce que la collection est — sa description, sa diffusion, son
       référent, ses exports — se règle dans sa fiche, dans la Bibliothèque.</p>
   </article>`;

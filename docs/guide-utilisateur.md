@@ -718,8 +718,8 @@ règle d'accès (cf. §2).
   *Ouvrir une collection à ce groupe* puis *Régler qui entre…* ouvre la fiche de la
   collection choisie, ce groupe déjà choisi dans *Faire entrer* : il reste à cliquer
   *+ Faire entrer*. Ce que la collection **est** — sa description, sa diffusion, son
-  référent, ses exports — ne se règle pas ici : *Décrire dans la Bibliothèque ↗*, sous le
-  panneau, y mène. Si l'annuaire ne répond pas, le bloc s'affiche
+  référent, ses exports — ne se règle pas ici : *Décrire dans la Bibliothèque*, sous le
+  panneau, y mène dans le même onglet (Précédent ramène). Si l'annuaire ne répond pas, le bloc s'affiche
   quand même avec ce que l'application sait seule, et le dit — il n'annonce jamais qu'un
   accès est mort sur la foi d'une lecture qui a échoué.
   Cf. [`modele-et-droits.md`](modele-et-droits.md) §3.
