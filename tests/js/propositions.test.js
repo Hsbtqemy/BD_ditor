@@ -130,3 +130,74 @@ test("cleTag : la table partagée avec database.cle_tag", () => {
   assert.equal(P.cleTag(null), "");
   assert.equal(P.cleTag(undefined), "");
 });
+
+
+/* ANN-8 — les champs de PERSONNAGE (le locuteur, la boîte personnage). Les listes ont la
+   forme que l'écran leur donne : un personnage { create: false, id, nom, serie }, la
+   proposition de créer { create: true, nom }. */
+const PERSOS = [
+  { id: 1, nom: "Zed", serie: null },
+  { id: 2, nom: "Zed", serie: "Les Aventures" },
+  { id: 3, nom: "Zelda", serie: null },
+  { id: 4, nom: "Étienne", serie: null },
+  { id: 5, nom: "Tintin", serie: null },
+];
+const item = (p) => ({ create: false, id: p.id, nom: p.nom, serie: p.serie });
+const creer = (nom) => ({ create: true, nom });
+
+test("sansAccents : la table partagée avec socle._sans_accents", () => {
+  const TABLE = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "cas-sans-accents.json"), "utf8"));
+  assert.ok(TABLE.length >= 12, "table de cas suspicieusement courte");
+  for (const cas of TABLE) assert.equal(P.sansAccents(cas.entree), cas.attendu, cas.nom);
+  assert.equal(P.sansAccents(null), "");
+});
+
+test("repond : ce que le serveur aurait rendu pour la saisie, et la création exacte", () => {
+  const cas = [
+    [item(PERSOS[0]), "Ze", true], [item(PERSOS[0]), "zed", true], [item(PERSOS[2]), "Zed", false],
+    [item(PERSOS[3]), "etien", true], [item(PERSOS[3]), "ÉTIEN", true],   // sans casse ni accents
+    [item(PERSOS[4]), "nti", true],                                     // contient, pas seulement commence
+    [item(PERSOS[4]), "", true], [item(PERSOS[4]), "   ", true],        // champ vide : tout répond
+    [creer("Ze"), "Ze", true], [creer("Ze"), "Zed", false], [creer("Ze"), "ze", false],
+    [creer("Ze"), " Ze ", true], [creer("Ze"), "", false],
+    [null, "Ze", false], [undefined, "", false],
+  ];
+  for (const [it, q, attendu] of cas) {
+    assert.equal(P.repond(it, q), attendu, `${JSON.stringify(it)} pour « ${q} »`);
+  }
+});
+
+/* LA table d'Entrée d'un champ de personnage (ANN-8, Hugo, 2026-10-21). Chaque ligne : ce
+   qui est tapé MAINTENANT, la liste à l'écran (peut-être celle d'une saisie d'avant), le
+   rang surligné → le geste. */
+const LISTE_ZE = [item(PERSOS[0]), item(PERSOS[1]), item(PERSOS[2])];       // lue pour « Ze »
+const LISTE_Z = [item(PERSOS[0]), item(PERSOS[1]), item(PERSOS[2]), creer("Z")]; // fictive
+const ENTREE_PERSO = [
+  // La surlignée qui répond à la saisie part, de la liste d'avant comme de la fraîche.
+  ["Ze", LISTE_ZE, 2, { geste: "choisir", id: 3 }],
+  ["Zel", LISTE_ZE, 2, { geste: "choisir", id: 3 }],        // liste de « Ze », « Zelda » répond
+  ["Zed", LISTE_ZE, 0, { geste: "choisir", id: 1 }],
+  ["", LISTE_ZE, 1, { geste: "choisir", id: 2 }],
+  // ↓ puis Entrée pendant le rechargement : la surlignée de la liste d'avant NE répond PLUS.
+  ["Zed", LISTE_ZE, 2, { geste: "relire" }],                // « Zelda » ne contient pas « zed »
+  ["Zeld", LISTE_ZE, 0, { geste: "relire" }],
+  ["Zed", LISTE_Z, 3, { geste: "relire" }],                 // « Créer « Z » » ne crée pas « Zed »
+  ["", LISTE_Z, 3, { geste: "relire" }],
+  ["Z", LISTE_Z, 3, { geste: "choisir", create: "Z" }],
+  // Rien de surligné : le registre décide ; champ vide, rien.
+  ["Zed", LISTE_ZE, -1, { geste: "valider" }],
+  ["Zed", [], -1, { geste: "valider" }],
+  ["", LISTE_ZE, -1, { geste: "rien" }],
+  ["   ", [], -1, { geste: "rien" }],
+  // Un rang hors de la liste ne surligne rien.
+  ["Zed", LISTE_ZE, 7, { geste: "valider" }],
+];
+
+test("entreePersonnage : la proposition surlignée ne part que si elle répond encore", () => {
+  for (const [q, items, actif, attendu] of ENTREE_PERSO) {
+    const d = P.entreePersonnage({ q, actif, items });
+    const lu = d.geste !== "choisir" ? d
+      : d.item.create ? { geste: d.geste, create: d.item.nom } : { geste: d.geste, id: d.item.id };
+    assert.deepEqual(lu, attendu, `« ${q} », surligné ${actif} sur ${items.length}`);
+  }
+});

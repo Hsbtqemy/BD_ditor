@@ -1045,3 +1045,68 @@ def test_un_nom_cree_par_l_autre_champ_n_est_pas_cree_deux_fois(page, atelier):
     assert envoi.value.post_data_json == {"personnage_id": zed}
     assert len(_creations(parties)) == 1, parties
     assert [p["nom"] for p in _registre(atelier)].count("Zed") == 1
+
+
+# --------------------------------------------------------------------------- #
+# ANN-8 (Hugo, 2026-10-21) — ↓ puis Entrée pendant que la liste se recharge
+# --------------------------------------------------------------------------- #
+# Entre une frappe et le retour de sa liste, la liste à l'écran est celle de la saisie
+# d'AVANT. ↓ y surligne une ligne ; Entrée la prenait. Elle la revérifie désormais contre
+# ce qui est tapé : la surlignée part si elle y répond encore, et sinon rien ne part — la
+# liste de la saisie arrive, rien de surligné. La lecture est TENUE en vol : « pendant le
+# rechargement » ne dépend d'aucune vitesse.
+@pytest.mark.parametrize("fleches,part", [(1, "Zed"), (2, None)],
+                         ids=["la-surlignee-repond-encore", "la-surlignee-ne-repond-plus"])
+def test_pendant_le_rechargement_entree_reverifie_la_surlignee(page, atelier, fleches, part):
+    c = CHAMPS_PERSONNAGE["locuteur"]
+    ids = _peupler(atelier, "Zed", "Zelda")
+    rid = atelier[c["zone"]]
+    chemin = f"/api/regions/{rid}/{c['lien']}"
+    _ouvrir(page, atelier, c["zone"])
+    champ, liste = page.locator(c["champ"]), page.locator(f"{c['liste']} div")
+    parties = _ecritures(page)
+
+    champ.click()
+    with page.expect_response(lambda r: r.url.endswith("/api/personnages?q=Ze")):
+        champ.press_sequentially("Ze", delay=20)
+    expect(liste).to_have_count(3, timeout=15000)          # Zed, Zelda, Créer « Ze »
+
+    lectures = Retenue(page, LECTURE_REGISTRE)
+    champ.press("d")
+    lectures.attendre(1)                                   # la liste de « Zed », tenue
+    assert lectures.tenues[0].request.url.endswith("?q=Zed")
+    expect(liste).to_have_count(3)                         # à l'écran : celle de « Ze »
+    for _ in range(fleches):
+        champ.press("ArrowDown")
+    surlignee = page.locator(f"{c['liste']} div.active")
+    expect(surlignee).to_have_text(re.compile(r"^Zed$" if fleches == 1 else r"^Zelda$"))
+
+    if part:
+        with page.expect_request(_est("PUT", chemin)) as envoi, \
+                page.expect_response(_est("PUT", chemin)) as reponse:
+            champ.press("Enter")
+        assert reponse.value.status == 200, reponse.value.text()
+        assert envoi.value.post_data_json == {"personnage_id": ids[part]}
+        lectures.relacher()
+        return
+
+    champ.press("Enter")
+    # Le témoin : l'écran a traité Entrée — plus rien n'est surligné, la saisie reste.
+    expect(surlignee).to_have_count(0, timeout=15000)
+    expect(champ).to_have_value("Zed")
+    page.wait_for_timeout(400)
+    assert parties == [], f"Entrée a pris une ligne de la liste d'avant : {parties}"
+    # Une seule lecture pour « Zed » : celle déjà en vol suffit.
+    assert [r.request.url for r in lectures.tenues if r.request.url.endswith("?q=Zed")] == [
+        lectures.tenues[0].request.url], [r.request.url for r in lectures.tenues]
+
+    with page.expect_response(lambda r: r.url.endswith("/api/personnages?q=Zed")):
+        lectures.relacher()
+    expect(liste).to_have_count(1, timeout=15000)          # la liste de « Zed » : lui seul
+    expect(liste).to_have_text("Zed")
+    expect(surlignee).to_have_count(0)
+    with page.expect_request(_est("PUT", chemin)) as envoi, \
+            page.expect_response(_est("PUT", chemin)):
+        champ.press("Enter")
+    assert envoi.value.post_data_json == {"personnage_id": ids["Zed"]}
+    assert _creations(parties) == [], parties

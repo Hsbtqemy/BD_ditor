@@ -1972,6 +1972,14 @@ async function clearPerso() {
    dans l'ordre du registre (nom, puis série), sans le dire. Les départager est une
    décision d'écran, pas une retouche.
 
+   ANN-8 — ↓ PUIS ENTRÉE PENDANT QUE LA LISTE SE RECHARGE (Hugo, 2026-10-21). Entre une
+   frappe et le retour de sa liste, la liste à l'écran est celle de la saisie d'AVANT ; ↓
+   y surligne une ligne, et Entrée la prenait. À Entrée, la surlignée est revérifiée contre
+   ce qui est tapé (`BDPropositions.entreePersonnage`) : si elle y répond encore — son nom
+   contient la saisie, comme le filtre du serveur —, elle part ; sinon rien n'est pris, la
+   liste se relit pour la saisie et s'affiche sans rien surligner, et l'on choisit dedans.
+   La liste n'est pas fermée pendant la lecture : les flèches y restent vivantes.
+
    ANN-8 — LES DEUX CHAMPS SAVENT CE QUE L'AUTRE VIENT DE CRÉER. Chaque montage tient sa
    liste ; « Zed » créé par la boîte personnage, puis tapé vite dans le champ du locuteur,
    se décidait sur la liste de CE champ — et si « Zed » y avait déjà été cherché, elle
@@ -2089,8 +2097,17 @@ function setupPersoInput(inputSel, sugSel, onPick, zone) {
     else if (e.key === "Enter") {
       e.preventDefault();
       const q = input.value.trim();
-      if (activeIdx >= 0 && items[activeIdx]) choose(items[activeIdx]);
-      else if (q) valider(q);
+      const d = BDPropositions.entreePersonnage({ q, actif: activeIdx, items });
+      if (d.geste === "choisir") choose(d.item);
+      else if (d.geste === "valider") valider(q);
+      else if (d.geste === "relire") {
+        // ANN-8 — la surlignée vient de la liste d'une saisie d'avant et n'y répond plus :
+        // rien n'est pris. La liste de CETTE saisie se lit (une seule fois : celle qui est
+        // déjà en vol suffit), et s'affiche sans rien surligner.
+        activeIdx = -1; render();
+        clearTimeout(timer);
+        if (!(lecture && lecture.q === q && lecture.etat === registreModifie)) fetchList();
+      }
     } else if (e.key === "Escape") { close(); }
   });
 }

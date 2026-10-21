@@ -11,13 +11,18 @@
    L'écran garde ce qui dépend du temps — quand la liste se lit, à qui le geste revient — ;
    les e2e de `test_e2e_atelier_propositions.py` restent, et mesurent la requête partie.
 
-   Trois règles y vivent :
+   Les règles qui y vivent :
    - `decisionEntree` : ce qu'Entrée fait dans un champ « dimension : valeur » ;
+   - `entreePersonnage` : ce qu'Entrée fait dans un champ de personnage (le locuteur, la
+     boîte personnage) — la proposition surlignée ne part que si elle répond encore à la
+     saisie (ANN-8, Hugo, 2026-10-21) ;
    - `fleche` : où la flèche mène dans une liste, ouverte OU fermée — la première ↓ après
      une validation surligne une proposition (ANN-8 : elle rouvrait la liste sans rien
      surligner, quand le DOM de la liste précédente était vide) ;
    - `cleTag` : la clé d'un libellé de tag, jumelle de `database.cle_tag` — leur accord se
-     mesure sur `tests/cas-tags.json`, lue des deux côtés. */
+     mesure sur `tests/cas-tags.json`, lue des deux côtés ;
+   - `sansAccents` : jumelle de `socle._sans_accents`, le filtre du registre des
+     personnages — leur accord se mesure sur `tests/cas-sans-accents.json`. */
 (function (root, factory) {
   const api = factory();
   if (typeof module !== "undefined" && module.exports) module.exports = api;  // Node (tests)
@@ -109,6 +114,44 @@
     return s.toLowerCase().split(/\s+/).filter(Boolean).join(" ").normalize("NFC");
   }
 
+  /* Minuscules sans diacritiques — jumelle de `socle._sans_accents`, par laquelle le serveur
+     filtre le registre des personnages (`GET /api/personnages?q=`) : « etienne » trouve
+     « Étienne ». Décomposition compatible (NFKD), marques combinantes retirées, puis
+     minuscules, dans l'ordre du serveur. */
+  function sansAccents(s) {
+    return String(s ?? "").normalize("NFKD").replace(/\p{Mn}/gu, "").toLowerCase();
+  }
+
+  /* La proposition `it` d'un champ de personnage RÉPOND-elle à la saisie `q` ? Celle d'un
+     personnage, si son nom contient la saisie sans égard à la casse ni aux accents — ce
+     que le serveur aurait rendu pour elle ; saisie vide, toutes. Celle de créer, si elle
+     crée exactement ce qui est tapé : « Créer « Ze » » ne répond pas à « Zed ». */
+  function repond(it, q) {
+    if (!it) return false;
+    const s = String(q ?? "").trim();
+    if (it.create) return it.nom === s;
+    return !s || sansAccents(it.nom).includes(sansAccents(s));
+  }
+
+  /* Ce qu'Entrée fait dans un champ de personnage, sur la liste À L'ÉCRAN. Rend l'un de :
+     - { geste: "choisir", item } — la proposition surlignée, si elle répond encore à ce qui
+                                    est tapé ;
+     - { geste: "relire" }        — la surlignée ne répond plus : c'est une ligne de la liste
+                                    d'une saisie d'AVANT, la nouvelle n'est pas revenue
+                                    (ANN-8, Hugo, 2026-10-21). Rien n'est pris ; la liste se
+                                    relit pour ce qui est tapé, et l'on choisit dedans ;
+     - { geste: "valider" }       — rien de surligné, une saisie : le registre décide ;
+     - { geste: "rien" }          — rien de surligné, champ vide.
+     La surlignée qui répond encore part, même d'une liste d'avant : elle est à l'écran, elle
+     correspond à ce qui est tapé, et le geste est explicite — fermer la liste pendant la
+     lecture rendait les flèches inertes. */
+  function entreePersonnage({ q, actif = -1, items = [] }) {
+    const s = String(q ?? "").trim();
+    const it = actif >= 0 ? items[actif] : null;
+    if (it) return repond(it, s) ? { geste: "choisir", item: it } : { geste: "relire" };
+    return s ? { geste: "valider" } : { geste: "rien" };
+  }
+
   return { MAX_PROPOSITIONS, formeComplete, connue, propositionsAttributs, decisionEntree,
-           fleche, cleTag };
+           fleche, cleTag, sansAccents, repond, entreePersonnage };
 });

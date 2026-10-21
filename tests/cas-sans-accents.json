@@ -1,0 +1,82 @@
+[
+  {
+    "nom": "une capitale accentu\u00e9e",
+    "entree": "\u00c9tienne",
+    "attendu": "etienne"
+  },
+  {
+    "nom": "tout en capitales",
+    "entree": "\u00c9TIENNE",
+    "attendu": "etienne"
+  },
+  {
+    "nom": "un accent d\u00e9compos\u00e9",
+    "entree": "e\u0301tienne",
+    "attendu": "etienne"
+  },
+  {
+    "nom": "un tr\u00e9ma",
+    "entree": "Zo\u00eb",
+    "attendu": "zoe"
+  },
+  {
+    "nom": "une c\u00e9dille",
+    "entree": "\u00c7a",
+    "attendu": "ca"
+  },
+  {
+    "nom": "un tilde",
+    "entree": "\u00d1and\u00fa",
+    "attendu": "nandu"
+  },
+  {
+    "nom": "la ligature fi devient deux lettres (NFKD)",
+    "entree": "\ufb01n",
+    "attendu": "fin"
+  },
+  {
+    "nom": "l'e dans l'o reste une lettre",
+    "entree": "\u0152dipe",
+    "attendu": "\u0153dipe"
+  },
+  {
+    "nom": "le eszett reste",
+    "entree": "Stra\u00dfe",
+    "attendu": "stra\u00dfe"
+  },
+  {
+    "nom": "un chiffre romain compatible",
+    "entree": "\u216b",
+    "attendu": "xii"
+  },
+  {
+    "nom": "un exposant devient un chiffre",
+    "entree": "x\u00b2",
+    "attendu": "x2"
+  },
+  {
+    "nom": "un digramme avec caron",
+    "entree": "\u01c4",
+    "attendu": "dz"
+  },
+  {
+    "nom": "sans accent ni capitale",
+    "entree": "tintin",
+    "attendu": "tintin"
+  },
+  {
+    "nom": "les espaces ne sont pas retir\u00e9s",
+    "entree": " Haddock ",
+    "attendu": " haddock "
+  },
+  {
+    "nom": "l'apostrophe typographique n'est pas une marque",
+    "entree": "l\u2019Oncle",
+    "attendu": "l\u2019oncle"
+  },
+  {
+    "nom": "vide",
+    "entree": "",
+    "attendu": ""
+  }
+]
