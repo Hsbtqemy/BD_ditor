@@ -8,6 +8,26 @@ l'accessibilité régresse le plus souvent (focus, labels, rôles).
 
 Marqué `e2e` → hors run par défaut (`pytest -m e2e`). Skippé proprement si
 Playwright ou le fichier axe vendu sont absents.
+
+**Ce que l'audit garantit, et ce qu'il laisse** (A11Y-3, 2026-10-21). axe range à part, en
+« incomplete », ce qu'il ne sait pas trancher ; `_audit` n'en lisait rien, et deux sortes de
+défauts y passaient en silence. Il en lit désormais deux, et deux seulement :
+
+- un contraste EXACTEMENT 1:1 — un texte de la couleur de son fond (`equalRatio`) — compte
+  comme une violation sérieuse : c'est le mutant M8 d'UX-14, qui passait vert ;
+- un texte qu'un conteneur défilant repousse hors de sa zone visible (`elmPartiallyObscured`,
+  ou `outsideViewport` pour la page) est AMENÉ dans le champ, jugé, puis les conteneurs
+  reprennent leur position. Mesuré le 2026-10-21 sur la Bibliothèque et sur les vues
+  Comptes et groupes, Projets et Fonds de l'Administration (`SURFACES_DEFILANTES`), qui
+  ont chacune leur test ; la Recherche et l'Exploration défilent avec la page, et l'Atelier
+  du décor ne déborde pas.
+
+Tout autre « incomplete » — un fond en image ou en dégradé, un texte recouvert pour de bon
+par un autre élément, un texte trop court pour qu'axe le juge — reste ignoré, et c'est voulu :
+crier sur ce qu'axe ne sait pas mesurer rendrait l'audit inutilisable. Ce que l'audit ne
+voit toujours pas, donc : le contraste sous un fond qu'axe ne sait pas échantillonner. Les
+tests `test_a11y3_…` gardent l'instrument lui-même, chacun en vérifiant d'abord sur une
+lecture BRUTE d'axe que le défaut posé est bien rangé là où on le croit.
 """
 import json
 from pathlib import Path
@@ -30,14 +50,79 @@ if not _AXE.exists():
 _AXE_SRC = _AXE.read_text(encoding="utf-8")
 
 # axe.run sur le DOM courant, limité aux règles WCAG 2.1 A/AA, ne renvoyant que le
-# sérieux/critique (le « moderate/minor » est du raffinement, pas une régression).
+# sérieux/critique (le « moderate/minor » est du raffinement, pas une régression) — et
+# DEUX sortes d'« incomplete » de `color-contrast` qu'axe range à part et que l'audit
+# lisait comme un succès (A11Y-3, cf. l'en-tête « Ce que l'audit garantit » ci-dessous) :
+#
+#   · `equalRatio` — un contraste EXACTEMENT 1:1, un texte de la couleur de son fond. axe
+#     ne le tient pas pour une violation ; un jeton qui pointe sur le fond au lieu de
+#     l'encre le produit très bien. Compté comme une violation sérieuse.
+#   · `elmPartiallyObscured` et `outsideViewport` — un texte qu'un conteneur défilant (ou
+#     la page) repousse hors de sa zone visible : axe ne peut pas en échantillonner le
+#     fond. Mesuré le 2026-10-21 dans une fenêtre de 260 px de haut : c'est la PREMIÈRE
+#     raison qu'axe donne pour les lignes de la liste de « Comptes et groupes », des
+#     projets, du fonds et de la Bibliothèque, pas la seconde. On AMÈNE chacun dans le
+#     champ (`scrollIntoView`), on le juge, et l'on rend aux conteneurs leur position. Ce
+#     qui reste masqué une fois amené — un vrai recouvrement — reste ce qu'axe en dit.
+#     Par écrans et non élément par élément : chaque tour juge d'un coup tout ce que le
+#     défilement a amené, et un élément qui reste hors champ après le sien sort de la
+#     liste — sans quoi un texte rogné par `overflow: hidden` tournerait sans fin.
+#
+# Les autres natures (`bgImage`, `bgGradient`, `bgOverlap`, `elmPartiallyObscured`…) ne
+# font PAS échouer : axe ne sait pas les mesurer, et crier dessus rendrait l'audit inutile.
 _RUN = """async () => {
-  const r = await axe.run(document, {runOnly:{type:'tag',
-    values:['wcag2a','wcag2aa','wcag21a','wcag21aa']}});
-  return r.violations
-    .filter(v => v.impact === 'serious' || v.impact === 'critical')
-    .map(v => ({id:v.id, impact:v.impact, help:v.help,
-                targets:v.nodes.slice(0,5).map(n => n.target.join(' '))})); }"""
+  const TAGS = {runOnly: {type: 'tag', values: ['wcag2a','wcag2aa','wcag21a','wcag21aa']},
+                elementRef: true};
+  const CC = {runOnly: {type: 'rule', values: ['color-contrast']}, elementRef: true};
+  const raisons = (n) => [].concat(n.any || [], n.all || [], n.none || [])
+    .map(c => c.data && c.data.messageKey).filter(Boolean);
+  const egal = (n) => raisons(n).includes('equalRatio');
+  const horsChamp = (n) => raisons(n).some(k => k === 'outsideViewport' || k === 'elmPartiallyObscured');
+  const incompletsCC = (r) => (r.incomplete.find(v => v.id === 'color-contrast') || {nodes: []}).nodes;
+  const sortie = [];
+  const rendre = (id, impact, help, nodes) => { if (nodes.length) sortie.push({id, impact, help,
+    targets: nodes.slice(0, 5).map(n => n.target.join(' '))}); };
+
+  const r = await axe.run(document, TAGS);
+  r.violations.filter(v => v.impact === 'serious' || v.impact === 'critical')
+    .forEach(v => rendre(v.id, v.impact, v.help, v.nodes));
+  const egaux = incompletsCC(r).filter(egal);
+  let reste = incompletsCC(r).filter(horsChamp).map(n => n.element).filter(Boolean);
+
+  const insuffisants = [];
+  if (reste.length) {
+    const positions = [...document.querySelectorAll('*')]
+      .filter(e => e.scrollTop || e.scrollLeft
+                   || e.scrollHeight > e.clientHeight || e.scrollWidth > e.clientWidth)
+      .map(e => [e, e.scrollTop, e.scrollLeft]);
+    const fenetre = [window.scrollX, window.scrollY];
+    try {
+      while (reste.length) {
+        const vise = reste[0];
+        vise.scrollIntoView({block: 'center', inline: 'center'});
+        const enJeu = new Set(reste);
+        const r2 = await axe.run({include: reste}, CC);
+        const encoreHors = new Set();
+        r2.violations.forEach(v => v.nodes.forEach(n => { if (enJeu.has(n.element)) insuffisants.push(n); }));
+        incompletsCC(r2).forEach(n => {
+          if (!enJeu.has(n.element)) return;
+          if (egal(n)) egaux.push(n);
+          else if (horsChamp(n)) encoreHors.add(n.element);
+        });
+        encoreHors.delete(vise);
+        reste = reste.filter(e => encoreHors.has(e));
+      }
+    } finally {
+      positions.forEach(([e, t, l]) => { e.scrollTop = t; e.scrollLeft = l; });
+      window.scrollTo(fenetre[0], fenetre[1]);
+    }
+  }
+  rendre('color-contrast', 'serious',
+         'Texte de la couleur exacte de son fond (1:1), rangé « incomplete » par axe — A11Y-3', egaux);
+  rendre('color-contrast', 'serious',
+         'Contraste insuffisant hors de la zone visible, jugé une fois amené dans le champ — A11Y-3',
+         insuffisants);
+  return sortie; }"""
 
 
 def _audit(page):
@@ -241,6 +326,151 @@ def test_a11y_pastille_utilisateur(page, seeded, theme):
     page.wait_for_selector(".compte-panel .user-logout", state="visible", timeout=3000)
     viol = _audit(page)
     assert not viol, f"Menu du compte ouvert [{theme}] :\n{_fmt(viol)}"
+
+
+# ── A11Y-3 — l'INSTRUMENT : ce que `_audit` voit, et ce qu'il laisse ─────────────────────
+# Ces tests ne gardent aucune surface : ils gardent l'audit lui-même. Chacun pose sur une
+# page saine le défaut qu'axe range en « incomplete », et vérifie d'abord, sur une lecture
+# BRUTE d'axe, que le défaut est bien rangé là — sans quoi un test vert dirait seulement
+# qu'axe a changé d'avis, et l'audit approuverait sans avoir rien vu.
+
+_RAISONS_BRUTES = """async (sel) => {
+  const r = await axe.run(document, {runOnly: {type: 'rule', values: ['color-contrast']},
+                                     elementRef: true});
+  const e = document.querySelector(sel);
+  const ou = (liste) => liste.flatMap(v => v.nodes).filter(n => n.element === e)
+    .flatMap(n => [].concat(n.any || [], n.all || [], n.none || []))
+    .map(c => (c.data && c.data.messageKey) || 'violation');
+  return {violation: ou(r.violations).length > 0, incomplete: ou(r.incomplete)}; }"""
+
+# La couleur de FOND sous un élément : la première non transparente en remontant.
+_POSER_COULEUR_DU_FOND = """(sel) => {
+  const e = document.querySelector(sel);
+  let a = e;
+  while (a) {
+    const c = getComputedStyle(a).backgroundColor;
+    if (c && !/^rgba\(.*,\s*0\)$/.test(c) && c !== 'transparent') break;
+    a = a.parentElement;
+  }
+  e.style.color = a ? getComputedStyle(a).backgroundColor : getComputedStyle(document.body).backgroundColor;
+  return e.style.color; }"""
+
+
+def _raisons_brutes(page, sel):
+    page.evaluate(_AXE_SRC)
+    return page.evaluate(_RAISONS_BRUTES, sel)
+
+
+def _menu_du_compte_ouvert(page, seeded, theme):
+    """Le menu du compte ouvert sur la Bibliothèque — la surface du mutant M8 d'UX-14 —,
+    et la prémisse : tel quel, il passe l'audit."""
+    _theme(page, theme)
+    page.set_extra_http_headers({"Remote-User": "Camille Roy", "Remote-Groups": "bd-admins"})
+    page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
+    page.wait_for_selector(".user-chip .user-who", timeout=3000)
+    page.click(".user-chip button.user-who")
+    page.wait_for_selector(".compte-panel .user-logout", state="visible", timeout=3000)
+    viol = _audit(page)
+    assert not viol, f"prémisse : le menu du compte passe l'audit [{theme}] :\n{_fmt(viol)}"
+
+
+_ENTREE_DU_MENU = ".compte-panel .user-logout"
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # la pastille : proxy
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y3_un_texte_de_la_couleur_de_son_fond_fait_echouer_l_audit(page, seeded, theme):
+    """M8 d'UX-14, joué à demeure : l'entrée du menu du compte écrite de la couleur exacte
+    de son panneau. axe la range en « incomplete » (`equalRatio`) ; l'audit la compte."""
+    _menu_du_compte_ouvert(page, seeded, theme)
+    page.evaluate(_POSER_COULEUR_DU_FOND, _ENTREE_DU_MENU)
+    brut = _raisons_brutes(page, _ENTREE_DU_MENU)
+    assert not brut["violation"] and "equalRatio" in brut["incomplete"], brut
+    viol = _audit(page)
+    assert any(v["id"] == "color-contrast" and "1:1" in v["help"] for v in viol), _fmt(viol)
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # la pastille : proxy
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y3_un_contraste_insuffisant_non_nul_reste_une_violation(page, seeded, theme):
+    """Le contrôle inverse : `#777` (3,6:1 en sombre, 4,48:1 en clair) est une VIOLATION
+    `color-contrast` d'axe lui-même, pas un « incomplete » que l'audit rattraperait."""
+    _menu_du_compte_ouvert(page, seeded, theme)
+    page.evaluate("(sel) => { document.querySelector(sel).style.color = '#777'; }",
+                  _ENTREE_DU_MENU)
+    assert _raisons_brutes(page, _ENTREE_DU_MENU)["violation"]
+    viol = _audit(page)
+    assert any(v["id"] == "color-contrast" and "A11Y-3" not in v["help"] for v in viol), \
+        _fmt(viol)
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # la pastille : proxy
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a11y3_un_fond_que_axe_ne_sait_pas_mesurer_ne_fait_pas_echouer(page, seeded, theme):
+    """Un « incomplete » d'une AUTRE nature — un fond en dégradé, qu'axe ne sait pas
+    échantillonner — ne fait pas échouer l'audit : crier sur ce qu'axe ne mesure pas
+    rendrait l'audit inutilisable."""
+    _menu_du_compte_ouvert(page, seeded, theme)
+    page.evaluate("(sel) => { document.querySelector(sel).style.backgroundImage = "
+                  "'linear-gradient(90deg, #000, #fff)'; }", _ENTREE_DU_MENU)
+    brut = _raisons_brutes(page, _ENTREE_DU_MENU)
+    assert not brut["violation"] and "bgGradient" in brut["incomplete"], brut
+    viol = _audit(page)
+    assert not viol, _fmt(viol)
+
+
+# Un texte que son conteneur défilant repousse hors de la zone visible reçoit une encre
+# à ~2:1 de son fond : de quoi échouer partout, petit texte comme grand.
+_ABIMER_UN_TEXTE_HORS_CHAMP = """async () => {
+  const r = await axe.run(document, {runOnly: {type: 'rule', values: ['color-contrast']},
+                                     elementRef: true});
+  const raisons = (n) => [].concat(n.any || [], n.all || [], n.none || [])
+    .map(c => c.data && c.data.messageKey);
+  const hors = (r.incomplete.find(v => v.id === 'color-contrast') || {nodes: []}).nodes
+    .filter(n => raisons(n).some(k => k === 'outsideViewport' || k === 'elmPartiallyObscured'));
+  if (!hors.length) return null;
+  const e = hors[hors.length - 1].element;
+  let a = e;
+  while (a) {
+    const c = getComputedStyle(a).backgroundColor;
+    if (c && c !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(c)) break;
+    a = a.parentElement;
+  }
+  const [rr, gg, bb] = (a ? getComputedStyle(a).backgroundColor : 'rgb(255, 255, 255)')
+    .match(/\d+/g).map(Number);
+  e.style.color = (0.299 * rr + 0.587 * gg + 0.114 * bb) > 128 ? '#b4b4b4' : '#4a4a4a';
+  e.setAttribute('data-a11y3', '');
+  return e.textContent.trim().slice(0, 40); }"""
+
+# Les surfaces dont le contenu vit dans un conteneur défilant, MESURÉES le 2026-10-21 sur
+# le décor `seeded` dans une fenêtre de 260 px : la Bibliothèque (ses deux colonnes) et
+# les vues de l'Administration qui en ont une (`#admin-body`, la liste et la fiche). Les
+# autres n'y repoussaient rien : la Recherche et l'Exploration défilent avec la PAGE, ce
+# qu'axe juge seul, et l'Atelier du décor n'a pas assez de contenu pour déborder.
+SURFACES_DEFILANTES = ("/corpus", "/administration?vue=comptes",
+                       "/administration?vue=projets", "/administration?vue=fonds")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+@pytest.mark.parametrize("surface", SURFACES_DEFILANTES)
+def test_a11y3_un_texte_hors_de_la_zone_visible_n_echappe_plus(page, seeded, surface, theme):
+    """Une fenêtre BASSE repousse du texte hors de la zone visible du conteneur qui
+    défile ; on l'écrit à ~2:1 de son fond. axe, seul, ne le juge pas (« incomplete ») —
+    la prémisse le vérifie —, l'audit l'amène dans le champ et le juge."""
+    _theme(page, theme)
+    page.set_viewport_size({"width": 1280, "height": 260})
+    page.goto(seeded["base"] + surface, wait_until="networkidle")
+    page.wait_for_timeout(600)
+    page.evaluate(_AXE_SRC)
+    abime = page.evaluate(_ABIMER_UN_TEXTE_HORS_CHAMP)
+    assert abime is not None, f"{surface} : plus rien hors de la zone visible — la liste a vieilli"
+    brut = _raisons_brutes(page, "[data-a11y3]")
+    assert not brut["violation"], f"prémisse : axe seul juge déjà « {abime} » ({brut})"
+    viol = _audit(page)
+    assert any("hors de la zone visible" in v["help"] for v in viol), \
+        f"{surface} [{theme}] « {abime} » :\n{_fmt(viol)}"
+    # L'audit rend aux conteneurs leur position : rien n'a défilé pour de bon.
+    assert page.evaluate("() => [...document.querySelectorAll('*')].every(e => !e.scrollTop)")
 
 
 def _ouvrir_album(page, titre="A11y"):
@@ -804,8 +1034,9 @@ def test_a11y_qui_entre(page, seeded, theme):
         c.close()
 
     _theme(page, theme)
-    # Une fenêtre HAUTE : axe range en « incomplet » le contraste d'un texte qu'un conteneur
-    # défilant repousse (A11Y-3), et la collection dépliée est longue.
+    # Une fenêtre HAUTE : la collection dépliée est longue. Ce n'est plus une protection —
+    # `_audit` amène dans le champ ce qu'un conteneur défilant repousse (A11Y-3) —, mais
+    # l'audit y juge tout d'un seul tour.
     page.set_viewport_size({"width": 1280, "height": 2400})
     page.goto(seeded["base"] + "/corpus", wait_until="networkidle")
     item = _ouvrir_collection(page, cid, "qui")
@@ -1261,11 +1492,11 @@ def test_a11y_comptes_et_groupes(page, seeded, theme):
         c.close()
 
     _theme(page, theme)
-    # Une fenêtre HAUTE, et ce n'est pas du confort : la liste défile dans sa colonne, la
-    # page dans `#admin-body`, et axe ne juge pas le contraste d'un texte qu'un conteneur
-    # défilant cache — il le range en « incomplet », que `_audit` ne lit pas. Mesuré par
-    # mutation le 2026-09-17 : l'ambre BRUT sur les lignes de la liste passait l'audit dès
-    # que « À regarder » déplié les poussait hors de la colonne visible.
+    # Une fenêtre HAUTE : la liste défile dans sa colonne, la page dans `#admin-body`, et axe
+    # ne juge pas le contraste d'un texte qu'un conteneur défilant cache. Mesuré par mutation
+    # le 2026-09-17 : l'ambre BRUT sur les lignes de la liste passait l'audit dès que « À
+    # regarder » déplié les poussait hors de la colonne visible. Depuis A11Y-3, `_audit` les
+    # amène dans le champ lui-même ; la fenêtre haute reste, et juge tout d'un seul tour.
     page.set_viewport_size({"width": 1280, "height": 2400})
     page.set_extra_http_headers(ADMIN)
     page.goto(seeded["base"] + "/administration?compte=ancien", wait_until="networkidle")
