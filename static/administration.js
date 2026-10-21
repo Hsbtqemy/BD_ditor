@@ -415,9 +415,6 @@ function cgNomsSignaux() {
   };
 }
 
-const CG_NOMS_AXE = { comptes: ["compte", "comptes"], groupes: ["groupe", "groupes"],
-                      collections: ["collection", "collections"] };
-
 /* Ce qui sert l'ANNUAIRE plutôt que l'application — comptes de service, compte d'amorçage,
    groupes de rôle de LLDAP — se replie en fin de liste. Rendu et non caché : qu'un compte
    soit `lldap_admin` explique que « Mot de passe oublié ? » échoue pour lui. */
@@ -447,7 +444,6 @@ function cgRendreListe() {
       + `<span class="lf-nom cg-nom">${esc(BDComptes.nomLu(o, CG.axe))}</span>`
       + `<span class="lf-etat cg-etat${e.alerte ? " alerte" : ""}">${esc(e.texte)}</span></button></li>`;
   };
-  const [un, plusieurs] = CG_NOMS_AXE[CG.axe];
   const ordinaires = objets.filter((o) => !cgAParte(o));
   const aParte = objets.filter(cgAParte);
   let html = ordinaires.map(ligne).join("");
@@ -460,11 +456,10 @@ function cgRendreListe() {
       + `<summary>${esc(titre)}</summary><ul>${aParte.map(ligne).join("")}</ul></details></li>`;
   }
   if (!objets.length) {
-    html = `<li class="lf-vide cg-vide muted small">${CG.filtre.trim()
-      ? `Aucun ${un} ne correspond à « ${esc(CG.filtre.trim())} ».` : `Aucun ${un}.`}</li>`;
+    html = `<li class="lf-vide cg-vide muted small">${esc(BDComptes.phraseVide(CG.axe, CG.filtre))}</li>`;
   }
   $("#cg-objets").innerHTML = html;
-  $("#cg-objets-titre").textContent = `${plusieurs[0].toUpperCase()}${plusieurs.slice(1)} (${objets.length})`;
+  $("#cg-objets-titre").textContent = BDComptes.titreListe(CG.axe, objets.length);
   if (garde !== null) {
     const b = document.querySelector(`#cg-objets .cg-objet[data-id="${CSS.escape(garde)}"]`);
     if (b) b.focus();
@@ -487,9 +482,7 @@ function cgRendreFiche() {
   if (box.dataset.cle !== cle) { box.scrollTop = 0; box.dataset.cle = cle; }
   const retour = `<button type="button" class="ghost small lf-retour cg-retour" data-cg-retour="1">← Liste</button>`;
   if (CG.sel === null) {
-    const [un] = CG_NOMS_AXE[CG.axe];
-    box.innerHTML = `<p class="muted lf-accueil cg-accueil">Choisissez un ${un} dans la liste pour ouvrir
-      sa fiche.</p>`;
+    box.innerHTML = `<p class="muted lf-accueil cg-accueil">${esc(BDComptes.phraseAccueil(CG.axe))}</p>`;
     return;
   }
   const o = CG.index[CG.axe].get(CG.sel);

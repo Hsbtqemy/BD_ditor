@@ -301,6 +301,21 @@ def test_le_filtre_ignore_casse_et_accents_et_ouvre_le_repli_qui_contient_la_rep
     expect(page.locator("#cg-objets .cg-a-parte .cg-objet")).to_be_visible()
 
 
+def test_l_axe_collections_accorde_son_article(page, live_server):
+    """« Choisissez un collection » (AUTH-12, vu le 2026-10-11) : la phrase composait
+    « un » devant le nom de l'axe. La fiche vide ET la liste vide de l'axe Collections
+    s'accordent au féminin ; celles des comptes restent au masculin."""
+    _ouvrir(page, live_server, decor(), "/administration?vue=comptes&axe=collections")
+    expect(page.locator("#cg-fiche .cg-accueil")).to_have_text(
+        "Choisissez une collection dans la liste pour ouvrir sa fiche.")
+    page.locator("#cg-filtre").fill("zzz")
+    expect(page.locator("#cg-objets .cg-vide")).to_have_text(
+        "Aucune collection ne correspond à « zzz ».")
+    page.locator('#cg [data-axe="comptes"]').click()
+    expect(page.locator("#cg-fiche .cg-accueil")).to_have_text(
+        "Choisissez un compte dans la liste pour ouvrir sa fiche.")
+
+
 def test_la_liste_se_parcourt_aux_fleches(page, live_server):
     _ouvrir(page, live_server, decor())
     lignes = page.locator("#cg-objets > li > .cg-objet")

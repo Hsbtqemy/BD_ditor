@@ -350,3 +350,35 @@ test("une entrée de projet reste au login, et un compte absent qui n'a qu'elle 
   assert.equal(C.texteSignal({ signal: "compte_absent", login: "eve" }, {}),
                "Le compte eve n'est pas dans l'annuaire (entrée de projet)");
 });
+
+/* ── Les noms d'axe s'accordent (AUTH-12, « Choisissez un collection ») ─────────────── */
+
+test("chaque axe dit son article : « une collection », « un compte », « un groupe »", () => {
+  assert.equal(C.phraseAccueil("collections"),
+               "Choisissez une collection dans la liste pour ouvrir sa fiche.");
+  assert.equal(C.phraseAccueil("comptes"),
+               "Choisissez un compte dans la liste pour ouvrir sa fiche.");
+  assert.equal(C.phraseAccueil("groupes"),
+               "Choisissez un groupe dans la liste pour ouvrir sa fiche.");
+});
+
+test("la liste vide s'accorde aussi, filtrée ou non, et le filtre se lit débarrassé de ses blancs", () => {
+  assert.equal(C.phraseVide("collections", ""), "Aucune collection.");
+  assert.equal(C.phraseVide("collections", "  étude "), "Aucune collection ne correspond à « étude ».");
+  assert.equal(C.phraseVide("comptes", "zz"), "Aucun compte ne correspond à « zz ».");
+  assert.equal(C.phraseVide("groupes", null), "Aucun groupe.");
+});
+
+test("le titre de la liste garde sa forme : le pluriel capitalisé et son compte", () => {
+  assert.equal(C.titreListe("collections", 3), "Collections (3)");
+  assert.equal(C.titreListe("comptes", 0), "Comptes (0)");
+});
+
+test("tout axe a ses noms, et aucun ne compose « un » devant un nom féminin", () => {
+  for (const axe of C.AXES) {
+    const n = C.NOMS_AXE[axe];
+    assert.ok(n && n.un && n.aucun && n.plusieurs, axe);
+    assert.ok(!/\bun collection\b/.test(C.phraseAccueil(axe)), axe);
+    assert.ok(!/\baucun collection\b/i.test(C.phraseVide(axe, "")), axe);
+  }
+});

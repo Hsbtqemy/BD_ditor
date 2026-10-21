@@ -30,6 +30,34 @@
   const TYPE_DE_L_AXE = { comptes: "compte", groupes: "groupe", collections: "collection" };
   const AXE_DU_TYPE = { compte: "comptes", groupe: "groupes", collection: "collections" };
 
+  /* Le nom de chaque axe, AVEC son article : « collection » est féminin, et composer
+     « un ${nom} » écrivait « Choisissez un collection » (AUTH-12, vu le 2026-10-11). Le
+     genre se porte ici, une fois, plutôt qu'un article deviné à chaque phrase. */
+  const NOMS_AXE = {
+    comptes: { un: "un compte", aucun: "aucun compte", plusieurs: "comptes" },
+    groupes: { un: "un groupe", aucun: "aucun groupe", plusieurs: "groupes" },
+    collections: { un: "une collection", aucun: "aucune collection", plusieurs: "collections" },
+  };
+
+  const majuscule = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  /* La fiche vide : ce qu'il reste à faire pour en ouvrir une. */
+  function phraseAccueil(axe) {
+    return `Choisissez ${NOMS_AXE[axe].un} dans la liste pour ouvrir sa fiche.`;
+  }
+
+  /* La liste vide, filtrée ou non. Le texte est BRUT : l'hôte l'échappe en entier. */
+  function phraseVide(axe, filtre) {
+    const aucun = majuscule(NOMS_AXE[axe].aucun);
+    const f = String(filtre || "").trim();
+    return f ? `${aucun} ne correspond à « ${f} ».` : `${aucun}.`;
+  }
+
+  /* Le titre de la liste, son compte entre parenthèses. */
+  function titreListe(axe, n) {
+    return `${majuscule(NOMS_AXE[axe].plusieurs)} (${n})`;
+  }
+
   /* Décision de Hugo du 2026-09-17 : AU-DELÀ de cinq signaux du même code, une seule ligne
      dépliable. Trente arrivants à la rentrée feraient sinon trente lignes dans une liste
      dépliée en tête, et la liste des objets passerait sous l'écran. */
@@ -317,7 +345,8 @@
   }
 
   return {
-    AXES, TRIS, SEUIL_REGROUPEMENT, TYPE_DE_L_AXE, AXE_DU_TYPE,
+    AXES, TRIS, SEUIL_REGROUPEMENT, TYPE_DE_L_AXE, AXE_DU_TYPE, NOMS_AXE,
+    phraseAccueil, phraseVide, titreListe,
     nomLu, identifiant, dateDe, trier, normaliser, filtrer,
     lireAdresse, ecrireAdresse, dateCourte, etatCourt,
     diffusionLue, cibleSignal, texteSignal, texteGroupeSignaux,
