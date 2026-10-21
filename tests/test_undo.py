@@ -278,6 +278,132 @@ def test_l_annulation_ne_repose_pas_un_locuteur_sur_une_region_devenue_muette(
         "attribution d'un locuteur"
 
 
+# --------------------------------------------------------------------------- #
+# Relecture croisée de 50c70bc — le locuteur est un champ GARDÉ de l'annulation (CONC-3).
+# Les trois scénarios (h1, h2, h3) sont repris de la relecture, qui les a reproduits.
+# --------------------------------------------------------------------------- #
+ALICE = {"Remote-User": "alice", "Remote-Groups": "bd-admins"}
+BOB = {"Remote-User": "bob", "Remote-Groups": "bd-admins"}
+
+
+def _ev_count(db_path):
+    return direct_query(db_path, "SELECT COUNT(*) n FROM evenement")[0]["n"]
+
+
+def test_h1_ctrl_z_n_ecrase_pas_le_locuteur_pose_par_un_autre(client, planche, db_path,
+                                                             derriere_proxy):
+    """Alice passe la bulle de Tintin en case (Tintin part) ; Bob la repasse en bulle et lui
+    donne Haddock ; Alice fait Ctrl+Z. La garde du type passe — le type est déjà celui
+    qu'elle rendrait —, et `_poser_lien` remplaçait Haddock par Tintin : 200, en silence.
+    Désormais, 409 nommant Bob, et rien d'écrit."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    x = client.post("/api/personnages", json={"nom": "Tintin"}, headers=ADMIN).json()["id"]
+    y = client.post("/api/personnages", json={"nom": "Haddock"}, headers=ADMIN).json()["id"]
+    assert client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": x},
+                      headers=ALICE).status_code == 200
+    assert client.put(f"/api/regions/{rid}", json={"type": "case"}, headers=ALICE).status_code == 200
+    assert client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=BOB).status_code == 200
+    assert client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": y},
+                      headers=BOB).status_code == 200
+    assert _type_et_locuteur(db_path, rid) == ("bulle", y)
+    n = _ev_count(db_path)
+
+    res = client.post("/api/undo", headers=ALICE)
+    assert res.status_code == 409, res.text
+    conflit = res.json()["detail"]["conflit"]
+    assert (conflit["cible"], conflit["id"], conflit["champ"]) == ("bulle_locuteur", rid, "locuteur")
+    assert conflit["valeur_actuelle"] == y
+    assert conflit["auteur"]["login"] == "bob"
+    assert "le locuteur" in res.json()["detail"]["message"]
+    assert _type_et_locuteur(db_path, rid) == ("bulle", y), "le locuteur de Bob a été écrasé"
+    assert _ev_count(db_path) == n                        # ni annulation, ni abandon : rien
+    # L'acte n'est pas passé : il reste en tête de la pile d'Alice, comme tout conflit.
+    assert client.get("/api/undo/prochain", headers=ALICE).json()["description"] == \
+        "modification d'une région et retrait de son locuteur"
+
+
+def test_h1_le_meme_locuteur_repose_par_un_autre_ne_bloque_pas(client, planche, db_path,
+                                                                derriere_proxy):
+    """Bob a remis le MÊME locuteur : rien ne se perd, l'annulation passe (`nouveau ==
+    actuel`, la règle de `conflit.verifier`)."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    x = client.post("/api/personnages", json={"nom": "Tintin"}, headers=ADMIN).json()["id"]
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": x}, headers=ALICE)
+    client.put(f"/api/regions/{rid}", json={"type": "case"}, headers=ALICE)
+    client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=BOB)
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": x}, headers=BOB)
+    res = client.post("/api/undo", headers=ALICE)
+    assert res.status_code == 200, res.text
+    assert _type_et_locuteur(db_path, rid) == ("bulle", x)
+
+
+def test_variante_un_locuteur_defait_entre_temps_revient_avec_le_type(client, planche, db_path,
+                                                                     derriere_proxy):
+    """Ce que le correctif fait de la variante, écrit tel quel : Alice attribue Haddock, Bob
+    passe la bulle en case (Haddock part avec le type), Alice annule son attribution — sans
+    effet, il n'y est plus —, puis Bob fait Ctrl+Z : la bulle ET Haddock reviennent. La garde
+    compare des VALEURS : le locuteur n'a pas changé depuis l'acte de Bob (aucun, avant et
+    après l'annulation d'Alice), donc rien n'est écrasé. L'intention d'Alice, elle, ne se lit
+    dans aucune valeur — ce n'est pas tranché ici."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="bulle")["id"]
+    y = client.post("/api/personnages", json={"nom": "Haddock"}, headers=ADMIN).json()["id"]
+    assert client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": y},
+                      headers=ALICE).status_code == 200
+    assert client.put(f"/api/regions/{rid}", json={"type": "case"}, headers=BOB).status_code == 200
+    assert client.post("/api/undo", headers=ALICE).status_code == 200
+    assert _type_et_locuteur(db_path, rid) == ("case", None)
+    res = client.post("/api/undo", headers=BOB)
+    assert res.status_code == 200, res.text
+    assert _type_et_locuteur(db_path, rid) == ("bulle", y)
+
+
+def test_h2_ctrl_z_ne_rend_pas_une_case_qui_parle(client, planche, db_path, derriere_proxy):
+    """Alice passe une case en bulle ; Bob donne un locuteur à la bulle ; Alice fait Ctrl+Z.
+    Le type revenait à `case` et le locuteur de Bob y restait : une case qui parle. Le
+    retirer en silence effacerait le geste de Bob : 409 nommant Bob, rien d'écrit."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="case")["id"]
+    y = client.post("/api/personnages", json={"nom": "Haddock"}, headers=ADMIN).json()["id"]
+    assert client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=ALICE).status_code == 200
+    assert client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": y},
+                      headers=BOB).status_code == 200
+    n = _ev_count(db_path)
+
+    res = client.post("/api/undo", headers=ALICE)
+    assert res.status_code == 409, res.text
+    conflit = res.json()["detail"]["conflit"]
+    assert (conflit["champ"], conflit["valeur_actuelle"]) == ("locuteur", y)
+    assert conflit["auteur"]["login"] == "bob"
+    assert _type_et_locuteur(db_path, rid) == ("bulle", y)
+    assert _ev_count(db_path) == n
+
+
+def test_h2_seul_les_deux_ctrl_z_rendent_la_case_muette(client, planche, db_path):
+    """Seul à son poste, le même enchaînement se défait sans conflit : le Ctrl+Z du
+    locuteur passe d'abord, et la case revient sans rien."""
+    rid = _creer_region(client, planche["id"], type="case")["id"]
+    y = client.post("/api/personnages", json={"nom": "Haddock"}).json()["id"]
+    client.put(f"/api/regions/{rid}", json={"type": "bulle"})
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": y})
+    assert client.post("/api/undo").status_code == 200
+    assert client.post("/api/undo").status_code == 200
+    assert _type_et_locuteur(db_path, rid) == ("case", None)
+
+
+def test_h3_un_put_qui_ne_change_pas_le_type_ne_retire_rien(client, planche, db_path):
+    """PUT {type: 'case'} sur une case d'avant ANN-8 qui porte un locuteur : le type ne
+    CHANGE pas, rien n'est retiré — le rattrapage est l'affaire de l'outil."""
+    rid = _creer_region(client, planche["id"], type="case")["id"]
+    p = client.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
+    c = sqlite3.connect(db_path)
+    c.execute("INSERT INTO bulle_locuteur (region_id, personnage_id) VALUES (?, ?)", (rid, p))
+    c.commit()
+    c.close()
+    rep = client.put(f"/api/regions/{rid}", json={"type": "case"})
+    assert rep.status_code == 200
+    assert "locuteur_retire" not in rep.json(), "un PUT qui ne change pas le type a retiré"
+    assert _type_et_locuteur(db_path, rid) == ("case", p)
+
+
 def test_undo_presence(client, region, db_path):
     p = client.post("/api/personnages", json={"nom": "Haddock"}).json()
     client.put(f"/api/regions/{region['id']}/personnage", json={"personnage_id": p["id"]})

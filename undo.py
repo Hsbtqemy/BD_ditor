@@ -256,6 +256,13 @@ def _inverser_modification_region(conn, region_id, avant, apres):
     if actuel is None:
         raise UndoImpossible("la région n'existe plus")
     changees = [c for c in journal._REGION_COLS if not conflit.egal(avant.get(c), apres.get(c))]
+    # ANN-8 — rendre un type qui ne porte pas de locuteur à une région qui en porte un
+    # aujourd'hui : ce locuteur, quelqu'un l'a posé depuis l'acte (sur la bulle qu'il avait
+    # faite d'une case). Le retirer en silence effacerait son geste ; le laisser ferait une
+    # case qui parle. L'annulation est refusée, comme toute annulation qui écraserait le
+    # geste d'un autre (CONC-3).
+    if "type" in changees and avant.get("type") not in TYPES_LOCUTEUR:
+        _garder_locuteur(conn, region_id, None)
     # AUTH-14 — le parent qu'on rend se valide comme la route le valide (`_validate_parent`) :
     # présent, dans la MÊME planche, sans cycle. Sans quoi Ctrl+Z rattachait une bulle à une
     # case d'une autre collection (relecture croisée, S1).
@@ -440,6 +447,22 @@ def _liens_rendables(conn, e, snap, ecrivable) -> dict:
             and not _valeur_nee_apres(conn, v, e)
             and ecrivable({"regions": [], "planches": [], "personnages": [], "valeurs": [v]})}
     return {"personnages": ok_p, "valeurs": ok_v}
+
+
+def _garder_locuteur(conn, region_id, rendu) -> None:
+    """Le locuteur est un champ GARDÉ de l'annulation (ANN-8, CONC-3) : si la région en
+    porte un aujourd'hui, et que ce n'est pas celui que l'annulation laisserait (`rendu`,
+    None : aucun), quelqu'un l'a posé depuis l'acte — l'annulation est refusée par le même
+    409 nommé qu'un enregistrement périmé, avec l'auteur du dernier `lien` qui l'a posé.
+    Rien n'est écrit : la garde passe avant l'inversion."""
+    r = conn.execute("SELECT personnage_id FROM bulle_locuteur WHERE region_id = ?",
+                     (region_id,)).fetchone()
+    actuel = r["personnage_id"] if r else None
+    if actuel is None or actuel == rendu:
+        return
+    raise conflit.Perime("bulle_locuteur", region_id, "locuteur", actuel,
+                         conflit.auteur_du_champ(conn, "bulle_locuteur", region_id,
+                                                 "personnage_id", actuel))
 
 
 def _porte_un_locuteur(conn, region_id) -> bool:
@@ -757,6 +780,10 @@ def annuler(conn: sqlite3.Connection, evenement_id: Optional[int] = None,
     # ANN-8 — une suppression rend aussi les liens de ses régions, et un changement de type
     # le locuteur qu'il avait emporté : ceux qui sont rendables.
     a_rendre = _liens_a_rendre(e)
+    if _retire_un_locuteur(e):
+        # Le locuteur que le changement de type avait emporté ne revient que sur une région
+        # sans locuteur : celui qu'un autre y a posé depuis n'est pas écrasé (CONC-3).
+        _garder_locuteur(conn, e["cible_id"], a_rendre["locuteur"])
     rendables = (_liens_rendables(conn, e, a_rendre, ecrivable)
                  if a_rendre is not None else None)
     non_rendus = 0

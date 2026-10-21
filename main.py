@@ -1059,12 +1059,12 @@ def update_region(region_id: int, patch: RegionUpdate,
                      (*fields.values(), region_id))
         if "ocr_texte" in fields:
             reindex_region(conn, region_id)
-        # ANN-8 (Hugo, 2026-10-21) — une zone de texte qui devient case ou boîte personnage
-        # perd son locuteur : il restait, invisible à l'écran et compté partout ailleurs. Le
+        # ANN-8 (Hugo, 2026-10-21) — une zone de texte qui DEVIENT case ou boîte personnage
+        # (le type change réellement) perd son locuteur : il restait, invisible à l'écran et compté partout ailleurs. Le
         # retrait entre dans CE geste — `avant` le porte sous `locuteur`, la clé d'un nœud
         # d'instantané profond — et non dans un `delien` à part : un seul Ctrl+Z rend le
         # type ET le locuteur (cf. `undo._liens_a_rendre`), sans état intermédiaire.
-        if "type" in fields:
+        if "type" in fields and fields["type"] != existing["type"]:
             retire = retirer_locuteur_muet(conn, region_id)
             if retire is not None:
                 avant["locuteur"] = retire

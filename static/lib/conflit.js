@@ -33,6 +33,7 @@
     w: ["Taille", "f", "la taille"], h: ["Taille", "f", "la taille"],
     type: ["Type", "m", "le type"],
     parent_id: ["Rattachement", "m", "le rattachement"],
+    locuteur: ["Locuteur", "m", "le locuteur"],   // ANN-8 : gardé par l'annulation
   };
   const INCONNU = ["Valeur", "f", "la valeur"];
 

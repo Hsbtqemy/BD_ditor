@@ -31,7 +31,8 @@ rollback en cas d'échec.
 |---|---|
 | `creation` région | supprimer la région (+ sous-arbre, désindexé) — **refusé** si quelqu'un d'autre l'a modifiée, annotée ou y a rattaché une région depuis |
 | `modification` région (géométrie / OCR / déplacement) | remettre les colonnes que l'acte a CHANGÉES à leur valeur `avant` — **refusé** si l'une d'elles a changé depuis (sauf par un moteur) |
-| `modification` région qui a changé le type d'une zone de texte en case ou en boîte personnage | remettre le type, puis **reposer le locuteur** que le changement avait retiré (ANN-8), s'il est rendable — sinon le type revient seul, et la réponse le compte (`liens_non_rendus`) |
+| `modification` région qui a changé le type d'une zone de texte en case ou en boîte personnage | remettre le type, puis **reposer le locuteur** que le changement avait retiré (ANN-8), s'il est rendable — sinon le type revient seul, et la réponse le compte (`liens_non_rendus`) ; **refusé** (409 nommé) si la région porte aujourd'hui un AUTRE locuteur |
+| `modification` région qui rend un type sans locuteur (case, boîte personnage) | comme toute modification — **refusé** (409 nommé) si la région porte aujourd'hui un locuteur |
 | `suppression` région | **recréer le sous-arbre** depuis l'instantané profond (région + annotation + enfants, **mêmes `id`**) — **passé** si un `id` a été repris, si une planche ou le parent n'est plus le même, ou si l'on n'écrit plus dans l'une des planches |
 | `creation` / `modification` / `suppression` annotation | défaire ce que l'acte a CHANGÉ, sur l'état actuel : la note revient à `avant` si l'acte l'a changée ; les tags qu'il a ajoutés partent, ceux qu'il a retirés reviennent ; vide, l'annotation est supprimée |
 | `lien` locuteur/présence (avant ∅) | retirer le lien |
@@ -55,6 +56,20 @@ au Ctrl+Z suivant. L'annulation d'un tel `delien` est désormais **passée** (se
 revient pas et compte parmi les `liens_non_rendus`. Ce que la base portait avant cette règle,
 `tools/retirer_locuteurs_muets.py` le montre, et le retire avec `--appliquer` — en acte
 MACHINE, donc hors Ctrl+Z.
+
+**Le locuteur est un champ GARDÉ de l'annulation** (relecture croisée de ANN-8, 2026-10-21 ;
+`undo._garder_locuteur`). Deux annulations d'un changement de type écrasaient le geste d'un
+autre, sans 409. Alice passe la bulle de Tintin en case ; Bob la repasse en bulle et lui
+donne Haddock ; le Ctrl+Z d'Alice remplaçait Haddock par Tintin — la garde du type passait,
+le type étant déjà celui qu'elle rendait. Et Alice passe une case en bulle ; Bob lui donne
+Haddock ; le Ctrl+Z d'Alice rendait une case qui parle. Dans les deux cas l'annulation est
+désormais **refusée**, par le même 409 nommé qu'un enregistrement périmé (champ
+`locuteur`, l'auteur du dernier `lien` qui l'a posé), et rien n'est écrit — retirer le
+locuteur de Bob en silence aurait effacé son geste. Le même locuteur reposé ne bloque rien.
+La garde compare des VALEURS, comme toutes celles de CONC-3 : Alice attribue Haddock, Bob
+passe la bulle en case (Haddock part), Alice annule son attribution — sans effet, il n'y est
+plus —, puis le Ctrl+Z de Bob rend la bulle ET Haddock. Rien n'a changé depuis l'acte de Bob,
+donc rien n'est écrasé ; l'intention d'Alice ne se lit dans aucune valeur.
 
 **Une annotation se défait par différence, et non par instantané** (CONC-3, 2026-09-16).
 Restaurer `avant` entier défaisait aussi ce qu'une autre personne avait fait sur l'AUTRE

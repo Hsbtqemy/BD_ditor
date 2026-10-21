@@ -30,6 +30,7 @@ LIBELLES = {
     "x": "la position", "y": "la position", "w": "la taille", "h": "la taille",
     "type": "le type",
     "parent_id": "le rattachement",
+    "locuteur": "le locuteur",      # ANN-8 : un champ gardé de l'annulation (`undo._garder_locuteur`)
 }
 
 
