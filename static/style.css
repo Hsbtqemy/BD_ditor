@@ -1246,6 +1246,13 @@ a.icon-btn { display: inline-flex; align-items: center; justify-content: center;
 .tag-chip a { color: var(--accent-blue); text-decoration: none; font-weight: 600; }
 .tag-chip a:hover { text-decoration: underline; }
 .tag-input-wrap { position: relative; }
+/* ANN-8 — un champ à propositions ne dépasse jamais sa colonne. Ceux qui n'ont pas la règle
+   de `#tag-input` (locuteur, personnage, « dimension : valeur », autorité) prennent la
+   largeur INTRINSÈQUE d'un champ texte — vingt caractères de SA police : sur le poste le
+   champ « dimension : valeur » s'arrêtait à 318,6 px, dans l'image (DejaVu Sans, plus
+   large) à 326,6 px, et le tiroir défilait en largeur, à 320 px sous une police de 24. La
+   borne ne dépend d'aucune chasse. */
+.tag-input-wrap > input { max-width: 100%; }
 .loc-current { margin: .3077rem 0 .6154rem; min-height: 1.6923rem; }
 .attr-label { margin: .6154rem 0 .1538rem; }
 /* La phrase d'aide sous un champ « dimension : valeur » (ANN-6). Encre `--text-muted`, portée

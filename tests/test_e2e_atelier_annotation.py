@@ -668,3 +668,70 @@ def test_la_phrase_de_profil_tient_dans_le_tiroir_a_320_px_sous_une_police_de_24
                       f"{p['aide']} .attr-exemple")
     assert e["gauche"] >= m["interieurGauche"] - 1 and e["droite"] <= m["interieurDroit"] + 1, e
     assert e["hauteur"] < 1.5 * e["ligne"], f"l'exemple « registre : familier » s'est coupé : {e}"
+
+
+# --------------------------------------------------------------------------- #
+# ANN-8 — à 320 px sous une police de 24, aucun champ ne dépasse du tiroir
+# --------------------------------------------------------------------------- #
+# Mesuré dans l'image avant le correctif : le champ « dimension : valeur » allait jusqu'à
+# 326,6 px et le tiroir défilait en largeur ; sur le poste il s'arrêtait à 318,6 px. Ces
+# champs n'avaient aucune largeur écrite : un champ texte prend celle de vingt caractères
+# de SA police, et la police de l'image est plus large. Le test se joue donc deux fois —
+# sous la police du navigateur, puis sous une chasse FORCÉE plus large que toutes celles
+# qu'on connaît —, pour que la borne se mesure là où on la lance, et pas seulement là où
+# la police a de la marge.
+_CHAMPS_DU_TIROIR = """() => {
+  const panneau = document.querySelector('#panel');
+  const st = getComputedStyle(panneau), p = panneau.getBoundingClientRect();
+  const droit = p.left + panneau.clientLeft + panneau.clientWidth - parseFloat(st.paddingRight);
+  const champs = [...panneau.querySelectorAll('.tag-input-wrap > input')]
+    .filter((c) => c.getClientRects().length)
+    .map((c) => ({ id: c.id, droite: c.getBoundingClientRect().right }));
+  return { fenetre: document.documentElement.clientWidth,
+           racine: getComputedStyle(document.documentElement).fontSize,
+           interieurDroit: droit, champs,
+           defile: panneau.scrollWidth > panneau.clientWidth + 1 };
+}"""
+
+# Posée par le CSSOM, élément par élément : une feuille `<style>` injectée serait refusée
+# par la CSP (`style-src-elem 'self'`), et le test mesurerait la police d'origine.
+_CHASSE_LARGE = """() => document.querySelectorAll('#panel .tag-input-wrap > input')
+  .forEach((c) => { c.style.font = "22px 'Courier New', monospace"; })"""
+
+
+@pytest.mark.parametrize("chasse", ["navigateur", "large"])
+@pytest.mark.parametrize("type_zone", ["case", "bulle", "personnage"])
+def test_aucun_champ_ne_depasse_du_tiroir_a_320_px_sous_une_police_de_24(
+        page, atelier, type_zone, chasse):
+    with httpx.Client(base_url=atelier["base"], trust_env=False, timeout=30,
+                      headers=ECRITURE) as c:
+        for zone, lien in (("bulle", "locuteur"), ("personnage", "personnage")):
+            rep = c.put(f"/api/regions/{atelier[zone]}/{lien}",
+                        json={"personnage_id": atelier["tintin"]})
+            assert rep.status_code == 200, rep.text
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Page.setFontSizes", {"fontSizes": {"standard": 24, "fixed": 24}})
+    page.set_viewport_size({"width": 320, "height": 900})
+    _ouvrir(page, atelier, type_zone)
+    bascule = page.locator("#btn-tiroir-panneau")
+    expect(bascule).to_be_visible(timeout=15000)
+    if bascule.get_attribute("aria-expanded") != "true":
+        bascule.click()
+    expect(bascule).to_have_attribute("aria-expanded", "true")
+    # Le profil du personnage n'est offert qu'une fois le lien lu : on l'attend.
+    temoin = {"case": "#sit-input", "bulle": "#perso-attr-input",
+              "personnage": "#perso-profil-input"}[type_zone]
+    expect(page.locator(temoin)).to_be_visible(timeout=15000)
+    if chasse == "large":
+        page.evaluate(_CHASSE_LARGE)
+    page.wait_for_timeout(400)                          # la glissière du tiroir a fini
+
+    m = page.evaluate(_CHAMPS_DU_TIROIR)
+    assert m["fenetre"] == 320 and m["racine"] == "19.5px", (
+        f"fenêtre de {m['fenetre']} px, racine à {m['racine']} : la préférence de police "
+        "n'a pas été appliquée, et ce qui suit ne mesurerait pas le cas annoncé")
+    assert temoin.lstrip("#") in [ch["id"] for ch in m["champs"]], m
+    trop = [ch for ch in m["champs"] if ch["droite"] > m["interieurDroit"] + 1]
+    assert not trop, (f"champ(s) hors du tiroir ({chasse}) : {trop}, le tiroir s'arrête à "
+                      f"{m['interieurDroit']:.1f} px")
+    assert not m["defile"], f"le tiroir défile en largeur ({chasse}) : {m}"
