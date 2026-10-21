@@ -999,6 +999,14 @@ function highlightRegion(id) {
   if (rect) rect.classList.add("hover-hi");
 }
 
+/* UX-13 — la case que désigne « Rattaché à », surlignée tant que le menu a le focus ;
+   « aucun (planche) », ou le focus ailleurs, ne surligne rien. */
+function surlignerParent() {
+  const sel = $("#region-parent");
+  const actif = sel && document.activeElement === sel && sel.value !== "";
+  highlightRegion(actif ? Number(sel.value) : null);
+}
+
 /* Plier / déplier toutes les cases (tout nœud ayant des enfants). */
 function collapseAllTree() {
   const set = state.collapsedNodes || (state.collapsedNodes = new Set());
@@ -3443,9 +3451,20 @@ function setupControls() {
     // son type, et donc ses blocs.
     if (state.mode === "annotation" && state.selectedId === id) chargerBlocsDuType(id);
   };
-  $("#region-parent").onchange = (e) => {
+  // UX-13 (Hugo, 2026-10-21) — « Rattaché à » reste un <select> NATIF : son menu ouvert est
+  // rendu hors de la page, ses options n'ont pas de survol fiable. La case se surligne donc
+  // quand elle est CHOISIE (souris, ou flèches sur le menu fermé : `change`) ou quand le
+  // menu reçoit le focus, par `highlightRegion` — le halo de l'arbre, sans second
+  // surlignage —, et le halo part avec le focus. L'exploration AVANT de choisir reste au
+  // glisser-déposer de l'arbre, qui surligne déjà au survol.
+  const parent = $("#region-parent");
+  parent.addEventListener("focus", surlignerParent);
+  parent.addEventListener("blur", () => highlightRegion(null));
+  parent.onchange = async (e) => {
     if (state.selectedId == null) return;
-    patchRegion(state.selectedId, { parent_id: e.target.value === "" ? null : Number(e.target.value) });
+    surlignerParent();
+    await patchRegion(state.selectedId, { parent_id: e.target.value === "" ? null : Number(e.target.value) });
+    surlignerParent();   // l'enregistrement redessine la planche : le halo se repose s'il vaut encore
   };
   ["x", "y", "w", "h"].forEach((k) => {
     $("#coord-" + k).onchange = (e) => {
