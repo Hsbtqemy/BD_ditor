@@ -145,6 +145,11 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
 - [ ] **La réindexation plein texte se paie une fois** — attendu : tranché. L'index agrège
   les tags d'une région (`tags_concat`), et la limite écrite sous `AUTH-11` attend la
   prochaine migration forcée de l'index pour être reprise : le basculement en est une
+- [ ] **Une référence à une autre bulle se tient par l'outil** — attendu : tranché dans le
+  modèle. Aujourd'hui, pour un chevauchement, la Note porte la référence de l'autre bulle écrite
+  à la main ; dérivée de l'ordre de lecture, elle désignait une autre bulle dès qu'une case
+  bougeait. Renvoi d'`ANN-8` (Hugo, 2026-10-21) : d'ici là le guide fait écrire l'identifiant
+  stable « #123 », et un lien que l'outil tient vient avec les grilles
 
 ### L'ordre
 

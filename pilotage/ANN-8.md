@@ -7,9 +7,10 @@ statut: interrompu
 
 **Arrêté sur** — 2026-10-21, `da108ba` : neuf des quatorze cases sont faites, dans le lot 1, sur
 `dev` en local (`9c8a9cc`, `3d22f37`, `0e96424`, `a685f30`, `988876c`, `d87bbdc`, `da108ba`). Deux
-le sont à moitié — le premier gel après un redémarrage, la région des messages. Quatre attendent
-une décision de Hugo, proposée avec une recommandation : le locuteur d'une région devenue case,
-↓ puis Entrée pendant un rechargement, les homonymes, la référence d'une bulle dans la Note. Le
+le sont à moitié — le premier gel après un redémarrage, la région des messages. Quatre ont leur
+décision, prise par Hugo le jour même sur recommandation, et restent à coder : le locuteur d'une
+région devenue case, ↓ puis Entrée pendant un rechargement, les homonymes, la référence d'une
+bulle dans la Note. Le
 libellé du verrou est une proposition, à juger à la passe. D'où `interrompu`.
 
 **Ouverte le 2026-10-21** — rien de commencé. Fiche ouverte le 2026-10-21 en sortant d'`ANN-6` les
@@ -50,9 +51,9 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   l'écran, il compte encore au registre, dans la Recherche et les exports. L'annulation peut
   aussi en reposer un sur une case, la garde ne tenant que la route — écrit dans son
   commentaire et décrit par un test. « Aucune case ne porte de locuteur » n'est pas un
-  invariant de la base. Non su : si la production en porte déjà *Posé à Hugo le 2026-10-21,
-  recommandation : le locuteur part avec le type, journalisé ; l'annulation refuse un locuteur
-  sur un type qui n'en porte pas ; un outil à blanc dit ce que la base porte déjà. ~½ journée*
+  invariant de la base. Non su : si la production en porte déjà **Tranché par Hugo le 2026-10-21 :
+  le locuteur part avec le type**, journalisé ; l'annulation refuse un locuteur sur un type qui
+  n'en porte pas ; un outil à blanc dit ce que la base porte déjà. ~½ journée — pas encore codé
 - [x] **Annuler la suppression d'une région rend aussi son locuteur** — attendu : Ctrl+Z
   d'une suppression rend ce qui a été supprimé. Reproduit, antérieur : une case avec une
   situation, dessous un cartouche avec locuteur, note et tag ; supprimer la case, puis
@@ -77,14 +78,15 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
 - [ ] **Pendant que la liste du registre se recharge, ↓ puis Entrée ne prend pas un nom de la
   liste d'avant** — attendu : tranché. Entre une frappe et le retour de sa liste, ↓ puis
   Entrée prend la proposition surlignée de la liste précédente : elle est à l'écran, le
-  geste est explicite. La fermer rend les flèches inertes le temps de la lecture *Posé à Hugo
-  le 2026-10-21, recommandation : à Entrée, revérifier que la proposition surlignée répond
-  encore à la saisie*
+  geste est explicite. La fermer rend les flèches inertes le temps de la lecture **Tranché par
+  Hugo le 2026-10-21 : à Entrée, revérifier que la proposition surlignée répond encore à la
+  saisie** — pas encore codé
 - [ ] **Plusieurs personnages du même nom se départagent à l'écran** — attendu : tranché.
   Quand plusieurs homonymes exacts existent déjà, Entrée prend le premier dans l'ordre du
   registre — nom, puis série, celui sans série d'abord —, sans le dire (mesuré, inchangé).
-  Le guide le dit ; aucun test ne fige ce choix *Posé à Hugo le 2026-10-21, recommandation :
-  Entrée ne décide pas, la liste se réduit aux homonymes, chacun avec sa série*
+  Le guide le dit ; aucun test ne fige ce choix **Tranché par Hugo le 2026-10-21 :
+  Entrée ne décide pas, la liste se réduit aux homonymes, chacun avec sa série** — pas encore
+  codé
 - [x] **Les deux champs de personnage savent ce que l'autre vient de créer** — attendu : dit,
   ou fermé. « Zed » créé par la boîte personnage, puis tapé vite dans le champ du locuteur,
   se décide sur la liste de ce champ-là — périmée seulement si « Zed » y avait déjà été
@@ -125,8 +127,9 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   chevauchement, le guide demande d'écrire dans la Note la référence de l'autre bulle telle
   que le logiciel l'affiche. Cette référence est DÉRIVÉE de l'ordre de lecture
   (`database.citations_regions`), jamais stockée : une case ajoutée ou réordonnée, et la même
-  référence désigne une autre bulle *Posé à Hugo le 2026-10-21, recommandation : le guide
-  dit d'écrire l'identifiant stable « #123 » ; un lien tenu par l'outil irait dans `ANN-7`*
+  référence désigne une autre bulle **Tranché par Hugo le 2026-10-21 : le guide
+  dit d'écrire l'identifiant stable « #123 »** ; un lien tenu par l'outil va dans `ANN-7` — pas
+  encore écrit
 
 ## Contexte
 
