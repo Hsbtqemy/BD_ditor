@@ -2707,9 +2707,10 @@ function setupImport() {
     fd.append("file", file);
     toast("Import en cours…");
     try {
-      const r = await fetch(`${API}/api/albums/${state.albumId}/import`,
-        { method: "POST", headers: { "X-BD-Requete": "1" }, body: fd });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+      // UX-11 — le même chemin que l'import en lot de la Bibliothèque : `apiSend` envoie un
+      // `FormData` tel quel, en multipart, avec l'en-tête des écritures (SEC-2) ; et son
+      // refus porte le message lisible de `messageErreur`, 422 de validation compris.
+      await apiSend("POST", `${API}/api/albums/${state.albumId}/import`, fd);
       await selectAlbum(state.albumId);
       toast("Planche importée", "success");
     } catch (err) { toast("Import : " + err.message, "error"); }
