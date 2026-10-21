@@ -149,10 +149,11 @@ entreront. Rien n'est écrit ; cette fiche garde ce qui est tranché et ce qui r
 ### L'ordre
 
 *La file des lots, tranchée par Hugo le 2026-10-21 : lot 1 (imports, copie de travail, sélecteur
-de collection, petits et `ANN-8`), lot 2 (la 3b de `COL-3` : E7, E8, droits d'effacement), lot 3
-(le bac à sable, `COL-4` — la vague de nouveaux comptes arrive avant les annotateurs), lot 4 :
-ce chantier, avec la tranche 4 de `COL-3`, puis la page Annotation d'`ANN-6`. Les séances de
-conception commencent dès le lot 1, en parallèle : le code attend le lot 4, pas la conception.*
+de collection, petits et `ANN-8`) ; lot 2 le bac à sable SANS wizard (`COL-4` — la vague de
+nouveaux comptes arrive avant les annotateurs) ; lot 3 la 3b de `COL-3` (E7, E8, droits
+d'effacement) ; lot 4 le wizard (`UX-6`, dans le bac à sable) ; lot 5 : ce chantier, avec la
+tranche 4 de `COL-3`, puis la page Annotation d'`ANN-6`. Les séances de conception commencent
+dès le lot 1, en parallèle : le code attend son lot, pas la conception.*
 
 - [x] **Sa place face à `ANN-6` et `COL-3` est décidée** — attendu : tranché par Hugo. Le
   relevé d'`ANN-6` se pose avec une entrée de grille, donc après le modèle ; le catalogue
