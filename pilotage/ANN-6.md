@@ -16,6 +16,14 @@ code : l'outil d'annotation est calibré avec Hugo, et une seconde maquette est 
 « Tranché par Hugo — 2026-10-14 » et « La maquette »). Puis la note de cadrage du modèle est
 écrite et validée (`docs/grilles-et-releves.md`) ; la tranche 1 attend la fusion de `COL-3`.
 
+**2026-10-21 — la fiche est découpée** (avec Hugo). Les quatorze défauts de l'annotation
+ACTUELLE, qui ne dépendent ni du relevé ni des grilles — le verrou, le gel du premier Ctrl+Z,
+le contraste élevé, le locuteur hérité et son annulation, les sept points laissés ouverts par
+le correctif des champs, l'apostrophe des tags, la référence d'une bulle dans la Note —
+partent vers `ANN-8`, pour être traités tôt. Reste ici ce qui attend le modèle d'`ANN-7` :
+la page Annotation (son module, sa maquette), le relevé, ce qui se confirme avec les
+linguistes, et l'organisation du travail des stagiaires.
+
 **Point de départ** — 2026-10-12. Hugo rapporte cinq retours d'usage de la production, puis
 transmet la grille d'annotation des linguistes (extrait d'un guide, treize pages : sept
 niveaux et un tag transversal « doute »). Lue contre l'outil, elle demande ce qu'il n'a pas :
@@ -161,6 +169,8 @@ semaines » (Hugo, le même jour).
 
 ### Avant que les stagiaires commencent
 
+*Sorties vers `ANN-8` le 2026-10-21 : les défauts de l'annotation d'aujourd'hui, qui ne dépendent pas du relevé.*
+
 - [ ] **Ce qu'ils font en attendant le relevé est choisi** — attendu : tranché par Hugo. (a)
   Annoter tout de suite en tags à plat, en acceptant de repasser sur chaque bulle pour
   montrer les mots. (b) Les occuper d'abord à ce qui ne se reprend pas : découpage,
@@ -182,22 +192,13 @@ semaines » (Hugo, le même jour).
   (`lexique_import.py`) ne charge que domaines, dimensions et valeurs — rien ne charge des
   tags en lot
   **Reporté par Hugo le 2026-10-12**, avec la vue d'annotation : cf. « Tranché par Hugo »
-- [ ] **Une apostrophe ou un accent ne font pas deux tags** — attendu : « c’est pluriel »
-  tapé avec l'apostrophe typographique ou avec la droite désigne le même tag. Lu le
-  2026-10-12 : `socle._norm_tag` ne normalise que la casse et les espaces, et le libellé est
-  unique à l'octet. Le guide écrit ses tags avec l'apostrophe typographique ; un clavier
-  tape la droite
-- [ ] **La référence d'une autre bulle écrite dans la Note ne devient pas fausse en silence**
-  — attendu : dit aux annotateurs, ou remplacé par un lien que l'outil tient. Pour un
-  chevauchement, le guide demande d'écrire dans la Note la référence de l'autre bulle telle
-  que le logiciel l'affiche. Cette référence est DÉRIVÉE de l'ordre de lecture
-  (`database.citations_regions`), jamais stockée : une case ajoutée ou réordonnée, et la même
-  référence désigne une autre bulle
 - [ ] **Une planche est transcrite et relue avant qu'on y pose des relevés** — attendu : écrit
   dans l'ordre de travail donné aux stagiaires. Un relevé accroché à des mots dépend du
   texte ; le statut de relecture par planche existe déjà et peut servir de feu vert
 
 ### Retours d'usage du même jour, indépendants du relevé
+
+*Sorties vers `ANN-8` le 2026-10-21 : les défauts de l'annotation d'aujourd'hui, qui ne dépendent pas du relevé.*
 
 - [x] **Un cartouche et une zone de texte reçoivent un locuteur** — attendu : le bloc
   « Locuteur » s'offre pour ces deux types. Retour d'usage : « une fois une nouvelle zone de
@@ -238,13 +239,10 @@ semaines » (Hugo, le même jour).
   vide. Preuve : `tests/test_e2e_atelier_propositions.py`, trois saisies sur deux montages ;
   le mutant qui retire le message fait tomber le test. Ce qu'un lecteur d'écran PRONONCE
   n'est pas mesuré : cf. « Laissé ouvert par le correctif des champs »
-- [ ] **Le bouton de verrou dit ce qu'il protège** — attendu : son libellé ne laisse plus
-  croire qu'il faut verrouiller avant d'annoter. Retour d'usage : « faut-il verrouiller la
-  planche avant de l'annoter ? À quoi sert le verrouillage ? ». Il protège une planche des
-  traitements automatiques et n'empêche aucune annotation humaine ; « Verrouiller la
-  planche » se lit comme une réservation
 
 ### Trouvé par la relecture croisée, antérieur aux deux correctifs — 2026-10-12
+
+*Sorties vers `ANN-8` le 2026-10-21 : les défauts de l'annotation d'aujourd'hui, qui ne dépendent pas du relevé.*
 
 - [x] **Entrée décide d'après une liste périmée, et peut poser une AUTRE valeur** — attendu :
   Entrée agit sur ce qui est tapé. Reproduit sur `33bc5ea` comme après : si une seule valeur
@@ -287,62 +285,11 @@ semaines » (Hugo, le même jour).
   poste, quatre dans l'image, jamais rognée, l'exemple d'un seul tenant. L'audit
   d'accessibilité voit désormais les deux blocs, sombre et clair — son décor n'avait ni
   locuteur ni boîte personnage. Dix mutants, tous tombés
-- [ ] **Un locuteur hérité sur une région devenue case se voit, ou part avec le type** —
-  attendu : tranché. Une bulle qui a un locuteur et devient case le garde : invisible à
-  l'écran, il compte encore au registre, dans la Recherche et les exports. L'annulation peut
-  aussi en reposer un sur une case, la garde ne tenant que la route — écrit dans son
-  commentaire et décrit par un test. « Aucune case ne porte de locuteur » n'est pas un
-  invariant de la base. Non su : si la production en porte déjà
-- [ ] **Annuler la suppression d'une région rend aussi son locuteur** — attendu : Ctrl+Z
-  d'une suppression rend ce qui a été supprimé. Reproduit, antérieur : une case avec une
-  situation, dessous un cartouche avec locuteur, note et tag ; supprimer la case, puis
-  Ctrl+Z : case, cartouche, note et tag reviennent, le locuteur du cartouche et la situation
-  de la case non. Cause LUE : l'instantané d'une région n'emporte que ses colonnes et son
-  annotation. À rapprocher d'`UX-5`
-- [ ] **Le premier Ctrl+Z ou la première note après un redémarrage ne gèle plus l'écran** —
-  attendu : dit, ou fermé. Mesuré : 9 à 17 secondes sans rien afficher, le temps de charger
-  le moteur de langue ; 0,01 s ensuite. Le préchauffage existe (`BD_NLP_PREWARM`) et il est
-  commenté dans `deploy/docker-compose.yml`. Annuler un lien de locuteur ne réindexe rien :
-  ce chargement y est payé pour rien
-- [ ] **Le contraste élevé est audité quelque part** — attendu : tranché. L'audit
-  d'accessibilité du dépôt ne pose que le thème, clair ou sombre ; un mutant qui cache la
-  phrase de « Situation » en contraste élevé passe toute la suite
 - [x] **Le nom de la table du locuteur et la clé `nb_bulles` restent, ou changent** —
   attendu : tranché par Hugo. **Ils restent** (2026-10-13). La table s'appelle
   `bulle_locuteur` et la clé compte désormais des prises de parole, cartouches compris. Le
   nom de la table est une DONNÉE du journal et des exports de provenance déjà produits ; la
   clé n'est lue par aucun écran
-
-### Laissé ouvert par le correctif des champs — 2026-10-13
-
-- [ ] **La région des messages existe avant son premier message, sur les cinq surfaces** —
-  attendu : le premier message d'une page est annoncé par un lecteur d'écran, mesuré avec
-  l'un d'eux. Aujourd'hui la région naît AVEC son premier message, et ce premier message
-  est désormais « Rien n'est ajouté… ». L'auteur du correctif l'avait posée d'avance dans le
-  gabarit de l'Atelier seul : non porté — rien n'est mesuré, et une surface sur cinq
-- [ ] **Pendant que la liste du registre se recharge, ↓ puis Entrée ne prend pas un nom de la
-  liste d'avant** — attendu : tranché. Entre une frappe et le retour de sa liste, ↓ puis
-  Entrée prend la proposition surlignée de la liste précédente : elle est à l'écran, le
-  geste est explicite. La fermer rend les flèches inertes le temps de la lecture
-- [ ] **Plusieurs personnages du même nom se départagent à l'écran** — attendu : tranché.
-  Quand plusieurs homonymes exacts existent déjà, Entrée prend le premier dans l'ordre du
-  registre — nom, puis série, celui sans série d'abord —, sans le dire (mesuré, inchangé).
-  Le guide le dit ; aucun test ne fige ce choix
-- [ ] **Les deux champs de personnage savent ce que l'autre vient de créer** — attendu : dit,
-  ou fermé. « Zed » créé par la boîte personnage, puis tapé vite dans le champ du locuteur,
-  se décide sur la liste de ce champ-là — périmée seulement si « Zed » y avait déjà été
-  cherché. Rapporté par l'auteur du correctif, non rejoué
-- [ ] **Après une validation, la première ↓ surligne une proposition** — attendu : une seule
-  flèche suffit. Antérieur, dans les champs à propositions : la première rouvre la liste
-  sans rien surligner, il en faut une seconde
-- [ ] **À 320 px sous une police de 24, le champ ne dépasse pas du tiroir dans l'image** —
-  attendu : aucun défilement en largeur du tiroir. Antérieur, mesuré dans l'image : le
-  champ « dimension : valeur » va jusqu'à 326,6 px et le tiroir défile ; sur le poste il
-  s'arrête à 318,6 px. Les phrases d'aide, elles, tiennent. À rapprocher d'`UX-7`
-- [ ] **La règle d'Entrée du champ « dimension : valeur » vit dans un module pur** —
-  attendu : tranché. Elle ne dépend plus de l'horloge : une table de vérité sous Node la
-  couvrirait en millisecondes, là où chaque variante coûte un test navigateur de cinq à dix
-  secondes. Recommandé par l'auteur du correctif, non fait : un script de plus au gabarit
 
 ### La maquette
 
