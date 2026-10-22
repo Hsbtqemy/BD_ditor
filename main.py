@@ -93,8 +93,10 @@ from pipeline import nlp
 from pipeline.bulles import BullesError, bulles_available, detect_bulles
 from pipeline.ingest import RESERVATION as RESERVATION_INTERROMPUE
 from pipeline.ingest import (ORIGINE_SHAREDOCS, NumeroPris, ecarter_dossiers_d_album,
-                             DecodeurAbsent, ingest_image, nom_du_fichier_d_origine,
-                             numero_occupe, phrase_d_ecriture_ratee, phrase_de_refus,
+                             DecodeurAbsent, ecriture_ratee, ingest_image,
+                             nom_du_fichier_d_origine, numero_occupe,
+                             phrase_d_ecriture_ratee, phrase_d_erreur_serveur,
+                             phrase_de_refus,
                              remove_planche_files)
 from pipeline.ocr import OCRError, ocr_available, ocr_planche, region_crop_png
 from pipeline.ordering import move_region, reorder_planche
@@ -821,12 +823,16 @@ def import_planche(
         raise HTTPException(503, phrase_de_refus(exc, nom))
     except OSError as exc:
         # UX-11 (relecture croisée) — une ÉCRITURE ratée sur le disque du serveur (disque
-        # plein, droits) n'est pas la faute du fichier : 507, sans le chemin serveur que
-        # porte l'`OSError`, qui va au journal du serveur. L'import en lot s'ARRÊTE sur ce
-        # statut (`lib/import-planches.js`) : le fichier suivant échouerait pareil.
-        logging.getLogger("bd_annotator").error("Import de %s : écriture ratée", nom,
+        # plein, droits, dossier impossible) n'est pas la faute du fichier : 507, sans le
+        # chemin serveur que porte l'`OSError`, qui va au journal du serveur. L'import en
+        # lot s'ARRÊTE sur ce statut (`lib/import-planches.js`) : le suivant échouerait
+        # pareil. Toute autre `OSError` (un encodage de Pillow) : 500 sans chemin, et le
+        # lot continue.
+        logging.getLogger("bd_annotator").error("Import de %s : erreur du serveur", nom,
                                                 exc_info=exc)
-        raise HTTPException(507, phrase_d_ecriture_ratee(exc, nom))
+        if ecriture_ratee(exc):
+            raise HTTPException(507, phrase_d_ecriture_ratee(exc, nom))
+        raise HTTPException(500, phrase_d_erreur_serveur(nom))
     except Exception as exc:
         # UX-11 (2026-10-22) — un refus qui vient du FICHIER se dit en mots et le nomme
         # (« page-3.tif n'est pas une image lisible : … ») : l'import en lot l'affiche tel
@@ -1362,7 +1368,12 @@ def sharedocs_importer(payload: SharedocsImportIn,
                 remove_planche_files(planche.get("chemin_tiff"), planche.get("chemin_web"))
             if not isinstance(exc, Exception):
                 raise                        # une interruption n'est pas l'échec d'un fichier
-            if isinstance(exc, OSError):
+            if isinstance(exc, OSError) and not ecriture_ratee(exc):
+                logging.getLogger("bd_annotator").error("Import ShareDocs de %s : erreur du "
+                                                        "serveur", chemin, exc_info=exc)
+                erreurs.append({"chemin": chemin, "erreur": phrase_d_erreur_serveur(nom)})
+                continue
+            if ecriture_ratee(exc):
                 # Une écriture ratée sur le disque du serveur : le message ne porte pas le
                 # chemin, et la série s'arrête — le fichier suivant échouerait pareil.
                 logging.getLogger("bd_annotator").error("Import ShareDocs de %s : écriture "

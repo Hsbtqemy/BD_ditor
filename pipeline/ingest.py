@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import errno
 import io
+import logging
 import os
 import re
 import sqlite3
@@ -202,6 +203,10 @@ def phrase_d_ecriture_ratee(exc: OSError, nom: str) -> str:
     la cause en mots, et JAMAIS le chemin — le message d'une `OSError` le porte
     (`/data/corpus/album_3/…`), et il ne regarde que l'administrateur, qui le lit dans le
     journal du serveur. Rien n'est entré : l'ingest a retiré ce qu'il avait écrit."""
+    if isinstance(exc, DossierImpossible):
+        return (f"{nom} n'a pas été importée : le serveur n'a pas pu créer le dossier des "
+                "images de l'album. Rien n'est entré ; prévenez l'administrateur de "
+                "l'instance avant de réessayer.")
     cause = {errno.ENOSPC: "le disque du serveur est plein",
              getattr(errno, "EDQUOT", -1): "le quota du disque du serveur est atteint",
              errno.EACCES: "le serveur n'a pas le droit d'écrire ses images",
@@ -210,6 +215,14 @@ def phrase_d_ecriture_ratee(exc: OSError, nom: str) -> str:
         exc.errno, "le serveur n'a pas pu écrire l'image sur son disque")
     return (f"{nom} n'a pas été importée : {cause}. Rien n'est entré ; prévenez "
             "l'administrateur de l'instance avant de réessayer.")
+
+
+def phrase_d_erreur_serveur(nom: str) -> str:
+    """Une autre `OSError` du serveur (ni le fichier, ni le disque) : une phrase sans
+    chemin, et le lot continue — le fichier suivant peut passer."""
+    return (f"{nom} n'a pas été importée : le serveur a rencontré une erreur en préparant "
+            "l'image. Rien n'est entré ; si cela se répète, prévenez l'administrateur de "
+            "l'instance.")
 
 
 def _bits_portes(img: Image.Image) -> int:
@@ -369,6 +382,41 @@ RESERVATION = ("peut-être la réservation laissée par un import interrompu (de
                "VIDES, que `tools/convertir_en_copies_de_travail.py` liste)")
 
 
+class DossierImpossible(OSError):
+    """Le dossier d'images d'un album ne se crée pas (un fichier occupe son chemin, les
+    droits manquent) : une écriture ratée du SERVEUR. Son message nomme le dossier, pour le
+    journal du serveur ; la route ne le rend pas (`phrase_d_ecriture_ratee`)."""
+
+
+class ReservationBloquee(RuntimeError):
+    """Un numéro revient refusé à la réservation sans que `numero_occupe` voie ce qui
+    l'occupe (un lien cassé, par exemple). Le CHEMIN fautif est gardé à part (`chemin`) et
+    écrit au journal du serveur, jamais dans le message, qui sort de l'instance par la
+    réponse de l'import (contre-relecture d'UX-11)."""
+
+    def __init__(self, chemin, album_id: int, numero: int):
+        self.chemin = chemin
+        logging.getLogger("bd_annotator").warning(
+            "Album %s : le numéro %s est refusé à la réservation par %s", album_id, numero,
+            chemin or "un chemin de la planche")
+        super().__init__(f"Album {album_id} : le numéro {numero} est refusé à la réservation "
+                         "sans être vu comme pris ; rien n'a été écrit.")
+
+
+# Les `errno` d'une écriture ratée sur le disque du SERVEUR — ceux, et seuls ceux, qui
+# répondent 507 et arrêtent un import en lot (contre-relecture d'UX-11). Une autre `OSError`
+# (une erreur d'encodage de Pillow, par exemple) n'est pas le disque : 500, sans chemin.
+ERRNOS_D_ECRITURE = frozenset(e for e in (errno.ENOSPC, getattr(errno, "EDQUOT", None),
+                                          errno.EACCES, errno.EPERM, errno.EROFS)
+                              if e is not None)
+
+
+def ecriture_ratee(exc: BaseException) -> bool:
+    """L'échec est-il une écriture ratée sur le disque du serveur ?"""
+    return isinstance(exc, DossierImpossible) or (
+        isinstance(exc, OSError) and exc.errno in ERRNOS_D_ECRITURE)
+
+
 # Combien de numéros l'ingest essaie d'affilée quand un import concurrent prend, entre sa
 # lecture et sa réservation, celui qu'il visait. Au-delà, quelque chose d'autre écrit dans
 # le dossier de l'album.
@@ -396,7 +444,7 @@ def _reserver(chemins) -> list[Path]:
                 # PAS une course : un fichier occupe le chemin du dossier, ou les droits
                 # manquent. Une `FileExistsError` remontée telle quelle aurait fait essayer
                 # le numéro suivant, cinquante fois, pour la même cause (relecture croisée).
-                raise OSError(
+                raise DossierImpossible(
                     f"le dossier {p.parent} ne peut pas être créé ({exc.strerror or exc}) : "
                     "un fichier occupe-t-il son chemin ? Les droits manquent-ils ?") from exc
             with open(p, "xb"):                 # FileExistsError : la seule course
@@ -530,8 +578,7 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source,
         if n == precedent:
             # Le numéro refusé revient : ce qui l'occupe, `numero_occupe` ne le voit pas.
             # Essayer encore ne ferait que le reprendre ; on s'arrête en le nommant.
-            raise RuntimeError(f"Album {album_id} : le numéro {n} est refusé à la réservation "
-                               f"({bloque}) sans être vu comme pris ; rien n'a été écrit.")
+            raise ReservationBloquee(bloque, album_id, n)
         precedent = n
         souche = f"planche_{n:04d}"
         web_path = DERIVATIVES_DIR / f"album_{album_id}" / f"{souche}.jpg"
@@ -545,7 +592,7 @@ def ingest_image(conn: sqlite3.Connection, album_id: int, source,
             if impose:
                 raise NumeroPris(f"Les images du numéro {n} viennent d'être prises par un "
                                  "autre import.") from None
-            bloque = exc.filename or "un chemin de la planche"
+            bloque = exc.filename
     else:
         raise RuntimeError(f"Album {album_id} : aucun numéro de planche n'a pu être réservé "
                            f"en {_ESSAIS_DE_RESERVATION} essais.")

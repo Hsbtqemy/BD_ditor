@@ -2504,6 +2504,12 @@ table.bi-table td.c-act, table.bi-table th.c-act { text-align: left; }
                               cursor: not-allowed; }
 .icon-btn.corbeille-eteinte:hover { background: transparent; color: var(--text); }
 .icon-btn.corbeille-eteinte > span { filter: grayscale(1); opacity: .6; }
+/* ↑ ↓ éteints par la fiche (un filtre, un import — UX-11) : le même dessin que la corbeille
+   éteinte, et pour la même raison : focalisables, ils disent pourquoi quand on les touche. */
+.icon-btn.ordre-eteint { background: transparent; border: 1px dashed var(--text-muted);
+                         cursor: not-allowed; }
+.icon-btn.ordre-eteint:hover { background: transparent; color: var(--text); }
+.icon-btn.ordre-eteint > span { opacity: .6; }
 /* Ce que dit la corbeille éteinte, sous elle, dans la cellule d'actions : la cellule ne
    passe pas à la ligne (`white-space: nowrap`), le message si. */
 .pl-refus-msg { display: block; white-space: normal; text-align: left; max-width: 18rem;

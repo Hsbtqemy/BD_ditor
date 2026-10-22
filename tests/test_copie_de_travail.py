@@ -533,10 +533,12 @@ def test_un_fichier_a_la_place_du_dossier_de_l_album_est_nomme_sans_cinquante_es
 
 
 def test_un_numero_qui_revient_refuse_arrete_la_boucle_en_le_nommant(client, album,
-                                                                     data_dir, monkeypatch):
+                                                                     data_dir, monkeypatch,
+                                                                     caplog):
     """Ce qui occupe un chemin sans que `numero_occupe` le voie (un lien cassé, par exemple)
     faisait rendre le même numéro cinquante fois : au second retour, l'ingest s'arrête et
-    nomme le chemin."""
+    nomme le chemin — au JOURNAL DU SERVEUR et dans `chemin`, plus dans le message, qui sort
+    par la réponse de l'import (contre-relecture d'UX-11)."""
     bloque = data_dir / "derivatives" / f"album_{album['id']}" / "planche_0001.jpg"
     bloque.parent.mkdir(parents=True)
     bloque.write_bytes(b"x")
@@ -551,5 +553,13 @@ def test_un_numero_qui_revient_refuse_arrete_la_boucle_en_le_nommant(client, alb
             ingest.ingest_image(conn, album["id"], _scan()[0])
     finally:
         conn.close()
-    assert "planche_0001.jpg" in str(exc.value) and len(appels) == 2
+    assert "planche_0001.jpg" not in str(exc.value) and len(appels) == 2
+    assert str(exc.value.chemin).endswith("planche_0001.jpg")
+    assert "planche_0001.jpg" in caplog.text
     assert bloque.read_bytes() == b"x"
+
+    # Par la route : un 400 qui ne dit aucun chemin du serveur.
+    r = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("page.png", _scan()[0], "image/png")})
+    assert r.status_code == 400, r.text
+    assert "planche_0001" not in r.text and "derivatives" not in r.text, r.text

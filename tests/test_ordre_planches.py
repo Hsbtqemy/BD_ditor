@@ -361,7 +361,7 @@ def test_un_decodeur_absent_du_serveur_ne_se_dit_pas_fichier_abime(client, album
 @pytest.mark.parametrize("err, cause", [
     (28, "le disque du serveur est plein"),            # ENOSPC
     (13, "le serveur n'a pas le droit d'écrire ses images"),   # EACCES
-    (5, "le serveur n'a pas pu écrire l'image sur son disque"),  # EIO
+    (30, "le disque du serveur est en lecture seule"),          # EROFS
 ])
 def test_une_ecriture_ratee_repond_507_sans_chemin_serveur(client, album, monkeypatch,
                                                             data_dir, err, cause):
@@ -380,6 +380,46 @@ def test_une_ecriture_ratee_repond_507_sans_chemin_serveur(client, album, monkey
     assert client.get(f"/api/albums/{album['id']}/planches").json() == []
     assert not [f for f in data_dir.rglob("*") if f.is_file()
                 and ("corpus" in f.parts or "derivatives" in f.parts)]
+
+
+@pytest.mark.parametrize("exc", [
+    OSError(5, "Input/output error", "/data/corpus/album_1/secret.jpg"),   # EIO : pas reconnu
+    OSError("encoder error -2 when writing image file /data/secret"),     # Pillow, sans errno
+])
+def test_une_autre_erreur_du_serveur_repond_500_sans_chemin(client, album, monkeypatch,
+                                                            data_dir, exc):
+    """Seules les écritures RECONNUES (disque plein, droits, lecture seule, dossier
+    impossible) répondent 507 et arrêtent un import en lot. Une autre `OSError` — une
+    erreur d'encodage de Pillow — n'est pas le disque : 500, sans chemin, et le lot
+    continue (contre-relecture)."""
+    from pipeline import ingest
+
+    def ratee(*a, **k):
+        raise exc
+    monkeypatch.setattr(ingest, "ecrire_copie_de_travail", ratee)
+    r = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("page.png", make_png(), "image/png")})
+    assert r.status_code == 500, r.text
+    assert r.json()["detail"] == (
+        "page.png n'a pas été importée : le serveur a rencontré une erreur en préparant "
+        "l'image. Rien n'est entré ; si cela se répète, prévenez l'administrateur de "
+        "l'instance.")
+    assert "/data" not in r.text and "secret" not in r.text
+    assert not [f for f in data_dir.rglob("*") if f.is_file()
+                and ("corpus" in f.parts or "derivatives" in f.parts)]
+
+
+def test_un_dossier_d_album_impossible_repond_507_sans_chemin(client, album, data_dir):
+    """Un fichier occupe `corpus/album_N` : `_reserver` ne crée pas le dossier. Écriture
+    ratée du serveur — 507 —, et ni le dossier ni l'album ne sont nommés."""
+    (data_dir / "corpus").mkdir(exist_ok=True)
+    (data_dir / "corpus" / f"album_{album['id']}").write_bytes(b"x")
+    r = client.post(f"/api/albums/{album['id']}/import",
+                    files={"file": ("page.png", make_png(), "image/png")})
+    assert r.status_code == 507, r.text
+    assert r.json()["detail"].startswith("page.png n'a pas été importée : le serveur n'a pas "
+                                         "pu créer le dossier des images de l'album.")
+    assert "album_" not in r.text and "corpus" not in r.text
 
 
 def test_l_import_sharedocs_s_arrete_sur_une_ecriture_ratee(client, album, monkeypatch):

@@ -1375,7 +1375,8 @@ function htmlImport(a) {
     <span id="bi-import-etat" class="bi-import-etat small${ton}" role="status" aria-live="polite">${etat}</span>
     ${suite}
   </div>
-  <p id="bi-ordre-msg" class="col-msg muted small" role="status" aria-live="polite"></p>`;
+  <p id="bi-ordre-msg" class="col-msg muted small" role="status" aria-live="polite"></p>
+  ${ordreEteint(a) ? `<span id="bi-ordre-raison" class="sr-only">${esc(ordreEteint(a))}.</span>` : ""}`;
 }
 
 /* ── Changer l'ordre des planches (UX-11, Hugo, 2026-10-22) ────────────────────────────
@@ -1404,16 +1405,25 @@ function ordreEteint(a) {
   return null;
 }
 
+/* ÉTEINTS pour une raison de la fiche (filtre, import), les boutons restent FOCALISABLES —
+   `aria-disabled`, et non `disabled`, qui les sortirait de la tabulation et tairait leur
+   raison au clavier, au lecteur d'écran et au doigt (contre-relecture d'UX-11) : la raison
+   est leur description (`aria-describedby` → `#bi-ordre-raison`), et les toucher la dit
+   dans la ligne d'état. Au BORD de l'album, `disabled` reste : il n'y a rien à expliquer. */
 function boutonsOrdre(a, p) {
   if (!a.ecrivable) return "";
   const i = state.planches.findIndex((x) => x.id === p.id);
   const nom = esc(plancheNomLu(p));
   const eteint = ordreEteint(a);
-  const titre = (t) => esc(eteint || t);
-  return `<button type="button" class="icon-btn" data-monter="${p.id}" title="${titre("Monter d'un cran dans l'album")}" `
-    + `aria-label="Monter ${nom}" ${eteint || i <= 0 || ORDRE.enCours ? "disabled" : ""}>↑</button>`
-    + `<button type="button" class="icon-btn" data-descendre="${p.id}" title="${titre("Descendre d'un cran dans l'album")}" `
-    + `aria-label="Descendre ${nom}" ${eteint || i < 0 || i >= state.planches.length - 1 || ORDRE.enCours ? "disabled" : ""}>↓</button> `;
+  const bouton = (attr, glyphe, verbe, titre, auBord) => (eteint
+    ? `<button type="button" class="icon-btn ordre-eteint" data-${attr}="${p.id}" `
+      + `aria-disabled="true" aria-describedby="bi-ordre-raison" title="${esc(eteint)}" `
+      + `aria-label="${verbe} ${nom}"><span aria-hidden="true">${glyphe}</span></button>`
+    : `<button type="button" class="icon-btn" data-${attr}="${p.id}" title="${titre}" `
+      + `aria-label="${verbe} ${nom}" ${auBord || ORDRE.enCours ? "disabled" : ""}>${glyphe}</button>`);
+  return bouton("monter", "↑", "Monter", "Monter d'un cran dans l'album", i <= 0)
+    + bouton("descendre", "↓", "Descendre", "Descendre d'un cran dans l'album",
+             i < 0 || i >= state.planches.length - 1) + " ";
 }
 
 /* Après un ↑ ↓, le focus reste sur le bouton de la planche DÉPLACÉE, qui a changé de ligne :
@@ -1449,7 +1459,9 @@ async function envoyerOrdre(albumId, ordre, geste, focus) {
 
 async function deplacerPlanche(pid, sens) {
   const a = state.albums.find((x) => x.id === state.openId);
-  if (ORDRE.enCours || !a || ordreEteint(a)) return;
+  if (ORDRE.enCours || !a) return;
+  const eteint = ordreEteint(a);
+  if (eteint) { colMsg($("#bi-ordre-msg"), eteint + "."); return; }
   const albumId = state.openId;
   const ordre = BDImport.deplacer(state.planches.map((p) => p.id), pid, sens);
   if (!ordre) return;

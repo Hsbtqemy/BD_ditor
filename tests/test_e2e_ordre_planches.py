@@ -208,14 +208,40 @@ def test_aucun_geste_d_ordre_pour_qui_ne_fait_que_lire(page, live_server):
 def test_les_fleches_s_eteignent_sous_un_filtre_de_relecture(page, live_server):
     """Le filtre CACHE des planches, et un cran se compte dans l'album entier : ↑ échangerait
     la planche avec une voisine qu'on ne voit pas (relecture croisée). Éteintes, elles disent
-    pourquoi ; le filtre retiré, elles reviennent."""
+    pourquoi — au CLAVIER aussi (contre-relecture) : `aria-disabled` et non `disabled`, la
+    tabulation les atteint, leur description est la raison, et les toucher la dit dans la
+    ligne d'état sans rien envoyer. Le filtre retiré, elles reviennent."""
     aid, ids = _decor(live_server, noms=("a.png", "b.png", "c.png"))
     _ouvrir(page, live_server)
+    envois = []
+    page.on("request", lambda r: envois.append(r) if r.method == "PUT" else None)
     page.select_option("#rel-filter", "a_faire")
+    raison = re.compile(r"^Retirez le filtre de relecture pour changer l'ordre")
+    monter = page.locator(f"[data-monter='{ids[0]}']")
     descendre = page.locator(f"[data-descendre='{ids[0]}']")
-    expect(descendre).to_be_disabled()
-    expect(descendre).to_have_attribute("title", re.compile(r"^Retirez le filtre de relecture"))
-    expect(page.locator(f"[data-monter='{ids[1]}']")).to_be_disabled()
+    for bouton in (monter, descendre, page.locator(f"[data-monter='{ids[1]}']")):
+        expect(bouton).to_have_attribute("aria-disabled", "true")
+        assert bouton.get_attribute("disabled") is None
+        expect(bouton).to_have_accessible_description(raison)
+        expect(bouton).to_have_attribute("title", raison)
+    # L'audit axe de la fiche, flèches éteintes (A11Y : description, contraste, nom).
+    from test_e2e_a11y import _audit, _fmt
+    viol = _audit(page)
+    assert not viol, f"Fiche d'un album, flèches éteintes :\n{_fmt(viol)}"
+    # Au clavier : la case de la ligne, puis Tab — le bouton éteint reçoit le focus.
+    page.locator(f"input[data-pid='{ids[0]}']").focus()
+    page.keyboard.press("Tab")
+    expect(monter).to_be_focused()
+    page.keyboard.press("Enter")
+    expect(page.locator("#bi-ordre-msg")).to_have_text(raison)
+    # À la souris, sur ↓ — qui, filtre retiré, déplacerait vraiment : rien ne part.
+    page.locator("#bi-ordre-msg").evaluate("el => { el.textContent = ''; }")
+    # `force` : Playwright tient un `aria-disabled` pour inactif, le navigateur non — il
+    # livre le clic, et c'est l'écran qui doit le refuser en disant pourquoi.
+    descendre.click(force=True)
+    expect(page.locator("#bi-ordre-msg")).to_have_text(raison)
+    page.wait_for_timeout(300)
+    assert envois == []
     page.select_option("#rel-filter", "")
     expect(page.locator(f"[data-descendre='{ids[0]}']")).to_be_enabled()
     expect(page.locator(f"[data-descendre='{ids[0]}']")).to_have_attribute(
@@ -236,9 +262,9 @@ def test_les_fleches_s_eteignent_pendant_un_import_dans_l_album(page, live_serve
                             "buffer": make_png(330, 200)}])
     expect(page.locator("#bi-import-arreter")).to_be_visible()
     descendre = page.locator(f"[data-descendre='{ids[0]}']")
-    expect(descendre).to_be_disabled()
-    expect(descendre).to_have_attribute("title", re.compile(r"^Un import est en cours dans "
-                                                            r"cet album"))
+    expect(descendre).to_have_attribute("aria-disabled", "true")
+    expect(descendre).to_have_accessible_description(re.compile(r"^Un import est en cours "
+                                                                r"dans cet album"))
     expect(page.locator("#bi-ranger-nom")).to_be_disabled()
     for _ in range(100):                      # la route est interceptée pendant l'attente
         if retenues:
@@ -248,4 +274,5 @@ def test_les_fleches_s_eteignent_pendant_un_import_dans_l_album(page, live_serve
     retenues[0].continue_()
     expect(page.locator("#bi-import-etat")).to_have_text("1 planche importée", timeout=30000)
     expect(page.locator(f"[data-descendre='{ids[0]}']")).to_be_enabled()
+    assert page.locator(f"[data-descendre='{ids[0]}']").get_attribute("aria-disabled") is None
     expect(page.locator("#bi-ranger-nom")).to_be_enabled()
