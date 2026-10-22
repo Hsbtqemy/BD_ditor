@@ -450,3 +450,100 @@ def test_la_reservation_d_un_import_interrompu_est_listee_dans_les_deux_dossiers
     assert all(f.is_file() for f in reserves)
     r = _lancer(db_path, data_dir)
     assert "réservation d'un import interrompu" in r.stdout, r.stdout
+
+
+# --------------------------------------------------------------------------- #
+# La progression : une ligne par fichier, AU MOMENT où il est traité
+# --------------------------------------------------------------------------- #
+# En production, l'outil tourne des heures sous `nohup … > conversion.log` : sa sortie est
+# un FICHIER, que Python remplit par blocs de plusieurs Ko. Les lignes par fichier n'étaient
+# écrites qu'au bilan, et le journal ne montrait que l'avertissement pendant des dizaines de
+# minutes. L'espion lit ce fichier pendant le passage, au moment où le fichier SUIVANT
+# commence : ce qu'il y trouve est ce qu'un exploitant aurait lu.
+_ESPION = r'''
+import os, sys
+from pathlib import Path
+sys.path.insert(0, os.environ["DEPOT"])
+sys.path.insert(0, os.path.join(os.environ["DEPOT"], "tools"))
+import convertir_en_copies_de_travail as cv
+
+vrai = cv._metadonnees
+appels = []
+
+
+def espion(img):
+    appels.append(1)
+    if len(appels) == 2:
+        Path(os.environ["VU"]).write_text(
+            Path(os.environ["SORTIE"]).read_text(encoding="utf-8"), encoding="utf-8")
+    return vrai(img)
+
+
+cv._metadonnees = espion
+raise SystemExit(cv.main(sys.argv[1:]))
+'''
+
+
+@pytest.mark.parametrize("args, marque, verbe", [((), "·", "à convertir"),
+                                                 (("--appliquer",), "✓", "converti")])
+def test_la_ligne_d_un_fichier_sort_avant_que_le_suivant_soit_traite(
+        client, album, db_path, data_dir, tmp_path, args, marque, verbe):
+    p1 = _planche_d_avant(client, album["id"], db_path, data_dir)
+    p2 = _planche_d_avant(client, album["id"], db_path, data_dir)
+    sqlite3.connect(db_path).execute("PRAGMA wal_checkpoint(TRUNCATE)").close()
+    espion = tmp_path / "espion.py"
+    espion.write_text(_ESPION, encoding="utf-8")
+    sortie, vu = tmp_path / "sortie.log", tmp_path / "vu.log"
+    env = {**os.environ, "BD_DB_PATH": str(db_path), "BD_DATA_DIR": str(data_dir),
+           "DEPOT": str(REPO_ROOT), "SORTIE": str(sortie), "VU": str(vu)}
+    with open(sortie, "w", encoding="utf-8") as f:            # un fichier, comme `> log`
+        r = subprocess.run([sys.executable, str(espion), *args], cwd=str(REPO_ROOT), env=env,
+                           stdout=f, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+    final = sortie.read_text(encoding="utf-8")
+    assert r.returncode == 0, final + r.stderr
+
+    # Au moment où le deuxième fichier commence : l'avertissement, le compte, la ligne du
+    # premier — et rien du deuxième.
+    pendant = vu.read_text(encoding="utf-8").splitlines()
+    assert "EFFACE le master du serveur" in pendant[0]
+    assert pendant[1].startswith("2 fichier(s) à traiter, 2 planche(s)")
+    assert pendant[2].startswith(f"  1 sur 2 {marque} {p1['chemin_tiff']} — {verbe}, "
+                                 f"planche(s) {p1['id']} : "), pendant
+    assert len(pendant) == 3, pendant
+
+    # À la fin, la ligne du deuxième, et le bilan ne redit aucun fichier.
+    lignes = final.splitlines()
+    assert lignes[:3] == pendant
+    assert lignes[3].startswith(f"  2 sur 2 {marque} {p2['chemin_tiff']} — {verbe}, ")
+    assert sum(p1["chemin_tiff"] in ligne for ligne in lignes) == 1
+    assert sum(p2["chemin_tiff"] in ligne for ligne in lignes) == 1
+
+
+def test_chaque_issue_a_sa_ligne_au_fil_du_passage(client, album, db_path, data_dir):
+    """Converti, sauté, échec : chacun sa ligne, numérotée dans l'ordre, sur le total
+    compté AVANT le premier fichier."""
+    p1 = _planche_d_avant(client, album["id"], db_path, data_dir)
+    p2 = _planche_d_avant(client, album["id"], db_path, data_dir)
+    p3 = _planche_d_avant(client, album["id"], db_path, data_dir)
+    (data_dir / p2["chemin_tiff"]).unlink()
+    (data_dir / p3["chemin_tiff"]).write_bytes(b"PAS UNE IMAGE")
+    dit = []
+    bilan = _convertir(appliquer=True, dire=dit.append)
+    assert dit[0].startswith("3 fichier(s) à traiter, 3 planche(s)")
+    assert dit[1].startswith(f"  1 sur 3 ✓ {p1['chemin_tiff']} — converti, planche(s) "
+                             f"{p1['id']} : ")
+    assert dit[2] == (f"  2 sur 3 – {p2['chemin_tiff']} — sauté, planche(s) {p2['id']} : "
+                      "master absent du disque")
+    assert dit[3].startswith(f"  3 sur 3 ✗ {p3['chemin_tiff']} — échec, planche(s) "
+                             f"{p3['id']} : ")
+    assert len(dit) == 4 and bilan["total"] == 3
+
+
+def test_un_master_reste_sur_le_disque_se_dit_sur_la_ligne_du_fichier(
+        client, album, db_path, data_dir, monkeypatch):
+    p = _planche_d_avant(client, album["id"], db_path, data_dir)
+    monkeypatch.setattr(cv, "_effacer_si_libre", lambda conn, rel: "effacement refusé (test)")
+    dit = []
+    _convertir(appliquer=True, dire=dit.append)
+    assert dit[1].startswith(f"  1 sur 1 ✓ {p['chemin_tiff']} — converti, ")
+    assert dit[1].endswith("; ⚠ le master reste sur le disque — effacement refusé (test)")

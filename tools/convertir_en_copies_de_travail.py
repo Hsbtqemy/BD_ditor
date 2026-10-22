@@ -43,6 +43,12 @@ reposent les coordonnées des régions), `dpi_x` / `dpi_y` / `mode` (ceux du sca
 centimètres restent justes), le dérivé web. Les régions restent donc au même endroit : qui
 ouvre la copie applique l'échelle `largeur ouverte / largeur_px` (`ocr._open_image`).
 
+La sortie suit le travail : l'outil compte d'abord les fichiers à traiter et le dit, puis
+écrit UNE ligne par fichier au moment où il en a fini (« 12 sur 340 », le chemin, ce qui
+s'est passé), vidée aussitôt — sous `nohup … > journal.log`, la sortie part dans un fichier,
+que Python remplirait sinon par blocs. Le bilan final ne redit pas ces lignes : il compte,
+puis liste les fichiers qu'aucune planche ne désigne.
+
 Idempotent : une planche convertie porte `master_origine`, et n'est plus vue. Un second
 passage ne fait rien. S'arrête PROPREMENT sur Ctrl+C ou un arrêt du conteneur (SIGTERM) :
 le fichier en cours est mené au bout, les suivants ne sont pas touchés.
@@ -217,52 +223,99 @@ def orphelins(conn) -> list[tuple[str, int]]:
     return trouves
 
 
-def convertir(conn, *, albums=(), appliquer: bool = False, arret=None) -> dict:
+def convertir(conn, *, albums=(), appliquer: bool = False, arret=None, dire=None) -> dict:
     """Parcourt les masters gardés ; avec `appliquer`, les convertit. Rend le bilan.
 
-    Avec `appliquer`, sous le verrou de l'outil (`PassageEnCours` s'il est pris)."""
+    Avec `appliquer`, sous le verrou de l'outil (`PassageEnCours` s'il est pris). `dire`
+    reçoit, au fil du travail, le compte des fichiers puis une ligne par fichier traité."""
     if appliquer:
         with _verrou_de_l_outil():
-            return _convertir(conn, albums=albums, appliquer=True, arret=arret)
-    return _convertir(conn, albums=albums, appliquer=False, arret=arret)
+            return _convertir(conn, albums=albums, appliquer=True, arret=arret, dire=dire)
+    return _convertir(conn, albums=albums, appliquer=False, arret=arret, dire=dire)
 
 
-def _convertir(conn, *, albums, appliquer, arret) -> dict:
+def _planches(ids) -> str:
+    return f"planche(s) {', '.join(map(str, ids))}"
+
+
+class _Suivi:
+    """Ce que le bilan retient d'un fichier, et la ligne qui le DIT aussitôt : « n sur N »,
+    le chemin, ce qui s'est passé. Une ligne par fichier, écrite au moment où il est traité
+    et non au bilan — sur un passage de plusieurs heures, c'est le seul moyen de savoir où
+    en est l'outil."""
+
+    def __init__(self, bilan, total, appliquer, dire):
+        self.bilan, self.total, self.appliquer = bilan, total, appliquer
+        self.dire = dire or (lambda ligne: None)
+        self.n = 0
+
+    def _ligne(self, marque, chemin, texte):
+        self.dire(f"  {self.n} sur {self.total} {marque} {chemin} — {texte}")
+
+    def saute(self, chemin, ids, raison):
+        self.bilan["sautes"].append((chemin, ids, raison))
+        self._ligne("–", chemin, f"sauté, {_planches(ids)} : {raison}")
+
+    def echec(self, chemin, ids, erreur):
+        self.bilan["echecs"].append((chemin, ids, erreur))
+        self._ligne("✗", chemin, f"échec, {_planches(ids)} : {erreur}")
+
+    def converti(self, chemin, ids, avant, apres, laisse=None):
+        self.bilan["convertis"].append((chemin, ids, avant, apres))
+        self.bilan["planches"] += len(ids)
+        self.bilan["avant"] += avant
+        self.bilan["apres"] += apres
+        verbe = "converti" if self.appliquer else "à convertir"
+        texte = f"{verbe}, {_planches(ids)} : {_octets(avant)} → {_octets(apres)}"
+        if laisse:
+            self.bilan["laisses"].append((chemin, laisse))
+            texte += f" ; ⚠ le master reste sur le disque — {laisse}"
+        self._ligne("✓" if self.appliquer else "·", chemin, texte)
+
+
+def _convertir(conn, *, albums, appliquer, arret, dire=None) -> dict:
     bilan = {"convertis": [], "sautes": [], "echecs": [], "laisses": [], "planches": 0,
              "avant": 0, "apres": 0, "interrompu": False}
-    for chemin, planches in fichiers_a_convertir(conn, albums):
+    a_traiter = fichiers_a_convertir(conn, albums)
+    bilan["total"] = len(a_traiter)
+    suivi = _Suivi(bilan, len(a_traiter), appliquer, dire)
+    if dire is not None:
+        dire(f"{len(a_traiter)} fichier(s) à traiter, "
+             f"{sum(len(planches) for _, planches in a_traiter)} planche(s) — une ligne par "
+             "fichier, au moment où il est traité.")
+    for chemin, planches in a_traiter:
         if arret is not None and arret.demande:
             bilan["interrompu"] = True
             break
+        suivi.n += 1
         ids = [p["id"] for p in planches]
         ancien = DATA_DIR / chemin
         if not chemin_d_image_sur(chemin):
-            bilan["sautes"].append((chemin, ids, "chemin qui n'a pas la forme d'une image "
-                                                 "d'album"))
+            suivi.saute(chemin, ids, "chemin qui n'a pas la forme d'une image d'album")
             continue
         if not ancien.is_file():
-            bilan["sautes"].append((chemin, ids, "master absent du disque"))
+            suivi.saute(chemin, ids, "master absent du disque")
             continue
         accord = _accord(planches)
         if accord is None:
-            bilan["sautes"].append((chemin, ids, "planches en désaccord sur les dimensions "
-                                                 "ou la résolution du fichier"))
+            suivi.saute(chemin, ids, "planches en désaccord sur les dimensions ou la "
+                                     "résolution du fichier")
             continue
         largeur, hauteur, dpi_x, dpi_y = accord
         if not (largeur and hauteur):
             # Sans les dimensions du scan, rien ne ramènerait les régions de la copie réduite
             # à leur place (`ocr._open_image` retomberait sur une échelle de 1).
-            bilan["sautes"].append((chemin, ids, "planche sans dimensions (largeur_px, "
-                                                 "hauteur_px) : ses régions se décaleraient"))
+            suivi.saute(chemin, ids, "planche sans dimensions (largeur_px, hauteur_px) : "
+                                     "ses régions se décaleraient")
             continue
         avant = ancien.stat().st_size
         try:
             with Image.open(ancien, formats=PILLOW_FORMATS) as img:
                 meta = _metadonnees(img)
                 if (meta["largeur"], meta["hauteur"]) != (largeur, hauteur):
-                    bilan["sautes"].append((chemin, ids, (
+                    suivi.saute(chemin, ids, (
                         f"le fichier fait {meta['largeur']} × {meta['hauteur']} px, la planche "
-                        f"{largeur} × {hauteur}")))
+                        f"{largeur} × {hauteur}"))
                     continue
                 # La résolution du SCAN : celle de la base, sinon celle du fichier.
                 dpi = (dpi_x, dpi_y) if dpi_x and dpi_y else meta["dpi"]
@@ -280,7 +333,7 @@ def _convertir(conn, *, albums, appliquer, arret) -> dict:
                                                 dpi, icc=icc)
                         apres = essai.stat().st_size
         except Exception as exc:                   # illisible, mode refusé…
-            bilan["echecs"].append((chemin, ids, f"{type(exc).__name__}: {exc}"))
+            suivi.echec(chemin, ids, f"{type(exc).__name__}: {exc}")
             continue
         if appliquer:
             apres = nouveau.stat().st_size
@@ -295,16 +348,12 @@ def _convertir(conn, *, albums, appliquer, arret) -> dict:
                 # entre-temps par un autre chemin. La copie qu'on vient d'écrire n'est à
                 # personne : elle part, et le fichier compte comme sauté.
                 nouveau.unlink(missing_ok=True)
-                bilan["sautes"].append((chemin, ids, "plus aucune planche ne le désignait "
-                                                     "au moment de basculer"))
+                suivi.saute(chemin, ids, "plus aucune planche ne le désignait au moment "
+                                         "de basculer")
                 continue
-            refus = _effacer_si_libre(conn, chemin)
-            if refus:
-                bilan["laisses"].append((chemin, refus))
-        bilan["convertis"].append((chemin, ids, avant, apres))
-        bilan["planches"] += len(ids)
-        bilan["avant"] += avant
-        bilan["apres"] += apres
+            suivi.converti(chemin, ids, avant, apres, laisse=_effacer_si_libre(conn, chemin))
+        else:
+            suivi.converti(chemin, ids, avant, apres)
     bilan["orphelins"] = orphelins(conn)
     return bilan
 
@@ -377,6 +426,13 @@ def _ouvrir_la_base(appliquer: bool):
     return database.get_connection()
 
 
+def _dire(ligne: str) -> None:
+    """Une ligne de suivi, VIDÉE aussitôt : redirigée vers un fichier (`nohup … > log`), la
+    sortie de Python est mise en tampon par blocs, et le journal resterait vide pendant des
+    dizaines de minutes."""
+    print(ligne, flush=True)
+
+
 def main(argv=None) -> int:
     forcer_utf8()
     ap = argparse.ArgumentParser(
@@ -388,7 +444,7 @@ def main(argv=None) -> int:
                     help="ne traiter que les fichiers de cet album (répétable)")
     args = ap.parse_args(argv)
 
-    print(AVERTISSEMENT)
+    print(AVERTISSEMENT, flush=True)
     arret = _Arret()
     for sig in (signal.SIGINT, getattr(signal, "SIGTERM", None)):
         if sig is not None:
@@ -401,23 +457,16 @@ def main(argv=None) -> int:
         return 2
     try:
         bilan = convertir(conn, albums=tuple(args.album), appliquer=args.appliquer,
-                          arret=arret)
+                          arret=arret, dire=_dire)
     except PassageEnCours as exc:
         print(f"✗ {exc}")
         return 2
     finally:
         conn.close()
 
-    verbe = "converti" if args.appliquer else "à convertir"
-    for chemin, ids, avant, apres in bilan["convertis"]:
-        print(f"  {'✓' if args.appliquer else '·'} {chemin} ({verbe}) — planche(s) "
-              f"{', '.join(map(str, ids))} : {_octets(avant)} → {_octets(apres)}")
-    for chemin, ids, raison in bilan["sautes"]:
-        print(f"  – {chemin} (sauté) — planche(s) {', '.join(map(str, ids))} : {raison}")
-    for chemin, ids, erreur in bilan["echecs"]:
-        print(f"  ✗ {chemin} — planche(s) {', '.join(map(str, ids))} : {erreur}")
-    for chemin, raison in bilan["laisses"]:
-        print(f"  ⚠ {chemin} : converti, mais le master reste sur le disque — {raison}.")
+    # Le bilan COMPTE : chaque fichier a déjà eu sa ligne pendant le passage, et la redire
+    # ici doublerait un journal de plusieurs centaines de lignes. Les marques (–, ✗, ⚠) se
+    # retrouvent par une recherche dans le journal.
     libere = bilan["avant"] - bilan["apres"]
     if args.appliquer:
         print(f"✓ {len(bilan['convertis'])} fichier(s) converti(s), {bilan['planches']} "
@@ -427,9 +476,12 @@ def main(argv=None) -> int:
               f"{bilan['planches']} planche(s) ; {_octets(libere)} seraient libéré(s). "
               "Rien n'a été écrit — relancez avec --appliquer pour convertir.")
     if bilan["sautes"]:
-        print(f"  {len(bilan['sautes'])} fichier(s) sauté(s).")
+        print(f"  {len(bilan['sautes'])} fichier(s) sauté(s) — lignes « – » plus haut.")
     if bilan["echecs"]:
-        print(f"  {len(bilan['echecs'])} fichier(s) en échec.")
+        print(f"  {len(bilan['echecs'])} fichier(s) en échec — lignes « ✗ » plus haut.")
+    if bilan["laisses"]:
+        print(f"  {len(bilan['laisses'])} master(s) converti(s) mais resté(s) sur le disque "
+              "— lignes « ⚠ » plus haut.")
     if bilan["orphelins"]:
         total = sum(t for _, t in bilan["orphelins"])
         print(f"  {len(bilan['orphelins'])} fichier(s) d'images qu'aucune planche ne "
@@ -440,7 +492,9 @@ def main(argv=None) -> int:
                       if taille == 0 else _octets(taille))
             print(f"    {chemin} ({nature})")
     if bilan["interrompu"]:
-        print("  Arrêté avant la fin : relancez pour traiter le reste.")
+        traites = len(bilan["convertis"]) + len(bilan["sautes"]) + len(bilan["echecs"])
+        print(f"  Arrêté avant la fin, après {traites} fichier(s) sur {bilan['total']} : "
+              "relancez pour traiter le reste.")
         return 130
     return 1 if bilan["echecs"] or bilan["laisses"] else 0
 
