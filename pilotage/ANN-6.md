@@ -241,24 +241,24 @@ semaines » (Hugo, le même jour).
 
 ### À confirmer avec les linguistes
 
-- [ ] **On compte des OCCURRENCES, pas des bulles** — attendu : confirmé par les linguistes.
+- [x] **On compte des OCCURRENCES, pas des bulles** — attendu : confirmé par les linguistes.
   Lecture de Hugo le 2026-10-12 : « je pense qu'ils souhaitent compter les occurrences. Vu
   qu'il peut y avoir plusieurs occurrences par bulle ». Tout le reste de la fiche en dépend :
   avec un tag posé sur la bulle, trois élisions comptent pour une, et deux clivages dans la
-  même bulle ne peuvent pas se dire du tout — un tag est présent ou absent
+  même bulle ne peuvent pas se dire du tout — un tag est présent ou absent **Confirmé par les linguistes le 2026-10-22**, rapporté par Hugo, sur la maquette v3
 - [x] **Une même famille peut recevoir plusieurs relevés dans une zone** — attendu : tranché.
   Hugo, le 2026-10-12 : oui — « si on a une phrase longue, avec plusieurs interrogatives par
   exemple, on pourrait avoir une antéposition dans un cas, puis un clivage, puis une
   inversion »
-- [ ] **La couleur se pose sur les mots** — attendu : confirmé, et le chevauchement tranché
+- [x] **La couleur se pose sur les mots** — attendu : confirmé, et le chevauchement tranché
   sur maquette. Lecture de Hugo le 2026-10-12 : « ce serait au niveau des mots ». Dans
   « j'sais pas », une élision porte sur un mot et une négation courte sur deux : avec sept
   niveaux, il faut choisir entre un niveau affiché à la fois et des soulignements empilés.
   La couleur ne porte jamais l'information seule : une légende et la liste des relevés
-  l'accompagnent
-- [ ] **Un passage est continu, ou peut sauter des mots** — attendu : tranché. « Ne … pas »
+  l'accompagnent **Confirmé par les linguistes le 2026-10-22**, rapporté par Hugo, sur la maquette v3 : une teinte par rubrique pour la grille active, les autres en gris
+- [x] **Un passage est continu, ou peut sauter des mots** — attendu : tranché. « Ne … pas »
   est discontinu ; proposition : du premier au dernier mot, sans trou, ce qui couvre le cas
-  sans compliquer le geste
+  sans compliquer le geste **Confirmé par les linguistes le 2026-10-22**, rapporté par Hugo, sur la maquette v3 : les deux se combinent (cf. « Un passage est continu ET peut sauter des mots »)
 - [ ] **Le « doute » porte sur UN relevé, avec son commentaire, et se retrouve d'un coup** —
   attendu : tranché. Le guide dit « à utiliser dès que vous hésitez, toujours avec un
   commentaire court » ; Hugo, le 2026-10-12 : il sert au travail collectif — des stagiaires
@@ -269,10 +269,10 @@ semaines » (Hugo, le même jour).
 - [ ] **On compte aussi par niveau et par famille, ou seulement tag par tag** — attendu :
   tranché. Hugo, le 2026-10-12 : « je ne sais pas, il faut qu'on réfléchisse » ; toutes les
   familles ne serviront pas à chaque zone
-- [ ] **La double annotation à l'aveugle est voulue, ou non** — attendu : réponse des
+- [x] **La double annotation à l'aveugle est voulue, ou non** — attendu : réponse des
   linguistes. La passe est commune (`ANN-7`, Q7, 2026-10-22) : on se partage les zones. Deux
   personnes qui annotent la même zone sans voir l'autre, pour mesurer leur accord, demanderaient
-  un mode de campagne aux passes séparées, à concevoir alors
+  un mode de campagne aux passes séparées, à concevoir alors **Pas voulue** — réponse des linguistes rapportée par Hugo le 2026-10-22 : la passe commune leur suffit, aucun mode de campagne n'est à concevoir
 
 ### Avant que les stagiaires commencent
 
@@ -405,7 +405,7 @@ semaines » (Hugo, le même jour).
 
 ### La maquette
 
-- [ ] **Une maquette interactive du mode d'annotation est montrée aux linguistes** —
+- [x] **Une maquette interactive du mode d'annotation est montrée aux linguistes** —
   attendu : hors de l'application, avec la grille réelle. Demande rapportée par Hugo :
   « l'annotation est l'élément le plus important […] pourrait-elle se faire dans un format
   similaire à celle de la transcription ? pour que ce soit présenté dans un format agrandi »,
@@ -453,19 +453,19 @@ semaines » (Hugo, le même jour).
   de large, 900 et 768 de haut, dans Chromium ; le glissé sur les mots aussi dans Firefox. Non
   essayés : tablette, téléphone, contraste élevé, lecteur d'écran. Retenu pour la tranche 2 :
   pendant un glissé, ne rien redessiner sous le pointeur — la maquette le faisait, 61 fois par
-  seconde, et le relâchement s'y perdait
+  seconde, et le relâchement s'y perdait **Validée par les linguistes le 2026-10-22**, rapporté par Hugo : la maquette v3 (`https://claude.ai/artifact/3EXqt485Dv7SwwTRVogLuQ`). Reste ouvert de leur côté : « Un relevé à qualificatifs compte UNE fois son phénomène »
 
 ### À trancher sur la maquette, avec les linguistes
 
 - [x] **Le rendu des relevés sur les mots est choisi** — attendu : tranché. Hugo, le
   2026-10-14 : « Rendu grille active en couleur » — une teinte par rubrique, les autres
   grilles en gris. L'autre rendu (toutes les grilles empilées) quitte la maquette
-- [ ] **Un passage est continu ET peut sauter des mots** — attendu : confirmé par Hugo puis
+- [x] **Un passage est continu ET peut sauter des mots** — attendu : confirmé par Hugo puis
   par les linguistes. Hugo a demandé si les deux se combinaient : ils se combinent, et
   c'est ce que la maquette fait désormais, sans réglage. Clic, glissé ou Maj+clic désignent
   un passage continu ; Ctrl+clic, ou « Ajouter un mot » au doigt, ajoute ou retire un mot
   isolé (« ne … pas »). Un passage à trou se trace sans trait sous les mots sautés, et se
-  lit « son … il » dans la liste
+  lit « son … il » dans la liste **Confirmé par les linguistes le 2026-10-22**, rapporté par Hugo, sur la maquette v3
 - [ ] **Un relevé à qualificatifs compte UNE fois son phénomène** — attendu : confirmé par les
   linguistes. La maquette pose « emphase par typographie et ponctuation » comme un seul
   relevé : 1 emphase, 1 typographie, 1 ponctuation. Le guide en fait deux tags, donc deux
