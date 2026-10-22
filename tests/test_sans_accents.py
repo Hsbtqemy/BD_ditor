@@ -72,6 +72,53 @@ def test_un_homonyme_qu_on_ne_voit_pas_n_est_pas_rendu(client, planche, db_path,
     assert rep.json()["id"] != cache
 
 
+def test_deux_creations_simultanees_ne_font_pas_deux_homonymes(client, db_path, monkeypatch):
+    """Relecture de la suite, S4 : la recherche de l'homonyme et l'insertion se font sous le
+    verrou d'écriture — sans lui, « Étienne » et « etienne » créés en même temps lisaient
+    tous deux « aucun »."""
+    import threading
+    import time
+    import routes.personnages as rp
+    assert client.post("/api/personnages", json={"nom": "Autre"}).status_code == 201
+    vraie = rp._cle_homonyme
+
+    def lente(nom, serie):
+        time.sleep(0.3)
+        return vraie(nom, serie)
+    monkeypatch.setattr(rp, "_cle_homonyme", lente)
+    codes = []
+
+    def poster(nom):
+        codes.append(client.post("/api/personnages", json={"nom": nom}).status_code)
+    fils = [threading.Thread(target=poster, args=(n,)) for n in ("Étienne", "etienne")]
+    for f in fils:
+        f.start()
+    for f in fils:
+        f.join()
+    assert sorted(codes) == [200, 201]
+    assert direct_query(db_path, "SELECT COUNT(*) n FROM personnages "
+                                 "WHERE nom IN ('Étienne', 'etienne')")[0]["n"] == 1
+
+
+def test_renommer_en_homonyme_a_l_accent_pres_est_refuse(client, db_path):
+    """Décision du 2026-10-22 : renommer « Etiene » en « etienne » quand « Étienne » existe
+    dans la même série : 409 qui nomme l'existant. Dans une autre série, ou en changeant
+    seulement sa propre casse, rien n'est refusé."""
+    etienne = client.post("/api/personnages", json={"nom": "Étienne"}).json()["id"]
+    faute = client.post("/api/personnages", json={"nom": "Etiene"}).json()["id"]
+    r = client.put(f"/api/personnages/{faute}", json={"nom": "etienne"})
+    assert r.status_code == 409, r.text
+    assert "« Étienne »" in r.json()["detail"] and "sans série" in r.json()["detail"]
+    assert direct_query(db_path, "SELECT nom FROM personnages WHERE id = ?", (faute,))[0]["nom"] == "Etiene"
+    # Changer de série pour rejoindre un homonyme est refusé de même.
+    autre = client.post("/api/personnages", json={"nom": "Étienne", "serie": "Les Aventures"}).json()["id"]
+    assert client.put(f"/api/personnages/{autre}", json={"serie": ""}).status_code == 409
+    # Ce qui n'est pas un homonyme passe.
+    assert client.put(f"/api/personnages/{faute}", json={"nom": "etienne",
+                                                        "serie": "Autre"}).status_code == 200
+    assert client.put(f"/api/personnages/{etienne}", json={"nom": "ÉTIENNE"}).status_code == 200
+
+
 def _ecrivain_d_une_autre_collection(client):
     """Un compte qui écrit dans une collection neuve, et ne lit rien d'autre."""
     cid = client.post("/api/collections", json={"nom": "Ailleurs"}, headers=ADMIN).json()["id"]

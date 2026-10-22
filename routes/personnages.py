@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 import autorisation
 import conflit
 import journal
-from config import CIBLES_ATTRIBUT, TYPES_LOCUTEUR
+from config import CIBLES_ATTRIBUT, TYPES_LOCUTEUR, TYPES_PRESENCE, TYPES_SITUATION
 
 from socle import (
     AlignementIn, AttributIn, DimensionDomaineIn, DimensionIn, DomaineIn, FusionIn,
@@ -122,6 +122,10 @@ def create_personnage(payload: PersonnageIn, response: Response,
         raise HTTPException(422, "Nom de personnage vide")
     serie = (payload.serie or "").strip() or None
     cle = _cle_homonyme(nom, serie)
+    # Le verrou d'écriture AVANT de chercher : deux créations simultanées de « Étienne » et
+    # « etienne » lisaient toutes deux « aucun », et en créaient deux (relecture de la suite
+    # d'ANN-8, S4). La seconde attend, et trouve la première.
+    conflit.verrouiller(conn)
     ou, params = _clause_personnage(portee)
     for r in conn.execute(f"SELECT p.id, p.nom, p.serie FROM personnages p WHERE {ou} "
                           f"ORDER BY p.id", params):
@@ -135,11 +139,33 @@ def create_personnage(payload: PersonnageIn, response: Response,
     return _get_personnage(conn, portee, pid)
 
 
+def _refuser_un_homonyme(conn, portee, personnage_id, nom, serie) -> None:
+    """ANN-8 (décision du 2026-10-22) — renommer un personnage, ou changer sa série, ne
+    fabrique pas un homonyme à l'accent près dans la même série : 409 qui nomme l'existant
+    et renvoie à la fusion. Parmi les personnages qu'on VOIT seulement, comme à la création
+    (`create_personnage`) : refuser au nom d'un personnage qu'on ne voit pas dirait qu'il
+    existe. Le verrou se prend avant de chercher, pour la raison de la création."""
+    conflit.verrouiller(conn)
+    cle = _cle_homonyme(nom, serie)
+    ou, params = _clause_personnage(portee)
+    for r in conn.execute(f"SELECT p.id, p.nom, p.serie FROM personnages p WHERE {ou} "
+                          f"ORDER BY p.id", params):
+        if r["id"] != personnage_id and _cle_homonyme(r["nom"], r["serie"]) == cle:
+            dans = f"dans la série « {r['serie']} »" if r["serie"] else "sans série"
+            raise HTTPException(409, f"Un personnage « {r['nom']} » existe déjà {dans} : "
+                                     "l'accent et la casse ne distinguent pas deux "
+                                     "personnages. Fusionnez-les plutôt.")
+
+
 @router.put("/api/personnages/{personnage_id}")
 def update_personnage(personnage_id: int, payload: PersonnageUpdate,
                       conn: sqlite3.Connection = Depends(db),
                       portee: autorisation.Portee = Depends(portee_courante)):
-    _get_personnage(conn, portee, personnage_id, ecriture=True)
+    actuel = _get_personnage(conn, portee, personnage_id, ecriture=True)
+    if payload.nom is not None or payload.serie is not None:
+        _refuser_un_homonyme(conn, portee, personnage_id,
+                             payload.nom if payload.nom is not None else actuel["nom"],
+                             payload.serie if payload.serie is not None else actuel["serie"])
     sets, params = [], []
     if payload.nom is not None:
         nom = payload.nom.strip()
@@ -341,10 +367,10 @@ def clear_locuteur(region_id: int, conn: sqlite3.Connection = Depends(db),
 # --- Présence : quelle entité est MONTRÉE dans une boîte personnage (§14, brique (a)).
 #     Miroir du locuteur, mais pour l'image — la boîte porte l'identité, et le profil de
 #     l'entité devient atteignable depuis l'image (muets compris). La cohérence de type
-#     (region.type = 'personnage', `config.TYPES_PRESENCE`) n'est pas gardée par cette
-#     route : l'écran n'offre le bloc qu'à la boîte, le changement de type retire le
-#     personnage d'une région qui cesse d'en montrer un et l'annulation ne l'y repose pas
-#     (ANN-8). Le locuteur, lui, est gardé par sa route depuis ANN-6 (`config.TYPES_LOCUTEUR`).
+#     (region.type = 'personnage', `config.TYPES_PRESENCE`) est gardée par l'attribution
+#     depuis ANN-8 (422), comme le locuteur depuis ANN-6 ; lire et retirer restent ouverts
+#     à tout type, pour nettoyer ce qu'une base d'avant porte. Le changement de type retire
+#     le personnage d'une région qui cesse d'en montrer un, et l'annulation ne l'y repose pas.
 @router.get("/api/regions/{region_id}/personnage")
 def get_presence(region_id: int, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
@@ -355,7 +381,12 @@ def get_presence(region_id: int, conn: sqlite3.Connection = Depends(db),
 @router.put("/api/regions/{region_id}/personnage")
 def set_presence(region_id: int, payload: PresenceIn, conn: sqlite3.Connection = Depends(db),
                  portee: autorisation.Portee = Depends(portee_courante)):
-    _get_region(conn, portee, region_id, ecriture=True)
+    region = _get_region(conn, portee, region_id, ecriture=True)
+    # ANN-8 (décision du 2026-10-22) — le miroir du locuteur : seule une boîte personnage
+    # montre un personnage. Après l'accesseur gardé, pour la raison de `set_locuteur`.
+    if region["type"] not in TYPES_PRESENCE:
+        raise HTTPException(422, "Seule une boîte personnage montre un personnage : cette "
+                                 f"région est de type « {region['type']} ».")
     _get_personnage(conn, portee, payload.personnage_id)
     ancien = conn.execute("SELECT personnage_id FROM personnage_presence WHERE region_id = ?",
                           (region_id,)).fetchone()
@@ -852,6 +883,7 @@ def remove_personnage_attribut(personnage_id: int, valeur_id: int,
                                conn: sqlite3.Connection = Depends(db),
                                portee: autorisation.Portee = Depends(portee_courante)):
     _get_personnage(conn, portee, personnage_id, ecriture=True)
+    _get_valeur(conn, portee, valeur_id)   # la route sœur de S3 : retirer demande de voir
     conn.execute("DELETE FROM personnage_attribut WHERE personnage_id = ? AND valeur_id = ?",
                  (personnage_id, valeur_id))
     conn.commit()
@@ -868,7 +900,11 @@ def list_region_attributs(region_id: int, conn: sqlite3.Connection = Depends(db)
 def add_region_attribut(region_id: int, payload: AttributIn,
                         conn: sqlite3.Connection = Depends(db),
                         portee: autorisation.Portee = Depends(portee_courante)):
-    _get_region(conn, portee, region_id, ecriture=True)
+    region = _get_region(conn, portee, region_id, ecriture=True)
+    # ANN-8 (décision du 2026-10-22) — seule une case reçoit une situation (422).
+    if region["type"] not in TYPES_SITUATION:
+        raise HTTPException(422, "Seule une case reçoit une situation : cette région est de "
+                                 f"type « {region['type']} ».")
     _affecter(conn, portee, "region_attribut", "region_id", region_id, payload.valeur_id, "case")
     return _attributs_de(conn, portee, "region_attribut", "region_id", region_id)
 
@@ -878,6 +914,10 @@ def remove_region_attribut(region_id: int, valeur_id: int,
                            conn: sqlite3.Connection = Depends(db),
                            portee: autorisation.Portee = Depends(portee_courante)):
     _get_region(conn, portee, region_id, ecriture=True)
+    # Retirer une valeur demande de la VOIR, comme la poser (`_affecter`) : sans quoi, son
+    # identifiant suffisait à effacer la situation locale d'une collection qu'on ne lit pas
+    # (relecture de la suite d'ANN-8, S3). 404, la valeur n'existe pas pour l'appelant.
+    _get_valeur(conn, portee, valeur_id)
     if conn.execute("DELETE FROM region_attribut WHERE region_id = ? AND valeur_id = ?",
                     (region_id, valeur_id)).rowcount:
         journal.journaliser(conn, "delien", "region_attribut", region_id,

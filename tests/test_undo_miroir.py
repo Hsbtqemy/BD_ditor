@@ -263,6 +263,135 @@ def test_une_partie_de_la_situation_laissee_ne_bloque_pas(client, planche, db_pa
 
 
 # --------------------------------------------------------------------------- #
+# Une situation LOCALE à une collection qu'on ne lit pas (relecture de la suite, S1–S3)
+# --------------------------------------------------------------------------- #
+LETTREUSE = {"Remote-User": "alice", "Remote-Groups": "lettrage"}
+
+
+def _decor_cache(client, planche, db_path):
+    """L'album vit dans C1 (Alice y écrit) et C2 (Alice ne la lit pas). Une valeur de case
+    GLOBALE (visible), une valeur LOCALE à C2 (cachée à Alice)."""
+    c = sqlite3.connect(db_path)
+    c1 = c.execute("SELECT collection_id FROM collection_album WHERE album_id = ?",
+                   (planche["album_id"],)).fetchone()[0]
+    c2 = c.execute("INSERT INTO collection (nom) VALUES ('Incubateur')").lastrowid
+    c.execute("INSERT INTO collection_album (collection_id, album_id) VALUES (?, ?)",
+              (c2, planche["album_id"]))
+    c.execute("INSERT INTO collection_acces (collection_id, genre, principal, niveau) "
+              "VALUES (?, 'utilisateur', 'alice', 'ecriture')", (c1,))
+    d = c.execute("INSERT INTO attribut_dimension (cible, nom, collection_id) "
+                  "VALUES ('case', 'grille-secrete', ?)", (c2,)).lastrowid
+    cachee = c.execute("INSERT INTO attribut_valeur (dimension_id, valeur, collection_id) "
+                       "VALUES (?, 'hypothese-confidentielle', ?)", (d, c2)).lastrowid
+    c.commit()
+    c.close()
+    return _valeur(client, "case", "lieu", "falaise"), cachee
+
+
+def test_s1_ctrl_z_rend_la_situation_cachee_que_le_changement_de_type_a_retiree(
+        client, planche, db_path, derriere_proxy):
+    """« Cacher n'est pas saisir » : passer en bulle la case retire aussi la valeur de C2,
+    qu'Alice ne voit pas ; son Ctrl+Z la rend avec la sienne. Sans quoi le travail de C2
+    était perdu, effacé par un geste qui ne le voyait pas."""
+    visible, cachee = _decor_cache(client, planche, db_path)
+    rid = _region(client, planche["id"], type="case")
+    _ok(client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": visible},
+                   headers=LETTREUSE), 200)
+    _ok(client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": cachee}, headers=BOB), 200)
+    _ok(client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=LETTREUSE), 200)
+    assert _liens(db_path, rid)["attributs"] == []
+    res = _ok(client.post("/api/undo", headers=LETTREUSE), 200).json()
+    assert res["liens_non_rendus"] == 0
+    assert _liens(db_path, rid)["attributs"] == sorted([visible, cachee])
+
+
+def test_s2_le_retrait_ne_compte_que_ce_qu_on_voit(client, planche, db_path, derriere_proxy):
+    """La réponse du PUT et la pile ne disent rien d'une valeur cachée : une seule valeur
+    comptée ; et si seule la cachée part, ni compte ni « retrait de sa situation »."""
+    visible, cachee = _decor_cache(client, planche, db_path)
+    rid = _region(client, planche["id"], type="case")
+    for v, qui in ((visible, LETTREUSE), (cachee, BOB)):
+        _ok(client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": v}, headers=qui), 200)
+    rep = _ok(client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=LETTREUSE), 200)
+    assert rep.json()["situation_retiree"] == 1
+
+    seule = _region(client, planche["id"], type="case")
+    _ok(client.put(f"/api/regions/{seule}/attributs", json={"valeur_id": cachee}, headers=BOB), 200)
+    rep = _ok(client.put(f"/api/regions/{seule}", json={"type": "bulle"}, headers=LETTREUSE), 200)
+    assert "situation_retiree" not in rep.json()
+    assert client.get("/api/undo/prochain", headers=LETTREUSE).json()["description"] == \
+        "modification d'une région"
+
+
+def test_s2_le_409_ne_nomme_ni_la_valeur_cachee_ni_son_auteur(client, planche, db_path,
+                                                             derriere_proxy):
+    """Alice passe une bulle en case ; Bob la situe d'une valeur de C2 ; le Ctrl+Z d'Alice
+    est refusé — la valeur serait cachée par la bulle —, mais le refus n'en dit rien :
+    aucune valeur, aucun auteur, « modifiée ailleurs »."""
+    visible, cachee = _decor_cache(client, planche, db_path)
+    rid = _region(client, planche["id"], type="bulle")
+    _ok(client.put(f"/api/regions/{rid}", json={"type": "case"}, headers=LETTREUSE), 200)
+    _ok(client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": cachee}, headers=BOB), 200)
+    res = client.post("/api/undo", headers=LETTREUSE)
+    assert res.status_code == 409, res.text
+    conflit = res.json()["detail"]["conflit"]
+    assert (conflit["champ"], conflit["valeur_actuelle"], conflit["auteur"]) == \
+        ("situation", [], None)
+    assert "bob" not in res.text.lower()
+    assert "modifiée ailleurs" in res.json()["detail"]["message"]
+
+
+def test_s3_retirer_une_valeur_demande_de_la_voir(client, planche, db_path, derriere_proxy):
+    """Son identifiant ne suffit plus à effacer la situation de C2 : 404, rien de retiré."""
+    visible, cachee = _decor_cache(client, planche, db_path)
+    rid = _region(client, planche["id"], type="case")
+    _ok(client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": cachee}, headers=BOB), 200)
+    r = client.delete(f"/api/regions/{rid}/attributs/{cachee}", headers=LETTREUSE)
+    assert r.status_code == 404, r.text
+    assert _liens(db_path, rid)["attributs"] == [cachee]
+
+
+# --------------------------------------------------------------------------- #
+# Les routes de la présence et de la situation gardent le type (2026-10-22)
+# --------------------------------------------------------------------------- #
+def test_seule_une_boite_personnage_montre_un_personnage(client, planche, db_path):
+    milou = _perso(client, "Milou")
+    for t in ("case", "bulle", "cartouche", "texte"):
+        rid = _region(client, planche["id"], type=t)
+        r = client.put(f"/api/regions/{rid}/personnage", json={"personnage_id": milou},
+                       headers=ADMIN)
+        assert r.status_code == 422, (t, r.text)
+        assert "boîte personnage" in r.json()["detail"]
+        assert _liens(db_path, rid)["presence"] is None
+    boite = _region(client, planche["id"], type="personnage")
+    _ok(client.put(f"/api/regions/{boite}/personnage", json={"personnage_id": milou},
+                   headers=ADMIN), 200)
+
+
+def test_seule_une_case_recoit_une_situation(client, planche, db_path):
+    lieu = _valeur(client, "case", "lieu", "falaise")
+    for t in ("bulle", "personnage", "cartouche", "texte"):
+        rid = _region(client, planche["id"], type=t)
+        r = client.put(f"/api/regions/{rid}/attributs", json={"valeur_id": lieu}, headers=ADMIN)
+        assert r.status_code == 422, (t, r.text)
+        assert "case" in r.json()["detail"]
+        assert _liens(db_path, rid)["attributs"] == []
+
+
+def test_retirer_reste_ouvert_a_tout_type(client, planche, db_path):
+    """Lire et retirer restent ouverts, pour nettoyer ce qu'une base d'avant porte."""
+    rid = _region(client, planche["id"], type="bulle")
+    milou = _perso(client, "Milou")
+    lieu = _valeur(client, "case", "lieu", "falaise")
+    _sql(db_path, "INSERT INTO personnage_presence (region_id, personnage_id) VALUES (?, ?)",
+         (rid, milou))
+    _sql(db_path, "INSERT INTO region_attribut (region_id, valeur_id) VALUES (?, ?)", (rid, lieu))
+    _ok(client.delete(f"/api/regions/{rid}/personnage", headers=ADMIN), 204)
+    _ok(client.delete(f"/api/regions/{rid}/attributs/{lieu}", headers=ADMIN), 204)
+    assert _liens(db_path, rid) == {"locuteur": None, "presence": None, "attributs": []}
+
+
+# --------------------------------------------------------------------------- #
 # L'annulation ne repose pas un lien sur un type qui ne le montre pas
 # --------------------------------------------------------------------------- #
 def test_l_annulation_ne_remontre_pas_un_personnage_sur_une_region_devenue_bulle(

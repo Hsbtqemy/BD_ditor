@@ -245,8 +245,9 @@ TYPES_LOCUTEUR = ("bulle", "cartouche", "texte")
 # ANN-8 (Hugo, 2026-10-21) — le miroir du locuteur : une région qui change de type perd ce
 # que son nouveau type ne montre pas (`database.retirer_liens_caches`), et l'annulation ne
 # le repose que sur un type qui le montre. L'écran n'offre le bloc Personnage qu'à la boîte
-# et le bloc Situation qu'à la case ; leurs routes ne gardent pas le type, à la différence de
-# celle du locuteur (`PUT /api/regions/{id}/personnage`, `…/attributs`).
+# et le bloc Situation qu'à la case, et leurs routes d'attribution gardent le type (422),
+# comme celle du locuteur (`PUT /api/regions/{id}/personnage`, `…/attributs`, décision du
+# 2026-10-22) ; lire et retirer restent ouverts à tout type.
 TYPES_PRESENCE = ("personnage",)
 TYPES_SITUATION = ("case",)
 

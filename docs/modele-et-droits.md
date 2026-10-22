@@ -54,7 +54,8 @@ Trois objets ne sont dans aucune boîte, et c'est voulu.
   une zone de texte qui devient l'une ou l'autre le perd, et Ctrl+Z ne l'y repose pas. Le
   miroir vaut pour la présence et la situation : une boîte personnage qui change de type
   perd son personnage montré, une case sa situation, et Ctrl+Z ne les repose que sur une
-  boîte ou une case — mais leurs routes, elles, ne gardent pas le type.
+  boîte ou une case ; et, comme pour le locuteur, la route refuse de montrer un personnage
+  hors d'une boîte, ou de situer autre chose qu'une case.
   L'entité est le moyeu où la parole et l'image se rejoignent.
 - **Le vocabulaire** (tags, domaines, dimensions, valeurs) vit au niveau du corpus, avec sa
   propre règle de portée — cf. §4.
