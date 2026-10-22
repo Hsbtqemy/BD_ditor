@@ -155,6 +155,15 @@ def test_renommer_sur_place(page, decor):
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
+def test_un_ecrivain_renomme_un_tag_inutilise(page, decor):
+    terme = _ouvrir(page, decor, {"Remote-User": "bob"}, "fote")
+    terme.locator('[data-g="label"]').fill("faute")
+    terme.locator('[data-g="renommer"]').click()
+    expect(page.locator("#toasts .toast.success")).to_have_text("Tag « fote » renommé « faute ».")
+    assert "faute" in _tags(decor)
+
+
+@pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
 def test_renommer_vers_un_tag_existant_dit_que_c_est_une_fusion(page, decor):
     terme = _ouvrir(page, decor, ADMIN, "fote")
     terme.locator('[data-g="label"]').fill("inutile")
@@ -164,14 +173,15 @@ def test_renommer_vers_un_tag_existant_dit_que_c_est_une_fusion(page, decor):
 
 
 @pytest.mark.parametrize("live_server", [True], indirect=True)   # proxy déclaré
-def test_un_ecrivain_ne_se_voit_offrir_que_la_suppression_d_un_tag_inutilise(page, decor):
-    """`bob` écrit dans « Étude A » sans la posséder : un tag global ne se remanie que par
-    l'administrateur. Sur un tag posé, rien ; sur un tag que personne ne porte, Supprimer."""
+def test_un_ecrivain_ne_se_voit_offrir_que_les_gestes_sur_un_tag_inutilise(page, decor):
+    """`bob` écrit dans « Étude A » sans la posséder : un tag global posé ne se remanie que
+    par l'administrateur. Sur un tag posé, rien ; sur un tag que personne ne porte,
+    Renommer et Supprimer (décision du 2026-10-22), jamais Fusionner."""
     pose = _ouvrir(page, decor, {"Remote-User": "bob"}, "zorglonde")
     expect(pose.locator(".lex-gestes")).to_have_count(0)
     libre = _editeur(page, "inutile")
     expect(libre.locator('[data-g="supprimer"]')).to_be_visible()
-    expect(libre.locator('[data-g="renommer"]')).to_have_count(0)
+    expect(libre.locator('[data-g="renommer"]')).to_be_visible()
     expect(libre.locator('[data-g="fusionner"]')).to_have_count(0)
     vu = _repondre(page, accepter=True)
     libre.locator('[data-g="supprimer"]').click()

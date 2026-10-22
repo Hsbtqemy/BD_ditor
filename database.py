@@ -3416,6 +3416,56 @@ def unindex_region(conn: sqlite3.Connection, region_id: int) -> None:
     conn.execute("DELETE FROM recherche WHERE region_id = ?", (region_id,))
 
 
+def reindex_tags_regions(conn: sqlite3.Connection, region_ids) -> None:
+    """Réécrit les seuls TAGS (`tags_concat`) de l'index de ces régions — ANN-8, quand un
+    tag est renommé, fusionné ou supprimé.
+
+    `reindex_region` relance l'analyse NLP complète et régénère `tokens` pour chaque
+    région : sous le verrou d'écriture, 1 500 régions le tenaient 14,7 s (mesuré le
+    2026-10-22, une annotation concurrente recevait le 409 « occupée »), et des `tokens`
+    figés avec un autre modèle (`tools/reindex_nlp.py`, un modèle `lg`) étaient régénérés
+    avec celui du serveur. Changer un tag ne change ni le texte, ni la note, ni donc les
+    lemmes et les tokens : on garde la ligne et on n'y réécrit que `tags_concat`.
+
+    `region_id` est UNINDEXED : le chercher parcourt toute la table. On le parcourt donc UNE
+    fois par paquet de régions, pour lire le `rowid` de chacune, puis on écrit par `rowid`.
+    Une région sans ligne en reçoit une (ses lemmes vides : elle n'avait ni texte ni note
+    indexés, sans quoi elle aurait une ligne) ; une ligne qui n'a plus rien à porter part."""
+    ids = sorted(set(region_ids))
+    for debut in range(0, len(ids), 500):
+        paquet = ids[debut:debut + 500]
+        lignes = {r["region_id"]: r for r in conn.execute(
+            "SELECT rowid, region_id, lemmes FROM recherche "
+            f"WHERE region_id IN ({','.join('?' * len(paquet))})", paquet)}
+        for region_id in paquet:
+            payload = _region_index_payload(conn, region_id)
+            ligne = lignes.get(region_id)
+            if payload is None:
+                if ligne is not None:
+                    conn.execute("DELETE FROM recherche WHERE rowid = ?", (ligne["rowid"],))
+                continue
+            ocr_texte, note, tags_concat = payload
+            lemmes = ligne["lemmes"] if ligne is not None else ""
+            if not (ocr_texte or note or tags_concat or lemmes):
+                if ligne is not None:
+                    conn.execute("DELETE FROM recherche WHERE rowid = ?", (ligne["rowid"],))
+            elif ligne is not None:
+                conn.execute("UPDATE recherche SET tags_concat = ? WHERE rowid = ?",
+                             (tags_concat, ligne["rowid"]))
+            else:
+                conn.execute("INSERT INTO recherche (region_id, ocr_texte, note, "
+                             "tags_concat, lemmes) VALUES (?, ?, ?, ?, '')",
+                             (region_id, ocr_texte, note, tags_concat))
+
+
+def annotation_vide(note, nb_tags: int) -> bool:
+    """Une annotation qui n'a plus rien à porter — ni note (une note d'espaces est vide), ni
+    tag, cachés compris. Elle se SUPPRIME plutôt que de rester en coquille : elle fausserait
+    le compte des annotées et ferait garder la case à la re-segmentation. UNE règle, lue par
+    `put_annotation` et par la suppression d'un tag (ANN-8)."""
+    return not (note or "").strip() and not nb_tags
+
+
 if __name__ == "__main__":
     init_db()
     print(f"Base initialisée : {DB_PATH} (schéma v{SCHEMA_VERSION})")

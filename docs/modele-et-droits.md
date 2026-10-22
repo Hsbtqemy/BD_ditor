@@ -442,8 +442,8 @@ niveau. Les niveaux **s'empilent** : un propriétaire écrit et lit ; qui écrit
 | Transcrire, corriger le découpage, annoter, relire la grammaire | — | ✅ | ✅ | ✅ |
 | Lancer les passes automatiques (cases, bulles, OCR) | — | ✅ | ✅ | ✅ |
 | Créer et documenter du vocabulaire local à la collection | — | ✅ | ✅ | ✅ |
-| **Supprimer un tag** que plus aucune région ne porte, sur tout le corpus (local à la collection, ou global) | — | ✅ | ✅ | ✅ |
-| **Renommer, fusionner un tag, ou supprimer un tag encore posé** — tag local à la collection, et posé seulement dans des albums où l'on écrit | — | — | ✅ | ✅ |
+| **Renommer ou supprimer un tag** que plus aucune région ne porte, sur tout le corpus (local à la collection, ou global) | — | ✅ | ✅ | ✅ |
+| **Fusionner un tag, ou renommer ou supprimer un tag encore posé** — tag local à la collection ; retirer ou fusionner seulement s'il n'est posé que dans des albums où l'on écrit | — | — | ✅ | ✅ |
 | … un tag **global** | — | — | — | ✅ |
 | **Supprimer un album de la collection** — même la dernière : il est alors gardé au fonds | — | ✅ | ✅ | ✅ |
 | **Supprimer définitivement** un album ou une planche sans rien demander — à condition de l'avoir importé, que personne d'autre n'y ait travaillé, d'écrire dans *toutes* ses collections, et de ne pas être sous un compte partagé (§2, *Le fonds*) | — | ✅ | ✅ | ✅ |
@@ -773,11 +773,12 @@ modification sur un terme est un **403** — il vient d'être listé, un 404 men
 grilles d'`ANN-7`). Le panneau *📖 Lexique* offre trois gestes sur un tag — **Renommer**,
 **Fusionner** dans un autre, **Supprimer** — et deux questions décident qui les fait.
 
-- **Supprimer un tag que plus aucune région ne porte** — sur tout le corpus, pas seulement
-  sur ce que vous lisez — est l'affaire de qui modifie déjà le tag : rien de ce que d'autres
-  ont posé ne change. Un tag qui compte 0 pour vous peut être posé dans une collection que
-  vous ne lisez pas : il ne se supprime alors pas, et le refus le dit sans dire où.
-- **Le renommer, le fusionner, ou le supprimer quand des régions le portent**, c'est changer
+- **Renommer ou supprimer un tag que plus aucune région ne porte** — sur tout le corpus,
+  pas seulement sur ce que vous lisez — est l'affaire de qui modifie déjà le tag : rien de ce
+  que d'autres ont posé ne change. Un tag qui compte 0 pour vous peut être posé dans une
+  collection que vous ne lisez pas : il ne se renomme ni ne se supprime alors, et le refus
+  le dit sans dire où.
+- **Le fusionner, ou le renommer ou le supprimer quand des régions le portent**, c'est changer
   ce que d'autres ont posé : un tag **local** se remanie par le propriétaire de sa collection
   et l'administrateur, un tag **global** par l'administrateur seul (et en mono-poste).
 
@@ -794,7 +795,11 @@ avant. Une **fusion** porte le tag choisi sur chaque région du premier (une seu
 elle le portait déjà), puis le premier disparaît ; elle ne se fait que vers un tag global
 ou de la même collection, pour ne cacher le tag à personne. **Renommer** vers le libellé
 d'un autre tag est refusé : c'est une fusion, et le message le dit. Ces gestes sont écrits
-au journal, ne partent pas au dépôt, et **Ctrl+Z ne les défait pas**.
+au journal, ne partent pas au dépôt, et **Ctrl+Z ne les défait pas**. Ctrl+Z d'un geste
+d'annotation fait AVANT eux ne recrée jamais un tag : un tag renommé ou fusionné revient sous
+son nom d'aujourd'hui, un tag supprimé ne revient pas. Fusionner dans un tag global un tag
+local posé hors de sa collection montre aux lecteurs de ces régions qu'un tag y était posé —
+la cible, jamais l'ancien libellé.
 
 **Voir n'est pas non plus ce qui SORT, et il y a deux règles de sortie** (mis au vrai le
 2026-10-07).

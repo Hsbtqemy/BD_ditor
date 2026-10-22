@@ -28,11 +28,13 @@ test("remaniable : renommer, fusionner, supprimer — tout ou rien", () => {
                    { renommer: false, fusionner: false, supprimer: false });
 });
 
-test("un tag inutilisé se supprime par qui le modifie, sans être remaniable", () => {
+test("un tag inutilisé se renomme et se supprime par qui le modifie, sans se fusionner", () => {
   assert.deepEqual(G.gestesOfferts({ remaniable: false, frequence: 0 }, true),
-                   { renommer: false, fusionner: false, supprimer: true });
-  assert.equal(G.gestesOfferts({ remaniable: false, frequence: 0 }, false).supprimer, false);
-  assert.equal(G.gestesOfferts({ remaniable: false, frequence: 1 }, true).supprimer, false);
+                   { renommer: true, fusionner: false, supprimer: true });
+  assert.deepEqual(G.gestesOfferts({ remaniable: false, frequence: 0 }, false),
+                   { renommer: false, fusionner: false, supprimer: false });
+  assert.deepEqual(G.gestesOfferts({ remaniable: false, frequence: 1 }, true),
+                   { renommer: false, fusionner: false, supprimer: false });
 });
 
 test("une clé absente ou d'une autre forme n'offre rien", () => {

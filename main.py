@@ -23,7 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from config import (AUTH_ADMIN_GROUPS, AUTH_LOGOUT_URL, AUTH_PROXY, COMMIT_SERVI,
                     DATA_DIR, IMG_EXTS, REFERENT_CONTACT, REFERENT_NOM, RELECTURE,
                     ROLES_PLANCHE, STATIC_DIR, STATUTS, TEMPLATES_DIR, TYPES_REGION)
-from database import (DEMANDE_REJOINDRE, DEMANDE_SUPPRESSION_DOCUMENT, citations_regions,
+from database import (DEMANDE_REJOINDRE, DEMANDE_SUPPRESSION_DOCUMENT, annotation_vide,
+                      citations_regions,
                       collection_par_defaut, contributions_album, creer_document,
                       dimensions_cm, document_d_album, init_db,
                       noms_lisibles, numeros_editoriaux, projet_de_collection,
@@ -1740,7 +1741,7 @@ def put_annotation(region_id: int, payload: AnnotationIn,
     # ne serait pas cherchable, et ferait conserver à tort la case à la
     # re-segmentation (préservation du travail humain). « Aucun tag » compte aussi
     # ceux qu'on ne voit pas : vider ce qu'on voit ne supprime pas ce qu'on ne voit pas.
-    if not (note or "").strip() and not tag_ids and not caches:
+    if annotation_vide(note, len(tag_ids) + len(caches)):
         conn.execute("DELETE FROM annotations WHERE region_id = ?", (region_id,))
         reindex_region(conn, region_id)
         if avant_annot is not None:

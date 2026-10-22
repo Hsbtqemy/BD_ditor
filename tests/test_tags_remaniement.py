@@ -427,11 +427,15 @@ def test_un_tag_d_avant_se_renomme_vers_sa_propre_cle(client, db_path, decor):
 
 
 def test_qui_renomme(client, db_path, decor):
+    """Un tag POSÉ se renomme par qui le remanie (le lecteur et l'écrivain : 403)."""
     glob = _tag(db_path, "global")
     a = _tag(db_path, "local", decor["c1"])
-    for qui, attendu in ((LECTEUR, 403), (ECRIVAIN, 403)):
+    _poser(db_path, decor["r1"], glob, a)
+    for qui in (LECTEUR, ECRIVAIN):
         assert client.put(f"/api/tags/{a}", json={"label": "x"},
-                          headers=qui).status_code == attendu
+                          headers=qui).status_code == 403
+    r = client.put(f"/api/tags/{a}", json={"label": "x"}, headers=ECRIVAIN)
+    assert "propriétaire" in r.json()["detail"]
     r = client.put(f"/api/tags/{glob}", json={"label": "x"}, headers=PROPRIO)
     assert r.status_code == 403 and "global" in r.json()["detail"]
     assert client.put(f"/api/tags/{a}", json={"label": "  "},
@@ -440,6 +444,27 @@ def test_qui_renomme(client, db_path, decor):
                       headers=ADMIN).status_code == 200
     assert client.put(f"/api/tags/{a}", json={"label": "chez moi"},
                       headers=PROPRIO).status_code == 200
+
+
+def test_un_tag_inutilise_se_renomme_par_qui_le_modifie(client, db_path, decor):
+    """Décision de la session de pilotage (2026-10-22) : renommer un tag que plus aucune
+    région ne porte, sur TOUT le corpus, suit la suppression d'un tag inutilisé —
+    `peut_ecrire_terme` suffit. Posé ailleurs, il reste à qui le remanie."""
+    glob = _tag(db_path, "fote globale")
+    loc = _tag(db_path, "fote locale", decor["c1"])
+    assert client.put(f"/api/tags/{glob}", json={"label": "x"},
+                      headers=LECTEUR).status_code == 403
+    for t, nouveau in ((glob, "faute globale"), (loc, "faute locale")):
+        r = client.put(f"/api/tags/{t}", json={"label": nouveau}, headers=ECRIVAIN)
+        assert r.status_code == 200, r.text
+        assert r.json()["label"] == nouveau
+    ailleurs = _tag(db_path, "ailleurs")
+    _poser(db_path, decor["r2"], ailleurs)
+    freq = {x["label"]: x["frequence"] for x in client.get("/api/tags", headers=ECRIVAIN).json()}
+    assert freq["ailleurs"] == 0
+    r = client.put(f"/api/tags/{ailleurs}", json={"label": "autre"}, headers=ECRIVAIN)
+    assert r.status_code == 403, r.text
+    assert _sql(db_path, "SELECT label FROM tags WHERE id = ?", (ailleurs,))[0]["label"] == "ailleurs"
 
 
 # --------------------------------------------------------------------------- #
@@ -477,3 +502,174 @@ def test_ranger_le_vocabulaire_ne_donne_ni_rang_ni_acte(client, db_path, decor):
         assert "proprio" not in comptes.traces(conn)[0]
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# Ctrl+Z d'un geste d'ANNOTATION fait avant un remaniement (relecture croisée,
+# 2026-10-22) : l'annulation ne crée plus jamais de tag
+# --------------------------------------------------------------------------- #
+AUTRE = {"Remote-User": "autre"}
+
+
+def _autre_sur_c2(client, decor):
+    r = client.put(f"/api/collections/{decor['c2']}/acces", headers=ADMIN, json={
+        "genre": "utilisateur", "principal": "autre", "niveau": "ecriture"})
+    assert r.status_code == 200, r.text
+
+
+def _labels_vus(client, qui):
+    return {t["label"] for t in client.get("/api/tags", headers=qui).json()}
+
+
+def _poser_puis_retirer(client, decor, label):
+    r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ECRIVAIN,
+                   json={"note": "n", "tags_ajoutes": [label]})
+    assert r.status_code == 200, r.text
+    assert label in [t["label"] for t in r.json()["tags"]], r.json()
+    r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ECRIVAIN,
+                   json={"tags_retires": [label]})
+    assert r.status_code == 200, r.text
+
+
+def _porte(client, decor, region="r1"):
+    return sorted(x["label"] for x in client.get(
+        f"/api/regions/{decor[region]}/annotation", headers=ADMIN).json()["tags"])
+
+
+def test_ctrl_z_apres_renommage_rend_le_tag_sous_son_nouveau_nom(client, db_path, decor):
+    """Reproduction de la relecture : Ctrl+Z d'un retrait fait avant le renommage recréait
+    l'ancien libellé LOCAL en tag GLOBAL — visible de qui ne lit pas sa collection."""
+    _autre_sur_c2(client, decor)
+    t = _tag(db_path, "secret-a", decor["c1"])
+    _poser_puis_retirer(client, decor, "secret-a")
+    assert "secret-a" not in _labels_vus(client, AUTRE)
+    assert client.put(f"/api/tags/{t}", json={"label": "public-a"},
+                      headers=PROPRIO).status_code == 200
+    r = client.post("/api/undo", headers=ECRIVAIN)
+    assert r.status_code == 200, r.text
+    assert "secret-a" not in _labels_vus(client, AUTRE)
+    assert _sql(db_path, "SELECT id, label, collection_id FROM tags WHERE label LIKE '%-a'") \
+        == [{"id": t, "label": "public-a", "collection_id": decor["c1"]}]
+    assert _porte(client, decor) == ["public-a"]
+
+
+def test_ctrl_z_ne_ressuscite_pas_un_tag_supprime_expres(client, db_path, decor):
+    """Le retrait annulé ne portait que sur un tag supprimé depuis : rien à rétablir, l'acte
+    est PASSÉ (seconde phrase d'AUTH-14), et aucun tag ne renaît — pas même si un tag du
+    même nom a été recréé entre-temps : ce n'est pas lui."""
+    t = _tag(db_path, "fote", decor["c1"])
+    _poser_puis_retirer(client, decor, "fote")
+    assert client.delete(f"/api/tags/{t}", headers=PROPRIO).status_code == 200
+    neuf = _tag(db_path, "fote")                           # un autre, du même nom
+    r = client.post("/api/undo", headers=ECRIVAIN)
+    assert r.status_code == 409, r.text
+    assert "ne peut plus être rétabli" in r.json()["detail"]["message"]
+    assert _sql(db_path, "SELECT id FROM tags WHERE label = 'fote'") == [{"id": neuf}]
+    assert _porte(client, decor) == []
+
+
+def test_ctrl_z_d_un_ajout_apres_fusion_retire_la_cible(client, db_path, decor):
+    """L'ajout annulé avait posé « doublon », fusionné depuis dans « garde » : c'est
+    « garde » qui part — et lui seul si la région le portait déjà avant l'acte."""
+    a = _tag(db_path, "doublon", decor["c1"])
+    b = _tag(db_path, "garde", decor["c1"])
+    c = _tag(db_path, "avant", decor["c1"])
+    _poser(db_path, decor["r1b"], c)
+    r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ECRIVAIN,
+                   json={"note": "n", "tags_ajoutes": ["doublon"]})
+    assert r.status_code == 200, r.text
+    assert client.post(f"/api/tags/{a}/fusion", json={"cible_id": b},
+                       headers=PROPRIO).status_code == 200
+    r = client.post("/api/undo", headers=ECRIVAIN)
+    assert r.status_code == 200, r.text
+    assert "garde" not in _porte(client, decor)
+    assert not _sql(db_path, "SELECT 1 FROM tags WHERE label = 'doublon'")
+
+
+def test_ctrl_z_d_un_ajout_ne_retire_pas_ce_qui_etait_deja_la(client, db_path, decor):
+    """La région portait déjà « garde » ; l'acte a ajouté « doublon », fusionné depuis dans
+    « garde ». Défaire l'ajout ne retire rien : « garde » était là avant l'acte."""
+    a = _tag(db_path, "doublon", decor["c1"])
+    b = _tag(db_path, "garde", decor["c1"])
+    r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ADMIN,
+                   json={"note": "n", "tags_ajoutes": ["garde"]})
+    assert r.status_code == 200, r.text
+    r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ECRIVAIN,
+                   json={"tags_ajoutes": ["doublon"]})
+    assert r.status_code == 200, r.text
+    assert client.post(f"/api/tags/{a}/fusion", json={"cible_id": b},
+                       headers=PROPRIO).status_code == 200
+    assert client.post("/api/undo", headers=ECRIVAIN).status_code == 200
+    assert _porte(client, decor) == ["garde"]
+
+
+def test_ctrl_z_d_une_suppression_de_region_ne_rend_que_les_tags_vivants(
+        client, db_path, decor):
+    """La région revient ; son tag renommé revient sous son nouveau nom, son tag supprimé ne
+    revient pas et se compte parmi les liens non rendus."""
+    renomme = _tag(db_path, "ancien", decor["c1"])
+    parti = _tag(db_path, "parti", decor["c1"])
+    r = client.put(f"/api/regions/{decor['r1']}/annotation", headers=ADMIN,
+                   json={"note": "n", "tags": ["ancien", "parti"]})
+    assert r.status_code == 200, r.text
+    assert client.delete(f"/api/regions/{decor['r1']}", headers=ECRIVAIN).status_code in (200, 204)
+    assert client.put(f"/api/tags/{renomme}", json={"label": "nouveau"},
+                      headers=PROPRIO).status_code == 200
+    assert client.delete(f"/api/tags/{parti}", headers=PROPRIO).status_code == 200
+    r = client.post("/api/undo", headers=ECRIVAIN)
+    assert r.status_code == 200, r.text
+    assert r.json()["liens_non_rendus"] == 1
+    assert _porte(client, decor) == ["nouveau"]
+    assert not _sql(db_path, "SELECT 1 FROM tags WHERE label IN ('ancien', 'parti')")
+
+
+# --------------------------------------------------------------------------- #
+# L'index : les TAGS seuls, sans analyse de langue (relecture croisée, 2026-10-22)
+# --------------------------------------------------------------------------- #
+def _ligne_fts(db_path, region_id):
+    return _sql(db_path, "SELECT rowid, tags_concat, lemmes FROM recherche "
+                         "WHERE region_id = ?", (region_id,))
+
+
+def test_remanier_ne_reecrit_que_les_tags_de_l_index(client, db_path, decor):
+    """Les lemmes et les tokens ne bougent pas : ni analyse refaite, ni modèle substitué.
+    On le voit à un lemme posé à la main, qu'une réindexation complète effacerait, et aux
+    identifiants des tokens, qu'elle régénérerait. Une ligne, pas deux."""
+    t = _tag(db_path, "zorglub", decor["c1"])
+    _poser(db_path, decor["r1"], t)
+    _reindexer(client, decor["r1"])
+    _sql(db_path, "UPDATE recherche SET lemmes = 'marqueurlemme' WHERE region_id = ?",
+         (decor["r1"],))
+    _sql(db_path, "INSERT INTO tokens (region_id, ordre, texte, lemme, pos, morph) "
+                  "VALUES (?, 99, 'temoin', 'temoin', 'NOUN', '')", (decor["r1"],))
+    jetons = _sql(db_path, "SELECT id FROM tokens WHERE region_id = ?", (decor["r1"],))
+    assert client.put(f"/api/tags/{t}", json={"label": "zorgle"},
+                      headers=PROPRIO).status_code == 200
+    [ligne] = _ligne_fts(db_path, decor["r1"])
+    assert ligne["tags_concat"] == "zorgle" and ligne["lemmes"] == "marqueurlemme"
+    assert _sql(db_path, "SELECT id FROM tokens WHERE region_id = ?", (decor["r1"],)) == jetons
+    assert _trouve(client, "zorgle") == [decor["r1"]]
+    assert _trouve(client, "zorglub") == []
+
+
+def test_une_region_sans_ligne_d_index_en_recoit_une(client, db_path, decor):
+    """Des tags posés hors des routes : aucune ligne d'index. La fusion lui en donne une, et
+    la région se trouve sous le libellé de la cible."""
+    a = _tag(db_path, "sans-index", decor["c1"])
+    b = _tag(db_path, "indexee")
+    _poser(db_path, decor["r1b"], a)
+    _sql(db_path, "DELETE FROM recherche WHERE region_id = ?", (decor["r1b"],))
+    assert client.post(f"/api/tags/{a}/fusion", json={"cible_id": b},
+                       headers=PROPRIO).status_code == 200
+    assert len(_ligne_fts(db_path, decor["r1b"])) == 1
+    assert _trouve(client, "indexee") == [decor["r1b"]]
+
+
+def test_une_note_de_blancs_compte_pour_vide(client, db_path, decor):
+    """La règle de `put_annotation` (`database.annotation_vide`), et non `TRIM` de SQL, qui
+    ne retire que des espaces : une note faite d'un saut de ligne et d'une tabulation est
+    vide, et l'annotation part avec son dernier tag."""
+    t = _tag(db_path, "seul", decor["c1"])
+    _poser(db_path, decor["r1"], t, note="\n\t ")
+    assert client.delete(f"/api/tags/{t}", headers=PROPRIO).status_code == 200
+    assert not _sql(db_path, "SELECT 1 FROM annotations WHERE region_id = ?", (decor["r1"],))

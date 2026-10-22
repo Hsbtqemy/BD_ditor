@@ -146,8 +146,8 @@ d'avant, donc effaçait le tag posé par un collègue. La différence entre `ava
 dit ce que l'acte a changé, et seul cela est défait. Tant que personne d'autre n'a touché
 l'annotation, le résultat est exactement `avant`.
 
-**L'annulation repose les tags PAR LEUR LIBELLÉ, et sans filtre de portée** — `_ensure_tag`
-résout le libellé ou le recrée. Depuis AUTH-11 (2026-09-24), la SAISIE fait l'inverse : taper
+**L'annulation repose les tags PAR LEUR LIBELLÉ, et sans filtre de portée** — `_tag_a_rendre`
+résout le libellé, sans jamais le recréer (cf. le point suivant). Depuis AUTH-11 (2026-09-24), la SAISIE fait l'inverse : taper
 le nom d'un tag local à une collection qu'on ne lit pas ne l'attache plus (`socle._ensure_tags`
 reçoit la portée). **L'asymétrie est voulue, et l'inverser casserait l'undo** : restaurer
 n'est pas saisir. Le journal garde l'annotation ENTIÈRE, cachés compris, précisément pour que
@@ -156,6 +156,23 @@ qui fait remettre ce qu'on cache à l'enregistrement (`_tags_caches`). Poser la 
 ici ferait de l'annulation l'outil qui efface ce que l'enregistrement protège ; un test le
 verrouille dans les deux sens. La même doctrine vaut pour la situation cachée qu'un
 changement de type a retirée (cf. le miroir du locuteur, plus haut) : Ctrl+Z la rend.
+
+**L'annulation ne CRÉE jamais de tag** (ANN-8, relecture croisée du 2026-10-22). Un tag se
+renomme, se fusionne et se supprime depuis le panneau 📖 Lexique ; l'instantané d'une
+annotation, lui, nomme ses tags par le libellé qu'ils avaient au moment de l'acte. L'ancien
+`_ensure_tag` créait le libellé manquant : un Ctrl+Z d'un geste antérieur faisait revenir
+un libellé LOCAL en tag GLOBAL, visible de toute l'instance, ou ressuscitait un tag supprimé
+exprès. `_tag_a_rendre` suit d'abord la chaîne du journal `tags` APRÈS l'acte annulé — un
+renommage ou une fusion mène au libellé suivant, une suppression arrête tout —, par les
+libellés des charges et l'ordre des événements, jamais par l'identifiant seul (ceux de `tags`
+se réattribuent) ; puis il cherche le libellé obtenu par sa clé (`cle_tag`). Un tag fusionné
+depuis se retire ou revient sous le nom de sa cible, un tag renommé sous son nouveau nom.
+**Ce qui ne se résout pas ne revient pas** : quand la région revient quand même (une
+suppression défaite, une annotation dont d'autres champs changent), le tag manquant est
+compté avec les liens non rendus (`liens_non_rendus`) ; quand l'acte ne portait QUE sur de
+tels tags, il n'y a rien à rétablir, et l'acte est PASSÉ par la seconde phrase d'AUTH-14
+(« l'état d'avant ne peut plus être rétabli »). Un tag du même nom créé après la suppression
+n'est pas celui de l'acte, et n'est pas rendu.
 
 **Une annulation qui écraserait le geste d'un autre est refusée** (CONC-3, second temps,
 2026-09-17). Annuler une modification de région réécrivait TOUTES ses colonnes depuis

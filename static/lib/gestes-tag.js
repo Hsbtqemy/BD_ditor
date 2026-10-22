@@ -4,10 +4,10 @@
 
    Trois gestes : renommer, fusionner dans un autre tag, supprimer. Trois règles :
 
-   1. L'ÉCRAN N'OFFRE QUE CE QUE LE SERVEUR ACCEPTERAIT, et il ne le devine pas. Renommer,
-      fusionner, supprimer un tag posé : la clé `remaniable` de `GET /api/lexique`, tag par
-      tag (`Portee.peut_remanier_tag`). Supprimer un tag que l'écran voit inutilisé : le
-      droit de MODIFIER le terme, lu comme le menu « Portée » le lit déjà — dans `ecrivable`
+   1. L'ÉCRAN N'OFFRE QUE CE QUE LE SERVEUR ACCEPTERAIT, et il ne le devine pas. Fusionner,
+      renommer ou supprimer un tag posé : la clé `remaniable` de `GET /api/lexique`, tag par
+      tag (`Portee.peut_remanier_tag`). Renommer ou supprimer un tag que l'écran voit
+      inutilisé (décision du 2026-10-22 pour le renommage) : le droit de MODIFIER le terme, lu comme le menu « Portée » le lit déjà — dans `ecrivable`
       de `GET /api/collections` (`modifiable`, miroir de `Portee.peut_ecrire_terme`). Une
       fréquence 0 n'est pas une preuve : elle compte ce qu'on lit, et le serveur, qui
       compte tout le corpus, peut encore refuser — son 403 se lit alors tel quel.
@@ -42,10 +42,11 @@
      réponse d'avant ANN-8, une forme changée) n'offre rien plutôt que tout. */
   function gestesOfferts(tag, peutModifier) {
     const remaniable = tag.remaniable === true;
+    const inutilise = peutModifier === true && tag.frequence === 0;
     return {
-      renommer: remaniable,
+      renommer: remaniable || inutilise,
       fusionner: remaniable,
-      supprimer: remaniable || (peutModifier === true && tag.frequence === 0),
+      supprimer: remaniable || inutilise,
     };
   }
 

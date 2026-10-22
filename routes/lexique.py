@@ -30,8 +30,7 @@ import autorisation
 import conflit
 import journal
 import lexique_import
-from database import cle_tag, lexique_resume, reindex_region
-from pipeline import nlp
+from database import annotation_vide, cle_tag, lexique_resume, reindex_tags_regions
 
 from socle import (
     LexiqueIn, _clause_personnage, _get_dimension, _get_valeur, _patch_lexique, _row, _rows,
@@ -223,10 +222,11 @@ def patch_tag_lexique(tag_id: int, payload: LexiqueIn,
 # propositions de l'Atelier : aucune route ne le supprimait, ne le fusionnait ni ne le
 # renommait. Trois gestes, et DEUX questions d'autorisation :
 #
-#   · supprimer un tag que plus AUCUNE région ne porte — sur TOUT le corpus, pas sur ce
-#     qu'on lit — est l'affaire de qui le modifie déjà (`peut_ecrire_terme`) : rien de ce
-#     que d'autres ont posé ne change ;
-#   · le supprimer quand des régions le portent, le fusionner, le renommer, c'est le
+#   · supprimer ou renommer un tag que plus AUCUNE région ne porte — sur TOUT le corpus,
+#     pas sur ce qu'on lit — est l'affaire de qui le modifie déjà (`peut_ecrire_terme`) :
+#     rien de ce que d'autres ont posé ne change (le renommage : décision de la session de
+#     pilotage du 2026-10-22, après la relecture croisée) ;
+#   · le supprimer ou le renommer quand des régions le portent, le fusionner, c'est le
 #     REMANIER (`peut_remanier_tag`) : tag local, le propriétaire de sa collection et
 #     l'administrateur ; tag global, l'administrateur seul.
 #
@@ -244,7 +244,10 @@ def patch_tag_lexique(tag_id: int, payload: LexiqueIn,
 # ni combien — un bit, le même que le 403 d'un tag qu'on croit inutilisé ; c'est une limite
 # ÉCRITE, la seule alternative étant d'écrire hors de sa portée. Le renommage n'y est pas
 # soumis : il change le TERME, qui est à lui, et pas les régions, qui le désignent par son
-# identifiant.
+# identifiant. Une fusion montre, elle, quelque chose de plus : fusionner dans un tag
+# GLOBAL un tag local posé hors de sa collection montre aux lecteurs de ces régions qu'un
+# tag y était posé (c'est désormais la cible, lisible de tous) — l'emplacement, jamais
+# l'ancien libellé.
 #
 # **Le nombre annoncé avant de confirmer** vient de la même route jouée à blanc (`a_blanc`),
 # APRÈS toutes ses gardes : il compte tout le corpus, et ne parvient donc à une portée non
@@ -252,8 +255,10 @@ def patch_tag_lexique(tag_id: int, payload: LexiqueIn,
 # qu'elle lit. Il ne révèle rien de ce qu'on ne lit pas.
 #
 # **L'index plein texte** agrège les libellés des tags d'une région (`tags_concat`) : toute
-# région dont les tags changent — ou dont un tag change de libellé — est réindexée dans la
-# même transaction, spaCy chargé AVANT le verrou d'écriture (§ Concurrence SQLite).
+# région dont les tags changent — ou dont un tag change de libellé — voit ses TAGS réécrits
+# dans la même transaction (`database.reindex_tags_regions`), sans analyse de langue : le
+# texte et la note ne changent pas, ni donc les lemmes et les tokens. La réindexation
+# complète tenait le verrou 14,7 s pour 1 500 régions (relecture croisée, 2026-10-22).
 #
 # **Le journal** garde chaque geste sous la cible `tags` (identifiants et libellés), RETENUE
 # de toute sortie et hors de Ctrl+Z (`undo._TABLES` ne la connaît pas) : remanier le
@@ -316,11 +321,6 @@ def _exiger_tout_ecrit(conn, portee, tag_id: int, geste: str) -> None:
                                  f"pas : seul un administrateur peut le {geste} partout.")
 
 
-def _reindexer(conn, regions) -> None:
-    for region_id in regions:
-        reindex_region(conn, region_id)
-
-
 @router.delete("/api/tags/{tag_id}")
 def supprimer_tag(tag_id: int, a_blanc: bool = False,
                   conn: sqlite3.Connection = Depends(db),
@@ -330,11 +330,9 @@ def supprimer_tag(tag_id: int, a_blanc: bool = False,
     mêmes gardes, compte, n'écrit rien ; la réponse dit le nombre de régions que la
     suppression toucherait.
 
-    Une annotation à qui il ne reste ni note ni tag est supprimée, comme `put_annotation`
-    le fait d'une annotation qu'on vide : une coquille vide fausserait le compte des
-    annotées et ferait garder la case à la re-segmentation."""
+    Une annotation à qui il ne reste ni note ni tag est supprimée, par la règle de
+    `put_annotation` (`database.annotation_vide`)."""
     if not a_blanc:
-        nlp.ensure_loaded()            # spaCy HORS transaction : la réindexation suivra
         conflit.verrouiller(conn)      # le tag et ses emplois se lisent sous le verrou
     tag = _tag_vu(conn, portee, tag_id)
     if not portee.peut_ecrire_terme(tag["collection_id"]):
@@ -353,15 +351,14 @@ def supprimer_tag(tag_id: int, a_blanc: bool = False,
         return reponse
     conn.execute("DELETE FROM tags WHERE id = ?", (tag_id,))   # CASCADE : annotation_tags
     videes = [r["region_id"] for r in conn.execute(
-        "SELECT an.region_id FROM annotations an "
-        f"WHERE an.region_id IN ({','.join('?' * len(regions))}) "
-        "  AND TRIM(COALESCE(an.note, '')) = '' "
-        "  AND NOT EXISTS (SELECT 1 FROM annotation_tags at WHERE at.annotation_id = an.id)",
-        regions)] if regions else []
+        "SELECT an.region_id, an.note, "
+        "       (SELECT COUNT(*) FROM annotation_tags at WHERE at.annotation_id = an.id) AS n "
+        f"FROM annotations an WHERE an.region_id IN ({','.join('?' * len(regions))})",
+        regions) if annotation_vide(r["note"], r["n"])] if regions else []
     if videes:
         conn.execute(f"DELETE FROM annotations WHERE region_id IN "
                      f"({','.join('?' * len(videes))})", videes)
-    _reindexer(conn, regions)
+    reindex_tags_regions(conn, regions)
     avant = {**tag, "regions": regions}
     if videes:
         avant["annotations_supprimees"] = videes
@@ -389,7 +386,6 @@ def fusionner_tag(tag_id: int, payload: TagFusionIn,
     if payload.cible_id == tag_id:
         raise HTTPException(422, "Un tag ne peut pas être fusionné dans lui-même.")
     if not payload.a_blanc:
-        nlp.ensure_loaded()            # spaCy HORS transaction : la réindexation suivra
         conflit.verrouiller(conn)
     tag = _tag_vu(conn, portee, tag_id)
     cible = _tag_vu(conn, portee, payload.cible_id, quoi="Tag cible")
@@ -415,7 +411,7 @@ def fusionner_tag(tag_id: int, payload: TagFusionIn,
                  "SELECT annotation_id, ? FROM annotation_tags WHERE tag_id = ?",
                  (payload.cible_id, tag_id))
     conn.execute("DELETE FROM tags WHERE id = ?", (tag_id,))   # CASCADE : annotation_tags
-    _reindexer(conn, regions)
+    reindex_tags_regions(conn, regions)
     journal.journaliser(conn, "fusion", "tags", tag_id, avant={**tag, "regions": regions},
                         apres={"cible_id": cible["id"], "label": cible["label"],
                                "regions": regions, "deja": sorted(deja)})
@@ -430,6 +426,9 @@ def renommer_tag(tag_id: int, payload: TagLibelleIn,
     """Renomme un tag sur place : les régions le désignent par son identifiant, elles
     suivent. Le libellé s'écrit sous sa CLÉ (`database.cle_tag`), comme un tag neuf.
 
+    Un tag que plus aucune région ne porte, sur tout le corpus, se renomme par qui le
+    modifie (`peut_ecrire_terme`), comme il se supprime ; un tag posé, par qui le remanie.
+
     Un AUTRE tag de même clé rend le renommage impossible — deux lignes pour un même mot,
     l'état que la clé existe pour éviter : c'est une fusion, et le 409 le dit en nommant ce
     tag s'il est visible. Un tag qu'on ne lit pas n'est pas nommé : « déjà pris », la phrase
@@ -437,14 +436,18 @@ def renommer_tag(tag_id: int, payload: TagLibelleIn,
     « c'est ») est permis : c'est le même tag."""
     if not cle_tag(payload.label):
         raise HTTPException(422, "Libellé de tag vide.")
-    nlp.ensure_loaded()                # spaCy HORS transaction : la réindexation suivra
     conflit.verrouiller(conn)
     tag = _tag_vu(conn, portee, tag_id)
-    _exiger_remaniement(
-        portee, tag,
-        local="Renommer ce tag revient au propriétaire de sa collection ou à un "
-              "administrateur.",
-        global_="Renommer un tag global revient à un administrateur.")
+    if not portee.peut_ecrire_terme(tag["collection_id"]):
+        raise HTTPException(403, "Ce tag est en lecture seule pour vous.")
+    regions = _regions_du_tag(conn, tag_id)
+    if regions:
+        _exiger_remaniement(
+            portee, tag,
+            local="Ce tag est posé sur des régions : le renommer revient au propriétaire "
+                  "de sa collection ou à un administrateur.",
+            global_="Ce tag est posé sur des régions : renommer un tag global revient à "
+                    "un administrateur.")
     label = cle_tag(payload.label)
     autre = _row(conn.execute(
         "SELECT id, label FROM tags WHERE cle_tag(label) = ? AND id <> ? "
@@ -460,7 +463,7 @@ def renommer_tag(tag_id: int, payload: TagLibelleIn,
                                  f"« {autre['label']} ».")
     if label != tag["label"]:
         conn.execute("UPDATE tags SET label = ? WHERE id = ?", (label, tag_id))
-        _reindexer(conn, _regions_du_tag(conn, tag_id))
+        reindex_tags_regions(conn, regions)
         journal.journaliser(conn, "modification", "tags", tag_id,
                             avant={"id": tag_id, "label": tag["label"]},
                             apres={"id": tag_id, "label": label})

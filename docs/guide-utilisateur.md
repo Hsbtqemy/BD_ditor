@@ -840,8 +840,9 @@ Un tag ouvert dans le panneau porte aussi, si vous y avez droit, trois gestes :
 choisi dans le menu, parmi les tags globaux ou de la même collection — et **Supprimer**.
 Avant une fusion ou une suppression, le navigateur demande de confirmer en disant combien de
 régions seront touchées ; le message qui suit dit ce qui a été fait. Qui y a droit :
-supprimer un tag que plus aucune région ne porte, quiconque peut le modifier ; le reste, le
-propriétaire de la collection du tag s'il est local, l'administrateur s'il est global. Ces
+renommer ou supprimer un tag que plus aucune région ne porte, quiconque peut le modifier ; le
+reste, le propriétaire de la collection du tag s'il est local, l'administrateur s'il est
+global. Ces
 gestes ne s'annulent pas par Ctrl+Z. Cf. [`modele-et-droits.md`](modele-et-droits.md) §4.
 
 ---

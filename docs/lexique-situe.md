@@ -125,9 +125,10 @@ tapé de travers restait dans le vocabulaire, et dans les propositions de l'Atel
   `POST /api/tags/{id}/fusion` `{cible_id, a_blanc?}` fusionne dans `cible_id` ;
   `DELETE /api/tags/{id}?a_blanc=` supprime. `a_blanc` passe les mêmes gardes, compte, et
   n'écrit rien : c'est lui qui donne le nombre que la confirmation du navigateur annonce.
-- **Deux questions.** Supprimer un tag que plus aucune région ne porte — compté sur tout le
-  corpus — demande `peut_ecrire_terme`. Renommer, fusionner, supprimer un tag posé, c'est le
-  REMANIER : `Portee.peut_remanier_tag` (local → propriétaire de sa collection ou
+- **Deux questions.** Supprimer ou renommer un tag que plus aucune région ne porte — compté
+  sur tout le corpus — demande `peut_ecrire_terme` (le renommage : décision de la session de
+  pilotage du 2026-10-22, après la relecture croisée). Fusionner un tag, le renommer ou le
+  supprimer quand il est posé, c'est le REMANIER : `Portee.peut_remanier_tag` (local → propriétaire de sa collection ou
   administrateur ; global → portée totale). L'écran la reçoit par la clé `remaniable`, tag
   par tag, dans `GET /api/lexique` — et non dans `GET /api/tags`, que lisent l'Atelier et la
   Recherche, qui ne remanient rien.
@@ -144,17 +145,29 @@ tapé de travers restait dans le vocabulaire, et dans les propositions de l'Atel
 - **Renommer** écrit le libellé sous sa clé (`database.cle_tag`) ; un autre tag de même clé,
   c'est une fusion, et le 409 le nomme s'il est lisible (« déjà pris » sinon, la phrase de
   `POST /api/tags`).
-- **L'index** : chaque région dont les tags changent, ou dont un tag change de libellé, est
-  réindexée (`tags_concat`), spaCy chargé hors du verrou d'écriture. Une annotation à qui il
-  ne reste ni note ni tag est supprimée, comme celle qu'on vide à l'Atelier.
+- **L'index** : chaque région dont les tags changent, ou dont un tag change de libellé, voit
+  ses seuls TAGS réécrits (`database.reindex_tags_regions`) : `tags_concat` dans la ligne
+  existante, les lemmes gardés, ni analyse de langue ni `tokens` régénérés — le texte et la
+  note ne changent pas. La première version passait par `reindex_region` : 14,7 s sous le
+  verrou d'écriture pour 1 500 régions, une annotation concurrente recevait le 409
+  « occupée », et des `tokens` figés avec un autre modèle étaient régénérés avec celui du
+  serveur ; c'est 0,1 s aujourd'hui (mesuré le 2026-10-22, même cas). `region_id` étant
+  UNINDEXED dans la table FTS, les lignes se cherchent en un parcours par paquet de 500 et
+  s'écrivent par `rowid`. Une annotation à qui il ne reste ni note ni tag est supprimée, par
+  la règle de l'Atelier (`database.annotation_vide`).
+- **Une fusion peut rendre visible un EMPLACEMENT** : fusionner dans un tag global un tag
+  local posé hors de sa collection montre aux lecteurs de ces régions qu'un tag y était posé —
+  c'est désormais la cible, que tous lisent. Jamais l'ancien libellé, qui disparaît avec le
+  tag fusionné.
 - **Le journal** : cible `tags` (`modification`, `fusion`, `suppression`), identifiants et
   libellés dans les charges, avec la liste des régions touchées. Retenue de toute sortie,
   sans rang de pseudonyme, hors des actes qu'un compte laisse en partant, et hors de Ctrl+Z.
-- **Limite connue** : l'annulation repose une annotation d'après son instantané, qui nomme
-  ses tags par LIBELLÉ (`journal.snapshot_annotation`). Ctrl+Z d'un geste d'annotation
-  ANTÉRIEUR à un renommage, une fusion ou une suppression repose donc l'ancien libellé — et
-  le recrée en tag global s'il n'existe plus (`undo._ensure_tag`). La question de Ctrl+Z
-  face au vocabulaire remanié n'est pas tranchée ici.
+- **Ctrl+Z d'un geste d'annotation antérieur** : l'instantané nomme ses tags par LIBELLÉ
+  (`journal.snapshot_annotation`). L'annulation ne crée plus jamais de tag
+  (`undo._tag_a_rendre`, relecture croisée du 2026-10-22) : elle suit la chaîne du journal
+  `tags` après l'acte — renommage et fusion mènent au tag courant, une suppression arrête
+  tout —, puis cherche par la clé ; ce qui ne se résout pas ne revient pas (compté parmi les
+  liens non rendus, ou l'acte est passé s'il ne portait que cela). Cf. `docs/undo.md`.
 
 ## Indicateur « % défini »
 

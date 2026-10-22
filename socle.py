@@ -145,11 +145,12 @@ def _ensure_tags(conn: sqlite3.Connection, labels: list[str], portee) -> list[di
     pris ailleurs » de « libellé libre » reste ce qui le distinguait hier — le libellé
     revient, ou il ne revient pas —, et on ne peut pas le retirer sans mentir.
 
-    **Elle n'atteint pas `undo._ensure_tag`, et c'est voulu.** L'annulation repose un
+    **Elle n'atteint pas `undo._tag_a_rendre`, et c'est voulu.** L'annulation repose un
     instantané pris par le journal, qui garde l'annotation ENTIÈRE, cachés compris : y
     poser la même garde ferait de Ctrl+Z l'outil qui efface ce que `_tags_caches`
     protège. Restaurer n'est pas saisir — on ne devine pas un libellé qu'on est en train
-    de remettre là où il était.
+    de remettre là où il était. Depuis ANN-8, l'annulation ne CRÉE plus aucun tag : un
+    libellé renommé, fusionné ou supprimé depuis se suit dans le journal, ou ne revient pas.
 
     **Un libellé se cherche par sa CLÉ** (ANN-8, `database.cle_tag`) : « c’est pluriel » et
     « c'est pluriel », un accent composé ou décomposé, désignent le même tag. Un tag neuf
