@@ -5,13 +5,15 @@ statut: interrompu
 
 # ANN-8 — l'annotation d'aujourd'hui : les défauts que l'usage a relevés
 
-**Arrêté sur** — 2026-10-21, `da108ba` : neuf des quatorze cases sont faites, dans le lot 1, sur
-`dev` en local (`9c8a9cc`, `3d22f37`, `0e96424`, `a685f30`, `988876c`, `d87bbdc`, `da108ba`). Deux
-le sont à moitié — le premier gel après un redémarrage, la région des messages. Quatre ont leur
-décision, prise par Hugo le jour même sur recommandation, et restent à coder : le locuteur d'une
-région devenue case, ↓ puis Entrée pendant un rechargement, les homonymes, la référence d'une
-bulle dans la Note. Le
-libellé du verrou est une proposition, à juger à la passe. D'où `interrompu`.
+**Arrêté sur** — 2026-10-22, `23bf9db` : treize des quatorze cases d'origine sont faites, dans le
+lot 1, sur `dev` en local — les quatre décisions de Hugo du 2026-10-21 codées la même nuit
+(`50c70bc`, `c21cf58`, `969f678`, `72447d8`, `9f5e962`), puis le correctif de la relecture croisée
+(`23bf9db` : le locuteur est un champ gardé de l'annulation). Deux le sont à moitié — le premier
+gel après un redémarrage, la région des messages. Passe finale du lot verte sur `9d7882c` (même
+code). Le libellé du verrou et la phrase du locuteur retiré sont des propositions, à juger à la
+passe ; six cases ouvertes depuis vont au push suivant. D'où `interrompu`.
+
+**Jusqu'au 2026-10-22** — `da108ba` : neuf des quatorze cases faites, quatre décisions à coder.
 
 **Ouverte le 2026-10-21** — rien de commencé. Fiche ouverte le 2026-10-21 en sortant d'`ANN-6` les
 défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle des grilles
@@ -46,14 +48,19 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   est visible
 
 ### Le locuteur et l'annulation
-- [ ] **Un locuteur hérité sur une région devenue case se voit, ou part avec le type** —
+- [x] **Un locuteur hérité sur une région devenue case se voit, ou part avec le type** —
   attendu : tranché. Une bulle qui a un locuteur et devient case le garde : invisible à
   l'écran, il compte encore au registre, dans la Recherche et les exports. L'annulation peut
   aussi en reposer un sur une case, la garde ne tenant que la route — écrit dans son
   commentaire et décrit par un test. « Aucune case ne porte de locuteur » n'est pas un
   invariant de la base. Non su : si la production en porte déjà **Tranché par Hugo le 2026-10-21 :
   le locuteur part avec le type**, journalisé ; l'annulation refuse un locuteur sur un type qui
-  n'en porte pas ; un outil à blanc dit ce que la base porte déjà. ~½ journée — pas encore codé
+  n'en porte pas ; un outil à blanc dit ce que la base porte déjà. **Fait le 2026-10-21, `50c70bc`, corrigé par
+  `23bf9db`** : le retrait n'a lieu que sur un vrai changement de type, entre dans l'acte (son
+  `avant` porte l'identifiant du locuteur, aucun nom) et l'Atelier le dit ; un seul Ctrl+Z rend
+  type et locuteur ; l'annulation refuse un locuteur sur un type muet, et répond 409 nommé si un
+  autre a changé le locuteur depuis (trouvé par la relecture croisée : un Ctrl+Z écrasait celui
+  d'un autre). `tools/retirer_locuteurs_muets.py`, à blanc par défaut, à lancer au déploiement
 - [x] **Annuler la suppression d'une région rend aussi son locuteur** — attendu : Ctrl+Z
   d'une suppression rend ce qui a été supprimé. Reproduit, antérieur : une case avec une
   situation, dessous un cartouche avec locuteur, note et tag ; supprimer la case, puis
@@ -107,18 +114,21 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   surfaces, et `toast()` la retrouve ; l'Atelier pose de même celle de l'annonce d'un conflit.
   Un test relève l'ordre des naissances. Ce qu'un lecteur d'écran prononce n'est pas mesuré :
   c'est l'attendu, et il reste
-- [ ] **Pendant que la liste du registre se recharge, ↓ puis Entrée ne prend pas un nom de la
+- [x] **Pendant que la liste du registre se recharge, ↓ puis Entrée ne prend pas un nom de la
   liste d'avant** — attendu : tranché. Entre une frappe et le retour de sa liste, ↓ puis
   Entrée prend la proposition surlignée de la liste précédente : elle est à l'écran, le
   geste est explicite. La fermer rend les flèches inertes le temps de la lecture **Tranché par
   Hugo le 2026-10-21 : à Entrée, revérifier que la proposition surlignée répond encore à la
-  saisie** — pas encore codé
-- [ ] **Plusieurs personnages du même nom se départagent à l'écran** — attendu : tranché.
+  saisie** — **fait le 2026-10-21, `c21cf58`** : la proposition part si elle répond encore à
+  ce qui est tapé (le nom contient la saisie, sans casse ni accents, comme le filtre du
+  serveur) ; sinon la liste de la saisie se lit et s'affiche sans rien surligner
+- [x] **Plusieurs personnages du même nom se départagent à l'écran** — attendu : tranché.
   Quand plusieurs homonymes exacts existent déjà, Entrée prend le premier dans l'ordre du
   registre — nom, puis série, celui sans série d'abord —, sans le dire (mesuré, inchangé).
   Le guide le dit ; aucun test ne fige ce choix **Tranché par Hugo le 2026-10-21 :
-  Entrée ne décide pas, la liste se réduit aux homonymes, chacun avec sa série** — pas encore
-  codé
+  Entrée ne décide pas, la liste se réduit aux homonymes, chacun avec sa série** — **fait le
+  2026-10-21, `969f678` et `9f5e962`** : « sans série » pour celui qui n'en a pas, rien de
+  surligné, aucun « Créer » ; un seul homonyme est pris comme avant ; le guide dit le geste
 - [x] **Les deux champs de personnage savent ce que l'autre vient de créer** — attendu : dit,
   ou fermé. « Zed » créé par la boîte personnage, puis tapé vite dans le champ du locuteur,
   se décide sur la liste de ce champ-là — périmée seulement si « Zed » y avait déjà été
@@ -162,14 +172,16 @@ défauts de l'annotation ACTUELLE, qui ne dépendent ni du relevé ni du modèle
   laquelle un libellé saisi cherche son tag partout ; son jumeau navigateur `cleTag` lit la
   même table, `tests/cas-tags.json`. Aucune migration : deux tags d'avant de même clé restent
   deux lignes, et une saisie n'en attache qu'un
-- [ ] **La référence d'une autre bulle écrite dans la Note ne devient pas fausse en silence**
+- [x] **La référence d'une autre bulle écrite dans la Note ne devient pas fausse en silence**
   — attendu : dit aux annotateurs, ou remplacé par un lien que l'outil tient. Pour un
   chevauchement, le guide demande d'écrire dans la Note la référence de l'autre bulle telle
   que le logiciel l'affiche. Cette référence est DÉRIVÉE de l'ordre de lecture
   (`database.citations_regions`), jamais stockée : une case ajoutée ou réordonnée, et la même
   référence désigne une autre bulle **Tranché par Hugo le 2026-10-21 : le guide
-  dit d'écrire l'identifiant stable « #123 »** ; un lien tenu par l'outil va dans `ANN-7` — pas
-  encore écrit
+  dit d'écrire l'identifiant stable « #123 »** ; un lien tenu par l'outil va dans `ANN-7` — **écrit le
+  2026-10-21, `72447d8`** : l'Atelier montrait déjà l'identifiant (ligne « Région », arbre) ; le
+  guide fait écrire « #123 » et dit où le lire. Le guide des linguistes reste à corriger (case
+  plus bas)
 
 ## Contexte
 
