@@ -1775,6 +1775,22 @@ def retirer_locuteur_muet(conn: sqlite3.Connection, region_id: int) -> int | Non
     return rows[0]["personnage_id"]
 
 
+def liens_vus(conn: sqlite3.Connection, region_id: int) -> dict:
+    """Les liens que porte une région au moment d'un changement de type : `{"locuteur": id
+    du personnage, ou None}`. Des IDENTIFIANTS seulement, comme tout ce qu'un acte range au
+    journal.
+
+    ANN-8 — le changement de type les PHOTOGRAPHIE dans son `avant`, sous `liens_vus`, et
+    l'annulation compare à cette photographie ce que la région porte au moment de défaire
+    (`undo._garder_liens_du_type`). Sans elle, la garde supposait « aucun » : une case d'avant
+    ANN-8 qui portait déjà le locuteur de la bulle qu'elle était, repassée en bulle puis
+    Ctrl+Z, recevait un 409 faux, sa seule auteure étant prise pour quelqu'un d'autre. La clé
+    est distincte de `locuteur`, qui dit, elle, ce que le changement a RETIRÉ."""
+    r = conn.execute("SELECT personnage_id FROM bulle_locuteur WHERE region_id = ?",
+                     (region_id,)).fetchone()
+    return {"locuteur": r["personnage_id"] if r else None}
+
+
 # Régions de texte (citées au niveau bulle « pl·c·b ») — cf. ordre de lecture.
 _TYPES_TEXTE = ("bulle", "cartouche", "texte")
 

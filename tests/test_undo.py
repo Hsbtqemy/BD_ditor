@@ -404,6 +404,167 @@ def test_h3_un_put_qui_ne_change_pas_le_type_ne_retire_rien(client, planche, db_
     assert _type_et_locuteur(db_path, rid) == ("case", p)
 
 
+# --------------------------------------------------------------------------- #
+# Le changement de type PHOTOGRAPHIE les liens vus (`liens_vus`), et l'annulation compare à
+# cette photographie — non plus à « aucun ». Reproduit par la contre-relecture du 2026-10-21
+# (c3, c5) : sur une base d'avant ANN-8, la seule auteure d'un passage case → bulle recevait
+# un 409 faux à son propre Ctrl+Z.
+# --------------------------------------------------------------------------- #
+def _poser_a_la_main(db_path, region_id, personnage_id):
+    """Un locuteur posé hors routes, comme une base d'avant ANN-8 le porte sur une case."""
+    c = sqlite3.connect(db_path)
+    c.execute("INSERT INTO bulle_locuteur (region_id, personnage_id) VALUES (?, ?)",
+              (region_id, personnage_id))
+    c.commit()
+    c.close()
+
+
+def _dernier_avant(db_path, region_id):
+    ev = direct_query(db_path, "SELECT avant FROM evenement WHERE cible_table = 'regions' "
+                               "AND type = 'modification' AND cible_id = ? "
+                               "ORDER BY id DESC LIMIT 1", (region_id,))[0]
+    return json.loads(ev["avant"])
+
+
+def test_le_changement_de_type_photographie_les_liens_vus_sous_une_cle_a_part(
+        client, planche, db_path):
+    """`liens_vus` dit ce que la région portait ; `locuteur` ce que le changement a RETIRÉ.
+    Deux clés, deux sens : une bulle qui devient cartouche voit Tintin et ne retire rien."""
+    rid = _creer_region(client, planche["id"], type="bulle")["id"]
+    p = client.post("/api/personnages", json={"nom": "Tintin"}).json()["id"]
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": p})
+
+    client.put(f"/api/regions/{rid}", json={"type": "cartouche"})
+    avant = _dernier_avant(db_path, rid)
+    assert avant["liens_vus"]["locuteur"] == p
+    assert "locuteur" not in avant
+
+    client.put(f"/api/regions/{rid}", json={"type": "case"})
+    avant = _dernier_avant(db_path, rid)
+    assert (avant["liens_vus"]["locuteur"], avant["locuteur"]) == (p, p)
+
+    client.put(f"/api/regions/{rid}", json={"type": "bulle"})
+    assert _dernier_avant(db_path, rid)["liens_vus"]["locuteur"] is None
+
+
+def test_un_geste_sans_changement_de_type_ne_photographie_rien(client, planche, db_path):
+    rid = _creer_region(client, planche["id"], type="bulle")["id"]
+    client.put(f"/api/regions/{rid}", json={"x": 7})
+    client.put(f"/api/regions/{rid}", json={"type": "bulle"})
+    assert "liens_vus" not in _dernier_avant(db_path, rid)
+
+
+def test_c3_une_case_d_avant_qui_parlait_repassee_en_bulle_se_defait_sans_409(
+        client, planche, db_path):
+    """Une personne seule, une case d'avant ANN-8 qui porte déjà Zed ; elle la passe en
+    bulle, puis Ctrl+Z. Personne n'a rien fait depuis : l'annulation passe, et rend l'état
+    d'avant TEL QU'IL ÉTAIT — la case et Zed. Le nettoyage est l'affaire de l'outil."""
+    rid = _creer_region(client, planche["id"], type="case")["id"]
+    z = client.post("/api/personnages", json={"nom": "Zed"}).json()["id"]
+    _poser_a_la_main(db_path, rid, z)
+    assert client.put(f"/api/regions/{rid}", json={"type": "bulle"}).status_code == 200
+
+    res = client.post("/api/undo")
+    assert res.status_code == 200, res.text
+    assert _type_et_locuteur(db_path, rid) == ("case", z)
+
+
+def test_c5_le_locuteur_d_une_bulle_devenue_case_avant_ann8_ne_bloque_pas_son_auteure(
+        client, planche, db_path):
+    """Le cas réaliste : Zed posé par la route sur une bulle, la bulle devenue case AVANT
+    ANN-8 (sans retrait, simulé en SQL). Le 409 disait « depuis un autre écran de ce même
+    compte », avec une date antérieure à l'acte qu'on défaisait."""
+    rid = _creer_region(client, planche["id"], type="bulle")["id"]
+    z = client.post("/api/personnages", json={"nom": "Zed"}).json()["id"]
+    client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": z})
+    c = sqlite3.connect(db_path)
+    c.execute("UPDATE regions SET type = 'case' WHERE id = ?", (rid,))
+    c.commit()
+    c.close()
+    assert client.put(f"/api/regions/{rid}", json={"type": "bulle"}).status_code == 200
+
+    res = client.post("/api/undo")
+    assert res.status_code == 200, res.text
+    assert _type_et_locuteur(db_path, rid) == ("case", z)
+
+
+def test_un_locuteur_vu_puis_change_par_un_autre_bloque_encore(client, planche, db_path,
+                                                               derriere_proxy):
+    """La photographie n'ouvre pas la porte que h2 ferme : Alice passe en bulle une case qui
+    portait Zed ; Bob remplace Zed par Haddock ; le Ctrl+Z d'Alice rendrait une case qui
+    porte Haddock, caché. 409 nommant Bob, rien d'écrit."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="case")["id"]
+    z = client.post("/api/personnages", json={"nom": "Zed"}, headers=ADMIN).json()["id"]
+    y = client.post("/api/personnages", json={"nom": "Haddock"}, headers=ADMIN).json()["id"]
+    _poser_a_la_main(db_path, rid, z)
+    assert client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=ALICE).status_code == 200
+    assert client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": y},
+                      headers=BOB).status_code == 200
+    n = _ev_count(db_path)
+
+    res = client.post("/api/undo", headers=ALICE)
+    assert res.status_code == 409, res.text
+    conflit = res.json()["detail"]["conflit"]
+    assert (conflit["champ"], conflit["valeur_actuelle"], conflit["auteur"]["login"]) == \
+        ("locuteur", y, "bob")
+    assert _type_et_locuteur(db_path, rid) == ("bulle", y)
+    assert _ev_count(db_path) == n
+
+
+def test_un_locuteur_vu_puis_retire_par_un_autre_ne_bloque_pas(client, planche, db_path,
+                                                               derriere_proxy):
+    """Alice passe en bulle une case qui portait Zed ; Bob retire Zed ; Alice fait Ctrl+Z.
+    La case revient sans locuteur : rien n'est écrasé, rien n'est caché — l'annulation ne
+    repose rien sur une case. Elle passe."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="case")["id"]
+    z = client.post("/api/personnages", json={"nom": "Zed"}, headers=ADMIN).json()["id"]
+    _poser_a_la_main(db_path, rid, z)
+    assert client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=ALICE).status_code == 200
+    assert client.delete(f"/api/regions/{rid}/locuteur", headers=BOB).status_code == 204
+
+    res = client.post("/api/undo", headers=ALICE)
+    assert res.status_code == 200, res.text
+    assert _type_et_locuteur(db_path, rid) == ("case", None)
+
+
+def test_ce_que_l_acte_a_retire_n_est_pas_ce_qu_il_a_laisse(client, planche, db_path,
+                                                             derriere_proxy):
+    """Une boîte personnage d'avant ANN-8 porte Zed ; Alice la passe en case — Zed part,
+    vu ET retiré. Bob repasse la case en bulle et lui donne Zed. Le Ctrl+Z d'Alice rendrait
+    une boîte personnage qui porte Zed, caché : ce que l'acte avait LAISSÉ était « aucun »,
+    pas la photographie. 409 sur le locuteur, avant même celui du type."""
+    rid = _creer_region(client, planche["id"], headers=ADMIN, type="personnage")["id"]
+    z = client.post("/api/personnages", json={"nom": "Zed"}, headers=ADMIN).json()["id"]
+    _poser_a_la_main(db_path, rid, z)
+    assert client.put(f"/api/regions/{rid}", json={"type": "case"}, headers=ALICE).status_code == 200
+    assert client.put(f"/api/regions/{rid}", json={"type": "bulle"}, headers=BOB).status_code == 200
+    assert client.put(f"/api/regions/{rid}/locuteur", json={"personnage_id": z},
+                      headers=BOB).status_code == 200
+    res = client.post("/api/undo", headers=ALICE)
+    assert res.status_code == 409, res.text
+    assert res.json()["detail"]["conflit"]["champ"] == "locuteur"
+    assert _type_et_locuteur(db_path, rid) == ("bulle", z)
+
+
+def test_un_acte_d_avant_la_photographie_garde_la_regle_d_alors(client, planche, db_path):
+    """Un changement de type journalisé sans `liens_vus` — avant ce correctif : la garde y
+    suppose qu'aucun locuteur n'était laissé, comme elle le faisait. Sur une case d'avant
+    ANN-8, le 409 de c3 y reste : c'est écrit (`docs/undo.md`)."""
+    rid = _creer_region(client, planche["id"], type="case")["id"]
+    z = client.post("/api/personnages", json={"nom": "Zed"}).json()["id"]
+    _poser_a_la_main(db_path, rid, z)
+    client.put(f"/api/regions/{rid}", json={"type": "bulle"})
+    c = sqlite3.connect(db_path)
+    c.execute("UPDATE evenement SET avant = json_remove(avant, '$.liens_vus') "
+              "WHERE cible_table = 'regions' AND type = 'modification' AND cible_id = ?", (rid,))
+    c.commit()
+    c.close()
+    res = client.post("/api/undo")
+    assert res.status_code == 409, res.text
+    assert res.json()["detail"]["conflit"]["champ"] == "locuteur"
+    assert _type_et_locuteur(db_path, rid) == ("bulle", z)
+
+
 def test_undo_presence(client, region, db_path):
     p = client.post("/api/personnages", json={"nom": "Haddock"}).json()
     client.put(f"/api/regions/{region['id']}/personnage", json={"personnage_id": p["id"]})

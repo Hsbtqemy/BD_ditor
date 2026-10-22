@@ -32,7 +32,7 @@ rollback en cas d'échec.
 | `creation` région | supprimer la région (+ sous-arbre, désindexé) — **refusé** si quelqu'un d'autre l'a modifiée, annotée ou y a rattaché une région depuis |
 | `modification` région (géométrie / OCR / déplacement) | remettre les colonnes que l'acte a CHANGÉES à leur valeur `avant` — **refusé** si l'une d'elles a changé depuis (sauf par un moteur) |
 | `modification` région qui a changé le type d'une zone de texte en case ou en boîte personnage | remettre le type, puis **reposer le locuteur** que le changement avait retiré (ANN-8), s'il est rendable — sinon le type revient seul, et la réponse le compte (`liens_non_rendus`) ; **refusé** (409 nommé) si la région porte aujourd'hui un AUTRE locuteur |
-| `modification` région qui rend un type sans locuteur (case, boîte personnage) | comme toute modification — **refusé** (409 nommé) si la région porte aujourd'hui un locuteur |
+| `modification` région qui rend un type sans locuteur (case, boîte personnage) | comme toute modification — **refusé** (409 nommé) si la région porte aujourd'hui un locuteur AUTRE que celui que l'acte avait laissé (sa photographie, `liens_vus`) |
 | `suppression` région | **recréer le sous-arbre** depuis l'instantané profond (région + annotation + enfants, **mêmes `id`**) — **passé** si un `id` a été repris, si une planche ou le parent n'est plus le même, ou si l'on n'écrit plus dans l'une des planches |
 | `creation` / `modification` / `suppression` annotation | défaire ce que l'acte a CHANGÉ, sur l'état actuel : la note revient à `avant` si l'acte l'a changée ; les tags qu'il a ajoutés partent, ceux qu'il a retirés reviennent ; vide, l'annotation est supprimée |
 | `lien` locuteur/présence (avant ∅) | retirer le lien |
@@ -70,6 +70,28 @@ La garde compare des VALEURS, comme toutes celles de CONC-3 : Alice attribue Had
 passe la bulle en case (Haddock part), Alice annule son attribution — sans effet, il n'y est
 plus —, puis le Ctrl+Z de Bob rend la bulle ET Haddock. Rien n'a changé depuis l'acte de Bob,
 donc rien n'est écrasé ; l'intention d'Alice ne se lit dans aucune valeur.
+
+**La garde compare à ce que l'acte a VU, photographié par lui** (contre-relecture de ANN-8,
+2026-10-21 ; `database.liens_vus`, `undo._garder_liens_du_type`). Elle comparait le locuteur
+actuel à « aucun », faute de savoir ce que le changement de type avait trouvé. Sur une base
+d'avant ANN-8, une case qui portait déjà le locuteur de la bulle qu'elle était, repassée en
+bulle par une personne seule puis Ctrl+Z, recevait un 409 FAUX — « modifié ailleurs », ou
+« depuis un autre écran de ce même compte » avec une date antérieure à l'acte. Chaque
+changement de type photographie désormais, dans son `avant`, les liens qu'il voit, sous
+`liens_vus` — une clé à part : `locuteur`, à côté, veut toujours dire « retiré ». Ce que
+l'acte a LAISSÉ est la photographie moins ce qu'il a retiré, et c'est à elle que l'annulation
+compare. Deux cas, selon le type rendu :
+
+- il porte un locuteur, et l'acte avait retiré le sien : l'annulation le repose. Admis :
+  aucun locuteur, ou celui-là ; un autre serait écrasé (Alice, Bob et Haddock, ci-dessus) ;
+- il n'en porte pas : l'annulation ne repose rien. Admis : aucun locuteur, ou celui que
+  l'acte avait laissé. Un autre deviendrait invisible ; aucun n'efface rien.
+
+L'annulation rend donc l'état d'avant TEL QU'IL ÉTAIT : la case d'avant ANN-8 retrouve son
+locuteur caché, et c'est `tools/retirer_locuteurs_muets.py` qui la nettoie — ce n'est pas le
+rôle d'un Ctrl+Z. **Un changement de type journalisé avant la photographie n'a pas
+`liens_vus`** : la garde y suppose, comme avant, qu'aucun locuteur n'était laissé, et le 409
+faux y reste possible. Il ne disparaît, pour ces actes, qu'une fois l'outil passé.
 
 **Une annotation se défait par différence, et non par instantané** (CONC-3, 2026-09-16).
 Restaurer `avant` entier défaisait aussi ce qu'une autre personne avait fait sur l'AUTRE

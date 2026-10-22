@@ -27,7 +27,7 @@ from database import (DEMANDE_REJOINDRE, DEMANDE_SUPPRESSION_DOCUMENT, citations
                       collection_par_defaut, contributions_album, creer_document,
                       dimensions_cm, document_d_album, init_db,
                       noms_lisibles, numeros_editoriaux, projet_de_collection,
-                      relecture_planches, reindex_region, retirer_locuteur_muet,
+                      liens_vus, relecture_planches, reindex_region, retirer_locuteur_muet,
                       sql_projet_d_album, unindex_region)
 import autorisation
 import conflit
@@ -1064,7 +1064,12 @@ def update_region(region_id: int, patch: RegionUpdate,
         # retrait entre dans CE geste — `avant` le porte sous `locuteur`, la clé d'un nœud
         # d'instantané profond — et non dans un `delien` à part : un seul Ctrl+Z rend le
         # type ET le locuteur (cf. `undo._liens_a_rendre`), sans état intermédiaire.
+        #
+        # Et chaque changement de type PHOTOGRAPHIE les liens qu'il voit, sous `liens_vus` —
+        # une clé à part, qui ne veut pas dire « retiré » : l'annulation compare à elle ce
+        # que la région porte au moment de défaire (`undo._garder_liens_du_type`).
         if "type" in fields and fields["type"] != existing["type"]:
+            avant["liens_vus"] = liens_vus(conn, region_id)
             retire = retirer_locuteur_muet(conn, region_id)
             if retire is not None:
                 avant["locuteur"] = retire
